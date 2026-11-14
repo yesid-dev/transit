@@ -1,9 +1,13 @@
-"""File checks and typed row proofs; canonical-text verification is still separate."""
+"""Prove a Parquet window retains canonical CSV text and typed rows."""
 
 import hashlib
 import json
+import math
 import os
+import struct
 from dataclasses import asdict, dataclass
+from decimal import Decimal
+from fractions import Fraction
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Literal
@@ -11,6 +15,7 @@ from typing import Literal
 import duckdb
 
 from transit_ops.ingestion.storage import BronzeStorage
+from transit_ops.lake.csv_validation import CSV_OPTIONS
 from transit_ops.lake.parquet_codec import connect, read_canonical_csv
 from transit_ops.lake.table_schema import TableSchema
 
@@ -34,7 +39,7 @@ class FileChecks:
 
 @dataclass(frozen=True)
 class WindowProof:
-    """Typed row equality only; canonical-text checks are still required for verification."""
+    """A copy checked for typed equality, key order and canonical text."""
 
     rows: int
     content_sha256: str
@@ -63,6 +68,7 @@ Reason = Literal[
     "missing_rows",
     "extra_rows",
     "key_order",
+    "canonical_text",
 ]
 
 
@@ -155,7 +161,7 @@ def check_window_files(
 def prove_window(
     csv_path: Path, parquet_path: Path, schema: TableSchema, *, expect: Expected, temp_dir: Path
 ) -> WindowProof:
-    """Prove typed row equality; this does not yet verify canonical text."""
+    """Verify canonical text after typed equality and strict key order."""
     checks = check_window_files(csv_path, parquet_path, schema, expect=expect, temp_dir=temp_dir)
     keys = ['"' + name.replace('"', '""') + '"' for name in schema.primary_key]
     reason: Reason
@@ -170,14 +176,16 @@ def prove_window(
             ("proof_copy", "proof_csv", "extra_rows"),
         ):
             _check_difference(connection, left, right, keys, reason)
-        _check_order(connection, parquet_path, schema)
+        mapped = _positioned_copy(connection, parquet_path, schema)
+        _check_order(connection, schema, mapped)
+        _check_text(connection, csv_path, schema, mapped)
     # Bind the result to the same bytes checked before the SQL scans (H1).
     if _digest(csv_path)[0] != checks.content_sha256:
         raise CopyDiffers("content_digest", "CSV changed during row checks")
     if _digest(parquet_path) != (checks.object_sha256, checks.object_bytes):
         raise CopyDiffers("object_digest", "Parquet changed during row checks")
     return WindowProof(
-        **asdict(checks), missing_from_copy=0, extra_in_copy=0, in_key_order=True, verified=False
+        **asdict(checks), missing_from_copy=0, extra_in_copy=0, in_key_order=True, verified=True
     )
 
 
@@ -198,28 +206,115 @@ def _check_difference(
         raise CopyDiffers(reason, f"{difference[0]} rows; first key {difference[1:]!r}"[:500])
 
 
-def _check_order(connection: duckdb.DuckDBPyConnection, path: Path, schema: TableSchema) -> None:
+def _positioned_copy(
+    connection: duckdb.DuckDBPyConnection, path: Path, schema: TableSchema
+) -> dict[str, str]:
     types = schema.duckdb_types()
     mapped = {name: f"_proof_column_{index}" for index, name in enumerate(types)}
     columns = [
         {"name": mapped[name], "type": kind, "default_value": None} for name, kind in types.items()
     ]
+    connection.sql(
+        "SELECT * FROM read_parquet(?, hive_partitioning=false, "
+        "schema=map(?, ?), file_row_number=true)",
+        params=[str(path), list(types), columns],
+    ).create_view("proof_positioned")
+    return mapped
+
+
+def _check_order(
+    connection: duckdb.DuckDBPyConnection, schema: TableSchema, mapped: dict[str, str]
+) -> None:
     keys = [mapped[name] for name in schema.primary_key]
     key_sql = ", ".join(keys)
     null_key = " OR ".join(f"{key} IS NULL" for key in keys)
     difference = connection.execute(
         f"WITH positioned AS (SELECT row({key_sql}) AS key, "
         f"({null_key}) AS null_key, file_row_number AS position "
-        "FROM read_parquet(?, hive_partitioning=false, schema=map(?, ?), file_row_number=true)), "
+        "FROM proof_positioned), "
         "ordered AS (SELECT *, lag(key) OVER (ORDER BY position) AS previous FROM positioned) "
         "SELECT position FROM ordered WHERE null_key OR (position > 0 AND key <= previous) "
         "ORDER BY position LIMIT 1",
-        [str(path), list(types), columns],
     ).fetchone()
     if difference is not None:
         raise CopyDiffers(
             "key_order", f"Non-increasing primary key at file row {difference[0]} (zero-based)"
         )
+
+
+def _float_text(value: float, kind: str) -> str:
+    if math.isnan(value):
+        return "NaN"
+    if math.isinf(value):
+        return "-Infinity" if value < 0 else "Infinity"
+    code, digits, threshold = ("f", 9, 6) if kind == "FLOAT" else ("d", 17, 15)
+    bits = struct.pack("!" + code, value)
+    if not any(bits[1:]) and bits[0] in (0, 128):
+        return "-0" if bits[0] else "0"
+    # PostgreSQL excludes midpoint decimals even when ties-to-even would round back.
+    magnitude = abs(value)
+    integer = int.from_bytes(struct.pack("!" + code, magnitude), "big")
+    width = len(bits)
+    lower = struct.unpack("!" + code, (integer - 1).to_bytes(width, "big"))[0]
+    upper = struct.unpack("!" + code, (integer + 1).to_bytes(width, "big"))[0]
+    center = Fraction(magnitude)
+    low = (center + Fraction(lower)) / 2
+    high = (center + Fraction(upper)) / 2 if math.isfinite(upper) else center * 2 - low
+    for precision in range(1, digits + 1):
+        text = format(value, f".{precision}g")
+        if low < abs(Fraction(text)) < high and struct.pack("!" + code, float(text)) == bits:
+            break
+    decimal = Decimal(text)
+    exponent = decimal.adjusted()
+    if -4 <= exponent < threshold:
+        return format(decimal, "f")
+    mantissa, power = format(decimal.normalize(), "e").split("e")
+    return f"{mantissa}e{int(power):+03d}"
+
+
+def _check_text(
+    connection: duckdb.DuckDBPyConnection,
+    csv_path: Path,
+    schema: TableSchema,
+    mapped: dict[str, str],
+) -> None:
+    types = schema.duckdb_types()
+    expressions = []
+    for name, kind in types.items():
+        column = mapped[name]
+        if kind == "BOOLEAN":
+            expressions.append(f"CASE {column} WHEN true THEN 't' WHEN false THEN 'f' END")
+        elif kind in {"FLOAT", "DOUBLE"}:
+            expressions.append(column)
+        else:
+            expressions.append(f"CAST({column} AS VARCHAR)")
+    with connection.cursor() as source, connection.cursor() as copy:
+        source.execute(
+            f"SELECT * FROM read_csv(?, columns=?, {CSV_OPTIONS})",
+            [str(csv_path), dict.fromkeys(types, "VARCHAR")],
+        )
+        copy.execute("SET TimeZone='UTC'")
+        copy.execute(
+            f"SELECT {', '.join(expressions)} FROM proof_positioned ORDER BY file_row_number"
+        )
+        position = 0
+        while batch := source.fetchmany(4096):
+            copied = copy.fetchmany(len(batch))
+            for original, restored in zip(batch, copied, strict=True):
+                for (name, kind), text, value in zip(
+                    types.items(), original, restored, strict=True
+                ):
+                    rendered = (
+                        _float_text(value, kind)
+                        if value is not None and kind in {"FLOAT", "DOUBLE"}
+                        else value
+                    )
+                    if text != rendered:
+                        raise CopyDiffers(
+                            "canonical_text",
+                            f"Column {name!r}, file row {position} (zero-based)"[:500],
+                        )
+                position += 1
 
 
 def read_back(storage: BronzeStorage, key: str, destination: Path) -> tuple[str, int]:
