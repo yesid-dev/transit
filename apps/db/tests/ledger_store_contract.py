@@ -393,3 +393,36 @@ def test_copy_insertion_requires_a_window_allocation(store, make_identity):
     assert store.window_state(identity) is None
     with store.session(identity) as session:
         assert session.copies() == []
+
+
+def test_rewrite_provenance_round_trips_through_events(store, make_identity):
+    from transit_ops.history.rewrite_evidence import processing_evidence_details
+
+    identity = make_identity()
+    details = processing_evidence_details(
+        command="replay-realtime-silver", completed_at_utc=datetime(2026, 11, 1, 12, tzinfo=UTC),
+        index_family="realtime_snapshot", rows_by_capture={17: 0, 18: 5},
+        rewrite={
+            "schema": 1, "operation_id": "rewrite-17", "expected_current_version": 3,
+            "expected_working_changed_at_utc": "2026-11-01T11:00:00.000000Z",
+            "edition": {"provider_id": "network", "dataset_version_id": 42,
+                        "checksum_sha256": "a" * 64},
+            "provenance": {"command": "replay-realtime-silver", "mode": "gold",
+                           "capture_ids": [17, 18],
+                           "source_hashes": {"17": "b" * 64, "18": None},
+                           "code_revision": None, "code_revision_unknown_reason": "not supplied"},
+        },
+    )
+    with store.session(identity) as session:
+        session.record_event("processing_evidence", details=details, actor="loader")
+    events = store.events(identity, kinds=None)
+    assert len(events) == 1
+    assert (events[0].kind, events[0].actor, events[0].details) == (
+        "processing_evidence", "loader", details,
+    )
+    assert events[0].details["rewrite"]["expected_current_version"] == 3
+    assert events[0].details["rewrite"]["edition"]["dataset_version_id"] == 42
+    assert events[0].details["rewrite"]["provenance"]["code_revision"] is None
+    assert store.events(identity, kinds={"processing_evidence"}) == events
+    assert store.events(identity, kinds={"changed"}) == []
+    assert store.events(identity, kinds=set()) == []
