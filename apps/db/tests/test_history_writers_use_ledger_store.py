@@ -250,3 +250,23 @@ def test_working_evidence_is_validated_as_stored(verification, monkeypatch, payl
             dict(kinds={"processing_evidence"}),
         )
     ]
+
+
+def test_close_runs_audits_through_the_store(verification):
+    from transit_ops.history.close_runs import close_unfinished_runs
+
+    v = verification
+    row = dict(endpoint_key="trip_updates", utc_date=v.now.date(), ingestion_run_id=7)
+    v.connection.execute = lambda *a: NS(mappings=lambda: NS(all=lambda: [row]))
+    v.store.record_audit = lambda identity, kind, details, **kw: v.calls.append(
+        (identity, kind, details, kw)
+    )
+    assert close_unfinished_runs(v.connection, provider_id="network") == 1
+    assert v.calls == [
+        (
+            WindowIdentity("capture.trip_updates", "network", "2026-01-04"),
+            "close_runs",
+            dict(ingestion_run_ids=[7], older_than_seconds=3600),
+            dict(reason="closed_unfinished", actor=None),
+        ),
+    ]

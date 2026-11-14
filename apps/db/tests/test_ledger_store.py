@@ -129,3 +129,63 @@ def test_store_events_needs_no_window_session_or_callers_transaction():
         WindowIdentity("capture.trip_updates", "network", "2026-11-01")
     )
     assert [(e.sequence, e.kind, e.details) for e in events] == [(17, "close_runs", {"closed": 2})]
+
+
+@pytest.mark.parametrize("kind", LIFECYCLE_KINDS)
+def test_lock_free_audit_refuses_lifecycle_before_sql(monkeypatch, kind):
+    connection = TransactionConnection()
+    monkeypatch.setattr(connection, "execute", lambda *a: pytest.fail("unexpected SQL"))
+    with pytest.raises(ValueError, match=kind):
+        PostgresLedger(connection).record_audit(
+            WindowIdentity("capture.trip_updates", "network", "2026-11-01"), kind, {}
+        )
+
+
+@pytest.mark.parametrize(
+    "kind", ["changed", "close_runs", "processing_evidence", "fold_published", "rebuild"]
+)
+@pytest.mark.parametrize("actor", [None, "closer"])
+def test_lock_free_audit_preserves_insert_values_and_returns_the_record(monkeypatch, kind, actor):
+    from transit_ops.history import ledger
+    from transit_ops.history.ledger_store import RecordedEvent
+
+    values = []
+    at = datetime(2026, 11, 1, tzinfo=UTC)
+
+    def execute(statement, params):
+        if "sequence" in params:
+            row = dict(
+                sequence=17,
+                kind=kind,
+                content_version=None,
+                reason="closed_unfinished",
+                details={"closed": 2},
+                actor=actor or "application",
+                at_utc=at,
+            )
+            return SimpleNamespace(mappings=lambda: SimpleNamespace(one=lambda: row))
+        values.append(params)
+        return SimpleNamespace(scalar_one=lambda: 17)
+
+    connection = SimpleNamespace(execute=execute)
+    monkeypatch.setattr(ledger, "acquire_window_lock", lambda *a, **kw: pytest.fail("window lock"))
+    identity = WindowIdentity("capture.trip_updates", "network", "2026-11-01")
+    result = PostgresLedger(connection).record_audit(
+        identity, kind, {"closed": 2}, reason="closed_unfinished", actor=actor
+    )
+    assert result == RecordedEvent(
+        17, kind, None, "closed_unfinished", {"closed": 2}, actor or "application", at
+    )
+    assert values == [
+        dict(
+            kind=kind,
+            dataset_id="capture.trip_updates",
+            provider_id="network",
+            revision=0,
+            window_key="2026-11-01",
+            content_version=None,
+            reason="closed_unfinished",
+            actor=actor,
+            details='{"closed":2}',
+        )
+    ]

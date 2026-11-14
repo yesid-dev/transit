@@ -140,6 +140,22 @@ class WindowSession(Protocol):
 
 
 class LedgerStore(Protocol):
+    def record_audit(
+        self,
+        identity: WindowIdentity,
+        kind: EventKind,
+        details: Mapping[str, object],
+        *,
+        reason: str | None = None,
+        actor: str | None = None,
+    ) -> RecordedEvent:
+        """Append an audit kind without a session or window lock; refuse other kinds.
+
+        PostgreSQL persists at caller commit; R2 at successful conditional append.
+        Callers may rely on neither coupling; PostgreSQL rollback cannot undo R2.
+        """
+        ...
+
     def events(
         self, identity: WindowIdentity, *, kinds: Collection[str] | None = None
     ) -> list[RecordedEvent]: ...
