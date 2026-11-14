@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
@@ -13,6 +14,7 @@ from psycopg import Connection as PgConnection
 from sqlalchemy import Connection, Engine, create_engine, event, text
 from sqlalchemy.engine import URL
 
+from transit_ops.batch.engine import BatchInput, BatchSession, open_batch_session
 from transit_ops.db.target_safety import assert_disposable_test_url
 
 _IDENTITY_SQL = "SELECT current_database(), current_user"
@@ -81,6 +83,7 @@ def prepare_replay_database(url: str, environment: Mapping[str, str]) -> ReplayD
     except RuntimeError as error:
         raise ReplayDatabaseRefused(str(error)) from error
     engine = create_engine(url)
+    event.listen(engine.pool, "connect", _check_connection_identity)
     try:
         scripts = ScriptDirectory(str(Path(__file__).resolve().parents[1] / "db" / "migrations"))
         with engine.connect() as conn:
@@ -95,6 +98,117 @@ def prepare_replay_database(url: str, environment: Mapping[str, str]) -> ReplayD
     except BaseException:
         engine.dispose()
         raise
+
+
+def _check_connection_identity(
+    connection: PgConnection[tuple[object, ...]], _record: object
+) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute(_IDENTITY_SQL)
+        identity = cursor.fetchone()
+        if identity is None:
+            raise ReplayDatabaseRefused("Server identity unavailable")
+        _approve_identity(str(identity[0]), str(identity[1]))
+    connection.commit()
+
+
+class InputSchemaRefused(ValueError):
+    pass
+
+
+@dataclass(frozen=True)
+class LoadReceipt:
+    relation: str
+    files: tuple[Path, ...]
+    rows: int
+
+
+def _array_csv(expression: str, kind: str, depth: int = 0) -> str:
+    if not kind.endswith("[]"):
+        return (
+            "COALESCE('\"' || replace(replace(CAST("
+            + expression
+            + " AS VARCHAR), chr(92), chr(92)||chr(92)), '\"', chr(92)||'\"') || '\"', 'NULL')"
+        )
+    variable = f"element_{depth}"
+    member = _array_csv(variable, kind[:-2], depth + 1)
+    return (
+        f"CASE WHEN {expression} IS NULL THEN NULL ELSE '{{' || COALESCE("
+        f"array_to_string(list_transform({expression}, lambda {variable}: {member}), ','), '')"
+        " || '}' END"
+    )
+
+
+def _input_projection(session: BatchSession, relation: str) -> tuple[list[str], str]:
+    schema = session.execute(text(f"-- q:batch.replay_load.schema\nDESCRIBE {relation}"))
+    columns, expressions = [], []
+    for row in schema:
+        name, kind = str(row[0]), str(row[1])
+        if "STRUCT(" in kind or "MAP(" in kind:
+            raise InputSchemaRefused(f"{relation}.{name}: {kind} refused")
+        quoted = '"' + name.replace('"', '""') + '"'
+        value = _array_csv(quoted, kind) if kind.endswith("[]") else quoted
+        columns.append(name)
+        expressions.append(f"{value} AS {quoted}")
+    return columns, ", ".join(expressions)
+
+
+def _copy_csv(conn: Connection, relation: str, columns: Sequence[str], path: Path) -> int:
+    quote = conn.dialect.identifier_preparer.quote_identifier
+    target = ".".join(quote(part) for part in relation.split("."))
+    names = ", ".join(quote(name) for name in columns)
+    driver = conn.connection.driver_connection
+    if not isinstance(driver, PgConnection):
+        raise ReplayDatabaseRefused("Replay loading requires psycopg")
+    with driver.cursor() as cursor:
+        with cursor.copy(f"COPY {target} ({names}) FROM STDIN (FORMAT csv, HEADER true)") as copy:
+            with path.open("rb") as source:
+                while block := source.read(1024 * 1024):
+                    copy.write(block)
+        return cursor.rowcount
+
+
+def load_inputs(
+    database: ReplayDatabase, inputs: Sequence[BatchInput], workdir: Path
+) -> list[LoadReceipt]:
+    """Load declared Parquet columns atomically; PostgreSQL validates destination types.
+
+    LISTs become quoted PostgreSQL array literals; STRUCT/MAP are refused.
+    PostgreSQL text representations from the copy-out codec pass through unchanged.
+    """
+    engine = _engine(database)
+    receipts = []
+    with open_batch_session(inputs, workdir=workdir) as session, engine.begin() as conn:
+        _approve_identity(*conn.exec_driver_sql(_IDENTITY_SQL).one())
+        for item in inputs:
+            columns, projection = _input_projection(session, item.relation)
+            available = set(
+                conn.execute(
+                    text(
+                        "SELECT attname FROM pg_catalog.pg_attribute "
+                        "WHERE attrelid=to_regclass(:relation) AND attnum>0 AND NOT attisdropped"
+                    ),
+                    {"relation": item.relation},
+                ).scalars()
+            )
+            if unknown := set(columns) - available:
+                raise InputSchemaRefused(f"{item.relation}: unknown columns {sorted(unknown)}")
+            with NamedTemporaryFile(dir=workdir, suffix=".csv", delete=False) as temporary:
+                path = Path(temporary.name)
+            try:
+                session.execute(
+                    text(
+                        "-- q:batch.replay_load.csv\n"
+                        f"COPY (SELECT {projection} FROM {item.relation}) "
+                        "TO :path (FORMAT csv, HEADER true, NULL '', FORCE_QUOTE *)"
+                    ),
+                    {"path": str(path)},
+                )
+                rows = _copy_csv(conn, item.relation, columns, path)
+                receipts.append(LoadReceipt(item.relation, item.files, rows))
+            finally:
+                path.unlink()
+    return receipts
 
 
 def _install_clock(conn: Connection) -> list[str]:
