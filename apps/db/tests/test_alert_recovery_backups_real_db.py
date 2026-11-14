@@ -91,7 +91,7 @@ def test_native_backup_reader_runner_roundtrip(target, tmp_path, fault):
             if fault == "":
                 old = next(row for row in before if row["alert_id"] == "old")
                 assert old["description_text"] == "École\tA\nB"
-                assert old["route_ids"] == ["a,b", 'quote"', "back\\slash"]
+                assert old["route_ids"] == ["a,b", "back\\slash", 'quote"']
                 assert old["message"] == {
                     "snapshot_id": "101",
                     "alert_index": 0,
