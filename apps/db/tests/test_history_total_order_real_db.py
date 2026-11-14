@@ -27,16 +27,13 @@ class OrderedConnection:
 
 
 @pytest.fixture
-def conn(real_db_engine, seed_provider, capsys):
+def conn(real_db_engine, seed_provider, record_property):
     with real_db_engine.connect() as connection, connection.begin() as transaction:
         seed_provider(connection, PROVIDER, display_name="History order fixture", timezone="UTC")
-        with capsys.disabled():
-            print(
-                "CI database collation:",
-                connection.execute(
-                    text("SELECT datcollate FROM pg_database WHERE datname = current_database()")
-                ).scalar_one(),
-            )
+        collation = connection.execute(
+            text("SELECT datcollate FROM pg_database WHERE datname = current_database()")
+        ).scalar_one()
+        record_property("datcollate", collation)
         yield connection
         transaction.rollback()
 
