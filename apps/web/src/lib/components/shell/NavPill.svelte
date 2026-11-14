@@ -1,9 +1,7 @@
 <script lang="ts">
-	import FreshnessStamp from '#lib/components/surface/FreshnessStamp.svelte';
 	import type { LivePresentation } from '#lib/v1/live/livePresentation.ts';
 	import type { NavigationLifecycle } from '@yesid/ui/brand';
 	import type { Component } from 'svelte';
-	import { trackEvent } from '#lib/site/analytics.ts';
 	import HouseIcon from '@lucide/svelte/icons/house';
 	import MapIcon from '@lucide/svelte/icons/map';
 	import RouteIcon from '@lucide/svelte/icons/route';
@@ -26,12 +24,12 @@
 		localizeHref,
 		localizeUrl,
 	} from '#lib/i18n/index.ts';
-	import type { ChromeSearchResult, ChromeSearchScope } from '#lib/search/transitSearch.ts';
-	import type { TransitModeKey } from '#lib/search/stopMode.ts';
-	import { SvelteSet } from 'svelte/reactivity';
-	import SearchControls, {
-		type SearchScopeKey,
-	} from '#lib/components/surface/SearchControls.svelte';
+	import {
+		searchTransit,
+		type ChromeSearchScope,
+		type SearchList,
+	} from '#lib/search/transitSearch.ts';
+	import HeaderSearch from './HeaderSearch.svelte';
 	import {
 		type NavItem,
 		NAV_ITEMS,
@@ -53,12 +51,9 @@
 		providers?: PublicProvider[];
 		discoveryError?: boolean;
 		search?: string;
-		onsearch?: (value: string) => void;
-		searchResults?: readonly ChromeSearchResult[];
+		searchList?: SearchList;
 		searchPresentation?: LivePresentation | null;
 		searchScope?: ChromeSearchScope;
-		searchModes?: SvelteSet<TransitModeKey>;
-		onresultselect?: (result: ChromeSearchResult) => void;
 		availableLocales?: readonly Locale[];
 	}
 
@@ -70,12 +65,9 @@
 		providers = [],
 		discoveryError = false,
 		search = $bindable(''),
-		onsearch,
-		searchResults = [],
+		searchList = searchTransit({ surface: 'list', query: '' }, {}),
 		searchPresentation,
 		searchScope = 'all',
-		searchModes = new SvelteSet<TransitModeKey>(),
-		onresultselect,
 		availableLocales = PUBLISHED_LOCALES,
 	}: NavPillProps = $props();
 
@@ -87,17 +79,9 @@
 	const currentPath = $derived(delocalizePath(url.pathname));
 
 	const navCopy = $derived(navPillCopy[locale]);
-	const searchPlaceholder = $derived(
-		navCopy.searchPlaceholder[
-			searchScope === 'route' || searchScope === 'stop' ? searchScope : 'all'
-		],
-	);
 	const searchAria = $derived(
 		navCopy.searchAria[searchScope === 'route' || searchScope === 'stop' ? searchScope : 'all'],
 	);
-	const searchCollectionNotice = $derived(navCopy.searchCollectionNotice);
-	const transmitsSearches = $derived(searchScope === 'map' || searchScope === 'all');
-	const blendIsMixed = $derived(searchScope === 'map' || searchScope === 'all');
 
 	const toItem = (item: NavItem) => ({
 		href: localizeHref(item.href, locale, providerId),
@@ -151,8 +135,6 @@
 		providers.find((provider) => provider.id === providerId)?.labels[locale].operator ?? providerId,
 	);
 
-	let searchResultsOpen = $state(true);
-	let searchForm = $state<HTMLFormElement>();
 	let providerControl = $state<HTMLLabelElement>();
 
 	// --pill-h spans the pill plus the provider row that drops below it on phones.
@@ -176,161 +158,18 @@
 			root.style.removeProperty('--pill-h');
 		};
 	});
-
-	let searchFamily = $state<SearchScopeKey>('all');
-	const familyOf = (result: ChromeSearchResult): SearchScopeKey =>
-		result.kind === 'address' ? 'all' : result.kind;
-	const visibleResults = $derived(
-		searchFamily === 'all'
-			? searchResults
-			: searchResults.filter((result) => familyOf(result) === searchFamily),
-	);
-	$effect(() => {
-		if (blendIsMixed) return;
-		searchFamily = 'all';
-		searchModes.clear();
-	});
-	const searchScopeSegments = $derived([
-		{ key: 'all' as const, label: navCopy.searchScopeAll },
-		{
-			key: 'route' as const,
-			label: navCopy.searchScopeCount(
-				navCopy.searchScopeRoutes,
-				searchResults.filter((r) => r.kind === 'route').length,
-			),
-		},
-		{
-			key: 'stop' as const,
-			label: navCopy.searchScopeCount(
-				navCopy.searchScopeStops,
-				searchResults.filter((r) => r.kind === 'stop').length,
-			),
-		},
-		{
-			key: 'vehicle' as const,
-			label: navCopy.searchScopeCount(
-				navCopy.searchScopeVehicles,
-				searchResults.filter((r) => r.kind === 'vehicle').length,
-			),
-		},
-	]);
-
-	const showSearchResults = $derived(
-		searchResultsOpen &&
-			search.trim().length > 0 &&
-			(visibleResults.length > 0 ||
-				(searchPresentation != null && searchPresentation.notice.kind !== 'none')),
-	);
-
-	function submitSearch(event: SubmitEvent) {
-		event.preventDefault();
-		const value = search.trim();
-		onsearch?.(value);
-		if (value) searchResultsOpen = false;
-	}
-
-	function selectResult(result: ChromeSearchResult): void {
-		trackEvent('Search Result', { kind: result.kind });
-		onresultselect?.(result);
-		searchResultsOpen = false;
-	}
-
-	function resultAria(result: ChromeSearchResult): string {
-		const kind = resultKindLabel(result);
-		const meta = resultMeta(result);
-		return meta ? `${kind} ${result.label} ${meta}` : `${kind} ${result.label}`;
-	}
-
-	function resultMeta(result: ChromeSearchResult): string | undefined {
-		return result.line ? `${navCopy.searchKind.route} ${result.line}` : result.meta;
-	}
-
-	function resultKindLabel(result: ChromeSearchResult): string {
-		return navCopy.searchKind[result.kind];
-	}
 </script>
 
-<svelte:window
-	onkeydown={(event) => {
-		if (event.key === 'Escape' && showSearchResults) searchResultsOpen = false;
-	}}
-	onpointerdown={(event) => {
-		if (searchForm && event.target instanceof Node && !searchForm.contains(event.target)) {
-			searchResultsOpen = false;
-		}
-	}}
-/>
-
 {#snippet searchField()}
-	<form
-		bind:this={searchForm}
-		class="nav-search"
-		role="search"
-		onsubmit={submitSearch}
-		data-slot="nav-search"
-	>
-		<SearchIcon class="nav-search-icon" size={14} strokeWidth={1.8} aria-hidden="true" />
-		<input
-			type="search"
-			name="network-search"
-			bind:value={search}
-			placeholder={searchPlaceholder}
-			aria-label={searchAria}
-			autocomplete="off"
-			spellcheck="false"
-			onfocus={() => {
-				if (search.trim()) searchResultsOpen = true;
-			}}
-			oninput={() => (searchResultsOpen = true)}
-			class="nav-search-input"
-			aria-describedby={transmitsSearches ? 'nav-search-notice' : undefined}
-		/>
-		{#if transmitsSearches}
-			<span id="nav-search-notice" class="sr-only">{searchCollectionNotice}</span>
-		{/if}
-
-		<div class="nav-search-panel" data-slot="nav-search-panel">
-			<SearchControls
-				variant="panel"
-				notice={transmitsSearches ? searchCollectionNotice : null}
-				noticeDecorative
-				filters={blendIsMixed}
-				scopeLabel={navCopy.searchScopeLabel}
-				scopeSegments={searchScopeSegments}
-				bind:scope={searchFamily}
-				modeLabel={navCopy.searchModeLabel}
-				modes={searchModes}
-			/>
-			{#if showSearchResults}
-				<div class="nav-search-results" role="group" aria-label={searchAria}>
-					{#if searchPresentation}
-						<div class="nav-search-health">
-							<FreshnessStamp variant="live" presentation={searchPresentation.stamp} {locale} />
-							{#if searchPresentation.notice.kind !== 'none'}<p role="status">
-									{searchPresentation.notice.message}
-								</p>{/if}
-						</div>
-					{/if}
-					{#each visibleResults as result (`${result.kind}:${result.id}`)}
-						<button
-							type="button"
-							class="nav-search-result"
-							aria-label={resultAria(result)}
-							onclick={() => selectResult(result)}
-						>
-							<span class="nav-search-main">
-								<span class="nav-search-kind">{resultKindLabel(result)}</span>
-								<span class="nav-search-label">{result.label}</span>
-							</span>
-							{#if resultMeta(result)}
-								<small>{resultMeta(result)}</small>
-							{/if}
-						</button>
-					{/each}
-				</div>
-			{/if}
-		</div>
-	</form>
+	<HeaderSearch
+		bind:query={search}
+		{locale}
+		{providerId}
+		{url}
+		scope={searchScope}
+		list={searchList}
+		presentation={searchPresentation}
+	/>
 {/snippet}
 
 {#snippet actions()}
@@ -398,11 +237,6 @@
 />
 
 <style>
-	.nav-search-health {
-		padding: 0.5rem 0.75rem;
-		font-size: var(--text-caption);
-		color: var(--muted-foreground);
-	}
 	:root {
 		--pill-h: 72px;
 	}
@@ -505,147 +339,6 @@
 		}
 	}
 
-	.nav-search {
-		position: relative;
-		display: flex;
-		align-items: center;
-		min-width: 0;
-	}
-
-	.nav-search :global(.nav-search-icon) {
-		position: absolute;
-		left: 0.5rem;
-		pointer-events: none;
-		color: var(--muted-foreground);
-	}
-
-	.nav-search-input {
-		width: clamp(11rem, 22cqi, 20rem);
-		min-width: 0;
-		height: var(--size-tap-min);
-		padding: 0 0.75rem 0 1.9rem;
-		font-size: var(--text-small);
-		color: var(--foreground);
-		background: color-mix(in srgb, var(--muted) 70%, transparent);
-		border: 1px solid var(--border-subtle);
-		border-radius: var(--radius-pill);
-		transition:
-			border-color var(--duration-fast) var(--ease-default),
-			background var(--duration-fast) var(--ease-default),
-			box-shadow var(--duration-fast) var(--ease-default);
-	}
-
-	.nav-search-input::placeholder {
-		color: var(--muted-foreground);
-	}
-
-	.nav-search-input:focus-visible {
-		border-color: var(--primary);
-		background: var(--muted);
-		outline: none;
-		box-shadow: 0 0 0 2px var(--ring);
-	}
-
-	.nav-search-panel {
-		position: absolute;
-		z-index: var(--z-nav);
-		top: calc(100% + 1.75rem);
-		left: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 0.375rem;
-		width: min(max(100%, 28rem), calc(100vw - 2rem));
-		max-height: calc(100dvh - 1rem - env(safe-area-inset-top, 0px) - var(--pill-h) - 10px - 1rem);
-		opacity: 0;
-		visibility: hidden;
-		transition:
-			opacity var(--duration-normal) var(--ease-default),
-			visibility 0s linear var(--duration-normal);
-	}
-
-	.nav-search:focus-within .nav-search-panel,
-	.nav-search:has(.nav-search-results) .nav-search-panel {
-		opacity: 1;
-		visibility: visible;
-		transition:
-			opacity var(--duration-fast) var(--ease-default),
-			visibility 0s linear 0s;
-	}
-
-	.nav-search-panel > :global([data-slot='search-controls']) {
-		flex: none;
-	}
-
-	.nav-search-results {
-		min-width: 0;
-		min-height: 0;
-		flex: 0 1 auto;
-		display: grid;
-		gap: 0.25rem;
-		max-height: min(22rem, calc(100dvh - var(--pill-h) - 3rem));
-		overflow-y: auto;
-		padding: 0.375rem;
-		border-radius: var(--radius-lg);
-		background: color-mix(in srgb, var(--background) 96%, transparent);
-		border: 1px solid var(--border-brand);
-		box-shadow: var(--shadow-nav);
-		-webkit-backdrop-filter: blur(var(--glass-blur));
-		backdrop-filter: blur(var(--glass-blur));
-	}
-
-	.nav-search-result {
-		display: flex;
-		min-width: 0;
-		align-items: flex-start;
-		justify-content: space-between;
-		gap: 0.75rem;
-		min-height: 2.25rem;
-		padding: 0.375rem 0.5rem;
-		font-family: var(--font-mono);
-		font-size: var(--text-caption);
-		color: var(--foreground);
-		text-align: left;
-		background: var(--muted);
-		border: 1px solid var(--border-subtle);
-		border-radius: var(--radius-sm);
-		cursor: pointer;
-	}
-
-	.nav-search-result:hover,
-	.nav-search-result:focus-visible {
-		color: var(--primary);
-		background: color-mix(in srgb, var(--primary) 10%, var(--muted) 90%);
-		border-color: color-mix(in srgb, var(--primary) 44%, var(--border) 56%);
-		outline: none;
-	}
-
-	.nav-search-main {
-		display: flex;
-		min-width: 0;
-		align-items: flex-start;
-		gap: 0.375rem;
-	}
-
-	.nav-search-kind {
-		flex: none;
-		padding: 0.125rem 0.375rem;
-		color: var(--primary);
-		background: color-mix(in srgb, var(--primary) 10%, transparent);
-		border: 1px solid color-mix(in srgb, var(--primary) 34%, transparent);
-		border-radius: var(--radius-pill);
-	}
-
-	.nav-search-label {
-		min-width: 0;
-		white-space: normal;
-		line-height: 1.25;
-	}
-
-	.nav-search-result small {
-		flex: none;
-		color: var(--muted-foreground);
-	}
-
 	@media (--tablet-max) {
 		:root {
 			--pill-h: 64px;
@@ -658,8 +351,6 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.nav-search-input,
-		.nav-search-panel,
 		.nav-compact-search {
 			transition: none;
 		}

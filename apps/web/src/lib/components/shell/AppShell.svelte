@@ -4,9 +4,7 @@
 	import type { Snippet } from 'svelte';
 	import { cn } from '#lib/utils/index.ts';
 	import { type Locale, DEFAULT_LOCALE, getLocale } from '#lib/i18n/index.ts';
-	import type { ChromeSearchResult, ChromeSearchScope } from '#lib/search/transitSearch.ts';
-	import type { TransitModeKey } from '#lib/search/stopMode.ts';
-	import type { SvelteSet } from 'svelte/reactivity';
+	import type { ChromeSearchScope, SearchList } from '#lib/search/transitSearch.ts';
 	import NavPill from './NavPill.svelte';
 	import type { PublicProvider } from '#lib/v1/providers.ts';
 
@@ -19,12 +17,9 @@
 		providers?: PublicProvider[];
 		discoveryError?: boolean;
 		search?: string;
-		onsearch?: (value: string) => void;
-		searchResults?: readonly ChromeSearchResult[];
+		searchList?: SearchList;
 		searchPresentation?: LivePresentation | null;
-		onresultselect?: (result: ChromeSearchResult) => void;
 		searchScope?: ChromeSearchScope;
-		searchModes?: SvelteSet<TransitModeKey>;
 
 		main?: Snippet;
 
@@ -40,12 +35,9 @@
 		providers,
 		discoveryError,
 		search = $bindable(''),
-		onsearch,
-		searchResults = [],
+		searchList,
 		searchPresentation,
-		onresultselect,
 		searchScope = 'all',
-		searchModes,
 		main,
 		class: className,
 	}: AppShellProps = $props();
@@ -72,12 +64,9 @@
 			{providers}
 			{discoveryError}
 			bind:search
-			{onsearch}
-			{searchResults}
+			{searchList}
 			{searchPresentation}
-			{onresultselect}
 			{searchScope}
-			{searchModes}
 		/>
 	</div>
 

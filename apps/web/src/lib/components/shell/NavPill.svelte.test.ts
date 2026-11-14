@@ -4,11 +4,9 @@ import { createMemoryLiveReader } from '#lib/v1/live/__fixtures__/reader.ts';
 import { createLiveStore, type LiveStore } from '#lib/v1/live/store.svelte.ts';
 import { livePresentation } from '#lib/v1/live/livePresentation.ts';
 import { ManifestSchema } from '#lib/v1/schemas/index.ts';
-import { SvelteSet } from 'svelte/reactivity';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { searchTransit } from '#lib/search/transitSearch.ts';
-import { TRANSIT_MODE_FILTERS, type TransitModeKey } from '#lib/search/stopMode.ts';
-import type { RouteIndexEntry } from '#lib/v1/schemas/index.ts';
+import type { Vehicle } from '#lib/v1/schemas/index.ts';
 import NavPill from './__fixtures__/NavPillHarness.svelte';
 import { createNavigationRouter } from './__fixtures__/navigationRouter';
 import catalog from '../../../../e2e/providers.json';
@@ -127,60 +125,37 @@ describe('NavPill — search', () => {
 			const target = nodes.find((n) => n.id === 'nav-search-notice');
 			expect(target).toHaveClass('sr-only');
 			expect(nodes.find((n) => n !== target)).toHaveAttribute('aria-hidden', 'true');
-			expect(within(search).getByRole('searchbox')).toBeInTheDocument();
+			expect(within(search).getByRole('combobox')).toBeInTheDocument();
 		},
 	);
-
-	it('renders selectable grouped chrome search results and fires select', async () => {
-		const onresultselect = vi.fn();
-		const { getByRole } = render(NavPill, {
-			props: {
-				locale: 'en',
-				search: '161',
-				searchResults: [
-					{ kind: 'route', id: '161', label: '161 Van Horne', priority: 0 },
-					{ kind: 'vehicle', id: '40061', label: '40061', meta: 'Route 161', priority: 20 },
-				],
-				onresultselect,
-			},
-		});
-
-		expect(getByRole('button', { name: 'Line 161 Van Horne' })).toHaveTextContent('Line');
-		await fireEvent.click(getByRole('button', { name: 'Line 161 Van Horne' }));
-		expect(onresultselect).toHaveBeenCalledWith({
-			kind: 'route',
-			id: '161',
-			label: '161 Van Horne',
-			priority: 0,
-		});
-	});
 
 	it.each([
 		['en', 'Vehicle 40061 Line 161'],
 		['fr', 'Véhicule 40061 Ligne 161'],
 	] as const)("names a live vehicle's line in %s", (locale, name) => {
-		const { getByRole } = render(NavPill, {
-			props: {
-				locale,
-				search: '40061',
-				searchResults: [
-					{ kind: 'vehicle', id: '40061', label: '40061', line: '161', priority: 20 },
-				],
+		const bus = { id: '40061', lat: 0, lon: 0, status: 'late', route: '161' } as Vehicle;
+		const searchList = searchTransit(
+			{ surface: 'list', query: '40061' },
+			{
+				routes: [{ id: '161', short: '161', long: 'Van Horne', type: 3 }],
+				stops: [],
+				vehicles: [bus],
 			},
-		});
-		expect(getByRole('button', { name })).toHaveTextContent(name.split(' ').slice(-2).join(' '));
+		);
+		const { getByRole } = render(NavPill, { props: { locale, search: '40061', searchList } });
+		expect(getByRole('option', { name })).toHaveTextContent(name.split(' ').slice(-2).join(' '));
 	});
 
 	it('turns browser autofill off on the in-pill search box', () => {
 		const { getByRole } = render(NavPill, { props: { locale: 'en' } });
-		const searchbox = getByRole('searchbox', { name: 'Search the network' });
+		const searchbox = getByRole('combobox', { name: 'Search the network' });
 		expect(searchbox).toHaveAttribute('autocomplete', 'off');
 		expect(searchbox).toHaveAttribute('name', 'network-search');
 	});
 
 	it('scopes the search placeholder + aria-label to the line catalogue', () => {
 		const { getByRole } = render(NavPill, { props: { locale: 'en', searchScope: 'route' } });
-		expect(getByRole('searchbox', { name: 'Search a line' })).toHaveAttribute(
+		expect(getByRole('combobox', { name: 'Search a line' })).toHaveAttribute(
 			'placeholder',
 			'Search a line…',
 		);
@@ -199,7 +174,7 @@ describe('NavPill — search', () => {
 			expect(target).toBeDefined();
 			expect(target).toHaveClass('sr-only');
 			expect(notices.find((n) => n !== target)).toHaveAttribute('aria-hidden', 'true');
-			expect(getByRole('searchbox', { name: 'Search the network' })).toHaveAttribute(
+			expect(getByRole('combobox', { name: 'Search the network' })).toHaveAttribute(
 				'aria-describedby',
 				'nav-search-notice',
 			);
@@ -210,41 +185,27 @@ describe('NavPill — search', () => {
 				props: { locale: 'en', searchScope },
 			});
 			expect(queryByText(/searches are sent/i)).toBeNull();
-			expect(getByRole('searchbox')).not.toHaveAttribute('aria-describedby');
+			expect(getByRole('combobox', { name: /^Search a/ })).not.toHaveAttribute('aria-describedby');
 			unmount();
 		}
 	});
 
 	it('closes desktop search suggestions when the user clicks outside', async () => {
-		const { getByRole, queryByRole } = render(NavPill, {
-			props: {
-				locale: 'en',
-				search: 'casgrain',
-				searchResults: [
-					{
-						kind: 'address',
-						id: 'google:casgrain',
-						label: '5333 Avenue Casgrain, Montréal, Quebec',
-						meta: 'Address',
-						priority: 30,
-					},
-				],
+		const label = '5333 Avenue Casgrain, Montréal, Quebec';
+		const searchList = searchTransit(
+			{ surface: 'list', query: 'casgrain' },
+			{
+				routes: [],
+				stops: [],
+				addresses: [{ lat: 45.5, lon: -73.6, label, source: 'geo_ca', precision: 'address' }],
 			},
-		});
-
-		expect(
-			getByRole('button', { name: 'Address 5333 Avenue Casgrain, Montréal, Quebec Address' }),
-		).toBeInTheDocument();
-
-		await fireEvent.pointerDown(document.body);
-
-		await waitFor(() =>
-			expect(
-				queryByRole('button', {
-					name: 'Address 5333 Avenue Casgrain, Montréal, Quebec Address',
-				}),
-			).not.toBeInTheDocument(),
 		);
+		const { getByRole, queryByRole } = render(NavPill, {
+			props: { locale: 'en', search: 'casgrain', searchList },
+		});
+		expect(getByRole('option', { name: `Address ${label}` })).toBeInTheDocument();
+		await fireEvent.pointerDown(document.body);
+		await waitFor(() => expect(queryByRole('option', { name: `Address ${label}` })).toBeNull());
 	});
 });
 const NOTICE_EN =
@@ -256,7 +217,10 @@ function renderWithResults() {
 			locale: 'en',
 			search: '161',
 			searchScope: 'all',
-			searchResults: [{ kind: 'route', id: '161', label: '161 Van Horne', priority: 0 }],
+			searchList: searchTransit(
+				{ surface: 'list', query: '161' },
+				{ routes: [{ id: '161', short: '161', long: 'Van Horne', type: 3 }], stops: [] },
+			),
 		},
 	});
 }
@@ -278,144 +242,6 @@ describe('NavPill — the focus dropdown that houses the disclosure (M6i F25/F26
 
 		expect(document.querySelectorAll('#nav-search-notice')).toHaveLength(1);
 		expect(panel!.querySelector('#nav-search-notice')).toBeNull();
-	});
-
-	it('carries the search page scope + mode filters in the dropdown (F26)', () => {
-		const { getByRole } = renderWithResults();
-		const panel = getByRole('search').querySelector<HTMLElement>('[data-slot="nav-search-panel"]');
-		expect(panel).not.toBeNull();
-		expect(within(panel!).getByRole('tablist', { name: 'Show' })).toBeInTheDocument();
-		for (const mode of ['Métro', 'Tram', 'Bus', 'Train', 'Ferry']) {
-			expect(within(panel!).getByRole('button', { name: mode })).toBeInTheDocument();
-		}
-		expect(document.querySelectorAll('form[role="search"]')).toHaveLength(1);
-	});
-
-	it('narrows the visible results when a dropdown scope segment is picked', async () => {
-		const { getByRole, queryByRole } = render(NavPill, {
-			props: {
-				locale: 'en',
-				search: 'van horne',
-				searchScope: 'all',
-				searchResults: [
-					{ kind: 'route', id: '161', label: '161 Van Horne', priority: 0 },
-					{ kind: 'stop', id: '57191', label: 'Van Horne / Rockland', meta: '57191', priority: 4 },
-				],
-			},
-		});
-		expect(getByRole('button', { name: 'Line 161 Van Horne' })).toBeInTheDocument();
-		expect(getByRole('button', { name: /Stop Van Horne \/ Rockland/ })).toBeInTheDocument();
-
-		await fireEvent.click(getByRole('tab', { name: /Lines \(1\)/ }));
-
-		expect(getByRole('button', { name: 'Line 161 Van Horne' })).toBeInTheDocument();
-		expect(queryByRole('button', { name: /Stop Van Horne \/ Rockland/ })).toBeNull();
-	});
-
-	it('drops the family narrowing when navigation leaves the mixed blend (REGATE-m6i §5b)', async () => {
-		const route161 = { kind: 'route', id: '161', label: '161 Van Horne', priority: 0 } as const;
-		const stop57191 = {
-			kind: 'stop',
-			id: '57191',
-			label: 'Van Horne / Rockland',
-			meta: '57191',
-			priority: 4,
-		} as const;
-		const { getByRole, queryByRole, rerender, container } = render(NavPill, {
-			props: {
-				locale: 'en',
-				search: 'van horne',
-				searchScope: 'all',
-				searchResults: [route161, stop57191],
-			},
-		});
-		await fireEvent.click(getByRole('tab', { name: /Stops \(1\)/ }));
-		expect(getByRole('button', { name: /Stop Van Horne \/ Rockland/ })).toBeInTheDocument();
-		expect(queryByRole('button', { name: 'Line 161 Van Horne' })).toBeNull();
-
-		await rerender({
-			locale: 'en',
-			search: 'van horne',
-			searchScope: 'route',
-			searchResults: [route161],
-		});
-
-		expect(container.querySelector('[data-slot="search-controls"]')).toBeNull();
-		expect(queryByRole('tablist', { name: 'Show' })).toBeNull();
-		expect(getByRole('button', { name: 'Line 161 Van Horne' })).toBeInTheDocument();
-
-		await rerender({
-			locale: 'en',
-			search: 'van horne',
-			searchScope: 'all',
-			searchResults: [route161, stop57191],
-		});
-		expect(getByRole('tab', { name: 'All' })).toHaveAttribute('aria-selected', 'true');
-		expect(getByRole('button', { name: 'Line 161 Van Horne' })).toBeInTheDocument();
-		expect(getByRole('button', { name: /Stop Van Horne \/ Rockland/ })).toBeInTheDocument();
-	});
-
-	it('clears the mode set the moment its chips have no surface — no control, no narrowing (REGATE-m6i §5c)', async () => {
-		const modes = new SvelteSet<TransitModeKey>(['metro']);
-		const routes: RouteIndexEntry[] = [{ id: '161', short: '161', long: 'Van Horne', type: 3 }];
-		expect(
-			searchTransit({ surface: 'header', query: '161', scope: 'route', modes }, { routes }),
-		).toEqual([]);
-
-		const { container } = render(NavPill, {
-			props: {
-				locale: 'en',
-				search: '161',
-				searchScope: 'route',
-				searchResults: [],
-				searchModes: modes,
-			},
-		});
-		await tick();
-
-		expect(container.querySelector('[data-slot="search-controls"]')).toBeNull();
-		for (const chip of TRANSIT_MODE_FILTERS) {
-			expect(
-				within(container).queryByRole('button', { name: chip.tag, pressed: false }),
-			).toBeNull();
-		}
-		expect(modes.size).toBe(0);
-		expect(
-			searchTransit({ surface: 'header', query: '161', scope: 'route', modes }, { routes }).map(
-				(r) => r.id,
-			),
-		).toEqual(['161']);
-	});
-
-	it('keeps a picked mode while its chips are on screen (mixed scope)', async () => {
-		const modes = new SvelteSet<TransitModeKey>();
-		const { getByRole } = render(NavPill, {
-			props: {
-				locale: 'en',
-				search: '161',
-				searchScope: 'all',
-				searchResults: [{ kind: 'route', id: '161', label: '161 Van Horne', priority: 0 }],
-				searchModes: modes,
-			},
-		});
-		await fireEvent.click(getByRole('button', { name: 'Métro' }));
-		expect(modes.size).toBe(1);
-	});
-
-	it('omits the filter row where the blend is already one family (honesty)', () => {
-		const { getByRole } = render(NavPill, {
-			props: {
-				locale: 'en',
-				searchScope: 'route',
-				search: '161',
-				searchResults: [{ kind: 'route', id: '161', label: '161 Van Horne', priority: 0 }],
-			},
-		});
-		const panel = getByRole('search').querySelector<HTMLElement>('[data-slot="nav-search-panel"]');
-		expect(panel).not.toBeNull();
-		expect(within(panel!).queryByRole('tablist', { name: 'Show' })).toBeNull();
-		expect(within(panel!).queryByRole('button', { name: 'Métro' })).toBeNull();
-		expect(panel!.querySelector('[data-slot="search-controls"]')).toBeNull();
 	});
 });
 
@@ -460,21 +286,6 @@ it.each(['en', 'fr'] as const)(
 		} finally {
 			live.stop();
 			dispose();
-		}
-	},
-);
-
-it.each(['en', 'fr'] as const)(
-	'keeps the existing empty and no-match header presentation in %s',
-	(locale) => {
-		for (const search of ['', 'zzzz']) {
-			const view = render(NavPill, { props: { locale, search, searchResults: [] } });
-			expect(view.getByRole('searchbox', { name: navPillCopy[locale].searchAria.all })).toHaveValue(
-				search,
-			);
-			expect(view.queryByRole('group', { name: navPillCopy[locale].searchAria.all })).toBeNull();
-			expect(view.queryByText(/No results|Aucun résultat/)).toBeNull();
-			view.unmount();
 		}
 	},
 );
