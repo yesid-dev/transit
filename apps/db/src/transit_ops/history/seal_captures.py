@@ -308,33 +308,22 @@ def _mark_sealed(
     with connection.begin(), ledger_select.ledger_for(connection).session(
         _window_identity(copy)
     ) as window:
-        marker = _reconcile_rejection(window, storage, copy, actor)
+        marker = reconcile_rejection_in(window, storage, copy, actor)
         if marker is None:
             window.mark_sealed(copy.content_version, actor=actor)
     if marker is not None:
         raise _MarkedRejected(f"could not seal copy {identity}: {marker[1]}")
 
 
-def reconcile_rejection_marker(
-    connection: Connection,
-    storage: BronzeStorageResolver,
-    copy: ledger.ArchiveCopy,
-    *,
-    actor: str | None = None,
+def reconcile_rejection_in(
+    window: WindowSession, storage: BronzeStorageResolver, copy: ledger.ArchiveCopy,
+    actor: str | None,
 ) -> tuple[datetime, str] | None:
-    """Reconcile a marker; WindowChanged propagates without retry.
+    """Reconcile inside the supplied session; WindowChanged propagates without retry.
 
     PostgreSQL persists at outer commit, R2 at session exit. Callers may rely on
     neither coupling; PostgreSQL rollback cannot undo R2 writes.
     """
-    with ledger_select.ledger_for(connection).session(_window_identity(copy)) as window:
-        return _reconcile_rejection(window, storage, copy, actor)
-
-
-def _reconcile_rejection(
-    window: WindowSession, storage: BronzeStorageResolver, copy: ledger.ArchiveCopy,
-    actor: str | None,
-) -> tuple[datetime, str] | None:
     marker = _read_rejection(storage, copy)
     version = copy.content_version
     if marker is not None:

@@ -1,3 +1,5 @@
+import gzip
+import json
 from contextlib import contextmanager, nullcontext
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -86,6 +88,37 @@ def test_verify_propagates_window_changed_without_retry(verification):
     assert v.calls == [
         ("enter", WindowIdentity("capture.trip_updates", "network", "2026-01-02")),
         ("make_current", 1, v.now, None),
+    ]
+
+
+def test_verify_reconciles_a_marker_in_its_existing_session(verification, tmp_path):
+    v = verification
+    marker = dict(
+        dataset_id=v.copy.dataset_id,
+        provider_id=v.copy.provider_id,
+        revision=0,
+        window_key=v.copy.window_key,
+        content_version=1,
+        reason="stale",
+        rejected_at_utc=v.now.isoformat(),
+    )
+    path = tmp_path / "rejection.json.gz"
+    path.write_bytes(gzip.compress(json.dumps(marker).encode()))
+    v.storage("local").put_if_absent(
+        path, "archive/v1/captures/network/trip_updates/2026/01/2026-01-02.c1.rejected.json.gz"
+    )
+
+    def rejected(version, *, rejected_at, reason, actor):
+        v.calls.append(("mark_rejected", version, rejected_at, reason, actor))
+        v.store.copy = replace(v.copy, rejected_at_utc=rejected_at, reject_reason=reason)
+
+    v.store.mark_rejected = rejected
+    result = verify.verify_capture_copy(v.connection, v.storage, v.copy, actor="checker")
+    assert result.outcome == "rejected"
+    assert v.calls == [
+        ("enter", WindowIdentity("capture.trip_updates", "network", "2026-01-02")),
+        ("mark_rejected", 1, v.now, "stale", "checker"),
+        "exit",
     ]
 
 
