@@ -233,6 +233,9 @@ _Avoid_: outage, whole-feed stall
 The lower and upper percentage bounds supplied with a reliability reading. They express uncertainty in that reading and do not supply a missing exact on-time count.
 _Avoid_: reconstructed count, guaranteed range
 
+**Publisher lease**:
+The right of one process to publish one lane of one provider until a set time.
+
 **Live-eligible KPI sample**:
 A valid current KPI reading with the delay, coverage, route total and at least one route delay needed for the live summary. A valid but incomplete reading is a demo sample; an invalid response is a failure.
 _Avoid_: healthy feed, live guarantee
