@@ -154,7 +154,7 @@ def test_parent_stop_reaps_worker_and_preserves_outside_sentinel(tmp_path, stop,
     command = [sys.executable, "-I", "-c", PARENT, SCRIPT, tmp_path, ready, ACTIVE_WRITER, stop]
     try:
         with Popen(command, stdout=PIPE, stderr=PIPE, text=True) as result:
-            first = result.stdout.readline()
+            first = result.stdout.buffer.raw.readline().decode()
             handshake = first.split()
             if handshake[:1] != ["READY"]:
                 output, error = result.communicate(timeout=8)
