@@ -146,7 +146,20 @@ def test_stm_file_loads_as_a_declaration():
 
 
 def test_converted_declarations_keep_every_seeded_and_published_value(baseline):
-    load_declaration(PROVIDER_DIR / "stm.yaml")
+    declaration = load_declaration(PROVIDER_DIR / "stm.yaml")
+    gap = declaration.lines_without_live_data[0]
+    assert gap.labels["en"].short == "Métro: real-time not available"
+    assert gap.labels["en"].long == (
+        "The STM does not publish real-time data for the métro. Live "
+        "indicators cover the bus network; métro interruptions appear in "
+        "service alerts."
+    )
+    assert gap.labels["fr"].short == "Métro : temps réel non disponible"
+    assert gap.labels["fr"].long == (
+        "La STM ne publie pas de données temps réel pour le métro. Les "
+        "indicateurs en direct couvrent le réseau de bus; les interruptions "
+        "de métro apparaissent dans les alertes de service."
+    )
     assert baseline == json.loads(GOLDEN_PATH.read_text(encoding="utf-8"))
     settings = Settings(_env_file=None)
     manifest = ProviderRegistry.from_project_root(settings=settings).get_provider("stm")
