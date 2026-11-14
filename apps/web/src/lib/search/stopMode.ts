@@ -1,13 +1,16 @@
 import type { StopIndexEntry } from '#lib/v1/schemas/stops_index.ts';
-import { foldDiacritics, foldSearchText } from './normalize';
+import { foldSearchText } from './normalize';
 
 export interface StopModeHint {
 	readonly glyph: string;
 	readonly label: 'Métro' | 'Train' | null;
 }
 
+/**
+ * Only the published mode classifies a stop. A missing, blank or unsupported mode leaves it
+ * unclassified (plain glyph, no tag, no filter key); its name is never read for a mode.
+ */
 export interface StopModeInput {
-	readonly name: string | null | undefined;
 	readonly mode?: StopIndexEntry['mode'];
 }
 
@@ -20,14 +23,8 @@ const RAIL_HINT: StopModeHint = { glyph: RAIL_GLYPH, label: 'Train' };
 const PLAIN_HINT: StopModeHint = { glyph: DEFAULT_STOP_GLYPH, label: null };
 
 export function stopModeHint(stop: StopModeInput): StopModeHint {
-	if (stop.mode) {
-		if (stop.mode === 'metro') return METRO_HINT;
-		if (stop.mode === 'rail') return RAIL_HINT;
-		return PLAIN_HINT;
-	}
-	const folded = foldDiacritics(stop.name).trimStart();
-	if (folded.startsWith('station ')) return METRO_HINT;
-	if (folded.startsWith('gare ')) return RAIL_HINT;
+	if (stop.mode === 'metro') return METRO_HINT;
+	if (stop.mode === 'rail') return RAIL_HINT;
 	return PLAIN_HINT;
 }
 
@@ -58,15 +55,9 @@ export const TRANSIT_MODE_FILTERS = [
 ] as const satisfies readonly { key: TransitModeKey; tag: TransitModeTag }[];
 
 export function stopModeTag(stop: StopModeInput): TransitModeTag | null {
-	if (stop.mode && stop.mode in MODE_TAGS) {
-		return MODE_TAGS[stop.mode as keyof typeof MODE_TAGS];
-	}
-	if (!stop.mode) {
-		const folded = foldDiacritics(stop.name).trimStart();
-		if (folded.startsWith('station ')) return MODE_TAGS.metro;
-		if (folded.startsWith('gare ')) return MODE_TAGS.rail;
-	}
-	return null;
+	return stop.mode && Object.hasOwn(MODE_TAGS, stop.mode)
+		? MODE_TAGS[stop.mode as TransitModeKey]
+		: null;
 }
 
 export function stopModeKey(stop: StopModeInput): TransitModeKey | null {
@@ -105,6 +96,7 @@ export function routeModeKey(type: number): TransitModeKey | null {
 	return modeKeyForTag(routeModeHint(type).tag);
 }
 
+/** Published métro and rail platforms share their station's name; every other stop keeps its code. */
 export function stopGroupKey(stop: {
 	readonly name: string;
 	readonly code?: string | null;
