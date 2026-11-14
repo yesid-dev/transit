@@ -130,14 +130,20 @@ def test_unavailable_evidence_is_incomplete_and_clean(fault):
 
 
 def test_factory_binds_settings_without_source_io(tmp_path):
+    from test_alert_recovery_captures import END, START, manifest
+
     from transit_ops.commands.alert_recovery import build_recovery_source_readers
     from transit_ops.snapshots.storage import LocalSnapshotStorage
 
     settings = Settings(_env_file=None, BRONZE_S3_BUCKET=None)
     readers = build_recovery_source_readers(
-        LocalSnapshotStorage(str(tmp_path), "v1/fixture"), settings=settings
+        LocalSnapshotStorage(str(tmp_path), "v1/fixture"),
+        settings=settings,
+        manifest=manifest(),
+        capture_from=START,
+        capture_to=END,
     )
-    assert set(readers) == {"backup", "published"}
+    assert set(readers) == {"backup", "published", "capture"}
     assert isinstance(readers["backup"], BackupRecoveryReader)
     assert readers["backup"].settings is settings
 

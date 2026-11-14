@@ -1,7 +1,9 @@
 import json
+from datetime import UTC, datetime
 
 import pytest
 from test_alert_recovery import NOW
+from test_alert_recovery_captures import END, START, manifest
 from typer.testing import CliRunner
 
 from transit_ops.cli import app
@@ -44,6 +46,7 @@ def test_bad_capture_scope_is_refused(bounds):
 def test_mode_inventory_and_diagnostic_json(monkeypatch, tmp_path, flags, mode, inventory):
     from transit_ops.settings import Settings
 
+    selected_manifest = manifest()
     monkeypatch.setattr(
         command,
         "get_settings",
@@ -52,7 +55,7 @@ def test_mode_inventory_and_diagnostic_json(monkeypatch, tmp_path, flags, mode, 
     monkeypatch.setattr(
         command.ProviderRegistry,
         "from_project_root",
-        lambda **kw: type("Registry", (), {"get_provider": lambda self, p: None})(),
+        lambda **kw: type("Registry", (), {"get_provider": lambda self, p: selected_manifest})(),
     )
     monkeypatch.setattr(
         command,
@@ -63,7 +66,11 @@ def test_mode_inventory_and_diagnostic_json(monkeypatch, tmp_path, flags, mode, 
     def run(engine, **kwargs):
         assert kwargs["dry_run"] is mode
         assert kwargs["expected_ids"] == inventory
-        assert set(kwargs["source_readers"]) == {"published", "backup"}
+        assert set(kwargs["source_readers"]) == {"published", "backup", "capture"}
+        capture = kwargs["source_readers"]["capture"]
+        assert capture.start == datetime(2020, 1, 1, tzinfo=UTC)
+        assert capture.end == datetime(2020, 2, 1, tzinfo=UTC)
+        assert capture.manifest is selected_manifest
         return RecoveryReport("fixture", mode, tuple(SourceReport(k) for k in command.KINDS), NOW)
 
     monkeypatch.setattr(command, "run_alert_archive_recovery", run)
@@ -92,7 +99,13 @@ def test_published_composition_leaves_other_slots_unread(tmp_path):
 
     storage = LocalSnapshotStorage(str(tmp_path), "v1/fixture")
     index(storage, *page(storage, "old"))
-    readers = command.build_recovery_source_readers(storage, settings=Settings(_env_file=None))
+    readers = command.build_recovery_source_readers(
+        storage,
+        settings=Settings(_env_file=None),
+        manifest=manifest(),
+        capture_from=START,
+        capture_to=END,
+    )
     items, report = readers["published"](None, provider_id="fixture", recovered_at_utc=NOW)
-    assert set(readers) == {"published", "backup"} and report.complete
+    assert set(readers) == {"published", "backup", "capture"} and report.complete
     assert items[0].alert_id == "old"
