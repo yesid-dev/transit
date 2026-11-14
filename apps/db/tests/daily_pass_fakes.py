@@ -1,6 +1,7 @@
 """In-memory fixtures; schedule and reader values stay with their owners."""
 
-from collections.abc import Iterable, Iterator, Sequence
+from collections import Counter
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import replace
 from datetime import date, datetime, timedelta
 from typing import Literal, cast, get_args
@@ -8,6 +9,7 @@ from typing import Literal, cast, get_args
 from google.transit.gtfs_realtime_pb2 import FeedMessage
 from history_reader_fakes import fake_capture, fake_poll
 from schedule_fakes import fake_schedule
+from sqlalchemy import Connection
 
 from transit_ops.capture_coverage.rules import CaptureKey
 from transit_ops.daily_pass import interface as p
@@ -168,3 +170,59 @@ def fake_stream(build: p.ServiceDayBuild, deliveries: Iterable[p.Delivery]) -> I
             capture=replace(delivery.capture, payload=None) if delivery.capture else None,
             in_service_day=build.day_start_utc <= delivery.time_utc < build.day_end_utc,
         )
+
+
+def fake_summary(
+    build: p.ServiceDayBuild,
+    deliveries: Sequence[p.Delivery],
+    *,
+    completeness: str = "complete",
+    line_match: Mapping[tuple[date, str], p.LineMatch] | None = None,
+) -> p.StreamSummary:
+    """Synthetic completeness is a fixture choice; use StreamAccumulator for real judgment.
+
+    Shares and empty missing blocks are uncomputed, never accounting evidence.
+    """
+    if completeness not in ("complete", "incomplete"):
+        raise ValueError("Unknown completeness")
+    counts: dict[str, Counter[str]] = {endpoint: Counter() for endpoint in build.feeds}
+    consumed = frozenset(d.ref for d in deliveries if d.outcome == "decoded" and d.ref is not None)
+    for delivery in deliveries:
+        counts[delivery.endpoint_key][delivery.outcome] += 1
+    return p.StreamSummary(
+        cast(Literal["complete", "incomplete"], completeness),
+        (),
+        counts,
+        dict.fromkeys(build.feeds),
+        consumed,
+        p.consumed_set_sha256(consumed),
+        dict.fromkeys(build.feeds, ()),
+        line_match if line_match is not None else {},
+    )
+
+
+def drive_consumer(
+    consumer: p.PassConsumer,
+    build: p.ServiceDayBuild,
+    deliveries: Iterable[p.Delivery],
+    connection: Connection,
+    *,
+    summary: p.StreamSummary | None = None,
+) -> Mapping[str, object]:
+    """Drive one synthetic lifecycle without committing a caller's transaction."""
+    with connection.begin_nested() if connection.in_transaction() else connection.begin():
+        if consumer.decide(build, connection).action != "build":
+            return {}
+        fixtures = list(deliveries)
+        payloads = {d.ref: d.payload for d in fixtures if d.ref is not None}
+        observations = list(fake_stream(build, fixtures))
+        result = summary if summary is not None else fake_summary(build, observations)
+        for delivery in observations:
+            if delivery.family in consumer.families:
+                accepted = (
+                    replace(delivery, payload=payloads.get(delivery.ref))
+                    if consumer.wants_bytes
+                    else delivery
+                )
+                consumer.accept(accepted)
+        return consumer.write(build, result, connection)
