@@ -6,6 +6,7 @@ from unittest.mock import Mock
 from zoneinfo import ZoneInfo
 
 import pytest
+from sqlalchemy.exc import ProgrammingError
 
 from transit_ops.history import daily, ledger, seal_captures, store
 from transit_ops.history import daily_selection as selection
@@ -36,6 +37,8 @@ def _database(s):
             name = params.get("name", params.get("table"))
             return NS(scalar_one=lambda: None if name == s.missing else "exists")
         if "pipeline_switches" in query:
+            if s.missing == "core.pipeline_switches":
+                raise s.database_error
             row = None if s.switch is None else dict(
                 switch_key="history_daily", enabled=s.switch[0], updated_at_utc=s.switch[1],
                 updated_by="test", reason="test",
@@ -231,6 +234,19 @@ def test_switch_change_stops_next_day(runner, monkeypatch, changed):
     assert runner.run().stop_reason == "switch_changed"
     assert runner.calls[-1] == ("verify", 1)
     assert len([op for op, _ in runner.calls if op == "seal"]) == 1
+
+
+def test_missing_switch_table_after_preflight_propagates(runner, monkeypatch):
+    runner.database_error = ProgrammingError("SELECT", {}, RuntimeError("table removed"))
+
+    def providers(*a, **kw):
+        runner.missing = "core.pipeline_switches"
+        return runner.providers
+
+    monkeypatch.setattr(selection, "capture_providers", providers)
+    with pytest.raises(ProgrammingError) as raised:
+        runner.run()
+    assert raised.value is runner.database_error
 
 
 def test_unfinished_runs_close_once_per_provider_before_selection(runner):

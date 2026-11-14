@@ -75,10 +75,14 @@ def _validate(
 
 
 def _switch(connection: Connection) -> datetime | None:
-    from transit_ops.control.switches import switches_for
+    from transit_ops.control.switches import PostgresSwitches, switches_for
     from transit_ops.settings import get_settings
 
-    row = switches_for(connection, get_settings()).show_switch("history_daily")
+    store = switches_for(connection, get_settings())
+    if isinstance(store, PostgresSwitches):
+        row = store.show_switch("history_daily", strict=True)
+    else:
+        row = store.show_switch("history_daily")
     return row.updated_at_utc.astimezone(UTC) if row is not None and row.enabled else None
 
 

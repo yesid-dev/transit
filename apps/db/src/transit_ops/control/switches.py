@@ -5,8 +5,9 @@ from collections.abc import Callable, Mapping
 from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Protocol
+from urllib.parse import unquote
 
-from sqlalchemy import Connection
+from sqlalchemy import Connection, text
 
 from transit_ops import pipeline_switches as pg
 from transit_ops.control.objects import (
@@ -37,8 +38,21 @@ class PostgresSwitches:
     def list_switches(self) -> list[PipelineSwitch]:
         return pg.list_switches(self.connection)
 
-    def show_switch(self, switch_key: str) -> PipelineSwitch | None:
-        return pg.show_switch(self.connection, switch_key)
+    def show_switch(self, switch_key: str, *, strict: bool = False) -> PipelineSwitch | None:
+        if not strict:
+            return pg.show_switch(self.connection, switch_key)
+        row = (
+            self.connection.execute(
+                text(
+                    "SELECT switch_key, enabled, updated_at_utc, updated_by, reason "
+                    "FROM core.pipeline_switches WHERE switch_key=:key"
+                ),
+                {"key": switch_key},
+            )
+            .mappings()
+            .one_or_none()
+        )
+        return PipelineSwitch(**row) if row is not None else None
 
     def set_switch(self, switch_key: str, *, on: bool, updated_by: str, reason: str) -> None:
         pg.set_switch(self.connection, switch_key, on=on, updated_by=updated_by, reason=reason)
@@ -77,8 +91,6 @@ class R2Switches:
         return self._read(switch_key)[0]
 
     def list_switches(self) -> list[PipelineSwitch]:
-        from urllib.parse import unquote
-
         rows = (
             self.show_switch(unquote(k[len("switches/") : -5]))
             for k in self.objects.list_keys("switches/")
@@ -88,6 +100,13 @@ class R2Switches:
 
     def enabled(self) -> frozenset[str]:
         return frozenset(r.switch_key for r in self.list_switches() if r.enabled)
+
+    def copy_in(self, row: PipelineSwitch) -> None:
+        try:
+            self.objects.replace(self._key(row.switch_key), _payload(row), expected=None)
+        except ObjectConflict as exc:
+            if self.show_switch(row.switch_key) != row:
+                raise ObjectCollision(row.switch_key) from exc
 
     def set_switch(self, switch_key: str, *, on: bool, updated_by: str, reason: str) -> None:
         for name, value in (("switch key", switch_key), ("actor", updated_by), ("reason", reason)):
@@ -128,8 +147,4 @@ def switches_for(connection: Connection | None, settings: Settings) -> SwitchSto
 
 def copy_switches(source: SwitchStore, target: R2Switches) -> None:
     for row in source.list_switches():
-        try:
-            target.objects.replace(target._key(row.switch_key), _payload(row), expected=None)
-        except ObjectConflict as exc:
-            if target.show_switch(row.switch_key) != row:
-                raise ObjectCollision(row.switch_key) from exc
+        target.copy_in(row)
