@@ -206,3 +206,23 @@ it('waits 500 ms after every edit, even when the totals stay the same', async ()
 		vi.useRealTimers();
 	}
 });
+
+it('restarts the wait when an edit only adds or removes a trailing space', async () => {
+	vi.useFakeTimers();
+	try {
+		const view = show('van');
+		const status = view.getByRole('status');
+		// Edits at 250 ms and 500 ms: each one restarts the 500 ms wait.
+		for (const value of ['van ', 'van']) {
+			await vi.advanceTimersByTimeAsync(250);
+			expect(status.textContent).toBe('');
+			await fireEvent.input(view.input, { target: { value } });
+		}
+		await vi.advanceTimersByTimeAsync(499);
+		expect(status.textContent).toBe('');
+		await vi.advanceTimersByTimeAsync(1);
+		expect(status.textContent).toBe('1 line, 38 stops');
+	} finally {
+		vi.useRealTimers();
+	}
+});

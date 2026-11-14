@@ -77,7 +77,7 @@
 	});
 	let announcement = $state('');
 	$effect(() => {
-		void text; // every edit restarts the wait, even when the totals stay the same
+		void query; // every edit restarts the wait, a trailing space too, even when the totals stay the same
 		const next = summary;
 		const timer = setTimeout(() => (announcement = next), 500);
 		return () => clearTimeout(timer);
