@@ -117,6 +117,29 @@ def test_damaged_identity_or_shape_is_refused(tmp_path, change):
         assert conn.execute("SELECT ingestion_run_id FROM polls").fetchall() == [(1,)]
 
 
+@pytest.mark.parametrize("unique", [True, False])
+def test_standalone_index_compatibility_preserves_rows(tmp_path, unique):
+    path = tmp_path / "worker.db"
+    with closing(opened(path)) as local:
+        local.record_polls([POLL], endpoint_key="vehicles")
+        modifier = "UNIQUE" if unique else ""
+        local.connection.execute(f"CREATE {modifier} INDEX extra_index ON polls(endpoint_key)")
+    if unique:
+        with pytest.raises(LocalFileMismatch, match="polls"):
+            opened(path).close()
+    else:
+        with closing(opened(path)) as local:
+            assert (
+                local.record_polls([replace(POLL, ingestion_run_id=101)], endpoint_key="vehicles")
+                == 1
+            )
+    with duckdb.connect(str(path)) as conn:
+        rows = conn.execute(
+            "SELECT ingestion_run_id FROM polls ORDER BY ingestion_run_id"
+        ).fetchall()
+        assert rows == ([(1,)] if unique else [(1,), (101,)])
+
+
 def test_second_open_in_the_same_process_is_refused(tmp_path):
     path = tmp_path / "worker.db"
     with closing(opened(path)):

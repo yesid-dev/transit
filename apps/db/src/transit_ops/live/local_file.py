@@ -212,7 +212,7 @@ class LocalFile:
                 self._path = None
 
 
-def _table_shape(conn: duckdb.DuckDBPyConnection, table: str) -> tuple[object, object]:
+def _table_shape(conn: duckdb.DuckDBPyConnection, table: str) -> tuple[object, object, object]:
     return (
         conn.execute("SELECT * FROM pragma_table_info(?)", [table]).fetchall(),
         conn.execute(
@@ -220,6 +220,13 @@ def _table_shape(conn: duckdb.DuckDBPyConnection, table: str) -> tuple[object, o
             "WHERE table_name=? AND schema_name='main' "
             "AND database_name IN (current_database(), 'temp') "
             "ORDER BY constraint_type, constraint_text",
+            [table],
+        ).fetchall(),
+        conn.execute(
+            "SELECT expressions FROM duckdb_indexes() "
+            "WHERE table_name=? AND schema_name='main' AND is_unique "
+            "AND database_name IN (current_database(), 'temp') "
+            "ORDER BY expressions",
             [table],
         ).fetchall(),
     )
