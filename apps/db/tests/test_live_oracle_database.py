@@ -113,7 +113,7 @@ def oracle(real_db_engine, clock, request, monkeypatch):
         monkeypatch.setattr(command, "upgrade", role_override)
     admin_url = url.render_as_string(hide_password=False)
     with oracle_database(admin_url, clock=clock, environment=os.environ) as engine:
-        yield engine
+        yield engine.engine
 
 
 @pytest.mark.parametrize(
@@ -271,7 +271,7 @@ def test_the_oracle_database_is_dropped_on_exit_and_on_failure(real_db_engine, c
     admin_url = real_db_engine.url.render_as_string(hide_password=False)
     try:
         with oracle_database(admin_url, clock=clock, environment=os.environ) as engine:
-            name = engine.url.database
+            name = engine.engine.url.database
             with real_db_engine.connect() as conn:
                 assert (
                     value(conn, "SELECT datname FROM pg_database WHERE datname=:name", name=name)
@@ -312,8 +312,8 @@ def guard_oracle(real_db_engine, clock):
         real_db_engine.url.render_as_string(hide_password=False),
         clock=clock,
         environment=os.environ,
-    ) as engine:
-        yield engine
+    ) as handle:
+        yield handle.engine
 
 
 @pytest.mark.parametrize(
