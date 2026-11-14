@@ -1,20 +1,35 @@
 """Extract selected backup data to a caller-owned local file, never a database."""
 
+import os
 import subprocess
 from pathlib import Path
+
+
+def _pg_restore_executable() -> str:
+    extensions = [""]
+    if os.name == "nt":
+        extensions = os.environ.get("PATHEXT", ".COM;.EXE").lower().split(os.pathsep)
+        extensions = [e for e in extensions if e in (".com", ".exe")]
+    for entry in os.environ.get("PATH", "").split(os.pathsep):
+        directory = Path(entry)
+        if not entry or not directory.is_absolute():
+            continue
+        for extension in extensions:
+            candidate = directory / ("pg_restore" + extension)
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                return str(candidate.resolve())
+    raise ValueError("pg_restore_unavailable")
 
 
 def extract_alert_archive_copy(dump_path: Path, output_path: Path) -> None:
     if output_path.exists():
         raise ValueError("pg_restore_output_exists")
     try:
+        selection = "--format=custom --data-only --schema=gold --table=alert_archive_entry"
         subprocess.run(
             [
-                "pg_restore",
-                "--format=custom",
-                "--data-only",
-                "--schema=gold",
-                "--table=alert_archive_entry",
+                _pg_restore_executable(),
+                *selection.split(),
                 "--strict-names",
                 "--file",
                 str(output_path),

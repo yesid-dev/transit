@@ -40,9 +40,9 @@ def canonical_archive_message(message: Any) -> dict[str, Any] | None:
     keys = (
         "snapshot_id alert_index captured_utc header_language description_language url_language"
     ).split()
-    if not isinstance(message, dict) or set(message) != set(keys):
+    if not isinstance(message, dict):
         raise ValueError("copy_message_keys")
-    return {key: message[key] for key in keys}
+    return {key: message[key] for key in (*keys, *message) if key in message}
 
 
 def _field(raw: bytes) -> str | None:
