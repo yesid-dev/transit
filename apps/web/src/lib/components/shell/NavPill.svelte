@@ -35,6 +35,8 @@
 	import {
 		type NavItem,
 		NAV_ITEMS,
+		NAV_GROUPS,
+		SEARCH_LABEL,
 		visibleNav,
 		YESID_HOUSE_LINK,
 		isSurfaceActive,
@@ -129,10 +131,12 @@
 		...visibleNav({ alerts: selectedProvider ? providerHasAlerts(selectedProvider) : null }).map(
 			(item) => ({
 				...toItem(item),
+				group: item.group,
 				icon: MENU_ICONS[item.key],
 			}),
 		),
 		{
+			group: 'about',
 			href: YESID_HOUSE_LINK.href,
 			label: YESID_HOUSE_LINK.label[locale],
 			external: true,
@@ -140,6 +144,12 @@
 			ariaLabel: `${YESID_HOUSE_LINK.label[locale]} ${navCopy.newTab}`,
 		},
 	]);
+	const menuGroups = $derived(
+		NAV_GROUPS.map((group) => ({
+			label: group.label[locale],
+			items: menuItems.filter((item) => item.group === group.key),
+		})),
+	);
 
 	const providerText = (provider: PublicProvider) =>
 		`${provider.labels[locale].city} · ${provider.labels[locale].operator}`;
@@ -367,7 +377,7 @@
 			{/if}
 		</select>
 	</label>
-	<RefreshButton {locale} class="nav-refresh" />
+	<div class="nav-refresh"><RefreshButton {locale} /></div>
 	<a
 		href={localizeHref('/search', locale, providerId)}
 		class="tap-press nav-compact-search"
@@ -375,6 +385,7 @@
 		data-slot="nav-compact-search"
 	>
 		<SearchIcon size={17} strokeWidth={1.8} aria-hidden="true" />
+		<span>{SEARCH_LABEL[locale]}</span>
 	</a>
 {/snippet}
 
@@ -383,7 +394,8 @@
 	home={localizeHref('/', locale, providerId)}
 	wordmark="Transit"
 	{links}
-	{menuItems}
+	{menuGroups}
+	compactControls
 	labels={navCopy}
 	language={{
 		locale,
@@ -449,6 +461,12 @@
 		outline-offset: 2px;
 	}
 	@container site-header (width < 600px) {
+		.nav-refresh {
+			display: none;
+		}
+		:global([role='dialog'][aria-modal='true']) .nav-refresh {
+			display: block;
+		}
 		.nav-provider-full {
 			display: none;
 		}
@@ -457,6 +475,7 @@
 		}
 		.nav-provider {
 			--size-provider-select: calc(100cqi - 2rem);
+			width: max-content;
 			position: absolute;
 			inset-block-start: calc(100% + 8px);
 			inset-inline-start: 50%;
@@ -471,7 +490,7 @@
 		}
 	}
 
-	:global(.nav-refresh) {
+	.nav-refresh {
 		min-width: 44px;
 		min-height: 44px;
 	}
@@ -480,9 +499,10 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 44px;
+		min-width: 44px;
+		gap: 0.375rem;
 		height: 44px;
-		padding: 0;
+		padding: 0 0.5rem;
 		color: var(--secondary-foreground);
 		background: transparent;
 		border-radius: var(--radius-lg);
