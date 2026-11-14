@@ -306,7 +306,7 @@ def rows(oracle, query):
 def admit(oracle, case, *records):
     window = replace(case.window, poll_records=records)
     return admit_polls(
-        oracle.engine, window, until_utc=records[-1].polls[0].started_at_utc, bronze=case.bronze
+        oracle, window, until_utc=records[-1].polls[0].started_at_utc, bronze=case.bronze
     )
 
 
@@ -338,14 +338,43 @@ def test_admit_polls_inserts_in_time_order_with_production_ids(oracle, case):
         assert result[0]["n"] > maximum
 
 
-def test_a_poll_without_run_status_is_refused(case):
+def test_a_poll_without_run_status_is_refused(oracle, case):
     record = poll_record(case, status=None)
-    target = SimpleNamespace(engine=create_engine("sqlite://"))
+    with pytest.raises(SeedRefused, match="1101.*run_status"):
+        admit(oracle, case, record)
+
+
+@pytest.mark.parametrize("kind", ["sqlite", "postgresql", "object", "inactive"])
+def test_admission_refuses_unowned_targets_before_connect(case, kind):
+    url = "postgresql+psycopg://transit_ci@127.0.0.1:1/transit_ci"
+    engine = create_engine(url if kind == "postgresql" else "sqlite://")
+    target = object() if kind == "object" else OracleDatabase() if kind == "inactive" else engine
+
+    @event.listens_for(engine, "do_connect")
+    def connecting(*args):
+        pytest.fail("UNOWNED_ENGINE_CONNECT_ATTEMPTED")
+
     try:
-        with pytest.raises(SeedRefused, match="1101.*run_status"):
-            admit(target, case, record)
+        with pytest.raises(SeedRefused, match="owned oracle"):
+            admit(target, case, poll_record(case, status="failed"))
     finally:
-        target.engine.dispose()
+        engine.dispose()
+
+
+def test_admission_refuses_handle_after_owning_context_exits(real_db_engine, case):
+    with oracle_database(
+        real_db_engine.url.render_as_string(hide_password=False),
+        clock=PinnedClock(case.window.serving_initialized_at_utc),
+        environment=os.environ,
+    ) as handle:
+        engine = handle.engine
+
+    @event.listens_for(engine, "do_connect")
+    def connecting(*args):
+        pytest.fail("EXPIRED_ORACLE_CONNECT_ATTEMPTED")
+
+    with pytest.raises(SeedRefused, match="owned oracle"):
+        admit(handle, case, poll_record(case, status="failed"))
 
 
 def test_alert_capture_stores_the_extracted_payload(oracle, case):

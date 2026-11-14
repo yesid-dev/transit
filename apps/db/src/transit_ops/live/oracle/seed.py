@@ -23,6 +23,15 @@ class SeedRefused(RuntimeError):
     pass
 
 
+def _owned_engine(oracle: OracleDatabase) -> Engine:
+    if type(oracle) is not OracleDatabase:
+        raise SeedRefused("active owned oracle required")
+    try:
+        return oracle.engine
+    except OracleDatabaseRefused as exc:
+        raise SeedRefused(str(exc)) from exc
+
+
 def seed_static(
     oracle: OracleDatabase,
     window: ReplayWindow,
@@ -34,12 +43,7 @@ def seed_static(
     """The caller pins the database clock to the window's serving initialization time."""
     from transit_ops.cli import _seed_provider
 
-    if type(oracle) is not OracleDatabase:
-        raise SeedRefused("active owned oracle required")
-    try:
-        engine = oracle.engine
-    except OracleDatabaseRefused as exc:
-        raise SeedRefused(str(exc)) from exc
+    engine = _owned_engine(oracle)
     manifest = registry.get_provider(window.provider_id)
     strict = manifest.provider.strict_gtfs
     endpoints = {seed.endpoint_key: seed for seed in manifest.to_feed_endpoint_seeds(settings)}
@@ -134,9 +138,14 @@ def _advance_sequences(connection: Connection) -> None:
 
 
 def admit_polls(
-    engine: Engine, window: ReplayWindow, *, until_utc: datetime, bronze: BronzeStorageResolver
+    oracle: OracleDatabase,
+    window: ReplayWindow,
+    *,
+    until_utc: datetime,
+    bronze: BronzeStorageResolver,
 ) -> int:
     """Admit recorded raw rows once their poll has started; return inserted raw rows."""
+    engine = _owned_engine(oracle)
     if until_utc.utcoffset() is None:
         raise SeedRefused("until_utc must be aware")
     polls = sorted(
