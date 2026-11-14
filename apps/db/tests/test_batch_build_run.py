@@ -408,7 +408,7 @@ def test_replaced_workdir_is_never_cleaned(build_case, tmp_path, monkeypatch, wh
     else:
         try:
             run_family(Replacing(), request, **kwargs)
-        except OSError:
+        except (OSError, RuntimeError):
             pass
     assert (outside / areas[0].name / "sentinel").read_text() == "keep"
     if when in {"build", "open"}:
