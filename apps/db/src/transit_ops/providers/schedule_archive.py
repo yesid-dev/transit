@@ -1,11 +1,13 @@
 """ScheduleContext over one caller-identified GTFS archive, without storage reads."""
 
+import csv
+import zlib
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
 from hashlib import sha256
 from io import BytesIO
-from pathlib import PurePosixPath
+from pathlib import PurePosixPath, PureWindowsPath
 from types import MappingProxyType
 from typing import Any
 from zipfile import BadZipFile, ZipFile
@@ -185,9 +187,12 @@ def _read_archive(
     with archive:
         if sha256(data).hexdigest() != checksum:
             raise InvalidScheduleEdition(edition, "checksum_mismatch")
-        # ZIP separators are '/', regardless of the host parser's Path semantics.
-        if any("\\" in info.orig_filename for info in archive.infolist()):
-            raise InvalidScheduleEdition(edition, "invalid_member_path")
+        # Refuse spellings that shared discovery could interpret differently by host.
+        for info in archive.infolist():
+            raw = info.orig_filename
+            win = PureWindowsPath(raw)
+            if "\\" in raw or win.drive or win.anchor or win.name != PurePosixPath(raw).name:
+                raise InvalidScheduleEdition(edition, "invalid_member_path")
         if len(names) != len(set(names)):
             raise InvalidScheduleEdition(edition, "duplicate_member_basename")
         rows: dict[str, list[dict[str, Any]]] = {}
@@ -217,6 +222,14 @@ def _read_archive(
                             pass
         except InvalidScheduleEdition:
             raise
-        except (ValueError, OSError, BadZipFile, RuntimeError, NotImplementedError) as exc:
+        except (
+            ValueError,
+            OSError,
+            BadZipFile,
+            RuntimeError,
+            csv.Error,
+            zlib.error,
+            EOFError,
+        ) as exc:
             raise InvalidScheduleEdition(edition, "invalid_member") from exc
     return rows

@@ -1,8 +1,10 @@
+import struct
+import zlib
 from dataclasses import FrozenInstanceError
 from datetime import date
 from hashlib import sha256
 from io import BytesIO
-from zipfile import ZipFile, ZipInfo
+from zipfile import ZIP_DEFLATED, ZIP_STORED, BadZipFile, ZipFile, ZipInfo
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -11,6 +13,7 @@ from transit_ops.providers.schedule import InvalidScheduleEdition, ScheduleMembe
 from transit_ops.providers.schedule_archive import ArchiveScheduleContext
 
 DAY = date(2026, 3, 8)
+FREQUENCY = "trip_id,start_time,end_time,headway_secs\nt,25:00:00,26:00:00,600\n"
 HEADERS = {
     "routes": "route_id,route_type",
     "trips": "route_id,service_id,trip_id,direction_id,block_id,shape_id,wheelchair_accessible",
@@ -32,7 +35,7 @@ ROWS = {
 }
 
 
-def archive(*, extra=(), **changes):
+def archive(*, extra=(), compression=ZIP_STORED, **changes):
     output = BytesIO()
     with ZipFile(output, "w") as zipfile:
         for name, rows in (ROWS | changes).items():
@@ -43,7 +46,7 @@ def archive(*, extra=(), **changes):
         for name, data in extra:
             info = ZipInfo()
             info.filename = name
-            zipfile.writestr(info, data)
+            zipfile.writestr(info, data, compress_type=compression)
     return output.getvalue()
 
 
@@ -169,6 +172,8 @@ def test_inventory_and_checksum_refusals(data):
         ({"frequencies": None, "extra": [("FREQUENCIES.TXT", b"\xff")]}, "invalid_member"),
         ({"stop_times": None, "extra": [("stop_times.txt", "wrong\nvalue\n")]}, "invalid_member"),
         ({"extra": [("nested\\FREQUENCIES.TXT", "unused")]}, "invalid_member_path"),
+        ({"extra": [("C:frequencies.txt", FREQUENCY)]}, "invalid_member_path"),
+        ({"frequencies": "t," + "2" * 140000 + ",26:00:00,600,0\n"}, "invalid_member"),
     ],
 )
 def test_invalid_editions_are_never_partial(changes, reason):
@@ -177,14 +182,28 @@ def test_invalid_editions_are_never_partial(changes, reason):
     assert (error.value.reason, error.value.dataset_version_id) == (reason, 1)
 
 
-@pytest.mark.parametrize("name", ["FREQUENCIES.TXT", "notes.bin"])
-def test_unreadable_listed_member_is_not_absent(name):
-    data = archive(
-        extra=[(name, "trip_id,start_time,end_time,headway_secs\nt,25:00:00,26:00:00,600\n")]
-    )
-    damaged = data.replace(b"25:00:00,26:00:00,600", b"25:00:00,26:00:00,601")
-    with pytest.raises(InvalidScheduleEdition, match="invalid_member"):
-        context(damaged)
+@pytest.mark.parametrize(
+    "name,compression,cause",
+    [
+        ("FREQUENCIES.TXT", ZIP_STORED, BadZipFile),
+        ("notes.bin", ZIP_STORED, BadZipFile),
+        ("frequencies.txt", ZIP_DEFLATED, zlib.error),
+    ],
+)
+def test_unreadable_listed_member_is_not_absent(name, compression, cause):
+    data = archive(extra=[(name, FREQUENCY)], compression=compression)
+    if compression == ZIP_DEFLATED:
+        damaged = bytearray(data)
+        with ZipFile(BytesIO(data)) as zipfile:
+            offset = zipfile.getinfo(name).header_offset
+        name_len, extra_len = struct.unpack_from("<HH", data, offset + 26)
+        damaged[offset + 30 + name_len + extra_len] = 7
+    else:
+        damaged = data.replace(b"25:00:00,26:00:00,600", b"25:00:00,26:00:00,601")
+    with pytest.raises(InvalidScheduleEdition) as error:
+        context(bytes(damaged))
+    assert (error.value.dataset_version_id, error.value.reason) == (1, "invalid_member")
+    assert isinstance(error.value.__cause__, cause)
 
 
 def test_identity_isolation_and_immutable_outputs():
