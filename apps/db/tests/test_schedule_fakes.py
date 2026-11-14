@@ -60,3 +60,15 @@ def test_optional_fields_unavailable_dates_and_frozen_inputs():
         ctx.days[DAY] = None
     with pytest.raises(ValueError, match="overlap"):
         fake_schedule({17: [value]}, {DAY: 17}, unavailable={DAY: "unreadable"})
+
+
+def test_unavailable_dates_have_anchors_but_unrequested_dates_do_not():
+    next_day = date(2026, 3, 9)
+    ctx = fake_schedule({}, {}, unavailable={DAY: "unavailable", next_day: "unavailable"})
+    assert ctx.service_day_start(DAY).isoformat() == "2026-03-08T04:00:00+00:00"
+    assert ctx.service_day_start(next_day).isoformat() == "2026-03-09T04:00:00+00:00"
+    with pytest.raises(KeyError):
+        ctx.service_day_start(date(2026, 3, 10))
+    for read in (ctx.trip, ctx.stop, ctx.stop_times):
+        with pytest.raises(KeyError):
+            read(DAY, "missing")

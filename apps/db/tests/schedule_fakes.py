@@ -87,7 +87,8 @@ class FakeScheduleContext:
         return self.stop_in_edition(self._dates[service_date], stop_id)
 
     def service_day_start(self, service_date: date) -> datetime:
-        self._dates[service_date]
+        if service_date not in self._dates and service_date not in self.unavailable:
+            raise KeyError(service_date)
         return sc.service_day_start(service_date, self.timezone)
 
 
