@@ -212,8 +212,17 @@ class LocalFile:
                 self._path = None
 
 
-def _table_shape(conn: duckdb.DuckDBPyConnection, table: str) -> tuple[object, object, object]:
+def _table_shape(conn: duckdb.DuckDBPyConnection, table: str) -> tuple[object, ...]:
+    rendered = conn.execute(
+        "SELECT sql FROM duckdb_tables() WHERE table_name=? AND schema_name='main' "
+        "AND database_name IN (current_database(), 'temp')",
+        [table],
+    ).fetchone()
+    if rendered is None:
+        raise LocalFileMismatch(f"{table}: table definition missing")
     return (
+        # The catalog-rendered body retains collations omitted by pragma_table_info.
+        rendered[0].split("(", 1)[1],
         conn.execute("SELECT * FROM pragma_table_info(?)", [table]).fetchall(),
         conn.execute(
             "SELECT constraint_type, constraint_text FROM duckdb_constraints() "
