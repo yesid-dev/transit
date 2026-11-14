@@ -5,10 +5,11 @@ from dataclasses import asdict, dataclass, replace
 from datetime import UTC, date, datetime
 from typing import Literal, TypedDict
 
-from sqlalchemy import Connection, text
+from sqlalchemy import Connection
 
-from transit_ops.history import ledger
+from transit_ops.history import ledger, ledger_select
 from transit_ops.history.ledger import ArchiveCopy
+from transit_ops.history.ledger_store import WindowIdentity, WindowSession
 from transit_ops.history.manifest import Manifest, ManifestInvalid, read_copy_manifest
 from transit_ops.history.pack import BinaryReader, PackCorrupt, PackedCapture, read_pack
 from transit_ops.history.poll_record import (
@@ -57,13 +58,14 @@ def _identity(copy: ArchiveCopy) -> _WindowIdentity:
 
 
 def _read_state(
-    connection: Connection, copy: ArchiveCopy,
+    connection: Connection, copy: ArchiveCopy, session: WindowSession | None = None,
 ) -> tuple[ledger.WindowState, ArchiveCopy, list[ArchiveCopy]]:
     identity = _identity(copy)
-    window = ledger.window_state(connection, **identity)
+    store = ledger_select.ledger_for(connection)
+    window = session.state() if session else store.window_state(WindowIdentity(**identity))
     day = date.fromisoformat(copy.window_key)
-    copies = ledger.find_copies(
-        connection, dataset_id=copy.dataset_id, provider_id=copy.provider_id, start=day, end=day,
+    copies = session.copies() if session else store.find_copies(
+        dataset_id=copy.dataset_id, provider_id=copy.provider_id, start=day, end=day,
     )
     row = next((c for c in copies if c.content_version == copy.content_version), None)
     if window is None or row is None:
@@ -111,6 +113,11 @@ def verify_capture_copy(
     connection: Connection, storage: BronzeStorageResolver, copy: ArchiveCopy,
     *, actor: str | None = None,
 ) -> Verification:
+    """WindowChanged propagates without retry.
+
+    PostgreSQL persists at outer commit, R2 at session exit. Callers may rely on
+    neither coupling; PostgreSQL rollback cannot undo R2 writes.
+    """
     if connection.in_transaction():
         raise ValueError("verify requires a connection without a transaction")
     if actor == "":
@@ -144,10 +151,11 @@ def _verify_locked(
     manifest: Manifest, actor: str | None,
 ) -> tuple[str | None, str | None]:
     identity = _identity(copy)
-    with connection.begin():
-        ledger.acquire_window_lock(connection, **identity)
-        verified_at = connection.execute(text("SELECT clock_timestamp()")).scalar_one()
-        window, row, copies = _read_state(connection, copy)
+    with connection.begin(), ledger_select.ledger_for(connection).session(
+        WindowIdentity(**identity)
+    ) as session:
+        verified_at = session.now()
+        window, row, copies = _read_state(connection, copy, session)
         if row.state != "sealed":
             raise RuntimeError(
                 f"{identity} version {row.content_version}: "
@@ -174,7 +182,7 @@ def _verify_locked(
             if current is None:
                 raise LookupError(f"current copy not found: {identity}")
             _require_superseding_content(read_copy_manifest(storage, current), manifest)
-        _make_current(connection, row, verified_at, window.current_version, actor)
+        session.make_current(row.content_version, verified_at=verified_at, actor=actor)
     return None, None
 
 
@@ -196,37 +204,6 @@ def _require_superseding_content(current: Manifest, candidate: Manifest) -> None
             or replacement.byte_size != capture.byte_size
         ):
             raise CopyContentMissing(f"{label}: packed capture {key} loses or changes bytes")
-
-
-def _make_current(
-    connection: Connection, copy: ArchiveCopy, verified_at: datetime,
-    previous: int | None, actor: str | None,
-) -> None:
-    identity = _identity(copy)
-    values = dict(identity, version=copy.content_version, verified_at=verified_at)
-    updated = connection.execute(text("""
-        UPDATE core.history_archive_copy SET verified_at_utc=:verified_at
-        WHERE dataset_id=:dataset_id AND provider_id=:provider_id AND revision=0
-          AND window_key=:window_key AND content_version=:version
-          AND sealed_at_utc IS NOT NULL AND verified_at_utc IS NULL AND rejected_at_utc IS NULL
-    """), values)
-    if updated.rowcount != 1:
-        raise RuntimeError(f"could not verify copy {identity}")
-    updated = connection.execute(text("""
-        UPDATE core.history_window SET current_version=:version
-        WHERE dataset_id=:dataset_id AND provider_id=:provider_id AND revision=0
-          AND window_key=:window_key AND (current_version IS NULL OR current_version < :version)
-    """), values)
-    if updated.rowcount != 1:
-        raise RuntimeError(f"could not make copy current {identity}")
-    ledger.record_event(
-        connection, kind="verify", revision=0, content_version=copy.content_version,
-        actor=actor, **identity,
-    )
-    ledger.record_event(
-        connection, kind="current", revision=0, content_version=copy.content_version,
-        details={"previous_version": previous}, actor=actor, **identity,
-    )
 
 
 def _corrupt(copy: ArchiveCopy, reason: str) -> CopyCorrupt:
