@@ -1,5 +1,7 @@
 import json
+from copy import deepcopy
 from dataclasses import asdict, fields, replace
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
@@ -8,6 +10,7 @@ from transit_ops.ranking import (
     RULES,
     EntityWindow,
     MeasureSpec,
+    RankedEntity,
     RankingRules,
     measure_state,
     rank_entities,
@@ -29,6 +32,10 @@ IDS = (
     "capped_floor",
     "unresolved_is_not_measured",
     "network_without_late_reading",
+    "exact_tie_uses_pair",
+    "equal_values_at_90_of_100",
+    "pair_both_unavailable",
+    "pair_available_before_unavailable",
 )
 
 
@@ -192,11 +199,55 @@ def test_exact_ties_use_descending_trips_then_code_point_id():
         ]
 
 
-def test_supplied_pair_is_rejected():
-    spec = spec_from(json.loads(VECTORS.read_bytes())["vectors"][5]["spec"])
-    rows = [eligible_row("a", 30)]
-    with pytest.raises(NotImplementedError):
-        rank_entities(rows, spec=replace(spec, pair=spec), window_days=1, rules=RULES)
+def paired_spec():
+    primary = spec_from(json.loads(VECTORS.read_bytes())["vectors"][5]["spec"])
+    pair = replace(
+        primary,
+        id="late_avg",
+        numerator="sum_late_delay_s",
+        denominator="late",
+        scale=(1, 60),
+        worse="higher",
+        floor_units=30,
+        floor_units_of="late",
+    )
+    return replace(primary, pair=pair)
+
+
+def pair_row(name, on_time=85, n=100, late=30, delay=18000, trips=30):
+    return replace(
+        eligible_row(name, trips),
+        counts={
+            "on_time": on_time,
+            "n": n,
+            "late": late,
+            "sum_late_delay_s": delay,
+            "trips": trips,
+        },
+    )
+
+
+def test_the_pair_decides_only_between_exactly_equal_values():
+    check_vector("exact_tie_uses_pair")
+    rows = [pair_row("a_low", 340, 400, 60, 21600, 60), pair_row("z_high", 170, 200, 30, 36000, 30)]
+    for ordered in (rows, rows[::-1]):
+        actual = rank_entities(ordered, spec=paired_spec(), window_days=1, rules=RULES)
+        assert [(r.entity_id, r.shown_units, r.rank) for r in actual] == [
+            ("z_high", 850, 1),
+            ("a_low", 850, 1),
+        ]
+    rows = [
+        pair_row("a", 8516, 10000, 30, 10800),
+        pair_row("z", 8524, 10000, 30, 36000),
+        pair_row("better", 9000, 10000),
+    ]
+    for ordered in (rows, rows[::-1]):
+        result = rank_entities(ordered, spec=paired_spec(), window_days=1, rules=RULES)
+        assert result == [
+            RankedEntity("a", "ranked", None, 1, 8516, 10000, 852),
+            RankedEntity("z", "ranked", None, 1, 8524, 10000, 852),
+            RankedEntity("better", "ranked", None, 3, 9000, 10000, 900),
+        ]
 
 
 def eligible_row(entity_id, trips):
@@ -204,3 +255,187 @@ def eligible_row(entity_id, trips):
     return replace(
         row_from(data), entity_id=entity_id, counts={"on_time": 90, "n": 100, "trips": trips}
     )
+
+
+def test_two_unavailable_pairs_fall_to_trips_then_id():
+    check_vector("equal_values_at_90_of_100")
+    check_vector("pair_both_unavailable")
+
+
+def test_an_available_pair_comes_before_an_unavailable_one():
+    check_vector("pair_available_before_unavailable")
+
+
+@pytest.mark.parametrize("direction", ["higher", "lower"])
+def test_pair_uses_its_own_direction_and_exact_fraction(direction):
+    spec = paired_spec()
+    spec = replace(spec, pair=replace(spec.pair, worse=direction))
+    a, z = (9007199254740992, 9007199254740993)
+    if direction == "lower":
+        a, z = z, a
+    rows = [
+        pair_row("a", late=18014398509481984, delay=a, trips=60),
+        pair_row("z", late=18014398509481984, delay=z),
+    ]
+    assert shown_units(rows[0].counts["sum_late_delay_s"], 18014398509481984, spec.pair) == 0
+    assert shown_units(rows[1].counts["sum_late_delay_s"], 18014398509481984, spec.pair) == 0
+    for ordered in (rows, rows[::-1]):
+        result = rank_entities(ordered, spec=spec, window_days=1, rules=RULES)
+        assert [r.entity_id for r in result] == ["z", "a"]
+        assert [(r.shown_units, r.rank) for r in result] == [(850, 1), (850, 1)]
+
+
+@pytest.mark.parametrize(
+    "gate,state",
+    [
+        ("trips", "too_few_trips"),
+        ("days", "too_few_service_days"),
+        ("units", "too_few_units"),
+        ("measurement", "not_measured"),
+        ("zero", "not_defined"),
+    ],
+)
+def test_pair_unavailability_uses_its_own_measure_state(gate, state):
+    spec = paired_spec()
+    pair = replace(spec.pair, series="service", floor_trips_of="pair_trips")
+    available = replace(pair_row("z"), measured_days={"reliability": 1, "service": 1})
+    available = replace(available, counts=dict(available.counts, pair_trips=30))
+    unavailable = replace(available, entity_id="a", counts=dict(available.counts, trips=60))
+    if gate == "trips":
+        unavailable = replace(unavailable, counts=dict(unavailable.counts, pair_trips=29))
+    elif gate in ("days", "measurement"):
+        unavailable = replace(unavailable, measured_days={"reliability": 1, "service": 0})
+        if gate == "days":
+            pair = replace(pair, series="reliability")
+            spec = replace(spec, floor_service_days=False)
+            unavailable = replace(unavailable, reading_days=0)
+    else:
+        unavailable = replace(unavailable, counts=dict(unavailable.counts, late=0))
+        if gate == "zero":
+            pair = replace(pair, floor_units=None)
+    spec = replace(spec, pair=pair)
+    assert measure_state(unavailable, pair, window_days=1, rules=RULES) == state
+    for rows in ([available, unavailable], [unavailable, available]):
+        result = rank_entities(rows, spec=spec, window_days=1, rules=RULES)
+        assert result == [
+            RankedEntity("z", "ranked", None, 1, 85, 100, 850),
+            RankedEntity("a", "ranked", None, 1, 85, 100, 850),
+        ]
+
+
+def test_the_network_totals_reach_the_evaluation_of_the_pair():
+    spec = paired_spec()
+    spec = replace(
+        spec,
+        pair=replace(spec.pair, numerator="late", denominator_from="network", floor_units=None),
+    )
+    rows = [pair_row("a", late=10, trips=60), pair_row("z", late=40)]
+    for totals, expected in [({"late": 100}, ["z", "a"]), ({"late": 0}, ["a", "z"])]:
+        for ordered in (rows, rows[::-1]):
+            result = rank_entities(ordered, spec=spec, window_days=1, rules=RULES, network=totals)
+            assert [r.entity_id for r in result] == expected
+            assert [(r.shown_units, r.rank) for r in result] == [(850, 1), (850, 1)]
+    for totals, error in [(None, ValueError), ({}, KeyError), ({"late": -1}, ValueError)]:
+        with pytest.raises(error):
+            rank_entities(rows, spec=spec, window_days=1, rules=RULES, network=totals)
+
+
+def test_equal_available_pairs_fall_to_primary_trips_then_code_point_id():
+    rows = [pair_row("a"), pair_row("\U00010000", trips=60), pair_row("\ue000", trips=60)]
+    for spec in (paired_spec(), replace(paired_spec(), pair=None)):
+        for ordered in (rows, rows[::-1]):
+            result = rank_entities(ordered, spec=spec, window_days=1, rules=RULES)
+            assert [(r.entity_id, r.rank) for r in result] == [
+                ("\ue000", 1),
+                ("\U00010000", 1),
+                ("a", 1),
+            ]
+
+
+def test_pair_does_not_change_primary_absence_or_mutate_inputs():
+    spec, network = paired_spec(), {"unused": 12}
+    rows = [
+        pair_row("ranked"),
+        replace(eligible_row("few", 29)),
+        replace(eligible_row("absent", 30), scheduled_days=0, counts={}),
+        replace(eligible_row("no-live", 30), live_data="no_live_data", counts={}),
+    ]
+    before = deepcopy((rows, spec, RULES, network))
+    result = rank_entities(rows, spec=spec, window_days=1, rules=RULES, network=network)
+    assert result == rank_entities(
+        rows, spec=replace(spec, pair=None), window_days=1, rules=RULES, network=network
+    )
+    assert (rows, spec, RULES, network) == before
+
+
+@pytest.mark.parametrize("direction,expected", [("higher", ["z", "a"]), ("lower", ["a", "z"])])
+def test_the_engine_names_no_measure(direction, expected):
+    pair = replace(
+        paired_spec().pair,
+        id="arbitrary",
+        numerator="x",
+        denominator="y",
+        floor_units=None,
+        worse=direction,
+        floor_trips_of="q",
+    )
+    spec = replace(
+        paired_spec(),
+        id="other",
+        numerator="u",
+        denominator="v",
+        floor_trips_of="q",
+        pair=pair,
+        worse=direction,
+    )
+    rows = [
+        replace(eligible_row(name, 30), counts={"u": 1, "v": 2, "q": 30, "x": x, "y": 1})
+        for name, x in [("a", 1), ("z", 2)]
+    ]
+    assert [
+        r.entity_id for r in rank_entities(rows, spec=spec, window_days=1, rules=RULES)
+    ] == expected
+
+
+def test_existing_vector_records_keep_their_bytes():
+    lines = VECTORS.read_bytes().splitlines()
+    original = b"\n".join([lines[1], *[line.removesuffix(b",") for line in lines[3:16]]])
+    assert (
+        sha256(original).hexdigest()
+        == "5f88135c5518161a7199193bcd1b10554845fc2fa1e4ac682794bff579db1cae"
+    )
+
+
+@pytest.mark.parametrize("missing", ["sum_late_delay_s", "late"])
+def test_missing_pair_operands_refuse(missing):
+    row = pair_row("a")
+    row = replace(row, counts={k: v for k, v in row.counts.items() if k != missing})
+    with pytest.raises(KeyError):
+        rank_entities([row], spec=paired_spec(), window_days=1, rules=RULES)
+
+
+@pytest.mark.parametrize("changes", [{"numerator": None}, {"scale": (0, 1)}, {"precision": -1}])
+def test_invalid_pair_operands_refuse(changes):
+    spec = paired_spec()
+    with pytest.raises(ValueError):
+        rank_entities(
+            [pair_row("a")],
+            spec=replace(spec, pair=replace(spec.pair, **changes)),
+            window_days=1,
+            rules=RULES,
+        )
+
+
+@pytest.mark.parametrize("direction", ["higher", "lower"])
+def test_an_available_measured_zero_pair_precedes_an_unavailable_pair(direction):
+    spec = paired_spec()
+    spec = replace(spec, pair=replace(spec.pair, worse=direction))
+    rows = [
+        pair_row("z_available", delay=0),
+        pair_row("a_unavailable", late=10, delay=12000, trips=60),
+    ]
+    for ordered in (rows, rows[::-1]):
+        assert rank_entities(ordered, spec=spec, window_days=1, rules=RULES) == [
+            RankedEntity("z_available", "ranked", None, 1, 85, 100, 850),
+            RankedEntity("a_unavailable", "ranked", None, 1, 85, 100, 850),
+        ]

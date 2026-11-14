@@ -11,6 +11,7 @@ pnpm-lock.yaml
 src/app.css
 src/lib/v1/schemas/json
 src/lib/v1/schemas/generated
+src/lib/v1/ranking/__fixtures__/ranking_vectors.json
 .scratch-s1
 
 # static assets + docs
