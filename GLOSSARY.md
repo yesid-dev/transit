@@ -6,9 +6,6 @@ A public dashboard that tells riders how reliable their transit service is, from
 **Publisher lease**:
 The right of one process to publish one lane of one provider until a set time.
 
-**Publish heartbeat**:
-The record a publisher leaves after each publication: when, how many files, and the gate's outcome.
-
 **Edition index**:
 The record that groups a schedule edition's table copies and their proofs, identifies their GTFS file and field names, and states whether its source zip is archived.
 

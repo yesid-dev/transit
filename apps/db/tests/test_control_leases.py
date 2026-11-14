@@ -1,4 +1,7 @@
+import hashlib
+import io
 from datetime import UTC, datetime, timedelta
+from threading import RLock
 
 import pytest
 from botocore.exceptions import ClientError
@@ -13,14 +16,36 @@ TTL = timedelta(seconds=90)
 
 
 class LeaseClient(_StableCasClient):
+    def __init__(self):
+        super().__init__()
+        self._state_lock = RLock()
+        self.tick = 0
+
+    def put_object(self, **kw):
+        with self._state_lock:
+            result = super().put_object(**kw)
+            self.tick += 1
+            self.objects[kw["Key"]]["LastModified"] = NOW + timedelta(microseconds=self.tick)
+            return result
+
     def head_object(self, **kw):
-        return {**super().head_object(**kw), "LastModified": NOW}
+        with self._state_lock:
+            return {
+                **super().head_object(**kw),
+                "LastModified": self.objects[kw["Key"]]["LastModified"],
+            }
 
     def get_object(self, **kw):
-        metadata = self.head_object(**kw)
-        if kw.get("IfMatch", metadata["ETag"]) != metadata["ETag"]:
-            raise ClientError({"Error": {"Code": "PreconditionFailed"}}, "GetObject")
-        return {**super().get_object(**kw), **metadata}
+        with self._state_lock:
+            obj = self.objects[kw["Key"]]
+            if kw.get("IfMatch", obj["ETag"]) != obj["ETag"]:
+                raise ClientError({"Error": {"Code": "PreconditionFailed"}}, "GetObject")
+            return {
+                "Body": io.BytesIO(obj["Body"]),
+                "ETag": obj["ETag"],
+                "LastModified": obj["LastModified"],
+                "ContentLength": len(obj["Body"]),
+            }
 
 
 @pytest.fixture(name="objects", params=[False, True])
@@ -116,3 +141,95 @@ def test_ttl_outside_bounds_and_unknown_lane_are_refused(objects, ttl, lane, hol
             ttl=timedelta(seconds=ttl),
             clock=lambda: NOW,
         )
+
+
+@pytest.mark.parametrize("operation", ["renew", "release", "aba"])
+def test_stale_identical_mutations_never_regain_authority(objects, operation):
+    first = acquire(objects)
+    if operation == "release":
+        m.release_lease(objects, first, clock=lambda: NOW)
+    else:
+        current = m.renew_lease(
+            objects, first, ttl=timedelta(seconds=120), clock=lambda: NOW + timedelta(seconds=10)
+        )
+        if operation == "aba":
+            m.renew_lease(
+                objects,
+                current,
+                ttl=timedelta(seconds=70),
+                clock=lambda: NOW + timedelta(seconds=20),
+            )
+    prior = objects.read("leases/network%3Aone/live.json")
+    with pytest.raises(m.LeaseLost):
+        if operation == "release":
+            m.release_lease(objects, first, clock=lambda: NOW)
+        else:
+            m.renew_lease(
+                objects,
+                first,
+                ttl=timedelta(seconds=120),
+                clock=lambda: NOW + timedelta(seconds=21 if operation == "aba" else 10),
+            )
+    assert objects.read(prior.key) == prior
+
+
+@pytest.mark.parametrize("operation", ["renew", "release"])
+def test_clock_before_last_update_is_refused_without_writing(objects, operation):
+    lease = m.renew_lease(
+        objects, acquire(objects), ttl=TTL, clock=lambda: NOW + timedelta(seconds=60)
+    )
+    prior = objects.read("leases/network%3Aone/live.json")
+    with pytest.raises(m.LeaseLost, match="clock"):
+        if operation == "renew":
+            m.renew_lease(objects, lease, ttl=TTL, clock=lambda: NOW + timedelta(seconds=30))
+        else:
+            m.release_lease(objects, lease, clock=lambda: NOW + timedelta(seconds=30))
+    assert objects.read(prior.key) == prior
+
+
+@pytest.mark.parametrize("operation", ["acquire", "renew", "reacquire"])
+def test_expiry_is_checked_after_slow_readback(objects, monkeypatch, operation):
+    lease = acquire(objects) if operation != "acquire" else None
+    now, read = [NOW], objects.read
+
+    def delayed(key):
+        result = read(key)
+        if result is not None:
+            now[0] = NOW + TTL * 2
+        return result
+
+    monkeypatch.setattr(objects, "read", delayed)
+    with pytest.raises(m.LeaseLost):
+        if operation == "renew":
+            m.renew_lease(objects, lease, ttl=TTL, clock=lambda: now[0])
+        else:
+            m.acquire_lease(
+                objects,
+                provider_id="network:one",
+                lane="live",
+                holder="a",
+                ttl=TTL,
+                clock=lambda: now[0],
+            )
+
+
+@pytest.mark.parametrize("payload", [{}, {"epoch": "bad"}])
+def test_corrupt_lease_has_a_named_error(objects, payload):
+    objects.replace("leases/network%3Aone/live.json", payload, expected=None)
+    with pytest.raises(ValueError, match="invalid lease"):
+        m.read_lease(objects, provider_id="network:one", lane="live")
+
+
+def test_fake_get_keeps_body_and_metadata_from_one_snapshot(monkeypatch):
+    client = LeaseClient()
+    client.put_object(Key="a", Body=b"old")
+    head = client.head_object
+
+    def interleave(**kw):
+        metadata = head(**kw)
+        client.put_object(Key="a", Body=b"new")
+        return metadata
+
+    monkeypatch.setattr(client, "head_object", interleave)
+    result = client.get_object(Key="a")
+    assert result["ETag"] == '"' + hashlib.sha256(result["Body"].read()).hexdigest() + '"'
