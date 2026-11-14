@@ -371,7 +371,7 @@ describe('HealthStatus — full manifest render', () => {
 			en.envelope.section,
 			en.historyCoverage.section,
 		]) {
-			expect(within(center).getByRole('button', { name: title })).toHaveAttribute(
+			expect(within(center).getByRole('button', { name: title, hidden: true })).toHaveAttribute(
 				'aria-expanded',
 				'false',
 			);
@@ -396,12 +396,19 @@ describe('HealthStatus — full manifest render', () => {
 
 	it('describes each Status section with a question', () => {
 		const { container } = render(HealthStatus);
-		const sectionCards = Array.from(
-			container.querySelectorAll<HTMLElement>('.health-sections > [data-slot="card"]'),
-		);
+		const top = [
+			...container.querySelectorAll<HTMLElement>('.health-sections > [data-slot="card"]'),
+		];
+		const details = top.find((card) => card.dataset.toc === 'health-details')!;
+		const inner = [
+			...details.querySelectorAll<HTMLElement>('.article-section-stack > [data-slot="card"]'),
+		];
 
-		expect(sectionCards).toHaveLength(10);
-		for (const card of sectionCards) {
+		expect([top.length, inner.length]).toEqual([3, 8]);
+		expect(details.querySelector('h2.section-heading button')).not.toHaveAttribute(
+			'aria-describedby',
+		);
+		for (const card of [...top.filter((card) => card !== details), ...inner]) {
 			expect(card).toHaveAttribute('data-header-variant', 'article-summary');
 			const heading = card.querySelector('h2.section-heading') as HTMLHeadingElement;
 			expect(heading).not.toBeNull();
@@ -493,6 +500,35 @@ describe('HealthStatus — full manifest render', () => {
 			'Horaire | Prédictions de passage | Positions des véhicules | Avis de service | Avis de service | Données en direct | Horaire | Bilan de fiabilité | Dernière publication : le 11 nov.',
 		);
 		expect(copy.en.feedNames.gis_static).toBeUndefined();
+		expect([copy.en.details, copy.fr.details]).toEqual([
+			'Details for auditors',
+			'Détails pour vérification',
+		]);
+	});
+
+	it('keeps engineering detail behind one closed disclosure, after what we do not have', async () => {
+		localStorage.removeItem('sections-choice'); // a first-time reader: no "expand all" choice
+		delete document.documentElement.dataset.sectionsChoice;
+		live.vehicles = { vehicles: [{ trip: null }, { trip: 't' }] } as never;
+		const { container } = render(HealthStatus, { props: { manifest } });
+		const center = container.querySelector('[data-slot="detail-shell-center"]') as HTMLElement;
+		const disclosure = within(center).getByRole('button', { name: 'Details for auditors' });
+		const details = container.querySelector('[data-toc="health-details"]') as HTMLElement;
+		const gaps = within(center).getByRole('button', { name: en.gaps.section });
+
+		expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+		expect(disclosure).toHaveAttribute('aria-controls');
+		expect(gaps.compareDocumentPosition(disclosure)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+		for (const text of [
+			en.lanes.note,
+			en.freshness.note,
+			en.sources.note,
+			'Out-of-service vehicles: 1',
+		])
+			expect(details).toContainElement(screen.getByText(text));
+		await fireEvent.click(disclosure);
+		expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+		live.vehicles = null;
 	});
 
 	it('keeps EN and FR status keywords distinct', () => {
@@ -780,7 +816,7 @@ describe('HealthStatus — S11 pipeline lanes', () => {
 		expect(screen.queryByRole('list', { name: en.lanes.listLabel })).toBeNull();
 		expect(screen.queryByText(en.lanes.section)).toBeNull();
 		const left = container.querySelector('[data-slot="detail-shell-left"]') as HTMLElement;
-		expect(within(left).getByText(/SEC\s*2\s*\/\s*9/)).toBeInTheDocument();
+		expect(within(left).getByText(/SEC\s*1\s*\/\s*9/)).toBeInTheDocument();
 	});
 });
 
