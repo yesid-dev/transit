@@ -67,6 +67,7 @@ REGISTRY = Registry(SERIES, METRICS)
 GATES = ("on_time_rate", "stop_on_time_rate")
 
 # S0.5 A4, quoted independently of absence.py: "state [reasons] owner", English, French.
+# French "de {operator}" became "publiés/exploité par {operator}" (owner-approved, 2026-11-14).
 A4 = """
 not_measured schedule_not_kept S0.1
 Schedule not kept that day
@@ -94,16 +95,16 @@ No live data: {operator} publishes none for this service
 Aucune donnée en direct : {operator} n'en publie pas pour ce service
 unsupported S0.2
 Not available: {operator}'s feeds do not carry what this figure needs
-Non disponible : les flux de {operator} ne fournissent pas ce que ce chiffre exige
+Non disponible : les flux publiés par {operator} ne fournissent pas ce que ce chiffre exige
 not_applicable S0.2
 Does not apply to {operator}'s network
-Ne s'applique pas au réseau de {operator}
+Ne s'applique pas au réseau exploité par {operator}
 missing S0.2
 No data yet: it is not known whether {operator}'s feeds can provide this figure
-Pas encore de données : on ne sait pas si les flux de {operator} permettent ce chiffre
+Pas encore de données : on ne sait pas si les flux publiés par {operator} permettent ce chiffre
 stale S0.2
 No recent data: the last check of {operator}'s feeds is out of date
-Pas de données récentes : la dernière vérification des flux de {operator} n'est plus à jour
+Pas de données récentes : la dernière vérification des flux publiés par {operator} n'est plus à jour
 below_floor too_few_trips S0.5
 Too few trips to judge
 Trop peu de trajets pour juger
@@ -236,7 +237,7 @@ def test_stop_punctuality_unsupported_keeps_the_lines_table_and_drops_the_stops_
 
 
 def test_missing_and_stale_drop_no_source():
-    for evidence in ("missing", "stale", None):
+    for evidence in ("supported", "partial", "missing", "stale", None):
         capabilities = {} if evidence is None else dict.fromkeys(GATES, evidence)
         assert metrics_for(3, capabilities, "line") == {"on_time", "late_share"}
         assert metrics_for(3, capabilities, "stop") == {"on_time"}

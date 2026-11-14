@@ -55,24 +55,25 @@ ABSENCE: Mapping[AbsenceKey, AbsenceEntry] = MappingProxyType(
         AbsenceKey("unsupported", None): _row(
             "S0.2",
             "Not available: {operator}'s feeds do not carry what this figure needs",
-            "Non disponible : les flux de {operator} ne fournissent pas ce que ce chiffre exige",
+            "Non disponible : les flux publiés par {operator} "
+            "ne fournissent pas ce que ce chiffre exige",
         ),
         AbsenceKey("not_applicable", None): _row(
             "S0.2",
             "Does not apply to {operator}'s network",
-            "Ne s'applique pas au réseau de {operator}",
+            "Ne s'applique pas au réseau exploité par {operator}",
         ),
         AbsenceKey("missing", None): _row(
             "S0.2",
             "No data yet: it is not known whether {operator}'s feeds can provide this figure",
-            "Pas encore de données : on ne sait pas si les flux de {operator} "
+            "Pas encore de données : on ne sait pas si les flux publiés par {operator} "
             "permettent ce chiffre",
         ),
         AbsenceKey("stale", None): _row(
             "S0.2",
             "No recent data: the last check of {operator}'s feeds is out of date",
-            "Pas de données récentes : la dernière vérification des flux de {operator} "
-            "n'est plus à jour",
+            "Pas de données récentes : la dernière vérification des flux publiés par "
+            "{operator} n'est plus à jour",
         ),
         AbsenceKey("below_floor", "too_few_trips"): _row(
             "S0.5", "Too few trips to judge", "Trop peu de trajets pour juger"
