@@ -4,12 +4,14 @@ import subprocess
 from datetime import UTC, date, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
 from parallel_db import _database_url, _execute
-from psycopg.conninfo import make_conninfo
+from psycopg.conninfo import conninfo_to_dict, make_conninfo
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.engine import URL, make_url
 from test_alert_recovery_copy import COLUMNS, ROW, script
 
 from transit_ops.db.target_safety import assert_disposable_test_url
@@ -19,15 +21,60 @@ from transit_ops.history.alert_recovery_pg_restore import extract_alert_archive_
 from transit_ops.silver.i3 import alert_message_provenance
 
 
+def dump_archive(engine, dump):
+    args, options = engine.dialect.create_connect_args(engine.url)
+    options.pop("context", None)
+    options = conninfo_to_dict(make_conninfo(*args, **options))
+    target = URL.create(engine.url.drivername, query=options).render_as_string(hide_password=False)
+    assert_disposable_test_url(target, os.environ)
+    password = options.pop("password", "")
+    command = ["pg_dump", "--format=custom", "--table=gold.alert_archive_entry"]
+    subprocess.run(
+        [*command, "--file", str(dump), "--dbname", make_conninfo(**options)],
+        check=True,
+        timeout=120,
+        env=os.environ | {"PGPASSWORD": password},
+        capture_output=True,
+    )
+
+
+def test_dump_uses_guarded_effective_target(tmp_path, monkeypatch):
+    monkeypatch.setenv(
+        "TRANSIT_TEST_DATABASE_DISPOSABLE", "I_UNDERSTAND_THIS_DATABASE_IS_DISPOSABLE"
+    )
+    url = _database_url(
+        "postgresql+psycopg://transit_ci:fixture@production.invalid:5432/"
+        "transit_ci?host=127.0.0.1&dbname=transit_ci",
+        "transit_ci_oracle_0123456789abcdef",
+    )
+    engine = create_engine(url)
+
+    def run(argv, **kwargs):
+        options = conninfo_to_dict(argv[-1])
+        assert options["host"] == "127.0.0.1"
+        assert options["dbname"] == "transit_ci_oracle_0123456789abcdef"
+        assert_disposable_test_url(
+            URL.create(url.drivername, query=options).render_as_string(hide_password=False),
+            kwargs["env"],
+        )
+
+    monkeypatch.setattr(subprocess, "run", run)
+    try:
+        dump_archive(engine, tmp_path / "synthetic.dump")
+    finally:
+        engine.dispose()
+
+
 @pytest.fixture
 def native_engine(real_db_engine):
     base = real_db_engine.url.render_as_string(hide_password=False)
     name = real_db_engine.url.database.split("_xdist_")[0] + "_oracle_" + uuid4().hex[:16]
     url = _database_url(base, name)
     assert_disposable_test_url(url.render_as_string(hide_password=False), os.environ)
+    engine = None
     _execute(base, f'CREATE DATABASE "{name}" TEMPLATE template0')
-    engine = create_engine(url)
     try:
+        engine = create_engine(url)
         columns = inspect(real_db_engine).get_columns("alert_archive_entry", schema="gold")
         fields = ", ".join(
             f'"{c["name"]}" {c["type"].compile(dialect=engine.dialect)}' for c in columns
@@ -37,8 +84,32 @@ def native_engine(real_db_engine):
             c.exec_driver_sql(f"CREATE TABLE gold.alert_archive_entry ({fields})")
         yield engine
     finally:
-        engine.dispose()
-        _execute(base, f'DROP DATABASE "{name}"')
+        try:
+            if engine is not None:
+                engine.dispose()
+        finally:
+            _execute(base, f'DROP DATABASE "{name}"')
+
+
+@pytest.mark.parametrize("failure", ["construct", "dispose"])
+def test_oracle_setup_failure_always_drops_generated_database(monkeypatch, failure):
+    monkeypatch.setenv(
+        "TRANSIT_TEST_DATABASE_DISPOSABLE", "I_UNDERSTAND_THIS_DATABASE_IS_DISPOSABLE"
+    )
+    base = Mock(url=make_url("postgresql+psycopg://transit_ci@127.0.0.1/transit_ci"))
+    execute = Mock()
+    engine = Mock()
+    engine.dispose.side_effect = RuntimeError("injected")
+    factory = Mock(return_value=engine)
+    factory.side_effect = RuntimeError("injected") if failure == "construct" else None
+    monkeypatch.setitem(globals(), "_execute", execute)
+    monkeypatch.setitem(globals(), "create_engine", factory)
+    monkeypatch.setitem(globals(), "inspect", Mock(side_effect=RuntimeError("injected")))
+    with pytest.raises(RuntimeError, match="injected"):
+        next(native_engine.__wrapped__(base))
+    created = execute.call_args_list[0].args[1]
+    drop = created.replace("CREATE DATABASE", "DROP DATABASE").removesuffix(" TEMPLATE template0")
+    assert execute.call_args_list[-1].args[1] == drop
 
 
 def seed_dump_row(c, provider):
@@ -77,18 +148,9 @@ def test_native_custom_dump_exact_typed_row(native_engine, populated):
         assert shutil.which(tool), f"{tool}_unavailable: CI requires native PostgreSQL clients"
     with engine.begin() as c:
         expected = (seed_dump_row(c, provider),) if populated else ()
-    url = engine.url
-    conninfo = make_conninfo(host=url.host, port=url.port, user=url.username, dbname=url.database)
     with TemporaryDirectory() as scratch:
         dump, output = Path(scratch) / "native.dump", Path(scratch) / "selected.sql"
-        command = ["pg_dump", "--format=custom", "--table=gold.alert_archive_entry"]
-        subprocess.run(
-            [*command, "--file", str(dump), "--dbname", conninfo],
-            check=True,
-            timeout=120,
-            env=os.environ | {"PGPASSWORD": url.password or ""},
-            capture_output=True,
-        )
+        dump_archive(engine, dump)
         extract_alert_archive_copy(dump, output)
         with engine.connect() as c:
             actual, missing = read_alert_archive_copy(c, output, provider_id=provider)
