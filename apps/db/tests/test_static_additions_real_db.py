@@ -7,11 +7,33 @@ from sqlalchemy import text
 from transit_ops.snapshots.builders.static import build_routes_index
 
 
+def _seed_dataset_version(conn):
+    return conn.execute(
+        text("""
+        WITH endpoint AS (
+            INSERT INTO core.feed_endpoints(provider_id,endpoint_key,feed_kind,source_format)
+            VALUES ('static_policy','static_schedule','static_schedule','gtfs_schedule_zip')
+            RETURNING feed_endpoint_id
+        ), run AS (
+            INSERT INTO raw.ingestion_runs(provider_id,feed_endpoint_id,run_kind,status)
+            SELECT 'static_policy',feed_endpoint_id,'static_schedule','succeeded' FROM endpoint
+            RETURNING ingestion_run_id,feed_endpoint_id
+        )
+        INSERT INTO core.dataset_versions(provider_id,feed_endpoint_id,
+            source_ingestion_run_id,dataset_kind,content_hash,is_current)
+        SELECT 'static_policy',feed_endpoint_id,ingestion_run_id,
+            'static_schedule',repeat('a',64),true FROM run
+        RETURNING dataset_version_id
+    """)
+    ).scalar_one()
+
+
 @pytest.fixture
 def policy_routes(real_db_engine, seed_provider):
     with real_db_engine.begin() as conn:
         for provider in ("static_policy", "static_other"):
             seed_provider(conn, provider, display_name="Synthetic transit")
+        version = _seed_dataset_version(conn)
         routes = ["free", "absent", "lower", "upper", "older", "future", "other"]
         conn.execute(
             text("""
@@ -24,9 +46,9 @@ def policy_routes(real_db_engine, seed_provider):
             text("""
             INSERT INTO gold.dim_route
                 (provider_id, dataset_version_id, route_id, route_short_name, route_type)
-            VALUES ('static_policy', 1, :route, :route, 0)
+            VALUES ('static_policy', :version, :route, :route, 0)
         """),
-            [{"route": route} for route in routes],
+            [{"route": route, "version": version} for route in routes],
         )
         # CURRENT_TIMESTAMP is fixed for this transaction, including both endpoints.
         now = conn.execute(text("SELECT CURRENT_TIMESTAMP")).scalar_one()
