@@ -106,3 +106,16 @@ def test_accumulator_leaves_normalized_messages_unchanged():
 
 def test_stale_usable_schedule_uses_the_same_match_guard():
     test_line_under_eighty_percent_with_five_trips_fails_the_guard(5, 3, False)
+
+
+@pytest.mark.parametrize("diagnostic", ["unlisted_trip_without_route", "unresolved_trip_date_ids"])
+def test_diagnostics_require_successful_finish(diagnostic):
+    b = replace(build(seconds=60), schedule=scheduled(0))
+    a = StreamAccumulator(b)
+    for raw in (None, "20260102", ""):
+        if raw is not None:
+            a.add(observation(b, message=message(2, raw=raw, route="")))
+        with pytest.raises(ValueError, match="^summary_not_finished$"):
+            getattr(a, diagnostic)
+    a.finish(uses_schedule=True)
+    assert getattr(a, diagnostic) == 2

@@ -30,10 +30,14 @@ class StreamAccumulator:
 
     @property
     def unlisted_trip_without_route(self) -> int:
+        if self._base is None:
+            raise ValueError("summary_not_finished")
         return len(self._unlisted)
 
     @property
     def unresolved_trip_date_ids(self) -> int:
+        if self._base is None:
+            raise ValueError("summary_not_finished")
         return len(self._unresolved)
 
     def add(self, delivery: Delivery) -> None:
