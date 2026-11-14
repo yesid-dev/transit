@@ -12,3 +12,4 @@ from transit_ops.daily_pass.interface import ServiceDayBuild as ServiceDayBuild
 from transit_ops.daily_pass.interface import StreamSummary as StreamSummary
 from transit_ops.daily_pass.interface import WindowLock as WindowLock
 from transit_ops.daily_pass.interface import consumed_set_sha256 as consumed_set_sha256
+from transit_ops.daily_pass.stream import deliver_stream as deliver_stream

@@ -11,6 +11,10 @@ function makeEnv() {
   const generatedUtc = stamp();
   const documents = new Map([
     [
+      "v1/providers.json",
+      { default_provider: "stm", providers: [{ id: "stm" }] },
+    ],
+    [
       "v1/stm/live/vehicles.json",
       { generated_utc: generatedUtc, vehicles: [{ id: "v1", route: "24" }] },
     ],
