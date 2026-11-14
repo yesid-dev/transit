@@ -13,7 +13,7 @@ CALENDAR_SQL = text("""
 WITH calendar_fixture(provider_id, dataset_version_id, service_id,
               monday, tuesday, wednesday, thursday, friday, saturday, sunday,
               start_date, end_date) AS (VALUES
-    ('p', 1, 's', false,false,false,false,false,false,true, DATE '2026-03-08',DATE '2026-03-15'),
+    ('p', 1, 's', false,false,false,false,false,false,true, DATE '2026-03-08',DATE '2026-03-22'),
     ('q', 1, 's', true,true,true,true,true,true,true, DATE '2026-03-01',DATE '2026-03-31'),
     ('p', 2, 's', true,true,true,true,true,true,true, DATE '2026-03-01',DATE '2026-03-31')
 ), calendar AS (
@@ -22,7 +22,7 @@ WITH calendar_fixture(provider_id, dataset_version_id, service_id,
 ), calendar_dates(provider_id, dataset_version_id, service_id, service_date,
                   exception_type) AS (VALUES
     ('p',1,'s',DATE '2026-03-09',1), ('p',1,'s',DATE '2026-03-15',2),
-    ('p',1,'s',DATE '2026-03-22',1),
+    ('p',1,'s',DATE '2026-03-29',1),
     ('q',1,'s',DATE '2026-03-08',2), ('p',2,'s',DATE '2026-03-08',2),
     ('q',1,'s',DATE '2026-03-10',1), ('p',2,'s',DATE '2026-03-10',1)
 ), trips(provider_id, dataset_version_id, service_id, trip_id) AS (VALUES
@@ -55,10 +55,10 @@ WHERE t.provider_id = :provider AND t.dataset_version_id = :edition
 @pytest.fixture(params=[True, False], ids=["weekly-and-holidays", "calendar-dates-only"])
 def calendar_case(request):
     weekly = request.param
-    # March 22 is an addition outside the weekly calendar's inclusive range.
+    # March 22 is an unremoved end date; March 29 is an outside-range addition.
     data = archive(
-        calendar="s,0,0,0,0,0,0,1,20260308,20260315\n" if weekly else None,
-        calendar_dates="s,20260309,1\ns,20260315,2\ns,20260322,1\n",
+        calendar="s,0,0,0,0,0,0,1,20260308,20260322\n" if weekly else None,
+        calendar_dates="s,20260309,1\ns,20260315,2\ns,20260329,1\n",
     )
     expected = {
         date(2026, 3, 7): set(),
@@ -67,7 +67,8 @@ def calendar_case(request):
         date(2026, 3, 10): set(),
         date(2026, 3, 15): set(),
         date(2026, 3, 16): set(),
-        date(2026, 3, 22): {"t"},
+        date(2026, 3, 22): {"t"} if weekly else set(),
+        date(2026, 3, 29): {"t"},
     }
     ctx = ArchiveScheduleContext(
         provider_id="p",
