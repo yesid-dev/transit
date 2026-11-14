@@ -168,3 +168,41 @@ it('says nothing about matches while the indexes load', () => {
 		'false',
 	);
 });
+
+it.each([
+	['en', '1 line. Stops have not been searched yet.'],
+	['fr', '1 ligne. Les arrêts n’ont pas encore été cherchés.'],
+] as const)(
+	'speaks only the groups it searched and names the one it could not, in %s',
+	async (locale, said) => {
+		vi.useFakeTimers();
+		try {
+			const list = searchTransit({ surface: 'list', query: 'van' }, { routes, stops: null });
+			const url = new URL('https://transit.local/');
+			const view = render(HeaderSearch, {
+				props: { locale, providerId: 'stm', url, scope: 'all', list, query: 'van' },
+			});
+			await vi.advanceTimersByTimeAsync(500);
+			expect(view.getByRole('status').textContent).toBe(said);
+		} finally {
+			vi.useRealTimers();
+		}
+	},
+);
+
+it('waits 500 ms after every edit, even when the totals stay the same', async () => {
+	vi.useFakeTimers();
+	try {
+		const view = show('van');
+		const status = view.getByRole('status');
+		await vi.advanceTimersByTimeAsync(250);
+		const list = searchTransit({ surface: 'list', query: 'va', scope: 'all' }, { routes, stops });
+		await view.rerender({ query: 'va', list });
+		await vi.advanceTimersByTimeAsync(250);
+		expect(status.textContent).toBe('');
+		await vi.advanceTimersByTimeAsync(250);
+		expect(status.textContent).toBe('1 line, 38 stops');
+	} finally {
+		vi.useRealTimers();
+	}
+});

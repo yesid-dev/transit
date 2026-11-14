@@ -63,14 +63,21 @@
 	});
 
 	// Totals are spoken once typing pauses, never on every keystroke or live poll.
-	const total = (kind: string) => list.groups.find((group) => group.kind === kind)?.total ?? 0;
+	// A group that could not be searched is named, never counted as 0.
+	const total = (kind: 'route' | 'stop' | 'vehicle') =>
+		kind !== 'vehicle' && list.unsearched.includes(kind)
+			? null
+			: (list.groups.find((group) => group.kind === kind)?.total ?? 0);
 	const summary = $derived.by(() => {
 		const say = headerSearchCopy[locale];
-		if (!shown || list.total === 0) return shown && !list.pending ? say.noResult(text) : '';
-		return say.totals(total('route'), total('stop'), total('vehicle'));
+		if (!shown || (list.total === 0 && !list.pending)) return shown ? say.noResult(text) : '';
+		const counts = say.totals(total('route'), total('stop'), total('vehicle') ?? 0);
+		const notes = list.unsearched.map(say.unsearched);
+		return notes.length ? [counts && `${counts}.`, ...notes].filter(Boolean).join(' ') : counts;
 	});
 	let announcement = $state('');
 	$effect(() => {
+		void text; // every edit restarts the wait, even when the totals stay the same
 		const next = summary;
 		const timer = setTimeout(() => (announcement = next), 500);
 		return () => clearTimeout(timer);
