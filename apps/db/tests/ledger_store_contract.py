@@ -7,6 +7,90 @@ from transit_ops.history.datasets import UndeclaredDataset
 from transit_ops.history.ledger import HOLD_NO_END, WindowNotFound
 from transit_ops.history.ledger_store import NewCopy
 
+INVALID_COPY_VALUES = [
+    (field, value)
+    for field in ("sha256", "manifest_sha256", "content_sha256", "poll_record_sha256")
+    for value in ("", "a" * 63, "a" * 65, "A" * 64, "g" * 64, "a" * 64 + "\n")
+] + [("storage_backend", "r2"), ("storage_backend", "")]
+
+LIFECYCLE_KINDS = ("seal", "verify", "reject", "current", "trim", "restore", "hold", "unhold")
+
+
+@pytest.mark.parametrize("kind", LIFECYCLE_KINDS)
+def test_public_event_writer_refuses_lifecycle_kinds(store, make_identity, kind):
+    identity = make_identity()
+    with store.session(identity) as session:
+        with pytest.raises(ValueError, match=kind):
+            session.record_event(kind)
+        assert session.events() == []
+        assert session.state() is None
+    assert store.events(identity) == []
+    assert store.window_state(identity) is None
+
+
+@pytest.mark.parametrize(
+    "kind", ["changed", "close_runs", "processing_evidence", "fold_published", "rebuild"]
+)
+def test_public_event_writer_accepts_audit_kinds(store, make_identity, kind):
+    identity = make_identity()
+    with store.session(identity) as session:
+        session.record_event(
+            kind, content_version=1, reason="audit", details={"n": 3}, actor="writer"
+        )
+    (event,) = store.events(identity)
+    assert (event.kind, event.content_version, event.reason, event.details, event.actor) == (
+        kind,
+        1,
+        "audit",
+        {"n": 3},
+        "writer",
+    )
+
+
+@pytest.mark.parametrize("field,value", INVALID_COPY_VALUES)
+def test_invalid_new_copy_is_refused_before_writing(store, make_identity, field, value):
+    identity = make_identity()
+    with store.session(identity) as session:
+        version = session.allocate_version()
+        with pytest.raises(ValueError, match=field):
+            session.insert_allocated_copy(replace(new_copy(version), **{field: value}))
+        assert session.copies() == []
+        session.insert_allocated_copy(new_copy(version))
+    with store.session(identity) as session:
+        assert session.copies()[0].sha256 == "a" * 64
+
+
+def test_optional_copy_digests_and_local_storage_are_accepted(store, make_identity):
+    identity = make_identity()
+    with store.session(identity) as session:
+        copy = replace(
+            new_copy(session.allocate_version()),
+            storage_backend="local",
+            sha256=None,
+            manifest_sha256=None,
+            content_sha256=None,
+            poll_record_sha256=None,
+        )
+        session.insert_allocated_copy(copy)
+    with store.session(identity) as session:
+        assert {f.name: getattr(session.copies()[0], f.name) for f in fields(NewCopy)} == asdict(
+            copy
+        )
+
+
+def test_copy_insertion_refuses_nonzero_revision(store, make_identity):
+    identity = replace(
+        make_identity(), dataset_id="gold.network_vehicle_day", window_key="2026-11", revision=1
+    )
+    with store.session(identity) as session:
+        version = session.allocate_version()
+        with pytest.raises(ValueError, match="revision"):
+            session.insert_allocated_copy(new_copy(version))
+        assert session.copies() == []
+    with store.session(identity) as session:
+        assert session.copies() == []
+        assert session.state().next_version == version + 1
+
 
 def test_session_reads_see_its_own_writes(store, make_identity):
     identity = make_identity()
@@ -282,3 +366,28 @@ def test_existing_copy_version_is_create_only(store, make_identity):
             session.insert_allocated_copy(replace(new_copy(version), sha256="e" * 64))
     with store.session(identity) as session:
         assert session.copies() == [original]
+
+
+def test_copy_version_must_have_been_allocated(store, make_identity):
+    identity = make_identity()
+    with store.session(identity) as session:
+        _allocated(session)
+        original = session.copies()
+        assert session.state().next_version == 2
+    with pytest.raises(RuntimeError, match=r"could not insert copy.*'content_version': 2\b"):
+        with store.session(identity) as session:
+            session.insert_allocated_copy(new_copy(2))
+    with store.session(identity) as session:
+        assert session.copies() == original
+        assert session.state().next_version == 2
+        assert session.events() == []
+
+
+def test_copy_insertion_requires_a_window_allocation(store, make_identity):
+    identity = make_identity()
+    with pytest.raises(RuntimeError, match=r"could not insert copy.*'content_version': 1\b"):
+        with store.session(identity) as session:
+            session.insert_allocated_copy(new_copy(1))
+    assert store.window_state(identity) is None
+    with store.session(identity) as session:
+        assert session.copies() == []
