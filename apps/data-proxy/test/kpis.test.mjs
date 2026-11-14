@@ -685,7 +685,7 @@ test("a lane crossing 60s between cache lookup and serving rebuilds before nulli
   trips.generated_utc = iso(0);
   bucket.objects.set("v1/stm/live/trips.json", JSON.stringify(trips));
   let calls = 0;
-  t.mock.method(Date, "now", () => start + (++calls === 1 ? 999 : 1000));
+  t.mock.method(Date, "now", () => start + (++calls <= 2 ? 999 : 1000));
   const response = await fetchKpis(env);
   assert.equal((await response.json()).avgDelayS, 120);
   assert.equal(providerReads(bucket), 7);
@@ -700,7 +700,7 @@ test("an anchor crossing 60s while serving rebuilds before declaring pipeline_co
   await fetchKpis(env);
   bucket.objects = new Map(Object.entries(liveDocs({ snapshotMsAgo: 0 })));
   let calls = 0;
-  t.mock.method(Date, "now", () => start + (++calls === 1 ? 999 : 1000));
+  t.mock.method(Date, "now", () => start + (++calls <= 2 ? 999 : 1000));
   const response = await fetchKpis(env);
   assert.equal(response.status, 200);
   assert.equal((await response.json()).avgDelayS, 120);
