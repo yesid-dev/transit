@@ -1845,12 +1845,14 @@ def list_pipeline_switches_command() -> None:
     from sqlalchemy.exc import SQLAlchemyError
 
     from transit_ops import pipeline_switches as switches
+    from transit_ops.control.switches import switches_for
 
     engine = None
     try:
         engine = make_engine(get_settings())
         with engine.connect() as connection:
-            rows = [switches.display_switch(row) for row in switches.list_switches(connection)]
+            store = switches_for(connection, get_settings())
+            rows = [switches.display_switch(row) for row in store.list_switches()]
         typer.echo(json.dumps(rows))
     except (SQLAlchemyError, ValueError):
         typer.echo("Database settings could not be read; check DATABASE_URL", err=True)
@@ -1866,6 +1868,7 @@ def show_pipeline_switch_command(switch_key: str) -> None:
     from sqlalchemy.exc import SQLAlchemyError
 
     from transit_ops import pipeline_switches as switches
+    from transit_ops.control.switches import switches_for
 
     try:
         switches.validate_text(switch_key, "switch key")
@@ -1875,7 +1878,7 @@ def show_pipeline_switch_command(switch_key: str) -> None:
     try:
         engine = make_engine(get_settings())
         with engine.connect() as connection:
-            row = switches.show_switch(connection, switch_key)
+            row = switches_for(connection, get_settings()).show_switch(switch_key)
         typer.echo(json.dumps(switches.display_switch(row, switch_key)))
     except (SQLAlchemyError, ValueError):
         typer.echo("Database settings could not be read; check DATABASE_URL", err=True)
@@ -1896,6 +1899,7 @@ def set_pipeline_switch_command(
     from sqlalchemy.exc import SQLAlchemyError
 
     from transit_ops import pipeline_switches as switches
+    from transit_ops.control.switches import switches_for
 
     try:
         for name, value in (("switch key", switch_key), ("reason", reason)):
@@ -1919,10 +1923,10 @@ def set_pipeline_switch_command(
                             "current_user)"
                         )
                     ).scalar_one()
-            switches.set_switch(
-                connection, switch_key, on=state == "on", updated_by=actor, reason=reason
+            switches_for(connection, get_settings()).set_switch(
+                switch_key, on=state == "on", updated_by=actor, reason=reason
             )
-            row = switches.show_switch(connection, switch_key)
+            row = switches_for(connection, get_settings()).show_switch(switch_key)
         typer.echo(json.dumps(switches.display_switch(row, switch_key)))
     except (switches.GuardRefused, switches.SchemaNotReady, switches.ReservedSwitch) as error:
         typer.echo(" ".join(str(error).splitlines()), err=True)
