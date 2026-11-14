@@ -186,7 +186,7 @@ for (const locale of ['en', 'fr'] as const)
 			const header = page.getByRole('banner');
 			const { city, operator } = provider.labels[locale];
 			const fullName = `${city} · ${operator}`;
-			const picker = header.getByRole('combobox');
+			const picker = header.locator('.nav-provider').getByRole('combobox');
 			const label = header.locator('.nav-provider-label:visible');
 			await expect(picker).toHaveAccessibleName(new RegExp(fullName));
 			await expect(picker).toHaveAttribute('title', fullName);

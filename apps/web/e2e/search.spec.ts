@@ -60,9 +60,9 @@ for (const locale of PUBLISHED_LOCALES) {
 		test.skip(project.name !== 'desktop', 'the header search box shows from 1024px');
 		await page.goto(localizeHref(stops, locale));
 		const box = page.getByRole('combobox', { name: nav.searchAria.stop });
-		const result = page
-			.getByRole('listbox', { name: nav.searchAria.stop })
-			.getByRole('option', { name: new RegExp(literal(stop.name)) });
+		const result = page.getByRole('listbox', { name: nav.searchAria.stop }).getByRole('option', {
+			name: new RegExp(`^${literal(`${headerSearchCopy[locale].kind.stop} ${stop.name}`)}`),
+		});
 		// Hydration can reset the box; retry until the results answer.
 		await expect(async () => {
 			await box.fill(stop.name);
