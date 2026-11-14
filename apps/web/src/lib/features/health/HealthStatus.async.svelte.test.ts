@@ -129,8 +129,14 @@ async function replaceHash(hash: string): Promise<void> {
 	await fireEvent(window, new HashChangeEvent('hashchange'));
 }
 
+const forgetSectionsChoice = () => {
+	localStorage.removeItem('sections-choice');
+	delete document.documentElement.dataset.sectionsChoice;
+};
+
 beforeEach(() => {
 	cleanup();
+	forgetSectionsChoice();
 	window.location.hash = '';
 	navigation.page.url = new URL('http://localhost/status');
 	navigation.replaceState.mockClear();
@@ -165,6 +171,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	cleanup();
+	forgetSectionsChoice();
 	window.location.hash = '';
 });
 
@@ -185,7 +192,7 @@ describe('HealthStatus — async reveal navigation', () => {
 		const center = container.querySelector('[data-slot="detail-shell-center"]') as HTMLElement;
 		const left = container.querySelector('[data-slot="detail-shell-left"]') as HTMLElement;
 		const target = await waitFor(() =>
-			within(center).getByRole('button', { name: copy.en.lanes.section }),
+			within(center).getByRole('button', { name: copy.en.lanes.section, hidden: true }),
 		);
 		await fireEvent.click(target);
 		const toc = await openHealthToc(left);
@@ -203,7 +210,7 @@ describe('HealthStatus — async reveal navigation', () => {
 		const left = container.querySelector('[data-slot="detail-shell-left"]') as HTMLElement;
 		await waitFor(() => expect(ports.getHistoricAvailability).toHaveBeenCalledTimes(1));
 		expect(
-			within(center).queryByRole('button', { name: copy.en.historyCoverage.section }),
+			within(center).queryByRole('button', { name: copy.en.historyCoverage.section, hidden: true }),
 		).toBeNull();
 		expect(
 			within(left).queryByRole('button', { name: copy.en.historyCoverage.section }),
@@ -212,7 +219,7 @@ describe('HealthStatus — async reveal navigation', () => {
 		historyGate.resolve(historyFixture);
 
 		const card = await waitFor(() =>
-			within(center).getByRole('button', { name: copy.en.historyCoverage.section }),
+			within(center).getByRole('button', { name: copy.en.historyCoverage.section, hidden: true }),
 		);
 		const toc = await waitFor(() => within(left).getByRole('button', { name: copy.en.toc.label }));
 		expect(card).toHaveAttribute('aria-expanded', 'true');
@@ -306,7 +313,7 @@ describe('HealthStatus — async reveal navigation', () => {
 		const center = container.querySelector('[data-slot="detail-shell-center"]') as HTMLElement;
 		const left = container.querySelector('[data-slot="detail-shell-left"]') as HTMLElement;
 		const target = await waitFor(() =>
-			within(center).getByRole('button', { name: copy.en.lanes.section }),
+			within(center).getByRole('button', { name: copy.en.lanes.section, hidden: true }),
 		);
 		await fireEvent.click(target);
 		expect(target).toHaveAttribute('aria-expanded', 'false');
@@ -315,11 +322,14 @@ describe('HealthStatus — async reveal navigation', () => {
 			expandedAtScroll.push(target.getAttribute('aria-expanded'));
 		});
 
+		const disclosure = within(center).getByRole('button', { name: copy.en.details });
+		expect(disclosure).toHaveAttribute('aria-expanded', 'false');
 		await openHealthToc(left);
 		await fireEvent.click(within(left).getByRole('button', { name: copy.en.lanes.section }));
 
 		await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
 		expect(expandedAtScroll).toEqual(['true']);
+		expect(disclosure).toHaveAttribute('aria-expanded', 'true');
 		expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'start' });
 	});
 
@@ -331,7 +341,9 @@ describe('HealthStatus — async reveal navigation', () => {
 
 		const center = container.querySelector('[data-slot="detail-shell-center"]') as HTMLElement;
 		await waitFor(() =>
-			expect(within(center).getByRole('button', { name: copy.en.freshness.section })).toBeVisible(),
+			expect(
+				within(center).getByRole('button', { name: copy.en.freshness.section, hidden: true }),
+			).toBeInTheDocument(),
 		);
 		const targets: Array<string | null> = [];
 		scrollIntoView.mockImplementation(function (this: Element) {

@@ -43,6 +43,7 @@ export const copy = defineCopy({
 			liveFeeds: 'Live feeds',
 			retainedHistory: 'Retained history',
 		},
+		details: 'Details for auditors',
 		feedNames: {
 			static_schedule: 'Schedule',
 			trip_updates: 'Trip predictions',
@@ -251,6 +252,7 @@ export const copy = defineCopy({
 			liveFeeds: 'Flux en direct',
 			retainedHistory: 'Historique conservé',
 		},
+		details: 'Détails pour vérification',
 		feedNames: {
 			static_schedule: 'Horaire',
 			trip_updates: 'Prédictions de passage',

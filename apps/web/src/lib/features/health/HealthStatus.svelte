@@ -187,32 +187,32 @@
 
 	const sectionDefs = $derived([
 		{
-			id: 'health-lanes',
+			id: 'health-gaps',
 			number: 1,
+			title: t.gaps.section,
+			subtitle: t.questions.gaps,
+			present: gaps.length > 0,
+		},
+		{
+			id: 'health-lanes',
+			number: 2,
 			title: t.lanes.section,
 			subtitle: t.questions.lanes,
 			present: laneRows.length > 0,
 		},
 		{
 			id: 'health-freshness',
-			number: 2,
+			number: 3,
 			title: t.freshness.section,
 			subtitle: t.questions.freshness,
 			present: freshness.length > 0,
 		},
 		{
 			id: 'health-sources',
-			number: 3,
+			number: 4,
 			title: t.sources.section,
 			subtitle: t.questions.sources,
 			present: sources.length > 0,
-		},
-		{
-			id: 'health-gaps',
-			number: 4,
-			title: t.gaps.section,
-			subtitle: t.questions.gaps,
-			present: gaps.length > 0,
 		},
 		{
 			id: 'health-pipeline-notes',
@@ -337,7 +337,6 @@
 					{gaps}
 					{locale}
 				/>
-				<OutOfServiceVehicles {live} {locale} />
 				{#if !prov || provenanceIsEmpty(prov)}
 					<div class="health-resource-state" aria-label={t.overview.dailyRecord}>
 						<SectionLabel text={t.overview.dailyRecord} variant="metric" />
@@ -369,44 +368,21 @@
 			</div>
 		</CollapsibleSection>
 
-		{#each sectionDefs as section (section.id)}
-			{section.number === 1 ? '' : ' '}{#if section.present}
-				<CollapsibleSection
-					title={section.title}
-					subtitle={section.subtitle}
-					headerVariant="article-summary"
-					index={section.number - 1}
-					anchor={section.id}
-					open={true}
-				>
-					{#if section.id === 'health-lanes'}
-						<SectionLanes rows={laneRows} copy={t} {locale} />
-					{:else if section.id === 'health-freshness'}
-						<SectionFreshness items={freshness} {verdictFor} {humanizeAge} copy={t} />
-					{:else if section.id === 'health-sources'}
-						<SectionSources items={sources} {lastLoaded} copy={t} />
-					{:else if section.id === 'health-gaps'}
-						<SectionGaps {gaps} {humanizeGap} copy={t} />
-					{:else if section.id === 'health-pipeline-notes'}
-						<SectionNotes notes={pipelineNotes} copy={t} />
-					{:else if section.id === 'health-retention'}
-						<SectionRetention
-							detail={retention.detail}
-							aggregate={retention.aggregate}
-							{fmtDays}
-							copy={t}
-							{locale}
-						/>
-					{:else if section.id === 'health-conformance' && conformance}
-						<SectionConformance {conformance} copy={t} {locale} />
-					{:else if section.id === 'health-envelope'}
-						<SectionEnvelope {envelope} copy={t} {locale} />
-					{:else if section.id === 'health-history-coverage'}
-						<SectionHistoryCoverage rows={historyCoverageRows} copy={t} {locale} />
-					{/if}
-				</CollapsibleSection>
-			{/if}
-		{/each}
+		{@render sectionCard(sectionDefs[0])}
+		{#if sectionDefs.slice(1).some((section) => section.present)}
+			<CollapsibleSection
+				title={t.details}
+				headerVariant="article-summary"
+				anchor="health-details"
+				open={false}
+				independent
+			>
+				<ArticleSectionStack>
+					<OutOfServiceVehicles {live} {locale} />
+					{#each sectionDefs.slice(1) as section (section.id)}{@render sectionCard(section)}{/each}
+				</ArticleSectionStack>
+			</CollapsibleSection>
+		{/if}
 	</ArticleSectionStack>
 
 	{#snippet after()}
@@ -417,6 +393,45 @@
 		/>
 	{/snippet}
 </DetailFrame>
+
+{#snippet sectionCard(section: (typeof sectionDefs)[number])}
+	{#if section.present}
+		<CollapsibleSection
+			title={section.title}
+			subtitle={section.subtitle}
+			headerVariant="article-summary"
+			index={section.number - 1}
+			anchor={section.id}
+			open={true}
+		>
+			{#if section.id === 'health-lanes'}
+				<SectionLanes rows={laneRows} copy={t} {locale} />
+			{:else if section.id === 'health-freshness'}
+				<SectionFreshness items={freshness} {verdictFor} {humanizeAge} copy={t} />
+			{:else if section.id === 'health-sources'}
+				<SectionSources items={sources} {lastLoaded} copy={t} />
+			{:else if section.id === 'health-gaps'}
+				<SectionGaps {gaps} {humanizeGap} copy={t} />
+			{:else if section.id === 'health-pipeline-notes'}
+				<SectionNotes notes={pipelineNotes} copy={t} />
+			{:else if section.id === 'health-retention'}
+				<SectionRetention
+					detail={retention.detail}
+					aggregate={retention.aggregate}
+					{fmtDays}
+					copy={t}
+					{locale}
+				/>
+			{:else if section.id === 'health-conformance' && conformance}
+				<SectionConformance {conformance} copy={t} {locale} />
+			{:else if section.id === 'health-envelope'}
+				<SectionEnvelope {envelope} copy={t} {locale} />
+			{:else if section.id === 'health-history-coverage'}
+				<SectionHistoryCoverage rows={historyCoverageRows} copy={t} {locale} />
+			{/if}
+		</CollapsibleSection>
+	{/if}
+{/snippet}
 
 <style>
 	:global(.health-detail .section-title) {
