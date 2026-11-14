@@ -424,3 +424,18 @@ def test_invalid_pair_operands_refuse(changes):
             window_days=1,
             rules=RULES,
         )
+
+
+@pytest.mark.parametrize("direction", ["higher", "lower"])
+def test_an_available_measured_zero_pair_precedes_an_unavailable_pair(direction):
+    spec = paired_spec()
+    spec = replace(spec, pair=replace(spec.pair, worse=direction))
+    rows = [
+        pair_row("z_available", delay=0),
+        pair_row("a_unavailable", late=10, delay=12000, trips=60),
+    ]
+    for ordered in (rows, rows[::-1]):
+        assert rank_entities(ordered, spec=spec, window_days=1, rules=RULES) == [
+            RankedEntity("z_available", "ranked", None, 1, 85, 100, 850),
+            RankedEntity("a_unavailable", "ranked", None, 1, 85, 100, 850),
+        ]
