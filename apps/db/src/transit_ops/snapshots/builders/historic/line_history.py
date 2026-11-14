@@ -115,7 +115,7 @@ _LINE_HISTORY_IDS_SQL = named_query(
     )
     SELECT inventory.route_id, inventory_total.__history_inventory_count
     FROM inventory_total LEFT JOIN inventory ON true
-    ORDER BY inventory.route_id
+    ORDER BY inventory.route_id COLLATE "C" NULLS LAST
     """,
 )
 
@@ -143,7 +143,7 @@ _LINE_HISTORY_DELAY_SQL = named_query(
       AND sp.provider_local_date >= timezone(dp.timezone, {NOW})::date - :warm_retention_days
       AND sp.provider_local_date < timezone(dp.timezone, {NOW})::date
     GROUP BY sp.route_id, sp.provider_local_date
-    ORDER BY sp.route_id, sp.provider_local_date
+    ORDER BY sp.route_id COLLATE "C", sp.provider_local_date
     """,
 )
 
@@ -166,7 +166,7 @@ _LINE_HISTORY_PERCENTILES_SQL = named_query(
       AND pct.route_id <> '__unrouted__'
       AND pct.provider_local_date >= timezone(dp.timezone, {NOW})::date - :warm_retention_days
       AND pct.provider_local_date < timezone(dp.timezone, {NOW})::date
-    ORDER BY pct.route_id, pct.provider_local_date
+    ORDER BY pct.route_id COLLATE "C", pct.provider_local_date
     """,
 )
 
@@ -196,7 +196,7 @@ _LINE_HISTORY_CANCELLATION_SQL = named_query(
       AND can.provider_local_date >= timezone(dp.timezone, {NOW})::date - :warm_retention_days
       AND can.provider_local_date < timezone(dp.timezone, {NOW})::date
     GROUP BY can.route_id, can.provider_local_date
-    ORDER BY can.route_id, can.provider_local_date
+    ORDER BY can.route_id COLLATE "C", can.provider_local_date
     """,
 )
 
@@ -224,7 +224,7 @@ _LINE_HISTORY_OCCUPANCY_SQL = named_query(
       AND occ.provider_local_date >= timezone(dp.timezone, {NOW})::date - :warm_retention_days
       AND occ.provider_local_date < timezone(dp.timezone, {NOW})::date
     GROUP BY occ.route_id, occ.provider_local_date
-    ORDER BY occ.route_id, occ.provider_local_date
+    ORDER BY occ.route_id COLLATE "C", occ.provider_local_date
     """,
 )
 
@@ -249,7 +249,7 @@ _LINE_HISTORY_SERVICE_SPAN_SQL = named_query(
       AND span.route_id <> '__unrouted__'
       AND span.provider_local_date >= timezone(dp.timezone, {NOW})::date - :warm_retention_days
       AND span.provider_local_date < timezone(dp.timezone, {NOW})::date
-    ORDER BY span.route_id, span.provider_local_date
+    ORDER BY span.route_id COLLATE "C", span.provider_local_date
     """,
 )
 
@@ -273,7 +273,7 @@ _LINE_HISTORY_SKIPPED_STOPS_SQL = named_query(
       AND skip.provider_local_date >= timezone(dp.timezone, {NOW})::date - :warm_retention_days
       AND skip.provider_local_date < timezone(dp.timezone, {NOW})::date
     GROUP BY skip.route_id, skip.provider_local_date
-    ORDER BY skip.route_id, skip.provider_local_date
+    ORDER BY skip.route_id COLLATE "C", skip.provider_local_date
     """,
 )
 
