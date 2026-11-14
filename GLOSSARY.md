@@ -7,9 +7,6 @@ A public dashboard that tells riders how reliable their transit service is, from
 The record that one copy was read back and found equal to what it means, row for row; without it a copy is not verified. Typed row equality alone still needs the canonical-text check before verification.
 _Avoid_: receipt (an upload record)
 
-**Publish heartbeat**:
-The record a publisher leaves after each publication: when, how many files, and the gate's outcome.
-
 **Edition index**:
 The record that groups a schedule edition's table copies and their proofs, identifies their GTFS file and field names, and states whether its source zip is archived.
 
@@ -231,6 +228,9 @@ _Avoid_: unknown vehicle, idle bus, ghost
 **Partial stall**:
 One active feed family is stale while another is current or has not loaded yet. It cannot establish that the whole feed has stopped responding.
 _Avoid_: outage, whole-feed stall
+
+**Publish heartbeat**:
+The record a publisher leaves after each publication: when, how many files, and the gate's outcome.
 
 **Published uncertainty range**:
 The lower and upper percentage bounds supplied with a reliability reading. They express uncertainty in that reading and do not supply a missing exact on-time count.

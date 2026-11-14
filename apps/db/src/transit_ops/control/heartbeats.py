@@ -36,6 +36,14 @@ def _stamp(value: object, name: str) -> str:
 
 
 def _encode(beat: PublishHeartbeat) -> dict[str, object]:
+    for name in ("files_written", "files_skipped", "files_total", "stable_files_total"):
+        value = getattr(beat, name)
+        if value is None and name == "stable_files_total":
+            continue
+        if type(value) is not int or value < 0:
+            raise HeartbeatInvalid(f"{name} must be a nonnegative integer")
+    if type(beat.lease_epoch) is not int or beat.lease_epoch < 1:
+        raise HeartbeatInvalid("lease_epoch must be a positive integer")
     payload = asdict(beat)
     for name in ("generated_utc", "recorded_at_utc"):
         payload[name] = _stamp(getattr(beat, name), name)
@@ -45,6 +53,12 @@ def _encode(beat: PublishHeartbeat) -> dict[str, object]:
             raise HeartbeatInvalid(f"{name} must be a mapping or None")
     if beat.gate is not None:
         gate = dict(beat.gate)
+        for name in ("gate_checks_run", "gate_errors", "gate_warnings"):
+            value = gate.get(name)
+            if value is not None and (type(value) is not int or value < 0):
+                raise HeartbeatInvalid(f"{name} must be a nonnegative integer or None")
+        if gate.get("gate_verdict") is not None and type(gate["gate_verdict"]) is not str:
+            raise HeartbeatInvalid("gate_verdict must be a string or None")
         if gate.get("gate_generated_utc") is not None:
             gate["gate_generated_utc"] = _stamp(gate["gate_generated_utc"], "gate_generated_utc")
         payload["gate"] = gate
@@ -61,10 +75,8 @@ def _decode(body: bytes, provider_id: str, tier: str) -> PublishHeartbeat:
         if gate is not None and gate.get("gate_generated_utc") is not None:
             gate["gate_generated_utc"] = datetime.fromisoformat(gate["gate_generated_utc"])
         beat = PublishHeartbeat(**data)
-        if (beat.provider_id, beat.tier) != (provider_id, tier) or (
-            not isinstance(beat.lease_epoch, int) or beat.lease_epoch < 1
-        ):
-            raise ValueError("identity or epoch")
+        if (beat.provider_id, beat.tier) != (provider_id, tier):
+            raise ValueError("identity")
         _encode(beat)
         return beat
     except (ValueError, TypeError, KeyError, AttributeError) as exc:
@@ -86,6 +98,8 @@ def write_heartbeat(
     This health-data window is accepted; the manifest (LS3.2b) fences publication
     content. A heartbeat never replaces a higher stored epoch. One conflict gets
     one fresh read and one replacement attempt; another conflict is LeaseLost.
+    After any exception other than LeaseLost the lease may already be renewed;
+    re-establish ownership with acquire_lease using the same holder before retrying.
     """
     if (beat.provider_id, beat.tier) != (lease.provider_id, lease.lane):
         raise ValueError("heartbeat provider or tier differs from lease")

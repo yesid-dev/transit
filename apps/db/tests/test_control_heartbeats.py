@@ -1,3 +1,4 @@
+import json
 from dataclasses import asdict, replace
 from datetime import timedelta
 
@@ -6,7 +7,7 @@ from test_control_leases import NOW, TTL, acquire, control_objects  # noqa: F401
 
 from transit_ops.control import heartbeats as m
 from transit_ops.control.leases import LeaseLost, acquire_lease, read_lease, renew_lease
-from transit_ops.control.objects import ObjectConflict
+from transit_ops.control.objects import ObjectConflict, ObjectRateLimited
 
 KEY = "heartbeats/network%3Aone/live.json"
 
@@ -152,19 +153,26 @@ def test_conflicts_recover_once_unless_a_newer_epoch_exists(objects, monkeypatch
         )
 
 
-def test_second_conflict_is_terminal(objects, monkeypatch):
+@pytest.mark.parametrize("fault", [ObjectConflict, ObjectRateLimited])
+def test_second_conflict_or_storage_fault_recovery(objects, monkeypatch, fault):
     lease, original, attempts = acquire(objects), objects.replace, []
 
     def conflict(key, *args, **kwargs):
         if key == KEY:
             attempts.append(key)
-            raise ObjectConflict("busy")
+            raise fault("busy")
         return original(key, *args, **kwargs)
 
     monkeypatch.setattr(objects, "replace", conflict)
-    with pytest.raises(LeaseLost):
+    with pytest.raises(LeaseLost if fault is ObjectConflict else ObjectRateLimited):
         write(objects, lease)
-    assert attempts == [KEY, KEY]
+    assert attempts == ([KEY, KEY] if fault is ObjectConflict else [KEY])
+    if fault is ObjectRateLimited:
+        with pytest.raises(LeaseLost):
+            renew_lease(objects, lease, ttl=TTL, clock=lambda: NOW)
+        recovered = acquire(objects)
+        assert recovered.epoch == lease.epoch
+        assert renew_lease(objects, recovered, ttl=TTL, clock=lambda: NOW).holder == lease.holder
 
 
 def test_stale_token_heartbeat_cannot_adopt_another_renewal(objects):
@@ -205,3 +213,39 @@ def test_corrupt_heartbeat_raises_a_named_error(objects, value):
     objects.replace(KEY, value, expected=None)
     with pytest.raises(ValueError, match="invalid heartbeat"):
         m.read_heartbeat(objects, provider_id="network:one", tier="live")
+
+
+@pytest.mark.parametrize("stored", [False, True])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        *[
+            (name, value)
+            for name in ("files_written", "files_skipped", "files_total", "stable_files_total")
+            for value in (True, "bad", -1)
+        ],
+        *[("lease_epoch", value) for value in (True, 0, -1, "1")],
+        *[
+            ("gate", {name: value})
+            for name in ("gate_checks_run", "gate_errors", "gate_warnings")
+            for value in (True, "bad")
+        ],
+        ("gate", {"gate_verdict": 1}),
+    ],
+)
+def test_declared_row_types_fail_closed(objects, stored, field, value):
+    lease = acquire(objects)
+    seed(objects, 1)
+    prior = objects.read(KEY)
+    if stored:
+        payload = json.loads(prior.body)
+        payload[field] = value
+        objects.replace(KEY, payload, expected=prior.token)
+        with pytest.raises(m.HeartbeatInvalid):
+            m.read_heartbeat(objects, provider_id="network:one", tier="live")
+    else:
+        owner = replace(lease, epoch=value) if field == "lease_epoch" else lease
+        with pytest.raises(m.HeartbeatInvalid):
+            write(objects, owner, beat(**{field: value}))
+        assert read_lease(objects, provider_id="network:one", lane="live") == lease
+        assert objects.read(KEY) == prior
