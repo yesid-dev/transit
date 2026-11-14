@@ -43,7 +43,7 @@ describe('SectionHistoryCoverage empty values', () => {
 				width: header.getAttribute('style'),
 			})),
 		).toEqual([
-			{ text: 'Famille de pages', column: 'family', width: 'width: 15%;' },
+			{ text: 'Famille de pages', column: 'family', width: 'width: 9rem;' },
 			{ text: 'Fenêtre publiée', column: 'window', width: 'width: 18%;' },
 			{ text: 'Mode de consultation', column: 'selection', width: 'width: 17%;' },
 			{ text: 'Détails de couverture', column: 'details', width: null },

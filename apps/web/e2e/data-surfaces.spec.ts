@@ -274,6 +274,8 @@ test('the status page stacks its coverage table on phones and says when data is 
 	page,
 }) => {
 	await page.goto('/status');
+	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+	await page.getByRole('button', { name: healthCopy[locale].details, exact: true }).click();
 	const table = page.getByRole('table', {
 		name: healthCopy[locale].historyCoverage.tableLabel,
 		exact: true,

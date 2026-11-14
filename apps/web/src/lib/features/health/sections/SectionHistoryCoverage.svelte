@@ -135,7 +135,7 @@
 				key: 'family',
 				header: t.columns.family,
 				rowHeader: true,
-				width: '15%',
+				width: '9rem',
 				cell: familyCell,
 			},
 			{
