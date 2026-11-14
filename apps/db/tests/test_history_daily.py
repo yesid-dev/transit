@@ -33,9 +33,14 @@ def _database(s):
         assert s.active
         query = str(sql)
         if "to_regclass" in query:
-            return NS(scalar_one=lambda: None if params["name"] == s.missing else "exists")
+            name = params.get("name", params.get("table"))
+            return NS(scalar_one=lambda: None if name == s.missing else "exists")
         if "pipeline_switches" in query:
-            return NS(one_or_none=lambda: s.switch)
+            row = None if s.switch is None else dict(
+                switch_key="history_daily", enabled=s.switch[0], updated_at_utc=s.switch[1],
+                updated_by="test", reason="test",
+            )
+            return NS(mappings=lambda: NS(one_or_none=lambda: row))
         assert "SELECT now()" in query
         return NS(scalar_one=lambda: NOW)
 
