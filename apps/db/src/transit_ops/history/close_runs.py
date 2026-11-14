@@ -4,7 +4,8 @@ from itertools import groupby
 
 from sqlalchemy import Connection, text
 
-from transit_ops.history import datasets, ledger
+from transit_ops.history import datasets, ledger_select
+from transit_ops.history.ledger_store import WindowIdentity
 from transit_ops.history.working_captures import CLOSED_UNFINISHED
 
 _CLOSE = text("""
@@ -33,7 +34,11 @@ def close_unfinished_runs(
     older_than_seconds: int = 3600,
     actor: str | None = None,
 ) -> int:
-    """Fail unfinished capture runs and audit each affected feed-day atomically."""
+    """WindowChanged propagates without retry.
+
+    PostgreSQL persists at outer commit, R2 at session exit. Callers may rely on
+    neither coupling; PostgreSQL rollback cannot undo R2 writes.
+    """
     if not provider_id:
         raise ValueError("provider_id must not be empty")
     if type(older_than_seconds) is not int or older_than_seconds < 0:
@@ -57,18 +62,16 @@ def close_unfinished_runs(
         .all()
     )
     for (endpoint, day), group in groupby(rows, key=lambda r: (r["endpoint_key"], r["utc_date"])):
-        ledger.record_event(
-            connection,
-            kind="close_runs",
-            dataset_id="capture." + endpoint,
-            provider_id=provider_id,
-            revision=0,
-            window_key=day.isoformat(),
-            reason=CLOSED_UNFINISHED,
-            details={
-                "ingestion_run_ids": [row["ingestion_run_id"] for row in group],
-                "older_than_seconds": older_than_seconds,
-            },
-            actor=actor,
-        )
+        with ledger_select.ledger_for(connection).session(
+            WindowIdentity("capture." + endpoint, provider_id, day.isoformat())
+        ) as window:
+            window.record_event(
+                kind="close_runs",
+                reason=CLOSED_UNFINISHED,
+                details={
+                    "ingestion_run_ids": [row["ingestion_run_id"] for row in group],
+                    "older_than_seconds": older_than_seconds,
+                },
+                actor=actor,
+            )
     return len(rows)
