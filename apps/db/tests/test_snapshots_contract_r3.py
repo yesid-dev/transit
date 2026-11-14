@@ -241,6 +241,7 @@ def test_revision_three_contract_import_has_no_runtime_io(monkeypatch):
         guard.setattr(storage, "LocalSnapshotStorage", forbidden)
         guard.setattr(storage, "build_snapshot_storage", forbidden)
         importlib.reload(r3)
+        r3.Receipt.model_validate(receipt_payload())
         r3.ReadingValues(state="measured", evidence="tentative", reading_count=0)
         r3.Population(basis="scheduled_window", excluded={}, coverage={})
         r3.ServiceValues(
@@ -252,3 +253,222 @@ def test_revision_three_contract_import_has_no_runtime_io(monkeypatch):
         )
     assert contract.export_schemas() == old_schemas
     assert [snapshot_json_bytes(receipt), snapshot_json_bytes(trend)] == old_bytes
+
+
+def receipt_payload():
+    return {
+        "schema_version": 1,
+        "methodology_version": "receipt-2",
+        "generated_utc": "2026-11-14T12:00:00Z",
+        "publish_generation_id": None,
+        "data_through": "2026-11-13",
+        "date": "2026-11-13",
+        "state": "not_measured",
+        "reason": "capture_gap",
+        "evidence": "tentative",
+        "population": {"basis": "vehicle_evidence", "excluded": {}, "coverage": {}},
+        "service": {
+            "state": "not_measured",
+            "reason": "capture_gap",
+            "basis": "facts",
+            "scheduled_trip_days": 10,
+            "not_reported_lines": None,
+            "no_live_data": None,
+        },
+        "worst_line": None,
+        "worst_stop": None,
+        "alerts": None,
+        "alerts_reason": "not_tracked",
+        "alerts_not_measured_reason": None,
+    }
+
+
+def test_receipt_envelope_and_shared_values_keep_absence():
+    value = r3.Receipt.model_validate(receipt_payload())
+    wire = json.loads(snapshot_json_bytes(value))
+    assert wire["data_through"] == "2026-11-13"
+    assert wire["methodology_version"] == "receipt-2"
+    assert wire["reading_count"] is None
+    assert wire["service"]["scheduled_trip_days"] == 10
+    assert wire["service"]["delivered_trip_days"] is None
+    assert wire["worst_line"] is None and wire["worst_stop"] is None
+    assert isinstance(value.population, r3.Population)
+    assert isinstance(value.service, r3.ServiceValues)
+    assert r3.Receipt.model_validate_json(snapshot_json_bytes(value)) == value
+
+
+@pytest.mark.parametrize(
+    "alerts,reason,detail",
+    [(0, None, None), (None, "not_tracked", None)]
+    + [
+        (None, "not_measured", detail)
+        for detail in (
+            "schedule_not_kept",
+            "captures_not_available",
+            "no_capture_record",
+            "capture_gap",
+            "window_too_short",
+            "applicability_unresolved",
+            "schedule_mismatch",
+        )
+    ],
+)
+def test_receipt_alert_absence_and_zero_have_distinct_shapes(alerts, reason, detail):
+    payload = receipt_payload() | {
+        "alerts": alerts,
+        "alerts_reason": reason,
+        "alerts_not_measured_reason": detail,
+    }
+    wire = json.loads(snapshot_json_bytes(r3.Receipt.model_validate(payload)))
+    assert (wire["alerts"], wire["alerts_reason"], wire["alerts_not_measured_reason"]) == (
+        alerts,
+        reason,
+        detail,
+    )
+
+
+@pytest.mark.parametrize(
+    "alerts,reason,detail",
+    [
+        (None, None, None),
+        (0, "not_tracked", None),
+        (1, "not_measured", "capture_gap"),
+        (None, "not_measured", None),
+        (None, "not_tracked", "capture_gap"),
+        (0, None, "capture_gap"),
+        (None, "not_measured", "stale"),
+        (None, "unsupported", None),
+        (None, "not_applicable", None),
+        (-1, None, None),
+        (True, None, None),
+        (1.5, None, None),
+    ],
+)
+def test_receipt_refuses_contradictory_or_invalid_alerts(alerts, reason, detail):
+    with pytest.raises(ValidationError):
+        r3.Receipt.model_validate(
+            receipt_payload()
+            | {
+                "alerts": alerts,
+                "alerts_reason": reason,
+                "alerts_not_measured_reason": detail,
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("otp_pct", 50),
+        ("severe_pct", 1),
+        ("vehicles", 2),
+        ("rider_impact_score", 1),
+        ("service_states", {}),
+        ("wilson_lo", 10),
+        ("wilson_hi", 90),
+        ("on_time_ci_lower", 10),
+        ("on_time_ci_upper", 90),
+        ("rank", 1),
+        ("league", []),
+        ("p90_min", 60),
+    ],
+)
+def test_receipt_does_not_accept_revision_two_dead_fields(field, value):
+    with pytest.raises(ValidationError, match="extra_forbidden"):
+        r3.Receipt.model_validate(receipt_payload() | {field: value})
+
+
+@pytest.mark.parametrize("token", ["receipt-1", "reliability-2", "reliability-3", "alerts-3"])
+def test_receipt_rejects_other_family_or_legacy_tokens(token):
+    with pytest.raises(ValidationError, match="literal_error"):
+        r3.Receipt.model_validate(receipt_payload() | {"methodology_version": token})
+
+
+@pytest.mark.parametrize("field", ["data_through", "methodology_version", "population", "service"])
+def test_receipt_requires_explicit_envelope_and_evidence(field):
+    payload = receipt_payload()
+    del payload[field]
+    with pytest.raises(ValidationError, match="missing"):
+        r3.Receipt.model_validate(payload)
+
+
+@pytest.mark.parametrize("field", ["date", "data_through"])
+def test_receipt_requires_real_service_dates(field):
+    with pytest.raises(ValidationError):
+        r3.Receipt.model_validate(receipt_payload() | {field: "2026-02-30"})
+
+
+def test_headline_values_are_data_not_a_ranking_engine():
+    line = {
+        "id": " opaque/line ",
+        "short": "L",
+        "name": None,
+        "on_time_pct": 0,
+        "on_time_delta_pts": None,
+    }
+    stop = {
+        "id": " opaque/stop ",
+        "code": "0042",
+        "name": "Terminus",
+        "on_time_pct": None,
+        "on_time_delta_pts": -2.5,
+    }
+    value = r3.Receipt.model_validate(
+        receipt_payload()
+        | {
+            "worst_line": line,
+            "worst_stop": stop,
+        }
+    )
+    wire = json.loads(snapshot_json_bytes(value))
+    assert wire["worst_line"] == line
+    assert wire["worst_stop"] == stop
+    assert isinstance(value.worst_line, r3.HeadlineLine)
+    assert isinstance(value.worst_stop, r3.HeadlineStop)
+
+
+@pytest.mark.parametrize("field,identity", [("worst_line", "short"), ("worst_stop", "code")])
+def test_headlines_refuse_missing_identity_and_rankings(field, identity):
+    headline = {"id": "x", "name": None, "on_time_pct": None, "on_time_delta_pts": None}
+    for invalid in (headline, headline | {identity: "X", "rank": 1}):
+        with pytest.raises(ValidationError):
+            r3.Receipt.model_validate(receipt_payload() | {field: invalid})
+
+
+@pytest.mark.parametrize("field,identity", [("worst_line", "short"), ("worst_stop", "code")])
+@pytest.mark.parametrize(
+    "id_fields",
+    [{}, {"id": 17}, {"id": None}, {"id": {}}, {"id": []}, {"id": True}],
+    ids=["missing", "integer", "null", "mapping", "list", "boolean"],
+)
+def test_headlines_refuse_missing_or_non_string_ids(field, identity, id_fields):
+    headline = {
+        identity: "X",
+        "name": None,
+        "on_time_pct": None,
+        "on_time_delta_pts": None,
+    } | id_fields
+    with pytest.raises(ValidationError) as error:
+        r3.Receipt.model_validate(receipt_payload() | {field: headline})
+    assert [item["loc"] for item in error.value.errors()] == [(field, "id")]
+
+
+def test_receipt_measured_readings_can_coexist_with_unmeasured_service():
+    value = r3.Receipt.model_validate(
+        receipt_payload()
+        | {
+            "state": "measured",
+            "reason": None,
+            "reading_count": 0,
+            "on_time_count": 0,
+            "late_count": 0,
+            "early_count": 0,
+            "trip_count": 0,
+        }
+    )
+    wire = json.loads(snapshot_json_bytes(value))
+    assert wire["reading_count"] == 0 and wire["on_time_pct"] is None
+    assert wire["service"]["state"] == "not_measured"
+    assert wire["service"]["scheduled_trip_days"] == 10
+    with pytest.raises(ValidationError, match="reading values must be null"):
+        r3.Receipt.model_validate(receipt_payload() | {"reading_count": 0})
