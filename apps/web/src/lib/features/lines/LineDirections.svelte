@@ -30,6 +30,7 @@
 	const localizeHref = getLocalizeHref();
 
 	let { directions, predictions, locale, copy, timeZone }: LineDirectionsProps = $props();
+	const uid = $props.id();
 
 	const stopHref = (stopId: string): string =>
 		localizeHref(routeFor({ kind: 'stop', id: stopId }), locale);
@@ -44,6 +45,7 @@
 				<details class="line-direction">
 					<summary class="line-direction-head">
 						<span
+							id="{uid}-direction-{di}"
 							class="line-direction-name readable-name"
 							title={dir.headsign ?? copy.direction(dir.dir)}
 							use:readableName
@@ -56,7 +58,7 @@
 						<ChevronRightIcon size={16} strokeWidth={2.4} aria-hidden="true" />
 					</summary>
 					{#if (dir.stops ?? []).length > 0}
-						<table class="line-stops">
+						<table class="line-stops" aria-labelledby="{uid}-direction-{di}">
 							<thead>
 								<tr>
 									<th scope="col">{copy.stopColumns.stop}</th>

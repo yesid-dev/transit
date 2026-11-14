@@ -45,6 +45,7 @@ describe('LineDirections', () => {
 			await fireEvent.click(within(summary).getByText('Eastbound'));
 			expect([east.open, west.open]).toEqual([true, false]);
 			const table = within(east).getByRole('table');
+			expect(table).toHaveAccessibleName('Eastbound');
 			const columns = within(table).getAllByRole('columnheader');
 			expect(columns.map((column) => column.textContent?.trim())).toEqual(headers);
 			const row = within(table).getByRole('row', { name: /First stop/ });
@@ -54,7 +55,14 @@ describe('LineDirections', () => {
 			expect(delay).toHaveTextContent(late);
 
 			await rerender({ predictions: new Map() });
-			expect([east.open, west.open]).toEqual([true, false]);
+			const [eastNow, westNow] = container.querySelectorAll('details');
+			expect(eastNow).toBe(east);
+			expect([eastNow.open, westNow.open]).toEqual([true, false]);
+			const refreshed = within(eastNow).getByRole('row', { name: /First stop/ });
+			expect(within(refreshed).getAllByRole('cell')).toHaveLength(1);
+			expect(refreshed.querySelector('time')).toBeNull();
+			await fireEvent.click(within(westNow).getByText('Westbound'));
+			expect(within(westNow).getByRole('table')).toHaveAccessibleName('Westbound');
 		},
 	);
 
