@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 from contextlib import ExitStack
+from dataclasses import replace
 from datetime import datetime
 from re import fullmatch
 
@@ -57,7 +58,9 @@ class LiveTripUpdates:
         if self._value is not None:
             previous = self._value.capture
             if capture.capture_row_id == previous.capture_row_id:
-                if capture != previous:
+                if replace(capture, sha256=capture.sha256.lower()) != replace(
+                    previous, sha256=previous.sha256.lower()
+                ):
                     raise CaptureIdentityError("Contradictory trip capture identity")
                 return
             if (capture.captured_at_utc, capture.capture_row_id) < (

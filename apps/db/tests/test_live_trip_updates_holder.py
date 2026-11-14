@@ -90,6 +90,30 @@ def test_payload_tag_text_cannot_change_capture_identity():
     assert holder.latest().frames["rt_trip_updates"].column("trip_id")[0] == "[capture_row_id=999]"
 
 
+@pytest.mark.parametrize("first,second", [(str.lower, str.upper), (str.upper, str.lower)])
+def test_equivalent_digest_hex_cases_are_idempotent(first, second):
+    payload = _message().SerializeToString()
+    capture = _capture(payload)
+    holder = LiveTripUpdates("network", policy=POLICY, fallback=lambda: None)
+    holder.accept(payload, replace(capture, sha256=first(capture.sha256)))
+    good = holder.latest()
+    holder.accept(payload, replace(capture, sha256=second(capture.sha256)))
+    assert holder.latest() is good
+
+
+def test_same_capture_with_different_valid_bytes_is_refused():
+    payload = _message().SerializeToString()
+    holder = LiveTripUpdates("network", policy=POLICY, fallback=lambda: None)
+    holder.accept(payload, _capture(payload))
+    good = holder.latest()
+    message = _message()
+    message.entity[0].id = "different valid capture"
+    changed = message.SerializeToString()
+    with pytest.raises(ValueError, match="Contradictory"):
+        holder.accept(changed, _capture(changed))
+    assert holder.latest() is good
+
+
 def test_fallback_is_lazy_validated_and_failure_does_not_poison_holder():
     payload = _message().SerializeToString()
     parsed = parse_capture(payload, _capture(payload), POLICY)

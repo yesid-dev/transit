@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -29,10 +30,11 @@ def _seed(engine, seed_provider):
         replay._seed_raw_realtime_snapshots(c)
         c.execute(
             text(
-                "UPDATE raw.realtime_snapshot_index SET captured_at_utc=:t "
-                "WHERE realtime_snapshot_id=994602"
+                "UPDATE raw.realtime_snapshot_index SET captured_at_utc=:t, "
+                "feed_timestamp_utc=CASE WHEN realtime_snapshot_id=994601 THEN :later ELSE :t END "
+                "WHERE realtime_snapshot_id IN (994601, 994602)"
             ),
-            {"t": replay.SNAPSHOTS[0][3]},
+            {"t": replay.SNAPSHOTS[0][3], "later": replay.SNAPSHOTS[1][3]},
         )
 
 
@@ -58,7 +60,9 @@ def decoys(engine, seed_provider):
             base = 994600 + i
             p = dict(s=base, r=base + 100, o=base + 300, e=endpoint, p=provider, status=status)
             seed.ingestion_runs(c, p, status=":status")
-            seed.ingestion_objects(c, p, storage_backend="'local'", storage_path="'unreadable.pb'")
+            seed.ingestion_objects(
+                c, p | {"path": f"unreadable/{p['o']}.pb"}, storage_backend="'local'"
+            )
             seed.realtime_snapshot_index(
                 c, p | dict(ts=replay.WINDOW_END, n=0), ingestion_object_id=":o"
             )
@@ -89,8 +93,21 @@ def test_cold_start_reads_the_latest_stored_capture(engine, settings, seed_provi
     parsed = _lookup(engine, settings)
     assert parsed.capture.capture_row_id == 994602
     assert parsed.capture.captured_at_utc == replay.SNAPSHOTS[0][3]
+    assert parsed.capture.feed_timestamp_utc == datetime(2026, 6, 20, 12, 10, tzinfo=UTC)
     assert parsed.frames["rt_trip_updates"].column("trip_id") == ["T_REPLAY"]
     assert parsed.frames["rt_trip_update_stop_times"].column("stop_id") == ["S2"]
+    with engine.begin() as c:
+        c.execute(
+            text(
+                "UPDATE raw.realtime_snapshot_index SET captured_at_utc=:t, feed_timestamp_utc=:f "
+                "WHERE realtime_snapshot_id=994601"
+            ),
+            {"t": datetime(2026, 6, 20, 12, 15, tzinfo=UTC), "f": replay.WINDOW_START},
+        )
+    latest = _lookup(engine, settings).capture
+    assert latest.capture_row_id == 994601
+    assert latest.captured_at_utc == datetime(2026, 6, 20, 12, 15, tzinfo=UTC)
+    assert latest.feed_timestamp_utc == datetime(2026, 6, 20, 12, tzinfo=UTC)
 
 
 @pytest.mark.parametrize(
