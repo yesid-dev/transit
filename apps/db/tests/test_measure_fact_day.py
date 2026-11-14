@@ -226,7 +226,7 @@ def test_linux_fd_pins_the_validated_tree(tmp_path, monkeypatch):
     sentinel.write_bytes(b"preserve")
     listing = os.listdir
     with pytest.raises((OSError, ValueError)):
-        with measure.scratch() as (root, proof):
+        with measure.scratch(tmp_path) as (root, proof):
             expected = measure.owned_snapshot(root)
             (root / "payload").write_bytes(b"owned")
 
@@ -273,3 +273,173 @@ def test_windows_boundary_refuses_before_post_validation_junction_swap(tmp_path,
         assert failure.value.args == ("unsafe_delete_unavailable", str(root))
     finally:
         assert all(p.exists() and p.read_bytes() == value for p, value in preserved.items())
+
+
+def recovery_roots(tmp_path, dead):
+    birth = measure.process_birth(os.getpid())
+    assert birth is not None
+    roots = {}
+    for name in ("live", "stale", "unmarked", "foreign"):
+        root = tmp_path / ("transit-measure-" + name)
+        root.mkdir()
+        roots[name] = root
+        (root / "payload").write_bytes(b"preserve" if name != "stale" else b"stale")
+        if name != "unmarked":
+            data = dict(invocation="a" * 32, path=str(root), pid=os.getpid(), start=birth)
+            data["pid"] = 2147483646 if name == "stale" and dead else os.getpid()
+            if name == "stale" and not dead:
+                data["start"] = birth[:-1] + ("0" if birth[-1] != "0" else "1")
+            if name == "foreign":
+                data["start"] = "foreign@1"
+            (root / ".owner").write_text(json.dumps(data), encoding="utf-8")
+    return roots
+
+
+@pytest.mark.parametrize("dead", [False, True])
+@pytest.mark.parametrize("lock", ["none", "brief", "persistent"])
+def test_start_sweeps_only_provably_dead_markers(tmp_path, capsys, monkeypatch, lock, dead):
+    roots = recovery_roots(tmp_path, dead)
+    windows = sys.platform == "win32"
+    if windows:
+        monkeypatch.setattr(measure, "Popen", lambda *a, **k: pytest.fail("worker launched"))
+    clock, failed, unlink = [0.0], [False], os.unlink
+
+    def locked(path, *args, **kwargs):
+        if Path(path).name == "payload" and (
+            lock == "persistent" or lock == "brief" and not failed[0]
+        ):
+            failed[0] = True
+            raise PermissionError("brief sharing violation")
+        return unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "unlink", locked)
+    monkeypatch.setattr(measure.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(measure.time, "sleep", lambda delay: clock.__setitem__(0, clock[0] + delay))
+    assert measure.supervise([], worker="print('{}')", scratch_root=tmp_path) == (
+        1 if windows or lock == "persistent" else 0
+    )
+    receipt = json.loads(capsys.readouterr().out)
+    if windows:
+        assert receipt["reason"] == "unsafe_delete_unavailable" and not receipt["swept_paths"]
+        assert receipt["leftover_paths"] == [str(roots["stale"])] and clock[0] == 0
+        assert (roots["stale"] / "payload").read_bytes() == b"stale"
+    elif lock == "persistent":
+        assert receipt["reason"] == "scratch_recovery_incomplete"
+        assert receipt["leftover_paths"] == [str(roots["stale"])] and clock[0] <= 2.1
+    else:
+        assert receipt["swept_paths"] == [str(roots["stale"])] and not roots["stale"].exists()
+    assert all(
+        (roots[n] / "payload").read_bytes() == b"preserve" for n in ("live", "unmarked", "foreign")
+    )
+
+
+def test_unavailable_owner_proof_never_sweeps_or_measures(tmp_path, monkeypatch, capsys):
+    root = tmp_path / "transit-measure-unmarked"
+    root.mkdir()
+    (root / "outside").write_bytes(b"preserve")
+
+    def unavailable(pid):
+        raise OSError("unsupported proof")
+
+    monkeypatch.setattr(measure, "process_birth", unavailable)
+    assert (
+        measure.supervise([], worker="raise AssertionError('must not run')", scratch_root=tmp_path)
+        == 1
+    )
+    report = json.loads(capsys.readouterr().out)
+    assert report["reason"] == "scratch_owner_proof_unavailable" and not report["swept_paths"]
+    assert (root / "outside").read_bytes() == b"preserve"
+
+
+def marked_root(parent, *, pid=None, token=True):
+    root = parent / "transit-measure-candidate"
+    root.mkdir()
+    data = dict(invocation="a" * 32, path=str(root), pid=pid or os.getpid())
+    if token is not False:
+        data["start"] = measure.process_birth(os.getpid()) if token is True else token
+    (root / ".owner").write_text(json.dumps(data))
+    (root / "payload").write_bytes(b"preserve")
+    return root
+
+
+@pytest.mark.parametrize("pid", [None, 2147483646])
+@pytest.mark.parametrize("token", [False, None, "garbage", "local-empty"])
+def test_invalid_start_refuses_before_launch(tmp_path, monkeypatch, capsys, pid, token):
+    root = marked_root(
+        tmp_path, pid=pid, token=measure.HOST + "@" if token == "local-empty" else token
+    )
+    launches = []
+    monkeypatch.setattr(measure, "Popen", lambda *a, **k: launches.append(True))
+    assert measure.supervise([], scratch_root=tmp_path) == 1
+    report = json.loads(capsys.readouterr().out)
+    assert report["reason"] == "scratch_owner_proof_unavailable"
+    assert report["leftover_paths"] == [str(root)] and not launches
+    assert (root / "payload").read_bytes() == b"preserve"
+
+
+def test_candidate_permission_error_refuses_before_launch(tmp_path, monkeypatch, capsys):
+    root = marked_root(tmp_path, pid=2147483646)
+    birth, launches = measure.process_birth, []
+
+    def denied(pid):
+        if pid == 2147483646:
+            raise PermissionError("SYNTHETIC_SECRET")
+        return birth(pid)
+
+    monkeypatch.setattr(measure, "process_birth", denied)
+    monkeypatch.setattr(measure, "Popen", lambda *a, **k: launches.append(True))
+    assert measure.supervise([], scratch_root=tmp_path) == 1
+    report = capsys.readouterr().out
+    assert json.loads(report)["reason"] == "scratch_owner_proof_unavailable"
+    assert json.loads(report)["leftover_paths"] == [str(root)] and not launches
+    assert "SYNTHETIC_SECRET" not in report and (root / "payload").exists()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Native Windows junction refusal")
+@pytest.mark.parametrize("kind", ["root", "nested"])
+def test_junction_boundary_never_deletes_outside(tmp_path, kind):
+    import _winapi
+
+    parent, outside = tmp_path / "scratch", tmp_path / "outside"
+    parent.mkdir()
+    outside.mkdir()
+    sentinel = outside / "sentinel"
+    sentinel.write_bytes(b"preserve")
+    birth = measure.process_birth(os.getpid())
+    root = marked_root(parent, token=birth[:-1] + ("0" if birth[-1] != "0" else "1"))
+    outside_marker = (root / ".owner").read_bytes()
+    (outside / ".owner").write_bytes(outside_marker)
+    link = root / "junction" if kind == "nested" else root
+    if kind == "root":
+        root.rename(parent / "saved")
+    _winapi.CreateJunction(str(outside), str(link))
+    try:
+        if kind == "root":
+            assert measure.owner(root) is None
+        report = measure.sweep(parent)
+        assert sentinel.read_bytes() == b"preserve"
+        assert (outside / ".owner").read_bytes() == outside_marker
+        assert not report["swept_paths"]
+        if kind == "nested":
+            assert report["leftover_paths"] == [str(root)] and (root / "payload").exists()
+    finally:
+        if link.is_junction():
+            assert link.resolve() == outside.resolve()
+            link.rmdir()
+
+
+def test_sweep_rechecks_full_owner_before_delete(tmp_path, monkeypatch):
+    birth = measure.process_birth(os.getpid())
+    root = marked_root(tmp_path, token=birth[:-1] + ("0" if birth[-1] != "0" else "1"))
+    remove = measure.remove_scratch
+
+    def changed(path, *args, **kwargs):
+        data = json.loads((path / ".owner").read_text())
+        data["start"] = birth
+        (path / ".owner").write_text(json.dumps(data))
+        return remove(path, *args, **kwargs)
+
+    monkeypatch.setattr(measure, "remove_scratch", changed)
+    receipt = measure.sweep(tmp_path)
+    assert receipt["leftover_paths"] == [str(root)] and not receipt["swept_paths"]
+    assert (root / "payload").read_bytes() == b"preserve"
