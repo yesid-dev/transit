@@ -38,9 +38,19 @@ def _definitions() -> dict[str, str]:
     return definitions
 
 
-def _shape(duck: duckdb.DuckDBPyConnection, name: str) -> tuple[object, object, object]:
+def _shape(duck: duckdb.DuckDBPyConnection, name: str) -> tuple[object, ...]:
     schema, table = name.split(".")
+    rendered = duck.execute(
+        "SELECT sql FROM duckdb_tables() "
+        "WHERE database_name IN (current_database(), 'temp') AND schema_name=? "
+        "AND table_name=?",
+        [schema, table],
+    ).fetchone()
+    if rendered is None:
+        raise AlertStateConflict(f"{name}: table definition missing")
     return (
+        # The catalog-rendered body retains collations omitted by pragma_table_info.
+        rendered[0].split("(", 1)[1],
         duck.execute("SELECT * FROM pragma_table_info(?)", [name]).fetchall(),
         duck.execute(
             "SELECT constraint_type, constraint_text FROM duckdb_constraints() "

@@ -188,3 +188,43 @@ def test_unknown_floor_stays_missing_and_nonempty_store_is_refused(tmp_path):
         )
         with pytest.raises(AlertStateConflict):
             seed_alert_state(local, bundle())
+
+
+def persisted_state(conn):
+    state = []
+    for schema, name, ddl in conn.execute(
+        "SELECT schema_name, table_name, sql FROM duckdb_tables() "
+        "WHERE database_name=current_database() AND NOT temporary ORDER BY 1, 2"
+    ).fetchall():
+        table = f"{schema}.{name}"
+        columns = conn.execute("SELECT name FROM pragma_table_info(?)", [table]).fetchall()
+        projection = ", ".join(f'CAST("{c}" AS VARCHAR)' for (c,) in columns)
+        values = conn.execute(f"SELECT {projection} FROM {table}").fetchall()
+        state.append((table, ddl, sorted(values, key=repr)))
+    return state
+
+
+@pytest.mark.parametrize("already_seeded", [False, True])
+def test_column_collation_drift_is_refused(tmp_path, already_seeded):
+    seed = bundle()
+    seed.tables[TABLES[1]].rows[0]["route_id"] = "case-sensitive"
+    path = tmp_path / "collation.db"
+    table = "silver.i3_alert_informed_entities"
+    with closing(opened(path)) as local:
+        conn = local.connection
+        create_alert_tables(conn)
+        if already_seeded:
+            seed_alert_state(local, seed)
+        ddl = conn.execute(
+            "SELECT sql FROM duckdb_tables() WHERE schema_name='silver' "
+            "AND table_name='i3_alert_informed_entities'"
+        ).fetchone()[0]
+        conn.execute(f"CREATE TEMP TABLE retained AS SELECT * FROM {table}")
+        conn.execute(f"DROP TABLE {table}")
+        conn.execute(ddl.replace("route_id VARCHAR", "route_id VARCHAR COLLATE NOCASE"))
+        conn.execute(f"INSERT INTO {table} SELECT * FROM retained")
+    with closing(opened(path)) as local:
+        before = persisted_state(local.connection)
+        with pytest.raises(AlertStateConflict, match=table):
+            seed_alert_state(local, seed)
+        assert persisted_state(local.connection) == before
