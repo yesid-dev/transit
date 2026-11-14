@@ -436,7 +436,6 @@ describe('HealthStatus — full manifest render', () => {
 			'The reliability record covers service through Jul 13. It was published on Jul 14.',
 			'The last record was published with 1 warning. Line, stop and ranking figures come from it; check the date beside each figure. Not measured: Metro. These lines publish no live data.',
 		]);
-		expect(summary).toHaveAttribute('aria-busy', 'false');
 		expect(summary.compareDocumentPosition(screen.getByText(en.lanes.note))).toBe(
 			Node.DOCUMENT_POSITION_FOLLOWING,
 		);

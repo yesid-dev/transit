@@ -3,9 +3,12 @@ import { test } from './layout-test';
 import { forwardRoute } from './layout-helpers';
 import { copy as healthCopy } from '../src/lib/features/health/health.copy';
 import { copy as receiptCopy } from '../src/lib/features/receipt/receipt.copy';
+import { navPillCopy } from '../src/lib/i18n/messages';
 
 for (const locale of ['en', 'fr'] as const)
-	test(`${locale} status summary keeps its place while the page hydrates`, async ({ page }) => {
+	test(`${locale} status summary keeps its place while the page hydrates and refreshes`, async ({
+		page,
+	}) => {
 		await page.setViewportSize({ width: 390, height: 844 });
 		let release = (): void => {};
 		const held = new Promise<void>((resolve) => (release = resolve));
@@ -19,12 +22,23 @@ for (const locale of ['en', 'fr'] as const)
 		await page.evaluate(() =>
 			Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 2e3))]),
 		);
-		const next = page.locator('.health-sections > [data-slot="card"]').nth(1);
-		// From the summary's top, so a shift above it (the header settling) is not counted.
-		const nextTop = async () => (await next.boundingBox())!.y - (await summary.boundingBox())!.y;
+		// The block after the summary starts at its bottom: hold the summary's own height. Shifts
+		// above it (the header settling) or below it (resource regions reloading) are not its own.
+		const nextTop = async () => (await summary.boundingBox())!.height;
 		const before = await nextTop();
 		release();
 		await expect(summary).toHaveAttribute('aria-busy', 'false');
+		expect(Math.abs((await nextTop()) - before)).toBeLessThanOrEqual(1);
+		const failing = new Promise<void>((resolve) => (release = resolve));
+		await page.route('**/historic/history/index.json', (route) =>
+			failing.then(() => route.abort()),
+		);
+		const pending = page.waitForRequest('**/historic/history/index.json');
+		await page.getByRole('button', { name: navPillCopy[locale].refresh }).click();
+		await pending;
+		expect(Math.abs((await nextTop()) - before)).toBeLessThanOrEqual(1);
+		release(); // the history request fails
+		await expect(page.locator('[data-slot="refresh-result"]')).not.toBeEmpty();
 		expect(Math.abs((await nextTop()) - before)).toBeLessThanOrEqual(1);
 	});
 

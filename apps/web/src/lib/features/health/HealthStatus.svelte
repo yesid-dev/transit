@@ -361,7 +361,7 @@
 			open={true}
 		>
 			<div class="health-overview">
-				<HealthSummary {manifest} dataHealth={dh} history={historicAvailability} {gaps} {locale} />
+				<HealthSummary {manifest} dataHealth={dh} historyIndex={historyRoot} {gaps} {locale} />
 				{#if manifest}{#key manifest.provider}<OutOfServiceVehicles
 							{manifest}
 							{locale}
