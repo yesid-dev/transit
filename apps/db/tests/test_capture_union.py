@@ -48,6 +48,16 @@ def test_union_keeps_archived_only_polls_captures_and_processing(family):
         (family, 2),
         (family, 5),
     ]
+    assert [(c.capture_row_id, c.byte_size, c.sha256) for c in result.captures] == [
+        (0, 5, "a7937b64b8caa58f03721bb6bacf5c78cb235febe0e70b1b84cd99541461a08e"),
+        (1, 6, "16367aacb67a4a017c8da8ab95682ccb390863780f7114dda0a0e0c55644c7c4"),
+        (2, 6, "16367aacb67a4a017c8da8ab95682ccb390863780f7114dda0a0e0c55644c7c4"),
+        (5, 7, "ffa63583dfa6706b87d284b86b0d693a161e4840aad2c5cf6b5d27c3b9621f7d"),
+    ]
+    assert (result.polls[5].status, result.polls[5].missing_reason) == (
+        "capture_missing",
+        "absent",
+    )
     assert [
         (p.capture_row_id, p.status, p.rows) for p in result.processing if p.stage == "gold_facts"
     ] == [
