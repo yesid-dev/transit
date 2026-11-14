@@ -2,10 +2,12 @@
 
 import hashlib
 import json
+import re
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, date, datetime
 
 import duckdb
+
+from transit_ops.batch.build import BuildRequest
 
 
 @dataclass(frozen=True, order=True)
@@ -17,22 +19,20 @@ class ManifestInput:
 
 
 @dataclass(frozen=True)
-class BuildManifest:
+class BuildManifest(BuildRequest):
     family_id: str
-    provider_id: str
     code_commit: str
-    as_of_utc: datetime
-    local_dates: tuple[date, ...]
-    timezone: str
     inputs: tuple[ManifestInput, ...]
     revision: int = field(default=2, init=False)
     engine: str = field(default="duckdb", init=False)
     engine_version: str = field(default=duckdb.__version__, init=False)
 
     def __post_init__(self) -> None:
-        if self.as_of_utc.utcoffset() is None:
-            raise ValueError("as_of_utc must be timezone-aware")
-        object.__setattr__(self, "as_of_utc", self.as_of_utc.astimezone(UTC))
+        super().__post_init__()
+        if not isinstance(self.code_commit, str) or not re.fullmatch(
+            r"[0-9a-f]{40}", self.code_commit
+        ):
+            raise ValueError("code_commit must be exactly 40 lowercase hex characters")
         object.__setattr__(self, "inputs", tuple(sorted(self.inputs)))
 
     def canonical_json(self) -> bytes:

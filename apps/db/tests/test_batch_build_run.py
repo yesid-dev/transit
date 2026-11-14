@@ -1,6 +1,7 @@
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from hashlib import sha256
+from pathlib import Path
 
 import duckdb
 import pytest
@@ -11,28 +12,34 @@ from transit_ops.batch.manifest import BuildManifest, ManifestInput
 from transit_ops.batch.run import InputChanged, OutputRefused, run_family
 from transit_ops.sql_registry import named_query
 
+STAMP = datetime(2026, 11, 4, 12, tzinfo=UTC)
+COMMIT = "abcdef0123456789abcdef0123456789abcdef01"
+
 
 def test_manifest_identity_is_stable_and_input_sensitive():
     manifest = BuildManifest(
         family_id="toy",
         provider_id="test",
-        code_commit="abc",
-        as_of_utc=datetime(2026, 11, 4, tzinfo=UTC),
+        code_commit=COMMIT,
+        as_of_utc=STAMP,
         local_dates=(date(2026, 11, 3),),
         timezone="America/Toronto",
+        fact_retention_days=14,
+        open_window_days=10,
         inputs=(
             ManifestInput("gold.b", "all", "bbb", 2),
             ManifestInput("gold.a", "2026-11-03", "aaa", 1),
         ),
     )
     expected = (
-        b'{"as_of_utc":"2026-11-04T00:00:00.000000Z","code_commit":"abc",'
+        b'{"as_of_utc":"2026-11-04T12:00:00.000000Z","code_commit":"' + COMMIT.encode() + b'",'
         b'"engine":"duckdb","engine_version":"'
         + duckdb.__version__.encode()
-        + b'","family_id":"toy","inputs":[{"byte_size":1,"relation":"gold.a",'
+        + b'","fact_retention_days":14,"family_id":"toy","inputs":['
+        b'{"byte_size":1,"relation":"gold.a",'
         b'"sha256":"aaa","window":"2026-11-03"},{"byte_size":2,"relation":"gold.b",'
         b'"sha256":"bbb","window":"all"}],"local_dates":["2026-11-03"],'
-        b'"provider_id":"test","revision":2,"timezone":"America/Toronto"}'
+        b'"open_window_days":10,"provider_id":"test","revision":2,"timezone":"America/Toronto"}'
     )
     same = replace(manifest, inputs=tuple(reversed(manifest.inputs)))
     assert manifest.canonical_json() == same.canonical_json() == expected
@@ -77,15 +84,8 @@ def build_case(tmp_path):
                 f"COPY (SELECT {value} AS id) TO ? (FORMAT PARQUET)",
                 [str(folder / f"{day}.parquet")],
             )
-    request = BuildRequest(
-        "test",
-        (date(2026, 11, 3),),
-        datetime(2026, 11, 4, 12, tzinfo=UTC),
-        14,
-        10,
-        "America/Toronto",
-    )
-    return request, dict(inputs_root=root, workdir=tmp_path / "work", code_commit="abc")
+    request = BuildRequest("test", (date(2026, 11, 3),), STAMP, 14, 10, "America/Toronto")
+    return request, dict(inputs_root=root, workdir=tmp_path / "work", code_commit=COMMIT)
 
 
 def test_a_toy_builder_runs_end_to_end(build_case):
@@ -163,9 +163,12 @@ def test_invalid_body_keys_are_refused_by_name(build_case, key):
 
 
 @pytest.mark.parametrize("mutation", ["same_size", "append", "delete"])
-def test_changed_inputs_are_refused_after_build(build_case, mutation):
+def test_changed_inputs_are_refused_after_build(build_case, mutation, monkeypatch):
     request, kwargs = build_case
     path = kwargs["inputs_root"] / "gold.source" / "2026-11-02.parquet"
+
+    monkeypatch.chdir(kwargs["inputs_root"].parent)
+    kwargs["inputs_root"] = Path("inputs")
 
     class ChangingBuilder(ToyBuilder):
         def build(self, session, request):
@@ -182,3 +185,27 @@ def test_changed_inputs_are_refused_after_build(build_case, mutation):
     with pytest.raises(InputChanged) as error:
         run_family(ChangingBuilder(), request, **kwargs)
     assert all(label in str(error.value) for label in ("gold.source", "2026-11-02", str(path)))
+
+
+@pytest.mark.parametrize("field", ["fact_retention_days", "open_window_days"])
+def test_request_settings_change_identity(build_case, field):
+    request, kwargs = build_case
+    result = run_family(ToyBuilder(), request, **kwargs)
+    altered = replace(request, **{field: getattr(request, field) + 1})
+    assert run_family(ToyBuilder(), altered, **kwargs).manifest.build_id != result.manifest.build_id
+
+
+@pytest.mark.parametrize("commit", [None, "", "HEAD", "abc", "A" * 40, "g" * 40, "a" * 41])
+def test_code_commit_requires_full_lowercase_hex(build_case, commit):
+    request, kwargs = build_case
+    kwargs["code_commit"] = commit
+    with pytest.raises(ValueError, match="code_commit"):
+        run_family(ToyBuilder(), request, **kwargs)
+
+
+def test_public_key_matching():
+    from transit_ops.batch.run import key_matches
+
+    assert key_matches("historic/toy/day.json", ("historic/toy/*.json",))
+    assert not key_matches("historic/toy/sub/day.json", ("historic/toy/*.json",))
+    assert not key_matches("Historic/toy/day.json", ("historic/toy/*.json",))
