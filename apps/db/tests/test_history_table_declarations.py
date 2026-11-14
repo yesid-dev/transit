@@ -226,7 +226,7 @@ def test_working_only_tables_declare_their_rebuild_sources():
 def relation(name, kind="table", columns=(), key=()):
     from transit_ops.lake.catalog import CatalogTable, Column
 
-    return CatalogTable(name, kind, tuple(Column(*column) for column in columns), key)
+    return CatalogTable(name, kind, tuple(Column(*column, False) for column in columns), key)
 
 
 def test_inventory_flags_an_unclaimed_table_and_a_key_mismatch():
