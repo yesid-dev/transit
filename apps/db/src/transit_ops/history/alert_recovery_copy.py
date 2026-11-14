@@ -34,6 +34,17 @@ _SET = re.compile(
 )
 
 
+def canonical_archive_message(message: Any) -> dict[str, Any] | None:
+    if message is None:
+        return None
+    keys = (
+        "snapshot_id alert_index captured_utc header_language description_language url_language"
+    ).split()
+    if not isinstance(message, dict) or set(message) != set(keys):
+        raise ValueError("copy_message_keys")
+    return {key: message[key] for key in keys}
+
+
 def _field(raw: bytes) -> str | None:
     if raw == b"\\N":
         return None
@@ -145,5 +156,6 @@ def read_alert_archive_copy(
             if exc.connection_invalidated:
                 raise
             raise ValueError("copy_cast") from None
+        typed["message"] = canonical_archive_message(typed["message"])
         result.append(typed)
     return tuple(result), missing

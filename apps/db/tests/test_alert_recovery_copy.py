@@ -1,10 +1,15 @@
+import json
 import subprocess
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import pytest
 
-from transit_ops.history.alert_recovery_copy import parse_alert_archive_copy
+from transit_ops.gold.alert_archive import _write_params
+from transit_ops.history.alert_recovery_copy import (
+    canonical_archive_message,
+    parse_alert_archive_copy,
+)
 from transit_ops.history.alert_recovery_pg_restore import extract_alert_archive_copy
 
 COLUMNS = (
@@ -21,6 +26,27 @@ ROW = (
 
 def script(row=ROW, columns=COLUMNS):
     return f"COPY gold.alert_archive_entry ({columns}) FROM stdin;\n{row}\\.\n".encode()
+
+
+def test_scrambled_literal_message_has_normal_sync_serialized_order():
+    literal = (
+        '{"alert_index": 0, "snapshot_id": "101", "captured_utc": '
+        '"2026-11-01T00:00:00Z", "url_language": null, "header_language": null, '
+        '"description_language": null}'
+    )
+    rows, _ = parse_alert_archive_copy(
+        script(ROW.rstrip("\n") + "\t" + literal + "\n", COLUMNS + ", message")
+    )
+    message = canonical_archive_message(json.loads(rows[0]["message"]))
+    assert _write_params({"message": message, "active_periods": []})["message"] == (
+        '{"snapshot_id": "101", "alert_index": 0, "captured_utc": "2026-11-01T00:00:00Z", '
+        '"header_language": null, "description_language": null, "url_language": null}'
+    )
+
+    for invalid in (message | {"extra": None}, dict(list(message.items())[:-1]), [], "message"):
+        with pytest.raises(ValueError, match="^copy_message_keys$"):
+            canonical_archive_message(invalid)
+    assert canonical_archive_message(None) is None
 
 
 def test_literal_copy_preserves_null_empty_and_single_byte_decoding():

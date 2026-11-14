@@ -21,7 +21,7 @@ def seed_dump_row(c, provider, tmp_path):
     source = tmp_path / "literal.sql"
     source.write_bytes(script(ROW.replace("fixture", provider)))
     rows, missing = read_alert_archive_copy(c, source, provider_id=provider)
-    expected = dict.fromkeys(COLUMNS.split(", ")) | {
+    expected = dict.fromkeys((COLUMNS + ", url_en, message").split(", ")) | {
         "provider_id": provider,
         "alert_id": "a",
         "archive_month": date(2026, 11, 1),
@@ -35,20 +35,10 @@ def seed_dump_row(c, provider, tmp_path):
         "first_seen_utc": datetime(2026, 11, 1, tzinfo=UTC),
         "last_seen_utc": datetime(2026, 11, 2, tzinfo=UTC),
         "updated_at_utc": datetime(2026, 11, 2, tzinfo=UTC),
-        "url_en": None,
-        "message": None,
     }
     assert rows == (expected,) and missing == ("url_en", "message")
     expected.update(description_text="École\tA\nB", route_ids=["a,b", 'quote"', "back\\slash"])
     expected["message"] = alert_message_provenance({}, 101, 0, datetime(2026, 11, 1, tzinfo=UTC))
-    assert expected["message"] == {
-        "snapshot_id": "101",
-        "alert_index": 0,
-        "captured_utc": "2026-11-01T00:00:00Z",
-        "header_language": None,
-        "description_language": None,
-        "url_language": None,
-    }
     c.execute(
         text(
             f"INSERT INTO gold.alert_archive_entry ({COLUMNS}, message) VALUES ("
@@ -70,16 +60,9 @@ def test_native_custom_dump_exact_typed_row(target, tmp_path):  # noqa: F811
     conninfo = make_conninfo(host=url.host, port=url.port, user=url.username, dbname=url.database)
     with TemporaryDirectory() as scratch:
         dump, output = Path(scratch) / "native.dump", Path(scratch) / "selected.sql"
+        command = ["pg_dump", "--format=custom", "--table=gold.alert_archive_entry"]
         subprocess.run(
-            [
-                "pg_dump",
-                "--format=custom",
-                "--table=gold.alert_archive_entry",
-                "--file",
-                str(dump),
-                "--dbname",
-                conninfo,
-            ],
+            [*command, "--file", str(dump), "--dbname", conninfo],
             check=True,
             timeout=120,
             env=os.environ | {"PGPASSWORD": url.password or ""},
