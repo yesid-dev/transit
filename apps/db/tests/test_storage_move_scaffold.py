@@ -21,7 +21,8 @@ db-storage-report db-test download-latest-backup gc-historic-snapshots history-c
 history-probe-pack history-seal history-verify init-db list-backups list-pipeline-switches
 list-providers load-realtime-silver measure-alert-language-coverage prune-bronze-storage
 prune-gold-storage prune-i3-storage prune-silver-storage prune-storage prune-warm-rollup-storage
-publish-all publish-providers publish-snapshot rebuild-warm-rollups recover recover-delay-sums
+publish-all publish-providers publish-snapshot rebuild-warm-rollups recover
+recover-alert-archive-entries recover-delay-sums
 refresh-gold-realtime repair-delay-periods replay-realtime-silver retention-proof-report
 run-pruner-loop run-realtime-cycle run-realtime-worker run-static-pipeline seed-core
 set-pipeline-switch show-config show-pipeline-switch show-provider sync-alert-archive
@@ -46,7 +47,7 @@ NAMES = [
 ]
 runner = CliRunner()
 # All 50 commands from origin/main at 0fe2e936, before dormant lane registration.
-COMMAND_STRUCTURE_DIGEST = "8617137e5e0917bf54a3dbc66c47e76efa1f7b2c305261b5e5f58c9cd492d877"
+COMMAND_STRUCTURE_DIGEST = "93242efa5b6bb6be42401e5a527e2d97de8ca1635fa605002fa04b2c647d6a60"
 
 
 def command_snapshot(command):
