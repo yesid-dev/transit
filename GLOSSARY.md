@@ -30,6 +30,10 @@ _Avoid_: grain (the reporting span: day, week, month)
 The record of what is kept, in which form, and whether it was checked.
 _Avoid_: archive (the stored copies themselves)
 
+**Build input manifest**:
+The list of every input file of one build with its checksum, plus the stamp and code; two builds with the same manifest give the same bytes.
+_Avoid_: publication manifest (`manifest.json` of the live files)
+
 **Ledger event**:
 One audit record of what changed in a window, who changed it and why.
 
