@@ -6,6 +6,8 @@ guard raises RuntimeError naming the copy and leaves the session usable only for
 exit. PostgreSQL holds the window lock and never raises WindowChanged; R2 may
 raise it at exit, requiring the caller to decide again. Values are validated
 before any write with today's ValueError and WindowNotFound errors.
+R2 commit can also raise LedgerTransitionCommitted (durable; never repeat),
+LedgerTransitionIndeterminate, LedgerContention or LedgerDocumentInvalid.
 State changes persist even with no public audit records; events() stays empty.
 Read-only sessions write nothing. Events may exist without any window state.
 Store event reads take no window lock; session reads still see their own writes.
@@ -68,6 +70,19 @@ class RecordedEvent:
     details: Mapping[str, object]
     actor: str
     at_utc: datetime
+
+
+def validate_no_nul(value: object) -> None:
+    """Refuse PostgreSQL-incompatible text before any storage operation."""
+    if isinstance(value, str) and "\0" in value:
+        raise ValueError("text must not contain NUL")
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            validate_no_nul(key)
+            validate_no_nul(item)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            validate_no_nul(item)
 
 
 def validate_new_copy(copy: NewCopy, identity: WindowIdentity) -> None:

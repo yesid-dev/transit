@@ -20,6 +20,7 @@ from transit_ops.history.ledger_store import (
     WindowIdentity,
     WindowSession,
     validate_new_copy,
+    validate_no_nul,
 )
 
 _WINDOW = """dataset_id=:dataset_id AND provider_id=:provider_id
@@ -49,6 +50,7 @@ class PostgresLedger:
         """Append without a window lock; durability follows the caller's transaction."""
         if kind not in AUDIT_KINDS:
             raise ValueError(f"record_audit refuses kind {kind!r}; use its guarded verb")
+        validate_no_nul((asdict(identity), actor, reason, details))
         sequence = ledger.record_event(
             self.connection,
             **asdict(identity),
