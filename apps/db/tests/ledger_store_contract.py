@@ -18,6 +18,18 @@ INVALID_COPY_VALUES = [
 LIFECYCLE_KINDS = ("seal", "verify", "reject", "current", "trim", "restore", "hold", "unhold")
 
 
+@pytest.fixture
+def r2_store(tmp_path):
+    from transit_ops.control.objects import SnapshotConditionalObjects
+    from transit_ops.history.ledger_r2 import R2Ledger
+    from transit_ops.snapshots.storage import LocalSnapshotStorage
+
+    objects = SnapshotConditionalObjects(
+        LocalSnapshotStorage(str(tmp_path), "ledger/v1"), min_interval_s=0
+    )
+    return R2Ledger(objects, lambda: datetime(2026, 11, 2, tzinfo=UTC), "writer", 3)
+
+
 @pytest.mark.parametrize("kind", LIFECYCLE_KINDS)
 def test_public_event_writer_refuses_lifecycle_kinds(store, make_identity, kind):
     identity = make_identity()
