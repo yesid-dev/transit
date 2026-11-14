@@ -25,7 +25,7 @@ from transit_ops.history.seal_captures import (
     OBJECT_ABSENT,
     OBJECT_MISMATCH,
     CopyContentMissing,
-    reconcile_rejection_marker,
+    _reconcile_rejection,
     reject_capture_copy,
 )
 from transit_ops.history.working_captures import read_working_day, rows_fingerprint
@@ -162,7 +162,7 @@ def _verify_locked(
                 f"another process acted on it ({row.state})"
             )
         _refuse_window(window, row)
-        marker = reconcile_rejection_marker(connection, storage, row, actor=actor)
+        marker = _reconcile_rejection(session, storage, row, actor)
         if marker is not None:
             return marker[1], "rejection marker present"
         args = _WorkingArgs(

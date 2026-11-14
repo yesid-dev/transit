@@ -13,7 +13,8 @@ from typing import TypedDict
 
 from sqlalchemy import Connection, text
 
-from transit_ops.history import datasets, ledger
+from transit_ops.history import datasets, ledger, ledger_select
+from transit_ops.history.ledger_store import NewCopy, WindowIdentity, WindowSession
 from transit_ops.history.manifest import (
     Manifest,
     build_manifest,
@@ -117,14 +118,12 @@ def _read_day(
         ).one_or_none()
         if feed is None:
             raise LookupError(f"feed not found: {provider_id}/{endpoint_key}")
-        window = ledger.window_state(
-            connection,
+        window = ledger_select.ledger_for(connection).window_state(WindowIdentity(
             dataset_id="capture." + endpoint_key,
             provider_id=provider_id,
             window_key=utc_date.isoformat(),
-        )
-        copies = ledger.find_copies(
-            connection,
+        ))
+        copies = ledger_select.ledger_for(connection).find_copies(
             dataset_id="capture." + endpoint_key,
             provider_id=provider_id,
             start=utc_date,
@@ -168,13 +167,10 @@ def _changed_record(
 
 
 def _insert_allocated(
-    connection: Connection, manifest: Manifest, data: bytes, archive_backend: str, fingerprint: str
+    window: WindowSession, manifest: Manifest, data: bytes, archive_backend: str, fingerprint: str
 ) -> None:
     pack = manifest.pack
-    values = dict(
-        dataset_id="capture." + manifest.endpoint_key,
-        provider_id=manifest.provider_id,
-        window_key=manifest.utc_date.isoformat(),
+    copy = NewCopy(
         content_version=manifest.content_version,
         schema_version=datasets.get_dataset("capture." + manifest.endpoint_key).schema_version,
         storage_backend=archive_backend,
@@ -191,30 +187,13 @@ def _insert_allocated(
         poll_record_sha256=manifest.poll_record_sha256,
         first_time_utc=manifest.first_time_utc,
         last_time_utc=manifest.last_time_utc,
-        details=json.dumps(
-            dict(
-                rows_fingerprint=fingerprint,
-                declared_interval_seconds=manifest.declared_interval_seconds,
-                observed_interval_ms=manifest.observed_interval_ms,
-            ),
-            sort_keys=True,
+        details=dict(
+            rows_fingerprint=fingerprint,
+            declared_interval_seconds=manifest.declared_interval_seconds,
+            observed_interval_ms=manifest.observed_interval_ms,
         ),
     )
-    connection.execute(
-        text("""
-        INSERT INTO core.history_archive_copy
-            (dataset_id, provider_id, revision, window_key, content_version, schema_version,
-             storage_backend, storage_path, manifest_path, byte_size, sha256, manifest_sha256,
-             record_count, poll_count, source_bytes, content_sha256, poll_record_sha256,
-             first_time_utc, last_time_utc, allocated_at_utc, details)
-        VALUES (:dataset_id, :provider_id, 0, :window_key, :content_version, :schema_version,
-                :storage_backend, :storage_path, :manifest_path, :byte_size, :sha256,
-                :manifest_sha256,
-                :record_count, :poll_count, :source_bytes, :content_sha256, :poll_record_sha256,
-                :first_time_utc, :last_time_utc, clock_timestamp(), CAST(:details AS jsonb))
-    """),
-        values,
-    )
+    window.insert_allocated_copy(copy)
 
 
 def _prefix(provider_id: str, endpoint_key: str, utc_date: date) -> str:
@@ -224,29 +203,14 @@ def _prefix(provider_id: str, endpoint_key: str, utc_date: date) -> str:
     )
 
 
-def _allocation_state(
-    connection: Connection, identity: dict[str, str], record: PollRecord
-) -> int | None:
-    supersedes = connection.execute(
-        text(
-            "SELECT current_version FROM core.history_window "
-            "WHERE dataset_id=:dataset_id AND provider_id=:provider_id "
-            "AND revision=0 AND window_key=:window_key"
-        ),
-        identity,
-    ).scalar_one()
+def _allocation_state(window: WindowSession, record: PollRecord) -> int | None:
+    state = window.state()
+    assert state is not None
+    supersedes = state.current_version
     empty = not record.polls and not record.processing
     if not empty or supersedes is None:
-        connection.execute(
-            text(
-                "UPDATE core.history_window SET working_state=:working_state "
-                "WHERE dataset_id=:dataset_id AND provider_id=:provider_id "
-                "AND revision=0 AND window_key=:window_key "
-                "AND working_state IN ('present', 'empty')"
-            ),
-            dict(identity, working_state="empty" if empty else "present"),
-        )
-    return int(supersedes) if supersedes is not None else None
+        window.set_working_state("empty" if empty else "present")
+    return supersedes
 
 
 def _allocate(
@@ -260,21 +224,15 @@ def _allocate(
     fingerprint: str,
 ) -> tuple[Manifest, bytes]:
     key = local.record.feed_day
-    identity = dict(
+    identity = WindowIdentity(
         dataset_id="capture." + key.endpoint_key,
         provider_id=key.provider_id,
         window_key=key.utc_date.isoformat(),
     )
-    with connection.begin():
-        version = ledger.allocate_version(
-            connection,
-            dataset_id=identity["dataset_id"],
-            provider_id=key.provider_id,
-            window_key=key.utc_date.isoformat(),
-            above_version=highest,
-        )
-        supersedes = _allocation_state(connection, identity, local.record)
-        sealed_at = connection.execute(text("SELECT clock_timestamp()")).scalar_one()
+    with connection.begin(), ledger_select.ledger_for(connection).session(identity) as window:
+        version = window.allocate_version(above_version=highest)
+        supersedes = _allocation_state(window, local.record)
+        sealed_at = window.now()
         pack_key = _prefix(key.provider_id, key.endpoint_key, key.utc_date) + f"{version}.pack.xz"
         manifest = build_manifest(
             local.record,
@@ -288,7 +246,7 @@ def _allocate(
             sealed_by=sealed_by,
         )
         data = encode_manifest(manifest)
-        _insert_allocated(connection, manifest, data, archive_backend, fingerprint)
+        _insert_allocated(window, manifest, data, archive_backend, fingerprint)
     return manifest, data
 
 
@@ -314,24 +272,8 @@ class _MarkedRejected(RuntimeError):
     pass
 
 
-def _locked_copy(connection: Connection, copy: ledger.ArchiveCopy) -> ledger.ArchiveCopy | None:
-    ledger.acquire_window_lock(
-        connection,
-        dataset_id=copy.dataset_id,
-        provider_id=copy.provider_id,
-        window_key=copy.window_key,
-        revision=copy.revision,
-    )
-    day = date.fromisoformat(copy.window_key)
-    copies = ledger.find_copies(
-        connection,
-        dataset_id=copy.dataset_id,
-        provider_id=copy.provider_id,
-        start=day,
-        end=day,
-        revision=copy.revision,
-    )
-    return next((c for c in copies if c.content_version == copy.content_version), None)
+def _window_identity(copy: ledger.ArchiveCopy) -> WindowIdentity:
+    return WindowIdentity(copy.dataset_id, copy.provider_id, copy.window_key, copy.revision)
 
 
 def _rejection_path(copy: ledger.ArchiveCopy) -> str:
@@ -363,22 +305,12 @@ def _mark_sealed(
     actor: str | None,
 ) -> None:
     identity = _copy_identity(copy)
-    with connection.begin():
-        _locked_copy(connection, copy)
-        marker = reconcile_rejection_marker(connection, storage, copy, actor=actor)
+    with connection.begin(), ledger_select.ledger_for(connection).session(
+        _window_identity(copy)
+    ) as window:
+        marker = _reconcile_rejection(window, storage, copy, actor)
         if marker is None:
-            result = connection.execute(
-                text("""
-            UPDATE core.history_archive_copy SET sealed_at_utc=clock_timestamp()
-            WHERE dataset_id=:dataset_id AND provider_id=:provider_id AND revision=:revision
-              AND window_key=:window_key AND content_version=:content_version
-              AND sealed_at_utc IS NULL AND rejected_at_utc IS NULL
-        """),
-                identity,
-            )
-            if result.rowcount != 1:
-                raise RuntimeError(f"could not seal copy {identity}")
-            ledger.record_event(connection, kind="seal", actor=actor, **identity)
+            window.mark_sealed(copy.content_version, actor=actor)
     if marker is not None:
         raise _MarkedRejected(f"could not seal copy {identity}: {marker[1]}")
 
@@ -390,17 +322,25 @@ def reconcile_rejection_marker(
     *,
     actor: str | None = None,
 ) -> tuple[datetime, str] | None:
-    """Reconcile an authoritative marker inside the caller's window lock transaction."""
+    """Reconcile a marker; WindowChanged propagates without retry.
+
+    PostgreSQL persists at outer commit, R2 at session exit. Callers may rely on
+    neither coupling; PostgreSQL rollback cannot undo R2 writes.
+    """
+    with ledger_select.ledger_for(connection).session(_window_identity(copy)) as window:
+        return _reconcile_rejection(window, storage, copy, actor)
+
+
+def _reconcile_rejection(
+    window: WindowSession, storage: BronzeStorageResolver, copy: ledger.ArchiveCopy,
+    actor: str | None,
+) -> tuple[datetime, str] | None:
     marker = _read_rejection(storage, copy)
+    version = copy.content_version
     if marker is not None:
-        day = date.fromisoformat(copy.window_key)
-        copies = ledger.find_copies(
-            connection, dataset_id=copy.dataset_id, provider_id=copy.provider_id,
-            start=day, end=day, revision=copy.revision,
-        )
-        current = next((c for c in copies if c.content_version == copy.content_version), None)
+        current = next((c for c in window.copies() if c.content_version == version), None)
         if current is not None and current.rejected_at_utc is None:
-            _reject_row(connection, copy, *marker, actor)
+            window.mark_rejected(version, rejected_at=marker[0], reason=marker[1], actor=actor)
     return marker
 
 
@@ -426,44 +366,30 @@ def reject_capture_copy(
     reason: str,
     actor: str | None = None,
 ) -> bool:
-    with connection.begin():
-        current = _locked_copy(connection, copy)
+    """WindowChanged propagates without retry.
+
+    PostgreSQL persists at outer commit, R2 at session exit. Callers may rely on
+    neither coupling; PostgreSQL rollback cannot undo R2 writes.
+    """
+    with connection.begin(), ledger_select.ledger_for(connection).session(
+        _window_identity(copy)
+    ) as window:
+        version = copy.content_version
+        current = next((c for c in window.copies() if c.content_version == version), None)
         fields = ("sealed_at_utc", "rejected_at_utc", "verified_at_utc")
         if current is None or any(
             (getattr(current, k) is None) != (getattr(copy, k) is None) for k in fields
         ):
             return False
-        rejected_at = connection.execute(text("SELECT clock_timestamp()")).scalar_one()
+        rejected_at = window.now()
         data = canonical_json(
             dict(_copy_identity(copy), reason=reason, rejected_at_utc=rejected_at)
         )
         _write_rejection_marker(storage, copy, gzip.compress(data, compresslevel=9, mtime=0))
         marker = _read_rejection(storage, copy)
         assert marker is not None
-        _reject_row(connection, copy, *marker, actor)
+        window.mark_rejected(version, rejected_at=marker[0], reason=marker[1], actor=actor)
     return True
-
-
-def _reject_row(
-    connection: Connection,
-    copy: ledger.ArchiveCopy,
-    rejected_at: datetime,
-    reason: str,
-    actor: str | None,
-) -> None:
-    identity = _copy_identity(copy)
-    result = connection.execute(
-        text("""
-            UPDATE core.history_archive_copy SET rejected_at_utc=:rejected_at, reject_reason=:reason
-            WHERE dataset_id=:dataset_id AND provider_id=:provider_id AND revision=:revision
-              AND window_key=:window_key AND content_version=:content_version
-              AND rejected_at_utc IS NULL AND verified_at_utc IS NULL
-        """),
-        dict(identity, rejected_at=rejected_at, reason=reason),
-    )
-    if result.rowcount != 1:
-        raise RuntimeError(f"could not reject copy {identity}")
-    ledger.record_event(connection, kind="reject", reason=reason, actor=actor, **identity)
 
 
 def _object_matches(
@@ -491,8 +417,8 @@ def _day_copies(
     connection: Connection, provider: str, endpoint: str, day: date
 ) -> list[ledger.ArchiveCopy]:
     with connection.begin():
-        return ledger.find_copies(
-            connection, dataset_id="capture." + endpoint, provider_id=provider, start=day, end=day
+        return ledger_select.ledger_for(connection).find_copies(
+            dataset_id="capture." + endpoint, provider_id=provider, start=day, end=day
         )
 
 
@@ -596,6 +522,11 @@ def seal_capture_day(
     sealed_by: str,
     actor: str | None = None,
 ) -> ledger.ArchiveCopy:
+    """WindowChanged propagates without retry.
+
+    PostgreSQL persists at outer commit, R2 at session exit. Callers may rely on
+    neither coupling; PostgreSQL rollback cannot undo R2 writes.
+    """
     if not sealed_by or actor == "" or archive_backend not in ("local", "s3"):
         raise ValueError("invalid sealed_by, actor or archive_backend")
     if connection.in_transaction():

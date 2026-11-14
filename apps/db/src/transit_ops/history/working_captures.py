@@ -1,4 +1,7 @@
-"""Read the raw portion of one working feed-day inside the caller's transaction."""
+"""Read the raw portion of one working feed-day inside the caller's transaction.
+
+Ledger evidence reads are lock-free, including in read-only transactions.
+"""
 
 import re
 from datetime import UTC, date, datetime, time, timedelta
@@ -6,7 +9,9 @@ from typing import Any
 
 from sqlalchemy import Connection, text
 
+from transit_ops.history import ledger_select
 from transit_ops.history.datasets import CaptureSource, get_dataset
+from transit_ops.history.ledger_store import WindowIdentity
 from transit_ops.history.manifest import Manifest
 from transit_ops.history.poll_record import (
     CaptureEntry,
@@ -307,22 +312,13 @@ def _evidence_details(details: Any, family: str, event_id: int) -> tuple[datetim
 
 
 def _recorded_evidence(connection: Connection, day: FeedDayKey) -> dict[int, ProcessingEntry]:
-    events = connection.execute(
-        text("""
-        SELECT event_id, details FROM core.history_event
-        WHERE kind = 'processing_evidence' AND dataset_id = :dataset_id
-          AND provider_id = :provider_id AND revision = 0 AND window_key = :window_key
-        ORDER BY event_id
-        """),
-        dict(
-            dataset_id="capture." + day.endpoint_key,
-            provider_id=day.provider_id,
-            window_key=day.utc_date.isoformat(),
-        ),
-    ).mappings()
+    events = ledger_select.ledger_for(connection).events(
+        WindowIdentity("capture." + day.endpoint_key, day.provider_id, day.utc_date.isoformat()),
+        kinds={"processing_evidence"},
+    )
     result: dict[int, ProcessingEntry] = {}
     for event in events:
-        completed, counts = _evidence_details(event["details"], day.index_family, event["event_id"])
+        completed, counts = _evidence_details(dict(event.details), day.index_family, event.sequence)
         for capture_id, count in counts.items():
             previous = result.get(capture_id)
             # Events arrive in id order, so equal completion times prefer the later id.
