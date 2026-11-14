@@ -45,6 +45,7 @@ class WindowProof:
     extra_in_copy: int
     in_key_order: bool
     checked_with: str
+    verified: bool
 
     def to_json(self) -> bytes:
         return json.dumps(
@@ -165,16 +166,19 @@ def prove_window(
         )
         for left, right, reason in (
             ("proof_csv", "proof_copy", "missing_rows"),
+            # Equal counts make a nonempty reverse difference unreachable after the first passes.
             ("proof_copy", "proof_csv", "extra_rows"),
         ):
             _check_difference(connection, left, right, keys, reason)
-        _check_order(connection, parquet_path, keys)
+        _check_order(connection, parquet_path, schema)
     # Bind the result to the same bytes checked before the SQL scans (H1).
     if _digest(csv_path)[0] != checks.content_sha256:
         raise CopyDiffers("content_digest", "CSV changed during row checks")
     if _digest(parquet_path) != (checks.object_sha256, checks.object_bytes):
         raise CopyDiffers("object_digest", "Parquet changed during row checks")
-    return WindowProof(**asdict(checks), missing_from_copy=0, extra_in_copy=0, in_key_order=True)
+    return WindowProof(
+        **asdict(checks), missing_from_copy=0, extra_in_copy=0, in_key_order=True, verified=False
+    )
 
 
 def _check_difference(
@@ -194,17 +198,23 @@ def _check_difference(
         raise CopyDiffers(reason, f"{difference[0]} rows; first key {difference[1:]!r}"[:500])
 
 
-def _check_order(connection: duckdb.DuckDBPyConnection, path: Path, keys: list[str]) -> None:
+def _check_order(connection: duckdb.DuckDBPyConnection, path: Path, schema: TableSchema) -> None:
+    types = schema.duckdb_types()
+    mapped = {name: f"_proof_column_{index}" for index, name in enumerate(types)}
+    columns = [
+        {"name": mapped[name], "type": kind, "default_value": None} for name, kind in types.items()
+    ]
+    keys = [mapped[name] for name in schema.primary_key]
     key_sql = ", ".join(keys)
     null_key = " OR ".join(f"{key} IS NULL" for key in keys)
     difference = connection.execute(
         f"WITH positioned AS (SELECT row({key_sql}) AS key, "
         f"({null_key}) AS null_key, file_row_number AS position "
-        "FROM read_parquet(?, hive_partitioning=false, file_row_number=true)), "
+        "FROM read_parquet(?, hive_partitioning=false, schema=map(?, ?), file_row_number=true)), "
         "ordered AS (SELECT *, lag(key) OVER (ORDER BY position) AS previous FROM positioned) "
         "SELECT position FROM ordered WHERE null_key OR (position > 0 AND key <= previous) "
         "ORDER BY position LIMIT 1",
-        [str(path)],
+        [str(path), list(types), columns],
     ).fetchone()
     if difference is not None:
         raise CopyDiffers(

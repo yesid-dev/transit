@@ -26,6 +26,7 @@ def test_returns_a_proof_for_an_equal_window(tmp_path):
     assert proof.extra_in_copy == 0
     assert proof.in_key_order is True
     assert proof.checked_with == duckdb.__version__
+    assert proof.verified is False
 
 
 def window(tmp_path, data=b'id,value\n1,\n2,""\n', pg_type="text", names=("id", "value")):
@@ -350,11 +351,11 @@ def test_key_order_is_bytewise_and_uses_the_whole_quoted_key(tmp_path):
 def test_proof_json_is_canonical_and_stable():
     from transit_ops.lake.parquet_verify import WindowProof
 
-    proof = WindowProof(2, "c", "o", 10, "s", 0, 0, True, "é")
+    proof = WindowProof(2, "c", "o", 10, "s", 0, 0, True, "é", False)
     expected = (
         b'{"checked_with":"\xc3\xa9","content_sha256":"c","extra_in_copy":0,'
         b'"in_key_order":true,"missing_from_copy":0,"object_bytes":10,'
-        b'"object_sha256":"o","rows":2,"schema_sha256":"s"}'
+        b'"object_sha256":"o","rows":2,"schema_sha256":"s","verified":false}'
     )
     assert proof.to_json() == expected
     assert proof.to_json() == expected
@@ -393,3 +394,69 @@ def test_proves_an_empty_window(tmp_path):
     proof = prove_window(csv, written.path, written.schema, expect=expected, temp_dir=tmp_path)
     assert proof.rows == 0
     assert proof.in_key_order is True
+
+
+@pytest.mark.parametrize("value,replacement", [("-0", "0.0"), ("0", "-0.0")])
+def test_signed_zero_equality_is_not_verified(tmp_path, value, replacement):
+    from transit_ops.lake.parquet_verify import prove_window
+
+    csv, written, expected = window(tmp_path, f"id,value\n1,{value}\n".encode(), "double precision")
+    target = changed_file(
+        tmp_path, written, f"SELECT id, {replacement}::DOUBLE AS value FROM original"
+    )
+    proof = prove_window(csv, target, written.schema, expect=expected, temp_dir=tmp_path)
+    assert proof.missing_from_copy == proof.extra_in_copy == 0
+    assert proof.verified is False
+    assert b'"verified":false' in proof.to_json()
+
+
+def test_multiplicity_before_key_order(tmp_path):
+    from transit_ops.lake.parquet_verify import prove_window
+
+    csv, written, expected = window(tmp_path, b"id,value\n1,x\n1,x\n2,y\n")
+    target = changed_file(
+        tmp_path, written, "SELECT DISTINCT * FROM original UNION ALL SELECT 2, 'y'"
+    )
+    with pytest.raises(CopyDiffers) as error:
+        prove_window(csv, target, written.schema, expect=expected, temp_dir=tmp_path)
+    assert error.value.reason == "missing_rows"
+    assert error.value.detail == "1 rows; first key (1,)"
+
+
+@pytest.mark.parametrize("name", ["file_row_number", "FILE_ROW_NUMBER", "File_Row_Number"])
+@pytest.mark.parametrize("role", ["key", "payload"])
+def test_proves_file_row_number_columns(tmp_path, name, role):
+    from transit_ops.lake.parquet_verify import prove_window
+
+    names = (name, "_proof_column_0") if role == "key" else ("_proof_column_1", name)
+    data = f"{names[0]},{names[1]}\n1,x\n2,y\n".encode()
+    csv, written, expected = window(tmp_path, data, names=names)
+    proof = prove_window(csv, written.path, written.schema, expect=expected, temp_dir=tmp_path)
+    assert proof.rows == 2
+    assert proof.in_key_order is True
+    # Check the mapped key's values, rather than the generated row index or payload.
+    target = changed_file(tmp_path, written, "SELECT * FROM original ORDER BY 1 DESC")
+    with pytest.raises(CopyDiffers) as error:
+        prove_window(csv, target, written.schema, expect=expected, temp_dir=tmp_path)
+    assert error.value.reason == "key_order"
+    assert error.value.detail == "Non-increasing primary key at file row 1 (zero-based)"
+
+
+@pytest.mark.parametrize("position", [0, 1])
+def test_refuses_null_keys_in_directly_written_parquet(tmp_path, position):
+    from transit_ops.lake.parquet_verify import prove_window
+
+    csv, written, expected = window(tmp_path, b"id,value\n1,x\n2,y\n")
+    data = b"id,value\n,x\n2,y\n" if position == 0 else b"id,value\n1,x\n,y\n"
+    csv.write_bytes(data)
+    expected = replace(expected, content_sha256=hashlib.sha256(data).hexdigest())
+    target = changed_file(
+        tmp_path,
+        written,
+        f"SELECT CASE WHEN id={position + 1} THEN NULL ELSE id END AS id, value FROM original",
+        changes={"transit.content_sha256": expected.content_sha256},
+    )
+    with pytest.raises(CopyDiffers) as error:
+        prove_window(csv, target, written.schema, expect=expected, temp_dir=tmp_path)
+    assert error.value.reason == "key_order"
+    assert error.value.detail == f"Non-increasing primary key at file row {position} (zero-based)"
