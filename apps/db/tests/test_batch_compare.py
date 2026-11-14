@@ -196,3 +196,32 @@ def test_missing_runtime_column_is_a_shape_difference(column):
     for a, b in [(left, missing), (missing, left), (missing, missing)]:
         (difference,) = compare_tables(a, b)
         assert difference.kind == "columns"
+
+
+def test_warm_runtime_kind_is_independent_of_host_timezone():
+    class EasternClock(datetime):
+        def astimezone(self, tz=None):
+            # Pin naive conversion to UTC-05 even when the test host is UTC.
+            local = self.replace(tzinfo=self.tzinfo or timezone(timedelta(hours=-5)))
+            return datetime.astimezone(local, tz)
+
+    mature = EasternClock(2026, 11, 1, 0, 6, tzinfo=UTC)
+    premature = mature.replace(minute=1, tzinfo=None)
+    left, right = runtime_table(built_at_utc=mature), runtime_table(built_at_utc=premature)
+    (difference,) = compare_tables(left, right)
+    assert difference.column == "built_at_utc"
+
+
+@pytest.mark.parametrize("value", [datetime(2026, 11, 1), "<runtime>", 42])
+def test_route_hour_runtime_mask_keeps_kind(value):
+    left = runtime_table("gold.route_delay_hourly")
+    right = runtime_table("gold.route_delay_hourly", built_at_utc=value)
+    (difference,) = compare_tables(left, right)
+    assert difference.column == "built_at_utc"
+
+
+@pytest.mark.parametrize("column", ["built_at_utc", "period_start_utc"])
+def test_warm_flag_refuses_naive_clock_by_name(column):
+    table = runtime_table(**{column: datetime(2026, 11, 1)})
+    with pytest.raises(ValueError, match=column):
+        compare_tables(table, table)

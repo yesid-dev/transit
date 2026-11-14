@@ -17,8 +17,10 @@ RUNTIME_ONLY_COLUMNS: Mapping[str, frozenset[str]] = MappingProxyType(
         "gold.warm_rollup_periods": frozenset({"built_at_utc", "invalidated_at_utc"}),
     }
 )
-# Readiness predicate: gold/delay_periods.py:120,160 (batch ruling R19).
-_WARM_FLAG = "built_after_period"
+# Readiness predicate: gold/delay_periods.py:120,160 (batch rulings R19, R19a).
+_DERIVED_FLAGS = {
+    "gold.warm_rollup_periods": (("built_after_period", ("built_at_utc", "period_start_utc")),)
+}
 
 
 @dataclass(frozen=True)
@@ -123,44 +125,49 @@ def compare_bodies(
     return differences
 
 
+def _runtime(value: object) -> object:
+    if value is None:
+        return None
+    return "<runtime>", type(value), isinstance(value, datetime) and value.utcoffset() is not None
+
+
 def _project(table: TableRows) -> tuple[tuple[str, ...], list[tuple[object, ...]]]:
     ignored = RUNTIME_ONLY_COLUMNS.get(table.relation, frozenset())
-    columns = table.columns
-    rows = [
-        tuple(
-            "<runtime>" if name in ignored and value is not None else value
-            for name, value in zip(columns, row, strict=True)
-        )
+    return table.columns, [
+        tuple(_runtime(v) if n in ignored else v for n, v in zip(table.columns, row, strict=True))
         for row in table.rows
     ]
-    if table.relation == "gold.warm_rollup_periods":
-        rows = [
-            (
-                *masked,
-                _warm_flag(
-                    row[columns.index("built_at_utc")], row[columns.index("period_start_utc")]
-                ),
-            )
-            for row, masked in zip(table.rows, rows, strict=True)
-        ]
-        columns += (_WARM_FLAG,)
-    return columns, rows
 
 
 def _warm_flag(built: object, period: object) -> bool | None:
+    for name, value in (("built_at_utc", built), ("period_start_utc", period)):
+        if value is not None and (not isinstance(value, datetime) or value.utcoffset() is None):
+            raise ValueError(f"gold.warm_rollup_periods.{name}: aware datetime required")
     if built is None or period is None:
         return None
-    if not isinstance(built, datetime) or not isinstance(period, datetime):
-        raise ValueError("gold.warm_rollup_periods: built_at_utc/period_start_utc need datetime")
+    assert isinstance(built, datetime) and isinstance(period, datetime)
     return built.astimezone(UTC) >= period.astimezone(UTC) + timedelta(minutes=5)
+
+
+def _compare_flags(expected: TableRows, actual: TableRows) -> list[RowDifference]:
+    differences = []
+    indexes = {name: i for i, name in enumerate(expected.columns)}
+    for a, b in zip(expected.rows, actual.rows, strict=True):
+        key = tuple(a[indexes[name]] for name in expected.key)
+        for flag, (built, period) in _DERIVED_FLAGS.get(expected.relation, ()):
+            i, j = indexes[built], indexes[period]
+            x, y = _warm_flag(a[i], a[j]), _warm_flag(b[i], b[j])
+            if x != y:
+                differences.append(RowDifference(expected.relation, key, "value", flag, x, y))
+    return differences
 
 
 def compare_tables(expected: TableRows, actual: TableRows) -> list[RowDifference]:
     shape = expected.relation, expected.columns, expected.key
     other_shape = actual.relation, actual.columns, actual.key
     required = RUNTIME_ONLY_COLUMNS.get(expected.relation, frozenset())
-    if expected.relation == "gold.warm_rollup_periods":
-        required = required | {"period_start_utc"}
+    flags = _DERIVED_FLAGS.get(expected.relation, ())
+    required = required | {column for _, inputs in flags for column in inputs}
     if (
         shape != other_shape
         or not required <= set(expected.columns)
@@ -187,14 +194,7 @@ def compare_tables(expected: TableRows, actual: TableRows) -> list[RowDifference
             continue
         for column, x, y in zip(columns, a, b, strict=True):
             if _identity(x) != _identity(y):
-                differences.append(
-                    RowDifference(
-                        expected.relation,
-                        key,
-                        "type" if type(x) is not type(y) else "value",
-                        column,
-                        x,
-                        y,
-                    )
-                )
-    return differences
+                kind: Literal["type", "value"] = "type" if type(x) is not type(y) else "value"
+                differences.append(RowDifference(expected.relation, key, kind, column, x, y))
+    # Diagnose kind differences before derived clocks can read invalid values.
+    return differences or _compare_flags(expected, actual)
