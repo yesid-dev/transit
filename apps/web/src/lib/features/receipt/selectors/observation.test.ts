@@ -1,9 +1,36 @@
+import { Window } from 'happy-dom';
 import { formatDateKey } from '#lib/utils/time.ts';
 import { stampCopy } from '#lib/v1/stamp.copy.ts';
 import { copy } from '../receipt.copy';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { IsoUtc, Manifest, Receipt, ReceiptsIndex } from '#lib/v1/schemas/index.ts';
 import { receiptObservation } from './observation';
+import { receiptBaseline, receiptInventory } from '../__fixtures__/receiptRenderBaseline';
+
+it('has the exact copied evidence inventory', () =>
+	receiptInventory('copy-', ['copy-en', 'copy-fr', 'copy-null-en', 'copy-null-fr']));
+it.each(['en', 'fr'] as const)(
+	'receipt evidence copy matches the pre-refactor text in %s',
+	(locale) => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		vi.setSystemTime(new Date('2026-06-16T02:00:20Z'));
+		for (const missing of [false, true]) {
+			const text = receiptObservation(
+				missing ? { ...receipt, otp_pct: null, avg_delay_min: null } : receipt,
+				index,
+				manifest,
+				locale,
+				'https://transit.example',
+			);
+			const container = new Window().document.createElement('pre');
+			container.textContent = text;
+			receiptBaseline(
+				`copy-${missing ? 'null-' : ''}${locale}`,
+				container as unknown as HTMLElement,
+			);
+		}
+	},
+);
 
 const receipt: Receipt = {
 	date: '2026-06-17',

@@ -4,6 +4,12 @@ import { HistoryArtifactContractError } from '#lib/v1/history/index.ts';
 import type { IsoUtc, Receipt, ReceiptsIndex } from '#lib/v1/schemas/index.ts';
 import { dataRefresh } from '#lib/stores/index.ts';
 import { copy as receiptCopy } from './receipt.copy';
+import { tick } from 'svelte';
+import {
+	captureEnvironment,
+	receiptBaseline,
+	receiptInventory,
+} from './__fixtures__/receiptRenderBaseline';
 
 vi.mock('$app/env/public', async () => ({
 	...(await import('./../../../tests/publicEnv.ts')).PUBLIC_ENV,
@@ -170,8 +176,91 @@ beforeEach(() => {
 
 afterEach(() => {
 	cleanup();
+	vi.useRealTimers();
 	currentLocale.value = 'en';
 	vi.unstubAllGlobals();
+});
+
+const transitionNames = [
+	'index-loading',
+	'anchor-loading',
+	'receipt-loading',
+	'empty',
+	'retry-loading',
+	'loaded',
+	'date-pending',
+	'superseded',
+	'older',
+	'refresh-failed',
+	'retried',
+	'mismatch',
+];
+it('has the exact receipt transition inventory', () =>
+	receiptInventory(
+		'transition-',
+		transitionNames.flatMap((name) => ['en', 'fr'].map((locale) => `transition-${name}-${locale}`)),
+	));
+it.each(['en', 'fr'] as const)('pins receipt transitions in %s', async (locale) => {
+	captureEnvironment();
+	currentLocale.value = locale;
+	const indexGate = deferred<ReceiptsIndex>();
+	ports.getReceiptsIndex.mockReturnValue(indexGate.promise);
+	const anchorGate = deferred<null>();
+	ports.getHistoricAvailability.mockReturnValue(anchorGate.promise);
+	const { container } = render(AccountabilityReceipt);
+	const capture = async (name: string) => {
+		await tick();
+		await tick();
+		receiptBaseline(`transition-${name}-${locale}`, container);
+	};
+	await capture('index-loading');
+	indexGate.resolve(INDEX);
+	await tick();
+	await capture('anchor-loading');
+	anchorGate.resolve(null);
+	await waitFor(() => expect(ports.getAdvertisedReceipt).toHaveBeenCalledTimes(1));
+	await capture('receipt-loading');
+	receiptGates.get(DATES[2])!.resolve(null);
+	await waitFor(() =>
+		expect(container.querySelector('[data-slot="receipt-empty"]')).not.toBeNull(),
+	);
+	await capture('empty');
+	const change = async (date: string) =>
+		fireEvent.change(within(container).getByLabelText(receiptCopy[locale].datePicker.label), {
+			target: { value: date },
+		});
+	await change(DATES[1]);
+	await capture('retry-loading');
+	receiptGates.get(DATES[1])!.resolve(receipt(DATES[1]));
+	await waitFor(() => expect(card(container, 'receipt-main')).not.toBeNull());
+	await capture('loaded');
+	receiptGates.set(DATES[2], deferred<Receipt | null>());
+	await change(DATES[2]);
+	await capture('date-pending');
+	await change(DATES[0]);
+	receiptGates.get(DATES[2])!.resolve({ ...receipt(DATES[2]), otp_pct: 99 });
+	await capture('superseded');
+	receiptGates.get(DATES[0])!.resolve(receipt(DATES[0]));
+	await waitFor(() => expect(card(container, 'receipt-main')).not.toBeNull());
+	await capture('older');
+	const refresh = deferred<Receipt | null>();
+	receiptGates.set(DATES[0], refresh);
+	dataRefresh.bumpEpoch();
+	await waitFor(() => expect(ports.getAdvertisedReceipt.mock.calls.at(-1)?.[1]).toBe(DATES[0]));
+	refresh.reject(new Error('refresh failed'));
+	await waitFor(() => expect(within(container).getByRole('alert')).toBeInTheDocument());
+	await capture('refresh-failed');
+	receiptGates.set(DATES[0], deferred<Receipt | null>());
+	await fireEvent.click(
+		within(container).getByRole('button', { name: locale === 'en' ? 'Retry' : 'Réessayer' }),
+	);
+	receiptGates.get(DATES[0])!.resolve(receipt(DATES[0]));
+	await waitFor(() => expect(card(container, 'receipt-main')).not.toBeNull());
+	await capture('retried');
+	receiptGates.set(DATES[2], deferred<Receipt | null>());
+	await change(DATES[2]);
+	receiptGates.get(DATES[2])!.resolve(receipt(DATES[0]));
+	await capture('mismatch');
 });
 
 describe('AccountabilityReceipt — asynchronous date transitions', () => {
