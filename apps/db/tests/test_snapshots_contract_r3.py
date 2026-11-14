@@ -435,6 +435,24 @@ def test_headlines_refuse_missing_identity_and_rankings(field, identity):
             r3.Receipt.model_validate(receipt_payload() | {field: invalid})
 
 
+@pytest.mark.parametrize("field,identity", [("worst_line", "short"), ("worst_stop", "code")])
+@pytest.mark.parametrize(
+    "id_fields",
+    [{}, {"id": 17}, {"id": None}, {"id": {}}, {"id": []}, {"id": True}],
+    ids=["missing", "integer", "null", "mapping", "list", "boolean"],
+)
+def test_headlines_refuse_missing_or_non_string_ids(field, identity, id_fields):
+    headline = {
+        identity: "X",
+        "name": None,
+        "on_time_pct": None,
+        "on_time_delta_pts": None,
+    } | id_fields
+    with pytest.raises(ValidationError) as error:
+        r3.Receipt.model_validate(receipt_payload() | {field: headline})
+    assert [item["loc"] for item in error.value.errors()] == [(field, "id")]
+
+
 def test_receipt_measured_readings_can_coexist_with_unmeasured_service():
     value = r3.Receipt.model_validate(
         receipt_payload()
