@@ -1,10 +1,16 @@
-"""Strict engine parity checks; diagnostics never relax equality."""
+"""Strict engine parity checks; diagnostics never relax equality.
+
+Exactness covers the Python values supplied by the reader. Interval, json/jsonb,
+numeric arrays, timetz and unconstrained numeric must arrive as PostgreSQL's exact
+text (copy-out R4): their Python forms may lose the printed representation.
+"""
 
 import json
+import math
 import struct
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from decimal import Decimal
 from types import MappingProxyType
 from typing import Literal
@@ -60,13 +66,15 @@ def _parse_body(body: bytes) -> object:
 def _identity(value: object) -> object:
     """Retain representations Python equality would otherwise collapse."""
     if isinstance(value, float):
-        return type(value), struct.pack("<d", value)
+        return type(value), "NaN" if math.isnan(value) else struct.pack("<d", value)
     if isinstance(value, Decimal):
         return type(value), value.as_tuple()
     if isinstance(value, datetime):
         offset = value.utcoffset()
         instant = value if offset is None else value.astimezone(UTC)
-        return type(value), instant.isoformat(), offset, instant.fold
+        return type(value), instant.isoformat(), offset, instant.fold if offset is None else None
+    if isinstance(value, time):
+        return type(value), value.isoformat(), value.utcoffset(), value.tzinfo is None
     if isinstance(value, (list, tuple)):
         return type(value), tuple(_identity(item) for item in value)
     if isinstance(value, dict):

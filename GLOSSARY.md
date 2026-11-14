@@ -3,6 +3,10 @@ A public dashboard that tells riders how reliable their transit service is, from
 
 ## Language
 
+**Copy proof**:
+The record that one copy was read back and found equal to what it means, row for row; without it a copy is not verified. Typed row equality alone still needs the canonical-text check before verification.
+_Avoid_: receipt (an upload record)
+
 **Edition index**:
 The record that groups a schedule edition's table copies and their proofs, identifies their GTFS file and field names, and states whether its source zip is archived.
 
@@ -29,6 +33,10 @@ _Avoid_: grain (the reporting span: day, week, month)
 **History ledger**:
 The record of what is kept, in which form, and whether it was checked.
 _Avoid_: archive (the stored copies themselves)
+
+**Build input manifest**:
+The list of every input file of one build with its checksum, plus the stamp and code; two builds with the same manifest give the same bytes.
+_Avoid_: publication manifest (`manifest.json` of the live files)
 
 **Ledger event**:
 One audit record of what changed in a window, who changed it and why.

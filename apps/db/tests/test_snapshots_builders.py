@@ -1079,6 +1079,7 @@ def test_build_routes_index():
                         "route_long_name": "Côte-Vertu",
                         "route_color": "009EE0",
                         "route_type": 3,
+                        "live_data": True,
                     },
                     {
                         "route_id": "999",
@@ -1086,6 +1087,7 @@ def test_build_routes_index():
                         "route_long_name": "No History",
                         "route_color": None,
                         "route_type": 1,
+                        "live_data": False,
                     },
                 ]
             )

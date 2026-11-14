@@ -122,6 +122,23 @@ describe('current schemas accept payloads that carry r3 objects and the new flat
 	it.each(CASES)('%s', (label, schema, base, withAdditions) => {
 		const expected = parsePort(label, schema, base);
 		expect(() => parsePort(label, schema, withAdditions)).not.toThrow();
-		expect(parsePort(label, schema, withAdditions)).toEqual(expected);
+		const actual = parsePort(label, schema, withAdditions);
+		if (label === 'static/routes_index.json') {
+			const legacy = (value: unknown) => {
+				const parsed = RoutesIndexSchema.parse(value);
+				return { ...parsed, routes: parsed.routes.map(({ live_data: _, ...entry }) => entry) };
+			};
+			expect(legacy(actual)).toEqual(legacy(expected));
+		} else {
+			expect(actual).toEqual(expected);
+		}
 	});
+});
+
+it.each([false, true, null])('retains optional static live_data=%s', (live_data) => {
+	const parsed = parsePort('static/routes_index.json', RoutesIndexSchema, {
+		generated_utc: ISO,
+		routes: [{ ...route, live_data }],
+	});
+	expect(parsed.routes[0].live_data).toBe(live_data);
 });

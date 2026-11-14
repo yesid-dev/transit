@@ -506,6 +506,7 @@ def test_publish_static_writes_expected_keys() -> None:
                 "route_long_name": "Côte-Vertu",
                 "route_color": "009EE0",
                 "route_type": 3,
+                "live_data": True,
             }
         ],
         "static.stops_index": [

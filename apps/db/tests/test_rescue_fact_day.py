@@ -171,6 +171,93 @@ def test_rescue_refuses_queued_exclusive_lock_and_cancels_only_itself(tmp_path, 
 
 
 @pytest.fixture
+def cloned_fact_database(real_db_engine):
+    from parallel_db import _database_url, _execute, guarded_connect_kwargs
+
+    base = real_db_engine.url.render_as_string(hide_password=False)
+    # Clone the same migrated base as xdist, never an active worker database.
+    template = guarded_connect_kwargs(real_db_engine.url)["dbname"].split("_xdist_")[0]
+    name = f"{template}_xdist_{uuid4().hex[:16]}_gw0"
+    target = _database_url(base, name)
+    guarded_connect_kwargs(target)  # Apply the harness's disposable-target guard.
+    quote = real_db_engine.dialect.identifier_preparer.quote_identifier
+    _execute(base, f"CREATE DATABASE {quote(name)} TEMPLATE {quote(template)}")
+    try:
+        yield target
+    finally:
+        _execute(base, f"DROP DATABASE {quote(name)} WITH (FORCE)")
+
+
+@pytest.mark.parametrize("other_database", [True, False], ids=["other_database", "own_database"])
+@pytest.mark.parametrize("table", list(rescue.SCHEMAS))
+def test_guarded_scopes_queued_exclusive_locks_to_current_database(
+    real_db_engine, cloned_fact_database, tmp_path, monkeypatch, other_database, table
+):
+    from parallel_db import guarded_connect_kwargs
+
+    def connect():
+        return rescue.psycopg.connect(
+            **guarded_connect_kwargs(real_db_engine.url),
+            autocommit=True,
+            application_name="transit-ls04-rescue-" + uuid4().hex,
+        )
+
+    monkeypatch.setattr(rescue, "connect", connect)
+    target = cloned_fact_database if other_database else real_db_engine.url
+    relation = "gold." + table
+    with (
+        connect() as source,
+        connect() as observer,
+        rescue.psycopg.connect(**guarded_connect_kwargs(target), autocommit=True) as holder,
+        rescue.psycopg.connect(**guarded_connect_kwargs(target), autocommit=True) as waiter,
+        holder.transaction(),
+    ):
+        source_oid = observer.execute("SELECT %s::regclass::oid", (relation,)).fetchone()[0]
+        assert holder.execute("SELECT %s::regclass::oid", (relation,)).fetchone() == (source_oid,)
+        holder.execute(f"LOCK TABLE {relation} IN ACCESS SHARE MODE")
+        errors = []
+
+        def queue_lock():
+            try:
+                with waiter.transaction():
+                    waiter.execute("SET LOCAL statement_timeout = '15s'")
+                    waiter.execute(f"LOCK TABLE {relation} IN ACCESS EXCLUSIVE MODE")
+            except rescue.psycopg.errors.QueryCanceled:
+                pass  # Explicit cleanup below cancels the pending request.
+            except Exception as error:
+                errors.append(error)
+
+        worker = threading.Thread(target=queue_lock, daemon=True)
+        worker.start()
+        try:
+            ready_by = rescue.time.monotonic() + 5
+            while not observer.execute(
+                "SELECT EXISTS (SELECT FROM pg_locks WHERE pid=%s AND relation=%s "
+                "AND mode='AccessExclusiveLock' AND NOT granted)",
+                (waiter.info.backend_pid, source_oid),
+            ).fetchone()[0]:
+                assert rescue.time.monotonic() < ready_by, "exclusive request never queued"
+                rescue.time.sleep(0.02)
+            # No backend is blocked by the source: isolate the relation-lock half.
+            assert observer.execute(
+                "SELECT EXISTS (SELECT FROM pg_stat_activity WHERE pid <> %s "
+                "AND %s = ANY(pg_blocking_pids(pid)))",
+                (source.info.backend_pid, source.info.backend_pid),
+            ).fetchone() == (False,)
+            if other_database:
+                with rescue.guarded(source, args(tmp_path)) as protected:
+                    assert protected.execute("SELECT 1").fetchone() == (1,)
+            else:
+                with pytest.raises(ValueError, match="interference_or_deadline"):
+                    with rescue.guarded(source, args(tmp_path)):
+                        pytest.fail("own-database exclusive request must stop the read")
+        finally:
+            waiter.cancel_safe(timeout=2)
+            worker.join(5)
+        assert not worker.is_alive() and not errors
+
+
+@pytest.fixture
 def fact_source(real_db_engine, seed_provider):
     provider = "rescue-" + uuid4().hex
     start = datetime(2026, 11, 1, tzinfo=UTC)

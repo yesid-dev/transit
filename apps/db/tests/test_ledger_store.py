@@ -1,9 +1,10 @@
 from contextlib import nullcontext
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
-from ledger_store_contract import new_copy
+from ledger_store_contract import INVALID_COPY_VALUES, LIFECYCLE_KINDS, new_copy
 from sqlalchemy import create_engine
 
 from transit_ops.history.ledger_postgres import PostgresLedger
@@ -54,6 +55,38 @@ def test_copy_times_are_required_before_database_writes(verb, kwargs):
 class ConflictConnection(TransactionConnection):
     def execute(self, *args):
         return SimpleNamespace(rowcount=0)
+
+
+@pytest.mark.parametrize("field,value", INVALID_COPY_VALUES)
+def test_invalid_new_copy_is_named_before_any_database_write(monkeypatch, field, value):
+    connection = TransactionConnection()
+    with PostgresLedger(connection).session(
+        WindowIdentity("capture.trip_updates", "network", "2026-11-01")
+    ) as session:
+        monkeypatch.setattr(connection, "execute", lambda *args: pytest.fail("unexpected write"))
+        with pytest.raises(ValueError, match=field):
+            session.insert_allocated_copy(replace(new_copy(1), **{field: value}))
+
+
+@pytest.mark.parametrize("kind", LIFECYCLE_KINDS)
+def test_public_event_writer_refuses_lifecycle_before_database_write(monkeypatch, kind):
+    connection = TransactionConnection()
+    with PostgresLedger(connection).session(
+        WindowIdentity("capture.trip_updates", "network", "2026-11-01")
+    ) as session:
+        monkeypatch.setattr(connection, "execute", lambda *args: pytest.fail("unexpected write"))
+        with pytest.raises(ValueError, match=kind):
+            session.record_event(kind)
+
+
+def test_copy_insertion_refuses_nonzero_revision_before_database_write(monkeypatch):
+    connection = TransactionConnection()
+    with PostgresLedger(connection).session(
+        WindowIdentity("gold.network_vehicle_day", "network", "2026-11", revision=1)
+    ) as session:
+        monkeypatch.setattr(connection, "execute", lambda *args: pytest.fail("unexpected write"))
+        with pytest.raises(ValueError, match="revision"):
+            session.insert_allocated_copy(new_copy(1))
 
 
 def test_copy_insert_refuses_an_existing_version():

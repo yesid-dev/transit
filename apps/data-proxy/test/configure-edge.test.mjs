@@ -427,7 +427,7 @@ test("the production smoke pins browser freshness and rejects edge-cached 404s",
   assert.match(
     smokeScript,
     new RegExp(
-      String.raw`assert_edge_hit "\$CANONICAL_BASE/v1/stm/manifest\.json" "public, max-age=` +
+      String.raw`assert_edge_hit "\$MANIFEST_URL" "public, max-age=` +
         `${LIVE_TTL_SECONDS}"`,
     ),
   );

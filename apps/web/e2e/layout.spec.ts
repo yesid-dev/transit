@@ -53,6 +53,13 @@ for (const locale of ['en', 'fr'] as const)
 				if (path === `/lines/${line}?tab=detail`)
 					for (const direction of await page.locator('[data-slot="line-directions"] summary').all())
 						await direction.click();
+				// Measure Data health's detail for auditors, which starts closed.
+				const details = page.locator('[data-toc="health-details"] [data-section-trigger]').first();
+				if (path === '/status' && (await details.count())) {
+					await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+					await details.click();
+					await expect(details).toHaveAttribute('aria-expanded', 'true');
+				}
 				await expect(page.getByRole('main')).toBeVisible();
 				await page.evaluate(() => document.fonts.ready);
 				await page.waitForTimeout(250);

@@ -13,6 +13,7 @@ from transit_ops.providers.declaration import Provider
 from transit_ops.providers.formats import decode_gtfs_rt
 from transit_ops.providers.modes import RULE_ORDER, WORKER_MODES, RuleMode, normalizer_fingerprint
 from transit_ops.providers.rules.route import candidate_dates, propose
+from transit_ops.providers.rules.unknown_route import propose as propose_unknown_route
 from transit_ops.providers.schedule import ScheduleContext as ScheduleIdentity
 
 __all__ = [
@@ -94,7 +95,7 @@ def normalize_capture(
         )
     fills: list[Fill] = []
     outcomes: list[RuleOutcome] = []
-    if collect or modes["N1"] == "apply":
+    if collect or any(modes[r] == "apply" for r in ("N1", "N9")):
         try:
             dates = candidate_dates(message, capture.captured_at_utc, provider.timezone)
         except (ValueError, OverflowError, OSError):
@@ -127,8 +128,13 @@ def _run_rules(
     outcomes: list[RuleOutcome] = []
     member = "trip_update" if family == "trip_updates" else "vehicle"
     field = f"{member}.trip.route_id"
+    supplied_routes = {
+        index: getattr(entity, member).trip.route_id
+        for index, entity in enumerate(message.entity)
+        if entity.HasField(member)
+    }
     for rule in RULE_ORDER:
-        if rule != "N1" or (modes[rule] != "apply" and not collect):
+        if rule not in ("N1", "N9") or (modes[rule] != "apply" and not collect):
             continue
         seen = changed = unresolved = 0
         reasons: Counter[str] = Counter()
@@ -136,7 +142,11 @@ def _run_rules(
             if not entity.HasField(member):
                 continue
             trip = getattr(entity, member).trip
-            proposal = propose(trip, field, schedule, dates)
+            proposal = (
+                propose(trip, field, schedule, dates)
+                if rule == "N1"
+                else propose_unknown_route(trip, supplied_routes[index], schedule, dates[1])
+            )
             seen += proposal.seen
             changed += len(proposal.writes)
             unresolved += proposal.unresolved

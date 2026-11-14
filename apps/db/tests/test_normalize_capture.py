@@ -165,11 +165,11 @@ def test_apply_mode_without_a_schedule_never_raises(provider):
 def test_modes_serialization_is_stable():
     expected = "N1=count;N2=count;N3=count;N5=count;N6=count;N7=count;N8=count;N9=count"
     assert serialize_modes(dict(reversed(list(WORKER_MODES.items())))) == expected
-    assert normalizer_fingerprint(WORKER_MODES) == "2:" + expected
-    assert normalizer_fingerprint(PASS_MODES) == "2:" + expected.replace("count", "apply")
+    assert normalizer_fingerprint(WORKER_MODES) == "3:" + expected
+    assert normalizer_fingerprint(PASS_MODES) == "3:" + expected.replace("count", "apply")
     n1, n6 = dict(WORKER_MODES, N1="apply"), dict(WORKER_MODES, N6="apply")
-    n1_expected = "2:N1=apply;N2=count;N3=count;N5=count;N6=count;N7=count;N8=count;N9=count"
-    n6_expected = "2:N1=count;N2=count;N3=count;N5=count;N6=apply;N7=count;N8=count;N9=count"
+    n1_expected = "3:N1=apply;N2=count;N3=count;N5=count;N6=count;N7=count;N8=count;N9=count"
+    n6_expected = "3:N1=count;N2=count;N3=count;N5=count;N6=apply;N7=count;N8=count;N9=count"
     assert normalizer_fingerprint(n1) == n1_expected
     assert normalizer_fingerprint(n6) == n6_expected
     assert normalizer_fingerprint(dict(reversed(list(n6.items())))) == n6_expected
