@@ -3,9 +3,9 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, vi } from 'vitest';
 
-const sha = '8d382fc396880641c866107e75295655adfcef91';
-const tree = 'eb7153cc34a8b6819b6390d324207b3c47e05260';
-const normalization = 'svelte-client-cN-v1';
+const sha = '38abc538a64063a4494d6a809a887d431706806a';
+const tree = '436a6caefff8e2171107a9c4a1d61e54e41995e9';
+const normalization = 'svelte-client-cN-scope-v2';
 const inventory = [
 	'network-live-headline',
 	'network-reporting',
@@ -24,17 +24,33 @@ const snapshot = join(
 	'src/lib/features/network/reliability/sections/__fixtures__/network-render-baseline.jsonl',
 );
 const generatedToken = () => /\bc[1-9]\d*\b/g;
+// Svelte cssHash emits svelte-${(hash >>> 0).toString(36)}: canonical unsigned base36.
+const scopeToken = () => /(?<![\w-])svelte-(?:0|[1-9a-z][0-9a-z]{0,6})(?![\w-])/g;
+const readRecords = () =>
+	readFileSync(snapshot, 'utf8')
+		.trim()
+		.split('\n')
+		.map((line) => JSON.parse(line));
 const fingerprint = (html: string | null) =>
 	html === null
 		? null
 		: { bytes: Buffer.byteLength(html), sha256: createHash('sha256').update(html).digest('hex') };
 
 // Svelte props_id() emits c${window.__svelte.uid++}; suffixes remain byte-identical.
-export function canonicalizeGeneratedIds(html: string, names = new Map<string, string>()): string {
-	return html.replace(generatedToken(), (token) => {
-		if (!names.has(token)) names.set(token, `id${names.size + 1}`);
-		return names.get(token)!;
-	});
+export function canonicalizeRenderedTokens(
+	html: string,
+	ids = new Map<string, string>(),
+	scopes = new Map<string, string>(),
+): string {
+	return html.replace(
+		new RegExp(`${scopeToken().source}|${generatedToken().source}`, 'g'),
+		(token) => {
+			const isScope = token.startsWith('svelte-');
+			const names = isScope ? scopes : ids;
+			if (!names.has(token)) names.set(token, `${isScope ? 'scope' : 'id'}${names.size + 1}`);
+			return names.get(token)!;
+		},
+	);
 }
 
 export function captureEnvironment(width = 1280): void {
@@ -51,10 +67,7 @@ export function captureEnvironment(width = 1280): void {
 
 export function baselineInventory(prefix: string, keys: string[]): void {
 	if (process.env.NETWORK_RENDER_MODE === 'capture') return;
-	const records = readFileSync(snapshot, 'utf8')
-		.trim()
-		.split('\n')
-		.map((line) => JSON.parse(line));
+	const records = readRecords();
 	expect(
 		records
 			.filter((entry) => entry.key.startsWith(prefix))
@@ -81,10 +94,7 @@ export function unreachableBaseline(key: string): void {
 		mkdirSync(directory, { recursive: true });
 		writeFileSync(join(directory, `${key}.json`), JSON.stringify(record), { flag: 'wx' });
 	} else {
-		const records = readFileSync(snapshot, 'utf8')
-			.trim()
-			.split('\n')
-			.map((line) => JSON.parse(line));
+		const records = readRecords();
 		expect(records.filter((entry) => entry.key === key)).toEqual([record]);
 	}
 }
@@ -101,18 +111,26 @@ export function renderedBaseline(key: string, container: HTMLElement): void {
 		'popovertarget',
 	]);
 	let attributeTokens = 0;
+	let classTokens = 0;
 	for (const element of [container, ...container.querySelectorAll('*')]) {
 		for (const attribute of element.attributes) {
-			const matches = attribute.value.match(generatedToken()) ?? [];
+			const scopes = attribute.value.match(scopeToken()) ?? [];
+			if (scopes.length) expect(attribute.name, 'scope token outside class').toBe('class');
+			classTokens += scopes.length;
+			const matches = attribute.value.replace(scopeToken(), '').match(generatedToken()) ?? [];
 			if (matches.length) expect(attributes.has(attribute.name), attribute.name).toBe(true);
 			attributeTokens += matches.length;
 		}
 	}
 	// Any matching token in copy, CSS, data, SVG or another attribute fails closed.
-	expect(raw.match(generatedToken())?.length ?? 0).toBe(attributeTokens);
-	expect(raw).not.toMatch(/\bid[1-9]\d*\b/);
+	expect(raw.replace(scopeToken(), '').match(generatedToken())?.length ?? 0).toBe(attributeTokens);
+	expect(raw.match(scopeToken())?.length ?? 0, 'scope token outside class').toBe(classTokens);
+	expect(raw).not.toMatch(/\b(?:id|scope)[1-9]\d*\b/);
 	const names = new Map<string, string>();
-	const capture: Record<string, string | null> = { surface: canonicalizeGeneratedIds(raw, names) };
+	const scopes = new Map<string, string>();
+	const capture: Record<string, string | null> = {
+		surface: canonicalizeRenderedTokens(raw, names, scopes),
+	};
 	const rawCapture: Record<string, string | null> = { surface: raw };
 	for (const name of inventory) capture[name] = rawCapture[name] = null;
 	for (const tile of container.querySelectorAll<HTMLElement>('[data-network-section]')) {
@@ -120,7 +138,7 @@ export function renderedBaseline(key: string, container: HTMLElement): void {
 		expect(inventory, `unexpected tile ${name}`).toContain(name);
 		expect(capture[name], `duplicate tile ${name}`).toBeNull();
 		rawCapture[name] = tile.outerHTML;
-		capture[name] = canonicalizeGeneratedIds(tile.outerHTML, names);
+		capture[name] = canonicalizeRenderedTokens(tile.outerHTML, names, scopes);
 	}
 	const record = {
 		sha,
@@ -154,10 +172,7 @@ export function renderedBaseline(key: string, container: HTMLElement): void {
 			return;
 		}
 	}
-	const records = readFileSync(snapshot, 'utf8')
-		.trim()
-		.split('\n')
-		.map((line) => JSON.parse(line));
+	const records = readRecords();
 	expect(
 		records.filter((entry) => entry.key === key),
 		`baseline case ${key}`,

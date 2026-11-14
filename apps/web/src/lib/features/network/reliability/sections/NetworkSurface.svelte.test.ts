@@ -16,7 +16,7 @@ import { createSurfaceHarness } from '../../../../../tests/surfaceHarness';
 import { assertRailIndependence } from '../../../../../tests/railIndependence';
 import {
 	baselineInventory,
-	canonicalizeGeneratedIds,
+	canonicalizeRenderedTokens,
 	captureEnvironment,
 	renderedBaseline,
 } from './__fixtures__/renderedBaseline';
@@ -1121,14 +1121,38 @@ it('canonicalizes only generated counter offsets while preserving reference pair
 		'<button aria-controls="c2-content"></button><div id="c2-content" aria-labelledby="c5"></div><span id="c5"></span>';
 	const offset =
 		'<button aria-controls="c2124-content"></button><div id="c2124-content" aria-labelledby="c2127"></div><span id="c2127"></span>';
-	expect(canonicalizeGeneratedIds(first)).toBe(canonicalizeGeneratedIds(offset));
+	expect(canonicalizeRenderedTokens(first)).toBe(canonicalizeRenderedTokens(offset));
 	expect(
-		canonicalizeGeneratedIds(
+		canonicalizeRenderedTokens(
 			first.replace('aria-controls="c2-content"', 'aria-controls="c9-content"'),
 		),
-	).not.toBe(canonicalizeGeneratedIds(first));
+	).not.toBe(canonicalizeRenderedTokens(first));
 });
 
+it('canonicalizes independent scope hashes and id counters without collisions', () => {
+	const first = '<div id="c2" class="svelte-c2"><span class="svelte-c2 svelte-abc"></span></div>';
+	const offset = '<div id="c9" class="svelte-xyz"><span class="svelte-xyz svelte-7x"></span></div>';
+	expect(canonicalizeRenderedTokens(first)).toBe(
+		'<div id="id1" class="scope1"><span class="scope1 scope2"></span></div>',
+	);
+	expect(canonicalizeRenderedTokens(first)).toBe(canonicalizeRenderedTokens(offset));
+});
+it.each([
+	'<div class="plain"><span class="svelte-a"></span></div>',
+	'<div class="svelte-a svelte-b"><span class="svelte-a"></span></div>',
+	'<div class="svelte-a"><span class="svelte-b"></span></div>',
+])('preserves scope membership and sharing: %s', (changed) => {
+	const original = '<div class="svelte-a"><span class="svelte-a"></span></div>';
+	expect(canonicalizeRenderedTokens(changed)).not.toBe(canonicalizeRenderedTokens(original));
+});
+it.each(['<div data-token="svelte-a"></div>', '<div>svelte-a</div>'])(
+	'rejects a scope token outside class attributes: %s',
+	(html) => {
+		const container = document.createElement('div');
+		container.innerHTML = html;
+		expect(() => renderedBaseline('invalid-token', container)).toThrow(/scope token outside class/);
+	},
+);
 it('captures the full current network in English', async () => {
 	captureEnvironment();
 	try {
@@ -1144,6 +1168,9 @@ it('captures the full current network in English', async () => {
 	}
 });
 
+function configured<T extends object>(key: string, target: T, patch: Partial<T>) {
+	return { key, setup: () => Object.assign(target, patch) };
+}
 const currentCaptureCases: {
 	key: string;
 	setup?: () => void;
@@ -1152,38 +1179,14 @@ const currentCaptureCases: {
 	provider?: string;
 }[] = [
 	{ key: 'full' },
-	{
-		key: 'absent-loading',
-		setup: () => {
-			live.hasNetwork = false;
-		},
-	},
-	{
-		key: 'stale',
-		setup: () => {
-			live.isStale = true;
-			live.ageSeconds = 240;
-		},
-	},
-	{
-		key: 'refresh-error',
-		setup: () => {
-			live.error = new Error('fixture refresh');
-		},
-	},
-	{
-		key: 'error-without-data',
-		setup: () => {
-			live.hasNetwork = false;
-			live.error = new Error('fixture initial');
-		},
-	},
-	{
-		key: 'unknown-age',
-		setup: () => {
-			live.ageSeconds = null;
-		},
-	},
+	configured('absent-loading', live, { hasNetwork: false }),
+	configured('stale', live, { isStale: true, ageSeconds: 240 }),
+	configured('refresh-error', live, { error: new Error('fixture refresh') }),
+	configured('error-without-data', live, {
+		hasNetwork: false,
+		error: new Error('fixture initial'),
+	}),
+	configured('unknown-age', live, { ageSeconds: null }),
 	{
 		key: 'zero',
 		setup: () => {
@@ -1221,32 +1224,13 @@ const currentCaptureCases: {
 			network.non_responding_by_route = null;
 		},
 	},
-	{
-		key: 'availability-pending',
-		setup: () => {
-			resourceState.settled = false;
-		},
-	},
-	{
-		key: 'history-missing',
-		setup: () => {
-			resourceState.hasData = false;
-		},
-	},
-	{
-		key: 'history-loading',
-		setup: () => {
-			resourceState.hasData = false;
-			resourceState.loading = true;
-		},
-	},
-	{
-		key: 'history-error',
-		setup: () => {
-			resourceState.hasData = false;
-			resourceState.error = new Error('fixture history');
-		},
-	},
+	configured('availability-pending', resourceState, { settled: false }),
+	configured('history-missing', resourceState, { hasData: false }),
+	configured('history-loading', resourceState, { hasData: false, loading: true }),
+	configured('history-error', resourceState, {
+		hasData: false,
+		error: new Error('fixture history'),
+	}),
 	{
 		key: 'history-empty',
 		setup: () => {
