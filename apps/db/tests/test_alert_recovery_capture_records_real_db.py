@@ -62,6 +62,12 @@ payloads = [
     [first],
     [{"id": "alert-a", "header": "Changed"}],
     [],
+    [
+        {
+            "id": "jsonb-order",
+            **dict.fromkeys(("header", "description", "url"), {"es": "Detour", "en": "Detour"}),
+        }
+    ],
 ]
 
 

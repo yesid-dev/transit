@@ -1,11 +1,25 @@
+import json
 from datetime import UTC, date, datetime
+from types import SimpleNamespace
 
 import pytest
 
+from transit_ops.gold.alert_archive import _write_params
 from transit_ops.history.alert_recovery_capture_records import prepare_capture_candidates
 from transit_ops.silver.i3 import RawI3AlertSnapshot
 
 NOW = datetime(2026, 11, 1, tzinfo=UTC)
+
+
+def jsonb_result(statement, parameters):
+    """Offline result double; the real-DB oracle verifies PostgreSQL behavior."""
+    value = json.loads(
+        parameters["raw"],
+        object_pairs_hook=lambda pairs: dict(
+            sorted(pairs, key=lambda p: (len(p[0].encode()), p[0].encode()))
+        ),
+    )
+    return SimpleNamespace(scalar_one=lambda: value)
 
 
 def snapshot(number, *alerts, provider="fixture"):
@@ -14,7 +28,7 @@ def snapshot(number, *alerts, provider="fixture"):
 
 def candidates(snapshots, connection=None, provider="fixture"):
     return prepare_capture_candidates(
-        connection,
+        connection if connection is not None else SimpleNamespace(execute=jsonb_result),
         snapshots=snapshots,
         provider_id=provider,
         provider_timezone="America/Toronto",
@@ -124,3 +138,17 @@ def test_empty_and_mismatched_provider_scope():
     assert candidates([]) == ()
     with pytest.raises(ValueError, match="provider"):
         candidates([snapshot(1, {"id": "a"}, provider="other")])
+
+
+@pytest.mark.parametrize("fields", [("header",), ("header", "description", "url")])
+def test_jsonb_provenance_ignores_duplicate_capture_enumeration(fields):
+    inputs = [
+        snapshot(101, {"id": "a", **dict.fromkeys(fields, translations)})
+        for translations in ({"es": "Detour", "en": "Detour"}, {"en": "Detour", "es": "Detour"})
+    ]
+    forward = candidates(inputs)[0].record
+    reverse = candidates(reversed(inputs))[0].record
+    assert _write_params(forward)["message"] == _write_params(reverse)["message"]
+    assert forward["content_hash"] == reverse["content_hash"]
+    for field in fields:
+        assert forward["message"][field + "_language"] == "en"

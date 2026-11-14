@@ -1,5 +1,6 @@
 """Project bounded reconstructed Silver episodes into prepared archive evidence."""
 
+import json
 from collections import defaultdict
 from collections.abc import Iterable
 from datetime import datetime
@@ -80,7 +81,9 @@ def _latest_values(rows: list[Row]) -> tuple[Row, Row]:
     return latest, result
 
 
-def _project(rows: list[Row], entities: list[Row], periods: list[Row], zone: ZoneInfo) -> Row:
+def _project(
+    connection: Connection, rows: list[Row], entities: list[Row], periods: list[Row], zone: ZoneInfo
+) -> Row:
     latest, result = _latest_values(rows)
     # gold/alert_archive.py:102-153, 165-169: episode unions, fallback, local month.
     result["first_seen_utc"] = min(r["first_seen_at"] for r in rows)
@@ -104,8 +107,13 @@ def _project(rows: list[Row], entities: list[Row], periods: list[Row], zone: Zon
         {k: v.isoformat().replace("+00:00", "Z") if v is not None else None for k, v in p.items()}
         for p in values
     ]
+    # Silver binds JSONB (silver/i3.py:145); Gold reads it before deriving provenance
+    # (gold/alert_archive.py:451-456; silver/i3.py:350-375,406-407).
+    raw = connection.execute(
+        text("SELECT CAST(:raw AS jsonb)"), {"raw": json.dumps(latest["raw_alert_json"])}
+    ).scalar_one()
     result["message"] = alert_message_provenance(
-        latest["raw_alert_json"],
+        raw,
         latest["message_snapshot_id"],
         latest["message_alert_index"],
         latest["last_seen_at"],
@@ -141,7 +149,7 @@ def prepare_capture_candidates(
         groups[_identity(connection, row, provider_id)].append(row)
     candidates = []
     for identity, rows in groups.items():
-        source = _project(rows, list(state.entity_rows), list(state.period_rows), zone)
+        source = _project(connection, rows, list(state.entity_rows), list(state.period_rows), zone)
         # gold/alert_archive.py:388-411, 470-520 owns ordering, validation and hashing.
         record = prepare_recovered_archive_record(
             {**source, "alert_id": identity},
