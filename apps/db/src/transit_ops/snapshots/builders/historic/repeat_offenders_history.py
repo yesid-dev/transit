@@ -56,7 +56,7 @@ _REPEAT_OFFENDERS_HISTORY_NAMES_SQL = named_query(
            h.valid_to_utc
     FROM gold.dim_route_history AS h
     WHERE h.provider_id = :provider_id
-    ORDER BY entity_id, valid_from_utc, valid_to_utc NULLS LAST
+    ORDER BY h.route_id COLLATE "C", valid_from_utc, valid_to_utc NULLS LAST
     """,
 )
 
@@ -75,7 +75,8 @@ _REPEAT_OFFENDERS_HISTORY_DAILY_SQL = named_query(
     JOIN gold.dim_provider AS dp ON dp.provider_id = sp.provider_id
     WHERE sp.provider_id = :provider_id
       AND sp.provider_local_date < timezone(dp.timezone, CAST(:as_of_utc AS timestamptz))::date
-    ORDER BY sp.provider_local_date, sp.entity_kind, sp.entity_id, sp.route_id
+    ORDER BY sp.provider_local_date, sp.entity_kind COLLATE "C",
+             sp.entity_id COLLATE "C", sp.route_id COLLATE "C"
     """,
 )
 

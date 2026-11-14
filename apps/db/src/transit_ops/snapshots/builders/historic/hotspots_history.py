@@ -51,6 +51,7 @@ _HOTSPOTS_HISTORY_TIMEZONE_SQL = named_query(
 _HOTSPOTS_HISTORY_NAMES_SQL = named_query(
     "history.hotspots.names",
     """
+    WITH names AS (
     SELECT 'route'::text AS entity_kind,
            h.route_id AS entity_id,
            COALESCE(h.route_long_name, h.route_short_name) AS name,
@@ -66,7 +67,10 @@ _HOTSPOTS_HISTORY_NAMES_SQL = named_query(
            h.valid_to_utc
     FROM gold.dim_stop_history AS h
     WHERE h.provider_id = :provider_id
-    ORDER BY entity_kind, entity_id, valid_from_utc, valid_to_utc NULLS LAST
+    )
+    SELECT * FROM names
+    ORDER BY entity_kind COLLATE "C", entity_id COLLATE "C",
+             valid_from_utc, valid_to_utc NULLS LAST
     """,
 )
 
@@ -110,7 +114,7 @@ _HOTSPOTS_HISTORY_ROUTE_DAILY_SQL = named_query(
     WHERE sp.provider_id = :provider_id
       AND sp.provider_local_date < timezone(dp.timezone, CAST(:as_of_utc AS timestamptz))::date
     GROUP BY sp.provider_local_date, sp.route_id
-    ORDER BY sp.provider_local_date, sp.route_id
+    ORDER BY sp.provider_local_date, sp.route_id COLLATE "C"
     """,
 )
 
@@ -166,7 +170,8 @@ _HOTSPOTS_HISTORY_STOP_DAILY_SQL = named_query(
       ON peak.local_date = daily.local_date
      AND peak.stop_id = daily.stop_id
      AND peak.route_id = daily.route_id
-    ORDER BY local_date, stop_id, route_id
+    ORDER BY local_date, COALESCE(daily.stop_id, peak.stop_id) COLLATE "C",
+             COALESCE(daily.route_id, peak.route_id) COLLATE "C"
     """,
 )
 
