@@ -1,7 +1,6 @@
 """Ledger sessions in the caller's PostgreSQL transaction."""
 
 import json
-import re
 from collections.abc import Collection, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import asdict, fields
@@ -14,11 +13,13 @@ from sqlalchemy.engine import ExceptionContext
 from transit_ops.history import ledger
 from transit_ops.history.ledger import ArchiveCopy, EventKind, WindowState, WorkingState
 from transit_ops.history.ledger_store import (
+    AUDIT_KINDS,
     LedgerStore,
     NewCopy,
     RecordedEvent,
     WindowIdentity,
     WindowSession,
+    validate_new_copy,
 )
 
 _WINDOW = """dataset_id=:dataset_id AND provider_id=:provider_id
@@ -146,13 +147,7 @@ class _Session:
         details: Mapping[str, object] | None = None,
         actor: str | None = None,
     ) -> None:
-        if kind not in {
-            "changed",
-            "close_runs",
-            "processing_evidence",
-            "fold_published",
-            "rebuild",
-        }:
+        if kind not in AUDIT_KINDS:
             raise ValueError(f"record_event refuses lifecycle kind {kind!r}; use its guarded verb")
         self._record_event(
             kind, content_version=content_version, reason=reason, details=details, actor=actor
@@ -203,15 +198,8 @@ class _Session:
         return [ArchiveCopy(**row) for row in rows]
 
     def insert_allocated_copy(self, copy: NewCopy) -> None:
-        if self.identity.revision != 0:
-            raise ValueError(f"insert_allocated_copy requires revision 0: {self.identity}")
+        validate_new_copy(copy, self.identity)
         self._copy_values(copy.content_version, None)
-        for name in ("sha256", "manifest_sha256", "content_sha256", "poll_record_sha256"):
-            value = getattr(copy, name)
-            if value is not None and re.fullmatch(r"[0-9a-f]{64}", value) is None:
-                raise ValueError(f"{name} must be 64 lowercase hex characters")
-        if copy.storage_backend not in {"local", "s3"}:
-            raise ValueError("storage_backend must be local or s3")
         values = {**asdict(self.identity), **{f.name: getattr(copy, f.name) for f in fields(copy)}}
         values["details"] = json.dumps(dict(copy.details), sort_keys=True)
         columns = ", ".join(values)

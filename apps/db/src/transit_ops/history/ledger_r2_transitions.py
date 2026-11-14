@@ -48,7 +48,7 @@ class LedgerTransitionIndeterminate(RuntimeError):
 def apply_transition(
     objects: ConditionalObjects,
     identity: Identity,
-    change: Callable[[WindowDocument | None, datetime], Transition | None],
+    change: Callable[[WindowCursor, datetime], Transition | None],
     *,
     clock: Callable[[], datetime],
     max_attempts: int,
@@ -65,7 +65,7 @@ def apply_transition(
             if committed is not None:
                 return confirm_committed(objects, identity, committed, cursor.doc)
             now = clock()
-            draft = _draft(change(cursor.doc, now), cursor, identity, now, operation_id)
+            draft = _draft(change(cursor, now), cursor, identity, now, operation_id)
             if draft is None:
                 return cursor.doc
             after, envelope = draft
@@ -123,20 +123,21 @@ def _create(
     envelope: dict[str, Any],
     after: WindowDocument | None,
 ) -> None:
+    error: Exception | None = None
     try:
         if objects.create(key, envelope):
             return
     except ObjectCollision:
         raise
-    except Exception:
-        pass
+    except Exception as exc:
+        error = exc
     operation_id = str(envelope["operation_id"])
     try:
         stored = objects.read(key)
         owner = json.loads(stored.body).get("operation_id") if stored is not None else None
     except Exception as exc:
-        raise LedgerTransitionIndeterminate(operation_id, key, after) from exc
+        raise LedgerTransitionIndeterminate(operation_id, key, after) from (error or exc)
     if stored is None or owner == operation_id and stored.body != snapshot_json_bytes(envelope):
-        raise LedgerTransitionIndeterminate(operation_id, key, after)
+        raise LedgerTransitionIndeterminate(operation_id, key, after) from error
     if owner != operation_id:
         raise ObjectCollision(key)

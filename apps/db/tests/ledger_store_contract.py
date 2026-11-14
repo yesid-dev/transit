@@ -11,7 +11,9 @@ INVALID_COPY_VALUES = [
     (field, value)
     for field in ("sha256", "manifest_sha256", "content_sha256", "poll_record_sha256")
     for value in ("", "a" * 63, "a" * 65, "A" * 64, "g" * 64, "a" * 64 + "\n")
-] + [("storage_backend", "r2"), ("storage_backend", "")]
+] + [("storage_backend", "r2"), ("storage_backend", "")] + [
+    (field, datetime(2026, 11, 1)) for field in ("first_time_utc", "last_time_utc")
+]
 
 LIFECYCLE_KINDS = ("seal", "verify", "reject", "current", "trim", "restore", "hold", "unhold")
 
