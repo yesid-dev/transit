@@ -1,4 +1,5 @@
 import importlib
+import json
 import socket
 
 import boto3
@@ -208,6 +209,14 @@ def test_service_keeps_no_live_data_separate_and_absent_lists_unknown():
         no_live_data=None,
     )
     assert absent.scheduled_trip_days is None
+    capture_gap_json = (
+        '{"state":"not_measured","reason":"capture_gap","basis":"facts",'
+        '"scheduled_trip_days":10,"delivered_trip_days":null,"cancelled_trip_days":null,'
+        '"missing_trip_days":null,"not_measured_trip_days":null,'
+        '"service_completeness_pct":null,"not_reported_lines":null,"no_live_data":null}'
+    )
+    capture_gap = r3.ServiceValues(**json.loads(capture_gap_json))
+    assert json.loads(snapshot_json_bytes(capture_gap)) == json.loads(capture_gap_json)
     with pytest.raises(ValidationError):
         r3.ServiceValues(**(absent.model_dump() | {"delivered_trip_days": 0}))
     with pytest.raises(ValidationError):

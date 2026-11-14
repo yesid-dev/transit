@@ -117,8 +117,7 @@ class ServiceValues(EvidenceValue):
             self.not_measured_trip_days,
         )
         if self.state == "not_measured" and any(
-            value is not None
-            for value in (*counts, self.scheduled_trip_days, self.service_completeness_pct)
+            value is not None for value in (*counts, self.service_completeness_pct)
         ):
             raise ValueError("not_measured service values must be null")
         if (
