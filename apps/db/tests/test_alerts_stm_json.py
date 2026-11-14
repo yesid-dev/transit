@@ -4,10 +4,11 @@ from datetime import UTC, datetime
 from itertools import combinations
 from pathlib import Path
 from random import Random
-from types import FunctionType
+from runpy import run_path
 
 import pytest
 
+import transit_ops.providers.formats.alerts_stm_json as adapter
 import transit_ops.silver.i3 as silver
 from transit_ops.ingestion.i3 import extract_i3_metadata
 from transit_ops.providers.alert_record import alert_rows
@@ -338,14 +339,8 @@ ALIAS_FAMILIES = {
 
 
 def _independent_normalizer():
-    # Separate helper globals keep adapter-side mutations out of the unchanged oracle.
-    namespace = vars(silver).copy()
-    for name, fn in vars(silver).items():
-        if isinstance(fn, FunctionType) and fn.__module__ == silver.__name__:
-            clone = FunctionType(fn.__code__, namespace, name, fn.__defaults__, fn.__closure__)
-            clone.__kwdefaults__ = fn.__kwdefaults__
-            namespace[name] = clone
-    return namespace["normalize_i3_alert_payload"]
+    # Read pristine source even when the imported module's helper globals are already patched.
+    return run_path(silver.__file__)["normalize_i3_alert_payload"]
 
 
 def _json_bytes(value):
@@ -468,6 +463,35 @@ def test_finite_differential_corpus_matches_independent_old_path():
 
     for name, payload in (*_alias_cases(), *_text_and_composed_cases()):
         assert _outcome(new, payload) == _outcome(old, payload), name
+
+
+def test_differential_rejects_shared_helper_mutation_before_reference_creation():
+    payload = [{"activePeriod": [{"startTime": 0, "start_time": 100}]}]
+    snapshot = RawI3AlertSnapshot(**META, provider_timezone="UTC", raw_payload_json=payload)
+    baseline = _independent_normalizer()(snapshot)
+    assert baseline[0][0]["active_period_start_utc"] == datetime(1970, 1, 1, tzinfo=UTC)
+    assert baseline[0][0]["content_hash"] == "3961fd74cb7e92b1b0c56ae8acba90a3"
+    namespace = adapter._active_periods.__globals__
+    original = namespace["_value"]
+
+    def swapped_bound(mapping, *keys):
+        if keys == ("start", "startTime", "start_time"):
+            keys = ("start", "start_time", "startTime")
+        return original(mapping, *keys)
+
+    namespace["_value"] = swapped_bound
+    try:
+        changed = alert_rows(adapter.stm_json_alerts(payload), **META)
+        assert changed[0][0]["active_period_start_utc"] == datetime.fromtimestamp(100, UTC)
+        assert changed[0][0]["content_hash"] == "45f7a0a73e8ad0fbf8cd499eba68ae17"
+        with pytest.raises(AssertionError, match="start:startTime/start_time"):
+            test_finite_differential_corpus_matches_independent_old_path()
+        late_reference = _independent_normalizer()
+        assert late_reference.__globals__["_value"] is not swapped_bound
+        assert late_reference(snapshot) == baseline
+    finally:
+        namespace["_value"] = original
+    assert alert_rows(adapter.stm_json_alerts(payload), **META) == baseline
 
 
 def test_root_first_list_and_field_first_present_are_distinct():
