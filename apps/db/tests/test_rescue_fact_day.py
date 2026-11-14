@@ -241,10 +241,12 @@ def test_rescue_uses_strict_utc_bounds_and_preserves_csv_values(
 ):
     import csv
 
+    from parallel_db import guarded_connect_kwargs
+
     provider, start, end = fact_source
     # A separate, fresh connection sees the seeded rows; no writer transaction is reused.
     connection = rescue.psycopg.connect(
-        **real_db_engine.url.translate_connect_args(username="user", database="dbname"),
+        **guarded_connect_kwargs(real_db_engine.url),
         autocommit=True,
         application_name="transit-ls04-rescue-" + uuid4().hex,
     )
@@ -310,12 +312,14 @@ def test_rescue_partial_upload_resumes_without_receipt_until_both_match(tmp_path
 def test_rescue_closes_source_transaction_before_object_io(
     real_db_engine, fact_source, tmp_path, monkeypatch
 ):
+    from parallel_db import guarded_connect_kwargs
+
     provider, _, _ = fact_source
     connections = []
 
     def connect():
         conn = rescue.psycopg.connect(
-            **real_db_engine.url.translate_connect_args(username="user", database="dbname"),
+            **guarded_connect_kwargs(real_db_engine.url),
             autocommit=True,
             application_name="transit-ls04-rescue-" + uuid4().hex,
         )
@@ -393,7 +397,10 @@ def rescue_login(real_db_engine):
             admin.exec_driver_sql(f'GRANT USAGE ON SCHEMA gold TO "{role}"')
             for table in rescue.SCHEMAS:
                 admin.exec_driver_sql(f'GRANT SELECT ON gold.{table} TO "{role}"')
-            yield real_db_engine.url.set(username=role, password=password)
+            query = {
+                k: v for k, v in real_db_engine.url.query.items() if k not in {"user", "password"}
+            }
+            yield real_db_engine.url.set(username=role, password=password, query=query)
         finally:
             admin.exec_driver_sql(f'DROP OWNED BY "{role}"')
             admin.exec_driver_sql(f'DROP ROLE "{role}"')
@@ -403,9 +410,11 @@ def rescue_login(real_db_engine):
 def test_rescue_real_queued_lock_releases_only_source(
     real_db_engine, fact_source, tmp_path, monkeypatch, idle, rescue_login
 ):
+    from parallel_db import guarded_connect_kwargs, guarded_login_kwargs
+
     def connect():
         return rescue.psycopg.connect(
-            **rescue_login.translate_connect_args(username="user", database="dbname"),
+            **guarded_login_kwargs(real_db_engine.url, rescue_login),
             autocommit=True,
             application_name="transit-ls04-rescue-" + uuid4().hex,
             options="-c statement_timeout=1000",
@@ -419,7 +428,7 @@ def test_rescue_real_queued_lock_releases_only_source(
         try:
             with (
                 rescue.psycopg.connect(
-                    **real_db_engine.url.translate_connect_args(username="user", database="dbname"),
+                    **guarded_connect_kwargs(real_db_engine.url),
                     autocommit=True,
                     application_name="transit-ls04-rescue-" + uuid4().hex,
                 ) as locker,

@@ -560,13 +560,14 @@ def test_fact_measurement_refuses_unclosed_day_before_copy(monkeypatch, capsys):
 def measurement_db(real_db_engine, fact_source, monkeypatch):  # noqa: F811
     from uuid import uuid4
 
+    from parallel_db import guarded_connect_kwargs
     from sqlalchemy import text
 
     provider, start, end = fact_source
 
     def connect():
         return measure.rescue.psycopg.connect(
-            **real_db_engine.url.translate_connect_args(username="user", database="dbname"),
+            **guarded_connect_kwargs(real_db_engine.url),
             autocommit=True,
             application_name="transit-ls04-rescue-" + uuid4().hex,
         )
