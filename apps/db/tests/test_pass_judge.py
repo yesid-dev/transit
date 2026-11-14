@@ -124,6 +124,28 @@ def test_every_poll_status_accounts_for_time(status):
 
 
 @pytest.mark.parametrize(
+    "slots,share,blocks,complete,reason",
+    [
+        ([-86400, 0, 20, 40, 60], 1.0, (), True, None),
+        ([80], 0.0, ((AT, at(80)),), False, "under_accounted:trip_updates"),
+    ],
+    ids=["predecessor-day-poll", "exclusive-end-only-poll"],
+)
+def test_accounting_excludes_planning_and_exclusive_end_polls(
+    slots, share, blocks, complete, reason
+):
+    b = build(80)
+    attempts = [fake_poll(provider_id=b.provider.id, time_utc=at(s)) for s in slots]
+    result = account_feed(b, ENDPOINT, attempts)
+    assert result.accounted_share == share
+    assert result.missing_blocks == blocks
+    assert result.complete is complete
+    assert result.reason == reason
+    if complete:
+        assert result == judge(b, [0, 20, 40, 60])
+
+
+@pytest.mark.parametrize(
     "sealed,current,complete", [(60, 10, True), (10, 60, True), (10, 10, False)]
 )
 def test_accounting_interval_is_the_larger_of_the_sealed_and_the_declared_one(
