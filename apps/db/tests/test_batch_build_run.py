@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import text
 
 from transit_ops.batch.build import BuildRequest, FamilyOutput, InputNeed, TableRows
+from transit_ops.batch.engine import InputRefused
 from transit_ops.batch.manifest import BuildManifest, ManifestInput
 from transit_ops.batch.run import InputChanged, OutputRefused, run_family
 from transit_ops.sql_registry import named_query
@@ -162,29 +163,134 @@ def test_invalid_body_keys_are_refused_by_name(build_case, key):
     assert key in str(error.value)
 
 
-@pytest.mark.parametrize("mutation", ["same_size", "append", "delete"])
-def test_changed_inputs_are_refused_after_build(build_case, mutation, monkeypatch):
+@pytest.mark.parametrize(
+    "mutation, when",
+    [
+        ("same_size", "after"),
+        ("append", "after"),
+        ("delete", "after"),
+        ("delete", "before_session"),
+        ("delete", "before_query"),
+        ("truncate", "before_query"),
+        ("truncate", "entry"),
+    ],
+)
+def test_changed_inputs_are_refused_after_build(build_case, mutation, when, monkeypatch):
+    import transit_ops.batch.run as runner
+
     request, kwargs = build_case
     path = kwargs["inputs_root"] / "gold.source" / "2026-11-02.parquet"
-
     monkeypatch.chdir(kwargs["inputs_root"].parent)
     kwargs["inputs_root"] = Path("inputs")
 
+    def mutate():
+        if mutation == "delete":
+            path.unlink()
+        else:
+            data = path.read_bytes()
+            changed = bytes([data[0] ^ 1]) + data[1:] if mutation == "same_size" else data + b"x"
+            path.write_bytes(data[:-10] if mutation == "truncate" else changed)
+
+    opener = runner.open_batch_session
+
+    def opening(*args, **options):
+        if when == "before_session":
+            mutate()
+        return opener(*args, **options)
+
+    monkeypatch.setattr(runner, "open_batch_session", opening)
+    if when == "entry":
+        mutate()
+
     class ChangingBuilder(ToyBuilder):
         def build(self, session, request):
+            if when == "before_query":
+                mutate()
             output = super().build(session, request)
-            if mutation == "delete":
-                path.unlink()
-            else:
-                data = path.read_bytes()
-                path.write_bytes(
-                    bytes([data[0] ^ 1]) + data[1:] if mutation == "same_size" else data + b"x"
-                )
+            if when == "after":
+                mutate()
             return output
 
-    with pytest.raises(InputChanged) as error:
+    with pytest.raises(InputRefused if when == "entry" else InputChanged) as error:
         run_family(ChangingBuilder(), request, **kwargs)
     assert all(label in str(error.value) for label in ("gold.source", "2026-11-02", str(path)))
+    assert not list(kwargs["workdir"].iterdir())
+    if when in {"before_session", "before_query"}:
+        assert error.value.__cause__ is not None
+        assert isinstance(
+            error.value.__cause__, InputRefused if when == "before_session" else duckdb.Error
+        )
+    if when == "entry":
+        assert isinstance(error.value.__cause__, duckdb.Error)
+
+
+def test_overlapping_builds_keep_staged_rows_private(build_case):
+    request, kwargs = build_case
+    areas = {}
+
+    class Staged(ToyBuilder):
+        def __init__(self, day):
+            self.day = day
+
+        def inputs(self, request):
+            return (InputNeed("gold.source", self.day),)
+
+        def build(self, session, request):
+            area = Path(
+                session.execute(
+                    text("-- q:toy.area\nSELECT current_setting('temp_directory')")
+                ).scalar_one()
+            ).parent
+            path = str(area / "stage.parquet")
+            areas[self.day] = area
+            session.execute(
+                text("-- q:toy.copy\nCOPY gold.source TO :p (FORMAT PARQUET)"), {"p": path}
+            )
+            if self.day == "2026-11-02":
+                inner = run_family(Staged("2026-11-03"), request, **kwargs)
+                assert inner.output.tables[self.tables[0]].rows == ((7,),)
+                assert area.is_dir()
+            else:
+                with pytest.raises(duckdb.PermissionException):
+                    session.execute(
+                        text("-- q:toy.private\nSELECT * FROM read_parquet(:p)"),
+                        {"p": str(areas["2026-11-02"] / "stage.parquet")},
+                    )
+            rows = session.execute(
+                text("-- q:toy.staged\nSELECT id FROM read_parquet(:p)"), {"p": path}
+            )
+            table = TableRows(self.tables[0], ("id",), ("id",), tuple(tuple(r) for r in rows))
+            return FamilyOutput({table.relation: table}, {})
+
+    assert run_family(Staged("2026-11-02"), request, **kwargs).output.tables[
+        "gold.toy_daily"
+    ].rows == ((3,),)
+    assert not areas["2026-11-03"].exists()
+    assert not list(kwargs["workdir"].iterdir())
+
+
+@pytest.mark.parametrize("case", ["plain", "sql"])
+def test_unchanged_inputs_preserve_builder_errors_and_clean_up(build_case, case):
+    request, kwargs = build_case
+    failure = ValueError("builder failed")
+
+    class Failing(ToyBuilder):
+        def build(self, session, request):
+            if case == "sql":
+                session.execute(text("-- q:toy.bad\nSELECT absent FROM gold.source"))
+            raise failure
+
+    with pytest.raises(duckdb.Error if case == "sql" else ValueError) as error:
+        run_family(Failing(), request, **kwargs)
+    if case == "plain":
+        assert error.value is failure
+    assert error.value.__cause__ is None
+    assert not list(kwargs["workdir"].iterdir())
+    assert run_family(ToyBuilder(), request, **kwargs).output.tables["gold.toy_daily"].rows == (
+        (3,),
+        (7,),
+    )
+    assert not list(kwargs["workdir"].iterdir())
 
 
 @pytest.mark.parametrize("field", ["fact_retention_days", "open_window_days"])
