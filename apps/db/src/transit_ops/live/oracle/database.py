@@ -136,7 +136,7 @@ def _code_reason(source: str) -> str:
 def _body_tokens(source: str, standard: bool) -> Iterator[str]:
     plain = r"'(?:''|[^'])*'" if standard else r"'(?:\\.|''|[^'\\])*'"
     pattern = re.compile(
-        r"\s+|--[^\n]*|(?P<tag>\$(?:[^\W\d]|[^\x00-\x7f])(?:\w|[^\x00-\x7f])*\$|\$\$).*?(?P=tag)"
+        r"\s+|--[^\r\n]*|(?P<tag>\$(?:[^\W\d]|[^\x00-\x7f])(?:\w|[^\x00-\x7f])*\$|\$\$).*?(?P=tag)"
         r"|[eE]'(?:\\.|''|[^'\\])*'|[uU]&'(?:''|[^'])*'|[uU]&\"(?:\"\"|[^\"])*\"|"
         + plain
         + r'|"(?:""|[^"])*"|[\w$]+|::|[^\s]',
@@ -195,6 +195,11 @@ def function_clock_reason(source: str, *, standard_strings: bool = True) -> str:
     """Classify stored SQL/PLpgSQL source without executing its statements."""
     try:
         tokens, code = list(_body_tokens(source, standard_strings)), []
+        if any(
+            all(re.match(r"(?:e|u&)?'", part, re.I) for part in pair)
+            for pair in zip(tokens, tokens[1:], strict=False)
+        ):
+            return "continued string literal in function body"
         index = 0
         while index < len(tokens):
             token, escape = tokens[index], "\\"

@@ -23,6 +23,19 @@ from transit_ops.live.oracle.database import (
 )
 
 ENVIRONMENT = {"TRANSIT_TEST_DATABASE_DISPOSABLE": "I_UNDERSTAND_THIS_DATABASE_IS_DISPOSABLE"}
+CONTINUED_BODIES = (
+    "SELECT 'to'\n'day'::date",
+    "SELECT E'to'\n'day'::date",
+    "SELECT 'to' -- join\n'day'::date",
+)
+COMMENT_BODIES = [
+    (language, source.format(end=ending))
+    for ending in ("\r", "\n", "\r\n")
+    for language, source in (
+        ("plpgsql", "BEGIN PERFORM 1; -- harmless{end}RETURN CURRENT_DATE; END"),
+        ("sql", "SELECT 1; -- harmless{end}SELECT pg_catalog.now()::date"),
+    )
+]
 
 
 def value(conn, sql, **params):
@@ -448,6 +461,21 @@ def test_deparsed_non_code_and_pinned_view_pass(guard_oracle, expression):
             "BEGIN ATOMIC SELECT 1; SELECT DATE 'today'; END",
             "gold.probe()",
         ),
+        *[
+            (
+                f"CREATE FUNCTION gold.probe() RETURNS date LANGUAGE sql AS $body${body}$body$",
+                "gold.probe()",
+            )
+            for body in CONTINUED_BODIES
+        ],
+        *[
+            (
+                "CREATE FUNCTION gold.probe() RETURNS date "
+                f"LANGUAGE {language} AS $body${body}$body$",
+                "gold.probe()",
+            )
+            for language, body in COMMENT_BODIES
+        ],
     ],
 )
 def test_migration_spellings_are_refused_and_cleaned(
@@ -508,6 +536,9 @@ def test_migration_spellings_are_refused_and_cleaned(
         (r"SELECT U&'t!006fday' UESCAPE '!'", True),
         ("SELECT now()", False),
         ("SELECT now_utc", False),
+        ("SELECT 'fixed' \"current_time\"", False),
+        *[(source, True) for source in CONTINUED_BODIES],
+        *[(source, True) for _, source in COMMENT_BODIES],
     ],
 )
 def test_function_lexer_public_boundary(source, unsafe):
