@@ -182,6 +182,7 @@
 		() => manifest,
 		() => reliability.data?.generated_utc ?? null,
 		() => lineHistory,
+		() => detailTabController.active === 'reliability',
 	);
 	const articleEdgeLeft = $derived([t.kicker, titleName.number].filter(Boolean).join(' '));
 	const articleGeneratedUtc = $derived(

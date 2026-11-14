@@ -355,16 +355,21 @@ vi.mock('#lib/v1/repositories/historic.ts', () => ({
 vi.mock('#lib/v1/repositories/provenance.ts', () => ({ getProvenance: () => provenanceData }));
 vi.mock('#lib/v1/repositories/dataHealth.ts', () => ({ getDataHealth: async () => null }));
 // The notice's rule lives in the stamp module (recordStamp.svelte.test.ts); here only its placement.
-const recordHealth = vi.hoisted(() => ({ verdict: null as string | null }));
+const recordHealth = vi.hoisted(() => ({
+	verdict: null as string | null,
+	reads: undefined as (() => boolean) | undefined,
+}));
 vi.mock('#lib/v1/recordStamp.svelte.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('#lib/v1/recordStamp.svelte.ts')>();
 	return {
 		...actual,
-		createRecordStamp: (...args: Parameters<typeof actual.createRecordStamp>) =>
-			Object.assign(Object.create(actual.createRecordStamp(...args)), {
+		createRecordStamp: (...args: Parameters<typeof actual.createRecordStamp>) => {
+			recordHealth.reads = args[3];
+			return Object.assign(Object.create(actual.createRecordStamp(...args)), {
 				notice: (lang: 'en' | 'fr') =>
 					recordHealth.verdict === 'warn' ? stampCopy[lang].warning : null,
-			}),
+			});
+		},
 	};
 });
 vi.mock('#lib/v1/live/store.svelte.ts', () => ({
@@ -599,8 +604,10 @@ describe('StopDetail article contract', () => {
 		expect(container.querySelector('[data-source="historic"] time')).toBeNull();
 		const notice = () => within(header).queryByRole('link', { name: stampCopy[locale].warning });
 		await waitFor(() => expect(notice()).toHaveAttribute('href', '/status'));
+		expect(recordHealth.reads?.()).toBe(true);
 		await fireEvent.click(screen.getByRole('tab', { name: detailCopy[locale].tabs.schedule }));
 		expect(notice()).toBeNull();
+		expect(recordHealth.reads?.()).toBe(false);
 		recordHealth.verdict = null;
 		for (const [now, includeYear] of [
 			['2026-11-13T12:00:00Z', false],

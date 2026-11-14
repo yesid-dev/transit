@@ -3,7 +3,7 @@ import type { HistoricAvailabilityIndex, Manifest } from './schemas/index';
 import { getHistoricAvailability } from './repositories/historic';
 import { getDataHealth } from './repositories/dataHealth';
 import { createResource } from './resource.svelte';
-import { recordGate, recordStamp, stampText, type RecordStamp } from './stamp';
+import { recordStamp, stampText, type RecordStamp } from './stamp';
 import { stampCopy } from './stamp.copy';
 import { browser } from '$app/env';
 import type { Locale } from '#lib/i18n/copy.ts';
@@ -34,6 +34,8 @@ export function createRecordStamp(
 		readonly rootIndex?: HistoricAvailabilityIndex | null;
 		readonly state: HistoryRangeResourceState;
 	},
+	/** True while the stamp shows with its warning row: the only time data health is read. */
+	withNotice: () => boolean = () => false,
 ) {
 	const history = createResource(
 		async (signal) => {
@@ -53,7 +55,7 @@ export function createRecordStamp(
 				return null;
 			}
 		},
-		{ enabled: () => manifest() != null, key: () => manifest()?.provider },
+		{ enabled: () => withNotice() && manifest() != null, key: () => manifest()?.provider },
 	);
 	const shared = $derived(source?.());
 	const stamp = $derived(
@@ -71,12 +73,20 @@ export function createRecordStamp(
 					(shared
 						? ['idle', 'loading-index'].includes(shared.state)
 						: history.loading || !history.settled)) ||
-				(manifest() != null && (health.loading || !health.settled))
+				(withNotice() && manifest() != null && (health.loading || !health.settled))
 			);
 		},
-		/** W10 under the stamp when the record's last check warned. A failed check has no approved sentence. */
+		/**
+		 * W10 when the check of this record's publication warned. A missing, unreadable or stale
+		 * check (another publication day) says nothing; a failed check has no approved sentence.
+		 */
 		notice(locale: Locale) {
-			return recordGate(health.data)?.verdict === 'warn' ? stampCopy[locale].warning : null;
+			const rollup = health.data?.lanes?.find((lane) => lane.lane === 'rollup');
+			return rollup?.gate?.verdict === 'warn' &&
+				stamp.publishedOn != null &&
+				rollup.last_publish_utc?.slice(0, 10) === stamp.publishedOn
+				? stampCopy[locale].warning
+				: null;
 		},
 		meta(locale: Locale) {
 			const text = stampText(stamp, locale, manifest()?.tz);

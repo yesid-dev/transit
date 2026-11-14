@@ -316,16 +316,21 @@ vi.mock('#lib/v1/repositories/historic.ts', () => ({
 vi.mock('#lib/v1/repositories/provenance.ts', () => ({ getProvenance: () => provenanceData }));
 vi.mock('#lib/v1/repositories/dataHealth.ts', () => ({ getDataHealth: async () => null }));
 // The notice's rule lives in the stamp module (recordStamp.svelte.test.ts); here only its placement.
-const recordHealth = vi.hoisted(() => ({ verdict: null as string | null }));
+const recordHealth = vi.hoisted(() => ({
+	verdict: null as string | null,
+	reads: undefined as (() => boolean) | undefined,
+}));
 vi.mock('#lib/v1/recordStamp.svelte.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('#lib/v1/recordStamp.svelte.ts')>();
 	return {
 		...actual,
-		createRecordStamp: (...args: Parameters<typeof actual.createRecordStamp>) =>
-			Object.assign(Object.create(actual.createRecordStamp(...args)), {
+		createRecordStamp: (...args: Parameters<typeof actual.createRecordStamp>) => {
+			recordHealth.reads = args[3];
+			return Object.assign(Object.create(actual.createRecordStamp(...args)), {
 				notice: (lang: 'en' | 'fr') =>
 					recordHealth.verdict === 'warn' ? stampCopy[lang].warning : null,
-			}),
+			});
+		},
 	};
 });
 vi.mock('#lib/v1/live/store.svelte.ts', async (importOriginal) => {
@@ -558,8 +563,10 @@ describe('RouteDetail article cover and focus scope', () => {
 				'/status',
 			),
 		);
+		expect(recordHealth.reads?.()).toBe(true);
 		for (const name of ['Live now', 'Schedule']) {
 			await fireEvent.click(screen.getByRole('tab', { name }));
+			expect(recordHealth.reads?.()).toBe(false);
 			expect(header.querySelector('time')).toBeNull();
 			expect(within(header).queryByRole('link', { name: stampCopy.en.warning })).toBeNull();
 		}

@@ -109,39 +109,66 @@ it.each(['line', 'stop', 'seeded line', 'P12a'] as const)(
 	},
 );
 
+const rollup = (verdict: string | null, published = fixture.frozen_utc) => ({
+	generated_utc: fixture.frozen_utc,
+	lanes: [{ lane: 'rollup', last_publish_utc: published, gate: verdict && { verdict } }],
+});
+const W10 = 'Ce bilan a été publié avec un avertissement. Voir Santé des données.';
 it.each([
-	['warn', 'Ce bilan a été publié avec un avertissement. Voir Santé des données.'],
-	['fail', null],
-	['pass', null],
-	[null, null],
+	['warned on this publication', true, rollup('warn'), W10],
+	['failed', true, rollup('fail'), null],
+	['passed', true, rollup('pass'), null],
+	['ran no check', true, rollup(null), null],
+	[
+		'is stale: it warned on the publication before',
+		true,
+		rollup('warn', '2026-08-23T16:00:00Z'),
+		null,
+	],
+	['is missing', true, 404, null],
+	['cannot be read', true, 'offline', null],
+	['warned, on another tab', false, rollup('warn'), null],
+	['warned, on a page without the row', undefined, rollup('warn'), null],
 ] as const)(
-	'notes a record published with warnings (%s) and nothing else',
-	async (verdict, notice) => {
-		const health = {
-			generated_utc: '2026-11-14T00:00:00Z',
-			lanes: [{ lane: 'rollup', gate: verdict && { verdict } }],
-		};
-		const found = (url: string) => url.endsWith('/status/data_health.json');
-		vi.stubGlobal('fetch', async (input: RequestInfo | URL) =>
-			found(String(input))
-				? new Response(JSON.stringify(health))
-				: new Response('{}', { status: 404 }),
-		);
+	'record data health that %s: the warning row and its read',
+	async (_, shown, health, notice) => {
+		const reads: string[] = [];
+		vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+			if (!String(input).endsWith('/status/data_health.json'))
+				return new Response('{}', { status: 404 });
+			reads.push(String(input));
+			if (health === 'offline') throw new TypeError('offline');
+			return health === 404
+				? new Response('{}', { status: 404 })
+				: new Response(JSON.stringify(health));
+		});
 		installBrowserAdapterManifest(() => manifest);
 		let stamp!: ReturnType<typeof createRecordStamp>;
 		const dispose = $effect.root(() => {
 			stamp = createRecordStamp(
 				() => manifest,
 				() => fixture.frozen_utc,
+				undefined,
+				shown === undefined ? undefined : () => shown,
 			);
 		});
 		try {
 			flushSync();
 			await vi.waitFor(() => expect(stamp.pending).toBe(false));
-			expect([stamp.notice('fr'), notice && stamp.notice('en')]).toEqual([
-				notice,
+			expect(reads).toHaveLength(shown ? 1 : 0);
+			expect(stamp.notice('fr')).toBe(notice);
+			expect(stamp.notice('en')).toBe(
 				notice && 'This record was published with a warning. See Data health.',
-			]);
+			);
+			// Whatever data health says, the stamp itself reads exactly as without it.
+			expect(stamp.meta('en')).toEqual({
+				text: stampText(
+					recordStamp({ manifest, historyIndex: null, fileGeneratedUtc: fixture.frozen_utc }),
+					'en',
+					manifest.tz,
+				),
+				datetime: fixture.frozen_utc.slice(0, 10),
+			});
 		} finally {
 			dispose();
 		}
