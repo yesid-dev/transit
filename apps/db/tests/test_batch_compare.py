@@ -1,7 +1,8 @@
 import struct
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, time, timedelta, timezone
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -63,11 +64,13 @@ def test_float_comparison_is_bitwise(left, right):
     ]
 
 
-def test_nan_payloads_are_compared():
+def test_every_nan_has_one_identity():
     first = struct.unpack("<d", bytes.fromhex("010000000000f87f"))[0]
     second = struct.unpack("<d", bytes.fromhex("020000000000f87f"))[0]
     assert compare_tables(table(first), table(first)) == []
-    (difference,) = compare_tables(table(first), table(second))
+    for other in [second, -first, -second]:
+        assert compare_tables(table(first), table(other)) == []
+    (difference,) = compare_tables(table(first), table(0.0))
     assert difference.kind == "value" and difference.column == "value"
 
 
@@ -90,6 +93,33 @@ def test_null_is_not_empty_and_timestamps_compare_by_instant_and_offset():
         assert compare_tables(table(stamp), table(other))[0].column == "value"
 
 
+@pytest.mark.parametrize("zone", [UTC, ZoneInfo("America/Toronto")])
+def test_aware_datetime_identity_survives_iso_roundtrip(zone):
+    stamp = datetime(2026, 11, 1, 1, 30, tzinfo=zone, fold=1)
+    restored = datetime.fromisoformat(stamp.isoformat())
+    assert compare_tables(table(stamp), table(restored)) == []
+    other_fold = stamp.replace(fold=0)
+    if other_fold.utcoffset() != stamp.utcoffset():
+        assert compare_tables(table(stamp), table(other_fold))[0].column == "value"
+
+
+def test_aware_time_keeps_printed_offset_and_local_time():
+    left = time(13, 0, tzinfo=timezone(timedelta(hours=1)))
+    right = time(12, 0, tzinfo=UTC)
+    assert compare_tables(table(left), table(right)) == [
+        RowDifference("gold.toy", (1,), "value", "value", left, right)
+    ]
+    assert compare_tables(table(left), table(time.fromisoformat(left.isoformat()))) == []
+
+
+def test_time_without_offset_keeps_timezone_presence():
+    zoned = time(12, tzinfo=ZoneInfo("America/Toronto"))
+    assert zoned.utcoffset() is None
+    (difference,) = compare_tables(table(zoned), table(time(12)))
+    assert difference.column == "value"
+    assert compare_tables(table(zoned), table(zoned)) == []
+
+
 @pytest.mark.parametrize(
     "left,right",
     [
@@ -107,7 +137,15 @@ def test_lists_compare_elementwise(left, right):
 
 
 @pytest.mark.parametrize(
-    "left,right", [("1.00", "1.0"), ("{1,NULL}", '{1,""}'), ('{"n": 1.0}', '{"n": 1.00}')]
+    "left,right",
+    [
+        ("1.00", "1.0"),
+        ("{1,NULL}", '{1,""}'),
+        ('{"n": 1.0}', '{"n": 1.00}'),
+        ("1 day", "24:00:00"),
+        ("13:00:00+01", "12:00:00+00"),
+        ('{"a":1,"b":2}', '{"b":2,"a":1}'),
+    ],
 )
 def test_postgres_exact_text_is_never_parsed(left, right):
     assert compare_tables(table(left), table(right))[0].kind == "value"
