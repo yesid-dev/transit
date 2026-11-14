@@ -10,6 +10,11 @@ State changes persist even with no public audit records; events() stays empty.
 Read-only sessions write nothing. Events may exist without any window state.
 Store event reads take no window lock; session reads still see their own writes.
 Event sequences identify records and increase within each window.
+PostgreSQL writes become durable when the caller commits its outer transaction;
+an outer rollback undoes them. R2 writes become durable at successful session
+exit, independently of PostgreSQL; a PostgreSQL rollback cannot undo them.
+Callers must rely on neither transaction coupling nor session-exit durability
+across backends.
 """
 
 from collections.abc import Collection, Mapping
@@ -73,7 +78,15 @@ class WindowSession(Protocol):
     def mark_changed(self, *, actor: str | None = None) -> None: ...
     def allocate_version(self, *, above_version: int = 0) -> int: ...
     def set_working_state(self, state: WorkingState) -> None: ...
-    def insert_allocated_copy(self, copy: NewCopy) -> None: ...
+    def insert_allocated_copy(self, copy: NewCopy) -> None:
+        """Insert only an allocated version at revision 0; never replace a copy.
+
+        Invalid digests or storage_backend raise ValueError naming the field
+        before writing; missing digests are allowed. Nonzero revision raises
+        ValueError until the revision extension is supported.
+        """
+        ...
+
     def mark_sealed(self, content_version: int, *, actor: str | None = None) -> None: ...
     def mark_rejected(
         self, content_version: int, *, rejected_at: datetime, reason: str, actor: str | None = None
@@ -92,7 +105,14 @@ class WindowSession(Protocol):
         reason: str | None = None,
         details: Mapping[str, object] | None = None,
         actor: str | None = None,
-    ) -> None: ...
+    ) -> None:
+        """Write changed, close_runs, processing_evidence, fold_published or rebuild.
+
+        Other kinds raise ValueError naming the kind before writing; lifecycle
+        records belong to their guarded verbs.
+        """
+        ...
+
     def events(self, *, kinds: Collection[str] | None = None) -> list[RecordedEvent]: ...
     def processing_events(self) -> list[RecordedEvent]: ...
 

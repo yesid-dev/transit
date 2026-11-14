@@ -1,6 +1,7 @@
 """Ledger sessions in the caller's PostgreSQL transaction."""
 
 import json
+import re
 from collections.abc import Collection, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import asdict, fields
@@ -145,6 +146,27 @@ class _Session:
         details: Mapping[str, object] | None = None,
         actor: str | None = None,
     ) -> None:
+        if kind not in {
+            "changed",
+            "close_runs",
+            "processing_evidence",
+            "fold_published",
+            "rebuild",
+        }:
+            raise ValueError(f"record_event refuses lifecycle kind {kind!r}; use its guarded verb")
+        self._record_event(
+            kind, content_version=content_version, reason=reason, details=details, actor=actor
+        )
+
+    def _record_event(
+        self,
+        kind: EventKind,
+        *,
+        content_version: int | None = None,
+        reason: str | None = None,
+        details: Mapping[str, object] | None = None,
+        actor: str | None = None,
+    ) -> None:
         ledger.record_event(
             self.connection,
             **asdict(self.identity),
@@ -181,7 +203,15 @@ class _Session:
         return [ArchiveCopy(**row) for row in rows]
 
     def insert_allocated_copy(self, copy: NewCopy) -> None:
+        if self.identity.revision != 0:
+            raise ValueError(f"insert_allocated_copy requires revision 0: {self.identity}")
         self._copy_values(copy.content_version, None)
+        for name in ("sha256", "manifest_sha256", "content_sha256", "poll_record_sha256"):
+            value = getattr(copy, name)
+            if value is not None and re.fullmatch(r"[0-9a-f]{64}", value) is None:
+                raise ValueError(f"{name} must be 64 lowercase hex characters")
+        if copy.storage_backend not in {"local", "s3"}:
+            raise ValueError("storage_backend must be local or s3")
         values = {**asdict(self.identity), **{f.name: getattr(copy, f.name) for f in fields(copy)}}
         values["details"] = json.dumps(dict(copy.details), sort_keys=True)
         columns = ", ".join(values)
@@ -189,7 +219,11 @@ class _Session:
         self._update(
             f"""
             INSERT INTO core.history_archive_copy ({columns}, allocated_at_utc)
-            VALUES ({params}, clock_timestamp())
+            SELECT {params}, clock_timestamp()
+            WHERE EXISTS (
+                SELECT 1 FROM core.history_window
+                WHERE {_WINDOW} AND next_version > :content_version
+            )
             ON CONFLICT (dataset_id, provider_id, revision, window_key, content_version) DO NOTHING
         """,
             values,
@@ -206,7 +240,7 @@ class _Session:
             values,
             "seal",
         )
-        self.record_event("seal", content_version=content_version, actor=actor)
+        self._record_event("seal", content_version=content_version, actor=actor)
 
     def mark_rejected(
         self, content_version: int, *, rejected_at: datetime, reason: str, actor: str | None = None
@@ -220,7 +254,7 @@ class _Session:
             values,
             "reject",
         )
-        self.record_event("reject", content_version=content_version, reason=reason, actor=actor)
+        self._record_event("reject", content_version=content_version, reason=reason, actor=actor)
 
     def make_current(
         self, content_version: int, *, verified_at: datetime, actor: str | None = None
@@ -245,8 +279,8 @@ class _Session:
             values,
             "make current",
         )
-        self.record_event("verify", content_version=content_version, actor=actor)
-        self.record_event(
+        self._record_event("verify", content_version=content_version, actor=actor)
+        self._record_event(
             "current",
             content_version=content_version,
             actor=actor,
