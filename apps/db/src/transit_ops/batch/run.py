@@ -14,7 +14,7 @@ from transit_ops.batch.engine import (
 )
 from transit_ops.batch.inputs import resolve_inputs
 from transit_ops.batch.manifest import BuildManifest, ManifestInput
-from transit_ops.batch.private_area import private_area
+from transit_ops.batch.private_area import PrivateArea
 
 
 class InputChanged(InputRefused):
@@ -116,7 +116,7 @@ def run_family(
         code_commit=code_commit,
         inputs=tuple(before.values()),
     )
-    with private_area(workdir) as area:
+    with PrivateArea(workdir) as area:
         opened = False
         try:
             with open_batch_session(inputs, workdir=area, variants=builder.variants) as session:

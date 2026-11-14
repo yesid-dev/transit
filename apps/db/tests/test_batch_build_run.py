@@ -1,6 +1,8 @@
 import os
+import shutil
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
+from functools import partial
 from hashlib import sha256
 from pathlib import Path
 
@@ -21,6 +23,19 @@ COMMIT = "abcdef0123456789abcdef0123456789abcdef01"
 def area_of(session):
     setting = session.execute(text("-- q:toy.area\nSELECT current_setting('temp_directory')"))
     return Path(setting.scalar_one()).parent
+
+
+def redirect_area(areas, workdir, moved, outside, kind):
+    area = areas[0]
+    impostor = outside / area.name
+    impostor.mkdir()
+    (impostor / "sentinel").write_text("keep")
+    assert all(p.resolve().is_relative_to(outside.parent) for p in (workdir, moved, outside, area))
+    target = area if kind == "area" else workdir
+    target.rename(moved)
+    if kind == "area" and os.name == "nt":
+        pytest.fail("private area was renamed during removal")
+    target.symlink_to(impostor if kind == "area" else outside, target_is_directory=True)
 
 
 def mutate_input(path, mutation):
@@ -348,30 +363,56 @@ def test_interrupt_stays_an_interrupt(build_case):
     assert error.value is interrupt
 
 
-def test_replaced_workdir_is_never_cleaned(build_case, tmp_path):
+@pytest.mark.parametrize("when", ["build", "parent", "area", "open"])
+def test_replaced_workdir_is_never_cleaned(build_case, tmp_path, monkeypatch, when):
     request, kwargs = build_case
     outside, moved = tmp_path / "outside", tmp_path / "moved"
     outside.mkdir()
     areas = []
 
+    swap = partial(redirect_area, areas, kwargs["workdir"], moved, outside, when)
+
     class Replacing(ToyBuilder):
         def build(self, session, request):
             area = area_of(session)
             areas.append(area)
-            impostor = outside / area.name
-            impostor.mkdir()
-            (impostor / "sentinel").write_text("keep")
-            assert all(
-                p.resolve().is_relative_to(tmp_path) for p in (kwargs["workdir"], moved, outside)
-            )
-            kwargs["workdir"].rename(moved)
-            kwargs["workdir"].symlink_to(outside, target_is_directory=True)
+            (area / "stage").mkdir()
+            if when == "build":
+                swap()
             return super().build(session, request)
 
-    with pytest.raises(RuntimeError, match="private area|workdir"):
-        run_family(Replacing(), request, **kwargs)
+    original = os.open if when == "open" else shutil.rmtree
+
+    def removal(path, *args, **options):
+        if when == "open" and Path(path) == kwargs["workdir"]:
+            swap()
+            raise NotADirectoryError("swapped at open")
+        if when in {"parent", "area"} and not any(outside.iterdir()):
+            try:
+                swap()
+            except PermissionError:
+                pass
+        return original(path, *args, **options)
+
+    if when == "open":
+        monkeypatch.setattr(shutil.rmtree, "avoids_symlink_attacks", True)
+        for name in ("O_DIRECTORY", "O_NOFOLLOW"):
+            monkeypatch.setattr(os, name, getattr(os, name, 0), raising=False)
+        monkeypatch.setattr(os, "open", removal)
+    elif when != "build":
+        removal.avoids_symlink_attacks = shutil.rmtree.avoids_symlink_attacks
+        monkeypatch.setattr(shutil, "rmtree", removal)
+    if when in {"build", "open"}:
+        with pytest.raises(RuntimeError, match="private area|workdir"):
+            run_family(Replacing(), request, **kwargs)
+    else:
+        try:
+            run_family(Replacing(), request, **kwargs)
+        except OSError:
+            pass
     assert (outside / areas[0].name / "sentinel").read_text() == "keep"
-    assert (moved / areas[0].name).is_dir()
+    if when in {"build", "open"}:
+        assert (moved / areas[0].name).is_dir()
 
 
 @pytest.mark.parametrize("outcome", ["unchanged", "changed", "success"])
@@ -392,21 +433,25 @@ def test_held_file_cleanup_keeps_primary_outcome(build_case, outcome):
             return super().build(session, request)
 
     try:
-        expected = InputChanged if outcome == "changed" else ValueError
-        if outcome == "success" and os.name != "nt":
-            run_family(Held(), request, **kwargs)
-        else:
-            with pytest.raises(OSError if outcome == "success" else expected) as error:
+        raise KeyError("earlier caller failure")
+    except KeyError as earlier:
+        try:
+            expected = InputChanged if outcome == "changed" else ValueError
+            if outcome == "success" and os.name != "nt":
                 run_family(Held(), request, **kwargs)
-            if outcome == "unchanged":
-                assert error.value is original
-            if outcome == "changed":
-                assert error.value.__cause__ is original
-            if outcome != "success" and os.name == "nt":
-                assert any(str(areas[0]) in note for note in error.value.__notes__)
-    finally:
-        for handle in handles:
-            handle.close()
+            else:
+                with pytest.raises(OSError if outcome == "success" else expected) as error:
+                    run_family(Held(), request, **kwargs)
+                if outcome == "unchanged":
+                    assert error.value is original
+                if outcome == "changed":
+                    assert error.value.__cause__ is original
+                if outcome != "success" and os.name == "nt":
+                    assert any(str(areas[0]) in note for note in error.value.__notes__)
+            assert not hasattr(earlier, "__notes__")
+        finally:
+            for handle in handles:
+                handle.close()
 
 
 @pytest.mark.parametrize("field", ["fact_retention_days", "open_window_days"])
