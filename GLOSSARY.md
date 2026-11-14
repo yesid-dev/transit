@@ -3,6 +3,12 @@ A public dashboard that tells riders how reliable their transit service is, from
 
 ## Language
 
+**Live oracle**:
+A replay of the existing live path whose publications define the expected result for a replacement.
+
+**Pinned clock**:
+The fixed instant used as now throughout one replay cycle, including its stamps, ages and windows.
+
 **Copy proof**:
 The record that one copy was read back and found equal to what it means, row for row; without it a copy is not verified. Typed row equality alone still needs the canonical-text check before verification.
 _Avoid_: receipt (an upload record)
