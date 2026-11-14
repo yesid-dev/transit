@@ -4,6 +4,9 @@ import hashlib
 from dataclasses import asdict, dataclass
 from fnmatch import fnmatchcase
 from pathlib import Path
+from tempfile import TemporaryDirectory
+
+import duckdb
 
 from transit_ops.batch.build import BuildRequest, FamilyBuilder, FamilyOutput, InputNeed
 from transit_ops.batch.engine import BatchEngineError, InputRefused, open_batch_session
@@ -42,6 +45,22 @@ def _hash_inputs(
             raise refusal(f"{need.relation} window {need.window}: {path}: {error}") from error
         result[path] = ManifestInput(need.relation, need.window, digest.hexdigest(), size)
     return result
+
+
+def _check_inputs(captured: dict[Path, InputNeed], before: dict[Path, ManifestInput]) -> None:
+    after = _hash_inputs(captured, after_build=True)
+    for path, previous in before.items():
+        if previous != after[path]:
+            raise InputChanged(f"{previous.relation} window {previous.window}: {path}")
+
+
+def _refuse_invalid_input(error: BaseException, captured: dict[Path, InputNeed]) -> None:
+    if isinstance(error, duckdb.Error):
+        for path, need in captured.items():
+            if path.as_posix() in str(error).replace("\\", "/"):
+                raise InputRefused(
+                    f"{need.relation} window {need.window}: {path}: {error}"
+                ) from error
 
 
 def _patterns(patterns: tuple[str, ...]) -> tuple[tuple[str, ...], ...]:
@@ -93,11 +112,24 @@ def run_family(
         code_commit=code_commit,
         inputs=tuple(before.values()),
     )
-    with open_batch_session(inputs, workdir=workdir, variants=builder.variants) as session:
-        output = builder.build(session, request)
-        after = _hash_inputs(captured, after_build=True)
-        for path, previous in before.items():
-            if previous != after[path]:
-                raise InputChanged(f"{previous.relation} window {previous.window}: {path}")
+    workdir = workdir.resolve()
+    workdir.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(prefix="build-", dir=workdir) as area:
+        opened = False
+        try:
+            with open_batch_session(
+                inputs, workdir=Path(area), variants=builder.variants
+            ) as session:
+                opened = True
+                output = builder.build(session, request)
+        except BaseException as error:
+            try:
+                _check_inputs(captured, before)
+            except InputChanged as changed:
+                raise changed from error
+            if not opened:
+                _refuse_invalid_input(error, captured)
+            raise
+        _check_inputs(captured, before)
         _check_output(builder, output)
     return BuildResult(manifest, output)
