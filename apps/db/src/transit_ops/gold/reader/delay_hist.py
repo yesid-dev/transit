@@ -18,6 +18,7 @@ class HistLayout:
     layout_id: int
     edges_s: tuple[int, ...]
     left_closed: bool
+    unit: str
 
 
 _EDGES = tuple(
@@ -33,8 +34,32 @@ _EDGES = tuple(
     for edge in range(start, stop, step)
 ) + (3600,)
 
+CANCEL_NOTICE_HIST_LAYOUT = 3
+_CANCEL_NOTICE_EDGES = (
+    -3600,
+    -1800,
+    -600,
+    0,
+    300,
+    600,
+    1200,
+    1800,
+    3600,
+    7200,
+    14400,
+    28800,
+    86400,
+)
+
 # Layout 1 is reserved: its older dense array has no underflow bin.
-DELAY_HIST_LAYOUTS: Mapping[int, HistLayout] = MappingProxyType({2: HistLayout(2, _EDGES, True)})
+DELAY_HIST_LAYOUTS: Mapping[int, HistLayout] = MappingProxyType(
+    {
+        2: HistLayout(2, _EDGES, True, unit="seconds"),
+        CANCEL_NOTICE_HIST_LAYOUT: HistLayout(
+            CANCEL_NOTICE_HIST_LAYOUT, _CANCEL_NOTICE_EDGES, True, unit="seconds"
+        ),
+    }
+)
 
 
 def _get_layout(layout: int) -> HistLayout:
