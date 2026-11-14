@@ -77,13 +77,16 @@ def test_route_disagreement_or_absent_trip_remains_unresolved(provider, raw, rou
     assert result.fills == () and result.message.SerializeToString() == raw.payload
 
 
-def test_supplied_route_is_never_overwritten(provider, raw):
+@pytest.mark.parametrize(
+    "routes", [(ROUTE, "B", None), (ROUTE, ROUTE, None)], ids=["disagreeing", "unanimous-different"]
+)
+def test_supplied_route_is_never_overwritten(provider, raw, routes):
     message = pb.FeedMessage.FromString(raw.payload)
     for entity in message.entity:
         trip = entity.trip_update.trip if raw.family == "trip_updates" else entity.vehicle.trip
         trip.route_id = " opaque 路線 "
     raw = replace(raw, payload=message.SerializeToString())
-    result = run(provider, raw, schedule((ROUTE, "B", None)))
+    result = run(provider, raw, schedule(routes))
     assert result.message.SerializeToString() == raw.payload
     assert result.fills == result.outcomes == ()
 
