@@ -3,13 +3,19 @@ import { beforeEach, test } from "node:test";
 import worker from "../src/worker.js";
 import { __resetKpisCachesForTests } from "../src/kpis.js";
 
-const catalog = { providers: [{ id: "stm" }, { id: "octranspo" }] };
-function bucket() {
+const catalog = {
+  default_provider: "stm",
+  providers: [{ id: "stm" }, { id: "octranspo" }, { id: "fixture" }],
+};
+function bucket(defaultProvider = "stm") {
   const stamp = new Date().toISOString();
-  const docs = new Map([["v1/providers.json", catalog]]);
+  const docs = new Map([
+    ["v1/providers.json", { ...catalog, default_provider: defaultProvider }],
+  ]);
   for (const [provider, route, count, delay, coverage] of [
     ["stm", "24", 2, 1, 80],
     ["octranspo", "88", 1, 3, 60],
+    ["fixture", "Z9", 4, 7, 25],
   ]) {
     docs.set(`v1/${provider}/live/vehicles.json`, {
       generated_utc: stamp,
@@ -48,6 +54,170 @@ function fetchKpis(storage, query = "", method = "GET") {
   );
 }
 beforeEach(__resetKpisCachesForTests);
+for (const defaultProvider of ["octranspo", undefined, "unknown"]) {
+  test(`explicit provider overrides default ${defaultProvider}`, async () => {
+    const storage = bucket(defaultProvider);
+    storage.docs.set("v1/providers.json", {
+      ...catalog,
+      default_provider: defaultProvider,
+    });
+    for (const [provider, expected] of [
+      ["stm", 2],
+      ["octranspo", 1],
+    ]) {
+      assert.equal(
+        (await (await fetchKpis(storage, `?provider=${provider}`)).json())
+          .vehicles,
+        expected,
+      );
+    }
+    assert.equal((await fetchKpis(storage, "?provider=")).status, 404);
+    assert.equal((await fetchKpis(storage, "?provider=unknown")).status, 404);
+  });
+}
+
+const invalidCatalogs = [
+  ["absent", null],
+  ["missing providers", {}],
+  ["bad providers", { ...catalog, providers: {} }],
+  ["missing default", { providers: catalog.providers }],
+  ...[null, "", 3, {}, "unknown", " stm "].map((value) => [
+    `default ${JSON.stringify(value)}`,
+    { ...catalog, default_provider: value },
+  ]),
+  [
+    "duplicate default",
+    { ...catalog, providers: [{ id: "stm" }, { id: "stm" }] },
+  ],
+  ["invalid JSON", "invalid-json"],
+  ["rejected read", "rejected-read"],
+];
+for (const [name, invalid] of invalidCatalogs) {
+  test(`missing, malformed or unknown default returns pipeline_cold: ${name}`, async (t) => {
+    const storage = bucket();
+    let now = Date.now();
+    t.mock.method(Date, "now", () => now);
+    const cache = new Map();
+    const previous = globalThis.caches;
+    t.after(() => {
+      if (previous === undefined) delete globalThis.caches;
+      else globalThis.caches = previous;
+    });
+    let edgeReads = 0;
+    globalThis.caches = {
+      default: {
+        match: async (key) => {
+          edgeReads++;
+          return cache.get(key)?.clone();
+        },
+        put: async (key, response) => cache.set(key, response),
+      },
+    };
+    assert.equal((await fetchKpis(storage)).status, 200);
+    assert.equal(cache.size, 1);
+    if (name === "absent") storage.docs.delete("v1/providers.json");
+    else storage.docs.set("v1/providers.json", invalid);
+    const get = storage.get.bind(storage);
+    storage.get = async (key) => {
+      if (key === "v1/providers.json" && typeof invalid === "string") {
+        storage.reads.push(key);
+        if (invalid === "rejected-read")
+          throw new Error("synthetic storage outage");
+        return {
+          json: async () => {
+            throw new SyntaxError("synthetic invalid JSON");
+          },
+        };
+      }
+      return get(key);
+    };
+    now += 20_000;
+    storage.reads.length = 0;
+    const priorEdgeReads = edgeReads;
+    for (const reset of [false, true]) {
+      if (reset) __resetKpisCachesForTests();
+      for (let i = 0; i < 2; i++) {
+        const response = await fetchKpis(storage);
+        assert.equal(response.status, 503);
+        assert.equal(
+          await response.text(),
+          '{"error":"pipeline_cold","detail":"live snapshot missing or older than 60s"}',
+        );
+        assert.deepEqual(Object.fromEntries(response.headers), {
+          "access-control-allow-origin": "*",
+          "access-control-expose-headers": "Retry-After",
+          "cache-control": "no-store",
+          "content-type": "application/json; charset=utf-8",
+          "retry-after": "20",
+        });
+      }
+    }
+    assert.deepEqual(storage.reads, ["v1/providers.json", "v1/providers.json"]);
+    assert.equal(edgeReads, priorEdgeReads);
+    now += 20_000;
+    storage.docs.set("v1/providers.json", catalog);
+    storage.get = get;
+    assert.equal((await fetchKpis(storage)).status, 200);
+  });
+}
+
+test("default selection refreshes at catalogue cadence without leaking provider caches", async (t) => {
+  const storage = bucket();
+  let now = Date.now();
+  t.mock.method(Date, "now", () => now);
+  assert.equal((await (await fetchKpis(storage)).json()).vehicles, 2);
+  storage.docs.set("v1/providers.json", {
+    ...catalog,
+    default_provider: "octranspo",
+  });
+  now += 19_999;
+  assert.equal((await (await fetchKpis(storage)).json()).vehicles, 2);
+  assert.equal(
+    storage.reads.filter((key) => key === "v1/providers.json").length,
+    1,
+  );
+  now++;
+  assert.equal((await (await fetchKpis(storage)).json()).vehicles, 1);
+  assert.equal(
+    (await (await fetchKpis(storage, "?provider=stm")).json()).vehicles,
+    2,
+  );
+  assert.equal(
+    storage.reads.filter((key) => key === "v1/providers.json").length,
+    2,
+  );
+});
+
+test("a valid default with an observed empty vehicle array returns zero", async () => {
+  const storage = bucket("fixture");
+  storage.docs.set("v1/fixture/live/vehicles.json", {
+    generated_utc: new Date().toISOString(),
+    vehicles: [],
+  });
+  const response = await fetchKpis(storage);
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).vehicles, 0);
+});
+for (const [provider, vehicles, delay, coverage] of [
+  ["octranspo", 1, 180, 0.6],
+  ["fixture", 4, 420, 0.25],
+]) {
+  test(`unqualified KPI request follows catalogue default ${provider}, not STM or array order`, async () => {
+    const storage = bucket(provider);
+    const response = await fetchKpis(storage);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.vehicles, vehicles);
+    assert.equal(body.avgDelayS, delay);
+    assert.equal(body.coverage, coverage);
+    assert.ok(
+      storage.reads.every(
+        (key) =>
+          key === "v1/providers.json" || key.startsWith(`v1/${provider}/`),
+      ),
+    );
+  });
+}
 for (const provider of ["stm", "octranspo"]) {
   test(`${provider} selects its own snapshot and route total`, async () => {
     const storage = bucket();
@@ -67,7 +237,7 @@ for (const provider of ["stm", "octranspo"]) {
     );
   });
 }
-test("default stays STM and concurrent providers never share in-flight or memo results", async () => {
+test("catalogue default STM and concurrent providers never share in-flight or memo results", async () => {
   const storage = bucket();
   const responses = await Promise.all([
     fetchKpis(storage),
@@ -144,7 +314,7 @@ for (const missing of [true, false]) {
     else storage.docs.set("v1/providers.json", {});
     assert.equal((await fetchKpis(storage, "?provider=octranspo")).status, 503);
     assert.ok(storage.reads.every((key) => key === "v1/providers.json"));
-    assert.equal((await fetchKpis(storage)).status, 200);
+    assert.equal((await fetchKpis(storage)).status, 503);
   });
 }
 test("catalog membership is authoritative and refreshed at the live cadence", async (t) => {
