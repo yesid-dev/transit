@@ -200,6 +200,8 @@ def capture_and_load_realtime(
     engine: Engine,
     bronze_storage_resolver: BronzeStorageResolver,
 ) -> RealtimeCaptureLoadResult:
+    source_verified = False
+
     def capture() -> _CapturedRealtime:
         receipt, payload = _capture_realtime_feed(
             provider_id,
@@ -212,12 +214,14 @@ def capture_and_load_realtime(
         return _CapturedRealtime(receipt, payload)
 
     def load(captured: _CapturedRealtime) -> RealtimeSilverLoadResult:
+        nonlocal source_verified
         receipt = captured.receipt
         if (receipt.provider_id, receipt.endpoint_key) != (provider_id, endpoint_key):
             raise _ReceiptIdentityError(
                 "Realtime capture receipt does not match the requested source",
                 "capture_identity",
             )
+        source_verified = True
         silver = _load_realtime_to_silver(
             provider_id,
             endpoint_key,
@@ -239,6 +243,11 @@ def capture_and_load_realtime(
             )
         return silver
 
+    def capture_row_id_of(captured: _CapturedRealtime) -> int:
+        if not source_verified:
+            raise ValueError("Capture source identity has not been verified")
+        return captured.receipt.realtime_snapshot_id
+
     result = _run_capture_load_steps(
         provider_id,
         endpoint_key,
@@ -246,7 +255,7 @@ def capture_and_load_realtime(
         silver_load_step=load,
         capture_label_prefix="capture-realtime",
         silver_label_prefix="load-realtime-silver",
-        capture_row_id_of=lambda captured: captured.receipt.realtime_snapshot_id,
+        capture_row_id_of=capture_row_id_of,
     )
     return CaptureLoadResult(
         capture=result.capture.receipt if result.capture is not None else None,

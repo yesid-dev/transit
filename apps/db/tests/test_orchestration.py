@@ -2719,3 +2719,36 @@ def test_phased_worker_realigns_after_cycle_work(monkeypatch):
     assert starts == [10, 20, 30]
     assert sleeps == [7, 2, 2]
     assert aligned_sleep_seconds(datetime(2026, 11, 9, 0, 0, 42, tzinfo=UTC), 10) == 8
+
+
+@pytest.mark.parametrize(
+    "endpoint", ["trip_updates", "vehicle_positions", "i3_alerts", "service_alerts"]
+)
+def test_failure_before_source_verification_has_no_tag(monkeypatch, endpoint):
+    original = RuntimeError("source identity unavailable")
+    class Receipt:
+        realtime_snapshot_id = i3_alert_snapshot_id = 42
+        @property
+        def provider_id(self):
+            raise original
+        def display_dict(self):
+            return {}
+    receipt, writes = Receipt(), []
+    monkeypatch.setattr(capture_load, "_capture_realtime_feed", lambda *a, **k: (receipt, b"local"))
+    for name in ("_capture_i3_alerts", "_capture_service_alerts"):
+        monkeypatch.setattr(orchestration, name, lambda *a, **k: receipt)
+    def forbidden(*args, **kwargs):
+        pytest.fail("unverified capture must not load")
+    monkeypatch.setattr(capture_load, "_load_realtime_to_silver", forbidden)
+    monkeypatch.setattr(orchestration, "load_i3_to_silver", forbidden)
+    monkeypatch.setattr(
+        orchestration, "_persist_silver_load_failure", lambda *a, **k: writes.append(k)
+    )
+    registry = SimpleNamespace(get_provider=lambda p: SimpleNamespace(
+        feeds={endpoint: SimpleNamespace(refresh_interval_seconds=30)}))
+    result = run_realtime_cycle("requested", settings=Settings(_env_file=None), registry=registry,
+        engine=object())
+    expected = ("load-realtime-silver" if endpoint in {"trip_updates", "vehicle_positions"}
+        else "load-i3-silver" if endpoint == "i3_alerts" else "load-service-alerts-silver")
+    assert writes[0]["error_message"] == f"{expected} failed: source identity unavailable"
+    assert result.endpoint_results[0].error_message == writes[0]["error_message"]

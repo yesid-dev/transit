@@ -541,11 +541,15 @@ def _capture_and_load_alert_endpoint(
             bronze_storage_resolver=bronze_storage_resolver,
         )
 
+    source_verified = False
+
     def load_capture(captured: I3IngestionResult) -> _DisplayResult:
+        nonlocal source_verified
         if captured.provider_id != provider_id or captured.endpoint_key != endpoint_key:
             raise _ReceiptIdentityError(
                 "Alert capture receipt does not match the requested source", "capture_identity"
             )
+        source_verified = True
         loaded = load_i3_to_silver(
             provider_id,
             snapshot_id=captured.i3_alert_snapshot_id,
@@ -562,6 +566,11 @@ def _capture_and_load_alert_endpoint(
             )
         return loaded
 
+    def capture_row_id_of(captured: I3IngestionResult) -> int:
+        if not source_verified:
+            raise ValueError("Capture source identity has not been verified")
+        return captured.i3_alert_snapshot_id
+
     outcome = _run_capture_load_steps(
         provider_id,
         endpoint_key,
@@ -569,7 +578,7 @@ def _capture_and_load_alert_endpoint(
         silver_load_step=load_capture,
         capture_label_prefix=capture_label_prefix,
         silver_label_prefix=silver_label_prefix,
-        capture_row_id_of=lambda captured: captured.i3_alert_snapshot_id,
+        capture_row_id_of=capture_row_id_of,
     )
     return _endpoint_cycle_result(
         provider_id,

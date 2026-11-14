@@ -90,7 +90,6 @@ def worker(real_db_engine, seed_provider, monkeypatch):
                 settings=Settings(_env_file=None),
                 registry=registry,
                 engine=engine,
-                bronze_storage_resolver=lambda b: object(),
             )
             row = (
                 conn.execute(

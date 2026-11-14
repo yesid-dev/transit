@@ -7,7 +7,8 @@ from transit_ops.settings import Settings
 
 
 @pytest.mark.parametrize(
-    "fault", [None, "capture", "silver", "capture_identity", "silver_identity", "silver_type"]
+    "fault", [None, "capture", "silver", "capture_identity", "silver_identity", "silver_type",
+              "load_capture_identity"]
 )
 def test_shared_realtime_operation_preserves_exact_receipts_and_failure_stage(
     monkeypatch, caplog, fault
@@ -40,6 +41,8 @@ def test_shared_realtime_operation_preserves_exact_receipts_and_failure_stage(
         calls.append("silver")
         if fault == "silver":
             raise original
+        if fault == "load_capture_identity":
+            raise capture_load._ReceiptIdentityError("loader refused source", "capture_identity")
         if fault == "silver_type":
             return object()
         return replace(silver, realtime_snapshot_id=21) if fault == "silver_identity" else silver
@@ -66,11 +69,12 @@ def test_shared_realtime_operation_preserves_exact_receipts_and_failure_stage(
         assert result.capture is (None if fault == "capture" else captured)
         assert result.failure.stage == ("capture" if fault == "capture" else "silver")
         assert result.failure.capture_row_id == (
-            None if fault in {"capture", "capture_identity"} else 20
+            None if fault in {"capture", "capture_identity", "load_capture_identity"} else 20
         )
         assert result.failure.kind == (
             "silver_identity"
             if fault == "silver_type"
+            else "capture_identity" if fault == "load_capture_identity"
             else fault
             if fault in {"capture_identity", "silver_identity"}
             else "operation"
