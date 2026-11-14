@@ -4,6 +4,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { navPillCopy } from '../src/lib/i18n/messages';
 import { SURFACE_NAV } from '../src/lib/content/nav';
 import { copy as searchCopy } from '../src/lib/features/search/search.copy';
+import { detailCopy as lineCopy } from '../src/lib/features/lines/lines.copy';
 import { PUBLISHED_LOCALES } from '../src/lib/i18n/config';
 import { localizeHref } from '../src/lib/i18n/routing';
 
@@ -143,6 +144,12 @@ for (const locale of PUBLISHED_LOCALES) {
 				!url.searchParams.has('tab') &&
 				url.searchParams.get('grain') === grain,
 		);
+		const record = lineCopy[locale].tabs.reliability;
+		await expect(page.getByRole('tab', { name: record, exact: true })).toHaveAttribute(
+			'aria-selected',
+			'true',
+		);
+		await expect(page.getByRole('tabpanel', { name: record, exact: true })).toBeVisible();
 	});
 
 	test(`${locale}: below 1024px the header search opens the search page`, async ({ page }, {
