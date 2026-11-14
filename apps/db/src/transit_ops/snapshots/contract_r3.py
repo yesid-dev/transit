@@ -1,6 +1,7 @@
 """Unpublished revision-three evidence values; no active publication registration."""
 
 from datetime import date as ServiceDate
+from types import MappingProxyType
 from typing import Annotated, Literal, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
@@ -171,3 +172,117 @@ class Receipt(ReadingValues):
         if (self.alerts_reason == "not_measured") != (self.alerts_not_measured_reason is not None):
             raise ValueError("only not_measured alerts require a detailed reason")
         return self
+
+
+class PercentileBin(EvidenceValue):
+    lower_s: Annotated[int, Field(strict=True)] | None
+    upper_s: Annotated[int, Field(strict=True)] | None
+
+    @model_validator(mode="after")
+    def ordered_edges(self) -> Self:
+        if self.lower_s is not None and self.upper_s is not None and self.lower_s >= self.upper_s:
+            raise ValueError("percentile edges must ascend")
+        return self
+
+
+class DelayHistogram(EvidenceValue):
+    layout: Literal[2]
+    bins: list[Annotated[int, Field(strict=True, ge=0, le=160)]]
+    n: list[Count]
+
+    @model_validator(mode="after")
+    def aligned_bins(self) -> Self:
+        if len(self.bins) != len(self.n) or any(
+            a >= b for a, b in zip(self.bins, self.bins[1:], strict=False)
+        ):
+            raise ValueError("histogram needs aligned counts and ascending unique bins")
+        return self
+
+
+class NetworkAlertCell(EvidenceValue):
+    """Supplied network row of S0.6 D4's alert_cell_day; no aggregation."""
+
+    provider_id: str
+    revision: Literal[3]
+    scope: Literal["network"]
+    entity_id: Literal[""]
+    service_date: ServiceDate
+    cause: str
+    effect: str
+    alert_days_active: Count
+    episodes_started: Count
+    episodes_ended: Count
+    active_seconds: Count
+    episodes_open_at_day_start: Count
+    attribution: Literal["approximate", "exact"]
+    built: Literal["at_close", "backfill"]
+
+
+class NetworkTrendPoint(ReadingValues):
+    date: ServiceDate
+    population: Population
+    service: ServiceValues
+    p50_bin: PercentileBin | None
+    p90_bin: PercentileBin | None
+    delay_hist: DelayHistogram | None
+    vehicles_reporting: Count | None
+    vehicles_on_trip: Count | None
+    alert_cell: NetworkAlertCell | None
+
+    @model_validator(mode="after")
+    def empty_population_has_no_percentiles(self) -> Self:
+        if (
+            self.delay_hist is not None
+            and sum(self.delay_hist.n) == 0
+            and (self.p50_bin is not None or self.p90_bin is not None)
+        ):
+            raise ValueError("an empty histogram has no percentile")
+        if self.reading_count == 0 and any(
+            rate is not None for rate in (self.on_time_pct, self.late_pct, self.early_pct)
+        ):
+            raise ValueError("an empty reading population has no rates")
+        return self
+
+
+class NetworkTrend(EvidenceValue):
+    schema_version: Literal[1] = 1
+    methodology_version: Literal["reliability-3"]
+    generated_utc: AwareDatetime
+    publish_generation_id: str | None = None
+    data_through: ServiceDate
+    series: Annotated[list[NetworkTrendPoint], Field(max_length=35)]
+
+    @model_validator(mode="after")
+    def closed_ordered_dates(self) -> Self:
+        dates = [point.date for point in self.series]
+        if any(a >= b for a, b in zip(dates, dates[1:], strict=False)) or any(
+            day > self.data_through for day in dates
+        ):
+            raise ValueError("recent dates must ascend uniquely through data_through")
+        return self
+
+
+METHODOLOGY_TOKENS = MappingProxyType(
+    {
+        "reliability": "reliability-3",
+        "receipt": "receipt-2",
+        "alerts": "alerts-3",
+        "history": "history-2",
+        "provenance": "provenance-2",
+        "revision": "revision-1",
+        "registry": "registry-1",
+        "matrix": "matrix-1",
+    }
+)
+
+# In-memory registry only. Active exporters and publication targets never import it.
+SCHEMA_MODELS: MappingProxyType[str, type[BaseModel]] = MappingProxyType(
+    {
+        "historic_receipt": Receipt,
+        "historic_network_trend": NetworkTrend,
+    }
+)
+
+
+def export_schemas() -> dict[str, dict[str, object]]:
+    return {name: model.model_json_schema() for name, model in SCHEMA_MODELS.items()}

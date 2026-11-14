@@ -242,6 +242,7 @@ def test_revision_three_contract_import_has_no_runtime_io(monkeypatch):
         guard.setattr(storage, "build_snapshot_storage", forbidden)
         importlib.reload(r3)
         r3.Receipt.model_validate(receipt_payload())
+        r3.NetworkTrend.model_validate(trend_payload())
         r3.ReadingValues(state="measured", evidence="tentative", reading_count=0)
         r3.Population(basis="scheduled_window", excluded={}, coverage={})
         r3.ServiceValues(
@@ -281,6 +282,272 @@ def receipt_payload():
         "alerts_reason": "not_tracked",
         "alerts_not_measured_reason": None,
     }
+
+
+def test_percentile_open_edges_are_not_exact_values():
+    for edges in ({"lower_s": 3600, "upper_s": None}, {"lower_s": None, "upper_s": -3600}):
+        assert r3.PercentileBin.model_validate(edges).model_dump() == edges
+    with pytest.raises(ValidationError):
+        r3.PercentileBin(lower_s=60, upper_s=0)
+    histogram = {"layout": 2, "bins": [0, 160], "n": [0, 1]}
+    assert r3.DelayHistogram.model_validate(histogram).model_dump() == histogram
+    for invalid in (
+        {"n": [1]},
+        {"bins": [160, 0]},
+        {"bins": [0, 0]},
+        {"bins": [0, 161]},
+        {"n": [-1, 1]},
+        {"layout": 1},
+        {"counts": [0, 1]},
+    ):
+        with pytest.raises(ValidationError):
+            r3.DelayHistogram.model_validate(histogram | invalid)
+
+
+@pytest.mark.parametrize("edge", ["lower_s", "upper_s"])
+def test_percentile_refuses_omitted_edge(edge):
+    edges = {"lower_s": 0, "upper_s": 10}
+    del edges[edge]
+    with pytest.raises(ValidationError):
+        r3.PercentileBin.model_validate(edges)
+
+
+def test_percentile_refuses_equal_edges():
+    with pytest.raises(ValidationError):
+        r3.PercentileBin(lower_s=10, upper_s=10)
+
+
+def trend_point():
+    return {
+        "date": "2026-11-13",
+        "state": "measured",
+        "evidence": "tentative",
+        "reading_count": 0,
+        "population": {"basis": "vehicle_evidence", "excluded": {}, "coverage": {}},
+        "service": receipt_payload()["service"],
+        "p50_bin": None,
+        "p90_bin": None,
+        "delay_hist": {"layout": 2, "bins": [80], "n": [0]},
+        "vehicles_reporting": None,
+        "vehicles_on_trip": None,
+        "alert_cell": None,
+    }
+
+
+def trend_payload():
+    return {
+        "methodology_version": "reliability-3",
+        "generated_utc": "2026-11-14T12:00:00Z",
+        "data_through": "2026-11-13",
+        "series": [trend_point()],
+    }
+
+
+def test_revision_three_tokens_are_isolated_and_family_specific():
+    assert dict(r3.METHODOLOGY_TOKENS) == {
+        "reliability": "reliability-3",
+        "receipt": "receipt-2",
+        "alerts": "alerts-3",
+        "history": "history-2",
+        "provenance": "provenance-2",
+        "revision": "revision-1",
+        "registry": "registry-1",
+        "matrix": "matrix-1",
+    }
+    with pytest.raises(TypeError):
+        r3.METHODOLOGY_TOKENS["receipt"] = "receipt-1"
+    assert dict(r3.SCHEMA_MODELS) == {
+        "historic_receipt": r3.Receipt,
+        "historic_network_trend": r3.NetworkTrend,
+    }
+    r3.Receipt.model_validate(receipt_payload())
+    r3.NetworkTrend.model_validate(trend_payload())
+    for token in ("receipt-2", "reliability-2", "alerts-3"):
+        with pytest.raises(ValidationError):
+            r3.NetworkTrend.model_validate(trend_payload() | {"methodology_version": token})
+
+
+@pytest.mark.parametrize(
+    "dates",
+    [
+        ["2026-11-13", "2026-11-13"],
+        ["2026-11-13", "2026-11-12"],
+        ["2026-11-14"],
+        ["2026-02-30"],
+        [f"2026-10-{day:02d}" for day in range(1, 32)] + [f"2026-11-{d:02d}" for d in range(1, 6)],
+    ],
+)
+def test_network_recent_dates_are_closed_ordered_and_bounded(dates):
+    with pytest.raises(ValidationError):
+        r3.NetworkTrend.model_validate(
+            trend_payload()
+            | {
+                "series": [trend_point() | {"date": day} for day in dates],
+            }
+        )
+
+
+def test_trend_keeps_supplied_zero_absence_and_open_percentiles():
+    wire = json.loads(snapshot_json_bytes(r3.NetworkTrend.model_validate(trend_payload())))
+    assert len(wire["series"]) == 1
+    point = wire["series"][0]
+    assert point["reading_count"] == 0 and point["on_time_pct"] is None
+    assert (point["on_time_pct"], point["late_pct"], point["early_pct"]) == (None, None, None)
+    assert point["vehicles_reporting"] is None and point["p90_bin"] is None
+    assert point["vehicles_on_trip"] is None
+    assert point["delay_hist"] == {"layout": 2, "bins": [80], "n": [0]}
+    supplied = trend_point() | {
+        "vehicles_reporting": 4,
+        "vehicles_on_trip": 2,
+        "delay_hist": {"layout": 2, "bins": [160], "n": [1]},
+        "p90_bin": {"lower_s": 3600, "upper_s": None},
+    }
+    supplied_wire = json.loads(snapshot_json_bytes(r3.NetworkTrendPoint.model_validate(supplied)))
+    assert (supplied_wire["vehicles_reporting"], supplied_wire["vehicles_on_trip"]) == (4, 2)
+    assert supplied_wire["p90_bin"] == {
+        "lower_s": 3600,
+        "upper_s": None,
+    }
+    zero = trend_point() | {"vehicles_reporting": 0, "vehicles_on_trip": 0}
+    zero_wire = json.loads(snapshot_json_bytes(r3.NetworkTrendPoint.model_validate(zero)))
+    assert (zero_wire["vehicles_reporting"], zero_wire["vehicles_on_trip"]) == (0, 0)
+
+
+@pytest.mark.parametrize("rate", ["on_time_pct", "late_pct", "early_pct"])
+def test_empty_reading_population_refuses_numeric_rates(rate):
+    with pytest.raises(ValidationError):
+        r3.NetworkTrendPoint.model_validate(trend_point() | {rate: 0})
+    nonempty = trend_point() | {
+        "reading_count": 1,
+        "delay_hist": {"layout": 2, "bins": [80, 160], "n": [0, 1]},
+        rate: 0,
+    }
+    wire = json.loads(snapshot_json_bytes(r3.NetworkTrendPoint.model_validate(nonempty)))
+    assert wire[rate] == 0
+
+
+@pytest.mark.parametrize("percentile", ["p50_bin", "p90_bin"])
+def test_zero_histogram_population_has_no_percentile(percentile):
+    with pytest.raises(ValidationError):
+        r3.NetworkTrendPoint.model_validate(
+            trend_point()
+            | {
+                percentile: {"lower_s": 0, "upper_s": 10},
+            }
+        )
+
+
+def test_trend_missing_day_and_missing_evidence_stay_missing():
+    missing = trend_point() | {
+        "state": "not_measured",
+        "reason": "capture_gap",
+        "reading_count": None,
+        "date": "2026-11-11",
+        "delay_hist": None,
+    }
+    value = r3.NetworkTrend.model_validate(trend_payload() | {"series": [missing, trend_point()]})
+    wire = json.loads(snapshot_json_bytes(value))
+    assert [point["date"] for point in wire["series"]] == ["2026-11-11", "2026-11-13"]
+    assert wire["series"][0]["reading_count"] is None
+    assert wire["series"][0]["reason"] == "capture_gap"
+    assert wire["series"][0]["delay_hist"] is None
+    for field in ("methodology_version", "data_through", "series", "generated_utc"):
+        payload = trend_payload()
+        del payload[field]
+        with pytest.raises(ValidationError):
+            r3.NetworkTrend.model_validate(payload)
+
+
+def alert_cell():
+    return {
+        "provider_id": "provider",
+        "revision": 3,
+        "scope": "network",
+        "entity_id": "",
+        "service_date": "2026-11-13",
+        "cause": "not_given",
+        "effect": "not_given",
+        "alert_days_active": 2,
+        "episodes_started": 1,
+        "episodes_ended": 0,
+        "active_seconds": 8640000000,
+        "episodes_open_at_day_start": 1,
+        "attribution": "approximate",
+        "built": "backfill",
+    }
+
+
+def test_network_alert_cell_is_typed_supplied_evidence():
+    point = r3.NetworkTrendPoint.model_validate(trend_point() | {"alert_cell": alert_cell()})
+    assert isinstance(point.alert_cell, r3.NetworkAlertCell)
+    assert point.model_dump(mode="json")["alert_cell"] == alert_cell()
+    for invalid in (
+        {},
+        {"active_seconds": -1},
+        {"entity_id": "line"},
+        {"attribution": "guessed"},
+        {"built": "now"},
+        {"opaque": 0},
+    ):
+        cell = {} if not invalid else alert_cell() | invalid
+        with pytest.raises(ValidationError):
+            r3.NetworkTrendPoint.model_validate(trend_point() | {"alert_cell": cell})
+
+
+@pytest.mark.parametrize(
+    "column",
+    [
+        "provider_id",
+        "revision",
+        "scope",
+        "entity_id",
+        "service_date",
+        "cause",
+        "effect",
+        "alert_days_active",
+        "episodes_started",
+        "episodes_ended",
+        "active_seconds",
+        "episodes_open_at_day_start",
+        "attribution",
+        "built",
+    ],
+)
+def test_network_alert_cell_refuses_each_omitted_column(column):
+    cell = alert_cell()
+    del cell[column]
+    with pytest.raises(ValidationError) as error:
+        r3.NetworkTrendPoint.model_validate(trend_point() | {"alert_cell": cell})
+    assert [item["loc"] for item in error.value.errors()] == [("alert_cell", column)]
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("otp_pct", 50),
+        ("vehicles", 2),
+        ("weekly", []),
+        ("p90_min", 60),
+        ("vehicles_reporting", -1),
+        ("vehicles_on_trip", True),
+    ],
+)
+def test_trend_refuses_legacy_fields_and_invalid_vehicles(field, value):
+    with pytest.raises(ValidationError):
+        r3.NetworkTrendPoint.model_validate(trend_point() | {field: value})
+
+
+def test_existing_public_models_and_bytes_are_unchanged():
+    before = json.dumps(contract.export_schemas(), sort_keys=True)
+    old = contract.NetworkTrend(generated_utc="2026-11-14")
+    old_bytes = snapshot_json_bytes(old)
+    exports = r3.export_schemas()
+    assert set(exports) == {"historic_receipt", "historic_network_trend"}
+    assert exports["historic_network_trend"] == r3.NetworkTrend.model_json_schema()
+    assert exports["historic_receipt"] == r3.Receipt.model_json_schema()
+    assert json.dumps(contract.export_schemas(), sort_keys=True) == before
+    assert snapshot_json_bytes(old) == old_bytes
+    assert contract.TOP_LEVEL_MODELS["historic_network_trend"] is contract.NetworkTrend
 
 
 def test_receipt_envelope_and_shared_values_keep_absence():
