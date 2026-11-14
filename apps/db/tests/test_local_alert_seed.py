@@ -108,13 +108,11 @@ def test_seed_failure_rolls_back_every_table(tmp_path):
     with closing(opened(tmp_path / "worker.db")) as local:
         with pytest.raises(AlertStateConflict):
             seed_alert_state(local, seed)
-        assert (
-            local.connection.execute(
-                "SELECT schema_name, table_name FROM duckdb_tables() "
-                "WHERE schema_name IN ('silver', 'raw') OR table_name='alert_seed_checkpoint'"
-            ).fetchall()
-            == []
-        )
+        tables = local.connection.execute(
+            "SELECT schema_name, table_name FROM duckdb_tables() "
+            "WHERE schema_name IN ('silver', 'raw') OR table_name='alert_seed_checkpoint'"
+        ).fetchall()
+        assert tables == []
         seed_alert_state(local, bundle())
 
 
@@ -205,26 +203,50 @@ def persisted_state(conn):
 
 
 @pytest.mark.parametrize("already_seeded", [False, True])
-def test_column_collation_drift_is_refused(tmp_path, already_seeded):
+@pytest.mark.parametrize(
+    "definition",
+    (
+        "COLLATE NOCASE|COLLATE NOACCENT|COLLATE NFC|COLLATE NOCASE.NOACCENT|"
+        "DEFAULT 'changed'|CHECK(route_id <> 'blocked')|GENERATED ALWAYS AS ('generated')"
+    ).split("|")
+    + [None],
+)
+def test_column_properties_and_equivalent_checkpoint(tmp_path, already_seeded, definition):
     seed = bundle()
     seed.tables[TABLES[1]].rows[0]["route_id"] = "case-sensitive"
     path = tmp_path / "collation.db"
-    table = "silver.i3_alert_informed_entities"
+    table = "silver.i3_alert_informed_entities" if definition else "main.alert_seed_checkpoint"
     with closing(opened(path)) as local:
         conn = local.connection
         create_alert_tables(conn)
         if already_seeded:
             seed_alert_state(local, seed)
         ddl = conn.execute(
-            "SELECT sql FROM duckdb_tables() WHERE schema_name='silver' "
-            "AND table_name='i3_alert_informed_entities'"
+            "SELECT sql FROM duckdb_tables() WHERE schema_name=? AND table_name=?",
+            table.split("."),
         ).fetchone()[0]
         conn.execute(f"CREATE TEMP TABLE retained AS SELECT * FROM {table}")
         conn.execute(f"DROP TABLE {table}")
-        conn.execute(ddl.replace("route_id VARCHAR", "route_id VARCHAR COLLATE NOCASE"))
-        conn.execute(f"INSERT INTO {table} SELECT * FROM retained")
+        if definition:
+            ddl = ddl.replace("route_id VARCHAR", f"route_id VARCHAR {definition}")
+        else:
+            ddl = ddl.replace("provider_id VARCHAR PRIMARY KEY", "provider_id VARCHAR").replace(
+                "global_max_snapshot_id BIGINT",
+                "global_max_snapshot_id BIGINT, PRIMARY KEY(provider_id)",
+            )
+        conn.execute(ddl)
+        columns = ", ".join(c for c in SCHEMAS[TABLES[1]] if c != "route_id")
+        projection = columns if definition and definition.startswith("GENERATED") else "*"
+        conn.execute(f"INSERT INTO {table} SELECT {projection} FROM retained")
     with closing(opened(path)) as local:
         before = persisted_state(local.connection)
-        with pytest.raises(AlertStateConflict, match=table):
+        if definition is None:
             seed_alert_state(local, seed)
-        assert persisted_state(local.connection) == before
+            assert local.connection.execute(
+                "SELECT route_id FROM silver.i3_alert_informed_entities"
+            ).fetchall() == [("case-sensitive",)]
+        else:
+            with pytest.raises(AlertStateConflict, match=table):
+                seed_alert_state(local, seed)
+        if definition is not None or already_seeded:
+            assert persisted_state(local.connection) == before

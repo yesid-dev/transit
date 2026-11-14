@@ -1,6 +1,7 @@
 """Atomic, one-time bootstrap of a worker's local alert state."""
 
 import json
+import re
 
 import duckdb
 
@@ -38,19 +39,38 @@ def _definitions() -> dict[str, str]:
     return definitions
 
 
-def _shape(duck: duckdb.DuckDBPyConnection, name: str) -> tuple[object, ...]:
+def _column_properties(duck: duckdb.DuckDBPyConnection, name: str) -> list[tuple[object, ...]]:
     schema, table = name.split(".")
     rendered = duck.execute(
-        "SELECT sql FROM duckdb_tables() "
-        "WHERE database_name IN (current_database(), 'temp') AND schema_name=? "
-        "AND table_name=?",
+        "SELECT sql, table_oid, database_name FROM duckdb_tables() "
+        "WHERE database_name IN (current_database(), 'temp') AND schema_name=? AND table_name=?",
         [schema, table],
     ).fetchone()
     if rendered is None:
         raise AlertStateConflict(f"{name}: table definition missing")
+    properties = duck.execute(
+        "SELECT column_name, column_default, is_generated, generation_expression, "
+        "(SELECT list(expression ORDER BY expression) FROM duckdb_constraints() k "
+        "WHERE k.database_name=c.database_name AND k.table_oid=c.table_oid "
+        "AND constraint_type='CHECK' AND list_contains(k.constraint_column_names, c.column_name)) "
+        "FROM duckdb_columns() c WHERE table_oid=? AND database_name=? ORDER BY column_index",
+        [rendered[1], rendered[2]],
+    ).fetchall()
+    result = []
+    for column, *values in properties:
+        # Match only the named column's rendered type/collation, never table constraints.
+        pattern = rf'(?:\(|,\s*)"?{re.escape(column)}"?\s+\w+(?:\s+COLLATE\s+([\w."]+))?'
+        match = re.search(pattern, rendered[0])
+        if match is None:
+            raise AlertStateConflict(f"{name}: column definition missing: {column}")
+        result.append((column, (match[1] or "").replace('"', "").lower(), *values))
+    return result
+
+
+def _shape(duck: duckdb.DuckDBPyConnection, name: str) -> tuple[object, ...]:
+    schema, table = name.split(".")
     return (
-        # The catalog-rendered body retains collations omitted by pragma_table_info.
-        rendered[0].split("(", 1)[1],
+        _column_properties(duck, name),
         duck.execute("SELECT * FROM pragma_table_info(?)", [name]).fetchall(),
         duck.execute(
             "SELECT constraint_type, constraint_text FROM duckdb_constraints() "
