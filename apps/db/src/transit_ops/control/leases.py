@@ -5,7 +5,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Final
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from transit_ops.control.objects import ConditionalObjects, ObjectConflict, key_part
 
@@ -63,10 +63,11 @@ def read_lease(objects: ConditionalObjects, *, provider_id: str, lane: str) -> L
             data[name] = stamp.astimezone(UTC)
         result = Lease(**data, token=obj.token)
         if (result.provider_id, result.lane) != (provider_id, lane) or (
-            not isinstance(result.epoch, int)
+            type(result.epoch) is not int
             or result.epoch < 1
             or not result.holder.strip()
-            or not result.mutation_id
+            or not isinstance(result.mutation_id, str)
+            or str(UUID(result.mutation_id, version=4)) != result.mutation_id
             or result.acquired_at_utc > result.last_updated_utc
             or result.last_updated_utc > result.expires_at_utc
         ):

@@ -1,5 +1,6 @@
 import hashlib
 import io
+import json
 from datetime import UTC, datetime, timedelta
 from threading import RLock
 
@@ -191,15 +192,18 @@ def test_clock_before_last_update_is_refused_without_writing(objects, operation)
 def test_expiry_is_checked_after_slow_readback(objects, monkeypatch, operation):
     lease = acquire(objects) if operation != "acquire" else None
     now, read = [NOW], objects.read
+    reads = 0
 
     def delayed(key):
+        nonlocal reads
+        reads += 1
         result = read(key)
-        if result is not None:
+        if result is not None and (operation != "reacquire" or reads == 2):
             now[0] = NOW + TTL * 2
         return result
 
     monkeypatch.setattr(objects, "read", delayed)
-    with pytest.raises(m.LeaseLost):
+    with pytest.raises(m.LeaseLost, match="expired during write"):
         if operation == "renew":
             m.renew_lease(objects, lease, ttl=TTL, clock=lambda: now[0])
         else:
@@ -217,6 +221,30 @@ def test_expiry_is_checked_after_slow_readback(objects, monkeypatch, operation):
 def test_corrupt_lease_has_a_named_error(objects, payload):
     objects.replace("leases/network%3Aone/live.json", payload, expected=None)
     with pytest.raises(ValueError, match="invalid lease"):
+        m.read_lease(objects, provider_id="network:one", lane="live")
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("epoch", True),
+        ("epoch", 0),
+        ("epoch", -1),
+        ("epoch", "1"),
+        ("mutation_id", 123),
+        ("mutation_id", ""),
+        ("mutation_id", "not-a-uuid"),
+        ("mutation_id", "12345678-1234-4234-8234-123456789ABC"),
+        ("mutation_id", "12345678123442348234123456789abc"),
+    ],
+)
+def test_corrupt_ownership_fields_are_refused(objects, field, value):
+    acquire(objects)
+    prior = objects.read("leases/network%3Aone/live.json")
+    payload = json.loads(prior.body)
+    payload[field] = value
+    objects.replace(prior.key, payload, expected=prior.token)
+    with pytest.raises(m.LeaseInvalid):
         m.read_lease(objects, provider_id="network:one", lane="live")
 
 
