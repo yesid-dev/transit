@@ -1,3 +1,4 @@
+import json
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import date
@@ -9,7 +10,10 @@ from sqlalchemy import event, text
 from sqlalchemy.exc import DBAPIError
 from test_alert_recovery import NOW, REPORTS, candidate
 from test_alert_recovery_published import index, page
+from typer.testing import CliRunner
 
+from transit_ops.cli import app
+from transit_ops.commands import alert_recovery as command
 from transit_ops.commands.alert_recovery import (
     build_recovery_source_readers,
     run_alert_archive_recovery,
@@ -18,6 +22,7 @@ from transit_ops.gold.alert_archive import sync_alert_archive_on_connection
 from transit_ops.history.alert_recovery import recover_alert_archive_entries
 from transit_ops.history.alert_recovery_models import SourceReport
 from transit_ops.history.alert_recovery_published import read_published_candidates
+from transit_ops.settings import Settings
 from transit_ops.snapshots.storage import LocalSnapshotStorage
 
 
@@ -307,11 +312,6 @@ def test_entry_no_source_holds_is_reported(target, tmp_path, complete):
 
 @pytest.mark.parametrize("via_cli", [False, True])
 def test_runner_and_cli_default_transaction_is_read_only(target, monkeypatch, tmp_path, via_cli):
-    from typer.testing import CliRunner
-
-    from transit_ops.cli import app
-    from transit_ops.commands import alert_recovery as command
-
     engine, p = target
     def observations(c):
         return [c.execute(text(f"SELECT count(*) FROM {table} WHERE provider_id=:p"),
@@ -336,16 +336,7 @@ def test_runner_and_cli_default_transaction_is_read_only(target, monkeypatch, tm
 
     readers["backup"] = probe
     if via_cli:
-        from transit_ops.settings import Settings
-
-        monkeypatch.setattr(command, "get_settings", lambda: Settings(
-            SNAPSHOT_STORAGE_BACKEND="local", SNAPSHOT_LOCAL_ROOT=str(tmp_path)))
-        monkeypatch.setattr(command, "make_engine", lambda settings: engine)
-        monkeypatch.setattr(command.ProviderRegistry, "from_project_root", lambda **kw: type(
-            "Registry", (), {"get_provider": lambda self, p: None})())
-        monkeypatch.setattr(command, "build_recovery_source_readers", lambda storage: readers)
-        result = CliRunner().invoke(app, ["recover-alert-archive-entries", p, "--capture-from",
-            "2020-01-01T00:00:00Z", "--capture-to", "2020-02-01T00:00:00Z"])
+        result = invoke_cli(monkeypatch, tmp_path, engine, p, readers)
         assert result.exit_code == 0, result.output
     else:
         report = run_alert_archive_recovery(engine, provider_id=p, source_readers=readers,
@@ -360,25 +351,10 @@ def test_runner_and_cli_default_transaction_is_read_only(target, monkeypatch, tm
 @pytest.mark.parametrize("kind", ["backup", "capture"])
 @pytest.mark.parametrize("via_cli", [False, True])
 def test_runner_complete_synthetic_source_apply(target, monkeypatch, tmp_path, kind, via_cli):
-    import json
-
-    from typer.testing import CliRunner
-
-    from transit_ops.cli import app
-    from transit_ops.commands import alert_recovery as command
-    from transit_ops.settings import Settings
-
     engine, p = target
     readers = complete_readers([candidate(p, kind=kind)])
     if via_cli:
-        monkeypatch.setattr(command, "get_settings", lambda: Settings(
-            SNAPSHOT_STORAGE_BACKEND="local", SNAPSHOT_LOCAL_ROOT=str(tmp_path)))
-        monkeypatch.setattr(command, "make_engine", lambda settings: engine)
-        monkeypatch.setattr(command.ProviderRegistry, "from_project_root", lambda **kw: type(
-            "Registry", (), {"get_provider": lambda self, p: None})())
-        monkeypatch.setattr(command, "build_recovery_source_readers", lambda storage: readers)
-        result = CliRunner().invoke(app, ["recover-alert-archive-entries", p, "--apply",
-            "--capture-from", "2020-01-01T00:00:00Z", "--capture-to", "2020-02-01T00:00:00Z"])
+        result = invoke_cli(monkeypatch, tmp_path, engine, p, readers, apply=True)
         assert result.exit_code == 0, result.output
         assert json.loads(result.stdout)["inserted"] == ["a"]
     else:
@@ -415,3 +391,95 @@ def test_runner_refuses_bad_source_evidence(target, fault):
         assert report.source_reports[0].errors == ("source read failed",)
     with engine.connect() as c:
         assert rows(c, p) == []
+
+
+def invoke_cli(monkeypatch, tmp_path, engine, p, readers, apply=False):
+    monkeypatch.setattr(command, "get_settings", lambda: Settings(
+        SNAPSHOT_STORAGE_BACKEND="local", SNAPSHOT_LOCAL_ROOT=str(tmp_path)))
+    monkeypatch.setattr(command, "make_engine", lambda settings: engine)
+    monkeypatch.setattr(command.ProviderRegistry, "from_project_root", lambda **kw: type(
+        "Registry", (), {"get_provider": lambda self, p: None})())
+    monkeypatch.setattr(command, "build_recovery_source_readers", lambda storage: readers)
+    return CliRunner().invoke(app, ["recover-alert-archive-entries", p, "--capture-from",
+        "2020-01-01T00:00:00Z", "--capture-to", "2020-02-01T00:00:00Z"] +
+        (["--apply"] if apply else []))
+
+
+def test_sql_reader_failure_keeps_other_evidence_reportable(target, tmp_path):
+    engine, p = target
+    storage = LocalSnapshotStorage(str(tmp_path), f"v1/{p}")
+    index(storage, *page(storage, "older"))
+    readers = dict(build_recovery_source_readers(storage))
+    observed = []
+
+    def invalid_backup_cast(connection, **kwargs):
+        observed.append((connection.exec_driver_sql("SHOW transaction_read_only").scalar_one(),
+                         connection.in_nested_transaction()))
+        connection.exec_driver_sql("SELECT 'invalid-timestamp'::timestamptz")
+
+    readers["backup"] = invalid_backup_cast
+    report = run_alert_archive_recovery(
+        engine, provider_id=p, source_readers=readers, recovered_at_utc=NOW)
+    assert observed == [("on", True)] and report.dry_run and not report.complete
+    assert report.would_insert == ("older",) and report.inserted == ()
+    assert report.source_reports[0].errors == ("source read failed",)
+    assert report.source_reports[1].complete
+    assert report.source_reports[2].coverage == ("not read",)
+    with engine.connect() as c:
+        assert rows(c, p) == []
+
+
+@pytest.mark.parametrize("boundary", ["insert", "commit"])
+@pytest.mark.parametrize("via_cli", [False, True])
+def test_runner_and_cli_failures_leave_no_rows_or_receipt(
+    target, monkeypatch, tmp_path, boundary, via_cli
+):
+    engine, p = target
+    injected = []
+
+    def fail(connection, *args):
+        if boundary == "insert" and not (
+            args[1].lstrip().startswith("INSERT INTO gold.alert_archive_entry")
+            and args[2]["alert_id"] == "z"
+        ):
+            return
+        assert len(rows(connection, p)) == (1 if boundary == "insert" else 2)
+        injected.append(boundary)
+        connection.exec_driver_sql("SELECT 'secret-payload'::integer")
+
+    hook = "before_cursor_execute" if boundary == "insert" else "commit"
+    event.listen(engine, hook, fail)
+    readers = complete_readers([candidate(p), candidate(p, "z")])
+    try:
+        if via_cli:
+            result = invoke_cli(monkeypatch, tmp_path, engine, p, readers, apply=True)
+        else:
+            with pytest.raises(DBAPIError):
+                run_alert_archive_recovery(engine, provider_id=p, source_readers=readers,
+                                           dry_run=False, recovered_at_utc=NOW)
+    finally:
+        event.remove(engine, hook, fail)
+    assert injected == [boundary]
+    with engine.connect() as c:
+        assert rows(c, p) == []
+    if via_cli:
+        assert result.exit_code == 1
+        assert json.loads(result.stdout) == {"error": "alert archive recovery failed"}
+
+
+def test_receipt_before_commit_mutation_fails_commit_regression(target, monkeypatch, tmp_path):
+    import inspect
+
+    source = inspect.getsource(command)
+    echo = 'typer.echo(json.dumps(asdict(report), default=lambda v: v.isoformat(), sort_keys=True))'
+    source = source.replace("    " + echo + "\n", "")
+    source = source.replace("    return report_result\n",
+        "            " + echo.replace("asdict(report)", "asdict(report_result)") +
+        "\n    return report_result\n")
+    mutated = dict(vars(command))
+    exec(compile(source, command.__file__, "exec"), mutated)
+    monkeypatch.setattr(command, "run_alert_archive_recovery",
+                        mutated["run_alert_archive_recovery"])
+    with pytest.raises(json.JSONDecodeError):
+        test_runner_and_cli_failures_leave_no_rows_or_receipt(
+            target, monkeypatch, tmp_path, "commit", True)

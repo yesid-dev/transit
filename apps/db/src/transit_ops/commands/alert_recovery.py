@@ -67,13 +67,18 @@ def run_alert_archive_recovery(
                 report = SourceReport(kind)
                 if kind in source_readers:
                     try:
-                        result, report = source_readers[kind](
-                            connection, provider_id=provider_id, recovered_at_utc=recovered_at_utc
-                        )
-                        items = tuple(result)
-                        if report.kind != kind or any(c.source_kind != kind for c in items):
-                            raise ValueError("source slot mismatch")
+                        with connection.begin_nested():
+                            result, report = source_readers[kind](
+                                connection,
+                                provider_id=provider_id,
+                                recovered_at_utc=recovered_at_utc,
+                            )
+                            items = tuple(result)
+                            if report.kind != kind or any(c.source_kind != kind for c in items):
+                                raise ValueError("source slot mismatch")
                     except Exception:
+                        if connection.closed or connection.invalidated:
+                            raise
                         items = ()
                         report = SourceReport(kind, errors=("source read failed",))
                 candidates.extend(items)
