@@ -245,11 +245,12 @@ def test_rescue_uses_strict_utc_bounds_and_preserves_csv_values(
 
     provider, start, end = fact_source
     # A separate, fresh connection sees the seeded rows; no writer transaction is reused.
-    connection = rescue.psycopg.connect(
-        **guarded_connect_kwargs(real_db_engine.url),
+    kwargs = guarded_connect_kwargs(real_db_engine.url)
+    kwargs.update(
         autocommit=True,
         application_name="transit-ls04-rescue-" + uuid4().hex,
     )
+    connection = rescue.psycopg.connect(**kwargs)
     with pytest.raises(ValueError):
         copy_to(connection, tmp_path / "inactive.csv")
     with connection, connection.transaction():
@@ -318,11 +319,12 @@ def test_rescue_closes_source_transaction_before_object_io(
     connections = []
 
     def connect():
-        conn = rescue.psycopg.connect(
-            **guarded_connect_kwargs(real_db_engine.url),
+        kwargs = guarded_connect_kwargs(real_db_engine.url)
+        kwargs.update(
             autocommit=True,
             application_name="transit-ls04-rescue-" + uuid4().hex,
         )
+        conn = rescue.psycopg.connect(**kwargs)
         connections.append(conn)
         return conn
 
@@ -413,12 +415,13 @@ def test_rescue_real_queued_lock_releases_only_source(
     from parallel_db import guarded_connect_kwargs, guarded_login_kwargs
 
     def connect():
-        return rescue.psycopg.connect(
-            **guarded_login_kwargs(real_db_engine.url, rescue_login),
+        kwargs = guarded_login_kwargs(real_db_engine.url, rescue_login)
+        kwargs.update(
             autocommit=True,
             application_name="transit-ls04-rescue-" + uuid4().hex,
             options="-c statement_timeout=1000",
         )
+        return rescue.psycopg.connect(**kwargs)
 
     monkeypatch.setattr(rescue, "connect", connect)
     completed = threading.Event()
@@ -428,9 +431,11 @@ def test_rescue_real_queued_lock_releases_only_source(
         try:
             with (
                 rescue.psycopg.connect(
-                    **guarded_connect_kwargs(real_db_engine.url),
-                    autocommit=True,
-                    application_name="transit-ls04-rescue-" + uuid4().hex,
+                    **dict(
+                        guarded_connect_kwargs(real_db_engine.url),
+                        autocommit=True,
+                        application_name="transit-ls04-rescue-" + uuid4().hex,
+                    ),
                 ) as locker,
                 locker.transaction(),
             ):

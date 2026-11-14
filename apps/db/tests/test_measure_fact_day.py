@@ -566,11 +566,12 @@ def measurement_db(real_db_engine, fact_source, monkeypatch):  # noqa: F811
     provider, start, end = fact_source
 
     def connect():
-        return measure.rescue.psycopg.connect(
-            **guarded_connect_kwargs(real_db_engine.url),
+        kwargs = guarded_connect_kwargs(real_db_engine.url)
+        kwargs.update(
             autocommit=True,
             application_name="transit-ls04-rescue-" + uuid4().hex,
         )
+        return measure.rescue.psycopg.connect(**kwargs)
 
     monkeypatch.setattr(measure.rescue, "connect", connect)
     monkeypatch.setattr(
