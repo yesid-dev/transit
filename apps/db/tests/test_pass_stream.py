@@ -333,9 +333,16 @@ def _stream_inputs(provider):
     return polls, captures, values
 
 
+def _stream_build(provider):
+    schedule = fake_schedule(
+        {}, {}, timezone="UTC", unavailable={date(2026, 1, n): "fixture" for n in (2, 3)}
+    )
+    return fake_build(provider, AT.date(), schedule=schedule)
+
+
 def _deliver(provider, polls, captures, consumers, *, build=None, **kwargs):
     return deliver_stream(
-        build or fake_build(provider, AT.date()),
+        build or _stream_build(provider),
         polls=polls,
         captures=captures,
         consumers=consumers,
@@ -444,14 +451,15 @@ def test_in_service_day_is_true_in_exactly_one_of_two_adjacent_builds(provider):
     poll = fake_poll(provider_id=provider.id, status="failed", capture_row_id=None)
     polls = [replace(poll, time_utc=t, ingestion_run_id=i) for i, t in enumerate(times)]
 
-    def flags(b):
+    def flags(b, selected):
         return [
-            d.in_service_day for d in _deliver(provider, polls, [], [RecordingConsumer()], build=b)
+            d.in_service_day
+            for d in _deliver(provider, selected, [], [RecordingConsumer()], build=b)
         ]
 
-    assert flags(build) == [False, True, True, False]
+    assert flags(build, polls) == [False, True, True, False]
     next_build = fake_build(replace(provider, timezone="UTC"), date(2026, 1, 3))
-    assert flags(next_build) == [False, False, False, True]
+    assert flags(next_build, polls[-2:]) == [False, True]
 
 
 def test_a_consumer_receives_only_its_families(provider):
@@ -578,7 +586,7 @@ def test_stream_refusals_and_iterator_cleanup(provider, fault, expected):
     normal = iter(d.normalized for d in values if d.capture)
     source = _fault_source(captures, fault, closed)
     stream = deliver_stream(
-        fake_build(provider, AT.date()),
+        _stream_build(provider),
         polls=source if fault == "empty" else polls,
         captures=source,
         consumers=[] if fault == "empty" else [bad, good],
@@ -598,3 +606,160 @@ def test_stream_refusals_and_iterator_cleanup(provider, fault, expected):
     if fault == "consumer":
         assert reports == [(bad, "consumer failed")] and len(good.deliveries) == 8
         assert good.writes == bad.writes == []
+
+
+@pytest.mark.parametrize("capture_seconds,expected_runs", [((2, 3), []), ((0, 3), [1])])
+def test_mismatched_capture_time_is_refused_before_pending_delivery(
+    provider, capture_seconds, expected_runs
+):
+    polls, captures, _ = _stream_inputs(provider)
+    consumer = RecordingConsumer()
+    advanced, closed, observations = [], [], []
+    normalized_times = []
+
+    def normalizer(p, raw, schedule, **kwargs):
+        normalized_times.append(raw.captured_at_utc)
+        return normalize_capture(p, raw, schedule, **kwargs)
+
+    def source():
+        try:
+            for i, seconds in enumerate(capture_seconds):
+                advanced.append(i)
+                yield replace(captures[i], captured_at_utc=AT + timedelta(seconds=seconds))
+        finally:
+            closed.append(True)
+
+    stream = _deliver(provider, polls[:2], source(), [consumer], normalizer=normalizer)
+    with pytest.raises(ValueError, match="^Capture time does not match its poll$"):
+        observations.extend(stream)
+    assert [d.poll.ingestion_run_id for d in observations] == expected_runs
+    assert consumer.deliveries == observations
+    times = [d.time_utc for d in observations]
+    assert times == sorted(times) and len(set(expected_runs)) == len(observations)
+    assert advanced == list(range(len(expected_runs) + 1)) and closed == [True]
+    assert [p.time_utc for p in polls[:2]] == [AT, AT + timedelta(seconds=1)]
+    assert normalized_times == ([AT] if expected_runs else [])
+
+
+@pytest.mark.parametrize(
+    "first,second",
+    [
+        ("failed_poll", "failed_poll"),
+        ("unfinished", "unfinished"),
+        ("skipped_identical", "skipped_identical"),
+        ("capture_missing", "capture_missing"),
+        ("decoded", "decoded"),
+        ("failed_poll", "unfinished"),
+        ("decoded", "failed_poll"),
+        ("failed_poll", "decoded"),
+    ],
+)
+def test_poll_identity_is_unique_across_every_status(provider, first, second):
+    polls = [
+        replace(
+            fake_delivery("trip_updates", AT, outcome=o, row_id=7).poll, provider_id=provider.id
+        )
+        for o in (first, second)
+    ]
+    consumer = RecordingConsumer()
+    with pytest.raises(ValueError, match="^Duplicate poll identity$"):
+        list(_deliver(provider, polls, [], [consumer]))
+    assert consumer.deliveries == []
+
+
+def test_poll_identity_includes_endpoint(provider):
+    polls = [
+        replace(fake_delivery(f, AT, outcome="failed_poll", row_id=7).poll, provider_id=provider.id)
+        for f in ("trip_updates", "alerts")
+    ]
+    consumer = RecordingConsumer(families=frozenset({"trip_updates", "alerts"}))
+    result = list(_deliver(provider, polls, [], [consumer]))
+    assert [d.endpoint_key for d in result] == ["service_alerts", "trip_updates"]
+    assert [d.poll.ingestion_run_id for d in result] == [7, 7]
+
+
+@pytest.mark.parametrize("readable", [False, True])
+@pytest.mark.parametrize(
+    "boundary,offset,allowed,in_day",
+    [
+        ("window_start_utc", -1, False, False),
+        ("window_start_utc", 0, True, False),
+        ("day_start_utc", -1, True, False),
+        ("day_start_utc", 0, True, True),
+        ("day_end_utc", 0, True, False),
+        ("window_end_utc", -1, True, False),
+        ("window_end_utc", 0, False, False),
+        ("window_end_utc", 1, False, False),
+    ],
+)
+def test_build_window_boundaries(provider, readable, boundary, offset, allowed, in_day):
+    build = fake_build(replace(provider, timezone="UTC"), AT.date())
+    time = getattr(build, boundary) + timedelta(microseconds=offset)
+    polls, captures, _ = _stream_inputs(provider)
+    poll = replace(polls[0 if readable else 5], time_utc=time)
+    consumer, reads = RecordingConsumer(), []
+
+    def source():
+        reads.append(True)
+        if readable:
+            yield replace(captures[0], captured_at_utc=time)
+
+    stream = _deliver(provider, [poll], source(), [consumer], build=build)
+    if allowed:
+        result = list(stream)
+        assert len(result) == 1 and result[0].in_service_day is in_day
+        assert result[0].time_utc == time and result[0].poll is poll
+        assert result[0].outcome == ("decoded" if readable else "failed_poll")
+    else:
+        with pytest.raises(ValueError, match="^Poll is outside build window$"):
+            list(stream)
+        assert reads == consumer.deliveries == []
+
+
+def test_completed_payload_has_no_stream_owned_aliases(provider):
+    import sys
+
+    if sys.implementation.name != "cpython":
+        pytest.skip("Payload ownership proof requires CPython reference counting")
+    polls, captures, _ = _stream_inputs(provider)
+    received, checked = [], []
+    consumer = RecordingConsumer()
+    consumer.wants_bytes = True
+    consumer.accept = lambda d: received.append(d.sequence)
+
+    def source():
+        for capture in captures[:2]:
+            payload = bytes(bytearray([10, 5, 10, 3, 50, 46, 48]))
+            yield replace(capture, payload=payload)
+            # Only this source alias and getrefcount's temporary argument remain.
+            assert sys.getrefcount(payload) == 2, "Stream retained completed payload"
+            del payload
+            checked.append(True)
+
+    observations = list(_deliver(provider, polls[:2], source(), [consumer]))
+    assert checked == [True, True] and received == [0, 1]
+    assert all(d.payload is None and d.capture.payload is None for d in observations)
+
+
+@pytest.mark.parametrize("same_time", [False, True])
+def test_reversed_capture_order_is_refused_and_closed(provider, same_time):
+    polls, captures, _ = _stream_inputs(provider)
+    polls, captures = polls[:2], captures[:2]
+    if same_time:
+        polls = [replace(p, time_utc=AT) for p in polls]
+        captures = [replace(c, captured_at_utc=AT) for c in captures]
+    consumer = RecordingConsumer()
+    observations, closed = [], []
+
+    def source():
+        try:
+            yield from reversed(captures)
+        finally:
+            closed.append(True)
+
+    with pytest.raises(ValueError, match="^Captures are not in reader order$"):
+        observations.extend(_deliver(provider, polls, source(), [consumer]))
+    assert [d.capture.capture_row_id for d in observations if d.capture] == [2]
+    runs = [d.poll.ingestion_run_id for d in observations]
+    assert len(runs) == len(set(runs)) and consumer.deliveries == observations
+    assert closed == [True]

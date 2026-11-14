@@ -88,6 +88,8 @@ def deliver_stream(
 ) -> Iterator[Delivery]:
     """Fan out byte-free observations; accepting consumers must not retain bytes.
     Captures arrive in reader order; readers may buffer overlapping feed days.
+    Normalized values are borrowed and read-only for consumers; a consumer that
+    mutates them breaks every later consumer.
     """
     if not consumers:
         return
@@ -102,9 +104,16 @@ def deliver_stream(
 
 def _poll_index(build: ServiceDayBuild, pending: Sequence[Poll]) -> dict[CaptureKey, Poll]:
     stored: dict[CaptureKey, Poll] = {}
+    attempts: set[tuple[str, str, int]] = set()
     for poll in pending:
+        identity = poll.provider_id, poll.endpoint_key, poll.ingestion_run_id
+        if identity in attempts:
+            raise ValueError("Duplicate poll identity")
+        attempts.add(identity)
         if poll.provider_id != build.provider.id or poll.endpoint_key not in build.feeds:
             raise ValueError("Poll does not match build")
+        if not build.window_start_utc <= poll.time_utc < build.window_end_utc:
+            raise ValueError("Poll is outside build window")
         ref = _ref(poll)
         if poll.status == "stored":
             if ref is None or ref in stored:
@@ -126,6 +135,8 @@ def _match(capture: Capture, stored: dict[CaptureKey, Poll], seen: set[CaptureKe
         poll.ingestion_run_id,
     ):
         raise ValueError("Capture does not match its poll")
+    if capture.captured_at_utc != poll.time_utc:
+        raise ValueError("Capture time does not match its poll")
     seen.add(ref)
     return poll
 
