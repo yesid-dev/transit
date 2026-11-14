@@ -198,7 +198,7 @@ _STOP_DOW_SQL = named_query(
     FROM gold.stop_delay_shift_daily AS sd
     WHERE sd.provider_id = :provider_id
     GROUP BY sd.stop_id, 2
-    ORDER BY sd.stop_id COLLATE "C", grain COLLATE "C"
+    ORDER BY sd.stop_id COLLATE "C", day_of_week_iso
     """,
 )
 
