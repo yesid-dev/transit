@@ -30,6 +30,7 @@
 	const localizeHref = getLocalizeHref();
 
 	let { directions, predictions, locale, copy, timeZone }: LineDirectionsProps = $props();
+	const uid = $props.id();
 
 	const stopHref = (stopId: string): string =>
 		localizeHref(routeFor({ kind: 'stop', id: stopId }), locale);
@@ -39,11 +40,12 @@
 
 {#if (directions ?? []).length > 0}
 	<div class="line-directions-pane" data-slot="line-directions">
-		<ul class="line-directions">
+		<div class="line-directions">
 			{#each directions ?? [] as dir, di (di)}
-				<li class="line-direction">
-					<span class="line-direction-head">
+				<details class="line-direction">
+					<summary class="line-direction-head">
 						<span
+							id="{uid}-direction-{di}"
 							class="line-direction-name readable-name"
 							title={dir.headsign ?? copy.direction(dir.dir)}
 							use:readableName
@@ -53,27 +55,40 @@
 						<span class="line-direction-meta">
 							{copy.stopsCount((dir.stops ?? []).length)}
 						</span>
-					</span>
+						<ChevronRightIcon size={16} strokeWidth={2.4} aria-hidden="true" />
+					</summary>
 					{#if (dir.stops ?? []).length > 0}
-						<ol class="line-stops">
-							{#each dir.stops ?? [] as stop, si (stop.id + '-' + si)}
-								{@const prediction = predictions.get(stop.id) ?? null}
-								<li class="line-stop">
-									<a class="line-stop-link" href={stopHref(stop.id)}>
-										<span class="sr-only">{copy.viewStop} </span>
-										<span class="line-stop-seq">{stop.seq}</span>
-										<span
-											class="line-stop-name readable-name"
-											title={stop.name
-												? stopDisplayName(stop.name)
-												: stopNameFallback(stop.id, locale)}
-											use:readableName
-											>{stop.name
-												? stopDisplayName(stop.name)
-												: stopNameFallback(stop.id, locale)}</span
-										>
-										<span class="line-stop-live">
-											{#if prediction}
+						<table class="line-stops" aria-labelledby="{uid}-direction-{di}">
+							<thead>
+								<tr>
+									<th scope="col">{copy.stopColumns.stop}</th>
+									<th scope="col">{copy.stopColumns.arrival}</th>
+									<th scope="col">{copy.stopColumns.delay}</th>
+								</tr>
+							</thead>
+							<tbody>
+								{#each dir.stops ?? [] as stop, si (stop.id + '-' + si)}
+									{@const prediction = predictions.get(stop.id) ?? null}
+									<tr class="line-stop">
+										<th scope="row">
+											<a class="line-stop-link" href={stopHref(stop.id)}>
+												<span class="sr-only">{copy.viewStop} </span>
+												<span class="line-stop-seq">{stop.seq}</span>
+												<span
+													class="line-stop-name readable-name"
+													title={stop.name
+														? stopDisplayName(stop.name)
+														: stopNameFallback(stop.id, locale)}
+													use:readableName
+													>{stop.name
+														? stopDisplayName(stop.name)
+														: stopNameFallback(stop.id, locale)}</span
+												>
+												<ChevronRightIcon size={14} strokeWidth={2.4} aria-hidden="true" />
+											</a>
+										</th>
+										{#if prediction}
+											<td class="line-stop-live">
 												{#if prediction.etaUtc}
 													<time class="line-stop-eta" datetime={prediction.etaUtc}>
 														{timeLabel(prediction.etaUtc)}
@@ -81,6 +96,8 @@
 												{:else}
 													<span class="line-stop-eta">{copy.approaching}</span>
 												{/if}
+											</td>
+											<td class="line-stop-live">
 												{#if prediction.delayMin != null}
 													<span class="line-stop-delay" data-tone={delayTone(prediction.delayMin)}>
 														{delayLabel(prediction.delayMin, copy)}
@@ -92,23 +109,24 @@
 														{locale}
 													/>
 												{/if}
-											{:else}
+											</td>
+										{:else}
+											<td class="line-stop-live" colspan="2">
 												<AbsentValue
 													reason={liveAbsenceReason('trip-prediction', absenceContext())}
 													variant="row"
 													{locale}
 												/>
-											{/if}
-										</span>
-										<ChevronRightIcon size={14} strokeWidth={2.4} aria-hidden="true" />
-									</a>
-								</li>
-							{/each}
-						</ol>
+											</td>
+										{/if}
+									</tr>
+								{/each}
+							</tbody>
+						</table>
 					{/if}
-				</li>
+				</details>
 			{/each}
-		</ul>
+		</div>
 	</div>
 {/if}
 
@@ -133,18 +151,35 @@
 			align-items: start;
 		}
 	}
-	.line-direction {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-	}
 	.line-direction-head {
 		display: flex;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: 1rem;
+		align-items: center;
+		gap: 0.75rem;
+		min-height: 2.75rem;
+		cursor: pointer;
+		list-style: none;
+	}
+	.line-direction-head::-webkit-details-marker {
+		display: none;
+	}
+	.line-direction-head:focus-visible {
+		outline: 2px solid var(--ring);
+		outline-offset: 2px;
+		border-radius: var(--radius-md);
+	}
+	.line-direction-head :global(svg) {
+		flex: none;
+		color: var(--muted-foreground);
+	}
+	.line-direction-head:hover :global(svg) {
+		color: var(--foreground);
+	}
+	.line-direction[open] > .line-direction-head :global(svg) {
+		rotate: 90deg;
 	}
 	.line-direction-name {
+		flex: 1 1 auto;
+		min-width: 0;
 		font-family: var(--font-heading);
 		font-weight: 600;
 		font-size: var(--text-subheading);
@@ -157,11 +192,34 @@
 		color: var(--muted-foreground);
 	}
 	.line-stops {
-		list-style: none;
-		margin: 0;
+		width: 100%;
+		margin-top: 0.5rem;
+		border-collapse: collapse;
+	}
+	.line-stops thead th {
+		padding: 0 0 0.375rem 0.75rem;
+		font-family: var(--font-mono);
+		font-size: var(--text-micro);
+		font-weight: 600;
+		color: var(--muted-foreground);
+		text-align: start;
+		text-wrap: balance;
+		vertical-align: bottom;
+	}
+	/* Words, not letters: the section's break-anywhere wrapping would shrink these columns to a glyph. */
+	.line-stops thead th,
+	.line-stop-live {
+		overflow-wrap: normal;
+		word-break: normal;
+	}
+	.line-stops thead th:first-child {
+		width: 100%;
+		padding-inline-start: 0;
+	}
+	.line-stop th {
 		padding: 0;
-		display: flex;
-		flex-direction: column;
+		font-weight: inherit;
+		text-align: start;
 	}
 	.line-stop {
 		border-bottom: 1px solid var(--border-subtle, var(--border));
@@ -190,14 +248,12 @@
 		transition: color var(--duration-fast) var(--ease-out);
 	}
 	.line-stop-live {
-		grid-column: 2;
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
+		padding-inline-start: 0.75rem;
 		font-family: var(--font-mono);
 		font-size: var(--text-micro);
 	}
 	.line-stop-eta {
+		white-space: nowrap;
 		font-weight: 600;
 		color: var(--foreground);
 	}
@@ -206,7 +262,6 @@
 		align-items: center;
 		gap: 0.375rem;
 		font-weight: 600;
-		white-space: nowrap;
 		color: var(--muted-foreground);
 	}
 	.line-stop-delay::before {

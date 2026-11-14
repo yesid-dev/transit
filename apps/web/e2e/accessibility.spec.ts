@@ -53,6 +53,8 @@ test.describe('accessibility', { tag: '@theme' }, () => {
 				await page.goto(url, { waitUntil: 'networkidle' });
 				await expect(page.getByRole('main')).toBeVisible();
 				if (path === `/lines/${line.id}?tab=detail`) {
+					for (const direction of await page.locator('[data-slot="line-directions"] summary').all())
+						await direction.click();
 					await expect(page.locator('.line-stop-link')).toHaveCount(lineStopCount);
 					// Axe's label-in-name check needs the text on screen, not merely in the DOM.
 					for (const [index, link] of (await page.locator('.line-stop-link').all()).entries()) {

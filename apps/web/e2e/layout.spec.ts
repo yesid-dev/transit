@@ -49,6 +49,10 @@ for (const locale of ['en', 'fr'] as const)
 				await page.goto(localizeHref(path, locale), { waitUntil: 'networkidle' });
 				if (path.startsWith('/stops?q='))
 					await page.getByTestId('stops-filter-input').fill('Fixture');
+				// Measure the line's stop tables, which start closed.
+				if (path === `/lines/${line}?tab=detail`)
+					for (const direction of await page.locator('[data-slot="line-directions"] summary').all())
+						await direction.click();
 				await expect(page.getByRole('main')).toBeVisible();
 				await page.evaluate(() => document.fonts.ready);
 				await page.waitForTimeout(250);

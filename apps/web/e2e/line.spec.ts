@@ -19,7 +19,6 @@ const publication = b9.files[`historic/route_reliability/${line.id}.json`].gener
 	10,
 );
 const route = b9.files[`static/routes/${line.id}.json`];
-const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 test.use({ bypassCSP: true });
 
@@ -78,12 +77,14 @@ for (const locale of PUBLISHED_LOCALES) {
 			if ((await live.getAttribute('aria-selected')) !== 'true') await live.click();
 			await expect(live).toHaveAttribute('aria-selected', 'true', { timeout: 1_000 });
 		}).toPass();
-		await page
-			.getByRole('link', {
-				name: new RegExp(`^${escapeRegExp(`${t.viewStop} ${first.seq} ${first.name} `)}`),
-			})
-			.first()
-			.click();
+		// Directions start closed: their stops are out of reach until one opens, here by keyboard.
+		const stopLink = page.getByRole('link', {
+			name: `${t.viewStop} ${first.seq} ${first.name}`,
+			exact: true,
+		});
+		await expect(stopLink).toHaveCount(0);
+		await page.locator('[data-slot="line-directions"] summary').first().press('Enter');
+		await stopLink.first().click();
 
 		await expect(page).toHaveURL(
 			(url) =>
