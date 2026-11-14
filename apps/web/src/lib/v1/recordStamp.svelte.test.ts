@@ -108,3 +108,42 @@ it.each(['line', 'stop', 'seeded line', 'P12a'] as const)(
 		}
 	},
 );
+
+it.each([
+	['warn', 'Ce bilan a été publié avec un avertissement. Voir Santé des données.'],
+	['fail', null],
+	['pass', null],
+	[null, null],
+] as const)(
+	'notes a record published with warnings (%s) and nothing else',
+	async (verdict, notice) => {
+		const health = {
+			generated_utc: '2026-11-14T00:00:00Z',
+			lanes: [{ lane: 'rollup', gate: verdict && { verdict } }],
+		};
+		const found = (url: string) => url.endsWith('/status/data_health.json');
+		vi.stubGlobal('fetch', async (input: RequestInfo | URL) =>
+			found(String(input))
+				? new Response(JSON.stringify(health))
+				: new Response('{}', { status: 404 }),
+		);
+		installBrowserAdapterManifest(() => manifest);
+		let stamp!: ReturnType<typeof createRecordStamp>;
+		const dispose = $effect.root(() => {
+			stamp = createRecordStamp(
+				() => manifest,
+				() => fixture.frozen_utc,
+			);
+		});
+		try {
+			flushSync();
+			await vi.waitFor(() => expect(stamp.pending).toBe(false));
+			expect([stamp.notice('fr'), notice && stamp.notice('en')]).toEqual([
+				notice,
+				notice && 'This record was published with a warning. See Data health.',
+			]);
+		} finally {
+			dispose();
+		}
+	},
+);

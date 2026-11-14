@@ -314,6 +314,20 @@ vi.mock('#lib/v1/repositories/historic.ts', () => ({
 	loadLineHistoryRange: lineHistoryHarness.loadLineHistoryRange,
 }));
 vi.mock('#lib/v1/repositories/provenance.ts', () => ({ getProvenance: () => provenanceData }));
+vi.mock('#lib/v1/repositories/dataHealth.ts', () => ({ getDataHealth: async () => null }));
+// The notice's rule lives in the stamp module (recordStamp.svelte.test.ts); here only its placement.
+const recordHealth = vi.hoisted(() => ({ verdict: null as string | null }));
+vi.mock('#lib/v1/recordStamp.svelte.ts', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('#lib/v1/recordStamp.svelte.ts')>();
+	return {
+		...actual,
+		createRecordStamp: (...args: Parameters<typeof actual.createRecordStamp>) =>
+			Object.assign(Object.create(actual.createRecordStamp(...args)), {
+				notice: (lang: 'en' | 'fr') =>
+					recordHealth.verdict === 'warn' ? stampCopy[lang].warning : null,
+			}),
+	};
+});
 vi.mock('#lib/v1/live/store.svelte.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('#lib/v1/live/store.svelte.ts')>();
 	return {
@@ -510,6 +524,7 @@ describe('RouteDetail article cover and focus scope', () => {
 	});
 
 	it('shows a date-only record only on Reliability and ignores prepared publication times', async () => {
+		recordHealth.verdict = 'warn';
 		routeDetailNav.page.url = new URL('http://localhost/lines/161?tab=reliability');
 		reliabilityResourceState = {
 			data: CURRENT_RELIABILITY,
@@ -537,10 +552,18 @@ describe('RouteDetail article cover and focus scope', () => {
 			),
 		).toHaveAttribute('datetime', date);
 		expect(header).not.toHaveTextContent('Prepared current timestamp');
+		await waitFor(() =>
+			expect(within(header).getByRole('link', { name: stampCopy.en.warning })).toHaveAttribute(
+				'href',
+				'/status',
+			),
+		);
 		for (const name of ['Live now', 'Schedule']) {
 			await fireEvent.click(screen.getByRole('tab', { name }));
 			expect(header.querySelector('time')).toBeNull();
+			expect(within(header).queryByRole('link', { name: stampCopy.en.warning })).toBeNull();
 		}
+		recordHealth.verdict = null;
 	});
 
 	it('keeps tab URLs shareable while preserving unrelated search parameters', async () => {

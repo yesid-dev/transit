@@ -353,6 +353,20 @@ vi.mock('#lib/v1/repositories/historic.ts', () => ({
 	loadStopHistoryRange: stopHistoryHarness.loadStopHistoryRange,
 }));
 vi.mock('#lib/v1/repositories/provenance.ts', () => ({ getProvenance: () => provenanceData }));
+vi.mock('#lib/v1/repositories/dataHealth.ts', () => ({ getDataHealth: async () => null }));
+// The notice's rule lives in the stamp module (recordStamp.svelte.test.ts); here only its placement.
+const recordHealth = vi.hoisted(() => ({ verdict: null as string | null }));
+vi.mock('#lib/v1/recordStamp.svelte.ts', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('#lib/v1/recordStamp.svelte.ts')>();
+	return {
+		...actual,
+		createRecordStamp: (...args: Parameters<typeof actual.createRecordStamp>) =>
+			Object.assign(Object.create(actual.createRecordStamp(...args)), {
+				notice: (lang: 'en' | 'fr') =>
+					recordHealth.verdict === 'warn' ? stampCopy[lang].warning : null,
+			}),
+	};
+});
 vi.mock('#lib/v1/live/store.svelte.ts', () => ({
 	createLiveStore: stopHistoryHarness.createLiveStore,
 }));
@@ -571,6 +585,7 @@ describe('StopDetail article contract', () => {
 	});
 
 	it('shows one date-only record and follows its year rule for the schedule date', async () => {
+		recordHealth.verdict = 'warn';
 		vi.useFakeTimers({ toFake: ['Date'] });
 		vi.setSystemTime(new Date('2026-11-13T12:00:00Z'));
 		stopTimeZone.value = 'America/Toronto';
@@ -582,7 +597,11 @@ describe('StopDetail article contract', () => {
 		const header = container.querySelector('[data-slot="article-header"]') as HTMLElement;
 		expect(within(header).getByText(expected)).toHaveAttribute('datetime', date);
 		expect(container.querySelector('[data-source="historic"] time')).toBeNull();
+		const notice = () => within(header).queryByRole('link', { name: stampCopy[locale].warning });
+		await waitFor(() => expect(notice()).toHaveAttribute('href', '/status'));
 		await fireEvent.click(screen.getByRole('tab', { name: detailCopy[locale].tabs.schedule }));
+		expect(notice()).toBeNull();
+		recordHealth.verdict = null;
 		for (const [now, includeYear] of [
 			['2026-11-13T12:00:00Z', false],
 			['2027-11-13T12:00:00Z', true],

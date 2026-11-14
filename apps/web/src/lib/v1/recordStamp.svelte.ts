@@ -1,8 +1,10 @@
 import type { HistoryRangeResourceState } from './history/rangeResource.svelte';
 import type { HistoricAvailabilityIndex, Manifest } from './schemas/index';
 import { getHistoricAvailability } from './repositories/historic';
+import { getDataHealth } from './repositories/dataHealth';
 import { createResource } from './resource.svelte';
-import { recordStamp, stampText, type RecordStamp } from './stamp';
+import { recordGate, recordStamp, stampText, type RecordStamp } from './stamp';
+import { stampCopy } from './stamp.copy';
 import { browser } from '$app/env';
 import type { Locale } from '#lib/i18n/copy.ts';
 
@@ -43,6 +45,16 @@ export function createRecordStamp(
 		},
 		{ enabled: () => source === undefined && manifest() != null, key: () => manifest()?.provider },
 	);
+	const health = createResource(
+		async (signal) => {
+			try {
+				return await getDataHealth({ signal, manifest: manifest() ?? undefined });
+			} catch {
+				return null;
+			}
+		},
+		{ enabled: () => manifest() != null, key: () => manifest()?.provider },
+	);
 	const shared = $derived(source?.());
 	const stamp = $derived(
 		recordStamp({
@@ -55,11 +67,16 @@ export function createRecordStamp(
 	return {
 		get pending() {
 			return (
-				manifest() != null &&
-				(shared
-					? ['idle', 'loading-index'].includes(shared.state)
-					: history.loading || !history.settled)
+				(manifest() != null &&
+					(shared
+						? ['idle', 'loading-index'].includes(shared.state)
+						: history.loading || !history.settled)) ||
+				(manifest() != null && (health.loading || !health.settled))
 			);
+		},
+		/** W10 under the stamp when the record's last check warned. A failed check has no approved sentence. */
+		notice(locale: Locale) {
+			return recordGate(health.data)?.verdict === 'warn' ? stampCopy[locale].warning : null;
 		},
 		meta(locale: Locale) {
 			const text = stampText(stamp, locale, manifest()?.tz);

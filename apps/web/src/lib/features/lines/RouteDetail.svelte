@@ -351,6 +351,7 @@
 			backLabel={t.article.back}
 			meta={articleMeta}
 			metaPending={detailTabController.active === 'reliability' && record.pending}
+			notice={detailTabController.active === 'reliability' ? record.notice(locale) : null}
 			edgeLeft={articleEdgeLeft}
 			edgeRight={articleEdgeRight}
 			titleId="line-title"
