@@ -4,7 +4,7 @@ import json
 import struct
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import MappingProxyType
 from typing import Literal
@@ -13,10 +13,12 @@ from transit_ops.batch.build import TableRows
 
 RUNTIME_ONLY_COLUMNS: Mapping[str, frozenset[str]] = MappingProxyType(
     {
-        "gold.route_delay_hourly": frozenset({"materialized_at_utc"}),
+        "gold.route_delay_hourly": frozenset({"built_at_utc"}),
         "gold.warm_rollup_periods": frozenset({"built_at_utc", "invalidated_at_utc"}),
     }
 )
+# Readiness predicate: gold/delay_periods.py:120,160 (batch ruling R19).
+_WARM_FLAG = "built_after_period"
 
 
 @dataclass(frozen=True)
@@ -123,19 +125,50 @@ def compare_bodies(
 
 def _project(table: TableRows) -> tuple[tuple[str, ...], list[tuple[object, ...]]]:
     ignored = RUNTIME_ONLY_COLUMNS.get(table.relation, frozenset())
-    indexes = [i for i, name in enumerate(table.columns) if name not in ignored]
-    return tuple(table.columns[i] for i in indexes), [
-        tuple(row[i] for i in indexes) for row in table.rows
+    columns = table.columns
+    rows = [
+        tuple(
+            "<runtime>" if name in ignored and value is not None else value
+            for name, value in zip(columns, row, strict=True)
+        )
+        for row in table.rows
     ]
+    if table.relation == "gold.warm_rollup_periods":
+        rows = [
+            (
+                *masked,
+                _warm_flag(
+                    row[columns.index("built_at_utc")], row[columns.index("period_start_utc")]
+                ),
+            )
+            for row, masked in zip(table.rows, rows, strict=True)
+        ]
+        columns += (_WARM_FLAG,)
+    return columns, rows
+
+
+def _warm_flag(built: object, period: object) -> bool | None:
+    if built is None or period is None:
+        return None
+    if not isinstance(built, datetime) or not isinstance(period, datetime):
+        raise ValueError("gold.warm_rollup_periods: built_at_utc/period_start_utc need datetime")
+    return built.astimezone(UTC) >= period.astimezone(UTC) + timedelta(minutes=5)
 
 
 def compare_tables(expected: TableRows, actual: TableRows) -> list[RowDifference]:
-    columns, left_rows = _project(expected)
-    other_columns, right_rows = _project(actual)
-    shape = expected.relation, columns, expected.key
-    other_shape = actual.relation, other_columns, actual.key
-    if shape != other_shape or not set(expected.key) <= set(columns):
+    shape = expected.relation, expected.columns, expected.key
+    other_shape = actual.relation, actual.columns, actual.key
+    required = RUNTIME_ONLY_COLUMNS.get(expected.relation, frozenset())
+    if expected.relation == "gold.warm_rollup_periods":
+        required = required | {"period_start_utc"}
+    if (
+        shape != other_shape
+        or not required <= set(expected.columns)
+        or set(expected.key) & RUNTIME_ONLY_COLUMNS.get(expected.relation, frozenset())
+    ):
         return [RowDifference(expected.relation, (), "columns", None, shape, other_shape)]
+    columns, left_rows = _project(expected)
+    _, right_rows = _project(actual)
     indexes = [columns.index(name) for name in expected.key]
     left = {_identity(tuple(row[i] for i in indexes)): row for row in left_rows}
     right = {_identity(tuple(row[i] for i in indexes)): row for row in right_rows}

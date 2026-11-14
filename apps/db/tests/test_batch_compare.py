@@ -139,17 +139,60 @@ def test_keys_keep_types_and_every_row_is_counted():
 
 def test_runtime_only_columns_are_exactly_the_declared_ones():
     assert RUNTIME_ONLY_COLUMNS == {
-        "gold.route_delay_hourly": frozenset({"materialized_at_utc"}),
+        "gold.route_delay_hourly": frozenset({"built_at_utc"}),
         "gold.warm_rollup_periods": frozenset({"built_at_utc", "invalidated_at_utc"}),
     }
-    for relation, ignored in RUNTIME_ONLY_COLUMNS.items():
-        columns = ("id", *sorted(ignored), "period_start_utc")
-        left = TableRows(relation, columns, ("id",), ((1, *([None] * len(ignored)), 7),))
-        right = replace(left, rows=((1, *(["changed"] * len(ignored)), 7),))
+    for relation in RUNTIME_ONLY_COLUMNS:
+        left = runtime_table(relation)
+        period = left.rows[0][left.columns.index("period_start_utc")]
+        right = runtime_table(relation, built_at_utc=period + timedelta(minutes=6))
         assert compare_tables(left, right) == []
-        assert (
-            compare_tables(
-                left, TableRows(relation, ("id", "period_start_utc"), ("id",), ((1, 8),))
-            )[0].column
-            == "period_start_utc"
+        left = replace(left, key=("provider_id",))
+        right = replace(
+            runtime_table(relation, period_start_utc=period - timedelta(seconds=1)),
+            key=left.key,
         )
+        assert compare_tables(left, right)[0].column == "period_start_utc"
+
+
+def runtime_table(relation="gold.warm_rollup_periods", **changes):
+    stamp = datetime(2026, 11, 1, tzinfo=UTC)
+    built = stamp + timedelta(minutes=5)
+    # Migration 0093:1044-1059 and 1395-1401, in DDL order.
+    columns = (
+        "provider_id period_start_utc route_id trip_count observation_count avg_delay_seconds "
+        "max_delay_seconds delayed_trip_count severe_delay_count built_at_utc "
+        "delay_observation_count on_time_observation_count usable_delay_observation_count "
+        "usable_delay_sum_seconds"
+    ).split()
+    row = ("network", stamp, "r", 7, 7, None, 0, 0, 0, built, 0, 0, 0, 0)
+    key = ("provider_id", "period_start_utc", "route_id")
+    if relation == "gold.warm_rollup_periods":
+        columns = "provider_id rollup_kind period_start_utc built_at_utc invalidated_at_utc".split()
+        row = ("network", "hour", stamp, built, None)
+        key = ("provider_id", "rollup_kind", "period_start_utc")
+    values = dict(zip(columns, row, strict=True)) | changes
+    return TableRows(relation, tuple(columns), key, (tuple(values[c] for c in columns),))
+
+
+@pytest.mark.parametrize("column", ["invalidated_at_utc", "built_at_utc"])
+def test_warm_state_survives_runtime_masking(column):
+    left = runtime_table()
+    right = runtime_table(**{column: left.rows[0][2]})
+    (difference,) = compare_tables(left, right)
+    assert difference.key == ("network", "hour", left.rows[0][2])
+    assert difference.column == (column if column == "invalidated_at_utc" else "built_after_period")
+
+
+@pytest.mark.parametrize("column", ["built_at_utc", "invalidated_at_utc"])
+def test_missing_runtime_column_is_a_shape_difference(column):
+    left = runtime_table()
+    i = left.columns.index(column)
+    missing = replace(
+        left,
+        columns=left.columns[:i] + left.columns[i + 1 :],
+        rows=(left.rows[0][:i] + left.rows[0][i + 1 :],),
+    )
+    for a, b in [(left, missing), (missing, left), (missing, missing)]:
+        (difference,) = compare_tables(a, b)
+        assert difference.kind == "columns"
