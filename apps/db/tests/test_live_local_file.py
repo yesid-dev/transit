@@ -97,6 +97,73 @@ def test_other_provider_or_schema_is_refused(tmp_path):
         opened(path)
 
 
+def persisted_state(path):
+    with duckdb.connect(str(path)) as conn:
+        tables = conn.execute(
+            "SELECT table_name, sql FROM duckdb_tables() "
+            "WHERE database_name=current_database() ORDER BY table_name"
+        ).fetchall()
+        return [
+            (name, ddl, conn.execute(f"SELECT * FROM {name}").fetchall()) for name, ddl in tables
+        ]
+
+
+def test_non_binary_collation_is_refused_on_first_open(tmp_path):
+    path = tmp_path / "worker.db"
+    with duckdb.connect(str(path)) as conn:
+        conn.execute(
+            "CREATE TABLE meta (schema_version INTEGER, provider_id VARCHAR COLLATE NOCASE)"
+        )
+        conn.execute("INSERT INTO meta VALUES (1, 'network')")
+    before = persisted_state(path)
+    with pytest.raises(LocalFileMismatch, match="meta"):
+        with closing(opened(path)):
+            pass
+    assert persisted_state(path) == before
+
+
+@pytest.mark.parametrize(
+    "table, column",
+    [("meta", "provider_id"), ("polls", "endpoint_key"), ("captures", "storage_path")],
+)
+def test_non_binary_collation_is_refused_on_reopen(tmp_path, table, column):
+    path = tmp_path / "worker.db"
+    with closing(opened(path)) as local:
+        local.record_polls([POLL], endpoint_key="vehicles")
+        local.record_captures([CAPTURE], endpoint_key="vehicles")
+        conn = local.connection
+        ddl = conn.execute(
+            "SELECT sql FROM duckdb_tables() WHERE table_name=?", [table]
+        ).fetchone()[0]
+        conn.execute(f"CREATE TEMP TABLE retained AS SELECT * FROM {table}")
+        conn.execute(f"DROP TABLE {table}")
+        conn.execute(ddl.replace(f"{column} VARCHAR", f"{column} VARCHAR COLLATE NOCASE"))
+        conn.execute(f"INSERT INTO {table} SELECT * FROM retained")
+    before = persisted_state(path)
+    with pytest.raises(LocalFileMismatch, match=table):
+        with closing(opened(path)):
+            pass
+    assert persisted_state(path) == before
+
+
+def test_binary_collation_file_opens_and_reopens(tmp_path):
+    path = tmp_path / "worker.db"
+    with closing(opened(path)) as local:
+        local.record_polls([POLL], endpoint_key="vehicles")
+        local.record_captures([CAPTURE], endpoint_key="vehicles")
+        assert (
+            local.connection.execute(
+                "SELECT provider_id FROM meta WHERE provider_id='NETWORK'"
+            ).fetchall()
+            == []
+        )
+    before = persisted_state(path)
+    with closing(opened(path)) as local:
+        assert local.record_polls([POLL], endpoint_key="vehicles") == 0
+        assert local.record_captures([CAPTURE], endpoint_key="vehicles") == 0
+    assert persisted_state(path) == before
+
+
 @pytest.mark.parametrize(
     "change",
     [
