@@ -10,6 +10,8 @@ import type {
 } from '#lib/v1/schemas/index.ts';
 import { ManifestSchema } from '#lib/v1/schemas/index.ts';
 import { createLiveStore } from '#lib/v1/live/store.svelte.ts';
+import { flushSync } from 'svelte';
+import { injectThemeBoot } from '@yesid/ui/head';
 import { createSurfaceHarness } from '../../../tests/surfaceHarness';
 import HealthStatus from './HealthStatus.svelte';
 import { copy } from './health.copy';
@@ -295,7 +297,17 @@ const healthSurface = createSurfaceHarness({
 	resetters: [resetHealthSurfaceState],
 	mount: renderSvelte,
 });
-const render = healthSurface.mount;
+const render = ((...args: Parameters<typeof healthSurface.mount>) => {
+	const view = healthSurface.mount(...args);
+	view.container
+		.querySelector<HTMLElement>('[data-toc="health-details"] [aria-expanded="false"]')
+		?.click();
+	flushSync();
+	return view;
+}) as typeof healthSurface.mount;
+// The exact pre-paint script the app injects (hooks.server.ts), run as a page load would.
+const runBoot = () =>
+	window.eval(injectThemeBoot('%yesid.themeBoot%').replace(/^<script[^>]*>|<\/script>$/g, ''));
 
 beforeEach(() => {
 	// These content/report interactions use a returning reader's expanded choice.
@@ -506,30 +518,53 @@ describe('HealthStatus — full manifest render', () => {
 		]);
 	});
 
-	it('keeps engineering detail behind one closed disclosure, after what we do not have', async () => {
-		localStorage.removeItem('sections-choice'); // a first-time reader: no "expand all" choice
-		delete document.documentElement.dataset.sectionsChoice;
-		live.vehicles = { vehicles: [{ trip: null }, { trip: 't' }] } as never;
-		const { container } = render(HealthStatus, { props: { manifest } });
-		const center = container.querySelector('[data-slot="detail-shell-center"]') as HTMLElement;
-		const disclosure = within(center).getByRole('button', { name: 'Details for auditors' });
-		const details = container.querySelector('[data-toc="health-details"]') as HTMLElement;
-		const gaps = within(center).getByRole('button', { name: en.gaps.section });
+	it.each(['no saved choice', 'expanded', 'collapsed', 'storage unavailable'])(
+		'keeps Details for auditors closed for a reader with %s, after the page boot',
+		async (choice) => {
+			localStorage.removeItem('sections-choice');
+			if (choice === 'expanded' || choice === 'collapsed')
+				localStorage.setItem('sections-choice', choice);
+			const blocked = vi.spyOn(Storage.prototype, 'getItem');
+			if (choice === 'storage unavailable')
+				blocked.mockImplementation(() => {
+					throw new Error('blocked');
+				});
+			runBoot();
+			live.vehicles = { vehicles: [{ trip: null }, { trip: 't' }] } as never;
+			const { container } = healthSurface.mount(HealthStatus, { props: { manifest } });
+			blocked.mockRestore();
+			const center = container.querySelector('[data-slot="detail-shell-center"]') as HTMLElement;
+			const disclosure = within(center).getByRole('button', { name: 'Details for auditors' });
+			const details = container.querySelector('[data-toc="health-details"]') as HTMLElement;
+			const gaps = within(center).getByRole('button', { name: en.gaps.section });
 
-		expect(disclosure).toHaveAttribute('aria-expanded', 'false');
-		expect(disclosure).toHaveAttribute('aria-controls');
-		expect(gaps.compareDocumentPosition(disclosure)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-		for (const text of [
-			en.lanes.note,
-			en.freshness.note,
-			en.sources.note,
-			'Out-of-service vehicles: 1',
-		])
-			expect(details).toContainElement(screen.getByText(text));
-		await fireEvent.click(disclosure);
-		expect(disclosure).toHaveAttribute('aria-expanded', 'true');
-		live.vehicles = null;
-	});
+			expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+			expect(disclosure).toHaveAttribute('aria-controls');
+			expect(gaps.compareDocumentPosition(disclosure)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+			for (const text of [
+				en.lanes.note,
+				en.freshness.note,
+				en.sources.note,
+				'Out-of-service vehicles: 1',
+			])
+				expect(details).toContainElement(screen.getByText(text));
+			// Server markup renders cards open until hydration; the pre-paint boot alone must close this one.
+			const server = details.cloneNode(true) as HTMLElement;
+			server.removeAttribute('data-section-ready');
+			server.querySelector('[data-section-trigger]')!.setAttribute('aria-expanded', 'true');
+			document.body.append(server);
+			runBoot();
+			expect(server).toHaveAttribute('data-section-initial', 'closed');
+			expect(server.querySelector('[data-section-trigger]')).toHaveAttribute(
+				'aria-expanded',
+				'false',
+			);
+			server.remove();
+			await fireEvent.click(disclosure);
+			expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+			live.vehicles = null;
+		},
+	);
 
 	it('keeps EN and FR status keywords distinct', () => {
 		expect(copy.en.article.tags).toEqual(['data', 'feeds', 'freshness', 'known gaps']);

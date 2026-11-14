@@ -375,6 +375,7 @@
 				headerVariant="article-summary"
 				anchor="health-details"
 				open={false}
+				independent
 			>
 				<ArticleSectionStack>
 					<OutOfServiceVehicles {live} {locale} />

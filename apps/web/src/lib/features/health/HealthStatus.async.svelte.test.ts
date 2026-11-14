@@ -129,8 +129,14 @@ async function replaceHash(hash: string): Promise<void> {
 	await fireEvent(window, new HashChangeEvent('hashchange'));
 }
 
+const forgetSectionsChoice = () => {
+	localStorage.removeItem('sections-choice');
+	delete document.documentElement.dataset.sectionsChoice;
+};
+
 beforeEach(() => {
 	cleanup();
+	forgetSectionsChoice();
 	window.location.hash = '';
 	navigation.page.url = new URL('http://localhost/status');
 	navigation.replaceState.mockClear();
@@ -165,6 +171,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	cleanup();
+	forgetSectionsChoice();
 	window.location.hash = '';
 });
 
@@ -315,15 +322,14 @@ describe('HealthStatus — async reveal navigation', () => {
 			expandedAtScroll.push(target.getAttribute('aria-expanded'));
 		});
 
+		const disclosure = within(center).getByRole('button', { name: copy.en.details });
+		expect(disclosure).toHaveAttribute('aria-expanded', 'false');
 		await openHealthToc(left);
 		await fireEvent.click(within(left).getByRole('button', { name: copy.en.lanes.section }));
 
 		await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
 		expect(expandedAtScroll).toEqual(['true']);
-		expect(within(center).getByRole('button', { name: copy.en.details })).toHaveAttribute(
-			'aria-expanded',
-			'true',
-		);
+		expect(disclosure).toHaveAttribute('aria-expanded', 'true');
 		expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'start' });
 	});
 
