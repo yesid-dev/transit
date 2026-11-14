@@ -74,7 +74,7 @@ def _identity(value: object) -> object:
         instant = value if offset is None else value.astimezone(UTC)
         return type(value), instant.isoformat(), offset, instant.fold if offset is None else None
     if isinstance(value, time):
-        return type(value), value.isoformat(), value.utcoffset()
+        return type(value), value.isoformat(), value.utcoffset(), value.tzinfo is None
     if isinstance(value, (list, tuple)):
         return type(value), tuple(_identity(item) for item in value)
     if isinstance(value, dict):

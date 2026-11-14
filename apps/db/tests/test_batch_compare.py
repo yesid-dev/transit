@@ -112,6 +112,14 @@ def test_aware_time_keeps_printed_offset_and_local_time():
     assert compare_tables(table(left), table(time.fromisoformat(left.isoformat()))) == []
 
 
+def test_time_without_offset_keeps_timezone_presence():
+    zoned = time(12, tzinfo=ZoneInfo("America/Toronto"))
+    assert zoned.utcoffset() is None
+    (difference,) = compare_tables(table(zoned), table(time(12)))
+    assert difference.column == "value"
+    assert compare_tables(table(zoned), table(zoned)) == []
+
+
 @pytest.mark.parametrize(
     "left,right",
     [
