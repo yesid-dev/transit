@@ -11,7 +11,6 @@ const labels: LaneLabels = {
 	gateVerdict: { pass: 'passed', warn: 'warnings', fail: 'blocked', unknown: 'not checked' },
 	maintenanceReason: 'no heartbeat',
 	maintenanceLabel: 'Maintenance',
-	maintenanceCadence: 'weekly',
 };
 
 describe('selectLaneRows', () => {

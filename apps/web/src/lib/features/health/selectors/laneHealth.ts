@@ -26,7 +26,7 @@ export interface LaneRow {
 
 export interface LaneLabels {
 	readonly laneLabel: (key: string) => string;
-	readonly cadence: (key: string) => string;
+	readonly cadence: (key: string, lastPublishUtc: string | null) => string;
 	readonly gateVerdict: {
 		readonly pass: string;
 		readonly warn: string;
@@ -35,7 +35,6 @@ export interface LaneLabels {
 	};
 	readonly maintenanceReason: string;
 	readonly maintenanceLabel: string;
-	readonly maintenanceCadence: string;
 }
 
 function gateViewOf(gate: LaneHealth['gate'], labels: LaneLabels): GateView | null {
@@ -73,7 +72,7 @@ function laneRowOf(lane: LaneHealth, labels: LaneLabels): LaneRow {
 	return {
 		key: lane.lane,
 		label: labels.laneLabel(lane.lane),
-		cadence: labels.cadence(lane.lane),
+		cadence: labels.cadence(lane.lane, lane.last_publish_utc ?? null),
 		applicable: true,
 		lastPublishUtc: lane.last_publish_utc ?? null,
 		ageS: lane.age_s ?? null,
@@ -89,7 +88,7 @@ function maintenanceRow(labels: LaneLabels): LaneRow {
 	return {
 		key: 'maintenance',
 		label: labels.maintenanceLabel,
-		cadence: labels.maintenanceCadence,
+		cadence: '',
 		applicable: false,
 		lastPublishUtc: null,
 		ageS: null,

@@ -140,7 +140,11 @@ const richDataHealth: DataHealth = {
 			gate: null,
 		},
 	],
-	feeds: [{ feed: 'realtime_vehicles', status: 'succeeded', age_s: 40 }],
+	feeds: [
+		{ feed: 'vehicle_positions', status: 'succeeded', age_s: 40 },
+		{ feed: 'static_schedule', status: 'failed', age_s: 90000 },
+		{ feed: 'gis_static', status: 'succeeded', age_s: 90000 },
+	],
 };
 
 const richHistory: HistoricAvailabilityIndex = {
@@ -324,7 +328,6 @@ describe('HealthStatus — full manifest render', () => {
 		expect(within(left).getByText(en.article.tags.join(' · '))).toBeInTheDocument();
 		expect(container.querySelectorAll('[data-slot="article-keywords"]')).toHaveLength(2);
 		expect(header).toHaveTextContent(en.article.sections(9));
-		expect(header).toHaveTextContent('2026');
 		expect(container.querySelector('[data-slot="detail-shell-header"]')).toBeNull();
 		const center = container.querySelector('[data-slot="detail-shell-center"]') as HTMLElement;
 		expect(center.querySelector('[data-slot="health-summary"]')).not.toBeNull();
@@ -391,28 +394,20 @@ describe('HealthStatus — full manifest render', () => {
 		).toBeInTheDocument();
 	});
 
-	it('describes each Status section with a question while keeping compact rail headers', () => {
+	it('describes each Status section with a question', () => {
 		const { container } = render(HealthStatus);
 		const sectionCards = Array.from(
 			container.querySelectorAll<HTMLElement>('.health-sections > [data-slot="card"]'),
 		);
-		const railCards = Array.from(
-			container.querySelectorAll<HTMLElement>('.health-stat-rail > [data-slot="card"]'),
-		);
 
 		expect(sectionCards).toHaveLength(10);
-		expect(railCards).toHaveLength(2);
-		for (const card of [...sectionCards, ...railCards]) {
+		for (const card of sectionCards) {
 			expect(card).toHaveAttribute('data-header-variant', 'article-summary');
 			const heading = card.querySelector('h2.section-heading') as HTMLHeadingElement;
 			expect(heading).not.toBeNull();
 			expect(heading.children).toHaveLength(1);
 			const trigger = heading.firstElementChild as HTMLButtonElement;
-			if (sectionCards.includes(card)) {
-				expect(trigger).toHaveAccessibleDescription(/\?$/);
-			} else {
-				expect(trigger).not.toHaveAttribute('aria-describedby');
-			}
+			expect(trigger).toHaveAccessibleDescription(/\?$/);
 		}
 		expect(
 			container.querySelector('.health-toc-rail [data-header-variant="article-summary"]'),
@@ -459,44 +454,39 @@ describe('HealthStatus — full manifest render', () => {
 		expect(header).not.toHaveTextContent('0 sections');
 	});
 
-	it('labels daily and live timestamps separately when the two status documents diverge', () => {
-		provenanceState = ready({
-			...richProvenance,
-			generated_utc: iso('2026-06-19T06:00:00Z'),
+	it('shows no weekday, hour or UTC time when no next update is published', () => {
+		const { container } = render(HealthStatus, {
+			props: { manifest },
+			context: localeContext('fr'),
 		});
-		dataHealthState = ready({
-			...richDataHealth,
-			generated_utc: iso('2026-06-19T12:00:00Z'),
-		});
-		const { container } = render(HealthStatus);
-		const header = container.querySelector('[data-slot="article-header"]') as HTMLElement;
+		const text = container.textContent ?? '';
 
-		expect(within(header).getByText('DAILY RECORD AS OF')).toBeInTheDocument();
-		expect(within(header).getByText('LIVE FEEDS AS OF')).toBeInTheDocument();
-		expect(Array.from(header.querySelectorAll('time')).map((time) => time.dateTime)).toEqual([
-			'2026-06-19T06:00:00Z',
-			'2026-06-19T12:00:00Z',
-		]);
+		expect(text).not.toMatch(/UTC|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|\d\d:\d\d/i);
+		expect(text).not.toMatch(/Prochaine mise à jour/);
+		expect(text).toContain('Dernière publication : le 19 juin.');
+		expect(container.querySelector('[data-slot="article-header"] time')).toBeNull();
 	});
 
-	it('keeps each French source label paired with its timestamp', () => {
-		provenanceState = ready({
-			...richProvenance,
-			generated_utc: iso('2026-06-19T06:00:00Z'),
-		});
-		dataHealthState = ready({
-			...richDataHealth,
-			generated_utc: iso('2026-06-19T12:00:00Z'),
-		});
-		const { container } = render(HealthStatus, { context: localeContext('fr') });
-		const header = container.querySelector('[data-slot="article-header"]') as HTMLElement;
-		const pairs = Array.from(header.querySelectorAll('.header__meta-pair'));
-
-		expect(pairs).toHaveLength(2);
-		expect(pairs[0]).toHaveTextContent(copy.fr.article.dailyAsOf);
-		expect(pairs[0].querySelector('time')).toHaveAttribute('datetime', '2026-06-19T06:00:00Z');
-		expect(pairs[1]).toHaveTextContent(copy.fr.article.liveAsOf);
-		expect(pairs[1].querySelector('time')).toHaveAttribute('datetime', '2026-06-19T12:00:00Z');
+	it('names sources, lanes and their last publication in the approved words', () => {
+		const feeds = [
+			'static_schedule',
+			'trip_updates',
+			'vehicle_positions',
+			'service_alerts',
+			'i3_alerts',
+		];
+		const names = (locale: 'en' | 'fr') => [
+			...feeds.map((feed) => copy[locale].feedNames[feed]),
+			...['live', 'static', 'rollup'].map((lane) => copy[locale].lanes.laneLabel[lane]),
+			copy[locale].lanes.lastPublished(locale === 'en' ? 'Nov 11' : '11 nov.'),
+		];
+		expect(names('en').join(' | ')).toBe(
+			'Schedule | Trip predictions | Vehicle positions | Service alerts | Service alerts | Live data | Schedule | Reliability record | Last published Nov 11.',
+		);
+		expect(names('fr').join(' | ')).toBe(
+			'Horaire | Prédictions de passage | Positions des véhicules | Avis de service | Avis de service | Données en direct | Horaire | Bilan de fiabilité | Dernière publication : le 11 nov.',
+		);
+		expect(copy.en.feedNames.gis_static).toBeUndefined();
 	});
 
 	it('keeps EN and FR status keywords distinct', () => {
@@ -506,53 +496,18 @@ describe('HealthStatus — full manifest render', () => {
 		expect(copy.fr.article.sections(1)).toBe('1 section');
 	});
 
-	it('uses one wide left rail and renders At a glance once below its navigation', () => {
+	it('uses one wide left rail for navigation, with no lane or feed counts', () => {
 		const { container } = render(HealthStatus);
 		const grid = container.querySelector('.detail-shell-grid') as HTMLElement;
 		const left = container.querySelector('[data-slot="detail-shell-left"]') as HTMLElement;
-		const toc = left.querySelector('.health-toc-rail') as HTMLElement;
-		const summary = left.querySelector('[data-slot="health-at-a-glance"]') as HTMLElement;
 
 		expect(grid).toHaveClass('detail-shell-grid--two');
 		expect(container.querySelectorAll('[data-slot="detail-shell-left"]')).toHaveLength(1);
 		expect(container.querySelector('[data-slot="detail-shell-right"]')).toBeNull();
 		expect(container.querySelector('[data-slot="detail-shell-mobile-summary"]')).toBeNull();
-		expect(container.querySelectorAll('.health-stat-rail')).toHaveLength(1);
-		expect(summary).toHaveAccessibleName(en.statRail.label);
-		expect(toc.compareDocumentPosition(summary)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-	});
-
-	it('renders approved Lanes and Feeds icons once in the left rail summary', () => {
-		const { container } = render(HealthStatus);
-		const rail = container.querySelector('.health-stat-rail') as HTMLElement;
-
-		expect(rail.querySelectorAll('[data-testid="section-grid-icon"]')).toHaveLength(1);
-		expect(rail.querySelectorAll('[data-testid="section-list-icon"]')).toHaveLength(1);
-	});
-
-	it('independently closes Lanes while Feeds stays open in the single summary', async () => {
-		const { container } = render(HealthStatus);
-		const rail = container.querySelector('.health-stat-rail') as HTMLElement;
-		const lanes = within(rail).getByRole('button', { name: en.statRail.lanes.title });
-		const feeds = within(rail).getByRole('button', { name: en.statRail.feeds.title });
-		const laneCard = lanes.closest('[data-slot="card"]') as HTMLElement;
-
-		await fireEvent.click(lanes);
-
-		expect(lanes).toHaveAttribute('aria-expanded', 'false');
-		expect(laneCard.querySelector('.section-body')).toHaveAttribute('data-state', 'closed');
-		expect(feeds).toHaveAttribute('aria-expanded', 'true');
-	});
-
-	it('renders the surface head + a semantic neutral update time, never the live "LIVE" chip', () => {
-		const { container } = render(HealthStatus);
-		expect(screen.getByRole('heading', { level: 1, name: en.heading })).toBeInTheDocument();
-		expect(screen.getByText(en.asOf)).toBeInTheDocument();
-		const header = container.querySelector('[data-slot="article-header"]') as HTMLElement;
-		const time = header.querySelector('time');
-		expect(time).not.toBeNull();
-		expect(time).toHaveAttribute('datetime', richProvenance.generated_utc);
-		expect(within(header).queryByText('LIVE')).toBeNull();
+		expect(left.querySelector('.health-toc-rail')).not.toBeNull();
+		expect(container.querySelector('[data-slot="health-at-a-glance"]')).toBeNull();
+		expect(container.querySelector('[data-slot="health-aggregate"]')).toBeNull();
 	});
 
 	it('wires each request-scoped seed to its auto-refresh resource', () => {
@@ -588,8 +543,9 @@ describe('HealthStatus — full manifest render', () => {
 	it('renders one per-feed freshness row with a humanized age + verdict', () => {
 		render(HealthStatus);
 		const list = screen.getByRole('list', { name: en.freshness.listLabel });
-		expect(within(list).getByText('realtime_vehicles')).toBeInTheDocument();
-		expect(within(list).getByText('static_schedule')).toBeInTheDocument();
+		expect(within(list).getByText('Vehicle positions')).toBeInTheDocument();
+		expect(within(list).getByText('Schedule')).toBeInTheDocument();
+		expect(within(list).getByText('gis_static')).toBeInTheDocument();
 		expect(within(list).getAllByText(en.statusVerdict.ok).length).toBeGreaterThan(0);
 		expect(within(list).getAllByText(en.statusVerdict.failed).length).toBeGreaterThan(0);
 		expect(within(list).queryByText('240')).toBeNull();
@@ -692,7 +648,6 @@ describe('HealthStatus — Overview and independent resources', () => {
 		const center = container.querySelector('[data-slot="detail-shell-center"]') as HTMLElement;
 
 		expect(within(center).getByRole('button', { name: en.lanes.section })).toBeInTheDocument();
-		expect(screen.getByRole('button', { name: en.statRail.lanes.title })).toBeInTheDocument();
 		expect(screen.getByRole('alert')).toBeInTheDocument();
 	});
 
@@ -708,7 +663,6 @@ describe('HealthStatus — Overview and independent resources', () => {
 		const center = container.querySelector('[data-slot="detail-shell-center"]') as HTMLElement;
 
 		expect(within(center).getByRole('button', { name: en.freshness.section })).toBeInTheDocument();
-		expect(screen.getByRole('button', { name: en.statRail.feeds.title })).toBeInTheDocument();
 		expect(screen.getByRole('alert')).toBeInTheDocument();
 	});
 
@@ -748,15 +702,6 @@ describe('HealthStatus — Overview and independent resources', () => {
 			expect(overview.querySelector('[data-variant="empty"]')).not.toBeNull();
 			unmount();
 		}
-	});
-
-	it('keeps the single Status summary card independently collapsible', async () => {
-		render(HealthStatus);
-		const lanes = screen.getByRole('button', { name: en.statRail.lanes.title });
-
-		await fireEvent.click(lanes);
-
-		expect(lanes).toHaveAttribute('aria-expanded', 'false');
 	});
 
 	it('renders the French Overview and resource-region labels from locale context', () => {

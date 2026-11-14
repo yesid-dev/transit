@@ -17,7 +17,8 @@
 	import type { HistoricAvailabilityIndex } from '#lib/v1/schemas/history.ts';
 	import type { Provenance } from '#lib/v1/schemas/provenance.ts';
 	import { createResource, type ResourceSeed } from '#lib/v1/resource.svelte.ts';
-	import { formatRelativeSeconds, formatUtc } from '#lib/utils/time.ts';
+	import { formatRelativeSeconds } from '#lib/utils/time.ts';
+	import { stampDate } from '#lib/v1/stamp.ts';
 	import { METHODOLOGY_METRIC_KEY } from '#lib/features/metrics/metrics.content.ts';
 	import {
 		ArticleKeywords,
@@ -26,14 +27,7 @@
 	} from '#lib/components/layout/index.ts';
 	import { DetailFrame } from '@yesid/ui/layout';
 	import { ResourceBoundary } from '#lib/components/surface/index.ts';
-	import {
-		TerminalPanel,
-		SectionLabel,
-		CollapsibleSection,
-		SectionIcon,
-		TocNav,
-		type TocEntry,
-	} from '@yesid/ui/brand';
+	import { SectionLabel, CollapsibleSection, TocNav, type TocEntry } from '@yesid/ui/brand';
 	import SectionsToggle from '#lib/components/shared/SectionsToggle.svelte';
 
 	import { copy as COPY } from './health.copy';
@@ -45,7 +39,7 @@
 		pipelineNotesOf,
 		retentionOf,
 	} from './selectors/provenanceViews';
-	import { selectLaneRows, type LaneLabels, type LaneRow } from './selectors/laneHealth';
+	import { selectLaneRows, type LaneLabels } from './selectors/laneHealth';
 	import { selectEnvelope } from './selectors/envelope';
 	import { selectHistoryCoverage } from './selectors/historyCoverage';
 	import SectionLanes from './sections/SectionLanes.svelte';
@@ -141,18 +135,20 @@
 
 	const laneLabels = $derived<LaneLabels>({
 		laneLabel: (key) => t.lanes.laneLabel[key] ?? key,
-		cadence: (key) => t.lanes.cadence[key] ?? '',
+		cadence: (key, utc) =>
+			t.lanes.cadence[key] ??
+			(utc ? t.lanes.lastPublished(stampDate(utc.slice(0, 10), locale, manifest?.tz)) : ''),
 		gateVerdict: t.lanes.gateVerdict,
 		maintenanceReason: t.lanes.maintenanceReason,
 		maintenanceLabel: t.lanes.laneLabel.maintenance,
-		maintenanceCadence: t.lanes.maintenanceCadence,
 	});
 
 	const prov = $derived(provenance.data ?? null);
 	const dh = $derived(dataHealth.data ?? null);
 	const historyRoot = $derived(historicAvailability.data ?? null);
 	const historyCoverageRows = $derived(selectHistoryCoverage(historyRoot));
-	const freshness = $derived(prov ? freshnessOf(prov) : []);
+	// Data health republishes its feed list every live cycle; provenance ages are frozen daily.
+	const freshness = $derived(dh?.feeds?.length ? dh.feeds : prov ? freshnessOf(prov) : []);
 	const sources = $derived(prov ? sourcesOf(prov) : []);
 	const gaps = $derived(prov ? gapsOf(prov) : []);
 	const retention = $derived(prov ? retentionOf(prov) : { detail: null, aggregate: null });
@@ -253,45 +249,10 @@
 			})),
 	);
 
-	const dailyGeneratedMeta = $derived(
-		prov?.generated_utc
-			? { text: formatUtc(prov.generated_utc, locale), datetime: prov.generated_utc }
-			: null,
+	// The summary's lines carry this page's live and record stamps, so the header holds none.
+	const articleMeta = $derived<readonly ArticleMetaEntry[]>(
+		tocEntries.length > 0 ? [t.article.sections(tocEntries.length)] : [],
 	);
-	const liveGeneratedMeta = $derived(
-		dh?.generated_utc
-			? { text: formatUtc(dh.generated_utc, locale), datetime: dh.generated_utc }
-			: null,
-	);
-	const articleMeta = $derived.by((): readonly ArticleMetaEntry[] => {
-		const entries: ArticleMetaEntry[] = [];
-		if (
-			dailyGeneratedMeta &&
-			liveGeneratedMeta &&
-			dailyGeneratedMeta.datetime !== liveGeneratedMeta.datetime
-		) {
-			entries.push(
-				{ ...dailyGeneratedMeta, label: t.article.dailyAsOf },
-				{ ...liveGeneratedMeta, label: t.article.liveAsOf },
-			);
-		} else {
-			const sharedGeneratedMeta = dailyGeneratedMeta ?? liveGeneratedMeta;
-			if (sharedGeneratedMeta) entries.push({ ...sharedGeneratedMeta, label: t.asOf });
-		}
-		if (tocEntries.length > 0) entries.push(t.article.sections(tocEntries.length));
-		return entries;
-	});
-	const laneStat = $derived.by(() => {
-		const applicable = laneRows.filter((r: LaneRow) => r.applicable && r.gate != null);
-		const passing = applicable.filter((r) => r.gate?.aspect === 'on_time');
-		const worst = applicable.find((r) => r.gate?.aspect !== 'on_time') ?? null;
-		return { total: applicable.length, passing: passing.length, worst };
-	});
-	const feedStat = $derived.by(() => {
-		const total = freshness.length;
-		const ok = freshness.filter((f) => verdictFor(f.status).aspect === 'on_time').length;
-		return { total, ok };
-	});
 	const { navigation, navigate } = useAvailableSectionJump(() => tocEntries);
 </script>
 
@@ -342,13 +303,6 @@
 					/>
 				{/if}
 			</div>
-			<section
-				class="health-at-a-glance"
-				data-slot="health-at-a-glance"
-				aria-label={t.statRail.label}
-			>
-				{@render statCards()}
-			</section>
 			<ArticleKeywords label={t.article.tagsAria} keywords={t.article.tags} />
 		</div>
 	{/snippet}
@@ -380,23 +334,6 @@
 						<ResourceBoundary resource={dataHealth} lang={locale} isEmpty={dataHealthIsEmpty}>
 							{#snippet children(_value)}{/snippet}
 						</ResourceBoundary>
-					</div>
-				{:else if laneStat.total > 0}
-					<div class="health-aggregate" data-slot="health-aggregate">
-						<TerminalPanel title={t.aggregate.title}>
-							<p class="health-aggregate__verdict">
-								<span class="health-aggregate__summary">
-									{t.aggregate.summary(String(laneStat.passing), String(laneStat.total))}
-								</span>
-								<span class="health-aggregate__worst">
-									{#if laneStat.worst}
-										{t.aggregate.worst(laneStat.worst.label)}
-									{:else}
-										{t.aggregate.allClear}
-									{/if}
-								</span>
-							</p>
-						</TerminalPanel>
 					</div>
 				{/if}
 				{#if !historyRoot || historyAvailabilityIsEmpty(historyRoot)}
@@ -463,42 +400,6 @@
 	{/snippet}
 </DetailFrame>
 
-{#snippet statCards()}
-	<div class="health-stat-rail">
-		{#if laneStat.total > 0}
-			<CollapsibleSection title={t.statRail.lanes.title} headerVariant="article-summary">
-				{#snippet icon()}
-					<SectionIcon name="grid" class="h-4 w-4 shrink-0 text-primary" />
-				{/snippet}
-				<div class="health-stat__body" data-slot="stat-lanes">
-					<p class="health-stat__count">
-						{t.statRail.lanes.passing(String(laneStat.passing), String(laneStat.total))}
-					</p>
-					<p class="health-stat__sub">
-						{#if laneStat.worst}
-							{t.statRail.lanes.worst(laneStat.worst.label)}
-						{:else}
-							{t.statRail.lanes.allClear}
-						{/if}
-					</p>
-				</div>
-			</CollapsibleSection>
-		{/if}
-		{#if feedStat.total > 0}
-			<CollapsibleSection title={t.statRail.feeds.title} headerVariant="article-summary">
-				{#snippet icon()}
-					<SectionIcon name="list" class="h-4 w-4 shrink-0 text-primary" />
-				{/snippet}
-				<div class="health-stat__body" data-slot="stat-feeds">
-					<p class="health-stat__count">
-						{t.statRail.feeds.fresh(String(feedStat.ok), String(feedStat.total))}
-					</p>
-				</div>
-			</CollapsibleSection>
-		{/if}
-	</div>
-{/snippet}
-
 <style>
 	:global(.health-detail .section-title) {
 		white-space: normal;
@@ -520,10 +421,6 @@
 		gap: 0.75rem;
 		min-width: 0;
 	}
-	.health-aggregate {
-		min-width: 0;
-	}
-
 	.health-left-rail {
 		display: flex;
 		flex-direction: column;
@@ -535,55 +432,5 @@
 		flex-direction: column;
 		gap: 0.75rem;
 		min-width: 0;
-	}
-	.health-at-a-glance {
-		min-width: 0;
-	}
-	.health-aggregate__verdict {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: baseline;
-		gap: 0.375rem 0.75rem;
-		margin: 0;
-	}
-	.health-aggregate__summary {
-		font-family: var(--font-heading);
-		font-size: var(--text-subheading);
-		font-weight: 700;
-		line-height: 1.2;
-		color: var(--foreground);
-		font-variant-numeric: tabular-nums;
-	}
-	.health-aggregate__worst {
-		font-family: var(--font-mono);
-		font-size: var(--text-caption);
-		color: var(--muted-foreground);
-	}
-
-	.health-stat-rail {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-card-gap);
-	}
-	.health-stat__body {
-		display: flex;
-		flex-direction: column;
-		gap: 0.375rem;
-		min-width: 0;
-	}
-	.health-stat__count {
-		margin: 0;
-		font-family: var(--font-heading);
-		font-size: var(--text-subheading);
-		font-weight: 700;
-		line-height: 1.2;
-		color: var(--foreground);
-		font-variant-numeric: tabular-nums;
-	}
-	.health-stat__sub {
-		margin: 0;
-		font-size: var(--text-small);
-		line-height: 1.45;
-		color: var(--muted-foreground);
 	}
 </style>
