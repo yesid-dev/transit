@@ -30,7 +30,7 @@ _PROVENANCE_SOURCES_SQL = named_query(
     FROM gold.source_lineage_reporting
     WHERE provider_id = :provider_id
       AND is_current = true
-    ORDER BY dataset_kind
+    ORDER BY dataset_kind COLLATE "C", dataset_version_id
     """,
 )
 
@@ -39,17 +39,18 @@ _PROVENANCE_FRESHNESS_SQL = named_query(
     """
     SELECT endpoint_key, status, completed_age_seconds
     FROM (
-        SELECT DISTINCT ON (ir.provider_id, fe.endpoint_key)
+        SELECT DISTINCT ON (ir.provider_id COLLATE "C", fe.endpoint_key COLLATE "C")
             ir.provider_id, fe.endpoint_key, ir.status,
             (EXTRACT(epoch FROM (CAST(:as_of_utc AS timestamptz)
                 - ir.completed_at_utc)))::integer AS completed_age_seconds
         FROM raw.ingestion_runs AS ir
         JOIN core.feed_endpoints AS fe ON fe.feed_endpoint_id = ir.feed_endpoint_id
         WHERE ir.run_kind <> 'silver_load'::text
-        ORDER BY ir.provider_id, fe.endpoint_key, ir.started_at_utc DESC
+        ORDER BY ir.provider_id COLLATE "C", fe.endpoint_key COLLATE "C",
+                 ir.started_at_utc DESC, ir.ingestion_run_id DESC
     ) AS latest_runs
     WHERE provider_id = :provider_id
-    ORDER BY endpoint_key
+    ORDER BY endpoint_key COLLATE "C"
     """,
 )
 

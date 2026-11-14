@@ -1491,7 +1491,9 @@ def test_current_repeat_offenders_fixed_builder_bytes_and_dispatch_are_unchanged
     ]
     fixed_sql = conn.executed[0]
     assert "FROM gold.repeat_offender" in fixed_sql
-    assert "ORDER BY recurrence_days DESC, avg_delay_seconds DESC" in fixed_sql
+    assert (
+        "ORDER BY recurrence_days DESC NULLS FIRST, avg_delay_seconds DESC NULLS FIRST"
+    ) in fixed_sql
     assert "LIMIT 50" in fixed_sql
 
 
