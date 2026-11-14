@@ -415,6 +415,24 @@
 	.reliability-band {
 		min-width: 0;
 	}
+	/* Below desktop the view pill takes its own lane above the record instead of floating over it,
+	   so it never covers the first heading. Its sheet still opens from the bottom of the screen. */
+	@media (--desktop-max) {
+		.reliability-clusters :global([data-slot='surface-rail-mobile']) {
+			position: static;
+			transform: none;
+		}
+		.reliability-clusters :global([data-slot='surface-rail-mobile'] > button) {
+			max-width: 100%;
+		}
+	}
+	/* The line's window choices carry their dates; each wraps inside its grid cell instead of
+	   running past the picker's clipped edge in the rail. */
+	.reliability-clusters
+		:global([data-slot='grain-picker'][data-variant='time-grid'] [role='radio']) {
+		white-space: normal;
+		text-wrap: balance;
+	}
 	@media (prefers-reduced-motion: no-preference) {
 		:global([data-slot='reliability-rail-layout']) {
 			scroll-behavior: smooth;

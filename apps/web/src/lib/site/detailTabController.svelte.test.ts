@@ -35,20 +35,20 @@ describe('bidirectional detail tab controller', () => {
 
 	it('accepts external same-route query and back-forward changes without writing stale local state', async () => {
 		const view = render(DetailTabControllerHarness, { props: { url: navigation.page.url } });
-		expect(controller()).toHaveAttribute('data-active', 'detail');
+		expect(controller()).toHaveAttribute('data-active', 'reliability');
 
-		const reliabilityUrl = setExternalUrl('/lines/161?window=am&tab=reliability#service-profile');
-		await view.rerender({ url: reliabilityUrl });
-		await waitFor(() => expect(controller()).toHaveAttribute('data-active', 'reliability'));
-		expect(navigation.replaceState).not.toHaveBeenCalled();
-
-		const detailUrl = setExternalUrl('/lines/161?window=am#service-profile');
+		const detailUrl = setExternalUrl('/lines/161?window=am&tab=detail#service-profile');
 		await view.rerender({ url: detailUrl });
 		await waitFor(() => expect(controller()).toHaveAttribute('data-active', 'detail'));
 		expect(navigation.replaceState).not.toHaveBeenCalled();
+
+		const recordUrl = setExternalUrl('/lines/161?window=am#service-profile');
+		await view.rerender({ url: recordUrl });
+		await waitFor(() => expect(controller()).toHaveAttribute('data-active', 'reliability'));
+		expect(navigation.replaceState).not.toHaveBeenCalled();
 	});
 
-	it('uses replaceState for local clicks, preserves unrelated params, and omits Detail', async () => {
+	it('uses replaceState for local clicks, preserves unrelated params, and omits Reliability', async () => {
 		render(DetailTabControllerHarness, { props: { url: navigation.page.url } });
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Schedule' }));
@@ -69,12 +69,21 @@ describe('bidirectional detail tab controller', () => {
 			navigation.replaceState.mock.calls.at(-1)?.[0] as string | URL,
 			window.location.origin,
 		);
+		expect(written.searchParams.get('tab')).toBe('detail');
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Reliability' }));
+		expect(controller()).toHaveAttribute('data-active', 'reliability');
+		expect(navigation.replaceState).toHaveBeenCalledTimes(3);
+		written = new URL(
+			navigation.replaceState.mock.calls.at(-1)?.[0] as string | URL,
+			window.location.origin,
+		);
 		expect(written.searchParams.has('tab')).toBe(false);
 		expect(written.searchParams.get('window')).toBe('am');
 		expect(written.hash).toBe('#service-profile');
 	});
 
-	it('normalizes a legacy external tab to canonical Detail without dropping other params', async () => {
+	it('normalizes a legacy external tab to canonical Reliability without dropping other params', async () => {
 		const legacyUrl = setExternalUrl('/stop/57191?tab=next&from=2026-01-31&to=2026-02-01&line=51');
 		render(DetailTabControllerHarness, { props: { url: legacyUrl } });
 
@@ -83,10 +92,24 @@ describe('bidirectional detail tab controller', () => {
 			navigation.replaceState.mock.calls[0][0] as string | URL,
 			window.location.origin,
 		);
-		expect(controller()).toHaveAttribute('data-active', 'detail');
+		expect(controller()).toHaveAttribute('data-active', 'reliability');
 		expect(written.searchParams.has('tab')).toBe(false);
 		expect(written.searchParams.get('from')).toBe('2026-01-31');
 		expect(written.searchParams.get('to')).toBe('2026-02-01');
 		expect(written.searchParams.get('line')).toBe('51');
+	});
+
+	it.each([
+		['detail&tab=schedule', 'detail', '&tab=detail'],
+		['reliability&tab=detail', 'reliability', ''],
+		['unknown&tab=schedule', 'reliability', ''],
+	])('reduces repeated tab=%s to one canonical tab in one write', async (tabs, active, tab) => {
+		const rest = 'provider=stm&from=2026-01-31&to=2026-02-01';
+		const url = setExternalUrl(`/fr/lines/24?tab=${tabs}&${rest}#record`);
+		render(DetailTabControllerHarness, { props: { url } });
+		await waitFor(() => expect(navigation.replaceState).toHaveBeenCalledOnce());
+		expect(controller()).toHaveAttribute('data-active', active);
+		const written = new URL(navigation.replaceState.mock.calls[0][0], 'http://localhost');
+		expect(written.href.replace(written.origin, '')).toBe(`/fr/lines/24?${rest}${tab}#record`);
 	});
 });

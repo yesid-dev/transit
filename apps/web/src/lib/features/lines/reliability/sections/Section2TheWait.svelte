@@ -807,6 +807,10 @@
 	.metric-with-info :global(.cluster-info) {
 		flex: none;
 	}
+	/* Side-by-side info buttons: keep each 44px target at least 24px clear of its neighbour. */
+	.label-with-info :global(.cluster-info + .cluster-info) {
+		margin-inline-start: 0.5rem;
+	}
 	.shift-caption {
 		margin: 0;
 		font-family: var(--font-mono);
