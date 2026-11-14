@@ -4,10 +4,12 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import Mock
+from zoneinfo import ZoneInfo
 
 import pytest
 from google.transit import gtfs_realtime_pb2
 from history_reader_fakes import FakeCaptureWindow, fake_capture, fake_feed_day, fake_poll
+from test_alert_recovery_capture_records import jsonb_result
 
 from transit_ops.core.models import ProviderConfig, ProviderManifest
 from transit_ops.history.alert_recovery_captures import CaptureRecoveryReader
@@ -213,3 +215,79 @@ def test_recorded_format_decodes_nonempty_alerts_and_preserves_alert_ordinal(pro
     assert report.complete and report.candidates == 1 and items[0].alert_id == "alert-a"
     assert items[0].record["header_text"] == "Travaux"
     assert items[0].record["message"]["alert_index"] == 0
+
+
+def setup_projection():
+    reader, c, w, _, _ = setup()
+    rows = c.execute.return_value
+    c.execute.side_effect = lambda sql, params: (
+        jsonb_result(sql, params) if "raw" in params else rows
+    )
+    return reader, c, w
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_mixed_endpoint_keeps_readable_inventory_but_reports_missing_service_alerts(reverse):
+    reader, c, w = setup_projection()
+    c.execute.return_value.append(("service_alerts", "service_alerts", "gtfs_rt_service_alerts"))
+    w._captures = (capture(b'{"alerts":[{"id":"alert-a","header":"Travaux"}]}'),)
+    w.days += (
+        fake_feed_day(
+            provider_id="fixture",
+            endpoint_key="service_alerts",
+            state="not_available",
+            reason="no_polls",
+        ),
+    )
+    if reverse:
+        w.days = tuple(reversed(w.days))
+        c.execute.return_value.reverse()
+    items, report = reader(c, provider_id="fixture", recovered_at_utc=END)
+    assert not report.complete and not report.errors and items == ()
+    assert report.missing == ("service_alerts/2026-01-02: no_polls",)
+    assert report.scanned == 1
+    assert any(w._captures[0].checksum_sha256 in entry for entry in report.coverage)
+
+
+def test_reader_retains_first_child_indexes_and_latest_message_across_repeated_content():
+    reader, c, w = setup_projection()
+    latest = START + timedelta(minutes=1)
+    w._captures = tuple(
+        replace(
+            capture(
+                json.dumps(
+                    {"alerts": [{"id": "alert-a", "header": "Travaux", "routes": routes}]}
+                ).encode()
+            ),
+            capture_row_id=number,
+            captured_at_utc=at,
+        )
+        for number, at, routes in ((101, START, ["10"]), (102, latest, ["20", "30"]))
+    )
+    w._polls = tuple(replace(w._polls[0], capture_row_id=n) for n in (101, 102))
+    (item,), report = reader(c, provider_id="fixture", recovered_at_utc=END)
+    assert report.complete and report.scanned == 2
+    assert item.record["route_ids"] == ["10", "30"]
+    assert (item.record["first_seen_utc"], item.record["last_seen_utc"]) == (START, latest)
+    assert item.record["message"] == {
+        "snapshot_id": "102",
+        "alert_index": 0,
+        "captured_utc": "2026-01-02T00:01:00Z",
+        "header_language": None,
+        "description_language": None,
+        "url_language": None,
+    }
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_constructor_compares_dst_fallback_bounds_as_utc_instants(reverse):
+    zone = ZoneInfo("America/Toronto")
+    first = datetime(2026, 11, 1, 1, 45, tzinfo=zone, fold=0)
+    last = datetime(2026, 11, 1, 1, 15, tzinfo=zone, fold=1)
+    if reverse:
+        with pytest.raises(ValueError):
+            setup(start=last, end=first)
+    else:
+        reader, _, _, _, _ = setup(start=first, end=last)
+        assert reader.start == datetime(2026, 11, 1, 5, 45, tzinfo=UTC)
+        assert reader.end == datetime(2026, 11, 1, 6, 15, tzinfo=UTC)

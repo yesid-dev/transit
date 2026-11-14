@@ -86,14 +86,13 @@ class CaptureRecoveryReader:
         window_reader: Callable[..., CaptureWindow] = open_window,
         storage_factory: Callable[[Settings], BronzeStorageScope] = history_storage,
     ) -> None:
-        if (
-            capture_from.utcoffset() is None
-            or capture_to.utcoffset() is None
-            or capture_from >= capture_to
-        ):
+        if capture_from.utcoffset() is None or capture_to.utcoffset() is None:
+            raise ValueError("aware increasing capture bounds required")
+        capture_from, capture_to = capture_from.astimezone(UTC), capture_to.astimezone(UTC)
+        if capture_from >= capture_to:
             raise ValueError("aware increasing capture bounds required")
         self.settings, self.manifest = settings, manifest
-        self.start, self.end = capture_from.astimezone(UTC), capture_to.astimezone(UTC)
+        self.start, self.end = capture_from, capture_to
         self.window_reader, self.storage_factory = window_reader, storage_factory
 
     def __call__(
