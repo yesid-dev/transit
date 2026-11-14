@@ -164,3 +164,20 @@ def test_process_only_writes_local_text_and_closes_handles(tmp_path, monkeypatch
         extract_alert_archive_copy(tmp_path / "in.dump", output)
     output.unlink()
     assert not output.exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX symlink dispatch requires /bin/sh")
+def test_symlinked_restore_keeps_dispatch_basename(tmp_path, monkeypatch):
+    wrapper = tmp_path / "pg_wrapper"
+    wrapper.write_text(
+        '#!/bin/sh\n[ "${0##*/}" = pg_restore ] || exit 0\n'
+        'while [ "$1" != --file ]; do shift; done\n'
+        'printf selected > "$2"\n',
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+    (tmp_path / "pg_restore").symlink_to(wrapper)
+    monkeypatch.setenv("PATH", str(tmp_path))
+    output = tmp_path / "selected.sql"
+    extract_alert_archive_copy(tmp_path / "native.dump", output)
+    assert output.read_bytes() == b"selected"

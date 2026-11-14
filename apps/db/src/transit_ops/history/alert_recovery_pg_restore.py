@@ -17,7 +17,8 @@ def _pg_restore_executable() -> str:
         for extension in extensions:
             candidate = directory / ("pg_restore" + extension)
             if candidate.is_file() and os.access(candidate, os.X_OK):
-                return str(candidate.resolve())
+                # Wrappers dispatch using the selected command name, even through a symlink.
+                return str(candidate)
     raise ValueError("pg_restore_unavailable")
 
 
