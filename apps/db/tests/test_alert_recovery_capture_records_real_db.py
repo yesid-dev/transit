@@ -74,17 +74,19 @@ def _load(oracle, provider):
         ),
         {"p": provider},
     ).scalar_one()
-    run = oracle.execute(
-        text(
-            "INSERT INTO raw.ingestion_runs "
-            "(provider_id, feed_endpoint_id, run_kind, status) "
-            "VALUES (:p, :e, 'i3_alerts', 'succeeded') RETURNING ingestion_run_id"
-        ),
-        {"p": provider, "e": endpoint},
-    ).scalar_one()
     snapshots = []
     for index, alerts in enumerate(payloads):
         captured = NOW + timedelta(minutes=max(0, index - 1))
+        run = oracle.execute(
+            text(
+                "INSERT INTO raw.ingestion_runs "
+                "(provider_id, feed_endpoint_id, run_kind, status, requested_at_utc, "
+                "started_at_utc, completed_at_utc, feed_timestamp_utc, entity_count) "
+                "VALUES (:p, :e, 'i3_alerts', 'succeeded', :t, :t, :t, :t, :n) "
+                "RETURNING ingestion_run_id"
+            ),
+            {"p": provider, "e": endpoint, "t": captured, "n": len(alerts)},
+        ).scalar_one()
         number = oracle.execute(
             text(
                 "INSERT INTO raw.i3_alert_snapshots (provider_id, feed_endpoint_id, "
