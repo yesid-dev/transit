@@ -21,9 +21,13 @@ const { examples } = JSON.parse(
     "utf8",
   ),
 );
-for (const provider of ["stm", "octranspo"]) {
+for (const [provider, query] of [
+  ["stm", "?provider=stm"],
+  ["octranspo", "?provider=octranspo"],
+  ["stm", ""],
+]) {
   for (const example of examples) {
-    test(`producer matches shared v1 example (${provider}): ${example.name}`, async (t) => {
+    test(`producer matches shared v1 bytes (${query || "default STM"}): ${example.name}`, async (t) => {
       __resetKpisCachesForTests();
       t.mock.method(Date, "now", () => Date.parse("2026-11-04T12:00:05Z"));
       const body = example.body;
@@ -80,26 +84,49 @@ for (const provider of ["stm", "octranspo"]) {
           delete docs[key];
       if (example.status === 503)
         delete docs[`v1/${provider}/live/vehicles.json`];
-      const response = await worker.fetch(
-        new Request(
-          `https://transit.yesid.dev/api/v1/kpis?provider=${provider}`,
-        ),
-        {
-          SNAPSHOTS: {
-            get: async (key) =>
-              `v1/providers.json` === key
-                ? { json: async () => ({ providers: [{ id: provider }] }) }
-                : docs[key]
-                  ? { json: async () => docs[key] }
-                  : null,
-          },
+      const env = {
+        SNAPSHOTS: {
+          get: async (key) =>
+            `v1/providers.json` === key
+              ? {
+                  json: async () => ({
+                    default_provider: provider,
+                    providers: [{ id: provider }],
+                  }),
+                }
+              : docs[key]
+                ? { json: async () => docs[key] }
+                : null,
         },
-        { waitUntil() {} },
-      );
+      };
+      const url = `https://transit.yesid.dev/api/v1/kpis${query}`;
+      const response = await worker.fetch(new Request(url), env, {
+        waitUntil() {},
+      });
       assert.equal(response.status, example.status);
       for (const [key, value] of Object.entries(example.headers))
         assert.equal(response.headers.get(key), value);
-      assert.deepEqual(await response.json(), body);
+      assert.equal(await response.text(), JSON.stringify(body));
+      assert.equal(response.headers.get("access-control-allow-origin"), "*");
+      assert.equal(response.headers.get("cache-control"), "no-store");
+      if (example.status === 200)
+        assert.equal(response.headers.get("x-kpis-cache"), "miss");
+      __resetKpisCachesForTests();
+      const head = await worker.fetch(
+        new Request(url, { method: "HEAD" }),
+        env,
+        { waitUntil() {} },
+      );
+      assert.equal(head.status, example.status);
+      assert.deepEqual(
+        Object.fromEntries(head.headers),
+        Object.fromEntries(response.headers),
+      );
+      // The established cold envelope is also returned for HEAD; successful HEAD is empty.
+      assert.equal(
+        await head.text(),
+        example.status === 200 ? "" : JSON.stringify(body),
+      );
     });
   }
 }

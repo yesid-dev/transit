@@ -6,10 +6,18 @@ import { __resetKpisCachesForTests } from "../src/kpis.js";
 
 const BASE = "https://transit.yesid.dev";
 const KPIS = "/api/v1/kpis";
+const catalogDoc = JSON.stringify({
+  default_provider: "stm",
+  providers: [{ id: "stm" }],
+});
+const catalogReads = (bucket) =>
+  bucket.reads.filter((key) => key === "v1/providers.json").length;
+const providerReads = (bucket) => bucket.reads.length - catalogReads(bucket);
 
 class FakeKpisBucket {
   constructor(objects) {
     this.objects = new Map(Object.entries(objects));
+    this.objects.set("v1/providers.json", catalogDoc);
     this.reads = [];
   }
 
@@ -57,6 +65,7 @@ function liveDocs({ snapshotMsAgo = 5_000 } = {}) {
     t7: { route: null, delay_min: 2 },
   };
   return {
+    "v1/providers.json": catalogDoc,
     "v1/stm/live/vehicles.json": JSON.stringify({
       generated_utc: stamp,
       vehicles,
@@ -282,7 +291,8 @@ for (const cacheLayer of ["memo", "edge", "revalidating"]) {
           body.topRoutes[0].avgDelayS,
           expiredSource === "trips" && !storageRecovered ? null : 180,
         );
-        assert.equal(bucket.reads.length, cacheLayer === "edge" ? 8 : 7);
+        assert.equal(providerReads(bucket), cacheLayer === "edge" ? 8 : 7);
+        assert.equal(catalogReads(bucket), cacheLayer === "memo" ? 1 : 2);
         await ctx.settle();
         const readsAfterRebuild = bucket.reads.length;
         await Promise.all(Array.from({ length: 100 }, () => fetchKpis(env)));
@@ -533,11 +543,12 @@ test("edge cache (Cache API) carries the core across isolate recycles", async ()
     const env = { SNAPSHOTS: bucket };
     await fetchKpis(env);
     __resetKpisCachesForTests();
-    const readsBefore = bucket.reads.length;
+    const readsBefore = providerReads(bucket);
     const response = await fetchKpis(env);
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("x-kpis-cache"), "hit");
-    assert.equal(bucket.reads.length, readsBefore);
+    assert.equal(providerReads(bucket), readsBefore);
+    assert.equal(catalogReads(bucket), 2);
   } finally {
     delete globalThis.caches;
   }
@@ -573,10 +584,11 @@ for (const outcome of ["recovered", "stalled", "read-failure"]) {
     const responses = Array.from({ length: 100 }, () => fetchKpis(env));
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(
-      bucket.reads.length,
+      providerReads(bucket),
       7,
       "one initial 4-read build, one parallel 3-read rebuild",
     );
+    assert.equal(catalogReads(bucket), 1);
     release();
     for (const response of await Promise.all(responses)) {
       assert.equal(response.status, 200);
@@ -586,7 +598,7 @@ for (const outcome of ["recovered", "stalled", "read-failure"]) {
     }
     await Promise.all(Array.from({ length: 100 }, () => fetchKpis(env)));
     assert.equal(
-      bucket.reads.length,
+      providerReads(bucket),
       7,
       "no per-request rebuild loop, including failed storage reads",
     );
@@ -637,6 +649,8 @@ test("one busy hour at the 20s vehicle / 30s trip publication with 4s upload lag
     JSON.stringify({
       requests: 3600,
       reads: bucket.reads.length,
+      providerReads: providerReads(bucket),
+      catalogReads: catalogReads(bucket),
       synchronousBuilds: misses,
       projected30DayReads: bucket.reads.length * 24 * 30,
     }),
@@ -674,7 +688,8 @@ test("a lane crossing 60s between cache lookup and serving rebuilds before nulli
   t.mock.method(Date, "now", () => start + (++calls === 1 ? 999 : 1000));
   const response = await fetchKpis(env);
   assert.equal((await response.json()).avgDelayS, 120);
-  assert.equal(bucket.reads.length, 7);
+  assert.equal(providerReads(bucket), 7);
+  assert.equal(catalogReads(bucket), 1);
 });
 
 test("an anchor crossing 60s while serving rebuilds before declaring pipeline_cold", async (t) => {
@@ -689,5 +704,6 @@ test("an anchor crossing 60s while serving rebuilds before declaring pipeline_co
   const response = await fetchKpis(env);
   assert.equal(response.status, 200);
   assert.equal((await response.json()).avgDelayS, 120);
-  assert.equal(bucket.reads.length, 7);
+  assert.equal(providerReads(bucket), 7);
+  assert.equal(catalogReads(bucket), 1);
 });

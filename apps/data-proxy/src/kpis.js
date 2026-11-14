@@ -310,18 +310,22 @@ function unavailable() {
 
 export async function serveKpis(request, env, ctx) {
   const selected = new URL(request.url).searchParams.get("provider");
-  const provider = selected ?? "stm";
+  const catalog = await providerCatalog(env);
+  if (!Array.isArray(catalog?.providers)) return unavailable();
+  const provider = selected ?? catalog.default_provider;
   if (selected !== null) {
-    // The published catalog owns provider membership. Keep legacy requests
-    // independent of catalog availability, as they were before provider selection.
-    const catalog = await providerCatalog(env);
-    if (!Array.isArray(catalog?.providers)) return unavailable();
     if (!catalog.providers.some((entry) => entry?.id === provider)) {
       return new Response(null, {
         status: 404,
         headers: { ...CORS_HEADERS, "cache-control": "no-store" },
       });
     }
+  } else if (
+    typeof provider !== "string" ||
+    provider.length === 0 ||
+    catalog.providers.filter((entry) => entry?.id === provider).length !== 1
+  ) {
+    return unavailable();
   }
   const waitUntil = ctx?.waitUntil
     ? ctx.waitUntil.bind(ctx)
