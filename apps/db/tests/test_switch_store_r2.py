@@ -105,3 +105,62 @@ def test_selector_defaults_and_refuses_unready_ledger(tmp_path):
     assert isinstance(switches.switches_for(object(), settings), switches.PostgresSwitches)
     with pytest.raises(ValueError):
         switches.switches_for(None, settings)
+
+
+def test_selector_and_registered_guard(tmp_path, monkeypatch):
+    settings = Settings(
+        _env_file=None,
+        BRONZE_LOCAL_ROOT=str(tmp_path),
+        LIGHTER_STORAGE={"control": {"switch_backend": "r2"}},
+    )
+    store = switches.switches_for(None, settings)
+    with pytest.raises(GuardRefused, match="history ledger is not ready"):
+        store.set_switch("history_daily", on=True, updated_by="a", reason="r")
+    assert store.list_switches() == []
+    monkeypatch.setattr(
+        switches, "_r2_guards", dict(getattr(switches, "_r2_guards", {})), raising=False
+    )
+    switches.register_r2_guard("test:", lambda k: GuardResult(True))
+    switches.switches_for(None, settings).set_switch("test:x", on=True, updated_by="a", reason="r")
+    assert "test:x" in store.enabled()
+    settings.LIGHTER_STORAGE.control.switch_backend = "postgres"
+    assert isinstance(switches.switches_for(object(), settings), switches.PostgresSwitches)
+    with pytest.raises(ValueError):
+        switches.switches_for(None, settings)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"extra": 1},
+        {"updated_at_utc": "2026-01-01T00:00:00"},
+        {"updated_by": 1},
+        {"reason": None},
+        {"enabled": "yes"},
+    ],
+)
+def test_malformed_document_is_named(local_store, body):
+    payload = dict(
+        switch_key="test:x",
+        enabled=False,
+        updated_at_utc="2026-11-14T00:00:00+00:00",
+        updated_by="a",
+        reason="r",
+    )
+    local_store.objects.replace(
+        "switches/test%3Ax.json", {**payload, **body} if body else {}, expected=None
+    )
+    with pytest.raises(ValueError, match="^invalid switch document$"):
+        local_store.show_switch("test:x")
+
+
+@pytest.mark.parametrize("operation", ["set", "copy"])
+def test_naive_write_is_refused(local_store, operation):
+    local_store.clock = lambda: datetime(2026, 11, 14)
+    with pytest.raises(ValueError, match="^invalid switch document$"):
+        if operation == "set":
+            local_store.set_switch("test:x", on=False, updated_by="a", reason="r")
+        else:
+            local_store.copy_in(PipelineSwitch("test:x", False, local_store.clock(), "a", "r"))
+    assert local_store.list_switches() == []
