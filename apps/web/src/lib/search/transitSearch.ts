@@ -1,4 +1,5 @@
 import { stopDisplayName, lineLabel } from '#lib/site/transitDisplay.ts';
+import { createLineDirectory } from '#lib/site/lineDirectory.ts';
 import type { RouteIndexEntry, StopIndexEntry, Vehicle } from '#lib/v1/schemas/index.ts';
 import { FILTER_SEARCH_PARAM_KEYS, fromSearchParams, toSearchString } from '#lib/filters/index.ts';
 import type { GeocodePrecision, GeocodeSuggestion } from '#lib/geocode/types.ts';
@@ -60,6 +61,41 @@ export interface PageSearchResults {
 	readonly routes: RouteIndexEntry[];
 	readonly stops: StopIndexEntry[];
 	readonly vehicles: Vehicle[];
+}
+/** The header list: the page decides the order (`scope`), never what is searched. */
+export interface ListSearchRequest {
+	readonly query: string;
+	readonly surface: 'list';
+	readonly scope?: ChromeSearchScope;
+}
+/** One row. Labels are the record's own names; callers add every word. */
+export interface SearchHit {
+	readonly kind: ChromeSearchKind;
+	readonly id: string;
+	readonly label: string;
+	readonly code?: string | null;
+	readonly line?: string | null;
+	readonly lat?: number;
+	readonly lon?: number;
+	readonly precision?: GeocodePrecision;
+}
+export interface SearchGroup {
+	readonly kind: ChromeSearchKind;
+	/** Every match, not only the rows shown. */
+	readonly total: number;
+	readonly hits: readonly SearchHit[];
+}
+export interface SearchList {
+	readonly query: string;
+	readonly groups: readonly SearchGroup[];
+	/** Lines, stops and vehicles matched: the count /search shows. */
+	readonly total: number;
+	/** The first row matches the query exactly. */
+	readonly exact: boolean;
+	/** The lines or stops index has not arrived, so no answer is final yet. */
+	readonly pending: boolean;
+	/** Which of those indexes: never counted as zero. */
+	readonly unsearched: readonly ('route' | 'stop')[];
 }
 interface Candidate<T> {
 	value: T;
@@ -202,6 +238,79 @@ function headerResults(
 		.slice(0, 8);
 }
 
+const LIST_ROWS = {
+	route: { route: 6, stop: 2 },
+	stop: { stop: 6, route: 2 },
+	all: { route: 4, stop: 4 },
+} as const;
+function searchList(
+	request: ListSearchRequest,
+	sources: SearchSources,
+	query: string,
+	matches: Candidates,
+): SearchList {
+	const lead = request.scope === 'route' || request.scope === 'stop' ? request.scope : 'all';
+	const rows = LIST_ROWS[lead];
+	const directory = createLineDirectory(sources.routes ?? null, { line: (id) => id });
+	const lines: SearchGroup = {
+		kind: 'route',
+		total: matches.routes.length,
+		hits: matches.routes
+			.slice(0, rows.route)
+			.map(({ value }) => ({ kind: 'route', id: value.id, label: directory.name(value.id).label })),
+	};
+	const stops: SearchGroup = {
+		kind: 'stop',
+		total: matches.stops.length,
+		hits: matches.stops.slice(0, rows.stop).map(({ value }) => ({
+			kind: 'stop',
+			id: value.id,
+			label: stopDisplayName(value.name),
+			code: value.code ?? null,
+		})),
+	};
+	const vehicles: SearchGroup = {
+		kind: 'vehicle',
+		total: matches.vehicles.length,
+		hits: matches.vehicles.slice(0, 1).map((vehicle) => ({
+			kind: 'vehicle',
+			id: vehicle.id,
+			label: vehicle.id,
+			line: vehicle.route ? lineLabel(vehicle.route, sources.routes ?? []) : null,
+		})),
+	};
+	const supplied = query ? (sources.addresses ?? []) : [];
+	const addresses: SearchGroup = {
+		kind: 'address',
+		total: supplied.length,
+		hits: supplied.slice(0, 2).map((address) => ({
+			kind: 'address',
+			id: addressResultId(address),
+			label: address.label,
+			lat: address.lat,
+			lon: address.lon,
+			precision: address.precision,
+		})),
+	};
+	const groups = [...(lead === 'stop' ? [stops, lines] : [lines, stops]), vehicles, addresses];
+	const shown = groups.filter((group) => group.hits.length > 0);
+	const first = shown[0]?.kind;
+	const unsearched = (['route', 'stop'] as const).filter(
+		(kind) => (kind === 'route' ? sources.routes : sources.stops) == null,
+	);
+	return {
+		query,
+		groups: shown,
+		total: lines.total + stops.total + vehicles.total,
+		exact:
+			first === 'vehicle' ||
+			(first === 'route' && matches.routes[0]!.score === 0) ||
+			(first === 'stop' && matches.stops[0]!.score === 0),
+		pending: unsearched.length > 0,
+		unsearched,
+	};
+}
+
 export function searchTransit(
 	request: HeaderSearchRequest,
 	sources: SearchSources,
@@ -210,14 +319,20 @@ export function searchTransit(
 	request: PageSearchRequest,
 	sources: SearchSources,
 ): PageSearchResults;
+export function searchTransit(request: ListSearchRequest, sources: SearchSources): SearchList;
 export function searchTransit(
-	request: HeaderSearchRequest | PageSearchRequest,
+	request: HeaderSearchRequest | PageSearchRequest | ListSearchRequest,
 	sources: SearchSources,
-): ChromeSearchResult[] | PageSearchResults {
+): ChromeSearchResult[] | PageSearchResults | SearchList {
 	const query = foldSearchText(request.query);
 	const matches = query
-		? candidates(request, sources, query)
+		? candidates(
+				request.surface === 'list' ? { ...request, surface: 'page' } : request,
+				sources,
+				query,
+			)
 		: { routes: [], stops: [], vehicles: [] };
+	if (request.surface === 'list') return searchList(request, sources, query, matches);
 	if (request.surface === 'header') return query ? headerResults(request, sources, matches) : [];
 	return {
 		query,
@@ -232,6 +347,11 @@ export function scopeForPath(delocalizedPath: string): ChromeSearchScope {
 	if (delocalizedPath === '/stops' || delocalizedPath.startsWith('/stop/')) return 'stop';
 	if (delocalizedPath === '/map') return 'map';
 	return 'all';
+}
+
+/** The search page with this query: where "See all" and Enter without a highlight lead. */
+export function searchPageHref(query: string): string {
+	return `/search?${new URLSearchParams({ q: query })}`;
 }
 
 /** Where the reader searches from: the delocalized path and its query. */

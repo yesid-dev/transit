@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
 vi.mock('$app/navigation', () => ({ goto: () => Promise.resolve() }));
-import { searchTransit } from './transitSearch';
+import { searchTransit, type SearchSources } from './transitSearch';
 import type { Vehicle } from '#lib/v1/schemas/index.ts';
 import type { StopIndexEntry } from '#lib/v1/schemas/index.ts';
 const vehicle = (id: string): Vehicle => ({
@@ -209,4 +209,102 @@ it("keeps exact, prefix, substring and reversed-token matches in today's order",
 			ids,
 		);
 	}
+});
+
+const hubs = (n: number) => ({
+	routes: Array.from({ length: n }, (_, i) => ({
+		id: `r${i}`,
+		short: `${i}`,
+		long: 'Hub',
+		type: 3,
+	})),
+	stops: Array.from({ length: n }, (_, i) => ({
+		id: `s${i}`,
+		code: `c${i}`,
+		name: `Hub ${i}`,
+		lat: 0,
+		lon: 0,
+	})),
+});
+const shape = (list: {
+	groups: readonly { kind: string; total: number; hits: readonly unknown[] }[];
+}) => list.groups.map((group) => `${group.kind} ${group.hits.length}/${group.total}`);
+
+it('returns true totals beyond the cap', () => {
+	const list = searchTransit({ surface: 'list', query: 'hu', scope: 'all' }, hubs(38));
+	expect(shape(list)).toEqual(['route 4/38', 'stop 4/38']);
+	expect(list.total).toBe(76);
+});
+
+it('the page decides the order, never what is searched', () => {
+	const order = (scope: 'route' | 'stop' | 'map' | 'all') =>
+		shape(searchTransit({ surface: 'list', query: 'hu', scope }, hubs(38)));
+	expect(order('route')).toEqual(['route 6/38', 'stop 2/38']);
+	expect(order('stop')).toEqual(['stop 6/38', 'route 2/38']);
+	expect(order('map')).toEqual(['route 4/38', 'stop 4/38']);
+	expect(order('all')).toEqual(['route 4/38', 'stop 4/38']);
+});
+
+it('lists one live vehicle and two addresses last, and counts only what /search counts', () => {
+	const address = {
+		lat: 45,
+		lon: -73,
+		label: 'Hub Street',
+		source: 'geo_ca',
+		precision: 'street',
+	} as const;
+	const list = searchTransit(
+		{ surface: 'list', query: 'hub', scope: 'all' },
+		{
+			...hubs(3),
+			vehicles: [vehicle('HUB'), vehicle('hub')],
+			addresses: [address, address, address],
+		},
+	);
+	expect(shape(list)).toEqual(['route 3/3', 'stop 3/3', 'vehicle 1/2', 'address 2/3']);
+	expect(list.total).toBe(8);
+});
+
+it('marks the first row exact only when it matches the query exactly', () => {
+	const exact = (query: string, scope: 'all' | 'stop') => {
+		const list = searchTransit({ surface: 'list', query, scope }, hubs(12));
+		return [list.exact, list.groups[0]?.hits[0]?.id];
+	};
+	expect(exact('7', 'all')).toEqual([true, 'r7']);
+	expect(exact('c7', 'stop')).toEqual([true, 's7']);
+	expect(exact('hu', 'all')).toEqual([false, 'r0']);
+	expect(exact('1', 'stop')).toEqual([false, 's1']);
+});
+
+it('waits for both indexes before an empty answer is final', () => {
+	const { routes, stops } = hubs(2);
+	expect(searchTransit({ surface: 'list', query: 'zz' }, { routes, stops: null })).toMatchObject({
+		groups: [],
+		total: 0,
+		pending: true,
+	});
+	expect(searchTransit({ surface: 'list', query: 'zz' }, { routes, stops }).pending).toBe(false);
+	const missing = (sources: SearchSources) =>
+		searchTransit({ surface: 'list', query: 'zz' }, sources).unsearched;
+	expect([
+		missing({ routes, stops: null }),
+		missing({ routes: null, stops: [] }),
+		missing({ routes, stops: [] }),
+	]).toEqual([['stop'], ['route'], []]);
+});
+
+it('labels rows with the names riders read', () => {
+	const list = searchTransit(
+		{ surface: 'list', query: '161' },
+		{
+			routes: [{ id: '161', short: '161', long: 'Van Horne', type: 3 }],
+			stops: [{ id: 's', code: '161', name: 'MONTGOMERY / SHERBROOKE', lat: 0, lon: 0 }],
+			vehicles: [{ ...vehicle('161'), route: '161' }],
+		},
+	);
+	expect(list.groups.map((group) => group.hits[0])).toEqual([
+		{ kind: 'route', id: '161', label: '161 · Van Horne' },
+		{ kind: 'stop', id: 's', label: 'Montgomery / Sherbrooke', code: '161' },
+		{ kind: 'vehicle', id: '161', label: '161', line: '161' },
+	]);
 });
