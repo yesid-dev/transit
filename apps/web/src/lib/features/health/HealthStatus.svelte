@@ -3,6 +3,9 @@
 	import OutOfServiceVehicles from './OutOfServiceVehicles.svelte';
 	import HealthSummary from './HealthSummary.svelte';
 	import type { Manifest } from '#lib/v1/schemas/index.ts';
+	import { untrack } from 'svelte';
+	import { liveReader } from '#lib/v1/adapter/index.ts';
+	import { createLiveStore, type LiveStore } from '#lib/v1/live/store.svelte.ts';
 	import { getV1Runtime } from '#lib/v1/runtime.ts';
 	const clock = getV1Runtime().clock;
 	import './sections/health-sections.css';
@@ -141,6 +144,17 @@
 		gateVerdict: t.lanes.gateVerdict,
 		maintenanceReason: t.lanes.maintenanceReason,
 		maintenanceLabel: t.lanes.laneLabel.maintenance,
+	});
+
+	// One live vehicles store for the page: the summary's age and the out-of-service count agree.
+	let live = $state.raw<LiveStore | null>(null);
+	const provider = $derived(manifest?.provider);
+	$effect(() => {
+		if (!provider) return;
+		const store = untrack(() => createLiveStore(manifest!, liveReader, { families: ['vehicles'] }));
+		live = store;
+		store.start();
+		return () => store.stop();
 	});
 
 	const prov = $derived(provenance.data ?? null);
@@ -315,11 +329,15 @@
 			open={true}
 		>
 			<div class="health-overview">
-				<HealthSummary {manifest} dataHealth={dh} historyIndex={historyRoot} {gaps} {locale} />
-				{#if manifest}{#key manifest.provider}<OutOfServiceVehicles
-							{manifest}
-							{locale}
-						/>{/key}{/if}
+				<HealthSummary
+					{manifest}
+					{live}
+					dataHealth={dh}
+					historyIndex={historyRoot}
+					{gaps}
+					{locale}
+				/>
+				<OutOfServiceVehicles {live} {locale} />
 				{#if !prov || provenanceIsEmpty(prov)}
 					<div class="health-resource-state" aria-label={t.overview.dailyRecord}>
 						<SectionLabel text={t.overview.dailyRecord} variant="metric" />

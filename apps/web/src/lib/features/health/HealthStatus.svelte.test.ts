@@ -421,6 +421,8 @@ describe('HealthStatus — full manifest render', () => {
 			lane.lane === 'rollup' ? { ...lane, gate: { verdict: 'warn', warnings: 1 } } : lane,
 		);
 		dataHealthState = ready({ ...richDataHealth, lanes });
+		live.vehicles = { vehicles: [{ trip: null }, { trip: 't' }] } as never;
+		vi.mocked(createLiveStore).mockClear();
 		const { container, unmount } = render(HealthStatus, { props: { manifest } });
 		const summary = container.querySelector('[data-slot="health-summary"]') as HTMLElement;
 
@@ -434,9 +436,13 @@ describe('HealthStatus — full manifest render', () => {
 		expect(summary.compareDocumentPosition(screen.getByText(en.lanes.note))).toBe(
 			Node.DOCUMENT_POSITION_FOLLOWING,
 		);
+		// One live vehicles store serves the summary and the out-of-service count.
+		expect(createLiveStore).toHaveBeenCalledOnce();
 		expect(createLiveStore).toHaveBeenCalledWith(manifest, expect.anything(), {
 			families: ['vehicles'],
 		});
+		expect(screen.getByText('Out-of-service vehicles: 1')).toBeInTheDocument();
+		live.vehicles = null;
 		unmount();
 		expect(live.stop).toHaveBeenCalled();
 		vi.useRealTimers();
