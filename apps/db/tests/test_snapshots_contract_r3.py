@@ -541,12 +541,17 @@ def test_existing_public_models_and_bytes_are_unchanged():
     before = json.dumps(contract.export_schemas(), sort_keys=True)
     old = contract.NetworkTrend(generated_utc="2026-11-14")
     old_bytes = snapshot_json_bytes(old)
+    old_receipt = contract.Receipt(generated_utc="2026-11-14", date="2026-11-13", vehicles=7)
+    receipt_bytes = snapshot_json_bytes(old_receipt)
+    membership = dict(contract.TOP_LEVEL_MODELS)
     exports = r3.export_schemas()
     assert set(exports) == {"historic_receipt", "historic_network_trend"}
     assert exports["historic_network_trend"] == r3.NetworkTrend.model_json_schema()
     assert exports["historic_receipt"] == r3.Receipt.model_json_schema()
     assert json.dumps(contract.export_schemas(), sort_keys=True) == before
     assert snapshot_json_bytes(old) == old_bytes
+    assert snapshot_json_bytes(old_receipt) == receipt_bytes
+    assert dict(contract.TOP_LEVEL_MODELS) == membership
     assert contract.TOP_LEVEL_MODELS["historic_network_trend"] is contract.NetworkTrend
 
 
