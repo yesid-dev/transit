@@ -134,3 +134,41 @@ it.each([
 	const view = show('40061', { locale, sources: { routes, stops: [], vehicles: [bus] } });
 	expect(view.getByRole('option', { name })).toHaveAttribute('aria-selected', 'true');
 });
+
+it('keeps the highlight when a live poll brings the same answer', async () => {
+	const view = show('van');
+	view.component.move(1);
+	await tick();
+	const first = selected(view);
+	expect(first).toHaveLength(1);
+	const polled = searchTransit({ surface: 'list', query: 'van', scope: 'all' }, { routes, stops });
+	await view.rerender({ list: polled });
+	expect(selected(view)).toEqual(first);
+});
+
+it.each([
+	[
+		'en',
+		'See all results for “van”',
+		'Stops have not been searched yet.',
+		'See all 39 results for “van”',
+	],
+	[
+		'fr',
+		'Voir tous les résultats pour « van »',
+		'Les arrêts n’ont pas encore été cherchés.',
+		'Voir les 39 résultats pour « van »',
+	],
+] as const)(
+	'with an index missing, says so and gives See all no count, in %s',
+	async (locale, partial, note, full) => {
+		const view = show('van', { locale, sources: { routes, stops: null } });
+		expect(view.getByRole('option', { name: partial })).toBeInTheDocument();
+		expect(view.getByText(note)).toBeInTheDocument();
+		await view.rerender({
+			list: searchTransit({ surface: 'list', query: 'van' }, { routes, stops }),
+		});
+		expect(view.getByRole('option', { name: full })).toBeInTheDocument();
+		expect(view.queryByText(note)).toBeNull();
+	},
+);

@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
 vi.mock('$app/navigation', () => ({ goto: () => Promise.resolve() }));
-import { searchTransit } from './transitSearch';
+import { searchTransit, type SearchSources } from './transitSearch';
 import type { Vehicle } from '#lib/v1/schemas/index.ts';
 import type { StopIndexEntry } from '#lib/v1/schemas/index.ts';
 const vehicle = (id: string): Vehicle => ({
@@ -284,6 +284,13 @@ it('waits for both indexes before an empty answer is final', () => {
 		pending: true,
 	});
 	expect(searchTransit({ surface: 'list', query: 'zz' }, { routes, stops }).pending).toBe(false);
+	const missing = (sources: SearchSources) =>
+		searchTransit({ surface: 'list', query: 'zz' }, sources).unsearched;
+	expect([
+		missing({ routes, stops: null }),
+		missing({ routes: null, stops: [] }),
+		missing({ routes, stops: [] }),
+	]).toEqual([['stop'], ['route'], []]);
 });
 
 it('labels rows with the names riders read', () => {

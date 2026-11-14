@@ -104,6 +104,10 @@
 		</div>
 	{/if}
 	{#if unmatched}<p class="search-list-none">{copy.noResult(query)}</p>{/if}
+	<!-- A group that could not be searched is said, never shown as zero. -->
+	{#each list.unsearched as kind (kind)}<p class="search-list-none">
+			{copy.unsearched(kind)}
+		</p>{/each}
 	{#if list.groups.length || unmatched}
 		<div bind:this={box} {id} role="listbox" aria-label={label} class="search-list-box">
 			<div class="search-list-scroll">
@@ -125,7 +129,11 @@
 			</div>
 			{#if list.total > 0}
 				<div class="search-list-pinned">
-					{@render option(`${id}-all`, hrefs.all, copy.seeAll(list.total, query))}
+					{@render option(
+						`${id}-all`,
+						hrefs.all,
+						copy.seeAll(list.pending ? null : list.total, query),
+					)}
 				</div>
 			{/if}
 		</div>

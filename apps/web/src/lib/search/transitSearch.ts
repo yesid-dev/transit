@@ -94,6 +94,8 @@ export interface SearchList {
 	readonly exact: boolean;
 	/** The lines or stops index has not arrived, so no answer is final yet. */
 	readonly pending: boolean;
+	/** Which of those indexes: never counted as zero. */
+	readonly unsearched: readonly ('route' | 'stop')[];
 }
 interface Candidate<T> {
 	value: T;
@@ -293,6 +295,9 @@ function searchList(
 	const groups = [...(lead === 'stop' ? [stops, lines] : [lines, stops]), vehicles, addresses];
 	const shown = groups.filter((group) => group.hits.length > 0);
 	const first = shown[0]?.kind;
+	const unsearched = (['route', 'stop'] as const).filter(
+		(kind) => (kind === 'route' ? sources.routes : sources.stops) == null,
+	);
 	return {
 		query,
 		groups: shown,
@@ -301,7 +306,8 @@ function searchList(
 			first === 'vehicle' ||
 			(first === 'route' && matches.routes[0]!.score === 0) ||
 			(first === 'stop' && matches.stops[0]!.score === 0),
-		pending: sources.routes == null || sources.stops == null,
+		pending: unsearched.length > 0,
+		unsearched,
 	};
 }
 
