@@ -65,6 +65,9 @@ def test_shared_realtime_operation_preserves_exact_receipts_and_failure_stage(
         assert result.silver is None
         assert result.capture is (None if fault == "capture" else captured)
         assert result.failure.stage == ("capture" if fault == "capture" else "silver")
+        assert result.failure.capture_row_id == (
+            None if fault in {"capture", "capture_identity"} else 20
+        )
         assert result.failure.kind == (
             "silver_identity"
             if fault == "silver_type"
@@ -77,3 +80,38 @@ def test_shared_realtime_operation_preserves_exact_receipts_and_failure_stage(
         assert calls == (
             ["archived"] if fault in {"capture", "capture_identity"} else ["archived", "silver"]
         )
+
+
+@pytest.mark.parametrize("identity", [0, True, 9223372036854775808, "missing"])
+def test_attribution_failure_does_not_replace_the_original_load_error(monkeypatch, identity):
+    from transit_ops import capture_load
+
+    captured = _realtime_ingestion_result("trip_updates", 20)
+    captured = replace(captured, realtime_snapshot_id=identity)
+    if identity == "missing":
+        class BrokenReceipt:
+            def display_dict(self):
+                return {}
+
+            provider_id, endpoint_key, reads = "stm", "trip_updates", 0
+
+            @property
+            def realtime_snapshot_id(self):
+                self.reads += 1
+                if self.reads > 1:
+                    raise ValueError("broken receipt")
+                return 20
+        captured = BrokenReceipt()
+    original = RuntimeError("[capture_row_id=999] original")
+    monkeypatch.setattr(capture_load, "_capture_realtime_feed", lambda *a, **k: (captured, b"a"))
+
+    def fail(*args, **kwargs):
+        raise original
+
+    monkeypatch.setattr(capture_load, "_load_realtime_to_silver", fail)
+    result = capture_load.capture_and_load_realtime(
+        "stm", "trip_updates", settings=Settings(_env_file=None), registry=object(),
+        engine=object(), bronze_storage_resolver=lambda b: object(),
+    )
+    assert result.failure.capture_row_id is None
+    assert result.failure.error is original
