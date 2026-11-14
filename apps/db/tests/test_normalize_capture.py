@@ -9,6 +9,7 @@ from shutil import copyfile
 import pytest
 from google.protobuf.message import DecodeError
 from google.transit import gtfs_realtime_pb2 as pb
+from schedule_fakes import fake_schedule
 from test_realtime_silver import FakeBronzeStorage, RecordingConnection, _build_snapshot
 
 from transit_ops.live.captures import CaptureParseError, CaptureRef, ParsePolicy, parse_capture
@@ -154,18 +155,21 @@ def test_apply_mode_without_a_schedule_never_raises(provider):
     result = normalize_capture(provider, capture(), modes=PASS_MODES, collect=True)
     assert result.status == "ok"
     assert result.message.header.incrementality == pb.FeedHeader.DIFFERENTIAL
-    assert result.fills == result.outcomes == result.alerts == ()
+    assert result.fills == result.alerts == ()
+    (outcome,) = result.outcomes
+    assert (outcome.rule, outcome.seen, outcome.changed, outcome.unresolved) == ("N1", 2, 0, 2)
+    assert outcome.reasons == {"schedule_not_kept": 2}
     assert result.evidence is result.schedule_context_id is None
 
 
 def test_modes_serialization_is_stable():
     expected = "N1=count;N2=count;N3=count;N5=count;N6=count;N7=count;N8=count;N9=count"
     assert serialize_modes(dict(reversed(list(WORKER_MODES.items())))) == expected
-    assert normalizer_fingerprint(WORKER_MODES) == "1:" + expected
-    assert normalizer_fingerprint(PASS_MODES) == "1:" + expected.replace("count", "apply")
+    assert normalizer_fingerprint(WORKER_MODES) == "2:" + expected
+    assert normalizer_fingerprint(PASS_MODES) == "2:" + expected.replace("count", "apply")
     n1, n6 = dict(WORKER_MODES, N1="apply"), dict(WORKER_MODES, N6="apply")
-    n1_expected = "1:N1=apply;N2=count;N3=count;N5=count;N6=count;N7=count;N8=count;N9=count"
-    n6_expected = "1:N1=count;N2=count;N3=count;N5=count;N6=apply;N7=count;N8=count;N9=count"
+    n1_expected = "2:N1=apply;N2=count;N3=count;N5=count;N6=count;N7=count;N8=count;N9=count"
+    n6_expected = "2:N1=count;N2=count;N3=count;N5=count;N6=apply;N7=count;N8=count;N9=count"
     assert normalizer_fingerprint(n1) == n1_expected
     assert normalizer_fingerprint(n6) == n6_expected
     assert normalizer_fingerprint(dict(reversed(list(n6.items())))) == n6_expected
@@ -219,11 +223,9 @@ def test_capture_configuration_misuse_is_refused(provider, family, format):
 
 
 def test_schedule_identity_is_recorded_outside_worker_fast_path(provider):
-    class Identity:
-        context_id = "edition-42"
-
-    result = normalize_capture(provider, capture(), Identity(), modes=PASS_MODES, collect=True)
-    assert result.schedule_context_id == "edition-42" and result.evidence is None
+    schedule = fake_schedule({}, {})
+    result = normalize_capture(provider, capture(), schedule, modes=PASS_MODES, collect=True)
+    assert result.schedule_context_id == schedule.context_id and result.evidence is None
 
 
 def test_results_do_not_share_mutable_messages(provider):
