@@ -318,7 +318,7 @@ def _recorded_evidence(connection: Connection, day: FeedDayKey) -> dict[int, Pro
     )
     result: dict[int, ProcessingEntry] = {}
     for event in events:
-        completed, counts = _evidence_details(dict(event.details), day.index_family, event.sequence)
+        completed, counts = _evidence_details(event.details, day.index_family, event.sequence)
         for capture_id, count in counts.items():
             previous = result.get(capture_id)
             # Events arrive in id order, so equal completion times prefer the later id.

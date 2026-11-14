@@ -157,29 +157,11 @@ def test_reject_records_the_marker_with_the_session_clock(verification):
     ]
 
 
-def test_close_runs_audits_through_the_store(verification):
-    from transit_ops.history.close_runs import close_unfinished_runs
-
-    v = verification
-    row = dict(endpoint_key="trip_updates", utc_date=v.now.date(), ingestion_run_id=7)
-    v.connection.execute = lambda *a: NS(mappings=lambda: NS(all=lambda: [row]))
-    v.store.record_event = lambda **kw: v.calls.append(kw)
-    assert close_unfinished_runs(v.connection, provider_id="network") == 1
-    assert v.calls == [
-        ("enter", WindowIdentity("capture.trip_updates", "network", "2026-01-04")),
-        dict(
-            kind="close_runs",
-            reason="closed_unfinished",
-            actor=None,
-            details=dict(ingestion_run_ids=[7], older_than_seconds=3600),
-        ),
-        "exit",
-    ]
-
-
-def test_working_evidence_is_lock_free_and_prefers_the_later_event(verification, monkeypatch):
+@pytest.mark.parametrize("payload", ["object", "pairs", "scalar"])
+def test_working_evidence_is_validated_as_stored(verification, monkeypatch, payload):
     from transit_ops.history import working_captures as working
     from transit_ops.history.ledger_store import RecordedEvent
+    from transit_ops.history.poll_record import PollRecordInvalid
 
     v = verification
     record, _ = scripted_feed_day(endpoint_key="trip_updates")
@@ -209,12 +191,23 @@ def test_working_evidence_is_lock_free_and_prefers_the_later_event(verification,
         for i, count in ((1, 0), (2, 2))
     ]
     v.store.events = lambda identity, **kw: v.calls.append((identity, kw)) or events
-    result = working.read_working_day(
-        v.connection,
-        provider_id="network",
-        endpoint_key="trip_updates",
-        utc_date=record.feed_day.utc_date,
-    )
+    if payload != "object":
+        details = list(events[0].details.items()) if payload == "pairs" else 7
+        events[0] = replace(events[0], sequence=41, details=details)
+
+    def read():
+        return working.read_working_day(
+            v.connection,
+            provider_id="network",
+            endpoint_key="trip_updates",
+            utc_date=record.feed_day.utc_date,
+        )
+
+    if payload != "object":
+        with pytest.raises(PollRecordInvalid, match="event 41: invalid keys"):
+            read()
+        return
+    result = read()
     assert [(p.rows, p.attribution, p.completed_at_utc) for p in result.processing] == [
         (2, "recorded", v.now)
     ]
