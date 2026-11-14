@@ -6,8 +6,10 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import shutil
 import signal
+import socket
 import stat
 import sys
 import tempfile
@@ -19,11 +21,17 @@ from datetime import UTC, datetime
 from pathlib import Path
 from subprocess import PIPE, Popen, TimeoutExpired
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, TypedDict
 
 import duckdb
 
 from transit_ops.history.probe import peak_rss  # type: ignore[import-untyped]
+
+HOST = sys.platform + ":" + socket.gethostname()
+RECOVERY_ERRORS = (
+    "scratch_ownership_invalid scratch_owner_proof_unavailable "
+    "scratch_cleanup_failed scratch_recovery_incomplete"
+).split()
 
 _spec = importlib.util.spec_from_file_location(
     "fact_measurement_rescue", Path(__file__).with_name("rescue_fact_day.py")
@@ -284,6 +292,122 @@ BOOT = (
 )
 
 
+def process_birth(pid: int) -> str | None:
+    if sys.platform == "linux":
+        boot = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+        try:
+            fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+            return None if fields[0] == "Z" else HOST + "@" + boot + ":" + fields[19]
+        except FileNotFoundError:
+            return None
+    if sys.platform != "win32":
+        raise OSError("process identity unavailable")
+    import ctypes as c
+
+    api = c.WinDLL("kernel32", use_last_error=True)
+    api.OpenProcess.restype = c.c_void_p
+    handle = api.OpenProcess(0x101000, False, pid)
+    if not handle:
+        if c.get_last_error() == 87:
+            return None
+        raise OSError("process identity unavailable")
+    try:
+        state = api.WaitForSingleObject(c.c_void_p(handle), 0)
+        if state == 0:
+            return None
+        stamps = [c.c_ulonglong() for _ in range(4)]
+        if state != 258 or not api.GetProcessTimes(c.c_void_p(handle), *map(c.byref, stamps)):
+            raise OSError("process identity unavailable")
+        return HOST + "@" + str(stamps[0].value)
+    finally:
+        api.CloseHandle(c.c_void_p(handle))
+
+
+class Owner(TypedDict):
+    invocation: str
+    path: str
+    pid: int
+    start: str
+
+
+def valid_start(start: str) -> bool:
+    token = start.removeprefix(HOST + "@")
+    if token == start:
+        return False
+    if sys.platform == "win32":
+        return re.fullmatch(r"[1-9][0-9]{0,19}", token) is not None and int(token) < 2**64
+    return (
+        sys.platform == "linux"
+        and re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}:(?:0|[1-9][0-9]*)", token)
+        is not None
+    )
+
+
+def owner(root: Path) -> Owner | None:
+    marker = root / ".owner"
+    if root.is_symlink() or root.resolve() != root or marker.is_symlink() or not marker.is_file():
+        return None
+    try:
+        data = json.loads(marker.read_text(encoding="utf-8"))
+    except (ValueError, UnicodeError):
+        return None
+    if not isinstance(data, dict) or set(data) - {"invocation", "path", "pid", "start"}:
+        return None
+    pid, start, proof = data.get("pid"), data.get("start"), data.get("invocation")
+    if (
+        data.get("path") != str(root)
+        or type(pid) is not int
+        or not 0 < pid < 2**31
+        or not isinstance(proof, str)
+        or re.fullmatch("[0-9a-f]{32}", proof) is None
+    ):
+        return None
+    if isinstance(start, str) and "@" in start and not start.startswith(HOST + "@"):
+        return None
+    if not isinstance(start, str) or not valid_start(start):
+        raise ValueError("scratch_owner_proof_unavailable", str(root))
+    return Owner(invocation=proof, path=str(root), pid=pid, start=start)
+
+
+def remove_scratch(root: Path, expected: Ownership) -> None:
+    deadline = time.monotonic() + 2
+    while True:
+        try:
+            remove_owned_tree(root, expected)
+            return
+        except ValueError as error:
+            if error.args != ("scratch_cleanup_failed", str(root)) or time.monotonic() >= deadline:
+                raise
+            time.sleep(0.05)
+
+
+def sweep(parent: Path) -> dict[str, list[str]]:
+    eligible: list[tuple[Path, Ownership]] = []
+    root = None
+    try:
+        if process_birth(os.getpid()) is None:
+            raise OSError("process identity unavailable")
+        for root in parent.glob("transit-measure-*"):
+            info = root.lstat()
+            data = owner(root)
+            if data is not None:
+                expected = directory_id(info), dict(data)
+                birth = process_birth(data["pid"])
+                if birth is None or birth != data["start"]:
+                    eligible.append((root, expected))
+    except OSError:
+        raise ValueError("scratch_owner_proof_unavailable", root) from None
+    swept: list[str] = []
+    left: list[str] = []
+    for root, expected in eligible:
+        try:
+            remove_scratch(root, expected)
+            swept.append(str(root))
+        except ValueError as error:
+            left.append(str(error.args[1]))
+    return dict(swept_paths=swept, leftover_paths=left)
+
+
 def leftover_receipt(path: str | Path, reason: str = "scratch_cleanup_failed") -> str:
     return json.dumps(dict(status="failed", reason=reason, leftover_paths=[str(path)])) + "\n"
 
@@ -358,11 +482,14 @@ def remove_owned_tree(root: Path, expected: Ownership) -> None:
 
 
 @contextmanager
-def scratch() -> Any:
-    with tempfile.TemporaryDirectory(prefix="transit-measure-") as directory:
+def scratch(parent: Path) -> Any:
+    birth = process_birth(os.getpid())
+    if birth is None or not valid_start(birth):
+        raise ValueError("scratch_owner_proof_unavailable", str(parent))
+    with tempfile.TemporaryDirectory(prefix="transit-measure-", dir=parent) as directory:
         root, proof = Path(directory).resolve(), os.urandom(16).hex()
         with (root / ".owner").open("x", encoding="utf-8") as marker:
-            json.dump(dict(invocation=proof, path=str(root), pid=os.getpid()), marker)
+            json.dump(dict(invocation=proof, path=str(root), pid=os.getpid(), start=birth), marker)
         yield root, proof
 
 
@@ -395,12 +522,17 @@ def lifeline(directory: str, proof: str) -> None:
     threading.Thread(target=watch, daemon=True).start()
 
 
-def supervise(argv: list[str], *, worker: str = WORKER) -> int:
+def _supervise(
+    argv: list[str], worker: str, scratch_root: Path, recovery: dict[str, list[str]]
+) -> tuple[int, str]:
     status, previous, root = [], {}, None
     try:
         for number in {signal.SIGINT, signal.SIGTERM, getattr(signal, "SIGBREAK", signal.SIGINT)}:
             previous[number] = signal.signal(number, lambda n, f: status.append(128 + n))
-        with scratch() as (root, proof):
+        recovery.update(sweep(scratch_root))
+        if status or recovery["leftover_paths"]:
+            return (status[0] if status else 1), ""
+        with scratch(scratch_root) as (root, proof):
             with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as report:
                 script, base = str(Path(__file__).resolve()), vars(sys)["_base_executable"]
                 windows = sys.platform == "win32" and sys.executable != base
@@ -430,17 +562,39 @@ def supervise(argv: list[str], *, worker: str = WORKER) -> int:
                         process.stdin.close()
                 report.seek(0)
                 stdout = "" if status else report.read()
-    except ValueError as error:
-        if len(error.args) != 2 or not str(error.args[0]).startswith("scratch_"):
-            raise
-        sys.stdout.write(leftover_receipt(str(error.args[1])))
-        return 1
     finally:
         for number, handler in previous.items():
             signal.signal(number, handler)
     code = status[0] if status else process.wait()
-    sys.stdout.write(stdout or '{"status":"failed","reason":"measurement_failed"}\n')
-    return code if code >= 0 else 128 - code
+    return (code if code >= 0 else 128 - code), (
+        stdout or '{"status":"failed","reason":"measurement_failed"}\n'
+    )
+
+
+def supervise(argv: list[str], *, worker: str = WORKER, scratch_root: Path | None = None) -> int:
+    recovery: dict[str, list[str]] = dict(swept_paths=[], leftover_paths=[])
+    try:
+        parent = (scratch_root or Path(tempfile.gettempdir())).resolve()
+        code, text = _supervise(argv, worker, parent, recovery)
+        fallback = (
+            "unsafe_delete_unavailable"
+            if sys.platform == "win32"
+            else "scratch_recovery_incomplete"
+        )
+        fallback = fallback if recovery["leftover_paths"] else "interrupted"
+        output = json.loads(text) if text else dict(status="failed", reason=fallback)
+    except Exception as error:
+        reason = (
+            error.args[0]
+            if error.args and error.args[0] in RECOVERY_ERRORS
+            else "measurement_failed"
+        )
+        if reason in RECOVERY_ERRORS and len(error.args) > 1 and error.args[1] is not None:
+            recovery["leftover_paths"].append(str(error.args[1]))
+        code, output = 1, dict(status="failed", reason=reason)
+    output.update(recovery)
+    sys.stdout.write(json.dumps(output) + "\n")
+    return code
 
 
 def main(argv: list[str] | None = None, *, worker: bool = False) -> int:
