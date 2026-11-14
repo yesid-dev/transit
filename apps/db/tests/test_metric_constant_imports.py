@@ -4,6 +4,8 @@ import subprocess
 import sys
 import textwrap
 
+import pytest
+
 
 def _run(code: str) -> None:
     result = subprocess.run(
@@ -256,12 +258,52 @@ def test_unknown_facade_name_raises_attribute_error() -> None:
     """)
 
 
-def test_existing_gold_submodule_import_forms() -> None:
-    _run("""
+@pytest.mark.parametrize(
+    "submodule",
+    [
+        "alert_archive",
+        "delay_cohorts",
+        "delay_days",
+        "delay_hours",
+        "delay_periods",
+        "marts",
+        "reader",
+        "realtime",
+        "rollups",
+        "transactions",
+        "reader.bands",
+        "reader.buckets",
+        "reader.delay_hist",
+        "reader.histogram",
+        "reader.percentile",
+        "reader.projector",
+        "reader.rates",
+        "reader.score",
+        "reader.window",
+    ],
+)
+def test_existing_gold_submodule_import_forms(submodule: str) -> None:
+    _run(f"""
+        import transit_ops.gold as gold
+        module = gold.{submodule}
+        import sys
         import importlib
-        for name in ('delay_cohorts', 'delay_days', 'delay_hours', 'delay_periods',
-                     'delay_sums', 'marts', 'rollups'):
-            namespace = {}
-            exec(f'from transit_ops.gold import {name}', namespace)
-            assert namespace[name] is importlib.import_module(f'transit_ops.gold.{name}')
+        assert module is sys.modules['transit_ops.gold.{submodule}']
+        assert module is gold.{submodule}
+        assert module is importlib.import_module('transit_ops.gold.{submodule}')
+        package, name = 'transit_ops.gold.{submodule}'.rsplit('.', 1)
+        namespace = {{}}
+        exec(f'from {{package}} import {{name}}', namespace)
+        assert namespace[name] is module
+        assert name in dir(sys.modules[package])
+        assert 'TYPE_CHECKING' not in dir(sys.modules[package])
+        assert 'import_module' not in dir(sys.modules[package])
+    """)
+
+
+def test_gold_delay_sums_from_import() -> None:
+    _run("""
+        from transit_ops.gold import delay_sums
+        import sys
+        assert delay_sums is sys.modules['transit_ops.gold.delay_sums']
     """)

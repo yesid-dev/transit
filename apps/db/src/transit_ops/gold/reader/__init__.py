@@ -1,7 +1,7 @@
-from importlib import import_module
-from typing import TYPE_CHECKING
+from importlib import import_module as _import_module
+from typing import TYPE_CHECKING as _TYPE_CHECKING
 
-if TYPE_CHECKING:
+if _TYPE_CHECKING:
     from transit_ops.gold.reader.bands import (
         EARLY_BELOW_SECONDS,
         LATE_ABOVE_SECONDS,
@@ -114,7 +114,7 @@ __all__ = [
 ]
 
 
-_MODULES = "bands buckets histogram percentile projector rates score window".split()
+_MODULES = "bands buckets delay_hist histogram percentile projector rates score window".split()
 
 
 def __dir__() -> list[str]:
@@ -123,7 +123,7 @@ def __dir__() -> list[str]:
 
 def __getattr__(name: str) -> object:
     if name in _MODULES:
-        return import_module(f"{__name__}.{name}")
+        return _import_module(f"{__name__}.{name}")
     for owner, names in (
         ("bands", "EARLY_BELOW_SECONDS LATE_ABOVE_SECONDS band_case_sql band_of"),
         ("buckets", "SHIFT_BOUNDS SHIFT_DEFAULT daytype_case_sql infer_shift shift_case_sql"),
@@ -147,6 +147,6 @@ def __getattr__(name: str) -> object:
         ("window", "SPINE_WINDOW_CLAUSE GrainWindows current_date_trailing_clause"),
     ):
         if name in names.split():
-            value: object = getattr(import_module(f"{__name__}.{owner}"), name)
+            value: object = getattr(_import_module(f"{__name__}.{owner}"), name)
             return value
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

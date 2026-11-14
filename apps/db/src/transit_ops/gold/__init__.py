@@ -1,7 +1,7 @@
-from importlib import import_module
-from typing import TYPE_CHECKING
+from importlib import import_module as _import_module
+from typing import TYPE_CHECKING as _TYPE_CHECKING
 
-if TYPE_CHECKING:
+if _TYPE_CHECKING:
     from transit_ops.gold.alert_archive import (
         AlertArchiveSyncResult,
         alert_archive_default_bounds,
@@ -44,7 +44,10 @@ __all__ = [
 ]
 
 
-_MODULES = "alert_archive marts realtime rollups".split()
+_MODULES = (
+    "alert_archive delay_cohorts delay_days delay_hours delay_periods "
+    "marts reader realtime rollups transactions"
+).split()
 
 
 def __dir__() -> list[str]:
@@ -53,7 +56,7 @@ def __dir__() -> list[str]:
 
 def __getattr__(name: str) -> object:
     if name in _MODULES:
-        return import_module(f"{__name__}.{name}")
+        return _import_module(f"{__name__}.{name}")
     for owner, names in (
         ("alert_archive", "AlertArchiveSyncResult alert_archive_default_bounds sync_alert_archive"),
         (
@@ -69,6 +72,6 @@ def __getattr__(name: str) -> object:
         ),
     ):
         if name in names.split():
-            value: object = getattr(import_module(f"{__name__}.{owner}"), name)
+            value: object = getattr(_import_module(f"{__name__}.{owner}"), name)
             return value
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
