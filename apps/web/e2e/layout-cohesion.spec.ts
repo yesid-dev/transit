@@ -12,10 +12,14 @@ const trip = Object.keys(read('trips').trips)[0];
 const shots = fileURLToPath(new URL('../../../.cache/cohesion/after/', import.meta.url));
 mkdirSync(shots, { recursive: true });
 // The phone view pill must not cover the record's first heading, as loaded or scrolled to it.
+// The fixture server publishes line records for its manifest's network only; elsewhere the record
+// is an absence notice, with no rail pill and no heading.
+const recordNetwork = read('manifest').provider;
 const pillCoversHeading = (page: Page) =>
 	page.evaluate(() => {
 		const pill = document.querySelector('[data-slot="surface-rail-mobile"] > button');
 		const heading = document.querySelector('[data-slot="reliability-rail-content"] :is(h2, h3)');
+		if (!pill && !heading) return 'no record';
 		if (!pill || !heading) return 'missing';
 		const overlap = () => {
 			const [p, h] = [pill, heading].map((el) => el.getBoundingClientRect());
@@ -34,15 +38,20 @@ for (const provider of ['stm', 'octranspo'])
 			await page.setViewportSize({ width: 390, height: 844 });
 			await page.clock.setFixedTime(epoch + 30000);
 			await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
-			// First paint: the server markup, with the app's scripts held back.
-			await page.route('**/_app/immutable/**/*.js', (route) => route.abort());
-			await page.goto(path);
-			await expect(page.locator('html')).not.toHaveAttribute('data-hydrated', '');
-			expect(await pillCoversHeading(page)).toBe(false);
-			await page.unroute('**/_app/immutable/**/*.js');
-			await page.goto(path, { waitUntil: 'networkidle' });
+			// First paint: the server markup, measured while the app's scripts are held back. One
+			// navigation: WebKit keeps a failed module import, so an aborted load cannot be retried.
+			let release = () => {};
+			const held = new Promise<void>((resolve) => (release = () => resolve()));
+			await page.route('**/_app/immutable/**/*.js', (route) => held.then(() => route.fallback()));
+			await page.goto(path, { waitUntil: 'domcontentloaded' });
+			const hydratedEarly = await page.locator('html').getAttribute('data-hydrated');
+			const atFirstPaint = await pillCoversHeading(page);
+			release();
+			const expected = provider === recordNetwork ? false : 'no record';
+			expect([hydratedEarly, atFirstPaint]).toEqual([null, expected]);
 			await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
-			expect(await pillCoversHeading(page)).toBe(false);
+			await page.waitForLoadState('networkidle');
+			expect(await pillCoversHeading(page)).toBe(expected);
 		});
 for (const provider of ['stm', 'octranspo'])
 	for (const locale of ['en', 'fr'])

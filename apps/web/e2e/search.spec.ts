@@ -140,7 +140,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		await expect(page).toHaveURL(
 			(url) =>
 				url.pathname === localizeHref(`/lines/${other.id}`, locale) &&
-				url.searchParams.get('tab') === 'reliability' &&
+				!url.searchParams.has('tab') &&
 				url.searchParams.get('grain') === grain,
 		);
 	});

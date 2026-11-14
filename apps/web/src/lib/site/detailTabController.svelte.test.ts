@@ -98,4 +98,18 @@ describe('bidirectional detail tab controller', () => {
 		expect(written.searchParams.get('to')).toBe('2026-02-01');
 		expect(written.searchParams.get('line')).toBe('51');
 	});
+
+	it.each([
+		['detail&tab=schedule', 'detail', '&tab=detail'],
+		['reliability&tab=detail', 'reliability', ''],
+		['unknown&tab=schedule', 'reliability', ''],
+	])('reduces repeated tab=%s to one canonical tab in one write', async (tabs, active, tab) => {
+		const rest = 'provider=stm&from=2026-01-31&to=2026-02-01';
+		const url = setExternalUrl(`/fr/lines/24?tab=${tabs}&${rest}#record`);
+		render(DetailTabControllerHarness, { props: { url } });
+		await waitFor(() => expect(navigation.replaceState).toHaveBeenCalledOnce());
+		expect(controller()).toHaveAttribute('data-active', active);
+		const written = new URL(navigation.replaceState.mock.calls[0][0], 'http://localhost');
+		expect(written.href.replace(written.origin, '')).toBe(`/fr/lines/24?${rest}${tab}#record`);
+	});
 });

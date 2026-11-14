@@ -426,6 +426,13 @@
 			max-width: 100%;
 		}
 	}
+	/* The line's window choices carry their dates; each wraps inside its grid cell instead of
+	   running past the picker's clipped edge in the rail. */
+	.reliability-clusters
+		:global([data-slot='grain-picker'][data-variant='time-grid'] [role='radio']) {
+		white-space: normal;
+		text-wrap: balance;
+	}
 	@media (prefers-reduced-motion: no-preference) {
 		:global([data-slot='reliability-rail-layout']) {
 			scroll-behavior: smooth;
