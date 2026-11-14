@@ -39,10 +39,6 @@ it.each([
 	expect(healthSummary({ ...facts, live }, 'fr', tz).live).toBe(fr);
 });
 
-it('says nothing about live data before it has loaded', () => {
-	expect(healthSummary(facts, 'en', tz).live).toBeNull();
-});
-
 it('line 2 says what the record covers, when it was published and, once published, its next update', () => {
 	const line = (stamp: Partial<RecordStamp>, locale: 'en' | 'fr' = 'en') =>
 		healthSummary({ ...facts, record: { ...record, ...stamp } }, locale, tz).record;

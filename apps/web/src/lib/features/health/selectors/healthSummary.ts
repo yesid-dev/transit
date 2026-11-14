@@ -5,8 +5,13 @@ import { liveStamp, stampDate, stampText, type RecordStamp } from '#lib/v1/stamp
 import { copy } from '../health.copy';
 
 export interface HealthSummaryFacts {
-	/** The live vehicles feed once it has loaded or failed; null while nothing is known yet. */
-	readonly live: { readonly ageSeconds: number | null; readonly isStale: boolean } | null;
+	/** The live vehicles feed once it has answered; null while nothing is known yet. */
+	readonly live: {
+		readonly ageSeconds: number | null;
+		readonly isStale: boolean;
+		/** The store's notice: "refresh-unavailable" after a failed request or during a retry. */
+		readonly notice?: string | null;
+	} | null;
 	readonly record: RecordStamp;
 	/** The record's last quality check (data health's rollup lane); null when not published. */
 	readonly gate: DataHealthGate | null;
@@ -23,9 +28,11 @@ export function healthSummary(facts: HealthSummaryFacts, locale: Locale, timeZon
 		through && published
 			? t.record(date(through)!, date(published)!)
 			: stampText(record, locale, timeZone);
+	// After a failed request the shown age says nothing about newer data: treat it as unknown.
+	const age = live?.notice === 'refresh-unavailable' ? null : (live?.ageSeconds ?? null);
 	const warnings = gate?.verdict === 'warn' ? (gate.warnings ?? 0) : 0;
 	// Reassure only on a passed check and current live data; an unknown is never "nothing known".
-	const reassured = gate?.verdict === 'pass' && live?.ageSeconds != null && !live.isStale;
+	const reassured = gate?.verdict === 'pass' && age != null && !live!.isStale;
 	const names = gaps.map((gap) => copy[locale].gaps.names[gap] ?? gap.replace(/_/g, ' '));
 	const doubt = [
 		warnings > 0 ? t.warning(intl.number(locale).format(warnings), warnings) : reassured && t.clear,
@@ -34,9 +41,9 @@ export function healthSummary(facts: HealthSummaryFacts, locale: Locale, timeZon
 	return {
 		live: !live
 			? null
-			: live.ageSeconds == null
+			: age == null
 				? stampText(liveStamp({ ageSeconds: null }), locale, timeZone)
-				: (live.isStale ? t.behind : t.current)(formatRelativeSeconds(live.ageSeconds, locale)),
+				: (live.isStale ? t.behind : t.current)(formatRelativeSeconds(age, locale)),
 		record: covered ? [covered, next && t.next(date(next)!)].filter(Boolean).join(' ') : null,
 		doubt: doubt.length > 0 ? doubt.join(' ') : null,
 	};

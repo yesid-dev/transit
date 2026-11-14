@@ -68,9 +68,7 @@ export const copy = defineCopy({
 				metro_realtime: 'Metro: no live vehicle data',
 				otrain_realtime: 'O-Train: no live vehicle data',
 			},
-			names: { metro_realtime: 'Metro', otrain_realtime: 'O-Train' } as Readonly<
-				Record<string, string>
-			>,
+			names: { metro_realtime: 'Metro', otrain_realtime: 'O-Train' } as Record<string, string>,
 		},
 		pipelineNotes: {
 			section: 'How we calculate',
@@ -297,9 +295,7 @@ export const copy = defineCopy({
 				metro_realtime: 'Métro : aucune donnée en direct',
 				otrain_realtime: 'O-Train : aucune donnée en direct',
 			} as Readonly<Record<string, string>>,
-			names: { metro_realtime: 'Métro', otrain_realtime: 'O-Train' } as Readonly<
-				Record<string, string>
-			>,
+			names: { metro_realtime: 'Métro', otrain_realtime: 'O-Train' } as Record<string, string>,
 		},
 		pipelineNotes: {
 			section: 'Comment on calcule',

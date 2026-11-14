@@ -23,14 +23,8 @@ const live = vi.hoisted(() => ({
 }));
 vi.mock('#lib/v1/live/store.svelte.ts', () => ({ createLiveStore: vi.fn(() => live) }));
 const manifest = ManifestSchema.parse({
-	attribution: '',
-	bbox: [],
-	dataset_version: '',
-	labels: {},
-	surfaces: [],
-	provider: 'invented-network',
-	display_name: 'Network',
-	tz: 'America/Toronto',
+	...{ attribution: '', bbox: [], dataset_version: '', labels: {}, surfaces: [] },
+	...{ provider: 'invented-network', display_name: 'Network', tz: 'America/Toronto' },
 	files: {
 		live: { generated_utc: '2026-07-14T12:00:00Z' },
 		historic: { generated_utc: '2026-07-14T00:00:00Z' },
@@ -432,11 +426,12 @@ describe('HealthStatus — full manifest render', () => {
 			lane.lane === 'rollup' ? { ...lane, gate: { verdict: 'warn', warnings: 1 } } : lane,
 		);
 		dataHealthState = ready({ ...richDataHealth, lanes });
-		vi.mocked(createLiveStore).mockClear();
 		const { container, unmount } = render(HealthStatus, { props: { manifest } });
 		const summary = container.querySelector('[data-slot="health-summary"]') as HTMLElement;
 
-		expect([...summary.querySelectorAll('p')].map((line) => line.textContent)).toEqual([
+		expect(
+			[...summary.querySelectorAll('p')].map((line) => line.lastElementChild?.textContent),
+		).toEqual([
 			'Up to date: live vehicle data, updated 20 seconds ago.',
 			'The reliability record covers service through Jul 13. It was published on Jul 14.',
 			'The last record was published with 1 warning. Line, stop and ranking figures come from it; check the date beside each figure. Not measured: Metro. These lines publish no live data.',

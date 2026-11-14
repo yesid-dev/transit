@@ -4,6 +4,30 @@ import { forwardRoute } from './layout-helpers';
 import { copy as healthCopy } from '../src/lib/features/health/health.copy';
 import { copy as receiptCopy } from '../src/lib/features/receipt/receipt.copy';
 
+for (const locale of ['en', 'fr'] as const)
+	test(`${locale} status summary keeps its place while the page hydrates`, async ({ page }) => {
+		await page.setViewportSize({ width: 390, height: 844 });
+		let release = (): void => {};
+		const held = new Promise<void>((resolve) => (release = resolve));
+		await page.route('**/_app/immutable/**/*.js', (route) => held.then(() => route.fallback()));
+		await page.goto(`${locale === 'fr' ? '/fr' : ''}/status`, { waitUntil: 'commit' });
+		const summary = page.locator('[data-slot="health-summary"]');
+		await expect(summary).toHaveAttribute('aria-busy', 'true');
+		await page.addStyleTag({ content: 'html { font-size: 200%; }' });
+		await expect(summary).toHaveCSS('display', 'flex'); // its stylesheet has applied
+		// WebKit settles fonts only after the held scripts load: wait for them, at most 2 s.
+		await page.evaluate(() =>
+			Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 2e3))]),
+		);
+		const next = page.locator('.health-sections > [data-slot="card"]').nth(1);
+		// From the summary's top, so a shift above it (the header settling) is not counted.
+		const nextTop = async () => (await next.boundingBox())!.y - (await summary.boundingBox())!.y;
+		const before = await nextTop();
+		release();
+		await expect(summary).toHaveAttribute('aria-busy', 'false');
+		expect(Math.abs((await nextTop()) - before)).toBeLessThanOrEqual(1);
+	});
+
 // Replay the same missing observations for each provider so both layouts exercise
 // absence rather than relying on the state of an agency's live feed.
 for (const provider of ['stm', 'octranspo'])
@@ -34,7 +58,7 @@ for (const provider of ['stm', 'octranspo'])
 					);
 					const summary = page.locator('[data-slot="health-summary"]');
 					await expect(summary).toHaveAttribute('aria-busy', 'false');
-					for (const line of await summary.locator('p:not(:empty)').all()) {
+					for (const line of await summary.locator('p').all()) {
 						const fits = await line.evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
 						expect(fits, await line.textContent()).toBe(true);
 					}
