@@ -237,6 +237,10 @@ class NetworkTrendPoint(ReadingValues):
             and (self.p50_bin is not None or self.p90_bin is not None)
         ):
             raise ValueError("an empty histogram has no percentile")
+        if self.reading_count == 0 and any(
+            rate is not None for rate in (self.on_time_pct, self.late_pct, self.early_pct)
+        ):
+            raise ValueError("an empty reading population has no rates")
         return self
 
 

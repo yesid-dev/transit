@@ -304,6 +304,19 @@ def test_percentile_open_edges_are_not_exact_values():
             r3.DelayHistogram.model_validate(histogram | invalid)
 
 
+@pytest.mark.parametrize("edge", ["lower_s", "upper_s"])
+def test_percentile_refuses_omitted_edge(edge):
+    edges = {"lower_s": 0, "upper_s": 10}
+    del edges[edge]
+    with pytest.raises(ValidationError):
+        r3.PercentileBin.model_validate(edges)
+
+
+def test_percentile_refuses_equal_edges():
+    with pytest.raises(ValidationError):
+        r3.PercentileBin(lower_s=10, upper_s=10)
+
+
 def trend_point():
     return {
         "date": "2026-11-13",
@@ -379,7 +392,9 @@ def test_trend_keeps_supplied_zero_absence_and_open_percentiles():
     assert len(wire["series"]) == 1
     point = wire["series"][0]
     assert point["reading_count"] == 0 and point["on_time_pct"] is None
+    assert (point["on_time_pct"], point["late_pct"], point["early_pct"]) == (None, None, None)
     assert point["vehicles_reporting"] is None and point["p90_bin"] is None
+    assert point["vehicles_on_trip"] is None
     assert point["delay_hist"] == {"layout": 2, "bins": [80], "n": [0]}
     supplied = trend_point() | {
         "vehicles_reporting": 4,
@@ -387,18 +402,37 @@ def test_trend_keeps_supplied_zero_absence_and_open_percentiles():
         "delay_hist": {"layout": 2, "bins": [160], "n": [1]},
         "p90_bin": {"lower_s": 3600, "upper_s": None},
     }
-    assert r3.NetworkTrendPoint.model_validate(supplied).model_dump(mode="json")["p90_bin"] == {
+    supplied_wire = json.loads(snapshot_json_bytes(r3.NetworkTrendPoint.model_validate(supplied)))
+    assert (supplied_wire["vehicles_reporting"], supplied_wire["vehicles_on_trip"]) == (4, 2)
+    assert supplied_wire["p90_bin"] == {
         "lower_s": 3600,
         "upper_s": None,
     }
+    zero = trend_point() | {"vehicles_reporting": 0, "vehicles_on_trip": 0}
+    zero_wire = json.loads(snapshot_json_bytes(r3.NetworkTrendPoint.model_validate(zero)))
+    assert (zero_wire["vehicles_reporting"], zero_wire["vehicles_on_trip"]) == (0, 0)
 
 
-def test_zero_histogram_population_has_no_percentile():
+@pytest.mark.parametrize("rate", ["on_time_pct", "late_pct", "early_pct"])
+def test_empty_reading_population_refuses_numeric_rates(rate):
+    with pytest.raises(ValidationError):
+        r3.NetworkTrendPoint.model_validate(trend_point() | {rate: 0})
+    nonempty = trend_point() | {
+        "reading_count": 1,
+        "delay_hist": {"layout": 2, "bins": [80, 160], "n": [0, 1]},
+        rate: 0,
+    }
+    wire = json.loads(snapshot_json_bytes(r3.NetworkTrendPoint.model_validate(nonempty)))
+    assert wire[rate] == 0
+
+
+@pytest.mark.parametrize("percentile", ["p50_bin", "p90_bin"])
+def test_zero_histogram_population_has_no_percentile(percentile):
     with pytest.raises(ValidationError):
         r3.NetworkTrendPoint.model_validate(
             trend_point()
             | {
-                "p90_bin": {"lower_s": 0, "upper_s": 10},
+                percentile: {"lower_s": 0, "upper_s": 10},
             }
         )
 
@@ -458,6 +492,33 @@ def test_network_alert_cell_is_typed_supplied_evidence():
         cell = {} if not invalid else alert_cell() | invalid
         with pytest.raises(ValidationError):
             r3.NetworkTrendPoint.model_validate(trend_point() | {"alert_cell": cell})
+
+
+@pytest.mark.parametrize(
+    "column",
+    [
+        "provider_id",
+        "revision",
+        "scope",
+        "entity_id",
+        "service_date",
+        "cause",
+        "effect",
+        "alert_days_active",
+        "episodes_started",
+        "episodes_ended",
+        "active_seconds",
+        "episodes_open_at_day_start",
+        "attribution",
+        "built",
+    ],
+)
+def test_network_alert_cell_refuses_each_omitted_column(column):
+    cell = alert_cell()
+    del cell[column]
+    with pytest.raises(ValidationError) as error:
+        r3.NetworkTrendPoint.model_validate(trend_point() | {"alert_cell": cell})
+    assert [item["loc"] for item in error.value.errors()] == [("alert_cell", column)]
 
 
 @pytest.mark.parametrize(
