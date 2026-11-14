@@ -306,8 +306,11 @@ const render = ((...args: Parameters<typeof healthSurface.mount>) => {
 	return view;
 }) as typeof healthSurface.mount;
 // The exact pre-paint script the app injects (hooks.server.ts), run as a page load would.
-const runBoot = () =>
-	window.eval(injectThemeBoot('%yesid.themeBoot%').replace(/^<script[^>]*>|<\/script>$/g, ''));
+const runBoot = () => {
+	const injected = document.createElement('template');
+	injected.innerHTML = injectThemeBoot('%yesid.themeBoot%');
+	window.eval(injected.content.querySelector('script')!.textContent!);
+};
 
 beforeEach(() => {
 	// These content/report interactions use a returning reader's expanded choice.
