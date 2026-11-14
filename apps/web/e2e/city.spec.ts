@@ -51,14 +51,13 @@ for (const locale of PUBLISHED_LOCALES) {
 		page,
 	}) => {
 		await page.goto(localizeHref(status, locale));
-		const allClear = page.getByText(health.aggregate.allClear);
-		await expect(allClear).toHaveCount(0);
+		// Only OC Transpo publishes data health here: its lanes and their check appear after the reload.
+		const list = page.getByRole('list', { name: health.lanes.listLabel });
+		await expect(list).toHaveCount(0);
 		await switchProvider(page, locale);
 
 		await expect(page).toHaveURL((url) => url.pathname === localizeHref(status, locale));
-		// The rail repeats the verdict but is hidden below 1024px.
-		await expect(allClear.filter({ visible: true }).first()).toBeVisible();
-		const list = page.getByRole('list', { name: health.lanes.listLabel });
+		await expect(list.getByText(health.lanes.gateVerdict.pass, { exact: true })).toBeVisible();
 		for (const { lane } of lanes) {
 			await expect(list.getByText(health.lanes.laneLabel[lane], { exact: true })).toBeVisible();
 		}

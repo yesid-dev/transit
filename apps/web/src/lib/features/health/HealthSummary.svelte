@@ -1,8 +1,6 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
 	import type { Locale } from '#lib/i18n/index.ts';
-	import { liveReader } from '#lib/v1/adapter/index.ts';
-	import { createLiveStore, type LiveStore } from '#lib/v1/live/store.svelte.ts';
+	import type { LiveStore } from '#lib/v1/live/store.svelte.ts';
 	import { getV1Runtime } from '#lib/v1/runtime.ts';
 	import type { DataHealth, HistoricAvailabilityIndex, Manifest } from '#lib/v1/schemas/index.ts';
 	import { recordGate, recordStamp } from '#lib/v1/stamp.ts';
@@ -10,25 +8,19 @@
 
 	interface Props {
 		manifest?: Manifest;
+		/** The page's one live vehicles store. */
+		live: LiveStore | null;
 		dataHealth: DataHealth | null;
 		historyIndex: HistoricAvailabilityIndex | null;
 		gaps: readonly string[];
 		locale: Locale;
 	}
-	let { manifest, dataHealth, historyIndex, gaps, locale }: Props = $props();
+	let { manifest, live, dataHealth, historyIndex, gaps, locale }: Props = $props();
 
 	// Line 1 reads the live store, so its age and staleness match every live stamp on the site.
 	const clock = getV1Runtime().clock;
 	$effect(() => clock.subscribe());
-	let live = $state.raw<LiveStore | null>(null);
 	const provider = $derived(manifest?.provider);
-	$effect(() => {
-		if (!provider) return;
-		const store = untrack(() => createLiveStore(manifest!, liveReader, { families: ['vehicles'] }));
-		live = store;
-		store.start();
-		return () => store.stop();
-	});
 	const health = $derived(live?.familyStates.vehicles.health);
 	// After the first answer, a failure or retry keeps an unknown age rather than blanking the line.
 	const known = $derived(health && health.state !== 'never-loaded' ? health : null);

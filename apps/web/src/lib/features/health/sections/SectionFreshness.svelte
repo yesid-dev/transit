@@ -23,7 +23,7 @@
 			<div class="health-row" data-slot="freshness-row">
 				<span class="health-row-lead">
 					<StatusDot color={v.aspect} aria-hidden="true" />
-					<span class="health-row-feed">{f.feed}</span>
+					<span class="health-row-feed">{copy.feedNames[f.feed] ?? f.feed}</span>
 				</span>
 				<span class="health-row-meta">
 					<span class="health-row-verdict">{v.label}</span>

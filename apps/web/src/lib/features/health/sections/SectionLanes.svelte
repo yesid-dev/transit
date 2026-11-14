@@ -1,11 +1,7 @@
 <script lang="ts">
-	import { getV1Runtime } from '#lib/v1/runtime.ts';
-	const clock = getV1Runtime().clock;
-	import { publicationPresentation } from '#lib/v1/live/livePresentation.ts';
 	import { Badge } from '@yesid/ui/badge';
 	import { intl } from '#lib/i18n/index.ts';
 	import type { Locale } from '#lib/i18n/index.ts';
-	import { FreshnessStamp } from '#lib/components/surface/index.ts';
 	import { TerminalPanel, StatusDot } from '@yesid/ui/brand';
 	import { AbsentValue } from '#lib/components/edge/index.ts';
 	import type { LaneRow } from '../selectors/laneHealth';
@@ -19,7 +15,6 @@
 	let { rows, copy, locale }: SectionLanesProps = $props();
 
 	const t = $derived(copy.lanes);
-	$effect(() => clock.subscribe());
 </script>
 
 <TerminalPanel title={t.terminal.title} tag={t.terminal.tag}>
@@ -37,26 +32,11 @@
 				>
 					<div class="lane-head">
 						<span class="lane-label">{row.label}</span>
-						<span class="lane-cadence" aria-label={`${t.cadenceLabel}: ${row.cadence}`}
-							>{row.cadence}</span
-						>
+						<span class="lane-cadence">{row.cadence}</span>
 					</div>
 
 					{#if row.applicable}
 						<div class="lane-meta">
-							<div class="lane-cell" data-slot="lane-last-publish">
-								<span class="lane-cell-label">{t.lastPublishLabel}</span>
-								<FreshnessStamp
-									variant="updated"
-									presentation={publicationPresentation(
-										row.lastPublishUtc,
-										clock.serverNow,
-										locale,
-									)}
-									{locale}
-								/>
-							</div>
-
 							<div class="lane-cell" data-slot="lane-files">
 								<span class="lane-cell-label">{t.filesLabel}</span>
 								{#if row.filesWritten != null && row.filesTotal != null}

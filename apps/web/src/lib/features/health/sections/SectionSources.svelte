@@ -18,7 +18,7 @@
 		{#snippet row(s)}
 			<div class="health-row health-row--source" data-slot="source-row">
 				<span class="health-row-body">
-					<span class="health-row-feed">{s.feed}</span>
+					<span class="health-row-feed">{copy.feedNames[s.feed] ?? s.feed}</span>
 					<span class="health-row-chain" aria-label={`${t.chainPrefix}: ${s.chain ?? t.noChain}`}>
 						{s.chain ?? t.noChain}
 					</span>

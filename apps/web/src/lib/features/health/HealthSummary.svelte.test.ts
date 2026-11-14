@@ -1,6 +1,7 @@
 import { render } from '@testing-library/svelte';
 import { expect, it, vi } from 'vitest';
 import type { DataHealth, Manifest } from '#lib/v1/schemas/index.ts';
+import type { LiveStore } from '#lib/v1/live/store.svelte.ts';
 import HealthSummary from './HealthSummary.svelte';
 
 const live = vi.hoisted(() => ({
@@ -9,11 +10,17 @@ const live = vi.hoisted(() => ({
 	start: () => {},
 	stop: () => {},
 }));
-vi.mock('#lib/v1/live/store.svelte.ts', () => ({ createLiveStore: () => live }));
 const files = { historic: { generated_utc: '2000-07-14' } };
 const manifest = { provider: 'invented-network', tz: 'UTC', files } as unknown as Manifest;
 const dataHealth = { lanes: [{ lane: 'rollup', gate: { verdict: 'pass' } }] } as DataHealth;
-const props = { manifest, dataHealth, historyIndex: null, gaps: [], locale: 'en' as const };
+const props = {
+	manifest,
+	live: live as unknown as LiveStore,
+	dataHealth,
+	historyIndex: null,
+	gaps: [],
+	locale: 'en' as const,
+};
 const lines = (container: HTMLElement) =>
 	[...container.querySelectorAll('p')].map((line) => ({
 		shown: line.lastElementChild!.textContent,

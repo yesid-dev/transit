@@ -24,8 +24,6 @@ export const copy = defineCopy({
 			watermark: 'Status',
 			tags: ['data', 'feeds', 'freshness', 'known gaps'],
 			sections: (n: number) => `${n} ${n === 1 ? 'section' : 'sections'}`,
-			dailyAsOf: 'DAILY RECORD AS OF',
-			liveAsOf: 'LIVE FEEDS AS OF',
 		}),
 		heading: 'Is the data up to date?',
 		summary: {
@@ -45,7 +43,13 @@ export const copy = defineCopy({
 			liveFeeds: 'Live feeds',
 			retainedHistory: 'Retained history',
 		},
-		asOf: 'AS OF',
+		feedNames: {
+			static_schedule: 'Schedule',
+			trip_updates: 'Trip predictions',
+			vehicle_positions: 'Vehicle positions',
+			service_alerts: 'Service alerts',
+			i3_alerts: 'Service alerts',
+		} as Record<string, string>,
 		freshness: {
 			section: 'How current each feed is',
 			note: 'When each feed last updated, and whether that update worked.',
@@ -167,20 +171,17 @@ export const copy = defineCopy({
 			note: 'How often each kind of data is refreshed, when it last was, and whether its last check passed. Times are targets, not guarantees.',
 			listLabel: 'Publish lanes',
 			laneLabel: {
-				live: 'Live vehicles',
+				live: 'Live data',
 				static: 'Schedule',
-				rollup: 'Weekly statistics',
+				rollup: 'Reliability record',
 				maintenance: 'Cleanup',
 			},
 			cadence: {
 				live: '30-second operating target; delivery may take longer',
-				static: 'daily, 06:00 UTC',
-				rollup: 'weekly, Wednesday 07:00 UTC',
-			},
-			cadenceLabel: 'Cadence',
+			} as Record<string, string>,
+			lastPublished: (date: string) => `Last published ${end(date)}`,
 			filesLabel: 'Files',
 			filesCount: (written, total) => `${written} of ${total} files`,
-			lastPublishLabel: 'Last publish',
 			gateVerdict: {
 				pass: 'passed',
 				warn: 'warnings',
@@ -191,7 +192,6 @@ export const copy = defineCopy({
 			gateExplain:
 				'Before weekly statistics go out, we check the numbers against fixed rules. A failed check stops a bad update from being published; a warning is noted but doesn’t stop it.',
 			maintenanceLabel: 'Cleanup',
-			maintenanceCadence: 'weekly, Sunday 08:00 UTC',
 			maintenanceReason:
 				'Runs weekly in continuous integration and writes no public heartbeat, so there is nothing to report here.',
 			notApplicable: 'not applicable',
@@ -209,25 +209,6 @@ export const copy = defineCopy({
 			label: 'Jump to a section',
 			counterPrefix: 'SEC',
 			pill: { open: 'Contents', title: 'Jump to a section', close: 'Close contents' },
-		},
-		statRail: {
-			label: 'At a glance',
-			lanes: {
-				title: 'Updates',
-				passing: (pass, total) => `${pass} / ${total} on track`,
-				worst: (lane) => `worst: ${lane}`,
-				allClear: 'all lanes passing',
-			},
-			feeds: {
-				title: 'Feeds',
-				fresh: (ok, total) => `${ok} / ${total} fresh`,
-			},
-		},
-		aggregate: {
-			title: 'UPDATE CHECKS',
-			summary: (pass, total) => `${pass} of ${total} lanes passing`,
-			worst: (lane) => `worst: ${lane}`,
-			allClear: 'all lanes passing',
 		},
 	},
 	fr: {
@@ -248,8 +229,6 @@ export const copy = defineCopy({
 			watermark: 'État',
 			tags: ['données', 'flux', 'fraîcheur', 'lacunes connues'],
 			sections: (n: number) => `${n} ${n === 1 ? 'section' : 'sections'}`,
-			dailyAsOf: 'BILAN QUOTIDIEN À JOUR AU',
-			liveAsOf: 'FLUX EN DIRECT À JOUR AU',
 		}),
 		heading: 'Les données sont-elles à jour?',
 		summary: {
@@ -272,7 +251,13 @@ export const copy = defineCopy({
 			liveFeeds: 'Flux en direct',
 			retainedHistory: 'Historique conservé',
 		},
-		asOf: 'À JOUR AU',
+		feedNames: {
+			static_schedule: 'Horaire',
+			trip_updates: 'Prédictions de passage',
+			vehicle_positions: 'Positions des véhicules',
+			service_alerts: 'Avis de service',
+			i3_alerts: 'Avis de service',
+		} as Record<string, string>,
 		freshness: {
 			section: 'Fraîcheur de chaque flux',
 			note: 'Quand chaque flux a été mis à jour pour la dernière fois, et si cette mise à jour a fonctionné.',
@@ -395,20 +380,17 @@ export const copy = defineCopy({
 			note: 'À quelle fréquence chaque type de donnée est rafraîchi, quand il l’a été pour la dernière fois et si sa dernière vérification a réussi. Les heures sont des cibles, pas des garanties.',
 			listLabel: 'Voies de publication',
 			laneLabel: {
-				live: 'Véhicules en direct',
+				live: 'Données en direct',
 				static: 'Horaire',
-				rollup: 'Statistiques hebdomadaires',
+				rollup: 'Bilan de fiabilité',
 				maintenance: 'Entretien',
 			} as Readonly<Record<string, string>>,
 			cadence: {
 				live: 'cible d’exploitation de 30 secondes; l’affichage peut prendre plus de temps',
-				static: 'chaque jour, 06:00 UTC',
-				rollup: 'chaque mercredi, 07:00 UTC',
-			} as Readonly<Record<string, string>>,
-			cadenceLabel: 'Cadence',
+			} as Record<string, string>,
+			lastPublished: (date: string) => `Dernière publication : le ${end(date)}`,
 			filesLabel: 'Fichiers',
 			filesCount: (written: string, total: string) => `${written} sur ${total} fichiers`,
-			lastPublishLabel: 'Dernière publication',
 			gateVerdict: {
 				pass: 'réussie',
 				warn: 'avertissements',
@@ -419,7 +401,6 @@ export const copy = defineCopy({
 			gateExplain:
 				'Avant de publier les statistiques hebdomadaires, on vérifie les chiffres selon des règles fixes. Un échec empêche la publication d’une mauvaise mise à jour; un avertissement est noté sans la bloquer.',
 			maintenanceLabel: 'Entretien',
-			maintenanceCadence: 'chaque semaine, dimanche 08:00 UTC',
 			maintenanceReason:
 				'S’exécute chaque semaine en intégration continue et n’écrit aucun battement public, il n’y a donc rien à rapporter ici.',
 			notApplicable: 'sans objet',
@@ -437,25 +418,6 @@ export const copy = defineCopy({
 			label: 'Aller à une section',
 			counterPrefix: 'SEC',
 			pill: { open: 'Sommaire', title: 'Aller à une section', close: 'Fermer le sommaire' },
-		},
-		statRail: {
-			label: 'En bref',
-			lanes: {
-				title: 'Mises à jour',
-				passing: (pass: string, total: string) => `${pass} / ${total} à jour`,
-				worst: (lane: string) => `pire : ${lane}`,
-				allClear: 'toutes les lignes conformes',
-			},
-			feeds: {
-				title: 'Flux',
-				fresh: (ok: string, total: string) => `${ok} / ${total} à jour`,
-			},
-		},
-		aggregate: {
-			title: 'CONTRÔLES DES MISES À JOUR',
-			summary: (pass: string, total: string) => `${pass} lignes conformes sur ${total}`,
-			worst: (lane: string) => `pire : ${lane}`,
-			allClear: 'toutes les lignes conformes',
 		},
 	},
 }) satisfies Readonly<Record<Locale, SurfaceHeadCopy>>;
