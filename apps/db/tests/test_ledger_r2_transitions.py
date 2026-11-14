@@ -25,7 +25,13 @@ def advance(objects, change=None, attempts=10):
         return t.Transition(replace(doc or DOC, seq=doc.seq + 1 if doc else 1), (RECORD,))
 
     step = change or default
-    return t.apply_transition(objects, ID, step, clock=lambda: NOW, max_attempts=attempts)
+    return t.apply_transition(
+        objects,
+        ID,
+        lambda cursor, now: step(cursor.doc, now),
+        clock=lambda: NOW,
+        max_attempts=attempts,
+    )
 
 
 def test_first_transition_and_no_change(objects):
@@ -175,3 +181,44 @@ def test_event_only_records_leave_state_absent_and_continue_sequence(objects):
     record = json.loads(objects.read(m.transition_key(ID, 3)).body)["records"][0]
     assert m.decode_event(record).sequence == 5
     assert [r.sequence for r in t.events(objects, ID, kinds={"close_runs"})] == [2, 4]
+
+
+def test_callback_sees_event_only_record_cursor(objects):
+    advance(objects, lambda doc, now: t.Transition(None, (RECORD,)))
+    seen = []
+
+    def change(cursor, now):
+        seen.append((cursor.doc, cursor.next_record, now))
+        return None
+
+    t.apply_transition(objects, ID, change, clock=lambda: NOW, max_attempts=2)
+    assert seen == [(None, 2, NOW)]
+
+
+def test_indeterminate_absent_create_preserves_original_error(objects, monkeypatch):
+    error = PermissionError("403 denied")
+
+    def denied(*args):
+        raise error
+
+    monkeypatch.setattr(objects, "create", denied)
+    with pytest.raises(t.LedgerTransitionIndeterminate) as caught:
+        advance(objects)
+    assert caught.value.__cause__ is error
+    assert objects.read(m.window_key(ID)) is None
+
+
+def test_ambiguous_create_owned_by_another_writer_decides_again(objects, monkeypatch):
+    create, calls = objects.create, []
+
+    def competing(key, payload):
+        calls.append(payload["operation_id"])
+        if len(calls) == 1:
+            create(key, {**payload, "operation_id": "another-writer"})
+            raise OSError("response lost")
+        return create(key, payload)
+
+    monkeypatch.setattr(objects, "create", competing)
+    assert advance(objects).seq == 2
+    assert calls[0] == calls[1]
+    assert [r.sequence for r in t.events(objects, ID)] == [1, 2]
