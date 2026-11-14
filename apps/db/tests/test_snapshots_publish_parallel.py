@@ -1175,6 +1175,7 @@ class _RecordingStaticConn:
                 "route_long_name": "One",
                 "route_color": "009EE0",
                 "route_type": 3,
+                "live_data": True,
             }
         ]
         stop_row = [

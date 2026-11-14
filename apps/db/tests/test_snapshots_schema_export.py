@@ -41,6 +41,7 @@ def test_schema_guard_refuses_an_unlisted_property():
     from revision_2_allowlist import compare_schemas_with_baseline
 
     baseline = export_schemas()
+    baseline["static_routes_index"]["$defs"]["RouteIndexEntry"]["properties"].pop("live_data", None)
     changed = deepcopy(baseline)
     changed["live_trips"]["$defs"]["Trip"]["properties"]["foo"] = {"type": "string"}
     changed["static_routes_index"]["$defs"]["RouteIndexEntry"]["properties"]["live_data"] = {
@@ -58,6 +59,7 @@ def test_schema_guard_accepts_only_optional_additions_and_their_definitions():
     from revision_2_allowlist import compare_schemas_with_baseline
 
     baseline = export_schemas()
+    baseline["static_routes_index"]["$defs"]["RouteIndexEntry"]["properties"].pop("live_data", None)
     changed = deepcopy(baseline)
     trip = changed["live_trips"]["$defs"]["Trip"]["properties"]
     trip["headsign"] = {"type": "string"}

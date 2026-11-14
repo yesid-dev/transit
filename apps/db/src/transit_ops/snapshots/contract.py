@@ -380,6 +380,14 @@ class RouteIndexEntry(BaseModel):
     long: str | None = None
     color: str | None = None
     type: int
+    live_data: bool | None = Field(
+        default=None,
+        description=(
+            "Live-data applicability from declaration and recent observations at static build "
+            "time; refreshed only on a static rebuild, not a live health signal. "
+            "Null is the default for old payloads."
+        ),
+    )
     reliability: bool = Field(
         default=False,
         description=(
