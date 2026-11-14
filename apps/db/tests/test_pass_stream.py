@@ -27,6 +27,7 @@ from transit_ops.daily_pass import (
     StreamSummary,
     WindowLock,
     consumed_set_sha256,
+    deliver_stream,
 )
 from transit_ops.providers import load_providers
 from transit_ops.providers.declaration import Provider
@@ -309,3 +310,291 @@ def test_full_consumer_protocol(provider: Provider) -> None:
     assert recorded.deliveries[0] is delivery
     assert recorded.writes[0][0] is build and recorded.writes[0][1] is summary
     assert recorded.writes[0][2] is connection
+
+
+def _stream_inputs(provider):
+    outcomes = "decoded rejected decoded unreadable capture_missing".split()
+    outcomes += "failed_poll unfinished skipped_identical".split()
+    values = [
+        fake_delivery(
+            "alerts" if i == 2 else "trip_updates", AT + timedelta(seconds=i), outcome=o, row_id=row
+        )
+        for i, (o, row) in enumerate(zip(outcomes, (1, 2, 3, 7, 5, 6, 8, 9), strict=True))
+    ]
+    values[1] = replace(
+        values[1], normalized=replace(values[1].normalized, rejected_reason="differential_feed")
+    )
+    polls = [replace(d.poll, provider_id=provider.id) for d in values]
+    captures = [
+        replace(d.capture, provider_id=provider.id, payload=b"\x0a\x05\x0a\x032.0")
+        for d in values
+        if d.capture
+    ]
+    return polls, captures, values
+
+
+def _deliver(provider, polls, captures, consumers, *, build=None, **kwargs):
+    return deliver_stream(
+        build or fake_build(provider, AT.date()),
+        polls=polls,
+        captures=captures,
+        consumers=consumers,
+        on_consumer_error=lambda c, e: None,
+        **kwargs,
+    )
+
+
+@pytest.fixture
+def routed(provider):
+    polls, captures, values = _stream_inputs(provider)
+    consumers = [
+        RecordingConsumer(families=frozenset({"trip_updates", "alerts"})) for _ in range(2)
+    ]
+    calls, metadata_read = [], []
+
+    def metadata():
+        yield from reversed(polls)
+        metadata_read.append(True)
+
+    def normalizer(p, raw, schedule, *, modes, collect):
+        assert metadata_read == [True]
+        assert p is provider and modes is PASS_MODES and collect
+        assert raw.label == captures[len(calls)].endpoint_key
+        assert raw.format == "gtfs-rt" and schedule.context_id
+        calls.append(raw.family)
+        return values[len(calls) - 1].normalized
+
+    result = list(_deliver(provider, metadata(), iter(captures), consumers, normalizer=normalizer))
+    return result, consumers, values, calls
+
+
+def test_each_poll_is_delivered_once_and_each_capture_normalized_once_for_two_consumers(routed):
+    result, consumers, values, calls = routed
+    assert calls == ["trip_updates", "trip_updates", "alerts"]
+    assert [d.sequence for d in result] == [0, 1, 2, 3, 4, 5, 6, 7]
+    assert [d.outcome for d in result] == [d.outcome for d in values]
+    for consumer in consumers:
+        assert consumer.deliveries == result and consumer.writes == []
+        assert all(d.normalized is values[i].normalized for i, d in enumerate(consumer.deliveries))
+
+
+def test_failed_poll_is_delivered_as_an_attempt_with_no_entities(routed):
+    d = routed[0][5]
+    assert d.outcome == "failed_poll" and not d.has_entities
+    assert d.capture is d.normalized is d.ref is d.payload is None
+
+
+def test_rejected_capture_reaches_every_consumer_with_no_entities(routed):
+    for consumer in routed[1]:
+        d = consumer.deliveries[1]
+        assert d.outcome == "rejected" and not d.has_entities
+        assert d.normalized.rejected_reason == "differential_feed"
+
+
+def test_unreadable_capture_is_delivered_with_no_entities(provider):
+    polls, _, _ = _stream_inputs(provider)
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("unreadable capture normalized")
+
+    result = list(_deliver(provider, polls[3:5], [], [RecordingConsumer()], normalizer=refuse))
+    d = result[0]
+    assert len(result) == 2 and d.outcome == "unreadable" and not d.has_entities
+    assert d.poll is polls[3] and d.poll.status == "stored"
+    assert d.ref == CaptureKey("realtime_snapshot", 7)
+    assert d.capture is d.normalized is d.payload is None
+    assert result[1].outcome == "capture_missing"
+
+
+def test_capture_comes_before_a_poll_without_capture_on_a_tie(provider):
+    values = [
+        fake_delivery("alerts", AT),
+        fake_delivery("trip_updates", AT, row_id=2),
+        fake_delivery("trip_updates", AT, row_id=9),
+        fake_delivery("trip_updates", AT, outcome="failed_poll"),
+    ]
+    polls = [replace(d.poll, provider_id=provider.id) for d in reversed(values)]
+    captures = [replace(d.capture, provider_id=provider.id, payload=b"") for d in values[:3]]
+    normal = iter(d.normalized for d in values[:3])
+    consumer = RecordingConsumer(families=frozenset({"trip_updates", "alerts"}))
+    result = list(
+        _deliver(provider, polls, captures, [consumer], normalizer=lambda *a, **k: next(normal))
+    )
+    assert [d.ref for d in result] == [
+        CaptureKey("alert_snapshot", 1),
+        CaptureKey("realtime_snapshot", 2),
+        CaptureKey("realtime_snapshot", 9),
+        None,
+    ]
+
+
+def test_alert_captures_arrive_in_the_same_stream(routed):
+    d = routed[0][2]
+    assert d.family == "alerts" and d.normalized.alerts == () and d.has_entities
+
+
+def test_in_service_day_is_true_in_exactly_one_of_two_adjacent_builds(provider):
+    build = fake_build(replace(provider, timezone="UTC"), AT.date())
+    times = [
+        AT - timedelta(microseconds=1),
+        AT,
+        build.day_end_utc - timedelta(microseconds=1),
+        build.day_end_utc,
+    ]
+    poll = fake_poll(provider_id=provider.id, status="failed", capture_row_id=None)
+    polls = [replace(poll, time_utc=t, ingestion_run_id=i) for i, t in enumerate(times)]
+
+    def flags(b):
+        return [
+            d.in_service_day for d in _deliver(provider, polls, [], [RecordingConsumer()], build=b)
+        ]
+
+    assert flags(build) == [False, True, True, False]
+    next_build = fake_build(replace(provider, timezone="UTC"), date(2026, 1, 3))
+    assert flags(next_build) == [False, False, False, True]
+
+
+def test_a_consumer_receives_only_its_families(provider):
+    polls, captures, values = _stream_inputs(provider)
+    normal = iter(d.normalized for d in values if d.capture)
+    consumer = RecordingConsumer(families=frozenset({"trip_updates"}))
+    list(_deliver(provider, polls, captures, [consumer], normalizer=lambda *a, **k: next(normal)))
+    assert [d.sequence for d in consumer.deliveries] == [0, 1, 3, 4, 5, 6, 7]
+
+
+def test_consumed_set_digest_is_independent_of_order_and_defined_for_the_empty_set():
+    rt, alert = CaptureKey("realtime_snapshot", 7), CaptureKey("alert_snapshot", 7)
+    empty = "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    assert consumed_set_sha256([]) == empty
+    assert consumed_set_sha256([rt, alert]) == consumed_set_sha256([alert, rt, rt])
+
+
+@pytest.mark.parametrize(
+    "payload,status",
+    [
+        (b"\x0a\x05\x0a\x032.0", "decoded"),
+        (b"\xff", "rejected"),
+        (b"\x0a\x07\x0a\x032.0\x10\x01", "decoded"),
+    ],
+)
+def test_byte_opt_in_lifetime_and_storage_neutrality(provider, payload, status):
+    import weakref
+
+    polls, captures, _ = _stream_inputs(provider)
+    references, received, closed = [], [], []
+    byte_consumer, plain = RecordingConsumer(), RecordingConsumer()
+    byte_consumer.wants_bytes = True
+
+    def accept(d):
+        assert d.payload == payload and d.capture.payload is None
+        references.append(weakref.ref(d))
+        received.append(d.sequence)
+
+    byte_consumer.accept = accept
+
+    def normalizer(p, raw, schedule, **kwargs):
+        references.append(weakref.ref(raw))
+        return normalize_capture(p, raw, schedule, **kwargs)
+
+    def source():
+        try:
+            for i in range(2):
+                if i:
+                    assert received == [0] and len(plain.deliveries) == 1
+                    assert all(r() is None for r in references)
+                yield replace(
+                    captures[0],
+                    ingestion_object_id=None,
+                    storage_path="live/v1/segments/fixture",
+                    payload=payload,
+                    capture_row_id=i + 1,
+                    ingestion_run_id=i + 1,
+                    captured_at_utc=AT + timedelta(seconds=i),
+                )
+        finally:
+            closed.append(True)
+
+    observations = list(
+        _deliver(provider, polls[:2], source(), [byte_consumer, plain], normalizer=normalizer)
+    )
+    assert received == [0, 1] and closed == [True]
+    assert all(
+        d.payload is None and d.capture.payload is None for d in observations + plain.deliveries
+    )
+    assert [d.outcome for d in observations] == [status, status]
+
+
+def _fault_source(captures, fault, closed):
+    try:
+        if fault == "empty":
+            raise AssertionError("source consumed")
+        yield captures[0]
+        if fault == "reader":
+            raise ValueError("reader failed")
+        if fault in ("provider", "endpoint", "run"):
+            fields = dict(provider="provider_id", endpoint="endpoint_key", run="ingestion_run_id")
+            field = fields[fault]
+            yield replace(captures[1], **{field: 999 if fault == "run" else "wrong"})
+        elif fault in ("duplicate", "orphan"):
+            yield replace(captures[0], capture_row_id=1 if fault == "duplicate" else 999)
+        else:
+            yield from captures[1:]
+    finally:
+        closed.append(True)
+
+
+@pytest.mark.parametrize(
+    "fault,expected",
+    [
+        ("duplicate", "Duplicate capture identity"),
+        ("orphan", "Capture has no stored poll"),
+        ("provider", "Capture does not match its poll"),
+        ("endpoint", "Capture does not match its poll"),
+        ("run", "Capture does not match its poll"),
+        ("reader", "reader failed"),
+        ("normalizer", "consumer failed"),
+        ("report", "report failed"),
+        ("close", None),
+        ("empty", None),
+        ("consumer", None),
+    ],
+)
+def test_stream_refusals_and_iterator_cleanup(provider, fault, expected):
+    polls, captures, values = _stream_inputs(provider)
+    closed, reports = [], []
+    good = RecordingConsumer(families=frozenset({"trip_updates", "alerts"}))
+    bad = RecordingConsumer()
+
+    def fail(*args, **kwargs):
+        raise ValueError("consumer failed")
+
+    bad.accept = fail
+
+    def report(c, e):
+        reports.append((c, str(e)))
+        if fault == "report":
+            raise ValueError("report failed")
+
+    normal = iter(d.normalized for d in values if d.capture)
+    source = _fault_source(captures, fault, closed)
+    stream = deliver_stream(
+        fake_build(provider, AT.date()),
+        polls=source if fault == "empty" else polls,
+        captures=source,
+        consumers=[] if fault == "empty" else [bad, good],
+        on_consumer_error=report,
+        normalizer=fail if fault == "normalizer" else lambda *a, **k: next(normal),
+    )
+    if expected:
+        with pytest.raises(ValueError, match=expected):
+            list(stream)
+        assert len(good.deliveries) <= 1
+    elif fault == "close":
+        next(stream)
+        stream.close()
+    else:
+        assert len(list(stream)) == (0 if fault == "empty" else 8)
+    assert closed == ([] if fault == "empty" else [True])
+    if fault == "consumer":
+        assert reports == [(bad, "consumer failed")] and len(good.deliveries) == 8
+        assert good.writes == bad.writes == []
