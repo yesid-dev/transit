@@ -1,63 +1,67 @@
-from transit_ops.gold.reader.bands import (
-    EARLY_BELOW_SECONDS,
-    LATE_ABOVE_SECONDS,
-    band_case_sql,
-    band_of,
-)
-from transit_ops.gold.reader.buckets import (
-    SHIFT_BOUNDS,
-    SHIFT_DEFAULT,
-    daytype_case_sql,
-    infer_shift,
-    shift_case_sql,
-)
-from transit_ops.gold.reader.histogram import (
-    bunched_pct,
-    cov_case_sql,
-    delay_histogram_bins,
-    ewt_min,
-    hist_and_avg,
-    round_half_away,
-)
-from transit_ops.gold.reader.percentile import cdf_percentile, pctile_min_from_hist
-from transit_ops.gold.reader.projector import (
-    PROJECT_TEMPLATE,
-    ROUTE_ENTITY_CLAUSE,
-    ROUTE_HABIT_SPINE_SQL,
-    SPINE_HIST_COLS,
-    hist_cols,
-    spine_project_sql,
-)
-from transit_ops.gold.reader.rates import (
-    MIN_N_RATE,
-    TRIP_FLOOR,
-    WILSON_Z,
-    DayCount,
-    RateSummary,
-    WindowKind,
-    avg_delay_min,
-    band_pct,
-    delay_bins,
-    late_avg_min,
-    min_service_days,
-    otp_pct,
-    otp_pct_severe_proxy,
-    rate_summary,
-    severe_pct,
-    wilson_bounds,
-    wilson_hi,
-    wilson_lo,
-)
-from transit_ops.gold.reader.score import (
-    POOLED_AVG_DELAY_SECONDS_EXPR,
-    REPEAT_PROBLEM_SCORE_EXPR,
-    all_time_window,
-)
-from transit_ops.gold.reader.window import (
-    SPINE_WINDOW_CLAUSE,
-    GrainWindows,
-    current_date_trailing_clause,
-)
+from importlib import import_module as _import_module
+from typing import TYPE_CHECKING as _TYPE_CHECKING
+
+if _TYPE_CHECKING:
+    from transit_ops.gold.reader.bands import (
+        EARLY_BELOW_SECONDS,
+        LATE_ABOVE_SECONDS,
+        band_case_sql,
+        band_of,
+    )
+    from transit_ops.gold.reader.buckets import (
+        SHIFT_BOUNDS,
+        SHIFT_DEFAULT,
+        daytype_case_sql,
+        infer_shift,
+        shift_case_sql,
+    )
+    from transit_ops.gold.reader.histogram import (
+        bunched_pct,
+        cov_case_sql,
+        delay_histogram_bins,
+        ewt_min,
+        hist_and_avg,
+        round_half_away,
+    )
+    from transit_ops.gold.reader.percentile import cdf_percentile, pctile_min_from_hist
+    from transit_ops.gold.reader.projector import (
+        PROJECT_TEMPLATE,
+        ROUTE_ENTITY_CLAUSE,
+        ROUTE_HABIT_SPINE_SQL,
+        SPINE_HIST_COLS,
+        hist_cols,
+        spine_project_sql,
+    )
+    from transit_ops.gold.reader.rates import (
+        MIN_N_RATE,
+        TRIP_FLOOR,
+        WILSON_Z,
+        DayCount,
+        RateSummary,
+        WindowKind,
+        avg_delay_min,
+        band_pct,
+        delay_bins,
+        late_avg_min,
+        min_service_days,
+        otp_pct,
+        otp_pct_severe_proxy,
+        rate_summary,
+        severe_pct,
+        wilson_bounds,
+        wilson_hi,
+        wilson_lo,
+    )
+    from transit_ops.gold.reader.score import (
+        POOLED_AVG_DELAY_SECONDS_EXPR,
+        REPEAT_PROBLEM_SCORE_EXPR,
+        all_time_window,
+    )
+    from transit_ops.gold.reader.window import (
+        SPINE_WINDOW_CLAUSE,
+        GrainWindows,
+        current_date_trailing_clause,
+    )
 
 __all__ = [
     "EARLY_BELOW_SECONDS",
@@ -108,3 +112,41 @@ __all__ = [
     "wilson_hi",
     "wilson_lo",
 ]
+
+
+_MODULES = "bands buckets delay_hist histogram percentile projector rates score window".split()
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(__all__) | set(_MODULES))
+
+
+def __getattr__(name: str) -> object:
+    if name in _MODULES:
+        return _import_module(f"{__name__}.{name}")
+    for owner, names in (
+        ("bands", "EARLY_BELOW_SECONDS LATE_ABOVE_SECONDS band_case_sql band_of"),
+        ("buckets", "SHIFT_BOUNDS SHIFT_DEFAULT daytype_case_sql infer_shift shift_case_sql"),
+        (
+            "histogram",
+            "bunched_pct cov_case_sql delay_histogram_bins ewt_min hist_and_avg round_half_away",
+        ),
+        ("percentile", "cdf_percentile pctile_min_from_hist"),
+        (
+            "projector",
+            "PROJECT_TEMPLATE ROUTE_ENTITY_CLAUSE ROUTE_HABIT_SPINE_SQL SPINE_HIST_COLS "
+            "hist_cols spine_project_sql",
+        ),
+        (
+            "rates",
+            "MIN_N_RATE TRIP_FLOOR WILSON_Z DayCount RateSummary WindowKind avg_delay_min "
+            "band_pct delay_bins late_avg_min min_service_days otp_pct otp_pct_severe_proxy "
+            "rate_summary severe_pct wilson_bounds wilson_hi wilson_lo",
+        ),
+        ("score", "POOLED_AVG_DELAY_SECONDS_EXPR REPEAT_PROBLEM_SCORE_EXPR all_time_window"),
+        ("window", "SPINE_WINDOW_CLAUSE GrainWindows current_date_trailing_clause"),
+    ):
+        if name in names.split():
+            value: object = getattr(_import_module(f"{__name__}.{owner}"), name)
+            return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
