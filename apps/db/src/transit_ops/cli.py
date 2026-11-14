@@ -1845,6 +1845,7 @@ def list_pipeline_switches_command() -> None:
     from sqlalchemy.exc import SQLAlchemyError
 
     from transit_ops import pipeline_switches as switches
+    from transit_ops.control.objects import ObjectConflict, ObjectRateLimited
     from transit_ops.control.switches import switches_for
 
     engine = None
@@ -1854,6 +1855,9 @@ def list_pipeline_switches_command() -> None:
             store = switches_for(connection, get_settings())
             rows = [switches.display_switch(row) for row in store.list_switches()]
         typer.echo(json.dumps(rows))
+    except (ObjectConflict, ObjectRateLimited):
+        typer.echo("Pipeline switch storage operation failed.", err=True)
+        raise typer.Exit(1) from None
     except (SQLAlchemyError, ValueError):
         typer.echo("Database settings could not be read; check DATABASE_URL", err=True)
         raise typer.Exit(1) from None
@@ -1868,6 +1872,7 @@ def show_pipeline_switch_command(switch_key: str) -> None:
     from sqlalchemy.exc import SQLAlchemyError
 
     from transit_ops import pipeline_switches as switches
+    from transit_ops.control.objects import ObjectConflict, ObjectRateLimited
     from transit_ops.control.switches import switches_for
 
     try:
@@ -1880,6 +1885,9 @@ def show_pipeline_switch_command(switch_key: str) -> None:
         with engine.connect() as connection:
             row = switches_for(connection, get_settings()).show_switch(switch_key)
         typer.echo(json.dumps(switches.display_switch(row, switch_key)))
+    except (ObjectConflict, ObjectRateLimited):
+        typer.echo("Pipeline switch storage operation failed.", err=True)
+        raise typer.Exit(1) from None
     except (SQLAlchemyError, ValueError):
         typer.echo("Database settings could not be read; check DATABASE_URL", err=True)
         raise typer.Exit(1) from None
@@ -1899,6 +1907,7 @@ def set_pipeline_switch_command(
     from sqlalchemy.exc import SQLAlchemyError
 
     from transit_ops import pipeline_switches as switches
+    from transit_ops.control.objects import ObjectConflict, ObjectRateLimited
     from transit_ops.control.switches import switches_for
 
     try:
@@ -1930,6 +1939,9 @@ def set_pipeline_switch_command(
         typer.echo(json.dumps(switches.display_switch(row, switch_key)))
     except (switches.GuardRefused, switches.SchemaNotReady, switches.ReservedSwitch) as error:
         typer.echo(" ".join(str(error).splitlines()), err=True)
+        raise typer.Exit(1) from None
+    except (ObjectConflict, ObjectRateLimited):
+        typer.echo("Pipeline switch storage operation failed.", err=True)
         raise typer.Exit(1) from None
     except SQLAlchemyError:
         typer.echo("Pipeline switch database operation failed.", err=True)

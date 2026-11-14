@@ -20,6 +20,35 @@ from transit_ops.control.objects import (
 from transit_ops.pipeline_switches import GuardResult, PipelineSwitch
 from transit_ops.settings import Settings
 
+_r2_guards: dict[str, Callable[[str], GuardResult]] = {}
+
+
+def register_r2_guard(prefix: str, fn: Callable[[str], GuardResult]) -> None:
+    pg.validate_text(prefix, "prefix")
+    if prefix in _r2_guards:
+        raise ValueError("guard prefix already registered")
+    _r2_guards[prefix] = fn
+
+
+register_r2_guard("history_daily", lambda key: GuardResult(False, "history ledger is not ready"))
+
+
+def _validate_row(row: PipelineSwitch) -> None:
+    try:
+        for name in ("switch_key", "updated_by", "reason"):
+            value = getattr(row, name)
+            if not isinstance(value, str):
+                raise ValueError
+            pg.validate_text(value, name)
+        if (
+            type(row.enabled) is not bool
+            or not isinstance(row.updated_at_utc, datetime)
+            or row.updated_at_utc.utcoffset() is None
+        ):
+            raise ValueError
+    except (TypeError, ValueError) as exc:
+        raise ValueError("invalid switch document") from exc
+
 
 class SwitchStore(Protocol):
     def enabled(self) -> frozenset[str]: ...
@@ -59,6 +88,7 @@ class PostgresSwitches:
 
 
 def _payload(row: PipelineSwitch) -> dict[str, object]:
+    _validate_row(row)
     return {**asdict(row), "updated_at_utc": row.updated_at_utc.astimezone(UTC).isoformat()}
 
 
@@ -80,11 +110,15 @@ class R2Switches:
         obj = self.objects.read(self._key(key))
         if obj is None:
             return None, None
-        body = json.loads(obj.body)
-        body["updated_at_utc"] = datetime.fromisoformat(body["updated_at_utc"])
-        row = PipelineSwitch(**body)
-        if row.switch_key != key or type(row.enabled) is not bool:
-            raise ValueError("invalid switch document")
+        try:
+            body = json.loads(obj.body)
+            body["updated_at_utc"] = datetime.fromisoformat(body["updated_at_utc"])
+            row = PipelineSwitch(**body)
+            _validate_row(row)
+            if row.switch_key != key:
+                raise ValueError
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("invalid switch document") from exc
         return row, obj.token
 
     def show_switch(self, switch_key: str) -> PipelineSwitch | None:
@@ -141,7 +175,7 @@ def switches_for(connection: Connection | None, settings: Settings) -> SwitchSto
     return R2Switches(
         control_objects(settings),
         clock=lambda: datetime.now(UTC),
-        guards={"history_daily": lambda key: GuardResult(False, "history ledger is not ready")},
+        guards=_r2_guards,
     )
 
 
