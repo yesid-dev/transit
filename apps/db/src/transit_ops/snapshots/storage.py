@@ -914,7 +914,7 @@ def state_fingerprint(tier: str, *, config: BaseModel | None = None) -> str:
     """Invalidate prior hashes when cache policy or static output configuration changes."""
     if tier == "static":
         digest = hashlib.sha256(_body(config) if config else b"").hexdigest()
-        return f"v3|cc:{CACHE_CONTROL[tier]}|config:{digest}"
+        return f"v4|cc:{CACHE_CONTROL[tier]}|config:{digest}"
     return f"v1|cc:{CACHE_CONTROL[tier]}"
 
 
