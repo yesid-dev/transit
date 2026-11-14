@@ -1,0 +1,57 @@
+"""Read comparison values without losing PostgreSQL's printed representations."""
+
+from collections.abc import Sequence
+from datetime import date
+from typing import Any
+
+from sqlalchemy import Connection, bindparam, text
+
+from transit_ops.batch.build import TableRows
+
+
+def read_table_rows(
+    conn: Connection,
+    relation: str,
+    key: Sequence[str],
+    *,
+    provider_id: str,
+    local_dates: Sequence[date] | None,
+    date_column: str = "provider_local_date",
+) -> TableRows:
+    parts = relation.split(".")
+    if len(parts) != 2 or not all(parts):
+        raise ValueError(f"schema-qualified relation required: {relation}")
+    catalog = conn.execute(
+        text(
+            "SELECT column_name, data_type, numeric_precision FROM information_schema.columns "
+            "WHERE table_schema=:schema AND table_name=:table ORDER BY ordinal_position"
+        ),
+        dict(schema=parts[0], table=parts[1]),
+    ).all()
+    columns = tuple(str(row[0]) for row in catalog)
+    required = {*key, "provider_id"} | ({date_column} if local_dates is not None else set())
+    if not columns or not key or required - set(columns):
+        raise ValueError(f"{relation}: missing columns {sorted(required - set(columns))}")
+    quote = conn.dialect.identifier_preparer.quote_identifier
+    expressions = []
+    for name, kind, precision in catalog:
+        column = quote(name)
+        exact_text = kind in {"ARRAY", "json", "jsonb", "interval", "time with time zone"}
+        exact_text |= kind == "numeric" and precision is None
+        expressions.append(f"{column}::text AS {column}" if exact_text else column)
+    where = f"{quote('provider_id')} = :provider_id"
+    params: dict[str, Any] = {"provider_id": provider_id}
+    if local_dates is not None:
+        where += f" AND {quote(date_column)} IN :local_dates"
+        params["local_dates"] = tuple(local_dates)
+    # Dynamic identifiers share one diagnostic name, not one registered SQL body.
+    statement = text(
+        "-- q:batch.postgres_rows.read\n"
+        f"SELECT {', '.join(expressions)} FROM {'.'.join(map(quote, parts))} WHERE {where}",
+    )
+    if local_dates is not None:
+        statement = statement.bindparams(bindparam("local_dates", expanding=True))
+    indexes = tuple(columns.index(name) for name in key)
+    rows = [tuple(row) for row in conn.execute(statement, params)]
+    rows.sort(key=lambda row: tuple(row[index] for index in indexes))
+    return TableRows(relation, columns, tuple(key), tuple(rows))
