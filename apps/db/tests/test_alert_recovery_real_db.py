@@ -248,8 +248,8 @@ def test_entry_found_in_an_older_published_generation_is_written_back(target, tm
     index(storage, *page(storage, "newest"))
     items, evidence = read_published_candidates(storage, provider_id=p, recovered_at_utc=NOW)
     reports = (REPORTS[0], evidence, REPORTS[2])
-    readers = complete_readers(items)
-    readers.update(build_recovery_source_readers(storage))
+    readers = dict(build_recovery_source_readers(storage, settings=Settings(_env_file=None)))
+    readers.update({k: v for k, v in complete_readers(items).items() if k != "published"})
     report = run_alert_archive_recovery(
         engine, provider_id=p, source_readers=readers, dry_run=False, recovered_at_utc=NOW
     )
@@ -301,8 +301,12 @@ def test_entry_no_source_holds_is_reported(target, tmp_path, complete):
     engine, p = target
     with engine.begin() as c:
         recover(c, p, [candidate(p)])
-    readers = complete_readers() if complete else build_recovery_source_readers(
-        LocalSnapshotStorage(str(tmp_path), f"v1/{p}"))
+    readers = complete_readers()
+    if not complete:
+        readers = build_recovery_source_readers(
+            LocalSnapshotStorage(str(tmp_path), f"v1/{p}"),
+            settings=Settings(_env_file=None, BRONZE_S3_BUCKET=None),
+        )
     report = run_alert_archive_recovery(engine, provider_id=p, source_readers=readers,
                                        expected_ids=["lost", "a"], recovered_at_utc=NOW)
     assert report.already_present == ("a",)
@@ -399,7 +403,8 @@ def invoke_cli(monkeypatch, tmp_path, engine, p, readers, apply=False):
     monkeypatch.setattr(command, "make_engine", lambda settings: engine)
     monkeypatch.setattr(command.ProviderRegistry, "from_project_root", lambda **kw: type(
         "Registry", (), {"get_provider": lambda self, p: None})())
-    monkeypatch.setattr(command, "build_recovery_source_readers", lambda storage: readers)
+    monkeypatch.setattr(command, "build_recovery_source_readers",
+                        lambda storage, *, settings: readers)
     return CliRunner().invoke(app, ["recover-alert-archive-entries", p, "--capture-from",
         "2020-01-01T00:00:00Z", "--capture-to", "2020-02-01T00:00:00Z"] +
         (["--apply"] if apply else []))
@@ -409,7 +414,7 @@ def test_sql_reader_failure_keeps_other_evidence_reportable(target, tmp_path):
     engine, p = target
     storage = LocalSnapshotStorage(str(tmp_path), f"v1/{p}")
     index(storage, *page(storage, "older"))
-    readers = dict(build_recovery_source_readers(storage))
+    readers = dict(build_recovery_source_readers(storage, settings=Settings(_env_file=None)))
     observed = []
 
     def invalid_backup_cast(connection, **kwargs):
@@ -483,3 +488,36 @@ def test_receipt_before_commit_mutation_fails_commit_regression(target, monkeypa
     with pytest.raises(json.JSONDecodeError):
         test_runner_and_cli_failures_leave_no_rows_or_receipt(
             target, monkeypatch, tmp_path, "commit", True)
+
+
+@pytest.fixture(autouse=True)
+def ambient_storage_sentinel(monkeypatch):
+    from unittest.mock import Mock
+
+    for name, value in {
+        "BUCKET": "sentinel",
+        "ENDPOINT": "https://storage.invalid",
+        "ACCESS_KEY": "synthetic",
+        "SECRET_KEY": "synthetic",
+    }.items():
+        monkeypatch.setenv("BRONZE_S3_" + name, value)
+    session = Mock(side_effect=AssertionError("real S3 client forbidden"))
+    monkeypatch.setattr("boto3.session.Session", session)
+    yield
+    session.assert_not_called()
+
+
+def test_no_source_uses_no_ambient_storage(tmp_path, monkeypatch):
+    from contextlib import nullcontext
+    from unittest.mock import MagicMock, Mock
+
+    c = MagicMock(closed=False, invalidated=False)
+    c.__enter__.return_value = c
+    c.execution_options.return_value = c
+    c.dialect.name = "postgresql"
+    c.connection.dbapi_connection.autocommit = False
+    c.get_isolation_level.return_value = "READ COMMITTED"
+    c.execute.return_value = Mock(scalar_one=lambda: "on", scalars=lambda: ["a"])
+    engine = Mock(connect=lambda: c, begin=lambda: nullcontext(c))
+    monkeypatch.setitem(globals(), "recover", lambda *args: None)
+    test_entry_no_source_holds_is_reported((engine, "fixture"), tmp_path, False)

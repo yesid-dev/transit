@@ -12,6 +12,7 @@ from sqlalchemy import Connection, Engine, text
 
 from transit_ops.db.connection import make_engine
 from transit_ops.history.alert_recovery import RecoverySourceReader, recover_alert_archive_entries
+from transit_ops.history.alert_recovery_backups import BackupRecoveryReader
 from transit_ops.history.alert_recovery_models import (
     Candidate,
     RecoveryReport,
@@ -20,7 +21,7 @@ from transit_ops.history.alert_recovery_models import (
 )
 from transit_ops.history.alert_recovery_published import read_published_candidates
 from transit_ops.providers.registry import ProviderRegistry
-from transit_ops.settings import get_settings
+from transit_ops.settings import Settings, get_settings
 from transit_ops.snapshots.storage import (
     LocalSnapshotStorage,
     SnapshotStorage,
@@ -32,6 +33,8 @@ KINDS: tuple[SourceKind, ...] = ("backup", "published", "capture")
 
 def build_recovery_source_readers(
     storage: SnapshotStorage | LocalSnapshotStorage,
+    *,
+    settings: Settings,
 ) -> Mapping[SourceKind, RecoverySourceReader]:
     def published(
         connection: Connection, *, provider_id: str, recovered_at_utc: datetime
@@ -40,7 +43,7 @@ def build_recovery_source_readers(
             storage, provider_id=provider_id, recovered_at_utc=recovered_at_utc
         )
 
-    return {"published": published}
+    return {"published": published, "backup": BackupRecoveryReader(settings)}
 
 
 def run_alert_archive_recovery(
@@ -127,7 +130,7 @@ def recover_alert_archive_entries_command(
             report = run_alert_archive_recovery(
                 engine,
                 provider_id=provider_id,
-                source_readers=build_recovery_source_readers(storage),
+                source_readers=build_recovery_source_readers(storage, settings=settings),
                 expected_ids=expected_id,
                 dry_run=dry_run,
                 recovered_at_utc=datetime.now(UTC),
