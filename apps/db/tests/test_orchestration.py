@@ -2020,7 +2020,7 @@ def test_shared_capture_load_executor_load_failure_persists_exact_receipt(monkey
             {
                 "provider_id": "stm",
                 "endpoint_key": "i3_alerts",
-                "error_message": "load-i3-silver failed: silver down",
+                "error_message": "[capture_row_id=20] load-i3-silver failed: silver down",
                 "started_at_utc": started_at,
             },
         )
@@ -2086,7 +2086,9 @@ def test_run_realtime_cycle_persists_gtfs_silver_load_failure_row(
     assert insert["provider_id"] == "stm"
     assert insert["feed_endpoint_id"] == 11
     assert insert["run_kind"] == "silver_load"
-    assert insert["error_message"] == "load-realtime-silver failed: silver loader exploded"
+    assert insert["error_message"] == (
+        "[capture_row_id=20] load-realtime-silver failed: silver loader exploded"
+    )
     assert insert["started_at_utc"] is not None
     assert insert["completed_at_utc"] is not None
 
@@ -2115,7 +2117,9 @@ def test_run_realtime_cycle_persists_i3_silver_load_failure_row(
     insert = engine.inserts[0]
     assert insert["feed_endpoint_id"] == 13
     assert insert["run_kind"] == "silver_load"
-    assert insert["error_message"] == "load-i3-silver failed: i3 silver loader exploded"
+    assert insert["error_message"] == (
+        "[capture_row_id=230] load-i3-silver failed: i3 silver loader exploded"
+    )
 
 
 def test_silver_load_failure_persistence_is_best_effort(realtime_cycle, monkeypatch) -> None:

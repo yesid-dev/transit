@@ -18,12 +18,14 @@ from transit_ops.capture_load import (
     CaptureLoadResult,
     _DisplayResult,
     _log_step_success,
+    _ReceiptIdentityError,
     _run_capture_load_steps,
     _run_timed_realtime_step,
     capture_and_load_realtime,
 )
 from transit_ops.core.models import ProviderManifest
 from transit_ops.db.connection import make_engine, require_database_url
+from transit_ops.failed_load_tag import format_failed_load_error
 from transit_ops.gold import (
     GoldBuildResult,
     GoldRealtimeRefreshResult,
@@ -490,7 +492,10 @@ def _endpoint_cycle_result(
                 engine,
                 provider_id=provider_id,
                 endpoint_key=endpoint_key,
-                error_message=error_message,
+                error_message=(
+                    format_failed_load_error(error_message, failure.capture_row_id)
+                    if failure.capture_row_id is not None else error_message
+                ),
                 started_at_utc=failure.started_at_utc,
             )
     return RealtimeEndpointCycleResult(
@@ -538,7 +543,9 @@ def _capture_and_load_alert_endpoint(
 
     def load_capture(captured: I3IngestionResult) -> _DisplayResult:
         if captured.provider_id != provider_id or captured.endpoint_key != endpoint_key:
-            raise ValueError("Alert capture receipt does not match the requested source")
+            raise _ReceiptIdentityError(
+                "Alert capture receipt does not match the requested source", "capture_identity"
+            )
         loaded = load_i3_to_silver(
             provider_id,
             snapshot_id=captured.i3_alert_snapshot_id,
@@ -550,7 +557,9 @@ def _capture_and_load_alert_endpoint(
             loaded.provider_id != provider_id
             or loaded.i3_alert_snapshot_id != captured.i3_alert_snapshot_id
         ):
-            raise ValueError("Alert Silver receipt does not match the captured snapshot")
+            raise _ReceiptIdentityError(
+                "Alert Silver receipt does not match the captured snapshot", "silver_identity"
+            )
         return loaded
 
     outcome = _run_capture_load_steps(
@@ -560,6 +569,7 @@ def _capture_and_load_alert_endpoint(
         silver_load_step=load_capture,
         capture_label_prefix=capture_label_prefix,
         silver_label_prefix=silver_label_prefix,
+        capture_row_id_of=lambda captured: captured.i3_alert_snapshot_id,
     )
     return _endpoint_cycle_result(
         provider_id,
