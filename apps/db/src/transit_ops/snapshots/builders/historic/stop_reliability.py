@@ -103,7 +103,7 @@ _STOP_HABIT_SQL = named_query(
     INNER JOIN gold.dim_provider AS dp ON dp.provider_id = sd.provider_id
     WHERE sd.provider_id = :provider_id
     GROUP BY sd.stop_id, 2, 3
-    ORDER BY sd.stop_id
+    ORDER BY sd.stop_id COLLATE "C", day_of_week_iso, hour_of_day_local
     """,
 )
 
@@ -121,7 +121,7 @@ _STOP_DAILY_SQL = named_query(
     WHERE sds.provider_id = :provider_id
       AND {current_date_trailing_clause("sds.provider_local_date", days=90)}
     GROUP BY sds.stop_id, sds.provider_local_date
-    ORDER BY sds.stop_id, sds.provider_local_date
+    ORDER BY sds.stop_id COLLATE "C", sds.provider_local_date
     """,
 )
 
@@ -129,11 +129,11 @@ _STOP_DAILY_SQL = named_query(
 _STOP_PERCENTILE_DAILY_SQL = named_query(
     "stop.percentile.daily",
     """
-    SELECT DISTINCT ON (stop_id)
+    SELECT DISTINCT ON (stop_id COLLATE "C")
         stop_id, p50_delay_seconds, p90_delay_seconds
     FROM gold.stop_delay_percentile_daily
     WHERE provider_id = :provider_id
-    ORDER BY stop_id, provider_local_date DESC
+    ORDER BY stop_id COLLATE "C", provider_local_date DESC
     """,
 )
 
@@ -198,7 +198,7 @@ _STOP_DOW_SQL = named_query(
     FROM gold.stop_delay_shift_daily AS sd
     WHERE sd.provider_id = :provider_id
     GROUP BY sd.stop_id, 2
-    ORDER BY sd.stop_id, 2
+    ORDER BY sd.stop_id COLLATE "C", grain COLLATE "C"
     """,
 )
 
