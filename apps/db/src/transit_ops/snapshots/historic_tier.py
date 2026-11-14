@@ -143,7 +143,8 @@ def publish(
     if not isinstance(storage, HistoricWriter):
         raise TypeError("historic publication requires a conditional historic writer")
     publication_instant = utc_now() if as_of_utc is None else as_of_utc
-    as_of_utc = resolve_as_of(conn, as_of_utc)
+    surface_now = resolve_as_of(conn, as_of_utc)
+    as_of_utc = publication_instant
     if _historic_run is not None:
         _historic_run.run_instant_utc = as_of_utc
     if stamp is None:
@@ -156,7 +157,7 @@ def publish(
 
         _historic._activate_historic_phase(_historic_run, "compatibility")
         compatibility = historic_compatibility.build(
-            conn, provider_id=provider_id, settings=settings, stamp=stamp, as_of_utc=as_of_utc
+            conn, provider_id=provider_id, settings=settings, stamp=stamp, as_of_utc=surface_now
         )
         items, route_items, stages, alert_archive = (
             compatibility.items,
@@ -195,7 +196,7 @@ def publish(
             as_of_utc=as_of_utc,
         )
         point_plans = _build_historic_point_plans(
-            conn, provider_id=provider_id, as_of_utc=as_of_utc
+            conn, provider_id=provider_id, as_of_utc=surface_now
         )
         effective_report = gate_report or gate.new_report(provider_id, "historic", stamp)
         alert_findings = gate.check_alert_archive_bundle(
@@ -431,11 +432,12 @@ def collect(
     include: Collection[HistoricInclude],
 ) -> HistoricValidationInputs:
     publication_instant = utc_now() if as_of_utc is None else as_of_utc
-    as_of_utc = resolve_as_of(conn, as_of_utc)
+    surface_now = resolve_as_of(conn, as_of_utc)
+    as_of_utc = publication_instant
     if stamp is None:
         stamp = publication_instant.astimezone(UTC).strftime("%Y-%m-%dT00:00:00Z")
     compatibility = historic_compatibility.build(
-        conn, provider_id=provider_id, settings=settings, stamp=stamp, as_of_utc=as_of_utc
+        conn, provider_id=provider_id, settings=settings, stamp=stamp, as_of_utc=surface_now
     )
     items, route_items, _alert_archive = (
         compatibility.items,
@@ -467,7 +469,7 @@ def collect(
             as_of_utc=as_of_utc,
         )
     point_plans = (
-        _build_historic_point_plans(conn, provider_id=provider_id, as_of_utc=as_of_utc)
+        _build_historic_point_plans(conn, provider_id=provider_id, as_of_utc=surface_now)
         if "points" in include else None
     )
     return HistoricValidationInputs(

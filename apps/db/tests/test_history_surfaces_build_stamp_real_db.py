@@ -1,11 +1,13 @@
 from datetime import UTC, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import pytest
 import revision_2_seed as seed
-from _sqlfakes import NamedQueryConn, _FakeResult
+from _sqlfakes import NamedQueryConn, _FakeResult, history_count_rows
 from snapshot_storage_fixtures import MemorySnapshotStore
+from test_partitioned_history_builders import _network_history_rows
 
 from transit_ops import settings as settings_module
 from transit_ops.gold import rollups
@@ -18,6 +20,7 @@ from transit_ops.snapshots.builders.historic import (
     small_surfaces,
     stop_history,
 )
+from transit_ops.snapshots.serialization import snapshot_json_bytes
 from transit_ops.sql_registry import query_name
 
 STAMP = "2025-09-02T00:00:00Z"
@@ -89,6 +92,41 @@ def test_content_keeps_transaction_clock_across_python_midnight(monkeypatch, ope
             historic_tier.publish(conn, MemorySnapshotStore(), **args)
         else:
             historic_tier.collect(conn, include=set(), **args)
+
+
+def test_partition_bytes_keep_main_clock_across_local_midnight(monkeypatch):
+    database = datetime(2026, 7, 21, 3, 59, 59, 250000, tzinfo=UTC)
+    python = database + timedelta(seconds=2)
+
+    class Connection(NamedQueryConn):
+        def execute(self, statement, params=None):
+            if query_name(statement) == "history.network.delay.inner":
+                rows = [
+                    dict(
+                        _network_history_rows()[0][0], local_date=day, source_generated_utc=database
+                    )
+                    for day in (datetime(2026, 7, 19).date(), datetime(2026, 7, 20).date())
+                    if day < params["as_of_utc"].astimezone(ZoneInfo("America/Toronto")).date()
+                ]
+                return _FakeResult(history_count_rows(statement, rows))
+            return super().execute(statement, params)
+
+    monkeypatch.setattr(historic_tier, "utc_now", lambda: python)
+    empty = SimpleNamespace(items=[], routes=[], alerts=None)
+    monkeypatch.setattr(historic_compatibility, "build", lambda *a, **kw: empty)
+    conn = Connection({"history.build.as_of": [database]})
+    kwargs = dict(provider_id="test", generated_utc=STAMP)  # Main uses Python for partitions.
+    main = builders.build_network_history_plan(conn, **kwargs, as_of_utc=python).materialize()
+    args = dict(provider_id="test", settings=seed.settings_for(None), stamp=STAMP)
+    head = historic_tier.collect(conn, include={"network"}, **args).network_history.materialize()
+    assert main.index.available_dates == ["2026-07-19", "2026-07-20"]
+
+    def published(bundle):
+        return {"index": snapshot_json_bytes(bundle.index)} | {
+            key: snapshot_json_bytes(payload) for key, payload in bundle.partition_items
+        }
+
+    assert published(head) == published(main)
 
 
 @pytest.fixture
