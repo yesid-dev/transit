@@ -1,4 +1,12 @@
-import type { Page } from '@playwright/test';
+import type { Page, Route } from '@playwright/test';
+
+export async function forwardLayoutRoute(route: Route, state: string): Promise<void> {
+	const url = new URL(route.request().url());
+	url.pathname = `/__layout/${state}${url.pathname}`;
+	// Keep the response in the browser's request lifecycle. Removing an interceptor
+	// can continue a held route before a separate fetch/fulfill callback resumes.
+	await route.continue({ url: url.href });
+}
 
 // Explicit page closure can dispose a fetched response. The shared fixture drains
 // normal teardown; failures on a live page must still fail the test.
