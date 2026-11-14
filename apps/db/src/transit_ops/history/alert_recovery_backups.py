@@ -11,7 +11,7 @@ from typing import Any
 
 from sqlalchemy import Connection
 
-from transit_ops.backups import list_database_backups
+from transit_ops.backups import iter_database_backup_objects
 from transit_ops.gold.alert_archive import prepare_recovered_archive_record
 from transit_ops.history.alert_recovery_copy import read_alert_archive_copy
 from transit_ops.history.alert_recovery_models import Candidate, SourceReport
@@ -21,20 +21,22 @@ from transit_ops.settings import Settings
 
 
 def _download(client: Any, bucket: str, entry: dict[str, object], path: Path) -> str:
-    size, modified = entry["size"], entry["last_modified"]
+    size, modified, etag = entry["size"], entry["last_modified"], entry["etag"]
     if type(size) is not int or size < 0 or not isinstance(modified, str):
         raise ValueError("backup_inventory_invalid")
-    head = client.head_object(Bucket=bucket, Key=entry["key"])
+    if not isinstance(etag, str) or not etag:
+        raise ValueError("backup_inventory_invalid")
+    head = client.head_object(Bucket=bucket, Key=entry["key"], IfMatch=etag)
     if (
         head["ContentLength"] != size
         or head["LastModified"].isoformat() != modified
-        or not head.get("ETag")
+        or head.get("ETag") != etag
     ):
         raise ValueError("backup_changed")
-    response = client.get_object(Bucket=bucket, Key=entry["key"], IfMatch=head["ETag"])
+    response = client.get_object(Bucket=bucket, Key=entry["key"], IfMatch=etag)
     digest, measured = hashlib.sha256(), 0
     with closing(response["Body"]) as body, path.open("wb") as output:
-        if response.get("ETag") != head["ETag"]:
+        if response.get("ETag") != etag:
             raise ValueError("backup_changed")
         while block := body.read(1024 * 1024):
             measured += len(block)
@@ -86,7 +88,7 @@ class BackupRecoveryReader:
             return (), SourceReport("backup", missing=("backup_bucket",), coverage=())
         try:
             with closing(self.client_factory(self.settings)) as client:
-                inventory = list_database_backups(self.settings, client=client)
+                inventory = list(iter_database_backup_objects(self.settings, client=client))
                 if not inventory:
                     return (), SourceReport("backup", missing=("backup_objects",), coverage=())
                 return self._scan(connection, client, inventory, provider_id, recovered_at_utc)

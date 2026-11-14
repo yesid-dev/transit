@@ -186,7 +186,7 @@ def prune_old_backups(client, *, bucket: str, prefix: str, keep: int) -> list[st
     return to_delete
 
 
-def list_database_backups(settings: Settings, *, client=None) -> list[dict[str, object]]:  # noqa: ANN001
+def iter_database_backup_objects(settings: Settings, *, client=None) -> Iterator[dict[str, object]]:
     if client is None:
         client = build_s3_client(settings)
     bucket = _require_bucket(settings)
@@ -201,6 +201,7 @@ def list_database_backups(settings: Settings, *, client=None) -> list[dict[str, 
             {
                 "key": key,
                 "size": obj.get("Size"),
+                "etag": obj.get("ETag"),
                 "last_modified": (
                     last_modified.isoformat()
                     if isinstance(last_modified, datetime)
@@ -208,6 +209,14 @@ def list_database_backups(settings: Settings, *, client=None) -> list[dict[str, 
                 ),
             }
         )
+    yield from entries
+
+
+def list_database_backups(settings: Settings, *, client=None) -> list[dict[str, object]]:
+    entries = [
+        {k: entry[k] for k in ("key", "size", "last_modified")}
+        for entry in iter_database_backup_objects(settings, client=client)
+    ]
     entries.sort(key=lambda entry: str(entry["key"]), reverse=True)
     return entries
 

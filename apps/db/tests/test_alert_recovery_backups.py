@@ -31,7 +31,9 @@ class Client:
         if self.fault == "list":
             raise RuntimeError("secret")
         for key, value in self.payloads.items():
-            yield {"Contents": [{"Key": key, "Size": len(value), "LastModified": NOW}]}
+            meta = dict(Key=key, Size=len(value), LastModified=NOW)
+            meta["ETag"] = None if self.fault == "missingetag" else '"version"'
+            yield {"Contents": [meta]}
 
     def head_object(self, **kwargs):
         if self.fault == "deleted":
@@ -54,6 +56,7 @@ class Client:
         self.closed = True
 
 
+DIGEST = "b3cc0475bb78a5026098858e9889acf666d31062d513d303314eca31d36e72f2"
 KEYS = [f"backups/postgres/transit-2026110{n}T000000Z.dump" for n in (2, 1)]
 
 
@@ -84,14 +87,25 @@ def test_every_page_order_digest_empty_and_cleanup():
         assert items == () and report.complete and report.scanned == 2
         assert client.gets == KEYS and client.closed and all(b.closed for b in client.bodies)
         assert all(not p.exists() for p in paths)
-        assert all("sha256=" in entry and "complete" in entry for entry in report.coverage)
+        assert all(f"sha256={DIGEST}" in entry and "complete" in entry for entry in report.coverage)
         reports.append(report)
     assert reports[0] == reports[1]
 
 
 @pytest.mark.parametrize(
     "fault",
-    ["list", "deleted", "size", "etag", "headsize", "headtime", "archive", "table", "empty"],
+    [
+        "list",
+        "deleted",
+        "size",
+        "etag",
+        "headsize",
+        "headtime",
+        "missingetag",
+        "archive",
+        "table",
+        "empty",
+    ],
 )
 def test_unavailable_evidence_is_incomplete_and_clean(fault):
     client = Client({} if fault == "empty" else dict.fromkeys(KEYS, b"synthetic"), fault)
@@ -147,3 +161,27 @@ def test_cancellation_closes_body_and_client(monkeypatch):
             Mock(closed=False, invalidated=False), provider_id="fixture", recovered_at_utc=NOW
         )
     assert client.closed and all(body.closed for body in client.bodies)
+
+
+def test_same_size_same_time_replacement_since_listing_is_incomplete():
+    old, new = b"-- old\n" + script("", COLUMNS), b"-- new\n" + script("", COLUMNS)
+    assert len(old) == len(new)
+    client = Client({KEYS[0]: new})
+    meta = dict(Key=KEYS[0], Size=len(old), LastModified=NOW, ETag='"listed-old-version"')
+    client.paginate = lambda **kw: iter([dict(Contents=[meta])])
+    client.head_object = Mock(
+        return_value=dict(ContentLength=len(new), LastModified=NOW, ETag='"replacement-version"')
+    )
+    client.get_object = Mock(
+        side_effect=lambda **kw: dict(Body=io.BytesIO(new), ETag='"replacement-version"')
+    )
+    items, report = reader(client, lambda dump, output: output.write_bytes(dump.read_bytes()))(
+        Mock(begin_nested=nullcontext, closed=False, invalidated=False),
+        provider_id="fixture",
+        recovered_at_utc=NOW,
+    )
+    assert items == () and not report.complete and report.scanned == 1 and report.errors
+    client.head_object.assert_called_once_with(
+        Bucket="fixture", Key=KEYS[0], IfMatch='"listed-old-version"'
+    )
+    client.get_object.assert_not_called()

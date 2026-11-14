@@ -1,3 +1,5 @@
+import hashlib
+
 import pytest
 from sqlalchemy import text
 from test_alert_recovery import NOW, candidate
@@ -52,6 +54,11 @@ def test_native_backup_reader_runner_roundtrip(target, tmp_path, fault):
             client_factory=lambda settings: client,
             extract=extract,
         )(connection, **kwargs)
+        for item in result[0]:
+            key = KEYS[0] if item.alert_id == "new" else KEYS[1]
+            locator = f"{key} sha256={hashlib.sha256(payloads[key]).hexdigest()}"
+            assert item.source_locator == locator
+            assert any(locator.split(" sha256=")[1] in note for note in result[1].coverage)
         assert client.closed and all(b.closed for b in client.bodies)
         return result
 

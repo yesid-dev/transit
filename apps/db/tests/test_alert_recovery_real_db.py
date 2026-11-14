@@ -301,8 +301,12 @@ def test_entry_no_source_holds_is_reported(target, tmp_path, complete):
     engine, p = target
     with engine.begin() as c:
         recover(c, p, [candidate(p)])
-    readers = complete_readers() if complete else build_recovery_source_readers(
-        LocalSnapshotStorage(str(tmp_path), f"v1/{p}"), settings=Settings(_env_file=None))
+    readers = complete_readers()
+    if not complete:
+        readers = build_recovery_source_readers(
+            LocalSnapshotStorage(str(tmp_path), f"v1/{p}"),
+            settings=Settings(_env_file=None, BRONZE_S3_BUCKET=None),
+        )
     report = run_alert_archive_recovery(engine, provider_id=p, source_readers=readers,
                                        expected_ids=["lost", "a"], recovered_at_utc=NOW)
     assert report.already_present == ("a",)
@@ -484,3 +488,36 @@ def test_receipt_before_commit_mutation_fails_commit_regression(target, monkeypa
     with pytest.raises(json.JSONDecodeError):
         test_runner_and_cli_failures_leave_no_rows_or_receipt(
             target, monkeypatch, tmp_path, "commit", True)
+
+
+@pytest.fixture(autouse=True)
+def ambient_storage_sentinel(monkeypatch):
+    from unittest.mock import Mock
+
+    for name, value in {
+        "BUCKET": "sentinel",
+        "ENDPOINT": "https://storage.invalid",
+        "ACCESS_KEY": "synthetic",
+        "SECRET_KEY": "synthetic",
+    }.items():
+        monkeypatch.setenv("BRONZE_S3_" + name, value)
+    session = Mock(side_effect=AssertionError("real S3 client forbidden"))
+    monkeypatch.setattr("boto3.session.Session", session)
+    yield
+    session.assert_not_called()
+
+
+def test_no_source_uses_no_ambient_storage(tmp_path, monkeypatch):
+    from contextlib import nullcontext
+    from unittest.mock import MagicMock, Mock
+
+    c = MagicMock(closed=False, invalidated=False)
+    c.__enter__.return_value = c
+    c.execution_options.return_value = c
+    c.dialect.name = "postgresql"
+    c.connection.dbapi_connection.autocommit = False
+    c.get_isolation_level.return_value = "READ COMMITTED"
+    c.execute.return_value = Mock(scalar_one=lambda: "on", scalars=lambda: ["a"])
+    engine = Mock(connect=lambda: c, begin=lambda: nullcontext(c))
+    monkeypatch.setitem(globals(), "recover", lambda *args: None)
+    test_entry_no_source_holds_is_reported((engine, "fixture"), tmp_path, False)
