@@ -10,6 +10,7 @@ from typing import Literal, Protocol
 
 from sqlalchemy.engine import Engine
 
+from transit_ops.failed_load_tag import format_failed_load_error
 from transit_ops.ingestion.common import redact_error_message, utc_now
 from transit_ops.ingestion.realtime_gtfs import RealtimeIngestionResult, _capture_realtime_feed
 from transit_ops.ingestion.storage import BronzeStorageResolver
@@ -30,6 +31,7 @@ class CaptureLoadFailure:
     kind: Literal["operation", "capture_identity", "silver_identity"]
     error: Exception
     started_at_utc: datetime
+    capture_row_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -99,6 +101,7 @@ def _run_capture_load_steps[Captured: _DisplayResult, Loaded: _DisplayResult](
     silver_load_step: Callable[[Captured], Loaded],
     capture_label_prefix: str,
     silver_label_prefix: str,
+    capture_row_id_of: Callable[[Captured], int] | None = None,
 ) -> CaptureLoadResult[Captured, Loaded]:
     endpoint_started_at = time.perf_counter()
     capture_duration_seconds: float | None = None
@@ -156,6 +159,18 @@ def _run_capture_load_steps[Captured: _DisplayResult, Loaded: _DisplayResult](
                 exc,
                 silver_load_started_at_utc,
             )
+            if failure.kind != "capture_identity" and capture_row_id_of is not None:
+                try:
+                    capture_row_id = capture_row_id_of(capture_result)
+                    format_failed_load_error("", capture_row_id)
+                except Exception:
+                    # Optional provenance must not replace the original load failure.
+                    pass
+                else:
+                    failure = CaptureLoadFailure(
+                        failure.stage, failure.kind, exc, silver_load_started_at_utc,
+                        capture_row_id,
+                    )
 
     return CaptureLoadResult(
         capture=capture_result,
@@ -185,6 +200,8 @@ def capture_and_load_realtime(
     engine: Engine,
     bronze_storage_resolver: BronzeStorageResolver,
 ) -> RealtimeCaptureLoadResult:
+    source_verified = False
+
     def capture() -> _CapturedRealtime:
         receipt, payload = _capture_realtime_feed(
             provider_id,
@@ -197,12 +214,14 @@ def capture_and_load_realtime(
         return _CapturedRealtime(receipt, payload)
 
     def load(captured: _CapturedRealtime) -> RealtimeSilverLoadResult:
+        nonlocal source_verified
         receipt = captured.receipt
         if (receipt.provider_id, receipt.endpoint_key) != (provider_id, endpoint_key):
             raise _ReceiptIdentityError(
                 "Realtime capture receipt does not match the requested source",
                 "capture_identity",
             )
+        source_verified = True
         silver = _load_realtime_to_silver(
             provider_id,
             endpoint_key,
@@ -224,6 +243,11 @@ def capture_and_load_realtime(
             )
         return silver
 
+    def capture_row_id_of(captured: _CapturedRealtime) -> int:
+        if not source_verified:
+            raise ValueError("Capture source identity has not been verified")
+        return captured.receipt.realtime_snapshot_id
+
     result = _run_capture_load_steps(
         provider_id,
         endpoint_key,
@@ -231,6 +255,7 @@ def capture_and_load_realtime(
         silver_load_step=load,
         capture_label_prefix="capture-realtime",
         silver_label_prefix="load-realtime-silver",
+        capture_row_id_of=capture_row_id_of,
     )
     return CaptureLoadResult(
         capture=result.capture.receipt if result.capture is not None else None,
