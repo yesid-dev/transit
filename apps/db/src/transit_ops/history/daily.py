@@ -75,13 +75,11 @@ def _validate(
 
 
 def _switch(connection: Connection) -> datetime | None:
-    row = connection.execute(
-        text("""
-        SELECT enabled, updated_at_utc FROM core.pipeline_switches
-        WHERE switch_key = 'history_daily'
-    """)
-    ).one_or_none()
-    return row[1].astimezone(UTC) if row is not None and row[0] else None
+    from transit_ops.control.switches import switches_for
+    from transit_ops.settings import get_settings
+
+    row = switches_for(connection, get_settings()).show_switch("history_daily")
+    return row.updated_at_utc.astimezone(UTC) if row is not None and row.enabled else None
 
 
 def _preflight(admission: "_Admission") -> datetime | None:
