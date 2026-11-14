@@ -489,10 +489,11 @@ def oracle_database(
             except OperationalError:
                 uncertain = True
                 raise
-        _initialize(engine, database, admin, clock)
-        _pin_connections(engine, clock)
-        _OWNED[handle] = engine
-        yield handle
+        with _guard_sql(engine):
+            _initialize(engine, database, admin, clock)
+            _pin_connections(engine, clock)
+            _OWNED[handle] = engine
+            yield handle
     finally:
         _OWNED.pop(handle, None)
         try:
