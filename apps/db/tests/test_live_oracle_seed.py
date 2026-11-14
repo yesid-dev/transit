@@ -15,7 +15,7 @@ from test_static_silver import (
 from transit_ops.cli import _seed_feed_endpoints, _seed_provider
 from transit_ops.ingestion.storage import LocalBronzeStorage
 from transit_ops.live.oracle.database import OracleDatabase, PinnedClock, oracle_database
-from transit_ops.live.oracle.seed import SeedRefused, seed_static
+from transit_ops.live.oracle.seed import SeedRefused, admit_polls, seed_static
 from transit_ops.live.oracle.window import EditionInput, ReplayWindow
 from transit_ops.providers import ProviderRegistry
 from transit_ops.settings import Settings
@@ -235,3 +235,188 @@ def test_sequences_move_past_seeded_ids(oracle, case):
                 {"table": table, "column": column},
             ).scalar_one()
             assert next_id > maximum
+
+
+def poll_record(case, *, endpoint="trip_updates", status="succeeded", run_id=1101):
+    from transit_ops.history.poll_record import CaptureEntry, FeedDayKey, PollEntry, PollRecord
+
+    at = case.window.serving_initialized_at_utc + timedelta(seconds=run_id - 1096)
+    family = "alert_snapshot" if endpoint == "i3_alerts" else "realtime_snapshot"
+    payload = '{"apiVersion":"v1","alerts":[{"text":"Métro interrompu"}]}'.encode()
+    path = case.bronze("local").root / f"{run_id}.json"
+    path.write_bytes(payload)
+    capture = CaptureEntry(
+        family,
+        run_id + 100,
+        run_id,
+        run_id + 200,
+        False,
+        None,
+        None,
+        len(payload),
+        hashlib.sha256(payload).hexdigest(),
+        "local",
+        path.name,
+        "api_i3_json" if family == "alert_snapshot" else "gtfs_rt_trip_updates",
+        None,
+        at,
+        at,
+        at,
+        at,
+        "header",
+        None,
+        200,
+        None,
+        None,
+    )
+    poll = PollEntry(
+        run_id,
+        endpoint,
+        "stored" if status == "succeeded" else "failed",
+        status,
+        at,
+        at,
+        at,
+        at,
+        200,
+        None if status == "succeeded" else "unavailable",
+        at,
+        "header",
+        None,
+        family,
+        capture.capture_row_id if status == "succeeded" else None,
+        None,
+        None,
+    )
+    return PollRecord(
+        FeedDayKey(case.window.provider_id, endpoint, family, at.date()),
+        (poll,),
+        (capture,) if status == "succeeded" else (),
+        (),
+        60,
+        None,
+    )
+
+
+def rows(oracle, query):
+    with oracle.engine.connect() as connection:
+        return connection.execute(text(query)).mappings().all()
+
+
+def admit(oracle, case, *records):
+    window = replace(case.window, poll_records=records)
+    return admit_polls(
+        oracle, window, until_utc=records[-1].polls[0].started_at_utc, bronze=case.bronze
+    )
+
+
+def test_admit_polls_inserts_in_time_order_with_production_ids(oracle, case):
+    seed(oracle, case)
+    early, late = poll_record(case), poll_record(case, run_id=1102)
+    assert admit(oracle, case, late, early) == 3
+    assert admit(oracle, case, late, early) == 0
+    runs = rows(oracle, "SELECT * FROM raw.ingestion_runs ORDER BY ingestion_run_id")
+    assert [r["ingestion_run_id"] for r in runs] == [902, 1101]
+    assert runs[1]["status"] == "succeeded"
+    for field in ("requested_at_utc", "started_at_utc", "completed_at_utc", "feed_timestamp_utc"):
+        assert runs[1][field] == getattr(early.polls[0], field)
+    assert runs[1]["entity_count"] is None
+    capture = rows(oracle, "SELECT * FROM raw.realtime_snapshot_index")[0]
+    assert (capture["realtime_snapshot_id"], capture["ingestion_object_id"]) == (1201, 1301)
+    assert capture["captured_at_utc"] == early.captures[0].captured_at_utc
+    obj = rows(oracle, "SELECT * FROM raw.ingestion_objects WHERE ingestion_object_id=1301")[0]
+    assert obj["checksum_sha256"] == early.captures[0].sha256
+    assert obj["created_at_utc"] == early.captures[0].object_created_at_utc
+    assert obj["source_url"] is None
+    assert admit(oracle, case, early, late) == 3
+    for table, column, maximum in (
+        ("ingestion_runs", "ingestion_run_id", 1102),
+        ("ingestion_objects", "ingestion_object_id", 1302),
+        ("realtime_snapshot_index", "realtime_snapshot_id", 1202),
+    ):
+        result = rows(oracle, f"SELECT nextval(pg_get_serial_sequence('raw.{table}','{column}')) n")
+        assert result[0]["n"] > maximum
+
+
+def test_a_poll_without_run_status_is_refused(oracle, case):
+    record = poll_record(case, status=None)
+    with pytest.raises(SeedRefused, match="1101.*run_status"):
+        admit(oracle, case, record)
+
+
+@pytest.mark.parametrize("kind", ["sqlite", "postgresql", "object", "inactive"])
+def test_admission_refuses_unowned_targets_before_connect(case, kind):
+    url = "postgresql+psycopg://transit_ci@127.0.0.1:1/transit_ci"
+    engine = create_engine(url if kind == "postgresql" else "sqlite://")
+    target = object() if kind == "object" else OracleDatabase() if kind == "inactive" else engine
+
+    @event.listens_for(engine, "do_connect")
+    def connecting(*args):
+        pytest.fail("UNOWNED_ENGINE_CONNECT_ATTEMPTED")
+
+    try:
+        with pytest.raises(SeedRefused, match="owned oracle"):
+            admit(target, case, poll_record(case, status="failed"))
+    finally:
+        engine.dispose()
+
+
+def test_admission_refuses_handle_after_owning_context_exits(real_db_engine, case):
+    with oracle_database(
+        real_db_engine.url.render_as_string(hide_password=False),
+        clock=PinnedClock(case.window.serving_initialized_at_utc),
+        environment=os.environ,
+    ) as handle:
+        engine = handle.engine
+
+    @event.listens_for(engine, "do_connect")
+    def connecting(*args):
+        pytest.fail("EXPIRED_ORACLE_CONNECT_ATTEMPTED")
+
+    with pytest.raises(SeedRefused, match="owned oracle"):
+        admit(handle, case, poll_record(case, status="failed"))
+
+
+def test_alert_capture_stores_the_extracted_payload(oracle, case):
+    from transit_ops.ingestion.i3 import extract_i3_metadata
+
+    seed(oracle, case)
+    with oracle.engine.begin() as connection:
+        connection.execute(
+            text("""
+            INSERT INTO core.feed_endpoints
+                (feed_endpoint_id,provider_id,endpoint_key,feed_kind,source_format,
+                 source_url,auth_type,refresh_interval_seconds)
+            SELECT 906,provider_id,'i3_alerts','i3_alerts','api_i3_json',
+                   source_url,auth_type,refresh_interval_seconds
+            FROM core.feed_endpoints WHERE feed_endpoint_id=904
+        """)
+        )
+    case.window = replace(
+        case.window, feed_endpoints=dict(case.window.feed_endpoints, i3_alerts=906)
+    )
+    record = poll_record(case, endpoint="i3_alerts")
+    payload = (case.bronze("local").root / record.captures[0].storage_path).read_bytes()
+    expected = extract_i3_metadata(payload, provider_id=case.window.provider_id).raw_payload_json
+    assert admit(oracle, case, record) == 3
+    row = rows(oracle, "SELECT * FROM raw.i3_alert_snapshots")[0]
+    assert (row["i3_alert_snapshot_id"], row["ingestion_object_id"]) == (1201, 1301)
+    assert row["raw_payload_json"] == expected
+    result = rows(
+        oracle,
+        """
+        SELECT nextval(pg_get_serial_sequence('raw.i3_alert_snapshots','i3_alert_snapshot_id')) n
+    """,
+    )
+    assert result[0]["n"] > 1201
+
+
+def test_a_failed_poll_has_a_run_and_no_capture(oracle, case):
+    seed(oracle, case)
+    assert admit(oracle, case, poll_record(case, status="failed")) == 1
+    row = rows(oracle, "SELECT * FROM raw.ingestion_runs WHERE ingestion_run_id=1101")[0]
+    assert (row["status"], row["error_message"]) == ("failed", "unavailable")
+    assert rows(oracle, "SELECT ingestion_object_id FROM raw.ingestion_objects") == [
+        {"ingestion_object_id": 903}
+    ]
+    assert rows(oracle, "SELECT * FROM raw.realtime_snapshot_index") == []
