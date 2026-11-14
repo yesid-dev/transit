@@ -181,6 +181,11 @@ def test_parent_stop_reaps_worker_and_preserves_outside_sentinel(tmp_path, stop,
         if stop in ("invocation", "path", "replacement"):
             assert all(p.exists() and p.read_bytes() == value for p, value in preserved.items())
             assert json.loads(error)["leftover_paths"] == [directory]
+        elif stop == "abrupt" and sys.platform == "win32":
+            assert (Path(directory) / "nested/fact.csv.partial").read_bytes() == b"private"
+            receipt = json.loads(error)
+            assert receipt["leftover_paths"] == [directory]
+            assert receipt["reason"] == "unsafe_delete_unavailable"
         else:
             assert not Path(directory).exists(), "owned scratch remains after worker exit"
         assert sentinel.read_text() == "preserve"
@@ -234,3 +239,37 @@ def test_linux_fd_pins_the_validated_tree(tmp_path, monkeypatch):
             measure.remove_owned_tree(root, expected)
     assert sentinel.read_bytes() == b"preserve"
     assert (tmp_path / "saved").is_dir() and not (tmp_path / "saved/payload").exists()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Native Windows deletion refusal")
+def test_windows_boundary_refuses_before_post_validation_junction_swap(tmp_path, monkeypatch):
+    import _winapi
+
+    root, outside, saved = (tmp_path / name for name in ("owned", "outside", "saved"))
+    for folder in (root, outside):
+        (folder / "nested").mkdir(parents=True)
+        for name in ("payload", "nested/sentinel", ".owner"):
+            (folder / name).write_bytes(b"preserve")
+    data = dict(path=str(root), invocation="a" * 32, pid=os.getpid())
+    (root / ".owner").write_text(json.dumps(data))
+    files = list(root.rglob("*")) + list(outside.rglob("*"))
+    preserved = {p: p.read_bytes() for p in files if p.is_file()}
+    original_stat, swaps = os.stat, []
+
+    def post_validation_swap(path, *args, **kwargs):
+        if not isinstance(path, int) and not swaps:
+            folder = Path(path).parent
+            if folder.name.startswith(".transit-quarantine-") and Path(path).name != ".owner":
+                assert folder.parent == tmp_path
+                swaps.append(folder)
+                folder.rename(saved)
+                _winapi.CreateJunction(str(outside), str(folder))
+        return original_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "stat", post_validation_swap)
+    try:
+        with pytest.raises(ValueError) as failure:
+            measure.remove_owned_tree(root, measure.owned_snapshot(root))
+        assert failure.value.args == ("unsafe_delete_unavailable", str(root))
+    finally:
+        assert all(p.exists() and p.read_bytes() == value for p, value in preserved.items())

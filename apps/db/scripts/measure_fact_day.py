@@ -284,8 +284,8 @@ BOOT = (
 )
 
 
-def leftover_receipt(path: str | Path) -> str:
-    return json.dumps(dict(status="failed", leftover_paths=[str(path)])) + "\n"
+def leftover_receipt(path: str | Path, reason: str = "scratch_cleanup_failed") -> str:
+    return json.dumps(dict(status="failed", reason=reason, leftover_paths=[str(path)])) + "\n"
 
 
 type Ownership = tuple[tuple[int, int], dict[str, Any]]
@@ -298,14 +298,14 @@ def directory_id(info: os.stat_result) -> tuple[int, int]:
     return info.st_dev, info.st_ino
 
 
-def owned_snapshot(root: Path, logical: Path | None = None) -> Ownership:
+def owned_snapshot(root: Path) -> Ownership:
     try:
         identity = directory_id(root.lstat())
         marker = root / ".owner"
         if root.resolve() != root or marker.is_symlink() or marker.is_junction():
             raise ValueError("scratch_ownership_invalid")
         data: dict[str, Any] = json.loads(marker.read_text(encoding="utf-8"))
-        if not isinstance(data, dict) or data.get("path") != str(logical or root):
+        if not isinstance(data, dict) or data.get("path") != str(root):
             raise ValueError("scratch_ownership_invalid")
         return identity, data
     except Exception:
@@ -323,20 +323,6 @@ def check_fd(fd: int, expected: Ownership) -> None:
             raise ValueError("scratch_ownership_invalid")
 
 
-def remove_children(root: Path, names: list[str], fd: int | None = None) -> None:
-    for name in names:
-        if name != ".owner":
-            path = name if fd is not None else root / name
-            info = os.stat(path, dir_fd=fd, follow_symlinks=False)
-            if stat.S_ISDIR(info.st_mode):
-                if getattr(info, "st_file_attributes", 0) & 0x400:
-                    os.rmdir(path, dir_fd=fd)
-                else:
-                    shutil.rmtree(path, dir_fd=fd)
-            else:
-                os.unlink(path, dir_fd=fd)
-
-
 def remove_linux(root: Path, expected: Ownership) -> None:
     if not shutil.rmtree.avoids_symlink_attacks:
         raise ValueError("scratch_cleanup_unavailable")
@@ -349,60 +335,35 @@ def remove_linux(root: Path, expected: Ownership) -> None:
         check_fd(fd, expected)
         names = os.listdir(fd)
         check_fd(fd, expected)
-        remove_children(root, names, fd)
+        for name in names:
+            if name != ".owner":
+                info = os.stat(name, dir_fd=fd, follow_symlinks=False)
+                if stat.S_ISDIR(info.st_mode):
+                    shutil.rmtree(name, dir_fd=fd)
+                else:
+                    os.unlink(name, dir_fd=fd)
         if directory_id(os.stat(root.name, dir_fd=parent, follow_symlinks=False)) != expected[0]:
             raise ValueError("scratch_ownership_invalid")
         os.unlink(".owner", dir_fd=fd)
         os.rmdir(root.name, dir_fd=parent)
 
 
-def remove_windows(root: Path, expected: Ownership) -> None:
-    if owned_snapshot(root) != expected:
-        raise ValueError("scratch_ownership_invalid")
-    quarantine = root.with_name(".transit-quarantine-" + os.urandom(16).hex())
-    os.rename(root, quarantine)
-    try:
-        if owned_snapshot(quarantine, root) != expected:
-            raise ValueError("scratch_ownership_invalid")
-        entries = os.listdir(quarantine)
-        if owned_snapshot(quarantine, root) != expected:
-            raise ValueError("scratch_ownership_invalid")
-        remove_children(quarantine, entries)
-        (quarantine / ".owner").unlink()
-        quarantine.rmdir()
-    except Exception:
-        try:
-            os.rename(quarantine, root)
-        except OSError:
-            raise ValueError("scratch_cleanup_failed", str(quarantine)) from None
-        raise ValueError("scratch_cleanup_failed", str(root)) from None
-
-
 def remove_owned_tree(root: Path, expected: Ownership) -> None:
+    if sys.platform != "linux":
+        raise ValueError("unsafe_delete_unavailable", str(root))
     try:
-        if sys.platform == "linux":
-            remove_linux(root, expected)
-        elif sys.platform == "win32":
-            remove_windows(root, expected)
-        else:
-            raise ValueError("scratch_cleanup_unavailable")
-    except Exception as error:
-        if isinstance(error, ValueError) and len(error.args) == 2:
-            raise
+        remove_linux(root, expected)
+    except Exception:
         raise ValueError("scratch_cleanup_failed", str(root)) from None
 
 
 @contextmanager
 def scratch() -> Any:
-    root, proof = Path(tempfile.mkdtemp(prefix="transit-measure-")).resolve(), os.urandom(16).hex()
-    with (root / ".owner").open("x", encoding="utf-8") as marker:
-        json.dump(dict(invocation=proof, path=str(root), pid=os.getpid()), marker)
-    expected = owned_snapshot(root)
-    try:
+    with tempfile.TemporaryDirectory(prefix="transit-measure-") as directory:
+        root, proof = Path(directory).resolve(), os.urandom(16).hex()
+        with (root / ".owner").open("x", encoding="utf-8") as marker:
+            json.dump(dict(invocation=proof, path=str(root), pid=os.getpid()), marker)
         yield root, proof
-    finally:
-        if root.exists():
-            remove_owned_tree(root, expected)
 
 
 def lifeline(directory: str, proof: str) -> None:
@@ -419,15 +380,15 @@ def lifeline(directory: str, proof: str) -> None:
             except BlockingIOError:
                 time.sleep(0.2)
                 continue
-            failed: str | None = None
+            failed, reason = None, "scratch_cleanup_failed"
             try:
                 remove_owned_tree(root, expected)
             except ValueError as error:
-                failed = str(error.args[1])
+                failed, reason = str(error.args[1]), str(error.args[0])
             finally:
                 try:
                     if failed or root.exists():
-                        os.write(2, leftover_receipt(failed or root).encode())
+                        os.write(2, leftover_receipt(failed or root, reason).encode())
                 finally:
                     os._exit(1)
 
