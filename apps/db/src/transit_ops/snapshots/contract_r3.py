@@ -1,8 +1,9 @@
 """Unpublished revision-three evidence values; no active publication registration."""
 
+from datetime import date as ServiceDate
 from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 type Count = Annotated[int, Field(strict=True, ge=0)]
 type Percentage = Annotated[float, Field(ge=0, le=100, allow_inf_nan=False)]
@@ -73,8 +74,8 @@ class ReadingValues(EvidenceValue):
         if (self.state == "not_measured") != (self.reason is not None):
             raise ValueError("not_measured requires a reason; measured forbids one")
         if self.state == "not_measured" and any(
-            value is not None
-            for key, value in self.model_dump().items()
+            getattr(self, key) is not None
+            for key in ReadingValues.model_fields
             if key not in {"state", "reason", "evidence"}
         ):
             raise ValueError("not_measured reading values must be null")
@@ -127,4 +128,46 @@ class ServiceValues(EvidenceValue):
             and sum(value for value in counts if value is not None) != self.scheduled_trip_days
         ):
             raise ValueError("full-basis service counts must sum to scheduled trips")
+        return self
+
+
+class HeadlineLine(EvidenceValue):
+    id: str
+    short: str
+    name: str | None
+    on_time_pct: Percentage | None
+    on_time_delta_pts: Finite | None
+
+
+class HeadlineStop(EvidenceValue):
+    id: str
+    code: str
+    name: str | None
+    on_time_pct: Percentage | None
+    on_time_delta_pts: Finite | None
+
+
+class Receipt(ReadingValues):
+    """Dormant daily receipt; supplied evidence only, with no publication registration."""
+
+    schema_version: Literal[1] = 1
+    methodology_version: Literal["receipt-2"]
+    generated_utc: AwareDatetime
+    publish_generation_id: str | None = None
+    data_through: ServiceDate
+    date: ServiceDate
+    population: Population
+    service: "ServiceValues"
+    worst_line: "HeadlineLine | None"
+    worst_stop: "HeadlineStop | None"
+    alerts: Count | None
+    alerts_reason: Literal["not_tracked", "not_measured"] | None
+    alerts_not_measured_reason: NotMeasuredReason | None
+
+    @model_validator(mode="after")
+    def consistent_alerts(self) -> Self:
+        if (self.alerts is None) != (self.alerts_reason is not None):
+            raise ValueError("absent alerts require a reason; measured alerts forbid one")
+        if (self.alerts_reason == "not_measured") != (self.alerts_not_measured_reason is not None):
+            raise ValueError("only not_measured alerts require a detailed reason")
         return self
