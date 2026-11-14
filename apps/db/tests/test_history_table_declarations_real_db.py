@@ -63,11 +63,31 @@ def test_catalog_preserves_columns_keys_and_names_stray_tables(real_db_engine):
             assert result.unclaimed == (
                 "catalog_probe.root",
                 "catalog_probe.stray",
+                "catalog_probe.visible",
                 "public.catalog_stray",
             )
-            assert "catalog_probe.visible" in result.views
+            assert "catalog_probe.visible" not in result.views
         finally:
             conn.rollback()
             conn.exec_driver_sql("DROP SCHEMA IF EXISTS catalog_probe CASCADE")
             conn.exec_driver_sql("DROP TABLE IF EXISTS public.catalog_stray")
+            conn.commit()
+
+
+def test_stray_view_over_extension_table_is_incomplete_at_migration_head(real_db_engine):
+    with real_db_engine.connect() as conn:
+        try:
+            conn.exec_driver_sql("SET TRANSACTION READ ONLY")
+            assert take_inventory(read_catalog(conn)).complete
+            conn.rollback()
+            conn.exec_driver_sql("""CREATE VIEW public.catalog_stray_view AS
+                SELECT srid FROM public.spatial_ref_sys""")
+            conn.commit()
+            conn.exec_driver_sql("SET TRANSACTION READ ONLY")
+            result = take_inventory(read_catalog(conn))
+            assert not result.complete
+            assert result.unclaimed == ("public.catalog_stray_view",)
+        finally:
+            conn.rollback()
+            conn.exec_driver_sql("DROP VIEW IF EXISTS public.catalog_stray_view")
             conn.commit()

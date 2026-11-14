@@ -51,3 +51,43 @@ def test_inventory_command_reads_in_a_read_only_transaction(monkeypatch, complet
     assert json.loads(invoked.stdout)["unclaimed"] == ([] if complete else ["public.stray"])
     assert str(conn.execute.call_args.args[0]) == "SET TRANSACTION READ ONLY"
     engine.dispose.assert_called_once()
+
+
+@pytest.mark.parametrize("stray", [False, True])
+def test_stray_view_over_extension_table_makes_complete_catalog_and_cli_fail(monkeypatch, stray):
+    from transit_ops.db import connection
+    from transit_ops.history.datasets import HISTORY_DATASETS, WORKING_ONLY, TableSource
+    from transit_ops.lake import catalog
+    from transit_ops.lake.table_schema import Column
+
+    relations = []
+    for entry in HISTORY_DATASETS.values():
+        source = entry.source
+        if isinstance(source, TableSource):
+            columns = (
+                ()
+                if source.window_column is None
+                else (Column(source.window_column, "bigint", True),)
+            )
+            relations.append(CatalogTable(source.table, "table", columns, source.key_columns))
+    relations.extend(CatalogTable(t, "table", (), ()) for t in WORKING_ONLY)
+    names = """current_i3_alerts current_stop_next_departures dim_provider
+        current_trip_delay_computed current_vehicle_map current_vehicle_map_with_status
+        fact_stop_time_delay_observation feed_freshness_current i3_alert_history_reporting
+        map_route_lines non_responding_current public_route_reliability_daily
+        public_stop_delay_daily source_lineage_reporting""".split()
+    relations.extend(CatalogTable("gold." + name, "view", (), ()) for name in names)
+    relations.append(CatalogTable("public.spatial_ref_sys", "table", (), (), extension="postgis"))
+    if stray:
+        relations.append(CatalogTable("public.catalog_stray_view", "view", (), ()))
+    result = take_inventory(relations)
+    monkeypatch.setattr(connection, "make_engine", lambda settings: MagicMock())
+    monkeypatch.setattr(catalog, "read_catalog", lambda conn: relations)
+    invoked = CliRunner().invoke(app, ["lake", "inventory"])
+    assert (result.complete, result.unclaimed, invoked.exit_code) == (
+        not stray,
+        ("public.catalog_stray_view",) if stray else (),
+        1 if stray else 0,
+    )
+    assert result.views == tuple(sorted("gold." + name for name in names))
+    assert json.loads(invoked.stdout)["complete"] is not stray

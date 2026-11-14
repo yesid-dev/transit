@@ -249,12 +249,16 @@ def test_inventory_flags_an_unclaimed_table_and_a_key_mismatch():
     assert not result.complete
 
 
-def test_inventory_lists_views_without_requiring_declarations():
+def test_inventory_lists_only_declared_views_and_names_unclaimed_views():
     from transit_ops.lake.inventory import take_inventory
 
-    result = take_inventory([relation("gold.z_view", "view"), relation("gold.a_view", "view")])
-    assert result.views == ("gold.a_view", "gold.z_view")
-    assert result.unclaimed == result.unsupported == ()
+    result = take_inventory([
+        relation("gold.z_view", "view"), relation("gold.dim_provider", "view"),
+        relation("gold.a_view", "view"),
+    ])
+    assert result.views == ("gold.dim_provider",)
+    assert result.unclaimed == ("gold.a_view", "gold.z_view")
+    assert result.unsupported == ()
 
 
 def test_inventory_refuses_materialized_views_and_foreign_tables_as_unsupported():
@@ -270,7 +274,8 @@ def test_inventory_refuses_materialized_views_and_foreign_tables_as_unsupported(
     )
     assert result.unsupported == ("external.foreign", "external.other", "gold.z_mv")
     assert "core.providers" in result.missing
-    assert result.copied == result.unclaimed == ()
+    assert result.copied == ()
+    assert result.unclaimed == ("core.providers",)
     assert not result.complete
 
 

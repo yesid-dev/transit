@@ -8,6 +8,27 @@ from transit_ops.lake.catalog import CatalogTable
 
 INFRASTRUCTURE = {"public.alembic_version": "Alembic revision table; maintained by migrations"}
 
+# Definitions are recreated by migrations; these views carry no separate copied data.
+MIGRATION_VIEWS = frozenset(
+    {
+        "gold.current_i3_alerts",
+        "gold.current_stop_next_departures",
+        "gold.current_trip_delay_computed",
+        "gold.current_vehicle_map",
+        "gold.current_vehicle_map_with_status",
+        "gold.dim_provider",
+        "gold.fact_stop_time_delay_observation",
+        "gold.feed_freshness_current",
+        "gold.i3_alert_history_reporting",
+        "gold.map_route_lines",
+        "gold.non_responding_current",
+        "gold.public_route_reliability_daily",
+        "gold.public_stop_delay_daily",
+        "gold.source_lineage_reporting",
+    }
+)
+
+
 @dataclass(frozen=True)
 class Inventory:
     copied: tuple[str, ...]
@@ -54,6 +75,7 @@ def take_inventory(catalog: Sequence[CatalogTable]) -> Inventory:
     catalog = [t for t in catalog if t.name not in infrastructure and t.name not in partitions]
     tables = {table.name: table for table in catalog if table.kind in {"table", "partitioned"}}
     present = tables.keys()
+    views = {table.name for table in catalog if table.kind == "view"}
     keys, windows = [], []
     for name in sorted(present & copied.keys()):
         source, table = copied[name], tables[name]
@@ -70,8 +92,8 @@ def take_inventory(catalog: Sequence[CatalogTable]) -> Inventory:
     return Inventory(
         copied=tuple(sorted(present & copied.keys())),
         working_only=tuple(sorted(present & working)),
-        views=tuple(sorted(table.name for table in catalog if table.kind == "view")),
-        unclaimed=tuple(sorted(present - copied.keys() - working)),
+        views=tuple(sorted(views & MIGRATION_VIEWS)),
+        unclaimed=tuple(sorted((present - copied.keys() - working) | (views - MIGRATION_VIEWS))),
         missing=tuple(sorted((copied.keys() | working) - present)),
         key_mismatch=tuple(keys),
         window_mismatch=tuple(windows),
