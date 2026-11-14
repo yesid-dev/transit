@@ -1,6 +1,6 @@
 import { createServer, type ServerResponse } from 'node:http';
 import { expect, test } from '@playwright/test';
-import { forwardLayoutRoute } from './layout-helpers';
+import { installLayoutRoutes } from './layout-helpers';
 
 for (const action of ['abort', 'unroute', 'complete'] as const)
 	test(`layout forwarding survives ${action} during a held response`, async ({ page }) => {
@@ -16,11 +16,7 @@ for (const action of ['abort', 'unroute', 'complete'] as const)
 			const address = server.address();
 			if (!address || typeof address === 'string') throw new Error('Missing server port');
 			await page.goto(`http://127.0.0.1:${address.port}/`);
-			let settled!: (error: unknown) => void;
-			const completed = new Promise<unknown>((resolve) => (settled = resolve));
-			await page.route('**/v1/**', (route) =>
-				forwardLayoutRoute(route, 'fresh').then(() => settled(null), settled),
-			);
+			const remove = await installLayoutRoutes(page, 'fresh');
 			await page.evaluate(() => {
 				const controller = new AbortController();
 				Object.assign(window, { cancelFixture: () => controller.abort() });
@@ -34,9 +30,12 @@ for (const action of ['abort', 'unroute', 'complete'] as const)
 			const response = await reached;
 			expect(response.req.url).toBe('/__layout/fresh/v1/held.json?probe=1');
 			if (action === 'abort') await page.evaluate(() => Reflect.get(window, 'cancelFixture')());
-			else if (action === 'unroute') await page.unrouteAll();
+			let removed = false;
+			const removing = action === 'unroute' ? remove().then(() => (removed = true)) : null;
+			await page.evaluate(() => document.readyState);
+			if (action === 'unroute') expect(removed).toBe(false);
 			response.end('fixture response');
-			expect(await completed).toBeNull();
+			await (removing ?? remove());
 			expect(await page.evaluate(() => Reflect.get(window, 'fixtureResult'))).toBe(
 				action === 'abort' ? 'AbortError' : 'fixture response',
 			);
