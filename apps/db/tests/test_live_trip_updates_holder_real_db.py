@@ -150,3 +150,54 @@ def test_cold_start_distinguishes_absence_from_unreadable_capture(
     }.get(fault, CaptureIntegrityError)
     with pytest.raises(error):
         _lookup(engine, settings)
+
+
+
+def test_capture_load_with_holder_keeps_silver_rows(engine, settings, seed_provider, monkeypatch):
+    from dataclasses import replace
+    from hashlib import sha256
+
+    from test_live_captures import FRAME_COLUMNS
+    from test_orchestration import _realtime_ingestion_result
+    from test_realtime_silver import FakeBronzeStorage
+
+    from transit_ops import capture_load
+    from transit_ops.snapshots.live_trip_updates import LiveTripUpdates
+
+    _seed(engine, seed_provider)
+    raw_id, run_id, object_id, at, delay = replay.SNAPSHOTS[0]
+    payload = replay._build_trip_update_bytes(captured_at=at, delay_seconds=delay)
+    receipt = replace(
+        _realtime_ingestion_result("trip_updates", raw_id, replay.PROVIDER),
+        ingestion_run_id=run_id, ingestion_object_id=object_id,
+        completed_at_utc=at, feed_timestamp_utc=at, byte_size=len(payload),
+        checksum_sha256=sha256(payload).hexdigest(),
+    )
+    monkeypatch.setattr(capture_load, "_capture_realtime_feed", lambda *a, **k: (receipt, payload))
+    holder = LiveTripUpdates(replay.PROVIDER, policy=POLICY,
+                             fallback=lambda: pytest.fail("warm path used fallback"))
+    class NoRead(FakeBronzeStorage):
+        def read_bytes(self, storage_path):
+            pytest.fail("warm load reread Bronze")
+    inventories = []
+    for observer in (None, holder.accept):
+        result = capture_load.capture_and_load_realtime(
+            replay.PROVIDER, "trip_updates", settings=settings, registry=replay._StubRegistry(),
+            engine=engine, bronze_storage_resolver=lambda _: NoRead(payload),
+            on_trip_updates_loaded=observer,
+        )
+        assert result.failure is None
+        with engine.connect() as c:
+            inventories.append({
+                table: tuple(tuple(row) for row in c.execute(text(
+                    f"SELECT {', '.join(columns)} FROM silver.{table} "
+                    "WHERE provider_id=:p ORDER BY entity_index" +
+                    (", stop_time_update_index" if table.endswith("stop_times") else "")
+                ), {"p": replay.PROVIDER}).all())
+                for table, columns in FRAME_COLUMNS.items()
+            })
+    assert inventories[0] == inventories[1]
+    assert inventories[1] == {table: frame.rows for table, frame in holder.latest().frames.items()}
+    assert holder.latest().frames["rt_trip_update_stop_times"].column("arrival_time_utc") == [
+        datetime(2026, 6, 20, 16, 9, tzinfo=UTC)
+    ]

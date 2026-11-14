@@ -14,6 +14,7 @@ from transit_ops.failed_load_tag import format_failed_load_error
 from transit_ops.ingestion.common import redact_error_message, utc_now
 from transit_ops.ingestion.realtime_gtfs import RealtimeIngestionResult, _capture_realtime_feed
 from transit_ops.ingestion.storage import BronzeStorageResolver
+from transit_ops.live.captures import CaptureRef
 from transit_ops.providers import ProviderRegistry
 from transit_ops.settings import Settings
 from transit_ops.silver.realtime_gtfs import RealtimeSilverLoadResult, _load_realtime_to_silver
@@ -199,6 +200,7 @@ def capture_and_load_realtime(
     registry: ProviderRegistry,
     engine: Engine,
     bronze_storage_resolver: BronzeStorageResolver,
+    on_trip_updates_loaded: Callable[[bytes, CaptureRef], None] | None = None,
 ) -> RealtimeCaptureLoadResult:
     source_verified = False
 
@@ -257,6 +259,19 @@ def capture_and_load_realtime(
         silver_label_prefix="load-realtime-silver",
         capture_row_id_of=capture_row_id_of,
     )
+    if (result.failure is None and result.capture is not None
+            and endpoint_key == "trip_updates" and on_trip_updates_loaded is not None):
+        captured = result.capture
+        receipt = captured.receipt
+        try:
+            on_trip_updates_loaded(captured.payload, CaptureRef(
+                receipt.provider_id, receipt.endpoint_key, receipt.realtime_snapshot_id,
+                receipt.completed_at_utc, receipt.feed_timestamp_utc,
+                receipt.byte_size, receipt.checksum_sha256,
+            ))
+        except Exception as exc:
+            # Silver has committed; an optional observer cannot falsify its outcome.
+            logger.error("Trip updates holder update failed: %s", redact_error_message(str(exc)))
     return CaptureLoadResult(
         capture=result.capture.receipt if result.capture is not None else None,
         silver=result.silver,
