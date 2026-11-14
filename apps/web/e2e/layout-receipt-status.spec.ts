@@ -3,6 +3,44 @@ import { test } from './layout-test';
 import { forwardRoute } from './layout-helpers';
 import { copy as healthCopy } from '../src/lib/features/health/health.copy';
 import { copy as receiptCopy } from '../src/lib/features/receipt/receipt.copy';
+import { navPillCopy } from '../src/lib/i18n/messages';
+
+for (const locale of ['en', 'fr'] as const)
+	test(`${locale} status summary keeps its place while the page hydrates and refreshes`, async ({
+		page,
+	}) => {
+		await page.setViewportSize({ width: 390, height: 844 });
+		let release = (): void => {};
+		const held = new Promise<void>((resolve) => (release = resolve));
+		await page.route('**/_app/immutable/**/*.js', (route) => held.then(() => route.fallback()));
+		await page.goto(`${locale === 'fr' ? '/fr' : ''}/status`, { waitUntil: 'commit' });
+		const summary = page.locator('[data-slot="health-summary"]');
+		await expect(summary).toHaveAttribute('aria-busy', 'true');
+		await page.addStyleTag({ content: 'html { font-size: 200%; }' });
+		await expect(summary).toHaveCSS('display', 'flex'); // its stylesheet has applied
+		// WebKit settles fonts only after the held scripts load: wait for them, at most 2 s.
+		await page.evaluate(() =>
+			Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 2e3))]),
+		);
+		// The block after the summary starts at its bottom: hold the summary's own height. Shifts
+		// above it (the header settling) or below it (resource regions reloading) are not its own.
+		const nextTop = async () => (await summary.boundingBox())!.height;
+		const before = await nextTop();
+		release();
+		await expect(summary).toHaveAttribute('aria-busy', 'false');
+		expect(Math.abs((await nextTop()) - before)).toBeLessThanOrEqual(1);
+		const failing = new Promise<void>((resolve) => (release = resolve));
+		await page.route('**/historic/history/index.json', (route) =>
+			failing.then(() => route.abort()),
+		);
+		const pending = page.waitForRequest('**/historic/history/index.json');
+		await page.getByRole('button', { name: navPillCopy[locale].refresh }).click();
+		await pending;
+		expect(Math.abs((await nextTop()) - before)).toBeLessThanOrEqual(1);
+		release(); // the history request fails
+		await expect(page.locator('[data-slot="refresh-result"]')).not.toBeEmpty();
+		expect(Math.abs((await nextTop()) - before)).toBeLessThanOrEqual(1);
+	});
 
 // Replay the same missing observations for each provider so both layouts exercise
 // absence rather than relying on the state of an agency's live feed.
@@ -32,7 +70,12 @@ for (const provider of ['stm', 'octranspo'])
 					await expect(page.getByRole('heading', { level: 1 })).toHaveText(
 						healthCopy[locale].heading,
 					);
-					await expect(page.getByText(healthCopy[locale].lede, { exact: true })).toBeVisible();
+					const summary = page.locator('[data-slot="health-summary"]');
+					await expect(summary).toHaveAttribute('aria-busy', 'false');
+					for (const line of await summary.locator('p').all()) {
+						const fits = await line.evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
+						expect(fits, await line.textContent()).toBe(true);
+					}
 					for (const title of await page.locator('.health-detail .section-title:visible').all()) {
 						const fits = await title.evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
 						expect(fits, await title.textContent()).toBe(true);
