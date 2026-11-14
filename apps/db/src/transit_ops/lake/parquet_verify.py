@@ -64,6 +64,23 @@ def _digest(path: Path) -> tuple[str, int]:
     return digest.hexdigest(), size
 
 
+def _check_types(connection: duckdb.DuckDBPyConnection, path: Path, schema: TableSchema) -> None:
+    physical = connection.execute(
+        "SELECT name, type, duckdb_type, logical_type FROM parquet_schema(?) ORDER BY column_id",
+        [str(path)],
+    ).fetchall()[1:]
+    types = schema.duckdb_types()
+    if [row[0] for row in physical] != list(types) or [
+        duckdb.sqltype(row[2]) for row in physical
+    ] != [duckdb.sqltype(value) for value in types.values()]:
+        raise CopyDiffers("types", "Parquet column names, order or types differ")
+    for row in physical:
+        if row[2].startswith("TIMESTAMP") and (
+            row[1] != "INT64" or "MICROS=MicroSeconds()" not in (row[3] or "")
+        ):
+            raise CopyDiffers("types", "Parquet timestamp storage must use microseconds")
+
+
 def check_window_files(
     csv_path: Path, parquet_path: Path, schema: TableSchema, *, expect: Expected, temp_dir: Path
 ) -> FileChecks:
@@ -79,12 +96,21 @@ def check_window_files(
     object_sha, object_bytes = _digest(parquet_path)
     if expect.object_sha256 is not None and object_sha != expect.object_sha256:
         raise CopyDiffers("object_digest", "Parquet SHA-256 differs from expected")
+    with csv_path.open("rb") as source:
+        if (
+            source.readline()
+            != (",".join(column.name for column in schema.columns) + "\n").encode()
+        ):
+            raise CopyDiffers("schema", "CSV header differs from schema")
     with connect(temp_dir) as connection:
-        metadata = dict(
-            connection.execute(
-                "SELECT key, value FROM parquet_kv_metadata(?)", [str(parquet_path)]
-            ).fetchall()
-        )
+        try:
+            metadata = dict(
+                connection.execute(
+                    "SELECT key, value FROM parquet_kv_metadata(?)", [str(parquet_path)]
+                ).fetchall()
+            )
+        except duckdb.InvalidInputException as error:
+            raise CopyDiffers("metadata", "Unreadable Parquet metadata") from error
         for key, value in {
             b"transit.schema": schema.to_json(),
             b"transit.content_sha256": expect.content_sha256.encode(),
@@ -92,12 +118,8 @@ def check_window_files(
         }.items():
             if metadata.get(key) != value:
                 raise CopyDiffers("metadata", f"{key.decode()} differs from expected")
+        _check_types(connection, parquet_path, schema)
         parquet = connection.read_parquet(str(parquet_path), hive_partitioning=False)
-        types = schema.duckdb_types()
-        if parquet.columns != list(types) or parquet.types != [
-            duckdb.sqltype(value) for value in types.values()
-        ]:
-            raise CopyDiffers("types", "Parquet column names, order or types differ")
         csv = read_canonical_csv(connection, csv_path, schema)
         for name, relation in (("CSV", csv), ("Parquet", parquet)):
             count = int(relation.aggregate("count(*)").fetchall()[0][0])

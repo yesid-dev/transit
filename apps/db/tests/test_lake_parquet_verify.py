@@ -12,10 +12,12 @@ from transit_ops.lake.parquet_verify import CopyDiffers, Expected, check_window_
 from transit_ops.lake.table_schema import TableSchema
 
 
-def window(tmp_path, data=b'id,value\n1,\n2,""\n', pg_type="text"):
+def window(tmp_path, data=b'id,value\n1,\n2,""\n', pg_type="text", names=("id", "value")):
     csv = tmp_path / "input.csv"
     csv.write_bytes(data)
-    schema = TableSchema.from_columns([("id", "integer", True), ("value", pg_type, False)], ["id"])
+    schema = TableSchema.from_columns(
+        [(names[0], "integer", True), (names[1], pg_type, False)], [names[0]]
+    )
     written = write_window(csv, schema, tmp_path / "out.parquet", metadata={}, temp_dir=tmp_path)
     return csv, written, Expected(hashlib.sha256(data).hexdigest(), written.rows, None)
 
@@ -127,18 +129,23 @@ def test_checks_both_row_counts(tmp_path, side):
 def test_accepts_the_declared_types_including_aliases(tmp_path, pg_type, value):
     csv, written, expected = window(tmp_path, f"id,value\n1,{value}\n".encode(), pg_type)
     expected = replace(expected, object_sha256=written.sha256)
-    assert (
-        check_window_files(
-            csv, written.path, written.schema, expect=expected, temp_dir=tmp_path
-        ).rows
-        == 1
+    checks = check_window_files(
+        csv, written.path, written.schema, expect=expected, temp_dir=tmp_path
     )
+    assert checks.rows == 1
 
 
-def test_accepts_an_empty_window_in_a_hive_named_directory(tmp_path):
+def test_accepts_an_empty_window_in_a_hive_named_directory(tmp_path, monkeypatch):
     folder = tmp_path / "id=999"
     folder.mkdir()
     csv, written, expected = window(folder, b"id,value\n")
+    original = duckdb.DuckDBPyConnection.read_parquet
+
+    def hive_default(connection, *args, hive_partitioning=True, **kwargs):
+        assert hive_partitioning is False  # Guard omission despite the pinned reader's default.
+        return original(connection, *args, hive_partitioning=hive_partitioning, **kwargs)
+
+    monkeypatch.setattr(duckdb.DuckDBPyConnection, "read_parquet", hive_default)
     assert (
         check_window_files(csv, written.path, written.schema, expect=expected, temp_dir=folder).rows
         == 0
@@ -197,3 +204,47 @@ def test_read_back_streams_and_leaves_no_partial_final_file(tmp_path, failure):
             read_back(storage, "object", destination)
         assert destination.read_bytes() == b"abc" * 50_000
     assert set(tmp_path.iterdir()) == ({destination} if not failure else set())
+
+
+def test_refuses_physical_duplicate_names(tmp_path):
+    csv, written, expected = window(tmp_path, b"id,id_1\n1,x\n", names=("id", "id_1"))
+    target = changed_file(tmp_path, written, "SELECT id, id_1 AS zz FROM original")
+    target.write_bytes(target.read_bytes().replace(b"zz", b"id"))
+    with pytest.raises(CopyDiffers) as error:
+        check_window_files(csv, target, written.schema, expect=expected, temp_dir=tmp_path)
+    assert error.value.reason == "types"
+
+
+@pytest.mark.parametrize("payload", [b"", b"not parquet", None])
+def test_unreadable_metadata_is_a_named_failure(tmp_path, payload):
+    csv, written, expected = window(tmp_path)
+    written.path.write_bytes(payload if payload is not None else written.path.read_bytes()[:-10])
+    with pytest.raises(CopyDiffers) as error:
+        check_window_files(csv, written.path, written.schema, expect=expected, temp_dir=tmp_path)
+    assert error.value.reason == "metadata"
+    assert isinstance(error.value.__cause__, duckdb.InvalidInputException)
+    assert len(error.value.detail) < 100
+
+
+def test_refuses_millisecond_timestamp_storage(tmp_path):
+    csv, written, expected = window(
+        tmp_path, b"id,value\n1,2026-11-01 00:00:00.123456\n", "timestamp without time zone"
+    )
+    target = changed_file(
+        tmp_path, written, "SELECT id, value::TIMESTAMP_MS AS value FROM original"
+    )
+    with pytest.raises(CopyDiffers) as error:
+        check_window_files(csv, target, written.schema, expect=expected, temp_dir=tmp_path)
+    assert error.value.reason == "types"
+
+
+def test_refuses_a_csv_header_that_differs_from_the_schema(tmp_path):
+    csv, written, expected = window(tmp_path)
+    csv.write_bytes(b"value,id\n1,x\n2,y\n")
+    expected = replace(expected, content_sha256=hashlib.sha256(csv.read_bytes()).hexdigest())
+    target = changed_file(
+        tmp_path, written, changes={"transit.content_sha256": expected.content_sha256}
+    )
+    with pytest.raises(CopyDiffers) as error:
+        check_window_files(csv, target, written.schema, expect=expected, temp_dir=tmp_path)
+    assert error.value.reason == "schema"
