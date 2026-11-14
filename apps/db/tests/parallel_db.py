@@ -10,9 +10,11 @@ No OS locks or tools.
 from __future__ import annotations
 
 import os
+import re
 from uuid import uuid4
 
 import pytest
+from psycopg.conninfo import conninfo_to_dict, make_conninfo
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.pool import NullPool
@@ -21,6 +23,31 @@ from transit_ops.db.target_safety import assert_disposable_test_url, parse_datab
 
 _DATABASES = pytest.StashKey[list[URL]]()
 DatabaseSetting = tuple[str | None, str, str]
+
+
+def _connect_kwargs(url: URL) -> dict[str, str]:
+    args, options = url.get_dialect()().create_connect_args(url)
+    options.pop("context", None)
+    return conninfo_to_dict(make_conninfo(*args, **options))
+
+
+def guarded_connect_kwargs(url: URL) -> dict[str, str]:
+    options = _connect_kwargs(url)
+    target = URL.create(url.drivername, query=options).render_as_string(hide_password=False)
+    assert_disposable_test_url(target, os.environ)
+    return options
+
+
+def guarded_login_kwargs(base_url: URL, login: URL) -> dict[str, str]:
+    """Use only the fixture-created rescue credentials on the guarded endpoint."""
+    assert_disposable_test_url(base_url.render_as_string(hide_password=False), os.environ)
+    base = guarded_connect_kwargs(base_url)
+    candidate = _connect_kwargs(login)
+    if not re.fullmatch(r"rescue_[0-9a-f]{32}", candidate.get("user", "")):
+        raise ValueError("Expected a fixture-created rescue login")
+    if any(candidate.get(key) != base.get(key) for key in ("host", "hostaddr", "port", "dbname")):
+        raise ValueError("Rescue login endpoint differs from guarded base")
+    return base | {"user": candidate["user"], "password": candidate["password"]}
 
 
 def _database_url(base: str, database: str) -> URL:
