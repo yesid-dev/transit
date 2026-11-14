@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
 import type { RouteFile, StopPrediction } from '#lib/v1/index.ts';
 import LineDirections from './LineDirections.svelte';
@@ -13,46 +13,67 @@ const DIRECTIONS: RouteFile['directions'] = [
 			{ id: 'sB', seq: 2, name: 'Second stop' },
 		],
 	},
+	{ dir: 1, headsign: 'Westbound', stops: [{ id: 'sC', seq: 1, name: 'Third stop' }] },
 ];
 
 const PREDICTIONS = new Map<string, StopPrediction>([
 	['sA', { etaUtc: '2026-06-15T12:05:00Z', delayMin: 2 }],
 ]);
 
+const props = (locale: 'en' | 'fr') => ({
+	directions: DIRECTIONS,
+	predictions: PREDICTIONS,
+	locale,
+	copy: detailCopy[locale],
+	timeZone: 'America/Toronto',
+});
+
 describe('LineDirections', () => {
 	it.each([
-		['en', '8:05 a.m.'],
-		['fr', '8 h 05'],
+		['en', '8:05 a.m.', ['Stop', 'Next arrival (predicted)', 'Delay'], '2 min late'],
+		['fr', '8 h 05', ['Arrêt', 'Prochain passage (prédit)', 'Retard'], '2 min en retard'],
 	] as const)(
-		'preserves prediction delay and explains an absent prediction in %s',
-		(locale, clock) => {
-			render(LineDirections, {
-				props: {
-					directions: DIRECTIONS,
-					predictions: PREDICTIONS,
-					locale,
-					copy: detailCopy[locale],
-					timeZone: 'America/Toronto',
-				},
-			});
+		'directions start closed and the time column is labelled in %s',
+		async (locale, clock, headers, late) => {
+			const { container, rerender } = render(LineDirections, { props: props(locale) });
+			const [east, west] = container.querySelectorAll('details');
+			expect([east.open, west.open]).toEqual([false, false]);
+			const summary = east.querySelector('summary') as HTMLElement;
+			expect(within(summary).getByText('Eastbound')).toBeInTheDocument();
+			expect(within(summary).getByText(detailCopy[locale].stopsCount(2))).toBeInTheDocument();
 
-			expect(
-				screen.getByText(locale === 'en' ? '2 min late' : '2 min en retard'),
-			).toBeInTheDocument();
+			await fireEvent.click(within(summary).getByText('Eastbound'));
+			expect([east.open, west.open]).toEqual([true, false]);
+			const table = within(east).getByRole('table');
+			const columns = within(table).getAllByRole('columnheader');
+			expect(columns.map((column) => column.textContent?.trim())).toEqual(headers);
+			const row = within(table).getByRole('row', { name: /First stop/ });
+			const [time, delay] = within(row).getAllByRole('cell') as HTMLTableCellElement[];
+			expect([time.cellIndex, delay.cellIndex]).toEqual([1, 2]);
+			expect(within(time).getByText(clock)).toHaveAttribute('datetime', '2026-06-15T12:05:00Z');
+			expect(delay).toHaveTextContent(late);
+
+			await rerender({ predictions: new Map() });
+			expect([east.open, west.open]).toEqual([true, false]);
+		},
+	);
+
+	it.each(['en', 'fr'] as const)(
+		'keeps the stop link and explains an absent prediction across both value columns in %s',
+		(locale) => {
+			render(LineDirections, { props: props(locale) });
 			const action = locale === 'en' ? 'View stop' : 'Voir l’arrêt';
 			expect(screen.getByTitle('First stop')).toHaveTextContent('First stop');
-			const predicted = screen.getByRole('link', { name: /First stop/ });
-			expect(predicted.querySelector('time')?.textContent?.trim()).toBe(clock);
-			expect(predicted).toHaveAccessibleName(
-				`${action} 1 First stop ${predicted.querySelector('time')!.textContent} ${locale === 'en' ? '2 min late' : '2 min en retard'}`,
+			expect(screen.getByRole('link', { name: /First stop/ })).toHaveAccessibleName(
+				`${action} 1 First stop`,
 			);
-			const stop = screen.getByRole('link', { name: /Second stop/ });
-			expect(stop).toHaveAccessibleName(
-				`${action} 2 Second stop ${locale === 'en' ? 'No estimate, no prediction available' : 'Aucune estimation, aucune prévision disponible'}`,
-			);
-			const empty = stop.querySelector('[data-slot="absent-value"]');
-			expect(empty).toHaveAttribute('data-presentation', 'row');
-			expect(empty).toHaveAttribute(
+			const stop = screen.getByRole('row', { name: /Second stop/ });
+			expect(within(stop).getByRole('link')).toHaveAccessibleName(`${action} 2 Second stop`);
+			const [empty] = within(stop).getAllByRole('cell');
+			expect(empty).toHaveAttribute('colspan', '2');
+			const absence = empty.querySelector('[data-slot="absent-value"]');
+			expect(absence).toHaveAttribute('data-presentation', 'row');
+			expect(absence).toHaveAttribute(
 				'aria-label',
 				locale === 'en'
 					? 'No estimate, no prediction available'
