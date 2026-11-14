@@ -312,8 +312,8 @@ def guard_oracle(real_db_engine, clock):
         real_db_engine.url.render_as_string(hide_password=False),
         clock=clock,
         environment=os.environ,
-    ) as engine:
-        yield engine
+    ) as handle:
+        yield handle.engine
 
 
 @pytest.mark.parametrize(
