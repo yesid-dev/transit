@@ -229,9 +229,15 @@ _Avoid_: unknown vehicle, idle bus, ghost
 One active feed family is stale while another is current or has not loaded yet. It cannot establish that the whole feed has stopped responding.
 _Avoid_: outage, whole-feed stall
 
+**Publish heartbeat**:
+The record a publisher leaves after each publication: when, how many files, and the gate's outcome.
+
 **Published uncertainty range**:
 The lower and upper percentage bounds supplied with a reliability reading. They express uncertainty in that reading and do not supply a missing exact on-time count.
 _Avoid_: reconstructed count, guaranteed range
+
+**Publisher lease**:
+The right of one process to publish one lane of one provider until a set time.
 
 **Live-eligible KPI sample**:
 A valid current KPI reading with the delay, coverage, route total and at least one route delay needed for the live summary. A valid but incomplete reading is a demo sample; an invalid response is a failure.
