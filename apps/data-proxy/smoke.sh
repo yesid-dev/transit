@@ -187,10 +187,12 @@ SNAPSHOT_PARSER='
         target = new URL(pointer.replace(/^\/(data\/)?/, ""), root);
       } else target = new URL(pointer, source);
       if (target.origin !== root.origin || target.username || target.password || !["http:", "https:"].includes(target.protocol)) throw 0;
-      // Same-origin absolute legacy pointers use the direct canonical mount too.
-      if (target.pathname.startsWith("/data/v1/")) target = new URL(target.pathname.slice(6), root);
-      else if (target.pathname.startsWith("/v1/")) target = new URL(target.pathname.slice(1), root);
       const prefix = new URL(namespace, root).pathname;
+      // Preserve targets already resolved under the configured canonical mount.
+      if (!target.pathname.startsWith(prefix)) {
+        if (target.pathname.startsWith("/data/v1/")) target = new URL(target.pathname.slice(6), root);
+        else if (target.pathname.startsWith("/v1/")) target = new URL(target.pathname.slice(1), root);
+      }
       if (!target.pathname.startsWith(prefix) || !target.pathname.endsWith(mode === "manifest" ? ".json" : ".pmtiles")) throw 0;
       console.log(target.href);
     } catch { refuse("snapshot_pointer_invalid"); }

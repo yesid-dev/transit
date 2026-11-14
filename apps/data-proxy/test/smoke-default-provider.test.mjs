@@ -108,7 +108,7 @@ test("smoke follows a non-STM catalogue default and its published basemap pointe
 });
 
 // Independent literal route sequence: metadata, the established gates, then KPI.
-function expectedTranscript(provider) {
+function expectedTranscript(provider, base = "/root") {
   return [
     ["GET", "canonical", "/v1/providers.json"],
     ["GET", "canonical", `/v1/${provider}/manifest.json`],
@@ -127,7 +127,7 @@ function expectedTranscript(provider) {
     ...["/v1/sto/", "/v1%2Fsto/", "/v1/sto%2F", "/v1/%73to/"].map(p => ["GET", "fallback", `${p}static/routes_index.json`]),
     ["GET", "apex", "/api/v1/kpis"], ["HEAD", "apex", "/api/v1/kpis"],
     ["GET", "apex", "/api/v1/definitely-missing"], ["POST", "apex", "/api/vitals"],
-  ].map(([method, host, path]) => [method, `https://${host}.test/root${path}`]);
+  ].map(([method, host, path]) => [method, `https://${host}.test${base}${path}`]);
 }
 
 test("STM smoke keeps the established probes and adds only metadata discovery reads", options, (t) => {
@@ -180,16 +180,20 @@ for (const pointer of ["https://foreign.test/v1/third/tile.pmtiles", "/v1/stm/ti
   });
 }
 
-for (const [descriptor, tile] of [
+for (const [descriptor, tile, base = "/root"] of [
   ["static/map-description.json", "basemap/unrelated.pmtiles"],
   ["/v1/third/static/map-description.json", "/v1/third/static/basemap/unrelated.pmtiles"],
   ["/data/v1/third/static/map-description.json", "/data/v1/third/static/basemap/unrelated.pmtiles"],
   ["https://canonical.test/v1/third/static/map-description.json", "https://canonical.test/data/v1/third/static/basemap/unrelated.pmtiles"],
   ["https://canonical.test/root/v1/third/static/map-description.json", "https://canonical.test/root/v1/third/static/basemap/unrelated.pmtiles"],
+  ["static/map-description.json", "basemap/unrelated.pmtiles", "/v1/mount"],
+  ["static/map-description.json", "basemap/unrelated.pmtiles", "/v1"],
+  ["static/map-description.json", "basemap/unrelated.pmtiles", "/data/v1/mount"],
+  ["static/map-description.json", "/data/v1/third/static/basemap/unrelated.pmtiles", ""],
 ]) {
-  test(`smoke resolves published pointer forms ${descriptor}`, options, (t) => {
-    const result = probe(t, { manifest: { provider: "third", files: { static: { basemap: descriptor } } }, descriptor: { url: tile } });
+  test(`smoke resolves published pointer forms ${descriptor} at canonical base ${base || "/"}`, options, (t) => {
+    const result = probe(t, { base, manifest: { provider: "third", files: { static: { basemap: descriptor } } }, descriptor: { url: tile } });
     assert.equal(result.status, 0, result.stderr);
-    assert.deepEqual(result.transcript.map(r => [r.method, r.url]), expectedTranscript("third"));
+    assert.deepEqual(result.transcript.map(r => [r.method, r.url]), expectedTranscript("third", base));
   });
 }
