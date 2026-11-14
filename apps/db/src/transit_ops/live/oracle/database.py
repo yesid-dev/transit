@@ -184,20 +184,22 @@ def _literal_reason(
 def assert_clock_pinned(
     connection: Connection, *, migration_starts: Collection[datetime] | None = None
 ) -> None:
-    starts = (
-        migration_starts
-        if migration_starts is not None
-        else connection.info.get("oracle_starts", ())
-    )
     params = {
         "functions": list(_CLOCK_FUNCTIONS),
         "pinned": list(_PINNED),
         "schemas": ["core", "gold", "silver", "raw", "ops"],
         "clock_schema": CLOCK_SCHEMA,
     }
+    objects = connection.execute(text(_CLOCK_OBJECTS_SQL), params)
+    # The first query triggers autobegin, which attaches the recorded transaction starts.
+    starts = (
+        migration_starts
+        if migration_starts is not None
+        else connection.info.get("oracle_starts", ())
+    )
     findings: list[tuple[str, str]] = []
     cache: dict[str, str | None] = {}
-    for name, source, kind, dependency in connection.execute(text(_CLOCK_OBJECTS_SQL), params):
+    for name, source, kind, dependency in objects:
         scan = source
         if kind == "sql":
             for token in _TOKEN.finditer(source):
