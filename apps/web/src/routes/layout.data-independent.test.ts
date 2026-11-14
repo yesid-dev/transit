@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { KitNavigationSimulator } from '#lib/features/map/__fixtures__/KitNavigationSimulator.ts';
 import type { V1Context } from '#lib/v1/boot.ts';
 import type { IsoUtc } from '#lib/v1/schemas/index.ts';
-import type { ChromeSearchResult } from '#lib/search/transitSearch.ts';
+import type { SearchList } from '#lib/search/transitSearch.ts';
 import { NAV_GROUPS } from '#lib/content/nav.ts';
 import { footerCopy } from '#lib/components/layout/footer.copy.ts';
 
@@ -165,16 +165,19 @@ vi.mock('@yesid/ui/state', async (importOriginal) => ({
 	},
 	desktop: { current: true },
 }));
-const headerResults = vi.hoisted(() => ({ current: [] as ChromeSearchResult[] }));
-vi.mock('#lib/search/transitSearch.ts', async (importOriginal) => ({
-	searchHitHref: (await importOriginal<typeof import('#lib/search/transitSearch.ts')>())
-		.searchHitHref,
-	searchTransit: () => headerResults.current,
-	scopeForPath: () => 'all',
-}));
+const headerList = vi.hoisted(() => ({ current: null as SearchList | null }));
+vi.mock('#lib/search/transitSearch.ts', async (importOriginal) => {
+	const real = await importOriginal<typeof import('#lib/search/transitSearch.ts')>();
+	const search = real.searchTransit as (...args: unknown[]) => unknown;
+	return {
+		...real,
+		searchTransit: (...args: unknown[]) => headerList.current ?? search(...args),
+		scopeForPath: () => 'all',
+	};
+});
 
 import RootLayout from './+layout.svelte';
-import { goto } from '$app/navigation';
+import { searchTransit } from '#lib/search/transitSearch.ts';
 import RootLayoutMapRouteHarness from './__fixtures__/RootLayoutMapRouteHarness.svelte';
 
 const children = createRawSnippet(() => ({
@@ -292,7 +295,9 @@ describe('root layout data-independent legal routes', () => {
 		const request = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{"results":[]}'));
 		try {
 			const { getByRole } = renderWithoutV1('/network?provider=octranspo', 'en');
-			await fireEvent.input(getByRole('combobox'), { target: { value: 'Bank Street' } });
+			await fireEvent.input(getByRole('combobox', { name: 'Search the network' }), {
+				target: { value: 'Bank Street' },
+			});
 			await fireEvent.submit(getByRole('search'));
 			await settled();
 			expect(request).not.toHaveBeenCalled();
@@ -511,16 +516,19 @@ describe('root layout data-independent legal routes', () => {
 });
 
 it('a header result keeps the tab and period the reader sees, not the ones first requested', async () => {
-	headerResults.current = [{ kind: 'route', id: '1-373', label: '1 Confederation', priority: 0 }];
+	headerList.current = searchTransit(
+		{ surface: 'list', query: '1' },
+		{ routes: [{ id: '1-373', short: '1', long: 'Confederation', type: 1 }], stops: [] },
+	);
 	try {
 		const view = renderWithoutV1('/lines/24?tab=reliability&grain=month&from=2026-11-01', 'en');
 		// The record view mirrors its corrected state shallowly: page.url keeps the old query.
 		harness.shallowUrl('/lines/24?tab=schedule&grain=range&from=2026-11-02&to=2026-11-08');
-		await fireEvent.input(view.getByRole('searchbox', { name: 'Search the network' }), {
+		await fireEvent.input(view.getByRole('combobox', { name: 'Search the network' }), {
 			target: { value: '1' },
 		});
-		await fireEvent.click(view.getByRole('button', { name: 'Line 1 Confederation' }));
-		const href = new URL(String(vi.mocked(goto).mock.calls.at(-1)![0]), 'https://transit.local');
+		const row = view.getByRole('option', { name: 'Line 1 · Confederation' });
+		const href = new URL(row.getAttribute('href')!, 'https://transit.local');
 		expect(href.pathname).toBe('/lines/1-373');
 		expect(['tab', 'grain', 'from', 'to'].map((key) => href.searchParams.get(key))).toEqual([
 			'schedule',
@@ -529,7 +537,7 @@ it('a header result keeps the tab and period the reader sees, not the ones first
 			'2026-11-08',
 		]);
 	} finally {
-		headerResults.current = [];
+		headerList.current = null;
 		window.history.replaceState({}, '', '/');
 	}
 });

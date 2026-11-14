@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 
 import { navPillCopy } from '../src/lib/i18n/messages';
+import { headerSearchCopy } from '../src/lib/components/shell/headerSearch.copy';
 import { SURFACE_NAV } from '../src/lib/content/nav';
 import { copy as searchCopy } from '../src/lib/features/search/search.copy';
 import { detailCopy as lineCopy } from '../src/lib/features/lines/lines.copy';
@@ -58,10 +59,10 @@ for (const locale of PUBLISHED_LOCALES) {
 	}) => {
 		test.skip(project.name !== 'desktop', 'the header search box shows from 1024px');
 		await page.goto(localizeHref(stops, locale));
-		const box = page.getByRole('searchbox', { name: nav.searchAria.stop });
+		const box = page.getByRole('combobox', { name: nav.searchAria.stop });
 		const result = page
-			.getByRole('group', { name: nav.searchAria.stop })
-			.getByRole('button', { name: new RegExp(literal(stop.name)) });
+			.getByRole('listbox', { name: nav.searchAria.stop })
+			.getByRole('option', { name: new RegExp(literal(stop.name)) });
 		// Hydration can reset the box; retry until the results answer.
 		await expect(async () => {
 			await box.fill(stop.name);
@@ -78,10 +79,10 @@ for (const locale of PUBLISHED_LOCALES) {
 	}) => {
 		test.skip(project.name !== 'desktop', 'the header search box shows from 1024px');
 		await page.goto(localizeHref('/', locale));
-		const box = page.getByRole('searchbox', { name: nav.searchAria.all });
+		const box = page.getByRole('combobox', { name: nav.searchAria.all });
 		const result = page
-			.getByRole('group', { name: nav.searchAria.all })
-			.getByRole('button', { name: new RegExp(literal(address.label)) });
+			.getByRole('listbox', { name: nav.searchAria.all })
+			.getByRole('option', { name: new RegExp(literal(address.label)) });
 		await expect(async () => {
 			await box.fill(address.label);
 			await expect(result).toBeVisible({ timeout: 1_000 });
@@ -97,15 +98,16 @@ for (const locale of PUBLISHED_LOCALES) {
 	// Fills the header field until hydration keeps the value and the row answers.
 	async function headerRow(page: Page, scope: 'all' | 'route', query: string, row: string) {
 		const result = page
-			.getByRole('group', { name: nav.searchAria[scope] })
-			.getByRole('button', { name: new RegExp(`^${literal(row)}`) });
+			.getByRole('listbox', { name: nav.searchAria[scope] })
+			.getByRole('option', { name: new RegExp(`^${literal(row)}`) });
 		await expect(async () => {
-			await page.getByRole('searchbox', { name: nav.searchAria[scope] }).fill(query);
+			await page.getByRole('combobox', { name: nav.searchAria[scope] }).fill(query);
 			await expect(result).toBeVisible({ timeout: 1_000 });
 		}).toPass();
 		return result;
 	}
-	const lineRow = (entry: typeof line) => `${nav.searchKind.route} ${entry.short} ${entry.long}`;
+	const lineRow = (entry: typeof line) =>
+		`${headerSearchCopy[locale].kind.route} ${entry.short} · ${entry.long}`;
 
 	test(`${locale}: the header search opens a line page from the home page`, async ({ page }, {
 		project,
