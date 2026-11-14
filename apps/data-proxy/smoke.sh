@@ -154,32 +154,80 @@ assert_retired_provider() {
   fail "$url exhausted $EDGE_MAX_ATTEMPTS attempts without retired-provider $expected_status (last $last_result)"
 }
 
+snapshot_metadata() { node -e "$SNAPSHOT_PARSER" "$@"; }
+
 # --- direct R2 custom domain: manifest + all three tiers + provenance (hard asserts;
 # --- historic went publicly live 2026-06-10, values from snapshots/storage.py) ---
-assert_object "$CANONICAL_BASE/v1/stm/manifest.json" "public, max-age=20"
-curl -fsS --max-time "$MAX_TIME" "$CANONICAL_BASE/v1/stm/manifest.json" \
-  | grep -q '"provider":"stm"' || fail "manifest body missing \"provider\":\"stm\""
-ok "manifest body carries provider stm"
-assert_edge_hit "$CANONICAL_BASE/v1/stm/manifest.json" "public, max-age=20"
-assert_range_preflight "$CANONICAL_BASE/v1/stm/static/basemap/montreal.pmtiles"
-assert_missing_edge_bypass "$CANONICAL_BASE/v1/stm/definitely-missing.json"
+SNAPSHOT_PARSER='
+    const fs = require("node:fs");
+    const [mode, base, provider, source] = process.argv.slice(1);
+    const refuse = (name) => { console.error(`FAIL: ${name}`); process.exit(1); };
+    let doc;
+    try { doc = JSON.parse(fs.readFileSync(0, "utf8")); }
+    catch { refuse(mode === "catalogue" ? "catalogue_invalid" : "snapshot_pointer_invalid"); }
+    if (mode === "catalogue") {
+      if (!doc || !Array.isArray(doc.providers) || doc.providers.some(p => !p || typeof p.id !== "string")) refuse("catalogue_invalid");
+      const id = doc.default_provider;
+      if (typeof id !== "string" || !id) refuse("default_provider_missing");
+      if (!/^[a-z0-9][a-z0-9_-]*$/.test(id)) refuse("catalogue_invalid");
+      if (doc.providers.filter(p => p.id === id).length !== 1) refuse("default_provider_unknown");
+      console.log(id);
+      process.exit(0);
+    }
+    if (mode === "manifest" && doc?.provider !== provider) refuse("manifest_provider_mismatch");
+    const pointer = mode === "manifest" ? doc?.files?.static?.basemap : doc?.url;
+    if (typeof pointer !== "string" || !pointer) refuse("basemap_pointer_missing");
+    try {
+      // Reject ambiguous spellings before URL normalization can erase traversal.
+      if (/[\\%\s?#]/.test(pointer) || pointer.split("/").some(p => p === "." || p === "..")) throw 0;
+      const root = new URL(base.replace(/\/$/, "") + "/");
+      const namespace = `v1/${provider}/`;
+      let target;
+      if (pointer.startsWith("/v1/") || pointer.startsWith("/data/v1/")) {
+        target = new URL(pointer.replace(/^\/(data\/)?/, ""), root);
+      } else target = new URL(pointer, source);
+      if (target.origin !== root.origin || target.username || target.password || !["http:", "https:"].includes(target.protocol)) throw 0;
+      const prefix = new URL(namespace, root).pathname;
+      // Preserve targets already resolved under the configured canonical mount.
+      if (!target.pathname.startsWith(prefix)) {
+        if (target.pathname.startsWith("/data/v1/")) target = new URL(target.pathname.slice(6), root);
+        else if (target.pathname.startsWith("/v1/")) target = new URL(target.pathname.slice(1), root);
+      }
+      if (!target.pathname.startsWith(prefix) || !target.pathname.endsWith(mode === "manifest" ? ".json" : ".pmtiles")) throw 0;
+      console.log(target.href);
+    } catch { refuse("snapshot_pointer_invalid"); }
+  '
+command -v node >/dev/null 2>&1 || fail "snapshot_pointer_invalid: node is required"
+catalogue="$(curl -fsS --max-time "$MAX_TIME" "$CANONICAL_BASE/v1/providers.json")" \
+  || fail "catalogue_unavailable"
+PROVIDER="$(snapshot_metadata catalogue "$CANONICAL_BASE" <<<"$catalogue")" || exit 1
+MANIFEST_URL="$CANONICAL_BASE/v1/$PROVIDER/manifest.json"
+manifest="$(curl -fsS --max-time "$MAX_TIME" "$MANIFEST_URL")" || fail "catalogue_unavailable: manifest"
+BASEMAP_DESCRIPTOR="$(snapshot_metadata manifest "$CANONICAL_BASE" "$PROVIDER" "$MANIFEST_URL" <<<"$manifest")" || exit 1
+descriptor="$(curl -fsS --max-time "$MAX_TIME" "$BASEMAP_DESCRIPTOR")" || fail "catalogue_unavailable: basemap"
+BASEMAP_URL="$(snapshot_metadata descriptor "$CANONICAL_BASE" "$PROVIDER" "$BASEMAP_DESCRIPTOR" <<<"$descriptor")" || exit 1
+assert_object "$MANIFEST_URL" "public, max-age=20"
+ok "manifest body carries provider $PROVIDER"
+assert_edge_hit "$MANIFEST_URL" "public, max-age=20"
+assert_range_preflight "$BASEMAP_URL"
+assert_missing_edge_bypass "$CANONICAL_BASE/v1/$PROVIDER/definitely-missing.json"
 assert_retired_provider "$CANONICAL_BASE/v1/sto/static/routes_index.json" 404
 assert_retired_provider "$CANONICAL_BASE/v1%2Fsto/static/routes_index.json" 404
 assert_retired_provider "$CANONICAL_BASE/%761%2Fsto/static/routes_index.json" 404
 assert_retired_provider "$CANONICAL_BASE/v1/sto%2Fstatic/routes_index.json" 404
 assert_retired_provider "$CANONICAL_BASE/v1/%73to/static/routes_index.json" 404
 
-assert_object "$CANONICAL_BASE/v1/stm/live/vehicles.json" "public, max-age=20"
-assert_object "$CANONICAL_BASE/v1/stm/static/routes_index.json" "public, max-age=86400, stale-while-revalidate=86400|public, max-age=604800"
-assert_object "$CANONICAL_BASE/v1/stm/historic/network_trend.json" "public, max-age=3600, stale-while-revalidate=86400|public, max-age=86400"
-assert_object "$CANONICAL_BASE/v1/stm/provenance.json" "public, max-age=3600, stale-while-revalidate=86400|public, max-age=86400"
+assert_object "$CANONICAL_BASE/v1/$PROVIDER/live/vehicles.json" "public, max-age=20"
+assert_object "$CANONICAL_BASE/v1/$PROVIDER/static/routes_index.json" "public, max-age=86400, stale-while-revalidate=86400|public, max-age=604800"
+assert_object "$CANONICAL_BASE/v1/$PROVIDER/historic/network_trend.json" "public, max-age=3600, stale-while-revalidate=86400|public, max-age=86400"
+assert_object "$CANONICAL_BASE/v1/$PROVIDER/provenance.json" "public, max-age=3600, stale-while-revalidate=86400|public, max-age=86400"
 
 # --- compatibility Worker negatives: clean 404/405 and errors never cacheable ---
-[ "$(status_of "$FALLBACK_BASE/v1/stm/definitely-missing.json")" = "404" ] \
+[ "$(status_of "$FALLBACK_BASE/v1/$PROVIDER/definitely-missing.json")" = "404" ] \
   || fail "missing key must return 404"
 ok "missing key -> 404"
 
-curl -sI --max-time "$MAX_TIME" "$FALLBACK_BASE/v1/stm/definitely-missing.json" \
+curl -sI --max-time "$MAX_TIME" "$FALLBACK_BASE/v1/$PROVIDER/definitely-missing.json" \
   | tr -d '\r' | grep -qi '^cache-control: no-store' \
   || fail "404 response must carry cache-control: no-store"
 ok "404 carries cache-control: no-store"
@@ -188,12 +236,12 @@ ok "404 carries cache-control: no-store"
   || fail "path outside v1/ must return 404"
 ok "non-v1 path -> 404"
 
-[ "$(status_of -X POST "$FALLBACK_BASE/v1/stm/manifest.json")" = "405" ] \
+[ "$(status_of -X POST "$FALLBACK_BASE/v1/$PROVIDER/manifest.json")" = "405" ] \
   || fail "POST must return 405"
 ok "POST -> 405"
 
 # --- compatibility Worker route remains live during the cutover. ---
-[ "$(status_of "$FALLBACK_BASE/v1/stm/manifest.json")" = "200" ] \
+[ "$(status_of "$FALLBACK_BASE/v1/$PROVIDER/manifest.json")" = "200" ] \
   || fail "compatibility route $FALLBACK_BASE manifest must still return 200"
 ok "compatibility route $FALLBACK_BASE manifest -> 200"
 assert_retired_provider "$FALLBACK_BASE/v1/sto/static/routes_index.json"

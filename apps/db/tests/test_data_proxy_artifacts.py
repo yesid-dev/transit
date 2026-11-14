@@ -296,7 +296,15 @@ def test_smoke_recovers_when_kpi_route_appears_after_propagation(
               exit 0
             fi
 
-            [[ "$url" == */manifest.json ]] && printf '{"provider":"stm"}' || printf '{}'
+            case "$url" in
+              */v1/providers.json)
+                printf '{"default_provider":"stm","providers":[{"id":"stm"}]}' ;;
+              */manifest.json)
+                printf '{"provider":"stm","files":{"static":{"basemap":"static/basemap.json"}}}' ;;
+              */static/basemap.json)
+                printf '{"url":"/data/v1/stm/static/basemap/montreal.pmtiles"}' ;;
+              *) printf '{}' ;;
+            esac
             """
         ).lstrip(),
         encoding="utf-8",
