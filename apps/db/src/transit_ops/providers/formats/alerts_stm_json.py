@@ -24,6 +24,7 @@ def stm_json_alerts(payload: object) -> tuple[AlertRecord, ...]:
 
 
 def _record(raw: dict[str, object], index: int) -> AlertRecord:
+    periods = tuple(_active_periods(raw))
     header = _value(raw, "header", "title", "summary", "header_texts")
     description = _value(raw, "description", "body", "message", "description_texts")
     alert_id = _text(_value(raw, "id", "alertId", "messageId"))
@@ -31,7 +32,6 @@ def _record(raw: dict[str, object], index: int) -> AlertRecord:
     severity = _text(_value(raw, "severity", "priority"))
     published = _timestamp(_value(raw, "publishedAt", "published_at"))
     updated = _timestamp(_value(raw, "updatedAt", "updated_at"))
-    periods = tuple(_active_periods(raw))
     selectors = tuple(
         InformedEntity(
             None,

@@ -1,10 +1,14 @@
 import json
 from copy import deepcopy
 from datetime import UTC, datetime
+from itertools import combinations
 from pathlib import Path
+from random import Random
+from types import FunctionType
 
 import pytest
 
+import transit_ops.silver.i3 as silver
 from transit_ops.ingestion.i3 import extract_i3_metadata
 from transit_ops.providers.alert_record import alert_rows
 from transit_ops.providers.formats.alerts_stm_json import stm_json_alerts
@@ -297,3 +301,205 @@ def test_stm_empty_and_invalid_values_keep_the_existing_contract(payload):
     with pytest.raises(type(old.value), match="Invalid isoformat string") as new:
         stm_json_alerts(bad)
     assert str(new.value) == str(old.value)
+
+
+def test_period_error_precedes_invalid_parent_timestamp():
+    payload = [{"activePeriod": {"start": "bad-period"}, "publishedAt": "bad-parent"}]
+    with pytest.raises(ValueError) as old:
+        normalize_i3_alert_payload(
+            RawI3AlertSnapshot(**META, provider_timezone="UTC", raw_payload_json=payload)
+        )
+    with pytest.raises(type(old.value)) as new:
+        stm_json_alerts(payload)
+    assert str(new.value) == str(old.value) == "Invalid isoformat string: 'bad-period'"
+
+
+ALIAS_FAMILIES = {
+    "root": ("alerts", "messages", "data", "items", "results"),
+    "id": ("id", "alertId", "messageId"),
+    "header": ("header", "title", "summary", "header_texts"),
+    "description": ("description", "body", "message", "description_texts"),
+    "severity": ("severity", "priority"),
+    "url": ("url", "link"),
+    "published": ("publishedAt", "published_at"),
+    "updated": ("updatedAt", "updated_at"),
+    "entities": ("informedEntities", "informed_entities", "entities"),
+    "routes": ("routes", "routeIds", "route_ids"),
+    "stops": ("stops", "stopIds", "stop_ids"),
+    "periods": ("activePeriod", "active_period", "activePeriods", "active_periods"),
+    "start": ("start", "startTime", "start_time"),
+    "end": ("end", "endTime", "end_time"),
+    "route": ("routeId", "route_id", "route", "route_short_name"),
+    "stop": ("stopId", "stop_id", "stop", "stop_code"),
+    "trip": ("tripId", "trip_id", "trip"),
+    "area": ("areaId", "area_id", "area"),
+    "translation": ("text", "value"),
+}
+
+
+def _independent_normalizer():
+    # Separate helper globals keep adapter-side mutations out of the unchanged oracle.
+    namespace = vars(silver).copy()
+    for name, fn in vars(silver).items():
+        if isinstance(fn, FunctionType) and fn.__module__ == silver.__name__:
+            clone = FunctionType(fn.__code__, namespace, name, fn.__defaults__, fn.__closure__)
+            clone.__kwdefaults__ = fn.__kwdefaults__
+            namespace[name] = clone
+    return namespace["normalize_i3_alert_payload"]
+
+
+def _json_bytes(value):
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=lambda item: item.isoformat(),
+    ).encode("utf-8")
+
+
+def _outcome(call, payload):
+    supplied = deepcopy(payload)
+    try:
+        result = call(supplied)
+    except Exception as error:
+        assert _json_bytes(supplied) == _json_bytes(payload)
+        return "error", type(error), str(error)
+    assert _json_bytes(supplied) == _json_bytes(payload)
+    return "ok", result, _json_bytes(result)
+
+
+def _shaped(family, values):
+    if family == "root":
+        return values
+    if family in {"route", "stop", "trip", "area"}:
+        return [{"entities": [values]}]
+    if family in {"start", "end"}:
+        return [{"activePeriod": [values]}]
+    if family == "translation":
+        return [{key: values for key in ("header", "description", "url")}]
+    return [values]
+
+
+def _distinct_values(family):
+    if family == "root":
+        return [{"id": " ÉTa  À "}], [{"id": "Late"}]
+    if family == "entities":
+        return [{"routeId": " RÖuTe  À "}], [{"routeId": "Late"}]
+    if family == "periods":
+        return [{"start": 0, "end": 1}], [{"start": 100, "end": 101}]
+    if family in {"routes", "stops"}:
+        return [" RÖuTe  À ", "Other"], ["Late"]
+    if family in {"start", "end", "published", "updated"}:
+        return 0, 100
+    return " ÉTa  À ", "Late"
+
+
+def _alias_cases():
+    for family, aliases in ALIAS_FAMILIES.items():
+        first_value, second_value = _distinct_values(family)
+        for first, second in combinations(aliases, 2):
+            cases = [{first: first_value}, {second: second_value}]
+            cases += [
+                {first: leading, second: second_value}
+                for leading in (first_value, None, "", [], {}, False, 0, "  ")
+            ]
+            for values in cases:
+                yield f"{family}:{first}/{second}:{values!r}", _shaped(family, values)
+    for family in ("published", "updated", "start", "end", "periods"):
+        for alias in ALIAS_FAMILIES[family]:
+            for text in ("2026-11-12t12:00:00z", "2026-11-12  12:00:00Z", "bad-Value"):
+                value = [{"start": text}] if family == "periods" else text
+                yield f"timestamp:{alias}:{text}", _shaped(family, {alias: value})
+
+
+def _text_and_composed_cases():
+    texts = [
+        {"en": "English", "fra": " Français  ÉTÉ "},
+        {"eng": " English  ÉTÉ "},
+        {" en_US ": " English  ÉTÉ ", " fra ": " Français  ÉTÉ "},
+        [
+            {"language": "  FR-CA  ", "text": " Déjà  Vu "},
+            {"language": "fra", "value": "Second"},
+            {"language": "en_US", "value": "Åland"},
+        ],
+        {"text": None, "value": {"es": "Primero", "en": "Second"}},
+        {"text": "", "value": " FaLlBaCk  ÉTÉ "},
+        {"value": " VaLuE  ÉTÉ "},
+        {"text": " FiRsT  ÉTÉ ", "value": "Second"},
+    ]
+    boundaries = (
+        "id",
+        "header",
+        "description",
+        "severity",
+        "url",
+        "cause",
+        "effect",
+        "route",
+        "stop",
+        "trip",
+        "area",
+    )
+    for family in boundaries:
+        for value in [" MiXeD  ÉTÉ ", *texts]:
+            yield f"text:{family}:{value!r}", _shaped(family, {family: value})
+    rng = Random(975)
+    scalars = [None, "", False, 0, 2.5, " MiXeD  ÉTÉ ", *texts]
+    for index in range(500):
+        raw, selector = {}, {}
+        for family in boundaries:
+            aliases = ALIAS_FAMILIES.get(family, (family,))
+            target = selector if family in {"route", "stop", "trip", "area"} else raw
+            for key in rng.sample(aliases, rng.randrange(len(aliases) + 1)):
+                target[key] = deepcopy(rng.choice(scalars))
+        raw["entities"] = [False, selector, {"routeId": "Other"}]
+        yield f"seeded:{index}", [False, raw, deepcopy(raw)]
+
+
+def test_finite_differential_corpus_matches_independent_old_path():
+    oracle = _independent_normalizer()
+
+    def old(payload):
+        return oracle(RawI3AlertSnapshot(**META, provider_timezone="UTC", raw_payload_json=payload))
+
+    def new(payload):
+        return alert_rows(stm_json_alerts(payload), **META)
+
+    for name, payload in (*_alias_cases(), *_text_and_composed_cases()):
+        assert _outcome(new, payload) == _outcome(old, payload), name
+
+
+def test_root_first_list_and_field_first_present_are_distinct():
+    assert rows({"alerts": None, "messages": [{"id": "B"}]})[0][0]["alert_id"] == "B"
+    assert rows({"alerts": [], "messages": [{"id": "B"}]}) == ([], [], [])
+    assert rows([{"informedEntities": None, "entities": [{"routeId": "B"}]}])[1] == []
+    assert (
+        rows([{"header": {"text": "", "value": " Déjà  Vu "}}])[0][0]["alert_header_text"]
+        == "Déjà  Vu"
+    )
+
+
+def test_language_aliases_keep_complete_maps_and_nested_selector_text():
+    text = [
+        {"language": "  FR-CA  ", "text": " Français  ÉTÉ "},
+        {"language": "fra", "text": "Later"},
+        {"language": "en_US", "value": "English"},
+    ]
+    raw = {
+        "header": text,
+        "description": {"eng": "English", "fra": "Français"},
+        "entities": [
+            {
+                "route": {"text": " RÖuTe  À ", "value": "Later"},
+                "stop": {"text": None, "value": " StÖp  À "},
+            }
+        ],
+    }
+    (record,) = stm_json_alerts([raw])
+    assert record.header == {"fr": "Français  ÉTÉ", "en": "English"}
+    assert record.description == {"en": "English", "fr": "Français"}
+    parent, entities, _ = rows([raw])
+    assert parent[0]["description_text"] == "Français"
+    assert parent[0]["description_text_en"] == "English"
+    assert (entities[0]["route_id"], entities[0]["stop_id"]) == ("RÖuTe  À", "StÖp  À")
