@@ -123,9 +123,7 @@ def test_local_day_crossing_month_requires_both_utc_months():
 
 
 def test_open_windows_refuse_before_the_ls19e_interface_exists(monkeypatch):
-    from transit_ops.commands import lake
-
-    monkeypatch.setattr(lake, "migrate", lambda: None)
+    fake_lake_cli(monkeypatch, cuts=False, reserve=False)
     with pytest.raises(ValueError, match="open_window_unsupported"):
         require_window_support(
             [
