@@ -4,6 +4,10 @@ import pytest
 from test_measure_fact_day import measure
 
 
+def detail_supervise(argv, **kwargs):
+    return measure.supervise([*argv, "--diagnostic-detail"], **kwargs)
+
+
 @pytest.mark.parametrize(
     "source,value,message",
     [
@@ -35,7 +39,7 @@ def test_worker_redacts_review_credential_reproductions(
         if channel == "exception"
         else f"sys.stderr.write({message!r}); sys.stderr.flush(); raise SystemExit(7)"
     )
-    assert measure.supervise([], worker=worker, scratch_root=tmp_path) != 0
+    assert detail_supervise([], worker=worker, scratch_root=tmp_path) != 0
     output = capsys.readouterr()
     result = json.loads(output.out)
     assert result["reason"] == (
@@ -87,7 +91,7 @@ def test_worker_stderr_never_persists_raw_secret(tmp_path, capsys, monkeypatch):
     worker = (
         "import os,sys; sys.stderr.write(os.environ['PGPASSWORD']); sys.stderr.flush(); sys.exit(7)"
     )
-    assert measure.supervise([], worker=worker, scratch_root=tmp_path) == 7
+    assert detail_supervise([], worker=worker, scratch_root=tmp_path) == 7
     result = json.loads(capsys.readouterr().out)
     assert result["reason"] == "worker_crashed"
     assert "<REDACTED>" in result["error_detail"]
@@ -142,7 +146,7 @@ def test_worker_redacts_all_credential_sources_and_representations(
         if channel == "exception"
         else f"sys.stderr.write({message!r}); sys.stderr.flush(); raise SystemExit(7)"
     )
-    assert measure.supervise([], worker=worker, scratch_root=tmp_path) != 0
+    assert detail_supervise([], worker=worker, scratch_root=tmp_path) != 0
     result = json.loads(capsys.readouterr().out)
     assert "formats: " + " | ".join(["<REDACTED>"] * len(renderings)) in result["error_detail"]
 
@@ -159,7 +163,7 @@ sys.stderr.write(secret[10:] + 'x' * (65536 - len(secret)//2) + '\\nfinal diagno
 sys.stderr.flush()
 sys.exit(7)
 """
-    assert measure.supervise([], worker=worker, scratch_root=tmp_path) == 7
+    assert detail_supervise([], worker=worker, scratch_root=tmp_path) == 7
     result = json.loads(capsys.readouterr().out)
     assert result["reason"] == "worker_crashed"
     assert "TAIL_CREDENTIAL_SUFFIX" not in result["error_detail"]
@@ -175,7 +179,7 @@ sys.stderr.buffer.write(b'x' * (8192-10) + secret[:10]); sys.stderr.flush()
 sys.stderr.buffer.write(secret[10:] + b'\\nfinal diagnostic\\n'); sys.stderr.flush()
 sys.exit(7)
 """
-    assert measure.supervise([], worker=worker, scratch_root=tmp_path) == 7
+    assert detail_supervise([], worker=worker, scratch_root=tmp_path) == 7
     result = json.loads(capsys.readouterr().out)
     assert "<REDACTED>" in result["error_detail"]
     assert "BOUNDARY_PASSWORD" not in result["error_detail"]
@@ -185,7 +189,7 @@ def test_worker_redacts_longest_value_first(tmp_path, capsys, monkeypatch):
     monkeypatch.setenv("PGPASSWORD", "SYNTHETIC_LONG_SECRET")
     monkeypatch.setenv("CUSTOM_TOKEN", "SYNTHETIC_LONG")
     worker = "raise RuntimeError('SYNTHETIC_LONG_SECRET')"
-    assert measure.supervise([], worker=worker, scratch_root=tmp_path) == 1
+    assert detail_supervise([], worker=worker, scratch_root=tmp_path) == 1
     result = json.loads(capsys.readouterr().out)
     assert result["error_detail"].endswith("RuntimeError: <REDACTED>")
 
@@ -202,7 +206,7 @@ padding=65536-len(secret)+20-len(intro)-len(end)
 sys.stderr.write(secret+intro+'x'*padding+end); sys.stderr.flush()
 sys.exit(7)
 """
-    assert measure.supervise([], worker=worker, scratch_root=tmp_path) == 7
+    assert detail_supervise([], worker=worker, scratch_root=tmp_path) == 7
     result = json.loads(capsys.readouterr().out)
     assert "TAIL_MULTILINE_PASSWORD" not in result["error_detail"]
     assert "final diagnostic" in result["error_detail"]
@@ -215,7 +219,7 @@ def test_worker_redacts_stderr_credentials_outside_the_system_code_page(
     worker = (
         "import os,sys; sys.stderr.write(os.environ['PGPASSWORD']); sys.stderr.flush(); sys.exit(7)"
     )
-    assert measure.supervise([], worker=worker, scratch_root=tmp_path) == 7
+    assert detail_supervise([], worker=worker, scratch_root=tmp_path) == 7
     result = json.loads(capsys.readouterr().out)
     assert "<REDACTED>" in result["error_detail"]
     assert "CREDENTIAL" not in result["error_detail"]
@@ -250,7 +254,7 @@ def test_worker_redacts_mixed_case_percent_escapes(tmp_path, capsys, monkeypatch
         if channel == "exception"
         else f"sys.stderr.write({message!r}); sys.stderr.flush(); sys.exit(7)"
     )
-    assert measure.supervise([], worker=worker, scratch_root=tmp_path) == (
+    assert detail_supervise([], worker=worker, scratch_root=tmp_path) == (
         1 if channel == "exception" else 7
     )
     detail = json.loads(capsys.readouterr().out)["error_detail"]
@@ -271,14 +275,14 @@ def test_short_credentials_suppress_all_worker_free_text(
         else f"sys.stderr.write({message!r}); sys.stderr.flush(); sys.exit(7)"
     )
     code = 1 if channel == "exception" else 7
-    assert measure.supervise([], worker=worker, scratch_root=tmp_path) == code
+    assert detail_supervise([], worker=worker, scratch_root=tmp_path) == code
     result = json.loads(capsys.readouterr().out)
     assert result["reason"] == (
         "measurement_failed" if channel == "exception" else "worker_crashed"
     )
     assert result["detail_suppressed"] == "short_credential"
     assert result["exit_status"] == code
-    assert result.get("exception_type") == ("RuntimeError" if channel == "exception" else None)
+    assert result.get("exception_type") == ("RuntimeError" if channel == "exception" else "other")
     assert "error_detail" not in result
     assert secret not in json.dumps(result)
 
@@ -297,7 +301,7 @@ subprocess.Popen([sys.executable,'-I','-c','import time; time.sleep(5)'],
  stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=sys.stderr)
 os._exit(7)
 """
-    assert measure.supervise([], worker=worker, scratch_root=tmp_path) == 7
+    assert detail_supervise([], worker=worker, scratch_root=tmp_path) == 7
     result = json.loads(capsys.readouterr().out)
     assert result["reason"] == "worker_crashed"
     assert result["stderr_capture"] == "did_not_close"
@@ -330,7 +334,7 @@ def test_short_credentials_from_every_source_suppress_detail(
         else ("import sys; sys.stderr.write('private detail q7Z'); sys.stderr.flush(); sys.exit(7)")
     )
     code = 1 if channel == "exception" else 7
-    assert measure.supervise([], worker=worker, scratch_root=tmp_path) == code
+    assert detail_supervise([], worker=worker, scratch_root=tmp_path) == code
     result = json.loads(capsys.readouterr().out)
     assert result["detail_suppressed"] == "short_credential"
     assert "error_detail" not in result
@@ -341,8 +345,8 @@ def test_short_credentials_from_every_source_suppress_detail(
 def test_percent_escape_normalization_preserves_literal_case(tmp_path, capsys, monkeypatch):
     monkeypatch.setenv("PGPASSWORD", "Alpha/Bravo?Charlie:Delta")
     worker = "raise RuntimeError('alpha%2FBravo%3fCharlie%3ADelta')"
-    assert measure.supervise([], worker=worker, scratch_root=tmp_path) == 1
-    assert "alpha%2FBravo%3FCharlie%3ADelta" in json.loads(capsys.readouterr().out)["error_detail"]
+    assert detail_supervise([], worker=worker, scratch_root=tmp_path) == 1
+    assert "alpha/Bravo?Charlie:Delta" in json.loads(capsys.readouterr().out)["error_detail"]
 
 
 def test_capture_read_error_preserves_worker_failure(tmp_path, capsys, monkeypatch):
@@ -361,7 +365,7 @@ def test_capture_read_error_preserves_worker_failure(tmp_path, capsys, monkeypat
 
     monkeypatch.setattr(measure, "Popen", launch)
     monkeypatch.setattr(measure.os, "read", broken)
-    assert measure.supervise([], worker="import os; os._exit(7)", scratch_root=tmp_path) == 7
+    assert detail_supervise([], worker="import os; os._exit(7)", scratch_root=tmp_path) == 7
     result = json.loads(capsys.readouterr().out)
     assert result["reason"] == "worker_crashed"
     assert result["stderr_capture"] == "read_failed"

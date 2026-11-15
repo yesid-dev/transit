@@ -187,7 +187,7 @@ def test_parent_stop_reaps_worker_and_preserves_outside_sentinel(tmp_path, stop,
         pid, directory, port = json.loads(ready.read_text())
         if not stop.startswith("SIG"):
             assert json.loads(error)["reason"] == "lifeline_lost"
-            assert "EOF" in json.loads(error)["error_detail"]
+            assert json.loads(error)["detail"] == "omitted"
         with socket.socket() as observer:
             observer.settimeout(2)
             if observer.connect_ex(("127.0.0.1", port)) == 0:
@@ -332,7 +332,7 @@ def test_start_sweeps_only_provably_dead_markers(tmp_path, capsys, monkeypatch, 
     monkeypatch.setattr(os, "unlink", locked)
     monkeypatch.setattr(measure.time, "monotonic", lambda: clock[0])
     monkeypatch.setattr(measure.time, "sleep", lambda delay: clock.__setitem__(0, clock[0] + delay))
-    assert measure.supervise([], worker="print('{}')", scratch_root=tmp_path) == (
+    assert measure.supervise([], worker="report({})", scratch_root=tmp_path) == (
         1 if windows or lock == "persistent" else 0
     )
     receipt = json.loads(capsys.readouterr().out)
@@ -671,7 +671,7 @@ def test_fact_measurement_uses_one_snapshot_for_csv_and_postgres_oracle(
 def test_isolated_worker_uses_project_environment(tmp_path, capsys):
     probe = (
         "import json,sys; import duckdb,transit_ops; "
-        "print(json.dumps(dict(status='ok', isolated=sys.flags.isolated)))"
+        "report(dict(status='ok', isolated=sys.flags.isolated))"
     )
     assert measure.supervise([], worker=probe, scratch_root=tmp_path) == 0
     assert json.loads(capsys.readouterr().out)["isolated"] == 1
@@ -680,7 +680,7 @@ def test_isolated_worker_uses_project_environment(tmp_path, capsys):
 def test_worker_exception_names_failure_with_redacted_detail(tmp_path, capsys, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "postgresql://user:TOP_SECRET@host/db")
     worker = "raise RuntimeError('cannot connect postgresql://user:TOP_SECRET@host/db')"
-    assert measure.supervise([], worker=worker, scratch_root=tmp_path) == 1
+    assert measure.supervise(["--diagnostic-detail"], worker=worker, scratch_root=tmp_path) == 1
     result = json.loads(capsys.readouterr().out)
     assert result["reason"] == "measurement_failed"
     assert "RuntimeError: cannot connect" in result["error_detail"]
@@ -695,13 +695,18 @@ def test_supervisor_names_worker_boundary_failures(tmp_path, capsys, monkeypatch
         if kind == "start":
             raise FileNotFoundError("synthetic interpreter missing")
         if kind == "import":
-            command[4] = str(tmp_path / "missing-measurement.py")
+            command[command.index(str(SCRIPT))] = str(tmp_path / "missing-measurement.py")
         if kind == "lifeline":
-            command[6] = "invalid-proof"
+            command[command.index(str(SCRIPT)) + 2] = "invalid-proof"
         return real(command, **kwargs)
 
     monkeypatch.setattr(measure, "Popen", launch)
-    assert measure.supervise([], worker="import os; os._exit(7)", scratch_root=tmp_path) != 0
+    assert (
+        measure.supervise(
+            ["--diagnostic-detail"], worker="import os; os._exit(7)", scratch_root=tmp_path
+        )
+        != 0
+    )
     result = json.loads(capsys.readouterr().out)
     expected = {
         "start": "worker_start_failed",
@@ -713,7 +718,9 @@ def test_supervisor_names_worker_boundary_failures(tmp_path, capsys, monkeypatch
     expected_detail = (
         "ValueError" if kind == "lifeline" else "code 7" if kind == "crash" else "FileNotFoundError"
     )
-    assert expected_detail in result["error_detail"]
+    assert (
+        result["exit_status"] == 7 if kind == "crash" else expected_detail in result["error_detail"]
+    )
 
 
 def test_default_worker_preserves_wrapper_environment_before_database_read(
@@ -734,7 +741,9 @@ n['rescue'].psycopg.connect = connect
 sys.exit(n['main'](sys.argv[3:], worker=True))
 """
     args = "--provider stm --date 2026-11-12 --not-after 2099-11-15T05:45:00Z".split()
-    assert measure.supervise(args, worker=probe, scratch_root=tmp_path) == 1
+    assert (
+        measure.supervise([*args, "--diagnostic-detail"], worker=probe, scratch_root=tmp_path) == 1
+    )
     result = json.loads(capsys.readouterr().out)
     assert (
         "RuntimeError: wrapper environment preserved before database read" in result["error_detail"]
@@ -749,7 +758,7 @@ sys.stderr.write('RuntimeError: synthetic failure password=SYNTHETIC_PASSWORD\\n
 sys.stderr.flush()
 os._exit(9)
 """
-    assert measure.supervise([], worker=worker, scratch_root=tmp_path) == 9
+    assert measure.supervise(["--diagnostic-detail"], worker=worker, scratch_root=tmp_path) == 9
     result = json.loads(capsys.readouterr().out)
     assert result["reason"] == "worker_crashed"
     assert "RuntimeError: synthetic failure" in result["error_detail"]
@@ -760,11 +769,11 @@ os._exit(9)
 
 def test_nonzero_exit_cannot_return_a_success_report(tmp_path, capsys):
     assert (
-        measure.supervise([], worker="print('{}'); raise SystemExit(3)", scratch_root=tmp_path) == 3
+        measure.supervise([], worker="report({}); raise SystemExit(3)", scratch_root=tmp_path) == 3
     )
     result = json.loads(capsys.readouterr().out)
     assert result["reason"] == "worker_crashed"
-    assert "code 3" in result["error_detail"]
+    assert result["exit_status"] == 3
 
 
 def test_real_worker_completes_local_measurement_and_reports_json(tmp_path, capsys):
