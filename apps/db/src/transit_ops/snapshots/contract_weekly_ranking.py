@@ -52,7 +52,7 @@ class WeeklyRankedEntry(_WeeklyWindow):
             severe = round_half_away(
                 Decimal(100 * (self.denominator - self.numerator)) / self.denominator, 1
             )
-            if self.severe_pct != severe:
+            if self.severe_pct != float(severe):
                 raise ValueError("severe share must match not-severe evidence")
         return self
 

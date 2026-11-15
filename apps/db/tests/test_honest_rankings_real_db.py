@@ -17,7 +17,7 @@ def test_weekly_stop_ranking_matches_sql_published_periods(real_db_engine, seed_
     with real_db_engine.connect() as conn, conn.begin() as tx:
         seed_provider(conn, provider, display_name="Weekly ranking test")
         day = datetime.now(UTC).date() - timedelta(days=2)
-        for stop, observations, severe in [("bad", 30, 15), ("good", 30, 6), ("thin", 29, 29)]:
+        for stop, observations, severe in [("bad", 30, 15), ("good", 30, 7), ("thin", 29, 29)]:
             conn.execute(
                 text(
                     "INSERT INTO gold.stop_delay_spine "
@@ -34,6 +34,7 @@ def test_weekly_stop_ranking_matches_sql_published_periods(real_db_engine, seed_
             == next(period.severe_pct for period in files["bad"].periods if period.grain == "week")
             == 50
         )
+        assert ranked[1].severe_pct == 23.3
         assert ranked[-1].state == "too_few_units"
         tx.rollback()
 

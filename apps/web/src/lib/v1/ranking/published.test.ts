@@ -39,6 +39,20 @@ it.each([
 		publishedWeeklyRanking(index as never, 'route', Date.parse('2026-11-12T00:00:00Z')),
 	).toBeNull();
 });
+it.each([
+	[20, 30, 67, 33.3],
+	[100, 110, 91, 9.1],
+	[10, 30, 33, 66.7],
+])('accepts consistent fractional stop rates', (numerator, denominator, pct, severe_pct) => {
+	const row = { ...validRow, numerator, denominator, pct, severe_pct };
+	const index = RouteReliabilityIndexSchema.parse({
+		generated_utc: '2026-11-11T00:00:00Z',
+		weekly_stops: [row],
+	});
+	expect(
+		publishedWeeklyRanking(index, 'stop', Date.parse('2026-11-12T00:00:00Z'))?.[0].severe_pct,
+	).toBe(severe_pct);
+});
 describe('published weekly ranking', () => {
 	it('keeps publisher order through filtering and never sorts by arriving badges', () => {
 		expect(publishedOrder(['a', 'b', 'c'], (id) => id, ['c', 'b', 'a'])).toEqual(['c', 'b', 'a']);

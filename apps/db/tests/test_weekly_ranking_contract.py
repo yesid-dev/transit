@@ -74,3 +74,17 @@ def test_weekly_publication_metadata_uses_the_next_scheduled_wednesday():
     assert (
         next_historic_publication(datetime(2026, 11, 12, 12, tzinfo=UTC)) == "2026-11-18T07:00:00Z"
     )
+
+
+@pytest.mark.parametrize(
+    "numerator,denominator,pct,severe",
+    [(20, 30, 67, 33.3), (100, 110, 91, 9.1), (10, 30, 33, 66.7)],
+)
+def test_weekly_stop_contract_accepts_fractional_published_rates(
+    numerator, denominator, pct, severe
+):
+    row = dict(ROW, numerator=numerator, denominator=denominator, pct=pct, severe_pct=severe)
+    parsed = RouteReliabilityIndex.model_validate(
+        dict(generated_utc="2026-11-11T00:00:00Z", weekly_stops=[row])
+    )
+    assert parsed.weekly_stops[0].severe_pct == severe
