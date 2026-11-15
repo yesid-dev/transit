@@ -224,6 +224,8 @@ def test_redirected_inputs_are_refused(tmp_path, outside, kind):
 
 
 def test_a_filled_registry_slot_satisfies_the_protocol(monkeypatch):
+    previous = {name: resolve_builder(name) for name in FAMILIES}
+
     class ToyBuilder:
         family_id = "route_spine_hours"
         tables = ("gold.toy",)
@@ -242,9 +244,9 @@ def test_a_filled_registry_slot_satisfies_the_protocol(monkeypatch):
     assert resolved is builder and isinstance(resolved, FamilyBuilder)
     assert resolved.inputs(request()) == (InputNeed("gold.toy", "all"),)
     assert all(
-        resolve_builder(name) is None
-        for name in FAMILIES
-        if name not in (builder.family_id, "occupancy_crowding")
+        resolve_builder(name) is original
+        for name, original in previous.items()
+        if name != builder.family_id
     )
 
 

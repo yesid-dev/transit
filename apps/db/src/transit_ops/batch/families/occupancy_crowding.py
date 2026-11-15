@@ -1,6 +1,7 @@
 """Closed-day occupancy and co-observed crowding through the batch seam."""
 
 from collections.abc import Mapping
+from datetime import date, timedelta
 
 from sqlalchemy.sql.elements import TextClause
 
@@ -77,10 +78,25 @@ class OccupancyCrowdingBuilder:
     variants: Mapping[str, TextClause] = {}
 
     def inputs(self, request: BuildRequest) -> tuple[InputNeed, ...]:
+        capture_days = utc_days(request)
+        # Occupancy selects feed-day keys, whereas files partition by capture day (R26).
+        # Allow one prior UTC day of clock skew and arbitrary capture lag until the stamp.
+        first = max(
+            date.fromisoformat(capture_days[0]) - timedelta(days=1),
+            (request.as_of_utc - timedelta(days=request.fact_retention_days)).date(),
+        )
+        last = request.as_of_utc.date()
+        occupancy_days = tuple(
+            (first + timedelta(days=offset)).isoformat()
+            for offset in range((last - first).days + 1)
+        )
         return (InputNeed("core.providers", "all"),) + tuple(
             InputNeed(relation, day)
-            for relation in ("gold.fact_vehicle_snapshot", "gold.fact_trip_delay_snapshot")
-            for day in utc_days(request)
+            for relation, days in (
+                ("gold.fact_vehicle_snapshot", occupancy_days),
+                ("gold.fact_trip_delay_snapshot", capture_days),
+            )
+            for day in days
         )
 
     def build(self, session: BatchSession, request: BuildRequest) -> FamilyOutput:

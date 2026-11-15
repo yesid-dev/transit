@@ -1,8 +1,17 @@
+from dataclasses import replace
 from datetime import datetime
 
+import pytest
 import real_db_seed
 from sqlalchemy import text
-from test_family_occupancy_crowding import REQUEST, SEED, STAMP
+from test_family_occupancy_crowding import (
+    DAY,
+    REQUEST,
+    SEED,
+    SKEW_CASES,
+    STAMP,
+    expected_occupancy_row,
+)
 
 from transit_ops.batch.compare import compare_tables
 from transit_ops.batch.families.occupancy_crowding import builder
@@ -13,13 +22,13 @@ from transit_ops.lake.parquet_codec import write_window
 from transit_ops.lake.table_export import WindowSpec, export_window
 
 
-def seed_facts(conn, seed_provider):
-    seed_provider(conn, "seed", display_name="Occupancy seed")
-    params = dict(p="seed", e=98110001, r=98110002, s=98110003, ts=STAMP, n=len(SEED))
+def seed_facts(conn, seed_provider, request, rows, feed_stamps):
+    seed_provider(conn, "seed", display_name="Occupancy seed", timezone=request.timezone)
+    params = dict(p="seed", e=98110001, r=98110002, s=98110003, ts=STAMP, n=len(rows))
     real_db_seed.feed_endpoints(conn, params)
     real_db_seed.ingestion_runs(conn, params)
     real_db_seed.realtime_snapshot_index(conn, params)
-    for index, (route, stop, occupancy, delay, capture, key) in enumerate(SEED):
+    for index, (route, stop, occupancy, delay, capture, key) in enumerate(rows):
         values = dict(
             p="seed",
             s=params["s"],
@@ -29,6 +38,7 @@ def seed_facts(conn, seed_provider):
             occupancy=occupancy,
             delay=delay,
             ts=datetime.fromisoformat(capture),
+            feed=datetime.fromisoformat(feed_stamps[index] if feed_stamps else capture),
             key=key,
             day=datetime.strptime(str(key), "%Y%m%d").date(),
         )
@@ -41,11 +51,11 @@ def seed_facts(conn, seed_provider):
                     "(provider_id, realtime_snapshot_id, entity_index, snapshot_date_key, "
                     "snapshot_local_date, feed_timestamp_utc, captured_at_utc, route_id, "
                     f"occupancy_status, {extra}) "
-                    f"VALUES (:p,:s,:i,:key,:day,:ts,:ts,:route,:occupancy,{bind})"
+                    f"VALUES (:p,:s,:i,:key,:day,:feed,:ts,:route,:occupancy,{bind})"
                 ),
                 values,
             )
-    for day in REQUEST.local_dates:
+    for day in request.local_dates:
         for relation in builder.tables:
             name = relation.removeprefix("gold.")
             rollups._write_daily_rollup(
@@ -60,15 +70,21 @@ def seed_facts(conn, seed_provider):
             )
 
 
+@pytest.mark.parametrize("skew", [None, *SKEW_CASES])
 def test_family_matches_postgres_on_exported_fallback_inputs(
-    real_db_engine, seed_provider, tmp_path
+    real_db_engine, seed_provider, tmp_path, skew
 ):
+    request, rows, feeds = REQUEST, SEED, None
+    if skew:
+        zone, feed, capture, hour = skew
+        request = replace(REQUEST, local_dates=(DAY,), timezone=zone)
+        rows, feeds = [("A", "S", 1, 1, capture, 20261101)], [feed]
     with real_db_engine.begin() as conn:
-        seed_facts(conn, seed_provider)
+        seed_facts(conn, seed_provider, request, rows, feeds)
     try:
         # The exporter owns a read-only transaction on an idle autocommit connection.
         with real_db_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-            for need in builder.inputs(REQUEST):
+            for need in builder.inputs(request):
                 path = tmp_path / need.relation / f"{need.window}.parquet"
                 path.parent.mkdir(parents=True, exist_ok=True)
                 window = STAMP.strftime("%Y-%m") if need.window == "all" else need.window
@@ -82,14 +98,16 @@ def test_family_matches_postgres_on_exported_fallback_inputs(
                     exported.csv_path, exported.schema, path, metadata={}, temp_dir=tmp_path
                 )
         actual = run_family(
-            builder, REQUEST, inputs_root=tmp_path, workdir=tmp_path, code_commit="a" * 40
+            builder, request, inputs_root=tmp_path, workdir=tmp_path, code_commit="a" * 40
         )
         with real_db_engine.connect() as conn:
             for relation, rows in actual.output.tables.items():
                 expected = read_table_rows(
-                    conn, relation, rows.key, provider_id="seed", local_dates=REQUEST.local_dates
+                    conn, relation, rows.key, provider_id="seed", local_dates=request.local_dates
                 )
                 assert compare_tables(expected, rows) == [], relation
+                if skew and relation in builder.tables[:3]:
+                    assert expected.rows == (expected_occupancy_row(relation, hour),)
     finally:
         with real_db_engine.begin() as conn:
             for relation in (

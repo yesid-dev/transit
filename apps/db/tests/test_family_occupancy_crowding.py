@@ -1,14 +1,23 @@
-from datetime import UTC, date, datetime
+from dataclasses import replace
+from datetime import UTC, date, datetime, timedelta
 
 import duckdb
+import pytest
 
 from transit_ops.batch.build import BuildRequest, utc_days
+from transit_ops.batch.families.occupancy_crowding import builder
 from transit_ops.batch.families.registry import resolve_builder
 from transit_ops.batch.run import run_family
 
 DAY = date(2026, 11, 1)
 STAMP = datetime(2026, 11, 4, 12, 0, 0, 123456, UTC)
 REQUEST = BuildRequest("seed", (DAY, date(2026, 11, 2)), STAMP, 14, 10, "America/Toronto")
+# R26 assumes feed time is no more than one UTC day ahead of capture time.
+# Capture may lag feed by any amount, up to the build stamp, within retained facts.
+SKEW_CASES = (
+    ("America/Toronto", "2026-11-02 04:59:59+00", "2026-11-03 00:00:00+00", 19),
+    ("Etc/UTC", "2026-11-01 23:59:59+00", "2026-11-02 00:00:01+00", 0),
+)
 # route, stop, occupancy, delay, capture instant, date key. Both 01:30 folds coalesce.
 SEED = [
     ("A", "S", 0, -1, "2026-11-01 05:30:00.000001+00", 20261101),
@@ -27,15 +36,22 @@ SEED = [
 ]
 
 
-def write_inputs(root, request=REQUEST):
-    with duckdb.connect() as conn:
+def write_inputs(root, request=REQUEST, rows=SEED, feed_stamps=None):
+    with duckdb.connect(config={"TimeZone": "UTC"}) as conn:
         conn.execute(
             "CREATE TABLE seed(route_id TEXT, stop_id TEXT, occupancy_status INTEGER, "
-            "delay_seconds INTEGER, captured_at_utc TIMESTAMPTZ, snapshot_date_key INTEGER)"
+            "delay_seconds INTEGER, captured_at_utc TIMESTAMPTZ, snapshot_date_key INTEGER, "
+            "feed_timestamp_utc TIMESTAMPTZ)"
         )
-        conn.executemany("INSERT INTO seed VALUES (?, ?, ?, ?, ?, ?)", SEED)
+        conn.executemany(
+            "INSERT INTO seed VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [(*row, feed_stamps[i] if feed_stamps else row[4]) for i, row in enumerate(rows)],
+        )
+        # Supply the complete available capture archive, independently of declared needs.
+        first = request.as_of_utc.date() - timedelta(days=request.fact_retention_days)
         for relation in ("gold.fact_vehicle_snapshot", "gold.fact_trip_delay_snapshot"):
-            for window in utc_days(request):
+            for offset in range(request.fact_retention_days + 1):
+                window = (first + timedelta(days=offset)).isoformat()
                 path = root / relation / f"{window}.parquet"
                 path.parent.mkdir(parents=True, exist_ok=True)
                 conn.execute(
@@ -46,9 +62,8 @@ def write_inputs(root, request=REQUEST):
         path = root / "core.providers" / "all.parquet"
         path.parent.mkdir(parents=True, exist_ok=True)
         conn.execute(
-            "COPY (SELECT 'seed'::TEXT provider_id, 'America/Toronto'::TEXT timezone) "
-            "TO ? (FORMAT PARQUET)",
-            [str(path)],
+            "COPY (SELECT 'seed'::TEXT provider_id, ?::TEXT timezone) TO ? (FORMAT PARQUET)",
+            [request.timezone, str(path)],
         )
 
 
@@ -100,3 +115,79 @@ def test_family_preserves_bands_fallback_filters_and_exact_numeric_rows(tmp_path
         ("seed", DAY, "a", "full", 1, "3600", "3600.00", STAMP),
     )
     assert result.output.bodies == {}
+
+
+def expected_occupancy_row(relation, hour):
+    if "hourly" in relation:
+        return ("seed", "A", DAY, hour, 1, 0, 1, 0, 0, 0, STAMP)
+    return ("seed", DAY, "S" if "stop_" in relation else "A", 1, 0, 1, 0, 0, 0, STAMP)
+
+
+@pytest.mark.parametrize("relation", builder.tables[:3])
+@pytest.mark.parametrize("zone,feed,capture,hour", SKEW_CASES)
+def test_feed_day_includes_capture_outside_its_utc_windows(
+    tmp_path, relation, zone, feed, capture, hour
+):
+    request = replace(REQUEST, local_dates=(DAY,), timezone=zone)
+    write_inputs(tmp_path, request, [("A", "S", 1, 1, capture, 20261101)], [feed])
+    assert capture[:10] not in utc_days(request)
+    result = run_family(
+        builder, request, inputs_root=tmp_path, workdir=tmp_path, code_commit="a" * 40
+    )
+    assert result.output.tables[relation].rows == (expected_occupancy_row(relation, hour),)
+
+
+@pytest.mark.parametrize("zone,feed,capture,hour", SKEW_CASES)
+def test_day_output_is_independent_of_neighbouring_requested_days(
+    tmp_path, zone, feed, capture, hour
+):
+    request = replace(REQUEST, local_dates=(DAY,), timezone=zone)
+    write_inputs(tmp_path, request, [("A", "S", 1, 1, capture, 20261101)], [feed])
+    alone = run_family(
+        builder, request, inputs_root=tmp_path, workdir=tmp_path, code_commit="a" * 40
+    )
+    neighbours = replace(
+        request, local_dates=(DAY - timedelta(days=1), DAY, DAY + timedelta(days=1))
+    )
+    combined = run_family(
+        builder, neighbours, inputs_root=tmp_path, workdir=tmp_path, code_commit="a" * 40
+    )
+    for relation, table in alone.output.tables.items():
+        other = combined.output.tables[relation]
+        index = other.columns.index("provider_local_date")
+        assert table.rows == tuple(row for row in other.rows if row[index] == DAY)
+
+
+@pytest.mark.parametrize(
+    "capture,hour",
+    [
+        ("2026-10-31 20:00:00+00", 16),
+        ("2026-11-04 11:59:59.999999+00", 6),
+    ],
+)
+def test_occupancy_reads_skew_allowance_and_capture_through_build_day(tmp_path, capture, hour):
+    request = replace(REQUEST, local_dates=(DAY,))
+    write_inputs(
+        tmp_path, request, [("A", "S", 1, 1, capture, 20261101)], ["2026-11-01 04:00:00+00"]
+    )
+    result = run_family(
+        builder, request, inputs_root=tmp_path, workdir=tmp_path, code_commit="a" * 40
+    )
+    for relation in builder.tables[:3]:
+        assert result.output.tables[relation].rows == (expected_occupancy_row(relation, hour),)
+
+
+@pytest.mark.parametrize("day,first", [(DAY, "2026-10-31"), (date(2026, 10, 1), "2026-10-21")])
+def test_occupancy_windows_clip_to_retention_and_crowding_keeps_capture_days(day, first):
+    request = replace(REQUEST, local_dates=(day,))
+    needs = builder.inputs(request)
+    vehicle_days = [n.window for n in needs if n.relation == "gold.fact_vehicle_snapshot"]
+    assert vehicle_days[0] == first
+    assert vehicle_days[-1] == "2026-11-04"
+    assert all(
+        date.fromisoformat(right) - date.fromisoformat(left) == timedelta(days=1)
+        for left, right in zip(vehicle_days, vehicle_days[1:], strict=False)
+    )
+    assert tuple(
+        n.window for n in needs if n.relation == "gold.fact_trip_delay_snapshot"
+    ) == utc_days(request)
