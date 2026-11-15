@@ -336,7 +336,7 @@
 					{#each pagedGroups as group (group.key)}
 						<section class="stops-line-group" aria-label={t.direction(group.dir, group.headsign)}>
 							<h3 class="stops-line-dir">{t.direction(group.dir, group.headsign)}</h3>
-							<EntityList grid cards items={group.stops} key={(s) => s.id}>
+							<EntityList grid cards interactive items={group.stops} key={(s) => s.id}>
 								{#snippet row(stop)}
 									{@render stopRow(stop)}
 								{/snippet}
@@ -364,7 +364,7 @@
 						<h2 id="stops-browse-heading">{t.browse.heading}</h2>
 						<p>{t.browse.lede}</p>
 					</div>
-					<EntityList grid cards items={visibleBrowseLines} key={(route) => route.id}>
+					<EntityList grid cards interactive items={visibleBrowseLines} key={(route) => route.id}>
 						{#snippet row(route)}
 							{@const modeHint = routeModeHint(route.type)}
 							{@const accessibleLineName = [modeHint.tag, route.long].filter(Boolean).join(' ')}
@@ -397,6 +397,7 @@
 				<EntityList
 					grid
 					cards
+					interactive
 					items={sortedMatches}
 					key={(s) => s.id}
 					max={SEARCH_CAP}
