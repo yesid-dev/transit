@@ -9,20 +9,28 @@ from time import monotonic
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from psycopg import sql
-
 from transit_ops.history.datasets import TableSource, get_dataset, utc_day_closes_at
 from transit_ops.lake.alert_bundle import MEMBERS
 
 ROLE_CAN_WRITE = """
-SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname=current_user AND rolsuper)
+WITH reachable AS (
+ SELECT oid, rolsuper FROM pg_roles
+ WHERE rolname=current_user OR pg_has_role(current_user, oid, 'MEMBER'))
+SELECT EXISTS (SELECT 1 FROM reachable WHERE rolsuper)
  OR EXISTS (
    SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-   WHERE n.nspname = ANY(%s) AND c.relkind IN ('r','p','v','m','f')
-   AND (pg_has_role(c.relowner, 'USAGE')
-        OR has_table_privilege(c.oid, 'INSERT,UPDATE,DELETE,TRUNCATE')))
- OR EXISTS (SELECT 1 FROM pg_namespace n WHERE n.nspname = ANY(%s)
-            AND has_schema_privilege(n.oid, 'CREATE'))
+   CROSS JOIN reachable r WHERE n.nspname = ANY(%s) AND CASE
+     WHEN c.relkind IN ('r','p','v','m','f') THEN (
+       pg_has_role(r.oid, c.relowner, 'MEMBER')
+       OR has_table_privilege(r.oid, c.oid, 'INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER')
+       OR has_any_column_privilege(r.oid, c.oid, 'INSERT,UPDATE'))
+     WHEN c.relkind='S' THEN (pg_has_role(r.oid, c.relowner, 'MEMBER')
+                            OR has_sequence_privilege(r.oid, c.oid, 'USAGE,UPDATE'))
+     ELSE false END)
+ OR EXISTS (SELECT 1 FROM pg_namespace n CROSS JOIN reachable r
+            WHERE n.nspname = ANY(%s) AND has_schema_privilege(r.oid, n.oid, 'CREATE'))
+ OR EXISTS (SELECT 1 FROM reachable r
+            WHERE has_database_privilege(r.oid, current_database(), 'CREATE'))
 """
 
 
@@ -67,11 +75,12 @@ def exact_windows(
 ) -> tuple[str, ...]:
     """Map the declared grain, preserving provider scope and the alert exception.
 
-    Edition ids are resolved to current source checksums, never guessed. A ranged
-    `all` really requests all prior source windows; only its scoped window keys
-    are read here, not payloads. The fetch resolver remains the proof authority.
+    Edition ids are resolved to current source checksums, never guessed.
+    Unbounded ranged needs refuse before any source query. The fetch resolver
+    remains the proof authority; parent closure is never silently narrowed.
     """
     windows: set[str] = set()
+    require_bounded_needs(needs)
     for item in needs:
         relation, provider, window = item["relation"], item["provider"], item["window"]
         dataset = get_dataset(relation)
@@ -95,24 +104,7 @@ def exact_windows(
                 raise ValueError(f"edition_unresolved: {provider}")
             windows.add(f"{relation}:{provider}:{rows[0][0]}")
         elif window == "all":
-            query = sql.SQL("SELECT min({c}) FROM {t} WHERE provider_id=%s AND {c}<%s").format(
-                c=sql.Identifier(source.window_column), t=sql.Identifier(*relation.split("."))
-            )
-            first = connection.execute(query, (provider, stamp)).fetchone()[0]
-            if first is None:
-                first = stamp.date()  # Proven empty current window is still an input.
-            first = first.date() if isinstance(first, datetime) else first
-            current = first.replace(day=1) if dataset.archive_grain == "month" else first
-            while current <= stamp.date():
-                key = (
-                    current.strftime("%Y-%m") if dataset.archive_grain == "month" else str(current)
-                )
-                windows.add(f"{relation}:{provider}:{key}")
-                current = (
-                    date(current.year + (current.month == 12), current.month % 12 + 1, 1)
-                    if dataset.archive_grain == "month"
-                    else current + timedelta(days=1)
-                )
+            raise ValueError(f"unbounded_window_need: {relation}")
         else:
             days = [window.removeprefix("local:")]
             if (
@@ -134,16 +126,47 @@ def exact_windows(
     return tuple(sorted(windows))
 
 
+def require_bounded_needs(needs: Sequence[Mapping[str, str]]) -> None:
+    for item in needs:
+        source = get_dataset(item["relation"]).source
+        if (
+            item["relation"] not in MEMBERS
+            and item["window"] == "all"
+            and isinstance(source, TableSource)
+            and source.window_column is not None
+        ):
+            raise ValueError(f"unbounded_window_need: {item['relation']}")
+
+
+def lake_capabilities() -> tuple[bool, set[str]]:
+    from dataclasses import fields
+
+    from typer.main import get_command
+
+    from transit_ops.commands import lake
+    from transit_ops.lake.table_export import WindowSpec
+
+    command = getattr(get_command(lake.app), "commands", {}).get("migrate")
+    options = {
+        option for param in getattr(command, "params", ()) for option in getattr(param, "opts", ())
+    }
+    return "cut_utc" in {field.name for field in fields(WindowSpec)}, options
+
+
+def require_group_reserve_support() -> None:
+    cuts, options = lake_capabilities()
+    if not cuts or not {"--window", "--group-reserve-s"} <= options:
+        raise ValueError("group_reserve_unsupported")
+
+
 def require_window_support(
     needs: Sequence[Mapping[str, str]], stamp: datetime, *, exact_selection: bool = True
 ) -> None:
     """LS1.9e ships --window and fixed-cut copies together; refuse on older code."""
-    from inspect import signature
-
-    from transit_ops.commands.lake import migrate
     from transit_ops.settings import Settings
 
-    if "window" in signature(migrate).parameters:
+    cuts, options = lake_capabilities()
+    if cuts and "--window" in options:
         return
     for item in needs:
         dataset = get_dataset(item["relation"])
@@ -164,7 +187,12 @@ def require_window_support(
             ):
                 raise ValueError("open_window_unsupported: requires LS1.9e")
     if exact_selection:
-        raise ValueError("window_selection_unsupported: requires LS1.9e")
+        reason = (
+            "window_selection_unsupported"
+            if "--window" not in options
+            else "open_window_unsupported"
+        )
+        raise ValueError(f"{reason}: requires LS1.9e fixed cuts")
 
 
 def assert_timezone(root: Any, provider: str, expected: str) -> None:

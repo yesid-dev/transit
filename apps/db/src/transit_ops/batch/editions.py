@@ -1,8 +1,10 @@
 """Current schedule selection shared by live PostgreSQL and verified replay inputs."""
 
+import hashlib
+import json
 from collections.abc import Iterable, Sequence
 from dataclasses import replace
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import duckdb
@@ -48,6 +50,37 @@ def snapshot_rows(path: Path, provider: str) -> tuple[EditionRow, ...]:
                 [str(path), provider],
             ).fetchall()
         )
+
+
+def replay_edition_request(
+    request: BuildRequest, families: Sequence[str], inputs: Path, report: Path, code_commit: str
+) -> BuildRequest:
+    """Read this row's editions, pinned to the completed replay rather than its DB."""
+    from transit_ops.batch.build import InputNeed
+    from transit_ops.batch.inputs import resolve_inputs
+
+    data = json.loads(report.read_bytes())
+    if (
+        data["provider_id"] != request.provider_id
+        or data["local_date"] != request.local_dates[0].isoformat()
+        or datetime.fromisoformat(data["as_of_utc"]) != request.as_of_utc
+        or data["code_commit"] != code_commit
+    ):
+        raise ValueError("edition_input_changed: replay provenance")
+    path = resolve_inputs((InputNeed("core.dataset_versions", "all"),), inputs)[0].files[0]
+    relative = path.relative_to(inputs.resolve()).as_posix()
+    expected = [digest for name, digest in data["input_files"] if name == relative]
+
+    def verify() -> None:
+        with path.open("rb") as stream:
+            actual = hashlib.file_digest(stream, "sha256").hexdigest()
+        if expected != [actual]:
+            raise ValueError("edition_input_changed: metadata differs from replay")
+
+    verify()
+    rows = snapshot_rows(path, request.provider_id)
+    verify()
+    return with_editions(request, families, rows)
 
 
 def postgres_rows(conn: Connection, provider: str) -> tuple[EditionRow, ...]:

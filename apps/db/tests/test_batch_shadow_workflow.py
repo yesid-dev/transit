@@ -152,6 +152,7 @@ def test_export_asserts_read_only_and_uses_locked_cli_all_provider(controller, m
 
     monkeypatch.setattr(psycopg, "connect", connect)
     monkeypatch.setattr(daily_inputs, "require_window_support", lambda *a: None)
+    monkeypatch.setattr(daily_inputs, "require_group_reserve_support", lambda: None)
     monkeypatch.setattr(
         daily_inputs,
         "exact_windows",
@@ -167,12 +168,14 @@ def test_export_asserts_read_only_and_uses_locked_cli_all_provider(controller, m
     assert "--include-open" in args and "--provider" not in args
     assert args[args.index("--statement-timeout-s") + 1] == "300"
     assert args.count("--window") == 1
+    assert args[args.index("--group-reserve-s") + 1] == "4500"
     deadline = datetime.fromisoformat(args[args.index("--not-after") + 1])
     assert (deadline - start).total_seconds() >= 4500  # (2*3+7)*300+600
     assert queries[0] == "SHOW transaction_read_only"
     assert any("pg_has_role" in q and "has_table_privilege" in q for q in queries)
     assert queries[-1] == "SELECT count(*) FROM core.providers"
     assert "default_transaction_read_only=on" in connections[0]["options"]
+    assert "lock_timeout=1000" in connections[0]["options"]
     free = iter((25_000_000_000, 25_000_000_000, 15_000_000_000))
     monkeypatch.setattr(
         controller["shutil"], "disk_usage", lambda path: SimpleNamespace(free=next(free))

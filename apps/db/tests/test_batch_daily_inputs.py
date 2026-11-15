@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from typing import Annotated
 
 import pytest
 
@@ -159,3 +160,151 @@ def test_fresh_group_deadline_does_not_spend_reserve_on_prior_copies(monkeypatch
     with pytest.raises(ValueError, match="not_after"):
         assert_group_deadline(after_ordinary + timedelta(seconds=4500), 3)
     assert_group_deadline(after_ordinary + timedelta(seconds=4501), 3)
+
+
+@pytest.mark.parametrize("relation", ["raw.ingestion_runs", "raw.ingestion_objects"])
+def test_windowed_all_never_reads_unrelated_historical_months(relation):
+    def execute(*args):
+        raise AssertionError("must not scan a source holding 23 historical months")
+
+    with pytest.raises(ValueError, match="unbounded_window_need"):
+        exact_windows(
+            [{"relation": relation, "provider": "stm", "window": "all"}],
+            datetime(2026, 11, 15, tzinfo=UTC),
+            SimpleNamespace(execute=execute),
+        )
+
+
+def test_select_only_role_passes_the_catalog_result():
+    queries = []
+
+    def execute(query, parameters):
+        queries.append(query)
+        return SimpleNamespace(fetchone=lambda: (False,))
+
+    assert_read_role(SimpleNamespace(execute=execute))
+    assert all(
+        check in queries[0]
+        for check in (
+            "'MEMBER'",
+            "has_any_column_privilege",
+            "TRIGGER",
+            "has_sequence_privilege",
+            "has_database_privilege",
+        )
+    )
+
+
+def fake_lake_cli(monkeypatch, *, cuts=True, reserve=True, callback=None):
+    from dataclasses import make_dataclass
+
+    import typer
+
+    from transit_ops.commands import lake
+    from transit_ops.lake import table_export
+
+    fields = [("dataset_id", str)] + ([("cut_utc", str | None, None)] if cuts else [])
+    monkeypatch.setattr(table_export, "WindowSpec", make_dataclass("CutCapability", fields))
+    app = typer.Typer()
+
+    @app.callback()
+    def root():
+        pass
+
+    if reserve:
+
+        def migrate(
+            window: Annotated[list[str] | None, typer.Option("--window")] = None,
+            not_after: Annotated[str, typer.Option("--not-after")] = "",
+            group_reserve_s: Annotated[int, typer.Option("--group-reserve-s")] = 0,
+        ):
+            if callback:
+                callback(not_after=not_after, group_reserve_s=group_reserve_s)
+    else:
+
+        def migrate(
+            window: Annotated[list[str] | None, typer.Option("--window")] = None,
+            not_after: Annotated[str, typer.Option("--not-after")] = "",
+        ):
+            pass
+
+    app.command(context_settings={"ignore_unknown_options": True, "allow_extra_args": True})(
+        migrate
+    )
+    monkeypatch.setattr(lake, "app", app)
+    return app
+
+
+@pytest.mark.parametrize("cuts,reserve", [(True, True), (True, False), (False, True)])
+def test_group_capability_requires_public_option_and_fixed_cuts(monkeypatch, cuts, reserve):
+    from transit_ops.batch.daily_inputs import require_group_reserve_support
+
+    fake_lake_cli(monkeypatch, cuts=cuts, reserve=reserve)
+    if cuts and reserve:
+        require_group_reserve_support()
+        require_window_support([], datetime(2026, 11, 15, tzinfo=UTC))
+    else:
+        with pytest.raises(ValueError, match="group_reserve_unsupported"):
+            require_group_reserve_support()
+        if not cuts:
+            with pytest.raises(ValueError, match="open_window_unsupported"):
+                require_window_support([], datetime(2026, 11, 15, tzinfo=UTC))
+
+
+def test_future_windowed_all_needs_have_the_same_refusal(monkeypatch):
+    from dataclasses import replace
+
+    from transit_ops.batch import daily_inputs
+    from transit_ops.history.datasets import get_dataset
+
+    model = get_dataset("raw.ingestion_objects")
+    future = replace(
+        model,
+        dataset_id="silver.rt_entities",
+        source=replace(model.source, table="silver.rt_entities"),
+    )
+    monkeypatch.setattr(daily_inputs, "get_dataset", lambda relation: future)
+    with pytest.raises(ValueError, match="unbounded_window_need: silver.rt_entities"):
+        exact_windows(
+            [{"relation": "silver.rt_entities", "provider": "stm", "window": "all"}],
+            datetime(2026, 11, 15, tzinfo=UTC),
+            None,
+        )
+
+
+def test_dataset_version_fk_all_refuses_with_unrelated_history_present():
+    from transit_ops.batch.build import InputNeed
+    from transit_ops.batch.replay import parent_input_needs
+
+    class Catalog:
+        def get_foreign_keys(self, name, schema):
+            # The two dataset_versions FKs in migration 0093:2104-2109.
+            targets = {
+                ("core", "dataset_versions"): ("ingestion_runs", "ingestion_objects"),
+                ("raw", "ingestion_objects"): ("ingestion_runs",),
+            }
+            return [
+                {"referred_schema": "raw", "referred_table": parent}
+                for parent in targets.get((schema, name), ())
+            ]
+
+    needs = parent_input_needs((InputNeed("core.dataset_versions", "all"),), Catalog())
+    assert {n.relation for n in needs if n.window == "all"} == {
+        "core.dataset_versions",
+        "raw.ingestion_runs",
+        "raw.ingestion_objects",
+    }
+    history = ["2025-01", "2025-08", "2026-11"]
+    queries = []
+
+    def execute(query, parameters):
+        queries.append(query)
+        return SimpleNamespace(fetchone=lambda: (datetime.fromisoformat(history[0] + "-01"),))
+
+    with pytest.raises(ValueError, match="unbounded_window_need"):
+        exact_windows(
+            [{"relation": n.relation, "window": n.window, "provider": "stm"} for n in needs],
+            datetime(2026, 11, 15, tzinfo=UTC),
+            SimpleNamespace(execute=execute),
+        )
+    assert queries == []

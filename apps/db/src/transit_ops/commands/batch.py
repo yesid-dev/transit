@@ -195,7 +195,14 @@ def _accept_shadow_report(checkpoint: "Checkpoint", path: Path) -> None:
     accept(checkpoint, family_from_payload(matches[0]))
 
 
-def _shadow_editions(request: "BuildRequest", families: list[str]) -> "BuildRequest":
+def _shadow_editions(
+    request: "BuildRequest",
+    families: list[str],
+    *,
+    inputs: Path | None = None,
+    report: Path | None = None,
+    code_commit: str = "",
+) -> "BuildRequest":
     from sqlalchemy import text
 
     from transit_ops.batch.editions import postgres_rows, reads_editions, with_editions
@@ -204,6 +211,12 @@ def _shadow_editions(request: "BuildRequest", families: list[str]) -> "BuildRequ
 
     if not reads_editions(families):
         return request
+    if report is not None:
+        from transit_ops.batch.editions import replay_edition_request
+
+        if inputs is None:
+            raise ValueError("edition_input_changed: inputs required")
+        return replay_edition_request(request, families, inputs, report, code_commit)
     engine = make_engine(Settings())
     try:
         with engine.connect() as conn, conn.begin():
@@ -249,10 +262,12 @@ def shadow_command(
             raise ValueError("family builder is not implemented")
         workdir.mkdir(parents=True, exist_ok=True)
         request = _shadow_request(provider, local_date, stamp, inputs, workdir)
-        edition_request = _shadow_editions(request, family)
+        commit = _code_commit()
+        edition_request = _shadow_editions(
+            request, family, inputs=inputs, report=accept_from, code_commit=commit
+        )
         storage = get_bronze_storage(Settings(), project_root=Path(__file__).resolve().parents[3])
         store = CheckpointStore(workdir / "checkpoints")
-        commit = _code_commit()
         for builder in builders:
             assert isinstance(builder, FamilyBuilder)
             from transit_ops.batch.editions import reads_editions

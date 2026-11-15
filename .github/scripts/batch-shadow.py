@@ -1,7 +1,8 @@
 """Bounded daily orchestration; run from apps/db with its pinned environment.
 
-Only export receives the production URL. All catalog, replay and edition reads
-afterwards use the disposable service. Archive/shadow writers remain create-only.
+Only export receives the production URL. Catalog and replay use the disposable
+service; accepted shadow editions come from each row's replay-pinned input files.
+Archive/shadow writers remain create-only.
 """
 
 import hashlib
@@ -45,6 +46,9 @@ REFUSALS = (
     "ServerChanged",
     "UnverifiedCopy",
     "InputDigestMismatch",
+    "edition_input_changed",
+    "unbounded_window_need",
+    "group_reserve_unsupported",
 )
 
 
@@ -376,6 +380,8 @@ def export_inputs(data: dict[str, Any]) -> None:
         assert_read_role,
         exact_windows,
         group_deadline,
+        require_bounded_needs,
+        require_group_reserve_support,
         require_window_support,
     )
     from transit_ops.lake.alert_bundle import MEMBERS
@@ -384,11 +390,15 @@ def export_inputs(data: dict[str, Any]) -> None:
     if shutil.disk_usage(ROOT).free < 20_000_000_000:
         raise ValueError("work_space: 20 GB start/stop rule")
     stamp = datetime.fromisoformat(data["planned_at"])
+    require_bounded_needs(data["needs"])
+    if any(n["relation"] in MEMBERS for n in data["needs"]):
+        require_group_reserve_support()
     require_window_support(data["needs"], stamp)
     parts = urlsplit(os.environ["DATABASE_URL"])
     with psycopg.connect(
         urlunsplit(parts._replace(scheme="postgresql")),
-        options="-c default_transaction_read_only=on -c statement_timeout=300000",
+        options="-c default_transaction_read_only=on -c statement_timeout=300000 "
+        "-c lock_timeout=1000",
         connect_timeout=5,
     ) as conn:
         if conn.execute("SHOW transaction_read_only").fetchone() != ("on",):
@@ -436,7 +446,9 @@ def export_inputs(data: dict[str, Any]) -> None:
         for window in selected:
             args += ["--window", window]
         if name == "alerts":
+            require_group_reserve_support()
             assert_group_deadline(deadline, count)
+            args += ["--group-reserve-s", str((2 * count + 7) * 300 + 600)]
         invoke(args, ROOT / f"export-{name}.log")
         data["export_not_after"] = deadline.isoformat()
     data["export_finished_at"] = datetime.now(UTC).isoformat()
@@ -570,8 +582,12 @@ def main(stage: str) -> None:
             if stamp < datetime.fromisoformat(data.get("export_finished_at", data["planned_at"])):
                 raise ValueError("invalid_as_of: precedes selected export cuts")
             if stage == "fetch":
-                from transit_ops.batch.daily_inputs import require_window_support
+                from transit_ops.batch.daily_inputs import (
+                    require_bounded_needs,
+                    require_window_support,
+                )
 
+                require_bounded_needs(data["needs"])
                 require_window_support(data["needs"], stamp, exact_selection=False)
             data["as_of_utc"] = stamp.isoformat()
             write_json(receipt, data)
