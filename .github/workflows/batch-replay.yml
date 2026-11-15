@@ -1,0 +1,151 @@
+name: Batch replay
+
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: Provider declaration id
+        required: true
+        type: string
+      first_date:
+        description: First day (YYYY-MM-DD, inclusive)
+        required: true
+        type: string
+      last_date:
+        description: Last day (YYYY-MM-DD, inclusive)
+        required: true
+        type: string
+      families:
+        description: Comma-separated family ids (empty selects every family)
+        required: false
+        type: string
+      bodies:
+        description: Compare bodies too (requires copied rollup history)
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  days:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.days.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version-file: .python-version
+      - id: days
+        env:
+          PROVIDER: ${{ inputs.provider }}
+          FIRST: ${{ inputs.first_date }}
+          LAST: ${{ inputs.last_date }}
+        run: |
+          python - <<'PY'
+          import json, os, re
+          from datetime import date, timedelta
+          first, last = date.fromisoformat(os.environ['FIRST']), date.fromisoformat(os.environ['LAST'])
+          if not re.fullmatch(r'[a-z0-9_-]+', os.environ['PROVIDER']):
+              raise ValueError('invalid provider')
+          count = (last - first).days + 1
+          if not 1 <= count <= 256:
+              raise ValueError('select 1 to 256 provider-days')
+          matrix = {'include': [{'provider': os.environ['PROVIDER'],
+                     'day': (first + timedelta(days=i)).isoformat()} for i in range(count)]}
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write('matrix=' + json.dumps(matrix, separators=(',', ':')) + '\n')
+          PY
+
+  replay:
+    needs: days
+    environment: batch-replay
+    runs-on: ubuntu-24.04
+    # A fact lookback can exceed 50M trip rows plus vehicles. This is provisional:
+    # the first measured rescued-day run must reset timeout and runner disk sizing.
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix: ${{ fromJSON(needs.days.outputs.matrix) }}
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4@sha256:44126d872ac91993766c341e369c539e8196614321765d36a6f1bab0419a5fa5
+        env:
+          POSTGRES_USER: transit_ci
+          POSTGRES_PASSWORD: transit_ci
+          POSTGRES_DB: transit_ci
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U transit_ci -d transit_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: apps/db
+    env:
+      TRANSIT_REPLAY_DATABASE_URL: postgresql+psycopg://transit_ci:transit_ci@127.0.0.1:5432/transit_ci
+      TRANSIT_TEST_DATABASE_DISPOSABLE: I_UNDERSTAND_THIS_DATABASE_IS_DISPOSABLE
+      REPLAY_PROVIDER: ${{ matrix.provider }}
+      REPLAY_DAY: ${{ matrix.day }}
+      FAMILIES: ${{ inputs.families }}
+      BODIES: ${{ inputs.bodies }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: ./.github/actions/setup-py
+      - name: Migrate disposable PostgreSQL (alembic upgrade head)
+        run: |
+          unset PGHOST PGHOSTADDR PGPORT PGDATABASE PGUSER PGSERVICE PGSERVICEFILE
+          uv run python - <<'PY'
+          import os
+          from alembic import command
+          from alembic.config import Config
+          config = Config('alembic.ini')
+          config.set_main_option('sqlalchemy.url', os.environ['TRANSIT_REPLAY_DATABASE_URL'])
+          command.upgrade(config, 'head')
+          PY
+      - name: Record available disk
+        run: df -h . /tmp
+      - name: Fetch proven inputs
+        env:
+          BRONZE_STORAGE_BACKEND: s3
+          BRONZE_S3_ENDPOINT: https://eccfb9bedd87d413eaf4cac6ae2285d3.r2.cloudflarestorage.com
+          BRONZE_S3_BUCKET: transit-raw
+          BRONZE_S3_REGION: auto
+          BRONZE_S3_ACCESS_KEY: ${{ secrets.BATCH_REPLAY_R2_ACCESS_KEY }}
+          BRONZE_S3_SECRET_KEY: ${{ secrets.BATCH_REPLAY_R2_SECRET_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir inputs replay
+          args=()
+          IFS=',' read -r -a selected <<< "$FAMILIES"
+          for family in "${selected[@]}"; do
+            if [[ -n "$family" ]]; then args+=(--family "$family"); fi
+          done
+          if [[ "$BODIES" == true ]]; then args+=(--bodies); fi
+          uv run transit-ops batch fetch-inputs --provider "$REPLAY_PROVIDER" --date "$REPLAY_DAY" \
+            --inputs inputs "${args[@]}" > replay/fetch-receipts.json
+      - name: Replay both engines
+        run: |
+          set -euo pipefail
+          unset PGHOST PGHOSTADDR PGPORT PGDATABASE PGUSER PGSERVICE PGSERVICEFILE
+          args=()
+          IFS=',' read -r -a selected <<< "$FAMILIES"
+          for family in "${selected[@]}"; do
+            if [[ -n "$family" ]]; then args+=(--family "$family"); fi
+          done
+          if [[ "$BODIES" == true ]]; then args+=(--bodies); fi
+          uv run transit-ops batch replay-day --provider "$REPLAY_PROVIDER" --date "$REPLAY_DAY" \
+            --inputs inputs --workdir replay "${args[@]}"
+      - name: Attach replay evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: batch-replay-${{ matrix.provider }}-${{ matrix.day }}
+          path: |
+            apps/db/replay/report-*.json
+            apps/db/replay/fetch-receipts.json
+          retention-days: 14
+          if-no-files-found: warn

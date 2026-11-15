@@ -178,7 +178,7 @@ def replay_inputs(real_db_engine, fact_source, tmp_path, monkeypatch, request):
                 "raw.realtime_snapshot_index",
             }:
                 windows = [(DAY + timedelta(days=offset)).isoformat() for offset in range(-14, 3)]
-            elif relation in relations[6:11]:
+            elif relation in relations[7:11]:
                 windows = ["edition=1"]
             else:
                 windows = ["all"]

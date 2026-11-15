@@ -71,6 +71,7 @@ _FACTS = (
 )
 _STATE = (
     "core.providers",
+    "core.dataset_versions",
     "core.feed_endpoints",
     "raw.ingestion_runs",
     "raw.ingestion_objects",
@@ -82,12 +83,24 @@ _STATE = (
     "silver.i3_alert_informed_entities",
 )
 _EDITIONS = (
-    "core.dataset_versions",
     "silver.trips",
     "silver.calendar",
     "silver.calendar_dates",
     "silver.stop_times",
 )
+
+
+def postgres_input_needs(request: BuildRequest, editions: Sequence[int]) -> tuple[InputNeed, ...]:
+    """The full PostgreSQL build inventory, independent of the selected families."""
+    return (
+        tuple(InputNeed(r, "all") for r in _STATE)
+        + tuple(
+            InputNeed(r, w)
+            for r in _FACTS
+            for w in utc_days(request, lookback_days=request.fact_retention_days, after_days=1)
+        )
+        + tuple(InputNeed(r, f"edition:{ident}") for r in _EDITIONS for ident in editions)
+    )
 
 
 def _declared_windows(root: Path, relation: str) -> tuple[InputNeed, ...]:

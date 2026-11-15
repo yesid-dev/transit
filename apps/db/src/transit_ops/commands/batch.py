@@ -24,6 +24,57 @@ def _code_commit() -> str:
     ).strip()
 
 
+@app.command("fetch-inputs")
+def fetch_command(
+    provider: Annotated[str, typer.Option("--provider")],
+    day: Annotated[str, typer.Option("--date")],
+    inputs: Annotated[Path, typer.Option("--inputs")],
+    family: Annotated[list[str] | None, typer.Option("--family")] = None,
+    bodies: Annotated[bool, typer.Option("--bodies")] = False,
+    as_of: Annotated[str | None, typer.Option("--as-of")] = None,
+) -> None:
+    """Fetch proven replay inputs without opening a database or writing to object storage."""
+    import json
+
+    from transit_ops.batch.build import FamilyBuilder
+    from transit_ops.batch.families.registry import FAMILIES, resolve_builder
+    from transit_ops.batch.fetch_inputs import needs_for_replay
+    from transit_ops.batch.input_sources import fetch_replay_inputs, replay_request
+    from transit_ops.batch.replay import postgres_input_needs
+    from transit_ops.history.storage import history_storage
+    from transit_ops.settings import get_settings
+
+    scope = None
+    try:
+        settings = get_settings()
+        request = replay_request(provider, day, as_of, settings)
+        builders = []
+        for name in family or FAMILIES:
+            builder = resolve_builder(name)
+            if builder is not None:
+                if not isinstance(builder, FamilyBuilder):
+                    raise ValueError(f"{name}: invalid builder")
+                if bodies or not builder.published_keys:
+                    builders.append(builder)
+        scope = history_storage(settings)
+        result = fetch_replay_inputs(
+            scope.resolve(settings.BRONZE_STORAGE_BACKEND),
+            inputs,
+            provider,
+            request.as_of_utc,
+            lambda editions: needs_for_replay(
+                builders, request, postgres_needs=postgres_input_needs(request, tuple(editions))
+            ),
+        )
+        typer.echo(json.dumps(result, sort_keys=True, separators=(",", ":")))
+    except Exception as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(1) from error
+    finally:
+        if scope is not None:
+            scope.close()
+
+
 @app.command("replay-day")
 def replay_command(
     provider: Annotated[str, typer.Option("--provider")],
