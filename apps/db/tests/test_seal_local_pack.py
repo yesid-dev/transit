@@ -149,3 +149,40 @@ def test_missing_capture_without_stored_poll_is_refused(working_day):
     with pytest.raises(PollRecordInvalid, match="realtime_snapshot.*1"):
         pack_working_day(record, resolver, directory=directory)
     assert list(directory.iterdir()) == []
+
+
+def test_pack_and_manifest_match_the_original_writer(working_day):
+    import io
+    from datetime import UTC, datetime
+
+    from transit_ops.history.manifest import build_manifest, encode_manifest
+    from transit_ops.history.probe_duckdb import benchmark
+
+    record, store, directory, resolver, _ = working_day
+    # The pre-change writer is the compatibility oracle; it remains unchanged.
+    original = io.BytesIO()
+    payloads = [(store.root / c.storage_path).read_bytes() for c in record.captures]
+    expected = write_pack(payloads, original)
+    local = pack_working_day(record, resolver, directory=directory)
+    assert benchmark(local, directory)["duckdb_status"] == "measured"
+    assert local.path.read_bytes() == original.getvalue()
+    assert local.pack == expected
+    expected_record = replace(
+        record,
+        captures=tuple(
+            replace(c, packed=True, stream=e.stream, offset=e.offset)
+            for c, e in zip(record.captures, expected.captures, strict=True)
+        ),
+    )
+    options = dict(
+        feed_endpoint_id=1,
+        feed_kind="gtfs_rt",
+        content_version=1,
+        supersedes=None,
+        pack_path="archive/day.pack.xz",
+        sealed_at_utc=datetime(2026, 1, 3, tzinfo=UTC),
+        sealed_by="test",
+    )
+    before = encode_manifest(build_manifest(expected_record, pack=expected, **options))
+    after = encode_manifest(build_manifest(local.record, pack=local.pack, **options))
+    assert after == before
