@@ -639,6 +639,7 @@
 				directionHeadsigns={dirHeadsigns}
 				history={lineHistory}
 				{historyOnlyReliability}
+				noLiveData={absenceReason?.key === 'metro-no-realtime'}
 				articleSummary={detailTabController.active === 'reliability' && hasHeaderVerdict
 					? routeBanner
 					: undefined}

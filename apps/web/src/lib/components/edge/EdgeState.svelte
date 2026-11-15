@@ -20,6 +20,7 @@
 		| 'skeleton'
 		| 'no-results'
 		| 'empty'
+		| 'empty-line-no-live-data'
 		| 'empty-avis'
 		| 'error-v1';
 
@@ -92,6 +93,18 @@
 				body: 'No data has been published for this view yet.',
 			},
 		},
+		'empty-line-no-live-data': {
+			fr: {
+				glyph: '○',
+				title: 'Rien à afficher',
+				body: 'Transit ne peut pas mesurer le service réel de cette ligne avec les données disponibles.',
+			},
+			en: {
+				glyph: '○',
+				title: 'Nothing to show',
+				body: 'Transit cannot measure this line’s actual service with the data available.',
+			},
+		},
 		'empty-avis': {
 			fr: {
 				glyph: '○',
@@ -137,6 +150,7 @@
 		'stale-offline': 'warning',
 		'no-results': 'neutral',
 		empty: 'neutral',
+		'empty-line-no-live-data': 'neutral',
 		'empty-avis': 'neutral',
 		'error-v1': 'error',
 	};

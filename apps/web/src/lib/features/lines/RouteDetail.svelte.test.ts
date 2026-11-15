@@ -402,8 +402,9 @@ afterEach(() => {
 });
 
 afterAll(() => {
-	// Includes three extra mounts for provider/locale absence coverage, plus alert ages.
-	expect(vi.mocked(renderSvelte).mock.calls.length).toBeLessThanOrEqual(59);
+	// Includes three extra mounts for provider/locale absence coverage, plus alert ages,
+	// plus three for the Record tab of a line without live data.
+	expect(vi.mocked(renderSvelte).mock.calls.length).toBeLessThanOrEqual(62);
 });
 
 describe('RouteDetail article cover and focus scope', () => {
@@ -1205,6 +1206,37 @@ describe('RouteDetail Detail tab: HONEST ABSENCE (no live bus)', () => {
 
 		expect(screen.getAllByText('Nothing to show').length).toBeGreaterThan(0);
 		expect(screen.queryByText('live positions are not published here')).not.toBeInTheDocument();
+	});
+});
+
+describe('RouteDetail record for a line without live data', () => {
+	const UNMEASURED = {
+		en: 'Transit cannot measure this line’s actual service with the data available.',
+		fr: 'Transit ne peut pas mesurer le service réel de cette ligne avec les données disponibles.',
+	};
+	const GENERIC = {
+		en: 'No data has been published for this view yet.',
+		fr: 'Aucune donnée publiée pour cette vue pour le moment.',
+	};
+	const mountRecord = (locale: 'en' | 'fr', type?: number) => {
+		routeDetailNav.page.url = new URL('http://localhost/lines/161?tab=reliability');
+		routeFileData = type == null ? ROUTE_FILE : { ...ROUTE_FILE, type };
+		return routeSurface.mount(RouteDetail, {
+			props: { id: '161', seed: routeSeed() },
+			context: new Map([[Symbol.for('@yesid/ui/locale'), () => locale]]),
+		});
+	};
+
+	it.each(['en', 'fr'] as const)('says Transit cannot measure a métro line (%s)', (locale) => {
+		const { container } = mountRecord(locale, 1);
+		expect(container).toHaveTextContent(UNMEASURED[locale]);
+		expect(container).not.toHaveTextContent(GENERIC[locale]);
+	});
+
+	it('keeps the generic empty note on an ordinary line', () => {
+		const { container } = mountRecord('en');
+		expect(container).toHaveTextContent(GENERIC.en);
+		expect(container).not.toHaveTextContent(UNMEASURED.en);
 	});
 });
 

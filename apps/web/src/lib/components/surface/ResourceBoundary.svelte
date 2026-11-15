@@ -12,7 +12,7 @@
 		resource: Resource<T>;
 		lang: Locale;
 		emptyReason?: AbsenceReason | null;
-		emptyVariant?: 'empty' | 'empty-avis';
+		emptyVariant?: 'empty' | 'empty-line-no-live-data' | 'empty-avis';
 		isEmpty?: (data: NonNullable<T>) => boolean;
 		isNoResults?: (data: NonNullable<T>) => boolean;
 		children: Snippet<[NonNullable<T>]>;
