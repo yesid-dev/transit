@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 import re
+import runpy
 import shutil
 import signal
 import socket
@@ -19,7 +20,7 @@ import tracemalloc
 from contextlib import ExitStack, contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from subprocess import PIPE, Popen, TimeoutExpired
+from subprocess import Popen, TimeoutExpired
 from types import SimpleNamespace
 from typing import Any, TypedDict
 
@@ -28,6 +29,7 @@ import duckdb
 from transit_ops.history.probe import peak_rss  # type: ignore[import-untyped]
 
 HOST = sys.platform + ":" + socket.gethostname()
+diagnostics = runpy.run_path(str(Path(__file__).with_name("measure_fact_day_worker.py")))
 RECOVERY_ERRORS = (
     "scratch_ownership_invalid scratch_owner_proof_unavailable "
     "scratch_cleanup_failed scratch_recovery_incomplete"
@@ -280,6 +282,7 @@ def options(argv: list[str] | None = None) -> Any:
     parser = rescue.SafeParser(description=__doc__)
     for name in ("provider", "date", "not-after"):
         parser.add_argument("--" + name, required=True)
+    parser.add_argument("--diagnostic-detail", action="store_true")
     return SimpleNamespace(
         **vars(parser.parse_args(argv)),
         statement_timeout_s=60,
@@ -293,10 +296,6 @@ def options(argv: list[str] | None = None) -> Any:
 WORKER = (
     "import runpy,sys,tempfile; tempfile.tempdir=sys.argv[2]; "
     "n=runpy.run_path(sys.argv[1]); sys.exit(n['main'](sys.argv[3:],worker=True))"
-)
-BOOT = (
-    "import runpy,sys; n=runpy.run_path(sys.argv[1]); code=sys.argv.pop(4); "
-    "proof=sys.argv.pop(3); n['lifeline'](sys.argv[2],proof); exec(code)"
 )
 
 
@@ -501,7 +500,9 @@ def scratch(parent: Path) -> Any:
         yield root, proof
 
 
-def lifeline(directory: str, proof: str) -> None:
+def lifeline(
+    directory: str, proof: str, *, error_fd: int = 2, diagnostic_detail: bool = False
+) -> None:
     root = Path(directory)
     expected = owned_snapshot(root)
     if expected[1].get("invocation") != proof:
@@ -522,8 +523,17 @@ def lifeline(directory: str, proof: str) -> None:
                 failed, reason = str(error.args[1]), str(error.args[0])
             finally:
                 try:
-                    if failed or root.exists():
-                        os.write(2, leftover_receipt(failed or root, reason).encode())
+                    receipt = dict(
+                        status="failed",
+                        reason="lifeline_lost",
+                        error_detail="Parent lifeline closed (EOF)",
+                        cleanup_reason=reason if failed or root.exists() else None,
+                        leftover_paths=[str(failed or root)] if failed or root.exists() else [],
+                    )
+                    paths = {key: receipt[key] for key in ("cleanup_reason", "leftover_paths")}
+                    receipt = diagnostics["protect_result"](receipt, 1, diagnostic_detail)
+                    receipt.update(paths)
+                    os.write(error_fd, (json.dumps(receipt) + "\n").encode())
                 finally:
                     os._exit(1)
 
@@ -533,7 +543,9 @@ def lifeline(directory: str, proof: str) -> None:
 def _supervise(
     argv: list[str], worker: str, scratch_root: Path, recovery: dict[str, list[str]]
 ) -> tuple[int, str]:
-    status, previous, root = [], {}, None
+    status, previous = [], {}
+    detail = "--diagnostic-detail" in argv
+    transport = diagnostics["transport"]
     try:
         for number in {signal.SIGINT, signal.SIGTERM, getattr(signal, "SIGBREAK", signal.SIGINT)}:
             previous[number] = signal.signal(number, lambda n, f: status.append(128 + n))
@@ -541,42 +553,100 @@ def _supervise(
         if status or recovery["leftover_paths"]:
             return (status[0] if status else 1), ""
         with scratch(scratch_root) as (root, proof):
-            with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as report:
-                script, base = str(Path(__file__).resolve()), vars(sys)["_base_executable"]
-                windows = sys.platform == "win32" and sys.executable != base
-                executable = base if windows else sys.executable
-                env = {**os.environ, "__PYVENV_LAUNCHER__": sys.executable} if windows else None
-                payload = [str(root), proof, worker, *argv]
-                command = [executable, "-I", "-c", BOOT, script, *payload]
-                process = Popen(command, stdin=PIPE, stdout=report, env=env)
-                assert process.stdin is not None
-                try:
-                    while not status:
-                        try:
-                            process.wait(timeout=0.2)
-                            break
-                        except TimeoutExpired:
-                            pass
-                finally:
+            script, base = str(Path(__file__).resolve()), vars(sys)["_base_executable"]
+            windows = sys.platform == "win32" and sys.executable != base
+            executable = base if windows else sys.executable
+            env = {**os.environ, "__PYVENV_LAUNCHER__": sys.executable} if windows else None
+            bootstrap = str(Path(script).with_name("measure_fact_day_worker.py"))
+            command = [executable, "-I", bootstrap, script, str(root), proof, worker, *argv]
+            try:
+                process, report, receipts = transport["launch"](Popen, command, env=env)
+            except OSError as error:
+                return 1, json.dumps(diagnostics["failure"]("worker_start_failed", error, detail))
+            captures = []
+            try:
+                for stream, limit in (
+                    (report, 2097152),
+                    (process.stdout, 65536),
+                    (process.stderr, 65536),
+                    (receipts, 65536),
+                ):
+                    captures.append(transport["PipeCapture"](stream, limit))
+                while not status:
                     try:
-                        if process.poll() is None:
-                            process.terminate()
-                            try:
-                                process.wait(timeout=2)
-                            except TimeoutExpired:
-                                process.kill()
-                                process.wait(timeout=2)
-                    finally:
-                        process.stdin.close()
-                report.seek(0)
-                stdout = "" if status else report.read()
+                        process.wait(timeout=0.2)
+                        break
+                    except TimeoutExpired:
+                        pass
+            finally:
+                try:
+                    if process.poll() is None:
+                        process.terminate()
+                        try:
+                            process.wait(timeout=2)
+                        except TimeoutExpired:
+                            process.kill()
+                            process.wait(timeout=2)
+                finally:
+                    process.stdin.close()
+                    received = [capture.finish() for capture in captures]
+                    for stream in (report, process.stdout, process.stderr, receipts):
+                        if not stream.closed:
+                            stream.close()
     finally:
         for number, handler in previous.items():
             signal.signal(number, handler)
     code = status[0] if status else process.wait()
-    return (code if code >= 0 else 128 - code), (
-        stdout or '{"status":"failed","reason":"measurement_failed"}\n'
-    )
+    code = code if code >= 0 else 128 - code
+    observed = code
+    raw, truncated, capture = received[0]
+    try:
+        if not raw and received[3][0] and received[3][2] == "complete":
+            receipt = diagnostics["report_schema"]["load_packet"](received[3][0])
+            packet = (
+                dict(kind="failure", data=receipt)
+                if (isinstance(receipt, dict) and receipt.get("reason") == "lifeline_lost")
+                else None
+            )
+        else:
+            packet = (
+                diagnostics["report_schema"]["load_packet"](raw)
+                if (not truncated and capture == "complete")
+                else None
+            )
+        if not isinstance(packet, dict) or packet.get("kind") not in ("success", "failure"):
+            raise ValueError("invalid_worker_report")
+        output = packet["data"]
+        if not isinstance(output, dict):
+            raise ValueError("invalid_worker_report")
+        failed = packet["kind"] == "failure"
+        if not failed and not diagnostics["report_schema"]["valid_report"](output):
+            raise ValueError("invalid_worker_report")
+    except (ValueError, KeyError, TypeError, RecursionError, MemoryError, OverflowError):
+        reason = (
+            "invalid_worker_report"
+            if raw or truncated or capture != "complete"
+            else "worker_crashed"
+        )
+        output, failed = dict(status="failed", reason=reason), True
+    if code or failed:
+        code = code or 1
+        if not failed or output.get("status") != "failed":
+            output = dict(reason="worker_crashed")
+        if detail and not diagnostics["short_credential"]():
+            parts = [output.get("error_detail", "")]
+            parts += [
+                diagnostics["safe_stderr"](data, truncated=cut)
+                for data, cut, state in received[1:]
+                if state == "complete"
+            ]
+            output["error_detail"] = "\n".join(
+                part for part in parts if isinstance(part, str) and part
+            )
+        output["stderr_capture"] = received[2][2]
+        output = diagnostics["protect_result"](output, code, detail)
+        output["exit_status"] = observed
+    return code, json.dumps(output)
 
 
 def supervise(argv: list[str], *, worker: str = WORKER, scratch_root: Path | None = None) -> int:
@@ -590,7 +660,13 @@ def supervise(argv: list[str], *, worker: str = WORKER, scratch_root: Path | Non
             else "scratch_recovery_incomplete"
         )
         fallback = fallback if recovery["leftover_paths"] else "interrupted"
-        output = json.loads(text) if text else dict(status="failed", reason=fallback)
+        output = (
+            json.loads(text)
+            if text
+            else diagnostics["protect_result"](
+                dict(status="failed", reason=fallback), code, "--diagnostic-detail" in argv
+            )
+        )
     except Exception as error:
         reason = (
             error.args[0]
@@ -599,22 +675,26 @@ def supervise(argv: list[str], *, worker: str = WORKER, scratch_root: Path | Non
         )
         if reason in RECOVERY_ERRORS and len(error.args) > 1 and error.args[1] is not None:
             recovery["leftover_paths"].append(str(error.args[1]))
-        code, output = 1, dict(status="failed", reason=reason)
+        code, output = 1, diagnostics["failure"](reason, error, "--diagnostic-detail" in argv)
     output.update(recovery)
     sys.stdout.write(json.dumps(output) + "\n")
     return code
 
 
 def main(argv: list[str] | None = None, *, worker: bool = False) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    detail = "--diagnostic-detail" in argv
     try:
         args = options(argv)
-    except ValueError:
-        sys.stdout.write(json.dumps(dict(status="failed", reason="invalid_arguments")) + "\n")
+    except ValueError as error:
+        diagnostics["emit_result"](
+            diagnostics["failure"]("invalid_arguments", error, detail, 2), 2, detail
+        )
         return 2
     try:
         rescue.bounds(args, datetime.now(UTC))
         if not worker:
-            return supervise(sys.argv[1:] if argv is None else argv)
+            return supervise(argv)
         result = measure(args)
     except Exception as error:
         reason = (
@@ -622,9 +702,9 @@ def main(argv: list[str] | None = None, *, worker: bool = False) -> int:
             if str(error) == "bundled_timezone_unavailable"
             else "measurement_failed"
         )
-        sys.stdout.write(json.dumps(dict(status="failed", reason=reason)) + "\n")
+        diagnostics["emit_result"](diagnostics["failure"](reason, error, detail), 1, detail)
         return 1
-    sys.stdout.write(json.dumps(result, sort_keys=True, default=str) + "\n")
+    diagnostics["emit_result"](result, 0, detail)
     return 0
 
 
