@@ -27,6 +27,17 @@ from transit_ops.commands import batch
 OCCUPANCY = occupancy_crowding.builder
 
 
+def test_source_role_catalog_refuses_the_disposable_writer(real_db_engine):
+    from transit_ops.batch.daily_inputs import assert_read_role
+
+    raw = real_db_engine.raw_connection()
+    try:
+        with pytest.raises(ValueError, match="role_can_write"):
+            assert_read_role(raw.driver_connection)
+    finally:
+        raw.close()
+
+
 @pytest.fixture
 def real_db_engine(real_db_engine):
     # A private database: replay deliberately replaces its tables. No OS skip.
@@ -73,7 +84,9 @@ def test_daily_controller_replays_seed_and_writes_accepted_content(
 
     def invoke(args, receipt, *, env=None):
         if args[1] == "fetch-inputs":
-            shutil.copytree(sources, Path(args[args.index("--inputs") + 1]))
+            target = Path(args[args.index("--inputs") + 1])
+            assert target.is_dir() and not any(target.iterdir())
+            shutil.copytree(sources, target, dirs_exist_ok=True)
             receipt.parent.mkdir(parents=True, exist_ok=True)
             receipt.write_text('{"fixture":"small generated rescue inputs"}')
             return

@@ -19,6 +19,16 @@ from transit_ops.batch.run import BuildResult
 DAY = date(2026, 11, 12)
 
 
+def test_checkpoint_accepts_canonical_hyphenated_provider_id(tmp_path):
+    build = result()
+    build = replace(build, manifest=replace(build.manifest, provider_id="rescue-a1b2"))
+    store = CheckpointStore(tmp_path)
+    checkpoint = store.record(build, DAY)
+    accept(checkpoint, replay(build))
+    assert store.find("sample_family", "rescue-a1b2", DAY, build.manifest.build_id) == checkpoint
+    assert (checkpoint.path / "accepted.json").is_file()
+
+
 def result(value=Decimal("1.50")):
     manifest = BuildManifest(
         "sample",

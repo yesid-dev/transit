@@ -76,6 +76,10 @@ def fetch_command(
             request,
             builders,
         )
+        if timezone is not None:
+            from transit_ops.batch.daily_inputs import assert_timezone
+
+            assert_timezone(inputs, provider, timezone)
         typer.echo(json.dumps(result, sort_keys=True, separators=(",", ":")))
     except Exception as error:
         typer.echo(str(error), err=True)
