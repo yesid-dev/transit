@@ -6,7 +6,7 @@ import os
 import re
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -39,6 +39,8 @@ class WindowSpec:
     provider_id: str
     window_key: str
     revision: int = 0
+    cut_utc: str | None = None
+    date_bound: str | None = None
 
 
 class SchemaDrift(ValueError):
@@ -180,6 +182,22 @@ def build_copy_statement(
         values = (spec.provider_id, *values)
     if predicate.as_string():
         predicates.append(predicate)
+    if spec.cut_utc is not None:
+        cut = datetime.fromisoformat(spec.cut_utc)
+        if (
+            cut.utcoffset() != timedelta(0)
+            or source.window_column is None
+            or dataset_version_id is not None
+        ):
+            raise ExportRefused("window")
+        predicates.append(sql.SQL("{} < %s").format(sql.Identifier(source.window_column)))
+        column_type = next(c.pg_type for c in schema.columns if c.name == source.window_column)
+        if column_type == "date":
+            if spec.date_bound is None:
+                raise ExportRefused("window")
+            values = (*values, date.fromisoformat(spec.date_bound))
+        else:
+            values = (*values, cut)
     if source.revision_column:
         predicates.append(sql.SQL("{} = %s").format(sql.Identifier(source.revision_column)))
         values = (*values, spec.revision)
@@ -233,7 +251,7 @@ def _snapshot(
     expected: TableSchema | None = None,
     *,
     coordinated: bool = False,
-) -> Iterator[tuple[TableSchema, sql.Composed, tuple[object, ...], datetime, str]]:
+) -> Iterator[tuple[TableSchema, sql.Composed, tuple[object, ...], datetime, str, WindowSpec]]:
     validate_timeout(timeout)
     dataset, source = _declaration(spec)
     if not connection.autocommit or connection.info.transaction_status != TransactionStatus.IDLE:
@@ -275,6 +293,7 @@ def _snapshot(
             if len(matches) != 1:
                 raise ExportRefused("window")
             edition = matches[0][0]
+        spec = resolve_cut_spec(connection, spec, schema)
         statement, values = build_copy_statement(
             spec, schema, dataset_version_id=edition, text_keys=text_keys
         )
@@ -282,7 +301,7 @@ def _snapshot(
             row = connection.execute(
                 "SELECT clock_timestamp(), current_setting('server_version')"
             ).fetchall()[0]
-        yield schema, statement, values, row[0].astimezone(UTC), row[1]
+        yield schema, statement, values, row[0].astimezone(UTC), row[1], spec
 
 
 def _copy(
@@ -313,7 +332,7 @@ def export_window(
     with TemporaryDirectory(dir=destination.parent, prefix=".export-") as directory:
         temporary = Path(directory) / "window.csv"
         with _snapshot(connection, spec, statement_timeout_s, expected_schema) as snapshot:
-            schema, statement, values, at, version = snapshot
+            schema, statement, values, at, version, spec = snapshot
             with temporary.open("xb") as output:
                 digest, size, rows = _copy(connection, statement, values, output)
                 output.flush()
@@ -338,13 +357,17 @@ def recheck_window(
         values,
         _,
         _,
+        _,
     ):
         return _copy(connection, statement, values)
 
 
 class _GroupReads:
-    def __init__(self, connection: Connection[Any], timeout: int, deadline: datetime | None):
+    def __init__(
+        self, connection: Connection[Any], timeout: int, deadline: datetime | None, reserve: int = 0
+    ):
         self.connection, self.timeout, self.deadline = connection, timeout, deadline
+        self.reserve, self.snapshot_started = reserve, False
 
     def cap(self) -> None:
         left = (
@@ -356,10 +379,13 @@ class _GroupReads:
             from transit_ops.lake.migration import MigrationRefused
 
             raise MigrationRefused("not_after")
+        if not self.snapshot_started and self.deadline is not None:
+            require_snapshot_reserve(self.deadline, self.reserve)
         self.connection.execute(
             "SELECT set_config('statement_timeout', %s, true)",
             (str(max(1, int(min(self.timeout, left) * 1000))),),
         )
+        self.snapshot_started = True
 
     def execute(self, statement: Any, values: Any = None) -> Any:
         if not str(statement).startswith("SET TRANSACTION"):
@@ -388,6 +414,7 @@ def export_group(
     statement_timeout_s: int,
     not_after: datetime | None = None,
     foreign_keys: list[dict[str, Any]] | None = None,
+    group_reserve_s: int = 0,
 ) -> Iterator[tuple[ExportedWindow, ...]]:
     """Export Silver and its filtered FK closure in one deadline-bounded source cut."""
     from typing import cast
@@ -404,10 +431,12 @@ def export_group(
         raise ValueError("group destinations differ")
     if not_after is not None:
         require_group_reserve(not_after, statement_timeout_s, len(specs) + len(CLOSURE_RELATIONS))
-    reads = _GroupReads(connection, statement_timeout_s, not_after)
+    reads = _GroupReads(connection, statement_timeout_s, not_after, group_reserve_s)
     guarded = cast(Connection[Any], reads)
+    if not_after is not None:
+        require_snapshot_reserve(not_after, group_reserve_s)
     with _snapshot(guarded, specs[0], statement_timeout_s, coordinated=True) as snapshot:
-        at, version = snapshot[3:]
+        at, version = snapshot[3:5]
         # Include zero-alert providers and provider ids found in malformed rows,
         # so no row can disappear before the post-copy FK proof.
         providers = guarded.execute(
@@ -467,3 +496,34 @@ def export_group(
         with item.csv_path.open("r+b") as stream:
             os.fsync(stream.fileno())
     yield tuple(results)
+
+
+def resolve_cut_spec(
+    connection: Connection[Any], spec: WindowSpec, schema: TableSchema
+) -> WindowSpec:
+    from zoneinfo import ZoneInfo
+
+    source = get_dataset(spec.dataset_id).source
+    assert isinstance(source, TableSource)
+    if spec.cut_utc is None or spec.date_bound is not None:
+        return spec
+    if not any(c.name == source.window_column and c.pg_type == "date" for c in schema.columns):
+        return spec
+    cut = datetime.fromisoformat(spec.cut_utc)
+    if spec.provider_id == "_shared":
+        bound = (cut - timedelta(hours=14)).date()
+    else:
+        row = connection.execute(
+            "SELECT timezone FROM core.providers WHERE provider_id=%s", (spec.provider_id,)
+        ).fetchone()
+        if row is None:
+            raise ExportRefused("window")
+        bound = cut.astimezone(ZoneInfo(row[0])).date()
+    return replace(spec, date_bound=bound.isoformat())
+
+
+def require_snapshot_reserve(not_after: datetime, seconds: int) -> None:
+    from transit_ops.lake.migration import MigrationRefused
+
+    if seconds < 0 or datetime.now(UTC) + timedelta(seconds=seconds) >= not_after:
+        raise MigrationRefused("not_after", "alert group reserve")

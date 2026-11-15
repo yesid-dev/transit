@@ -284,3 +284,31 @@ def test_builder_refuses_a_key_different_from_the_declaration():
     schema = TableSchema.from_columns([("other", "text", True)], ["other"])
     with pytest.raises(SchemaDrift):
         build_copy_statement(WindowSpec("gold.report_labels", "_shared", "2026-11"), schema)
+
+
+def test_cut_window_predicate_bounds_export_and_recheck():
+
+    from transit_ops.lake.table_export import WindowSpec, build_copy_statement
+    from transit_ops.lake.table_schema import TableSchema
+
+    schema = TableSchema.from_columns(
+        [
+            ("provider_id", "text", True),
+            ("revision", "integer", True),
+            ("service_date", "date", True),
+        ],
+        ["provider_id", "revision", "service_date"],
+    )
+    spec = WindowSpec(
+        "gold.network_vehicle_day",
+        "sample",
+        "2026-11",
+        2,
+        cut_utc="2026-11-15T09:00:00+00:00",
+        date_bound="2026-11-15",
+    )
+    statement, values = build_copy_statement(spec, schema)
+    assert '"service_date" < %s' in statement.as_string()
+    from datetime import date
+
+    assert date(2026, 11, 15) in values

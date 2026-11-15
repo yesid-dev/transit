@@ -7,24 +7,18 @@ from transit_ops.batch.build import InputNeed
 from transit_ops.batch.engine import BatchInput, InputRefused
 
 
-def resolve_inputs(needs: Sequence[InputNeed], inputs_root: Path) -> tuple[BatchInput, ...]:
+def resolve_inputs(
+    needs: Sequence[InputNeed], inputs_root: Path, *, provider_id: str | None = None
+) -> tuple[BatchInput, ...]:
     root = inputs_root.resolve()
     grouped: dict[str, dict[str, Path]] = {}
     kinds: dict[str, str] = {}
     for need in needs:
-        path = root / need.relation / (need.window.replace(":", "=", 1) + ".parquet")
+        path = _input_path(need, inputs_root)
+        from transit_ops.batch.input_provenance import require_input_provenance
+
+        require_input_provenance(need, path, root, provider_id)
         label = f"{need.relation} window {need.window}: {path}"
-        if any(char in str(inputs_root) + str(path) for char in "*?[]{}"):
-            raise InputRefused(f"glob path refused: {path}")
-        if any(p.is_symlink() or p.is_junction() for p in (path.parent, path)):
-            raise InputRefused(f"redirected input: {label}")
-        canonical = path.resolve()
-        if not canonical.is_relative_to(root) or canonical != path:
-            raise InputRefused(f"input outside declared layout: {label}")
-        if not path.is_file():
-            raise InputRefused(f"missing input: {label}")
-        if path.stat().st_nlink > 1:
-            raise InputRefused(f"multiply-linked input: {label}")
         files = grouped.setdefault(need.relation, {})
         kind = (
             need.window.split(":")[0]
@@ -41,3 +35,21 @@ def resolve_inputs(needs: Sequence[InputNeed], inputs_root: Path) -> tuple[Batch
         BatchInput(relation, tuple(files[w] for w in sorted(files)))
         for relation, files in sorted(grouped.items())
     )
+
+
+def _input_path(need: InputNeed, inputs_root: Path) -> Path:
+    root = inputs_root.resolve()
+    path = root / need.relation / (need.window.replace(":", "=", 1) + ".parquet")
+    label = f"{need.relation} window {need.window}: {path}"
+    if any(char in str(inputs_root) + str(path) for char in "*?[]{}"):
+        raise InputRefused(f"glob path refused: {path}")
+    if any(p.is_symlink() or p.is_junction() for p in (path.parent, path)):
+        raise InputRefused(f"redirected input: {label}")
+    canonical = path.resolve()
+    if not canonical.is_relative_to(root) or canonical != path:
+        raise InputRefused(f"input outside declared layout: {label}")
+    if not path.is_file():
+        raise InputRefused(f"missing input: {label}")
+    if path.stat().st_nlink > 1:
+        raise InputRefused(f"multiply-linked input: {label}")
+    return path

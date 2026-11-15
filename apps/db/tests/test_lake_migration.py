@@ -927,3 +927,42 @@ def test_cleanup_error_after_activation_is_a_warning(tmp_path, monkeypatch):
         assert len(list(storage.list_keys(PREFIX))) == 1
     finally:
         source.db.close()
+
+
+def test_exact_window_selection_intersects_filters(planning):
+    plan = planning(windows=["gold.route_delay_spine:p:2026-09"])
+    assert [(w.spec.dataset_id, w.spec.provider_id, w.spec.window_key) for w in plan.windows] == [
+        ("gold.route_delay_spine", "p", "2026-09")
+    ]
+    assert planning(windows=["gold.route_delay_spine:p:2026-09"], providers=["other"]).windows == ()
+
+
+@pytest.mark.parametrize(
+    "selection",
+    ["unknown:p:2026-09", "gold.route_delay_spine:p:2026-99", "gold.route_delay_spine:p:2025-01"],
+)
+def test_exact_window_selection_refuses_unknown_and_impossible(planning, selection):
+    with pytest.raises(ValueError, match="window"):
+        planning(windows=[selection])
+
+
+def test_exact_partial_alert_group_refuses(planning):
+    names = (
+        "silver.i3_alerts",
+        "silver.i3_alert_informed_entities",
+        "silver.i3_alert_active_periods",
+    )
+    with pytest.raises(ValueError, match="copy_group_partial"):
+        planning(names, windows=["silver.i3_alerts:p:2026-11"])
+
+
+def test_exact_complete_alert_group_is_one_copy(planning):
+    names = (
+        "silver.i3_alerts",
+        "silver.i3_alert_informed_entities",
+        "silver.i3_alert_active_periods",
+    )
+    selections = [
+        f"{name}:{'_shared' if name.endswith('active_periods') else 'p'}:2026-11" for name in names
+    ]
+    assert len(planning(names, windows=selections).copy_groups[0]) == 3

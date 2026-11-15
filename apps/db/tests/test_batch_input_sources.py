@@ -1213,3 +1213,201 @@ def test_payload_closure_materializes_or_refuses_by_memory_budget(
                 "SELECT count(*),sum(length(raw_payload_json)) FROM read_parquet(?)",
                 [str(root / "raw.i3_alert_snapshots" / "all.parquet")],
             ).fetchone() == (20000, 1_310_720_000)
+
+
+def test_partial_copy_refuses_past_cut_and_later_revision_supersedes(tmp_path):
+    storage = store(tmp_path)
+    relation = "raw.realtime_snapshot_index"
+    need = InputNeed(relation, "2026-11-02")
+    for version, cut in [(1, "2026-11-03T05:00:00+00:00"), (2, "2026-11-03T06:00:00+00:00")]:
+        key = archive(storage, relation, "2026-11", "SELECT 1 AS id", version=version)
+        record = json.loads(storage.read_bytes(proof_key(key)))
+        record.update(partial=True, cut_utc=cut)
+        put(storage, proof_key(key), record)
+        if version == 1:
+            with pytest.raises(ValueError, match="window_coverage"):
+                resolve_sources([need], storage, "sample", STAMP, {})
+        else:
+            assert resolve_sources([need], storage, "sample", STAMP, {})[0].key == key
+
+
+@pytest.mark.parametrize("late", [False, True])
+def test_cut_coverage_through_catalog_preflight(tmp_path, monkeypatch, late):
+    from contextlib import nullcontext
+    from datetime import date
+
+    from transit_ops.batch import input_sources
+    from transit_ops.batch.build import BuildRequest, utc_days
+    from transit_ops.batch.families.span_skipped_stops import SpanSkippedStopsBuilder
+
+    request = BuildRequest(
+        "sample",
+        (date(2026, 11, 13 if late else 14),),
+        datetime(2026, 11, 15, 17, tzinfo=UTC),
+        30,
+        10,
+        "America/Toronto",
+    )
+
+    class Ordinary:
+        family_id = "ordinary"
+
+        def inputs(self, request):
+            return tuple(InputNeed("gold.fact_trip_delay_snapshot", d) for d in utc_days(request))
+
+    builder = SpanSkippedStopsBuilder() if late else Ordinary()
+
+    class Catalog:
+        def get_foreign_keys(self, name, schema):
+            return (
+                [dict(referred_schema="raw", referred_table="realtime_snapshot_index")]
+                if name == "fact_trip_delay_snapshot"
+                else []
+            )
+
+    monkeypatch.setattr(input_sources, "replay_catalog", lambda: nullcontext(Catalog()))
+    storage = store(tmp_path)
+    bootstrap(storage)
+    archive(
+        storage,
+        "core.providers",
+        "2026-11",
+        "SELECT 'sample' AS provider_id, 'America/Toronto' AS timezone",
+    )
+    for need in builder.inputs(request):
+        key = archive(
+            storage,
+            need.relation,
+            need.window,
+            f"SELECT TIMESTAMPTZ '{need.window} 00:00:00+00' AS captured_at_utc WHERE false",
+        )
+        if need.window == "2026-11-15":
+            receipt = json.loads(storage.read_bytes(proof_key(key)))
+            receipt.update(partial=True, cut_utc="2026-11-15T11:00:00+00:00")
+            put(storage, proof_key(key), receipt)
+    root = tmp_path / "inputs"
+    root.mkdir()
+    if late:
+        with pytest.raises(ValueError, match="window_coverage"):
+            resolve_sources(
+                builder.inputs(request), storage, "sample", request.as_of_utc, {}, request=request
+            )
+        with pytest.raises(ValueError, match="window_coverage"):
+            input_sources.fetch_from_catalog(storage, root, request, [builder])
+    else:
+        assert input_sources.fetch_from_catalog(storage, root, request, [builder])["needs"]
+
+
+def test_date_bound_is_stricter_than_timestamp_cut(tmp_path):
+    storage = store(tmp_path)
+    key = archive(storage, "gold.route_delay_spine", "2026-11", "SELECT 1 AS id")
+    value = json.loads(storage.read_bytes(proof_key(key)))
+    value.update(partial=True, cut_utc="2026-11-15T11:00:00+00:00", date_bound="2026-11-14")
+    put(storage, proof_key(key), value)
+    with pytest.raises(ValueError, match="window_coverage.*date_bound"):
+        resolve_sources(
+            [InputNeed("gold.route_delay_spine", "2026-11-14")],
+            storage,
+            "sample",
+            datetime(2026, 11, 15, 17, tzinfo=UTC),
+            {},
+        )
+
+
+def test_selected_known_incomplete_copy_refuses_by_digest(tmp_path):
+    storage = store(tmp_path)
+    relation = "gold.fact_trip_delay_snapshot"
+    key = archive(storage, relation, "2026-11-01", "SELECT 1 AS id", provider="octranspo")
+    record = json.loads(storage.read_bytes(proof_key(key)))
+    record["object_sha256"] = record["proof"]["object_sha256"] = (
+        "8d6b9a92e21ac850eb94d9b3b44c0774701d32b40954cd9c19938164c818e128"
+    )
+    record["content_sha256"] = "1e67bd67bb7544c30a151e3ca4f4575089c45a6377a5553ac69db9a512b48d89"
+    record["rows"] = record["proof"]["rows"] = 234241
+    put(storage, proof_key(key), record)
+    with pytest.raises(ValueError, match="known_incomplete.*234241"):
+        resolve_sources([InputNeed(relation, "2026-11-01")], storage, "octranspo", STAMP, {})
+
+
+def test_proven_rescue_wins_over_competing_known_bad_archive(tmp_path):
+    storage = store(tmp_path)
+    relation = "gold.fact_trip_delay_snapshot"
+    need = InputNeed(relation, "2026-11-01")
+    archive_key = archive(storage, relation, need.window, "SELECT 1 AS id", provider="octranspo")
+    record = json.loads(storage.read_bytes(proof_key(archive_key)))
+    record["object_sha256"] = record["proof"]["object_sha256"] = (
+        "8d6b9a92e21ac850eb94d9b3b44c0774701d32b40954cd9c19938164c818e128"
+    )
+    record["content_sha256"] = "1e67bd67bb7544c30a151e3ca4f4575089c45a6377a5553ac69db9a512b48d89"
+    put(storage, proof_key(archive_key), record)
+    key = "rescue/v1/parquet/octranspo/2026-11-01/fact_trip_delay_snapshot.parquet"
+    rescue_record = dict(
+        key=key,
+        object_sha256="a" * 64,
+        object_bytes=12,
+        proof=dict(verified=True, object_sha256="a" * 64, object_bytes=12),
+    )
+    put(
+        storage,
+        key.rsplit("/", 1)[0] + "/receipt.json",
+        dict(
+            format_version=1,
+            kind="rescue_parquet",
+            provider="octranspo",
+            day=need.window,
+            tables={"fact_trip_delay_snapshot": rescue_record},
+        ),
+    )
+    assert resolve_sources([need], storage, "octranspo", STAMP, {})[0].key == key
+
+
+def test_fetched_rescue_provenance_survives_materialization(tmp_path):
+    from transit_ops.batch.engine import InputRefused
+    from transit_ops.batch.inputs import resolve_inputs
+
+    storage = store(tmp_path)
+    need = InputNeed("gold.fact_trip_delay_snapshot", "2026-11-01")
+    key = "rescue/v1/parquet/octranspo/2026-11-01/fact_trip_delay_snapshot.parquet"
+    path = storage.root / key
+    path.parent.mkdir(parents=True)
+    with duckdb.connect() as conn:
+        conn.execute(
+            "COPY (SELECT 'octranspo' AS provider_id, "
+            "TIMESTAMPTZ '2026-11-01 12:00:00+00' AS captured_at_utc) TO ? (FORMAT parquet)",
+            [str(path)],
+        )
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    size = path.stat().st_size
+    record = dict(
+        key=key,
+        object_sha256=digest,
+        object_bytes=size,
+        proof=dict(verified=True, object_sha256=digest, object_bytes=size),
+    )
+    put(
+        storage,
+        key.rsplit("/", 1)[0] + "/receipt.json",
+        dict(
+            format_version=1,
+            kind="rescue_parquet",
+            provider="octranspo",
+            day=need.window,
+            tables={"fact_trip_delay_snapshot": record},
+        ),
+    )
+    root = tmp_path / "inputs"
+    root.mkdir()
+    fetch_replay_inputs(
+        storage, root, "octranspo", STAMP, lambda _: [need], bootstrap_editions=False
+    )
+    local = resolve_inputs([need], root, provider_id="octranspo")[0].files[0]
+    value = json.loads((root / "fetch-receipts.json").read_text())["files"][
+        local.relative_to(root).as_posix()
+    ]
+    assert value["input_sha256"] == hashlib.sha256(local.read_bytes()).hexdigest()
+    assert value["sources"][0]["key"] == key
+    assert value["sources"][0]["object_sha256"] == digest
+    assert resolve_inputs([], root) == ()
+    local.write_bytes(local.read_bytes() + b"changed")
+    with pytest.raises(InputRefused, match="input_provenance_missing"):
+        resolve_inputs([need], root, provider_id="octranspo")

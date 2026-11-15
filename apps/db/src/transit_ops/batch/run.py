@@ -106,8 +106,11 @@ def run_family(
 ) -> BuildResult:
     _patterns(builder.published_keys)
     needs = sorted(builder.inputs(request), key=lambda need: (need.relation, need.window))
-    inputs = resolve_inputs(needs, inputs_root)
-    captured = {resolve_inputs((need,), inputs_root)[0].files[0]: need for need in needs}
+    inputs = resolve_inputs(needs, inputs_root, provider_id=request.provider_id)
+    captured = {
+        resolve_inputs((need,), inputs_root, provider_id=request.provider_id)[0].files[0]: need
+        for need in needs
+    }
     if captured.keys() != {path for item in inputs for path in item.files}:
         raise InputRefused("resolved input keys differ from declared needs")
     before = _hash_inputs(captured)

@@ -25,7 +25,7 @@ from transit_ops.ingestion.storage import BronzeStorage
 from transit_ops.lake.archive_keys import validate_provider_id
 from transit_ops.lake.catalog import CatalogTable, read_catalog
 from transit_ops.lake.inventory import Inventory, take_inventory
-from transit_ops.lake.table_copy import copy_table_window
+from transit_ops.lake.table_copy import TableCopy, copy_table_window
 from transit_ops.lake.table_export import WindowSpec, validate_timeout
 from transit_ops.settings import get_settings
 
@@ -47,6 +47,8 @@ class PlannedWindow:
     reason: Literal["closed", "open_included", "whole_state"]
     copy_group_members: tuple[WindowSpec, ...] = ()
     copy_group_refusal: str | None = None
+    archive_copy: TableCopy | None = None
+    skip_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -479,6 +481,8 @@ def plan_migration(
     now_utc: datetime | None = None,
     plan_budget_s: int = 300,
     not_after: datetime | None = None,
+    windows: Sequence[str] | None = None,
+    storage: BronzeStorage | None = None,
 ) -> MigrationPlan:
     """Pin to midnight UTC unless an explicit instant on today_utc is supplied."""
     validate_timeout(statement_timeout_s)
@@ -495,10 +499,23 @@ def plan_migration(
                 | {n for n, d in HISTORY_DATASETS.items() if d.copy_group == "silver_alert_state"}
             )
         )
-    reads = _PlanReads(connection, plan_budget_s, statement_timeout_s, not_after)
     now = now_utc or datetime.combine(today_utc, time(), UTC)
     if now.utcoffset() != timedelta(0) or now.date() != today_utc:
         raise MigrationRefused("clock")
+    selected_windows, requested_datasets = None, None
+    cached: list[PlannedWindow] = []
+    if windows is not None:
+        from transit_ops.lake.exact_windows import select_exact
+
+        selected_windows, requested_datasets, cached = select_exact(
+            windows, datasets, providers, now, storage, get_settings()
+        )
+        if not selected_windows:
+            inventory = Inventory(
+                tuple(sorted({w.spec.dataset_id for w in cached})), (), (), (), (), (), (), ()
+            )
+            return MigrationPlan(inventory, tuple(cached), ())
+    reads = _PlanReads(connection, plan_budget_s, statement_timeout_s, not_after)
     with connection.transaction():
         connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         guards = dict(
@@ -528,10 +545,15 @@ def plan_migration(
             "SELECT current_database(), current_user, inet_server_addr()::text"
         ).fetchone()
         target = dict(zip(("database", "user", "server_addr"), identity, strict=True))
-        windows, skipped = [], []
+        planned_windows, skipped = [], []
         for table in catalog:
             if table.name not in inventory.copied or (
-                datasets is not None and table.name not in datasets
+                (requested_datasets is not None and table.name not in requested_datasets)
+                or (
+                    requested_datasets is None
+                    and datasets is not None
+                    and table.name not in datasets
+                )
             ):
                 continue
             planned, opened = _table_windows(
@@ -539,16 +561,56 @@ def plan_migration(
                 table,
                 today_utc,
                 now,
-                include_open,
-                None if get_dataset(table.name).copy_group else providers,
+                include_open or selected_windows is not None,
+                None
+                if get_dataset(table.name).copy_group
+                else (
+                    tuple(p for n, p, _ in selected_windows if n == table.name)
+                    if selected_windows is not None
+                    else providers
+                ),
                 get_settings().GOLD_REPORTING_OPEN_WINDOW_DAYS,
             )
-            windows.extend(planned)
+            planned_windows.extend(planned)
             skipped.extend(opened)
     reads.remaining()
-    grouped = tuple(w.spec for w in windows if get_dataset(w.spec.dataset_id).copy_group)
+    if selected_windows is not None:
+
+        def identity(spec: WindowSpec) -> tuple[str, str, str]:
+            return spec.dataset_id, spec.provider_id, spec.window_key
+
+        available = {identity(w.spec) for w in planned_windows}
+        if selected_windows - available:
+            raise MigrationRefused("window", sorted(selected_windows - available))
+        group_windows = {
+            identity(w.spec) for w in planned_windows if get_dataset(w.spec.dataset_id).copy_group
+        }
+        group_selected = selected_windows & group_windows
+        if group_selected and group_selected != group_windows:
+            raise MigrationRefused("copy_group_partial", sorted(group_windows - group_selected))
+        planned_windows = [
+            w
+            for w in planned_windows
+            if identity(w.spec) in selected_windows
+            and (datasets is None or w.spec.dataset_id in datasets)
+            and (
+                providers is None
+                or w.spec.provider_id in providers
+                or w.spec.provider_id == "_shared"
+            )
+        ]
+        remaining_group = {
+            identity(w.spec) for w in planned_windows if get_dataset(w.spec.dataset_id).copy_group
+        }
+        if remaining_group and remaining_group != group_windows:
+            raise MigrationRefused("copy_group_partial", sorted(group_windows - remaining_group))
+        skipped = []
+    grouped = tuple(w.spec for w in planned_windows if get_dataset(w.spec.dataset_id).copy_group)
     singles = tuple(
-        sorted((w for w in windows if not get_dataset(w.spec.dataset_id).copy_group), key=_order)
+        sorted(
+            (w for w in planned_windows if not get_dataset(w.spec.dataset_id).copy_group),
+            key=_order,
+        )
     )
     if grouped:
         from transit_ops.lake.alert_bundle import validate_members
@@ -566,7 +628,7 @@ def plan_migration(
         if selected != all_providers:
             refusal = "copy_group_partial"
     units = (PlannedWindow(grouped[0], "whole_state", grouped, refusal),) if grouped else ()
-    return MigrationPlan(inventory, singles + units, tuple(skipped), target)
+    return MigrationPlan(inventory, tuple(cached) + singles + units, tuple(skipped), target)
 
 
 def run_migration(
@@ -581,6 +643,7 @@ def run_migration(
     log: Callable[[dict[str, object]], None],
     storage_target: dict[str, object] | None = None,
     still_locked: Callable[[], bool] | None = None,
+    group_reserve_s: int = 0,
 ) -> MigrationSummary:
     validate_timeout(statement_timeout_s)
     if not_after.utcoffset() != timedelta(0):
@@ -595,12 +658,22 @@ def run_migration(
     }
     outcomes: dict[str, dict[str, int]] = {}
     from transit_ops.lake.alert_bundle import CLOSURE_RELATIONS, copy_group
+    from transit_ops.lake.pruning import record_pruning_skip
 
     for window in plan.windows:
         if window.copy_group_members:
             continue
         record = {"spec": asdict(window.spec), **target}
         started = monotonic()
+        if record_pruning_skip(
+            window,
+            datetime.now(UTC),
+            get_settings(),
+            outcomes,
+            record,
+            log,
+        ):
+            continue
         try:
             require_read_reserve(not_after, statement_timeout_s)
             if still_locked is not None:
@@ -609,25 +682,30 @@ def run_migration(
                         raise MigrationRefused("migration_lock_lost")
                 except Exception as error:
                     raise MigrationRefused("migration_lock_lost") from error
-            if shutil.disk_usage(work_dir).free < WORK_SPACE_FLOOR:
-                raise MigrationRefused(
-                    "work_space", f"requires at least {WORK_SPACE_FLOOR} free bytes"
-                )
-            from tempfile import mkdtemp
+            if window.archive_copy is not None:
+                result = window.archive_copy
+            else:
+                if shutil.disk_usage(work_dir).free < WORK_SPACE_FLOOR:
+                    raise MigrationRefused(
+                        "work_space", f"requires at least {WORK_SPACE_FLOOR} free bytes"
+                    )
+                from tempfile import mkdtemp
 
-            directory = Path(mkdtemp(prefix="window-", dir=work_dir))
-            with connect() as connection:
-                require_read_reserve(not_after, statement_timeout_s)
-                result = copy_table_window(
-                    connection,
-                    storage,
-                    window.spec,
-                    work_dir=directory,
-                    copied_by=copied_by,
-                    statement_timeout_s=statement_timeout_s,
-                )
+                directory = Path(mkdtemp(prefix="window-", dir=work_dir))
+                with connect() as connection:
+                    require_read_reserve(not_after, statement_timeout_s)
+                    result = copy_table_window(
+                        connection,
+                        storage,
+                        window.spec,
+                        work_dir=directory,
+                        copied_by=copied_by,
+                        statement_timeout_s=statement_timeout_s,
+                    )
             record.update(
                 outcome=result.outcome,
+                cut_utc=getattr(result, "spec", window.spec).cut_utc,
+                partial=getattr(result, "spec", window.spec).cut_utc is not None,
                 rows=result.rows,
                 content_sha256=result.content_sha256,
                 object_sha256=result.proof.object_sha256,
@@ -689,6 +767,7 @@ def run_migration(
                     copied_by=copied_by,
                     statement_timeout_s=statement_timeout_s,
                     not_after=not_after,
+                    group_reserve_s=group_reserve_s,
                 )
             record.update(
                 outcome="copied",

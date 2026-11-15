@@ -127,8 +127,9 @@ def test_a_toy_builder_runs_end_to_end(build_case, monkeypatch):
     monkeypatch.setattr(
         runner,
         "resolve_inputs",
-        lambda needs, root: tuple(
-            replace(item, files=tuple(reversed(item.files))) for item in resolve(needs, root)
+        lambda needs, root, **kwargs: tuple(
+            replace(item, files=tuple(reversed(item.files)))
+            for item in resolve(needs, root, **kwargs)
         ),
     )
     request, kwargs = build_case

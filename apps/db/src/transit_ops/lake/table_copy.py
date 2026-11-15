@@ -3,16 +3,18 @@
 import json
 import os
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Literal, cast
 
 from psycopg import Connection
 
-from transit_ops.history.datasets import get_dataset
+from transit_ops.history.datasets import TableSource, get_dataset, utc_day_closes_at, window_start
 from transit_ops.ingestion.storage import BronzeStorage
 from transit_ops.lake.archive_keys import (
+    parse_proof_key,
     proof_key,
     resolve_copy_version,
     resolve_schema_version,
@@ -124,6 +126,7 @@ def _receipt(
         format_version=1,
         kind="table_copy",
         **asdict(exported.spec),
+        partial=exported.spec.cut_utc is not None,
         content_version=version,
         schema_version=schema_version,
         key=key,
@@ -133,7 +136,12 @@ def _receipt(
         object_sha256=proof.object_sha256,
         object_bytes=proof.object_bytes,
         details=written.details(),
-        proof=asdict(proof),
+        proof={
+            **asdict(proof),
+            "cut_utc": exported.spec.cut_utc,
+            "partial": exported.spec.cut_utc is not None,
+            "date_bound": exported.spec.date_bound,
+        },
         source=dict(
             snapshot_at_utc=exported.snapshot_at_utc.isoformat(),
             server_version=exported.server_version,
@@ -162,6 +170,9 @@ def _archive(
         spec.window_key,
         exported.content_sha256,
         schema_version=schema_version,
+        cut_utc=spec.cut_utc,
+        complete_window=_closed(spec, exported.snapshot_at_utc),
+        date_bound=spec.date_bound,
     )
     key = version.key or table_copy_key(
         spec.dataset_id,
@@ -230,13 +241,27 @@ def _finish(
 
 
 def _receipt_proof(receipt: dict[str, Any], exported: ExportedWindow) -> WindowProof:
+    from transit_ops.lake.copy_rejections import require_usable_copy
+
     if not isinstance(receipt, dict):
         raise UnverifiedCopy("invalid archive receipt")
+    require_usable_copy(receipt)
     value = receipt.get("proof")
     if not isinstance(value, dict) or value.get("verified") is not True:
         raise UnverifiedCopy("archive receipt proof.verified must be true")
     try:
-        proof = WindowProof(**value)
+        coverage = {
+            "cut_utc": exported.spec.cut_utc,
+            "partial": exported.spec.cut_utc is not None,
+            "date_bound": exported.spec.date_bound,
+        }
+        if (
+            value.get("cut_utc") != coverage["cut_utc"]
+            or value.get("partial", False) is not coverage["partial"]
+            or value.get("date_bound") != coverage["date_bound"]
+        ):
+            raise UnverifiedCopy("archive receipt coverage differs")
+        proof = WindowProof(**{k: v for k, v in value.items() if k not in coverage})
     except TypeError as error:
         raise UnverifiedCopy("invalid archive receipt WindowProof") from error
     for name in ("content_sha256", "object_sha256", "schema_sha256"):
@@ -288,10 +313,39 @@ def copy_table_window(
         raise ValueError("Glob characters in work_dir")
     if not work_dir.is_dir() or any(work_dir.iterdir()):
         raise ValueError("work_dir must exist and be empty")
+    now = _copy_start()
+    if storage is not None and _closed(spec, now):
+        existing = _proven_closed(storage, spec)
+        if existing is not None:
+            return existing
+    dataset = get_dataset(spec.dataset_id)
+    source = dataset.source
+    if (
+        isinstance(source, TableSource)
+        and source.window_column
+        and dataset.archive_grain != "edition"
+        and not _closed(spec, now)
+    ):
+        spec = replace(
+            spec,
+            date_bound=None,
+            cut_utc=(now - timedelta(hours=6))
+            .replace(minute=0, second=0, microsecond=0)
+            .isoformat(),
+        )
     with TemporaryDirectory(prefix=".copy-", dir=work_dir) as directory:
         temporary = Path(directory)
         exported, written, proof = _prepare(connection, spec, temporary, statement_timeout_s)
-        _json_file(temporary / "proof.json", asdict(proof))
+        spec = exported.spec
+        _json_file(
+            temporary / "proof.json",
+            {
+                **asdict(proof),
+                "cut_utc": spec.cut_utc,
+                "partial": spec.cut_utc is not None,
+                "date_bound": spec.date_bound,
+            },
+        )
         _publish_local(temporary, work_dir)
         if storage is None:
             return TableCopy(
@@ -309,12 +363,16 @@ def _prepare(
     exported = export_window(
         connection, spec, temporary / "window.csv", statement_timeout_s=statement_timeout_s
     )
+    spec = exported.spec
     _sync_directory(temporary)
     written = write_window(
         exported.csv_path,
         exported.schema,
         temporary / "window.parquet",
-        metadata={k: str(v) for k, v in asdict(spec).items()},
+        metadata={
+            **{k: str(v) for k, v in asdict(spec).items()},
+            "partial": str(spec.cut_utc is not None).lower(),
+        },
         temp_dir=temporary,
     )
     proof = _prove(exported, written.path, written, temporary)
@@ -327,3 +385,68 @@ def _prepare(
     if current != (exported.content_sha256, exported.content_bytes, exported.rows):
         raise ServerChanged("source differs from exported window")
     return exported, written, proof
+
+
+def _copy_start() -> datetime:
+    return datetime.now(UTC)
+
+
+def _closed(spec: WindowSpec, now: datetime) -> bool:
+    from transit_ops.settings import get_settings
+
+    dataset = get_dataset(spec.dataset_id)
+    source = dataset.source
+    if (
+        not isinstance(source, TableSource)
+        or not source.window_column
+        or dataset.archive_grain == "edition"
+    ):
+        return False
+    start = window_start(dataset, spec.window_key)
+    assert start is not None
+    if dataset.archive_grain == "utc_day":
+        return utc_day_closes_at(start) <= now
+    end = start.replace(year=start.year + (start.month == 12), month=start.month % 12 + 1, day=1)
+    return end + timedelta(days=get_settings().GOLD_REPORTING_OPEN_WINDOW_DAYS) <= now.date()
+
+
+def _proven_closed(storage: BronzeStorage, spec: WindowSpec) -> TableCopy | None:
+    candidates = []
+    for key in storage.list_keys(
+        f"archive/v1/tables/{spec.dataset_id}/{spec.provider_id}/r{spec.revision}/"
+    ):
+        parts = parse_proof_key(key)
+        if parts is None or parts.window_key != spec.window_key:
+            continue
+        receipt = json.loads(storage.read_bytes(key))
+        if not isinstance(receipt, dict) or receipt.get("proof", {}).get("verified") is not True:
+            continue
+        candidates.append((parts.version, parts.schema_version, key, receipt))
+    if not candidates:
+        return None
+    _, _, key, receipt = max(candidates, key=lambda item: item[:2])
+    from transit_ops.lake.copy_rejections import require_usable_copy
+
+    require_usable_copy(receipt, receipt.get("key"))
+    # A cut copy never proves a complete closed window.
+    if receipt.get("cut_utc") is not None or receipt.get("partial", False):
+        return None
+    stamp = receipt.get("source", {}).get("snapshot_at_utc")
+    if not isinstance(stamp, str) or not _closed(spec, datetime.fromisoformat(stamp)):
+        return None
+    object_key = key.removesuffix(".proof.json") + ".parquet"
+    if receipt.get("key") != object_key or not storage.exists(object_key):
+        raise UnverifiedCopy("archive receipt object missing or differs")
+    for name in ("dataset_id", "provider_id", "window_key", "revision"):
+        if receipt.get(name) != getattr(spec, name):
+            raise UnverifiedCopy("archive receipt identity differs")
+    from transit_ops.lake.table_schema import TableSchema
+
+    schema = TableSchema.from_json(storage.read_bytes(receipt["schema_key"]))
+    exported = ExportedWindow(
+        spec, Path(), receipt["content_sha256"], 0, receipt["rows"], schema, datetime.now(UTC), ""
+    )
+    proof = _receipt_proof(receipt, exported)
+    return TableCopy(
+        spec, "already_copied", object_key, key, exported.content_sha256, exported.rows, proof
+    )
