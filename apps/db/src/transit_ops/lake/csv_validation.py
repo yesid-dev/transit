@@ -9,9 +9,16 @@ import duckdb
 
 from transit_ops.lake.table_schema import TableSchema
 
+# PostgreSQL Appendix K: maximum field size is 1 GB (1 GiB).
+# https://www.postgresql.org/docs/current/limits.html
+POSTGRES_MAX_FIELD_SIZE = 1024**3
+
 CSV_OPTIONS = (
     "auto_detect=false, header=true, delim=',', quote='\"', escape='\"', nullstr='', "
-    "allow_quoted_nulls=false, strict_mode=true, ignore_errors=false, hive_partitioning=false"
+    "allow_quoted_nulls=false, strict_mode=true, ignore_errors=false, hive_partitioning=false, "
+    # Up to 1,664 result columns, with every byte doubled by CSV quote escaping,
+    # plus enclosing quotes and separators. This is a ceiling, not an allocation.
+    f"max_line_size={1664 * (2 * POSTGRES_MAX_FIELD_SIZE + 3)}"
 )
 
 
@@ -23,33 +30,58 @@ class InvalidCsvValue(ValueError):
         super().__init__(f"Column {column!r}, row {row}, value {value!r}: invalid CSV value")
 
 
-def _tracked_lines(source: Iterable[str], parts: list[str]) -> Iterator[str]:
+def _oversize_column(record: list[str], columns: tuple[str, ...]) -> str:
+    # Only completed fields precede the oversized field, including quoted newlines.
+    return columns[len(record)] if len(record) < len(columns) else "<record>"
+
+
+def _records(source: Iterable[str], columns: tuple[str, ...]) -> Iterator[list[str]]:
+    # Local CSV state never reads or changes csv.field_size_limit(), so concurrent
+    # readers retain their own process policy. Retain at most one logical record.
+    record: list[str] = []
+    parts: list[str] = []
+    state, size, row = "start", 0, 1
     for line in source:
-        parts.append(line)
-        yield line
-
-
-def _oversize_column(text: str, columns: tuple[str, ...]) -> str:
-    # Replay fields only for diagnostics; the original parser remains authoritative.
-    quoted, start, column = False, 0, 0
-    for end, character in enumerate(text + ","):
-        if character == '"':
-            quoted = not quoted
-        if character != "," or quoted:
-            continue
-        try:
-            next(csv.reader([text[start:end]], strict=True))
-        except csv.Error:
-            break
-        column += 1
-        start = end + 1
-    return columns[column] if column < len(columns) else "<record>"
+        for match in re.finditer(r'[^",\r\n]+|\r\n|.', line, re.DOTALL):
+            token = match[0]
+            if state != "quoted" and token in {",", "\n", "\r", "\r\n"}:
+                if token == "," or record or parts or state != "start":
+                    record.append("".join(parts))
+                parts, size, state = [], 0, "start"
+                if token != ",":
+                    yield record
+                    record = []
+                    row += 1
+                continue
+            if token == '"' and state != "bare":
+                if state == "quoted":
+                    state = "end"
+                    continue
+                if state == "start":
+                    state = "quoted"
+                    continue
+                state = "quoted"  # doubled quote inside a quoted field
+            elif state == "end":
+                raise csv.Error("',' expected after '\"'")
+            elif state == "start":
+                state = "bare"
+            size += len(token.encode("utf-8"))
+            if size > POSTGRES_MAX_FIELD_SIZE:
+                raise InvalidCsvValue(
+                    _oversize_column(record, columns),
+                    row,
+                    f"field larger than field limit ({POSTGRES_MAX_FIELD_SIZE})",
+                )
+            parts.append(token)
+    if state == "quoted":
+        raise csv.Error("unexpected end of data")
+    if record or parts or state != "start":
+        yield [*record, "".join(parts)]
 
 
 def _record_shapes(path: Path, columns: tuple[str, ...]) -> None:
     with path.open(encoding="utf-8", newline="") as source:
-        parts: list[str] = []
-        reader = csv.reader(_tracked_lines(source, parts), strict=True)
+        reader = _records(source, columns)
         row = 1
         try:
             for record in reader:
@@ -58,15 +90,9 @@ def _record_shapes(path: Path, columns: tuple[str, ...]) -> None:
                 # A leading value must not be mistaken for a byte-order mark.
                 if row == 2 and record[0].startswith("\ufeff"):
                     raise InvalidCsvValue(columns[0], row, record[0])
-                parts.clear()
                 row += 1
         except csv.Error as error:
-            column = (
-                _oversize_column("".join(parts), columns)
-                if "field larger than field limit" in str(error)
-                else "<record>"
-            )
-            raise InvalidCsvValue(column, row, str(error)) from error
+            raise InvalidCsvValue("<record>", row, str(error)) from error
         except UnicodeError as error:
             raise InvalidCsvValue("<record>", row, str(error)) from error
 
