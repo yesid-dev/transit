@@ -62,7 +62,7 @@
 		gap: 3rem;
 		width: min(100% - 2rem, 52rem);
 		margin-inline: auto;
-		padding-block: calc(var(--chrome-offset) + 4rem) 6rem;
+		padding-block: 4rem 6rem;
 	}
 
 	.legal-document__header,
