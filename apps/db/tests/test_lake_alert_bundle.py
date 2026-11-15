@@ -168,6 +168,24 @@ class SeedSource:
         self.events.append(("COPY", None))
         assert statement.startswith("COPY (")
         selected = statement[6 : statement.rindex(") TO STDOUT")]
+        # DuckDB does not parse PostgreSQL's scalar ANY(ARRAY(subquery)) syntax.
+        # Translate only this operator for semantic offline execution; PG plans
+        # are verified by the disposable database test against the original SQL.
+        token = "= ANY (ARRAY("
+        while token in selected:
+            start = selected.index(token)
+            body = start + len(token)
+            depth, end = 1, body
+            while depth:
+                if selected[end] == "(":
+                    depth += 1
+                elif selected[end] == ")":
+                    depth -= 1
+                end += 1
+            assert selected[end] == ")"
+            selected = (
+                selected[:start] + "IN (" + selected[body : end - 1] + ")" + selected[end + 1 :]
+            )
         result = self.db.execute(selected.replace("%s", "?"), values)
         rows = result.fetchall()
         self.rowcount = len(rows)
@@ -390,7 +408,7 @@ def test_space_floor_is_rechecked_before_each_member(tmp_path, monkeypatch):
         source.db.close()
 
 
-def test_shared_period_copy_stays_with_selected_provider_snapshots(tmp_path):
+def test_all_provider_group_preserves_the_unfiltered_shared_periods(tmp_path):
     import duckdb
 
     from transit_ops.ingestion.storage import LocalBronzeStorage
@@ -399,13 +417,15 @@ def test_shared_period_copy_stays_with_selected_provider_snapshots(tmp_path):
     source = SeedSource()
     source.db.execute("INSERT INTO silver.i3_alerts VALUES (2,0,'unused')")
     source.db.execute("INSERT INTO silver.i3_alert_active_periods VALUES (2,0,0)")
+    source.db.execute("INSERT INTO raw.i3_alert_snapshots VALUES (2,'unused',99,99,99)")
     root = tmp_path / "archive"
     root.mkdir()
     work = tmp_path / "work"
     work.mkdir()
     specs = [
-        WindowSpec(r, "_shared" if r.endswith("active_periods") else "p", "2026-11")
+        WindowSpec(r, provider, "2026-11")
         for r in MEMBERS
+        for provider in (("_shared",) if r.endswith("active_periods") else ("p", "unused"))
     ]
     try:
         result = copy_group(
@@ -420,6 +440,94 @@ def test_shared_period_copy_stays_with_selected_provider_snapshots(tmp_path):
         with duckdb.connect() as conn:
             assert conn.execute(
                 "SELECT i3_alert_snapshot_id FROM read_parquet(?)", [str(root / periods.key)]
-            ).fetchall() == [(1,)]
+            ).fetchall() == [(1,), (2,)]
     finally:
         source.db.close()
+
+
+@pytest.mark.parametrize("orphan", [(999, 0, 0), (1, 999, 0)])
+def test_every_period_is_exported_and_orphans_never_activate(tmp_path, orphan):
+    from transit_ops.ingestion.storage import LocalBronzeStorage
+    from transit_ops.lake.alert_bundle import MEMBERS, PREFIX, copy_group
+
+    source = SeedSource()
+    source.db.execute("INSERT INTO silver.i3_alert_active_periods VALUES (?,?,?)", orphan)
+    root = tmp_path / "archive"
+    root.mkdir()
+    work = tmp_path / "work"
+    work.mkdir()
+    specs = [
+        WindowSpec(r, "_shared" if r.endswith("active_periods") else "p", "2026-11")
+        for r in MEMBERS
+    ]
+    storage = LocalBronzeStorage("local", root)
+    try:
+        with pytest.raises(ValueError, match="bundle_parent_missing: silver.i3_alerts"):
+            copy_group(
+                source, storage, specs, work_dir=work, copied_by="a" * 40, statement_timeout_s=60
+            )
+        assert list(storage.list_keys(PREFIX)) == []
+    finally:
+        source.db.close()
+
+
+def test_large_payload_parent_proof_is_key_only_and_memory_bounded(tmp_path):
+    import json
+    import subprocess
+    import sys
+
+    import duckdb
+
+    child = tmp_path / "snapshots.parquet"
+    parent = tmp_path / "runs.parquet"
+    with duckdb.connect(config={"threads": 1, "memory_limit": "512MB"}) as conn:
+        conn.execute(
+            "COPY (SELECT range AS i3_alert_snapshot_id, range AS ingestion_run_id, "
+            "repeat(md5(range::VARCHAR),2048) AS raw_payload_json FROM range(20000)) "
+            "TO ? (FORMAT parquet, COMPRESSION uncompressed, ROW_GROUP_SIZE 2048)",
+            [str(child)],
+        )
+        conn.execute(
+            "COPY (SELECT range AS ingestion_run_id FROM range(20000)) TO ? (FORMAT parquet)",
+            [str(parent)],
+        )
+    assert child.stat().st_size >= 1_300_000_000
+    script = r"""
+import ctypes, json, sys
+from pathlib import Path
+from transit_ops.lake.alert_bundle import prove_parent_keys, BundleRefused
+root=Path(sys.argv[1])
+files={'raw.i3_alert_snapshots':[root/'snapshots.parquet'],'raw.ingestion_runs':[root/'runs.parquet']}
+fks=[dict(child='raw.i3_alert_snapshots',parent='raw.ingestion_runs',
+          child_columns=['ingestion_run_id'],parent_columns=['ingestion_run_id'])]
+prove_parent_keys(files,fks,work_dir=root,memory_limit_mb=64,temp_max_mb=128)
+if sys.platform=='win32':
+    from ctypes import wintypes as w
+    class Counts(ctypes.Structure):
+        _fields_=[('cb',w.DWORD),('faults',w.DWORD),('peak',ctypes.c_size_t),
+                  ('working',ctypes.c_size_t)]+[(f'x{i}',ctypes.c_size_t) for i in range(6)]
+    counts=Counts(); counts.cb=ctypes.sizeof(counts)
+    ctypes.windll.kernel32.GetCurrentProcess.restype=w.HANDLE
+    ctypes.windll.psapi.GetProcessMemoryInfo.argtypes=[w.HANDLE,ctypes.c_void_p,w.DWORD]
+    process=ctypes.windll.kernel32.GetCurrentProcess()
+    if not ctypes.windll.psapi.GetProcessMemoryInfo(process,ctypes.byref(counts),counts.cb):
+        raise ctypes.WinError()
+    peak=counts.peak
+else:
+    import resource
+    peak=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss*(1 if sys.platform=='darwin' else 1024)
+print(json.dumps(dict(peak_bytes=peak, memory_limit_mb=64)))
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(tmp_path)],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=True,
+    )
+    measured = json.loads(result.stdout)
+    print(
+        f"PROOF_PEAK_MIB={measured['peak_bytes'] / 2**20:.2f} "
+        f"FILE_BYTES={child.stat().st_size} MEMORY_LIMIT_MB=64"
+    )
+    assert measured["peak_bytes"] < 512 * 2**20

@@ -46,6 +46,7 @@ class PlannedWindow:
     spec: WindowSpec
     reason: Literal["closed", "open_included", "whole_state"]
     copy_group_members: tuple[WindowSpec, ...] = ()
+    copy_group_refusal: str | None = None
 
 
 @dataclass(frozen=True)
@@ -539,7 +540,7 @@ def plan_migration(
                 today_utc,
                 now,
                 include_open,
-                providers,
+                None if get_dataset(table.name).copy_group else providers,
                 get_settings().GOLD_REPORTING_OPEN_WINDOW_DAYS,
             )
             windows.extend(planned)
@@ -556,7 +557,15 @@ def plan_migration(
             validate_members(grouped)
         except ValueError as error:
             raise MigrationRefused("copy_group_incomplete", str(error)) from error
-    units = (PlannedWindow(grouped[0], "whole_state", grouped),) if grouped else ()
+    refusal = None
+    if grouped and providers is not None:
+        all_providers = {s.provider_id for s in grouped if s.provider_id != "_shared"}
+        selected = all_providers & set(providers)
+        if not selected:
+            raise MigrationRefused("copy_group_incomplete", "no selected providers")
+        if selected != all_providers:
+            refusal = "copy_group_partial"
+    units = (PlannedWindow(grouped[0], "whole_state", grouped, refusal),) if grouped else ()
     return MigrationPlan(inventory, singles + units, tuple(skipped), target)
 
 
@@ -648,6 +657,11 @@ def run_migration(
             **target,
         }
         try:
+            refusal = next(
+                w.copy_group_refusal for w in plan.windows if w.copy_group_members == specs
+            )
+            if refusal:
+                raise MigrationRefused(refusal)
             require_group_reserve(
                 not_after, statement_timeout_s, len(specs) + len(CLOSURE_RELATIONS)
             )
@@ -676,22 +690,25 @@ def run_migration(
                     statement_timeout_s=statement_timeout_s,
                     not_after=not_after,
                 )
-            resolved = directory.resolve()
-            if (
-                resolved != owned[0]
-                or resolved.parent != work_dir.resolve()
-                or not resolved.is_relative_to(work_dir.resolve())
-                or directory.is_symlink()
-                or directory.is_junction()
-                or (directory.stat().st_dev, directory.stat().st_ino) != owned[1:]
-            ):
-                raise MigrationRefused("work_dir_changed", str(directory))
-            shutil.rmtree(directory)
             record.update(
                 outcome="copied",
                 bundle_version=bundle.version,
                 snapshot_at_utc=bundle.snapshot_at_utc,
             )
+            try:
+                resolved = directory.resolve()
+                if (
+                    resolved != owned[0]
+                    or resolved.parent != work_dir.resolve()
+                    or not resolved.is_relative_to(work_dir.resolve())
+                    or directory.is_symlink()
+                    or directory.is_junction()
+                    or (directory.stat().st_dev, directory.stat().st_ino) != owned[1:]
+                ):
+                    raise MigrationRefused("work_dir_changed", str(directory))
+                shutil.rmtree(directory)
+            except Exception as error:
+                record["cleanup_warning"] = str(error)
             outcomes["silver_alert_state"] = {"copied": len(bundle.members)}
             log(record)
         except Exception as error:

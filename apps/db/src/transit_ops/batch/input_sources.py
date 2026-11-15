@@ -33,6 +33,7 @@ from transit_ops.lake.alert_bundle import (
     MEMBERS,
     PREFIX,
     BundleRefused,
+    bounded_connection,
     validate_coverage,
     validate_members,
 )
@@ -631,35 +632,36 @@ def materialize(
     receipts = []
     schemas: dict[str, list[tuple[Any, ...]]] = {}
     whole = {n.relation for s in sources for n in s.needs if n.window == "all"}
-    with duckdb.connect(config={"threads": 1}) as conn:
+    with bounded_connection(root) as conn:
         conn.execute("SET TimeZone='UTC'")
         for index, source in enumerate(sources):
             path = paths[source.key]
             conn.execute("DROP VIEW IF EXISTS input")
-            conn.from_parquet(str(path), hive_partitioning=False).create_view("input", replace=True)
+            raw_view = f"raw_input_{index}"
+            conn.from_parquet(str(path), hive_partitioning=False).create_view(raw_view)
+            conn.execute(f"CREATE OR REPLACE TEMP VIEW input AS SELECT * FROM {raw_view}")
             relation = source.needs[0].relation
             if "bundle_version" in source.receipt:
-                provider = source.receipt["replay_provider"]
+                provider = "'" + source.receipt["replay_provider"].replace("'", "''") + "'"
                 if relation == "silver.i3_alert_active_periods":
                     parent = next(s for s in sources if s.needs[0].relation == "silver.i3_alerts")
                     conn.from_parquet(str(paths[parent.key]), hive_partitioning=False).create_view(
                         "alert_parents", replace=True
                     )
                     conn.execute(
-                        f"CREATE OR REPLACE TEMP TABLE scoped_rows_{index} AS "
-                        "SELECT c.* FROM input c WHERE EXISTS (SELECT 1 FROM alert_parents p "
-                        "WHERE p.provider_id=? AND p.i3_alert_snapshot_id=c.i3_alert_snapshot_id "
+                        f"CREATE OR REPLACE TEMP VIEW scoped_rows_{index} AS "
+                        f"SELECT c.* FROM {raw_view} c WHERE EXISTS (SELECT 1 FROM alert_parents p "
+                        f"WHERE p.provider_id={provider} "
+                        "AND p.i3_alert_snapshot_id=c.i3_alert_snapshot_id "
                         "AND p.alert_index=c.alert_index)",
-                        [provider],
                     )
                 else:
                     conn.execute(
-                        f"CREATE OR REPLACE TEMP TABLE scoped_rows_{index} AS "
-                        "SELECT * FROM input WHERE provider_id=?",
-                        [provider],
+                        f"CREATE OR REPLACE TEMP VIEW scoped_rows_{index} AS "
+                        f"SELECT * FROM {raw_view} WHERE provider_id={provider}",
                     )
                 total = conn.execute("SELECT count(*) FROM input").fetchone()[0]
-                # Materialize before replacing the input view to avoid a recursive view.
+                # Scope lazy scans directly; payload rows never enter a temp table.
                 conn.execute(
                     f"CREATE OR REPLACE TEMP VIEW input AS SELECT * FROM scoped_rows_{index}"
                 )
@@ -692,16 +694,44 @@ def materialize(
                 declared = get_dataset(need.relation).source
                 assert isinstance(declared, TableSource)
                 keys = ", ".join('"' + k.replace('"', '""') + '"' for k in declared.key_columns)
-                conn.read_parquet(sql_paths, hive_partitioning=False).create_view(
-                    "merge_input", replace=True
+
+                def quote(c: str) -> str:
+                    return '"' + c.replace('"', '""') + '"'
+
+                original = [r[0] for r in schemas[need.relation]]
+                # Hash scalar column representations separately: no JSON row or
+                # full-payload DISTINCT/window is materialized. NULL has its own tag.
+                pieces = [
+                    f"CASE WHEN {quote(c)} IS NULL THEN 'N' "
+                    f"ELSE 'V' || sha256(CAST({quote(c)} AS VARCHAR)) END"
+                    for c in original
+                ]
+                digest = "sha256(concat(" + ",".join(pieces) + "))"
+                scan = (
+                    "read_parquet(?, hive_partitioning=false, filename=true, file_row_number=true)"
+                )
+                conn.execute(
+                    f"CREATE OR REPLACE TEMP TABLE merge_keys AS SELECT {keys}, "
+                    f"filename AS source_file, file_row_number AS source_row, {digest} AS row_sha "
+                    f"FROM {scan}",
+                    [sql_paths],
                 )
                 conflict = conn.execute(
-                    f"SELECT {keys} FROM (SELECT DISTINCT * FROM merge_input) "
-                    f"GROUP BY {keys} HAVING count(*)>1 LIMIT 1"
+                    f"SELECT {keys} FROM merge_keys GROUP BY {keys} "
+                    "HAVING min(row_sha) <> max(row_sha) LIMIT 1"
                 ).fetchone()
                 if conflict is not None:
                     raise BundleRefused("closure_conflict", f"{need.relation} key {conflict}")
-                source_sql = f"(SELECT DISTINCT * FROM {source_sql})"
+                conn.execute(
+                    "CREATE OR REPLACE TEMP TABLE merge_chosen AS SELECT source_file, source_row "
+                    f"FROM (SELECT source_file, source_row, row_number() OVER (PARTITION BY {keys} "
+                    "ORDER BY source_file, source_row) AS choice FROM merge_keys) WHERE choice=1"
+                )
+                columns = ", ".join("r." + quote(c) for c in original)
+                source_sql = (
+                    scan + " r SEMI JOIN merge_chosen k ON r.filename=k.source_file "
+                    "AND r.file_row_number=k.source_row"
+                )
             conn.execute(
                 f"COPY (SELECT {columns} FROM {source_sql}) TO ? (FORMAT parquet)",
                 [sql_paths, str(destination)],

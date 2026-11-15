@@ -151,7 +151,8 @@ def test_one_snapshot_and_last_bundle_proof(alert_seed, tmp_path, monkeypatch, f
     assert events[-1] == PREFIX + result.version + ".json"
     document = json.loads(storage.read_bytes(events[-1]))
     assert document["snapshot_at_utc"] == result.snapshot_at_utc
-    assert len(document["members"]) == 3
+    assert sum(m["dataset_id"].endswith("active_periods") for m in document["members"]) == 1
+    assert {m["dataset_id"] for m in document["members"]} == set(MEMBERS)
     assert {m["dataset_id"] for m in document["closure"]} == {
         "raw.i3_alert_snapshots",
         "raw.ingestion_runs",
@@ -166,9 +167,8 @@ def test_one_snapshot_and_last_bundle_proof(alert_seed, tmp_path, monkeypatch, f
                 "WHERE i3_alert_snapshot_id=?",
                 [str(storage.root / member.key), snapshot],
             ).fetchall()
-            assert rows == [
-                (0,)
-            ]  # The concurrent version and all its children are outside the cut.
+            expected = [(0,)] if member.spec.provider_id in (PROVIDER, "_shared") else []
+            assert rows == expected  # The concurrent version and its children are outside the cut.
     parent = next(m for m in document["closure"] if m["dataset_id"] == "raw.i3_alert_snapshots")
     with duckdb.connect() as db:
         payload = db.execute(
@@ -229,9 +229,11 @@ def test_bundle_closure_is_exact_without_independent_parent_copies(
 
 
 def test_closure_explain_uses_parent_indexes_and_no_cte_inner_loop(alert_seed):
+    import re
+
     from psycopg import sql
 
-    from transit_ops.lake.alert_bundle import closure_statements
+    from transit_ops.lake.alert_bundle import CLOSURE_RELATIONS, closure_statements
 
     conn, _, _, _ = alert_seed
     conn.execute(
@@ -253,6 +255,14 @@ def test_closure_explain_uses_parent_indexes_and_no_cte_inner_loop(alert_seed):
         WHERE r.provider_id=%s""",
         (PROVIDER,),
     )
+    conn.execute(
+        """INSERT INTO silver.i3_alerts(i3_alert_snapshot_id, alert_index,
+        provider_id, captured_at_utc, raw_alert_json, content_hash)
+        SELECT i3_alert_snapshot_id,0,provider_id,now(),'{}',repeat('b',64)
+        FROM raw.i3_alert_snapshots WHERE provider_id=%s
+        ORDER BY i3_alert_snapshot_id DESC LIMIT 2000""",
+        (PROVIDER,),
+    )
     for table in (
         "raw.ingestion_runs",
         "raw.ingestion_objects",
@@ -266,28 +276,65 @@ def test_closure_explain_uses_parent_indexes_and_no_cte_inner_loop(alert_seed):
         for r in MEMBERS
     ]
 
-    def nodes(plan):
-        yield plan
-        for child in plan.get("Plans", []):
-            yield from nodes(child)
+    def assert_plan(plan, relation):
+        large = {"ingestion_runs", "ingestion_objects", "i3_alert_snapshots"}
+
+        def nodes(p):
+            yield p
+            for child in p.get("Plans", []):
+                yield from nodes(child)
+
+        for node in nodes(plan):
+            assert not (node["Node Type"] == "Seq Scan" and node.get("Relation Name") in large), (
+                relation,
+                node,
+            )
+            if relation.startswith("raw.") and node["Node Type"] == "Nested Loop":
+                inner = next(p for p in node["Plans"] if p.get("Parent Relationship") == "Inner")
+                assert not any(p["Node Type"] == "CTE Scan" for p in nodes(inner)), (relation, node)
 
     with conn.transaction():
         conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         conn.execute("SET LOCAL work_mem='16MB'")
         conn.execute("SET LOCAL max_parallel_workers_per_gather=0")
         conn.execute("SET LOCAL jit=off")
+        old_plans = []
         for relation, statement in closure_statements(conn, specs).items():
             plan = conn.execute(sql.SQL("EXPLAIN (FORMAT JSON) {}").format(statement)).fetchone()[
                 0
             ][0]["Plan"]
-            for node in nodes(plan):
-                assert not (
-                    node["Node Type"] == "Seq Scan"
-                    and node.get("Relation Name")
-                    in {"ingestion_runs", "ingestion_objects", "i3_alert_snapshots"}
-                ), (relation, node)
-                if node["Node Type"] == "Nested Loop":
-                    assert not any(n["Node Type"] == "CTE Scan" for n in nodes(node["Plans"][1])), (
-                        relation,
-                        node,
-                    )
+            assert_plan(plan, relation)
+            # The previous head's exact operator shape must fail on this same seed.
+            # Remove only each ARRAY wrapper's second closing parenthesis.
+            current = statement.as_string()
+            # Restore b3fd103c's whole-row CTEs and direct final CTE read, too.
+            current = re.sub(
+                r'("bundle_\d+" AS \(SELECT )[^()]+?'
+                r'( FROM "(?:silver|raw|core)"\.[^ ]+ ([tp]) WHERE )',
+                lambda m: m[1] + m[3] + ".*" + m[2],
+                current,
+            )
+            final = current.rfind(" SELECT p.* FROM ")
+            current = (
+                current[:final] + f' SELECT * FROM "bundle_{3 + CLOSURE_RELATIONS.index(relation)}"'
+            )
+            token = "= ANY (ARRAY("
+            while token in current:
+                start = current.index(token)
+                body, depth = start + len(token), 1
+                end = body
+                while depth:
+                    depth += (current[end] == "(") - (current[end] == ")")
+                    end += 1
+                current = (
+                    current[:start] + "IN (" + current[body : end - 1] + ")" + current[end + 1 :]
+                )
+            old_plans.append(
+                (
+                    relation,
+                    conn.execute("EXPLAIN (FORMAT JSON) " + current).fetchone()[0][0]["Plan"],
+                )
+            )
+    with pytest.raises(AssertionError):
+        for relation, plan in old_plans:
+            assert_plan(plan, relation)

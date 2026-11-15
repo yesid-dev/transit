@@ -408,6 +408,28 @@ def export_group(
     guarded = cast(Connection[Any], reads)
     with _snapshot(guarded, specs[0], statement_timeout_s, coordinated=True) as snapshot:
         at, version = snapshot[3:]
+        # Include zero-alert providers and provider ids found in malformed rows,
+        # so no row can disappear before the post-copy FK proof.
+        providers = guarded.execute(
+            "SELECT provider_id FROM core.providers UNION "
+            "SELECT provider_id FROM silver.i3_alerts UNION "
+            "SELECT provider_id FROM silver.i3_alert_informed_entities ORDER BY provider_id"
+        ).fetchall()
+        existing = {(s.dataset_id, s.provider_id) for s in specs}
+        expanded, expanded_paths = list(specs), list(destinations)
+        for relation in ("silver.i3_alerts", "silver.i3_alert_informed_entities"):
+            for (provider,) in providers:
+                if (relation, provider) not in existing:
+                    directory = destinations[0].parent.parent / f"provider-{len(expanded)}"
+                    directory.mkdir()
+                    expanded.append(WindowSpec(relation, provider, specs[0].window_key))
+                    expanded_paths.append(directory / "window.csv")
+        specs, destinations = tuple(expanded), tuple(expanded_paths)
+        validate_members(specs)
+        if not_after is not None:
+            require_group_reserve(
+                not_after, statement_timeout_s, len(specs) + len(CLOSURE_RELATIONS)
+            )
         queries = closure_statements(guarded, specs, foreign_keys)
         results = []
         exports = list(zip(specs, destinations, strict=True))
@@ -431,18 +453,6 @@ def export_group(
                     order_by(schema, text_keys=text_keys),
                 )
                 values: tuple[object, ...] = ()
-            elif spec.dataset_id == "silver.i3_alert_active_periods":
-                # One shared file for selected birth snapshots; replay scopes it to parent keys.
-                providers = sorted({s.provider_id for s in specs if s.provider_id != "_shared"})
-                selected = sql.SQL(
-                    "SELECT i3_alert_snapshot_id FROM silver.i3_alerts WHERE provider_id IN ({})"
-                ).format(sql.SQL(",").join(sql.Literal(p) for p in providers))
-                statement = sql.SQL(
-                    "COPY (SELECT * FROM silver.i3_alert_active_periods "
-                    "WHERE i3_alert_snapshot_id IN ({}) ORDER BY {}) "
-                    "TO STDOUT WITH (FORMAT csv, HEADER true, ENCODING 'UTF8')"
-                ).format(selected, order_by(schema, text_keys=text_keys))
-                values = ()
             else:
                 statement, values = build_copy_statement(spec, schema, text_keys=text_keys)
             reads.cap()

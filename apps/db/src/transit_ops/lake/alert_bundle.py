@@ -3,17 +3,19 @@
 import hashlib
 import json
 import re
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 from zoneinfo import ZoneInfo
 
 import duckdb
 from psycopg import Connection, sql
 
-from transit_ops.history.datasets import HISTORY_DATASETS
+from transit_ops.history.datasets import HISTORY_DATASETS, TableSource, get_dataset
 from transit_ops.ingestion.storage import BronzeStorage
 from transit_ops.lake.objects import put_create_only
 from transit_ops.lake.parquet_codec import write_window
@@ -92,6 +94,14 @@ def closure_statements(
     provider_filter = sql.SQL("provider_id IN ({})").format(
         sql.SQL(",").join(sql.Literal(p) for p in providers)
     )
+    required: dict[str, set[str]] = {r: set() for r in relations}
+    for child, parent, cc, pc in fks:
+        required[child].update(cc)
+        required[parent].update(pc)
+    for relation in relations:
+        source = get_dataset(relation).source
+        assert isinstance(source, TableSource)
+        required[relation].update(source.key_columns)
     definitions = []
     for relation in MEMBERS:
         where: sql.Composable = provider_filter
@@ -102,8 +112,11 @@ def closure_statements(
                 "AND a.alert_index=t.alert_index)"
             ).format(aliases["silver.i3_alerts"])
         definitions.append(
-            sql.SQL("{} AS (SELECT t.* FROM {} t WHERE {})").format(
-                aliases[relation], sql.Identifier(*relation.split(".")), where
+            sql.SQL("{} AS (SELECT {} FROM {} t WHERE {})").format(
+                aliases[relation],
+                sql.SQL(", ").join(sql.Identifier("t", c) for c in sorted(required[relation])),
+                sql.Identifier(*relation.split(".")),
+                where,
             )
         )
     ready, pending = set(MEMBERS), set(CLOSURE_RELATIONS)
@@ -129,40 +142,87 @@ def closure_statements(
                     )
                     for child, cc, _ in references
                 ]
-                where = sql.SQL("({}) IN ({})").format(
+                where = sql.SQL("{} = ANY (ARRAY({}))").format(
                     sql.SQL(", ").join(sql.Identifier("p", c) for c in parent_columns),
                     sql.SQL(" UNION ").join(selections),
                 )
             definitions.append(
-                sql.SQL("{} AS (SELECT p.* FROM {} p WHERE {})").format(
-                    aliases[relation], sql.Identifier(*relation.split(".")), where
+                sql.SQL("{} AS (SELECT {} FROM {} p WHERE {})").format(
+                    aliases[relation],
+                    sql.SQL(", ").join(sql.Identifier("p", c) for c in sorted(required[relation])),
+                    sql.Identifier(*relation.split(".")),
+                    where,
                 )
             )
             ready.add(relation)
             pending.remove(relation)
     prefix = sql.SQL("WITH ") + sql.SQL(", ").join(definitions)
-    return {r: prefix + sql.SQL(" SELECT * FROM {}").format(aliases[r]) for r in CLOSURE_RELATIONS}
+    statements = {}
+    for relation in CLOSURE_RELATIONS:
+        source = get_dataset(relation).source
+        assert isinstance(source, TableSource)
+        if len(source.key_columns) != 1:
+            raise BundleRefused("bundle_parent_missing", f"unsupported parent key {relation}")
+        key = sql.Identifier(source.key_columns[0])
+        statements[relation] = prefix + sql.SQL(
+            " SELECT p.* FROM {} p WHERE p.{} = ANY (ARRAY(SELECT {} FROM {}))"
+        ).format(sql.Identifier(*relation.split(".")), key, key, aliases[relation])
+    return statements
 
 
-def prove_parent_keys(files: dict[str, list[Path]], foreign_keys: Sequence[dict[str, Any]]) -> None:
-    """Prove referential closure on exported bytes, after releasing PostgreSQL."""
-    with duckdb.connect(config={"threads": 1}) as conn:
+@contextmanager
+def bounded_connection(
+    work_dir: Path, *, memory_limit_mb: int = 256, temp_max_mb: int = 1024
+) -> Iterator[duckdb.DuckDBPyConnection]:
+    if any(type(v) is not int or v <= 0 for v in (memory_limit_mb, temp_max_mb)):
+        raise ValueError("positive memory and temp limits required")
+    work_dir.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(prefix=".proof-", dir=work_dir) as temporary:
+        with duckdb.connect(
+            config={
+                "threads": 1,
+                "memory_limit": f"{memory_limit_mb}MB",
+                "temp_directory": temporary,
+                "max_temp_directory_size": f"{temp_max_mb}MB",
+                "preserve_insertion_order": False,
+            }
+        ) as conn:
+            conn.execute("SET TimeZone='UTC'")
+            yield conn
+
+
+def prove_parent_keys(
+    files: dict[str, list[Path]],
+    foreign_keys: Sequence[dict[str, Any]],
+    *,
+    work_dir: Path,
+    memory_limit_mb: int = 256,
+    temp_max_mb: int = 1024,
+) -> None:
+    """Join projected keys only; payload bytes never enter the orphan proof."""
+    with bounded_connection(
+        work_dir, memory_limit_mb=memory_limit_mb, temp_max_mb=temp_max_mb
+    ) as conn:
         views = {}
         for index, (relation, paths) in enumerate(files.items()):
             views[relation] = f"bundle_{index}"
             conn.read_parquet([str(p) for p in paths], hive_partitioning=False).create_view(
                 views[relation]
             )
+
+        def quoted(c: str) -> str:
+            return '"' + c.replace('"', '""') + '"'
+
         for fk in foreign_keys:
             child, parent = fk["child"], fk["parent"]
-            nonnull = " AND ".join(f'c."{c}" IS NOT NULL' for c in fk["child_columns"])
-            join = " AND ".join(
-                f'c."{c}"=p."{p}"'
-                for c, p in zip(fk["child_columns"], fk["parent_columns"], strict=True)
-            )
+            cc, pc = fk["child_columns"], fk["parent_columns"]
+            child_keys = ", ".join(quoted(c) for c in cc)
+            parent_keys = ", ".join(quoted(c) for c in pc)
+            nonnull = " AND ".join(f"c.{quoted(c)} IS NOT NULL" for c in cc)
+            join = " AND ".join(f"c.{quoted(c)}=p.{quoted(p)}" for c, p in zip(cc, pc, strict=True))
             missing = conn.execute(
-                f"SELECT count(*) FROM {views[child]} c WHERE {nonnull} "
-                f"AND NOT EXISTS (SELECT 1 FROM {views[parent]} p WHERE {join})"
+                f"SELECT count(*) FROM (SELECT {child_keys} FROM {views[child]}) c "
+                f"ANTI JOIN (SELECT {parent_keys} FROM {views[parent]}) p ON {join} WHERE {nonnull}"
             ).fetchone()
             if missing and missing[0]:
                 raise BundleRefused("bundle_parent_missing", f"{parent} referenced by {child}")
@@ -249,7 +309,7 @@ def copy_group(
         _json_file(directory / "proof.json", asdict(proof))
         prepared.append((item, written, directory, temporary))
         files.setdefault(item.spec.dataset_id, []).append(written.path)
-    prove_parent_keys(files, foreign_keys)
+    prove_parent_keys(files, foreign_keys, work_dir=work_dir)
     results, records, closure = [], [], []
     for item, written, directory, temporary in prepared:
         if item.spec.dataset_id in MEMBERS:
