@@ -36,6 +36,7 @@
 	import { copy as COPY } from './health.copy';
 	import {
 		verdictFor as verdictForRaw,
+		feedFreshness,
 		freshnessOf,
 		sourcesOf,
 		gapsOf,
@@ -96,7 +97,10 @@
 	});
 
 	function verdictFor(status: string | null | undefined) {
-		return verdictForRaw(status, t.statusVerdict);
+		return verdictForRaw(
+			status,
+			feeds.atPublication ? t.statusVerdictAtPublication : t.statusVerdict,
+		);
 	}
 	function humanizeAge(ageS: number | null | undefined): string {
 		return ageS == null ? t.freshness.noAge : formatRelativeSeconds(ageS, locale);
@@ -161,8 +165,7 @@
 	const dh = $derived(dataHealth.data ?? null);
 	const historyRoot = $derived(historicAvailability.data ?? null);
 	const historyCoverageRows = $derived(selectHistoryCoverage(historyRoot));
-	// Data health republishes its feed list every live cycle; provenance ages are frozen daily.
-	const freshness = $derived(dh?.feeds?.length ? dh.feeds : prov ? freshnessOf(prov) : []);
+	const feeds = $derived(feedFreshness(dh, prov, clock.serverNow));
 	const sources = $derived(prov ? sourcesOf(prov) : []);
 	const gaps = $derived(prov ? gapsOf(prov) : []);
 	const retention = $derived(prov ? retentionOf(prov) : { detail: null, aggregate: null });
@@ -205,7 +208,7 @@
 			number: 3,
 			title: t.freshness.section,
 			subtitle: t.questions.freshness,
-			present: freshness.length > 0,
+			present: feeds.items.length > 0,
 		},
 		{
 			id: 'health-sources',
@@ -407,7 +410,7 @@
 			{#if section.id === 'health-lanes'}
 				<SectionLanes rows={laneRows} copy={t} {locale} />
 			{:else if section.id === 'health-freshness'}
-				<SectionFreshness items={freshness} {verdictFor} {humanizeAge} copy={t} />
+				<SectionFreshness items={feeds.items} {verdictFor} {humanizeAge} copy={t} />
 			{:else if section.id === 'health-sources'}
 				<SectionSources items={sources} {lastLoaded} copy={t} />
 			{:else if section.id === 'health-gaps'}

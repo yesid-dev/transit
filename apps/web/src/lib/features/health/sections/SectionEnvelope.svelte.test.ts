@@ -22,7 +22,9 @@ describe('SectionEnvelope', () => {
 
 		expect(card).not.toBeNull();
 		expect(id).toHaveTextContent(envelope.generationId);
-		expect(explanation).toHaveTextContent(copy.en.envelope.generationIdExplain);
+		expect(explanation).toHaveTextContent(
+			'The stamp of the publish run that produced this dataset. Datasets with the same stamp came from the same run.',
+		);
 		expect(id.compareDocumentPosition(explanation) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
 		expect(container.querySelector('[data-slot="explained-metric-card"]')).toBeNull();
 	});
@@ -33,7 +35,11 @@ describe('SectionEnvelope', () => {
 		});
 
 		expect(screen.getByText(copy.fr.envelope.generationIdLabel)).toBeInTheDocument();
-		expect(screen.getByText(copy.fr.envelope.generationIdExplain)).toBeInTheDocument();
+		expect(
+			screen.getByText(
+				'L’empreinte de la publication qui a produit ce jeu de données. Les jeux de données qui ont la même empreinte viennent de la même publication.',
+			),
+		).toBeInTheDocument();
 	});
 
 	it('renders an honest absence when the publish-run ID is not reported', () => {
