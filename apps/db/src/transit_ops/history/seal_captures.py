@@ -44,6 +44,7 @@ from transit_ops.history.poll_record import (
 )
 from transit_ops.history.working_captures import read_working_day, rows_fingerprint
 from transit_ops.ingestion.storage import BronzeStorage, BronzeStorageResolver, ObjectAlreadyExists
+from transit_ops.s3 import ObjectStorageError
 
 
 class WindowNotClosed(ValueError):
@@ -196,7 +197,14 @@ def _changed_record(
         current = _trimmed_current(window, copies)
     try:
         manifest = read_copy_manifest(storage, current) if current else None
-    except (ValueError, FileNotFoundError) as exc:
+    except (ObjectStorageError, FileNotFoundError) as exc:
+        if (
+            trimmed and current is not None and current.manifest_path is not None
+            and not storage(current.storage_backend).exists(current.manifest_path)
+        ):
+            raise CopyContentMissing(f"{provider_id}/{endpoint_key}/{utc_date}: manifest") from exc
+        raise
+    except ValueError as exc:
         if trimmed:
             raise CopyContentMissing(f"{provider_id}/{endpoint_key}/{utc_date}: manifest") from exc
         raise

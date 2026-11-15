@@ -1,8 +1,13 @@
+from dataclasses import replace
 from datetime import timedelta
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
+from botocore.exceptions import ClientError, EndpointConnectionError
 from history_fixtures import seed_stored_capture, seed_working_day
 from sqlalchemy import text
+from test_history_writers_use_ledger_store import verification as verification
 from test_seal_captures_real_db import (
     DAY,
     PROVIDER,
@@ -19,7 +24,7 @@ from transit_ops.history.ledger_store import WindowChanged, WindowIdentity
 from transit_ops.history.seal_captures import CopyContentMissing
 from transit_ops.history.store import seal
 from transit_ops.history.working_captures import rows_fingerprint
-from transit_ops.ingestion.storage import LocalBronzeStorage
+from transit_ops.ingestion.storage import BronzeStorageError, LocalBronzeStorage, S3BronzeStorage
 
 
 @pytest.fixture(params=["trip_updates", "i3_alerts"])
@@ -344,3 +349,49 @@ def test_union_source_must_be_verified_and_intact(engine, tmp_path, endpoint, da
     with pytest.raises(CopyContentMissing):
         run(engine, tmp_path, endpoint)
     assert snapshot(engine, endpoint) == before
+
+
+def test_union_manifest_distinguishes_absence_from_storage_failure(verification, monkeypatch):
+    v = verification
+    v.store.copy = replace(v.copy, verified_at_utc=v.now, storage_backend="s3")
+    state = v.store.state()
+    state.current_version, state.working_state = 1, "trimmed"
+    state.working_changed_at_utc, state.remainder_fingerprint = v.now, "a" * 64
+    v.connection.execute = lambda *a, **kw: SimpleNamespace(
+        scalar_one=lambda: v.now,
+        one_or_none=lambda: SimpleNamespace(feed_endpoint_id=1, feed_kind="trip_updates"),
+    )
+    monkeypatch.setattr(seal_captures, "rows_fingerprint", lambda *a, **kw: "b" * 64)
+    for read_code, head_code in (
+        ("NoSuchKey", "NoSuchKey"),
+        ("NoSuchKey", None),
+        ("AccessDenied", None),
+        ("transport", None),
+        ("NoSuchKey", "AccessDenied"),
+        ("AccessDenied", "transport"),
+    ):
+
+        def failure(code, operation):
+            if code == "transport":
+                return EndpointConnectionError(endpoint_url="https://storage.invalid")
+            return ClientError({"Error": {"Code": code}}, operation)
+
+        read_error = failure(read_code, "GetObject")
+        head_error = failure(head_code, "HeadObject") if head_code else None
+        client = Mock()
+        client.get_object.side_effect, client.head_object.side_effect = read_error, head_error
+        storage = S3BronzeStorage("s3", "synthetic", "https://storage.invalid", client)
+        expected = CopyContentMissing if head_code == "NoSuchKey" else BronzeStorageError
+        with pytest.raises(expected) as error:
+            seal(
+                v.connection,
+                lambda _, store=storage: store,
+                dataset_id="capture.trip_updates",
+                provider_id="network",
+                window_key=DAY.isoformat(),
+                archive_backend="local",
+                sealed_by="test",
+            )
+        if expected is BronzeStorageError:
+            assert error.value.__cause__ is (head_error or read_error)
+        assert v.calls == []
