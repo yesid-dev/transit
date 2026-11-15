@@ -6,7 +6,13 @@ from dataclasses import dataclass
 from transit_ops.history.datasets import HISTORY_DATASETS, WORKING_ONLY, TableSource
 from transit_ops.lake.catalog import CatalogTable
 
-INFRASTRUCTURE = {"public.alembic_version": "Alembic revision table; maintained by migrations"}
+INFRASTRUCTURE = {
+    "public.alembic_version": "Alembic revision table; maintained by migrations",
+    "silver.drain_watermark": (
+        "Orphan one-row table of unknown origin, not read or written by any code in this "
+        "repository, excluded from history; kept until the owner decides whether to drop it"
+    ),
+}
 
 # Definitions are recreated by migrations; these views carry no separate copied data.
 MIGRATION_VIEWS = frozenset(
