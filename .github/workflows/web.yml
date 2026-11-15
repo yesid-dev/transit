@@ -506,8 +506,13 @@ jobs:
           PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/layout-timing/report.json
         run: bun x playwright test -c e2e/playwright.config.ts --project=layout-* --workers=2 --test-list="$RUNNER_TEMP/layout-plan/shard-${{ matrix.shard }}.txt"
 
-      - name: Record layout timing provenance
+      - name: Confirm layout test execution
+        id: layout_execution
         if: ${{ always() && steps.layout.outcome != 'skipped' && steps.layout.outcome != '' }}
+        run: node ../../.github/scripts/layout-setup-result.mjs assert-ran "$RUNNER_TEMP/layout-timing/report.json"
+
+      - name: Record layout timing provenance
+        if: ${{ always() && steps.layout_execution.outcome == 'success' }}
         working-directory: ${{ github.workspace }}
         env:
           TRANSIT_LAYOUT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -519,7 +524,7 @@ jobs:
           cp "$RUNNER_TEMP/layout-plan/plan.json" "$RUNNER_TEMP/layout-timing/plan.json"
 
       - name: Upload complete layout timings
-        if: ${{ always() && steps.layout.outcome != 'skipped' && steps.layout.outcome != '' }}
+        if: ${{ always() && steps.layout_execution.outcome == 'success' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: layout-timing-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}

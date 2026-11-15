@@ -115,7 +115,7 @@ test("the full grid keeps its workers and emits timing artifacts even after a te
   assert.match(pkg.scripts["test:e2e:layout"], /--workers=2/);
   assert.match(
     layout,
-    /name: Upload complete layout timings\n\s+if: \$\{\{ always\(\) && steps.layout.outcome != 'skipped' && steps.layout.outcome != '' \}\}/,
+    /name: Upload complete layout timings\n\s+if: \$\{\{ always\(\) && steps.layout_execution.outcome == 'success' \}\}/,
   );
   assert.match(layout, /if-no-files-found: error/);
 });

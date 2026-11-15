@@ -1,13 +1,48 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  assertLayoutRan,
   classifyLayoutJobs,
   setupFailureDetails,
 } from "./layout-setup-result.mjs";
 import { reportAttempt } from "./post-deploy-layout.mjs";
+
+test("startup without results is setup failure; executed failed assertions remain layout failure", () => {
+  const root = mkdtempSync(join(tmpdir(), "transit-execution-"));
+  try {
+    const path = join(root, "report.json");
+    assert.throws(
+      () => assertLayoutRan(path),
+      /no readable Playwright execution report/,
+    );
+    writeFileSync(
+      path,
+      JSON.stringify({ suites: [], errors: [{ message: "webServer failed" }] }),
+    );
+    assert.throws(() => assertLayoutRan(path), /no layout test executed/);
+    writeFileSync(
+      path,
+      JSON.stringify({
+        suites: [{ specs: [{ tests: [{ results: [{ status: "failed" }] }] }] }],
+      }),
+    );
+    assert.doesNotThrow(() => assertLayoutRan(path));
+    const all = setupJobs();
+    all[3].steps = [
+      { name: "layout", conclusion: "failure" },
+      { name: "Confirm layout test execution", conclusion: "failure" },
+    ];
+    assert.equal(classifyLayoutJobs(all).layoutFailure, false);
+    assert.match(classifyLayoutJobs(all).setup, /\(4\)/);
+    all[3].steps[1].conclusion = "success";
+    assert.equal(classifyLayoutJobs(all).layoutFailure, true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test("both container grids guard timing records when tests never start and reporting can read attempt jobs", () => {
   const workflow = readFileSync(
@@ -21,8 +56,7 @@ test("both container grids guard timing records when tests never start and repor
     const step = workflow
       .split(`      - name: ${name}\n`)[1]
       .split(/\n      - name:/)[0];
-    assert.match(step, /steps.layout.outcome != 'skipped'/);
-    assert.match(step, /steps.layout.outcome != ''/);
+    assert.match(step, /steps.layout_execution.outcome == 'success'/);
   }
   assert.match(workflow, /name: layout\n\s+id: layout/);
   const replay = workflow
