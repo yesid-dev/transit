@@ -99,6 +99,14 @@
 			t.liveUnavailable,
 		].reduce((a, b) => (b.length > a.length ? b : a)),
 	);
+	// The longest result Refresh can say, at a two-digit hour, so saying it moves nothing below.
+	const resultReserve = $derived.by(() => {
+		const atMs = Date.parse('2026-11-15T12:59:00Z');
+		return [
+			refreshMessage({ kind: 'updated', atMs }, locale, 'UTC'),
+			refreshMessage({ kind: 'failed', shownAtMs: atMs }, locale, 'UTC'),
+		].reduce((a, b) => (b.length > a.length ? b : a));
+	});
 </script>
 
 <section class="home-live" data-slot="home-pulse-live" aria-labelledby="home-live-title">
@@ -117,9 +125,12 @@
 			{t.refresh}
 		</button>
 	</div>
-	<p class="live-result" aria-live="polite" data-failed={result?.kind === 'failed'}>
-		{#if result}{refreshMessage(result, locale, manifest?.tz)}{/if}
-	</p>
+	<div class="slot live-result" data-failed={result?.kind === 'failed'}>
+		<p aria-live="polite">
+			{#if result}{refreshMessage(result, locale, manifest?.tz)}{/if}
+		</p>
+		<p class="reserve" aria-hidden="true" data-reserve={resultReserve}></p>
+	</div>
 	<ul class="live-counts" aria-busy={!pulse && !failed}>
 		{#each counts as item (item.key)}
 			<li data-live={item.key}>

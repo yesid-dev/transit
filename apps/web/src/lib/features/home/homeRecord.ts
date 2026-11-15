@@ -63,7 +63,8 @@ function shift(key: string, days: number): string {
 
 function readings(point: TrendPoint): number | null {
 	const n = point.observation_count;
-	return n != null && Number.isSafeInteger(n) && n >= 0 ? n : null;
+	// + 0 turns a published -0 into 0: no negative zero (owner ruling 6).
+	return n != null && Number.isSafeInteger(n) && n >= 0 ? n + 0 : null;
 }
 
 function share(point: TrendPoint): number | null {

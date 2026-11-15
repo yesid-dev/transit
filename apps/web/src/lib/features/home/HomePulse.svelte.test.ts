@@ -439,6 +439,22 @@ describe('Home record, live and ranking cards', () => {
 		expect(text(record)).not.toContain('Based on');
 	});
 
+	it.each([
+		['en', 'Latest complete record', 'Not enough readings to state a share: 0 this week.'],
+		[
+			'fr',
+			'Dernier bilan complet',
+			'Pas assez de relevés pour établir une part : 0 cette semaine.',
+		],
+	] as const)('shows a negative-zero reading count as 0 (%s)', (locale, title, sentence) => {
+		state.trend = { ...ottawaTrend, weekly: [{ ...ottawaTrend.weekly[1], observation_count: -0 }] };
+		state.history = ottawaHistory;
+		render(HomePulse, { props: { locale, manifest } });
+		const record = card(title);
+		expect(text(within(record).getByRole('status'))).toBe(sentence);
+		expect(text(record)).not.toContain('-0');
+	});
+
 	it('tells a record that cannot load apart from one that has no complete week', () => {
 		state.trendError = new Error('fixture failure');
 		state.history = ottawaHistory;

@@ -119,6 +119,13 @@ describe('the latest complete record', () => {
 		},
 	);
 
+	it('counts a negative-zero reading count as 0, never -0 (owner ruling 6)', () => {
+		const weeks = [{ date: '2026-11-02', otp_pct: 75, observation_count: -0 }];
+		const record = latestCompleteWeek(trend(weeks), ottawaIndex);
+		expect(record).toMatchObject({ kind: 'held', reason: 'thin', readings: 0 });
+		expect(record.kind === 'held' && Object.is(record.readings, -0)).toBe(false);
+	});
+
 	it.each([null, -1, 101, Number.NaN])('holds back an on-time share of %s', (otp) => {
 		const weeks = [{ date: '2026-11-02', otp_pct: otp, observation_count: 5_000 }];
 		expect(latestCompleteWeek(trend(weeks), ottawaIndex)).toMatchObject({
