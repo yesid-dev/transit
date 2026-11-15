@@ -525,3 +525,178 @@ def test_trip_integer_overflow_refuses_by_field_name(tmp_path):
         seed_fact_edition(local)
         with pytest.raises(ValueError, match="direction_id.*INTEGER"):
             apply_capture(local, _parse(message), provider_timezone="UTC")
+
+
+def trip_delay_case(scenario):
+    """Small raw inputs and worked event math, shared with the PostgreSQL detector."""
+    message = trip_message()
+    update = message.entity[0].trip_update
+    update.ClearField("stop_time_update")
+    stop = update.stop_time_update.add(stop_sequence=3)
+    stop.arrival.time = 1781956980  # 2026-06-20 12:03 UTC = 08:03 EDT.
+    schedule = [
+        ("行程", 3, "08:00:00", "08:05:00", "站"),
+        ("行程", 4, "08:20:00", "08:20:00", "站4"),
+    ]
+    expected = (3 * 60, "站", 3)
+    if scenario == "dwell_departure":
+        stop.ClearField("arrival")
+        stop.departure.time = 1781957160  # 08:06 EDT - scheduled 08:05.
+        expected = (60, "站", 3)
+    elif scenario == "dwell_arrival":
+        stop.arrival.time = 1781956860  # 08:01 EDT - scheduled 08:00.
+        stop.departure.time = 1781957400  # Both pairs present: arrival wins.
+        expected = (60, "站", 3)
+    elif scenario == "cancelled":
+        update.trip.schedule_relationship = 3
+        expected = (None, None, None)
+    elif scenario == "skipped":
+        stop.arrival.time = 1781957460  # Skipped 08:11 prediction is ineligible.
+        stop.schedule_relationship = 1
+        update.stop_time_update.add(stop_sequence=4).arrival.time = 1781958120
+        expected = (2 * 60, "站4", 4)  # Served 08:22 - scheduled 08:20.
+    elif scenario in ("unique_id", "repeated_id", "wrong_sequence", "no_schedule"):
+        stop.stop_id = "站"
+        if scenario == "wrong_sequence":
+            stop.stop_sequence = 999  # An explicit wrong sequence must not fall back to id.
+        else:
+            stop.ClearField("stop_sequence")
+        expected = (180, "站", None)
+        if scenario == "repeated_id":
+            schedule[1] = ("行程", 4, "08:20:00", "08:20:00", "站")
+        if scenario == "no_schedule":
+            schedule = [("different-trip", *row[1:]) for row in schedule]
+        if scenario != "unique_id":
+            expected = (None, None, None)
+    elif scenario == "unmatched_event":
+        schedule[0] = ("行程", 3, None, "08:05:00", "站")
+        expected = (None, None, None)  # No realtime departure; no like-for-like pair.
+    elif scenario == "alternate_pair":
+        schedule[0] = ("行程", 3, None, "08:05:00", "站")
+        stop.departure.time = 1781957160
+        expected = (60, "站", 3)  # Missing scheduled arrival uses the complete departure pair.
+    elif scenario in ("next", "past"):
+        stop.arrival.time = 1781957340 if scenario == "next" else 1781956860
+        update.stop_time_update.add(stop_sequence=4).arrival.time = (
+            1781958120 if scenario == "next" else 1781957340
+        )
+        expected = (120, "站4", 4) if scenario == "next" else (-11 * 60, "站4", 4)
+    elif scenario in ("rollover", "spring"):
+        update.trip.start_date = "20260620" if scenario == "rollover" else "20260308"
+        clock = "25:30:00" if scenario == "rollover" else "03:30:00"
+        schedule[0] = ("行程", 3, clock, clock, "站")
+        observed = (
+            "2026-06-21T05:33:00+00:00" if scenario == "rollover" else "2026-03-08T07:33:00+00:00"
+        )
+        stop.arrival.time = int(datetime.fromisoformat(observed).timestamp())
+        expected = (3 * 60, "站", 3)  # Scheduled UTC 05:30 (25:30) or 07:30 (spring 03:30).
+    return message, schedule, expected
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        "dwell_departure",
+        "dwell_arrival",
+        "cancelled",
+        "skipped",
+        "unique_id",
+        "repeated_id",
+        "wrong_sequence",
+        "no_schedule",
+        "unmatched_event",
+        "alternate_pair",
+        "next",
+        "past",
+        "rollover",
+        "spring",
+    ],
+)
+def test_trip_delay_uses_eligible_matching_events(tmp_path, scenario):
+    from transit_ops.live.facts import read_trip_facts
+
+    message, schedule, expected = trip_delay_case(scenario)
+    with closing(
+        LocalFile.open(tmp_path / "events.db", provider_id="network", settings=SETTINGS)
+    ) as local:
+        seed_fact_edition(local)
+        local.connection.execute("DELETE FROM edition_stop_times")
+        local.connection.executemany(
+            "INSERT INTO edition_stop_times VALUES (?, ?, ?, ?, ?)", schedule
+        )
+        parsed = _parse(message)
+        if scenario in ("rollover", "spring"):
+            from datetime import timedelta
+
+            observed = message.entity[0].trip_update.stop_time_update[0].arrival.time
+            feed = datetime.fromtimestamp(observed, UTC) - timedelta(seconds=180)
+            parsed = parse_capture(
+                message.SerializeToString(),
+                replace(parsed.capture, feed_timestamp_utc=feed),
+                ParsePolicy(None, 100),
+            )
+        apply_capture(local, parsed, provider_timezone="America/Toronto")
+        facts = read_trip_facts(local)
+        from zoneinfo import ZoneInfo
+
+        from test_live_facts_real_db import raw_trip_rows
+
+        raw_schedule = {(r[0], r[1]): r[2:] for r in schedule}
+        assert facts.rows == raw_trip_rows(
+            message.SerializeToString(), parsed.capture, raw_schedule
+        )
+        row = dict(zip(facts.columns, facts.rows[0], strict=True))
+        assert (
+            row["snapshot_local_date"]
+            == parsed.capture.feed_timestamp_utc.astimezone(ZoneInfo("America/Toronto")).date()
+        )
+        assert (
+            tuple(row[n] for n in ("delay_seconds", "delay_stop_id", "delay_stop_sequence"))
+            == expected
+        )
+        assert row["stop_time_update_count"] == len(message.entity[0].trip_update.stop_time_update)
+        assert row["skipped_stop_count"] == (1 if scenario == "skipped" else 0)
+
+
+@pytest.mark.parametrize(
+    "captures, expected",
+    [
+        ([(43, -600)], "43-0"),
+        ([(43, 600)], "43-0"),
+        ([(43, -600.000001)], None),
+        ([(43, 600.000001)], None),
+        ([(43, -600), (44, 600)], "44-0"),  # Higher capture, then entity 0.
+        ([(44, -600), (43, 600)], "44-0"),  # Independent of application order.
+        ([(43, -1), (44, 600)], "43-0"),  # Distance precedes capture id.
+    ],
+)
+def test_trip_vehicle_match_has_inclusive_window_and_total_ties(tmp_path, captures, expected):
+    from datetime import timedelta
+
+    from transit_ops.live.facts import read_trip_facts
+
+    with closing(
+        LocalFile.open(tmp_path / "match.db", provider_id="network", settings=SETTINGS)
+    ) as local:
+        seed_fact_edition(local)
+        for identity, offset in captures:
+            message = vehicle_message()
+            for index, entity in enumerate(message.entity[:3]):
+                entity.vehicle.vehicle.id = f"{identity}-{index}"
+            payload = message.SerializeToString()
+            parsed = parsed_vehicle(message)
+            ref = replace(
+                parsed.capture,
+                capture_row_id=identity,
+                feed_timestamp_utc=AT + timedelta(seconds=offset),
+            )
+            apply_capture(
+                local,
+                parse_capture(payload, ref, ParsePolicy(None, 100)),
+                provider_timezone="America/Toronto",
+            )
+        apply_capture(local, _parse(trip_message()), provider_timezone="America/Toronto")
+        facts = read_trip_facts(local)
+        row = dict(zip(facts.columns, facts.rows[0], strict=True))
+        assert row["vehicle_id"] == expected
+        assert row["occupancy_status"] == (2 if expected else None)

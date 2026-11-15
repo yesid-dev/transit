@@ -392,24 +392,44 @@ def raw_trip_rows(payload, capture, schedule, vehicle_rows=()):
         start = datetime.strptime(trip.start_date, "%Y%m%d").date() if trip.start_date else None
         choices = []
         for order, stop in enumerate(update.stop_time_update):
-            event = stop.arrival.time or stop.departure.time
-            scheduled = schedule.get((trip.trip_id.strip(), stop.stop_sequence))
-            if event and scheduled and start:
-                clock, stop_id = scheduled
-                h, m, s = [int(part) for part in clock.split(":")]
-                noon = datetime.combine(start, time(12), zone).astimezone(UTC)
-                planned = noon + timedelta(seconds=h * 3600 + m * 60 + s - 43200)
-                actual = datetime.fromtimestamp(event, UTC)
-                choices.append(
-                    (
-                        event < capture.feed_timestamp_utc.timestamp(),
-                        abs(event - capture.feed_timestamp_utc.timestamp()),
-                        stop.stop_sequence,
-                        order,
-                        int((actual - planned).total_seconds()),
-                        stop.stop_id.strip() or stop_id,
-                    )
+            if trip.schedule_relationship == 3 or stop.schedule_relationship == 1:
+                continue
+            if stop.HasField("stop_sequence"):
+                scheduled = schedule.get((trip.trip_id.strip(), stop.stop_sequence))
+            else:
+                matches = [
+                    v
+                    for (trip_id, _), v in schedule.items()
+                    if trip_id == trip.trip_id.strip() and v[2] == stop.stop_id.strip()
+                ]
+                scheduled = matches[0] if len(matches) == 1 else None
+            if not scheduled or not start:
+                continue
+            arrival, departure, stop_id = scheduled
+            paired = [
+                (event.time, clock)
+                for event, clock in ((stop.arrival, arrival), (stop.departure, departure))
+                if event.time and clock
+            ]
+            if not paired:
+                continue
+            event, clock = paired[0]
+            h, m, s = [int(part) for part in clock.split(":")]
+            noon = datetime.combine(start, time(12), zone).astimezone(UTC)
+            planned = noon + timedelta(seconds=h * 3600 + m * 60 + s - 43200)
+            actual = datetime.fromtimestamp(event, UTC)
+            sequence = stop.stop_sequence if stop.HasField("stop_sequence") else None
+            choices.append(
+                (
+                    event < capture.feed_timestamp_utc.timestamp(),
+                    abs(event - capture.feed_timestamp_utc.timestamp()),
+                    sequence if sequence is not None else 2**31,
+                    order,
+                    int((actual - planned).total_seconds()),
+                    stop.stop_id.strip() or stop_id,
+                    sequence,
                 )
+            )
         choice = sorted(choices)[0] if choices else None
         matches = [
             v
@@ -442,7 +462,7 @@ def raw_trip_rows(payload, capture, schedule, vehicle_rows=()):
                 choice[4] if choice else None,
                 len(update.stop_time_update),
                 choice[5] if choice else None,
-                choice[2] if choice else None,
+                choice[6] if choice else None,
                 sum(
                     s.HasField("schedule_relationship") and s.schedule_relationship == 1
                     for s in update.stop_time_update
@@ -487,7 +507,7 @@ def test_every_trip_column_is_recomputed_from_raw_protobuf(tmp_path, scenario):
         assert actual.rows == raw_trip_rows(
             message.SerializeToString(),
             parsed.capture,
-            {("行程", 3): ("08:00:00", "站")},
+            {("行程", 3): ("08:00:00", None, "站")},
             raw_vehicles,
         )
         for row in actual.rows:
@@ -495,8 +515,120 @@ def test_every_trip_column_is_recomputed_from_raw_protobuf(tmp_path, scenario):
             assert 0 <= row[18] <= row[15]
 
 
+def trip_math_window(case, scenario):
+    from test_live_captures import AT
+    from test_live_facts import trip_delay_case
+    from test_static_silver import _minimal_compliant_members, _write_members_zip
+
+    message, schedule, expected = trip_delay_case(scenario)
+    feed = {
+        "spring": datetime(2026, 3, 8, 7, 30, 0, 123456, UTC),
+        "rollover": datetime(2026, 6, 21, 5, 30, 0, 123456, UTC),
+    }.get(scenario, AT)
+    case.window = replace(case.window, serving_initialized_at_utc=feed - timedelta(seconds=5))
+    members = _minimal_compliant_members()
+    members["routes.txt"] = "route_id,route_type,route_short_name,route_long_name\n路线,3,1,Test\n"
+    members["trips.txt"] = "route_id,service_id,trip_id,trip_headsign\n路线,weekday,行程,Centre\n"
+    members["stops.txt"] = (
+        "stop_id,stop_name,stop_lat,stop_lon,location_type\n"
+        "站,First,45.4,-71.9,0\n站4,Second,45.41,-71.91,0\n"
+    )
+    members["stop_times.txt"] = (
+        "trip_id,stop_sequence,arrival_time,departure_time,stop_id\n"
+        + "".join(",".join(str(v) if v is not None else "" for v in row) + "\n" for row in schedule)
+    )
+    members["calendar.txt"] = (
+        "service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,"
+        "start_date,end_date\nweekday,1,1,1,1,1,1,1,20260101,20261231\n"
+    )
+    path = case.bronze("local").root / case.window.edition.storage_path
+    _write_members_zip(path, members)
+    body = path.read_bytes()
+    edition = replace(
+        case.window.edition, checksum_sha256=sha256(body).hexdigest(), byte_size=len(body)
+    )
+    record = poll_record(case)
+    capture = record.captures[0]
+    message.header.timestamp = int(feed.timestamp())
+    payload = message.SerializeToString()
+    (case.bronze("local").root / capture.storage_path).write_bytes(payload)
+    capture = replace(
+        capture, sha256=sha256(payload).hexdigest(), byte_size=len(payload), entity_count=1
+    )
+    record = replace(record, captures=(capture,), polls=(replace(record.polls[0], entity_count=1),))
+    case.window = replace(
+        case.window,
+        edition=edition,
+        poll_records=(record,),
+        cycles=(
+            CycleSpec(
+                feed + timedelta(seconds=30), (("realtime_snapshot", capture.capture_row_id),)
+            ),
+        ),
+    )
+    return expected
+
+
+def trip_math_declarations(scenario, provider, identity):
+    # R22 / R28 class (b): explicit PK, old value, correct value and definition.
+    changes = {
+        "dwell_departure": {"delay_seconds": (360, 60)},  # 08:06 - 08:05 = 60, not 08:06 - 08:00.
+        "cancelled": {
+            "delay_seconds": (180, None),
+            "delay_stop_id": ("站", None),
+            "delay_stop_sequence": (3, None),
+        },  # No operative event for a cancelled trip.
+        "skipped": {
+            "delay_seconds": (660, 120),
+            "delay_stop_id": ("站", "站4"),
+            "delay_stop_sequence": (3, 4),
+        },  # Served 08:22 - 08:20 = 120; skipped 08:11 excluded.
+        "unique_id": {"delay_seconds": (None, 180), "delay_stop_id": (None, "站")},
+        # Unique stop: 08:03 - 08:00 = 180. Original omitted sequence remains NULL.
+    }
+    return {
+        ((provider, identity, 0), column): values
+        for column, values in changes.get(scenario, {}).items()
+    }
+
+
+def assert_trip_postgres_comparison(pg, actual, declared):
+    differences = compare_tables(
+        TableRows(pg.table, pg.columns, COLUMNS[:3], pg.rows),
+        TableRows(pg.table, actual.columns, COLUMNS[:3], actual.rows),
+    )
+    observed = {}
+    for difference in differences:
+        identity = (difference.key, difference.column)
+        if identity in declared:
+            assert difference.difference_class == "value", difference  # Never class (c).
+            assert difference.kind in ("value", "type"), difference
+            observed[identity] = (difference.expected, difference.actual)
+            assert observed[identity] == declared[identity], difference
+        else:
+            assert difference.difference_class == "representation", difference
+    assert observed == declared, "each declared class-(b) correction must be observed"
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        "original",
+        "dwell_departure",
+        "dwell_arrival",
+        "cancelled",
+        "skipped",
+        "unique_id",
+        "repeated_id",
+        "wrong_sequence",
+        "next",
+        "past",
+        "rollover",
+        "spring",
+    ],
+)
 def test_trip_facts_math_then_live_oracle_comparison(
-    real_db_engine, vehicle_case, tmp_path, monkeypatch
+    real_db_engine, vehicle_case, tmp_path, monkeypatch, scenario
 ):
     import csv
     from io import StringIO
@@ -507,20 +639,23 @@ def test_trip_facts_math_then_live_oracle_comparison(
     from transit_ops.live.oracle import runner
 
     case = vehicle_case
-    # Existing replay fixture contains changed/stale captures and an intervening vehicle feed.
+    worked = trip_math_window(case, scenario) if scenario != "original" else None
+    # Original replay contains changed/stale captures and an intervening vehicle feed.
     schedule = {}
     with ZipFile(case.bronze("local").root / case.window.edition.storage_path) as archive:
         member = next(n for n in archive.namelist() if n.endswith("stop_times.txt"))
         for row in csv.DictReader(StringIO(archive.read(member).decode("utf-8-sig"))):
             schedule[row["trip_id"], int(row["stop_sequence"])] = (
-                row["arrival_time"] or row["departure_time"],
+                row["arrival_time"] or None,
+                row["departure_time"] or None,
                 row["stop_id"],
             )
     records = tuple(
         replace(r, feed_day=replace(r.feed_day, provider_id=case.window.provider_id))
         for r in case.original_records
     )
-    case.window = replace(case.window, poll_records=records, cycles=case.original_cycles)
+    if scenario == "original":
+        case.window = replace(case.window, poll_records=records, cycles=case.original_cycles)
     original_seed = runner.seed_static
     with (
         tracked_owner(real_db_engine) as names,
@@ -573,13 +708,19 @@ def test_trip_facts_math_then_live_oracle_comparison(
                 actual = read_trip_facts(local)
                 assert actual.rows == tuple(sorted(expected))  # Math first, before PostgreSQL.
                 pg = next(t for t in outcome.facts if t.table == "gold.fact_trip_delay_snapshot")
-                differences = compare_tables(
-                    TableRows(pg.table, pg.columns, COLUMNS[:3], pg.rows),
-                    TableRows(pg.table, actual.columns, COLUMNS[:3], actual.rows),
+                if worked is not None:
+                    row = dict(zip(actual.columns, actual.rows[0], strict=True))
+                    assert (
+                        tuple(
+                            row[c]
+                            for c in ("delay_seconds", "delay_stop_id", "delay_stop_sequence")
+                        )
+                        == worked
+                    )
+                declared = trip_math_declarations(
+                    scenario, case.window.provider_id, cycle.captures[0][1]
                 )
-                # No class-(b) correction is declared for this seed. All remaining
-                # differences must be R28 class-(c) canonical representations.
-                assert all(d.difference_class == "representation" for d in differences), differences
+                assert_trip_postgres_comparison(pg, actual, declared)
         assert len(names) == 1
 
 
@@ -675,3 +816,24 @@ def test_trip_edition_read_preserves_both_legacy_consumers(real_db_engine, vehic
             assert pg.execute(_MANIFEST_VERSION_SQL, {"provider_id": provider}).scalar_one() == (
                 original.source_version or str(original.dataset_version_id)
             )
+
+
+def test_trip_comparison_requires_exact_class_b_declarations():
+    from types import SimpleNamespace
+
+    columns = COLUMNS[:3] + ("delay_seconds",)
+    pg = SimpleNamespace(
+        table="gold.fact_trip_delay_snapshot", columns=columns, rows=(("p", 1201, 0, 360),)
+    )
+    actual = SimpleNamespace(columns=columns, rows=(("p", 1201, 0, 60),))
+    declared = {(("p", 1201, 0), "delay_seconds"): (360, 60)}
+    assert_trip_postgres_comparison(pg, actual, declared)
+    with pytest.raises(AssertionError):
+        assert_trip_postgres_comparison(pg, actual, {})
+    with pytest.raises(AssertionError):
+        assert_trip_postgres_comparison(pg, actual, {(("p", 1201, 0), "delay_seconds"): (360, 59)})
+    with pytest.raises(AssertionError):
+        assert_trip_postgres_comparison(pg, actual, {(("p", 1202, 0), "delay_seconds"): (360, 60)})
+    actual.rows = pg.rows
+    with pytest.raises(AssertionError, match="must be observed"):
+        assert_trip_postgres_comparison(pg, actual, declared)

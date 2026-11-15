@@ -292,15 +292,18 @@ def _trip_rows(
         raise EditionMissing("trip facts require a loaded edition") from exc
     if edition is None or edition.provider_id != parsed.capture.provider_id:
         raise EditionMissing("trip facts require the provider's loaded edition")
-    schedule = {}
+    schedule: dict[str, dict[Any, Any]] = {"sequence": {}, "stop_id": {}}
     for trip, seq, arrival, departure, stop in conn.execute(
         "SELECT trip_id, stop_sequence, arrival_time, departure_time, stop_id "
         "FROM edition_stop_times"
     ).fetchall():
         _reject_nul((trip, arrival, departure, stop), "edition_stop_times")
-        if (trip, seq) in schedule:
+        if (trip, seq) in schedule["sequence"]:
             raise ValueError("duplicate edition stop key")
-        schedule[trip, seq] = (arrival or departure, stop)
+        event = (arrival, departure, stop)
+        schedule["sequence"][trip, seq] = event
+        key = (trip, stop)
+        schedule["stop_id"][key] = None if key in schedule["stop_id"] else event
     entities = parsed.frames["rt_entities"]
     ids = {r[0]: r[1] for r in entities.rows}
     if len(ids) != len(entities.rows) or len(ids) != parsed.entity_count:
@@ -388,13 +391,26 @@ def _delay_candidates(
     timezone: ZoneInfo,
     feed_timestamp: datetime,
 ) -> list[Any]:
-    candidates = []
+    candidates: list[Any] = []
+    if trip["schedule_relationship"] == 3:
+        return candidates
     for stop in updates:
-        scheduled, schedule_stop = schedule.get(
-            (trip["trip_id"], stop["stop_sequence"]), (None, None)
-        )
-        stamp = stop["arrival_time_utc"] or stop["departure_time_utc"]
-        if scheduled is None or stamp is None or trip["start_date"] is None:
+        if stop["schedule_relationship"] == 1:
+            continue
+        if stop["stop_sequence"] is not None:
+            events = schedule["sequence"].get((trip["trip_id"], stop["stop_sequence"]))
+        elif stop["stop_id"] is not None:
+            events = schedule["stop_id"].get((trip["trip_id"], stop["stop_id"]))
+        else:
+            events = None
+        if events is None or trip["start_date"] is None:
+            continue
+        arrival, departure, schedule_stop = events
+        if stop["arrival_time_utc"] is not None and arrival is not None:
+            stamp, scheduled = stop["arrival_time_utc"], arrival
+        elif stop["departure_time_utc"] is not None and departure is not None:
+            stamp, scheduled = stop["departure_time_utc"], departure
+        else:
             continue
         hours, minutes, seconds = map(int, scheduled.split(":"))
         anchor = datetime.combine(trip["start_date"], time(12), timezone).astimezone(UTC)
