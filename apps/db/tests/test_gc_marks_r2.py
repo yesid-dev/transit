@@ -2,7 +2,7 @@ import json
 from dataclasses import replace
 
 import pytest
-from gc_marks_contract import KEEP, KEY, check_marks, check_refusals
+from gc_marks_contract import KEEP, KEY, check_empty_mutations, check_marks, check_refusals
 
 from transit_ops.control.historic_gc_marks import PostgresGcMarks, R2GcMarks, gc_marks_for
 from transit_ops.control.objects import ObjectConflict, SnapshotConditionalObjects
@@ -14,6 +14,7 @@ def test_contract(tmp_path):
     objects = SnapshotConditionalObjects(
         LocalSnapshotStorage(tmp_path, "control/v1"), min_interval_s=0
     )
+    check_empty_mutations(R2GcMarks(objects), R2GcMarks(objects), "p/a")
     check_marks(R2GcMarks(objects), R2GcMarks(objects), "p/a", "p/A")
 
 

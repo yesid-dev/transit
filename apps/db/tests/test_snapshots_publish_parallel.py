@@ -353,6 +353,7 @@ def _historic_dispatch_conn(
     dispatch = {
         "history.build.as_of": [datetime.datetime(2026, 7, 13, tzinfo=datetime.UTC)],
         "publish.lock.try_acquire": [True],
+        "publish.lock.require_historic": [True],
         "history.hotspots.timezone": [{"timezone": "UTC"}],
         "history.hotspots.names": [],
         "history.hotspots.route_daily": list(hotspot_route_rows or []),

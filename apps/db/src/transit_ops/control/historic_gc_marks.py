@@ -18,7 +18,6 @@ from transit_ops.control.objects import (
 )
 from transit_ops.settings import Settings
 from transit_ops.snapshots.historic_gc import HistoricGcMark
-from transit_ops.snapshots.publication_lane import acquire_publication_lane
 from transit_ops.snapshots.storage import StoredObjectVersion
 from transit_ops.sql_registry import named_query
 
@@ -34,16 +33,17 @@ class GcMarkStore(Protocol):
     def clear(self, provider_id: str, object_keys: Sequence[str]) -> None: ...
 
 
-_LOAD = text("""SELECT m.object_key, m.etag, m.content_length, m.object_last_modified_utc,
-    m.first_unreachable_utc, m.last_confirmed_unreachable_utc, m.last_scan_id,
-    m.xmin::text, m.cmin::text, p.xmin::text AS provider_xmin, p.cmin::text AS provider_cmin
-    FROM core.providers p LEFT JOIN core.snapshot_historic_gc_marks m USING (provider_id)
-    WHERE p.provider_id = :provider_id ORDER BY m.object_key""")
-_PROVIDER_LOCK = text(
-    "SELECT provider_id FROM core.providers WHERE provider_id = :provider_id FOR NO KEY UPDATE"
+_LOAD = text("""SELECT object_key, etag, content_length, object_last_modified_utc,
+    first_unreachable_utc, last_confirmed_unreachable_utc, last_scan_id, xmin::text, cmin::text
+    FROM core.snapshot_historic_gc_marks WHERE provider_id = :provider_id ORDER BY object_key""")
+_LANE_HELD = named_query(
+    "publish.lock.require_historic",
+    "SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' "
+    "AND pid = pg_backend_pid() AND granted AND mode = 'ExclusiveLock' AND objsubid = 2 "
+    "AND database = (SELECT oid FROM pg_database WHERE datname = current_database()) "
+    "AND classid::bigint = (hashtext('transit.snapshot_publish:' || :provider_id)::bigint "
+    "& 4294967295) AND objid::bigint = (hashtext('historic')::bigint & 4294967295))",
 )
-# Keep a revision even when no marks remain, without changing any provider value.
-_BUMP = "UPDATE core.providers SET display_name = display_name WHERE provider_id = :provider_id"
 _DELETE = text("DELETE FROM core.snapshot_historic_gc_marks WHERE provider_id = :provider_id")
 _INSERT = text("""INSERT INTO core.snapshot_historic_gc_marks (
     provider_id, object_key, etag, content_length, object_last_modified_utc,
@@ -52,11 +52,13 @@ _INSERT = text("""INSERT INTO core.snapshot_historic_gc_marks (
     :first_unreachable_utc, :last_confirmed_unreachable_utc, CAST(:last_scan_id AS uuid))""")
 _CLEAR = named_query(
     "publish.historic_gc.clear_referenced",
-    "WITH bumped AS (" + _BUMP + " RETURNING provider_id) "
-    "DELETE FROM core.snapshot_historic_gc_marks "
-    "WHERE provider_id IN (SELECT provider_id FROM bumped) "
+    "DELETE FROM core.snapshot_historic_gc_marks WHERE provider_id = :provider_id "
     "AND object_key = ANY(CAST(:object_keys AS text[]))",
 )
+
+
+class HistoricGcLaneRequired(RuntimeError):
+    """The calling backend must already hold the provider's historic publication lane."""
 
 
 def _time(value: datetime) -> str:
@@ -119,20 +121,20 @@ def _mark(row: Mapping[str, object]) -> HistoricGcMark:
 
 
 class PostgresGcMarks:
+    """The caller holds the historic lane until commit; tokens are only a backstop.
+
+    Empty-set cycles can reuse a row token, so reads and mutations belong in that lane.
+    """
+
     def __init__(self, connection: Connection) -> None:
         self.connection = connection
         self.versions: dict[str, MarksVersion] = {}
 
     def load(self, provider_id: str) -> dict[str, HistoricGcMark]:
         rows = self.connection.execute(_LOAD, {"provider_id": provider_id}).mappings().all()
-        marks = {str(r["object_key"]): _mark(dict(r)) for r in rows if r["object_key"] is not None}
+        marks = {str(r["object_key"]): _mark(dict(r)) for r in rows}
         self.versions[provider_id] = sha256(
-            repr(
-                [
-                    (r["object_key"], r["xmin"], r["cmin"], r["provider_xmin"], r["provider_cmin"])
-                    for r in rows
-                ]
-            ).encode()
+            repr([(r["object_key"], r["xmin"], r["cmin"]) for r in rows]).encode()
         ).hexdigest()
         return marks
 
@@ -142,27 +144,26 @@ class PostgresGcMarks:
     def replace(
         self, provider_id: str, marks: Mapping[str, HistoricGcMark], *, expected: MarksVersion
     ) -> None:
+        self._require_lane(provider_id)
         rows = [{**r, "provider_id": provider_id} for r in _rows(marks)]
-        acquire_publication_lane(self.connection, provider_id=provider_id, tier="historic")
-        if (
-            self.connection.execute(
-                _PROVIDER_LOCK, {"provider_id": provider_id}
-            ).scalar_one_or_none()
-            is None
-        ):
-            raise ValueError("unknown GC marks provider")
         self.load(provider_id)
         if self.version(provider_id) != expected:
             raise ObjectConflict(provider_id)
-        self.connection.execute(text(_BUMP), {"provider_id": provider_id})
         self.connection.execute(_DELETE, {"provider_id": provider_id})
         if rows:
             self.connection.execute(_INSERT, rows)
 
     def clear(self, provider_id: str, object_keys: Sequence[str]) -> None:
+        self._require_lane(provider_id)
         if object_keys:
             self.connection.execute(
                 _CLEAR, {"provider_id": provider_id, "object_keys": sorted(set(object_keys))}
+            )
+
+    def _require_lane(self, provider_id: str) -> None:
+        if not self.connection.execute(_LANE_HELD, {"provider_id": provider_id}).scalar_one():
+            raise HistoricGcLaneRequired(
+                f"historic publication lane is not held for provider={provider_id!r}"
             )
 
 

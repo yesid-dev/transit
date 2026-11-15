@@ -975,8 +975,14 @@ def test_publish_clear_restarts_unreachable_age_after_a_generation_was_reference
     )
     marks = dict(first.next_marks)
 
+    from types import SimpleNamespace
+
+    from transit_ops.sql_registry import query_name
+
     class MarkConnection:
         def execute(self, _statement, parameters):  # noqa: ANN001, ANN202
+            if query_name(_statement) == "publish.lock.require_historic":
+                return SimpleNamespace(scalar_one=lambda: True)
             for path in parameters["object_keys"]:
                 marks.pop(path, None)
 

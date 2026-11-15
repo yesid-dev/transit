@@ -838,6 +838,7 @@ def test_publish_historic_writes_expected_keys_and_network_history(tmp_path) -> 
 
     dispatch = {
         "publish.lock.try_acquire": [True],
+        "publish.lock.require_historic": [True],
         "history.hotspots.timezone": [{"timezone": "UTC"}],
         "history.hotspots.names": [],
         "history.hotspots.route_daily": [],

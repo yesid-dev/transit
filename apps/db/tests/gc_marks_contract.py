@@ -63,7 +63,6 @@ def check_refusals(store, provider, fault):
 
 
 def check_marks(store, other, provider, second):
-    check_empty_mutations(store, other, provider)
     mark = seed_mark()
     assert store.load(provider) == {}
     stale = store.version(provider)
