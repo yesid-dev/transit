@@ -1,9 +1,13 @@
+from contextlib import nullcontext
 from dataclasses import replace
+from datetime import timedelta
 
 import pytest
 from ledger_store_contract import (  # noqa: F401
+    new_copy,
     r2_store,
     test_copy_insertion_refuses_nonzero_revision,
+    test_copy_time_order_is_refused_at_the_verb,
     test_details_are_owned_json_values,
     test_existing_copy_version_is_create_only,
     test_hold_with_no_end_reads_back_as_hold_no_end,
@@ -70,3 +74,22 @@ def test_mark_changed_masks_but_retains_trim_fingerprint(store, make_identity):
         s.mark_changed()
         assert (s.state().working_state, s.state().remainder_fingerprint) == ("present", None)
     assert t.current_window(store.objects, key).remainder_fingerprint == "a" * 64
+
+
+@pytest.mark.parametrize("seconds", [1, 300, 301])
+def test_seal_adjusts_small_clock_skew_and_refuses_large_skew(store, make_identity, seconds):
+    with store.session(make_identity()) as session:
+        allocated = session.now()
+        session.insert_allocated_copy(new_copy(session.allocate_version()))
+    store.clock = lambda: allocated - timedelta(seconds=seconds)
+    with pytest.raises(RuntimeError, match="clock") if seconds > 300 else nullcontext() as error:
+        with store.session(make_identity()) as session:
+            session.mark_sealed(1)
+            assert session.copies()[0].sealed_at_utc == allocated
+    if error:
+        assert error.type.__name__ == "LedgerClockSkew"
+    with store.session(make_identity()) as session:
+        assert session.copies()[0].state == ("allocated" if error else "sealed")
+        assert [e.at_utc for e in session.events()] == (
+            [] if error else [allocated - timedelta(seconds=seconds)]
+        )

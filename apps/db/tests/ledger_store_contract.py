@@ -1,7 +1,8 @@
 from dataclasses import asdict, fields, replace
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
+from sqlalchemy.exc import DBAPIError
 
 from transit_ops.history.datasets import UndeclaredDataset
 from transit_ops.history.ledger import HOLD_NO_END, WindowNotFound, WindowState
@@ -463,3 +464,22 @@ def test_details_are_owned_json_values(store, make_identity, case):
         assert read(session) == {"rows": [1], "tuple": [1, 2]}
     with store.session(make_identity()) as session:
         assert read(session) == {"rows": [1], "tuple": [1, 2]}
+
+
+@pytest.mark.parametrize("verb", ["verify", "reject"])
+def test_copy_time_order_is_refused_at_the_verb(store, make_identity, verb):
+    with store.session(make_identity()) as session:
+        version = _allocated(session)
+        session.mark_sealed(version)
+    with pytest.raises((RuntimeError, DBAPIError)):
+        with store.session(make_identity()) as session:
+            copy = session.copies()[0]
+            if verb == "verify":
+                session.make_current(version, verified_at=copy.sealed_at_utc - timedelta(seconds=1))
+            else:
+                session.mark_rejected(
+                    version, rejected_at=copy.allocated_at_utc - timedelta(seconds=1), reason="bad"
+                )
+            pytest.fail("invalid copy time accepted at the verb")
+    with store.session(make_identity()) as session:
+        assert session.copies()[0].state == "sealed"

@@ -1,11 +1,16 @@
-"""Optimistic window sessions over the private write-ahead ledger."""
+"""Optimistic window sessions over the private write-ahead ledger.
+
+Adapter-assigned copy times are monotonic per copy; adjustments above five
+minutes fail closed. Envelopes retain the session clock. Caller times are only
+checked, never adjusted.
+"""
 
 import json
 from collections.abc import Callable, Collection, Iterator, Mapping
 from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import asdict, fields, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Never, get_args
 
 from transit_ops.control.objects import ConditionalObjects
@@ -62,6 +67,18 @@ def project_state(doc: WindowDocument | None) -> ledger.WindowState | None:
     if doc.working_state not in {"partial", "trimmed"}:
         values["remainder_fingerprint"] = None
     return ledger.WindowState(**values)
+
+
+class LedgerClockSkew(RuntimeError):
+    """The session clock is too far behind the copy's stored times."""
+
+
+def _latest(copy: ledger.ArchiveCopy) -> datetime:
+    return max(
+        t
+        for t in (copy.allocated_at_utc, copy.sealed_at_utc, copy.verified_at_utc)
+        if t is not None
+    )
 
 
 class R2Ledger:
@@ -266,7 +283,11 @@ class _Session:
         copy = self._copy(content_version, "seal", actor)
         if copy.sealed_at_utc is not None or copy.rejected_at_utc is not None:
             self._refuse("seal", content_version)
-        self._put(replace(copy, sealed_at_utc=self.now()))
+        at = max(self.now(), _latest(copy))
+        if at - self.now() > timedelta(minutes=5):
+            self.failed = True
+            raise LedgerClockSkew(f"clock is more than five minutes behind copy {content_version}")
+        self._put(replace(copy, sealed_at_utc=at))
         self._record("seal", content_version, actor)
 
     def mark_rejected(
@@ -276,6 +297,8 @@ class _Session:
         _text(reason)
         copy = self._copy(content_version, "reject", actor)
         if copy.rejected_at_utc is not None or copy.verified_at_utc is not None:
+            self._refuse("reject", content_version)
+        if at < _latest(copy):
             self._refuse("reject", content_version)
         self._put(replace(copy, rejected_at_utc=at, reject_reason=reason))
         self._record("reject", content_version, actor, reason)
@@ -289,6 +312,7 @@ class _Session:
             copy.sealed_at_utc is None
             or copy.verified_at_utc is not None
             or copy.rejected_at_utc is not None
+            or at < copy.sealed_at_utc
         ):
             self._refuse("verify", content_version)
         assert self.doc is not None
