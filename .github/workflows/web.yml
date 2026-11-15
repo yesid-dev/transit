@@ -267,7 +267,7 @@ jobs:
 
       - name: Deployment scope contract
         working-directory: ${{ github.workspace }}
-        run: node --test .github/scripts/web-queue-gate.test.mjs .github/scripts/web-queue-gate-workflow.test.mjs .github/scripts/deploy-scope.test.mjs .github/scripts/deploy-now.test.mjs .github/scripts/web-artifact-promotion.test.mjs .github/scripts/worker-rollback.test.mjs .github/scripts/post-deploy-layout.test.mjs .github/scripts/ship-and-verify.test.mjs .github/scripts/deployment-order.test.mjs
+        run: node --test .github/scripts/web-queue-gate.test.mjs .github/scripts/web-queue-gate-workflow.test.mjs .github/scripts/deploy-scope.test.mjs .github/scripts/deploy-now.test.mjs .github/scripts/web-artifact-promotion.test.mjs .github/scripts/worker-rollback.test.mjs .github/scripts/post-deploy-layout.test.mjs .github/scripts/layout-setup-result.test.mjs .github/scripts/ship-and-verify.test.mjs .github/scripts/deployment-order.test.mjs
 
       - name: Public site probe contract
         working-directory: ${{ github.workspace }}
@@ -491,17 +491,28 @@ jobs:
           env -u PLAYWRIGHT_BROWSERS_PATH node scripts/install-browser-toolchain.mjs "$TRANSIT_BROWSER_ROOT"
           printf 'TRANSIT_BROWSER_ROOT=%s\n' "$TRANSIT_BROWSER_ROOT" >> "$GITHUB_ENV"
 
-      - name: layout
-        env:
-          PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/layout-timing/report.json
+      - name: Plan layout shards
         run: |
           mkdir -p "$RUNNER_TEMP/layout-timing" "$RUNNER_TEMP/layout-plan"
           env -u PLAYWRIGHT_JSON_OUTPUT_NAME bun x playwright test -c e2e/playwright.config.ts --project=layout-* --workers=2 --list --reporter=json > "$RUNNER_TEMP/layout-plan/catalog.json"
           node ../../.github/scripts/layout-shards.mjs plan "$RUNNER_TEMP/layout-plan/catalog.json" "$RUNNER_TEMP/layout-plan" 12
-          bun run test:e2e:layout --test-list="$RUNNER_TEMP/layout-plan/shard-${{ matrix.shard }}.txt"
+
+      - name: Build layout test app
+        run: bun run build --mode e2e
+
+      - name: layout
+        id: layout
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/layout-timing/report.json
+        run: bun x playwright test -c e2e/playwright.config.ts --project=layout-* --workers=2 --test-list="$RUNNER_TEMP/layout-plan/shard-${{ matrix.shard }}.txt"
+
+      - name: Confirm layout test execution
+        id: layout_execution
+        if: ${{ always() && steps.layout.outcome != 'skipped' && steps.layout.outcome != '' }}
+        run: node ../../.github/scripts/layout-setup-result.mjs assert-ran "$RUNNER_TEMP/layout-timing/report.json"
 
       - name: Record layout timing provenance
-        if: ${{ always() }}
+        if: ${{ always() && steps.layout_execution.outcome == 'success' }}
         working-directory: ${{ github.workspace }}
         env:
           TRANSIT_LAYOUT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -513,7 +524,7 @@ jobs:
           cp "$RUNNER_TEMP/layout-plan/plan.json" "$RUNNER_TEMP/layout-timing/plan.json"
 
       - name: Upload complete layout timings
-        if: ${{ always() }}
+        if: ${{ always() && steps.layout_execution.outcome == 'success' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: layout-timing-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
@@ -761,6 +772,7 @@ jobs:
     outputs:
       deployed: ${{ steps.deploy.outputs.deployed }}
       identity_verified: ${{ steps.identity.outcome == 'success' }}
+      health_checks: ${{ steps.smoke.outcome }}
       rollback_version: ${{ steps.previous.outputs.version_id }}
     permissions:
       contents: read
@@ -910,6 +922,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+      actions: read
       issues: write
     defaults:
       run:
@@ -942,6 +955,7 @@ jobs:
         env:
           LAYOUT_RESULT: ${{ needs.post-deploy-layout.result == 'success' && steps.coverage.outcome != 'success' && 'coverage-failure' || needs.post-deploy-layout.result }}
           DEPLOY_RESULT: ${{ needs.deploy-production.result }}
+          HEALTH_RESULT: ${{ needs.deploy-production.outputs.health_checks }}
           ROLLBACK_VERSION: ${{ needs.deploy-production.outputs.rollback_version }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
