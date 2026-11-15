@@ -98,10 +98,17 @@ export const copy = defineCopy({
 		},
 		stateCuts: {
 			heading: serviceComparisonCopy.en.section,
-			completenessLabel: serviceComparisonCopy.en.label,
-			explainer: serviceComparisonCopy.en.explanation,
+			completenessLabel: 'Share observed, not cancelled',
+			explainer:
+				'Non-cancelled observed trips as a share of the receipt basis, including trips beyond the route schedule.',
 			standDown: serviceComparisonCopy.en.unavailable,
-			splitLabel: serviceComparisonCopy.en.split,
+			splitLabel: 'Parts of the receipt basis',
+			basis: (total: number, scheduled: number, beyond: number | null) =>
+				beyond == null
+					? `Of ${intl.number('en').format(total)} scheduled trips.`
+					: `Of ${intl.number('en').format(total)} trips: ${intl.number('en').format(scheduled)} scheduled plus ${intl.number('en').format(beyond)} observed beyond the schedule. These may be added trips or IDs not matched to the active schedule; the receipt cannot tell which.`,
+			mismatch:
+				'The published counts do not reconcile with the schedule. This older receipt has no expanded basis; shares are unavailable.',
 			delivered: serviceComparisonCopy.en.observed,
 			cancelled: serviceComparisonCopy.en.cancelled,
 			silent: serviceComparisonCopy.en.shortfall,
@@ -160,7 +167,7 @@ export const copy = defineCopy({
 			worst: (name, deltaPts) => `highest mean delay: ${name} (on-time ${deltaPts} vs network)`,
 			affected: (lines) =>
 				`${intl.number('en').format(lines)} ${lines === 1 ? 'line' : 'lines'} with severe-delay predictions`,
-			completeness: (pct) => `non-cancelled / scheduled trip-day ratio: ${pct} (capped at 100%)`,
+			completeness: (pct) => `observed, not cancelled: ${pct} of the receipt basis`,
 			completenessStandDown: 'service count comparison not yet available',
 			none: 'No overall reading for this day.',
 		},
@@ -259,10 +266,17 @@ export const copy = defineCopy({
 		},
 		stateCuts: {
 			heading: serviceComparisonCopy.fr.section,
-			completenessLabel: serviceComparisonCopy.fr.label,
-			explainer: serviceComparisonCopy.fr.explanation,
+			completenessLabel: 'Part observée, non annulée',
+			explainer:
+				'Les trajets observés non annulés en proportion de la base du reçu, y compris les trajets au-delà de l’horaire de la ligne.',
 			standDown: serviceComparisonCopy.fr.unavailable,
-			splitLabel: serviceComparisonCopy.fr.split,
+			splitLabel: 'Parts de la base du reçu',
+			basis: (total: number, scheduled: number, beyond: number | null) =>
+				beyond == null
+					? `Sur ${intl.number('fr').format(total)} trajets prévus.`
+					: `Sur ${intl.number('fr').format(total)} trajets : ${intl.number('fr').format(scheduled)} prévus plus ${intl.number('fr').format(beyond)} observés au-delà de l’horaire. Il peut s’agir de trajets ajoutés ou d’identifiants non rapprochés de l’horaire actif; le reçu ne permet pas de les distinguer.`,
+			mismatch:
+				'Les décomptes publiés ne concordent pas avec l’horaire. Cet ancien reçu n’a pas de base élargie; les proportions ne sont pas disponibles.',
 			delivered: serviceComparisonCopy.fr.observed,
 			cancelled: serviceComparisonCopy.fr.cancelled,
 			silent: serviceComparisonCopy.fr.shortfall,
@@ -325,7 +339,7 @@ export const copy = defineCopy({
 			affected: (lines: number) =>
 				`${intl.number('fr').format(lines)} ${lines === 1 ? 'ligne' : 'lignes'} avec des prévisions de retard grave`,
 			completeness: (pct: string) =>
-				`rapport jours-trajets non annulés / prévus : ${pct} (plafond de 100 %)`,
+				`rapport jours-observés, non annulés : ${pct} de la base du reçu`,
 			completenessStandDown: 'comparaison des décomptes pas encore disponible',
 			none: 'Aucune lecture d’ensemble pour ce jour.',
 		},

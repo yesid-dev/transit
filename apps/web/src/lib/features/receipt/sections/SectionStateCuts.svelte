@@ -2,8 +2,8 @@
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { ExplainedMetricCard, RankedRow } from '#lib/components/dataviz/index.ts';
 	import { SectionLabel, SectionHeading } from '@yesid/ui/brand';
-	import MetricInfo from '#lib/features/metrics/MetricInfo.svelte';
 	import type { StateCutsVM } from '../selectors/stateCuts';
+	import { copy } from '../receipt.copy';
 
 	interface SectionStateCutsProps {
 		state: StateCutsVM;
@@ -39,15 +39,16 @@
 			absentReason="no-observations"
 			{locale}
 			size="lg"
-		>
-			{#snippet info()}
-				<MetricInfo metricKey="serviceComparison" {locale} name={completenessLabel} side="bottom" />
-			{/snippet}
-		</ExplainedMetricCard>
+		/>
 	</div>
 
 	<div class="receipt-states-split" data-slot="receipt-state-split">
 		<SectionLabel text={splitLabel} variant="metric" />
+		{#if state.mismatch}
+			<p>{copy[locale].stateCuts.mismatch}</p>
+		{:else if state.basis != null && state.scheduled != null}
+			<p>{copy[locale].stateCuts.basis(state.basis, state.scheduled, state.beyond)}</p>
+		{/if}
 		<div class="receipt-states-list" role="list" aria-label={splitLabel}>
 			{#each state.rows as row (row.key)}
 				<RankedRow

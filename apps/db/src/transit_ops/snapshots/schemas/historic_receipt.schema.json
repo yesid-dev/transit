@@ -39,6 +39,20 @@
     },
     "ReceiptServiceStates": {
       "properties": {
+        "beyond_schedule_trip_days": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Sum of observed trips beyond each known route schedule. Added trips or IDs not matched to the active schedule; these aggregates cannot distinguish them. scheduled + beyond = delivered + cancelled + silent. Not a fourth state.",
+          "title": "Beyond Schedule Trip Days"
+        },
         "cancelled_trip_days": {
           "anyOf": [
             {

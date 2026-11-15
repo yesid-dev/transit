@@ -639,6 +639,16 @@ _RECEIPTS_SERVICE_STATES_SQL = named_query(
     """
     SELECT rcd.provider_local_date AS local_date,
            SUM(rcd.scheduled_trip_days) AS scheduled_trip_days,
+           SUM(rcd.delivered_trip_days + rcd.canceled_trip_days + rcd.silent_trip_days
+               - rcd.scheduled_trip_days)
+               FILTER (WHERE rcd.scheduled_trip_days IS NOT NULL) AS beyond_schedule_trip_days,
+           COUNT(*) FILTER (WHERE rcd.scheduled_trip_days IS NOT NULL AND (
+               rcd.scheduled_trip_days < 0 OR rcd.delivered_trip_days IS NULL
+               OR rcd.delivered_trip_days < 0 OR rcd.canceled_trip_days IS NULL
+               OR rcd.canceled_trip_days < 0 OR rcd.silent_trip_days IS NULL
+               OR rcd.silent_trip_days < 0 OR rcd.delivered_trip_days
+                   + rcd.canceled_trip_days + rcd.silent_trip_days < rcd.scheduled_trip_days
+           )) AS invalid_accounting_routes,
            SUM(rcd.delivered_trip_days)
                FILTER (WHERE rcd.scheduled_trip_days IS NOT NULL) AS delivered_trip_days,
            -- ONE universe for all four states: schedule-known rows only (an
@@ -809,6 +819,8 @@ def build_receipts(
 
     service_states: dict[str, ReceiptServiceStates] = {}
     for r in conn.execute(_RECEIPTS_SERVICE_STATES_SQL, params).mappings():
+        if r["invalid_accounting_routes"]:
+            raise ValueError("receipt accounting has invalid route counts")
         ds = _iso_date(r["local_date"])
         scheduled = _opt_int(r["scheduled_trip_days"])
         # Known schedule with no dark routes is zero; unknown schedule remains None.
@@ -816,6 +828,7 @@ def build_receipts(
         if dark_count is None and scheduled is not None:
             dark_count = 0
         service_states[ds] = ReceiptServiceStates(
+            beyond_schedule_trip_days=_opt_int(r["beyond_schedule_trip_days"]),
             scheduled_trip_days=scheduled,
             delivered_trip_days=_opt_int(r["delivered_trip_days"]),
             cancelled_trip_days=_opt_int(r["cancelled_trip_days"]),

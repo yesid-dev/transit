@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "methodology_version": "receipt-1",
+ "methodology_version": "receipt-3",
  "publish_generation_id": "r2guard_alerts@2025-09-02T00:00:00Z",
  "generated_utc": "2025-09-02T00:00:00Z",
  "date": "2025-06-03",

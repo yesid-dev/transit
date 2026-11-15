@@ -243,7 +243,7 @@
 			);
 		}
 		if (r.affectedRoutes != null) clauses.push(t.dayVerdict.affected(r.affectedRoutes));
-		const comp = r.serviceStates?.completenessPct ?? null;
+		const comp = stateCuts.completeness;
 		clauses.push(
 			comp != null
 				? t.dayVerdict.completeness(fmtSharePct(comp) ?? `${comp}${t.units.pct}`)

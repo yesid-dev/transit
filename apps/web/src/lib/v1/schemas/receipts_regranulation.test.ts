@@ -3,6 +3,26 @@ import { ReceiptSchema } from './receipts';
 import { ReceiptsIndexSchema } from './receipts_index';
 
 describe('Receipt.by_shift / service_states — S13 re-granulation', () => {
+	it('preserves the optional beyond-schedule basis while accepting legacy counts', () => {
+		const counts = {
+			scheduled_trip_days: 1,
+			delivered_trip_days: 0,
+			cancelled_trip_days: 2,
+			silent_trip_days: 0,
+		};
+		const receipt = {
+			generated_utc: '2026-11-11T00:00:00Z',
+			date: '2026-11-10',
+			service_states: counts,
+		};
+		expect(ReceiptSchema.parse(receipt).service_states?.beyond_schedule_trip_days).toBeUndefined();
+		expect(
+			ReceiptSchema.parse({
+				...receipt,
+				service_states: { ...counts, beyond_schedule_trip_days: 1 },
+			}).service_states?.beyond_schedule_trip_days,
+		).toBe(1);
+	});
 	it('parses a scalar-only (pre-S13) receipt — the new cuts are additive-optional', () => {
 		const legacy = {
 			generated_utc: '2026-06-08T00:00:00Z',
