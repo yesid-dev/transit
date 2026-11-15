@@ -202,7 +202,9 @@ describe('RepeatOffenders retained date history', () => {
 		reset('http://localhost/repeat-offenders?date=2026-06-22');
 		const retained = structuredClone(retained22);
 		for (const grain of retained.by_grain ?? []) {
-			Object.assign(grain.entries[0], { recurrence_days: 1, observed_days: 3 });
+			const entry = grain.entries?.[0];
+			if (!entry) throw new Error('Expected retained trip seed');
+			Object.assign(entry, { recurrence_days: 1, observed_days: 3 });
 		}
 		harness.getRepeatOffendersHistoryDay.mockResolvedValue(retained);
 		const { container } = render(RepeatOffendersBoard);

@@ -72,6 +72,32 @@ def test_repeat_departure_sql_labels_recurrence_and_sixty_minute_mean(
         """),
             dict(v=version),
         )
+        # A newer current edition must not rename the retained June departure.
+        conn.execute(
+            text("""
+            UPDATE core.dataset_versions SET is_current = false,
+                observed_until_utc = '2026-07-02' WHERE dataset_version_id = :v
+        """),
+            dict(v=version),
+        )
+        future = conn.execute(
+            text("""
+            INSERT INTO core.dataset_versions(provider_id,feed_endpoint_id,
+                source_ingestion_run_id,dataset_kind,content_hash,is_current,observed_from_utc)
+            SELECT provider_id,feed_endpoint_id,source_ingestion_run_id,dataset_kind,
+                   repeat('b',64),true,'2026-07-02' FROM core.dataset_versions
+            WHERE dataset_version_id = :v RETURNING dataset_version_id
+        """),
+            dict(v=version),
+        ).scalar_one()
+        conn.execute(
+            text("""
+            INSERT INTO silver.trips(dataset_version_id,provider_id,trip_id,route_id,
+                                     service_id,trip_headsign)
+            VALUES (:v,'stm_dense_ro','sixty','RO1','weekday','Future destination')
+        """),
+            dict(v=future),
+        )
         payload = build_repeat_offenders_history_plan(
             conn, provider_id="stm_dense_ro"
         ).materialize()[-1]
