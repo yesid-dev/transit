@@ -34,6 +34,7 @@
 					label={card.label}
 					value={card.value}
 					absentReason={card.absentReason}
+					absentParams={card.absentParams}
 					{locale}
 					size="lg"
 				>
@@ -47,6 +48,26 @@
 </NetworkTile>
 
 <style>
+	/*
+	 * Each card keeps its large figure's line when it shows an absence instead (a share held back for
+	 * too few readings, or one not reported), so a refresh never moves the cards below. The line
+	 * follows the sizes the release gives .metric-value.text-title: heading on phones, title wider.
+	 */
+	:global([data-network-section='network-live-headline'] [data-slot='metric-display']) {
+		--live-figure-line: calc(var(--text-heading) * 1.5);
+	}
+	@media (--tablet-min) {
+		:global([data-network-section='network-live-headline'] [data-slot='metric-display']) {
+			--live-figure-line: calc(var(--text-title) * 1.5);
+		}
+	}
+	:global(
+		[data-network-section='network-live-headline']
+			[data-slot='metric-display']
+			> :is(.metric-value, [data-slot='absent-value'])
+	) {
+		min-block-size: var(--live-figure-line);
+	}
 	.network-live-lede {
 		margin: 0 0 var(--space-card-gap);
 		color: var(--muted-foreground);

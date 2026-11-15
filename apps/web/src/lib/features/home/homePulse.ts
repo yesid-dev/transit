@@ -2,11 +2,13 @@ import type { NetworkFile } from '#lib/v1/schemas/network.ts';
 import type { HotspotEntry, Hotspots } from '#lib/v1/schemas/generated/historic_hotspots.ts';
 import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 import type { LineDirectory } from '#lib/site/lineDirectory.ts';
+import { liveOnTimeShare, type LiveOnTimeShare } from '#lib/v1/live/onTimeShare.ts';
 
 /** What the network is doing right now, read from the live network snapshot. */
 export interface LivePulse {
 	readonly inService: number;
-	readonly onTimePct: number | null;
+	/** Held back when too few buses in service have a delay reading. */
+	readonly onTime: LiveOnTimeShare;
 	/** Buses more than five minutes late; null when no bus has a delay reading. */
 	readonly severeLate: number | null;
 	/** Buses in service with a known delay reading (the late count's denominator). */
@@ -21,7 +23,7 @@ export function selectLivePulse(net: NetworkFile | null): LivePulse | null {
 	const withReading = net.vehicles_in_service - net.status_dist.unknown;
 	return {
 		inService: net.vehicles_in_service,
-		onTimePct: net.on_time_pct,
+		onTime: liveOnTimeShare(net),
 		severeLate: withReading > 0 ? net.status_dist.severe : null,
 		withReading,
 		early: withReading > 0 ? net.status_dist.early : null,

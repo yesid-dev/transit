@@ -105,8 +105,9 @@ describe('selectHeadlineKpis', () => {
 		fmtCount: (v: number) => String(v),
 	};
 	const net = {
-		vehicles_in_service: 10,
+		vehicles_in_service: 40,
 		on_time_pct: 80,
+		status_dist: { early: 2, on_time: 24, late: 6, severe: 6, unknown: 2 },
 		coverage_pct: 95,
 		delay_p50_min: 1,
 		delay_p90_min: null,
@@ -129,7 +130,7 @@ describe('selectHeadlineKpis', () => {
 	it('moves vehicles + non_responding into the reporting row as required ints (no absence reason)', () => {
 		const vm = selectHeadlineKpis(networkReliabilityView({ live: net }).live!, labels);
 		expect(vm.reporting).toHaveLength(2);
-		expect(vm.reporting[0]).toMatchObject({ value: '10', key: 'vehicleCount' });
+		expect(vm.reporting[0]).toMatchObject({ value: '40', key: 'vehicleCount' });
 		expect(vm.reporting[1]).toMatchObject({ value: '3', key: 'silentTrip' });
 		expect(vm.reporting.every((c) => c.absentReason === undefined)).toBe(true);
 	});
@@ -140,6 +141,7 @@ describe('live headline explanations', () => {
 		const net = {
 			vehicles_in_service: 4,
 			on_time_pct: 67,
+			status_dist: { early: 0, on_time: 2, late: 0, severe: 1, unknown: 1 },
 			coverage_pct: 75,
 			delay_p50_min: 2,
 			delay_p90_min: 5,

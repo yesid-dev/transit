@@ -147,7 +147,15 @@
 						></div>
 					{/if}
 				</div>
-				<span class="ranking-value">{fmtWithUnit(row.value)}</span>
+				<!-- The interval takes its own line under the rate, so a phone never has to cut it off. -->
+				<div class="ranking-figures">
+					<span class="ranking-value" data-slot="ranking-rate">{fmtWithUnit(row.value)}</span>
+					{#if spec.ciLabel && row.wilsonLo != null && row.wilsonHi != null}
+						<span class="ranking-interval" data-slot="ranking-interval"
+							>{spec.ciLabel} {fmtWithUnit(row.wilsonLo)}–{fmtWithUnit(row.wilsonHi)}</span
+						>
+					{/if}
+				</div>
 			</div>
 		{/each}
 	</div>
@@ -337,9 +345,22 @@
 		border-inline: 1px solid var(--foreground);
 		background: var(--foreground);
 	}
-	.ranking-value {
+	.ranking-figures {
+		display: grid;
+		gap: 0.125rem;
+		min-width: 0;
+	}
+	.ranking-value,
+	.ranking-interval {
+		min-width: 0;
 		font-family: var(--font-mono);
+	}
+	.ranking-value {
 		font-size: var(--text-small);
+	}
+	.ranking-interval {
+		font-size: var(--text-micro);
+		color: var(--muted-foreground);
 	}
 	.dv-barmark:focus-visible {
 		outline: 2px solid var(--ring);

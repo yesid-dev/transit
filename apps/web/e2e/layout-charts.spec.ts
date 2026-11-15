@@ -44,4 +44,53 @@ for (const provider of ['stm', 'octranspo'])
 						expect(Math.abs(b!.width - r!.width)).toBeLessThan(1);
 					}
 				}
+				// A ranked rate and its interval stay whole inside their row on the narrowest phones.
+				const phone = page.viewportSize()!;
+				if (phone.width >= 600 || path === '/network') return;
+				for (const width of [phone.width, 320]) {
+					await page.setViewportSize({ width, height: phone.height });
+					const rows = await page
+						.locator('[data-slot="stacked-rankings"] [role="listitem"]')
+						.evaluateAll((items) =>
+							items.map((item) => {
+								const row = item.getBoundingClientRect();
+								const figures = ['ranking-rate', 'ranking-interval'].map((slot) => {
+									const el = item.querySelector<HTMLElement>(`[data-slot="${slot}"]`);
+									const box = el?.getBoundingClientRect();
+									return box && el
+										? {
+												inside:
+													box.left >= row.left - 0.5 &&
+													box.right <= row.right + 0.5 &&
+													box.top >= row.top - 0.5 &&
+													box.bottom <= row.bottom + 0.5,
+												whole:
+													box.width > 0 &&
+													box.height > 0 &&
+													el.scrollWidth <= el.clientWidth + 1 &&
+													el.scrollHeight <= el.clientHeight + 1,
+												top: box.top,
+												bottom: box.bottom,
+											}
+										: null;
+								});
+								const inView = row.left >= -0.5 && row.right <= window.innerWidth + 0.5;
+								return { inView, rate: figures[0], interval: figures[1] };
+							}),
+						);
+					expect(rows.length, `${width}px ranked rows`).toBeGreaterThan(0);
+					expect(
+						rows.some((row) => row.interval),
+						`${width}px shows an interval`,
+					).toBe(true);
+					for (const { inView, rate, interval } of rows) {
+						expect(inView, `${width}px row inside the viewport`).toBe(true);
+						expect(rate, `${width}px rate`).toMatchObject({ inside: true, whole: true });
+						if (!interval) continue;
+						expect(interval, `${width}px interval`).toMatchObject({ inside: true, whole: true });
+						expect(interval.top, `${width}px interval under the rate`).toBeGreaterThanOrEqual(
+							rate!.bottom - 0.5,
+						);
+					}
+				}
 			});

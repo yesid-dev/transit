@@ -20,6 +20,7 @@ export type ValueAbsenceKey =
 	| 'inferred'
 	| 'no-observations'
 	| 'crowding-not-available'
+	| 'thin-coverage'
 	| 'histogram-not-published'
 	| 'not-published'
 	| 'no-retained-dates'
@@ -76,6 +77,10 @@ export const ABSENCE_COPY: Record<Locale, Record<AbsenceReasonKey, ReasonCopy>> 
 		'crowding-not-available': {
 			short: 'No data',
 			why: 'crowding information is not available here',
+		},
+		'thin-coverage': {
+			short: 'Not enough readings',
+			why: 'delay readings for only {n} of {total} buses',
 		},
 		'histogram-not-published': {
 			short: 'No histogram',
@@ -142,6 +147,10 @@ export const ABSENCE_COPY: Record<Locale, Record<AbsenceReasonKey, ReasonCopy>> 
 		'crowding-not-available': {
 			short: 'Aucune donnée',
 			why: 'aucune information sur l’occupation ici',
+		},
+		'thin-coverage': {
+			short: 'Pas assez de relevés',
+			why: 'relevés de retard pour seulement {n} bus sur {total}',
 		},
 		'histogram-not-published': {
 			short: 'Aucun histogramme',

@@ -114,7 +114,7 @@ it('keeps absent live data separate from measured zero', () => {
 	} as NetworkFile;
 	Object.freeze(live);
 	expect(networkReliabilityView({ live }).live).toMatchObject({
-		onTimePct: 0,
+		onTime: { kind: 'absent' },
 		coveragePct: 0,
 		p50Min: 0,
 		p90Min: 0,
