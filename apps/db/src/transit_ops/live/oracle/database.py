@@ -339,6 +339,13 @@ def _guard_sql(engine: Engine) -> Iterator[None]:
     def begin(connection: Connection) -> None:
         if connection.engine.url == engine.url:
             connection.info["oracle_starts"] = starts
+            connection.info["oracle_start_pending"] = True
+
+    def record_start(connection: Connection, *_unused: object) -> None:
+        if connection.engine.url == engine.url and connection.info.pop(
+            "oracle_start_pending", False
+        ):
+            # Let SET TRANSACTION run first; the timestamp still names this transaction's start.
             driver = cast(
                 DriverConnection[tuple[object, ...]], connection.connection.driver_connection
             )
@@ -354,9 +361,11 @@ def _guard_sql(engine: Engine) -> Iterator[None]:
 
     event.listen(Engine, "begin", begin)
     event.listen(Engine, "before_cursor_execute", check)
+    event.listen(Engine, "after_cursor_execute", record_start)
     try:
         yield
     finally:
+        event.remove(Engine, "after_cursor_execute", record_start)
         event.remove(Engine, "before_cursor_execute", check)
         event.remove(Engine, "begin", begin)
 
