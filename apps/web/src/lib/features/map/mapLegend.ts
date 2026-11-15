@@ -1,10 +1,10 @@
 import type { Locale } from '#lib/i18n/index.ts';
 import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
-import { STATUS_LABELS } from '#lib/v1/enumLabels.ts';
 import { LIVE_STATUS_BANDS, type DelayBand } from '#lib/v1/live/statusBands.ts';
 import { OCCUPANCY_CODES, STATUS_CODES } from '#lib/v1/schemas/types.ts';
 import type { OccupancyCode, StatusCode } from '#lib/v1/schemas/index.ts';
 import { copy, type MapCopy } from './map.copy';
+import { mapStatusLabel } from './mapStatusLabels';
 
 /** What the bus bodies are coloured by; the legend explains only that. */
 export type LegendColourBy = 'status' | 'occupancy';
@@ -62,18 +62,10 @@ function duration(seconds: number): string | null {
 }
 
 function statusRows(locale: Locale, t: LegendCopy): LegendRow[] {
-	const terms = transitTerms[locale];
-	const labels: Record<StatusCode, string> = {
-		early: terms.band.early,
-		on_time: terms.band.onTime,
-		late: terms.band.late,
-		severe: STATUS_LABELS[locale].severe,
-		unknown: terms.delayUnknown,
-	};
 	return STATUS_CODES.map((code) => ({
 		id: `status-${code}`,
 		mark: { kind: 'status', code },
-		label: labels[code],
+		label: mapStatusLabel(locale, code),
 		definition: code === 'unknown' ? t.unknown : bandDefinition(t, LIVE_STATUS_BANDS[code]),
 	}));
 }

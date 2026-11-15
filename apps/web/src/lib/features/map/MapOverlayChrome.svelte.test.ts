@@ -126,6 +126,28 @@ describe('MapOverlayChrome', () => {
 		await waitFor(() => expect(legend()).toHaveAttribute('data-colour-by', 'status'));
 	});
 
+	it.each(['en', 'fr'] as const)(
+		'names each status the same in the Status filter and the legend beside it (%s)',
+		(locale) => {
+			installViewportMatchMedia(1280);
+			const store = createFilterStore(emptyFilterState());
+			const { container } = render(MapOverlayChromeHarness, { props: { store, locale } });
+			const filterNames = Array.from(
+				container.querySelectorAll('[data-filter-group="status"] .mf-chip'),
+				(chip) => chip.getAttribute('aria-label'),
+			);
+			const legendNames = Array.from(
+				container.querySelectorAll(
+					'[data-slot="map-legend-card"] [data-legend-entry="status"] .mf-legend-label',
+				),
+				(label) => label.textContent,
+			);
+			expect(filterNames).toHaveLength(5);
+			expect(filterNames).toEqual(legendNames);
+			expect(filterNames).toContain(locale === 'en' ? 'Delay unknown' : 'Retard inconnu');
+		},
+	);
+
 	it('does not mount hidden desktop controls on an initial mobile visit', () => {
 		installViewportMatchMedia(390);
 		const store = createFilterStore(emptyFilterState());
