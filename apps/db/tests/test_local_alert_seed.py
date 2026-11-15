@@ -3,7 +3,7 @@ from datetime import UTC, date, datetime
 
 import pytest
 
-from transit_ops.live.local_file import LocalFile
+from transit_ops.live.local_file import SCHEMA_VERSION, LocalFile
 from transit_ops.live.settings import LaneSettings
 from transit_ops.static.alert_seed import AlertSeed, AlertSeedInvalid
 from transit_ops.static.alert_seed_contract import KEYS, SCHEMAS, TABLES
@@ -135,7 +135,9 @@ def test_provider_or_dangling_child_mismatch_refused(tmp_path, damage):
     with closing(opened(tmp_path / "worker.db")) as local:
         with pytest.raises(AlertStateConflict):
             seed_alert_state(local, seed)
-        assert local.connection.execute("SELECT * FROM meta").fetchall() == [(1, "network")]
+        assert local.connection.execute("SELECT * FROM meta").fetchall() == [
+            (SCHEMA_VERSION, "network")
+        ]
 
 
 def test_jsonb_unicode_and_microseconds_survive_reopen(tmp_path):
