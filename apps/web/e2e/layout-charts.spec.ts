@@ -59,14 +59,23 @@ for (const provider of ['stm', 'octranspo'])
 									const box = el?.getBoundingClientRect();
 									return box && el
 										? {
-												inside: box.left >= row.left - 0.5 && box.right <= row.right + 0.5,
-												whole: el.scrollWidth <= el.clientWidth + 1,
+												inside:
+													box.left >= row.left - 0.5 &&
+													box.right <= row.right + 0.5 &&
+													box.top >= row.top - 0.5 &&
+													box.bottom <= row.bottom + 0.5,
+												whole:
+													box.width > 0 &&
+													box.height > 0 &&
+													el.scrollWidth <= el.clientWidth + 1 &&
+													el.scrollHeight <= el.clientHeight + 1,
 												top: box.top,
 												bottom: box.bottom,
 											}
 										: null;
 								});
-								return { rate: figures[0], interval: figures[1] };
+								const inView = row.left >= -0.5 && row.right <= window.innerWidth + 0.5;
+								return { inView, rate: figures[0], interval: figures[1] };
 							}),
 						);
 					expect(rows.length, `${width}px ranked rows`).toBeGreaterThan(0);
@@ -74,7 +83,8 @@ for (const provider of ['stm', 'octranspo'])
 						rows.some((row) => row.interval),
 						`${width}px shows an interval`,
 					).toBe(true);
-					for (const { rate, interval } of rows) {
+					for (const { inView, rate, interval } of rows) {
+						expect(inView, `${width}px row inside the viewport`).toBe(true);
 						expect(rate, `${width}px rate`).toMatchObject({ inside: true, whole: true });
 						if (!interval) continue;
 						expect(interval, `${width}px interval`).toMatchObject({ inside: true, whole: true });
