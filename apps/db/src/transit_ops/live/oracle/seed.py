@@ -64,17 +64,36 @@ def seed_static(
             )
         _seed_edition(connection, window)
         archive = _archive(window, bronze)
-        load_static_zip_to_silver(
+        loaded = load_static_zip_to_silver(
             connection,
             archive=archive,
             bronze_storage=bronze(window.edition.storage_backend),
             strict_gtfs=strict if strict is not None else settings.STRICT_GTFS,
         )
+        _set_edition_load_stamp(connection, window, loaded.dataset_version_id)
     refresh_gold_static(window.provider_id, settings=settings, registry=registry, engine=engine)
     realtime = sorted(window.feed_endpoints.keys() & {"trip_updates", "vehicle_positions"})
     initialize_realtime_serving(window.provider_id, realtime, engine=engine, settings=settings)
     with engine.begin() as connection:
         _advance_sequences(connection)
+
+
+def _set_edition_load_stamp(
+    connection: Connection, window: ReplayWindow, dataset_version_id: int
+) -> None:
+    updated = connection.execute(
+        text("""
+        UPDATE core.dataset_versions SET loaded_at_utc = :loaded_at_utc
+        WHERE dataset_version_id = :dataset_version_id AND provider_id = :provider_id
+    """),
+        {
+            "loaded_at_utc": window.edition.loaded_at_utc,
+            "dataset_version_id": dataset_version_id,
+            "provider_id": window.provider_id,
+        },
+    )
+    if updated.rowcount != 1:
+        raise SeedRefused("Seeded schedule edition missing while restoring its load stamp")
 
 
 def _seed_edition(connection: Connection, window: ReplayWindow) -> None:

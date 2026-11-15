@@ -1,9 +1,10 @@
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import patch
 
 from transit_ops.gold.realtime import initialize_realtime_serving, refresh_gold_realtime
+from transit_ops.ingestion.common import project_root
 from transit_ops.ingestion.storage import BronzeStorageResolver
 from transit_ops.live.oracle.database import OracleDatabase, PinnedClock, oracle_database
 from transit_ops.live.oracle.seed import admit_polls, seed_static
@@ -12,7 +13,8 @@ from transit_ops.live.oracle.window import CycleSpec, ReplayWindow
 from transit_ops.providers import ProviderRegistry
 from transit_ops.settings import Settings
 from transit_ops.silver.realtime_gtfs import (
-    _find_realtime_bronze_snapshot,
+    RealtimeSilverLoadResult,
+    find_realtime_bronze_snapshots,
     load_realtime_snapshot_to_silver,
     manifest_provider_bounds,
 )
@@ -32,6 +34,46 @@ class ReplayFailed(RuntimeError):
         super().__init__(f"Live oracle cycle {generated_utc.isoformat()} failed")
 
 
+def _load_capture(
+    oracle: OracleDatabase,
+    window: ReplayWindow,
+    capture_id: int,
+    settings: Settings,
+    registry: ProviderRegistry,
+    bronze: BronzeStorageResolver,
+) -> RealtimeSilverLoadResult:
+    record, capture = window.capture("realtime_snapshot", capture_id)
+    manifest = registry.get_provider(window.provider_id)
+    with oracle.engine.begin() as connection:
+        snapshots = find_realtime_bronze_snapshots(
+            connection,
+            provider_id=window.provider_id,
+            start_utc=capture.captured_at_utc,
+            end_utc=capture.captured_at_utc + timedelta(microseconds=1),
+            settings=settings,
+            project_root=project_root(),
+            bronze_storage_resolver=bronze,
+        )
+        snapshot = next(
+            (
+                s
+                for s in snapshots
+                if s.realtime_snapshot_id == capture_id
+                and s.endpoint_key == record.feed_day.endpoint_key
+            ),
+            None,
+        )
+        if snapshot is None:
+            raise ValueError(f"Recorded realtime capture {capture_id} is not admitted")
+        return load_realtime_snapshot_to_silver(
+            connection,
+            snapshot=snapshot,
+            bronze_storage=bronze(snapshot.storage_backend),
+            provider_bounds=manifest_provider_bounds(manifest),
+            max_vehicle_speed_kmh=manifest.provider.max_vehicle_speed_kmh,
+        )
+
+
 def _apply_cycle(
     oracle: OracleDatabase,
     window: ReplayWindow,
@@ -40,29 +82,11 @@ def _apply_cycle(
     registry: ProviderRegistry,
     bronze: BronzeStorageResolver,
 ) -> None:
-    manifest = registry.get_provider(window.provider_id)
     receipts = []
     for family, capture_id in cycle.captures:
         if family == "alert_snapshot":
             raise NotImplementedError("Alert capture replay requires OR3b")
-        record, _ = window.capture(family, capture_id)
-        with oracle.engine.begin() as connection:
-            snapshot = _find_realtime_bronze_snapshot(
-                connection,
-                provider_id=window.provider_id,
-                endpoint_key=record.feed_day.endpoint_key,
-                snapshot_id=capture_id,
-                bronze_storage_resolver=bronze,
-            )
-            receipts.append(
-                load_realtime_snapshot_to_silver(
-                    connection,
-                    snapshot=snapshot,
-                    bronze_storage=bronze(snapshot.storage_backend),
-                    provider_bounds=manifest_provider_bounds(manifest),
-                    max_vehicle_speed_kmh=manifest.provider.max_vehicle_speed_kmh,
-                )
-            )
+        receipts.append(_load_capture(oracle, window, capture_id, settings, registry, bronze))
     initialize_realtime_serving(
         window.provider_id,
         [r.endpoint_key for r in receipts],

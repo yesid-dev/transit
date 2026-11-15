@@ -13,7 +13,7 @@ from test_static_silver import _minimal_compliant_members, _write_members_zip
 
 from transit_ops.gold.realtime import refresh_gold_realtime
 from transit_ops.live.oracle import PinnedClock, RecordingSink, oracle_database, replay_window
-from transit_ops.live.oracle.database import UnpinnableClockError
+from transit_ops.live.oracle.database import UnpinnableClockError, assert_clock_pinned
 from transit_ops.live.oracle.seed import admit_polls, seed_static
 from transit_ops.live.oracle.window import CycleSpec
 from transit_ops.silver.realtime_gtfs import load_realtime_to_silver
@@ -38,9 +38,14 @@ def test_oracle_keeps_clock_refusals_after_setup(real_db_engine, case):
         clock=PinnedClock(case.window.serving_initialized_at_utc),
         environment=os.environ,
     ) as oracle:
-        with pytest.raises(UnpinnableClockError, match="gold.probe"):
-            with oracle.engine.begin() as connection:
-                connection.exec_driver_sql("CREATE VIEW gold.probe AS SELECT 'now'::date")
+        with oracle.engine.begin() as connection:
+            connection.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+            connection.exec_driver_sql("CREATE VIEW gold.probe AS SELECT ('now')::timestamptz AS d")
+            with pytest.raises(
+                UnpinnableClockError, match="clock literal resolved at DDL time"
+            ) as error:
+                assert_clock_pinned(connection)
+            assert error.value.objects == ("gold.probe",)
 
 
 def capture_payload(endpoint, at, captured_at, delay):
@@ -77,8 +82,11 @@ def replay_case(case):
         case.window.edition,
         checksum_sha256=hashlib.sha256(payload).hexdigest(),
         byte_size=len(payload),
-        **{k: at for k in asdict(case.window.edition) if k.endswith("_utc")},
+        **{
+            k: at - timedelta(minutes=20) for k in asdict(case.window.edition) if k.endswith("_utc")
+        },
     )
+    edition = replace(edition, loaded_at_utc=at - timedelta(minutes=10))
     case.window = replace(case.window, edition=edition, serving_initialized_at_utc=at)
     case.registry.get_provider(case.window.provider_id).realtime.lines_without_live_data = []
     records = []
@@ -128,16 +136,32 @@ def replay(real_db_engine, replay_case):
 
 
 def test_two_replays_give_identical_publications(replay):
-    assert [c.public for c in replay()] == [c.public for c in replay()]
+    first, second = replay(), replay()
+    assert [c.public["manifest.json"] for c in first] == [c.public["manifest.json"] for c in second]
+    assert [c.public for c in first] == [c.public for c in second]
 
 
 def test_every_stamp_and_age_follows_the_cycle_clock(replay):
+    source_stamps = [
+        ("2025-03-24T12:00:05Z", None),
+        ("2025-03-24T12:00:06Z", None),
+        ("2025-03-24T12:00:06Z", "2025-03-24T12:00:07Z"),
+        ("2025-03-24T12:00:06Z", "2025-03-24T12:00:07Z"),
+    ]
     for index, cycle in enumerate(replay()):
         stamp = cycle.generated_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
         for key, body in cycle.written:
             payload = json.loads(body)
             stamped = payload["files"]["live"] if key == "manifest.json" else payload
             assert stamped["generated_utc"] == stamp
+        captures = json.loads(cycle.public["manifest.json"])["files"]["live"]["input_captures"]
+        trip_stamp, vehicle_stamp = source_stamps[index]
+        assert captures == {
+            "static_schedule": "2025-03-24T11:50:00Z",
+            "trip_updates": trip_stamp,
+            "vehicle_positions": vehicle_stamp,
+            "i3_alerts": None,
+        }
         lanes = json.loads(cycle.public["status/data_health.json"])["lanes"]
         if index:
             lane = next(lane for lane in lanes if lane["lane"] == "live")

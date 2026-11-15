@@ -26,6 +26,7 @@ class EditionInput:
     started_at_utc: datetime
     completed_at_utc: datetime
     object_created_at_utc: datetime
+    loaded_at_utc: datetime
 
 
 @dataclass(frozen=True)

@@ -72,7 +72,9 @@ def window() -> ReplayWindow:
                 None,
             )
         )
-    edition = EditionInput(3, 30, 40, "local", "schedule.zip", "b" * 64, 5, None, at, at, at, at)
+    edition = EditionInput(
+        3, 30, 40, "local", "schedule.zip", "b" * 64, 5, None, at, at, at, at, at
+    )
     return ReplayWindow(
         "network",
         {"feed-1": 1, "feed-2": 2, "static": 3},
@@ -97,6 +99,17 @@ def test_window_json_round_trips_byte_for_byte() -> None:
     assert b"2026-01-02T12:00:00.123456Z" in data
     assert restored.poll_records[0].polls[0].requested_at_utc is None
     assert restored.edition.source_url is None
+
+
+def test_window_preserves_the_production_edition_load_stamp() -> None:
+    original = window()
+    stamp = datetime(2025, 12, 31, 10, 20, 30, 654321, tzinfo=UTC)
+    original = replace(original, edition=replace(original.edition, loaded_at_utc=stamp))
+    restored = ReplayWindow.from_json(original.to_json())
+    assert restored.edition.loaded_at_utc == stamp
+    assert json.loads(original.to_json())["edition"]["loaded_at_utc"] == (
+        "2025-12-31T10:20:30.654321Z"
+    )
 
 
 @pytest.mark.parametrize("mapping", [UserDict, MappingProxyType])
@@ -129,6 +142,7 @@ def test_capture_lookup_finds_the_entry_and_its_record() -> None:
         ("initialized", "serving_initialized_at_utc.*capture"),
         ("naive", "naive datetime"),
         ("naive_poll", "naive datetime"),
+        ("naive_loaded", "loaded_at_utc.*naive datetime"),
     ],
 )
 def test_invalid_windows_are_refused_with_their_reason(rule: str, reason: str) -> None:
@@ -159,6 +173,8 @@ def test_invalid_windows_are_refused_with_their_reason(rule: str, reason: str) -
     elif rule == "naive_poll":
         poll = replace(record.polls[0], requested_at_utc=datetime(2026, 1, 1))
         changes["poll_records"] = (replace(record, polls=(poll,)), original.poll_records[1])
+    elif rule == "naive_loaded":
+        changes["edition"] = replace(original.edition, loaded_at_utc=datetime(2026, 1, 1))
     else:
         changes["edition"] = replace(original.edition, requested_at_utc=datetime(2026, 1, 1))
     with pytest.raises(WindowInvalid, match=reason):
