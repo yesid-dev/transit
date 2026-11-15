@@ -122,7 +122,7 @@
 		align-items: center;
 		gap: 0.5rem;
 		min-height: 44px;
-		color: var(--accent-text);
+		color: var(--primary);
 		font-family: var(--font-mono);
 		font-size: var(--text-small);
 		cursor: pointer;
@@ -132,7 +132,7 @@
 		display: none;
 	}
 	.home-more summary:focus-visible {
-		outline: 2px solid var(--accent-text);
+		outline: 2px solid var(--primary);
 		outline-offset: 4px;
 	}
 	.home-more-open,
@@ -210,12 +210,12 @@
 		inset: 0;
 	}
 	.group-item:hover .group-link {
-		color: var(--accent-text);
+		color: var(--primary);
 		text-decoration: underline;
 		text-underline-offset: 0.2em;
 	}
 	.group-link:focus-visible {
-		outline: 2px solid var(--accent-text);
+		outline: 2px solid var(--primary);
 		outline-offset: 2px;
 	}
 	.group-desc {

@@ -52,7 +52,7 @@ async function headerOverlaps(page: Page) {
 		const search = nav.querySelector('input[type="search"]');
 		if (!search?.checkVisibility()) return [];
 		const box = search.getBoundingClientRect();
-		return [...nav.querySelectorAll('.nav-wordmark, .nav-links a')]
+		return [...nav.querySelectorAll('.nav-wordmark, [data-slot="product-brand"], .nav-links a')]
 			.filter((el) => el.checkVisibility())
 			.filter((el) => {
 				const r = el.getBoundingClientRect();

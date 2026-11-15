@@ -8,6 +8,7 @@ interface StringEntityListProps {
 	key: (item: string) => string;
 	row: Snippet<[string]>;
 	cards?: boolean;
+	interactive?: boolean;
 	grid?: boolean;
 	max?: number;
 	truncatedLabel?: string;
@@ -36,6 +37,16 @@ describe('EntityList cards presentation', () => {
 			expect(card).toHaveClass('entity-list-card');
 			expect(card).not.toHaveAttribute('data-interactive');
 		}
+	});
+
+	it('marks every card interactive when each row is a whole-card link or button', () => {
+		render(StringEntityList, { props: { items: rows, key, row, cards: true, interactive: true } });
+
+		const cards = screen
+			.getAllByRole('listitem')
+			.map((item) => item.querySelector('[data-slot="card"]'));
+		expect(cards).toHaveLength(2);
+		for (const card of cards) expect(card).toHaveAttribute('data-interactive', 'true');
 	});
 
 	it('keeps list semantics when the Transit grid is enabled', () => {

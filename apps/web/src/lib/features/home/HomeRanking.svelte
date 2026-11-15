@@ -252,12 +252,12 @@
 		border-bottom: 1px solid var(--border-subtle);
 	}
 	.rank-row:hover .rank-name {
-		color: var(--accent-text);
+		color: var(--primary);
 		text-decoration: underline;
 		text-underline-offset: 0.2em;
 	}
 	.rank-row:focus-visible {
-		outline: 2px solid var(--accent-text);
+		outline: 2px solid var(--primary);
 		outline-offset: 2px;
 	}
 	.rank-pos {

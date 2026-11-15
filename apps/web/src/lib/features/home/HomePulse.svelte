@@ -72,11 +72,11 @@
 		border-radius: var(--radius-md);
 	}
 	.home-pulse :global(.home-card-action:hover) {
-		color: var(--accent-text);
-		border-color: var(--accent-text);
+		color: var(--primary);
+		border-color: var(--primary);
 	}
 	.home-pulse :global(.home-card-action:focus-visible) {
-		outline: 2px solid var(--accent-text);
+		outline: 2px solid var(--primary);
 		outline-offset: 2px;
 	}
 	@media (--desktop-min) {

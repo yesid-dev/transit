@@ -12,6 +12,8 @@
 		truncatedLabel?: string;
 		grid?: boolean;
 		cards?: boolean;
+		/** Each card is a whole-card link or button: it lifts and lights its edge on hover and focus. */
+		interactive?: boolean;
 		class?: string;
 	}
 
@@ -23,6 +25,7 @@
 		truncatedLabel,
 		grid = false,
 		cards = false,
+		interactive = false,
 		class: className,
 		...restProps
 	}: EntityListProps = $props();
@@ -33,7 +36,7 @@
 
 {#snippet renderItem(item: T)}
 	{#if cards}
-		<Card class="entity-list-card h-full gap-0 py-0" interactive={false}>
+		<Card class="entity-list-card h-full gap-0 py-0" {interactive}>
 			{@render row(item)}
 		</Card>
 	{:else}

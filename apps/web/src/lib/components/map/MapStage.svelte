@@ -813,7 +813,7 @@
 	}
 
 	.map-stage :global(.maplibregl-ctrl-attrib a) {
-		color: var(--accent-text);
+		color: var(--primary);
 		text-decoration: underline;
 		text-underline-offset: 0.2em;
 	}

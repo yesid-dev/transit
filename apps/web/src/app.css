@@ -163,19 +163,15 @@ body {
 }
 /* Transit adaptation of the shared header's viewport-sized headline stage. */
 .transit-article-header {
+	--article-title-size: clamp(1.25rem, 6cqi, 4rem);
 	min-width: 0;
 	container-type: inline-size;
 }
 .transit-article-header [data-slot='article-header'] .header__content {
 	min-width: 0;
 }
+/* The header has no public line-height: uppercase accents need room above the cap height. */
 .transit-article-header [data-slot='article-header'] h1 {
-	max-width: 100%;
-	font-size: clamp(1.25rem, 6cqi, 4rem);
 	line-height: 1.1;
 	padding-block: 0.08em;
-}
-.transit-article-header [data-slot='article-header'] .header__meta-pair {
-	white-space: normal;
-	flex-wrap: wrap;
 }

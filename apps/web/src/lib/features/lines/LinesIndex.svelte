@@ -202,7 +202,7 @@
 		<p class="sr-only" role="status" aria-live="polite">
 			{statusPending ? t.statusPending : ''}
 		</p>
-		<EntityList items={visible} key={(r) => r.id} grid cards>
+		<EntityList items={visible} key={(r) => r.id} grid cards interactive>
 			{#snippet row(r)}
 				{@const routeSnapshot = reliability.get(r.id)}
 				{@const publishedRow = weekly?.find((row) => row.id === r.id)}

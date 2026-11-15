@@ -700,7 +700,12 @@ describe('RouteDetail article cover and focus scope', () => {
 		expect(actionRow).not.toBeNull();
 		expect(actionRow?.querySelector('a')).not.toBeNull();
 		expect(controlRow).toContainElement(screen.getByTestId('sections-controls'));
-		expect(Array.from(headerContent.children).at(-1)).toBe(controlRow);
+		// yesid.design 0.45.0: actions and controls share one row group, the header's last child.
+		const acts = controlRow?.closest('[data-slot="article-header-acts"]');
+		expect(acts?.parentElement).toBe(headerContent);
+		expect(acts).toContainElement(actionRow as HTMLElement);
+		expect(Array.from(acts!.children).at(-1)).toBe(controlRow);
+		expect(Array.from(headerContent.children).at(-1)).toBe(acts);
 
 		await fireEvent.click(screen.getByRole('tab', { name: 'Schedule' }));
 		expect(screen.getByTestId('sections-toggle')).toBeVisible();

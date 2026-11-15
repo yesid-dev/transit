@@ -38,6 +38,7 @@
 		isSurfaceActive,
 	} from '#lib/content/nav.ts';
 	import { navPillCopy } from '#lib/i18n/messages.ts';
+	import { ProductBrand } from '@yesid/ui/brand';
 	import { SiteHeader } from '@yesid/ui/layout';
 	import RefreshButton from './RefreshButton.svelte';
 	import { providerHref, providerHasAlerts, type PublicProvider } from '#lib/v1/providers.ts';
@@ -160,6 +161,17 @@
 	});
 </script>
 
+{#snippet brand()}
+	<ProductBrand
+		product="Transit"
+		href={localizeHref('/', locale, providerId)}
+		houseHref={YESID_HOUSE_LINK.href}
+		houseExternal
+		houseLabel={`yesid. ${navCopy.newTab}`}
+		class="nav-product-brand"
+	/>
+{/snippet}
+
 {#snippet searchField()}
 	<HeaderSearch
 		bind:query={search}
@@ -222,8 +234,9 @@
 <SiteHeader
 	{navigation}
 	home={localizeHref('/', locale, providerId)}
-	wordmark="Transit"
+	{brand}
 	{links}
+	linkTiers={{ priority3: 1280 }}
 	{menuItems}
 	labels={navCopy}
 	language={{
@@ -241,6 +254,21 @@
 <style>
 	:root {
 		--pill-h: 72px;
+	}
+
+	/* Transit's pill also holds refresh and search, so on phones the 18px brand pushes the pill off
+	   screen. ProductBrand takes a caller size; below SiteHeader's narrow tier only the product
+	   name stays (the house link is in the menu). */
+	@container site-header (width < 400px) {
+		:global(.nav-product-brand) {
+			font-size: 1rem;
+		}
+	}
+	@container site-header (width < 375px) {
+		:global(.nav-product-brand > [data-slot='wordmark']),
+		:global(.nav-product-brand > [aria-hidden='true']) {
+			display: none;
+		}
 	}
 
 	/* Decision 7: the city sits on the pill's own surface, its label centred. */
