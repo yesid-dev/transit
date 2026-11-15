@@ -660,14 +660,31 @@ const LINE_DAILY_COPY = Object.freeze({
 const DAY_SIGNAL = ['otp_pct', 'avg_delay_min', 'p50_min', 'p90_min', 'severe_pct'];
 
 /** Day by day: one share a day, tenths rounded half up from integer counts, with its own table. */
-function lineDailyTable(raw, closedDate, view, locale) {
+function lineDailyTable(raw, closedDate, view, locale, retained) {
 	const params = new URLSearchParams(view.split('?')[1] ?? '');
 	const from = params.get('from');
 	const to = params.get('to');
 	const byDate = new Map();
-	for (const row of raw.periods ?? [])
-		if (row.grain === 'day' && row.date && DAY_SIGNAL.some((key) => row[key] != null))
-			byDate.set(row.date, row);
+	if (from && to) {
+		// A chosen range is built from its retained days only: counts and delay sums per day.
+		for (const row of retained) {
+			const delay = row.delay;
+			if (delay == null) continue;
+			const n = finite(delay.observation_count);
+			const clamped = finite(delay.in_clamp_observation_count);
+			const sum = finite(delay.sum_delay_seconds);
+			byDate.set(row.date, {
+				date: row.date,
+				observation_count: n,
+				on_time: finite(delay.on_time_count),
+				otp_pct: n > 0 ? pct(finite(delay.on_time_count), n, 0) : null,
+				avg_delay_min: clamped > 0 && sum != null ? sum / clamped / 60 : null,
+			});
+		}
+	} else
+		for (const row of raw.periods ?? [])
+			if (row.grain === 'day' && row.date && DAY_SIGNAL.some((key) => row[key] != null))
+				byDate.set(row.date, row);
 	// The window: a chosen range, or the latest complete day and the 13 days before it.
 	const day = (key, shift = 0) =>
 		new Date(Date.parse(`${key}T00:00:00Z`) + shift * 86_400_000).toISOString().slice(0, 10);
@@ -1082,7 +1099,7 @@ function lineOracle(fixture, locale, view) {
 		),
 		observation('line.weak_stops.raw_count', windowedStops.length),
 		observation('line.pane.freshness_iso', raw.generated_utc?.slice(0, 10) ?? null),
-		observation('line.trend.rows', lineDailyTable(raw, closedDate, view, locale)),
+		observation('line.trend.rows', lineDailyTable(raw, closedDate, view, locale, retained)),
 		observation('line.habits.tiers', {
 			table: heatmapTable(heatmapTiers(raw.habits), locale),
 			bestTime: bestTimeText(raw.habits, locale),

@@ -341,8 +341,17 @@ async function collectLine(page, cell) {
 		(await page.locator('[data-slot="severe-share"]').count()) > 0,
 		`severe-share control missing: ${(await page.locator('main').innerText()).slice(0, 1500)}`,
 	);
-	const severeText = await page.locator('[data-slot="severe-share"] .block-value').innerText();
+	// An unpublished severe share must say so with the absence marker, never show a number.
+	const severeValue = page.locator('[data-slot="severe-share"] .block-value');
+	const severeAbsent = (await severeValue.locator('[data-slot="absent-value"]').count()) > 0;
+	const severeText = severeAbsent ? '' : await severeValue.innerText();
 	const severe = parseNumber(severeText);
+	invariant(
+		severeAbsent === (severe == null),
+		`severe share neither shows a value nor marks its absence: ${await severeValue.innerText()}`,
+	);
+	// The record's own days, read before the period chooser below is toggled away and back.
+	const trendRows = await readSemanticTable(page, '[data-slot="otp-trend"]', cell.locale, 'table');
 	const grain = page.locator('[data-slot="surface-rail"] [data-slot="grain-picker"]').first();
 	const week = grain.getByRole('radio', {
 		name: cell.locale === 'fr' ? /Dernier jour complet/ : /Latest complete day/,
@@ -363,7 +372,6 @@ async function collectLine(page, cell) {
 			})
 			.click();
 	}
-	const trendRows = await readSemanticTable(page, '[data-slot="otp-trend"]', cell.locale, 'table');
 	const habitsTiers = await readHeatmapTiers(
 		page,
 		'[data-slot="habits-heatmap"]',
@@ -1359,7 +1367,9 @@ const MARK_SIGNATURES = Object.freeze({
 		],
 	},
 	sparkline: { domain: [4, 8], unit: 'count', axis: [] },
-	bullet: { domain: [0, 100], unit: '%', axis: ['On-time', '0', '100'] },
+	// The line record states its on-time share as its answer, not as a bullet: the first bullet
+	// on the line page is the record's severe-delay share (SEVERE_DOMAIN, 0 to 100 %).
+	bullet: { domain: [0, 100], unit: '%', axis: ['Severe-delay share', '0', '100'] },
 	heatmap: {
 		domain: [0, 1],
 		unit: 'relative',
@@ -1748,8 +1758,12 @@ function builtAssetPaths() {
 function documentsForCell(cell) {
 	return [
 		cell.path,
+		// The closed-week check opens the bare line page (its record), then the lines list.
 		...(cell.fixture === 'rich' && cell.surface === 'line'
-			? [(cell.locale === 'fr' ? '/fr' : '') + '/lines']
+			? [
+					new URL(cell.path, 'http://b9.local').pathname,
+					(cell.locale === 'fr' ? '/fr' : '') + '/lines',
+				]
 			: []),
 	];
 }
