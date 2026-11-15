@@ -25,17 +25,14 @@ def area_of(session):
     return Path(setting.scalar_one()).parent
 
 
-def redirect_area(areas, workdir, moved, outside, kind):
+def redirect_area(areas, workdir, moved, outside):
     area = areas[0]
     impostor = outside / area.name
     impostor.mkdir()
     (impostor / "sentinel").write_text("keep")
     assert all(p.resolve().is_relative_to(outside.parent) for p in (workdir, moved, outside, area))
-    target = area if kind == "area" else workdir
-    target.rename(moved)
-    if kind == "area" and os.name == "nt":
-        pytest.fail("private area was renamed during removal")
-    target.symlink_to(impostor if kind == "area" else outside, target_is_directory=True)
+    workdir.rename(moved)
+    workdir.symlink_to(outside, target_is_directory=True)
 
 
 def mutate_input(path, mutation):
@@ -363,35 +360,29 @@ def test_interrupt_stays_an_interrupt(build_case):
     assert error.value is interrupt
 
 
-@pytest.mark.parametrize("when", ["build", "parent", "area", "open"])
+@pytest.mark.parametrize("when", ["build", "open"])
 def test_replaced_workdir_is_never_cleaned(build_case, tmp_path, monkeypatch, when):
     request, kwargs = build_case
     outside, moved = tmp_path / "outside", tmp_path / "moved"
     outside.mkdir()
     areas = []
 
-    swap = partial(redirect_area, areas, kwargs["workdir"], moved, outside, when)
+    swap = partial(redirect_area, areas, kwargs["workdir"], moved, outside)
 
     class Replacing(ToyBuilder):
         def build(self, session, request):
             area = area_of(session)
             areas.append(area)
-            (area / "stage").mkdir()
             if when == "build":
                 swap()
             return super().build(session, request)
 
-    original = os.open if when == "open" else shutil.rmtree
+    original = os.open
 
     def removal(path, *args, **options):
         if when == "open" and Path(path) == kwargs["workdir"]:
             swap()
             raise NotADirectoryError("swapped at open")
-        if when in {"parent", "area"} and not any(outside.iterdir()):
-            try:
-                swap()
-            except PermissionError:
-                pass
         return original(path, *args, **options)
 
     if when == "open":
@@ -399,20 +390,43 @@ def test_replaced_workdir_is_never_cleaned(build_case, tmp_path, monkeypatch, wh
         for name in ("O_DIRECTORY", "O_NOFOLLOW"):
             monkeypatch.setattr(os, name, getattr(os, name, 0), raising=False)
         monkeypatch.setattr(os, "open", removal)
-    elif when != "build":
-        removal.avoids_symlink_attacks = shutil.rmtree.avoids_symlink_attacks
-        monkeypatch.setattr(shutil, "rmtree", removal)
-    if when in {"build", "open"}:
-        with pytest.raises(RuntimeError, match="private area|workdir"):
-            run_family(Replacing(), request, **kwargs)
-    else:
-        try:
-            run_family(Replacing(), request, **kwargs)
-        except (OSError, RuntimeError):
-            pass
+    with pytest.raises(RuntimeError, match="private area|workdir"):
+        run_family(Replacing(), request, **kwargs)
     assert (outside / areas[0].name / "sentinel").read_text() == "keep"
-    if when in {"build", "open"}:
-        assert (moved / areas[0].name).is_dir()
+    assert (moved / areas[0].name).is_dir()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX descriptor regression runs in Linux CI")
+def test_real_area_replacement_keeps_unrelated_directory(build_case, tmp_path, monkeypatch):
+    request, kwargs = build_case
+    moved, replacement = tmp_path / "owned-moved", tmp_path / "unrelated"
+    replacement.mkdir()
+    (replacement / "sentinel").write_text("keep")
+    areas = []
+
+    class Staged(ToyBuilder):
+        def build(self, session, request):
+            area = area_of(session)
+            areas.append(area)
+            (area / "stage").mkdir()
+            (area / "stage" / "owned").write_text("owned")
+            return super().build(session, request)
+
+    original = shutil.rmtree
+
+    def swap_at_removal(path, *args, **options):
+        if not moved.exists():
+            assert all(p.resolve().is_relative_to(tmp_path) for p in (areas[0], moved, replacement))
+            areas[0].rename(moved)
+            replacement.rename(areas[0])
+        return original(path, *args, **options)
+
+    swap_at_removal.avoids_symlink_attacks = original.avoids_symlink_attacks
+    monkeypatch.setattr(shutil, "rmtree", swap_at_removal)
+    with pytest.raises(RuntimeError, match="private area removal failed"):
+        run_family(Staged(), request, **kwargs)
+    assert (areas[0] / "sentinel").read_text() == "keep"
+    assert moved.is_dir() and not any(moved.iterdir())
 
 
 @pytest.mark.parametrize("outcome", ["unchanged", "changed", "success"])

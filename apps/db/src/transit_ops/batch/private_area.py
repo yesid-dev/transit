@@ -1,7 +1,13 @@
-"""Own a build directory and refuse cleanup after its paths change identity."""
+"""Own build directories; bind POSIX cleanup to verified descriptors.
+
+POSIX areas are owner-only; same-user writers already control their contents.
+On Windows the root pin does not stop a nested-folder junction swap redirecting
+path-based recursion outside the area: R22c accepts this contributor-host residual.
+"""
 
 import os
 import shutil
+import stat
 from pathlib import Path
 from tempfile import mkdtemp, mkstemp
 
@@ -33,13 +39,22 @@ def _remove_posix(area: Path, parent: Path, identities: dict[Path, Identity]) ->
         raise RuntimeError(f"private area descriptor unavailable: {parent}") from error
     try:
         status = os.fstat(fd)
-        child = os.stat(area.name, dir_fd=fd, follow_symlinks=False)
-        if (status.st_dev, status.st_ino) != identities[parent][1:] or (
-            child.st_dev,
-            child.st_ino,
-        ) != identities[area][1:]:
-            raise RuntimeError(f"private area ownership changed: {area}")
-        shutil.rmtree(area.name, dir_fd=fd)
+        if (status.st_dev, status.st_ino) != identities[parent][1:]:
+            raise RuntimeError(f"private area parent changed: {parent}")
+        area_fd = os.open(area.name, flags, dir_fd=fd)
+        try:
+            child = os.fstat(area_fd)
+            if (child.st_dev, child.st_ino) != identities[area][1:]:
+                raise RuntimeError(f"private area ownership changed: {area}")
+            for name in os.listdir(area_fd):
+                kind = os.stat(name, dir_fd=area_fd, follow_symlinks=False).st_mode
+                if stat.S_ISDIR(kind):
+                    shutil.rmtree(name, dir_fd=area_fd)
+                else:
+                    os.unlink(name, dir_fd=area_fd)
+        finally:
+            os.close(area_fd)
+        os.rmdir(area.name, dir_fd=fd)
     except OSError as error:
         raise RuntimeError(f"private area removal failed: {area}: {error}") from error
     finally:
