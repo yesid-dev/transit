@@ -1,4 +1,5 @@
 from datetime import UTC, date, datetime, timedelta
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -98,6 +99,7 @@ class ClockConnection(FakeConnection):
 
 
 def test_default_build_samples_python_clock_after_seed_check(monkeypatch):
+    monkeypatch.setattr(rollups, "switches_for", lambda *_: SimpleNamespace(enabled=frozenset))
     wall = [datetime(2026, 3, 26, 12, 4, 59, tzinfo=UTC)]
 
     def seeded(*args):
@@ -115,7 +117,8 @@ def test_default_build_samples_python_clock_after_seed_check(monkeypatch):
 
 
 @pytest.mark.parametrize("rebuild", [False, True])
-def test_equivalent_stamps_keep_utc_bounds_across_dst(rebuild):
+def test_equivalent_stamps_keep_utc_bounds_across_dst(rebuild, monkeypatch):
+    monkeypatch.setattr(rollups, "switches_for", lambda *_: SimpleNamespace(enabled=frozenset))
     local = datetime(2026, 3, 9, 12, tzinfo=ZoneInfo("America/Toronto"))
     bounds = []
     for stamp in (local.astimezone(UTC), local):
@@ -166,7 +169,8 @@ def test_rebuild_completion_and_preview_use_wall_clock(monkeypatch, mode):
 
 
 @pytest.mark.parametrize("rebuild", [False, True])
-def test_missing_stamp_reads_the_database_clock_once(rebuild):
+def test_missing_stamp_reads_the_database_clock_once(rebuild, monkeypatch):
+    monkeypatch.setattr(rollups, "switches_for", lambda *_: SimpleNamespace(enabled=frozenset))
     conn = ClockConnection()
     engine = FakeEngine(conn)
     if rebuild:
@@ -186,6 +190,7 @@ def test_missing_stamp_reads_the_database_clock_once(rebuild):
 
 
 def test_an_explicit_stamp_drives_build_windows(monkeypatch):
+    monkeypatch.setattr(rollups, "switches_for", lambda *_: SimpleNamespace(enabled=frozenset))
     conn = ClockConnection()
     stamp = datetime(2026, 3, 26, 12, tzinfo=UTC)
     period_clocks = []

@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 from test_warm_rollups import FakeConnection, FakeEngine, SharedCalendarConnection
@@ -13,6 +14,7 @@ NOW = datetime(2026, 3, 26, 12, tzinfo=UTC)
 def test_percentile_window_stays_fixed_while_period_coverage_grows(
     monkeypatch, retention, period_floor
 ):
+    monkeypatch.setattr(rollups, "switches_for", lambda *_: SimpleNamespace(enabled=frozenset))
     monkeypatch.setattr(rollups, "utc_now", lambda: NOW)
     monkeypatch.setattr(delay_periods, "utc_now", lambda: NOW)
     conn = SharedCalendarConnection()

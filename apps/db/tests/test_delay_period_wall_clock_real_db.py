@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -127,6 +128,7 @@ def test_unseeded_warm_rollups_refuse_naive_wall_clock():
 
 @pytest.mark.parametrize("explicit", [False, True])
 def test_warm_rollups_forward_the_optional_clock(monkeypatch, explicit):
+    monkeypatch.setattr(rollups, "switches_for", lambda *_: SimpleNamespace(enabled=frozenset))
     monkeypatch.setattr(delay_periods, "utc_now", lambda: PERIOD + timedelta(days=15))
     kwargs = {"wall_clock_utc": STAMP} if explicit else {}
     result = rollups.build_warm_rollups(
