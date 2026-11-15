@@ -4,33 +4,26 @@ import type { NetworkFile } from '#lib/v1/schemas/network.ts';
 import type { HotspotEntry, Hotspots } from '#lib/v1/schemas/generated/historic_hotspots.ts';
 import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 import type { LineDirectory } from '#lib/site/lineDirectory.ts';
-import { liveOnTimeShare, type LiveOnTimeShare } from '#lib/v1/live/onTimeShare.ts';
 
-/** What the network is doing right now, read from the live network snapshot. */
+/**
+ * What the live network snapshot reports right now: two counts and no share. A live percentage
+ * would share the word "on time" with the record, so the home shows none (UX plan §2.3); live
+ * delay counts wait for the three-band method.
+ */
 export interface LivePulse {
-	readonly inService: number;
-	/** Held back when too few buses in service have a delay reading. */
-	readonly onTime: LiveOnTimeShare;
-	/** Buses more than five minutes late; null when no bus has a delay reading. */
-	readonly severeLate: number | null;
-	/** Buses in service with a known delay reading (the late count's denominator). */
-	readonly withReading: number;
-	/** Buses more than one minute early, which can leave riders behind. */
-	readonly early: number | null;
-	readonly notReporting: number;
+	/** Vehicles reporting a position in the live feed; null when the file's count is not whole. */
+	readonly reporting: number | null;
+	/** Trips scheduled now with no vehicle reporting; null when the file's count is not whole. */
+	readonly silent: number | null;
+}
+
+function wholeCount(value: number | null | undefined): number | null {
+	return value != null && Number.isSafeInteger(value) && value >= 0 ? value + 0 : null;
 }
 
 export function selectLivePulse(net: NetworkFile | null): LivePulse | null {
 	if (!net) return null;
-	const withReading = net.vehicles_in_service - net.status_dist.unknown;
-	return {
-		inService: net.vehicles_in_service,
-		onTime: liveOnTimeShare(net),
-		severeLate: withReading > 0 ? net.status_dist.severe : null,
-		withReading,
-		early: withReading > 0 ? net.status_dist.early : null,
-		notReporting: net.non_responding,
-	};
+	return { reporting: wholeCount(net.vehicles_in_service), silent: wholeCount(net.non_responding) };
 }
 
 export interface PulseRank {

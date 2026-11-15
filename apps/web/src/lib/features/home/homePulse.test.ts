@@ -1,55 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NetworkFile } from '#lib/v1/schemas/network.ts';
 import type { Hotspots } from '#lib/v1/schemas/generated/historic_hotspots.ts';
-import { selectLivePulse, selectWorst } from './homePulse';
+import { selectWorst } from './homePulse';
 import { createLineDirectory } from '#lib/site/lineDirectory.ts';
-
-function network(overrides: Partial<NetworkFile> = {}): NetworkFile {
-	return {
-		schema_version: 1,
-		generated_utc: '2026-11-12T23:50:24Z',
-		vehicles_in_service: 355,
-		on_time_pct: 57,
-		status_dist: { on_time: 69, late: 78, severe: 42, early: 71, unknown: 95 },
-		delay_p50_min: 0,
-		delay_p90_min: 5,
-		occupancy_mix: null,
-		non_responding: 18,
-		feed_freshness_s: 20,
-		coverage_pct: 73,
-		...overrides,
-	} as NetworkFile;
-}
-
-describe('selectLivePulse', () => {
-	it('reports buses more than five minutes late against buses with a delay reading', () => {
-		expect(selectLivePulse(network())).toEqual({
-			inService: 355,
-			onTime: { kind: 'share', pct: 57, readings: 260, inService: 355 },
-			severeLate: 42,
-			withReading: 260,
-			early: 71,
-			notReporting: 18,
-		});
-	});
-
-	it('never turns a missing delay reading into a reassuring zero', () => {
-		const pulse = selectLivePulse(
-			network({
-				vehicles_in_service: 12,
-				on_time_pct: null,
-				status_dist: { on_time: 0, late: 0, severe: 0, early: 0, unknown: 12 },
-			}),
-		);
-		expect(pulse?.severeLate).toBeNull();
-		expect(pulse?.early).toBeNull();
-		expect(pulse?.onTime).toEqual({ kind: 'absent' });
-	});
-
-	it('has nothing to say before the live snapshot arrives', () => {
-		expect(selectLivePulse(null)).toBeNull();
-	});
-});
 
 describe('selectWorst', () => {
 	const routes = createLineDirectory(

@@ -33,7 +33,7 @@
 <Surface>
 	<HomeExplore {locale} {copy} alertsAvailable={providerHasAlerts(data.provider)}>
 		{#snippet pulse()}
-			<HomePulse {locale} {city} manifest={data.v1?.manifest ?? null} />
+			<HomePulse {locale} manifest={data.v1?.manifest ?? null} />
 			<HomeSearch {locale} />
 		{/snippet}
 	</HomeExplore>
