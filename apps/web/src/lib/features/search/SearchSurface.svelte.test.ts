@@ -1,5 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { flushSync } from 'svelte';
+import { SvelteURL } from 'svelte/reactivity';
 
 import type { ReliabilitySnapshot } from '#lib/v1/reliabilitySnapshot.svelte.ts';
 import type { RouteIndexEntry, StopIndexEntry, Vehicle } from '#lib/v1/schemas/index.ts';
@@ -55,7 +57,7 @@ vi.mock('#lib/i18n/index.ts', async (importOriginal) => ({
 	getLocale: () => localeState.locale,
 }));
 
-const urlBox = vi.hoisted(() => ({ query: 'q=ber' }));
+const urlBox = vi.hoisted(() => ({ query: 'q=ber', nav: null as URL | null }));
 const liveHarness = vi.hoisted(() => ({ createLiveStore: vi.fn() }));
 function setUrlQuery(q: string) {
 	urlBox.query = q;
@@ -64,13 +66,21 @@ function setUrlQuery(q: string) {
 vi.mock('$app/state', () => ({
 	page: {
 		get url() {
-			return new URL(`http://localhost/search?${urlBox.query}`);
+			return urlBox.nav ?? new URL(`http://localhost/search?${urlBox.query}`);
 		},
 		data: {},
 		state: {},
 	},
 }));
-const mirror = vi.hoisted(() => vi.fn());
+// Like the real mirror, it reads the router's URL while it writes.
+const mirror = vi.hoisted(() => vi.fn((_: unknown) => void urlBox.nav?.search));
+const navigation = vi.hoisted(() => ({
+	after: [] as ((nav: { type: string; to: { url: URL } | null }) => void)[],
+}));
+vi.mock('$app/navigation', () => ({
+	goto: () => Promise.resolve(),
+	afterNavigate: (handler: (typeof navigation.after)[number]) => navigation.after.push(handler),
+}));
 vi.mock('#lib/site/urlMirror.ts', () => ({ mirrorSearchParams: mirror }));
 
 vi.mock('#lib/v1/repositories/static.ts', () => ({
@@ -137,7 +147,9 @@ beforeEach(() => {
 	indexState.stops = 'ok';
 	reloads.routes.mockReset();
 	reloads.stops.mockReset();
-	mirror.mockReset();
+	mirror.mockClear();
+	navigation.after.length = 0;
+	urlBox.nav = null;
 	vi.unstubAllGlobals();
 	setUrlQuery('q=ber');
 	liveHarness.createLiveStore.mockReset().mockReturnValue({
@@ -154,8 +166,103 @@ beforeEach(() => {
 		isStale: false,
 		start: vi.fn(),
 		stop: vi.fn(),
+		refresh: vi.fn(() => Promise.resolve()),
 	});
 });
+
+const hubStops = (): StopIndexEntry[] =>
+	Array.from({ length: 120 }, (_, i) => ({
+		id: `s${i}`,
+		code: String(1000 + i),
+		name: `Hub ${i}`,
+		lat: 0,
+		lon: 0,
+		mode: i % 2 ? 'metro' : 'bus',
+	}));
+
+it('takes the place of another /search URL opened on this page before writing anything back', () => {
+	stopData = hubStops();
+	const url = new SvelteURL('http://localhost/search?q=van');
+	urlBox.nav = url;
+	const view = render(SearchSurface);
+	mirror.mockClear();
+
+	url.search = '?q=hub&kind=stop&mode=metro&rows=100';
+	flushSync();
+	expect(mirror).not.toHaveBeenCalled();
+	for (const handler of navigation.after) handler({ type: 'goto', to: { url: new URL(url.href) } });
+	flushSync();
+
+	expect(view.getByRole('textbox', { name: 'Search lines, stops and buses' })).toHaveValue('hub');
+	expect(view.getByRole('tab', { name: 'Stops (60)' })).toHaveAttribute('aria-selected', 'true');
+	expect(view.getByRole('button', { name: 'Métro' })).toHaveAttribute('aria-pressed', 'true');
+	expect(
+		within(view.getByRole('region', { name: 'Stops · 60' })).getAllByRole('link'),
+	).toHaveLength(60);
+	expect(mirror).toHaveBeenLastCalledWith({ q: 'hub', kind: 'stop', mode: 'metro', rows: '100' });
+});
+
+it.each([
+	['100junk', '100junk', 50, null],
+	['400 digits', '9'.repeat(400), 50, null],
+	['-50', '-50', 50, null],
+	['100.5', '100.5', 50, null],
+	['75', '75', 50, null],
+	['100', '100', 100, '100'],
+	['999999950', '999999950', 120, '150'],
+])('reads rows=%s as a whole number of 50-row steps', (_, value, shown, mirrored) => {
+	stopData = hubStops().map((stop) => ({ ...stop, mode: 'bus' }));
+	setUrlQuery(`q=hub&kind=stop&rows=${value}`);
+	const view = render(SearchSurface);
+	expect(
+		within(view.getByRole('region', { name: 'Stops · 120' })).getAllByRole('link'),
+	).toHaveLength(shown);
+	expect(mirror).toHaveBeenLastCalledWith(expect.objectContaining({ rows: mirrored }));
+});
+
+it.each([
+	['en', false],
+	['fr', false],
+	['en', true],
+] as const)(
+	'keeps a failed live-vehicle group uncounted, with its own Retry (%s, older payload kept: %s)',
+	async (locale, retained) => {
+		localeState.locale = locale;
+		const en = locale === 'en';
+		const live = liveHarness.createLiveStore();
+		liveHarness.createLiveStore.mockReturnValue({
+			...live,
+			vehicles: retained ? live.vehicles : null,
+			familyStates: {
+				vehicles: {
+					active: true,
+					phase: 'failed',
+					retainedGeneration: retained ? '2026-06-16T00:00:00Z' : null,
+					health: {
+						retained,
+						state: retained ? 'retained-stale' : 'failed-no-data',
+						ageSeconds: retained ? 600 : null,
+						isStale: true,
+						notice: 'refresh-unavailable',
+					},
+				},
+			},
+		});
+		setUrlQuery('q=van horne');
+		const view = render(SearchSurface);
+		expect(view.getByRole('region', { name: en ? 'Lines · 1' : 'Lignes · 1' })).toBeInTheDocument();
+		const label = en ? 'Live vehicles' : 'Véhicules en direct';
+		const vehicles = view.getByRole('region', { name: label });
+		expect(view.getByRole('tab', { name: label })).toBeInTheDocument();
+		expect(within(vehicles).queryByRole('button', { name: /^(About|À propos)/ })).toBeNull();
+		await within(vehicles)
+			.getByRole('button', { name: en ? 'Retry' : 'Réessayer' })
+			.click();
+		expect(live.refresh).toHaveBeenCalledWith({ force: true });
+		expect(reloads.routes).not.toHaveBeenCalled();
+		expect(reloads.stops).not.toHaveBeenCalled();
+	},
+);
 
 describe('SearchSurface idle state', () => {
 	it("preserves each surface's tied line and stop order", () => {

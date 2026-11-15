@@ -6,8 +6,9 @@
 
 	import { verdictCopy } from '#lib/v1/verdict.copy.ts';
 	import { stopReliabilityCopy } from '#lib/features/stops/reliability/stops-reliability.copy.ts';
-	import { onMount, tick } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { page } from '$app/state';
+	import { afterNavigate } from '$app/navigation';
 	import { getLocale, getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
 	import { desktop } from '@yesid/ui/state';
 	import { createResource } from '#lib/v1/resource.svelte.ts';
@@ -80,28 +81,33 @@
 	const KINDS = ['route', 'stop', 'page', 'vehicle'] as const satisfies readonly GroupKind[];
 
 	// The page keeps its place in the URL: query, kind, modes and the rows revealed.
-	const restored = new URLSearchParams(page.url.search);
-	let query = $state(restored.get('q') ?? '');
-	let scope = $state<SearchScopeKey>(
-		(KINDS as readonly string[]).includes(restored.get('kind') ?? '')
-			? (restored.get('kind') as GroupKind)
-			: 'all',
-	);
-	const modes = new SvelteSet<TransitModeKey>(
-		(restored.get('mode') ?? '')
+	const kindFrom = (value: string | null): SearchScopeKey =>
+		(KINDS as readonly string[]).includes(value ?? '') ? (value as GroupKind) : 'all';
+	const modesFrom = (value: string | null): TransitModeKey[] =>
+		(value ?? '')
 			.split(',')
 			.filter((mode): mode is TransitModeKey =>
 				TRANSIT_MODE_FILTERS.some((filter) => filter.key === mode),
-			),
-	);
-	let rows = $state(Math.max(STEP, Number.parseInt(restored.get('rows') ?? '', 10) || STEP));
-	$effect(() => {
-		mirrorSearchParams({
-			q: query.trim() || null,
-			kind: scope === 'all' ? null : scope,
-			mode: [...modes].join(',') || null,
-			rows: scope !== 'all' && rows > STEP ? String(rows) : null,
-		});
+			);
+	/** A whole number of 50-row steps; anything else (junk, fractions, overflow) is the first step. */
+	function rowsFrom(value: string | null): number {
+		const n = /^[1-9]\d*$/.test(value ?? '') ? Number(value) : NaN;
+		return Number.isSafeInteger(n) && n >= STEP && n % STEP === 0 ? n : STEP;
+	}
+	const restored = new URLSearchParams(page.url.search);
+	let query = $state(restored.get('q') ?? '');
+	let scope = $state<SearchScopeKey>(kindFrom(restored.get('kind')));
+	const modes = new SvelteSet<TransitModeKey>(modesFrom(restored.get('mode')));
+	let rows = $state(rowsFrom(restored.get('rows')));
+	// The route is reused when the header or history opens another /search URL: take its place.
+	afterNavigate(({ type, to }) => {
+		if (type === 'enter' || !to) return;
+		const params = to.url.searchParams;
+		query = params.get('q') ?? '';
+		scope = kindFrom(params.get('kind'));
+		modes.clear();
+		for (const mode of modesFrom(params.get('mode'))) modes.add(mode);
+		rows = rowsFrom(params.get('rows'));
 	});
 
 	const pages = sitePages({
@@ -134,12 +140,19 @@
 	type GroupState = 'loading' | 'failed' | 'ready';
 	const indexState = (resource: typeof routes | typeof stops): GroupState =>
 		resource.error ? 'failed' : resource.data ? 'ready' : 'loading';
+	/** A failed fetch or refresh is failed, even with an older payload kept: that is not a count. */
+	function vehicleState(): GroupState {
+		const family = live.familyStates?.vehicles;
+		if (family?.phase === 'failed' || family?.health?.notice === 'refresh-unavailable')
+			return 'failed';
+		return live.vehicles ? 'ready' : 'loading';
+	}
 	const groups = $derived.by(() => {
 		const state: Record<GroupKind, GroupState> = {
 			route: indexState(routes),
 			stop: indexState(stops),
 			page: 'ready',
-			vehicle: live.vehicles ? 'ready' : 'loading',
+			vehicle: vehicleState(),
 		};
 		const items = {
 			route: matches.routes,
@@ -162,12 +175,28 @@
 					(group) =>
 						(group.total ?? 0) > 0 ||
 						(group.kind === 'vehicle'
-							? liveNotice != null
+							? liveNotice != null || group.state === 'failed'
 							: group.kind !== 'page' && group.state !== 'ready'),
 				)
 			: groups.filter((group) => group.kind === scope),
 	);
 	const noMatch = $derived(scope === 'all' && groups.every((group) => group.total === 0));
+
+	/** The rows the open group shows: never past its last step once its total is known. */
+	const openTotal = $derived(groups.find((group) => group.kind === scope)?.total ?? null);
+	const shownRows = $derived(
+		openTotal === null ? rows : Math.min(rows, Math.max(STEP, Math.ceil(openTotal / STEP) * STEP)),
+	);
+	// Only this page's own state is written back; a navigation is read first, never overwritten.
+	$effect(() => {
+		const state = {
+			q: query.trim() || null,
+			kind: scope === 'all' ? null : scope,
+			mode: [...modes].join(',') || null,
+			rows: scope !== 'all' && shownRows > STEP ? String(shownRows) : null,
+		};
+		untrack(() => mirrorSearchParams(state));
+	});
 
 	const scopeSegments = $derived([
 		{ key: 'all' as const, label: t.scopeAll },
@@ -191,7 +220,7 @@
 		return total === null ? labelFor(kind) : `${labelFor(kind)} · ${total}`;
 	}
 	function visibleCount(total: number): number {
-		return Math.min(total, scope === 'all' ? PREVIEW : rows);
+		return Math.min(total, scope === 'all' ? PREVIEW : shownRows);
 	}
 
 	// Revealing rows moves focus to the first new one, so the reader carries on from there.
@@ -204,13 +233,18 @@
 			[firstNew]?.querySelector<HTMLElement>('a')
 			?.focus();
 	}
+	function retry(kind: GroupKind): void {
+		if (kind === 'route') routes.reload();
+		else if (kind === 'stop') stops.reload();
+		else if (kind === 'vehicle') void live.refresh({ force: true });
+	}
 	const showAll = (kind: GroupKind) =>
 		reveal(kind, PREVIEW, () => {
 			scope = kind;
 			rows = STEP;
 		});
 	const showMore = (kind: GroupKind) => {
-		const from = rows;
+		const from = shownRows;
 		return reveal(kind, from, () => (rows = from + STEP));
 	};
 
@@ -265,7 +299,7 @@
 			<h2 class="search-group-label" {id}>{heading(group.kind, group.total)}</h2>
 			{#if group.kind === 'route'}
 				<MetricInfo metricKey="otp" {locale} name="OTP" side="bottom" />
-			{:else if group.kind === 'vehicle'}
+			{:else if group.kind === 'vehicle' && group.total}
 				{#if occupancyAvailable}<MetricInfo
 						metricKey="occupancy"
 						{locale}
@@ -291,7 +325,7 @@
 				variant="error-v1"
 				lang={locale}
 				layout={edgeLayout}
-				onRetry={() => (group.kind === 'route' ? routes : stops).reload()}
+				onRetry={() => retry(group.kind)}
 			/>
 		{:else if group.state === 'loading'}
 			{#if group.kind !== 'vehicle' || !liveNotice}
@@ -623,8 +657,10 @@
 	}
 	.search-group-head {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 0.375rem;
+		/* Help triggers are 44px targets on a 1.05rem footprint: 0.75rem keeps neighbours 24px apart. */
+		gap: 0.75rem;
 		padding-bottom: 0.25rem;
 		border-bottom: 1px solid var(--border);
 	}
