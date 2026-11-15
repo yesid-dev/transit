@@ -244,11 +244,11 @@
 		border: 1px solid var(--border-subtle);
 		border-radius: var(--radius-sm);
 	}
+	/* A highlight, so the yellow pair; accent text on accent surface keeps AA in both themes. */
 	.search-list-option:hover,
 	.search-list-option[aria-selected='true'] {
-		color: var(--primary);
-		background: color-mix(in srgb, var(--primary) 10%, var(--muted) 90%);
-		border-color: color-mix(in srgb, var(--primary) 44%, var(--border) 56%);
+		background: var(--accent-surface);
+		border-color: color-mix(in srgb, var(--accent-text) 44%, var(--border) 56%);
 	}
 	.search-list-option[aria-selected='true'] {
 		outline: 2px solid var(--ring);
@@ -257,9 +257,9 @@
 	.search-list-kind {
 		flex: none;
 		padding: 0.125rem 0.375rem;
-		color: var(--primary);
-		background: color-mix(in srgb, var(--primary) 10%, transparent);
-		border: 1px solid color-mix(in srgb, var(--primary) 34%, transparent);
+		color: var(--accent-text);
+		background: var(--accent-surface);
+		border: 1px solid color-mix(in srgb, var(--accent-text) 34%, transparent);
 		border-radius: var(--radius-pill);
 	}
 	.search-list-label {
