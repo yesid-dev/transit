@@ -8,6 +8,39 @@ import { stampCopy } from './stamp.copy';
 import { browser } from '$app/env';
 import type { Locale } from '#lib/i18n/copy.ts';
 
+/**
+ * The record stamp as one article-header meta entry. It exists from the first render, empty while
+ * its files load, and carries what the header reserves so the page below it never moves: the
+ * longest stamp this language can show and, where the warning row can show, its sentence.
+ */
+export interface RecordMetaEntry {
+	readonly text: string;
+	readonly datetime?: string;
+	readonly recordStamp: {
+		readonly pending: boolean;
+		readonly reserve: string;
+		readonly noticeReserve: string | null;
+	};
+}
+export function isRecordMetaEntry(entry: unknown): entry is RecordMetaEntry {
+	return typeof entry === 'object' && entry != null && 'recordStamp' in entry;
+}
+/** The longest record stamp in this language: both dates in another year, longest month names. */
+export function longestRecordStamp(locale: Locale, timeZone: string | undefined): string {
+	return stampText(
+		{
+			form: 'record',
+			scope: 'window',
+			dataThrough: '1999-09-30',
+			publishedOn: '1999-09-30',
+			nextUpdateUtc: null,
+			warning: false,
+		},
+		locale,
+		timeZone,
+	);
+}
+
 let shown: { readonly stamp: RecordStamp } | null = null;
 export function showRecord(read: () => RecordStamp): void {
 	if (!browser) return;
@@ -76,15 +109,15 @@ export function createRecordStamp(
 		}),
 	);
 	showRecord(() => stamp);
+	const pending = () =>
+		(manifest() != null &&
+			(shared
+				? ['idle', 'loading-index'].includes(shared.state)
+				: history.loading || !history.settled)) ||
+		(withNotice() && manifest() != null && (health.loading || !health.settled));
 	return {
 		get pending() {
-			return (
-				(manifest() != null &&
-					(shared
-						? ['idle', 'loading-index'].includes(shared.state)
-						: history.loading || !history.settled)) ||
-				(withNotice() && manifest() != null && (health.loading || !health.settled))
-			);
+			return pending();
 		},
 		/**
 		 * W10 when data health checked exactly this record's publication (the instant recordStamp()
@@ -99,9 +132,17 @@ export function createRecordStamp(
 				? stampCopy[locale].warning
 				: null;
 		},
-		meta(locale: Locale) {
+		meta(locale: Locale): RecordMetaEntry {
 			const text = stampText(stamp, locale, manifest()?.tz);
-			return text ? { text, datetime: stamp.publishedOn ?? undefined } : null;
+			return {
+				text,
+				...(text && stamp.publishedOn ? { datetime: stamp.publishedOn } : {}),
+				recordStamp: {
+					pending: pending(),
+					reserve: longestRecordStamp(locale, manifest()?.tz),
+					noticeReserve: withNotice() ? stampCopy[locale].warning : null,
+				},
+			};
 		},
 	};
 }
