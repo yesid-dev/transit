@@ -1,6 +1,8 @@
+from typing import Annotated
+
 import typer
 
-app = typer.Typer(help="Reserved copy_out lane; not implemented.")
+app = typer.Typer(help="Plan and copy declared table history to the archive.")
 
 
 @app.callback(invoke_without_command=True)
@@ -82,6 +84,94 @@ def export_table(
                 copied_by=copied_by, statement_timeout_s=statement_timeout_s,
             )
         typer.echo(json.dumps(asdict(result), sort_keys=True, separators=(",", ":")))
+    except Exception as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(1) from error
+    finally:
+        if scope is not None:
+            scope.close()
+
+
+@app.command()
+def migrate(
+    statement_timeout_s: int = typer.Option(..., min=1, max=900),
+    execute: bool = typer.Option(False, "--execute"),
+    work_dir: str = typer.Option(...),
+    copied_by: str = typer.Option(...),
+    not_after: str | None = typer.Option(None),
+    include_open: bool = typer.Option(False, "--include-open"),
+    dataset: Annotated[list[str] | None, typer.Option("--dataset")] = None,
+    provider: Annotated[list[str] | None, typer.Option("--provider")] = None,
+    today: str | None = typer.Option(None),
+) -> None:
+    """Print a read-only plan; copy windows only with --execute."""
+    import json
+    import os
+    import re
+    from dataclasses import asdict
+    from datetime import UTC, date, datetime, timedelta
+    from pathlib import Path
+    from urllib.parse import urlsplit, urlunsplit
+    from uuid import uuid4
+
+    import psycopg
+
+    from transit_ops.history.storage import history_storage
+    from transit_ops.lake.migration import plan_migration, run_migration
+    from transit_ops.settings import get_settings
+
+    scope = None
+    try:
+        if not re.fullmatch(r"[0-9a-f]{40}", copied_by):
+            raise ValueError("copied_by must be a 40-hex commit")
+        deadline = datetime.fromisoformat(not_after) if not_after else None
+        if execute and (deadline is None or deadline.utcoffset() != timedelta(0)):
+            raise ValueError("--execute requires --not-after as an aware UTC ISO time")
+        if execute and deadline <= datetime.now(UTC):
+            raise ValueError("--not-after has already passed")
+        settings = get_settings()
+        if not settings.DATABASE_URL:
+            raise ValueError("database_not_configured")
+        parts = urlsplit(settings.DATABASE_URL)
+
+        def connect():
+            return psycopg.connect(
+                urlunsplit(parts._replace(scheme="postgresql")), autocommit=True,
+                connect_timeout=5, application_name="transit-lake-migrate-" + uuid4().hex,
+                options="-c statement_timeout=1000 -c lock_timeout=1000 "
+                "-c client_connection_check_interval=1000",
+            )
+
+        with connect() as connection:
+            plan = plan_migration(connection,
+                today_utc=date.fromisoformat(today) if today else datetime.now(UTC).date(),
+                include_open=include_open, datasets=dataset, providers=provider,
+                statement_timeout_s=statement_timeout_s)
+        for window in plan.windows:
+            typer.echo(json.dumps(asdict(window), sort_keys=True))
+        typer.echo(json.dumps({"planned": len(plan.windows),
+            "skipped_open": [asdict(w) for w in plan.skipped_open]}, sort_keys=True))
+        if not execute:
+            return
+        directory = Path(work_dir)
+        if any(c in str(directory) for c in "*?[]{}"):
+            raise ValueError("Glob characters in work_dir")
+        directory.mkdir(parents=True, exist_ok=True)
+        with (directory / "migration-log.jsonl").open("x", encoding="utf8") as stream:
+            def log(record):
+                stream.write(json.dumps(record, sort_keys=True) + "\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+
+            scope = history_storage(settings)
+            result = run_migration(plan, connect, scope.resolve(settings.BRONZE_STORAGE_BACKEND),
+                work_dir=directory, copied_by=copied_by, statement_timeout_s=statement_timeout_s,
+                not_after=deadline, log=log)
+        typer.echo(json.dumps(asdict(result), sort_keys=True))
+        if result.failure is not None:
+            raise typer.Exit(1)
+    except typer.Exit:
+        raise
     except Exception as error:
         typer.echo(str(error), err=True)
         raise typer.Exit(1) from error
