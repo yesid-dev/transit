@@ -13,12 +13,12 @@ describe('selectStateCuts', () => {
 	it('heroes the completeness number and computes delivered/cancelled/silent shares', () => {
 		const vm = selectStateCuts(
 			{
-				scheduled_trip_days: 100,
-				delivered_trip_days: 80,
-				cancelled_trip_days: 5,
-				silent_trip_days: 15,
-				service_completeness_pct: 80,
-				not_reported_route_count: 3,
+				scheduledTripDays: 100,
+				deliveredTripDays: 80,
+				cancelledTripDays: 5,
+				silentTripDays: 15,
+				completenessPct: 80,
+				notReportedRouteCount: 3,
 			},
 			labels,
 		);
@@ -42,11 +42,11 @@ describe('selectStateCuts', () => {
 	it('null shares when the scheduled denominator is absent, but heroes a real completeness', () => {
 		const vm = selectStateCuts(
 			{
-				scheduled_trip_days: null,
-				delivered_trip_days: null,
-				cancelled_trip_days: 2,
-				service_completeness_pct: 91,
-				not_reported_route_count: null,
+				scheduledTripDays: null,
+				deliveredTripDays: null,
+				cancelledTripDays: 2,
+				completenessPct: 91,
+				notReportedRouteCount: null,
 			},
 			labels,
 		);

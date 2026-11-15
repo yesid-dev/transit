@@ -1,5 +1,5 @@
 import type { LineDirectory } from '#lib/site/lineDirectory.ts';
-import type { Receipt } from '#lib/v1/schemas/index.ts';
+import type { ReceiptReliabilityView } from '#lib/v1/reliabilityView.ts';
 
 export interface WorstRowVM {
 	readonly id: string;
@@ -26,17 +26,17 @@ export interface WorstOfDayLabels {
 }
 
 export function selectWorstOfDay(
-	receipt: Pick<Receipt, 'worst_route' | 'worst_stop'>,
+	receipt: Pick<ReceiptReliabilityView, 'worstRoute' | 'worstStop'>,
 	labels: WorstOfDayLabels,
 ): WorstOfDayVM {
-	const wr = receipt.worst_route;
-	const ws = receipt.worst_stop;
+	const wr = receipt.worstRoute;
+	const ws = receipt.worstStop;
 	const route: WorstRowVM | null = wr?.id
 		? {
 				id: wr.id,
 				title: labels.directory.name(wr.id, wr.name).label,
 				subtitle: labels.routeLabel,
-				meta: `${labels.routeDeltaLabel} ${labels.fmtDelta(wr.otp_delta_pts)}`,
+				meta: `${labels.routeDeltaLabel} ${labels.fmtDelta(wr.onTimeDeltaPts)}`,
 			}
 		: null;
 	const stop: WorstRowVM | null = ws?.id
@@ -44,7 +44,7 @@ export function selectWorstOfDay(
 				id: ws.id,
 				title: labels.stopName(ws.id, ws.name),
 				subtitle: `${labels.stopLabel} · ${ws.id}`,
-				meta: `${labels.stopDelayLabel} ${labels.fmtMin(ws.avg_delay_min)}`,
+				meta: `${labels.stopDelayLabel} ${labels.fmtMin(ws.meanDelayMin)}`,
 			}
 		: null;
 	return { route, stop, hasWorst: route != null || stop != null };

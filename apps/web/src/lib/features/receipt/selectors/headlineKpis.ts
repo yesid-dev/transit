@@ -1,4 +1,4 @@
-import type { Receipt } from '#lib/v1/schemas/index.ts';
+import type { ReceiptReliabilityView } from '#lib/v1/reliabilityView.ts';
 import type { MetricKey } from '#lib/features/metrics/metrics.content.ts';
 
 export interface HeadlineKpiVM {
@@ -18,21 +18,21 @@ export interface HeadlineKpiLabels {
 }
 
 export function selectHeadlineKpis(
-	receipt: Pick<Receipt, 'otp_pct' | 'avg_delay_min' | 'severe_pct'>,
+	receipt: Pick<ReceiptReliabilityView, 'onTimePct' | 'meanDelayMin' | 'severePct'>,
 	labels: HeadlineKpiLabels,
 ): HeadlineKpiVM[] {
 	return [
-		{ key: 'otp', label: labels.onTime, value: labels.fmtPct(receipt.otp_pct), size: 'lg' },
+		{ key: 'otp', label: labels.onTime, value: labels.fmtPct(receipt.onTimePct), size: 'lg' },
 		{
 			key: 'avgDelay',
 			label: labels.avgDelay,
-			value: labels.fmtMin(receipt.avg_delay_min),
+			value: labels.fmtMin(receipt.meanDelayMin),
 			size: 'lg',
 		},
 		{
 			key: 'severe',
 			label: labels.severe,
-			value: labels.fmtSeverePct(receipt.severe_pct),
+			value: labels.fmtSeverePct(receipt.severePct),
 			size: 'md',
 		},
 	];

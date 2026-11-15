@@ -1,4 +1,4 @@
-import type { Receipt } from '#lib/v1/schemas/index.ts';
+import type { ReceiptReliabilityView } from '#lib/v1/reliabilityView.ts';
 
 export interface AffectedCountVM {
 	readonly key: 'routes' | 'stops' | 'alerts' | 'vehicles';
@@ -15,12 +15,12 @@ export interface AffectedCountLabels {
 }
 
 export function selectAffectedCounts(
-	receipt: Pick<Receipt, 'affected_routes' | 'affected_stops' | 'alerts' | 'vehicles'>,
+	receipt: Pick<ReceiptReliabilityView, 'affectedRoutes' | 'affectedStops' | 'alerts' | 'vehicles'>,
 	labels: AffectedCountLabels,
 ): AffectedCountVM[] {
 	const cells: AffectedCountVM[] = [
-		{ key: 'routes', label: labels.routes, value: labels.fmtCount(receipt.affected_routes) },
-		{ key: 'stops', label: labels.stops, value: labels.fmtCount(receipt.affected_stops) },
+		{ key: 'routes', label: labels.routes, value: labels.fmtCount(receipt.affectedRoutes) },
+		{ key: 'stops', label: labels.stops, value: labels.fmtCount(receipt.affectedStops) },
 		{ key: 'alerts', label: labels.alerts, value: labels.fmtCount(receipt.alerts) },
 	];
 	if (receipt.vehicles != null) {
