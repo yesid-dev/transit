@@ -7,7 +7,7 @@ from collections.abc import Callable, Iterable, Iterator
 from contextlib import AbstractContextManager, contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol, cast
 from uuid import uuid4
 
 from botocore.exceptions import BotoCoreError, ClientError
@@ -101,27 +101,45 @@ class LocalBronzeStorage(BronzeStorage):
 
     def put_if_absent(self, temp_path: Path, storage_path: str) -> str:
         final_path = self.root / Path(storage_path)
+        # Newly created directories also need their parent entries made durable.
+        directories = [final_path.parent]
+        parent = final_path.parent
+        while not parent.exists():
+            directories.append(parent.parent)
+            parent = parent.parent
         final_path.parent.mkdir(parents=True, exist_ok=True)
         temporary = final_path.with_name(f".transit-bronze-{uuid4().hex}.tmp")
-        created = False
+        created = linked = False
         try:
             with temporary.open("xb") as destination:
                 created = True
                 with temp_path.open("rb") as source:
                     shutil.copyfileobj(source, destination)
+                destination.flush()
+                os.fsync(destination.fileno())
             # Only completed, closed files become visible at the object key.
             try:
                 os.link(temporary, final_path)
+                linked = True
             except FileExistsError as exc:
                 raise ObjectAlreadyExists(
                     f"Bronze archive path already exists: {final_path}"
                 ) from exc
+            if os.name != "nt":
+                # Windows cannot fsync directories; file fsync above is mandatory.
+                for directory in directories:
+                    descriptor = os.open(directory, os.O_RDONLY | cast(Any, os).O_DIRECTORY)
+                    try:
+                        os.fsync(descriptor)
+                    finally:
+                        os.close(descriptor)
         except BaseException as failure:
             if created:
-                try:
-                    temporary.unlink(missing_ok=True)
-                except OSError as cleanup_error:
-                    failure.add_note(f"Temporary Bronze cleanup failed: {cleanup_error}")
+                for path in (temporary, final_path) if linked else (temporary,):
+                    try:
+                        path.unlink(missing_ok=True)
+                    except OSError as cleanup_error:
+                        failure.add_note(f"Temporary Bronze cleanup failed: {cleanup_error}")
             raise
         else:
             temporary.unlink()

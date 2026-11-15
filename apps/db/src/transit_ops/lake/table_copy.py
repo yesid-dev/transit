@@ -146,7 +146,6 @@ def _archive(
     storage: BronzeStorage,
     exported: ExportedWindow,
     written: WrittenWindow,
-    proof: WindowProof,
     work_dir: Path,
     temporary: Path,
     copied_by: str,
@@ -174,7 +173,7 @@ def _archive(
         schema_version,
     )
     if version.key is None:
-        proof = _upload(
+        _upload(
             storage,
             exported,
             written,
@@ -185,9 +184,7 @@ def _archive(
             schema_version,
             copied_by,
         )
-    return _finish(
-        storage, exported, proof, key, work_dir, "already_copied" if version.key else "copied"
-    )
+    return _finish(storage, exported, key, work_dir, "already_copied" if version.key else "copied")
 
 
 def _upload(
@@ -218,20 +215,53 @@ def _upload(
 def _finish(
     storage: BronzeStorage,
     exported: ExportedWindow,
-    proof: WindowProof,
     key: str,
     work_dir: Path,
     outcome: Literal["copied", "already_copied"],
 ) -> TableCopy:
     receipt_value = json.loads(storage.read_bytes(proof_key(key)))
-    if receipt_value.get("proof", {}).get("verified") is not True:
-        raise UnverifiedCopy("archive receipt proof.verified must be true")
+    proof = _receipt_proof(receipt_value, exported)
     for name in ("window.csv", "window.parquet", "proof.json"):
         (work_dir / name).unlink()
     _sync_directory(work_dir)
     return TableCopy(
         exported.spec, outcome, key, proof_key(key), exported.content_sha256, exported.rows, proof
     )
+
+
+def _receipt_proof(receipt: dict[str, Any], exported: ExportedWindow) -> WindowProof:
+    if not isinstance(receipt, dict):
+        raise UnverifiedCopy("invalid archive receipt")
+    value = receipt.get("proof")
+    if not isinstance(value, dict) or value.get("verified") is not True:
+        raise UnverifiedCopy("archive receipt proof.verified must be true")
+    try:
+        proof = WindowProof(**value)
+    except TypeError as error:
+        raise UnverifiedCopy("invalid archive receipt WindowProof") from error
+    for name in ("content_sha256", "object_sha256", "schema_sha256"):
+        digest = getattr(proof, name)
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise UnverifiedCopy(f"invalid archive receipt proof.{name}")
+    for name in ("rows", "object_bytes", "missing_from_copy", "extra_in_copy"):
+        count = getattr(proof, name)
+        if type(count) is not int or count < 0:
+            raise UnverifiedCopy(f"invalid archive receipt proof.{name}")
+    if (
+        proof.content_sha256 != exported.content_sha256
+        or proof.rows != exported.rows
+        or proof.schema_sha256 != exported.schema.columns_sha256()
+        or proof.missing_from_copy != 0
+        or proof.extra_in_copy != 0
+        or proof.in_key_order is not True
+        or not isinstance(proof.checked_with, str)
+        or not proof.checked_with
+        or receipt.get("object_sha256") != proof.object_sha256
+        or type(receipt.get("object_bytes")) is not int
+        or receipt["object_bytes"] != proof.object_bytes
+    ):
+        raise UnverifiedCopy("archive receipt WindowProof differs from copy")
+    return proof
 
 
 def copy_table_window(
@@ -267,7 +297,7 @@ def copy_table_window(
             return TableCopy(
                 spec, "local_only", None, None, exported.content_sha256, exported.rows, proof
             )
-        return _archive(storage, exported, written, proof, work_dir, temporary, copied_by)
+        return _archive(storage, exported, written, work_dir, temporary, copied_by)
 
 
 def _prepare(

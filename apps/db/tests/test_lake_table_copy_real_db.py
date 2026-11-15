@@ -279,3 +279,140 @@ def test_failed_local_publish_removes_only_its_own_files(seeded_export, tmp_path
     with pytest.raises(OSError, match="publish failed"):
         run(None, None, seeded_export, tmp_path, "failed")
     assert not list(work.iterdir())
+
+
+def test_dedup_proof_describes_the_existing_object(seeded_export, tmp_path, monkeypatch):
+    from transit_ops.lake import table_copy as tc
+    from transit_ops.lake.parquet_codec import ParquetCodec
+
+    storage = LocalBronzeStorage("local", tmp_path / "objects")
+    writer = tc.write_window
+    # An existing legitimate copy has a different writer encoding.
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            tc, "write_window", lambda *a, **kw: writer(*a, **kw, codec=ParquetCodec(level=1))
+        )
+        first = run(None, storage, seeded_export, tmp_path, "old_writer")
+    archived = storage.read_bytes(first.key)
+    assert first.proof.object_sha256 == hashlib.sha256(archived).hexdigest()
+    result = run(None, storage, seeded_export, tmp_path, "current_writer")
+    assert result.outcome == "already_copied"
+    assert result.key == first.key
+    assert storage.read_bytes(result.key) == archived
+    assert result.proof.object_sha256 == hashlib.sha256(archived).hexdigest(), (
+        "already_copied returns the discarded local file's digest, not the existing object's",
+        result.proof.object_sha256,
+        hashlib.sha256(archived).hexdigest(),
+    )
+    assert result.proof == first.proof
+
+
+def test_local_archive_bytes_are_synced_before_evidence_is_deleted(
+    seeded_export, tmp_path, monkeypatch
+):
+    import os
+
+    storage = LocalBronzeStorage("local", tmp_path / "objects")
+    synced_inodes = set()
+    fsync = os.fsync
+
+    def record(fd):
+        synced_inodes.add(os.fstat(fd).st_ino)
+        return fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", record)
+    result = run(None, storage, seeded_export, tmp_path, "work")
+    assert not list((tmp_path / "work").iterdir())
+    receipt = json.loads(storage.read_bytes(result.proof_key))
+    unsynced = [
+        key
+        for key in (result.key, result.proof_key, receipt["schema_key"])
+        if (storage.root / key).stat().st_ino not in synced_inodes
+    ]
+    assert not unsynced, ("Evidence deleted with archive files never fsynced", unsynced)
+
+
+@pytest.mark.parametrize("kind", ["schema", "parquet", "receipt"])
+def test_archive_file_sync_failure_keeps_local_evidence(seeded_export, tmp_path, monkeypatch, kind):
+    import os
+
+    storage = LocalBronzeStorage("local", tmp_path / "objects")
+    fsync = os.fsync
+
+    def fail_archive_sync(fd):
+        for path in storage.root.rglob(".transit-bronze-*.tmp"):
+            if path.stat().st_ino == os.fstat(fd).st_ino:
+                payload = path.read_bytes()
+                actual = (
+                    "parquet"
+                    if payload.startswith(b"PAR1")
+                    else "receipt"
+                    if json.loads(payload).get("kind") == "table_copy"
+                    else "schema"
+                )
+                if actual == kind:
+                    raise OSError("archive file sync failed")
+        return fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", fail_archive_sync)
+    with pytest.raises(OSError, match="archive file sync failed"):
+        run(None, storage, seeded_export, tmp_path, "work")
+    assert {p.name for p in (tmp_path / "work").iterdir()} == {
+        "window.csv",
+        "window.parquet",
+        "proof.json",
+    }
+    assert not any(k.endswith(".proof.json") for k in storage.list_keys("archive/"))
+    assert not list(storage.root.rglob(".transit-bronze-*.tmp"))
+
+
+def test_archive_directories_are_synced_before_local_cleanup(seeded_export, tmp_path, monkeypatch):
+    import os
+    import stat
+
+    if os.name == "nt":
+        pytest.skip("Windows does not support directory fsync")
+    storage = LocalBronzeStorage("local", tmp_path / "objects")
+    synced_directories = set()
+    fsync = os.fsync
+
+    def record(fd):
+        if stat.S_ISDIR(os.fstat(fd).st_mode):
+            synced_directories.add(os.fstat(fd).st_ino)
+        return fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", record)
+    result = run(None, storage, seeded_export, tmp_path, "work")
+    receipt = json.loads(storage.read_bytes(result.proof_key))
+    for key in (result.key, result.proof_key, receipt["schema_key"]):
+        for directory in (storage.root / key).parents:
+            assert directory.stat().st_ino in synced_directories
+            if directory == tmp_path:
+                break
+
+
+def test_archive_directory_sync_failure_keeps_local_evidence(seeded_export, tmp_path, monkeypatch):
+    import os
+    import stat
+
+    if os.name == "nt":
+        pytest.skip("Windows does not support directory fsync")
+    storage = LocalBronzeStorage("local", tmp_path / "objects")
+    fsync = os.fsync
+
+    def fail_archive_directory(fd):
+        if stat.S_ISDIR(os.fstat(fd).st_mode):
+            directories = [storage.root, *storage.root.rglob("*")]
+            if any(p.is_dir() and p.stat().st_ino == os.fstat(fd).st_ino for p in directories):
+                raise OSError("archive directory sync failed")
+        return fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", fail_archive_directory)
+    with pytest.raises(OSError, match="archive directory sync failed"):
+        run(None, storage, seeded_export, tmp_path, "work")
+    assert {p.name for p in (tmp_path / "work").iterdir()} == {
+        "window.csv",
+        "window.parquet",
+        "proof.json",
+    }
+    assert not list(storage.list_keys("archive/"))
