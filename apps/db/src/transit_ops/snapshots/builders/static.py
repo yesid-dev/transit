@@ -594,8 +594,13 @@ def build_route(
     static_context: StaticScheduleContext | None = None,
 ) -> "RouteFile":  # noqa: UP037
     context = static_context or _static_schedule_context(conn, provider_id=provider_id)
+    from transit_ops.snapshots.builders.static_headway_r3 import build_route_headways_r3
+
+    r3 = build_route_headways_r3(
+        conn, provider_id=provider_id, static_context=context, route_id=route_id
+    )[route_id]
     if context.dataset_version_id is None:
-        return RouteFile(generated_utc=generated_utc, id=route_id)
+        return RouteFile(generated_utc=generated_utc, id=route_id, r3=r3)
     dv_id = context.dataset_version_id
     params = {"provider_id": provider_id, "dataset_version_id": dv_id, "route_id": route_id}
     weekday_services = list(context.weekday_services)
@@ -629,7 +634,7 @@ def build_route(
         ).mappings()
     )
 
-    return _assemble_route_file(
+    route = _assemble_route_file(
         route_id=route_id,
         generated_utc=generated_utc,
         name_row=name_row,
@@ -637,6 +642,8 @@ def build_route(
         stops_by_shape=stops_by_shape,
         schedule_rows=schedule_rows,
     )
+    route.r3 = r3
+    return route
 
 
 def build_all_routes_data(
@@ -649,6 +656,9 @@ def build_all_routes_data(
 
     from collections import defaultdict
 
+    from transit_ops.snapshots.builders.static_headway_r3 import build_route_headways_r3
+    from transit_ops.snapshots.contract_static_r3 import StaticRouteR3
+
     metadata_rows = list(
         conn.execute(_ALL_ROUTE_METADATA_SQL, {"provider_id": provider_id}).mappings()
     )
@@ -658,7 +668,9 @@ def build_all_routes_data(
     context = static_context or _static_schedule_context(conn, provider_id=provider_id)
     if context.dataset_version_id is None:
         return {
-            str(row["route_id"]): RouteFile(generated_utc=generated_utc, id=str(row["route_id"]))
+            str(row["route_id"]): RouteFile(
+                generated_utc=generated_utc, id=str(row["route_id"]), r3=StaticRouteR3(headway=None)
+            )
             for row in metadata_rows
         }
 
@@ -692,6 +704,7 @@ def build_all_routes_data(
     for row in schedule_rows:
         schedules_by_route[str(row["route_id"])].append(row)
 
+    headways = build_route_headways_r3(conn, provider_id=provider_id, static_context=context)
     routes: dict[str, RouteFile] = {}
     for metadata in metadata_rows:
         route_id = str(metadata["route_id"])
@@ -703,6 +716,7 @@ def build_all_routes_data(
             stops_by_shape=stops_by_route[route_id],
             schedule_rows=schedules_by_route[route_id],
         )
+        routes[route_id].r3 = headways.get(route_id, StaticRouteR3(headway=None))
     return routes
 
 
@@ -775,6 +789,7 @@ def build_all_stops_data(
             lat=_round5(float(lat)),
             lon=_round5(float(lon)),
             wheelchair=(raw == 1),
+            wheelchair_boarding="yes" if raw == 1 else "no" if raw == 2 else None,
             routes_served=[],
             scheduled=[],
         )
@@ -816,6 +831,7 @@ def build_all_stops_data(
             lat=stop.lat,
             lon=stop.lon,
             wheelchair=stop.wheelchair,
+            wheelchair_boarding=stop.wheelchair_boarding,
             routes_served=sorted(routes_seen, key=_route_sort_key),
             scheduled=scheduled,
         )

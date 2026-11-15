@@ -100,6 +100,9 @@ def test_schema_guard_accepts_only_optional_additions_and_their_definitions():
 
     baseline = export_schemas()
     baseline["static_routes_index"]["$defs"]["RouteIndexEntry"]["properties"].pop("live_data", None)
+    baseline["static_stop"]["properties"].pop("wheelchair_boarding", None)
+    baseline["static_route"]["properties"].pop("r3", None)
+    baseline["static_route"].pop("$defs", None)
     changed = deepcopy(baseline)
     trip = changed["live_trips"]["$defs"]["Trip"]["properties"]
     trip["headsign"] = {"type": "string"}

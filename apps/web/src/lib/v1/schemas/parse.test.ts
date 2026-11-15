@@ -129,6 +129,14 @@ describe('current schemas accept payloads that carry r3 objects and the new flat
 				return { ...parsed, routes: parsed.routes.map(({ live_data: _, ...entry }) => entry) };
 			};
 			expect(legacy(actual)).toEqual(legacy(expected));
+		} else if (label === 'static/stops/{id}.json') {
+			const { wheelchair_boarding: _, ...legacy } = StopFileSchema.parse(actual);
+			const { wheelchair_boarding: __, ...old } = StopFileSchema.parse(expected);
+			expect(legacy).toEqual(old);
+		} else if (label === 'static/routes/{id}.json') {
+			const { r3: _, ...legacy } = RouteFileSchema.parse(actual);
+			const { r3: __, ...old } = RouteFileSchema.parse(expected);
+			expect(legacy).toEqual(old);
 		} else {
 			expect(actual).toEqual(expected);
 		}
@@ -142,3 +150,16 @@ it.each([false, true, null])('retains optional static live_data=%s', (live_data)
 	});
 	expect(parsed.routes[0].live_data).toBe(live_data);
 });
+
+it.each(['yes', 'no', null])('retains optional wheelchair_boarding=%s', (wheelchair_boarding) => {
+	const parsed = StopFileSchema.parse({ generated_utc: ISO, ...stop, wheelchair_boarding });
+	expect(parsed.wheelchair_boarding).toBe(wheelchair_boarding);
+});
+
+it.each([null, [{ shift: 'am_peak', window: '06:00–09:00', headway_min: 10 }]])(
+	'retains static r3.headway=%s',
+	(headway) => {
+		const parsed = RouteFileSchema.parse({ generated_utc: ISO, id: 'R', r3: { headway } });
+		expect(parsed.r3).toEqual({ headway });
+	},
+);

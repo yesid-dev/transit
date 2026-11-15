@@ -113,6 +113,22 @@
       "default": false,
       "title": "Wheelchair",
       "type": "boolean"
+    },
+    "wheelchair_boarding": {
+      "anyOf": [
+        {
+          "enum": [
+            "yes",
+            "no"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Wheelchair Boarding"
     }
   },
   "required": [

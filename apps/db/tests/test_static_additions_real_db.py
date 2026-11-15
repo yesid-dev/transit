@@ -3,6 +3,7 @@ from datetime import timedelta
 
 import pytest
 from sqlalchemy import text
+from test_static_headway_r3_real_db import conn as conn
 
 from transit_ops.snapshots.builders.static import build_routes_index
 
@@ -89,3 +90,66 @@ def test_live_data_does_not_use_the_edition_stamp_as_now(policy_routes):
     )
     assert result.generated_utc == "2000-01-01T00:00:00Z"
     assert next(route for route in result.routes if route.id == "upper").live_data is True
+
+
+def test_corrected_headways_are_published_by_both_route_builders(conn):
+    from test_static_headway_r3_real_db import PROVIDER, VERSION, trip
+
+    from transit_ops.snapshots.builders._helpers import StaticScheduleContext
+    from transit_ops.snapshots.builders.static import build_all_routes_data, build_route
+    from transit_ops.snapshots.serialization import snapshot_json_bytes
+
+    for name, departure in [('a', '08:00:00'), ('b', '08:10:00'), ('dup', '08:10:00')]:
+        trip(conn, name, departure)
+    conn.execute(text('''
+        INSERT INTO gold.dim_route(provider_id, dataset_version_id, route_id, route_type)
+        VALUES (:p, :v, 'R', 3), (:p, :v, 'empty', 0)
+    '''), dict(p=PROVIDER, v=VERSION))
+    context = StaticScheduleContext(VERSION, ("W",))
+    bulk = build_all_routes_data(
+        conn, provider_id=PROVIDER, generated_utc="t", static_context=context
+    )
+    for rid in ["R", "empty"]:
+        single = build_route(
+            conn, provider_id=PROVIDER, route_id=rid, generated_utc="t", static_context=context
+        )
+        assert snapshot_json_bytes(single) == snapshot_json_bytes(bulk[rid])
+        actual = json.loads(snapshot_json_bytes(single))
+        assert actual["service_periods"] == []
+        assert actual["first_departure"] is None
+        assert actual["last_departure"] is None
+        assert actual["r3"] == {
+            "headway": [dict(shift="am_peak", window="06:00–09:00", headway_min=10.0)]
+            if rid == "R"
+            else None
+        }
+
+
+@pytest.mark.parametrize("raw, expected", [(1, "yes"), (2, "no"), (0, None), (None, None)])
+def test_stop_access_survives_real_schedule_attachment(conn, raw, expected):
+    from test_static_headway_r3_real_db import PROVIDER, VERSION, trip
+
+    from transit_ops.snapshots.builders._helpers import StaticScheduleContext
+    from transit_ops.snapshots.builders.static import build_all_stops_data
+
+    trip(conn, "scheduled", "08:00:00")
+    conn.execute(
+        text("""
+        INSERT INTO gold.dim_stop(provider_id, dataset_version_id, stop_id, stop_name,
+                                  stop_lat, stop_lon, wheelchair_boarding)
+        VALUES (:p, :v, 'S', 'Stop', 45, -73, :raw),
+               (:p, :v, 'unscheduled', 'Other', 45, -73, :raw)
+    """),
+        dict(p=PROVIDER, v=VERSION, raw=raw),
+    )
+    stops = build_all_stops_data(
+        conn,
+        provider_id=PROVIDER,
+        generated_utc="t",
+        static_context=StaticScheduleContext(VERSION, ("W",)),
+    )
+    for sid in ["S", "unscheduled"]:
+        assert stops[sid].wheelchair_boarding == expected
+        assert stops[sid].wheelchair is (raw == 1)
+    assert stops["S"].routes_served == ["R"]
+    assert stops["unscheduled"].routes_served == []

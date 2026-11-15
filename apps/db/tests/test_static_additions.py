@@ -129,14 +129,115 @@ def test_static_upgrade_rebuilds_an_unchanged_dataset_once():
     state_key = "_meta/publish_state_static.json"
     state = json.loads(store.store[state_key])
     # Pin the previous version independently; keep the same config/hash state.
-    state["fingerprint"] = "v3|" + state["fingerprint"].split("|", 1)[1]
+    state["fingerprint"] = "v4|" + state["fingerprint"].split("|", 1)[1]
     store.store[state_key] = json.dumps(state).encode()
     key = "static/routes_index.json"
     assert key in _publish_static_once(store, conn).keys_written
     assert json.loads(store.store[key])["routes"][0]["live_data"] is False
-    assert json.loads(store.store[state_key])["fingerprint"].startswith("v4|")
+    assert json.loads(store.store[state_key])["fingerprint"].startswith("v5|")
     before = dict(store.store)
     calls = list(store.calls)
     assert _publish_static_once(store, conn).keys_written == []
     assert store.store == before
     assert store.calls == calls
+
+
+@pytest.mark.parametrize(
+    "raw, expected", [(1, "yes"), (2, "no"), (0, None), (None, None), ("", None)]
+)
+@pytest.mark.parametrize("scheduled", [False, True])
+def test_wheelchair_boarding_is_null_for_blank_and_zero(raw, expected, scheduled):
+    from transit_ops.snapshots.builders._helpers import StaticScheduleContext
+    from transit_ops.snapshots.builders.static import build_all_stops_data
+
+    conn = FakeConn(
+        {
+            "static.all_stops": [
+                dict(
+                    stop_id="S",
+                    stop_code=None,
+                    stop_name="Stop",
+                    stop_lat=45,
+                    stop_lon=-73,
+                    wheelchair_boarding=raw,
+                )
+            ],
+            "static.all_stop_schedules": [
+                dict(stop_id="S", route_id="R", trip_headsign="End", departure_time="08:00:00")
+            ]
+            if scheduled
+            else [],
+        }
+    )
+    stop = build_all_stops_data(
+        conn, provider_id="example", generated_utc="t", static_context=StaticScheduleContext(1)
+    )["S"]
+    actual = json.loads(snapshot_json_bytes(stop))
+    assert actual["wheelchair_boarding"] == expected
+    assert actual["wheelchair"] is (raw == 1)
+    assert actual["routes_served"] == (["R"] if scheduled else [])
+
+
+def test_bulk_and_standalone_routes_have_identical_r3_headway_bytes():
+    from transit_ops.snapshots.builders._helpers import StaticScheduleContext
+    from transit_ops.snapshots.builders.static import build_all_routes_data, build_route
+
+    metadata = [
+        dict(route_id=r, route_long_name="Line", route_type=t) for r, t in [("R", 0), ("empty", 3)]
+    ]
+    rows = [
+        dict(route_id="R", direction_id=0, is_weekday=True, departure_time=t)
+        for t in ["08:10:00", "08:00:00", "08:00:00"]
+    ]
+    context = StaticScheduleContext(1, ("W",))
+    bulk = build_all_routes_data(
+        FakeConn({"static.all_route_metadata": metadata, "static.r3_headways": rows}),
+        provider_id="example",
+        generated_utc="t",
+        static_context=context,
+    )
+    for meta in metadata:
+        rid = meta["route_id"]
+        single = build_route(
+            FakeConn(
+                {"static.route_name_type": [meta], "static.r3_headways": rows if rid == "R" else []}
+            ),
+            provider_id="example",
+            route_id=rid,
+            generated_utc="t",
+            static_context=context,
+        )
+        assert snapshot_json_bytes(bulk[rid]) == snapshot_json_bytes(single)
+        actual = json.loads(snapshot_json_bytes(single))
+        assert actual["r3"] == {
+            "headway": [dict(shift="am_peak", window="06:00–09:00", headway_min=10.0)]
+            if rid == "R"
+            else None
+        }
+        assert revision_2_projection("static/routes/R.json", actual) == dict(
+            schema_version=1,
+            methodology_version=None,
+            publish_generation_id=None,
+            generated_utc="t",
+            id=rid,
+            long="Line",
+            type=meta["route_type"],
+            directions=[],
+            service_periods=[],
+            first_departure=None,
+            last_departure=None,
+        )
+
+
+def test_old_route_and_stop_payloads_keep_optional_additions():
+    from transit_ops.snapshots.contract import RouteFile, StopFile
+
+    route = RouteFile.model_validate(dict(generated_utc="t", id="R"))
+    assert route.r3 is None
+    for value in ["yes", "no", None]:
+        stop = StopFile.model_validate(
+            dict(generated_utc="t", id="S", name="Stop", lat=0, lon=0, wheelchair_boarding=value)
+        )
+        assert json.loads(snapshot_json_bytes(stop))["wheelchair_boarding"] == value
+    assert "r3" not in RouteFile.model_json_schema()["required"]
+    assert "wheelchair_boarding" not in StopFile.model_json_schema()["required"]
