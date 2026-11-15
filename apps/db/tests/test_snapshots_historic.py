@@ -2051,6 +2051,8 @@ def test_build_receipts_uses_full_accountability_span_and_bounds_supplements() -
             ],
             service_states=[
                 {
+                    "invalid_accounting_routes": 0,
+                    "beyond_schedule_trip_days": 0,
                     "local_date": supplement_only_date,
                     "scheduled_trip_days": 10,
                     "delivered_trip_days": 9,
@@ -2603,6 +2605,8 @@ def test_receipts_service_states_silent_vs_cancelled_distinct() -> None:
             acct=[_acct_row(d)],
             service_states=[
                 {
+                    "invalid_accounting_routes": 0,
+                    "beyond_schedule_trip_days": 0,
                     "local_date": d,
                     "scheduled_trip_days": 100,
                     "delivered_trip_days": 80,
@@ -2640,6 +2644,8 @@ def test_receipts_not_reported_cap_and_precap_count() -> None:
             acct=[_acct_row(d)],
             service_states=[
                 {
+                    "invalid_accounting_routes": 0,
+                    "beyond_schedule_trip_days": 0,
                     "local_date": d,
                     "scheduled_trip_days": 500,
                     "delivered_trip_days": 0,
@@ -2667,6 +2673,8 @@ def test_receipts_not_reported_excludes_sentinel() -> None:
             acct=[_acct_row(d)],
             service_states=[
                 {
+                    "invalid_accounting_routes": 0,
+                    "beyond_schedule_trip_days": 0,
                     "local_date": d,
                     "scheduled_trip_days": 10,
                     "delivered_trip_days": 0,
@@ -2695,6 +2703,8 @@ def test_receipts_service_states_honest_null_when_scheduled_unknown() -> None:
             acct=[_acct_row(d)],
             service_states=[
                 {
+                    "invalid_accounting_routes": 0,
+                    "beyond_schedule_trip_days": None,
                     "local_date": d,
                     "scheduled_trip_days": None,
                     "delivered_trip_days": None,

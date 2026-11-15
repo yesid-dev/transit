@@ -202,8 +202,8 @@ def test_receipt_equal_delay_winner_and_dark_route_order(surface_db):
             text("""
             INSERT INTO gold.route_cancellation_daily
                 (provider_id, route_id, provider_local_date, scheduled_trip_days,
-                 total_trip_days, canceled_trip_days)
-            VALUES (:provider_id, :id, '2026-07-31', 10, 0, 0)
+                 total_trip_days, canceled_trip_days, delivered_trip_days, silent_trip_days)
+            VALUES (:provider_id, :id, '2026-07-31', 10, 0, 0, 0, 10)
         """),
             binds,
         )
