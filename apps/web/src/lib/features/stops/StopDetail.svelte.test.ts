@@ -588,18 +588,25 @@ describe('StopDetail article contract', () => {
 		vi.setSystemTime(new Date('2026-11-13T15:00:00Z'));
 		weeklyIndexData = weeklyIndex([weeklyRow('57191', 210, 120)]);
 		const { container } = render(StopDetail, { props: { id: '57191' } });
-		const identities = () => container.querySelectorAll('[data-slot="stop-identity"]');
+		// The summary leads each view's own pane as a full-width block, never a centered banner.
+		const activePane = () =>
+			container.querySelector<HTMLElement>('[role="tabpanel"][data-state="active"]')!;
+		const identities = () => activePane().querySelectorAll('[data-slot="stop-identity"]');
 		const answer = () => container.querySelector<HTMLElement>('[data-slot="stop-record-answer"]');
+		const leadsPane = () =>
+			activePane().querySelector('[data-slot="stop-summary"]')?.parentElement ===
+			activePane().firstElementChild;
 
 		// Live now holds the full notices, so its summary carries no strip and no answer.
 		expect(identities()).toHaveLength(1);
-		expect(identities()[0].closest('[data-slot="detail-shell-summary"]')).not.toBeNull();
+		expect(leadsPane()).toBe(true);
+		expect(container.querySelector('[data-slot="detail-shell-summary"]')).toBeNull();
 		expect(answer()).toBeNull();
 		expect(container.querySelector('[data-slot="stop-current-notice"]')).toBeNull();
 
 		await fireEvent.click(screen.getByRole('tab', { name: 'Record' }));
 		expect(identities()).toHaveLength(1);
-		expect(container.querySelector('[data-slot="detail-shell-summary"]')).toBeNull();
+		expect(leadsPane()).toBe(true);
 		const strip = container.querySelector('[data-slot="stop-current-notice"]') as HTMLElement;
 		expect(strip).toHaveAttribute('data-scope', 'stop');
 		expect(within(strip).getByText('2 current agency notices · STM')).toBeInTheDocument();

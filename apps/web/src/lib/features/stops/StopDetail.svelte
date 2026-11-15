@@ -460,16 +460,11 @@
 	</div>
 {/snippet}
 
-{#snippet stopSummaryBanner()}
-	{@render stopSummary(false)}
-{/snippet}
-
 <EntityDetail
 	{tabs}
 	{articleToc}
 	bind:active={detailTabController.active}
 	paneOwnedRailKeys={['reliability']}
-	banner={stopSummaryBanner}
 >
 	{#snippet articleHeader()}
 		<ArticleHeader
@@ -500,6 +495,7 @@
 
 	{#snippet pane(key)}
 		{#if key === 'detail'}
+			<div class="stop-lead">{@render stopSummary(false)}</div>
 			<ArticleSectionStack>
 				{#key id}
 					<CollapsibleSection
@@ -629,6 +625,7 @@
 				{/key}
 			</ArticleSectionStack>
 		{:else if key === 'schedule'}
+			<div class="stop-lead">{@render stopSummary(false)}</div>
 			<ArticleSectionStack data-section-sequence="stop-schedule">
 				{#key id}
 					<CollapsibleSection
@@ -675,7 +672,7 @@
 			</ArticleSectionStack>
 		{:else if key === 'reliability'}
 			<!-- The record's answer stays in one place while the reliability file loads, fails or arrives. -->
-			<div class="stop-record-lead">{@render stopSummary(true)}</div>
+			<div class="stop-lead">{@render stopSummary(true)}</div>
 
 			{#if reliability.settled && reliability.error == null && reliabilityIsEmpty(reliability.data) && historyOnlyReliability != null && stopHistory.state !== 'current'}
 				{#key id}
@@ -725,15 +722,18 @@
 		line-height: 1.5;
 	}
 
+	/* Each view leads with the stop summary as a full-width block; the record answer sizes to it. */
+	.stop-lead {
+		inline-size: 100%;
+		margin-block-end: var(--space-card-gap, 1.5rem);
+		container-type: inline-size;
+	}
 	.stop-summary {
 		display: flex;
 		flex-direction: column;
 		gap: 1.25rem;
 		min-width: 0;
-		container-type: inline-size;
-	}
-	.stop-record-lead {
-		margin-block-end: var(--space-card-gap, 1.5rem);
+		text-align: start;
 	}
 	.stop-line-notices {
 		display: flex;
