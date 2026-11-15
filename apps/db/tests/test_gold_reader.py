@@ -276,13 +276,13 @@ def test_current_date_trailing_clause_bytes() -> None:
 
 _REVIEWED_SQL_SHA256 = {
     "rollup.route_headway.upsert": (
-        "faac29bb6b34cd08f1c65193e40bcd6c43ef4ef919f41644a686fbabde1ccb46"
+        "d5ad00c0848543f4ddb31fe873f94c528e125db2a03f4db5e54b598d52a3f0ca"
     ),
     "rollup.route_headway_direction.upsert": (
-        "b021cb7c78795be7ff53416b272e003cabdede489d95bf2da240dd2f44c584cc"
+        "3847b704f6e1aed35e13f87fe5676d27a474a6bbff242d03d85c2305e470da27"
     ),
     "rollup.route_headway_shift.upsert": (
-        "68ae0f5b0e149eabe88eff831b0b20545784f2ece19320853812309ba021adcd"
+        "52a167e571d52b9913042d00b2bd7e040239f2726bad934259239b567f88fe34"
     ),
     "stop.reliability.by_grain": "e5fcdf48ac5795e3b1ab83cbfcb4bed52e0dc2e5d01026b2fb043b0f3e75741f",
     "route.habit.spine": "ed5437bc9b3d4fc1cb0fb7f48e5ae5eae28333c27b8ef990d7c7d290081a0c60",
@@ -315,9 +315,9 @@ _REVIEWED_SQL_SHA256 = {
         "c08dfa57a5b4b42691c2ad48012e63f2623fc0ba7df432de77ea178174e69b07"
     ),
     "receipts.accountability": "b9580ef70c44a3a84f74f1d696495602f0d15c55aa82100dcc0bf4745525e5d7",
-    "receipts.worst_route": "8c50bf3663aaf38364209de7ab67f35d76981f91aae2ea336ed5e6bc9d65530a",
-    "receipts.worst_stop": "38bd3eeaab7d373296085f49ceba254d0095339e76a328dd8c0a6bf7774324f5",
-    "alerts.history": "66a62a70bb2988a8ecb3ab855927a3b52da473ef5de2dfc06e5761df7302e7d7",
+    "receipts.worst_route": "e7e8c98ace983c1894128e0abdd70e8f3a0dfd3bca62e91bfb6ce612906938b4",
+    "receipts.worst_stop": "3c8178edbebec75abd5cbf0830d36669be98408d5b5aa6db10b8c1efa6c20208",
+    "alerts.history": "f7b91203e55526e31ab27ec2649c7c87a9976e5d68cdc7fece088322f97c0555",
     "route.weak_stops.by_grain": "95b4e55b3a19a89b6bd48ca465cf3d7f107e0d1ba4572345bd84e496efc6e270",
 }
 

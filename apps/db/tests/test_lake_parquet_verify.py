@@ -1,5 +1,6 @@
 import hashlib
 import io
+import struct
 from contextlib import contextmanager
 from dataclasses import replace
 
@@ -26,7 +27,7 @@ def test_returns_a_proof_for_an_equal_window(tmp_path):
     assert proof.extra_in_copy == 0
     assert proof.in_key_order is True
     assert proof.checked_with == duckdb.__version__
-    assert proof.verified is False
+    assert proof.verified is True
 
 
 def window(tmp_path, data=b'id,value\n1,\n2,""\n', pg_type="text", names=("id", "value")):
@@ -348,17 +349,26 @@ def test_key_order_is_bytewise_and_uses_the_whole_quoted_key(tmp_path):
     assert error.value.reason == "key_order"
 
 
-def test_proof_json_is_canonical_and_stable():
-    from transit_ops.lake.parquet_verify import WindowProof
+def test_proof_json_is_canonical_and_stable(tmp_path):
+    from transit_ops.lake.parquet_verify import prove_window
 
-    proof = WindowProof(2, "c", "o", 10, "s", 0, 0, True, "é", False)
+    csv, written, expect = window(tmp_path)
+    proof = prove_window(csv, written.path, written.schema, expect=expect, temp_dir=tmp_path)
+    fixed = replace(
+        proof,
+        content_sha256="c",
+        object_sha256="o",
+        object_bytes=10,
+        schema_sha256="s",
+        checked_with="é",
+    )
     expected = (
         b'{"checked_with":"\xc3\xa9","content_sha256":"c","extra_in_copy":0,'
         b'"in_key_order":true,"missing_from_copy":0,"object_bytes":10,'
-        b'"object_sha256":"o","rows":2,"schema_sha256":"s","verified":false}'
+        b'"object_sha256":"o","rows":2,"schema_sha256":"s","verified":true}'
     )
-    assert proof.to_json() == expected
-    assert proof.to_json() == expected
+    assert fixed.to_json() == expected
+    assert fixed.to_json() == expected
 
 
 @pytest.mark.parametrize("side", ["csv", "parquet"])
@@ -396,18 +406,18 @@ def test_proves_an_empty_window(tmp_path):
     assert proof.in_key_order is True
 
 
+@pytest.mark.parametrize("pg_type,kind", [("double precision", "DOUBLE"), ("real", "FLOAT")])
 @pytest.mark.parametrize("value,replacement", [("-0", "0.0"), ("0", "-0.0")])
-def test_signed_zero_equality_is_not_verified(tmp_path, value, replacement):
+def test_signed_zero_equality_is_not_verified(tmp_path, value, replacement, pg_type, kind):
     from transit_ops.lake.parquet_verify import prove_window
 
-    csv, written, expected = window(tmp_path, f"id,value\n1,{value}\n".encode(), "double precision")
+    csv, written, expected = window(tmp_path, f"id,value\n1,{value}\n".encode(), pg_type)
     target = changed_file(
-        tmp_path, written, f"SELECT id, {replacement}::DOUBLE AS value FROM original"
+        tmp_path, written, f"SELECT id, {replacement}::{kind} AS value FROM original"
     )
-    proof = prove_window(csv, target, written.schema, expect=expected, temp_dir=tmp_path)
-    assert proof.missing_from_copy == proof.extra_in_copy == 0
-    assert proof.verified is False
-    assert b'"verified":false' in proof.to_json()
+    with pytest.raises(CopyDiffers) as error:
+        prove_window(csv, target, written.schema, expect=expected, temp_dir=tmp_path)
+    assert error.value.reason == "canonical_text"
 
 
 def test_multiplicity_before_key_order(tmp_path):
@@ -434,6 +444,7 @@ def test_proves_file_row_number_columns(tmp_path, name, role):
     proof = prove_window(csv, written.path, written.schema, expect=expected, temp_dir=tmp_path)
     assert proof.rows == 2
     assert proof.in_key_order is True
+    assert proof.verified is True
     # Check the mapped key's values, rather than the generated row index or payload.
     target = changed_file(tmp_path, written, "SELECT * FROM original ORDER BY 1 DESC")
     with pytest.raises(CopyDiffers) as error:
@@ -460,3 +471,150 @@ def test_refuses_null_keys_in_directly_written_parquet(tmp_path, position):
         prove_window(csv, target, written.schema, expect=expected, temp_dir=tmp_path)
     assert error.value.reason == "key_order"
     assert error.value.detail == f"Non-increasing primary key at file row {position} (zero-based)"
+
+
+@pytest.mark.parametrize(
+    "pg_type,values",
+    [
+        (
+            "double precision",
+            "0\n-0\n0.1\n0.10000000000000002\n5e-324\n1e+15\n0.0001\n1e-05\nInfinity\n-Infinity\nNaN",
+        ),
+        ("real", "0\n-0\n0.1\n1e-45\n1e+06\nInfinity\n-Infinity\nNaN"),
+        ("boolean", "t\nf"),
+        (
+            "timestamp with time zone",
+            "2026-01-02 03:04:05+00\n2026-01-02 03:04:05.000001+00\ninfinity\n-infinity",
+        ),
+        (
+            "timestamp without time zone",
+            "2026-01-02 03:04:05\n2026-01-02 03:04:05.1234\ninfinity\n-infinity",
+        ),
+        ("date", "2026-01-02\ninfinity\n-infinity"),
+        ("numeric(8,2)", "1.50\n-0.01"),
+        ("numeric", "1.500\nInfinity\nNaN"),
+        ("integer[]", '"{1,NULL,2}"'),
+        ("jsonb", '"{""a"": 1, ""b"": null}"'),
+        ("text", '\n""\nline'),
+    ],
+)
+def test_verifies_canonical_typed_text(tmp_path, pg_type, values):
+    from transit_ops.lake.parquet_verify import prove_window
+
+    data = "id,value\n" + "".join(f"{i},{v}\n" for i, v in enumerate(values.split("\n"), 1))
+    csv, written, expect = window(tmp_path, data.encode(), pg_type)
+    proof = prove_window(csv, written.path, written.schema, expect=expect, temp_dir=tmp_path)
+    assert proof.verified is True
+
+
+@pytest.mark.parametrize(
+    "pg_type,value",
+    [
+        ("boolean", "true"),
+        ("double precision", "0.10000000000000000"),
+        ("real", "0.10000000149011612"),
+        ("integer", "01"),
+        ("timestamp with time zone", "2026-01-02 04:04:05+01"),
+        ("timestamp without time zone", "2026-01-02 03:04:05.000000"),
+        ("numeric(8,2)", "1.5"),
+    ],
+)
+def test_refuses_text_that_typed_equality_accepts(tmp_path, pg_type, value):
+    from transit_ops.lake.parquet_verify import prove_window
+
+    csv, written, expect = window(tmp_path, f"id,value\n1,{value}\n".encode(), pg_type)
+    with pytest.raises(CopyDiffers) as error:
+        prove_window(csv, written.path, written.schema, expect=expect, temp_dir=tmp_path)
+    assert error.value.reason == "canonical_text"
+    assert "value" in error.value.detail
+    assert "row 0" in error.value.detail
+
+
+def test_leading_feff_cannot_be_verified_after_bom_loss(tmp_path):
+    from transit_ops.lake.csv_validation import InvalidCsvValue
+    from transit_ops.lake.parquet_verify import prove_window
+
+    csv = tmp_path / "input.csv"
+    csv.write_bytes(b"label,value\na,x\n")
+    schema = TableSchema.from_columns(
+        [("label", "text", True), ("value", "text", False)], ["label"]
+    )
+    written = write_window(csv, schema, tmp_path / "out.parquet", metadata={}, temp_dir=tmp_path)
+    csv.write_bytes("label,value\n\ufeffa,x\n".encode())
+    digest = hashlib.sha256(csv.read_bytes()).hexdigest()
+    target = changed_file(tmp_path, written, changes={"transit.content_sha256": digest})
+    with pytest.raises(InvalidCsvValue) as error:
+        prove_window(csv, target, schema, expect=Expected(digest, 1, None), temp_dir=tmp_path)
+    assert (error.value.column, error.value.row, error.value.value) == ("label", 2, "\ufeffa")
+
+
+@pytest.mark.parametrize(
+    "pg_type,canonical,noncanonical",
+    [
+        # PostgreSQL float8: 3e70000000000000.
+        ("double precision", "5.960464477539063e-08", "5.9604644775390625e-08"),
+        ("double precision", "-5.960464477539063e-08", "-5.9604644775390625e-08"),
+        ("real", "1.2621775e-29", "1.26217745e-29"),
+        ("real", "-1.2621775e-29", "-1.26217745e-29"),
+        ("real", "7.038531e-26", "7.0385307e-26"),  # PostgreSQL float4: 15ae43fd
+    ],
+)
+@pytest.mark.parametrize("canonical_input", [True, False])
+def test_shortest_precise_postgres_text(
+    tmp_path, pg_type, canonical, noncanonical, canonical_input
+):
+    from transit_ops.lake.parquet_verify import prove_window
+
+    value = canonical if canonical_input else noncanonical
+    csv, written, expect = window(tmp_path, f"id,value\n1,{value}\n".encode(), pg_type)
+    if canonical_input:
+        assert prove_window(
+            csv, written.path, written.schema, expect=expect, temp_dir=tmp_path
+        ).verified
+    else:
+        with pytest.raises(CopyDiffers) as error:
+            prove_window(csv, written.path, written.schema, expect=expect, temp_dir=tmp_path)
+        assert error.value.reason == "canonical_text"
+
+
+@pytest.mark.parametrize(
+    "pg_type,code,kind", [("real", "f", "FLOAT"), ("double precision", "d", "DOUBLE")]
+)
+@pytest.mark.parametrize("change", ["sign", "payload"])
+def test_nan_bits_must_match_canonical_csv(tmp_path, pg_type, code, kind, change):
+    from transit_ops.lake.parquet_verify import prove_window
+
+    csv, written, expect = window(tmp_path, b"id,value\n1,NaN\n", pg_type)
+    with duckdb.connect() as db:
+        metadata = {
+            k.decode(): v.decode()
+            for k, v in db.execute(
+                "SELECT key,value FROM parquet_kv_metadata(?)", [str(written.path)]
+            ).fetchall()
+        }
+        source = db.read_parquet(str(written.path), hive_partitioning=False).fetchall()[0][1]
+        bits = bytearray(struct.pack("!" + code, source))
+        bits[0 if change == "sign" else -1] ^= 128 if change == "sign" else 1
+        changed = struct.unpack("!" + code, bits)[0]
+        target = tmp_path / "changed.parquet"
+        db.execute(
+            f"COPY (SELECT 1::INTEGER AS id, ?::{kind} AS value) TO ? "
+            "(FORMAT parquet, KV_METADATA ?)",
+            [changed, str(target), metadata],
+        )
+        copied = db.read_parquet(str(target), hive_partitioning=False).fetchall()[0][1]
+        assert struct.pack("!" + code, source) != struct.pack("!" + code, copied)
+    expect = replace(expect, object_sha256=hashlib.sha256(target.read_bytes()).hexdigest())
+    with pytest.raises(CopyDiffers) as error:
+        prove_window(csv, target, written.schema, expect=expect, temp_dir=tmp_path)
+    assert error.value.reason == "canonical_text"
+
+
+@pytest.mark.parametrize("value", ["0.12345", "-0.12345", "0.00000"])
+def test_verifies_numeric_with_equal_precision_and_scale(tmp_path, value):
+    from transit_ops.lake.parquet_verify import prove_window
+
+    csv, written, expect = window(tmp_path, f"id,value\n1,{value}\n".encode(), "numeric(5,5)")
+    assert prove_window(
+        csv, written.path, written.schema, expect=expect, temp_dir=tmp_path
+    ).verified

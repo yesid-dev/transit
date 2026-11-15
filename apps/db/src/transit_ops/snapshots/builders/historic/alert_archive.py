@@ -67,7 +67,7 @@ _ALERT_ARCHIVE_SQL = named_query(
     ORDER BY archive.archive_month DESC,
              COALESCE(archive.start_utc, archive.first_seen_utc) DESC,
              archive.last_seen_utc DESC,
-             archive.alert_id
+             archive.alert_id COLLATE "C"
     """,
 )
 

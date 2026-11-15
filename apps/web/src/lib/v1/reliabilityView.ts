@@ -1,4 +1,67 @@
 import type { NetworkFile, NetworkShift, TrendPoint } from './index';
+import type { Receipt } from './schemas/receipts';
+
+function receiptStatesView(states: Receipt['service_states']) {
+	if (states == null) return null;
+	return {
+		scheduledTripDays: states.scheduled_trip_days ?? null,
+		deliveredTripDays: states.delivered_trip_days ?? null,
+		cancelledTripDays: states.cancelled_trip_days ?? null,
+		silentTripDays: states.silent_trip_days ?? null,
+		completenessPct: states.service_completeness_pct ?? null,
+		notReportedRouteCount: states.not_reported_route_count ?? null,
+		notReportedRoutes: Object.freeze(
+			(states.not_reported_routes ?? []).map(
+				(row) =>
+					({
+						id: row.id,
+						name: row.name ?? null,
+						scheduledTripDays: row.scheduled_trip_days ?? null,
+					}) as const,
+			),
+		),
+	} as const;
+}
+
+export function receiptReliabilityView(receipt: Receipt | null | undefined) {
+	if (receipt == null) return null;
+	return {
+		onTimePct: receipt.otp_pct ?? null,
+		meanDelayMin: receipt.avg_delay_min ?? null,
+		severePct: receipt.severe_pct ?? null,
+		affectedRoutes: receipt.affected_routes ?? null,
+		affectedStops: receipt.affected_stops ?? null,
+		alerts: receipt.alerts ?? null,
+		vehicles: receipt.vehicles ?? null,
+		worstRoute:
+			receipt.worst_route == null
+				? null
+				: ({
+						id: receipt.worst_route.id,
+						name: receipt.worst_route.name ?? null,
+						onTimeDeltaPts: receipt.worst_route.otp_delta_pts ?? null,
+					} as const),
+		worstStop:
+			receipt.worst_stop == null
+				? null
+				: ({
+						id: receipt.worst_stop.id,
+						name: receipt.worst_stop.name ?? null,
+						meanDelayMin: receipt.worst_stop.avg_delay_min ?? null,
+					} as const),
+		byShift: Object.freeze(
+			(receipt.by_shift ?? []).map(
+				(row) =>
+					({
+						shift: row.shift,
+						severePct: row.severe_pct ?? null,
+					}) as const,
+			),
+		),
+		serviceStates: receiptStatesView(receipt.service_states),
+	} as const;
+}
+export type ReceiptReliabilityView = NonNullable<ReturnType<typeof receiptReliabilityView>>;
 
 const pointView = (point: TrendPoint) =>
 	({

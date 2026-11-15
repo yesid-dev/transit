@@ -1,9 +1,6 @@
 import type { LineDirectory } from '#lib/site/lineDirectory.ts';
-import type {
-	ReceiptNotReportedRoute,
-	ReceiptServiceStates,
-	SeverityCode,
-} from '#lib/v1/schemas/index.ts';
+import type { SeverityCode } from '#lib/v1/schemas/index.ts';
+import type { ReceiptReliabilityView } from '#lib/v1/reliabilityView.ts';
 
 export const NOT_REPORTED_DOMAIN: readonly [number, number] = [0, 20];
 
@@ -35,25 +32,25 @@ export interface NotReportedLabels {
 }
 
 export function selectNotReportedLines(
-	states: ReceiptServiceStates | null | undefined,
+	states: Partial<NonNullable<ReceiptReliabilityView['serviceStates']>> | null | undefined,
 	labels: NotReportedLabels,
 ): NotReportedVM {
-	const list: readonly ReceiptNotReportedRoute[] = states?.not_reported_routes ?? [];
+	const list = states?.notReportedRoutes ?? [];
 	const rows: NotReportedRow[] = list.map((r, i) => ({
 		key: r.id,
 		rank: i + 1,
 		title: labels.directory.name(r.id, r.name).label,
 		subtitle: labels.rowLabel,
 		severity: 'critical' as SeverityCode,
-		value: r.scheduled_trip_days ?? null,
+		value: r.scheduledTripDays ?? null,
 		domain: NOT_REPORTED_DOMAIN,
-		display: labels.fmtScheduled(r.scheduled_trip_days),
+		display: labels.fmtScheduled(r.scheduledTripDays),
 		href: labels.href(r.id),
 	}));
 	return {
 		rows,
 		shown: rows.length,
-		total: states?.not_reported_route_count ?? null,
+		total: states?.notReportedRouteCount ?? null,
 		hasData: rows.length > 0,
 	};
 }

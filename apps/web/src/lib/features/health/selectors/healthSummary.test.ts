@@ -89,3 +89,18 @@ it('line 3 says what to doubt, and reassures only when the record passed and liv
 		'Non mesuré : O-Train, new gap. Ces lignes ne publient aucune donnée en direct.',
 	);
 });
+
+it('line 3 says a record published past a failed check may be wrong, and never reassures', () => {
+	const failed = { verdict: 'fail', errors: 2, warnings: 3 };
+	const doubt = (more: object, locale: 'en' | 'fr' = 'en') =>
+		healthSummary({ ...facts, ...more }, locale, tz).doubt;
+	expect(doubt({ live: { ageSeconds: 20, isStale: false }, gate: failed })).toBe(
+		'The last record was published even though its quality check failed. Line, stop and ranking figures come from it and may be wrong; check the date beside each figure.',
+	);
+	expect(doubt({ gate: failed }, 'fr')).toBe(
+		'Le dernier bilan a été publié même si son contrôle de qualité a échoué. Les chiffres des lignes, des arrêts et des classements en proviennent et peuvent être erronés; vérifiez la date à côté de chaque chiffre.',
+	);
+	expect(doubt({ gate: failed, gaps: ['metro_realtime'] })).toMatch(
+		/check failed\. .* figure\. Not measured: Metro\. These lines publish no live data\.$/,
+	);
+});

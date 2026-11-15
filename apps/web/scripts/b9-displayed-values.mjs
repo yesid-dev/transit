@@ -834,6 +834,7 @@ function verifyLedger(cell, fixture, ledger) {
 			['browser', 'live/trips.json', 200, 1],
 			['browser', 'live/alerts.json', 200, 1],
 			['browser', 'live/network.json', 200, 1],
+			['browser', 'status/data_health.json', 404, 1],
 		],
 		stop: [
 			['ssr', 'providers.json', 200, 1],
@@ -844,6 +845,7 @@ function verifyLedger(cell, fixture, ledger) {
 			['browser', 'historic/stop_reliability/52095.json', 200, 1],
 			['browser', 'live/stop_departures.json', 200, 1],
 			['browser', 'live/alerts.json', 200, 1],
+			['browser', 'status/data_health.json', 404, 1],
 		],
 		network: [
 			['ssr', 'providers.json', 200, 1],

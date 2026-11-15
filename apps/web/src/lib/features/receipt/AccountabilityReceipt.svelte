@@ -48,6 +48,7 @@
 	import { EdgeState } from '#lib/components/edge/index.ts';
 	import { StateNotice } from '@yesid/ui/feedback';
 	import { copy as COPY } from './receipt.copy';
+	import { receiptReliabilityView } from '#lib/v1/reliabilityView.ts';
 	import { selectHeadlineKpis } from './selectors/headlineKpis';
 	import { selectAffectedCounts } from './selectors/affectedCounts';
 	import { selectWorstOfDay } from './selectors/day-worst';
@@ -154,6 +155,7 @@
 			receipt.data.date === selectedDate,
 	);
 	const currentReceipt = $derived(receiptReady ? receipt.data : null);
+	const reliability = $derived(receiptReliabilityView(currentReceipt));
 	const generatedUtc = $derived(currentReceipt?.generated_utc ?? null);
 	const observationText = $derived(
 		currentReceipt && index.data
@@ -181,8 +183,8 @@
 	};
 
 	const headlineKpis = $derived(
-		currentReceipt
-			? selectHeadlineKpis(currentReceipt, {
+		reliability
+			? selectHeadlineKpis(reliability, {
 					onTime: t.metrics.onTime,
 					avgDelay: t.metrics.avgDelay,
 					severe: t.metrics.severe,
@@ -193,8 +195,8 @@
 			: [],
 	);
 	const affectedCounts = $derived(
-		currentReceipt
-			? selectAffectedCounts(currentReceipt, {
+		reliability
+			? selectAffectedCounts(reliability, {
 					routes: t.counts.routes,
 					stops: t.counts.stops,
 					alerts: t.counts.alerts,
@@ -204,7 +206,7 @@
 			: [],
 	);
 	const worst = $derived(
-		selectWorstOfDay(currentReceipt ?? { worst_route: null, worst_stop: null }, {
+		selectWorstOfDay(reliability ?? { worstRoute: null, worstStop: null }, {
 			directory: display.directory,
 			stopName: (id, name) => (name ? stopDisplayName(name) : stopNameFallback(id, locale)),
 			routeLabel: t.worst.routeLabel,
@@ -216,10 +218,10 @@
 		}),
 	);
 	const timeOfDay = $derived(
-		selectReceiptTimeOfDay(currentReceipt?.by_shift, { shiftLabel: (s) => shiftLabel(s, locale) }),
+		selectReceiptTimeOfDay(reliability?.byShift, { shiftLabel: (s) => shiftLabel(s, locale) }),
 	);
 	const stateCuts = $derived(
-		selectStateCuts(currentReceipt?.service_states, {
+		selectStateCuts(reliability?.serviceStates, {
 			delivered: t.stateCuts.delivered,
 			cancelled: t.stateCuts.cancelled,
 			silent: t.stateCuts.silent,
@@ -227,18 +229,18 @@
 		}),
 	);
 	const dayVerdict = $derived.by<string | null>(() => {
-		const r = currentReceipt;
+		const r = reliability;
 		if (r == null) return null;
-		if (r.otp_pct == null) return t.dayVerdict.none;
-		const clauses: string[] = [t.dayVerdict.otp(`${r.otp_pct}${t.units.pct}`)];
-		const wr = r.worst_route;
-		if (wr?.id && wr.otp_delta_pts != null) {
+		if (r.onTimePct == null) return t.dayVerdict.none;
+		const clauses: string[] = [t.dayVerdict.otp(`${r.onTimePct}${t.units.pct}`)];
+		const wr = r.worstRoute;
+		if (wr?.id && wr.onTimeDeltaPts != null) {
 			clauses.push(
-				t.dayVerdict.worst(display.lineName(wr.id, wr.name).label, fmtDelta(wr.otp_delta_pts)),
+				t.dayVerdict.worst(display.lineName(wr.id, wr.name).label, fmtDelta(wr.onTimeDeltaPts)),
 			);
 		}
-		if (r.affected_routes != null) clauses.push(t.dayVerdict.affected(r.affected_routes));
-		const comp = r.service_states?.service_completeness_pct ?? null;
+		if (r.affectedRoutes != null) clauses.push(t.dayVerdict.affected(r.affectedRoutes));
+		const comp = r.serviceStates?.completenessPct ?? null;
 		clauses.push(
 			comp != null
 				? t.dayVerdict.completeness(fmtSharePct(comp) ?? `${comp}${t.units.pct}`)
@@ -248,7 +250,7 @@
 	});
 
 	const notReported = $derived(
-		selectNotReportedLines(currentReceipt?.service_states, {
+		selectNotReportedLines(reliability?.serviceStates, {
 			directory: display.directory,
 			rowLabel: t.notReported.rowLabel,
 			href: (id) => localizeHref(routeFor({ kind: 'line', id }), locale),

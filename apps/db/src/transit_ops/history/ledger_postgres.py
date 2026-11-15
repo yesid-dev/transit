@@ -37,6 +37,39 @@ class PostgresLedger:
     def __init__(self, connection: Connection) -> None:
         self.connection = connection
 
+    def record_audit(
+        self,
+        identity: WindowIdentity,
+        kind: EventKind,
+        details: Mapping[str, object],
+        *,
+        reason: str | None = None,
+        actor: str | None = None,
+    ) -> RecordedEvent:
+        """Append without a window lock; durability follows the caller's transaction."""
+        if kind not in AUDIT_KINDS:
+            raise ValueError(f"record_audit refuses kind {kind!r}; use its guarded verb")
+        sequence = ledger.record_event(
+            self.connection,
+            **asdict(identity),
+            kind=kind,
+            details=details,
+            reason=reason,
+            actor=actor,
+        )
+        row = (
+            self.connection.execute(
+                text("""
+            SELECT event_id AS sequence, kind, content_version, reason, details, actor, at_utc
+            FROM core.history_event WHERE event_id=:sequence
+            """),
+                {"sequence": sequence},
+            )
+            .mappings()
+            .one()
+        )
+        return RecordedEvent(**{**row, "at_utc": row["at_utc"].astimezone(UTC)})
+
     @contextmanager
     def session(self, identity: WindowIdentity) -> Iterator[WindowSession]:
         if not self.connection.in_transaction():

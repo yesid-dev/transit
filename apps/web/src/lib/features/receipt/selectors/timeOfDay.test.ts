@@ -10,17 +10,11 @@ describe('selectReceiptTimeOfDay', () => {
 			[
 				{
 					shift: 'am_peak',
-					severe_pct: 5,
-					observation_count: 200,
-					severe_count: 10,
-					avg_delay_min: 4,
+					severePct: 5,
 				},
 				{
 					shift: 'pm_peak',
-					severe_pct: 11.1,
-					observation_count: 180,
-					severe_count: 20,
-					avg_delay_min: 8,
+					severePct: 11.1,
 				},
 			],
 			labels,
@@ -37,17 +31,11 @@ describe('selectReceiptTimeOfDay', () => {
 			[
 				{
 					shift: 'pm_peak',
-					severe_pct: 5,
-					observation_count: 1,
-					severe_count: 0,
-					avg_delay_min: 0,
+					severePct: 5,
 				},
 				{
 					shift: 'am_peak',
-					severe_pct: 5,
-					observation_count: 1,
-					severe_count: 0,
-					avg_delay_min: 0,
+					severePct: 5,
 				},
 			],
 			labels,
@@ -60,12 +48,9 @@ describe('selectReceiptTimeOfDay', () => {
 			[
 				{
 					shift: 'am_peak',
-					severe_pct: null,
-					observation_count: 1,
-					severe_count: null,
-					avg_delay_min: 3,
+					severePct: null,
 				},
-				{ shift: 'night', severe_pct: 2, observation_count: 1, severe_count: 0, avg_delay_min: 1 },
+				{ shift: 'night', severePct: 2 },
 			],
 			labels,
 		);

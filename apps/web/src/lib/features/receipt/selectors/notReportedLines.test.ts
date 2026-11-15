@@ -13,10 +13,10 @@ describe('selectNotReportedLines', () => {
 	it('builds ranked rows linking to /lines/[id] on the fixed count domain', () => {
 		const vm = selectNotReportedLines(
 			{
-				not_reported_route_count: 3,
-				not_reported_routes: [
-					{ id: '51', name: 'Édouard-Montpetit', scheduled_trip_days: 12 },
-					{ id: '24', name: 'Sherbrooke', scheduled_trip_days: 8 },
+				notReportedRouteCount: 3,
+				notReportedRoutes: [
+					{ id: '51', name: 'Édouard-Montpetit', scheduledTripDays: 12 },
+					{ id: '24', name: 'Sherbrooke', scheduledTripDays: 8 },
 				],
 			},
 			labels,
@@ -32,8 +32,8 @@ describe('selectNotReportedLines', () => {
 	it('carries the shown/total honesty (pre-cap count vs capped list)', () => {
 		const vm = selectNotReportedLines(
 			{
-				not_reported_route_count: 200,
-				not_reported_routes: [{ id: '1', name: null, scheduled_trip_days: 5 }],
+				notReportedRouteCount: 200,
+				notReportedRoutes: [{ id: '1', name: null, scheduledTripDays: 5 }],
 			},
 			labels,
 		);
@@ -43,7 +43,7 @@ describe('selectNotReportedLines', () => {
 
 	it('stands down on ramp-in — an ABSENT list is honest-absence, not an empty "all reported"', () => {
 		expect(selectNotReportedLines(undefined, labels).hasData).toBe(false);
-		expect(selectNotReportedLines({ not_reported_routes: [] }, labels).hasData).toBe(false);
+		expect(selectNotReportedLines({ notReportedRoutes: [] }, labels).hasData).toBe(false);
 	});
 });
 it('ladder rows lead with the line number', () => {
@@ -52,7 +52,7 @@ it('ladder rows lead with the line number', () => {
 		{ line: (id) => `Line ${id}` },
 	);
 	const result = selectNotReportedLines(
-		{ not_reported_routes: [{ id: '1-373', name: 'Confederation' }] },
+		{ notReportedRoutes: [{ id: '1-373', name: 'Confederation', scheduledTripDays: null }] },
 		{ ...labels, directory },
 	);
 	expect(result.rows[0].title).toBe('1 · Confederation');

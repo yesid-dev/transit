@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import pathlib
@@ -8,6 +7,9 @@ import pytest
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 _DB_SCHEMAS = _REPO_ROOT / "apps/db/src/transit_ops/snapshots/schemas"
 _WEB_MIRROR = _REPO_ROOT / "apps/web/src/lib/v1/schemas/json"
+_R3_FAMILIES = {"historic_receipt.schema.json", "historic_network_trend.schema.json"}
+_R3_DB = _DB_SCHEMAS / "r3"
+_R3_WEB = _WEB_MIRROR.parent / "r3/json"
 
 pytestmark = pytest.mark.skipif(
     not _WEB_MIRROR.is_dir(),
@@ -17,6 +19,16 @@ pytestmark = pytest.mark.skipif(
 
 def _schema_basenames(directory: pathlib.Path) -> set[str]:
     return {path.name for path in directory.glob("*.schema.json")}
+
+
+def test_revision_three_web_mirror_has_exact_family_set() -> None:
+    assert _schema_basenames(_R3_DB) == _R3_FAMILIES
+    assert _schema_basenames(_R3_WEB) == _R3_FAMILIES
+
+
+@pytest.mark.parametrize("name", sorted(_R3_FAMILIES))
+def test_revision_three_web_mirror_is_byte_identical(name: str) -> None:
+    assert (_R3_WEB / name).read_bytes() == (_R3_DB / name).read_bytes(), name
 
 
 def test_web_mirror_has_same_schema_files_as_db_export() -> None:

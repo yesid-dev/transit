@@ -1,3 +1,9 @@
+import { tick } from 'svelte';
+import {
+	captureEnvironment,
+	receiptBaseline,
+	receiptInventory,
+} from './__fixtures__/receiptRenderBaseline';
 import { stampCopy } from '#lib/v1/stamp.copy.ts';
 vi.mock('$app/navigation', () => ({ afterNavigate: () => {} }));
 import { render, screen, within, fireEvent, waitFor, act } from '@testing-library/svelte';
@@ -112,9 +118,15 @@ const ports = vi.hoisted(() => ({
 	getAdvertisedReceipt: vi.fn(),
 }));
 
+const baselineManifest = vi.hoisted(() => ({
+	provider: 'stm',
+	display_name: 'STM',
+	tz: 'America/Toronto',
+	files: {},
+}));
 vi.mock('#lib/v1/boot.ts', () => ({
 	getV1Context: () => ({
-		manifest: { provider: 'stm', display_name: 'STM', tz: 'America/Toronto', files: {} },
+		manifest: baselineManifest,
 	}),
 }));
 
@@ -195,7 +207,112 @@ beforeEach(async () => {
 	);
 });
 
-afterEach(resetReceiptState);
+afterEach(() => {
+	resetReceiptState();
+	vi.useRealTimers();
+	baselineManifest.provider = 'stm';
+	baselineManifest.display_name = 'STM';
+});
+
+const stableCases = ['populated', 'absent-receipt', 'absent-index', 'older', 'open'];
+const metricCases: Record<string, Partial<Receipt>> = {
+	'null-otp': { otp_pct: null },
+	'null-delay': { avg_delay_min: null },
+	'null-severe': { severe_pct: null },
+	'null-impact': { rider_impact_score: null },
+	'null-routes': { affected_routes: null },
+	'null-stops': { affected_stops: null },
+	'null-alerts': { alerts: null },
+	'zero-alerts': { alerts: 0 },
+	'zero-vehicles': { vehicles: 0 },
+	'null-vehicles': { vehicles: null },
+	'zero-metrics': { otp_pct: 0, avg_delay_min: 0, severe_pct: 0, rider_impact_score: 0 },
+	'negative-delay': { avg_delay_min: -1.5 },
+	'no-worst': { worst_route: null, worst_stop: null },
+	'route-only': { worst_stop: null },
+	'stop-only': { worst_route: null },
+	'null-worst-values': {
+		worst_route: { id: '161', name: 'Van Horne', otp_delta_pts: null },
+		worst_stop: { id: '57191', name: 'Rockland', avg_delay_min: null },
+	},
+	'pre-cut': { by_shift: undefined, service_states: undefined },
+	'no-time': { by_shift: [] },
+	'time-only': { service_states: undefined },
+	'null-scheduled': { service_states: { scheduled_trip_days: null } },
+	'zero-scheduled': { service_states: { scheduled_trip_days: 0 } },
+	'completeness-only': { service_states: { service_completeness_pct: 80 } },
+	'no-not-reported': { service_states: { scheduled_trip_days: 100, delivered_trip_days: 80 } },
+	'not-reported-only': {
+		service_states: { not_reported_routes: [{ id: '51', scheduled_trip_days: null }] },
+	},
+	'null-not-reported-total': {
+		service_states: {
+			not_reported_routes: [{ id: '51', scheduled_trip_days: 0 }],
+			not_reported_route_count: null,
+		},
+	},
+	'shift-order': {
+		by_shift: [
+			{ shift: 'unknown', severe_pct: 10 },
+			{ shift: 'pm_peak', severe_pct: 10 },
+			{ shift: 'am_peak', severe_pct: 10 },
+			{ shift: 'midday', severe_pct: null },
+		],
+	},
+};
+const renderCases = stableCases
+	.flatMap((name) =>
+		['stm', 'octranspo'].flatMap((provider) =>
+			[390, 1280].map((width) => ({ name, provider, width })),
+		),
+	)
+	.concat(
+		Object.keys(metricCases).flatMap((name) =>
+			['stm', 'octranspo'].map((provider) => ({ name, provider, width: 1280 })),
+		),
+	);
+const renderMatrix = renderCases.flatMap((entry) =>
+	(['en', 'fr'] as const).map((locale) => ({
+		...entry,
+		locale,
+		key: `receipt-${entry.name}-${entry.provider}-${entry.width}-${locale}`,
+	})),
+);
+it('has the exact receipt render inventory', () =>
+	receiptInventory(
+		'receipt-',
+		renderMatrix.map(({ key }) => key),
+	));
+it.each(renderMatrix)(
+	'receipt render matches its pre-refactor canonical bytes: $key',
+	async ({ name, provider, width, locale, key }) => {
+		captureEnvironment(width);
+		baselineManifest.provider = provider;
+		baselineManifest.display_name = provider === 'stm' ? 'STM' : 'OC Transpo';
+		indexData = { ...indexData, dates: ['2026-06-13', '2026-06-14', '2026-06-15'] };
+		ports.getHistoricAvailability.mockReturnValue({
+			families: [{ family: 'network', last_available_date: '2026-06-15' }],
+		});
+		receiptData = { ...withAllCuts(), date: '2026-06-15', severe_pct: 11.1, ...metricCases[name] };
+		if (name === 'absent-receipt') receiptData = null;
+		if (name === 'absent-index') indexData = { ...indexData, dates: [] };
+		if (name === 'open') indexData = { ...indexData, dates: [...indexData.dates!, '2026-06-16'] };
+		const view = render(AccountabilityReceipt, {
+			context: new Map([[Symbol.for('@yesid/ui/locale'), () => locale]]),
+		});
+		if (name === 'older' || name === 'open') {
+			ports.getReceipt.mockImplementation((date: string) => ({ ...receiptData, date }));
+			await fireEvent.change(
+				within(view.container).getByLabelText(receiptCopy[locale].datePicker.label),
+				{ target: { value: name === 'open' ? '2026-06-16' : '2026-06-13' } },
+			);
+		}
+		await tick();
+		await tick();
+		receiptBaseline(key, view.container);
+		view.unmount();
+	},
+);
 
 describe('receipt closed days', () => {
 	beforeEach(() => {

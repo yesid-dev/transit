@@ -23,6 +23,7 @@ from transit_ops.history.poll_record import (
     observed_interval_ms,
     ordered_record,
 )
+from transit_ops.history.rewrite_evidence import decode_processing_evidence
 
 CLOSED_UNFINISHED = "closed_unfinished"
 _INDEX = {
@@ -277,40 +278,6 @@ def _silver_loads(
     return tuple(entries)
 
 
-def _evidence_details(details: Any, family: str, event_id: int) -> tuple[datetime, dict[int, int]]:
-    try:
-        if not isinstance(details, dict) or set(details) != {
-            "command",
-            "completed_at_utc",
-            "index_family",
-            "rows_by_capture",
-        }:
-            raise ValueError("invalid keys")
-        stamp, counts = details["completed_at_utc"], details["rows_by_capture"]
-        if (
-            not isinstance(details["command"], str)
-            or details["index_family"] != family
-            or not isinstance(stamp, str)
-            or not re.fullmatch(
-                r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}Z", stamp
-            )
-            or not isinstance(counts, dict)
-        ):
-            raise ValueError("invalid evidence fields")
-        if any(
-            not isinstance(key, str)
-            or not re.fullmatch(r"[0-9]+", key)
-            or int(key) <= 0
-            or type(value) is not int
-            or value < 0
-            for key, value in counts.items()
-        ):
-            raise ValueError("invalid capture counts")
-        return datetime.fromisoformat(stamp), {int(k): v for k, v in counts.items()}
-    except (ValueError, TypeError, KeyError) as exc:
-        raise PollRecordInvalid(f"event {event_id}: {exc}") from exc
-
-
 def _recorded_evidence(connection: Connection, day: FeedDayKey) -> dict[int, ProcessingEntry]:
     events = ledger_select.ledger_for(connection).events(
         WindowIdentity("capture." + day.endpoint_key, day.provider_id, day.utc_date.isoformat()),
@@ -318,7 +285,9 @@ def _recorded_evidence(connection: Connection, day: FeedDayKey) -> dict[int, Pro
     )
     result: dict[int, ProcessingEntry] = {}
     for event in events:
-        completed, counts = _evidence_details(event.details, day.index_family, event.sequence)
+        completed, counts = decode_processing_evidence(
+            event.details, index_family=day.index_family, sequence=event.sequence
+        )
         for capture_id, count in counts.items():
             previous = result.get(capture_id)
             # Events arrive in id order, so equal completion times prefer the later id.

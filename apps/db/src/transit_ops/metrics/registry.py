@@ -96,6 +96,9 @@ class Registry:
     def series(self, id: str, revision: int) -> Series:
         return self._series[id, revision]
 
+    def series_for_revision(self, revision: int) -> tuple[Series, ...]:
+        return tuple(s for (_, r), s in sorted(self._series.items()) if r == revision)
+
     def arithmetic(self, metric_id: str, revision: int) -> Arithmetic:
         return {a.revision: a for a in self.metric(metric_id).arithmetic}[revision]
 

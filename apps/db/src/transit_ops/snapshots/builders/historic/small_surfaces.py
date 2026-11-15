@@ -180,7 +180,8 @@ _HOTSPOTS_SQL = named_query(
       AND rp.period_grain = target.target_grain
       AND NOT (rp.entity_kind = 'route' AND rp.entity_id = '__unrouted__')
       AND NOT (rp.entity_kind = 'stop' AND rp.entity_id = '__unknown_stop__')
-    ORDER BY rp.issue_count DESC
+    ORDER BY rp.issue_count DESC, rp.entity_kind COLLATE "C",
+             rp.entity_id COLLATE "C", rp.route_id COLLATE "C"
     LIMIT 20
     """,
 )
@@ -380,7 +381,8 @@ _REPEAT_OFFENDERS_SQL = named_query(
            recurrence_days, window_days, avg_delay_seconds, severity_label
     FROM gold.repeat_offender
     WHERE provider_id = :provider_id
-    ORDER BY recurrence_days DESC, avg_delay_seconds DESC
+    ORDER BY recurrence_days DESC NULLS FIRST, avg_delay_seconds DESC NULLS FIRST,
+             entity_kind COLLATE "C", entity_id COLLATE "C", route_id COLLATE "C"
     LIMIT 50
     """,
 )
@@ -561,7 +563,7 @@ _RECEIPTS_WORST_ROUTE_SQL = named_query(
       AND NOT EXISTS (
           SELECT 1 FROM incomplete_dates AS i WHERE i.provider_local_date = prr.provider_local_date
       )
-    ORDER BY prr.provider_local_date, prr.avg_delay_seconds DESC, prr.route_id
+    ORDER BY prr.provider_local_date, prr.avg_delay_seconds DESC, prr.route_id COLLATE "C"
     """,
 )
 
@@ -580,7 +582,7 @@ _RECEIPTS_WORST_STOP_SQL = named_query(
       AND psd.provider_local_date <= :receipt_end
       AND psd.avg_delay_seconds IS NOT NULL
       AND psd.stop_id <> '__unknown_stop__'
-    ORDER BY psd.provider_local_date, psd.avg_delay_seconds DESC, psd.stop_id
+    ORDER BY psd.provider_local_date, psd.avg_delay_seconds DESC, psd.stop_id COLLATE "C"
     """,
 )
 
@@ -653,7 +655,7 @@ _RECEIPTS_NOT_REPORTED_ROUTES_SQL = named_query(
       AND rcd.total_trip_days = 0
       AND rcd.scheduled_trip_days > 0
       AND rcd.route_id <> '__unrouted__'
-    ORDER BY rcd.provider_local_date, rcd.scheduled_trip_days DESC, rcd.route_id
+    ORDER BY rcd.provider_local_date, rcd.scheduled_trip_days DESC, rcd.route_id COLLATE "C"
     """,
 )
 
@@ -832,11 +834,11 @@ _ALERT_HISTORY_SQL = named_query(
         SELECT DISTINCT message_key FROM base
         WHERE (captured_at_utc AT TIME ZONE timezone)::date BETWEEN :win_start AND :win_end
     ), latest AS (
-        SELECT DISTINCT ON (b.message_key) b.*
+        SELECT DISTINCT ON (b.message_key COLLATE "C") b.*
         FROM base b JOIN in_window w USING (message_key)
-        ORDER BY b.message_key, message_captured_utc DESC,
-                 COALESCE(message_snapshot_id, i3_alert_snapshot_id) DESC,
-                 COALESCE(message_alert_index, alert_index) DESC,
+        ORDER BY b.message_key COLLATE "C", message_captured_utc DESC NULLS FIRST,
+                 COALESCE(message_snapshot_id, i3_alert_snapshot_id) DESC NULLS FIRST,
+                 COALESCE(message_alert_index, alert_index) DESC NULLS FIRST,
                  i3_alert_snapshot_id DESC, alert_index DESC
     ), entities AS (
         SELECT b.message_key,
@@ -862,7 +864,7 @@ _ALERT_HISTORY_SQL = named_query(
         FROM silver.i3_alert_active_periods
         WHERE i3_alert_snapshot_id = l.i3_alert_snapshot_id AND alert_index = l.alert_index
     ) p ON true
-    ORDER BY l.active_period_start_utc DESC NULLS LAST, l.message_key
+    ORDER BY l.active_period_start_utc DESC NULLS LAST, l.message_key COLLATE "C"
     LIMIT 500
     """,
 )

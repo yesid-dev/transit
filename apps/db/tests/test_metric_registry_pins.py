@@ -30,10 +30,13 @@ def fixture_registry(series=None, metrics=None, **kwargs):
     )
 
 
-def test_empty_registry_and_committed_pins():
+def test_committed_registry_pins_match_real_entries():
     pins = json.loads(Path(__file__).with_name("metric_registry_pins.json").read_text())
-    assert pins == {"series": {}, "metrics": {}}
     REGISTRY.validate_pins(pins)
+
+
+def test_empty_registry_has_no_pins():
+    Registry().validate_pins({"series": {}, "metrics": {}})
 
 
 @pytest.mark.parametrize(

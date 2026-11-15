@@ -69,6 +69,7 @@ def case(tmp_path):
         at,
         at + timedelta(seconds=1),
         at + timedelta(seconds=2),
+        at + timedelta(seconds=2),
     )
     endpoints = {"static_schedule": 901, "trip_updates": 904, "vehicle_positions": 905}
     window = ReplayWindow("oracle_seed", endpoints, (), edition, at + timedelta(seconds=3), ())
@@ -176,11 +177,12 @@ def test_seed_static_loads_the_edition_and_its_source_version_is_set(
     with oracle.engine.connect() as connection:
         version = connection.execute(
             text("""
-            SELECT source_version, source_ingestion_run_id, source_ingestion_object_id
+            SELECT source_version, source_ingestion_run_id, source_ingestion_object_id,
+                   loaded_at_utc
             FROM core.dataset_versions WHERE is_current
         """)
         ).one()
-        assert tuple(version) == (edition.storage_path, 902, 903)
+        assert tuple(version) == (edition.storage_path, 902, 903, edition.loaded_at_utc)
         assert connection.execute(
             text("SELECT trip_id FROM gold.trip_service_span")
         ).scalars().all() == ["trip-1"]
