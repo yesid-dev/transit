@@ -17,7 +17,7 @@ from sqlalchemy.exc import IntegrityError
 from transit_ops.batch.build import BuildRequest, FamilyBuilder, FamilyOutput, InputNeed
 from transit_ops.batch.engine import open_batch_session
 from transit_ops.batch.families.registry import FAMILIES, resolve_builder
-from transit_ops.batch.input_sources import layout_needs
+from transit_ops.batch.input_sources import edition_mapping, layout_needs
 from transit_ops.batch.inputs import resolve_inputs
 from transit_ops.batch.pg_load import (
     ReplayDatabase,
@@ -96,7 +96,7 @@ _EDITIONS = (
 
 
 def postgres_input_needs(request: BuildRequest, editions: Sequence[int]) -> tuple[InputNeed, ...]:
-    """Replay's own metadata reads; family reads and catalog parents are added separately."""
+    """Replay metadata and selected schedule editions; family declarations are added separately."""
     return (InputNeed("core.providers", "all"), InputNeed("core.dataset_versions", "all")) + tuple(
         InputNeed(r, f"edition:{ident}") for r in _EDITIONS for ident in editions
     )
@@ -220,17 +220,6 @@ def absent_unread(needs: Sequence[InputNeed]) -> tuple[dict[str, str], ...]:
                 )
             )
     return tuple(absent)
-
-
-def _declared_windows(root: Path, relation: str) -> tuple[InputNeed, ...]:
-    folder = root / relation
-    files = sorted(folder.iterdir()) if folder.is_dir() else []
-    needs = tuple(
-        InputNeed(relation, p.stem.replace("=", ":", 1)) for p in files if p.suffix == ".parquet"
-    )
-    if not needs:
-        raise ValueError(f"{relation}: no declared Parquet windows")
-    return needs
 
 
 def _hashes(root: Path, needs: Sequence[InputNeed]) -> tuple[tuple[str, str], ...]:
@@ -373,9 +362,11 @@ def replay_day(
         settings.GOLD_REPORTING_OPEN_WINDOW_DAYS,
         str(timezone),
     )
-    needs = {InputNeed("core.providers", "all"), InputNeed("core.dataset_versions", "all")}
-    for relation in _EDITIONS:
-        needs.update(_declared_windows(inputs_root, relation))
+    metadata_need = (InputNeed("core.dataset_versions", "all"),)
+    metadata_file = resolve_inputs(metadata_need, inputs_root)[0].files[0]
+    metadata_hash = _hashes(inputs_root, metadata_need)
+    editions = edition_mapping(metadata_file, provider_id)
+    needs = set(postgres_input_needs(request, editions.schedule_ids))
     needs.update(family_input_needs(tuple(builders.values()), request))
     needs.update(_legacy_state_needs(inputs_root))
     needed = parent_input_needs(
@@ -387,6 +378,8 @@ def replay_day(
     before = _hashes(inputs_root, ordered_needs)
     if not set(provider_hash) <= set(before):
         raise InputChanged("core.providers: replay input changed while reading timezone")
+    if not set(metadata_hash) <= set(before):
+        raise InputChanged("core.dataset_versions: replay input changed while reading editions")
     inputs = resolve_inputs(ordered_needs, inputs_root)
     started = perf_counter()
     with pinned_replay_engine(engine, as_of_utc) as pinned, PrivateArea(workdir) as area:

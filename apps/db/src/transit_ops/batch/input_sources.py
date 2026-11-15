@@ -14,6 +14,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
 from functools import cache
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import duckdb
@@ -71,7 +72,9 @@ def fetch_from_catalog(
             request.as_of_utc,
             lambda editions: archive_input_needs(
                 needs_for_replay(
-                    builders, request, postgres_needs=postgres_input_needs(request, tuple(editions))
+                    builders,
+                    request,
+                    postgres_needs=postgres_input_needs(request, editions.schedule_ids),
                 ),
                 storage,
                 request.provider_id,
@@ -136,6 +139,22 @@ class Source:
     key: str
     receipt: Mapping[str, Any]
     needs: tuple[InputNeed, ...]
+
+
+@dataclass(frozen=True, eq=False)
+class EditionMapping(Mapping[int, str]):
+    checksums: Mapping[int, str]
+    schedule_ids: tuple[int, ...]
+    bootstrap: Source | None = None
+
+    def __getitem__(self, key: int) -> str:
+        return self.checksums[key]
+
+    def __iter__(self) -> Iterator[int]:
+        return iter(self.checksums)
+
+    def __len__(self) -> int:
+        return len(self.checksums)
 
 
 class SourcesMissing(ValueError):
@@ -275,6 +294,18 @@ def _windows_for(
     return (need.window,)
 
 
+def _source_inventory(
+    relation: str,
+    storage: BronzeStorage,
+    provider: str,
+    editions: Mapping[int, str],
+) -> dict[str, Source]:
+    pinned = editions.bootstrap if isinstance(editions, EditionMapping) else None
+    if pinned is not None and relation == "core.dataset_versions":
+        return {pinned.receipt["window_key"]: pinned}
+    return _archive(storage, relation, provider)
+
+
 def resolve_sources(
     needs: Sequence[InputNeed],
     storage: BronzeStorage,
@@ -302,7 +333,9 @@ def resolve_sources(
             missing.append(need)
             continue
         if need.relation not in inventories:
-            inventories[need.relation] = _archive(storage, need.relation, provider)
+            inventories[need.relation] = _source_inventory(
+                need.relation, storage, provider, editions
+            )
         copies = inventories[need.relation]
         windows = _windows_for(need, dataset, copies, as_of, editions)
         if not windows or any(w not in copies for w in windows):
@@ -337,7 +370,12 @@ def _download(source: Source, storage: BronzeStorage, root: Path) -> Path:
     )[0].path
 
 
-def edition_mapping(path: Path, provider: str) -> dict[int, str]:
+def edition_mapping(
+    path: Path,
+    provider: str,
+    *,
+    bootstrap: Source | None = None,
+) -> EditionMapping:
     with duckdb.connect() as conn:
         rows = conn.execute(
             "SELECT dataset_version_id, COALESCE(checksum_sha256, content_hash) "
@@ -358,7 +396,30 @@ def edition_mapping(path: Path, provider: str) -> dict[int, str]:
         if checksum in mapping.values() and mapping.get(ident) != checksum:
             raise ValueError(f"ambiguous edition checksum: {checksum}")
         mapping[ident] = checksum
-    return mapping
+    with duckdb.connect() as conn:
+        selected = conn.execute(
+            "SELECT dataset_version_id FROM read_parquet(?, hive_partitioning=false) "
+            "WHERE provider_id=? AND dataset_kind='static_schedule' AND is_current=true "
+            "ORDER BY loaded_at_utc DESC NULLS FIRST, dataset_version_id DESC LIMIT 1",
+            [str(path), provider],
+        ).fetchall()
+    return EditionMapping(MappingProxyType(mapping), tuple(row[0] for row in selected), bootstrap)
+
+
+def _check_bootstrap_current(
+    bootstrap: Source,
+    storage: BronzeStorage,
+    provider: str,
+    as_of: datetime,
+) -> None:
+    try:
+        current = resolve_sources(bootstrap.needs, storage, provider, as_of, {})
+    except SourcesMissing as error:
+        raise ValueError(
+            "bootstrap_source_changed: core.dataset_versions has no current proof"
+        ) from error
+    if current != (bootstrap,):
+        raise ValueError(f"bootstrap_source_changed: core.dataset_versions {bootstrap.key}")
 
 
 def _predicate(need: InputNeed, column: str | None, as_of: datetime) -> tuple[str, list[object]]:
@@ -472,7 +533,7 @@ def fetch_replay_inputs(
     root: Path,
     provider: str,
     as_of: datetime,
-    needs_for: Callable[[Mapping[int, str]], Sequence[InputNeed]],
+    needs_for: Callable[[EditionMapping], Sequence[InputNeed]],
 ) -> dict[str, object]:
     """Bootstrap exactly one proven metadata object, then preflight all payloads."""
     from transit_ops.batch.replay import absent_unread
@@ -485,9 +546,10 @@ def fetch_replay_inputs(
     bootstrap = resolve_sources([bootstrap_need], storage, provider, as_of, {})[0]
     with PrivateArea(root) as area:
         first = _download(bootstrap, storage, area / "bootstrap")
-        mapping = edition_mapping(first, provider)
+        mapping = edition_mapping(first, provider, bootstrap=bootstrap)
         needs = tuple(needs_for(mapping))
         sources = resolve_sources(needs, storage, provider, as_of, mapping)
+        _check_bootstrap_current(bootstrap, storage, provider, as_of)
         paths = {bootstrap.key: first}
         for index, source in enumerate(sources):
             if source.key not in paths:

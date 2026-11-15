@@ -95,7 +95,9 @@ def bootstrap(storage, query=None):
         query
         or (
             "SELECT 'sample' AS provider_id, 7::BIGINT AS dataset_version_id, "
-            f"'{('c' * 64)}' AS checksum_sha256, NULL::VARCHAR AS content_hash"
+            f"'{('c' * 64)}' AS checksum_sha256, NULL::VARCHAR AS content_hash, "
+            "'static_schedule' AS dataset_kind, true AS is_current, "
+            "TIMESTAMPTZ '2026-11-01 00:00:00+00' AS loaded_at_utc"
         ),
     )
 
@@ -193,7 +195,9 @@ def test_ambiguous_edition_id_refuses(tmp_path):
     key = bootstrap(
         storage,
         "SELECT 'sample' AS provider_id, 7::BIGINT AS dataset_version_id, "
-        "repeat(c,64) AS checksum_sha256, NULL::VARCHAR AS content_hash "
+        "repeat(c,64) AS checksum_sha256, NULL::VARCHAR AS content_hash, "
+        "'static_schedule' AS dataset_kind, true AS is_current, "
+        "TIMESTAMPTZ '2026-11-01 00:00:00+00' AS loaded_at_utc "
         "FROM (VALUES ('c'), ('d')) t(c)",
     )
     with pytest.raises(ValueError, match="ambiguous edition id: 7"):
@@ -566,3 +570,89 @@ def test_parent_reference_checks_repeat_across_relations_and_fk_shapes(tmp_path)
             )
         ]
         assert actual == [True, False, True]
+
+
+@pytest.mark.parametrize("explicit_gis", [False, True])
+def test_schedule_reader_ignores_gis_but_explicit_family_needs_still_refuse(
+    tmp_path, monkeypatch, explicit_gis
+):
+    from contextlib import nullcontext
+
+    from transit_ops.batch import input_sources
+    from transit_ops.batch.build import BuildRequest
+
+    class Catalog:
+        def get_foreign_keys(self, name, schema):
+            return []
+
+    class ReadsGIS:
+        def inputs(self, request):
+            return (InputNeed("silver.trips", "edition:8"),)
+
+    monkeypatch.setattr(input_sources, "replay_catalog", lambda: nullcontext(Catalog()))
+    storage = store(tmp_path)
+    bootstrap(
+        storage,
+        "SELECT 'sample' AS provider_id, i::BIGINT AS dataset_version_id, "
+        "repeat(c,64) AS checksum_sha256, NULL::VARCHAR AS content_hash, "
+        "kind AS dataset_kind, current AS is_current, "
+        "TIMESTAMPTZ '2026-11-01 00:00:00+00' AS loaded_at_utc "
+        "FROM (VALUES (7,'c','static_schedule',true), (8,'d','gis_static',true), "
+        "(9,'e','static_schedule',false)) t(i,c,kind,current)",
+    )
+    archive(storage, "core.providers", "2026-11", "SELECT 'sample' AS provider_id")
+    for relation in (
+        "silver.trips",
+        "silver.calendar",
+        "silver.calendar_dates",
+        "silver.stop_times",
+    ):
+        archive(storage, relation, "c" * 64, "SELECT 7::BIGINT AS dataset_version_id")
+    root = tmp_path / "inputs"
+    root.mkdir()
+    request = BuildRequest("sample", (datetime(2026, 11, 1).date(),), STAMP, 14, 7, "UTC")
+    if explicit_gis:
+        with pytest.raises(SourcesMissing) as caught:
+            input_sources.fetch_from_catalog(storage, root, request, [ReadsGIS()])
+        assert caught.value.needs == (InputNeed("silver.trips", "edition:8"),)
+    else:
+        result = input_sources.fetch_from_catalog(storage, root, request, [])
+        assert {n["window"] for n in result["needs"]} == {"all", "edition:7"}
+        mapping = edition_mapping(root / "core.dataset_versions" / "all.parquet", "sample")
+        assert mapping == {7: "c" * 64, 8: "d" * 64, 9: "e" * 64}
+
+
+def test_changed_bootstrap_refuses_before_any_other_payload(tmp_path, monkeypatch):
+    storage = store(tmp_path)
+    first_key = bootstrap(storage)
+    archive(storage, "core.providers", "2026-11", "SELECT 'sample' AS provider_id")
+    opened, observed = [], {}
+    original = LocalBronzeStorage.open_stream
+
+    def opening(self, key, **kwargs):
+        opened.append(key)
+        return original(self, key, **kwargs)
+
+    def needs_for(mapping):
+        observed.update(mapping)
+        archive(
+            storage,
+            "core.dataset_versions",
+            "2026-11",
+            "SELECT 'sample' AS provider_id, i::BIGINT AS dataset_version_id, "
+            "repeat(c,64) AS checksum_sha256, NULL::VARCHAR AS content_hash, "
+            "'static_schedule' AS dataset_kind, true AS is_current, "
+            "TIMESTAMPTZ '2026-11-01 00:00:00+00' AS loaded_at_utc "
+            "FROM (VALUES (7,'c'), (8,'d')) t(i,c)",
+            version=2,
+        )
+        return (InputNeed("core.dataset_versions", "all"), InputNeed("core.providers", "all"))
+
+    monkeypatch.setattr(LocalBronzeStorage, "open_stream", opening)
+    root = tmp_path / "inputs"
+    root.mkdir()
+    with pytest.raises(ValueError, match="bootstrap_source_changed.*core.dataset_versions"):
+        fetch_replay_inputs(storage, root, "sample", STAMP, needs_for)
+    assert observed == {7: "c" * 64}
+    assert opened == [first_key]
+    assert list(root.iterdir()) == []
