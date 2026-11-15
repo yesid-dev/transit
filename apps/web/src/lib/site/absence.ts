@@ -149,8 +149,8 @@ export const ABSENCE_COPY: Record<Locale, Record<AbsenceReasonKey, ReasonCopy>> 
 			why: 'aucune information sur l’occupation ici',
 		},
 		'thin-coverage': {
-			short: 'Pas assez de mesures',
-			why: 'mesures de retard pour seulement {n} bus sur {total}',
+			short: 'Pas assez de relevés',
+			why: 'relevés de retard pour seulement {n} bus sur {total}',
 		},
 		'histogram-not-published': {
 			short: 'Aucun histogramme',

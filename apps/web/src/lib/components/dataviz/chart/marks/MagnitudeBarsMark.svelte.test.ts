@@ -665,4 +665,19 @@ describe('phone ranking content', () => {
 			'Ranking: 12%',
 		);
 	});
+
+	it('puts the interval on its own line under the rate, so a phone never cuts it off', () => {
+		const { container } = render(MagnitudeBarsMark, { props: { spec: baseSpec('95% CI') } });
+		const row = container.querySelector('[data-slot="stacked-rankings"] [role="listitem"]')!;
+		const rate = row.querySelector('[data-slot="ranking-rate"]')!;
+		const interval = row.querySelector('[data-slot="ranking-interval"]')!;
+		expect(rate).toHaveTextContent(/^44%$/);
+		expect(interval).toHaveTextContent(/^95% CI 31%–57%$/);
+		expect(rate.nextElementSibling).toBe(interval);
+	});
+
+	it('shows no interval line when the chart publishes no interval', () => {
+		const { container } = render(MagnitudeBarsMark, { props: { spec: baseSpec(undefined) } });
+		expect(container.querySelector('[data-slot="ranking-interval"]')).toBeNull();
+	});
 });

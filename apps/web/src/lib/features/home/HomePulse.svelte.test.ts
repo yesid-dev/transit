@@ -162,7 +162,7 @@ describe('Home accountability strip', () => {
 
 	it.each([
 		['en', 'On time', 'Not enough readings', '10 of 328'],
-		['fr', 'À l’heure', 'Pas assez de mesures', '10 bus sur 328'],
+		['fr', 'À l’heure', 'Pas assez de relevés', '10 bus sur 328'],
 	] as const)(
 		'holds back an on-time share that too few buses stand behind (%s)',
 		(locale, label, held, count) => {

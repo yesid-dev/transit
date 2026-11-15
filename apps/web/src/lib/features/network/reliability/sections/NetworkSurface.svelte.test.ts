@@ -524,7 +524,7 @@ describe('NetworkSurface live cards (S9C)', () => {
 
 	it.each([
 		['en', 'Not enough readings, delay readings for only 10 of 328 buses'],
-		['fr', 'Pas assez de mesures, mesures de retard pour seulement 10 bus sur 328'],
+		['fr', 'Pas assez de relevés, relevés de retard pour seulement 10 bus sur 328'],
 	] as const)('holds back a live on-time share too few buses stand behind (%s)', (locale, why) => {
 		Object.assign(network, {
 			vehicles_in_service: 328,
