@@ -835,6 +835,11 @@ def fetch_replay_inputs(
             if source.key not in paths:
                 paths[source.key] = _download(source, storage, area / str(index))
         receipts = materialize(sources, paths, root, as_of)
+        from transit_ops.batch.input_provenance import write_input_receipts
+
+        write_input_receipts(
+            root, layout_needs(tuple(n for s in sources for n in s.needs)), sources
+        )
         bundles = {
             s.receipt["bundle_version"]: dict(
                 version=s.receipt["bundle_version"],

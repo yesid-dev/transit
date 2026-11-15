@@ -15,6 +15,9 @@ from transit_ops.maintenance.i3 import MIN_SILVER_I3_CLOSED_RETENTION_DAYS
 from transit_ops.maintenance.silver import REALTIME_SILVER_TABLES
 from transit_ops.settings import Settings
 
+# Runs and snapshots last minutes; a skew this large means a broken registration.
+PRUNER_CLOCK_SKEW_MARGIN = timedelta(days=30)
+
 
 def retention_days(dataset: str, settings: Settings) -> int | None:
     if dataset in GOLD_FACT_TABLES:
@@ -53,10 +56,14 @@ def window_in_pruning(spec: WindowSpec, now: datetime, settings: Settings) -> bo
         return False  # Whole-state month labels are not data interval bounds.
     days = retention_days(spec.dataset_id, settings)
     first = window_start(dataset, spec.window_key)
+    margin = (
+        PRUNER_CLOCK_SKEW_MARGIN if spec.dataset_id in RAW_BRONZE_METADATA_TABLES else timedelta(0)
+    )
     return (
         days is not None
         and first is not None
-        and datetime.combine(first, time(), UTC) < now - timedelta(days=days) + timedelta(days=1)
+        and datetime.combine(first, time(), UTC)
+        < now - timedelta(days=days) + timedelta(days=1) + margin
     )
 
 

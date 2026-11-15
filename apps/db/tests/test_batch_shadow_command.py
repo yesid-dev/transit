@@ -244,3 +244,90 @@ def test_real_family_shadow_command_rerun_preserves_verified_objects(tmp_path, m
         for p in root.rglob("*")
         if p.is_file()
     } == before
+
+
+@pytest.mark.parametrize(
+    "provenance,expected",
+    [
+        ("missing", "input_provenance_missing"),
+        ("rejected", "known_incomplete"),
+        ("changed", "input_provenance_missing"),
+        ("rescue", None),
+        ("different", None),
+    ],
+)
+def test_already_downloaded_rejected_fact_refuses_before_shadow_outputs(
+    tmp_path, monkeypatch, provenance, expected
+):
+    import hashlib
+    from dataclasses import replace
+
+    from test_family_occupancy_crowding import DAY, REQUEST, write_inputs
+
+    from transit_ops.lake import copy_rejections
+
+    provider = "r33c_seed"
+    request = replace(REQUEST, local_dates=(DAY,), provider_id=provider)
+    write_inputs(tmp_path / "inputs", request, provider_id=provider)
+    path = tmp_path / "inputs/gold.fact_trip_delay_snapshot/2026-11-01.parquet"
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    monkeypatch.setattr(
+        copy_rejections,
+        "REJECTED_COPIES",
+        (replace(copy_rejections.REJECTED_COPIES[0], provider_id=provider, object_sha256=digest),),
+    )
+    if provenance != "missing":
+        source = asdict(copy_rejections.REJECTED_COPIES[0])
+        source.update(
+            key=source["derived_key"].replace("/octranspo/", f"/{provider}/"),
+            object_bytes=path.stat().st_size,
+            proof=dict(verified=True, object_sha256=digest, object_bytes=path.stat().st_size),
+        )
+        if provenance == "rescue":
+            source["key"] = (
+                f"rescue/v1/parquet/{provider}/2026-11-01/fact_trip_delay_snapshot.parquet"
+            )
+        if provenance == "different":
+            source["object_sha256"] = source["proof"]["object_sha256"] = "b" * 64
+        receipt = dict(
+            input_sha256="a" * 64 if provenance == "changed" else digest, sources=[source]
+        )
+        (tmp_path / "inputs/fetch-receipts.json").write_text(
+            json.dumps(
+                dict(
+                    format_version=1,
+                    files={path.relative_to(tmp_path / "inputs").as_posix(): receipt},
+                )
+            )
+        )
+    root = tmp_path / "objects"
+    root.mkdir()
+    monkeypatch.setenv("BRONZE_STORAGE_BACKEND", "local")
+    monkeypatch.setenv("BRONZE_LOCAL_ROOT", str(root))
+    monkeypatch.setenv("GOLD_FACT_RETENTION_DAYS", str(request.fact_retention_days))
+    monkeypatch.setenv("GOLD_REPORTING_OPEN_WINDOW_DAYS", str(request.open_window_days))
+    response = CliRunner().invoke(
+        app,
+        [
+            "shadow-build",
+            "--provider",
+            provider,
+            "--date",
+            DAY.isoformat(),
+            "--as-of",
+            request.as_of_utc.isoformat(),
+            "--inputs",
+            str(tmp_path / "inputs"),
+            "--workdir",
+            str(tmp_path / "work"),
+            "--family",
+            "occupancy_crowding",
+        ],
+    )
+    if expected is not None:
+        assert response.exit_code != 0, response.output
+        assert expected in response.output
+        assert not list(root.rglob("*"))
+    else:
+        assert response.exit_code == 0, response.output
+        assert list(root.rglob("*.json"))

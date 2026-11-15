@@ -12,7 +12,7 @@ from typing import Any, cast
 
 from transit_ops.batch.build import BuildRequest, FamilyBuilder, InputNeed
 from transit_ops.batch.engine import InputRefused
-from transit_ops.batch.inputs import resolve_inputs
+from transit_ops.batch.inputs import _input_path
 from transit_ops.ingestion.storage import BronzeStorage
 
 
@@ -98,7 +98,7 @@ def _check(path: Path, need: InputNeed, digest: str, size: int) -> None:
     label = f"{need.relation} window {need.window}: {path}"
     try:
         _reconcile_alias(path)
-        resolve_inputs((need,), path.parent.parent)
+        _input_path(need, path.parent.parent)
         with path.open("rb") as stream:
             before = os.fstat(stream.fileno())
             actual = hashlib.file_digest(stream, "sha256").hexdigest()

@@ -462,7 +462,7 @@ def replay_day(
         raise InputChanged("core.providers: replay input changed while reading timezone")
     if not set(metadata_hash) <= set(before):
         raise InputChanged("core.dataset_versions: replay input changed while reading editions")
-    inputs = resolve_inputs(ordered_needs, inputs_root)
+    inputs = resolve_inputs(ordered_needs, inputs_root, provider_id=provider_id)
     from transit_ops.lake.alert_bundle import MEMBERS
 
     bundle_hashes = (

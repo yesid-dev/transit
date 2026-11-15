@@ -1359,3 +1359,55 @@ def test_proven_rescue_wins_over_competing_known_bad_archive(tmp_path):
         ),
     )
     assert resolve_sources([need], storage, "octranspo", STAMP, {})[0].key == key
+
+
+def test_fetched_rescue_provenance_survives_materialization(tmp_path):
+    from transit_ops.batch.engine import InputRefused
+    from transit_ops.batch.inputs import resolve_inputs
+
+    storage = store(tmp_path)
+    need = InputNeed("gold.fact_trip_delay_snapshot", "2026-11-01")
+    key = "rescue/v1/parquet/octranspo/2026-11-01/fact_trip_delay_snapshot.parquet"
+    path = storage.root / key
+    path.parent.mkdir(parents=True)
+    with duckdb.connect() as conn:
+        conn.execute(
+            "COPY (SELECT 'octranspo' AS provider_id, "
+            "TIMESTAMPTZ '2026-11-01 12:00:00+00' AS captured_at_utc) TO ? (FORMAT parquet)",
+            [str(path)],
+        )
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    size = path.stat().st_size
+    record = dict(
+        key=key,
+        object_sha256=digest,
+        object_bytes=size,
+        proof=dict(verified=True, object_sha256=digest, object_bytes=size),
+    )
+    put(
+        storage,
+        key.rsplit("/", 1)[0] + "/receipt.json",
+        dict(
+            format_version=1,
+            kind="rescue_parquet",
+            provider="octranspo",
+            day=need.window,
+            tables={"fact_trip_delay_snapshot": record},
+        ),
+    )
+    root = tmp_path / "inputs"
+    root.mkdir()
+    fetch_replay_inputs(
+        storage, root, "octranspo", STAMP, lambda _: [need], bootstrap_editions=False
+    )
+    local = resolve_inputs([need], root, provider_id="octranspo")[0].files[0]
+    value = json.loads((root / "fetch-receipts.json").read_text())["files"][
+        local.relative_to(root).as_posix()
+    ]
+    assert value["input_sha256"] == hashlib.sha256(local.read_bytes()).hexdigest()
+    assert value["sources"][0]["key"] == key
+    assert value["sources"][0]["object_sha256"] == digest
+    assert resolve_inputs([], root) == ()
+    local.write_bytes(local.read_bytes() + b"changed")
+    with pytest.raises(InputRefused, match="input_provenance_missing"):
+        resolve_inputs([need], root, provider_id="octranspo")

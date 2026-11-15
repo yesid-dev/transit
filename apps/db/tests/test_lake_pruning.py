@@ -153,3 +153,27 @@ def test_generic_fetch_refuses_known_copy_before_payload_read(tmp_path):
             receipt_for=lambda _: value,
         )
     assert not list(tmp_path.iterdir())
+
+
+def test_bronze_object_with_older_pruner_clock_is_skipped_at_old_edge():
+    from datetime import timedelta
+
+    from transit_ops.lake.pruning import window_in_pruning
+    from transit_ops.settings import Settings
+
+    now = datetime(2026, 11, 14, tzinfo=UTC)
+    object_created = datetime(2026, 11, 1, tzinfo=UTC)
+    parent_started = object_created - timedelta(days=2)
+    settings = Settings(
+        _env_file=None,
+        BRONZE_REALTIME_RETENTION_DAYS=0,
+        BRONZE_I3_RETENTION_DAYS=0,
+        BRONZE_STATIC_RETENTION_DAYS=14,
+    )
+    assert parent_started < now - timedelta(days=14)
+    assert window_in_pruning(WindowSpec("raw.ingestion_objects", "p", "2026-11"), now, settings)
+    assert not window_in_pruning(
+        WindowSpec("gold.fact_vehicle_snapshot", "p", "2026-11-01"),
+        now,
+        settings.model_copy(update={"GOLD_FACT_RETENTION_DAYS": 14}),
+    )
