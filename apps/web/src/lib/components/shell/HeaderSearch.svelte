@@ -29,9 +29,9 @@
 		query?: string;
 		/**
 		 * Inside the phone search sheet: the list stays under the field, Escape closes the sheet,
-		 * and leaving for a record or the search page takes the sheet's history entry when `replace`.
+		 * and the sheet leads the reader to a chosen row or to the search page itself.
 		 */
-		sheet?: { replace: boolean; dismiss: () => void; leave: () => void } | null;
+		sheet?: { dismiss: () => void; follow: (href: string) => void } | null;
 	}
 
 	let {
@@ -109,7 +109,6 @@
 	});
 
 	function close(): void {
-		if (sheet) return sheet.leave(); // the sheet clears the text once it has slid away
 		query = '';
 		open = false;
 	}
@@ -135,10 +134,10 @@
 		event.preventDefault();
 		if (shown && results?.choose()) return;
 		const href = hrefs.all;
-		const replaceState = sheet?.replace ?? false;
+		if (sheet) return sheet.follow(href);
 		close();
 		const resetFocus = resetFocusAfterNavigation();
-		await goto(href, { replaceState });
+		await goto(href);
 		resetFocus();
 	}
 </script>
@@ -191,7 +190,7 @@
 					{locale}
 					{hrefs}
 					{presentation}
-					replace={sheet?.replace ?? false}
+					follow={sheet?.follow}
 					onchoose={close}
 				/>
 			</div>

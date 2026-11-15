@@ -262,7 +262,7 @@
 
 {#snippet listingSearch()}
 	<SearchInput
-		label={t.searchLabel}
+		label={t.filterLabel}
 		placeholder={t.searchPlaceholder}
 		testId="stops-filter-input"
 		bind:value={query}

@@ -301,7 +301,7 @@ describe('StopsIndex listing system', () => {
 
 	it('identifies a street stop as Bus in the shared result row', async () => {
 		const { container } = render(StopsIndex);
-		await fireEvent.input(screen.getByRole('textbox', { name: 'Search stops' }), {
+		await fireEvent.input(screen.getByRole('textbox', { name: 'Filter this list' }), {
 			target: { value: 'rockland' },
 		});
 
@@ -405,7 +405,7 @@ describe('StopsIndex listing system', () => {
 describe('StopsIndex — find by typing', () => {
 	it('keeps the stop detail link and adds a separate filtered-map link', async () => {
 		render(StopsIndex);
-		await fireEvent.input(screen.getByRole('textbox', { name: 'Search stops' }), {
+		await fireEvent.input(screen.getByRole('textbox', { name: 'Filter this list' }), {
 			target: { value: 'rockland' },
 		});
 		expect(await screen.findByRole('link', { name: /Van Horne \/ Rockland/i })).toHaveAttribute(
@@ -423,7 +423,7 @@ describe('StopsIndex — find by typing', () => {
 
 	it('finds an accented station typed without accents and tags it as métro', async () => {
 		const { container } = render(StopsIndex);
-		await fireEvent.input(screen.getByRole('textbox', { name: 'Search stops' }), {
+		await fireEvent.input(screen.getByRole('textbox', { name: 'Filter this list' }), {
 			target: { value: 'cremazie' },
 		});
 		expect(await screen.findByRole('link', { name: /Station Crémazie/i })).toHaveAttribute(
@@ -439,7 +439,7 @@ describe('StopsIndex — find by typing', () => {
 describe('StopsIndex — reliability badges (honest probe)', () => {
 	it('shows NO badge for a stop whose history 404s (never a fabricated 0%)', async () => {
 		render(StopsIndex);
-		await fireEvent.input(screen.getByRole('textbox', { name: 'Search stops' }), {
+		await fireEvent.input(screen.getByRole('textbox', { name: 'Filter this list' }), {
 			target: { value: 'rockland' },
 		});
 		await screen.findByRole('link', { name: /Van Horne \/ Rockland/i });
@@ -458,7 +458,7 @@ describe('StopsIndex — reliability badges (honest probe)', () => {
 				: Promise.resolve(null),
 		);
 		render(StopsIndex);
-		await fireEvent.input(screen.getByRole('textbox', { name: 'Search stops' }), {
+		await fireEvent.input(screen.getByRole('textbox', { name: 'Filter this list' }), {
 			target: { value: 'rockland' },
 		});
 		await screen.findByRole('link', { name: /Van Horne \/ Rockland/i });
