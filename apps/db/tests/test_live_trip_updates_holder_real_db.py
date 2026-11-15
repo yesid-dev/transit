@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
@@ -164,7 +164,9 @@ def test_capture_load_with_holder_keeps_silver_rows(engine, settings, seed_provi
     from transit_ops import capture_load
     from transit_ops.snapshots.live_trip_updates import LiveTripUpdates
 
-    _seed(engine, seed_provider)
+    with engine.begin() as c:
+        replay._seed_provider_and_static(c, seed_provider)
+        replay._seed_raw_realtime_snapshots(c, replay.SNAPSHOTS[:1])
     raw_id, run_id, object_id, at, delay = replay.SNAPSHOTS[0]
     payload = replay._build_trip_update_bytes(captured_at=at, delay_seconds=delay)
     receipt = replace(
@@ -181,6 +183,13 @@ def test_capture_load_with_holder_keeps_silver_rows(engine, settings, seed_provi
             pytest.fail("warm load reread Bronze")
     inventories = []
     for observer in (None, holder.accept):
+        with engine.begin() as c:
+            for table in replay.REALTIME_SILVER_TABLES:
+                c.execute(text(f"DELETE FROM {table} WHERE provider_id=:p"), {"p": replay.PROVIDER})
+            assert c.execute(text(
+                "SELECT source_realtime_snapshot_id FROM silver.rt_feed_snapshots "
+                "WHERE provider_id=:p"
+            ), {"p": replay.PROVIDER}).all() == []
         result = capture_load.capture_and_load_realtime(
             replay.PROVIDER, "trip_updates", settings=settings, registry=replay._StubRegistry(),
             engine=engine, bronze_storage_resolver=lambda _: NoRead(payload),
@@ -197,7 +206,16 @@ def test_capture_load_with_holder_keeps_silver_rows(engine, settings, seed_provi
                 for table, columns in FRAME_COLUMNS.items()
             })
     assert inventories[0] == inventories[1]
-    assert inventories[1] == {table: frame.rows for table, frame in holder.latest().frames.items()}
+    assert inventories[1] == (
+        {table: frame.rows for table, frame in holder.latest().frames.items()}
+        | {"rt_vehicle_positions": ()}
+    )
+    assert inventories[1]["rt_trip_updates"] == (
+        (0, "T_REPLAY", "51", 0, date(2026, 6, 20), 0, None, at, at),
+    )
+    assert inventories[1]["rt_trip_update_stop_times"] == (
+        (0, 0, 2, "S2", datetime(2026, 6, 20, 16, 9, tzinfo=UTC), None, 0),
+    )
     assert holder.latest().frames["rt_trip_update_stop_times"].column("arrival_time_utc") == [
         datetime(2026, 6, 20, 16, 9, tzinfo=UTC)
     ]
