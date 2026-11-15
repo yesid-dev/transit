@@ -1,103 +1,118 @@
-import { render, screen, within } from '@testing-library/svelte';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { expect, it } from 'vitest';
+import type { HistoricAvailabilityIndex, IsoUtc } from '#lib/v1/schemas/index.ts';
 import SectionHistoryCoverage from './SectionHistoryCoverage.svelte';
 import { copy } from '../health.copy';
-import type { HistoryCoverageFamilyView } from '../selectors/historyCoverage';
+import { selectHistoryCoverage, selectHistoryInventory } from '../selectors/historyCoverage';
 
-const row: HistoryCoverageFamilyView = {
-	key: 'alerts',
-	published: true,
-	selectionMode: null,
-	firstDate: null,
-	lastDate: null,
-	gaps: [],
-	metrics: [],
-	currentOnlySections: [],
+const root: HistoricAvailabilityIndex = {
+	generated_utc: '2026-07-14T12:00:00Z' as unknown as IsoUtc,
+	publish_generation_id: 'gen-history',
+	methodology_version: 'historic-2',
+	families: [
+		{
+			family: 'network',
+			selection_mode: 'range',
+			index_path: 'historic/history/network/index.json',
+			first_available_date: '2026-05-01',
+			last_available_date: '2026-07-13',
+			gaps: [{ start_date: '2026-06-02', end_date: '2026-06-03', reason: 'source outage' }],
+			collection_generation_id: 'a1b2c3d4e5f6a7b8c9d0e1f2',
+			metrics: [
+				{
+					metric: 'delay',
+					aggregation: 'additive',
+					first_available_date: '2026-05-01',
+					last_available_date: '2026-07-13',
+					gaps: [],
+				},
+			],
+		},
+		{
+			family: 'lines',
+			selection_mode: 'range',
+			index_path: 'historic/history/lines/index.json',
+			first_available_date: '2026-06-01',
+			last_available_date: '2026-06-30',
+		},
+	],
 };
+const props = (patch: object = {}) => ({
+	rows: selectHistoryCoverage(root),
+	inventory: selectHistoryInventory(root),
+	recordWarning: false,
+	copy: copy.en,
+	locale: 'en' as const,
+	...patch,
+});
+const index = () => screen.getByRole('list', { name: 'Record families' });
+const evidence = () => screen.getByRole('region', { name: /^Selected family: / });
+const row = (family: string) =>
+	within(index()).getByRole('button', { name: family }).closest('li') as HTMLElement;
 
-describe('SectionHistoryCoverage empty values', () => {
-	it('renders the coverage DataTable with one caption and the complete frame dialect', () => {
-		const { container } = render(SectionHistoryCoverage, {
-			props: { rows: [row], copy: copy.fr, locale: 'fr' },
-		});
+it('indexes all seven families with their actual dates and days, then shows the selected one', async () => {
+	render(SectionHistoryCoverage, props());
 
-		const table = within(container).getByRole('table', {
-			name: copy.fr.historyCoverage.tableLabel,
-		});
-		const frame = table.parentElement;
-		expect(table.querySelectorAll('caption')).toHaveLength(1);
-		expect(table.querySelector('caption')).toHaveTextContent(copy.fr.historyCoverage.tableLabel);
-		expect(table).not.toHaveAttribute('aria-label');
-		expect(table).not.toHaveAttribute('aria-labelledby');
-		expect(frame).toHaveAttribute('data-responsive', 'stack');
-		expect(frame).toHaveAttribute('data-stack-at', 'tablet');
-		expect(frame).toHaveAttribute('data-frame', 'card');
-		expect(frame).toHaveAttribute('data-collapse', 'separate');
-		expect(frame).toHaveAttribute('data-header-band', 'none');
+	expect(within(index()).getAllByRole('listitem')).toHaveLength(7);
+	expect(row('Network')).toHaveTextContent('May 1 – Jul 13');
+	expect(row('Network')).toHaveTextContent('72 of 74 days with records');
+	expect(row('Network')).toHaveTextContent('2 missing days, in 1 gap');
+	expect(row('Lines')).toHaveTextContent('30 days from first to last date');
+	expect(row('Lines')).toHaveTextContent('Missing days not published');
+	expect(row('Stops')).toHaveTextContent('Not published');
+	expect(row('Stops')).not.toHaveTextContent(/\b0\b/);
 
-		const columnHeaders = within(table).getAllByRole('columnheader');
-		expect(
-			columnHeaders.map((header) => ({
-				text: header.textContent?.trim(),
-				column: header.getAttribute('data-column'),
-				width: header.getAttribute('style'),
-			})),
-		).toEqual([
-			{ text: 'Famille de pages', column: 'family', width: 'width: 9rem;' },
-			{ text: 'Fenêtre publiée', column: 'window', width: 'width: 18%;' },
-			{ text: 'Mode de consultation', column: 'selection', width: 'width: 17%;' },
-			{ text: 'Détails de couverture', column: 'details', width: null },
-		]);
+	// The first family with counted days opens selected; its evidence names it and its source.
+	expect(within(index()).getByRole('button', { name: 'Network' })).toHaveAttribute(
+		'aria-pressed',
+		'true',
+	);
+	const network = evidence();
+	expect(network).toHaveAccessibleName('Selected family: Network');
+	expect(network).toHaveTextContent('Jun 2 – Jun 3');
+	expect(network).toHaveTextContent('source outage');
+	// A long fingerprint shows its first characters, with the whole value in its title.
+	expect(within(network).getByText('a1b2c3d4e5f6…')).toHaveAttribute(
+		'title',
+		'a1b2c3d4e5f6a7b8c9d0e1f2',
+	);
+	expect(network).toHaveTextContent('Date list published');
+	expect(network).toHaveTextContent('Jul 14, 2026');
+	expect(network).toHaveTextContent('gen-history');
+	expect(network).toHaveTextContent('historic-2');
+	expect(network).toHaveTextContent(/Next update\s*Not published/);
+	// No family-level warning is invented when the record has none.
+	expect(network).not.toHaveTextContent(copy.en.historyCoverage.evidence.warningsLabel);
 
-		const bodyCells = Array.from(table.querySelectorAll('tbody tr > th, tbody tr > td'));
-		expect(bodyCells[0]).toHaveAttribute('scope', 'row');
-		expect(bodyCells.map((cell) => cell.getAttribute('data-column'))).toEqual([
-			'family',
-			'window',
-			'selection',
-			'details',
-		]);
-		expect(bodyCells.map((cell) => cell.getAttribute('data-col'))).toEqual([
-			'Famille de pages',
-			'Fenêtre publiée',
-			'Mode de consultation',
-			'Détails de couverture',
-		]);
-		for (const cell of bodyCells) {
-			expect(cell.querySelectorAll(':scope > .data-table-cell-content')).toHaveLength(1);
-			expect(cell.children).toHaveLength(1);
-		}
-	});
+	await fireEvent.click(within(index()).getByRole('button', { name: 'Lines' }));
+	expect(within(index()).getByRole('button', { name: 'Network' })).toHaveAttribute(
+		'aria-pressed',
+		'false',
+	);
+	expect(evidence()).toHaveAccessibleName('Selected family: Lines');
+	expect(evidence()).toHaveTextContent(/Content fingerprint\s*Not published/);
+});
 
-	it('uses full shared row notices and keeps no declared gaps as a healthy zero', () => {
-		render(SectionHistoryCoverage, {
-			props: { rows: [row], copy: copy.en, locale: 'en' },
-		});
+it('shows an absent family as not published, never as zero days', async () => {
+	render(SectionHistoryCoverage, props());
+	await fireEvent.click(within(index()).getByRole('button', { name: 'Daily receipts' }));
 
-		const healthy = screen.getByText('No declared gaps').closest('[data-slot="state-notice"]');
-		expect(healthy).toHaveAttribute('data-presentation', 'row');
-		expect(healthy).toHaveAttribute('data-tone', 'positive');
-		expect(healthy).toHaveTextContent('the history index reports no known gaps');
+	const receipts = evidence();
+	expect(receipts).toHaveTextContent(copy.en.historyCoverage.evidence.absent);
+	expect(receipts).not.toHaveTextContent(/\b0\b|days with records/);
+});
 
-		for (const message of ['No retained dates', 'Not published', 'No metric inventory']) {
-			const matches = screen.getAllByText(message);
-			expect(matches.length).toBeGreaterThan(0);
-			for (const match of matches) {
-				const notice = match.closest('[data-slot="absent-value"]');
-				expect(notice).toHaveAttribute('data-presentation', 'row');
-				expect(notice?.querySelector('[data-slot="state-notice-body"]')).not.toBeEmptyDOMElement();
-			}
-		}
-	});
+it('says which families a record warning affects is not published, without inventing one', () => {
+	render(SectionHistoryCoverage, props({ recordWarning: true }));
 
-	it('keeps an omitted gap inventory neutral instead of declaring a healthy zero', () => {
-		render(SectionHistoryCoverage, {
-			props: { rows: [{ ...row, gaps: null }], copy: copy.en, locale: 'en' },
-		});
+	expect(evidence()).toHaveTextContent(copy.en.historyCoverage.evidence.warningsUnscoped);
+});
 
-		const unknown = screen.getByText('No gap inventory').closest('[data-slot="absent-value"]');
-		expect(unknown).toHaveAttribute('data-tone', 'unknown');
-		expect(unknown).toHaveTextContent('the history index does not publish gap details');
-		expect(screen.queryByText('No declared gaps')).not.toBeInTheDocument();
-	});
+it('speaks French with the same structure', () => {
+	render(SectionHistoryCoverage, props({ copy: copy.fr, locale: 'fr' }));
+
+	expect(screen.getByRole('list', { name: 'Familles de bilans' })).toBeInTheDocument();
+	expect(screen.getByRole('region', { name: 'Famille choisie : Réseau' })).toHaveTextContent(
+		'72 jours sur 74 avec des données',
+	);
 });

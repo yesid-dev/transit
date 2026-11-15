@@ -13,12 +13,18 @@ export interface HealthSummaryFacts {
 		readonly notice?: string | null;
 	} | null;
 	readonly record: RecordStamp;
-	/** The record's last quality check (data health's rollup lane); null when not published. */
-	readonly gate: DataHealthGate | null;
+	/**
+	 * The record's last quality check (data health's rollup lane). Undefined while data health has
+	 * not answered; null when it answered without a record check.
+	 */
+	readonly gate?: DataHealthGate | null;
 	readonly gaps: readonly string[];
 }
 
-/** The three plain lines that open data health: what is current, what the record covers, what to doubt. */
+/**
+ * The three plain answers that open data health, one per column: how current live data is, what
+ * the record covers and how its publication check went, and what is known to limit the figures.
+ */
 export function healthSummary(facts: HealthSummaryFacts, locale: Locale, timeZone?: string) {
 	const t = copy[locale].summary;
 	const { live, record, gate, gaps } = facts;
@@ -35,21 +41,31 @@ export function healthSummary(facts: HealthSummaryFacts, locale: Locale, timeZon
 	const reassured = gate?.verdict === 'pass' && age != null && !live!.isStale;
 	const names = gaps.map((gap) => copy[locale].gaps.names[gap] ?? gap.replace(/_/g, ' '));
 	// A failed verdict only reaches data health when the record was forced out past its check.
-	const doubt = [
-		gate?.verdict === 'fail'
-			? t.failed
-			: warnings > 0
-				? t.warning(intl.number(locale).format(warnings), warnings)
-				: reassured && t.clear,
-		names.length > 0 && t.gaps(names.join(', ')),
-	].filter(Boolean);
+	const check =
+		gate === undefined
+			? null
+			: gate === null
+				? t.noCheck
+				: gate.verdict === 'pass'
+					? t.passed
+					: gate.verdict === 'fail'
+						? t.failed
+						: warnings > 0
+							? t.warning(intl.number(locale).format(warnings), warnings)
+							: null;
+	const limits = [reassured && t.clear, names.length > 0 && t.gaps(names.join(', '))].filter(
+		Boolean,
+	);
 	return {
+		/** The live mark's state, matching the live sentence; null before live data answers. */
+		liveState: !live ? null : age == null ? 'unknown' : live.isStale ? 'behind' : 'current',
 		live: !live
 			? null
 			: age == null
 				? stampText(liveStamp({ ageSeconds: null }), locale, timeZone)
 				: (live.isStale ? t.behind : t.current)(formatRelativeSeconds(age, locale)),
-		record: covered ? [covered, next && t.next(date(next)!)].filter(Boolean).join(' ') : null,
-		doubt: doubt.length > 0 ? doubt.join(' ') : null,
+		record: covered ? [covered, next && t.next(date(next)!)].filter(Boolean).join(' ') : t.noRecord,
+		check,
+		limits: limits.length > 0 ? limits.join(' ') : t.unconfirmed,
 	};
 }

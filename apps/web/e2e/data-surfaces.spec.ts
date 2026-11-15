@@ -270,26 +270,27 @@ test('below 1024px the view rail opens as a dialog and Escape returns to its pil
 	await expect(railPill(page)).toBeFocused();
 });
 
-test('the status page stacks its coverage table on phones and says when data is missing', async ({
+test('the status page lists its record families on phones and says when data is missing', async ({
 	page,
 }) => {
 	await page.goto('/status');
 	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
-	await page.getByRole('button', { name: healthCopy[locale].details, exact: true }).click();
-	const table = page.getByRole('table', {
-		name: healthCopy[locale].historyCoverage.tableLabel,
+	// The records index is open by default, outside the auditors' disclosure.
+	const index = page.getByRole('list', {
+		name: healthCopy[locale].historyCoverage.indexLabel,
 		exact: true,
 	});
 
-	await expect(table.getByRole('rowheader').first()).toBeVisible();
-	expect(await table.getByRole('rowheader').count()).toBeGreaterThan(1);
+	await expect(index.getByRole('button').first()).toBeVisible();
+	expect(await index.getByRole('listitem').count()).toBe(7);
 	expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
 		true,
 	);
-	const box = (await table.boundingBox())!;
+	const box = (await index.boundingBox())!;
 	expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize()!.width);
-	await expect(page.getByRole('main').getByRole('status').first()).toBeVisible();
+	await expect(index.locator('[data-slot="absent-value"]').first()).toBeVisible();
 });
+
 test('rankings name lines by number in both languages', async ({ page }) => {
 	for (const lang of PUBLISHED_LOCALES) {
 		await page.goto(localizeHref('/hotspots', lang));
