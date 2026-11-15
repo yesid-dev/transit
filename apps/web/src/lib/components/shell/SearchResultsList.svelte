@@ -17,6 +17,8 @@
 		presentation?: LivePresentation | null;
 		/** The highlighted option's id: what Enter opens. */
 		active?: string | null;
+		/** The address row: a request to send, or what that request answered. */
+		address?: { state: 'ask' | 'loading' | 'none' | 'failed'; onask: () => void } | null;
 		onchoose?: () => void;
 	}
 
@@ -29,6 +31,7 @@
 		hrefs,
 		presentation = null,
 		active = $bindable(null),
+		address = null,
 		onchoose,
 	}: Props = $props();
 	let box = $state<HTMLElement>();
@@ -51,6 +54,23 @@
 		void rule;
 		active = exactId;
 	});
+
+	// Addresses arrive because the reader asked: the first one takes the highlight.
+	const firstAddress = $derived(list.groups.find((group) => group.kind === 'address')?.hits[0]);
+	const firstAddressId = $derived(firstAddress ? optionId(firstAddress) : null);
+	$effect.pre(() => {
+		if (firstAddressId) active = firstAddressId;
+	});
+	const addressId = $derived(`${id}-address`);
+	const addressText = $derived(
+		address?.state === 'loading'
+			? copy.addressesLoading
+			: address?.state === 'none'
+				? copy.addressesNone(query)
+				: address?.state === 'failed'
+					? copy.addressesFailed
+					: copy.askAddresses(query),
+	);
 
 	/** Moves the highlight through every option, the pinned one included, and wraps. */
 	export function move(step: 1 | -1): void {
@@ -108,7 +128,7 @@
 	{#each list.unsearched as kind (kind)}<p class="search-list-none">
 			{copy.unsearched(kind)}
 		</p>{/each}
-	{#if list.groups.length || unmatched}
+	{#if list.groups.length || unmatched || address}
 		<div bind:this={box} {id} role="listbox" aria-label={label} class="search-list-box">
 			<div class="search-list-scroll">
 				<!-- Above any address rows, so rows already shown never move when addresses arrive. -->
@@ -126,6 +146,26 @@
 						{/each}
 					</div>
 				{/each}
+				<!-- Last, so nothing above it moves when the addresses replace it. -->
+				{#if address}
+					<button
+						type="button"
+						id={addressId}
+						role="option"
+						tabindex="-1"
+						aria-selected={active === addressId}
+						aria-disabled={address.state === 'ask' ? undefined : 'true'}
+						aria-describedby={address.state === 'ask' ? `${addressId}-notice` : undefined}
+						class="search-list-option search-list-address"
+						onmousedown={(event) => event.preventDefault()}
+						onclick={() => address.state === 'ask' && address.onask()}
+					>
+						<span class="search-list-label">{addressText}</span>
+						{#if address.state === 'ask'}
+							<small id={`${addressId}-notice`} aria-hidden="true">{copy.addressNotice}</small>
+						{/if}
+					</button>
+				{/if}
 			</div>
 			{#if list.total > 0}
 				<div class="search-list-pinned">
@@ -230,5 +270,17 @@
 	.search-list-option small {
 		flex: none;
 		color: var(--muted-foreground);
+	}
+	.search-list-address {
+		flex-wrap: wrap;
+		width: 100%;
+		text-align: start;
+		cursor: pointer;
+	}
+	.search-list-address small {
+		flex-basis: 100%;
+	}
+	.search-list-address[aria-disabled='true'] {
+		cursor: default;
 	}
 </style>

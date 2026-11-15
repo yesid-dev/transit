@@ -18,6 +18,12 @@ export const headerSearchCopy = {
 		noResult: (query: string) => `No line or stop matches “${query}”.`,
 		browseLines: 'Browse all lines',
 		browseStops: 'Browse all stops',
+		askAddresses: (query: string) => `Search addresses for “${query}”`,
+		addressNotice:
+			"Sends this text to our server and to the Government of Canada's Geo.ca service.",
+		addressesLoading: 'Looking up addresses…',
+		addressesNone: (query: string) => `No address found for “${query}”.`,
+		addressesFailed: 'Address search is unavailable right now.',
 		totals: (lines: number | null, stops: number | null, vehicles: number) =>
 			counts(
 				lines !== null && count(lines, 'line', 'lines'),
@@ -36,6 +42,12 @@ export const headerSearchCopy = {
 		noResult: (query: string) => `Aucune ligne ni aucun arrêt ne correspond à « ${query} ».`,
 		browseLines: 'Parcourir toutes les lignes',
 		browseStops: 'Parcourir tous les arrêts',
+		askAddresses: (query: string) => `Chercher des adresses pour « ${query} »`,
+		addressNotice:
+			'Envoie ce texte à notre serveur et au service Géo.ca du gouvernement du Canada.',
+		addressesLoading: 'Recherche d’adresses…',
+		addressesNone: (query: string) => `Aucune adresse trouvée pour « ${query} ».`,
+		addressesFailed: 'La recherche d’adresse est indisponible pour le moment.',
 		totals: (lines: number | null, stops: number | null, vehicles: number) =>
 			counts(
 				lines !== null && count(lines, 'ligne', 'lignes', lines < 2),

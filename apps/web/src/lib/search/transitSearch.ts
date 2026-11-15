@@ -22,35 +22,12 @@ export type ChromeSearchKind = 'route' | 'stop' | 'vehicle' | 'address';
 
 export type ChromeSearchScope = 'route' | 'stop' | 'map' | 'all';
 
-export interface ChromeSearchOptions {
-	readonly scope?: ChromeSearchScope;
-	readonly modes?: ReadonlySet<TransitModeKey>;
-}
-
-export interface ChromeSearchResult {
-	readonly kind: ChromeSearchKind;
-	readonly id: string;
-	readonly label: string;
-	readonly meta?: string;
-	/** A live vehicle’s line number; callers add the word for “line”. */
-	readonly line?: string;
-	readonly priority: number;
-	readonly lat?: number;
-	readonly lon?: number;
-	readonly precision?: GeocodePrecision;
-}
-
 export interface SearchSources {
 	readonly routes?: readonly RouteIndexEntry[] | null;
 	readonly stops?: readonly StopIndexEntry[] | null;
 	readonly vehicles?: readonly Vehicle[] | null;
-	readonly addresses?: readonly GeocodeSuggestion[] | null;
 }
 
-export interface HeaderSearchRequest extends ChromeSearchOptions {
-	readonly query: string;
-	readonly surface: 'header';
-}
 export interface PageSearchRequest {
 	readonly query: string;
 	readonly surface: 'page';
@@ -79,6 +56,9 @@ export interface SearchHit {
 	readonly lon?: number;
 	readonly precision?: GeocodePrecision;
 }
+/** What a result link needs: a hit, or a map target named by kind and id. */
+export type SearchTarget = Pick<SearchHit, 'kind' | 'id'> &
+	Partial<Pick<SearchHit, 'label' | 'lat' | 'lon' | 'precision'>>;
 export interface SearchGroup {
 	readonly kind: ChromeSearchKind;
 	/** Every match, not only the rows shown. */
@@ -120,11 +100,7 @@ function byScore(a: { score: number }, b: { score: number }): number {
 	return a.score - b.score;
 }
 
-function candidates(
-	request: HeaderSearchRequest | PageSearchRequest,
-	sources: SearchSources,
-	query: string,
-): Candidates {
+function candidates(request: PageSearchRequest, sources: SearchSources, query: string): Candidates {
 	const modes = request.modes?.size ? request.modes : null;
 	const keepsMode = (mode: TransitModeKey | null): boolean => !modes || (!!mode && modes.has(mode));
 	const routes = scoredCandidates(sources.routes ?? [], query, (route) => [
@@ -138,10 +114,8 @@ function candidates(
 		stop.code,
 		stop.id,
 		stop.name,
-	])
-		.filter(({ value }) => request.surface === 'page' || keepsMode(stopModeKey(value)))
-		.sort(byScore);
-	// Header selects a representative from allowed modes; page selects it before filtering.
+	]).sort(byScore);
+	// A stop's representative is chosen before the mode filter.
 	const stops = dedupeBy(stopMatches, ({ value }) => stopGroupKey(value)).filter(({ value }) =>
 		keepsMode(stopModeKey(value)),
 	);
@@ -149,93 +123,6 @@ function candidates(
 		? (sources.vehicles ?? []).filter((vehicle) => foldSearchText(vehicle.id) === query)
 		: [];
 	return { routes, stops, vehicles };
-}
-
-function collate(a: ChromeSearchResult, b: ChromeSearchResult): number {
-	return (
-		a.priority - b.priority ||
-		a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: 'base' })
-	);
-}
-function headerRoutes(routes: Candidates['routes']): ChromeSearchResult[] {
-	return routes
-		.map(
-			({ value: route, score }): ChromeSearchResult => ({
-				kind: 'route',
-				id: route.id,
-				label: route.long ? `${route.short} ${route.long}` : route.short,
-				priority: score,
-			}),
-		)
-		.sort(collate)
-		.slice(0, 5);
-}
-function headerStops(stops: Candidates['stops']): ChromeSearchResult[] {
-	return stops
-		.map(
-			({ value: stop, score }): ChromeSearchResult => ({
-				kind: 'stop',
-				id: stop.id,
-				label: stopDisplayName(stop.name),
-				meta: stop.code ?? 'Stop',
-				priority: 4 + score,
-			}),
-		)
-		.slice(0, 5);
-}
-function headerVehicles(
-	vehicles: Candidates['vehicles'],
-	routes: SearchSources['routes'],
-): ChromeSearchResult[] {
-	return [...vehicles]
-		.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: 'base' }))
-		.slice(0, 3)
-		.map(
-			(vehicle): ChromeSearchResult => ({
-				kind: 'vehicle',
-				id: vehicle.id,
-				label: vehicle.id,
-				...(vehicle.route
-					? { line: lineLabel(vehicle.route, routes ?? []) }
-					: { meta: 'Live bus' }),
-				priority: 20,
-			}),
-		);
-}
-function headerAddresses(
-	request: HeaderSearchRequest,
-	sources: SearchSources,
-): ChromeSearchResult[] {
-	return (request.modes?.size ? [] : (sources.addresses ?? [])).slice(0, 3).map(
-		(address, index): ChromeSearchResult => ({
-			kind: 'address',
-			id: addressResultId(address),
-			label: address.label,
-			meta: precisionLabel(address.precision),
-			priority: 30 + index,
-			lat: address.lat,
-			lon: address.lon,
-			precision: address.precision,
-		}),
-	);
-}
-function headerResults(
-	request: HeaderSearchRequest,
-	sources: SearchSources,
-	matches: Candidates,
-): ChromeSearchResult[] {
-	const routes = headerRoutes(matches.routes);
-	const stops = headerStops(matches.stops);
-	if (request.scope === 'route') return routes;
-	if (request.scope === 'stop') return stops;
-	return [
-		...routes,
-		...stops,
-		...headerVehicles(matches.vehicles, sources.routes),
-		...headerAddresses(request, sources),
-	]
-		.sort(collate)
-		.slice(0, 8);
 }
 
 const LIST_ROWS = {
@@ -279,20 +166,7 @@ function searchList(
 			line: vehicle.route ? lineLabel(vehicle.route, sources.routes ?? []) : null,
 		})),
 	};
-	const supplied = query ? (sources.addresses ?? []) : [];
-	const addresses: SearchGroup = {
-		kind: 'address',
-		total: supplied.length,
-		hits: supplied.slice(0, 2).map((address) => ({
-			kind: 'address',
-			id: addressResultId(address),
-			label: address.label,
-			lat: address.lat,
-			lon: address.lon,
-			precision: address.precision,
-		})),
-	};
-	const groups = [...(lead === 'stop' ? [stops, lines] : [lines, stops]), vehicles, addresses];
+	const groups = [...(lead === 'stop' ? [stops, lines] : [lines, stops]), vehicles];
 	const shown = groups.filter((group) => group.hits.length > 0);
 	const first = shown[0]?.kind;
 	const unsearched = (['route', 'stop'] as const).filter(
@@ -312,34 +186,51 @@ function searchList(
 }
 
 export function searchTransit(
-	request: HeaderSearchRequest,
-	sources: SearchSources,
-): ChromeSearchResult[];
-export function searchTransit(
 	request: PageSearchRequest,
 	sources: SearchSources,
 ): PageSearchResults;
 export function searchTransit(request: ListSearchRequest, sources: SearchSources): SearchList;
 export function searchTransit(
-	request: HeaderSearchRequest | PageSearchRequest | ListSearchRequest,
+	request: PageSearchRequest | ListSearchRequest,
 	sources: SearchSources,
-): ChromeSearchResult[] | PageSearchResults | SearchList {
+): PageSearchResults | SearchList {
 	const query = foldSearchText(request.query);
 	const matches = query
-		? candidates(
-				request.surface === 'list' ? { ...request, surface: 'page' } : request,
-				sources,
-				query,
-			)
+		? candidates(request.surface === 'list' ? { query, surface: 'page' } : request, sources, query)
 		: { routes: [], stops: [], vehicles: [] };
 	if (request.surface === 'list') return searchList(request, sources, query, matches);
-	if (request.surface === 'header') return query ? headerResults(request, sources, matches) : [];
 	return {
 		query,
 		routes: matches.routes.map(({ value }) => value),
 		stops: matches.stops.map(({ value }) => value),
 		vehicles: matches.vehicles,
 	};
+}
+
+/** The addresses the reader asked for, last and two at most; never part of the /search count. */
+export function withAddresses(
+	list: SearchList,
+	addresses: readonly GeocodeSuggestion[],
+): SearchList {
+	const groups = list.groups.filter((group) => group.kind !== 'address');
+	if (!addresses.length) return { ...list, groups };
+	const hits = addresses.slice(0, 2).map(
+		(address): SearchHit => ({
+			kind: 'address',
+			id: addressResultId(address),
+			label: address.label,
+			lat: address.lat,
+			lon: address.lon,
+			precision: address.precision,
+		}),
+	);
+	return { ...list, groups: [...groups, { kind: 'address', total: addresses.length, hits }] };
+}
+
+/** Text worth sending to the geocoder: three characters or more, and not coordinates. */
+export function canSearchAddresses(query: string): boolean {
+	const text = query.trim();
+	return text.length >= 3 && !/^-?\d+(?:\.\d+)?\s*[, ]\s*-?\d*(?:\.\d*)?$/.test(text);
 }
 
 export function scopeForPath(delocalizedPath: string): ChromeSearchScope {
@@ -367,11 +258,7 @@ const RECORD_VIEW_PARAMS = ['tab', 'grain', 'from', 'to'] as const;
  * The record a result opens. On the map a result keeps map focus. From a line
  * page another line opens on the same tab and period; the same for stops.
  */
-export function searchHitHref(
-	hit: Pick<ChromeSearchResult, 'kind' | 'id'> &
-		Partial<Pick<ChromeSearchResult, 'label' | 'lat' | 'lon' | 'precision'>>,
-	from: SearchOrigin,
-): string {
+export function searchHitHref(hit: SearchTarget, from: SearchOrigin): string {
 	const record =
 		from.path === '/map'
 			? null
@@ -393,8 +280,7 @@ export function searchHitHref(
 }
 
 export function chromeSearchHref(
-	result: Pick<ChromeSearchResult, 'kind' | 'id'> &
-		Partial<Pick<ChromeSearchResult, 'label' | 'lat' | 'lon' | 'precision'>>,
+	result: SearchTarget,
 	currentSearchParams: URLSearchParams = new URLSearchParams(),
 	scope: ChromeSearchScope = 'all',
 ): string {
@@ -432,10 +318,7 @@ function addressResultId(address: GeocodeSuggestion): string {
 	return mapNearId(address.lat, address.lon);
 }
 
-function addressTargetFromResult(
-	result: Pick<ChromeSearchResult, 'id'> &
-		Partial<Pick<ChromeSearchResult, 'label' | 'lat' | 'lon' | 'precision'>>,
-) {
+function addressTargetFromResult(result: Omit<SearchTarget, 'kind'>) {
 	if (typeof result.lat === 'number' && typeof result.lon === 'number') {
 		return {
 			lat: result.lat,
@@ -452,19 +335,4 @@ function addressTargetFromResult(
 	const lon = Number(match[2]);
 	if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
 	return { lat, lon, label: result.label ?? 'Selected place', precision: result.precision };
-}
-
-function precisionLabel(precision: GeocodePrecision): string {
-	switch (precision) {
-		case 'address':
-			return 'Address';
-		case 'street':
-			return 'Street';
-		case 'postal':
-			return 'Postal code';
-		case 'neighbourhood':
-			return 'Neighbourhood';
-		case 'place':
-			return 'Place';
-	}
 }

@@ -80,14 +80,16 @@ for (const locale of PUBLISHED_LOCALES) {
 		test.skip(project.name !== 'desktop', 'the header search box shows from 1024px');
 		await page.goto(localizeHref('/', locale));
 		const box = page.getByRole('combobox', { name: nav.searchAria.all });
-		const result = page
-			.getByRole('listbox', { name: nav.searchAria.all })
-			.getByRole('option', { name: new RegExp(literal(address.label)) });
+		const list = page.getByRole('listbox', { name: nav.searchAria.all });
+		const words = headerSearchCopy[locale];
+		const ask = list.getByRole('option', { name: words.askAddresses(address.label) });
 		await expect(async () => {
 			await box.fill(address.label);
-			await expect(result).toBeVisible({ timeout: 1_000 });
+			await expect(ask).toBeVisible({ timeout: 1_000 });
 		}).toPass();
-		await result.click();
+		// Nothing is sent while typing; the address row asks.
+		await ask.click();
+		await list.getByRole('option', { name: `${words.kind.address} ${address.label}` }).click();
 		await expect(page).toHaveURL((url) => url.pathname === localizeHref(map, locale));
 		// The map takes the address as its near-me origin and lists the stop beside it.
 		await expect(

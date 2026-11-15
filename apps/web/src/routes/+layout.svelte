@@ -84,7 +84,6 @@
 		scopeForPath,
 		type ChromeSearchScope,
 	} from '#lib/search/transitSearch.ts';
-	import type { GeocodeSuggestion } from '#lib/geocode/types.ts';
 	import type { LayoutData } from './$types';
 
 	const navigation = createNavigationLifecycle({
@@ -248,7 +247,6 @@
 
 	const edgeLayout = $derived(desktop.current ? 'desktop' : 'mobile');
 	let topSearch = $state('');
-	let addressSuggestions = $state<GeocodeSuggestion[]>([]);
 	const chromeSearchEnabled = $derived(v1 !== null && topSearch.trim().length > 0);
 	const searchRoutes = createResource(() => getRoutesIndex(), {
 		enabled: () => chromeSearchEnabled,
@@ -289,37 +287,9 @@
 				routes: searchRoutes.data?.routes ?? null,
 				stops: searchStops.data?.stops ?? null,
 				vehicles: searchLive?.vehicles?.vehicles ?? [],
-				addresses: addressSuggestions,
 			},
 		),
 	);
-
-	$effect(() => {
-		const query = topSearch.trim();
-		const wantsAddress = searchScope === 'map' || searchScope === 'all';
-		if (!browser || !v1 || !wantsAddress || !shouldSuggestAddress(query)) {
-			addressSuggestions = [];
-			return;
-		}
-
-		const controller = new AbortController();
-		const timer = setTimeout(() => {
-			void fetchAddressSuggestions(query, 2, controller.signal)
-				.then((results) => {
-					if (!controller.signal.aborted && topSearch.trim() === query) {
-						addressSuggestions = results;
-					}
-				})
-				.catch(() => {
-					if (!controller.signal.aborted) addressSuggestions = [];
-				});
-		}, 250);
-
-		return () => {
-			clearTimeout(timer);
-			controller.abort();
-		};
-	});
 
 	// Keep smooth-scroll state aligned on new paths; SvelteKit restores history entries.
 	function resetMainScroll(hash: string): void {
@@ -407,27 +377,6 @@
 
 	function retryBoot() {
 		void invalidateAll();
-	}
-
-	function shouldSuggestAddress(query: string): boolean {
-		const trimmed = query.trim();
-		if (trimmed.length < 3) return false;
-		return !/^\s*-?\d+(?:\.\d+)?\s*[, ]\s*-?\d*(?:\.\d*)?\s*$/.test(trimmed);
-	}
-
-	async function fetchAddressSuggestions(
-		query: string,
-		limit: number,
-		signal?: AbortSignal,
-	): Promise<GeocodeSuggestion[]> {
-		if (!data.v1) return [];
-		const response = await fetch(
-			`/api/geocode?provider=${encodeURIComponent(data.providerId)}&lang=${locale}&q=${encodeURIComponent(query)}&suggest=1&limit=${limit}`,
-			{ signal },
-		);
-		if (!response.ok) return [];
-		const payload = (await response.json()) as { results?: GeocodeSuggestion[] };
-		return payload.results ?? [];
 	}
 </script>
 
