@@ -1,7 +1,12 @@
 import gzip
 import hashlib
 import json
+import subprocess
+import sys
+from contextlib import contextmanager
+from dataclasses import replace
 from datetime import date
+from io import BytesIO
 
 import duckdb
 import pytest
@@ -96,15 +101,7 @@ def convert(storage, tmp_path, **kwargs):
     )
 
 
-def test_converts_and_reruns_without_database(rescue, tmp_path, monkeypatch):
-    import psycopg
-    import sqlalchemy
-
-    def refuse(*args, **kwargs):
-        pytest.fail("database connection attempted")
-
-    monkeypatch.setattr(sqlalchemy, "create_engine", refuse)
-    monkeypatch.setattr(psycopg, "connect", refuse)
+def test_converts_and_reruns_with_verified_receipt(rescue, tmp_path):
     storage, source = rescue
     result = convert(storage, tmp_path)
     assert result.receipt_outcome == "created"
@@ -126,6 +123,158 @@ def test_converts_and_reruns_without_database(rescue, tmp_path, monkeypatch):
     assert all(t.outcome == "already_equal" for t in result.tables)
     assert before == {key: sha(storage.read_bytes(key)) for key in storage.list_keys(TARGET)}
     assert list((tmp_path / "work").iterdir()) == []
+
+
+def test_fresh_import_conversion_and_cli_open_no_database_connection(rescue, tmp_path):
+    storage, _ = rescue
+    script = """
+import json, os, sys
+from datetime import date
+from pathlib import Path
+import psycopg
+import sqlalchemy
+import sqlalchemy.engine
+
+def refuse(*args, **kwargs):
+    raise AssertionError("database connection attempted")
+
+sqlalchemy.create_engine = sqlalchemy.engine.create_engine = refuse
+psycopg.connect = refuse
+from transit_ops.db import connection
+connection.make_engine = connection.test_connection = refuse
+assert "transit_ops.lake.rescue_parquet" not in sys.modules
+from transit_ops.lake.rescue_parquet import convert_rescued_day
+from transit_ops.ingestion.storage import LocalBronzeStorage
+
+root, work = map(Path, sys.argv[1:])
+work.mkdir()
+result = convert_rescued_day(
+    LocalBronzeStorage(storage_backend="local", root=root),
+    provider_id="test", utc_day=date(2026, 11, 13), work_dir=work,
+    converted_by="a" * 40,
+)
+assert result.receipt_outcome == "created"
+os.environ["BRONZE_STORAGE_BACKEND"] = "local"
+os.environ["BRONZE_LOCAL_ROOT"] = str(root)
+from typer.testing import CliRunner
+from transit_ops.cli import app
+result = CliRunner().invoke(app, ["lake", "convert-rescue", "--provider", "test",
+    "--date", "2026-11-13", "--converted-by", "a" * 40, "--work-dir", str(work)])
+assert result.exit_code == 0, (result.output, result.exception)
+assert json.loads(result.stdout)["receipt_outcome"] == "already_equal"
+assert sqlalchemy.create_engine is sqlalchemy.engine.create_engine is refuse
+assert psycopg.connect is connection.make_engine is connection.test_connection is refuse
+"""
+    result = subprocess.run(
+        [sys.executable, "-I", "-c", script, str(storage.root), str(tmp_path / "fresh-work")],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+class InterruptedStorage:
+    """Keep real local publication, injecting faults only at the storage seam."""
+
+    def __init__(self, storage, failure=None):
+        self.storage, self.failure = storage, failure
+        self.events = []
+
+    def __getattr__(self, name):
+        return getattr(self.storage, name)
+
+    def put_if_absent(self, path, key):
+        self.events.append(("put", key))
+        if self.failure == "receipt_put" and key == TARGET + "receipt.json":
+            raise OSError("receipt upload interrupted")
+        return self.storage.put_if_absent(path, key)
+
+    @contextmanager
+    def open_stream(self, key, **kwargs):
+        if self.failure == "first_readback" and key == TARGET + TABLES[0] + ".parquet":
+            raise OSError("readback interrupted")
+        with self.storage.open_stream(key, **kwargs) as source:
+            if self.failure == "second_truncated" and key == TARGET + TABLES[1] + ".parquet":
+                with BytesIO(source.read()[:-1]) as truncated:
+                    yield truncated
+            else:
+                yield source
+
+    def delete_object(self, key):
+        pytest.fail(f"unexpected deletion: {key}")
+
+    def persist_temp_file(self, path, key):
+        pytest.fail(f"unexpected unconditional publication: {key}")
+
+
+def stored_objects(storage):
+    return {key: storage.read_bytes(key) for key in storage.list_keys("")}
+
+
+@pytest.mark.parametrize("failure", ["first_readback", "receipt_put", "second_truncated"])
+def test_interrupted_conversion_retains_evidence_and_retries_safely(rescue, tmp_path, failure):
+    from transit_ops.lake.parquet_verify import CopyDiffers
+
+    storage, _ = rescue
+    original = stored_objects(storage)
+    boundary = InterruptedStorage(storage, failure)
+    expected_error = CopyDiffers if failure == "second_truncated" else OSError
+    with pytest.raises(expected_error):
+        convert(boundary, tmp_path)
+    before = stored_objects(storage)
+    assert TARGET + "receipt.json" not in before
+    assert all(before[key] == value for key, value in original.items())
+    copied = {key for key in before if key.startswith(TARGET)}
+    expected_tables = TABLES[:1] if failure == "first_readback" else TABLES
+    assert copied == {TARGET + table + ".parquet" for table in expected_tables}
+    evidence = {
+        path: path.read_bytes() for path in (tmp_path / "work").rglob("*") if path.is_file()
+    }
+    assert any(path.suffix == ".csv" for path in evidence)
+    assert any(path.suffix == ".parquet" for path in evidence)
+    retry_dir = tmp_path / "retry"
+    retry_dir.mkdir()
+    result = convert(InterruptedStorage(storage), retry_dir)
+    assert result.receipt_outcome == "created"
+    assert all(
+        table.outcome == ("already_equal" if table.key in copied else "created")
+        for table in result.tables
+    )
+    after = stored_objects(storage)
+    assert all(after[key] == value for key, value in before.items())
+    assert all(path.read_bytes() == value for path, value in evidence.items())
+    result = convert(InterruptedStorage(storage), retry_dir)
+    assert result.receipt_outcome == "already_equal"
+    assert all(table.outcome == "already_equal" for table in result.tables)
+    assert stored_objects(storage) == after
+
+
+def test_receipt_binds_downloaded_proofs_after_both_local_proofs(rescue, tmp_path, monkeypatch):
+    from transit_ops.lake import rescue_parquet as conversion
+
+    storage, _ = rescue
+    boundary = InterruptedStorage(storage)
+    prove = conversion.prove_window
+    downloaded = {}
+
+    def observe(csv, parquet, schema, **kwargs):
+        proof = prove(csv, parquet, schema, **kwargs)
+        assert proof.verified is True
+        if parquet.suffix == ".readback":
+            proof = replace(proof, checked_with="downloaded-bytes")
+            downloaded[parquet.stem] = json.loads(proof.to_json())
+        else:
+            boundary.events.append(("local_proof", parquet.stem))
+        return proof
+
+    monkeypatch.setattr(conversion, "prove_window", observe)
+    convert(boundary, tmp_path)
+    first_put = next(i for i, event in enumerate(boundary.events) if event[0] == "put")
+    assert boundary.events[:first_put] == [("local_proof", table) for table in TABLES]
+    receipt = json.loads(storage.read_bytes(TARGET + "receipt.json"))
+    assert set(downloaded) == set(TABLES)
+    assert {table: record["proof"] for table, record in receipt["tables"].items()} == downloaded
 
 
 @pytest.mark.parametrize(
