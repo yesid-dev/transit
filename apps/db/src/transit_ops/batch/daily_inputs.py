@@ -153,9 +153,13 @@ def lake_capabilities() -> tuple[bool, set[str]]:
     return "cut_utc" in {field.name for field in fields(WindowSpec)}, options
 
 
+def _complete_shadow_capabilities(cuts: bool, options: set[str]) -> bool:
+    return cuts and {"--window", "--group-reserve-s"} <= options
+
+
 def require_group_reserve_support() -> None:
     cuts, options = lake_capabilities()
-    if not cuts or not {"--window", "--group-reserve-s"} <= options:
+    if not _complete_shadow_capabilities(cuts, options):
         raise ValueError("group_reserve_unsupported")
 
 
@@ -166,7 +170,7 @@ def require_window_support(
     from transit_ops.settings import Settings
 
     cuts, options = lake_capabilities()
-    if cuts and "--window" in options:
+    if _complete_shadow_capabilities(cuts, options):
         return
     for item in needs:
         dataset = get_dataset(item["relation"])

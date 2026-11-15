@@ -194,6 +194,38 @@ def test_export_asserts_read_only_and_uses_locked_cli_all_provider(controller, m
     assert commands == []
 
 
+def test_ordinary_open_export_refuses_without_group_reserve_capability(controller, monkeypatch):
+    import psycopg
+    from test_batch_daily_inputs import fake_lake_cli
+
+    fake_lake_cli(monkeypatch, cuts=True, reserve=False)
+    for name in ("BRONZE_S3_ACCESS_KEY", "BRONZE_S3_SECRET_KEY"):
+        monkeypatch.setenv(name, "test")
+    monkeypatch.setenv("BATCH_SHADOW_PROVISIONED", "true")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://readonly@example/db")
+    monkeypatch.setattr(
+        controller["shutil"], "disk_usage", lambda path: SimpleNamespace(free=25_000_000_000)
+    )
+    calls = []
+
+    def connect(*args, **kwargs):
+        calls.append("connect")
+        raise AssertionError("partial lake must refuse before production access")
+
+    monkeypatch.setattr(psycopg, "connect", connect)
+    monkeypatch.setitem(controller, "invoke", lambda *a, **kw: calls.append("export"))
+    data = {
+        "code_commit": "a" * 40,
+        "planned_at": "2026-11-15T12:00:00Z",
+        "needs": [
+            {"relation": "raw.realtime_snapshot_index", "provider": "stm", "window": "2026-11-14"}
+        ],
+    }
+    with pytest.raises(ValueError, match="open_window_unsupported|group_reserve_unsupported"):
+        controller["export_inputs"](data)
+    assert calls == []
+
+
 def test_session_lock_refusal_is_named_and_credentials_are_redacted(
     controller, monkeypatch, tmp_path
 ):
