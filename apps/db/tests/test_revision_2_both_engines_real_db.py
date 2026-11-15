@@ -21,6 +21,7 @@ from transit_ops.batch.postgres_rows import read_table_rows
 from transit_ops.batch.run import key_matches, run_family
 from transit_ops.gold import delay_hours
 from transit_ops.history.datasets import WORKING_ONLY, TableSource, get_dataset
+from transit_ops.lake.edition_identity import registered_keys
 from transit_ops.lake.parquet_codec import write_window
 from transit_ops.lake.table_export import WindowSpec, export_window
 from transit_ops.lake.table_schema import TableSchema
@@ -310,13 +311,9 @@ def _export_inputs(engine, builder, request, root):
         window = need.window.removeprefix("local:")
         with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
             if window.startswith("edition:"):
-                window = conn.execute(
-                    text(
-                        "SELECT COALESCE(checksum_sha256, content_hash) "
-                        "FROM core.dataset_versions WHERE dataset_version_id=:id"
-                    ),
-                    {"id": int(window.split(":")[1])},
-                ).scalar_one()
+                window = registered_keys(conn.connection.driver_connection, request.provider_id)[
+                    int(window.split(":")[1])
+                ]
             if dataset.archive_grain == "month":
                 window = request.as_of_utc.strftime("%Y-%m") if window == "all" else window[:7]
             exported = export_window(
@@ -359,11 +356,17 @@ def _seed_request(provider):
     first_capture = datetime.combine(days[0], time(), seed.TZ).astimezone(UTC) - timedelta(days=1)
     fact_window = (seed.BUILD_CLOCK - first_capture).days + 1
     return BuildRequest(
-        provider, days, seed.BUILD_CLOCK, fact_window, open_window, str(seed.TZ),
+        provider,
+        days,
+        seed.BUILD_CLOCK,
+        fact_window,
+        open_window,
+        str(seed.TZ),
         # R28b current_at_build: seed._base(provider) + 20 is the seed's current edition.
         edition_by_day=(
             {day: seed._base(provider) + 20 for day in days}
-            if provider in seed.PROVIDERS.values() else None
+            if provider in seed.PROVIDERS.values()
+            else None
         ),
         edition_source="current_at_build" if provider in seed.PROVIDERS.values() else None,
     )

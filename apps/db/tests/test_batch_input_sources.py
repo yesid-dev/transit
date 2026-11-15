@@ -311,19 +311,69 @@ def test_unprovable_legacy_ownership_refuses_before_replay(tmp_path, failure):
     assert not list(root.glob("silver.*"))
 
 
+def legacy_ownership_copy(
+    storage, provider, *, owner=42, empty=False, row_provider=None, assignments=None
+):
+    from transit_ops.lake.archive_keys import schema_key
+    from transit_ops.lake.edition_identity import assignment_json
+    from transit_ops.lake.parquet_codec import write_window
+    from transit_ops.lake.parquet_verify import Expected, prove_window
+    from transit_ops.lake.table_copy import _receipt
+    from transit_ops.lake.table_export import ExportedWindow, WindowSpec
+    from transit_ops.lake.table_schema import TableSchema
+
+    schema = TableSchema.from_columns(
+        [("dataset_version_id", "bigint", True), ("provider_id", "text", True)],
+        ["dataset_version_id", "provider_id"],
+    )
+    spec = WindowSpec("silver.trips", provider, "c" * 64)
+    csv = storage.root / "legacy.csv"
+    csv.write_text(
+        "dataset_version_id,provider_id\n" + ("" if empty else f"42,{row_provider or provider}\n"),
+        encoding="utf8",
+        newline="",
+    )
+    digest = hashlib.sha256(csv.read_bytes()).hexdigest()
+    path = storage.root / "legacy.parquet"
+    metadata = (
+        {}
+        if owner is None
+        else {
+            "edition_assignments": assignment_json(
+                assignments if assignments is not None else {owner: spec.window_key}
+            )
+        }
+    )
+    written = write_window(
+        csv,
+        schema,
+        path,
+        metadata=metadata,
+        temp_dir=storage.root,
+    )
+    rows = 0 if empty else 1
+    proof = prove_window(
+        csv, path, schema, expect=Expected(digest, rows, written.sha256), temp_dir=storage.root
+    )
+    key = table_copy_key("silver.trips", provider, 0, "edition", spec.window_key, 1, 1)
+    target = storage.root / key
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(path.read_bytes())
+    schema_path = storage.root / schema_key("silver.trips", 1)
+    schema_path.parent.mkdir(parents=True, exist_ok=True)
+    schema_path.write_bytes(schema.to_json())
+    exported = ExportedWindow(spec, csv, digest, csv.stat().st_size, rows, schema, STAMP, "test")
+    put(storage, proof_key(key), _receipt(exported, written, proof, key, 1, 1, "a" * 40))
+    return key
+
+
 @pytest.mark.parametrize("provider", ["stm", "octranspo"])
 def test_legacy_owner_is_adopted_from_verified_rows_without_recopy(tmp_path, provider):
     from transit_ops.lake.edition_assignments import archive_assignments, persist_assignments
     from transit_ops.lake.edition_identity import edition_keys
 
     storage = store(tmp_path)
-    key = archive(
-        storage,
-        "silver.trips",
-        "c" * 64,
-        "SELECT 42::BIGINT AS dataset_version_id",
-        provider=provider,
-    )
+    key = legacy_ownership_copy(storage, provider, owner=None)
     before = {k: storage.read_bytes(k) for k in storage.list_keys("archive/v1/tables/")}
     assigned = archive_assignments(storage, provider, ["c" * 64])
     assert assigned == {42: "c" * 64}
@@ -334,6 +384,41 @@ def test_legacy_owner_is_adopted_from_verified_rows_without_recopy(tmp_path, pro
     need = InputNeed("silver.trips", "edition:42")
     assert resolve_sources([need], storage, provider, STAMP, assigned)[0].key == key
     assert before == {k: storage.read_bytes(k) for k in storage.list_keys("archive/v1/tables/")}
+
+
+def test_legacy_object_adopts_only_the_owner_established_by_its_rows(tmp_path):
+    from transit_ops.lake.edition_assignments import archive_assignments
+
+    storage = store(tmp_path)
+    legacy_ownership_copy(storage, "stm", assignments={42: "c" * 64, 133: "c" * 64 + ".v133"})
+    assert archive_assignments(storage, "stm", ["c" * 64]) == {42: "c" * 64}
+
+
+@pytest.mark.parametrize(
+    "case", ["contradictory", "empty", "provider", "rows", "schema", "missing"]
+)
+def test_legacy_adoption_requires_coherent_proof_and_nonempty_owner_rows(tmp_path, case):
+    from transit_ops.lake.edition_assignments import archive_assignments
+
+    storage = store(tmp_path)
+    key = legacy_ownership_copy(
+        storage,
+        "stm",
+        owner=43 if case == "contradictory" else 42,
+        empty=case == "empty",
+        row_provider="octranspo" if case == "provider" else None,
+    )
+    if case in {"rows", "schema", "missing"}:
+        receipt = json.loads(storage.read_bytes(proof_key(key)))
+        if case == "rows":
+            receipt["rows"] = receipt["proof"]["rows"] = 2
+        elif case == "schema":
+            receipt["proof"]["schema_sha256"] = "d" * 64
+        else:
+            receipt["proof"]["missing_from_copy"] = 1
+        (storage.root / proof_key(key)).write_text(json.dumps(receipt), encoding="utf8")
+    with pytest.raises(ValueError, match="edition_identity"):
+        archive_assignments(storage, "stm", ["c" * 64])
 
 
 def test_proven_copy_of_another_edition_refuses_instead_of_becoming_empty(tmp_path):

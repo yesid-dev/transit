@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import UTC, date, datetime
 from uuid import uuid4
 
@@ -338,6 +339,7 @@ def test_edition_planner_queries_have_index_backed_explain_shapes(
         assert any("LEFT JOIN core.dataset_versions" in q for q, _ in queries)
         assert source.execute("SHOW enable_seqscan").fetchone() == ("on",)
         controls_checked = False
+        successor_checked = False
         for statement, values in queries:
             assert "min(" not in statement.lower()
             explained = source.execute("EXPLAIN (FORMAT JSON) " + statement, values).fetchone()[0]
@@ -362,7 +364,25 @@ def test_edition_planner_queries_have_index_backed_explain_shapes(
                 with pytest.raises(AssertionError):
                     assert_bounded_edition_plan(bad[0]["Plan"], table, edition_first, lookup=True)
                 controls_checked = True
+            if "WITH RECURSIVE keys" in statement and not successor_checked:
+                nonsargable = re.sub(
+                    r"WHERE ROW\((.*?)\) > ROW\((.*?)\)",
+                    r"WHERE ROW(\1)::text > ROW(\2)::text",
+                    statement,
+                )
+                assert nonsargable != statement
+                bad = source.execute("EXPLAIN (FORMAT JSON) " + nonsargable, values).fetchone()[0]
+                with pytest.raises(AssertionError):
+                    assert_bounded_edition_plan(
+                        bad[0]["Plan"],
+                        table,
+                        edition_first,
+                        lookup=False,
+                        edition_prefix="edition_id" in statement,
+                    )
+                successor_checked = True
         assert controls_checked
+        assert successor_checked
     finally:
         source.execute(f"DELETE FROM {table} WHERE edition_id=ANY(%s)", (versions,))
         source.execute(
@@ -371,16 +391,23 @@ def test_edition_planner_queries_have_index_backed_explain_shapes(
 
 
 def assert_bounded_edition_plan(root, table, edition_first, *, lookup, edition_prefix=True):
-    def nodes(node, limited=False):
-        yield node, limited
-        for child in node.get("Plans", []):
-            yield from nodes(child, limited or node["Node Type"] == "Limit")
+    def nodes(node, limited=False, branch=None):
+        yield node, limited, branch
+        for index, child in enumerate(node.get("Plans", [])):
+            child_branch = (
+                ("anchor" if index == 0 else "recursive")
+                if node["Node Type"] == "Recursive Union"
+                else branch
+            )
+            yield from nodes(child, limited or node["Node Type"] == "Limit", child_branch)
 
     table_nodes = [
-        (n, limited) for n, limited in nodes(root) if n.get("Relation Name") == table.split(".")[1]
+        (n, limited, branch)
+        for n, limited, branch in nodes(root)
+        if n.get("Relation Name") == table.split(".")[1]
     ]
     assert table_nodes, root
-    for node, limited in table_nodes:
+    for node, limited, branch in table_nodes:
         assert node["Node Type"] in {"Index Scan", "Index Only Scan", "Bitmap Heap Scan"}, root
         condition = node.get("Index Cond", "")
         if lookup:
@@ -398,13 +425,32 @@ def assert_bounded_edition_plan(root, table, edition_first, *, lookup, edition_p
                 assert "provider_id" in condition, root
         else:
             # Only the legitimate first-key ORDER BY ... LIMIT 1 can be unbound.
-            assert limited, root
-    if lookup and any(n.get("Relation Name") == "dataset_versions" for n, _ in nodes(root)):
-        registry = [n for n, _ in nodes(root) if n.get("Relation Name") == "dataset_versions"]
+            assert limited and branch == "anchor", root
+    if lookup and any(n.get("Relation Name") == "dataset_versions" for n, _, _ in nodes(root)):
+        registry = [n for n, _, _ in nodes(root) if n.get("Relation Name") == "dataset_versions"]
         assert registry and all(
             "dataset_version_id" in n.get("Index Cond", "") and "=" in n["Index Cond"]
             for n in registry
         ), root
+
+
+@pytest.mark.parametrize("edition_first", [False, True])
+def test_edition_plan_refuses_an_unbounded_recursive_successor(edition_first):
+    scan = {"Node Type": "Index Only Scan", "Relation Name": "editions"}
+    anchor = {"Node Type": "Limit", "Plans": [scan]}
+    successor = {
+        "Node Type": "Limit",
+        "Plans": [{**scan, "Filter": "edition_id > keys.edition_id"}],
+    }
+    root = {"Node Type": "Recursive Union", "Plans": [anchor, successor]}
+    with pytest.raises(AssertionError):
+        assert_bounded_edition_plan(root, "silver.editions", edition_first, lookup=False)
+    successor["Plans"][0]["Index Cond"] = (
+        "ROW(edition_id, provider_id) > ROW(keys.edition_id, keys.provider_id)"
+        if edition_first
+        else "ROW(provider_id, edition_id) > ROW(keys.provider_id, keys.edition_id)"
+    )
+    assert_bounded_edition_plan(root, "silver.editions", edition_first, lookup=False)
 
 
 def test_execute_copies_every_planned_window_to_local_storage_with_proofs(

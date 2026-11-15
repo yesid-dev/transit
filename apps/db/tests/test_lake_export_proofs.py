@@ -168,7 +168,7 @@ def edition(source, owned, fact_source, monkeypatch):
         monkeypatch.setattr(
             datasets, "HISTORY_DATASETS", {**datasets.HISTORY_DATASETS, owned.dataset_id: declared}
         )
-        yield replace(owned, provider_id=provider, window_key="b" * 64)
+        yield replace(owned, provider_id=provider, window_key=f"{'b' * 64}.v{version}")
     finally:
         source.execute("DELETE FROM core.dataset_versions WHERE dataset_version_id=%s", (version,))
 
