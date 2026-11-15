@@ -1,6 +1,6 @@
 import hashlib
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import duckdb
 import pytest
@@ -655,13 +655,33 @@ def test_changed_bootstrap_refuses_before_any_other_payload(tmp_path, monkeypatc
 def bundle(storage, keys, stamp=STAMP):
     from transit_ops.lake.alert_bundle import CLOSURE_RELATIONS, PREFIX
 
+    closure_queries = {
+        "core.providers": (
+            "SELECT provider_id, 'UTC' AS timezone "
+            "FROM (VALUES ('sample'),('other')) t(provider_id)"
+        ),
+        "core.feed_endpoints": (
+            "SELECT * FROM (VALUES (1,'sample'),(2,'other')) t(feed_endpoint_id,provider_id)"
+        ),
+        "raw.i3_alert_snapshots": (
+            "SELECT *, TIMESTAMPTZ '2026-11-01 00:00:00+00' AS captured_at_utc "
+            "FROM (VALUES (1,'sample'),(2,'other')) t(i3_alert_snapshot_id,provider_id)"
+        ),
+        "raw.ingestion_runs": (
+            "SELECT *, TIMESTAMPTZ '2026-11-01 00:00:00+00' AS started_at_utc "
+            "FROM (VALUES (1,'sample'),(2,'other')) t(ingestion_run_id,provider_id)"
+        ),
+        "raw.ingestion_objects": (
+            "SELECT *, TIMESTAMPTZ '2026-11-01 00:00:00+00' AS created_at_utc "
+            "FROM (VALUES (1,'sample'),(2,'other')) t(ingestion_object_id,provider_id)"
+        ),
+    }
     closure = []
     for relation in CLOSURE_RELATIONS:
         path = storage.root / (relation + ".parquet")
         with duckdb.connect() as conn:
             conn.execute(
-                "COPY (SELECT * FROM (VALUES (1, 'sample'), (2, 'other')) "
-                "t(id,provider_id)) TO ? (FORMAT parquet)",
+                f"COPY ({closure_queries[relation]}) TO ? (FORMAT parquet)",
                 [str(path)],
             )
         payload = path.read_bytes()
@@ -895,7 +915,7 @@ def test_alert_bundle_uses_only_its_pinned_parent_closure(tmp_path):
     storage = store(tmp_path)
     keys = alert_copies(storage)
     bundle(storage, keys)
-    need = [InputNeed("silver.i3_alerts", "all"), InputNeed("raw.i3_alert_snapshots", "all")]
+    need = [InputNeed("silver.i3_alerts", "all")]
     before = resolve_sources(need, storage, "sample", STAMP, {})
     for relation in CLOSURE_RELATIONS:
         archive(
@@ -930,7 +950,7 @@ def test_bundle_missing_closure_refuses_by_parent_name(tmp_path):
         ("2026-03-08", "2026-03-08T05:00:00+00:00", "2026-03-09T04:00:00+00:00"),
     ],
 )
-def test_bundle_accepts_the_complete_dst_day_exactly_at_its_cutoff(tmp_path, day, start, end):
+def test_bundle_accepts_the_complete_dst_day_with_six_hour_margin(tmp_path, day, start, end):
     from transit_ops.batch.build import BuildRequest
     from transit_ops.batch.replay import validate_alert_bundle
     from transit_ops.lake.alert_bundle import CLOSURE_RELATIONS, MEMBERS
@@ -943,7 +963,14 @@ def test_bundle_accepts_the_complete_dst_day_exactly_at_its_cutoff(tmp_path, day
         hashes[relation] = hashlib.sha256(b"fixture").hexdigest()
     (tmp_path / "alert-bundle.json").write_text(
         json.dumps(
-            [dict(version="a" * 64, snapshot_at_utc=end, coverage_from_utc=start, files=hashes)]
+            [
+                dict(
+                    version="a" * 64,
+                    snapshot_at_utc=(datetime.fromisoformat(end) + timedelta(hours=6)).isoformat(),
+                    coverage_from_utc=start,
+                    files=hashes,
+                )
+            ]
         )
     )
     request = BuildRequest(
@@ -982,3 +1009,156 @@ def test_source_preflight_refuses_future_day_before_payload_download(tmp_path, m
             {},
             request=request,
         )
+
+
+@pytest.mark.parametrize(
+    "day,start,end",
+    [
+        ("2026-11-01", "2026-11-01T04:00:00+00:00", "2026-11-02T05:00:00+00:00"),
+        ("2026-03-08", "2026-03-08T05:00:00+00:00", "2026-03-09T04:00:00+00:00"),
+    ],
+)
+def test_bundle_requires_six_hours_after_complete_dst_day(day, start, end):
+    from datetime import timedelta
+
+    from transit_ops.lake.alert_bundle import validate_coverage
+
+    local = datetime.fromisoformat(day).date()
+    floor = datetime.fromisoformat(start)
+    close = datetime.fromisoformat(end)
+    with pytest.raises(ValueError, match="bundle_coverage"):
+        validate_coverage(
+            close + timedelta(hours=6, microseconds=-1),
+            floor,
+            [local],
+            "America/Toronto",
+            STAMP.replace(month=12),
+        )
+    validate_coverage(
+        close + timedelta(hours=6), floor, [local], "America/Toronto", STAMP.replace(month=12)
+    )
+
+
+def test_independent_provider_survives_an_empty_alert_closure(tmp_path):
+    from test_lake_alert_bundle import SeedSource
+
+    from transit_ops.batch.engine import open_batch_session
+    from transit_ops.batch.inputs import resolve_inputs
+    from transit_ops.lake.alert_bundle import MEMBERS, copy_group
+    from transit_ops.lake.table_export import WindowSpec
+    from transit_ops.sql_registry import named_query
+
+    source = SeedSource()
+    source.db.execute("ALTER TABLE core.providers ADD COLUMN timezone VARCHAR DEFAULT 'UTC'")
+    source.columns["core.providers"].append("timezone")
+    for relation in MEMBERS:
+        source.db.execute(f"DELETE FROM {relation}")
+    storage = store(tmp_path)
+    work = tmp_path / "copy"
+    work.mkdir()
+    specs = [
+        WindowSpec(r, "_shared" if r.endswith("active_periods") else "p", "2026-11")
+        for r in MEMBERS
+    ]
+    try:
+        copy_group(
+            source, storage, specs, work_dir=work, copied_by="a" * 40, statement_timeout_s=60
+        )
+    finally:
+        source.db.close()
+    archive(
+        storage,
+        "core.providers",
+        "2026-11",
+        "SELECT 'p' AS provider_id, 'UTC' AS timezone",
+        provider="p",
+    )
+    root = tmp_path / "inputs"
+    root.mkdir()
+    needs = [InputNeed("silver.i3_alerts", "all"), InputNeed("core.providers", "all")]
+    fetch_replay_inputs(storage, root, "p", STAMP, lambda _: needs, bootstrap_editions=False)
+    area = tmp_path / "session"
+    area.mkdir()
+    with open_batch_session(
+        resolve_inputs([InputNeed("core.providers", "all")], root), workdir=area
+    ) as session:
+        assert (
+            session.execute(
+                named_query(
+                    "batch.replay.provider_timezone",
+                    "SELECT timezone FROM core.providers WHERE provider_id=:p",
+                ),
+                {"p": "p"},
+            ).scalar_one()
+            == "UTC"
+        )
+
+
+@pytest.mark.parametrize("conflict", [False, True])
+def test_independent_ingestion_parents_are_union_loaded_and_conflicts_refuse(tmp_path, conflict):
+    storage = store(tmp_path)
+    bundle(storage, alert_copies(storage))
+    stamp = "2026-11-01 01:00:00+00" if conflict else "2026-11-01 00:00:00+00"
+    parent = archive(
+        storage,
+        "raw.ingestion_runs",
+        "2026-11",
+        f"SELECT *, TIMESTAMPTZ '{stamp}' AS started_at_utc FROM "
+        "(VALUES (1,'sample'),(3,'sample')) t(ingestion_run_id,provider_id)",
+    )
+    sources = resolve_sources(
+        [InputNeed("silver.i3_alerts", "all"), InputNeed("raw.ingestion_runs", "2026-11-01")],
+        storage,
+        "sample",
+        STAMP,
+        {},
+    )
+    assert parent in {s.key for s in sources}
+    root = tmp_path / "materialized"
+    paths = {s.key: storage.root / s.key for s in sources}
+    if conflict:
+        with pytest.raises(ValueError, match="closure_conflict: raw.ingestion_runs"):
+            materialize(sources, paths, root, STAMP)
+    else:
+        materialize(sources, paths, root, STAMP)
+        with duckdb.connect() as conn:
+            assert conn.execute(
+                "SELECT ingestion_run_id FROM read_parquet(?) ORDER BY 1",
+                [str(root / "raw.ingestion_runs" / "all.parquet")],
+            ).fetchall() == [(1,), (3,)]
+
+
+def test_non_alert_parent_needs_survive_alert_preflight(tmp_path):
+    from transit_ops.batch.input_sources import archive_input_needs
+
+    class Catalog:
+        def get_foreign_keys(self, table, schema):
+            edges = {
+                "gold.fact_vehicle_snapshot": [("raw", "realtime_snapshot_index")],
+                "raw.realtime_snapshot_index": [
+                    ("raw", "ingestion_runs"),
+                    ("raw", "ingestion_objects"),
+                ],
+            }
+            return [
+                dict(referred_schema=s, referred_table=t)
+                for s, t in edges.get(schema + "." + table, [])
+            ]
+
+    storage = store(tmp_path)
+    bundle(storage, alert_copies(storage))
+    needs = archive_input_needs(
+        [
+            InputNeed("silver.i3_alerts", "all"),
+            InputNeed("core.providers", "all"),
+            InputNeed("gold.fact_vehicle_snapshot", "2026-11-01"),
+        ],
+        storage,
+        "sample",
+        STAMP,
+        {},
+        Catalog(),
+    )
+    assert InputNeed("core.providers", "all") in needs
+    assert InputNeed("raw.ingestion_runs", "2026-11-01") in needs
+    assert InputNeed("raw.ingestion_objects", "2026-11-01") in needs

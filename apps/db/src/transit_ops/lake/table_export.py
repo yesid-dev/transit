@@ -260,6 +260,8 @@ def _snapshot(
             max_parallel_workers_per_gather="0",
             statement_timeout=str(timeout * 1000),
         )
+        if coordinated:
+            settings["jit"] = "off"
         for key, value in settings.items():
             connection.execute("SELECT set_config(%s, %s, true)", (key, value))
         schema, text_keys = _catalog(connection, source, expected)
@@ -368,6 +370,15 @@ class _GroupReads:
         return getattr(self.connection, name)
 
 
+def require_member_space(path: Path) -> None:
+    import shutil
+
+    from transit_ops.lake.migration import WORK_SPACE_FLOOR, MigrationRefused
+
+    if shutil.disk_usage(path).free < WORK_SPACE_FLOOR:
+        raise MigrationRefused("work_space")
+
+
 @contextmanager
 def export_group(
     connection: Connection[Any],
@@ -376,6 +387,7 @@ def export_group(
     *,
     statement_timeout_s: int,
     not_after: datetime | None = None,
+    foreign_keys: list[dict[str, Any]] | None = None,
 ) -> Iterator[tuple[ExportedWindow, ...]]:
     """Export Silver and its filtered FK closure in one deadline-bounded source cut."""
     from typing import cast
@@ -396,7 +408,7 @@ def export_group(
     guarded = cast(Connection[Any], reads)
     with _snapshot(guarded, specs[0], statement_timeout_s, coordinated=True) as snapshot:
         at, version = snapshot[3:]
-        queries = closure_statements(guarded, specs)
+        queries = closure_statements(guarded, specs, foreign_keys)
         results = []
         exports = list(zip(specs, destinations, strict=True))
         for i, relation in enumerate(queries):
@@ -406,6 +418,7 @@ def export_group(
                 (WindowSpec(relation, "_shared", specs[0].window_key), directory / "window.csv")
             )
         for spec, destination in exports:
+            require_member_space(destination.parent)
             _, source = _declaration(spec)
             schema, text_keys = _catalog(guarded, source, None)
             if spec.dataset_id in queries:
@@ -418,15 +431,29 @@ def export_group(
                     order_by(schema, text_keys=text_keys),
                 )
                 values: tuple[object, ...] = ()
+            elif spec.dataset_id == "silver.i3_alert_active_periods":
+                # One shared file for selected birth snapshots; replay scopes it to parent keys.
+                providers = sorted({s.provider_id for s in specs if s.provider_id != "_shared"})
+                selected = sql.SQL(
+                    "SELECT i3_alert_snapshot_id FROM silver.i3_alerts WHERE provider_id IN ({})"
+                ).format(sql.SQL(",").join(sql.Literal(p) for p in providers))
+                statement = sql.SQL(
+                    "COPY (SELECT * FROM silver.i3_alert_active_periods "
+                    "WHERE i3_alert_snapshot_id IN ({}) ORDER BY {}) "
+                    "TO STDOUT WITH (FORMAT csv, HEADER true, ENCODING 'UTF8')"
+                ).format(selected, order_by(schema, text_keys=text_keys))
+                values = ()
             else:
                 statement, values = build_copy_statement(spec, schema, text_keys=text_keys)
             reads.cap()
             with destination.open("xb") as output:
                 digest, size, rows = _copy(connection, statement, values, output)
                 output.flush()
-                os.fsync(output.fileno())
             results.append(
                 ExportedWindow(spec, destination, digest, size, rows, schema, at, version)
             )
         reads.cap()
-        yield tuple(results)
+    for item in results:
+        with item.csv_path.open("r+b") as stream:
+            os.fsync(stream.fileno())
+    yield tuple(results)

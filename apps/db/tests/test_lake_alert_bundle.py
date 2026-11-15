@@ -19,6 +19,7 @@ class SeedSource:
 
         self.db = duckdb.connect()
         self.autocommit = True
+        self.in_snapshot = False
         self.info = SimpleNamespace(transaction_status=0)
         self.events = []
         self.clock_hook = None
@@ -105,9 +106,17 @@ class SeedSource:
                 )
 
     def transaction(self):
-        from contextlib import nullcontext
+        from contextlib import contextmanager
 
-        return nullcontext()
+        @contextmanager
+        def snapshot():
+            self.in_snapshot = True
+            try:
+                yield
+            finally:
+                self.in_snapshot = False
+
+        return snapshot()
 
     def execute(self, query, values=None):
         from datetime import UTC, datetime
@@ -125,7 +134,12 @@ class SeedSource:
             return SimpleNamespace(fetchall=lambda: [(datetime(2026, 11, 3, 7, tzinfo=UTC), "17")])
         if "FROM pg_attribute" in query:
             rows = [
-                (c, "text" if c == "provider_id" else "bigint", True, c == "provider_id")
+                (
+                    c,
+                    "text" if c in {"provider_id", "timezone"} else "bigint",
+                    True,
+                    c == "provider_id",
+                )
                 for c in self.columns[values[0]]
             ]
         elif "FROM pg_index" in query:
@@ -276,7 +290,7 @@ def test_shared_period_orphan_refuses_activation(tmp_path):
     from transit_ops.lake.alert_bundle import MEMBERS, PREFIX, copy_group
 
     source = SeedSource()
-    source.db.execute("INSERT INTO silver.i3_alert_active_periods VALUES (999,0,0)")
+    source.db.execute("INSERT INTO silver.i3_alert_active_periods VALUES (1,999,0)")
     archive = tmp_path / "archive"
     archive.mkdir()
     storage = LocalBronzeStorage("local", archive)
@@ -292,5 +306,120 @@ def test_shared_period_orphan_refuses_activation(tmp_path):
                 source, storage, specs, work_dir=work, copied_by="a" * 40, statement_timeout_s=60
             )
         assert list(storage.list_keys(PREFIX)) == []
+    finally:
+        source.db.close()
+
+
+def test_snapshot_only_exports_then_fsync_and_proofs_run_after_release(tmp_path, monkeypatch):
+    import os
+
+    from transit_ops.ingestion.storage import LocalBronzeStorage
+    from transit_ops.lake import table_export
+    from transit_ops.lake.alert_bundle import MEMBERS, closure_statements, copy_group
+
+    source = SeedSource()
+    specs = [
+        WindowSpec(r, "_shared" if r.endswith("active_periods") else "p", "2026-11")
+        for r in MEMBERS
+    ]
+    statements = closure_statements(source, specs)
+    assert " UNION " in statements["raw.ingestion_runs"].as_string()
+    assert all(" OR " not in q.as_string() for q in statements.values())
+    sync = os.fsync
+    events = []
+
+    def fsync(fd):
+        assert not source.in_snapshot
+        events.append(fd)
+        return sync(fd)
+
+    monkeypatch.setattr(table_export.os, "fsync", fsync)
+    root = tmp_path / "archive"
+    root.mkdir()
+    work = tmp_path / "work"
+    work.mkdir()
+    try:
+        copy_group(
+            source,
+            LocalBronzeStorage("local", root),
+            specs,
+            work_dir=work,
+            copied_by="a" * 40,
+            statement_timeout_s=60,
+        )
+        assert events
+        assert not any("NOT EXISTS" in q for q, _ in source.events)
+        assert any(v == ("jit", "off") for _, v in source.events)
+    finally:
+        source.db.close()
+
+
+def test_space_floor_is_rechecked_before_each_member(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from transit_ops.ingestion.storage import LocalBronzeStorage
+    from transit_ops.lake import migration
+    from transit_ops.lake.alert_bundle import MEMBERS, PREFIX, copy_group
+
+    source = SeedSource()
+    calls = []
+
+    def space(path):
+        calls.append(path)
+        return SimpleNamespace(free=2 * migration.WORK_SPACE_FLOOR if len(calls) == 1 else 0)
+
+    monkeypatch.setattr(migration.shutil, "disk_usage", space)
+    root = tmp_path / "archive"
+    root.mkdir()
+    work = tmp_path / "work"
+    work.mkdir()
+    specs = [
+        WindowSpec(r, "_shared" if r.endswith("active_periods") else "p", "2026-11")
+        for r in MEMBERS
+    ]
+    storage = LocalBronzeStorage("local", root)
+    try:
+        with pytest.raises(ValueError, match="work_space"):
+            copy_group(
+                source, storage, specs, work_dir=work, copied_by="a" * 40, statement_timeout_s=60
+            )
+        assert len(calls) == 2
+        assert len([q for q, _ in source.events if q == "COPY"]) == 1
+        assert list(storage.list_keys(PREFIX)) == []
+    finally:
+        source.db.close()
+
+
+def test_shared_period_copy_stays_with_selected_provider_snapshots(tmp_path):
+    import duckdb
+
+    from transit_ops.ingestion.storage import LocalBronzeStorage
+    from transit_ops.lake.alert_bundle import MEMBERS, copy_group
+
+    source = SeedSource()
+    source.db.execute("INSERT INTO silver.i3_alerts VALUES (2,0,'unused')")
+    source.db.execute("INSERT INTO silver.i3_alert_active_periods VALUES (2,0,0)")
+    root = tmp_path / "archive"
+    root.mkdir()
+    work = tmp_path / "work"
+    work.mkdir()
+    specs = [
+        WindowSpec(r, "_shared" if r.endswith("active_periods") else "p", "2026-11")
+        for r in MEMBERS
+    ]
+    try:
+        result = copy_group(
+            source,
+            LocalBronzeStorage("local", root),
+            specs,
+            work_dir=work,
+            copied_by="a" * 40,
+            statement_timeout_s=60,
+        )
+        periods = next(m for m in result.members if m.spec.dataset_id.endswith("active_periods"))
+        with duckdb.connect() as conn:
+            assert conn.execute(
+                "SELECT i3_alert_snapshot_id FROM read_parquet(?)", [str(root / periods.key)]
+            ).fetchall() == [(1,)]
     finally:
         source.db.close()

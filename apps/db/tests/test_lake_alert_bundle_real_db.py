@@ -20,57 +20,61 @@ PROVIDER = "alert_bundle_seed"
 @pytest.fixture
 def alert_seed(real_db_engine, seed_provider):
     args = guarded_connect_kwargs(real_db_engine.url)
-    with real_db_engine.begin() as conn:
-        seed_provider(conn, PROVIDER, display_name=PROVIDER)
     with psycopg.connect(**args, autocommit=True) as conn:
-        endpoint = conn.execute(
-            "INSERT INTO core.feed_endpoints(provider_id,endpoint_key,feed_kind,source_format) "
-            "VALUES (%s,'i3_alerts','i3_alerts','api_i3_json') RETURNING feed_endpoint_id",
-            (PROVIDER,),
-        ).fetchone()[0]
-        run = conn.execute(
-            "INSERT INTO raw.ingestion_runs(provider_id,feed_endpoint_id,run_kind,status) "
-            "VALUES (%s,%s,'i3_alerts','succeeded') RETURNING ingestion_run_id",
-            (PROVIDER, endpoint),
-        ).fetchone()[0]
-        snapshot = conn.execute(
-            "INSERT INTO raw.i3_alert_snapshots(provider_id,feed_endpoint_id,"
-            "ingestion_run_id,raw_payload_json) "
-            "VALUES (%s,%s,%s,'{}') RETURNING i3_alert_snapshot_id",
-            (PROVIDER, endpoint, run),
-        ).fetchone()[0]
-
-        def insert(connection, index):
-            with connection.transaction():
-                connection.execute(
-                    "INSERT INTO silver.i3_alerts(i3_alert_snapshot_id,alert_index,provider_id,"
-                    "captured_at_utc,raw_alert_json,content_hash) "
-                    "VALUES (%s,%s,%s,now(),'{}',%s)",
-                    (snapshot, index, PROVIDER, str(index) * 64),
-                )
-                connection.execute(
-                    "INSERT INTO silver.i3_alert_informed_entities("
-                    "i3_alert_snapshot_id,alert_index,"
-                    "entity_index,provider_id,raw_entity_json) VALUES (%s,%s,0,%s,'{}')",
-                    (snapshot, index, PROVIDER),
-                )
-                connection.execute(
-                    "INSERT INTO silver.i3_alert_active_periods(i3_alert_snapshot_id,alert_index,"
-                    "period_index) VALUES (%s,%s,0)",
-                    (snapshot, index),
-                )
-
+        snapshot = None
         try:
+            with real_db_engine.begin() as seed:
+                seed_provider(seed, PROVIDER, display_name=PROVIDER)
+            endpoint = conn.execute(
+                "INSERT INTO core.feed_endpoints(provider_id,endpoint_key,feed_kind,source_format) "
+                "VALUES (%s,'i3_alerts','i3_alerts','api_i3_json') RETURNING feed_endpoint_id",
+                (PROVIDER,),
+            ).fetchone()[0]
+            run = conn.execute(
+                "INSERT INTO raw.ingestion_runs(provider_id,feed_endpoint_id,run_kind,status) "
+                "VALUES (%s,%s,'i3_alerts','succeeded') RETURNING ingestion_run_id",
+                (PROVIDER, endpoint),
+            ).fetchone()[0]
+            snapshot = conn.execute(
+                "INSERT INTO raw.i3_alert_snapshots(provider_id,feed_endpoint_id,"
+                "ingestion_run_id,raw_payload_json) "
+                "VALUES (%s,%s,%s,'{}') RETURNING i3_alert_snapshot_id",
+                (PROVIDER, endpoint, run),
+            ).fetchone()[0]
+
+            def insert(connection, index):
+                with connection.transaction():
+                    connection.execute(
+                        "INSERT INTO silver.i3_alerts(i3_alert_snapshot_id,alert_index,provider_id,"
+                        "captured_at_utc,raw_alert_json,content_hash) "
+                        "VALUES (%s,%s,%s,now(),'{}',%s)",
+                        (snapshot, index, PROVIDER, str(index) * 64),
+                    )
+                    connection.execute(
+                        "INSERT INTO silver.i3_alert_informed_entities("
+                        "i3_alert_snapshot_id,alert_index,"
+                        "entity_index,provider_id,raw_entity_json) VALUES (%s,%s,0,%s,'{}')",
+                        (snapshot, index, PROVIDER),
+                    )
+                    connection.execute(
+                        "INSERT INTO silver.i3_alert_active_periods("
+                        "i3_alert_snapshot_id,alert_index,"
+                        "period_index) VALUES (%s,%s,0)",
+                        (snapshot, index),
+                    )
+
             insert(conn, 0)
             yield conn, args, snapshot, insert
         finally:
             conn.execute("DELETE FROM raw.i3_alert_snapshots WHERE provider_id=%s", (PROVIDER,))
+            conn.execute("DELETE FROM raw.ingestion_objects WHERE provider_id=%s", (PROVIDER,))
             conn.execute("DELETE FROM raw.ingestion_runs WHERE provider_id=%s", (PROVIDER,))
             conn.execute("DELETE FROM core.feed_endpoints WHERE provider_id=%s", (PROVIDER,))
             conn.execute("DELETE FROM core.providers WHERE provider_id=%s", (PROVIDER,))
             for table in (
                 "raw.i3_alert_snapshots",
                 "raw.ingestion_runs",
+                "raw.ingestion_objects",
                 "core.feed_endpoints",
                 "core.providers",
                 "silver.i3_alerts",
@@ -222,3 +226,68 @@ def test_bundle_closure_is_exact_without_independent_parent_copies(
     needs = tuple(InputNeed(n["relation"], n["window"]) for n in receipt["needs"])
     # Use the source's catalog only; validation reads Parquet and never loads or changes this DB.
     validate_parent_rows(resolve_inputs(needs, inputs), inspect(real_db_engine))
+
+
+def test_closure_explain_uses_parent_indexes_and_no_cte_inner_loop(alert_seed):
+    from psycopg import sql
+
+    from transit_ops.lake.alert_bundle import closure_statements
+
+    conn, _, _, _ = alert_seed
+    conn.execute(
+        """WITH runs AS (
+        INSERT INTO raw.ingestion_runs(provider_id,feed_endpoint_id,run_kind,status)
+        SELECT %s,feed_endpoint_id,'i3_alerts','succeeded' FROM core.feed_endpoints,
+        generate_series(1,20000) WHERE provider_id=%s RETURNING ingestion_run_id,provider_id
+    ) INSERT INTO raw.ingestion_objects(provider_id,ingestion_run_id,object_kind,
+        storage_backend,storage_path,checksum_sha256,byte_size)
+      SELECT provider_id,ingestion_run_id,'i3_alerts','local',
+        'alert-plan-' || ingestion_run_id::text, repeat('a',64),1 FROM runs""",
+        (PROVIDER, PROVIDER),
+    )
+    conn.execute(
+        """INSERT INTO raw.i3_alert_snapshots(provider_id,feed_endpoint_id,
+        ingestion_run_id,ingestion_object_id,raw_payload_json)
+        SELECT r.provider_id,r.feed_endpoint_id,r.ingestion_run_id,o.ingestion_object_id,'{}'
+        FROM raw.ingestion_runs r JOIN raw.ingestion_objects o USING(ingestion_run_id)
+        WHERE r.provider_id=%s""",
+        (PROVIDER,),
+    )
+    for table in (
+        "raw.ingestion_runs",
+        "raw.ingestion_objects",
+        "raw.i3_alert_snapshots",
+        "silver.i3_alerts",
+        "silver.i3_alert_informed_entities",
+    ):
+        conn.execute(sql.SQL("ANALYZE {}").format(sql.Identifier(*table.split("."))))
+    specs = [
+        WindowSpec(r, "_shared" if r.endswith("active_periods") else PROVIDER, "2026-11")
+        for r in MEMBERS
+    ]
+
+    def nodes(plan):
+        yield plan
+        for child in plan.get("Plans", []):
+            yield from nodes(child)
+
+    with conn.transaction():
+        conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        conn.execute("SET LOCAL work_mem='16MB'")
+        conn.execute("SET LOCAL max_parallel_workers_per_gather=0")
+        conn.execute("SET LOCAL jit=off")
+        for relation, statement in closure_statements(conn, specs).items():
+            plan = conn.execute(sql.SQL("EXPLAIN (FORMAT JSON) {}").format(statement)).fetchone()[
+                0
+            ][0]["Plan"]
+            for node in nodes(plan):
+                assert not (
+                    node["Node Type"] == "Seq Scan"
+                    and node.get("Relation Name")
+                    in {"ingestion_runs", "ingestion_objects", "i3_alert_snapshots"}
+                ), (relation, node)
+                if node["Node Type"] == "Nested Loop":
+                    assert not any(n["Node Type"] == "CTE Scan" for n in nodes(node["Plans"][1])), (
+                        relation,
+                        node,
+                    )

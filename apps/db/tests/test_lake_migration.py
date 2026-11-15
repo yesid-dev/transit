@@ -783,3 +783,43 @@ def test_group_rechecks_reserve_after_connect(tmp_path, monkeypatch):
         log=lambda _: None,
     )
     assert result.failure["reason"] == "not_after"
+
+
+@pytest.mark.parametrize("failed", [False, True])
+def test_group_work_directory_removed_only_after_success(tmp_path, monkeypatch, failed):
+    from test_lake_alert_bundle import SeedSource
+
+    from transit_ops.ingestion.storage import LocalBronzeStorage
+    from transit_ops.lake import migration as m
+    from transit_ops.lake.alert_bundle import MEMBERS
+
+    source = SeedSource(dangling=failed)
+    specs = tuple(
+        WindowSpec(r, "_shared" if r.endswith("active_periods") else "p", "2026-11")
+        for r in MEMBERS
+    )
+    plan = MigrationPlan(
+        SimpleNamespace(complete=True), (PlannedWindow(specs[0], "whole_state", specs),), ()
+    )
+    work = tmp_path / "work"
+    work.mkdir()
+    root = tmp_path / "archive"
+    root.mkdir()
+    monkeypatch.setattr(
+        m.shutil, "disk_usage", lambda _: SimpleNamespace(free=2 * m.WORK_SPACE_FLOOR)
+    )
+    try:
+        result = run_migration(
+            plan,
+            lambda: source,
+            LocalBronzeStorage("local", root),
+            work_dir=work,
+            copied_by="a" * 40,
+            statement_timeout_s=60,
+            not_after=datetime(2099, 1, 1, tzinfo=UTC),
+            log=lambda _: None,
+        )
+        assert (result.failure is not None) == failed
+        assert bool(list(work.glob("bundle-*"))) == failed
+    finally:
+        source.db.close()

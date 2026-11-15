@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+import duckdb
 from psycopg import Connection, sql
 
 from transit_ops.history.datasets import HISTORY_DATASETS
@@ -46,12 +47,14 @@ def validate_coverage(
     for day in days:
         start = datetime.combine(day, time(), zone).astimezone(UTC)
         end = datetime.combine(day + timedelta(days=1), time(), zone).astimezone(UTC)
-        if start < floor or end > stamp:
+        if start < floor or end + timedelta(hours=6) > stamp:
             raise BundleRefused("bundle_coverage", f"{day} [{start}, {end}) T={stamp}")
 
 
 def closure_statements(
-    connection: Connection[Any], specs: Sequence[WindowSpec]
+    connection: Connection[Any],
+    specs: Sequence[WindowSpec],
+    foreign_keys: list[dict[str, Any]] | None = None,
 ) -> dict[str, sql.Composed]:
     """Select the catalog FK closure without temp tables or writes."""
     relations = (*MEMBERS, *CLOSURE_RELATIONS)
@@ -75,21 +78,23 @@ def closure_statements(
         for parent, child_columns, parent_columns in rows:
             if parent not in relations:
                 raise BundleRefused("bundle_parent_missing", f"unsupported parent {parent}")
-            join = sql.SQL(" AND ").join(
-                sql.SQL("c.{} = p.{}").format(sql.Identifier(c), sql.Identifier(p))
-                for c, p in zip(child_columns, parent_columns, strict=True)
-            )
-            nonnull = sql.SQL(" AND ").join(
-                sql.SQL("c.{} IS NOT NULL").format(sql.Identifier(c)) for c in child_columns
-            )
-            fks.append((relation, parent, join, nonnull))
+            fks.append((relation, parent, tuple(child_columns), tuple(parent_columns)))
+            if foreign_keys is not None:
+                foreign_keys.append(
+                    dict(
+                        child=relation,
+                        parent=parent,
+                        child_columns=list(child_columns),
+                        parent_columns=list(parent_columns),
+                    )
+                )
     providers = sorted({s.provider_id for s in specs if s.provider_id != "_shared"})
     provider_filter = sql.SQL("provider_id IN ({})").format(
         sql.SQL(",").join(sql.Literal(p) for p in providers)
     )
     definitions = []
     for relation in MEMBERS:
-        where = provider_filter
+        where: sql.Composable = provider_filter
         if relation.endswith("active_periods"):
             where = sql.SQL(
                 "EXISTS (SELECT 1 FROM {} a "
@@ -109,37 +114,58 @@ def closure_statements(
         if not following:
             raise BundleRefused("bundle_parent_missing", f"FK cycle {sorted(pending)}")
         for relation in following:
-            selections = [
-                sql.SQL("EXISTS (SELECT 1 FROM {} c WHERE {})").format(aliases[child], join)
-                for child, parent, join, _ in fks
-                if parent == relation
-            ]
+            references = [(child, cc, pc) for child, parent, cc, pc in fks if parent == relation]
+            shapes = {pc for _, _, pc in references}
+            if len(shapes) > 1:
+                raise BundleRefused(
+                    "bundle_parent_missing", f"incompatible referenced keys: {relation}"
+                )
+            where = sql.SQL("false")
+            if references:
+                parent_columns = references[0][2]
+                selections = [
+                    sql.SQL("SELECT {} FROM {} c").format(
+                        sql.SQL(", ").join(sql.Identifier("c", c) for c in cc), aliases[child]
+                    )
+                    for child, cc, _ in references
+                ]
+                where = sql.SQL("({}) IN ({})").format(
+                    sql.SQL(", ").join(sql.Identifier("p", c) for c in parent_columns),
+                    sql.SQL(" UNION ").join(selections),
+                )
             definitions.append(
                 sql.SQL("{} AS (SELECT p.* FROM {} p WHERE {})").format(
-                    aliases[relation],
-                    sql.Identifier(*relation.split(".")),
-                    sql.SQL(" OR ").join(selections) if selections else sql.SQL("false"),
+                    aliases[relation], sql.Identifier(*relation.split(".")), where
                 )
             )
             ready.add(relation)
             pending.remove(relation)
     prefix = sql.SQL("WITH ") + sql.SQL(", ").join(definitions)
-    for child, parent, join, nonnull in fks:
-        # Periods are copied shared. Validate orphan keys globally even though only
-        # requested parents contribute to the recursively selected closure.
-        shared = child == "silver.i3_alert_active_periods"
-        child_rows = sql.Identifier(*child.split(".")) if shared else aliases[child]
-        parent_rows = sql.Identifier(*parent.split(".")) if shared else aliases[parent]
-        missing = connection.execute(
-            prefix
-            + sql.SQL(
-                " SELECT EXISTS (SELECT 1 FROM {} c WHERE {} "
-                "AND NOT EXISTS (SELECT 1 FROM {} p WHERE {}))"
-            ).format(child_rows, nonnull, parent_rows, join)
-        ).fetchone()
-        if missing == (True,):
-            raise BundleRefused("bundle_parent_missing", f"{parent} referenced by {child}")
     return {r: prefix + sql.SQL(" SELECT * FROM {}").format(aliases[r]) for r in CLOSURE_RELATIONS}
+
+
+def prove_parent_keys(files: dict[str, list[Path]], foreign_keys: Sequence[dict[str, Any]]) -> None:
+    """Prove referential closure on exported bytes, after releasing PostgreSQL."""
+    with duckdb.connect(config={"threads": 1}) as conn:
+        views = {}
+        for index, (relation, paths) in enumerate(files.items()):
+            views[relation] = f"bundle_{index}"
+            conn.read_parquet([str(p) for p in paths], hive_partitioning=False).create_view(
+                views[relation]
+            )
+        for fk in foreign_keys:
+            child, parent = fk["child"], fk["parent"]
+            nonnull = " AND ".join(f'c."{c}" IS NOT NULL' for c in fk["child_columns"])
+            join = " AND ".join(
+                f'c."{c}"=p."{p}"'
+                for c, p in zip(fk["child_columns"], fk["parent_columns"], strict=True)
+            )
+            missing = conn.execute(
+                f"SELECT count(*) FROM {views[child]} c WHERE {nonnull} "
+                f"AND NOT EXISTS (SELECT 1 FROM {views[parent]} p WHERE {join})"
+            ).fetchone()
+            if missing and missing[0]:
+                raise BundleRefused("bundle_parent_missing", f"{parent} referenced by {child}")
 
 
 def validate_members(specs: Sequence[WindowSpec]) -> None:
@@ -193,16 +219,22 @@ def copy_group(
     directories = tuple(work_dir / str(i) for i in range(len(specs)))
     for directory in directories:
         directory.mkdir()
+    foreign_keys: list[dict[str, Any]] = []
     with export_group(
         connection,
         tuple(specs),
         tuple(d / "window.csv" for d in directories),
         statement_timeout_s=statement_timeout_s,
         not_after=not_after,
+        foreign_keys=foreign_keys,
     ) as exported:
         pass  # Release the source snapshot before CPU, upload and readback work.
-    results, records, closure = [], [], []
+    from transit_ops.lake.table_export import require_member_space
+
+    prepared = []
+    files: dict[str, list[Path]] = {}
     for item in exported:
+        require_member_space(work_dir)
         directory = item.csv_path.parent
         temporary = directory / "temporary"
         temporary.mkdir()
@@ -215,6 +247,11 @@ def copy_group(
         )
         proof = _prove(item, written.path, written, temporary)
         _json_file(directory / "proof.json", asdict(proof))
+        prepared.append((item, written, directory, temporary))
+        files.setdefault(item.spec.dataset_id, []).append(written.path)
+    prove_parent_keys(files, foreign_keys)
+    results, records, closure = [], [], []
+    for item, written, directory, temporary in prepared:
         if item.spec.dataset_id in MEMBERS:
             result = _archive(storage, item, written, directory, temporary, copied_by)
             results.append(result)
@@ -248,6 +285,7 @@ def copy_group(
         coverage_from_utc=(at - timedelta(days=30)).isoformat(),
         members=records,
         closure=closure,
+        foreign_keys=foreign_keys,
     )
     payload = json.dumps(document, sort_keys=True, separators=(",", ":")).encode()
     version = hashlib.sha256(payload).hexdigest()

@@ -139,7 +139,9 @@ def archive_input_needs(
             if any(n.relation == child.relation for n in s.needs)
         )
 
-    return parent_input_needs(bundle_needs(needs), catalog, lambda child, _fk: populated(child))
+    independent = tuple(n for n in needs if n.relation not in MEMBERS)
+    expanded = parent_input_needs(independent, catalog, lambda child, _fk: populated(child))
+    return layout_needs(tuple(n for n in needs if n.relation in MEMBERS) + expanded)
 
 
 def replay_request(provider: str, day: str, as_of: str | None, settings: Settings) -> BuildRequest:
@@ -428,7 +430,6 @@ def resolve_sources(
     if any(n.relation in MEMBERS for n in needs):
         for source in _bundle_sources(storage, provider, as_of):
             selected[source.key] = source
-        pinned = {s.needs[0].relation for s in selected.values()}
         if request is not None:
             receipt = next(iter(selected.values())).receipt
             validate_coverage(
@@ -438,7 +439,7 @@ def resolve_sources(
                 request.timezone,
                 request.as_of_utc,
             )
-        needs = tuple(n for n in needs if n.relation not in pinned)
+        needs = tuple(n for n in needs if n.relation not in MEMBERS)
     for need in needs:
         rescued = _rescue(need, storage, provider)
         if rescued:
@@ -681,10 +682,29 @@ def materialize(
             destination.parent.mkdir(parents=True, exist_ok=True)
             if destination.exists():
                 raise ValueError(f"input already exists: {destination}")
+            source_sql = "read_parquet(?, hive_partitioning=false)"
+            sql_paths = [str(p) for p in files]
+            columns = "*"
+            if any(
+                s.needs[0].relation == need.relation and s.receipt.get("bundle_closure")
+                for s in sources
+            ):
+                declared = get_dataset(need.relation).source
+                assert isinstance(declared, TableSource)
+                keys = ", ".join('"' + k.replace('"', '""') + '"' for k in declared.key_columns)
+                conn.read_parquet(sql_paths, hive_partitioning=False).create_view(
+                    "merge_input", replace=True
+                )
+                conflict = conn.execute(
+                    f"SELECT {keys} FROM (SELECT DISTINCT * FROM merge_input) "
+                    f"GROUP BY {keys} HAVING count(*)>1 LIMIT 1"
+                ).fetchone()
+                if conflict is not None:
+                    raise BundleRefused("closure_conflict", f"{need.relation} key {conflict}")
+                source_sql = f"(SELECT DISTINCT * FROM {source_sql})"
             conn.execute(
-                "COPY (SELECT * FROM read_parquet(?, hive_partitioning=false)) "
-                "TO ? (FORMAT parquet)",
-                [[str(p) for p in files], str(destination)],
+                f"COPY (SELECT {columns} FROM {source_sql}) TO ? (FORMAT parquet)",
+                [sql_paths, str(destination)],
             )
     return receipts
 

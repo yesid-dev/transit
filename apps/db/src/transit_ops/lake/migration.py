@@ -662,6 +662,7 @@ def run_migration(
             from tempfile import mkdtemp
 
             directory = Path(mkdtemp(prefix="bundle-", dir=work_dir))
+            owned = directory.resolve(), directory.stat().st_dev, directory.stat().st_ino
             with connect() as connection:
                 require_group_reserve(
                     not_after, statement_timeout_s, len(specs) + len(CLOSURE_RELATIONS)
@@ -675,6 +676,17 @@ def run_migration(
                     statement_timeout_s=statement_timeout_s,
                     not_after=not_after,
                 )
+            resolved = directory.resolve()
+            if (
+                resolved != owned[0]
+                or resolved.parent != work_dir.resolve()
+                or not resolved.is_relative_to(work_dir.resolve())
+                or directory.is_symlink()
+                or directory.is_junction()
+                or (directory.stat().st_dev, directory.stat().st_ino) != owned[1:]
+            ):
+                raise MigrationRefused("work_dir_changed", str(directory))
+            shutil.rmtree(directory)
             record.update(
                 outcome="copied",
                 bundle_version=bundle.version,
