@@ -423,7 +423,7 @@ it('keeps stop codes, cross-street order and existing stop representatives', () 
 	for (const [q, hrefs] of [
 		['100', ['/stop/first']],
 		['road park', ['/stop/first', '/stop/other']],
-		['central', ['/stop/station-first']],
+		['central', ['/stop/station-first', '/stop/station-second']],
 	] as const) {
 		setUrlQuery('q=' + q);
 		const view = render(SearchSurface);
