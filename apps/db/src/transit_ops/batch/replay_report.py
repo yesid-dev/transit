@@ -28,6 +28,7 @@ class FamilyReplay:
     code_commit: str | None = None
     engine_version: str | None = None
     difference_count: int = 0
+    output_digests: dict[str, object] | None = None
 
 
 def compare_family(
@@ -63,11 +64,14 @@ def compare_family(
         return replace(replay, reason="rollup history not loaded")
     assert duckdb is not None
     differences = _differences(postgres, duckdb.output)
+    from transit_ops.batch.checkpoints import output_digests
+
     return replace(
         replay,
         status="different" if differences else "identical",
         differences=tuple(differences[:50]),
         difference_count=len(differences),
+        output_digests=output_digests(duckdb.output) if not differences else None,
     )
 
 
