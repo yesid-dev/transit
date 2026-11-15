@@ -9,12 +9,12 @@ from transit_ops.snapshots.builders.historic.repeat_offenders_history import (
 def test_departures_require_recurrence_and_rank_frequency_before_actual_lateness():
     rows = []
     # A larger severe share must not outrank more repeated local dates.
-    for identity, late_days, seconds in [
-        ("often", 3, 600),
-        ("later", 2, 900),
-        ("once", 1, 120),
-        ("twice", 2, 601),
-        ("earlier", 2, 600),
+    for identity, late_days, late_readings, late_sum_seconds in [
+        ("often", 3, 1, 600),
+        ("later", 2, 30, 27000),
+        ("once", 1, 30, 18000),
+        ("twice", 2, 30, 18030),
+        ("earlier", 2, 30, 18000),
     ]:
         for offset in range(3):
             rows.append(
@@ -24,8 +24,8 @@ def test_departures_require_recurrence_and_rank_frequency_before_actual_lateness
                     entity_id=identity,
                     route_id="36",
                     observation_count=30,
-                    severe_count=1 if offset < late_days else 0,
-                    sum_delay_seconds=30 * seconds,
+                    severe_count=late_readings if offset < late_days else 0,
+                    sum_delay_seconds=late_sum_seconds if offset < late_days else 3600,
                     source_generated_utc="2026-06-04T00:00:00Z",
                 )
             )
@@ -37,11 +37,11 @@ def test_departures_require_recurrence_and_rank_frequency_before_actual_lateness
     ).materialize()[-1]
     week = payload.by_grain[0]
     assert [entry.id for entry in week.entries] == ["often", "later", "twice", "earlier"]
-    assert [entry.avg_delay_min for entry in week.entries] == [10, 15, 10, 10]
+    assert [entry.avg_delay_min for entry in week.entries] == [0.3, 10.7, 7.3, 7.3]
     assert "once" in {entry.id for entry in week.tray}
     assert [
         (entry.observation_count, entry.severe_count, entry.severe_pct) for entry in week.entries
-    ] == [(90, 3, 3.3), (90, 2, 2.2), (90, 2, 2.2), (90, 2, 2.2)]
+    ] == [(90, 3, 3.3), (90, 60, 66.7), (90, 60, 66.7), (90, 60, 66.7)]
     for entry in [*week.entries, *week.tray]:
         assert 0 <= entry.recurrence_days <= entry.observed_days <= entry.window_days
         assert 0 <= entry.severe_count <= entry.observation_count
@@ -51,7 +51,7 @@ def test_departures_require_recurrence_and_rank_frequency_before_actual_lateness
         assert 0 <= entry.severe_pct <= 100
         if entry.rank is not None:
             assert 0 <= entry.wilson_lo <= entry.wilson_hi <= 100
-    assert next(entry for entry in week.tray if entry.id == "once").avg_delay_min == 2
+    assert next(entry for entry in week.tray if entry.id == "once").avg_delay_min == 4.7
 
 
 def test_tiny_negative_mean_is_published_as_unsigned_zero():

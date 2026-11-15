@@ -20,12 +20,12 @@ def test_repeat_departure_sql_labels_recurrence_and_sixty_minute_mean(
             anchor - timedelta(days=offset),
             30,
             30 if offset < late_days else 0,
-            30 * seconds,
+            30 * (seconds if offset < late_days else 120),
         )
         for identity, late_days, seconds in [
             ("often", 3, 600),
             ("later", 2, 900),
-            ("once", 1, 120),
+            ("once", 1, 600),
             ("sixty", 3, 3600),
         ]
         for offset in range(3)
