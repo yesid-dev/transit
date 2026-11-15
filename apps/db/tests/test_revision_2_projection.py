@@ -405,8 +405,12 @@ UNGUARDED: dict[str, dict[str, str]] = {
         for g in ("weekly", "monthly")
         for m in ("p90_min", "vehicles")
     },
-    "historic/receipts/{date}.json": {"vehicles": "always null (small_surfaces.py:799)"},
+    "historic/receipts/{date}.json": {
+        "vehicles": "always null (small_surfaces.py:799)",
+        "worst_stop": _FLOOR,
+    },
     "historic/route_reliability/{id}.json": {
+        "weak_stops": "no stop reaches MIN_N_RATE readings in the legacy window",
         "headway": "one trip per route, direction, service date and shift (rollups.py:1472-1473)",
         "headway_by_grain": "needs two trips of a route direction at one stop and shift",
         "weak_stops_by_grain": "no stop reaches the Wilson floor in its window (_spine.py:545)",

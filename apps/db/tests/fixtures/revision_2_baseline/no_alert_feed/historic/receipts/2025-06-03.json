@@ -13,11 +13,7 @@
   "name": "Ligne 10",
   "otp_delta_pts": 0.0
  },
- "worst_stop": {
-  "id": "S3",
-  "name": "Arret S3",
-  "avg_delay_min": 6.5
- },
+ "worst_stop": null,
  "affected_routes": 1,
  "affected_stops": 1,
  "alerts": 0,

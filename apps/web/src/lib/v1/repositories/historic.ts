@@ -531,6 +531,9 @@ export async function getRouteReliabilityIndex(ctx?: AdapterCtx): Promise<Set<st
 	return idx ? new Set(idx.route_ids ?? []) : null;
 }
 
+export const getPublishedReliabilityIndex = (ctx?: AdapterCtx) =>
+	adapter.historic.routeReliabilityIndex(ctx);
+
 export const getReceipt: (date: string, ctx?: AdapterCtx) => Promise<Receipt | null> = (
 	date,
 	ctx,

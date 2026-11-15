@@ -10,6 +10,19 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from transit_ops.core.models import ProviderLabel
 from transit_ops.snapshots.contract_static_r3 import StaticRouteR3
+from transit_ops.snapshots.contract_weekly_ranking import (
+    UTC_TIMESTAMP,
+    validate_publication_times,
+)
+from transit_ops.snapshots.contract_weekly_ranking import (
+    WeeklyRankedEntry as WeeklyRankedEntry,
+)
+from transit_ops.snapshots.contract_weekly_ranking import (
+    WeeklyRankingEntry as WeeklyRankingEntry,
+)
+from transit_ops.snapshots.contract_weekly_ranking import (
+    WeeklyUnrankedEntry as WeeklyUnrankedEntry,
+)
 from transit_ops.snapshots.ttl import LIVE_TTL_SECONDS
 
 PAYLOAD_SCHEMA_VERSION = 1
@@ -1547,6 +1560,10 @@ class ReceiptsIndex(PayloadEnvelope):
 
 
 class RouteReliabilityIndex(PayloadEnvelope):
+    published_utc: str | None = Field(default=None, pattern=UTC_TIMESTAMP)
+    next_publish_utc: str | None = Field(default=None, pattern=UTC_TIMESTAMP)
+    weekly_routes: list[WeeklyRankingEntry] | None = None
+    weekly_stops: list[WeeklyRankingEntry] | None = None
     route_ids: list[str] = Field(
         default_factory=list,
         description=(
@@ -1557,6 +1574,20 @@ class RouteReliabilityIndex(PayloadEnvelope):
         ),
     )
     generated_utc: str
+
+    @model_validator(mode="after")
+    def validate_weekly_ranking(self) -> Self:
+        validate_publication_times(self.published_utc, self.next_publish_utc)
+        for entries, stops in ((self.weekly_routes, False), (self.weekly_stops, True)):
+            if entries is None:
+                continue
+            if len({entry.id for entry in entries}) != len(entries):
+                raise ValueError("ranking identities must be unique")
+            if stops and any(
+                entry.state == "ranked" and entry.severe_pct is None for entry in entries
+            ):
+                raise ValueError("ranked stops require their severe share")
+        return self
 
 
 TOP_LEVEL_MODELS: dict[str, type[BaseModel]] = {

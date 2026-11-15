@@ -8,7 +8,7 @@ import { stopReliabilityCopy } from '../stops-reliability.copy';
 
 const motion = vi.hoisted(() => ({ reduced: false }));
 
-let mockUrl = new URL('http://localhost/stop/57191');
+let mockUrl = new URL('http://localhost/stop/57191?grain=day');
 const replaceState = vi.hoisted(() =>
 	vi.fn((u: string | URL) => {
 		mockUrl = new URL(u, 'http://localhost');
@@ -108,11 +108,12 @@ beforeEach(() => {
 
 describe('StopReliabilitySurface — grain seed + availability (S8A)', () => {
 	beforeEach(() => {
-		mockUrl = new URL('http://localhost/stop/57191');
+		mockUrl = new URL('http://localhost/stop/57191?grain=day');
 		replaceState.mockClear();
 	});
 
-	it('offers only grains the stop has data for; day is the default (richest)', () => {
+	it('defaults to the same published week as the home stop ranking', () => {
+		mockUrl = new URL('http://localhost/stop/57191');
 		const { container } = render(StopReliabilitySurface, { props: { data, locale: 'en' } });
 		const group = desktopGroup(container);
 		const day = within(group).getByRole('radio', { name: 'Day' });
@@ -121,7 +122,7 @@ describe('StopReliabilitySurface — grain seed + availability (S8A)', () => {
 		expect(day).toBeEnabled();
 		expect(week).toBeEnabled();
 		expect(month).toBeDisabled();
-		expect(day).toHaveAttribute('aria-checked', 'true');
+		expect(week).toHaveAttribute('aria-checked', 'true');
 	});
 
 	it('seeds the rail from ?grain=week', () => {
@@ -140,12 +141,12 @@ describe('StopReliabilitySurface — grain seed + availability (S8A)', () => {
 		expect(container.querySelector('[data-slot="stop-reliability-pane"]')).toBeNull();
 	});
 
-	it('falls back to day for an unknown ?grain (enum-guard, never a cast)', () => {
+	it('falls back to week for an unknown ?grain (enum-guard, never a cast)', () => {
 		mockUrl = new URL('http://localhost/stop/57191?grain=bogus');
 		const { container } = render(StopReliabilitySurface, { props: { data, locale: 'en' } });
 		const checked = desktopGroup(container).querySelectorAll('[role="radio"][aria-checked="true"]');
 		expect(checked.length).toBe(1);
-		expect(checked[0].textContent?.trim()).toBe('Day');
+		expect(checked[0].textContent?.trim()).toBe('Week');
 	});
 
 	it('day percentiles surface only on the day grain (drop on week, no fabricated 0)', async () => {
@@ -185,7 +186,7 @@ describe('StopReliabilitySurface — grain seed + availability (S8A)', () => {
 
 describe('StopReliabilitySurface — responsive left-rail structure (P5.4)', () => {
 	beforeEach(() => {
-		mockUrl = new URL('http://localhost/stop/57191');
+		mockUrl = new URL('http://localhost/stop/57191?grain=day');
 		replaceState.mockClear();
 	});
 
@@ -293,7 +294,7 @@ describe('StopReliabilitySurface — responsive left-rail structure (P5.4)', () 
 
 describe('StopReliabilitySurface — cohesive article disclosures', () => {
 	beforeEach(() => {
-		mockUrl = new URL('http://localhost/stop/57191');
+		mockUrl = new URL('http://localhost/stop/57191?grain=day');
 		replaceState.mockClear();
 	});
 
@@ -387,7 +388,7 @@ describe('StopReliabilitySurface — cohesive article disclosures', () => {
 
 describe('StopReliabilitySurface — daily trend + range verdict (S8A)', () => {
 	beforeEach(() => {
-		mockUrl = new URL('http://localhost/stop/57191');
+		mockUrl = new URL('http://localhost/stop/57191?grain=day');
 		replaceState.mockClear();
 	});
 
@@ -497,7 +498,7 @@ describe('StopReliabilitySurface metric help ownership', () => {
 	it.each(['en', 'fr'] as const)(
 		'associates median, p90 and mean help with their displayed metric in %s',
 		async (locale) => {
-			mockUrl = new URL('http://localhost/stop/57191');
+			mockUrl = new URL('http://localhost/stop/57191?grain=day');
 			const { container } = render(StopReliabilitySurface, { props: { data, locale } });
 			const section = disclosure(container, 'stop-rel-pane');
 			const pane = section.querySelector('[data-slot="reliability-pane"]') as HTMLElement;

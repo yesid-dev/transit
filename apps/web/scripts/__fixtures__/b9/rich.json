@@ -2130,7 +2130,19 @@
 		},
 		"historic/route_reliability/index.json": {
 			"generated_utc": "2026-08-30T06:00:00Z",
-			"route_ids": ["24"]
+			"route_ids": ["24"],
+			"weekly_routes": [
+				{
+					"id": "24",
+					"state": "ranked",
+					"rank": 1,
+					"numerator": 220,
+					"denominator": 290,
+					"pct": 76,
+					"window_start": "2026-08-23",
+					"window_end": "2026-08-29"
+				}
+			]
 		}
 	},
 	"not_found": ["status/data_health.json"]

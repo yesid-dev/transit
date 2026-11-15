@@ -4,10 +4,13 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ReliabilitySnapshot } from '#lib/v1/reliabilitySnapshot.svelte.ts';
 import LinesIndex from './LinesIndex.svelte';
 import * as i18n from '#lib/i18n/index.ts';
+import { configureV1Runtime } from '#lib/v1/runtime.ts';
 
 const snapshots = new SvelteMap<string, ReliabilitySnapshot>();
 const requested: string[] = [];
+let publishedRows: Array<{ id: string; state: string; pct: number | null }> | null = null;
 let viewportRequestsEnabled = true;
+let fixtureGenerated: string | null = null;
 const historyCalls = vi.hoisted(() => ({
 	getLineHistoryDirectory: vi.fn(),
 	getLineHistoryIndex: vi.fn(),
@@ -48,7 +51,16 @@ vi.mock('#lib/v1/repositories/historic.ts', () => historyCalls);
 
 vi.mock('#lib/v1/resource.svelte.ts', () => ({
 	createResource: () => ({
-		data: { generated_utc: '2026-06-16T02:00:00Z', routes: ROUTES },
+		data: {
+			generated_utc: fixtureGenerated ?? new Date().toISOString(),
+			routes: ROUTES,
+			weekly_routes: publishedRows?.map((row, i) => ({
+				...row,
+				window_start: '2026-11-04',
+				window_end: '2026-11-10',
+				...(row.state === 'ranked' ? { rank: i + 1, numerator: row.pct, denominator: 100 } : {}),
+			})),
+		},
 		error: null,
 		loading: false,
 		settled: true,
@@ -57,6 +69,8 @@ vi.mock('#lib/v1/resource.svelte.ts', () => ({
 }));
 
 function reset() {
+	fixtureGenerated = null;
+	publishedRows = null;
 	snapshots.clear();
 	requested.length = 0;
 	viewportRequestsEnabled = true;
@@ -235,51 +249,88 @@ describe('LinesIndex reliability badge', () => {
 	});
 });
 
-describe('LinesIndex worst-first sort', () => {
-	it('reorders unreliable → patchy → reliable when sorting by least reliable', async () => {
+describe('LinesIndex published sort', () => {
+	it('removes the league at its deadline using the shared server clock while the page stays open', async () => {
 		reset();
-		snapshots.set('24', snap({ phase: 'ready', otpPct: 96, verdict: 'reliable' }));
-		snapshots.set('161', snap({ phase: 'ready', otpPct: 55, verdict: 'unreliable' }));
-		snapshots.set('99', snap({ phase: 'ready', otpPct: 72, verdict: 'patchy' }));
-		render(LinesIndex);
-
-		const rowName = (li: HTMLElement) => within(li).getAllByRole('link')[0].textContent;
-
-		expect(rowName(screen.getAllByRole('listitem')[0])).toContain('24');
-
-		await screen.getByTestId('lines-sort-worst').click();
-
-		expect(rowName(screen.getAllByRole('listitem')[0])).toContain('161');
+		fixtureGenerated = '2026-11-11T00:00:00Z';
+		publishedRows = [{ id: '161', state: 'ranked', pct: 60 }];
+		const times = new SvelteMap([['now', Date.parse('2026-11-12T12:00:00Z')]]);
+		const restore = configureV1Runtime({
+			clock: {
+				get serverNow() {
+					return times.get('now')!;
+				},
+				noteServerEpochMs() {},
+				subscribe() {
+					return () => {};
+				},
+			},
+		});
+		try {
+			render(LinesIndex);
+			await screen.findByTestId('lines-sort-worst');
+			times.set('now', Date.parse('2026-11-18T07:00:00Z'));
+			await waitFor(() => expect(screen.queryByTestId('lines-sort-worst')).toBeNull());
+		} finally {
+			restore();
+		}
 	});
 
-	it('requests every filtered candidate and commits one ranking only after all are terminal', async () => {
+	it('keeps a published below-floor row hedged when its visible detail finishes loading', async () => {
+		reset();
+		publishedRows = [
+			{ id: '24', state: 'too_few_units', pct: null },
+			{ id: '161', state: 'ranked', pct: 60 },
+		];
+		snapshots.set('24', snap({ phase: 'loading' }));
+		const { container } = render(LinesIndex);
+		snapshots.set(
+			'24',
+			snap({
+				phase: 'ready',
+				otpPct: 0,
+				verdict: 'tentative',
+				observationCount: 29,
+				hedge: 'Only 29 readings',
+			}),
+		);
+		await waitFor(() =>
+			expect(container.querySelector('[data-slot="reliability-hedge"]')).toHaveTextContent(
+				'Not enough data',
+			),
+		);
+		expect(container.querySelector('[data-slot="reliability-hedge"]')).toHaveAttribute(
+			'title',
+			'Only 29 readings',
+		);
+		const thin = container
+			.querySelector('a[href="/lines/24"]')!
+			.closest('[data-slot="entity-result-row"]')!;
+		expect(thin.querySelector('[data-slot="reliability-badge"]')).toBeNull();
+	});
+
+	it('uses published order immediately without requesting offscreen reliability files', async () => {
 		reset();
 		viewportRequestsEnabled = false;
+		publishedRows = [
+			{ id: '161', state: 'ranked', pct: 55 },
+			{ id: '99', state: 'ranked', pct: 72 },
+			{ id: '24', state: 'ranked', pct: 96 },
+		];
 		render(LinesIndex);
-		const lineOrder = () =>
+		await screen.getByTestId('lines-sort-worst').click();
+		expect(
 			screen
 				.getAllByRole('listitem')
-				.map((row) => within(row).getAllByRole('link')[0].getAttribute('href'));
-
-		await screen.getByTestId('lines-sort-worst').click();
-
-		expect(new Set(requested)).toEqual(new Set(['24', '99', '161']));
-		expect(lineOrder()).toEqual(['/lines/24', '/lines/99', '/lines/161']);
-		expect(screen.getByRole('status')).toHaveTextContent(
-			'Calculating reliability ranking for the filtered lines…',
-		);
-
-		snapshots.set('161', snap({ phase: 'ready', otpPct: 55, verdict: 'unreliable' }));
-		await waitFor(() => expect(screen.getByText('55%')).toBeInTheDocument());
-		expect(lineOrder()).toEqual(['/lines/24', '/lines/99', '/lines/161']);
-		expect(screen.getByRole('status')).toHaveTextContent(
-			'Calculating reliability ranking for the filtered lines…',
-		);
-
-		snapshots.set('24', snap({ phase: 'ready', otpPct: 96, verdict: 'reliable' }));
-		snapshots.set('99', snap({ phase: 'ready', otpPct: 72, verdict: 'patchy' }));
-		await waitFor(() => expect(lineOrder()).toEqual(['/lines/161', '/lines/99', '/lines/24']));
+				.map((row) => within(row).getAllByRole('link')[0].getAttribute('href')),
+		).toEqual(['/lines/161', '/lines/99', '/lines/24']);
+		expect(requested).toEqual([]);
 		expect(screen.getByRole('status')).toHaveTextContent('');
+	});
+	it('omits least reliable when no ranking was published', () => {
+		reset();
+		render(LinesIndex);
+		expect(screen.queryByTestId('lines-sort-worst')).toBeNull();
 	});
 });
 

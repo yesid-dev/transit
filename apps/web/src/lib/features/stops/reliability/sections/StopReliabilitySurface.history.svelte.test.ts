@@ -560,6 +560,7 @@ describe('StopReliabilitySurface figure periods', () => {
 	] as const)(
 		'names the period of each figure the dates do not change (%s)',
 		async (locale, day, all) => {
+			harness.page.url.searchParams.set('grain', 'day');
 			const history = createHistory();
 			const view = renderSurface(history, locale);
 			await waitFor(() => expect(history.index).not.toBeNull());

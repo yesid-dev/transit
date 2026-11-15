@@ -1,12 +1,18 @@
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import Connection
 
 from transit_ops.gold.reader.window import resolve_as_of
 from transit_ops.settings import Settings
 from transit_ops.snapshots import builders, envelope, historic_tree
+from transit_ops.snapshots.builders.historic.weekly_ranking import (
+    cancelled_stop_ids,
+    next_historic_publication,
+    rank_weekly_periods,
+    weekly_payload_rows,
+)
 from transit_ops.snapshots.contract import (
     PayloadEnvelope,
     ReceiptAvailability,
@@ -140,6 +146,10 @@ def _build_items(
     route_index_item = (
         "historic/route_reliability/index.json",
         RouteReliabilityIndex(
+            published_utc=(
+                as_of_utc.astimezone(UTC).isoformat().replace("+00:00", "Z") if as_of_utc else None
+            ),
+            next_publish_utc=next_historic_publication(as_of_utc) if as_of_utc else None,
             route_ids=sorted(route_ids),
             generated_utc=stamp,
         ),
@@ -149,12 +159,26 @@ def _build_items(
     all_stops_rel = builders.build_stop_reliability(
         conn, provider_id=provider_id, generated_utc=stamp, as_of_utc=as_of_utc
     )
+    alerts_now = builders.build_alerts(conn, provider_id=provider_id, generated_utc=stamp).alerts
+    closed = cancelled_stop_ids(alerts_now, resolve_as_of(conn, as_of_utc)) if alerts_now else set()
+    for route in route_payloads.values():
+        route.weak_stops = [stop for stop in route.weak_stops if stop.id not in closed]
+        for weak_grain in route.weak_stops_by_grain:
+            weak_grain.stops = [stop for stop in weak_grain.stops if stop.id not in closed]
+    route_index_item[1].weekly_routes = rank_weekly_periods(
+        weekly_payload_rows(route_payloads, kind="route", excluded=set())
+    )
+    route_index_item[1].weekly_stops = rank_weekly_periods(
+        weekly_payload_rows(all_stops_rel, kind="stop", excluded=closed)
+    )
     stop_items: list[PutItem] = [
         (f"historic/stop_reliability/{stop_id}.json", stop_rel, "historic")
         for stop_id, stop_rel in sorted(all_stops_rel.items())
     ]
 
-    all_receipts = builders.build_receipts(conn, provider_id=provider_id, generated_utc=stamp)
+    all_receipts = builders.build_receipts(
+        conn, provider_id=provider_id, generated_utc=stamp, excluded_stops=closed
+    )
     receipt_items: list[PutItem] = [
         (f"historic/receipts/{date_str}.json", receipt, "historic")
         for date_str, receipt in sorted(all_receipts.items())

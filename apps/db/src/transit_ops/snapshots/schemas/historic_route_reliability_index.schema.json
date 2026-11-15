@@ -1,4 +1,178 @@
 {
+  "$defs": {
+    "WeeklyRankedEntry": {
+      "properties": {
+        "denominator": {
+          "maximum": 9007199254740991,
+          "minimum": 30,
+          "title": "Denominator",
+          "type": "integer"
+        },
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "numerator": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Numerator",
+          "type": "integer"
+        },
+        "pct": {
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Pct",
+          "type": "number"
+        },
+        "rank": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "title": "Rank",
+          "type": "integer"
+        },
+        "severe_pct": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Severe Pct"
+        },
+        "state": {
+          "const": "ranked",
+          "title": "State",
+          "type": "string"
+        },
+        "window_end": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "title": "Window End",
+          "type": "string"
+        },
+        "window_start": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "title": "Window Start",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "window_start",
+        "window_end",
+        "state",
+        "rank",
+        "numerator",
+        "denominator",
+        "pct"
+      ],
+      "title": "WeeklyRankedEntry",
+      "type": "object"
+    },
+    "WeeklyRankingEntry": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/WeeklyRankedEntry"
+        },
+        {
+          "$ref": "#/$defs/WeeklyUnrankedEntry"
+        }
+      ]
+    },
+    "WeeklyUnrankedEntry": {
+      "properties": {
+        "denominator": {
+          "default": null,
+          "title": "Denominator",
+          "type": "null"
+        },
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "numerator": {
+          "default": null,
+          "title": "Numerator",
+          "type": "null"
+        },
+        "pct": {
+          "default": null,
+          "title": "Pct",
+          "type": "null"
+        },
+        "rank": {
+          "default": null,
+          "title": "Rank",
+          "type": "null"
+        },
+        "severe_pct": {
+          "default": null,
+          "title": "Severe Pct",
+          "type": "null"
+        },
+        "state": {
+          "enum": [
+            "too_few_trips",
+            "too_few_service_days",
+            "too_few_units",
+            "not_defined",
+            "not_measured",
+            "no_live_data"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "window_end": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "title": "Window End",
+          "type": "string"
+        },
+        "window_start": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "title": "Window Start",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "window_start",
+        "window_end",
+        "state"
+      ],
+      "title": "WeeklyUnrankedEntry",
+      "type": "object"
+    }
+  },
   "properties": {
     "generated_utc": {
       "title": "Generated Utc",
@@ -16,6 +190,19 @@
       "default": null,
       "title": "Methodology Version"
     },
+    "next_publish_utc": {
+      "anyOf": [
+        {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Next Publish Utc"
+    },
     "publish_generation_id": {
       "anyOf": [
         {
@@ -27,6 +214,19 @@
       ],
       "default": null,
       "title": "Publish Generation Id"
+    },
+    "published_utc": {
+      "anyOf": [
+        {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Published Utc"
     },
     "route_ids": {
       "description": "Route ids with a published per-route reliability file in THIS run, ascending; fetch {route_reliability_prefix}{route_id}.json. The always-current daily set (the static routes_index `reliability` flag can lag this); a route absent here has no published reliability file.",
@@ -40,6 +240,36 @@
       "default": 1,
       "title": "Schema Version",
       "type": "integer"
+    },
+    "weekly_routes": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/WeeklyRankingEntry"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Weekly Routes"
+    },
+    "weekly_stops": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/WeeklyRankingEntry"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Weekly Stops"
     }
   },
   "required": [

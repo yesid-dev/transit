@@ -163,7 +163,7 @@ def _stop_candidate(c, d, sid, *, avg_delay) -> None:  # noqa: ANN001
         text(
             "INSERT INTO gold.stop_delay_hourly (provider_id, period_start_utc, stop_id,"
             " route_id, observation_count, avg_arrival_delay_seconds)"
-            " VALUES (:p, :ts, :s, '51', 10, :avg)"
+            " VALUES (:p, :ts, :s, '51', 30, :avg)"
         ),
         {
             "p": PROVIDER,
@@ -289,7 +289,9 @@ def test_worst_queries_return_one_ranked_candidate_per_date(conn) -> None:  # no
         "receipt_end": OLD_RETAINED_DAY,
     }
     route_rows = list(conn.execute(_RECEIPTS_WORST_ROUTE_SQL, params).mappings())
-    stop_rows = list(conn.execute(_RECEIPTS_WORST_STOP_SQL, params).mappings())
+    stop_rows = list(conn.execute(
+        _RECEIPTS_WORST_STOP_SQL, {**params, "excluded_stops": []}
+    ).mappings())
 
     assert len(route_rows) == len(stop_rows) == 1
     assert [(row["d"], row["route_id"]) for row in route_rows] == [(OLD_RETAINED_DAY, "24")]

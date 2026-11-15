@@ -464,8 +464,8 @@
   {
    "family": "receipts",
    "selection_mode": "date",
-   "index_path": "historic/receipts/generations/728ec44cadc82517a6adbd4f5da37e08a785212cc07a5bb7cda9cbcab7653fad/index.json",
-   "collection_generation_id": "887c01144257eedb65d826ce3d23031b13a679d588b17d6d36846fbe85a877f8",
+   "index_path": "historic/receipts/generations/cc0b93548f2d3a538829e26d17d1c063ed2778ad0b9e72f36f545aeb5fdf358b/index.json",
+   "collection_generation_id": "3261289f4300d30a079100ab547a11cb12e060e3b2a08a4f05a7ca0472f9e586",
    "first_available_date": "2025-06-03",
    "last_available_date": "2025-08-19",
    "gaps": [

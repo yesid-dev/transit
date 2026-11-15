@@ -686,11 +686,13 @@ def test_hotspots_as_of_name_close_handles_fall_dst_boundary() -> None:
     assert payload.hotspots[0].name == "Fall DST day"
 
 
-def test_hotspots_history_production_plan_executes_exactly_four_closed_day_queries() -> None:
+def test_hotspots_history_production_plan_reads_closed_days_and_cancellations() -> None:
     conn = NamedQueryConn(
         {
             "history.hotspots.timezone": [{"timezone": "America/Toronto"}],
             "history.hotspots.names": [],
+            "live.alerts": [],
+            "live.feed_capture": [],
             "history.hotspots.route_daily": [
                 _route_row("2026-07-05", "R1"),
                 _route_row("2026-07-06", "R1"),
@@ -713,8 +715,10 @@ def test_hotspots_history_production_plan_executes_exactly_four_closed_day_queri
         "history.hotspots.names",
         "history.hotspots.route_daily",
         "history.hotspots.stop_daily",
+        "live.alerts",
+        "live.feed_capture",
     ]
-    route_sql, stop_sql = conn.executed[-2:]
+    route_sql, stop_sql = conn.executed[2:4]
     assert (
         "provider_local_date < timezone(dp.timezone, CAST(:as_of_utc AS timestamptz))::date"
         in route_sql
@@ -784,6 +788,8 @@ def test_current_hotspots_fixed_builder_bytes_and_dispatch_are_unchanged() -> No
         b'"otp_delta_pts":-5.0}],"by_grain":[]}'
     )
     assert [query_name(sql) for sql in conn.executed] == [
+        "live.alerts",
+        "live.feed_capture",
         "hotspots.list",
         "static.route_names",
         "static.stop_names",
@@ -896,6 +902,21 @@ def _offender_days(
         provider_timezone=timezone,
     )
     return list(plan.iter_days())
+
+
+def _three_observed_days(rows):
+    expanded = []
+    for row in rows:
+        for offset in range(3):
+            value = dict(row)
+            value["local_date"] = (
+                date.fromisoformat(str(row["local_date"])) - timedelta(days=2-offset)
+            ).isoformat()
+            for field in ("observation_count", "severe_count", "sum_delay_seconds"):
+                total = int(row[field])
+                value[field] = total // 3 + int(offset < total % 3)
+            expanded.append(value)
+    return sorted(expanded, key=lambda row: (row["local_date"], row["entity_id"], row["route_id"]))
 
 
 def _repeat_grain(day, grain: str):  # noqa: ANN001, ANN202
@@ -1016,8 +1037,8 @@ def test_repeat_offenders_as_of_windows_use_dates_not_last_observed_groups() -> 
     )[-1]
 
     assert latest.offenders == []
-    assert {value.id for value in _repeat_grain(latest, "week").entries} == {"NEW"}
-    assert {value.id for value in _repeat_grain(latest, "month").entries} == {"NEW"}
+    assert {value.id for value in _repeat_grain(latest, "week").tray} == {"NEW"}
+    assert {value.id for value in _repeat_grain(latest, "month").tray} == {"NEW"}
 
 
 def test_repeat_offenders_as_of_scalar_requires_three_recurrence_days() -> None:
@@ -1164,7 +1185,7 @@ def test_repeat_offenders_as_of_same_id_routes_are_distinct_and_deterministic() 
 def test_repeat_offenders_as_of_by_grain_preserves_wilson_floor_and_kind_ranks() -> None:
     day = "2026-07-06"
     payload = _offender_days(
-        rows=[
+        rows=_three_observed_days([
             _offender_row(day, "SMALL", obs=30, severe=15, sum_delay_sec=30_000),
             _offender_row(day, "BIG", obs=1_000, severe=600, sum_delay_sec=1_000_000),
             _offender_row(day, "N29", obs=29, severe=29, sum_delay_sec=29_000),
@@ -1176,8 +1197,8 @@ def test_repeat_offenders_as_of_by_grain_preserves_wilson_floor_and_kind_ranks()
                 severe=80,
                 sum_delay_sec=70_000,
             ),
-        ]
-    )[0]
+        ])
+    )[-1]
     week = _repeat_grain(payload, "week")
     trips = [value for value in week.entries if value.type == "trip"]
     vehicles = [value for value in week.entries if value.type == "vehicle"]
@@ -1186,12 +1207,12 @@ def test_repeat_offenders_as_of_by_grain_preserves_wilson_floor_and_kind_ranks()
     assert [value.rank for value in trips] == [1, 2]
     assert [value.rank for value in vehicles] == [1]
     assert "N29" not in {value.id for value in week.entries}
-    assert "N29" not in {value.id for value in week.tray}
+    assert "N29" in {value.id for value in week.tray}
 
 
 def test_repeat_offenders_as_of_by_grain_ties_use_avg_then_id_then_route() -> None:
     payload = _offender_days(
-        rows=[
+        rows=_three_observed_days([
             _offender_row("2026-07-06", "LOWAVG", obs=100, severe=50, sum_delay_sec=10_000),
             _offender_row("2026-07-06", "ZAVG", obs=100, severe=50, sum_delay_sec=20_000),
             _offender_row("2026-07-06", "AAVG", obs=100, severe=50, sum_delay_sec=20_000),
@@ -1211,8 +1232,8 @@ def test_repeat_offenders_as_of_by_grain_ties_use_avg_then_id_then_route() -> No
                 severe=50,
                 sum_delay_sec=30_000,
             ),
-        ]
-    )[0]
+        ])
+    )[-1]
 
     assert [(value.id, value.route) for value in _repeat_grain(payload, "week").entries] == [
         ("SAME", "A"),
@@ -1246,7 +1267,8 @@ def test_repeat_offenders_as_of_by_grain_caps_each_kind_and_tray_union() -> None
     rows: list[dict[str, object]] = []
     for kind, prefix in (("trip", "T"), ("vehicle", "V")):
         rows.extend(
-            _offender_row(first + timedelta(days=1), f"{prefix}{index:02d}", kind=kind)
+            _offender_row(first + timedelta(days=offset), f"{prefix}{index:02d}", kind=kind, obs=10)
+            for offset in range(3)
             for index in range(55)
         )
     for kind, prefix in (("trip", "TT"), ("vehicle", "TV")):
@@ -1322,13 +1344,13 @@ def test_repeat_offenders_as_of_discovers_published_empty_before_eligibility() -
 def test_repeat_offenders_as_of_names_use_provider_local_close_overlap_and_gap() -> None:
     day = "2026-03-08"
     payload = _offender_days(
-        rows=[
+        rows=_three_observed_days([
             _offender_row(day, "MID", route_id="MID", obs=30),
             _offender_row(day, "NEXT", route_id="NEXT", obs=30),
             _offender_row(day, "DST", route_id="DST", obs=30),
             _offender_row(day, "OVER", route_id="OVER", obs=30),
             _offender_row(day, "GAP", route_id="GAP", obs=30),
-        ],
+        ]),
         names=[
             _name("route", "MID", "Old", "2026-01-01T00:00:00Z", "2026-03-08T17:00:00Z"),
             _name("route", "MID", "Midday", "2026-03-08T17:00:00Z"),
@@ -1352,7 +1374,7 @@ def test_repeat_offenders_as_of_names_use_provider_local_close_overlap_and_gap()
             _name("route", "OVER", "Newest overlap", "2026-03-08T12:00:00Z"),
             _name("route", "GAP", "Expired", "2026-01-01T00:00:00Z", "2026-03-08T12:00:00Z"),
         ],
-    )[0]
+    )[-1]
     by_route = {value.route: value.route_name for value in _repeat_grain(payload, "week").entries}
 
     assert by_route == {
@@ -1366,7 +1388,7 @@ def test_repeat_offenders_as_of_names_use_provider_local_close_overlap_and_gap()
 
 def test_repeat_offenders_as_of_fall_dst_close_and_envelope_are_stable() -> None:
     payload = _offender_days(
-        rows=[_offender_row("2026-11-01", "FALL", route_id="FALL")],
+        rows=_three_observed_days([_offender_row("2026-11-01", "FALL", route_id="FALL")]),
         names=[
             _name(
                 "route",
@@ -1377,7 +1399,7 @@ def test_repeat_offenders_as_of_fall_dst_close_and_envelope_are_stable() -> None
             ),
             _name("route", "FALL", "Next day", "2026-11-02T05:00:00Z"),
         ],
-    )[0]
+    )[-1]
 
     assert _repeat_grain(payload, "week").entries[0].route_name == "Fall DST day"
     assert payload.methodology_version == "reliability-2"

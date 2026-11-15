@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RouteReliability, StopReliability, NetworkTrend } from '#lib/v1/index.ts';
 import { isoUtc } from '#lib/v1/schemas/types.ts';
 import type { ReliabilityWindow } from '#lib/v1/verdict.ts';
@@ -16,6 +16,7 @@ const harness = vi.hoisted(() => {
 		route: null as RouteReliability | null,
 		stop: null as StopReliability | null,
 		network: null as NetworkTrend | null,
+		publishedPct: 85,
 		mirrorSearchParams: vi.fn((values: Record<string, string | null>) => {
 			const next = new URL(page.url);
 			for (const [key, value] of Object.entries(values)) {
@@ -35,6 +36,21 @@ vi.mock('#lib/v1/repositories/historic.ts', () => ({
 	getRouteReliability: async () => harness.route,
 	getStopReliability: async () => harness.stop,
 	getRouteReliabilityIndex: async () => new Set(['24']),
+	getPublishedReliabilityIndex: async () => ({
+		generated_utc: new Date().toISOString(),
+		weekly_routes: [
+			{
+				id: '24',
+				state: 'ranked',
+				pct: harness.publishedPct,
+				rank: 1,
+				numerator: harness.publishedPct,
+				denominator: 100,
+				window_start: harness.route?.periods_by_grain?.find((p) => p.grain === 'week')?.date,
+				window_end: harness.route?.periods_by_grain?.find((p) => p.grain === 'day')?.date,
+			},
+		],
+	}),
 	getNetworkTrend: async () => harness.network,
 	getHistoricAvailability: async () => ({
 		families: [{ family: 'network', last_available_date: harness.network?.series?.at(-1)?.date }],
@@ -102,8 +118,11 @@ vi.mock('#lib/v1/live/store.svelte.ts', () => ({
 	}),
 }));
 
+beforeEach(() => vi.stubGlobal('IntersectionObserver', undefined));
 afterEach(() => {
+	vi.unstubAllGlobals();
 	cleanup();
+	harness.publishedPct = 85;
 	harness.page.url = new URL('http://localhost/lines/24');
 });
 
@@ -306,6 +325,7 @@ it('banner, list and pane agree on one window', async () => {
 it('list uses the same closed week on arrival', async () => {
 	const { closedWeek } = await import('../lines/reliability/__fixtures__/closedWeek');
 	harness.route = { ...closedWeek, id: '24' };
+	harness.publishedPct = 84;
 	const view = render(LinesIndex);
 	await fireEvent.click(await view.findByTestId('lines-sort-worst'));
 	await waitFor(() =>

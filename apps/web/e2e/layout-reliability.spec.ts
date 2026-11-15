@@ -13,6 +13,7 @@ for (const locale of ['en', 'fr'] as const)
 				const url = new URL(route.request().url());
 				const state =
 					url.pathname.endsWith('/historic/route_reliability/24.json') ||
+					url.pathname.endsWith('/historic/route_reliability/index.json') ||
 					url.pathname.endsWith('/static/routes_index.json')
 						? 'hedged'
 						: 'fresh';

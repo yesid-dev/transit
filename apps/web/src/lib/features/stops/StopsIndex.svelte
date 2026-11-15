@@ -1,7 +1,10 @@
 <script lang="ts">
+	import { getV1Runtime } from '#lib/v1/runtime.ts';
+	import { onMount } from 'svelte';
+	import { getPublishedReliabilityIndex } from '#lib/v1/repositories/historic.ts';
+	import { createPublishedWeeklyRanking } from '#lib/v1/ranking/published.ts';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { stopReliabilityCopy } from './reliability/stops-reliability.copy';
-	import { verdictRank } from '#lib/v1/verdict.ts';
 	import { page } from '$app/state';
 	import { intl, getLocalizeHref, getLocale, type Locale } from '#lib/i18n/index.ts';
 	import { mapHrefFor } from '#lib/nav/index.ts';
@@ -46,6 +49,14 @@
 	const listingSubtitle = $derived([t.kicker, t.subheading].filter(Boolean).join(' '));
 	const edgeLayout = $derived(desktop.current ? 'desktop' : 'mobile');
 
+	const rankingRuntime = getV1Runtime();
+	onMount(() => rankingRuntime.clock.subscribe());
+	const published = createResource((signal) => getPublishedReliabilityIndex({ signal }));
+	const weeklyReader = $derived(createPublishedWeeklyRanking(published.data));
+	const weekly = $derived(weeklyReader('stop', rankingRuntime.clock.serverNow));
+	const publishedIds = $derived(
+		weekly?.filter((row) => row.state === 'ranked').map((row) => row.id) ?? null,
+	);
 	const index = createResource(() => getStopsIndex());
 	const routesIndex = createResource(() => getRoutesIndex());
 
@@ -159,9 +170,9 @@
 		loader: reliability,
 		candidates: () => reliabilityCandidates,
 		id: (stop) => stop.id,
-		requestWhen: () => sort === 'worst',
+		requestWhen: () => false,
 		rankWhen: () => sort === 'worst',
-		rank: (snapshot) => verdictRank(snapshot.verdict),
+		published: () => publishedIds,
 	});
 	const visibleGroups = $derived.by<LineStopGroup[]>(() =>
 		lineStopGroups
@@ -277,7 +288,7 @@
 	<FilterSection>
 		<FilterGroup
 			label={t.sortLabel}
-			items={[{ key: 'worst', label: t.sortWorst }]}
+			items={publishedIds ? [{ key: 'worst', label: t.sortWorst }] : []}
 			activeKey={sort === 'default' ? null : sort}
 			allLabel={t.sortDefault}
 			allowDeselect={false}
@@ -301,9 +312,6 @@
 >
 	<ResourceBoundary resource={routesIndex} lang={locale}>
 		<ResourceBoundary resource={index} lang={locale}>
-			<p class="sr-only" role="status" aria-live="polite" data-testid="stops-ranking-status">
-				{reliabilityListing.rankingPending ? t.rankingPending : ''}
-			</p>
 			{#if lineActive}
 				<!-- BY-LINE view. We gate on the per-route fetch MANUALLY (not a nested
 			     ResourceBoundary) so a 404 / empty list states the SPECIFIC honest
@@ -406,9 +414,10 @@
 {#snippet stopRow(stop: StopIndexEntry)}
 	{@const hint = stopModeHint(stop)}
 	{@const stopSnapshot = reliability.get(stop.id)}
+	{@const publishedRow = weekly?.find((row) => row.id === stop.id)}
 	<div use:observeReliability={stop.id}>
 		{#snippet stopStatus()}
-			<ReliabilityBadge snapshot={stopSnapshot} {locale} />
+			<ReliabilityBadge published={publishedRow} snapshot={stopSnapshot} {locale} />
 		{/snippet}
 		{#snippet stopAction()}
 			<MapDrilldownLink
@@ -426,7 +435,7 @@
 			title={stopDisplayName(stop.name)}
 			subtitle={stop.code ?? undefined}
 			routes={stop.routes}
-			status={stopSnapshot.otpPct == null ? undefined : stopStatus}
+			status={publishedRow != null || stopSnapshot.otpPct != null ? stopStatus : undefined}
 			action={stopAction}
 		/>
 	</div>

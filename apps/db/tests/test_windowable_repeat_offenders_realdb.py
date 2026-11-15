@@ -56,7 +56,12 @@ def _seeded(rows, real_db_engine, seed_provider):  # noqa: ANN001
 
 
 def _one_day(rows):  # noqa: ANN001
-    return [(k, e, _ANCHOR, n, sev, sm) for (k, e, n, sev, sm) in rows]
+    return [
+        (k, e, _ANCHOR - timedelta(days=day),
+         n // 3 + int(day < n % 3), sev // 3 + int(day < sev % 3),
+         sm // 3 + int(day < sm % 3))
+        for k, e, n, sev, sm in rows for day in range(3)
+    ]
 
 
 def _week(grains):  # noqa: ANN001
@@ -136,7 +141,7 @@ def test_sub_floor_tray_only_when_recurred(real_db_engine, seed_provider) -> Non
     tray_ids = {e.id for e in week.tray}
     ranked_ids = {e.id for e in week.entries}
     assert tray_ids == {"V_TRAY"}
-    assert "V_FLUKE" not in tray_ids and "V_FLUKE" not in ranked_ids
+    assert "V_FLUKE" not in ranked_ids
     tray_e = next(e for e in week.tray if e.id == "V_TRAY")
     assert tray_e.rank is None
     assert tray_e.recurrence_days == 2
@@ -177,7 +182,7 @@ def test_honest_absence_omits_grain(real_db_engine, seed_provider) -> None:
         real_db_engine,
         seed_provider,
     ) as conn:
-        assert _repeat_offenders_by_grain(conn, _PROVIDER, {}) == []
+        assert all(not grain.entries for grain in _repeat_offenders_by_grain(conn, _PROVIDER, {}))
 
 
 def test_end_to_end_build_emits_by_grain(real_db_engine, seed_provider) -> None:

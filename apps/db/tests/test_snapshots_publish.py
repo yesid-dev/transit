@@ -1714,7 +1714,7 @@ def test_publish_historic_uses_one_sorted_route_batch_and_preserves_hash_gate(
     assert all(item[1].publish_generation_id == f"stm@{stamp}" for item in published_items)
 
     fingerprint = state_fingerprint("historic")
-    assert fingerprint == "v1|cc:public, max-age=3600, stale-while-revalidate=86400"
+    assert fingerprint == "v2|cc:public, max-age=3600, stale-while-revalidate=86400"
     inner = MemorySnapshotStore()
     state_key = "_meta/publish_state_historic.json"
 

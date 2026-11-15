@@ -128,7 +128,21 @@
 		});
 	}
 
-	const grains = $derived(ladderGrains(offenders.data?.by_grain, OFFENDER_GRAINS));
+	const grains = $derived(
+		ladderGrains(
+			offenders.data?.by_grain?.map((grain) => ({
+				...grain,
+				entries: (grain.entries ?? []).filter((entry) => (entry.observed_days ?? 0) >= 3),
+				tray: [
+					...(grain.tray ?? []),
+					...(grain.entries ?? [])
+						.filter((entry) => (entry.observed_days ?? 0) < 3)
+						.map((entry) => ({ ...entry, rank: null })),
+				],
+			})),
+			OFFENDER_GRAINS,
+		),
+	);
 	const ladders = $derived(grains.ladders);
 	const present = $derived(grains.present);
 

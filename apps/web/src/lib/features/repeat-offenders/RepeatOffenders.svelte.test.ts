@@ -460,6 +460,7 @@ describe('RepeatOffenders — approved analytical article', () => {
 							rank: 1,
 							type: 'trip',
 							id: 'T0',
+							observed_days: 3,
 							route: null,
 							severe_pct: null,
 							observation_count: 0,
@@ -581,17 +582,15 @@ describe('RepeatOffenders — approved analytical article', () => {
 		);
 	});
 
-	it('shows the one-day note, not a recurrence count, for a top offender seen on one day', () => {
+	it('moves an older one-day ranked entry out of the headline and ladder', () => {
 		const top = payload.current?.by_grain?.[0]?.entries?.[0];
-		if (!top) throw new Error('the seeded week ladder has no top offender');
+		if (!top) throw new Error('missing seeded offender');
 		Object.assign(top, { recurrence_days: 1, observed_days: 1 });
 		const { container } = render(RepeatOffenders);
-		const hero = container.querySelector('[data-slot="offenders-hero"]') as HTMLElement;
-		expect(hero).toHaveAttribute('aria-label', 'Highest share of late readings');
-		expect(hero).toHaveTextContent(
-			'Seen on one day only. One day does not show a repeated pattern.',
+		expect(container.querySelector('[data-slot="offenders-hero"]')).not.toHaveTextContent(
+			/1 of 1|one day only/,
 		);
-		expect(hero).not.toHaveTextContent(/1 of 1/);
+		expect(JSON.stringify(capturedLadders.current)).not.toContain('trip-T1-11');
 	});
 
 	it('keeps a touch datum activation inside the card and exposes only the popover action', async () => {

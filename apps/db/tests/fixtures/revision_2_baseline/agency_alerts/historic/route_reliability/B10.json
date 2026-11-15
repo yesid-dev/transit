@@ -1799,17 +1799,7 @@
    "observation_count": 2
   }
  ],
- "weak_stops": [
-  {
-   "id": "S3",
-   "name": "Arret S3",
-   "avg_delay_min": 6.5,
-   "observation_count": null,
-   "severe_pct": null,
-   "wilson_lo": null,
-   "wilson_hi": null
-  }
- ],
+ "weak_stops": [],
  "cancellations": [
   {
    "grain": "day",

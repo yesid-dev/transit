@@ -35,6 +35,10 @@ FILE_RULES: tuple[FileRule, ...] = (
         "manifest.json",
         tuple(f"files.historic.{p}" for p in ("data_through", "published_utc", "next_publish_utc")),
     ),
+    FileRule(
+        "historic/route_reliability/index.json",
+        ("weekly_routes", "weekly_stops", "published_utc", "next_publish_utc"),
+    ),
     FileRule("historic/**"),
     FileRule("provenance.json"),
     FileRule("providers.json"),
