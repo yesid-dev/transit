@@ -27,6 +27,11 @@
 		list: SearchList;
 		presentation?: LivePresentation | null;
 		query?: string;
+		/**
+		 * Inside the phone search sheet: the list stays under the field, Escape closes the sheet,
+		 * and leaving for a record or the search page takes the sheet's history entry when `replace`.
+		 */
+		sheet?: { replace: boolean; dismiss: () => void; leave: () => void } | null;
 	}
 
 	let {
@@ -37,6 +42,7 @@
 		list,
 		presentation = null,
 		query = $bindable(''),
+		sheet = null,
 	}: Props = $props();
 
 	const uid = $props.id();
@@ -57,7 +63,9 @@
 	});
 	const listed = $derived(list.groups.length > 0 || (list.total === 0 && !list.pending));
 	const shown = $derived(
-		open && text.length > 0 && (listed || (presentation?.notice.kind ?? 'none') !== 'none'),
+		(open || sheet !== null) &&
+			text.length > 0 &&
+			(listed || (presentation?.notice.kind ?? 'none') !== 'none'),
 	);
 	const localized = (href: string) => localizeHref(href, locale, providerId);
 	const hrefs = $derived({
@@ -103,11 +111,15 @@
 	function close(): void {
 		query = '';
 		open = false;
+		sheet?.leave();
 	}
 
 	async function keydown(event: KeyboardEvent): Promise<void> {
 		if (event.key === 'Escape') {
-			if (shown) open = false;
+			if (sheet) {
+				event.preventDefault(); // no native clearing: the text waits for the next opening
+				sheet.dismiss();
+			} else if (shown) open = false;
 			else query = '';
 			return;
 		}
@@ -123,9 +135,10 @@
 		event.preventDefault();
 		if (shown && results?.choose()) return;
 		const href = hrefs.all;
+		const replaceState = sheet?.replace ?? false;
 		close();
 		const resetFocus = resetFocusAfterNavigation();
-		await goto(href);
+		await goto(href, { replaceState });
 		resetFocus();
 	}
 </script>
@@ -139,6 +152,7 @@
 <form
 	bind:this={form}
 	class="nav-search"
+	class:nav-search-sheet={sheet}
 	role="search"
 	onsubmit={(event) => event.preventDefault()}
 	data-slot="nav-search"
@@ -249,6 +263,45 @@
 		display: flex;
 		min-height: 0;
 		flex-direction: column;
+	}
+	/* The phone sheet: the field spans it and the list fills the rest, scrolling under the field. */
+	.nav-search-sheet {
+		flex: 1;
+		flex-direction: column;
+		align-items: stretch;
+	}
+	.nav-search-sheet :global(.nav-search-icon) {
+		top: calc((var(--size-tap-min) - 14px) / 2);
+		left: 0.875rem;
+	}
+	.nav-search-sheet .nav-search-input {
+		width: 100%;
+		padding-left: 2.25rem;
+		/* At least 16 px, so phones do not zoom into the field. */
+		font-size: max(1rem, var(--text-body));
+	}
+	.nav-search-sheet .nav-search-panel {
+		position: static;
+		width: auto;
+		max-height: none;
+		min-height: 0;
+		margin-top: 0.75rem;
+		opacity: 1;
+		visibility: visible;
+		transition: none;
+	}
+	.nav-search-sheet :global(.search-list) {
+		max-height: none;
+		padding: 0;
+		background: none;
+		border: 0;
+		box-shadow: none;
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
+	}
+	.nav-search-sheet :global(.search-list-option) {
+		min-height: var(--size-tap-min);
+		align-items: center;
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.nav-search-input,

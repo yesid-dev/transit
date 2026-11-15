@@ -14,24 +14,41 @@ const epoch = Date.parse(
 	JSON.parse(readFileSync(new URL('./departures.json', import.meta.url), 'utf8')).generated_utc,
 );
 
+// Where each row sits in the list's scrolling content: scrolling the list does not change it.
 const boxes = (list: Locator) =>
-	list.locator('[role="option"]').evaluateAll((options) =>
+	list.locator('.search-list-scroll [role="option"]').evaluateAll((options) =>
 		options.map((option) => {
+			const scroller = option.closest('.search-list-scroll')!;
+			const s = scroller.getBoundingClientRect();
 			const r = option.getBoundingClientRect();
-			return { id: option.id, top: r.top, left: r.left, right: r.right, bottom: r.bottom };
+			return {
+				id: option.id,
+				top: r.top - s.top + scroller.scrollTop,
+				left: r.left,
+				right: r.right,
+			};
 		}),
 	);
 
-// Every row stays inside the viewport; the pinned row (or, with no match, the message) is in view.
+// Every row on screen stays inside the viewport (rows scrolled out of the list count by the part
+// still showing); the pinned row, or with no match the message, is in view.
 async function expectInView(page: Page, list: Locator) {
 	const { width, height } = page.viewportSize()!;
-	const outside = (await boxes(list)).filter(
-		(box) => box.left < 0 || box.right > width || box.bottom > height,
+	const outside = await list.locator('[role="option"]').evaluateAll(
+		(options, viewport) =>
+			options.flatMap((option) => {
+				const r = option.getBoundingClientRect();
+				const bottom = option.closest('.search-list-scroll')?.getBoundingClientRect().bottom;
+				if (bottom !== undefined && r.top >= bottom) return [];
+				const shown = Math.min(r.bottom, bottom ?? r.bottom);
+				return r.left < 0 || r.right > viewport.width || shown > viewport.height ? [option.id] : [];
+			}),
+		{ width, height },
 	);
 	expect(outside, 'options outside the viewport').toEqual([]);
 	const pinned = list.locator('[id$="-all"]');
 	await expect(
-		(await pinned.count()) ? pinned : page.locator('.search-list-none'),
+		(await pinned.count()) ? pinned : page.locator('.search-list-none:visible'),
 	).toBeInViewport();
 }
 
@@ -40,9 +57,8 @@ for (const locale of ['en', 'fr'] as const)
 		test(`${locale} header search list "${query}" stays in view, rows stay put @layout`, async ({
 			page,
 		}, info) => {
-			// The dropdown is the header from 1024 px; narrower headers get the sheet (P11).
-			if (page.viewportSize()!.width < 1024)
-				await page.setViewportSize({ width: 1024, height: 768 });
+			// The list drops from the header's field from 1024 px; narrower headers open the sheet.
+			const inSheet = page.viewportSize()!.width < 1024;
 			let release!: () => void;
 			const addressesArrive = new Promise<void>((resolve) => (release = resolve));
 			await page.clock.setFixedTime(epoch + 30_000);
@@ -65,6 +81,12 @@ for (const locale of ['en', 'fr'] as const)
 				await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 				const name = navPillCopy[locale].searchAria.all;
 				const list = page.getByRole('listbox', { name });
+				if (inSheet) {
+					await page.getByRole('button', { name, exact: true }).click();
+					await expect(
+						page.getByRole('dialog', { name: headerSearchCopy[locale].sheetTitle }),
+					).toBeVisible();
+				}
 				await expect(async () => {
 					await page.getByRole('combobox', { name }).fill(query);
 					await expect(list.getByRole('option').first()).toBeVisible({ timeout: 1_000 });

@@ -7,6 +7,7 @@ import {
 } from '@yesid/config/playwright';
 
 import { navPillCopy } from '../src/lib/i18n/messages';
+import { headerSearchCopy } from '../src/lib/components/shell/headerSearch.copy';
 import { AUDIT_NAV, LEGAL_NAV, SURFACE_NAV } from '../src/lib/content/nav';
 import { DEFAULT_LOCALE, PUBLISHED_LOCALES, type Locale } from '../src/lib/i18n/config';
 import { tripCopy } from '../src/lib/features/trips/trips.copy';
@@ -111,6 +112,21 @@ test.describe('accessibility', { tag: '@theme' }, () => {
 				await expect(menu).toBeVisible({ timeout: 1000 });
 			}).toPass();
 			await expectAccessible(page);
+		});
+
+		test(`${locale}: the open search sheet has no serious or critical axe violations`, async ({
+			page,
+		}) => {
+			const name = navPillCopy[locale].searchAria.all;
+			await page.setViewportSize({ width: 390, height: 844 });
+			await page.goto(localized('/', locale), { waitUntil: 'networkidle' });
+			await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+			await page.getByRole('button', { name, exact: true }).click();
+			const sheet = page.getByRole('dialog', { name: headerSearchCopy[locale].sheetTitle });
+			await sheet.getByRole('combobox', { name }).fill(fixture('stops-index.json').stops[0].name);
+			await expect(sheet.getByRole('option').first()).toBeVisible();
+			await expectAccessible(page);
+			await expectTapTargets(page);
 		});
 	}
 });

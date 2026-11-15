@@ -14,7 +14,6 @@
 	import RepeatIcon from '@lucide/svelte/icons/repeat';
 	import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
-	import SearchIcon from '@lucide/svelte/icons/search';
 	import {
 		type Locale,
 		DEFAULT_LOCALE,
@@ -30,6 +29,7 @@
 		type SearchList,
 	} from '#lib/search/transitSearch.ts';
 	import HeaderSearch from './HeaderSearch.svelte';
+	import SearchSheet from './SearchSheet.svelte';
 	import {
 		type NavItem,
 		NAV_ITEMS,
@@ -207,14 +207,16 @@
 		</select>
 	</label>
 	<RefreshButton {locale} class="nav-refresh" />
-	<a
-		href={localizeHref('/search', locale, providerId)}
-		class="tap-press nav-compact-search"
-		aria-label={searchAria}
-		data-slot="nav-compact-search"
-	>
-		<SearchIcon size={17} strokeWidth={1.8} aria-hidden="true" />
-	</a>
+	<SearchSheet
+		bind:query={search}
+		{locale}
+		{providerId}
+		{url}
+		scope={searchScope}
+		list={searchList}
+		presentation={searchPresentation}
+		label={searchAria}
+	/>
 {/snippet}
 
 <SiteHeader
@@ -310,35 +312,6 @@
 		min-height: 44px;
 	}
 
-	.nav-compact-search {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 44px;
-		height: 44px;
-		padding: 0;
-		color: var(--secondary-foreground);
-		background: transparent;
-		border-radius: var(--radius-lg);
-		text-decoration: none;
-		transition:
-			color var(--duration-fast) var(--ease-default),
-			background var(--duration-fast) var(--ease-default);
-	}
-	.nav-compact-search:hover {
-		color: var(--primary);
-		background: var(--muted);
-	}
-	.nav-compact-search:focus-visible {
-		outline: 2px solid var(--ring);
-		outline-offset: 1px;
-	}
-	@container site-header (width >= 1024px) {
-		.nav-compact-search {
-			display: none;
-		}
-	}
-
 	@media (--tablet-max) {
 		:root {
 			--pill-h: 64px;
@@ -347,12 +320,6 @@
 	@media (max-width: 599px) {
 		:root {
 			--pill-h: 110px;
-		}
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.nav-compact-search {
-			transition: none;
 		}
 	}
 </style>

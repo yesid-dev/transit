@@ -156,15 +156,6 @@ for (const locale of PUBLISHED_LOCALES) {
 		await expect(page.getByRole('tabpanel', { name: record, exact: true })).toBeVisible();
 	});
 
-	test(`${locale}: below 1024px the header search opens the search page`, async ({ page }, {
-		project,
-	}) => {
-		test.skip(project.name === 'desktop', 'desktop headers carry the search box');
-		await page.goto(localizeHref('/', locale));
-		await page.getByRole('link', { name: nav.searchAria.all, exact: true }).click();
-		await expect(page.getByRole('textbox', { name: searchCopy[locale].inputLabel })).toBeVisible();
-	});
-
 	test(`${locale}: the search page takes the place of a search opened from its header, and back`, async ({
 		page,
 	}, { project }) => {
