@@ -11,6 +11,7 @@ from transit_ops.batch.families.receipts import builder
 from transit_ops.batch.postgres_rows import read_table_rows
 from transit_ops.batch.run import run_family
 from transit_ops.gold import rollups
+from transit_ops.silver.i3 import compute_alert_content_hash
 
 PROVIDER = "receipts_seed"
 RELATIONS = (
@@ -80,16 +81,33 @@ def seed(conn, seed_provider, routes, stops, alerts):
             ),
         )
     for index, (description, severity, cause, effect) in enumerate(alerts):
+        # Active hashes are unique per provider (0093:2096-2097). Production
+        # includes alert_id in stored identity, but accountability's hash does not.
+        alert_id = f"alert-{index}"
+        content_hash = compute_alert_content_hash(
+            alert_id=alert_id,
+            alert_header_text=None,
+            description_text=description,
+            severity=severity,
+            cause=cause,
+            effect=effect,
+            active_period_start_utc=None,
+            active_period_end_utc=None,
+            published_at_utc=None,
+            updated_at_utc=None,
+        )
         conn.execute(
             text(
                 "INSERT INTO silver.i3_alerts "
                 "(i3_alert_snapshot_id,alert_index,provider_id,captured_at_utc,"
-                "raw_alert_json,content_hash,description_text,severity,cause,effect) "
-                "VALUES (:s,:i,:p,:at,'{}','seed',:d,:sev,:cause,:effect)"
+                "raw_alert_json,alert_id,content_hash,description_text,severity,cause,effect) "
+                "VALUES (:s,:i,:p,:at,'{}',:alert_id,:hash,:d,:sev,:cause,:effect)"
             ),
             params
             | dict(
                 i=index,
+                alert_id=alert_id,
+                hash=content_hash,
                 at=datetime(2026, 11, 1, 6, 0, 0, 1, UTC),
                 d=description,
                 sev=severity,

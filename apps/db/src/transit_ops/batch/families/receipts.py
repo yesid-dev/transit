@@ -91,7 +91,7 @@ class ReceiptsBuilder:
                     raise ValueError(f"fractional_utc_offset: {request.timezone} {day}")
                 instant += timedelta(hours=1)
         return (
-            InputNeed("gold.dim_provider", "all"),
+            InputNeed("core.providers", "all"),
             # R27b: working-only, so archive replay requires an explicit source ruling.
             InputNeed("silver.i3_alerts", "all"),
             *(InputNeed("gold.route_delay_spine", f"local:{day}") for day in request.local_dates),
@@ -102,7 +102,7 @@ class ReceiptsBuilder:
         timezone = session.execute(
             named_query(
                 "batch.receipts.provider",
-                "SELECT timezone FROM gold.dim_provider WHERE provider_id = :provider_id",
+                "SELECT timezone FROM core.providers WHERE provider_id = :provider_id",
             ),
             dict(provider_id=request.provider_id),
         ).scalar_one()

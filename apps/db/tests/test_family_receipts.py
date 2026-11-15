@@ -7,6 +7,7 @@ import pytest
 
 from transit_ops.batch.build import BuildRequest
 from transit_ops.batch.families.registry import resolve_builder
+from transit_ops.batch.replay import family_input_needs
 from transit_ops.batch.run import run_family
 
 DAY = date(2026, 11, 1)
@@ -28,10 +29,10 @@ def write_inputs(root, request=REQUEST, routes=ROUTES, stops=STOPS, alerts=ALERT
     builder = resolve_builder("receipts")
     assert builder is not None, "receipts must be implemented"
     with duckdb.connect(config={"TimeZone": "UTC"}) as conn:
-        conn.execute("CREATE SCHEMA gold; CREATE SCHEMA silver")
-        conn.execute("CREATE TABLE gold.dim_provider(provider_id TEXT, timezone TEXT)")
+        conn.execute("CREATE SCHEMA gold; CREATE SCHEMA silver; CREATE SCHEMA core")
+        conn.execute("CREATE TABLE core.providers(provider_id TEXT, timezone TEXT)")
         conn.execute(
-            "INSERT INTO gold.dim_provider VALUES (?,?)", [request.provider_id, request.timezone]
+            "INSERT INTO core.providers VALUES (?,?)", [request.provider_id, request.timezone]
         )
         conn.execute(
             "CREATE TABLE gold.route_delay_spine(provider_id TEXT, route_id TEXT, "
@@ -152,3 +153,10 @@ def test_fractional_hour_zone_refuses_before_reading_inputs():
     assert builder is not None, "receipts must be implemented"
     with pytest.raises(ValueError, match="fractional_utc_offset"):
         builder.inputs(replace(REQUEST, timezone="America/St_Johns"))
+
+
+def test_archive_preflight_reaches_the_deferred_alert_source():
+    builder = resolve_builder("receipts")
+    assert builder is not None
+    with pytest.raises(ValueError, match="input_not_archived: receipts silver.i3_alerts"):
+        family_input_needs([builder], REQUEST)
