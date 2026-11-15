@@ -149,6 +149,8 @@ def resolve_copy_version(
     content_sha256: str,
     *,
     schema_version: int,
+    cut_utc: str | None = None,
+    complete_window: bool = False,
 ) -> CopyVersion:
     """Reuse only the newest receipt with matching content and schema versions.
 
@@ -161,7 +163,8 @@ def resolve_copy_version(
     first = table_copy_key(dataset_id, provider_id, revision, grain, window_key, 1, schema_version)
     prefix = first.rsplit(".c", 1)[0] + ".c"
     maximum = 0
-    latest: tuple[int, int, str] | None = None
+    latest: tuple[int, int, str, str | None] | None = None
+    latest_complete = False
     for key in storage.list_keys(prefix):
         receipt = key.endswith(".proof.json")
         parts = parse_proof_key(key) if receipt else parse_copy_key(key)
@@ -176,9 +179,15 @@ def resolve_copy_version(
             proof = value.get("proof")
             if not isinstance(proof, dict) or proof.get("verified") is not True:
                 continue  # Unverified receipts are absent for deduplication (R29).
-            candidate = (parts.version, parts.schema_version, digest)
-            latest = max(latest, candidate) if latest else candidate
-    if latest and latest[1:] == (schema_version, content_sha256):
+            candidate = (parts.version, parts.schema_version, digest, value.get("cut_utc"))
+            if latest is None or candidate > latest:
+                latest = candidate
+                latest_complete = value.get("partial") is False
+    if (
+        latest
+        and latest[1:] == (schema_version, content_sha256, cut_utc)
+        and (not complete_window or latest_complete)
+    ):
         key = table_copy_key(
             dataset_id, provider_id, revision, grain, window_key, latest[0], schema_version
         )

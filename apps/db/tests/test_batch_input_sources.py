@@ -1213,3 +1213,19 @@ def test_payload_closure_materializes_or_refuses_by_memory_budget(
                 "SELECT count(*),sum(length(raw_payload_json)) FROM read_parquet(?)",
                 [str(root / "raw.i3_alert_snapshots" / "all.parquet")],
             ).fetchone() == (20000, 1_310_720_000)
+
+
+def test_partial_copy_refuses_past_cut_and_later_revision_supersedes(tmp_path):
+    storage = store(tmp_path)
+    relation = "raw.realtime_snapshot_index"
+    need = InputNeed(relation, "2026-11-02")
+    for version, cut in [(1, "2026-11-03T05:00:00+00:00"), (2, "2026-11-03T06:00:00+00:00")]:
+        key = archive(storage, relation, "2026-11", "SELECT 1 AS id", version=version)
+        record = json.loads(storage.read_bytes(proof_key(key)))
+        record.update(partial=True, cut_utc=cut)
+        put(storage, proof_key(key), record)
+        if version == 1:
+            with pytest.raises(ValueError, match="window_coverage"):
+                resolve_sources([need], storage, "sample", STAMP, {})
+        else:
+            assert resolve_sources([need], storage, "sample", STAMP, {})[0].key == key

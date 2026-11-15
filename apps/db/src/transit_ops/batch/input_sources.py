@@ -465,6 +465,7 @@ def resolve_sources(
             continue
         for window in windows:
             source = copies[window]
+            _window_coverage(source, need, as_of, request)
             previous = selected.get(source.key)
             selected[source.key] = replace(
                 source,
@@ -832,3 +833,32 @@ def fetch_replay_inputs(
         receipts=receipts,
         bytes=sum(int(source.receipt["object_bytes"]) for source in sources),
     )
+
+
+def _window_coverage(
+    source: Source, need: InputNeed, as_of: datetime, request: BuildRequest | None
+) -> None:
+    receipt = source.receipt
+    cut_text = receipt.get("cut_utc")
+    if cut_text is None and not receipt.get("partial", False):
+        return
+    if not isinstance(cut_text, str) or receipt.get("partial") is not True:
+        raise ValueError(f"window_coverage: invalid cut for {need.relation}")
+    cut = datetime.fromisoformat(cut_text)
+    if cut.utcoffset() != timedelta(0):
+        raise ValueError(f"window_coverage: invalid UTC cut for {need.relation}")
+    if request is not None:
+        from zoneinfo import ZoneInfo
+
+        ends = [
+            datetime.combine(
+                day + timedelta(days=1), time(), ZoneInfo(request.timezone)
+            ).astimezone(UTC)
+            for day in request.local_dates
+        ]
+    elif need.window == "all":
+        ends = [as_of]
+    else:
+        ends = [datetime.combine(date.fromisoformat(need.window) + timedelta(days=1), time(), UTC)]
+    if any(end + timedelta(hours=6) > cut for end in ends):
+        raise ValueError(f"window_coverage: {need.relation} {need.window} cut={cut_text}")

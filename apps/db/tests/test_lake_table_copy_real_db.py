@@ -96,7 +96,9 @@ def test_cli_export_table_local_only_prints_one_json_line(source, owned, tmp_pat
     monkeypatch.setattr("psycopg.connect", lambda *a, **k: nullcontext(source))
     monkeypatch.setattr(
         "transit_ops.settings.get_settings",
-        lambda: SimpleNamespace(DATABASE_URL="postgresql://unused/test"),
+        lambda: SimpleNamespace(
+            DATABASE_URL="postgresql://unused/test", GOLD_REPORTING_OPEN_WINDOW_DAYS=10
+        ),
     )
     result = CliRunner().invoke(
         app,
@@ -163,8 +165,7 @@ def test_cli_refuses_invalid_copied_by_before_connecting(tmp_path):
 
 @pytest.fixture
 def seeded_export(monkeypatch):
-    from datetime import UTC, datetime
-
+    from transit_ops.lake import table_copy
     from transit_ops.lake.table_export import ExportedWindow, WindowSpec
     from transit_ops.lake.table_schema import TableSchema
 
@@ -191,7 +192,7 @@ def seeded_export(monkeypatch):
             len(payload),
             1,
             schema,
-            datetime(2026, 11, 1, tzinfo=UTC),
+            table_copy._copy_start(),
             "test",
         )
 

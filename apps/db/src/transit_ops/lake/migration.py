@@ -479,6 +479,7 @@ def plan_migration(
     now_utc: datetime | None = None,
     plan_budget_s: int = 300,
     not_after: datetime | None = None,
+    windows: Sequence[str] | None = None,
 ) -> MigrationPlan:
     """Pin to midnight UTC unless an explicit instant on today_utc is supplied."""
     validate_timeout(statement_timeout_s)
@@ -495,6 +496,29 @@ def plan_migration(
                 | {n for n, d in HISTORY_DATASETS.items() if d.copy_group == "silver_alert_state"}
             )
         )
+    selected_windows = None
+    if windows is not None:
+        from transit_ops.history.datasets import window_start
+
+        selected_windows = set()
+        for selection in windows:
+            try:
+                name, provider, key = selection.split(":")
+                declaration = get_dataset(name)
+                if not isinstance(declaration.source, TableSource):
+                    raise ValueError("not a table")
+                validate_provider_id(provider)
+                window_start(declaration, key)
+            except (ValueError, LookupError) as error:
+                raise MigrationRefused("window", selection) from error
+            selected_windows.add((name, provider, key))
+        requested_datasets = {name for name, _, _ in selected_windows}
+        if any(get_dataset(name).copy_group for name in requested_datasets):
+            requested_datasets |= {
+                name for name, d in HISTORY_DATASETS.items() if d.copy_group == "silver_alert_state"
+            }
+    else:
+        requested_datasets = None
     reads = _PlanReads(connection, plan_budget_s, statement_timeout_s, not_after)
     now = now_utc or datetime.combine(today_utc, time(), UTC)
     if now.utcoffset() != timedelta(0) or now.date() != today_utc:
@@ -528,10 +552,15 @@ def plan_migration(
             "SELECT current_database(), current_user, inet_server_addr()::text"
         ).fetchone()
         target = dict(zip(("database", "user", "server_addr"), identity, strict=True))
-        windows, skipped = [], []
+        planned_windows, skipped = [], []
         for table in catalog:
             if table.name not in inventory.copied or (
-                datasets is not None and table.name not in datasets
+                (requested_datasets is not None and table.name not in requested_datasets)
+                or (
+                    requested_datasets is None
+                    and datasets is not None
+                    and table.name not in datasets
+                )
             ):
                 continue
             planned, opened = _table_windows(
@@ -539,16 +568,52 @@ def plan_migration(
                 table,
                 today_utc,
                 now,
-                include_open,
-                None if get_dataset(table.name).copy_group else providers,
+                include_open or selected_windows is not None,
+                None
+                if selected_windows is not None or get_dataset(table.name).copy_group
+                else providers,
                 get_settings().GOLD_REPORTING_OPEN_WINDOW_DAYS,
             )
-            windows.extend(planned)
+            planned_windows.extend(planned)
             skipped.extend(opened)
     reads.remaining()
-    grouped = tuple(w.spec for w in windows if get_dataset(w.spec.dataset_id).copy_group)
+    if selected_windows is not None:
+
+        def identity(spec: WindowSpec) -> tuple[str, str, str]:
+            return spec.dataset_id, spec.provider_id, spec.window_key
+
+        available = {identity(w.spec) for w in planned_windows}
+        if selected_windows - available:
+            raise MigrationRefused("window", sorted(selected_windows - available))
+        group_windows = {
+            identity(w.spec) for w in planned_windows if get_dataset(w.spec.dataset_id).copy_group
+        }
+        group_selected = selected_windows & group_windows
+        if group_selected and group_selected != group_windows:
+            raise MigrationRefused("copy_group_partial", sorted(group_windows - group_selected))
+        planned_windows = [
+            w
+            for w in planned_windows
+            if identity(w.spec) in selected_windows
+            and (datasets is None or w.spec.dataset_id in datasets)
+            and (
+                providers is None
+                or w.spec.provider_id in providers
+                or w.spec.provider_id == "_shared"
+            )
+        ]
+        remaining_group = {
+            identity(w.spec) for w in planned_windows if get_dataset(w.spec.dataset_id).copy_group
+        }
+        if remaining_group and remaining_group != group_windows:
+            raise MigrationRefused("copy_group_partial", sorted(group_windows - remaining_group))
+        skipped = []
+    grouped = tuple(w.spec for w in planned_windows if get_dataset(w.spec.dataset_id).copy_group)
     singles = tuple(
-        sorted((w for w in windows if not get_dataset(w.spec.dataset_id).copy_group), key=_order)
+        sorted(
+            (w for w in planned_windows if not get_dataset(w.spec.dataset_id).copy_group),
+            key=_order,
+        )
     )
     if grouped:
         from transit_ops.lake.alert_bundle import validate_members
@@ -628,6 +693,8 @@ def run_migration(
                 )
             record.update(
                 outcome=result.outcome,
+                cut_utc=getattr(result, "spec", window.spec).cut_utc,
+                partial=getattr(result, "spec", window.spec).cut_utc is not None,
                 rows=result.rows,
                 content_sha256=result.content_sha256,
                 object_sha256=result.proof.object_sha256,

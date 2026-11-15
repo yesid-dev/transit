@@ -39,6 +39,7 @@ class WindowSpec:
     provider_id: str
     window_key: str
     revision: int = 0
+    cut_utc: str | None = None
 
 
 class SchemaDrift(ValueError):
@@ -180,6 +181,16 @@ def build_copy_statement(
         values = (spec.provider_id, *values)
     if predicate.as_string():
         predicates.append(predicate)
+    if spec.cut_utc is not None:
+        cut = datetime.fromisoformat(spec.cut_utc)
+        if (
+            cut.utcoffset() != timedelta(0)
+            or source.window_column is None
+            or dataset_version_id is not None
+        ):
+            raise ExportRefused("window")
+        predicates.append(sql.SQL("{} < %s").format(sql.Identifier(source.window_column)))
+        values = (*values, cut)
     if source.revision_column:
         predicates.append(sql.SQL("{} = %s").format(sql.Identifier(source.revision_column)))
         values = (*values, spec.revision)
