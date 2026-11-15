@@ -425,6 +425,9 @@ def test_workflow_confines_production_secret_and_preserves_evidence():
     assert not any("KEY" in key for key in job["env"])
     assert "conclusion == 'success'" in job["if"]
     assert "refs/heads/main" in job["if"]
+    manual_guard, automatic_guard = job["if"].split("||", 1)
+    assert "BATCH_SHADOW_PROVISIONED" not in manual_guard
+    assert automatic_guard.lstrip().startswith("(vars.BATCH_SHADOW_PROVISIONED == 'true' &&")
     exports = [s for s in job["steps"] if "BATCH_SHADOW_DATABASE_URL" in str(s)]
     assert len(exports) == 1
     assert exports[0]["env"]["PGOPTIONS"] == "-c default_transaction_read_only=on"
