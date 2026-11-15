@@ -11,10 +11,18 @@
 		snapshot: ReliabilitySnapshot;
 		locale: Locale;
 		published?: NonNullable<RouteReliabilityIndex['weekly_routes']>[number];
+		/** Shows the measure beside the figure ("88% on time"), not only to assistive tech. */
+		named?: boolean;
 		class?: string;
 	}
 
-	let { snapshot, locale, published, class: className }: ReliabilityBadgeProps = $props();
+	let {
+		snapshot,
+		locale,
+		published,
+		named = false,
+		class: className,
+	}: ReliabilityBadgeProps = $props();
 
 	const copy = $derived(reliabilityBadgeCopy[locale]);
 	const windowLabel = $derived(
@@ -75,7 +83,11 @@
 			title={label}
 		>
 			<span class="reliability-badge-pct" aria-hidden="true">{pctText}</span>
-			<span aria-hidden="true">{windowLabel}</span>
+			<span aria-hidden="true"
+				>{named
+					? `${snapshot.kind === 'stop' ? copy.stopShare : copy.share}, ${windowLabel}`
+					: windowLabel}</span
+			>
 		</span>
 	{:else}
 		<span

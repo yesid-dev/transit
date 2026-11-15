@@ -165,6 +165,43 @@ for (const locale of PUBLISHED_LOCALES) {
 		await expect(page.getByRole('textbox', { name: searchCopy[locale].inputLabel })).toBeVisible();
 	});
 
+	test(`${locale}: the search page takes the place of a search opened from its header, and back`, async ({
+		page,
+	}, { project }) => {
+		test.skip(project.name !== 'desktop', 'the header search box shows from 1024px');
+		const words = searchCopy[locale];
+		const field = page.getByRole('main').getByRole('textbox', { name: words.inputLabel });
+		const stopsTab = page.getByRole('tab', { name: new RegExp(`^${literal(words.stopsLabel)}`) });
+		const allTab = page.getByRole('tab', { name: words.scopeAll, exact: true });
+		await page.goto(localizeHref(`/search?q=${encodeURIComponent(stop.name)}&kind=stop`, locale));
+		await expect(field).toHaveValue(stop.name);
+		await expect(stopsTab).toHaveAttribute('aria-selected', 'true');
+
+		// A partial name has no exact first row, so Enter opens /search with it.
+		const partial = stop.name.slice(0, -2);
+		const box = page.getByRole('combobox', { name: nav.searchAria.all });
+		// Hydration can reset the box; retry until the results answer.
+		await expect(async () => {
+			await box.fill(partial);
+			await expect(page.getByRole('listbox', { name: nav.searchAria.all })).toBeVisible({
+				timeout: 1_000,
+			});
+		}).toPass();
+		await box.press('Enter');
+		await expect(page).toHaveURL(
+			(url) => url.searchParams.get('q') === partial && !url.searchParams.has('kind'),
+		);
+		await expect(field).toHaveValue(partial);
+		await expect(allTab).toHaveAttribute('aria-selected', 'true');
+
+		await page.goBack();
+		await expect(page).toHaveURL(
+			(url) => url.searchParams.get('q') === stop.name && url.searchParams.get('kind') === 'stop',
+		);
+		await expect(field).toHaveValue(stop.name);
+		await expect(stopsTab).toHaveAttribute('aria-selected', 'true');
+	});
+
 	test(`${locale}: the search page finds a line and a stop by name`, async ({ page }) => {
 		for (const [query, path] of [
 			[line.long, `/lines/${line.id}`],

@@ -1,5 +1,5 @@
 <script module lang="ts">
-	export type SearchScopeKey = 'all' | 'route' | 'stop' | 'vehicle';
+	export type SearchScopeKey = 'all' | 'route' | 'stop' | 'page' | 'vehicle';
 </script>
 
 <script lang="ts">

@@ -3,6 +3,7 @@ import { createLineDirectory } from '#lib/site/lineDirectory.ts';
 import type { RouteIndexEntry, StopIndexEntry, Vehicle } from '#lib/v1/schemas/index.ts';
 import { FILTER_SEARCH_PARAM_KEYS, fromSearchParams, toSearchString } from '#lib/filters/index.ts';
 import type { GeocodePrecision, GeocodeSuggestion } from '#lib/geocode/types.ts';
+import type { BilingualLabel } from '#lib/content/nav.ts';
 import { routeFor } from '#lib/nav/index.ts';
 import { dedupeBy, foldSearchText, tokenMatchScore } from '#lib/search/normalize.ts';
 import {
@@ -22,10 +23,20 @@ export type ChromeSearchKind = 'route' | 'stop' | 'vehicle' | 'address';
 
 export type ChromeSearchScope = 'route' | 'stop' | 'map' | 'all';
 
+/** A page of this site: found by its name in either language, or by a term it explains. */
+export interface SitePage {
+	readonly href: string;
+	readonly label: BilingualLabel;
+	/** The menu group it sits in, when it has one. */
+	readonly group: BilingualLabel | null;
+	readonly words: readonly string[];
+}
+
 export interface SearchSources {
 	readonly routes?: readonly RouteIndexEntry[] | null;
 	readonly stops?: readonly StopIndexEntry[] | null;
 	readonly vehicles?: readonly Vehicle[] | null;
+	readonly pages?: readonly SitePage[] | null;
 }
 
 export interface PageSearchRequest {
@@ -38,6 +49,7 @@ export interface PageSearchResults {
 	readonly routes: RouteIndexEntry[];
 	readonly stops: StopIndexEntry[];
 	readonly vehicles: Vehicle[];
+	readonly pages: SitePage[];
 }
 /** The header list: the page decides the order (`scope`), never what is searched. */
 export interface ListSearchRequest {
@@ -87,13 +99,21 @@ interface Candidates {
 	vehicles: Vehicle[];
 }
 
+/** An internal id the rider never reads: matched only exactly, after every public match. */
+const INTERNAL_ID_SCORE = 4;
 function scoredCandidates<T>(
 	values: readonly T[],
 	query: string,
 	fields: (value: T) => readonly (string | null | undefined)[],
+	internalId: (value: T) => string | null = () => null,
 ): Candidate<T>[] {
 	return values
-		.map((value) => ({ value, score: tokenMatchScore(fields(value), query) }))
+		.map((value) => ({
+			value,
+			score:
+				tokenMatchScore(fields(value), query) ??
+				(foldSearchText(internalId(value)) === query ? INTERNAL_ID_SCORE : null),
+		}))
 		.filter((match): match is Candidate<T> => match.score != null);
 }
 function byScore(a: { score: number }, b: { score: number }): number {
@@ -103,18 +123,20 @@ function byScore(a: { score: number }, b: { score: number }): number {
 function candidates(request: PageSearchRequest, sources: SearchSources, query: string): Candidates {
 	const modes = request.modes?.size ? request.modes : null;
 	const keepsMode = (mode: TransitModeKey | null): boolean => !modes || (!!mode && modes.has(mode));
-	const routes = scoredCandidates(sources.routes ?? [], query, (route) => [
-		route.id,
-		route.short,
-		route.long,
-	])
+	const routes = scoredCandidates(
+		sources.routes ?? [],
+		query,
+		(route) => [route.short || route.id, route.long],
+		(route) => route.id,
+	)
 		.filter(({ value }) => keepsMode(routeModeKey(value.type)))
 		.sort(byScore);
-	const stopMatches = scoredCandidates(sources.stops ?? [], query, (stop) => [
-		stop.code,
-		stop.id,
-		stop.name,
-	]).sort(byScore);
+	const stopMatches = scoredCandidates(
+		sources.stops ?? [],
+		query,
+		(stop) => [stop.code, stop.name],
+		(stop) => stop.id,
+	).sort(byScore);
 	// A stop's representative is chosen before the mode filter.
 	const stops = dedupeBy(stopMatches, ({ value }) => stopGroupKey(value)).filter(({ value }) =>
 		keepsMode(stopModeKey(value)),
@@ -204,6 +226,15 @@ export function searchTransit(
 		routes: matches.routes.map(({ value }) => value),
 		stops: matches.stops.map(({ value }) => value),
 		vehicles: matches.vehicles,
+		pages: query
+			? scoredCandidates(sources.pages ?? [], query, (page) => [
+					page.label.en,
+					page.label.fr,
+					...page.words,
+				])
+					.sort(byScore)
+					.map(({ value }) => value)
+			: [],
 	};
 }
 
@@ -214,17 +245,20 @@ export function withAddresses(
 ): SearchList {
 	const groups = list.groups.filter((group) => group.kind !== 'address');
 	if (!addresses.length) return { ...list, groups };
-	const hits = addresses.slice(0, 2).map(
-		(address): SearchHit => ({
-			kind: 'address',
-			id: addressResultId(address),
-			label: address.label,
-			lat: address.lat,
-			lon: address.lon,
-			precision: address.precision,
-		}),
-	);
+	const hits = addressHits(addresses).slice(0, 2);
 	return { ...list, groups: [...groups, { kind: 'address', total: addresses.length, hits }] };
+}
+
+/** Address rows: each opens the map's near target. */
+export function addressHits(addresses: readonly GeocodeSuggestion[]): SearchHit[] {
+	return addresses.map((address) => ({
+		kind: 'address',
+		id: addressResultId(address),
+		label: address.label,
+		lat: address.lat,
+		lon: address.lon,
+		precision: address.precision,
+	}));
 }
 
 /** Text worth sending to the geocoder: three characters or more, and not coordinates. */

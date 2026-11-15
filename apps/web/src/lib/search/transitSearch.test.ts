@@ -41,7 +41,7 @@ it.each([
 });
 
 it('accepts absent sources without inventing results', () => {
-	for (const sources of [{}, { routes: null, stops: null, vehicles: null }]) {
+	for (const sources of [{}, { routes: null, stops: null, vehicles: null, pages: null }]) {
 		for (const [query, folded] of [
 			['hub', 'hub'],
 			['', ''],
@@ -53,9 +53,56 @@ it('accepts absent sources without inventing results', () => {
 				routes: [],
 				stops: [],
 				vehicles: [],
+				pages: [],
 			});
 		}
 	}
+});
+
+it('finds a line or a stop by what riders read first, and an internal id only exactly', () => {
+	const stops: StopIndexEntry[] = [
+		{ id: '95', code: '3033', name: 'Pleasant Hill', lat: 0, lon: 0 },
+		{ id: 'x1', code: '9512', name: 'Elm', lat: 0, lon: 0 },
+	];
+	const routes = [{ id: 'r9', short: '9', long: 'Hub', type: 3 }];
+	for (const [query, stopIds, routeIds] of [
+		['95', ['x1', '95'], []],
+		['9', ['x1'], ['r9']],
+		['3033', ['95'], []],
+		['r9', [], ['r9']],
+		['r', [], []],
+	] as const) {
+		const page = searchTransit({ surface: 'page', query }, { stops, routes });
+		expect([resultIds(page.stops), resultIds(page.routes)]).toEqual([stopIds, routeIds]);
+	}
+});
+
+it('finds pages by their names in either language and by the terms they explain', () => {
+	const pages = [
+		{
+			href: '/receipt',
+			label: { en: 'Daily report', fr: 'Rapport quotidien' },
+			group: null,
+			words: ['Missing trip', 'Trajet manquant'],
+		},
+		{
+			href: '/metrics',
+			label: { en: 'How we measure', fr: 'Comment on mesure' },
+			group: null,
+			words: ['On time', 'À l’heure'],
+		},
+	];
+	for (const [query, hrefs] of [
+		['rapport', ['/receipt']],
+		['daily report', ['/receipt']],
+		['a l heure', ['/metrics']],
+		['missing trip', ['/receipt']],
+		['zzz', []],
+	] as const) {
+		const found = searchTransit({ surface: 'page', query }, { pages }).pages;
+		expect(found.map(({ href }) => href)).toEqual(hrefs);
+	}
+	expect(searchTransit({ surface: 'page', query: 'rapport' }, { pages }).pages[0]).toBe(pages[0]);
 });
 
 it('does not mutate inputs', () => {
