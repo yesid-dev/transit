@@ -260,10 +260,13 @@ def test_inventory_flags_an_unclaimed_table_and_a_key_mismatch():
 def test_inventory_lists_only_declared_views_and_names_unclaimed_views():
     from transit_ops.lake.inventory import take_inventory
 
-    result = take_inventory([
-        relation("gold.z_view", "view"), relation("gold.dim_provider", "view"),
-        relation("gold.a_view", "view"),
-    ])
+    result = take_inventory(
+        [
+            relation("gold.z_view", "view"),
+            relation("gold.dim_provider", "view"),
+            relation("gold.a_view", "view"),
+        ]
+    )
     assert result.views == ("gold.dim_provider",)
     assert result.unclaimed == ("gold.a_view", "gold.z_view")
     assert result.unsupported == ()
@@ -348,6 +351,7 @@ def test_complete_inventory_requires_all_declared_tables():
             columns = () if source.window_column is None else ((source.window_column, "bigint"),)
             catalog.append(relation(source.table, columns=columns, key=source.key_columns))
     catalog.extend(relation(table) for entry in d.WORKING_ONLY.values() for table in entry.tables)
+    catalog.append(relation("silver.drain_watermark", columns=(("wm", "bigint"),)))
     result = take_inventory(tuple(reversed(catalog)))
     assert result.complete
     assert result.working_only == (
@@ -369,6 +373,13 @@ def test_complete_inventory_requires_all_declared_tables():
     assert result.copied == tuple(sorted(result.copied))
     assert result.views == result.unclaimed == result.missing == ()
     assert result.key_mismatch == result.window_mismatch == result.unsupported == ()
+    assert tuple(name for name, _reason in result.infrastructure) == ("silver.drain_watermark",)
+    assert "silver.drain_watermark" not in result.copied
+
+    catalog.append(relation("silver.undeclared_table"))
+    result = take_inventory(catalog)
+    assert result.unclaimed == ("silver.undeclared_table",)
+    assert not result.complete
 
 
 @pytest.mark.parametrize(
