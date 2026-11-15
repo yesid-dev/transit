@@ -21,6 +21,7 @@ import duckdb
 from sqlalchemy.engine.reflection import Inspector
 
 from transit_ops.batch.build import BuildRequest, FamilyBuilder, InputNeed
+from transit_ops.batch.editions import EditionRow, snapshot_rows, with_editions
 from transit_ops.batch.fetch_inputs import fetch_inputs, needs_for_replay
 from transit_ops.batch.private_area import PrivateArea
 from transit_ops.history.datasets import HistoryDataset, TableSource, get_dataset
@@ -73,7 +74,11 @@ def fetch_from_catalog(
             lambda editions: archive_input_needs(
                 needs_for_replay(
                     builders,
-                    request,
+                    with_editions(
+                        request,
+                        (b.family_id for b in builders if hasattr(b, "family_id")),
+                        editions.rows,
+                    ),
                     postgres_needs=postgres_input_needs(request, editions.schedule_ids),
                 ),
                 storage,
@@ -146,6 +151,7 @@ class EditionMapping(Mapping[int, str]):
     checksums: Mapping[int, str]
     schedule_ids: tuple[int, ...]
     bootstrap: Source | None = None
+    rows: tuple[EditionRow, ...] = ()
 
     def __getitem__(self, key: int) -> str:
         return self.checksums[key]
@@ -403,7 +409,12 @@ def edition_mapping(
             "ORDER BY loaded_at_utc DESC NULLS FIRST, dataset_version_id DESC LIMIT 1",
             [str(path), provider],
         ).fetchall()
-    return EditionMapping(MappingProxyType(mapping), tuple(row[0] for row in selected), bootstrap)
+    return EditionMapping(
+        MappingProxyType(mapping),
+        tuple(row[0] for row in selected),
+        bootstrap,
+        snapshot_rows(path, provider),
+    )
 
 
 def _check_bootstrap_current(

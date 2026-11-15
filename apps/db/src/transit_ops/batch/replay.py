@@ -15,6 +15,7 @@ from sqlalchemy.engine.reflection import Inspector
 from sqlalchemy.exc import IntegrityError
 
 from transit_ops.batch.build import BuildRequest, FamilyBuilder, FamilyOutput, InputNeed
+from transit_ops.batch.editions import with_editions
 from transit_ops.batch.engine import open_batch_session
 from transit_ops.batch.families.registry import FAMILIES, resolve_builder
 from transit_ops.batch.input_sources import edition_mapping, layout_needs
@@ -366,8 +367,10 @@ def replay_day(
     metadata_file = resolve_inputs(metadata_need, inputs_root)[0].files[0]
     metadata_hash = _hashes(inputs_root, metadata_need)
     editions = edition_mapping(metadata_file, provider_id)
+    requests = {family: with_editions(request, (family,), editions.rows) for family in builders}
     needs = set(postgres_input_needs(request, editions.schedule_ids))
-    needs.update(family_input_needs(tuple(builders.values()), request))
+    for family, builder in builders.items():
+        needs.update(family_input_needs((builder,), requests[family]))
     needs.update(_legacy_state_needs(inputs_root))
     needed = parent_input_needs(
         tuple(needs),
@@ -466,7 +469,11 @@ def replay_day(
     for family, builder in builders.items():
         result = (
             run_family(
-                builder, request, inputs_root=inputs_root, workdir=workdir, code_commit=code_commit
+                builder,
+                requests[family],
+                inputs_root=inputs_root,
+                workdir=workdir,
+                code_commit=code_commit,
             )
             if builder and (publish_bodies or not builder.published_keys)
             else None
