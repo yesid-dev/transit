@@ -3,6 +3,7 @@
 import hashlib
 import os
 import re
+import stat
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -49,13 +50,72 @@ def _receipt_size(receipt: Mapping[str, object], key: str, digest: str) -> int:
     return size
 
 
+def _identity(value: os.stat_result) -> tuple[int, int]:
+    return value.st_dev, value.st_ino
+
+
+def _fingerprint(value: os.stat_result) -> tuple[int, ...]:
+    return (*_identity(value), value.st_size, value.st_mtime_ns, value.st_ctime_ns)
+
+
+def _reconcile_alias(path: Path) -> None:
+    """Remove only a fetch temporary sharing the final file's identity.
+
+    The layout belongs to the runner (R22c). Identity checks guard recovery;
+    same-user races beyond those checks are outside this threat model.
+    """
+    final = path.stat(follow_symlinks=False)
+    if final.st_nlink != 2 or not stat.S_ISREG(final.st_mode):
+        return
+    for directory in path.parent.iterdir():
+        if (
+            not directory.name.startswith(".fetch-")
+            or directory.is_symlink()
+            or directory.is_junction()
+            or not directory.is_dir()
+        ):
+            continue
+        alias = directory / "input.parquet"
+        try:
+            candidate = alias.stat(follow_symlinks=False)
+            current = path.stat(follow_symlinks=False)
+            if (
+                stat.S_ISREG(candidate.st_mode)
+                and candidate.st_nlink == current.st_nlink == 2
+                and _identity(candidate) == _identity(current) == _identity(final)
+            ):
+                alias.unlink()
+                _sync_directory(directory)
+                return
+        except FileNotFoundError:
+            continue  # A healthy publisher may have completed its cleanup.
+
+
 def _check(path: Path, need: InputNeed, digest: str, size: int) -> None:
-    resolve_inputs((need,), path.parent.parent)
-    with path.open("rb") as stream:
-        actual = hashlib.file_digest(stream, "sha256").hexdigest()
-        actual_size = stream.tell()
+    label = f"{need.relation} window {need.window}: {path}"
+    try:
+        _reconcile_alias(path)
+        resolve_inputs((need,), path.parent.parent)
+        with path.open("rb") as stream:
+            before = os.fstat(stream.fileno())
+            actual = hashlib.file_digest(stream, "sha256").hexdigest()
+            after = os.fstat(stream.fileno())
+            named = path.stat(follow_symlinks=False)
+            # Windows fstat ctime is change time; pathname stat ctime is birth time.
+            if (
+                _fingerprint(before) != _fingerprint(after)
+                or _identity(after) != _identity(named)
+                or (after.st_size, after.st_mtime_ns) != (named.st_size, named.st_mtime_ns)
+                or before.st_nlink != after.st_nlink
+                or after.st_nlink != named.st_nlink
+                or named.st_nlink != 1
+            ):
+                raise InputRefused(f"changed input: {label}")
+            actual_size = after.st_size
+    except OSError as error:
+        raise InputRefused(f"changed or unreadable input: {label}") from error
     if (actual, actual_size) != (digest, size):
-        raise InputDigestMismatch(f"{need.relation} window {need.window}: {path}")
+        raise InputDigestMismatch(label)
 
 
 def _sync_directory(path: Path) -> None:

@@ -1,12 +1,18 @@
 import hashlib
+import json
+import os
+import subprocess
+import sys
 from contextlib import contextmanager
 from dataclasses import asdict
 from datetime import UTC, date, datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from transit_ops.batch.build import BuildRequest, InputNeed
+from transit_ops.batch.engine import InputRefused
 from transit_ops.batch.fetch_inputs import InputDigestMismatch, fetch_inputs
 from transit_ops.batch.inputs import resolve_inputs
 from transit_ops.ingestion.storage import LocalBronzeStorage
@@ -179,3 +185,123 @@ def test_replay_needs_are_the_literal_sorted_union_of_families_and_inventory():
         InputNeed("silver.trips", "edition:8"),
     )
     assert observed == [request, request]
+
+
+def test_existing_same_size_mutation_during_hash_is_refused(archive, tmp_path, monkeypatch):
+    root = tmp_path / "inputs"
+    path = fetch(archive, root)[0].path
+    csv = tmp_path / "replacement.csv"
+    csv.write_bytes(b"id,value\n1,world\n")
+    schema = TableSchema.from_columns([("id", "integer", True), ("value", "text", False)], ["id"])
+    replacement = write_window(
+        csv, schema, tmp_path / "replacement.parquet", metadata={}, temp_dir=tmp_path
+    ).path.read_bytes()
+    assert len(replacement) == len(archive[2]) and replacement != archive[2]
+    original_open = Path.open
+    mutated = []
+
+    class RacingReader:
+        def __init__(self, stream):
+            self.stream = stream
+
+        def __enter__(self):
+            self.stream.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self.stream.__exit__(*args)
+
+        def __getattr__(self, name):
+            return getattr(self.stream, name)
+
+        def readinto(self, buffer):
+            count = self.stream.readinto(buffer)
+            if count and not mutated:
+                with original_open(path, "wb") as writer:
+                    writer.write(replacement)
+                mutated.append(True)
+            return count
+
+    def racing_open(self, mode="r", *args, **kwargs):
+        stream = original_open(self, mode, *args, **kwargs)
+        return RacingReader(stream) if self == path and mode == "rb" else stream
+
+    monkeypatch.setattr(Path, "open", racing_open)
+    with pytest.raises(InputRefused, match="changed.*gold.fact_vehicle_snapshot"):
+        fetch(archive, root)
+    assert mutated
+
+
+def test_matching_writer_resumes_before_publisher_cleanup(archive, tmp_path, monkeypatch):
+    root = tmp_path / "inputs"
+    real_link = os.link
+    outcomes = []
+
+    def link_and_interleave(source, target):
+        real_link(source, target)
+        outcomes.extend(fetch(archive, root))
+
+    monkeypatch.setattr(os, "link", link_and_interleave)
+    outer = fetch(archive, root)
+    assert outer[0].path.read_bytes() == archive[2]
+    assert outcomes[0].reused
+    assert outer[0].path.stat().st_nlink == 1
+
+
+def test_hard_exit_after_publish_remains_resumable(archive, tmp_path):
+    storage, _, payload, receipt = archive
+    root = tmp_path / "inputs"
+    receipt_file = tmp_path / "receipt.json"
+    receipt_file.write_text(json.dumps(receipt), encoding="utf-8")
+    child_code = """
+import json, os, sys
+from pathlib import Path
+from transit_ops.batch.build import InputNeed
+from transit_ops.batch.fetch_inputs import fetch_inputs
+from transit_ops.ingestion.storage import LocalBronzeStorage
+archive_root, inputs_root, receipt_file = map(Path, sys.argv[1:])
+r = json.loads(receipt_file.read_text(encoding='utf-8'))
+real_link = os.link
+def publish_then_exit(source, destination):
+    real_link(source, destination)
+    os._exit(97)
+os.link = publish_then_exit
+fetch_inputs(
+    (InputNeed('gold.fact_vehicle_snapshot', '2026-11-12'),),
+    LocalBronzeStorage('local', archive_root), inputs_root,
+    key_for=lambda _: r['key'], expected_sha256=lambda _: r['object_sha256'],
+    receipt_for=lambda _: r,
+)
+"""
+    child = subprocess.run(
+        [sys.executable, "-c", child_code, str(storage.root), str(root), str(receipt_file)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert child.returncode == 97, child.stderr
+    path = root / "gold.fact_vehicle_snapshot/2026-11-12.parquet"
+    assert path.read_bytes() == payload and path.stat().st_nlink == 2
+    assert list(root.rglob(".fetch-*/input.parquet"))
+    storage.delete_object(receipt["key"])
+    resumed = fetch(archive, root)[0]
+    assert resumed.reused and resumed.sha256 == hashlib.sha256(payload).hexdigest()
+    assert path.stat().st_nlink == 1
+
+
+@pytest.mark.parametrize("alias_kind", ["foreign", "different", "three_links"])
+def test_unowned_or_ambiguous_links_stay_refused(archive, tmp_path, alias_kind):
+    root = tmp_path / "inputs"
+    path = fetch(archive, root)[0].path
+    alias = path.parent / (".foreign" if alias_kind == "foreign" else ".fetch-orphan")
+    alias.mkdir()
+    temporary = alias / "input.parquet"
+    os.link(path, tmp_path / "foreign.parquet" if alias_kind == "different" else temporary)
+    if alias_kind == "different":
+        temporary.write_bytes(archive[2])
+    elif alias_kind == "three_links":
+        os.link(path, tmp_path / "third.parquet")
+    with pytest.raises(InputRefused, match="multiply-linked"):
+        fetch(archive, root)
+    assert path.read_bytes() == archive[2]
+    assert temporary.exists() or alias_kind == "foreign"
