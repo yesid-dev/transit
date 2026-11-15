@@ -49,7 +49,7 @@ def archive_relation(engine, storage, relation, window, provider, tmp_path):
         exported = export_window(
             conn,
             WindowSpec(relation, provider, window),
-            tmp_path / "export.csv",
+            tmp_path / f"{relation}-{window}.csv",
             statement_timeout_s=60,
         )
     key = table_copy_key(relation, provider, 0, dataset.archive_grain, window, 1, 1)
