@@ -8,7 +8,6 @@ from itertools import batched
 from typing import Literal
 from uuid import uuid4
 
-from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from transit_ops.db.connection import make_engine
@@ -253,72 +252,6 @@ def plan_historic_generation_gc(
     )
 
 
-_LOAD_MARKS_SQL = text(
-    """
-    SELECT object_key, etag, content_length, object_last_modified_utc,
-           first_unreachable_utc, last_confirmed_unreachable_utc, last_scan_id
-    FROM core.snapshot_historic_gc_marks
-    WHERE provider_id = :provider_id
-    ORDER BY object_key
-    """
-)
-_DELETE_MARKS_SQL = text(
-    "DELETE FROM core.snapshot_historic_gc_marks WHERE provider_id = :provider_id"
-)
-_INSERT_MARK_SQL = text(
-    """
-    INSERT INTO core.snapshot_historic_gc_marks (
-        provider_id, object_key, etag, content_length, object_last_modified_utc,
-        first_unreachable_utc, last_confirmed_unreachable_utc, last_scan_id
-    ) VALUES (
-        :provider_id, :object_key, :etag, :content_length, :object_last_modified_utc,
-        :first_unreachable_utc, :last_confirmed_unreachable_utc, CAST(:last_scan_id AS uuid)
-    )
-    """
-)
-
-
-def _load_marks(conn: object, provider_id: str) -> dict[str, HistoricGcMark]:
-    marks: dict[str, HistoricGcMark] = {}
-    for row in conn.execute(_LOAD_MARKS_SQL, {"provider_id": provider_id}).mappings():  # type: ignore[attr-defined]
-        path = str(row["object_key"])
-        marks[path] = HistoricGcMark(
-            version=StoredObjectVersion(
-                rel_key=path,
-                etag=str(row["etag"]),
-                last_modified_utc=row["object_last_modified_utc"],
-                size=int(row["content_length"]),
-            ),
-            first_unreachable_utc=row["first_unreachable_utc"],
-            last_confirmed_unreachable_utc=row["last_confirmed_unreachable_utc"],
-            last_scan_id=str(row["last_scan_id"]),
-        )
-    return marks
-
-
-def _replace_marks(
-    conn: object,
-    provider_id: str,
-    marks: Mapping[str, HistoricGcMark],
-) -> None:
-    conn.execute(_DELETE_MARKS_SQL, {"provider_id": provider_id})  # type: ignore[attr-defined]
-    rows = [
-        {
-            "provider_id": provider_id,
-            "object_key": path,
-            "etag": mark.version.etag,
-            "content_length": mark.version.size,
-            "object_last_modified_utc": mark.version.last_modified_utc,
-            "first_unreachable_utc": mark.first_unreachable_utc,
-            "last_confirmed_unreachable_utc": mark.last_confirmed_unreachable_utc,
-            "last_scan_id": mark.last_scan_id,
-        }
-        for path, mark in sorted(marks.items())
-    ]
-    if rows:
-        conn.execute(_INSERT_MARK_SQL, rows)  # type: ignore[attr-defined]
-
-
 def run_historic_snapshot_gc(
     provider_id: str,
     *,
@@ -334,13 +267,16 @@ def run_historic_snapshot_gc(
         raise HistoricGcUnsupportedError(
             "apply is disabled until an R2 conditional-delete canary proves atomic semantics"
         )
+    from transit_ops.control.historic_gc_marks import gc_marks_for
+
     registry.get_provider(provider_id)
     resolved_engine = engine or make_engine(settings)
     resolved_storage = storage or build_snapshot_storage(settings, provider_id=provider_id)
     scanned_at = now or datetime.now(UTC)
     with resolved_engine.begin() as conn:
         acquire_publication_lane(conn, provider_id=provider_id, tier="historic")
-        existing = _load_marks(conn, provider_id)
+        store = gc_marks_for(conn, settings)
+        existing = store.load(provider_id)
         report = plan_historic_generation_gc(
             resolved_storage,
             now=scanned_at,
@@ -349,7 +285,7 @@ def run_historic_snapshot_gc(
             provider_id=provider_id,
         )
         if mode == "mark":
-            _replace_marks(conn, provider_id, report.next_marks)
+            store.replace(provider_id, report.next_marks, expected=store.version(provider_id))
     return report
 
 

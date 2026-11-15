@@ -48,7 +48,6 @@ from transit_ops.snapshots.protocols import (
 from transit_ops.snapshots.publication_lane import (
     PublishLockUnavailableError as PublishLockUnavailableError,
 )
-from transit_ops.sql_registry import named_query
 
 type _LegacyCollected = tuple[list[CollectedItem], list[CollectedItem], str, int | None]
 type HistoricInclude = Literal["archive", "network", "lines", "stops", "points"]
@@ -100,27 +99,14 @@ def _build_historic_point_plans(
     )
 
 
-_CLEAR_REFERENCED_HISTORIC_GC_MARKS_SQL = named_query(
-    "publish.historic_gc.clear_referenced",
-    "DELETE FROM core.snapshot_historic_gc_marks "
-    "WHERE provider_id = :provider_id "
-    "AND object_key = ANY(CAST(:object_keys AS text[]))",
-)
-
-
 def _clear_referenced_historic_gc_marks(
-    conn: Connection,
-    provider_id: str,
-    object_keys: Sequence[str],
+    conn: Connection, provider_id: str, object_keys: Sequence[str], *,
+    settings: Settings | None = None,
 ) -> None:
+    from transit_ops.control.historic_gc_marks import PostgresGcMarks, gc_marks_for
 
-    keys = sorted(set(object_keys))
-    if not keys:
-        return
-    conn.execute(
-        _CLEAR_REFERENCED_HISTORIC_GC_MARKS_SQL,
-        {"provider_id": provider_id, "object_keys": keys},
-    )
+    store = PostgresGcMarks(conn) if settings is None else gc_marks_for(conn, settings)
+    store.clear(provider_id, object_keys)
 
 
 def publication_stamp() -> str:
@@ -398,6 +384,7 @@ def publish(
                 repeat_offender_refs=repeat_offenders_summary.refs,
                 stop_keys=stop_referenced_generation_keys,
             ),
+            settings=settings,
         )
         logger.info("historic_publish_stage provider=%s stage=root_activation", provider_id)
         root_key = storage.activate_stable_json(

@@ -1,5 +1,4 @@
 from datetime import UTC, datetime, timedelta, timezone
-from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -124,7 +123,7 @@ def test_one_publish_reads_one_instant(monkeypatch, explicit):
     )
     kwargs = {"as_of_utc": seed.HISTORY_CLOCK} if explicit else {}
     historic_tier.publish(
-        SimpleNamespace(execute=lambda *a, **k: None),
+        NamedQueryConn({"publish.lock.require_historic": [True]}),
         MemorySnapshotStore(),
         provider_id="stm",
         settings=settings,
@@ -145,7 +144,7 @@ def test_equivalent_aware_instants_keep_publication_identity(
     from test_partitioned_history_publish import _patch_minimal_historic
 
     _patch_minimal_historic(monkeypatch)
-    conn = SimpleNamespace(execute=lambda *a, **k: None)
+    conn = NamedQueryConn({"publish.lock.require_historic": [True]})
     settings = seed.settings_for(tmp_path)
     utc_instant = datetime(2026, 7, 13, utc_hour, 30, tzinfo=UTC)
     offset_instant = utc_instant.astimezone(timezone(timedelta(hours=offset_hours)))
