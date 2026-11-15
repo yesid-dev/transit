@@ -46,16 +46,30 @@ def archive_relation(engine, storage, relation, window, provider, tmp_path):
     with psycopg.connect(
         **engine.url.translate_connect_args(username="user", database="dbname"), autocommit=True
     ) as conn:
+        assignments = {
+            ident: digest
+            for ident, digest in conn.execute(
+                "SELECT dataset_version_id, COALESCE(checksum_sha256, content_hash) "
+                "FROM core.dataset_versions WHERE provider_id=%s",
+                (provider,),
+            ).fetchall()
+        }
         exported = export_window(
             conn,
-            WindowSpec(relation, provider, window),
+            WindowSpec(relation, provider, window, edition_assignments=json.dumps(assignments)),
             tmp_path / f"{relation}-{window}.csv",
             statement_timeout_s=60,
         )
     key = table_copy_key(relation, provider, 0, dataset.archive_grain, window, 1, 1)
     path = storage.root / key
     path.parent.mkdir(parents=True, exist_ok=True)
-    written = write_window(exported.csv_path, exported.schema, path, metadata={}, temp_dir=tmp_path)
+    written = write_window(
+        exported.csv_path,
+        exported.schema,
+        path,
+        metadata={"edition_assignments": json.dumps(assignments)},
+        temp_dir=tmp_path,
+    )
     record = dict(
         format_version=1,
         kind="table_copy",

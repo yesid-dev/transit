@@ -57,7 +57,9 @@ def test_rescue_receipt_resolves_exact_identity(tmp_path):
     assert [(s.key, s.needs) for s in sources] == [(key, (need,))]
 
 
-def archive(storage, relation, window, query, *, revision=0, version=1, provider="sample"):
+def archive(
+    storage, relation, window, query, *, revision=0, version=1, provider="sample", assignments=None
+):
     key = table_copy_key(
         relation, provider, revision, get_dataset(relation).archive_grain, window, version, 1
     )
@@ -65,7 +67,10 @@ def archive(storage, relation, window, query, *, revision=0, version=1, provider
     path.parent.mkdir(parents=True, exist_ok=True)
     with duckdb.connect() as conn:
         conn.execute("SET TimeZone='UTC'")
-        conn.execute(f"COPY ({query}) TO ? (FORMAT parquet)", [str(path)])
+        conn.execute(
+            f"COPY ({query}) TO ? (FORMAT parquet, KV_METADATA ?)",
+            [str(path), {"edition_assignments": json.dumps(assignments or {})}],
+        )
         rows = conn.execute("SELECT count(*) FROM read_parquet(?)", [str(path)]).fetchone()[0]
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     record = dict(
@@ -87,7 +92,7 @@ def archive(storage, relation, window, query, *, revision=0, version=1, provider
     return key
 
 
-def bootstrap(storage, query=None):
+def bootstrap(storage, query=None, *, assignments=None):
     return archive(
         storage,
         "core.dataset_versions",
@@ -99,6 +104,7 @@ def bootstrap(storage, query=None):
             "'static_schedule' AS dataset_kind, true AS is_current, "
             "TIMESTAMPTZ '2026-11-01 00:00:00+00' AS loaded_at_utc"
         ),
+        assignments=assignments if assignments is not None else {7: "c" * 64},
     )
 
 
@@ -213,6 +219,7 @@ def test_repeated_sto_content_resolves_each_version_to_its_own_proven_copy(tmp_p
         "'static_schedule' AS dataset_kind, id=133 AS is_current, "
         "TIMESTAMPTZ '2026-11-01 00:00:00+00' AS loaded_at_utc "
         "FROM (VALUES (132), (133)) t(id)",
+        assignments={132: "c" * 64, 133: "c" * 64 + ".v133"},
     )
     mapping = edition_mapping(storage.root / boot, "sample")
     for ident, window in ((132, "c" * 64), (133, "c" * 64 + ".v133")):
@@ -223,6 +230,132 @@ def test_repeated_sto_content_resolves_each_version_to_its_own_proven_copy(tmp_p
             storage, "silver.trips", window, f"SELECT {ident}::BIGINT AS dataset_version_id"
         )
         assert resolve_sources([need], storage, "sample", STAMP, mapping)[0].key == key
+
+
+@pytest.mark.parametrize("old_metadata", [False, True])
+def test_pruned_registry_replays_exact_versions_from_old_and_new_bootstrap(tmp_path, old_metadata):
+    from transit_ops.lake.edition_assignments import persist_assignments, stored_assignments
+
+    storage = store(tmp_path)
+    assigned = {132: "c" * 64, 133: "c" * 64 + ".v133"}
+    for ident, window in assigned.items():
+        archive(storage, "silver.trips", window, f"SELECT {ident}::BIGINT AS dataset_version_id")
+    registry = (
+        "SELECT 'sample' AS provider_id, id::BIGINT AS dataset_version_id, "
+        "NULL::VARCHAR AS checksum_sha256, repeat('c',64) AS content_hash, "
+        "'static_schedule' AS dataset_kind, id=133 AS is_current, "
+        "TIMESTAMPTZ '2026-10-01 00:00:00+00' AS loaded_at_utc "
+        "FROM (VALUES (132), (133)) t(id)"
+    )
+    archive(
+        storage,
+        "core.dataset_versions",
+        "2026-10",
+        registry,
+        assignments=assigned if old_metadata else None,
+    )
+    persist_assignments(storage, "sample", assigned)
+    # Retention removes 132 before the next registry snapshot. No surviving
+    # registration can take its name, even when replay uses the old bootstrap.
+    archive(
+        storage,
+        "core.dataset_versions",
+        "2026-11",
+        registry + " WHERE id=133",
+        assignments=stored_assignments(storage, "sample"),
+    )
+    before = {key: storage.read_bytes(key) for key in storage.list_keys("archive/")}
+    for month, ids in ((10, (132, 133)), (11, (133,))):
+        root = tmp_path / f"fetch-{month}"
+        root.mkdir()
+        needs = [InputNeed("core.dataset_versions", "all")]
+        needs += [InputNeed("silver.trips", f"edition:{ident}") for ident in ids]
+        result = fetch_replay_inputs(
+            storage,
+            root,
+            "sample",
+            datetime(2026, month, 25, tzinfo=UTC),
+            lambda mapping, needs=needs: needs,
+        )
+        for ident in ids:
+            with duckdb.connect() as conn:
+                rows = conn.execute(
+                    "SELECT dataset_version_id FROM read_parquet(?)",
+                    [str(root / "silver.trips" / f"edition={ident}.parquet")],
+                ).fetchall()
+            assert rows == [(ident,)]
+        assert all(r["rows_dropped"] == 0 for r in result["receipts"])
+        local = edition_mapping(root / "core.dataset_versions" / "all.parquet", "sample")
+        assert {ident: local[ident] for ident in ids} == {ident: assigned[ident] for ident in ids}
+    assert before == {key: storage.read_bytes(key) for key in storage.list_keys("archive/")}
+
+
+@pytest.mark.parametrize("failure", ["empty", "corrupt"])
+def test_unprovable_legacy_ownership_refuses_before_replay(tmp_path, failure):
+    storage = store(tmp_path)
+    bootstrap(storage, assignments={})
+    key = archive(
+        storage,
+        "silver.trips",
+        "c" * 64,
+        "SELECT 7::BIGINT AS dataset_version_id" + (" WHERE false" if failure == "empty" else ""),
+    )
+    if failure == "corrupt":
+        (storage.root / key).write_bytes(b"corrupt")
+    root = tmp_path / "inputs"
+    root.mkdir()
+    with pytest.raises(ValueError, match="edition_identity"):
+        fetch_replay_inputs(
+            storage, root, "sample", STAMP, lambda _: [InputNeed("silver.trips", "edition:7")]
+        )
+    assert not list(root.glob("silver.*"))
+
+
+@pytest.mark.parametrize("provider", ["stm", "octranspo"])
+def test_legacy_owner_is_adopted_from_verified_rows_without_recopy(tmp_path, provider):
+    from transit_ops.lake.edition_assignments import archive_assignments, persist_assignments
+    from transit_ops.lake.edition_identity import edition_keys
+
+    storage = store(tmp_path)
+    key = archive(
+        storage,
+        "silver.trips",
+        "c" * 64,
+        "SELECT 42::BIGINT AS dataset_version_id",
+        provider=provider,
+    )
+    before = {k: storage.read_bytes(k) for k in storage.list_keys("archive/v1/tables/")}
+    assigned = archive_assignments(storage, provider, ["c" * 64])
+    assert assigned == {42: "c" * 64}
+    persist_assignments(storage, provider, assigned)
+    assert edition_keys([(42, None, "c" * 64)], assignments=assigned) == {42: "c" * 64}
+    # The old owner can disappear; a new registration is still qualified.
+    assert edition_keys([(43, None, "c" * 64)], assignments=assigned) == {43: "c" * 64 + ".v43"}
+    need = InputNeed("silver.trips", "edition:42")
+    assert resolve_sources([need], storage, provider, STAMP, assigned)[0].key == key
+    assert before == {k: storage.read_bytes(k) for k in storage.list_keys("archive/v1/tables/")}
+
+
+def test_proven_copy_of_another_edition_refuses_instead_of_becoming_empty(tmp_path):
+    storage = store(tmp_path)
+    assigned = {133: "c" * 64 + ".v133"}
+    bootstrap(
+        storage,
+        "SELECT 'sample' AS provider_id, 133::BIGINT AS dataset_version_id, "
+        "NULL::VARCHAR AS checksum_sha256, repeat('c',64) AS content_hash, "
+        "'static_schedule' AS dataset_kind, true AS is_current, "
+        "TIMESTAMPTZ '2026-11-01 00:00:00+00' AS loaded_at_utc",
+        assignments=assigned,
+    )
+    archive(storage, "silver.trips", assigned[133], "SELECT 132::BIGINT AS dataset_version_id")
+    root = tmp_path / "inputs"
+    root.mkdir()
+    with pytest.raises(ValueError, match="edition_identity") as error:
+        fetch_replay_inputs(
+            storage, root, "sample", STAMP, lambda _: [InputNeed("silver.trips", "edition:133")]
+        )
+    assert error.value.reason == "edition_identity"
+    assert not list(root.glob("silver.*"))
 
 
 @pytest.mark.parametrize("missing", [True, False])

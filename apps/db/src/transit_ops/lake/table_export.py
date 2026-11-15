@@ -41,6 +41,7 @@ class WindowSpec:
     revision: int = 0
     cut_utc: str | None = None
     date_bound: str | None = None
+    edition_assignments: str = "{}"
 
 
 class SchemaDrift(ValueError):
@@ -287,7 +288,12 @@ def _snapshot(
         if dataset.archive_grain == "edition":
             from transit_ops.lake.edition_identity import resolve_edition
 
-            edition = resolve_edition(connection, spec.provider_id, spec.window_key)
+            try:
+                edition = resolve_edition(
+                    connection, spec.provider_id, spec.window_key, spec.edition_assignments
+                )
+            except ValueError as exc:
+                raise ExportRefused("window") from exc
         spec = resolve_cut_spec(connection, spec, schema)
         statement, values = build_copy_statement(
             spec, schema, dataset_version_id=edition, text_keys=text_keys
