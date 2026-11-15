@@ -175,9 +175,10 @@ class LocalFile:
 
     def record_processing(self, entries: Sequence[ProcessingEntry], *, endpoint_key: str) -> int:
         """Store failed Silver attempts; provenance validation belongs to LocalPollRecords."""
-        if any(e.stage != "silver_load" or e.status != "failed" for e in entries):
-            raise ValueError("only failed Silver attempts are durable local processing records")
-        return self._record("processing", "ingestion_run_id", entries, endpoint_key)
+        with self.transaction():
+            if any(e.stage != "silver_load" or e.status != "failed" for e in entries):
+                raise ValueError("only failed Silver attempts are durable local processing records")
+            return self._record("processing", "ingestion_run_id", entries, endpoint_key)
 
     def _record(
         self,

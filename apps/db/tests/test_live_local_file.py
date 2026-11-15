@@ -9,7 +9,13 @@ import duckdb
 import pytest
 from history_fixtures import scripted_feed_day
 
-from transit_ops.live.local_file import LocalFile, LocalFileLocked, LocalFileMismatch, connect_live
+from transit_ops.live.local_file import (
+    SCHEMA_VERSION,
+    LocalFile,
+    LocalFileLocked,
+    LocalFileMismatch,
+    connect_live,
+)
 from transit_ops.live.settings import LaneSettings
 
 AT = datetime(2026, 1, 2, 3, 4, 5, 123456, tzinfo=UTC)
@@ -114,7 +120,7 @@ def test_non_binary_collation_is_refused_on_first_open(tmp_path):
         conn.execute(
             "CREATE TABLE meta (schema_version INTEGER, provider_id VARCHAR COLLATE NOCASE)"
         )
-        conn.execute("INSERT INTO meta VALUES (1, 'network')")
+        conn.execute("INSERT INTO meta VALUES (?, 'network')", [SCHEMA_VERSION])
     before = persisted_state(path)
     with pytest.raises(LocalFileMismatch, match="meta"):
         with closing(opened(path)):
@@ -436,3 +442,15 @@ def test_version_one_file_requires_rebuild_without_adopting_rows(tmp_path):
     with pytest.raises(LocalFileMismatch):
         opened(path)
     assert persisted_state(path) == before
+
+
+def test_caught_processing_validation_aborts_the_outer_transaction(tmp_path):
+    with closing(opened(tmp_path / "worker.db")) as local:
+        with pytest.raises(RuntimeError, match="transaction aborted"), local.transaction():
+            local.record_captures([CAPTURE], endpoint_key="vehicles")
+            with pytest.raises(ValueError, match="only failed Silver"):
+                local.record_processing(
+                    [replace(RECORD.processing[0], status="observed")], endpoint_key="vehicles"
+                )
+        assert local.connection.execute("SELECT capture_row_id FROM captures").fetchall() == []
+        assert local.connection.execute("SELECT ingestion_run_id FROM processing").fetchall() == []

@@ -70,6 +70,11 @@ class LocalPollRecords:
             error = failure.error_message
             if verified_capture is not None:
                 if (
+                    failure.attribution == "recorded"
+                    and failure.capture_row_id != verified_capture.capture_row_id
+                ):
+                    raise FailedLoadIntegrityError("recorded failure differs from verified receipt")
+                if (
                     verified_capture.index_family != day.index_family
                     or self._capture(day, verified_capture.capture_row_id) != verified_capture
                 ):

@@ -184,3 +184,15 @@ def test_leading_tag_overrides_legacy_time_attribution(tmp_path):
         assert LocalPollRecords(local).processing(DAY) == (
             replace(failure, capture_row_id=1, attribution="recorded"),
         )
+
+
+def test_conflicting_recorded_identity_is_not_replaced_by_verified_receipt(tmp_path):
+    failure = replace(
+        FAILURE, attribution="recorded", error_message="[capture_row_id=2] verified for capture 2"
+    )
+    with closing(opened(tmp_path / "worker.db")) as local:
+        local.record_captures(RECORD.captures, endpoint_key=DAY.endpoint_key)
+        records = LocalPollRecords(local)
+        with pytest.raises(FailedLoadIntegrityError):
+            records.record_failure(DAY, failure, verified_capture=RECORD.captures[1])
+        assert records.processing(DAY) == ()
