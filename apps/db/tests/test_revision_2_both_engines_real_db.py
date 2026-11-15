@@ -22,7 +22,7 @@ from transit_ops.history.datasets import TableSource, get_dataset
 from transit_ops.lake.parquet_codec import write_window
 from transit_ops.lake.table_export import WindowSpec, export_window
 
-PROVEN_FAMILIES: tuple[str, ...] = ()
+PROVEN_FAMILIES: tuple[str, ...] = ("occupancy_crowding",)
 
 
 @pytest.mark.parametrize("base", ["numrange", "nummultirange"])
@@ -334,6 +334,7 @@ def test_dated_all_is_refused_before_io(tmp_path):
 
 def test_family_count_requires_an_independent_declaration(monkeypatch):
     monkeypatch.setitem(globals(), "PROVEN_FAMILIES", ("missing",))
+    monkeypatch.setitem(globals(), "FAMILIES", {})
     check = test_every_implemented_family_matches_postgres_on_the_seed
     with pytest.raises(AssertionError):
         check((None, None, None), lambda *_: None)
