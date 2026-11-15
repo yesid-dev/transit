@@ -29,6 +29,7 @@ from pydantic import BaseModel
 from transit_ops.s3 import build_s3_client, validate_s3_bucket_name
 from transit_ops.settings import Settings
 from transit_ops.snapshots import historic_tree
+from transit_ops.snapshots.paths import publication_prefix
 from transit_ops.snapshots.protocols import (
     HistoricObjectStore,
     SnapshotObjectStore,
@@ -37,6 +38,7 @@ from transit_ops.snapshots.protocols import (
 from transit_ops.snapshots.protocols import ImmutablePutOutcome as ImmutablePutOutcome
 from transit_ops.snapshots.protocols import StableActivationOutcome as StableActivationOutcome
 from transit_ops.snapshots.protocols import StableObjectVersion as StableObjectVersion
+from transit_ops.snapshots.publication_target import REVISION_2_TARGET, PublicationTarget
 from transit_ops.snapshots.serialization import snapshot_json_bytes
 
 # Mutable historic indexes use shorter TTLs than static files; hash state is private, no-store.
@@ -1061,9 +1063,12 @@ def build_snapshot_storage(
     *,
     provider_id: str | None,
     client: object | None = None,
+    target: PublicationTarget = REVISION_2_TARGET,
 ) -> SnapshotStorage | LocalSnapshotStorage:
     """Construct provider storage, or the v1 root for explicit catalog publication."""
-    base_prefix = f"v1/{provider_id}" if provider_id is not None else "v1"
+    if provider_id is None and target != REVISION_2_TARGET:
+        raise ValueError("publication_target_requires_provider")
+    base_prefix = publication_prefix(provider_id, target.root_suffix)
 
     if settings.SNAPSHOT_STORAGE_BACKEND == "local":
         if not settings.SNAPSHOT_LOCAL_ROOT:

@@ -42,4 +42,19 @@ def safe_public_path(path: str) -> str:
     return canonical
 
 
-__all__ = ["safe_public_path"]
+def publication_prefix(provider_id: str | None, root_suffix: str) -> str:
+    prefix = f"v1/{provider_id}" if provider_id is not None else "v1"
+    if not root_suffix:
+        return prefix
+    if provider_id is None:
+        raise ValueError("publication_target_requires_provider")
+    if (
+        safe_public_path(root_suffix) != root_suffix
+        or "/" in root_suffix
+        or any(character in root_suffix for character in "%?#")
+    ):
+        raise ValueError("unsafe_publication_target_suffix")
+    return f"{prefix}/{root_suffix}"
+
+
+__all__ = ["safe_public_path", "publication_prefix"]
