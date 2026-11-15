@@ -191,6 +191,7 @@
 					{locale}
 					{hrefs}
 					{presentation}
+					replace={sheet?.replace ?? false}
 					onchoose={close}
 				/>
 			</div>

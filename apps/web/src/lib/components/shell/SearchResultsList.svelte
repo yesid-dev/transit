@@ -19,6 +19,8 @@
 		active?: string | null;
 		/** The address row: a request to send, or what that request answered. */
 		address?: { state: 'ask' | 'loading' | 'none' | 'failed'; onask: () => void } | null;
+		/** Each row's link takes the current history entry (the phone sheet's own) instead of adding one. */
+		replace?: boolean;
 		onchoose?: () => void;
 	}
 
@@ -32,6 +34,7 @@
 		presentation = null,
 		active = $bindable(null),
 		address = null,
+		replace = false,
 		onchoose,
 	}: Props = $props();
 	let box = $state<HTMLElement>();
@@ -106,6 +109,7 @@
 		tabindex="-1"
 		aria-selected={active === optionKey}
 		class="search-list-option"
+		data-sveltekit-replacestate={replace ? '' : undefined}
 		onclick={(event) => chose(event, hit)}
 	>
 		{#if hit}<span class="search-list-kind">{copy.kind[hit.kind]}</span>{/if}

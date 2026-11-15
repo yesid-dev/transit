@@ -1,14 +1,16 @@
 import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { goto, pushState } from '$app/navigation';
+import { goto, pushState, replaceState } from '$app/navigation';
 import { searchTransit } from '#lib/search/transitSearch.ts';
 import SearchSheet from './SearchSheet.svelte';
 
-const kit = vi.hoisted(() => ({ popState: () => {} }));
+// What the router does to page.state when the reader goes Back or Forward between two entries.
+const kit = vi.hoisted(() => ({ popState: () => {}, forward: () => {} }));
 vi.mock('$app/state', async () => {
 	const { createPageState } = await import('../../../tests/pageState.svelte.ts');
 	const page = createPageState<{ state: App.PageState }>({ state: {} });
 	kit.popState = () => page.set({ state: {} });
+	kit.forward = () => page.set({ state: { searchSheet: true } });
 	return { page: page.page };
 });
 vi.mock('$app/navigation', async () => {
@@ -16,6 +18,9 @@ vi.mock('$app/navigation', async () => {
 	return {
 		goto: vi.fn(),
 		pushState: vi.fn((_url: string, state: App.PageState) => {
+			page.state = state;
+		}),
+		replaceState: vi.fn((_url: string, state: App.PageState) => {
 			page.state = state;
 		}),
 	};
@@ -102,10 +107,9 @@ it('a chosen row replaces the sheet in history and leads to the record', async (
 	const view = open();
 	const { dialog } = await show(view);
 	const row = within(dialog).getByRole('option', { name: 'Line 161 · Van Horne' });
-	expect(row.closest('[data-sveltekit-replacestate]')).toHaveAttribute(
-		'data-sveltekit-replacestate',
-		'',
-	);
+	// On the link itself: the sheet closes before the router reads the click, detaching the row
+	// from every ancestor, so an attribute on a wrapper is never seen.
+	expect(row).toHaveAttribute('data-sveltekit-replacestate', '');
 	row.addEventListener('click', (event) => event.preventDefault());
 	await fireEvent.click(row);
 	await waitFor(() => expect(view.queryByRole('dialog')).toBeNull());
@@ -125,4 +129,50 @@ it('Enter with nothing highlighted opens the search page in place of the sheet',
 	});
 	await waitFor(() => expect(view.queryByRole('dialog')).toBeNull());
 	expect(back).not.toHaveBeenCalled();
+});
+
+it('Forward onto the sheet reopens it with the field focused; Close goes back once', async () => {
+	const view = open();
+	await show(view);
+	kit.popState();
+	await waitFor(() => expect(view.queryByRole('dialog')).toBeNull());
+	kit.forward();
+	const dialog = await view.findByRole('dialog', { name: 'Search' });
+	const field = within(dialog).getByRole('combobox', { name: 'Search the network' });
+	await waitFor(() => expect(field).toHaveFocus());
+	expect(field).toHaveValue('van');
+	expect(view.behind).toHaveAttribute('inert');
+	expect(pushState).toHaveBeenCalledOnce();
+
+	await fireEvent.click(within(dialog).getByRole('button', { name: 'Close search' }));
+	await waitFor(() => expect(view.queryByRole('dialog')).toBeNull());
+	expect(back).toHaveBeenCalledOnce();
+	await waitFor(() => expect(view.trigger).toHaveFocus());
+});
+
+it("opening again on the sheet's own entry reuses it, so Close goes back only once", async () => {
+	const view = open();
+	const { dialog } = await show(view);
+	// A chosen row whose navigation never happens leaves the reader on the sheet's entry.
+	const row = within(dialog).getByRole('option', { name: 'Line 161 · Van Horne' });
+	row.addEventListener('click', (event) => event.preventDefault());
+	await fireEvent.click(row);
+	await waitFor(() => expect(view.queryByRole('dialog')).toBeNull());
+	const again = await show(view);
+	expect(pushState).toHaveBeenCalledOnce();
+	await fireEvent.keyDown(again.field, { key: 'Escape' });
+	await waitFor(() => expect(view.queryByRole('dialog')).toBeNull());
+	expect(back).toHaveBeenCalledOnce();
+});
+
+it('Forward onto the sheet with the button hidden (a wide header) drops the flag, never a hidden sheet', async () => {
+	const view = open();
+	await show(view);
+	kit.popState();
+	await waitFor(() => expect(view.queryByRole('dialog')).toBeNull());
+	view.trigger.style.display = 'none';
+	kit.forward();
+	await waitFor(() => expect(replaceState).toHaveBeenCalledWith('', { searchSheet: undefined }));
+	expect(view.queryByRole('dialog')).toBeNull();
+	expect(view.behind).not.toHaveAttribute('inert');
 });

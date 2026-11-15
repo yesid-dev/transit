@@ -15,7 +15,8 @@
 </script>
 
 <script lang="ts">
-	import { pushState } from '$app/navigation';
+	import { untrack } from 'svelte';
+	import { pushState, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import XIcon from '@lucide/svelte/icons/x';
@@ -68,7 +69,8 @@
 		leaving = false;
 		const lenis = getLenis();
 		lenis?.scrollTo(lenis.scroll, { immediate: true });
-		pushState('', { ...page.state, searchSheet: true });
+		// Already on the sheet's entry (a choice whose navigation never happened): reuse it.
+		if (!entry) void pushState('', { ...page.state, searchSheet: true });
 	}
 	function dismiss(): void {
 		open = false;
@@ -82,10 +84,21 @@
 		restore = null;
 	}
 
+	const visible = (element: HTMLElement | null) =>
+		element !== null && getComputedStyle(element).display !== 'none';
+
+	// The sheet follows its entry both ways: Back closes it, Forward opens it again. From a
+	// 1024 px header the field sits in the header, so a restored entry loses its flag instead.
 	let hadEntry = false;
 	$effect(() => {
 		const now = entry;
-		if (hadEntry && !now) open = false;
+		if (now !== hadEntry)
+			untrack(() => {
+				if (!now) open = false;
+				else if (open || leaving) return;
+				else if (visible(trigger)) open = true;
+				else void replaceState('', { ...page.state, searchSheet: undefined });
+			});
 		hadEntry = now;
 	});
 	$effect(() => () => restore?.());
@@ -132,7 +145,13 @@
 			restore = null;
 			// After a choice the new page takes focus and the text goes, as in the desktop list.
 			if (leaving) query = '';
-			else trigger?.focus({ preventScroll: true });
+			else if (visible(trigger)) trigger?.focus({ preventScroll: true });
+			// A header that widened while the sheet was open shows the field instead of the button.
+			else
+				trigger
+					?.closest('[data-slot="site-header"]')
+					?.querySelector<HTMLInputElement>('[data-slot="nav-search"] input')
+					?.focus({ preventScroll: true });
 		}}
 	>
 		<div class="search-sheet-top">
@@ -150,7 +169,7 @@
 				<XIcon size={18} strokeWidth={2.3} aria-hidden="true" />
 			</Button>
 		</div>
-		<div class="search-sheet-body" data-sveltekit-replacestate={entry ? '' : 'off'}>
+		<div class="search-sheet-body">
 			<HeaderSearch
 				bind:query
 				{locale}

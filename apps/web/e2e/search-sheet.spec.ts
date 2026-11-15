@@ -71,4 +71,52 @@ for (const locale of PUBLISHED_LOCALES) {
 		await expect(page).toHaveURL((url) => url.pathname === home);
 		await expect(trigger(page)).toBeFocused();
 	});
+
+	test(`${locale}: Forward reopens the sheet, Close goes back once, and no entry is added`, async ({
+		page,
+	}) => {
+		const entries = () => page.evaluate(() => history.length);
+		const field = sheet(page).getByRole('combobox', { name });
+		await page.goto(home);
+		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+		await (await openSheet(page)).fill(line.long);
+		const length = await entries();
+		await page.goBack();
+		await expect(sheet(page)).toBeHidden();
+		await page.goForward();
+		await expect(field).toBeFocused();
+		await expect(field).toHaveValue(line.long);
+		await sheet(page).getByRole('button', { name: words.closeSheet, exact: true }).click();
+		await expect(sheet(page)).toBeHidden();
+		await expect(trigger(page)).toBeFocused();
+		await page.goForward();
+		await expect(field).toBeFocused();
+		const row = new RegExp(`^${literal(`${words.kind.route} ${line.short} · ${line.long}`)}`);
+		await sheet(page).getByRole('option', { name: row }).click();
+		await expect(page).toHaveURL(
+			(url) => url.pathname === localizeHref(`/lines/${line.id}`, locale),
+		);
+		await page.goBack();
+		await expect(page).toHaveURL((url) => url.pathname === home);
+		await expect(sheet(page)).toBeHidden();
+		expect(await entries()).toBe(length);
+	});
+
+	test(`${locale}: Forward onto the sheet once the header has widened opens no hidden sheet`, async ({
+		page,
+	}) => {
+		await page.goto(home);
+		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+		await openSheet(page);
+		await page.goBack();
+		await expect(sheet(page)).toBeHidden();
+		await page.setViewportSize({ width: 1440, height: 900 });
+		await expect(trigger(page)).toBeHidden();
+		await page.goForward();
+		// Let the restored entry reach the sheet before checking that nothing opened.
+		await page.evaluate(() => new Promise((done) => setTimeout(done, 500)));
+		await expect(sheet(page)).toBeHidden();
+		await expect(page.locator('[data-slot="app-shell-row"]')).not.toHaveAttribute('inert');
+		await expect(page.getByRole('combobox', { name })).toBeVisible();
+	});
 }
