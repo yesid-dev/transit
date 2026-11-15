@@ -357,19 +357,29 @@ describe('SearchSurface addresses on request', () => {
 		await view.getByRole('button', { name: 'Search addresses for “casgrain”' }).click();
 		const addresses = await view.findByRole('region', { name: 'Addresses · 1' });
 		expect(fetch).toHaveBeenCalledTimes(1);
-		expect(within(addresses).getByRole('link', { name: /100 Casgrain/ })).toHaveAttribute(
-			'href',
-			expect.stringMatching(/^\/map\?.*near/),
-		);
+		const found = within(addresses).getByRole('link', { name: /100 Casgrain/ });
+		expect(found).toHaveAttribute('href', expect.stringMatching(/^\/map\?.*near/));
+		await vi.waitFor(() => expect(found).toHaveFocus());
 		view.unmount();
 
+		// Without an answer the row keeps focus and says why, aloud too.
 		vi.stubGlobal(
 			'fetch',
 			vi.fn(async () => new Response(null, { status: 503 })),
 		);
 		const failed = render(SearchSurface);
-		await failed.getByRole('button', { name: 'Search addresses for “casgrain”' }).click();
-		expect(await failed.findByText('Address search is unavailable right now.')).toBeInTheDocument();
+		const ask = failed.getByRole('button', { name: 'Search addresses for “casgrain”' });
+		ask.focus();
+		await ask.click();
+		const row = await failed.findByRole('button', {
+			name: 'Address search is unavailable right now.',
+		});
+		expect(row).toBe(ask);
+		expect(row).toHaveFocus();
+		expect(row).toHaveAttribute('aria-disabled', 'true');
+		expect(failed.getAllByRole('status').map((status) => status.textContent)).toContain(
+			'Address search is unavailable right now.',
+		);
 	});
 });
 

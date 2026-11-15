@@ -229,6 +229,14 @@
 					? say.addressesFailed
 					: '',
 	);
+	// Found addresses take focus, as in the header (#1060 E17); otherwise focus stays on the row.
+	let addressSection = $state<HTMLElement>();
+	async function askAddresses(): Promise<void> {
+		if (addressRow !== 'ask') return;
+		await lookup.ask(text);
+		await tick();
+		addressSection?.querySelector<HTMLElement>('a')?.focus();
+	}
 	const addressHref = (hit: (typeof addresses)[number]) =>
 		localizeHref(searchHitHref(hit, { path: '/search', params: new URLSearchParams() }), locale);
 
@@ -459,22 +467,26 @@
 			{#each shownGroups.filter((group) => group.kind === 'route' || group.kind === 'stop') as group (group.kind)}
 				{@render groupSection(group)}
 			{/each}
+			<!-- Present for every query, so each outcome of the lookup is announced. -->
+			<p class="sr-only" role="status">{addressStatus}</p>
 			{#if addressRow}
+				<!-- The row stays where it is and says the outcome, so focus never drops (#1060 E18). -->
 				<div class="search-address">
+					<button
+						type="button"
+						class="search-group-more"
+						aria-describedby={addressRow === 'ask' ? `${uid}-notice` : undefined}
+						aria-disabled={addressRow === 'ask' ? undefined : 'true'}
+						onclick={askAddresses}
+						>{addressRow === 'ask' ? say.askAddresses(text) : addressStatus}</button
+					>
 					{#if addressRow === 'ask'}
-						<button
-							type="button"
-							class="search-group-more"
-							aria-describedby="{uid}-notice"
-							onclick={() => lookup.ask(text)}>{say.askAddresses(text)}</button
-						>
 						<p class="search-group-note" id="{uid}-notice">{say.addressNotice}</p>
 					{/if}
-					<p class="search-group-note" role="status">{addressStatus}</p>
 				</div>
 			{/if}
 			{#if addresses.length > 0}
-				<section class="search-group" aria-labelledby="{uid}-address">
+				<section class="search-group" aria-labelledby="{uid}-address" bind:this={addressSection}>
 					<div class="search-group-head">
 						<h2 class="search-group-label" id="{uid}-address">
 							{say.heading('address', addresses.length)}
@@ -631,9 +643,6 @@
 		font-size: var(--text-small);
 		line-height: 1.5;
 		max-width: var(--measure-notice);
-	}
-	.search-group-note:empty {
-		display: none;
 	}
 	.search-group-foot {
 		display: flex;
