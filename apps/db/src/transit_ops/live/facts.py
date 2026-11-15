@@ -1,4 +1,4 @@
-"""Typed local vehicle facts; trip-delay projection belongs to LS3.5b2.
+"""Math-first local vehicle facts; trip-delay projection belongs to LS3.5b2.
 
 The supplied LocalFile owns the transaction. No edition or PostgreSQL read,
 serving admission, raw durability claim or wall clock is involved here.
@@ -64,6 +64,18 @@ def _json_timestamp(value: object) -> str:
     raise TypeError(f"unsupported parsed value: {type(value).__name__}")
 
 
+def _reject_nul(value: object, field: str) -> None:
+    if isinstance(value, str) and "\x00" in value:
+        raise ValueError(f"nul_in_text: {field}")
+    if isinstance(value, dict):
+        for key, item in value.items():
+            _reject_nul(key, field)
+            _reject_nul(item, f"{field}.{key}")
+    elif isinstance(value, (tuple, list)):
+        for item in value:
+            _reject_nul(item, field)
+
+
 def _fingerprint(parsed: ParsedCapture, timezone: str) -> str:
     # Include the normalized content and policy context, not just caller's raw hash.
     document = asdict(parsed.capture) | {
@@ -83,6 +95,14 @@ def _fingerprint(parsed: ParsedCapture, timezone: str) -> str:
             allow_nan=False,
         ).encode("utf-8")
     ).hexdigest()
+
+
+def _physical_value(value: object, field: str, low: int, high: int) -> object:
+    if value is None:
+        return None
+    if not isinstance(value, (float, int)):
+        raise ValueError(f"invalid_measure_type: {field}")
+    return value if low <= value <= high and (field != "bearing" or value < high) else None
 
 
 def _vehicle_rows(parsed: ParsedCapture, timezone: ZoneInfo) -> list[tuple[object, ...]]:
@@ -111,12 +131,22 @@ def _vehicle_rows(parsed: ParsedCapture, timezone: ZoneInfo) -> list[tuple[objec
             position_timestamp_utc=vp["vehicle_timestamp_utc"],
             entity_id=ids[vp["entity_index"]],
         )
+        # Quality labels classify pairs/bboxes; they do not sanitize facts.
+        # Retain observations, null only mathematically invalid finite measures.
+        for name, low, high in (
+            ("latitude", -90, 90),
+            ("longitude", -180, 180),
+            ("bearing", 0, 360),
+        ):
+            row[name] = _physical_value(vp[name], name, low, high)
         result.append(tuple(_utc(row[n] if n in row else vp[n]) for n, _ in VEHICLE_COLUMNS))
     return result
 
 
 def _validate_capture(parsed: ParsedCapture) -> None:
     capture = parsed.capture
+    _reject_nul(asdict(capture), "capture")
+    _reject_nul((parsed.gtfs_realtime_version, parsed.incrementality), "header")
     if capture.endpoint_key != "vehicle_positions":
         raise ValueError("only vehicle_positions fact projection is implemented")
     if type(capture.capture_row_id) is not int or not 0 < capture.capture_row_id < 2**63:
@@ -126,6 +156,7 @@ def _validate_capture(parsed: ParsedCapture) -> None:
     if set(parsed.frames) != {"rt_entities", "rt_vehicle_positions"}:
         raise ValueError("vehicle capture requires entity and vehicle frames")
     for name, frame in parsed.frames.items():
+        _reject_nul(frame.rows, name)
         columns = FRAME_COLUMNS[name]
         if frame.table != name or frame.columns != columns:
             raise ValueError(f"{name}: parsed frame contract differs")
@@ -144,9 +175,9 @@ def apply_capture(local: LocalFile, parsed: ParsedCapture, *, provider_timezone:
     with local.transaction() as conn:
         local.verify_fact_tables(_DEFINITIONS)
         capture = parsed.capture
+        _validate_capture(parsed)
         if conn.execute("SELECT provider_id FROM meta").fetchall() != [(capture.provider_id,)]:
             raise LocalFileMismatch("capture provider differs from local file")
-        _validate_capture(parsed)
         timezone = ZoneInfo(provider_timezone)
         digest = _fingerprint(parsed, provider_timezone)
         identity = [capture.provider_id, capture.endpoint_key, capture.capture_row_id]

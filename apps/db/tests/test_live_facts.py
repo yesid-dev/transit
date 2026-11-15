@@ -301,3 +301,87 @@ def test_nonfinite_position_refuses_without_success(tmp_path, value):
             apply_capture(local, parsed_vehicle(message), provider_timezone="UTC")
         assert read_vehicle_facts(local).rows == ()
         assert local.connection.execute("SELECT count(*) FROM fact_processing").fetchone() == (0,)
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("latitude", -91.0),
+        ("latitude", 91.0),
+        ("longitude", -181.0),
+        ("longitude", 181.0),
+        ("bearing", -1.0),
+        ("bearing", 360.0),
+        ("bearing", 361.0),
+    ],
+)
+def test_invalid_physical_measure_is_null_but_observation_is_retained(tmp_path, field, value):
+    # R28 (2)(b): PostgreSQL wrong. Latitude [-90,90], longitude [-180,180],
+    # bearing [0,360); e.g. 91 > 90 and 181 > 180. No modulo or clamping.
+    message = vehicle_message()
+    setattr(message.entity[0].vehicle.position, field, value)
+    with closing(
+        LocalFile.open(tmp_path / "domain.db", provider_id="network", settings=SETTINGS)
+    ) as local:
+        assert apply_capture(local, parsed_vehicle(message), provider_timezone="UTC") == 4
+        facts = read_vehicle_facts(local)
+        row = dict(zip(facts.columns, facts.rows[0], strict=True))
+        assert row[field] is None
+        assert row["vehicle_id"] == "bus-0"
+        assert local.connection.execute("SELECT row_count FROM fact_processing").fetchall() == [
+            (4,)
+        ]
+
+
+@pytest.mark.parametrize("field", ["entity_id", "vehicle_id", "trip_id", "route_id", "stop_id"])
+def test_nul_in_identifier_refuses_capture_and_receipt(tmp_path, field):
+    message = vehicle_message()
+    entity = message.entity[1]
+    targets = {
+        "entity_id": (entity, "id"),
+        "vehicle_id": (entity.vehicle.vehicle, "id"),
+        "trip_id": (entity.vehicle.trip, "trip_id"),
+        "route_id": (entity.vehicle.trip, "route_id"),
+        "stop_id": (entity.vehicle, "stop_id"),
+    }
+    target, attribute = targets[field]
+    setattr(target, attribute, "é\x00尾")
+    with closing(
+        LocalFile.open(tmp_path / "nul.db", provider_id="network", settings=SETTINGS)
+    ) as local:
+        read_vehicle_facts(local)
+        with pytest.raises(ValueError, match="nul_in_text"):
+            apply_capture(local, parsed_vehicle(message), provider_timezone="UTC")
+        assert read_vehicle_facts(local).rows == ()
+        assert local.connection.execute("SELECT count(*) FROM fact_processing").fetchone() == (0,)
+
+
+@pytest.mark.parametrize("latitude, longitude", [(-90.0, -180.0), (90.0, 180.0)])
+def test_physical_boundary_and_outside_provider_bbox_are_retained(tmp_path, latitude, longitude):
+    message = vehicle_message()
+    position = message.entity[0].vehicle.position
+    position.latitude, position.longitude, position.bearing = latitude, longitude, 0
+    parsed = parsed_vehicle(message)
+    assert (
+        parsed.frames["rt_vehicle_positions"].column("position_quality")[0]
+        == "outside_provider_bbox"
+    )
+    with closing(
+        LocalFile.open(tmp_path / "edge.db", provider_id="network", settings=SETTINGS)
+    ) as local:
+        apply_capture(local, parsed, provider_timezone="UTC")
+        assert read_vehicle_facts(local).rows[0][16:19] == (latitude, longitude, 0.0)
+
+
+@pytest.mark.parametrize("field", ["provider_id", "endpoint_key", "sha256"])
+def test_nul_in_capture_text_refuses_by_name(tmp_path, field):
+    parsed = parsed_vehicle()
+    parsed = replace(parsed, capture=replace(parsed.capture, **{field: "prefix\x00tail"}))
+    with closing(
+        LocalFile.open(tmp_path / "identity.db", provider_id="network", settings=SETTINGS)
+    ) as local:
+        read_vehicle_facts(local)
+        with pytest.raises(ValueError, match="nul_in_text"):
+            apply_capture(local, parsed, provider_timezone="UTC")
+        assert read_vehicle_facts(local).rows == ()
+        assert local.connection.execute("SELECT count(*) FROM fact_processing").fetchone() == (0,)
