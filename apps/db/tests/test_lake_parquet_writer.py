@@ -9,6 +9,7 @@ import pytest
 from transit_ops.lake.csv_validation import InvalidCsvValue
 from transit_ops.lake.parquet_codec import (
     CsvHeaderMismatch,
+    ParquetCodec,
     RequiredValueMissing,
     connect,
     read_canonical_csv,
@@ -36,6 +37,19 @@ def test_written_file_has_the_schema_names_and_types(tmp_path):
             "DESCRIBE SELECT * FROM read_parquet(?)", [str(window.path)]
         ).fetchall()
     assert [row[:2] for row in description] == [("id", "INTEGER"), ("value", "VARCHAR")]
+
+
+def test_codec_connection_has_an_explicit_memory_budget(tmp_path):
+    with connect(tmp_path) as connection:
+        assert (
+            connection.execute("SELECT current_setting('memory_limit')").fetchone()[0]
+            == "256.0 MiB"
+        )
+
+
+def test_codec_refuses_a_row_group_larger_than_the_legacy_bound(tmp_path):
+    with pytest.raises(ValueError, match="row_group_rows"):
+        write(tmp_path, metadata={}, codec=ParquetCodec(row_group_rows=245_760))
 
 
 def test_null_and_empty_string_stay_distinct(tmp_path):

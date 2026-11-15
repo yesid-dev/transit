@@ -1,4 +1,5 @@
 import csv
+import json
 from dataclasses import replace
 from functools import partial
 from uuid import uuid4
@@ -160,3 +161,62 @@ def test_lock_failure_cleans_files_and_allows_retry(source, owned, tmp_path, rea
             export(source, owned, tmp_path / "retry.csv")
         assert not list(tmp_path.iterdir())
     assert export(source, owned, tmp_path / "retry.csv").rows == 1
+
+
+def test_binary_order_matches_old_copy_and_has_no_postgres_sort(source, monkeypatch, tmp_path):
+    from psycopg import sql
+
+    from transit_ops.lake.parquet_codec import write_window
+    from transit_ops.lake.table_export import _copy, _snapshot, order_by
+
+    table = "public.export_" + uuid4().hex
+    original = datasets.get_dataset("gold.report_labels")
+    declared = replace(original, dataset_id=table, source=replace(original.source, table=table))
+    monkeypatch.setattr(
+        datasets, "HISTORY_DATASETS", {**datasets.HISTORY_DATASETS, table: declared}
+    )
+    collation = source.execute(
+        "SELECT collname FROM pg_collation WHERE collname IN "
+        "('en-US-x-icu', 'en_US.utf8', 'en_US') LIMIT 1"
+    ).fetchone()
+    if collation is None:
+        pytest.skip("Disposable PostgreSQL needs an en_US or en-US ICU collation")
+    source.execute(
+        sql.SQL("CREATE TABLE {} (label_key text COLLATE {} PRIMARY KEY, payload text)").format(
+            sql.Identifier(*table.split(".")), sql.Identifier(collation[0])
+        )
+    )
+    try:
+        for key in ["a", "B", "é", "_x", "10", "9"]:
+            source.execute(
+                sql.SQL("INSERT INTO {} VALUES (%s,%s)").format(sql.Identifier(*table.split("."))),
+                (key, 'quote" and comma, and newline\n' + key),
+            )
+        spec = WindowSpec(table, "_shared", "2026-11")
+        result = export(source, spec, tmp_path / "new.csv")
+        old = tmp_path / "old.csv"
+        with _snapshot(source, spec, 60) as snapshot:
+            schema, statement, values = snapshot[:3]
+            select = statement.as_string().split("COPY (", 1)[1].split(") TO STDOUT", 1)[0]
+            plan = source.execute("EXPLAIN (FORMAT JSON) " + select, values).fetchone()[0]
+            assert '"Node Type": "Sort"' not in json.dumps(plan)
+            legacy = sql.SQL(
+                statement.as_string().replace(
+                    ") TO STDOUT", " ORDER BY " + order_by(schema).as_string() + ") TO STDOUT"
+                )
+            )
+            with old.open("wb") as output:
+                old_digest = _copy(source, legacy, values, output)
+        assert result.csv_path.read_bytes() == old.read_bytes()
+        assert recheck(source, spec, temp_dir=tmp_path) == old_digest
+        assert (result.content_sha256, result.content_bytes, result.rows) == old_digest
+        copies = [
+            write_window(
+                path, schema, tmp_path / f"{path.stem}.parquet", metadata={}, temp_dir=tmp_path
+            )
+            for path in [old, result.csv_path]
+        ]
+        assert copies[0].sha256 == copies[1].sha256
+        assert copies[0].content_sha256 == copies[1].content_sha256
+    finally:
+        source.execute(sql.SQL("DROP TABLE {}").format(sql.Identifier(*table.split("."))))

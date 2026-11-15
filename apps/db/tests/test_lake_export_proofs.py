@@ -326,3 +326,29 @@ def test_edition_resolution_is_provider_scoped_and_unique(source, fact_source, t
     finally:
         source.execute("DELETE FROM silver.routes WHERE dataset_version_id=ANY(%s)", (ids,))
         source.execute("DELETE FROM core.dataset_versions WHERE dataset_version_id=ANY(%s)", (ids,))
+
+
+def test_export_and_recheck_canonicalize_the_stream_at_the_protocol_boundary(tmp_path):
+    class Unordered(ProtocolSource):
+        rowcount = 3
+
+        def blocks(self):
+            yield b"provider_id,revision,service_date\n"
+            yield b"p,10,2026-11-01\np,2,2026-11-02\np,2,2026-11-01\n"
+
+        @contextmanager
+        def copy(self, statement, params):
+            assert "ORDER BY" not in statement.as_string()
+            yield self.blocks()
+
+    connection = Unordered()
+    spec = engine.WindowSpec("gold.network_vehicle_day", "p", "2026-11", 2)
+    result = export(connection, spec, tmp_path / "out.csv")
+    assert result.csv_path.read_bytes() == (
+        b"provider_id,revision,service_date\np,2,2026-11-01\np,2,2026-11-02\np,10,2026-11-01\n"
+    )
+    assert recheck(connection, spec, temp_dir=tmp_path) == (
+        result.content_sha256,
+        result.content_bytes,
+        result.rows,
+    )

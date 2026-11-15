@@ -112,8 +112,8 @@ def test_copy_statement_keeps_columns_and_parameters_in_order():
     assert statement.as_string() == (
         'COPY (SELECT "provider_id", "revision", "service_date", "unusual""column" '
         'FROM "gold"."network_vehicle_day" WHERE "provider_id" = %s '
-        'AND "service_date" >= %s AND "service_date" < %s AND "revision" = %s '
-        'ORDER BY "provider_id" COLLATE "C", "revision", "service_date") '
+        'AND "service_date" >= %s AND "service_date" < %s AND "revision" = %s'
+        ") "
         "TO STDOUT WITH (FORMAT csv, HEADER true, ENCODING 'UTF8')"
     )
     assert values == ("a' OR true --", date(2026, 11, 1), date(2026, 12, 1), 3)
@@ -134,9 +134,8 @@ def test_whole_state_summary_never_joins_edition_metadata():
     )
     assert statement.as_string() == (
         'COPY (SELECT "provider_id", "dataset_version_id", "route_id", "day_type" '
-        'FROM "gold"."schedule_version_service_summary" WHERE "provider_id" = %s '
-        'ORDER BY "provider_id" COLLATE "C", "dataset_version_id", "route_id" COLLATE "C", '
-        '"day_type" COLLATE "C") TO STDOUT WITH (FORMAT csv, HEADER true, ENCODING \'UTF8\')'
+        'FROM "gold"."schedule_version_service_summary" WHERE "provider_id" = %s'
+        ") TO STDOUT WITH (FORMAT csv, HEADER true, ENCODING 'UTF8')"
     )
     assert values == ("network",)
 
@@ -147,8 +146,8 @@ def test_shared_whole_table_has_no_where_clause():
         WindowSpec("gold.report_labels", "_shared", "2026-11"), schema
     )
     assert statement.as_string() == (
-        'COPY (SELECT "label_key" FROM "gold"."report_labels" '
-        'ORDER BY "label_key" COLLATE "C") '
+        'COPY (SELECT "label_key" FROM "gold"."report_labels"'
+        ") "
         "TO STDOUT WITH (FORMAT csv, HEADER true, ENCODING 'UTF8')"
     )
     assert values == ()
@@ -172,8 +171,8 @@ def test_edition_statement_binds_resolved_id_and_preserves_postgres_text():
     assert statement.as_string() == (
         'COPY (SELECT "dataset_version_id", "provider_id", "route_id", "amount", '
         '"bins", "metadata" '
-        'FROM "silver"."routes" WHERE "provider_id" = %s AND "dataset_version_id" = %s '
-        'ORDER BY "dataset_version_id", "route_id" COLLATE "C") '
+        'FROM "silver"."routes" WHERE "provider_id" = %s AND "dataset_version_id" = %s'
+        ") "
         "TO STDOUT WITH (FORMAT csv, HEADER true, ENCODING 'UTF8')"
     )
     assert values == ("network", 42)
@@ -246,8 +245,8 @@ def test_fact_statement_has_the_rescue_shape():
     assert statement.as_string() == (
         'COPY (SELECT "provider_id", "realtime_snapshot_id", "entity_index", "captured_at_utc" '
         'FROM "gold"."fact_vehicle_snapshot" WHERE "provider_id" = %s '
-        'AND "captured_at_utc" >= %s AND "captured_at_utc" < %s '
-        'ORDER BY "provider_id" COLLATE "C", "realtime_snapshot_id", "entity_index") '
+        'AND "captured_at_utc" >= %s AND "captured_at_utc" < %s'
+        ") "
         "TO STDOUT WITH (FORMAT csv, HEADER true, ENCODING 'UTF8')"
     )
     assert values == (
@@ -312,3 +311,37 @@ def test_cut_window_predicate_bounds_export_and_recheck():
     from datetime import date
 
     assert date(2026, 11, 15) in values
+
+
+def test_local_order_preserves_original_csv_bytes_and_parquet_digest(tmp_path):
+    import hashlib
+
+    from transit_ops.lake.parquet_codec import write_window
+    from transit_ops.lake.table_export import _canonicalize
+
+    schema = TableSchema.from_columns(
+        [("label_key", "text", True), ("payload", "text", False)], ["label_key"]
+    )
+    records = [
+        b'a,"quoted,field"\n',
+        b'B,"line\nbreak"\n',
+        'é,""\n'.encode(),
+        b"_x,\n",
+        b'10,"quote""here"\n',
+        b"9,plain\n",
+        b'"",empty key\n',
+    ]
+    header = b"label_key,payload\n"
+    old = tmp_path / "old.csv"
+    new = tmp_path / "new.csv"
+    expected = header + b"".join(records[i] for i in [6, 4, 5, 1, 3, 0, 2])
+    old.write_bytes(expected)
+    new.write_bytes(header + b"".join(records))
+    assert _canonicalize(new, schema) == (hashlib.sha256(expected).hexdigest(), len(expected))
+    assert new.read_bytes() == old.read_bytes()
+    windows = [
+        write_window(p, schema, tmp_path / f"{p.stem}.parquet", metadata={}, temp_dir=tmp_path)
+        for p in [old, new]
+    ]
+    assert windows[0].sha256 == windows[1].sha256
+    assert windows[0].content_sha256 == windows[1].content_sha256
