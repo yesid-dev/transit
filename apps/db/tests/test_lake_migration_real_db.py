@@ -57,9 +57,10 @@ def history(source, fact_source, monkeypatch):
     for name, grain, column in zip(
         names, ("month", "edition", "month"), ("day", "edition_id", None), strict=True
     ):
+        key = ("provider_id", "edition_id", "id") if grain == "edition" else ("provider_id", "id")
         declarations[name] = datasets.HistoryDataset(
             name,
-            datasets.TableSource(name, column, ("provider_id", "id"), None, 0),
+            datasets.TableSource(name, column, key, None, 0),
             grain,
             None,
             (),
@@ -67,7 +68,7 @@ def history(source, fact_source, monkeypatch):
         )
         source.execute(
             f"CREATE TABLE {name} (provider_id text NOT NULL, id bigint NOT NULL, "
-            "day date, edition_id bigint, PRIMARY KEY(provider_id,id))"
+            "day date, edition_id bigint, PRIMARY KEY(" + ",".join(key) + "))"
         )
     monkeypatch.setattr(datasets, "HISTORY_DATASETS", declarations)
     monkeypatch.setattr(inventory, "HISTORY_DATASETS", declarations)
@@ -156,11 +157,17 @@ def test_execute_copies_every_planned_window_to_local_storage_with_proofs(
     assert before == {key: storage.read_bytes(key) for key in storage.list_keys("archive/")}
 
 
-def test_session_lock_refuses_a_second_migration(source, real_db_engine):
+def test_session_lock_refuses_a_second_migration(source, real_db_engine, history):
     from transit_ops.lake.migration import MigrationRefused, migration_lock
 
     with psycopg.connect(**guarded_connect_kwargs(real_db_engine.url), autocommit=True) as other:
         with migration_lock(source):
+            names, provider = history
+            plan(source, names, [provider])
+            assert other.execute(
+                "SELECT state, backend_xmin FROM pg_stat_activity WHERE pid=%s",
+                (source.info.backend_pid,),
+            ).fetchone() == ("idle", None)
             with pytest.raises(MigrationRefused, match="migration_running"):
                 with migration_lock(other):
                     pytest.fail("second migration acquired the session lock")
@@ -194,3 +201,60 @@ def test_revision_bounds_use_each_declared_revision(source, history, monkeypatch
         ("2026-05", 0),
         ("2026-06", 7),
     ]
+
+
+@pytest.mark.parametrize("edition_first", [False, True])
+def test_unregistered_edition_refuses_instead_of_dropping_history(
+    source,
+    history,
+    monkeypatch,
+    edition_first,
+):
+    from dataclasses import replace
+
+    names, provider = history
+    if edition_first:
+        table = names[1]
+        key = ("edition_id", "provider_id", "id")
+        source.execute(f"ALTER TABLE {table} DROP CONSTRAINT {table.split('.')[1]}_pkey")
+        source.execute(f"ALTER TABLE {table} ADD PRIMARY KEY (edition_id,provider_id,id)")
+        declared = datasets.get_dataset(table)
+        declarations = {
+            **datasets.HISTORY_DATASETS,
+            table: replace(declared, source=replace(declared.source, key_columns=key)),
+        }
+        monkeypatch.setattr(datasets, "HISTORY_DATASETS", declarations)
+        monkeypatch.setattr(inventory, "HISTORY_DATASETS", declarations)
+    source.execute(f"UPDATE {names[1]} SET edition_id=-1")
+    with pytest.raises(MigrationRefused, match="edition_identity") as error:
+        plan(source, [names[1]], [provider])
+    assert names[1] in str(error.value)
+    assert "-1" in str(error.value)
+
+
+@pytest.mark.parametrize("table_index", [0, 2])
+def test_unregistered_provider_refuses_instead_of_dropping_history(source, history, table_index):
+    names, provider = history
+    unknown = "missing-" + uuid4().hex
+    source.execute(f"UPDATE {names[table_index]} SET provider_id=%s", (unknown,))
+    with pytest.raises(MigrationRefused, match="unknown_provider") as error:
+        plan(source, [names[table_index]], [provider])
+    assert names[table_index] in str(error.value)
+    assert unknown in str(error.value)
+
+
+def test_ledger_provider_without_leading_index_refuses(source):
+    unknown = "missing-" + uuid4().hex
+    source.execute(
+        "INSERT INTO core.history_window "
+        "(dataset_id,provider_id,window_key,working_state,working_changed_at_utc) "
+        "VALUES ('review.dataset',%s,'2026-11','present',now())",
+        (unknown,),
+    )
+    try:
+        with pytest.raises(MigrationRefused, match="unknown_provider") as error:
+            plan(source, ["core.history_window"])
+        assert unknown in str(error.value)
+        assert "core.history_window" in str(error.value)
+    finally:
+        source.execute("DELETE FROM core.history_window WHERE provider_id=%s", (unknown,))

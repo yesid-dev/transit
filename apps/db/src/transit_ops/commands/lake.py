@@ -160,11 +160,15 @@ def migrate(
             return psycopg.connect(
                 urlunsplit(parts._replace(scheme="postgresql")), autocommit=True,
                 connect_timeout=5, application_name="transit-lake-migrate-" + uuid4().hex,
+                keepalives=1, keepalives_idle=60,
                 options="-c statement_timeout=1000 -c lock_timeout=1000 "
                 "-c client_connection_check_interval=1000",
             )
 
         with connect() as connection, migration_lock(connection):
+            def still_locked():
+                return connection.execute("SELECT 1").fetchone() == (1,)
+
             plan = plan_migration(connection,
                 today_utc=date.fromisoformat(today) if today else instant.date(),
                 now_utc=None if today else instant,
@@ -195,7 +199,8 @@ def migrate(
                 result = run_migration(plan, connect, scope.resolve(backend),
                     work_dir=directory, copied_by=copied_by,
                     statement_timeout_s=statement_timeout_s,
-                    not_after=deadline, log=log, storage_target=target)
+                    not_after=deadline, log=log, storage_target=target,
+                    still_locked=still_locked)
             typer.echo(json.dumps(asdict(result) | target, sort_keys=True))
             if result.failure is not None:
                 raise typer.Exit(1)

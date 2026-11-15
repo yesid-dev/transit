@@ -1,5 +1,6 @@
 """Read-only history planning and sequential, resumable archive copies."""
 
+import logging
 import shutil
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
@@ -66,7 +67,14 @@ def migration_lock(connection: Connection[Any]) -> Iterator[None]:
     try:
         yield
     finally:
-        connection.execute("SELECT pg_advisory_unlock(%s, %s)", MIGRATION_LOCK_KEY)
+        try:
+            connection.execute("SELECT pg_advisory_unlock(%s, %s)", MIGRATION_LOCK_KEY)
+        except Exception:
+            if not connection.closed:
+                raise
+            logging.getLogger(__name__).warning(
+                "Closed migration session: unlock failed", exc_info=True
+            )
 
 
 def require_read_reserve(not_after: datetime, timeout: int) -> None:
@@ -203,6 +211,103 @@ def _editions(
     return sorted(keys)
 
 
+def _loose_keys(
+    connection: Connection[Any], table: str, columns: tuple[str, ...]
+) -> list[tuple[Any, ...]]:
+    names = sql.SQL(", ").join(sql.Identifier(c) for c in columns)
+    previous = sql.SQL(", ").join(sql.Identifier("keys", c) for c in columns)
+    return connection.execute(
+        sql.SQL(
+            "WITH RECURSIVE keys AS ((SELECT {cols} FROM {table} ORDER BY {cols} LIMIT 1) "
+            "UNION ALL SELECT following.* FROM keys CROSS JOIN LATERAL "
+            "(SELECT {cols} FROM {table} WHERE ROW({cols}) > ROW({previous}) "
+            "ORDER BY {cols} LIMIT 1) following) SELECT {cols} FROM keys"
+        ).format(cols=names, table=sql.Identifier(*table.split(".")), previous=previous)
+    ).fetchall()
+
+
+def _provider_registry(connection: Connection[Any], catalog: CatalogTable) -> None:
+    column = next((c for c in catalog.columns if c.name == "provider_id"), None)
+    if column is None:
+        return
+    row = connection.execute(
+        """
+        SELECT EXISTS (
+            SELECT 1 FROM pg_constraint c
+            JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attname='provider_id'
+            JOIN pg_attribute r ON r.attrelid=c.confrelid AND r.attname='provider_id'
+            WHERE c.conrelid=%s::regclass AND c.contype='f' AND c.convalidated
+              AND c.confrelid='core.providers'::regclass
+              AND c.conkey=ARRAY[a.attnum] AND c.confkey=ARRAY[r.attnum]
+        ), EXISTS (
+            SELECT 1 FROM pg_index i
+            JOIN pg_class x ON x.oid=i.indexrelid JOIN pg_am am ON am.oid=x.relam
+            JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attname='provider_id'
+            WHERE i.indrelid=%s::regclass AND i.indisvalid AND i.indisready
+              AND i.indpred IS NULL AND i.indexprs IS NULL AND am.amname='btree'
+              AND i.indkey[0]=a.attnum
+        )
+    """,
+        (catalog.name, catalog.name),
+    ).fetchone()
+    assert row is not None
+    foreign_key, leading_index = row
+    if foreign_key:
+        return
+    if leading_index and column.not_null:
+        for (provider,) in _loose_keys(connection, catalog.name, ("provider_id",)):
+            if (
+                connection.execute(
+                    "SELECT 1 FROM core.providers WHERE provider_id=%s", (provider,)
+                ).fetchone()
+                is None
+            ):
+                raise MigrationRefused("unknown_provider", (catalog.name, provider))
+    else:
+        unknown = connection.execute(
+            sql.SQL(
+                "SELECT t.provider_id FROM {} t WHERE NOT EXISTS "
+                "(SELECT 1 FROM core.providers p WHERE p.provider_id=t.provider_id) LIMIT 1"
+            ).format(sql.Identifier(*catalog.name.split(".")))
+        ).fetchone()
+        if unknown is not None:
+            raise MigrationRefused("unknown_provider", (catalog.name, unknown[0]))
+
+
+def _edition_registry(
+    connection: Connection[Any], catalog: CatalogTable, source: TableSource
+) -> None:
+    edition = cast(str, source.window_column)
+    # Primary-key prefixes enumerate identities without visiting every edition row.
+    if edition not in catalog.primary_key:
+        raise MigrationRefused("edition_identity", (catalog.name, "edition index prefix"))
+    prefix = catalog.primary_key[: catalog.primary_key.index(edition) + 1]
+    if prefix not in {(edition,), ("provider_id", edition)}:
+        raise MigrationRefused("edition_identity", (catalog.name, "edition index prefix"))
+    for key in _loose_keys(connection, catalog.name, prefix):
+        if prefix[0] == "provider_id":
+            provider, version = key
+        else:
+            version = key[0]
+            row = connection.execute(
+                sql.SQL("SELECT provider_id FROM {} WHERE {}=%s LIMIT 1").format(
+                    sql.Identifier(*catalog.name.split(".")), sql.Identifier(edition)
+                ),
+                (version,),
+            ).fetchone()
+            assert row is not None
+            provider = row[0]
+        if (
+            connection.execute(
+                "SELECT 1 FROM core.dataset_versions "
+                "WHERE dataset_version_id=%s AND provider_id=%s",
+                (version, provider),
+            ).fetchone()
+            is None
+        ):
+            raise MigrationRefused("edition_identity", (catalog.name, provider, version))
+
+
 def _groups(
     connection: Connection[Any],
     catalog: CatalogTable,
@@ -285,6 +390,9 @@ def _table_windows(
 ) -> tuple[list[PlannedWindow], list[WindowSpec]]:
     dataset = get_dataset(catalog.name)
     source = cast(TableSource, dataset.source)
+    _provider_registry(connection, catalog)
+    if dataset.archive_grain == "edition":
+        _edition_registry(connection, catalog, source)
     table = sql.Identifier(*source.table.split("."))
     has_provider = any(c.name == "provider_id" for c in catalog.columns)
     windows, skipped = [], []
@@ -424,6 +532,7 @@ def run_migration(
     not_after: datetime,
     log: Callable[[dict[str, object]], None],
     storage_target: dict[str, object] | None = None,
+    still_locked: Callable[[], bool] | None = None,
 ) -> MigrationSummary:
     validate_timeout(statement_timeout_s)
     if not_after.utcoffset() != timedelta(0):
@@ -442,6 +551,12 @@ def run_migration(
         started = monotonic()
         try:
             require_read_reserve(not_after, statement_timeout_s)
+            if still_locked is not None:
+                try:
+                    if not still_locked():
+                        raise MigrationRefused("migration_lock_lost")
+                except Exception as error:
+                    raise MigrationRefused("migration_lock_lost") from error
             if shutil.disk_usage(work_dir).free < WORK_SPACE_FLOOR:
                 raise MigrationRefused(
                     "work_space", f"requires at least {WORK_SPACE_FLOOR} free bytes"

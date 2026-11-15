@@ -26,6 +26,8 @@ class Source:
     def execute(self, query, values=None):
         query = query.as_string() if hasattr(query, "as_string") else str(query)
         self.queries.append((query, values))
+        if "FROM pg_constraint" in query:
+            return SimpleNamespace(fetchone=lambda: (True, True))
         if "pg_try_advisory_lock" in query or "pg_advisory_unlock" in query:
             return SimpleNamespace(fetchone=lambda: (True,))
         if "current_database()" in query:
@@ -59,7 +61,8 @@ def planning(monkeypatch):
                 source = get_dataset(n).source
                 if isinstance(source, TableSource) and source.window_column:
                     columns.append(Column(source.window_column, "date", not Source.nullable))
-            catalog.append(CatalogTable(n, "table", tuple(columns), ()))
+            key = source.key_columns if n != "silver.rt_entities" else ()
+            catalog.append(CatalogTable(n, "table", tuple(columns), key))
         copied = tuple(n for n in names if n != "silver.rt_entities")
         monkeypatch.setattr(m, "read_catalog", lambda c: catalog)
         monkeypatch.setattr(
@@ -151,7 +154,7 @@ def test_missing_window_refuses_instead_of_omitting_rows(planning, monkeypatch):
     monkeypatch.setattr(Source, "nullable", True)
 
     def with_missing(self, query, values=None):
-        if "IS NULL" in str(query):
+        if "IS NULL" in str(query) and "FROM pg_constraint" not in str(query):
             return SimpleNamespace(fetchone=lambda: (True,))
         return execute(self, query, values)
 
@@ -590,3 +593,69 @@ def test_command_rechecks_read_deadline_after_planning(planning, monkeypatch, tm
     assert result.exit_code == 1
     assert "insufficient reserve" in result.output
     assert not list(tmp_path.iterdir())
+
+
+def test_lost_lock_refuses_before_window_connection(tmp_path):
+
+    plan = MigrationPlan(
+        SimpleNamespace(complete=True),
+        (PlannedWindow(WindowSpec("gold.report_labels", "_shared", "2026-11"), "whole_state"),),
+        (),
+    )
+
+    def connect():
+        pytest.fail("lock was lost before the window")
+
+    def lost():
+        raise OSError("lock connection lost")
+
+    result = run_migration(
+        plan,
+        connect,
+        None,
+        work_dir=tmp_path,
+        copied_by="a" * 40,
+        statement_timeout_s=60,
+        not_after=datetime(2099, 1, 1, tzinfo=UTC),
+        log=lambda r: None,
+        still_locked=lost,
+    )
+    assert result.failure["reason"] == "migration_lock_lost"
+
+
+def test_closed_unlock_failure_keeps_the_run_summary(caplog):
+    from transit_ops.lake import migration as m
+
+    class Lock(Source):
+        closed = False
+
+        def execute(self, query, values=None):
+            if "pg_advisory_unlock" in str(query):
+                self.closed = True
+                raise OSError("closed during unlock")
+            return super().execute(query, values)
+
+    summary = m.MigrationSummary({"month": {"copied": 1}}, None)
+
+    def run():
+        with m.migration_lock(Lock()):
+            return summary
+
+    assert run() is summary
+    assert "unlock" in caplog.text.lower()
+
+
+def test_open_session_unlock_failure_is_not_hidden():
+    from transit_ops.lake import migration as m
+
+    class Lock(Source):
+        closed = False
+
+        def execute(self, query, values=None):
+            if "pg_advisory_unlock" in str(query):
+                raise OSError("unexpected unlock failure")
+            return super().execute(query, values)
+
+    with pytest.raises(OSError, match="unexpected unlock failure"):
+        with m.migration_lock(Lock()):
+            pass
