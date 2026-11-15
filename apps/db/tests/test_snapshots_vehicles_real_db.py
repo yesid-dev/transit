@@ -16,6 +16,7 @@ from test_snapshots_live_departures_real_db import (
 from test_snapshots_live_departures_real_db import conn as conn
 
 from transit_ops.snapshots.builders import build_vehicles
+from transit_ops.snapshots.builders.live import _VEHICLES_SQL
 
 
 def test_vehicles_publish_in_binary_id_order_with_stable_ties(conn):
@@ -221,6 +222,59 @@ def test_vehicle_next_stop_index_paths_are_available(
     assert any(
         tuple(index["columns"][: len(equality_prefix)]) == equality_prefix for index in indexes
     ), f"No usable B-tree on {relation} with equality prefix {equality_prefix}: {indexes}"
+
+
+def test_vehicle_next_stop_lookup_can_use_stop_times_primary_key(conn, record_property):
+    _add_trip_update(conn, entity_index=0, trip_id="capture-order-trip", route_id="51")
+    _stop(conn, entity_index=0, stu_index=0, stop_id="next-stop", seq=1, mins=5)
+    # Derive the actual stop-times predicates, ordering and LIMIT from production.
+    # Bind the outer-row values so neither fleet ordering nor join costing can
+    # influence this check. Changed fragment boundaries fail instead of drifting.
+    sql = " ".join(str(_VEHICLES_SQL).split())
+    _, start, lookup = sql.partition("JOIN silver.rt_trip_update_stop_times AS stu ON ")
+    assert start
+    lookup, end, _ = lookup.partition(") AS upcoming ON true")
+    assert end
+    lookup = lookup.replace(" WHERE ", " AND ", 1)
+    for column, value in {
+        "rtu.rt_feed_snapshot_id": ":snapshot_id",
+        "rtu.entity_index": "CAST(:entity_index AS integer)",
+        "rtu.provider_id": ":provider_id",
+        "cvm.stop_id": "CAST(:position_stop_id AS text)",
+        "cvm.trip_id": "CAST(:trip_id AS text)",
+        "cvm.captured_at_utc": ":captured_at",
+    }.items():
+        lookup = lookup.replace(column, value)
+    conn.execute(text("SET LOCAL enable_seqscan = off"))
+    plan = conn.execute(
+        text(
+            "EXPLAIN (FORMAT JSON) SELECT stu.stop_id "
+            "FROM silver.rt_trip_update_stop_times AS stu WHERE " + lookup
+        ),
+        {
+            "snapshot_id": conn.execute(
+                text(
+                    "SELECT rt_feed_snapshot_id FROM silver.rt_feed_snapshots "
+                    "WHERE provider_id = :p"
+                ),
+                {"p": PROVIDER},
+            ).scalar_one(),
+            "entity_index": 0,
+            "provider_id": PROVIDER,
+            "position_stop_id": None,
+            "trip_id": "capture-order-trip",
+            "captured_at": conn.execute(text("SELECT now()")).scalar_one(),
+        },
+    ).scalar_one()
+    record_property("next_stop_lookup_plan", str(plan))
+
+    def indexes(node):
+        found = {node["Index Name"]} if "Index Name" in node else set()
+        for child in node.get("Plans", []):
+            found.update(indexes(child))
+        return found
+
+    assert "pk_silver_rt_trip_update_stop_times" in indexes(plan[0]["Plan"])
 
 
 @pytest.mark.parametrize("provider", ["stm_coords_test", "octranspo_coords_test"])
