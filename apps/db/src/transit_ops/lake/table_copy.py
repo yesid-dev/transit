@@ -241,8 +241,11 @@ def _finish(
 
 
 def _receipt_proof(receipt: dict[str, Any], exported: ExportedWindow) -> WindowProof:
+    from transit_ops.lake.copy_rejections import require_usable_copy
+
     if not isinstance(receipt, dict):
         raise UnverifiedCopy("invalid archive receipt")
+    require_usable_copy(receipt)
     value = receipt.get("proof")
     if not isinstance(value, dict) or value.get("verified") is not True:
         raise UnverifiedCopy("archive receipt proof.verified must be true")
@@ -422,6 +425,9 @@ def _proven_closed(storage: BronzeStorage, spec: WindowSpec) -> TableCopy | None
     if not candidates:
         return None
     _, _, key, receipt = max(candidates, key=lambda item: item[:2])
+    from transit_ops.lake.copy_rejections import require_usable_copy
+
+    require_usable_copy(receipt, receipt.get("key"))
     # A cut copy never proves a complete closed window.
     if receipt.get("cut_utc") is not None or receipt.get("partial", False):
         return None

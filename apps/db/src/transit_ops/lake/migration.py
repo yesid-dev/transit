@@ -48,6 +48,7 @@ class PlannedWindow:
     copy_group_members: tuple[WindowSpec, ...] = ()
     copy_group_refusal: str | None = None
     archive_copy: TableCopy | None = None
+    skip_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -507,7 +508,7 @@ def plan_migration(
         from transit_ops.lake.exact_windows import select_exact
 
         selected_windows, requested_datasets, cached = select_exact(
-            windows, datasets, providers, now, storage
+            windows, datasets, providers, now, storage, get_settings()
         )
         if not selected_windows:
             inventory = Inventory(
@@ -657,12 +658,22 @@ def run_migration(
     }
     outcomes: dict[str, dict[str, int]] = {}
     from transit_ops.lake.alert_bundle import CLOSURE_RELATIONS, copy_group
+    from transit_ops.lake.pruning import record_pruning_skip
 
     for window in plan.windows:
         if window.copy_group_members:
             continue
         record = {"spec": asdict(window.spec), **target}
         started = monotonic()
+        if record_pruning_skip(
+            window,
+            datetime.now(UTC),
+            get_settings(),
+            outcomes,
+            record,
+            log,
+        ):
+            continue
         try:
             require_read_reserve(not_after, statement_timeout_s)
             if still_locked is not None:

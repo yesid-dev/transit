@@ -403,3 +403,49 @@ def test_shared_date_cut_uses_conservative_bound_without_provider_lookup():
         "gold.network_vehicle_day", "_shared", "2026-11", 2, cut_utc="2026-11-15T09:00:00+00:00"
     )
     assert resolve_cut_spec(NoReads(), spec, schema).date_bound == "2026-11-14"
+
+
+def test_reserve_is_rechecked_after_transaction_setup(tmp_path, monkeypatch):
+    from contextlib import nullcontext
+    from datetime import UTC, datetime, timedelta
+    from types import SimpleNamespace
+
+    from transit_ops.lake import table_export
+    from transit_ops.lake.alert_bundle import MEMBERS
+    from transit_ops.lake.table_export import WindowSpec
+
+    clock = [datetime(2026, 11, 15, 18, tzinfo=UTC)]
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return clock[0]
+
+    class Recording:
+        autocommit = True
+        info = SimpleNamespace(transaction_status=0)
+
+        def transaction(self):
+            return nullcontext()
+
+        def execute(self, statement, values=None):
+            if str(statement).startswith("SET TRANSACTION"):
+                clock[0] += timedelta(seconds=2)
+                return None
+            pytest.fail("snapshot-taking SELECT dispatched after reserve expired")
+
+    monkeypatch.setattr(table_export, "datetime", Clock)
+    specs = tuple(
+        WindowSpec(r, "_shared" if r.endswith("active_periods") else "p", "2026-11")
+        for r in MEMBERS
+    )
+    with pytest.raises(ValueError, match="not_after"):
+        with table_export.export_group(
+            Recording(),
+            specs,
+            tuple(tmp_path / f"{i}.csv" for i in range(3)),
+            statement_timeout_s=60,
+            not_after=clock[0] + timedelta(seconds=5001),
+            group_reserve_s=5000,
+        ):
+            pytest.fail("snapshot started")

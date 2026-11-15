@@ -487,6 +487,9 @@ def resolve_sources(
             continue
         for window in windows:
             source = copies[window]
+            from transit_ops.lake.copy_rejections import require_usable_copy
+
+            require_usable_copy(source.receipt, source.key)
             _window_coverage(source, need, as_of, request, coverage_needs)
             previous = selected.get(source.key)
             selected[source.key] = replace(

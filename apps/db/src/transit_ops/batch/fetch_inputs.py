@@ -31,6 +31,9 @@ class FetchReceipt:
 
 
 def _receipt_size(receipt: Mapping[str, object], key: str, digest: str) -> int:
+    from transit_ops.lake.copy_rejections import require_usable_copy
+
+    require_usable_copy(receipt, key)
     proof = receipt.get("proof")
     if not isinstance(proof, Mapping) or proof.get("verified") is not True:
         raise ValueError(f"receipt proof.verified must be true: {key}")

@@ -363,8 +363,11 @@ def recheck_window(
 
 
 class _GroupReads:
-    def __init__(self, connection: Connection[Any], timeout: int, deadline: datetime | None):
+    def __init__(
+        self, connection: Connection[Any], timeout: int, deadline: datetime | None, reserve: int = 0
+    ):
         self.connection, self.timeout, self.deadline = connection, timeout, deadline
+        self.reserve, self.snapshot_started = reserve, False
 
     def cap(self) -> None:
         left = (
@@ -376,10 +379,13 @@ class _GroupReads:
             from transit_ops.lake.migration import MigrationRefused
 
             raise MigrationRefused("not_after")
+        if not self.snapshot_started and self.deadline is not None:
+            require_snapshot_reserve(self.deadline, self.reserve)
         self.connection.execute(
             "SELECT set_config('statement_timeout', %s, true)",
             (str(max(1, int(min(self.timeout, left) * 1000))),),
         )
+        self.snapshot_started = True
 
     def execute(self, statement: Any, values: Any = None) -> Any:
         if not str(statement).startswith("SET TRANSACTION"):
@@ -425,7 +431,7 @@ def export_group(
         raise ValueError("group destinations differ")
     if not_after is not None:
         require_group_reserve(not_after, statement_timeout_s, len(specs) + len(CLOSURE_RELATIONS))
-    reads = _GroupReads(connection, statement_timeout_s, not_after)
+    reads = _GroupReads(connection, statement_timeout_s, not_after, group_reserve_s)
     guarded = cast(Connection[Any], reads)
     if not_after is not None:
         require_snapshot_reserve(not_after, group_reserve_s)

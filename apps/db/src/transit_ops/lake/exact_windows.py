@@ -12,6 +12,7 @@ from transit_ops.ingestion.storage import BronzeStorage
 from transit_ops.lake.archive_keys import parse_proof_key, validate_provider_id
 from transit_ops.lake.table_copy import _closed, _proven_closed
 from transit_ops.lake.table_export import WindowSpec
+from transit_ops.settings import Settings
 
 
 def select_exact(
@@ -20,6 +21,7 @@ def select_exact(
     providers: Sequence[str] | None,
     now: datetime,
     storage: BronzeStorage | None,
+    settings: Settings,
 ) -> tuple[set[tuple[str, str, str]], set[str], list["PlannedWindow"]]:
     from transit_ops.lake.migration import MigrationRefused, PlannedWindow
 
@@ -56,6 +58,21 @@ def select_exact(
                 if _closed(spec, now) and (copy := _proven_closed(storage, spec)) is not None:
                     cached.append(PlannedWindow(spec, "closed", archive_copy=copy))
                     break
+    from transit_ops.lake.pruning import window_in_pruning
+
+    resolved = {(w.spec.dataset_id, w.spec.provider_id, w.spec.window_key) for w in cached}
+    for name, provider, key in sorted(selected - resolved):
+        source = get_dataset(name).source
+        assert isinstance(source, TableSource)
+        spec = WindowSpec(name, provider, key, source.fixed_revision)
+        if window_in_pruning(spec, now, settings):
+            cached.append(
+                PlannedWindow(
+                    spec,
+                    "closed" if _closed(spec, now) else "open_included",
+                    skip_reason="window_in_pruning",
+                )
+            )
     pending = selected - {
         (w.spec.dataset_id, w.spec.provider_id, w.spec.window_key) for w in cached
     }

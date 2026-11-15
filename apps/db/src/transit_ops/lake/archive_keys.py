@@ -166,6 +166,7 @@ def resolve_copy_version(
     maximum = 0
     latest: tuple[int, int, str, str | None, str | None] | None = None
     latest_complete = False
+    latest_receipt = {}
     for key in storage.list_keys(prefix):
         receipt = key.endswith(".proof.json")
         parts = parse_proof_key(key) if receipt else parse_copy_key(key)
@@ -190,6 +191,7 @@ def resolve_copy_version(
             if latest is None or candidate > latest:
                 latest = candidate
                 latest_complete = value.get("partial") is False
+                latest_receipt = value
     if (
         latest
         and latest[1:] == (schema_version, content_sha256, cut_utc, date_bound)
@@ -198,5 +200,8 @@ def resolve_copy_version(
         key = table_copy_key(
             dataset_id, provider_id, revision, grain, window_key, latest[0], schema_version
         )
+        from transit_ops.lake.copy_rejections import require_usable_copy
+
+        require_usable_copy(latest_receipt, key)
         return CopyVersion(latest[0], key)
     return CopyVersion(maximum + 1, None)
