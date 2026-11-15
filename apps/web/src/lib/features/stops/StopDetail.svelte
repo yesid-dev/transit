@@ -9,19 +9,21 @@
 	const clock = getV1Runtime().clock;
 	import { feedPresentation } from '#lib/v1/live/livePresentation.ts';
 	import { providerHasAlerts } from '#lib/v1/providers.ts';
-	import { ToggleChip, SectionLabel, CollapsibleSection, type TocEntry } from '@yesid/ui/brand';
+	import { ToggleChip, CollapsibleSection, type TocEntry } from '@yesid/ui/brand';
 	import { onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { SvelteSet } from 'svelte/reactivity';
-	import { intl, getLocale, getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
+	import { getLocale, getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
 	import type { DetailTab } from '#lib/site/detailTabs.ts';
 	import { createDetailTabController } from '#lib/site/detailTabController.svelte.ts';
 	import { getStop } from '#lib/v1/repositories/static.ts';
-	import { getStopReliability } from '#lib/v1/repositories/historic.ts';
+	import {
+		getPublishedReliabilityIndex,
+		getStopReliability,
+	} from '#lib/v1/repositories/historic.ts';
 	import type { LiveStore, LiveFamily } from '#lib/v1/live/store.svelte.ts';
 	import { createLiveResource } from '#lib/v1/live/resource.ts';
 	import { getV1Context } from '#lib/v1/boot.ts';
-	import { alertsForStop } from '#lib/v1/affectedAlerts.ts';
 	import { historyRangeRequestFromSearchParams } from '#lib/v1/history/rangeResource.svelte.ts';
 	import type { StopFile, StopReliability, StopDeparture } from '#lib/v1/index.ts';
 	import { createResource, type ResourceSeed } from '#lib/v1/resource.svelte.ts';
@@ -50,9 +52,8 @@
 	import { Separator } from '@yesid/ui/separator';
 	import { desktop } from '@yesid/ui/state';
 	import type { IdentitySeed } from '#lib/v1/serverContext.ts';
-	import { mapHrefFor } from '#lib/nav/index.ts';
+	import { mapHrefFor, routeFor } from '#lib/nav/index.ts';
 	import MetricDisplay from '#lib/components/brand/MetricDisplay.svelte';
-	import { Badge } from '@yesid/ui/badge';
 	import { stampDate } from '#lib/v1/stamp.ts';
 	import { StopReliabilitySurface } from './reliability';
 	import {
@@ -60,7 +61,10 @@
 		type StopHistoryResource,
 	} from './reliability/data/stopHistoryResource.svelte';
 	import { detailCopy } from './stops.copy';
-	import { stopReliabilityCopy } from './reliability/stops-reliability.copy';
+	import { presentStopRecord } from './stopRecord';
+	import { stopAccess, stopNotices } from './stopIdentity';
+	import StopIdentity from './StopIdentity.svelte';
+	import StopRecordAnswer from './StopRecordAnswer.svelte';
 	import { alertUnavailableCopy } from '#lib/components/surface/alertAvailabilityCopy.ts';
 
 	const localizeHref = getLocalizeHref();
@@ -78,9 +82,13 @@
 	const unavailableAlerts = $derived(alertUnavailableCopy[locale]);
 	const provider = $derived(page.data?.provider);
 	const alertsAvailable = $derived(providerHasAlerts(provider));
-	const reliabilityT = $derived(stopReliabilityCopy[locale]);
 	const articleNav = $derived(articleNavigationCopy[locale]);
 	const edgeLayout = $derived(desktop.current ? 'desktop' : 'mobile');
+
+	const manifest = getV1Context().manifest;
+	const shortName = manifest.short_name?.trim() || manifest.display_name;
+	const operator = $derived(provider?.labels[locale].operator ?? shortName);
+	const noticesHeading = $derived(t.notices.heading(operator));
 
 	const SCHEDULE_CAP = 30;
 
@@ -98,10 +106,17 @@
 			children: [],
 		},
 		{
+			id: 'stop-detail-notices',
+			title: noticesHeading,
+			level: 2,
+			badge: { kind: 'number', value: 2 },
+			children: [],
+		},
+		{
 			id: 'stop-detail-facts',
 			title: t.detailCard.title,
 			level: 2,
-			badge: { kind: 'number', value: 2 },
+			badge: { kind: 'number', value: 3 },
 			children: [],
 		},
 	]);
@@ -126,11 +141,9 @@
 	const detailTabController = createDetailTabController(new URL(page.url.href));
 	$effect(() => detailTabController.syncFromUrl(new URL(page.url.href)));
 
-	const manifest = getV1Context().manifest;
 	const { live, resource: departureReport } = createLiveResource(manifest, 'departures');
 	provideLiveAbsenceContext(() => ({ familyStates: live.familyStates }));
 	const { live: alertLive, resource: alertReport } = createLiveResource(manifest, 'alerts');
-	const shortName = manifest.short_name?.trim() || manifest.display_name;
 	const departures = $derived<readonly StopDeparture[] | null>(
 		live.departures ? (live.index.byStopId.get(id) ?? []) : null,
 	);
@@ -146,8 +159,39 @@
 				: seed.name,
 		),
 	);
-	const stopAlerts = $derived(
-		alertsForStop(alertLive.alerts?.alerts, id, stop.data?.code, stop.data?.routes_served),
+	const notices = $derived(
+		stopNotices(
+			alertLive.alerts?.alerts,
+			{ id, code: stop.data?.code, routesServed: stop.data?.routes_served },
+			{
+				now: clock.serverNow,
+				// "Current" needs a fresh report: a retained or failed one cannot say what is in effect.
+				reportLive: alertLive.familyStates.alerts.health.state === 'live',
+			},
+		),
+	);
+	const access = $derived(stop.data ? stopAccess(stop.data) : stop.settled ? 'unknown' : null);
+	const servedLines = $derived(stop.data?.routes_served ?? null);
+	const stopPath = $derived(routeFor({ kind: 'stop', id }));
+	const recordUrl = $derived(new URL(localizeHref(stopPath, locale), page.url.origin).href);
+	// The Live now view holds the full notices; the strip elsewhere leads there.
+	const onLive = $derived(detailTabController.active === 'detail');
+	const noticeHref = $derived(
+		`${localizeHref(`${stopPath}?tab=detail`, locale)}#stop-detail-notices`,
+	);
+
+	// The same published weekly row the home page's "Most delayed stops" reads.
+	const weeklyIndex = createResource((signal) => getPublishedReliabilityIndex({ signal }), {
+		key: () => 'stop-weekly-record',
+	});
+	const recordAnswer = $derived(
+		presentStopRecord({ stopId: id, index: weeklyIndex, now: clock.serverNow }, locale, {
+			operator: shortName,
+			stopId: id,
+			stopCode: stop.data?.code ?? null,
+			stopName: articleTitle,
+			url: recordUrl,
+		}),
 	);
 
 	const reliability = createResource((signal) => getStopReliability(id, { signal }), {
@@ -176,42 +220,6 @@
 		}
 		return values;
 	});
-	const stopSummaryPeriod = $derived.by(() => {
-		const rows = (reliability.data?.periods ?? []).filter((period) => period.grain === 'day');
-		return rows.at(-1) ?? null;
-	});
-	const stopSummaryDaily = $derived.by(() =>
-		(reliability.data?.daily ?? [])
-			.slice()
-			.sort((a, b) => a.date.localeCompare(b.date))
-			.at(-1),
-	);
-	const useDailySummary = $derived(
-		stopSummaryPeriod?.severe_pct == null && stopSummaryPeriod?.avg_delay_min == null,
-	);
-	const stopSummarySeverePct = $derived(
-		useDailySummary
-			? stopSummaryDaily?.observation_count && stopSummaryDaily.severe_count != null
-				? (100 * stopSummaryDaily.severe_count) / stopSummaryDaily.observation_count
-				: null
-			: (stopSummaryPeriod?.severe_pct ?? null),
-	);
-	const stopSummarySevere = $derived(
-		stopSummarySeverePct == null
-			? null
-			: `${intl.number(locale, { maximumFractionDigits: 1 }).format(stopSummarySeverePct)}%`,
-	);
-	const stopSummaryDelayMin = $derived(
-		useDailySummary
-			? (stopSummaryDaily?.avg_delay_min ?? null)
-			: (stopSummaryPeriod?.avg_delay_min ?? null),
-	);
-	const stopSummaryDelay = $derived(
-		stopSummaryDelayMin == null
-			? null
-			: `${intl.number(locale, { maximumFractionDigits: 1 }).format(stopSummaryDelayMin)} ${reliabilityT.trend.minUnit}`,
-	);
-	const hasStopSummary = $derived(stopSummarySevere != null || stopSummaryDelay != null);
 
 	function historyFor(stopId: string): StopHistoryResource {
 		return createStopHistoryResource(
@@ -362,109 +370,98 @@
 				{#if s == null}
 					<EdgeState variant="empty" lang={locale} layout={edgeLayout} />
 				{:else}
-					<div>
-						{@render staticStatus()}
-						<div class="stop-info-facts">
-							<div class="stop-info-metrics">
-								<MetricDisplay value={id} label={t.info.feedId} size="sm" />
-								<MetricDisplay
-									value={`${s.lat.toFixed(5)}, ${s.lon.toFixed(5)}`}
-									label={t.info.position}
-									size="sm"
-								/>
-								{#if s.code}
-									<MetricDisplay value={s.code} label={t.info.code} size="sm" />
-								{/if}
-								{#if s.wheelchair === true}
-									<MetricDisplay value={t.info.wheelchairYes} label={t.info.wheelchair} size="sm" />
-								{:else if s.wheelchair === false}
-									<MetricDisplay value={t.info.wheelchairNo} label={t.info.wheelchair} size="sm" />
-								{:else}
-									<MetricDisplay
-										value={null}
-										absentReason="no-observations"
-										{locale}
-										label={t.info.wheelchair}
-										size="sm"
-									/>
-								{/if}
-							</div>
-							{#if (s.routes_served?.length ?? 0) > 0}
-								<div class="stop-info-routes">
-									<SectionLabel text={t.info.routesServed} variant="metric" />
-									<ul class="stop-info-route-chips">
-										{#each s.routes_served ?? [] as route (route)}
-											<li><Badge variant="tag" size="sm">{line(route)}</Badge></li>
-										{/each}
-									</ul>
-								</div>
-							{/if}
-						</div>
+					{@render staticStatus()}
+					<div class="stop-info-metrics">
+						<MetricDisplay value={id} label={t.info.feedId} size="sm" />
+						<MetricDisplay
+							value={`${s.lat.toFixed(5)}, ${s.lon.toFixed(5)}`}
+							label={t.info.position}
+							size="sm"
+						/>
+						{#if s.code}
+							<MetricDisplay value={s.code} label={t.info.code} size="sm" />
+						{/if}
 					</div>
 				{/if}
 			{/snippet}
 		</ResourceBoundary>
-		<div class="stop-alert-report" aria-label={t.alerts.heading}>
-			{#if !alertsAvailable}
-				<StateNotice
-					title={unavailableAlerts.title}
-					body={unavailableAlerts.body(provider?.labels[locale].operator ?? shortName)}
-					presentation="silo"
-					role="status"
-				>
-					{#snippet action()}
-						{#if provider?.alert_links[locale]}<a href={provider.alert_links[locale]}
-								>{unavailableAlerts.link}</a
-							>{/if}
-					{/snippet}
-				</StateNotice>
-			{:else}
-				<SectionLabel text={t.report.alerts} variant="metric" />
-				<ResourceBoundary resource={alertReport} lang={locale}>
-					{#snippet children(_report)}
-						{@render liveStatus(alertLive, 'alerts')}
-						{#if stop.data == null}<StateNotice
-								title={t.alertState.limited}
-								presentation="silo"
-							/>{/if}
-						{#if stopAlerts.length === 0}
-							<StateNotice
-								title={t.alertState.none}
-								presentation="silo"
-								data-testid="stop-alerts-empty"
-							/>
-						{:else}
-							<AffectedAlerts alerts={stopAlerts} {locale} copy={t.alerts} testId="stop-alerts" />
+	</div>
+{/snippet}
+
+{#snippet stopNoticeReport()}
+	<div class="stop-alert-report">
+		{#if !alertsAvailable}
+			<StateNotice
+				title={unavailableAlerts.title}
+				body={unavailableAlerts.body(operator)}
+				presentation="silo"
+				role="status"
+			>
+				{#snippet action()}
+					{#if provider?.alert_links[locale]}<a href={provider.alert_links[locale]}
+							>{unavailableAlerts.link}</a
+						>{/if}
+				{/snippet}
+			</StateNotice>
+		{:else}
+			<ResourceBoundary resource={alertReport} lang={locale}>
+				{#snippet children(_report)}
+					{@render liveStatus(alertLive, 'alerts')}
+					{#if stop.data == null}<StateNotice
+							title={t.alertState.limited}
+							presentation="silo"
+						/>{/if}
+					{#if notices.direct.length === 0 && notices.lines.length === 0}
+						<StateNotice
+							title={t.alertState.none}
+							presentation="silo"
+							data-testid="stop-alerts-empty"
+						/>
+					{:else}
+						<AffectedAlerts
+							alerts={notices.direct.map((notice) => notice.alert)}
+							{locale}
+							copy={{ ...t.alerts, heading: t.notices.direct, listLabel: t.notices.direct }}
+							testId="stop-alerts"
+						/>
+						{#if notices.lines.length > 0}
+							<div class="stop-line-notices" data-testid="stop-line-alerts">
+								<AffectedAlerts
+									alerts={notices.lines.map((notice) => notice.alert)}
+									{locale}
+									copy={{ ...t.alerts, heading: t.notices.lines, listLabel: t.notices.lines }}
+									testId="stop-line-alerts-list"
+								/>
+								<p class="stop-report-note">{t.notices.linesScope}</p>
+							</div>
 						{/if}
-					{/snippet}
-				</ResourceBoundary>
-			{/if}
-		</div>
+					{/if}
+				{/snippet}
+			</ResourceBoundary>
+		{/if}
+	</div>
+{/snippet}
+
+{#snippet stopSummary(onRecord: boolean)}
+	<div class="stop-summary" data-slot="stop-summary">
+		<StopIdentity
+			{locale}
+			lines={servedLines}
+			{access}
+			{operator}
+			current={alertsAvailable && !onLive ? notices.current : []}
+			{noticeHref}
+			record={onRecord}
+		/>
+		{#if onRecord}
+			<StopRecordAnswer view={recordAnswer} {locale} url={recordUrl} />
+			{@render historicStatus()}
+		{/if}
 	</div>
 {/snippet}
 
 {#snippet stopSummaryBanner()}
-	<div
-		class="stop-reliability-summary"
-		data-slot="stop-reliability-summary"
-		aria-label={reliabilityT.paneHeading}
-	>
-		<MetricDisplay
-			value={stopSummarySevere}
-			absentReason="no-observations"
-			{locale}
-			label={reliabilityT.metrics.severe}
-			size="sm"
-		/>
-		<MetricDisplay
-			value={stopSummaryDelay}
-			absentReason="no-observations"
-			{locale}
-			label={reliabilityT.metrics.avgDelay}
-			size="sm"
-		/>
-		{@render historicStatus()}
-	</div>
+	{@render stopSummary(false)}
 {/snippet}
 
 <EntityDetail
@@ -472,7 +469,7 @@
 	{articleToc}
 	bind:active={detailTabController.active}
 	paneOwnedRailKeys={['reliability']}
-	banner={hasStopSummary ? stopSummaryBanner : undefined}
+	banner={stopSummaryBanner}
 >
 	{#snippet articleHeader()}
 		<ArticleHeader
@@ -611,10 +608,20 @@
 					</CollapsibleSection>
 
 					<CollapsibleSection
+						title={noticesHeading}
+						subtitle={t.notices.question}
+						headerVariant="article-summary"
+						index={1}
+						anchor="stop-detail-notices"
+					>
+						{@render stopNoticeReport()}
+					</CollapsibleSection>
+
+					<CollapsibleSection
 						title={t.detailCard.title}
 						subtitle={t.detailCard.summary}
 						headerVariant="article-summary"
-						index={1}
+						index={2}
 						anchor="stop-detail-facts"
 					>
 						{@render stopInformation()}
@@ -667,7 +674,8 @@
 				{/key}
 			</ArticleSectionStack>
 		{:else if key === 'reliability'}
-			{#if !hasStopSummary}{@render historicStatus()}{/if}
+			<!-- The record's answer stays in one place while the reliability file loads, fails or arrives. -->
+			<div class="stop-record-lead">{@render stopSummary(true)}</div>
 
 			{#if reliability.settled && reliability.error == null && reliabilityIsEmpty(reliability.data) && historyOnlyReliability != null && stopHistory.state !== 'current'}
 				{#key id}
@@ -675,9 +683,6 @@
 						data={historyOnlyReliability}
 						{locale}
 						history={stopHistory}
-						articleSummary={detailTabController.active === 'reliability' && hasStopSummary
-							? stopSummaryBanner
-							: undefined}
 						syncUrl={detailTabController.active === 'reliability'}
 					/>
 				{/key}
@@ -690,9 +695,6 @@
 									data={r}
 									{locale}
 									history={stopHistory}
-									articleSummary={detailTabController.active === 'reliability' && hasStopSummary
-										? stopSummaryBanner
-										: undefined}
 									syncUrl={detailTabController.active === 'reliability'}
 								/>
 							{/key}
@@ -723,11 +725,20 @@
 		line-height: 1.5;
 	}
 
-	.stop-reliability-summary {
+	.stop-summary {
 		display: flex;
-		flex-wrap: wrap;
-		align-items: flex-start;
-		gap: 1rem 2.5rem;
+		flex-direction: column;
+		gap: 1.25rem;
+		min-width: 0;
+		container-type: inline-size;
+	}
+	.stop-record-lead {
+		margin-block-end: var(--space-card-gap, 1.5rem);
+	}
+	.stop-line-notices {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
 	}
 	.stop-next {
 		display: flex;
@@ -746,39 +757,16 @@
 		gap: 1.25rem;
 	}
 
-	.stop-info > :only-child {
-		grid-column: 1 / -1;
-	}
 	.stop-info {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-		gap: 1.5rem 2rem;
-		align-items: start;
-	}
-	.stop-info-facts {
 		display: flex;
 		flex-direction: column;
-		gap: 1.25rem;
+		gap: 1rem;
 		min-width: 0;
 	}
-
 	.stop-info-metrics {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 1.5rem;
-	}
-	.stop-info-routes {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-	}
-	.stop-info-route-chips {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.375rem;
 	}
 
 	.stop-chip-group {
@@ -791,11 +779,5 @@
 		font-family: var(--font-mono);
 		font-size: var(--text-small);
 		color: var(--muted-foreground);
-	}
-
-	@media (max-width: 48rem) {
-		.stop-info {
-			grid-template-columns: minmax(0, 1fr);
-		}
 	}
 </style>

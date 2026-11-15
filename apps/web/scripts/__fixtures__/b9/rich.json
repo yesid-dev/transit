@@ -2142,6 +2142,20 @@
 					"window_start": "2026-08-23",
 					"window_end": "2026-08-29"
 				}
+			],
+			"weekly_stops": [
+				{
+					"id": "52095",
+					"name": "B9 Atwater",
+					"state": "ranked",
+					"rank": 1,
+					"numerator": 151,
+					"denominator": 180,
+					"pct": 84,
+					"severe_pct": 16.1,
+					"window_start": "2026-08-23",
+					"window_end": "2026-08-29"
+				}
 			]
 		}
 	},

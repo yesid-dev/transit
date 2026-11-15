@@ -517,8 +517,8 @@ export const OBSERVATION_IDS = Object.freeze({
 		line.weak_stops.hrefs line.weak_stops.raw_count line.pane.freshness_iso line.trend.rows
 		line.habits.tiers line.time.rows line.headway.rows line.occupancy.shares
 		line.delay_by_crowding line.week.histogram`),
-	stop: ids(`stop.day.otp_pct stop.day.avg_delay_min stop.day.p50_min stop.day.p90_min
-		stop.day.severe_pct stop.day.observation_count stop.daily.rows stop.range.severe_pct
+	stop: ids(`stop.day.otp_pct stop.day.p50_min stop.day.p90_min stop.record.answer
+		stop.day.observation_count stop.daily.rows stop.range.severe_pct
 		stop.range.observations stop.range.below_min_n stop.routes.ranked stop.habits.tiers
 		stop.weekday.rows stop.time.rows stop.occupancy.shares stop.display.scalars stop.pane.freshness_iso`),
 	network: ids(`network.live.vehicles network.live.on_time_pct network.live.coverage_pct
@@ -1030,6 +1030,58 @@ function lineOracle(fixture, locale, view) {
 	];
 }
 
+// The stop record's weekly late-reading share, rebuilt from the stop's own daily rows: the
+// publisher sums the window's daily counts, so the published share must equal that sum's ratio.
+function stopRecordAnswer(fixture, raw, locale) {
+	const index = fixture.files['historic/route_reliability/index.json'] ?? null;
+	const rows = index?.weekly_stops ?? [];
+	const absent = (state) => ({ state, late_pct: null, text: '', period: '', counts: [] });
+	if (rows.length === 0) return absent('unpublished');
+	const row = rows.find((candidate) => candidate.id === raw.id);
+	if (row == null) return absent('not-listed');
+	invariant(row.state === 'ranked', `${fixture.name} stop record oracle covers ranked rows only`);
+	const days = (raw.daily ?? []).filter(
+		(day) => day.date >= row.window_start && day.date <= row.window_end,
+	);
+	const readings = days.reduce((sum, day) => sum + day.observation_count, 0);
+	const late = days.reduce((sum, day) => sum + day.severe_count, 0);
+	invariant(
+		readings === row.denominator && readings - late === row.numerator,
+		`${fixture.name} weekly stop counts disagree with the stop's daily rows`,
+	);
+	invariant(late >= 0 && late <= readings, `${fixture.name} weekly stop late count out of range`);
+	const share = pct(late, readings);
+	invariant(
+		share === row.severe_pct,
+		`${fixture.name} weekly stop share disagrees with its counts`,
+	);
+	const tag = locale === 'fr' ? 'fr-CA' : 'en-CA';
+	const date = (key, options) =>
+		new Intl.DateTimeFormat(tag, { ...options, timeZone: 'UTC' }).format(
+			new Date(`${key}T12:00:00Z`),
+		);
+	const day = (key) => String(Number(key.slice(8, 10)));
+	const month = (key) => date(key, { month: 'long' });
+	invariant(
+		row.window_start.slice(0, 7) === row.window_end.slice(0, 7),
+		`${fixture.name} stop record oracle covers one-month windows only`,
+	);
+	const year = row.window_end.slice(0, 4);
+	const period =
+		locale === 'fr'
+			? `Du ${day(row.window_start)} au ${day(row.window_end)} ${month(row.window_end)} ${year} · 7 jours complets`
+			: `${month(row.window_start)} ${day(row.window_start)} to ${day(row.window_end)}, ${year} · 7 complete days`;
+	return {
+		state: 'measured',
+		late_pct: share,
+		text: new Intl.NumberFormat(tag, { style: 'percent', maximumFractionDigits: 1 }).format(
+			share / 100,
+		),
+		period,
+		counts: [readings, late],
+	};
+}
+
 function stopOracle(fixture, locale, view) {
 	const raw = stopFile(fixture);
 	const retained = retainedStopDays(fixture, view);
@@ -1049,7 +1101,6 @@ function stopOracle(fixture, locale, view) {
 		}),
 		{ observations: 0, severe: 0 },
 	);
-	const latestDaily = latestDated(allDaily);
 	const rankedRoutes = (raw.by_route ?? [])
 		.filter((row) => finite(row.avg_delay_min) != null)
 		.slice()
@@ -1098,10 +1149,6 @@ function stopOracle(fixture, locale, view) {
 	const occupancyMix = stopOccupancyMix(raw, retained);
 	const occupancyRows = shareRows(occupancyMix, OCCUPANCY);
 	const stopDominant = dominantShare(occupancyMix, OCCUPANCY);
-	const localeNumber = (value) =>
-		new Intl.NumberFormat(locale === 'fr' ? 'fr' : 'en', { maximumFractionDigits: 1 }).format(
-			value,
-		);
 	const rangeAvg = totals.observations
 		? round(
 				daily.reduce(
@@ -1115,22 +1162,6 @@ function stopOracle(fixture, locale, view) {
 			value: finite(day?.otp_pct),
 			text: finite(day?.otp_pct) == null ? '' : `${Math.round(day.otp_pct)}%`,
 		},
-		summary: [
-			{
-				value: pct(finite(latestDaily?.severe_count), finite(latestDaily?.observation_count)),
-				text:
-					finite(latestDaily?.observation_count) > 0
-						? `${localeNumber((100 * latestDaily.severe_count) / latestDaily.observation_count)}%`
-						: '',
-			},
-			{
-				value: finite(latestDaily?.avg_delay_min),
-				text:
-					finite(latestDaily?.avg_delay_min) == null
-						? ''
-						: `${localeNumber(latestDaily.avg_delay_min)} min`,
-			},
-		],
 		percentiles: [
 			{
 				value: finite(day?.p50_min),
@@ -1157,13 +1188,9 @@ function stopOracle(fixture, locale, view) {
 	const c = TABLE_COPY[locale];
 	return [
 		observation('stop.day.otp_pct', finite(day?.otp_pct)),
-		observation('stop.day.avg_delay_min', finite(latestDaily?.avg_delay_min)),
 		observation('stop.day.p50_min', finite(day?.p50_min)),
 		observation('stop.day.p90_min', finite(day?.p90_min)),
-		observation(
-			'stop.day.severe_pct',
-			pct(finite(latestDaily?.severe_count), finite(latestDaily?.observation_count)),
-		),
+		observation('stop.record.answer', stopRecordAnswer(fixture, raw, locale)),
 		observation(
 			'stop.day.observation_count',
 			verdictCount(
