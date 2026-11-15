@@ -1,3 +1,5 @@
+import { isReliableRate } from '#lib/v1/stats.ts';
+import { weeklyPublicationDeadline } from '#lib/v1/ranking/published.ts';
 import type { NetworkFile } from '#lib/v1/schemas/network.ts';
 import type { HotspotEntry, Hotspots } from '#lib/v1/schemas/generated/historic_hotspots.ts';
 import { stopDisplayName } from '#lib/site/transitDisplay.ts';
@@ -73,17 +75,46 @@ function toRank(entry: HotspotEntry, kind: PulseRank['kind'], directory: LineDir
 			};
 }
 
+function eligibleLine(entry: HotspotEntry): boolean {
+	return (
+		isReliableRate(entry.observation_count) &&
+		entry.severe_pct != null &&
+		Number.isFinite(entry.severe_pct) &&
+		entry.severe_pct >= 0 &&
+		entry.severe_pct <= 100
+	);
+}
+
+function compareLateShare(a: HotspotEntry, b: HotspotEntry): number {
+	return (
+		b.severe_pct! - a.severe_pct! ||
+		(b.observation_count ?? 0) - (a.observation_count ?? 0) ||
+		(a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+	);
+}
 /**
- * The worst lines and stops over a published window, ranked like the hotspots page.
+ * Weekly lines ordered by their shown late share; legacy stops keep their published order.
  * The week is the default: the record is republished weekly, so a single day can be stale.
  */
 export function selectWorst(
 	hotspots: Hotspots | null,
 	directory: LineDirectory,
-	{ grain = 'week', limit = 5 }: { grain?: string; limit?: number } = {},
+	{
+		grain = 'week',
+		limit = 5,
+		now = Date.now(),
+	}: { grain?: string; limit?: number; now?: number } = {},
 ): WorstPulse | null {
 	const window = hotspots?.by_grain?.find((entry) => entry.grain === grain);
-	if (!window) return null;
+	if (!window || !hotspots) return null;
+	const generated = Date.parse(hotspots.generated_utc);
+	if (
+		!Number.isFinite(generated) ||
+		!Number.isFinite(now) ||
+		generated > now ||
+		now >= weeklyPublicationDeadline(generated)
+	)
+		return null;
 	const ranked = [...(window.entries ?? [])].sort(
 		(a, b) => (a.rank ?? Number.POSITIVE_INFINITY) - (b.rank ?? Number.POSITIVE_INFINITY),
 	);
@@ -92,6 +123,8 @@ export function selectWorst(
 		const seen = new Set<string>();
 		return ranked
 			.filter((entry) => kindOf(entry.type) === kind && !seen.has(entry.id) && seen.add(entry.id))
+			.filter((entry) => kind !== 'line' || eligibleLine(entry))
+			.sort((a, b) => (kind === 'line' ? compareLateShare(a, b) : 0))
 			.slice(0, limit)
 			.map((entry) => toRank(entry, kind, directory));
 	};

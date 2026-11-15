@@ -79,14 +79,14 @@ describe('published weekly ranking', () => {
 		});
 		expect(publishedWeeklyRanking(index, 'route', now)).toBeNull();
 	});
-	it('keeps a Wednesday publication through the next scheduled publication, then refuses it', () => {
+	it('allows the next weekly job to complete before expiring a legacy publication', () => {
 		const index = RouteReliabilityIndexSchema.parse({
 			generated_utc: '2026-11-11T00:00:00Z',
 			weekly_routes: [validRow],
 		});
-		for (const now of ['2026-11-12T12:00:00Z', '2026-11-15T04:00:00Z', '2026-11-18T06:59:59Z'])
+		for (const now of ['2026-11-18T07:30:00Z', '2026-11-18T08:01:00Z', '2026-11-19T18:59:59.999Z'])
 			expect(publishedWeeklyRanking(index, 'route', Date.parse(now))).not.toBeNull();
-		expect(publishedWeeklyRanking(index, 'route', Date.parse('2026-11-18T07:00:00Z'))).toBeNull();
+		expect(publishedWeeklyRanking(index, 'route', Date.parse('2026-11-19T19:00:00Z'))).toBeNull();
 	});
 	it('uses the contract publication deadline when supplied', () => {
 		const index = RouteReliabilityIndexSchema.parse({
@@ -95,11 +95,34 @@ describe('published weekly ranking', () => {
 			next_publish_utc: '2026-11-18T08:00:00Z',
 			weekly_routes: [validRow],
 		});
+		for (const now of ['2026-11-18T07:30:00Z', '2026-11-18T08:01:00Z'])
+			expect(publishedWeeklyRanking(index, 'route', Date.parse(now))).not.toBeNull();
 		expect(
-			publishedWeeklyRanking(index, 'route', Date.parse('2026-11-18T07:30:00Z')),
+			publishedWeeklyRanking(index, 'route', Date.parse('2026-11-19T19:59:59.999Z')),
 		).not.toBeNull();
-		expect(publishedWeeklyRanking(index, 'route', Date.parse('2026-11-18T08:00:00Z'))).toBeNull();
+		expect(publishedWeeklyRanking(index, 'route', Date.parse('2026-11-19T20:00:00Z'))).toBeNull();
 	});
+	it('rejects a future generated date even when publication metadata is in the past', () => {
+		const index = {
+			generated_utc: '2026-11-16T00:00:00Z',
+			published_utc: '2026-11-11T08:00:00Z',
+			next_publish_utc: '2026-11-18T08:00:00Z',
+			weekly_routes: [validRow],
+		};
+		expect(publishedWeeklyRanking(index, 'route', Date.parse('2026-11-15T12:00:00Z'))).toBeNull();
+	});
+	it.each([NaN, Infinity, Date.parse('2026-11-10T23:59:59Z'), Date.parse('2026-11-20T00:00:00Z')])(
+		'rejects an invalid, future or overdue clock (%s)',
+		(now) => {
+			expect(
+				publishedWeeklyRanking(
+					{ generated_utc: '2026-11-11T00:00:00Z', weekly_routes: [validRow] },
+					'route',
+					now,
+				),
+			).toBeNull();
+		},
+	);
 	it('offers no league for missing, stale or malformed publication', () => {
 		const index = RouteReliabilityIndexSchema.parse({
 			generated_utc: '2026-11-14T00:00:00Z',
@@ -108,7 +131,7 @@ describe('published weekly ranking', () => {
 		expect(publishedWeeklyRanking(index, 'route', Date.parse('2026-11-14T01:00:00Z'))).toEqual(
 			index.weekly_routes,
 		);
-		expect(publishedWeeklyRanking(index, 'route', Date.parse('2026-11-19T00:00:00Z'))).toBeNull();
+		expect(publishedWeeklyRanking(index, 'route', Date.parse('2026-11-20T00:00:00Z'))).toBeNull();
 		expect(publishedWeeklyRanking(index, 'stop')).toBeNull();
 		expect(publishedWeeklyRanking(null, 'route')).toBeNull();
 		expect(
