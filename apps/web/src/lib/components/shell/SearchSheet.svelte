@@ -144,6 +144,7 @@
 		data-slot="nav-compact-search"
 	>
 		<SearchIcon size={17} strokeWidth={1.8} aria-hidden="true" />
+		<span>{copy.trigger}</span>
 	</Sheet.Trigger>
 	<Sheet.Content
 		bind:ref={content}
@@ -207,11 +208,14 @@
 <style>
 	:global(.nav-compact-search) {
 		display: inline-flex;
+		flex: none;
 		align-items: center;
 		justify-content: center;
-		width: 44px;
+		gap: 0.375rem;
+		min-width: 44px;
 		height: 44px;
-		padding: 0;
+		padding: 0 0.5rem;
+		white-space: nowrap;
 		color: var(--secondary-foreground);
 		background: transparent;
 		border-radius: var(--radius-lg);
@@ -231,6 +235,19 @@
 	/* From a 1024 px header the field itself is in the header. */
 	@container site-header (width >= 1024px) {
 		:global(.nav-compact-search) {
+			display: none;
+		}
+	}
+	/* Like the desktop field, the phone trigger folds away while the menu is open. */
+	:global([role='dialog'][aria-modal='true'] .nav-compact-search) {
+		display: none;
+	}
+	/* Below a 360 px header the pill keeps the word whole and drops the decorative icon. */
+	@container site-header (width < 360px) {
+		:global(.nav-compact-search) {
+			padding-inline: 0.25rem;
+		}
+		:global(.nav-compact-search > svg) {
 			display: none;
 		}
 	}

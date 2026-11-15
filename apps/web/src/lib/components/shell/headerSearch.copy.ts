@@ -9,6 +9,8 @@ const counts = (...parts: (string | false)[]) => parts.filter(Boolean).join(', '
 export const headerSearchCopy = {
 	en: {
 		kind: { route: 'Line', stop: 'Stop', vehicle: 'Vehicle', address: 'Address' },
+		/** The phone search button's visible word; its spoken name stays the field's own. */
+		trigger: 'Search',
 		sheetTitle: 'Search',
 		closeSheet: 'Close search',
 		heading: (kind: Kind, n: number | null) =>
@@ -35,6 +37,7 @@ export const headerSearchCopy = {
 	},
 	fr: {
 		kind: { route: 'Ligne', stop: 'Arrêt', vehicle: 'Véhicule', address: 'Adresse' },
+		trigger: 'Rechercher',
 		sheetTitle: 'Recherche',
 		closeSheet: 'Fermer la recherche',
 		heading: (kind: Kind, n: number | null) =>

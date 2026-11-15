@@ -55,7 +55,7 @@ const groups: readonly (readonly [en: string, fr: string, links: readonly Destin
 		'Classements et rapports',
 		[
 			['/hotspots', 'Worst lines and stops', 'Pires lignes et arrêts'],
-			['/repeat-offenders', 'Worst trips and buses', 'Pires trajets et bus'],
+			['/repeat-offenders', 'Chronic late trips and buses', 'Trajets et bus souvent en retard'],
 			['/receipt', 'Daily report', 'Rapport quotidien'],
 			['/alerts', 'Service alerts', 'Avis de service'],
 		],

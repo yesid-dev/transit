@@ -67,7 +67,7 @@ for (const locale of ['en', 'fr'] as const)
 			for (const next of held.splice(0)) next();
 		};
 		try {
-			for (const width of [320, 390, 1206, 1280]) {
+			for (const width of [320, 360, 390, 768, 1206, 1280]) {
 				holding = true;
 				await page.setViewportSize({ width, height: 900 });
 				await page.goto(localizeHref('/privacy?provider=stm', locale), {

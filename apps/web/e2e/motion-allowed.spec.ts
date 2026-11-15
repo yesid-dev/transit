@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
+import { revealRefresh } from './header-refresh';
 import { PUBLISHED_LOCALES } from '../src/lib/i18n/config';
 import { localizeHref } from '../src/lib/i18n/routing';
 import { navPillCopy } from '../src/lib/i18n/messages';
@@ -142,7 +143,7 @@ for (const locale of PUBLISHED_LOCALES) {
 			);
 			const busy = page.locator('[data-motion="refresh-busy"]');
 			try {
-				await page.getByRole('button', { name: navPillCopy[locale].refresh, exact: true }).click();
+				await (await revealRefresh(page, locale)).click();
 				const refreshing = page.getByRole('button', {
 					name: navPillCopy[locale].refreshing,
 					exact: true,

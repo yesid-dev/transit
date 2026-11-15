@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
+import { revealRefresh } from './header-refresh';
 
 import { refreshCopy } from '../src/lib/components/shell/refresh.copy';
 import { SURFACE_NAV } from '../src/lib/content/nav';
@@ -70,14 +71,14 @@ test('manual refresh stays busy until live data is received and rendered', async
 			},
 		});
 	});
-	await page.goto('/map');
+	await page.goto('/map?provider=stm');
 	const placement = page.viewportSize()!.width < 1024 ? 'head' : 'floating';
 	const timestamp = page.locator(`.map-freshness[data-placement="${placement}"] time`);
 	await expect(timestamp).toHaveAttribute('datetime', new Date(generated).toISOString());
 	hold = true;
 	const invalidated = page.waitForResponse((response) => response.url().includes('__data.json'));
 	try {
-		await page.getByRole('button', { name: 'Refresh data', exact: true }).click();
+		await (await revealRefresh(page)).click();
 		await held;
 		await (await invalidated).finished();
 		await page.clock.runFor(250);
@@ -102,14 +103,14 @@ test('a manual refresh shows its result under the button, moves nothing, then le
 			},
 		}),
 	);
-	await page.goto('/map', { waitUntil: 'networkidle' });
+	await page.goto('/map?provider=stm', { waitUntil: 'networkidle' });
 	const placement = page.viewportSize()!.width < 1024 ? 'head' : 'floating';
 	const stamp = page.locator(
 		`.map-freshness[data-placement="${placement}"] [data-slot="freshness-stamp"]`,
 	);
 	const banner = page.getByRole('banner');
+	const button = await revealRefresh(page);
 	const boxes = [await banner.boundingBox(), await stamp.boundingBox()];
-	const button = page.getByRole('button', { name: 'Refresh data', exact: true });
 	await button.click();
 	const result = page.locator('[data-slot="refresh-result"]');
 	await expect(result).toHaveText(
@@ -178,7 +179,7 @@ for (const reducedMotion of ['reduce', 'no-preference'] as const) {
 				headers: { ...response.headers(), ...clockHeaders },
 			});
 		});
-		await page.goto('/map');
+		await page.goto('/map?provider=stm');
 		const placement = page.viewportSize()!.width < 1024 ? 'head' : 'floating';
 		const stamp = page.locator(
 			`.map-freshness[data-placement="${placement}"] [data-slot="freshness-stamp"]`,
@@ -191,7 +192,7 @@ for (const reducedMotion of ['reduce', 'no-preference'] as const) {
 			const refreshed = page.waitForResponse((response) =>
 				new URL(response.url()).pathname.endsWith('/live/vehicles.json'),
 			);
-			await page.getByRole('button', { name: 'Refresh data', exact: true }).click();
+			await (await revealRefresh(page)).click();
 			await refreshed;
 			await expect(page.getByRole('button', { name: 'Refresh data', exact: true })).toBeEnabled();
 			await expect

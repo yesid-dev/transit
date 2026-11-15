@@ -109,7 +109,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
 		key: 'repeatOffenders',
 		group: 'reports',
 		href: '/repeat-offenders',
-		label: { en: 'Worst trips and buses', fr: 'Pires trajets et bus' },
+		label: { en: 'Chronic late trips and buses', fr: 'Trajets et bus souvent en retard' },
 		activePrefixes: ['/repeat-offenders'],
 	},
 	{
