@@ -1,5 +1,11 @@
 import { defineCopy, type Locale } from '#lib/i18n/copy.ts';
 
+const NB = ' ';
+const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+/** "une minute" or "5 minutes"; with "de", the elided "d’une minute" or "de 5 minutes". */
+const frMinutes = (m: number, de?: 'de') =>
+	m === 1 ? (de ? 'd’une minute' : 'une minute') : `${de ? 'de ' : ''}${m}${NB}minutes`;
+
 export const copy = defineCopy({
 	en: {
 		northControl: 'Turn the map north up',
@@ -65,10 +71,30 @@ export const copy = defineCopy({
 		legendTitle: 'Markers',
 		legend: {
 			title: 'Legend',
+			statusGroup: 'Colour shows vehicle status',
+			crowdingGroup: 'Colour shows crowding',
+			positionGroup: 'Position',
+			symbolsGroup: 'Map symbols',
+			// Minutes are whole and positive; `NB` keeps a number with its unit.
+			moreEarly: (m: number) => `More than ${m}${NB}min early`,
+			earlyToLate: (early: number, late: number) =>
+				`${early}${NB}min early to under ${late}${NB}min late`,
+			lateRange: (from: number, below: number) => `${from} to under ${below}${NB}min late`,
+			lateOrMore: (m: number) => `${m}${NB}min late or more`,
+			unknown: 'The live feed gives no delay',
+			occupancy: {
+				empty: 'Empty',
+				many_seats: 'Many seats available',
+				few_seats: 'Few seats available',
+				standing: 'Standing room only',
+				full: 'Full',
+			},
+			staleFor: (duration: string) =>
+				`None for ${duration} or more. It can appear with any status.`,
 			heading: 'Direction of travel',
-			notReporting: 'Not reporting: no position for a few minutes',
 			stop: 'Stop',
 			zoomBadges: 'Zoom in to see each bus’s status badge.',
+			zoomCrowdingBadges: 'Zoom in to see each bus’s crowding badge.',
 		},
 		statusHelp: 'Tick a status to show only those buses.',
 		entityFilterTitle: 'Filter map markers',
@@ -195,10 +221,30 @@ export const copy = defineCopy({
 		legendTitle: 'Marqueurs',
 		legend: {
 			title: 'Légende',
+			statusGroup: 'La couleur montre la ponctualité',
+			crowdingGroup: 'La couleur montre l’occupation',
+			positionGroup: 'Position',
+			symbolsGroup: 'Symboles de la carte',
+			moreEarly: (m: number) => `Plus ${frMinutes(m, 'de')} d’avance`,
+			earlyToLate: (early: number, late: number) =>
+				`${capitalize(frMinutes(early, 'de'))} d’avance à moins ${frMinutes(late, 'de')} de retard`,
+			lateRange: (from: number, below: number) =>
+				`${capitalize(frMinutes(from, 'de'))} à moins ${frMinutes(below, 'de')} de retard`,
+			lateOrMore: (m: number) => `${capitalize(frMinutes(m))} de retard ou plus`,
+			unknown: 'Le flux en direct n’indique aucun retard',
+			occupancy: {
+				empty: 'Vide',
+				many_seats: 'Plusieurs places assises libres',
+				few_seats: 'Peu de places assises libres',
+				standing: 'Places debout seulement',
+				full: 'Complet',
+			},
+			staleFor: (duration: string) =>
+				`Aucune depuis ${duration} ou plus. Peut accompagner n’importe quel état.`,
 			heading: 'Sens de déplacement',
-			notReporting: 'Ne répond plus : aucune position depuis quelques minutes',
 			stop: 'Arrêt',
 			zoomBadges: 'Zoomez pour voir le symbole de statut.',
+			zoomCrowdingBadges: 'Zoomez pour voir le symbole d’occupation.',
 		},
 		statusHelp: 'Cochez un état pour n’afficher que ces bus.',
 		entityFilterTitle: 'Filtrer les marqueurs de la carte',

@@ -11,16 +11,21 @@
 	import type { Locale } from '#lib/i18n/index.ts';
 	import MapLegend from './MapLegend.svelte';
 	import { copy } from './map.copy';
+	import type { LegendColourBy } from './mapLegend';
 
 	let {
 		locale,
 		presentation,
+		colourBy,
+		staleCutoffS,
 		hidden = false,
 		open = $bindable(false),
 		onopenchange,
 	}: {
 		locale: Locale;
 		presentation: 'phone' | 'desktop';
+		colourBy: LegendColourBy;
+		staleCutoffS: number;
 		hidden?: boolean;
 		open?: boolean;
 		onopenchange?: (open: boolean) => void;
@@ -78,7 +83,7 @@
 			</Collapsible.Trigger>
 			<Collapsible.Content>
 				<ScrollArea class="map-legend-scroll" bind:viewportRef={viewport}>
-					<div class="map-legend-body"><MapLegend {locale} /></div>
+					<div class="map-legend-body"><MapLegend {locale} {colourBy} {staleCutoffS} /></div>
 				</ScrollArea>
 			</Collapsible.Content>
 		</Collapsible.Root>
@@ -118,7 +123,7 @@
 			onCloseAutoFocus={restoreFocus}
 		>
 			<Sheet.Title class="map-legend-sheet-title">{t.legend.title}</Sheet.Title>
-			<MapLegend {locale} lead />
+			<MapLegend {locale} {colourBy} {staleCutoffS} lead />
 		</Sheet.Content>
 	</Sheet.Root>
 {/if}

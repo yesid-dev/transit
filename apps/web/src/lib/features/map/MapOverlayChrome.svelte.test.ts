@@ -112,6 +112,20 @@ describe('MapOverlayChrome', () => {
 		expect(screen.queryByTestId('map-filter-pill')).toBeNull();
 	});
 
+	it('explains what the buses are coloured by: crowding once only a crowding box is ticked', async () => {
+		installViewportMatchMedia(1280);
+		const store = createFilterStore(emptyFilterState());
+		const view = render(MapOverlayChromeHarness, { props: { store, locale: 'en' } });
+		const legend = () =>
+			view.container.querySelector('[data-slot="map-legend-card"] [data-slot="map-legend"]');
+		expect(legend()).toHaveAttribute('data-colour-by', 'status');
+		store.setOccupancy(['full']);
+		await waitFor(() => expect(legend()).toHaveAttribute('data-colour-by', 'occupancy'));
+		expect(legend()).toHaveTextContent('Colour shows crowding');
+		store.setStatus(['late']);
+		await waitFor(() => expect(legend()).toHaveAttribute('data-colour-by', 'status'));
+	});
+
 	it('does not mount hidden desktop controls on an initial mobile visit', () => {
 		installViewportMatchMedia(390);
 		const store = createFilterStore(emptyFilterState());

@@ -1,56 +1,72 @@
 import { render, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
-import { STATUS_GLYPH } from '#lib/components/dataviz/tokens.ts';
-import { STATUS_LABELS } from '#lib/v1/enumLabels.ts';
-import { STATUS_CODES } from '#lib/v1/schemas/types.ts';
+import { OCCUPANCY_GLYPH, STATUS_GLYPH } from '#lib/components/dataviz/tokens.ts';
+import { OCCUPANCY_CODES, STATUS_CODES } from '#lib/v1/schemas/types.ts';
 import { copy } from './map.copy';
 import MapLegend from './MapLegend.svelte';
 
+const entries = (list: HTMLElement) =>
+	Array.from(list.querySelectorAll<HTMLElement>('[data-legend-entry]'));
+
 describe('MapLegend', () => {
 	it.each(['en', 'fr'] as const)(
-		'lists every status from the marker tables and explains the not-reporting badge (%s)',
+		'explains every status mark with its minutes, then position and map symbols (%s)',
 		(locale) => {
-			const view = render(MapLegend, { props: { locale } });
+			const view = render(MapLegend, { props: { locale, colourBy: 'status', staleCutoffS: 150 } });
 			const list = view.getByRole('list', { name: copy[locale].legend.title });
 			expect(view.getAllByRole('list')).toEqual([list]);
-			const entries = within(list).getAllByRole('listitem');
-			expect(Array.from(list.children)).toEqual(entries);
-			expect(entries.map((entry) => entry.getAttribute('data-legend-group'))).toEqual([
+			expect(
+				Array.from(list.querySelectorAll('[data-legend-heading]'), (el) =>
+					el.getAttribute('data-legend-heading'),
+				),
+			).toEqual(['status', 'position', 'symbols']);
+			const rows = entries(list);
+			expect(rows.map((row) => row.dataset.legendEntry)).toEqual([
 				...STATUS_CODES.map(() => 'status'),
-				'symbols',
-				'symbols',
-				'symbols',
-			]);
-			expect(entries.map((entry) => entry.getAttribute('data-legend-entry'))).toEqual([
-				...STATUS_CODES.map(() => 'status'),
+				'not-reporting',
 				'heading',
 				'stop',
-				'not-reporting',
 			]);
-			const labels = STATUS_CODES.map((code) => STATUS_LABELS[locale][code]);
-
-			expect(entries.slice(0, STATUS_CODES.length).map((entry) => entry.textContent)).toEqual(
-				STATUS_CODES.map((code, index) => expect.stringContaining(labels[index])),
-			);
 			for (const [index, code] of STATUS_CODES.entries()) {
-				expect(entries[index]).toHaveAttribute('data-status', code);
-				expect(entries[index]).toHaveTextContent(STATUS_GLYPH[code]);
+				expect(rows[index]).toHaveAttribute('data-status', code);
+				expect(within(rows[index]).getByText(STATUS_GLYPH[code])).toBeInTheDocument();
+				expect(rows[index].querySelector('.mf-legend-mark')?.getAttribute('style')).toContain(
+					`var(--dataviz-status-${code.replace('_', '-')})`,
+				);
 			}
-
-			const legend = copy[locale].legend;
-			for (const text of [legend.heading, legend.notReporting, legend.stop]) {
-				expect(entries).toContain(within(list).getByText(text).closest('li'));
-			}
-			expect(entries).toHaveLength(STATUS_CODES.length + 3);
-			// Badges are drawn only once zoomed in; the legend says so at every zoom.
-			expect(view.getByText(legend.zoomBadges)).toBeVisible();
+			const onTime = within(rows[1]);
+			expect(onTime.getByText(locale === 'en' ? 'On time' : 'À l’heure')).toBeVisible();
+			expect(
+				onTime.getByText(
+					locale === 'en'
+						? '1 min early to under 1 min late'
+						: 'D’une minute d’avance à moins d’une minute de retard',
+				),
+			).toBeVisible();
+			expect(view.getByText(copy[locale].legend.zoomBadges)).toBeVisible();
 		},
 	);
 
+	it('explains the crowding colours, and no status, when the map is coloured by crowding', () => {
+		const view = render(MapLegend, {
+			props: { locale: 'en', colourBy: 'occupancy', staleCutoffS: 150 },
+		});
+		const list = view.getByRole('list', { name: 'Legend' });
+		expect(list).toHaveAttribute('data-colour-by', 'occupancy');
+		expect(within(list).getByText('Colour shows crowding')).toBeVisible();
+		const rows = entries(list).filter((row) => row.dataset.legendEntry === 'occupancy');
+		expect(rows.map((row) => row.dataset.occupancy)).toEqual([...OCCUPANCY_CODES]);
+		for (const [index, code] of OCCUPANCY_CODES.entries())
+			expect(within(rows[index]).getByText(OCCUPANCY_GLYPH[code])).toBeInTheDocument();
+		expect(list.querySelector('[data-legend-entry="status"]')).toBeNull();
+		expect(view.getByText('Zoom in to see each bus’s crowding badge.')).toBeVisible();
+	});
+
 	it('shows the sentence under the title as its first line only when asked', () => {
+		const props = { locale: 'fr', colourBy: 'status', staleCutoffS: 150 } as const;
 		const lead = copy.fr.headingLead;
-		expect(render(MapLegend, { props: { locale: 'fr' } }).queryByText(lead)).toBeNull();
-		const view = render(MapLegend, { props: { locale: 'fr', lead: true } });
+		expect(render(MapLegend, { props }).queryByText(lead)).toBeNull();
+		const view = render(MapLegend, { props: { ...props, lead: true } });
 		const first = view.container.firstElementChild;
 		expect(first).toHaveTextContent(lead);
 	});
