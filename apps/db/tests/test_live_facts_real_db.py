@@ -637,7 +637,7 @@ def test_trip_edition_read_preserves_both_legacy_consumers(real_db_engine, vehic
                   (provider_id, dataset_version_id, service_id, service_date, exception_type)
                 SELECT provider_id, dataset_version_id, service_id, DATE '2025-03-24', 1
                 FROM gold.trip_service_span WHERE provider_id=:p
-                ON CONFLICT (provider_id, dataset_version_id, service_id, service_date)
+                ON CONFLICT (dataset_version_id, service_id, service_date)
                 DO UPDATE SET exception_type=1
             """),
                 {"p": provider},
