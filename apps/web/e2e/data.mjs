@@ -45,6 +45,43 @@ for (const [key, body] of Object.entries(b9)) {
 	if (/^(static\/(routes|stops)|historic\/(route|stop)_reliability)\//.test(key))
 		files[`/v1/stm/${key}`] ??= JSON.stringify(body);
 }
+// Line 9001: seven complete days of 1,000 readings with one-decimal shares (89.8% ...), the widest
+// daily labels a phone must place without overlap. Built from a seed, not a committed fixture.
+const decimalWeek = [898, 912, 887, 905, 893, 921, 879];
+const decimalDates = decimalWeek.map((_, day) => `2026-08-${23 + day}`);
+files['/v1/stm/static/routes/9001.json'] = JSON.stringify({
+	...b9['static/routes/24.json'],
+	id: '9001',
+	short: '9001',
+	long: 'Seven decimal days',
+});
+files['/v1/stm/historic/route_reliability/9001.json'] = JSON.stringify({
+	...b9['historic/route_reliability/24.json'],
+	id: '9001',
+	periods: decimalWeek.map((on_time, day) => ({
+		grain: 'day',
+		date: decimalDates[day],
+		observation_count: 1000,
+		on_time,
+		// Published shares are whole percents; the counts carry the decimals the page shows.
+		otp_pct: Math.round(on_time / 10),
+		avg_delay_min: 2.4,
+	})),
+	periods_by_grain: [
+		{ grain: 'day', date: decimalDates.at(-1) },
+		{
+			grain: 'week',
+			date: decimalDates[0],
+			by_daytype: [
+				{
+					grain: 'weekday',
+					observation_count: 1000 * decimalWeek.length,
+					on_time: decimalWeek.reduce((sum, onTime) => sum + onTime, 0),
+				},
+			],
+		},
+	],
+});
 
 const server = createServer((request, response) => {
 	// No Date header: the app anchors its clock to it, which would undo page.clock.

@@ -101,3 +101,41 @@ for (const locale of PUBLISHED_LOCALES) {
 		).toContainText(code);
 	});
 }
+
+for (const locale of PUBLISHED_LOCALES)
+	test(`${locale}: a phone never overlaps the record's daily labels`, async ({ page }) => {
+		for (const width of [320, 390]) {
+			await page.setViewportSize({ width, height: 900 });
+			await page.goto(localizeHref('/lines/9001', locale, provider), { waitUntil: 'networkidle' });
+			const chart = page.locator('[data-slot="otp-trend"] .day-chart');
+			await expect(chart.locator('.day-chart__cols > li')).toHaveCount(7);
+			const labels = await chart.evaluate((figure) =>
+				[...figure.querySelectorAll('.day-chart__v, .day-chart__x > span')]
+					.map((element) => ({ element, box: element.getBoundingClientRect() }))
+					.filter(
+						({ element, box }) =>
+							getComputedStyle(element).visibility !== 'hidden' && box.width > 0 && box.height > 0,
+					)
+					.map(({ element, box }) => ({
+						text: element.textContent,
+						left: box.left,
+						right: box.right,
+						top: box.top,
+						bottom: box.bottom,
+					})),
+			);
+			const overlaps = labels.flatMap((a, i) =>
+				labels
+					.slice(i + 1)
+					.filter(
+						(b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom,
+					)
+					.map((b) => `${width}px ${a.text} / ${b.text}`),
+			);
+			expect(overlaps).toEqual([]);
+			// A value too wide for its column still reaches screen readers and the table.
+			await expect(chart.locator('.day-chart__cols > li').first()).toContainText(
+				locale === 'fr' ? '89,8 %' : '89.8%',
+			);
+		}
+	});

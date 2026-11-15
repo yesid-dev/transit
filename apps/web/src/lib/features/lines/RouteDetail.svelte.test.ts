@@ -1,10 +1,7 @@
 import { stampCopy } from '#lib/v1/stamp.copy.ts';
 import { formatDateKey } from '#lib/utils/time.ts';
 import { createLineDirectory } from '#lib/site/lineDirectory.ts';
-import {
-	headerWeek as CURRENT_RELIABILITY,
-	thinHeaderWeek as SMALL_SAMPLE_RELIABILITY,
-} from './reliability/__fixtures__/closedWeek';
+import { headerWeek as CURRENT_RELIABILITY } from './reliability/__fixtures__/closedWeek';
 import { clock } from '@yesid/ui/state';
 import {
 	fireEvent,
@@ -873,116 +870,74 @@ describe('RouteDetail reliability boundary with history-only fallback', () => {
 	});
 });
 
-describe('RouteDetail always-visible verdict history scope', () => {
-	it('keeps no summary gap for an absent verdict', () => {
+describe('RouteDetail record answer', () => {
+	it('answers the record once, with no separate verdict banner on any view', async () => {
 		reliabilityResourceState = {
-			data: { ...CURRENT_RELIABILITY, periods: [], periods_by_grain: [] },
+			data: CURRENT_RELIABILITY,
 			error: null,
 			loading: false,
 			settled: true,
 		};
 		const view = renderRoute();
-		expect(view.container.querySelector('.route-verdict-banner')).toBeNull();
-		expect(view.container.querySelector('[data-slot="detail-shell-summary"]')).toBeNull();
-	});
-
-	it('shows a hedge in the header and reliability rail for a thin sample', async () => {
-		reliabilityResourceState = {
-			data: SMALL_SAMPLE_RELIABILITY,
-			error: null,
-			loading: false,
-			settled: true,
-		};
-		const view = renderRoute();
-
-		expect(
-			view.container.querySelector('.route-verdict-banner [data-slot="verdict"]'),
-		).toHaveAttribute('data-status', 'tentative');
-		expect(view.container.querySelector('.verdict__ban')).toBeNull();
-		expect(view.container.querySelector('[data-slot="detail-shell-summary"]')).not.toBeNull();
-
 		await fireEvent.click(screen.getByRole('tab', { name: 'Record' }));
 		await import('./reliability/RouteReliabilityClusters.svelte');
-		await tick();
 		await waitFor(() =>
-			expect(view.container.querySelector('[data-slot="reliability-clusters"]')).not.toBeNull(),
+			expect(view.container.querySelectorAll('[data-slot="record-figure"]')).toHaveLength(1),
 		);
-		expect(
-			view.container.querySelector('.route-verdict-banner [data-slot="verdict"]'),
-		).toHaveAttribute('data-status', 'tentative');
-		expect(view.container.querySelector('.verdict__ban')).toBeNull();
-		expect(view.container.querySelector('[data-slot="reliability-rail-summary"]')).not.toBeNull();
-	});
-
-	it('keeps one centered line reliability banner aligned with the active tab rail', async () => {
-		reliabilityResourceState = {
-			data: CURRENT_RELIABILITY,
-			error: null,
-			loading: false,
-			settled: true,
-		};
-		const view = renderRoute();
-		await waitFor(() => {
-			expect(view.container.querySelectorAll('.route-verdict-banner')).toHaveLength(1);
-		});
-		expect(
-			view.container.querySelector('[data-slot="detail-shell-summary"] .route-verdict-banner'),
-		).not.toBeNull();
+		expect(view.container.querySelector('.route-verdict-banner')).toBeNull();
+		expect(view.container.querySelector('[data-slot="entity-detail-banner"]')).toBeNull();
+		expect(view.container.querySelector('[data-slot="reliability-rail-summary"]')).toBeNull();
 
 		await fireEvent.click(screen.getByRole('tab', { name: 'Schedule' }));
-		expect(view.container.querySelectorAll('.route-verdict-banner')).toHaveLength(1);
-		expect(
-			view.container.querySelector('[data-slot="detail-shell-summary"] .route-verdict-banner'),
-		).not.toBeNull();
-		await fireEvent.click(screen.getByRole('tab', { name: 'Record' }));
-		await waitFor(() => {
-			expect(view.container.querySelectorAll('.route-verdict-banner')).toHaveLength(1);
-			expect(
-				view.container.querySelector(
-					'[data-slot="reliability-rail-summary"] .route-verdict-banner',
+		const schedule = screen.getByRole('tabpanel');
+		expect(schedule.querySelector('[data-slot="record-figure"]')).toBeNull();
+		expect(view.container.querySelector('[data-slot="verdict"]')).toBeNull();
+	});
+
+	it('cites the line by its public name and the provider by its operator name', async () => {
+		const writeText = vi.fn(async (_text: string) => {});
+		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+		routeProvider.value = {
+			id: 'stm',
+			labels: {
+				en: { city: 'Montréal', operator: 'STM' },
+				fr: { city: 'Montréal', operator: 'STM' },
+			},
+			inputs: { i3_alerts: false, service_alerts: false },
+			alert_links: {},
+		} as unknown as import('#lib/v1/providers.ts').PublicProvider;
+		reliabilityResourceState = {
+			data: CURRENT_RELIABILITY,
+			error: null,
+			loading: false,
+			settled: true,
+		};
+		try {
+			renderSvelte(RouteDetail, {
+				props: { id: '161', seed: routeSeed() },
+				context: new Map([
+					[
+						Symbol.for('transit.line-directory'),
+						() =>
+							createLineDirectory([{ id: '161', short: '161', long: 'Van Horne' }], {
+								line: (id) => 'Line ' + id,
+							}),
+					],
+				]),
+			});
+			await fireEvent.click(screen.getByRole('tab', { name: 'Record' }));
+			await import('./reliability/RouteReliabilityClusters.svelte');
+			await fireEvent.click(await screen.findByRole('button', { name: 'Cite this record' }));
+			expect(writeText).toHaveBeenCalledWith(
+				expect.stringMatching(
+					/^Transit \(localhost\)\. Line 161 Van Horne, STM: \d+% of readings on time, /u,
 				),
-			).not.toBeNull();
-		});
-	});
-
-	it('does not label the header verdict as current-only on the default current snapshot', async () => {
-		reliabilityResourceState = {
-			data: CURRENT_RELIABILITY,
-			error: null,
-			loading: false,
-			settled: true,
-		};
-		const view = renderRoute();
-
-		const banner = await waitFor(() => {
-			const found = view.container.querySelector('[data-slot="entity-detail-banner"]');
-			expect(found).not.toBeNull();
-			return found as HTMLElement;
-		});
-		expect(within(banner).queryByText('Header verdict: current snapshot')).toBeNull();
-	});
-
-	it('labels the header verdict as current-only while an explicit retained range is active', async () => {
-		routeDetailNav.page.url = new URL(
-			'http://localhost/lines/161?tab=reliability&from=2026-01-31&to=2026-02-01',
-		);
-		reliabilityResourceState = {
-			data: CURRENT_RELIABILITY,
-			error: null,
-			loading: false,
-			settled: true,
-		};
-		lineHistoryHarness.getLineHistoryIndex.mockResolvedValue(HISTORY_INDEX);
-		lineHistoryHarness.loadLineHistoryRange.mockResolvedValue([]);
-		const view = renderRoute();
-
-		await waitFor(() => expect(lineHistoryHarness.getLineHistoryIndex).toHaveBeenCalledOnce());
-		const banner = await waitFor(() => {
-			const found = view.container.querySelector('.route-verdict-banner');
-			expect(found).not.toBeNull();
-			return found as HTMLElement;
-		});
-		expect(within(banner).getByText('Header verdict: current snapshot')).toBeInTheDocument();
+			);
+			expect(writeText.mock.calls[0][0]).toContain('provider=stm');
+		} finally {
+			routeProvider.value = undefined;
+			vi.unstubAllGlobals();
+		}
 	});
 });
 

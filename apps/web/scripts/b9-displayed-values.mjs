@@ -64,7 +64,7 @@ const parseNumber = (value) => {
 	if (value == null) return null;
 	const match = String(value)
 		.replaceAll('\u2212', '-')
-		.replace(/(?<=\d)[ ,](?=\d{3}\b)/gu, '')
+		.replace(/(?<=\d)[ ,\u00a0\u202f](?=\d{3}\b)/gu, '')
 		.replace(',', '.')
 		.match(/[+-]?\d+(?:\.\d+)?/u);
 	return match ? Number(match[0]) : null;
@@ -124,9 +124,9 @@ const HEATMAP_TIERS = Object.freeze({
 	]),
 });
 
-async function readTable(page, root) {
+async function readTable(page, root, table = 'table.sr-only') {
 	return page
-		.locator(`${root} table.sr-only tbody tr`)
+		.locator(`${root} ${table} tbody tr`)
 		.evaluateAll((rows) =>
 			rows.map((row) =>
 				[...row.querySelectorAll('th,td')].map((cell) => cell.textContent?.trim() ?? ''),
@@ -134,19 +134,19 @@ async function readTable(page, root) {
 		);
 }
 
-async function readHeaders(page, root) {
+async function readHeaders(page, root, table = 'table.sr-only') {
 	return page
-		.locator(`${root} table.sr-only thead th`)
+		.locator(`${root} ${table} thead th`)
 		.evaluateAll((items) => items.map((item) => item.textContent?.trim() ?? ''));
 }
 
 const displayCell = (text) => ({ value: parseNumber(text), text: normalizeObservation(text) });
 
-async function readSemanticTable(page, root, locale) {
+async function readSemanticTable(page, root, locale, table = 'table.sr-only') {
 	const labels = SEMANTIC_LABELS[locale];
 	return {
-		headers: await readHeaders(page, root),
-		rows: (await readTable(page, root)).map((row) => {
+		headers: await readHeaders(page, root, table),
+		rows: (await readTable(page, root, table)).map((row) => {
 			const baseLabel = row[0].split(' · ')[0];
 			return [labels[baseLabel] ?? row[0], ...row.slice(1).map(displayCell)];
 		}),
@@ -252,25 +252,29 @@ async function readMetricValue(page, root) {
 	return text == null ? { value: null, text: '' } : displayCell(text);
 }
 
+/** The readings behind the line record's answer, from its evidence sentence. */
 function lineVerdictObservationCount(text) {
-	const count =
-		text.match(/\b(?:of|de)\s+(\d+)\s+(?:delay observations|relevés de retard)/iu)?.[1] ??
-		text.match(/:\s+(\d+)\s+(?:delay observations|relevés de retard)/iu)?.[1] ??
-		text.match(/\((\d+)\)/u)?.[1];
+	const count = text.match(
+		/\b(?:Based on|Selon)\s+(\d+(?:[ ,\u00a0\u202f]\d{3})*)\s+(?:readings?|relevés?)\./u,
+	)?.[1];
 	return parseNumber(count);
 }
 
 async function collectLine(page, cell) {
-	const headlineText = await readValues(
-		page,
-		'[data-section="verdict"] [data-slot="verdict-kpis"] > [data-slot="metric-bullet"]',
-		'.metric-bullet__value',
-	);
+	// The record answers once: its figure, then the delays of the same readings.
+	const figures = await page
+		.locator('[data-section="verdict"] [data-slot="record-answer"] [data-slot="record-figure"]')
+		.allInnerTexts();
+	invariant(figures.length <= 1, 'line record shows its figure more than once');
+	const headlineText = [
+		figures[0] ?? null,
+		...(await readValues(page, '[data-slot="record-delays"] [data-metric]', 'dd')),
+	];
+	invariant(headlineText.length === 4, 'line record delay shape changed');
 	const headline = headlineText.map(parseNumber);
-	const verdictText = await page
-		.locator('[data-section="verdict"] [data-slot="verdict"]')
-		.first()
-		.innerText();
+	const readingsLine = page.locator('[data-section="verdict"] [data-slot="record-readings"]');
+	const verdictText =
+		(await readingsLine.count()) > 0 ? await readingsLine.first().innerText() : '';
 	const runBulletText = async (slot) =>
 		(await readValues(page, `[data-slot="${slot}"]`, '.metric-bullet__value'))[0] ?? null;
 	const completenessValue = await runBulletText('service-completeness');
@@ -337,8 +341,17 @@ async function collectLine(page, cell) {
 		(await page.locator('[data-slot="severe-share"]').count()) > 0,
 		`severe-share control missing: ${(await page.locator('main').innerText()).slice(0, 1500)}`,
 	);
-	const severeText = await page.locator('[data-slot="severe-share"] .block-value').innerText();
+	// An unpublished severe share must say so with the absence marker, never show a number.
+	const severeValue = page.locator('[data-slot="severe-share"] .block-value');
+	const severeAbsent = (await severeValue.locator('[data-slot="absent-value"]').count()) > 0;
+	const severeText = severeAbsent ? '' : await severeValue.innerText();
 	const severe = parseNumber(severeText);
+	invariant(
+		severeAbsent === (severe == null),
+		`severe share neither shows a value nor marks its absence: ${await severeValue.innerText()}`,
+	);
+	// The record's own days, read before the period chooser below is toggled away and back.
+	const trendRows = await readSemanticTable(page, '[data-slot="otp-trend"]', cell.locale, 'table');
 	const grain = page.locator('[data-slot="surface-rail"] [data-slot="grain-picker"]').first();
 	const week = grain.getByRole('radio', {
 		name: cell.locale === 'fr' ? /Dernier jour complet/ : /Latest complete day/,
@@ -359,7 +372,6 @@ async function collectLine(page, cell) {
 			})
 			.click();
 	}
-	const trendRows = await readSemanticTable(page, '[data-slot="otp-trend"]', cell.locale);
 	const habitsTiers = await readHeatmapTiers(
 		page,
 		'[data-slot="habits-heatmap"]',
@@ -945,17 +957,22 @@ async function verifySsr(page, cell, fixture, html) {
 			const template = document.createElement('template');
 			template.innerHTML = source;
 			const main = template.content.querySelector('main');
-			const values = [
+			const figures = [...main.querySelectorAll('[data-slot="record-figure"]')];
+			const delays = [
 				...main.querySelectorAll(
-					'[data-section="verdict"] [data-slot="verdict-kpis"] > [data-slot="metric-bullet"]',
+					'[data-section="verdict"] [data-slot="record-delays"] [data-metric]',
 				),
-			].map((tile) =>
-				tile.querySelector('[data-slot="absent-value"]')
+			].map((row) =>
+				row.querySelector('[data-slot="absent-value"]')
 					? null
-					: (tile.querySelector('.metric-bullet__value')?.textContent?.trim() ?? null),
+					: (row.querySelector('dd')?.textContent?.trim() ?? null),
 			);
 			return {
-				values,
+				figureCount: figures.length,
+				values: [figures[0]?.textContent?.trim() ?? null, ...delays],
+				readings:
+					main.querySelector('[data-section="verdict"] [data-slot="record-readings"]')
+						?.textContent ?? '',
 				bands: [...main.querySelectorAll('.reliability-band[data-band]')].map((band) =>
 					band.getAttribute('data-band'),
 				),
@@ -964,19 +981,10 @@ async function verifySsr(page, cell, fixture, html) {
 					main
 						.querySelector('[data-slot="article-header"] .header__meta time')
 						?.getAttribute('datetime') ?? null,
-				headerPresent: main.querySelector('.route-verdict-banner [data-slot="verdict"]') != null,
-				headerStatus:
-					main
-						.querySelector('.route-verdict-banner [data-slot="verdict"]')
-						?.getAttribute('data-status') ?? null,
-				headerHedge:
-					main.querySelector('.route-verdict-banner .verdict__sentence')?.textContent?.trim() ??
-					null,
-				headerBan:
-					main.querySelector('.route-verdict-banner .verdict__ban')?.textContent?.trim() ?? null,
-				currentOnly:
-					main.querySelector('[data-slot="header-verdict-current-only"]')?.textContent?.trim() ??
-					null,
+				secondVerdict:
+					main.querySelector(
+						'.route-verdict-banner, [data-slot="verdict"], [data-slot="verdict-kpis"], [data-slot="header-verdict-current-only"]',
+					) != null,
 				importError: main.querySelector('[data-slot="reliability-import-error"]') != null,
 			};
 		}, html);
@@ -994,10 +1002,16 @@ async function verifySsr(page, cell, fixture, html) {
 		];
 		const expected = expectedDomainObservationsFromFixture(fixture, 'line', cell.locale, cell.path);
 		const expectedHeadline = expected.filter((row) => ids.includes(row.id));
+		invariant(ssr.values.length === 4, `${cell.path} SSR record shape changed`);
 		invariant(
-			ssr.values.length === 4 ||
-				(ssr.values.length === 0 && expectedHeadline.every((row) => row.value == null)),
-			`${cell.path} SSR KPI shape changed`,
+			ssr.figureCount === (expectedHeadline[0]?.value == null ? 0 : 1),
+			`${cell.path} SSR record figure count disagrees with published data`,
+		);
+		invariant(!ssr.secondVerdict, `${cell.path} SSR rendered a second verdict`);
+		invariant(
+			lineVerdictObservationCount(normalizeObservation(ssr.readings)) ===
+				expected.find((row) => row.id === 'line.day.observation_count')?.value,
+			`${cell.path} SSR record readings disagree with published data`,
 		);
 		const actual = ids.map((id, index) => observation(id, parseNumber(ssr.values[index])));
 		actual.push(observation('line.pane.freshness_iso', ssr.freshness));
@@ -1022,49 +1036,6 @@ async function verifySsr(page, cell, fixture, html) {
 				date && ssr.window.includes(date),
 				`${cell.path} SSR omitted selected/current date ${date}`,
 			);
-		const current = expectedDefaultLineHeadline(fixture);
-		const hasCurrentPercentage =
-			typeof current?.otp_pct === 'number' && Number.isFinite(current.otp_pct);
-		invariant(
-			ssr.headerPresent === hasCurrentPercentage,
-			`${cell.path} SSR current-header presence disagrees with published data`,
-		);
-		if (hasCurrentPercentage) {
-			invariant(
-				typeof ssr.headerHedge === 'string' && ssr.headerHedge.length > 0,
-				`${cell.path} SSR current header omitted its hedge`,
-			);
-			if (!(current.observation_count >= 30)) {
-				invariant(
-					ssr.headerBan == null && ssr.headerStatus === 'tentative',
-					`${cell.path} SSR thin current header must hedge without a confident percentage`,
-				);
-				if (typeof current.observation_count === 'number')
-					invariant(
-						ssr.headerHedge.includes(`(${current.observation_count})`),
-						`${cell.path} SSR current hedge omitted the observation count`,
-					);
-			} else {
-				invariant(
-					parseNumber(ssr.headerBan) === Math.round(current.otp_pct),
-					`${cell.path} SSR header borrowed the selected historical percentage`,
-				);
-			}
-			invariant(
-				selected
-					? ssr.currentOnly ===
-							(cell.locale === 'fr'
-								? 'Verdict d’en-tête : portrait actuel'
-								: 'Header verdict: current snapshot')
-					: ssr.currentOnly == null,
-				`${cell.path} SSR current-header scope changed`,
-			);
-		} else {
-			invariant(
-				ssr.headerBan == null,
-				`${cell.path} SSR absent current header fabricated a percentage`,
-			);
-		}
 	} else if (cell.surface === 'stop') {
 		const stop = fixture.files['static/stops/52095.json'];
 		invariant(normalized.includes(stop.name), `${cell.path} SSR omitted stop identity`);
@@ -1323,8 +1294,9 @@ const MARK_SIGNATURES = Object.freeze({
 		],
 		unit: ['%', 'min'],
 		axis: ['0', '20', '40', '60', '80', '100', '0', '2', '4', '6', '8'],
-		// Axis titles sit in HTML above the plot so long EN/FR labels never clip.
-		titles: ['On-time (%)', 'Avg delay (min)'],
+		// Axis titles sit in HTML above the plot so long EN/FR labels never clip. The line record
+		// draws one measure a day without this mark; the first two-measure trend is the stop's.
+		titles: ['Severe-delay share (%)', 'Average delay (min)'],
 	},
 	histogram: {
 		domain: [-300, 1800],
@@ -1395,7 +1367,9 @@ const MARK_SIGNATURES = Object.freeze({
 		],
 	},
 	sparkline: { domain: [4, 8], unit: 'count', axis: [] },
-	bullet: { domain: [0, 100], unit: '%', axis: ['On-time', '0', '100'] },
+	// The line record states its on-time share as its answer, not as a bullet: the first bullet
+	// on the line page is the record's severe-delay share (SEVERE_DOMAIN, 0 to 100 %).
+	bullet: { domain: [0, 100], unit: '%', axis: ['Severe-delay share', '0', '100'] },
 	heatmap: {
 		domain: [0, 1],
 		unit: 'relative',
@@ -1784,8 +1758,12 @@ function builtAssetPaths() {
 function documentsForCell(cell) {
 	return [
 		cell.path,
+		// The closed-week check opens the bare line page (its record), then the lines list.
 		...(cell.fixture === 'rich' && cell.surface === 'line'
-			? [(cell.locale === 'fr' ? '/fr' : '') + '/lines']
+			? [
+					new URL(cell.path, 'http://b9.local').pathname,
+					(cell.locale === 'fr' ? '/fr' : '') + '/lines',
+				]
 			: []),
 	];
 }
@@ -1900,22 +1878,34 @@ async function settleSurface(page, cell, fixture) {
 async function verifyClosedWeek(page, cell, fixture) {
 	if (cell.surface !== 'line' || cell.fixture !== 'rich') return;
 	const week = expectedDefaultLineHeadline(fixture);
-	invariant(
-		parseNumber(await page.locator('[data-slot="verdict"]').first().innerText()) === week.otp_pct,
-		'banner closed-week percentage mismatch',
-	);
 	const through = fixture.files['historic/route_reliability/24.json'].periods_by_grain.find(
 		(row) => row.grain === 'day',
 	).date;
+	// The bare line URL opens the closed-week record: one figure, the same week, named by its days.
+	const bare = new URL(page.url());
+	for (const key of ['grain', 'from', 'to', 'tab']) bare.searchParams.delete(key);
+	await page.goto(bare.href);
+	const figure = page.locator('[data-slot="record-answer"] [data-slot="record-figure"]');
+	await figure.waitFor({ state: 'visible', timeout: 30_000 });
+	invariant((await figure.count()) === 1, 'record closed-week figure is not shown exactly once');
+	invariant(
+		parseNumber(await figure.innerText()) === week.otp_pct,
+		'record closed-week percentage mismatch',
+	);
+	const tag = cell.locale === 'fr' ? 'fr-CA' : 'en-CA';
+	const period = await page.locator('[data-slot="record-period"]').innerText();
+	const throughDate = new Date(through + 'T00:00:00Z');
+	invariant(
+		period.includes(
+			new Intl.DateTimeFormat(tag, { month: 'long', timeZone: 'UTC' }).format(throughDate),
+		) && period.split(/\D+/u).includes(String(throughDate.getUTCDate())),
+		`record closed-week dates mismatch: ${period}`,
+	);
 	const date = new Intl.DateTimeFormat(cell.locale, {
 		month: 'short',
 		day: 'numeric',
 		timeZone: 'UTC',
-	}).format(new Date(through + 'T00:00:00Z'));
-	invariant(
-		(await page.locator('[data-slot="verdict"]').first().innerText()).includes(date),
-		'banner closed-week date mismatch',
-	);
+	}).format(throughDate);
 	await page.goto(new URL((cell.locale === 'fr' ? '/fr' : '') + '/lines', page.url()).href);
 	await page.getByTestId('lines-sort-worst').click();
 	const badge = page

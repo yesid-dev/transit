@@ -27,6 +27,8 @@
 	import { applyRetainedLineHistory, clearRetainedLineHistory } from './data/retainedHistory';
 	import type { LineHistoryResource } from './data/lineHistoryResource.svelte';
 	import Section0Verdict from './sections/Section0Verdict.svelte';
+	import { selectLineRecord, sharedPublication, type RecordCitation } from './selectors/lineRecord';
+	import { selectDailyOnTime } from './selectors/punctualityTrend';
 	import Section1WhenToRide from './sections/Section1WhenToRide.svelte';
 	import Section2TheWait from './sections/Section2TheWait.svelte';
 	import Section3RunAndFit from './sections/Section3RunAndFit.svelte';
@@ -39,6 +41,8 @@
 		class?: string;
 		history?: LineHistoryResource;
 		articleSummary?: Snippet;
+		/** The line and provider a copied link or citation names. */
+		citation?: RecordCitation;
 	}
 
 	let {
@@ -48,24 +52,16 @@
 		class: className,
 		history,
 		articleSummary,
+		citation,
 	}: RouteReliabilityClustersProps = $props();
 
 	const copy = $derived(reliabilityCopy[locale]);
-	const windowLabels = $derived.by(() => {
-		const format = (date: string) => formatDateKey(date, locale);
-		const through = routeClosedThrough(data);
-		const label = (grain: 'week' | 'month', text: string) => {
-			const window = trailingRouteWindow(data, grain)?.window;
-			return window
-				? `${text} · ${copy.controls.closedSpan(format(window.from), format(window.to))}`
-				: text;
-		};
-		return {
-			day: through ? `${copy.controls.latestDay} · ${format(through)}` : copy.controls.latestDay,
-			week: label('week', copy.controls.thisWeek),
-			month: label('month', copy.controls.thisMonth),
-			range: copy.controls.dateRange,
-		};
+	// Short names only: the chosen period's exact dates follow once, in words, below the choices.
+	const windowLabels = $derived({
+		day: copy.controls.latestDay,
+		week: copy.controls.thisWeek,
+		month: copy.controls.thisMonth,
+		range: copy.controls.dateRange,
 	});
 
 	const view = createReliabilityViewState({
@@ -117,6 +113,28 @@
 
 	const clusters = $derived(
 		toReliabilityClusters(selectedData, { ...mapperOpts, verdict: view.verdict }),
+	);
+	const record = $derived(
+		selectLineRecord({
+			data: selectedData,
+			verdict: view.verdict,
+			mode,
+			range: normalizedRange ? { from: normalizedRange.start, to: normalizedRange.end } : null,
+		}),
+	);
+	// Day by day covers the record's own days; the latest day is shown with the 13 days before it.
+	const dailyWindow = $derived.by(() => {
+		const period = record.period;
+		if (!period || mode !== 'day') return period;
+		const to = Date.parse(`${period.to}T00:00:00Z`);
+		return { from: new Date(to - 13 * 86_400_000).toISOString().slice(0, 10), to: period.to };
+	});
+	const daily = $derived(selectDailyOnTime(clusters.punctuality.trend, dailyWindow));
+	// A chosen range cites its retained partitions; anything else cites the line file shown.
+	const publication = $derived(
+		explicitHistory && retainedReady && view.history.value
+			? view.history.value.publication
+			: sharedPublication([data]),
 	);
 	const dailyPercentiles = $derived(
 		explicitHistory && retainedReady && mode === 'range'
@@ -282,7 +300,17 @@
 				{/if}
 				<ArticleSectionStack>
 					<div class="reliability-band" id="rel-verdict" data-toc="rel-verdict" data-band="verdict">
-						<Section0Verdict vm={clusters.punctuality} {locale} {copy} {mode} {dailyPercentiles} />
+						<Section0Verdict
+							vm={clusters.punctuality}
+							{record}
+							{daily}
+							{locale}
+							{copy}
+							{mode}
+							{dailyPercentiles}
+							{citation}
+							{publication}
+						/>
 					</div>
 
 					<div

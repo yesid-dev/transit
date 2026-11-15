@@ -1,111 +1,116 @@
 <script lang="ts">
-	import { getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
-	import { fmtDelayMin, fmtPct } from '#lib/utils/index.ts';
-	import { TerminalPanel, SectionLabel } from '@yesid/ui/brand';
-	import CollapsibleSection from './CollapsibleSection.svelte';
+	import './reliability-sections.css';
+	import { page } from '$app/state';
+	import type { Locale } from '#lib/i18n/index.ts';
+	import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
+	import { fmtDelayMin, fmtNumber, fmtPct } from '#lib/utils/index.ts';
+	import { fmtLocalePct } from '#lib/utils/format.ts';
+	import { CollapsibleSection, SectionLabel } from '@yesid/ui/brand';
 	import { Chart } from '#lib/components/dataviz/chart/index.ts';
 	import { AbsentValue, MaybeValue } from '#lib/components/edge/index.ts';
 	import Detail from '#lib/components/shared/Detail.svelte';
-	import { VerdictBanner } from '#lib/components/brand/index.ts';
-	import MetricBullet from './MetricBullet.svelte';
-	import { metricInfoCopy } from '#lib/metrics.ts';
 	import MetricInfo from '#lib/features/metrics/MetricInfo.svelte';
-	import {
-		shiftLabel as shiftGrainLabel,
-		shiftLabelShort as shiftGrainLabelShort,
-		SEVERE_DOMAIN,
-		OTP_DOMAIN,
-		DELAY_STOP_DOMAIN,
-		DELAY_DIST_DOMAIN,
-	} from '#lib/features/reliability/shiftGrains.ts';
-	import { selectPunctualityTrend } from '../selectors/punctualityTrend';
+	import { SEVERE_DOMAIN } from '#lib/features/reliability/shiftGrains.ts';
 	import { selectPunctualityDistribution } from '../selectors/punctualityDistribution';
-	import { VERDICT_RELIABLE_FLOOR } from '#lib/v1/verdict.ts';
-	import { selectBullet, verdictTone } from '../selectors/bullet';
+	import { selectBullet } from '../selectors/bullet';
+	import {
+		recordLink,
+		type LineRecord,
+		type RecordCitation,
+		type RecordPublication,
+	} from '../selectors/lineRecord';
+	import { formatDateKey } from '#lib/utils/time.ts';
+	import type { DailyOnTime } from '../selectors/punctualityTrend';
+	import { formatRecordDates } from '../recordDates';
 	import {
 		dailyPercentileCaption,
 		type selectDailyPercentiles,
 	} from '#lib/site/dailyPercentiles.ts';
 	import type { PunctualityVM } from '../clusters';
 	import type { ReliabilityCopy } from '../reliability.copy';
-
-	const localizeHref = getLocalizeHref();
+	import DailyOnTimeChart from './DailyOnTimeChart.svelte';
+	import RecordCopyButton from './RecordCopyButton.svelte';
 
 	interface Section0VerdictProps {
 		vm: PunctualityVM;
+		record: LineRecord;
+		daily: DailyOnTime;
 		locale: Locale;
 		copy: ReliabilityCopy;
 		mode?: 'day' | 'week' | 'month' | 'range';
 		dailyPercentiles?: ReturnType<typeof selectDailyPercentiles>;
+		citation?: RecordCitation;
+		/** The published record behind this answer, for the citation. */
+		publication?: RecordPublication;
 	}
-	let { vm, locale, copy, mode = 'day', dailyPercentiles = null }: Section0VerdictProps = $props();
+	let {
+		vm,
+		record,
+		daily,
+		locale,
+		copy,
+		mode = 'day',
+		dailyPercentiles = null,
+		citation,
+		publication,
+	}: Section0VerdictProps = $props();
 
-	const grain = $derived(mode);
+	const t = $derived(copy.record);
+	const terms = $derived(transitTerms[locale]);
 	const headline = $derived(vm.headline);
+	const answer = $derived(record.answer);
+	const period = $derived(record.period);
 	const estimatedPercentiles = $derived(
 		(headline.grain ?? mode) === 'week' || (headline.grain ?? mode) === 'month',
 	);
-	const verdict = $derived(headline);
-	const pct = (v: number | null | undefined): string | null => fmtPct(v);
-	const min = (v: number | null | undefined): string | null =>
-		fmtDelayMin(v, { rounding: 'fixed1' });
+	const pct = (value: number | null) => fmtLocalePct(value, locale, { rounding: 'round' });
+	const minutes = (value: number | null) => fmtDelayMin(value, { locale, rounding: 'fixed1' });
+	const count = (value: number) => fmtNumber(value, { locale, rounding: 'round' })!;
 
-	const shiftLabel = (g: string): string => shiftGrainLabel(g, locale);
-	const shiftShort = (g: string): string => shiftGrainLabelShort(g, locale);
+	const periodText = $derived.by(() => {
+		if (!period) return null;
+		const dates = formatRecordDates(period.from, period.to, locale);
+		return dates ? t.period(dates, terms.completeDays(period.days, count(period.days))) : null;
+	});
+	const href = $derived(recordLink(page.url, citation?.providerId ?? null, period));
+	const citationText = $derived.by(() => {
+		if (!citation || !period || answer.kind !== 'figure') return null;
+		const dates = formatRecordDates(period.from, period.to, locale, { year: true });
+		return dates
+			? t.citation({
+					host: page.url.host,
+					line: citation.line,
+					provider: citation.providerName,
+					figure: pct(answer.percent)!,
+					dates,
+					readings: answer.readings == null ? null : count(answer.readings),
+					// Dated like the record stamp: the publication's day, with its year for a citation.
+					published: /^\d{4}-\d{2}-\d{2}/.test(publication?.generatedUtc ?? '')
+						? formatDateKey(publication!.generatedUtc!.slice(0, 10), locale, true)
+						: null,
+					generation: publication?.generationId ?? null,
+					method: publication?.methodVersion ?? null,
+					href,
+				})
+			: null;
+	});
 
-	const otpBullet = $derived(
-		selectBullet(headline.otpPct, locale, {
-			title: copy.strip.otpPct,
-			xLabel: copy.strip.otpPct,
-			unit: copy.units.pct,
-			domain: OTP_DOMAIN,
-			target: VERDICT_RELIABLE_FLOOR,
-			targetLabel: copy.strip.target,
-			tone: verdictTone(verdict.status),
-			n: headline.observationCount,
-		}),
+	// Zero readings have no average, percentile or share: those figures are withheld, never 0.
+	const measured = $derived(headline.observationCount !== 0);
+	const delays = $derived([
+		{ key: 'avg', label: t.delays.avg, value: measured ? minutes(headline.avgDelayMin) : null },
+		{ key: 'p50', label: copy.strip.p50Min, value: measured ? minutes(headline.p50Min) : null },
+		{ key: 'p90', label: copy.strip.p90Min, value: measured ? minutes(headline.p90Min) : null },
+	]);
+	const dailySummary = $derived(
+		daily.low && daily.high
+			? t.daily.summary(
+					fmtLocalePct(daily.low.percent, locale)!,
+					fmtLocalePct(daily.high.percent, locale)!,
+					formatRecordDates(daily.low.date, daily.low.date, locale) ?? daily.low.date,
+				)
+			: t.daily.summaryAbsent,
 	);
-	const avgBullet = $derived(
-		selectBullet(headline.avgDelayMin, locale, {
-			title: copy.strip.avgDelayMin,
-			xLabel: copy.strip.avgDelayMin,
-			unit: copy.units.min,
-			domain: DELAY_STOP_DOMAIN,
-		}),
-	);
-	const p50Bullet = $derived(
-		selectBullet(headline.p50Min, locale, {
-			title: copy.strip.p50Min,
-			xLabel: copy.strip.p50Min,
-			unit: copy.units.min,
-			domain: DELAY_STOP_DOMAIN,
-		}),
-	);
-	const p90Bullet = $derived(
-		selectBullet(headline.p90Min, locale, {
-			title: copy.strip.p90Min,
-			xLabel: copy.strip.p90Min,
-			unit: copy.units.min,
-			domain: DELAY_DIST_DOMAIN,
-		}),
-	);
-
-	const isDayGrain = $derived(grain === 'day');
-	const trendSpec = $derived(
-		selectPunctualityTrend(vm, grain, locale, {
-			title: `${copy.strip.otpPct} · ${
-				isDayGrain ? copy.windows.trendByTimeOfDay : copy.windows.trendByDay
-			}`,
-			otpLabel: copy.strip.otpPct,
-			retardLabel: copy.strip.avgDelayMin,
-			pctUnit: copy.units.pct,
-			minUnit: copy.units.min,
-			shiftLabel,
-			shiftShort,
-		}),
-	);
-	const hasTrend = $derived(trendSpec.kind === 'trend');
-	const hasWilsonBand = $derived(trendSpec.kind === 'trend' && trendSpec.hasBand);
 
 	const distSpec = $derived(
 		selectPunctualityDistribution(vm, locale, {
@@ -115,214 +120,318 @@
 			yLabel: copy.strip.delayDistCount,
 		}),
 	);
-	const p50 = $derived<number | null>(headline.p50Min);
-	const p90 = $derived<number | null>(headline.p90Min);
-	const hasDist = $derived(p50 != null || p90 != null);
-
-	const severePct = $derived<number | null>(headline.severePct);
-	const severeTone = (v: number | null): 'bad' | 'warn' | 'neutral' =>
-		v == null ? 'neutral' : v >= 10 ? 'bad' : v >= 5 ? 'warn' : 'neutral';
+	const hasDist = $derived(headline.p50Min != null || headline.p90Min != null);
+	const severePct = $derived<number | null>(measured ? headline.severePct : null);
 	const severeBullet = $derived(
 		selectBullet(severePct, locale, {
 			title: copy.strip.severePct,
 			xLabel: copy.strip.severePct,
 			unit: copy.units.pct,
 			domain: SEVERE_DOMAIN,
-			tone: severeTone(severePct),
+			tone:
+				severePct == null
+					? 'neutral'
+					: severePct >= 10
+						? 'bad'
+						: severePct >= 5
+							? 'warn'
+							: 'neutral',
 		}),
-	);
-
-	const sectionEmpty = $derived(
-		headline.otpPct == null &&
-			headline.avgDelayMin == null &&
-			headline.p50Min == null &&
-			headline.p90Min == null &&
-			severePct == null &&
-			!hasTrend &&
-			!hasDist,
 	);
 </script>
 
-{#snippet otpInfo()}<MetricInfo
-		class="cluster-info"
-		metricKey="otp"
-		{locale}
-		name={copy.strip.otpPct}
-		side="bottom"
-	/>{/snippet}
-{#snippet avgInfo()}<MetricInfo
-		class="cluster-info"
-		metricKey="avgDelay"
-		{locale}
-		name={copy.strip.avgDelayMin}
-		side="bottom"
-	/>{/snippet}
-{#snippet p50Info()}<MetricInfo
-		class="cluster-info"
-		metricKey="p50p90"
-		{locale}
-		name={copy.strip.p50Min}
-		side="bottom"
-	/>{/snippet}
-{#snippet p90Info()}<MetricInfo
-		class="cluster-info"
-		metricKey="p50p90"
-		{locale}
-		name={copy.strip.p90Min}
-		side="bottom"
-	/>{/snippet}
-
-<CollapsibleSection
-	dataSection="verdict"
-	number={1}
-	eyebrow={copy.sections.verdict.label}
-	question={copy.sections.verdict.question}
->
-	<TerminalPanel
-		title={copy.sections.verdict.terminal.title}
-		tag={copy.sections.verdict.terminal.tag}
+{#snippet absent(text: string)}
+	<span class="line-record__absent" data-slot="absent-value"
+		><span class="line-record__hollow" aria-hidden="true"></span>{text}</span
 	>
-		<VerdictBanner result={verdict} />
+{/snippet}
 
-		{#if !sectionEmpty}
-			<div class="verdict-kpis" data-slot="verdict-kpis">
-				<MetricBullet
-					label={copy.strip.otpPct}
-					valueText={pct(headline.otpPct)}
-					spec={otpBullet}
-					{locale}
-					size="lg"
-					info={otpInfo}
-				/>
-				<MetricBullet
-					label={copy.strip.avgDelayMin}
-					valueText={min(headline.avgDelayMin)}
-					spec={avgBullet}
-					{locale}
-					info={avgInfo}
-				/>
-				<MetricBullet
-					label={copy.strip.p50Min}
-					valueText={min(headline.p50Min)}
-					spec={p50Bullet}
-					{locale}
-					info={p50Info}
-					absenceLabel={estimatedPercentiles ? copy.strip.notPublished : undefined}
-					caption={estimatedPercentiles ? undefined : copy.strip.p50Caption}
-				/>
-				<MetricBullet
-					label={copy.strip.p90Min}
-					valueText={min(headline.p90Min)}
-					spec={p90Bullet}
-					{locale}
-					info={p90Info}
-					absenceLabel={estimatedPercentiles ? copy.strip.notPublished : undefined}
-					caption={estimatedPercentiles ? undefined : copy.strip.p90Caption}
-				/>
-			</div>
-		{/if}
-	</TerminalPanel>
+{#snippet dailySummaryLine()}
+	<p class="line-record__summary">{dailySummary}</p>
+{/snippet}
 
-	{#if !sectionEmpty}
-		{#if hasTrend}
-			<div class="section-primary" data-slot="otp-trend" data-card="primary">
-				<div class="block-head">
-					<SectionLabel text={copy.strip.otpPct} variant="metric" />
-					<span class="block-window" data-slot="trend-window"
-						>{isDayGrain ? copy.windows.trendByTimeOfDay : copy.windows.trendByDay}</span
-					>
-				</div>
-				<Chart spec={trendSpec} />
-				{#if hasWilsonBand}
-					<p class="band-caption" data-slot="wilson-band-caption">
-						{copy.strip.wilsonBandCaption}
-						<a href={localizeHref('/metrics#confidence-intervals', locale)} data-card-interactive
-							>{metricInfoCopy.confidenceIntervalLink[locale]}</a
+<div class="line-record-host">
+	<section
+		class="line-record"
+		data-section="verdict"
+		data-slot="line-record"
+		aria-label={copy.sections.verdict.label}
+	>
+		<div class="line-record__answer" data-slot="record-answer">
+			{#if periodText}
+				<p class="line-record__period" data-slot="record-period">{periodText}</p>
+			{/if}
+			{#if answer.kind === 'figure'}
+				<p class="line-record__line">
+					<span class="line-record__figure" data-slot="record-figure">{pct(answer.percent)}</span
+					>{t.answerAfter}
+				</p>
+				<p class="line-record__def">{t.band}</p>
+				<p
+					class="line-record__def"
+					data-slot="record-classification"
+					data-classification={answer.classification}
+				>
+					{t.classification[answer.classification]}
+				</p>
+			{:else}
+				<p class="line-record__line line-record__line--absent">{@render absent(t.absent)}</p>
+			{/if}
+		</div>
+
+		<div class="line-record__evidence" data-slot="record-evidence">
+			{#if answer.kind === 'figure'}
+				<p data-slot="record-readings">
+					{#if answer.readings == null}
+						{t.readingsAbsent}
+					{:else}
+						<span class="line-record__lead"
+							>{t.readings(count(answer.readings), answer.readings)}</span
 						>
-					</p>
+						{t.readingsNote}
+					{/if}
+				</p>
+				{#if period}
+					<p data-slot="record-comparison">{t.comparison(period.days, count(period.days))}</p>
+				{/if}
+				<p data-slot="record-interval">
+					{#if answer.interval}
+						<span class="line-record__lead"
+							>{t.interval(pct(answer.interval.lo)!, pct(answer.interval.hi)!)}</span
+						>
+						{t.intervalNote}
+					{:else}
+						{t.intervalAbsent}
+					{/if}
+				</p>
+			{/if}
+			<div class="line-record__actions" data-slot="record-actions">
+				<RecordCopyButton
+					label={terms.action.copyLink}
+					done={t.linkCopied}
+					fallbackLabel={t.copyFallback}
+					text={href}
+				/>
+				{#if citationText}
+					<RecordCopyButton
+						label={terms.action.citeRecord}
+						done={t.citeCopied}
+						fallbackLabel={t.copyFallback}
+						text={citationText}
+					/>
 				{/if}
 			</div>
-		{/if}
+		</div>
 
-		<Detail label={copy.sections.detailShow} labelOpen={copy.sections.detailHide}>
-			<div class="block" data-slot="delay-distribution" data-card>
-				<div class="block-head">
-					<span class="label-with-info">
-						<SectionLabel text={copy.strip.delayDistHeading} variant="metric" />
-						<MetricInfo
-							class="cluster-info"
-							metricKey="p50p90"
-							{locale}
-							name={copy.strip.delayDistHeading}
-							side="bottom"
-						/>
-					</span>
-					<span class="block-value" class:block-value--empty={!hasDist}>
-						{#if hasDist}
-							<span data-slot="delay-dist-readout" data-card-interactive>
-								{copy.strip.p50Min}
-								<MaybeValue value={min(p50)} reason="no-observations" {locale} />
-								·
-								{copy.strip.p90Min}
-								<MaybeValue value={min(p90)} reason="no-observations" {locale} />
-							</span>
-						{:else}
-							<MaybeValue value={null} reason="no-observations" {locale} />
-						{/if}
-					</span>
-				</div>
-				{#if distSpec.kind === 'histogram'}
-					<Chart spec={distSpec} />
-				{:else}
-					<p class="caption">
-						{#if estimatedPercentiles}<span data-slot="absent-value">{copy.strip.notPublished}</span
-							>{:else}<AbsentValue reason={distSpec.reason} variant="row" {locale} />{/if}
-					</p>
-				{/if}
-				{#if dailyPercentiles != null}
-					<p class="caption" data-slot="daily-percentile-spread">
-						{dailyPercentileCaption(dailyPercentiles, locale)}
-					</p>
-				{/if}
-				{#if isDayGrain && !estimatedPercentiles && !hasDist}
-					<p class="caption" data-slot="percentile-nudge">{copy.strip.percentileNudge}</p>
-				{/if}
-				{#if distSpec.kind === 'histogram'}
-					<p class="caption" data-slot="delay-dist-caption">{copy.strip.delayDistCaption}</p>
-				{/if}
-			</div>
+		<section class="line-record__daily" data-slot="record-daily" aria-label={t.daily.title}>
+			<CollapsibleSection
+				title={t.daily.title}
+				summary={dailySummaryLine}
+				headerVariant="article-summary"
+				anchor="rel-daily"
+			>
+				<div class="line-record__body">
+					{#if daily.rows.length > 0}
+						<DailyOnTimeChart {daily} {locale} {copy} />
+					{/if}
 
-			<div class="block" data-slot="severe-share" data-card>
-				<div class="block-head">
-					<span class="label-with-info">
-						<SectionLabel text={copy.strip.severePct} variant="metric" />
-						<MetricInfo
-							class="cluster-info"
-							metricKey="severe"
-							{locale}
-							name={copy.strip.severePct}
-							side="bottom"
-						/>
-					</span>
-					<span class="block-value" class:block-value--empty={severePct == null}>
-						<MaybeValue value={pct(severePct)} reason="no-observations" {locale} />
-					</span>
+					<dl class="line-record__delays" data-slot="record-delays">
+						{#each delays as row (row.key)}
+							<div data-metric={row.key}>
+								<dt>{row.label}</dt>
+								<dd>
+									{#if row.value}{row.value}{:else}{@render absent(t.delays.notPublished)}{/if}
+								</dd>
+							</div>
+						{/each}
+					</dl>
+
+					<Detail label={copy.sections.detailShow} labelOpen={copy.sections.detailHide}>
+						<div class="block" data-slot="delay-distribution" data-card>
+							<div class="block-head">
+								<span class="label-with-info">
+									<SectionLabel text={copy.strip.delayDistHeading} variant="metric" />
+									<MetricInfo
+										class="cluster-info"
+										metricKey="p50p90"
+										{locale}
+										name={copy.strip.delayDistHeading}
+										side="bottom"
+									/>
+								</span>
+							</div>
+							{#if distSpec.kind === 'histogram'}
+								<Chart spec={distSpec} />
+								<p class="caption" data-slot="delay-dist-caption">{copy.strip.delayDistCaption}</p>
+							{:else}
+								<p class="caption">
+									{#if estimatedPercentiles}<span data-slot="absent-value"
+											>{copy.strip.notPublished}</span
+										>{:else}<AbsentValue reason={distSpec.reason} variant="row" {locale} />{/if}
+								</p>
+							{/if}
+							{#if dailyPercentiles != null}
+								<p class="caption" data-slot="daily-percentile-spread">
+									{dailyPercentileCaption(dailyPercentiles, locale)}
+								</p>
+							{/if}
+							{#if mode === 'day' && !estimatedPercentiles && !hasDist}
+								<p class="caption" data-slot="percentile-nudge">{copy.strip.percentileNudge}</p>
+							{/if}
+						</div>
+
+						<div class="block" data-slot="severe-share" data-card>
+							<div class="block-head">
+								<span class="label-with-info">
+									<SectionLabel text={copy.strip.severePct} variant="metric" />
+									<MetricInfo
+										class="cluster-info"
+										metricKey="severe"
+										{locale}
+										name={copy.strip.severePct}
+										side="bottom"
+									/>
+								</span>
+								<span class="block-value" class:block-value--empty={severePct == null}>
+									<MaybeValue value={fmtPct(severePct)} reason="no-observations" {locale} />
+								</span>
+							</div>
+							<Chart spec={severeBullet} />
+							<p class="caption" data-slot="severe-caption">{copy.strip.severeCaption}</p>
+						</div>
+					</Detail>
 				</div>
-				<Chart spec={severeBullet} />
-				<p class="caption" data-slot="severe-caption">{copy.strip.severeCaption}</p>
-			</div>
-		</Detail>
-	{/if}
-</CollapsibleSection>
+			</CollapsibleSection>
+		</section>
+	</section>
+</div>
 
 <style>
-	.verdict-kpis {
-		display: grid;
-		gap: var(--space-card-gap);
-		grid-template-columns: repeat(auto-fit, minmax(min(11rem, 100%), 1fr));
+	.line-record-host {
+		container: line-record / inline-size;
+		width: 100%;
 	}
-
-	.section-primary,
+	.line-record {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-areas: 'answer' 'evidence' 'daily';
+		gap: 1.25rem;
+	}
+	.line-record__answer {
+		grid-area: answer;
+		display: grid;
+		align-content: start;
+		gap: 0.5rem;
+		min-width: 0;
+	}
+	.line-record__evidence {
+		grid-area: evidence;
+		display: grid;
+		align-content: start;
+		gap: 0.75rem;
+		min-width: 0;
+		color: var(--muted-foreground);
+		font-size: var(--text-small);
+		line-height: 1.5;
+	}
+	.line-record__daily {
+		grid-area: daily;
+		min-width: 0;
+	}
+	@container line-record (min-width: 46rem) {
+		.line-record {
+			grid-template-columns: minmax(0, 8fr) minmax(0, 4fr);
+			grid-template-areas: 'answer evidence' 'daily evidence';
+			column-gap: 2rem;
+			row-gap: 1.5rem;
+		}
+		.line-record__evidence {
+			grid-row: 1 / span 2;
+			padding-inline-start: 1.5rem;
+			border-inline-start: 1px solid var(--border-subtle);
+		}
+	}
+	.line-record p {
+		margin: 0;
+	}
+	.line-record__period {
+		color: var(--foreground);
+		font-size: var(--text-small);
+		font-weight: 500;
+	}
+	.line-record__line {
+		color: var(--foreground);
+		font-size: var(--text-subheading);
+		line-height: 1.3;
+		text-wrap: pretty;
+	}
+	.line-record__figure {
+		margin-inline-end: 0.08em;
+		font-family: var(--font-heading);
+		font-size: var(--text-display);
+		font-weight: 600;
+		letter-spacing: var(--tracking-tight);
+		line-height: 1;
+		font-variant-numeric: tabular-nums;
+	}
+	.line-record__def {
+		color: var(--muted-foreground);
+		font-size: var(--text-small);
+	}
+	.line-record__lead {
+		color: var(--foreground);
+	}
+	.line-record__actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: start;
+		gap: 0.5rem 0.75rem;
+		padding-top: 0.25rem;
+	}
+	.line-record__absent {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 0.5rem;
+		color: var(--muted-foreground);
+	}
+	.line-record__hollow {
+		flex: none;
+		width: 0.625rem;
+		height: 0.625rem;
+		border: 2px solid currentColor;
+		border-radius: 50%;
+	}
+	.line-record__summary {
+		color: var(--muted-foreground);
+		font-size: var(--text-small);
+	}
+	.line-record__body {
+		display: grid;
+		gap: 1rem;
+		min-width: 0;
+	}
+	.line-record__delays {
+		display: grid;
+		gap: 0.25rem;
+		margin: 0;
+		font-size: var(--text-small);
+	}
+	.line-record__delays > div {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: space-between;
+		gap: 0.25rem 1rem;
+		padding-block: 0.375rem;
+		border-bottom: 1px solid var(--border-subtle);
+	}
+	.line-record__delays dt {
+		color: var(--muted-foreground);
+	}
+	.line-record__delays dd {
+		margin: 0;
+		color: var(--foreground);
+		font-variant-numeric: tabular-nums;
+	}
 	.block {
 		display: flex;
 		flex-direction: column;
@@ -338,8 +447,6 @@
 	.label-with-info {
 		min-width: 0;
 	}
-	.block-window,
-	.band-caption,
 	.caption {
 		margin: 0;
 		font-family: var(--font-mono);

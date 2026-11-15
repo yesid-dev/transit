@@ -58,9 +58,6 @@
 	import MetricDisplay from '#lib/components/brand/MetricDisplay.svelte';
 	import { formatUtc } from '#lib/utils/time.ts';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
-	import { VerdictBanner } from '#lib/components/brand/index.ts';
-	import { selectDayVerdictHeadline } from './reliability/selectors/dayVerdictHeadline';
-	import { routeVerdictCopy } from './reliability/routeVerdict.copy';
 	import LazyRouteReliabilityPane, {
 		type RouteReliabilityClustersModule,
 	} from './LazyRouteReliabilityPane.svelte';
@@ -151,15 +148,6 @@
 		return generatedUtc == null ? null : { id, generated_utc: generatedUtc };
 	});
 
-	const relCopy = $derived(routeVerdictCopy[locale]);
-	const routeVerdict = $derived(
-		reliability.data ? selectDayVerdictHeadline(reliability.data, locale) : null,
-	);
-	const hasHeaderVerdict = $derived(routeVerdict != null && routeVerdict.status !== 'absent');
-	const headerVerdictCurrentOnly = $derived(
-		(lineHistory.request.hasFrom || lineHistory.request.hasTo) && lineHistory.state !== 'current',
-	);
-
 	const v1 = getV1Context();
 	const manifest = v1.manifest;
 	const l10n = { locale, timeZone: manifest.tz };
@@ -178,6 +166,12 @@
 	});
 
 	const shortName = manifest.short_name?.trim() || manifest.display_name;
+	// The record answers once, in its own tab; a copied link or citation names line and provider.
+	const recordCitation = $derived({
+		line: [titleName.number, titleName.name].filter(Boolean).join(' ') || titleName.label,
+		providerId: manifest.provider,
+		providerName: v1.provider?.labels[locale]?.operator ?? shortName ?? manifest.provider,
+	});
 	const record = createRecordStamp(
 		() => manifest,
 		() => reliability.data?.generated_utc ?? null,
@@ -322,25 +316,11 @@
 	<MetricInfo class="route-metric-info" metricKey={key} {locale} {name} side="bottom" />
 {/snippet}
 
-{#snippet routeBanner()}
-	<div class="route-verdict-banner">
-		{#if routeVerdict}
-			<VerdictBanner result={routeVerdict} />
-		{/if}
-		{#if headerVerdictCurrentOnly}
-			<p class="route-verdict-scope" data-slot="header-verdict-current-only">
-				{relCopy.history.headerCurrentOnly}
-			</p>
-		{/if}
-	</div>
-{/snippet}
-
 <EntityDetail
 	{tabs}
 	{articleToc}
 	bind:active={detailTabController.active}
 	paneOwnedRailKeys={['reliability']}
-	banner={hasHeaderVerdict ? routeBanner : undefined}
 >
 	{#snippet articleHeader()}
 		<ArticleHeader
@@ -640,26 +620,13 @@
 				history={lineHistory}
 				{historyOnlyReliability}
 				noLiveData={absenceReason?.key === 'metro-no-realtime'}
-				articleSummary={detailTabController.active === 'reliability' && hasHeaderVerdict
-					? routeBanner
-					: undefined}
+				citation={recordCitation}
 			/>
 		{/if}
 	{/snippet}
 </EntityDetail>
 
 <style>
-	.route-verdict-banner {
-		display: grid;
-		gap: 0.5rem;
-	}
-	.route-verdict-scope {
-		margin: 0;
-		font-family: var(--font-mono);
-		font-size: var(--text-small);
-		line-height: 1.4;
-		color: var(--muted-foreground);
-	}
 	.route-section {
 		display: flex;
 		flex-direction: column;
