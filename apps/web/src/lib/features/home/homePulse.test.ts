@@ -107,6 +107,22 @@ describe('selectWorst', () => {
 			['S1', 'S1', null],
 		]);
 	});
+	it('keeps the published week through the scheduled next publication plus its completion allowance', () => {
+		for (const now of ['2026-11-18T07:30:00Z', '2026-11-18T08:01:00Z', '2026-11-19T18:59:59.999Z'])
+			expect(
+				selectWorst(hotspots, routes, { now: Date.parse(now) })?.lines.map((line) => line.id),
+			).toEqual(['7-354', '11']);
+		expect(selectWorst(hotspots, routes, { now: Date.parse('2026-11-19T19:00:00Z') })).toBeNull();
+	});
+	it.each([NaN, Infinity, Date.parse('2026-11-10T23:59:59Z'), Date.parse('2026-11-20T00:00:00Z')])(
+		'rejects an invalid, future or overdue clock (%s)',
+		(now) => {
+			expect(selectWorst(hotspots, routes, { now })).toBeNull();
+		},
+	);
+	it('rejects an invalid publication date', () => {
+		expect(selectWorst({ ...hotspots, generated_utc: 'invalid' } as Hotspots, routes)).toBeNull();
+	});
 
 	it('keeps the first of any repeated entry, so a malformed file cannot break the list', () => {
 		const repeated = {

@@ -1,5 +1,5 @@
 import { isReliableRate } from '#lib/v1/stats.ts';
-import { legacyDeadline } from '#lib/v1/ranking/published.ts';
+import { weeklyPublicationDeadline } from '#lib/v1/ranking/published.ts';
 import type { NetworkFile } from '#lib/v1/schemas/network.ts';
 import type { HotspotEntry, Hotspots } from '#lib/v1/schemas/generated/historic_hotspots.ts';
 import { stopDisplayName } from '#lib/site/transitDisplay.ts';
@@ -112,7 +112,7 @@ export function selectWorst(
 		!Number.isFinite(generated) ||
 		!Number.isFinite(now) ||
 		generated > now ||
-		now >= legacyDeadline(generated)
+		now >= weeklyPublicationDeadline(generated)
 	)
 		return null;
 	const ranked = [...(window.entries ?? [])].sort(

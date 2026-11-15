@@ -44,30 +44,47 @@
 
 	const rankingRuntime = getV1Runtime();
 	onMount(() => rankingRuntime.clock.subscribe());
-	const weeklyIndex = createResource((signal) => getPublishedReliabilityIndex({ signal }));
+	const weeklyIndex = createResource((signal) => getPublishedReliabilityIndex({ signal }), {
+		key: () => 'home-weekly-ranking',
+	});
 	const weeklyReader = $derived(createPublishedWeeklyRanking(weeklyIndex.data));
 	const weeklyStops = $derived(weeklyReader('stop', rankingRuntime.clock.serverNow));
 	const pulse = $derived(selectLivePulse(live.network));
 	const liveFailed = $derived(live.familyStates.network.health.state === 'failed-no-data');
-	const worst = $derived.by(() => {
-		const current = selectWorst(hotspots.data, display.directory, {
+	const worstLines = $derived(
+		selectWorst(hotspots.data, display.directory, {
 			limit: RANK_ROWS,
 			now: rankingRuntime.clock.serverNow,
-		});
-		if (!current) return null;
-		return {
-			...current,
-			through: current.through,
-			stops: (weeklyStops ?? [])
-				.filter((row) => row.state === 'ranked')
-				.slice(0, RANK_ROWS)
-				.map((row) => ({
-					kind: 'stop' as const,
-					id: row.id,
-					label: row.name ?? row.id,
-					severePct: row.severe_pct ?? null,
-				})),
-		};
+		}),
+	);
+	interface PulseRanking {
+		readonly ranks: readonly PulseRank[];
+		readonly through: string | null;
+		readonly settled: boolean;
+		readonly error: unknown;
+		readonly published: boolean;
+	}
+	const lineRanking: PulseRanking = $derived({
+		ranks: worstLines?.lines ?? [],
+		through: worstLines?.through ?? null,
+		settled: hotspots.settled,
+		error: hotspots.error,
+		published: hotspots.data?.by_grain?.some((window) => window.grain === 'week') ?? false,
+	});
+	const stopRanking: PulseRanking = $derived({
+		ranks: (weeklyStops ?? [])
+			.filter((row) => row.state === 'ranked')
+			.slice(0, RANK_ROWS)
+			.map((row) => ({
+				kind: 'stop' as const,
+				id: row.id,
+				label: row.name ?? row.id,
+				severePct: row.severe_pct ?? null,
+			})),
+		through: weeklyStops?.find((row) => row.state === 'ranked')?.window_end ?? null,
+		settled: weeklyIndex.settled,
+		error: weeklyIndex.error,
+		published: (weeklyIndex.data?.weekly_stops?.length ?? 0) > 0,
 	});
 	const presentation = $derived(
 		livePresentation({
@@ -194,29 +211,27 @@
 </div>
 
 <div class="pulse-worst" data-slot="home-pulse-worst" style:--pulse-rows={RANK_ROWS}>
-	<div>
-		<p class="pulse-worst-note">{t.worstNote}</p>
-		<p class="pulse-worst-note pulse-worst-through">
-			{#if worst?.through}{t.worstThrough.replace(
-					'{date}',
-					formatDateKey(worst.through, locale),
-				)}{/if}
-		</p>
-	</div>
+	<p class="pulse-worst-note">{t.worstNote}</p>
 	<div class="pulse-worst-lists">
-		{@render rankList(t.worstLines, worst?.lines ?? null, 'lines')}
-		{@render rankList(t.worstStops, worst?.stops ?? null, 'stops')}
+		{@render rankList(t.worstLines, lineRanking, 'lines')}
+		{@render rankList(t.worstStops, stopRanking, 'stops')}
 	</div>
 	<a class="pulse-more" href={localizeHref('/hotspots', locale)}>{t.allHotspots} →</a>
 </div>
 
-{#snippet rankList(title: string, ranks: readonly PulseRank[] | null, key: string)}
+{#snippet rankList(title: string, ranking: PulseRanking, key: string)}
 	<section class="pulse-rank" aria-labelledby={`pulse-${key}`}>
 		<h3 id={`pulse-${key}`}>{title}</h3>
-		<div class="pulse-rank-body" aria-busy={!hotspots.settled}>
-			{#if ranks?.length}
+		<p class="pulse-worst-note pulse-worst-through">
+			{#if ranking.through}{t.worstThrough.replace(
+					'{date}',
+					formatDateKey(ranking.through, locale),
+				)}{/if}
+		</p>
+		<div class="pulse-rank-body" aria-busy={!ranking.settled}>
+			{#if ranking.ranks.length}
 				<ol>
-					{#each ranks as rank (rank.id)}
+					{#each ranking.ranks as rank (rank.id)}
 						<li>
 							<a href={rankHref(rank)}>
 								<span class="pulse-rank-name">
@@ -240,10 +255,12 @@
 						</li>
 					{/each}
 				</ol>
-			{:else if hotspots.error}
+			{:else if ranking.error}
 				<p class="pulse-absent" role="status">{t.worstError}</p>
-			{:else if hotspots.settled}
-				<p class="pulse-absent" role="status">{t.worstUnavailable}</p>
+			{:else if ranking.settled}
+				<p class="pulse-absent" role="status">
+					{ranking.published ? t.worstNotCurrent : t.worstUnavailable}
+				</p>
 			{/if}
 		</div>
 	</section>

@@ -64,13 +64,32 @@ afterEach(() => {
 });
 
 describe('Home civic overview and directory', () => {
-	it('elides que before Ottawa in the French lede', () => {
-		state.locale = 'fr';
-		state.city = 'Ottawa';
+	it.each([
+		[
+			'fr',
+			'Ottawa',
+			'Transit est un registre public et indépendant du service d’autobus qu’Ottawa reçoit réellement.',
+		],
+		[
+			'fr',
+			'Montréal',
+			'Transit est un registre public et indépendant du service d’autobus que Montréal reçoit réellement.',
+		],
+		[
+			'en',
+			'Ottawa',
+			'Transit is an independent public record of the bus service Ottawa actually gets.',
+		],
+		[
+			'en',
+			'Montréal',
+			'Transit is an independent public record of the bus service Montréal actually gets.',
+		],
+	] as const)('composes the %s lede for %s', (locale, city, sentence) => {
+		state.locale = locale;
+		state.city = city;
 		const { container } = renderHome();
-		expect(container.querySelector('[data-slot="home-audit-brief"]')).toHaveTextContent(
-			"Transit est un registre public et indépendant du service d’autobus qu'Ottawa reçoit réellement.",
-		);
+		expect(container.querySelector('[data-slot="home-audit-brief"]')).toHaveTextContent(sentence);
 	});
 	it.each(['en', 'fr'] as const)('omits the directory destination total in %s', (locale) => {
 		state.locale = locale;

@@ -20,6 +20,7 @@ type PulseKey =
 	| 'worstNote'
 	| 'worstThrough'
 	| 'worstUnavailable'
+	| 'worstNotCurrent'
 	| 'worstError'
 	| 'unavailable'
 	| 'lateRate'
@@ -51,6 +52,7 @@ export const homePulseCopy = defineCopy({
 			'Part des mesures en retard de plus de 5 min, sur 7 jours. Le bilan est republié chaque semaine.',
 		worstThrough: 'Données jusqu’au {date}',
 		worstUnavailable: 'Aucun classement hebdomadaire publié pour l’instant.',
+		worstNotCurrent: 'Aucun classement hebdomadaire à jour n’est disponible.',
 		worstError: 'Le classement n’a pas pu être chargé.',
 		unavailable: 'indisponible',
 		lateRate: '{pct} des mesures en retard de plus de 5 min',
@@ -81,6 +83,7 @@ export const homePulseCopy = defineCopy({
 			'Share of readings more than 5 min late, over 7 days. The record is republished weekly.',
 		worstThrough: 'Data through {date}',
 		worstUnavailable: 'No weekly ranking has been published yet.',
+		worstNotCurrent: 'No current weekly ranking is available.',
 		worstError: 'The rankings could not be loaded.',
 		unavailable: 'unavailable',
 		lateRate: '{pct} of readings more than 5 min late',

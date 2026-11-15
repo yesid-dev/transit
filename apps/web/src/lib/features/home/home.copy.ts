@@ -88,6 +88,15 @@ export const homeCopy = defineCopy({
 
 export type HomeCopy = (typeof homeCopy)[Locale];
 
+export function homeAuditBody(locale: Locale, city: string): string {
+	const body = homeCopy[locale].auditBody;
+	const template =
+		locale === 'fr' && /^[aeiouyàâäéèêëîïôöùûüœæ]/iu.test(city)
+			? body.replace('que {city}', 'qu’{city}')
+			: body;
+	return template.replace('{city}', city);
+}
+
 /** How current the data is. The live rate comes from the network; none is assumed. */
 export function homeCadence(locale: Locale, liveSeconds: number | null | undefined): string {
 	const t = homeCopy[locale];
