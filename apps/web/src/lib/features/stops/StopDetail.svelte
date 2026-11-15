@@ -725,7 +725,7 @@
 	/* Each view leads with the stop summary as a full-width block; the record answer sizes to it. */
 	.stop-lead {
 		inline-size: 100%;
-		margin-block-end: var(--space-card-gap, 1.5rem);
+		margin-block-end: var(--space-card-gap);
 		container-type: inline-size;
 	}
 	.stop-summary {

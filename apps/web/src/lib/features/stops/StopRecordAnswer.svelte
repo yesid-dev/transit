@@ -164,7 +164,7 @@
 		color: var(--muted-foreground);
 	}
 	.stop-record__line {
-		max-width: 39ch;
+		max-width: var(--measure-notice);
 		font-size: var(--text-body);
 		line-height: 1.45;
 		color: var(--foreground);
@@ -180,7 +180,7 @@
 	}
 	.stop-record__note,
 	.stop-record__caveat {
-		max-width: 60ch;
+		max-width: var(--measure-lede);
 		font-size: var(--text-small);
 		line-height: 1.5;
 		color: var(--muted-foreground);
@@ -196,7 +196,7 @@
 		position: absolute;
 		inset-block-start: 0;
 		inset-inline: 0;
-		max-width: 48ch;
+		max-width: var(--measure-notice);
 		padding-block: 0.5rem;
 		font-size: var(--text-body);
 		line-height: 1.45;
@@ -213,7 +213,7 @@
 		padding-block-start: 0.5rem;
 	}
 	:global(.stop-record__action) {
-		min-block-size: var(--size-tap-min, 44px);
+		min-block-size: var(--size-tap-min);
 	}
 	.stop-record__announcement {
 		min-block-size: 1.5em;
@@ -231,7 +231,7 @@
 		background: var(--card);
 	}
 	.stop-record__evidence-heading {
-		font-size: var(--text-subheading, 1.125rem);
+		font-size: var(--text-subheading);
 		font-weight: 600;
 		line-height: 1.25;
 	}

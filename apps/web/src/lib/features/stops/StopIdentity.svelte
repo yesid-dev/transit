@@ -142,8 +142,8 @@
 	.stop-identity__line {
 		display: inline-flex;
 		align-items: center;
-		min-block-size: var(--size-tap-min, 44px);
-		min-inline-size: var(--size-tap-min, 44px);
+		min-block-size: var(--size-tap-min);
+		min-inline-size: var(--size-tap-min);
 		justify-content: center;
 		border-radius: var(--radius-md);
 		text-decoration: none;
@@ -190,7 +190,7 @@
 	}
 	.stop-identity__notice p {
 		margin: 0;
-		max-width: 65ch;
+		max-width: var(--measure-lede);
 	}
 	.stop-identity__notice-label {
 		font-size: var(--text-small);
@@ -215,7 +215,7 @@
 		justify-self: start;
 		display: inline-flex;
 		align-items: center;
-		min-block-size: var(--size-tap-min, 44px);
+		min-block-size: var(--size-tap-min);
 		color: var(--primary);
 		font-size: var(--text-small);
 		text-decoration: underline;
