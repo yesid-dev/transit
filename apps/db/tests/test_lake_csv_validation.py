@@ -6,6 +6,7 @@ from decimal import Decimal
 import duckdb
 import pytest
 
+from transit_ops.lake import csv_validation
 from transit_ops.lake.csv_validation import InvalidCsvValue
 from transit_ops.lake.parquet_codec import connect, read_canonical_csv, write_window
 from transit_ops.lake.table_schema import TableSchema
@@ -121,9 +122,12 @@ def test_duckdb_error_is_wrapped(tmp_path):
     assert caught.value.row == 2 and "closed" in str(caught.value.value)
 
 
-def test_long_supported_postgres_text_is_preserved(tmp_path):
-    text = "x" * 100000
-    window = write(tmp_path, f"1,{text}\n".encode())
+@pytest.mark.parametrize("size", [200 * 1024, 5 * 1024 * 1024])
+@pytest.mark.parametrize("pg_type", ["text", "jsonb"])
+def test_long_supported_postgres_text_is_preserved(tmp_path, size, pg_type):
+    text = json.dumps({"payload": "x" * size}) if pg_type == "jsonb" else "x" * size
+    escaped = text.replace('"', '""')
+    window = write(tmp_path, f'1,"{escaped}"\n'.encode(), pg_type)
     with connect(tmp_path) as connection:
         assert connection.read_parquet(str(window.path), hive_partitioning=False).fetchall() == [
             (1, text)
@@ -189,8 +193,9 @@ print(json.dumps([before, after_import, csv.field_size_limit()]))
 
 @pytest.mark.parametrize("field", ["id", "value"])
 @pytest.mark.parametrize("prefix", ["", 'quoted,\n"prefix'])
-def test_oversize_field_is_refused_by_column_and_logical_row(tmp_path, field, prefix):
-    text = prefix + "x" * 140000
+def test_oversize_field_is_refused_by_column_and_logical_row(tmp_path, monkeypatch, field, prefix):
+    monkeypatch.setattr(csv_validation, "POSTGRES_MAX_FIELD_SIZE", 64)
+    text = prefix + "x" * 65
     escaped = '"' + text.replace('"', '""') + '"' if prefix else text
     record = f"{escaped},ok" if field == "id" else f"key,{escaped}"
     source = tmp_path / "input.csv"
@@ -201,3 +206,19 @@ def test_oversize_field_is_refused_by_column_and_logical_row(tmp_path, field, pr
     assert (caught.value.column, caught.value.row) == (field, 3)
     assert field in str(caught.value) and "3" in str(caught.value)
     assert not (tmp_path / "out.parquet").exists()
+
+
+@pytest.mark.parametrize("text", ["é" * 32, '"' * 64, "a,\r\nb" * 12 + "tail"])
+def test_field_limit_counts_decoded_utf8_bytes(tmp_path, monkeypatch, text):
+    monkeypatch.setattr(csv_validation, "POSTGRES_MAX_FIELD_SIZE", 64)
+    escaped = text.replace('"', '""')
+    window = write(tmp_path, f'1,"{escaped}"\n'.encode())
+    with connect(tmp_path) as connection:
+        assert connection.read_parquet(str(window.path)).fetchall() == [(1, text)]
+
+
+def test_multibyte_field_above_limit_is_refused(tmp_path, monkeypatch):
+    monkeypatch.setattr(csv_validation, "POSTGRES_MAX_FIELD_SIZE", 64)
+    with pytest.raises(InvalidCsvValue) as caught:
+        write(tmp_path, ('1,"' + "é" * 33 + '"\n').encode())
+    assert (caught.value.column, caught.value.row) == ("value", 2)
