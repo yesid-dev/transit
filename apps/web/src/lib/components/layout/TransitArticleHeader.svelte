@@ -64,17 +64,18 @@
 {/snippet}
 
 <style>
-	/* The stamp's text, and the dot before it, sit centred over its reserved room. */
-	.transit-article-header[data-record-stamp]
+	/* The stamp's text, and the dot before it, sit centred over its reserved room. Every rule is
+	   global, so the wrapper stays unscoped and headers without a stamp render exactly as before. */
+	:global(.transit-article-header[data-record-stamp])
 		:global(.header__meta > .header__meta-item:last-child) {
 		display: grid;
 		justify-items: center;
 	}
-	.transit-article-header[data-record-stamp]
+	:global(.transit-article-header[data-record-stamp])
 		:global(.header__meta > .header__meta-item:last-child > .header__meta-sep) {
 		display: none;
 	}
-	.transit-article-header[data-record-stamp='ready']
+	:global(.transit-article-header[data-record-stamp='ready'])
 		:global(
 			.header__meta > .header__meta-item:last-child:has(> .header__meta-sep) > :last-child::before
 		) {
@@ -88,31 +89,32 @@
 		opacity: 0.4;
 		vertical-align: middle;
 	}
-	.transit-article-header[data-record-stamp]
+	:global(.transit-article-header[data-record-stamp])
 		:global(.header__meta > .header__meta-item:last-child:has(> .header__meta-sep)::after) {
 		padding-inline-start: calc(3px + 1rem);
 	}
-	.transit-article-header[data-record-stamp]
+	:global(.transit-article-header[data-record-stamp])
 		:global(.header__meta > .header__meta-item:last-child > :last-child),
-	.transit-article-header[data-record-stamp]
+	:global(.transit-article-header[data-record-stamp])
 		:global(.header__meta > .header__meta-item:last-child::after) {
 		grid-area: 1 / 1;
 		min-width: 0;
 	}
-	.transit-article-header[data-record-stamp]
+	:global(.transit-article-header[data-record-stamp])
 		:global(.header__meta > .header__meta-item:last-child::after) {
 		content: var(--record-reserve);
 		justify-self: stretch;
 		visibility: hidden;
 	}
-	.transit-article-header[data-record-stamp='pending']
+	:global(.transit-article-header[data-record-stamp='pending'])
 		:global(.header__meta > .header__meta-item:last-child > :last-child) {
 		width: clamp(8rem, 18vw, 14rem);
 		height: 0.625rem;
 		border-radius: var(--radius-pill);
 		background: color-mix(in srgb, var(--article-accent, var(--primary)) 12%, transparent);
 	}
-	.transit-article-header[data-record-stamp] :global([data-slot='article-header-controls']) {
+	:global(.transit-article-header[data-record-stamp])
+		:global([data-slot='article-header-controls']) {
 		min-height: 44px;
 	}
 	.record-notice {
