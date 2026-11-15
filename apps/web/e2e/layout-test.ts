@@ -32,8 +32,8 @@ export const test = base.extend({
 			// its interrupted handlers can no longer complete a drain operation.
 			if (!page.isClosed())
 				await forwardRoute(page, async () => {
-					// In Playwright 1.62, a completed _onRoute callback independently clears
-					// interception when the client route list is empty, even during a wait.
+					// In the pinned Playwright release, a completed _onRoute callback independently
+					// clears interception when the client route list is empty, even during a wait.
 					// Repopulate it after unrouteAll clears it and before any callback resumes.
 					const fallback = (route: Route) => route.fallback();
 					const draining = page.unrouteAll({ behavior: 'wait' });
