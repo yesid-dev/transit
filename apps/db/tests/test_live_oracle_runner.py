@@ -13,6 +13,7 @@ from test_static_silver import _minimal_compliant_members, _write_members_zip
 
 from transit_ops.gold.realtime import refresh_gold_realtime
 from transit_ops.live.oracle import PinnedClock, RecordingSink, oracle_database, replay_window
+from transit_ops.live.oracle.database import UnpinnableClockError
 from transit_ops.live.oracle.seed import admit_polls, seed_static
 from transit_ops.live.oracle.window import CycleSpec
 from transit_ops.silver.realtime_gtfs import load_realtime_to_silver
@@ -29,6 +30,17 @@ def test_recording_sink_preserves_bytes_and_drains_write_order():
     assert sink.take_written() == ["live/trips.json"]
     assert sink.take_written() == []
     assert initial == {"manifest.json": b'{"prior":true}'}
+
+
+def test_oracle_keeps_clock_refusals_after_setup(real_db_engine, case):
+    with oracle_database(
+        real_db_engine.url.render_as_string(hide_password=False),
+        clock=PinnedClock(case.window.serving_initialized_at_utc),
+        environment=os.environ,
+    ) as oracle:
+        with pytest.raises(UnpinnableClockError, match="gold.probe"):
+            with oracle.engine.begin() as connection:
+                connection.exec_driver_sql("CREATE VIEW gold.probe AS SELECT 'now'::date")
 
 
 def capture_payload(endpoint, at, captured_at, delay):
