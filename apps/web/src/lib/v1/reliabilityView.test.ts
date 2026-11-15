@@ -56,6 +56,7 @@ it('receipt projection preserves worst rows, shift order and independent service
 			deliveredTripDays: 0,
 			cancelledTripDays: 2,
 			silentTripDays: null,
+			beyondScheduleTripDays: null,
 			completenessPct: 0,
 			notReportedRouteCount: null,
 			notReportedRoutes: [

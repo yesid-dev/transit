@@ -50,7 +50,7 @@ PAYLOAD_METHODOLOGY: dict[str, str] = {
     "historic_hotspots_day": "reliability-2",
     "historic_repeat_offenders": "reliability-2",
     "historic_repeat_offenders_day": "reliability-2",
-    "historic_receipt": "receipt-1",
+    "historic_receipt": "receipt-3",  # receipt-2 belongs to the dormant typed contract.
     "historic_receipts_index": "receipt-1",
     "historic_route_reliability_index": "reliability-2",
     "historic_alert_history": "alerts-2",
@@ -905,9 +905,33 @@ class ReceiptServiceStates(BaseModel):
     delivered_trip_days: int | None = None
     cancelled_trip_days: int | None = None
     silent_trip_days: int | None = None
+    beyond_schedule_trip_days: int | None = Field(
+        default=None,
+        ge=0,
+        description="Sum of observed trips beyond each known route schedule. Added trips or IDs "
+        "not matched to the active schedule; these aggregates cannot distinguish them. "
+        "scheduled + beyond = delivered + cancelled + silent. Not a fourth state.",
+    )
     not_reported_route_count: int | None = None
     service_completeness_pct: float | None = None
     not_reported_routes: list[ReceiptNotReportedRoute] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_accounting(self) -> Self:
+        if self.beyond_schedule_trip_days is None:
+            return self  # Legacy receipts predate the explicit basis.
+        counts = (
+            self.scheduled_trip_days,
+            self.delivered_trip_days,
+            self.cancelled_trip_days,
+            self.silent_trip_days,
+        )
+        if any(value is None or value < 0 for value in counts):
+            raise ValueError("receipt accounting requires nonnegative known counts")
+        scheduled, delivered, cancelled, silent = counts
+        if delivered + cancelled + silent != scheduled + self.beyond_schedule_trip_days:
+            raise ValueError("receipt accounting identity violated")
+        return self
 
 
 class Receipt(PayloadEnvelope):

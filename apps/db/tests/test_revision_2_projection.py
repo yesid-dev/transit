@@ -141,6 +141,7 @@ def test_every_file_rule_names_a_published_family():
         "live/alerts.json",
         "static/routes/{id}.json",
         "static/stops/{id}.json",
+            "historic/receipts/{id}.json",
         "historic/**",
         "historic/history/repeat_offenders/generations/{h}/{date}.json",
     }

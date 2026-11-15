@@ -10,6 +10,35 @@ const labels = {
 };
 
 describe('selectStateCuts', () => {
+	it('uses the explicit expanded basis without allocating beyond trips to a state', () => {
+		const vm = selectStateCuts(
+			{
+				scheduledTripDays: 1,
+				deliveredTripDays: 0,
+				cancelledTripDays: 2,
+				silentTripDays: 0,
+				beyondScheduleTripDays: 1,
+			},
+			labels,
+		);
+		expect(vm.basis).toBe(2);
+		expect(vm.rows.map((row) => row.value)).toEqual([0, 100, 0]);
+	});
+	it('withholds shares for a mismatched legacy receipt', () => {
+		const vm = selectStateCuts(
+			{
+				scheduledTripDays: 1,
+				deliveredTripDays: 2,
+				cancelledTripDays: 0,
+				silentTripDays: 0,
+				completenessPct: 100,
+			},
+			labels,
+		);
+		expect(vm.mismatch).toBe(true);
+		expect(vm.completeness).toBeNull();
+		expect(vm.rows.every((row) => row.value === null)).toBe(true);
+	});
 	it('heroes the completeness number and computes delivered/cancelled/silent shares', () => {
 		const vm = selectStateCuts(
 			{
@@ -39,7 +68,7 @@ describe('selectStateCuts', () => {
 		expect(vm.rows.every((r) => r.value === null)).toBe(true);
 	});
 
-	it('null shares when the scheduled denominator is absent, but heroes a real completeness', () => {
+	it('withholds the comparison when its basis is absent', () => {
 		const vm = selectStateCuts(
 			{
 				scheduledTripDays: null,
@@ -50,8 +79,8 @@ describe('selectStateCuts', () => {
 			},
 			labels,
 		);
-		expect(vm.hasData).toBe(true);
-		expect(vm.completeness).toBe(91);
+		expect(vm.hasData).toBe(false);
+		expect(vm.completeness).toBeNull();
 		expect(vm.rows.every((r) => r.value === null)).toBe(true);
 	});
 });

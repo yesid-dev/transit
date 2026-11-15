@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "methodology_version": "receipt-1",
- "publish_generation_id": "r2guard_plain@2025-09-02T00:00:00Z",
+ "publish_generation_id": "r2guard_alerts@2025-09-02T00:00:00Z",
  "dates": [
   "2025-06-03",
   "2025-06-19",
@@ -11,43 +11,43 @@
   "2025-08-19"
  ],
  "generated_utc": "2025-09-02T00:00:00Z",
- "collection_generation_id": "3261289f4300d30a079100ab547a11cb12e060e3b2a08a4f05a7ca0472f9e586",
+ "collection_generation_id": "b1514b30f437f262e884a4c87fe6914313a2f3fdc9b7728d0a82341275348bbc",
  "available": [
   {
    "date": "2025-06-03",
    "has_data": true,
    "has_schedule": true,
-   "publish_generation_id": "r2guard_plain@2025-09-02T00:00:00Z"
+   "publish_generation_id": "r2guard_alerts@2025-09-02T00:00:00Z"
   },
   {
    "date": "2025-06-19",
    "has_data": true,
    "has_schedule": true,
-   "publish_generation_id": "r2guard_plain@2025-09-02T00:00:00Z"
+   "publish_generation_id": "r2guard_alerts@2025-09-02T00:00:00Z"
   },
   {
    "date": "2025-07-03",
    "has_data": true,
    "has_schedule": true,
-   "publish_generation_id": "r2guard_plain@2025-09-02T00:00:00Z"
+   "publish_generation_id": "r2guard_alerts@2025-09-02T00:00:00Z"
   },
   {
    "date": "2025-07-19",
    "has_data": true,
    "has_schedule": true,
-   "publish_generation_id": "r2guard_plain@2025-09-02T00:00:00Z"
+   "publish_generation_id": "r2guard_alerts@2025-09-02T00:00:00Z"
   },
   {
    "date": "2025-08-03",
    "has_data": true,
    "has_schedule": true,
-   "publish_generation_id": "r2guard_plain@2025-09-02T00:00:00Z"
+   "publish_generation_id": "r2guard_alerts@2025-09-02T00:00:00Z"
   },
   {
    "date": "2025-08-19",
    "has_data": true,
    "has_schedule": true,
-   "publish_generation_id": "r2guard_plain@2025-09-02T00:00:00Z"
+   "publish_generation_id": "r2guard_alerts@2025-09-02T00:00:00Z"
   }
  ]
 }

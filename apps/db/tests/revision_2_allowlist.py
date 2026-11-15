@@ -53,6 +53,7 @@ FILE_RULES: tuple[FileRule, ...] = (
             "historic/history/repeat_offenders/generations/{h}/{date}.json",
         )
     ),
+    FileRule("historic/receipts/{id}.json", ("service_states.beyond_schedule_trip_days",)),
     FileRule("historic/**"),
     FileRule("provenance.json"),
     FileRule("providers.json"),
@@ -248,11 +249,11 @@ def compare_with_baseline(
 def _schema_nodes(root, node, parts):
     if "$ref" in node:
         node = root["$defs"][node["$ref"].removeprefix("#/$defs/")]
-    if not parts:
-        yield node
-    elif "anyOf" in node:
+    if "anyOf" in node:
         for option in node["anyOf"]:
             yield from _schema_nodes(root, option, parts)
+    elif not parts:
+        yield node
     elif parts[0] == "*":
         child = node.get("items", node.get("additionalProperties"))
         if isinstance(child, dict):

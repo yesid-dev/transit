@@ -61,6 +61,10 @@ const timeOfDayProps = {
 };
 
 const stateCutsState: StateCutsVM = {
+	basis: 100,
+	scheduled: 100,
+	beyond: null,
+	mismatch: false,
 	completeness: 80,
 	completenessDisplay: '80.0%',
 	rows: [

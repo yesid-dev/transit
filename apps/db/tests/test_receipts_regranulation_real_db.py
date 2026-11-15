@@ -310,3 +310,48 @@ def test_real_db_receipt_under_byte_ceiling(conn, capsys) -> None:  # noqa: ANN0
             f"max={sizes[biggest]}B ceiling={RECEIPT_BYTE_CEILING}B"
         )
     assert sizes[biggest] <= RECEIPT_BYTE_CEILING
+
+
+@pytest.mark.parametrize(
+    "routes,expected",
+    [
+        ([(1, 2, 0), (2, 1, 0)], (3, 3, 0, 1, 1)),
+        ([(1, 2, 2)], (1, 0, 2, 0, 1)),
+        ([(0, 3, 1)], (0, 2, 1, 0, 3)),
+    ],
+    ids=["mixed_over_under", "cancelled_only", "zero_schedule"],
+)
+def test_receipt_sql_accounts_for_beyond_schedule(conn, routes, expected):
+    conn.execute(
+        text(
+            "DELETE FROM gold.route_cancellation_daily WHERE provider_id=:p "
+            "AND provider_local_date=:d"
+        ),
+        {"p": PROVIDER, "d": SILENT_DAY},
+    )
+    for rid, (scheduled, total, cancelled) in zip(("51", "24"), routes, strict=False):
+        _cancel(conn, SILENT_DAY, rid, scheduled=scheduled, total=total, canceled=cancelled)
+    states = build_receipts(conn, provider_id=PROVIDER, generated_utc="t")[
+        SILENT_DAY.isoformat()
+    ].service_states
+    assert states is not None
+    assert (
+        states.scheduled_trip_days,
+        states.delivered_trip_days,
+        states.cancelled_trip_days,
+        states.silent_trip_days,
+        states.beyond_schedule_trip_days,
+    ) == expected
+    assert sum(expected[1:4]) == expected[0] + expected[4]
+
+
+def test_receipt_sql_refuses_invalid_route_accounting(conn):
+    conn.execute(
+        text(
+            "UPDATE gold.route_cancellation_daily SET silent_trip_days=0 "
+            "WHERE provider_id=:p AND provider_local_date=:d"
+        ),
+        {"p": PROVIDER, "d": SILENT_DAY},
+    )
+    with pytest.raises(ValueError, match="invalid route counts"):
+        build_receipts(conn, provider_id=PROVIDER, generated_utc="t")

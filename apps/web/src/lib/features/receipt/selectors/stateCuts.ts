@@ -14,6 +14,10 @@ export interface StateCutRow {
 }
 
 export interface StateCutsVM {
+	readonly basis: number | null;
+	readonly scheduled: number | null;
+	readonly beyond: number | null;
+	readonly mismatch: boolean;
 	readonly completeness: number | null;
 	readonly completenessDisplay: string | null;
 	readonly rows: StateCutRow[];
@@ -48,9 +52,20 @@ export function selectStateCuts(
 	labels: StateCutsLabels,
 ): StateCutsVM {
 	const scheduled = states?.scheduledTripDays ?? null;
-	const deliveredShare = share(states?.deliveredTripDays, scheduled);
-	const cancelledShare = share(states?.cancelledTripDays, scheduled);
-	const silentShare = share(states?.silentTripDays, scheduled);
+	const beyond = states?.beyondScheduleTripDays ?? null;
+	const counts = [states?.deliveredTripDays, states?.cancelledTripDays, states?.silentTripDays];
+	const known = scheduled != null && counts.every((n) => n != null);
+	const basis = scheduled == null ? null : scheduled + (beyond ?? 0);
+	const valid =
+		known &&
+		[scheduled, beyond ?? 0, ...counts].every((n) => Number.isSafeInteger(n) && n! >= 0) &&
+		Number.isSafeInteger(basis) &&
+		counts.reduce<number>((sum, n) => sum + n!, 0) === basis;
+	const mismatch = known && !valid;
+	const denominator = valid ? basis : null;
+	const deliveredShare = share(states?.deliveredTripDays, denominator);
+	const cancelledShare = share(states?.cancelledTripDays, denominator);
+	const silentShare = share(states?.silentTripDays, denominator);
 
 	const rows: StateCutRow[] = (
 		[
@@ -67,10 +82,14 @@ export function selectStateCuts(
 		display: labels.fmtSharePct(value),
 	}));
 
-	const completeness = states?.completenessPct ?? null;
-	const hasData = completeness != null || rows.some((r) => r.value != null);
+	const completeness = deliveredShare;
+	const hasData = mismatch || rows.some((r) => r.value != null);
 
 	return {
+		basis: valid ? basis : null,
+		scheduled,
+		beyond,
+		mismatch,
 		completeness,
 		completenessDisplay: labels.fmtSharePct(completeness),
 		rows,

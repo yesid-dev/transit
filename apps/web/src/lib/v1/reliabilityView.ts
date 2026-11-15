@@ -9,6 +9,7 @@ function receiptStatesView(states: Receipt['service_states']) {
 		deliveredTripDays: states.delivered_trip_days ?? null,
 		cancelledTripDays: states.cancelled_trip_days ?? null,
 		silentTripDays: states.silent_trip_days ?? null,
+		beyondScheduleTripDays: states.beyond_schedule_trip_days ?? null,
 		completenessPct: states.service_completeness_pct ?? null,
 		notReportedRouteCount: states.not_reported_route_count ?? null,
 		notReportedRoutes: Object.freeze(
