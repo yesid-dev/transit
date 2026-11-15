@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from typer.main import get_command
 from typer.testing import CliRunner
 
+from transit_ops.batch.build import FamilyBuilder
 from transit_ops.cli import app
 from transit_ops.settings import Settings
 
@@ -214,14 +215,23 @@ def test_family_registry_is_immutable_and_unknown_id_fails():
         registry().resolve_builder("unknown")
 
 
-def test_all_family_slots_are_explicitly_unimplemented():
-    for family in FAMILIES:
-        assert registry().resolve_builder(family) is None
+def test_all_family_slots_explicitly_declare_their_implementation():
+    for family, slot in registry().FAMILIES.items():
+        module = importlib.import_module(slot.module_path)
+        builder = module.builder
+        assert builder is None or isinstance(builder, FamilyBuilder)
+        assert registry().resolve_builder(family) is builder
 
 
-def test_replacing_one_family_builder_needs_no_registry_edit(monkeypatch):
-    slot = importlib.import_module("transit_ops.batch.families.headways")
+@pytest.mark.parametrize("family", FAMILIES)
+def test_replacing_one_family_builder_needs_no_registry_edit(monkeypatch, family):
+    previous = {name: registry().resolve_builder(name) for name in FAMILIES}
+    slot = importlib.import_module(registry().FAMILIES[family].module_path)
     builder = object()
     monkeypatch.setattr(slot, "builder", builder)
-    assert registry().resolve_builder("headways") is builder
-    assert all(registry().resolve_builder(f) is None for f in FAMILIES if f != "headways")
+    assert registry().resolve_builder(family) is builder
+    assert all(
+        registry().resolve_builder(name) is original
+        for name, original in previous.items()
+        if name != family
+    )
