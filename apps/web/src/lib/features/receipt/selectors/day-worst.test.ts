@@ -18,8 +18,8 @@ describe('selectWorstOfDay', () => {
 	it('builds both worst rows with resolved title/subtitle/meta', () => {
 		const vm = selectWorstOfDay(
 			{
-				worst_route: { id: '161', name: 'Van Horne', otp_delta_pts: -8 },
-				worst_stop: { id: '57191', name: 'Rockland', avg_delay_min: 6.1 },
+				worstRoute: { id: '161', name: 'Van Horne', onTimeDeltaPts: -8 },
+				worstStop: { id: '57191', name: 'Rockland', meanDelayMin: 6.1 },
 			},
 			labels,
 		);
@@ -31,7 +31,7 @@ describe('selectWorstOfDay', () => {
 	});
 
 	it('stands the panel down when neither worst entity carries an id', () => {
-		const vm = selectWorstOfDay({ worst_route: null, worst_stop: null }, labels);
+		const vm = selectWorstOfDay({ worstRoute: null, worstStop: null }, labels);
 		expect(vm.hasWorst).toBe(false);
 		expect(vm.route).toBeNull();
 		expect(vm.stop).toBeNull();
@@ -40,8 +40,8 @@ describe('selectWorstOfDay', () => {
 	it('drops a worst entity that has no id (never a linkless row)', () => {
 		const vm = selectWorstOfDay(
 			{
-				worst_route: { id: '', name: 'x', otp_delta_pts: -1 },
-				worst_stop: { id: '40001', name: null, avg_delay_min: 7.8 },
+				worstRoute: { id: '', name: 'x', onTimeDeltaPts: -1 },
+				worstStop: { id: '40001', name: null, meanDelayMin: 7.8 },
 			},
 			labels,
 		);
@@ -56,7 +56,10 @@ it('ladder rows lead with the line number', () => {
 		{ line: (id) => `Line ${id}` },
 	);
 	const result = selectWorstOfDay(
-		{ worst_route: { id: '1-373', name: 'Confederation' } },
+		{
+			worstRoute: { id: '1-373', name: 'Confederation', onTimeDeltaPts: null },
+			worstStop: null,
+		},
 		{ ...labels, directory },
 	);
 	expect(result.route?.title).toBe('1 · Confederation');

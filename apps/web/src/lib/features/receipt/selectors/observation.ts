@@ -1,3 +1,4 @@
+import { receiptReliabilityView } from '#lib/v1/reliabilityView.ts';
 import { recordStamp, stampText } from '#lib/v1/stamp.ts';
 import { localizeHref, type Locale } from '#lib/i18n/index.ts';
 import { fmtDelayMin, fmtPct } from '#lib/utils/index.ts';
@@ -13,6 +14,7 @@ export function receiptObservation(
 	locale: Locale,
 	origin: string,
 ): string {
+	const reliability = receiptReliabilityView(receipt)!;
 	const t = copy[locale];
 	const labels = t.observation;
 	const availability = index.available?.find((entry) => entry.date === receipt.date);
@@ -23,9 +25,9 @@ export function receiptObservation(
 	receiptPage.searchParams.set('date', receipt.date);
 	const dates = [...(index.dates ?? [])].sort();
 	const values: readonly [MetricKey, string, string | null][] = [
-		['otp', t.metrics.onTime, fmtPct(receipt.otp_pct)],
-		['avgDelay', t.metrics.avgDelay, fmtDelayMin(receipt.avg_delay_min, { rounding: 'auto' })],
-		['severe', t.metrics.severe, fmtPct(receipt.severe_pct, { rounding: 'fixed1' })],
+		['otp', t.metrics.onTime, fmtPct(reliability.onTimePct)],
+		['avgDelay', t.metrics.avgDelay, fmtDelayMin(reliability.meanDelayMin, { rounding: 'auto' })],
+		['severe', t.metrics.severe, fmtPct(reliability.severePct, { rounding: 'fixed1' })],
 	];
 	return [
 		`Transit: ${t.heading}`,

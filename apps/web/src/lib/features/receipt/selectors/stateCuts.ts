@@ -1,5 +1,6 @@
 import { CANCEL_RATE_DOMAIN } from '#lib/features/reliability/domains.ts';
-import type { ReceiptServiceStates, SeverityCode } from '#lib/v1/schemas/index.ts';
+import type { SeverityCode } from '#lib/v1/schemas/index.ts';
+import type { ReceiptReliabilityView } from '#lib/v1/reliabilityView.ts';
 
 export type ServiceStateKind = 'delivered' | 'cancelled' | 'silent';
 
@@ -43,13 +44,13 @@ function share(
 }
 
 export function selectStateCuts(
-	states: ReceiptServiceStates | null | undefined,
+	states: Partial<NonNullable<ReceiptReliabilityView['serviceStates']>> | null | undefined,
 	labels: StateCutsLabels,
 ): StateCutsVM {
-	const scheduled = states?.scheduled_trip_days ?? null;
-	const deliveredShare = share(states?.delivered_trip_days, scheduled);
-	const cancelledShare = share(states?.cancelled_trip_days, scheduled);
-	const silentShare = share(states?.silent_trip_days, scheduled);
+	const scheduled = states?.scheduledTripDays ?? null;
+	const deliveredShare = share(states?.deliveredTripDays, scheduled);
+	const cancelledShare = share(states?.cancelledTripDays, scheduled);
+	const silentShare = share(states?.silentTripDays, scheduled);
 
 	const rows: StateCutRow[] = (
 		[
@@ -66,7 +67,7 @@ export function selectStateCuts(
 		display: labels.fmtSharePct(value),
 	}));
 
-	const completeness = states?.service_completeness_pct ?? null;
+	const completeness = states?.completenessPct ?? null;
 	const hasData = completeness != null || rows.some((r) => r.value != null);
 
 	return {
