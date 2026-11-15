@@ -37,6 +37,7 @@ from transit_ops.snapshots.historic_streams import (
 )
 from transit_ops.snapshots.protocols import SnapshotPayload
 from transit_ops.snapshots.serialization import snapshot_json_bytes
+from transit_ops.sql_registry import named_query
 
 # Reserved slots also have PostgreSQL outputs before their DuckDB builder exists.
 _TABLES = {
@@ -229,7 +230,11 @@ def replay_day(
     provider_hash = _hashes(inputs_root, (InputNeed("core.providers", "all"),))
     with PrivateArea(workdir) as area, open_batch_session(provider_input, workdir=area) as session:
         timezone = session.execute(
-            text("SELECT timezone FROM core.providers WHERE provider_id=:p"), {"p": provider_id}
+            named_query(
+                "batch.replay.provider_timezone",
+                "SELECT timezone FROM core.providers WHERE provider_id=:p",
+            ),
+            {"p": provider_id},
         ).scalar_one()
     settings = Settings()
     request = BuildRequest(

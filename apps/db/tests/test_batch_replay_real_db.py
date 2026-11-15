@@ -14,6 +14,7 @@ from transit_ops.batch.pg_load import ReplayDatabaseRefused, prepare_replay_data
 from transit_ops.batch.replay import replay_day
 from transit_ops.lake.parquet_codec import write_window
 from transit_ops.lake.table_schema import TableSchema
+from transit_ops.sql_registry import named_query
 
 DAY = date(2026, 11, 1)
 STAMP = datetime(2026, 11, 2, 7, tzinfo=UTC)
@@ -221,7 +222,8 @@ def test_a_correct_test_family_is_identical_and_a_broken_one_is_located(
                 "built_at_utc",
             )
             result = session.execute(
-                text(
+                named_query(
+                    "batch.replay_test.skipped_stop_daily",
                     "SELECT provider_id, :day AS provider_local_date, "
                     "route_id, sum(stop_time_update_count)::BIGINT AS stop_time_update_count, "
                     "sum(skipped_stop_count)::BIGINT + :broken AS skipped_stop_count, "
@@ -229,7 +231,7 @@ def test_a_correct_test_family_is_identical_and_a_broken_one_is_located(
                     "AS DECIMAL(5,2)) "
                     "AS skipped_stop_rate_pct, :stamp AS built_at_utc "
                     "FROM gold.fact_trip_delay_snapshot WHERE snapshot_date_key=20261101 "
-                    "AND provider_id=:provider GROUP BY provider_id, route_id"
+                    "AND provider_id=:provider GROUP BY provider_id, route_id",
                 ),
                 {
                     "day": DAY,
