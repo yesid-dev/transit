@@ -13,6 +13,7 @@ import pytest
 from _sqlfakes import history_count_rows
 from snapshot_storage_fixtures import MemorySnapshotStore
 
+from transit_ops.lighter_storage.settings import LighterStorageSettings
 from transit_ops.snapshots import publish as snapshot_publish
 from transit_ops.snapshots.publish import _publish_live, publish_snapshot
 from transit_ops.snapshots.storage import HashGatedStorage, SnapshotStorage
@@ -611,6 +612,7 @@ def test_historic_publish_uploads_index_after_receipts() -> None:
     from transit_ops.snapshots.historic_tier import publish as _publish_historic
 
     class _Settings:
+        LIGHTER_STORAGE = LighterStorageSettings()
         SNAPSHOT_PUBLIC_BASE_URL = "https://data.example.com"
         SNAPSHOT_PUBLISH_CONCURRENCY = 8
 
@@ -641,6 +643,7 @@ def test_historic_receipt_index_ignores_stale_hash_state_date() -> None:
     from transit_ops.snapshots.storage import state_fingerprint
 
     class _Settings:
+        LIGHTER_STORAGE = LighterStorageSettings()
         SNAPSHOT_PUBLIC_BASE_URL = "https://data.example.com"
         SNAPSHOT_PUBLISH_CONCURRENCY = 8
 
@@ -675,6 +678,7 @@ def test_historic_receipt_file_failure_keeps_previous_index() -> None:
     from transit_ops.snapshots.historic_tier import publish as _publish_historic
 
     class _Settings:
+        LIGHTER_STORAGE = LighterStorageSettings()
         SNAPSHOT_PUBLIC_BASE_URL = "https://data.example.com"
         SNAPSHOT_PUBLISH_CONCURRENCY = 8
 
@@ -701,6 +705,7 @@ def test_historic_publish_uploads_route_index_after_route_files() -> None:
     from transit_ops.snapshots.historic_tier import publish as _publish_historic
 
     class _Settings:
+        LIGHTER_STORAGE = LighterStorageSettings()
         SNAPSHOT_PUBLIC_BASE_URL = "https://data.example.com"
         SNAPSHOT_PUBLISH_CONCURRENCY = 8
 
@@ -724,6 +729,7 @@ def test_historic_publish_completes_all_archive_pages_before_stable_index() -> N
     from transit_ops.snapshots.historic_tier import publish as _publish_historic
 
     class _Settings:
+        LIGHTER_STORAGE = LighterStorageSettings()
         SNAPSHOT_PUBLIC_BASE_URL = "https://data.example.com"
         SNAPSHOT_PUBLISH_CONCURRENCY = 8
 
@@ -747,6 +753,7 @@ def test_delayed_concurrent_archive_pages_all_finish_before_index() -> None:
     from transit_ops.snapshots.historic_tier import publish as _publish_historic
 
     class _Settings:
+        LIGHTER_STORAGE = LighterStorageSettings()
         SNAPSHOT_PUBLIC_BASE_URL = "https://data.example.com"
         SNAPSHOT_PUBLISH_CONCURRENCY = 3
 
@@ -794,6 +801,7 @@ def test_historic_archive_page_failure_never_replaces_stable_index() -> None:
     from transit_ops.snapshots.historic_tier import publish as _publish_historic
 
     class _Settings:
+        LIGHTER_STORAGE = LighterStorageSettings()
         SNAPSHOT_PUBLIC_BASE_URL = "https://data.example.com"
         SNAPSHOT_PUBLISH_CONCURRENCY = 8
 
@@ -814,6 +822,7 @@ def test_historic_publish_counts_archive_pages_physically_but_not_in_stable_base
     from transit_ops.snapshots.publish import publish_snapshot
 
     class _Settings:
+        LIGHTER_STORAGE = LighterStorageSettings()
         SNAPSHOT_PUBLIC_BASE_URL = "https://data.example.com"
         SNAPSHOT_PUBLISH_CONCURRENCY = 8
 
@@ -847,6 +856,7 @@ def test_unchanged_historic_republish_counts_immutable_skip_physically_and_expos
     from transit_ops.snapshots.publish import publish_snapshot
 
     class _Settings:
+        LIGHTER_STORAGE = LighterStorageSettings()
         SNAPSHOT_PUBLIC_BASE_URL = "https://data.example.com"
         SNAPSHOT_PUBLISH_CONCURRENCY = 8
 
@@ -893,6 +903,7 @@ def test_all_history_families_republish_account_for_real_hash_gate_outcomes_end_
     import hashlib
 
     class _Settings:
+        LIGHTER_STORAGE = LighterStorageSettings()
         SNAPSHOT_PUBLIC_BASE_URL = "https://data.example.com"
         SNAPSHOT_PUBLISH_CONCURRENCY = 8
 
@@ -1111,6 +1122,7 @@ def test_archive_page_or_index_failure_does_not_flush_hash_or_db_state(failure: 
     from transit_ops.snapshots.publish import publish_snapshot
 
     class _Settings:
+        LIGHTER_STORAGE = LighterStorageSettings()
         SNAPSHOT_PUBLIC_BASE_URL = "https://data.example.com"
         SNAPSHOT_PUBLISH_CONCURRENCY = 8
 
@@ -1141,6 +1153,7 @@ def test_static_publish_manifest_index_keys_present_and_complete() -> None:
     conn = _RecordingStaticConn()
 
     class _Settings:
+        LIGHTER_STORAGE = LighterStorageSettings()
         SNAPSHOT_PUBLIC_BASE_URL = "https://data.example.com"
         SNAPSHOT_PUBLISH_CONCURRENCY = 8
 
@@ -1316,6 +1329,7 @@ def test_concurrent_historic_publish_loser_stops_before_hash_load_or_any_write()
             return super().get_json(rel_key)
 
     class _Settings:
+        LIGHTER_STORAGE = LighterStorageSettings()
         SNAPSHOT_PUBLIC_BASE_URL = "https://data.example.com"
         SNAPSHOT_PUBLISH_CONCURRENCY = 8
 

@@ -2,7 +2,7 @@ import json
 from dataclasses import replace
 
 import pytest
-from gc_marks_contract import check_marks
+from gc_marks_contract import KEEP, KEY, check_marks, check_refusals
 
 from transit_ops.control.historic_gc_marks import PostgresGcMarks, R2GcMarks, gc_marks_for
 from transit_ops.control.objects import ObjectConflict, SnapshotConditionalObjects
@@ -35,9 +35,9 @@ def test_clear_reapplies_once(tmp_path, monkeypatch, always):
                 )
             )
             winner = rival.load("q")
-            winner["keep"] = winner["a"]
-            winner["keep"] = replace(
-                winner["keep"], version=replace(winner["keep"].version, rel_key="keep")
+            winner[KEEP] = winner[KEY]
+            winner[KEEP] = replace(
+                winner[KEEP], version=replace(winner[KEEP].version, rel_key=KEEP)
             )
             rival.replace("q", winner, expected=rival.version("q"))
         if always or len(attempts) == 1:
@@ -47,11 +47,11 @@ def test_clear_reapplies_once(tmp_path, monkeypatch, always):
     monkeypatch.setattr(objects, "replace", race)
     if always:
         with pytest.raises(ObjectConflict):
-            store.clear("q", ["a"])
+            store.clear("q", [KEY])
     else:
-        store.clear("q", ["a"])
+        store.clear("q", [KEY])
     assert len(attempts) == 2
-    assert set(store.load("q")) == ({"a", "keep"} if always else {"keep"})
+    assert set(store.load("q")) == ({KEY, KEEP} if always else {KEEP})
 
 
 @pytest.mark.parametrize(
@@ -63,6 +63,8 @@ def test_clear_reapplies_once(tmp_path, monkeypatch, always):
         (True, "etag", None),
         (True, "object_key", 12),
         (True, "last_scan_id", "bad"),
+        (True, "object_key", "a"),
+        (True, "last_confirmed_unreachable_utc", "2026-11-14T00:00:00.000000+00:00"),
         (True, "first_unreachable_utc", "2026-11-14T00:00:00"),
         (True, "object_last_modified_utc", 123),
         (True, "extra", "unexpected"),
@@ -95,3 +97,13 @@ def test_selector(tmp_path):
         gc_marks_for(None, settings)
     settings.LIGHTER_STORAGE.control.gc_marks_backend = "r2"
     assert isinstance(gc_marks_for(None, settings), R2GcMarks)
+
+
+@pytest.mark.parametrize(
+    "fault", ["backwards_time", "bad_scan_id", "negative_size", "boolean_size", "bad_key"]
+)
+def test_invalid_replacement_is_refused_before_overwriting(tmp_path, fault):
+    objects = SnapshotConditionalObjects(
+        LocalSnapshotStorage(tmp_path, "control/v1"), min_interval_s=0
+    )
+    check_refusals(R2GcMarks(objects), "review-provider", fault)

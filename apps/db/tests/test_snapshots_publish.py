@@ -7,6 +7,7 @@ import pytest
 from _sqlfakes import history_count_rows
 from snapshot_storage_fixtures import MemorySnapshotStore
 
+from transit_ops.lighter_storage.settings import LighterStorageSettings
 from transit_ops.snapshots import envelope, historic_compatibility, historic_run, historic_tier
 from transit_ops.snapshots.builders.historic.route_reliability_batch import (
     _ROUTE_INVENTORY_SQL,
@@ -94,6 +95,7 @@ class CloseTrackingStore(MemorySnapshotStore):
 
 
 class FakeSettings:
+    LIGHTER_STORAGE = LighterStorageSettings()
     SNAPSHOT_PUBLIC_BASE_URL = "https://data.example.com"
     GOLD_REPORTING_OPEN_WINDOW_DAYS = 10
     GOLD_FACT_RETENTION_DAYS = 14
