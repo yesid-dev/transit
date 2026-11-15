@@ -7,11 +7,13 @@ from transit_ops.gold.realtime import initialize_realtime_serving, refresh_gold_
 from transit_ops.ingestion.common import project_root
 from transit_ops.ingestion.storage import BronzeStorageResolver
 from transit_ops.live.oracle.database import OracleDatabase, PinnedClock, oracle_database
+from transit_ops.live.oracle.rows import TableRows, read_cycle_rows
 from transit_ops.live.oracle.seed import admit_polls, seed_static
 from transit_ops.live.oracle.sink import RecordingSink
 from transit_ops.live.oracle.window import CycleSpec, ReplayWindow
 from transit_ops.providers import ProviderRegistry
 from transit_ops.settings import Settings
+from transit_ops.silver.i3 import find_i3_raw_snapshot, load_i3_snapshot_to_silver
 from transit_ops.silver.realtime_gtfs import (
     RealtimeSilverLoadResult,
     find_realtime_bronze_snapshots,
@@ -26,6 +28,8 @@ class CycleOutcome:
     generated_utc: datetime
     written: tuple[tuple[str, bytes], ...]
     public: Mapping[str, bytes]
+    facts: tuple[TableRows, ...]
+    alert_state: tuple[TableRows, ...]
 
 
 class ReplayFailed(RuntimeError):
@@ -74,6 +78,32 @@ def _load_capture(
         )
 
 
+def _load_alert(
+    oracle: OracleDatabase, window: ReplayWindow, capture_id: int, loaded_at_utc: datetime
+) -> None:
+    record, capture = window.capture("alert_snapshot", capture_id)
+    endpoint = record.feed_day.endpoint_key
+    if record.feed_day.provider_id != window.provider_id or endpoint not in {
+        "i3_alerts",
+        "service_alerts",
+    }:
+        raise ValueError(f"Recorded alert capture {capture_id}: invalid provider/endpoint")
+    with oracle.engine.begin() as connection:
+        snapshot = find_i3_raw_snapshot(
+            connection,
+            provider_id=window.provider_id,
+            snapshot_id=capture_id,
+            endpoint_key=endpoint,
+        )
+        if (snapshot.provider_id, snapshot.i3_alert_snapshot_id, snapshot.captured_at_utc) != (
+            window.provider_id,
+            capture_id,
+            capture.captured_at_utc,
+        ):
+            raise ValueError(f"Recorded alert capture {capture_id}: admitted identity differs")
+        load_i3_snapshot_to_silver(connection, snapshot=snapshot, loaded_at_utc=loaded_at_utc)
+
+
 def _apply_cycle(
     oracle: OracleDatabase,
     window: ReplayWindow,
@@ -85,8 +115,9 @@ def _apply_cycle(
     receipts = []
     for family, capture_id in cycle.captures:
         if family == "alert_snapshot":
-            raise NotImplementedError("Alert capture replay requires OR3b")
-        receipts.append(_load_capture(oracle, window, capture_id, settings, registry, bronze))
+            _load_alert(oracle, window, capture_id, cycle.generated_utc)
+        else:
+            receipts.append(_load_capture(oracle, window, capture_id, settings, registry, bronze))
     initialize_realtime_serving(
         window.provider_id,
         [r.endpoint_key for r in receipts],
@@ -114,6 +145,7 @@ def replay_window(
     prior_manifest: bytes | None = None,
     keep_database: bool = False,
 ) -> Iterator[CycleOutcome]:
+    """Replay an empty-start window; no pre-window alert history is reconstructed."""
     clock = PinnedClock(window.serving_initialized_at_utc)
     sink = RecordingSink({"manifest.json": prior_manifest} if prior_manifest is not None else {})
     sequential = settings.model_copy(update={"SNAPSHOT_PUBLISH_CONCURRENCY": 1})
@@ -136,7 +168,14 @@ def replay_window(
                         storage=sink,
                     )
                 written = tuple((key, sink.objects[key]) for key in sink.take_written())
-                outcome = CycleOutcome(clock.instant, written, dict(sink.objects))
+                with oracle.engine.begin() as connection:
+                    connection.exec_driver_sql(
+                        "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"
+                    )
+                    facts, alert_state = read_cycle_rows(connection, provider_id=window.provider_id)
+                outcome = CycleOutcome(
+                    clock.instant, written, dict(sink.objects), facts, alert_state
+                )
             except Exception as exc:
                 raise ReplayFailed(cycle.generated_utc) from exc
             yield outcome

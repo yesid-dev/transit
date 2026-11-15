@@ -248,3 +248,67 @@ def test_default_and_sequential_publication_have_identical_bytes(real_db_engine,
             results.append(sink.objects)
     assert results[0] == results[1]
     assert case.settings.SNAPSHOT_PUBLISH_CONCURRENCY == original
+
+
+@pytest.mark.parametrize("failure", [None, "unadmitted", "provider", "id", "stamp", "endpoint"])
+def test_replay_dispatches_alert_capture_without_a_realtime_receipt(case, failure):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    from transit_ops.live.oracle import ReplayFailed
+    from transit_ops.silver.i3 import RawI3AlertSnapshot
+
+    record = poll_record(case, endpoint="i3_alerts")
+    cycle = CycleSpec(
+        record.captures[0].captured_at_utc.replace(microsecond=0) + timedelta(seconds=1),
+        (("alert_snapshot", 1201),),
+    )
+    if failure == "endpoint":
+        record = replace(record, feed_day=replace(record.feed_day, endpoint_key="trip_updates"))
+    window = replace(case.window, poll_records=(record,), cycles=(cycle,))
+    target = SimpleNamespace(engine=SimpleNamespace(begin=lambda: nullcontext(MagicMock())))
+    with (
+        patch("transit_ops.live.oracle.runner.oracle_database", return_value=nullcontext(target)),
+        patch("transit_ops.live.oracle.runner.seed_static"),
+        patch("transit_ops.live.oracle.runner.admit_polls"),
+        patch("transit_ops.live.oracle.runner.initialize_realtime_serving"),
+        patch("transit_ops.live.oracle.runner.refresh_gold_realtime") as refresh,
+        patch(
+            "transit_ops.live.oracle.runner.find_i3_raw_snapshot",
+            return_value=RawI3AlertSnapshot(
+                1200 if failure == "id" else 1201,
+                "foreign" if failure == "provider" else window.provider_id,
+                "America/Toronto",
+                record.captures[0].captured_at_utc + timedelta(seconds=failure == "stamp"),
+                [],
+            ),
+        ) as find,
+        patch("transit_ops.live.oracle.runner.load_i3_snapshot_to_silver") as load,
+        patch("transit_ops.live.oracle.runner.read_cycle_rows", return_value=((), ())),
+        patch.object(publish, "publish_snapshot") as publication,
+    ):
+        if failure == "unadmitted":
+            find.side_effect = ValueError("Recorded alert capture 1201 is not admitted")
+        replay = replay_window(
+            window,
+            admin_url="unused",
+            environment={},
+            settings=case.settings,
+            registry=case.registry,
+            bronze=case.bronze,
+        )
+        if failure:
+            with pytest.raises(ReplayFailed) as error:
+                next(replay)
+            assert isinstance(error.value.__cause__, ValueError)
+            load.assert_not_called()
+            publication.assert_not_called()
+            return
+        outcomes = list(replay)
+        assert len(outcomes) == 1
+        assert find.call_args.kwargs == dict(
+            provider_id=window.provider_id, snapshot_id=1201, endpoint_key="i3_alerts"
+        )
+        assert load.call_args.kwargs["loaded_at_utc"] == cycle.generated_utc
+        refresh.assert_not_called()

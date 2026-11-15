@@ -186,3 +186,9 @@ def test_invalid_windows_are_refused_with_their_reason(rule: str, reason: str) -
     ).encode()
     with pytest.raises(WindowInvalid, match=reason):
         ReplayWindow.from_json(data)
+
+
+@pytest.mark.parametrize("initial_state", ["prior", "active_seed", None])
+def test_prior_alert_history_is_not_claimed_by_an_empty_start_replay(initial_state):
+    with pytest.raises(WindowInvalid, match="only empty-start windows"):
+        replace(window(), initial_state=initial_state)
