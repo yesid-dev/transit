@@ -182,6 +182,7 @@
 		() => manifest,
 		() => reliability.data?.generated_utc ?? null,
 		() => lineHistory,
+		() => detailTabController.active === 'reliability',
 	);
 	const articleEdgeLeft = $derived([t.kicker, titleName.number].filter(Boolean).join(' '));
 	const articleGeneratedUtc = $derived(
@@ -351,6 +352,7 @@
 			backLabel={t.article.back}
 			meta={articleMeta}
 			metaPending={detailTabController.active === 'reliability' && record.pending}
+			notice={detailTabController.active === 'reliability' ? record.notice(locale) : null}
 			edgeLeft={articleEdgeLeft}
 			edgeRight={articleEdgeRight}
 			titleId="line-title"

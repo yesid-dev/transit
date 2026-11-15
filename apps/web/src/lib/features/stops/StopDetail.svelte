@@ -130,7 +130,6 @@
 	const { live, resource: departureReport } = createLiveResource(manifest, 'departures');
 	provideLiveAbsenceContext(() => ({ familyStates: live.familyStates }));
 	const { live: alertLive, resource: alertReport } = createLiveResource(manifest, 'alerts');
-
 	const shortName = manifest.short_name?.trim() || manifest.display_name;
 	const departures = $derived<readonly StopDeparture[] | null>(
 		live.departures ? (live.index.byStopId.get(id) ?? []) : null,
@@ -158,6 +157,7 @@
 		() => manifest,
 		() => reliability.data?.generated_utc ?? null,
 		() => stopHistory,
+		() => detailTabController.active === 'reliability',
 	);
 	const articleEdgeLeft = $derived([t.kicker, stop.data?.code].filter(Boolean).join(' '));
 	const articleMeta = $derived.by<ArticleMetaEntry[]>(() => {
@@ -483,6 +483,7 @@
 			backLabel={t.back}
 			meta={articleMeta}
 			metaPending={detailTabController.active === 'reliability' && record.pending}
+			notice={detailTabController.active === 'reliability' ? record.notice(locale) : null}
 			edgeLeft={articleEdgeLeft}
 			edgeRight={shortName}
 			titleId="stop-title"
