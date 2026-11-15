@@ -293,6 +293,9 @@ def test_production_point_plans_are_bounded_closed_parity_exactly_addressed(
             "live.alerts",
             "live.feed_capture",
             "history.repeat_offenders.daily",
+            "history.repeat_offenders.labels",
+            "history.repeat_offenders.labels",
+            "history.repeat_offenders.labels",
         ]
         expected_dates = [value.isoformat() for value in DATES]
         assert [payload.date for payload in hotspot_days] == expected_dates
