@@ -111,54 +111,101 @@ it('shows an absent family as not published, never as zero days', async () => {
 	expect(receipts).not.toHaveTextContent(/\b0\b|days with records/);
 });
 
-it.each([
-	['en', 'Alerts', 'Mar 16, 2010 – Mar 31, 2028', /\d of [\d,]+ days with records/],
-	['fr', 'Alertes', '16 mars 2010 – 31 mars 2028', /jours sur [\d\s]+ avec des données/],
-] as const)(
+const withFamily = (family: NonNullable<HistoricAvailabilityIndex['families']>[number]) => {
+	const index: HistoricAvailabilityIndex = { ...root, families: [...root.families!, family] };
+	return { rows: selectHistoryCoverage(index), inventory: selectHistoryInventory(index) };
+};
+const counted = { en: /\d of [\d,]+ days with records/, fr: /jours sur [\d\s]+ avec des données/ };
+
+it.each(['en', 'fr'] as const)(
 	'%s: dates its years and refuses to count a window that runs past the list’s publication',
-	async (locale, alerts, window, counted) => {
-		// Production on 2026-11-15: STM's alert archive spans 2010 to 2028 in a list published in 2026.
-		const withAlerts: HistoricAvailabilityIndex = {
-			...root,
-			families: [
-				...root.families!,
-				{
-					family: 'alerts',
-					selection_mode: 'range',
-					index_path: 'historic/alerts/index.json',
-					first_available_date: '2010-03-16',
-					last_available_date: '2028-03-31',
-					gaps: [],
-				},
-			],
-		};
+	async (locale) => {
+		// The list is published on 2026-07-14; these receipts claim days up to July 20.
 		const t = copy[locale].historyCoverage;
 		render(
 			SectionHistoryCoverage,
 			props({
-				rows: selectHistoryCoverage(withAlerts),
-				inventory: selectHistoryInventory(withAlerts),
+				...withFamily({
+					family: 'receipts',
+					selection_mode: 'date',
+					index_path: 'historic/receipts/index.json',
+					first_available_date: '2025-12-20',
+					last_available_date: '2026-07-20',
+					gaps: [],
+				}),
 				copy: copy[locale],
 				locale,
 			}),
 		);
 		const list = screen.getByRole('list', { name: t.indexLabel });
-		const alertsRow = within(list).getByRole('button', { name: alerts }).closest('li')!;
+		const receipts = within(list).getByRole('button', { name: t.families.receipts }).closest('li')!;
 
-		expect(alertsRow).toHaveTextContent(window);
-		expect(alertsRow).toHaveTextContent(t.days.unreadable);
-		expect(alertsRow).not.toHaveTextContent(counted);
-		expect(alertsRow).not.toHaveTextContent(/6[\s,.]?591/);
+		expect(receipts).toHaveTextContent(/2025.*2026/);
+		expect(receipts).toHaveTextContent(t.days.unreadable);
+		expect(receipts).not.toHaveTextContent(counted[locale]);
 		// Windows inside the list's own year keep their short dates.
 		expect(
 			within(list).getByRole('button', { name: t.families.network }).closest('li'),
 		).not.toHaveTextContent('2026');
 
+		await fireEvent.click(within(list).getByRole('button', { name: t.families.receipts }));
+		const panel = screen.getByRole('region', { name: t.evidence.region(t.families.receipts) });
+		expect(panel).toHaveTextContent(t.days.pastPublication);
+		expect(panel).not.toHaveTextContent(counted[locale]);
+	},
+);
+
+it.each([
+	[
+		'en',
+		'Alerts',
+		'Mar 16, 2010 – Jul 14, 2026',
+		'Days collected not published',
+		'Archived alert dates',
+		'The days on which alerts were actually collected are not published, so they are not counted.',
+	],
+	[
+		'fr',
+		'Alertes',
+		'16 mars 2010',
+		'Jours de collecte non publiés',
+		'Dates des avis archivés',
+		'Les jours où les avis ont réellement été recueillis ne sont pas publiés; ils ne sont donc pas comptés.',
+	],
+] as const)(
+	'%s: shows alert dates without counting days, even when they end in the past',
+	async (locale, alerts, window, rowNote, datesLabel, why) => {
+		// STM's archive: an alert announced from 2010-03-16 that was first seen in May 2026.
+		const t = copy[locale].historyCoverage;
+		render(
+			SectionHistoryCoverage,
+			props({
+				...withFamily({
+					family: 'alerts',
+					selection_mode: 'range',
+					index_path: 'historic/alerts/index.json',
+					first_available_date: '2010-03-16',
+					last_available_date: '2026-07-14',
+					gaps: [],
+				}),
+				copy: copy[locale],
+				locale,
+			}),
+		);
+		const list = screen.getByRole('list', { name: t.indexLabel });
+		const row = within(list).getByRole('button', { name: alerts }).closest('li')!;
+
+		expect(row).toHaveTextContent(window);
+		expect(row).toHaveTextContent(rowNote);
+		expect(row).not.toHaveTextContent(counted[locale]);
+		expect(row).not.toHaveTextContent(/\b0\b/);
+
 		await fireEvent.click(within(list).getByRole('button', { name: alerts }));
 		const panel = screen.getByRole('region', { name: t.evidence.region(alerts) });
+		expect(panel).toHaveTextContent(datesLabel);
 		expect(panel).toHaveTextContent(window);
-		expect(panel).toHaveTextContent(t.days.pastPublication);
-		expect(panel).not.toHaveTextContent(counted);
+		expect(panel).toHaveTextContent(why);
+		expect(panel).not.toHaveTextContent(counted[locale]);
 	},
 );
 

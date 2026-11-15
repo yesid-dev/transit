@@ -129,10 +129,14 @@ export const copy = defineCopy({
 				unreadable: 'These dates cannot be counted',
 				pastPublication:
 					'These dates run past the day the date list was published, so they are not days with records.',
+				alertsUncounted: 'Days collected not published',
+				alertsExplain:
+					'These dates span the alerts in the archive, including the periods agencies announced for them. The days on which alerts were actually collected are not published, so they are not counted.',
 			},
 			evidence: {
 				region: (family: string) => `Selected family: ${family}`,
 				datesLabel: 'Dates',
+				alertDatesLabel: 'Archived alert dates',
 				daysLabel: 'Days with records',
 				missingLabel: 'Missing days',
 				browseLabel: 'How to browse',
@@ -386,10 +390,14 @@ export const copy = defineCopy({
 				unreadable: 'Ces dates ne peuvent pas être comptées',
 				pastPublication:
 					'Ces dates dépassent le jour de publication de la liste des dates; ce ne sont donc pas des jours avec des données.',
+				alertsUncounted: 'Jours de collecte non publiés',
+				alertsExplain:
+					'Ces dates couvrent les avis de l’archive, y compris les périodes que les agences ont annoncées. Les jours où les avis ont réellement été recueillis ne sont pas publiés; ils ne sont donc pas comptés.',
 			},
 			evidence: {
 				region: (family: string) => `Famille choisie : ${family}`,
 				datesLabel: 'Dates',
+				alertDatesLabel: 'Dates des avis archivés',
 				daysLabel: 'Jours avec des données',
 				missingLabel: 'Jours manquants',
 				browseLabel: 'Mode de consultation',

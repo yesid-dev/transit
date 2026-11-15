@@ -74,6 +74,8 @@
 		<span class="days-note absent">{t.days.unknown}</span>
 	{:else if row.state === 'unreadable-dates' || row.state === 'past-publication'}
 		<span class="days-note absent">{t.days.unreadable}</span>
+	{:else if row.state === 'announced-periods'}
+		<span class="days-note absent">{t.days.alertsUncounted}</span>
 	{/if}
 {/snippet}
 
@@ -173,7 +175,11 @@
 				{:else}
 					<dl class="facts">
 						<div class="fact">
-							<dt>{t.evidence.datesLabel}</dt>
+							<dt>
+								{selected.state === 'announced-periods'
+									? t.evidence.alertDatesLabel
+									: t.evidence.datesLabel}
+							</dt>
 							<dd>{@render dates(selected, true)}</dd>
 						</div>
 						<div class="fact">
@@ -182,6 +188,8 @@
 								{@render daysSummary(selected)}
 								{#if selected.state === 'past-publication'}
 									<span class="days-note">{t.days.pastPublication}</span>
+								{:else if selected.state === 'announced-periods'}
+									<span class="days-note">{t.days.alertsExplain}</span>
 								{:else if !selected.days && selected.state !== 'unreadable-dates'}
 									<AbsentValue variant="compact" reason="no-retained-dates" {locale} />
 								{/if}

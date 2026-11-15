@@ -271,43 +271,67 @@ describe('selectHistoryCoverage', () => {
 		});
 	});
 
-	it('never counts days the date list could not have seen when it was published', () => {
-		// Production on 2026-11-15: STM's alert archive spans the periods agencies announce.
-		const published = (families: NonNullable<HistoricAvailabilityIndex['families']>) =>
-			selectHistoryCoverage({ generated_utc: iso('2026-11-11T07:11:02Z'), families });
-		const family = (key: 'alerts' | 'receipts', first: string, last: string) => ({
-			family: key,
-			selection_mode: 'range' as const,
-			index_path: `historic/${key}/index.json`,
-			first_available_date: first,
-			last_available_date: last,
-			gaps: [],
-		});
-		const [alerts, receipts] = published([
-			family('alerts', '2010-03-16', '2028-03-31'),
-			family('receipts', '2026-05-25', '2026-11-11'),
-		]);
+	it('never counts a day after the one its date list was published', () => {
+		// Published 2026-11-11T07:11:02Z: November 12 had not begun anywhere, not even at UTC+14.
+		const receipts = (last: string) =>
+			selectHistoryCoverage({
+				generated_utc: iso('2026-11-11T07:11:02Z'),
+				families: [
+					{
+						family: 'receipts',
+						selection_mode: 'date',
+						index_path: 'historic/receipts/index.json',
+						first_available_date: '2026-05-25',
+						last_available_date: last,
+						gaps: [],
+					},
+				],
+			})[1];
 
-		expect(alerts).toMatchObject({
-			state: 'past-publication',
-			days: null,
-			firstDate: '2010-03-16',
-			lastDate: '2028-03-31',
-		});
 		// 171 days, May 25 to Nov 11 inclusive, ending on the day the list was published.
-		expect(receipts).toMatchObject({
+		expect(receipts('2026-11-11')).toMatchObject({
 			state: 'no-gaps',
 			days: { inWindow: 171, missing: 0, withRecords: 171, gapRuns: 0 },
 		});
-		// A zone ahead of UTC can already be on the next calendar day; two days ahead cannot.
-		expect(published([family('alerts', '2026-11-01', '2026-11-12')])[0]).toMatchObject({
-			state: 'no-gaps',
-			days: { inWindow: 12, withRecords: 12 },
-		});
-		expect(published([family('alerts', '2026-11-01', '2026-11-13')])[0]).toMatchObject({
-			state: 'past-publication',
-			days: null,
-		});
+		for (const last of ['2026-11-12', '2026-11-13', '2028-03-31'])
+			expect(receipts(last)).toMatchObject({
+				state: 'past-publication',
+				days: null,
+				firstDate: '2026-05-25',
+				lastDate: last,
+			});
+	});
+
+	it('never counts alert days: announced periods are not days on which alerts were collected', () => {
+		// STM's archive holds an alert announced from 2010-03-16 but first seen on 2026-05-27.
+		const alerts = (last: string, gaps?: { start_date: string; end_date: string }[]) =>
+			selectHistoryCoverage({
+				generated_utc: iso('2026-11-11T07:11:02Z'),
+				families: [
+					{
+						family: 'alerts',
+						selection_mode: 'range',
+						index_path: 'historic/alerts/index.json',
+						first_available_date: '2010-03-16',
+						last_available_date: last,
+						gaps,
+					},
+				],
+			})[0];
+
+		for (const row of [
+			alerts('2026-11-11', []),
+			alerts('2026-11-11'),
+			alerts('2026-11-11', [{ start_date: '2020-01-01', end_date: '2020-12-31' }]),
+			alerts('2028-03-31', []),
+		])
+			expect(row).toMatchObject({
+				key: 'alerts',
+				published: true,
+				state: 'announced-periods',
+				days: null,
+				firstDate: '2010-03-16',
+			});
 	});
 
 	it('keeps every day count whole, in range and equal to the sum of its parts', () => {
@@ -323,20 +347,20 @@ describe('selectHistoryCoverage', () => {
 				const start = first - 5 + next(last - first + 10);
 				return { start_date: day(start), end_date: day(start + next(8)) };
 			});
-			const [row] = selectHistoryCoverage(
+			const row = selectHistoryCoverage(
 				root([
 					{
-						family: 'alerts',
+						family: 'network',
 						selection_mode: 'range',
-						index_path: 'historic/alerts/index.json',
+						index_path: 'historic/history/network/index.json',
 						first_available_date: day(first),
 						last_available_date: day(last),
 						gaps,
 					},
 				]),
-			);
-			// The list is published on Jul 14 (day 194): nothing after Jul 15 (day 195) is counted.
-			if (last > 195) {
+			).find((family) => family.key === 'network');
+			// The list is published on Jul 14 (day 194): nothing after it is counted.
+			if (last > 194) {
 				expect(row).toMatchObject({ state: 'past-publication', days: null });
 				continue;
 			}
