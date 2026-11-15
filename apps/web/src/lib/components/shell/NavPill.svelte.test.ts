@@ -14,6 +14,61 @@ import { PublicProviderCatalogSchema } from '#lib/v1/providers.ts';
 import { NAV_ITEMS } from '#lib/content/nav.ts';
 import { navPillCopy } from '#lib/i18n/messages.ts';
 
+// The owner's approved menu (R4.26, S0.4 Design E): four labelled groups, plain labels.
+const MENU = {
+	en: {
+		search: 'Search',
+		groups: [
+			['Now', ['Overview', 'Live map', 'Network health']],
+			['Explore', ['Lines', 'Stops']],
+			[
+				'Rankings and reports',
+				['Worst lines and stops', 'Chronic late trips and buses', 'Daily report', 'Service alerts'],
+			],
+			['About the data', ['How we measure', 'Data health', 'About Yesid (opens in a new tab)']],
+		],
+	},
+	fr: {
+		search: 'Rechercher',
+		groups: [
+			['En ce moment', ['Aperçu', 'Carte en direct', 'Santé du réseau']],
+			['Explorer', ['Lignes', 'Arrêts']],
+			[
+				'Classements et rapports',
+				[
+					'Pires lignes et arrêts',
+					'Trajets et bus souvent en retard',
+					'Rapport quotidien',
+					'Avis de service',
+				],
+			],
+			[
+				'À propos des données',
+				['Comment on mesure', 'Santé des données', 'À propos de Yesid (nouvel onglet)'],
+			],
+		],
+	},
+} as const;
+
+it.each(['en', 'fr'] as const)(
+	'names the search button with its word and the menu in four labelled groups in %s',
+	async (locale) => {
+		const view = render(NavPill, { props: { locale } });
+		const search = view.getByRole('button', { name: navPillCopy[locale].searchAria.all });
+		expect(search).toHaveTextContent(MENU[locale].search);
+		await fireEvent.click(view.getByRole('button', { name: navPillCopy[locale].openMenu }));
+		const menu = within(view.getByRole('dialog'));
+		expect(
+			menu.getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent),
+		).toEqual(MENU[locale].groups.map(([label]) => label));
+		for (const [label, items] of MENU[locale].groups) {
+			const links = within(menu.getByRole('list', { name: label })).getAllByRole('link');
+			expect(links).toHaveLength(items.length);
+			items.forEach((name, index) => expect(links[index]).toHaveAccessibleName(name));
+		}
+	},
+);
+
 it.each(['en', 'fr'] as const)('gates alert navigation by capability in %s', async (locale) => {
 	const base = PublicProviderCatalogSchema.parse(catalog).providers[0];
 	const provider = {

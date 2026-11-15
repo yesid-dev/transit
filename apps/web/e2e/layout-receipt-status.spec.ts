@@ -3,7 +3,7 @@ import { test } from './layout-test';
 import { forwardRoute } from './layout-helpers';
 import { copy as healthCopy } from '../src/lib/features/health/health.copy';
 import { copy as receiptCopy } from '../src/lib/features/receipt/receipt.copy';
-import { navPillCopy } from '../src/lib/i18n/messages';
+import { revealRefresh } from './header-refresh';
 
 for (const locale of ['en', 'fr'] as const)
 	test(`${locale} status summary keeps its place while the page hydrates and refreshes`, async ({
@@ -22,7 +22,7 @@ for (const locale of ['en', 'fr'] as const)
 			if (!body.includes('.health-summary')) await stylesHeld;
 			await route.fulfill({ response, body });
 		});
-		await page.goto(`${locale === 'fr' ? '/fr' : ''}/status`, { waitUntil: 'commit' });
+		await page.goto(`${locale === 'fr' ? '/fr' : ''}/status?provider=stm`, { waitUntil: 'commit' });
 		const summary = page.locator('[data-slot="health-summary"]');
 		await expect(summary).toHaveAttribute('aria-busy', 'true');
 		await page.addStyleTag({ content: 'html { font-size: 200%; }' });
@@ -52,7 +52,7 @@ for (const locale of ['en', 'fr'] as const)
 			failing.then(() => route.abort()),
 		);
 		const pending = page.waitForRequest('**/historic/history/index.json');
-		await page.getByRole('button', { name: navPillCopy[locale].refresh }).click();
+		await (await revealRefresh(page, locale)).click();
 		await pending;
 		expect(Math.abs((await nextTop()) - before)).toBeLessThanOrEqual(1);
 		release(); // the history request fails

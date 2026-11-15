@@ -5,10 +5,12 @@ import {
 	AUDIT_NAV,
 	SURFACE_NAV,
 	NAV_ITEMS,
+	NAV_GROUPS,
 	LEGAL_NAV,
 	YESID_HOUSE_LINK,
 } from '../src/lib/content/nav';
 import { DEFAULT_LOCALE, PUBLISHED_LOCALES, type Locale } from '../src/lib/i18n/config';
+import { localizeHref } from '../src/lib/i18n/routing';
 
 const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const destinations = NAV_ITEMS;
@@ -16,7 +18,8 @@ const destinations = NAV_ITEMS;
 const localized = (href: string, locale: Locale) =>
 	locale === DEFAULT_LOCALE ? href : `/${locale}${href}`;
 const home = (locale: Locale) => (locale === DEFAULT_LOCALE ? '/' : `/${locale}`);
-const start = (locale: Locale) => localized(AUDIT_NAV[0].href, locale);
+// Pin the fixture network rather than accepting the local Worker's approximate location.
+const start = (locale: Locale) => localizeHref(AUDIT_NAV[0].href, locale, 'stm');
 const next = (locale: Locale) =>
 	PUBLISHED_LOCALES[(PUBLISHED_LOCALES.indexOf(locale) + 1) % PUBLISHED_LOCALES.length];
 const samePath = (href: string) => (url: URL) => url.pathname === new URL(href, url).pathname;
@@ -77,6 +80,14 @@ for (const locale of PUBLISHED_LOCALES) {
 	test(`${locale}: the menu lists its destinations in four groups`, async ({ page }) => {
 		await page.goto(start(locale));
 		const menu = await openMenu(page, locale);
+		for (const group of NAV_GROUPS) {
+			await expect(
+				menu.getByRole('heading', { name: group.label[locale], exact: true }),
+			).toBeVisible();
+			await expect(
+				menu.getByRole('list', { name: group.label[locale], exact: true }),
+			).toBeVisible();
+		}
 		for (const [index, item] of NAV_ITEMS.entries()) {
 			await expect(menu.getByRole('link').nth(index)).toHaveAccessibleName(item.label[locale]);
 		}
@@ -96,7 +107,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		}
 	});
 	test(`${locale}: a network with no alert feed has no Service alerts`, async ({ page }) => {
-		await page.goto(`${start(locale)}?provider=octranspo`);
+		await page.goto(localizeHref(AUDIT_NAV[0].href, locale, 'octranspo'));
 		const menu = await openMenu(page, locale);
 		const name = NAV_ITEMS.find((item) => item.key === 'alerts')!.label[locale];
 		await expect(menu.getByRole('link', { name, exact: true })).toHaveCount(0);

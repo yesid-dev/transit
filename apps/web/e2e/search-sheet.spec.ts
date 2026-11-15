@@ -25,10 +25,10 @@ for (const locale of PUBLISHED_LOCALES) {
 	const words = headerSearchCopy[locale];
 	const trigger = (page: Page) => page.getByRole('button', { name, exact: true });
 	const sheet = (page: Page) => page.getByRole('dialog', { name: words.sheetTitle });
-	const home = localizeHref('/', locale);
+	const home = localizeHref('/', locale, 'stm');
 	// On a line page the field and its button are named for lines.
 	const onLine = navPillCopy[locale].searchAria.route;
-	const start = localizeHref(`/lines/${other.id}`, locale);
+	const start = localizeHref(`/lines/${other.id}`, locale, 'stm');
 	const row = new RegExp(`^${literal(`${words.kind.route} ${heading(line)}`)}`);
 	const entries = (page: Page) => page.evaluate(() => history.length);
 
@@ -59,7 +59,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		expect(await entries(page)).toBe(length + 1);
 		// One Back shows the page the search began on, not only its URL.
 		await page.goBack();
-		await expect(page).toHaveURL((url) => url.pathname === start);
+		await expect(page).toHaveURL((url) => url.pathname + url.search === start);
 		await expect(title).toHaveText(heading(other));
 		await expect(sheet(page)).toBeHidden();
 	});
@@ -78,7 +78,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		await expect(await openSheet(page)).toHaveValue(line.long);
 		await page.goBack();
 		await expect(sheet(page)).toBeHidden();
-		await expect(page).toHaveURL((url) => url.pathname === home);
+		await expect(page).toHaveURL((url) => url.pathname + url.search === home);
 		await expect(trigger(page)).toBeFocused();
 	});
 
@@ -110,7 +110,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		await expect(title).toHaveText(heading(line));
 		expect(await entries(page)).toBe(length + 1);
 		await page.goBack();
-		await expect(page).toHaveURL((url) => url.pathname === start);
+		await expect(page).toHaveURL((url) => url.pathname + url.search === start);
 		await expect(title).toHaveText(heading(other));
 		await expect(sheet(page)).toBeHidden();
 	});

@@ -32,6 +32,7 @@
 	import SearchSheet from './SearchSheet.svelte';
 	import {
 		type NavItem,
+		NAV_GROUPS,
 		NAV_ITEMS,
 		visibleNav,
 		YESID_HOUSE_LINK,
@@ -110,21 +111,31 @@
 		})),
 	);
 	const selectedProvider = $derived(providers.find((provider) => provider.id === providerId));
-	const menuItems = $derived([
-		...visibleNav({ alerts: selectedProvider ? providerHasAlerts(selectedProvider) : null }).map(
-			(item) => ({
-				...toItem(item),
-				icon: MENU_ICONS[item.key],
-			}),
-		),
-		{
-			href: YESID_HOUSE_LINK.href,
-			label: YESID_HOUSE_LINK.label[locale],
-			external: true,
-			icon: ExternalLinkIcon,
-			ariaLabel: `${YESID_HOUSE_LINK.label[locale]} ${navCopy.newTab}`,
-		},
-	]);
+	// The menu's four labelled groups; About Yesid closes the last one.
+	const menuGroups = $derived.by(() => {
+		const visible = visibleNav({
+			alerts: selectedProvider ? providerHasAlerts(selectedProvider) : null,
+		});
+		return NAV_GROUPS.map((group) => ({
+			label: group.label[locale],
+			items: [
+				...visible
+					.filter((item) => item.group === group.key)
+					.map((item) => ({ ...toItem(item), icon: MENU_ICONS[item.key] })),
+				...(group.key === 'about'
+					? [
+							{
+								href: YESID_HOUSE_LINK.href,
+								label: YESID_HOUSE_LINK.label[locale],
+								external: true,
+								icon: ExternalLinkIcon,
+								ariaLabel: `${YESID_HOUSE_LINK.label[locale]} ${navCopy.newTab}`,
+							},
+						]
+					: []),
+			],
+		}));
+	});
 
 	const providerText = (provider: PublicProvider) =>
 		`${provider.labels[locale].city} · ${provider.labels[locale].operator}`;
@@ -237,7 +248,7 @@
 	{brand}
 	{links}
 	linkTiers={{ priority3: 1280 }}
-	{menuItems}
+	{menuGroups}
 	labels={navCopy}
 	language={{
 		locale,
@@ -259,12 +270,14 @@
 	/* Transit's pill also holds refresh and search, so on phones the 18px brand pushes the pill off
 	   screen. ProductBrand takes a caller size; below SiteHeader's narrow tier only the product
 	   name stays (the house link is in the menu). */
+	:global(.nav-product-brand) {
+		flex-shrink: 0;
+		white-space: nowrap;
+	}
 	@container site-header (width < 400px) {
 		:global(.nav-product-brand) {
 			font-size: 1rem;
 		}
-	}
-	@container site-header (width < 375px) {
 		:global(.nav-product-brand > [data-slot='wordmark']),
 		:global(.nav-product-brand > [aria-hidden='true']) {
 			display: none;
@@ -313,6 +326,12 @@
 		outline-offset: 2px;
 	}
 	@container site-header (width < 600px) {
+		/* Larger text can use a second row without shrinking any control's target. */
+		:global(.nav-pill) {
+			max-width: calc(100cqi - 8px);
+			flex-wrap: wrap;
+			justify-content: center;
+		}
 		.nav-provider-full {
 			display: none;
 		}
@@ -338,6 +357,12 @@
 	:global(.nav-refresh) {
 		min-width: 44px;
 		min-height: 44px;
+	}
+	/* Below a 600 px header Refresh waits in the open menu, whose dialog holds the pill. */
+	@container site-header (width < 600px) {
+		:global(.nav-refresh:not([role='dialog'][aria-modal='true'] .nav-refresh)) {
+			display: none;
+		}
 	}
 
 	@media (--tablet-max) {
