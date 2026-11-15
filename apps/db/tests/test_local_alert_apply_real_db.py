@@ -1,4 +1,5 @@
 import json
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import timedelta
 
@@ -12,6 +13,15 @@ from transit_ops.silver.i3 import RawI3AlertSnapshot, load_i3_snapshot_to_silver
 from transit_ops.static.alert_seed import AlertSeed, read_alert_seed
 from transit_ops.static.alert_seed_contract import KEYS, SCHEMAS, TABLES
 from transit_ops.static.alert_state import seed_alert_state
+
+
+@contextmanager
+def rollback_transaction(pg):
+    transaction = pg.begin()
+    try:
+        yield
+    finally:
+        transaction.rollback()
 
 
 def pg_capture(pg, payload, sid, seconds=0):
@@ -56,6 +66,8 @@ def compare(pg, store):
 
 
 def transitions(case):
+    if case == "negative_zero":
+        return [(1, 1, [{"id": "zero", "header": {"fr": "Avis"}, "severity": -0.0}])]
     if case == "children":
         return [
             (
@@ -115,6 +127,7 @@ def transitions(case):
         "jsonb",
         "display",
         "period_index",
+        "negative_zero",
     ],
 )
 def test_seed_then_replay_equals_postgres_at_same_commit(
@@ -126,19 +139,23 @@ def test_seed_then_replay_equals_postgres_at_same_commit(
 
     from transit_ops.live.local_file import LocalFile
 
+    initial = (
+        [{"id": "zero", "header": {"fr": "Avis"}, "severity": 0.0}]
+        if case == "negative_zero"
+        else [ALERT]
+    )
     with real_db_engine.connect() as pg:
         # Export real first-capture rows, then roll back the disposable source setup.
-        with pg.begin() as transaction:
+        with rollback_transaction(pg):
             pg.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"))
             oracle._seed(pg, seed_provider)
-            first = pg_capture(pg, [ALERT], oracle.SNAP_IDS[0])
+            first = pg_capture(pg, initial, oracle.SNAP_IDS[0])
             load_i3_snapshot_to_silver(pg, snapshot=first, loaded_at_utc=AT)
             pg.execute(text("SET TRANSACTION READ ONLY"))
             seed = AlertSeed.from_json(read_alert_seed(pg, provider_id=oracle.PROVIDER).to_json())
-            transaction.rollback()
         # Rebuild the same oracle start, preserving the exported snapshot identities.
         with (
-            pg.begin(),
+            rollback_transaction(pg),
             closing(
                 LocalFile.open(
                     tmp_path / "parity.db", provider_id=oracle.PROVIDER, settings=SETTINGS
@@ -146,10 +163,11 @@ def test_seed_then_replay_equals_postgres_at_same_commit(
             ) as store,
         ):
             oracle._seed(pg, seed_provider)
-            first = pg_capture(pg, [ALERT], oracle.SNAP_IDS[0])
+            first = pg_capture(pg, initial, oracle.SNAP_IDS[0])
             load_i3_snapshot_to_silver(pg, snapshot=first, loaded_at_utc=AT)
             seed_alert_state(store, seed)
             compare(pg, store)
+            first_hash = read(store)[0]["content_hash"]
             for index, seconds, payload in transitions(case):
                 snapshot = pg_capture(pg, payload, oracle.SNAP_IDS[index], seconds)
                 expected = load_i3_snapshot_to_silver(pg, snapshot=snapshot, loaded_at_utc=AT)
@@ -157,3 +175,25 @@ def test_seed_then_replay_equals_postgres_at_same_commit(
                 actual = apply(store, replace(snapshot, raw_payload_json=payload))
                 assert actual == expected
                 compare(pg, store)
+                if case == "negative_zero":
+                    assert actual.alerts_redirected_to_existing == 1
+                    assert actual.alerts_superseded == 0
+                    rows = read(store)
+                    assert len(rows) == 1
+                    row = rows[0]
+                    assert (
+                        row["i3_alert_snapshot_id"],
+                        row["message_snapshot_id"],
+                        row["content_hash"],
+                        row["valid_to"],
+                        row["last_seen_at"],
+                    ) == (
+                        oracle.SNAP_IDS[0],
+                        oracle.SNAP_IDS[1],
+                        first_hash,
+                        None,
+                        AT + timedelta(seconds=1),
+                    )
+                    assert row["raw_alert_json"] == (
+                        '{"id": "zero", "header": {"fr": "Avis"}, "severity": 0.0}'
+                    )

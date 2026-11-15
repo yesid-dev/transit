@@ -22,7 +22,11 @@ def _jsonb(value: Any) -> str:
     if isinstance(value, list):
         return "[" + ", ".join(_jsonb(item) for item in value) + "]"
     if isinstance(value, float):
-        return format(Decimal(str(value)), "f")
+        number = Decimal(str(value))
+        # PostgreSQL numeric removes zero's sign without changing its decimal scale.
+        if number.is_zero():
+            number = number.copy_abs()
+        return format(number, "f")
     if isinstance(value, str):
         value.encode("utf-8")
         if "\x00" in value:

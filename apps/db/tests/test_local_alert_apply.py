@@ -174,3 +174,25 @@ def test_wrong_provider_refused_without_changes(local):
     with pytest.raises(ValueError, match="provider"):
         apply(local, replace(capture([ALERT]), provider_id="other"))
     assert persisted_state(local.connection) == before
+
+
+def test_negative_zero_capture_preserves_postgres_alert_identity(local):
+    alert = {"id": "zero", "header": {"fr": "Avis"}, "severity": 0.0}
+    apply(local, capture([alert]))
+    first_hash = read(local)[0]["content_hash"]
+    result = apply(local, capture([alert | {"severity": -0.0}], 102, 1))
+    assert result.alerts_redirected_to_existing == 1
+    assert result.alerts_superseded == 0
+    rows = read(local)
+    assert len(rows) == 1
+    row = rows[0]
+    assert (
+        row["i3_alert_snapshot_id"],
+        row["message_snapshot_id"],
+        row["content_hash"],
+        row["severity"],
+        row["valid_to"],
+        row["first_seen_at"],
+        row["last_seen_at"],
+    ) == (101, 102, first_hash, "0.0", None, AT, AT + timedelta(seconds=1))
+    assert row["raw_alert_json"] == ('{"id": "zero", "header": {"fr": "Avis"}, "severity": 0.0}')
