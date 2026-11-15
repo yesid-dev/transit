@@ -9,6 +9,7 @@ from test_snapshots_live_departures_real_db import (
     PROVIDER,
     RAW_SNAP_ID,
     RUN_ID,
+    _add_delay_snapshot,
     _add_trip_update,
     _stop,
 )
@@ -16,6 +17,53 @@ from test_snapshots_live_departures_real_db import conn as conn
 
 from transit_ops.snapshots.builders import build_vehicles
 from transit_ops.snapshots.builders.live import _VEHICLES_SQL
+
+
+def test_vehicles_publish_in_binary_id_order_with_stable_ties(conn):
+    # Reverse binary order, including case, duplicate ids and a missing id.
+    for entity_index, vehicle_id in [(5, None), (4, "v1"), (3, "V2"), (2, "V1"), (1, "V1")]:
+        conn.execute(
+            text("""
+            INSERT INTO gold.latest_vehicle_snapshot
+                (provider_id, realtime_snapshot_id, entity_index, snapshot_date_key,
+                 snapshot_local_date, feed_timestamp_utc, captured_at_utc,
+                 vehicle_id, trip_id, route_id, latitude, longitude)
+            VALUES (:p, :s, :i, to_char(now(), 'YYYYMMDD')::int, now()::date, now(), now(),
+                    :v, 'ordering-trip', :route, 45.5, -73.6)
+            """),
+            {
+                "p": PROVIDER,
+                "s": RAW_SNAP_ID,
+                "i": entity_index,
+                "v": vehicle_id,
+                "route": str(entity_index),
+            },
+        )
+    # The status view can fan out one entity into distinct delay groups.
+    for entity_index, direction, delay in [(11, 1, 240), (10, 0, 120)]:
+        _add_delay_snapshot(
+            conn,
+            entity_index=entity_index,
+            trip_id="ordering-trip",
+            route_id="51",
+            direction_id=direction,
+            delay_seconds=delay,
+        )
+
+    result = build_vehicles(conn, provider_id=PROVIDER, generated_utc="fixture")
+
+    assert [(v.id, v.route, v.delay_min) for v in result.vehicles] == [
+        ("V1", "1", 2),
+        ("V1", "1", 4),
+        ("V1", "2", 2),
+        ("V1", "2", 4),
+        ("V2", "3", 2),
+        ("V2", "3", 4),
+        ("v1", "4", 2),
+        ("v1", "4", 4),
+        ("None", "5", 2),
+        ("None", "5", 4),
+    ]
 
 
 def _vehicle(

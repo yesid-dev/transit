@@ -142,6 +142,9 @@ _VEHICLES_SQL = named_query(
         ON ds.provider_id = cvm.provider_id
        AND ds.stop_id = COALESCE(cvm.stop_id, upcoming.stop_id)
     WHERE cvm.provider_id = :provider_id
+    ORDER BY cvm.vehicle_id COLLATE "C" NULLS LAST,
+             cvm.realtime_snapshot_id, cvm.entity_index,
+             cvm.trip_avg_delay_seconds NULLS LAST
     """,
 )
 
