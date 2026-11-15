@@ -10,8 +10,8 @@ from collections.abc import Callable, Collection, Iterator, Mapping
 from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import asdict, fields, replace
-from datetime import UTC, datetime, timedelta
-from typing import Never, get_args
+from datetime import UTC, date, datetime, timedelta
+from typing import TYPE_CHECKING, Never, cast, get_args
 
 from transit_ops.control.objects import ConditionalObjects
 from transit_ops.history import datasets, ledger
@@ -20,12 +20,14 @@ from transit_ops.history.ledger_r2_readers import WindowCursor, events, recover
 from transit_ops.history.ledger_r2_transitions import apply_transition
 from transit_ops.history.ledger_store import (
     AUDIT_KINDS,
+    LedgerStore,
     NewCopy,
     RecordedEvent,
     WindowChanged,
     WindowIdentity,
     validate_new_copy,
 )
+from transit_ops.history.ledger_store import validate_no_nul as _nul
 
 
 def _identity(identity: WindowIdentity) -> tuple[str, str, int, str]:
@@ -42,22 +44,15 @@ def _text(value: object) -> None:
         raise ValueError("reason and actor must not be empty")
 
 
-def _nul(value: object) -> None:
-    if isinstance(value, str) and "\0" in value:
-        raise ValueError("text must not contain NUL")
-    if isinstance(value, Mapping):
-        for key, item in value.items():
-            _nul(key)
-            _nul(item)
-    elif isinstance(value, (list, tuple)):
-        for item in value:
-            _nul(item)
-
-
 def _aware(at: datetime) -> datetime:
     if not isinstance(at, datetime) or at.utcoffset() is None:
         raise ValueError("copy time must be an aware datetime")
     return at.astimezone(UTC)
+
+
+def _audit_kind(kind: ledger.EventKind) -> None:
+    if kind not in AUDIT_KINDS:
+        raise ValueError(f"record_event refuses lifecycle kind {kind!r}; use its guarded verb")
 
 
 def project_state(doc: WindowDocument | None) -> ledger.WindowState | None:
@@ -89,6 +84,8 @@ class R2Ledger:
         default_actor: str,
         max_attempts: int,
     ) -> None:
+        if not isinstance(default_actor, str):
+            raise ValueError("default_actor must be str")
         _text(default_actor or "")
         if type(max_attempts) is not int or not 1 <= max_attempts <= 20:
             raise ValueError("max_attempts must be from 1 to 20")
@@ -101,7 +98,8 @@ class R2Ledger:
         cursor = recover(self.objects, key, max_attempts=self.max_attempts)
         session = _Session(self, identity, cursor, _aware(self.clock()))
         yield session
-        session.state()
+        if session.failed:
+            raise RuntimeError("ledger session failed; all session writes rolled back")
         if session.doc == cursor.doc and not session.records:
             return
 
@@ -118,6 +116,96 @@ class R2Ledger:
         apply_transition(
             self.objects, key, change, clock=session.now, max_attempts=self.max_attempts
         )
+
+    def record_audit(
+        self,
+        identity: WindowIdentity,
+        kind: ledger.EventKind,
+        details: Mapping[str, object],
+        *,
+        reason: str | None = None,
+        actor: str | None = None,
+    ) -> RecordedEvent:
+        key = _identity(identity)
+        _audit_kind(kind)
+        record = self._event_record(kind, None, actor, reason, details, 1, _aware(self.clock()))
+        written = record
+
+        def change(cursor: WindowCursor, at: datetime) -> Transition:
+            nonlocal written
+            written = replace(record, sequence=cursor.next_record)
+            event = EventRecord(**{k: v for k, v in asdict(written).items() if k != "at_utc"})
+            after = replace(cursor.doc, seq=cursor.next_seq) if cursor.doc else None
+            return Transition(after, (event,))
+
+        apply_transition(
+            self.objects, key, change, clock=lambda: record.at_utc, max_attempts=self.max_attempts
+        )
+        return written
+
+    def _event_record(
+        self,
+        kind: ledger.EventKind,
+        version: int | None,
+        actor: str | None,
+        reason: str | None,
+        details: Mapping[str, object] | None,
+        sequence: int,
+        at: datetime,
+    ) -> RecordedEvent:
+        _text(actor)
+        _text(reason)
+        _nul(details)
+        details = json.loads(json.dumps(details or {}, sort_keys=True, allow_nan=False))
+        if version is not None and version < 1:
+            raise ValueError("content_version must be positive")
+        return RecordedEvent(
+            sequence,
+            kind,
+            version,
+            reason,
+            dict(details or {}),
+            self.default_actor if actor is None else actor,
+            at,
+        )
+
+    def window_state(self, identity: WindowIdentity) -> ledger.WindowState | None:
+        doc = recover(self.objects, _identity(identity), max_attempts=self.max_attempts).doc
+        return project_state(doc)
+
+    def events(
+        self, identity: WindowIdentity, *, kinds: Collection[str] | None = None
+    ) -> list[RecordedEvent]:
+        return [
+            RecordedEvent(**asdict(r))
+            for r in events(
+                self.objects, _identity(identity), kinds=kinds, max_attempts=self.max_attempts
+            )
+        ]
+
+    def find_copies(
+        self, *, dataset_id: str, provider_id: str, start: date, end: date, revision: int = 0
+    ) -> list[ledger.ArchiveCopy]:
+        dataset = datasets.get_dataset(dataset_id)
+        if start > end:
+            raise ValueError("start must not be after end")
+        ledger._check_revision(dataset, revision)
+        if dataset.archive_grain == "edition":
+            return []
+        copies: list[ledger.ArchiveCopy] = []
+        for offset in range((end - start).days + 1):
+            day = start + timedelta(days=offset)
+            if dataset.archive_grain == "month" and day.day != 1:
+                continue
+            window = day.isoformat()[:7] if dataset.archive_grain == "month" else day.isoformat()
+            current = recover(
+                self.objects,
+                (dataset_id, provider_id, revision, window),
+                max_attempts=self.max_attempts,
+            ).doc
+            if current:
+                copies.extend(current.copies)
+        return sorted(copies, key=lambda c: (c.window_start, c.window_key, c.content_version))
 
 
 class _Session:
@@ -150,6 +238,9 @@ class _Session:
         self.state()
         return deepcopy([r for r in self.prior + self.records if kinds is None or r.kind in kinds])
 
+    def processing_events(self) -> list[RecordedEvent]:
+        return self.events(kinds={"processing_evidence"})
+
     def record_event(
         self,
         kind: ledger.EventKind,
@@ -159,8 +250,7 @@ class _Session:
         details: Mapping[str, object] | None = None,
         actor: str | None = None,
     ) -> None:
-        if kind not in AUDIT_KINDS:
-            raise ValueError(f"record_event refuses lifecycle kind {kind!r}; use its guarded verb")
+        _audit_kind(kind)
         self._record(kind, content_version, actor, reason, details)
 
     def _record(
@@ -171,20 +261,14 @@ class _Session:
         reason: str | None = None,
         details: Mapping[str, object] | None = None,
     ) -> None:
-        _text(actor)
-        _text(reason)
-        _nul(details)
-        details = json.loads(json.dumps(details or {}, sort_keys=True, allow_nan=False))
-        if content_version is not None and content_version < 1:
-            raise ValueError("content_version must be positive")
         self.records.append(
-            RecordedEvent(
-                self.cursor.next_record + len(self.records),
+            self.store._event_record(
                 kind,
                 content_version,
+                actor,
                 reason,
-                dict(details or {}),
-                self.store.default_actor if actor is None else actor,
+                details,
+                self.cursor.next_record + len(self.records),
                 self.now(),
             )
         )
@@ -349,3 +433,7 @@ class _Session:
         self._record(
             "unhold" if until is None else "hold", actor=actor, reason=reason, details=details
         )
+
+
+if TYPE_CHECKING:
+    _ledger_store_contract: LedgerStore = cast(R2Ledger, None)

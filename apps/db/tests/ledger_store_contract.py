@@ -6,7 +6,7 @@ from sqlalchemy.exc import DBAPIError
 
 from transit_ops.history.datasets import UndeclaredDataset
 from transit_ops.history.ledger import HOLD_NO_END, WindowNotFound, WindowState
-from transit_ops.history.ledger_store import NewCopy
+from transit_ops.history.ledger_store import NewCopy, RecordedEvent, WindowIdentity
 
 INVALID_COPY_VALUES = [
     (field, value)
@@ -127,6 +127,7 @@ def test_session_reads_see_its_own_writes(store, make_identity):
 def test_working_state_changes_only_from_present_or_empty(store, make_identity):
     with store.session(make_identity()) as session:
         session.mark_changed()
+        assert isinstance(session.events()[0], RecordedEvent) and session.events()[0].actor
         session.set_working_state("empty")
         assert session.state().working_state == "empty"
         session.set_working_state("partial")
@@ -441,14 +442,21 @@ def test_rewrite_provenance_round_trips_through_events(store, make_identity):
     assert store.events(identity, kinds=set()) == []
 
 
-@pytest.mark.parametrize("case", ["event", "copy", {1: "a", "1": "b"}])
+@pytest.mark.parametrize(
+    "case", ["event", "copy", {1: "a", "1": "b"}, ("copy", {1: "a", "1": "b"})]
+)
 def test_details_are_owned_json_values(store, make_identity, case):
     def read(session):
         return (session.copies() if case == "copy" else session.events())[0].details
 
-    if isinstance(case, dict):
+    if isinstance(case, (dict, tuple)):
         with store.session(make_identity()) as session, pytest.raises(TypeError):
-            session.record_event("close_runs", details=case)
+            if isinstance(case, tuple):
+                session.insert_allocated_copy(
+                    replace(new_copy(session.allocate_version()), details=case[1])
+                )
+            else:
+                session.record_event("close_runs", details=case)
         return
     with store.session(make_identity()) as session:
         details = {"rows": [1], "tuple": (1, 2)}
@@ -483,3 +491,85 @@ def test_copy_time_order_is_refused_at_the_verb(store, make_identity, verb):
             pytest.fail("invalid copy time accepted at the verb")
     with store.session(make_identity()) as session:
         assert session.copies()[0].state == "sealed"
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"actor": "bad\0actor"},
+        {"reason": "bad\0reason"},
+        {"details": {"nested": ["bad\0value"]}},
+        {"details": {"bad\0key": 1}},
+    ],
+)
+def test_nul_event_text_is_refused_without_persisting_records(store, make_identity, arguments):
+    identity = make_identity()
+    with pytest.raises((ValueError, DBAPIError)), store.session(identity) as session:
+        session.record_event("close_runs", **arguments)
+    assert store.events(identity) == []
+
+
+@pytest.mark.parametrize("state_exists", [False, True])
+@pytest.mark.parametrize(
+    "kind", ["changed", "close_runs", "processing_evidence", "fold_published", "rebuild"]
+)
+def record_audit_round_trip(
+    store, make_identity, kind, state_exists
+):
+    identity = make_identity()
+    if state_exists:
+        with store.session(identity) as session:
+            session.mark_changed()
+    before = store.window_state(identity)
+    for actor, reason in ((None, None), ("auditor", "closed")):
+        event = store.record_audit(
+            identity, kind, {"rows": 0, "optional": None}, reason=reason, actor=actor
+        )
+        assert isinstance(event, RecordedEvent)
+        assert event == store.events(identity)[-1]
+        assert (event.kind, event.content_version, event.reason, event.details) == (
+            kind, None, reason, {"rows": 0, "optional": None}
+        )
+        assert event.actor and (actor is None or event.actor == actor)
+        assert event.sequence > 0 and event.at_utc.utcoffset().total_seconds() == 0
+        assert store.window_state(identity) == before
+
+
+@pytest.mark.parametrize("kind", LIFECYCLE_KINDS)
+def record_audit_kind_refusals(store, make_identity, kind):
+    with pytest.raises(ValueError):
+        store.record_audit(make_identity(), kind, {})
+    assert store.events(make_identity()) == []
+
+
+@pytest.mark.parametrize("arguments", [{"actor": ""}, {"reason": ""}, {"details": {"nul": "\0"}}])
+def record_audit_text_refusals(store, make_identity, arguments):
+    with pytest.raises((ValueError, DBAPIError)):
+        store.record_audit(make_identity(), "close_runs", **{"details": {}, **arguments})
+    assert store.events(make_identity()) == []
+
+
+def test_range_reads_exclude_other_days_providers_and_editions(store, make_identity):
+    for identity in [make_identity(key) for key in ("2026-11-01", "2026-11-02", "2026-11-03")] + [
+        replace(make_identity("2026-11-02"), provider_id="other"),
+        WindowIdentity("silver.agency", "network", "e" * 64),
+    ]:
+        with store.session(identity) as session:
+            session.insert_allocated_copy(new_copy(session.allocate_version()))
+    arguments = dict(provider_id="network", start=date(2026, 11, 2), end=date(2026, 11, 2))
+    assert [
+        (c.window_key, c.content_version)
+        for c in store.find_copies(dataset_id="capture.trip_updates", **arguments)
+    ] == [("2026-11-02", 1)]
+    assert store.find_copies(dataset_id="silver.agency", **arguments) == []
+    with pytest.raises(ValueError, match="start"):
+        store.find_copies(
+            dataset_id="capture.trip_updates", **{**arguments, "end": date(2026, 11, 1)}
+        )
+    for key in ("2026-11", "2026-12"):
+        with store.session(WindowIdentity("gold.network_vehicle_day", "network", key)) as session:
+            session.insert_allocated_copy(new_copy(session.allocate_version()))
+    arguments.update(start=date(2026, 11, 15), end=date(2026, 12, 20))
+    assert [
+        c.window_key for c in store.find_copies(dataset_id="gold.network_vehicle_day", **arguments)
+    ] == ["2026-12"]

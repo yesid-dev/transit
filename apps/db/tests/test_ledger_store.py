@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 from ledger_store_contract import INVALID_COPY_VALUES, LIFECYCLE_KINDS, new_copy
+from ledger_store_contract import r2_store as r2_store
 from sqlalchemy import create_engine
 
 from transit_ops.history.ledger_postgres import PostgresLedger
@@ -139,6 +140,32 @@ def test_lock_free_audit_refuses_lifecycle_before_sql(monkeypatch, kind):
         PostgresLedger(connection).record_audit(
             WindowIdentity("capture.trip_updates", "network", "2026-11-01"), kind, {}
         )
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"details": {"nul": "\0"}},
+        {"details": {"nested": [{"value": "bad\0value"}]}},
+        {"details": {"bad\0key": None}},
+        {"actor": "bad\0actor"},
+        {"reason": "bad\0reason"},
+        {"identity": WindowIdentity("capture.trip_updates", "bad\0provider", "2026-11-01")},
+    ],
+)
+def test_lock_free_audit_refuses_nul_before_sql(monkeypatch, r2_store, arguments):
+    connection = TransactionConnection()
+    monkeypatch.setattr(connection, "execute", lambda *args: pytest.fail("audit attempted SQL"))
+    for store in (PostgresLedger(connection), r2_store):
+        with pytest.raises(ValueError, match="^text must not contain NUL$"):
+            store.record_audit(
+                **{
+                    "identity": WindowIdentity("capture.trip_updates", "network", "2026-11-01"),
+                    "kind": "close_runs",
+                    "details": {},
+                    **arguments,
+                }
+            )
 
 
 @pytest.mark.parametrize(

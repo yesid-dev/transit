@@ -5,6 +5,15 @@ from history_ledger_fixtures import conn as rollback_conn
 from history_ledger_fixtures import pipeline_role
 from ledger_store_contract import *  # noqa: F403
 from ledger_store_contract import new_copy
+from ledger_store_contract import (  # noqa: F401
+    record_audit_kind_refusals as test_record_audit_refuses_lifecycle_kinds,
+)
+from ledger_store_contract import (  # noqa: F401
+    record_audit_round_trip as test_record_audit_preserves_state_and_returns_its_event,
+)
+from ledger_store_contract import (  # noqa: F401
+    record_audit_text_refusals as test_record_audit_refuses_invalid_text,
+)
 from sqlalchemy.exc import DBAPIError
 
 from transit_ops.history.ledger_postgres import PostgresLedger
