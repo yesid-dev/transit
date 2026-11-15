@@ -7,7 +7,7 @@ import * as i18n from '#lib/i18n/index.ts';
 
 const snapshots = new SvelteMap<string, ReliabilitySnapshot>();
 const requested: string[] = [];
-let publishedRows: Array<{ id: string; state: string; pct: number }> | null = null;
+let publishedRows: Array<{ id: string; state: string; pct: number | null }> | null = null;
 let viewportRequestsEnabled = true;
 const historyCalls = vi.hoisted(() => ({
 	getLineHistoryDirectory: vi.fn(),
@@ -49,7 +49,16 @@ vi.mock('#lib/v1/repositories/historic.ts', () => historyCalls);
 
 vi.mock('#lib/v1/resource.svelte.ts', () => ({
 	createResource: () => ({
-		data: { generated_utc: new Date().toISOString(), routes: ROUTES, weekly_routes: publishedRows },
+		data: {
+			generated_utc: new Date().toISOString(),
+			routes: ROUTES,
+			weekly_routes: publishedRows?.map((row, i) => ({
+				...row,
+				window_start: '2026-11-04',
+				window_end: '2026-11-10',
+				...(row.state === 'ranked' ? { rank: i + 1, numerator: row.pct, denominator: 100 } : {}),
+			})),
+		},
 		error: null,
 		loading: false,
 		settled: true,
@@ -238,6 +247,39 @@ describe('LinesIndex reliability badge', () => {
 });
 
 describe('LinesIndex published sort', () => {
+	it('keeps a published below-floor row hedged when its visible detail finishes loading', async () => {
+		reset();
+		publishedRows = [
+			{ id: '24', state: 'too_few_units', pct: null },
+			{ id: '161', state: 'ranked', pct: 60 },
+		];
+		snapshots.set('24', snap({ phase: 'loading' }));
+		const { container } = render(LinesIndex);
+		snapshots.set(
+			'24',
+			snap({
+				phase: 'ready',
+				otpPct: 0,
+				verdict: 'tentative',
+				observationCount: 29,
+				hedge: 'Only 29 readings',
+			}),
+		);
+		await waitFor(() =>
+			expect(container.querySelector('[data-slot="reliability-hedge"]')).toHaveTextContent(
+				'Not enough data',
+			),
+		);
+		expect(container.querySelector('[data-slot="reliability-hedge"]')).toHaveAttribute(
+			'title',
+			'Only 29 readings',
+		);
+		const thin = container
+			.querySelector('a[href="/lines/24"]')!
+			.closest('[data-slot="entity-result-row"]')!;
+		expect(thin.querySelector('[data-slot="reliability-badge"]')).toBeNull();
+	});
+
 	it('uses published order immediately without requesting offscreen reliability files', async () => {
 		reset();
 		viewportRequestsEnabled = false;

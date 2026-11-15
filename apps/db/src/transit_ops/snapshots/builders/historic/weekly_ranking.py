@@ -1,15 +1,30 @@
 """Adapt the published reliability windows to the shared ranking engine."""
 
 from collections.abc import Iterable, Mapping
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
 from transit_ops.gold.reader import round_half_away
 from transit_ops.gold.reader.rates import MIN_N_RATE
-from transit_ops.ranking.engine import EntityWindow, rank_entities
+from transit_ops.ranking.engine import EntityWindow, RankedEntity, rank_entities
 from transit_ops.ranking.rules import RULES, MeasureSpec
-from transit_ops.snapshots.contract import Alert, WeeklyRankingEntry
+from transit_ops.snapshots.contract import (
+    Alert,
+    WeeklyRankedEntry,
+    WeeklyRankingEntry,
+    WeeklyUnrankedEntry,
+)
+
+
+def next_historic_publication(published: datetime) -> str:
+    """The clean-week historic lane next runs Wednesday at 07:00 UTC."""
+    instant = published.astimezone(UTC)
+    deadline = instant.replace(hour=7, minute=0, second=0, microsecond=0)
+    deadline += timedelta(days=(2 - instant.weekday()) % 7)
+    if deadline <= instant:
+        deadline += timedelta(days=7)
+    return deadline.isoformat().replace("+00:00", "Z")
 
 
 def cancelled_stop_ids(alerts: Iterable[Alert], as_of: datetime) -> set[str]:
@@ -122,17 +137,18 @@ def rank_weekly_periods(rows: Iterable[Mapping[str, Any]]) -> list[WeeklyRanking
         for key, row in values.items()
     ]
     return [
-        WeeklyRankingEntry(
-            id=item.entity_id,
-            state=item.state,
-            rank=item.rank,
-            numerator=item.numerator,
-            denominator=item.denominator,
-            pct=item.shown_units,
-            name=values[item.entity_id].get("name"),
-            severe_pct=values[item.entity_id].get("severe_pct"),
-            window_start=values[item.entity_id].get("window_start"),
-            window_end=values[item.entity_id].get("window_end"),
-        )
+        _published_entry(item, values[item.entity_id])
         for item in rank_entities(inputs, spec=spec, window_days=7, rules=RULES)
     ]
+
+
+def _published_entry(item: RankedEntity, source: Mapping[str, Any]) -> WeeklyRankingEntry:
+    common = dict(id=item.entity_id, name=source.get("name"),
+                  window_start=source.get("window_start"), window_end=source.get("window_end"))
+    if item.state != "ranked":
+        return WeeklyUnrankedEntry(state=item.state, **common)
+    return WeeklyRankedEntry(
+        state="ranked",
+        rank=item.rank, numerator=item.numerator, denominator=item.denominator,
+        pct=item.shown_units, severe_pct=source.get("severe_pct"), **common,
+    )

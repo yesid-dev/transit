@@ -2087,8 +2087,9 @@ def test_build_receipts_uses_full_accountability_span_and_bounds_supplements() -
         name: params for name, params in conn.executed_query_params if name in supplemental_names
     }
     assert set(observed) == supplemental_names
-    for params in observed.values():
+    for name, params in observed.items():
         assert params == {
+            **({"excluded_stops": []} if name == "receipts.worst_stop" else {}),
             "provider_id": "stm",
             "receipt_start": old_date,
             "receipt_end": recent_date,

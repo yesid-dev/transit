@@ -59,3 +59,69 @@ def test_repeat_history_sql_requires_three_observed_days(real_db_engine, seed_pr
         assert [entry.id for entry in week.entries] == ["3"]
         assert {entry.id for entry in week.tray} == {"1", "2"}
         tx.rollback()
+
+
+def test_receipt_worst_stop_excludes_cancellation_and_thin_sample_before_selection(
+    real_db_engine, seed_provider
+):
+    from transit_ops.snapshots.builders.historic.small_surfaces import build_receipts
+
+    provider = "honest_receipt_test"
+    day = datetime.now(UTC).date() - timedelta(days=2)
+    with real_db_engine.connect() as conn, conn.begin() as tx:
+        seed_provider(conn, provider, display_name="Receipt ranking test")
+        conn.execute(
+            text(
+                "INSERT INTO gold.citizen_accountability_daily (provider_id,provider_local_date,"
+                "affected_route_count,affected_stop_count,delayed_trip_count,severe_delay_count,"
+                "alert_count,rider_impact_score) VALUES (:p,:d,1,3,0,0,0,1)"
+            ),
+            dict(p=provider, d=day),
+        )
+        for stop, n, delay in [("closed", 100, 900), ("thin", 29, 800), ("eligible", 30, 120)]:
+            conn.execute(
+                text(
+                    "INSERT INTO gold.stop_delay_hourly (provider_id,period_start_utc,stop_id,"
+                    "route_id,observation_count,avg_arrival_delay_seconds) "
+                    "VALUES (:p,:time,:s,'R',:n,:delay)"
+                ),
+                dict(
+                    p=provider,
+                    time=datetime.combine(day, datetime.min.time(), tzinfo=UTC)
+                    + timedelta(hours=12),
+                    s=stop,
+                    n=n,
+                    delay=delay,
+                ),
+            )
+        from transit_ops.snapshots.builders.historic.weekly_ranking import cancelled_stop_ids
+        from transit_ops.snapshots.contract import Alert
+
+        closed = cancelled_stop_ids(
+            [
+                Alert(
+                    id="closure",
+                    severity="watch",
+                    header_key="",
+                    effect="NO_SERVICE",
+                    stops=["closed"],
+                )
+            ],
+            datetime.now(UTC),
+        )
+        receipt = build_receipts(
+            conn,
+            provider_id=provider,
+            generated_utc="2026-11-15T00:00:00Z",
+            excluded_stops=closed,
+        )[day.isoformat()]
+        assert receipt.worst_stop.id == "eligible"
+        assert receipt.worst_stop.avg_delay_min == 2
+        without_alternative = build_receipts(
+            conn,
+            provider_id=provider,
+            generated_utc="2026-11-15T00:00:00Z",
+            excluded_stops=closed | {"eligible"},
+        )[day.isoformat()]
+        assert without_alternative.worst_stop is None
+        tx.rollback()

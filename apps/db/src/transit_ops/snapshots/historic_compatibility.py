@@ -1,6 +1,6 @@
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import Connection
 
@@ -9,6 +9,7 @@ from transit_ops.settings import Settings
 from transit_ops.snapshots import builders, envelope, historic_tree
 from transit_ops.snapshots.builders.historic.weekly_ranking import (
     cancelled_stop_ids,
+    next_historic_publication,
     rank_weekly_periods,
     weekly_payload_rows,
 )
@@ -145,6 +146,10 @@ def _build_items(
     route_index_item = (
         "historic/route_reliability/index.json",
         RouteReliabilityIndex(
+            published_utc=(
+                as_of_utc.astimezone(UTC).isoformat().replace("+00:00", "Z") if as_of_utc else None
+            ),
+            next_publish_utc=next_historic_publication(as_of_utc) if as_of_utc else None,
             route_ids=sorted(route_ids),
             generated_utc=stamp,
         ),
@@ -171,7 +176,9 @@ def _build_items(
         for stop_id, stop_rel in sorted(all_stops_rel.items())
     ]
 
-    all_receipts = builders.build_receipts(conn, provider_id=provider_id, generated_utc=stamp)
+    all_receipts = builders.build_receipts(
+        conn, provider_id=provider_id, generated_utc=stamp, excluded_stops=closed
+    )
     receipt_items: list[PutItem] = [
         (f"historic/receipts/{date_str}.json", receipt, "historic")
         for date_str, receipt in sorted(all_receipts.items())

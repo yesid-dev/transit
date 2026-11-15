@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Collection
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -584,7 +585,7 @@ _RECEIPTS_WORST_ROUTE_SQL = named_query(
 
 _RECEIPTS_WORST_STOP_SQL = named_query(
     "receipts.worst_stop",
-    """
+    f"""
     SELECT DISTINCT ON (psd.provider_local_date)
            psd.provider_local_date AS d,
            psd.stop_id,
@@ -597,6 +598,8 @@ _RECEIPTS_WORST_STOP_SQL = named_query(
       AND psd.provider_local_date <= :receipt_end
       AND psd.avg_delay_seconds IS NOT NULL
       AND psd.stop_id <> '__unknown_stop__'
+      AND psd.stop_time_observation_count >= {MIN_N_RATE}
+      AND NOT (psd.stop_id = ANY(CAST(:excluded_stops AS text[])))
     ORDER BY psd.provider_local_date, psd.avg_delay_seconds DESC, psd.stop_id COLLATE "C"
     """,
 )
@@ -678,7 +681,10 @@ _SHIFT_ORDER: tuple[str, ...] = tuple(label for _lo, _hi, label in SHIFT_BOUNDS)
 _SHIFT_RANK: dict[str, int] = {s: i for i, s in enumerate(_SHIFT_ORDER)}
 
 
-def build_receipts(conn: Connection, *, provider_id: str, generated_utc: str) -> dict[str, Receipt]:
+def build_receipts(
+    conn: Connection, *, provider_id: str, generated_utc: str,
+    excluded_stops: Collection[str] = (),
+) -> dict[str, Receipt]:
     params = {"provider_id": provider_id}
 
     acct: dict[str, dict] = {}
@@ -737,7 +743,9 @@ def build_receipts(conn: Connection, *, provider_id: str, generated_utc: str) ->
             )
 
     worst_stop: dict[str, ReceiptWorstStop] = {}
-    for r in conn.execute(_RECEIPTS_WORST_STOP_SQL, params).mappings():
+    for r in conn.execute(
+        _RECEIPTS_WORST_STOP_SQL, {**params, "excluded_stops": sorted(excluded_stops)}
+    ).mappings():
         if str(r["stop_id"]) in SENTINEL_ENTITY_IDS:
             continue
         ds = _iso_date(r["d"])

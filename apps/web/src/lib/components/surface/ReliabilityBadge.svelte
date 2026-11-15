@@ -28,15 +28,18 @@
 			? null
 			: intl.number(locale, { style: 'unit', unit: 'percent' }).format(shownPct),
 	);
+	const unranked = $derived(published != null && published.state !== 'ranked');
 	const show = $derived(
-		(published?.state === 'ranked' || snapshot.phase === 'ready') && pctText != null,
+		unranked || ((published?.state === 'ranked' || snapshot.phase === 'ready') && pctText != null),
 	);
 	const hedged = $derived(
-		!published && (snapshot.verdict === 'absent' || snapshot.verdict === 'tentative'),
+		unranked || (!published && (snapshot.verdict === 'absent' || snapshot.verdict === 'tentative')),
 	);
 	const lowSample = $derived(
-		snapshot.observationCount != null && snapshot.observationCount < VERDICT_MIN_N,
+		published?.state === 'too_few_units' ||
+			(snapshot.observationCount != null && snapshot.observationCount < VERDICT_MIN_N),
 	);
+	const hedgeStatus = $derived(unranked ? (lowSample ? 'absent' : 'tentative') : snapshot.verdict);
 	const label = $derived(
 		pctText
 			? `${pctText} ${snapshot.kind === 'stop' ? copy.stopShare : copy.share}, ${windowLabel}`
@@ -49,7 +52,7 @@
 	{#if show && hedged}
 		<span
 			data-slot="reliability-hedge"
-			data-status={snapshot.verdict}
+			data-status={hedgeStatus}
 			class={['reliability-badge reliability-hedge', className].filter(Boolean).join(' ')}
 			role="img"
 			aria-label={hedgeLabel}
@@ -57,7 +60,7 @@
 		>
 			<span aria-hidden="true"
 				>{copy.compactHedges[
-					snapshot.verdict === 'tentative' && !lowSample ? 'tentative' : 'absent'
+					hedgeStatus === 'tentative' && !lowSample ? 'tentative' : 'absent'
 				]}</span
 			>
 			<span aria-hidden="true">{windowLabel}</span>

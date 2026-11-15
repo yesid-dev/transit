@@ -223,9 +223,7 @@
 						tag={routeModeHint(r.type).tag ?? undefined}
 						title={r.short}
 						subtitle={r.long ? t.routeName(r.long) : undefined}
-						status={publishedRow?.pct != null || routeSnapshot.otpPct != null
-							? lineStatus
-							: undefined}
+						status={publishedRow != null || routeSnapshot.otpPct != null ? lineStatus : undefined}
 						action={lineAction}
 					/>
 				</div>

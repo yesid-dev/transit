@@ -50,7 +50,7 @@ export function generateModule(root) {
 			code = `${match[1]}Schema`;
 		} else if (node.anyOf) {
 			if (node.anyOf.length !== 2 || node.anyOf[1].type !== 'null') {
-				throw new Error('Unsupported anyOf (expected value followed by null)');
+				return `z.union([${node.anyOf.map((value) => expression(value, field, parent)).join(', ')}])`;
 			}
 			// Visit null too, so unsupported keywords cannot hide in that branch.
 			expression(node.anyOf[1]);

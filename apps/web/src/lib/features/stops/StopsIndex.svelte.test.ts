@@ -476,6 +476,11 @@ describe('StopsIndex — reliability badges (honest probe)', () => {
 				state: 'ranked',
 				rank: i + 1,
 				pct: 50 + i * 20,
+				numerator: 50 + i * 20,
+				denominator: 100,
+				severe_pct: 50 - i * 20,
+				window_start: '2026-11-04',
+				window_end: '2026-11-10',
 			})),
 		});
 		getRoute.mockResolvedValue({

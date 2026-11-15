@@ -25,14 +25,40 @@ def test_weekly_directory_uses_published_figures_and_readings_floor():
 
     result = rank_weekly_periods(
         [
-            dict(id="better", numerator=79, denominator=100),
-            dict(id="worst", numerator=58, denominator=100),
-            dict(id="thin", numerator=0, denominator=29),
-            dict(id="boundary", numerator=18, denominator=30),
+            dict(
+                id="better",
+                numerator=79,
+                denominator=100,
+                window_start="2026-11-04",
+                window_end="2026-11-10",
+            ),
+            dict(
+                id="worst",
+                numerator=58,
+                denominator=100,
+                window_start="2026-11-04",
+                window_end="2026-11-10",
+            ),
+            dict(
+                id="thin",
+                numerator=0,
+                denominator=29,
+                window_start="2026-11-04",
+                window_end="2026-11-10",
+            ),
+            dict(
+                id="boundary",
+                numerator=18,
+                denominator=30,
+                window_start="2026-11-04",
+                window_end="2026-11-10",
+            ),
         ]
     )
     assert [row.id for row in result if row.state == "ranked"] == ["worst", "boundary", "better"]
     assert result[-1].state == "too_few_units"
+    assert (result[-1].numerator, result[-1].denominator, result[-1].pct) == (None, None, None)
+    assert result[-1].severe_pct is None
     assert result[0].pct == 58
 
 

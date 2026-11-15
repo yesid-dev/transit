@@ -430,7 +430,7 @@
 			title={stopDisplayName(stop.name)}
 			subtitle={stop.code ?? undefined}
 			routes={stop.routes}
-			status={publishedRow?.pct != null || stopSnapshot.otpPct != null ? stopStatus : undefined}
+			status={publishedRow != null || stopSnapshot.otpPct != null ? stopStatus : undefined}
 			action={stopAction}
 		/>
 	</div>
