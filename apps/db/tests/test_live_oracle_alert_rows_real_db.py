@@ -470,3 +470,67 @@ def test_added_columns_in_any_evidence_table_refuse_by_name(real_db_engine, aler
                         read_cycle_rows(connection, provider_id=case.window.provider_id)
                 finally:
                     transaction.rollback()
+
+
+def test_cycle_reader_orders_text_keys_as_binary_under_a_nonbinary_collation(
+    real_db_engine, seed_provider, case
+):
+    keys = ("a_b", "aB", "Ab", "ab")
+    binary_order = ["Ab", "aB", "a_b", "ab"]
+    provider_id = "oracle_" + uuid4().hex
+    at = case.window.serving_initialized_at_utc
+    with oracle_database(
+        real_db_engine.url.render_as_string(hide_password=False),
+        clock=PinnedClock(at),
+        environment=os.environ,
+    ) as oracle:
+        with oracle.engine.begin() as connection:
+            collation = connection.execute(
+                text("""
+                SELECT n.nspname, c.collname FROM pg_collation c
+                JOIN pg_namespace n ON n.oid=c.collnamespace
+                WHERE c.collname IN ('und-x-icu', 'en-US-x-icu', 'en_US', 'en_US.utf8')
+                  AND c.collencoding IN (
+                      -1, pg_char_to_encoding(current_setting('server_encoding')))
+                ORDER BY CASE c.collname WHEN 'und-x-icu' THEN 0 ELSE 1 END, c.collname
+                LIMIT 1
+            """)
+            ).one_or_none()
+            if collation is None:
+                pytest.skip(
+                    "nonbinary collation unavailable: und-x-icu, en-US-x-icu, en_US, en_US.utf8"
+                )
+            quote = connection.dialect.identifier_preparer.quote
+            qualified = ".".join(quote(part) for part in collation)
+            connection.exec_driver_sql(
+                "ALTER TABLE raw.alert_language_observations "
+                f"ALTER COLUMN alert_logical_id TYPE text COLLATE {qualified}"
+            )
+            seed_provider(connection, provider_id, display_name="Binary ordering test")
+            connection.execute(
+                text("""
+                INSERT INTO raw.alert_language_observations
+                    (provider_id, alert_logical_id, observation_date, has_explicit_fr,
+                     has_explicit_en, undetermined, observed_at_utc)
+                VALUES (:provider, :key, :day, true, false, false, :at)
+            """),
+                [dict(provider=provider_id, key=key, day=at.date(), at=at) for key in keys],
+            )
+            locale_order = list(
+                connection.execute(
+                    text("""
+                SELECT alert_logical_id FROM raw.alert_language_observations
+                WHERE provider_id=:provider ORDER BY alert_logical_id
+            """),
+                    {"provider": provider_id},
+                ).scalars()
+            )
+            assert locale_order != binary_order, f"{qualified} must differ from binary on {keys}"
+        with oracle.engine.begin() as connection:
+            connection.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+            _, alerts = read_cycle_rows(connection, provider_id=provider_id)
+        table = next(t for t in alerts if t.table == "raw.alert_language_observations")
+        key_index = tuple(SCHEMAS[table.table]).index("alert_logical_id")
+        # Assert the raw tuple order, before either comparator can sort its input.
+        assert [row[key_index] for row in table.rows] == binary_order
+        assert sorted(locale_order) == binary_order
