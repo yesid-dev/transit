@@ -1,0 +1,131 @@
+name: Batch shadow
+
+on:
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+    inputs:
+      providers:
+        description: Comma-separated provider ids (empty selects declarations)
+        type: string
+      date:
+        description: Local YYYY-MM-DD (empty selects latest covered day per family)
+        type: string
+      families:
+        description: Comma-separated family ids (empty freezes all implemented builders)
+        type: string
+      input_mode:
+        description: Produce fresh copies or require existing proven archive inputs
+        type: choice
+        options: [export, archive]
+        default: export
+      as_of:
+        description: Optional explicit UTC ISO instant, at or after selected cuts
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: batch-shadow
+  cancel-in-progress: false
+
+jobs:
+  shadow:
+    runs-on: ubuntu-24.04
+    environment: batch-shadow
+    timeout-minutes: 300
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4@sha256:44126d872ac91993766c341e369c539e8196614321765d36a6f1bab0419a5fa5
+        env:
+          POSTGRES_USER: transit_ci
+          POSTGRES_PASSWORD: transit_ci
+          POSTGRES_DB: transit_ci
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U transit_ci -d transit_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: apps/db
+        shell: bash
+    env:
+      TRANSIT_REPLAY_DATABASE_URL: postgresql+psycopg://transit_ci:transit_ci@127.0.0.1:5432/transit_ci
+      TRANSIT_TEST_DATABASE_DISPOSABLE: I_UNDERSTAND_THIS_DATABASE_IS_DISPOSABLE
+      BATCH_SHADOW_PROVISIONED: ${{ vars.BATCH_SHADOW_PROVISIONED }}
+      PROVIDERS: ${{ inputs.providers }}
+      DAY: ${{ inputs.date }}
+      FAMILIES: ${{ inputs.families }}
+      INPUT_MODE: ${{ inputs.input_mode || 'export' }}
+      AS_OF: ${{ inputs.as_of }}
+      BRONZE_STORAGE_BACKEND: s3
+      BRONZE_S3_ENDPOINT: https://eccfb9bedd87d413eaf4cac6ae2285d3.r2.cloudflarestorage.com
+      BRONZE_S3_BUCKET: transit-raw
+      BRONZE_S3_REGION: auto
+      BRONZE_S3_ACCESS_KEY: ${{ secrets.BATCH_SHADOW_R2_ACCESS_KEY }}
+      BRONZE_S3_SECRET_KEY: ${{ secrets.BATCH_SHADOW_R2_SECRET_KEY }}
+    steps:
+      - name: Require default branch code and isolate libpq settings
+        working-directory: .
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/$DEFAULT_BRANCH" ]]; then
+            echo '::error::default_branch_required'
+            exit 1
+          fi
+          for name in PGHOST PGHOSTADDR PGPORT PGDATABASE PGUSER PGSERVICE PGSERVICEFILE PGOPTIONS; do
+            echo "$name=" >> "$GITHUB_ENV"
+          done
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+      - uses: ./.github/actions/setup-py
+      - name: Migrate disposable catalog
+        run: |
+          unset PGHOST PGHOSTADDR PGPORT PGDATABASE PGUSER PGSERVICE PGSERVICEFILE PGOPTIONS
+          uv run python - <<'PY'
+          import os
+          from alembic import command
+          from alembic.config import Config
+          config = Config('alembic.ini')
+          config.set_main_option('sqlalchemy.url', os.environ['TRANSIT_REPLAY_DATABASE_URL'])
+          command.upgrade(config, 'head')
+          PY
+      - name: Freeze family/provider/day matrix and required datasets
+        run: uv run python ../../.github/scripts/batch-shadow.py plan
+      # Daily Warm also starts at 07:00. This job does not await its Gold outputs.
+      # All exports are sequential inside lake migrate's global session lock;
+      # another migration refuses migration_running, preserved in refusal.json.
+      - name: Export bounded read-only production inputs
+        if: env.INPUT_MODE == 'export'
+        timeout-minutes: 150
+        env:
+          DATABASE_URL: ${{ secrets.BATCH_SHADOW_DATABASE_URL }}
+          PGOPTIONS: -c default_transaction_read_only=on
+        run: |
+          unset PGHOST PGHOSTADDR PGPORT PGDATABASE PGUSER PGSERVICE PGSERVICEFILE
+          uv run python ../../.github/scripts/batch-shadow.py export
+      - name: Fetch, compare and accept shadow from the same frozen inputs
+        run: |
+          unset PGHOST PGHOSTADDR PGPORT PGDATABASE PGUSER PGSERVICE PGSERVICEFILE PGOPTIONS
+          uv run python ../../.github/scripts/batch-shadow.py run
+      - name: Preserve input proofs, comparison and refusal evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: batch-shadow-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            apps/db/artifacts/batch-shadow/daily-inputs.json
+            apps/db/artifacts/batch-shadow/refusal.json
+            apps/db/artifacts/batch-shadow/export-command.log
+            apps/db/artifacts/batch-shadow/export/migration-log.jsonl
+            apps/db/artifacts/batch-shadow/*/fetch-receipts.json
+            apps/db/artifacts/batch-shadow/*/*command.log
+            apps/db/artifacts/batch-shadow/*/complete.json
+            apps/db/artifacts/batch-shadow/*/replay/report-*.json
+          retention-days: 14
+          if-no-files-found: warn

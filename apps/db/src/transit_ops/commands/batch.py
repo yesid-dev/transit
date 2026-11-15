@@ -35,6 +35,7 @@ def fetch_command(
     family: Annotated[list[str] | None, typer.Option("--family")] = None,
     bodies: Annotated[bool, typer.Option("--bodies")] = False,
     as_of: Annotated[str | None, typer.Option("--as-of")] = None,
+    timezone: Annotated[str | None, typer.Option("--timezone")] = None,
 ) -> None:
     """Fetch proven inputs using the guarded disposable database's FK catalog."""
     import json
@@ -48,7 +49,22 @@ def fetch_command(
     scope = None
     try:
         settings = get_settings()
-        request = replay_request(provider, day, as_of, settings)
+        if timezone is None:
+            request = replay_request(provider, day, as_of, settings)
+        else:
+            from transit_ops.batch.build import BuildRequest
+
+            local_date = date.fromisoformat(day)
+            if day != local_date.isoformat() or as_of is None:
+                raise ValueError("pinned timezone requires YYYY-MM-DD and explicit --as-of")
+            request = BuildRequest(
+                provider,
+                (local_date,),
+                datetime.fromisoformat(as_of),
+                settings.GOLD_FACT_RETENTION_DAYS,
+                settings.GOLD_REPORTING_OPEN_WINDOW_DAYS,
+                timezone,
+            )
         builders = tuple(replay_builders(family or []).values())
         family_input_needs(
             tuple(b for b in builders if not reads_editions((b.family_id,))), request
