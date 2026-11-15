@@ -133,7 +133,9 @@ def _read_day(
     endpoint_key: str,
     utc_date: date,
 ) -> (
-    tuple[int, str, PollRecord, str] | tuple[int, str, PollRecord, str, _UnionSource] | ledger.ArchiveCopy
+    tuple[int, str, PollRecord, str]
+    | tuple[int, str, PollRecord, str, _UnionSource]
+    | ledger.ArchiveCopy
 ):
     with connection.begin():
         connection.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"))

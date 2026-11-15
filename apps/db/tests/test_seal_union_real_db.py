@@ -223,7 +223,8 @@ def test_waiting_union_is_reused_only_for_the_same_base_and_remainder(engine, tm
         conn.execute(
             text(
                 "UPDATE core.history_archive_copy SET details=details || "
-                "jsonb_build_object('union_base_version',99) WHERE provider_id=:p AND content_version=2"
+                "jsonb_build_object('union_base_version',99) "
+                "WHERE provider_id=:p AND content_version=2"
             ),
             {"p": PROVIDER},
         )
