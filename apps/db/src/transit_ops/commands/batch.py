@@ -28,6 +28,45 @@ def _code_commit() -> str:
     ).strip()
 
 
+@app.command("fetch-inputs")
+def fetch_command(
+    provider: Annotated[str, typer.Option("--provider")],
+    day: Annotated[str, typer.Option("--date")],
+    inputs: Annotated[Path, typer.Option("--inputs")],
+    family: Annotated[list[str] | None, typer.Option("--family")] = None,
+    bodies: Annotated[bool, typer.Option("--bodies")] = False,
+    as_of: Annotated[str | None, typer.Option("--as-of")] = None,
+) -> None:
+    """Fetch proven inputs using the guarded disposable database's FK catalog."""
+    import json
+
+    from transit_ops.batch.input_sources import fetch_from_catalog, replay_request
+    from transit_ops.batch.replay import family_input_needs, replay_builders
+    from transit_ops.history.storage import history_storage
+    from transit_ops.settings import get_settings
+
+    scope = None
+    try:
+        settings = get_settings()
+        request = replay_request(provider, day, as_of, settings)
+        builders = tuple(replay_builders(family or []).values())
+        family_input_needs(builders, request)
+        scope = history_storage(settings)
+        result = fetch_from_catalog(
+            scope.resolve(settings.BRONZE_STORAGE_BACKEND),
+            inputs,
+            request,
+            builders,
+        )
+        typer.echo(json.dumps(result, sort_keys=True, separators=(",", ":")))
+    except Exception as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(1) from error
+    finally:
+        if scope is not None:
+            scope.close()
+
+
 @app.command("replay-day")
 def replay_command(
     provider: Annotated[str, typer.Option("--provider")],

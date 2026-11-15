@@ -1,19 +1,23 @@
 """Replay declared local files in a guarded disposable database and DuckDB."""
 
 import hashlib
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
 from datetime import date, datetime
 from pathlib import Path
 from time import perf_counter
-from typing import cast
+from typing import Any, cast
 from zoneinfo import ZoneInfo
 
+from psycopg.errors import ForeignKeyViolation
 from sqlalchemy import Connection, inspect, text
+from sqlalchemy.engine.reflection import Inspector
+from sqlalchemy.exc import IntegrityError
 
-from transit_ops.batch.build import BuildRequest, FamilyBuilder, FamilyOutput, InputNeed, utc_days
+from transit_ops.batch.build import BuildRequest, FamilyBuilder, FamilyOutput, InputNeed
 from transit_ops.batch.engine import open_batch_session
 from transit_ops.batch.families.registry import FAMILIES, resolve_builder
+from transit_ops.batch.input_sources import edition_mapping, layout_needs
 from transit_ops.batch.inputs import resolve_inputs
 from transit_ops.batch.pg_load import (
     ReplayDatabase,
@@ -27,6 +31,7 @@ from transit_ops.batch.private_area import PrivateArea
 from transit_ops.batch.replay_report import ReplayReport, compare_family
 from transit_ops.batch.run import InputChanged, key_matches, run_family
 from transit_ops.gold import rollups
+from transit_ops.history.datasets import TableSource, get_dataset
 from transit_ops.settings import Settings
 from transit_ops.snapshots import gate, historic_tier
 from transit_ops.snapshots.historic_streams import (
@@ -71,6 +76,7 @@ _FACTS = (
 )
 _STATE = (
     "core.providers",
+    "core.dataset_versions",
     "core.feed_endpoints",
     "raw.ingestion_runs",
     "raw.ingestion_objects",
@@ -82,7 +88,6 @@ _STATE = (
     "silver.i3_alert_informed_entities",
 )
 _EDITIONS = (
-    "core.dataset_versions",
     "silver.trips",
     "silver.calendar",
     "silver.calendar_dates",
@@ -90,15 +95,131 @@ _EDITIONS = (
 )
 
 
-def _declared_windows(root: Path, relation: str) -> tuple[InputNeed, ...]:
-    folder = root / relation
-    files = sorted(folder.iterdir()) if folder.is_dir() else []
-    needs = tuple(
-        InputNeed(relation, p.stem.replace("=", ":", 1)) for p in files if p.suffix == ".parquet"
+def postgres_input_needs(request: BuildRequest, editions: Sequence[int]) -> tuple[InputNeed, ...]:
+    """Replay metadata and selected schedule editions; family declarations are added separately."""
+    return (InputNeed("core.providers", "all"), InputNeed("core.dataset_versions", "all")) + tuple(
+        InputNeed(r, f"edition:{ident}") for r in _EDITIONS for ident in editions
     )
-    if not needs:
-        raise ValueError(f"{relation}: no declared Parquet windows")
-    return needs
+
+
+def replay_builders(families: Sequence[str]) -> dict[str, FamilyBuilder]:
+    selected = tuple(families) if families else tuple(FAMILIES)
+    if len(set(selected)) != len(selected):
+        raise ValueError("duplicate family_id")
+    builders = {}
+    for family in selected:
+        builder = resolve_builder(family)
+        if builder is None:
+            raise ValueError(f"family_not_replayable: {family}")
+        if not isinstance(builder, FamilyBuilder):
+            raise ValueError(f"{family}: invalid builder")
+        builders[family] = builder
+    return builders
+
+
+def family_input_needs(
+    builders: Sequence[FamilyBuilder],
+    request: BuildRequest,
+) -> tuple[InputNeed, ...]:
+    needs = set()
+    for builder in builders:
+        for need in builder.inputs(request):
+            try:
+                declaration = get_dataset(need.relation)
+            except LookupError:
+                raise ValueError(
+                    f"input_not_archived: {builder.family_id} {need.relation}"
+                ) from None
+            if not isinstance(declaration.source, TableSource):
+                raise ValueError(f"input_not_archived: {builder.family_id} {need.relation}")
+            needs.add(need)
+    return tuple(sorted(needs, key=lambda n: (n.relation, n.window)))
+
+
+def parent_input_needs(
+    needs: Sequence[InputNeed],
+    catalog: Inspector,
+    requires_parent: Callable[[InputNeed, Mapping[str, Any]], bool] | None = None,
+) -> tuple[InputNeed, ...]:
+    """Use the migrated disposable catalog, preserving children's requested ranges."""
+    found, pending, parents = set(needs), list(needs), {}
+    while pending:
+        child = pending.pop()
+        if child.relation not in parents:
+            schema, table = child.relation.split(".")
+            parents[child.relation] = catalog.get_foreign_keys(table, schema=schema)
+        for fk in parents[child.relation]:
+            if requires_parent is not None and not requires_parent(child, fk):
+                continue
+            relation = (
+                f"{fk['referred_schema'] or child.relation.split('.')[0]}.{fk['referred_table']}"
+            )
+            try:
+                source = get_dataset(relation).source
+            except LookupError:
+                raise ValueError(f"input_not_archived: FK parent {relation}") from None
+            if not isinstance(source, TableSource):
+                raise ValueError(f"input_not_archived: FK parent {relation}")
+            parent = InputNeed(relation, child.window if source.window_column else "all")
+            if parent not in found:
+                found.add(parent)
+                pending.append(parent)
+    return tuple(sorted(found, key=lambda n: (n.relation, n.window)))
+
+
+def local_parent_references(
+    child: InputNeed,
+    fk: Mapping[str, Any],
+    root: Path,
+    workdir: Path,
+) -> bool:
+    """Apply actual FK null semantics to the declared local child rows."""
+    if child.relation in _STATE and (root / child.relation / "all.parquet").is_file():
+        child = InputNeed(child.relation, "all")  # The merged local metadata snapshot contract.
+    columns = fk.get("constrained_columns")
+    if (
+        not isinstance(columns, (list, tuple))
+        or not columns
+        or any(not isinstance(c, str) or not c for c in columns)
+    ):
+        raise ValueError(f"invalid FK columns: {child.relation}")
+    predicate = " AND ".join('"' + c.replace('"', '""') + '" IS NOT NULL' for c in columns)
+    sql = f"SELECT EXISTS (SELECT 1 FROM {child.relation} WHERE {predicate})"
+    # The registry is global; different relations/FK shapes need different stable names.
+    name = "batch.replay.parent_references.q_" + hashlib.sha256(sql.encode()).hexdigest()
+    inputs = resolve_inputs((child,), root)
+    with PrivateArea(workdir) as area, open_batch_session(inputs, workdir=area) as session:
+        return bool(session.execute(named_query(name, sql)).scalar_one())
+
+
+def _legacy_state_needs(root: Path) -> tuple[InputNeed, ...]:
+    """Keep existing declared metadata snapshots; unread working-only tables stay empty."""
+    result = []
+    for relation in _STATE:
+        try:
+            source = get_dataset(relation).source
+        except LookupError:
+            continue
+        if isinstance(source, TableSource) and (root / relation / "all.parquet").is_file():
+            result.append(InputNeed(relation, "all"))
+    return tuple(result)
+
+
+def absent_unread(needs: Sequence[InputNeed]) -> tuple[dict[str, str], ...]:
+    required = {n.relation for n in needs}
+    absent = []
+    for relation in sorted(set(_STATE + _FACTS + _EDITIONS) - required):
+        try:
+            get_dataset(relation)
+        except LookupError:
+            absent.append(
+                dict(
+                    relation=relation,
+                    status="absent_unread",
+                    reason="unread relation has no archive declaration",
+                )
+            )
+    return tuple(absent)
 
 
 def _hashes(root: Path, needs: Sequence[InputNeed]) -> tuple[tuple[str, str], ...]:
@@ -221,15 +342,7 @@ def replay_day(
     if not isinstance(engine, ReplayDatabase):
         raise ReplayDatabaseRefused("Use prepare_replay_database")
     ReplayReport(provider_id, local_date, as_of_utc, code_commit)
-    selected = tuple(families) if families else tuple(FAMILIES)
-    if len(set(selected)) != len(selected):
-        raise ValueError("duplicate family_id")
-    builders = {}
-    for family in selected:
-        builder = resolve_builder(family)
-        if builder is not None and not isinstance(builder, FamilyBuilder):
-            raise ValueError(f"{family}: invalid builder")
-        builders[family] = builder
+    builders = replay_builders(families)
     provider_input = resolve_inputs((InputNeed("core.providers", "all"),), inputs_root)
     provider_hash = _hashes(inputs_root, (InputNeed("core.providers", "all"),))
     with PrivateArea(workdir) as area, open_batch_session(provider_input, workdir=area) as session:
@@ -249,21 +362,24 @@ def replay_day(
         settings.GOLD_REPORTING_OPEN_WINDOW_DAYS,
         str(timezone),
     )
-    needs = {InputNeed(r, "all") for r in _STATE}
-    needs.update(
-        InputNeed(r, w)
-        for r in _FACTS
-        for w in utc_days(request, lookback_days=request.fact_retention_days, after_days=1)
+    metadata_need = (InputNeed("core.dataset_versions", "all"),)
+    metadata_file = resolve_inputs(metadata_need, inputs_root)[0].files[0]
+    metadata_hash = _hashes(inputs_root, metadata_need)
+    editions = edition_mapping(metadata_file, provider_id)
+    needs = set(postgres_input_needs(request, editions.schedule_ids))
+    needs.update(family_input_needs(tuple(builders.values()), request))
+    needs.update(_legacy_state_needs(inputs_root))
+    needed = parent_input_needs(
+        tuple(needs),
+        inspect(engine.engine),
+        lambda child, fk: local_parent_references(child, fk, inputs_root, workdir),
     )
-    for relation in _EDITIONS:
-        needs.update(_declared_windows(inputs_root, relation))
-    for builder in builders.values():
-        if builder is not None and (publish_bodies or not builder.published_keys):
-            needs.update(builder.inputs(request))
-    ordered_needs = sorted(needs, key=lambda n: (n.relation, n.window))
+    ordered_needs = layout_needs(needed)
     before = _hashes(inputs_root, ordered_needs)
     if not set(provider_hash) <= set(before):
         raise InputChanged("core.providers: replay input changed while reading timezone")
+    if not set(metadata_hash) <= set(before):
+        raise InputChanged("core.dataset_versions: replay input changed while reading editions")
     inputs = resolve_inputs(ordered_needs, inputs_root)
     started = perf_counter()
     with pinned_replay_engine(engine, as_of_utc) as pinned, PrivateArea(workdir) as area:
@@ -283,6 +399,7 @@ def replay_day(
                 WHERE c.contype='f') SELECT oid::regclass::text FROM targets"""),
                     {
                         "names": [i.relation for i in inputs]
+                        + list(_STATE + _FACTS + _EDITIONS)
                         + ["gold." + t for ts in _TABLES.values() for t in ts]
                         + ["gold.warm_rollup_periods"]
                     },
@@ -306,7 +423,13 @@ def replay_day(
             if not ready:
                 raise ValueError(f"replay inputs: foreign-key cycle {sorted(pending)}")
             for relation in ready:
-                load_inputs(engine, (pending.pop(relation),), area)
+                try:
+                    load_inputs(engine, (pending.pop(relation),), area)
+                except (IntegrityError, ForeignKeyViolation) as error:
+                    if getattr(getattr(error, "orig", error), "sqlstate", None) != "23503":
+                        raise
+                    windows = sorted(n.window for n in needed if n.relation == relation)
+                    raise ValueError(f"fk_parent_outside_range: {relation} {windows}") from error
         rollups.build_warm_rollups(
             provider_id,
             engine=pinned,

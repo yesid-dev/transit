@@ -7,6 +7,7 @@ ACTION = REPO_ROOT / ".github/actions/setup-py/action.yml"
 WORKFLOWS = REPO_ROOT / ".github/workflows"
 SETUP_ACTION = "./.github/actions/setup-py"
 EXPECTED_CALLERS = {
+    ("batch-replay.yml", "replay"),
     ("ci.yml", "offline-tests-work"),
     ("ci.yml", "alembic-single-head-work"),
     ("ci.yml", "real-db-tests-work"),

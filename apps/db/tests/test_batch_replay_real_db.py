@@ -178,7 +178,7 @@ def replay_inputs(real_db_engine, fact_source, tmp_path, monkeypatch, request):
                 "raw.realtime_snapshot_index",
             }:
                 windows = [(DAY + timedelta(days=offset)).isoformat() for offset in range(-14, 3)]
-            elif relation in relations[6:11]:
+            elif relation in relations[7:11]:
                 windows = ["edition=1"]
             else:
                 windows = ["all"]
@@ -247,21 +247,9 @@ def replay(replay_inputs, tmp_path, families, *, publish_bodies=False):
     )
 
 
-def test_a_seed_day_without_families_reports_postgres_rows(replay_inputs, tmp_path):
-    report = replay(replay_inputs, tmp_path, [])
-    assert report.families
-    assert all(f.status == "not_implemented" for f in report.families)
-    with replay_inputs[0].engine.connect() as conn:
-        count = conn.execute(
-            text(
-                "SELECT count(*) FROM gold.route_skipped_stop_daily "
-                "WHERE provider_id=:p AND provider_local_date='2026-11-01'"
-            ),
-            {"p": replay_inputs[2]},
-        ).scalar_one()
-    family = next(f for f in report.families if f.family_id == "span_skipped_stops")
-    assert count == 1
-    assert family.postgres_rows["gold.route_skipped_stop_daily"] == count
+def test_a_seed_day_without_implemented_families_refuses(replay_inputs, tmp_path):
+    with pytest.raises(ValueError, match="family_not_replayable"):
+        replay(replay_inputs, tmp_path, [])
 
 
 def test_a_correct_test_family_is_identical_and_a_broken_one_is_located(
@@ -331,9 +319,24 @@ def test_a_correct_test_family_is_identical_and_a_broken_one_is_located(
     assert result.differences[0].key == (replay_inputs[2], DAY, "R1")
 
 
-def test_two_replays_give_the_same_report_bytes(replay_inputs, tmp_path):
-    assert replay(replay_inputs, tmp_path, []).to_json(timings=False) == replay(
-        replay_inputs, tmp_path, []
+def test_two_replays_give_the_same_report_bytes(replay_inputs, tmp_path, monkeypatch):
+    from transit_ops.batch.families import headways
+
+    class Builder:
+        family_id = "headways"
+        tables = ()
+        published_keys = ()
+        variants = {}
+
+        def inputs(self, request):
+            return ()
+
+        def build(self, session, request):
+            return FamilyOutput({}, {})
+
+    monkeypatch.setattr(headways, "builder", Builder())
+    assert replay(replay_inputs, tmp_path, ["headways"]).to_json(timings=False) == replay(
+        replay_inputs, tmp_path, ["headways"]
     ).to_json(timings=False)
 
 
@@ -348,7 +351,16 @@ def test_replay_compares_nonempty_point_history_bodies(replay_inputs, tmp_path, 
         variants = {}
 
         def inputs(self, request):
-            return ()
+            return tuple(
+                InputNeed(relation, window)
+                for relation in ("gold.fact_trip_delay_snapshot", "gold.fact_vehicle_snapshot")
+                for window in utc_days(
+                    request, lookback_days=request.fact_retention_days, after_days=1
+                )
+            ) + (
+                InputNeed("gold.dim_route_history", "all"),
+                InputNeed("gold.dim_stop_history", "all"),
+            )
 
         def build(self, session, request):
             return FamilyOutput({}, {})
@@ -381,3 +393,28 @@ def test_unprepared_engine_is_refused(tmp_path):
             code_commit="a" * 40,
             publish_bodies=False,
         )
+
+
+def test_fk_parent_outside_requested_range_refuses_by_name(replay_inputs, tmp_path, monkeypatch):
+    import duckdb
+
+    from transit_ops.batch.families import occupancy_crowding
+
+    class Builder(occupancy_crowding.OccupancyCrowdingBuilder):
+        def inputs(self, request):
+            return (InputNeed("gold.fact_trip_delay_snapshot", "2026-11-01"),)
+
+    monkeypatch.setattr(occupancy_crowding, "builder", Builder())
+    path = replay_inputs[1] / "raw.realtime_snapshot_index" / "2026-11-01.parquet"
+    empty = tmp_path / "empty-parent.parquet"
+    with duckdb.connect() as conn:
+        conn.execute(
+            "COPY (SELECT * FROM read_parquet(?, hive_partitioning=false) WHERE false) "
+            "TO ? (FORMAT parquet)",
+            [str(path), str(empty)],
+        )
+    path.write_bytes(empty.read_bytes())
+    with pytest.raises(
+        ValueError, match="fk_parent_outside_range.*fact_trip_delay_snapshot.*2026-11-01"
+    ):
+        replay(replay_inputs, tmp_path, ["occupancy_crowding"])
