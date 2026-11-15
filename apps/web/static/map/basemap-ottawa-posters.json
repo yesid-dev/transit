@@ -36,11 +36,11 @@
     },
     {
       "path": "src/lib/components/map/viewport.ts",
-      "sha256": "12c594eb14ea8c324f2f2f63c0208b08dbc12e59281a28c2867f945f6f0a0145"
+      "sha256": "cf948070e86200afe15e4c0e19400e5d9d623d239fcdcff0d25812a0487e7f22"
     },
     {
       "path": "src/lib/features/map/mapCameraFraming.ts",
-      "sha256": "3989386afc463ec856c7864ef809fb2ac736eaeacf1cb9c75d727dbe3f62ec2c"
+      "sha256": "90e862550efd3bd20e2f69d4c80454683c2c883254189581b5162d8b6569d0ba"
     },
     {
       "path": "../db/config/providers/octranspo.yaml",
