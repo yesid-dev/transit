@@ -10,11 +10,11 @@ export interface DetailTabController {
 }
 
 export function createDetailTabController(initialUrl: URL): DetailTabController {
-	const seedUrl = new URL((page.shallow?.url ?? initialUrl).href);
+	const seedUrl = page.shallow?.url ?? initialUrl;
 	let active = $state<DetailTab>(detailTabFromSearchParams(seedUrl.searchParams));
 
 	function syncFromUrl(url: URL): void {
-		const viewUrl = new URL((page.shallow?.url ?? url).href);
+		const viewUrl = page.shallow?.url ?? url;
 		const next = detailTabFromSearchParams(viewUrl.searchParams);
 		active = next;
 
