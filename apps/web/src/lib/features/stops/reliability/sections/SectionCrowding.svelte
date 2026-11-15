@@ -2,14 +2,12 @@
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { MetricDisplay } from '#lib/components/brand/index.ts';
 	import { Chart } from '#lib/components/dataviz/chart/index.ts';
-	import { AbsentValue } from '#lib/components/edge/index.ts';
 	import type { CrowdingVM } from '../selectors/crowdingMix';
 	import type { StopReliabilityCopy } from '../stops-reliability.copy';
 	import StopReliabilityPresenter from './StopReliabilityPresenter.svelte';
 
 	interface SectionCrowdingProps {
 		vm: CrowdingVM;
-		settled: boolean;
 		locale: Locale;
 		copy: StopReliabilityCopy;
 		windowText?: string;
@@ -17,14 +15,11 @@
 	}
 	let {
 		vm,
-		settled,
 		locale,
 		copy,
 		windowText = copy.crowding.window,
 		presentation = 'standalone',
 	}: SectionCrowdingProps = $props();
-
-	const showNoTelemetry = $derived(settled && !vm.hasCrowding);
 </script>
 
 {#if vm.hasCrowding && vm.dominant != null && vm.spec}
@@ -45,16 +40,6 @@
 			size="md"
 		/>
 		<Chart spec={vm.spec} class="stop-crowding-bar" />
-	</StopReliabilityPresenter>
-{:else if showNoTelemetry}
-	<StopReliabilityPresenter
-		heading={copy.crowding.heading}
-		metricKey="occupancy"
-		{locale}
-		{presentation}
-		dataSlot="stop-crowding-empty"
-	>
-		<AbsentValue variant="block" reason="crowding-not-available" {locale} />
 	</StopReliabilityPresenter>
 {/if}
 

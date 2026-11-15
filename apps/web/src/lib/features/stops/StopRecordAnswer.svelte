@@ -11,9 +11,11 @@
 		locale: Locale;
 		/** The record's own address, copied by "Copy link" and closing the citation. */
 		url: string;
+		/** The record's "Source and method" section, when the page shows it. */
+		sourceHref?: string | null;
 	}
 
-	let { view, locale, url }: Props = $props();
+	let { view, locale, url, sourceHref = null }: Props = $props();
 
 	const t = $derived(detailCopy[locale].record);
 	const actions = $derived(transitTerms[locale].action);
@@ -126,6 +128,12 @@
 			{/each}
 		</dl>
 		<p class="stop-record__caveat">{t.notOnTime}</p>
+		<!-- The link waits for the section it opens; its room is held so nothing moves when it comes. -->
+		{#if sourceHref}
+			<a class="stop-record__source" href={sourceHref}>{t.sourceMethod}</a>
+		{:else}
+			<span class="stop-record__source stop-record__held" aria-hidden="true">{t.sourceMethod}</span>
+		{/if}
 	</aside>
 </div>
 
@@ -234,6 +242,20 @@
 		font-size: var(--text-subheading);
 		font-weight: 600;
 		line-height: 1.25;
+	}
+	.stop-record__source {
+		display: inline-flex;
+		align-items: center;
+		align-self: flex-start;
+		min-block-size: var(--size-tap-min);
+		font-size: var(--text-small);
+		color: var(--primary);
+		text-decoration-line: underline;
+		text-underline-offset: 0.2em;
+	}
+	.stop-record__source:focus-visible {
+		outline: 2px solid var(--ring);
+		outline-offset: 2px;
 	}
 	.stop-record__facts {
 		display: grid;

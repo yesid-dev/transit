@@ -1253,25 +1253,17 @@ describe('StopDetail reliability — crowding (occupancy_mix)', () => {
 	});
 
 	it.each([
-		['null EN', 'en', null, 'crowding information is not available here'],
-		['undefined', 'en', undefined, null],
-		['all-zero', 'en', { empty: 0, many_seats: 0, few_seats: 0, standing: 0, full: 0 }, null],
-		['null FR', 'fr', null, 'aucune information sur l’occupation ici'],
-	] as const)('stands down with honest crowding absence: %s', (_, locale, mix, note) => {
+		['null EN', 'en', null],
+		['undefined', 'en', undefined],
+		['all-zero', 'en', { empty: 0, many_seats: 0, few_seats: 0, standing: 0, full: 0 }],
+		['null FR', 'fr', null],
+	] as const)('leaves crowding out when none is published: %s', (_, locale, mix) => {
 		reliabilityData = { ...RELIABILITY, occupancy_mix: mix };
 		renderReliability(locale);
+		// No published mix: no card, no absent card, no contents entry (UX-T6.4).
 		expect(document.querySelector('[data-slot="stop-crowding"]')).toBeNull();
-		const empty = document.querySelector('[data-slot="stop-crowding-empty"]') as HTMLElement;
-		if (mix !== undefined) expect(empty).not.toBeNull();
-		if (mix === null && locale === 'en') {
-			expect(
-				within(articleCardFor(empty)).getByRole('button', {
-					name: 'Crowding on vehicles seen here',
-				}),
-			).toBeInTheDocument();
-		}
-		if (note)
-			expect(within(empty).getByText(note).closest('[data-slot="absent-value"]')).not.toBeNull();
+		expect(document.querySelector('[data-slot="stop-crowding-empty"]')).toBeNull();
+		expect(document.querySelector('#stop-rel-crowding')).toBeNull();
 	});
 });
 

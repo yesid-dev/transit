@@ -518,8 +518,7 @@ export const OBSERVATION_IDS = Object.freeze({
 		line.habits.tiers line.time.rows line.headway.rows line.occupancy.shares
 		line.delay_by_crowding line.week.histogram`),
 	stop: ids(`stop.day.otp_pct stop.day.p50_min stop.day.p90_min stop.record.answer
-		stop.day.observation_count stop.daily.rows stop.range.severe_pct
-		stop.range.observations stop.range.below_min_n stop.routes.ranked stop.habits.tiers
+		stop.day.observation_count stop.daily.rows stop.daily.limits stop.routes.ranked stop.habits.tiers
 		stop.weekday.rows stop.time.rows stop.occupancy.shares stop.display.scalars stop.pane.freshness_iso`),
 	network: ids(`network.live.vehicles network.live.on_time_pct network.live.coverage_pct
 		network.live.p50_min network.live.p90_min network.live.non_responding network.live.status_shares
@@ -1260,37 +1259,112 @@ function stopRecordAnswer(fixture, raw, locale) {
 	};
 }
 
+/**
+ * The stop's Day by day, from its definition: every calendar day of the chosen dates, else the
+ * published record week, else the file's last seven days. A day's share is its late readings over
+ * its readings in tenths, half up, from the integers; a day without a valid row is a gap.
+ */
+function stopDayByDay(fixture, raw, locale, chosen) {
+	const tag = locale === 'fr' ? 'fr-CA' : 'en-CA';
+	const index = fixture.files['historic/route_reliability/index.json'] ?? null;
+	const recordRow = (index?.weekly_stops ?? []).find((row) => row.id === raw.id) ?? null;
+	const daily = raw.daily ?? [];
+	const DAY = 86_400_000;
+	const time = (key) => Date.parse(`${key}T00:00:00Z`);
+	const key = (ms) => new Date(ms).toISOString().slice(0, 10);
+	const last = Math.max(...daily.map((row) => time(row.date)).filter(Number.isFinite));
+	const [basis, window] = chosen
+		? ['chosen', chosen]
+		: recordRow
+			? ['record', { from: recordRow.window_start, to: recordRow.window_end }]
+			: Number.isFinite(last)
+				? ['latest', { from: key(last - 6 * DAY), to: key(last) }]
+				: [null, null];
+	const dates = [];
+	if (window)
+		for (let ms = time(window.from); ms <= time(window.to); ms += DAY) dates.push(key(ms));
+	const gapText = (reason) =>
+		reason === 'no-readings'
+			? locale === 'fr'
+				? 'Aucun relevé'
+				: 'No readings'
+			: locale === 'fr'
+				? 'Non publié'
+				: 'Not published';
+	const label = (date) => {
+		const at = new Date(`${date}T12:00:00Z`);
+		const part = (options) =>
+			new Intl.DateTimeFormat(tag, { ...options, timeZone: 'UTC' }).format(at);
+		if (locale !== 'fr') return part({ weekday: 'long', month: 'long', day: 'numeric' });
+		const day = Number(date.slice(8));
+		return `${part({ weekday: 'long' })} ${day === 1 ? '1er' : day} ${part({ month: 'long' })}`;
+	};
+	const measured = [];
+	const rows = dates.map((date) => {
+		const row = daily.find((candidate) => candidate.date === date);
+		const n = row?.observation_count;
+		const k = row?.severe_count;
+		const valid = Number.isSafeInteger(n) && Number.isSafeInteger(k) && n > 0 && k >= 0 && k <= n;
+		const tenths = valid ? Number((2000n * BigInt(k) + BigInt(n)) / (2n * BigInt(n))) : null;
+		const agrees =
+			tenths != null && (row.severe_pct == null || Math.round(row.severe_pct * 10) === tenths);
+		if (!agrees) {
+			const gap = { value: null, text: gapText(n === 0 ? 'no-readings' : 'not-published') };
+			return [label(date), gap, gap, gap];
+		}
+		invariant(tenths >= 0 && tenths <= 1000, `${fixture.name} stop day share out of bounds`);
+		measured.push(n);
+		const count = (value) => ({ value, text: countText(value, locale) });
+		return [
+			label(date),
+			{
+				value: tenths / 10,
+				text: new Intl.NumberFormat(tag, { style: 'percent', maximumFractionDigits: 1 }).format(
+					tenths / 1000,
+				),
+			},
+			count(n),
+			count(k),
+		];
+	});
+	const gaps = rows.length - measured.length;
+	const limits = [
+		...(basis === 'record' || basis === 'latest'
+			? [[rows.length]]
+			: basis === 'chosen'
+				? [[]]
+				: []),
+		gaps > 0 ? [gaps, rows.length] : [],
+		...(measured.length
+			? [
+					Math.min(...measured) === Math.max(...measured)
+						? [measured[0]]
+						: [Math.min(...measured), Math.max(...measured)],
+				]
+			: []),
+	];
+	return { rows, limits };
+}
+
+/** The latest day the stop's Day by day draws, as the page names it ("Saturday, August 29"). */
+export function expectedStopLatestDay(fixture, locale) {
+	const raw = stopFile(fixture);
+	return raw ? (stopDayByDay(fixture, raw, locale, null).rows.at(-1)?.[0] ?? null) : null;
+}
+
 function stopOracle(fixture, locale, view) {
 	const raw = stopFile(fixture);
 	const retained = retainedStopDays(fixture, view);
 	const day = (raw.periods ?? []).find((row) => row.grain === 'day') ?? null;
-	const allDaily = (raw.daily ?? []).filter(
-		(row) => finite(row.observation_count) != null && finite(row.severe_count) != null,
-	);
 	const window = new URL(view || '/', 'http://b9.local');
 	const from = window.searchParams.get('from');
 	const to = window.searchParams.get('to');
-	const daily =
-		from && to ? allDaily.filter((row) => row.date >= from && row.date <= to) : allDaily;
-	const totals = daily.reduce(
-		(acc, row) => ({
-			observations: acc.observations + row.observation_count,
-			severe: acc.severe + row.severe_count,
-		}),
-		{ observations: 0, severe: 0 },
-	);
+	const days = stopDayByDay(fixture, raw, locale, from && to ? { from, to } : null);
 	const rankedRoutes = (raw.by_route ?? [])
 		.filter((row) => finite(row.avg_delay_min) != null)
 		.slice()
 		.sort((a, b) => b.avg_delay_min - a.avg_delay_min)
 		.map((row) => [row.route, row.avg_delay_min]);
-	const displayedDaily =
-		daily.filter((row) => finite(row.severe_pct) != null).length >= 2
-			? daily
-					.slice()
-					.sort((a, b) => a.date.localeCompare(b.date))
-					.map((row) => [row.date, finite(row.severe_pct), finite(row.avg_delay_min)])
-			: [];
 	const weekdayRows = (raw.day_of_week ?? [])
 		.filter((row) => finite(row.avg_delay_min) != null)
 		.slice()
@@ -1327,14 +1401,6 @@ function stopOracle(fixture, locale, view) {
 	const occupancyMix = stopOccupancyMix(raw, retained);
 	const occupancyRows = shareRows(occupancyMix, OCCUPANCY);
 	const stopDominant = dominantShare(occupancyMix, OCCUPANCY);
-	const rangeAvg = totals.observations
-		? round(
-				daily.reduce(
-					(sum, row) => sum + (finite(row.avg_delay_min) ?? 0) * row.observation_count,
-					0,
-				) / totals.observations,
-			)
-		: null;
 	const stopScalars = {
 		otp: {
 			value: finite(day?.otp_pct),
@@ -1350,20 +1416,7 @@ function stopOracle(fixture, locale, view) {
 				text: finite(day?.p90_min) == null ? '' : `${day.p90_min.toFixed(1)} min`,
 			},
 		],
-		range: [
-			{
-				value: totals.observations >= 30 ? pct(totals.severe, totals.observations) : null,
-				text:
-					totals.observations >= 30 ? `${pct(totals.severe, totals.observations).toFixed(1)}%` : '',
-			},
-			{ value: rangeAvg, text: rangeAvg == null ? '' : `${rangeAvg.toFixed(1)} min` },
-			{
-				value: totals.observations,
-				text: totals.observations > 0 ? countText(totals.observations, locale) : '',
-			},
-		],
 	};
-	const c = TABLE_COPY[locale];
 	return [
 		observation('stop.day.otp_pct', finite(day?.otp_pct)),
 		observation('stop.day.p50_min', finite(day?.p50_min)),
@@ -1379,16 +1432,8 @@ function stopOracle(fixture, locale, view) {
 				finite(day?.wilson_hi),
 			),
 		),
-		observation(
-			'stop.daily.rows',
-			trendTable([c.x, c.severe, c.avgStop], displayedDaily, locale, ['%', ' min']),
-		),
-		observation(
-			'stop.range.severe_pct',
-			totals.observations >= 30 ? pct(totals.severe, totals.observations) : null,
-		),
-		observation('stop.range.observations', totals.observations),
-		observation('stop.range.below_min_n', totals.observations > 0 && totals.observations < 30),
+		observation('stop.daily.rows', days.rows),
+		observation('stop.daily.limits', days.limits),
 		observation('stop.routes.ranked', rankedRoutes),
 		observation('stop.habits.tiers', heatmapTable(heatmapTiers(raw.habits), locale)),
 		observation('stop.weekday.rows', weekdayRows),
@@ -2006,10 +2051,54 @@ export function runOracleSelfCheck() {
 		'hand network delta 79-72',
 	);
 	expectLiteral(
-		expectedDomainObservations('rich', 'stop').find((row) => row.id === 'stop.range.severe_pct')
+		expectedDomainObservations('rich', 'stop').find((row) => row.id === 'stop.daily.rows')?.value,
+		[
+			['Sunday, August 23', ...Array(3).fill({ value: null, text: 'Not published' })],
+			['Monday, August 24', ...Array(3).fill({ value: null, text: 'Not published' })],
+			['Tuesday, August 25', ...Array(3).fill({ value: null, text: 'Not published' })],
+			['Wednesday, August 26', ...Array(3).fill({ value: null, text: 'Not published' })],
+			[
+				'Thursday, August 27',
+				{ value: 10, text: '10%' },
+				{ value: 40, text: '40' },
+				{ value: 4, text: '4' },
+			],
+			[
+				'Friday, August 28',
+				{ value: 15, text: '15%' },
+				{ value: 60, text: '60' },
+				{ value: 9, text: '9' },
+			],
+			[
+				'Saturday, August 29',
+				{ value: 20, text: '20%' },
+				{ value: 80, text: '80' },
+				{ value: 16, text: '16' },
+			],
+		],
+		'hand stop record week: 4/40, 9/60, 16/80 and four unpublished days',
+	);
+	expectLiteral(
+		expectedDomainObservations('rich', 'stop', 'fr').find((row) => row.id === 'stop.daily.limits')
 			?.value,
-		16.1,
-		'hand stop pooled severe 29/180',
+		[[7], [4, 7], [40, 80]],
+		'hand stop limits: 7 record days, 4 gaps, 40 to 80 readings',
+	);
+	expectLiteral(
+		expectedDomainObservations('sparse', 'stop').find((row) => row.id === 'stop.daily.rows')
+			?.value[6],
+		[
+			'Saturday, August 29',
+			{ value: 0, text: '0%' },
+			{ value: 29, text: '29' },
+			{ value: 0, text: '0' },
+		],
+		'hand sparse stop: a measured zero stays 0%, never a gap',
+	);
+	expectLiteral(
+		[expectedStopLatestDay(FIXTURES.rich, 'en'), expectedStopLatestDay(FIXTURES.rich, 'fr')],
+		['Saturday, August 29', 'samedi 29 août'],
+		'hand stop representative day in words',
 	);
 	expectLiteral(
 		expectedDomainObservations('rich', 'line')[11]?.value.rows.slice(0, 2),

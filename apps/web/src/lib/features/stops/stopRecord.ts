@@ -3,6 +3,7 @@ import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
 import { fmtLocalePct } from '#lib/utils/format.ts';
 import { weeklyIndexIsCurrent } from '#lib/v1/ranking/published.ts';
 import { RouteReliabilityIndexSchema } from '#lib/v1/schemas/route_reliability_index.ts';
+import { lateShareTenths, publishedShareAgrees } from './lateShare';
 import { detailCopy } from './stops.copy';
 
 /**
@@ -51,13 +52,15 @@ export interface StopRecordView {
 	readonly measure: string;
 	/** "November 4 to 10, 2026 · 7 complete days" when the row names its window. */
 	readonly period: string | null;
+	/** The row's seven complete days, measured or not; null when no row names them. */
+	readonly window: { readonly from: string; readonly to: string } | null;
 	/** The share as shown, e.g. "57.1%"; null whenever no share is published. */
 	readonly figure: string | null;
 	/** The words after the figure. */
 	readonly sentence: string;
 	/** The state sentence for every state without a figure. */
 	readonly status: string | null;
-	/** Always the same two rows; a value is null only while the record is loading. */
+	/** Always the same three rows; only the readings value is null, while the record loads. */
 	readonly evidence: readonly { readonly label: string; readonly value: string | null }[];
 	readonly share: StopRecordShare | null;
 	readonly csv: { readonly filename: string; readonly text: string } | null;
@@ -92,14 +95,6 @@ function locate({ stopId, index, now }: StopRecordInput): Located {
 	return share == null ? { state: 'failed' } : { state: 'measured', row, share };
 }
 
-/** Tenths of a percent, rounded half away from zero, in exact integer arithmetic. */
-function shareTenths(part: number, whole: number): bigint {
-	const scaled = 1000n * BigInt(part);
-	const total = BigInt(whole);
-	const quotient = scaled / total;
-	return 2n * (scaled - quotient * total) >= total ? quotient + 1n : quotient;
-}
-
 /**
  * Owner ruling 6: counts are whole and ordered, the share is bounded and is exactly the published
  * one-decimal rounding of late readings over readings (from the definition, not a float tolerance).
@@ -108,24 +103,8 @@ function checkedShare(row: Extract<WeeklyRow, { state: 'ranked' }>): StopRecordS
 	const readings = row.denominator;
 	const lateReadings = row.denominator - row.numerator;
 	const latePct = row.severe_pct;
-	if (
-		latePct == null ||
-		!Number.isSafeInteger(readings) ||
-		!Number.isSafeInteger(lateReadings) ||
-		readings <= 0 ||
-		lateReadings < 0 ||
-		lateReadings > readings ||
-		!Number.isFinite(latePct) ||
-		latePct < 0 ||
-		latePct > 100
-	)
-		return null;
-	const tenths = Math.round(latePct * 10);
-	if (
-		Math.abs(latePct * 10 - tenths) > 1e-6 ||
-		BigInt(tenths) !== shareTenths(lateReadings, readings)
-	)
-		return null;
+	const tenths = lateShareTenths(lateReadings, readings);
+	if (latePct == null || tenths == null || !publishedShareAgrees(latePct, tenths)) return null;
 	return {
 		readings,
 		lateReadings,
@@ -139,17 +118,17 @@ function utcDate(key: string): Date {
 	return new Date(`${key}T12:00:00Z`);
 }
 
-function datePart(key: string, locale: Locale, options: Intl.DateTimeFormatOptions): string {
+export function datePart(key: string, locale: Locale, options: Intl.DateTimeFormatOptions): string {
 	return intl.dateTime(locale, { ...options, timeZone: 'UTC' }).format(utcDate(key));
 }
 
-function dayOfMonth(key: string, locale: Locale): string {
+export function dayOfMonth(key: string, locale: Locale): string {
 	const day = Number(key.slice(8, 10));
 	return locale === 'fr' && day === 1 ? '1er' : String(day);
 }
 
 /** "November 4 to 10, 2026" / "Du 4 au 10 novembre 2026", naming months and years only when they change. */
-function periodRange(from: string, to: string, locale: Locale): string {
+export function periodRange(from: string, to: string, locale: Locale): string {
 	const range = detailCopy[locale].record.range;
 	const sameYear = from.slice(0, 4) === to.slice(0, 4);
 	const sameMonth = sameYear && from.slice(5, 7) === to.slice(5, 7);
@@ -166,6 +145,8 @@ function periodRange(from: string, to: string, locale: Locale): string {
 }
 
 const WINDOW_DAYS = 7;
+
+const rowWindow = (row: WeeklyRow) => ({ from: row.window_start, to: row.window_end });
 
 function period(row: WeeklyRow, locale: Locale): string {
 	const days = transitTerms[locale].completeDays(
@@ -262,7 +243,9 @@ export function presentStopRecord(
 				label: t.readingsLabel,
 				value: located.state === 'pending' ? null : t.readingsUnpublished,
 			},
-			{ label: t.uncertaintyLabel, value: located.state === 'pending' ? null : t.uncertainty },
+			// The same in every state, so shown while loading too: only the count waits.
+			{ label: t.uncertaintyLabel, value: t.uncertainty },
+			{ label: t.comparisonLabel, value: t.comparison },
 		],
 	};
 	if (located.state === 'measured') {
@@ -273,6 +256,7 @@ export function presentStopRecord(
 		return {
 			...base,
 			period: period(located.row, locale),
+			window: rowWindow(located.row),
 			figure,
 			status: null,
 			share,
@@ -282,6 +266,7 @@ export function presentStopRecord(
 					value: t.readings(count(share.readings), count(share.lateReadings)),
 				},
 				{ label: t.uncertaintyLabel, value: t.uncertainty },
+				{ label: t.comparisonLabel, value: t.comparison },
 			],
 			csv: csvFor(share, context),
 			citation: `${t.citation(
@@ -297,8 +282,9 @@ export function presentStopRecord(
 		return {
 			...base,
 			period: period(located.row, locale),
+			window: rowWindow(located.row),
 			status: t[UNMEASURED[located.row.state as keyof typeof UNMEASURED]],
 		};
 	}
-	return { ...base, period: null, status: t[STATUS[located.state]] as string };
+	return { ...base, period: null, window: null, status: t[STATUS[located.state]] as string };
 }

@@ -88,11 +88,11 @@ const desktopGroup = (c: HTMLElement): HTMLElement => {
 };
 
 const PRESENT_SECTIONS = [
-	['stop-rel-trend', 'Daily trend'],
-	['stop-rel-percentiles', 'Daily delay'],
+	['stop-rel-trend', 'Day by day'],
+	['stop-rel-percentiles', 'Typical delay'],
 	['stop-rel-pane', 'Predicted delays'],
-	['stop-rel-crowding', 'Crowding on vehicles seen here'],
 	['stop-rel-by-route', 'Avg delay by line'],
+	['stop-rel-source', 'Source and method'],
 ] as const;
 
 const disclosure = (container: HTMLElement, id: string): HTMLElement =>
@@ -100,6 +100,13 @@ const disclosure = (container: HTMLElement, id: string): HTMLElement =>
 
 const disclosureTrigger = (container: HTMLElement, id: string, name: string): HTMLElement =>
 	within(disclosure(container, id)).getByRole('button', { name });
+
+/** Breakdowns start closed; open one before reading inside it. */
+async function openSection(container: HTMLElement, id: string, name: string) {
+	const trigger = disclosureTrigger(container, id, name);
+	if (trigger.getAttribute('aria-expanded') !== 'true') await fireEvent.click(trigger);
+	return disclosure(container, id);
+}
 
 beforeEach(() => {
 	sessionStorage.clear();
@@ -220,7 +227,7 @@ describe('StopReliabilitySurface — responsive left-rail structure (P5.4)', () 
 				props: { data, locale: 'en' },
 			});
 			const rail = container.querySelector('[data-slot="surface-rail"]') as HTMLElement;
-			await fireEvent.click(within(rail).getByRole('button', { name: 'Daily trend' }));
+			await fireEvent.click(within(rail).getByRole('button', { name: 'Day by day' }));
 			await waitFor(() =>
 				expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'start' }),
 			);
@@ -256,11 +263,9 @@ describe('StopReliabilitySurface — responsive left-rail structure (P5.4)', () 
 		const labels = Array.from(toc.querySelectorAll('.toc-item .toc-label')).map((el) =>
 			el.textContent?.trim(),
 		);
-		expect(labels).toContain('Daily trend');
-		expect(labels).toContain('Daily delay');
-		expect(labels).toContain('Predicted delays');
-		expect(labels).toContain('Crowding on vehicles seen here');
-		expect(labels).toContain('Avg delay by line');
+		expect(labels).toEqual(PRESENT_SECTIONS.map(([, label]) => label));
+		// Nothing published, nothing listed: no empty crowding card, no empty entry.
+		expect(labels).not.toContain('Crowding on vehicles seen here');
 		expect(labels).not.toContain('Relative severe-delay score by hour');
 		expect(labels).not.toContain('By day of week');
 		expect(labels).not.toContain('By time of day');
@@ -278,11 +283,12 @@ describe('StopReliabilitySurface — responsive left-rail structure (P5.4)', () 
 		const labels = Array.from(toc.querySelectorAll('.toc-item .toc-label')).map((el) =>
 			el.textContent?.trim(),
 		);
-		expect(labels).not.toContain('Daily delay');
+		expect(labels).not.toContain('Typical delay');
 	});
 
-	it('keeps the visible route metric in each Line link accessible name', () => {
+	it('keeps the visible route metric in each Line link accessible name', async () => {
 		const view = render(StopReliabilitySurface, { props: { data, locale: 'en' } });
+		await openSection(view.container, 'stop-rel-by-route', 'Avg delay by line');
 
 		expect(
 			view.getByRole('link', {
@@ -315,22 +321,44 @@ describe('StopReliabilitySurface — cohesive article disclosures', () => {
 		expect(container.querySelector('[data-slot="dashboard-grid"]')).toBeNull();
 	});
 
-	it('lets one disclosure collapse without changing the next card in the sequence', async () => {
+	it('opens Day by day and keeps the breakdowns closed, each changing on its own', async () => {
 		const { container } = render(StopReliabilitySurface, { props: { data, locale: 'en' } });
-		const route = disclosure(container, 'stop-rel-by-route');
-		const routeTrigger = within(route).getByRole('button', { name: 'Avg delay by line' });
-		const routeBody = route.querySelector('[data-slot="collapsible-content"]');
-		const crowdingTrigger = disclosureTrigger(
-			container,
-			'stop-rel-crowding',
-			'Crowding on vehicles seen here',
+		const expanded = PRESENT_SECTIONS.map(([id, label]) =>
+			disclosureTrigger(container, id, label).getAttribute('aria-expanded'),
 		);
+		expect(expanded).toEqual(['true', 'false', 'false', 'false', 'false']);
 
-		await fireEvent.click(routeTrigger);
+		const days = disclosure(container, 'stop-rel-trend');
+		await fireEvent.click(within(days).getByRole('button', { name: 'Day by day' }));
+		expect(days.querySelector('[data-slot="collapsible-content"]')).toHaveAttribute(
+			'data-state',
+			'closed',
+		);
+		expect(disclosureTrigger(container, 'stop-rel-percentiles', 'Typical delay')).toHaveAttribute(
+			'aria-expanded',
+			'false',
+		);
+		const route = await openSection(container, 'stop-rel-by-route', 'Avg delay by line');
+		expect(route.querySelector('[data-slot="collapsible-content"]')).toHaveAttribute(
+			'data-state',
+			'open',
+		);
+		expect(disclosureTrigger(container, 'stop-rel-source', 'Source and method')).toHaveAttribute(
+			'aria-expanded',
+			'false',
+		);
+	});
 
-		expect(routeBody).toHaveAttribute('data-state', 'closed');
-		expect(crowdingTrigger).toHaveAttribute('aria-expanded', 'true');
-		expect(route.closest('[data-slot="article-section-stack"]')).not.toBeNull();
+	it('gives every closed breakdown a one-line summary of its own scope', () => {
+		const { container } = render(StopReliabilitySurface, { props: { data, locale: 'en' } });
+		const summary = (id: string) =>
+			disclosure(container, id).querySelector('[data-slot="section-summary"]')?.textContent?.trim();
+		expect(summary('stop-rel-percentiles')).toBe(
+			'Median 2.4 min; 9 in 10 readings at or below 11.6 min.',
+		);
+		expect(summary('stop-rel-pane')).toBe('Rolled up by day.');
+		expect(summary('stop-rel-by-route')).toBe('Average predicted delay for the one line.');
+		expect(summary('stop-rel-source')).toBe('What a reading is, and this stop’s publication.');
 	});
 
 	it('reveals a collapsed ToC target before scrolling to it', async () => {
@@ -349,12 +377,12 @@ describe('StopReliabilitySurface — cohesive article disclosures', () => {
 			const { container } = render(StopReliabilitySurface, {
 				props: { data, locale: 'en' },
 			});
-			trigger = disclosureTrigger(container, 'stop-rel-trend', 'Daily trend');
+			trigger = disclosureTrigger(container, 'stop-rel-trend', 'Day by day');
 			await fireEvent.click(trigger);
 			expect(trigger).toHaveAttribute('aria-expanded', 'false');
 
 			const rail = container.querySelector('[data-slot="surface-rail"]') as HTMLElement;
-			await fireEvent.click(within(rail).getByRole('button', { name: 'Daily trend' }));
+			await fireEvent.click(within(rail).getByRole('button', { name: 'Day by day' }));
 
 			await waitFor(() => expect(trigger).toHaveAttribute('aria-expanded', 'true'));
 			await waitFor(() =>
@@ -386,30 +414,87 @@ describe('StopReliabilitySurface — cohesive article disclosures', () => {
 	});
 });
 
-describe('StopReliabilitySurface — daily trend + range verdict (S8A)', () => {
+describe('StopReliabilitySurface — Day by day (UX-T6.3)', () => {
 	beforeEach(() => {
 		mockUrl = new URL('http://localhost/stop/57191?grain=day');
 		replaceState.mockClear();
 	});
 
-	it('mounts the daily-trend section with the presenter window seam', () => {
-		const { container } = render(StopReliabilitySurface, { props: { data, locale: 'en' } });
-		expect(container.querySelector('[data-slot="stop-daily-trend"]')).not.toBeNull();
-		expect(container.querySelector('[data-mount="daily-range"]')).not.toBeNull();
-	});
+	const dayRows = (container: HTMLElement) =>
+		Array.from(container.querySelectorAll('[data-slot="stop-daily"] tbody tr')).map((row) =>
+			Array.from(row.querySelectorAll('th,td')).map((cell) => cell.textContent?.trim()),
+		);
+	const limits = (container: HTMLElement) =>
+		Array.from(container.querySelectorAll('[data-slot="day-by-day-scope"] li')).map((item) =>
+			item.textContent?.trim(),
+		);
 
-	it('pools the FULL window verdict EXACTLY (Σcounts → 12.0%, 150 obs)', () => {
-		const { getByText } = render(StopReliabilitySurface, { props: { data, locale: 'en' } });
-		expect(getByText('12.0%')).toBeInTheDocument();
-		expect(getByText('150')).toBeInTheDocument();
-	});
-
-	it('clips the trend + verdict to a {from,to} window prop (S8B seam)', () => {
-		const { getByText } = render(StopReliabilitySurface, {
-			props: { data, locale: 'en', window: { from: '2026-06-01', to: '2026-06-02' } },
+	it('draws the record week one share a day, with a missing day as a gap and its limits', () => {
+		const { container } = render(StopReliabilitySurface, {
+			props: { data, locale: 'en', recordWindow: { from: '2026-06-01', to: '2026-06-04' } },
 		});
-		expect(getByText('13.0%')).toBeInTheDocument();
-		expect(getByText('100')).toBeInTheDocument();
+		expect(dayRows(container)).toEqual([
+			['Monday, June 1', '10%', '40', '4'],
+			['Tuesday, June 2', '15%', '60', '9'],
+			['Wednesday, June 3', '10%', '50', '5'],
+			['Thursday, June 4', 'Not published', 'Not published', 'Not published'],
+		]);
+		expect(
+			disclosure(container, 'stop-rel-trend')
+				.querySelector('[data-slot="section-summary"]')
+				?.textContent?.trim(),
+		).toBe('Between 10% and 15% a day. Highest on Tuesday, June 2.');
+		expect(limits(container)).toEqual([
+			'The same 4 days as the record above. The record adds up their readings; it does not average these daily shares.',
+			'1 of these 4 days has no published share. It is a gap, not a zero.',
+			'Between 40 and 60 readings a day. A day with few readings can swing widely.',
+		]);
+		// One measure, one axis: no second scale and no pooled figure competing with the answer.
+		expect(container.querySelector('[data-slot="daily-range-verdict"]')).toBeNull();
+		expect(container.querySelector('[data-slot="trend-mark"]')).toBeNull();
+		expect(container.textContent).not.toContain('12.0%');
+	});
+
+	it('opens and closes its table from a labelled button', async () => {
+		const { container } = render(StopReliabilitySurface, {
+			props: { data, locale: 'fr', recordWindow: { from: '2026-06-01', to: '2026-06-03' } },
+		});
+		const button = within(disclosure(container, 'stop-rel-trend')).getByRole('button', {
+			name: 'Voir le tableau',
+		});
+		const table = container.querySelector(`#${button.getAttribute('aria-controls')}`);
+		expect(table).toHaveAttribute('hidden');
+		await fireEvent.click(button);
+		expect(button).toHaveAttribute('aria-expanded', 'true');
+		expect(button).toHaveTextContent('Masquer le tableau');
+		expect(table).not.toHaveAttribute('hidden');
+		expect(table?.querySelector('caption')?.textContent).toBe(
+			'Relevés à plus de 5 minutes de retard, du 1er au 3 juin 2026',
+		);
+	});
+
+	it('shows the dates the visitor chose instead of the record week, and says so', () => {
+		const { container } = render(StopReliabilitySurface, {
+			props: {
+				data,
+				locale: 'en',
+				window: { from: '2026-06-01', to: '2026-06-02' },
+				recordWindow: { from: '2026-06-01', to: '2026-06-07' },
+			},
+		});
+		expect(dayRows(container).map((row) => row[0])).toEqual(['Monday, June 1', 'Tuesday, June 2']);
+		expect(limits(container)[0]).toBe(
+			'The dates you chose. The record above stays the published week.',
+		);
+	});
+
+	it('leaves Day by day out, and out of the contents, when the file has no daily row', () => {
+		const { container } = render(StopReliabilitySurface, {
+			props: { data: { ...data, daily: [] }, locale: 'en', recordWindow: null },
+		});
+		expect(container.querySelector('#stop-rel-trend')).toBeNull();
+		const toc = container.querySelector('[data-slot="surface-rail"] [data-slot="section-toc"]');
+		expect(toc?.textContent).not.toContain('Day by day');
 	});
 });
 
@@ -479,7 +564,11 @@ describe('StopReliabilitySurface prediction-share verdict', () => {
 				locale === 'en' ? 'Not-severe predictions' : 'Prévisions sans retard grave',
 			);
 			expect(pane?.textContent).not.toMatch(/On-time %|Tendance ponctualité|Slowest 10%/);
-			const section = container.querySelector('[data-toc="stop-rel-pane"]') as HTMLElement;
+			const section = await openSection(
+				container,
+				'stop-rel-pane',
+				locale === 'en' ? 'Predicted delays' : 'Prévisions de retard',
+			);
 			const help = within(section).getByRole('button', {
 				name: /not-severe predictions|prévisions sans retard grave/i,
 			});
@@ -500,7 +589,11 @@ describe('StopReliabilitySurface metric help ownership', () => {
 		async (locale) => {
 			mockUrl = new URL('http://localhost/stop/57191?grain=day');
 			const { container } = render(StopReliabilitySurface, { props: { data, locale } });
-			const section = disclosure(container, 'stop-rel-pane');
+			const section = await openSection(
+				container,
+				'stop-rel-pane',
+				locale === 'en' ? 'Predicted delays' : 'Prévisions de retard',
+			);
 			const pane = section.querySelector('[data-slot="reliability-pane"]') as HTMLElement;
 			const header = section.querySelector('.section-heading-row');
 			expect(header).not.toBeNull();
@@ -561,18 +654,46 @@ describe('StopReliabilitySurface metric help ownership', () => {
 });
 
 describe('StopReliabilitySurface crowding absence', () => {
-	it.each([
-		['en', 'No data, crowding information is not available here', 'not enough readings yet'],
-		['fr', 'Aucune donnée, aucune information sur l’occupation ici', 'pas assez de mesures'],
-	] as const)(
-		'says crowding is not available, never that readings are pending (%s)',
-		(locale, name, old) => {
+	it.each(['en', 'fr'] as const)(
+		'leaves crowding out when it is not published, never saying readings are pending (%s)',
+		(locale) => {
 			mockUrl = new URL('http://localhost/stop/57191');
 			const { container } = render(StopReliabilitySurface, { props: { data, locale } });
-			const empty = container.querySelector('[data-slot="stop-crowding-empty"]') as HTMLElement;
+			expect(container.querySelector('#stop-rel-crowding')).toBeNull();
+			expect(container.querySelector('[data-slot="stop-crowding-empty"]')).toBeNull();
+			const toc = container.querySelector('[data-slot="surface-rail"] [data-slot="section-toc"]');
+			expect(toc?.textContent).not.toContain(stopReliabilityCopy[locale].crowding.heading);
+		},
+	);
+});
 
-			expect(within(empty).getByLabelText(name)).toBeInTheDocument();
-			expect(empty).not.toHaveTextContent(old);
+describe('StopReliabilitySurface source and method (UX-T6.4)', () => {
+	it.each([
+		[
+			'en',
+			'Source and method',
+			['Stop file built on', 'Jun 19, 2026', 'Method version', 'r2.1', 'Publication generation'],
+			'Not supplied in this file.',
+			'/metrics#severe',
+		],
+		[
+			'fr',
+			'Source et méthode',
+			['Fichier de l’arrêt produit le', 'Version de la méthode', 'Génération de publication'],
+			'Non fourni dans ce fichier.',
+			'/fr/metrics#severe',
+		],
+	] as const)(
+		'states what a reading is and which file the page read (%s)',
+		async (locale, name, facts, absent, href) => {
+			const { container } = render(StopReliabilitySurface, {
+				props: { data: { ...data, methodology_version: 'r2.1' }, locale },
+			});
+			const section = await openSection(container, 'stop-rel-source', name);
+			for (const fact of facts) expect(section).toHaveTextContent(fact);
+			// The fixture names no publication generation: said in words, never a blank.
+			expect(section).toHaveTextContent(absent);
+			expect(within(section).getByRole('link')).toHaveAttribute('href', href);
 		},
 	);
 });

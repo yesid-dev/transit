@@ -434,6 +434,11 @@ describe('StopReliabilitySurface retained Stop history', () => {
 
 		await waitFor(() => expect(history.state).toBe('error'));
 		expectAnnounced(view.container, /retained range could not be loaded/i);
+		// Day by day says the range failed: no endless loading line, no row standing in for it.
+		const days = view.container.querySelector('#stop-rel-trend') as HTMLElement;
+		expect(days).toHaveTextContent('This retained range could not be loaded.');
+		expect(days).not.toHaveTextContent('Loading retained range');
+		expect(days.querySelector('[data-slot="stop-daily"]')).toBeNull();
 		const retry = view.queryByRole('button', { name: /retry/i });
 		expect.soft(retry).not.toBeNull();
 		if (retry) {
@@ -481,9 +486,10 @@ describe('StopReliabilitySurface retained Stop history', () => {
 		expect(bounds).toHaveLength(2);
 		expect(bounds[0]).toHaveValue('2026-07-11');
 		expect(bounds[1]).toHaveValue('2026-07-11');
-		expect(view.container.querySelector('[data-slot="daily-range-verdict"]')).toHaveTextContent(
-			'100.0%',
-		);
+		// The one chosen day, from the current file: one row, its own share.
+		const days = view.container.querySelectorAll('[data-slot="stop-daily"] tbody tr');
+		expect(days).toHaveLength(1);
+		expect(days[0]).toHaveTextContent('100%');
 		expect(harness.loadStopHistoryRange).not.toHaveBeenCalled();
 		expect(harness.page.url.searchParams.get('from')).toBe('2026-07-11');
 		expect(harness.page.url.searchParams.get('to')).toBe('2026-07-11');
@@ -499,9 +505,8 @@ describe('StopReliabilitySurface retained Stop history', () => {
 		const zeroView = renderSurface(zeroHistory);
 
 		await waitFor(() => expect(zeroHistory.state).toBe('ready'));
-		const verdict = zeroView.container.querySelector('[data-slot="daily-range-verdict"]');
-		expect(verdict).toHaveTextContent('0.0%');
-		expect(verdict).toHaveTextContent('0.0 min');
+		const zeroDays = zeroView.container.querySelectorAll('[data-slot="stop-daily"] tbody tr');
+		expect(Array.from(zeroDays, (row) => row.children[1]?.textContent)).toEqual(['0%', '0%']);
 
 		cleanup();
 		harness.getStopHistoryIndex.mockResolvedValue(noDelayIndex);
@@ -510,9 +515,9 @@ describe('StopReliabilitySurface retained Stop history', () => {
 		const noDataView = renderSurface(noDataHistory);
 		await waitFor(() => expect(noDataHistory.state).toBe('no-data'));
 		expectAnnounced(noDataView.container, /no data is retained for this range/i);
-		expect(
-			noDataView.container.querySelector('[data-slot="daily-range-verdict"]')?.textContent ?? '',
-		).not.toContain('0.0%');
+		const noDays = noDataView.container.querySelector('[data-slot="stop-daily"] tbody');
+		expect(noDays?.textContent ?? '').not.toContain('0%');
+		expect(noDays).toHaveTextContent('Not published');
 	});
 
 	it('defines honest Stop-history navigation, state, correction, and current-only copy in EN and FR', () => {
@@ -599,9 +604,9 @@ historyViewContract('stop', {
 	mount: () => renderSurface(createHistory()),
 	owned: {
 		read: (container) =>
-			container.querySelector('[data-slot="daily-range-verdict"]')?.textContent ?? '',
-		current: '99.0%',
-		retained: '9.0%',
+			container.querySelector('[data-slot="stop-daily"] tbody')?.textContent ?? '',
+		current: '98.3%',
+		retained: '15%',
 	},
 	current: (container) => {
 		expect(container.querySelector('[data-slot="stop-crowding"]')).toHaveTextContent('100%');
@@ -612,10 +617,17 @@ historyViewContract('stop', {
 		expectAnnounced(container, /loading retained range/i);
 	},
 	loaded: (container) => {
-		const verdict = container.querySelector('[data-slot="daily-range-verdict"]');
-		expect(verdict).toHaveTextContent('1.1 min');
-		expect(verdict).toHaveTextContent('100');
-		expect(verdict).not.toHaveTextContent('1.0 min');
+		const days = Array.from(
+			container.querySelectorAll('[data-slot="stop-daily"] tbody tr'),
+			(row) => Array.from(row.children, (cell) => cell.textContent?.trim()),
+		);
+		expect(days).toEqual([
+			['Saturday, January 31', '0%', '40', '0'],
+			['Sunday, February 1', '15%', '60', '9'],
+		]);
+		expect(container.querySelector('[data-slot="day-by-day-scope"] li')).toHaveTextContent(
+			'The dates you chose. The record above stays the published week.',
+		);
 		expect(
 			container.querySelector('[data-slot="stop-reliability-pane"] [data-slot="verdict"]'),
 		).toHaveTextContent('91%');

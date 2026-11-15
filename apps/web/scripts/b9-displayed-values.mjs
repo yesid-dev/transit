@@ -24,6 +24,7 @@ import {
 	expectedDomainObservationsFromFixture,
 	expectedDefaultLineHeadline,
 	expectedScheduleTruth,
+	expectedStopLatestDay,
 	normalizeObservation,
 	runOracleSelfCheck,
 } from './b9-display-oracle.mjs';
@@ -542,13 +543,27 @@ async function collectStop(page) {
 		'.metric-value',
 	);
 	const percentiles = percentileText.map(parseNumber);
-	const rangeText = await readValues(
-		page,
-		'[data-slot="daily-range-verdict"] [data-slot="metric-display"]',
-		'.metric-value',
+	// Day by day: every cell of its table (the table stays in the page while it is closed), and
+	// every number its limits state (days, gaps, readings per day).
+	const dailyRows = (
+		await page
+			.locator('[data-slot="stop-daily"] tbody tr')
+			.evaluateAll((rows) =>
+				rows.map((row) =>
+					Array.from(row.querySelectorAll('th,td'), (cell) => cell.textContent?.trim() ?? ''),
+				),
+			)
+	).map(([day, ...cells]) => [
+		normalizeObservation(day),
+		...cells.map((text) => ({ value: parseNumber(text), text: normalizeObservation(text) })),
+	]);
+	const dailyLimits = (
+		await page.locator('[data-slot="day-by-day-scope"] li').allTextContents()
+	).map((text) =>
+		(text.replace(/(?<=\d)[\u00a0\u202f](?=\d{3}\b)/gu, '').match(/\d[\d,]*/gu) ?? []).map(
+			parseNumber,
+		),
 	);
-	const rangeValues = rangeText.map(parseNumber);
-	const dailyRows = await readSemanticTable(page, '[data-slot="daily-trend-chart"]', 'en');
 	const routeRows = await page.locator('[data-slot="stop-by-route"] a').evaluateAll((links) =>
 		links.map((link) => ({
 			id: new URL(link.href).pathname.split('/').at(-1),
@@ -589,10 +604,6 @@ async function collectStop(page) {
 			value,
 			text: normalizeObservation(percentileText[index] ?? ''),
 		})),
-		range: rangeValues.map((value, index) => ({
-			value,
-			text: normalizeObservation(rangeText[index] ?? ''),
-		})),
 	};
 	return [
 		observation('stop.day.otp_pct', parseNumber(notSevereMetric?.value)),
@@ -601,12 +612,7 @@ async function collectStop(page) {
 		observation('stop.record.answer', record),
 		observation('stop.day.observation_count', stopVerdictObservationCount(verdictText)),
 		observation('stop.daily.rows', dailyRows),
-		observation('stop.range.severe_pct', rangeValues[0] ?? null),
-		observation('stop.range.observations', rangeValues[2] ?? null),
-		observation(
-			'stop.range.below_min_n',
-			(await page.locator('[data-slot="below-min-n"]').count()) > 0,
-		),
+		observation('stop.daily.limits', dailyLimits),
 		observation('stop.routes.ranked', rankedRoutes),
 		observation('stop.habits.tiers', habitsTiers),
 		observation('stop.weekday.rows', weekdayRows),
@@ -1126,7 +1132,10 @@ function expectedSurfaceState(cell, fixture) {
 		cell.surface === 'network' && !(latest?.observation_count > 0)
 			? NETWORK_TERMINAL_SELECTOR
 			: null;
-	return { representativeDate: terminalSelector ? null : (latest?.date ?? null), terminalSelector };
+	// The stop names its days in words: its representative date is the latest day it draws.
+	const representativeDate =
+		cell.surface === 'stop' ? expectedStopLatestDay(fixture, cell.locale) : (latest?.date ?? null);
+	return { representativeDate: terminalSelector ? null : representativeDate, terminalSelector };
 }
 
 async function verifyTextSemantics(page, cell, fixture) {

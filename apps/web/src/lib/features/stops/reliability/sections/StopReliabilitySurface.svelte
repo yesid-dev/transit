@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
+	import { getLocalizeHref, intl, type Locale } from '#lib/i18n/index.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { routeFor } from '#lib/nav/index.ts';
 	import { fmtDelayMin } from '#lib/utils/index.ts';
@@ -39,7 +39,8 @@
 	import { selectTimeOfDay } from '../selectors/timeOfDay';
 	import { hasHabits } from '#lib/reliability/habitsHeatmap.ts';
 	import { selectCrowdingMix } from '../selectors/crowdingMix';
-	import type { ExactDailyRangeIngredients } from '../selectors/dailyRange';
+	import { selectDayByDay } from '../selectors/dailyTrend';
+	import { dayByDaySummary } from '../selectors/dayByDayText';
 	import { stopReliabilityCopy } from '../stops-reliability.copy';
 
 	import SectionPercentiles from './SectionPercentiles.svelte';
@@ -49,6 +50,7 @@
 	import SectionHabits from './SectionHabits.svelte';
 	import SectionCrowding from './SectionCrowding.svelte';
 	import SectionDailyTrend from './SectionDailyTrend.svelte';
+	import SectionSource from './SectionSource.svelte';
 
 	const display = transitDisplay();
 
@@ -58,6 +60,8 @@
 		data: StopReliability;
 		locale: Locale;
 		window?: DateWindow | null;
+		/** The record answer's seven days; Day by day shows them unless the visitor chose dates. */
+		recordWindow?: DateWindow | null;
 		history?: StopHistoryResource;
 		articleSummary?: Snippet;
 		syncUrl?: boolean;
@@ -66,6 +70,7 @@
 		data,
 		locale,
 		window: windowOverride = undefined,
+		recordWindow = null,
 		history,
 		articleSummary,
 		syncUrl = true,
@@ -100,7 +105,6 @@
 	const explicitHistory = $derived(view.history.active);
 	const retainedReady = $derived(view.history.ready);
 	const availableHistoryDates = $derived(view.navigator?.availableDates ?? []);
-	const historyWindow = $derived(view.navigator?.value);
 	const historySelectionText = $derived(view.navigator?.selectionText ?? null);
 	const effectiveWindow = $derived(view.window ?? null);
 	const historyAnnouncement = $derived(view.announcements.correction);
@@ -108,20 +112,23 @@
 	const windowCaption = $derived(copy.grain.window(grain));
 	const grainSummary = $derived(grainLabels[grain] ?? grain);
 	const selectedData = $derived(view.data);
-	const exactDailyRange = $derived.by<ExactDailyRangeIngredients | null>(() => {
-		if (!retainedReady || view.history.value == null || historyWindow == null) return null;
-		const delay = view.history.value.aggregate.delay.value;
-		if (delay == null) return null;
-		return {
-			daysWithData: view.history.value.retainedDayCount,
-			from: historyWindow.from,
-			to: historyWindow.to,
-			observationCount: delay.observationCount,
-			inClampObservationCount: delay.inClampObservationCount,
-			severeCount: delay.severeCount,
-			sumDelaySeconds: delay.sumDelaySeconds,
-		};
-	});
+	// A chosen range shows its own days once they load; until then nothing stands in for them.
+	// A chosen range shows its own days once they load: until then (or when it fails) its state
+	// stands in the section, never the snapshot's days or empty rows.
+	const dayByDayHeld = $derived(
+		explicitHistory && !retainedReady && view.history.state !== 'no-data'
+			? view.history.state === 'error'
+				? copy.history.error
+				: copy.history.loading
+			: null,
+	);
+	const dayByDay = $derived(
+		selectDayByDay(selectedData.daily, {
+			chosen: effectiveWindow,
+			record: recordWindow,
+		}),
+	);
+	const dayByDayPresent = $derived(dayByDayHeld != null || dayByDay.rows.length > 0);
 	const gradedPeriods = $derived(
 		selectGradedPeriods(data.periods, grain, (g) => copy.grain[g as StopGrain] ?? g),
 	);
@@ -156,7 +163,6 @@
 			display.directory,
 		),
 	);
-	const hasByRouteAssoc = $derived((data.by_route?.length ?? 0) > 0);
 
 	const rankedWeekdays = $derived(
 		selectWeekdaySeasonality(data.day_of_week, {
@@ -189,9 +195,15 @@
 		explicitHistory && historySelectionText != null ? historySelectionText : copy.crowding.window,
 	);
 
+	const crowdingPresent = $derived(
+		crowdingSettled && crowding.hasCrowding && crowding.dominant != null && crowding.spec != null,
+	);
+	const sourceHref = $derived(`${localizeHref('/metrics', locale)}#severe`);
+
+	// Only sections that show something are listed and rendered: no empty card, no empty entry.
 	const sectionNav = $derived(
 		[
-			{ id: 'stop-rel-trend', label: copy.trend.heading, present: true },
+			{ id: 'stop-rel-trend', label: copy.dayByDay.heading, present: dayByDayPresent },
 			{
 				id: 'stop-rel-percentiles',
 				label: copy.percentiles.heading,
@@ -201,9 +213,25 @@
 			{ id: 'stop-rel-habits', label: copy.habits.heading, present: habitsPresent },
 			{ id: 'stop-rel-weekday', label: copy.weekday.heading, present: hasWeekday },
 			{ id: 'stop-rel-time', label: copy.timeOfDay.heading, present: timeOfDay.hasTimeOfDay },
-			{ id: 'stop-rel-crowding', label: copy.crowding.heading, present: true },
-			{ id: 'stop-rel-by-route', label: copy.byRoute, present: true },
+			{ id: 'stop-rel-crowding', label: copy.crowding.heading, present: crowdingPresent },
+			{ id: 'stop-rel-by-route', label: copy.byRoute, present: rankedRoutes.length > 0 },
+			{ id: 'stop-rel-source', label: copy.source.heading, present: true },
 		].filter((s) => s.present),
+	);
+
+	const fmtMinutes = (v: number | null) => fmtDelayMin(v, { locale, rounding: 'fixed1' });
+	const percentilesSummary = $derived(
+		dayPercentiles?.p50 != null && dayPercentiles.p90 != null
+			? copy.summaries.percentiles(fmtMinutes(dayPercentiles.p50)!, fmtMinutes(dayPercentiles.p90)!)
+			: null,
+	);
+	const byRouteSummary = $derived(
+		copy.summaries.byRoute(rankedRoutes.length, intl.number(locale).format(rankedRoutes.length)),
+	);
+	const crowdingSummary = $derived(
+		explicitHistory && historySelectionText != null
+			? historySelectionText
+			: copy.summaries.crowding,
 	);
 
 	const tocEntries: TocEntry[] = $derived(
@@ -232,6 +260,18 @@
 		<p class="stop-reliability-window" data-slot="all-history-scope">{allHistoryScope}</p>
 	{/if}
 {/snippet}
+
+{#snippet finding(text: string)}
+	<p class="stop-section-finding">{text}</p>
+{/snippet}
+{#snippet dayByDayFinding()}{@render finding(dayByDaySummary(dayByDay, locale))}{/snippet}
+{#snippet percentilesFinding()}{@render finding(percentilesSummary ?? '')}{/snippet}
+{#snippet paneFinding()}{@render finding(windowCaption)}{/snippet}
+{#snippet habitsFinding()}{@render finding(copy.summaries.habits)}{/snippet}
+{#snippet allHistoryFinding()}{@render finding(copy.summaries.allHistory)}{/snippet}
+{#snippet crowdingFinding()}{@render finding(crowdingSummary)}{/snippet}
+{#snippet byRouteFinding()}{@render finding(byRouteSummary)}{/snippet}
+{#snippet sourceFinding()}{@render finding(copy.source.summary)}{/snippet}
 
 {#snippet metricInfo(key: MetricKey | SupplementalMetricKey, name: string)}
 	<MetricInfo class="stop-metric-info" metricKey={key} {locale} {name} side="bottom" />
@@ -321,53 +361,42 @@
 					{/if}
 				{/if}
 				<ArticleSectionStack>
-					<div class="stop-anchor" id="stop-rel-trend">
-						<CollapsibleSection
-							title={copy.trend.heading}
-							headerVariant="article-summary"
-							subtitle={copy.questions.trend}
-							anchor="stop-rel-trend"
-							index={sectionIndex('stop-rel-trend')}
-							open={true}
-						>
-							{#snippet headerActions()}
-								<MetricInfo
-									class="stop-metric-info"
-									metricKey="severe"
-									{locale}
-									name={copy.trend.heading}
-									side="bottom"
-								/>
-							{/snippet}
-							<SectionDailyTrend
-								daily={selectedData.daily}
-								{locale}
-								{copy}
-								window={effectiveWindow}
-								exact={exactDailyRange}
-								presentation="article-body"
-							/>
-						</CollapsibleSection>
-					</div>
+					{#if dayByDayPresent}
+						<div class="stop-anchor" id="stop-rel-trend">
+							<CollapsibleSection
+								title={copy.dayByDay.heading}
+								headerVariant="article-summary"
+								summary={dayByDayHeld ? undefined : dayByDayFinding}
+								anchor="stop-rel-trend"
+								index={sectionIndex('stop-rel-trend')}
+								open={true}
+							>
+								{#snippet headerActions()}
+									{@render metricInfo('severe', copy.dayByDay.heading)}
+								{/snippet}
+								{#if dayByDayHeld}
+									<p class="stop-reliability-window" data-slot="day-by-day-held">
+										{dayByDayHeld}
+									</p>
+								{:else}
+									<SectionDailyTrend view={dayByDay} {locale} {copy} presentation="article-body" />
+								{/if}
+							</CollapsibleSection>
+						</div>
+					{/if}
 
 					{#if dayPercentiles != null}
 						<div class="stop-anchor" id="stop-rel-percentiles">
 							<CollapsibleSection
 								title={copy.percentiles.heading}
 								headerVariant="article-summary"
-								subtitle={copy.questions.percentiles}
+								summary={percentilesSummary ? percentilesFinding : undefined}
 								anchor="stop-rel-percentiles"
 								index={sectionIndex('stop-rel-percentiles')}
-								open={true}
+								open={false}
 							>
 								{#snippet headerActions()}
-									<MetricInfo
-										class="stop-metric-info"
-										metricKey="p50p90"
-										{locale}
-										name={copy.percentiles.heading}
-										side="bottom"
-									/>
+									{@render metricInfo('p50p90', copy.percentiles.heading)}
 								{/snippet}
 								<SectionPercentiles
 									percentiles={dayPercentiles}
@@ -386,10 +415,10 @@
 							<CollapsibleSection
 								title={copy.paneHeading}
 								headerVariant="article-summary"
-								subtitle={copy.questions.pane}
+								summary={paneFinding}
 								anchor="stop-rel-pane"
 								index={sectionIndex('stop-rel-pane')}
-								open={true}
+								open={false}
 							>
 								<div class="stop-reliability-pane-body" data-slot="stop-reliability-pane">
 									{#if explicitHistory}
@@ -409,19 +438,13 @@
 							<CollapsibleSection
 								title={copy.habits.heading}
 								headerVariant="article-summary"
-								subtitle={copy.questions.habits}
+								summary={habitsFinding}
 								anchor="stop-rel-habits"
 								index={sectionIndex('stop-rel-habits')}
-								open={true}
+								open={false}
 							>
 								{#snippet headerActions()}
-									<MetricInfo
-										class="stop-metric-info"
-										metricKey="habits"
-										{locale}
-										name={copy.habits.heading}
-										side="bottom"
-									/>
+									{@render metricInfo('habits', copy.habits.heading)}
 								{/snippet}
 								{@render allHistoryCaption()}
 								<SectionHabits matrix={habitsMatrix} {locale} {copy} presentation="article-body" />
@@ -434,19 +457,13 @@
 							<CollapsibleSection
 								title={copy.weekday.heading}
 								headerVariant="article-summary"
-								subtitle={copy.questions.weekday}
+								summary={allHistoryFinding}
 								anchor="stop-rel-weekday"
 								index={sectionIndex('stop-rel-weekday')}
-								open={true}
+								open={false}
 							>
 								{#snippet headerActions()}
-									<MetricInfo
-										class="stop-metric-info"
-										metricKey="seasonality"
-										{locale}
-										name={copy.weekday.heading}
-										side="bottom"
-									/>
+									{@render metricInfo('seasonality', copy.weekday.heading)}
 								{/snippet}
 								{@render allHistoryCaption()}
 								<SectionWeekday rows={rankedWeekdays} {locale} {copy} presentation="article-body" />
@@ -458,19 +475,13 @@
 							<CollapsibleSection
 								title={copy.timeOfDay.heading}
 								headerVariant="article-summary"
-								subtitle={copy.questions.time}
+								summary={allHistoryFinding}
 								anchor="stop-rel-time"
 								index={sectionIndex('stop-rel-time')}
-								open={true}
+								open={false}
 							>
 								{#snippet headerActions()}
-									<MetricInfo
-										class="stop-metric-info"
-										metricKey="severe"
-										{locale}
-										name={copy.timeOfDay.heading}
-										side="bottom"
-									/>
+									{@render metricInfo('severe', copy.timeOfDay.heading)}
 								{/snippet}
 								{@render allHistoryCaption()}
 								<SectionTimeOfDay
@@ -484,59 +495,56 @@
 						</div>
 					{/if}
 
-					<div class="stop-anchor" id="stop-rel-crowding">
-						<CollapsibleSection
-							title={copy.crowding.heading}
-							headerVariant="article-summary"
-							subtitle={copy.questions.crowding}
-							anchor="stop-rel-crowding"
-							index={sectionIndex('stop-rel-crowding')}
-							open={true}
-						>
-							{#snippet headerActions()}
-								<MetricInfo
-									class="stop-metric-info"
-									metricKey="occupancy"
+					{#if crowdingPresent}
+						<div class="stop-anchor" id="stop-rel-crowding">
+							<CollapsibleSection
+								title={copy.crowding.heading}
+								headerVariant="article-summary"
+								summary={crowdingFinding}
+								anchor="stop-rel-crowding"
+								index={sectionIndex('stop-rel-crowding')}
+								open={false}
+							>
+								{#snippet headerActions()}
+									{@render metricInfo('occupancy', copy.crowding.heading)}
+								{/snippet}
+								<SectionCrowding
+									vm={crowding}
 									{locale}
-									name={copy.crowding.heading}
-									side="bottom"
+									{copy}
+									windowText={crowdingWindowText}
+									presentation="article-body"
 								/>
-							{/snippet}
-							<SectionCrowding
-								vm={crowding}
-								settled={crowdingSettled}
-								{locale}
-								{copy}
-								windowText={crowdingWindowText}
-								presentation="article-body"
-							/>
-						</CollapsibleSection>
-					</div>
-					<div class="stop-anchor" id="stop-rel-by-route">
+							</CollapsibleSection>
+						</div>
+					{/if}
+					{#if rankedRoutes.length > 0}
+						<div class="stop-anchor" id="stop-rel-by-route">
+							<CollapsibleSection
+								title={copy.byRoute}
+								headerVariant="article-summary"
+								summary={byRouteFinding}
+								anchor="stop-rel-by-route"
+								index={sectionIndex('stop-rel-by-route')}
+								open={false}
+							>
+								{#snippet headerActions()}
+									{@render metricInfo('avgDelay', copy.byRoute)}
+								{/snippet}
+								<SectionByRoute rows={rankedRoutes} {locale} {copy} presentation="article-body" />
+							</CollapsibleSection>
+						</div>
+					{/if}
+					<div class="stop-anchor" id="stop-rel-source">
 						<CollapsibleSection
-							title={copy.byRoute}
+							title={copy.source.heading}
 							headerVariant="article-summary"
-							subtitle={copy.questions.byRoute}
-							anchor="stop-rel-by-route"
-							index={sectionIndex('stop-rel-by-route')}
-							open={true}
+							summary={sourceFinding}
+							anchor="stop-rel-source"
+							index={sectionIndex('stop-rel-source')}
+							open={false}
 						>
-							{#snippet headerActions()}
-								<MetricInfo
-									class="stop-metric-info"
-									metricKey="avgDelay"
-									{locale}
-									name={copy.byRoute}
-									side="bottom"
-								/>
-							{/snippet}
-							<SectionByRoute
-								rows={rankedRoutes}
-								hasAssociations={hasByRouteAssoc}
-								{locale}
-								{copy}
-								presentation="article-body"
-							/>
+							<SectionSource {data} {locale} {copy} href={sourceHref} />
 						</CollapsibleSection>
 					</div>
 				</ArticleSectionStack>
@@ -612,6 +620,14 @@
 		:global([data-slot='reliability-rail-layout']) {
 			scroll-behavior: smooth;
 		}
+	}
+
+	.stop-section-finding {
+		margin: 0;
+		max-width: var(--measure-body);
+		font-size: var(--text-small);
+		line-height: 1.5;
+		color: var(--muted-foreground);
 	}
 
 	.stop-reliability-pane-body {
