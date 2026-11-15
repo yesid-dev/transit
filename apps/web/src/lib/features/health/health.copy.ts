@@ -35,6 +35,8 @@ export const copy = defineCopy({
 			clear: 'Nothing known affects the figures on this site right now.',
 			warning: (n: string, count: number) =>
 				`The last record was published with ${n} ${count === 1 ? 'warning' : 'warnings'}. Line, stop and ranking figures come from it; check the date beside each figure.`,
+			failed:
+				'The last record was published even though its quality check failed. Line, stop and ranking figures come from it and may be wrong; check the date beside each figure.',
 			gaps: (names: string) => `Not measured: ${names}. These lines publish no live data.`,
 		},
 		overview: {
@@ -50,6 +52,7 @@ export const copy = defineCopy({
 			vehicle_positions: 'Vehicle positions',
 			service_alerts: 'Service alerts',
 			i3_alerts: 'Service alerts',
+			gis_static: 'Line and stop maps',
 		} as Record<string, string>,
 		freshness: {
 			section: 'How current each feed is',
@@ -166,6 +169,12 @@ export const copy = defineCopy({
 			failed: 'load failed',
 			unknown: 'unknown',
 		},
+		statusVerdictAtPublication: {
+			ok: 'succeeded at publication',
+			running: 'loading at publication',
+			failed: 'failed at publication',
+			unknown: 'unknown',
+		},
 		lanes: {
 			terminal: { title: 'updates', tag: 'SCHEDULE' },
 			section: 'When data is refreshed',
@@ -186,7 +195,7 @@ export const copy = defineCopy({
 			gateVerdict: {
 				pass: 'passed',
 				warn: 'warnings',
-				fail: 'blocked',
+				fail: 'failed',
 				unknown: 'not checked',
 			},
 			gateLabel: 'Quality check',
@@ -202,7 +211,7 @@ export const copy = defineCopy({
 			note: 'Every page carries the stamp of the exact publish run that produced it, plus the contract and methodology versions in force.',
 			generationIdLabel: 'Update ID',
 			generationIdExplain:
-				'The deterministic stamp of the single publish run that produced everything on this page. Two pages sharing this stamp were built from the same run.',
+				'The stamp of the publish run that produced this dataset. Datasets with the same stamp came from the same run.',
 			schemaVersionLabel: 'Data format version',
 			methodologyVersionLabel: 'Method version',
 		},
@@ -243,6 +252,8 @@ export const copy = defineCopy({
 			clear: 'Rien de connu n’affecte les chiffres de ce site en ce moment.',
 			warning: (n: string, count: number) =>
 				`Le dernier bilan a été publié avec ${n} ${count === 1 ? 'avertissement' : 'avertissements'}. Les chiffres des lignes, des arrêts et des classements en proviennent; vérifiez la date à côté de chaque chiffre.`,
+			failed:
+				'Le dernier bilan a été publié même si son contrôle de qualité a échoué. Les chiffres des lignes, des arrêts et des classements en proviennent et peuvent être erronés; vérifiez la date à côté de chaque chiffre.',
 			gaps: (names: string) =>
 				`Non mesuré : ${names}. Ces lignes ne publient aucune donnée en direct.`,
 		},
@@ -259,6 +270,7 @@ export const copy = defineCopy({
 			vehicle_positions: 'Positions des véhicules',
 			service_alerts: 'Avis de service',
 			i3_alerts: 'Avis de service',
+			gis_static: 'Cartes des lignes et des arrêts',
 		} as Record<string, string>,
 		freshness: {
 			section: 'Fraîcheur de chaque flux',
@@ -376,6 +388,12 @@ export const copy = defineCopy({
 			failed: 'échec du chargement',
 			unknown: 'inconnu',
 		},
+		statusVerdictAtPublication: {
+			ok: 'réussi à la publication',
+			running: 'en cours à la publication',
+			failed: 'échec à la publication',
+			unknown: 'inconnu',
+		},
 		lanes: {
 			terminal: { title: 'mises-à-jour', tag: 'CALENDRIER' },
 			section: 'Quand les données sont rafraîchies',
@@ -396,7 +414,7 @@ export const copy = defineCopy({
 			gateVerdict: {
 				pass: 'réussie',
 				warn: 'avertissements',
-				fail: 'bloquée',
+				fail: 'échouée',
 				unknown: 'non vérifiée',
 			},
 			gateLabel: 'Contrôle de qualité',
@@ -412,7 +430,7 @@ export const copy = defineCopy({
 			note: 'Chaque page porte l’empreinte de l’exécution de publication exacte qui l’a produite, ainsi que les versions du contrat et de la méthode en vigueur.',
 			generationIdLabel: 'Identifiant de mise à jour',
 			generationIdExplain:
-				'L’empreinte déterministe de l’unique exécution de publication qui a produit tout ce qui figure sur cette page. Deux pages partageant cette empreinte proviennent de la même exécution.',
+				'L’empreinte de la publication qui a produit ce jeu de données. Les jeux de données qui ont la même empreinte viennent de la même publication.',
 			schemaVersionLabel: 'Version du format de données',
 			methodologyVersionLabel: 'Version de la méthode',
 		},

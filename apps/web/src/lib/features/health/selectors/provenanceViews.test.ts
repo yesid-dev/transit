@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
 	verdictFor,
+	feedFreshness,
 	pipelineNotesOf,
 	retentionOf,
 	type StatusVerdictLabels,
 } from './provenanceViews';
-import type { Provenance, IsoUtc } from '#lib/v1/schemas/index.ts';
+import type { DataHealth, Provenance, IsoUtc } from '#lib/v1/schemas/index.ts';
 
 const iso = (s: string) => s as unknown as IsoUtc;
 
@@ -104,5 +105,41 @@ describe('retentionOf', () => {
 			detail: null,
 			aggregate: null,
 		});
+	});
+});
+
+describe('feedFreshness', () => {
+	const now = Date.parse('2026-06-19T14:00:00Z');
+	const daily = {
+		generated_utc: iso('2026-06-19T12:00:00Z'),
+		freshness: [
+			{ feed: 'vehicle_positions', status: 'succeeded', age_s: 240 },
+			{ feed: 'static_schedule', status: 'failed', age_s: null },
+		],
+	} as Provenance;
+
+	it('reads data health’s feeds, republished every live cycle, as they are', () => {
+		const feeds = [{ feed: 'vehicle_positions', status: 'succeeded', age_s: 40 }];
+		const dataHealth = { generated_utc: iso('2026-06-19T13:59:30Z'), feeds } as DataHealth;
+		expect(feedFreshness(dataHealth, daily, now)).toEqual({ items: feeds, atPublication: false });
+	});
+
+	it('falls back to the daily record: statuses as of its publication, ages counted to now', () => {
+		// 240 s old at the 12:00 publication, read two hours later: 240 + 7,200 s.
+		const atPublication = {
+			atPublication: true,
+			items: [
+				{ feed: 'vehicle_positions', status: 'succeeded', age_s: 7440 },
+				{ feed: 'static_schedule', status: 'failed', age_s: null },
+			],
+		};
+		expect(feedFreshness(null, daily, now)).toEqual(atPublication);
+		expect(feedFreshness({ feeds: [] } as unknown as DataHealth, daily, now)).toEqual(
+			atPublication,
+		);
+		// Without its publication time the age is unknown, never the frozen publication-time age.
+		const undated = { ...daily, generated_utc: null } as unknown as Provenance;
+		expect(feedFreshness(null, undated, now).items[0]).toMatchObject({ age_s: null });
+		expect(feedFreshness(null, null, now)).toEqual({ items: [], atPublication: false });
 	});
 });

@@ -34,8 +34,13 @@ export function healthSummary(facts: HealthSummaryFacts, locale: Locale, timeZon
 	// Reassure only on a passed check and current live data; an unknown is never "nothing known".
 	const reassured = gate?.verdict === 'pass' && age != null && !live!.isStale;
 	const names = gaps.map((gap) => copy[locale].gaps.names[gap] ?? gap.replace(/_/g, ' '));
+	// A failed verdict only reaches data health when the record was forced out past its check.
 	const doubt = [
-		warnings > 0 ? t.warning(intl.number(locale).format(warnings), warnings) : reassured && t.clear,
+		gate?.verdict === 'fail'
+			? t.failed
+			: warnings > 0
+				? t.warning(intl.number(locale).format(warnings), warnings)
+				: reassured && t.clear,
 		names.length > 0 && t.gaps(names.join(', ')),
 	].filter(Boolean);
 	return {

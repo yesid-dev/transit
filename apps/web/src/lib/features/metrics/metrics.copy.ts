@@ -25,7 +25,7 @@ export const metricsCopy = defineCopy({
 			label: 'Sources et populations',
 			body: 'Les mesures dérivent des horaires GTFS, des prédictions GTFS-RT, des positions de véhicules et des avis. Les statistiques historiques de retard comptent des observations, y compris les mises à jour répétées. En direct, la ponctualité et la couverture décrivent les positions admissibles sur la carte; les percentiles donnent le même poids au retard moyen de chaque trajet. Les définitions précisent la population et la fenêtre de chaque indicateur. Ces données ne mesurent pas directement les arrivées aux arrêts ni le nombre de voyageurs. Un dénominateur absent reste inconnu.',
 			unavailable:
-				'Le verdict de conformité du flux n’a pas pu être chargé pour l’instant. La méthodologie ci-dessous reste exacte et complète; seule cette vérification en direct est momentanément indisponible.',
+				'La vérification de conformité du flux n’a pas pu être chargée pour l’instant. Les définitions ci-dessous restent disponibles.',
 			howWeMeasure: {
 				label: 'Comment on mesure (vaut pour chaque métrique)',
 				serviceDay: {
@@ -71,27 +71,27 @@ export const metricsCopy = defineCopy({
 		},
 		livePositions: {
 			title: 'Positions des véhicules en direct, presque en temps réel, pas en temps réel',
-			lede: 'Sur la carte en direct, chaque bus est dessiné à partir du flux GTFS temps réel en direct. Mais ce flux n’est pas continu : voici, honnêtement, comment la carte décide où dessiner un bus entre deux relevés, et le choix que vous contrôlez avec le bouton « Mouvement ».',
+			lede: 'Sur la carte en direct, chaque bus est dessiné à partir du flux GTFS temps réel en direct. Mais ce flux n’est pas continu : voici, honnêtement, comment la carte décide où dessiner un bus entre deux relevés, et le choix que vous contrôlez avec le réglage « Positions ».',
 			points: [
 				{
 					heading: 'Un relevé de position arrive seulement toutes les ~20 à 60 secondes',
 					body: 'La position GPS d’un bus n’arrive pas en continu : le flux publie un nouveau relevé seulement toutes les ~20 à 60 secondes, pas à chaque instant. Entre deux relevés, nous n’avons AUCUNE mesure réelle de l’endroit où se trouve le bus. Tout ce qui s’affiche entre les relevés est donc soit l’ancienne position figée, soit une estimation. Jamais une nouvelle mesure.',
 				},
 				{
-					heading: '« Presque en temps réel » = on estime la position entre les relevés',
-					body: 'En mode « Presque en temps réel », entre deux relevés nous ESTIMONS où le bus se trouve le plus probablement en le projetant VERS L’AVANT le long de sa ligne, à la dernière vitesse qu’il a signalée. C’est une estimation bornée et décroissante : on fait confiance à un relevé frais brièvement, puis on arrête d’inventer du déplacement, et le prochain relevé réel corrige la position. C’est une APPROXIMATION, pas une mesure. Admettons-le franchement : c’est plus fluide à regarder, mais ce n’est pas la vérité GPS.',
+					heading: '« Estimées » = on estime la position entre les relevés',
+					body: 'En mode « Estimées », entre deux relevés nous ESTIMONS où le bus se trouve le plus probablement en le projetant VERS L’AVANT le long de sa ligne, à la dernière vitesse qu’il a signalée. C’est une estimation bornée et décroissante : on fait confiance à un relevé frais brièvement, puis on arrête d’inventer du déplacement, et le prochain relevé réel corrige la position. C’est une APPROXIMATION, pas une mesure. Admettons-le franchement : c’est plus fluide à regarder, mais ce n’est pas la vérité GPS.',
 				},
 				{
 					heading: 'Un bus qui ne répond plus FIGE et porte un grand « ! »',
 					body: 'Si un bus n’a pas signalé sa position depuis un moment, on ne fait JAMAIS semblant qu’il bouge encore. Il FIGE à son dernier emplacement connu et reçoit un grand « ! » bien visible, pour que vous sachiez d’un coup d’œil que sa position n’est plus fraîche. On préfère un bus immobile honnête à un bus inventé en mouvement.',
 				},
 				{
-					heading: '« Brut » = uniquement les positions mesurées',
-					body: 'En mode « Brut » (le mode par défaut), on n’affiche QUE les positions réellement mesurées : à chaque mise à jour du flux (~30 s), chaque bus saute directement à son dernier emplacement signalé, sans aucune estimation entre les deux. C’est plus saccadé, mais c’est la vérité non embellie, chaque point est une vraie mesure, jamais une supposition.',
+					heading: '« Signalées » = uniquement les positions mesurées',
+					body: 'En mode « Signalées » (le mode par défaut), on n’affiche QUE les positions réellement mesurées : à chaque mise à jour du flux (~30 s), chaque bus saute directement à son dernier emplacement signalé, sans aucune estimation entre les deux. C’est plus saccadé, mais c’est la vérité non embellie, chaque point est une vraie mesure, jamais une supposition.',
 				},
 				{
 					heading: 'Pourquoi les deux modes',
-					body: 'Le mode fluide estime le déplacement entre les mises à jour du flux. Le mode brut affiche les positions rapportées. Vous pouvez changer de mode à tout moment.',
+					body: 'Le mode « Estimées » estime le déplacement entre les mises à jour du flux. Le mode « Signalées » affiche les positions rapportées. Vous pouvez changer de mode à tout moment.',
 				},
 			],
 		},
@@ -166,7 +166,7 @@ export const metricsCopy = defineCopy({
 			label: 'Sources and populations',
 			body: 'The measures derive from GTFS schedules, GTFS-RT predictions, vehicle positions and alerts. Historical delay statistics count observations, including repeated updates. Live punctuality and coverage describe map-eligible vehicle positions; live percentiles give each current trip-average delay equal weight. Each definition states its population and window. These data do not directly measure arrivals at stops or passenger counts. An unavailable denominator remains unknown.',
 			unavailable:
-				'The live feed-conformance verdict could not be loaded right now. The methodology below is still exact and complete; only this live check is momentarily unavailable.',
+				'The live feed-conformance check could not be loaded right now. The definitions below remain available.',
 			howWeMeasure: {
 				label: 'How we measure (applies to every metric)',
 				serviceDay: {
@@ -212,27 +212,27 @@ export const metricsCopy = defineCopy({
 		},
 		livePositions: {
 			title: 'Live vehicle positions, almost real-time, not real-time',
-			lede: 'On the live map, every bus is drawn from the live GTFS-realtime feed. But that feed is not continuous: here, honestly, is how the map decides where to draw a bus between reports, and the choice you control with the “Motion” switch.',
+			lede: 'On the live map, every bus is drawn from the live GTFS-realtime feed. But that feed is not continuous: here, honestly, is how the map decides where to draw a bus between reports, and the choice you control with the “Positions” setting.',
 			points: [
 				{
 					heading: 'Each bus reports its position only every ~20-60 seconds',
 					body: 'A bus’s GPS position does not arrive continuously: the feed publishes a fresh report only every ~20-60 seconds, not every moment. Between reports we have NO real measurement of where the bus is. So anything shown between reports is either the old position held still, or an estimate, never a new measurement.',
 				},
 				{
-					heading: '“Almost real-time” = we estimate the position between reports',
-					body: 'In “Almost real-time” mode, between reports we ESTIMATE where a bus most likely is by projecting it FORWARD along its route at its last reported speed. It is a bounded, decaying estimate: we trust a fresh fix briefly, then stop inventing travel, and the next real report corrects it. It is an APPROXIMATION, not a measurement. Said plainly: it is smoother to watch, but it is not GPS truth.',
+					heading: '“Estimated” = we estimate the position between reports',
+					body: 'In “Estimated” mode, between reports we ESTIMATE where a bus most likely is by projecting it FORWARD along its route at its last reported speed. It is a bounded, decaying estimate: we trust a fresh fix briefly, then stop inventing travel, and the next real report corrects it. It is an APPROXIMATION, not a measurement. Said plainly: it is smoother to watch, but it is not GPS truth.',
 				},
 				{
 					heading: 'A bus that has not reported in a while FREEZES and gets a big “!”',
 					body: 'If a bus has not reported its position in a while, we NEVER pretend it is still moving. It FREEZES at its last known spot and gets a big, visible “!” so you can tell at a glance that its position is no longer fresh. We would rather show an honest stationary bus than a faked moving one.',
 				},
 				{
-					heading: '“Raw” = measured positions only',
-					body: 'In “Raw” mode (the default), we show ONLY positions that were actually measured: on every ~30s feed update each bus jumps straight to its last reported location, with no estimation in between. It is choppier, but it is the unembellished truth, every dot is a real measurement, never a guess.',
+					heading: '“Reported” = measured positions only',
+					body: 'In “Reported” mode (the default), we show ONLY positions that were actually measured: on every ~30s feed update each bus jumps straight to its last reported location, with no estimation in between. It is choppier, but it is the unembellished truth, every dot is a real measurement, never a guess.',
 				},
 				{
 					heading: 'Why both modes',
-					body: 'Smooth mode estimates motion between feed updates. Raw mode shows the reported positions. You can switch between them at any time.',
+					body: '“Estimated” mode estimates motion between feed updates. “Reported” mode shows the reported positions. You can switch between them at any time.',
 				},
 			],
 		},
