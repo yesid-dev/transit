@@ -1,1 +1,12 @@
-{"series":{},"metrics":{}}
+{
+  "metrics": {
+    "early_rate@3": "e3d90fcfbaed60db6e31197bd9c88d13b424ac673c70186881a57ca08ee17b0d",
+    "late_rate@3": "364d66ed63dbcabbcb56f4f317134910f23c33fb658779bfe85b7784f68e754b",
+    "late_share@3": "227e6faeca64160e66c13d6de72c6ae753027096e30368b9baf9ad163b9eccb3",
+    "on_time_rate@3": "83e089b52367c2330dec893195dd750369c845e8e7a3efc524033040fafa5e9c",
+    "trips_counted@3": "b1b3654c06b71453c2ab7071859dc65a0d29917c3d59f58faf274d5a19c42640"
+  },
+  "series": {
+    "reliability@3": "5525c81b4afc86cd1763e415cdca6f408b38934f155f2c97995c0aa4caea46c5"
+  }
+}

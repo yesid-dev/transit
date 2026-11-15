@@ -1,3 +1,4 @@
+from .definitions import build_registry
 from .model import AbsenceKey as AbsenceKey
 from .model import Arithmetic as Arithmetic
 from .model import Bilingual as Bilingual
@@ -7,7 +8,7 @@ from .model import Series as Series
 from .model import Source as Source
 from .registry import Registry as Registry
 
-REGISTRY = Registry()
+REGISTRY = build_registry()
 metric = REGISTRY.metric
 series = REGISTRY.series
 arithmetic = REGISTRY.arithmetic
