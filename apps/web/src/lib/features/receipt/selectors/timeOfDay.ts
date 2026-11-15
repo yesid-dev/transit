@@ -3,7 +3,8 @@ import {
 	severeShareToSeverity,
 	SEVERE_DOMAIN,
 } from '#lib/features/reliability/shiftGrains.ts';
-import type { SeverityCode, ReceiptShiftCut } from '#lib/v1/schemas/index.ts';
+import type { SeverityCode } from '#lib/v1/schemas/index.ts';
+import type { ReceiptReliabilityView } from '#lib/v1/reliabilityView.ts';
 
 export interface ReceiptShiftRow {
 	readonly key: string;
@@ -31,23 +32,22 @@ function shiftRank(shift: string): number {
 }
 
 export function selectReceiptTimeOfDay(
-	byShift: readonly ReceiptShiftCut[] | null | undefined,
+	byShift: ReceiptReliabilityView['byShift'] | null | undefined,
 	labels: ReceiptTimeOfDayLabels,
 ): ReceiptTimeOfDayVM {
-	const real = (byShift ?? []).filter((c) => c.severe_pct != null);
+	const real = (byShift ?? []).filter((c) => c.severePct != null);
 	const rows: ReceiptShiftRow[] = real
 		.slice()
 		.sort(
-			(a, b) =>
-				(b.severe_pct ?? 0) - (a.severe_pct ?? 0) || shiftRank(a.shift) - shiftRank(b.shift),
+			(a, b) => (b.severePct ?? 0) - (a.severePct ?? 0) || shiftRank(a.shift) - shiftRank(b.shift),
 		)
 		.map((c, i) => {
-			const sev = c.severe_pct ?? 0;
+			const sev = c.severePct ?? 0;
 			return {
 				key: c.shift,
 				rank: i + 1,
 				title: labels.shiftLabel(c.shift),
-				severity: severeShareToSeverity(c.severe_pct ?? null),
+				severity: severeShareToSeverity(c.severePct ?? null),
 				value: sev,
 				domain: SEVERE_DOMAIN,
 				unit: '%',

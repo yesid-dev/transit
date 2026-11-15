@@ -12,5 +12,6 @@ regexes = [
   '''https://eccfb9bedd87d413eaf4cac6ae2285d3\.r2\.cloudflarestorage\.com''',
   '''^route-55-midday$''',
   '''^vehicle-vehicle-normal-55$''',
+  '''^receipt-(absent-index|absent-receipt|completeness-only|negative-delay|no-not-reported|no-time|no-worst|not-reported-only|null-alerts|null-delay|null-impact|null-not-reported-total|null-otp|null-routes|null-scheduled|null-severe|null-stops|null-vehicles|null-worst-values|older|open|populated|pre-cut|route-only|shift-order|stop-only|time-only|zero-alerts|zero-metrics|zero-scheduled|zero-vehicles)-(stm|octranspo)-(390|1280)-(en|fr)$''',
   '''0123456789abcdef0123456789abcdef''',
 ]

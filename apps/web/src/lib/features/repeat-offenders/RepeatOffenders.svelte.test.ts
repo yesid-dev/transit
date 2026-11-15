@@ -362,7 +362,9 @@ describe('RepeatOffenders — approved analytical article', () => {
 		expect(card(container, 'repeat-trips')).not.toBeNull();
 		expect(container.querySelector('[data-toc="repeat-vehicles"]')).toBeNull();
 		const rail = container.querySelector('[data-slot="surface-rail"]') as HTMLElement;
-		expect(within(rail).getByRole('button', { name: 'Worst repeat offender' })).toBeInTheDocument();
+		expect(
+			within(rail).getByRole('button', { name: 'Highest share of late readings' }),
+		).toBeInTheDocument();
 		expect(within(rail).getByRole('button', { name: 'Trips' })).toBeInTheDocument();
 		expect(within(rail).queryByRole('button', { name: 'Vehicles' })).toBeNull();
 		expect(card(container, 'repeat-trips').querySelector('[data-slot="badge"]')).toHaveTextContent(
@@ -528,7 +530,7 @@ describe('RepeatOffenders — approved analytical article', () => {
 		});
 		expect(repeatCopy.en.cards).toEqual({
 			worst: {
-				title: 'Worst repeat offender',
+				title: 'Highest share of late readings',
 				subtitle: expect.stringMatching(/\?$/),
 			},
 			trips: {
@@ -542,7 +544,7 @@ describe('RepeatOffenders — approved analytical article', () => {
 		});
 		expect(repeatCopy.fr.cards).toEqual({
 			worst: {
-				title: 'Pire récidiviste',
+				title: 'Plus forte part de relevés en retard',
 				subtitle: expect.stringMatching(/\?$/),
 			},
 			trips: {
@@ -557,12 +559,39 @@ describe('RepeatOffenders — approved analytical article', () => {
 	});
 
 	it('keeps the French recurrence sentence grammatical for singular and plural days', () => {
-		expect(repeatCopy.fr.recurrence.naturalFrequency(1, 1)).toBe(
-			'Sujet aux retards 1 jour sur 1 observé',
+		expect(repeatCopy.fr.recurrence.naturalFrequency(1, 3)).toBe(
+			'Sujet aux retards 1 jour sur 3 observés',
 		);
 		expect(repeatCopy.fr.recurrence.naturalFrequency(2, 3)).toBe(
 			'Sujet aux retards 2 jours sur 3 observés',
 		);
+	});
+
+	it('never calls a single observed day a repeated pattern', () => {
+		for (const lateDays of [0, 1]) {
+			expect(repeatCopy.en.recurrence.naturalFrequency(lateDays, 1)).toBe(
+				'Seen on one day only. One day does not show a repeated pattern.',
+			);
+			expect(repeatCopy.fr.recurrence.naturalFrequency(lateDays, 1)).toBe(
+				'Observé un seul jour. Un seul jour ne montre pas une tendance répétée.',
+			);
+		}
+		expect(repeatCopy.en.recurrence.naturalFrequency(1, 2)).toBe(
+			'Late-prone on 1 of 2 observed days',
+		);
+	});
+
+	it('shows the one-day note, not a recurrence count, for a top offender seen on one day', () => {
+		const top = payload.current?.by_grain?.[0]?.entries?.[0];
+		if (!top) throw new Error('the seeded week ladder has no top offender');
+		Object.assign(top, { recurrence_days: 1, observed_days: 1 });
+		const { container } = render(RepeatOffenders);
+		const hero = container.querySelector('[data-slot="offenders-hero"]') as HTMLElement;
+		expect(hero).toHaveAttribute('aria-label', 'Highest share of late readings');
+		expect(hero).toHaveTextContent(
+			'Seen on one day only. One day does not show a repeated pattern.',
+		);
+		expect(hero).not.toHaveTextContent(/1 of 1/);
 	});
 
 	it('keeps a touch datum activation inside the card and exposes only the popover action', async () => {
@@ -642,7 +671,9 @@ describe('RepeatOffenders — approved analytical article', () => {
 		expect(container.querySelector('[data-toc="repeat-trips"]')).toBeNull();
 		expect(container.querySelector('[data-toc="repeat-vehicles"]')).toBeNull();
 		const rail = container.querySelector('[data-slot="surface-rail"]') as HTMLElement;
-		expect(within(rail).getAllByRole('button', { name: 'Worst repeat offender' })).toHaveLength(1);
+		expect(
+			within(rail).getAllByRole('button', { name: 'Highest share of late readings' }),
+		).toHaveLength(1);
 		expect(within(card(container, 'repeat-worst')).getByRole('link')).toHaveAttribute(
 			'href',
 			'/lines/11',

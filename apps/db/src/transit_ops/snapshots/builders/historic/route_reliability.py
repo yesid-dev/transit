@@ -120,7 +120,7 @@ _ROUTE_HEADWAY_DIRECTION_SQL = named_query(
     SELECT shift, direction_id, service_day_kind, observed_headway_min
     FROM gold.route_headway_by_direction_shift
     WHERE provider_id = :provider_id AND route_id = :route_id
-    ORDER BY direction_id, service_day_kind, shift
+    ORDER BY direction_id, service_day_kind COLLATE "C", shift COLLATE "C"
     """,
 )
 

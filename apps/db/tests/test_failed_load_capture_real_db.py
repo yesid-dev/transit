@@ -82,6 +82,7 @@ def worker(real_db_engine, seed_provider, monkeypatch):
             monkeypatch.setattr(orchestration, "load_i3_to_silver", fail)
             registry = SimpleNamespace(
                 get_provider=lambda p: SimpleNamespace(
+                    provider=SimpleNamespace(bounds=None, max_vehicle_speed_kmh=100),
                     feeds={endpoint: SimpleNamespace(refresh_interval_seconds=30)}
                 )
             )

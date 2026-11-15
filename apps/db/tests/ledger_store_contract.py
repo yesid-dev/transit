@@ -4,7 +4,7 @@ from datetime import UTC, date, datetime
 import pytest
 
 from transit_ops.history.datasets import UndeclaredDataset
-from transit_ops.history.ledger import HOLD_NO_END, WindowNotFound
+from transit_ops.history.ledger import HOLD_NO_END, WindowNotFound, WindowState
 from transit_ops.history.ledger_store import NewCopy
 
 INVALID_COPY_VALUES = [
@@ -16,6 +16,18 @@ INVALID_COPY_VALUES = [
 ]
 
 LIFECYCLE_KINDS = ("seal", "verify", "reject", "current", "trim", "restore", "hold", "unhold")
+
+
+@pytest.fixture
+def r2_store(tmp_path):
+    from transit_ops.control.objects import SnapshotConditionalObjects
+    from transit_ops.history.ledger_r2 import R2Ledger
+    from transit_ops.snapshots.storage import LocalSnapshotStorage
+
+    objects = SnapshotConditionalObjects(
+        LocalSnapshotStorage(str(tmp_path), "ledger/v1"), min_interval_s=0
+    )
+    return R2Ledger(objects, lambda: datetime(2026, 11, 2, tzinfo=UTC), "writer", 3)
 
 
 @pytest.mark.parametrize("kind", LIFECYCLE_KINDS)
@@ -426,3 +438,28 @@ def test_rewrite_provenance_round_trips_through_events(store, make_identity):
     assert store.events(identity, kinds={"processing_evidence"}) == events
     assert store.events(identity, kinds={"changed"}) == []
     assert store.events(identity, kinds=set()) == []
+
+
+@pytest.mark.parametrize("case", ["event", "copy", {1: "a", "1": "b"}])
+def test_details_are_owned_json_values(store, make_identity, case):
+    def read(session):
+        return (session.copies() if case == "copy" else session.events())[0].details
+
+    if isinstance(case, dict):
+        with store.session(make_identity()) as session, pytest.raises(TypeError):
+            session.record_event("close_runs", details=case)
+        return
+    with store.session(make_identity()) as session:
+        details = {"rows": [1], "tuple": (1, 2)}
+        if case == "copy":
+            session.insert_allocated_copy(
+                replace(new_copy(session.allocate_version()), details=details)
+            )
+            assert type(session.state()) is WindowState
+        else:
+            session.record_event("close_runs", details=details)
+        details["rows"].append("bad\0input")
+        read(session)["rows"].append("edited read")
+        assert read(session) == {"rows": [1], "tuple": [1, 2]}
+    with store.session(make_identity()) as session:
+        assert read(session) == {"rows": [1], "tuple": [1, 2]}

@@ -502,6 +502,7 @@ def test_run_realtime_worker_loop_targets_start_to_start_cadence(
         engine,
         last_captures=None,
         last_attempts=None,
+        live_trip_updates=None,
         bronze_storage_resolver=None,
     ):
         cycle_calls.append(provider_id)
@@ -592,6 +593,7 @@ def test_run_realtime_worker_loop_warns_on_cycle_overrun(
         engine,
         last_captures=None,
         last_attempts=None,
+        live_trip_updates=None,
         bronze_storage_resolver=None,
     ):
         return _worker_loop_cycle_result(provider_id, step_timings=_WORKER_STEP_TIMINGS)
@@ -712,6 +714,7 @@ def test_run_realtime_worker_loop_continues_after_cycle_raises(
         engine,
         last_captures=None,
         last_attempts=None,
+        live_trip_updates=None,
         bronze_storage_resolver=None,
     ):
         cycle_calls.append(provider_id)
@@ -755,6 +758,7 @@ def test_run_realtime_worker_loop_breaks_on_shutdown_flag(
         engine,
         last_captures=None,
         last_attempts=None,
+        live_trip_updates=None,
         bronze_storage_resolver=None,
     ):
         cycle_calls.append(provider_id)
@@ -855,7 +859,7 @@ def _install_worker_storage_cycle_stubs(
     monkeypatch.setattr(
         orchestration,
         "_best_effort_publish_live",
-        lambda provider_id, settings, engine, registry: (
+        lambda provider_id, settings, engine, registry, live_trip_updates=None: (
             call_order.append("publish-live"),
             0,
         )[1],
@@ -945,6 +949,7 @@ def test_worker_cycle_retries_constructor_after_endpoint_local_failure(
         engine=object(),
         last_captures=None,
         last_attempts=None,
+        live_trip_updates=None,
         bronze_storage_resolver=scope.resolve,
     )
     scope.close()
@@ -1553,7 +1558,9 @@ def _fake_registry_with_intervals(
                 refresh_interval_seconds=i3_alerts,
             ),
         },
-        provider=SimpleNamespace(provider_id="stm", display_name="STM"),
+        provider=SimpleNamespace(
+            provider_id="stm", display_name="STM", bounds=None, max_vehicle_speed_kmh=100
+        ),
     )
     return SimpleNamespace(get_provider=lambda provider_id: manifest)
 
@@ -1757,7 +1764,9 @@ def test_run_realtime_cycle_without_last_captures_runs_every_endpoint(
 def _fake_registry_with_service_alerts():
     registry = _fake_registry_with_intervals()
     manifest = registry.get_provider("sto")
-    manifest.provider = SimpleNamespace(provider_id="sto", display_name="STO")
+    manifest.provider = SimpleNamespace(
+        provider_id="sto", display_name="STO", bounds=None, max_vehicle_speed_kmh=100
+    )
     alerts = manifest.feeds.pop("i3_alerts")
     alerts.endpoint_key = "service_alerts"
     manifest.feeds["service_alerts"] = alerts
@@ -2213,7 +2222,9 @@ def _fake_registry_without_i3(*, trip_updates: int = 30, vehicle_positions: int 
         vehicle_positions=vehicle_positions,
     )
     manifest = registry.get_provider("sto")
-    manifest.provider = SimpleNamespace(provider_id="sto", display_name="STO")
+    manifest.provider = SimpleNamespace(
+        provider_id="sto", display_name="STO", bounds=None, max_vehicle_speed_kmh=100
+    )
     del manifest.feeds["i3_alerts"]
     for feed in manifest.feeds.values():
         feed.is_enabled = True
@@ -2566,6 +2577,7 @@ def test_one_shot_scope_reuses_storage_and_closes_without_masking_outcome(
     )
     registry = SimpleNamespace(
         get_provider=lambda p: SimpleNamespace(
+            provider=SimpleNamespace(bounds=None, max_vehicle_speed_kmh=100),
             feeds={"trip_updates": SimpleNamespace(refresh_interval_seconds=30)}
         )
     )
@@ -2745,6 +2757,7 @@ def test_failure_before_source_verification_has_no_tag(monkeypatch, endpoint):
         orchestration, "_persist_silver_load_failure", lambda *a, **k: writes.append(k)
     )
     registry = SimpleNamespace(get_provider=lambda p: SimpleNamespace(
+        provider=SimpleNamespace(bounds=None, max_vehicle_speed_kmh=100),
         feeds={endpoint: SimpleNamespace(refresh_interval_seconds=30)}))
     result = run_realtime_cycle("requested", settings=Settings(_env_file=None), registry=registry,
         engine=object())

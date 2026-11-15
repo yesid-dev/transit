@@ -91,7 +91,7 @@ _STOP_HISTORY_IDS_SQL = named_query(
     )
     SELECT inventory.stop_id, inventory_total.__history_inventory_count
     FROM inventory_total LEFT JOIN inventory ON true
-    ORDER BY inventory.stop_id
+    ORDER BY inventory.stop_id COLLATE "C" NULLS LAST
     """,
 )
 
@@ -115,7 +115,7 @@ _STOP_HISTORY_DELAY_SQL = named_query(
       AND spine.provider_local_date >= timezone(dp.timezone, {NOW})::date - :warm_retention_days
       AND spine.provider_local_date < timezone(dp.timezone, {NOW})::date
     GROUP BY spine.stop_id, spine.provider_local_date
-    ORDER BY spine.stop_id, spine.provider_local_date
+    ORDER BY spine.stop_id COLLATE "C", spine.provider_local_date
     """,
 )
 
@@ -137,7 +137,7 @@ _STOP_HISTORY_PERCENTILES_SQL = named_query(
       AND pct.stop_id = ANY(:entity_ids)
       AND pct.provider_local_date >= timezone(dp.timezone, {NOW})::date - :warm_retention_days
       AND pct.provider_local_date < timezone(dp.timezone, {NOW})::date
-    ORDER BY pct.stop_id, pct.provider_local_date
+    ORDER BY pct.stop_id COLLATE "C", pct.provider_local_date
     """,
 )
 
@@ -164,7 +164,7 @@ _STOP_HISTORY_OCCUPANCY_SQL = named_query(
       AND occ.provider_local_date >= timezone(dp.timezone, {NOW})::date - :warm_retention_days
       AND occ.provider_local_date < timezone(dp.timezone, {NOW})::date
     GROUP BY occ.stop_id, occ.provider_local_date
-    ORDER BY occ.stop_id, occ.provider_local_date
+    ORDER BY occ.stop_id COLLATE "C", occ.provider_local_date
     """,
 )
 

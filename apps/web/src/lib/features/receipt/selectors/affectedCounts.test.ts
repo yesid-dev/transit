@@ -12,7 +12,7 @@ const labels = {
 describe('selectAffectedCounts', () => {
 	it('builds routes/stops/alerts cells and OMITS the always-null vehicles cell', () => {
 		const cells = selectAffectedCounts(
-			{ affected_routes: 12, affected_stops: 340, alerts: 5, vehicles: null },
+			{ affectedRoutes: 12, affectedStops: 340, alerts: 5, vehicles: null },
 			labels,
 		);
 		expect(cells.map((c) => c.key)).toEqual(['routes', 'stops', 'alerts']);
@@ -21,7 +21,7 @@ describe('selectAffectedCounts', () => {
 
 	it('surfaces the vehicles cell only when a real count exists', () => {
 		const cells = selectAffectedCounts(
-			{ affected_routes: 12, affected_stops: 340, alerts: 5, vehicles: 220 },
+			{ affectedRoutes: 12, affectedStops: 340, alerts: 5, vehicles: 220 },
 			labels,
 		);
 		expect(cells.find((c) => c.key === 'vehicles')?.value).toBe('220');
@@ -29,7 +29,7 @@ describe('selectAffectedCounts', () => {
 
 	it('renders null (styled chip) for a null count, a real 0 stays 0', () => {
 		const cells = selectAffectedCounts(
-			{ affected_routes: null, affected_stops: 0, alerts: null, vehicles: null },
+			{ affectedRoutes: null, affectedStops: 0, alerts: null, vehicles: null },
 			labels,
 		);
 		expect(cells.find((c) => c.key === 'routes')?.value).toBeNull();

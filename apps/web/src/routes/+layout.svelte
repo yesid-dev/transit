@@ -21,10 +21,10 @@
 
 	import { onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
-	import { createNavigationLifecycle, resetFocusAfterNavigation } from '@yesid/ui/brand';
+	import { createNavigationLifecycle } from '@yesid/ui/brand';
 	import { updated } from '$app/state';
 
-	import { goto, onNavigate, beforeNavigate, afterNavigate, invalidateAll } from '$app/navigation';
+	import { onNavigate, beforeNavigate, afterNavigate, invalidateAll } from '$app/navigation';
 
 	import { browser } from '$app/env';
 	import { startAnalytics } from '#lib/site/analytics.ts';
@@ -80,14 +80,10 @@
 	import { NAV_GROUPS, visibleNav, YESID_HOUSE_LINK, mainLandmarkLabel } from '#lib/content/nav.ts';
 	import { legalCopy } from '#lib/features/legal/legal.copy.ts';
 	import {
-		searchHitHref,
 		searchTransit,
 		scopeForPath,
-		type ChromeSearchResult,
 		type ChromeSearchScope,
 	} from '#lib/search/transitSearch.ts';
-	import type { TransitModeKey } from '#lib/search/stopMode.ts';
-	import { SvelteSet } from 'svelte/reactivity';
 	import type { GeocodeSuggestion } from '#lib/geocode/types.ts';
 	import type { LayoutData } from './$types';
 
@@ -253,7 +249,6 @@
 	const edgeLayout = $derived(desktop.current ? 'desktop' : 'mobile');
 	let topSearch = $state('');
 	let addressSuggestions = $state<GeocodeSuggestion[]>([]);
-	const searchModes = new SvelteSet<TransitModeKey>();
 	const chromeSearchEnabled = $derived(v1 !== null && topSearch.trim().length > 0);
 	const searchRoutes = createResource(() => getRoutesIndex(), {
 		enabled: () => chromeSearchEnabled,
@@ -286,12 +281,13 @@
 				})
 			: null,
 	);
-	const topSearchResults = $derived(
+	// Unloaded indexes stay null so the list can tell "still loading" from "no match".
+	const searchList = $derived(
 		searchTransit(
-			{ surface: 'header', query: topSearch, scope: searchScope, modes: searchModes },
+			{ surface: 'list', query: topSearch, scope: searchScope },
 			{
-				routes: searchRoutes.data?.routes ?? [],
-				stops: searchStops.data?.stops ?? [],
+				routes: searchRoutes.data?.routes ?? null,
+				stops: searchStops.data?.stops ?? null,
 				vehicles: searchLive?.vehicles?.vehicles ?? [],
 				addresses: addressSuggestions,
 			},
@@ -301,14 +297,14 @@
 	$effect(() => {
 		const query = topSearch.trim();
 		const wantsAddress = searchScope === 'map' || searchScope === 'all';
-		if (!browser || !v1 || !wantsAddress || searchModes.size > 0 || !shouldSuggestAddress(query)) {
+		if (!browser || !v1 || !wantsAddress || !shouldSuggestAddress(query)) {
 			addressSuggestions = [];
 			return;
 		}
 
 		const controller = new AbortController();
 		const timer = setTimeout(() => {
-			void fetchAddressSuggestions(query, 4, controller.signal)
+			void fetchAddressSuggestions(query, 2, controller.signal)
 				.then((results) => {
 					if (!controller.signal.aborted && topSearch.trim() === query) {
 						addressSuggestions = results;
@@ -413,49 +409,6 @@
 		void invalidateAll();
 	}
 
-	async function selectSearchResult(result: ChromeSearchResult): Promise<void> {
-		topSearch = '';
-		const resetFocus = resetFocusAfterNavigation();
-		await goto(
-			localizeHref(
-				// Views mirror their tab and period shallowly; page.url can still hold the old query.
-				searchHitHref(result, { path: seoPath, params: currentMirrorUrl().searchParams }),
-				locale,
-				data.providerId,
-			),
-			{ reset: false },
-		);
-		resetFocus();
-	}
-
-	async function submitSearch(value: string): Promise<void> {
-		if (!data.v1) return;
-		const query = value.trim();
-		const [first] = searchTransit(
-			{ surface: 'header', query, scope: searchScope, modes: searchModes },
-			{
-				routes: searchRoutes.data?.routes ?? [],
-				stops: searchStops.data?.stops ?? [],
-				vehicles: searchLive?.vehicles?.vehicles ?? [],
-				addresses: addressSuggestions,
-			},
-		);
-		if (first) {
-			await selectSearchResult(first);
-			return;
-		}
-
-		if (searchScope === 'route' || searchScope === 'stop') return;
-		if (searchModes.size > 0) return;
-		if (!shouldSuggestAddress(query)) return;
-		const addresses = await fetchAddressSuggestions(query, 1);
-		const [addressResult] = searchTransit(
-			{ surface: 'header', query, scope: searchScope },
-			{ addresses },
-		);
-		if (addressResult) await selectSearchResult(addressResult);
-	}
-
 	function shouldSuggestAddress(query: string): boolean {
 		const trimmed = query.trim();
 		if (trimmed.length < 3) return false;
@@ -496,12 +449,9 @@
 		providers={data.providers}
 		discoveryError={data.discoveryError}
 		bind:search={topSearch}
-		searchResults={topSearchResults}
+		{searchList}
 		{searchPresentation}
 		{searchScope}
-		{searchModes}
-		onsearch={submitSearch}
-		onresultselect={selectSearchResult}
 	>
 		{#snippet main()}
 			<div class="flex w-full flex-col {isFullBleed ? 'h-full overflow-hidden' : ''}">

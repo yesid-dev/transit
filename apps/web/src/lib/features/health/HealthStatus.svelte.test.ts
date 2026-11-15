@@ -514,7 +514,18 @@ describe('HealthStatus — full manifest render', () => {
 		expect(names('fr').join(' | ')).toBe(
 			'Horaire | Prédictions de passage | Positions des véhicules | Avis de service | Avis de service | Données en direct | Horaire | Bilan de fiabilité | Dernière publication : le 11 nov.',
 		);
-		expect(copy.en.feedNames.gis_static).toBeUndefined();
+		expect([copy.en.feedNames.gis_static, copy.fr.feedNames.gis_static]).toEqual([
+			'Line and stop maps',
+			'Cartes des lignes et des arrêts',
+		]);
+		expect(Object.values(copy.fr.statusVerdictAtPublication).join(' | ')).toBe(
+			'réussi à la publication | en cours à la publication | échec à la publication | inconnu',
+		);
+		// A failed check shown here was published anyway (forced), so it is never "blocked".
+		expect([copy.en.lanes.gateVerdict.fail, copy.fr.lanes.gateVerdict.fail]).toEqual([
+			'failed',
+			'échouée',
+		]);
 		expect([copy.en.details, copy.fr.details]).toEqual([
 			'Details for auditors',
 			'Détails pour vérification',
@@ -625,7 +636,8 @@ describe('HealthStatus — full manifest render', () => {
 		const list = screen.getByRole('list', { name: en.freshness.listLabel });
 		expect(within(list).getByText('Vehicle positions')).toBeInTheDocument();
 		expect(within(list).getByText('Schedule')).toBeInTheDocument();
-		expect(within(list).getByText('gis_static')).toBeInTheDocument();
+		expect(within(list).getByText('Line and stop maps')).toBeInTheDocument();
+		expect(within(list).queryByText('gis_static')).toBeNull();
 		expect(within(list).getAllByText(en.statusVerdict.ok).length).toBeGreaterThan(0);
 		expect(within(list).getAllByText(en.statusVerdict.failed).length).toBeGreaterThan(0);
 		expect(within(list).queryByText('240')).toBeNull();
@@ -913,7 +925,10 @@ describe('HealthStatus — honesty (sections stand down when absent)', () => {
 		});
 		dataHealthState = ready<DataHealth>(null);
 		render(HealthStatus);
-		expect(screen.getByRole('list', { name: en.freshness.listLabel })).toBeInTheDocument();
+		// Without data health's feeds the list is the daily record's, as of its publication.
+		const feeds = screen.getByRole('list', { name: en.freshness.listLabel });
+		expect(within(feeds).getByText('succeeded at publication')).toBeInTheDocument();
+		expect(within(feeds).queryByText(en.statusVerdict.ok)).toBeNull();
 		expect(screen.queryByRole('list', { name: en.sources.listLabel })).toBeNull();
 		expect(screen.queryByText(en.gaps.section)).toBeNull();
 		expect(screen.queryByText(en.pipelineNotes.section)).toBeNull();

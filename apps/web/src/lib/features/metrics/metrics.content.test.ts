@@ -7,6 +7,7 @@ import {
 	type MetricKey,
 } from './metrics.content';
 import { metricsCopy } from './metrics.copy';
+import { copy as mapCopy } from '../map/map.copy';
 
 const SURFACE_METRICS: readonly MetricKey[] = [
 	'otp',
@@ -116,6 +117,40 @@ describe('metrics.content — EN/FR parity', () => {
 		for (const re of [/\bstm\b/, /\bsto\b/, /\bsts\b/, /\boc[\s-]?transpo\b/]) {
 			expect(text).not.toMatch(re);
 		}
+	});
+
+	it('names the map’s Positions setting and its options as the map shows them', () => {
+		const text = (locale: 'en' | 'fr') => {
+			const s = metricsCopy[locale].livePositions;
+			return [s.lede, ...s.points.flatMap((p) => [p.heading, p.body])].join(' ');
+		};
+		const [en, fr] = [text('en'), text('fr')];
+		expect(en).toContain('the “Positions” setting');
+		expect(fr).toContain('le réglage « Positions »');
+		for (const [locale, said, open, close] of [
+			['en', en, '“', '”'],
+			['fr', fr, '« ', ' »'],
+		] as const) {
+			const { label, smooth, raw } = mapCopy[locale].motion;
+			for (const name of [label, smooth, raw]) expect(said).toContain(`${open}${name}${close}`);
+		}
+		for (const old of ['“Motion”', 'Almost real-time', '“Raw”', 'Smooth mode', 'Raw mode'])
+			expect(en).not.toContain(old);
+		for (const old of [
+			'« Mouvement »',
+			'« Presque en temps réel »',
+			'« Brut »',
+			'mode fluide',
+			'mode brut',
+		])
+			expect(fr).not.toContain(old);
+	});
+
+	it('says the definitions stay available when the conformance check cannot load', () => {
+		expect([metricsCopy.en.provenance.unavailable, metricsCopy.fr.provenance.unavailable]).toEqual([
+			'The live feed-conformance check could not be loaded right now. The definitions below remain available.',
+			'La vérification de conformité du flux n’a pas pu être chargée pour l’instant. Les définitions ci-dessous restent disponibles.',
+		]);
 	});
 
 	it('every cluster used by an entry has an overline in both locales', () => {

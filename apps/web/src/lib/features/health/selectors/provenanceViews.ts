@@ -1,4 +1,5 @@
-import type { Provenance } from '#lib/v1/schemas/index.ts';
+import { freshnessAgeSeconds } from '#lib/v1/freshness.ts';
+import type { DataHealth, Provenance, ProvenanceFreshness } from '#lib/v1/schemas/index.ts';
 
 export type FreshnessAspect = 'on_time' | 'late' | 'unknown';
 
@@ -34,6 +35,25 @@ export function verdictFor(
 export function freshnessOf(p: Provenance) {
 	return p.freshness ?? [];
 }
+
+/**
+ * The feed list: data health's feeds, republished every live cycle, else the daily record's. Those
+ * statuses are as of its publication, and their ages, frozen then, are counted on to now.
+ */
+export function feedFreshness(
+	dataHealth: DataHealth | null,
+	provenance: Provenance | null,
+	nowMs: number,
+): { readonly items: readonly ProvenanceFreshness[]; readonly atPublication: boolean } {
+	if (dataHealth?.feeds?.length) return { items: dataHealth.feeds, atPublication: false };
+	const since = freshnessAgeSeconds(provenance?.generated_utc, nowMs);
+	const items = (provenance?.freshness ?? []).map((f) => ({
+		...f,
+		age_s: f.age_s == null || since == null ? null : f.age_s + since,
+	}));
+	return { items, atPublication: items.length > 0 };
+}
+
 export function sourcesOf(p: Provenance) {
 	return p.sources ?? [];
 }

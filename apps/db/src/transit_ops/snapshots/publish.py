@@ -25,6 +25,7 @@ from transit_ops.snapshots.historic_run import (
 )
 from transit_ops.snapshots.historic_tier import HistoricValidationInputs
 from transit_ops.snapshots.live_scope import worker_live_storage
+from transit_ops.snapshots.live_trip_updates import LiveTripUpdates
 from transit_ops.snapshots.protocols import (
     CollectedItem,
     HistoricObjectStore,
@@ -385,6 +386,7 @@ def publish_snapshot(
     gate_enabled: bool = True,
     force: bool = False,
     full_historic_rebuild: bool = False,
+    live_trip_updates: LiveTripUpdates | None = None,
 ) -> PublishResult:
     if full_historic_rebuild and tier != "historic":
         raise ValueError("--full-historic-rebuild requires tier='historic'")
@@ -409,6 +411,7 @@ def publish_snapshot(
                 gate_enabled=gate_enabled,
                 force=force,
                 full_historic_rebuild=full_historic_rebuild,
+                live_trip_updates=live_trip_updates,
             )
         finally:
             close = getattr(owned_storage, "close", None)

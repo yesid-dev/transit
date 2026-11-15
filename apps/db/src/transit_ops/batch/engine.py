@@ -28,6 +28,12 @@ class InputRefused(BatchEngineError):
     pass
 
 
+class ParquetInputRefused(InputRefused):
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        super().__init__(f"invalid Parquet input: {path}")
+
+
 class VariantRefused(BatchEngineError):
     pass
 
@@ -125,8 +131,11 @@ def _validate(inputs: Sequence[BatchInput]) -> None:
 def _check_schema(conn: duckdb.DuckDBPyConnection, files: tuple[Path, ...]) -> None:
     expected = None
     for path in files:
-        scan = conn.read_parquet(str(path.resolve()), hive_partitioning=False)
-        actual = list(zip(scan.columns, map(str, scan.types), strict=True))
+        try:
+            scan = conn.read_parquet(str(path.resolve()), hive_partitioning=False)
+            actual = list(zip(scan.columns, map(str, scan.types), strict=True))
+        except duckdb.Error as error:
+            raise ParquetInputRefused(path) from error
         if expected is not None and actual != expected:
             raise InputRefused(f"{path}: schema {actual!r} differs from {expected!r}")
         expected = actual

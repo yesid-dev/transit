@@ -726,7 +726,10 @@ def test_hotspots_history_production_plan_executes_exactly_four_closed_day_queri
     assert "ORDER BY" in route_sql and "ORDER BY" in stop_sql
     assert "LIMIT" not in route_sql and "LIMIT" not in stop_sql
     assert "ORDER BY sp.provider_local_date, sp.route_id" in route_sql
-    assert "ORDER BY local_date, stop_id, route_id" in stop_sql
+    assert (
+        'ORDER BY local_date, COALESCE(daily.stop_id, peak.stop_id) COLLATE "C",\n'
+        '             COALESCE(daily.route_id, peak.route_id) COLLATE "C"' in stop_sql
+    )
     assert "stop_delay_shift_daily" in stop_sql
     assert "known_observation_count" in route_sql
     assert "WHERE sp.on_time_observation_count IS NOT NULL" in route_sql
@@ -1429,7 +1432,10 @@ def test_repeat_offenders_history_production_plan_executes_exactly_three_queries
         "provider_local_date < timezone(dp.timezone, CAST(:as_of_utc AS timestamptz))::date"
         in sql
     )
-    assert "ORDER BY sp.provider_local_date, sp.entity_kind, sp.entity_id, sp.route_id" in sql
+    assert (
+        'ORDER BY sp.provider_local_date, sp.entity_kind COLLATE "C",\n'
+        '             sp.entity_id COLLATE "C", sp.route_id COLLATE "C"' in sql
+    )
     assert "LIMIT" not in sql
     assert "gold.repeat_offender AS" not in sql
 
@@ -1491,7 +1497,9 @@ def test_current_repeat_offenders_fixed_builder_bytes_and_dispatch_are_unchanged
     ]
     fixed_sql = conn.executed[0]
     assert "FROM gold.repeat_offender" in fixed_sql
-    assert "ORDER BY recurrence_days DESC, avg_delay_seconds DESC" in fixed_sql
+    assert (
+        "ORDER BY recurrence_days DESC NULLS FIRST, avg_delay_seconds DESC NULLS FIRST"
+    ) in fixed_sql
     assert "LIMIT 50" in fixed_sql
 
 

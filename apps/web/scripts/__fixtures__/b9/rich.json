@@ -2133,5 +2133,5 @@
 			"route_ids": ["24"]
 		}
 	},
-	"not_found": []
+	"not_found": ["status/data_health.json"]
 }

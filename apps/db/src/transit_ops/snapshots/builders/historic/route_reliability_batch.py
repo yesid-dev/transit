@@ -57,7 +57,7 @@ _ROUTE_INVENTORY_SQL = named_query(
     FROM gold.route_delay_spine
     WHERE provider_id = :provider_id AND route_id IS NOT NULL
     GROUP BY route_id
-    ORDER BY route_id
+    ORDER BY route_id COLLATE "C"
     """,
 )
 
@@ -67,7 +67,7 @@ _PERCENTILE_DAILY_SQL = named_query(
     SELECT route_id, provider_local_date, p50_delay_seconds, p90_delay_seconds
     FROM gold.route_delay_percentile_daily
     WHERE provider_id = :provider_id AND route_id IS NOT NULL
-    ORDER BY route_id, provider_local_date
+    ORDER BY route_id COLLATE "C", provider_local_date
     """,
 )
 
@@ -91,7 +91,7 @@ _DAILY_SQL = named_query(
     SELECT route_id, d, known_obs, on_time, avg_delay_sec, severe
     FROM ranked
     WHERE route_rank <= 30
-    ORDER BY route_id, d DESC
+    ORDER BY route_id COLLATE "C", d DESC
     """,
 )
 
@@ -155,6 +155,7 @@ _SPINE_SECTIONS_SQL = named_query(
         UNION ALL
         SELECT route_id, 'month', anchor - 59, anchor - 30, true FROM anchors
     )
+    SELECT * FROM (
     SELECT
         route_id, 'route.spine.weekly'::text AS logical_query,
         NULL::date AS win_start, NULL::date AS win_end,
@@ -319,7 +320,12 @@ _SPINE_SECTIONS_SQL = named_query(
              EXTRACT(ISODOW FROM b.provider_local_date)::integer,
              b.hour_of_day_local
 
-    ORDER BY route_id, logical_query, win_start NULLS FIRST, win_end NULLS FIRST
+    ) AS sections
+    ORDER BY route_id COLLATE "C", logical_query COLLATE "C",
+             win_start NULLS FIRST, win_end NULLS FIRST,
+             grain COLLATE "C" NULLS LAST, d NULLS LAST,
+             day_of_week_iso NULLS LAST, hour_of_day_local NULLS LAST,
+             shift COLLATE "C" NULLS LAST, day_type COLLATE "C" NULLS LAST
     """,
 )
 
@@ -329,7 +335,7 @@ _HEADWAY_OBSERVED_SQL = named_query(
     SELECT route_id, shift, observed_headway_min, sample_count, headway_cov, bunched_count
     FROM gold.route_headway_by_shift
     WHERE provider_id = :provider_id AND route_id IS NOT NULL
-    ORDER BY route_id, shift
+    ORDER BY route_id COLLATE "C", shift COLLATE "C"
     """,
 )
 
@@ -339,7 +345,7 @@ _HEADWAY_DIRECTION_SQL = named_query(
     SELECT route_id, shift, direction_id, service_day_kind, observed_headway_min
     FROM gold.route_headway_by_direction_shift
     WHERE provider_id = :provider_id AND route_id IS NOT NULL
-    ORDER BY route_id, direction_id, service_day_kind, shift
+    ORDER BY route_id COLLATE "C", direction_id, service_day_kind COLLATE "C", shift COLLATE "C"
     """,
 )
 
@@ -390,6 +396,7 @@ _HEADWAY_WINDOWS_SQL = named_query(
          AND b.provider_local_date BETWEEN w.win_start AND w.win_end
         GROUP BY b.route_id, w.win_start, w.win_end, b.direction_id, b.shift
     )
+    SELECT * FROM (
     SELECT
         route_id, 'anchor'::text AS section,
         NULL::date AS win_start, NULL::date AS win_end, anchor,
@@ -402,7 +409,9 @@ _HEADWAY_WINDOWS_SQL = named_query(
     SELECT route_id, section, win_start, win_end, anchor,
            direction_id, shift, n, trips, sum_gap_min, sum_gap_sq_min, cov, gap_histogram
     FROM window_rows
-    ORDER BY route_id, section, win_start NULLS FIRST, direction_id, shift
+    ) AS sections
+    ORDER BY route_id COLLATE "C", section COLLATE "C", win_start NULLS FIRST,
+             direction_id NULLS LAST, shift COLLATE "C" NULLS LAST, win_end NULLS LAST
     """,
 )
 
@@ -451,6 +460,7 @@ _WEAK_STOPS_SQL = named_query(
          AND b.provider_local_date BETWEEN w.win_start AND w.win_end
         GROUP BY b.route_id, w.win_start, w.win_end, w.grain, b.stop_id
     )
+    SELECT * FROM (
     SELECT
         route_id, 'anchor'::text AS section,
         NULL::date AS win_start, NULL::date AS win_end, anchor,
@@ -466,7 +476,9 @@ _WEAK_STOPS_SQL = named_query(
     SELECT route_id, section, win_start, win_end, anchor, grain, stop_id,
            obs, weighted_delay_sec, severe, sum_delay_sec
     FROM windowed
-    ORDER BY route_id, section, win_start NULLS FIRST, stop_id
+    ) AS sections
+    ORDER BY route_id COLLATE "C", section COLLATE "C", win_start NULLS FIRST,
+             stop_id COLLATE "C" NULLS LAST, win_end NULLS LAST, grain COLLATE "C" NULLS LAST
     """,
 )
 
@@ -497,7 +509,7 @@ _CANCELLATIONS_SQL = named_query(
            delivered_trip_days, silent_trip_days, service_completeness_pct
     FROM ranked
     WHERE route_rank <= 30
-    ORDER BY route_id, provider_local_date DESC
+    ORDER BY route_id COLLATE "C", provider_local_date DESC
     """,
 )
 
@@ -519,6 +531,7 @@ _OCCUPANCY_SQL = named_query(
           AND rob.provider_local_date >=
               (CAST(:as_of_utc AS timestamptz) AT TIME ZONE dp.timezone)::date - 30
     )
+    SELECT * FROM (
     SELECT
         route_id, 'band_window'::text AS section,
         NULL::date AS d, NULL::integer AS day_of_week_iso,
@@ -556,7 +569,9 @@ _OCCUPANCY_SQL = named_query(
         SUM(full_count)::bigint
     FROM hourly
     GROUP BY route_id, hour_of_day_local
-    ORDER BY route_id, section, d NULLS FIRST, day_of_week_iso, hour_of_day_local
+    ) AS sections
+    ORDER BY route_id COLLATE "C", section COLLATE "C", d NULLS FIRST,
+             day_of_week_iso NULLS LAST, hour_of_day_local NULLS LAST
     """,
 )
 
@@ -578,7 +593,7 @@ _SERVICE_SPANS_SQL = named_query(
            service_span_min, first_trip_delay_seconds, last_trip_delay_seconds, trip_count
     FROM ranked
     WHERE route_rank <= 30
-    ORDER BY route_id, provider_local_date DESC
+    ORDER BY route_id COLLATE "C", provider_local_date DESC
     """,
 )
 
@@ -599,7 +614,7 @@ _SKIPPED_STOPS_SQL = named_query(
            skipped_stop_count, stop_time_update_count
     FROM ranked
     WHERE route_rank <= 30
-    ORDER BY route_id, provider_local_date DESC
+    ORDER BY route_id COLLATE "C", provider_local_date DESC
     """,
 )
 
@@ -621,7 +636,7 @@ _CROWDING_DELAY_SQL = named_query(
       AND rdc.provider_local_date >=
           (CAST(:as_of_utc AS timestamptz) AT TIME ZONE dp.timezone)::date - 30
     GROUP BY rdc.route_id, rdc.band
-    ORDER BY rdc.route_id, rdc.band
+    ORDER BY rdc.route_id COLLATE "C", rdc.band COLLATE "C"
     """,
 )
 

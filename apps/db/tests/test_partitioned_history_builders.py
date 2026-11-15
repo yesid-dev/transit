@@ -1643,17 +1643,17 @@ def test_line_and_stop_history_sql_text_is_frozen():
         "stop.occupancy": stop._STOP_HISTORY_OCCUPANCY_SQL,
     }
     old_expected = {
-        "line.ids": "0fe294ad9c6eb9a4bf6dec6741e627a2ccd14d83730ca26cdc67d72db8a36c18",
-        "line.delay": "2cd87c85c0d8b3eac6e5f4e8ac25ece1885dd14d0cb99e494d87a4e4ffc3f7df",
-        "line.percentiles": "21315ae7e30a6562c669d7b18d9e66e9579a298643385817daa7109739382640",
-        "line.cancellation": "d00f872efb8f5b7e184a4aa3bba8d9ce3665743f6677f5b437623993cb958400",
-        "line.occupancy": "30e9ab78e5c963d7dc46fdc6e1b0809da27ce58c9e55875fd8edd42126b6eef1",
-        "line.service_span": "de1bdf1847fa8d8e9ccb4921e856ab364a456c90a2d17a8bc364990535332e80",
-        "line.skipped": "5fa8b53ab4537590e97c0f04c4895d638e7da9c0e7804dfd7b87ec7e9e220632",
-        "stop.ids": "275087747169c0086b9371680980b3e3a8a66db51131f59eba8504a4f497a327",
-        "stop.delay": "cc8e382a00bab3edef1412a6a750ae4bee7368d50f8ab160284ada6ca8785319",
-        "stop.percentiles": "f36f94fc74b156284c208ccdd36156d0058575332f65c3b7c34c5debf84ca84f",
-        "stop.occupancy": "e226bc646138cd4d5aceb31d9c84c629cee060557706a29b714d9aced0310f6b",
+        "line.ids": "e3ba48b79f1d732df01bc77e882312e4a4f38fdf5dacb7d5d0b8e6e2ed32e11f",
+        "line.delay": "f7872fd6dc8c7c25e7af859af0d7e3b5fa2cd508e10696bedb9e2bc319d4326c",
+        "line.percentiles": "932dd6032d2ae48f77b78f90cc65ac4b3edee523fbe6cb15ba628587f3d022a0",
+        "line.cancellation": "cf3bfdf7cdafdcdc713d943d9395819d6f123a6feda69eb00b6bbf06304a6d35",
+        "line.occupancy": "efc341c65b869374977620503250bcf89c8771dcd3ff83359a131dda6a4ce189",
+        "line.service_span": "3c4a855f5df6acf36e5d66dc004b66fd8018e6bad747eba8f60935010b69941f",
+        "line.skipped": "817b92ea928978fdf3b0ea10b06021b2c27afdefa6143aff6f91e1d4eb5718ec",
+        "stop.ids": "401ff232b8c9ab5c82eec01795fd8b1e974b9078b37acf63899b18231b8adb8b",
+        "stop.delay": "c167f4566942f80af7fa8ae359915546fe37b1ae833b1c3f8cea03ae7fc581c5",
+        "stop.percentiles": "9d302709a51fbb1deabe99f4069384940dfa4729fe8180a295d9abe1ca226cf8",
+        "stop.occupancy": "87243e29e3b708dde63512a681fc97a9c7f7136615cff172cb360351321a1ae5",
     }
 
     public_query_names = {
@@ -1680,17 +1680,17 @@ def test_line_and_stop_history_sql_text_is_frozen():
     } == old_expected
 
     expected = {
-        "line.ids": "a835afe7b5cf6d7de57f9440eb5aa1c68b8f38dba60caafe441d2ccc9e026ae9",
-        "line.delay": "d774adb16acd3a7c81a8c049d541c4162e45aa1417af69c228bedb84a76e9f9c",
-        "line.percentiles": "129ec5bc1497d47f6f5011afb8edd7779e93b66123e52ec1e61ec9eda6699dca",
-        "line.cancellation": "3151e118bf53c4f502dd9e15dd41ba87adbe4b56848348476ca5ea9ebd2b7448",
-        "line.occupancy": "ee7490a0c57a8ed9494cea8d76a4d9f2685e2d0f46495d757a1244cf4118129e",
-        "line.service_span": "694a830cc76ac66f97f1a214e81c2ba4f2ee64fb1b87358ae7e08d5246722ddc",
-        "line.skipped": "1560a0612d34469a47beb2a2f2cf260ed95afd5e51f65e2f90baffdcf9dbb0e7",
-        "stop.ids": "eb5f6ccde6bfa8b6419cee2e2f7d3291ef89fb600821e6002c971b91ee590363",
-        "stop.delay": "55e2bcc0d2a605c76fcf82b3be46c324fee687323f4d991804aed8ddf45be8de",
-        "stop.percentiles": "ef26227dfbd99dd5e57d053b8c7e031edccf35d122c04599c5603788d499fd4d",
-        "stop.occupancy": "fe21189b5ddc5d0c762750d7e76dfd3d0abecad889a88fd408f28b534d3e373b",
+        "line.ids": "c8d71aa88584a3a823e50235d36cb2acb81df3168a6ce5e4aa067570ca296d96",
+        "line.delay": "69ded419d1440ab7290c233fb8159c3efb0430858eee6cabf344d52cc7b797a8",
+        "line.percentiles": "7337c1e3a4375c87a9b9649448b302950f83a70b3e854f7dd01be3d3662873e4",
+        "line.cancellation": "33e21233cb9bd8453be2644483843fc5d165ebb63256790ff6384030644fc35d",
+        "line.occupancy": "3b7b8a471f75cd9c7ff79e02a7ec021270ce3dcd9fbf22a225c78681ca111796",
+        "line.service_span": "f373c07a91fc2013fc13f0182657ad5e0592506e412a0d2130c3dbb19a2c1f33",
+        "line.skipped": "f0dd58fa0edb34906ad9e4d983170202dc56e72463d08c4b8b66d4c282b3bc9e",
+        "stop.ids": "79b24b1bcca7a2574570226759cfdb35058fbb9ee134cb9cc896da621524aa02",
+        "stop.delay": "32fadbd675779cd494022613afbd5de2d1f8ce4543b7cfa5b3d2d1f8ecf18f91",
+        "stop.percentiles": "e1e8e2ea0738833008930fafbbfe0221a4ecf61b2976c94f1686a44f402e225b",
+        "stop.occupancy": "2d23851c0548fa14e19a71b79336a98c10135ce3b872c17a5c58411ba90cf2c7",
     }
 
     assert {
