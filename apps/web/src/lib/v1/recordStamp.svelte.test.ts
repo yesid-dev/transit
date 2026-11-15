@@ -109,7 +109,7 @@ it.each(['line', 'stop', 'seeded line', 'P12a'] as const)(
 	},
 );
 
-const rollup = (verdict: string | null, published = fixture.frozen_utc) => ({
+const rollup = (verdict: string | null, published: string | null = fixture.frozen_utc) => ({
 	generated_utc: fixture.frozen_utc,
 	lanes: [{ lane: 'rollup', last_publish_utc: published, gate: verdict && { verdict } }],
 });
@@ -120,11 +120,19 @@ it.each([
 	['passed', true, rollup('pass'), null],
 	['ran no check', true, rollup(null), null],
 	[
-		'is stale: it warned on the publication before',
+		'is stale: it warned on the publication a week before',
 		true,
 		rollup('warn', '2026-08-23T16:00:00Z'),
 		null,
 	],
+	[
+		'is stale: it warned on an earlier publication the same day',
+		true,
+		rollup('warn', '2026-08-30T01:00:00Z'),
+		null,
+	],
+	['warned on a later publication', true, rollup('warn', '2026-08-30T17:00:00Z'), null],
+	['warned without saying which publication', true, rollup('warn', null), null],
 	['is missing', true, 404, null],
 	['cannot be read', true, 'offline', null],
 	['warned, on another tab', false, rollup('warn'), null],
@@ -169,6 +177,48 @@ it.each([
 				),
 				datetime: fixture.frozen_utc.slice(0, 10),
 			});
+		} finally {
+			dispose();
+		}
+	},
+);
+
+it.each(['settled', 'in flight'] as const)(
+	'keeps one data health read across Record, another tab and Record again (left while %s)',
+	async (when) => {
+		let shown = $state(true);
+		const reads: string[] = [];
+		let release = () => {};
+		const held = new Promise<void>((resolve) => (release = resolve));
+		vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+			if (!String(input).endsWith('/status/data_health.json'))
+				return new Response('{}', { status: 404 });
+			reads.push(String(input));
+			if (when === 'in flight') await held;
+			return new Response(JSON.stringify(rollup('warn')));
+		});
+		installBrowserAdapterManifest(() => manifest);
+		let stamp!: ReturnType<typeof createRecordStamp>;
+		const dispose = $effect.root(() => {
+			stamp = createRecordStamp(
+				() => manifest,
+				() => fixture.frozen_utc,
+				undefined,
+				() => shown,
+			);
+		});
+		try {
+			flushSync();
+			if (when === 'settled') await vi.waitFor(() => expect(stamp.pending).toBe(false));
+			else await vi.waitFor(() => expect(reads).toHaveLength(1));
+			shown = false;
+			flushSync();
+			shown = true;
+			flushSync();
+			release();
+			await vi.waitFor(() => expect(stamp.pending).toBe(false));
+			expect(reads).toHaveLength(1);
+			expect(stamp.notice('en')).toBe('This record was published with a warning. See Data health.');
 		} finally {
 			dispose();
 		}

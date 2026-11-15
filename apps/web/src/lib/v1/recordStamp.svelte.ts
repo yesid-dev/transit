@@ -47,6 +47,13 @@ export function createRecordStamp(
 		},
 		{ enabled: () => source === undefined && manifest() != null, key: () => manifest()?.provider },
 	);
+	// Read once the row can show, then keep that read across tab visits: only another provider
+	// or an explicit refresh reads again.
+	let askedFor = $state.raw<string | null>(null);
+	$effect(() => {
+		const provider = manifest()?.provider;
+		if (provider && withNotice()) askedFor = provider;
+	});
 	const health = createResource(
 		async (signal) => {
 			try {
@@ -55,7 +62,10 @@ export function createRecordStamp(
 				return null;
 			}
 		},
-		{ enabled: () => withNotice() && manifest() != null, key: () => manifest()?.provider },
+		{
+			enabled: () => manifest() != null && askedFor === manifest()?.provider,
+			key: () => manifest()?.provider,
+		},
 	);
 	const shared = $derived(source?.());
 	const stamp = $derived(
@@ -77,14 +87,15 @@ export function createRecordStamp(
 			);
 		},
 		/**
-		 * W10 when the check of this record's publication warned. A missing, unreadable or stale
-		 * check (another publication day) says nothing; a failed check has no approved sentence.
+		 * W10 when data health checked exactly this record's publication (the instant recordStamp()
+		 * dates) and warned. Another or unknown publication, missing or unreadable data health say
+		 * nothing; a failed check has no approved sentence.
 		 */
 		notice(locale: Locale) {
 			const rollup = health.data?.lanes?.find((lane) => lane.lane === 'rollup');
+			const published = fileGeneratedUtc() ?? manifest()?.files.historic?.generated_utc;
 			return rollup?.gate?.verdict === 'warn' &&
-				stamp.publishedOn != null &&
-				rollup.last_publish_utc?.slice(0, 10) === stamp.publishedOn
+				Date.parse(rollup.last_publish_utc ?? '') === Date.parse(published ?? '')
 				? stampCopy[locale].warning
 				: null;
 		},
