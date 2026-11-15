@@ -210,3 +210,32 @@ def test_probe_writes_nothing_to_storage_or_database(
     finally:
         with real_db_engine.begin() as c:
             delete_provider_rows(c, provider)
+
+
+def test_probe_checks_payloads_across_parquet_batches(day, monkeypatch):
+    from transit_ops.history import probe_duckdb
+
+    monkeypatch.delitem(sys.modules, "duckdb")
+    # Force several shards with the fixture's distinct payloads and duplicate.
+    monkeypatch.setattr(probe_duckdb, "_BATCH_BYTES", 5)
+    report = day.run()
+    assert report.duckdb["duckdb_status"] == "measured"
+    assert report.duckdb["duckdb_capture_count"] == 3
+    assert report.duckdb["duckdb_byte_count"] == 17
+
+
+def test_probe_checks_empty_captures_across_count_limited_batches(day, monkeypatch):
+    import hashlib
+
+    monkeypatch.delitem(sys.modules, "duckdb")
+    (day.store.root / "capture/0").write_bytes(b"")
+    capture = replace(day.record.captures[0], byte_size=0, sha256=hashlib.sha256(b"").hexdigest())
+    day.record = replace(
+        day.record,
+        polls=(),
+        processing=(),
+        captures=tuple(replace(capture, capture_row_id=i) for i in range(260)),
+    )
+    report = day.run()
+    assert report.duckdb["duckdb_capture_count"] == 260
+    assert report.duckdb["duckdb_byte_count"] == 0

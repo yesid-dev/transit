@@ -83,15 +83,52 @@ def validate_selection(provider_id: str, endpoint_key: str, utc_date: date) -> N
         raise ValueError("expected a capture feed")
 
 
-def peak_rss() -> tuple[int | None, str | None]:
-    if sys.platform != "linux":
-        return None, "process peak RSS unavailable on this platform"
-    try:
-        import resource
+def _windows_peak_rss() -> int:
+    if sys.platform != "win32":
+        raise OSError("Windows peak working set requires Windows")
+    import ctypes
+    from ctypes import wintypes
 
-        return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024, None
-    except (ImportError, OSError):
-        return None, "resource peak RSS unavailable"
+    class Counters(ctypes.Structure):
+        _fields_ = [("cb", wintypes.DWORD), ("PageFaultCount", wintypes.DWORD)] + [
+            (name, ctypes.c_size_t)
+            for name in (
+                "PeakWorkingSetSize",
+                "WorkingSetSize",
+                "QuotaPeakPagedPoolUsage",
+                "QuotaPagedPoolUsage",
+                "QuotaPeakNonPagedPoolUsage",
+                "QuotaNonPagedPoolUsage",
+                "PagefileUsage",
+                "PeakPagefileUsage",
+            )
+        ]
+
+    counters = Counters()
+    counters.cb = ctypes.sizeof(counters)
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.GetCurrentProcess.restype = wintypes.HANDLE
+    psapi = ctypes.WinDLL("psapi", use_last_error=True)
+    psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD]
+    if not psapi.GetProcessMemoryInfo(
+        kernel.GetCurrentProcess(), ctypes.byref(counters), ctypes.sizeof(counters)
+    ):
+        raise ctypes.WinError(ctypes.get_last_error())
+    return int(counters.PeakWorkingSetSize)
+
+
+def peak_rss() -> tuple[int | None, str | None]:
+    """Process-lifetime peak; callers needing run isolation use a fresh subprocess."""
+    try:
+        if sys.platform == "win32":
+            return _windows_peak_rss(), None
+        if sys.platform == "linux":
+            for line in Path("/proc/self/status").read_text().splitlines():
+                if line.startswith("VmHWM:"):
+                    return int(line.split()[1]) * 1024, None
+    except (OSError, ValueError) as error:
+        return None, f"process peak RSS unavailable: {type(error).__name__}"
+    return None, "process peak RSS unavailable on this platform"
 
 
 def _report(
