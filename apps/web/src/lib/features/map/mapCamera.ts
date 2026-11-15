@@ -146,10 +146,15 @@ export interface CameraRecoveryView {
 	fitInputsKey: string;
 	layoutInputsKey: string;
 	cameraInputsKey: string;
+	boundsInputsKey: string;
 }
 
-function cameraKey(nextCenter: [number, number], nextZoom: number): string {
-	return `${nextCenter[0]},${nextCenter[1]},${nextZoom}`;
+function cameraKey(nextCenter: readonly number[] | null, nextZoom: number): string {
+	return `${nextCenter?.join(',')},${nextZoom}`;
+}
+
+function boundsKey(bounds?: readonly number[], maxBounds?: readonly number[]): string {
+	return `${bounds?.join(',') ?? 'fallback'}|${maxBounds?.join(',') ?? ''}`;
 }
 
 function fitPaddingKey(nextPadding: MapFitPadding): string {
@@ -173,6 +178,7 @@ export function initialCamera(
 	desktop = width >= 1024,
 ) {
 	const framing = mapCameraFraming(source);
+	if (!framing) return null;
 	return {
 		...framing,
 		zoom: INITIAL_MAP_ZOOM,
@@ -186,20 +192,18 @@ export function createMapCamera<Selection = unknown>() {
 	let activeLayoutSig: string | null = null;
 	let activeBoundsSig: string | null = null;
 	let activeCameraKey: string | null = null;
+	/** A null centre means the published bounds are absent or invalid: no camera. */
 	function inputs(value: CameraInputs) {
-		const {
-			center = centerFromProviderBbox(),
-			zoom = INITIAL_MAP_ZOOM,
-			fitPadding = 40,
-			...rest
-		} = value;
-		return { ...rest, center, zoom, fitPadding };
+		const { zoom = INITIAL_MAP_ZOOM, fitPadding = 40, ...rest } = value;
+		const framed = centerFromProviderBbox(value.bounds);
+		return { ...rest, center: framed && (value.center ?? framed), zoom, fitPadding };
 	}
 	return {
 		intents: createCameraIntents<Selection>(),
 		initial(value: CameraInputs) {
 			const { center, zoom, bounds, maxBounds, fitPadding } = inputs(value);
-			return { center, zoom, ...mapViewportOptions(bounds, fitPadding, maxBounds, value.size) };
+			const viewport = center && mapViewportOptions(bounds, fitPadding, maxBounds, value.size);
+			return viewport ? { center: center!, zoom, ...viewport } : null;
 		},
 		capture(instance: CameraMap, value: CameraInputs): CameraRecoveryView {
 			const { center, zoom, bounds, maxBounds, fitPadding } = inputs(value);
@@ -215,24 +219,29 @@ export function createMapCamera<Selection = unknown>() {
 				fitInputsKey: `${fitKey(bounds, fitPadding)}|${maxBounds?.join(',') ?? ''}`,
 				layoutInputsKey: fitPaddingKey(fitPadding),
 				cameraInputsKey: cameraKey(center, zoom),
+				boundsInputsKey: boundsKey(bounds, maxBounds),
 			};
 
 			return view;
 		},
 		attach(instance: CameraMap, value: CameraInputs, recoveryView?: CameraRecoveryView) {
 			const { center, zoom, bounds, maxBounds, fitPadding } = inputs(value);
+			if (!center) return;
 			const currentFitKey = `${fitKey(bounds, fitPadding)}|${maxBounds?.join(',') ?? ''}`;
 			const currentCameraKey = cameraKey(center, zoom);
+			// A view captured under other published bounds belongs to another provider.
+			const replaced = recoveryView?.boundsInputsKey !== boundsKey(bounds, maxBounds);
 			const fitInputsChanged =
-				recoveryView?.owner === 'fit' &&
-				(recoveryView.fitInputsKey !== currentFitKey ||
-					recoveryView.cameraInputsKey !== currentCameraKey);
+				(recoveryView !== undefined && replaced) ||
+				(recoveryView?.owner === 'fit' &&
+					(recoveryView.fitInputsKey !== currentFitKey ||
+						recoveryView.cameraInputsKey !== currentCameraKey));
 			if (recoveryView && !fitInputsChanged) {
 				if (value.size) {
 					const viewport = mapViewportOptions(bounds, fitPadding, maxBounds, value.size, {
 						center: { lng: recoveryView.center[0], lat: recoveryView.center[1] },
 						zoom: recoveryView.zoom,
-					});
+					})!;
 					instance.setMaxBounds(null);
 					instance.setMinZoom(viewport.minZoom!);
 					instance.setMaxBounds(viewport.maxBounds);
@@ -259,9 +268,9 @@ export function createMapCamera<Selection = unknown>() {
 			}
 
 			activeLayoutSig = fitPaddingKey(fitPadding);
-			activeBoundsSig = `${bounds?.join(',') ?? 'fallback'}|${maxBounds?.join(',') ?? ''}`;
+			activeBoundsSig = boundsKey(bounds, maxBounds);
 			activeCameraKey = currentCameraKey;
-			cameraOwner = recoveryView?.owner ?? 'fit';
+			cameraOwner = (!replaced && recoveryView?.owner) || 'fit';
 			if (recoveryView) activeFitKey = currentFitKey;
 		},
 		claim(value: unknown) {
@@ -274,11 +283,12 @@ export function createMapCamera<Selection = unknown>() {
 		},
 		update(m: CameraMap, value: CameraInputs) {
 			const { center, zoom, bounds, maxBounds, fitPadding, size } = inputs(value);
+			if (!center) return;
 			const nextFitKey = `${fitKey(bounds, fitPadding)}|${maxBounds?.join(',') ?? ''}|${size?.width},${size?.height}`;
 			if (activeFitKey !== nextFitKey) {
 				activeFitKey = nextFitKey;
 				const nextLayoutSig = fitPaddingKey(fitPadding);
-				const nextBoundsSig = `${bounds?.join(',') ?? 'fallback'}|${maxBounds?.join(',') ?? ''}`;
+				const nextBoundsSig = boundsKey(bounds, maxBounds);
 				const layoutChanged = activeLayoutSig !== nextLayoutSig || size !== undefined;
 				const boundsChanged = activeBoundsSig !== nextBoundsSig;
 				if (layoutChanged || boundsChanged) {
@@ -290,7 +300,7 @@ export function createMapCamera<Selection = unknown>() {
 						maxBounds,
 						size,
 						cameraOwner === 'fit' ? undefined : { center: m.getCenter(), zoom: m.getZoom() },
-					);
+					)!;
 					if (size) {
 						m.setMaxBounds(null);
 						m.setMinZoom(viewport.minZoom!);

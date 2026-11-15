@@ -460,6 +460,8 @@
 			if (!inset.containerWidth || !inset.containerHeight) return;
 			if (import.meta.env.MODE === 'e2e')
 				heroEl.dataset.cameraPadding = JSON.stringify(inset.fitPadding);
+			// Without published bounds MapStage constructs no map; never refit a fabricated camera.
+			if (!framing) return;
 			camera.update(instance, {
 				...framing,
 				size: { width: inset.containerWidth, height: inset.containerHeight },
@@ -493,10 +495,10 @@
 		class="map-hero-stage"
 		basemapLoader={({ signal }) => getBasemap({ signal })}
 		theme={theme.current}
-		center={framing.center}
-		bounds={framing.bounds}
-		maxBounds={framing.maxBounds}
-		fitPadding={framing.fitPadding}
+		center={framing?.center}
+		bounds={framing?.bounds}
+		maxBounds={framing?.maxBounds}
+		fitPadding={framing?.fitPadding}
 		onready={onMapReady}
 		onorientation={onMapOrientation}
 		onrecovering={onMapRecovering}

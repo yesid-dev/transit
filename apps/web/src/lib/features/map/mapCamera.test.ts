@@ -200,6 +200,79 @@ describe('focusCoordinate', () => {
 	});
 });
 
+describe('createMapCamera published bounds', () => {
+	const size = { width: 390, height: 844 };
+	const vancouver = { bounds: [-123.3, 49.0, -122.5, 49.4], size };
+	const tokyo = { bounds: [138.9, 35.4, 140.1, 36.0], size };
+	function cameraMap(center: [number, number], zoom: number) {
+		const calls = {
+			jumpTo: vi.fn(),
+			fitBounds: vi.fn(),
+			setMaxBounds: vi.fn(),
+			setMinZoom: vi.fn(),
+		};
+		const map = {
+			...calls,
+			getCenter: () => ({ lng: center[0], lat: center[1] }),
+			getZoom: () => zoom,
+			getBearing: () => 12,
+			getPitch: () => 30,
+			getRoll: () => 0,
+			getPadding: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
+		} as unknown as MapLibreMap;
+		return { map, calls };
+	}
+
+	it('an unframed camera never fits a built-in region', async () => {
+		const { createMapCamera } = await loadModule();
+		const camera = createMapCamera();
+		const { map, calls } = cameraMap([-73.57, 45.5], 11);
+		for (const bounds of [
+			undefined,
+			[],
+			[Number.NaN, 49, -122.5, 49.4],
+			[-122.5, 49, -123.3, 49.4],
+		]) {
+			expect(camera.initial({ size, bounds })).toBeNull();
+			expect(camera.initial({ size, bounds, center: [-123, 49.2] })).toBeNull();
+			camera.attach(map, { size, bounds });
+			camera.update(map, { size, bounds, fitPadding: 24 });
+		}
+		for (const call of Object.values(calls)) expect(call).not.toHaveBeenCalled();
+		camera.update(map, vancouver);
+		expect(calls.fitBounds).toHaveBeenCalledExactlyOnceWith(
+			[
+				[-123.3, 49.0],
+				[-122.5, 49.4],
+			],
+			expect.objectContaining({ duration: 0 }),
+		);
+	});
+
+	it("a provider change cannot reuse the previous provider's camera", async () => {
+		const { createMapCamera } = await loadModule();
+		const camera = createMapCamera();
+		const first = cameraMap([-123.1, 49.28], 15);
+		camera.attach(first.map, vancouver);
+		camera.interact();
+		const recovery = camera.capture(first.map, vancouver);
+		const next = cameraMap([139.5, 35.7], 9);
+		camera.attach(next.map, tokyo, recovery);
+		for (const [jump] of next.calls.jumpTo.mock.calls) {
+			expect(jump.center).not.toEqual([-123.1, 49.28]);
+			expect(jump.zoom).not.toBe(15);
+		}
+		camera.update(next.map, { ...tokyo, fitPadding: 24 });
+		expect(next.calls.fitBounds).toHaveBeenCalledWith(
+			[
+				[138.9, 35.4],
+				[140.1, 36.0],
+			],
+			expect.objectContaining({ duration: 0 }),
+		);
+	});
+});
+
 describe('fitRouteBounds', () => {
 	it('tags a route fit with asymmetric inset padding, token duration, and no offset', async () => {
 		mocks.animate = true;

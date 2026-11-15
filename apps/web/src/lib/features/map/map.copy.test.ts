@@ -26,6 +26,27 @@ describe('map copy', () => {
 		},
 	);
 
+	it('promises automatic loading only in the booting sentences', () => {
+		expect(mapCopy('en', 'Example City')).toMatchObject({
+			bootBody:
+				'The live interactive map loads automatically. This static basemap stays visible until it is ready.',
+			bootUnavailable:
+				'Basemap preview unavailable for Example City. The live map loads automatically.',
+			staticBody:
+				'Static, non-live basemap. No vehicles, stops, service alerts, or freshness data are shown.',
+			staticUnavailable: 'Basemap preview unavailable for Example City.',
+		});
+		expect(mapCopy('fr', 'Example City')).toMatchObject({
+			bootBody:
+				'La carte interactive en direct se charge automatiquement. Ce fond de carte statique reste visible jusqu’à ce qu’elle soit prête.',
+			bootUnavailable:
+				'Aperçu cartographique indisponible · Example City. La carte en direct se charge automatiquement.',
+			staticBody:
+				'Fond de carte statique, pas en direct. Aucun véhicule, arrêt, avis de service ou renseignement de fraîcheur n’est affiché.',
+			staticUnavailable: 'Aperçu cartographique indisponible · Example City.',
+		});
+	});
+
 	it('uses vernacular marker labels', () => {
 		expect(copy.en.legendTitle).toBe('Markers');
 		expect(copy.fr.legendTitle).toBe('Marqueurs');

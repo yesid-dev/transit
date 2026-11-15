@@ -31,6 +31,24 @@ it('uses selected provider framing, falling back only to its own service bounds'
 	});
 });
 
+it('frames only from valid published bounds and otherwise produces no camera', () => {
+	const fit = [-123.3, 49.0, -122.5, 49.4];
+	const bbox = [-123.5, 48.9, -122.2, 49.6];
+	expect(
+		mapCameraFraming({ manifest: { bbox }, provider: { fit_bounds: [NaN, 0, 0, 0] } } as never),
+	).toEqual({ bounds: bbox, maxBounds: bbox, center: [-122.85, 49.25] });
+	expect(
+		mapCameraFraming({
+			manifest: { bbox: [] },
+			provider: { fit_bounds: fit, max_bounds: [-122, 48.5, -124, 49.8] },
+		} as never),
+	).toEqual({ bounds: fit, maxBounds: fit, center: [-122.9, 49.2] });
+	for (const manifestBbox of [[], [-122.5, 49.0, -123.3, 49.4], [-123.3, 49.0, -123.3, 49.4]]) {
+		expect(mapCameraFraming({ manifest: { bbox: manifestBbox }, provider: null })).toBeNull();
+		expect(initialCamera({ manifest: { bbox: manifestBbox } }, 390)).toBeNull();
+	}
+});
+
 const maplibrePackage = pathToFileURL(
 	createRequire(import.meta.url).resolve('maplibre-gl/package.json'),
 );
@@ -97,7 +115,7 @@ function transformCamera(viewport: Viewport, inputs: CameraInputs, padding?: Map
 		...inputs,
 		...(padding === undefined ? {} : { fitPadding: padding }),
 	};
-	const options = controller.initial(value);
+	const options = controller.initial(value)!;
 	const transform = new MercatorTransform();
 	transform.setMinZoom(options.minZoom!);
 	transform.setMaxZoom(options.maxZoom!);
@@ -187,7 +205,7 @@ describe('camera interface through the transform adapter', () => {
 						left: state === 'left' || state === 'both' ? 332 : 16,
 						right: state === 'right' || state === 'both' ? 332 : 16,
 					};
-					const inputs = initialCamera({ manifest: { bbox: provider.bbox }, provider }, width);
+					const inputs = initialCamera({ manifest: { bbox: provider.bbox }, provider }, width)!;
 					const screen = transformCamera(viewport, inputs, { ...pad, left: 16, right: 16 });
 					const corner = (transform: MapLibreTransform, east: boolean) =>
 						transform.locationToScreenPoint(
@@ -224,7 +242,10 @@ describe('camera interface through the transform adapter', () => {
 			{ label: '1280x900', width: 1280, height: 900 },
 			{ label: '1920x1080', width: 1920, height: 1080 },
 		])(provider.name + ' preserves fit, user ownership and recovery at $label', (viewport) => {
-			const inputs = initialCamera({ manifest: { bbox: provider.bbox }, provider }, viewport.width);
+			const inputs = initialCamera(
+				{ manifest: { bbox: provider.bbox }, provider },
+				viewport.width,
+			)!;
 			const { map, controller, value, transform } = transformCamera(viewport, inputs);
 			const pad = paddingObject(inputs.fitPadding);
 			for (const lng of [provider.fit_bounds[0], provider.fit_bounds[2]]) {
@@ -345,7 +366,7 @@ it('refits on rotation and detail opening only while fit-owned', () => {
 			provider: { fit_bounds: [...ISLAND_FIT_BOUNDS], max_bounds: [...MAP_MAX_BOUNDS] },
 		},
 		viewport.width,
-	);
+	)!;
 	const { map, transform, controller, value } = transformCamera(viewport, inputs);
 	const before = map.getZoom();
 	viewport.width = 844;
