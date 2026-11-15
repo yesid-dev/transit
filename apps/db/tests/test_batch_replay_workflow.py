@@ -8,6 +8,8 @@ def test_replay_workflow_has_only_manual_read_only_access():
     path = Path(__file__).resolve().parents[3] / ".github/workflows/batch-replay.yml"
     workflow = yaml.safe_load(path.read_text())
     assert set(workflow.get("on", workflow.get(True))) == {"workflow_dispatch"}
+    trigger = workflow.get("on", workflow.get(True))["workflow_dispatch"]
+    assert trigger["inputs"]["families"]["default"] == "occupancy_crowding"
     replay = workflow["jobs"]["replay"]
     assert replay["environment"] == "batch-replay"
     assert replay["runs-on"] == "ubuntu-24.04"

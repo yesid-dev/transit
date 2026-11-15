@@ -5,23 +5,76 @@ Windows nested-junction residual; same-user writers control the private area.
 """
 
 import json
+import os
 import re
 from collections import defaultdict
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 
 import duckdb
+from sqlalchemy.engine.reflection import Inspector
 
-from transit_ops.batch.build import BuildRequest, InputNeed
-from transit_ops.batch.fetch_inputs import fetch_inputs
+from transit_ops.batch.build import BuildRequest, FamilyBuilder, InputNeed
+from transit_ops.batch.fetch_inputs import fetch_inputs, needs_for_replay
 from transit_ops.batch.private_area import PrivateArea
 from transit_ops.history.datasets import HistoryDataset, TableSource, get_dataset
 from transit_ops.ingestion.storage import BronzeStorage
 from transit_ops.lake.archive_keys import parse_proof_key, table_copy_key, validate_provider_id
 from transit_ops.settings import Settings
+
+
+def layout_needs(needs: Sequence[InputNeed]) -> tuple[InputNeed, ...]:
+    """One file kind per relation; an all file contains the union of its explicit ranges."""
+    whole = {n.relation for n in needs if n.window == "all"}
+    return tuple(
+        sorted(
+            {InputNeed(n.relation, "all") if n.relation in whole else n for n in needs},
+            key=lambda n: (n.relation, n.window),
+        )
+    )
+
+
+@contextmanager
+def replay_catalog() -> Iterator[Inspector]:
+    from sqlalchemy import inspect
+
+    from transit_ops.batch.pg_load import prepare_replay_database
+
+    url = os.environ.get("TRANSIT_REPLAY_DATABASE_URL")
+    if not url:
+        raise ValueError("TRANSIT_REPLAY_DATABASE_URL is required for the disposable FK catalog")
+    database = prepare_replay_database(url, os.environ)
+    try:
+        yield inspect(database.engine)
+    finally:
+        database.engine.dispose()
+
+
+def fetch_from_catalog(
+    storage: BronzeStorage,
+    root: Path,
+    request: BuildRequest,
+    builders: Sequence[FamilyBuilder],
+) -> dict[str, object]:
+    from transit_ops.batch.replay import parent_input_needs, postgres_input_needs
+
+    with replay_catalog() as catalog:
+        return fetch_replay_inputs(
+            storage,
+            root,
+            request.provider_id,
+            request.as_of_utc,
+            lambda editions: parent_input_needs(
+                needs_for_replay(
+                    builders, request, postgres_needs=postgres_input_needs(request, tuple(editions))
+                ),
+                catalog,
+            ),
+        )
 
 
 def replay_request(provider: str, day: str, as_of: str | None, settings: Settings) -> BuildRequest:
@@ -309,6 +362,7 @@ def _filter_window(
     path: Path,
     index: int,
     as_of: datetime,
+    whole: set[str],
 ) -> tuple[dict[str, object], dict[InputNeed, Path]]:
     column = _window_column(conn, source.needs[0].relation)
     predicates = [_predicate(n, column, as_of) for n in source.needs]
@@ -326,8 +380,14 @@ def _filter_window(
         rows_kept=kept,
         rows_dropped=total - kept,
     )
+    groups: dict[InputNeed, list[tuple[str, list[object]]]] = defaultdict(list)
+    for need, predicate in zip(source.needs, predicates, strict=True):
+        target = InputNeed(need.relation, "all") if need.relation in whole else need
+        groups[target].append(predicate)
     parts = {}
-    for offset, (need, (sql, values)) in enumerate(zip(source.needs, predicates, strict=True)):
+    for offset, (need, selections) in enumerate(groups.items()):
+        sql = " OR ".join(f"({sql})" for sql, _ in selections)
+        values = [p for _, params in selections for p in params]
         part = path.parent / f"part-{index}-{offset}.parquet"
         conn.execute(
             f"COPY (SELECT * FROM input WHERE {sql}) TO ? (FORMAT parquet)", values + [str(part)]
@@ -346,6 +406,7 @@ def materialize(
     targets: dict[InputNeed, list[Path]] = defaultdict(list)
     receipts = []
     schemas: dict[str, list[tuple[Any, ...]]] = {}
+    whole = {n.relation for s in sources for n in s.needs if n.window == "all"}
     with duckdb.connect(config={"threads": 1}) as conn:
         conn.execute("SET TimeZone='UTC'")
         for index, source in enumerate(sources):
@@ -356,7 +417,7 @@ def materialize(
             if relation in schemas and schema != schemas[relation]:
                 raise ValueError(f"Parquet schema differs: {relation} {path}")
             schemas[relation] = schema
-            receipt, parts = _filter_window(conn, source, path, index, as_of)
+            receipt, parts = _filter_window(conn, source, path, index, as_of, whole)
             receipts.append(receipt)
             for need, part in parts.items():
                 targets[need].append(part)
@@ -381,6 +442,8 @@ def fetch_replay_inputs(
     needs_for: Callable[[Mapping[int, str]], Sequence[InputNeed]],
 ) -> dict[str, object]:
     """Bootstrap exactly one proven metadata object, then preflight all payloads."""
+    from transit_ops.batch.replay import absent_unread
+
     if not root.is_dir() or any(root.iterdir()) or root.is_symlink() or root.is_junction():
         raise ValueError("inputs directory must exist, be empty and not redirected")
     if any(c in str(root.resolve()) for c in "*?[]{}"):
@@ -398,7 +461,8 @@ def fetch_replay_inputs(
                 paths[source.key] = _download(source, storage, area / str(index))
         receipts = materialize(sources, paths, root, as_of)
     return dict(
-        needs=[dict(relation=n.relation, window=n.window) for n in needs],
+        needs=[dict(relation=n.relation, window=n.window) for n in layout_needs(needs)],
+        absent_unread=absent_unread(needs),
         receipts=receipts,
         bytes=sum(int(source.receipt["object_bytes"]) for source in sources),
     )

@@ -24,14 +24,23 @@ def test_month_filtered_to_day_loads_exact_day_export(real_db_engine, fact_sourc
     with database.engine.begin() as conn:
         conn.execute(
             text(
+                "WITH run AS ("
+                "INSERT INTO raw.ingestion_runs(provider_id,feed_endpoint_id,run_kind,status) "
+                "SELECT provider_id,feed_endpoint_id,'trip_updates','succeeded' "
+                "FROM raw.realtime_snapshot_index WHERE provider_id=:p LIMIT 1 "
+                "RETURNING provider_id,feed_endpoint_id,ingestion_run_id), "
+                "object AS (INSERT INTO raw.ingestion_objects(provider_id,ingestion_run_id,"
+                "object_kind,storage_backend,storage_path,checksum_sha256,byte_size) "
+                "SELECT provider_id,ingestion_run_id,'trip_updates','local',"
+                ":outside,repeat('a',64),1 "
+                "FROM run RETURNING ingestion_object_id,ingestion_run_id) "
                 "INSERT INTO raw.realtime_snapshot_index(provider_id,feed_endpoint_id,"
                 "ingestion_run_id,ingestion_object_id,feed_timestamp_utc,"
                 "captured_at_utc,entity_count) "
                 "SELECT provider_id,feed_endpoint_id,ingestion_run_id,ingestion_object_id,"
-                "feed_timestamp_utc,:end,entity_count FROM raw.realtime_snapshot_index "
-                "WHERE provider_id=:p LIMIT 1"
+                ":end,:end,1 FROM run JOIN object USING(ingestion_run_id)"
             ),
-            {"p": provider, "end": end},
+            {"p": provider, "end": end, "outside": provider + "/outside"},
         )
     with database.engine.connect() as conn:
         expected = conn.execute(

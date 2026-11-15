@@ -16,7 +16,8 @@ on:
         required: true
         type: string
       families:
-        description: Comma-separated family ids (empty selects every family)
+        description: Comma-separated ported family ids
+        default: occupancy_crowding
         required: false
         type: string
       bodies:
@@ -34,17 +35,14 @@ jobs:
     outputs:
       matrix: ${{ steps.days.outputs.matrix }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
-        with:
-          python-version-file: .python-version
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - id: days
         env:
           PROVIDER: ${{ inputs.provider }}
           FIRST: ${{ inputs.first_date }}
           LAST: ${{ inputs.last_date }}
         run: |
-          python - <<'PY'
+          python3 - <<'PY'
           import json, os, re
           from datetime import date, timedelta
           first, last = date.fromisoformat(os.environ['FIRST']), date.fromisoformat(os.environ['LAST'])
@@ -93,7 +91,7 @@ jobs:
       FAMILIES: ${{ inputs.families }}
       BODIES: ${{ inputs.bodies }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/setup-py
       - name: Migrate disposable PostgreSQL (alembic upgrade head)
         run: |
@@ -141,7 +139,7 @@ jobs:
             --inputs inputs --workdir replay "${args[@]}"
       - name: Attach replay evidence
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: batch-replay-${{ matrix.provider }}-${{ matrix.day }}
           path: |

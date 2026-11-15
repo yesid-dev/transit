@@ -233,18 +233,34 @@ def test_wrong_rescue_identity_is_refused(tmp_path):
 
 
 def test_cli_prints_one_json_line_with_local_receipts(tmp_path, monkeypatch):
+    from contextlib import nullcontext
     from types import SimpleNamespace
 
     from typer.testing import CliRunner
 
     from transit_ops import providers
-    from transit_ops.batch import replay
+    from transit_ops.batch import input_sources, replay
+    from transit_ops.batch.families import headways
+    from transit_ops.batch.families.occupancy_crowding import OccupancyCrowdingBuilder
     from transit_ops.commands.batch import app
     from transit_ops.history import storage as history
     from transit_ops.settings import get_settings
 
     storage = store(tmp_path)
     bootstrap(storage)
+
+    class Builder(OccupancyCrowdingBuilder):
+        family_id = "headways"
+
+        def inputs(self, request):
+            return ()
+
+    class Catalog:
+        def get_foreign_keys(self, name, schema):
+            return []
+
+    monkeypatch.setattr(headways, "builder", Builder())
+    monkeypatch.setattr(input_sources, "replay_catalog", lambda: nullcontext(Catalog()))
 
     class Scope:
         def resolve(self, backend):
@@ -337,3 +353,109 @@ def test_payload_preflight_downloads_only_bootstrap_on_missing_need(tmp_path, mo
     assert set(caught.value.needs) == set(needs[2:])
     assert opened == [boot]
     assert list(root.iterdir()) == []
+
+
+@pytest.mark.parametrize("working_only", [False, True])
+def test_requested_unreplayable_family_refuses_before_any_storage(
+    tmp_path, monkeypatch, working_only
+):
+    from typer.testing import CliRunner
+
+    from transit_ops.batch import input_sources
+    from transit_ops.batch.build import BuildRequest
+    from transit_ops.batch.families import headways
+    from transit_ops.batch.families.occupancy_crowding import OccupancyCrowdingBuilder
+    from transit_ops.commands.batch import app
+    from transit_ops.history import storage as history
+
+    class Builder(OccupancyCrowdingBuilder):
+        family_id = "headways"
+
+        def inputs(self, request):
+            return (InputNeed("silver.i3_alerts", "all"),)
+
+    monkeypatch.setattr(headways, "builder", Builder() if working_only else None)
+    monkeypatch.setattr(
+        input_sources,
+        "replay_request",
+        lambda *a: BuildRequest("sample", (datetime(2026, 11, 1).date(),), STAMP, 14, 7, "UTC"),
+    )
+    monkeypatch.setattr(history, "history_storage", lambda *a: pytest.fail("storage opened"))
+    result = CliRunner().invoke(
+        app,
+        [
+            "fetch-inputs",
+            "--provider",
+            "sample",
+            "--date",
+            "2026-11-01",
+            "--inputs",
+            str(tmp_path),
+            "--family",
+            "headways",
+        ],
+    )
+    assert result.exit_code == 1
+    assert ("input_not_archived" if working_only else "family_not_replayable") in result.output
+
+
+def test_fk_closure_uses_catalog_and_missing_parent_refuses(tmp_path):
+    from transit_ops.batch.replay import parent_input_needs
+
+    class Catalog:
+        def get_foreign_keys(self, name, schema):
+            return (
+                [{"referred_schema": "gold", "referred_table": "dim_route_history"}]
+                if (schema, name) == ("gold", "fact_vehicle_snapshot")
+                else []
+            )
+
+    day = InputNeed("gold.fact_vehicle_snapshot", "2026-11-01")
+    needs = parent_input_needs([day], Catalog())
+    assert set(needs) == {day, InputNeed("gold.dim_route_history", "all")}
+    storage = store(tmp_path)
+    archive(storage, day.relation, day.window, "SELECT 1 AS value")
+    with pytest.raises(SourcesMissing) as caught:
+        resolve_sources(needs, storage, "sample", STAMP, {})
+    assert caught.value.needs == (InputNeed("gold.dim_route_history", "all"),)
+
+
+def test_occupancy_preflight_records_unread_alerts_as_absent(tmp_path):
+    from transit_ops.batch.build import BuildRequest
+    from transit_ops.batch.families.occupancy_crowding import builder
+    from transit_ops.batch.fetch_inputs import needs_for_replay
+    from transit_ops.batch.replay import family_input_needs, postgres_input_needs
+
+    storage = store(tmp_path)
+    bootstrap(storage)
+    request = BuildRequest("sample", (datetime(2026, 11, 1).date(),), STAMP, 14, 7, "UTC")
+    family_input_needs([builder], request)
+    needs = needs_for_replay([builder], request, postgres_needs=postgres_input_needs(request, [7]))
+    for need in needs:
+        if need.relation == "core.dataset_versions":
+            continue
+        source = get_dataset(need.relation).source
+        grain = get_dataset(need.relation).archive_grain
+        window = (
+            "2026-11" if need.window == "all" else ("c" * 64 if grain == "edition" else need.window)
+        )
+        query = (
+            "SELECT 7::BIGINT AS dataset_version_id"
+            if grain == "edition"
+            else (
+                "SELECT 'sample' AS provider_id, 'UTC' AS timezone"
+                if source.window_column is None
+                else f"SELECT TIMESTAMPTZ '{need.window} 00:00:00+00' AS {source.window_column}"
+            )
+        )
+        archive(storage, need.relation, window, query)
+    root = tmp_path / "inputs"
+    root.mkdir()
+    result = fetch_replay_inputs(storage, root, "sample", STAMP, lambda _: needs)
+    assert {r["relation"] for r in result["absent_unread"]} == {
+        "silver.i3_alerts",
+        "silver.i3_alert_active_periods",
+        "silver.i3_alert_informed_entities",
+    }
+    assert all(r["status"] == "absent_unread" and r["reason"] for r in result["absent_unread"])
+    assert not (root / "silver.i3_alerts").exists()
