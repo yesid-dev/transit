@@ -58,6 +58,20 @@ def test_repeat_departure_sql_labels_recurrence_and_sixty_minute_mean(
         )
         conn.execute(
             text("""
+            INSERT INTO silver.routes(dataset_version_id,provider_id,route_id,route_type)
+            VALUES (:v,'stm_dense_ro','RO1',3)
+        """),
+            dict(v=version),
+        )
+        conn.execute(
+            text("""
+            INSERT INTO silver.stops(dataset_version_id,provider_id,stop_id)
+            VALUES (:v,'stm_dense_ro','first')
+        """),
+            dict(v=version),
+        )
+        conn.execute(
+            text("""
             INSERT INTO silver.trips(dataset_version_id,provider_id,trip_id,route_id,
                                      service_id,trip_headsign)
             VALUES (:v,'stm_dense_ro','sixty','RO1','weekday','Monk')
@@ -90,6 +104,13 @@ def test_repeat_departure_sql_labels_recurrence_and_sixty_minute_mean(
         """),
             dict(v=version),
         ).scalar_one()
+        conn.execute(
+            text("""
+            INSERT INTO silver.routes(dataset_version_id,provider_id,route_id,route_type)
+            VALUES (:v,'stm_dense_ro','RO1',3)
+        """),
+            dict(v=future),
+        )
         conn.execute(
             text("""
             INSERT INTO silver.trips(dataset_version_id,provider_id,trip_id,route_id,

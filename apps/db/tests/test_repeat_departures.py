@@ -14,6 +14,7 @@ def test_departures_require_recurrence_and_rank_frequency_before_actual_lateness
         ("later", 2, 900),
         ("once", 1, 120),
         ("twice", 2, 601),
+        ("earlier", 2, 600),
     ]:
         for offset in range(3):
             rows.append(
@@ -35,15 +36,21 @@ def test_departures_require_recurrence_and_rank_frequency_before_actual_lateness
         provider_timezone="UTC",
     ).materialize()[-1]
     week = payload.by_grain[0]
-    assert [entry.id for entry in week.entries] == ["often", "later", "twice"]
-    assert [entry.avg_delay_min for entry in week.entries] == [10, 15, 10]
+    assert [entry.id for entry in week.entries] == ["often", "later", "twice", "earlier"]
+    assert [entry.avg_delay_min for entry in week.entries] == [10, 15, 10, 10]
     assert "once" in {entry.id for entry in week.tray}
+    assert [
+        (entry.observation_count, entry.severe_count, entry.severe_pct) for entry in week.entries
+    ] == [(90, 3, 3.3), (90, 2, 2.2), (90, 2, 2.2), (90, 2, 2.2)]
     for entry in [*week.entries, *week.tray]:
         assert 0 <= entry.recurrence_days <= entry.observed_days <= entry.window_days
         assert 0 <= entry.severe_count <= entry.observation_count
         for value in (entry.avg_delay_min, entry.severe_pct, entry.wilson_lo, entry.wilson_hi):
             if value is not None:
                 assert isfinite(value) and (value != 0 or copysign(1, value) == 1)
+        assert 0 <= entry.severe_pct <= 100
+        if entry.rank is not None:
+            assert 0 <= entry.wilson_lo <= entry.wilson_hi <= 100
     assert next(entry for entry in week.tray if entry.id == "once").avg_delay_min == 2
 
 

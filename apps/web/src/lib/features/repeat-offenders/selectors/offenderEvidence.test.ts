@@ -113,3 +113,11 @@ describe('buildOffenderEvidenceRows', () => {
 		]);
 	});
 });
+
+it('uses the departure label when only its destination is known', () => {
+	const rows = buildOffenderEvidenceRows([entry({ headsign: 'Monk' })], 10, {
+		...labels,
+		unnamed: () => 'Line 11 toward Monk',
+	});
+	expect(rows[0].title).toBe('Line 11 toward Monk');
+});

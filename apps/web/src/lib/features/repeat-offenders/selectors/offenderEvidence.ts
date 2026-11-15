@@ -39,7 +39,7 @@ export function buildOffenderEvidenceRows(
 		const name = directory && entry.route ? directory.name(entry.route, entry.route_name) : null;
 		const title =
 			name?.label ??
-			(entry.departure_time || entry.route_short_name
+			(entry.departure_time || entry.route_short_name || entry.headsign
 				? labels.unnamed(entry)
 				: (entry.route_name ?? labels.unnamed(entry)));
 		const confidenceInterval =
