@@ -265,6 +265,7 @@ def copy_group(
     copied_by: str,
     statement_timeout_s: int,
     not_after: datetime | None = None,
+    group_reserve_s: int = 0,
 ) -> BundleCopy:
     """Only the last create-only write activates members; partial copies are inert."""
     validate_members(specs)
@@ -287,6 +288,7 @@ def copy_group(
         statement_timeout_s=statement_timeout_s,
         not_after=not_after,
         foreign_keys=foreign_keys,
+        group_reserve_s=group_reserve_s,
     ) as exported:
         pass  # Release the source snapshot before CPU, upload and readback work.
     from transit_ops.lake.table_export import require_member_space
@@ -346,6 +348,7 @@ def copy_group(
         members=records,
         closure=closure,
         foreign_keys=foreign_keys,
+        group_reserve_s=group_reserve_s,
     )
     payload = json.dumps(document, sort_keys=True, separators=(",", ":")).encode()
     version = hashlib.sha256(payload).hexdigest()

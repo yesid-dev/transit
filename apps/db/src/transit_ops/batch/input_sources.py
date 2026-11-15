@@ -106,10 +106,22 @@ def fetch_from_catalog(
                 request.as_of_utc,
                 editions,
                 catalog,
+                request=request,
             ),
             bootstrap_editions=uses_editions,
             request=request,
         )
+
+
+class _ArchiveNeeds(tuple[InputNeed, ...]):
+    """Keep the declaration context unchanged across FK expansion and resolution."""
+
+    coverage_needs: tuple[InputNeed, ...]
+
+    def __new__(cls, items: Sequence[InputNeed], context: Sequence[InputNeed]) -> "_ArchiveNeeds":
+        result = super().__new__(cls, items)
+        result.coverage_needs = tuple(context)
+        return result
 
 
 def archive_input_needs(
@@ -119,6 +131,8 @@ def archive_input_needs(
     as_of: datetime,
     editions: Mapping[int, str],
     catalog: Inspector,
+    *,
+    request: BuildRequest | None = None,
 ) -> tuple[InputNeed, ...]:
     """Only verified zero-row copies can eliminate an archive FK prerequisite."""
     from transit_ops.batch.replay import parent_input_needs
@@ -128,7 +142,9 @@ def archive_input_needs(
         if child.window.startswith("edition:") and int(child.window.split(":")[1]) not in editions:
             return True  # Keep the FK closure until the bootstrap can resolve this edition.
         try:
-            sources = resolve_sources([child], storage, provider, as_of, editions)
+            sources = resolve_sources(
+                [child], storage, provider, as_of, editions, request=request, coverage_needs=needs
+            )
         except SourcesMissing:
             return True  # Full preflight reports this child and all unknown prerequisites.
         return not all(
@@ -142,7 +158,9 @@ def archive_input_needs(
 
     independent = tuple(n for n in needs if n.relation not in MEMBERS)
     expanded = parent_input_needs(independent, catalog, lambda child, _fk: populated(child))
-    return layout_needs(tuple(n for n in needs if n.relation in MEMBERS) + expanded)
+    return _ArchiveNeeds(
+        layout_needs(tuple(n for n in needs if n.relation in MEMBERS) + expanded), needs
+    )
 
 
 def replay_request(provider: str, day: str, as_of: str | None, settings: Settings) -> BuildRequest:
@@ -421,12 +439,16 @@ def resolve_sources(
     editions: Mapping[int, str],
     *,
     request: BuildRequest | None = None,
+    coverage_needs: Sequence[InputNeed] | None = None,
 ) -> tuple[Source, ...]:
     """Preflight every need before payload reads; select only current proven revisions."""
     validate_provider_id(provider)
     if as_of.utcoffset() is None:
         raise ValueError("as_of must be timezone-aware")
     as_of = as_of.astimezone(UTC)
+    coverage_needs = (
+        getattr(needs, "coverage_needs", needs) if coverage_needs is None else coverage_needs
+    )
     inventories, selected, missing = {}, {}, []
     if any(n.relation in MEMBERS for n in needs):
         for source in _bundle_sources(storage, provider, as_of):
@@ -465,7 +487,7 @@ def resolve_sources(
             continue
         for window in windows:
             source = copies[window]
-            _window_coverage(source, need, as_of, request)
+            _window_coverage(source, need, as_of, request, coverage_needs)
             previous = selected.get(source.key)
             selected[source.key] = replace(
                 source,
@@ -787,15 +809,23 @@ def fetch_replay_inputs(
     with PrivateArea(root) as area:
         mapping = EditionMapping({}, ())
         paths = {}
-        needs = () if bootstrap_editions else tuple(needs_for(mapping))
+        needs: Sequence[InputNeed] = () if bootstrap_editions else needs_for(mapping)
         if bootstrap_editions or any(n.window.startswith("edition:") for n in needs):
             bootstrap_need = InputNeed("core.dataset_versions", "all")
             bootstrap = resolve_sources([bootstrap_need], storage, provider, as_of, {})[0]
             first = _download(bootstrap, storage, area / "bootstrap")
             mapping = edition_mapping(first, provider, bootstrap=bootstrap)
             paths[bootstrap.key] = first
-            needs = tuple(needs_for(mapping))
-        sources = resolve_sources(needs, storage, provider, as_of, mapping, request=request)
+            needs = needs_for(mapping)
+        sources = resolve_sources(
+            needs,
+            storage,
+            provider,
+            as_of,
+            mapping,
+            request=request,
+            coverage_needs=getattr(needs, "coverage_needs", needs),
+        )
         if mapping.bootstrap is not None:
             _check_bootstrap_current(mapping.bootstrap, storage, provider, as_of)
         for index, source in enumerate(sources):
@@ -836,7 +866,11 @@ def fetch_replay_inputs(
 
 
 def _window_coverage(
-    source: Source, need: InputNeed, as_of: datetime, request: BuildRequest | None
+    source: Source,
+    need: InputNeed,
+    as_of: datetime,
+    request: BuildRequest | None,
+    needs: Sequence[InputNeed],
 ) -> None:
     receipt = source.receipt
     cut_text = receipt.get("cut_utc")
@@ -847,18 +881,21 @@ def _window_coverage(
     cut = datetime.fromisoformat(cut_text)
     if cut.utcoffset() != timedelta(0):
         raise ValueError(f"window_coverage: invalid UTC cut for {need.relation}")
-    if request is not None:
+    from transit_ops.batch.window_coverage import required_end
+
+    end = required_end(need, needs, as_of, request)
+    bound_text = receipt.get("date_bound")
+    if bound_text is not None:
         from zoneinfo import ZoneInfo
 
-        ends = [
-            datetime.combine(
-                day + timedelta(days=1), time(), ZoneInfo(request.timezone)
-            ).astimezone(UTC)
-            for day in request.local_dates
-        ]
-    elif need.window == "all":
-        ends = [as_of]
-    else:
-        ends = [datetime.combine(date.fromisoformat(need.window) + timedelta(days=1), time(), UTC)]
-    if any(end + timedelta(hours=6) > cut for end in ends):
+        bound = datetime.combine(
+            date.fromisoformat(bound_text),
+            time(),
+            ZoneInfo(request.timezone if request is not None else "UTC"),
+        ).astimezone(UTC)
+        if end > bound:
+            raise ValueError(
+                f"window_coverage: {need.relation} {need.window} date_bound={bound_text}"
+            )
+    if end + timedelta(hours=6) > cut:
         raise ValueError(f"window_coverage: {need.relation} {need.window} cut={cut_text}")

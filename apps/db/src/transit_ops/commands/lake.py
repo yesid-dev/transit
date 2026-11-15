@@ -142,7 +142,7 @@ def export_table(
             connect_timeout=5,
             application_name="transit-lake-export-" + uuid4().hex,
             options="-c statement_timeout=1000 -c lock_timeout=1000 "
-            "-c client_connection_check_interval=1000",
+            "-c client_connection_check_interval=1000 -c default_transaction_read_only=on",
         ) as connection:
             result = copy_table_window(
                 connection,
@@ -172,6 +172,8 @@ def migrate(
         help="UTC deadline for database reads; "
         "window starts reserve two statement timeouts plus 300 seconds.",
     ),
+    allow_no_connection_check: bool = typer.Option(False, "--allow-no-connection-check"),
+    group_reserve_s: int = typer.Option(0, "--group-reserve-s", min=0),
     include_open: bool = typer.Option(False, "--include-open"),
     dataset: Annotated[list[str] | None, typer.Option("--dataset")] = None,
     provider: Annotated[list[str] | None, typer.Option("--provider")] = None,
@@ -192,9 +194,6 @@ def migrate(
     from datetime import UTC, date, datetime, timedelta
     from pathlib import Path
     from urllib.parse import urlsplit, urlunsplit
-    from uuid import uuid4
-
-    import psycopg
 
     from transit_ops.history.storage import history_storage
     from transit_ops.ingestion.common import project_root
@@ -234,18 +233,17 @@ def migrate(
         target = {"storage_backend": backend, "storage_location": location}
         parts = urlsplit(settings.DATABASE_URL)
 
+        from transit_ops.lake.connection import connect_lake
+
         def connect():
-            return psycopg.connect(
+            return connect_lake(
                 urlunsplit(parts._replace(scheme="postgresql")),
-                autocommit=True,
-                connect_timeout=5,
-                application_name="transit-lake-migrate-" + uuid4().hex,
-                keepalives=1,
-                keepalives_idle=60,
-                options="-c statement_timeout=1000 -c lock_timeout=1000 "
-                f"-c client_connection_check_interval={0 if os.name == 'nt' else 1000} "
-                "-c default_transaction_read_only=on",
+                allow_no_connection_check=allow_no_connection_check,
+                log=lambda event: typer.echo(json.dumps(event, sort_keys=True)),
             )
+
+        if window is not None:
+            scope = history_storage(settings)
 
         with connect() as connection, migration_lock(connection):
 
@@ -263,6 +261,7 @@ def migrate(
                 plan_budget_s=plan_budget_s,
                 not_after=deadline,
                 windows=window,
+                storage=scope.resolve(backend) if scope is not None else None,
             )
             typer.echo(
                 json.dumps(
@@ -301,7 +300,8 @@ def migrate(
                     stream.flush()
                     os.fsync(stream.fileno())
 
-                scope = history_storage(settings)
+                if scope is None:
+                    scope = history_storage(settings)
                 result = run_migration(
                     plan,
                     connect,
@@ -313,6 +313,7 @@ def migrate(
                     log=log,
                     storage_target=target,
                     still_locked=still_locked,
+                    group_reserve_s=group_reserve_s,
                 )
             typer.echo(json.dumps(asdict(result) | target, sort_keys=True))
             if result.failure is not None:

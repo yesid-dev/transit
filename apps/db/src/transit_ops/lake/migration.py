@@ -25,7 +25,7 @@ from transit_ops.ingestion.storage import BronzeStorage
 from transit_ops.lake.archive_keys import validate_provider_id
 from transit_ops.lake.catalog import CatalogTable, read_catalog
 from transit_ops.lake.inventory import Inventory, take_inventory
-from transit_ops.lake.table_copy import copy_table_window
+from transit_ops.lake.table_copy import TableCopy, copy_table_window
 from transit_ops.lake.table_export import WindowSpec, validate_timeout
 from transit_ops.settings import get_settings
 
@@ -47,6 +47,7 @@ class PlannedWindow:
     reason: Literal["closed", "open_included", "whole_state"]
     copy_group_members: tuple[WindowSpec, ...] = ()
     copy_group_refusal: str | None = None
+    archive_copy: TableCopy | None = None
 
 
 @dataclass(frozen=True)
@@ -480,6 +481,7 @@ def plan_migration(
     plan_budget_s: int = 300,
     not_after: datetime | None = None,
     windows: Sequence[str] | None = None,
+    storage: BronzeStorage | None = None,
 ) -> MigrationPlan:
     """Pin to midnight UTC unless an explicit instant on today_utc is supplied."""
     validate_timeout(statement_timeout_s)
@@ -496,33 +498,23 @@ def plan_migration(
                 | {n for n, d in HISTORY_DATASETS.items() if d.copy_group == "silver_alert_state"}
             )
         )
-    selected_windows = None
-    if windows is not None:
-        from transit_ops.history.datasets import window_start
-
-        selected_windows = set()
-        for selection in windows:
-            try:
-                name, provider, key = selection.split(":")
-                declaration = get_dataset(name)
-                if not isinstance(declaration.source, TableSource):
-                    raise ValueError("not a table")
-                validate_provider_id(provider)
-                window_start(declaration, key)
-            except (ValueError, LookupError) as error:
-                raise MigrationRefused("window", selection) from error
-            selected_windows.add((name, provider, key))
-        requested_datasets = {name for name, _, _ in selected_windows}
-        if any(get_dataset(name).copy_group for name in requested_datasets):
-            requested_datasets |= {
-                name for name, d in HISTORY_DATASETS.items() if d.copy_group == "silver_alert_state"
-            }
-    else:
-        requested_datasets = None
-    reads = _PlanReads(connection, plan_budget_s, statement_timeout_s, not_after)
     now = now_utc or datetime.combine(today_utc, time(), UTC)
     if now.utcoffset() != timedelta(0) or now.date() != today_utc:
         raise MigrationRefused("clock")
+    selected_windows, requested_datasets = None, None
+    cached: list[PlannedWindow] = []
+    if windows is not None:
+        from transit_ops.lake.exact_windows import select_exact
+
+        selected_windows, requested_datasets, cached = select_exact(
+            windows, datasets, providers, now, storage
+        )
+        if not selected_windows:
+            inventory = Inventory(
+                tuple(sorted({w.spec.dataset_id for w in cached})), (), (), (), (), (), (), ()
+            )
+            return MigrationPlan(inventory, tuple(cached), ())
+    reads = _PlanReads(connection, plan_budget_s, statement_timeout_s, not_after)
     with connection.transaction():
         connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         guards = dict(
@@ -570,8 +562,12 @@ def plan_migration(
                 now,
                 include_open or selected_windows is not None,
                 None
-                if selected_windows is not None or get_dataset(table.name).copy_group
-                else providers,
+                if get_dataset(table.name).copy_group
+                else (
+                    tuple(p for n, p, _ in selected_windows if n == table.name)
+                    if selected_windows is not None
+                    else providers
+                ),
                 get_settings().GOLD_REPORTING_OPEN_WINDOW_DAYS,
             )
             planned_windows.extend(planned)
@@ -631,7 +627,7 @@ def plan_migration(
         if selected != all_providers:
             refusal = "copy_group_partial"
     units = (PlannedWindow(grouped[0], "whole_state", grouped, refusal),) if grouped else ()
-    return MigrationPlan(inventory, singles + units, tuple(skipped), target)
+    return MigrationPlan(inventory, tuple(cached) + singles + units, tuple(skipped), target)
 
 
 def run_migration(
@@ -646,6 +642,7 @@ def run_migration(
     log: Callable[[dict[str, object]], None],
     storage_target: dict[str, object] | None = None,
     still_locked: Callable[[], bool] | None = None,
+    group_reserve_s: int = 0,
 ) -> MigrationSummary:
     validate_timeout(statement_timeout_s)
     if not_after.utcoffset() != timedelta(0):
@@ -674,23 +671,26 @@ def run_migration(
                         raise MigrationRefused("migration_lock_lost")
                 except Exception as error:
                     raise MigrationRefused("migration_lock_lost") from error
-            if shutil.disk_usage(work_dir).free < WORK_SPACE_FLOOR:
-                raise MigrationRefused(
-                    "work_space", f"requires at least {WORK_SPACE_FLOOR} free bytes"
-                )
-            from tempfile import mkdtemp
+            if window.archive_copy is not None:
+                result = window.archive_copy
+            else:
+                if shutil.disk_usage(work_dir).free < WORK_SPACE_FLOOR:
+                    raise MigrationRefused(
+                        "work_space", f"requires at least {WORK_SPACE_FLOOR} free bytes"
+                    )
+                from tempfile import mkdtemp
 
-            directory = Path(mkdtemp(prefix="window-", dir=work_dir))
-            with connect() as connection:
-                require_read_reserve(not_after, statement_timeout_s)
-                result = copy_table_window(
-                    connection,
-                    storage,
-                    window.spec,
-                    work_dir=directory,
-                    copied_by=copied_by,
-                    statement_timeout_s=statement_timeout_s,
-                )
+                directory = Path(mkdtemp(prefix="window-", dir=work_dir))
+                with connect() as connection:
+                    require_read_reserve(not_after, statement_timeout_s)
+                    result = copy_table_window(
+                        connection,
+                        storage,
+                        window.spec,
+                        work_dir=directory,
+                        copied_by=copied_by,
+                        statement_timeout_s=statement_timeout_s,
+                    )
             record.update(
                 outcome=result.outcome,
                 cut_utc=getattr(result, "spec", window.spec).cut_utc,
@@ -756,6 +756,7 @@ def run_migration(
                     copied_by=copied_by,
                     statement_timeout_s=statement_timeout_s,
                     not_after=not_after,
+                    group_reserve_s=group_reserve_s,
                 )
             record.update(
                 outcome="copied",

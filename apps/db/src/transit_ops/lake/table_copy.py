@@ -140,6 +140,7 @@ def _receipt(
             **asdict(proof),
             "cut_utc": exported.spec.cut_utc,
             "partial": exported.spec.cut_utc is not None,
+            "date_bound": exported.spec.date_bound,
         },
         source=dict(
             snapshot_at_utc=exported.snapshot_at_utc.isoformat(),
@@ -171,6 +172,7 @@ def _archive(
         schema_version=schema_version,
         cut_utc=spec.cut_utc,
         complete_window=_closed(spec, exported.snapshot_at_utc),
+        date_bound=spec.date_bound,
     )
     key = version.key or table_copy_key(
         spec.dataset_id,
@@ -245,10 +247,15 @@ def _receipt_proof(receipt: dict[str, Any], exported: ExportedWindow) -> WindowP
     if not isinstance(value, dict) or value.get("verified") is not True:
         raise UnverifiedCopy("archive receipt proof.verified must be true")
     try:
-        coverage = {"cut_utc": exported.spec.cut_utc, "partial": exported.spec.cut_utc is not None}
+        coverage = {
+            "cut_utc": exported.spec.cut_utc,
+            "partial": exported.spec.cut_utc is not None,
+            "date_bound": exported.spec.date_bound,
+        }
         if (
             value.get("cut_utc") != coverage["cut_utc"]
             or value.get("partial", False) is not coverage["partial"]
+            or value.get("date_bound") != coverage["date_bound"]
         ):
             raise UnverifiedCopy("archive receipt coverage differs")
         proof = WindowProof(**{k: v for k, v in value.items() if k not in coverage})
@@ -318,6 +325,7 @@ def copy_table_window(
     ):
         spec = replace(
             spec,
+            date_bound=None,
             cut_utc=(now - timedelta(hours=6))
             .replace(minute=0, second=0, microsecond=0)
             .isoformat(),
@@ -325,9 +333,15 @@ def copy_table_window(
     with TemporaryDirectory(prefix=".copy-", dir=work_dir) as directory:
         temporary = Path(directory)
         exported, written, proof = _prepare(connection, spec, temporary, statement_timeout_s)
+        spec = exported.spec
         _json_file(
             temporary / "proof.json",
-            {**asdict(proof), "cut_utc": spec.cut_utc, "partial": spec.cut_utc is not None},
+            {
+                **asdict(proof),
+                "cut_utc": spec.cut_utc,
+                "partial": spec.cut_utc is not None,
+                "date_bound": spec.date_bound,
+            },
         )
         _publish_local(temporary, work_dir)
         if storage is None:
@@ -346,6 +360,7 @@ def _prepare(
     exported = export_window(
         connection, spec, temporary / "window.csv", statement_timeout_s=statement_timeout_s
     )
+    spec = exported.spec
     _sync_directory(temporary)
     written = write_window(
         exported.csv_path,

@@ -80,15 +80,25 @@ def owned(source, monkeypatch):
     monkeypatch.setattr(
         datasets, "HISTORY_DATASETS", {**datasets.HISTORY_DATASETS, table: declared}
     )
+    registered = (
+        source.execute("SELECT 1 FROM core.providers WHERE provider_id='p'").fetchone() is None
+    )
     source.execute(
         f"CREATE TABLE {table} (provider_id text, revision int, service_date date, "
         "value text NOT NULL, PRIMARY KEY(provider_id,revision,service_date))"
     )
     try:
+        if registered:
+            source.execute(
+                "INSERT INTO core.providers(provider_id,provider_key,display_name,timezone) "
+                "VALUES ('p','p','fixture','UTC')"
+            )
         source.execute(f"INSERT INTO {table} VALUES ('p',2,'2026-11-01','old')")
         yield WindowSpec(table, "p", "2026-11", 2)
     finally:
         source.execute(f"DROP TABLE {table}")
+        if registered:
+            source.execute("DELETE FROM core.providers WHERE provider_id='p'")
 
 
 def test_month_window_of_a_rollup_contains_exactly_its_month(source, owned, tmp_path):

@@ -93,7 +93,11 @@ def test_cli_export_table_local_only_prints_one_json_line(source, owned, tmp_pat
     from contextlib import nullcontext
     from types import SimpleNamespace
 
-    monkeypatch.setattr("psycopg.connect", lambda *a, **k: nullcontext(source))
+    def connect(*args, **kwargs):
+        assert "-c default_transaction_read_only=on" in kwargs["options"]
+        return nullcontext(source)
+
+    monkeypatch.setattr("psycopg.connect", connect)
     monkeypatch.setattr(
         "transit_ops.settings.get_settings",
         lambda: SimpleNamespace(

@@ -1229,3 +1229,86 @@ def test_partial_copy_refuses_past_cut_and_later_revision_supersedes(tmp_path):
                 resolve_sources([need], storage, "sample", STAMP, {})
         else:
             assert resolve_sources([need], storage, "sample", STAMP, {})[0].key == key
+
+
+@pytest.mark.parametrize("late", [False, True])
+def test_cut_coverage_through_catalog_preflight(tmp_path, monkeypatch, late):
+    from contextlib import nullcontext
+    from datetime import date
+
+    from transit_ops.batch import input_sources
+    from transit_ops.batch.build import BuildRequest, utc_days
+    from transit_ops.batch.families.span_skipped_stops import SpanSkippedStopsBuilder
+
+    request = BuildRequest(
+        "sample",
+        (date(2026, 11, 13 if late else 14),),
+        datetime(2026, 11, 15, 17, tzinfo=UTC),
+        30,
+        10,
+        "America/Toronto",
+    )
+
+    class Ordinary:
+        family_id = "ordinary"
+
+        def inputs(self, request):
+            return tuple(InputNeed("gold.fact_trip_delay_snapshot", d) for d in utc_days(request))
+
+    builder = SpanSkippedStopsBuilder() if late else Ordinary()
+
+    class Catalog:
+        def get_foreign_keys(self, name, schema):
+            return (
+                [dict(referred_schema="raw", referred_table="realtime_snapshot_index")]
+                if name == "fact_trip_delay_snapshot"
+                else []
+            )
+
+    monkeypatch.setattr(input_sources, "replay_catalog", lambda: nullcontext(Catalog()))
+    storage = store(tmp_path)
+    bootstrap(storage)
+    archive(
+        storage,
+        "core.providers",
+        "2026-11",
+        "SELECT 'sample' AS provider_id, 'America/Toronto' AS timezone",
+    )
+    for need in builder.inputs(request):
+        key = archive(
+            storage,
+            need.relation,
+            need.window,
+            f"SELECT TIMESTAMPTZ '{need.window} 00:00:00+00' AS captured_at_utc WHERE false",
+        )
+        if need.window == "2026-11-15":
+            receipt = json.loads(storage.read_bytes(proof_key(key)))
+            receipt.update(partial=True, cut_utc="2026-11-15T11:00:00+00:00")
+            put(storage, proof_key(key), receipt)
+    root = tmp_path / "inputs"
+    root.mkdir()
+    if late:
+        with pytest.raises(ValueError, match="window_coverage"):
+            resolve_sources(
+                builder.inputs(request), storage, "sample", request.as_of_utc, {}, request=request
+            )
+        with pytest.raises(ValueError, match="window_coverage"):
+            input_sources.fetch_from_catalog(storage, root, request, [builder])
+    else:
+        assert input_sources.fetch_from_catalog(storage, root, request, [builder])["needs"]
+
+
+def test_date_bound_is_stricter_than_timestamp_cut(tmp_path):
+    storage = store(tmp_path)
+    key = archive(storage, "gold.route_delay_spine", "2026-11", "SELECT 1 AS id")
+    value = json.loads(storage.read_bytes(proof_key(key)))
+    value.update(partial=True, cut_utc="2026-11-15T11:00:00+00:00", date_bound="2026-11-14")
+    put(storage, proof_key(key), value)
+    with pytest.raises(ValueError, match="window_coverage.*date_bound"):
+        resolve_sources(
+            [InputNeed("gold.route_delay_spine", "2026-11-14")],
+            storage,
+            "sample",
+            datetime(2026, 11, 15, 17, tzinfo=UTC),
+            {},
+        )
