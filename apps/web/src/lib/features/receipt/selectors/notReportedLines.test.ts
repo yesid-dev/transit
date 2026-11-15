@@ -7,6 +7,7 @@ const labels = {
 	rowLabel: 'Line',
 	href: (id: string) => `/lines/${id}`,
 	fmtScheduled: (v: number | null | undefined) => (v == null ? null : `${v} scheduled`),
+	hasNoLiveData: () => false,
 };
 
 describe('selectNotReportedLines', () => {
@@ -29,16 +30,68 @@ describe('selectNotReportedLines', () => {
 		expect(vm.rows[0].display).toBe('12 scheduled');
 	});
 
-	it('carries the shown/total honesty (pre-cap count vs capped list)', () => {
+	const isRail = (id: string) => id.startsWith('rail');
+	const route = (id: string, scheduledTripDays = 10) => ({ id, name: id, scheduledTripDays });
+	const partition = (count: number | null, ids: string[]) => {
+		const vm = selectNotReportedLines(
+			{ notReportedRouteCount: count, notReportedRoutes: ids.map((id) => route(id)) },
+			{ ...labels, hasNoLiveData: isRail },
+		);
+		return [vm.rows.length, vm.noLiveData.length, vm.hidden, vm.total];
+	};
+	// Owner ruling 6: listed ordinary + listed no-live-data + hidden = the published total.
+	const sumsToTotal = ([rows, noLive, hidden, total]: (number | null)[]) =>
+		[rows, noLive, hidden].every((n) => n != null && n >= 0) && rows! + noLive! + hidden! === total;
+
+	it('keeps lines beyond the published list unclassified', () => {
+		const buses = Array.from({ length: 50 }, (_, i) => `bus${i}`);
+		expect(partition(51, buses)).toEqual([50, 0, 1, 51]);
+		expect(partition(60, ['rail1', 'bus1', 'rail2', 'bus2'])).toEqual([2, 2, 56, 60]);
+		expect(partition(3, ['rail1'])).toEqual([0, 1, 2, 3]);
+		expect(partition(2, ['rail1', 'bus1'])).toEqual([1, 1, 0, 2]);
+		for (const parts of [
+			partition(51, buses),
+			partition(60, ['rail1', 'bus1', 'rail2', 'bus2']),
+			partition(3, ['rail1']),
+			partition(2, ['rail1', 'bus1']),
+		]) {
+			expect(sumsToTotal(parts)).toBe(true);
+		}
+	});
+
+	it('leaves the hidden count unknown when the total is missing or smaller than the list', () => {
+		expect(partition(null, ['rail1', 'bus1'])).toEqual([1, 1, null, null]);
+		expect(partition(1, ['rail1', 'bus1'])).toEqual([1, 1, null, 1]);
+	});
+
+	it('groups lines that publish no live data apart from lines that never appeared', () => {
 		const vm = selectNotReportedLines(
 			{
-				notReportedRouteCount: 200,
-				notReportedRoutes: [{ id: '1', name: null, scheduledTripDays: 5 }],
+				notReportedRouteCount: 4,
+				notReportedRoutes: [
+					{ id: '1', name: 'Verte', scheduledTripDays: 900 },
+					{ id: '51', name: 'Édouard-Montpetit', scheduledTripDays: 12 },
+					{ id: '2', name: 'Orange', scheduledTripDays: 800 },
+					{ id: '24', name: 'Sherbrooke', scheduledTripDays: 8 },
+				],
 			},
-			labels,
+			{ ...labels, hasNoLiveData: (id) => id === '1' || id === '2' },
 		);
-		expect(vm.shown).toBe(1);
-		expect(vm.total).toBe(200);
+		expect(vm.noLiveData.map((line) => [line.title, line.href])).toEqual([
+			['Verte', '/lines/1'],
+			['Orange', '/lines/2'],
+		]);
+		expect(vm.rows.map((row) => [row.key, row.rank])).toEqual([
+			['51', 1],
+			['24', 2],
+		]);
+		expect(vm.hasData).toBe(true);
+		expect(
+			selectNotReportedLines(
+				{ notReportedRouteCount: 1, notReportedRoutes: [route('rail1')] },
+				{ ...labels, hasNoLiveData: isRail },
+			).hasData,
+		).toBe(true);
 	});
 
 	it('stands down on ramp-in — an ABSENT list is honest-absence, not an empty "all reported"', () => {

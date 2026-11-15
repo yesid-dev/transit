@@ -130,7 +130,7 @@ export const alertHistoryCopy = defineCopy({
 			label: 'Avis dans la fenêtre',
 			value: (count: number) => intl.number('fr').format(count),
 			explanation:
-				'Le nombre d’avis de service actifs dans la plage de dates choisie, avec leur durée médiane. On compte les avis distincts, jamais une estimation.',
+				'Le nombre d’avis de service actifs dans la plage de dates choisie, avec la durée médiane annoncée par l’agence. Les avis sans heure de fin valide sont exclus de la médiane. On compte les avis distincts, jamais une estimation.',
 			median: (min: number) => `durée médiane annoncée ${min} min`,
 			tip: 'Le nombre d’avis distincts dont la fenêtre active recoupe la plage choisie.',
 			linkLabel: 'Comment c’est mesuré',
@@ -265,7 +265,7 @@ export const alertHistoryCopy = defineCopy({
 			label: 'Alerts in window',
 			value: (count) => intl.number('en').format(count),
 			explanation:
-				'How many service alerts were active in the chosen date range, with their median duration. We count distinct alerts, never an estimate.',
+				'How many service alerts were active in the chosen date range, with the median duration the agency stated. Alerts with no valid end time are left out of the median. We count distinct alerts, never an estimate.',
 			median: (min) => `median stated duration ${min} min`,
 			tip: 'The count of distinct alerts whose active window overlaps the chosen range.',
 			linkLabel: 'How this is measured',

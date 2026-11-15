@@ -11,6 +11,9 @@ export interface AffectedCountLabels {
 	readonly stops: string;
 	readonly alerts: string;
 	readonly vehicles: string;
+	readonly noAlertFeed: string;
+	/** False when the provider declares no alert feed: a zero or missing count is then absence. */
+	readonly hasAlertFeed: boolean;
 	readonly fmtCount: (v: number | null | undefined) => string | null;
 }
 
@@ -18,10 +21,12 @@ export function selectAffectedCounts(
 	receipt: Pick<ReceiptReliabilityView, 'affectedRoutes' | 'affectedStops' | 'alerts' | 'vehicles'>,
 	labels: AffectedCountLabels,
 ): AffectedCountVM[] {
+	const alerts =
+		!labels.hasAlertFeed && !receipt.alerts ? labels.noAlertFeed : labels.fmtCount(receipt.alerts);
 	const cells: AffectedCountVM[] = [
 		{ key: 'routes', label: labels.routes, value: labels.fmtCount(receipt.affectedRoutes) },
 		{ key: 'stops', label: labels.stops, value: labels.fmtCount(receipt.affectedStops) },
-		{ key: 'alerts', label: labels.alerts, value: labels.fmtCount(receipt.alerts) },
+		{ key: 'alerts', label: labels.alerts, value: alerts },
 	];
 	if (receipt.vehicles != null) {
 		cells.push({

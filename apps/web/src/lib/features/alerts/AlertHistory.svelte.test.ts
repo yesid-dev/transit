@@ -707,6 +707,15 @@ describe('AlertHistory headline', () => {
 		expect(alertHistoryCopy.fr.headline.median(90)).toBe('durée médiane annoncée 90 min');
 		expect(alertHistoryCopy.fr.breakdown.median(90)).toBe('durée médiane annoncée 90 min');
 	});
+
+	it('explains that the median is the stated duration of alerts that give an end', () => {
+		expect(copyEn.headline.explanation).toBe(
+			'How many service alerts were active in the chosen date range, with the median duration the agency stated. Alerts with no valid end time are left out of the median. We count distinct alerts, never an estimate.',
+		);
+		expect(alertHistoryCopy.fr.headline.explanation).toBe(
+			'Le nombre d’avis de service actifs dans la plage de dates choisie, avec la durée médiane annoncée par l’agence. Les avis sans heure de fin valide sont exclus de la médiane. On compte les avis distincts, jamais une estimation.',
+		);
+	});
 });
 
 describe('AlertHistory breakdown', () => {
