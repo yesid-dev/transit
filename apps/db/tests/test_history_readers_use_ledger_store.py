@@ -1,4 +1,4 @@
-from dataclasses import fields, replace
+from dataclasses import asdict, fields, replace
 from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace as NS
 from unittest.mock import Mock
@@ -41,6 +41,33 @@ def window(provider, day):
     return ledger.WindowState(
         DATASET, provider, 0, day.isoformat(), day, "empty", NOW, 1, None, None, None, None, None
     )
+
+
+def test_discovery_does_not_start_queries_after_deadline():
+    expired = False
+    late_queries = []
+    states = [window("network", date(2026, 11, day)) for day in (1, 2)]
+    projections = [asdict(state) | {"hold_has_no_end": False} for state in states]
+
+    class Rows(list):
+        def mappings(self):
+            return projections
+
+    def execute(sql, params):
+        nonlocal expired
+        if expired:
+            late_queries.append(params.copy())
+        if "SELECT e.provider_id" in str(sql):
+            return NS(scalars=lambda: [])
+        if "window_key" not in params:
+            expired = True
+            return Rows([(state.window_key, state.provider_id) for state in states])
+        row = next(p for p in projections if p["window_key"] == params["window_key"])
+        return NS(mappings=lambda: NS(one_or_none=lambda: row))
+
+    with pytest.raises(selection.DiscoveryStopped):
+        selection.capture_providers(NS(execute=execute), now=NOW, before_query=lambda: not expired)
+    assert late_queries == [], f"started queries after discovery deadline: {late_queries}"
 
 
 def test_selection_unions_ledger_only_days_and_providers_in_order(monkeypatch):

@@ -26,6 +26,24 @@ from transit_ops.history.ledger_store import (
 _WINDOW = """dataset_id=:dataset_id AND provider_id=:provider_id
              AND revision=:revision AND window_key=:window_key"""
 _COPY = _WINDOW + " AND content_version=:content_version"
+_WINDOW_PROJECTION = (
+    ", ".join(
+        f"w.{field.name}"
+        for field in fields(WindowState)
+        if field.name not in {"hold_until_utc", "remainder_fingerprint"}
+    )
+    + """,
+    CASE WHEN w.hold_until_utc = 'infinity' THEN NULL
+         ELSE w.hold_until_utc END AS hold_until_utc,
+    w.hold_until_utc = 'infinity' AS hold_has_no_end,
+    CASE WHEN w.working_state IN ('partial', 'trimmed') THEN (
+        SELECT e.details->>'remainder_fingerprint' FROM core.history_event e
+        WHERE e.dataset_id = w.dataset_id AND e.provider_id = w.provider_id
+          AND e.revision = w.revision AND e.window_key = w.window_key AND e.kind = 'trim'
+        ORDER BY e.event_id DESC LIMIT 1
+    ) END AS remainder_fingerprint
+"""
+)
 
 
 def _aware(at: datetime) -> datetime:
@@ -59,30 +77,31 @@ class PostgresLedger:
         ledger._check_revision(datasets.get_dataset(dataset_id), revision)
         if start is not None and end is not None and start > end:
             raise ValueError("start must not be after end")
-        clauses = ["dataset_id=:dataset_id", "revision=:revision"]
+        clauses = ["w.dataset_id=:dataset_id", "w.revision=:revision"]
         values: dict[str, object] = dict(dataset_id=dataset_id, revision=revision)
         for name, value, clause in (
-            ("provider_id", provider_id, "provider_id=:provider_id"),
-            ("start", start, "window_start>=:start"),
-            ("end", end, "window_start<=:end"),
+            ("provider_id", provider_id, "w.provider_id=:provider_id"),
+            ("start", start, "w.window_start>=:start"),
+            ("end", end, "w.window_start<=:end"),
         ):
             if value is not None:
                 clauses.append(clause)
                 values[name] = value
         rows = self.connection.execute(
             text(
-                "SELECT window_key, provider_id FROM core.history_window WHERE "
+                f"SELECT {_WINDOW_PROJECTION} FROM core.history_window w WHERE "
                 + " AND ".join(clauses)
-                + " ORDER BY provider_id, window_start, window_key"
+                + ' ORDER BY w.provider_id COLLATE "C", w.window_start, w.window_key COLLATE "C"'
             ),
             values,
-        )
-        return [
-            state
-            for key, provider in rows
-            if (state := self.window_state(WindowIdentity(dataset_id, provider, key, revision)))
-            is not None
-        ]
+        ).mappings()
+        windows = []
+        for row in rows:
+            projection = dict(row)
+            if projection.pop("hold_has_no_end"):
+                projection["hold_until_utc"] = ledger.HOLD_NO_END
+            windows.append(WindowState(**projection))
+        return windows
 
     def record_audit(
         self,

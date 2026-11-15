@@ -32,6 +32,8 @@ def test_list_windows_filters_by_provider_and_range_in_order(store, make_identit
     for identity in identities:
         with store.session(identity) as session:
             session.mark_changed()
+            session.set_working_state("empty")
+            session.hold(until_utc=HOLD_NO_END, reason="retained")
     dataset = identities[0].dataset_id
     assert store.list_windows(dataset_id=dataset) == [
         store.window_state(identities[i]) for i in (2, 3, 1, 0)
@@ -57,6 +59,19 @@ def test_ready_reports_a_missing_ledger(store, monkeypatch):
             store.connection, "execute", lambda *a, **kw: SimpleNamespace(scalar_one=lambda: None)
         )
     assert store.ready() is False
+
+
+def test_list_windows_orders_mixed_case_and_punctuation(store, make_identity):
+    for provider in ("a", "B", "a_", "a-", "A"):
+        with store.session(replace(make_identity(), provider_id=provider)) as session:
+            session.mark_changed()
+    assert [w.provider_id for w in store.list_windows(dataset_id=make_identity().dataset_id)] == [
+        "A",
+        "B",
+        "a",
+        "a-",
+        "a_",
+    ]
 
 
 @pytest.fixture

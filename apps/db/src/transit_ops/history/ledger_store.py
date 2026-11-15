@@ -167,6 +167,7 @@ class LedgerStore(Protocol):
     ) -> list[WindowState]:
         """Inclusive optional date bounds; order by provider, window_start, key.
 
+        Text uses Unicode code point order, independent of database locale.
         Undated windows follow dated windows and are excluded by date bounds.
         """
         ...
