@@ -37,41 +37,44 @@ def cancelled_stop_ids(alerts: Iterable[Alert], as_of: datetime) -> set[str]:
     return result
 
 
+def _weekly_line_row(key: str, payload: Any) -> dict[str, Any] | None:
+    week = next((p for p in payload.periods_by_grain if p.grain == "week"), None)
+    closed = next((p.date for p in payload.periods_by_grain if p.grain == "day"), None)
+    if week is None or not week.date or not closed or not week.by_daytype:
+        return None
+    if (datetime.fromisoformat(closed) - datetime.fromisoformat(week.date)).days != 6:
+        return None
+    if any(p.on_time is None or p.observation_count is None for p in week.by_daytype):
+        return None
+    return dict(
+        id=key,
+        name=payload.name,
+        numerator=sum(p.on_time for p in week.by_daytype),
+        denominator=sum(p.observation_count for p in week.by_daytype),
+        window_start=week.date,
+        window_end=closed,
+    )
+
+
 def weekly_payload_rows(payloads: Mapping[str, Any], *, kind: str, excluded: set[str]):
-    all_days = [
-        day.date
-        for payload in payloads.values()
-        for day in (payload.daily if kind == "stop" else payload.periods)
-        if (kind == "stop" or day.grain == "day") and day.date is not None
-    ]
+    if kind == "route":
+        for key, payload in payloads.items():
+            if key not in excluded and (row := _weekly_line_row(key, payload)) is not None:
+                yield row
+        return
+    all_days = [day.date for payload in payloads.values() for day in payload.daily]
     if not all_days:
         return
     end = max(all_days)
+    start = (datetime.fromisoformat(end) - timedelta(days=6)).date().isoformat()
     for key, payload in payloads.items():
         if key in excluded:
             continue
-        days = payload.daily if kind == "stop" else [p for p in payload.periods if p.grain == "day"]
-        dated = [day for day in days if day.date is not None]
-        if not dated:
-            continue
-        start = (datetime.fromisoformat(end) - timedelta(days=6)).date().isoformat()
-        selected = [day for day in dated if start <= day.date <= end]
-        known = [day for day in selected if day.observation_count is not None]
+        known = [day for day in payload.daily if start <= day.date <= end]
         if not known:
             continue
         denominator = sum(day.observation_count for day in known)
-        if kind == "stop":
-            numerator = sum(day.observation_count - day.severe_count for day in known)
-        else:
-            week = next((p for p in payload.periods_by_grain if p.grain == "week"), None)
-            closed = next((p.date for p in payload.periods_by_grain if p.grain == "day"), None)
-            if week is None or not week.date or not closed or not week.by_daytype:
-                continue
-            if any(p.on_time is None or p.observation_count is None for p in week.by_daytype):
-                continue
-            start, end = week.date, closed
-            denominator = sum(p.observation_count for p in week.by_daytype)
-            numerator = sum(p.on_time for p in week.by_daytype)
+        numerator = sum(day.observation_count - day.severe_count for day in known)
         yield dict(
             id=key,
             name=payload.name,
@@ -82,7 +85,7 @@ def weekly_payload_rows(payloads: Mapping[str, Any], *, kind: str, excluded: set
             severe_pct=float(
                 round_half_away(Decimal(100 * (denominator - numerator)) / denominator, 1)
             )
-            if kind == "stop" and denominator
+            if denominator
             else None,
         )
 

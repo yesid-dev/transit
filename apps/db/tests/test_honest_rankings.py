@@ -76,3 +76,36 @@ def test_stop_rankings_exclude_only_active_informed_cancellations():
         ),
     ]
     assert cancelled_stop_ids(alerts, datetime(2026, 6, 1, tzinfo=UTC)) == {"closed", "normalized"}
+
+
+def test_line_ranking_reads_the_published_week_without_requiring_a_daily_list():
+    from transit_ops.snapshots.builders.historic.weekly_ranking import (
+        rank_weekly_periods,
+        weekly_payload_rows,
+    )
+    from transit_ops.snapshots.contract import (
+        ReliabilityByGrain,
+        ReliabilityPeriod,
+        RouteReliability,
+    )
+
+    line = RouteReliability(
+        id="R",
+        generated_utc="2026-11-11T00:00:00Z",
+        periods_by_grain=[
+            ReliabilityByGrain(grain="day", date="2026-11-10"),
+            ReliabilityByGrain(
+                grain="week",
+                date="2026-11-04",
+                by_daytype=[
+                    ReliabilityPeriod(grain="weekday", on_time=58, observation_count=100),
+                    ReliabilityPeriod(grain="weekend", on_time=60, observation_count=100),
+                ],
+            ),
+        ],
+    )
+    result = rank_weekly_periods(weekly_payload_rows({"R": line}, kind="route", excluded=set()))
+    assert [(row.id, row.numerator, row.denominator, row.pct) for row in result] == [
+        ("R", 118, 200, 59)
+    ]
+    assert (result[0].window_start, result[0].window_end) == ("2026-11-04", "2026-11-10")

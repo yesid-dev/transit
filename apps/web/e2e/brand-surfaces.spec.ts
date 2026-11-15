@@ -136,7 +136,7 @@ test('homepage ground follows window scrolling and reverses without moving the t
 });
 
 test('the home strip holds its place while its numbers and rankings arrive', async ({ page }) => {
-	// Hold both data files so the first measurement is taken before either lands.
+	// Hold the live and ranking files before the first measurement.
 	let release = (): void => {};
 	const held = new Promise<void>((resolve) => (release = resolve));
 	const generated_utc = new Date().toISOString();
@@ -170,6 +170,29 @@ test('the home strip holds its place while its numbers and rankings arrive', asy
 							{ id: '24', type: 'route', rank: 1, name: 'Sherbrooke', severe_pct: 12.5 },
 							{ id: 'S1', type: 'stop', rank: 2, name: 'Fixture stop', severe_pct: 9.1 },
 						],
+					},
+				],
+			},
+		});
+	});
+	await page.route('**/v1/stm/historic/route_reliability/index.json', async (route) => {
+		await held;
+		await route.fulfill({
+			json: {
+				generated_utc,
+				route_ids: ['24'],
+				weekly_stops: [
+					{
+						id: 'S1',
+						name: 'Fixture stop',
+						state: 'ranked',
+						rank: 1,
+						numerator: 100,
+						denominator: 110,
+						pct: 91,
+						severe_pct: 9.1,
+						window_start: '2026-06-08',
+						window_end: '2026-06-14',
 					},
 				],
 			},

@@ -47,13 +47,13 @@
 			"fixture": "rich",
 			"locale": "en",
 			"surface": "stop",
-			"path": "/stop/52095"
+			"path": "/stop/52095?grain=day"
 		},
 		{
 			"fixture": "rich",
 			"locale": "fr",
 			"surface": "stop",
-			"path": "/fr/stop/52095"
+			"path": "/fr/stop/52095?grain=day"
 		},
 		{
 			"fixture": "rich",
@@ -77,7 +77,7 @@
 			"fixture": "sparse",
 			"locale": "en",
 			"surface": "stop",
-			"path": "/stop/52095"
+			"path": "/stop/52095?grain=day"
 		},
 		{
 			"fixture": "sparse",

@@ -1799,17 +1799,7 @@
    "observation_count": 2
   }
  ],
- "weak_stops": [
-  {
-   "id": "S2",
-   "name": "Arret S2",
-   "avg_delay_min": -0.8,
-   "observation_count": null,
-   "severe_pct": null,
-   "wilson_lo": null,
-   "wilson_hi": null
-  }
- ],
+ "weak_stops": [],
  "cancellations": [
   {
    "grain": "day",

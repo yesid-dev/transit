@@ -891,8 +891,8 @@ describe('StopDetail retained-history ownership', () => {
 		await fireEvent.click(screen.getByRole('tab', { name: 'Record' }));
 		const pane = view.container.querySelector('[data-slot="reliability-pane"]') as HTMLElement;
 		expect(pane).not.toBeNull();
-		expect(within(pane).getByText('Day')).toBeInTheDocument();
-		expect(within(pane).getByText('82%')).toBeInTheDocument();
+		expect(within(pane).getByText('Week')).toBeInTheDocument();
+		expect(within(pane).getByText('79%')).toBeInTheDocument();
 		expect(stopHistoryHarness.loadStopHistoryRange).not.toHaveBeenCalled();
 
 		await waitFor(() => expect(stopHistoryHarness.getStopHistoryIndex).toHaveBeenCalledOnce());
@@ -1081,8 +1081,8 @@ describe('StopDetail map drilldown', () => {
 
 describe('StopDetail reliability — grain picker', () => {
 	it.each([
-		['en', 'Day'],
-		['fr', 'Jour'],
+		['en', 'Week'],
+		['fr', 'Semaine'],
 	] as const)('localizes the reliability card grain heading in %s', (locale, heading) => {
 		renderReliability(locale);
 		const pane = document.querySelector('[data-slot="reliability-pane"]') as HTMLElement;
@@ -1336,7 +1336,7 @@ describe('StopDetail reliability — by time of day (shift + day-type grains)', 
 
 		const group = screen.getAllByRole('radiogroup', { name: 'Roll-up period' })[0];
 		const radios = within(group).getAllByRole('radio');
-		expect(radios.map((r) => r.textContent?.trim())).toEqual(['Day', 'Week', 'Month']);
+		expect(radios.map((r) => r.textContent?.trim())).toEqual(['Week', 'Day', 'Month']);
 		for (const token of [
 			'AM peak',
 			'PM peak',

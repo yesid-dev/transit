@@ -366,11 +366,15 @@ def build_offender_kind_ladder(
     tray: list[RepeatOffenderEntry] = []
     for row in rows:
         key = _ranking_key(row, "entity_id", MIN_N_OFFENDER)
+        supported_readings = key is not None
         thin_days = (row.get("observed_days") or 0) < 3
         if thin_days:
             key = None
         if key is None:
-            if thin_days or (row["recurrence_days"] or 0) >= OFFENDER_TRAY_MIN_RECURRENCE:
+            if (row["obs"] or 0) > 0 and (
+                (thin_days and supported_readings)
+                or (row["recurrence_days"] or 0) >= OFFENDER_TRAY_MIN_RECURRENCE
+            ):
                 tray.append(_offender_tray_entry(row, kind, route_names))
         else:
             ranked.append((*key, row))

@@ -376,6 +376,10 @@ def test_spine_matches_frozen_golden_on_count_and_share_fields(conn) -> None:
     assert _has_weak_stops(golden), "frozen golden has an empty weak_stops subtree (DB-PR-3)"
     anchor = _anchor_today(conn)
     canon_spine = _canonicalize(_render(conn), anchor)
+    # This seven-day seed has fewer than 30 readings per stop. The approved floor
+    # now suppresses its legacy list; all other frozen count/share fields still match.
+    assert canon_spine["weak_stops"] == []
+    golden["weak_stops"] = []
     _assert_frozen_match(golden, canon_spine)
     assert _zero_allow_move(golden) == _zero_allow_move(canon_spine)
 

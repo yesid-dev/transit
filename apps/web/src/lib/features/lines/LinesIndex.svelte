@@ -200,16 +200,13 @@
 		<EntityList items={visible} key={(r) => r.id} grid cards>
 			{#snippet row(r)}
 				{@const routeSnapshot = reliability.get(r.id)}
+				{@const publishedRow = weekly?.find((row) => row.id === r.id)}
 				<!-- Bare id (no `known` flag): availability is decided by the always-current
 			     route_reliability discovery index in the loader, NOT the lag-prone
 			     routes_index `reliability` flag — so a stale flag never drops a badge. -->
 				<div use:observeReliability={r.id}>
 					{#snippet lineStatus()}
-						<ReliabilityBadge
-							published={weekly?.find((row) => row.id === r.id)}
-							snapshot={routeSnapshot}
-							{locale}
-						/>
+						<ReliabilityBadge published={publishedRow} snapshot={routeSnapshot} {locale} />
 					{/snippet}
 					{#snippet lineAction()}
 						<MapDrilldownLink
@@ -226,7 +223,9 @@
 						tag={routeModeHint(r.type).tag ?? undefined}
 						title={r.short}
 						subtitle={r.long ? t.routeName(r.long) : undefined}
-						status={routeSnapshot.otpPct == null ? undefined : lineStatus}
+						status={publishedRow?.pct != null || routeSnapshot.otpPct != null
+							? lineStatus
+							: undefined}
 						action={lineAction}
 					/>
 				</div>

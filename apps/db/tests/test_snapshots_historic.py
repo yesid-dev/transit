@@ -1859,10 +1859,10 @@ def test_by_grain_min_n_floor_routes_to_tray_only_when_recurred() -> None:
     ranked_ids = {e.id for e in week.entries}
     tray_ids = {e.id for e in week.tray}
     assert ranked_ids == {"V_RANKED"}
-    assert tray_ids == {"T_TRAY", "T_DROP"}
+    assert tray_ids == {"T_TRAY"}
     assert "T_DROP" not in ranked_ids
-    assert week.tray_total == 2
-    tray_e = next(entry for entry in week.tray if entry.id == "T_TRAY")
+    assert week.tray_total == 1
+    tray_e = week.tray[0]
     assert tray_e.rank is None
     assert tray_e.wilson_lo is None and tray_e.wilson_hi is None
     assert tray_e.recurrence_days == 3
@@ -1879,8 +1879,7 @@ def test_by_grain_omits_grain_on_honest_absence() -> None:
         )
     ]
     conn = _offender_grain_conn(rows)
-    assert all(not grain.entries and len(grain.tray) == 1
-               for grain in _repeat_offenders_by_grain(conn, "stm", {}))
+    assert _repeat_offenders_by_grain(conn, "stm", {}) == []
 
 
 def test_by_grain_pooled_avg_honest_none_on_zero_denominator() -> None:
@@ -1891,8 +1890,7 @@ def test_by_grain_pooled_avg_honest_none_on_zero_denominator() -> None:
     ]
     conn = _offender_grain_conn(rows)
     grains = _repeat_offenders_by_grain(conn, "stm", {})
-    week = next(g for g in grains if g.grain == "week")
-    assert week.tray[0].avg_delay_min is None
+    assert grains == []
 
 
 def test_offender_ladder_preserves_caller_order_for_exact_ties() -> None:

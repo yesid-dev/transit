@@ -140,7 +140,7 @@ def test_sub_floor_tray_only_when_recurred(real_db_engine, seed_provider) -> Non
         week = _week(_repeat_offenders_by_grain(conn, _PROVIDER, {}))
     tray_ids = {e.id for e in week.tray}
     ranked_ids = {e.id for e in week.entries}
-    assert tray_ids == {"V_TRAY", "V_FLUKE"}
+    assert tray_ids == {"V_TRAY"}
     assert "V_FLUKE" not in ranked_ids
     tray_e = next(e for e in week.tray if e.id == "V_TRAY")
     assert tray_e.rank is None

@@ -215,7 +215,7 @@ function parityPayload(): HistoricRepeatOffendersDay {
 						wilson_lo: null,
 						wilson_hi: null,
 						recurrence_days: null,
-						observed_days: null,
+						observed_days: 7,
 						avg_delay_min: null,
 					},
 					{
@@ -229,7 +229,7 @@ function parityPayload(): HistoricRepeatOffendersDay {
 						wilson_lo: null,
 						wilson_hi: null,
 						recurrence_days: null,
-						observed_days: null,
+						observed_days: 7,
 						avg_delay_min: null,
 					},
 					{

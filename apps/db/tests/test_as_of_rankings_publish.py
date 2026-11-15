@@ -111,11 +111,13 @@ def _patch_points(monkeypatch: pytest.MonkeyPatch, *, hotspots=(), repeat=()) ->
     )
 
 
-def test_point_bundle_reuses_provider_names_and_executes_five_queries() -> None:
+def test_point_bundle_reuses_provider_names_and_reads_active_cancellations() -> None:
     connection = NamedQueryConn(
         {
             "history.hotspots.timezone": [{"timezone": "America/Toronto"}],
             "history.hotspots.names": [],
+            "live.alerts": [],
+            "live.feed_capture": [],
             "history.hotspots.route_daily": [],
             "history.hotspots.stop_daily": [],
             "history.repeat_offenders.daily": [],
@@ -133,6 +135,8 @@ def test_point_bundle_reuses_provider_names_and_executes_five_queries() -> None:
         "history.hotspots.names",
         "history.hotspots.route_daily",
         "history.hotspots.stop_daily",
+        "live.alerts",
+        "live.feed_capture",
         "history.repeat_offenders.daily",
     ]
 

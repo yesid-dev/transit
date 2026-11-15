@@ -409,13 +409,10 @@
 {#snippet stopRow(stop: StopIndexEntry)}
 	{@const hint = stopModeHint(stop)}
 	{@const stopSnapshot = reliability.get(stop.id)}
+	{@const publishedRow = weekly?.find((row) => row.id === stop.id)}
 	<div use:observeReliability={stop.id}>
 		{#snippet stopStatus()}
-			<ReliabilityBadge
-				published={weekly?.find((row) => row.id === stop.id)}
-				snapshot={stopSnapshot}
-				{locale}
-			/>
+			<ReliabilityBadge published={publishedRow} snapshot={stopSnapshot} {locale} />
 		{/snippet}
 		{#snippet stopAction()}
 			<MapDrilldownLink
@@ -433,7 +430,7 @@
 			title={stopDisplayName(stop.name)}
 			subtitle={stop.code ?? undefined}
 			routes={stop.routes}
-			status={stopSnapshot.otpPct == null ? undefined : stopStatus}
+			status={publishedRow?.pct != null || stopSnapshot.otpPct != null ? stopStatus : undefined}
 			action={stopAction}
 		/>
 	</div>
