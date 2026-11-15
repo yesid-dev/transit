@@ -42,6 +42,7 @@ from transit_ops.snapshots.builders.historic.ranking_kernel import (
     merge_hotspot_grain,
     otp_delta_points,
 )
+from transit_ops.snapshots.builders.historic.repeat_offenders_history import OFFENDER_LABEL_JOIN_SQL
 from transit_ops.snapshots.contract import (
     ALERT_HISTORY_BYTE_CEILING,
     NOT_REPORTED_ROUTES_CAP,
@@ -439,7 +440,8 @@ _OFFENDERS_ANCHOR_SQL = named_query(
 _OFFENDERS_WINDOW_SQL = named_query(
     "repeat.offenders.by_grain",
     """
-    SELECT
+    SELECT sp.*, label.route_short_name, label.trip_headsign AS headsign, label.departure_time
+    FROM (SELECT provider_id, CAST(:win_end AS date) AS provider_local_date,
         entity_kind,
         entity_id,
         route_id,
@@ -452,7 +454,9 @@ _OFFENDERS_WINDOW_SQL = named_query(
     FROM gold.repeat_offender_daily_spine
     WHERE provider_id = :provider_id
       AND provider_local_date >= :win_start AND provider_local_date <= :win_end
-    GROUP BY entity_kind, entity_id, route_id
+    GROUP BY provider_id, entity_kind, entity_id, route_id) sp
+    JOIN gold.dim_provider dp ON dp.provider_id = sp.provider_id
+    """ + OFFENDER_LABEL_JOIN_SQL + """
     """,
 )
 

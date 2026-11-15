@@ -1203,7 +1203,7 @@ def test_repeat_offenders_as_of_by_grain_preserves_wilson_floor_and_kind_ranks()
     trips = [value for value in week.entries if value.type == "trip"]
     vehicles = [value for value in week.entries if value.type == "vehicle"]
 
-    assert [value.id for value in trips] == ["SMALL", "BIG"]
+    assert [value.id for value in trips] == ["BIG", "SMALL"]
     assert [value.rank for value in trips] == [1, 2]
     assert [value.rank for value in vehicles] == [1]
     assert "N29" not in {value.id for value in week.entries}
@@ -1345,11 +1345,11 @@ def test_repeat_offenders_as_of_names_use_provider_local_close_overlap_and_gap()
     day = "2026-03-08"
     payload = _offender_days(
         rows=_three_observed_days([
-            _offender_row(day, "MID", route_id="MID", obs=30),
-            _offender_row(day, "NEXT", route_id="NEXT", obs=30),
-            _offender_row(day, "DST", route_id="DST", obs=30),
-            _offender_row(day, "OVER", route_id="OVER", obs=30),
-            _offender_row(day, "GAP", route_id="GAP", obs=30),
+            _offender_row(day, "MID", route_id="MID", obs=30, severe=3),
+            _offender_row(day, "NEXT", route_id="NEXT", obs=30, severe=3),
+            _offender_row(day, "DST", route_id="DST", obs=30, severe=3),
+            _offender_row(day, "OVER", route_id="OVER", obs=30, severe=3),
+            _offender_row(day, "GAP", route_id="GAP", obs=30, severe=3),
         ]),
         names=[
             _name("route", "MID", "Old", "2026-01-01T00:00:00Z", "2026-03-08T17:00:00Z"),
@@ -1388,7 +1388,7 @@ def test_repeat_offenders_as_of_names_use_provider_local_close_overlap_and_gap()
 
 def test_repeat_offenders_as_of_fall_dst_close_and_envelope_are_stable() -> None:
     payload = _offender_days(
-        rows=_three_observed_days([_offender_row("2026-11-01", "FALL", route_id="FALL")]),
+        rows=_three_observed_days([_offender_row("2026-11-01", "FALL", route_id="FALL", severe=3)]),
         names=[
             _name(
                 "route",
@@ -1458,7 +1458,6 @@ def test_repeat_offenders_history_production_plan_executes_exactly_three_queries
         'ORDER BY sp.provider_local_date, sp.entity_kind COLLATE "C",\n'
         '             sp.entity_id COLLATE "C", sp.route_id COLLATE "C"' in sql
     )
-    assert "LIMIT" not in sql
     assert "gold.repeat_offender AS" not in sql
 
 

@@ -39,6 +39,28 @@ FILE_RULES: tuple[FileRule, ...] = (
         "historic/route_reliability/index.json",
         ("weekly_routes", "weekly_stops", "published_utc", "next_publish_utc"),
     ),
+    *(
+        FileRule(
+            path,
+            tuple(
+                f"by_grain[*].{group}[*].{field}"
+                for group in ("entries", "tray")
+                for field in ("route_short_name", "departure_time", "headsign")
+            ),
+        )
+        for path in (
+            "historic/repeat_offenders.json",
+            "historic/history/repeat_offenders/generations/{h}/{date}.json",
+        )
+    ),
+    FileRule(
+        "historic/repeat_offenders_day.json",
+        tuple(
+            f"by_grain[*].{group}[*].{field}"
+            for group in ("entries", "tray")
+            for field in ("route_short_name", "departure_time", "headsign")
+        ),
+    ),
     FileRule("historic/**"),
     FileRule("provenance.json"),
     FileRule("providers.json"),

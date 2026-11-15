@@ -60,6 +60,39 @@ _REPEAT_OFFENDERS_HISTORY_NAMES_SQL = named_query(
     """,
 )
 
+OFFENDER_LABEL_JOIN_SQL = """
+    LEFT JOIN LATERAL (
+        SELECT h.route_short_name, t.trip_headsign, first_stop.departure_time
+        FROM gold.dim_route_history h
+        LEFT JOIN LATERAL (
+            SELECT dv.dataset_version_id FROM core.dataset_versions dv
+            WHERE dv.provider_id = h.provider_id AND dv.dataset_kind = 'static_schedule'
+              AND dv.observed_from_utc <
+                  timezone(dp.timezone, (sp.provider_local_date + 1)::timestamp)
+              AND (dv.observed_until_utc IS NULL OR dv.observed_until_utc >=
+                  timezone(dp.timezone, (sp.provider_local_date + 1)::timestamp))
+            ORDER BY dv.observed_from_utc DESC, dv.dataset_version_id DESC LIMIT 1
+        ) edition ON true
+        LEFT JOIN silver.trips t
+          ON t.provider_id = h.provider_id
+         AND t.dataset_version_id = edition.dataset_version_id
+         AND t.route_id = h.route_id AND t.trip_id = sp.entity_id
+         AND sp.entity_kind = 'trip'
+        LEFT JOIN LATERAL (
+            SELECT COALESCE(st.departure_time, st.arrival_time) AS departure_time
+            FROM silver.stop_times st
+            WHERE st.provider_id = t.provider_id
+              AND st.dataset_version_id = t.dataset_version_id AND st.trip_id = t.trip_id
+            ORDER BY st.stop_sequence LIMIT 1
+        ) first_stop ON true
+        WHERE h.provider_id = sp.provider_id AND h.route_id = sp.route_id
+          AND h.valid_from_utc < timezone(dp.timezone, (sp.provider_local_date + 1)::timestamp)
+          AND (h.valid_to_utc IS NULL OR h.valid_to_utc >=
+               timezone(dp.timezone, (sp.provider_local_date + 1)::timestamp))
+        ORDER BY h.valid_from_utc DESC LIMIT 1
+    ) label ON true
+"""
+
 _REPEAT_OFFENDERS_HISTORY_DAILY_SQL = named_query(
     "history.repeat_offenders.daily",
     """
@@ -70,9 +103,11 @@ _REPEAT_OFFENDERS_HISTORY_DAILY_SQL = named_query(
            sp.observation_count::bigint AS observation_count,
            sp.severe_delay_count::bigint AS severe_count,
            sp.sum_delay_seconds::bigint AS sum_delay_seconds,
-           sp.built_at_utc AS source_generated_utc
+           sp.built_at_utc AS source_generated_utc,
+           label.route_short_name, label.trip_headsign AS headsign, label.departure_time
     FROM gold.repeat_offender_daily_spine AS sp
     JOIN gold.dim_provider AS dp ON dp.provider_id = sp.provider_id
+    """ + OFFENDER_LABEL_JOIN_SQL + """
     WHERE sp.provider_id = :provider_id
       AND sp.provider_local_date < timezone(dp.timezone, CAST(:as_of_utc AS timestamptz))::date
     ORDER BY sp.provider_local_date, sp.entity_kind COLLATE "C",
@@ -88,6 +123,9 @@ _SCALAR_MIN_RECURRENCE = 3
 
 @dataclass(slots=True)
 class _Counts:
+    route_short_name: str | None = None
+    departure_time: str | None = None
+    headsign: str | None = None
     present: int = 0
     recurrence_days: int = 0
     observation_count: int = 0
@@ -95,6 +133,9 @@ class _Counts:
     sum_delay_seconds: int = 0
 
     def add(self, other: _Counts) -> None:
+        self.route_short_name = other.route_short_name
+        self.departure_time = other.departure_time
+        self.headsign = other.headsign
         self.present += other.present
         self.recurrence_days += other.recurrence_days
         self.observation_count += other.observation_count
@@ -164,6 +205,9 @@ def _daily_counts(
                 "Repeat Offenders history severe_count cannot exceed observation_count"
             )
         counts[key] = _Counts(
+            route_short_name=row.get("route_short_name"),
+            departure_time=row.get("departure_time"),
+            headsign=row.get("headsign"),
             present=1,
             recurrence_days=int(severe_count > 0),
             observation_count=observation_count,
@@ -228,7 +272,7 @@ def _scalar_offenders(
                     recurrence=f"{recurrence_days}/{_SCALAR_WINDOW_DAYS}d",
                     recurrence_days=recurrence_days,
                     window_days=_SCALAR_WINDOW_DAYS,
-                    avg_delay_min=avg_delay_min(average_seconds),
+                    avg_delay_min=avg_delay_min(average_seconds) or 0.0,
                     severity=severity,
                 ),
             )
@@ -252,6 +296,9 @@ def _grain(
     )
     rows = [
         {
+            "route_short_name": value.route_short_name,
+            "departure_time": value.departure_time,
+            "headsign": value.headsign,
             "entity_kind": kind,
             "entity_id": entity_id,
             "route_id": route_id,

@@ -272,11 +272,10 @@ def _offender_pooled_average_seconds(sum_seconds: object, observation_count: int
 
 
 def _offender_window_value(sum_seconds: object, observation_count: int) -> float | None:
-    return (
-        _avg_delay_min(float(sum_seconds) / observation_count)
-        if sum_seconds is not None and observation_count
-        else None
-    )
+    if sum_seconds is None or not observation_count:
+        return None
+    value = _avg_delay_min(float(sum_seconds) / observation_count)
+    return 0.0 if value == 0 else value
 
 
 def _offender_ranked_entry(
@@ -303,6 +302,9 @@ def _offender_ranked_entry(
         id=entity_id,
         route=route_id,
         route_name=(route_names.get(str(route_id)) if route_id is not None else None),
+        route_short_name=row.get("route_short_name"),
+        departure_time=row.get("departure_time"),
+        headsign=row.get("headsign"),
         severity=offender_severity(
             recurrence_days,
             _offender_pooled_average_seconds(row["sum_delay_sec"], observation_count),
@@ -336,6 +338,9 @@ def _offender_tray_entry(
         id=str(row["entity_id"]),
         route=route_id,
         route_name=(route_names.get(str(route_id)) if route_id is not None else None),
+        route_short_name=row.get("route_short_name"),
+        departure_time=row.get("departure_time"),
+        headsign=row.get("headsign"),
         severity=offender_severity(
             recurrence_days,
             _offender_pooled_average_seconds(row["sum_delay_sec"], observation_count),
@@ -362,23 +367,29 @@ def build_offender_kind_ladder(
     route_names: EntityNameMap,
 ) -> OffenderKindLadder:
 
-    ranked: list[tuple[float, float, str, RankingRow]] = []
+    ranked: list[tuple[int, Decimal, str, RankingRow]] = []
     tray: list[RepeatOffenderEntry] = []
     for row in rows:
         key = _ranking_key(row, "entity_id", MIN_N_OFFENDER)
         supported_readings = key is not None
         thin_days = (row.get("observed_days") or 0) < 3
-        if thin_days:
+        if thin_days or (row.get("recurrence_days") or 0) < 2:
             key = None
         if key is None:
             if (row["obs"] or 0) > 0 and (
-                (thin_days and supported_readings)
-                or (row["recurrence_days"] or 0) >= OFFENDER_TRAY_MIN_RECURRENCE
+                supported_readings or (row["recurrence_days"] or 0) >= OFFENDER_TRAY_MIN_RECURRENCE
             ):
                 tray.append(_offender_tray_entry(row, kind, route_names))
         else:
-            ranked.append((*key, row))
-    ranked.sort(key=lambda item: (item[0], item[1], item[2]))
+            ranked.append(
+                (
+                    -int(row["recurrence_days"]),
+                    -Decimal(row["sum_delay_sec"]) / Decimal(row["obs"]),
+                    str(row["entity_id"]),
+                    row,
+                )
+            )
+    ranked.sort(key=lambda item: (item[0], item[1], item[2], str(item[3]["route_id"])))
     total_ranked = len(ranked)
     entries: list[RepeatOffenderEntry] = []
     for rank, item in enumerate(ranked[:OFFENDERS_BY_GRAIN_CAP], start=1):

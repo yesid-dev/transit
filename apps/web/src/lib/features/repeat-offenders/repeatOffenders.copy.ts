@@ -5,6 +5,8 @@ import type { SurfaceHeadCopy } from '#lib/components/surface/index.ts';
 
 export const copy = defineCopy({
 	en: {
+		departure: (line: string, time: string | null, headsign: string | null) =>
+			`Line ${line}${time ? `, ${time}` : ''}${headsign ? ` toward ${headsign}` : ''}`,
 		kicker: 'ACCOUNTABILITY · REPEAT OFFENDERS',
 		heading: 'Repeat offenders',
 		subheading: '// RÉCIDIVISTES',
@@ -153,6 +155,8 @@ export const copy = defineCopy({
 		recurrenceUnknown: 'recurrence not recorded',
 	},
 	fr: {
+		departure: (line: string, time: string | null, headsign: string | null) =>
+			`Ligne ${line}${time ? `, ${time}` : ''}${headsign ? ` vers ${headsign}` : ''}`,
 		kicker: 'REDDITION DE COMPTES · RÉCIDIVISTES',
 		heading: 'Récidivistes',
 		subheading: '// REPEAT OFFENDERS',

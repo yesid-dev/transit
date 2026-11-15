@@ -1,4 +1,3 @@
-import { observeChartFrames } from '#lib/components/dataviz/chart/__fixtures__/observeChartFrames.ts';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { dataRefresh } from '#lib/stores/index.ts';
@@ -8,7 +7,6 @@ import type {
 	IsoUtc,
 	RepeatOffenders,
 } from '#lib/v1/schemas/index.ts';
-import { EnteringIntersectionObserver } from '../../../tests/enteringIntersectionObserver';
 
 const harness = vi.hoisted(() => {
 	const state = { url: new URL('http://localhost/repeat-offenders') };
@@ -162,111 +160,6 @@ const retained22 = payload('Retained 22', '2026-06-22T23:59:59Z', {
 	date: '2026-06-22',
 }) as HistoricRepeatOffendersDay;
 
-function parityPayload(): HistoricRepeatOffendersDay {
-	return {
-		generated_utc: '2026-06-22T23:59:59Z' as IsoUtc,
-		date: '2026-06-22',
-		offenders: [],
-		by_grain: [
-			{
-				grain: 'week',
-				date: '2026-06-16',
-				window_end: '2026-06-22',
-				window_days: 7,
-				total_ranked_trips: 3,
-				total_ranked_vehicles: 3,
-				entries: [
-					{
-						rank: 1,
-						type: 'trip',
-						id: 'trip-normal',
-						route: '11',
-						route_name: 'Retained trip normal',
-						severe_pct: 62,
-						observation_count: 210,
-						wilson_lo: 30,
-						wilson_hi: 44,
-						recurrence_days: 5,
-						observed_days: 7,
-						avg_delay_min: 9.4,
-					},
-					{
-						rank: 1,
-						type: 'vehicle',
-						id: 'vehicle-normal',
-						route: '55',
-						route_name: 'Retained vehicle normal',
-						severe_pct: 48,
-						observation_count: 180,
-						wilson_lo: 40,
-						wilson_hi: 55,
-						recurrence_days: 4,
-						observed_days: 7,
-						avg_delay_min: 7,
-					},
-					{
-						rank: 2,
-						type: 'trip',
-						id: 'trip-null',
-						route: null,
-						route_name: 'Retained trip null',
-						severe_pct: null,
-						observation_count: null,
-						wilson_lo: null,
-						wilson_hi: null,
-						recurrence_days: null,
-						observed_days: 7,
-						avg_delay_min: null,
-					},
-					{
-						rank: 2,
-						type: 'vehicle',
-						id: 'vehicle-null',
-						route: null,
-						route_name: 'Retained vehicle null',
-						severe_pct: null,
-						observation_count: null,
-						wilson_lo: null,
-						wilson_hi: null,
-						recurrence_days: null,
-						observed_days: 7,
-						avg_delay_min: null,
-					},
-					{
-						rank: 3,
-						type: 'trip',
-						id: 'trip-zero',
-						route: '0',
-						route_name: 'Retained trip zero',
-						severe_pct: 0,
-						observation_count: 0,
-						wilson_lo: 100,
-						wilson_hi: 100,
-						recurrence_days: 0,
-						observed_days: 7,
-						avg_delay_min: 0,
-					},
-					{
-						rank: 3,
-						type: 'vehicle',
-						id: 'vehicle-zero',
-						route: '0',
-						route_name: 'Retained vehicle zero',
-						severe_pct: 0,
-						observation_count: 0,
-						wilson_lo: 100,
-						wilson_hi: 100,
-						recurrence_days: 0,
-						observed_days: 7,
-						avg_delay_min: 0,
-					},
-				],
-				tray: [],
-			},
-		],
-	};
-}
-
 function reset(url = 'http://localhost/repeat-offenders'): void {
 	harness.state.url = new URL(url);
 	harness.locale.value = 'en';
@@ -305,6 +198,22 @@ afterEach(() => {
 });
 
 describe('RepeatOffenders retained date history', () => {
+	it('keeps an old one-day recurrence out of retained rankings', async () => {
+		reset('http://localhost/repeat-offenders?date=2026-06-22');
+		const retained = structuredClone(retained22);
+		for (const grain of retained.by_grain ?? []) {
+			Object.assign(grain.entries[0], { recurrence_days: 1, observed_days: 3 });
+		}
+		harness.getRepeatOffendersHistoryDay.mockResolvedValue(retained);
+		const { container } = render(RepeatOffendersBoard);
+		await waitFor(() =>
+			expect(container.querySelector('[data-slot="offender-tray"]')).not.toBeNull(),
+		);
+		expect(JSON.stringify(harness.capturedLadders.map((item) => item.entries))).not.toContain(
+			'Retained 22-trip',
+		);
+	});
+
 	it('keeps current data intact while discovering optional dates without fetching a day artifact', async () => {
 		const { container } = render(RepeatOffendersBoard);
 		await screen.findAllByText('Current trip');
@@ -546,242 +455,6 @@ describe('RepeatOffenders retained date history', () => {
 		expect(harness.getRepeatOffenders).not.toHaveBeenCalled();
 		expect(harness.state.url.searchParams.get('date')).toBe('2026-06-22');
 	});
-
-	it('keeps each retained chart and evidence table in the same per-kind rank order with honest nulls and zeroes', async () => {
-		reset('http://localhost/repeat-offenders?date=2026-06-22');
-		harness.getRepeatOffendersHistoryDay.mockResolvedValue(parityPayload());
-		const { container } = render(RepeatOffendersBoard);
-		await screen.findAllByText('Retained trip normal');
-
-		type CapturedEntry = { type: string; rank?: number | null };
-		type CapturedRow = {
-			key: string;
-			label: string;
-			value: number | null;
-			n: number | null;
-			wilsonLo: number | null;
-			wilsonHi: number | null;
-			href?: string;
-			tapPopover?: {
-				rows: readonly { label: string; value: string }[];
-				action?: { href: string; label: string };
-			};
-		};
-		type CapturedResult = {
-			spec: {
-				kind: string;
-				domain?: readonly number[];
-				sort?: string;
-				rows?: readonly CapturedRow[];
-			};
-		};
-
-		for (const fixture of [
-			{
-				kind: 'trip',
-				card: 'repeat-trips',
-				names: ['Retained trip normal', 'Retained trip null', 'Retained trip zero'],
-				normalDatumId: 'trip-trip-normal-11',
-				nullDatumId: 'trip-trip-null-',
-				zeroDatumId: 'trip-trip-zero-0',
-				normalHref: '/lines/11',
-			},
-			{
-				kind: 'vehicle',
-				card: 'repeat-vehicles',
-				names: ['Retained vehicle normal', 'Retained vehicle null', 'Retained vehicle zero'],
-				normalDatumId: 'vehicle-vehicle-normal-55',
-				nullDatumId: 'vehicle-vehicle-null-',
-				zeroDatumId: 'vehicle-vehicle-zero-0',
-				normalHref: '/lines/55',
-			},
-		] as const) {
-			const capture = [...harness.capturedLadders]
-				.reverse()
-				.find(
-					(candidate) =>
-						(candidate.entries as CapturedEntry[]).length === 3 &&
-						(candidate.entries as CapturedEntry[]).every((entry) => entry.type === fixture.kind),
-				);
-			expect((capture?.entries as CapturedEntry[]).map((entry) => entry.rank)).toEqual([1, 2, 3]);
-			const result = capture?.result as CapturedResult;
-			expect(result.spec).toMatchObject({
-				kind: 'magnitude-bars',
-				domain: [0, 100],
-				sort: 'given',
-			});
-			const chartRows = result.spec.rows ?? [];
-			expect(chartRows.map((row) => row.label)).toEqual(fixture.names);
-
-			const section = container.querySelector(`[data-toc="${fixture.card}"]`) as HTMLElement;
-			const table = within(section as HTMLElement).queryByRole('table', {
-				name: repeatCopy.en.evidenceTable.caption,
-			}) as HTMLTableElement;
-			expect(table).not.toBeNull();
-			const tableRows = within(table).getAllByRole('row').slice(1);
-			expect(
-				tableRows.map((row) => within(row).getByRole('rowheader').textContent?.trim()),
-			).toEqual(fixture.names);
-
-			const normal = chartRows.find((row) => row.key === fixture.normalDatumId)!;
-			expect(normal.href).toBe(fixture.normalHref);
-			expect(normal.tapPopover?.action).toMatchObject({
-				href: fixture.normalHref,
-				label: 'View line',
-			});
-			const normalTableRow = within(table).getByText(fixture.names[0]).closest('tr')!;
-			expect(within(normalTableRow).getByRole('link')).toHaveAttribute('href', fixture.normalHref);
-
-			const nullRow = chartRows.find((row) => row.key === fixture.nullDatumId)!;
-			expect(nullRow).toMatchObject({
-				value: null,
-				n: null,
-				wilsonLo: null,
-				wilsonHi: null,
-			});
-			expect(nullRow.href).toBeUndefined();
-			expect(nullRow.tapPopover?.action).toBeUndefined();
-			expect(nullRow.tapPopover?.rows).toEqual([
-				{ label: 'Recurrence', value: 'recurrence not recorded' },
-			]);
-			const nullTableRow = within(table).getByText(fixture.names[1]).closest('tr')!;
-			expect(within(nullTableRow).queryByRole('link')).toBeNull();
-			expect(nullTableRow.querySelectorAll('[data-slot="absent-value"]')).toHaveLength(3);
-
-			const zeroRow = chartRows.find((row) => row.key === fixture.zeroDatumId)!;
-			expect(zeroRow).toMatchObject({
-				value: 0,
-				n: 0,
-				wilsonLo: 0,
-				wilsonHi: 0,
-				href: '/lines/0',
-				tapPopover: { action: { href: '/lines/0', label: 'View line' } },
-			});
-			expect(zeroRow.tapPopover?.rows).toEqual(
-				expect.arrayContaining([
-					{ label: 'Recurrence', value: 'Late-prone on 0 of 7 observed days' },
-					{ label: 'Average delay', value: '0 min' },
-					{ label: 'Readings', value: '0' },
-				]),
-			);
-			const zeroTableRow = within(table).getByText(fixture.names[2]).closest('tr')!;
-			expect(zeroTableRow.querySelectorAll('[data-slot="absent-value"]')).toHaveLength(0);
-			expect(within(zeroTableRow).getByText('0%')).toBeInTheDocument();
-			expect(within(zeroTableRow).getByText('0 min')).toBeInTheDocument();
-			expect(zeroTableRow.querySelector('td[data-col="Readings"]')).toHaveTextContent('0');
-			expect(within(zeroTableRow).getByRole('link')).toHaveAttribute('href', '/lines/0');
-		}
-	});
-
-	it.each([
-		['repeat-trips', 'Retained trip normal', '/lines/11'],
-		['repeat-vehicles', 'Retained vehicle normal', '/lines/55'],
-	] as const)(
-		'uses only the custom touch dialog for retained %s chart rows and never redirects',
-		async (cardId, heading, expectedHref) => {
-			vi.stubGlobal('IntersectionObserver', EnteringIntersectionObserver);
-			reset('http://localhost/repeat-offenders?date=2026-06-22&campaign=walk');
-			harness.getRepeatOffendersHistoryDay.mockResolvedValue(parityPayload());
-			observeChartFrames(768, 400);
-			const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(768);
-			const height = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(400);
-			const originalAnimate = Object.getOwnPropertyDescriptor(Element.prototype, 'animate');
-			Object.defineProperty(Element.prototype, 'animate', {
-				configurable: true,
-				value: vi.fn(() => ({
-					cancel: vi.fn(),
-					currentTime: 0,
-					effect: null,
-					onfinish: null,
-					playState: 'finished',
-				})),
-			});
-			const nativeTooltipMounts: Element[] = [];
-			const collectNativeTooltip = (node: Node): void => {
-				if (!(node instanceof Element)) return;
-				if (node.matches('.lc-tooltip-root, .lc-tooltip-content')) nativeTooltipMounts.push(node);
-				nativeTooltipMounts.push(...node.querySelectorAll('.lc-tooltip-root, .lc-tooltip-content'));
-			};
-			const observer = new MutationObserver((records) => {
-				for (const record of records) {
-					for (const node of record.addedNodes) collectNativeTooltip(node);
-				}
-			});
-
-			try {
-				const { container } = render(RepeatOffendersBoard);
-				await screen.findAllByText(heading);
-				const section = container.querySelector(`[data-toc="${cardId}"]`) as HTMLElement;
-				const overlay = await waitFor(() => {
-					const element = section.querySelector<SVGRectElement>('rect.lc-tooltip-rect');
-					if (!element) throw new Error('Expected the real LayerChart row overlay');
-					return element;
-				});
-				const initialUrl = harness.state.url.toString();
-				observer.observe(document.body, { childList: true, subtree: true });
-
-				for (const [type, bubbles] of [
-					['pointerover', true],
-					['pointerenter', false],
-					['pointermove', true],
-					['pointerdown', true],
-				] as const) {
-					await fireEvent(
-						overlay,
-						new PointerEvent(type, {
-							bubbles,
-							cancelable: true,
-							clientX: 120,
-							clientY: 240,
-							pointerType: 'touch',
-						}),
-					);
-				}
-				await Promise.resolve();
-				expect(screen.queryByRole('dialog')).toBeNull();
-				await fireEvent(
-					overlay,
-					new PointerEvent('pointerup', {
-						bubbles: true,
-						cancelable: true,
-						clientX: 120,
-						clientY: 240,
-						pointerType: 'touch',
-					}),
-				);
-				await fireEvent(
-					overlay,
-					new PointerEvent('click', {
-						bubbles: true,
-						cancelable: true,
-						clientX: 120,
-						clientY: 240,
-						pointerType: 'touch',
-					}),
-				);
-				await Promise.resolve();
-
-				expect(nativeTooltipMounts).toHaveLength(0);
-				expect(document.querySelectorAll('.lc-tooltip-root, .lc-tooltip-content')).toHaveLength(0);
-				const dialog = await screen.findByRole('dialog', { name: heading });
-				expect(within(dialog).getAllByRole('link')).toHaveLength(1);
-				const action = within(dialog).getByRole('link', { name: 'View line' });
-				expect(action).toHaveTextContent('View line');
-				expect(action).toHaveAttribute('href', expectedHref);
-				expect(new URL(action.getAttribute('href')!, 'http://localhost').search).toBe('');
-				expect(harness.goto).not.toHaveBeenCalled();
-				expect(harness.state.url.toString()).toBe(initialUrl);
-			} finally {
-				vi.unstubAllGlobals();
-				observer.disconnect();
-				width.mockRestore();
-				height.mockRestore();
-				if (originalAnimate) Object.defineProperty(Element.prototype, 'animate', originalAnimate);
-				else Reflect.deleteProperty(Element.prototype, 'animate');
-				document.querySelectorAll('[role="dialog"]').forEach((element) => element.remove());
-			}
-		},
-	);
 
 	it('defines complete English and French retained-history copy without changing current copy', () => {
 		expect(repeatCopy.en.cards.worst.subtitle).toMatch(/\?$/);

@@ -205,6 +205,30 @@
           "default": null,
           "title": "Avg Delay Min"
         },
+        "departure_time": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Departure Time"
+        },
+        "headsign": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Headsign"
+        },
         "id": {
           "title": "Id",
           "type": "string"
@@ -280,6 +304,18 @@
           ],
           "default": null,
           "title": "Route Name"
+        },
+        "route_short_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Route Short Name"
         },
         "severe_count": {
           "anyOf": [

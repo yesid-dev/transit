@@ -5,6 +5,12 @@ import type { RepeatOffendersCopy } from './repeatOffenders.copy';
 export function createOffenderNames(lines: () => LineDirectory, copy: () => RepeatOffendersCopy) {
 	const name = (entry: RepeatOffenderEntry) => {
 		const route = entry.route?.trim();
+		if (route && (entry.route_short_name || entry.departure_time || entry.headsign)) {
+			const line = entry.route_short_name?.trim() || route;
+			const departure = entry.departure_time?.slice(0, 5) || null;
+			const label = copy().departure(line, departure, entry.headsign?.trim() || null);
+			return { label, spoken: label };
+		}
 		if (route) return lines().name(route, entry.route_name);
 		const label = entry.route_name ?? copy().unnamed(entry.id);
 		return { label, spoken: entry.route_name ? lines().spoken(label) : label };

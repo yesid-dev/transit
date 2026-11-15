@@ -916,7 +916,7 @@ def state_fingerprint(tier: str, *, config: BaseModel | None = None) -> str:
         digest = hashlib.sha256(_body(config) if config else b"").hexdigest()
         return f"v5|cc:{CACHE_CONTROL[tier]}|config:{digest}"
     if tier == "historic":
-        return f"v2|cc:{CACHE_CONTROL[tier]}"
+        return f"v3|cc:{CACHE_CONTROL[tier]}"
     return f"v1|cc:{CACHE_CONTROL[tier]}"
 
 

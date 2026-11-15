@@ -27,7 +27,9 @@ export function selectOffenderLadder(
 		label: (entry) =>
 			directory && entry.route
 				? directory.name(entry.route, entry.route_name).label
-				: (entry.route_name ?? labels.unnamed(entry)),
+				: entry.departure_time || entry.route_short_name
+					? labels.unnamed(entry)
+					: (entry.route_name ?? labels.unnamed(entry)),
 	});
 	if (directory && result.spec.kind === 'magnitude-bars') {
 		result.spec = {
