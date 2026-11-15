@@ -94,6 +94,7 @@ def test_schema_version_creates_reuses_then_allocates_above_all_keys(tmp_path):
     from transit_ops.lake.table_schema import TableSchema
 
     storage = LocalBronzeStorage("local", tmp_path / "objects")
+    storage.root.mkdir()
     schema = TableSchema.from_columns([("id", "integer", True)], ["id"])
     assert resolve_schema_version(storage, "core.providers", schema) == 1
     first = "archive/v1/tables/core.providers/schemas/s1.json"

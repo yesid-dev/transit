@@ -6,7 +6,7 @@ import shutil
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import AbstractContextManager, contextmanager, suppress
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any, Protocol, cast
 from uuid import uuid4
 
@@ -100,12 +100,25 @@ class LocalBronzeStorage(BronzeStorage):
     root: Path
 
     def put_if_absent(self, temp_path: Path, storage_path: str) -> str:
-        final_path = self.root / Path(storage_path)
+        key = Path(storage_path)
+        windows_key = PureWindowsPath(storage_path)
+        if key.anchor or windows_key.anchor or ".." in key.parts or ".." in windows_key.parts:
+            raise ValueError(f"invalid_archive_destination: {storage_path}")
+        final_path = self.root / key
+        root = self.root.absolute()
+        if (
+            final_path.absolute() == root
+            or not final_path.absolute().is_relative_to(root)
+            or not final_path.resolve().is_relative_to(root.resolve())
+        ):
+            raise ValueError(f"invalid_archive_destination: {storage_path}")
+        if not root.is_dir():
+            raise ValueError(f"archive_root_missing: {self.root}")
         # Existing directories may be left by a failed or interrupted publication.
         directories = []
         for directory in final_path.absolute().parents:
             directories.append(directory)
-            if directory == self.root.absolute().parent:
+            if directory == root:
                 break
         final_path.parent.mkdir(parents=True, exist_ok=True)
         temporary = final_path.with_name(f".transit-bronze-{uuid4().hex}.tmp")

@@ -17,7 +17,9 @@ copy = partial(copy_table_window, copied_by="a" * 40, statement_timeout_s=60)
 
 @pytest.fixture
 def archive(tmp_path):
-    return LocalBronzeStorage("local", tmp_path / "objects")
+    root = tmp_path / "objects"
+    root.mkdir()
+    return LocalBronzeStorage("local", root)
 
 
 def run(source, archive, owned, tmp_path, name):
@@ -258,6 +260,7 @@ def test_seed_corrupted_readback_has_no_receipt_and_keeps_local_proof(seeded_exp
             return result
 
     storage = CorruptingStorage("local", tmp_path / "objects")
+    storage.root.mkdir(exist_ok=True)
     with pytest.raises(CopyDiffers, match="object_digest"):
         run(None, storage, seeded_export, tmp_path, "corrupt")
     assert not any(key.endswith(".proof.json") for key in storage.list_keys("archive/"))
@@ -286,6 +289,7 @@ def test_dedup_proof_describes_the_existing_object(seeded_export, tmp_path, monk
     from transit_ops.lake.parquet_codec import ParquetCodec
 
     storage = LocalBronzeStorage("local", tmp_path / "objects")
+    storage.root.mkdir(exist_ok=True)
     writer = tc.write_window
     # An existing legitimate copy has a different writer encoding.
     with monkeypatch.context() as patch:
@@ -313,6 +317,7 @@ def test_local_archive_bytes_are_synced_before_evidence_is_deleted(
     import os
 
     storage = LocalBronzeStorage("local", tmp_path / "objects")
+    storage.root.mkdir(exist_ok=True)
     synced_inodes = set()
     fsync = os.fsync
 
@@ -337,6 +342,7 @@ def test_archive_file_sync_failure_keeps_local_evidence(seeded_export, tmp_path,
     import os
 
     storage = LocalBronzeStorage("local", tmp_path / "objects")
+    storage.root.mkdir(exist_ok=True)
     fsync = os.fsync
 
     def fail_archive_sync(fd):
@@ -373,6 +379,7 @@ def test_archive_directories_are_synced_before_local_cleanup(seeded_export, tmp_
     if os.name == "nt":
         pytest.skip("Windows does not support directory fsync")
     storage = LocalBronzeStorage("local", tmp_path / "objects")
+    storage.root.mkdir(exist_ok=True)
     synced_directories = set()
     fsync = os.fsync
 
@@ -387,7 +394,7 @@ def test_archive_directories_are_synced_before_local_cleanup(seeded_export, tmp_
     for key in (result.key, result.proof_key, receipt["schema_key"]):
         for directory in (storage.root / key).parents:
             assert directory.stat().st_ino in synced_directories
-            if directory == tmp_path:
+            if directory == storage.root:
                 break
 
 
@@ -398,6 +405,7 @@ def test_archive_directory_sync_failure_keeps_local_evidence(seeded_export, tmp_
     if os.name == "nt":
         pytest.skip("Windows does not support directory fsync")
     storage = LocalBronzeStorage("local", tmp_path / "objects")
+    storage.root.mkdir(exist_ok=True)
     fsync = os.fsync
 
     def fail_archive_directory(fd):
@@ -429,6 +437,7 @@ def test_retry_syncs_ancestors_left_by_failed_publication(tmp_path, monkeypatch)
     source = tmp_path / "source"
     source.write_bytes(b"archive")
     storage = module.LocalBronzeStorage("local", root)
+    storage.root.mkdir(exist_ok=True)
     directories = {}
     synced = set()
     fail_once = True
@@ -466,8 +475,8 @@ def test_retry_syncs_ancestors_left_by_failed_publication(tmp_path, monkeypatch)
     assert not (root / "archive/nested/object").exists()
     storage.put_if_absent(source, "archive/nested/object")
     assert not source.exists()
-    required = {tmp_path, root, root / "archive", root / "archive/nested"}
-    assert required <= synced, f"Successful retry omitted directory syncs: {required - synced}"
+    required = {root, root / "archive", root / "archive/nested"}
+    assert required == synced, f"Successful retry omitted directory syncs: {required - synced}"
 
 
 @pytest.mark.parametrize("failure", ["file", "directory"])
@@ -483,6 +492,7 @@ def test_native_retry_syncs_existing_archive_ancestors(tmp_path, monkeypatch, fa
     source = tmp_path / "source"
     source.write_bytes(b"archive")
     storage = LocalBronzeStorage("local", root)
+    storage.root.mkdir(exist_ok=True)
     synced = set()
     fsync = os.fsync
     fail_once = True
@@ -508,6 +518,113 @@ def test_native_retry_syncs_existing_archive_ancestors(tmp_path, monkeypatch, fa
     storage.put_if_absent(source, "archive/nested/object")
     assert not source.exists()
     assert storage.read_bytes("archive/nested/object") == b"archive"
-    for path in (tmp_path, root, root / "archive", root / "archive/nested"):
+    for path in (root, root / "archive", root / "archive/nested"):
         info = path.stat()
         assert (info.st_dev, info.st_ino) in synced
+
+
+@pytest.fixture
+def boundary_synced(monkeypatch):
+    """Model directory handles only; file and link operations remain native."""
+    import os
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from transit_ops.ingestion import storage as module
+
+    handles, paths = {}, set()
+
+    def open_dir(path, flags):
+        fd = -len(handles) - 1
+        handles[fd] = Path(path).absolute()
+        return fd
+
+    def sync(fd):
+        if fd in handles:
+            paths.add(handles[fd])
+        else:
+            os.fsync(fd)
+
+    monkeypatch.setattr(
+        module,
+        "os",
+        SimpleNamespace(
+            name="posix",
+            O_RDONLY=0,
+            O_DIRECTORY=0,
+            open=open_dir,
+            close=lambda fd: None,
+            fsync=sync,
+            link=os.link,
+        ),
+    )
+    return paths
+
+
+def test_missing_root_is_refused_without_creating_ancestors(tmp_path, boundary_synced):
+    root = tmp_path / "new-parent" / "objects"
+    source = tmp_path / "source"
+    source.write_bytes(b"archive")
+    store = LocalBronzeStorage("local", root)
+    with pytest.raises(ValueError, match="archive_root_missing"):
+        store.put_if_absent(source, "archive/object")
+    assert source.read_bytes() == b"archive"
+    assert set(tmp_path.iterdir()) == {source}
+    assert not boundary_synced
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "absolute",
+        "../outside/object",
+        "a/../../outside",
+        "a/../object",
+        "",
+        ".",
+        "a/..\\outside",
+    ],
+)
+def test_escaping_destination_is_refused_without_mutation(tmp_path, boundary_synced, key):
+    root = tmp_path / "inside" / "objects"
+    root.mkdir(parents=True)
+    source = tmp_path / "source"
+    source.write_bytes(b"archive")
+    store = LocalBronzeStorage("local", root)
+    destination = str(tmp_path / "outside/object") if key == "absolute" else key
+    before = set(tmp_path.rglob("*"))
+    with pytest.raises(ValueError, match="invalid_archive_destination"):
+        store.put_if_absent(source, destination)
+    assert set(tmp_path.rglob("*")) == before
+    assert source.read_bytes() == b"archive"
+    assert not boundary_synced
+
+
+def test_relative_root_syncs_only_the_provisioned_root(tmp_path, monkeypatch, boundary_synced):
+    from pathlib import Path
+
+    (tmp_path / "objects").mkdir()
+    monkeypatch.chdir(tmp_path)
+    source = tmp_path / "source"
+    source.write_bytes(b"archive")
+    store = LocalBronzeStorage("local", Path("objects"))
+    store.put_if_absent(source, "archive/object")
+    assert store.read_bytes("archive/object") == b"archive"
+    assert boundary_synced == {tmp_path / "objects", tmp_path / "objects/archive"}
+
+
+def test_symlink_destination_outside_root_is_refused(tmp_path, boundary_synced):
+    root, outside = tmp_path / "objects", tmp_path / "outside"
+    root.mkdir()
+    outside.mkdir()
+    try:
+        (root / "escape").symlink_to(outside, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"Native symlink unavailable: {error}")
+    source = tmp_path / "source"
+    source.write_bytes(b"archive")
+    with pytest.raises(ValueError, match="invalid_archive_destination"):
+        LocalBronzeStorage("local", root).put_if_absent(source, "escape/object")
+    assert source.read_bytes() == b"archive"
+    assert not list(outside.iterdir())
+    assert not boundary_synced

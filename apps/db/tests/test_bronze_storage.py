@@ -541,6 +541,7 @@ def test_build_s3_client_uses_r2_friendly_config() -> None:
 @pytest.fixture(params=["local", "s3"])
 def store(request, tmp_path):
     if request.param == "local":
+        (tmp_path / "bronze").mkdir()
         return LocalBronzeStorage("local", tmp_path / "bronze")
     return S3BronzeStorage("s3", "bucket", "https://example.invalid", FakeS3Client())
 
@@ -649,6 +650,7 @@ def test_local_list_keys_reads_only_the_folder_of_the_prefix(tmp_path, monkeypat
 
 def test_put_if_absent_leaves_no_partial_object_when_the_copy_fails(tmp_path, monkeypatch):
     store = LocalBronzeStorage("local", tmp_path / "bronze")
+    store.root.mkdir()
     source = tmp_path / "source"
     source.write_bytes(b"complete")
 

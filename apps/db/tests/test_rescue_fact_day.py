@@ -375,6 +375,7 @@ def test_rescue_partial_upload_resumes_without_receipt_until_both_match(tmp_path
     identity = rescue.bounds(args(tmp_path), NOW)
     checkpoint = empty_checkpoint(tmp_path, identity)
     storage = LocalBronzeStorage("local", tmp_path / "remote")
+    storage.root.mkdir()
     monkeypatch.setattr(rescue, "history_storage", Scope)
     original = rescue.RescueObjects.ensure
     calls = []
@@ -649,6 +650,7 @@ def test_rescue_interrupt_reports_json_and_preserves_completed_spool(
 def test_rescue_observation_changes_do_not_change_completion_receipt(tmp_path, monkeypatch):
     checkpoint = empty_checkpoint(tmp_path, rescue.bounds(args(tmp_path), NOW))
     storage = LocalBronzeStorage("local", tmp_path / "remote")
+    storage.root.mkdir()
     monkeypatch.setattr(
         rescue,
         "history_storage",
