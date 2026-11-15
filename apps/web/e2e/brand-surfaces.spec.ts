@@ -331,6 +331,122 @@ test('the home cards hold their place while Refresh runs, succeeds and fails', a
 		}
 });
 
+test('the home ranking rows show whole names and hold their place', async ({ page }) => {
+	// Ottawa's line 303 (published November 11) and a long Montréal stop: names are never cut.
+	const long = {
+		line: 'Bayshore / Carlingwood <> Dunrobin / Carp / Stittsville',
+		stop: 'École de technologie supérieure (Peel / Notre-Dame)',
+	};
+	const generated_utc = new Date(Date.now() - 86_400_000).toISOString().replace(/\.\d+Z$/, 'Z');
+	let held: Promise<void> = Promise.resolve();
+	const hold = (pattern: string, json: unknown) =>
+		page.route(pattern, async (route) => {
+			await held;
+			await route.fulfill({ json });
+		});
+	await page.route('**/static/routes_index.json', (route) =>
+		route.fulfill({
+			json: {
+				generated_utc,
+				routes: [303, 301, 305].map((n) => ({ id: `${n}`, short: `${n}`, type: 3 })),
+			},
+		}),
+	);
+	await hold('**/historic/hotspots.json', {
+		generated_utc,
+		by_grain: [
+			{
+				grain: 'week',
+				date: '2026-11-04',
+				window_end: '2026-11-10',
+				entries: [
+					[303, long.line, 85, 173],
+					[301, 'Bayshore / Carlingwood <> Richmond / Stittsville', 84.3, 185],
+					[305, 'Carlingwood <> North Gower / Manotick', 75.6, 127],
+				].map(([id, name, severe_pct, observation_count], i) => ({
+					id: `${id}`,
+					type: 'route',
+					rank: i + 1,
+					name,
+					severe_pct,
+					observation_count,
+				})),
+			},
+		],
+	});
+	const stop = (id: string, name: string, late: number, readings: number) => ({
+		id,
+		name,
+		state: 'ranked',
+		rank: 1,
+		numerator: readings - late,
+		denominator: readings,
+		pct: Math.round((100 * (readings - late)) / readings),
+		severe_pct: Math.round((1000 * late) / readings) / 10,
+		window_start: '2026-11-04',
+		window_end: '2026-11-10',
+	});
+	await hold('**/historic/route_reliability/index.json', {
+		generated_utc,
+		route_ids: [],
+		weekly_stops: [
+			stop('S1', long.stop, 60, 64),
+			stop('S2', 'Manotick Main / Currier', 40, 47),
+			stop('S3', 'Longfields / Kilspindie', 44, 53),
+		],
+	});
+	for (const width of [320, 390, 1280])
+		for (const locale of ['en', 'fr'] as const) {
+			const at = `${width}px ${locale}`;
+			let release = (): void => {};
+			held = new Promise<void>((resolve) => (release = resolve));
+			await page.setViewportSize({ width, height: 900 });
+			await page.goto(locale === 'fr' ? '/fr' : '/');
+			const below = page.locator('[data-slot="home-groups"]');
+			const top = () =>
+				below.evaluate((element) => element.getBoundingClientRect().top + window.scrollY);
+			await expect(page.locator('[data-slot="home-pulse-worst"]')).toBeVisible();
+			const before = await top();
+			release();
+			const rows = page.locator('a.rank-row');
+			await expect(rows).toHaveCount(6);
+			expect(Math.abs((await top()) - before), `${at}: rows arrive`).toBeLessThanOrEqual(1);
+			const names = await rows.evaluateAll((elements) =>
+				elements.map((row) => {
+					const name = row.querySelector<HTMLElement>('.rank-name')!;
+					const value = row.querySelector<HTMLElement>('.rank-value')!.getBoundingClientRect();
+					const box = name.getBoundingClientRect();
+					const edge = row.getBoundingClientRect();
+					return {
+						text: name.textContent!.trim(),
+						// The name's own content fits its box, and the box sits inside the row, clear of the share.
+						fits:
+							name.scrollWidth <= name.clientWidth + 1 &&
+							name.scrollHeight <= name.clientHeight + 1 &&
+							box.left >= edge.left - 1 &&
+							box.right <= edge.right + 1 &&
+							box.bottom <= edge.bottom + 1 &&
+							!(
+								box.left < value.right &&
+								value.left < box.right &&
+								box.top < value.bottom &&
+								value.top < box.bottom
+							),
+					};
+				}),
+			);
+			for (const name of [long.line, long.stop])
+				expect(
+					names.find((entry) => entry.text === name),
+					`${at}: ${name}`,
+				).toEqual({ text: name, fits: true });
+			expect(
+				names.filter((entry) => !entry.fits).map((entry) => entry.text),
+				at,
+			).toEqual([]);
+		}
+});
+
 test('homepage props remain static without JavaScript and switch instantly with reduced motion', async ({
 	browser,
 	baseURL,

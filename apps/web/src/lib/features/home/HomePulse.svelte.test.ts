@@ -652,7 +652,6 @@ describe('Home record, live and ranking cards', () => {
 		expect(line).toHaveAttribute('href', '/lines/7-354');
 		expect(line.querySelector('.rank-plate')).toHaveTextContent('7');
 		expect(line.querySelector('.rank-name')).toHaveTextContent('Carleton <> St-Laurent');
-		expect(line.querySelector('[title="7 · Carleton <> St-Laurent"]')).not.toBeNull();
 		expect(line).not.toHaveAttribute('aria-label');
 		expect(line).toHaveAccessibleName(
 			'Line 7 · Carleton <> St-Laurent, 24% of readings more than 5 minutes late, 100 readings',

@@ -24,6 +24,13 @@
 
 	/** Rows each list shows; the list reserves their height before its data arrives. */
 	const RANK_ROWS = 3;
+	/**
+	 * The gauge every reserved row holds: 65 characters, longer than any name in the published
+	 * weekly rankings when this was written (64). A longer name still shows whole and wraps; only
+	 * then does the list grow when it arrives.
+	 */
+	const GAUGE_NAME = 'Terminus centre-ville / Station Henri-Bourassa <> Parc industriel';
+	const GAUGE_ROWS = Array.from({ length: RANK_ROWS }, (_, index) => index + 1);
 
 	const hotspots = createResource((signal) => getHotspots({ signal }), {
 		key: () => 'home-hotspots',
@@ -67,14 +74,13 @@
 	);
 	const rowHref = (row: InvestigateRow) =>
 		localizeHref(routeFor({ kind: row.kind, id: row.id }), locale);
+	const gauge = $derived({
+		value: pct(100),
+		readings: t.rankReadings.replace('{n}', fmtCount(9_999_999, { locale }) ?? ''),
+	});
 </script>
 
-<section
-	class="pulse-worst"
-	data-slot="home-pulse-worst"
-	aria-labelledby="home-rank-title"
-	style:--rank-rows={RANK_ROWS}
->
+<section class="pulse-worst" data-slot="home-pulse-worst" aria-labelledby="home-rank-title">
 	<h2 id="home-rank-title">{t.rankTitle}</h2>
 	<div class="rank-notes">
 		<p class="rank-measure">{t.rankMeasure}</p>
@@ -99,13 +105,32 @@
 			<span class="reserve" aria-hidden="true" data-reserve={longestPeriod}></span>
 		</p>
 		<div class="rank-body" aria-busy={!ranking.settled}>
+			<!-- Three rows of the gauge, drawn invisibly under the list: the taller one sets the height. -->
+			<ol class="rank-gauge" aria-hidden="true">
+				{#each GAUGE_ROWS as position (position)}
+					<li>
+						<span class="rank-row">
+							<span class="rank-pos">{position}</span>
+							<span class="rank-id">
+								<span class="rank-ink">
+									<span class="rank-plate">000</span><span class="rank-name">{GAUGE_NAME}</span>
+								</span>
+							</span>
+							<span class="rank-meta">
+								<span class="rank-value">{gauge.value}</span>
+								<span class="rank-readings">{gauge.readings}</span>
+							</span>
+						</span>
+					</li>
+				{/each}
+			</ol>
 			{#if ranking.list.state === 'ranked'}
 				<ol>
 					{#each ranking.list.rows as row, index (row.id)}
 						<li>
 							<a class="rank-row" href={rowHref(row)}>
 								<span class="rank-pos" aria-hidden="true">{index + 1}</span>
-								<span class="rank-id" title={row.label}>
+								<span class="rank-id">
 									<span class="rank-ink" aria-hidden="true">
 										{#if row.number}<span class="rank-plate">{row.number}</span>{/if}
 										{#if row.name}<span class="rank-name">{row.name}</span>{/if}
@@ -137,13 +162,10 @@
 
 <style>
 	/*
-	 * Each list reserves its period line and three rows before its data arrives, and every row has
-	 * one height (a long name is cut, never wrapped past it), so nothing below the card moves.
-	 * Phones: two-line rows (identity; then share and readings). From 768px: one row, figures right.
+	 * Each list reserves its period line and three rows before its data arrives: the rows of a
+	 * long-name gauge, drawn invisibly under the real list. Names are never cut; they wrap.
+	 * Phones: identity, then share and readings. From 768px: one row, figures on the right.
 	 */
-	.pulse-worst {
-		--rank-row: 4.75rem;
-	}
 	.rank-notes {
 		display: grid;
 		gap: 0.25rem;
@@ -198,7 +220,15 @@
 		color: var(--secondary-foreground);
 	}
 	.rank-body {
-		min-height: calc(var(--rank-rows) * var(--rank-row));
+		display: grid;
+		align-items: start;
+	}
+	.rank-body > * {
+		grid-area: 1 / 1;
+		min-width: 0;
+	}
+	.rank-gauge {
+		visibility: hidden;
 	}
 	.rank-list ol {
 		margin: 0;
@@ -215,7 +245,7 @@
 		column-gap: 0.75rem;
 		row-gap: 0.125rem;
 		box-sizing: border-box;
-		height: var(--rank-row);
+		min-height: 44px;
 		padding-block: 0.5rem;
 		color: var(--foreground);
 		text-decoration: none;
@@ -244,7 +274,7 @@
 	}
 	.rank-ink {
 		display: flex;
-		align-items: center;
+		align-items: flex-start;
 		gap: 0.75rem;
 		min-width: 0;
 	}
@@ -266,10 +296,11 @@
 	}
 	.rank-name {
 		min-width: 0;
-		overflow: hidden;
-		line-height: 1.75rem;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		padding-top: 0.15rem;
+		line-height: 1.45;
+		text-wrap: pretty;
+		/* A word longer than the row may break only when nothing else fits (200% text). */
+		overflow-wrap: anywhere;
 	}
 	.rank-meta {
 		grid-area: meta;
@@ -301,9 +332,6 @@
 		font-size: var(--text-small);
 	}
 	@media (--tablet-min) {
-		.pulse-worst {
-			--rank-row: 4.25rem;
-		}
 		.rank-row {
 			grid-template-columns: 1.25rem minmax(0, 1fr) auto;
 			grid-template-areas: 'pos id meta';
@@ -316,14 +344,6 @@
 			flex-direction: column;
 			align-items: flex-end;
 			gap: 0;
-		}
-		.rank-name {
-			display: -webkit-box;
-			white-space: normal;
-			line-height: 1.35;
-			-webkit-line-clamp: 2;
-			line-clamp: 2;
-			-webkit-box-orient: vertical;
 		}
 	}
 	/* Desktop: lines beside stops (6 + 6). */
