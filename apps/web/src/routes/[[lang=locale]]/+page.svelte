@@ -5,7 +5,6 @@
 	import HomeExplore from '#lib/features/home/HomeExplore.svelte';
 	import HomeInvite from '#lib/features/home/HomeInvite.svelte';
 	import HomePulse from '#lib/features/home/HomePulse.svelte';
-	import HomeSearch from '#lib/features/home/HomeSearch.svelte';
 	import { homeAuditBody, homeCadence, homeCopy } from '#lib/features/home/home.copy.ts';
 	import type { PageData } from './$types';
 
@@ -34,7 +33,6 @@
 	<HomeExplore {locale} {copy} alertsAvailable={providerHasAlerts(data.provider)}>
 		{#snippet pulse()}
 			<HomePulse {locale} manifest={data.v1?.manifest ?? null} />
-			<HomeSearch {locale} />
 		{/snippet}
 	</HomeExplore>
 	<HomeInvite {locale} />

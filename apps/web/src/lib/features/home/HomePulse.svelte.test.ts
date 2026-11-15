@@ -206,6 +206,11 @@ afterEach(() => {
 /** Visible text with every kind of space as one plain space (fr-CA groups with no-break spaces). */
 const text = (element: HTMLElement) => element.textContent!.replace(/\s+/g, ' ').trim();
 const card = (name: string) => screen.getByRole('region', { name });
+/** The ranking fixtures' week, as each list states it. */
+const week410 = {
+	en: 'November 4 to 10, 7 complete days',
+	fr: 'Du 4 au 10 novembre, 7 jours complets',
+} as const;
 
 describe('Home record, live and ranking cards', () => {
 	it.each(['en', 'fr'] as const)('keeps fresh stops when hotspots are missing (%s)', (locale) => {
@@ -213,9 +218,7 @@ describe('Home record, live and ranking cards', () => {
 		render(HomePulse, { props: { locale, manifest } });
 		const stops = screen.getByRole('region', { name: homePulseCopy[locale].worstStops });
 		expect(within(stops).getByRole('link', { name: /Rideau/ })).toBeVisible();
-		expect(stops).toHaveTextContent(
-			locale === 'fr' ? 'Données jusqu’au 10 nov.' : 'Data through Nov 10',
-		);
+		expect(stops).toHaveTextContent(week410[locale]);
 	});
 	it.each(['en', 'fr'] as const)(
 		'keeps a fresh line when only the stop source is stale (%s)',
@@ -242,7 +245,7 @@ describe('Home record, live and ranking cards', () => {
 			state.hotspots = dayRanking;
 			state.weeklyIndex = weeklyStopIndex;
 			render(HomePulse, { props: { locale: 'en', manifest } });
-			for (const name of ['Most delayed lines', 'Most delayed stops'])
+			for (const name of ['Lines', 'Stops'])
 				expect(within(screen.getByRole('region', { name })).getByRole('link')).toBeVisible();
 		},
 	);
@@ -256,13 +259,13 @@ describe('Home record, live and ranking cards', () => {
 		const lines = screen.getByRole('region', { name: homePulseCopy[locale].worstLines });
 		const stops = screen.getByRole('region', { name: homePulseCopy[locale].worstStops });
 		expect(lines).toHaveTextContent(
-			locale === 'fr' ? 'Données jusqu’au 3 nov.' : 'Data through Nov 3',
+			locale === 'fr'
+				? 'Du 28 octobre au 3 novembre, 7 jours complets'
+				: 'October 28 to November 3, 7 complete days',
 		);
-		expect(stops).toHaveTextContent(
-			locale === 'fr' ? 'Données jusqu’au 10 nov.' : 'Data through Nov 10',
-		);
-		expect(lines).not.toHaveTextContent(locale === 'fr' ? '10 nov.' : 'Nov 10');
-		expect(stops).not.toHaveTextContent(locale === 'fr' ? '3 nov.' : 'Nov 3');
+		expect(stops).toHaveTextContent(week410[locale]);
+		expect(lines).not.toHaveTextContent(locale === 'fr' ? '10 novembre' : 'to 10');
+		expect(stops).not.toHaveTextContent(locale === 'fr' ? 'octobre' : 'October');
 	});
 	it.each(['en', 'fr'] as const)('keeps fresh stops when hotspots are stale (%s)', (locale) => {
 		state.weeklyIndex = weeklyStopIndex;
@@ -270,9 +273,7 @@ describe('Home record, live and ranking cards', () => {
 		render(HomePulse, { props: { locale, manifest } });
 		const stops = screen.getByRole('region', { name: homePulseCopy[locale].worstStops });
 		expect(within(stops).getByRole('link', { name: /Rideau/ })).toBeVisible();
-		expect(stops).toHaveTextContent(
-			locale === 'fr' ? 'Données jusqu’au 10 nov.' : 'Data through Nov 10',
-		);
+		expect(stops).toHaveTextContent(week410[locale]);
 		const lines = screen.getByRole('region', { name: homePulseCopy[locale].worstLines });
 		expect(within(lines).getByRole('status')).toHaveTextContent(
 			locale === 'fr'
@@ -326,7 +327,7 @@ describe('Home record, live and ranking cards', () => {
 		);
 	});
 	it.each(['en', 'fr'] as const)(
-		'orders the five eligible lines by their shown late share (%s)',
+		'shows the three eligible lines with the highest shown late share, in that order (%s)',
 		(locale) => {
 			state.hotspots = {
 				...dayRanking,
@@ -364,18 +365,70 @@ describe('Home record, live and ranking cards', () => {
 				screen.getByRole('region', { name: homePulseCopy[locale].worstLines }),
 			).getAllByRole('link');
 			expect(links.map((link) => link.getAttribute('href'))).toEqual(
-				['646', '302', 'B', 'C', 'A'].map((id) => `${locale === 'fr' ? '/fr' : ''}/lines/${id}`),
+				['646', '302', 'B'].map((id) => `${locale === 'fr' ? '/fr' : ''}/lines/${id}`),
 			);
 			const values = links.map((link) =>
 				Number(
 					link
-						.querySelector('.pulse-rank-rate')!
+						.querySelector('.rank-value')!
 						.textContent!.replace(/[^0-9.,]/g, '')
 						.replace(',', '.'),
 				),
 			);
-			expect(values).toEqual([55.1, 54.2, 50, 50, 50]);
+			expect(values).toEqual([55.1, 54.2, 50]);
+			expect(links.map((link) => text(link.querySelector('.rank-readings')!))).toEqual(
+				locale === 'fr'
+					? ['100 relevés', '100 relevés', '60 relevés']
+					: ['100 readings', '100 readings', '60 readings'],
+			);
 			for (let i = 1; i < values.length; i++) expect(values[i]).toBeLessThanOrEqual(values[i - 1]);
+		},
+	);
+	it.each([
+		[
+			'en',
+			['Main / Mill', 'Manotick Main / Currier', 'Longfields / Kilspindie'],
+			['93.8%', '85.1%', '83%'],
+			['64 readings', '47 readings', '53 readings'],
+		],
+		[
+			'fr',
+			['Main / Mill', 'Manotick Main / Currier', 'Longfields / Kilspindie'],
+			['93,8 %', '85,1 %', '83 %'],
+			['64 relevés', '47 relevés', '53 relevés'],
+		],
+	] as const)(
+		'orders the stops by the late share they show, not the published rank (%s)',
+		(locale, names, values, readings) => {
+			// Ottawa's week of November 4 to 10 (M1 capture); the publisher ranks whole on-time percents.
+			const ranked = (id: string, name: string, rank: number, late: number, all: number) => ({
+				id,
+				name,
+				state: 'ranked',
+				rank,
+				numerator: all - late,
+				denominator: all,
+				pct: Math.round((100 * (all - late)) / all),
+				severe_pct: Math.round((1000 * late) / all) / 10,
+				window_start: '2026-11-04',
+				window_end: '2026-11-10',
+			});
+			state.weeklyIndex = {
+				generated_utc: '2026-11-11T00:00:00Z',
+				weekly_stops: [
+					ranked('S2', 'MANOTICK MAIN / CURRIER', 1, 40, 47),
+					ranked('S1', 'Main / Mill', 2, 60, 64),
+					ranked('S3', 'Longfields / Kilspindie', 3, 44, 53),
+					ranked('S4', 'Bank / Somerset', 4, 20, 40),
+				],
+			};
+			render(HomePulse, { props: { locale, manifest } });
+			const stops = screen.getByRole('region', { name: homePulseCopy[locale].worstStops });
+			const rows = within(stops).getAllByRole('listitem');
+			expect(rows.map((row) => text(row.querySelector('.rank-name')!))).toEqual(names);
+			expect(rows.map((row) => text(row.querySelector('.rank-value')!))).toEqual(values);
+			expect(rows.map((row) => text(row.querySelector('.rank-readings')!))).toEqual(readings);
+			expect(stops).toHaveTextContent(week410[locale]);
 		},
 	);
 	it.each([
@@ -553,7 +606,8 @@ describe('Home record, live and ranking cards', () => {
 			expect(screen.getByRole('heading', { level: 2, name })).toBeInTheDocument();
 		expect(text(card('Live now'))).toContain('vehicles reporting');
 		expect(text(card('Live now'))).toContain('silent trips');
-		expect(screen.getByRole('region', { name: 'Most delayed lines' })).toBeInTheDocument();
+		expect(screen.getByRole('region', { name: 'Lines' })).toBeInTheDocument();
+		expect(screen.getByRole('region', { name: 'Stops' })).toBeInTheDocument();
 		expect(screen.queryByRole('status')).toBeNull();
 		expect(text(card('Latest complete record'))).not.toMatch(/\d/);
 	});
@@ -571,7 +625,7 @@ describe('Home record, live and ranking cards', () => {
 	it('tells a failed ranking load apart from a ranking that does not exist yet', () => {
 		state.network = liveNetwork;
 		render(HomePulse, { props: { locale: 'en', manifest } });
-		const lines = screen.getByRole('region', { name: 'Most delayed lines' });
+		const lines = screen.getByRole('region', { name: 'Lines' });
 		expect(within(lines).getByRole('status')).toHaveTextContent(
 			'No weekly ranking has been published yet.',
 		);
@@ -593,26 +647,30 @@ describe('Home record, live and ranking cards', () => {
 				],
 			]),
 		});
-		const lines = screen.getByRole('region', { name: 'Most delayed lines' });
+		const lines = screen.getByRole('region', { name: 'Lines' });
 		const line = within(lines).getByRole('link');
 		expect(line).toHaveAttribute('href', '/lines/7-354');
-		expect(within(line).getByTitle('7 · Carleton <> St-Laurent')).toHaveTextContent(
-			'7 · Carleton <> St-Laurent',
-		);
+		expect(line.querySelector('.rank-plate')).toHaveTextContent('7');
+		expect(line.querySelector('.rank-name')).toHaveTextContent('Carleton <> St-Laurent');
+		expect(line.querySelector('[title="7 · Carleton <> St-Laurent"]')).not.toBeNull();
 		expect(line).not.toHaveAttribute('aria-label');
 		expect(line).toHaveAccessibleName(
-			expect.stringContaining('24% of readings more than 5 min late'),
+			'Line 7 · Carleton <> St-Laurent, 24% of readings more than 5 minutes late, 100 readings',
 		);
-		expect(within(line).getByText('7 · Carleton <> St-Laurent')).toBeInTheDocument();
-		expect(line).toHaveTextContent('Carleton <> St-Laurent');
-		expect(line).toHaveTextContent('24% of readings more than 5 min late');
-		const stops = screen.getByRole('region', { name: 'Most delayed stops' });
+		const stops = screen.getByRole('region', { name: 'Stops' });
 		expect(within(stops).getByRole('link')).toHaveAttribute('href', '/stop/S9');
-		expect(within(stops).getByRole('link')).toHaveTextContent('Rideau / Sussex');
-		expect(screen.getByRole('link', { name: /All hotspots/ })).toHaveAttribute('href', '/hotspots');
-		expect(screen.getByText(/republished weekly/)).toBeInTheDocument();
-		expect(within(lines).getByText(/^Data through/)).toHaveTextContent('10');
-		expect(within(stops).getByText(/^Data through/)).toHaveTextContent('10');
+		expect(within(stops).getByRole('link')).toHaveAccessibleName(
+			'Rideau / Sussex, 21.5% of readings more than 5 minutes late, 200 readings',
+		);
+		const rankings = card('Lines and stops to investigate');
+		expect(rankings).toHaveTextContent('Share of readings more than 5 minutes late.');
+		expect(rankings).toHaveTextContent('Ordered by the share shown, highest first.');
+		expect(within(rankings).getByRole('link', { name: 'Open the full rankings' })).toHaveAttribute(
+			'href',
+			'/hotspots',
+		);
+		expect(lines).toHaveTextContent(week410.en);
+		expect(stops).toHaveTextContent(week410.en);
 	});
 });
 

@@ -239,7 +239,7 @@ test('the home cards hold their place while the record, live numbers and ranking
 	});
 	await page.goto('/');
 	const strip = page.locator('[data-slot="home-pulse"]');
-	const below = page.locator('[data-slot="home-search"]');
+	const below = page.locator('[data-slot="home-groups"]');
 	const documentTop = () =>
 		below.evaluate((element) => element.getBoundingClientRect().top + window.scrollY);
 	await expect(strip.locator('[data-live]')).toHaveCount(2);
@@ -265,7 +265,7 @@ test('the home cards hold their place when the live numbers cannot be loaded', a
 	});
 	await page.goto('/fr');
 	const strip = page.locator('[data-slot="home-pulse"]');
-	const below = page.locator('[data-slot="home-search"]');
+	const below = page.locator('[data-slot="home-groups"]');
 	const documentTop = () =>
 		below.evaluate((element) => element.getBoundingClientRect().top + window.scrollY);
 	await expect(strip.locator('[data-live]')).toHaveCount(2);
@@ -312,7 +312,7 @@ test('the home cards hold their place while Refresh runs, succeeds and fails', a
 			await page.goto(locale === 'fr' ? '/fr' : '/');
 			const live = page.locator('[data-slot="home-pulse-live"]');
 			await expect(live.locator('[data-live="reporting"]')).toContainText('321');
-			const below = page.locator('[data-slot="home-search"]');
+			const below = page.locator('[data-slot="home-groups"]');
 			const top = () =>
 				below.evaluate((element) => element.getBoundingClientRect().top + window.scrollY);
 			const before = await top();

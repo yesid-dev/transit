@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { render, screen } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
 import HomeExplore from './HomeExplore.svelte';
 import { homeCadence, homeCopy, homeGroups } from './home.copy';
@@ -23,8 +23,8 @@ describe.each(['en', 'fr'] as const)('provider cosmetics in %s', (locale) => {
 		expect(container.querySelector('[data-filter-group="alerts"]') != null).toBe(supported);
 	});
 	it.each(['octranspo', 'stm'])(
-		'%s home map copy reflects alerts availability',
-		async (provider) => {
+		'%s home groups offer Service alerts only with an alert feed',
+		(provider) => {
 			const available = providerHasAlerts({
 				id: provider,
 				labels: {
@@ -37,14 +37,14 @@ describe.each(['en', 'fr'] as const)('provider cosmetics in %s', (locale) => {
 			render(HomeExplore, {
 				props: { locale, copy: homeCopy[locale], alertsAvailable: available },
 			});
-			// The map's directory entry appears once its question is selected; the strip owns the shortcut.
-			await fireEvent.click(screen.getByRole('radio', { name: homeCopy[locale].qWhere }));
-			const entry = homeGroups(homeCopy[locale], available)[0]!.entries[0]!;
-			expect(screen.getByRole('link', { name: new RegExp(entry.title[locale]) })).toHaveTextContent(
-				entry.desc[locale],
-			);
+			const alerts = screen.queryByRole('link', {
+				name: locale === 'en' ? 'Service alerts' : 'Avis de service',
+			});
+			expect(alerts != null).toBe(available);
 			expect(
-				entry.desc[locale].includes(locale === 'en' ? 'service alerts' : 'avis de service'),
+				homeGroups(available)
+					.flatMap((group) => group.entries)
+					.some((entry) => entry.href === '/alerts'),
 			).toBe(available);
 		},
 	);

@@ -1,19 +1,9 @@
 <script lang="ts">
 	import { getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
-	import { routeFor } from '#lib/nav/index.ts';
-	import { FilterGroup, FilterSummary } from '@yesid/ui/brand';
-	import { desktop } from '@yesid/ui/state';
-	import { StateNotice } from '@yesid/ui/feedback';
-	import { scrollChain } from '@yesid/motion/actions';
+	import { navPillCopy } from '#lib/i18n/messages.ts';
 	import type { Snippet } from 'svelte';
-	import {
-		HOME_FILTER_COUNT_LABEL,
-		homeGroups,
-		type HomeCopy,
-		type HomeEntry,
-		type HomeGroup,
-		type HomeTempo,
-	} from './home.copy';
+	import HomeSearch from './HomeSearch.svelte';
+	import { homeGroups, type HomeCopy, type HomeEntry } from './home.copy';
 
 	const localizeHref = getLocalizeHref();
 
@@ -21,93 +11,23 @@
 		readonly locale: Locale;
 		readonly alertsAvailable?: boolean;
 		readonly copy: HomeCopy;
-		/** The live numbers and the search invitation, between the introduction and the directory. */
+		/** The record, live and ranking cards, between the introduction and the groups. */
 		readonly pulse?: Snippet;
 	}
 
 	let { locale, copy: t, alertsAvailable = true, pulse }: Props = $props();
 
-	// The headline scales with its container: one line on desktop, two on mobile, any city or language.
-	const headlineChars = $derived(t.headline.length + 1 + t.headlineAccent.length);
-
-	function entryHref(entry: HomeEntry): string {
-		const href = entry.kind === 'surface' ? routeFor(entry.target) : entry.href;
-		return localizeHref(href, locale);
-	}
-
-	const groups = $derived(homeGroups(t, alertsAvailable));
-
-	let activeQuestion = $state<HomeGroup['key'] | null>(null);
-	let activeTempo = $state<HomeTempo | null>(null);
-	let filtersOpen = $state(false);
-	let filterDisclosure = $state<HTMLDetailsElement>();
-	function closeFilters(event: KeyboardEvent): void {
-		if (
-			event.key !== 'Escape' ||
-			desktop.current ||
-			!filterDisclosure?.contains(document.activeElement)
-		)
-			return;
-		filtersOpen = false;
-		filterDisclosure.querySelector('summary')?.focus();
-	}
-
-	$effect(() => {
-		if (desktop.current) filtersOpen = true;
-	});
-
-	const filtersActive = $derived(activeQuestion != null || activeTempo != null);
-	const visibleGroups = $derived(
-		groups
-			.map((group) => ({
-				group,
-				entries:
-					activeQuestion != null && group.key !== activeQuestion
-						? []
-						: group.entries.filter((entry) => activeTempo == null || entry.tempo === activeTempo),
-			}))
-			.filter(({ entries }) => entries.length > 0),
-	);
-	const matchCount = $derived(
-		visibleGroups.reduce((count, group) => count + group.entries.length, 0),
-	);
-	function clearFilters(): void {
-		activeQuestion = null;
-		activeTempo = null;
-	}
-
-	const questionItems = $derived(
-		groups.map((group) => ({ key: group.key, label: group.question() })),
-	);
-	const tempoItems = $derived([
-		{ key: 'now', label: t.tempoNow },
-		{ key: 'record', label: t.tempoRecord },
-		{ key: 'method', label: t.tempoMethod },
-	]);
-	const primaryEntries = $derived(
-		['network-health', 'map'].flatMap((kind) =>
-			groups
-				.flatMap(({ entries }) => entries)
-				.filter((entry) => entry.kind === 'surface' && entry.target.kind === kind),
-		),
-	);
-	const directoryGroups = $derived(
-		visibleGroups
-			.map(({ group, entries }) => ({
-				group,
-				entries: filtersActive
-					? entries
-					: entries.filter((entry) => !primaryEntries.includes(entry)),
-			}))
-			.filter(({ entries }) => entries.length > 0),
-	);
+	const groups = $derived(homeGroups(alertsAvailable));
+	const href = (entry: HomeEntry) =>
+		entry.external ? entry.href : localizeHref(entry.href, locale);
 </script>
 
-<svelte:window onkeydown={closeFilters} />
 <section class="home-explore" data-slot="home-explore" aria-labelledby="home-explore-title">
-	<header class="home-intro" data-slot="home-audit-brief" style:--headline-chars={headlineChars}>
+	<!-- Leads: the headline, one purpose sentence and the Search button under it (UX plan §6.1). -->
+	<header class="home-intro" data-slot="home-audit-brief">
 		<h1 id="home-explore-title">{t.headline} <span>{t.headlineAccent}</span></h1>
-		<p class="home-lede">{t.auditBody}</p>
+		<p class="home-lede">{t.auditBody} {t.notPlanner}</p>
+		<div class="home-intro-search"><HomeSearch {locale} /></div>
 		<details class="home-more" data-slot="home-more">
 			<summary
 				><span class="home-more-closed">{t.readMore}</span><span class="home-more-open"
@@ -120,86 +40,34 @@
 		</details>
 	</header>
 	{@render pulse?.()}
-	<nav aria-label={t.exploreNav}>
-		<div class="directory-head">
-			<h2>{t.exploreNav}</h2>
-		</div>
-		<div class="hub-launch">
-			<details
-				class="home-filters"
-				use:scrollChain
-				bind:this={filterDisclosure}
-				bind:open={filtersOpen}
-			>
-				<summary>{t.filterLabel}<span aria-hidden="true">+</span></summary>
-				<div class="explore-filters" role="group" aria-label={t.filterLabel}>
-					<FilterGroup
-						label={t.filterByQuestion}
-						items={questionItems}
-						activeKey={activeQuestion}
-						allLabel={t.filterAll}
-						density="spacious"
-						onSelect={(key) => (activeQuestion = key as HomeGroup['key'] | null)}
-						testIdPrefix="hub-filter-question"
-					/>
-					<FilterGroup
-						label={t.filterByKind}
-						items={tempoItems}
-						activeKey={activeTempo}
-						allLabel={t.filterAll}
-						density="spacious"
-						onSelect={(key) => (activeTempo = key as HomeTempo | null)}
-						testIdPrefix="hub-filter-kind"
-					/>
-					{#if filtersActive}<FilterSummary
-							count={matchCount}
-							countLabel={HOME_FILTER_COUNT_LABEL[locale]}
-							{locale}
-							clearLabel={t.clearFilters}
-							onClear={clearFilters}
-						/>{/if}
-				</div>
-			</details>
-			<div class="launch-content">
-				{#each directoryGroups as { group, entries } (group.key)}
-					<section class="launch-group" aria-labelledby={`group-${group.key}`}>
-						<h3 class="launch-group-question" id={`group-${group.key}`}>{group.question()}</h3>
-						<ul class="launch-grid">
-							{#each entries as entry (entryHref(entry))}
-								<li>
-									<a class="home-entry" href={entryHref(entry)}>{@render entryBody(entry)}</a>
-								</li>
-							{/each}
-						</ul>
-					</section>
-				{/each}
-				{#if matchCount === 0}
-					<StateNotice
-						class="home-empty"
-						title={t.filterEmpty}
-						glyph="○"
-						presentation="silo"
-						role="status"
-						aria-live="polite"
-					>
-						{#snippet action()}<button class="home-clear" type="button" onclick={clearFilters}
-								>{t.clearFilters}</button
-							>{/snippet}
-					</StateNotice>
-				{/if}
-			</div>
+	<!-- The menu's four groups, every page once, with what it answers: no filters, no count. -->
+	<nav class="home-groups" data-slot="home-groups" aria-labelledby="home-groups-title">
+		<h2 id="home-groups-title">{t.exploreNav}</h2>
+		<div class="groups">
+			{#each groups as group (group.key)}
+				<section class="group" aria-labelledby={`home-group-${group.key}`}>
+					<h3 id={`home-group-${group.key}`}>{group.label[locale]}</h3>
+					<ul>
+						{#each group.entries as entry (entry.href)}
+							<li class="group-item">
+								{#if entry.external}
+									<a class="group-link" href={href(entry)} target="_blank" rel="noopener noreferrer"
+										>{entry.title[locale]}<span aria-hidden="true"> ↗</span><span class="sr-only">
+											{navPillCopy[locale].newTab}</span
+										></a
+									>
+								{:else}
+									<a class="group-link" href={href(entry)}>{entry.title[locale]}</a>
+								{/if}
+								{#if entry.desc}<span class="group-desc">{entry.desc[locale]}</span>{/if}
+							</li>
+						{/each}
+					</ul>
+				</section>
+			{/each}
 		</div>
 	</nav>
 </section>
-
-{#snippet entryBody(entry: HomeEntry)}
-	<span class="home-entry-copy"
-		><span class="home-entry-title">{entry.title[locale]}</span><span class="home-entry-description"
-			>{entry.desc[locale]}</span
-		></span
-	>
-	<span class="home-entry-arrow" aria-hidden="true">↗</span>
-{/snippet}
 
 <style>
 	.home-explore {
@@ -207,45 +75,46 @@
 		flex-direction: column;
 		gap: clamp(1.75rem, 4vw, 3rem);
 		width: 100%;
-		padding-bottom: 3rem;
+		padding-bottom: 2rem;
 	}
+	/* Phones: headline, purpose, Search, Read more. Desktop: Search in the right third (8 + 4). */
 	.home-intro {
-		container-type: inline-size;
+		display: grid;
+		grid-template-areas:
+			'title'
+			'lede'
+			'search'
+			'more';
+		gap: 1rem;
 	}
 	.home-intro h1 {
+		grid-area: title;
 		margin: 0;
 		font-family: var(--font-heading);
-		font-size: clamp(2.5rem, 8vw, 7rem);
-		font-weight: 900;
-		line-height: 0.88;
-		letter-spacing: -0.04em;
+		font-size: clamp(1.75rem, 1.25rem + 2vw, 2.5rem);
+		font-weight: 800;
+		line-height: 1.1;
+		letter-spacing: var(--tracking-tight);
 		text-wrap: balance;
 	}
 	.home-intro h1 span {
-		display: block;
 		color: var(--primary);
 	}
-	/*
-	 * On desktop the headline sits on one line for any city or language: heavy Inter at -0.04em
-	 * tracking runs about 0.47em per character, and 0.5 leaves a margin.
-	 */
-	@media (--desktop-min) {
-		.home-intro h1 {
-			font-size: clamp(2.5rem, calc(100cqi / (var(--headline-chars) * 0.5)), 8rem);
-			line-height: 0.95;
-		}
-		.home-intro h1 span {
-			display: inline;
-		}
-	}
 	.home-lede {
+		grid-area: lede;
 		max-width: var(--measure-body);
-		margin: 1.25rem 0 0;
+		margin: 0;
 		font-size: var(--text-body);
-		line-height: 1.7;
+		line-height: 1.6;
 		color: var(--secondary-foreground);
+		text-wrap: pretty;
+	}
+	.home-intro-search {
+		grid-area: search;
+		min-width: 0;
 	}
 	.home-more {
+		grid-area: more;
 		max-width: var(--measure-body);
 	}
 	.home-more summary {
@@ -281,174 +150,88 @@
 		line-height: 1.7;
 		color: var(--secondary-foreground);
 	}
-	@media (min-width: 640px) {
-		.home-lede {
-			font-size: var(--text-reading-support);
+	@media (--desktop-min) {
+		.home-intro {
+			grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+			grid-template-areas:
+				'title .'
+				'lede search'
+				'more .';
+			column-gap: 1.5rem;
+			align-items: end;
 		}
 	}
-	.launch-grid {
-		list-style: none;
+	.home-groups h2 {
+		margin: 0 0 1rem;
+		font-family: var(--font-heading);
+		font-size: var(--text-heading);
+		font-weight: 800;
+		letter-spacing: var(--tracking-tight);
+	}
+	.groups {
+		display: grid;
+		gap: 1.5rem;
+	}
+	.group {
+		min-width: 0;
+	}
+	.group h3 {
+		margin: 0;
+		padding-bottom: 0.5rem;
+		font-size: var(--text-small);
+		font-weight: 600;
+		color: var(--muted-foreground);
+		border-bottom: 1px solid var(--border);
+	}
+	.group ul {
 		margin: 0;
 		padding: 0;
-	}
-	.home-entry {
-		display: flex;
-		align-items: flex-start;
-		justify-content: space-between;
-		gap: 1.5rem;
-		width: 100%;
-		min-height: 44px;
-		padding: 1.25rem 0;
-		border-bottom: 1px solid var(--border-subtle);
-		text-decoration: none;
-		color: var(--foreground);
-		transition: color var(--duration-fast) var(--ease-default);
-	}
-	.home-entry-copy {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-	}
-	.home-entry-title {
-		font-family: var(--font-heading);
-		font-size: var(--text-body);
-		font-weight: 800;
-		line-height: 1.25;
-		letter-spacing: var(--tracking-tight);
-	}
-	.home-entry-description {
-		color: var(--muted-foreground);
-		font-size: var(--text-small);
-		line-height: 1.6;
-		max-width: var(--measure-lede);
-	}
-	.home-entry-arrow {
-		color: var(--accent-text);
-		font-family: var(--font-mono);
-		font-size: 1.25rem;
-		line-height: 1.25;
-		transition: transform var(--duration-fast) var(--ease-out);
-	}
-	.home-entry:hover {
-		color: var(--accent-text);
-	}
-	.home-entry:hover .home-entry-arrow {
-		transform: translate(2px, -2px);
-	}
-	.home-entry:focus-visible,
-	.home-clear:focus-visible {
-		outline: 2px solid var(--accent-text);
-		outline-offset: 4px;
-	}
-	.directory-head {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: 0.75rem;
-		margin: 0 0 1.5rem;
-		padding-bottom: 1rem;
-		border-bottom: 1px solid var(--border-brand);
-	}
-	.directory-head h2 {
-		margin: 0;
-		font-family: var(--font-heading);
-		font-size: var(--text-heading);
-		font-weight: 800;
-		letter-spacing: var(--tracking-tight);
-	}
-	.hub-launch {
-		display: grid;
-		grid-template-columns: 1fr;
-		gap: 2rem;
-	}
-	.home-filters {
-		min-width: 0;
-	}
-	.home-filters summary {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		min-height: 48px;
-		padding: 0.75rem 0;
-		color: var(--accent-text);
-		font-family: var(--font-mono);
-		cursor: pointer;
-		border-bottom: 1px solid var(--border-brand);
 		list-style: none;
 	}
-	.home-filters summary::-webkit-details-marker {
-		display: none;
-	}
-	.home-filters[open] summary span {
-		transform: rotate(45deg);
-	}
-	.home-filters summary:focus-visible {
-		outline: 2px solid var(--accent-text);
-		outline-offset: 4px;
-	}
-	.explore-filters {
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-		min-width: 0;
-		padding-top: 1rem;
-	}
-	.launch-content {
-		display: flex;
-		flex-direction: column;
-		gap: 2rem;
-		min-width: 0;
-	}
-	.launch-group-question {
-		margin: 0;
-		color: var(--accent-text);
-		font-family: var(--font-heading);
-		font-size: var(--text-heading);
-		font-weight: 800;
-		line-height: 1.25;
-	}
-	.home-clear {
+	/* The whole item is its link's target; the title stays the link's text. */
+	.group-item {
+		position: relative;
+		display: grid;
+		gap: 0.125rem;
 		min-height: 44px;
-		padding: 0.5rem 0.75rem;
+		padding-block: 0.75rem;
+		border-bottom: 1px solid var(--border-subtle);
+	}
+	.group-link {
+		width: fit-content;
+		color: var(--foreground);
+		font-weight: 600;
+		text-decoration: none;
+		border-radius: var(--radius-sm);
+	}
+	.group-link::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+	}
+	.group-item:hover .group-link {
 		color: var(--accent-text);
 		text-decoration: underline;
-		cursor: pointer;
+		text-underline-offset: 0.2em;
 	}
-	.home-explore :global(.home-empty [data-part='surface']) {
-		flex-wrap: wrap;
+	.group-link:focus-visible {
+		outline: 2px solid var(--accent-text);
+		outline-offset: 2px;
 	}
-	.home-explore :global(.home-empty [data-slot='state-notice-action']) {
-		flex-basis: 100%;
+	.group-desc {
+		color: var(--muted-foreground);
+		font-size: var(--text-small);
+		line-height: 1.5;
 	}
-	@media (min-width: 640px) {
-		.launch-grid {
-			display: grid;
+	@media (--tablet-min) {
+		.groups {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 			column-gap: 2rem;
 		}
 	}
 	@media (--desktop-min) {
-		.hub-launch {
-			grid-template-columns: 17rem minmax(0, 1fr);
-			gap: 3rem;
-			align-items: start;
-		}
-		.home-filters {
-			position: sticky;
-			top: var(--chrome-offset);
-			max-height: calc(100dvh - var(--chrome-offset) - 1rem);
-			overflow-y: auto;
-			overscroll-behavior: contain;
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.home-entry,
-		.home-entry-arrow {
-			transition: none;
-		}
-		.home-entry:hover .home-entry-arrow {
-			transform: none;
+		.groups {
+			grid-template-columns: repeat(4, minmax(0, 1fr));
 		}
 	}
 </style>
