@@ -1,5 +1,6 @@
 import hashlib
 import io
+import struct
 from contextlib import contextmanager
 from dataclasses import replace
 
@@ -545,3 +546,75 @@ def test_leading_feff_cannot_be_verified_after_bom_loss(tmp_path):
     with pytest.raises(InvalidCsvValue) as error:
         prove_window(csv, target, schema, expect=Expected(digest, 1, None), temp_dir=tmp_path)
     assert (error.value.column, error.value.row, error.value.value) == ("label", 2, "\ufeffa")
+
+
+@pytest.mark.parametrize(
+    "pg_type,canonical,noncanonical",
+    [
+        # PostgreSQL float8: 3e70000000000000.
+        ("double precision", "5.960464477539063e-08", "5.9604644775390625e-08"),
+        ("double precision", "-5.960464477539063e-08", "-5.9604644775390625e-08"),
+        ("real", "1.2621775e-29", "1.26217745e-29"),
+        ("real", "-1.2621775e-29", "-1.26217745e-29"),
+        ("real", "7.038531e-26", "7.0385307e-26"),  # PostgreSQL float4: 15ae43fd
+    ],
+)
+@pytest.mark.parametrize("canonical_input", [True, False])
+def test_shortest_precise_postgres_text(
+    tmp_path, pg_type, canonical, noncanonical, canonical_input
+):
+    from transit_ops.lake.parquet_verify import prove_window
+
+    value = canonical if canonical_input else noncanonical
+    csv, written, expect = window(tmp_path, f"id,value\n1,{value}\n".encode(), pg_type)
+    if canonical_input:
+        assert prove_window(
+            csv, written.path, written.schema, expect=expect, temp_dir=tmp_path
+        ).verified
+    else:
+        with pytest.raises(CopyDiffers) as error:
+            prove_window(csv, written.path, written.schema, expect=expect, temp_dir=tmp_path)
+        assert error.value.reason == "canonical_text"
+
+
+@pytest.mark.parametrize(
+    "pg_type,code,kind", [("real", "f", "FLOAT"), ("double precision", "d", "DOUBLE")]
+)
+@pytest.mark.parametrize("change", ["sign", "payload"])
+def test_nan_bits_must_match_canonical_csv(tmp_path, pg_type, code, kind, change):
+    from transit_ops.lake.parquet_verify import prove_window
+
+    csv, written, expect = window(tmp_path, b"id,value\n1,NaN\n", pg_type)
+    with duckdb.connect() as db:
+        metadata = {
+            k.decode(): v.decode()
+            for k, v in db.execute(
+                "SELECT key,value FROM parquet_kv_metadata(?)", [str(written.path)]
+            ).fetchall()
+        }
+        source = db.read_parquet(str(written.path), hive_partitioning=False).fetchall()[0][1]
+        bits = bytearray(struct.pack("!" + code, source))
+        bits[0 if change == "sign" else -1] ^= 128 if change == "sign" else 1
+        changed = struct.unpack("!" + code, bits)[0]
+        target = tmp_path / "changed.parquet"
+        db.execute(
+            f"COPY (SELECT 1::INTEGER AS id, ?::{kind} AS value) TO ? "
+            "(FORMAT parquet, KV_METADATA ?)",
+            [changed, str(target), metadata],
+        )
+        copied = db.read_parquet(str(target), hive_partitioning=False).fetchall()[0][1]
+        assert struct.pack("!" + code, source) != struct.pack("!" + code, copied)
+    expect = replace(expect, object_sha256=hashlib.sha256(target.read_bytes()).hexdigest())
+    with pytest.raises(CopyDiffers) as error:
+        prove_window(csv, target, written.schema, expect=expect, temp_dir=tmp_path)
+    assert error.value.reason == "canonical_text"
+
+
+@pytest.mark.parametrize("value", ["0.12345", "-0.12345", "0.00000"])
+def test_verifies_numeric_with_equal_precision_and_scale(tmp_path, value):
+    from transit_ops.lake.parquet_verify import prove_window
+
+    csv, written, expect = window(tmp_path, f"id,value\n1,{value}\n".encode(), "numeric(5,5)")
+    assert prove_window(
+        csv, written.path, written.schema, expect=expect, temp_dir=tmp_path
+    ).verified

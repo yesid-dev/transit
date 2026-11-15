@@ -242,34 +242,61 @@ def _check_order(
         )
 
 
+def _shortest_decimal(value: float, code: str) -> Decimal:
+    center = Fraction(abs(value))
+    bits = struct.pack(code, abs(value))
+    integer, width = int.from_bytes(bits, "big"), len(bits)
+    lower = struct.unpack(code, (integer - 1).to_bytes(width, "big"))[0]
+    upper = struct.unpack(code, (integer + 1).to_bytes(width, "big"))[0]
+    low = (center + Fraction(lower)) / 2
+    high = (center + Fraction(upper)) / 2 if math.isfinite(upper) else center * 2 - low
+    # repr is shortest already, unless its decimal lands exactly on a midpoint.
+    text = repr(abs(value))
+    if code == "!d" and low < Fraction(text) < high:
+        return Decimal(text)
+    exponent = Decimal(text).adjusted()
+    while Fraction(10) ** exponent > center:
+        exponent -= 1
+    for precision in range(1, 10 if code == "!f" else 18):
+        unit = Fraction(10) ** (exponent - precision + 1)
+        quotient = center / unit
+        inside = [i for i in (math.floor(quotient), math.ceil(quotient)) if low < i * unit < high]
+        if inside:
+            closest = min(inside, key=lambda i: (abs(i * unit - center), i % 2))
+            return Decimal(f"{closest}e{exponent - precision + 1}")
+    raise ValueError("No shortest-precise float representation")
+
+
 def _float_text(value: float, kind: str) -> str:
     if math.isnan(value):
         return "NaN"
     if math.isinf(value):
         return "-Infinity" if value < 0 else "Infinity"
-    code, digits, threshold = ("f", 9, 6) if kind == "FLOAT" else ("d", 17, 15)
-    bits = struct.pack("!" + code, value)
+    code, threshold = ("!f", 6) if kind == "FLOAT" else ("!d", 15)
+    bits = struct.pack(code, value)
     if not any(bits[1:]) and bits[0] in (0, 128):
         return "-0" if bits[0] else "0"
-    # PostgreSQL excludes midpoint decimals even when ties-to-even would round back.
-    magnitude = abs(value)
-    integer = int.from_bytes(struct.pack("!" + code, magnitude), "big")
-    width = len(bits)
-    lower = struct.unpack("!" + code, (integer - 1).to_bytes(width, "big"))[0]
-    upper = struct.unpack("!" + code, (integer + 1).to_bytes(width, "big"))[0]
-    center = Fraction(magnitude)
-    low = (center + Fraction(lower)) / 2
-    high = (center + Fraction(upper)) / 2 if math.isfinite(upper) else center * 2 - low
-    for precision in range(1, digits + 1):
-        text = format(value, f".{precision}g")
-        if low < abs(Fraction(text)) < high and struct.pack("!" + code, float(text)) == bits:
-            break
-    decimal = Decimal(text)
+    decimal = _shortest_decimal(value, code).normalize()
+    sign = "-" if value < 0 else ""
     exponent = decimal.adjusted()
     if -4 <= exponent < threshold:
-        return format(decimal, "f")
-    mantissa, power = format(decimal.normalize(), "e").split("e")
-    return f"{mantissa}e{int(power):+03d}"
+        return sign + format(decimal, "f")
+    mantissa, power = format(decimal, "e").split("e")
+    return f"{sign}{mantissa}e{int(power):+03d}"
+
+
+def _same_text(text: str | None, value: object, kind: str, nan_bits: dict[str, bytes]) -> bool:
+    if kind in {"FLOAT", "DOUBLE"} and isinstance(value, float):
+        code = "!f" if kind == "FLOAT" else "!d"
+        if math.isnan(value) and struct.pack(code, value) != nan_bits[kind]:
+            return False
+        value = _float_text(value, kind)
+    elif kind.startswith("DECIMAL") and isinstance(value, str):
+        if value.startswith("."):
+            value = "0" + value
+        elif value.startswith("-."):
+            value = "-0" + value[1:]
+    return text == value
 
 
 def _check_text(
@@ -279,6 +306,12 @@ def _check_text(
     mapped: dict[str, str],
 ) -> None:
     types = schema.duckdb_types()
+    canonical_nan = connection.execute("SELECT 'NaN'::FLOAT, 'NaN'::DOUBLE").fetchone()
+    assert canonical_nan is not None
+    nan_bits = {
+        kind: struct.pack(code, value)
+        for kind, code, value in zip(("FLOAT", "DOUBLE"), ("!f", "!d"), canonical_nan, strict=True)
+    }
     expressions = []
     for name, kind in types.items():
         column = mapped[name]
@@ -304,15 +337,13 @@ def _check_text(
                 for (name, kind), text, value in zip(
                     types.items(), original, restored, strict=True
                 ):
-                    rendered = (
-                        _float_text(value, kind)
-                        if value is not None and kind in {"FLOAT", "DOUBLE"}
-                        else value
-                    )
-                    if text != rendered:
+                    if not _same_text(text, value, kind, nan_bits):
                         raise CopyDiffers(
                             "canonical_text",
-                            f"Column {name!r}, file row {position} (zero-based)"[:500],
+                            (
+                                f"Column {name!r}, file row {position} (zero-based): "
+                                "text or IEEE bits differ"
+                            )[:500],
                         )
                 position += 1
 
