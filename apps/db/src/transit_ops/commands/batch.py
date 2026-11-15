@@ -35,6 +35,7 @@ def fetch_command(
     family: Annotated[list[str] | None, typer.Option("--family")] = None,
     bodies: Annotated[bool, typer.Option("--bodies")] = False,
     as_of: Annotated[str | None, typer.Option("--as-of")] = None,
+    timezone: Annotated[str | None, typer.Option("--timezone")] = None,
 ) -> None:
     """Fetch proven inputs using the guarded disposable database's FK catalog."""
     import json
@@ -48,7 +49,22 @@ def fetch_command(
     scope = None
     try:
         settings = get_settings()
-        request = replay_request(provider, day, as_of, settings)
+        if timezone is None:
+            request = replay_request(provider, day, as_of, settings)
+        else:
+            from transit_ops.batch.build import BuildRequest
+
+            local_date = date.fromisoformat(day)
+            if day != local_date.isoformat() or as_of is None:
+                raise ValueError("pinned timezone requires YYYY-MM-DD and explicit --as-of")
+            request = BuildRequest(
+                provider,
+                (local_date,),
+                datetime.fromisoformat(as_of),
+                settings.GOLD_FACT_RETENTION_DAYS,
+                settings.GOLD_REPORTING_OPEN_WINDOW_DAYS,
+                timezone,
+            )
         builders = tuple(replay_builders(family or []).values())
         family_input_needs(
             tuple(b for b in builders if not reads_editions((b.family_id,))), request
@@ -60,6 +76,10 @@ def fetch_command(
             request,
             builders,
         )
+        if timezone is not None:
+            from transit_ops.batch.daily_inputs import assert_timezone
+
+            assert_timezone(inputs, provider, timezone)
         typer.echo(json.dumps(result, sort_keys=True, separators=(",", ":")))
     except Exception as error:
         typer.echo(str(error), err=True)
@@ -175,7 +195,14 @@ def _accept_shadow_report(checkpoint: "Checkpoint", path: Path) -> None:
     accept(checkpoint, family_from_payload(matches[0]))
 
 
-def _shadow_editions(request: "BuildRequest", families: list[str]) -> "BuildRequest":
+def _shadow_editions(
+    request: "BuildRequest",
+    families: list[str],
+    *,
+    inputs: Path | None = None,
+    report: Path | None = None,
+    code_commit: str = "",
+) -> "BuildRequest":
     from sqlalchemy import text
 
     from transit_ops.batch.editions import postgres_rows, reads_editions, with_editions
@@ -184,6 +211,12 @@ def _shadow_editions(request: "BuildRequest", families: list[str]) -> "BuildRequ
 
     if not reads_editions(families):
         return request
+    if report is not None:
+        from transit_ops.batch.editions import replay_edition_request
+
+        if inputs is None:
+            raise ValueError("edition_input_changed: inputs required")
+        return replay_edition_request(request, families, inputs, report, code_commit)
     engine = make_engine(Settings())
     try:
         with engine.connect() as conn, conn.begin():
@@ -229,10 +262,12 @@ def shadow_command(
             raise ValueError("family builder is not implemented")
         workdir.mkdir(parents=True, exist_ok=True)
         request = _shadow_request(provider, local_date, stamp, inputs, workdir)
-        edition_request = _shadow_editions(request, family)
+        commit = _code_commit()
+        edition_request = _shadow_editions(
+            request, family, inputs=inputs, report=accept_from, code_commit=commit
+        )
         storage = get_bronze_storage(Settings(), project_root=Path(__file__).resolve().parents[3])
         store = CheckpointStore(workdir / "checkpoints")
-        commit = _code_commit()
         for builder in builders:
             assert isinstance(builder, FamilyBuilder)
             from transit_ops.batch.editions import reads_editions

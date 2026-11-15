@@ -67,7 +67,7 @@ def table_digest(rows: TableRows) -> str:
 
 
 def safe_component(value: str, *, digest: bool = False) -> str:
-    pattern = r"[0-9a-f]{64}" if digest else r"[a-z0-9_]+"
+    pattern = r"[0-9a-f]{64}" if digest else r"[a-z0-9_-]+"
     if not re.fullmatch(pattern, value):
         raise ValueError(f"invalid checkpoint identifier: {value!r}")
     return value
