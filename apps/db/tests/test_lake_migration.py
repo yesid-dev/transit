@@ -56,7 +56,11 @@ def planning(monkeypatch):
     def run(names=("gold.route_delay_spine",), **kw):
         catalog = []
         for n in names:
-            columns = [] if n == "gold.report_labels" else [Column("provider_id", "text", True)]
+            columns = (
+                []
+                if n in {"gold.report_labels", "silver.i3_alert_active_periods"}
+                else [Column("provider_id", "text", True)]
+            )
             if n != "silver.rt_entities":
                 source = get_dataset(n).source
                 if isinstance(source, TableSource) and source.window_column:
@@ -659,3 +663,23 @@ def test_open_session_unlock_failure_is_not_hidden():
     with pytest.raises(OSError, match="unexpected unlock failure"):
         with m.migration_lock(Lock()):
             pass
+
+
+def test_migration_plan_expands_alert_selection_into_one_group(planning):
+    plan = planning(
+        names=(
+            "silver.i3_alerts",
+            "silver.i3_alert_informed_entities",
+            "silver.i3_alert_active_periods",
+        ),
+        datasets=["silver.i3_alerts"],
+        providers=["p"],
+    )
+    assert len(plan.windows) == 1
+    assert len(plan.windows[0].copy_group_members) == 3
+    assert len(plan.copy_groups) == 1
+    assert {(s.dataset_id, s.provider_id) for s in plan.copy_groups[0]} == {
+        ("silver.i3_alerts", "p"),
+        ("silver.i3_alert_informed_entities", "p"),
+        ("silver.i3_alert_active_periods", "_shared"),
+    }

@@ -57,9 +57,9 @@ def test_rescue_receipt_resolves_exact_identity(tmp_path):
     assert [(s.key, s.needs) for s in sources] == [(key, (need,))]
 
 
-def archive(storage, relation, window, query, *, revision=0, version=1):
+def archive(storage, relation, window, query, *, revision=0, version=1, provider="sample"):
     key = table_copy_key(
-        relation, "sample", revision, get_dataset(relation).archive_grain, window, version, 1
+        relation, provider, revision, get_dataset(relation).archive_grain, window, version, 1
     )
     path = storage.root / key
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -72,7 +72,7 @@ def archive(storage, relation, window, query, *, revision=0, version=1):
         format_version=1,
         kind="table_copy",
         dataset_id=relation,
-        provider_id="sample",
+        provider_id=provider,
         revision=revision,
         window_key=window,
         content_version=version,
@@ -378,7 +378,7 @@ def test_requested_unreplayable_family_refuses_before_any_storage(
         family_id = "headways"
 
         def inputs(self, request):
-            return (InputNeed("silver.i3_alerts", "all"),)
+            return (InputNeed("silver.rt_entities", "all"),)
 
     monkeypatch.setattr(headways, "builder", Builder() if working_only else None)
     monkeypatch.setattr(
@@ -426,7 +426,7 @@ def test_fk_closure_uses_catalog_and_missing_parent_refuses(tmp_path):
     assert caught.value.needs == (InputNeed("gold.dim_route_history", "all"),)
 
 
-def test_occupancy_preflight_records_unread_alerts_as_absent(tmp_path):
+def test_occupancy_preflight_does_not_require_unread_declared_alerts(tmp_path):
     from transit_ops.batch.build import BuildRequest
     from transit_ops.batch.families.occupancy_crowding import builder
     from transit_ops.batch.fetch_inputs import needs_for_replay
@@ -458,12 +458,7 @@ def test_occupancy_preflight_records_unread_alerts_as_absent(tmp_path):
     root = tmp_path / "inputs"
     root.mkdir()
     result = fetch_replay_inputs(storage, root, "sample", STAMP, lambda _: needs)
-    assert {r["relation"] for r in result["absent_unread"]} == {
-        "silver.i3_alerts",
-        "silver.i3_alert_active_periods",
-        "silver.i3_alert_informed_entities",
-    }
-    assert all(r["status"] == "absent_unread" and r["reason"] for r in result["absent_unread"])
+    assert result["absent_unread"] == ()
     assert not (root / "silver.i3_alerts").exists()
 
 
@@ -655,3 +650,183 @@ def test_changed_bootstrap_refuses_before_any_other_payload(tmp_path, monkeypatc
     assert observed == {7: "c" * 64}
     assert opened == [first_key]
     assert list(root.iterdir()) == []
+
+
+def bundle(storage, keys, stamp=STAMP):
+    from transit_ops.lake.alert_bundle import PREFIX
+
+    value = dict(
+        format_version=1,
+        kind="silver_alert_state",
+        snapshot_at_utc=stamp.isoformat(),
+        coverage_from_utc="2026-10-04T07:00:00+00:00",
+        members=[json.loads(storage.read_bytes(proof_key(k))) for k in keys],
+    )
+    body = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    version = hashlib.sha256(body).hexdigest()
+    put(storage, PREFIX + version + ".json", body)
+    return version
+
+
+def alert_copies(storage, version=1):
+    return [
+        archive(
+            storage,
+            r,
+            "2026-11",
+            q,
+            version=version,
+            provider="_shared" if r.endswith("active_periods") else "sample",
+        )
+        for r, q in (
+            (
+                "silver.i3_alerts",
+                "SELECT * FROM (VALUES (1, 0, 'sample'), (2, 0, 'other')) "
+                "t(i3_alert_snapshot_id, alert_index, provider_id)",
+            ),
+            (
+                "silver.i3_alert_informed_entities",
+                "SELECT * FROM (VALUES (1, 0, 0, 'sample'), (2, 0, 0, 'other')) "
+                "t(i3_alert_snapshot_id, alert_index, entity_index, provider_id)",
+            ),
+            (
+                "silver.i3_alert_active_periods",
+                "SELECT * FROM (VALUES (1, 0, 0), (2, 0, 0)) "
+                "t(i3_alert_snapshot_id, alert_index, period_index)",
+            ),
+        )
+    ]
+
+
+def test_alert_bundle_pins_members_and_filters_shared_children(tmp_path):
+    storage = store(tmp_path)
+    keys = alert_copies(storage)
+    version = bundle(storage, keys)
+    alert_copies(storage, version=2)  # New member receipts alone cannot replace a bundle.
+    needs = [InputNeed("silver.i3_alerts", "all")]
+    sources = resolve_sources(needs, storage, "sample", STAMP, {})
+    assert {s.key for s in sources} == set(keys)
+    root = tmp_path / "scoped"
+    receipts = materialize(sources, {k: storage.root / k for k in keys}, root, STAMP)
+    for r in receipts:
+        assert r["rows_kept"] == 1 and r["rows_dropped"] == 1
+        assert r["bundle_version"] == version and r["snapshot_at_utc"] == STAMP.isoformat()
+    with duckdb.connect() as conn:
+        for relation in (
+            "silver.i3_alerts",
+            "silver.i3_alert_active_periods",
+            "silver.i3_alert_informed_entities",
+        ):
+            assert conn.execute(
+                "SELECT i3_alert_snapshot_id FROM read_parquet(?)",
+                [str(root / relation / "all.parquet")],
+            ).fetchall() == [(1,)]
+
+
+def test_alert_members_without_bundle_are_not_current(tmp_path):
+    storage = store(tmp_path)
+    alert_copies(storage)
+    with pytest.raises(SourcesMissing, match="silver.i3_alerts"):
+        resolve_sources([InputNeed("silver.i3_alerts", "all")], storage, "sample", STAMP, {})
+
+
+@pytest.mark.parametrize(
+    "missing", ["silver.i3_alert_active_periods", "silver.i3_alert_informed_entities"]
+)
+def test_missing_bundle_member_refuses_by_name(tmp_path, missing):
+    storage = store(tmp_path)
+    keys = alert_copies(storage)
+    bundle(storage, keys)
+    key = next(k for k in keys if missing in k)
+    (storage.root / key).unlink()
+    with pytest.raises(SourcesMissing, match=missing):
+        resolve_sources([InputNeed("silver.i3_alerts", "all")], storage, "sample", STAMP, {})
+
+
+def test_receipts_declared_inputs_resolve_after_r31():
+    from transit_ops.batch.build import BuildRequest, utc_days
+    from transit_ops.batch.replay import family_input_needs
+
+    # #1088 at 5973f4a, ReceiptsBuilder.inputs; the family has not merged on this base.
+    # Keep this contract fixture until the real builder lands; no family code changes.
+    class ReceiptsInputs:
+        family_id = "receipts"
+
+        def inputs(self, request):
+            return (
+                InputNeed("core.providers", "all"),
+                InputNeed("silver.i3_alerts", "all"),
+                *(InputNeed("gold.route_delay_spine", f"local:{d}") for d in request.local_dates),
+                *(InputNeed("gold.stop_delay_hourly", d) for d in utc_days(request)),
+            )
+
+    request = BuildRequest("sample", (datetime(2026, 11, 1).date(),), STAMP, 14, 7, "UTC")
+    from transit_ops.batch.families.receipts import builder
+
+    selected = builder if builder is not None else ReceiptsInputs()
+    assert InputNeed("silver.i3_alerts", "all") in family_input_needs([selected], request)
+
+
+def test_alert_fetch_manifest_pins_scoped_files_and_refuses_later_pruned_coverage(tmp_path):
+    from transit_ops.batch.build import BuildRequest
+    from transit_ops.batch.replay import validate_alert_bundle
+
+    storage = store(tmp_path)
+    bundle(storage, alert_copies(storage))
+    root = tmp_path / "inputs"
+    root.mkdir()
+    fetch_replay_inputs(
+        storage,
+        root,
+        "sample",
+        STAMP,
+        lambda _: [InputNeed("silver.i3_alerts", "all")],
+        bootstrap_editions=False,
+    )
+    request = BuildRequest("sample", (datetime(2026, 11, 1).date(),), STAMP, 14, 7, "UTC")
+    assert validate_alert_bundle(root, request)[0][0] == "alert-bundle.json"
+    document = json.loads((root / "alert-bundle.json").read_text())
+    document[0]["coverage_from_utc"] = "2026-11-02T00:00:00+00:00"
+    (root / "alert-bundle.json").write_text(json.dumps(document))
+    with pytest.raises(ValueError, match="alert_bundle_outside_coverage.*2026-11-01"):
+        validate_alert_bundle(root, request)
+
+
+def test_missing_fk_parent_refuses_by_name_before_load(tmp_path):
+    from types import SimpleNamespace
+
+    from transit_ops.batch.replay import validate_parent_rows
+
+    path = tmp_path / "child.parquet"
+    with duckdb.connect() as conn:
+        conn.execute("COPY (SELECT 99 AS i3_alert_snapshot_id) TO ? (FORMAT parquet)", [str(path)])
+
+    class Catalog:
+        def get_foreign_keys(self, table, schema):
+            return [
+                dict(
+                    constrained_columns=["i3_alert_snapshot_id"],
+                    referred_columns=["i3_alert_snapshot_id"],
+                    referred_schema="raw",
+                    referred_table="i3_alert_snapshots",
+                )
+            ]
+
+    with pytest.raises(ValueError, match="raw.i3_alert_snapshots"):
+        validate_parent_rows(
+            [SimpleNamespace(relation="silver.i3_alerts", files=[path])], Catalog()
+        )
+
+
+def test_new_bundle_replaces_all_members_at_its_actual_cutoff(tmp_path):
+    from datetime import timedelta
+
+    storage = store(tmp_path)
+    first = alert_copies(storage)
+    bundle(storage, first)
+    second = alert_copies(storage, version=2)
+    later = STAMP + timedelta(hours=1)
+    bundle(storage, second, later)
+    need = [InputNeed("silver.i3_alert_active_periods", "all")]
+    assert {s.key for s in resolve_sources(need, storage, "sample", STAMP, {})} == set(first)
+    assert {s.key for s in resolve_sources(need, storage, "sample", later, {})} == set(second)

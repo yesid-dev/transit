@@ -325,3 +325,38 @@ def recheck_window(
         _,
     ):
         return _copy(connection, statement, values)
+
+
+@contextmanager
+def export_group(
+    connection: Connection[Any],
+    specs: tuple[WindowSpec, ...],
+    destinations: tuple[Path, ...],
+    *,
+    statement_timeout_s: int,
+) -> Iterator[tuple[ExportedWindow, ...]]:
+    """Export a declared group in one owned read-only repeatable-read snapshot.
+
+    The caller consumes all files before leaving the context; no nested per-table
+    transactions or fresh clocks can split the source cut.
+    """
+    from transit_ops.lake.alert_bundle import validate_members
+
+    validate_members(specs)
+    if len(specs) != len(destinations):
+        raise ValueError("group destinations differ")
+    with _snapshot(connection, specs[0], statement_timeout_s) as snapshot:
+        at, version = snapshot[3:]
+        results = []
+        for spec, destination in zip(specs, destinations, strict=True):
+            _, source = _declaration(spec)
+            schema, text_keys = _catalog(connection, source, None)
+            statement, values = build_copy_statement(spec, schema, text_keys=text_keys)
+            with destination.open("xb") as output:
+                digest, size, rows = _copy(connection, statement, values, output)
+                output.flush()
+                os.fsync(output.fileno())
+            results.append(
+                ExportedWindow(spec, destination, digest, size, rows, schema, at, version)
+            )
+        yield tuple(results)

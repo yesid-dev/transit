@@ -4,6 +4,7 @@ Downloads use PrivateArea's R22c cleanup boundary, including its documented
 Windows nested-junction residual; same-user writers control the private area.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -26,7 +27,14 @@ from transit_ops.batch.fetch_inputs import fetch_inputs, needs_for_replay
 from transit_ops.batch.private_area import PrivateArea
 from transit_ops.history.datasets import HistoryDataset, TableSource, get_dataset
 from transit_ops.ingestion.storage import BronzeStorage
-from transit_ops.lake.archive_keys import parse_proof_key, table_copy_key, validate_provider_id
+from transit_ops.lake.alert_bundle import GROUP, MEMBERS, PREFIX, validate_members
+from transit_ops.lake.archive_keys import (
+    parse_proof_key,
+    proof_key,
+    table_copy_key,
+    validate_provider_id,
+)
+from transit_ops.lake.table_export import WindowSpec
 from transit_ops.settings import Settings
 
 
@@ -119,9 +127,10 @@ def archive_input_needs(
             and type(s.receipt.get("rows")) is int
             and s.receipt["rows"] == 0
             for s in sources
+            if any(n.relation == child.relation for n in s.needs)
         )
 
-    return parent_input_needs(needs, catalog, lambda child, _fk: populated(child))
+    return parent_input_needs(bundle_needs(needs), catalog, lambda child, _fk: populated(child))
 
 
 def replay_request(provider: str, day: str, as_of: str | None, settings: Settings) -> BuildRequest:
@@ -318,6 +327,67 @@ def _source_inventory(
     return _archive(storage, relation, provider)
 
 
+def bundle_needs(needs: Sequence[InputNeed]) -> tuple[InputNeed, ...]:
+    if any(n.relation in MEMBERS for n in needs):
+        return layout_needs(tuple(needs) + tuple(InputNeed(r, "all") for r in MEMBERS))
+    return tuple(needs)
+
+
+def _bundle_sources(storage: BronzeStorage, provider: str, as_of: datetime) -> tuple[Source, ...]:
+    candidates = []
+    for key in storage.list_keys(PREFIX):
+        payload = storage.read_bytes(key)
+        version = hashlib.sha256(payload).hexdigest()
+        if key != PREFIX + version + ".json":
+            raise ValueError(f"invalid bundle digest: {key}")
+        value = json.loads(payload)
+        if value.get("format_version") != 1 or value.get("kind") != GROUP:
+            raise ValueError(f"invalid bundle: {key}")
+        stamp = datetime.fromisoformat(value["snapshot_at_utc"])
+        if stamp.utcoffset() is None:
+            raise ValueError(f"invalid snapshot time: {key}")
+        if stamp <= as_of and any(m.get("provider_id") == provider for m in value["members"]):
+            candidates.append((stamp, version, value))
+    if not candidates:
+        raise SourcesMissing([InputNeed(r, "all") for r in MEMBERS])
+    stamp, version, value = max(candidates, key=lambda c: (c[0], c[1]))
+    records = [m for m in value["members"] if m["provider_id"] in (provider, "_shared")]
+    validate_members(
+        [
+            WindowSpec(m["dataset_id"], m["provider_id"], m["window_key"], m["revision"])
+            for m in records
+        ]
+    )
+    result = []
+    for m in records:
+        key = m["key"]
+        expected = table_copy_key(
+            m["dataset_id"],
+            m["provider_id"],
+            m["revision"],
+            "month",
+            m["window_key"],
+            m["content_version"],
+            m["schema_version"],
+        )
+        if key != expected:
+            raise ValueError(f"bundle member identity: {m['dataset_id']}")
+        if not storage.exists(proof_key(key)) or not storage.exists(key):
+            raise SourcesMissing([InputNeed(m["dataset_id"], "all")])
+        if _document(storage, proof_key(key)) != m:
+            raise ValueError(f"bundle member proof differs: {m['dataset_id']}")
+        _verified(m, key)
+        receipt = dict(
+            m,
+            bundle_version=version,
+            bundle_snapshot_at_utc=stamp.isoformat(),
+            bundle_coverage_from_utc=value["coverage_from_utc"],
+            replay_provider=provider,
+        )
+        result.append(Source(key, receipt, (InputNeed(m["dataset_id"], "all"),)))
+    return tuple(result)
+
+
 def resolve_sources(
     needs: Sequence[InputNeed],
     storage: BronzeStorage,
@@ -331,6 +401,10 @@ def resolve_sources(
         raise ValueError("as_of must be timezone-aware")
     as_of = as_of.astimezone(UTC)
     inventories, selected, missing = {}, {}, []
+    if any(n.relation in MEMBERS for n in needs):
+        for source in _bundle_sources(storage, provider, as_of):
+            selected[source.key] = source
+        needs = tuple(n for n in needs if n.relation not in MEMBERS)
     for need in needs:
         rescued = _rescue(need, storage, provider)
         if rescued:
@@ -522,13 +596,45 @@ def materialize(
         conn.execute("SET TimeZone='UTC'")
         for index, source in enumerate(sources):
             path = paths[source.key]
+            conn.execute("DROP VIEW IF EXISTS input")
             conn.from_parquet(str(path), hive_partitioning=False).create_view("input", replace=True)
             relation = source.needs[0].relation
+            if relation in MEMBERS:
+                provider = source.receipt["replay_provider"]
+                if relation == "silver.i3_alert_active_periods":
+                    parent = next(s for s in sources if s.needs[0].relation == "silver.i3_alerts")
+                    conn.from_parquet(str(paths[parent.key]), hive_partitioning=False).create_view(
+                        "alert_parents", replace=True
+                    )
+                    conn.execute(
+                        f"CREATE OR REPLACE TEMP TABLE scoped_rows_{index} AS "
+                        "SELECT c.* FROM input c WHERE EXISTS (SELECT 1 FROM alert_parents p "
+                        "WHERE p.provider_id=? AND p.i3_alert_snapshot_id=c.i3_alert_snapshot_id "
+                        "AND p.alert_index=c.alert_index)",
+                        [provider],
+                    )
+                else:
+                    conn.execute(
+                        f"CREATE OR REPLACE TEMP TABLE scoped_rows_{index} AS "
+                        "SELECT * FROM input WHERE provider_id=?",
+                        [provider],
+                    )
+                total = conn.execute("SELECT count(*) FROM input").fetchone()[0]
+                # Materialize before replacing the input view to avoid a recursive view.
+                conn.execute(
+                    f"CREATE OR REPLACE TEMP VIEW input AS SELECT * FROM scoped_rows_{index}"
+                )
             schema = conn.execute("DESCRIBE input").fetchall()
             if relation in schemas and schema != schemas[relation]:
                 raise ValueError(f"Parquet schema differs: {relation} {path}")
             schemas[relation] = schema
             receipt, parts = _filter_window(conn, source, path, index, as_of, whole)
+            if relation in MEMBERS:
+                receipt.update(
+                    rows_dropped=total - int(receipt["rows_kept"]),
+                    bundle_version=source.receipt["bundle_version"],
+                    snapshot_at_utc=source.receipt["bundle_snapshot_at_utc"],
+                )
             receipts.append(receipt)
             for need, part in parts.items():
                 targets[need].append(part)
@@ -579,8 +685,33 @@ def fetch_replay_inputs(
             if source.key not in paths:
                 paths[source.key] = _download(source, storage, area / str(index))
         receipts = materialize(sources, paths, root, as_of)
+        bundles = {
+            s.receipt["bundle_version"]: dict(
+                version=s.receipt["bundle_version"],
+                snapshot_at_utc=s.receipt["bundle_snapshot_at_utc"],
+                coverage_from_utc=s.receipt["bundle_coverage_from_utc"],
+                members=[
+                    dict(key=m.key, object_sha256=m.receipt["object_sha256"])
+                    for m in sources
+                    if m.needs[0].relation in MEMBERS
+                ],
+                files={
+                    r: hashlib.sha256((root / r / "all.parquet").read_bytes()).hexdigest()
+                    for r in MEMBERS
+                },
+            )
+            for s in sources
+            if s.needs[0].relation in MEMBERS
+        }
+        if bundles:
+            (root / "alert-bundle.json").write_text(
+                json.dumps(list(bundles.values()), sort_keys=True), encoding="utf8"
+            )
     return dict(
-        needs=[dict(relation=n.relation, window=n.window) for n in layout_needs(needs)],
+        needs=[
+            dict(relation=n.relation, window=n.window)
+            for n in layout_needs(tuple(n for s in sources for n in s.needs))
+        ],
         absent_unread=absent_unread(needs),
         receipts=receipts,
         bytes=sum(int(source.receipt["object_bytes"]) for source in sources),
