@@ -16,9 +16,9 @@ STAMP = datetime(2026, 11, 10, 12, 0, 0, 123456, UTC)
 EDITION = 98280004
 
 
-def request(days=(DAY, DAY + timedelta(days=1), DAY + timedelta(days=7))):
+def request(days=(DAY, DAY + timedelta(days=1), DAY + timedelta(days=7)), provider_id="seed"):
     return BuildRequest(
-        "seed",
+        provider_id,
         days,
         STAMP,
         14,
@@ -70,16 +70,16 @@ def _seed_facts():
     return facts
 
 
-def seed_data(req):
+def seed_data(req, provider_id="seed"):
     trips, facts = _seed_trips(), _seed_facts()
-    prefix = (EDITION, "seed")
+    prefix = (EDITION, provider_id)
     return {
         "core.dataset_versions": (
             "dataset_version_id BIGINT, provider_id TEXT, dataset_kind TEXT, "
             "is_current BOOLEAN, loaded_at_utc TIMESTAMPTZ",
             [
-                (EDITION, "seed", "static_schedule", True, STAMP),
-                (EDITION + 1, "seed", "static_schedule", False, STAMP),
+                (EDITION, provider_id, "static_schedule", True, STAMP),
+                (EDITION + 1, provider_id, "static_schedule", False, STAMP),
             ],
         ),
         "silver.trips": (
@@ -105,7 +105,7 @@ def seed_data(req):
             "provider_id TEXT, route_id TEXT, trip_id TEXT, start_date DATE, "
             "trip_schedule_relationship SMALLINT, snapshot_date_key INTEGER, "
             "captured_at_utc TIMESTAMPTZ",
-            [("seed", *row[:-1], datetime.fromisoformat(row[-1])) for row in facts],
+            [(provider_id, *row[:-1], datetime.fromisoformat(row[-1])) for row in facts],
         ),
     }
 
@@ -182,7 +182,7 @@ def test_calendar_exceptions_service_states_and_exact_halfway_rate(tmp_path):
     assert assert_math(output, seed_data(req)) == (0, 0)
 
 
-def assert_math(output, data):
+def assert_math(output, data, provider_id="seed"):
     raw = data["gold.fact_trip_delay_snapshot"][1]
     excess_days, total_excess = 0, 0
     for row in output.tables["gold.route_cancellation_daily"].rows:
@@ -190,7 +190,13 @@ def assert_math(output, data):
         trips = {}
         keys = {int(day.strftime("%Y%m%d")), int((day + timedelta(days=1)).strftime("%Y%m%d"))}
         for p, r, trip, service, relationship, key, _ in raw:
-            if p == "seed" and r == route and trip is not None and service == day and key in keys:
+            if (
+                p == provider_id
+                and r == route
+                and trip is not None
+                and service == day
+                and key in keys
+            ):
                 trips[trip] = trips.get(trip, False) or relationship == 3
         assert total == len(trips) and canceled == sum(trips.values())
         assert all(type(n) is int and n >= 0 for n in (total, canceled, delivered))
@@ -329,25 +335,32 @@ def test_only_the_enabled_weekday_runs(tmp_path, weekday):
     assert_math(output, data)
 
 
-def retention_case():
+def retention_case(provider_id="seed"):
     day = date(2026, 10, 28)
-    req = replace(request((day,)), as_of_utc=datetime(2026, 11, 10, tzinfo=UTC), timezone="Etc/UTC")
-    data = seed_data(req)
+    req = replace(
+        request((day,), provider_id),
+        as_of_utc=datetime(2026, 11, 10, tzinfo=UTC),
+        timezone="Etc/UTC",
+    )
+    data = seed_data(req, provider_id)
     ddl, _ = data["gold.fact_trip_delay_snapshot"]
     data["gold.fact_trip_delay_snapshot"] = (
         ddl,
-        [("seed", "cutoff", "t", day, 3, 20261028, datetime(2026, 10, 27, tzinfo=UTC))],
+        [(provider_id, "cutoff", "t", day, 3, 20261028, datetime(2026, 10, 27, tzinfo=UTC))],
     )
     return req, data
 
 
-def test_retention_cutoff_fact_is_kept(tmp_path):
-    req, data = retention_case()
+@pytest.mark.parametrize("provider_id", ["seed", "cancellations_service_states_seed"])
+def test_retention_cutoff_fact_is_kept(tmp_path, provider_id):
+    req, data = retention_case(provider_id)
     day = req.local_dates[0]
     write_inputs(tmp_path, req, data)
-    actual = build(tmp_path, req).tables["gold.route_cancellation_daily"].rows
+    output = build(tmp_path, req)
+    assert_math(output, data, provider_id)
+    actual = output.tables["gold.route_cancellation_daily"].rows
     assert actual == (
-        ("seed", day, "cutoff", 1, 1, Decimal("100.00"), req.as_of_utc, None, 0, None),
+        (provider_id, day, "cutoff", 1, 1, Decimal("100.00"), req.as_of_utc, None, 0, None),
     )
 
 

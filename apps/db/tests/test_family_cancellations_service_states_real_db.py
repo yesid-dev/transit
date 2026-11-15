@@ -23,10 +23,26 @@ from transit_ops.gold import rollups
 from transit_ops.lake.parquet_codec import write_window
 from transit_ops.lake.table_export import WindowSpec, export_window
 
+PROVIDER = "cancellations_service_states_seed"
+RELATIONS = (
+    *builder.tables,
+    "gold.warm_rollup_periods",
+    "gold.fact_trip_delay_snapshot",
+    "silver.trips",
+    "silver.routes",
+    "silver.calendar",
+    "silver.calendar_dates",
+    "core.dataset_versions",
+    "raw.realtime_snapshot_index",
+    "raw.ingestion_runs",
+    "core.feed_endpoints",
+    "core.providers",
+)
+
 
 def seed_inputs(conn, seed_provider, req, data):
-    seed_provider(conn, "seed", display_name="Service states seed", timezone=req.timezone)
-    params = dict(p="seed", e=98280001, r=98280002, s=98280003, ts=req.as_of_utc, n=100)
+    seed_provider(conn, PROVIDER, display_name="Service states seed", timezone=req.timezone)
+    params = dict(p=PROVIDER, e=98280001, r=98280002, s=98280003, ts=req.as_of_utc, n=100)
     real_db_seed.feed_endpoints(conn, params)
     real_db_seed.ingestion_runs(conn, params)
     real_db_seed.realtime_snapshot_index(conn, params)
@@ -43,9 +59,9 @@ def seed_inputs(conn, seed_provider, req, data):
             text(
                 "INSERT INTO silver.routes "
                 "(dataset_version_id, provider_id, route_id, route_type) "
-                "VALUES (:d,'seed',:route,3)"
+                "VALUES (:d,:provider,:route,3)"
             ),
-            dict(d=edition, route=route),
+            dict(d=edition, route=route, provider=PROVIDER),
         )
     for relation, (ddl, rows) in data.items():
         if relation.startswith("core."):
@@ -85,7 +101,7 @@ def export_inputs(engine, req, root):
         with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
             exported = export_window(
                 conn.connection.driver_connection,
-                WindowSpec(need.relation, "seed", window),
+                WindowSpec(need.relation, PROVIDER, window),
                 path.with_suffix(".csv"),
                 statement_timeout_s=60,
             )
@@ -96,20 +112,20 @@ def export_inputs(engine, req, root):
 def test_family_matches_postgres_with_calendar_and_lagged_capture(
     real_db_engine, seed_provider, tmp_path, at_cutoff
 ):
-    req = request()
-    data = seed_data(req)
+    req = request(provider_id=PROVIDER)
+    data = seed_data(req, PROVIDER)
     if at_cutoff:
-        req, data = retention_case()
-    with real_db_engine.begin() as conn:
-        seed_inputs(conn, seed_provider, req, data)
+        req, data = retention_case(PROVIDER)
     try:
+        with real_db_engine.begin() as conn:
+            seed_inputs(conn, seed_provider, req, data)
         with real_db_engine.begin() as conn:
             for day in req.local_dates:
                 for relation in builder.tables:
                     name = relation.removeprefix("gold.")
                     rollups._write_daily_rollup(
                         conn,
-                        provider_id="seed",
+                        provider_id=PROVIDER,
                         rollup_kind=name,
                         upsert=rollups.REBUILDABLE_KINDS[name].upsert,
                         local_date=day,
@@ -119,39 +135,37 @@ def test_family_matches_postgres_with_calendar_and_lagged_capture(
                     )
         export_inputs(real_db_engine, req, tmp_path)
         actual = build(tmp_path, req)
-        assert_math(actual, data)
+        assert_math(actual, data, PROVIDER)
         with real_db_engine.connect() as conn:
             for relation, table in actual.tables.items():
                 expected = read_table_rows(
-                    conn, relation, table.key, provider_id="seed", local_dates=req.local_dates
+                    conn, relation, table.key, provider_id=PROVIDER, local_dates=req.local_dates
                 )
                 assert compare_tables(expected, table) == [], relation
     finally:
         with real_db_engine.begin() as conn:
-            for relation in (
-                *builder.tables,
-                "gold.warm_rollup_periods",
-                "gold.fact_trip_delay_snapshot",
-                "silver.trips",
-                "silver.routes",
-                "silver.calendar",
-                "silver.calendar_dates",
-                "core.dataset_versions",
-                "raw.realtime_snapshot_index",
-                "raw.ingestion_runs",
-                "core.feed_endpoints",
-                "core.providers",
-            ):
-                conn.execute(text(f"DELETE FROM {relation} WHERE provider_id='seed'"))
+            for relation in RELATIONS:
+                conn.execute(
+                    text(f"DELETE FROM {relation} WHERE provider_id = :provider"),
+                    {"provider": PROVIDER},
+                )
+        with real_db_engine.connect() as conn:
+            for relation in RELATIONS:
+                count = conn.execute(
+                    text(f"SELECT COUNT(*) FROM {relation} WHERE provider_id = :provider"),
+                    {"provider": PROVIDER},
+                ).scalar_one()
+                assert count == 0, f"{relation} leaked {count} rows for {PROVIDER}"
 
 
-def test_seed_editions_have_exportable_checksums(real_db_engine, tmp_path):
+def test_seed_editions_have_exportable_checksums(real_db_engine, tmp_path, monkeypatch):
     from test_revision_2_both_engines_real_db import _export_inputs, _seed_request
 
-    with real_db_engine.begin() as conn:
-        for provider in seed.PROVIDERS.values():
-            seed._seed_provider(conn, provider, alerts=False)
+    monkeypatch.setattr(seed, "PROVIDERS", {kind: f"{PROVIDER}_{kind}" for kind in seed.PROVIDERS})
     try:
+        with real_db_engine.begin() as conn:
+            for provider in seed.PROVIDERS.values():
+                seed._seed_provider(conn, provider, alerts=False)
         with real_db_engine.connect() as conn:
             editions = conn.execute(
                 text(
@@ -180,3 +194,12 @@ def test_seed_editions_have_exportable_checksums(real_db_engine, tmp_path):
             assert rows == [(edition, provider, "ETE", *seed.SEASON)]
     finally:
         seed.delete_rows(real_db_engine)
+        with real_db_engine.connect() as conn:
+            relations = conn.execute(text(seed._TABLES_SQL)).scalars().all()
+            for relation in relations:
+                for provider in seed.PROVIDERS.values():
+                    count = conn.execute(
+                        text(f"SELECT COUNT(*) FROM {relation} WHERE provider_id = :provider"),
+                        {"provider": provider},
+                    ).scalar_one()
+                    assert count == 0, f"{relation} leaked {count} rows for {provider}"

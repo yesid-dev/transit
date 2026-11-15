@@ -199,8 +199,8 @@ def test_real_family_shadow_command_rerun_preserves_verified_objects(tmp_path, m
 
     from test_family_occupancy_crowding import DAY, REQUEST, write_inputs
 
-    request = replace(REQUEST, local_dates=(DAY,))
-    write_inputs(tmp_path / "inputs", request)
+    request = replace(REQUEST, local_dates=(DAY,), provider_id="shadow_command_seed")
+    write_inputs(tmp_path / "inputs", request, provider_id=request.provider_id)
     root = tmp_path / "objects"
     root.mkdir()
     monkeypatch.setenv("BRONZE_STORAGE_BACKEND", "local")

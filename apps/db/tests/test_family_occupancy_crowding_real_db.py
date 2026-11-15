@@ -23,16 +23,30 @@ from transit_ops.gold import rollups
 from transit_ops.lake.parquet_codec import write_window
 from transit_ops.lake.table_export import WindowSpec, export_window
 
+PROVIDER = "occupancy_crowding_seed"
+RELATIONS = (
+    *builder.tables,
+    "gold.warm_rollup_periods",
+    "gold.fact_vehicle_snapshot",
+    "gold.fact_trip_delay_snapshot",
+    "raw.realtime_snapshot_index",
+    "raw.ingestion_runs",
+    "core.feed_endpoints",
+    "core.providers",
+)
 
-def seed_facts(conn, seed_provider, request, rows, feed_stamps):
-    seed_provider(conn, "seed", display_name="Occupancy seed", timezone=request.timezone)
-    params = dict(p="seed", e=98110001, r=98110002, s=98110003, ts=request.as_of_utc, n=len(rows))
+
+def seed_facts(conn, seed_provider, request, rows, feed_stamps, *, provider_id):
+    seed_provider(conn, provider_id, display_name="Occupancy seed", timezone=request.timezone)
+    params = dict(
+        p=provider_id, e=98110001, r=98110002, s=98110003, ts=request.as_of_utc, n=len(rows)
+    )
     real_db_seed.feed_endpoints(conn, params)
     real_db_seed.ingestion_runs(conn, params)
     real_db_seed.realtime_snapshot_index(conn, params)
     for index, (route, stop, occupancy, delay, capture, key) in enumerate(rows):
         values = dict(
-            p="seed",
+            p=provider_id,
             s=params["s"],
             i=index,
             route=route,
@@ -62,7 +76,7 @@ def seed_facts(conn, seed_provider, request, rows, feed_stamps):
             name = relation.removeprefix("gold.")
             rollups._write_daily_rollup(
                 conn,
-                provider_id="seed",
+                provider_id=provider_id,
                 rollup_kind=name,
                 upsert=rollups.REBUILDABLE_KINDS[name].upsert,
                 local_date=day,
@@ -83,9 +97,10 @@ def test_family_matches_postgres_on_exported_fallback_inputs(
         zone, feed, capture, hour = skew
         request = replace(REQUEST, local_dates=(DAY,), timezone=zone)
         rows, feeds = [("A", "S", 1, 1, capture, 20261101)], [feed]
-    with real_db_engine.begin() as conn:
-        seed_facts(conn, seed_provider, request, rows, feeds)
+    request = replace(request, provider_id=PROVIDER)
     try:
+        with real_db_engine.begin() as conn:
+            seed_facts(conn, seed_provider, request, rows, feeds, provider_id=PROVIDER)
         # The exporter owns a read-only transaction on an idle autocommit connection.
         with real_db_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
             for need in builder.inputs(request):
@@ -96,7 +111,7 @@ def test_family_matches_postgres_on_exported_fallback_inputs(
                 )
                 exported = export_window(
                     conn.connection.driver_connection,
-                    WindowSpec(need.relation, "seed", window),
+                    WindowSpec(need.relation, PROVIDER, window),
                     path.with_suffix(".csv"),
                     statement_timeout_s=60,
                 )
@@ -109,25 +124,26 @@ def test_family_matches_postgres_on_exported_fallback_inputs(
         with real_db_engine.connect() as conn:
             for relation, rows in actual.output.tables.items():
                 expected = read_table_rows(
-                    conn, relation, rows.key, provider_id="seed", local_dates=request.local_dates
+                    conn, relation, rows.key, provider_id=PROVIDER, local_dates=request.local_dates
                 )
                 assert compare_tables(expected, rows) == [], relation
                 if skew and relation in builder.tables[:3]:
                     assert expected.rows == (
                         expected_occupancy_row(
-                            relation, hour, request.local_dates[0], request.as_of_utc
+                            relation, hour, request.local_dates[0], request.as_of_utc, PROVIDER
                         ),
                     )
     finally:
         with real_db_engine.begin() as conn:
-            for relation in (
-                *builder.tables,
-                "gold.warm_rollup_periods",
-                "gold.fact_vehicle_snapshot",
-                "gold.fact_trip_delay_snapshot",
-                "raw.realtime_snapshot_index",
-                "raw.ingestion_runs",
-                "core.feed_endpoints",
-                "core.providers",
-            ):
-                conn.execute(text(f"DELETE FROM {relation} WHERE provider_id='seed'"))
+            for relation in RELATIONS:
+                conn.execute(
+                    text(f"DELETE FROM {relation} WHERE provider_id = :provider"),
+                    {"provider": PROVIDER},
+                )
+        with real_db_engine.connect() as conn:
+            for relation in RELATIONS:
+                count = conn.execute(
+                    text(f"SELECT COUNT(*) FROM {relation} WHERE provider_id = :provider"),
+                    {"provider": PROVIDER},
+                ).scalar_one()
+                assert count == 0, f"{relation} leaked {count} rows for {PROVIDER}"
