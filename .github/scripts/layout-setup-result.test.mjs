@@ -62,7 +62,7 @@ function setupJobs() {
 }
 test("setup failures identify the shard and failed step; actual layout failures retain the existing path", () => {
   assert.match(
-    classifyLayoutJobs(setupJobs()),
+    classifyLayoutJobs(setupJobs()).setup,
     /post-deploy-layout \(4\): Set up JS workspace/,
   );
   const all = setupJobs();
@@ -70,13 +70,21 @@ test("setup failures identify the shard and failed step; actual layout failures 
     { name: "Plan layout shards", conclusion: "failure" },
     { name: "layout", conclusion: "skipped" },
   ];
-  assert.match(classifyLayoutJobs(all), /Plan layout shards/);
+  assert.match(classifyLayoutJobs(all).setup, /Plan layout shards/);
+  all[3].steps = [
+    { name: "Build layout test app", conclusion: "failure" },
+    { name: "layout", conclusion: "skipped" },
+  ];
+  assert.match(classifyLayoutJobs(all).setup, /Build layout test app/);
   all[3].steps = [{ name: "layout", conclusion: "failure" }];
-  assert.equal(classifyLayoutJobs(all), null);
+  assert.equal(classifyLayoutJobs(all).setup, null);
   all[3].steps = [];
-  assert.match(classifyLayoutJobs(all), /initialization/);
+  assert.match(classifyLayoutJobs(all).setup, /initialization/);
   assert.throws(() => classifyLayoutJobs(all.slice(1)), /Incomplete/);
-  assert.equal(classifyLayoutJobs(jobs()), null);
+  assert.deepEqual(classifyLayoutJobs(jobs()), {
+    setup: null,
+    layoutFailure: false,
+  });
 });
 test("attempt-specific metadata failure cannot masquerade as a layout regression", () => {
   const env = {
@@ -92,17 +100,17 @@ test("attempt-specific metadata failure cannot masquerade as a layout regression
     );
     return JSON.stringify([{ jobs: setupJobs() }]);
   };
-  assert.match(setupFailureDetails(env, execute), /\(4\)/);
+  assert.match(setupFailureDetails(env, execute).setup, /\(4\)/);
   assert.match(
     setupFailureDetails(env, () => {
       throw Error("403");
-    }),
+    }).setup,
     /unavailable/,
   );
   assert.match(
     setupFailureDetails({ ...env, GITHUB_RUN_ATTEMPT: "2" }, () =>
       JSON.stringify([{ jobs: setupJobs() }]),
-    ),
+    ).setup,
     /unavailable/,
   );
 });
@@ -186,6 +194,48 @@ test("real test failure still publishes today's alert and rollback command", () 
     );
     assert.match(alert[3], /Deployment verification failed/);
     assert.match(alert[4], /gh workflow run rollback/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("mixed setup and layout failures publish both distinct alerts", () => {
+  const root = mkdtempSync(join(tmpdir(), "transit-mixed-alert-"));
+  try {
+    const all = setupJobs();
+    all[4].conclusion = "failure";
+    all[4].steps[0].conclusion = "failure";
+    const diagnosis = classifyLayoutJobs(all);
+    assert.match(diagnosis.setup, /\(4\)/);
+    assert.equal(diagnosis.layoutFailure, true);
+    const alerts = [];
+    const execute = (cmd, args) => {
+      if (cmd === "gh") return JSON.stringify([{ jobs: all }]);
+      alerts.push(args);
+      return "";
+    };
+    assert.throws(
+      () =>
+        reportAttempt(
+          {
+            GH_REPO: "yesid-dev/transit",
+            GITHUB_SHA: "a".repeat(40),
+            GITHUB_RUN_ID: "123",
+            GITHUB_RUN_ATTEMPT: "1",
+            LAYOUT_RESULT: "failure",
+            DEPLOY_RESULT: "success",
+            HEALTH_RESULT: "success",
+            GITHUB_STEP_SUMMARY: join(root, "summary"),
+          },
+          execute,
+        ),
+      /rollback command recorded/,
+    );
+    assert.equal(alerts.length, 2);
+    assert.match(alerts[0][3], /could not run/);
+    assert.doesNotMatch(alerts[0][4], /rollback/i);
+    assert.match(alerts[1][3], /Deployment verification failed/);
+    assert.match(alerts[1][4], /rollback/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

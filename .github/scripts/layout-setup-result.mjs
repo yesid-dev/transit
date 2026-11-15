@@ -6,14 +6,21 @@ export function classifyLayoutJobs(jobs) {
   if (shards.length !== 12 || new Set(shards.map((j) => j.name)).size !== 12)
     throw new Error("Incomplete post-deploy shard evidence");
   const failures = [];
+  let layoutFailure = false;
   for (const job of shards) {
     if (job.status !== "completed")
       throw new Error("Incomplete post-deploy job");
     if (job.conclusion === "success") continue;
     const layout = job.steps?.find((step) => step.name === "layout");
     // Once the layout command started, retain today's layout-failure behavior.
-    if (layout && layout.conclusion !== "skipped" && layout.conclusion !== null)
-      return null;
+    if (
+      layout &&
+      layout.conclusion !== "skipped" &&
+      layout.conclusion !== null
+    ) {
+      layoutFailure = true;
+      continue;
+    }
     const step = job.steps?.find((s) =>
       ["failure", "cancelled", "timed_out"].includes(s.conclusion),
     );
@@ -21,7 +28,7 @@ export function classifyLayoutJobs(jobs) {
       `${job.name}: ${step?.name ?? "container/job initialization (no step evidence)"} (${job.conclusion})`,
     );
   }
-  return failures.length ? failures.join("\n") : null;
+  return { setup: failures.length ? failures.join("\n") : null, layoutFailure };
 }
 
 export function setupFailureDetails(env, execute) {
@@ -51,6 +58,10 @@ export function setupFailureDetails(env, execute) {
       throw new Error("Wrong attempt evidence");
     return classifyLayoutJobs(jobs);
   } catch {
-    return "Shard/step evidence unavailable: could not authenticate complete attempt-specific job metadata.";
+    return {
+      setup:
+        "Shard/step evidence unavailable: could not authenticate complete attempt-specific job metadata; layout coverage is unconfirmed.",
+      layoutFailure: false,
+    };
   }
 }

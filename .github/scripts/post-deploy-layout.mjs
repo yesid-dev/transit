@@ -44,7 +44,11 @@ export async function verifyDeployedSha(
   }
 }
 
-export function report(env = process.env, execute = execFileSync) {
+export function report(
+  env = process.env,
+  execute = execFileSync,
+  { throwOnFailure = true } = {},
+) {
   if (
     !/^[\w.-]+\/[\w.-]+$/.test(env.GH_REPO ?? "") ||
     !/^[a-f0-9]{40}$/.test(env.GITHUB_SHA ?? "") ||
@@ -63,7 +67,7 @@ export function report(env = process.env, execute = execFileSync) {
     env.DEPLOY_RESULT !== "success" || env.LAYOUT_RESULT !== "success";
   const setup = env.LAYOUT_SETUP_FAILURE || null;
   const body = setup
-    ? `Verification could not run for SHA ${env.GITHUB_SHA}.\nLayout was not checked on the affected shards.\n${setup}\nHealth checks: ${env.HEALTH_RESULT === "success" ? "passed" : env.HEALTH_RESULT === "failure" ? "failed" : "not confirmed (" + (env.HEALTH_RESULT ?? "unknown") + ")"}.\nRun: ${url}, attempt ${env.GITHUB_RUN_ATTEMPT}.`
+    ? `Verification could not run for SHA ${env.GITHUB_SHA}.\n${setup.startsWith("Shard/step evidence unavailable:") ? "Whether layout ran could not be confirmed." : "Layout was not checked on the affected shards."}\n${setup}\nHealth checks: ${env.HEALTH_RESULT === "success" ? "passed" : env.HEALTH_RESULT === "failure" ? "failed" : "not confirmed (" + (env.HEALTH_RESULT ?? "unknown") + ")"}.\nRun: ${url}, attempt ${env.GITHUB_RUN_ATTEMPT}.`
     : `Deployment verification for SHA ${env.GITHUB_SHA}: ${env.DEPLOY_RESULT ?? "unknown"}.\nFull layout grid: ${env.LAYOUT_RESULT}.\nRun: ${url}, attempt ${env.GITHUB_RUN_ATTEMPT}.\n\nRollback command (${validVersion ? "captured pre-deployment Worker version" : "previous Worker version; captured target unavailable"}):\n\n\`\`\`sh\n${command}\n\`\`\``;
   appendFileSync(env.GITHUB_STEP_SUMMARY, `${body}\n`);
   const helper = fileURLToPath(new URL("./alert-issue.sh", import.meta.url));
@@ -86,7 +90,7 @@ export function report(env = process.env, execute = execFileSync) {
       ["issue", "comment", existing[1], "--repo", env.GH_REPO, "--body", body],
       { env, encoding: "utf8" },
     );
-  if (failed)
+  if (failed && throwOnFailure)
     throw new Error(
       setup
         ? "Layout verification could not run; setup alert published"
@@ -95,12 +99,22 @@ export function report(env = process.env, execute = execFileSync) {
 }
 
 export function reportAttempt(env = process.env, execute = execFileSync) {
-  const setup = ["failure", "cancelled", "timed_out"].includes(
+  const diagnosis = ["failure", "cancelled", "timed_out"].includes(
     env.LAYOUT_RESULT,
   )
     ? setupFailureDetails(env, execute)
-    : null;
-  return report({ ...env, LAYOUT_SETUP_FAILURE: setup }, execute);
+    : { setup: null, layoutFailure: false };
+  if (diagnosis.setup && diagnosis.layoutFailure)
+    report({ ...env, LAYOUT_SETUP_FAILURE: diagnosis.setup }, execute, {
+      throwOnFailure: false,
+    });
+  return report(
+    {
+      ...env,
+      LAYOUT_SETUP_FAILURE: diagnosis.layoutFailure ? null : diagnosis.setup,
+    },
+    execute,
+  );
 }
 
 if (

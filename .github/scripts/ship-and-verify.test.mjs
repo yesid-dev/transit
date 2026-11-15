@@ -18,7 +18,14 @@ test("production and queue gates keep the complete PR grid out of the deploy pat
   assert.match(job("post-deploy-layout"), /needs: \[deploy-production\]/);
   assert.match(job("post-deploy-layout"), /steps: \*layout-steps/);
   assert.match(job("layout"), /steps: &layout-steps/);
-  assert.match(job("layout"), /test:e2e:layout/);
+  assert.match(
+    job("layout"),
+    /bun x playwright test -c e2e\/playwright.config.ts --project=layout-\* --workers=2 --test-list=/,
+  );
+  assert.ok(
+    job("layout").indexOf("name: Build layout test app") <
+      job("layout").indexOf("name: layout\n"),
+  );
   assert.match(
     job("post-deploy-layout"),
     /shard: \[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12\]/,

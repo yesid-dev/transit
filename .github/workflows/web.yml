@@ -497,11 +497,14 @@ jobs:
           env -u PLAYWRIGHT_JSON_OUTPUT_NAME bun x playwright test -c e2e/playwright.config.ts --project=layout-* --workers=2 --list --reporter=json > "$RUNNER_TEMP/layout-plan/catalog.json"
           node ../../.github/scripts/layout-shards.mjs plan "$RUNNER_TEMP/layout-plan/catalog.json" "$RUNNER_TEMP/layout-plan" 12
 
+      - name: Build layout test app
+        run: bun run build --mode e2e
+
       - name: layout
         id: layout
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/layout-timing/report.json
-        run: bun run test:e2e:layout --test-list="$RUNNER_TEMP/layout-plan/shard-${{ matrix.shard }}.txt"
+        run: bun x playwright test -c e2e/playwright.config.ts --project=layout-* --workers=2 --test-list="$RUNNER_TEMP/layout-plan/shard-${{ matrix.shard }}.txt"
 
       - name: Record layout timing provenance
         if: ${{ always() && steps.layout.outcome != 'skipped' && steps.layout.outcome != '' }}
