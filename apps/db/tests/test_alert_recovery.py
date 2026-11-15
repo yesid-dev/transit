@@ -1,5 +1,6 @@
 from dataclasses import replace
 from datetime import UTC, date, datetime
+from itertools import permutations
 
 import pytest
 
@@ -9,6 +10,7 @@ from transit_ops.history.alert_recovery_models import (
     Candidate,
     RecoveryReport,
     SourceReport,
+    select_candidates,
     unrecovered_ids,
 )
 
@@ -100,3 +102,63 @@ def test_planner_refuses_invalid_evidence_before_using_connection(provider, repo
             source_reports=reports,
             recovered_at_utc=NOW,
         )
+
+
+def test_first_seen_only_ties_choose_earliest_evidenced_locator_and_rehash():
+    earliest = replace(candidate("p", kind="published"), source_locator="earliest-page")
+    later = replace(
+        candidate("p"),
+        record={**earliest.record, "first_seen_utc": "2020-01-03T00:00:00Z"},
+        source_locator="later-backup",
+    )
+    stale_hash = replace(earliest, record={**earliest.record, "content_hash": "stale"})
+    for evidence in permutations([later, stale_hash, candidate("p", kind="capture")]):
+        selected, conflicts = select_candidates(evidence, provider_id="p")
+        assert conflicts == ()
+        assert selected == [earliest]
+        assert selected[0].record["content_hash"] == earliest.record["content_hash"]
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"description_text": "Changed"},
+        {"header_text_en": "Changed"},
+        {"archive_month": date(2020, 2, 1)},
+        {
+            "message": {
+                "snapshot_id": "different",
+                "alert_index": 1,
+                "captured_utc": "2026-11-01T00:00:00Z",
+            }
+        },
+        {"route_ids": ["route"]},
+        {"stop_ids": ["stop"]},
+        {"active_periods": [{"start_utc": "2020-01-02T00:00:00Z", "end_utc": None}]},
+        {"url": "https://example.invalid/alert"},
+    ],
+)
+def test_first_seen_difference_does_not_hide_other_disagreements(changes):
+    original = candidate("p")
+    row = {**original.record, "first_seen_utc": "2020-01-03T00:00:00Z", **changes}
+    different = replace(original, archive_month=row["archive_month"], record=row)
+    for evidence in ([original, different], [different, original]):
+        assert select_candidates(evidence, provider_id="p") == ([], ("a",))
+
+
+def test_newest_last_seen_wins_before_first_seen_policy():
+    old = candidate("p")
+    newest = replace(
+        old,
+        record={
+            **old.record,
+            "last_seen_utc": "2026-11-02T00:00:00Z",
+            "first_seen_utc": "2020-01-03T00:00:00Z",
+            "description_text": "New",
+        },
+    )
+    selected, conflicts = select_candidates([old, newest], provider_id="p")
+    assert conflicts == ()
+    assert selected[0].record["last_seen_utc"] == datetime(2026, 11, 2, tzinfo=UTC)
+    assert selected[0].record["first_seen_utc"] == datetime(2020, 1, 3, tzinfo=UTC)
+    assert selected[0].record["description_text"] == "New"

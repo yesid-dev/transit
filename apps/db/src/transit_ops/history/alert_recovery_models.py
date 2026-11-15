@@ -66,7 +66,7 @@ def select_candidates(
     *,
     provider_id: str,
 ) -> tuple[list[Candidate], tuple[str, ...]]:
-    """Newest observation wins; tied unequal evidence is never arbitrarily merged."""
+    """Newest observation wins; only first-seen provenance may resolve unequal ties."""
     groups: dict[str, list[Candidate]] = {}
     for candidate in candidates:
         row = candidate.record
@@ -85,7 +85,11 @@ def select_candidates(
         latest = max(c.record["last_seen_utc"] for c in group)
         tied = [c for c in group if c.record["last_seen_utc"] == latest]
         semantics = [
-            {k: v for k, v in c.record.items() if k not in {"content_hash", "updated_at_utc"}}
+            {
+                k: v
+                for k, v in c.record.items()
+                if k not in {"content_hash", "updated_at_utc", "first_seen_utc"}
+            }
             for c in tied
         ]
         for row in semantics:
@@ -99,6 +103,7 @@ def select_candidates(
         else:
             tied.sort(
                 key=lambda c: (
+                    c.record["first_seen_utc"],
                     ("backup", "published", "capture").index(c.source_kind),
                     c.source_locator,
                 )

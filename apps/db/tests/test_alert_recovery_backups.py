@@ -1,8 +1,10 @@
 import io
 from contextlib import nullcontext
+from datetime import timedelta, timezone
 from unittest.mock import Mock
 
 import pytest
+from botocore.exceptions import ClientError
 from test_alert_recovery import NOW
 from test_alert_recovery_copy import COLUMNS, script
 
@@ -20,8 +22,9 @@ def test_missing_bucket_is_incomplete_without_io():
 
 
 class Client:
-    def __init__(self, payloads, fault=""):
+    def __init__(self, payloads, fault="", listed_modified=NOW):
         self.payloads, self.fault = payloads, fault
+        self.listed_modified = listed_modified
         self.closed, self.bodies, self.gets = False, [], []
 
     def get_paginator(self, name):
@@ -31,11 +34,16 @@ class Client:
         if self.fault == "list":
             raise RuntimeError("secret")
         for key, value in self.payloads.items():
-            meta = dict(Key=key, Size=len(value), LastModified=NOW)
+            meta = dict(Key=key, Size=len(value), LastModified=self.listed_modified)
             meta["ETag"] = None if self.fault == "missingetag" else '"version"'
             yield {"Contents": [meta]}
 
     def head_object(self, **kwargs):
+        assert kwargs["IfMatch"] == '"version"' and kwargs["Bucket"] == "fixture"
+        if self.fault == "headprecondition":
+            raise ClientError(
+                {"Error": {"Code": "PreconditionFailed", "Message": "secret"}}, "HeadObject"
+            )
         if self.fault == "deleted":
             raise RuntimeError("secret")
         return {
@@ -47,7 +55,13 @@ class Client:
     def get_object(self, **kwargs):
         assert kwargs["IfMatch"] == '"version"' and kwargs["Bucket"] == "fixture"
         self.gets.append(kwargs["Key"])
+        if self.fault == "getprecondition":
+            raise ClientError(
+                {"Error": {"Code": "PreconditionFailed", "Message": "secret"}}, "GetObject"
+            )
         data = self.payloads[kwargs["Key"]]
+        if self.fault == "short":
+            data = data[:-1]
         body = io.BytesIO(data + (b"x" if self.fault == "size" else b""))
         self.bodies.append(body)
         return {"Body": body, "ETag": '"changed"' if self.fault == "etag" else '"version"'}
@@ -66,6 +80,21 @@ def reader(client, extract):
         client_factory=lambda settings: client,
         extract=extract,
     )
+
+
+@pytest.mark.parametrize("offset", [0, -5])
+def test_list_fractional_timestamp_matches_head_seconds(offset):
+    listed = NOW.replace(microsecond=490000).astimezone(timezone(timedelta(hours=offset)))
+    client = Client({KEYS[0]: b"synthetic"}, listed_modified=listed)
+    items, report = reader(client, lambda dump, output: output.write_bytes(script("", COLUMNS)))(
+        Mock(begin_nested=nullcontext, closed=False, invalidated=False),
+        provider_id="fixture",
+        recovered_at_utc=NOW,
+    )
+    assert items == () and report.complete, report.errors
+    assert client.gets == [KEYS[0]]
+    assert listed.isoformat() in report.coverage[0]
+    assert f"sha256={DIGEST}" in report.coverage[0]
 
 
 def test_every_page_order_digest_empty_and_cleanup():
@@ -102,6 +131,9 @@ def test_every_page_order_digest_empty_and_cleanup():
         "headsize",
         "headtime",
         "missingetag",
+        "short",
+        "headprecondition",
+        "getprecondition",
         "archive",
         "table",
         "empty",
@@ -127,6 +159,23 @@ def test_unavailable_evidence_is_incomplete_and_clean(fault):
     assert all(not p.exists() for p in paths)
     assert "secret" not in str(report)
     assert report.scanned == (0 if fault in ("list", "empty") else 2)
+    if fault in ("headsize", "headtime"):
+        assert all("backup_changed stage=download" in error for error in report.errors)
+        assert client.gets == []
+    if fault == "short":
+        assert all("backup_length stage=download" in error for error in report.errors)
+
+
+@pytest.mark.parametrize("modified", ["malformed", NOW.replace(tzinfo=None)])
+def test_invalid_inventory_timestamp_refuses_before_head(modified):
+    client = Client({KEYS[0]: b"synthetic"}, listed_modified=modified)
+    client.head_object = Mock(side_effect=AssertionError("unexpected HEAD"))
+    items, report = reader(client, lambda dump, output: None)(
+        Mock(closed=False, invalidated=False), provider_id="fixture", recovered_at_utc=NOW
+    )
+    assert items == () and not report.complete
+    assert report.errors == (f"{KEYS[0]}: backup_inventory_invalid stage=download",)
+    client.head_object.assert_not_called()
 
 
 def test_factory_binds_settings_without_source_io(tmp_path):

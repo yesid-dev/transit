@@ -4,7 +4,7 @@ import hashlib
 import json
 from collections.abc import Callable
 from contextlib import closing
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
@@ -20,30 +20,45 @@ from transit_ops.ingestion.storage import build_s3_client
 from transit_ops.settings import Settings
 
 
+class _BackupReadError(ValueError):
+    """A bounded diagnostic owned by this reader, never an upstream error string."""
+
+
 def _download(client: Any, bucket: str, entry: dict[str, object], path: Path) -> str:
     size, modified, etag = entry["size"], entry["last_modified"], entry["etag"]
     if type(size) is not int or size < 0 or not isinstance(modified, str):
-        raise ValueError("backup_inventory_invalid")
+        raise _BackupReadError("backup_inventory_invalid")
     if not isinstance(etag, str) or not etag:
-        raise ValueError("backup_inventory_invalid")
+        raise _BackupReadError("backup_inventory_invalid")
+    try:
+        listed = datetime.fromisoformat(modified)
+    except ValueError:
+        raise _BackupReadError("backup_inventory_invalid") from None
+    if listed.utcoffset() is None:
+        raise _BackupReadError("backup_inventory_invalid")
     head = client.head_object(Bucket=bucket, Key=entry["key"], IfMatch=etag)
+    head_modified = head["LastModified"]
+    if not isinstance(head_modified, datetime) or head_modified.utcoffset() is None:
+        raise _BackupReadError("backup_changed")
+    # LIST preserves fractions; HEAD uses whole-second HTTP dates.
     if (
         head["ContentLength"] != size
-        or head["LastModified"].isoformat() != modified
+        or head_modified.astimezone(UTC).replace(microsecond=0)
+        != listed.astimezone(UTC).replace(microsecond=0)
         or head.get("ETag") != etag
     ):
-        raise ValueError("backup_changed")
+        raise _BackupReadError("backup_changed")
     response = client.get_object(Bucket=bucket, Key=entry["key"], IfMatch=etag)
     digest, measured = hashlib.sha256(), 0
     with closing(response["Body"]) as body, path.open("wb") as output:
         if response.get("ETag") != etag:
-            raise ValueError("backup_changed")
+            raise _BackupReadError("backup_changed")
         while block := body.read(1024 * 1024):
             measured += len(block)
             output.write(block)
             digest.update(block)
     if measured != size:
-        raise ValueError("backup_length")
+        raise _BackupReadError("backup_length")
     return digest.hexdigest()
 
 
@@ -108,12 +123,15 @@ class BackupRecoveryReader:
         candidates, coverage, errors = [], [], []
         for entry in sorted(inventory, key=lambda e: str(e["key"]), reverse=True):
             note = json.dumps(entry, sort_keys=True)
+            stage = "download"
             try:
                 with TemporaryDirectory(prefix="alert-recovery-") as directory:
                     dump, output = Path(directory) / "source.dump", Path(directory) / "copy.sql"
                     digest = _download(client, self.settings.BRONZE_S3_BUCKET or "", entry, dump)
                     note += f" sha256={digest}"
+                    stage = "extract"
                     self.extract(dump, output)
+                    stage = "copy"
                     # A bad cast rolls back before the next retained object is attempted.
                     with connection.begin_nested():
                         rows, absent = read_alert_archive_copy(
@@ -124,10 +142,11 @@ class BackupRecoveryReader:
                     note += " complete" + (
                         f" projected_missing={','.join(absent)}" if absent else ""
                     )
-            except Exception:
+            except Exception as exc:
                 if connection.closed or connection.invalidated:
                     raise
-                errors.append(f"{entry['key']}: backup_read_failed")
+                reason = str(exc) if isinstance(exc, _BackupReadError) else "backup_read_failed"
+                errors.append(f"{entry['key']}: {reason} stage={stage}")
                 note += " failed"
             coverage.append(note)
         return tuple(candidates), SourceReport(
