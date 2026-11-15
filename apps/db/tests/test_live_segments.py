@@ -270,3 +270,165 @@ def test_pending_cut_refuses_changed_source(tmp_path, monkeypatch):
         with pytest.raises(SegmentInvalid, match="pending_segment_identity_changed"):
             export_segment(local, storage)
         assert list(storage.list_keys("live/")) == []
+
+
+@pytest.mark.parametrize(
+    "table,column", [("polls", "endpoint_key"), ("segment_exports", "manifest")]
+)
+@pytest.mark.parametrize("new_poll", [False, True])
+def test_same_connection_collation_drift_refuses_before_export_or_noop(
+    tmp_path, table, column, new_poll
+):
+    storage = store(tmp_path)
+    with closing(opened(tmp_path / "live.db")) as local:
+        local.record_polls([POLL], endpoint_key="vehicles")
+        export_segment(local, storage)
+        if new_poll:
+            local.record_polls([replace(POLL, ingestion_run_id=9)], endpoint_key="vehicles")
+        conn = local.connection
+        before = conn.execute("SELECT * FROM segment_exports").fetchall()
+        objects = {k: storage.read_bytes(k) for k in storage.list_keys("live/")}
+        sql = conn.execute(
+            "SELECT sql FROM duckdb_tables() WHERE table_name=?", [table]
+        ).fetchone()[0]
+        definition = sql.split("(", 1)[1].rsplit(")", 1)[0]
+        definition = definition.replace(f"{column} VARCHAR", f"{column} VARCHAR COLLATE NOCASE")
+        with local.transaction():
+            conn.execute(f"ALTER TABLE {table} RENAME TO old_shape")
+            conn.execute(f"CREATE TABLE {table} ({definition})")
+            conn.execute(f"INSERT INTO {table} SELECT * FROM old_shape")
+            conn.execute("DROP TABLE old_shape")
+        with pytest.raises(LocalFileMismatch, match=table + " table shape differs"):
+            export_segment(local, storage)
+        assert conn.execute("SELECT * FROM segment_exports").fetchall() == before
+        assert {k: storage.read_bytes(k) for k in storage.list_keys("live/")} == objects
+
+
+def test_retry_and_noop_do_not_fetch_retained_fact_payloads(tmp_path, monkeypatch):
+    storage = store(tmp_path)
+    with closing(opened(tmp_path / "live.db")) as local:
+        conn = local.connection
+        touched = []
+
+        class CountedResult:
+            def __init__(self, result, count):
+                self.result, self.count = result, count
+
+            def fetchall(self):
+                rows = self.result.fetchall()
+                if self.count:
+                    touched.extend(rows)
+                return rows
+
+            def fetchmany(self, size):
+                rows = self.result.fetchmany(size)
+                if self.count:
+                    touched.extend(rows)
+                return rows
+
+            def __getattr__(self, name):
+                return getattr(self.result, name)
+
+        class CountedConnection:
+            def execute(self, sql, *args):
+                return CountedResult(
+                    conn.execute(sql, *args),
+                    sql.startswith("SELECT ")
+                    and "fact_vehicle_snapshot" in sql
+                    and "read_parquet" not in sql,
+                )
+
+            def __getattr__(self, name):
+                return getattr(conn, name)
+
+        monkeypatch.setattr(local, "connection", CountedConnection())
+        parsed = parsed_vehicle()
+        apply_capture(local, parsed, provider_timezone="UTC")
+        first = export_segment(local, storage)
+        touched.clear()
+        assert export_segment(local, storage) is None
+        assert touched == []
+        newer = replace(parsed, capture=replace(parsed.capture, capture_row_id=43))
+        apply_capture(local, newer, provider_timezone="UTC")
+
+        def fail(*args):
+            raise OSError("offline")
+
+        with monkeypatch.context() as patch:
+            patch.setattr(LocalBronzeStorage, "put_if_absent", fail)
+            with pytest.raises(OSError):
+                export_segment(local, storage)
+        touched.clear()
+        second = export_segment(local, storage)
+        assert touched and {r[1] for r in touched} == {43}
+        assert len(touched) == 4
+        touched.clear()
+        assert export_segment(local, storage) is None
+        assert touched == []
+        assert second.first_seq == first.last_seq + 1
+
+
+def test_abrupt_exit_after_verified_publication_recovers_original_cut(tmp_path):
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    from transit_ops.live.segments import Segment
+
+    storage = store(tmp_path)
+    path = tmp_path / "live.db"
+    with closing(opened(path)) as local:
+        local.record_polls([POLL], endpoint_key="vehicles")
+        apply_capture(local, parsed_vehicle(), provider_timezone="UTC")
+        expected = read_vehicle_facts(local)
+    program = """
+import os, sys
+from pathlib import Path
+from transit_ops.ingestion.storage import LocalBronzeStorage
+from transit_ops.live.local_file import LocalFile
+from transit_ops.live.settings import LaneSettings
+from transit_ops.live.segments import export_segment
+local = LocalFile.open(Path(sys.argv[1]), provider_id='network', settings=LaneSettings(
+    duckdb_memory_limit_mb=64, duckdb_threads=1, temp_dir_max_mb=32))
+conn = local.connection
+class ExitBeforeCheckpoint:
+    def execute(self, sql, *args):
+        if sql.startswith('UPDATE segment_exports SET completed=true'):
+            os._exit(71)
+        return conn.execute(sql, *args)
+local.connection = ExitBeforeCheckpoint()
+export_segment(local, LocalBronzeStorage('local', Path(sys.argv[2])))
+"""
+    child = subprocess.run(
+        [sys.executable, "-c", program, str(path), str(storage.root)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert child.returncode == 71, child.stderr
+    assert Path(str(path) + ".wal").is_file()
+    manifests = list(storage.list_keys("live/"))
+    (manifest_key,) = [k for k in manifests if k.endswith("/manifest.json")]
+    manifest = json.loads(storage.read_bytes(manifest_key))
+    original = Segment(
+        manifest["provider"], manifest["first"], manifest["last"], manifest["content_sha256"]
+    )
+    with closing(opened(path)) as local:
+        assert local.connection.execute("SELECT completed FROM segment_exports").fetchall() == [
+            (False,)
+        ]
+        local.record_polls([replace(POLL, ingestion_run_id=9)], endpoint_key="vehicles")
+        recovered = export_segment(local, storage)
+        assert recovered == original
+        frames = read_segment(local, storage, recovered)
+        assert frames["fact_vehicle_snapshot"] == expected
+        (poll,) = frames["polls"].rows
+        restored = dict(zip(frames["polls"].columns, poll, strict=True))
+        assert {n: restored[n] for n in asdict(POLL)} == asdict(POLL)
+        following = export_segment(local, storage)
+        assert following.first_seq == recovered.last_seq + 1
+        (next_poll,) = read_segment(local, storage, following)["polls"].rows
+        assert next_poll[0] == 9
+        keys = [k for k in storage.list_keys("live/") if k.endswith("/manifest.json")]
+        assert sorted(keys) == sorted([manifest_key, following.prefix + "/manifest.json"])
+        assert export_segment(local, storage) is None

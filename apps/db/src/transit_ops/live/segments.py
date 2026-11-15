@@ -104,35 +104,29 @@ def _proof(conn: duckdb.DuckDBPyConnection, query: str) -> tuple[int, str]:
 
 def _prepare_facts(local: LocalFile) -> None:
     conn = local.connection
-    for table, _, reader in FACT_TABLES:
-        frame = reader(local)
-        conn.execute(
-            f"CREATE OR REPLACE TEMP TABLE _segment_{table} AS SELECT * FROM {table} WHERE false"
-        )
-        if frame.rows:
-            columns = ", ".join(_q(n) for n in frame.columns)
-            placeholders = ", ".join("?" for _ in frame.columns)
-            conn.executemany(
-                f"INSERT INTO _segment_{table} ({columns}) VALUES ({placeholders})", frame.rows
-            )
-    for provider, endpoint, capture, digest in conn.execute(
-        "SELECT provider_id, endpoint_key, capture_row_id, application_sha256 "
-        "FROM fact_processing ORDER BY provider_id, endpoint_key, capture_row_id"
-    ).fetchall():
-        if conn.execute("SELECT provider_id FROM meta").fetchone() != (provider,):
-            raise SegmentInvalid("fact_provider_mismatch")
-        previous = conn.execute(
-            "SELECT application_sha256 FROM segment_fact_members "
-            "WHERE provider_id=? AND endpoint_key=? AND capture_row_id=?",
-            [provider, endpoint, capture],
-        ).fetchone()
-        if previous and previous != (digest,):
-            raise SegmentInvalid("fact_identity_changed")
-        if previous is None:
-            conn.execute(
-                "INSERT INTO segment_fact_members VALUES (?, ?, ?, ?, ?)",
-                [provider, endpoint, capture, digest, local.next_segment_sequence()],
-            )
+    # Reuse the fact owner's schema declarations, without its materializing reader.
+    local.verify_fact_tables(facts._DEFINITIONS)
+    if conn.execute(
+        "SELECT 1 FROM fact_processing f LEFT JOIN segment_fact_members m "
+        "USING(provider_id, endpoint_key, capture_row_id) "
+        "WHERE f.provider_id <> (SELECT provider_id FROM meta) "
+        "OR f.application_sha256 IS DISTINCT FROM m.application_sha256 "
+        "AND m.capture_row_id IS NOT NULL LIMIT 1"
+    ).fetchone():
+        raise SegmentInvalid("fact_provider_or_identity_changed")
+    # Only new applications receive membership. No retained payload crosses Python.
+    conn.execute(
+        "INSERT INTO segment_fact_members "
+        "SELECT f.provider_id, f.endpoint_key, f.capture_row_id, f.application_sha256, "
+        "(SELECT next_seq FROM segment_clock) + row_number() OVER "
+        "(ORDER BY f.provider_id, f.endpoint_key, f.capture_row_id) - 1 "
+        "FROM fact_processing f ANTI JOIN segment_fact_members m "
+        "USING(provider_id, endpoint_key, capture_row_id)"
+    )
+    conn.execute(
+        "UPDATE segment_clock SET next_seq=greatest(next_seq, "
+        "(SELECT coalesce(max(segment_seq), 0)+1 FROM segment_fact_members))"
+    )
 
 
 def _queries(first: int, last: int) -> dict[str, str]:
@@ -145,7 +139,7 @@ def _queries(first: int, last: int) -> dict[str, str]:
     )
     for table, endpoint, _ in FACT_TABLES:
         result[table] = (
-            f"SELECT f.* FROM _segment_{table} f JOIN segment_fact_members m "
+            f"SELECT f.* FROM {table} f JOIN segment_fact_members m "
             "ON f.provider_id=m.provider_id "
             "AND f.realtime_snapshot_id=m.capture_row_id "
             f"WHERE m.endpoint_key='{endpoint}' AND m.{span}"
@@ -212,14 +206,18 @@ def export_segment(local: LocalFile, storage: BronzeStorage) -> Segment | None:
     pending cut. Earlier LocalFile versions require rebuild from retained evidence.
     """
     local.require_committed()
+    local.verify_shape()
     with TemporaryDirectory(prefix="transit-segment-") as temporary:
         directory = Path(temporary)
         with local.transaction() as conn:
-            _prepare_facts(local)
             pending = conn.execute(
                 "SELECT first_seq, last_seq, manifest FROM segment_exports "
                 "WHERE NOT completed ORDER BY first_seq"
             ).fetchone()
+            if not pending:
+                _prepare_facts(local)
+            else:
+                local.verify_fact_tables(facts._DEFINITIONS)
             first = int(
                 conn.execute(
                     "SELECT coalesce(max(last_seq), 0)+1 FROM segment_exports WHERE completed"
@@ -278,8 +276,8 @@ def _put(storage: BronzeStorage, path: Path, key: str) -> None:
 def read_segment(local: LocalFile, storage: BronzeStorage, segment: Segment) -> dict[str, Frame]:
     """Read verified typed frames; this convenience read materializes the result.
 
-    Export readback streams rows instead. Fact input uses the existing public
-    fact readers, which currently materialize their frames before bounded COPY.
+    Export preparation and readback keep fact payloads inside bounded DuckDB
+    queries. Only this convenience result is materialized.
     """
     return _read_segment(local, storage, segment, collect=True)
 

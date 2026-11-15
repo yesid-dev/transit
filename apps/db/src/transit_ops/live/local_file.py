@@ -157,6 +157,21 @@ class LocalFile:
             if conn.execute("SELECT * FROM meta").fetchall() != [(SCHEMA_VERSION, provider)]:
                 raise LocalFileMismatch(f"{self._path}: meta provider or schema version differs")
 
+    def verify_shape(self) -> None:
+        """Recheck exact base/segment shapes and collations without changing state.
+
+        Requiring existing metadata prevents initialization's fresh-file branch;
+        the shared verifier can only create and drop its temporary shape probes.
+        """
+        with self.transaction() as conn:
+            try:
+                rows = conn.execute("SELECT schema_version, provider_id FROM meta").fetchall()
+            except duckdb.Error as exc:
+                raise LocalFileMismatch("meta table missing or incompatible") from exc
+            if len(rows) != 1 or rows[0][0] != SCHEMA_VERSION:
+                raise LocalFileMismatch("meta schema version differs")
+            self._initialize(rows[0][1])
+
     @contextmanager
     def transaction(self) -> Iterator[duckdb.DuckDBPyConnection]:
         outer = not self._active

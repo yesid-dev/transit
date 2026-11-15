@@ -454,3 +454,23 @@ def test_caught_processing_validation_aborts_the_outer_transaction(tmp_path):
                 )
         assert local.connection.execute("SELECT capture_row_id FROM captures").fetchall() == []
         assert local.connection.execute("SELECT ingestion_run_id FROM processing").fetchall() == []
+
+
+def test_version_two_file_is_refused_without_changing_it(tmp_path):
+    path = tmp_path / "worker.db"
+    with closing(opened(path)) as local:
+        local.record_polls([POLL], endpoint_key="vehicles")
+        local.connection.execute("UPDATE meta SET schema_version=2")
+        local.connection.execute("UPDATE polls SET segment_seq=NULL")
+        for table in ("segment_clock", "segment_exports", "segment_fact_members"):
+            local.connection.execute(f"DROP TABLE {table}")
+    before = path.read_bytes()
+    for _ in range(2):
+        with pytest.raises(LocalFileMismatch, match="segment_clock table missing"):
+            opened(path)
+        assert path.read_bytes() == before
+    with duckdb.connect(str(path)) as conn:
+        assert conn.execute("SELECT * FROM meta").fetchall() == [(2, "network")]
+        assert conn.execute("SELECT ingestion_run_id, segment_seq FROM polls").fetchall() == [
+            (1, None)
+        ]
