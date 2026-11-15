@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import closedWindows from '../scripts/__fixtures__/b9/layout-windows.json' with { type: 'json' };
 import { test } from './layout-test';
 import { expect, type Page, type Request as PlaywrightRequest } from '@playwright/test';
@@ -315,6 +316,215 @@ for (const locale of ['en', 'fr'] as const)
 						0.5,
 					);
 					expect(Math.abs(size.next - sizes[0].next), `${at}: content below`).toBeLessThan(0.5);
+				}
+			}
+		});
+
+// A ranked week with full-length names, a 30-reading-floor example and seven rows.
+const hotspotsWeek = {
+	generated_utc: '2026-06-15T12:00:00Z',
+	methodology_version: 'r2',
+	by_grain: [
+		{
+			grain: 'week',
+			date: '2026-06-08',
+			window_end: '2026-06-14',
+			entries: [
+				...Array.from({ length: 7 }, (_, i) => ({
+					rank: i + 1,
+					type: 'route',
+					id: i === 0 ? '24' : `24${i}`,
+					name: 'Bayshore / Carlingwood <> Dunrobin / Carp / Stittsville / Place d’Orléans',
+					observation_count: 1000 + i,
+					severe_count: 900 - 10 * i,
+					severe_pct: Math.round((1000 * (900 - 10 * i)) / (1000 + i)) / 10,
+					wilson_lo: 5 * (i + 1),
+					wilson_hi: 5 * (i + 1) + 10,
+				})),
+				{
+					rank: 1,
+					type: 'stop',
+					id: '52095',
+					name: 'Station Berri-UQAM / Sainte-Catherine Est (côté nord)',
+					observation_count: 64,
+					severe_count: 60,
+					severe_pct: 93.8,
+				},
+			],
+			tray: [{ type: 'stop', id: '5581', name: 'Doctor Leach / Ad. 5581', observation_count: 2 }],
+			total_ranked_routes: 173,
+			total_ranked_stops: 4930,
+			tray_total: 1,
+		},
+	],
+};
+
+/** Sorted keys, no spaces: the publisher's canonical JSON for generation ids. */
+function canonical(value: unknown): string {
+	if (value === null || typeof value !== 'object') return JSON.stringify(value);
+	if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+	const record = value as Record<string, unknown>;
+	return `{${Object.keys(record)
+		.sort()
+		.map((key) => `${JSON.stringify(key)}:${canonical(record[key])}`)
+		.join(',')}}`;
+}
+const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
+
+/** A real retained-history state: the root advertises one Hotspots day, its index and file. */
+function hotspotsHistory(root: { families?: unknown[] }, provider: string) {
+	const date = '2026-06-14';
+	const day = JSON.stringify({ ...hotspotsWeek, date, publish_generation_id: null });
+	const ref = {
+		path: `historic/history/hotspots/generations/${sha256(day)}/${date}.json`,
+		coverage_start: date,
+		coverage_end: date,
+		count: 1,
+		sha256: sha256(day),
+		byte_size: Buffer.byteLength(day),
+	};
+	const basis = {
+		family: 'hotspots',
+		selection_mode: 'date',
+		entity_id: null,
+		first_available_date: date,
+		last_available_date: date,
+		available_dates: [date],
+		gaps: [],
+		partitions: [ref],
+		metrics: [],
+	};
+	const generation = sha256(canonical(basis));
+	const index = JSON.stringify({
+		...basis,
+		generated_utc: '2026-06-15T12:00:00Z',
+		collection_generation_id: generation,
+		methodology_version: 'history-1',
+		// Publications name their provider.
+		publish_generation_id: `${provider}@published-run`,
+	});
+	// The root points at a generation-pinned index whose bytes hash to the path's SHA-256.
+	const indexPath = `historic/history/hotspots/generations/${sha256(index)}/index.json`;
+	const edge = {
+		family: 'hotspots',
+		selection_mode: 'date',
+		index_path: indexPath,
+		collection_generation_id: generation,
+		first_available_date: date,
+		last_available_date: date,
+		gaps: [],
+		metrics: [],
+	};
+	return {
+		root: { ...root, families: [...(root.families ?? []), edge] },
+		index,
+		indexPath,
+		day,
+		ref,
+	};
+}
+
+type Sampled = Window & { samples?: string[] };
+
+for (const provider of ['stm', 'octranspo'])
+	for (const locale of ['en', 'fr'] as const)
+		test(`${provider} ${locale} hotspots keep 7 + 5 with history, whole names and 44 px targets`, async ({
+			page,
+		}) => {
+			await page.clock.setFixedTime(Date.parse('2026-06-15T12:00:30Z'));
+			let discover = (): void => {};
+			const discovery = new Promise<void>((resolve) => (discover = resolve));
+			let history: ReturnType<typeof hotspotsHistory> | null = null;
+			await page.route('**/v1/**', async (route) => {
+				const url = new URL(route.request().url());
+				const path = url.pathname.replace('/octranspo/', '/stm/');
+				if (path.endsWith('/historic/hotspots.json')) return route.fulfill({ json: hotspotsWeek });
+				if (history && path.endsWith(history.indexPath)) {
+					await discovery;
+					return route.fulfill({ body: history.index, contentType: 'application/json' });
+				}
+				if (history && path.endsWith(history.ref.path))
+					return route.fulfill({ body: history.day, contentType: 'application/json' });
+				url.pathname = `/__layout/fresh${path}`;
+				const response = await route.fetch({ url: url.href });
+				if (!path.endsWith('/historic/history/index.json')) return route.fulfill({ response });
+				history = hotspotsHistory(await response.json(), provider);
+				await route.fulfill({ response, json: history.root });
+			});
+			await page.setViewportSize({ width: 1280, height: 900 });
+			await page.goto(`${localizeHref('/hotspots', locale)}?provider=${provider}`);
+			const rows = page.locator('[data-slot="hotspot-rows"] > li > button');
+			const controls = page.locator('[data-slot="hotspots-controls"]');
+			const navigator = controls.locator('[data-slot="history-navigator"]');
+			await expect(controls).toBeVisible();
+			// The ranking waits for history discovery, so discovery cannot move it afterwards.
+			await page.waitForTimeout(500);
+			await expect(rows).toHaveCount(0);
+			await page.evaluate(() => {
+				const samples: string[] = [];
+				(window as Sampled).samples = samples;
+				const sample = () => {
+					const frame = document.querySelector('.hotspots-workspace-frame');
+					if (frame) {
+						const box = frame.getBoundingClientRect();
+						samples.push(`${box.top + window.scrollY}:${box.left}:${box.width}`);
+					}
+					if (samples.length < 60) requestAnimationFrame(sample);
+				};
+				requestAnimationFrame(sample);
+			});
+			discover();
+			await expect(rows).toHaveCount(7);
+			await expect(navigator).toBeVisible();
+			await page.waitForFunction(() => ((window as Sampled).samples ?? []).length >= 60);
+			const samples = await page.evaluate(() => (window as Sampled).samples ?? []);
+			expect(new Set(samples).size, 'workspace once shown').toBe(1);
+
+			// This spec owns its widths: the desktop split, a tablet and the two phones.
+			for (const width of [1280, 768, 390, 320]) {
+				await page.setViewportSize({ width, height: 900 });
+				await page.evaluate(() => document.fonts.ready);
+				const at = `${provider} ${locale} ${width}px`;
+				await expect(navigator, `${at}: history control`).toBeVisible();
+				expect(
+					await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+					`${at}: no page-wide horizontal scroll`,
+				).toBe(true);
+				for (const row of await rows.all()) {
+					const box = (await row.boundingBox())!;
+					expect(box.height, `${at}: row target`).toBeGreaterThanOrEqual(44);
+					expect(box.x + box.width, `${at}: row inside the viewport`).toBeLessThanOrEqual(width);
+					const rate = (await row.locator('[data-slot="ranking-rate"]').boundingBox())!;
+					expect(rate.x + rate.width, `${at}: rate inside its row`).toBeLessThanOrEqual(
+						box.x + box.width + 0.5,
+					);
+					expect(
+						await row
+							.locator('[data-slot="hotspot-row-name"]')
+							.evaluate((name) => name.scrollWidth <= name.clientWidth + 1),
+						`${at}: whole name`,
+					).toBe(true);
+				}
+				const pane = page.locator('[data-slot="hotspot-evidence-pane"]');
+				if (width >= 1280) {
+					await expect(pane, `${at}: 7 + 5 side pane`).toBeVisible();
+					await rows.nth(2).click();
+					await expect(rows.nth(2)).toHaveAttribute('aria-pressed', 'true');
+					await expect(pane).toContainText(
+						locale === 'en' ? 'Position 3 of 173' : 'Position 3 sur 173',
+					);
+					continue;
+				}
+				await expect(pane, `${at}: no side pane`).toBeHidden();
+				const first = rows.first();
+				await expect(first).toHaveAttribute('aria-expanded', /true|false/);
+				if ((await first.getAttribute('aria-expanded')) === 'false') await first.click();
+				const evidence = page.locator('[data-slot="hotspot-row-evidence"]:not([hidden])');
+				await expect(evidence).toBeVisible();
+				for (const action of await evidence.locator('a, button').all()) {
+					const box = (await action.boundingBox())!;
+					expect(box.height, `${at}: evidence action target`).toBeGreaterThanOrEqual(44);
+					expect(box.x + box.width, `${at}: evidence action inside`).toBeLessThanOrEqual(width);
 				}
 			}
 		});

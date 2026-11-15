@@ -292,25 +292,24 @@ test('the status page lists its record families on phones and says when data is 
 });
 
 test('rankings name lines by number in both languages', async ({ page }) => {
+	// Hotspots ranks complete weeks; serve the fixture's ranked rows as one.
+	const week = fixture('hotspots.json');
+	week.by_grain = week.by_grain.map((grain: object) => ({
+		...grain,
+		grain: 'week',
+		date: '2026-06-08',
+		window_end: '2026-06-14',
+	}));
+	await page.route('**/historic/hotspots.json', (route) => route.fulfill({ json: week }));
 	for (const lang of PUBLISHED_LOCALES) {
 		await page.goto(localizeHref('/hotspots', lang));
 		await expect(page.locator('[data-slot="hotspots-verdict"]')).toHaveCount(0);
-		await page.locator('[data-slot="hotspot-section"]').first().scrollIntoViewIfNeeded();
-		const unindexed = page.getByRole('button', {
-			name: `${lang === 'fr' ? 'Ligne' : 'Line'} Lansdowne`,
-			exact: true,
+		const unindexed = page.locator('[data-slot="hotspot-rows"]').getByRole('button', {
+			name: new RegExp(`\\b${lang === 'fr' ? 'Ligne' : 'Line'} Lansdowne\\.`),
 		});
+		await unindexed.scrollIntoViewIfNeeded();
 		await expect(unindexed).toBeVisible();
-		const label =
-			(await unindexed.evaluate((element) => element.namespaceURI)) === 'http://www.w3.org/2000/svg'
-				? page
-						.locator('[data-slot="hotspot-section"]')
-						.first()
-						.locator('svg text')
-						.filter({ hasText: /^Lansdowne$/ })
-				: unindexed;
-		await expect(label).toBeVisible();
-		await expect(label).toHaveText('Lansdowne');
+		await expect(unindexed.locator('[data-slot="hotspot-row-name"]')).toHaveText('Lansdowne');
 		await page.goto(localizeHref('/repeat-offenders', lang));
 		await expect(page.locator('[data-slot="offenders-hero"]').getByRole('link')).toHaveText(
 			'1 · Confederation',

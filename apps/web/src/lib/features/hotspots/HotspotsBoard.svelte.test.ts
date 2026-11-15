@@ -1,25 +1,12 @@
+import { render, screen, within, fireEvent, waitFor } from '@testing-library/svelte';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { HotspotEntry, Hotspots, IsoUtc, Manifest } from '#lib/v1/schemas/index.ts';
+import { createLineDirectory } from '#lib/site/lineDirectory.ts';
+import { localizeHref } from '#lib/i18n/routing.ts';
 import { stampCopy } from '#lib/v1/stamp.copy.ts';
 import { formatDateKey } from '#lib/utils/time.ts';
-import { sectionsToggleCopy } from '#lib/components/shared/sectionsToggle.copy.ts';
-import { copy } from './hotspots.copy';
-import { observeChartFrames } from '#lib/components/dataviz/chart/__fixtures__/observeChartFrames.ts';
-import { render, screen, within, fireEvent, waitFor } from '@testing-library/svelte';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Hotspots, IsoUtc } from '#lib/v1/schemas/index.ts';
-import type {
-	ChartDatumPopoverModel,
-	MagnitudeDatum,
-} from '#lib/components/dataviz/chart/index.ts';
-import { EnteringIntersectionObserver } from '../../../tests/enteringIntersectionObserver';
-import { assertRailIndependence } from '../../../tests/railIndependence';
 
 let mockUrl = new URL('http://localhost/hotspots');
-const replaceState = vi.hoisted(() =>
-	vi.fn((u: string | URL) => {
-		mockUrl = new URL(u, 'http://localhost');
-	}),
-);
-const navigate = vi.hoisted(() => vi.fn());
 vi.mock('$app/state', () => ({
 	page: {
 		get url() {
@@ -28,7 +15,13 @@ vi.mock('$app/state', () => ({
 		state: {},
 	},
 }));
-vi.mock('$app/navigation', () => ({ afterNavigate: () => {}, goto: navigate, replaceState }));
+vi.mock('$app/navigation', () => ({
+	afterNavigate: () => {},
+	goto: vi.fn(),
+	replaceState: vi.fn((url: string | URL) => {
+		mockUrl = new URL(url, 'http://localhost');
+	}),
+}));
 
 const currentLocale = vi.hoisted(() => ({ value: 'en' as 'en' | 'fr' }));
 vi.mock('#lib/i18n/index.ts', async (importOriginal) => {
@@ -37,22 +30,18 @@ vi.mock('#lib/i18n/index.ts', async (importOriginal) => {
 });
 
 const { payload } = vi.hoisted(() => ({ payload: { current: null as Hotspots | null } }));
-const capturedLadders = vi.hoisted(() => ({ current: [] as unknown[] }));
-
 vi.mock('#lib/v1/repositories/historic.ts', () => ({
 	getHotspots: vi.fn(),
 	getHotspotsHistoryIndex: vi.fn(),
 	getHotspotsHistoryDay: vi.fn(),
-}));
-vi.mock('#lib/v1/history/selection.ts', () => ({
-	availabilityFromPointCollectionIndex: vi.fn(() => ({ kind: 'empty' })),
 }));
 vi.mock('#lib/v1/history/dateResource.svelte.ts', () => ({
 	historyDateRequestFromSearchParams: vi.fn(() => ({ hasDate: false, rawDate: null })),
 	createHistoryDateResource: vi.fn(() => ({
 		request: { hasDate: false, rawDate: null },
 		index: null,
-		resolved: null,
+		// Discovery has settled with no retained history.
+		resolved: { canonicalDate: null, selection: null, correction: null },
 		availableDates: [],
 		selectedDate: null,
 		canonicalDate: null,
@@ -74,7 +63,7 @@ vi.mock('#lib/v1/history/dateResource.svelte.ts', () => ({
 }));
 vi.mock('#lib/v1/resource.svelte.ts', () => ({
 	createResource: () => ({
-		data: payload.current,
+		data: null,
 		error: null,
 		loading: false,
 		settled: true,
@@ -82,615 +71,399 @@ vi.mock('#lib/v1/resource.svelte.ts', () => ({
 	}),
 }));
 
-vi.mock('./selectors/hotspotLadder', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('./selectors/hotspotLadder')>();
-	return {
-		...actual,
-		selectHotspotLadder: (...args: Parameters<typeof actual.selectHotspotLadder>) => {
-			const result = actual.selectHotspotLadder(...args);
-			capturedLadders.current.push(result);
-			return result;
-		},
-	};
-});
-
 import HotspotsBoard from './HotspotsBoard.svelte';
-import { copy as hotspotsCopy } from './hotspots.copy';
 
-function seed(): Hotspots {
+// fr-CA puts a no-break space before the percent sign.
+const NB = String.fromCharCode(0xa0);
+const BAYSHORE = 'Bayshore / Carlingwood <> Dunrobin / Carp / Stittsville';
+
+/** A ranked row as the publisher writes it; the share follows from its counts. */
+function row(
+	kind: 'route' | 'stop',
+	rank: number,
+	id: string,
+	name: string,
+	readings: number,
+	late: number,
+) {
 	return {
-		generated_utc: '2026-06-25T00:00:00Z' as IsoUtc,
+		rank,
+		type: kind,
+		id,
+		name,
+		observation_count: readings,
+		severe_count: late,
+		severe_pct: Math.round((1000 * late) / readings) / 10,
+		// The publisher orders by this bound, ascending.
+		wilson_lo: 5 * rank,
+		wilson_hi: 5 * rank + 10,
+	} satisfies HotspotEntry;
+}
+
+/** M5's captured week, plus `extra` generated lines after the first five. */
+function seed(extra = 0): Hotspots {
+	return {
+		generated_utc: '2026-11-11T09:00:00Z' as IsoUtc,
+		methodology_version: 'r2',
 		hotspots: [],
 		by_grain: [
 			{
-				grain: 'day',
-				date: '2026-06-24',
-				window_end: '2026-06-24',
+				grain: 'week',
+				date: '2026-11-04',
+				window_end: '2026-11-10',
 				entries: [
-					{
-						rank: 1,
-						type: 'stop',
-						id: 'S1',
-						name: 'Berri-UQAM',
-						severe_pct: 70,
-						observation_count: 80,
-						wilson_lo: 16.8,
-						wilson_hi: 30.1,
-						otp_delta_pts: -20,
-						avg_delay_min: 6.7,
-					},
-					{ rank: 2, type: 'route', id: '51', severe_pct: 40, observation_count: 100 },
+					row('route', 1, '303', BAYSHORE, 173, 147),
+					row('route', 2, '301', 'Bayshore / Carlingwood <> Richmond / Stittsville', 185, 156),
+					row('route', 3, '305', 'Carlingwood <> North Gower / Manotick', 127, 96),
+					row('route', 4, '302', 'St. Laurent / Place D’Orléans <> Cumberland', 120, 65),
+					row('route', 5, '646', 'Canterbury H.S <> Terry Fox', 118, 65),
+					...Array.from({ length: extra }, (_, i) =>
+						row('route', 6 + i, `9${i}`, `Generated ${i}`, 60, 20),
+					),
+					row('stop', 1, '3060', 'Main / Mill', 64, 60),
+					row('stop', 2, '3061', 'Manotick Main / Currier', 47, 40),
 				],
 				tray: [
 					{
-						rank: null,
 						type: 'stop',
-						id: 'S2',
-						name: 'Quiet Ave',
-						severe_pct: 5,
-						observation_count: 12,
-					},
-					{
-						rank: null,
-						type: 'route',
-						id: 'R2',
-						name: 'Sparse Route',
-						severe_pct: 4,
-						observation_count: null,
-					},
-					{
-						rank: null,
-						type: 'route',
-						id: 'R3',
-						name: 'Zero Route',
-						severe_pct: 0,
-						observation_count: 0,
+						id: '5581',
+						name: 'Doctor Leach / Ad. 5581',
+						observation_count: 2,
+						severe_pct: 50,
 					},
 				],
-			},
-			{
-				grain: 'week',
-				date: '2026-06-14',
-				window_end: '2026-06-20',
-				entries: [
-					{
-						rank: 1,
-						type: 'route',
-						id: '161',
-						name: 'Van Horne',
-						severe_pct: 55,
-						observation_count: 200,
-					},
-				],
-				tray: [],
+				total_ranked_routes: 173,
+				total_ranked_stops: 4930,
+				tray_total: 1,
 			},
 		],
-	} satisfies Hotspots as Hotspots;
+	};
 }
 
-function routeOnlySeed(count = 1): Hotspots {
-	return {
-		generated_utc: '2026-06-25T00:00:00Z' as IsoUtc,
-		hotspots: [],
-		by_grain: [
-			{
-				grain: 'day',
-				date: '2026-06-24',
-				window_end: '2026-06-24',
-				entries: Array.from({ length: count }, (_, i) => ({
-					rank: i + 1,
-					type: 'route',
-					id: `R${i}`,
-					name: `Route ${i}`,
-					severe_pct: 50 - i,
-					observation_count: 100,
-				})),
-				tray: [],
-			},
+function context(provider = 'octranspo') {
+	return new Map<unknown, unknown>([
+		[
+			Symbol.for('transit.line-directory'),
+			() =>
+				createLineDirectory(
+					['303', '301', '305', '302', '646'].map((id) => ({ id, short: id })),
+					{ line: (id) => `Line ${id}` },
+				),
 		],
-	} satisfies Hotspots as Hotspots;
+		[
+			Symbol.for('transit.i18n.href'),
+			(href: string, lang: 'en' | 'fr') => localizeHref(href, lang, provider),
+		],
+	]);
 }
 
-function largeSeed(): Hotspots {
-	const fixture = routeOnlySeed(6);
-	const entries = fixture.by_grain?.[0]?.entries;
-	if (!entries) throw new Error('largeSeed requires a day ladder');
-	entries.push({
-		rank: 7,
-		type: 'stop',
-		id: 'S7',
-		name: 'Station Seven',
-		severe_pct: 30,
-		observation_count: 100,
-	});
-	fixture.by_grain?.push({
-		grain: 'week',
-		entries: [{ rank: 1, type: 'route', id: 'W1', severe_pct: 25, observation_count: 100 }],
-		tray: [],
-	});
-	return fixture;
+const manifest = {
+	provider: 'octranspo',
+	display_name: 'OC Transpo',
+	files: {},
+} as unknown as Manifest;
+
+function show(data = seed(), url = 'http://localhost/hotspots') {
+	payload.current = data;
+	mockUrl = new URL(url);
+	return render(HotspotsBoard, { props: { manifest }, context: context() });
 }
 
-function card(container: HTMLElement, id: string): HTMLElement {
-	return container.querySelector(`[data-toc="${id}"]`) as HTMLElement;
-}
-
-function cardTrigger(container: HTMLElement, id: string): HTMLButtonElement {
-	return card(container, id).querySelector(
-		'h2.section-heading > button.section-header',
-	) as HTMLButtonElement;
-}
-
-type CapturedMagnitudeDatum = MagnitudeDatum & {
-	readonly tapPopover?: ChartDatumPopoverModel;
-};
-
-function capturedRow(key: string): CapturedMagnitudeDatum {
-	const row = (
-		capturedLadders.current as Array<{
-			spec: { kind: string; rows?: readonly CapturedMagnitudeDatum[] };
-		}>
-	)
-		.flatMap((result) => (result.spec.kind === 'magnitude-bars' ? (result.spec.rows ?? []) : []))
-		.find((candidate) => candidate.key === key);
-	if (!row) throw new Error(`Expected captured magnitude row ${key}`);
-	return row;
-}
-
-describe('HotspotsBoard article', () => {
-	beforeEach(() => {
-		mockUrl = new URL('http://localhost/hotspots');
-		navigate.mockClear();
-		replaceState.mockClear();
-		currentLocale.value = 'en';
-		capturedLadders.current = [];
-		payload.current = seed();
-		Element.prototype.scrollIntoView = vi.fn();
-	});
-
-	it('renders one article h1 and SectionsToggle controls', () => {
-		render(HotspotsBoard);
-		expect(screen.getByRole('heading', { level: 1, name: copy.en.heading })).toBeInTheDocument();
-		const controls = screen.getByTestId('sections-controls');
-		expect(
-			within(controls).getByRole('button', { name: sectionsToggleCopy.en.collapse }),
-		).toBeInTheDocument();
-		expect(screen.getByTestId('sections-controls').querySelectorAll('button')).toHaveLength(1);
-	});
-
-	it('counts only content and preserves independent rail state through bulk collapse and expand', async () => {
-		const { container } = render(HotspotsBoard);
-		await assertRailIndependence({
-			container,
-			panelNames: [hotspotsCopy.en.rail.controls, hotspotsCopy.en.rail.toc],
-			contentCount: 2,
-		});
-	});
-
-	it('renders Lines and Stops without a mixed winner card or sentence', () => {
-		const { container } = render(HotspotsBoard);
-		expect(card(container, 'hotspots-top')).toBeNull();
-		expect(screen.queryByLabelText(hotspotsCopy.en.verdict.label)).toBeNull();
-		const cards = ['hotspots-lines', 'hotspots-stops'].map((id) => card(container, id));
-		expect(cards.every(Boolean)).toBe(true);
-		expect(cards.map((el) => el.getAttribute('data-header-variant'))).toEqual([
-			'article-summary',
-			'article-summary',
-		]);
-		expect(cards.map((el) => el.querySelector('[data-slot="badge"]')?.textContent?.trim())).toEqual(
-			['01', '02'],
-		);
-		expect(container.querySelector('[role="tablist"]')).toBeNull();
-		expect(container.querySelector('[role="tab"]')).toBeNull();
-		expect(
-			within(card(container, 'hotspots-lines')).getByRole('link', { name: /51/ }),
-		).toHaveAttribute('href', '/lines/51');
-		expect(
-			within(card(container, 'hotspots-stops')).getByRole('link', { name: /Berri-UQAM/ }),
-		).toHaveAttribute('href', '/stop/S1');
-	});
-
-	it.each(['en', 'fr'] as const)(
-		'omits the mixed winner in %s while retaining both kinds',
-		(locale) => {
-			currentLocale.value = locale;
-			payload.current!.by_grain![0].entries![0].otp_delta_pts = 9.7;
-			const { container } = render(HotspotsBoard);
-			expect(screen.queryByLabelText(hotspotsCopy[locale].verdict.label)).toBeNull();
-			expect(card(container, 'hotspots-lines')).toBeInTheDocument();
-			expect(card(container, 'hotspots-stops')).toBeInTheDocument();
-		},
+const rowButtons = () =>
+	within(screen.getByRole('list', { name: /^(Lines|Stops|Lignes|Arrêts)$/ })).getAllByRole(
+		'button',
 	);
 
-	it('keeps a real chart touch click inside its open card while opening details', async () => {
-		vi.stubGlobal('IntersectionObserver', EnteringIntersectionObserver);
-		observeChartFrames(768, 400);
-		const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(768);
-		const height = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(400);
-		const originalAnimate = Object.getOwnPropertyDescriptor(Element.prototype, 'animate');
-		Object.defineProperty(Element.prototype, 'animate', {
-			configurable: true,
-			value: vi.fn(() => ({
-				cancel: vi.fn(),
-				currentTime: 0,
-				effect: null,
-				onfinish: null,
-				playState: 'finished',
-			})),
-		});
-
-		try {
-			const { container } = render(HotspotsBoard);
-			const linesCard = card(container, 'hotspots-lines');
-			const body = linesCard.querySelector('.section-body');
-			const overlay = await waitFor(() => {
-				const element = linesCard.querySelector<SVGRectElement>('rect.lc-tooltip-rect');
-				if (!element) throw new Error('Expected the real LayerChart row overlay');
-				return element;
-			});
-
-			expect(body).toHaveAttribute('data-state', 'open');
-			await fireEvent(
-				overlay,
-				new PointerEvent('click', {
-					bubbles: true,
-					cancelable: true,
-					clientX: 120,
-					clientY: 240,
-					pointerType: 'touch',
-				}),
-			);
-
-			const dialog = await screen.findByRole('dialog', { name: 'Line 51' });
-			expect(within(dialog).getByRole('link', { name: 'View line' })).toHaveAttribute(
-				'href',
-				'/lines/51',
-			);
-			expect(navigate).not.toHaveBeenCalled();
-			expect(body).toHaveAttribute('data-state', 'open');
-		} finally {
-			vi.unstubAllGlobals();
-			width.mockRestore();
-			height.mockRestore();
-			if (originalAnimate) Object.defineProperty(Element.prototype, 'animate', originalAnimate);
-			else Reflect.deleteProperty(Element.prototype, 'animate');
-			document.querySelectorAll('[role="dialog"]').forEach((element) => element.remove());
-		}
-	});
-
-	it('defines the exact EN and FR chart popover copy', () => {
-		expect(hotspotsCopy.en.chart.popover).toEqual({
-			averageDelay: 'Average delay',
-			readings: 'Readings',
-			viewLine: 'View line',
-			viewStop: 'View stop',
-		});
-		expect(hotspotsCopy.fr.chart.popover).toEqual({
-			averageDelay: 'Retard moyen',
-			readings: 'Relevés',
-			viewLine: 'Voir la ligne',
-			viewStop: 'Voir l’arrêt',
-		});
-	});
-
-	it('maps localized EN line and stop popovers with formatted evidence and actions', () => {
-		render(HotspotsBoard);
-		expect(capturedRow('stop-S1').tapPopover).toEqual({
-			key: 'stop-S1',
-			heading: 'Berri-UQAM',
-			meta: 'Stop',
-			rows: [
-				{ label: 'Severe-delay rate', value: '70%' },
-				{ label: '95% CI', value: '69.9%–83.2%' },
-				{ label: 'Average delay', value: '6.7 min' },
-				{ label: 'Readings', value: '80' },
-			],
-			action: {
-				href: '/stop/S1',
-				label: 'View stop',
-			},
-		});
-		expect(capturedRow('route-51').tapPopover).toEqual({
-			key: 'route-51',
-			heading: 'Line 51',
-			meta: 'Line',
-			rows: [
-				{ label: 'Severe-delay rate', value: '40%' },
-				{ label: 'Readings', value: '100' },
-			],
-			action: {
-				href: '/lines/51',
-				label: 'View line',
-			},
-		});
-	});
-
-	it('localizes FR popover values, detail hrefs, visible actions, and accessible names', () => {
-		currentLocale.value = 'fr';
-		mockUrl = new URL('http://localhost/fr/hotspots');
-		render(HotspotsBoard);
-		expect(capturedRow('stop-S1').tapPopover).toEqual({
-			key: 'stop-S1',
-			heading: 'Berri-UQAM',
-			meta: 'Arrêt',
-			rows: [
-				{ label: 'Taux de retards graves', value: '70%' },
-				{ label: 'IC à 95 %', value: '69,9%–83,2%' },
-				{ label: 'Retard moyen', value: '6,7 min' },
-				{ label: 'Relevés', value: '80' },
-			],
-			action: {
-				href: '/fr/stop/S1',
-				label: 'Voir l’arrêt',
-			},
-		});
-		expect(capturedRow('route-51').tapPopover?.action).toEqual({
-			href: '/fr/lines/51',
-			label: 'Voir la ligne',
-		});
-	});
-
-	it('keeps served zero evidence as 0 while omitting every null optional value', () => {
-		const fixture = routeOnlySeed();
-		const day = fixture.by_grain?.[0];
-		if (!day) throw new Error('Expected the route-only day ladder');
-		day.entries = [
-			{
-				rank: 1,
-				type: 'route',
-				id: 'ZERO',
-				name: 'Zero evidence',
-				severe_pct: 0,
-				observation_count: 0,
-				wilson_lo: null,
-				wilson_hi: null,
-				avg_delay_min: null,
-			},
-			{
-				rank: 2,
-				type: 'route',
-				id: 'NULL',
-				name: 'Missing evidence',
-				severe_pct: null,
-				observation_count: null,
-				wilson_lo: null,
-				wilson_hi: null,
-				avg_delay_min: null,
-			},
-		];
-		payload.current = fixture;
-		render(HotspotsBoard);
-		expect(capturedRow('route-ZERO').tapPopover?.rows).toEqual([
-			{ label: 'Severe-delay rate', value: '0%' },
-			{ label: 'Readings', value: '0' },
-		]);
-		expect(capturedRow('route-NULL').tapPopover?.rows).toEqual([]);
-		expect(capturedRow('route-NULL').tapPopover?.rows.some((row) => row.value.includes('0'))).toBe(
-			false,
-		);
-	});
-
-	it('omits the Stops card and Stops TOC destination for a route-only grain', () => {
-		payload.current = routeOnlySeed();
-		const { container } = render(HotspotsBoard);
-		expect(card(container, 'hotspots-lines')).not.toBeNull();
-		expect(container.querySelector('[data-toc="hotspots-stops"]')).toBeNull();
-		const rail = container.querySelector('[data-slot="surface-rail"]') as HTMLElement;
-		expect(within(rail).getByRole('button', { name: 'Lines' })).toBeInTheDocument();
-		expect(within(rail).queryByRole('button', { name: 'Stops' })).toBeNull();
-	});
-
-	it('moves one rail with two disclosures, grain, useful top-N, window, and TOC into the mobile sheet', async () => {
-		payload.current = largeSeed();
-		const { container } = render(HotspotsBoard);
-		const rail = container.querySelector('[data-slot="surface-rail"]') as HTMLElement;
-		expect(container.querySelectorAll('[data-slot="surface-rail-mobile"]')).toHaveLength(1);
-		expect(container.querySelector('[data-slot="toc-pill"]')).toBeNull();
-
-		const mobile = container.querySelector('[data-slot="surface-rail-mobile"]') as HTMLElement;
-		const pill = mobile.querySelector(':scope > button') as HTMLButtonElement;
-		await fireEvent.click(pill);
-		const sheet = mobile.querySelector('[role="dialog"]') as HTMLElement;
-		expect(sheet).not.toBeNull();
-		expect(sheet.querySelector('[data-slot="surface-rail"]')).toBe(rail);
-		expect(within(sheet).getByRole('button', { name: 'View controls' })).toBeInTheDocument();
-		expect(within(sheet).getByRole('button', { name: 'On this page' })).toBeInTheDocument();
-		expect(
-			within(sheet).getAllByRole('button', { name: /^(View controls|On this page)$/ }),
-		).toHaveLength(2);
-		expect(sheet.querySelectorAll('[data-slot="grain-picker"]')).toHaveLength(2);
-		expect(sheet.querySelector('[data-slot="active-window"]')).not.toBeNull();
-		expect(within(sheet).queryByRole('button', { name: 'Top hotspot' })).toBeNull();
-		expect(within(sheet).getByRole('button', { name: 'Lines' })).toBeInTheDocument();
-		expect(within(sheet).getByRole('button', { name: 'Stops' })).toBeInTheDocument();
-
-		const reasonIds = Array.from(
-			container.querySelectorAll<HTMLElement>('[data-slot="controls-reason"]'),
-		).map((reason) => reason.id);
-		expect(reasonIds).toHaveLength(2);
-		expect(new Set(reasonIds)).toHaveLength(2);
-		for (const id of reasonIds)
-			expect(container.querySelectorAll(`[aria-describedby="${id}"]`)).toHaveLength(1);
-	});
-
-	it('a TOC jump reveals only its closed Lines card before scrolling', async () => {
-		const { container } = render(HotspotsBoard);
-		const statesAtScroll: Array<{ linesOpen: string | null; stopsOpen: string | null }> = [];
-		const scrollIntoView = vi.fn(() => {
-			statesAtScroll.push({
-				linesOpen: cardTrigger(container, 'hotspots-lines').getAttribute('aria-expanded'),
-				stopsOpen: cardTrigger(container, 'hotspots-stops').getAttribute('aria-expanded'),
-			});
-		});
-		Element.prototype.scrollIntoView = scrollIntoView;
-		await fireEvent.click(cardTrigger(container, 'hotspots-stops'));
-		await fireEvent.click(cardTrigger(container, 'hotspots-lines'));
-		expect(cardTrigger(container, 'hotspots-stops')).toHaveAttribute('aria-expanded', 'false');
-		expect(cardTrigger(container, 'hotspots-lines')).toHaveAttribute('aria-expanded', 'false');
-
-		const rail = container.querySelector('[data-slot="surface-rail"]') as HTMLElement;
-		await fireEvent.click(within(rail).getByRole('button', { name: 'Lines' }));
-		await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
-		expect(statesAtScroll).toEqual([{ linesOpen: 'true', stopsOpen: 'false' }]);
-		expect(cardTrigger(container, 'hotspots-lines')).toHaveAttribute('aria-expanded', 'true');
-		expect(cardTrigger(container, 'hotspots-stops')).toHaveAttribute('aria-expanded', 'false');
-	});
-
-	it('renders below-floor evidence in semantic tables without fabricating readings', () => {
-		const { container } = render(HotspotsBoard);
-		const stopCard = card(container, 'hotspots-stops');
-		const stopTray = stopCard.querySelector('[data-slot="hotspot-tray"]') as HTMLElement;
-		const stopTables = within(stopTray).getAllByRole('table', {
-			name: hotspotsCopy.en.tray.listLabel,
-		});
-		expect(stopTables).toHaveLength(1);
-		const stopTable = stopTables[0] as HTMLTableElement;
-		expect(
-			within(stopTable)
-				.getAllByRole('columnheader')
-				.map((cell) => cell.textContent?.trim()),
-		).toEqual(['Item', 'Type', 'Readings']);
-		const detail = within(stopTable).getByRole('link', { name: 'Quiet Ave' });
-		expect(detail).toHaveAttribute('href', '/stop/S2');
-		const servedRow = detail.closest('tr') as HTMLTableRowElement;
-		expect(servedRow).toHaveTextContent('Stop');
-		expect(servedRow).toHaveTextContent('12');
-		expect(servedRow.querySelector('[data-slot="absent-value"]')).toBeNull();
-		const reason = stopTray.querySelector('[data-slot="hotspot-tray-reason"]') as HTMLElement;
-		expect(reason).toHaveTextContent(/not ranked/i);
-		expect(stopTable).not.toContainElement(reason);
-
-		const lineCard = card(container, 'hotspots-lines');
-		const lineTable = within(lineCard).queryByRole('table', {
-			name: hotspotsCopy.en.tray.listLabel,
-		}) as HTMLTableElement;
-		expect(lineTable).not.toBeNull();
-		const nullTitle = within(lineTable).getByText('Sparse Route');
-		const nullRow = nullTitle.closest('tr') as HTMLTableRowElement;
-		expect(nullRow).toHaveTextContent('Line');
-		expect(nullRow.querySelectorAll('[data-slot="absent-value"]')).toHaveLength(1);
-		expect(nullRow).not.toHaveTextContent(/\b0\b/);
-		const zeroTitle = within(lineTable).getByText('Zero Route');
-		const zeroRow = zeroTitle.closest('tr') as HTMLTableRowElement;
-		expect(zeroRow).toHaveTextContent('Line');
-		expect(
-			within(zeroRow.querySelector('[data-column="readings"]') as HTMLElement).getByText('0'),
-		).toBeInTheDocument();
-		expect(zeroRow.querySelector('[data-slot="absent-value"]')).toBeNull();
-
-		const rankedTable = stopCard.querySelector('table.sr-only') as HTMLTableElement;
-		expect(rankedTable).not.toBeNull();
-		expect(within(rankedTable).getByRole('link', { name: 'Berri-UQAM' })).toHaveAttribute(
-			'href',
-			'/stop/S1',
-		);
-		expect(rankedTable).not.toBe(stopTable);
-	});
-
-	it('seeds the grain from ?grain=week and renders the matching conditional cards', () => {
-		mockUrl = new URL('http://localhost/hotspots?grain=week');
-		const { container } = render(HotspotsBoard);
-		expect(
-			within(card(container, 'hotspots-lines')).getByRole('link', { name: /Van Horne/ }),
-		).toHaveAttribute('href', '/lines/161');
-		expect(container.querySelector('[data-toc="hotspots-stops"]')).toBeNull();
-	});
-
-	it('clamps an invalid grain and mirrors grain changes while omitting the day default', async () => {
-		mockUrl = new URL('http://localhost/hotspots?grain=garbage');
-		const { container } = render(HotspotsBoard);
-		await waitFor(() => expect(mockUrl.searchParams.get('grain')).toBeNull());
-		const rail = container.querySelector('[data-slot="surface-rail"]') as HTMLElement;
-		const week = within(rail)
-			.getAllByRole('radio')
-			.find((el) => (el.textContent ?? '').toLowerCase().includes('week'));
-		expect(week).toBeDefined();
-		await fireEvent.click(week!);
-		expect(mockUrl.searchParams.get('grain')).toBe('week');
-	});
-
-	it('seeds the shared worst-N cap from ?n and mirrors a change back to the URL', async () => {
-		payload.current = largeSeed();
-		mockUrl = new URL('http://localhost/hotspots?n=5');
-		const { container } = render(HotspotsBoard);
-		expect(container.querySelectorAll('table.sr-only tbody tr')).toHaveLength(6);
-		expect(screen.getByText(/5\/6/)).toBeInTheDocument();
-		const rail = container.querySelector('[data-slot="surface-rail"]') as HTMLElement;
-		const ten = within(rail)
-			.getAllByRole('radio')
-			.find((el) => el.textContent?.trim() === '10');
-		expect(ten).toBeDefined();
-		await fireEvent.click(ten!);
-		expect(mockUrl.searchParams.get('n')).toBeNull();
-	});
-
-	it('uses the time-grid grain picker in row-major order and leaves Show default', () => {
-		payload.current = largeSeed();
-		const { container } = render(HotspotsBoard);
-		const rail = container.querySelector('[data-slot="surface-rail"]') as HTMLElement;
-		const grain = within(rail).getByRole('radiogroup', { name: 'Granularity' });
-		const show = within(rail).getByRole('radiogroup', { name: 'Show' });
-
-		expect(grain).toHaveAttribute('data-variant', 'time-grid');
-		expect(
-			within(grain)
-				.getAllByRole('radio')
-				.map((radio) => radio.textContent?.trim()),
-		).toEqual(['Day', 'Week', 'Month', 'Peak hours']);
-		expect(show).toHaveAttribute('data-variant', 'default');
-		expect(hotspotsCopy.fr.grain.day).toBe('Jour');
-		expect(hotspotsCopy.fr.grain.week).toBe('Semaine');
-		expect(hotspotsCopy.fr.grain.month).toBe('Mois');
-		expect(hotspotsCopy.fr.grain.shiftCompact).toBe('Pointe');
-		expect(hotspotsCopy.fr.grain.shift).toBe('Heures de pointe');
-	});
-
-	it('keeps the combined rail for a one-grain article while omitting the dead grain picker', () => {
-		payload.current = routeOnlySeed();
-		const { container } = render(HotspotsBoard);
-		const rail = container.querySelector('[data-slot="surface-rail"]') as HTMLElement;
-		expect(rail).not.toBeNull();
-		expect(rail.querySelector('[data-slot="grain-picker"]')).toBeNull();
-		expect(within(rail).getByRole('button', { name: 'Lines' })).toBeInTheDocument();
-		expect(
-			within(card(container, 'hotspots-lines')).getByRole('link', { name: /Route 0/ }),
-		).toHaveAttribute('href', '/lines/R0');
-	});
-
-	it('keeps the published-empty state outside collapsible cards', () => {
-		payload.current = {
-			generated_utc: '2026-06-25T00:00:00Z' as IsoUtc,
-			hotspots: [],
-			by_grain: [{ grain: 'day', entries: [], tray: [] }],
-		} satisfies Hotspots as Hotspots;
-		const { container } = render(HotspotsBoard);
-		const empty = container.querySelector('[data-slot="hotspots-empty"]');
-		expect(empty?.querySelector('[data-slot="absent-value"]')).toHaveAttribute(
-			'data-variant',
-			'block',
-		);
-		expect(container.querySelector('[data-slot="surface-rail"]')).toBeNull();
-		expect(container.querySelector('[data-slot="surface-rail-mobile"]')).toBeNull();
-		expect(container.querySelector('.surface-rail-pill')).toBeNull();
-		expect(container.querySelector('.surface-rail-pill-summary')).toBeNull();
-		expect(container.querySelector('[data-slot="active-window"]')).toBeNull();
-		expect(container.querySelectorAll('[data-toc^="hotspots-"]')).toHaveLength(0);
-		expect(container.querySelectorAll('table.sr-only tbody tr')).toHaveLength(0);
-	});
+const writeText = vi.fn(async (_text: string) => {});
+beforeEach(() => {
+	currentLocale.value = 'en';
+	writeText.mockClear();
+	vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
 });
+afterEach(() => vi.unstubAllGlobals());
 
-it('shows the record stamp and no publication time', async () => {
-	const { container } = render(HotspotsBoard);
-	const header = container.querySelector('[data-slot="article-header"]') as HTMLElement;
-	const expected = stampCopy.en.record(
-		null,
-		formatDateKey(payload.current!.generated_utc.slice(0, 10), 'en', true),
-		'window',
-	);
-	await waitFor(() => expect(header).toHaveTextContent(expected));
-	expect(header.querySelector('time')).toHaveAttribute(
-		'datetime',
-		payload.current!.generated_utc.slice(0, 10),
-	);
-	expect(container.querySelector('[data-slot="article-keywords"]')).toBeNull();
+describe('HotspotsBoard', () => {
+	it('names the first-ranked line for its complete period and measure', () => {
+		const { container } = show();
+
+		expect(
+			screen.getByRole('heading', { level: 2, name: `First-ranked line: 303, ${BAYSHORE}.` }),
+		).toBeInTheDocument();
+		expect(container.querySelector('[data-slot="hotspots-period"]')).toHaveTextContent(
+			'November 4 to 10, 2026, 7 complete days.',
+		);
+		expect(screen.getByText('Share of readings more than 5 minutes late.')).toBeInTheDocument();
+		expect(
+			screen.getByText('Lines and stops to investigate in the published record.'),
+		).toBeInTheDocument();
+	});
+
+	it('keeps the published order, even where a lower share ranks higher', () => {
+		const { container } = show();
+
+		const shares = [
+			...container.querySelectorAll('[data-slot="hotspot-rows"] [data-slot="ranking-rate"]'),
+		].map((node) => node.textContent?.trim());
+		expect(shares).toEqual(['85%', '84.3%', '75.6%', '54.2%', '55.1%']);
+		expect(rowButtons()[0]).toHaveAccessibleName(
+			`Position 1 of 173. Line 303, ${BAYSHORE}. 85% of readings more than 5 minutes late. 173 readings.`,
+		);
+		expect(container.querySelector('[data-slot="hotspot-count"]')).toHaveTextContent(
+			'Showing 5 of 173 eligible lines. This record publishes the first 5.',
+		);
+	});
+
+	it('shows the first ten rows, then every published row and never more', async () => {
+		show(seed(7));
+
+		expect(rowButtons()).toHaveLength(10);
+		expect(
+			screen.getByText('Showing 10 of 173 eligible lines. This record publishes the first 12.'),
+		).toBeInTheDocument();
+		await fireEvent.click(screen.getByRole('button', { name: 'Show all 12 published lines' }));
+		expect(rowButtons()).toHaveLength(12);
+		expect(
+			screen.getByText('Showing 12 of 173 eligible lines. This record publishes the first 12.'),
+		).toBeInTheDocument();
+		await waitFor(() => expect(mockUrl.searchParams.get('n')).toBe('all'));
+		await fireEvent.click(screen.getByRole('button', { name: 'Show the first 10' }));
+		expect(rowButtons()).toHaveLength(10);
+	});
+
+	it('keeps unpublished figures absent, never a reassuring zero', () => {
+		const data = seed();
+		const week = data.by_grain![0];
+		week.entries![1] = {
+			...week.entries![1],
+			severe_count: null,
+			severe_pct: null,
+			observation_count: null,
+		};
+		week.entries![2] = { ...week.entries![2], severe_count: 0, severe_pct: 0 };
+		week.total_ranked_routes = null;
+		week.tray_total = null;
+		const { container } = show(data);
+
+		const rows = container.querySelectorAll('[data-slot="hotspot-rows"] > li');
+		expect(rows[1]).toHaveTextContent('Late share not published');
+		expect(rows[1]).toHaveTextContent('Reading count not published');
+		expect(rows[2].querySelector('[data-slot="ranking-rate"]')).toHaveTextContent('0%');
+		expect(container.querySelector('[data-slot="hotspot-count"]')).toHaveTextContent(
+			'Showing 5 of 5 published lines. The number of eligible lines is not published.',
+		);
+		expect(container.querySelector('[data-slot="hotspot-floor-total"]')).toHaveTextContent(
+			'Total not published.',
+		);
+		expect(screen.getByText('No live data').nextElementSibling).toHaveTextContent(
+			'Total not published.',
+		);
+	});
+
+	it('never draws an interval beside the late share', async () => {
+		const data = seed();
+		// A 90% late share next to complementary 5 to 15% bounds of the on-time share.
+		data.by_grain![0].entries![0] = {
+			...row('route', 1, '303', BAYSHORE, 100, 90),
+			wilson_lo: 5,
+			wilson_hi: 15,
+		};
+		const { container } = show(data);
+		await fireEvent.click(rowButtons()[0]);
+
+		const page = container.querySelector('[data-slot="hotspots-page"]')!.textContent!;
+		expect(page).not.toMatch(/\b(5|15|85|95)(\.\d)?\s*%/);
+		expect(page).not.toMatch(/CI|IC à/);
+		expect(
+			screen.getAllByText(
+				'An uncertainty range for this late share is not published in this record.',
+			).length,
+		).toBeGreaterThan(0);
+	});
+
+	it('opens evidence in place with record links and a citation that keep the dates and provider', async () => {
+		const { container } = show();
+
+		const first = rowButtons()[0];
+		expect(first).toHaveAttribute('aria-expanded', 'false');
+		await fireEvent.click(first);
+		expect(first).toHaveAttribute('aria-expanded', 'true');
+		const inline = container.querySelector(
+			'[data-slot="hotspot-row-evidence"]:not([hidden])',
+		) as HTMLElement;
+		expect(
+			within(inline).getByRole('heading', { level: 3, name: 'Selected record' }),
+		).toBeInTheDocument();
+		expect(inline).toHaveTextContent('Position 1 of 173');
+		expect(inline).toHaveTextContent('173 readings');
+		expect(inline).toHaveTextContent('November 4 to 10, 2026, 7 complete days.');
+		expect(inline).toHaveTextContent('Method version: r2.');
+		expect(
+			within(inline).getByRole('link', { name: `Open record: Line 303, ${BAYSHORE}` }),
+		).toHaveAttribute('href', '/lines/303?from=2026-11-04&to=2026-11-10&provider=octranspo');
+		await waitFor(() => expect(mockUrl.searchParams.get('selected')).toBe('303'));
+
+		await fireEvent.click(within(inline).getByRole('button', { name: 'Copy link' }));
+		expect(writeText).toHaveBeenLastCalledWith(
+			'http://localhost/hotspots?date=2026-11-10&selected=303&provider=octranspo',
+		);
+		await fireEvent.click(within(inline).getByRole('button', { name: 'Cite this record' }));
+		expect(writeText).toHaveBeenLastCalledWith(
+			`Transit. OC Transpo. Line 303, ${BAYSHORE}: 85% of readings more than 5 minutes late, November 4 to 10, 2026. 173 readings. Record published November 11, 2026. Method version: r2. http://localhost/hotspots?date=2026-11-10&selected=303&provider=octranspo`,
+		);
+		expect(await within(inline).findByText('Citation copied.')).toBeInTheDocument();
+
+		await fireEvent.click(first);
+		expect(first).toHaveAttribute('aria-expanded', 'false');
+	});
+
+	it('copies links to a row past the first ten that reopen on that row', async () => {
+		const openEvidence = () =>
+			document.querySelector('[data-slot="hotspot-row-evidence"]:not([hidden])') as HTMLElement;
+		const first = show(seed(7), 'http://localhost/hotspots?n=all&selected=96');
+		expect(openEvidence()).toHaveTextContent('Position 12 of 173');
+
+		await fireEvent.click(within(openEvidence()).getByRole('button', { name: 'Copy link' }));
+		const link = writeText.mock.lastCall![0];
+		expect(link).toBe(
+			'http://localhost/hotspots?date=2026-11-10&n=all&selected=96&provider=octranspo',
+		);
+		await fireEvent.click(within(openEvidence()).getByRole('button', { name: 'Cite this record' }));
+		expect(writeText.mock.lastCall![0].endsWith(` ${link}`)).toBe(true);
+		first.unmount();
+
+		show(seed(7), link);
+		expect(openEvidence()).toHaveTextContent('Position 12 of 173');
+		expect(openEvidence()).toHaveTextContent('Generated 6');
+	});
+
+	it.each([
+		['en', '0 readings'],
+		['fr', '0 relevé'],
+	] as const)('never shows a negative zero reading count in %s', async (locale, zero) => {
+		currentLocale.value = locale;
+		const data = seed();
+		data.by_grain![0].tray = [
+			{ type: 'stop', id: '5581', name: 'Doctor Leach', observation_count: -0 },
+		];
+		show(data, 'http://localhost/hotspots?kind=stops');
+
+		const excluded = screen.getByRole('list', {
+			name: locale === 'en' ? 'Published excluded stops' : 'Arrêts exclus publiés',
+		});
+		expect(excluded).toHaveTextContent(zero);
+		expect(excluded.textContent).not.toMatch(/[-−]\s*0/);
+	});
+
+	it('switches to stops with their own finding, exclusions and record links', async () => {
+		const { container } = show();
+
+		await fireEvent.click(screen.getByRole('radio', { name: 'Stops' }));
+		expect(
+			screen.getByRole('heading', { level: 2, name: 'First-ranked stop: Main / Mill.' }),
+		).toBeInTheDocument();
+		await waitFor(() => expect(mockUrl.searchParams.get('kind')).toBe('stops'));
+		expect(screen.getByRole('heading', { level: 2, name: 'Stops not ranked' })).toBeInTheDocument();
+		expect(container.querySelector('[data-slot="hotspot-floor-total"]')).toHaveTextContent(
+			'1 stop',
+		);
+		expect(screen.queryByText('No live data')).toBeNull();
+		expect(
+			screen.getByText('1 stop below the 30-reading floor, all listed below.'),
+		).toBeInTheDocument();
+		const excluded = screen.getByRole('list', { name: 'Published excluded stops' });
+		expect(
+			within(excluded).getByRole('link', { name: 'Stop Doctor Leach / Ad. 5581' }),
+		).toHaveAttribute('href', '/stop/5581?from=2026-11-04&to=2026-11-10&provider=octranspo');
+		// A below-floor row keeps its low-sample presentation: readings, never a share.
+		expect(excluded).toHaveTextContent('2 readings');
+		expect(excluded).not.toHaveTextContent('50');
+	});
+
+	it('reads the 30-day record with its own dates', async () => {
+		const data = seed();
+		data.by_grain!.push({
+			...data.by_grain![0],
+			grain: 'month',
+			date: '2026-10-12',
+			window_end: '2026-11-10',
+			entries: [
+				row('route', 1, '301', 'Bayshore / Carlingwood <> Richmond / Stittsville', 700, 500),
+			],
+			total_ranked_routes: 180,
+		});
+		const { container } = show(data);
+
+		await fireEvent.click(screen.getByRole('radio', { name: '30 days' }));
+		expect(container.querySelector('[data-slot="hotspots-period"]')).toHaveTextContent(
+			'October 12 to November 10, 2026, 30 complete days.',
+		);
+		expect(
+			screen.getByRole('heading', { level: 2, name: /^First-ranked line: 301, / }),
+		).toBeInTheDocument();
+		await waitFor(() => expect(mockUrl.searchParams.get('grain')).toBe('month'));
+	});
+
+	it('says when a period is not published and when a ranking fails its checks', () => {
+		const data = seed();
+		data.by_grain = [];
+		const absent = show(data);
+		expect(
+			screen.getByRole('heading', {
+				level: 2,
+				name: 'The 7-day ranking is not published in this record.',
+			}),
+		).toBeInTheDocument();
+		absent.unmount();
+
+		const broken = seed();
+		broken.by_grain![0].entries![0] = { ...broken.by_grain![0].entries![0], severe_count: 400 };
+		const { container } = show(broken);
+		expect(
+			screen.getByRole('heading', {
+				level: 2,
+				name: 'This ranking failed its consistency checks, so it is not shown.',
+			}),
+		).toBeInTheDocument();
+		expect(container.querySelector('[data-slot="hotspot-rows"]')).toBeNull();
+	});
+
+	it('reads the same record in French', async () => {
+		currentLocale.value = 'fr';
+		const { container } = show();
+
+		expect(
+			screen.getByRole('heading', {
+				level: 2,
+				name: `Ligne en tête du classement : 303, ${BAYSHORE}.`,
+			}),
+		).toBeInTheDocument();
+		expect(container.querySelector('[data-slot="hotspots-period"]')).toHaveTextContent(
+			'Du 4 au 10 novembre 2026, 7 jours complets.',
+		);
+		expect(
+			container.querySelector('[data-slot="hotspot-rows"] [data-slot="ranking-rate"]')?.textContent,
+		).toBe(`85${NB}%`);
+		expect(container.querySelector('[data-slot="hotspot-count"]')).toHaveTextContent(
+			'5 lignes affichées sur 173 admissibles. Ce bilan publie les 5 premières.',
+		);
+		await fireEvent.click(rowButtons()[0]);
+		const inline = container.querySelector(
+			'[data-slot="hotspot-row-evidence"]:not([hidden])',
+		) as HTMLElement;
+		await fireEvent.click(within(inline).getByRole('button', { name: 'Citer ce bilan' }));
+		expect(writeText).toHaveBeenLastCalledWith(
+			`Transit. OC Transpo. Ligne 303, ${BAYSHORE} : 85${NB}% des relevés en retard de plus de 5 minutes, du 4 au 10 novembre 2026. 173 relevés. Bilan publié le 11 novembre 2026. Version de la méthode : r2. http://localhost/fr/hotspots?date=2026-11-10&selected=303&provider=octranspo`,
+		);
+	});
+
+	it('shows the record stamp without a publication time', async () => {
+		const { container } = show();
+		const header = container.querySelector('[data-slot="article-header"]') as HTMLElement;
+		await waitFor(() =>
+			expect(header).toHaveTextContent(
+				stampCopy.en.record(null, formatDateKey('2026-11-11', 'en', true), 'window'),
+			),
+		);
+		expect(header.querySelector('time')).toHaveAttribute('datetime', '2026-11-11');
+	});
 });
