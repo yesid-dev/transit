@@ -5,7 +5,8 @@ import { localizeHref } from '../src/lib/i18n/routing';
 
 for (const provider of ['stm', 'octranspo'])
 	for (const locale of ['en', 'fr'] as const)
-		for (const path of ['/network', '/hotspots', '/repeat-offenders'])
+		// Hotspots draws no chart; layout-cards owns its ranked rows on phones.
+		for (const path of ['/network', '/repeat-offenders'])
 			test(`${provider} ${locale} chart geometry ${path}`, async ({ page }) => {
 				await page.clock.setFixedTime(Date.parse('2026-08-29T12:00:30Z'));
 				await page.route('**/v1/**', async (route) => {
