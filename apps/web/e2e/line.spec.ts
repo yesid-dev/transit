@@ -149,7 +149,7 @@ for (const locale of PUBLISHED_LOCALES)
 		page,
 	}) => {
 		const t = reliabilityCopy[locale].evidence;
-		for (const width of [320, 390, 768, 1280]) {
+		for (const width of [320, 360, 390, 768, 1280]) {
 			await page.setViewportSize({ width, height: 900 });
 			await page.goto(localizeHref('/lines/9002', locale, provider), { waitUntil: 'networkidle' });
 			const stops = page.locator('[data-slot="stop-delays"]');
@@ -159,6 +159,7 @@ for (const locale of PUBLISHED_LOCALES)
 			await expect(stops.locator('[data-slot="stop-delay-row"]')).toHaveCount(15);
 			await expect(stops.getByRole('link', { name: longestStop })).toHaveText(longestStop);
 			await expect(page.locator('[data-slot="time-of-day"] tbody tr')).not.toHaveCount(0);
+			await expect(page.locator('[data-slot="gaps-table"] tbody tr')).toHaveCount(5);
 			const report = await page.evaluate(() => {
 				const box = (element: Element) => element.getBoundingClientRect();
 				const meets = (a: DOMRect, b: DOMRect) =>
@@ -170,7 +171,44 @@ for (const locale of PUBLISHED_LOCALES)
 				];
 				const table = document.querySelector('[data-slot="time-of-day"]')!;
 				const section = table.closest('[data-section]')!;
+				const tables = ['time-of-day', 'gaps-table'].map(
+					(slot) => document.querySelector(`[data-slot="${slot}"]`)!,
+				);
+				// A word wider than its cell's content box breaks inside the word: never allowed.
+				const probe = document.body.appendChild(document.createElement('span'));
+				probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap';
+				const brokenWords = tables.flatMap((each) =>
+					[...each.querySelectorAll('th, td')].flatMap((cell) => {
+						const style = getComputedStyle(cell);
+						// Longhands: with tabular-nums the `font` shorthand serializes as an empty string.
+						for (const property of [
+							'fontFamily',
+							'fontSize',
+							'fontWeight',
+							'fontStyle',
+							'fontStretch',
+							'fontVariantNumeric',
+							'letterSpacing',
+						] as const)
+							probe.style[property] = style[property];
+						const room =
+							cell.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+						return (cell.textContent ?? '')
+							.split(/\s+/u)
+							.filter(Boolean)
+							.filter((word) => {
+								probe.textContent = word;
+								return probe.getBoundingClientRect().width > room + 0.5;
+							})
+							.map((word) => `${word} (${Math.round(room)} px)`);
+					}),
+				);
+				probe.remove();
 				return {
+					brokenWords,
+					tablesOverflow: tables.map((each) =>
+						Math.max(0, box(each).right - box(each.closest('[data-section]')!).right),
+					),
 					overflow: document.documentElement.scrollWidth - window.innerWidth,
 					clipped: rows
 						.map((row) => row.querySelector('a')!)
@@ -192,5 +230,7 @@ for (const locale of PUBLISHED_LOCALES)
 			expect(report.short, `${width}px targets under 44 px`).toEqual([]);
 			expect(report.overlaps, `${width}px name over figures`).toEqual([]);
 			expect(report.tableOverflow, `${width}px time-of-day table`).toBeLessThanOrEqual(0.5);
+			expect(report.brokenWords, `${width}px words broken inside a table cell`).toEqual([]);
+			expect(report.tablesOverflow, `${width}px tables past their section`).toEqual([0, 0]);
 		}
 	});

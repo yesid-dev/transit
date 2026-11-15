@@ -203,3 +203,34 @@ describe('line Record: one answer, its evidence and its actions', () => {
 		);
 	});
 });
+
+describe('line Record: each evidence cut names its own days', () => {
+	it('dates stops and gaps by their own anchors, never punctuality’s closing day', () => {
+		const stop = {
+			id: '3001',
+			name: 'Rideau / Dalhousie',
+			severe_pct: 22.1,
+			observation_count: 400,
+		};
+		const gap = { shift: 'am_peak', scheduled_min: 10, observed_min: 11.5 };
+		const data: RouteReliability = {
+			...thirtyDays(),
+			// Stops close a day earlier than punctuality (November 9), with their own day row.
+			weak_stops_by_grain: [
+				{ grain: 'day', date: '2026-11-09', stops: [stop] },
+				{ grain: 'week', date: '2026-11-03', stops: [stop] },
+			],
+			// Gaps publish a week starting November 3 and no day row: the week's own definition ends it.
+			headway_by_grain: [{ grain: 'week', date: '2026-11-03', headway: [gap] }],
+		};
+		const { container } = render(RouteReliabilityClusters, { data, locale: 'en', citation });
+		const scope = (section: string) =>
+			container.querySelector(`[data-section="${section}"] .evidence-body`)?.textContent ?? '';
+		expect(container.querySelector('[data-slot="record-answer"]')).toHaveTextContent(
+			'November 4 to 10, 7 complete days',
+		);
+		expect(scope('worst-stops')).toContain('Period of these figures: November 3 to 9.');
+		expect(scope('the-wait')).toContain('Period of these figures: November 3 to 9.');
+		expect(`${scope('worst-stops')}${scope('the-wait')}`).not.toContain('November 3 to 10');
+	});
+});

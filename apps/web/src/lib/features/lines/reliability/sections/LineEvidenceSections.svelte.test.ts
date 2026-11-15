@@ -14,7 +14,7 @@ import type {
 	PunctualityVM,
 	ServiceDeliveredVM,
 } from '../clusters';
-import type { CutScope } from '../selectors/evidence';
+import { crowdingFigure, type CutScope } from '../selectors/evidence';
 import Section1WhenToRide from './Section1WhenToRide.svelte';
 import Section2TheWait from './Section2TheWait.svelte';
 import Section3RunAndFit from './Section3RunAndFit.svelte';
@@ -389,31 +389,39 @@ const crowding = (
 	isEmpty: all == null,
 });
 
+const labels = { grain: 'Last 7 days', range: 'November 4 to 10' };
+const renderCrowding = (vm: CrowdingVM, mode: 'week' | 'range', locale: 'en' | 'fr' = 'en') =>
+	render(SectionCrowding, {
+		props: {
+			crowding: vm,
+			figure: crowdingFigure(vm, mode, labels),
+			locale,
+			copy: reliabilityCopy[locale],
+		},
+	});
+
 describe('Crowding', () => {
 	it('names the dominant band of occupancy readings and the mix’s own scope', () => {
-		const view = render(SectionCrowding, {
-			props: {
-				crowding: crowding(mix(0.2, 0.5, 0.28, 0.02), mix(0.34, 0.34, 0.3, 0.02)),
-				scope: 'Last 7 days',
-				locale: 'en',
-				copy: reliabilityCopy.en,
-			},
-		});
+		const view = renderCrowding(
+			crowding(mix(0.2, 0.5, 0.28, 0.02), mix(0.34, 0.34, 0.3, 0.02)),
+			'week',
+		);
 		expect(view.container.querySelector('[data-slot="section-summary"]')).toHaveTextContent(
 			'Few seats in 50% of occupancy readings.',
 		);
 		expect(view.getByText('Period of these figures: Last 7 days.')).toBeInTheDocument();
 	});
 
+	it('never labels the file-level mix with the chosen grain', () => {
+		const view = renderCrowding(crowding(null, mix(0.2, 0.8, 0, 0)), 'week');
+		expect(view.container.querySelector('[data-slot="section-summary"]')).toHaveTextContent(
+			'No crowding data for this record.',
+		);
+		expect(view.container.textContent).not.toMatch(/Last 7 days|80s?%/u);
+	});
+
 	it('names a chosen range’s own dates for its retained mix', () => {
-		const view = render(SectionCrowding, {
-			props: {
-				crowding: crowding(mix(0.2, 0.5, 0.28, 0.02), mix(0.4, 0.3, 0.28, 0.02)),
-				scope: 'November 4 to 10',
-				locale: 'en',
-				copy: reliabilityCopy.en,
-			},
-		});
+		const view = renderCrowding(crowding(null, mix(0.2, 0.5, 0.28, 0.02)), 'range');
 		expect(view.container.querySelector('[data-slot="section-summary"]')).toHaveTextContent(
 			'Few seats in 50% of occupancy readings.',
 		);
@@ -421,17 +429,10 @@ describe('Crowding', () => {
 	});
 
 	it('says plainly when no crowding is published', () => {
-		const view = render(SectionCrowding, {
-			props: {
-				crowding: crowding(null, null),
-				scope: 'Last 7 days',
-				locale: 'fr',
-				copy: reliabilityCopy.fr,
-			},
-		});
+		const view = renderCrowding(crowding(null, null), 'week', 'fr');
 		expect(view.container.querySelector('[data-slot="section-summary"]')).toHaveTextContent(
 			'Aucune donnée d’occupation pour ce bilan.',
 		);
-		expect(view.container.textContent).not.toMatch(/\d\s?%/u);
+		expect(view.container.textContent).not.toMatch(/ds?%/u);
 	});
 });

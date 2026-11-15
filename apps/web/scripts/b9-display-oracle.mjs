@@ -982,7 +982,12 @@ function lineOracle(fixture, locale, view) {
 	};
 	const byDow = raw.occupancy_by_dow ?? [];
 	const activeMix =
-		(raw.occupancy_by_grain ?? []).find((row) => row.grain === 'day')?.mix ?? raw.occupancy_mix;
+		// A grain shows only its own mix, never the file-level one under the grain's name. The range
+		// cell is read after the runner's day -> range round trip, which clears the chosen dates: a
+		// range without dates has no mix of its own, so no figure is shown.
+		chosenRange
+			? null
+			: ((raw.occupancy_by_grain ?? []).find((row) => row.grain === 'day')?.mix ?? null);
 	const occupancyShares = {
 		active: shareRows(activeMix, OCCUPANCY),
 		weekday: shareRows(

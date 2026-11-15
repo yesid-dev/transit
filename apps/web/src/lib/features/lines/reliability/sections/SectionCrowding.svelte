@@ -17,17 +17,18 @@
 	import { selectOccupancyShare } from '../selectors/occupancyShare';
 	import { detailCopy } from '../../lines.copy';
 	import type { CrowdingVM } from '../clusters';
+	import type { CrowdingFigure } from '../selectors/evidence';
 	import type { ReliabilityCopy } from '../reliability.copy';
 	import MetricBullet from './MetricBullet.svelte';
 
 	interface SectionCrowdingProps {
 		crowding: CrowdingVM;
-		/** The days this mix covers, in words: the chosen grain, or a chosen range's dates. */
-		scope: string | null;
+		/** The mix shown and the days it covers, chosen together (`crowdingFigure`). */
+		figure: CrowdingFigure;
 		locale: Locale;
 		copy: ReliabilityCopy;
 	}
-	let { crowding, scope, locale, copy }: SectionCrowdingProps = $props();
+	let { crowding, figure, locale, copy }: SectionCrowdingProps = $props();
 
 	const e = $derived(copy.evidence);
 	const t = $derived(copy.evidence.crowding);
@@ -35,8 +36,8 @@
 	const noDataLabel = $derived(absenceShort('no-observations', locale));
 	const bandLabel = (code: OccupancyCode): string => bands[code];
 
-	// A grain's own mix, else the file's mix: for a chosen range both are that range's retained days.
-	const activeMix = $derived(crowding.mixByGrain ?? crowding.mix);
+	const activeMix = $derived(figure.mix);
+	const scope = $derived(figure.scope);
 	const total = $derived(
 		activeMix
 			? OCCUPANCY_CODES.reduce((s, c) => s + ((activeMix[c] ?? 0) > 0 ? activeMix[c]! : 0), 0)

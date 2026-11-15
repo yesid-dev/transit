@@ -380,4 +380,10 @@
 		inline-size: var(--share);
 		background: var(--dataviz-status-on-time);
 	}
+	/* The bar is decoration beside the printed share: a narrow card keeps the room for names. */
+	@container line-evidence (max-width: 24rem) {
+		.tod-bar {
+			display: none;
+		}
+	}
 </style>

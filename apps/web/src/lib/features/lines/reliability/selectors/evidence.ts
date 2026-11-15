@@ -1,6 +1,6 @@
 import type { CancellationPeriod, SkippedStopPeriod, WeakStop } from '#lib/v1/index.ts';
 import { DAY_TYPE_GRAIN_ORDER, SHIFT_GRAIN_ORDER } from '#lib/features/reliability/shiftGrains.ts';
-import type { PeriodComparisonRow } from '../clusters';
+import type { CrowdingVM, PeriodComparisonRow } from '../clusters';
 import type { RecordMode, RecordPeriod } from './lineRecord';
 
 const isCount = (value: unknown): value is number =>
@@ -27,28 +27,40 @@ export interface CutScopeInput {
 	readonly mode: RecordMode;
 	/** The cut's own first day, as published beside it (`*_by_grain[].date`). */
 	readonly date: string | null | undefined;
-	readonly closedThrough: string | null;
+	/**
+	 * The same family's own day row (`*_by_grain` grain `day`), when it publishes one. Families
+	 * close on their own anchors: one family's day is never another's.
+	 */
+	readonly anchor: string | null | undefined;
 	/** True when the cut belongs to the chosen grain, false for the all-history fallback. */
 	readonly windowed: boolean;
 	readonly hasRows: boolean;
 }
 
+const GRAIN_DAYS = { day: 1, week: 7, month: 30 } as const;
+const DATE_KEY = /^\d{4}-\d{2}-\d{2}$/u;
+
+/** `date` plus `days`, as a date key; null for a malformed key. */
+function addDays(date: string, days: number): string | null {
+	if (!DATE_KEY.test(date)) return null;
+	const at = new Date(`${date}T00:00:00Z`);
+	if (Number.isNaN(at.getTime()) || at.toISOString().slice(0, 10) !== date) return null;
+	at.setUTCDate(at.getUTCDate() + days);
+	return at.toISOString().slice(0, 10);
+}
+
 /**
- * A grain's cut covers its published first day through the last complete day. A chosen range has
- * no cut of its own: the latest day's cut is never shown as if it described the range.
+ * A grain's cut covers its published first day and the grain's fixed length (1, 7 or 30 days).
+ * When its family also publishes a day row, that anchor must be the cut's last day; a cut whose
+ * days disagree is withheld rather than named. A chosen range has no cut of its own: the latest
+ * day's cut is never shown as if it described the range.
  */
-export function cutScope({
-	mode,
-	date,
-	closedThrough,
-	windowed,
-	hasRows,
-}: CutScopeInput): CutScope {
+export function cutScope({ mode, date, anchor, windowed, hasRows }: CutScopeInput): CutScope {
 	if (mode === 'range') return { kind: 'none', range: true };
 	if (!hasRows) return { kind: 'none' };
 	if (!windowed) return { kind: 'history' };
-	const to = mode === 'day' ? date : closedThrough;
-	if (!date || !to || date > to) return { kind: 'none' };
+	const to = date ? addDays(date, GRAIN_DAYS[mode] - 1) : null;
+	if (!date || !to || (anchor != null && anchor !== to)) return { kind: 'none' };
 	return { kind: 'window', from: date, to };
 }
 
@@ -207,4 +219,29 @@ export function selectTripFacts(
 			(row) => row.stop_time_update_count,
 		),
 	};
+}
+
+export interface CrowdingFigure {
+	readonly mix: CrowdingVM['mix'];
+	/** The days `mix` covers, in words; null exactly when no mix is shown. */
+	readonly scope: string | null;
+}
+
+/**
+ * The occupancy mix a crowding figure shows and the days it covers, chosen together. A grain
+ * shows only its own mix, named by the grain; the file-level mix is never shown under a grain's
+ * name. A chosen range shows the mix of its retained days with the range's dates (the page
+ * replaces the file's mix with them); without those dates nothing is shown.
+ */
+export function crowdingFigure(
+	crowding: Pick<CrowdingVM, 'mix' | 'mixByGrain'>,
+	mode: RecordMode,
+	labels: { readonly grain: string; readonly range: string | null },
+): CrowdingFigure {
+	const none = { mix: null, scope: null };
+	if (mode === 'range') {
+		const mix = crowding.mixByGrain ?? crowding.mix;
+		return mix && labels.range ? { mix, scope: labels.range } : none;
+	}
+	return crowding.mixByGrain ? { mix: crowding.mixByGrain, scope: labels.grain } : none;
 }

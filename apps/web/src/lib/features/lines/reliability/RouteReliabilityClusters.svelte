@@ -34,7 +34,7 @@
 	import Section3RunAndFit from './sections/Section3RunAndFit.svelte';
 	import Section4WorstStops from './sections/Section4WorstStops.svelte';
 	import SectionCrowding from './sections/SectionCrowding.svelte';
-	import { cutScope } from './selectors/evidence';
+	import { crowdingFigure, cutScope } from './selectors/evidence';
 	import { formatRecordDates } from './recordDates';
 
 	interface RouteReliabilityClustersProps {
@@ -146,15 +146,17 @@
 			: null,
 	);
 
-	// Each evidence cut names its own days; a chosen range never borrows the latest day's cut.
-	const closedThrough = $derived(routeClosedThrough(selectedData));
-	const cutDate = (rows: readonly { grain: string; date?: string | null }[] | null | undefined) =>
-		rows?.find((row) => row.grain === (mode === 'range' ? 'day' : mode))?.date ?? null;
+	// Each evidence cut names its own days from its own family's rows: punctuality, stops and gaps
+	// close on independent anchors. A chosen range never borrows the latest day's cut.
+	type GrainRows = readonly { grain: string; date?: string | null }[] | null | undefined;
+	const grainDate = (rows: GrainRows, grain: string) =>
+		rows?.find((row) => row.grain === grain)?.date ?? null;
+	const cutDate = (rows: GrainRows) => grainDate(rows, mode === 'range' ? 'day' : mode);
 	const timeScope = $derived(
 		cutScope({
 			mode,
 			date: cutDate(selectedData.periods_by_grain),
-			closedThrough,
+			anchor: grainDate(selectedData.periods_by_grain, 'day'),
 			windowed: clusters.punctuality.windowed,
 			// Every cut of the same publication row shares its days: periods, day types, weekdays.
 			hasRows:
@@ -169,7 +171,7 @@
 		cutScope({
 			mode,
 			date: cutDate(selectedData.weak_stops_by_grain),
-			closedThrough,
+			anchor: grainDate(selectedData.weak_stops_by_grain, 'day'),
 			windowed: clusters.punctuality.weakStopsWindowed,
 			hasRows: clusters.punctuality.weakStops.length > 0,
 		}),
@@ -178,7 +180,7 @@
 		cutScope({
 			mode,
 			date: cutDate(selectedData.headway_by_grain),
-			closedThrough,
+			anchor: grainDate(selectedData.headway_by_grain, 'day'),
 			windowed: clusters.waitRegularity.windowed,
 			hasRows: !clusters.waitRegularity.isEmpty,
 		}),
@@ -219,14 +221,13 @@
 					? copy.controls.thisMonth
 					: copy.controls.latestDay,
 	);
-	// A grain's crowding mix names its grain (the file publishes no dates for it); a chosen
-	// range's mix is that range's retained days.
-	const crowdingScope = $derived(
-		mode !== 'range'
-			? controlsSummary
-			: record.period
-				? formatRecordDates(record.period.from, record.period.to, locale)
-				: null,
+	// The crowding mix and the days it covers are chosen together: a grain's own mix under the
+	// grain's name (the file publishes no dates for it), a chosen range's retained mix with its dates.
+	const crowding = $derived(
+		crowdingFigure(clusters.crowding, mode, {
+			grain: controlsSummary,
+			range: record.period ? formatRecordDates(record.period.from, record.period.to, locale) : null,
+		}),
 	);
 
 	const sectionNav = $derived([
@@ -430,7 +431,7 @@
 						data-toc="rel-crowding"
 						data-band="crowding"
 					>
-						<SectionCrowding crowding={clusters.crowding} scope={crowdingScope} {locale} {copy} />
+						<SectionCrowding crowding={clusters.crowding} figure={crowding} {locale} {copy} />
 					</div>
 				</ArticleSectionStack>
 			</div>

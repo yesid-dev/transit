@@ -3,6 +3,7 @@ import type { CancellationPeriod, SkippedStopPeriod, WeakStop } from '#lib/v1/in
 import type { PeriodComparisonRow } from '../clusters';
 import {
 	countShare,
+	crowdingFigure,
 	cutScope,
 	selectStopDelays,
 	selectTimeOfDay,
@@ -71,7 +72,7 @@ describe('countShare', () => {
 });
 
 describe('cutScope', () => {
-	const base = { closedThrough: '2026-11-10', hasRows: true, windowed: true };
+	const base = { anchor: '2026-11-10', hasRows: true, windowed: true };
 
 	it('names the cut’s own days for a closed day, week or month', () => {
 		expect(cutScope({ ...base, mode: 'day', date: '2026-11-10' })).toEqual({
@@ -83,6 +84,37 @@ describe('cutScope', () => {
 			kind: 'window',
 			from: '2026-11-04',
 			to: '2026-11-10',
+		});
+		expect(cutScope({ ...base, mode: 'month', date: '2026-10-12' })).toEqual({
+			kind: 'window',
+			from: '2026-10-12',
+			to: '2026-11-10',
+		});
+	});
+
+	it('ends a cut by its own family’s anchor, or by its grain’s length without one', () => {
+		// Stops close November 9 while punctuality closes November 10: November 3 to 9, never to 10.
+		expect(cutScope({ ...base, mode: 'week', date: '2026-11-03', anchor: '2026-11-09' })).toEqual({
+			kind: 'window',
+			from: '2026-11-03',
+			to: '2026-11-09',
+		});
+		expect(cutScope({ ...base, mode: 'week', date: '2026-11-03', anchor: null })).toEqual({
+			kind: 'window',
+			from: '2026-11-03',
+			to: '2026-11-09',
+		});
+		// Across a month boundary the 30 days are counted, not borrowed.
+		expect(cutScope({ ...base, mode: 'month', date: '2026-10-31', anchor: null })).toEqual({
+			kind: 'window',
+			from: '2026-10-31',
+			to: '2026-11-29',
+		});
+	});
+
+	it('withholds a cut whose start and own anchor disagree', () => {
+		expect(cutScope({ ...base, mode: 'week', date: '2026-11-03', anchor: '2026-11-10' })).toEqual({
+			kind: 'none',
 		});
 	});
 
@@ -101,10 +133,8 @@ describe('cutScope', () => {
 
 	it('withholds a cut whose days cannot be named', () => {
 		expect(cutScope({ ...base, mode: 'week', date: null })).toEqual({ kind: 'none' });
-		expect(cutScope({ ...base, mode: 'week', date: '2026-11-12' })).toEqual({ kind: 'none' });
-		expect(cutScope({ ...base, mode: 'week', date: '2026-11-04', closedThrough: null })).toEqual({
-			kind: 'none',
-		});
+		expect(cutScope({ ...base, mode: 'week', date: '2026-02-30' })).toEqual({ kind: 'none' });
+		expect(cutScope({ ...base, mode: 'week', date: 'last week' })).toEqual({ kind: 'none' });
 		expect(cutScope({ ...base, mode: 'day', date: '2026-11-10', hasRows: false })).toEqual({
 			kind: 'none',
 		});
@@ -310,5 +340,36 @@ describe('selectTripFacts', () => {
 			expect(isPlainNumber(percent) && percent >= 0 && percent <= 100).toBe(true);
 			expect(Math.abs(percent - (100 * count) / shownTotal)).toBeLessThanOrEqual(0.05 + 1e-9);
 		}
+	});
+});
+
+describe('crowdingFigure', () => {
+	const grainMix = { empty: 0, many_seats: 0.2, few_seats: 0.5, standing: 0.28, full: 0.02 };
+	const fileMix = { empty: 0, many_seats: 0.2, few_seats: 0.8, standing: 0, full: 0 };
+	const labels = { grain: 'Last 7 days', range: 'November 4 to 10' };
+
+	it('shows a grain’s own mix under the grain’s name', () => {
+		expect(crowdingFigure({ mixByGrain: grainMix, mix: fileMix }, 'week', labels)).toEqual({
+			mix: grainMix,
+			scope: 'Last 7 days',
+		});
+	});
+
+	it('never names the file-level mix as the chosen grain', () => {
+		expect(crowdingFigure({ mixByGrain: null, mix: fileMix }, 'week', labels)).toEqual({
+			mix: null,
+			scope: null,
+		});
+	});
+
+	it('shows a chosen range’s retained mix with the range’s own dates', () => {
+		// For a range, the file holds the retained days' mix (in both places once applied).
+		expect(crowdingFigure({ mixByGrain: null, mix: fileMix }, 'range', labels)).toEqual({
+			mix: fileMix,
+			scope: 'November 4 to 10',
+		});
+		expect(
+			crowdingFigure({ mixByGrain: null, mix: fileMix }, 'range', { ...labels, range: null }),
+		).toEqual({ mix: null, scope: null });
 	});
 });

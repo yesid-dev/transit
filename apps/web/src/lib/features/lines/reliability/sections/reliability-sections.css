@@ -57,12 +57,16 @@
 	font-size: var(--text-small);
 	text-wrap: pretty;
 }
+/* Cells wrap only between words (the page's overflow-wrap: anywhere would split a squeezed
+   heading mid-word), so each column keeps at least its longest word. */
 .evidence-table th,
 .evidence-table td {
 	padding: 0.5rem 0.5rem 0.5rem 0;
 	border-block-end: 1px solid var(--border-subtle);
 	text-align: start;
 	vertical-align: baseline;
+	overflow-wrap: normal;
+	word-break: normal;
 }
 .evidence-table thead th {
 	color: var(--muted-foreground);
@@ -74,6 +78,9 @@
 }
 .evidence-table .n {
 	text-align: end;
+}
+/* Figures stay on one line; their headings wrap at spaces like any other heading. */
+.evidence-table td.n {
 	white-space: nowrap;
 }
 .evidence-table .group th {
