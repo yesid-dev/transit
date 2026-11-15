@@ -1,4 +1,4 @@
-import { test as base } from '@playwright/test';
+import { test as base, type Route } from '@playwright/test';
 import { forwardRoute } from './layout-helpers';
 
 // WebKit applies upgrade-insecure-requests even with bypassCSP. Wrangler's local
@@ -30,7 +30,16 @@ export const test = base.extend({
 			// exist. Waiting preserves real route failures instead of discarding them.
 			// A context closed by the test has already disposed its request client;
 			// its interrupted handlers can no longer complete a drain operation.
-			if (!page.isClosed()) await forwardRoute(page, () => page.unrouteAll({ behavior: 'wait' }));
+			if (!page.isClosed())
+				await forwardRoute(page, async () => {
+					// In Playwright 1.62, a completed _onRoute callback independently clears
+					// interception when the client route list is empty, even during a wait.
+					// Repopulate it after unrouteAll clears it and before any callback resumes.
+					const fallback = (route: Route) => route.fallback();
+					const draining = page.unrouteAll({ behavior: 'wait' });
+					await Promise.all([draining, page.route('**/*', fallback)]);
+					await page.unroute('**/*', fallback);
+				});
 		}
 	},
 });
