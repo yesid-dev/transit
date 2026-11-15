@@ -181,16 +181,13 @@ sys.exit(7)
     assert "BOUNDARY_PASSWORD" not in result["error_detail"]
 
 
-def test_worker_redacts_longest_value_first_and_preserves_short_values(
-    tmp_path, capsys, monkeypatch
-):
+def test_worker_redacts_longest_value_first(tmp_path, capsys, monkeypatch):
     monkeypatch.setenv("PGPASSWORD", "SYNTHETIC_LONG_SECRET")
     monkeypatch.setenv("CUSTOM_TOKEN", "SYNTHETIC_LONG")
-    monkeypatch.setenv("CUSTOM_KEY", "abc")
-    worker = "raise RuntimeError('SYNTHETIC_LONG_SECRET abc')"
+    worker = "raise RuntimeError('SYNTHETIC_LONG_SECRET')"
     assert measure.supervise([], worker=worker, scratch_root=tmp_path) == 1
     result = json.loads(capsys.readouterr().out)
-    assert result["error_detail"].endswith("RuntimeError: <REDACTED> abc")
+    assert result["error_detail"].endswith("RuntimeError: <REDACTED>")
 
 
 def test_worker_stderr_never_exposes_a_truncated_multiline_credential(
@@ -222,3 +219,150 @@ def test_worker_redacts_stderr_credentials_outside_the_system_code_page(
     result = json.loads(capsys.readouterr().out)
     assert "<REDACTED>" in result["error_detail"]
     assert "CREDENTIAL" not in result["error_detail"]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "PGPASSWORD",
+        "DATABASE_URL",
+        "BRONZE_S3_SECRET_KEY",
+        "BRONZE_S3_ACCESS_KEY",
+        "CUSTOM_PASSWORD",
+        "CUSTOM_SECRET_VALUE",
+        "CUSTOM_TOKEN",
+        "CUSTOM_KEY",
+    ],
+)
+@pytest.mark.parametrize("channel", ["exception", "stderr"])
+def test_worker_redacts_mixed_case_percent_escapes(tmp_path, capsys, monkeypatch, source, channel):
+    secret = "Alpha/Bravo?Charlie:Delta"
+    monkeypatch.delenv("PGPASSWORD", raising=False)
+    monkeypatch.setenv(
+        source,
+        "postgresql://user:Alpha%2FBravo%3FCharlie%3ADelta@localhost/db"
+        if source == "DATABASE_URL"
+        else secret,
+    )
+    message = "rejected credential Alpha%2FBravo%3fCharlie%3ADelta"
+    worker = "import sys; " + (
+        f"raise RuntimeError({message!r})"
+        if channel == "exception"
+        else f"sys.stderr.write({message!r}); sys.stderr.flush(); sys.exit(7)"
+    )
+    assert measure.supervise([], worker=worker, scratch_root=tmp_path) == (
+        1 if channel == "exception" else 7
+    )
+    detail = json.loads(capsys.readouterr().out)["error_detail"]
+    assert "<REDACTED>" in detail
+    assert "Alpha%" not in detail
+
+
+@pytest.mark.parametrize("secret", ["q", "q7", "q7Z"])
+@pytest.mark.parametrize("channel", ["exception", "stderr"])
+def test_short_credentials_suppress_all_worker_free_text(
+    tmp_path, capsys, monkeypatch, secret, channel
+):
+    monkeypatch.setenv("PGPASSWORD", secret)
+    message = "rejected credential " + secret
+    worker = "import sys; " + (
+        f"raise RuntimeError({message!r})"
+        if channel == "exception"
+        else f"sys.stderr.write({message!r}); sys.stderr.flush(); sys.exit(7)"
+    )
+    code = 1 if channel == "exception" else 7
+    assert measure.supervise([], worker=worker, scratch_root=tmp_path) == code
+    result = json.loads(capsys.readouterr().out)
+    assert result["reason"] == (
+        "measurement_failed" if channel == "exception" else "worker_crashed"
+    )
+    assert result["detail_suppressed"] == "short_credential"
+    assert result["exit_status"] == code
+    assert result.get("exception_type") == ("RuntimeError" if channel == "exception" else None)
+    assert "error_detail" not in result
+    assert secret not in json.dumps(result)
+
+
+def test_drain_timeout_preserves_worker_exit_and_closes_capture(tmp_path, capsys, monkeypatch):
+    popen, children = measure.Popen, []
+
+    def launch(*args, **kwargs):
+        process = popen(*args, **kwargs)
+        children.append(process)
+        return process
+
+    monkeypatch.setattr(measure, "Popen", launch)
+    worker = """import os,sys,subprocess
+subprocess.Popen([sys.executable,'-I','-c','import time; time.sleep(5)'],
+ stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=sys.stderr)
+os._exit(7)
+"""
+    assert measure.supervise([], worker=worker, scratch_root=tmp_path) == 7
+    result = json.loads(capsys.readouterr().out)
+    assert result["reason"] == "worker_crashed"
+    assert result["stderr_capture"] == "did_not_close"
+    assert all(p.stderr.closed for p in children)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "DATABASE_URL",
+        "BRONZE_S3_SECRET_KEY",
+        "BRONZE_S3_ACCESS_KEY",
+        "CUSTOM_PASSWORD",
+        "CUSTOM_SECRET_VALUE",
+        "CUSTOM_TOKEN",
+        "CUSTOM_KEY",
+    ],
+)
+@pytest.mark.parametrize("channel", ["exception", "stderr"])
+def test_short_credentials_from_every_source_suppress_detail(
+    tmp_path, capsys, monkeypatch, source, channel
+):
+    monkeypatch.delenv("PGPASSWORD", raising=False)
+    monkeypatch.setenv(
+        source, "postgresql://user:q7Z@localhost/db" if source == "DATABASE_URL" else "q7Z"
+    )
+    worker = (
+        "raise RuntimeError('private detail q7Z')"
+        if channel == "exception"
+        else ("import sys; sys.stderr.write('private detail q7Z'); sys.stderr.flush(); sys.exit(7)")
+    )
+    code = 1 if channel == "exception" else 7
+    assert measure.supervise([], worker=worker, scratch_root=tmp_path) == code
+    result = json.loads(capsys.readouterr().out)
+    assert result["detail_suppressed"] == "short_credential"
+    assert "error_detail" not in result
+    assert "q7Z" not in json.dumps(result)
+    assert "private detail" not in json.dumps(result)
+
+
+def test_percent_escape_normalization_preserves_literal_case(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv("PGPASSWORD", "Alpha/Bravo?Charlie:Delta")
+    worker = "raise RuntimeError('alpha%2FBravo%3fCharlie%3ADelta')"
+    assert measure.supervise([], worker=worker, scratch_root=tmp_path) == 1
+    assert "alpha%2FBravo%3FCharlie%3ADelta" in json.loads(capsys.readouterr().out)["error_detail"]
+
+
+def test_capture_read_error_preserves_worker_failure(tmp_path, capsys, monkeypatch):
+    popen, read = measure.Popen, measure.os.read
+    descriptor = []
+
+    def launch(*args, **kwargs):
+        process = popen(*args, **kwargs)
+        descriptor.append(process.stderr.fileno())
+        return process
+
+    def broken(fd, size):
+        if descriptor and fd == descriptor[0]:
+            raise OSError("synthetic capture failure")
+        return read(fd, size)
+
+    monkeypatch.setattr(measure, "Popen", launch)
+    monkeypatch.setattr(measure.os, "read", broken)
+    assert measure.supervise([], worker="import os; os._exit(7)", scratch_root=tmp_path) == 7
+    result = json.loads(capsys.readouterr().out)
+    assert result["reason"] == "worker_crashed"
+    assert result["stderr_capture"] == "read_failed"
+    assert "synthetic capture failure" not in json.dumps(result)

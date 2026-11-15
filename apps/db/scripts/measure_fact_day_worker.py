@@ -11,7 +11,7 @@ import traceback
 from urllib.parse import quote, quote_plus, unquote, urlsplit
 
 
-def credential_forms() -> list[str]:
+def credential_values() -> set[str]:
     values = set()
     for key, value in os.environ.items():
         if value and (
@@ -30,21 +30,35 @@ def credential_forms() -> list[str]:
         if ":" in userinfo:
             password = userinfo.split(":", 1)[1]
             values.update((password, unquote(password)))
+    return values - {""}
+
+
+def short_credential() -> bool:
+    return any(len(value) < 4 for value in credential_values())
+
+
+def percent_escapes(text: str) -> str:
+    return re.sub(r"%[0-9A-Fa-f]{2}", lambda m: m[0].upper(), text)
+
+
+def credential_forms() -> list[str]:
     forms = set()
-    for value in values:
+    for value in credential_values():
         if len(value) < 4:
             continue
         encoded = {quote(value), quote(value, safe=""), quote_plus(value, safe="")}
         forms.update(encoded)
-        forms.update(re.sub(r"%[0-9A-F]{2}", lambda m: m[0].lower(), v) for v in encoded)
         conninfo = value.replace("\\", "\\\\").replace("'", "\\'")
         for rendered in (value, conninfo, "'" + conninfo + "'"):
             forms.update((rendered, repr(rendered)[1:-1]))
             forms.update(json.dumps(rendered, ensure_ascii=ascii)[1:-1] for ascii in (True, False))
-    return sorted(forms, key=len, reverse=True)
+    return sorted({percent_escapes(value) for value in forms}, key=len, reverse=True)
 
 
 def safe_detail(text: str) -> str:
+    if short_credential():
+        return ""
+    text = percent_escapes(text)
     # Replace complete values before field patterns and before output truncation.
     for value in credential_forms():
         text = text.replace(value, "<REDACTED>")
@@ -60,9 +74,36 @@ def safe_detail(text: str) -> str:
     return "\n".join(text.splitlines()[-8:])[-2048:]
 
 
+def protect_result(output: dict, code: int) -> dict:
+    if not short_credential():
+        return output
+    reasons = (
+        "worker_start_failed worker_import_failed worker_crashed lifeline_lost measurement_failed "
+        "bundled_timezone_unavailable scratch_ownership_invalid scratch_owner_proof_unavailable "
+        "scratch_cleanup_failed scratch_recovery_incomplete unsafe_delete_unavailable "
+        "interrupted invalid_arguments"
+    ).split()
+    name = output.get("exception_type")
+    result = dict(
+        status="failed" if code else "ok",
+        exit_status=code,
+        detail_suppressed="short_credential",
+        exception_type=name if isinstance(name, str) and name.isidentifier() else None,
+    )
+    if code:
+        reason = output.get("reason")
+        result["reason"] = reason if reason in reasons else "worker_crashed"
+    if output.get("stderr_capture") in ("did_not_close", "read_failed"):
+        result["stderr_capture"] = output["stderr_capture"]
+    return result
+
+
 def failure(reason: str, error: BaseException) -> dict:
+    result = dict(status="failed", reason=reason, exception_type=type(error).__name__)
+    if short_credential():
+        return protect_result(result, 1)
     detail = "".join(traceback.format_exception_only(type(error), error))
-    return dict(status="failed", reason=reason, error_detail=safe_detail(detail))
+    return dict(**result, error_detail=safe_detail(detail))
 
 
 def credential_byte_forms() -> list[bytes]:
@@ -76,6 +117,9 @@ def credential_byte_forms() -> list[bytes]:
 
 
 def safe_stderr(data: bytes, *, truncated: bool = False) -> str:
+    if short_credential():
+        return ""
+    data = re.sub(rb"%[0-9A-Fa-f]{2}", lambda m: m[0].upper(), data)
     forms = credential_byte_forms()
     if truncated:
         # A cut credential may span several lines. Drop its maximum possible suffix,
@@ -106,13 +150,23 @@ class StderrTail:
         self.buffer = bytearray()
         self.truncated = False
         self.error = None
+        self.stop = threading.Event()
         self.thread = threading.Thread(target=self.drain, daemon=True)
         self.thread.start()
 
     def drain(self):
         try:
             with self.stream:
-                while block := self.stream.read(8192):
+                descriptor = self.stream.fileno()
+                os.set_blocking(descriptor, False)
+                while not self.stop.is_set():
+                    try:
+                        block = os.read(descriptor, 8192)
+                    except BlockingIOError:
+                        self.stop.wait(0.02)
+                        continue
+                    if not block:
+                        break
                     self.buffer.extend(block)
                     if len(self.buffer) > 65536:
                         del self.buffer[:-65536]
@@ -120,14 +174,16 @@ class StderrTail:
         except OSError as error:
             self.error = error
 
-    def finish(self) -> str:
+    def finish(self) -> tuple[str, str | None]:
         self.thread.join(timeout=2)
         if self.thread.is_alive():
-            raise OSError("worker_stderr_did_not_close")
+            self.stop.set()
+            self.thread.join()
+            return "", "did_not_close"
         if self.error:
-            raise self.error
+            return "", "read_failed"
         data = bytes(self.buffer)
-        return safe_stderr(data, truncated=self.truncated)
+        return safe_stderr(data, truncated=self.truncated), None
 
 
 def launch(factory, command, *, report, env):

@@ -579,7 +579,7 @@ def _supervise(
                         try:
                             process.stdin.close()
                         finally:
-                            detail = errors.finish()
+                            detail, capture = errors.finish()
                 report.seek(0)
                 stdout = "" if status else report.read()
     finally:
@@ -600,7 +600,10 @@ def _supervise(
         output["error_detail"] = diagnostics["safe_detail"](
             detail + "\n" + output.get("error_detail", f"Worker exited with code {code}")
         )
-    return code, json.dumps(output)
+        output["exit_status"] = code
+    if capture:
+        output["stderr_capture"] = capture
+    return code, json.dumps(diagnostics["protect_result"](output, code))
 
 
 def supervise(argv: list[str], *, worker: str = WORKER, scratch_root: Path | None = None) -> int:
@@ -624,6 +627,7 @@ def supervise(argv: list[str], *, worker: str = WORKER, scratch_root: Path | Non
         if reason in RECOVERY_ERRORS and len(error.args) > 1 and error.args[1] is not None:
             recovery["leftover_paths"].append(str(error.args[1]))
         code, output = 1, diagnostics["failure"](reason, error)
+    output = diagnostics["protect_result"](output, code)
     output.update(recovery)
     sys.stdout.write(json.dumps(output) + "\n")
     return code
@@ -648,7 +652,9 @@ def main(argv: list[str] | None = None, *, worker: bool = False) -> int:
         )
         sys.stdout.write(json.dumps(diagnostics["failure"](reason, error)) + "\n")
         return 1
-    sys.stdout.write(json.dumps(result, sort_keys=True, default=str) + "\n")
+    sys.stdout.write(
+        json.dumps(diagnostics["protect_result"](result, 0), sort_keys=True, default=str) + "\n"
+    )
     return 0
 
 
