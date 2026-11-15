@@ -749,7 +749,7 @@ def test_historic_publish_clears_marks_for_full_graph_before_root_activation(
     store.immutable_skipped.clear()
     observed: dict[str, object] = {}
 
-    def record_clear(conn, provider_id, object_keys):  # noqa: ANN001, ANN202
+    def record_clear(conn, provider_id, object_keys, **kwargs):  # noqa: ANN001, ANN202
         observed["conn"] = conn
         observed["provider_id"] = provider_id
         observed["object_keys"] = set(object_keys)

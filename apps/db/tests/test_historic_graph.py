@@ -71,7 +71,7 @@ def test_graph_reuses_stamped_parents_and_root_through_gate_inventory_and_activa
 
     store = Store()
 
-    def clear(conn, provider_id, keys):
+    def clear(conn, provider_id, keys, **kwargs):
         assert keys == sorted(path for path in store.objects if "/generations/" in path)
         observations["clear"] += 1
 
