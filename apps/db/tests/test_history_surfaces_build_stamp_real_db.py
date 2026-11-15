@@ -20,6 +20,7 @@ from transit_ops.snapshots.builders.historic import (
     small_surfaces,
     stop_history,
 )
+from transit_ops.snapshots.publication_lane import acquire_publication_lane
 from transit_ops.snapshots.serialization import snapshot_json_bytes
 from transit_ops.sql_registry import query_name
 
@@ -172,6 +173,7 @@ def test_explicit_stamp_publishes_the_pinned_bytes(seeded, monkeypatch):
         for source, kwargs in ((pinned, {}), (engine, {"as_of_utc": seed.HISTORY_CLOCK})):
             store = MemorySnapshotStore()
             with source.begin() as conn:
+                acquire_publication_lane(conn, provider_id=provider_id, tier="historic")
                 historic_tier.publish(
                     conn, store, provider_id=provider_id, settings=settings, force=True, **kwargs
                 )
