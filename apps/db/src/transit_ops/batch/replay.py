@@ -1,6 +1,7 @@
 """Replay declared local files in a guarded disposable database and DuckDB."""
 
 import hashlib
+import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
 from datetime import date, datetime
@@ -9,6 +10,7 @@ from time import perf_counter
 from typing import Any, cast
 from zoneinfo import ZoneInfo
 
+import duckdb
 from psycopg.errors import ForeignKeyViolation
 from sqlalchemy import Connection, inspect, text
 from sqlalchemy.engine.reflection import Inspector
@@ -198,8 +200,12 @@ def local_parent_references(
 
 def _legacy_state_needs(root: Path) -> tuple[InputNeed, ...]:
     """Keep existing declared metadata snapshots; unread working-only tables stay empty."""
+    from transit_ops.lake.alert_bundle import MEMBERS
+
     result = []
     for relation in _STATE:
+        if relation in MEMBERS and not (root / "alert-bundle.json").is_file():
+            continue  # Unread legacy alert files are not archived bundle inputs.
         try:
             source = get_dataset(relation).source
         except LookupError:
@@ -326,6 +332,68 @@ def _collect_bodies(
     return {k: snapshot_json_bytes(p) for k, p in items}
 
 
+def validate_alert_bundle(root: Path, request: BuildRequest) -> tuple[tuple[str, str], ...]:
+    """Pin the local replay manifest, including transformed-file identity and coverage."""
+    from transit_ops.lake.alert_bundle import MEMBERS
+
+    path = root / "alert-bundle.json"
+    if not path.is_file():
+        raise ValueError("missing alert-bundle.json: silver.i3_alerts")
+    body = path.read_bytes()
+    bundles = json.loads(body)
+    if not isinstance(bundles, list) or len(bundles) != 1:
+        raise ValueError("one alert bundle version is required")
+    bundle = bundles[0]
+    stamp = datetime.fromisoformat(bundle["snapshot_at_utc"])
+    coverage = datetime.fromisoformat(bundle["coverage_from_utc"])
+    from transit_ops.lake.alert_bundle import CLOSURE_RELATIONS, validate_coverage
+
+    validate_coverage(stamp, coverage, request.local_dates, request.timezone, request.as_of_utc)
+    for relation in (*MEMBERS, *CLOSURE_RELATIONS):
+        file = root / relation / "all.parquet"
+        if not file.is_file():
+            raise ValueError(f"missing bundle member: {relation}")
+        if hashlib.sha256(file.read_bytes()).hexdigest() != bundle["files"].get(relation):
+            raise ValueError(f"bundle member changed: {relation}")
+    return (("alert-bundle.json", hashlib.sha256(body).hexdigest()),)
+
+
+def validate_parent_rows(inputs: Sequence[Any], catalog: Inspector) -> None:
+    """Refuse missing FK keys by parent name before resetting or loading PostgreSQL."""
+    with duckdb.connect(config={"threads": 1}) as conn:
+        views = {}
+        for i, item in enumerate(inputs):
+            view = f"input_{i}"
+            conn.read_parquet([str(p) for p in item.files], hive_partitioning=False).create_view(
+                view
+            )
+            views[item.relation] = view
+        for item in inputs:
+            schema, table = item.relation.split(".")
+            for fk in catalog.get_foreign_keys(table, schema=schema):
+                parent = f"{fk['referred_schema'] or schema}.{fk['referred_table']}"
+                columns = fk["constrained_columns"]
+
+                def quoted(c: str) -> str:
+                    return '"' + c.replace('"', '""') + '"'
+
+                present = " AND ".join(f"c.{quoted(c)} IS NOT NULL" for c in columns)
+                predicate = present
+                if parent in views:
+                    join = " AND ".join(
+                        f"c.{quoted(c)}=p.{quoted(p)}"
+                        for c, p in zip(columns, fk["referred_columns"], strict=True)
+                    )
+                    predicate += f" AND NOT EXISTS (SELECT 1 FROM {views[parent]} p WHERE {join})"
+                missing = conn.execute(
+                    f"SELECT EXISTS (SELECT 1 FROM {views[item.relation]} c WHERE {predicate})"
+                ).fetchone()
+                if missing == (True,):
+                    raise ValueError(
+                        f"fk_parent_outside_range: {parent} referenced by {item.relation}"
+                    )
+
+
 def replay_day(
     *,
     engine: ReplayDatabase,
@@ -379,6 +447,9 @@ def replay_day(
     needs = set(postgres_input_needs(request, schedule_ids))
     for family, builder in builders.items():
         needs.update(family_input_needs((builder,), requests[family]))
+    from transit_ops.batch.input_sources import bundle_needs
+
+    needs.update(bundle_needs(tuple(needs)))
     needs.update(_legacy_state_needs(inputs_root))
     needed = parent_input_needs(
         tuple(needs),
@@ -392,6 +463,15 @@ def replay_day(
     if not set(metadata_hash) <= set(before):
         raise InputChanged("core.dataset_versions: replay input changed while reading editions")
     inputs = resolve_inputs(ordered_needs, inputs_root)
+    from transit_ops.lake.alert_bundle import MEMBERS
+
+    bundle_hashes = (
+        validate_alert_bundle(inputs_root, request)
+        if any(n.relation in MEMBERS for n in needed)
+        else ()
+    )
+    if bundle_hashes:
+        validate_parent_rows(inputs, inspect(engine.engine))
     started = perf_counter()
     with pinned_replay_engine(engine, as_of_utc) as pinned, PrivateArea(workdir) as area:
         catalog = inspect(pinned)
@@ -491,12 +571,14 @@ def replay_day(
         )
     if _hashes(inputs_root, ordered_needs) != before:
         raise InputChanged("replay input files changed")
+    if bundle_hashes and validate_alert_bundle(inputs_root, request) != bundle_hashes:
+        raise InputChanged("alert-bundle.json changed")
     return ReplayReport(
         provider_id,
         local_date,
         as_of_utc,
         code_commit,
-        input_files=before,
+        input_files=tuple(sorted(before + bundle_hashes)),
         families=tuple(comparisons),
         postgres_seconds=postgres_seconds,
         duckdb_seconds=perf_counter() - started,

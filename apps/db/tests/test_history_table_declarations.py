@@ -76,6 +76,7 @@ def test_every_declared_table_dataset_has_its_primary_key_and_a_valid_grain(
 
 def test_copied_tables_cover_each_declared_class():
     expected = """
+        silver.i3_alerts silver.i3_alert_active_periods silver.i3_alert_informed_entities
         core.providers core.feed_endpoints core.dataset_versions
         core.snapshot_publish_state core.snapshot_historic_receipts
         core.snapshot_historic_gc_marks core.pipeline_switches core.history_window
@@ -215,9 +216,6 @@ def test_working_only_tables_declare_their_rebuild_sources():
             "capture.vehicle_positions",
             "gold.realtime_serving_state",
         ),
-        "silver.i3_alerts": ("capture.i3_alerts", "capture.service_alerts"),
-        "silver.i3_alert_active_periods": ("capture.i3_alerts", "capture.service_alerts"),
-        "silver.i3_alert_informed_entities": ("capture.i3_alerts", "capture.service_alerts"),
         "silver.gis_datasets": (),
         "silver.gis_gtfs_matches": (),
         "silver.gis_line_features": (),
@@ -227,7 +225,6 @@ def test_working_only_tables_declare_their_rebuild_sources():
     assert {name: entry.rebuilt_from for name, entry in claims.items()} == expected
     assert all(entry.reason for entry in claims.values())
     assert claims["silver.gis_datasets"].reason == "static lane LS3.12c copies GIS editions"
-    assert "gold.alert_archive_entry" in claims["silver.i3_alerts"].reason
     d.validate_declarations(d.HISTORY_DATASETS, d.WORKING_ONLY)
 
 
@@ -361,9 +358,6 @@ def test_complete_inventory_requires_all_declared_tables():
         "silver.gis_gtfs_matches",
         "silver.gis_line_features",
         "silver.gis_stop_features",
-        "silver.i3_alert_active_periods",
-        "silver.i3_alert_informed_entities",
-        "silver.i3_alerts",
         "silver.rt_entities",
         "silver.rt_feed_snapshots",
         "silver.rt_trip_update_stop_times",
@@ -461,4 +455,21 @@ def test_alert_rebuild_sources_cover_both_normalized_feed_paths(feed):
         "silver.i3_alert_active_periods",
         "silver.i3_alert_informed_entities",
     ):
-        assert "capture." + feed in d.WORKING_ONLY[table].rebuilt_from
+        assert d.get_dataset(table).copy_group == "silver_alert_state"
+
+
+def test_alert_state_is_one_declared_whole_state_group():
+    names = (
+        "silver.i3_alerts",
+        "silver.i3_alert_informed_entities",
+        "silver.i3_alert_active_periods",
+    )
+    for name, suffix in zip(names, ((), ("entity_index",), ("period_index",)), strict=True):
+        entry = d.get_dataset(name)
+        assert entry.source == d.TableSource(
+            name, None, ("i3_alert_snapshot_id", "alert_index") + suffix, None, 0
+        )
+        assert entry.copy_group == "silver_alert_state"
+        assert entry.hot_days is None and entry.rebuild_needs == ()
+        assert name not in d.WORKING_ONLY
+    d.validate_declarations(d.HISTORY_DATASETS, d.WORKING_ONLY)

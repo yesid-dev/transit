@@ -15,7 +15,12 @@ from psycopg.pq import TransactionStatus
 from sqlalchemy import Connection as CatalogConnection
 from sqlalchemy.dialects.postgresql import dialect
 
-from transit_ops.history.datasets import TableSource, get_dataset, utc_day_closes_at
+from transit_ops.history.datasets import (
+    HISTORY_DATASETS,
+    TableSource,
+    get_dataset,
+    utc_day_closes_at,
+)
 from transit_ops.ingestion.storage import BronzeStorage
 from transit_ops.lake.archive_keys import validate_provider_id
 from transit_ops.lake.catalog import CatalogTable, read_catalog
@@ -40,6 +45,8 @@ class MigrationRefused(ValueError):
 class PlannedWindow:
     spec: WindowSpec
     reason: Literal["closed", "open_included", "whole_state"]
+    copy_group_members: tuple[WindowSpec, ...] = ()
+    copy_group_refusal: str | None = None
 
 
 @dataclass(frozen=True)
@@ -48,6 +55,10 @@ class MigrationPlan:
     windows: tuple[PlannedWindow, ...]
     skipped_open: tuple[WindowSpec, ...]
     database_target: dict[str, object] = field(default_factory=dict)
+
+    @property
+    def copy_groups(self) -> tuple[tuple[WindowSpec, ...], ...]:
+        return tuple(w.copy_group_members for w in self.windows if w.copy_group_members)
 
 
 @dataclass(frozen=True)
@@ -80,6 +91,11 @@ def migration_lock(connection: Connection[Any]) -> Iterator[None]:
 def require_read_reserve(not_after: datetime, timeout: int) -> None:
     if datetime.now(UTC) + timedelta(seconds=2 * timeout + READ_MARGIN_S) >= not_after:
         raise MigrationRefused("not_after", "insufficient reserve for export, recheck and margin")
+
+
+def require_group_reserve(not_after: datetime, timeout: int, members: int) -> None:
+    if datetime.now(UTC) + timedelta(seconds=(members + 1) * timeout + READ_MARGIN_S) >= not_after:
+        raise MigrationRefused("not_after", "insufficient reserve for complete bundle and closure")
 
 
 class _PlanReads:
@@ -324,7 +340,11 @@ def _groups(
     groups = []
     for (provider,) in candidates:
         validate_provider_id(provider)
-        if providers is not None and provider not in providers:
+        if (
+            providers is not None
+            and provider not in providers
+            and (has_provider or get_dataset(catalog.name).copy_group is None)
+        ):
             continue
         predicate = sql.SQL("provider_id=%s") if has_provider else sql.SQL("true")
         values = (provider,) if has_provider else ()
@@ -344,6 +364,7 @@ def _groups(
             edition = get_dataset(catalog.name).archive_grain == "edition"
             present = (
                 not has_provider
+                or get_dataset(catalog.name).copy_group is not None
                 or edition
                 or connection.execute(
                     sql.SQL("SELECT EXISTS (SELECT 1 FROM {} WHERE {})").format(table, predicate),
@@ -467,6 +488,13 @@ def plan_migration(
         raise MigrationRefused("plan_budget")
     if not_after is not None and not_after.utcoffset() != timedelta(0):
         raise MigrationRefused("not_after_utc")
+    if datasets is not None and any(get_dataset(n).copy_group for n in datasets):
+        datasets = tuple(
+            sorted(
+                set(datasets)
+                | {n for n, d in HISTORY_DATASETS.items() if d.copy_group == "silver_alert_state"}
+            )
+        )
     reads = _PlanReads(connection, plan_budget_s, statement_timeout_s, not_after)
     now = now_utc or datetime.combine(today_utc, time(), UTC)
     if now.utcoffset() != timedelta(0) or now.date() != today_utc:
@@ -512,13 +540,33 @@ def plan_migration(
                 today_utc,
                 now,
                 include_open,
-                providers,
+                None if get_dataset(table.name).copy_group else providers,
                 get_settings().GOLD_REPORTING_OPEN_WINDOW_DAYS,
             )
             windows.extend(planned)
             skipped.extend(opened)
     reads.remaining()
-    return MigrationPlan(inventory, tuple(sorted(windows, key=_order)), tuple(skipped), target)
+    grouped = tuple(w.spec for w in windows if get_dataset(w.spec.dataset_id).copy_group)
+    singles = tuple(
+        sorted((w for w in windows if not get_dataset(w.spec.dataset_id).copy_group), key=_order)
+    )
+    if grouped:
+        from transit_ops.lake.alert_bundle import validate_members
+
+        try:
+            validate_members(grouped)
+        except ValueError as error:
+            raise MigrationRefused("copy_group_incomplete", str(error)) from error
+    refusal = None
+    if grouped and providers is not None:
+        all_providers = {s.provider_id for s in grouped if s.provider_id != "_shared"}
+        selected = all_providers & set(providers)
+        if not selected:
+            raise MigrationRefused("copy_group_incomplete", "no selected providers")
+        if selected != all_providers:
+            refusal = "copy_group_partial"
+    units = (PlannedWindow(grouped[0], "whole_state", grouped, refusal),) if grouped else ()
+    return MigrationPlan(inventory, singles + units, tuple(skipped), target)
 
 
 def run_migration(
@@ -546,8 +594,12 @@ def run_migration(
         ),
     }
     outcomes: dict[str, dict[str, int]] = {}
+    from transit_ops.lake.alert_bundle import CLOSURE_RELATIONS, copy_group
+
     for window in plan.windows:
-        record: dict[str, object] = {"spec": asdict(window.spec), **target}
+        if window.copy_group_members:
+            continue
+        record = {"spec": asdict(window.spec), **target}
         started = monotonic()
         try:
             require_read_reserve(not_after, statement_timeout_s)
@@ -598,4 +650,73 @@ def run_migration(
         )
         counts = outcomes.setdefault(group, {})
         counts[result.outcome] = counts.get(result.outcome, 0) + 1
+    for specs in plan.copy_groups:
+        record = {
+            "copy_group": "silver_alert_state",
+            "members": [asdict(s) for s in specs],
+            **target,
+        }
+        try:
+            refusal = next(
+                w.copy_group_refusal for w in plan.windows if w.copy_group_members == specs
+            )
+            if refusal:
+                raise MigrationRefused(refusal)
+            require_group_reserve(
+                not_after, statement_timeout_s, len(specs) + len(CLOSURE_RELATIONS)
+            )
+            if still_locked is not None:
+                try:
+                    if not still_locked():
+                        raise MigrationRefused("migration_lock_lost")
+                except Exception as error:
+                    raise MigrationRefused("migration_lock_lost") from error
+            if shutil.disk_usage(work_dir).free < WORK_SPACE_FLOOR:
+                raise MigrationRefused("work_space")
+            from tempfile import mkdtemp
+
+            directory = Path(mkdtemp(prefix="bundle-", dir=work_dir))
+            owned = directory.resolve(), directory.stat().st_dev, directory.stat().st_ino
+            with connect() as connection:
+                require_group_reserve(
+                    not_after, statement_timeout_s, len(specs) + len(CLOSURE_RELATIONS)
+                )
+                bundle = copy_group(
+                    connection,
+                    storage,
+                    specs,
+                    work_dir=directory,
+                    copied_by=copied_by,
+                    statement_timeout_s=statement_timeout_s,
+                    not_after=not_after,
+                )
+            record.update(
+                outcome="copied",
+                bundle_version=bundle.version,
+                snapshot_at_utc=bundle.snapshot_at_utc,
+            )
+            try:
+                resolved = directory.resolve()
+                if (
+                    resolved != owned[0]
+                    or resolved.parent != work_dir.resolve()
+                    or not resolved.is_relative_to(work_dir.resolve())
+                    or directory.is_symlink()
+                    or directory.is_junction()
+                    or (directory.stat().st_dev, directory.stat().st_ino) != owned[1:]
+                ):
+                    raise MigrationRefused("work_dir_changed", str(directory))
+                shutil.rmtree(directory)
+            except Exception as error:
+                record["cleanup_warning"] = str(error)
+            outcomes["silver_alert_state"] = {"copied": len(bundle.members)}
+            log(record)
+        except Exception as error:
+            record.update(
+                outcome="failed",
+                reason=getattr(error, "reason", type(error).__name__),
+                error=str(error),
+            )
+            log(record)
+            return MigrationSummary(outcomes, record, target)
     return MigrationSummary(outcomes, None, target)

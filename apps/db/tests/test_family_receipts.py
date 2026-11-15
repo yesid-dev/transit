@@ -155,11 +155,12 @@ def test_fractional_hour_zone_refuses_before_reading_inputs():
         builder.inputs(replace(REQUEST, timezone="America/St_Johns"))
 
 
-def test_archive_preflight_reaches_the_deferred_alert_source():
+def test_archive_preflight_resolves_the_alert_source():
+    from transit_ops.batch.build import InputNeed
+
     builder = resolve_builder("receipts")
     assert builder is not None
-    with pytest.raises(ValueError, match="input_not_archived: receipts silver.i3_alerts"):
-        family_input_needs([builder], REQUEST)
+    assert InputNeed("silver.i3_alerts", "all") in family_input_needs([builder], REQUEST)
 
 
 def test_histograms_match_native_lists_after_canonical_export(tmp_path):

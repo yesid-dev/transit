@@ -227,7 +227,12 @@ def _catalog(
 
 @contextmanager
 def _snapshot(
-    connection: Connection[Any], spec: WindowSpec, timeout: int, expected: TableSchema | None = None
+    connection: Connection[Any],
+    spec: WindowSpec,
+    timeout: int,
+    expected: TableSchema | None = None,
+    *,
+    coordinated: bool = False,
 ) -> Iterator[tuple[TableSchema, sql.Composed, tuple[object, ...], datetime, str]]:
     validate_timeout(timeout)
     dataset, source = _declaration(spec)
@@ -235,6 +240,13 @@ def _snapshot(
         raise ExportRefused("not_read_only")
     with connection.transaction():
         connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        row = (
+            connection.execute(
+                "SELECT transaction_timestamp(), current_setting('server_version')"
+            ).fetchall()[0]
+            if coordinated
+            else None
+        )
         settings = dict(
             TimeZone="UTC",
             DateStyle="ISO, YMD",
@@ -248,6 +260,8 @@ def _snapshot(
             max_parallel_workers_per_gather="0",
             statement_timeout=str(timeout * 1000),
         )
+        if coordinated:
+            settings["jit"] = "off"
         for key, value in settings.items():
             connection.execute("SELECT set_config(%s, %s, true)", (key, value))
         schema, text_keys = _catalog(connection, source, expected)
@@ -264,10 +278,11 @@ def _snapshot(
         statement, values = build_copy_statement(
             spec, schema, dataset_version_id=edition, text_keys=text_keys
         )
-        row = connection.execute(
-            "SELECT clock_timestamp(), current_setting('server_version')"
-        ).fetchall()[0]
-        yield schema, statement, values, row[0], row[1]
+        if row is None:
+            row = connection.execute(
+                "SELECT clock_timestamp(), current_setting('server_version')"
+            ).fetchall()[0]
+        yield schema, statement, values, row[0].astimezone(UTC), row[1]
 
 
 def _copy(
@@ -325,3 +340,130 @@ def recheck_window(
         _,
     ):
         return _copy(connection, statement, values)
+
+
+class _GroupReads:
+    def __init__(self, connection: Connection[Any], timeout: int, deadline: datetime | None):
+        self.connection, self.timeout, self.deadline = connection, timeout, deadline
+
+    def cap(self) -> None:
+        left = (
+            self.timeout
+            if self.deadline is None
+            else (self.deadline - datetime.now(UTC)).total_seconds() - 300
+        )
+        if left <= 0:
+            from transit_ops.lake.migration import MigrationRefused
+
+            raise MigrationRefused("not_after")
+        self.connection.execute(
+            "SELECT set_config('statement_timeout', %s, true)",
+            (str(max(1, int(min(self.timeout, left) * 1000))),),
+        )
+
+    def execute(self, statement: Any, values: Any = None) -> Any:
+        if not str(statement).startswith("SET TRANSACTION"):
+            self.cap()
+        return self.connection.execute(statement, values)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.connection, name)
+
+
+def require_member_space(path: Path) -> None:
+    import shutil
+
+    from transit_ops.lake.migration import WORK_SPACE_FLOOR, MigrationRefused
+
+    if shutil.disk_usage(path).free < WORK_SPACE_FLOOR:
+        raise MigrationRefused("work_space")
+
+
+@contextmanager
+def export_group(
+    connection: Connection[Any],
+    specs: tuple[WindowSpec, ...],
+    destinations: tuple[Path, ...],
+    *,
+    statement_timeout_s: int,
+    not_after: datetime | None = None,
+    foreign_keys: list[dict[str, Any]] | None = None,
+) -> Iterator[tuple[ExportedWindow, ...]]:
+    """Export Silver and its filtered FK closure in one deadline-bounded source cut."""
+    from typing import cast
+
+    from transit_ops.lake.alert_bundle import (
+        CLOSURE_RELATIONS,
+        closure_statements,
+        validate_members,
+    )
+    from transit_ops.lake.migration import require_group_reserve
+
+    validate_members(specs)
+    if len(specs) != len(destinations):
+        raise ValueError("group destinations differ")
+    if not_after is not None:
+        require_group_reserve(not_after, statement_timeout_s, len(specs) + len(CLOSURE_RELATIONS))
+    reads = _GroupReads(connection, statement_timeout_s, not_after)
+    guarded = cast(Connection[Any], reads)
+    with _snapshot(guarded, specs[0], statement_timeout_s, coordinated=True) as snapshot:
+        at, version = snapshot[3:]
+        # Include zero-alert providers and provider ids found in malformed rows,
+        # so no row can disappear before the post-copy FK proof.
+        providers = guarded.execute(
+            "SELECT provider_id FROM core.providers UNION "
+            "SELECT provider_id FROM silver.i3_alerts UNION "
+            "SELECT provider_id FROM silver.i3_alert_informed_entities ORDER BY provider_id"
+        ).fetchall()
+        existing = {(s.dataset_id, s.provider_id) for s in specs}
+        expanded, expanded_paths = list(specs), list(destinations)
+        for relation in ("silver.i3_alerts", "silver.i3_alert_informed_entities"):
+            for (provider,) in providers:
+                if (relation, provider) not in existing:
+                    directory = destinations[0].parent.parent / f"provider-{len(expanded)}"
+                    directory.mkdir()
+                    expanded.append(WindowSpec(relation, provider, specs[0].window_key))
+                    expanded_paths.append(directory / "window.csv")
+        specs, destinations = tuple(expanded), tuple(expanded_paths)
+        validate_members(specs)
+        if not_after is not None:
+            require_group_reserve(
+                not_after, statement_timeout_s, len(specs) + len(CLOSURE_RELATIONS)
+            )
+        queries = closure_statements(guarded, specs, foreign_keys)
+        results = []
+        exports = list(zip(specs, destinations, strict=True))
+        for i, relation in enumerate(queries):
+            directory = destinations[0].parent.parent / f"closure-{i}"
+            directory.mkdir()
+            exports.append(
+                (WindowSpec(relation, "_shared", specs[0].window_key), directory / "window.csv")
+            )
+        for spec, destination in exports:
+            require_member_space(destination.parent)
+            _, source = _declaration(spec)
+            schema, text_keys = _catalog(guarded, source, None)
+            if spec.dataset_id in queries:
+                statement = sql.SQL(
+                    "COPY (SELECT {} FROM ({}) selected ORDER BY {}) "
+                    "TO STDOUT WITH (FORMAT csv, HEADER true, ENCODING 'UTF8')"
+                ).format(
+                    sql.SQL(", ").join(sql.Identifier(c.name) for c in schema.columns),
+                    queries[spec.dataset_id],
+                    order_by(schema, text_keys=text_keys),
+                )
+                values: tuple[object, ...] = ()
+            else:
+                statement, values = build_copy_statement(spec, schema, text_keys=text_keys)
+            reads.cap()
+            with destination.open("xb") as output:
+                digest, size, rows = _copy(connection, statement, values, output)
+                output.flush()
+            results.append(
+                ExportedWindow(spec, destination, digest, size, rows, schema, at, version)
+            )
+        reads.cap()
+    for item in results:
+        with item.csv_path.open("r+b") as stream:
+            os.fsync(stream.fileno())
+    yield tuple(results)

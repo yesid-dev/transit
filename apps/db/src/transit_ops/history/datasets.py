@@ -52,6 +52,7 @@ class HistoryDataset:
     rebuild_needs: tuple[str, ...]
     schema_version: int
     folds: tuple[Fold, ...] = ()
+    copy_group: str | None = None
 
 
 @dataclass(frozen=True)
@@ -166,6 +167,9 @@ _TABLE_ROWS: tuple[tuple[ArchiveGrain, int | None, str | None, tuple[str, ...]],
         None,
         None,
         (
+            "silver.i3_alerts/-/i3_alert_snapshot_id,alert_index",
+            "silver.i3_alert_informed_entities/-/i3_alert_snapshot_id,alert_index,entity_index",
+            "silver.i3_alert_active_periods/-/i3_alert_snapshot_id,alert_index,period_index",
             "core.alert_language_coverage_samples/measurement_date/provider_id,measurement_date,window_days",
             "core.dataset_versions/-/dataset_version_id",
             "core.feed_endpoints/-/feed_endpoint_id",
@@ -273,6 +277,7 @@ _TABLE_DATASETS = (
         hot_days,
         (),
         1,
+        copy_group="silver_alert_state" if table.startswith("silver.i3_alert") else None,
     )
     for grain, hot_days, revision, rows in _TABLE_ROWS
     for row in rows
@@ -318,11 +323,6 @@ _WORKING_ROWS = (
             "capture.vehicle_positions",
             "gold.realtime_serving_state",
         ),
-    ),
-    (
-        "silver.i3_alerts silver.i3_alert_active_periods silver.i3_alert_informed_entities",
-        "Decoded alerts rebuilt from captures; history kept in gold.alert_archive_entry",
-        ("capture.i3_alerts", "capture.service_alerts"),
     ),
     (
         "silver.gis_datasets silver.gis_gtfs_matches "

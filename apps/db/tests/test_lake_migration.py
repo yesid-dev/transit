@@ -56,7 +56,11 @@ def planning(monkeypatch):
     def run(names=("gold.route_delay_spine",), **kw):
         catalog = []
         for n in names:
-            columns = [] if n == "gold.report_labels" else [Column("provider_id", "text", True)]
+            columns = (
+                []
+                if n in {"gold.report_labels", "silver.i3_alert_active_periods"}
+                else [Column("provider_id", "text", True)]
+            )
             if n != "silver.rt_entities":
                 source = get_dataset(n).source
                 if isinstance(source, TableSource) and source.window_column:
@@ -659,3 +663,267 @@ def test_open_session_unlock_failure_is_not_hidden():
     with pytest.raises(OSError, match="unexpected unlock failure"):
         with m.migration_lock(Lock()):
             pass
+
+
+def test_migration_plan_expands_alert_selection_into_one_group(planning):
+    plan = planning(
+        names=(
+            "silver.i3_alerts",
+            "silver.i3_alert_informed_entities",
+            "silver.i3_alert_active_periods",
+        ),
+        datasets=["silver.i3_alerts"],
+        providers=["p"],
+    )
+    assert len(plan.windows) == 1
+    assert len(plan.windows[0].copy_group_members) == 3
+    assert len(plan.copy_groups) == 1
+    assert {(s.dataset_id, s.provider_id) for s in plan.copy_groups[0]} == {
+        ("silver.i3_alerts", "p"),
+        ("silver.i3_alert_informed_entities", "p"),
+        ("silver.i3_alert_active_periods", "_shared"),
+    }
+
+
+def test_provider_filter_does_not_widen_unrelated_shared_tables(planning):
+    assert planning(names=("gold.report_labels",), providers=["p"]).windows == ()
+
+
+def test_empty_provider_alert_group_refuses_at_plan_time(planning):
+    with pytest.raises(ValueError, match="copy_group_incomplete"):
+        planning(
+            names=(
+                "silver.i3_alerts",
+                "silver.i3_alert_informed_entities",
+                "silver.i3_alert_active_periods",
+            ),
+            datasets=["silver.i3_alerts"],
+            providers=["missing"],
+        )
+
+
+@pytest.mark.parametrize("failure", ["not_after", "migration_lock_lost", "work_space"])
+def test_group_run_refusals_are_named(tmp_path, monkeypatch, failure):
+    from datetime import timedelta
+
+    from transit_ops.lake import migration as m
+
+    specs = tuple(
+        WindowSpec(r, "_shared" if r.endswith("active_periods") else "p", "2026-11")
+        for r in (
+            "silver.i3_alerts",
+            "silver.i3_alert_informed_entities",
+            "silver.i3_alert_active_periods",
+        )
+    )
+    plan = MigrationPlan(
+        SimpleNamespace(complete=True), (PlannedWindow(specs[0], "whole_state", specs),), ()
+    )
+
+    def lost():
+        raise OSError("lock disconnected")
+
+    monkeypatch.setattr(
+        m.shutil,
+        "disk_usage",
+        lambda _: SimpleNamespace(free=0 if failure == "work_space" else 2 * m.WORK_SPACE_FLOOR),
+    )
+    result = run_migration(
+        plan,
+        lambda: pytest.fail("must refuse before connecting"),
+        None,
+        work_dir=tmp_path,
+        copied_by="a" * 40,
+        statement_timeout_s=60,
+        not_after=datetime.now(UTC) + timedelta(seconds=421 if failure == "not_after" else 5000),
+        still_locked=lost if failure == "migration_lock_lost" else lambda: True,
+        log=lambda _: None,
+    )
+    assert result.failure["reason"] == failure
+
+
+def test_group_rechecks_reserve_after_connect(tmp_path, monkeypatch):
+    from datetime import timedelta
+
+    from transit_ops.lake import migration as m
+    from transit_ops.lake.alert_bundle import MEMBERS
+
+    now = [datetime(2099, 1, 1, tzinfo=UTC)]
+    deadline = now[0] + timedelta(seconds=1000)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now[0]
+
+    monkeypatch.setattr(m, "datetime", Clock)
+    monkeypatch.setattr(
+        m.shutil, "disk_usage", lambda _: SimpleNamespace(free=2 * m.WORK_SPACE_FLOOR)
+    )
+    specs = tuple(
+        WindowSpec(r, "_shared" if r.endswith("active_periods") else "p", "2026-11")
+        for r in MEMBERS
+    )
+    plan = MigrationPlan(
+        SimpleNamespace(complete=True), (PlannedWindow(specs[0], "whole_state", specs),), ()
+    )
+
+    def connect():
+        now[0] += timedelta(seconds=200)
+        return nullcontext(Source())
+
+    result = run_migration(
+        plan,
+        connect,
+        None,
+        work_dir=tmp_path,
+        copied_by="a" * 40,
+        statement_timeout_s=60,
+        not_after=deadline,
+        log=lambda _: None,
+    )
+    assert result.failure["reason"] == "not_after"
+
+
+@pytest.mark.parametrize("failed", [False, True])
+def test_group_work_directory_removed_only_after_success(tmp_path, monkeypatch, failed):
+    from test_lake_alert_bundle import SeedSource
+
+    from transit_ops.ingestion.storage import LocalBronzeStorage
+    from transit_ops.lake import migration as m
+    from transit_ops.lake.alert_bundle import MEMBERS
+
+    source = SeedSource(dangling=failed)
+    specs = tuple(
+        WindowSpec(r, "_shared" if r.endswith("active_periods") else "p", "2026-11")
+        for r in MEMBERS
+    )
+    plan = MigrationPlan(
+        SimpleNamespace(complete=True), (PlannedWindow(specs[0], "whole_state", specs),), ()
+    )
+    work = tmp_path / "work"
+    work.mkdir()
+    root = tmp_path / "archive"
+    root.mkdir()
+    monkeypatch.setattr(
+        m.shutil, "disk_usage", lambda _: SimpleNamespace(free=2 * m.WORK_SPACE_FLOOR)
+    )
+    try:
+        result = run_migration(
+            plan,
+            lambda: source,
+            LocalBronzeStorage("local", root),
+            work_dir=work,
+            copied_by="a" * 40,
+            statement_timeout_s=60,
+            not_after=datetime(2099, 1, 1, tzinfo=UTC),
+            log=lambda _: None,
+        )
+        assert (result.failure is not None) == failed
+        assert bool(list(work.glob("bundle-*"))) == failed
+    finally:
+        source.db.close()
+
+
+def test_partial_provider_group_is_refused_while_single_windows_copy(
+    tmp_path, planning, monkeypatch
+):
+    from transit_ops.lake import migration as m
+
+    original = Source.execute
+
+    def execute(self, query, values=None):
+        if "SELECT provider_id FROM core.providers ORDER BY provider_id" in str(query):
+            return SimpleNamespace(fetchall=lambda: [("stm",), ("oc",)])
+        return original(self, query, values)
+
+    monkeypatch.setattr(Source, "execute", execute)
+    plan = planning(
+        names=(
+            "silver.i3_alerts",
+            "silver.i3_alert_informed_entities",
+            "silver.i3_alert_active_periods",
+            "gold.dim_date",
+        ),
+        providers=["stm"],
+    )
+    copied = []
+    monkeypatch.setattr(
+        m.shutil, "disk_usage", lambda _: SimpleNamespace(free=2 * m.WORK_SPACE_FLOOR)
+    )
+    monkeypatch.setattr(
+        m,
+        "copy_table_window",
+        lambda *a, **kw: (
+            copied.append(a[2])
+            or SimpleNamespace(
+                outcome="copied",
+                rows=0,
+                content_sha256="a" * 64,
+                proof=SimpleNamespace(object_sha256="b" * 64),
+            )
+        ),
+    )
+    result = run_migration(
+        plan,
+        lambda: nullcontext(Source()),
+        None,
+        work_dir=tmp_path,
+        copied_by="a" * 40,
+        statement_timeout_s=60,
+        not_after=datetime(2099, 1, 1, tzinfo=UTC),
+        log=lambda _: None,
+    )
+    assert result.failure["reason"] == "copy_group_partial"
+    assert [(s.dataset_id, s.provider_id) for s in copied] == [("gold.dim_date", "stm")]
+
+
+def test_cleanup_error_after_activation_is_a_warning(tmp_path, monkeypatch):
+    from test_lake_alert_bundle import SeedSource
+
+    from transit_ops.ingestion.storage import LocalBronzeStorage
+    from transit_ops.lake import migration as m
+    from transit_ops.lake.alert_bundle import MEMBERS, PREFIX
+
+    source = SeedSource()
+    specs = tuple(
+        WindowSpec(r, "_shared" if r.endswith("active_periods") else "p", "2026-11")
+        for r in MEMBERS
+    )
+    plan = MigrationPlan(
+        SimpleNamespace(complete=True), (PlannedWindow(specs[0], "whole_state", specs),), ()
+    )
+    root = tmp_path / "archive"
+    root.mkdir()
+    work = tmp_path / "work"
+    work.mkdir()
+    storage = LocalBronzeStorage("local", root)
+    monkeypatch.setattr(
+        m.shutil, "disk_usage", lambda _: SimpleNamespace(free=2 * m.WORK_SPACE_FLOOR)
+    )
+    real = m.shutil.rmtree
+
+    def fail(path, *args, **kwargs):
+        if getattr(path, "name", "").startswith("bundle-"):
+            raise OSError("cleanup denied")
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(m.shutil, "rmtree", fail)
+    records = []
+    try:
+        result = run_migration(
+            plan,
+            lambda: source,
+            storage,
+            work_dir=work,
+            copied_by="a" * 40,
+            statement_timeout_s=60,
+            not_after=datetime(2099, 1, 1, tzinfo=UTC),
+            log=records.append,
+        )
+        assert result.failure is None
+        assert records[-1]["outcome"] == "copied"
+        assert "cleanup denied" in records[-1]["cleanup_warning"]
+        assert len(list(storage.list_keys(PREFIX))) == 1
+    finally:
+        source.db.close()
