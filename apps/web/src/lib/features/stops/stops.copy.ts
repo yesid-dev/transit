@@ -26,7 +26,6 @@ export const indexCopy = defineCopy({
 		sortLabel: 'Trier',
 		sortDefault: 'Ordre du parcours',
 		sortWorst: 'Moins fiables',
-		rankingPending: 'Calcul du classement de fiabilité des arrêts filtrés…',
 		inventory: {
 			label: 'Inventaire du réseau',
 			stops: 'Arrêts',
@@ -69,7 +68,6 @@ export const indexCopy = defineCopy({
 		sortLabel: 'Sort',
 		sortDefault: 'Order along the line',
 		sortWorst: 'Least reliable',
-		rankingPending: 'Calculating reliability ranking for the filtered stops…',
 		inventory: {
 			label: 'Network inventory',
 			stops: 'Stops',

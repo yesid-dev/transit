@@ -9,6 +9,7 @@ const getStopReliability = vi.fn();
 let viewportRequestsEnabled = true;
 const historyCalls = vi.hoisted(() => ({
 	getStopHistoryDirectory: vi.fn(),
+	getPublishedReliabilityIndex: vi.fn(),
 	getStopHistoryIndex: vi.fn(),
 	loadStopHistoryRange: vi.fn(),
 }));
@@ -169,6 +170,7 @@ vi.mock('#lib/v1/resource.svelte.ts', () => ({
 }));
 
 beforeEach(() => {
+	historyCalls.getPublishedReliabilityIndex.mockResolvedValue(null);
 	viewportRequestsEnabled = true;
 	getStopsIndex.mockResolvedValue(STOPS);
 	getRoutesIndex.mockResolvedValue(ROUTES);
@@ -465,38 +467,16 @@ describe('StopsIndex — reliability badges (honest probe)', () => {
 		);
 	});
 
-	it('requests every eligible stop and freezes source order until one terminal ranking can commit', async () => {
+	it('uses published stop order without fetching offscreen badges to rank', async () => {
 		viewportRequestsEnabled = false;
-		const gates = new Map<
-			string,
-			{
-				promise: Promise<{
-					generated_utc: string;
-					id: string;
-					periods: Array<{ grain: string; otp_pct: number }>;
-				}>;
-				resolve: (value: {
-					generated_utc: string;
-					id: string;
-					periods: Array<{ grain: string; otp_pct: number }>;
-				}) => void;
-			}
-		>();
-		getStopReliability.mockImplementation((id: string) => {
-			let resolve!: (value: {
-				generated_utc: string;
-				id: string;
-				periods: Array<{ grain: string; otp_pct: number }>;
-			}) => void;
-			const promise = new Promise<{
-				generated_utc: string;
-				id: string;
-				periods: Array<{ grain: string; otp_pct: number }>;
-			}>((done) => {
-				resolve = done;
-			});
-			gates.set(id, { promise, resolve });
-			return promise;
+		historyCalls.getPublishedReliabilityIndex.mockResolvedValue({
+			generated_utc: new Date().toISOString(),
+			weekly_stops: ['11000', '22000', '57191'].map((id, i) => ({
+				id,
+				state: 'ranked',
+				rank: i + 1,
+				pct: 50 + i * 20,
+			})),
 		});
 		getRoute.mockResolvedValue({
 			generated_utc: '2026-06-16T02:00:00Z',
@@ -516,35 +496,14 @@ describe('StopsIndex — reliability badges (honest probe)', () => {
 		setUrl('/stops?route=80');
 		render(StopsIndex);
 		await screen.findByRole('heading', { name: 'Direction 0 · South' });
-		const stopOrder = () =>
+		await (await screen.findByTestId('stops-sort-worst')).click();
+		expect(
 			screen
 				.getAllByRole('listitem')
-				.map((row) => within(row).getAllByRole('link')[0].getAttribute('href'));
-
-		await screen.getByTestId('stops-sort-worst').click();
-		await waitFor(() => expect(getStopReliability).toHaveBeenCalledTimes(3));
-		expect(new Set(getStopReliability.mock.calls.map(([id]) => id))).toEqual(
-			new Set(['57191', '11000', '22000']),
-		);
-		expect(stopOrder()).toEqual(['/stop/57191', '/stop/11000', '/stop/22000']);
-		expect(screen.getByTestId('stops-ranking-status')).toHaveTextContent(
-			'Calculating reliability ranking for the filtered stops…',
-		);
-
-		const resolve = (id: string, otp: number) =>
-			gates.get(id)?.resolve({
-				generated_utc: '2026-06-16T02:00:00Z',
-				id,
-				periods: [{ grain: 'day', otp_pct: otp }],
-			});
-		resolve('11000', 50);
-		await waitFor(() => expect(screen.getByText('50%')).toBeInTheDocument());
-		expect(stopOrder()).toEqual(['/stop/57191', '/stop/11000', '/stop/22000']);
-
-		resolve('57191', 90);
-		resolve('22000', 70);
-		await waitFor(() => expect(stopOrder()).toEqual(['/stop/11000', '/stop/22000', '/stop/57191']));
-		expect(screen.getByTestId('stops-ranking-status')).toHaveTextContent('');
+				.map((row) => within(row).getAllByRole('link')[0].getAttribute('href')),
+		).toEqual(['/stop/11000', '/stop/22000', '/stop/57191']);
+		expect(getStopReliability).not.toHaveBeenCalled();
+		expect(screen.queryByTestId('stops-ranking-status')).toBeNull();
 	});
 });
 

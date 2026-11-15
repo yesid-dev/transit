@@ -1,10 +1,12 @@
 <script lang="ts">
+	import { getPublishedReliabilityIndex } from '#lib/v1/repositories/historic.ts';
+	import { publishedWeeklyRanking } from '#lib/v1/ranking/published.ts';
 	import { verdictCopy } from '#lib/v1/verdict.copy.ts';
 	import { intl, getLocalizeHref, getLocale } from '#lib/i18n/index.ts';
 	import { mapHrefFor } from '#lib/nav/index.ts';
 	import { getRoutesIndex } from '#lib/v1/repositories/static.ts';
 	import { createReliabilityLoader } from '#lib/v1/reliabilitySnapshot.svelte.ts';
-	import { isProblemVerdict, verdictRank } from '#lib/v1/verdict.ts';
+	import { isProblemVerdict } from '#lib/v1/verdict.ts';
 	import type { RouteIndexEntry } from '#lib/v1/index.ts';
 	import { createResource } from '#lib/v1/resource.svelte.ts';
 	import {
@@ -29,6 +31,11 @@
 	const locale = getLocale();
 	const t = $derived(indexCopy[locale]);
 
+	const published = createResource((signal) => getPublishedReliabilityIndex({ signal }));
+	const weekly = $derived(publishedWeeklyRanking(published.data, 'route'));
+	const publishedIds = $derived(
+		weekly?.filter((row) => row.state === 'ranked').map((row) => row.id) ?? null,
+	);
 	const routes = createResource(() => getRoutesIndex());
 
 	const reliability = createReliabilityLoader('route', verdictCopy[locale]);
@@ -93,11 +100,10 @@
 		loader: reliability,
 		candidates: () => filtered,
 		id: (route) => route.id,
-		requestWhen: () => sort === 'worst' || status === 'problem',
+		requestWhen: () => status === 'problem',
 		rankWhen: () => sort === 'worst',
-		rank: (snapshot) => verdictRank(snapshot.verdict),
+		published: () => publishedIds,
 	});
-	const worstPending = $derived(reliabilityListing.rankingPending);
 	const sorted = $derived(reliabilityListing.order(filtered));
 
 	const visible = $derived.by<readonly RouteIndexEntry[]>(() => {
@@ -136,7 +142,7 @@
 	<FilterSection>
 		<FilterGroup
 			label={t.sortLabel}
-			items={[{ key: 'worst', label: t.sortWorst }]}
+			items={publishedIds ? [{ key: 'worst', label: t.sortWorst }] : []}
 			activeKey={sort === 'alpha' ? null : sort}
 			allLabel={t.sortAlpha}
 			allowDeselect={false}
@@ -189,7 +195,7 @@
 		     in, a screen-reader user hears that the visible list is still loading
 		     rather than meeting an apparently-empty result set in silence. -->
 		<p class="sr-only" role="status" aria-live="polite">
-			{statusPending ? t.statusPending : worstPending ? t.rankingPending : ''}
+			{statusPending ? t.statusPending : ''}
 		</p>
 		<EntityList items={visible} key={(r) => r.id} grid cards>
 			{#snippet row(r)}
@@ -199,7 +205,11 @@
 			     routes_index `reliability` flag — so a stale flag never drops a badge. -->
 				<div use:observeReliability={r.id}>
 					{#snippet lineStatus()}
-						<ReliabilityBadge snapshot={routeSnapshot} {locale} />
+						<ReliabilityBadge
+							published={weekly?.find((row) => row.id === r.id)}
+							snapshot={routeSnapshot}
+							{locale}
+						/>
 					{/snippet}
 					{#snippet lineAction()}
 						<MapDrilldownLink

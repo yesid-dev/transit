@@ -624,6 +624,14 @@ def build_hotspots_history_plan(
     names = HistoryNameIndex(name_rows, provider_timezone=timezone_row["timezone"])
     route_rows = conn.execute(_HOTSPOTS_HISTORY_ROUTE_DAILY_SQL, params).mappings()
     stop_rows = conn.execute(_HOTSPOTS_HISTORY_STOP_DAILY_SQL, params).mappings()
+    from transit_ops.snapshots.builders.historic.weekly_ranking import cancelled_stop_ids
+    from transit_ops.snapshots.builders.live import build_alerts
+
+    closed = cancelled_stop_ids(
+        build_alerts(conn, provider_id=provider_id, generated_utc=as_of_utc.isoformat()).alerts,
+        as_of_utc,
+    )
+    stop_rows = (row for row in stop_rows if str(row["stop_id"]) not in closed)
     return HotspotsHistoryPlan(route_rows=route_rows, stop_rows=stop_rows, names=names)
 
 

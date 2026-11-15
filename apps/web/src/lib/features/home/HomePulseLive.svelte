@@ -6,7 +6,8 @@
 	import { liveReader } from '#lib/v1/adapter/index.ts';
 	import { livePresentation } from '#lib/v1/live/livePresentation.ts';
 	import { LIVE_FAMILIES, createLiveStore } from '#lib/v1/live/store.svelte.ts';
-	import { getHotspots } from '#lib/v1/repositories/historic.ts';
+	import { getPublishedReliabilityIndex, getHotspots } from '#lib/v1/repositories/historic.ts';
+	import { publishedWeeklyRanking } from '#lib/v1/ranking/published.ts';
 	import { createResource } from '#lib/v1/resource.svelte.ts';
 	import type { Manifest } from '#lib/v1/schemas/index.ts';
 	import { AbsentValue } from '#lib/components/edge/index.ts';
@@ -40,9 +41,27 @@
 		key: () => 'home-hotspots',
 	});
 
+	const weeklyIndex = createResource((signal) => getPublishedReliabilityIndex({ signal }));
+	const weeklyStops = $derived(publishedWeeklyRanking(weeklyIndex.data, 'stop'));
 	const pulse = $derived(selectLivePulse(live.network));
 	const liveFailed = $derived(live.familyStates.network.health.state === 'failed-no-data');
-	const worst = $derived(selectWorst(hotspots.data, display.directory, { limit: RANK_ROWS }));
+	const worst = $derived.by(() => {
+		const current = selectWorst(hotspots.data, display.directory, { limit: RANK_ROWS });
+		if (!current) return null;
+		return {
+			...current,
+			through: weeklyStops?.find((row) => row.state === 'ranked')?.window_end ?? current.through,
+			stops: (weeklyStops ?? [])
+				.filter((row) => row.state === 'ranked')
+				.slice(0, RANK_ROWS)
+				.map((row) => ({
+					kind: 'stop' as const,
+					id: row.id,
+					label: row.name ?? row.id,
+					severePct: row.severe_pct ?? null,
+				})),
+		};
+	});
 	const presentation = $derived(
 		livePresentation({
 			familyStates: live.familyStates,

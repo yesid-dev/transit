@@ -29,10 +29,7 @@
 	import { weekdayLabel, shiftLabel, dayTypeLabel } from '#lib/features/reliability/shiftGrains.ts';
 	import { detailCopy as linesDetailCopy } from '#lib/features/lines/lines.copy.ts';
 
-	import {
-		RELIABILITY_GRAINS as STOP_GRAINS,
-		type ReliabilityGrain as StopGrain,
-	} from '#lib/reliability/grains.ts';
+	import { type ReliabilityGrain as StopGrain } from '#lib/reliability/grains.ts';
 	import { selectDailyPercentiles } from '#lib/site/dailyPercentiles.ts';
 	import { applyRetainedStopHistory, clearRetainedStopHistory } from '../data/retainedHistory';
 	import type { StopHistoryResource } from '../data/stopHistoryResource.svelte';
@@ -91,7 +88,7 @@
 			copy: () => ({ ...copy.history, noData: absenceSentence('no-retained-data', locale) }),
 			window: () => windowOverride,
 		},
-		grains: { keys: STOP_GRAINS, labels: () => grainLabels },
+		grains: { keys: ['week', 'day', 'month'] as const, labels: () => grainLabels },
 		apply: (current, retained) =>
 			retained ? applyRetainedStopHistory(current, retained) : clearRetainedStopHistory(current),
 		locale: () => locale,

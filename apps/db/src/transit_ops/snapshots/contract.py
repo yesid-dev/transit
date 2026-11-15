@@ -1546,7 +1546,22 @@ class ReceiptsIndex(PayloadEnvelope):
     available: list[ReceiptAvailability] = Field(default_factory=list)
 
 
+class WeeklyRankingEntry(BaseModel):
+    id: str
+    name: str | None = None
+    state: str
+    rank: int | None = None
+    numerator: int | None = None
+    denominator: int | None = None
+    pct: float | None = None
+    severe_pct: float | None = None
+    window_start: str | None = None
+    window_end: str | None = None
+
+
 class RouteReliabilityIndex(PayloadEnvelope):
+    weekly_routes: list[WeeklyRankingEntry] | None = None
+    weekly_stops: list[WeeklyRankingEntry] | None = None
     route_ids: list[str] = Field(
         default_factory=list,
         description=(

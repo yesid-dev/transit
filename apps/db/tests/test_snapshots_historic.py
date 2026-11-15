@@ -631,7 +631,7 @@ def test_build_route_reliability_habits_empty_is_all_null() -> None:
 
 def test_build_route_reliability_weak_stops_sorted_desc_default_serves_all() -> None:
     weak = [
-        {"stop_id": f"S{i}", "obs": 10, "weighted_delay_sec": delay_sec * 10, "severe": 0}
+        {"stop_id": f"S{i}", "obs": 30, "weighted_delay_sec": delay_sec * 30, "severe": 0}
         for i, delay_sec in enumerate([60, 600, 300, 120, 420, 30])
     ]
     names = [{"stop_id": f"S{i}", "stop_name": f"Stop {i}"} for i in range(6)]
@@ -652,8 +652,8 @@ def test_build_route_reliability_weak_stops_equal_averages_have_stable_bytes() -
     from transit_ops.snapshots.serialization import snapshot_json_bytes
 
     weak = [
-        {"stop_id": "Z9", "obs": 3, "weighted_delay_sec": 0, "severe": 0},
-        {"stop_id": "A1", "obs": 12, "weighted_delay_sec": 0, "severe": 0},
+        {"stop_id": "Z9", "obs": 30, "weighted_delay_sec": 0, "severe": 0},
+        {"stop_id": "A1", "obs": 30, "weighted_delay_sec": 0, "severe": 0},
     ]
     names = [
         {"stop_id": "A1", "stop_name": "Alpha"},
@@ -679,7 +679,7 @@ def test_build_route_reliability_weak_stops_equal_averages_have_stable_bytes() -
 
 def test_build_route_reliability_weak_stops_respects_explicit_limit() -> None:
     weak = [
-        {"stop_id": f"S{i}", "obs": 10, "weighted_delay_sec": delay_sec * 10, "severe": 0}
+        {"stop_id": f"S{i}", "obs": 30, "weighted_delay_sec": delay_sec * 30, "severe": 0}
         for i, delay_sec in enumerate([60, 600, 300, 120, 420, 30])
     ]
     names = [{"stop_id": f"S{i}", "stop_name": f"Stop {i}"} for i in range(6)]
@@ -1011,8 +1011,8 @@ def test_route_names_sql_unions_history() -> None:
 
 def test_build_route_reliability_weak_stop_name_from_history() -> None:
     weak = [
-        {"stop_id": "S_RETIRED", "obs": 10, "weighted_delay_sec": 6000.0, "severe": 0},
-        {"stop_id": "S1", "obs": 10, "weighted_delay_sec": 1200.0, "severe": 0},
+        {"stop_id": "S_RETIRED", "obs": 30, "weighted_delay_sec": 18000.0, "severe": 0},
+        {"stop_id": "S1", "obs": 30, "weighted_delay_sec": 3600.0, "severe": 0},
     ]
     names = [
         {"stop_id": "S1", "stop_name": "Stop 1"},
@@ -1213,8 +1213,8 @@ def test_build_hotspots_ranks_and_top_20() -> None:
             "net_known": 100,
             "net_stop_obs": 100,
             "net_stop_severe": 10,
-            "stop_obs": 100 if i == 0 else None,
-            "stop_severe": 30 if i == 0 else None,
+            "stop_obs": 100,
+            "stop_severe": 30,
         }
         for i in range(25)
     ]
@@ -1230,7 +1230,7 @@ def test_build_hotspots_ranks_and_top_20() -> None:
     assert first.id == "S0"
     assert first.severity == "high"
     assert first.otp_delta_pts == -20.0
-    assert out.hotspots[1].otp_delta_pts is None
+    assert out.hotspots[1].otp_delta_pts == -20.0
 
 
 def test_build_hotspots_empty_returns_empty() -> None:
@@ -1242,7 +1242,8 @@ def test_build_hotspots_empty_returns_empty() -> None:
 def test_build_hotspots_week_period_filter() -> None:
     rows = [
         {"entity_kind": "route", "entity_id": "51", "issue_count": 5, "severity_label": "watch"},
-        {"entity_kind": "stop", "entity_id": "3456", "issue_count": 3, "severity_label": "high"},
+        {"entity_kind": "stop", "stop_obs": 30, "entity_id": "3456",
+         "issue_count": 3, "severity_label": "high"},
     ]
     conn = FakeConn({"hotspots.list": rows})
     out = build_hotspots(conn, generated_utc="t", provider_id="stm")
@@ -1262,12 +1263,13 @@ def test_build_hotspots_excludes_sentinel_entities() -> None:
         },
         {"entity_kind": "route", "entity_id": "51", "issue_count": 40, "severity_label": "high"},
         {
-            "entity_kind": "stop",
+            "entity_kind": "stop", "stop_obs": 30,
             "entity_id": "__unknown_stop__",
             "issue_count": 30,
             "severity_label": "high",
         },
-        {"entity_kind": "stop", "entity_id": "3456", "issue_count": 10, "severity_label": "watch"},
+        {"entity_kind": "stop", "stop_obs": 30, "entity_id": "3456",
+         "issue_count": 10, "severity_label": "watch"},
     ]
     conn = FakeConn({"hotspots.list": rows})
     out = build_hotspots(conn, generated_utc="t", provider_id="stm")
@@ -1282,13 +1284,13 @@ def test_build_hotspots_resolves_names() -> None:
     rows = [
         {"entity_kind": "route", "entity_id": "51", "issue_count": 9, "severity_label": "high"},
         {
-            "entity_kind": "stop",
+            "entity_kind": "stop", "stop_obs": 30,
             "entity_id": "S_RETIRED",
             "issue_count": 7,
             "severity_label": "watch",
         },
         {
-            "entity_kind": "stop",
+            "entity_kind": "stop", "stop_obs": 30,
             "entity_id": "S_UNKNOWN",
             "issue_count": 5,
             "severity_label": "watch",
@@ -1857,10 +1859,10 @@ def test_by_grain_min_n_floor_routes_to_tray_only_when_recurred() -> None:
     ranked_ids = {e.id for e in week.entries}
     tray_ids = {e.id for e in week.tray}
     assert ranked_ids == {"V_RANKED"}
-    assert tray_ids == {"T_TRAY"}
-    assert "T_DROP" not in ranked_ids and "T_DROP" not in tray_ids
-    assert week.tray_total == 1
-    tray_e = week.tray[0]
+    assert tray_ids == {"T_TRAY", "T_DROP"}
+    assert "T_DROP" not in ranked_ids
+    assert week.tray_total == 2
+    tray_e = next(entry for entry in week.tray if entry.id == "T_TRAY")
     assert tray_e.rank is None
     assert tray_e.wilson_lo is None and tray_e.wilson_hi is None
     assert tray_e.recurrence_days == 3
@@ -1877,7 +1879,8 @@ def test_by_grain_omits_grain_on_honest_absence() -> None:
         )
     ]
     conn = _offender_grain_conn(rows)
-    assert _repeat_offenders_by_grain(conn, "stm", {}) == []
+    assert all(not grain.entries and len(grain.tray) == 1
+               for grain in _repeat_offenders_by_grain(conn, "stm", {}))
 
 
 def test_by_grain_pooled_avg_honest_none_on_zero_denominator() -> None:

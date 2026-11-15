@@ -15,6 +15,7 @@ from transit_ops.gold.reader.window import resolve_as_of
 from transit_ops.silver.i3 import alert_message_provenance
 from transit_ops.snapshots.builders._helpers import (
     _ROUTE_NAMES_SQL,
+    MIN_N_RATE,
     _alert_active_periods,
     _avg_delay_min,
     _entity_name_maps,
@@ -188,9 +189,16 @@ _HOTSPOTS_SQL = named_query(
 
 
 def build_hotspots(conn: Connection, *, provider_id: str, generated_utc: str) -> Hotspots:
+    from transit_ops.snapshots.builders.historic.weekly_ranking import cancelled_stop_ids
+    from transit_ops.snapshots.builders.live import build_alerts
+
+    alerts = build_alerts(conn, provider_id=provider_id, generated_utc=generated_utc).alerts
+    closed = cancelled_stop_ids(alerts, resolve_as_of(conn, None)) if alerts else set()
     rows = list(conn.execute(_HOTSPOTS_SQL, {"provider_id": provider_id}).mappings())
     route_names, stop_names = _entity_name_maps(conn, provider_id=provider_id)
-    kept = [r for r in rows if str(r["entity_id"]) not in SENTINEL_ENTITY_IDS]
+    kept = [r for r in rows if str(r["entity_id"]) not in SENTINEL_ENTITY_IDS
+            and (r["entity_kind"] != "stop" or
+                 (str(r["entity_id"]) not in closed and int(r.get("stop_obs") or 0) >= MIN_N_RATE))]
     hotspots = []
     for i, r in enumerate(kept):
         kind = str(r["entity_kind"])
@@ -223,7 +231,7 @@ def build_hotspots(conn: Connection, *, provider_id: str, generated_utc: str) ->
                 otp_delta_pts=delta,
             )
         )
-    by_grain = _hotspots_by_grain(conn, provider_id, route_names, stop_names)
+    by_grain = _hotspots_by_grain(conn, provider_id, route_names, stop_names, excluded_stops=closed)
     return Hotspots(generated_utc=generated_utc, hotspots=hotspots, by_grain=by_grain)
 
 
@@ -312,7 +320,8 @@ def _hotspots_anchor(conn: Connection, sql, provider_id: str):  # noqa: ANN001, 
 
 
 def _hotspots_by_grain(
-    conn: Connection, provider_id: str, route_names: dict, stop_names: dict
+    conn: Connection, provider_id: str, route_names: dict, stop_names: dict,
+    *, excluded_stops: set[str] | None = None,
 ) -> list[HotspotGrain]:
     route_anchor = _hotspots_anchor(conn, _HOTSPOTS_ROUTE_ANCHOR_SQL, provider_id)
     stop_anchor = _hotspots_anchor(conn, _HOTSPOTS_STOP_ANCHOR_SQL, provider_id)
@@ -337,7 +346,10 @@ def _hotspots_by_grain(
                 _HOTSPOTS_STOP_WINDOW_SQL,
                 {"provider_id": provider_id, "win_start": s_start, "win_end": s_end},
             ).mappings()
-            stop_l = build_hotspot_kind_ladder(s_rows, "stop", stop_names)
+            stop_l = build_hotspot_kind_ladder(
+                (row for row in s_rows if str(row["stop_id"]) not in (excluded_stops or set())),
+                "stop", stop_names
+            )
         merged = merge_hotspot_grain(
             route_l,
             stop_l,
@@ -361,7 +373,10 @@ def _hotspots_by_grain(
             _HOTSPOTS_STOP_SHIFT_SQL,
             {"provider_id": provider_id, "win_start": s_start, "win_end": s_end},
         ).mappings()
-        stop_shift = build_hotspot_kind_ladder(s_rows, "stop", stop_names)
+        stop_shift = build_hotspot_kind_ladder(
+                (row for row in s_rows if str(row["stop_id"]) not in (excluded_stops or set())),
+                "stop", stop_names
+            )
     shift_merged = merge_hotspot_grain(
         route_shift,
         stop_shift,

@@ -13,6 +13,7 @@ from transit_ops.gold.reader.window import resolve_as_of
 from transit_ops.snapshots.builders._helpers import (
     _ROUTE_NAMES_SQL,
     _STOP_NAMES_SQL,
+    MIN_N_RATE,
     _avg_delay_min,
     _build_habits_matrix,
     _iso_date,
@@ -355,6 +356,8 @@ def _route_weak_stops(
         ws_params = {**params, "win_start": ws_start, "win_end": ws_end}
         for r in conn.execute(_ROUTE_WEAK_STOPS_SQL, ws_params).mappings():
             obs = r["obs"]
+            if int(obs or 0) < MIN_N_RATE:
+                continue
             weighted = r["weighted_delay_sec"]
             avg_sec = (float(weighted) / float(obs)) if obs and weighted is not None else None
             if avg_sec is None:

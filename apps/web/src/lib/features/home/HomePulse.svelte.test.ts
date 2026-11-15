@@ -53,7 +53,13 @@ vi.mock('#lib/v1/resource.svelte.ts', () => ({
 		return {
 			get data() {
 				if (key === 'home-hotspots') return state.hotspots;
-				return { routes: [{ id: '7-354', short: '7' }] };
+				return {
+					generated_utc: new Date().toISOString(),
+					weekly_stops: state.hotspots
+						? [{ id: 'S9', name: 'Rideau / Sussex', state: 'ranked', severe_pct: 21.5 }]
+						: null,
+					routes: [{ id: '7-354', short: '7' }],
+				};
 			},
 			error: null,
 			loading: false,
