@@ -274,7 +274,7 @@ def test_recording_is_idempotent_and_refuses_changed_rows(tmp_path):
             with local.transaction() as conn:
                 assert conn.execute(
                     f"SELECT entity_count, segment_seq FROM {table}"
-                ).fetchall() == [(None, None)]
+                ).fetchall() == [(None, 1 if table == "polls" else 2)]
         with pytest.raises(RuntimeError), local.transaction() as conn:
             conn.execute("DELETE FROM polls")
             raise RuntimeError("roll back")
