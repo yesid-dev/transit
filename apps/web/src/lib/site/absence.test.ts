@@ -24,7 +24,6 @@ const ALL_KEYS: AbsenceReasonKey[] = [
 	'inferred',
 	'no-observations',
 	'crowding-not-available',
-	},
 	'thin-coverage',
 	'histogram-not-published',
 	'not-published',
