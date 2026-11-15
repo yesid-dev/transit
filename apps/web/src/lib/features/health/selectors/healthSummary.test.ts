@@ -81,7 +81,7 @@ it('column 2 says what the record covers, when it was published and, once publis
 });
 
 it('column 2 says how the record’s publication check went, once data health has answered', () => {
-	const check = (gate: object | null | undefined, locale: 'en' | 'fr' = 'en') =>
+	const check = (gate: object | string | null | undefined, locale: 'en' | 'fr' = 'en') =>
 		healthSummary({ ...facts, gate: gate as never }, locale, tz).check;
 	expect(check({ verdict: 'pass' })).toBe('The record’s last quality check passed.');
 	expect(check({ verdict: 'pass' }, 'fr')).toBe(
@@ -107,9 +107,28 @@ it('column 2 says how the record’s publication check went, once data health ha
 	expect(check(null, 'fr')).toBe(
 		'Aucun résultat de contrôle de qualité n’est publié pour le bilan.',
 	);
-	// Not loaded yet, an unknown verdict or an uncounted warning: nothing is claimed.
-	for (const unsure of [undefined, { verdict: 'unknown' }, { verdict: 'warn', warnings: null }])
-		expect(check(unsure)).toBeNull();
+	// Every settled state is said in words; only data health still loading claims nothing yet.
+	expect(check(undefined)).toBeNull();
+	for (const verdict of [{ verdict: 'unknown' }, { verdict: null }, {}])
+		expect(check(verdict)).toBe('The result of the record’s last quality check is unknown.');
+	expect(check({ verdict: 'unknown' }, 'fr')).toBe(
+		'Le résultat du dernier contrôle de qualité du bilan est inconnu.',
+	);
+	// A known warning without a usable count is still a warning, never zero warnings.
+	for (const warnings of [null, 0])
+		expect(check({ verdict: 'warn', warnings })).toBe(
+			'The last record was published with warnings. Line, stop and ranking figures come from it; check the date beside each figure.',
+		);
+	expect(check({ verdict: 'warn', warnings: null }, 'fr')).toBe(
+		'Le dernier bilan a été publié avec des avertissements. Les chiffres des lignes, des arrêts et des classements en proviennent; vérifiez la date à côté de chaque chiffre.',
+	);
+	// Data health failed to load or is not published: the check is unknown, not "not published".
+	expect(check('unavailable')).toBe(
+		'Data health is not available, so the result of the record’s quality check is unknown.',
+	);
+	expect(check('unavailable', 'fr')).toBe(
+		'La santé des données n’est pas disponible; le résultat du contrôle de qualité du bilan est donc inconnu.',
+	);
 });
 
 it('column 3 lists known limitations, reassures only on a passed check and current live data', () => {

@@ -14,10 +14,11 @@ export interface HealthSummaryFacts {
 	} | null;
 	readonly record: RecordStamp;
 	/**
-	 * The record's last quality check (data health's rollup lane). Undefined while data health has
-	 * not answered; null when it answered without a record check.
+	 * The record's last quality check (data health's rollup lane). Undefined while data health is
+	 * still loading; 'unavailable' once it failed or published nothing; null when it answered
+	 * without a record check.
 	 */
-	readonly gate?: DataHealthGate | null;
+	readonly gate?: DataHealthGate | null | 'unavailable';
 	readonly gaps: readonly string[];
 }
 
@@ -36,23 +37,29 @@ export function healthSummary(facts: HealthSummaryFacts, locale: Locale, timeZon
 			: stampText(record, locale, timeZone);
 	// After a failed request the shown age says nothing about newer data: treat it as unknown.
 	const age = live?.notice === 'refresh-unavailable' ? null : (live?.ageSeconds ?? null);
-	const warnings = gate?.verdict === 'warn' ? (gate.warnings ?? 0) : 0;
+	const verdict = gate && gate !== 'unavailable' ? gate.verdict : null;
+	const warnings = gate && gate !== 'unavailable' ? (gate.warnings ?? 0) : 0;
 	// Reassure only on a passed check and current live data; an unknown is never "nothing known".
-	const reassured = gate?.verdict === 'pass' && age != null && !live!.isStale;
+	const reassured = verdict === 'pass' && age != null && !live!.isStale;
 	const names = gaps.map((gap) => copy[locale].gaps.names[gap] ?? gap.replace(/_/g, ' '));
 	// A failed verdict only reaches data health when the record was forced out past its check.
+	// Every settled state says what is known in words; only a loading data health claims nothing.
 	const check =
 		gate === undefined
 			? null
-			: gate === null
-				? t.noCheck
-				: gate.verdict === 'pass'
-					? t.passed
-					: gate.verdict === 'fail'
-						? t.failed
-						: warnings > 0
-							? t.warning(intl.number(locale).format(warnings), warnings)
-							: null;
+			: gate === 'unavailable'
+				? t.checkUnavailable
+				: gate === null
+					? t.noCheck
+					: verdict === 'pass'
+						? t.passed
+						: verdict === 'fail'
+							? t.failed
+							: verdict !== 'warn'
+								? t.checkUnknown
+								: warnings > 0
+									? t.warning(intl.number(locale).format(warnings), warnings)
+									: t.warningUncounted;
 	const limits = [reassured && t.clear, names.length > 0 && t.gaps(names.join(', '))].filter(
 		Boolean,
 	);

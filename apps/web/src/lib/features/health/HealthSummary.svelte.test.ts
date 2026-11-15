@@ -75,6 +75,11 @@ it('says the record check is not published only once data health has answered wi
 	await view.rerender({ ...props, dataHealth: { lanes: [{ lane: 'live' }] } as DataHealth });
 	expect(check().shown).toBe('No quality check result is published for the record.');
 	expect(lines(view.container)[3]!.shown).toBe(unconfirmed);
+	// Settled without a document (failed or not published): unknown, said in words.
+	await view.rerender({ ...props, dataHealth: null, dataHealthSettled: true });
+	expect(check().shown).toBe(
+		'Data health is not available, so the result of the record’s quality check is unknown.',
+	);
 });
 
 it('holds every line at the height of the sentences it may still show', async () => {

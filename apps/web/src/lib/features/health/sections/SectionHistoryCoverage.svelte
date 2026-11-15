@@ -74,6 +74,24 @@
 	{/if}
 {/snippet}
 
+<!-- A gap list as published: its dates, explicitly none, or not published at all. -->
+{#snippet gapList(gaps: HistoryCoverageFamilyView['gaps'])}
+	{#if gaps == null}
+		<span class="days-note absent">{t.days.unknown}</span>
+	{:else if gaps.length === 0}
+		<span class="days-note">{t.days.none}</span>
+	{:else}
+		<ul class="gap-list">
+			{#each gaps as gap (`${gap.startDate}:${gap.endDate}:${gap.reason ?? ''}`)}
+				<li>
+					<span class="mono">{windowLabel(gap.startDate, gap.endDate)}</span>
+					{#if gap.reason}<span class="gap-reason">{gap.reason}</span>{/if}
+				</li>
+			{/each}
+		</ul>
+	{/if}
+{/snippet}
+
 <!-- In the index rows the absence is a plain label: the row itself is the control. -->
 {#snippet dates(row: HistoryCoverageFamilyView, year = false, disclosure = true)}
 	{#if row.firstDate && row.lastDate}
@@ -167,16 +185,7 @@
 						{#if selected.gaps?.length}
 							<div class="fact">
 								<dt>{t.evidence.missingLabel}</dt>
-								<dd>
-									<ul class="gap-list">
-										{#each selected.gaps as gap (`${gap.startDate}:${gap.endDate}:${gap.reason ?? ''}`)}
-											<li>
-												<span class="mono">{windowLabel(gap.startDate, gap.endDate)}</span>
-												{#if gap.reason}<span class="gap-reason">{gap.reason}</span>{/if}
-											</li>
-										{/each}
-									</ul>
-								</dd>
+								<dd>{@render gapList(selected.gaps)}</dd>
 							</div>
 						{/if}
 						{#if selected.selectionMode}
@@ -186,9 +195,11 @@
 							</div>
 						{/if}
 					</dl>
-					{#if selected.metrics.length > 0}
-						<div class="group">
-							<h4>{t.evidence.measuresLabel}</h4>
+					<div class="group">
+						<h4>{t.evidence.measuresLabel}</h4>
+						{#if selected.metrics.length === 0}
+							<AbsentValue variant="compact" reason="no-metric-inventory" {locale} />
+						{:else}
 							<ul class="metric-list">
 								{#each selected.metrics as metric (metric.key)}
 									<li data-metric={metric.key} data-aggregation={metric.aggregation}>
@@ -203,11 +214,13 @@
 										{:else}
 											<AbsentValue variant="compact" reason="no-retained-dates" {locale} />
 										{/if}
+										<!-- A measure keeps its own holes; the family's continuity says nothing about it. -->
+										{@render gapList(metric.gaps)}
 									</li>
 								{/each}
 							</ul>
-						</div>
-					{/if}
+						{/if}
+					</div>
 					{#if selected.currentOnlySections.length > 0}
 						<div class="group" data-slot="current-only-limitations">
 							<h4>{t.currentOnlySections}</h4>
@@ -296,10 +309,9 @@
 		grid-template-areas:
 			'name dates'
 			'days days';
-		gap: 0.25rem 1rem;
-		align-items: start;
-		min-height: 2.75rem;
-		padding: 0.75rem;
+		gap: 0 1rem;
+		align-items: center;
+		padding: 0.25rem 0.75rem;
 		border: 1px solid transparent;
 		border-top-color: var(--border-subtle);
 		border-radius: var(--radius-md);
@@ -314,9 +326,14 @@
 	.family-row[data-selected='true'] + .family-row {
 		border-top-color: transparent;
 	}
+	/* The control itself meets the 44 px target, not only the row overlay drawn from it. */
 	.family-select {
 		grid-area: name;
 		justify-self: start;
+		display: inline-flex;
+		align-items: center;
+		min-block-size: 2.75rem;
+		min-inline-size: 2.75rem;
 		padding: 0;
 		border: 0;
 		background: none;
@@ -353,6 +370,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.15rem;
+		padding-bottom: 0.5rem;
 	}
 	.family-days:empty {
 		display: none;
@@ -491,6 +509,9 @@
 		}
 		.family-days:empty {
 			display: flex;
+		}
+		.family-days {
+			padding-block: 0.5rem;
 		}
 	}
 	/* 8 + 4: the index beside the selected family. */

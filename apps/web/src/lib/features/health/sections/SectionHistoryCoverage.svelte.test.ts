@@ -26,6 +26,15 @@ const root: HistoricAvailabilityIndex = {
 					last_available_date: '2026-07-13',
 					gaps: [],
 				},
+				// A hole in one measure that the family itself does not have.
+				{
+					metric: 'delay_percentiles',
+					aggregation: 'daily_only',
+					first_available_date: '2026-05-05',
+					last_available_date: '2026-07-12',
+					gaps: [{ start_date: '2026-06-10', end_date: '2026-06-10', reason: 'late feed' }],
+				},
+				{ metric: 'vehicles', aggregation: 'daily_only' },
 			],
 		},
 		{
@@ -116,3 +125,36 @@ it('speaks French with the same structure', () => {
 		'72 jours sur 74 avec des données',
 	);
 });
+
+it.each([
+	[
+		'en',
+		['Jun 10', 'late feed'],
+		'No missing days declared',
+		'Missing days not published',
+		'No metric inventory',
+	],
+	[
+		'fr',
+		['10 juin', 'late feed'],
+		'Aucun jour manquant déclaré',
+		'Jours manquants non publiés',
+		'Aucun détail métrique',
+	],
+] as const)(
+	'%s: keeps each measure’s own gaps and says when an inventory is absent',
+	async (locale, gap, none, unknown, noMeasures) => {
+		render(SectionHistoryCoverage, props({ copy: copy[locale], locale }));
+		const t = copy[locale].historyCoverage;
+		const panel = () => screen.getByRole('region', { name: t.evidence.region(t.families.network) });
+		const measure = (key: string) => panel().querySelector(`[data-metric="${key}"]`) as HTMLElement;
+
+		for (const text of gap) expect(measure('delay_percentiles')).toHaveTextContent(text);
+		expect(measure('delay')).toHaveTextContent(none);
+		expect(measure('vehicles')).toHaveTextContent(unknown);
+		await fireEvent.click(screen.getByRole('button', { name: t.families.lines }));
+		expect(
+			screen.getByRole('region', { name: t.evidence.region(t.families.lines) }),
+		).toHaveTextContent(noMeasures);
+	},
+);

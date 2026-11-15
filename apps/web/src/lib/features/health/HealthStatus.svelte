@@ -343,6 +343,7 @@
 					{manifest}
 					{live}
 					dataHealth={dh}
+					dataHealthSettled={dataHealth.settled}
 					historyIndex={historyRoot}
 					{gaps}
 					{locale}

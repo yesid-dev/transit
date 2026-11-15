@@ -15,11 +15,21 @@
 		/** The page's one live vehicles store. */
 		live: LiveStore | null;
 		dataHealth: DataHealth | null;
+		/** Data health finished loading at least once, whether or not it returned a document. */
+		dataHealthSettled?: boolean;
 		historyIndex: HistoricAvailabilityIndex | null;
 		gaps: readonly string[];
 		locale: Locale;
 	}
-	let { manifest, live, dataHealth, historyIndex, gaps, locale }: Props = $props();
+	let {
+		manifest,
+		live,
+		dataHealth,
+		dataHealthSettled = false,
+		historyIndex,
+		gaps,
+		locale,
+	}: Props = $props();
 
 	// Column 1 reads the live store, so its age and staleness match every live stamp on the site.
 	const clock = getV1Runtime().clock;
@@ -32,8 +42,8 @@
 	const facts = $derived<HealthSummaryFacts>({
 		live: known ?? null,
 		record: recordStamp({ manifest: manifest ?? null, historyIndex }),
-		// Until data health answers, the record's check is unknown, never "not published".
-		gate: dataHealth ? recordGate(dataHealth) : undefined,
+		// Loading: claim nothing yet. Settled without a document: the check is unknown, said in words.
+		gate: dataHealth ? recordGate(dataHealth) : dataHealthSettled ? 'unavailable' : undefined,
 		gaps,
 	});
 	const shown = $derived(say(facts));
@@ -48,8 +58,9 @@
 		const lives = provider
 			? [current, { ...current, isStale: true }, { ...current, ageSeconds: null }]
 			: [];
-		// Before data health answers, hold the two short outcomes its first answer most often gives.
-		const gates = facts.gate === undefined ? [{ verdict: 'pass' }, null] : [facts.gate];
+		// While data health loads, hold the outcomes its first answer most often gives.
+		const gates =
+			facts.gate === undefined ? [{ verdict: 'pass' }, null, 'unavailable' as const] : [facts.gate];
 		const outcomes = lives.flatMap((alive) =>
 			[record, dated].flatMap((r) =>
 				gates.map((gate) => say({ ...facts, live: alive, record: r, gate })),

@@ -37,6 +37,11 @@ export const copy = defineCopy({
 			passed: 'The record’s last quality check passed.',
 			noRecord: 'No reliability record is published for this network.',
 			noCheck: 'No quality check result is published for the record.',
+			checkUnknown: 'The result of the record’s last quality check is unknown.',
+			checkUnavailable:
+				'Data health is not available, so the result of the record’s quality check is unknown.',
+			warningUncounted:
+				'The last record was published with warnings. Line, stop and ranking figures come from it; check the date beside each figure.',
 			unconfirmed:
 				'No limitation is declared, but nothing can be confirmed until live data is current and the record’s check has passed.',
 			warning: (n: string, count: number) =>
@@ -286,6 +291,11 @@ export const copy = defineCopy({
 			passed: 'Le dernier contrôle de qualité du bilan a réussi.',
 			noRecord: 'Aucun bilan de fiabilité n’est publié pour ce réseau.',
 			noCheck: 'Aucun résultat de contrôle de qualité n’est publié pour le bilan.',
+			checkUnknown: 'Le résultat du dernier contrôle de qualité du bilan est inconnu.',
+			checkUnavailable:
+				'La santé des données n’est pas disponible; le résultat du contrôle de qualité du bilan est donc inconnu.',
+			warningUncounted:
+				'Le dernier bilan a été publié avec des avertissements. Les chiffres des lignes, des arrêts et des classements en proviennent; vérifiez la date à côté de chaque chiffre.',
 			unconfirmed:
 				'Aucune limite n’est déclarée, mais rien ne peut être confirmé tant que les données en direct ne sont pas à jour et que le contrôle du bilan n’a pas réussi.',
 			warning: (n: string, count: number) =>
