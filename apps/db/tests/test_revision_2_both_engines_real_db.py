@@ -354,8 +354,12 @@ def _dirty_after_load(conn, tables, provider):
 def _seed_request(provider):
     days = tuple(sorted(set(seed.DAYS)))
     open_window = (seed.BUILD_CLOCK.astimezone(seed.TZ).date() - days[0]).days
+    # Cover the seed, R26's prior capture day, and the partial build day;
+    # empty archival retention must not create a century of daily input files.
+    first_capture = datetime.combine(days[0], time(), seed.TZ).astimezone(UTC) - timedelta(days=1)
+    fact_window = (seed.BUILD_CLOCK - first_capture).days + 1
     return BuildRequest(
-        provider, days, seed.BUILD_CLOCK, seed.RETENTION_DAYS, open_window, str(seed.TZ),
+        provider, days, seed.BUILD_CLOCK, fact_window, open_window, str(seed.TZ),
         # R28b current_at_build: seed._base(provider) + 20 is the seed's current edition.
         edition_by_day=(
             {day: seed._base(provider) + 20 for day in days}
@@ -372,6 +376,17 @@ def test_seed_request_bounds_the_open_window():
         days=request.open_window_days
     ) == min(seed.DAYS)
     assert max(request.local_dates) == max(seed.DAYS)
+
+
+def test_seed_request_fact_window_covers_seed_and_skew_without_empty_century():
+    request = _seed_request("seed")
+    first = datetime.combine(min(seed.DAYS), time(), seed.TZ).astimezone(UTC) - timedelta(days=1)
+    cutoff = request.as_of_utc - timedelta(days=request.fact_retention_days)
+    assert cutoff <= first < cutoff + timedelta(days=1)
+    assert all(
+        cutoff <= datetime.combine(day, time(12, 12), seed.TZ).astimezone(UTC) < request.as_of_utc
+        for day in seed.DAYS
+    )
 
 
 def test_every_implemented_family_matches_postgres_on_the_seed(seeded, record_property):
