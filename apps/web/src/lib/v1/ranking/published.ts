@@ -1,4 +1,7 @@
-import { RouteReliabilityIndexSchema } from '#lib/v1/schemas/route_reliability_index.ts';
+import {
+	RouteReliabilityIndexSchema,
+	type RouteReliabilityIndex,
+} from '#lib/v1/schemas/route_reliability_index.ts';
 
 // Legacy indexes carry the publication date's midnight stamp, not its actual time.
 function legacyDeadline(generated: number): number {
@@ -9,23 +12,30 @@ function legacyDeadline(generated: number): number {
 	return next.getTime();
 }
 
-export function publishedWeeklyRanking(value: unknown, kind: 'route' | 'stop', now = Date.now()) {
+type Kind = 'route' | 'stop';
+type Rows = NonNullable<RouteReliabilityIndex['weekly_routes']> | null;
+type Reader = (kind: Kind, now: number) => Rows;
+
+/** Validate once per file; the shared clock can then check availability cheaply. */
+export function createPublishedWeeklyRanking(value: unknown): Reader {
 	const parsed = RouteReliabilityIndexSchema.safeParse(value);
-	if (!parsed.success) return null;
+	if (!parsed.success) return () => null;
 	const index = parsed.data;
 	const generated = Date.parse(index.generated_utc);
 	const published = Date.parse(index.published_utc ?? index.generated_utc);
 	const deadline =
 		index.next_publish_utc != null ? Date.parse(index.next_publish_utc) : legacyDeadline(published);
-	if (
-		![generated, published, deadline, now].every(Number.isFinite) ||
-		published > now ||
-		deadline <= published ||
-		now >= deadline
-	)
-		return null;
-	const rows = kind === 'route' ? index.weekly_routes : index.weekly_stops;
-	return rows?.some((row) => row.state === 'ranked' && row.pct != null) ? rows : null;
+	if (![generated, published, deadline].every(Number.isFinite) || deadline <= published)
+		return () => null;
+	const eligible = (rows: typeof index.weekly_routes): Rows =>
+		rows?.some((row) => row.state === 'ranked' && row.pct != null) ? rows : null;
+	const rows = { route: eligible(index.weekly_routes), stop: eligible(index.weekly_stops) };
+	return (kind, now) =>
+		Number.isFinite(now) && published <= now && now < deadline ? rows[kind] : null;
+}
+
+export function publishedWeeklyRanking(value: unknown, kind: Kind, now = Date.now()) {
+	return createPublishedWeeklyRanking(value)(kind, now);
 }
 
 export function publishedOrder<T>(

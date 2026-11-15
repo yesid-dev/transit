@@ -1,6 +1,8 @@
 <script lang="ts">
+	import { getV1Runtime } from '#lib/v1/runtime.ts';
+	import { onMount } from 'svelte';
 	import { getPublishedReliabilityIndex } from '#lib/v1/repositories/historic.ts';
-	import { publishedWeeklyRanking } from '#lib/v1/ranking/published.ts';
+	import { createPublishedWeeklyRanking } from '#lib/v1/ranking/published.ts';
 	import { verdictCopy } from '#lib/v1/verdict.copy.ts';
 	import { intl, getLocalizeHref, getLocale } from '#lib/i18n/index.ts';
 	import { mapHrefFor } from '#lib/nav/index.ts';
@@ -31,8 +33,11 @@
 	const locale = getLocale();
 	const t = $derived(indexCopy[locale]);
 
+	const rankingRuntime = getV1Runtime();
+	onMount(() => rankingRuntime.clock.subscribe());
 	const published = createResource((signal) => getPublishedReliabilityIndex({ signal }));
-	const weekly = $derived(publishedWeeklyRanking(published.data, 'route'));
+	const weeklyReader = $derived(createPublishedWeeklyRanking(published.data));
+	const weekly = $derived(weeklyReader('route', rankingRuntime.clock.serverNow));
 	const publishedIds = $derived(
 		weekly?.filter((row) => row.state === 'ranked').map((row) => row.id) ?? null,
 	);

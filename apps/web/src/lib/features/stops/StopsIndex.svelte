@@ -1,6 +1,8 @@
 <script lang="ts">
+	import { getV1Runtime } from '#lib/v1/runtime.ts';
+	import { onMount } from 'svelte';
 	import { getPublishedReliabilityIndex } from '#lib/v1/repositories/historic.ts';
-	import { publishedWeeklyRanking } from '#lib/v1/ranking/published.ts';
+	import { createPublishedWeeklyRanking } from '#lib/v1/ranking/published.ts';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { stopReliabilityCopy } from './reliability/stops-reliability.copy';
 	import { page } from '$app/state';
@@ -47,8 +49,11 @@
 	const listingSubtitle = $derived([t.kicker, t.subheading].filter(Boolean).join(' '));
 	const edgeLayout = $derived(desktop.current ? 'desktop' : 'mobile');
 
+	const rankingRuntime = getV1Runtime();
+	onMount(() => rankingRuntime.clock.subscribe());
 	const published = createResource((signal) => getPublishedReliabilityIndex({ signal }));
-	const weekly = $derived(publishedWeeklyRanking(published.data, 'stop'));
+	const weeklyReader = $derived(createPublishedWeeklyRanking(published.data));
+	const weekly = $derived(weeklyReader('stop', rankingRuntime.clock.serverNow));
 	const publishedIds = $derived(
 		weekly?.filter((row) => row.state === 'ranked').map((row) => row.id) ?? null,
 	);

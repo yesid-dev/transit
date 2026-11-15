@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { getV1Runtime } from '#lib/v1/runtime.ts';
 	import { onMount, untrack } from 'svelte';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
@@ -7,7 +8,7 @@
 	import { livePresentation } from '#lib/v1/live/livePresentation.ts';
 	import { LIVE_FAMILIES, createLiveStore } from '#lib/v1/live/store.svelte.ts';
 	import { getPublishedReliabilityIndex, getHotspots } from '#lib/v1/repositories/historic.ts';
-	import { publishedWeeklyRanking } from '#lib/v1/ranking/published.ts';
+	import { createPublishedWeeklyRanking } from '#lib/v1/ranking/published.ts';
 	import { createResource } from '#lib/v1/resource.svelte.ts';
 	import type { Manifest } from '#lib/v1/schemas/index.ts';
 	import { AbsentValue } from '#lib/components/edge/index.ts';
@@ -41,8 +42,11 @@
 		key: () => 'home-hotspots',
 	});
 
+	const rankingRuntime = getV1Runtime();
+	onMount(() => rankingRuntime.clock.subscribe());
 	const weeklyIndex = createResource((signal) => getPublishedReliabilityIndex({ signal }));
-	const weeklyStops = $derived(publishedWeeklyRanking(weeklyIndex.data, 'stop'));
+	const weeklyReader = $derived(createPublishedWeeklyRanking(weeklyIndex.data));
+	const weeklyStops = $derived(weeklyReader('stop', rankingRuntime.clock.serverNow));
 	const pulse = $derived(selectLivePulse(live.network));
 	const liveFailed = $derived(live.familyStates.network.health.state === 'failed-no-data');
 	const worst = $derived.by(() => {

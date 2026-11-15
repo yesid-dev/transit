@@ -26,7 +26,11 @@ function percentage(n: number, d: number, precision = 0): number {
 }
 function validDate(value: string): boolean {
 	const time = Date.parse(`${value}T00:00:00Z`);
-	return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === value;
+	return (
+		value.slice(0, 4) !== '0000' &&
+		Number.isFinite(time) &&
+		new Date(time).toISOString().slice(0, 10) === value
+	);
 }
 function validInstant(value: string): boolean {
 	return (

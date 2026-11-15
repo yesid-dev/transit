@@ -4,11 +4,13 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ReliabilitySnapshot } from '#lib/v1/reliabilitySnapshot.svelte.ts';
 import LinesIndex from './LinesIndex.svelte';
 import * as i18n from '#lib/i18n/index.ts';
+import { configureV1Runtime } from '#lib/v1/runtime.ts';
 
 const snapshots = new SvelteMap<string, ReliabilitySnapshot>();
 const requested: string[] = [];
 let publishedRows: Array<{ id: string; state: string; pct: number | null }> | null = null;
 let viewportRequestsEnabled = true;
+let fixtureGenerated: string | null = null;
 const historyCalls = vi.hoisted(() => ({
 	getLineHistoryDirectory: vi.fn(),
 	getLineHistoryIndex: vi.fn(),
@@ -50,7 +52,7 @@ vi.mock('#lib/v1/repositories/historic.ts', () => historyCalls);
 vi.mock('#lib/v1/resource.svelte.ts', () => ({
 	createResource: () => ({
 		data: {
-			generated_utc: new Date().toISOString(),
+			generated_utc: fixtureGenerated ?? new Date().toISOString(),
 			routes: ROUTES,
 			weekly_routes: publishedRows?.map((row, i) => ({
 				...row,
@@ -67,6 +69,7 @@ vi.mock('#lib/v1/resource.svelte.ts', () => ({
 }));
 
 function reset() {
+	fixtureGenerated = null;
 	publishedRows = null;
 	snapshots.clear();
 	requested.length = 0;
@@ -247,6 +250,32 @@ describe('LinesIndex reliability badge', () => {
 });
 
 describe('LinesIndex published sort', () => {
+	it('removes the league at its deadline using the shared server clock while the page stays open', async () => {
+		reset();
+		fixtureGenerated = '2026-11-11T00:00:00Z';
+		publishedRows = [{ id: '161', state: 'ranked', pct: 60 }];
+		const times = new SvelteMap([['now', Date.parse('2026-11-12T12:00:00Z')]]);
+		const restore = configureV1Runtime({
+			clock: {
+				get serverNow() {
+					return times.get('now')!;
+				},
+				noteServerEpochMs() {},
+				subscribe() {
+					return () => {};
+				},
+			},
+		});
+		try {
+			render(LinesIndex);
+			await screen.findByTestId('lines-sort-worst');
+			times.set('now', Date.parse('2026-11-18T07:00:00Z'));
+			await waitFor(() => expect(screen.queryByTestId('lines-sort-worst')).toBeNull());
+		} finally {
+			restore();
+		}
+	});
+
 	it('keeps a published below-floor row hedged when its visible detail finishes loading', async () => {
 		reset();
 		publishedRows = [

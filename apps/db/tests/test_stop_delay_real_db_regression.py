@@ -303,7 +303,9 @@ def _consumer_values(connection) -> dict[str, list]:  # noqa: ANN001
         ),
         "worst_stop": [
             tuple(row)
-            for row in connection.execute(_RECEIPTS_WORST_STOP_SQL, receipt_params).all()
+            for row in connection.execute(
+                _RECEIPTS_WORST_STOP_SQL, {**receipt_params, "excluded_stops": []}
+            ).all()
         ],
         "stop_habits": [
             tuple(row)
