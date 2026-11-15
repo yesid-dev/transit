@@ -167,7 +167,14 @@ test('the home strip holds its place while its numbers and rankings arrive', asy
 						date: '2026-06-08',
 						window_end: '2026-06-14',
 						entries: [
-							{ id: '24', type: 'route', rank: 1, name: 'Sherbrooke', severe_pct: 12.5 },
+							{
+								id: '24',
+								type: 'route',
+								rank: 1,
+								name: 'Sherbrooke',
+								severe_pct: 12.5,
+								observation_count: 80,
+							},
 							{ id: 'S1', type: 'stop', rank: 2, name: 'Fixture stop', severe_pct: 9.1 },
 						],
 					},
