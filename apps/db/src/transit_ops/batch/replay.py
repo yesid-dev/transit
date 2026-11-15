@@ -184,6 +184,10 @@ def _collect_bodies(
                 items.append((rel_key, payload))
                 return rel_key
 
+            def put_immutable_json(self, rel_key: str, payload: SnapshotPayload) -> str:
+                items.append((rel_key, payload))
+                return rel_key
+
         for family, plan in (
             ("hotspots", collected.point_plans.hotspots),
             ("repeat_offenders", collected.point_plans.repeat_offenders),

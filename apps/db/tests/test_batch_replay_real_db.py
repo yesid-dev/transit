@@ -1,3 +1,5 @@
+import hashlib
+import json
 import os
 from datetime import UTC, date, datetime, timedelta
 from importlib import import_module
@@ -8,16 +10,69 @@ import pytest
 from sqlalchemy import create_engine, text
 from test_rescue_fact_day import fact_source as fact_source
 
+from transit_ops.batch import replay as replay_module
 from transit_ops.batch.build import FamilyOutput, InputNeed, TableRows, utc_days
 from transit_ops.batch.families.registry import FAMILIES
 from transit_ops.batch.pg_load import ReplayDatabaseRefused, prepare_replay_database
-from transit_ops.batch.replay import replay_day
+from transit_ops.batch.replay import _collect_bodies, replay_day
 from transit_ops.lake.parquet_codec import write_window
 from transit_ops.lake.table_schema import TableSchema
+from transit_ops.settings import Settings
+from transit_ops.snapshots.contract import HistoricHotspotsDay, HistoricRepeatOffendersDay
+from transit_ops.snapshots.historic_tier import HistoricPointPlanBundle, HistoricValidationInputs
 from transit_ops.sql_registry import named_query
 
 DAY = date(2026, 11, 1)
 STAMP = datetime(2026, 11, 2, 7, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    "family, model, field",
+    [
+        ("hotspots", HistoricHotspotsDay, b"hotspots"),
+        ("repeat_offenders", HistoricRepeatOffendersDay, b"offenders"),
+    ],
+)
+def test_body_collection_accepts_a_nonempty_point_history(monkeypatch, family, model, field):
+    class Days:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def iter_days(self):
+            return iter(self.rows)
+
+    payload = model(
+        date="2026-11-01", generated_utc="2026-11-02T00:00:00Z", methodology_version="reliability-2"
+    )
+    collected = HistoricValidationInputs(
+        all_items=[],
+        route_items=[],
+        stamp="2026-11-02T00:00:00Z",
+        prior_total=None,
+        point_plans=HistoricPointPlanBundle(
+            Days([payload] if family == "hotspots" else []),
+            Days([payload] if family == "repeat_offenders" else []),
+        ),
+    )
+    monkeypatch.setattr(replay_module.historic_tier, "collect", lambda *a, **kw: collected)
+    bodies = _collect_bodies(None, "sample", Settings(), STAMP)
+    expected = (
+        b'{"schema_version":1,"methodology_version":"reliability-2",'
+        b'"publish_generation_id":null,"generated_utc":"2026-11-02T00:00:00Z","'
+        + field
+        + b'":[],"by_grain":[],"date":"2026-11-01"}'
+    )
+    prefix = f"historic/history/{family}/generations/"
+    key = f"{prefix}{hashlib.sha256(expected).hexdigest()}/2026-11-01.json"
+    assert bodies[key] == expected
+    index = next(
+        json.loads(body)
+        for path, body in bodies.items()
+        if path.startswith(prefix) and path.endswith("/index.json")
+    )
+    assert index["available_dates"] == ["2026-11-01"]
+    assert index["partitions"][0]["path"] == key
+    assert index["partitions"][0]["byte_size"] == len(expected)
 
 
 @pytest.fixture
@@ -53,7 +108,8 @@ def replay_inputs(real_db_engine, fact_source, tmp_path, monkeypatch):
         conn.execute(
             text(
                 "UPDATE gold.fact_trip_delay_snapshot SET route_id='R1', "
-                "stop_time_update_count=10, skipped_stop_count=2 WHERE provider_id=:p"
+                "stop_time_update_count=10, skipped_stop_count=2, delay_seconds=120 "
+                "WHERE provider_id=:p"
             ),
             {"p": provider},
         )
@@ -159,7 +215,7 @@ def replay_inputs(real_db_engine, fact_source, tmp_path, monkeypatch):
         database.engine.dispose()
 
 
-def replay(replay_inputs, tmp_path, families):
+def replay(replay_inputs, tmp_path, families, *, publish_bodies=False):
     database, root, provider = replay_inputs
     return replay_day(
         engine=database,
@@ -170,7 +226,7 @@ def replay(replay_inputs, tmp_path, families):
         workdir=tmp_path,
         families=families,
         code_commit="a" * 40,
-        publish_bodies=False,
+        publish_bodies=publish_bodies,
     )
 
 
@@ -262,6 +318,36 @@ def test_two_replays_give_the_same_report_bytes(replay_inputs, tmp_path):
     assert replay(replay_inputs, tmp_path, []).to_json(timings=False) == replay(
         replay_inputs, tmp_path, []
     ).to_json(timings=False)
+
+
+def test_replay_compares_nonempty_point_history_bodies(replay_inputs, tmp_path, monkeypatch):
+    from transit_ops.batch.families import hotspots
+
+    class MissingBodyBuilder:
+        family_id = "hotspots"
+        tables = ()
+        published_keys = ("historic/history/hotspots/generations/*/*.json",)
+        variants = {}
+
+        def inputs(self, request):
+            return ()
+
+        def build(self, session, request):
+            return FamilyOutput({}, {})
+
+    monkeypatch.setattr(hotspots, "builder", MissingBodyBuilder())
+    report = replay(replay_inputs, tmp_path, ["hotspots"], publish_bodies=True)
+    family = report.families[0]
+    assert family.status == "different"
+    assert report.exit_code() == 2
+    difference = next(d for d in family.differences if d.key.endswith("/2026-11-01.json"))
+    assert difference.kind == "missing"
+    assert difference.actual is None
+    payload = json.loads(difference.expected)
+    assert payload["date"] == "2026-11-01"
+    assert datetime.fromisoformat(payload["generated_utc"]) == STAMP
+    digest = hashlib.sha256(difference.expected.encode()).hexdigest()
+    assert difference.key == f"historic/history/hotspots/generations/{digest}/2026-11-01.json"
 
 
 def test_unprepared_engine_is_refused(tmp_path):
