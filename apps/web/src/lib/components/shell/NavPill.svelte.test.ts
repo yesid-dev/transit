@@ -5,7 +5,7 @@ import { createLiveStore, type LiveStore } from '#lib/v1/live/store.svelte.ts';
 import { livePresentation } from '#lib/v1/live/livePresentation.ts';
 import { ManifestSchema } from '#lib/v1/schemas/index.ts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { searchTransit } from '#lib/search/transitSearch.ts';
+import { searchTransit, withAddresses } from '#lib/search/transitSearch.ts';
 import type { Vehicle } from '#lib/v1/schemas/index.ts';
 import NavPill from './__fixtures__/NavPillHarness.svelte';
 import { createNavigationRouter } from './__fixtures__/navigationRouter';
@@ -110,26 +110,6 @@ describe('NavPill navigation lifecycle integration', () => {
 
 describe('NavPill — search', () => {
 	it.each([
-		['en', 'Your searches are sent to our server and the Government of Canada Geo.ca service.'],
-		[
-			'fr',
-			'Vos recherches sont envoyées à notre serveur et au service Géo.ca du gouvernement du Canada.',
-		],
-	] as const)(
-		'renders the %s chrome collection notice beside the search input',
-		(locale, notice) => {
-			const { getByRole } = render(NavPill, { props: { locale } });
-			const search = getByRole('search');
-			const nodes = within(search).getAllByText(notice);
-			expect(nodes).toHaveLength(2);
-			const target = nodes.find((n) => n.id === 'nav-search-notice');
-			expect(target).toHaveClass('sr-only');
-			expect(nodes.find((n) => n !== target)).toHaveAttribute('aria-hidden', 'true');
-			expect(within(search).getByRole('combobox')).toBeInTheDocument();
-		},
-	);
-
-	it.each([
 		['en', 'Vehicle 40061 Line 161'],
 		['fr', 'Véhicule 40061 Ligne 161'],
 	] as const)("names a live vehicle's line in %s", (locale, name) => {
@@ -161,44 +141,11 @@ describe('NavPill — search', () => {
 		);
 	});
 
-	it('shows the collection notice only where searches actually transmit (S5-377 B3)', () => {
-		for (const searchScope of ['map', 'all'] as const) {
-			const { getAllByText, getByRole, unmount } = render(NavPill, {
-				props: { locale: 'en', searchScope },
-			});
-			const notices = getAllByText(
-				'Your searches are sent to our server and the Government of Canada Geo.ca service.',
-			);
-			expect(notices).toHaveLength(2);
-			const target = notices.find((n) => n.id === 'nav-search-notice');
-			expect(target).toBeDefined();
-			expect(target).toHaveClass('sr-only');
-			expect(notices.find((n) => n !== target)).toHaveAttribute('aria-hidden', 'true');
-			expect(getByRole('combobox', { name: 'Search the network' })).toHaveAttribute(
-				'aria-describedby',
-				'nav-search-notice',
-			);
-			unmount();
-		}
-		for (const searchScope of ['route', 'stop'] as const) {
-			const { queryByText, getByRole, unmount } = render(NavPill, {
-				props: { locale: 'en', searchScope },
-			});
-			expect(queryByText(/searches are sent/i)).toBeNull();
-			expect(getByRole('combobox', { name: /^Search a/ })).not.toHaveAttribute('aria-describedby');
-			unmount();
-		}
-	});
-
 	it('closes desktop search suggestions when the user clicks outside', async () => {
 		const label = '5333 Avenue Casgrain, Montréal, Quebec';
-		const searchList = searchTransit(
-			{ surface: 'list', query: 'casgrain' },
-			{
-				routes: [],
-				stops: [],
-				addresses: [{ lat: 45.5, lon: -73.6, label, source: 'geo_ca', precision: 'address' }],
-			},
+		const searchList = withAddresses(
+			searchTransit({ surface: 'list', query: 'casgrain' }, { routes: [], stops: [] }),
+			[{ lat: 45.5, lon: -73.6, label, source: 'geo_ca', precision: 'address' }],
 		);
 		const { getByRole, queryByRole } = render(NavPill, {
 			props: { locale: 'en', search: 'casgrain', searchList },
@@ -208,43 +155,6 @@ describe('NavPill — search', () => {
 		await waitFor(() => expect(queryByRole('option', { name: `Address ${label}` })).toBeNull());
 	});
 });
-const NOTICE_EN =
-	'Your searches are sent to our server and the Government of Canada Geo.ca service.';
-
-function renderWithResults() {
-	return render(NavPill, {
-		props: {
-			locale: 'en',
-			search: '161',
-			searchScope: 'all',
-			searchList: searchTransit(
-				{ surface: 'list', query: '161' },
-				{ routes: [{ id: '161', short: '161', long: 'Van Horne', type: 3 }], stops: [] },
-			),
-		},
-	});
-}
-
-describe('NavPill — the focus dropdown that houses the disclosure (M6i F25/F26)', () => {
-	it('parks the visible disclosure inside that dropdown, ahead of the results', () => {
-		const { getByRole } = renderWithResults();
-		const form = getByRole('search');
-		const panel = form.querySelector<HTMLElement>('[data-slot="nav-search-panel"]');
-		expect(panel).not.toBeNull();
-
-		const notice = within(panel!).getByText(NOTICE_EN);
-		expect(notice).toHaveAttribute('aria-hidden', 'true');
-		const results = panel!.querySelector('.nav-search-results');
-		expect(results).not.toBeNull();
-		expect(
-			notice.compareDocumentPosition(results!) & Node.DOCUMENT_POSITION_FOLLOWING,
-		).toBeTruthy();
-
-		expect(document.querySelectorAll('#nav-search-notice')).toHaveLength(1);
-		expect(panel!.querySelector('#nav-search-notice')).toBeNull();
-	});
-});
-
 it.each(['en', 'fr'] as const)(
 	'shows search Feed health in %s even when vehicles could not load',
 	async (locale) => {

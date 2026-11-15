@@ -1,4 +1,4 @@
-import { fireEvent, render, within } from '@testing-library/svelte';
+import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, expect, it, vi } from 'vitest';
 import { goto } from '$app/navigation';
 import { searchTransit, type ChromeSearchScope } from '#lib/search/transitSearch.ts';
@@ -82,9 +82,9 @@ it('an exact line number is highlighted on a line page, and Enter opens that lin
 it('Down and Up move through every row and wrap, the pinned row included; Enter opens the row', async () => {
 	const view = show('van');
 	const options = view.getAllByRole('option');
-	expect(options).toHaveLength(6);
+	expect(options).toHaveLength(7);
 	await fireEvent.keyDown(view.input, { key: 'ArrowUp' });
-	expect(view.input).toHaveAttribute('aria-activedescendant', options[5]!.id);
+	expect(view.input).toHaveAttribute('aria-activedescendant', options[6]!.id);
 	await fireEvent.keyDown(view.input, { key: 'ArrowDown' });
 	expect(view.input).toHaveAttribute('aria-activedescendant', options[0]!.id);
 	expect(options[0]).toHaveAttribute('aria-selected', 'true');
@@ -126,11 +126,20 @@ it.each([
 });
 
 it.each([
-	['en', 'No line or stop matches “zzz”.', ['Browse all lines', 'Browse all stops'], ''],
+	[
+		'en',
+		'No line or stop matches “zzz”.',
+		['Browse all lines', 'Browse all stops', 'Search addresses for “zzz”'],
+		'',
+	],
 	[
 		'fr',
 		'Aucune ligne ni aucun arrêt ne correspond à « zzz ».',
-		['Parcourir toutes les lignes', 'Parcourir tous les arrêts'],
+		[
+			'Parcourir toutes les lignes',
+			'Parcourir tous les arrêts',
+			'Chercher des adresses pour « zzz »',
+		],
 		'/fr',
 	],
 ] as const)(
@@ -138,14 +147,17 @@ it.each([
 	(locale, message, steps, prefix) => {
 		const view = show('zzz', '/', 'all', locale);
 		expect(view.getByText(message)).toBeInTheDocument();
-		expect(
-			view
-				.getAllByRole('option')
-				.map((option) => [option.textContent?.trim(), path(option.getAttribute('href'))]),
-		).toEqual([
-			[steps[0], `${prefix}/lines`],
-			[steps[1], `${prefix}/stops`],
+		const options = view.getAllByRole('option');
+		expect(options.slice(0, 2).map((option) => path(option.getAttribute('href')))).toEqual([
+			`${prefix}/lines`,
+			`${prefix}/stops`,
 		]);
+		expect(options.slice(0, 2).map((option) => option.textContent?.trim())).toEqual(
+			steps.slice(0, 2),
+		);
+		// The address request comes last, after the browse rows.
+		expect(options).toHaveLength(3);
+		expect(options[2]).toHaveAccessibleName(steps[2]);
 	},
 );
 
@@ -226,3 +238,102 @@ it('restarts the wait when an edit only adds or removes a trailing space', async
 		vi.useRealTimers();
 	}
 });
+
+const geocoded = (...labels: string[]) =>
+	new Response(
+		JSON.stringify({
+			results: labels.map((label, i) => ({
+				label,
+				lat: 45 + i,
+				lon: -73,
+				source: 'geo_ca',
+				precision: 'address',
+			})),
+		}),
+	);
+
+it('does not call the geocoder while typing', async () => {
+	const request = vi.spyOn(globalThis, 'fetch');
+	vi.useFakeTimers();
+	try {
+		const view = show('cas');
+		for (const value of ['casg', 'casgrain'])
+			await fireEvent.input(view.input, { target: { value } });
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(request).not.toHaveBeenCalled();
+	} finally {
+		vi.useRealTimers();
+		request.mockRestore();
+	}
+});
+
+it('calls it once when the address row is chosen, and that row carries the notice', async () => {
+	const request = vi
+		.spyOn(globalThis, 'fetch')
+		.mockResolvedValue(geocoded('5333 Avenue Casgrain', 'Casgrain Street', 'Third'));
+	try {
+		const view = show('casgrain');
+		const ask = view.getByRole('option', { name: 'Search addresses for “casgrain”' });
+		expect(ask).toHaveAccessibleDescription(
+			"Sends this text to our server and to the Government of Canada's Geo.ca service.",
+		);
+		await fireEvent.click(ask);
+		const first = await view.findByRole('option', { name: 'Address 5333 Avenue Casgrain' });
+		await waitFor(() => expect(first).toHaveAttribute('aria-selected', 'true'));
+		expect(view.getAllByRole('option', { name: /^Address / })).toHaveLength(2);
+		expect(view.queryByRole('option', { name: /^Search addresses/ })).toBeNull();
+		expect(request).toHaveBeenCalledOnce();
+		expect(String(request.mock.calls[0]![0])).toBe(
+			'/api/geocode?provider=stm&lang=en&q=casgrain&suggest=1&limit=2',
+		);
+	} finally {
+		request.mockRestore();
+	}
+});
+
+it.each([
+	['nothing is found', () => geocoded(), 'No address found for “casgrain”.'],
+	[
+		'the lookup fails',
+		() => new Response('', { status: 503 }),
+		'Address search is unavailable right now.',
+	],
+])('says so on the address row when %s', async (_, answer, said) => {
+	const request = vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer());
+	try {
+		const view = show('casgrain');
+		await fireEvent.click(view.getByRole('option', { name: /^Search addresses/ }));
+		expect(await view.findByRole('option', { name: said })).toHaveAttribute(
+			'aria-disabled',
+			'true',
+		);
+	} finally {
+		request.mockRestore();
+	}
+});
+
+it('carries no standing notice on the field', () => {
+	const view = show('van');
+	expect(view.input).not.toHaveAttribute('aria-describedby');
+	expect(view.queryByText(/Your searches are sent/)).toBeNull();
+});
+
+it.each([
+	['en', () => geocoded(), 'No address found for “casgrain”.'],
+	['fr', () => geocoded(), 'Aucune adresse trouvée pour « casgrain ».'],
+	['en', () => new Response('', { status: 503 }), 'Address search is unavailable right now.'],
+] as const)(
+	'speaks the address outcome after no transit match (%s)',
+	async (locale, answer, said) => {
+		const request = vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer());
+		try {
+			const view = show('casgrain', '/', 'all', locale);
+			await fireEvent.click(
+				view.getByRole('option', { name: /^(Search addresses|Chercher des adresses)/ }),
+			);
+			await waitFor(() => expect(view.getByRole('status')).toHaveTextContent(said));
+		} finally {
+			request.mockRestore();
+		}
+	},
+);

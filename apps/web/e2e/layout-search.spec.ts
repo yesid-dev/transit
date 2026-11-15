@@ -4,6 +4,7 @@ import { test } from './layout-test';
 import { expectLayout } from './layout-debt';
 import { forwardRoute } from './layout-helpers';
 import { navPillCopy } from '../src/lib/i18n/messages';
+import { headerSearchCopy } from '../src/lib/components/shell/headerSearch.copy';
 import { localizeHref } from '../src/lib/i18n/routing';
 
 const stop = JSON.parse(readFileSync(new URL('./stops-index.json', import.meta.url), 'utf8'))
@@ -60,7 +61,7 @@ for (const locale of ['en', 'fr'] as const)
 			});
 			try {
 				await page.goto(localizeHref('/', locale), { waitUntil: 'networkidle' });
-				// Typing before hydration is reset; one held geocoder request is the one this test releases.
+				// Typing before hydration is reset; the geocoder answer is held until released.
 				await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 				const name = navPillCopy[locale].searchAria.all;
 				const list = page.getByRole('listbox', { name });
@@ -70,10 +71,14 @@ for (const locale of ['en', 'fr'] as const)
 				}).toPass();
 				await page.evaluate(() => document.fonts.ready);
 				await expectInView(page, list);
-				const before = (await boxes(list)).filter((box) => !box.id.endsWith('-all'));
-
+				// The address row is replaced by the addresses; the pinned row may move down with the list.
+				const before = (await boxes(list)).filter((box) => !/-(all|address)$/.test(box.id));
+				const words = headerSearchCopy[locale];
+				await list.getByRole('option', { name: words.askAddresses(query) }).click();
 				release();
-				await expect(list.getByRole('option', { name: new RegExp(address.label) })).toBeVisible();
+				await expect(
+					list.getByRole('option', { name: `${words.kind.address} ${address.label}` }),
+				).toBeVisible();
 				const after = new Map((await boxes(list)).map((box) => [box.id, box]));
 				expect(before.map((box) => after.get(box.id))).toEqual(before);
 				await expectInView(page, list);

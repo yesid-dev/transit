@@ -1,7 +1,7 @@
 import { env as cloudflareEnv } from 'cloudflare:workers';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { geocode, geocodeSuggestions } from '#lib/geocode/geoCa.ts';
+import { GeocodeUnavailable, geocode, geocodeSuggestions } from '#lib/geocode/geoCa.ts';
 import { loadProviderCatalog } from '#lib/v1/providers.ts';
 import { getManifest } from '#lib/v1/repositories/manifest.ts';
 import type { GeocodeArea } from '#lib/geocode/types.ts';
@@ -81,7 +81,18 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 		const limit = Number.isFinite(requestedLimit)
 			? Math.min(Math.max(Math.trunc(requestedLimit), 1), 6)
 			: 5;
-		const results = await geocodeSuggestions(parsed.value.query, area, fetch, limit);
+		const results = await geocodeSuggestions(parsed.value.query, area, fetch, limit).catch(
+			(error: unknown) => {
+				if (error instanceof GeocodeUnavailable) return null;
+				throw error;
+			},
+		);
+		// A failed lookup is not an empty one: the header says "unavailable", never "no address".
+		if (!results)
+			return json(
+				{ error: 'geocoder_unavailable' },
+				{ status: 503, headers: { 'cache-control': 'no-store' } },
+			);
 		return json(
 			{ results },
 			{

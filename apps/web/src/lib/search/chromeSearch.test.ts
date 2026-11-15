@@ -6,19 +6,21 @@ vi.mock('$app/navigation', () => ({ goto: () => Promise.resolve() }));
 import {
 	searchTransit,
 	type SearchSources,
-	type ChromeSearchOptions,
+	type SearchHit,
 	chromeSearchHref,
 	searchHitHref,
 	scopeForPath,
-	type ChromeSearchResult,
 } from './transitSearch';
+import type { TransitModeKey } from './stopMode';
 
-function chromeSearchResults(
-	query: string,
-	sources: SearchSources,
-	options: ChromeSearchOptions = {},
-): ChromeSearchResult[] {
-	return searchTransit({ surface: 'header', query, ...options }, sources);
+// What the search engine matches, read on the page surface: lines, then stops, then vehicles.
+function matches(query: string, sources: SearchSources, modes?: ReadonlySet<TransitModeKey>) {
+	const page = searchTransit({ surface: 'page', query, modes }, sources);
+	return [
+		...page.routes.map(({ id }) => ({ kind: 'route', id })),
+		...page.stops.map(({ id }) => ({ kind: 'stop', id })),
+		...page.vehicles.map(({ id }) => ({ kind: 'vehicle', id })),
+	];
 }
 
 const routes: RouteIndexEntry[] = [
@@ -56,96 +58,19 @@ const vehicles: Vehicle[] = [
 	},
 ];
 
-describe('chromeSearchResults', () => {
-	it("preserves each surface's tied line and stop order", () => {
-		const routes = [
-			{ id: 'z', short: '20', long: 'Café', type: 3 },
-			{ id: 'a', short: '3', long: 'Café', type: 3 },
-		];
-		const stops = [
-			{ id: 'z', code: 'z', name: 'Zulu Hub', lat: 0, lon: 0 },
-			{ id: 'a', code: 'a', name: 'Alpha Hub', lat: 0, lon: 0 },
-		];
-		expect(chromeSearchResults('café', { routes }).map((r) => r.id)).toEqual(['a', 'z']);
-		expect(chromeSearchResults('hub', { stops }).map((r) => r.id)).toEqual(['a', 'z']);
-	});
-	it("keeps exact, prefix, substring and reversed-token matches in today's order", () => {
-		const routes = ['x hub', 'hub north', 'hub', 'hub x'].map((long, i) => ({
-			id: `r${i}`,
-			short: `n${i}`,
-			long,
-			type: 3,
-		}));
-		expect(chromeSearchResults('hub', { routes }).map((r) => r.id)).toEqual([
-			'r2',
-			'r1',
-			'r3',
-			'r0',
-		]);
-		expect(chromeSearchResults('x hub', { routes }).map((r) => r.id)).toEqual(['r0', 'r3']);
-		expect(chromeSearchResults('n1', { routes }).map((r) => r.id)).toEqual(['r1']);
-		expect(chromeSearchResults('r1', { routes }).map((r) => r.id)).toEqual(['r1']);
-	});
-	it('prioritizes route and stop matches over exact live bus ids', () => {
-		const results = chromeSearchResults('161', { routes, stops, vehicles });
-
-		expect(results.map((result) => `${result.kind}:${result.id}`)).toEqual([
-			'route:161',
-			'vehicle:161',
-		]);
-	});
-
+describe('matching', () => {
 	it('matches stop names and rider-facing stop codes', () => {
-		expect(chromeSearchResults('villa', { routes, stops, vehicles })[0]).toMatchObject({
-			kind: 'stop',
-			id: '51243',
-			label: 'Station Villa-Maria',
-		});
-		expect(chromeSearchResults('52618', { routes, stops, vehicles })[0]).toMatchObject({
-			kind: 'stop',
-			id: '52819',
-			label: 'Montgomery / Sherbrooke',
-			meta: '52618',
-		});
+		expect(matches('villa', { routes, stops, vehicles })[0]).toEqual({ kind: 'stop', id: '51243' });
+		expect(matches('52618', { routes, stops, vehicles })[0]).toEqual({ kind: 'stop', id: '52819' });
 	});
 
 	it('only returns vehicles on exact id matches', () => {
-		expect(
-			chromeSearchResults('400', { routes, stops, vehicles }).some((r) => r.kind === 'vehicle'),
-		).toBe(false);
-		expect(chromeSearchResults('40061', { routes, stops, vehicles })[0]).toMatchObject({
-			kind: 'vehicle',
-			id: '40061',
-			label: '40061',
-			line: '161',
-		});
-		expect(chromeSearchResults('40061', { routes, stops, vehicles })[0]?.meta).toBeUndefined();
-	});
-
-	it('includes address autocomplete suggestions after local route and stop matches', () => {
-		const results = chromeSearchResults('casgrain', {
-			routes,
-			stops,
-			vehicles,
-			addresses: [
-				{
-					lat: 45.5256864,
-					lon: -73.5947644,
-					label: '5333 Avenue Casgrain, Montréal, Quebec',
-					source: 'geo_ca',
-					precision: 'address',
-				},
-			],
-		});
-
-		expect(results[0]).toMatchObject({
-			kind: 'address',
-			id: '45.525686,-73.594764',
-			label: '5333 Avenue Casgrain, Montréal, Quebec',
-			meta: 'Address',
-			lat: 45.5256864,
-			lon: -73.5947644,
-		});
+		expect(matches('400', { routes, stops, vehicles }).some((r) => r.kind === 'vehicle')).toBe(
+			false,
+		);
+		expect(matches('40061', { routes, stops, vehicles })).toEqual([
+			{ kind: 'vehicle', id: '40061' },
+		]);
 	});
 
 	it('finds métro stations and accented names the way riders type them', () => {
@@ -154,15 +79,15 @@ describe('chromeSearchResults', () => {
 			{ id: '11000', code: '11000', name: 'Station Crémazie', lat: 45.55, lon: -73.62 },
 		];
 
-		expect(chromeSearchResults('berri uqam', { stops: metro })[0]).toMatchObject({
+		expect(matches('berri uqam', { stops: metro })[0]).toMatchObject({
 			kind: 'stop',
 			id: '10146',
 		});
-		expect(chromeSearchResults('uqam berri', { stops: metro })[0]).toMatchObject({
+		expect(matches('uqam berri', { stops: metro })[0]).toMatchObject({
 			kind: 'stop',
 			id: '10146',
 		});
-		expect(chromeSearchResults('cremazie', { stops: metro })[0]).toMatchObject({
+		expect(matches('cremazie', { stops: metro })[0]).toMatchObject({
 			kind: 'stop',
 			id: '11000',
 		});
@@ -175,7 +100,7 @@ describe('chromeSearchResults', () => {
 			{ id: '9999114', code: '10146', name: 'Station Berri-UQAM', lat: 45.51, lon: -73.56 },
 		];
 
-		const results = chromeSearchResults('berri uqam', { stops: platforms });
+		const results = matches('berri uqam', { stops: platforms });
 		const stops = results.filter((r) => r.kind === 'stop');
 		expect(stops).toHaveLength(1);
 		expect(stops[0]?.id).toBe('9999111');
@@ -188,9 +113,7 @@ describe('chromeSearchResults', () => {
 			{ id: '50303', code: '50303', name: 'Station Henri-Bourassa', lat: 45.554, lon: -73.668 },
 		];
 
-		const stops = chromeSearchResults('henri bourassa', { stops: station }).filter(
-			(r) => r.kind === 'stop',
-		);
+		const stops = matches('henri bourassa', { stops: station }).filter((r) => r.kind === 'stop');
 		expect(stops.map((r) => r.id)).toEqual(['1', '50301', '50303']);
 	});
 
@@ -199,9 +122,7 @@ describe('chromeSearchResults', () => {
 			{ id: '100', code: '100', name: 'Parc / Laurier', lat: 45.52, lon: -73.6 },
 			{ id: '200', code: '200', name: 'Parc / Laurier', lat: 45.521, lon: -73.601 },
 		];
-		const stops = chromeSearchResults('parc laurier', { stops: twins }).filter(
-			(r) => r.kind === 'stop',
-		);
+		const stops = matches('parc laurier', { stops: twins }).filter((r) => r.kind === 'stop');
 		expect(stops).toHaveLength(2);
 	});
 
@@ -210,7 +131,7 @@ describe('chromeSearchResults', () => {
 			{ id: '52819', code: '52618', name: 'Montgomery / Sherbrooke', lat: 45.52, lon: -73.55 },
 		];
 
-		expect(chromeSearchResults('sherbrooke montgomery', { stops: intersection })[0]).toMatchObject({
+		expect(matches('sherbrooke montgomery', { stops: intersection })[0]).toMatchObject({
 			kind: 'stop',
 			id: '52819',
 		});
@@ -302,77 +223,16 @@ describe('scopeForPath', () => {
 	});
 });
 
-describe('chromeSearchResults scope', () => {
-	it('restricts route scope to lines, dropping stops, vehicles, and addresses', () => {
-		const blended = chromeSearchResults('van horne', { routes, stops, vehicles });
-		expect(blended.some((result) => result.kind === 'route')).toBe(true);
-		expect(blended.some((result) => result.kind === 'stop')).toBe(true);
-
-		const results = chromeSearchResults(
-			'van horne',
-			{
-				routes,
-				stops,
-				vehicles,
-				addresses: [
-					{ lat: 45.5, lon: -73.6, label: 'Van Horne', source: 'geo_ca', precision: 'address' },
-				],
-			},
-			{ scope: 'route' },
-		);
-
-		expect(results.length).toBeGreaterThan(0);
-		expect(results.every((result) => result.kind === 'route')).toBe(true);
-	});
-
-	it('restricts stop scope to stops, dropping everything else', () => {
-		const results = chromeSearchResults(
-			'van horne',
-			{ routes, stops, vehicles },
-			{ scope: 'stop' },
-		);
-
-		expect(results.length).toBeGreaterThan(0);
-		expect(results.every((result) => result.kind === 'stop')).toBe(true);
-	});
-
-	it('keeps the full blend on map scope (unchanged ordering)', () => {
-		const results = chromeSearchResults('161', { routes, stops, vehicles }, { scope: 'map' });
-
-		expect(results.map((result) => `${result.kind}:${result.id}`)).toEqual([
-			'route:161',
-			'vehicle:161',
-		]);
-	});
-
-	it('matches today behavior on all scope and when scope is omitted', () => {
-		const blend = ['route:161', 'vehicle:161'];
-		expect(
-			chromeSearchResults('161', { routes, stops, vehicles }, { scope: 'all' }).map(
-				(result) => `${result.kind}:${result.id}`,
-			),
-		).toEqual(blend);
-		expect(
-			chromeSearchResults('161', { routes, stops, vehicles }).map(
-				(result) => `${result.kind}:${result.id}`,
-			),
-		).toEqual(blend);
-	});
-});
-
 describe('searchHitHref', () => {
-	const routeResult: ChromeSearchResult = {
+	const routeResult: SearchHit = {
 		kind: 'route',
 		id: '161',
 		label: '161 Van Horne',
-		priority: 0,
 	};
-	const stopResult: ChromeSearchResult = {
+	const stopResult: SearchHit = {
 		kind: 'stop',
 		id: '52819',
 		label: 'Montgomery / Sherbrooke',
-		meta: '52618',
-		priority: 4,
 	};
 	const from = (path: string, query = '') => ({ path, params: new URLSearchParams(query) });
 
@@ -409,11 +269,10 @@ describe('searchHitHref', () => {
 
 	it('opens a live vehicle on the map, dropping foreign params, from any other page', () => {
 		const current = 'x=1&x=&route=24&near=45.5000000%2C-73.5000000&nearLabel=Raw';
-		const vehicle: ChromeSearchResult = {
+		const vehicle: SearchHit = {
 			kind: 'vehicle',
 			id: '40061',
 			label: '40061',
-			priority: 20,
 		};
 
 		expect(searchHitHref(vehicle, from('/lines/24', current))).toBe(
@@ -422,13 +281,12 @@ describe('searchHitHref', () => {
 	});
 
 	it('falls through to the map near target for an address (no detail route)', () => {
-		const address: ChromeSearchResult = {
+		const address: SearchHit = {
 			kind: 'address',
 			id: '45.525686,-73.594764',
 			label: '5333 Avenue Casgrain, Montréal, Quebec',
 			lat: 45.5256864,
 			lon: -73.5947644,
-			priority: 30,
 		};
 
 		expect(searchHitHref(address, from('/'))).toBe(
@@ -441,111 +299,33 @@ describe('searchHitHref', () => {
 	});
 });
 
-describe('chromeSearchResults mode filter', () => {
+describe('mode filter', () => {
 	it('keeps every family when no mode is selected', () => {
-		const results = chromeSearchResults(
-			'van horne',
-			{ routes, stops, vehicles },
-			{ modes: new Set() },
-		);
+		const results = matches('van horne', { routes, stops, vehicles }, new Set());
 		expect(results.some((r) => r.kind === 'route' && r.id === '161')).toBe(true);
 		expect(results.some((r) => r.kind === 'stop' && r.id === '57191')).toBe(true);
 	});
 
 	it('narrows lines and stops to the selected transit modes', () => {
-		const busOnly = chromeSearchResults(
-			'van horne',
-			{ routes, stops, vehicles },
-			{ modes: new Set(['bus' as const]) },
-		);
+		const busOnly = matches('van horne', { routes, stops, vehicles }, new Set(['bus' as const]));
 		expect(busOnly.some((r) => r.kind === 'route' && r.id === '161')).toBe(true);
 
-		const metroOnly = chromeSearchResults(
+		const metroOnly = matches(
 			'van horne',
 			{ routes, stops, vehicles },
-			{ modes: new Set(['metro' as const]) },
+			new Set(['metro' as const]),
 		);
 		expect(metroOnly).toEqual([]);
 
-		const metroLine = chromeSearchResults(
-			'ligne 1',
-			{ routes },
-			{ modes: new Set(['metro' as const]) },
-		);
+		const metroLine = matches('ligne 1', { routes }, new Set(['metro' as const]));
 		expect(metroLine.map((r) => r.id)).toContain('1');
 	});
 
-	it('drops buses and addresses that the selected modes exclude', () => {
-		const addresses = [
-			{
-				label: '5333 Avenue Casgrain',
-				lat: 45.53,
-				lon: -73.6,
-				precision: 'address' as const,
-				source: 'geo_ca' as const,
-			},
-		];
-		const metro = chromeSearchResults(
-			'40061',
-			{ routes, stops, vehicles, addresses },
-			{ modes: new Set(['metro' as const]) },
-		);
+	it('drops buses that the selected modes exclude', () => {
+		const metro = matches('40061', { routes, stops, vehicles }, new Set(['metro' as const]));
 		expect(metro.some((r) => r.kind === 'vehicle')).toBe(false);
 
-		const bus = chromeSearchResults('40061', { vehicles }, { modes: new Set(['bus' as const]) });
+		const bus = matches('40061', { vehicles }, new Set(['bus' as const]));
 		expect(bus.map((r) => r.id)).toContain('40061');
-
-		const withModes = chromeSearchResults(
-			'casgrain',
-			{ addresses },
-			{ modes: new Set(['bus' as const]) },
-		);
-		expect(withModes).toEqual([]);
-		expect(chromeSearchResults('casgrain', { addresses }).length).toBe(1);
 	});
-});
-
-it('preserves mode filtering relative to stop deduplication', () => {
-	const stops: StopIndexEntry[] = [
-		{ id: 'rail-first', code: 'r', name: 'Station Central', lat: 0, lon: 0, mode: 'rail' },
-		{ id: 'metro-second', code: 'm', name: 'Station Central', lat: 0, lon: 0, mode: 'metro' },
-	];
-	expect(
-		chromeSearchResults('central', { stops }, { modes: new Set(['metro']) }).map((r) => r.id),
-	).toEqual(['metro-second']);
-});
-
-it('keeps header caps and full page counts', () => {
-	const routes = Array.from({ length: 6 }, (_, i) => ({
-		id: String(i),
-		short: String(i),
-		long: 'Hub',
-		type: 3,
-	}));
-	const stops = Array.from({ length: 6 }, (_, i) => ({
-		id: String(i),
-		code: String(i),
-		name: 'Hub',
-		lat: 0,
-		lon: 0,
-	}));
-	expect(
-		chromeSearchResults('hub', { routes, stops }, { scope: 'route' }).map((r) => r.id),
-	).toEqual(['0', '1', '2', '3', '4']);
-	expect(chromeSearchResults('hub', { routes, stops }, { scope: 'stop' }).map((r) => r.id)).toEqual(
-		['0', '1', '2', '3', '4'],
-	);
-	for (const scope of ['all', 'map'] as const)
-		expect(
-			chromeSearchResults('hub', { routes, stops }, { scope }).map((r) => r.kind + ':' + r.id),
-		).toEqual([
-			'route:0',
-			'route:1',
-			'route:2',
-			'route:3',
-			'route:4',
-			'stop:0',
-			'stop:1',
-			'stop:2',
-		]);
 });

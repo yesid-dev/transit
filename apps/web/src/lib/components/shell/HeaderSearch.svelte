@@ -5,9 +5,12 @@
 	import { resetFocusAfterNavigation } from '@yesid/ui/brand';
 	import { delocalizePath, localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import { navPillCopy } from '#lib/i18n/messages.ts';
+	import type { GeocodeSuggestion } from '#lib/geocode/types.ts';
 	import {
+		canSearchAddresses,
 		searchHitHref,
 		searchPageHref,
+		withAddresses,
 		type ChromeSearchScope,
 		type SearchHit,
 		type SearchList,
@@ -41,12 +44,45 @@
 	const listId = `${uid}-results`;
 	const copy = $derived(navPillCopy[locale]);
 	const scoped = $derived(scope === 'route' || scope === 'stop' ? scope : 'all');
-	const transmits = $derived(scope === 'map' || scope === 'all');
 	const text = $derived(query.trim());
 	let open = $state(true);
 	let form = $state<HTMLFormElement>();
 	let results = $state<ReturnType<typeof SearchResultsList>>();
 	let active = $state<string | null>(null);
+	// Addresses are sent only when the reader asks, for the text in the field at that moment.
+	type Lookup = { query: string; state: 'loading' | 'done' | 'failed'; found: GeocodeSuggestion[] };
+	let lookup = $state<Lookup | null>(null);
+	const asked = $derived(lookup?.query === text ? lookup : null);
+	const shownList = $derived(asked?.state === 'done' ? withAddresses(list, asked.found) : list);
+	const address = $derived(
+		!canSearchAddresses(text) || (asked?.state === 'done' && asked.found.length > 0)
+			? null
+			: {
+					state: !asked
+						? ('ask' as const)
+						: asked.state === 'done'
+							? ('none' as const)
+							: asked.state,
+					onask: askAddresses,
+				},
+	);
+	async function askAddresses(): Promise<void> {
+		const asking = text;
+		const settle = (state: Lookup['state'], found: GeocodeSuggestion[] = []) => {
+			if (lookup?.query === asking) lookup = { query: asking, state, found };
+		};
+		lookup = { query: asking, state: 'loading', found: [] };
+		try {
+			const response = await fetch(
+				`/api/geocode?provider=${encodeURIComponent(providerId)}&lang=${locale}&q=${encodeURIComponent(asking)}&suggest=1&limit=2`,
+			);
+			if (!response.ok) return settle('failed');
+			const payload = (await response.json()) as { results?: GeocodeSuggestion[] };
+			settle('done', payload.results ?? []);
+		} catch {
+			settle('failed');
+		}
+	}
 	const listed = $derived(list.groups.length > 0 || (list.total === 0 && !list.pending));
 	const shown = $derived(
 		open && text.length > 0 && (listed || (presentation?.notice.kind ?? 'none') !== 'none'),
@@ -70,9 +106,18 @@
 			: (list.groups.find((group) => group.kind === kind)?.total ?? 0);
 	const summary = $derived.by(() => {
 		const say = headerSearchCopy[locale];
-		if (!shown || (list.total === 0 && !list.pending)) return shown ? say.noResult(text) : '';
+		if (!shown) return '';
+		// What the requested address lookup answered, spoken whatever the transit result.
+		const outcome =
+			address?.state === 'none'
+				? say.addressesNone(text)
+				: address?.state === 'failed'
+					? say.addressesFailed
+					: '';
+		if (list.total === 0 && !list.pending)
+			return [say.noResult(text), outcome].filter(Boolean).join(' ');
 		const counts = say.totals(total('route'), total('stop'), total('vehicle') ?? 0);
-		const notes = list.unsearched.map(say.unsearched);
+		const notes = [...list.unsearched.map(say.unsearched), outcome].filter(Boolean);
 		return notes.length ? [counts && `${counts}.`, ...notes].filter(Boolean).join(' ') : counts;
 	});
 	let announcement = $state('');
@@ -138,7 +183,6 @@
 		aria-controls={shown && listed ? listId : undefined}
 		aria-autocomplete="list"
 		aria-activedescendant={shown && active ? active : undefined}
-		aria-describedby={transmits ? 'nav-search-notice' : undefined}
 		autocomplete="off"
 		spellcheck="false"
 		class="nav-search-input"
@@ -147,13 +191,7 @@
 		onkeydown={keydown}
 	/>
 	<p class="sr-only" role="status">{announcement}</p>
-	{#if transmits}
-		<span id="nav-search-notice" class="sr-only">{copy.searchCollectionNotice}</span>
-	{/if}
 	<div class="nav-search-panel" data-slot="nav-search-panel">
-		{#if transmits}
-			<p class="nav-search-notice" aria-hidden="true">{copy.searchCollectionNotice}</p>
-		{/if}
 		{#if shown}
 			<div class="nav-search-results">
 				<SearchResultsList
@@ -161,7 +199,8 @@
 					bind:active
 					id={listId}
 					label={copy.searchAria[scoped]}
-					{list}
+					list={shownList}
+					{address}
 					query={text}
 					{locale}
 					{hrefs}
@@ -233,15 +272,6 @@
 		transition:
 			opacity var(--duration-fast) var(--ease-default),
 			visibility 0s linear 0s;
-	}
-	.nav-search-notice {
-		margin: 0;
-		padding: 0.375rem 0.75rem;
-		font-size: var(--text-caption);
-		color: var(--muted-foreground);
-		background: color-mix(in srgb, var(--background) 96%, transparent);
-		border: 1px solid var(--border-subtle);
-		border-radius: var(--radius-lg);
 	}
 	.nav-search-results {
 		display: flex;

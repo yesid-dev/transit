@@ -18,8 +18,6 @@ export const navPillCopy = defineCopy({
 			all: 'Rechercher dans le réseau',
 		},
 
-		searchCollectionNotice:
-			'Vos recherches sont envoyées à notre serveur et au service Géo.ca du gouvernement du Canada.',
 		openMenu: 'Ouvrir le menu',
 		closeMenu: 'Fermer le menu',
 		menu: 'Menu de navigation',
@@ -46,8 +44,6 @@ export const navPillCopy = defineCopy({
 		},
 		searchAria: { route: 'Search a line', stop: 'Search a stop', all: 'Search the network' },
 
-		searchCollectionNotice:
-			'Your searches are sent to our server and the Government of Canada Geo.ca service.',
 		openMenu: 'Open menu',
 		closeMenu: 'Close menu',
 		menu: 'Navigation menu',
