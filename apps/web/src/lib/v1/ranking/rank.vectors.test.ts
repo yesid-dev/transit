@@ -127,6 +127,33 @@ test('precision_zero_and_signed_halves_stay_exact', () => {
 	expect(shownUnits(-13500n, 100n, spec, { precision: 0n })).toBe(-2n);
 	expect(shownUnits(-13500n, 100n, spec)).toBe(-23n);
 	expect(shownUnits(0n, 100n, spec)).toBe(0n);
+	const v = vector('half_exact');
+	const rows = [
+		{ entity_id: 'zero', counts: { on_time: 0n, n: 100n, trips: 30n } },
+		{ entity_id: 'positive', counts: { on_time: 1n, n: 100n, trips: 30n } },
+	];
+	for (const input of [rows, [...rows].reverse()]) {
+		expect(rankEntities(input, { ...v, rules })).toEqual([
+			{
+				entity_id: 'zero',
+				state: 'ranked',
+				reason: null,
+				rank: 1n,
+				numerator: 0n,
+				denominator: 100n,
+				shown_units: 0n,
+			},
+			{
+				entity_id: 'positive',
+				state: 'ranked',
+				reason: null,
+				rank: 2n,
+				numerator: 1n,
+				denominator: 100n,
+				shown_units: 10n,
+			},
+		]);
+	}
 });
 test('arithmetic_uses_the_supplied_spec_and_denominator_source', () => {
 	const v = vector('half_exact');
