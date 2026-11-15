@@ -1,60 +1,21 @@
-import { resolveOffenderName } from '../offenderNames';
-import type { RepeatOffenderEntry } from '#lib/v1/schemas/index.ts';
-import type { LineDirectory } from '#lib/site/lineDirectory.ts';
-
-export interface OffenderEvidenceRow {
-	readonly key: string;
-	readonly title: string;
-	readonly href: string | null;
-	readonly ariaLabel: string;
-	readonly typeId: string;
-	readonly severeRate: string | null;
-	readonly confidenceInterval: string | null;
-	readonly recurrence: string;
-	readonly averageDelay: string | null;
-	readonly readings: string | null;
+/** A late-share interval in percent, lower <= upper, both in [0, 100]. */
+export interface LateShareInterval {
+	readonly lower: number;
+	readonly upper: number;
 }
 
-export interface OffenderEvidenceLabels {
-	readonly directory?: LineDirectory;
-	readonly unnamed: (entry: RepeatOffenderEntry) => string;
-	readonly href: (entry: RepeatOffenderEntry) => string | null;
-	readonly ariaLabel: (title: string) => string;
-	readonly typeId: (entry: RepeatOffenderEntry) => string;
-	readonly severeRate: (value: number | null | undefined) => string | null;
-	readonly confidenceInterval: (lower: number, upper: number) => string | null;
-	readonly recurrence: (entry: RepeatOffenderEntry) => string;
-	readonly averageDelay: (value: number | null | undefined) => string | null;
-	readonly readings: (value: number | null | undefined) => string | null;
-}
+const tenth = (value: number): number => Math.round(value * 10) / 10 + 0;
 
-const round1 = (value: number): number => Math.round(value * 10) / 10;
-
-export function buildOffenderEvidenceRows(
-	entries: readonly RepeatOffenderEntry[],
-	cap: number,
-	labels: OffenderEvidenceLabels,
-): OffenderEvidenceRow[] {
-	const directory = labels.directory;
-	return entries.slice(0, Math.max(0, cap)).map((entry) => {
-		const name = resolveOffenderName(entry, directory, labels.unnamed);
-		const title = name.label;
-		const confidenceInterval =
-			entry.wilson_lo != null && entry.wilson_hi != null
-				? labels.confidenceInterval(round1(100 - entry.wilson_hi), round1(100 - entry.wilson_lo))
-				: null;
-
-		return {
-			key: `${entry.type}-${entry.id}-${entry.route ?? ''}`,
-			title,
-			href: labels.href(entry),
-			ariaLabel: directory ? name.spoken : labels.ariaLabel(name.spoken),
-			typeId: labels.typeId(entry),
-			severeRate: labels.severeRate(entry.severe_pct),
-			confidenceInterval,
-			recurrence: labels.recurrence(entry),
-			averageDelay: labels.averageDelay(entry.avg_delay_min),
-			readings: labels.readings(entry.observation_count),
-		};
-	});
+/**
+ * The page's only conversion of the published bounds. The publisher's Wilson bounds describe
+ * the share of readings NOT more than 5 minutes late, so the late share's interval is their
+ * complement: [100 − hi, 100 − lo]. Callers pass bounds already checked to lie in [0, 100]
+ * with lo <= hi; an absent bound means no interval.
+ */
+export function lateShareInterval(
+	onTimeLower: number | null | undefined,
+	onTimeUpper: number | null | undefined,
+): LateShareInterval | null {
+	if (onTimeLower == null || onTimeUpper == null) return null;
+	return { lower: tenth(100 - onTimeUpper), upper: tenth(100 - onTimeLower) };
 }

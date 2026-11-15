@@ -1,45 +1,31 @@
+import { render, screen, within, fireEvent, waitFor } from '@testing-library/svelte';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type {
+	IsoUtc,
+	Manifest,
+	RepeatOffenderEntry,
+	RepeatOffenders as RepeatOffendersData,
+} from '#lib/v1/schemas/index.ts';
+import { createLineDirectory } from '#lib/site/lineDirectory.ts';
+import { localizeHref } from '#lib/i18n/routing.ts';
 import { stampCopy } from '#lib/v1/stamp.copy.ts';
 import { formatDateKey } from '#lib/utils/time.ts';
-import { observeChartFrames } from '#lib/components/dataviz/chart/__fixtures__/observeChartFrames.ts';
-import {
-	act,
-	fireEvent,
-	render as renderSvelte,
-	screen,
-	waitFor,
-	within,
-} from '@testing-library/svelte';
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { RepeatOffenders as RepeatOffendersData, IsoUtc } from '#lib/v1/schemas/index.ts';
-import type {
-	ChartDatumPopoverModel,
-	MagnitudeDatum,
-} from '#lib/components/dataviz/chart/index.ts';
-import { EnteringIntersectionObserver } from '../../../tests/enteringIntersectionObserver';
-import { createSurfaceHarness } from '../../../tests/surfaceHarness';
-import { assertRailIndependence } from '../../../tests/railIndependence';
 
-vi.mock('@testing-library/svelte', { spy: true });
-
-const nav = vi.hoisted(() => {
-	const page = { url: new URL('http://localhost/repeat-offenders'), state: {} };
-	const defaultReplaceState = (url: string | URL) => {
-		Object.assign(page, { url: new URL(url, 'http://localhost') });
-	};
-	return {
-		page,
-		defaultReplaceState,
-		replaceState: vi.fn(defaultReplaceState),
-	};
-});
-const navigate = vi.hoisted(() => vi.fn());
+let mockUrl = new URL('http://localhost/repeat-offenders');
 vi.mock('$app/state', () => ({
-	page: nav.page,
+	page: {
+		get url() {
+			return mockUrl;
+		},
+		state: {},
+	},
 }));
 vi.mock('$app/navigation', () => ({
 	afterNavigate: () => {},
-	goto: navigate,
-	replaceState: nav.replaceState,
+	goto: vi.fn(),
+	replaceState: vi.fn((url: string | URL) => {
+		mockUrl = new URL(url, 'http://localhost');
+	}),
 }));
 
 const currentLocale = vi.hoisted(() => ({ value: 'en' as 'en' | 'fr' }));
@@ -51,22 +37,18 @@ vi.mock('#lib/i18n/index.ts', async (importOriginal) => {
 const { payload } = vi.hoisted(() => ({
 	payload: { current: null as RepeatOffendersData | null },
 }));
-const capturedLadders = vi.hoisted(() => ({ current: [] as unknown[] }));
-
 vi.mock('#lib/v1/repositories/historic.ts', () => ({
 	getRepeatOffenders: vi.fn(),
 	getRepeatOffendersHistoryIndex: vi.fn(),
 	getRepeatOffendersHistoryDay: vi.fn(),
-}));
-vi.mock('#lib/v1/history/selection.ts', () => ({
-	availabilityFromPointCollectionIndex: vi.fn(() => ({ kind: 'empty' })),
 }));
 vi.mock('#lib/v1/history/dateResource.svelte.ts', () => ({
 	historyDateRequestFromSearchParams: vi.fn(() => ({ hasDate: false, rawDate: null })),
 	createHistoryDateResource: vi.fn(() => ({
 		request: { hasDate: false, rawDate: null },
 		index: null,
-		resolved: null,
+		// Discovery has settled with no retained history.
+		resolved: { canonicalDate: null, selection: null, correction: null },
 		availableDates: [],
 		selectedDate: null,
 		canonicalDate: null,
@@ -86,724 +68,479 @@ vi.mock('#lib/v1/history/dateResource.svelte.ts', () => ({
 		destroy: vi.fn(),
 	})),
 }));
-vi.mock('./selectors/offenderLadder', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('./selectors/offenderLadder')>();
-	return {
-		...actual,
-		selectOffenderLadder: (...args: Parameters<typeof actual.selectOffenderLadder>) => {
-			const result = actual.selectOffenderLadder(...args);
-			capturedLadders.current.push(result);
-			return result;
-		},
-	};
-});
+vi.mock('#lib/v1/resource.svelte.ts', () => ({
+	createResource: () => ({
+		data: null,
+		error: null,
+		loading: false,
+		settled: true,
+		reload: vi.fn(),
+	}),
+}));
 
 import RepeatOffenders from './RepeatOffenders.svelte';
-import { copy as repeatCopy } from './repeatOffenders.copy';
 
-const GENERATED = '2026-06-20T02:00:00Z' as IsoUtc;
-let reconciliationIntersectionCallback: IntersectionObserverCallback | undefined;
+// fr-CA puts a no-break space before the percent sign.
+const NB = String.fromCharCode(0xa0);
 
-class ReconciliationIntersectionObserver {
-	readonly root = null;
-	readonly rootMargin = '';
-	readonly thresholds: readonly number[] = [];
-
-	constructor(callback: IntersectionObserverCallback) {
-		reconciliationIntersectionCallback = callback;
-	}
-
-	observe(): void {}
-	unobserve(): void {}
-	disconnect(): void {}
-	takeRecords(): IntersectionObserverEntry[] {
-		return [];
-	}
+/**
+ * A row as the publisher writes it: the share follows from its counts, and its Wilson bounds
+ * (of the not-late share) hold the share's complement.
+ */
+function row(
+	type: 'trip' | 'vehicle',
+	rank: number | null,
+	readings: number,
+	late: number,
+	over: Partial<RepeatOffenderEntry>,
+): RepeatOffenderEntry {
+	const pct = Math.round((1000 * late) / readings) / 10;
+	return {
+		rank,
+		type,
+		id: `${type}-${rank}`,
+		route: '36',
+		route_name: 'Monk',
+		observation_count: readings,
+		severe_count: late,
+		severe_pct: pct,
+		wilson_lo: Math.max(0, Math.round((100 - pct - 8) * 10) / 10),
+		wilson_hi: Math.min(100, Math.round((100 - pct + 8) * 10) / 10),
+		observed_days: 6,
+		window_days: 7,
+		...over,
+	};
 }
 
-function seed(): RepeatOffendersData {
+const departure = (time: string, headsign: string | null) => ({
+	route_short_name: '36',
+	departure_time: time,
+	headsign,
+});
+
+/**
+ * A retained week published by the #1080 publisher (a retained day names its dates), plus
+ * `extra` generated trips after the first three.
+ */
+function seed(extra = 0): RepeatOffendersData {
 	return {
-		generated_utc: GENERATED,
-		offenders: [],
+		generated_utc: '2026-11-18T07:00:00Z' as IsoUtc,
+		methodology_version: 'reliability-2',
+		by_grain: [
+			{
+				grain: 'week',
+				date: '2026-11-11',
+				window_end: '2026-11-17',
+				window_days: 7,
+				entries: [
+					row('trip', 1, 90, 60, {
+						id: '302181941',
+						...departure('07:42:00', 'Monk'),
+						recurrence_days: 4,
+						avg_delay_min: 18.4,
+					}),
+					row('trip', 2, 120, 45, {
+						...departure('08:15:00', 'Monk'),
+						recurrence_days: 3,
+						observed_days: 5,
+						avg_delay_min: 12.3,
+					}),
+					row('trip', 3, 45, 20, {
+						...departure('17:05:00', null),
+						recurrence_days: 3,
+						observed_days: 3,
+						avg_delay_min: 9.9,
+					}),
+					...Array.from({ length: extra }, (_, i) =>
+						row('trip', 4 + i, 60, 20, {
+							id: `gen-${i}`,
+							...departure(`09:${10 + i}:00`, `Generated ${i}`),
+							recurrence_days: 2,
+							observed_days: 4,
+							avg_delay_min: 20 - i / 10,
+						}),
+					),
+					row('vehicle', 1, 64, 30, {
+						id: '4672',
+						route: '158',
+						route_name: 'Bayshore <> Haanel',
+						recurrence_days: 3,
+						observed_days: 4,
+						avg_delay_min: 7.5,
+					}),
+				],
+				tray: [
+					row('vehicle', null, 26, 17, {
+						id: '6675',
+						route: '21',
+						route_name: 'Canotek <> Blair',
+						recurrence_days: 2,
+						observed_days: 2,
+						wilson_lo: null,
+						wilson_hi: null,
+						avg_delay_min: 8,
+					}),
+				],
+				total_ranked_trips: 120,
+				total_ranked_vehicles: 41,
+				tray_total: 1,
+			},
+		],
+	} as unknown as RepeatOffendersData;
+}
+
+/** Today's public shape: positions from the earlier rule, no departure labels, no dates. */
+function olderRecord(): RepeatOffendersData {
+	return {
+		generated_utc: '2026-11-11T00:00:00Z' as IsoUtc,
+		methodology_version: 'reliability-2',
 		by_grain: [
 			{
 				grain: 'week',
 				window_days: 7,
-				total_ranked_trips: 1,
-				total_ranked_vehicles: 1,
 				entries: [
-					{
-						rank: 1,
-						type: 'trip',
-						id: 'T1',
-						route: '11',
-						route_name: 'Montagne / Sommet',
-						severe_pct: 62,
-						observation_count: 210,
-						wilson_lo: 30,
-						wilson_hi: 44,
-						recurrence_days: 5,
-						observed_days: 7,
-						avg_delay_min: 9.4,
-						severity: 'critical',
-					},
-					{
-						rank: 1,
-						type: 'vehicle',
-						id: '42010',
-						route: '55',
-						route_name: 'Boulevard',
-						severe_pct: 48,
-						observation_count: 180,
-						recurrence_days: 4,
-						observed_days: 6,
-						severity: 'high',
-					},
-				],
-				tray: [
-					{
-						rank: null,
-						type: 'vehicle',
-						id: '99999',
-						route: '80',
-						route_name: 'Parc',
-						severe_pct: 20,
-						observation_count: 12,
-					},
-				],
-			},
-			{
-				grain: 'month',
-				window_days: 30,
-				total_ranked_trips: 1,
-				entries: [
-					{
-						rank: 1,
-						type: 'trip',
-						id: 'T9',
-						route: '161',
-						route_name: 'Van Horne',
-						severe_pct: 55,
-						observation_count: 600,
-						recurrence_days: 18,
-						observed_days: 26,
-					},
+					row('trip', 1, 34, 34, {
+						id: '302181944',
+						recurrence_days: 1,
+						observed_days: 1,
+						wilson_lo: 0,
+						wilson_hi: 10.2,
+						avg_delay_min: 50.9,
+					}),
+					row('trip', 2, 146, 146, {
+						id: '302095905',
+						route: '777',
+						route_name: 'Jean-Drapeau / Casino / Bonaventure',
+						recurrence_days: 2,
+						observed_days: 2,
+						wilson_lo: 0,
+						wilson_hi: 2.6,
+						avg_delay_min: 48.9,
+					}),
 				],
 				tray: [],
+				total_ranked_trips: 46831,
+				total_ranked_vehicles: 0,
+				tray_total: 0,
 			},
 		],
-	} satisfies RepeatOffendersData as RepeatOffendersData;
+	} as unknown as RepeatOffendersData;
 }
 
-function card(container: HTMLElement, id: string): HTMLElement {
-	return container.querySelector(`[data-toc="${id}"]`) as HTMLElement;
-}
-
-function cardTrigger(container: HTMLElement, id: string): HTMLButtonElement {
-	return card(container, id).querySelector(
-		'h2.section-heading > button.section-header',
-	) as HTMLButtonElement;
-}
-
-function resetRepeatSurfaceState(): void {
-	nav.replaceState.mockReset().mockImplementation(nav.defaultReplaceState);
-	navigate.mockReset();
-	capturedLadders.current = [];
-	payload.current = seed();
-	reconciliationIntersectionCallback = undefined;
-	Element.prototype.scrollIntoView = vi.fn();
-}
-
-const repeatSurface = createSurfaceHarness({
-	url: {
-		initial: '/repeat-offenders',
-		origin: 'http://localhost',
-		set: (url) => {
-			nav.page.url = url;
-			nav.page.state = {};
-		},
-	},
-	locale: {
-		initial: 'en' as const,
-		set: (locale) => (currentLocale.value = locale),
-	},
-	storage: [
-		{
-			port: sessionStorage,
-			keys: ['persisted:repeat-offenders-controls', 'persisted:repeat-offenders-toc'],
-			prefixes: ['persisted:repeat-card-'],
-		},
-	],
-	resetters: [resetRepeatSurfaceState],
-	mount: renderSvelte,
-});
-const render = repeatSurface.mount;
-
-beforeEach(() => repeatSurface.reset());
-afterAll(() => expect(vi.mocked(renderSvelte).mock.calls.length).toBeLessThanOrEqual(32));
-
-type CapturedMagnitudeDatum = MagnitudeDatum & {
-	readonly tapPopover?: ChartDatumPopoverModel;
-};
-
-function capturedRow(key: string): CapturedMagnitudeDatum {
-	const row = (
-		capturedLadders.current as Array<{
-			spec: { kind: string; rows?: readonly CapturedMagnitudeDatum[] };
-		}>
-	)
-		.flatMap((result) => (result.spec.kind === 'magnitude-bars' ? (result.spec.rows ?? []) : []))
-		.find((candidate) => candidate.key === key);
-	if (!row) throw new Error(`Expected captured magnitude row ${key}`);
-	return row;
-}
-
-describe('RepeatOffenders — approved analytical article', () => {
-	it('renders one article h1, the single page action, and three simultaneous cards', () => {
-		const { container } = render(RepeatOffenders);
-		expect(screen.getAllByRole('heading', { level: 1, name: 'Repeat offenders' })).toHaveLength(1);
-		const controls = screen.getByTestId('sections-controls');
-		expect(within(controls).getAllByRole('button')).toHaveLength(1);
-		expect(within(controls).getByRole('button', { name: /Collapse all/ })).toBeInTheDocument();
-		expect(container.querySelector('[data-slot="detail-shell"]')).not.toBeNull();
-
-		const cards = ['repeat-worst', 'repeat-trips', 'repeat-vehicles'].map((id) =>
-			card(container, id),
-		);
-		expect(cards.every(Boolean)).toBe(true);
-		expect(cards.map((element) => element.getAttribute('data-header-variant'))).toEqual([
-			'article-summary',
-			'article-summary',
-			'article-summary',
-		]);
-		expect(
-			cards.map((element) => element.querySelector('[data-slot="badge"]')?.textContent?.trim()),
-		).toEqual(['01', '02', '03']);
-		expect(container.querySelector('[role="tablist"]')).toBeNull();
-		expect(container.querySelector('[role="tab"]')).toBeNull();
-		const header = container.querySelector('[data-slot="article-header"]') as HTMLElement;
-		expect(header).toHaveTextContent('3 sections');
-		expect(header).not.toHaveTextContent('Recurrence read over the latest trailing week');
-	});
-
-	it('puts window, number shown, context, and contents in one independently toggled rail', async () => {
-		const entries = Array.from({ length: 6 }, (_, index) => ({
-			rank: index + 1,
-			type: 'trip' as const,
-			id: `T${index}`,
-			route: `${index}`,
-			route_name: `Line ${index}`,
-			severe_pct: 60 - index,
-			observation_count: 100,
-			recurrence_days: 4,
-			observed_days: 7,
-		}));
-		payload.current = {
-			...seed(),
-			by_grain: [
-				{
-					grain: 'week',
-					window_days: 7,
-					total_ranked_trips: 6,
-					entries,
-					tray: [],
-				},
-				seed().by_grain![1]!,
-			],
-		} satisfies RepeatOffendersData as RepeatOffendersData;
-
-		const { container } = render(RepeatOffenders);
-		expect(container.querySelectorAll('[data-slot="surface-rail-mobile"]')).toHaveLength(1);
-		expect(container.querySelector('[data-slot="toc-pill"]')).toBeNull();
-		const desktop = container.querySelector('[data-slot="surface-rail"]') as HTMLElement;
-		const filters = within(desktop).getByRole('button', { name: 'View controls' });
-		const toc = within(desktop).getByRole('button', { name: 'On this page' });
-		expect(within(desktop).getByRole('radiogroup', { name: 'Window' })).toBeInTheDocument();
-		expect(within(desktop).getByRole('radiogroup', { name: 'Show' })).toBeInTheDocument();
-		expect(desktop.querySelector('[data-slot="active-window"]')).not.toBeNull();
-
-		await fireEvent.click(filters);
-		expect(filters).toHaveAttribute('aria-expanded', 'false');
-		expect(toc).toHaveAttribute('aria-expanded', 'true');
-		expect(sessionStorage.getItem('persisted:repeat-offenders-controls')).toBeNull();
-		await fireEvent.click(toc);
-		expect(sessionStorage.getItem('persisted:repeat-offenders-toc')).toBeNull();
-		await assertRailIndependence({
-			container,
-			panelNames: [repeatCopy.en.rail.controls, repeatCopy.en.rail.toc],
-			contentCount: 2,
-		});
-	});
-
-	it('keeps both week and month visible while disabling and describing the unavailable grain', () => {
-		payload.current = {
-			generated_utc: GENERATED,
-			offenders: [],
-			by_grain: [seed().by_grain![0]!],
-		} satisfies RepeatOffendersData as RepeatOffendersData;
-		const { container } = render(RepeatOffenders);
-		const rail = container.querySelector('[data-slot="surface-rail"]') as HTMLElement;
-		const windowPicker = within(rail).getByRole('radiogroup', { name: 'Window' });
-		const week = within(windowPicker).getByRole('radio', { name: 'Week' });
-		const month = within(windowPicker).getByRole('radio', { name: 'Month' });
-		expect(week).toBeEnabled();
-		expect(month).toBeDisabled();
-		const describedBy = month.getAttribute('aria-describedby');
-		expect(describedBy).toBeTruthy();
-		expect(container.querySelector(`#${describedBy}`)).toHaveTextContent(
-			/not enough readings yet/i,
-		);
-	});
-
-	it('keeps conditional cards and contents destinations in the same fixed-number registry', () => {
-		repeatSurface.setUrl('/repeat-offenders?grain=month');
-		const { container } = render(RepeatOffenders);
-		expect(card(container, 'repeat-worst')).not.toBeNull();
-		expect(card(container, 'repeat-trips')).not.toBeNull();
-		expect(container.querySelector('[data-toc="repeat-vehicles"]')).toBeNull();
-		const rail = container.querySelector('[data-slot="surface-rail"]') as HTMLElement;
-		expect(within(rail).getByRole('button', { name: 'Most repeated delays' })).toBeInTheDocument();
-		expect(within(rail).getByRole('button', { name: 'Trips' })).toBeInTheDocument();
-		expect(within(rail).queryByRole('button', { name: 'Vehicles' })).toBeNull();
-		expect(card(container, 'repeat-trips').querySelector('[data-slot="badge"]')).toHaveTextContent(
-			'02',
-		);
-	});
-
-	it('a TOC jump opens only its closed Trips card before scrolling', async () => {
-		const { container } = render(RepeatOffenders);
-		const statesAtScroll: Array<{ trips: string | null; worst: string | null }> = [];
-		const scrollIntoView = vi.fn(() => {
-			statesAtScroll.push({
-				trips: cardTrigger(container, 'repeat-trips').getAttribute('aria-expanded'),
-				worst: cardTrigger(container, 'repeat-worst').getAttribute('aria-expanded'),
-			});
-		});
-		Element.prototype.scrollIntoView = scrollIntoView;
-		await fireEvent.click(cardTrigger(container, 'repeat-worst'));
-		await fireEvent.click(cardTrigger(container, 'repeat-trips'));
-
-		const rail = container.querySelector('[data-slot="surface-rail"]') as HTMLElement;
-		await fireEvent.click(within(rail).getByRole('button', { name: 'Trips' }));
-		await waitFor(() => expect(scrollIntoView).toHaveBeenCalledOnce());
-		expect(statesAtScroll).toEqual([{ trips: 'true', worst: 'false' }]);
-	});
-
-	it('reconciles an active Vehicle destination to the nearest surviving Trip card', async () => {
-		reconciliationIntersectionCallback = undefined;
-		vi.stubGlobal('IntersectionObserver', ReconciliationIntersectionObserver);
-
-		try {
-			const { container } = render(RepeatOffenders);
-			await waitFor(() => expect(reconciliationIntersectionCallback).toBeDefined());
-			await act(() =>
-				reconciliationIntersectionCallback!(
-					[
-						{
-							isIntersecting: true,
-							target: card(container, 'repeat-vehicles'),
-						} as unknown as IntersectionObserverEntry,
-					],
-					{} as IntersectionObserver,
+function context(provider = 'stm') {
+	return new Map<unknown, unknown>([
+		[
+			Symbol.for('transit.line-directory'),
+			() =>
+				createLineDirectory(
+					['36', '158', '21', '777'].map((id) => ({ id, short: id })),
+					{ line: (id) => `Line ${id}` },
 				),
-			);
-			const rail = container.querySelector('[data-slot="surface-rail"]') as HTMLElement;
-			expect(within(rail).getByRole('button', { name: 'Vehicles' })).toHaveAttribute(
-				'aria-current',
-				'location',
-			);
+		],
+		[
+			Symbol.for('transit.i18n.href'),
+			(href: string, lang: 'en' | 'fr') => localizeHref(href, lang, provider),
+		],
+	]);
+}
 
-			await fireEvent.click(within(rail).getByRole('radio', { name: 'Month' }));
-			await waitFor(() => {
-				expect(container.querySelector('[data-toc="repeat-vehicles"]')).toBeNull();
-				expect(within(rail).getByRole('button', { name: 'Trips' })).toHaveAttribute(
-					'aria-current',
-					'location',
-				);
-			});
-		} finally {
-			vi.unstubAllGlobals();
-		}
-	});
+const manifest = { provider: 'stm', display_name: 'STM', files: {} } as unknown as Manifest;
 
-	it('builds an opt-in mobile popover with localized recurrence evidence and only an explicit action', () => {
-		render(RepeatOffenders);
-		expect(capturedRow('trip-T1-11').tapPopover).toEqual({
-			key: 'trip-T1-11',
-			heading: 'Montagne / Sommet',
-			meta: 'Trip T1',
-			rows: [
-				{ label: 'Severe-delay rate', value: '62%' },
-				{ label: '95% CI', value: '56%–70%' },
-				{ label: 'Recurrence', value: 'Late-prone on 5 of 7 observed days' },
-				{ label: 'Average delay', value: '9.4 min' },
-				{ label: 'Readings', value: '210' },
-			],
-			action: {
-				href: '/lines/11',
-				label: 'View line',
-			},
-		});
-	});
+function show(data = seed(), url = 'http://localhost/repeat-offenders') {
+	payload.current = data;
+	mockUrl = new URL(url);
+	return render(RepeatOffenders, { props: { manifest }, context: context() });
+}
 
-	it('moves an older one-day recurrence to the unranked tray even with three observed days', () => {
-		const entry = payload.current!.by_grain![0].entries![0];
-		Object.assign(entry, { recurrence_days: 1, observed_days: 3 });
-		const { container } = render(RepeatOffenders);
-		expect(JSON.stringify(capturedLadders.current)).not.toContain(
-			`trip-${entry.id}-${entry.route}`,
-		);
-		expect(container.querySelector('[data-slot="offender-tray"]')).not.toBeNull();
-	});
+const rowButtons = () =>
+	within(screen.getByRole('list', { name: /^(Trips|Buses|Trajets|Bus)$/ })).getAllByRole('button');
+const openEvidence = () =>
+	document.querySelector('[data-slot="offender-row-evidence"]:not([hidden])') as HTMLElement;
 
-	it('uses the approved bilingual chart-popover vocabulary', () => {
-		expect(repeatCopy.en.chart.popover).toEqual({
-			recurrence: 'Recurrence',
-			averageDelay: 'Average delay',
-			readings: 'Readings',
-			viewLine: 'View line',
-		});
-		expect(repeatCopy.fr.chart.popover).toEqual({
-			recurrence: 'Récurrence',
-			averageDelay: 'Retard moyen',
-			readings: 'Relevés',
-			viewLine: 'Voir la ligne',
-		});
-	});
-
-	it('keeps the exact approved bilingual article, rail, and card copy', () => {
-		expect(repeatCopy.en.article).toEqual({
-			watermark: 'Repeat',
-			back: '← Back to overview',
-			tagsAria: 'Page keywords',
-			tags: ['offenders', 'trips', 'vehicles', 'recurrence'],
-			sections: expect.any(Function),
-		});
-		expect(repeatCopy.fr.article).toEqual({
-			watermark: 'Récidive',
-			back: '← Retour à l’aperçu',
-			tagsAria: 'Mots-clés de la page',
-			tags: ['récidivistes', 'trajets', 'véhicules', 'récurrence'],
-			sections: expect.any(Function),
-		});
-		expect(repeatCopy.en.rail).toEqual({
-			label: 'View & contents',
-			open: 'Open view controls and contents',
-			close: 'Close view controls and contents',
-			controls: 'View controls',
-			toc: 'On this page',
-			counterPrefix: 'SEC',
-		});
-		expect(repeatCopy.fr.rail).toEqual({
-			label: 'Vue et sommaire',
-			open: 'Ouvrir les commandes et le sommaire',
-			close: 'Fermer les commandes et le sommaire',
-			controls: 'Commandes de vue',
-			toc: 'Sur cette page',
-			counterPrefix: 'SEC',
-		});
-		expect(repeatCopy.en.cards).toEqual({
-			worst: {
-				title: 'Most repeated delays',
-				subtitle: expect.stringMatching(/\?$/),
-			},
-			trips: {
-				title: 'Trips',
-				subtitle: expect.stringMatching(/\?$/),
-			},
-			vehicles: {
-				title: 'Vehicles',
-				subtitle: expect.stringMatching(/\?$/),
-			},
-		});
-		expect(repeatCopy.fr.cards).toEqual({
-			worst: {
-				title: 'Retards les plus récurrents',
-				subtitle: expect.stringMatching(/\?$/),
-			},
-			trips: {
-				title: 'Trajets',
-				subtitle: expect.stringMatching(/\?$/),
-			},
-			vehicles: {
-				title: 'Véhicules',
-				subtitle: expect.stringMatching(/\?$/),
-			},
-		});
-	});
-
-	it('keeps the French recurrence sentence grammatical for singular and plural days', () => {
-		expect(repeatCopy.fr.recurrence.naturalFrequency(1, 3)).toBe(
-			'Sujet aux retards 1 jour sur 3 observés',
-		);
-		expect(repeatCopy.fr.recurrence.naturalFrequency(2, 3)).toBe(
-			'Sujet aux retards 2 jours sur 3 observés',
-		);
-	});
-
-	it('never calls a single observed day a repeated pattern', () => {
-		for (const lateDays of [0, 1]) {
-			expect(repeatCopy.en.recurrence.naturalFrequency(lateDays, 1)).toBe(
-				'Seen on one day only. One day does not show a repeated pattern.',
-			);
-			expect(repeatCopy.fr.recurrence.naturalFrequency(lateDays, 1)).toBe(
-				'Observé un seul jour. Un seul jour ne montre pas une tendance répétée.',
-			);
-		}
-		expect(repeatCopy.en.recurrence.naturalFrequency(1, 2)).toBe(
-			'Late-prone on 1 of 2 observed days',
-		);
-	});
-
-	it('moves an older one-day ranked entry out of the headline and ladder', () => {
-		const top = payload.current?.by_grain?.[0]?.entries?.[0];
-		if (!top) throw new Error('missing seeded offender');
-		Object.assign(top, { recurrence_days: 1, observed_days: 1 });
-		const { container } = render(RepeatOffenders);
-		expect(container.querySelector('[data-slot="offenders-hero"]')).not.toHaveTextContent(
-			/1 of 1|one day only/,
-		);
-		expect(JSON.stringify(capturedLadders.current)).not.toContain('trip-T1-11');
-	});
-
-	it('keeps a touch datum activation inside the card and exposes only the popover action', async () => {
-		vi.stubGlobal('IntersectionObserver', EnteringIntersectionObserver);
-		observeChartFrames(768, 400);
-		const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(768);
-		const height = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(400);
-		const originalAnimate = Object.getOwnPropertyDescriptor(Element.prototype, 'animate');
-		Object.defineProperty(Element.prototype, 'animate', {
-			configurable: true,
-			value: vi.fn(() => ({
-				cancel: vi.fn(),
-				currentTime: 0,
-				effect: null,
-				onfinish: null,
-				playState: 'finished',
-			})),
-		});
-
-		try {
-			const { container } = render(RepeatOffenders);
-			const tripsCard = card(container, 'repeat-trips');
-			const overlay = await waitFor(() => {
-				const element = tripsCard.querySelector<SVGRectElement>('rect.lc-tooltip-rect');
-				if (!element) throw new Error('Expected the real LayerChart row overlay');
-				return element;
-			});
-			const initialHref = window.location.href;
-
-			await fireEvent(
-				overlay,
-				new PointerEvent('click', {
-					bubbles: true,
-					cancelable: true,
-					clientX: 120,
-					clientY: 240,
-					pointerType: 'touch',
-				}),
-			);
-
-			const dialog = await screen.findByRole('dialog', { name: 'Montagne / Sommet' });
-			expect(within(dialog).getAllByRole('link')).toHaveLength(1);
-			expect(within(dialog).getByRole('link', { name: 'View line' })).toHaveAttribute(
-				'href',
-				'/lines/11',
-			);
-			expect(navigate).not.toHaveBeenCalled();
-			expect(window.location.href).toBe(initialHref);
-			expect(cardTrigger(container, 'repeat-trips')).toHaveAttribute('aria-expanded', 'true');
-		} finally {
-			vi.unstubAllGlobals();
-			width.mockRestore();
-			height.mockRestore();
-			if (originalAnimate) Object.defineProperty(Element.prototype, 'animate', originalAnimate);
-			else Reflect.deleteProperty(Element.prototype, 'animate');
-			document.querySelectorAll('[role="dialog"]').forEach((element) => element.remove());
-		}
-	});
-
-	it('keeps the published-empty state outside cards and removes the combined rail', () => {
-		payload.current = {
-			generated_utc: GENERATED,
-			offenders: [],
-			by_grain: [{ grain: 'week', entries: [], tray: [] }],
-		} satisfies RepeatOffendersData as RepeatOffendersData;
-		const { container } = render(RepeatOffenders);
-		expect(container.querySelector('[data-slot="offenders-empty"]')).not.toBeNull();
-		expect(container.querySelector('[data-slot="surface-rail"]')).toBeNull();
-		expect(container.querySelector('[data-slot="surface-rail-mobile"]')).toBeNull();
-		expect(container.querySelectorAll('[data-toc^="repeat-"]')).toHaveLength(0);
-	});
+const writeText = vi.fn(async (_text: string) => {});
+beforeEach(() => {
+	currentLocale.value = 'en';
+	writeText.mockClear();
+	vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
 });
+afterEach(() => vi.unstubAllGlobals());
 
-describe('RepeatOffenders — S14 re-seat (by_grain ladders)', () => {
-	it('renders the head and the worst-first recurrence ladder (a lollipop Chart, NOT a /worst bar)', () => {
-		const { container } = render(RepeatOffenders);
-		expect(screen.getByRole('heading', { name: 'Repeat offenders' })).toBeInTheDocument();
-		expect(container.querySelectorAll('table.sr-only tbody tr')).toHaveLength(2);
-		expect(card(container, 'repeat-trips')).not.toBeNull();
-		expect(card(container, 'repeat-vehicles')).not.toBeNull();
-		expect(container.querySelector('[role="tablist"]')).toBeNull();
-	});
+describe('RepeatOffenders', () => {
+	it('names the first-ranked departure for its complete period and rule', () => {
+		const { container } = show();
 
-	it('deep-links ranked trip and vehicle entries to their offending lines', () => {
-		const { container } = render(RepeatOffenders);
-		const tripLinks = within(card(container, 'repeat-trips')).getAllByRole('link', {
-			name: /Montagne/,
-		});
-		expect(tripLinks).toHaveLength(2);
-		expect(tripLinks.every((link) => link.getAttribute('href') === '/lines/11')).toBe(true);
-		const vehicleLinks = within(card(container, 'repeat-vehicles')).getAllByRole('link', {
-			name: /Boulevard/,
-		});
-		expect(vehicleLinks).toHaveLength(2);
-		expect(vehicleLinks.every((link) => link.getAttribute('href') === '/lines/55')).toBe(true);
-	});
-
-	it('surfaces the natural-frequency recurrence line on a ranked row', () => {
-		render(RepeatOffenders);
-		const section = document.querySelector('[data-slot="offender-section"]') as HTMLElement;
-		expect(within(section).getByText(/Late-prone on 5 of 7 observed days/i)).toBeInTheDocument();
-	});
-
-	it('renders only article cards for offered kinds', () => {
-		repeatSurface.setUrl('/repeat-offenders?grain=month');
-		const { container } = render(RepeatOffenders);
-		expect(card(container, 'repeat-trips')).not.toBeNull();
-		expect(container.querySelector('[data-toc="repeat-vehicles"]')).toBeNull();
-		expect(container.querySelector('[role="tab"]')).toBeNull();
-	});
-
-	it('renders the un-ranked tray (sub-MIN_N entities), explicitly NOT ranked', () => {
-		render(RepeatOffenders);
-		const tray = document.querySelector('[data-slot="offender-tray"]');
-		expect(tray).not.toBeNull();
-		expect(within(tray as HTMLElement).getByText(/not ranked/i)).toBeInTheDocument();
-		expect(within(tray as HTMLElement).queryAllByRole('progressbar')).toHaveLength(0);
-	});
-
-	it('seeds the grain rail from ?grain=month (a different ladder than the week default)', () => {
-		repeatSurface.setUrl('/repeat-offenders?grain=month');
-		render(RepeatOffenders);
-		const section = document.querySelector('[data-slot="offender-section"]') as HTMLElement;
-		const links = within(section).getAllByRole('link', { name: /Van Horne/ });
-		expect(links).toHaveLength(2);
-		expect(links.every((link) => link.getAttribute('href') === '/lines/161')).toBe(true);
-		expect(within(section).queryByRole('link', { name: /Montagne/ })).toBeNull();
-	});
-
-	it('mirrors a grain change to ?grain and OMITS the week default (clean canonical URL)', async () => {
-		render(RepeatOffenders);
-		expect(nav.page.url.searchParams.get('grain')).toBeNull();
-		const month = Array.from(document.querySelectorAll<HTMLElement>('[role="radio"]')).find((el) =>
-			(el.textContent ?? '').toLowerCase().includes('month'),
+		expect(
+			screen.getByRole('heading', {
+				level: 2,
+				name: 'First-ranked trip: Line 36, 07:42 toward Monk.',
+			}),
+		).toBeInTheDocument();
+		expect(container.querySelector('[data-slot="offenders-period"]')).toHaveTextContent(
+			'November 11 to 17, 2026, 7 complete days.',
 		);
-		expect(month).toBeDefined();
-		await fireEvent.click(month!);
-		expect(nav.page.url.searchParams.get('grain')).toBe('month');
+		expect(
+			screen.getByText('Trips and buses that are late again and again in the published record.'),
+		).toBeInTheDocument();
+		expect(container.querySelector('[data-slot="offenders-earlier-rule"]')).toBeNull();
 	});
 
-	it('drops invalid grain and n seeds back to the canonical week/default-N URL', async () => {
-		repeatSurface.setUrl('/repeat-offenders?grain=garbage&n=garbage');
-		const { container } = render(RepeatOffenders);
-		await waitFor(() => {
-			expect(nav.page.url.searchParams.get('grain')).toBeNull();
-			expect(nav.page.url.searchParams.get('n')).toBeNull();
-		});
-		const rail = container.querySelector('[data-slot="surface-rail"]') as HTMLElement;
-		expect(within(rail).getByRole('radio', { name: 'Week' })).toHaveAttribute(
-			'aria-checked',
-			'true',
+	it('keeps the publisher’s order with identity first and every figure spoken', () => {
+		const { container } = show();
+
+		const names = [
+			...container.querySelectorAll('[data-slot="offender-rows"] [data-slot="offender-row-name"]'),
+		].map((node) => node.textContent?.trim());
+		expect(names).toEqual(['07:42 toward Monk', '08:15 toward Monk', '17:05']);
+		expect(rowButtons()[0]).toHaveAccessibleName(
+			'Position 1 of 120. Line 36, 07:42 toward Monk. Late on 4 of 6 days seen. 18.4 min average delay.',
+		);
+		expect(container.querySelector('[data-slot="offender-count"]')).toHaveTextContent(
+			'Showing 3 of 120 eligible trips. This record publishes the first 3.',
 		);
 	});
 
-	it('clamps an unavailable requested week to the populated month and mirrors the correction', async () => {
-		payload.current = {
-			generated_utc: GENERATED,
-			offenders: [],
-			by_grain: [seed().by_grain![1]!],
-		} satisfies RepeatOffendersData as RepeatOffendersData;
-		repeatSurface.setUrl('/repeat-offenders?grain=week');
-		const { container } = render(RepeatOffenders);
-		await waitFor(() => expect(nav.page.url.searchParams.get('grain')).toBe('month'));
-		const rail = container.querySelector('[data-slot="surface-rail"]') as HTMLElement;
-		expect(within(rail).getByRole('radio', { name: 'Week' })).toBeDisabled();
-		expect(within(rail).getByRole('radio', { name: 'Month' })).toHaveAttribute(
-			'aria-checked',
-			'true',
+	it('shows the first ten rows, then every published row and never more', async () => {
+		show(seed(9));
+
+		expect(rowButtons()).toHaveLength(10);
+		await fireEvent.click(screen.getByRole('button', { name: 'Show all 12 published trips' }));
+		expect(rowButtons()).toHaveLength(12);
+		await waitFor(() => expect(mockUrl.searchParams.get('n')).toBe('all'));
+		await fireEvent.click(screen.getByRole('button', { name: 'Show the first 10' }));
+		expect(rowButtons()).toHaveLength(10);
+	});
+
+	it('opens evidence with the late-share interval converted once and links that keep the record', async () => {
+		show();
+
+		const first = rowButtons()[0];
+		await fireEvent.click(first);
+		expect(first).toHaveAttribute('aria-expanded', 'true');
+		const inline = openEvidence();
+		expect(
+			within(inline).getByRole('heading', { level: 3, name: 'Selected record' }),
+		).toBeInTheDocument();
+		expect(inline.querySelector('[data-slot="offender-late-days"]')).toHaveTextContent('4 of 6');
+		expect(inline).toHaveTextContent('days seen had a reading more than 5 minutes late.');
+		expect(inline).toHaveTextContent('60 of 90 readings (66.7%)');
+		// Published on-time bounds 25.3–41.3 become the late share's 58.7–74.7, once.
+		expect(inline.querySelector('[data-slot="offender-interval"]')).toHaveTextContent(
+			'58.7% to 74.7%',
+		);
+		expect(inline).toHaveTextContent('6 of 7 complete days');
+		expect(inline).toHaveTextContent('A trip is one scheduled departure.');
+		expect(
+			within(inline).getByRole('link', { name: 'Open the line’s record: Line 36' }),
+		).toHaveAttribute('href', '/lines/36?from=2026-11-11&to=2026-11-17&provider=stm');
+		await waitFor(() => expect(mockUrl.searchParams.get('selected')).toBe('302181941@36'));
+
+		const link =
+			'http://localhost/repeat-offenders?date=2026-11-17&selected=302181941%4036&provider=stm';
+		await fireEvent.click(within(inline).getByRole('button', { name: 'Copy link' }));
+		expect(writeText).toHaveBeenLastCalledWith(link);
+		await fireEvent.click(within(inline).getByRole('button', { name: 'Cite this record' }));
+		expect(writeText).toHaveBeenLastCalledWith(
+			`Transit. STM. Line 36, 07:42 toward Monk: late on 4 of 6 days seen, November 11 to 17, 2026. 90 readings. Record published November 18, 2026. Method version: reliability-2. ${link}`,
 		);
 	});
 
-	it('seeds the worst-N cap from ?n and mirrors a change back to ?n', async () => {
-		payload.current = {
-			generated_utc: GENERATED,
-			offenders: [],
-			by_grain: [
-				{
-					grain: 'week',
-					window_days: 7,
-					total_ranked_trips: 6,
-					entries: Array.from({ length: 6 }, (_, i) => ({
-						rank: i + 1,
-						type: 'trip',
-						id: `T${i}`,
-						route: `${i}`,
-						severe_pct: 50 - i,
-						observation_count: 100,
-						recurrence_days: 3,
-						observed_days: 7,
-					})),
-					tray: [],
-				},
-			],
-		} satisfies RepeatOffendersData as RepeatOffendersData;
-		repeatSurface.setUrl('/repeat-offenders?n=5');
-		const { container } = render(RepeatOffenders);
-		expect(container.querySelectorAll('table.sr-only tbody tr')).toHaveLength(5);
-		expect(screen.getByText(/5\/6/)).toBeInTheDocument();
-		const rail = container.querySelector('[data-slot="surface-rail"]') as HTMLElement;
-		await fireEvent.click(within(rail).getByRole('radio', { name: '10' }));
-		expect(nav.page.url.searchParams.get('n')).toBeNull();
+	it('copies a link to a row past the first ten that reopens on that row', async () => {
+		const first = show(seed(9), 'http://localhost/repeat-offenders?n=all&selected=gen-8%4036');
+		expect(openEvidence()).toHaveTextContent('Position 12 of 120');
+
+		await fireEvent.click(within(openEvidence()).getByRole('button', { name: 'Copy link' }));
+		const link = writeText.mock.lastCall![0];
+		expect(link).toBe(
+			'http://localhost/repeat-offenders?date=2026-11-17&n=all&selected=gen-8%4036&provider=stm',
+		);
+		first.unmount();
+
+		show(seed(9), link);
+		expect(openEvidence()).toHaveTextContent('Position 12 of 120');
+		expect(openEvidence()).toHaveTextContent('09:18 toward Generated 8');
 	});
 
-	it('shows the styled honest-absence empty state when NO grain is populated and no legacy list', () => {
-		payload.current = {
-			generated_utc: GENERATED,
-			offenders: [],
-			by_grain: [{ grain: 'week', entries: [], tray: [] }],
-		} satisfies RepeatOffendersData as RepeatOffendersData;
-		const { container } = render(RepeatOffenders);
-		const empty = document.querySelector('[data-slot="offenders-empty"]');
-		expect(empty).not.toBeNull();
-		const chip = empty?.querySelector('[data-slot="absent-value"]');
-		expect(chip?.getAttribute('data-variant')).toBe('block');
-		expect(container.querySelectorAll('table.sr-only tbody tr')).toHaveLength(0);
+	it('ranks buses per line, with the rule, its scope and the published rows below it', async () => {
+		show();
+
+		await fireEvent.click(screen.getByRole('radio', { name: 'Buses' }));
+		expect(
+			screen.getByRole('heading', {
+				level: 2,
+				name: 'First-ranked bus: Bus 4672 on line 158 (Bayshore <> Haanel).',
+			}),
+		).toBeInTheDocument();
+		await waitFor(() => expect(mockUrl.searchParams.get('kind')).toBe('buses'));
+		const exclusions = screen.getByRole('region', { name: 'Buses not ranked' });
+		expect(exclusions).toHaveTextContent(
+			'A row ranks only with at least 30 readings, seen on at least 3 days and late on at least 2 of them.',
+		);
+		expect(exclusions).toHaveTextContent('A bus is counted per line');
+		expect(exclusions).toHaveTextContent('The number of buses left out is not published.');
+		const unranked = screen.getByRole('list', { name: 'Published buses not ranked' });
+		expect(
+			within(unranked).getByRole('link', { name: 'Bus 6675 on line 21 (Canotek <> Blair)' }),
+		).toHaveAttribute('href', '/lines/21?from=2026-11-11&to=2026-11-17&provider=stm');
+		expect(unranked).toHaveTextContent('Late on 2 of 2 days seen · 26 readings');
+		expect(unranked).toHaveTextContent('Fewer than 30 readings. Seen on fewer than 3 days.');
+		expect(screen.getByText('1 published bus below the rule.')).toBeInTheDocument();
 	});
-});
 
-it('does not rank the legacy scalar ledger when windowed recurrence evidence is absent', () => {
-	payload.current = {
-		generated_utc: GENERATED,
-		offenders: [{ type: 'trip', id: 'legacy', route: '36', avg_delay_min: 60 }],
-	};
-	const { container } = render(RepeatOffenders);
-	expect(container.querySelector('[data-slot="offenders-empty"]')).not.toBeNull();
-	expect(container.querySelector('[data-slot="offender-link"]')).toBeNull();
-});
+	it('lists an older record’s rows as not ranked and invents no departure', () => {
+		const { container } = show(olderRecord());
 
-it('shows the record stamp and no publication time', async () => {
-	const { container } = render(RepeatOffenders);
-	const header = container.querySelector('[data-slot="article-header"]') as HTMLElement;
-	const expected = stampCopy.en.record(
-		null,
-		formatDateKey(payload.current!.generated_utc.slice(0, 10), 'en', true),
-		'window',
-	);
-	await waitFor(() => expect(header).toHaveTextContent(expected));
-	expect(header.querySelector('time')).toHaveAttribute(
-		'datetime',
-		payload.current!.generated_utc.slice(0, 10),
-	);
-	expect(container.querySelector('[data-slot="article-keywords"]')).toBeNull();
+		expect(
+			screen.getByRole('heading', {
+				level: 2,
+				name: 'No trip meets the ranking rule for these dates.',
+			}),
+		).toBeInTheDocument();
+		expect(container.querySelector('[data-slot="offenders-earlier-rule"]')).toBeInTheDocument();
+		expect(container.querySelector('[data-slot="offenders-period"]')).toHaveTextContent(
+			'7 complete days. The dates of this period are not published.',
+		);
+		expect(container.querySelector('[data-slot="offender-rows"]')).toBeNull();
+		const unranked = screen.getByRole('list', { name: 'Published trips not ranked' });
+		expect(
+			within(unranked).getByRole('link', { name: 'Trip 302181944 on line 36 (Monk)' }),
+		).toHaveAttribute('href', '/lines/36?provider=stm');
+		expect(unranked).toHaveTextContent('Late on 1 of 1 day seen · 34 readings');
+		expect(unranked).toHaveTextContent('Seen on fewer than 3 days. Late on fewer than 2 days.');
+		expect(container.textContent).not.toMatch(/toward|\d:\d\d/);
+	});
+
+	it('shows the first ten rows below the rule, then all of them', async () => {
+		const data = olderRecord();
+		data.by_grain![0].entries = Array.from({ length: 12 }, (_, i) =>
+			row('trip', i + 1, 40, 40, {
+				id: `old-${i}`,
+				recurrence_days: 1,
+				observed_days: 1,
+				wilson_lo: 0,
+				wilson_hi: 8.8,
+			}),
+		);
+		show(data);
+
+		const unranked = () => screen.getByRole('list', { name: 'Published trips not ranked' });
+		expect(within(unranked()).getAllByRole('listitem')).toHaveLength(10);
+		expect(screen.getByText('12 published trips below the rule.')).toBeInTheDocument();
+		await fireEvent.click(screen.getByRole('button', { name: 'Show all 12 published trips' }));
+		expect(within(unranked()).getAllByRole('listitem')).toHaveLength(12);
+		await fireEvent.click(screen.getByRole('button', { name: 'Show the first 10' }));
+		expect(within(unranked()).getAllByRole('listitem')).toHaveLength(10);
+	});
+
+	it('keeps unpublished figures absent, never a reassuring zero', async () => {
+		const data = seed();
+		const week = data.by_grain![0];
+		week.entries![0] = {
+			...week.entries![0],
+			avg_delay_min: null,
+			wilson_lo: null,
+			wilson_hi: null,
+		};
+		week.total_ranked_trips = null;
+		const { container } = show(data);
+
+		expect(rowButtons()[0]).toHaveTextContent('Average delay not published');
+		expect(container.querySelector('[data-slot="offender-count"]')).toHaveTextContent(
+			'Showing 3 of 3 published trips. The number of eligible trips is not published.',
+		);
+		await fireEvent.click(rowButtons()[0]);
+		expect(openEvidence().querySelector('[data-slot="offender-interval"]')).toHaveTextContent(
+			'Not published in this record',
+		);
+	});
+
+	it.each([
+		['en', '0 readings'],
+		['fr', '0 relevé'],
+	] as const)('never shows a negative zero count in %s', (locale, zero) => {
+		currentLocale.value = locale;
+		const data = seed();
+		data.by_grain![0].tray = [
+			{
+				rank: null,
+				type: 'trip',
+				id: 'T0',
+				route: '36',
+				observation_count: -0,
+				severe_count: -0,
+				recurrence_days: -0,
+				observed_days: -0,
+				window_days: 7,
+			},
+		];
+		show(data);
+
+		const unranked = screen.getByRole('list', {
+			name: locale === 'en' ? 'Published trips not ranked' : 'Trajets publiés non classés',
+		});
+		expect(unranked).toHaveTextContent(zero);
+		expect(unranked.textContent).not.toMatch(/[-−]\s*0/);
+	});
+
+	it('says when a period is not published and when a ranking fails its checks', () => {
+		const data = seed();
+		data.by_grain = [];
+		const absent = show(data);
+		expect(
+			screen.getByRole('heading', {
+				level: 2,
+				name: 'The 7-day ranking is not published in this record.',
+			}),
+		).toBeInTheDocument();
+		absent.unmount();
+
+		const broken = seed();
+		broken.by_grain![0].entries![1] = { ...broken.by_grain![0].entries![1], recurrence_days: 9 };
+		const { container } = show(broken);
+		expect(
+			screen.getByRole('heading', {
+				level: 2,
+				name: 'This ranking failed its consistency checks, so it is not shown.',
+			}),
+		).toBeInTheDocument();
+		expect(container.querySelector('[data-slot="offender-rows"]')).toBeNull();
+	});
+
+	it('reads the same record in French', async () => {
+		currentLocale.value = 'fr';
+		const { container } = show();
+
+		expect(
+			screen.getByRole('heading', {
+				level: 2,
+				name: 'Trajet en tête du classement : Ligne 36, 07:42 vers Monk.',
+			}),
+		).toBeInTheDocument();
+		expect(container.querySelector('[data-slot="offenders-period"]')).toHaveTextContent(
+			'Du 11 au 17 novembre 2026, 7 jours complets.',
+		);
+		expect(container.querySelector('[data-slot="offender-count"]')).toHaveTextContent(
+			'3 trajets affichés sur 120 admissibles. Ce bilan publie les 3 premiers.',
+		);
+		await fireEvent.click(rowButtons()[0]);
+		const inline = openEvidence();
+		expect(inline.querySelector('[data-slot="offender-interval"]')?.textContent).toBe(
+			`de 58,7${NB}% à 74,7${NB}%`,
+		);
+		// The matcher folds the no-break space.
+		expect(inline).toHaveTextContent('60 sur 90 relevés (66,7 %)');
+		await fireEvent.click(within(inline).getByRole('button', { name: 'Citer ce bilan' }));
+		expect(writeText).toHaveBeenLastCalledWith(
+			'Transit. STM. Ligne 36, 07:42 vers Monk : en retard 4 jours sur 6 observés, du 11 au 17 novembre 2026. 90 relevés. Bilan publié le 18 novembre 2026. Version de la méthode : reliability-2. http://localhost/fr/repeat-offenders?date=2026-11-17&selected=302181941%4036&provider=stm',
+		);
+	});
+
+	it('shows the record stamp without a publication time', async () => {
+		const { container } = show();
+		const header = container.querySelector('[data-slot="article-header"]') as HTMLElement;
+		await waitFor(() =>
+			expect(header).toHaveTextContent(
+				stampCopy.en.record(null, formatDateKey('2026-11-18', 'en', true), 'window'),
+			),
+		);
+	});
 });

@@ -2,21 +2,41 @@ import { defineCopy, type Locale } from '#lib/i18n/copy.ts';
 import { articleCopy } from '#lib/components/layout/articleCopy.ts';
 import { historyCopy } from '#lib/components/surface/historyCopy.ts';
 import type { SurfaceHeadCopy } from '#lib/components/surface/index.ts';
+import type { UnrankedReason } from './selectors/offenderRanking';
 
+type Kind = 'trip' | 'vehicle';
+
+/** What the citation states; the caller formats each value for the page's language. */
+export interface OffenderCitationParts {
+	readonly provider: string | null;
+	readonly subject: string;
+	readonly lateDays: string;
+	readonly period: string | null;
+	readonly readings: string;
+	readonly published: string | null;
+	readonly method: string;
+	readonly url: string;
+}
+
+/**
+ * Counts reach these sentences twice: `n` decides the grammar, `shown` is n formatted by the
+ * caller for the page's language. Dates, minutes and percentages arrive already formatted.
+ */
 export const copy = defineCopy({
 	en: {
 		departure: (line: string, time: string | null, headsign: string | null) =>
 			`Line ${line}${time ? `, ${time}` : ''}${headsign ? ` toward ${headsign}` : ''}`,
+		departureDetail: (time: string | null, headsign: string | null) =>
+			[time, headsign ? `toward ${headsign}` : null].filter(Boolean).join(' '),
+		onLine: (subject: string, line: string, name: string | null) =>
+			`${subject} on line ${line}${name ? ` (${name})` : ''}`,
 		kicker: 'ACCOUNTABILITY · REPEAT OFFENDERS',
 		heading: 'Repeat offenders',
-		subheading: '// RÉCIDIVISTES',
-		lede: 'Trips and vehicles with recurring delays over five minutes.',
 		article: articleCopy('en', {
 			watermark: 'Repeat',
 			tags: ['offenders', 'trips', 'vehicles', 'recurrence'],
 			sections: (count: number) => `${count} ${count === 1 ? 'section' : 'sections'}`,
 		}),
-		asOf: 'AS OF',
 		history: {
 			navigator: historyCopy('en', {
 				mode: 'date',
@@ -38,135 +58,162 @@ export const copy = defineCopy({
 				gap: 'That date falls in a publication gap. Showing the latest repeat offenders.',
 				unpublished: 'That day was not published. Showing the latest repeat offenders.',
 			},
-			retainedWindow: (date) => `Available retained observations ending ${date}.`,
-			retainedWorstSubtitle: 'Do severe delays keep happening in the selected observations?',
-			retainedHeroNone: 'No repeat offender ranks in the selected retained observations.',
 		},
-		rail: {
-			label: 'View & contents',
-			open: 'Open view controls and contents',
-			close: 'Close view controls and contents',
-			controls: 'View controls',
-			toc: 'On this page',
-			counterPrefix: 'SEC',
+		purpose: 'Trips and buses that are late again and again in the published record.',
+		controls: 'Ranking controls',
+		kind: { label: 'Rank trips or buses', trip: 'Trips', vehicle: 'Buses' },
+		period: {
+			label: 'Complete days in the record',
+			week: '7 days',
+			month: '30 days',
+			line: (range, days) => `${range}, ${days}.`,
+			undated: (days) => `${days}. The dates of this period are not published.`,
+			unknown: 'The dates of this period are not published.',
 		},
-		cards: {
-			worst: {
-				title: 'Most repeated delays',
-				subtitle: 'Do severe delays keep happening?',
+		measure:
+			'Ranked by late days, then by average delay. A late day has at least one reading more than 5 minutes late.',
+		finding: {
+			trip: (identity) => `First-ranked trip: ${identity}.`,
+			vehicle: (identity) => `First-ranked bus: ${identity}.`,
+			none: {
+				trip: 'No trip meets the ranking rule for these dates.',
+				vehicle: 'No bus meets the ranking rule for these dates.',
 			},
-			trips: {
-				title: 'Trips',
-				subtitle: 'Which trips are severely late again and again?',
+			absent: {
+				week: 'The 7-day ranking is not published in this record.',
+				month: 'The 30-day ranking is not published in this record.',
 			},
-			vehicles: {
-				title: 'Vehicles',
-				subtitle: 'Which vehicles repeatedly report severe delays?',
+			invalid: 'This ranking failed its consistency checks, so it is not shown.',
+		},
+		earlierRule:
+			'This record was published before the current ranking rule. Rows that do not meet it are listed as not ranked; ranked rows keep the publisher’s positions.',
+		ranking: {
+			heading: { trip: 'Trips', vehicle: 'Buses' },
+			count: (
+				kind: Kind,
+				shown: [number, string],
+				published: [number, string],
+				eligible: [number, string] | null,
+			) => {
+				const noun = (n: number) =>
+					`${kind === 'trip' ? 'trip' : 'bus'}${n === 1 ? '' : kind === 'trip' ? 's' : 'es'}`;
+				if (eligible == null)
+					return `Showing ${shown[1]} of ${published[1]} published ${noun(published[0])}. The number of eligible ${noun(2)} is not published.`;
+				const total = `Showing ${shown[1]} of ${eligible[1]} eligible ${noun(eligible[0])}.`;
+				return published[0] < eligible[0]
+					? `${total} This record publishes the first ${published[1]}.`
+					: total;
+			},
+			order:
+				'Nearby positions do not necessarily show a clear difference. Each row is a reason to look closer.',
+			choose: 'Select a row to read its evidence.',
+			position: (position, total) =>
+				total == null ? `Position ${position}` : `Position ${position} of ${total}`,
+			showAll: (kind: Kind, shown: string) =>
+				`Show all ${shown} published ${kind === 'trip' ? 'trips' : 'buses'}`,
+			showFewer: (_kind: Kind, shown: string) => `Show the first ${shown}`,
+		},
+		lateDays: (late: number, seen: number, lateShown: string, seenShown: string) =>
+			`Late on ${lateShown} of ${seenShown} ${seen === 1 ? 'day' : 'days'} seen`,
+		lateDaysUnknown: 'Late days not published',
+		averageDelay: (minutes: string) => `${minutes} average delay`,
+		averageDelayUnknown: 'Average delay not published',
+		readings: (n: number, shown: string) => `${shown} ${n === 1 ? 'reading' : 'readings'}`,
+		readingsUnknown: 'Reading count not published',
+		type: { trip: 'Trip', vehicle: 'Bus' },
+		evidence: {
+			heading: 'Selected record',
+			figure: (late: string, seen: string) => `${late} of ${seen}`,
+			lateDays: (_late: number, seen: number) =>
+				`${seen === 1 ? 'day' : 'days'} seen had a reading more than 5 minutes late.`,
+			averageDelay: 'Average delay',
+			lateReadings: 'Readings more than 5 minutes late',
+			lateShare: (late: string, readings: string, share: string) =>
+				`${late} of ${readings} (${share})`,
+			interval: 'Uncertainty range for that share',
+			intervalValue: (lower: string, upper: string) => `${lower} to ${upper}`,
+			noInterval: 'Not published in this record',
+			seen: 'Days seen in the period',
+			seenValue: (seen: string, window: string) => `${seen} of ${window}`,
+			period: 'Complete period',
+			scope: {
+				trip: 'A trip is one scheduled departure. A day counts only when the trip was seen running.',
+				vehicle:
+					'A bus is counted per line: a bus that served two lines has one row for each line.',
+			},
+			unit: 'Readings are recorded delay predictions, not passengers.',
+			noComparison: 'A clear difference from the next position is not established here.',
+			openLine: 'Open the line’s record',
+			method: (version) => `Method version: ${version}.`,
+			methodUnknown: 'Method version not published.',
+		},
+		share: {
+			linkCopied: 'Link copied.',
+			citationCopied: 'Citation copied.',
+			fallback: 'Your browser did not allow copying. Select the text below to copy it.',
+			text: 'Text to copy',
+		},
+		citation: (parts: OffenderCitationParts) =>
+			[
+				'Transit.',
+				parts.provider == null ? null : `${parts.provider}.`,
+				`${parts.subject}: ${parts.lateDays.charAt(0).toLowerCase()}${parts.lateDays.slice(1)}${parts.period == null ? '' : `, ${parts.period}`}.`,
+				`${parts.readings}.`,
+				parts.published == null ? null : `Record published ${parts.published}.`,
+				parts.method,
+				parts.url,
+			]
+				.filter((part) => part != null)
+				.join(' '),
+		exclusions: {
+			heading: { trip: 'Trips not ranked', vehicle: 'Buses not ranked' },
+			rule: 'A row ranks only with at least 30 readings, seen on at least 3 days and late on at least 2 of them.',
+			total: {
+				trip: 'The number of trips left out is not published.',
+				vehicle: 'The number of buses left out is not published.',
 			},
 		},
-		caveatLabel: 'Caveat',
-		viewControlsLabel: 'View',
-		grain: {
-			label: 'Window',
-			week: 'Week',
-			month: 'Month',
-		},
-		window: {
-			week: 'Recurrence read over the latest trailing week of service.',
-			month: 'Recurrence read over the latest trailing month of service.',
-		},
-		worstN: {
-			label: 'Show',
-			all: 'All',
-		},
-		headline: {
-			label: 'Severe-delay rate',
-			explanation:
-				'Bars show the share of readings more than five minutes late. Entries need at least 30 readings, three observed days and two late days. Order follows the number of late days, then average delay. Observed days need not be consecutive.',
-		},
-		hero: {
-			label: 'Most repeated delays',
-			overline: '#1 offender',
-			recurrenceLabel: 'Recurrence',
-			rateWithCi: (ratePct, lo, hi) =>
-				`${ratePct} of readings severely late (95% Wilson interval: ${lo}–${hi}%).`,
-			rateNoCi: (ratePct) => `${ratePct} of readings severely late.`,
-			none: 'No repeat offender ranks right now.',
-		},
-		ladder: {
-			heading: 'Worst offenders',
-			severeRateLabel: 'Severe-delay rate',
-			ci: '95% CI',
-		},
-		chart: {
-			popover: {
-				recurrence: 'Recurrence',
-				averageDelay: 'Average delay',
-				readings: 'Readings',
-				viewLine: 'View line',
+		unranked: {
+			title: 'Published rows not ranked',
+			label: { trip: 'Published trips not ranked', vehicle: 'Published buses not ranked' },
+			summary: (kind: Kind, n: number, shown: string, complete: boolean) =>
+				`${shown} published ${kind === 'trip' ? (n === 1 ? 'trip' : 'trips') : n === 1 ? 'bus' : 'buses'} below the rule.${complete ? '' : ' The record lists only part of them.'}`,
+			none: {
+				trip: 'This record lists no trip below the rule.',
+				vehicle: 'This record lists no bus below the rule.',
 			},
+			reasons: {
+				readings: 'Fewer than 30 readings.',
+				observedDays: 'Seen on fewer than 3 days.',
+				lateDays: 'Late on fewer than 2 days.',
+			} satisfies Record<UnrankedReason, string>,
+			unexplained: 'Not ranked in this record.',
 		},
-		evidenceTable: {
-			caption: 'Evidence for ranked repeat offenders',
-			columns: {
-				item: 'Item',
-				typeId: 'Type / ID',
-				severeRate: 'Severe-delay rate',
-				recurrence: 'Recurrence',
-				averageDelay: 'Average delay',
-				readings: 'Readings',
-			},
+		method: {
+			title: 'How this ranking works',
+			summary: 'A position is a reason to investigate, not proof of a clear difference.',
+			order:
+				'The ranking keeps the publisher’s order: more late days first, then the longer average delay. Days seen need not be consecutive.',
+			definition:
+				'One reading is one recorded delay prediction. A trip can produce several readings each day.',
+			interval:
+				'The uncertainty range belongs to the share of late readings. It does not decide the order.',
 		},
-		recurrence: {
-			naturalFrequency: (lateDays, observedDays) =>
-				observedDays === 1
-					? 'Seen on one day only. One day does not show a repeated pattern.'
-					: `Late-prone on ${lateDays} of ${observedDays} observed days`,
-			unknown: 'recurrence not recorded',
-		},
-		note: {
-			severe: 'severe',
-			samples: 'n',
-		},
-		tray: {
-			heading: 'Not ranked',
-			reason: 'Ranking requires at least 30 readings, three observed days and two late days.',
-			listLabel: 'Unranked repeat offenders',
-			rowSubtitle: (kind, id) => `${kind} ${id}`,
-		},
-		type: {
-			trip: 'Trip',
-			vehicle: 'Bus',
-			route: 'Line',
-			stop: 'Stop',
-			other: 'Entity',
-		},
-		unnamed: (id) => `Item ${id}`,
-		viewDetail: (title) => `View detail for ${title}`,
-		shownOfTotal: (shown, total) => `· ${shown}/${total}`,
-		caveat:
-			'Observed days reflect recorded coverage, not the full timetable. Missing readings stay missing, and small samples vary. Open a row for its line’s details.',
-		units: { min: ' min', pct: '%' },
-
-		listSection: 'Worst first',
-		listSummary: 'Repeat-offender lines and stops, ranked by average delay, worst first.',
-		rowCaption: 'Average delay, with how often the lateness recurs',
-		recurrenceLabel: 'recurs',
-		recurrenceUnknown: 'recurrence not recorded',
 	},
 	fr: {
 		departure: (line: string, time: string | null, headsign: string | null) =>
 			`Ligne ${line}${time ? `, ${time}` : ''}${headsign ? ` vers ${headsign}` : ''}`,
+		departureDetail: (time: string | null, headsign: string | null) =>
+			[time, headsign ? `vers ${headsign}` : null].filter(Boolean).join(' '),
+		onLine: (subject: string, line: string, name: string | null) =>
+			`${subject} sur la ligne ${line}${name ? ` (${name})` : ''}`,
 		kicker: 'REDDITION DE COMPTES · RÉCIDIVISTES',
 		heading: 'Récidivistes',
-		subheading: '// REPEAT OFFENDERS',
-		lede: 'Les trajets et véhicules qui accumulent les retards de plus de cinq minutes.',
 		article: articleCopy('fr', {
 			watermark: 'Récidive',
 			tags: ['récidivistes', 'trajets', 'véhicules', 'récurrence'],
 			sections: (count: number) => `${count} ${count === 1 ? 'section' : 'sections'}`,
 		}),
-		asOf: 'À JOUR AU',
 		history: {
 			navigator: historyCopy('fr', {
 				mode: 'date',
@@ -189,124 +236,154 @@ export const copy = defineCopy({
 				unpublished:
 					'Cette journée n’a pas été publiée. Affichage des récidivistes les plus récents.',
 			},
-			retainedWindow: (date: string) =>
-				`Observations conservées disponibles se terminant le ${date}.`,
-			retainedWorstSubtitle:
-				'Les retards graves se répètent-ils dans les observations sélectionnées ?',
-			retainedHeroNone: 'Aucun récidiviste classé dans les observations conservées sélectionnées.',
 		},
-		rail: {
-			label: 'Vue et sommaire',
-			open: 'Ouvrir les commandes et le sommaire',
-			close: 'Fermer les commandes et le sommaire',
-			controls: 'Commandes de vue',
-			toc: 'Sur cette page',
-			counterPrefix: 'SEC',
+		purpose: 'Des trajets et des bus en retard encore et encore dans le bilan publié.',
+		controls: 'Options du classement',
+		kind: { label: 'Classer les trajets ou les bus', trip: 'Trajets', vehicle: 'Bus' },
+		period: {
+			label: 'Jours complets du bilan',
+			week: '7 jours',
+			month: '30 jours',
+			line: (range: string, days: string) => `${range}, ${days}.`,
+			undated: (days: string) => `${days}. Les dates de cette période ne sont pas publiées.`,
+			unknown: 'Les dates de cette période ne sont pas publiées.',
 		},
-		cards: {
-			worst: {
-				title: 'Retards les plus récurrents',
-				subtitle: 'Les retards graves se répètent-ils ?',
+		measure:
+			'Classés selon les jours en retard, puis selon le retard moyen. Un jour en retard compte au moins un relevé en retard de plus de 5 minutes.',
+		finding: {
+			trip: (identity: string) => `Trajet en tête du classement : ${identity}.`,
+			vehicle: (identity: string) => `Bus en tête du classement : ${identity}.`,
+			none: {
+				trip: 'Aucun trajet ne respecte la règle de classement pour ces dates.',
+				vehicle: 'Aucun bus ne respecte la règle de classement pour ces dates.',
 			},
-			trips: {
-				title: 'Trajets',
-				subtitle: 'Quels trajets accumulent les retards graves ?',
+			absent: {
+				week: 'Le classement sur 7 jours n’est pas publié dans ce bilan.',
+				month: 'Le classement sur 30 jours n’est pas publié dans ce bilan.',
 			},
-			vehicles: {
-				title: 'Véhicules',
-				subtitle: 'Quels véhicules signalent régulièrement des retards graves ?',
+			invalid:
+				'Ce classement n’a pas passé ses vérifications de cohérence; il n’est donc pas affiché.',
+		},
+		earlierRule:
+			'Ce bilan a été publié avant la règle de classement actuelle. Les rangées qui ne la respectent pas figurent comme non classées; les rangées classées gardent les positions du diffuseur.',
+		ranking: {
+			heading: { trip: 'Trajets', vehicle: 'Bus' },
+			count: (
+				kind: Kind,
+				shown: [number, string],
+				published: [number, string],
+				eligible: [number, string] | null,
+			) => {
+				const trip = kind !== 'vehicle';
+				const noun = (n: number) => (trip ? (n < 2 ? 'trajet' : 'trajets') : 'bus');
+				const agree = (n: number, word: string) => `${word}${n < 2 ? '' : 's'}`;
+				const head = `${shown[1]} ${noun(shown[0])} ${agree(shown[0], 'affiché')}`;
+				if (eligible == null)
+					return `${head} sur ${published[1]} ${agree(published[0], 'publié')}. Le nombre de ${trip ? 'trajets' : 'bus'} admissibles n’est pas publié.`;
+				const total = `${head} sur ${eligible[1]} ${eligible[0] < 2 ? 'admissible' : 'admissibles'}.`;
+				return published[0] < eligible[0]
+					? `${total} Ce bilan publie les ${published[1]} ${agree(published[0], 'premier')}.`
+					: total;
+			},
+			order:
+				'Deux positions voisines n’indiquent pas nécessairement une différence nette. Chaque rangée invite à regarder de plus près.',
+			choose: 'Sélectionnez une rangée du classement pour lire les détails.',
+			position: (position: string, total: string | null) =>
+				total == null ? `Position ${position}` : `Position ${position} sur ${total}`,
+			showAll: (kind: Kind, shown: string) =>
+				kind !== 'vehicle'
+					? `Afficher les ${shown} trajets publiés`
+					: `Afficher les ${shown} bus publiés`,
+			showFewer: (_kind: Kind, shown: string) => `Afficher les ${shown} premiers`,
+		},
+		lateDays: (late: number, seen: number, lateShown: string, seenShown: string) =>
+			`En retard ${lateShown} ${late < 2 ? 'jour' : 'jours'} sur ${seenShown} ${seen < 2 ? 'observé' : 'observés'}`,
+		lateDaysUnknown: 'Jours en retard non publiés',
+		averageDelay: (minutes: string) => `${minutes} de retard moyen`,
+		averageDelayUnknown: 'Retard moyen non publié',
+		readings: (n: number, shown: string) => `${shown} ${n < 2 ? 'relevé' : 'relevés'}`,
+		readingsUnknown: 'Nombre de relevés non publié',
+		type: { trip: 'Trajet', vehicle: 'Bus' },
+		evidence: {
+			heading: 'Bilan sélectionné',
+			figure: (late: string, seen: string) => `${late} sur ${seen}`,
+			lateDays: (late: number, seen: number) =>
+				`${seen < 2 ? 'jour observé' : 'jours observés'} ${late < 2 ? 'comptait' : 'comptaient'} un relevé en retard de plus de 5 minutes.`,
+			averageDelay: 'Retard moyen',
+			lateReadings: 'Relevés en retard de plus de 5 minutes',
+			lateShare: (late: string, readings: string, share: string) =>
+				`${late} sur ${readings} (${share})`,
+			interval: 'Intervalle d’incertitude de cette part',
+			intervalValue: (lower: string, upper: string) => `de ${lower} à ${upper}`,
+			noInterval: 'Non publié dans ce bilan',
+			seen: 'Jours observés dans la période',
+			seenValue: (seen: string, window: string) => `${seen} sur ${window}`,
+			period: 'Période complète',
+			scope: {
+				trip: 'Un trajet est un départ prévu à l’horaire. Un jour compte seulement si le trajet a été vu en service.',
+				vehicle:
+					'Un bus est compté par ligne : un bus qui a desservi deux lignes a une rangée pour chacune.',
+			},
+			unit: 'Les relevés sont des prédictions de retard enregistrées, pas des passagers.',
+			noComparison: 'Une différence nette avec la position suivante n’est pas établie ici.',
+			openLine: 'Ouvrir le bilan de la ligne',
+			method: (version: string) => `Version de la méthode : ${version}.`,
+			methodUnknown: 'Version de la méthode non publiée.',
+		},
+		share: {
+			linkCopied: 'Lien copié.',
+			citationCopied: 'Citation copiée.',
+			fallback:
+				'Votre navigateur n’a pas permis la copie. Sélectionnez le texte ci-dessous pour le copier.',
+			text: 'Texte à copier',
+		},
+		citation: (parts: OffenderCitationParts) =>
+			[
+				'Transit.',
+				parts.provider == null ? null : `${parts.provider}.`,
+				`${parts.subject} : ${parts.lateDays.charAt(0).toLowerCase()}${parts.lateDays.slice(1)}${parts.period == null ? '' : `, ${parts.period}`}.`,
+				`${parts.readings}.`,
+				parts.published == null ? null : `Bilan publié ${parts.published}.`,
+				parts.method,
+				parts.url,
+			]
+				.filter((part) => part != null)
+				.join(' '),
+		exclusions: {
+			heading: { trip: 'Trajets non classés', vehicle: 'Bus non classés' },
+			rule: 'Une rangée n’est classée qu’avec au moins 30 relevés, vue au moins 3 jours et en retard au moins 2 de ces jours.',
+			total: {
+				trip: 'Le nombre de trajets laissés de côté n’est pas publié.',
+				vehicle: 'Le nombre de bus laissés de côté n’est pas publié.',
 			},
 		},
-		caveatLabel: 'Mise en garde',
-		viewControlsLabel: 'Vue',
-		grain: {
-			label: 'Fenêtre',
-			week: 'Semaine',
-			month: 'Mois',
-		},
-		window: {
-			week: 'Récurrence calculée sur la dernière semaine glissante de service.',
-			month: 'Récurrence calculée sur le dernier mois glissant de service.',
-		},
-		worstN: {
-			label: 'Afficher',
-			all: 'Tout',
-		},
-		headline: {
-			label: 'Taux de retards graves',
-			explanation:
-				'Les barres montrent la part des relevés à plus de cinq minutes de retard. Il faut au moins 30 relevés, trois jours observés et deux jours avec retard. Le classement suit le nombre de jours avec retard, puis le retard moyen. Les jours observés ne sont pas nécessairement consécutifs.',
-		},
-		hero: {
-			label: 'Retards les plus récurrents',
-			overline: 'Récidiviste n°1',
-			recurrenceLabel: 'Récurrence',
-			rateWithCi: (ratePct: string, lo: string, hi: string) =>
-				`${ratePct} des relevés en retard grave (intervalle de Wilson à 95 % : ${lo}–${hi} %).`,
-			rateNoCi: (ratePct: string) => `${ratePct} des relevés en retard grave.`,
-			none: 'Aucun récidiviste classé pour l’instant.',
-		},
-		ladder: {
-			heading: 'Pires récidivistes',
-			severeRateLabel: 'Taux de retards graves',
-			ci: 'IC à 95 %',
-		},
-		chart: {
-			popover: {
-				recurrence: 'Récurrence',
-				averageDelay: 'Retard moyen',
-				readings: 'Relevés',
-				viewLine: 'Voir la ligne',
+		unranked: {
+			title: 'Rangées publiées non classées',
+			label: { trip: 'Trajets publiés non classés', vehicle: 'Bus publiés non classés' },
+			summary: (kind: Kind, n: number, shown: string, complete: boolean) =>
+				`${shown} ${kind !== 'vehicle' ? (n < 2 ? 'trajet publié' : 'trajets publiés') : n < 2 ? 'bus publié' : 'bus publiés'} sous la règle.${complete ? '' : ' Le bilan n’en liste qu’une partie.'}`,
+			none: {
+				trip: 'Ce bilan ne liste aucun trajet sous la règle.',
+				vehicle: 'Ce bilan ne liste aucun bus sous la règle.',
 			},
+			reasons: {
+				readings: 'Moins de 30 relevés.',
+				observedDays: 'Vu moins de 3 jours.',
+				lateDays: 'En retard moins de 2 jours.',
+			} satisfies Record<UnrankedReason, string>,
+			unexplained: 'Non classé dans ce bilan.',
 		},
-		evidenceTable: {
-			caption: 'Données probantes des récidivistes classés',
-			columns: {
-				item: 'Élément',
-				typeId: 'Type / ID',
-				severeRate: 'Taux de retards graves',
-				recurrence: 'Récurrence',
-				averageDelay: 'Retard moyen',
-				readings: 'Relevés',
-			},
+		method: {
+			title: 'Comment ce classement fonctionne',
+			summary:
+				'Une position invite à examiner le service; elle ne prouve pas une différence nette.',
+			order:
+				'Le classement conserve l’ordre du diffuseur : d’abord le plus de jours en retard, puis le retard moyen le plus long. Les jours observés ne sont pas nécessairement consécutifs.',
+			definition:
+				'Un relevé est une prédiction de retard enregistrée. Un trajet peut produire plusieurs relevés chaque jour.',
+			interval:
+				'L’intervalle d’incertitude porte sur la part des relevés en retard. Il ne décide pas de l’ordre.',
 		},
-		recurrence: {
-			naturalFrequency: (lateDays: number, observedDays: number) =>
-				observedDays === 1
-					? 'Observé un seul jour. Un seul jour ne montre pas une tendance répétée.'
-					: `Sujet aux retards ${lateDays} ${lateDays === 1 ? 'jour' : 'jours'} sur ${observedDays} observés`,
-			unknown: 'récurrence non consignée',
-		},
-		note: {
-			severe: 'graves',
-			samples: 'n',
-		},
-		tray: {
-			heading: 'Non classés',
-			reason:
-				'Le classement exige au moins 30 relevés, trois jours observés et deux jours avec retard.',
-			listLabel: 'Récidivistes non classés',
-			rowSubtitle: (kind: string, id: string) => `${kind} ${id}`,
-		},
-		type: {
-			trip: 'Trajet',
-			vehicle: 'Bus',
-			route: 'Ligne',
-			stop: 'Arrêt',
-			other: 'Entité',
-		},
-		unnamed: (id: string) => `Élément ${id}`,
-		viewDetail: (title: string) => `Voir le détail de ${title}`,
-		shownOfTotal: (shown: number, total: number) => `· ${shown}/${total}`,
-		caveat:
-			'Les jours observés reflètent la couverture des relevés, pas l’horaire complet. Les lectures absentes restent absentes et les petits échantillons varient. Ouvrez une rangée pour voir les détails de sa ligne.',
-		units: { min: ' min', pct: '%' },
-
-		listSection: 'Les pires d’abord',
-		listSummary: 'Lignes et arrêts récidivistes, classés par retard moyen, les pires d’abord.',
-		rowCaption: 'Retard moyen, avec la fréquence de récurrence du retard',
-		recurrenceLabel: 'récurrence',
-		recurrenceUnknown: 'récurrence non consignée',
 	},
 }) satisfies Readonly<Record<Locale, SurfaceHeadCopy>>;
 
