@@ -164,6 +164,8 @@ def vehicle_case(replay_case):
         manifest.model_dump_json(), encoding="utf-8"
     )
     case.registry = ProviderRegistry(case.registry.config_dir, case.settings)
+    case.original_records = case.window.poll_records
+    case.original_cycles = case.window.cycles
     case.window = replace(case.window, provider_id=provider, poll_records=(), cycles=())
     return case
 
@@ -373,3 +375,466 @@ def test_consumer_assertion_closes_suspended_replay(vehicle_case, tmp_path, monk
         "assertion_failure",
     )
     assert closed == [True]
+
+
+def raw_trip_rows(payload, capture, schedule, vehicle_rows=()):
+    """Plain protobuf derivation of all 20 columns, independent of frames/Gold SQL."""
+    from datetime import time
+
+    result = []
+    zone = ZoneInfo("America/Toronto")
+    day = capture.feed_timestamp_utc.astimezone(zone).date()
+    for index, entity in enumerate(pb.FeedMessage.FromString(payload).entity):
+        if not entity.HasField("trip_update"):
+            continue
+        update = entity.trip_update
+        trip = update.trip
+        start = datetime.strptime(trip.start_date, "%Y%m%d").date() if trip.start_date else None
+        choices = []
+        for order, stop in enumerate(update.stop_time_update):
+            if trip.schedule_relationship == 3 or stop.schedule_relationship == 1:
+                continue
+            if stop.HasField("stop_sequence"):
+                scheduled = schedule.get((trip.trip_id.strip(), stop.stop_sequence))
+            else:
+                matches = [
+                    v
+                    for (trip_id, _), v in schedule.items()
+                    if trip_id == trip.trip_id.strip() and v[2] == stop.stop_id.strip()
+                ]
+                scheduled = matches[0] if len(matches) == 1 else None
+            if not scheduled or not start:
+                continue
+            arrival, departure, stop_id = scheduled
+            paired = [
+                (event.time, clock)
+                for event, clock in ((stop.arrival, arrival), (stop.departure, departure))
+                if event.time and clock
+            ]
+            if not paired:
+                continue
+            event, clock = paired[0]
+            h, m, s = [int(part) for part in clock.split(":")]
+            noon = datetime.combine(start, time(12), zone).astimezone(UTC)
+            planned = noon + timedelta(seconds=h * 3600 + m * 60 + s - 43200)
+            actual = datetime.fromtimestamp(event, UTC)
+            sequence = stop.stop_sequence if stop.HasField("stop_sequence") else None
+            choices.append(
+                (
+                    event < capture.feed_timestamp_utc.timestamp(),
+                    abs(event - capture.feed_timestamp_utc.timestamp()),
+                    sequence if sequence is not None else 2**31,
+                    order,
+                    int((actual - planned).total_seconds()),
+                    stop.stop_id.strip() or stop_id,
+                    sequence,
+                )
+            )
+        choice = sorted(choices)[0] if choices else None
+        matches = [
+            v
+            for v in vehicle_rows
+            if v[10] == (trip.trip_id.strip() or None)
+            and v[9] is not None
+            and (not trip.route_id.strip() or v[11] == trip.route_id.strip())
+            and abs((v[5] - capture.feed_timestamp_utc).total_seconds()) <= 600
+        ]
+        matches.sort(
+            key=lambda v: (abs((v[5] - capture.feed_timestamp_utc).total_seconds()), -v[1], v[2])
+        )
+        vehicle = matches[0] if matches else None
+        result.append(
+            (
+                capture.provider_id,
+                capture.capture_row_id,
+                index,
+                day.year * 10000 + day.month * 100 + day.day,
+                day,
+                capture.feed_timestamp_utc.astimezone(UTC),
+                capture.captured_at_utc.astimezone(UTC),
+                entity.id.strip() or None,
+                trip.trip_id.strip() or None,
+                trip.route_id.strip() or None,
+                trip.direction_id if trip.HasField("direction_id") else None,
+                start,
+                vehicle[9] if vehicle else None,
+                trip.schedule_relationship if trip.HasField("schedule_relationship") else None,
+                choice[4] if choice else None,
+                len(update.stop_time_update),
+                choice[5] if choice else None,
+                choice[6] if choice else None,
+                sum(
+                    s.HasField("schedule_relationship") and s.schedule_relationship == 1
+                    for s in update.stop_time_update
+                ),
+                vehicle[15] if vehicle else None,
+            )
+        )
+    return tuple(result)
+
+
+@pytest.mark.parametrize("scenario", ["normal", "next", "departure", "missing"])
+def test_every_trip_column_is_recomputed_from_raw_protobuf(tmp_path, scenario):
+    from test_live_captures import _parse
+    from test_live_facts import parsed_vehicle, seed_fact_edition, trip_message
+
+    from transit_ops.live.facts import read_trip_facts
+
+    message = trip_message()
+    if scenario == "next":
+        message.entity[0].trip_update.stop_time_update.add(
+            stop_sequence=3
+        ).arrival.time = 1781960400
+    if scenario == "departure":
+        stop = message.entity[0].trip_update.stop_time_update[0]
+        stop.departure.time = stop.arrival.time
+        stop.ClearField("arrival")
+    if scenario == "missing":
+        message.entity[0].trip_update.trip.ClearField("start_date")
+    message.entity.add(id="nulls").trip_update.trip.SetInParent()
+    parsed = _parse(message)
+    with closing(
+        LocalFile.open(tmp_path / "trip-math.db", provider_id="network", settings=SETTINGS)
+    ) as local:
+        seed_fact_edition(local)
+        vehicles = parsed_vehicle()
+        apply_capture(local, vehicles, provider_timezone="America/Toronto")
+        raw_vehicles = raw_rows(
+            vehicle_message().SerializeToString(), vehicles.capture, "America/Toronto", 100
+        )
+        apply_capture(local, parsed, provider_timezone="America/Toronto")
+        actual = read_trip_facts(local)
+        assert actual.rows == raw_trip_rows(
+            message.SerializeToString(),
+            parsed.capture,
+            {("行程", 3): ("08:00:00", None, "站")},
+            raw_vehicles,
+        )
+        for row in actual.rows:
+            assert type(row[15]) is type(row[18]) is int
+            assert 0 <= row[18] <= row[15]
+
+
+def trip_math_window(case, scenario):
+    from test_live_captures import AT
+    from test_live_facts import trip_delay_case
+    from test_static_silver import _minimal_compliant_members, _write_members_zip
+
+    message, schedule, expected = trip_delay_case(scenario)
+    feed = {
+        "spring": datetime(2026, 3, 8, 7, 30, 0, 123456, UTC),
+        "rollover": datetime(2026, 6, 21, 5, 30, 0, 123456, UTC),
+    }.get(scenario, AT)
+    case.window = replace(case.window, serving_initialized_at_utc=feed - timedelta(seconds=5))
+    members = _minimal_compliant_members()
+    members["routes.txt"] = "route_id,route_type,route_short_name,route_long_name\n路线,3,1,Test\n"
+    members["trips.txt"] = "route_id,service_id,trip_id,trip_headsign\n路线,weekday,行程,Centre\n"
+    members["stops.txt"] = (
+        "stop_id,stop_name,stop_lat,stop_lon,location_type\n"
+        "站,First,45.4,-71.9,0\n站4,Second,45.41,-71.91,0\n"
+    )
+    members["stop_times.txt"] = (
+        "trip_id,stop_sequence,arrival_time,departure_time,stop_id\n"
+        + "".join(",".join(str(v) if v is not None else "" for v in row) + "\n" for row in schedule)
+    )
+    members["calendar.txt"] = (
+        "service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,"
+        "start_date,end_date\nweekday,1,1,1,1,1,1,1,20260101,20261231\n"
+    )
+    path = case.bronze("local").root / case.window.edition.storage_path
+    _write_members_zip(path, members)
+    body = path.read_bytes()
+    edition = replace(
+        case.window.edition, checksum_sha256=sha256(body).hexdigest(), byte_size=len(body)
+    )
+    record = poll_record(case)
+    capture = record.captures[0]
+    message.header.timestamp = int(feed.timestamp())
+    payload = message.SerializeToString()
+    (case.bronze("local").root / capture.storage_path).write_bytes(payload)
+    capture = replace(
+        capture, sha256=sha256(payload).hexdigest(), byte_size=len(payload), entity_count=1
+    )
+    record = replace(record, captures=(capture,), polls=(replace(record.polls[0], entity_count=1),))
+    case.window = replace(
+        case.window,
+        edition=edition,
+        poll_records=(record,),
+        cycles=(
+            CycleSpec(
+                (feed + timedelta(seconds=30)).replace(microsecond=0),
+                (("realtime_snapshot", capture.capture_row_id),),
+            ),
+        ),
+    )
+    return expected
+
+
+def trip_math_declarations(scenario, provider, identity):
+    # R22 / R28 class (b): explicit PK, old value, correct value and definition.
+    changes = {
+        "dwell_departure": {"delay_seconds": (360, 60)},  # 08:06 - 08:05 = 60, not 08:06 - 08:00.
+        "cancelled": {
+            "delay_seconds": (180, None),
+            "delay_stop_id": ("站", None),
+            "delay_stop_sequence": (3, None),
+        },  # No operative event for a cancelled trip.
+        "skipped": {
+            "delay_seconds": (660, 120),
+            "delay_stop_id": ("站", "站4"),
+            "delay_stop_sequence": (3, 4),
+        },  # Served 08:22 - 08:20 = 120; skipped 08:11 excluded.
+        "unique_id": {"delay_seconds": (None, 180), "delay_stop_id": (None, "站")},
+        # Unique stop: 08:03 - 08:00 = 180. Original omitted sequence remains NULL.
+    }
+    return {
+        ((provider, identity, 0), column): values
+        for column, values in changes.get(scenario, {}).items()
+    }
+
+
+def assert_trip_postgres_comparison(pg, actual, declared):
+    differences = compare_tables(
+        TableRows(pg.table, pg.columns, COLUMNS[:3], pg.rows),
+        TableRows(pg.table, actual.columns, COLUMNS[:3], actual.rows),
+    )
+    observed = {}
+    for difference in differences:
+        identity = (difference.key, difference.column)
+        if identity in declared:
+            assert difference.difference_class == "value", difference  # Never class (c).
+            assert difference.kind in ("value", "type"), difference
+            observed[identity] = (difference.expected, difference.actual)
+            assert observed[identity] == declared[identity], difference
+        else:
+            assert difference.difference_class == "representation", difference
+    assert observed == declared, "each declared class-(b) correction must be observed"
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        "original",
+        "dwell_departure",
+        "dwell_arrival",
+        "cancelled",
+        "skipped",
+        "unique_id",
+        "repeated_id",
+        "wrong_sequence",
+        "next",
+        "past",
+        "rollover",
+        "spring",
+    ],
+)
+def test_trip_facts_math_then_live_oracle_comparison(
+    real_db_engine, vehicle_case, tmp_path, monkeypatch, scenario
+):
+    import csv
+    from io import StringIO
+    from zipfile import ZipFile
+
+    from transit_ops.live import edition
+    from transit_ops.live.facts import read_trip_facts
+    from transit_ops.live.oracle import runner
+
+    case = vehicle_case
+    worked = trip_math_window(case, scenario) if scenario != "original" else None
+    # Original replay contains changed/stale captures and an intervening vehicle feed.
+    schedule = {}
+    with ZipFile(case.bronze("local").root / case.window.edition.storage_path) as archive:
+        member = next(n for n in archive.namelist() if n.endswith("stop_times.txt"))
+        for row in csv.DictReader(StringIO(archive.read(member).decode("utf-8-sig"))):
+            schedule[row["trip_id"], int(row["stop_sequence"])] = (
+                row["arrival_time"] or None,
+                row["departure_time"] or None,
+                row["stop_id"],
+            )
+    records = tuple(
+        replace(r, feed_day=replace(r.feed_day, provider_id=case.window.provider_id))
+        for r in case.original_records
+    )
+    if scenario == "original":
+        case.window = replace(case.window, poll_records=records, cycles=case.original_cycles)
+    original_seed = runner.seed_static
+    with (
+        tracked_owner(real_db_engine) as names,
+        closing(
+            LocalFile.open(
+                tmp_path / "trip-oracle.db", provider_id=case.window.provider_id, settings=SETTINGS
+            )
+        ) as local,
+    ):
+
+        def seed_and_load(oracle, *args, **kwargs):
+            original_seed(oracle, *args, **kwargs)
+            with oracle.engine.connect() as pg:
+                selected = edition.current_edition_id(pg, provider_id=case.window.provider_id)
+                pg.rollback()
+                edition.load_edition_from_postgres(local.connection, pg, selected)
+
+        monkeypatch.setattr(runner, "seed_static", seed_and_load)
+        expected, vehicles = [], []
+        with closing(
+            replay_window(
+                case.window,
+                admin_url=real_db_engine.url.render_as_string(hide_password=False),
+                environment=os.environ,
+                settings=case.settings,
+                registry=case.registry,
+                bronze=case.bronze,
+            )
+        ) as outcomes:
+            for cycle, outcome in zip(case.window.cycles, outcomes, strict=True):
+                for family, capture_id in cycle.captures:
+                    record, capture = case.window.capture(family, capture_id)
+                    endpoint = record.feed_day.endpoint_key
+                    payload = (case.bronze("local").root / capture.storage_path).read_bytes()
+                    ref = CaptureRef.from_entry(
+                        capture, provider_id=case.window.provider_id, endpoint_key=endpoint
+                    )
+                    policy = ParsePolicy.from_manifest(case.registry.get_provider(ref.provider_id))
+                    apply_capture(
+                        local,
+                        parse_capture(payload, ref, policy),
+                        provider_timezone="America/Toronto",
+                    )
+                    if endpoint == "trip_updates":
+                        expected.extend(raw_trip_rows(payload, ref, schedule, vehicles))
+                    else:
+                        vehicles.extend(
+                            raw_rows(payload, ref, "America/Toronto", policy.max_vehicle_speed_kmh)
+                        )
+                actual = read_trip_facts(local)
+                assert actual.rows == tuple(sorted(expected))  # Math first, before PostgreSQL.
+                pg = next(t for t in outcome.facts if t.table == "gold.fact_trip_delay_snapshot")
+                if worked is not None:
+                    row = dict(zip(actual.columns, actual.rows[0], strict=True))
+                    assert (
+                        tuple(
+                            row[c]
+                            for c in ("delay_seconds", "delay_stop_id", "delay_stop_sequence")
+                        )
+                        == worked
+                    )
+                declared = trip_math_declarations(
+                    scenario, case.window.provider_id, cycle.captures[0][1]
+                )
+                assert_trip_postgres_comparison(pg, actual, declared)
+        assert len(names) == 1
+
+
+def test_trip_edition_read_preserves_both_legacy_consumers(real_db_engine, vehicle_case):
+    from sqlalchemy import text
+
+    from transit_ops.live.edition import current_edition_id
+    from transit_ops.live.oracle import PinnedClock, oracle_database
+    from transit_ops.live.oracle.seed import seed_static
+    from transit_ops.snapshots.builders.live import _MANIFEST_VERSION_SQL
+
+    case = vehicle_case
+    provider = case.window.provider_id
+    stamp = case.window.serving_initialized_at_utc + timedelta(minutes=5)
+    with (
+        tracked_owner(real_db_engine),
+        oracle_database(
+            real_db_engine.url.render_as_string(hide_password=False),
+            clock=PinnedClock(stamp),
+            environment=os.environ,
+        ) as oracle,
+    ):
+        seed_static(
+            oracle, case.window, settings=case.settings, registry=case.registry, bronze=case.bronze
+        )
+        with oracle.engine.begin() as pg:
+            original = current_edition_id(pg, provider_id=provider)
+            other = pg.execute(
+                text("""
+                INSERT INTO core.dataset_versions
+                  (provider_id, feed_endpoint_id, source_ingestion_run_id,
+                   content_hash, source_version, loaded_at_utc)
+                SELECT provider_id, feed_endpoint_id, source_ingestion_run_id,
+                       'second-edition', 'second-edition', loaded_at_utc
+                FROM core.dataset_versions WHERE dataset_version_id=:id
+                RETURNING dataset_version_id
+            """),
+                {"id": original.dataset_version_id},
+            ).scalar_one()
+            pg.execute(
+                text("""
+                INSERT INTO gold.trip_service_span
+                  (provider_id, dataset_version_id, route_id, trip_id, service_id,
+                   first_seconds, last_seconds)
+                SELECT provider_id, :other, route_id, trip_id || '-other', service_id,
+                       first_seconds, last_seconds
+                FROM gold.trip_service_span WHERE provider_id=:p AND dataset_version_id=:id
+            """),
+                {"other": other, "p": provider, "id": original.dataset_version_id},
+            )
+            # Explicit service exception for both editions avoids calendar weekday assumptions.
+            pg.execute(
+                text("""
+                INSERT INTO silver.calendar_dates
+                  (provider_id, dataset_version_id, service_id, service_date, exception_type)
+                SELECT provider_id, dataset_version_id, service_id, DATE '2025-03-24', 1
+                FROM gold.trip_service_span WHERE provider_id=:p
+                ON CONFLICT (dataset_version_id, service_id, service_date)
+                DO UPDATE SET exception_type=1
+            """),
+                {"p": provider},
+            )
+            running = set(
+                pg.execute(
+                    text("SELECT trip_id FROM gold.scheduled_running_trips_at(:p, :at)"),
+                    {"p": provider, "at": stamp},
+                ).scalars()
+            )
+            assert {"trip-1", "trip-1-other"} <= running
+            assert current_edition_id(pg, provider_id=provider).dataset_version_id == other
+            # Legacy manifest only orders by loaded time; either tied row is valid.
+            versions = set(
+                pg.execute(
+                    text(
+                        "SELECT COALESCE(source_version, dataset_version_id::text) "
+                        "FROM core.dataset_versions WHERE provider_id=:p AND is_current"
+                    ),
+                    {"p": provider},
+                ).scalars()
+            )
+            assert (
+                pg.execute(_MANIFEST_VERSION_SQL, {"provider_id": provider}).scalar_one()
+                in versions
+            )
+            pg.execute(
+                text(
+                    "UPDATE core.dataset_versions SET loaded_at_utc=loaded_at_utc + "
+                    "interval '1 second' WHERE dataset_version_id=:id"
+                ),
+                {"id": original.dataset_version_id},
+            )
+            assert current_edition_id(pg, provider_id=provider) == original
+            assert pg.execute(_MANIFEST_VERSION_SQL, {"provider_id": provider}).scalar_one() == (
+                original.source_version or str(original.dataset_version_id)
+            )
+
+
+def test_trip_comparison_requires_exact_class_b_declarations():
+    from types import SimpleNamespace
+
+    columns = COLUMNS[:3] + ("delay_seconds",)
+    pg = SimpleNamespace(
+        table="gold.fact_trip_delay_snapshot", columns=columns, rows=(("p", 1201, 0, 360),)
+    )
+    actual = SimpleNamespace(columns=columns, rows=(("p", 1201, 0, 60),))
+    declared = {(("p", 1201, 0), "delay_seconds"): (360, 60)}
+    assert_trip_postgres_comparison(pg, actual, declared)
+    with pytest.raises(AssertionError):
+        assert_trip_postgres_comparison(pg, actual, {})
+    with pytest.raises(AssertionError):
+        assert_trip_postgres_comparison(pg, actual, {(("p", 1201, 0), "delay_seconds"): (360, 59)})
+    with pytest.raises(AssertionError):
+        assert_trip_postgres_comparison(pg, actual, {(("p", 1202, 0), "delay_seconds"): (360, 60)})
+    actual.rows = pg.rows
+    with pytest.raises(AssertionError, match="must be observed"):
+        assert_trip_postgres_comparison(pg, actual, declared)

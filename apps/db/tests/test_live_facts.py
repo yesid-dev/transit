@@ -91,7 +91,7 @@ def test_identical_retry_survives_reopen_and_changed_identity_refuses(tmp_path):
         assert local.connection.execute("SELECT count(*) FROM fact_processing").fetchone() == (1,)
 
 
-def test_providers_are_isolated_and_trip_updates_refuse(tmp_path):
+def test_providers_are_isolated_and_trip_updates_require_edition(tmp_path):
     parsed = parsed_vehicle()
     for provider in ("network", "other"):
         with closing(
@@ -105,7 +105,9 @@ def test_providers_are_isolated_and_trip_updates_refuse(tmp_path):
                     replace(own, capture=replace(own.capture, provider_id="wrong")),
                     provider_timezone="UTC",
                 )
-            with pytest.raises(ValueError, match="only vehicle_positions"):
+            from transit_ops.live.edition import EditionMissing
+
+            with pytest.raises(EditionMissing, match="loaded edition"):
                 trip = _parse(_message())
                 trip = replace(trip, capture=replace(trip.capture, provider_id=provider))
                 apply_capture(local, trip, provider_timezone="UTC")
@@ -385,3 +387,316 @@ def test_nul_in_capture_text_refuses_by_name(tmp_path, field):
             apply_capture(local, parsed, provider_timezone="UTC")
         assert read_vehicle_facts(local).rows == ()
         assert local.connection.execute("SELECT count(*) FROM fact_processing").fetchone() == (0,)
+
+
+def seed_fact_edition(local, provider="network"):
+    from transit_ops.live.edition import create_edition_tables
+
+    create_edition_tables(local.connection)
+    local.connection.execute(
+        "INSERT INTO edition_meta VALUES (?, 7, 'seed', NULL, NULL)", [provider]
+    )
+    local.connection.execute(
+        "INSERT INTO edition_stop_times VALUES ('行程', 3, '08:00:00', NULL, '站')"
+    )
+
+
+def trip_message():
+    message = pb.FeedMessage(header=dict(gtfs_realtime_version="2.0"))
+    update = message.entity.add(id="trip-é").trip_update
+    update.trip.trip_id = "行程"
+    update.trip.route_id = "路线"
+    update.trip.start_date = "20260620"
+    update.trip.direction_id = 1
+    update.stop_time_update.add(stop_sequence=3).arrival.time = 1781956980
+    update.stop_time_update.add(stop_sequence=4).schedule_relationship = 1
+    return message
+
+
+def test_trip_capture_projects_delay_counts_and_vehicle_match_atomically(tmp_path):
+    from transit_ops.live.facts import read_trip_facts
+
+    with closing(
+        LocalFile.open(tmp_path / "trip.db", provider_id="network", settings=SETTINGS)
+    ) as local:
+        seed_fact_edition(local)
+        apply_capture(local, parsed_vehicle(), provider_timezone="America/Toronto")
+        parsed = _parse(trip_message())
+        assert apply_capture(local, parsed, provider_timezone="America/Toronto") == 1
+        facts = read_trip_facts(local)
+        row = dict(zip(facts.columns, facts.rows[0], strict=True))
+        assert row["delay_seconds"] == 180  # 12:03 UTC - 08:00 EDT
+        assert (row["delay_stop_id"], row["delay_stop_sequence"]) == ("站", 3)
+        assert (row["stop_time_update_count"], row["skipped_stop_count"]) == (2, 1)
+        assert (row["vehicle_id"], row["occupancy_status"]) == ("bus-0", 2)
+        assert apply_capture(local, parsed, provider_timezone="America/Toronto") == 0
+        with pytest.raises(LocalFileMismatch, match="different content"):
+            apply_capture(
+                local,
+                replace(parsed, capture=replace(parsed.capture, sha256="0" * 64)),
+                provider_timezone="America/Toronto",
+            )
+
+
+@pytest.mark.parametrize("stamp", ["2026-11-01T05:30:00+00:00", "2026-11-01T06:30:00+00:00"])
+@pytest.mark.parametrize("offset", [-2147483648, -3601, -3600, 0, 3600, 3601, 2147483647])
+def test_trip_delay_integer_domain_and_fall_back_anchor(tmp_path, stamp, offset):
+    from datetime import timedelta
+
+    from transit_ops.live.facts import read_trip_facts
+
+    at = datetime.fromisoformat(stamp)
+    message = trip_message()
+    trip = message.entity[0].trip_update
+    trip.trip.start_date = "20261101"
+    # Noon EST minus 12 elapsed hours = 01:00 EDT; + 8 hours = 13:00 UTC.
+    expected = datetime(2026, 11, 1, 13, tzinfo=UTC)
+    if offset == -2147483648:
+        expected += timedelta(hours=600000)  # Keep raw POSIX time positive on Windows.
+    trip.stop_time_update[0].arrival.time = int((expected + timedelta(seconds=offset)).timestamp())
+    parsed = _parse(message)
+    parsed = replace(parsed, capture=replace(parsed.capture, feed_timestamp_utc=at))
+    frame = parsed.frames["rt_trip_updates"]
+    parsed = replace(
+        parsed,
+        frames={
+            **parsed.frames,
+            frame.table: replace(
+                frame,
+                rows=tuple(
+                    tuple(
+                        at if name == "feed_timestamp_utc" else value
+                        for name, value in zip(frame.columns, row, strict=True)
+                    )
+                    for row in frame.rows
+                ),
+            ),
+        },
+    )
+    with closing(
+        LocalFile.open(tmp_path / "dst.db", provider_id="network", settings=SETTINGS)
+    ) as local:
+        seed_fact_edition(local)
+        if offset == -2147483648:
+            local.connection.execute("UPDATE edition_stop_times SET arrival_time='600008:00:00'")
+        apply_capture(local, parsed, provider_timezone="America/Toronto")
+        row = dict(zip(read_trip_facts(local).columns, read_trip_facts(local).rows[0], strict=True))
+        assert row["delay_seconds"] == offset
+        assert row["snapshot_local_date"] == date(2026, 11, 1)
+        assert row["snapshot_date_key"] == 20261101
+        # Ghost delays remain historical facts; downstream eligibility is a range,
+        # never ABS(INTEGER_MIN), which overflows PostgreSQL INTEGER.
+        assert (-3600 <= row["delay_seconds"] <= 3600) == (offset in (-3600, 0, 3600))
+
+
+@pytest.mark.parametrize("failure", ["overflow", "nul", "outer"])
+def test_trip_failure_rolls_back_vehicle_trip_and_receipt(tmp_path, failure):
+    from transit_ops.live.facts import read_trip_facts
+
+    message = trip_message()
+    if failure == "overflow":
+        message.entity[0].trip_update.stop_time_update[0].arrival.time = 1781956800 + 2**31
+    if failure == "nul":
+        message.entity[0].trip_update.stop_time_update[0].stop_id = "bad\x00stop"
+    with closing(
+        LocalFile.open(tmp_path / "rollback-trip.db", provider_id="network", settings=SETTINGS)
+    ) as local:
+        seed_fact_edition(local)
+        read_trip_facts(local)
+        with pytest.raises(
+            (ValueError, RuntimeError),
+            match={"overflow": "delay_seconds", "nul": "nul_in_text", "outer": "caller"}[failure],
+        ):
+            with local.transaction():
+                apply_capture(local, parsed_vehicle(), provider_timezone="UTC")
+                apply_capture(local, _parse(message), provider_timezone="UTC")
+                if failure == "outer":
+                    raise RuntimeError("caller failed")
+        assert read_vehicle_facts(local).rows == read_trip_facts(local).rows == ()
+        assert local.connection.execute("SELECT count(*) FROM fact_processing").fetchone() == (0,)
+
+
+def test_trip_integer_overflow_refuses_by_field_name(tmp_path):
+    message = trip_message()
+    message.entity[0].trip_update.trip.direction_id = 2**31
+    with closing(
+        LocalFile.open(tmp_path / "integer.db", provider_id="network", settings=SETTINGS)
+    ) as local:
+        seed_fact_edition(local)
+        with pytest.raises(ValueError, match="direction_id.*INTEGER"):
+            apply_capture(local, _parse(message), provider_timezone="UTC")
+
+
+def trip_delay_case(scenario):
+    """Small raw inputs and worked event math, shared with the PostgreSQL detector."""
+    message = trip_message()
+    update = message.entity[0].trip_update
+    update.ClearField("stop_time_update")
+    stop = update.stop_time_update.add(stop_sequence=3)
+    stop.arrival.time = 1781956980  # 2026-06-20 12:03 UTC = 08:03 EDT.
+    schedule = [
+        ("行程", 3, "08:00:00", "08:05:00", "站"),
+        ("行程", 4, "08:20:00", "08:20:00", "站4"),
+    ]
+    expected = (3 * 60, "站", 3)
+    if scenario == "dwell_departure":
+        stop.ClearField("arrival")
+        stop.departure.time = 1781957160  # 08:06 EDT - scheduled 08:05.
+        expected = (60, "站", 3)
+    elif scenario == "dwell_arrival":
+        stop.arrival.time = 1781956860  # 08:01 EDT - scheduled 08:00.
+        stop.departure.time = 1781957400  # Both pairs present: arrival wins.
+        expected = (60, "站", 3)
+    elif scenario == "cancelled":
+        update.trip.schedule_relationship = 3
+        expected = (None, None, None)
+    elif scenario == "skipped":
+        stop.arrival.time = 1781957460  # Skipped 08:11 prediction is ineligible.
+        stop.schedule_relationship = 1
+        update.stop_time_update.add(stop_sequence=4).arrival.time = 1781958120
+        expected = (2 * 60, "站4", 4)  # Served 08:22 - scheduled 08:20.
+    elif scenario in ("unique_id", "repeated_id", "wrong_sequence", "no_schedule"):
+        stop.stop_id = "站"
+        if scenario == "wrong_sequence":
+            stop.stop_sequence = 999  # An explicit wrong sequence must not fall back to id.
+        else:
+            stop.ClearField("stop_sequence")
+        expected = (180, "站", None)
+        if scenario == "repeated_id":
+            schedule[1] = ("行程", 4, "08:20:00", "08:20:00", "站")
+        if scenario == "no_schedule":
+            schedule = [("different-trip", *row[1:]) for row in schedule]
+        if scenario != "unique_id":
+            expected = (None, None, None)
+    elif scenario == "unmatched_event":
+        schedule[0] = ("行程", 3, None, "08:05:00", "站")
+        expected = (None, None, None)  # No realtime departure; no like-for-like pair.
+    elif scenario == "alternate_pair":
+        schedule[0] = ("行程", 3, None, "08:05:00", "站")
+        stop.departure.time = 1781957160
+        expected = (60, "站", 3)  # Missing scheduled arrival uses the complete departure pair.
+    elif scenario in ("next", "past"):
+        stop.arrival.time = 1781957340 if scenario == "next" else 1781956860
+        update.stop_time_update.add(stop_sequence=4).arrival.time = (
+            1781958120 if scenario == "next" else 1781957340
+        )
+        expected = (120, "站4", 4) if scenario == "next" else (-11 * 60, "站4", 4)
+    elif scenario in ("rollover", "spring"):
+        update.trip.start_date = "20260620" if scenario == "rollover" else "20260308"
+        clock = "25:30:00" if scenario == "rollover" else "03:30:00"
+        schedule[0] = ("行程", 3, clock, clock, "站")
+        observed = (
+            "2026-06-21T05:33:00+00:00" if scenario == "rollover" else "2026-03-08T07:33:00+00:00"
+        )
+        stop.arrival.time = int(datetime.fromisoformat(observed).timestamp())
+        expected = (3 * 60, "站", 3)  # Scheduled UTC 05:30 (25:30) or 07:30 (spring 03:30).
+    return message, schedule, expected
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        "dwell_departure",
+        "dwell_arrival",
+        "cancelled",
+        "skipped",
+        "unique_id",
+        "repeated_id",
+        "wrong_sequence",
+        "no_schedule",
+        "unmatched_event",
+        "alternate_pair",
+        "next",
+        "past",
+        "rollover",
+        "spring",
+    ],
+)
+def test_trip_delay_uses_eligible_matching_events(tmp_path, scenario):
+    from transit_ops.live.facts import read_trip_facts
+
+    message, schedule, expected = trip_delay_case(scenario)
+    with closing(
+        LocalFile.open(tmp_path / "events.db", provider_id="network", settings=SETTINGS)
+    ) as local:
+        seed_fact_edition(local)
+        local.connection.execute("DELETE FROM edition_stop_times")
+        local.connection.executemany(
+            "INSERT INTO edition_stop_times VALUES (?, ?, ?, ?, ?)", schedule
+        )
+        parsed = _parse(message)
+        if scenario in ("rollover", "spring"):
+            from datetime import timedelta
+
+            observed = message.entity[0].trip_update.stop_time_update[0].arrival.time
+            feed = datetime.fromtimestamp(observed, UTC) - timedelta(seconds=180)
+            parsed = parse_capture(
+                message.SerializeToString(),
+                replace(parsed.capture, feed_timestamp_utc=feed),
+                ParsePolicy(None, 100),
+            )
+        apply_capture(local, parsed, provider_timezone="America/Toronto")
+        facts = read_trip_facts(local)
+        from zoneinfo import ZoneInfo
+
+        from test_live_facts_real_db import raw_trip_rows
+
+        raw_schedule = {(r[0], r[1]): r[2:] for r in schedule}
+        assert facts.rows == raw_trip_rows(
+            message.SerializeToString(), parsed.capture, raw_schedule
+        )
+        row = dict(zip(facts.columns, facts.rows[0], strict=True))
+        assert (
+            row["snapshot_local_date"]
+            == parsed.capture.feed_timestamp_utc.astimezone(ZoneInfo("America/Toronto")).date()
+        )
+        assert (
+            tuple(row[n] for n in ("delay_seconds", "delay_stop_id", "delay_stop_sequence"))
+            == expected
+        )
+        assert row["stop_time_update_count"] == len(message.entity[0].trip_update.stop_time_update)
+        assert row["skipped_stop_count"] == (1 if scenario == "skipped" else 0)
+
+
+@pytest.mark.parametrize(
+    "captures, expected",
+    [
+        ([(43, -600)], "43-0"),
+        ([(43, 600)], "43-0"),
+        ([(43, -600.000001)], None),
+        ([(43, 600.000001)], None),
+        ([(43, -600), (44, 600)], "44-0"),  # Higher capture, then entity 0.
+        ([(44, -600), (43, 600)], "44-0"),  # Independent of application order.
+        ([(43, -1), (44, 600)], "43-0"),  # Distance precedes capture id.
+    ],
+)
+def test_trip_vehicle_match_has_inclusive_window_and_total_ties(tmp_path, captures, expected):
+    from datetime import timedelta
+
+    from transit_ops.live.facts import read_trip_facts
+
+    with closing(
+        LocalFile.open(tmp_path / "match.db", provider_id="network", settings=SETTINGS)
+    ) as local:
+        seed_fact_edition(local)
+        for identity, offset in captures:
+            message = vehicle_message()
+            for index, entity in enumerate(message.entity[:3]):
+                entity.vehicle.vehicle.id = f"{identity}-{index}"
+            payload = message.SerializeToString()
+            parsed = parsed_vehicle(message)
+            ref = replace(
+                parsed.capture,
+                capture_row_id=identity,
+                feed_timestamp_utc=AT + timedelta(seconds=offset),
+            )
+            apply_capture(
+                local,
+                parse_capture(payload, ref, ParsePolicy(None, 100)),
+                provider_timezone="America/Toronto",
+            )
+        apply_capture(local, _parse(trip_message()), provider_timezone="America/Toronto")
+        facts = read_trip_facts(local)
+        row = dict(zip(facts.columns, facts.rows[0], strict=True))
+        assert row["vehicle_id"] == expected
+        assert row["occupancy_status"] == (2 if expected else None)

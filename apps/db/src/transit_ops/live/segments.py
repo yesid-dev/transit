@@ -27,9 +27,10 @@ from transit_ops.live.captures import Frame
 from transit_ops.live.compare import canonical_row
 from transit_ops.live.local_file import LocalFile
 
-# Add the public trip-delay reader here when LS3.5b2 lands.
+SEGMENT_FORMAT_VERSION = 2
 FACT_TABLES: tuple[tuple[str, str, Callable[[LocalFile], Frame]], ...] = (
     ("fact_vehicle_snapshot", "vehicle_positions", facts.read_vehicle_facts),
+    ("fact_trip_delay_snapshot", "trip_updates", facts.read_trip_facts),
 )
 RECORD_TABLES = ("polls", "captures", "processing")
 
@@ -194,7 +195,15 @@ def _verify(conn: duckdb.DuckDBPyConnection, path: Path, proof: dict[str, Any]) 
 def _identity(provider: str, first: int, last: int, proofs: list[dict[str, Any]]) -> Segment:
     content = [{k: p[k] for k in ("table", "schema", "rows", "row_sha256")} for p in proofs]
     digest = hashlib.sha256(
-        _json(dict(provider=provider, first=first, last=last, tables=content, version=1))
+        _json(
+            dict(
+                provider=provider,
+                first=first,
+                last=last,
+                tables=content,
+                version=SEGMENT_FORMAT_VERSION,
+            )
+        )
     ).hexdigest()
     return Segment(provider, first, last, digest)
 
@@ -233,7 +242,7 @@ def export_segment(local: LocalFile, storage: BronzeStorage) -> Segment | None:
             segment = _identity(provider, first, last, proofs)
             manifest = _json(
                 dict(
-                    version=1,
+                    version=SEGMENT_FORMAT_VERSION,
                     provider=provider,
                     first=first,
                     last=last,
@@ -291,10 +300,11 @@ def _read_segment(
         raise SegmentInvalid("segment_provider_mismatch")
     try:
         manifest = json.loads(storage.read_bytes(f"{segment.prefix}/manifest.json"))
+        if type(manifest["version"]) is not int or manifest["version"] != SEGMENT_FORMAT_VERSION:
+            raise SegmentInvalid(f"segment_version_unsupported: {manifest['version']!r}")
         proofs = manifest["tables"]
         valid = (
-            manifest["version"] == 1
-            and manifest["content_sha256"] == segment.content_sha256
+            manifest["content_sha256"] == segment.content_sha256
             and _identity(manifest["provider"], manifest["first"], manifest["last"], proofs)
             == segment
             and [p["table"] for p in proofs] == list(_queries(1, 1))
