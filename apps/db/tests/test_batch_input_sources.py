@@ -617,9 +617,8 @@ def test_schedule_reader_ignores_gis_but_explicit_family_needs_still_refuse(
         assert caught.value.needs == (InputNeed("silver.trips", "edition:8"),)
     else:
         result = input_sources.fetch_from_catalog(storage, root, request, [])
-        assert {n["window"] for n in result["needs"]} == {"all", "edition:7"}
-        mapping = edition_mapping(root / "core.dataset_versions" / "all.parquet", "sample")
-        assert mapping == {7: "c" * 64, 8: "d" * 64, 9: "e" * 64}
+        assert result["needs"] == [{"relation": "core.providers", "window": "all"}]
+        assert not (root / "core.dataset_versions").exists()
 
 
 def test_changed_bootstrap_refuses_before_any_other_payload(tmp_path, monkeypatch):

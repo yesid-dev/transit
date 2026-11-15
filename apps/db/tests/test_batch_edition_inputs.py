@@ -10,6 +10,59 @@ from transit_ops.batch.families.registry import resolve_builder
 from transit_ops.ingestion.storage import LocalBronzeStorage
 
 
+class EmptyCatalog:
+    def get_foreign_keys(self, name, schema):
+        return []
+
+
+def test_public_fetch_non_edition_needs_no_schedule_archive(tmp_path, monkeypatch):
+    monkeypatch.setattr(input_sources, "replay_catalog", lambda: nullcontext(EmptyCatalog()))
+    storage = store(tmp_path)
+    builder = resolve_builder("occupancy_crowding")
+    needs = set(builder.inputs(REQUEST)) | {InputNeed("core.providers", "all")}
+    for need in needs:
+        query = (
+            "SELECT 'sample' provider_id, 'UTC' timezone"
+            if need.window == "all"
+            else "SELECT TIMESTAMPTZ '2026-11-01 00:00:00+00' captured_at_utc WHERE false"
+        )
+        archive(storage, need.relation, "2026-11" if need.window == "all" else need.window, query)
+    root = tmp_path / "inputs"
+    root.mkdir()
+    result = input_sources.fetch_from_catalog(storage, root, REQUEST, [builder])
+    assert {InputNeed(**n) for n in result["needs"]} == needs
+    assert not (root / "core.dataset_versions").exists()
+    assert not list(root.glob("silver.*"))
+
+
+@pytest.mark.parametrize("active", ["false", "true UNION ALL SELECT true"])
+def test_public_fetch_refuses_unresolved_current_before_payloads(tmp_path, monkeypatch, active):
+    monkeypatch.setattr(input_sources, "replay_catalog", lambda: nullcontext(EmptyCatalog()))
+    storage = store(tmp_path)
+    first = bootstrap(
+        storage,
+        "SELECT 'sample' provider_id, row_number() OVER ()::BIGINT "
+        "dataset_version_id, repeat(chr(96 + row_number() OVER ()::INTEGER), 64) checksum_sha256, "
+        "NULL::VARCHAR content_hash, 'static_schedule' dataset_kind, "
+        "is_current, now() loaded_at_utc FROM (SELECT " + active + ") t(is_current)",
+    )
+    opened = []
+    original = LocalBronzeStorage.open_stream
+
+    def opening(self, key, **kwargs):
+        opened.append(key)
+        return original(self, key, **kwargs)
+
+    monkeypatch.setattr(LocalBronzeStorage, "open_stream", opening)
+    root = tmp_path / "inputs"
+    root.mkdir()
+    with pytest.raises(ValueError, match="edition_unresolved"):
+        input_sources.fetch_from_catalog(
+            storage, root, REQUEST, [resolve_builder("cancellations_service_states")]
+        )
+    assert opened == [first]
+
+
 @pytest.mark.parametrize("missing", [False, True])
 def test_cancellation_preflight_uses_bootstrap_edition(tmp_path, monkeypatch, missing):
     class Catalog:

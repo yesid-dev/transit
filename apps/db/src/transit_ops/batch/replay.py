@@ -15,7 +15,7 @@ from sqlalchemy.engine.reflection import Inspector
 from sqlalchemy.exc import IntegrityError
 
 from transit_ops.batch.build import BuildRequest, FamilyBuilder, FamilyOutput, InputNeed
-from transit_ops.batch.editions import with_editions
+from transit_ops.batch.editions import reads_editions, with_editions
 from transit_ops.batch.engine import open_batch_session
 from transit_ops.batch.families.registry import FAMILIES, resolve_builder
 from transit_ops.batch.input_sources import edition_mapping, layout_needs
@@ -98,8 +98,11 @@ _EDITIONS = (
 
 def postgres_input_needs(request: BuildRequest, editions: Sequence[int]) -> tuple[InputNeed, ...]:
     """Replay metadata and selected schedule editions; family declarations are added separately."""
-    return (InputNeed("core.providers", "all"), InputNeed("core.dataset_versions", "all")) + tuple(
-        InputNeed(r, f"edition:{ident}") for r in _EDITIONS for ident in editions
+    metadata = (InputNeed("core.dataset_versions", "all"),) if editions else ()
+    return (
+        (InputNeed("core.providers", "all"),)
+        + metadata
+        + tuple(InputNeed(r, f"edition:{ident}") for r in _EDITIONS for ident in editions)
     )
 
 
@@ -363,12 +366,17 @@ def replay_day(
         settings.GOLD_REPORTING_OPEN_WINDOW_DAYS,
         str(timezone),
     )
-    metadata_need = (InputNeed("core.dataset_versions", "all"),)
-    metadata_file = resolve_inputs(metadata_need, inputs_root)[0].files[0]
-    metadata_hash = _hashes(inputs_root, metadata_need)
-    editions = edition_mapping(metadata_file, provider_id)
-    requests = {family: with_editions(request, (family,), editions.rows) for family in builders}
-    needs = set(postgres_input_needs(request, editions.schedule_ids))
+    metadata_hash: tuple[tuple[str, str], ...] = ()
+    requests = dict.fromkeys(builders, request)
+    schedule_ids: tuple[int, ...] = ()
+    if reads_editions(builders):
+        metadata_need = (InputNeed("core.dataset_versions", "all"),)
+        metadata_file = resolve_inputs(metadata_need, inputs_root)[0].files[0]
+        metadata_hash = _hashes(inputs_root, metadata_need)
+        editions = edition_mapping(metadata_file, provider_id)
+        requests = {family: with_editions(request, (family,), editions.rows) for family in builders}
+        schedule_ids = editions.schedule_ids
+    needs = set(postgres_input_needs(request, schedule_ids))
     for family, builder in builders.items():
         needs.update(family_input_needs((builder,), requests[family]))
     needs.update(_legacy_state_needs(inputs_root))

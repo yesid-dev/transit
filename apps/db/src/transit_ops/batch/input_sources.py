@@ -21,7 +21,7 @@ import duckdb
 from sqlalchemy.engine.reflection import Inspector
 
 from transit_ops.batch.build import BuildRequest, FamilyBuilder, InputNeed
-from transit_ops.batch.editions import EditionRow, snapshot_rows, with_editions
+from transit_ops.batch.editions import EditionRow, reads_editions, snapshot_rows, with_editions
 from transit_ops.batch.fetch_inputs import fetch_inputs, needs_for_replay
 from transit_ops.batch.private_area import PrivateArea
 from transit_ops.history.datasets import HistoryDataset, TableSource, get_dataset
@@ -65,6 +65,7 @@ def fetch_from_catalog(
 ) -> dict[str, object]:
     from transit_ops.batch.replay import postgres_input_needs
 
+    uses_editions = reads_editions(b.family_id for b in builders if hasattr(b, "family_id"))
     with replay_catalog() as catalog:
         return fetch_replay_inputs(
             storage,
@@ -79,7 +80,9 @@ def fetch_from_catalog(
                         (b.family_id for b in builders if hasattr(b, "family_id")),
                         editions.rows,
                     ),
-                    postgres_needs=postgres_input_needs(request, editions.schedule_ids),
+                    postgres_needs=postgres_input_needs(
+                        request, editions.schedule_ids if uses_editions else ()
+                    ),
                 ),
                 storage,
                 request.provider_id,
@@ -87,6 +90,7 @@ def fetch_from_catalog(
                 editions,
                 catalog,
             ),
+            bootstrap_editions=uses_editions,
         )
 
 
@@ -103,6 +107,8 @@ def archive_input_needs(
 
     @cache
     def populated(child: InputNeed) -> bool:
+        if child.window.startswith("edition:") and int(child.window.split(":")[1]) not in editions:
+            return True  # Keep the FK closure until the bootstrap can resolve this edition.
         try:
             sources = resolve_sources([child], storage, provider, as_of, editions)
         except SourcesMissing:
@@ -545,23 +551,30 @@ def fetch_replay_inputs(
     provider: str,
     as_of: datetime,
     needs_for: Callable[[EditionMapping], Sequence[InputNeed]],
+    *,
+    bootstrap_editions: bool = True,
 ) -> dict[str, object]:
-    """Bootstrap exactly one proven metadata object, then preflight all payloads."""
+    """Bootstrap only edition readers/FK needs, then preflight all payloads."""
     from transit_ops.batch.replay import absent_unread
 
     if not root.is_dir() or any(root.iterdir()) or root.is_symlink() or root.is_junction():
         raise ValueError("inputs directory must exist, be empty and not redirected")
     if any(c in str(root.resolve()) for c in "*?[]{}"):
         raise ValueError("glob path refused")
-    bootstrap_need = InputNeed("core.dataset_versions", "all")
-    bootstrap = resolve_sources([bootstrap_need], storage, provider, as_of, {})[0]
     with PrivateArea(root) as area:
-        first = _download(bootstrap, storage, area / "bootstrap")
-        mapping = edition_mapping(first, provider, bootstrap=bootstrap)
-        needs = tuple(needs_for(mapping))
+        mapping = EditionMapping({}, ())
+        paths = {}
+        needs = () if bootstrap_editions else tuple(needs_for(mapping))
+        if bootstrap_editions or any(n.window.startswith("edition:") for n in needs):
+            bootstrap_need = InputNeed("core.dataset_versions", "all")
+            bootstrap = resolve_sources([bootstrap_need], storage, provider, as_of, {})[0]
+            first = _download(bootstrap, storage, area / "bootstrap")
+            mapping = edition_mapping(first, provider, bootstrap=bootstrap)
+            paths[bootstrap.key] = first
+            needs = tuple(needs_for(mapping))
         sources = resolve_sources(needs, storage, provider, as_of, mapping)
-        _check_bootstrap_current(bootstrap, storage, provider, as_of)
-        paths = {bootstrap.key: first}
+        if mapping.bootstrap is not None:
+            _check_bootstrap_current(mapping.bootstrap, storage, provider, as_of)
         for index, source in enumerate(sources):
             if source.key not in paths:
                 paths[source.key] = _download(source, storage, area / str(index))
