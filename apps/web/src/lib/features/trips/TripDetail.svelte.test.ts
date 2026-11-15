@@ -1,4 +1,4 @@
-import { render as renderComponent, screen, within } from '@testing-library/svelte';
+import { fireEvent, render as renderComponent, screen, within } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createLineDirectory } from '#lib/site/lineDirectory.ts';
 import { routeNameFallback } from '#lib/site/absence.ts';
@@ -312,6 +312,21 @@ describe.each(['en', 'fr'] as const)('TripDetail report scope in %s', (locale) =
 		);
 		expect(container.textContent).not.toMatch(/Last reported stop|Dernier arrêt communiqué/);
 		expect(container.textContent).not.toMatch(/Destination|stops remaining|arrêts restants/);
+	});
+	it('explains the prediction rows, not average delay, in their help', async () => {
+		await render(TripDetail, { props: { id: 't161' }, context });
+		const section = screen.getByRole('region', { name: tripCopy[locale].reportedPredictions });
+		await fireEvent.click(
+			within(section).getByRole('button', {
+				name: new RegExp(tripCopy[locale].reportedPredictions),
+			}),
+		);
+
+		expect(within(section).getByRole('dialog')).toHaveTextContent(
+			locale === 'en'
+				? 'Each row is the agency’s latest prediction for this trip at one stop. Predictions are not observed arrivals.'
+				: 'Chaque rangée est la plus récente prévision de l’agence pour ce trajet à un arrêt. Les prévisions ne sont pas des arrivées observées.',
+		);
 	});
 	it.each([false, true])(
 		'retains report-specific absence and timestamp when stale=%s',

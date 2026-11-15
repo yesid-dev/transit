@@ -54,7 +54,7 @@
 		{presentation}
 		dataSlot="stop-crowding-empty"
 	>
-		<AbsentValue variant="block" reason="no-observations" {locale} />
+		<AbsentValue variant="block" reason="crowding-not-available" {locale} />
 	</StopReliabilityPresenter>
 {/if}
 

@@ -558,3 +558,20 @@ describe('StopReliabilitySurface metric help ownership', () => {
 		},
 	);
 });
+
+describe('StopReliabilitySurface crowding absence', () => {
+	it.each([
+		['en', 'No data, crowding information is not available here', 'not enough readings yet'],
+		['fr', 'Aucune donnée, aucune information sur l’occupation ici', 'pas assez de mesures'],
+	] as const)(
+		'says crowding is not available, never that readings are pending (%s)',
+		(locale, name, old) => {
+			mockUrl = new URL('http://localhost/stop/57191');
+			const { container } = render(StopReliabilitySurface, { props: { data, locale } });
+			const empty = container.querySelector('[data-slot="stop-crowding-empty"]') as HTMLElement;
+
+			expect(within(empty).getByLabelText(name)).toBeInTheDocument();
+			expect(empty).not.toHaveTextContent(old);
+		},
+	);
+});

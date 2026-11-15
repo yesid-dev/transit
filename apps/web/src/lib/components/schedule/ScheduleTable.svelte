@@ -149,7 +149,7 @@
 	{#if service.window}
 		{service.window}
 	{:else}
-		<AbsentValue variant="row" reason="not-in-schedule" {locale} />
+		<AbsentValue variant="row" reason="window-not-supplied" {locale} />
 	{/if}
 {/snippet}
 

@@ -311,4 +311,29 @@ describe('ScheduleTable — service mode', () => {
 		expect(within(table).getByText('6.0 min')).toBeInTheDocument();
 		expect(table.querySelectorAll('[data-slot="absent-value"]')).toHaveLength(1);
 	});
+
+	it.each([
+		['en', 'Unknown, time window not supplied', 'Unknown, not in the schedule'],
+		['fr', 'Inconnu, plage horaire non fournie', 'Inconnu, absent de l’horaire'],
+	] as const)(
+		'says a published headway’s missing time window was not supplied, in its cell only (%s)',
+		(locale, windowName, headwayName) => {
+			const rows: ScheduleRow[] = [
+				{ kind: 'service', period: 'AM peak', window: null, headway: '6.0 min' },
+				{ kind: 'service', period: 'Midday', window: '09:00–15:00', headway: null },
+			];
+			render(ScheduleTable, {
+				props: { rows, mode: 'service', locale, labels: SERVICE_LABELS },
+			});
+
+			const table = screen.getByRole('table', { name: SERVICE_LABELS.caption });
+			const [windowCell, headwayCell] = [
+				...table.querySelectorAll('tbody [data-column="window"], tbody [data-column="headway"]'),
+			].filter((cell) => cell.querySelector('[data-slot="absent-value"]'));
+			expect(windowCell).toHaveAttribute('data-column', 'window');
+			expect(within(windowCell as HTMLElement).getByLabelText(windowName)).toBeInTheDocument();
+			expect(headwayCell).toHaveAttribute('data-column', 'headway');
+			expect(within(headwayCell as HTMLElement).getByLabelText(headwayName)).toBeInTheDocument();
+		},
+	);
 });

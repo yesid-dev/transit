@@ -118,7 +118,7 @@
 </script>
 
 {#snippet etaInfo()}
-	<MetricInfo metricKey="avgDelay" {locale} name={metricName('avgDelay', locale)} side="bottom" />
+	<MetricInfo metricKey="tripPredictions" {locale} name={t.reportedPredictions} side="bottom" />
 {/snippet}
 
 {#snippet reportFreshness()}

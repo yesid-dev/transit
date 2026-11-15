@@ -47,6 +47,11 @@ export const stopReliabilityCopy = defineCopy({
 						? 'Regroupé par mois.'
 						: 'Regroupé par jour.',
 		},
+		scope: {
+			latestDay: 'Dernier jour complet',
+			allHistory: (from: string, to: string) =>
+				`Tout l’historique disponible : du ${from} au ${to}. Ces chiffres ne changent pas avec les dates choisies.`,
+		},
 		history: {
 			navigator: historyCopy('fr', {
 				mode: 'range',
@@ -211,6 +216,11 @@ export const stopReliabilityCopy = defineCopy({
 					: grain === 'month'
 						? 'Rolled up by month.'
 						: 'Rolled up by day.',
+		},
+		scope: {
+			latestDay: 'Latest complete day',
+			allHistory: (from, to) =>
+				`All available history: ${from} to ${to}. These figures do not change with the selected dates.`,
 		},
 		history: {
 			navigator: historyCopy('en', {

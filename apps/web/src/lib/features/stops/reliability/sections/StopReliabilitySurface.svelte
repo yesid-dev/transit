@@ -5,6 +5,8 @@
 	import { fmtDelayMin } from '#lib/utils/index.ts';
 	import type { DateWindow } from '#lib/filters/index.ts';
 	import { absenceSentence, absenceShort, describeAbsence } from '#lib/site/absence.ts';
+	import { availabilityFromCollectionIndex } from '#lib/v1/history/selection.ts';
+	import { formatDateKey } from '#lib/utils/time.ts';
 	import { prefersReducedMotion } from '@yesid/motion/stores/reducedMotion';
 	import type { StopReliability } from '#lib/v1/index.ts';
 	import type { OccupancyCode } from '#lib/v1/schemas/index.ts';
@@ -134,6 +136,14 @@
 	const dayPercentiles = $derived(
 		explicitHistory ? retainedPercentiles : selectDayPercentiles(data.periods, grain),
 	);
+	// Habits, weekday and time-of-day pool all retained history; the stop's history index
+	// gives its dates. Without that index, no dates are claimed.
+	const allHistoryScope = $derived.by(() => {
+		const coverage = history?.index ? availabilityFromCollectionIndex(history.index) : null;
+		if (coverage?.kind !== 'continuous') return null;
+		const date = (key: string) => formatDateKey(key, locale, true);
+		return copy.scope.allHistory(date(coverage.firstDate), date(coverage.lastDate));
+	});
 
 	const stopVerdict = $derived(view.verdict);
 
@@ -219,6 +229,12 @@
 	const navigate = (id: string) =>
 		navigation.jump(id, { behavior: $prefersReducedMotion ? 'auto' : 'smooth' });
 </script>
+
+{#snippet allHistoryCaption()}
+	{#if allHistoryScope}
+		<p class="stop-reliability-window" data-slot="all-history-scope">{allHistoryScope}</p>
+	{/if}
+{/snippet}
 
 {#snippet metricInfo(key: MetricKey | SupplementalMetricKey, name: string)}
 	<MetricInfo class="stop-metric-info" metricKey={key} {locale} {name} side="bottom" />
@@ -359,6 +375,7 @@
 								<SectionPercentiles
 									percentiles={dayPercentiles}
 									dailyPercentiles={retainedPercentiles}
+									scope={explicitHistory ? undefined : copy.scope.latestDay}
 									{locale}
 									{copy}
 									presentation="article-body"
@@ -409,6 +426,7 @@
 										side="bottom"
 									/>
 								{/snippet}
+								{@render allHistoryCaption()}
 								<SectionHabits matrix={habitsMatrix} {locale} {copy} presentation="article-body" />
 							</CollapsibleSection>
 						</div>
@@ -433,6 +451,7 @@
 										side="bottom"
 									/>
 								{/snippet}
+								{@render allHistoryCaption()}
 								<SectionWeekday rows={rankedWeekdays} {locale} {copy} presentation="article-body" />
 							</CollapsibleSection>
 						</div>
@@ -456,6 +475,7 @@
 										side="bottom"
 									/>
 								{/snippet}
+								{@render allHistoryCaption()}
 								<SectionTimeOfDay
 									shiftRows={timeOfDay.shiftRows}
 									dayTypeRows={timeOfDay.dayTypeRows}
