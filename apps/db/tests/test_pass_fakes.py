@@ -132,11 +132,15 @@ def test_drive_consumer_rolls_back_accept_or_write_failure(build, connection, fa
 
 
 @pytest.mark.parametrize("failure", [None, "accept", "write"])
-def test_drive_consumer_does_not_commit_the_callers_transaction(build, connection, failure):
+@pytest.mark.parametrize("prior", ["untouched", "select", "dml"])
+def test_drive_consumer_does_not_commit_the_callers_transaction(build, connection, failure, prior):
     from daily_pass_fakes import drive_consumer
 
     outer = connection.begin()
-    connection.exec_driver_sql("INSERT INTO events VALUES ('outer')")
+    if prior == "select":
+        connection.exec_driver_sql("SELECT 1")
+    elif prior == "dml":
+        connection.exec_driver_sql("INSERT INTO events VALUES ('outer')")
     consumer = Consumer(failure=failure)
     deliveries = [fake_delivery("trip_updates", build.day_start_utc)]
     if failure:
@@ -145,16 +149,13 @@ def test_drive_consumer_does_not_commit_the_callers_transaction(build, connectio
     else:
         drive_consumer(consumer, build, deliveries, connection)
     assert outer.is_active
-    expected = ["outer"] if failure else ["outer", "written"]
+    expected = (["outer"] if prior == "dml" else []) + ([] if failure else ["written"])
     assert connection.exec_driver_sql("SELECT value FROM events").scalars().all() == expected
     outer.rollback()
     assert connection.exec_driver_sql("SELECT value FROM events").all() == []
 
 
-@pytest.mark.parametrize("wants_bytes", [False, True])
-def test_drive_consumer_filters_families_and_preserves_global_sequences(
-    build, connection, wants_bytes
-):
+def test_drive_consumer_filters_families_and_preserves_global_sequences(build, connection):
     from daily_pass_fakes import drive_consumer
     from google.transit.gtfs_realtime_pb2 import FeedMessage
 
@@ -171,13 +172,8 @@ def test_drive_consumer_filters_families_and_preserves_global_sequences(
     # Endpoint ordering puts alerts first and vehicles last; TU keeps global gaps.
     consumer = Consumer()
     consumer.families = frozenset({"alerts", "vehicle_positions"})
-    consumer.wants_bytes = wants_bytes
     drive_consumer(consumer, build, iter(deliveries), connection)
     assert [d.sequence for d in consumer.accepted] == [0, 3]
-    assert [d.payload for d in consumer.accepted] == (
-        [b"alert", b"vp"] if wants_bytes else [None, None]
-    )
-    assert all(d.capture.payload is None for d in consumer.accepted)
     assert all(d.in_service_day for d in consumer.accepted)
     assert consumer.writes[0][1].deliveries["trip_updates"] == {"decoded": 2}
     assert message.SerializeToString() == before
@@ -188,3 +184,23 @@ def test_drive_consumer_filters_families_and_preserves_global_sequences(
     assert other.writes == [(build, supplied, connection)]
     assert other.writes[0][0] is build and other.writes[0][1] is supplied
     assert message.SerializeToString() == before
+
+
+@pytest.mark.parametrize("wants_bytes", [False, True])
+def test_drive_consumer_exposes_bytes_only_during_opted_in_accept(build, connection, wants_bytes):
+    from daily_pass_fakes import drive_consumer, fake_stream
+
+    deliveries = [
+        fake_delivery("vehicle_positions", build.day_start_utc, row_id=8, payload=b"vp"),
+        fake_delivery("alerts", build.day_start_utc, row_id=8, payload=b"alert"),
+    ]
+    consumer = Consumer()
+    consumer.families = frozenset({"alerts", "vehicle_positions"})
+    consumer.wants_bytes = wants_bytes
+    drive_consumer(consumer, build, deliveries, connection)
+    assert [d.payload for d in consumer.accepted] == (
+        [b"alert", b"vp"] if wants_bytes else [None, None]
+    )
+    assert all(d.capture.payload is None for d in consumer.accepted)
+    observations = list(fake_stream(build, deliveries))
+    assert all(d.payload is None and d.capture.payload is None for d in observations)

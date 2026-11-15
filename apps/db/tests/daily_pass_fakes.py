@@ -4,6 +4,7 @@ from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import replace
 from datetime import date, datetime, timedelta
+from sqlite3 import Connection as SQLiteConnection
 from typing import Literal, cast, get_args
 
 from google.transit.gtfs_realtime_pb2 import FeedMessage
@@ -210,6 +211,11 @@ def drive_consumer(
     summary: p.StreamSummary | None = None,
 ) -> Mapping[str, object]:
     """Drive one synthetic lifecycle without committing a caller's transaction."""
+    if connection.in_transaction():
+        driver = connection.connection.driver_connection
+        if isinstance(driver, SQLiteConnection) and not driver.in_transaction:
+            # sqlite3 legacy mode otherwise releases a standalone SAVEPOINT as a commit.
+            connection.exec_driver_sql("BEGIN")
     with connection.begin_nested() if connection.in_transaction() else connection.begin():
         if consumer.decide(build, connection).action != "build":
             return {}
