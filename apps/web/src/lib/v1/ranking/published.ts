@@ -6,7 +6,8 @@ export function publishedWeeklyRanking(
 	now = Date.now(),
 ) {
 	if (!index || now - Date.parse(index.generated_utc) > 86_400_000) return null;
-	return (kind === 'route' ? index.weekly_routes : index.weekly_stops) ?? null;
+	const rows = kind === 'route' ? index.weekly_routes : index.weekly_stops;
+	return rows?.some((row) => row.state === 'ranked' && row.pct != null) ? rows : null;
 }
 
 export function publishedOrder<T>(
