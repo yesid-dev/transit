@@ -5,6 +5,7 @@ import hashlib
 import json
 import re
 import tempfile
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import TypedDict
@@ -23,18 +24,22 @@ from transit_ops.history.capture_pack import (
 )
 from transit_ops.history.capture_pack import (
     _pack_working_day,
+    pack_union_day,
 )
-from transit_ops.history.ledger_store import NewCopy, WindowIdentity, WindowSession
+from transit_ops.history.capture_union import union_capture_record
+from transit_ops.history.ledger_store import NewCopy, WindowChanged, WindowIdentity, WindowSession
 from transit_ops.history.manifest import (
     Manifest,
     build_manifest,
     encode_manifest,
     read_copy_manifest,
 )
+from transit_ops.history.pack import PackCorrupt
 from transit_ops.history.pack import read_pack as read_pack
 from transit_ops.history.pack import write_pack as write_pack
 from transit_ops.history.poll_record import (
     PollRecord,
+    PollRecordInvalid,
     canonical_json,
 )
 from transit_ops.history.working_captures import read_working_day, rows_fingerprint
@@ -49,20 +54,39 @@ class CopyContentMissing(ValueError):
     """Working rows no longer hold all content of the current copy."""
 
 
+@dataclass(frozen=True)
+class _UnionSource:
+    state: ledger.WindowState
+    copy: ledger.ArchiveCopy
+    manifest: Manifest
+
+
+def _trimmed_current(
+    window: ledger.WindowState, copies: list[ledger.ArchiveCopy]
+) -> ledger.ArchiveCopy:
+    current = next((c for c in copies if c.content_version == window.current_version), None)
+    if current is None or current.state != "verified":
+        raise CopyContentMissing(f"{window.provider_id}/{window.window_key}: no verified current")
+    if window.working_state == "partial" and window.remainder_fingerprint is None:
+        raise CopyContentMissing(f"{window.window_key}: partial remainder unknown")
+    return current
+
+
 def _reusable_copy(
     window: ledger.WindowState | None, copies: list[ledger.ArchiveCopy], fingerprint: str
 ) -> ledger.ArchiveCopy | None:
     if window is None:
         return None
-    if window.working_state in ("partial", "trimmed"):
-        raise NotImplementedError(
-            "sealing a day whose working rows were trimmed is not built: "
-            "the new version must hold the old copy's content and the new rows together"
-        )
+    trimmed = window.working_state in ("partial", "trimmed")
     current = next((c for c in copies if c.content_version == window.current_version), None)
+    remainder = window.remainder_fingerprint
+    if trimmed:
+        current = _trimmed_current(window, copies)
+        if remainder is None:
+            remainder = hashlib.sha256(b"").hexdigest()
     if (
         current is not None
-        and current.details["rows_fingerprint"] == fingerprint
+        and (remainder if trimmed else current.details["rows_fingerprint"]) == fingerprint
         and current.verified_at_utc is not None
         and window.working_changed_at_utc.astimezone(UTC) <= current.verified_at_utc.astimezone(UTC)
     ):
@@ -72,6 +96,7 @@ def _reusable_copy(
             c
             for c in copies
             if c.state == "sealed"
+            and (not trimmed or c.details.get("union_base_version") == window.current_version)
             and (window.current_version is None or c.content_version > window.current_version)
         ),
         key=lambda c: c.content_version,
@@ -107,7 +132,7 @@ def _read_day(
     provider_id: str,
     endpoint_key: str,
     utc_date: date,
-) -> tuple[int, str, PollRecord, str] | ledger.ArchiveCopy:
+) -> tuple[int, str, PollRecord, str, _UnionSource | None] | ledger.ArchiveCopy:
     with connection.begin():
         connection.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"))
         now = connection.execute(text("SELECT now()")).scalar_one()
@@ -140,10 +165,10 @@ def _read_day(
         reusable = _reusable_copy(window, copies, fingerprint)
         if reusable is not None:
             return reusable
-        record = _changed_record(
+        record, source = _changed_record(
             connection, storage, window, copies, provider_id, endpoint_key, utc_date
         )
-        return feed.feed_endpoint_id, feed.feed_kind, record, fingerprint
+        return feed.feed_endpoint_id, feed.feed_kind, record, fingerprint, source
 
 
 def _changed_record(
@@ -154,11 +179,20 @@ def _changed_record(
     provider_id: str,
     endpoint_key: str,
     utc_date: date,
-) -> PollRecord:
+) -> tuple[PollRecord, _UnionSource | None]:
     current = next(
         (c for c in copies if window and c.content_version == window.current_version), None
     )
-    manifest = read_copy_manifest(storage, current) if current else None
+    trimmed = window is not None and window.working_state in ("partial", "trimmed")
+    if trimmed:
+        assert window is not None
+        current = _trimmed_current(window, copies)
+    try:
+        manifest = read_copy_manifest(storage, current) if current else None
+    except (ValueError, FileNotFoundError) as exc:
+        if trimmed:
+            raise CopyContentMissing(f"{provider_id}/{endpoint_key}/{utc_date}: manifest") from exc
+        raise
     record = read_working_day(
         connection,
         provider_id=provider_id,
@@ -167,12 +201,16 @@ def _changed_record(
         current=manifest,
     )
     if manifest is not None:
+        if trimmed:
+            assert window is not None and current is not None
+            return union_capture_record(manifest, record), _UnionSource(window, current, manifest)
         _require_content(manifest, record)
-    return record
+    return record, None
 
 
 def _insert_allocated(
-    window: WindowSession, manifest: Manifest, data: bytes, archive_backend: str, fingerprint: str
+    window: WindowSession, manifest: Manifest, data: bytes, archive_backend: str, fingerprint: str,
+    source: _UnionSource | None,
 ) -> None:
     pack = manifest.pack
     copy = NewCopy(
@@ -196,6 +234,7 @@ def _insert_allocated(
             rows_fingerprint=fingerprint,
             declared_interval_seconds=manifest.declared_interval_seconds,
             observed_interval_ms=manifest.observed_interval_ms,
+            **({"union_base_version": source.copy.content_version} if source else {}),
         ),
     )
     window.insert_allocated_copy(copy)
@@ -227,6 +266,7 @@ def _allocate(
     archive_backend: str,
     sealed_by: str,
     fingerprint: str,
+    source: _UnionSource | None = None,
 ) -> tuple[Manifest, bytes]:
     key = local.record.feed_day
     identity = WindowIdentity(
@@ -235,8 +275,12 @@ def _allocate(
         window_key=key.utc_date.isoformat(),
     )
     with connection.begin(), ledger_select.ledger_for(connection).session(identity) as window:
+        if source is not None and window.state() != source.state:
+            raise WindowChanged(f"{identity}: union baseline changed during packing")
         version = window.allocate_version(above_version=highest)
-        supersedes = _allocation_state(window, local.record)
+        supersedes = (
+            source.copy.content_version if source else _allocation_state(window, local.record)
+        )
         sealed_at = window.now()
         pack_key = _prefix(key.provider_id, key.endpoint_key, key.utc_date) + f"{version}.pack.xz"
         manifest = build_manifest(
@@ -251,7 +295,7 @@ def _allocate(
             sealed_by=sealed_by,
         )
         data = encode_manifest(manifest)
-        _insert_allocated(window, manifest, data, archive_backend, fingerprint)
+        _insert_allocated(window, manifest, data, archive_backend, fingerprint, source)
     return manifest, data
 
 
@@ -529,15 +573,27 @@ def seal_capture_day(
     day = _read_day(connection, storage, provider_id, endpoint_key, utc_date)
     if isinstance(day, ledger.ArchiveCopy):
         return day
-    feed_id, feed_kind, record, fingerprint = day
+    feed_id, feed_kind, record, fingerprint, source = day
     with tempfile.TemporaryDirectory() as folder:
         directory = Path(folder)
-        local = pack_working_day(record, storage, directory=directory)
+        if source is None:
+            local = pack_working_day(record, storage, directory=directory)
+        else:
+            try:
+                local = pack_union_day(
+                    record, storage, current_copy=source.copy,
+                    current=source.manifest, directory=directory,
+                )
+            except (PackCorrupt, PollRecordInvalid, FileNotFoundError) as exc:
+                raise CopyContentMissing(
+                    f"{provider_id}/{endpoint_key}/{utc_date}: current source integrity"
+                ) from exc
         archive = storage(archive_backend)
         prefix = _prefix(provider_id, endpoint_key, utc_date)
         highest = _highest_version(archive, prefix)
         manifest, data = _allocate(
-            connection, local, feed_id, feed_kind, highest, archive_backend, sealed_by, fingerprint
+            connection, local, feed_id, feed_kind, highest, archive_backend, sealed_by, fingerprint,
+            source,
         )
         copy = next(
             c
