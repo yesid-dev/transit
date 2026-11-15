@@ -18,12 +18,7 @@ from transit_ops.history.pack import (
     read_pack,
     write_pack,
 )
-from transit_ops.history.poll_record import (
-    PollRecord,
-    PollRecordInvalid,
-    ordered_record,
-)
-from transit_ops.history.reader_bytes import object_payload
+from transit_ops.history.poll_record import PollRecord, PollRecordInvalid, ordered_record
 from transit_ops.ingestion.storage import BronzeStorageResolver
 
 OBJECT_ABSENT = "object_absent"
@@ -39,11 +34,8 @@ class LocalPack:
 
 
 def _check_source(record: PollRecord, copy: ArchiveCopy, current: Manifest) -> None:
-    day = record.feed_day
     if (
-        (current.provider_id, current.endpoint_key, current.index_family, current.utc_date)
-        != (day.provider_id, day.endpoint_key, day.index_family, day.utc_date)
-        or (copy.provider_id, copy.dataset_id, copy.window_key, copy.revision, copy.content_version)
+        (copy.provider_id, copy.dataset_id, copy.window_key, copy.revision, copy.content_version)
         != (
             current.provider_id,
             "capture." + current.endpoint_key,
@@ -157,12 +149,25 @@ def _checked_captures(
     missing: dict[tuple[str, int], str],
 ) -> Generator[bytes, None, None]:
     for capture in record.captures:
-        payload, reason = object_payload(storage, capture)
+        store, payload = storage(capture.storage_backend), bytearray()
+        reason = None
+        try:
+            with store.open_stream(capture.storage_path) as source:
+                while chunk := source.read(64 * 1024):
+                    payload.extend(chunk)
+        except Exception:
+            if store.exists(capture.storage_path):
+                raise
+            reason = OBJECT_ABSENT
+        if reason is None and (
+            len(payload) != capture.byte_size
+            or hashlib.sha256(payload).hexdigest() != capture.sha256
+        ):
+            reason = OBJECT_MISMATCH
         if reason is not None:
             missing[capture.index_family, capture.capture_row_id] = reason
         else:
-            assert payload is not None
-            yield payload
+            yield bytes(payload)
         del payload
 
 

@@ -12,6 +12,7 @@ from transit_ops.history.capture_pack import pack_union_day
 from transit_ops.history.capture_union import union_capture_record
 from transit_ops.history.manifest import encode_manifest
 from transit_ops.history.pack import PackCorrupt, read_pack, write_pack
+from transit_ops.history.seal_captures import pack_working_day
 from transit_ops.ingestion.storage import BronzeStorageError, LocalBronzeStorage
 
 
@@ -67,20 +68,16 @@ def test_union_pack_reads_trimmed_bytes_from_the_current_pack(day):
             b"second",
         ]
     assert [c.capture_row_id for c in result.record.captures if c.packed] == [0, 40, 1, 2]
-    assert [p.status for p in result.record.polls] == [
-        "stored",
-        "stored",
-        "stored",
-        "failed",
-        "stored",
-        "capture_missing",
-    ]
+    statuses = [p.status for p in result.record.polls]
+    assert statuses == ["stored", "stored", "stored", "failed", "stored", "capture_missing"]
     assert result.record.polls[-1].missing_reason == "absent"
     assert (store.root / copy.storage_path).read_bytes() == before
     assert (store.root / "late").read_bytes() == b"late"
 
 
-@pytest.mark.parametrize("damage", ["absent", "corrupt", "checksum", "transport", "manifest"])
+@pytest.mark.parametrize(
+    "damage", ["absent", "corrupt", "checksum", "transport", "manifest", "capture_size"]
+)
 def test_union_pack_never_downgrades_old_packed_bytes(day, monkeypatch, damage):
     record, store, copy, current, directory = day
     path = store.root / copy.storage_path
@@ -105,6 +102,14 @@ def test_union_pack_never_downgrades_old_packed_bytes(day, monkeypatch, damage):
     elif damage == "manifest":
         copy = replace(copy, manifest_sha256="0" * 64)
         error = ValueError
+    elif damage == "capture_size":
+        current = replace(
+            current, captures=(replace(current.captures[0], byte_size=6), *current.captures[1:])
+        )
+        record = replace(
+            record, captures=(replace(record.captures[0], byte_size=6), *record.captures[1:])
+        )
+        copy = replace(copy, manifest_sha256=hashlib.sha256(encode_manifest(current)).hexdigest())
     else:
 
         def fail(*args, **kwargs):
@@ -166,3 +171,27 @@ def test_union_pack_is_bounded_and_closes_streams_on_failure(day, monkeypatch):
     assert not active and opened == [copy.storage_path, "late"]
     assert not (directory / "2026-01-02.pack.xz").exists()
     (store.root / copy.storage_path).rename(store.root / "closed.xz")
+
+
+def test_working_pack_propagates_transport_failure_after_oversized_bytes(day, monkeypatch):
+    record, store, _, _, directory = day
+    record = replace(record, captures=record.captures[:1], polls=record.polls[:1], processing=())
+
+    @contextmanager
+    def oversized(self, key, **kwargs):
+        class TailFailure:
+            calls = 0
+
+            def read(self, size=-1):
+                self.calls += 1
+                if self.calls == 1:
+                    return b"first!"
+                raise BronzeStorageError("tail transport")
+
+        yield TailFailure()
+
+    monkeypatch.setattr(LocalBronzeStorage, "open_stream", oversized)
+    monkeypatch.setattr(LocalBronzeStorage, "exists", lambda *args: True)
+    with pytest.raises(BronzeStorageError, match="tail transport"):
+        pack_working_day(record, lambda _: store, directory=directory)
+    assert not (directory / "2026-01-02.pack.xz").exists()
