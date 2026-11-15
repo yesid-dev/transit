@@ -97,7 +97,7 @@ def real_db_engine(real_db_engine):
 
 
 @pytest.fixture
-def replay_inputs(real_db_engine, fact_source, tmp_path, monkeypatch):
+def replay_inputs(real_db_engine, fact_source, tmp_path, monkeypatch, request):
     for slot in FAMILIES.values():
         monkeypatch.setattr(import_module(slot.module_path), "builder", None)
     database = prepare_replay_database(
@@ -108,11 +108,28 @@ def replay_inputs(real_db_engine, fact_source, tmp_path, monkeypatch):
         conn.execute(
             text(
                 "UPDATE gold.fact_trip_delay_snapshot SET route_id='R1', "
-                "stop_time_update_count=10, skipped_stop_count=2, delay_seconds=120 "
-                "WHERE provider_id=:p"
+                "stop_time_update_count=10, skipped_stop_count=2 WHERE provider_id=:p"
             ),
             {"p": provider},
         )
+        if getattr(request, "param", None) == "point_history":
+            # The rescue seed keeps empty trip IDs for exact round-trip coverage.
+            conn.execute(
+                text("""
+                    INSERT INTO gold.fact_trip_delay_snapshot (
+                        provider_id, realtime_snapshot_id, entity_index, snapshot_date_key,
+                        snapshot_local_date, feed_timestamp_utc, captured_at_utc, entity_id,
+                        trip_id, vehicle_id, route_id, delay_stop_id, delay_seconds,
+                        stop_time_update_count, skipped_stop_count
+                    )
+                    SELECT provider_id, realtime_snapshot_id, 100, snapshot_date_key,
+                        snapshot_local_date, feed_timestamp_utc, captured_at_utc, 'point-entity',
+                        'point-trip', 'point-vehicle', 'R1', 'point-stop', 120, 10, 2
+                    FROM gold.fact_trip_delay_snapshot
+                    WHERE provider_id=:p AND entity_index=2
+                """),
+                {"p": provider},
+            )
     root = tmp_path / "inputs"
     relations = [
         "core.providers",
@@ -320,6 +337,7 @@ def test_two_replays_give_the_same_report_bytes(replay_inputs, tmp_path):
     ).to_json(timings=False)
 
 
+@pytest.mark.parametrize("replay_inputs", ["point_history"], indirect=True)
 def test_replay_compares_nonempty_point_history_bodies(replay_inputs, tmp_path, monkeypatch):
     from transit_ops.batch.families import hotspots
 
