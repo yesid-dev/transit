@@ -101,12 +101,12 @@ class LocalBronzeStorage(BronzeStorage):
 
     def put_if_absent(self, temp_path: Path, storage_path: str) -> str:
         final_path = self.root / Path(storage_path)
-        # Newly created directories also need their parent entries made durable.
-        directories = [final_path.parent]
-        parent = final_path.parent
-        while not parent.exists():
-            directories.append(parent.parent)
-            parent = parent.parent
+        # Existing directories may be left by a failed or interrupted publication.
+        directories = []
+        for directory in final_path.absolute().parents:
+            directories.append(directory)
+            if directory == self.root.absolute().parent:
+                break
         final_path.parent.mkdir(parents=True, exist_ok=True)
         temporary = final_path.with_name(f".transit-bronze-{uuid4().hex}.tmp")
         created = linked = False

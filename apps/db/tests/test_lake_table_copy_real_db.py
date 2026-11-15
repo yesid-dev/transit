@@ -416,3 +416,98 @@ def test_archive_directory_sync_failure_keeps_local_evidence(seeded_export, tmp_
         "proof.json",
     }
     assert not list(storage.list_keys("archive/"))
+
+
+def test_retry_syncs_ancestors_left_by_failed_publication(tmp_path, monkeypatch):
+    import os
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from transit_ops.ingestion import storage as module
+
+    root = tmp_path / "objects"
+    source = tmp_path / "source"
+    source.write_bytes(b"archive")
+    storage = module.LocalBronzeStorage("local", root)
+    directories = {}
+    synced = set()
+    fail_once = True
+
+    def open_directory(path, flags):
+        descriptor = -len(directories) - 1
+        directories[descriptor] = Path(path)
+        return descriptor
+
+    def fsync(descriptor):
+        nonlocal fail_once
+        if descriptor in directories:
+            synced.add(directories[descriptor])
+        elif fail_once:
+            fail_once = False
+            raise OSError("injected archive file sync failure")
+        else:
+            os.fsync(descriptor)
+
+    # Model only POSIX directory handles; keep real native file I/O and links.
+    proxy = SimpleNamespace(
+        name="posix",
+        O_RDONLY=0,
+        O_DIRECTORY=0,
+        open=open_directory,
+        close=lambda fd: None,
+        fsync=fsync,
+        link=os.link,
+    )
+    monkeypatch.setattr(module, "os", proxy)
+    with pytest.raises(OSError, match="injected"):
+        storage.put_if_absent(source, "archive/nested/object")
+    assert source.exists()
+    assert (root / "archive/nested").is_dir()
+    assert not (root / "archive/nested/object").exists()
+    storage.put_if_absent(source, "archive/nested/object")
+    assert not source.exists()
+    required = {tmp_path, root, root / "archive", root / "archive/nested"}
+    assert required <= synced, f"Successful retry omitted directory syncs: {required - synced}"
+
+
+@pytest.mark.parametrize("failure", ["file", "directory"])
+def test_native_retry_syncs_existing_archive_ancestors(tmp_path, monkeypatch, failure):
+    import os
+    import stat
+
+    from transit_ops.ingestion import storage as module
+
+    if os.name == "nt":
+        pytest.skip("Windows does not support directory fsync")
+    root = tmp_path / "objects"
+    source = tmp_path / "source"
+    source.write_bytes(b"archive")
+    storage = LocalBronzeStorage("local", root)
+    synced = set()
+    fsync = os.fsync
+    fail_once = True
+
+    def sync_or_fail(fd):
+        nonlocal fail_once
+        info = os.fstat(fd)
+        directory = stat.S_ISDIR(info.st_mode)
+        if fail_once and directory == (failure == "directory"):
+            fail_once = False
+            raise OSError("injected archive sync failure")
+        fsync(fd)
+        if directory:
+            synced.add((info.st_dev, info.st_ino))
+
+    monkeypatch.setattr(module.os, "fsync", sync_or_fail)
+    with pytest.raises(OSError, match="injected"):
+        storage.put_if_absent(source, "archive/nested/object")
+    assert source.exists()
+    assert (root / "archive/nested").is_dir()
+    assert not (root / "archive/nested/object").exists()
+    synced.clear()
+    storage.put_if_absent(source, "archive/nested/object")
+    assert not source.exists()
+    assert storage.read_bytes("archive/nested/object") == b"archive"
+    for path in (tmp_path, root, root / "archive", root / "archive/nested"):
+        info = path.stat()
+        assert (info.st_dev, info.st_ino) in synced
