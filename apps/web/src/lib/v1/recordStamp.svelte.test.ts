@@ -176,6 +176,14 @@ it.each([
 					manifest.tz,
 				),
 				datetime: fixture.frozen_utc.slice(0, 10),
+				// Where the row can show, the header holds the warning's room whether it shows or not.
+				recordStamp: {
+					pending: false,
+					reserve: 'Record · data through Sep 30, 1999 · published Sep 30, 1999',
+					noticeReserve: shown
+						? 'This record was published with a warning. See Data health.'
+						: null,
+				},
 			});
 		} finally {
 			dispose();

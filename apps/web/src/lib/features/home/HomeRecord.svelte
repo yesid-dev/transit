@@ -154,7 +154,7 @@
 			</p>
 			<p class="slot record-stamp">
 				<span>
-					{#if stampMeta}
+					{#if stampMeta?.text}
 						<CalendarIcon size={16} strokeWidth={1.8} aria-hidden="true" />
 						<time datetime={stampMeta.datetime}>{stampMeta.text}</time>
 					{/if}
