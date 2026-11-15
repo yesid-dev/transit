@@ -9,6 +9,7 @@ from time import perf_counter
 from typing import cast
 from zoneinfo import ZoneInfo
 
+from psycopg.errors import ForeignKeyViolation
 from sqlalchemy import Connection, inspect, text
 from sqlalchemy.engine.reflection import Inspector
 from sqlalchemy.exc import IntegrityError
@@ -382,8 +383,8 @@ def replay_day(
             for relation in ready:
                 try:
                     load_inputs(engine, (pending.pop(relation),), area)
-                except IntegrityError as error:
-                    if getattr(error.orig, "sqlstate", None) != "23503":
+                except (IntegrityError, ForeignKeyViolation) as error:
+                    if getattr(getattr(error, "orig", error), "sqlstate", None) != "23503":
                         raise
                     windows = sorted(n.window for n in needed if n.relation == relation)
                     raise ValueError(f"fk_parent_outside_range: {relation} {windows}") from error
