@@ -95,6 +95,17 @@ def test_family_matches_postgres_and_preserves_dirty_state_after_loadback(
         seed_provider(conn, "seed", display_name="Route seed", timezone=REQUEST.timezone)
         for route, trip, direction, delay, capture in SEED:
             sid = lifecycle.add_capture(conn, datetime.fromisoformat(capture), delay, route)
+            # Several observations share a capture instant; object identity is independent of it.
+            conn.execute(
+                text(
+                    "UPDATE raw.ingestion_objects AS o "
+                    "SET storage_path='route-spine-hours/' || o.ingestion_object_id::text "
+                    "FROM raw.realtime_snapshot_index AS s "
+                    "WHERE s.realtime_snapshot_id=:sid "
+                    "AND o.ingestion_object_id=s.ingestion_object_id"
+                ),
+                {"sid": sid},
+            )
             conn.execute(
                 text(
                     "UPDATE gold.fact_trip_delay_snapshot SET trip_id=:trip, "
