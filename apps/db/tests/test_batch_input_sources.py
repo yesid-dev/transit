@@ -1162,3 +1162,54 @@ def test_non_alert_parent_needs_survive_alert_preflight(tmp_path):
     assert InputNeed("core.providers", "all") in needs
     assert InputNeed("raw.ingestion_runs", "2026-11-01") in needs
     assert InputNeed("raw.ingestion_objects", "2026-11-01") in needs
+
+
+@pytest.fixture(scope="module")
+def replay_payload_seed(tmp_path_factory):
+    root = tmp_path_factory.mktemp("replay-payload")
+    path = root / "seed.parquet"
+    with duckdb.connect(
+        config={"threads": 1, "memory_limit": "1024MB", "preserve_insertion_order": False}
+    ) as conn:
+        conn.execute(
+            "COPY (SELECT range AS i3_alert_snapshot_id, 'sample' AS provider_id, "
+            "range AS ingestion_run_id, repeat(md5(range::VARCHAR),2048) AS raw_payload_json "
+            "FROM range(20000)) TO ? (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 2048)",
+            [str(path)],
+        )
+    return path
+
+
+@pytest.mark.parametrize("budget", [1024, 32])
+def test_payload_closure_materializes_or_refuses_by_memory_budget(
+    tmp_path, replay_payload_seed, budget
+):
+    from shutil import copyfile
+
+    from transit_ops.batch.input_sources import Source
+
+    path = tmp_path / "closure.parquet"
+    copyfile(replay_payload_seed, path)
+    source = Source(
+        "closure",
+        dict(
+            bundle_closure=True,
+            bundle_version="a" * 64,
+            replay_provider="sample",
+            bundle_snapshot_at_utc=STAMP.isoformat(),
+            object_sha256="b" * 64,
+            object_bytes=path.stat().st_size,
+        ),
+        (InputNeed("raw.i3_alert_snapshots", "all"),),
+    )
+    root = tmp_path / "inputs"
+    if budget == 32:
+        with pytest.raises(ValueError, match="replay_memory.*raw.i3_alert_snapshots.*32MB"):
+            materialize([source], {"closure": path}, root, STAMP, memory_limit_mb=budget)
+    else:
+        materialize([source], {"closure": path}, root, STAMP, memory_limit_mb=budget)
+        with duckdb.connect(config={"threads": 1, "memory_limit": "1024MB"}) as conn:
+            assert conn.execute(
+                "SELECT count(*),sum(length(raw_payload_json)) FROM read_parquet(?)",
+                [str(root / "raw.i3_alert_snapshots" / "all.parquet")],
+            ).fetchone() == (20000, 1_310_720_000)

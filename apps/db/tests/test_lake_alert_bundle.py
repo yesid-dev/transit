@@ -513,6 +513,9 @@ if sys.platform=='win32':
     if not ctypes.windll.psapi.GetProcessMemoryInfo(process,ctypes.byref(counts),counts.cb):
         raise ctypes.WinError()
     peak=counts.peak
+elif sys.platform.startswith('linux'):
+    status=Path('/proc/self/status').read_text().splitlines()
+    peak=int(next(line for line in status if line.startswith('VmHWM:')).split()[1])*1024
 else:
     import resource
     peak=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss*(1 if sys.platform=='darwin' else 1024)

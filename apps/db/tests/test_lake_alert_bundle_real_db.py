@@ -258,7 +258,8 @@ def test_closure_explain_uses_parent_indexes_and_no_cte_inner_loop(alert_seed):
     conn.execute(
         """INSERT INTO silver.i3_alerts(i3_alert_snapshot_id, alert_index,
         provider_id, captured_at_utc, raw_alert_json, content_hash)
-        SELECT i3_alert_snapshot_id,0,provider_id,now(),'{}',repeat('b',64)
+        SELECT i3_alert_snapshot_id,0,provider_id,now(),'{}',
+            md5(i3_alert_snapshot_id::text) || md5('b' || i3_alert_snapshot_id::text)
         FROM raw.i3_alert_snapshots WHERE provider_id=%s
         ORDER BY i3_alert_snapshot_id DESC LIMIT 2000""",
         (PROVIDER,),

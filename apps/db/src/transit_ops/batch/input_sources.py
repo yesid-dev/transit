@@ -615,10 +615,28 @@ def _filter_window(
         values = [p for _, params in selections for p in params]
         part = path.parent / f"part-{index}-{offset}.parquet"
         conn.execute(
-            f"COPY (SELECT * FROM input WHERE {sql}) TO ? (FORMAT parquet)", values + [str(part)]
+            f"COPY (SELECT * FROM input WHERE {sql}) TO ? (FORMAT parquet, ROW_GROUP_SIZE 2048)",
+            values + [str(part)],
         )
         parts[need] = part
     return receipt, parts
+
+
+@contextmanager
+def _materialize_connection(
+    root: Path, relation: list[str], memory_limit_mb: int, temp_max_mb: int
+) -> Iterator[duckdb.DuckDBPyConnection]:
+    try:
+        with bounded_connection(
+            root, memory_limit_mb=memory_limit_mb, temp_max_mb=temp_max_mb
+        ) as conn:
+            yield conn
+    except duckdb.OutOfMemoryException as error:
+        raise BundleRefused(
+            "replay_memory",
+            f"{relation[0]}: memory_limit={memory_limit_mb}MB, "
+            f"max_temp_directory_size={temp_max_mb}MB",
+        ) from error
 
 
 def materialize(
@@ -626,15 +644,21 @@ def materialize(
     paths: Mapping[str, Path],
     root: Path,
     as_of: datetime,
+    *,
+    memory_limit_mb: int = 1024,
+    temp_max_mb: int = 2048,
 ) -> list[dict[str, object]]:
     """Filter archive ranges before either engine reads; retain per-window row accounting."""
     targets: dict[InputNeed, list[Path]] = defaultdict(list)
     receipts = []
     schemas: dict[str, list[tuple[Any, ...]]] = {}
     whole = {n.relation for s in sources for n in s.needs if n.window == "all"}
-    with bounded_connection(root) as conn:
+    current_relation = [sources[0].needs[0].relation if sources else "input_sources"]
+    with _materialize_connection(root, current_relation, memory_limit_mb, temp_max_mb) as conn:
         conn.execute("SET TimeZone='UTC'")
         for index, source in enumerate(sources):
+            relation = source.needs[0].relation
+            current_relation[0] = relation
             path = paths[source.key]
             conn.execute("DROP VIEW IF EXISTS input")
             raw_view = f"raw_input_{index}"
@@ -680,6 +704,8 @@ def materialize(
             for need, part in parts.items():
                 targets[need].append(part)
         for need, files in targets.items():
+            relation = need.relation
+            current_relation[0] = relation
             destination = root / need.relation / (need.window.replace(":", "=", 1) + ".parquet")
             destination.parent.mkdir(parents=True, exist_ok=True)
             if destination.exists():
@@ -733,7 +759,8 @@ def materialize(
                     "AND r.file_row_number=k.source_row"
                 )
             conn.execute(
-                f"COPY (SELECT {columns} FROM {source_sql}) TO ? (FORMAT parquet)",
+                f"COPY (SELECT {columns} FROM {source_sql}) TO ? "
+                "(FORMAT parquet, ROW_GROUP_SIZE 2048)",
                 [sql_paths, str(destination)],
             )
     return receipts
