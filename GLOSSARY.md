@@ -58,6 +58,10 @@ _Avoid_: version (an archive copy's content version)
 The compressed, write-once form of one window of one dataset, in object storage under `archive/`.
 _Avoid_: the alert archive (a published list of alerts)
 
+**Shadow build**:
+A DuckDB build written under `shadow/v1/`, never read by visitors, kept to compare with what PostgreSQL published.
+_Avoid_: shadow worker (the live path's second worker)
+
 **Hold**:
 A mark on a window that stops trim from removing its working copy again, until a set time or with no end.
 
@@ -83,6 +87,10 @@ _Avoid_: archive grain, reporting grain
 **Verdict**:
 The one-word answer to "how reliable is this line, stop or network over this window": reliable, patchy, unreliable, tentative or absent.
 _Avoid_: status, badge, OTP status
+
+**Accepted build**:
+One DuckDB build of one family, provider and day whose outputs were compared with the PostgreSQL path on the same inputs and found identical.
+_Avoid_: verified copy (a proven copy of stored rows)
 
 **Tentative**:
 In revision 2, a verdict given when there are too few observations (under 30) or the uncertainty leaves open whether the service is reliable. Shown with a hedge. In revision 3, fewer than 30 trips, or too few service days, in the window.
