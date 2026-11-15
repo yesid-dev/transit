@@ -41,16 +41,16 @@
 		border-radius: var(--radius-sm);
 	}
 	.home-search a:hover {
-		color: var(--accent-text);
-		border-color: var(--accent-text);
+		color: var(--primary);
+		border-color: var(--primary);
 	}
 	.home-search a:focus-visible {
-		outline: 2px solid var(--accent-text);
+		outline: 2px solid var(--primary);
 		outline-offset: 2px;
 	}
 	.home-search a :global(.home-search-icon) {
 		flex: none;
-		color: var(--accent-text);
+		color: var(--primary);
 	}
 	.home-search-label {
 		flex: 1;
@@ -60,7 +60,7 @@
 	}
 	.home-search-arrow {
 		flex: none;
-		color: var(--accent-text);
+		color: var(--primary);
 		font-family: var(--font-mono);
 	}
 	/* A button, not a field: from tablet width up it is as wide as its label. */

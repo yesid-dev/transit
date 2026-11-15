@@ -91,11 +91,11 @@
 		border-radius: var(--radius-sm);
 	}
 	.pulse-shortcuts a:hover {
-		color: var(--accent-text);
-		border-color: var(--accent-text);
+		color: var(--primary);
+		border-color: var(--primary);
 	}
 	.pulse-shortcuts a:focus-visible {
-		outline: 2px solid var(--accent-text);
+		outline: 2px solid var(--primary);
 		outline-offset: 2px;
 	}
 	.pulse-shortcut-title {
@@ -111,7 +111,7 @@
 		position: absolute;
 		top: 0.625rem;
 		right: 0.75rem;
-		color: var(--accent-text);
+		color: var(--primary);
 		font-family: var(--font-mono);
 	}
 	.pulse-body {

@@ -395,11 +395,11 @@
 		color: var(--muted-foreground);
 	}
 	.pulse-rank a:hover {
-		color: var(--accent-text);
+		color: var(--primary);
 	}
 	.pulse-rank a:focus-visible,
 	.pulse-more:focus-visible {
-		outline: 2px solid var(--accent-text);
+		outline: 2px solid var(--primary);
 		outline-offset: 2px;
 	}
 	.pulse-rank-name {
@@ -426,7 +426,7 @@
 		min-height: 44px;
 		display: inline-flex;
 		align-items: center;
-		color: var(--accent-text);
+		color: var(--primary);
 		font-family: var(--font-mono);
 		font-size: var(--text-small);
 	}

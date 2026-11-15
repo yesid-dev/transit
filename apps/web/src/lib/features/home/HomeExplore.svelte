@@ -253,7 +253,7 @@
 		align-items: center;
 		gap: 0.5rem;
 		min-height: 44px;
-		color: var(--accent-text);
+		color: var(--primary);
 		font-family: var(--font-mono);
 		font-size: var(--text-small);
 		cursor: pointer;
@@ -263,7 +263,7 @@
 		display: none;
 	}
 	.home-more summary:focus-visible {
-		outline: 2px solid var(--accent-text);
+		outline: 2px solid var(--primary);
 		outline-offset: 4px;
 	}
 	.home-more-open,
@@ -323,21 +323,21 @@
 		max-width: var(--measure-lede);
 	}
 	.home-entry-arrow {
-		color: var(--accent-text);
+		color: var(--primary);
 		font-family: var(--font-mono);
 		font-size: 1.25rem;
 		line-height: 1.25;
 		transition: transform var(--duration-fast) var(--ease-out);
 	}
 	.home-entry:hover {
-		color: var(--accent-text);
+		color: var(--primary);
 	}
 	.home-entry:hover .home-entry-arrow {
 		transform: translate(2px, -2px);
 	}
 	.home-entry:focus-visible,
 	.home-clear:focus-visible {
-		outline: 2px solid var(--accent-text);
+		outline: 2px solid var(--primary);
 		outline-offset: 4px;
 	}
 	.directory-head {
@@ -371,7 +371,7 @@
 		justify-content: space-between;
 		min-height: 48px;
 		padding: 0.75rem 0;
-		color: var(--accent-text);
+		color: var(--primary);
 		font-family: var(--font-mono);
 		cursor: pointer;
 		border-bottom: 1px solid var(--border-brand);
@@ -384,7 +384,7 @@
 		transform: rotate(45deg);
 	}
 	.home-filters summary:focus-visible {
-		outline: 2px solid var(--accent-text);
+		outline: 2px solid var(--primary);
 		outline-offset: 4px;
 	}
 	.explore-filters {
@@ -411,7 +411,7 @@
 	.home-clear {
 		min-height: 44px;
 		padding: 0.5rem 0.75rem;
-		color: var(--accent-text);
+		color: var(--primary);
 		text-decoration: underline;
 		cursor: pointer;
 	}

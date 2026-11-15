@@ -47,11 +47,11 @@
 		display: inline-flex;
 		align-items: center;
 		min-height: 44px;
-		color: var(--accent-text);
+		color: var(--primary);
 		font-family: var(--font-mono);
 	}
 	.invite-actions a:focus-visible {
-		outline: 2px solid var(--accent-text);
+		outline: 2px solid var(--primary);
 		outline-offset: 2px;
 	}
 	.home-invite .invite-support {
