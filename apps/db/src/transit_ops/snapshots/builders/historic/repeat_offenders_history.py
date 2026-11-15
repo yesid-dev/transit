@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
@@ -29,6 +29,7 @@ from transit_ops.snapshots.contract import (
     HistoricRepeatOffenderGrain,
     HistoricRepeatOffendersDay,
     Offender,
+    RepeatOffenderEntry,
 )
 from transit_ops.snapshots.serialization import snapshot_json_bytes
 from transit_ops.sql_registry import named_query
@@ -103,17 +104,59 @@ _REPEAT_OFFENDERS_HISTORY_DAILY_SQL = named_query(
            sp.observation_count::bigint AS observation_count,
            sp.severe_delay_count::bigint AS severe_count,
            sp.sum_delay_seconds::bigint AS sum_delay_seconds,
-           sp.built_at_utc AS source_generated_utc,
-           label.route_short_name, label.trip_headsign AS headsign, label.departure_time
+           sp.built_at_utc AS source_generated_utc
     FROM gold.repeat_offender_daily_spine AS sp
     JOIN gold.dim_provider AS dp ON dp.provider_id = sp.provider_id
-    """ + OFFENDER_LABEL_JOIN_SQL + """
     WHERE sp.provider_id = :provider_id
       AND sp.provider_local_date < timezone(dp.timezone, CAST(:as_of_utc AS timestamptz))::date
     ORDER BY sp.provider_local_date, sp.entity_kind COLLATE "C",
              sp.entity_id COLLATE "C", sp.route_id COLLATE "C"
     """,
 )
+
+
+_REPEAT_OFFENDERS_HISTORY_LABELS_SQL = named_query(
+    "history.repeat_offenders.labels",
+    """
+    SELECT sp.entity_kind, sp.entity_id, sp.route_id,
+           label.route_short_name, label.trip_headsign AS headsign, label.departure_time
+    FROM (
+        SELECT CAST(:provider_id AS text) AS provider_id,
+               CAST(:local_date AS date) AS provider_local_date, requested.*
+        FROM unnest(CAST(:kinds AS text[]), CAST(:ids AS text[]), CAST(:routes AS text[]))
+             AS requested(entity_kind, entity_id, route_id)
+    ) sp
+    JOIN gold.dim_provider dp ON dp.provider_id = sp.provider_id
+    """
+    + OFFENDER_LABEL_JOIN_SQL,
+)
+
+
+def _label_departures(
+    conn: Connection,
+    provider_id: str,
+    local_date: str,
+    entries: list[RepeatOffenderEntry],
+) -> None:
+    keys = sorted({(entry.type, entry.id, entry.route) for entry in entries})
+    if not keys:
+        return
+    rows = conn.execute(
+        _REPEAT_OFFENDERS_HISTORY_LABELS_SQL,
+        {
+            "provider_id": provider_id,
+            "local_date": local_date,
+            "kinds": [key[0] for key in keys],
+            "ids": [key[1] for key in keys],
+            "routes": [key[2] for key in keys],
+        },
+    ).mappings()
+    labels = {(row["entity_kind"], row["entity_id"], row["route_id"]): row for row in rows}
+    for entry in entries:
+        label = labels.get((entry.type, entry.id, entry.route), {})
+        entry.route_short_name = label.get("route_short_name")
+        entry.departure_time = label.get("departure_time")
+        entry.headsign = label.get("headsign")
 
 
 _EntityKey = tuple[str, str, str]
@@ -123,9 +166,6 @@ _SCALAR_MIN_RECURRENCE = 3
 
 @dataclass(slots=True)
 class _Counts:
-    route_short_name: str | None = None
-    departure_time: str | None = None
-    headsign: str | None = None
     present: int = 0
     recurrence_days: int = 0
     observation_count: int = 0
@@ -133,9 +173,6 @@ class _Counts:
     sum_delay_seconds: int = 0
 
     def add(self, other: _Counts) -> None:
-        self.route_short_name = other.route_short_name
-        self.departure_time = other.departure_time
-        self.headsign = other.headsign
         self.present += other.present
         self.recurrence_days += other.recurrence_days
         self.observation_count += other.observation_count
@@ -205,9 +242,6 @@ def _daily_counts(
                 "Repeat Offenders history severe_count cannot exceed observation_count"
             )
         counts[key] = _Counts(
-            route_short_name=row.get("route_short_name"),
-            departure_time=row.get("departure_time"),
-            headsign=row.get("headsign"),
             present=1,
             recurrence_days=int(severe_count > 0),
             observation_count=observation_count,
@@ -296,9 +330,6 @@ def _grain(
     )
     rows = [
         {
-            "route_short_name": value.route_short_name,
-            "departure_time": value.departure_time,
-            "headsign": value.headsign,
             "entity_kind": kind,
             "entity_id": entity_id,
             "route_id": route_id,
@@ -348,6 +379,7 @@ def _iter_repeat_offender_days(
     *,
     daily_rows: Iterable[Mapping[str, Any]],
     names: HistoryNameIndex,
+    label_departures: Callable[[str, list[RepeatOffenderEntry]], None] | None,
 ) -> Iterator[HistoricRepeatOffendersDay]:
     windows = {width: _CountsWindow(width) for width in (7, 14, 30)}
     for rendered_date, source_rows in iter_history_date_groups(daily_rows):
@@ -381,6 +413,11 @@ def _iter_repeat_offender_days(
             ),
             by_grain=grains,
         )
+        if label_departures is not None:
+            label_departures(
+                rendered_date,
+                [entry for grain in grains for entry in [*grain.entries, *grain.tray]],
+            )
         size = len(snapshot_json_bytes(payload))
         if size > REPEAT_OFFENDERS_BYTE_CEILING:
             raise ValueError(
@@ -396,9 +433,14 @@ class RepeatOffendersHistoryPlan:
 
     daily_rows: Iterable[Mapping[str, Any]]
     names: HistoryNameIndex
+    label_departures: Callable[[str, list[RepeatOffenderEntry]], None] | None = None
 
     def iter_days(self) -> Iterator[HistoricRepeatOffendersDay]:
-        return _iter_repeat_offender_days(daily_rows=self.daily_rows, names=self.names)
+        return _iter_repeat_offender_days(
+            daily_rows=self.daily_rows,
+            names=self.names,
+            label_departures=self.label_departures,
+        )
 
     def materialize(self) -> list[HistoricRepeatOffendersDay]:
 
@@ -437,7 +479,11 @@ def build_repeat_offenders_history_plan(
         name_rows = conn.execute(_REPEAT_OFFENDERS_HISTORY_NAMES_SQL, params).mappings()
         names = HistoryNameIndex(name_rows, provider_timezone=timezone_row["timezone"])
     daily_rows = conn.execute(_REPEAT_OFFENDERS_HISTORY_DAILY_SQL, params).mappings()
-    return RepeatOffendersHistoryPlan(daily_rows=daily_rows, names=names)
+    return RepeatOffendersHistoryPlan(
+        daily_rows=daily_rows,
+        names=names,
+        label_departures=lambda day, entries: _label_departures(conn, provider_id, day, entries),
+    )
 
 
 __all__ = [

@@ -1,3 +1,4 @@
+import { resolveOffenderName } from '../offenderNames';
 import type { RepeatOffenderEntry } from '#lib/v1/schemas/index.ts';
 import type { LineDirectory } from '#lib/site/lineDirectory.ts';
 
@@ -36,12 +37,8 @@ export function buildOffenderEvidenceRows(
 ): OffenderEvidenceRow[] {
 	const directory = labels.directory;
 	return entries.slice(0, Math.max(0, cap)).map((entry) => {
-		const name = directory && entry.route ? directory.name(entry.route, entry.route_name) : null;
-		const title =
-			name?.label ??
-			(entry.departure_time || entry.route_short_name || entry.headsign
-				? labels.unnamed(entry)
-				: (entry.route_name ?? labels.unnamed(entry)));
+		const name = resolveOffenderName(entry, directory, labels.unnamed);
+		const title = name.label;
 		const confidenceInterval =
 			entry.wilson_lo != null && entry.wilson_hi != null
 				? labels.confidenceInterval(round1(100 - entry.wilson_hi), round1(100 - entry.wilson_lo))
@@ -51,9 +48,7 @@ export function buildOffenderEvidenceRows(
 			key: `${entry.type}-${entry.id}-${entry.route ?? ''}`,
 			title,
 			href: labels.href(entry),
-			ariaLabel:
-				name?.spoken ??
-				(directory && entry.route_name ? directory.spoken(title) : labels.ariaLabel(title)),
+			ariaLabel: directory ? name.spoken : labels.ariaLabel(name.spoken),
 			typeId: labels.typeId(entry),
 			severeRate: labels.severeRate(entry.severe_pct),
 			confidenceInterval,

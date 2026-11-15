@@ -405,6 +405,11 @@ _REPEAT_OFFENDERS_SQL = named_query(
 )
 
 
+def _scalar_offender_delay(seconds):
+    value = _avg_delay_min(seconds)
+    return 0.0 if value == 0 else value
+
+
 def build_repeat_offenders(
     conn: Connection, *, provider_id: str, generated_utc: str
 ) -> RepeatOffenders:
@@ -422,7 +427,7 @@ def build_repeat_offenders(
             recurrence=f"{r['recurrence_days']}/{r['window_days']}d",
             recurrence_days=_opt_int(r["recurrence_days"]),
             window_days=_opt_int(r["window_days"]),
-            avg_delay_min=_avg_delay_min(r["avg_delay_seconds"]),
+            avg_delay_min=_scalar_offender_delay(r["avg_delay_seconds"]),
             severity=r["severity_label"],
         )
         for r in rows

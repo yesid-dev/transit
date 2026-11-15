@@ -1425,11 +1425,12 @@ def test_repeat_offenders_as_of_generated_time_accepts_aware_datetime_and_uses_m
     assert payload.generated_utc == "2026-07-07T01:03:00Z"
 
 
-def test_repeat_offenders_history_production_plan_executes_exactly_three_queries() -> None:
+def test_repeat_offenders_history_plan_streams_counts_and_batches_labels_per_point() -> None:
     conn = NamedQueryConn(
         {
             "history.repeat_offenders.timezone": [{"timezone": "America/Toronto"}],
             "history.repeat_offenders.names": [],
+            "history.repeat_offenders.labels": [],
             "history.repeat_offenders.daily": [
                 _offender_row("2026-07-05", "T1"),
                 _offender_row("2026-07-06", "T1"),
@@ -1447,8 +1448,10 @@ def test_repeat_offenders_history_production_plan_executes_exactly_three_queries
         "history.repeat_offenders.timezone",
         "history.repeat_offenders.names",
         "history.repeat_offenders.daily",
+        "history.repeat_offenders.labels",
+        "history.repeat_offenders.labels",
     ]
-    sql = conn.executed[-1]
+    sql = conn.executed[2]
     assert "FROM gold.repeat_offender_daily_spine AS sp" in sql
     assert (
         "provider_local_date < timezone(dp.timezone, CAST(:as_of_utc AS timestamptz))::date"
