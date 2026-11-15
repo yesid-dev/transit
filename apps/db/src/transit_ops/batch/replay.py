@@ -184,16 +184,12 @@ def local_parent_references(
     ):
         raise ValueError(f"invalid FK columns: {child.relation}")
     predicate = " AND ".join('"' + c.replace('"', '""') + '" IS NOT NULL' for c in columns)
+    sql = f"SELECT EXISTS (SELECT 1 FROM {child.relation} WHERE {predicate})"
+    # The registry is global; different relations/FK shapes need different stable names.
+    name = "batch.replay.parent_references.q_" + hashlib.sha256(sql.encode()).hexdigest()
     inputs = resolve_inputs((child,), root)
     with PrivateArea(workdir) as area, open_batch_session(inputs, workdir=area) as session:
-        return bool(
-            session.execute(
-                named_query(
-                    "batch.replay.parent_references",
-                    f"SELECT EXISTS (SELECT 1 FROM {child.relation} WHERE {predicate})",
-                )
-            ).scalar_one()
-        )
+        return bool(session.execute(named_query(name, sql)).scalar_one())
 
 
 def _legacy_state_needs(root: Path) -> tuple[InputNeed, ...]:

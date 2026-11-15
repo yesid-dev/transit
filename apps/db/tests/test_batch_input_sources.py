@@ -536,3 +536,33 @@ def test_local_fk_closure_uses_child_rows(tmp_path, rows, required):
         lambda need, fk: local_parent_references(need, fk, root, tmp_path / "work"),
     )
     assert (InputNeed("silver.routes", "edition:7") in needs) is required
+
+
+def test_parent_reference_checks_repeat_across_relations_and_fk_shapes(tmp_path):
+    from transit_ops.batch.replay import local_parent_references
+
+    root = tmp_path / "inputs"
+    for relation in ("silver.trips", "silver.stop_times"):
+        folder = root / relation
+        folder.mkdir(parents=True)
+        with duckdb.connect() as conn:
+            conn.execute(
+                "COPY (SELECT 7 AS dataset_version_id, NULL::VARCHAR AS route_id) "
+                "TO ? (FORMAT parquet)",
+                [str(folder / "edition=7.parquet")],
+            )
+    for _ in range(2):
+        actual = [
+            local_parent_references(
+                InputNeed(relation, "edition:7"),
+                {"constrained_columns": columns},
+                root,
+                tmp_path / "work",
+            )
+            for relation, columns in (
+                ("silver.trips", ["dataset_version_id"]),
+                ("silver.trips", ["dataset_version_id", "route_id"]),
+                ("silver.stop_times", ["dataset_version_id"]),
+            )
+        ]
+        assert actual == [True, False, True]
