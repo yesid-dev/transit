@@ -298,7 +298,7 @@
 	/* Alternatives share one grid cell, so the tile takes the larger of the two in every state. */
 	.pulse-stack {
 		display: grid;
-		align-items: center;
+		align-items: start;
 	}
 	.pulse-stack > :global(*) {
 		grid-area: 1 / 1;

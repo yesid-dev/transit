@@ -49,8 +49,9 @@ for (const provider of ['stm', 'octranspo'])
 				if (phone.width >= 600 || path === '/network') return;
 				for (const width of [phone.width, 320]) {
 					await page.setViewportSize({ width, height: phone.height });
-					const rows = await page.locator('[data-slot="stacked-rankings"] [role="listitem"]').evaluateAll(
-						(items) =>
+					const rows = await page
+						.locator('[data-slot="stacked-rankings"] [role="listitem"]')
+						.evaluateAll((items) =>
 							items.map((item) => {
 								const row = item.getBoundingClientRect();
 								const figures = ['ranking-rate', 'ranking-interval'].map((slot) => {
@@ -67,9 +68,12 @@ for (const provider of ['stm', 'octranspo'])
 								});
 								return { rate: figures[0], interval: figures[1] };
 							}),
-					);
+						);
 					expect(rows.length, `${width}px ranked rows`).toBeGreaterThan(0);
-					expect(rows.some((row) => row.interval), `${width}px shows an interval`).toBe(true);
+					expect(
+						rows.some((row) => row.interval),
+						`${width}px shows an interval`,
+					).toBe(true);
 					for (const { rate, interval } of rows) {
 						expect(rate, `${width}px rate`).toMatchObject({ inside: true, whole: true });
 						if (!interval) continue;
