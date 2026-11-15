@@ -173,10 +173,11 @@ function deferred<T>() {
 	return { promise, resolve };
 }
 
-function desktopRail(container: HTMLElement): HTMLElement {
-	const rail = container.querySelector<HTMLElement>('[data-slot="surface-rail"]');
-	if (!rail) throw new Error('Expected the desktop Hotspots rail');
-	return rail;
+/** History sits with the other controls above the ranking, so the 7 + 5 split keeps its width. */
+function controlsOf(container: HTMLElement): HTMLElement {
+	const controls = container.querySelector<HTMLElement>('[data-slot="hotspots-controls"]');
+	if (!controls) throw new Error('Expected the Hotspots controls');
+	return controls;
 }
 
 const finding = (label: string) => `First-ranked line: ${label} line.`;
@@ -195,11 +196,27 @@ describe('HotspotsBoard retained date history', () => {
 
 		expect(harness.getHotspots).toHaveBeenCalledTimes(1);
 		expect(harness.getHotspotsHistoryDay).not.toHaveBeenCalled();
-		const rail = desktopRail(container);
-		expect(within(rail).getByLabelText('History date')).toHaveValue('2026-06-25');
-		expect(rail.querySelector('[data-slot="grain-picker"]')).toBeNull();
+		const controls = controlsOf(container);
+		expect(within(controls).getByLabelText('History date')).toHaveValue('2026-06-25');
+		expect(controls).toHaveAccessibleName('Ranking controls');
+		expect(controls.querySelectorAll('[data-slot="grain-picker"]')).toHaveLength(2);
+		expect(container.querySelector('[data-slot="surface-rail"]')).toBeNull();
+	});
+
+	it('shows the ranking and its history controls together, once discovery settles', async () => {
+		const discovery = deferred<HistoricCollectionIndex>();
+		harness.getHotspotsHistoryIndex.mockReturnValue(discovery.promise);
+		const { container } = render(HotspotsBoard);
+		await waitFor(() => expect(harness.getHotspots).toHaveBeenCalledTimes(1));
+		await new Promise((done) => setTimeout(done, 20));
+
+		expect(screen.queryByRole('heading', { name: finding('Current') })).toBeNull();
+		expect(container.querySelector('[data-slot="hotspot-rows"]')).toBeNull();
+		discovery.resolve(historyIndex);
+		await screen.findByRole('heading', { name: finding('Current') });
+		expect(container.querySelector('[data-slot="surface-rail"]')).toBeNull();
 		expect(
-			container.querySelector('[data-slot="hotspots-controls"] [data-slot="grain-picker"]'),
+			container.querySelector('[data-slot="hotspots-controls"] [data-slot="history-navigator"]'),
 		).not.toBeNull();
 	});
 
@@ -309,7 +326,7 @@ describe('HotspotsBoard retained date history', () => {
 		const { container } = render(HotspotsBoard);
 
 		await screen.findByRole('heading', { name: finding('Current') });
-		const rail = desktopRail(container);
+		const rail = controlsOf(container);
 		await waitFor(() =>
 			expect(rail.querySelector('[data-slot="history-announcement"]')).toHaveTextContent(message),
 		);
@@ -337,7 +354,7 @@ describe('HotspotsBoard retained date history', () => {
 		);
 		const { container } = render(HotspotsBoard);
 		await waitFor(() => expect(harness.getHotspotsHistoryDay).toHaveBeenCalledTimes(1));
-		const rail = desktopRail(container);
+		const rail = controlsOf(container);
 		expect(within(rail).getByRole('button', { name: 'Previous date' })).toBeDisabled();
 		expect(within(rail).getByRole('button', { name: 'Next date' })).not.toBeDisabled();
 
@@ -354,7 +371,7 @@ describe('HotspotsBoard retained date history', () => {
 		reset('http://localhost/hotspots?date=2026-06-20&n=5&kind=stops&campaign=walk');
 		const { container } = render(HotspotsBoard);
 		await screen.findByRole('heading', { name: 'First-ranked stop: Retained 20 stop.' });
-		const rail = desktopRail(container);
+		const rail = controlsOf(container);
 
 		await fireEvent.click(within(rail).getByRole('button', { name: 'Next date' }));
 		await screen.findByRole('heading', { name: 'First-ranked stop: Retained 22 stop.' });
@@ -399,8 +416,43 @@ describe('HotspotsBoard retained date history', () => {
 		const { container } = render(HotspotsBoard);
 
 		await screen.findByRole('heading', { name: 'No line ranks for these dates.' });
-		expect(within(desktopRail(container)).getByLabelText('History date')).toHaveValue('2026-06-20');
+		expect(within(controlsOf(container)).getByLabelText('History date')).toHaveValue('2026-06-20');
 		expect(container.querySelector('[data-slot="hotspot-rows"]')).toBeNull();
+	});
+
+	it('copies a latest-record link that still opens that record after a newer day is published', async () => {
+		const writeText = vi.fn(async (_text: string) => {});
+		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+		const { unmount } = render(HotspotsBoard);
+		await screen.findByRole('heading', { name: finding('Current') });
+		await fireEvent.click(within(screen.getByRole('list', { name: 'Lines' })).getByRole('button'));
+		const evidence = document.querySelector(
+			'[data-slot="hotspot-row-evidence"]:not([hidden])',
+		) as HTMLElement;
+		await fireEvent.click(within(evidence).getByRole('button', { name: 'Copy link' }));
+		const link = writeText.mock.lastCall![0];
+		expect(link).toBe('http://localhost/hotspots?date=2026-06-25&selected=161');
+		await fireEvent.click(within(evidence).getByRole('button', { name: 'Cite this record' }));
+		expect(writeText.mock.lastCall![0].endsWith(` ${link}`)).toBe(true);
+		unmount();
+		vi.unstubAllGlobals();
+
+		reset(link);
+		harness.getHotspotsHistoryIndex.mockResolvedValue({
+			...historyIndex,
+			available_dates: [...AVAILABLE_DATES, '2026-06-26'],
+		});
+		harness.getHotspotsHistoryDay.mockResolvedValue(
+			payload('Retained 25', '2026-06-25T23:59:59Z', { date: '2026-06-25' }),
+		);
+		render(HotspotsBoard);
+		await screen.findByRole('heading', { name: finding('Retained 25') });
+		expect(harness.getHotspotsHistoryDay).toHaveBeenCalledWith(
+			'2026-06-25',
+			expect.anything(),
+			expect.anything(),
+		);
+		expect(harness.getHotspots).not.toHaveBeenCalled();
 	});
 
 	it('refetches the selected historical lane globally and shows its accepted timestamp', async () => {

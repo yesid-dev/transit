@@ -147,6 +147,20 @@ describe('readHotspotRanking', () => {
 		expect(unknown.belowFloor.count).toBeNull();
 	});
 
+	it('returns a published -0 count as 0 and keeps an unpublished count absent', () => {
+		const grain = week(2, { total_ranked_routes: -0 + 2, tray_total: 2 });
+		grain.tray = [
+			{ type: 'route', id: 'R-zero', observation_count: -0 },
+			{ type: 'route', id: 'R-null', observation_count: null },
+		];
+		const ranking = readHotspotRanking(grain, 'route');
+		if (ranking.state !== 'ranked') throw new Error('expected a ranking');
+		const [zero, absent] = ranking.belowFloor.examples;
+		expect(Object.is(zero.readings, -0)).toBe(false);
+		expect(zero.readings).toBe(0);
+		expect(absent.readings).toBeNull();
+	});
+
 	it('drops an excluded list that contradicts its own floor', () => {
 		const grain = week();
 		grain.tray = [{ type: 'route', id: 'R-big', observation_count: 30 }];

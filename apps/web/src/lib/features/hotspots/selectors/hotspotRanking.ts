@@ -95,6 +95,9 @@ const isCount = (value: unknown): value is number =>
 	typeof value === 'number' && Number.isInteger(value) && value >= 0;
 const isShare = (value: unknown): value is number =>
 	typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100;
+// Counts and shares reach the page as +0, never -0 (owner ruling 6).
+const positiveZero = (value: number | null | undefined): number | null =>
+	value == null ? null : value + 0;
 const optional = <T>(value: T | null | undefined, valid: (value: T) => boolean): boolean =>
 	value == null || valid(value);
 
@@ -144,7 +147,7 @@ function readBelowFloor(grain: HotspotGrainSource, kind: RankingKind): BelowFloo
 			key: `${kind}-${entry.id}`,
 			id: entry.id,
 			name: entry.name?.trim() || null,
-			readings: entry.observation_count ?? null,
+			readings: positiveZero(entry.observation_count),
 		}));
 	const complete = isCount(grain.tray_total) && grain.tray_total === tray.length;
 	return { count: complete ? examples.length : null, examples };
@@ -166,7 +169,7 @@ export function readHotspotRanking(
 	const total = kind === 'route' ? grain.total_ranked_routes : grain.total_ranked_stops;
 	if (!entries.every(rowIsSane) || !orderIsSane(entries) || !optional(total, isCount))
 		return { state: 'invalid', ...published };
-	const eligible = total ?? null;
+	const eligible = positiveZero(total);
 	if (eligible != null && eligible < entries.length) return { state: 'invalid', ...published };
 	if (entries.length === 0) return { state: 'none', ...published };
 	return {
@@ -179,9 +182,8 @@ export function readHotspotRanking(
 			id: entry.id,
 			name: entry.name?.trim() || null,
 			position: entry.rank!,
-			// + 0 turns a published -0 into 0.
-			latePct: entry.severe_pct == null ? null : entry.severe_pct + 0,
-			readings: entry.observation_count ?? null,
+			latePct: positiveZero(entry.severe_pct),
+			readings: positiveZero(entry.observation_count),
 		})),
 	};
 }

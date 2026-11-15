@@ -29,14 +29,13 @@
 	} from '#lib/v1/repositories/historic.ts';
 	import type { HistoricCollectionIndex, Hotspots } from '#lib/v1/schemas/index.ts';
 	import {
-		ArticleControlStack,
 		HistoryNavigator,
 		ResourceBoundary,
 		GrainPicker,
 		type GrainSegment,
 	} from '#lib/components/surface/index.ts';
 	import type { ArticleMetaEntry } from '#lib/components/layout/index.ts';
-	import { DetailFrame, SurfaceRail } from '@yesid/ui/layout';
+	import { DetailFrame } from '@yesid/ui/layout';
 	import { CollapsibleSection } from '@yesid/ui/brand';
 	import SectionsToggle from '#lib/components/shared/SectionsToggle.svelte';
 	import { fmtLocalePct } from '#lib/utils/format.ts';
@@ -86,6 +85,8 @@
 
 	const availableDates = $derived(hotspots.availableDates);
 	const hasHistoryNavigator = $derived(availableDates.length > 0);
+	// The ranking waits for history discovery, so its controls never push the rows down later.
+	const discovered = $derived(hotspots.resolved !== null || hotspots.error != null);
 	const historyCorrection = createHistoryCorrectionPresentation(
 		hotspots,
 		() => t.history.correction,
@@ -221,11 +222,18 @@
 	const sentence = (text: string) =>
 		locale === 'fr' ? text.charAt(0).toLowerCase() + text.slice(1) : text;
 
+	/**
+	 * A copied link reopens this record, not whichever one is latest then: it names the shown
+	 * record's date (its period ends there) and the row cap that keeps the chosen row visible.
+	 * The browsing URL keeps its own cleanup of the latest date.
+	 */
 	function sameViewUrl(row: HotspotRowView): string {
+		const date = hotspots.canonicalDate ?? dates?.to ?? null;
 		const query = [
 			kind === 'stop' ? 'kind=stops' : null,
 			period === PERIODS[0] ? null : `grain=${period}`,
-			hotspots.canonicalDate ? `date=${hotspots.canonicalDate}` : null,
+			date ? `date=${date}` : null,
+			worstN === DEFAULT_WORST_N ? null : `n=${worstN}`,
 			`selected=${encodeURIComponent(row.id)}`,
 		]
 			.filter((part) => part != null)
@@ -296,44 +304,30 @@
 	);
 </script>
 
-{#snippet historyRail()}
-	{#snippet historyControls()}
-		{#key historyCorrection.revision}
-			<HistoryNavigator
-				mode="date"
-				date={hotspots.selectedDate ?? undefined}
-				dateOptions={availableDates.map((date) => ({ date }))}
-				previousDate={hotspots.previousDate}
-				nextDate={hotspots.nextDate}
-				coverageText={availableDates.length === 0
-					? null
-					: t.history.coverage(
-							formatDateKey(availableDates[0], locale),
-							formatDateKey(availableDates[availableDates.length - 1], locale),
-						)}
-				selectionText={hotspots.selectedDate == null
-					? null
-					: t.history.selection(formatDateKey(hotspots.selectedDate, locale))}
-				announcement={historyCorrection.announcement}
-				liveAnnouncement={false}
-				{locale}
-				labels={t.history.navigator}
-				onDateChange={selectHistoryDate}
-			/>
-		{/key}
-	{/snippet}
-	<SurfaceRail
-		rail={railBody}
-		label={t.rail.label}
-		summary={hotspots.selectedDate == null ? '' : formatDateKey(hotspots.selectedDate, locale)}
-		openAria={t.rail.open}
-		closeAria={t.rail.close}
-	/>
-	{#snippet railBody()}
-		<CollapsibleSection independent title={t.rail.controls}>
-			<ArticleControlStack history={historyControls} />
-		</CollapsibleSection>
-	{/snippet}
+{#snippet historyControls()}
+	{#key historyCorrection.revision}
+		<HistoryNavigator
+			mode="date"
+			date={hotspots.selectedDate ?? undefined}
+			dateOptions={availableDates.map((date) => ({ date }))}
+			previousDate={hotspots.previousDate}
+			nextDate={hotspots.nextDate}
+			coverageText={availableDates.length === 0
+				? null
+				: t.history.coverage(
+						formatDateKey(availableDates[0], locale),
+						formatDateKey(availableDates[availableDates.length - 1], locale),
+					)}
+			selectionText={hotspots.selectedDate == null
+				? null
+				: t.history.selection(formatDateKey(hotspots.selectedDate, locale))}
+			announcement={historyCorrection.announcement}
+			liveAnnouncement={false}
+			{locale}
+			labels={t.history.navigator}
+			onDateChange={selectHistoryDate}
+		/>
+	{/key}
 {/snippet}
 
 {#snippet evidence(row: HotspotRowView, level: 2 | 3)}
@@ -352,11 +346,7 @@
 	{@render evidence(row, 3)}
 {/snippet}
 
-<DetailFrame
-	class="hotspots-detail"
-	railScroll
-	rail={hasHistoryNavigator ? historyRail : undefined}
->
+<DetailFrame class="hotspots-detail">
 	{#snippet header()}
 		<ArticleHeader
 			watermark={t.article.watermark}
@@ -386,127 +376,133 @@
 	</p>
 	<div class="hotspots-page" data-slot="hotspots-page">
 		<p class="hotspots-purpose">{t.purpose}</p>
+		<!-- Controls stay usable while a record loads; the ranking below waits for history discovery. -->
+		<section class="hotspots-controls" aria-label={t.controls} data-slot="hotspots-controls">
+			<div class="hotspots-pickers">
+				<GrainPicker
+					segments={kindSegments}
+					value={kind}
+					onSelect={(key) => selectKind(key as RankingKind)}
+					label={t.kind.label}
+				/>
+				<GrainPicker
+					segments={view.segments}
+					value={view.grain}
+					onSelect={selectPeriod}
+					label={t.period.label}
+				/>
+			</div>
+			{#if hasHistoryNavigator}{@render historyControls()}{/if}
+		</section>
 		<ResourceBoundary resource={hotspots} lang={locale}>
-			<section class="hotspots-controls" aria-label={t.kind.label} data-slot="hotspots-controls">
-				<div class="hotspots-pickers">
-					<GrainPicker
-						segments={kindSegments}
-						value={kind}
-						onSelect={(key) => selectKind(key as RankingKind)}
-						label={t.kind.label}
-					/>
-					<GrainPicker
-						segments={view.segments}
-						value={view.grain}
-						onSelect={selectPeriod}
-						label={t.period.label}
-					/>
+			{#if discovered}
+				<div class="hotspots-controls">
+					<p class="hotspots-period" data-slot="hotspots-period">{periodText}</p>
+					<p class="hotspots-measure">{t.measure}</p>
 				</div>
-				<p class="hotspots-period" data-slot="hotspots-period">{periodText}</p>
-				<p class="hotspots-measure">{t.measure}</p>
-			</section>
 
-			<h2 class="hotspots-finding" data-slot="hotspots-finding">{finding}</h2>
+				<h2 class="hotspots-finding" data-slot="hotspots-finding">{finding}</h2>
 
-			{#if ranking.state === 'ranked' && selected}
-				<div class="hotspots-workspace-frame" bind:clientWidth={frameWidth}>
-					<div class="hotspots-workspace">
-						<HotspotSection
-							heading={t.ranking.heading[kind]}
-							count={countText}
-							rows={shownRows}
-							selected={selected.key}
-							{wide}
-							{expanded}
-							{paneId}
-							onSelect={selectRow}
-							{toggle}
-							evidence={inlineEvidence}
-							copy={t}
-						/>
-						<aside
-							id={paneId}
-							class="hotspots-evidence-pane"
-							aria-label={t.evidence.heading}
-							data-slot="hotspot-evidence-pane"
-						>
-							{@render evidence(selected, 2)}
-						</aside>
+				{#if ranking.state === 'ranked' && selected}
+					<div class="hotspots-workspace-frame" bind:clientWidth={frameWidth}>
+						<div class="hotspots-workspace">
+							<HotspotSection
+								heading={t.ranking.heading[kind]}
+								count={countText}
+								rows={shownRows}
+								selected={selected.key}
+								{wide}
+								{expanded}
+								{paneId}
+								onSelect={selectRow}
+								{toggle}
+								evidence={inlineEvidence}
+								copy={t}
+							/>
+							<aside
+								id={paneId}
+								class="hotspots-evidence-pane"
+								aria-label={t.evidence.heading}
+								data-slot="hotspot-evidence-pane"
+							>
+								{@render evidence(selected, 2)}
+							</aside>
+						</div>
 					</div>
-				</div>
-			{/if}
-
-			{#if belowFloor}
-				<section
-					class="hotspots-exclusions"
-					aria-labelledby="hotspots-exclusions-heading"
-					data-slot="hotspot-exclusions"
-				>
-					<h2 id="hotspots-exclusions-heading" class="hotspots-section-heading">
-						{t.exclusions.heading[kind]}
-					</h2>
-					<ul class="hotspots-exclusion-rows">
-						<li>
-							<span>{t.exclusions.floor}</span>
-							<span class="hotspots-exclusion-total" data-slot="hotspot-floor-total">
-								{belowFloor.count == null
-									? t.exclusions.unknown
-									: t.exclusions.total(kind, belowFloor.count, count(belowFloor.count))}
-							</span>
-						</li>
-						{#if kind === 'route'}
-							<li>
-								<span>{t.exclusions.noLive}</span>
-								<span class="hotspots-exclusion-total">{t.exclusions.unknown}</span>
-							</li>
-						{/if}
-					</ul>
-					{#if kind === 'route'}
-						<p class="hotspots-meta">{t.exclusions.noLiveLimit}</p>
-					{/if}
-					{#if belowFloor.examples.length === 0}
-						<p class="hotspots-meta" data-slot="hotspot-excluded-summary">{excludedSummary}</p>
-					{/if}
-				</section>
-
-				{#if belowFloor.examples.length > 0}
-					<CollapsibleSection title={t.excluded.title} anchor="hotspots-excluded">
-						{#snippet summary()}
-							<p class="hotspots-meta" data-slot="hotspot-excluded-summary">{excludedSummary}</p>
-						{/snippet}
-						<ul class="hotspots-excluded" aria-label={t.excluded.label[kind]}>
-							{#each belowFloor.examples as example (example.key)}
-								{@const identity = identityOf(example.id, example.name)}
-								{@const named = [identity.number, identity.name].filter(Boolean).join(', ')}
-								<li>
-									<a href={recordHref(example.id)} aria-label="{t.kindWord[kind]} {named}"
-										>{named}</a
-									>
-									<span class="hotspots-excluded-readings">
-										{example.readings == null
-											? t.readingsUnknown
-											: t.readings(example.readings, count(example.readings))}
-									</span>
-									<span class="hotspots-meta">{t.exclusions.floor}</span>
-								</li>
-							{/each}
-						</ul>
-					</CollapsibleSection>
 				{/if}
-			{/if}
 
-			<CollapsibleSection title={t.method.title} anchor="hotspots-method">
-				{#snippet summary()}
-					<p class="hotspots-meta">{t.method.summary}</p>
-				{/snippet}
-				<div class="hotspots-method">
-					<p>{t.method.engine}</p>
-					<p>{t.method.definition}</p>
-					<p>{t.method.bounds}</p>
-					<p>{methodText}</p>
-					<a href={metricHref}>{metricInfoCopy[locale].link}</a>
-				</div>
-			</CollapsibleSection>
+				{#if belowFloor}
+					<section
+						class="hotspots-exclusions"
+						aria-labelledby="hotspots-exclusions-heading"
+						data-slot="hotspot-exclusions"
+					>
+						<h2 id="hotspots-exclusions-heading" class="hotspots-section-heading">
+							{t.exclusions.heading[kind]}
+						</h2>
+						<ul class="hotspots-exclusion-rows">
+							<li>
+								<span>{t.exclusions.floor}</span>
+								<span class="hotspots-exclusion-total" data-slot="hotspot-floor-total">
+									{belowFloor.count == null
+										? t.exclusions.unknown
+										: t.exclusions.total(kind, belowFloor.count, count(belowFloor.count))}
+								</span>
+							</li>
+							{#if kind === 'route'}
+								<li>
+									<span>{t.exclusions.noLive}</span>
+									<span class="hotspots-exclusion-total">{t.exclusions.unknown}</span>
+								</li>
+							{/if}
+						</ul>
+						{#if kind === 'route'}
+							<p class="hotspots-meta">{t.exclusions.noLiveLimit}</p>
+						{/if}
+						{#if belowFloor.examples.length === 0}
+							<p class="hotspots-meta" data-slot="hotspot-excluded-summary">{excludedSummary}</p>
+						{/if}
+					</section>
+
+					{#if belowFloor.examples.length > 0}
+						<CollapsibleSection title={t.excluded.title} anchor="hotspots-excluded">
+							{#snippet summary()}
+								<p class="hotspots-meta" data-slot="hotspot-excluded-summary">{excludedSummary}</p>
+							{/snippet}
+							<ul class="hotspots-excluded" aria-label={t.excluded.label[kind]}>
+								{#each belowFloor.examples as example (example.key)}
+									{@const identity = identityOf(example.id, example.name)}
+									{@const named = [identity.number, identity.name].filter(Boolean).join(', ')}
+									<li>
+										<a href={recordHref(example.id)} aria-label="{t.kindWord[kind]} {named}"
+											>{named}</a
+										>
+										<span class="hotspots-excluded-readings">
+											{example.readings == null
+												? t.readingsUnknown
+												: t.readings(example.readings, count(example.readings))}
+										</span>
+										<span class="hotspots-meta">{t.exclusions.floor}</span>
+									</li>
+								{/each}
+							</ul>
+						</CollapsibleSection>
+					{/if}
+				{/if}
+
+				<CollapsibleSection title={t.method.title} anchor="hotspots-method">
+					{#snippet summary()}
+						<p class="hotspots-meta">{t.method.summary}</p>
+					{/snippet}
+					<div class="hotspots-method">
+						<p>{t.method.engine}</p>
+						<p>{t.method.definition}</p>
+						<p>{t.method.bounds}</p>
+						<p>{methodText}</p>
+						<a href={metricHref}>{metricInfoCopy[locale].link}</a>
+					</div>
+				</CollapsibleSection>
+			{/if}
 		</ResourceBoundary>
 	</div>
 </DetailFrame>

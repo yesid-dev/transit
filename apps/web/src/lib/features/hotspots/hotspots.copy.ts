@@ -53,13 +53,8 @@ export const copy = defineCopy({
 					'Cette journée n’a pas été publiée. Affichage des points chauds les plus récents.',
 			},
 		},
-		rail: {
-			label: 'Historique',
-			open: 'Ouvrir l’historique',
-			close: 'Fermer l’historique',
-			controls: 'Historique du bilan',
-		},
 		purpose: 'Des lignes et des arrêts à examiner dans le bilan publié.',
+		controls: 'Options du classement',
 		kind: {
 			label: 'Classer les lignes ou les arrêts',
 			route: 'Lignes',
@@ -228,13 +223,8 @@ export const copy = defineCopy({
 				unpublished: 'That day was not published. Showing the latest hotspots.',
 			},
 		},
-		rail: {
-			label: 'History',
-			open: 'Open history',
-			close: 'Close history',
-			controls: 'Record history',
-		},
 		purpose: 'Lines and stops to investigate in the published record.',
+		controls: 'Ranking controls',
 		kind: {
 			label: 'Rank lines or stops',
 			route: 'Lines',

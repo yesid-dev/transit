@@ -40,7 +40,8 @@ vi.mock('#lib/v1/history/dateResource.svelte.ts', () => ({
 	createHistoryDateResource: vi.fn(() => ({
 		request: { hasDate: false, rawDate: null },
 		index: null,
-		resolved: null,
+		// Discovery has settled with no retained history.
+		resolved: { canonicalDate: null, selection: null, correction: null },
 		availableDates: [],
 		selectedDate: null,
 		canonicalDate: null,
@@ -303,16 +304,54 @@ describe('HotspotsBoard', () => {
 
 		await fireEvent.click(within(inline).getByRole('button', { name: 'Copy link' }));
 		expect(writeText).toHaveBeenLastCalledWith(
-			'http://localhost/hotspots?selected=303&provider=octranspo',
+			'http://localhost/hotspots?date=2026-11-10&selected=303&provider=octranspo',
 		);
 		await fireEvent.click(within(inline).getByRole('button', { name: 'Cite this record' }));
 		expect(writeText).toHaveBeenLastCalledWith(
-			`Transit. OC Transpo. Line 303, ${BAYSHORE}: 85% of readings more than 5 minutes late, November 4 to 10, 2026. 173 readings. Record published November 11, 2026. Method version: r2. http://localhost/hotspots?selected=303&provider=octranspo`,
+			`Transit. OC Transpo. Line 303, ${BAYSHORE}: 85% of readings more than 5 minutes late, November 4 to 10, 2026. 173 readings. Record published November 11, 2026. Method version: r2. http://localhost/hotspots?date=2026-11-10&selected=303&provider=octranspo`,
 		);
 		expect(await within(inline).findByText('Citation copied.')).toBeInTheDocument();
 
 		await fireEvent.click(first);
 		expect(first).toHaveAttribute('aria-expanded', 'false');
+	});
+
+	it('copies links to a row past the first ten that reopen on that row', async () => {
+		const openEvidence = () =>
+			document.querySelector('[data-slot="hotspot-row-evidence"]:not([hidden])') as HTMLElement;
+		const first = show(seed(7), 'http://localhost/hotspots?n=all&selected=96');
+		expect(openEvidence()).toHaveTextContent('Position 12 of 173');
+
+		await fireEvent.click(within(openEvidence()).getByRole('button', { name: 'Copy link' }));
+		const link = writeText.mock.lastCall![0];
+		expect(link).toBe(
+			'http://localhost/hotspots?date=2026-11-10&n=all&selected=96&provider=octranspo',
+		);
+		await fireEvent.click(within(openEvidence()).getByRole('button', { name: 'Cite this record' }));
+		expect(writeText.mock.lastCall![0].endsWith(` ${link}`)).toBe(true);
+		first.unmount();
+
+		show(seed(7), link);
+		expect(openEvidence()).toHaveTextContent('Position 12 of 173');
+		expect(openEvidence()).toHaveTextContent('Generated 6');
+	});
+
+	it.each([
+		['en', '0 readings'],
+		['fr', '0 relevé'],
+	] as const)('never shows a negative zero reading count in %s', async (locale, zero) => {
+		currentLocale.value = locale;
+		const data = seed();
+		data.by_grain![0].tray = [
+			{ type: 'stop', id: '5581', name: 'Doctor Leach', observation_count: -0 },
+		];
+		show(data, 'http://localhost/hotspots?kind=stops');
+
+		const excluded = screen.getByRole('list', {
+			name: locale === 'en' ? 'Published excluded stops' : 'Arrêts exclus publiés',
+		});
+		expect(excluded).toHaveTextContent(zero);
+		expect(excluded.textContent).not.toMatch(/[-−]\s*0/);
 	});
 
 	it('switches to stops with their own finding, exclusions and record links', async () => {
@@ -413,7 +452,7 @@ describe('HotspotsBoard', () => {
 		) as HTMLElement;
 		await fireEvent.click(within(inline).getByRole('button', { name: 'Citer ce bilan' }));
 		expect(writeText).toHaveBeenLastCalledWith(
-			`Transit. OC Transpo. Ligne 303, ${BAYSHORE} : 85${NB}% des relevés en retard de plus de 5 minutes, du 4 au 10 novembre 2026. 173 relevés. Bilan publié le 11 novembre 2026. Version de la méthode : r2. http://localhost/fr/hotspots?selected=303&provider=octranspo`,
+			`Transit. OC Transpo. Ligne 303, ${BAYSHORE} : 85${NB}% des relevés en retard de plus de 5 minutes, du 4 au 10 novembre 2026. 173 relevés. Bilan publié le 11 novembre 2026. Version de la méthode : r2. http://localhost/fr/hotspots?date=2026-11-10&selected=303&provider=octranspo`,
 		);
 	});
 
