@@ -504,7 +504,7 @@ def test_day_that_lost_rows_of_its_copy_is_refused(engine, tmp_path, remove_poll
 
 
 @pytest.mark.parametrize("working_state", ["partial", "trimmed"])
-def test_trimmed_or_partly_trimmed_day_is_refused(engine, tmp_path, working_state):
+def test_trimmed_reuses_current_or_refuses_unknown_partial(engine, tmp_path, working_state):
     first = run_seal(engine, tmp_path)
     verify(engine, first)
     with engine.begin() as conn:
@@ -513,6 +513,11 @@ def test_trimmed_or_partly_trimmed_day_is_refused(engine, tmp_path, working_stat
             dict(p=PROVIDER, s=working_state),
         )
     before = archive_state(engine, tmp_path)
-    with pytest.raises(NotImplementedError, match="working rows were trimmed"):
-        run_seal(engine, tmp_path)
+    if working_state == "trimmed":
+        assert run_seal(engine, tmp_path).content_version == first.content_version
+    else:
+        from transit_ops.history.seal_captures import CopyContentMissing
+
+        with pytest.raises(CopyContentMissing, match="partial remainder"):
+            run_seal(engine, tmp_path)
     assert archive_state(engine, tmp_path) == before
