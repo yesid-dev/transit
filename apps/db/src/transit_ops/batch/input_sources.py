@@ -12,6 +12,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -60,7 +61,7 @@ def fetch_from_catalog(
     request: BuildRequest,
     builders: Sequence[FamilyBuilder],
 ) -> dict[str, object]:
-    from transit_ops.batch.replay import parent_input_needs, postgres_input_needs
+    from transit_ops.batch.replay import postgres_input_needs
 
     with replay_catalog() as catalog:
         return fetch_replay_inputs(
@@ -68,13 +69,45 @@ def fetch_from_catalog(
             root,
             request.provider_id,
             request.as_of_utc,
-            lambda editions: parent_input_needs(
+            lambda editions: archive_input_needs(
                 needs_for_replay(
                     builders, request, postgres_needs=postgres_input_needs(request, tuple(editions))
                 ),
+                storage,
+                request.provider_id,
+                request.as_of_utc,
+                editions,
                 catalog,
             ),
         )
+
+
+def archive_input_needs(
+    needs: Sequence[InputNeed],
+    storage: BronzeStorage,
+    provider: str,
+    as_of: datetime,
+    editions: Mapping[int, str],
+    catalog: Inspector,
+) -> tuple[InputNeed, ...]:
+    """Only verified zero-row copies can eliminate an archive FK prerequisite."""
+    from transit_ops.batch.replay import parent_input_needs
+
+    @cache
+    def populated(child: InputNeed) -> bool:
+        try:
+            sources = resolve_sources([child], storage, provider, as_of, editions)
+        except SourcesMissing:
+            return True  # Full preflight reports this child and all unknown prerequisites.
+        return not all(
+            type(s.receipt["proof"].get("rows")) is int
+            and s.receipt["proof"]["rows"] == 0
+            and type(s.receipt.get("rows")) is int
+            and s.receipt["rows"] == 0
+            for s in sources
+        )
+
+    return parent_input_needs(needs, catalog, lambda child, _fk: populated(child))
 
 
 def replay_request(provider: str, day: str, as_of: str | None, settings: Settings) -> BuildRequest:

@@ -54,7 +54,8 @@ def test_month_filtered_to_day_loads_exact_day_export(real_db_engine, fact_sourc
     import psycopg
 
     with psycopg.connect(
-        **database.engine.url.translate_connect_args(username="user", database="dbname")
+        **database.engine.url.translate_connect_args(username="user", database="dbname"),
+        autocommit=True,
     ) as conn:
         exported = export_window(
             conn,

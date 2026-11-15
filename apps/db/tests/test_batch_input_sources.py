@@ -66,6 +66,7 @@ def archive(storage, relation, window, query, *, revision=0, version=1):
     with duckdb.connect() as conn:
         conn.execute("SET TimeZone='UTC'")
         conn.execute(f"COPY ({query}) TO ? (FORMAT parquet)", [str(path)])
+        rows = conn.execute("SELECT count(*) FROM read_parquet(?)", [str(path)]).fetchone()[0]
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     record = dict(
         format_version=1,
@@ -81,6 +82,7 @@ def archive(storage, relation, window, query, *, revision=0, version=1):
         object_bytes=path.stat().st_size,
         proof=dict(verified=True, object_sha256=digest, object_bytes=path.stat().st_size),
     )
+    record["rows"] = record["proof"]["rows"] = rows
     put(storage, proof_key(key), record)
     return key
 
@@ -459,3 +461,78 @@ def test_occupancy_preflight_records_unread_alerts_as_absent(tmp_path):
     }
     assert all(r["status"] == "absent_unread" and r["reason"] for r in result["absent_unread"])
     assert not (root / "silver.i3_alerts").exists()
+
+
+@pytest.mark.parametrize("empty", [True, False])
+def test_archive_fk_closure_skips_only_proven_empty_children(tmp_path, empty):
+    from transit_ops.batch.input_sources import archive_input_needs
+
+    class Catalog:
+        def get_foreign_keys(self, name, schema):
+            return (
+                [{"referred_schema": "silver", "referred_table": "routes"}]
+                if name == "trips"
+                else []
+            )
+
+    storage = store(tmp_path)
+    child = InputNeed("silver.trips", "edition:7")
+    archive(
+        storage,
+        child.relation,
+        "c" * 64,
+        "SELECT 7 AS dataset_version_id, 'R' AS route_id" + (" WHERE false" if empty else ""),
+    )
+    needs = archive_input_needs([child], storage, "sample", STAMP, {7: "c" * 64}, Catalog())
+    if empty:
+        assert needs == (child,)
+        assert resolve_sources(needs, storage, "sample", STAMP, {7: "c" * 64})
+    else:
+        with pytest.raises(SourcesMissing) as caught:
+            resolve_sources(needs, storage, "sample", STAMP, {7: "c" * 64})
+        assert caught.value.needs == (InputNeed("silver.routes", "edition:7"),)
+
+
+@pytest.mark.parametrize(
+    "rows, required",
+    [
+        ("WHERE false", False),
+        ("WHERE true", True),
+        ("WHERE false UNION ALL SELECT 7, NULL", False),
+        ("UNION ALL SELECT 7, NULL", True),
+    ],
+)
+def test_local_fk_closure_uses_child_rows(tmp_path, rows, required):
+    from transit_ops.batch.replay import local_parent_references, parent_input_needs
+
+    class Catalog:
+        def get_foreign_keys(self, name, schema):
+            return (
+                [
+                    {
+                        "referred_schema": "silver",
+                        "referred_table": "routes",
+                        "constrained_columns": ["dataset_version_id", "route_id"],
+                    }
+                ]
+                if name == "trips"
+                else []
+            )
+
+    root = tmp_path / "inputs"
+    folder = root / "silver.trips"
+    folder.mkdir(parents=True)
+    with duckdb.connect() as conn:
+        conn.execute(
+            "COPY (SELECT 7 AS dataset_version_id, 'R' AS route_id "
+            + rows
+            + ") TO ? (FORMAT parquet)",
+            [str(folder / "edition=7.parquet")],
+        )
+    child = InputNeed("silver.trips", "edition:7")
+    needs = parent_input_needs(
+        [child],
+        Catalog(),
+        lambda need, fk: local_parent_references(need, fk, root, tmp_path / "work"),
+    )
+    assert (InputNeed("silver.routes", "edition:7") in needs) is required

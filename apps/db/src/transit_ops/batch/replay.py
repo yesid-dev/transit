@@ -1,12 +1,12 @@
 """Replay declared local files in a guarded disposable database and DuckDB."""
 
 import hashlib
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
 from datetime import date, datetime
 from pathlib import Path
 from time import perf_counter
-from typing import cast
+from typing import Any, cast
 from zoneinfo import ZoneInfo
 
 from psycopg.errors import ForeignKeyViolation
@@ -136,7 +136,11 @@ def family_input_needs(
     return tuple(sorted(needs, key=lambda n: (n.relation, n.window)))
 
 
-def parent_input_needs(needs: Sequence[InputNeed], catalog: Inspector) -> tuple[InputNeed, ...]:
+def parent_input_needs(
+    needs: Sequence[InputNeed],
+    catalog: Inspector,
+    requires_parent: Callable[[InputNeed, Mapping[str, Any]], bool] | None = None,
+) -> tuple[InputNeed, ...]:
     """Use the migrated disposable catalog, preserving children's requested ranges."""
     found, pending, parents = set(needs), list(needs), {}
     while pending:
@@ -145,6 +149,8 @@ def parent_input_needs(needs: Sequence[InputNeed], catalog: Inspector) -> tuple[
             schema, table = child.relation.split(".")
             parents[child.relation] = catalog.get_foreign_keys(table, schema=schema)
         for fk in parents[child.relation]:
+            if requires_parent is not None and not requires_parent(child, fk):
+                continue
             relation = (
                 f"{fk['referred_schema'] or child.relation.split('.')[0]}.{fk['referred_table']}"
             )
@@ -159,6 +165,48 @@ def parent_input_needs(needs: Sequence[InputNeed], catalog: Inspector) -> tuple[
                 found.add(parent)
                 pending.append(parent)
     return tuple(sorted(found, key=lambda n: (n.relation, n.window)))
+
+
+def local_parent_references(
+    child: InputNeed,
+    fk: Mapping[str, Any],
+    root: Path,
+    workdir: Path,
+) -> bool:
+    """Apply actual FK null semantics to the declared local child rows."""
+    if child.relation in _STATE and (root / child.relation / "all.parquet").is_file():
+        child = InputNeed(child.relation, "all")  # The merged local metadata snapshot contract.
+    columns = fk.get("constrained_columns")
+    if (
+        not isinstance(columns, (list, tuple))
+        or not columns
+        or any(not isinstance(c, str) or not c for c in columns)
+    ):
+        raise ValueError(f"invalid FK columns: {child.relation}")
+    predicate = " AND ".join('"' + c.replace('"', '""') + '" IS NOT NULL' for c in columns)
+    inputs = resolve_inputs((child,), root)
+    with PrivateArea(workdir) as area, open_batch_session(inputs, workdir=area) as session:
+        return bool(
+            session.execute(
+                named_query(
+                    "batch.replay.parent_references",
+                    f"SELECT EXISTS (SELECT 1 FROM {child.relation} WHERE {predicate})",
+                )
+            ).scalar_one()
+        )
+
+
+def _legacy_state_needs(root: Path) -> tuple[InputNeed, ...]:
+    """Keep existing declared metadata snapshots; unread working-only tables stay empty."""
+    result = []
+    for relation in _STATE:
+        try:
+            source = get_dataset(relation).source
+        except LookupError:
+            continue
+        if isinstance(source, TableSource) and (root / relation / "all.parquet").is_file():
+            result.append(InputNeed(relation, "all"))
+    return tuple(result)
 
 
 def absent_unread(needs: Sequence[InputNeed]) -> tuple[dict[str, str], ...]:
@@ -333,7 +381,12 @@ def replay_day(
     for relation in _EDITIONS:
         needs.update(_declared_windows(inputs_root, relation))
     needs.update(family_input_needs(tuple(builders.values()), request))
-    needed = parent_input_needs(tuple(needs), inspect(engine.engine))
+    needs.update(_legacy_state_needs(inputs_root))
+    needed = parent_input_needs(
+        tuple(needs),
+        inspect(engine.engine),
+        lambda child, fk: local_parent_references(child, fk, inputs_root, workdir),
+    )
     ordered_needs = layout_needs(needed)
     before = _hashes(inputs_root, ordered_needs)
     if not set(provider_hash) <= set(before):
