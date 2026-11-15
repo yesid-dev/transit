@@ -3,6 +3,10 @@ A public dashboard that tells riders how reliable their transit service is, from
 
 ## Language
 
+**Rescue copy**:
+A one-off copy of rows taken before the server deleted them, kept outside the ledger until it is adopted.
+_Avoid_: archive copy
+
 **Live oracle**:
 A replay of the existing live path whose publications define the expected result for a replacement.
 

@@ -9,6 +9,53 @@ def main(ctx: typer.Context) -> None:
         typer.echo(ctx.get_help())
 
 
+@app.command("convert-rescue")
+def convert_rescue(
+    provider: str = typer.Option(...),
+    date: str = typer.Option(...),
+    converted_by: str = typer.Option(...),
+    work_dir: str = typer.Option(...),
+    expect_receipts: str | None = typer.Option(None),
+) -> None:
+    """Convert one closed rescue day, without reading a database."""
+    import json
+    from datetime import date as utc_date
+    from pathlib import Path
+
+    from transit_ops.history.storage import history_storage
+    from transit_ops.lake.rescue_parquet import convert_rescued_day
+    from transit_ops.settings import get_settings
+
+    scope = None
+    try:
+        day = utc_date.fromisoformat(date)
+        if day.isoformat() != date:
+            raise ValueError("date must be YYYY-MM-DD")
+        expected = None
+        if expect_receipts is not None:
+            expected = json.loads(Path(expect_receipts).read_bytes())
+            if not isinstance(expected, dict):
+                raise ValueError("record_mismatch")
+        settings = get_settings()
+        scope = history_storage(settings)
+        result = convert_rescued_day(
+            scope.resolve(settings.BRONZE_STORAGE_BACKEND), provider_id=provider,
+            utc_day=day, work_dir=Path(work_dir), converted_by=converted_by, expected=expected,
+        )
+        typer.echo(json.dumps({
+            "provider": result.provider_id, "day": result.utc_day.isoformat(),
+            "receipt_outcome": result.receipt_outcome,
+            "tables": {table.table: {"outcome": table.outcome, "rows": table.proof.rows,
+                       "object_sha256": table.proof.object_sha256} for table in result.tables},
+        }, sort_keys=True, separators=(",", ":")))
+    except Exception as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(1) from error
+    finally:
+        if scope is not None:
+            scope.close()
+
+
 @app.command()
 def inventory() -> None:
     """Read the configured database catalog and report every table's declaration."""
