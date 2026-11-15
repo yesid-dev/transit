@@ -1,6 +1,7 @@
 """Disposable PostgreSQL twin, including evidence-gated replacement and load-back."""
 
 import json
+from dataclasses import replace
 from datetime import UTC, datetime, time
 
 import duckdb
@@ -23,6 +24,39 @@ from transit_ops.batch.families.route_spine_hours import builder
 from transit_ops.batch.postgres_rows import read_table_rows
 from transit_ops.gold import delay_hours, delay_periods, rollups
 
+PROVIDER = "route_spine_seed"
+_CREATED_RELATIONS = (
+    *builder.tables,
+    "gold.warm_rollup_periods",
+    "gold.fact_trip_delay_snapshot",
+    "silver.rt_trip_updates",
+    "silver.rt_entities",
+    "silver.rt_feed_snapshots",
+    "raw.realtime_snapshot_index",
+    "raw.ingestion_objects",
+    "raw.ingestion_runs",
+    "core.feed_endpoints",
+    "core.providers",
+)
+
+
+@pytest.fixture
+def route_database(real_db_engine):
+    with real_db_engine.connect() as conn:
+        transaction = conn.begin()
+        try:
+            yield conn
+        finally:
+            # Returning from a refusal case must never commit the outer transaction.
+            # All builders use savepoints on this connection, so this removes every FK child.
+            transaction.rollback()
+            for relation in _CREATED_RELATIONS:
+                remaining = conn.execute(
+                    text(f"SELECT COUNT(*) FROM {relation} WHERE provider_id=:provider"),
+                    {"provider": PROVIDER},
+                ).scalar_one()
+                assert remaining == 0, f"leaked route twin rows: {relation}"
+
 
 def export_postgres(conn, root, request=REQUEST):
     # Project the owning SQL's columns, including working-only Silver evidence.
@@ -31,7 +65,8 @@ def export_postgres(conn, root, request=REQUEST):
         for relation in sorted({need.relation for need in builder.inputs(request)}):
             columns = [row[0] for row in target.execute(f"DESCRIBE {relation}").fetchall()]
             rows = conn.execute(
-                text(f"SELECT {', '.join(columns)} FROM {relation} WHERE provider_id='seed'")
+                text(f"SELECT {', '.join(columns)} FROM {relation} WHERE provider_id=:provider"),
+                {"provider": request.provider_id},
             ).all()
             if rows:
                 target.executemany(
@@ -58,7 +93,7 @@ def build_postgres(conn, request=REQUEST):
         ).astimezone(UTC)
         delay_periods.build_delay_periods(
             engine,
-            provider_id="seed",
+            provider_id=request.provider_id,
             since_utc=start,
             until_utc=end,
             now=request.as_of_utc,
@@ -66,10 +101,10 @@ def build_postgres(conn, request=REQUEST):
             retention_days=request.fact_retention_days,
             progress=delay_periods.PeriodBuildProgress(),
         )
-        delay_hours.refresh_changed_delay_hours(engine, "seed", start, end)
+        delay_hours.refresh_changed_delay_hours(engine, request.provider_id, start, end)
         rollups._write_daily_rollup(
             conn,
-            provider_id="seed",
+            provider_id=request.provider_id,
             rollup_kind="route_delay_spine",
             upsert=rollups.UPSERT_ROUTE_DELAY_SPINE,
             local_date=day,
@@ -81,7 +116,7 @@ def build_postgres(conn, request=REQUEST):
 
 @pytest.mark.parametrize("replacement", [False, True, "retention_edge", "invalid_count"])
 def test_family_matches_postgres_and_preserves_dirty_state_after_loadback(
-    real_db_engine,
+    route_database,
     seed_provider,
     tmp_path,
     monkeypatch,
@@ -89,11 +124,13 @@ def test_family_matches_postgres_and_preserves_dirty_state_after_loadback(
 ):
     edge = replacement == "retention_edge"
     request, seed = (EDGE_REQUEST, EDGE_ROWS) if edge else (REQUEST, SEED)
-    monkeypatch.setattr(lifecycle, "PROVIDER", "seed")
+    request = replace(request, provider_id=PROVIDER)
+    monkeypatch.setattr(lifecycle, "PROVIDER", PROVIDER)
     for module in (delay_periods, delay_hours, rollups):
         monkeypatch.setattr(module, "materialization_time", lambda _: request.as_of_utc)
-    with real_db_engine.connect() as conn, conn.begin() as transaction:
-        seed_provider(conn, "seed", display_name="Route seed", timezone=request.timezone)
+    with route_database.begin_nested():
+        conn = route_database
+        seed_provider(conn, PROVIDER, display_name="Route seed", timezone=request.timezone)
         for route, trip, direction, delay, capture in seed:
             sid = lifecycle.add_capture(conn, datetime.fromisoformat(capture), delay, route)
             # Several observations share a capture instant; object identity is independent of it.
@@ -119,9 +156,9 @@ def test_family_matches_postgres_and_preserves_dirty_state_after_loadback(
             conn.execute(
                 text(
                     "UPDATE gold.warm_rollup_periods SET invalidated_at_utc=:stamp "
-                    "WHERE provider_id='seed' AND rollup_kind='trip_delay_summary_5m'"
+                    "WHERE provider_id=:provider AND rollup_kind='trip_delay_summary_5m'"
                 ),
-                {"stamp": request.as_of_utc},
+                {"stamp": request.as_of_utc, "provider": PROVIDER},
             )
         if replacement == "invalid_count":
             conn.execute(
@@ -129,7 +166,7 @@ def test_family_matches_postgres_and_preserves_dirty_state_after_loadback(
                     "UPDATE silver.rt_feed_snapshots SET manifest_json=CAST(:manifest AS jsonb) "
                     "WHERE provider_id=:provider"
                 ),
-                {"manifest": '{"entity_count":1.0000000000000001}', "provider": "seed"},
+                {"manifest": '{"entity_count":1.0000000000000001}', "provider": PROVIDER},
             )
         export_postgres(conn, tmp_path, request)
         if replacement == "invalid_count":
@@ -146,14 +183,14 @@ def test_family_matches_postgres_and_preserves_dirty_state_after_loadback(
                 conn,
                 relation,
                 table.key,
-                provider_id="seed",
+                provider_id=PROVIDER,
                 local_dates=request.local_dates if relation.endswith("spine") else None,
             )
             differences = compare_tables(expected, table)
             if edge and not relation.endswith("spine"):
                 # R28(2)(b): PG's conservative scheduler omits the retained 05:00 fact.
                 assert [(d.kind, d.key) for d in differences] == [
-                    ("extra", ("seed", datetime(2026, 10, 22, 5, tzinfo=UTC), "A"))
+                    ("extra", (PROVIDER, datetime(2026, 10, 22, 5, tzinfo=UTC), "A"))
                 ]
                 column = table.columns.index("usable_delay_sum_seconds")
                 assert sum(row[column] for row in expected.rows) == 300
@@ -161,7 +198,7 @@ def test_family_matches_postgres_and_preserves_dirty_state_after_loadback(
             else:
                 assert differences == [], relation
         params = dict(
-            provider_id="seed",
+            provider_id=PROVIDER,
             from_utc=datetime.combine(request.local_dates[0], time(), UTC),
             until_utc=request.as_of_utc,
         )
@@ -169,7 +206,10 @@ def test_family_matches_postgres_and_preserves_dirty_state_after_loadback(
         table = Table("route_delay_hourly", MetaData(), schema="gold", autoload_with=conn)
         hours = actual.tables["gold.route_delay_hourly"]
         # Load actual rows (including exact numeric and timestamp fields) into the PostgreSQL seam.
-        conn.execute(text("DELETE FROM gold.route_delay_hourly WHERE provider_id='seed'"))
+        conn.execute(
+            text("DELETE FROM gold.route_delay_hourly WHERE provider_id=:provider"),
+            {"provider": PROVIDER},
+        )
         conn.execute(
             table.insert(), [dict(zip(hours.columns, row, strict=True)) for row in hours.rows]
         )
@@ -178,4 +218,3 @@ def test_family_matches_postgres_and_preserves_dirty_state_after_loadback(
             values = dict(zip(hours.columns, row, strict=True))
             key = and_(*(table.c[name] == values[name] for name in hours.key))
             assert conn.execute(table.select().where(key)).one().built_at_utc == request.as_of_utc
-        transaction.rollback()
