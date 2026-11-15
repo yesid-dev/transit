@@ -154,6 +154,11 @@ for (const locale of PUBLISHED_LOCALES) {
 			'true',
 		);
 		await expect(page.getByRole('tabpanel', { name: record, exact: true })).toBeVisible();
+		// One Back shows the line the search began on: the page itself, not only its URL.
+		await page.goBack();
+		await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+			`${line.short} · ${line.long}`,
+		);
 	});
 
 	test(`${locale}: the search page takes the place of a search opened from its header, and back`, async ({

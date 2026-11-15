@@ -103,32 +103,34 @@ it('the back gesture closes the sheet and returns focus to the trigger', async (
 	await waitFor(() => expect(view.trigger).toHaveFocus());
 });
 
-it('a chosen row replaces the sheet in history and leads to the record', async () => {
+// The record must be an ordinary navigation from the page the search began on: SvelteKit
+// treats Back between two entries with one navigation index as shallow and renders nothing.
+it("a chosen row leaves the sheet's own entry first, then opens the record", async () => {
 	const view = open();
 	const { dialog } = await show(view);
 	const row = within(dialog).getByRole('option', { name: 'Line 161 · Van Horne' });
-	// On the link itself: the sheet closes before the router reads the click, detaching the row
-	// from every ancestor, so an attribute on a wrapper is never seen.
-	expect(row).toHaveAttribute('data-sveltekit-replacestate', '');
-	row.addEventListener('click', (event) => event.preventDefault());
-	await fireEvent.click(row);
+	expect(row).not.toHaveAttribute('data-sveltekit-replacestate');
+	expect(await fireEvent.click(row)).toBe(false); // the sheet leads the way, not the link
+	await waitFor(() => expect(goto).toHaveBeenCalledOnce());
+	expect(back).toHaveBeenCalledOnce();
+	expect(back.mock.invocationCallOrder[0]).toBeLessThan(
+		vi.mocked(goto).mock.invocationCallOrder[0]!,
+	);
+	expect(vi.mocked(goto).mock.calls[0]).toEqual([expect.stringMatching(/^\/lines\/161/)]);
 	await waitFor(() => expect(view.queryByRole('dialog')).toBeNull());
-	// The link's navigation takes the sheet's entry; nothing goes back, focus follows the new page.
-	expect(back).not.toHaveBeenCalled();
 	expect(view.trigger).not.toHaveFocus();
 	expect(view.behind).not.toHaveAttribute('inert');
 	expect((await show(view)).field).toHaveValue('');
 });
 
-it('Enter with nothing highlighted opens the search page in place of the sheet', async () => {
+it('Enter with nothing highlighted leaves the sheet, then opens the search page', async () => {
 	const view = open();
 	const { field } = await show(view);
 	await fireEvent.keyDown(field, { key: 'Enter' });
-	expect(vi.mocked(goto)).toHaveBeenCalledWith(expect.stringMatching(/^\/search\?q=van/), {
-		replaceState: true,
-	});
+	await waitFor(() => expect(goto).toHaveBeenCalledOnce());
+	expect(back).toHaveBeenCalledOnce();
+	expect(vi.mocked(goto).mock.calls[0]).toEqual([expect.stringMatching(/^\/search\?q=van/)]);
 	await waitFor(() => expect(view.queryByRole('dialog')).toBeNull());
-	expect(back).not.toHaveBeenCalled();
 });
 
 it('Forward onto the sheet reopens it with the field focused; Close goes back once', async () => {
@@ -148,21 +150,6 @@ it('Forward onto the sheet reopens it with the field focused; Close goes back on
 	await waitFor(() => expect(view.queryByRole('dialog')).toBeNull());
 	expect(back).toHaveBeenCalledOnce();
 	await waitFor(() => expect(view.trigger).toHaveFocus());
-});
-
-it("opening again on the sheet's own entry reuses it, so Close goes back only once", async () => {
-	const view = open();
-	const { dialog } = await show(view);
-	// A chosen row whose navigation never happens leaves the reader on the sheet's entry.
-	const row = within(dialog).getByRole('option', { name: 'Line 161 · Van Horne' });
-	row.addEventListener('click', (event) => event.preventDefault());
-	await fireEvent.click(row);
-	await waitFor(() => expect(view.queryByRole('dialog')).toBeNull());
-	const again = await show(view);
-	expect(pushState).toHaveBeenCalledOnce();
-	await fireEvent.keyDown(again.field, { key: 'Escape' });
-	await waitFor(() => expect(view.queryByRole('dialog')).toBeNull());
-	expect(back).toHaveBeenCalledOnce();
 });
 
 it('Forward onto the sheet with the button hidden (a wide header) drops the flag, never a hidden sheet', async () => {

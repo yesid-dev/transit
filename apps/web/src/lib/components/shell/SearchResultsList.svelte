@@ -19,8 +19,8 @@
 		active?: string | null;
 		/** The address row: a request to send, or what that request answered. */
 		address?: { state: 'ask' | 'loading' | 'none' | 'failed'; onask: () => void } | null;
-		/** Each row's link takes the current history entry (the phone sheet's own) instead of adding one. */
-		replace?: boolean;
+		/** Set by the phone sheet: it takes a plain click on a row and leads the reader there itself. */
+		follow?: (href: string) => void;
 		onchoose?: () => void;
 	}
 
@@ -34,7 +34,7 @@
 		presentation = null,
 		active = $bindable(null),
 		address = null,
-		replace = false,
+		follow,
 		onchoose,
 	}: Props = $props();
 	let box = $state<HTMLElement>();
@@ -93,11 +93,13 @@
 		return option != null;
 	}
 
-	function chose(event: MouseEvent, hit?: SearchHit): void {
+	function chose(event: MouseEvent, href: string, hit?: SearchHit): void {
 		if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
 			return;
 		if (hit) trackEvent('Search Result', { kind: hit.kind });
-		onchoose?.();
+		if (!follow) return onchoose?.();
+		event.preventDefault();
+		follow(href);
 	}
 </script>
 
@@ -109,8 +111,7 @@
 		tabindex="-1"
 		aria-selected={active === optionKey}
 		class="search-list-option"
-		data-sveltekit-replacestate={replace ? '' : undefined}
-		onclick={(event) => chose(event, hit)}
+		onclick={(event) => chose(event, href, hit)}
 	>
 		{#if hit}<span class="search-list-kind">{copy.kind[hit.kind]}</span>{/if}
 		<span class="search-list-label">{text}</span>

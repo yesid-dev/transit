@@ -16,12 +16,12 @@
 
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { pushState, replaceState } from '$app/navigation';
+	import { goto, pushState, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import XIcon from '@lucide/svelte/icons/x';
 	import { getLenis } from '@yesid/motion/utils/lenis';
-	import { SectionLabel } from '@yesid/ui/brand';
+	import { resetFocusAfterNavigation, SectionLabel } from '@yesid/ui/brand';
 	import { Button } from '@yesid/ui/button';
 	import * as Sheet from '@yesid/ui/sheet';
 	import type { Locale } from '#lib/i18n/index.ts';
@@ -60,10 +60,12 @@
 	let content = $state<HTMLElement | null>(null);
 	// Inside the app's root, so the router follows its links; outside the header, whose glass would clip it.
 	const portal = $derived(trigger?.closest('[data-slot="app-shell"]') ?? 'body');
-	// The sheet has its own history entry: the back gesture closes it, and a chosen row replaces it.
+	// The sheet has its own shallow history entry, so the back gesture closes it.
 	const entry = $derived(page.state.searchSheet === true);
 	let leaving = false;
 	let restore: (() => void) | null = null;
+	// Settles once the router has taken the reader off the sheet's entry.
+	let offEntry: (() => void) | null = null;
 
 	function opened(): void {
 		leaving = false;
@@ -76,12 +78,27 @@
 		open = false;
 		if (entry) history.back();
 	}
-	function leave(): void {
+	/**
+	 * Leads the reader to a chosen row or the search page. The sheet first leaves its own entry, so
+	 * the record is an ordinary navigation from the page the search began on. Replacing the shallow
+	 * entry instead left the record with that page's navigation index, and Back then changed only
+	 * the URL: the record stayed on screen.
+	 */
+	async function follow(href: string): Promise<void> {
 		leaving = true;
 		open = false;
 		// The page is live again at once, so the router can announce where the reader lands.
 		restore?.();
 		restore = null;
+		if (entry)
+			await new Promise<void>((done) => {
+				offEntry = done;
+				setTimeout(done, 1000); // never stranded if the router does not answer
+				history.back();
+			});
+		const resetFocus = resetFocusAfterNavigation();
+		await goto(href);
+		resetFocus();
 	}
 
 	const visible = (element: HTMLElement | null) =>
@@ -94,8 +111,11 @@
 		const now = entry;
 		if (now !== hadEntry)
 			untrack(() => {
-				if (!now) open = false;
-				else if (open || leaving) return;
+				if (!now) {
+					open = false;
+					offEntry?.();
+					offEntry = null;
+				} else if (open || leaving) return;
 				else if (visible(trigger)) open = true;
 				else void replaceState('', { ...page.state, searchSheet: undefined });
 			});
@@ -178,7 +198,7 @@
 				{scope}
 				{list}
 				{presentation}
-				sheet={{ replace: entry, dismiss, leave }}
+				sheet={{ dismiss, follow }}
 			/>
 		</div>
 	</Sheet.Content>
