@@ -1,30 +1,4 @@
-import type { Page, Route } from '@playwright/test';
-
-export async function forwardLayoutRoute(route: Route, state: string): Promise<void> {
-	const url = new URL(route.request().url());
-	url.pathname = `/__layout/${state}${url.pathname}`;
-	await route.fulfill({ response: await route.fetch({ url: url.href }) });
-}
-
-export async function installLayoutRoutes(page: Page, state: string) {
-	const pattern = '**/v1/**';
-	const pending = new Set<Promise<void>>();
-	const fallback = (route: Route) => route.fallback();
-	const handler = (route: Route) => {
-		const task = forwardRoute(page, () => forwardLayoutRoute(route, state));
-		pending.add(task);
-		return task.finally(() => pending.delete(task));
-	};
-	// Retain interception while the fixture handler is removed: Playwright otherwise
-	// auto-continues its pending routes before their fetched responses can fulfill.
-	await page.route(pattern, fallback);
-	await page.route(pattern, handler);
-	return async () => {
-		await page.unroute(pattern, handler);
-		await Promise.all(pending);
-		await page.unroute(pattern, fallback);
-	};
-}
+import type { Page } from '@playwright/test';
 
 // Explicit page closure can dispose a fetched response. The shared fixture drains
 // normal teardown; failures on a live page must still fail the test.

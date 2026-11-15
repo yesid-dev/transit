@@ -1,22 +1,9 @@
-import { test as base } from './layout-test';
+import { test } from './layout-test';
 import { readFileSync } from 'node:fs';
 import { expect } from '@playwright/test';
-import { chartOverlaps, installLayoutRoutes, forwardRoute } from './layout-helpers';
+import { chartOverlaps, forwardRoute } from './layout-helpers';
 import { expectLayout } from './layout-debt';
 import { localizeHref } from '../src/lib/i18n/routing';
-
-const test = base.extend<{ fixtureRoutes: (state: string) => Promise<void> }>({
-	fixtureRoutes: async ({ page }, use) => {
-		let remove: (() => Promise<void>) | undefined;
-		try {
-			await use(async (state) => {
-				remove = await installLayoutRoutes(page, state);
-			});
-		} finally {
-			await remove?.();
-		}
-	},
-});
 
 const fixture = (name: string) =>
 	JSON.parse(readFileSync(new URL(`./${name}.json`, import.meta.url), 'utf8'));
@@ -49,10 +36,16 @@ const pages = [
 for (const locale of ['en', 'fr'] as const)
 	for (const state of ['fresh', 'stale', 'missing']) {
 		for (const path of pages)
-			test(`${locale} ${state} ${path} @layout`, async ({ page, fixtureRoutes }, info) => {
+			test(`${locale} ${state} ${path} @layout`, async ({ page }, info) => {
 				await page.clock.setFixedTime(epoch + (state === 'stale' ? 900_000 : 30_000));
 				await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
-				await fixtureRoutes(state);
+				await page.route('**/v1/**', (route) =>
+					forwardRoute(page, async () => {
+						const url = new URL(route.request().url());
+						url.pathname = `/__layout/${state}${url.pathname}`;
+						await route.fulfill({ response: await route.fetch({ url: url.href }) });
+					}),
+				);
 				await page.goto(localizeHref(path, locale), { waitUntil: 'networkidle' });
 				if (path.startsWith('/stops?q='))
 					await page.getByTestId('stops-filter-input').fill('Fixture');
