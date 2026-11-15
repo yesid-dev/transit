@@ -30,6 +30,7 @@ def command(monkeypatch):
             provider_id="network",
             start=date(2026, 1, 2),
             end=date(2026, 1, 2),
+            revision=0,
         )
         return [NS(content_version=v, state=s) for v, s in state.copies]
 

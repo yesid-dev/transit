@@ -2062,7 +2062,8 @@ def history_verify_command(
     ),
 ) -> None:
     """Read sealed archive copies of one feed-day back from storage and make them current."""
-    from transit_ops.history import ledger, store
+    from transit_ops.history import ledger_select, store
+    from transit_ops.history.ledger_store import WindowIdentity
     from transit_ops.history.seal_captures import CopyContentMissing
     from transit_ops.history.storage import history_storage
 
@@ -2077,11 +2078,11 @@ def history_verify_command(
     dataset_id = "capture." + feed
     label = f"{dataset_id} {day} for provider {provider}"
     with engine.begin() as connection:
-        window = ledger.window_state(
-            connection, dataset_id=dataset_id, provider_id=provider, window_key=day
+        window = ledger_select.ledger_for(connection).window_state(
+            WindowIdentity(dataset_id, provider, day)
         )
-        copies = ledger.find_copies(
-            connection, dataset_id=dataset_id, provider_id=provider, start=utc_date, end=utc_date
+        copies = ledger_select.ledger_for(connection).find_copies(
+            dataset_id=dataset_id, provider_id=provider, start=utc_date, end=utc_date
         )
     if version is not None:
         copies = [c for c in copies if c.content_version == version]

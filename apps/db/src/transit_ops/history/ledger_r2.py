@@ -12,8 +12,9 @@ from copy import deepcopy
 from dataclasses import asdict, fields, replace
 from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Never, cast, get_args
+from urllib.parse import unquote
 
-from transit_ops.control.objects import ConditionalObjects
+from transit_ops.control.objects import ConditionalObjects, key_part
 from transit_ops.history import datasets, ledger
 from transit_ops.history.ledger_r2_documents import EventRecord, Transition, WindowDocument
 from transit_ops.history.ledger_r2_readers import WindowCursor, events, recover
@@ -77,6 +78,51 @@ def _latest(copy: ledger.ArchiveCopy) -> datetime:
 
 
 class R2Ledger:
+    def ready(self) -> bool:
+        try:
+            next(iter(self.objects.list_keys("transitions/")), None)
+        except FileNotFoundError:
+            return False
+        return True
+
+    def list_windows(
+        self,
+        *,
+        dataset_id: str,
+        revision: int = 0,
+        provider_id: str | None = None,
+        start: date | None = None,
+        end: date | None = None,
+    ) -> list[ledger.WindowState]:
+        ledger._check_revision(datasets.get_dataset(dataset_id), revision)
+        if start is not None and end is not None and start > end:
+            raise ValueError("start must not be after end")
+        prefix = f"transitions/{key_part(dataset_id)}/"
+        if provider_id is not None:
+            prefix += f"{key_part(provider_id)}/r{revision}/"
+        # The journal also discovers a committed first write whose projection failed.
+        identities = set()
+        for key in self.objects.list_keys(prefix):
+            _, dataset, provider, rev, window, _ = key.split("/")
+            if rev == f"r{revision}":
+                identities.add(
+                    WindowIdentity(unquote(dataset), unquote(provider), unquote(window), revision)
+                )
+        states = []
+        for identity in identities:
+            state = self.window_state(identity)
+            if (
+                state is not None
+                and (
+                    start is None or state.window_start is not None and state.window_start >= start
+                )
+                and (end is None or state.window_start is not None and state.window_start <= end)
+            ):
+                states.append(state)
+        return sorted(
+            states, key=lambda s: (s.provider_id, s.window_start or date.max, s.window_key)
+        )
+
     def __init__(
         self,
         objects: ConditionalObjects,
