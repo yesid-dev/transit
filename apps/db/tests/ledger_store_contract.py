@@ -7,6 +7,92 @@ from transit_ops.history.datasets import UndeclaredDataset
 from transit_ops.history.ledger import HOLD_NO_END, WindowNotFound
 from transit_ops.history.ledger_store import NewCopy
 
+INVALID_COPY_VALUES = [
+    (field, value)
+    for field in ("sha256", "manifest_sha256", "content_sha256", "poll_record_sha256")
+    for value in ("", "a" * 63, "a" * 65, "A" * 64, "g" * 64, "a" * 64 + "\n")
+] + [("storage_backend", "r2"), ("storage_backend", "")] + [
+    (field, datetime(2026, 11, 1)) for field in ("first_time_utc", "last_time_utc")
+]
+
+LIFECYCLE_KINDS = ("seal", "verify", "reject", "current", "trim", "restore", "hold", "unhold")
+
+
+@pytest.mark.parametrize("kind", LIFECYCLE_KINDS)
+def test_public_event_writer_refuses_lifecycle_kinds(store, make_identity, kind):
+    identity = make_identity()
+    with store.session(identity) as session:
+        with pytest.raises(ValueError, match=kind):
+            session.record_event(kind)
+        assert session.events() == []
+        assert session.state() is None
+    assert store.events(identity) == []
+    assert store.window_state(identity) is None
+
+
+@pytest.mark.parametrize(
+    "kind", ["changed", "close_runs", "processing_evidence", "fold_published", "rebuild"]
+)
+def test_public_event_writer_accepts_audit_kinds(store, make_identity, kind):
+    identity = make_identity()
+    with store.session(identity) as session:
+        session.record_event(
+            kind, content_version=1, reason="audit", details={"n": 3}, actor="writer"
+        )
+    (event,) = store.events(identity)
+    assert (event.kind, event.content_version, event.reason, event.details, event.actor) == (
+        kind,
+        1,
+        "audit",
+        {"n": 3},
+        "writer",
+    )
+
+
+@pytest.mark.parametrize("field,value", INVALID_COPY_VALUES)
+def test_invalid_new_copy_is_refused_before_writing(store, make_identity, field, value):
+    identity = make_identity()
+    with store.session(identity) as session:
+        version = session.allocate_version()
+        with pytest.raises(ValueError, match=field):
+            session.insert_allocated_copy(replace(new_copy(version), **{field: value}))
+        assert session.copies() == []
+        session.insert_allocated_copy(new_copy(version))
+    with store.session(identity) as session:
+        assert session.copies()[0].sha256 == "a" * 64
+
+
+def test_optional_copy_digests_and_local_storage_are_accepted(store, make_identity):
+    identity = make_identity()
+    with store.session(identity) as session:
+        copy = replace(
+            new_copy(session.allocate_version()),
+            storage_backend="local",
+            sha256=None,
+            manifest_sha256=None,
+            content_sha256=None,
+            poll_record_sha256=None,
+        )
+        session.insert_allocated_copy(copy)
+    with store.session(identity) as session:
+        assert {f.name: getattr(session.copies()[0], f.name) for f in fields(NewCopy)} == asdict(
+            copy
+        )
+
+
+def test_copy_insertion_refuses_nonzero_revision(store, make_identity):
+    identity = replace(
+        make_identity(), dataset_id="gold.network_vehicle_day", window_key="2026-11", revision=1
+    )
+    with store.session(identity) as session:
+        version = session.allocate_version()
+        with pytest.raises(ValueError, match="revision"):
+            session.insert_allocated_copy(new_copy(version))
+        assert session.copies() == []
+    with store.session(identity) as session:
+        assert session.copies() == []
+        assert session.state().next_version == version + 1
+
 
 def test_session_reads_see_its_own_writes(store, make_identity):
     identity = make_identity()
@@ -250,6 +336,27 @@ def test_missing_copy_value_stays_missing_while_zero_stays_zero(store, make_iden
         assert (copy.byte_size, copy.record_count) == (None, 0)
 
 
+def test_event_only_window_has_no_state_and_keeps_ordered_event_identity(store, make_identity):
+    identity = make_identity()
+    with store.session(identity) as session:
+        session.record_event("close_runs", details={"closed": 2}, actor="closer")
+        session.record_event("processing_evidence", details={"rows": 3}, actor="loader")
+        written = session.events()
+        assert session.state() is None
+    assert store.window_state(identity) is None
+    assert [(e.kind, e.details) for e in written] == [
+        ("close_runs", {"closed": 2}),
+        ("processing_evidence", {"rows": 3}),
+    ]
+    assert written[0].sequence < written[1].sequence
+    assert store.events(identity) == written
+    assert store.events(identity, kinds={"processing_evidence"}) == [written[1]]
+    assert store.events(identity, kinds=set()) == []
+    with store.session(identity) as session:
+        assert session.events() == written
+    assert store.window_state(identity) is None
+
+
 def test_existing_copy_version_is_create_only(store, make_identity):
     identity = make_identity()
     with store.session(identity) as session:
@@ -261,3 +368,61 @@ def test_existing_copy_version_is_create_only(store, make_identity):
             session.insert_allocated_copy(replace(new_copy(version), sha256="e" * 64))
     with store.session(identity) as session:
         assert session.copies() == [original]
+
+
+def test_copy_version_must_have_been_allocated(store, make_identity):
+    identity = make_identity()
+    with store.session(identity) as session:
+        _allocated(session)
+        original = session.copies()
+        assert session.state().next_version == 2
+    with pytest.raises(RuntimeError, match=r"could not insert copy.*'content_version': 2\b"):
+        with store.session(identity) as session:
+            session.insert_allocated_copy(new_copy(2))
+    with store.session(identity) as session:
+        assert session.copies() == original
+        assert session.state().next_version == 2
+        assert session.events() == []
+
+
+def test_copy_insertion_requires_a_window_allocation(store, make_identity):
+    identity = make_identity()
+    with pytest.raises(RuntimeError, match=r"could not insert copy.*'content_version': 1\b"):
+        with store.session(identity) as session:
+            session.insert_allocated_copy(new_copy(1))
+    assert store.window_state(identity) is None
+    with store.session(identity) as session:
+        assert session.copies() == []
+
+
+def test_rewrite_provenance_round_trips_through_events(store, make_identity):
+    from transit_ops.history.rewrite_evidence import processing_evidence_details
+
+    identity = make_identity()
+    details = processing_evidence_details(
+        command="replay-realtime-silver", completed_at_utc=datetime(2026, 11, 1, 12, tzinfo=UTC),
+        index_family="realtime_snapshot", rows_by_capture={17: 0, 18: 5},
+        rewrite={
+            "schema": 1, "operation_id": "rewrite-17", "expected_current_version": 3,
+            "expected_working_changed_at_utc": "2026-11-01T11:00:00.000000Z",
+            "edition": {"provider_id": "network", "dataset_version_id": 42,
+                        "checksum_sha256": "a" * 64},
+            "provenance": {"command": "replay-realtime-silver", "mode": "gold",
+                           "capture_ids": [17, 18],
+                           "source_hashes": {"17": "b" * 64, "18": None},
+                           "code_revision": None, "code_revision_unknown_reason": "not supplied"},
+        },
+    )
+    with store.session(identity) as session:
+        session.record_event("processing_evidence", details=details, actor="loader")
+    events = store.events(identity, kinds=None)
+    assert len(events) == 1
+    assert (events[0].kind, events[0].actor, events[0].details) == (
+        "processing_evidence", "loader", details,
+    )
+    assert events[0].details["rewrite"]["expected_current_version"] == 3
+    assert events[0].details["rewrite"]["edition"]["dataset_version_id"] == 42
+    assert events[0].details["rewrite"]["provenance"]["code_revision"] is None
+    assert store.events(identity, kinds={"processing_evidence"}) == events
+    assert store.events(identity, kinds={"changed"}) == []
+    assert store.events(identity, kinds=set()) == []

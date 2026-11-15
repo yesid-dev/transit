@@ -1,6 +1,7 @@
 import hashlib
 import time
 from contextlib import contextmanager
+from dataclasses import asdict
 from datetime import UTC
 from threading import Event, Thread
 from types import SimpleNamespace
@@ -16,7 +17,8 @@ from sqlalchemy import text
 from typer.testing import CliRunner
 
 from transit_ops import cli
-from transit_ops.history import close_runs, ledger
+from transit_ops.history import close_runs
+from transit_ops.history.ledger_postgres import PostgresLedger
 from transit_ops.history.working_captures import CLOSED_UNFINISHED, read_working_day
 from transit_ops.ingestion import common, realtime_gtfs
 from transit_ops.ingestion.storage import LocalBronzeStorage
@@ -236,7 +238,12 @@ def _capture_case(engine, settings, bronze_root, seed_provider, monkeypatch):
     case = SimpleNamespace(go=Event(), paused=Event(), keys=[], events=[], storage=local)
     monkeypatch.setattr(realtime_gtfs, "_download_to_tempfile", download)
     monkeypatch.setattr(realtime_gtfs, "build_realtime_ingestion_config", lambda *a: config)
-    monkeypatch.setattr(ledger, "record_event", lambda c, **kw: case.events.append(kw))
+    def audit(self, identity, kind, details, *, reason=None, actor=None):
+        case.events.append(
+            dict(kind=kind, **asdict(identity), details=details, reason=reason, actor=actor)
+        )
+
+    monkeypatch.setattr(PostgresLedger, "record_audit", audit)
     case.capture = lambda: realtime_gtfs._capture_realtime_feed(
         PROVIDER,
         "trip_updates",
@@ -381,3 +388,53 @@ def test_closing_and_a_late_result_cannot_both_win(
     else:
         assert (run["status"], run["error_message"]) == ("succeeded", None)
         assert case.events == []
+
+
+def test_close_audit_succeeds_while_another_connection_holds_the_window(
+    real_db_engine, seed_provider
+):
+    from transit_ops.history.ledger_store import WindowIdentity
+
+    with real_db_engine.connect() as locker, real_db_engine.connect() as closer:
+        with locker.begin(), closer.begin() as closing:
+            run_id = _seed(closer, seed_provider, provider="close_audit_lock_test")
+            day = closer.execute(
+                text(
+                    "SELECT (started_at_utc AT TIME ZONE 'UTC')::date FROM raw.ingestion_runs "
+                    "WHERE ingestion_run_id=:id"
+                ),
+                {"id": run_id},
+            ).scalar_one()
+            identity = WindowIdentity(
+                "capture.trip_updates", "close_audit_lock_test", day.isoformat()
+            )
+            closer.exec_driver_sql("SET LOCAL lock_timeout = '100ms'")
+            with PostgresLedger(locker).session(identity):
+                assert (
+                    close_runs.close_unfinished_runs(
+                        closer, provider_id=identity.provider_id, actor="closer"
+                    )
+                    == 1
+                )
+                (event,) = PostgresLedger(closer).events(identity)
+                assert (
+                    event.kind,
+                    event.content_version,
+                    event.reason,
+                    event.actor,
+                    event.details,
+                ) == (
+                    "close_runs",
+                    None,
+                    CLOSED_UNFINISHED,
+                    "closer",
+                    dict(ingestion_run_ids=[run_id], older_than_seconds=3600),
+                )
+                assert (
+                    closer.execute(
+                        text("SELECT status FROM raw.ingestion_runs WHERE ingestion_run_id=:id"),
+                        {"id": run_id},
+                    ).scalar_one()
+                    == "failed"
+                )
+            closing.rollback()

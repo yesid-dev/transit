@@ -3,8 +3,8 @@ from types import MappingProxyType
 from typing import Literal
 
 RuleMode = Literal["count", "apply"]
-NORMALIZER_VERSION = 1
-# Execution order is separate from fingerprint serialization order. No rules run yet.
+NORMALIZER_VERSION = 3
+# Execution order is separate from fingerprint serialization order.
 RULE_ORDER = ("N7", "N6", "N8", "N1", "N9", "N5", "N2", "N3")
 WORKER_MODES: Mapping[str, RuleMode] = MappingProxyType(dict.fromkeys(RULE_ORDER, "count"))
 PASS_MODES: Mapping[str, RuleMode] = MappingProxyType(dict.fromkeys(RULE_ORDER, "apply"))

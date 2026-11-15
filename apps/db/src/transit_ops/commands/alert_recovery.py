@@ -10,9 +10,11 @@ from typing import Annotated
 import typer
 from sqlalchemy import Connection, Engine, text
 
+from transit_ops.core.models import ProviderManifest
 from transit_ops.db.connection import make_engine
 from transit_ops.history.alert_recovery import RecoverySourceReader, recover_alert_archive_entries
 from transit_ops.history.alert_recovery_backups import BackupRecoveryReader
+from transit_ops.history.alert_recovery_captures import CaptureRecoveryReader
 from transit_ops.history.alert_recovery_models import (
     Candidate,
     RecoveryReport,
@@ -35,6 +37,9 @@ def build_recovery_source_readers(
     storage: SnapshotStorage | LocalSnapshotStorage,
     *,
     settings: Settings,
+    manifest: ProviderManifest,
+    capture_from: datetime,
+    capture_to: datetime,
 ) -> Mapping[SourceKind, RecoverySourceReader]:
     def published(
         connection: Connection, *, provider_id: str, recovered_at_utc: datetime
@@ -43,7 +48,13 @@ def build_recovery_source_readers(
             storage, provider_id=provider_id, recovered_at_utc=recovered_at_utc
         )
 
-    return {"published": published, "backup": BackupRecoveryReader(settings)}
+    return {
+        "published": published,
+        "backup": BackupRecoveryReader(settings),
+        "capture": CaptureRecoveryReader(
+            settings, manifest, capture_from=capture_from, capture_to=capture_to
+        ),
+    }
 
 
 def run_alert_archive_recovery(
@@ -121,7 +132,9 @@ def recover_alert_archive_entries_command(
     try:
         with ExitStack() as resources:
             settings = get_settings()
-            ProviderRegistry.from_project_root(settings=settings).get_provider(provider_id)
+            manifest = ProviderRegistry.from_project_root(settings=settings).get_provider(
+                provider_id
+            )
             engine = make_engine(settings)
             resources.callback(engine.dispose)
             storage = build_snapshot_storage(settings, provider_id=provider_id)
@@ -130,7 +143,13 @@ def recover_alert_archive_entries_command(
             report = run_alert_archive_recovery(
                 engine,
                 provider_id=provider_id,
-                source_readers=build_recovery_source_readers(storage, settings=settings),
+                source_readers=build_recovery_source_readers(
+                    storage,
+                    settings=settings,
+                    manifest=manifest,
+                    capture_from=start,
+                    capture_to=end,
+                ),
                 expected_ids=expected_id,
                 dry_run=dry_run,
                 recovered_at_utc=datetime.now(UTC),

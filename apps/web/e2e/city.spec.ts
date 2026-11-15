@@ -57,6 +57,8 @@ for (const locale of PUBLISHED_LOCALES) {
 		await switchProvider(page, locale);
 
 		await expect(page).toHaveURL((url) => url.pathname === localizeHref(status, locale));
+		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+		await page.getByRole('button', { name: health.details, exact: true }).click();
 		await expect(list.getByText(health.lanes.gateVerdict.pass, { exact: true })).toBeVisible();
 		for (const { lane } of lanes) {
 			await expect(list.getByText(health.lanes.laneLabel[lane], { exact: true })).toBeVisible();

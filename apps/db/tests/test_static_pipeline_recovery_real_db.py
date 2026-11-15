@@ -22,6 +22,7 @@ from transit_ops.ingestion.common import DownloadedArtifact
 from transit_ops.ingestion.storage import get_bronze_storage
 from transit_ops.maintenance.bronze import prune_bronze_static_objects
 from transit_ops.providers import ProviderRegistry
+from transit_ops.providers.registry import load_provider_manifest
 from transit_ops.settings import Settings
 
 
@@ -102,7 +103,9 @@ class StaticPipeline:
 @pytest.fixture
 def subject(real_db_engine, seed_provider, tmp_path, monkeypatch):
     provider_id = f"static_recovery_{uuid4().hex[:10]}"
-    manifest = yaml.safe_load((Path(__file__).parents[1] / "config/providers/stm.yaml").read_text())
+    manifest = load_provider_manifest(
+        Path(__file__).parents[1] / "config/providers/stm.yaml"
+    ).model_dump(mode="json")
     manifest["provider"]["provider_id"] = provider_id
     manifest["feeds"] = {"static_schedule": manifest["feeds"]["static_schedule"]}
     manifest["feeds"]["static_schedule"]["source_url"] = "https://fixture.test/legacy-gtfs.zip"

@@ -1,7 +1,47 @@
 import json
 import pathlib
+import shutil
+import subprocess
+import sys
 
 from transit_ops.snapshots.contract import export_schemas
+
+
+def test_revision_three_committed_schemas_match_models():
+    from transit_ops.snapshots.contract_r3 import export_schemas as export_r3
+
+    base = pathlib.Path(__file__).resolve().parents[1] / "src/transit_ops/snapshots/schemas/r3"
+    schemas = export_r3()
+    assert set(schemas) == {"historic_receipt", "historic_network_trend"}
+    assert {p.stem.removesuffix(".schema") for p in base.glob("*.schema.json")} == set(schemas)
+    for name, schema in schemas.items():
+        raw = (base / f"{name}.schema.json").read_bytes()
+        assert json.loads(raw) == schema, name
+        assert raw == (json.dumps(schema, indent=2, sort_keys=True) + "\n").encode(), name
+
+
+def test_schema_export_preserves_every_revision_two_file(tmp_path):
+    db = pathlib.Path(__file__).resolve().parents[1]
+    source = db / "src/transit_ops/snapshots/schemas"
+    before = {p.name: p.read_bytes() for p in source.glob("*.schema.json")}
+    script = tmp_path / "scripts/export_snapshot_schemas.py"
+    script.parent.mkdir()
+    shutil.copyfile(db / "scripts/export_snapshot_schemas.py", script)
+    output = tmp_path / "src/transit_ops/snapshots/schemas"
+    output.mkdir(parents=True)
+    # An unrelated artifact must survive export; the exporter owns no cleanup.
+    (output / "unknown.schema.json").write_bytes(b"preserve me\n")
+    for _ in range(2):
+        subprocess.run([sys.executable, str(script)], check=True, capture_output=True)
+        root = {p.name: p.read_bytes() for p in output.glob("*.schema.json")}
+        assert root == before | {"unknown.schema.json": b"preserve me\n"}
+        r3 = output / "r3"
+        assert {p.name for p in r3.glob("*.schema.json")} == {
+            "historic_receipt.schema.json",
+            "historic_network_trend.schema.json",
+        }
+        for path in r3.glob("*.schema.json"):
+            assert path.read_bytes() == (source / "r3" / path.name).read_bytes()
 
 
 def test_committed_schemas_match_models():
@@ -41,6 +81,7 @@ def test_schema_guard_refuses_an_unlisted_property():
     from revision_2_allowlist import compare_schemas_with_baseline
 
     baseline = export_schemas()
+    baseline["static_routes_index"]["$defs"]["RouteIndexEntry"]["properties"].pop("live_data", None)
     changed = deepcopy(baseline)
     changed["live_trips"]["$defs"]["Trip"]["properties"]["foo"] = {"type": "string"}
     changed["static_routes_index"]["$defs"]["RouteIndexEntry"]["properties"]["live_data"] = {
@@ -58,6 +99,7 @@ def test_schema_guard_accepts_only_optional_additions_and_their_definitions():
     from revision_2_allowlist import compare_schemas_with_baseline
 
     baseline = export_schemas()
+    baseline["static_routes_index"]["$defs"]["RouteIndexEntry"]["properties"].pop("live_data", None)
     changed = deepcopy(baseline)
     trip = changed["live_trips"]["$defs"]["Trip"]["properties"]
     trip["headsign"] = {"type": "string"}

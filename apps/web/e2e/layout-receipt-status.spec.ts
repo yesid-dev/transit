@@ -13,11 +13,29 @@ for (const locale of ['en', 'fr'] as const)
 		let release = (): void => {};
 		const held = new Promise<void>((resolve) => (release = resolve));
 		await page.route('**/_app/immutable/**/*.js', (route) => held.then(() => route.fallback()));
+		let releaseStyles = (): void => {};
+		const stylesHeld = new Promise<void>((resolve) => (releaseStyles = resolve));
+		// Force the component CSS to arrive before the global typography and layout CSS.
+		await page.route('**/_app/immutable/**/*.css', async (route) => {
+			const response = await route.fetch();
+			const body = await response.text();
+			if (!body.includes('.health-summary')) await stylesHeld;
+			await route.fulfill({ response, body });
+		});
 		await page.goto(`${locale === 'fr' ? '/fr' : ''}/status`, { waitUntil: 'commit' });
 		const summary = page.locator('[data-slot="health-summary"]');
 		await expect(summary).toHaveAttribute('aria-busy', 'true');
 		await page.addStyleTag({ content: 'html { font-size: 200%; }' });
-		await expect(summary).toHaveCSS('display', 'flex'); // its stylesheet has applied
+		await expect(summary).toHaveCSS('display', 'flex');
+		releaseStyles();
+		// The component can be styled before global typography and frame widths arrive.
+		// WebKit's load also waits for the held scripts; wait only for parsed, applied CSS.
+		await page.waitForLoadState('domcontentloaded');
+		await page.waitForFunction(() =>
+			[...document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')].every(
+				(link) => link.disabled || link.sheet != null,
+			),
+		);
 		// WebKit settles fonts only after the held scripts load: wait for them, at most 2 s.
 		await page.evaluate(() =>
 			Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 2e3))]),

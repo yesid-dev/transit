@@ -217,9 +217,18 @@ def build_labels(
 _ROUTES_INDEX_SQL = named_query(
     "static.routes_index",
     """
-    SELECT route_id, route_short_name, route_long_name, route_color, route_type
-    FROM gold.dim_route
-    WHERE provider_id = :provider_id
+    SELECT r.route_id, r.route_short_name, r.route_long_name, r.route_color, r.route_type,
+           NOT EXISTS (
+               SELECT 1 FROM gold.routes_without_live_data(:provider_id) declared
+               WHERE declared.route_id = r.route_id
+           ) OR EXISTS (
+               SELECT 1 FROM core.route_live_observations live
+               WHERE live.provider_id = r.provider_id AND live.route_id = r.route_id
+                 AND live.last_seen_at BETWEEN CURRENT_TIMESTAMP - interval '15 minutes'
+                                           AND CURRENT_TIMESTAMP
+           ) AS live_data
+    FROM gold.dim_route r
+    WHERE r.provider_id = :provider_id
     ORDER BY route_sort_order NULLS LAST, route_short_name
     """,
 )
@@ -268,6 +277,7 @@ def build_routes_index(conn: Connection, *, provider_id: str, generated_utc: str
                 # Preserve GTFS route_type 0; only NULL falls back to bus.
                 type=int(r["route_type"]) if r["route_type"] is not None else 3,
                 reliability=route_id in reliability_ids,
+                live_data=r["live_data"],
             )
         )
     routes.sort(key=lambda e: _route_sort_key(e.id))

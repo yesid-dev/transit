@@ -3,6 +3,10 @@ A public dashboard that tells riders how reliable their transit service is, from
 
 ## Language
 
+**Copy proof**:
+The record that one copy was read back and found equal to what it means, row for row; without it a copy is not verified. Typed row equality alone still needs the canonical-text check before verification.
+_Avoid_: receipt (an upload record)
+
 **Edition index**:
 The record that groups a schedule edition's table copies and their proofs, identifies their GTFS file and field names, and states whether its source zip is archived.
 
@@ -29,6 +33,20 @@ _Avoid_: grain (the reporting span: day, week, month)
 **History ledger**:
 The record of what is kept, in which form, and whether it was checked.
 _Avoid_: archive (the stored copies themselves)
+
+**Build input manifest**:
+The list of every input file of one build with its checksum, plus the stamp and code; two builds with the same manifest give the same bytes.
+_Avoid_: publication manifest (`manifest.json` of the live files)
+
+**Ledger event**:
+One audit record of what changed in a window, who changed it and why.
+
+**Window transition**:
+One numbered, write-once change to a window; it carries the window's next state, if any, and its ledger events.
+
+**Window sequence**:
+The number of window transitions recorded for a window.
+_Avoid_: version (an archive copy's content version)
 
 **Archive copy**:
 The compressed, write-once form of one window of one dataset, in object storage under `archive/`.
@@ -61,7 +79,7 @@ The one-word answer to "how reliable is this line, stop or network over this win
 _Avoid_: status, badge, OTP status
 
 **Tentative**:
-A verdict given when there are too few observations (under 30) or the uncertainty leaves open whether the service is reliable. Shown with a hedge.
+In revision 2, a verdict given when there are too few observations (under 30) or the uncertainty leaves open whether the service is reliable. Shown with a hedge. In revision 3, fewer than 30 trips, or too few service days, in the window.
 _Avoid_: too few, low confidence
 
 **Hedge**:
@@ -109,6 +127,10 @@ _Avoid_: feed, tier, source
 What a rider can trust about a feed family right now: never loaded, live, stale, retrying, or failed with no data. Unknown age counts as stale for a retained snapshot; a family that has never loaded is not stale. Retrying means another attempt after a failure, even when retained data has an unknown age.
 _Avoid_: degraded, freshness
 
+**Capture coverage**:
+The share of a period during which Transit held a fresh, usable copy of a feed. It describes Transit's own capture, not the agency's service.
+_Avoid_: uptime, feed health (that is the live state)
+
 **Publication age**:
 How old a published report is. A newly prepared report can still contain old agency data.
 _Avoid_: feed age, capture age
@@ -132,6 +154,30 @@ _Avoid_: latest data, headline age, freshness
 One scheduled run of a vehicle along a line, from its first stop to its last.
 _Avoid_: run, journey; in French, _voyage_
 
+**Trip under way**:
+A scheduled trip between its scheduled start and the last moment its prediction is still ahead, with a vehicle reporting it where the provider links vehicles to trips.
+_Avoid_: bus on the road, active trip
+
+**Reading**:
+One trip in one minute: the newest prediction the agency published for a trip under way, captured during that minute. Not an arrival, and not a whole trip.
+_Avoid_: observation, poll, sample
+
+**On time** (FR _à l'heure_):
+Between 1 minute early and 5 minutes late against the schedule, both limits included. The same rule applies live and in history, for every provider.
+_Avoid_: punctual, OTP, on schedule
+
+**Early** (FR _en avance_):
+More than 1 minute ahead of the schedule.
+_Avoid_: ahead, running hot
+
+**Late** (FR _en retard_):
+More than 5 minutes behind the schedule.
+_Avoid_: severe, severely late, major delay, critical
+
+**Late rate** (FR _taux de retard_):
+The share of readings that are late.
+_Avoid_: severe-delay rate, severe share
+
 **Reported position**:
 Where a vehicle said it was in its latest report.
 _Avoid_: raw position, actual position
@@ -147,9 +193,17 @@ _Avoid_: banner, banner state, edge state, alert (alerts are service messages fr
 **Metric**:
 A figure worded once, with its arithmetic defined for each revision of its series.
 
-**Silent trip**:
+**Silent trip** (FR _trajet silencieux_):
 A trip the schedule says should be running now that has no vehicle reporting for it.
 _Avoid_: non-responding trip, ghost bus, missing vehicle
+
+**Cancelled trip** (FR _trajet annulé_):
+A scheduled trip the agency announced it would not run.
+_Avoid_: dropped trip, deleted trip
+
+**Missing trip** (FR _trajet manquant_):
+A trip scheduled on a past service day that never appeared in the agency's live data and was not announced as cancelled, counted only when Transit was watching.
+_Avoid_: silent trip (that is the live state), ghost bus, no-show
 
 **Not reporting**:
 A vehicle that has sent no report for 150 seconds or more, plus its provider's source lag (210 seconds for OC Transpo). It concerns one vehicle; a silent trip concerns a scheduled trip.
@@ -160,8 +214,12 @@ How much older than its publication time a provider's live data already is when 
 _Avoid_: delay (delay is schedule adherence), latency
 
 **Line without live data**:
-A line its provider declares publishes no vehicle positions, such as the STM metro or the O-Train. Its trips are left out of the live silent trip count. If live data appears for it, the pipeline treats it as live and flags the outdated declaration.
+A line its provider declares publishes no vehicle positions, such as the STM metro or the O-Train. Its trips are left out of the live silent trip count. If live data appears for it, the pipeline treats it as live and flags the outdated declaration. In revision 3, its trips are left out of every rate, count and ranking. The state is decided for each service day and kept.
 _Avoid_: dead line, offline line
+
+**Not measured** (FR _non mesuré_):
+A figure Transit could not compute because its own capture or schedule record was incomplete for that day, line or trip. Never shown as zero or as failed service.
+_Avoid_: no data, unknown
 
 **Out-of-service vehicle**:
 A vehicle that reports a position but is not assigned to any trip, usually parked or returning to the garage. It does not count toward coverage or the fleet in service.
@@ -171,9 +229,15 @@ _Avoid_: unknown vehicle, idle bus, ghost
 One active feed family is stale while another is current or has not loaded yet. It cannot establish that the whole feed has stopped responding.
 _Avoid_: outage, whole-feed stall
 
+**Publish heartbeat**:
+The record a publisher leaves after each publication: when, how many files, and the gate's outcome.
+
 **Published uncertainty range**:
 The lower and upper percentage bounds supplied with a reliability reading. They express uncertainty in that reading and do not supply a missing exact on-time count.
 _Avoid_: reconstructed count, guaranteed range
+
+**Publisher lease**:
+The right of one process to publish one lane of one provider until a set time.
 
 **Live-eligible KPI sample**:
 A valid current KPI reading with the delay, coverage, route total and at least one route delay needed for the live summary. A valid but incomplete reading is a demo sample; an invalid response is a failure.

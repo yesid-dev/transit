@@ -63,7 +63,11 @@ class Server:
             }
             self.connections.append(identity)
             target = tuple(identity[key] for key in ("host", "hostaddr", "port"))
-            yield SimpleNamespace(exec_driver_sql=lambda sql: self.execute(target, sql))
+            yield SimpleNamespace(
+                exec_driver_sql=lambda sql: self.execute(target, sql),
+                execute=lambda *_: [],
+                info={},
+            )
 
         self.monkeypatch.setattr(engine, "connect", connection)
         self.monkeypatch.setattr(engine, "begin", connection)

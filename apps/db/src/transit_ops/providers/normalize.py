@@ -1,21 +1,29 @@
-"""Byte decoding shell; rules, alert normalization and evidence have no implementation yet."""
+"""Dormant capture normalization; worker mode remains decode-only."""
 
+from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Literal, Protocol
+from datetime import date, datetime
+from typing import Literal
 
 from google.protobuf.message import DecodeError  # type: ignore[import-untyped]
 from google.transit.gtfs_realtime_pb2 import FeedMessage
 
 from transit_ops.providers.declaration import Provider
 from transit_ops.providers.formats import decode_gtfs_rt
-from transit_ops.providers.modes import WORKER_MODES, RuleMode, normalizer_fingerprint
+from transit_ops.providers.modes import RULE_ORDER, WORKER_MODES, RuleMode, normalizer_fingerprint
+from transit_ops.providers.rules.route import candidate_dates, propose
+from transit_ops.providers.rules.unknown_route import propose as propose_unknown_route
+from transit_ops.providers.schedule import ScheduleContext as ScheduleIdentity
 
-
-class ScheduleIdentity(Protocol):
-    @property
-    def context_id(self) -> str: ...
+__all__ = [
+    "Fill",
+    "NormalizedCapture",
+    "RawCapture",
+    "RuleOutcome",
+    "ScheduleIdentity",
+    "normalize_capture",
+]
 
 
 @dataclass(frozen=True)
@@ -85,4 +93,70 @@ def normalize_capture(
         return NormalizedCapture(
             "rejected", "undecodable", None, (), (), (), None, context_id, fingerprint
         )
-    return NormalizedCapture("ok", None, message, (), (), (), None, context_id, fingerprint)
+    fills: list[Fill] = []
+    outcomes: list[RuleOutcome] = []
+    if collect or any(modes[r] == "apply" for r in ("N1", "N9")):
+        try:
+            dates = candidate_dates(message, capture.captured_at_utc, provider.timezone)
+        except (ValueError, OverflowError, OSError):
+            return NormalizedCapture(
+                "rejected",
+                "invalid_feed_timestamp",
+                None,
+                (),
+                (),
+                (),
+                None,
+                context_id,
+                fingerprint,
+            )
+        fills, outcomes = _run_rules(message, capture.family, schedule, dates, modes, collect)
+    return NormalizedCapture(
+        "ok", None, message, (), tuple(fills), tuple(outcomes), None, context_id, fingerprint
+    )
+
+
+def _run_rules(
+    message: FeedMessage,
+    family: str,
+    schedule: ScheduleIdentity | None,
+    dates: tuple[date, ...],
+    modes: Mapping[str, RuleMode],
+    collect: bool,
+) -> tuple[list[Fill], list[RuleOutcome]]:
+    fills: list[Fill] = []
+    outcomes: list[RuleOutcome] = []
+    member = "trip_update" if family == "trip_updates" else "vehicle"
+    field = f"{member}.trip.route_id"
+    supplied_routes = {
+        index: getattr(entity, member).trip.route_id
+        for index, entity in enumerate(message.entity)
+        if entity.HasField(member)
+    }
+    for rule in RULE_ORDER:
+        if rule not in ("N1", "N9") or (modes[rule] != "apply" and not collect):
+            continue
+        seen = changed = unresolved = 0
+        reasons: Counter[str] = Counter()
+        for index, entity in enumerate(message.entity):
+            if not entity.HasField(member):
+                continue
+            trip = getattr(entity, member).trip
+            proposal = (
+                propose(trip, field, schedule, dates)
+                if rule == "N1"
+                else propose_unknown_route(trip, supplied_routes[index], schedule, dates[1])
+            )
+            seen += proposal.seen
+            changed += len(proposal.writes)
+            unresolved += proposal.unresolved
+            reasons.update(dict(proposal.reasons))
+            if modes[rule] == "apply":
+                for write in proposal.writes:
+                    trip.route_id = write.value
+                    fills.append(Fill(index, write.stop_time_update_index, write.field, rule))
+        if seen:
+            outcomes.append(
+                RuleOutcome(rule, modes[rule], seen, changed, unresolved, dict(reasons))
+            )
+    return fills, outcomes

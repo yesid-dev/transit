@@ -4,15 +4,23 @@ import json
 from collections.abc import Collection, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import asdict, fields
-from datetime import date, datetime
-from typing import cast, get_args
+from datetime import UTC, date, datetime
+from typing import TYPE_CHECKING, cast, get_args
 
 from sqlalchemy import Connection, event, text
 from sqlalchemy.engine import ExceptionContext
 
 from transit_ops.history import ledger
 from transit_ops.history.ledger import ArchiveCopy, EventKind, WindowState, WorkingState
-from transit_ops.history.ledger_store import NewCopy, RecordedEvent, WindowIdentity, WindowSession
+from transit_ops.history.ledger_store import (
+    AUDIT_KINDS,
+    LedgerStore,
+    NewCopy,
+    RecordedEvent,
+    WindowIdentity,
+    WindowSession,
+    validate_new_copy,
+)
 
 _WINDOW = """dataset_id=:dataset_id AND provider_id=:provider_id
              AND revision=:revision AND window_key=:window_key"""
@@ -28,6 +36,39 @@ def _aware(at: datetime) -> datetime:
 class PostgresLedger:
     def __init__(self, connection: Connection) -> None:
         self.connection = connection
+
+    def record_audit(
+        self,
+        identity: WindowIdentity,
+        kind: EventKind,
+        details: Mapping[str, object],
+        *,
+        reason: str | None = None,
+        actor: str | None = None,
+    ) -> RecordedEvent:
+        """Append without a window lock; durability follows the caller's transaction."""
+        if kind not in AUDIT_KINDS:
+            raise ValueError(f"record_audit refuses kind {kind!r}; use its guarded verb")
+        sequence = ledger.record_event(
+            self.connection,
+            **asdict(identity),
+            kind=kind,
+            details=details,
+            reason=reason,
+            actor=actor,
+        )
+        row = (
+            self.connection.execute(
+                text("""
+            SELECT event_id AS sequence, kind, content_version, reason, details, actor, at_utc
+            FROM core.history_event WHERE event_id=:sequence
+            """),
+                {"sequence": sequence},
+            )
+            .mappings()
+            .one()
+        )
+        return RecordedEvent(**{**row, "at_utc": row["at_utc"].astimezone(UTC)})
 
     @contextmanager
     def session(self, identity: WindowIdentity) -> Iterator[WindowSession]:
@@ -65,6 +106,21 @@ class PostgresLedger:
             revision=revision,
         )
 
+    def events(
+        self, identity: WindowIdentity, *, kinds: Collection[str] | None = None
+    ) -> list[RecordedEvent]:
+        rows = self.connection.execute(
+            text("""
+            SELECT event_id AS sequence, kind, content_version, reason, details, actor, at_utc
+            FROM core.history_event
+            WHERE dataset_id=:dataset_id AND provider_id=:provider_id
+              AND revision=:revision AND window_key=:window_key
+              AND (:all_kinds OR kind = ANY(:kinds)) ORDER BY event_id
+            """),
+            {**asdict(identity), "all_kinds": kinds is None, "kinds": list(kinds or ())},
+        ).mappings()
+        return [RecordedEvent(**{**row, "at_utc": row["at_utc"].astimezone(UTC)}) for row in rows]
+
 
 class _Session:
     def __init__(self, connection: Connection, identity: WindowIdentity) -> None:
@@ -83,7 +139,7 @@ class _Session:
     def now(self) -> datetime:
         return cast(
             datetime, self.connection.execute(text("SELECT clock_timestamp()")).scalar_one()
-        )
+        ).astimezone(UTC)
 
     def mark_changed(self, *, actor: str | None = None) -> None:
         ledger.lock_window(self.connection, **asdict(self.identity), actor=actor)
@@ -124,6 +180,21 @@ class _Session:
         details: Mapping[str, object] | None = None,
         actor: str | None = None,
     ) -> None:
+        if kind not in AUDIT_KINDS:
+            raise ValueError(f"record_event refuses lifecycle kind {kind!r}; use its guarded verb")
+        self._record_event(
+            kind, content_version=content_version, reason=reason, details=details, actor=actor
+        )
+
+    def _record_event(
+        self,
+        kind: EventKind,
+        *,
+        content_version: int | None = None,
+        reason: str | None = None,
+        details: Mapping[str, object] | None = None,
+        actor: str | None = None,
+    ) -> None:
         ledger.record_event(
             self.connection,
             **asdict(self.identity),
@@ -135,16 +206,7 @@ class _Session:
         )
 
     def events(self, *, kinds: Collection[str] | None = None) -> list[RecordedEvent]:
-        rows = self.connection.execute(
-            text("""
-            SELECT kind, content_version, reason, details, actor, at_utc FROM core.history_event
-            WHERE dataset_id=:dataset_id AND provider_id=:provider_id
-              AND revision=:revision AND window_key=:window_key
-              AND (:all_kinds OR kind = ANY(:kinds)) ORDER BY event_id
-            """),
-            {**asdict(self.identity), "all_kinds": kinds is None, "kinds": list(kinds or ())},
-        ).mappings()
-        return [RecordedEvent(**row) for row in rows]
+        return PostgresLedger(self.connection).events(self.identity, kinds=kinds)
 
     def processing_events(self) -> list[RecordedEvent]:
         return self.events(kinds={"processing_evidence"})
@@ -169,6 +231,7 @@ class _Session:
         return [ArchiveCopy(**row) for row in rows]
 
     def insert_allocated_copy(self, copy: NewCopy) -> None:
+        validate_new_copy(copy, self.identity)
         self._copy_values(copy.content_version, None)
         values = {**asdict(self.identity), **{f.name: getattr(copy, f.name) for f in fields(copy)}}
         values["details"] = json.dumps(dict(copy.details), sort_keys=True)
@@ -177,7 +240,11 @@ class _Session:
         self._update(
             f"""
             INSERT INTO core.history_archive_copy ({columns}, allocated_at_utc)
-            VALUES ({params}, clock_timestamp())
+            SELECT {params}, clock_timestamp()
+            WHERE EXISTS (
+                SELECT 1 FROM core.history_window
+                WHERE {_WINDOW} AND next_version > :content_version
+            )
             ON CONFLICT (dataset_id, provider_id, revision, window_key, content_version) DO NOTHING
         """,
             values,
@@ -194,7 +261,7 @@ class _Session:
             values,
             "seal",
         )
-        self.record_event("seal", content_version=content_version, actor=actor)
+        self._record_event("seal", content_version=content_version, actor=actor)
 
     def mark_rejected(
         self, content_version: int, *, rejected_at: datetime, reason: str, actor: str | None = None
@@ -208,7 +275,7 @@ class _Session:
             values,
             "reject",
         )
-        self.record_event("reject", content_version=content_version, reason=reason, actor=actor)
+        self._record_event("reject", content_version=content_version, reason=reason, actor=actor)
 
     def make_current(
         self, content_version: int, *, verified_at: datetime, actor: str | None = None
@@ -233,8 +300,8 @@ class _Session:
             values,
             "make current",
         )
-        self.record_event("verify", content_version=content_version, actor=actor)
-        self.record_event(
+        self._record_event("verify", content_version=content_version, actor=actor)
+        self._record_event(
             "current",
             content_version=content_version,
             actor=actor,
@@ -256,3 +323,7 @@ class _Session:
             identity = {**asdict(self.identity), "content_version": values["content_version"]}
             verb = "make copy current" if action == "make current" else f"{action} copy"
             raise RuntimeError(f"could not {verb} {identity}")
+
+
+if TYPE_CHECKING:
+    _ledger_store_contract: LedgerStore = cast(PostgresLedger, None)

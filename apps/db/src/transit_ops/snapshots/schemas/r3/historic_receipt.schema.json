@@ -1,0 +1,728 @@
+{
+  "$defs": {
+    "Count": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "ExclusionReason": {
+      "enum": [
+        "not_in_schedule",
+        "line_not_counted",
+        "not_scheduled",
+        "no_delay",
+        "clock_change",
+        "no_edition_record",
+        "other_edition",
+        "before_start",
+        "prediction_passed",
+        "ambiguous_instance",
+        "vehicle_feed_gap",
+        "no_vehicle",
+        "set_aside_extreme"
+      ],
+      "type": "string"
+    },
+    "FeedCoverage": {
+      "additionalProperties": false,
+      "properties": {
+        "basis": {
+          "anyOf": [
+            {
+              "enum": [
+                "polls",
+                "summary_5m"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Basis"
+        },
+        "covered_pct": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Percentage"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "slot_fill_pct": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Percentage"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "covered_pct",
+        "slot_fill_pct",
+        "basis"
+      ],
+      "title": "FeedCoverage",
+      "type": "object"
+    },
+    "Finite": {
+      "type": "number"
+    },
+    "HeadlineLine": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "on_time_delta_pts": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Finite"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "on_time_pct": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Percentage"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "short": {
+          "title": "Short",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "short",
+        "name",
+        "on_time_pct",
+        "on_time_delta_pts"
+      ],
+      "title": "HeadlineLine",
+      "type": "object"
+    },
+    "HeadlineStop": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "on_time_delta_pts": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Finite"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "on_time_pct": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Percentage"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "code",
+        "name",
+        "on_time_pct",
+        "on_time_delta_pts"
+      ],
+      "title": "HeadlineStop",
+      "type": "object"
+    },
+    "NoLiveData": {
+      "additionalProperties": false,
+      "properties": {
+        "line_count": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Count"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lines": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ServiceLine"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Lines"
+        },
+        "scheduled_trip_days": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Count"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "line_count",
+        "scheduled_trip_days",
+        "lines"
+      ],
+      "title": "NoLiveData",
+      "type": "object"
+    },
+    "NotMeasuredReason": {
+      "enum": [
+        "schedule_not_kept",
+        "captures_not_available",
+        "no_capture_record",
+        "capture_gap",
+        "window_too_short",
+        "applicability_unresolved",
+        "schedule_mismatch"
+      ],
+      "type": "string"
+    },
+    "Percentage": {
+      "maximum": 100,
+      "minimum": 0,
+      "type": "number"
+    },
+    "Population": {
+      "additionalProperties": false,
+      "properties": {
+        "basis": {
+          "enum": [
+            "vehicle_evidence",
+            "scheduled_window"
+          ],
+          "title": "Basis",
+          "type": "string"
+        },
+        "coverage": {
+          "additionalProperties": {
+            "$ref": "#/$defs/FeedCoverage"
+          },
+          "title": "Coverage",
+          "type": "object"
+        },
+        "excluded": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Percentage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "propertyNames": {
+            "$ref": "#/$defs/ExclusionReason"
+          },
+          "title": "Excluded",
+          "type": "object"
+        }
+      },
+      "required": [
+        "basis",
+        "excluded",
+        "coverage"
+      ],
+      "title": "Population",
+      "type": "object"
+    },
+    "ServiceLine": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "scheduled_trip_days": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Count"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "short": {
+          "title": "Short",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "short",
+        "scheduled_trip_days"
+      ],
+      "title": "ServiceLine",
+      "type": "object"
+    },
+    "ServiceValues": {
+      "additionalProperties": false,
+      "properties": {
+        "basis": {
+          "enum": [
+            "facts",
+            "stored_counts"
+          ],
+          "title": "Basis",
+          "type": "string"
+        },
+        "cancelled_trip_days": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Count"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "delivered_trip_days": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Count"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "missing_trip_days": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Count"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "no_live_data": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NoLiveData"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "not_measured_trip_days": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Count"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "not_reported_lines": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ServiceLine"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Not Reported Lines"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NotMeasuredReason"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "scheduled_trip_days": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Count"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "service_completeness_pct": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Percentage"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "state": {
+          "enum": [
+            "measured",
+            "not_measured"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "state",
+        "basis",
+        "not_reported_lines",
+        "no_live_data"
+      ],
+      "title": "ServiceValues",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Dormant daily receipt; supplied evidence only, with no publication registration.",
+  "properties": {
+    "alerts": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Count"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "alerts_not_measured_reason": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NotMeasuredReason"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "alerts_reason": {
+      "anyOf": [
+        {
+          "enum": [
+            "not_tracked",
+            "not_measured"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Alerts Reason"
+    },
+    "avg_delay_min": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Finite"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "data_through": {
+      "format": "date",
+      "title": "Data Through",
+      "type": "string"
+    },
+    "date": {
+      "format": "date",
+      "title": "Date",
+      "type": "string"
+    },
+    "early_count": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Count"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "early_pct": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Percentage"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "evidence": {
+      "enum": [
+        "counts",
+        "tentative"
+      ],
+      "title": "Evidence",
+      "type": "string"
+    },
+    "generated_utc": {
+      "format": "date-time",
+      "title": "Generated Utc",
+      "type": "string"
+    },
+    "late_avg_min": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Finite"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "late_count": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Count"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "late_pct": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Percentage"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "measured_day_count": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Count"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "methodology_version": {
+      "const": "receipt-2",
+      "title": "Methodology Version",
+      "type": "string"
+    },
+    "on_time_count": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Count"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "on_time_pct": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Percentage"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "population": {
+      "$ref": "#/$defs/Population"
+    },
+    "publish_generation_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Publish Generation Id"
+    },
+    "reading_count": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Count"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "reason": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NotMeasuredReason"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "service": {
+      "$ref": "#/$defs/ServiceValues"
+    },
+    "service_day_count": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Count"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "state": {
+      "enum": [
+        "measured",
+        "not_measured"
+      ],
+      "title": "State",
+      "type": "string"
+    },
+    "trip_count": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Count"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "worst_line": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/HeadlineLine"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "worst_stop": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/HeadlineStop"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "state",
+    "evidence",
+    "methodology_version",
+    "generated_utc",
+    "data_through",
+    "date",
+    "population",
+    "service",
+    "worst_line",
+    "worst_stop",
+    "alerts",
+    "alerts_reason",
+    "alerts_not_measured_reason"
+  ],
+  "title": "Receipt",
+  "type": "object"
+}

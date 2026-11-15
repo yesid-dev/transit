@@ -6,7 +6,7 @@
 		BlueprintBusSide,
 		BlueprintTrackPlan,
 		BlueprintCatenary,
-		BlueprintMr73Side,
+		BlueprintMetroPlatformCirculationPlan,
 		BlueprintPantographOverheadEquipment,
 		BlueprintRailGaugeSection,
 		BlueprintSignal,
@@ -15,9 +15,17 @@
 		BlueprintDetailBogie,
 	} from '@yesid/ui/blueprints';
 	import { getLocale } from '#lib/i18n/index.ts';
+	import { routeModeKey } from '#lib/search/stopMode.ts';
 
 	const locale = getLocale();
-	const operator = $derived(page.data?.provider?.labels[locale].operator ?? 'STM');
+	const operator = $derived(page.data?.provider?.labels?.[locale]?.operator ?? null);
+	const modes = $derived(
+		new Set(
+			(page.data?.routesIndex?.routes ?? []).map((route: { type: number }) =>
+				routeModeKey(route.type),
+			),
+		),
+	);
 </script>
 
 <BlueprintShell labels={['SEC-LINES / NETWORK', 'DWG: TRANSIT-LINE-ELEV', 'SCALE NTS | REV.A']}>
@@ -28,15 +36,15 @@
 	{#snippet details()}
 		<BlueprintTrackPlan class="edge-detail" style="top:-10%;left:20%;width:55%;height:50%;" />
 		<BlueprintCatenary class="edge-detail" style="top:-4%;left:52%;width:48%;height:48%;" />
-		{#if (page.data?.providerId ?? 'stm') === 'stm'}<BlueprintMr73Side
+		{#if modes.has('metro')}<BlueprintMetroPlatformCirculationPlan
 				class="edge-detail"
 				style="top:-18%;left:-4%;width:58%;height:65%;"
 			/>{/if}
-		<BlueprintBusSide
-			{operator}
-			class="edge-detail"
-			style="top:-2%;left:30%;width:50%;height:60%;"
-		/>
+		{#if operator && modes.has('bus')}<BlueprintBusSide
+				{operator}
+				class="edge-detail"
+				style="top:-2%;left:30%;width:50%;height:60%;"
+			/>{/if}
 		<BlueprintDetailBogie class="edge-detail" style="top:2%;left:2%;width:30%;height:30%;" />
 		<BlueprintSignal class="edge-detail" style="top:0;left:8%;width:24%;height:27%;" />
 		<BlueprintTurnoutCrossoverPlan

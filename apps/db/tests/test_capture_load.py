@@ -7,7 +7,8 @@ from transit_ops.settings import Settings
 
 
 @pytest.mark.parametrize(
-    "fault", [None, "capture", "silver", "capture_identity", "silver_identity", "silver_type"]
+    "fault", [None, "capture", "silver", "capture_identity", "silver_identity", "silver_type",
+              "load_capture_identity"]
 )
 def test_shared_realtime_operation_preserves_exact_receipts_and_failure_stage(
     monkeypatch, caplog, fault
@@ -20,6 +21,7 @@ def test_shared_realtime_operation_preserves_exact_receipts_and_failure_stage(
     silver = _realtime_silver_result("trip_updates", 20)
     original = RuntimeError("failed https://example.test/feed?api_key=private-d1-secret")
     calls = []
+    observed = []
 
     def resolver(backend):
         pytest.fail("delegate storage resolution")
@@ -40,6 +42,8 @@ def test_shared_realtime_operation_preserves_exact_receipts_and_failure_stage(
         calls.append("silver")
         if fault == "silver":
             raise original
+        if fault == "load_capture_identity":
+            raise capture_load._ReceiptIdentityError("loader refused source", "capture_identity")
         if fault == "silver_type":
             return object()
         return replace(silver, realtime_snapshot_id=21) if fault == "silver_identity" else silver
@@ -53,6 +57,7 @@ def test_shared_realtime_operation_preserves_exact_receipts_and_failure_stage(
         registry=object(),
         engine=object(),
         bronze_storage_resolver=resolver,
+        on_trip_updates_loaded=lambda payload, ref: observed.append((payload, ref)),
     )
     assert "private-d1-secret" not in caplog.text
     assert "committed-capture-a" not in caplog.text
@@ -61,13 +66,21 @@ def test_shared_realtime_operation_preserves_exact_receipts_and_failure_stage(
         assert result.silver is silver
         assert result.failure is None
         assert calls == ["archived", "silver"]
+        assert observed[0][0] == b"committed-capture-a"
+        assert observed[0][1].capture_row_id == 20
+        assert observed[0][1].captured_at_utc == captured.completed_at_utc
     else:
+        assert observed == []
         assert result.silver is None
         assert result.capture is (None if fault == "capture" else captured)
         assert result.failure.stage == ("capture" if fault == "capture" else "silver")
+        assert result.failure.capture_row_id == (
+            None if fault in {"capture", "capture_identity", "load_capture_identity"} else 20
+        )
         assert result.failure.kind == (
             "silver_identity"
             if fault == "silver_type"
+            else "capture_identity" if fault == "load_capture_identity"
             else fault
             if fault in {"capture_identity", "silver_identity"}
             else "operation"
@@ -77,3 +90,38 @@ def test_shared_realtime_operation_preserves_exact_receipts_and_failure_stage(
         assert calls == (
             ["archived"] if fault in {"capture", "capture_identity"} else ["archived", "silver"]
         )
+
+
+@pytest.mark.parametrize("identity", [0, True, 9223372036854775808, "missing"])
+def test_attribution_failure_does_not_replace_the_original_load_error(monkeypatch, identity):
+    from transit_ops import capture_load
+
+    captured = _realtime_ingestion_result("trip_updates", 20)
+    captured = replace(captured, realtime_snapshot_id=identity)
+    if identity == "missing":
+        class BrokenReceipt:
+            def display_dict(self):
+                return {}
+
+            provider_id, endpoint_key, reads = "stm", "trip_updates", 0
+
+            @property
+            def realtime_snapshot_id(self):
+                self.reads += 1
+                if self.reads > 1:
+                    raise ValueError("broken receipt")
+                return 20
+        captured = BrokenReceipt()
+    original = RuntimeError("[capture_row_id=999] original")
+    monkeypatch.setattr(capture_load, "_capture_realtime_feed", lambda *a, **k: (captured, b"a"))
+
+    def fail(*args, **kwargs):
+        raise original
+
+    monkeypatch.setattr(capture_load, "_load_realtime_to_silver", fail)
+    result = capture_load.capture_and_load_realtime(
+        "stm", "trip_updates", settings=Settings(_env_file=None), registry=object(),
+        engine=object(), bronze_storage_resolver=lambda b: object(),
+    )
+    assert result.failure.capture_row_id is None
+    assert result.failure.error is original

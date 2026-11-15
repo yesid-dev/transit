@@ -1,9 +1,10 @@
 from contextlib import nullcontext
-from datetime import datetime
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
-from ledger_store_contract import new_copy
+from ledger_store_contract import INVALID_COPY_VALUES, LIFECYCLE_KINDS, new_copy
 from sqlalchemy import create_engine
 
 from transit_ops.history.ledger_postgres import PostgresLedger
@@ -56,8 +57,135 @@ class ConflictConnection(TransactionConnection):
         return SimpleNamespace(rowcount=0)
 
 
+@pytest.mark.parametrize("field,value", INVALID_COPY_VALUES)
+def test_invalid_new_copy_is_named_before_any_database_write(monkeypatch, field, value):
+    connection = TransactionConnection()
+    with PostgresLedger(connection).session(
+        WindowIdentity("capture.trip_updates", "network", "2026-11-01")
+    ) as session:
+        monkeypatch.setattr(connection, "execute", lambda *args: pytest.fail("unexpected write"))
+        with pytest.raises(ValueError, match=field):
+            session.insert_allocated_copy(replace(new_copy(1), **{field: value}))
+
+
+@pytest.mark.parametrize("kind", LIFECYCLE_KINDS)
+def test_public_event_writer_refuses_lifecycle_before_database_write(monkeypatch, kind):
+    connection = TransactionConnection()
+    with PostgresLedger(connection).session(
+        WindowIdentity("capture.trip_updates", "network", "2026-11-01")
+    ) as session:
+        monkeypatch.setattr(connection, "execute", lambda *args: pytest.fail("unexpected write"))
+        with pytest.raises(ValueError, match=kind):
+            session.record_event(kind)
+
+
+def test_copy_insertion_refuses_nonzero_revision_before_database_write(monkeypatch):
+    connection = TransactionConnection()
+    with PostgresLedger(connection).session(
+        WindowIdentity("gold.network_vehicle_day", "network", "2026-11", revision=1)
+    ) as session:
+        monkeypatch.setattr(connection, "execute", lambda *args: pytest.fail("unexpected write"))
+        with pytest.raises(ValueError, match="revision"):
+            session.insert_allocated_copy(new_copy(1))
+
+
 def test_copy_insert_refuses_an_existing_version():
     store = PostgresLedger(ConflictConnection())
     with pytest.raises(RuntimeError, match=r"could not insert copy.*'content_version': 1\b"):
         with store.session(WindowIdentity("capture.trip_updates", "network", "2026-11-01")) as s:
             s.insert_allocated_copy(new_copy(1))
+
+
+class ClockConnection(TransactionConnection):
+    def execute(self, *args):
+        stamp = datetime(2026, 11, 1, 12, 0, 0, 123456, timezone(timedelta(hours=5)))
+        return SimpleNamespace(scalar_one=lambda: stamp)
+
+
+def test_session_clock_returns_utc_even_when_database_does_not():
+    with PostgresLedger(ClockConnection()).session(
+        WindowIdentity("capture.trip_updates", "network", "2026-11-01")
+    ) as session:
+        assert session.now() == datetime(2026, 11, 1, 7, 0, 0, 123456, UTC)
+        assert session.now().tzinfo is UTC
+
+
+class EventReadConnection(IdleConnection):
+    def execute(self, *args):
+        row = dict(
+            sequence=17,
+            kind="close_runs",
+            content_version=None,
+            reason=None,
+            details={"closed": 2},
+            actor="closer",
+            at_utc=datetime(2026, 11, 1, tzinfo=UTC),
+        )
+        return SimpleNamespace(mappings=lambda: [row])
+
+
+def test_store_events_needs_no_window_session_or_callers_transaction():
+    events = PostgresLedger(EventReadConnection()).events(
+        WindowIdentity("capture.trip_updates", "network", "2026-11-01")
+    )
+    assert [(e.sequence, e.kind, e.details) for e in events] == [(17, "close_runs", {"closed": 2})]
+
+
+@pytest.mark.parametrize("kind", LIFECYCLE_KINDS)
+def test_lock_free_audit_refuses_lifecycle_before_sql(monkeypatch, kind):
+    connection = TransactionConnection()
+    monkeypatch.setattr(connection, "execute", lambda *a: pytest.fail("unexpected SQL"))
+    with pytest.raises(ValueError, match=kind):
+        PostgresLedger(connection).record_audit(
+            WindowIdentity("capture.trip_updates", "network", "2026-11-01"), kind, {}
+        )
+
+
+@pytest.mark.parametrize(
+    "kind", ["changed", "close_runs", "processing_evidence", "fold_published", "rebuild"]
+)
+@pytest.mark.parametrize("actor", [None, "closer"])
+def test_lock_free_audit_preserves_insert_values_and_returns_the_record(monkeypatch, kind, actor):
+    from transit_ops.history import ledger
+    from transit_ops.history.ledger_store import RecordedEvent
+
+    values = []
+    at = datetime(2026, 11, 1, tzinfo=UTC)
+
+    def execute(statement, params):
+        if "sequence" in params:
+            row = dict(
+                sequence=17,
+                kind=kind,
+                content_version=None,
+                reason="closed_unfinished",
+                details={"closed": 2},
+                actor=actor or "application",
+                at_utc=at,
+            )
+            return SimpleNamespace(mappings=lambda: SimpleNamespace(one=lambda: row))
+        values.append(params)
+        return SimpleNamespace(scalar_one=lambda: 17)
+
+    connection = SimpleNamespace(execute=execute)
+    monkeypatch.setattr(ledger, "acquire_window_lock", lambda *a, **kw: pytest.fail("window lock"))
+    identity = WindowIdentity("capture.trip_updates", "network", "2026-11-01")
+    result = PostgresLedger(connection).record_audit(
+        identity, kind, {"closed": 2}, reason="closed_unfinished", actor=actor
+    )
+    assert result == RecordedEvent(
+        17, kind, None, "closed_unfinished", {"closed": 2}, actor or "application", at
+    )
+    assert values == [
+        dict(
+            kind=kind,
+            dataset_id="capture.trip_updates",
+            provider_id="network",
+            revision=0,
+            window_key="2026-11-01",
+            content_version=None,
+            reason="closed_unfinished",
+            actor=actor,
+            details='{"closed":2}',
+        )
+    ]

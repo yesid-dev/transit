@@ -1,0 +1,798 @@
+{
+  "$defs": {
+    "Count": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "DelayHistogram": {
+      "additionalProperties": false,
+      "properties": {
+        "bins": {
+          "items": {
+            "maximum": 160,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "title": "Bins",
+          "type": "array"
+        },
+        "layout": {
+          "const": 2,
+          "title": "Layout",
+          "type": "integer"
+        },
+        "n": {
+          "items": {
+            "$ref": "#/$defs/Count"
+          },
+          "title": "N",
+          "type": "array"
+        }
+      },
+      "required": [
+        "layout",
+        "bins",
+        "n"
+      ],
+      "title": "DelayHistogram",
+      "type": "object"
+    },
+    "ExclusionReason": {
+      "enum": [
+        "not_in_schedule",
+        "line_not_counted",
+        "not_scheduled",
+        "no_delay",
+        "clock_change",
+        "no_edition_record",
+        "other_edition",
+        "before_start",
+        "prediction_passed",
+        "ambiguous_instance",
+        "vehicle_feed_gap",
+        "no_vehicle",
+        "set_aside_extreme"
+      ],
+      "type": "string"
+    },
+    "FeedCoverage": {
+      "additionalProperties": false,
+      "properties": {
+        "basis": {
+          "anyOf": [
+            {
+              "enum": [
+                "polls",
+                "summary_5m"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Basis"
+        },
+        "covered_pct": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Percentage"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "slot_fill_pct": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Percentage"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "covered_pct",
+        "slot_fill_pct",
+        "basis"
+      ],
+      "title": "FeedCoverage",
+      "type": "object"
+    },
+    "Finite": {
+      "type": "number"
+    },
+    "NetworkAlertCell": {
+      "additionalProperties": false,
+      "description": "Supplied network row of S0.6 D4's alert_cell_day; no aggregation.",
+      "properties": {
+        "active_seconds": {
+          "$ref": "#/$defs/Count"
+        },
+        "alert_days_active": {
+          "$ref": "#/$defs/Count"
+        },
+        "attribution": {
+          "enum": [
+            "approximate",
+            "exact"
+          ],
+          "title": "Attribution",
+          "type": "string"
+        },
+        "built": {
+          "enum": [
+            "at_close",
+            "backfill"
+          ],
+          "title": "Built",
+          "type": "string"
+        },
+        "cause": {
+          "title": "Cause",
+          "type": "string"
+        },
+        "effect": {
+          "title": "Effect",
+          "type": "string"
+        },
+        "entity_id": {
+          "const": "",
+          "title": "Entity Id",
+          "type": "string"
+        },
+        "episodes_ended": {
+          "$ref": "#/$defs/Count"
+        },
+        "episodes_open_at_day_start": {
+          "$ref": "#/$defs/Count"
+        },
+        "episodes_started": {
+          "$ref": "#/$defs/Count"
+        },
+        "provider_id": {
+          "title": "Provider Id",
+          "type": "string"
+        },
+        "revision": {
+          "const": 3,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "scope": {
+          "const": "network",
+          "title": "Scope",
+          "type": "string"
+        },
+        "service_date": {
+          "format": "date",
+          "title": "Service Date",
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider_id",
+        "revision",
+        "scope",
+        "entity_id",
+        "service_date",
+        "cause",
+        "effect",
+        "alert_days_active",
+        "episodes_started",
+        "episodes_ended",
+        "active_seconds",
+        "episodes_open_at_day_start",
+        "attribution",
+        "built"
+      ],
+      "title": "NetworkAlertCell",
+      "type": "object"
+    },
+    "NetworkTrendPoint": {
+      "additionalProperties": false,
+      "properties": {
+        "alert_cell": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NetworkAlertCell"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "avg_delay_min": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Finite"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        },
+        "delay_hist": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DelayHistogram"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "early_count": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Count"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "early_pct": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Percentage"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "evidence": {
+          "enum": [
+            "counts",
+            "tentative"
+          ],
+          "title": "Evidence",
+          "type": "string"
+        },
+        "late_avg_min": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Finite"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "late_count": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Count"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "late_pct": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Percentage"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "measured_day_count": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Count"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "on_time_count": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Count"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "on_time_pct": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Percentage"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "p50_bin": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PercentileBin"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "p90_bin": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PercentileBin"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "population": {
+          "$ref": "#/$defs/Population"
+        },
+        "reading_count": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Count"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NotMeasuredReason"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "service": {
+          "$ref": "#/$defs/ServiceValues"
+        },
+        "service_day_count": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Count"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "state": {
+          "enum": [
+            "measured",
+            "not_measured"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "trip_count": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Count"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "vehicles_on_trip": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Count"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "vehicles_reporting": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Count"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "state",
+        "evidence",
+        "date",
+        "population",
+        "service",
+        "p50_bin",
+        "p90_bin",
+        "delay_hist",
+        "vehicles_reporting",
+        "vehicles_on_trip",
+        "alert_cell"
+      ],
+      "title": "NetworkTrendPoint",
+      "type": "object"
+    },
+    "NoLiveData": {
+      "additionalProperties": false,
+      "properties": {
+        "line_count": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Count"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lines": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ServiceLine"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Lines"
+        },
+        "scheduled_trip_days": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Count"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "line_count",
+        "scheduled_trip_days",
+        "lines"
+      ],
+      "title": "NoLiveData",
+      "type": "object"
+    },
+    "NotMeasuredReason": {
+      "enum": [
+        "schedule_not_kept",
+        "captures_not_available",
+        "no_capture_record",
+        "capture_gap",
+        "window_too_short",
+        "applicability_unresolved",
+        "schedule_mismatch"
+      ],
+      "type": "string"
+    },
+    "Percentage": {
+      "maximum": 100,
+      "minimum": 0,
+      "type": "number"
+    },
+    "PercentileBin": {
+      "additionalProperties": false,
+      "properties": {
+        "lower_s": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Lower S"
+        },
+        "upper_s": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Upper S"
+        }
+      },
+      "required": [
+        "lower_s",
+        "upper_s"
+      ],
+      "title": "PercentileBin",
+      "type": "object"
+    },
+    "Population": {
+      "additionalProperties": false,
+      "properties": {
+        "basis": {
+          "enum": [
+            "vehicle_evidence",
+            "scheduled_window"
+          ],
+          "title": "Basis",
+          "type": "string"
+        },
+        "coverage": {
+          "additionalProperties": {
+            "$ref": "#/$defs/FeedCoverage"
+          },
+          "title": "Coverage",
+          "type": "object"
+        },
+        "excluded": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Percentage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "propertyNames": {
+            "$ref": "#/$defs/ExclusionReason"
+          },
+          "title": "Excluded",
+          "type": "object"
+        }
+      },
+      "required": [
+        "basis",
+        "excluded",
+        "coverage"
+      ],
+      "title": "Population",
+      "type": "object"
+    },
+    "ServiceLine": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "scheduled_trip_days": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Count"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "short": {
+          "title": "Short",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "short",
+        "scheduled_trip_days"
+      ],
+      "title": "ServiceLine",
+      "type": "object"
+    },
+    "ServiceValues": {
+      "additionalProperties": false,
+      "properties": {
+        "basis": {
+          "enum": [
+            "facts",
+            "stored_counts"
+          ],
+          "title": "Basis",
+          "type": "string"
+        },
+        "cancelled_trip_days": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Count"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "delivered_trip_days": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Count"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "missing_trip_days": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Count"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "no_live_data": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NoLiveData"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "not_measured_trip_days": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Count"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "not_reported_lines": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ServiceLine"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Not Reported Lines"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NotMeasuredReason"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "scheduled_trip_days": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Count"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "service_completeness_pct": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Percentage"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "state": {
+          "enum": [
+            "measured",
+            "not_measured"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "state",
+        "basis",
+        "not_reported_lines",
+        "no_live_data"
+      ],
+      "title": "ServiceValues",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "data_through": {
+      "format": "date",
+      "title": "Data Through",
+      "type": "string"
+    },
+    "generated_utc": {
+      "format": "date-time",
+      "title": "Generated Utc",
+      "type": "string"
+    },
+    "methodology_version": {
+      "const": "reliability-3",
+      "title": "Methodology Version",
+      "type": "string"
+    },
+    "publish_generation_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Publish Generation Id"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "series": {
+      "items": {
+        "$ref": "#/$defs/NetworkTrendPoint"
+      },
+      "maxItems": 35,
+      "title": "Series",
+      "type": "array"
+    }
+  },
+  "required": [
+    "methodology_version",
+    "generated_utc",
+    "data_through",
+    "series"
+  ],
+  "title": "NetworkTrend",
+  "type": "object"
+}
