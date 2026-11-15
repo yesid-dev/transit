@@ -19,7 +19,8 @@ export const copy = defineCopy({
 		bootHeading: 'Live map · {city}',
 		bootBody:
 			'The live interactive map loads automatically. This static basemap stays visible until it is ready.',
-		staticUnavailable: 'Basemap preview unavailable for {city}. The live map loads automatically.',
+		staticUnavailable: 'Basemap preview unavailable for {city}.',
+		bootUnavailable: 'Basemap preview unavailable for {city}. The live map loads automatically.',
 		staticSnapshot: 'Basemap data · {date}',
 		staticImageAlt: 'Static basemap · {city}',
 		mapBooting: 'Loading live map · {city}…',
@@ -146,7 +147,8 @@ export const copy = defineCopy({
 		bootHeading: 'Carte en direct · {city}',
 		bootBody:
 			'La carte interactive en direct se charge automatiquement. Ce fond de carte statique reste visible jusqu’à ce qu’elle soit prête.',
-		staticUnavailable:
+		staticUnavailable: 'Aperçu cartographique indisponible · {city}.',
+		bootUnavailable:
 			'Aperçu cartographique indisponible · {city}. La carte en direct se charge automatiquement.',
 		staticSnapshot: 'Données cartographiques · {date}',
 		staticImageAlt: 'Fond de carte statique · {city}',

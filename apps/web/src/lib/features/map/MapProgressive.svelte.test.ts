@@ -111,6 +111,44 @@ describe('MapProgressive automatic live boot', () => {
 		},
 	);
 
+	it.each([
+		[
+			'en',
+			'Basemap preview unavailable for Ottawa. The live map loads automatically.',
+			'Basemap preview unavailable for Ottawa.',
+			'Static, non-live basemap. No vehicles, stops, service alerts, or freshness data are shown.',
+		],
+		[
+			'fr',
+			'Aperçu cartographique indisponible · Ottawa. La carte en direct se charge automatiquement.',
+			'Aperçu cartographique indisponible · Ottawa.',
+			'Fond de carte statique, pas en direct. Aucun véhicule, arrêt, avis de service ou renseignement de fraîcheur n’est affiché.',
+		],
+	] as const)(
+		'promises automatic loading only while the live map boots in %s',
+		async (locale, booting, unavailable, staticBody) => {
+			harness.locale = locale;
+			harness.provider = 'octranspo';
+			harness.city = 'Ottawa';
+			const { default: MapProgressive } = await import('./MapProgressive.svelte');
+			const fixture = await import('./__fixtures__/MapProgressiveHeroStub.svelte');
+			for (const [posters, failedBody] of [
+				['', unavailable],
+				['/map/basemap-ottawa-posters.json', staticBody],
+			]) {
+				harness.posters = posters;
+				const view = render(MapProgressive, { props: { importHero: async () => fixture } });
+				const body = () =>
+					view.container.querySelector('.map-progressive-body')?.textContent?.trim();
+				await view.findByTestId('map-progressive-hero-stub');
+				if (!posters) expect(body()).toBe(booting);
+				await fireEvent.click(view.getByTestId('progressive-stub-failure'));
+				expect(body()).toBe(failedBody);
+				cleanup();
+			}
+		},
+	);
+
 	it('removes a failed image and its source-date claim', async () => {
 		const { default: MapProgressive } = await import('./MapProgressive.svelte');
 		const view = render(MapProgressive, { props: { importHero: neverImport } });

@@ -249,7 +249,13 @@
 				{phase === 'booting' ? t.bootHeading : t.staticHeading}
 			</h1>
 			<p class="map-progressive-body">
-				{!hasPoster ? t.staticUnavailable : phase === 'booting' ? t.bootBody : t.staticBody}
+				{phase === 'booting'
+					? hasPoster
+						? t.bootBody
+						: t.bootUnavailable
+					: hasPoster
+						? t.staticBody
+						: t.staticUnavailable}
 			</p>
 			{#if hasPoster}<p class="map-progressive-snapshot">
 					{t.staticSnapshot.replace('{date}', sourceDate)}
