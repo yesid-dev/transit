@@ -162,7 +162,12 @@ def test_revision_tables_declare_their_revision_column(name, keys):
     assert dataset.source == d.TableSource(name, "service_date", keys, "revision", 0)
 
 
-def test_no_consumer_selects_table_datasets_for_daily_capture_work():
+def test_no_consumer_selects_table_datasets_for_daily_capture_work(monkeypatch):
+    from transit_ops.history import ledger_select
+
+    ledger_store = Mock()
+    ledger_store.list_windows.return_value = []
+    monkeypatch.setattr(ledger_select, "ledger_for", lambda c: ledger_store)
     discovery = Mock()
     discovery.execute.return_value.scalars.return_value = ["network"]
     assert capture_providers(discovery, now=datetime(2026, 11, 14, tzinfo=UTC)) == ["network"]
@@ -172,6 +177,9 @@ def test_no_consumer_selects_table_datasets_for_daily_capture_work():
         "capture.vehicle_positions",
         "capture.i3_alerts",
         "capture.service_alerts",
+    ]
+    assert [call.kwargs for call in ledger_store.list_windows.call_args_list] == [
+        {"dataset_id": dataset} for dataset in params["capture_ids"]
     ]
     assert params["capture_feeds"] == [
         "trip_updates",
