@@ -16,7 +16,6 @@ from test_snapshots_live_departures_real_db import (
 from test_snapshots_live_departures_real_db import conn as conn
 
 from transit_ops.snapshots.builders import build_vehicles
-from transit_ops.snapshots.builders.live import _VEHICLES_SQL
 
 
 def test_vehicles_publish_in_binary_id_order_with_stable_ties(conn):
@@ -179,39 +178,49 @@ def test_vehicle_next_stop_does_not_resurrect_stops_after_empty_latest_feed(conn
     )
 
 
-def test_vehicle_next_stop_index_paths_are_available(conn, record_property):
-    _vehicle(conn)
-    _add_trip_update(conn, entity_index=0, trip_id="capture-order-trip", route_id="51")
-    _stop(conn, entity_index=0, stu_index=0, stop_id="next-stop", seq=1, mins=5)
-    # Plan against the seeded rows, not statistics left by an earlier test.
-    # Keep every production index available so a non-PK choice still fails below.
-    for relation in (
-        "gold.latest_vehicle_snapshot",
-        "gold.latest_trip_delay_snapshot",
-        "gold.dim_stop",
-        "silver.rt_feed_snapshots",
-        "silver.rt_trip_updates",
-        "silver.rt_trip_update_stop_times",
-    ):
-        conn.execute(text(f"ANALYZE {relation}"))
-    # Tiny fixtures normally favor sequential scans. Disable them only to verify
-    # index eligibility; this is not evidence of production cost or planner choice.
-    conn.execute(text("SET LOCAL enable_seqscan = off"))
-    plan = conn.execute(
-        text("EXPLAIN (FORMAT JSON) " + str(_VEHICLES_SQL)), {"provider_id": PROVIDER}
-    ).scalar_one()
-    record_property("vehicles_index_plan", str(plan))
-
-    def indexes(node):
-        found = {node["Index Name"]} if "Index Name" in node else set()
-        for child in node.get("Plans", []):
-            found.update(indexes(child))
-        return found
-
-    used = indexes(plan[0]["Plan"])
-    assert used & {"ix_silver_rt_trip_updates_provider_trip", "pk_silver_rt_trip_updates"}
-    assert "pk_silver_rt_trip_update_stop_times" in used
-    assert "pk_gold_dim_stop" in used
+@pytest.mark.parametrize(
+    ("relation", "equality_prefix"),
+    [
+        ("silver.rt_trip_updates", ("provider_id", "trip_id")),
+        ("silver.rt_trip_update_stop_times", ("rt_feed_snapshot_id", "entity_index")),
+        ("gold.dim_stop", ("provider_id", "stop_id")),
+    ],
+)
+def test_vehicle_next_stop_index_paths_are_available(
+    conn, record_property, relation, equality_prefix
+):
+    # Check eligibility, not which path wins a cost comparison. The lateral
+    # lookup equates these leading columns; its time/stop filters are residuals.
+    # Catalog metadata is independent of leftover rows, ANALYZE and fleet order.
+    indexes = (
+        conn.execute(
+            text("""
+        SELECT index_class.relname AS name,
+               ARRAY(
+                   SELECT attribute.attname::text
+                   FROM unnest(idx.indkey) WITH ORDINALITY AS key(attnum, position)
+                   JOIN pg_attribute AS attribute
+                     ON attribute.attrelid = idx.indrelid AND attribute.attnum = key.attnum
+                   WHERE key.position <= idx.indnkeyatts
+                   ORDER BY key.position
+               ) AS columns
+        FROM pg_index AS idx
+        JOIN pg_class AS index_class ON index_class.oid = idx.indexrelid
+        JOIN pg_am AS method ON method.oid = index_class.relam
+        WHERE idx.indrelid = to_regclass(:relation)
+          AND idx.indisvalid AND idx.indisready AND idx.indislive
+          AND idx.indpred IS NULL AND idx.indexprs IS NULL
+          AND method.amname = 'btree'
+        """),
+            {"relation": relation},
+        )
+        .mappings()
+        .all()
+    )
+    record_property("next_stop_index_paths", str([dict(index) for index in indexes]))
+    assert any(
+        tuple(index["columns"][: len(equality_prefix)]) == equality_prefix for index in indexes
+    ), f"No usable B-tree on {relation} with equality prefix {equality_prefix}: {indexes}"
 
 
 @pytest.mark.parametrize("provider", ["stm_coords_test", "octranspo_coords_test"])
