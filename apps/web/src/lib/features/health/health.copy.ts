@@ -127,10 +127,16 @@ export const copy = defineCopy({
 					`${n} missing ${count === 1 ? 'day' : 'days'}, in ${runs} ${runCount === 1 ? 'gap' : 'gaps'}`,
 				unknown: 'Missing days not published',
 				unreadable: 'These dates cannot be counted',
+				pastPublication:
+					'These dates run past the day the date list was published, so they are not days with records.',
+				alertsUncounted: 'Days collected not published',
+				alertsExplain:
+					'These dates span the alerts in the archive, including the periods agencies announced for them. The days on which alerts were actually collected are not published, so they are not counted.',
 			},
 			evidence: {
 				region: (family: string) => `Selected family: ${family}`,
 				datesLabel: 'Dates',
+				alertDatesLabel: 'Archived alert dates',
 				daysLabel: 'Days with records',
 				missingLabel: 'Missing days',
 				browseLabel: 'How to browse',
@@ -236,12 +242,12 @@ export const copy = defineCopy({
 				'Before weekly statistics go out, we check the numbers against fixed rules. A failed check stops a bad update from being published; a warning is noted but doesn’t stop it.',
 			maintenanceLabel: 'Cleanup',
 			maintenanceReason:
-				'Runs weekly in continuous integration and writes no public heartbeat, so there is nothing to report here.',
+				'Runs weekly in continuous integration and publishes no status report, so there is nothing to show here.',
 			notApplicable: 'not applicable',
 		},
 		envelope: {
 			section: 'Version details',
-			note: 'Every page carries the stamp of the exact publish run that produced it, plus the contract and methodology versions in force.',
+			note: 'Each published file carries the stamp of the publish run that produced it, plus the contract and methodology versions in force. The files on this page can come from different runs.',
 			generationIdLabel: 'Update ID',
 			generationIdExplain:
 				'The stamp of the publish run that produced this dataset. Datasets with the same stamp came from the same run.',
@@ -382,10 +388,16 @@ export const copy = defineCopy({
 					`${n} ${count === 1 ? 'jour manquant' : 'jours manquants'}, en ${runs} ${runCount === 1 ? 'lacune' : 'lacunes'}`,
 				unknown: 'Jours manquants non publiés',
 				unreadable: 'Ces dates ne peuvent pas être comptées',
+				pastPublication:
+					'Ces dates dépassent le jour de publication de la liste des dates; ce ne sont donc pas des jours avec des données.',
+				alertsUncounted: 'Jours de collecte non publiés',
+				alertsExplain:
+					'Ces dates couvrent les avis de l’archive, y compris les périodes que les agences ont annoncées. Les jours où les avis ont réellement été recueillis ne sont pas publiés; ils ne sont donc pas comptés.',
 			},
 			evidence: {
 				region: (family: string) => `Famille choisie : ${family}`,
 				datesLabel: 'Dates',
+				alertDatesLabel: 'Dates des avis archivés',
 				daysLabel: 'Jours avec des données',
 				missingLabel: 'Jours manquants',
 				browseLabel: 'Mode de consultation',
@@ -466,7 +478,7 @@ export const copy = defineCopy({
 			unknown: 'inconnu',
 		},
 		lanes: {
-			terminal: { title: 'mises-à-jour', tag: 'CALENDRIER' },
+			terminal: { title: 'mises à jour', tag: 'CALENDRIER' },
 			section: 'Quand les données sont rafraîchies',
 			note: 'À quelle fréquence chaque type de donnée est rafraîchi, quand il l’a été pour la dernière fois et si sa dernière vérification a réussi. Les heures sont des cibles, pas des garanties.',
 			listLabel: 'Voies de publication',
@@ -493,12 +505,12 @@ export const copy = defineCopy({
 				'Avant de publier les statistiques hebdomadaires, on vérifie les chiffres selon des règles fixes. Un échec empêche la publication d’une mauvaise mise à jour; un avertissement est noté sans la bloquer.',
 			maintenanceLabel: 'Entretien',
 			maintenanceReason:
-				'S’exécute chaque semaine en intégration continue et n’écrit aucun battement public, il n’y a donc rien à rapporter ici.',
+				'S’exécute chaque semaine en intégration continue et ne publie aucun rapport d’état; il n’y a donc rien à afficher ici.',
 			notApplicable: 'sans objet',
 		},
 		envelope: {
 			section: 'Détails de version',
-			note: 'Chaque page porte l’empreinte de l’exécution de publication exacte qui l’a produite, ainsi que les versions du contrat et de la méthode en vigueur.',
+			note: 'Chaque fichier publié porte l’empreinte de la publication qui l’a produit, ainsi que les versions du contrat et de la méthode en vigueur. Les fichiers de cette page peuvent venir de publications différentes.',
 			generationIdLabel: 'Identifiant de mise à jour',
 			generationIdExplain:
 				'L’empreinte de la publication qui a produit ce jeu de données. Les jeux de données qui ont la même empreinte viennent de la même publication.',

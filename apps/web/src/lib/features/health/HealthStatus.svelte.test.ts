@@ -861,6 +861,22 @@ describe('HealthStatus — S11 pipeline lanes', () => {
 		expect(na).not.toBeNull();
 		expect(within(na).getByText(en.lanes.notApplicable)).toBeInTheDocument();
 		expect(within(na).getByText(en.lanes.maintenanceReason)).toBeInTheDocument();
+		expect(na).toHaveTextContent('publishes no status report');
+		expect(na).not.toHaveTextContent(/heartbeat/i);
+	});
+
+	it('names the update steps in plain French and scopes the version stamp (A2 O S11, G 3.6)', () => {
+		const { container } = render(HealthStatus, { context: localeContext('fr') });
+		const lanes = container.querySelector('[data-toc="health-lanes"]') as HTMLElement;
+		const na = document.querySelector('[data-slot="lane-not-applicable"]') as HTMLElement;
+		const envelope = container.querySelector('[data-toc="health-envelope"]') as HTMLElement;
+
+		expect(within(lanes).getByText('mises à jour')).toBeInTheDocument();
+		expect(lanes).not.toHaveTextContent(/mises-à-jour/i);
+		expect(na).toHaveTextContent('ne publie aucun rapport d’état');
+		expect(container).not.toHaveTextContent(/battement/i);
+		expect(envelope).toHaveTextContent('Chaque fichier publié porte');
+		expect(envelope).not.toHaveTextContent(/Chaque page/);
 	});
 
 	it('stands the lanes section DOWN entirely on a LEGACY publish (data_health absent)', () => {
@@ -890,6 +906,9 @@ describe('HealthStatus — S11 build-accountability envelope', () => {
 			.getByText(en.envelope.methodologyVersionLabel)
 			.closest('[data-slot="metric-display"]');
 		expect(within(method as HTMLElement).getByText('historic-2')).toBeInTheDocument();
+		// The stamp belongs to one file; the page's files can come from different runs (A2 G 3.6).
+		expect(envelope).toHaveTextContent('Each published file carries');
+		expect(envelope).not.toHaveTextContent(/Every page|single publish run|produced everything/);
 	});
 
 	it('falls back to data_health envelope fields when provenance lacks them', () => {

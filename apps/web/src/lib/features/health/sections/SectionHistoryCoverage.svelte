@@ -46,8 +46,11 @@
 		}
 	}
 
+	// Short dates only inside the year the date list was published; any other year is written out.
+	const listYear = $derived(inventory?.publishedOn?.slice(0, 4) ?? null);
 	function windowLabel(first: string, last: string, year = false): string {
-		return `${formatDateKey(first, locale, year)} – ${formatDateKey(last, locale, year)}`;
+		const withYear = year || first.slice(0, 4) !== listYear || last.slice(0, 4) !== listYear;
+		return `${formatDateKey(first, locale, withYear)} – ${formatDateKey(last, locale, withYear)}`;
 	}
 </script>
 
@@ -69,8 +72,10 @@
 	{:else if row.days}
 		<span class="days-main">{t.days.inWindow(n(row.days.inWindow), row.days.inWindow)}</span>
 		<span class="days-note absent">{t.days.unknown}</span>
-	{:else if row.state === 'unreadable-dates'}
+	{:else if row.state === 'unreadable-dates' || row.state === 'past-publication'}
 		<span class="days-note absent">{t.days.unreadable}</span>
+	{:else if row.state === 'announced-periods'}
+		<span class="days-note absent">{t.days.alertsUncounted}</span>
 	{/if}
 {/snippet}
 
@@ -170,14 +175,22 @@
 				{:else}
 					<dl class="facts">
 						<div class="fact">
-							<dt>{t.evidence.datesLabel}</dt>
+							<dt>
+								{selected.state === 'announced-periods'
+									? t.evidence.alertDatesLabel
+									: t.evidence.datesLabel}
+							</dt>
 							<dd>{@render dates(selected, true)}</dd>
 						</div>
 						<div class="fact">
 							<dt>{t.evidence.daysLabel}</dt>
 							<dd class="days">
 								{@render daysSummary(selected)}
-								{#if !selected.days && selected.state !== 'unreadable-dates'}
+								{#if selected.state === 'past-publication'}
+									<span class="days-note">{t.days.pastPublication}</span>
+								{:else if selected.state === 'announced-periods'}
+									<span class="days-note">{t.days.alertsExplain}</span>
+								{:else if !selected.days && selected.state !== 'unreadable-dates'}
 									<AbsentValue variant="compact" reason="no-retained-dates" {locale} />
 								{/if}
 							</dd>
