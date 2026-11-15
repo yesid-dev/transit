@@ -1,157 +1,150 @@
 import csv
 import os
 import subprocess
-from datetime import UTC, date, datetime
+from contextlib import contextmanager, nullcontext
+from datetime import UTC, datetime, time, timedelta
+from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 import pytest
 import revision_2_seed as seed
-from sqlalchemy import MetaData, Table, text
-from test_revision_2_projection import _pin, _publish
+import test_revision_2_projection as g1
+from sqlalchemy import MetaData, Table, and_, text
 
-from transit_ops import settings as settings_module
-from transit_ops.batch.build import BuildRequest, FamilyBuilder
-from transit_ops.batch.compare import compare_bodies, compare_tables
+from transit_ops.batch.build import BuildRequest, FamilyBuilder, FamilyOutput, InputNeed, TableRows
+from transit_ops.batch.compare import RUNTIME_ONLY_COLUMNS, compare_bodies, compare_tables
 from transit_ops.batch.families.registry import FAMILIES, resolve_builder
 from transit_ops.batch.pg_load import pinned_replay_engine, prepare_replay_database
 from transit_ops.batch.postgres_rows import read_table_rows
 from transit_ops.batch.run import key_matches, run_family
-from transit_ops.gold import delay_hours, rollups
+from transit_ops.gold import delay_hours
 from transit_ops.history.datasets import TableSource, get_dataset
 from transit_ops.lake.parquet_codec import write_window
 from transit_ops.lake.table_export import WindowSpec, export_window
-from transit_ops.snapshots.builders.historic import (
-    line_history,
-    network_history,
-    network_trend,
-    provenance,
-    stop_history,
-)
+
+PROVEN_FAMILIES: tuple[str, ...] = ()
 
 
-def test_reader_supports_consecutive_windows():
-    from sqlalchemy import create_engine
-
-    with create_engine("sqlite://").connect() as conn:
-        conn.exec_driver_sql("ATTACH DATABASE ':memory:' AS information_schema")
-        conn.exec_driver_sql(
-            "CREATE TABLE information_schema.columns "
-            "(table_schema, table_name, column_name, data_type, "
-            "numeric_precision, ordinal_position)"
-        )
-        for index, name in enumerate(("provider_id", "provider_local_date", "id")):
-            conn.exec_driver_sql(
-                "INSERT INTO information_schema.columns VALUES "
-                "('main', 'probe', ?, 'text', NULL, ?)",
-                (name, index),
-            )
-        conn.exec_driver_sql("CREATE TABLE probe (provider_id, provider_local_date, id)")
-        conn.exec_driver_sql(
-            "INSERT INTO probe VALUES ('seed', '2025-06-03', 2), "
-            "('seed', '2025-06-03', 1), ('other', '2025-06-03', 3)"
-        )
-        assert [
-            r[2]
-            for r in read_table_rows(
-                conn, "main.probe", ("id",), provider_id="seed", local_dates=None
-            ).rows
-        ] == [1, 2]
-        assert (
-            read_table_rows(conn, "main.probe", ("id",), provider_id="seed", local_dates=()).rows
-            == ()
-        )
-
-
-def test_reader_preserves_postgres_text_and_sorts_keys(real_db_engine):
+@pytest.mark.parametrize("fault", [None, "numrange", "nummultirange", "session", "null"])
+def test_reader_preserves_postgres_text_and_sorts_keys(real_db_engine, fault):
     with real_db_engine.connect() as conn, conn.begin():
         conn.exec_driver_sql("""
-            CREATE TEMP TABLE batch_rows_probe (
-                provider_id text, provider_local_date date, id integer,
-                amount numeric, items numeric[], payload jsonb, span interval, clock timetz)
-        """)
-        conn.exec_driver_sql("""
-            INSERT INTO batch_rows_probe VALUES
-            ('seed', '2025-06-03', 2, 1.500, '{1.50,NULL}', '{"a": 1.00}',
-             '1 month 2 days', '12:00:00+03'),
-            ('seed', '2025-06-03', 1, NULL, NULL, NULL, NULL, NULL),
-            ('other', '2025-06-03', 3, NULL, NULL, NULL, NULL, NULL)
+            CREATE TEMP TABLE reader_probe AS
+            SELECT 'seed'::text provider_id, DATE '2025-06-03' provider_local_date, n id,
+                   CASE WHEN n=2 THEN 1.500 END amount,
+                   CASE WHEN n=2 THEN '{1.50,NULL}'::numeric[] END items,
+                   CASE WHEN n=2 THEN '{"a": 1.00}'::jsonb END payload,
+                   0.30000000000000004::float8 value, now() stamp,
+                   INTERVAL '1 month 2 days' span, TIMETZ '12:00:00+03' clock
+            FROM generate_series(2,1,-1) n
         """)
         schema = conn.exec_driver_sql("SELECT pg_my_temp_schema()::regnamespace::text").scalar_one()
-        relation = f"{schema}.batch_rows_probe"
-        rows = read_table_rows(
-            conn, relation, ("id",), provider_id="seed", local_dates=(date(2025, 6, 3),)
-        )
-        expected = conn.exec_driver_sql("""
-            SELECT provider_id, provider_local_date, id, amount::text, items::text,
-                   payload::text, span::text, clock::text
-            FROM batch_rows_probe WHERE provider_id='seed' ORDER BY id
-        """).all()
-        assert rows.rows == tuple(tuple(row) for row in expected)
+        rel = f"{schema}.reader_probe"
+        if fault in {"numrange", "nummultirange"}:
+            value = "[1.50,2.50)" if fault == "numrange" else "{[1.50,2.50)}"
+            conn.exec_driver_sql(f"ALTER TABLE reader_probe ADD bad {fault} DEFAULT '{value}'")
+        if fault == "null":
+            conn.exec_driver_sql("UPDATE reader_probe SET id=NULL WHERE id=1")
+        if fault in {"numrange", "nummultirange", "null"}:
+            column = "id.*NULL" if fault == "null" else "bad"
+            with pytest.raises(ValueError, match=rf"{rel}.{column}"):
+                read_table_rows(conn, rel, ("id",), provider_id="seed", local_dates=None)
+            return
+        conn.exec_driver_sql("SET LOCAL extra_float_digits=0")
+        conn.exec_driver_sql("SET LOCAL TimeZone='America/Toronto'")
+        rows = read_table_rows(conn, rel, ("id",), provider_id="seed", local_dates=seed.DAYS)
+        assert [r[2] for r in rows.rows] == [1, 2]
+        assert rows.rows[0][3:6] == (None, None, None)
         assert rows.rows[1][3:6] == ("1.500", "{1.50,NULL}", '{"a": 1.00}')
-        assert (
-            read_table_rows(conn, relation, ("id",), provider_id="seed", local_dates=()).rows == ()
-        )
+        assert rows.rows[0][6] == 0.30000000000000004
+        assert rows.rows[0][7].utcoffset() == timedelta(0)
+        assert rows.rows[0][8:] == ("P1M2D", "12:00:00+03")
+        assert read_table_rows(conn, rel, ("id",), provider_id="seed", local_dates=()).rows == ()
+        assert read_table_rows(conn, rel, ("id",), provider_id="other", local_dates=None).rows == ()
         with pytest.raises(ValueError, match="missing"):
-            read_table_rows(conn, relation, ("missing",), provider_id="seed", local_dates=None)
+            read_table_rows(conn, rel, ("missing",), provider_id="seed", local_dates=None)
 
 
 @pytest.fixture
-def seeded(real_db_engine, tmp_path, monkeypatch):
-    database = prepare_replay_database(
-        real_db_engine.url.render_as_string(hide_password=False), os.environ
-    )
+def replay(real_db_engine, tmp_path, monkeypatch):
+    url = real_db_engine.url.render_as_string(hide_password=False)
+    db = prepare_replay_database(url, os.environ)
     settings = seed.settings_for(tmp_path)
-    monkeypatch.setattr(
-        seed, "pinned_engine", lambda _engine, stamp: pinned_replay_engine(database, stamp)
-    )
-    monkeypatch.setattr(rollups, "PERCENTILE_LOOKBACK_DAYS", seed.RETENTION_DAYS - 1)
-    for module in (
-        settings_module,
-        line_history,
-        network_history,
-        network_trend,
-        provenance,
-        stop_history,
-    ):
-        monkeypatch.setattr(module, "get_settings", lambda: settings)
-    seed.delete_rows(database.engine)
+    monkeypatch.setattr(seed, "pinned_engine", lambda _, stamp: pinned_replay_engine(db, stamp))
+    monkeypatch.setattr(seed.rollups, "PERCENTILE_LOOKBACK_DAYS", seed.RETENTION_DAYS - 1)
+    modules = "settings_module line_history network_history network_trend provenance stop_history"
+    for name in modules.split():
+        monkeypatch.setattr(getattr(g1, name), "get_settings", lambda: settings)
+    g1._pin(monkeypatch, seed.HISTORY_CLOCK)
     try:
-        seed.seed_history(database.engine, settings, tmp_path)
-        with pinned_replay_engine(database, seed.HISTORY_CLOCK) as engine:
-            _pin(monkeypatch, seed.HISTORY_CLOCK)
-            seed.seed_live(engine, settings, tmp_path, seed.HISTORY_CLOCK)
-            yield engine, settings, tmp_path
+        yield db, settings, tmp_path
     finally:
-        seed.delete_rows(database.engine)
-        database.engine.dispose()
+        seed.delete_rows(db.engine)
+        db.engine.dispose()
+
+
+@contextmanager
+def seed_round(replay):
+    db, settings, root = replay
+    seed.delete_rows(db.engine)
+    seed.seed_history(db.engine, settings, root)
+    # Extend G1's fixed build stamp to runtime materializations, before either engine reads them.
+    with db.engine.begin() as conn:
+        tables = conn.exec_driver_sql(
+            "SELECT table_name FROM information_schema.columns WHERE "
+            "table_schema='gold' AND column_name='built_at_utc' AND table_name IN "
+            "(SELECT table_name FROM information_schema.columns WHERE table_schema='gold' "
+            "AND column_name='provider_id')"
+        ).scalars()
+        for table in list(tables):
+            quoted = conn.dialect.identifier_preparer.quote_identifier(table)
+            conn.execute(
+                text(
+                    f"UPDATE gold.{quoted} SET built_at_utc=:stamp WHERE provider_id=ANY(:ids) "
+                    "AND built_at_utc IS NOT NULL"
+                ),
+                dict(stamp=seed.BUILD_CLOCK, ids=list(seed.PROVIDERS.values())),
+            )
+    with pinned_replay_engine(db, seed.HISTORY_CLOCK) as engine:
+        seed.seed_live(engine, settings, root, seed.HISTORY_CLOCK)
+        yield engine, settings, root
+
+
+@pytest.fixture
+def seeded(replay):
+    with seed_round(replay) as run:
+        yield run
 
 
 def _bodies(engine, settings, provider):
     bodies = {}
     for tier in ("static", "historic", "live"):
-        result, files = _publish(engine, settings, provider, tier)
+        result, files = g1._publish(engine, settings, provider, tier)
         assert result.gate_report is not None and result.gate_report["errors"] == 0
         assert not bodies.keys() & files.keys()
         bodies.update(files)
     return bodies
 
 
-def test_postgres_path_repeats_byte_for_byte(seeded):
-    engine, settings, _root = seeded
-    for provider in seed.PROVIDERS.values():
-        first = _bodies(engine, settings, provider)
-        assert first
-        assert compare_bodies(first, _bodies(engine, settings, provider)) == []
+def test_postgres_path_repeats_byte_for_byte(replay):
+    rounds = []
+    for _ in range(2):
+        with seed_round(replay) as (engine, settings, _root):
+            rounds.append({p: _bodies(engine, settings, p) for p in seed.PROVIDERS.values()})
+    for provider, first in rounds[0].items():
+        assert first and compare_bodies(first, rounds[1][provider]) == []
 
 
-def test_window_filter_keeps_null_empty_and_multiline_text(tmp_path):
+@pytest.mark.parametrize("zone,day", [("Asia/Tokyo", "03"), ("America/Toronto", "02")])
+def test_window_filter_keeps_null_empty_and_multiline_text(tmp_path, zone, day):
     path = tmp_path / "window.csv"
-    selected = '2025-06-03,\n2025-06-03,""\n2025-06-03,"été\nquoted ""text"""\n'
-    path.write_bytes(("day,value\n" + selected + "2025-06-04,other\n").encode())
-    result = filter_window(path, "day", "local:2025-06-03")
-    assert result.read_bytes() == ("day,value\n" + selected).encode()
+    selected = "".join(f"2025-06-03 00:00:00+00,{v}\n" for v in ("", '""', '"été\ntext"'))
+    path.write_bytes(("stamp,value\n" + selected + "2025-06-05 00:00:00+00,other\n").encode())
+    result = filter_window(path, "stamp", f"local:2025-06-{day}", timezone=zone)
+    assert result.read_bytes() == ("stamp,value\n" + selected).encode()
 
 
-def filter_window(csv_path, column, window):
+def filter_window(csv_path, column, window, *, timezone):
     filtered = csv_path.with_suffix(".filtered.csv")
     with (
         csv_path.open(newline="", encoding="utf8") as stream,
@@ -164,7 +157,6 @@ def filter_window(csv_path, column, window):
                 lines.append(line)
                 yield line
 
-        # Parsing selects records; original text retains NULL/empty and quoting.
         reader = csv.reader(capture())
         index = next(reader).index(column)
         output.write("".join(lines))
@@ -172,7 +164,9 @@ def filter_window(csv_path, column, window):
         for row in reader:
             value = row[index]
             if window.startswith("local:") and " " in value:
-                value = datetime.fromisoformat(value).astimezone(seed.TZ).date().isoformat()
+                value = (
+                    datetime.fromisoformat(value).astimezone(ZoneInfo(timezone)).date().isoformat()
+                )
             if value[:10] == window.removeprefix("local:"):
                 output.write("".join(lines))
             lines.clear()
@@ -186,9 +180,10 @@ def _export_inputs(engine, builder, request, root):
         dataset = get_dataset(need.relation)
         source = dataset.source
         assert isinstance(source, TableSource), need
+        if need.window == "all" and source.window_column is not None:
+            raise ValueError(f"{need.relation} window all: bounded input required")
         window = need.window.removeprefix("local:")
         with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-            driver = conn.connection.driver_connection
             if window.startswith("edition:"):
                 window = conn.execute(
                     text(
@@ -200,75 +195,131 @@ def _export_inputs(engine, builder, request, root):
             if dataset.archive_grain == "month":
                 window = request.as_of_utc.strftime("%Y-%m") if window == "all" else window[:7]
             exported = export_window(
-                driver,
+                conn.connection.driver_connection,
                 WindowSpec(need.relation, request.provider_id, window),
                 destination.with_suffix(".csv"),
                 statement_timeout_s=60,
             )
-        csv_path = exported.csv_path
+        path = exported.csv_path
         if source.window_column is not None and not need.window.startswith("edition:"):
-            csv_path = filter_window(csv_path, source.window_column, need.window)
-        write_window(csv_path, exported.schema, destination, metadata={}, temp_dir=root)
+            path = filter_window(path, source.window_column, need.window, timezone=request.timezone)
+        write_window(path, exported.schema, destination, metadata={}, temp_dir=root)
 
 
 def _dirty_after_load(conn, tables, provider):
-    params = dict(
-        provider_id=provider,
-        from_utc=datetime(2025, 6, 1, tzinfo=UTC),
-        until_utc=seed.HISTORY_CLOCK,
-    )
+    start = datetime.combine(seed.SEASON[0], time(), UTC)
+    params = dict(provider_id=provider, from_utc=start, until_utc=seed.HISTORY_CLOCK)
     expected = conn.execute(delay_hours._DIRTY_HOURS, params).all()
     with conn.begin_nested() as transaction:
-        for rows in tables.values():
-            schema, name = rows.relation.split(".")
+        for relation, rows in tables.items():
+            if relation not in RUNTIME_ONLY_COLUMNS:
+                continue
+            schema, name = relation.split(".")
             table = Table(name, MetaData(), schema=schema, autoload_with=conn)
-            conn.execute(table.delete().where(table.c.provider_id == provider))
-            if rows.rows:
-                conn.execute(
-                    table.insert(), [dict(zip(rows.columns, row, strict=True)) for row in rows.rows]
-                )
+            # Unmasked values already compared equal; load only the clocks R21 needs, by key.
+            for row in rows.rows:
+                data = dict(zip(rows.columns, row, strict=True))
+                where = and_(*(table.c[k] == data[k] for k in rows.key))
+                stamps = {k: data[k] for k in RUNTIME_ONLY_COLUMNS[relation]}
+                assert conn.execute(table.update().where(where).values(**stamps)).rowcount == 1
         assert conn.execute(delay_hours._DIRTY_HOURS, params).all() == expected
         transaction.rollback()
 
 
 def test_every_implemented_family_matches_postgres_on_the_seed(seeded, record_property):
     engine, settings, root = seeded
-    builders = {name: resolve_builder(name) for name in FAMILIES}
+    days = seed.DAYS
     compared = []
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
-    for name, builder in builders.items():
+    for name in FAMILIES:
+        builder = resolve_builder(name)
         if builder is None:
             continue
         assert isinstance(builder, FamilyBuilder), name
-        for provider in seed.PROVIDERS.values():
-            request = BuildRequest(
-                provider, seed.DAYS, seed.HISTORY_CLOCK, seed.RETENTION_DAYS, 36000, str(seed.TZ)
-            )
-            inputs = root / name / provider
-            _export_inputs(engine, builder, request, inputs)
-            expected = _bodies(engine, settings, provider)
-            result = run_family(
-                builder, request, inputs_root=inputs, workdir=root, code_commit=commit
-            )
+        for p in seed.PROVIDERS.values():
+            req = BuildRequest(p, days, seed.BUILD_CLOCK, seed.RETENTION_DAYS, 36000, str(seed.TZ))
+            _export_inputs(engine, builder, req, root / name / p)
+            expected = _bodies(engine, settings, p)
+            inputs = root / name / p
+            result = run_family(builder, req, inputs_root=inputs, workdir=root, code_commit=commit)
             with engine.connect() as conn:
-                for relation, actual in result.output.tables.items():
-                    dates = request.local_dates if "provider_local_date" in actual.columns else None
-                    reference = read_table_rows(
-                        conn, relation, actual.key, provider_id=provider, local_dates=dates
-                    )
-                    assert compare_tables(reference, actual) == [], (name, relation)
+                for rel, actual in result.output.tables.items():
+                    dates = seed.DAYS if "provider_local_date" in actual.columns else None
+                    ref = read_table_rows(conn, rel, actual.key, provider_id=p, local_dates=dates)
+                    assert compare_tables(ref, actual) == [], (name, rel)
                 if "gold.route_delay_hourly" in result.output.tables:
-                    _dirty_after_load(conn, result.output.tables, provider)
-            assert (
-                compare_bodies(
-                    {k: v for k, v in expected.items() if key_matches(k, builder.published_keys)},
-                    result.output.bodies,
-                )
-                == []
-            ), name
+                    _dirty_after_load(conn, result.output.tables, p)
+            bodies = {k: v for k, v in expected.items() if key_matches(k, builder.published_keys)}
+            assert compare_bodies(bodies, result.output.bodies) == [], name
         compared.append(name)
-    expected_names = [name for name, builder in builders.items() if builder is not None]
     record_property("compared_family_count", len(compared))
     record_property("compared_families", ",".join(compared) or "(none)")
-    print(f"Compared {len(compared)} families: {compared}")
-    assert compared == expected_names, f"Compared {len(compared)} families: {compared}"
+    assert compared == list(PROVEN_FAMILIES), f"Compared {len(compared)} families: {compared}"
+
+
+def test_dated_all_is_refused_before_io(tmp_path):
+    builder = SimpleNamespace(inputs=lambda _: (InputNeed("gold.route_delay_hourly", "all"),))
+    with pytest.raises(ValueError, match="gold.route_delay_hourly.*all"):
+        _export_inputs(None, builder, SimpleNamespace(), tmp_path)
+
+
+def test_family_count_requires_an_independent_declaration(monkeypatch):
+    monkeypatch.setitem(globals(), "PROVEN_FAMILIES", ("missing",))
+    check = test_every_implemented_family_matches_postgres_on_the_seed
+    with pytest.raises(AssertionError):
+        check((None, None, None), lambda *_: None)
+
+
+def test_repeat_detects_an_unfixed_seed_identity(monkeypatch):
+    ids = iter((0, 1))
+    monkeypatch.setitem(globals(), "seed_round", lambda _: nullcontext((next(ids), None, None)))
+    monkeypatch.setitem(globals(), "_bodies", lambda identity, *_: {"id": bytes([identity])})
+    with pytest.raises(AssertionError):
+        test_postgres_path_repeats_byte_for_byte((0, None, None))
+
+
+def test_nonempty_family_uses_the_reference_build_stamp(seeded, monkeypatch):
+    rel = "gold.route_delay_spine"
+    key = get_dataset(rel).source.key_columns
+    statement = text(
+        "-- q:batch.clock_probe\nSELECT * REPLACE "
+        f"(CAST(:stamp AS TIMESTAMPTZ) AS built_at_utc) FROM {rel} "
+        f"ORDER BY {', '.join(key)}"
+    )
+
+    def build(session, request):
+        result = session.execute(statement, {"stamp": request.as_of_utc})
+        rows = tuple(map(tuple, result))
+        assert rows
+        return FamilyOutput({rel: TableRows(rel, result.columns, key, rows)}, {})
+
+    builder = SimpleNamespace(family_id="probe", tables=(rel,), published_keys=(), variants={})
+    builder.inputs = lambda r: tuple(InputNeed(rel, f"local:{d}") for d in r.local_dates)
+    builder.build = build
+    for name, value in dict(
+        FAMILIES={"probe": None}, resolve_builder=lambda _: builder, PROVEN_FAMILIES=("probe",)
+    ).items():
+        monkeypatch.setitem(globals(), name, value)
+    test_every_implemented_family_matches_postgres_on_the_seed(seeded, lambda *_: None)
+
+
+def test_dirty_load_preserves_histograms_and_unselected_hours(seeded, monkeypatch):
+    engine, _, _ = seeded
+    p = next(iter(seed.PROVIDERS.values()))
+    hour, spine = "gold.route_delay_hourly", "gold.route_delay_spine"
+    keys = {rel: get_dataset(rel).source.key_columns for rel in (hour, spine)}
+    with engine.connect() as conn:
+        before = read_table_rows(conn, hour, keys[hour], provider_id=p, local_dates=None)
+        hist = read_table_rows(conn, spine, keys[spine], provider_id=p, local_dates=seed.DAYS)
+        assert hist.rows and any(r[hist.columns.index("delay_histogram")] for r in hist.rows)
+        one = TableRows(hour, before.columns, before.key, before.rows[:1])
+        row = list(one.rows[0])
+        row[one.columns.index("built_at_utc")] -= timedelta(days=2)
+        stale = TableRows(hour, one.columns, one.key, (tuple(row),))
+        assert compare_tables(one, stale) == []
+        with pytest.raises(AssertionError):
+            _dirty_after_load(conn, {hour: stale, spine: hist}, p)
+        _dirty_after_load(conn, {hour: one}, p)
+        monkeypatch.setattr(seed, "SEASON", (seed.DAYS[1], seed.SEASON[1]))
+        _dirty_after_load(conn, {hour: stale}, p)
+        assert read_table_rows(conn, hour, before.key, provider_id=p, local_dates=None) == before
