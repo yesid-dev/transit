@@ -1643,8 +1643,8 @@ def test_build_all_routes_data_matches_standalone_bytes_and_hashes() -> None:
 
     assert list(batched) == ["R1", "R2"]
     assert {route_id: snapshot_sha256(route) for route_id, route in batched.items()} == {
-        "R1": "64706af2758ddcec60e443a4c43d4df5ed8063530d7a3222ddec39dcb6cfd606",
-        "R2": "bd9a76fd51d406683fb9e9581b2e66824d9ccbc476dbf358619378f6bc20a5f1",
+        "R1": "b64bb40fb8fd2e9c6ff33d7c13d26d9026cbcda7e1943f614a80645902bd8c68",
+        "R2": "4a35ee8248b0efa98667851855bb1ec6a494be265703a5f39d5c48e00c459485",
     }
     for route_id in legacy:
         assert snapshot_json_bytes(batched[route_id]) == snapshot_json_bytes(legacy[route_id])
@@ -1652,7 +1652,7 @@ def test_build_all_routes_data_matches_standalone_bytes_and_hashes() -> None:
 
 
 @pytest.mark.parametrize("route_count", [2, 200])
-def test_build_all_routes_data_uses_four_queries_independent_of_route_count(route_count) -> None:
+def test_build_all_routes_data_uses_five_queries_independent_of_route_count(route_count) -> None:
     from transit_ops.snapshots.builders._helpers import StaticScheduleContext
 
     build_all_routes_data = _require_all_routes_builder()
@@ -1701,6 +1701,7 @@ def test_build_all_routes_data_uses_four_queries_independent_of_route_count(rout
         "static.all_route_shapes",
         "static.all_route_stops",
         "static.all_route_schedules",
+        "static.r3_headways",
     ]
     assert len(routes) == route_count
     assert {

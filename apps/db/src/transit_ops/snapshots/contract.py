@@ -9,6 +9,7 @@ from typing import Literal, Self
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from transit_ops.core.models import ProviderLabel
+from transit_ops.snapshots.contract_static_r3 import StaticRouteR3
 from transit_ops.snapshots.ttl import LIVE_TTL_SECONDS
 
 PAYLOAD_SCHEMA_VERSION = 1
@@ -456,6 +457,7 @@ class RouteFile(PayloadEnvelope):
     service_periods: list[ServicePeriod] = Field(default_factory=list)
     first_departure: str | None = None
     last_departure: str | None = None
+    r3: StaticRouteR3 | None = None
 
 
 class ScheduledRoute(BaseModel):
@@ -472,6 +474,7 @@ class StopFile(PayloadEnvelope):
     lat: float
     lon: float
     wheelchair: bool = False
+    wheelchair_boarding: Literal["yes", "no"] | None = None
     routes_served: list[str] = Field(default_factory=list)
     scheduled: list[ScheduledRoute] = Field(default_factory=list)
 
