@@ -21,7 +21,7 @@
 	import type { Provenance } from '#lib/v1/schemas/provenance.ts';
 	import { createResource, type ResourceSeed } from '#lib/v1/resource.svelte.ts';
 	import { formatRelativeSeconds } from '#lib/utils/time.ts';
-	import { stampDate } from '#lib/v1/stamp.ts';
+	import { recordGate, stampDate } from '#lib/v1/stamp.ts';
 	import { METHODOLOGY_METRIC_KEY } from '#lib/features/metrics/metrics.content.ts';
 	import {
 		ArticleKeywords,
@@ -45,7 +45,7 @@
 	} from './selectors/provenanceViews';
 	import { selectLaneRows, type LaneLabels } from './selectors/laneHealth';
 	import { selectEnvelope } from './selectors/envelope';
-	import { selectHistoryCoverage } from './selectors/historyCoverage';
+	import { selectHistoryCoverage, selectHistoryInventory } from './selectors/historyCoverage';
 	import SectionLanes from './sections/SectionLanes.svelte';
 	import SectionFreshness from './sections/SectionFreshness.svelte';
 	import SectionSources from './sections/SectionSources.svelte';
@@ -165,6 +165,8 @@
 	const dh = $derived(dataHealth.data ?? null);
 	const historyRoot = $derived(historicAvailability.data ?? null);
 	const historyCoverageRows = $derived(selectHistoryCoverage(historyRoot));
+	const historyInventory = $derived(selectHistoryInventory(historyRoot));
+	const recordWarning = $derived(['warn', 'fail'].includes(recordGate(dh)?.verdict ?? ''));
 	const feeds = $derived(feedFreshness(dh, prov, clock.serverNow));
 	const sources = $derived(prov ? sourcesOf(prov) : []);
 	const gaps = $derived(prov ? gapsOf(prov) : []);
@@ -197,62 +199,67 @@
 			present: gaps.length > 0,
 		},
 		{
-			id: 'health-lanes',
+			id: 'health-history-coverage',
 			number: 2,
+			title: t.historyCoverage.section,
+			subtitle: t.questions.historyCoverage,
+			present: historyCoverageRows.length > 0,
+		},
+		{
+			id: 'health-lanes',
+			number: 3,
 			title: t.lanes.section,
 			subtitle: t.questions.lanes,
 			present: laneRows.length > 0,
 		},
 		{
 			id: 'health-freshness',
-			number: 3,
+			number: 4,
 			title: t.freshness.section,
 			subtitle: t.questions.freshness,
 			present: feeds.items.length > 0,
 		},
 		{
 			id: 'health-sources',
-			number: 4,
+			number: 5,
 			title: t.sources.section,
 			subtitle: t.questions.sources,
 			present: sources.length > 0,
 		},
 		{
 			id: 'health-pipeline-notes',
-			number: 5,
+			number: 6,
 			title: t.pipelineNotes.section,
 			subtitle: t.questions.pipelineNotes,
 			present: pipelineNotes.length > 0,
 		},
 		{
 			id: 'health-retention',
-			number: 6,
+			number: 7,
 			title: t.retention.section,
 			subtitle: t.questions.retention,
 			present: hasRetention,
 		},
 		{
 			id: 'health-conformance',
-			number: 7,
+			number: 8,
 			title: t.conformance.section,
 			subtitle: t.questions.conformance,
 			present: conformance != null,
 		},
 		{
 			id: 'health-envelope',
-			number: 8,
+			number: 9,
 			title: t.envelope.section,
 			subtitle: t.questions.envelope,
 			present: hasEnvelope,
 		},
-		{
-			id: 'health-history-coverage',
-			number: 9,
-			title: t.historyCoverage.section,
-			subtitle: t.questions.historyCoverage,
-			present: historyCoverageRows.length > 0,
-		},
 	]);
+
+	// What readers check first stays open; the auditors' detail sits behind one closed disclosure.
+	const OPEN_SECTIONS = new Set(['health-gaps', 'health-history-coverage']);
+	const openSections = $derived(sectionDefs.filter((s) => OPEN_SECTIONS.has(s.id)));
+	const auditorSections = $derived(sectionDefs.filter((s) => !OPEN_SECTIONS.has(s.id)));
 
 	const tocEntries = $derived.by((): TocEntry[] =>
 		sectionDefs
@@ -336,6 +343,7 @@
 					{manifest}
 					{live}
 					dataHealth={dh}
+					dataHealthSettled={dataHealth.settled}
 					historyIndex={historyRoot}
 					{gaps}
 					{locale}
@@ -371,8 +379,8 @@
 			</div>
 		</CollapsibleSection>
 
-		{@render sectionCard(sectionDefs[0])}
-		{#if sectionDefs.slice(1).some((section) => section.present)}
+		{#each openSections as section (section.id)}{@render sectionCard(section)}{/each}
+		{#if auditorSections.some((section) => section.present)}
 			<CollapsibleSection
 				title={t.details}
 				headerVariant="article-summary"
@@ -382,7 +390,7 @@
 			>
 				<ArticleSectionStack>
 					<OutOfServiceVehicles {live} {locale} />
-					{#each sectionDefs.slice(1) as section (section.id)}{@render sectionCard(section)}{/each}
+					{#each auditorSections as section (section.id)}{@render sectionCard(section)}{/each}
 				</ArticleSectionStack>
 			</CollapsibleSection>
 		{/if}
@@ -430,7 +438,13 @@
 			{:else if section.id === 'health-envelope'}
 				<SectionEnvelope {envelope} copy={t} {locale} />
 			{:else if section.id === 'health-history-coverage'}
-				<SectionHistoryCoverage rows={historyCoverageRows} copy={t} {locale} />
+				<SectionHistoryCoverage
+					rows={historyCoverageRows}
+					inventory={historyInventory}
+					{recordWarning}
+					copy={t}
+					{locale}
+				/>
 			{/if}
 		</CollapsibleSection>
 	{/if}

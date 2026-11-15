@@ -1,177 +1,279 @@
 <script lang="ts">
 	import { Badge } from '@yesid/ui/badge';
-	import type { Locale } from '#lib/i18n/index.ts';
-	import { DataTable, type DataTableColumn } from '@yesid/ui/table';
-	import { AbsentValue } from '#lib/components/edge/index.ts';
 	import { StateNotice } from '@yesid/ui/feedback';
-	import { absenceShort, describeAbsence } from '#lib/site/absence.ts';
+	import { intl, type Locale } from '#lib/i18n/index.ts';
+	import { AbsentValue } from '#lib/components/edge/index.ts';
+	import { describeAbsence } from '#lib/site/absence.ts';
 	import { formatDateKey } from '#lib/utils/time.ts';
 	import type { HealthCopy } from '../health.copy';
 	import type {
+		HistoryCoverageFamilyKey,
 		HistoryCoverageFamilyView,
-		HistoryCoverageGapView,
+		HistoryInventoryView,
 	} from '../selectors/historyCoverage';
 
 	interface SectionHistoryCoverageProps {
 		rows: readonly HistoryCoverageFamilyView[];
+		/** The history date list's own stamp; it dates every family below. */
+		inventory: HistoryInventoryView | null;
+		/** The last record was published with warnings or past a failed check. */
+		recordWarning: boolean;
 		copy: HealthCopy;
 		locale: Locale;
 	}
 
-	let { rows, copy, locale }: SectionHistoryCoverageProps = $props();
+	let { rows, inventory, recordWarning, copy, locale }: SectionHistoryCoverageProps = $props();
 	const t = $derived(copy.historyCoverage);
+	const n = (value: number) => intl.number(locale).format(value);
+	const evidenceId = $props.id();
 
-	function windowLabel(first: string | null, last: string | null): string {
-		if (first == null || last == null) return absenceShort('no-retained-dates', locale);
-		return `${formatDateKey(first, locale)} – ${formatDateKey(last, locale)}`;
+	// Open on the first family whose days can be counted; the reader's choice wins afterwards.
+	let chosen = $state<HistoryCoverageFamilyKey | null>(null);
+	const selected = $derived(
+		rows.find((row) => row.key === chosen) ??
+			rows.find((row) => row.days != null) ??
+			rows.find((row) => row.published) ??
+			rows[0],
+	);
+	let panel = $state<HTMLElement | null>(null);
+
+	function choose(key: HistoryCoverageFamilyKey) {
+		chosen = key;
+		// One column: the evidence sits under the list, so bring it into view when it is all below.
+		if (panel && panel.getBoundingClientRect().top > window.innerHeight) {
+			const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+			panel.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
+		}
 	}
 
-	function sectionLabel(key: string): string {
-		return t.currentOnlySectionLabels[key] ?? key.replaceAll('_', ' ');
+	function windowLabel(first: string, last: string, year = false): string {
+		return `${formatDateKey(first, locale, year)} – ${formatDateKey(last, locale, year)}`;
 	}
 </script>
 
-{#snippet gapList(items: readonly HistoryCoverageGapView[] | null)}
-	{#if items == null}
-		<AbsentValue variant="row" reason="no-gap-inventory" {locale} />
-	{:else if items.length > 0}
+{#snippet daysSummary(row: HistoryCoverageFamilyView)}
+	{#if row.days?.withRecords != null}
+		<span class="days-main"
+			>{t.days.withRecords(n(row.days.withRecords), n(row.days.inWindow))}</span
+		>
+		<span class="days-note">
+			{row.days.missing
+				? t.days.missing(
+						n(row.days.missing),
+						row.days.missing,
+						n(row.days.gapRuns ?? 0),
+						row.days.gapRuns ?? 0,
+					)
+				: t.days.none}
+		</span>
+	{:else if row.days}
+		<span class="days-main">{t.days.inWindow(n(row.days.inWindow), row.days.inWindow)}</span>
+		<span class="days-note absent">{t.days.unknown}</span>
+	{:else if row.state === 'unreadable-dates'}
+		<span class="days-note absent">{t.days.unreadable}</span>
+	{/if}
+{/snippet}
+
+<!-- A gap list as published: its dates, explicitly none, or not published at all. -->
+{#snippet gapList(gaps: HistoryCoverageFamilyView['gaps'])}
+	{#if gaps == null}
+		<span class="days-note absent">{t.days.unknown}</span>
+	{:else if gaps.length === 0}
+		<span class="days-note">{t.days.none}</span>
+	{:else}
 		<ul class="gap-list">
-			{#each items as gap (`${gap.startDate}:${gap.endDate}:${gap.reason ?? ''}`)}
+			{#each gaps as gap (`${gap.startDate}:${gap.endDate}:${gap.reason ?? ''}`)}
 				<li>
-					<span class="gap-dates">{windowLabel(gap.startDate, gap.endDate)}</span>
+					<span class="mono">{windowLabel(gap.startDate, gap.endDate)}</span>
 					{#if gap.reason}<span class="gap-reason">{gap.reason}</span>{/if}
 				</li>
 			{/each}
 		</ul>
+	{/if}
+{/snippet}
+
+<!-- In the index rows the absence is a plain label: the row itself is the control. -->
+{#snippet dates(row: HistoryCoverageFamilyView, year = false, disclosure = true)}
+	{#if row.firstDate && row.lastDate}
+		<span class="dates">{windowLabel(row.firstDate, row.lastDate, year)}</span>
 	{:else}
-		{@const description = describeAbsence('no-declared-gaps', locale)}
-		<StateNotice
-			title={description.label}
-			body={description.why}
-			glyph="●"
-			tone="positive"
-			presentation="row"
+		<AbsentValue
+			variant="compact"
+			reason={row.published ? 'no-retained-dates' : 'not-published'}
+			{disclosure}
+			{locale}
 		/>
 	{/if}
 {/snippet}
 
-{#snippet familyCell(row: HistoryCoverageFamilyView)}
-	<span class="family-name">{t.families[row.key]}</span>
-	{#if !row.published}<AbsentValue variant="row" reason="not-published" {locale} />{/if}
-{/snippet}
-
-{#snippet windowCell(row: HistoryCoverageFamilyView)}
-	{#if row.published}
-		{#if row.firstDate && row.lastDate}
-			<span class="window-value">{windowLabel(row.firstDate, row.lastDate)}</span>
-		{:else}
-			<AbsentValue variant="row" reason="no-retained-dates" {locale} />
-		{/if}
-	{:else}
-		<AbsentValue variant="row" reason="no-retained-dates" {locale} />
-	{/if}
-{/snippet}
-
-{#snippet selectionCell(row: HistoryCoverageFamilyView)}
-	{#if row.selectionMode}
-		<Badge variant="tag">{t.selection[row.selectionMode]}</Badge>
-	{:else}
-		<AbsentValue variant="row" reason="not-published" {locale} />
-	{/if}
-{/snippet}
-
-{#snippet detailsCell(row: HistoryCoverageFamilyView)}
-	<div class="coverage-details">
-		{#if row.published}
-			<div class="detail-group">
-				<span class="detail-label">{t.familyGaps}</span>
-				{@render gapList(row.gaps)}
-			</div>
-			<div class="detail-group">
-				<span class="detail-label">{t.metricCoverage}</span>
-				{#if row.metrics.length > 0}
-					<ul class="metric-list">
-						{#each row.metrics as metric (metric.key)}
-							<li class="metric-row" data-metric={metric.key} data-aggregation={metric.aggregation}>
-								<div class="metric-head">
-									<span class="metric-name">{t.metrics[metric.key]}</span>
-									<Badge variant="tag">{t.aggregation[metric.aggregation]}</Badge>
-								</div>
-								{#if metric.firstDate && metric.lastDate}
-									<span class="metric-window">{windowLabel(metric.firstDate, metric.lastDate)}</span
-									>
-								{:else}
-									<AbsentValue variant="row" reason="no-retained-dates" {locale} />
-								{/if}
-								{@render gapList(metric.gaps)}
-							</li>
-						{/each}
-					</ul>
-				{:else}
-					<AbsentValue variant="row" reason="no-metric-inventory" {locale} />
-				{/if}
-			</div>
-		{/if}
-		{#if row.currentOnlySections.length > 0}
-			<div class="detail-group current-only" data-slot="current-only-limitations">
-				<span class="detail-label">{t.currentOnlySections}</span>
-				<p>{t.currentOnlyNote}</p>
-				<ul class="current-only-list">
-					{#each row.currentOnlySections as section (section)}
-						<li>{sectionLabel(section)}</li>
-					{/each}
-				</ul>
-			</div>
-		{/if}
+<!-- A long identifier shows its first characters, like a short commit hash; the title has it all. -->
+{#snippet fact(label: string, value: string | null, short = false)}
+	<div class="fact">
+		<dt>{label}</dt>
+		<dd>
+			{#if value && short && value.length > 12}<span class="mono" title={value}
+					>{value.slice(0, 12)}…</span
+				>{:else if value}<span class="mono">{value}</span>{:else}<span class="absent"
+					>{t.evidence.notPublished}</span
+				>{/if}
+		</dd>
 	</div>
 {/snippet}
 
-<div class="coverage-block" data-slot="history-coverage-section">
+<div class="coverage" data-slot="history-coverage-section">
 	<p class="coverage-note">{t.note}</p>
-	<DataTable
-		{rows}
-		columns={[
-			{
-				key: 'family',
-				header: t.columns.family,
-				rowHeader: true,
-				width: '9rem',
-				cell: familyCell,
-			},
-			{
-				key: 'window',
-				header: t.columns.window,
-				width: '18%',
-				cell: windowCell,
-			},
-			{
-				key: 'selection',
-				header: t.columns.selection,
-				width: '17%',
-				cell: selectionCell,
-			},
-			{
-				key: 'details',
-				header: t.columns.details,
-				cell: detailsCell,
-			},
-		] satisfies readonly DataTableColumn<HistoryCoverageFamilyView>[]}
-		key={(row) => row.key}
-		caption={t.tableLabel}
-		responsive={{ mode: 'stack', at: 'tablet' }}
-		frame="card"
-		borderCollapse="separate"
-		headerBand="none"
-		tableClass="coverage-table"
-	/>
+	<div class="coverage-grid">
+		<div class="coverage-index">
+			<div class="index-head" aria-hidden="true">
+				<span>{t.columns.family}</span><span>{t.columns.window}</span><span>{t.columns.days}</span>
+			</div>
+			<ul aria-label={t.indexLabel}>
+				{#each rows as row (row.key)}
+					{@const pressed = row.key === selected?.key}
+					<li
+						class="family-row"
+						data-family={row.key}
+						data-state={row.state}
+						data-selected={pressed}
+					>
+						<button
+							type="button"
+							class="family-select"
+							aria-pressed={pressed}
+							aria-controls={evidenceId}
+							onclick={() => choose(row.key)}>{t.families[row.key]}</button
+						>
+						<span class="family-dates">{@render dates(row, false, false)}</span>
+						<span class="family-days">{@render daysSummary(row)}</span>
+					</li>
+				{/each}
+			</ul>
+		</div>
+
+		{#if selected}
+			<section
+				class="coverage-evidence"
+				id={evidenceId}
+				aria-label={t.evidence.region(t.families[selected.key])}
+				bind:this={panel}
+				data-family={selected.key}
+			>
+				<h3>{t.families[selected.key]}</h3>
+				{#if !selected.published}
+					{@const absence = describeAbsence('not-published', locale)}
+					<StateNotice
+						title={absence.label}
+						body={t.evidence.absent}
+						glyph="○"
+						presentation="row"
+					/>
+				{:else}
+					<dl class="facts">
+						<div class="fact">
+							<dt>{t.evidence.datesLabel}</dt>
+							<dd>{@render dates(selected, true)}</dd>
+						</div>
+						<div class="fact">
+							<dt>{t.evidence.daysLabel}</dt>
+							<dd class="days">
+								{@render daysSummary(selected)}
+								{#if !selected.days && selected.state !== 'unreadable-dates'}
+									<AbsentValue variant="compact" reason="no-retained-dates" {locale} />
+								{/if}
+							</dd>
+						</div>
+						{#if selected.gaps?.length}
+							<div class="fact">
+								<dt>{t.evidence.missingLabel}</dt>
+								<dd>{@render gapList(selected.gaps)}</dd>
+							</div>
+						{/if}
+						{#if selected.selectionMode}
+							<div class="fact">
+								<dt>{t.evidence.browseLabel}</dt>
+								<dd>{t.selection[selected.selectionMode]}</dd>
+							</div>
+						{/if}
+					</dl>
+					<div class="group">
+						<h4>{t.evidence.measuresLabel}</h4>
+						{#if selected.metrics.length === 0}
+							<AbsentValue variant="compact" reason="no-metric-inventory" {locale} />
+						{:else}
+							<ul class="metric-list">
+								{#each selected.metrics as metric (metric.key)}
+									<li data-metric={metric.key} data-aggregation={metric.aggregation}>
+										<span class="metric-head">
+											<span class="metric-name">{t.metrics[metric.key]}</span>
+											<Badge variant="tag">{t.aggregation[metric.aggregation]}</Badge>
+										</span>
+										{#if metric.firstDate && metric.lastDate}
+											<span class="mono muted"
+												>{windowLabel(metric.firstDate, metric.lastDate)}</span
+											>
+										{:else}
+											<AbsentValue variant="compact" reason="no-retained-dates" {locale} />
+										{/if}
+										<!-- A measure keeps its own holes; the family's continuity says nothing about it. -->
+										{@render gapList(metric.gaps)}
+									</li>
+								{/each}
+							</ul>
+						{/if}
+					</div>
+					{#if selected.currentOnlySections.length > 0}
+						<div class="group" data-slot="current-only-limitations">
+							<h4>{t.currentOnlySections}</h4>
+							<p class="muted">{t.currentOnlyNote}</p>
+							<ul class="current-only-list">
+								{#each selected.currentOnlySections as section (section)}
+									<li>{t.currentOnlySectionLabels[section] ?? section.replaceAll('_', ' ')}</li>
+								{/each}
+							</ul>
+						</div>
+					{/if}
+				{/if}
+				<div class="group">
+					<h4>{t.evidence.sourceTitle}</h4>
+					<dl class="facts">
+						{@render fact(t.evidence.fingerprintLabel, selected.collectionGenerationId, true)}
+						{@render fact(
+							t.evidence.listPublishedLabel,
+							inventory?.publishedOn ? formatDateKey(inventory.publishedOn, locale, true) : null,
+						)}
+						{@render fact(
+							copy.envelope.generationIdLabel,
+							inventory?.publishGenerationId ?? null,
+							true,
+						)}
+						{@render fact(
+							copy.envelope.methodologyVersionLabel,
+							inventory?.methodologyVersion ?? null,
+						)}
+						{@render fact(t.evidence.nextUpdateLabel, null)}
+						{#if recordWarning}
+							<div class="fact">
+								<dt>{t.evidence.warningsLabel}</dt>
+								<dd>{t.evidence.warningsUnscoped}</dd>
+							</div>
+						{/if}
+					</dl>
+					{#if selected.collectionGenerationId}
+						<p class="muted">{t.evidence.fingerprintExplain}</p>
+					{/if}
+				</div>
+			</section>
+		{/if}
+	</div>
 </div>
 
 <style>
-	.coverage-block {
+	.coverage {
 		display: flex;
 		flex-direction: column;
 		gap: 1rem;
 		min-width: 0;
+		container: health-coverage / inline-size;
 	}
 	.coverage-note {
 		margin: 0;
@@ -179,60 +281,12 @@
 		font-size: var(--text-detail-body-mobile);
 		line-height: 1.8;
 	}
-	:global(table.coverage-table.data-table) {
-		font-size: inherit;
-	}
-	:global(table.coverage-table.data-table th),
-	:global(table.coverage-table.data-table td) {
-		padding: 0.875rem;
-	}
-	:global(table.coverage-table.data-table tbody td) {
-		font-family: inherit;
-	}
-	:global(table.coverage-table.data-table tbody tr + tr > *) {
-		border-top-color: var(--border);
-	}
-	.family-name,
-	.window-value,
-	.metric-name {
-		display: block;
-		color: var(--foreground);
-		font-weight: 700;
-	}
-	.window-value,
-	.metric-window,
-	.gap-dates {
-		font-family: var(--font-mono);
-		font-size: var(--text-small);
-		font-variant-numeric: tabular-nums;
-	}
-	.gap-reason,
-	.metric-window {
-		display: block;
-		margin-top: 0.25rem;
-		color: var(--muted-foreground);
-		font-size: var(--text-caption);
-		line-height: 1.45;
-	}
-	.coverage-details,
-	.detail-group,
-	.metric-row {
-		display: flex;
-		flex-direction: column;
-		gap: 0.45rem;
+	.coverage-grid {
+		display: grid;
+		gap: 1.5rem;
 		min-width: 0;
 	}
-	.coverage-details {
-		gap: 0.9rem;
-	}
-	.detail-label {
-		font-family: var(--font-mono);
-		font-size: var(--text-caption);
-		font-weight: 600;
-		letter-spacing: var(--tracking-eyebrow);
-		text-transform: uppercase;
-		color: var(--muted-foreground);
-	}
+	.coverage-index ul,
 	.gap-list,
 	.metric-list,
 	.current-only-list {
@@ -240,35 +294,192 @@
 		padding: 0;
 		list-style: none;
 	}
-	.gap-list,
-	.current-only-list {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.35rem 0.75rem;
+	.coverage-index {
+		min-width: 0;
+		container: coverage-index / inline-size;
 	}
-	.gap-list li {
+	.index-head {
+		display: none;
+	}
+	/* Two-line rows on narrow widths: the family and its dates, then its days. */
+	.family-row {
+		position: relative;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		grid-template-areas:
+			'name dates'
+			'days days';
+		gap: 0 1rem;
+		align-items: center;
+		padding: 0.25rem 0.75rem;
+		border: 1px solid transparent;
+		border-top-color: var(--border-subtle);
+		border-radius: var(--radius-md);
+	}
+	.family-row:first-child {
+		border-top-color: transparent;
+	}
+	.family-row[data-selected='true'] {
+		border-color: var(--primary);
+		background: color-mix(in srgb, var(--primary) 8%, transparent);
+	}
+	.family-row[data-selected='true'] + .family-row {
+		border-top-color: transparent;
+	}
+	/* The control itself meets the 44 px target, not only the row overlay drawn from it. */
+	.family-select {
+		grid-area: name;
+		justify-self: start;
+		display: inline-flex;
+		align-items: center;
+		min-block-size: 2.75rem;
+		min-inline-size: 2.75rem;
+		padding: 0;
+		border: 0;
+		background: none;
+		color: var(--foreground);
+		font: inherit;
+		font-weight: 600;
+		text-align: start;
+		cursor: pointer;
+	}
+	/* The whole row selects; the button stays the one control and keeps the focus ring. */
+	.family-select::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		border-radius: inherit;
+	}
+	.family-select:focus-visible {
+		outline: none;
+	}
+	.family-row:has(.family-select:focus-visible) {
+		outline: 2px solid var(--primary);
+		outline-offset: 2px;
+	}
+	.family-row:hover .family-select {
+		color: var(--primary);
+	}
+	.family-dates {
+		grid-area: dates;
+		justify-self: end;
+		text-align: end;
+	}
+	.family-days {
+		grid-area: days;
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
+		padding-bottom: 0.5rem;
+	}
+	.family-days:empty {
+		display: none;
+	}
+	.dates,
+	.mono {
+		font-family: var(--font-mono);
+		font-size: var(--text-small);
+		font-variant-numeric: tabular-nums;
+		overflow-wrap: anywhere;
+	}
+	.days-main {
+		font-size: var(--text-small);
+		font-variant-numeric: tabular-nums;
+		color: var(--foreground);
+	}
+	.days-note,
+	.muted,
+	.gap-reason {
+		color: var(--muted-foreground);
+		font-size: var(--text-small);
+		line-height: 1.45;
+	}
+	.absent::before {
+		content: '';
+		display: inline-block;
+		inline-size: 0.6rem;
+		block-size: 0.6rem;
+		margin-inline-end: 0.4rem;
+		border: 1.5px solid currentColor;
+		border-radius: 50%;
+	}
+	.absent {
+		color: var(--muted-foreground);
+		font-size: var(--text-small);
+	}
+	.coverage-evidence {
+		display: flex;
+		flex-direction: column;
+		gap: 1.25rem;
+		min-width: 0;
+		padding-top: 1.25rem;
+		border-top: 1px solid var(--border-subtle);
+	}
+	.coverage-evidence h3 {
+		margin: 0;
+		font-size: var(--text-heading);
+		font-weight: 600;
+		line-height: 1.25;
+	}
+	.coverage-evidence h4 {
+		margin: 0;
+		font-size: var(--text-small);
+		font-weight: 600;
+		color: var(--foreground);
+	}
+	.group,
+	.facts {
+		display: flex;
+		flex-direction: column;
+		gap: 0.6rem;
+		min-width: 0;
+		margin: 0;
+	}
+	.fact {
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
 		min-width: 0;
 	}
+	.fact dt {
+		color: var(--muted-foreground);
+		font-size: var(--text-small);
+	}
+	.fact dd {
+		margin: 0;
+		min-width: 0;
+		color: var(--foreground);
+	}
+	.fact dd.days {
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
+	}
+	.gap-list,
 	.metric-list {
 		display: grid;
-		gap: 0.75rem;
+		gap: 0.5rem;
 	}
-	.metric-row {
-		padding-top: 0.7rem;
-		border-top: 1px dashed var(--border);
+	.gap-list li,
+	.metric-list li {
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
+		min-width: 0;
 	}
 	.metric-head {
 		display: flex;
-		align-items: flex-start;
-		justify-content: space-between;
-		gap: 0.5rem;
 		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.25rem 0.5rem;
 	}
-	.current-only p {
-		margin: 0;
-		color: var(--muted-foreground);
-		font-size: var(--text-caption);
-		line-height: 1.5;
+	.metric-name {
+		font-weight: 600;
+	}
+	.current-only-list {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.35rem 0.5rem;
 	}
 	.current-only-list li {
 		padding: 0.15rem 0.45rem;
@@ -278,44 +489,44 @@
 		font-size: var(--text-caption);
 	}
 
-	@media (--desktop-max) {
-		:global(
-			.data-table-frame[data-responsive='stack'][data-stack-at='tablet']
-				table.coverage-table.data-table
-				tbody
-				tr
-		) {
-			padding: 0;
+	/* Aligned columns once a row can hold the family, its dates and its days on one line. */
+	@container coverage-index (min-width: 30rem) {
+		.index-head,
+		.family-row {
+			display: grid;
+			grid-template-columns: minmax(7rem, 0.9fr) minmax(0, 1.1fr) minmax(0, 1.4fr);
+			grid-template-areas: 'name dates days';
+			gap: 1rem;
 		}
-		:global(
-			.data-table-frame[data-responsive='stack'][data-stack-at='tablet']
-				table.coverage-table.data-table
-				tbody
-				th
-		),
-		:global(
-			.data-table-frame[data-responsive='stack'][data-stack-at='tablet']
-				table.coverage-table.data-table
-				tbody
-				td
-		) {
+		.index-head {
+			padding: 0 0.75rem 0.5rem;
+			color: var(--muted-foreground);
+			font-size: var(--text-small);
+		}
+		.family-dates {
+			justify-self: start;
+			text-align: start;
+		}
+		.family-days:empty {
 			display: flex;
-			flex-direction: column;
-			gap: 0.75rem;
-			padding: 0.875rem;
-			border-bottom: 1px solid var(--border);
 		}
-		:global(
-			.data-table-frame[data-responsive='stack'][data-stack-at='tablet']
-				table.coverage-table.data-table
-				tbody
-				tr
-				> :last-child
-		) {
-			border-bottom: 0;
+		.family-days {
+			padding-block: 0.5rem;
 		}
 	}
-
+	/* 8 + 4: the index beside the selected family. */
+	@container health-coverage (min-width: 46rem) {
+		.coverage-grid {
+			grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+			align-items: start;
+		}
+		.coverage-evidence {
+			padding-top: 0;
+			padding-inline-start: 1.5rem;
+			border-top: 0;
+			border-inline-start: 1px solid var(--border-subtle);
+		}
+	}
 	@media (--desktop-min) {
 		.coverage-note {
 			font-size: var(--text-detail-body-desktop);

@@ -405,7 +405,7 @@ describe('HealthStatus — full manifest render', () => {
 			within(left).getByRole('button', { name: en.historyCoverage.section }),
 		).toBeInTheDocument();
 		expect(
-			within(center).getByRole('table', { name: en.historyCoverage.tableLabel }),
+			within(center).getByRole('list', { name: en.historyCoverage.indexLabel }),
 		).toBeInTheDocument();
 	});
 
@@ -419,7 +419,7 @@ describe('HealthStatus — full manifest render', () => {
 			...details.querySelectorAll<HTMLElement>('.article-section-stack > [data-slot="card"]'),
 		];
 
-		expect([top.length, inner.length]).toEqual([3, 8]);
+		expect([top.length, inner.length]).toEqual([4, 7]);
 		expect(details.querySelector('h2.section-heading button')).not.toHaveAttribute(
 			'aria-describedby',
 		);
@@ -436,7 +436,7 @@ describe('HealthStatus — full manifest render', () => {
 		).toBeNull();
 	});
 
-	it('opens with three plain lines: live data, the record, and what to doubt', () => {
+	it('opens with three plain answers: live data, the record and its check, and known limits', () => {
 		vi.useFakeTimers({ toFake: ['Date'] });
 		vi.setSystemTime(new Date('2026-07-14T12:00:00Z'));
 		const lanes = richDataHealth.lanes!.map((lane) =>
@@ -453,7 +453,8 @@ describe('HealthStatus — full manifest render', () => {
 		).toEqual([
 			'Up to date: live vehicle data, updated 20 seconds ago.',
 			'The reliability record covers service through Jul 13. It was published on Jul 14.',
-			'The last record was published with 1 warning. Line, stop and ranking figures come from it; check the date beside each figure. Not measured: Metro. These lines publish no live data.',
+			'The last record was published with 1 warning. Line, stop and ranking figures come from it; check the date beside each figure.',
+			'Not measured: Metro. These lines publish no live data.',
 		]);
 		expect(summary.compareDocumentPosition(screen.getByText(en.lanes.note))).toBe(
 			Node.DOCUMENT_POSITION_FOLLOWING,
@@ -490,7 +491,9 @@ describe('HealthStatus — full manifest render', () => {
 		const text = container.textContent ?? '';
 
 		expect(text).not.toMatch(/UTC|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|\d\d:\d\d/i);
-		expect(text).not.toMatch(/Prochaine mise à jour/);
+		// No next update is invented: the date list says it is not published.
+		expect(text).not.toMatch(/Prochaine mise à jour : le/);
+		expect(text).toMatch(/Prochaine mise à jour\s*Information non publiée/);
 		expect(text).toContain('Dernière publication : le 19 juin.');
 		expect(container.querySelector('[data-slot="article-header"] time')).toBeNull();
 	});
@@ -882,7 +885,8 @@ describe('HealthStatus — S11 build-accountability envelope', () => {
 			.getByText(en.envelope.schemaVersionLabel)
 			.closest('[data-slot="metric-display"]');
 		expect(within(schema as HTMLElement).getByText('3')).toBeInTheDocument();
-		const method = screen
+		const envelope = container.querySelector('[data-toc="health-envelope"]') as HTMLElement;
+		const method = within(envelope)
 			.getByText(en.envelope.methodologyVersionLabel)
 			.closest('[data-slot="metric-display"]');
 		expect(within(method as HTMLElement).getByText('historic-2')).toBeInTheDocument();

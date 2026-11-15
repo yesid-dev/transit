@@ -27,12 +27,23 @@ export const copy = defineCopy({
 		}),
 		heading: 'Is the data up to date?',
 		summary: {
+			columns: { live: 'Live data', record: 'Published records', limits: 'Known limitations' },
 			current: (age: string) => `Up to date: live vehicle data, updated ${age}.`,
 			behind: (age: string) => `Not current: live vehicle data, last updated ${age}.`,
 			record: (through: string, published: string) =>
 				`The reliability record covers service through ${through}. It was published on ${published}.`,
 			next: (date: string) => `Next update: ${end(date)}`,
 			clear: 'Nothing known affects the figures on this site right now.',
+			passed: 'The record’s last quality check passed.',
+			noRecord: 'No reliability record is published for this network.',
+			noCheck: 'No quality check result is published for the record.',
+			checkUnknown: 'The result of the record’s last quality check is unknown.',
+			checkUnavailable:
+				'Data health is not available, so the result of the record’s quality check is unknown.',
+			warningUncounted:
+				'The last record was published with warnings. Line, stop and ranking figures come from it; check the date beside each figure.',
+			unconfirmed:
+				'No limitation is declared, but nothing can be confirmed until live data is current and the record’s check has passed.',
 			warning: (n: string, count: number) =>
 				`The last record was published with ${n} ${count === 1 ? 'warning' : 'warnings'}. Line, stop and ranking figures come from it; check the date beside each figure.`,
 			failed:
@@ -103,14 +114,38 @@ export const copy = defineCopy({
 			daysUnit: ' days',
 		},
 		historyCoverage: {
-			section: 'Retained history coverage',
-			note: 'What is actually published today, family by family and metric by metric. These dates report accrued coverage, not the retention ceiling or a promise that every day exists.',
-			tableLabel: 'Published retained-history coverage',
-			columns: {
-				family: 'Page family',
-				window: 'Published window',
-				selection: 'How to browse',
-				details: 'Coverage details',
+			section: 'What the records cover',
+			note: 'The days each family of records actually covers, from its first to its last published date. A day counts as missing only where the date list declares it. How long records are kept is a separate limit, under Details for auditors.',
+			indexLabel: 'Record families',
+			columns: { family: 'Family', window: 'Dates', days: 'Days' },
+			days: {
+				withRecords: (n: string, total: string) => `${n} of ${total} days with records`,
+				inWindow: (total: string, count: number) =>
+					`${total} ${count === 1 ? 'day' : 'days'} from first to last date`,
+				none: 'No missing days declared',
+				missing: (n: string, count: number, runs: string, runCount: number) =>
+					`${n} missing ${count === 1 ? 'day' : 'days'}, in ${runs} ${runCount === 1 ? 'gap' : 'gaps'}`,
+				unknown: 'Missing days not published',
+				unreadable: 'These dates cannot be counted',
+			},
+			evidence: {
+				region: (family: string) => `Selected family: ${family}`,
+				datesLabel: 'Dates',
+				daysLabel: 'Days with records',
+				missingLabel: 'Missing days',
+				browseLabel: 'How to browse',
+				measuresLabel: 'Measures',
+				absent:
+					'This family is not in the published date list, so its pages have no dates to browse. That is not the same as zero days.',
+				sourceTitle: 'Where these dates come from',
+				fingerprintLabel: 'Content fingerprint',
+				fingerprintExplain: 'Changes whenever this family’s dates, gaps or measures change.',
+				listPublishedLabel: 'Date list published',
+				nextUpdateLabel: 'Next update',
+				notPublished: 'Not published',
+				warningsLabel: 'Warnings',
+				warningsUnscoped:
+					'The last record’s check found problems; which families they affect is not published.',
 			},
 			families: {
 				alerts: 'Alerts',
@@ -136,8 +171,6 @@ export const copy = defineCopy({
 				service_span: 'Service span',
 				skipped_stops: 'Skipped stops',
 			},
-			familyGaps: 'Family gaps',
-			metricCoverage: 'Metric coverage',
 			currentOnlySections: 'Current-only sections',
 			currentOnlyNote: 'These parts of the current page are not reconstructed for past dates:',
 			currentOnlySectionLabels: {
@@ -242,6 +275,11 @@ export const copy = defineCopy({
 		}),
 		heading: 'Les données sont-elles à jour?',
 		summary: {
+			columns: {
+				live: 'Données en direct',
+				record: 'Bilans publiés',
+				limits: 'Limites connues',
+			},
 			current: (age: string) =>
 				`À jour : les données en direct des véhicules, mises à jour ${age}.`,
 			behind: (age: string) =>
@@ -250,6 +288,16 @@ export const copy = defineCopy({
 				`Le bilan de fiabilité couvre le service jusqu’au ${end(through)} Il a été publié le ${end(published)}`,
 			next: (date: string) => `Prochaine mise à jour : le ${end(date)}`,
 			clear: 'Rien de connu n’affecte les chiffres de ce site en ce moment.',
+			passed: 'Le dernier contrôle de qualité du bilan a réussi.',
+			noRecord: 'Aucun bilan de fiabilité n’est publié pour ce réseau.',
+			noCheck: 'Aucun résultat de contrôle de qualité n’est publié pour le bilan.',
+			checkUnknown: 'Le résultat du dernier contrôle de qualité du bilan est inconnu.',
+			checkUnavailable:
+				'La santé des données n’est pas disponible; le résultat du contrôle de qualité du bilan est donc inconnu.',
+			warningUncounted:
+				'Le dernier bilan a été publié avec des avertissements. Les chiffres des lignes, des arrêts et des classements en proviennent; vérifiez la date à côté de chaque chiffre.',
+			unconfirmed:
+				'Aucune limite n’est déclarée, mais rien ne peut être confirmé tant que les données en direct ne sont pas à jour et que le contrôle du bilan n’a pas réussi.',
 			warning: (n: string, count: number) =>
 				`Le dernier bilan a été publié avec ${n} ${count === 1 ? 'avertissement' : 'avertissements'}. Les chiffres des lignes, des arrêts et des classements en proviennent; vérifiez la date à côté de chaque chiffre.`,
 			failed:
@@ -321,14 +369,39 @@ export const copy = defineCopy({
 			daysUnit: ' jours',
 		},
 		historyCoverage: {
-			section: 'Couverture de l’historique conservé',
-			note: 'Ce qui est réellement publié aujourd’hui, famille par famille et métrique par métrique. Ces dates décrivent la couverture accumulée, pas la limite de conservation ni la promesse que chaque journée existe.',
-			tableLabel: 'Couverture publiée de l’historique conservé',
-			columns: {
-				family: 'Famille de pages',
-				window: 'Fenêtre publiée',
-				selection: 'Mode de consultation',
-				details: 'Détails de couverture',
+			section: 'Ce que couvrent les bilans',
+			note: 'Les jours que couvre réellement chaque famille de bilans, de sa première à sa dernière date publiée. Un jour ne compte comme manquant que si la liste des dates le déclare. La durée de conservation des bilans est une autre limite, sous Détails pour vérification.',
+			indexLabel: 'Familles de bilans',
+			columns: { family: 'Famille', window: 'Dates', days: 'Jours' },
+			days: {
+				withRecords: (n: string, total: string) => `${n} jours sur ${total} avec des données`,
+				inWindow: (total: string, count: number) =>
+					`${total} ${count === 1 ? 'jour' : 'jours'} de la première à la dernière date`,
+				none: 'Aucun jour manquant déclaré',
+				missing: (n: string, count: number, runs: string, runCount: number) =>
+					`${n} ${count === 1 ? 'jour manquant' : 'jours manquants'}, en ${runs} ${runCount === 1 ? 'lacune' : 'lacunes'}`,
+				unknown: 'Jours manquants non publiés',
+				unreadable: 'Ces dates ne peuvent pas être comptées',
+			},
+			evidence: {
+				region: (family: string) => `Famille choisie : ${family}`,
+				datesLabel: 'Dates',
+				daysLabel: 'Jours avec des données',
+				missingLabel: 'Jours manquants',
+				browseLabel: 'Mode de consultation',
+				measuresLabel: 'Indicateurs',
+				absent:
+					'Cette famille n’apparaît pas dans la liste des dates publiée : ses pages n’ont aucune date à consulter. Ce n’est pas la même chose que zéro jour.',
+				sourceTitle: 'D’où viennent ces dates',
+				fingerprintLabel: 'Empreinte du contenu',
+				fingerprintExplain:
+					'Change dès que les dates, les lacunes ou les indicateurs de cette famille changent.',
+				listPublishedLabel: 'Liste des dates publiée',
+				nextUpdateLabel: 'Prochaine mise à jour',
+				notPublished: 'Information non publiée',
+				warningsLabel: 'Avertissements',
+				warningsUnscoped:
+					'Le contrôle du dernier bilan a relevé des problèmes; les familles touchées ne sont pas publiées.',
 			},
 			families: {
 				alerts: 'Alertes',
@@ -354,8 +427,6 @@ export const copy = defineCopy({
 				service_span: 'Amplitude de service',
 				skipped_stops: 'Arrêts sautés',
 			},
-			familyGaps: 'Lacunes de la famille',
-			metricCoverage: 'Couverture par métrique',
 			currentOnlySections: 'Sections limitées au présent',
 			currentOnlyNote:
 				'Ces parties de la page actuelle ne sont pas reconstruites pour les dates passées :',
