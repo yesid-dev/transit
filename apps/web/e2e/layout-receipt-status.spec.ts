@@ -4,6 +4,7 @@ import { forwardRoute } from './layout-helpers';
 import { copy as healthCopy } from '../src/lib/features/health/health.copy';
 import { copy as receiptCopy } from '../src/lib/features/receipt/receipt.copy';
 import { navPillCopy } from '../src/lib/i18n/messages';
+import { revealRefresh } from './header-refresh';
 
 for (const locale of ['en', 'fr'] as const)
 	test(`${locale} status summary keeps its place while the page hydrates and refreshes`, async ({
@@ -47,6 +48,7 @@ for (const locale of ['en', 'fr'] as const)
 		release();
 		await expect(summary).toHaveAttribute('aria-busy', 'false');
 		expect(Math.abs((await nextTop()) - before)).toBeLessThanOrEqual(1);
+		await revealRefresh(page, locale);
 		const failing = new Promise<void>((resolve) => (release = resolve));
 		await page.route('**/historic/history/index.json', (route) =>
 			failing.then(() => route.abort()),

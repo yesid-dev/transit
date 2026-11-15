@@ -395,7 +395,6 @@
 	wordmark="Transit"
 	{links}
 	{menuGroups}
-	compactControls
 	labels={navCopy}
 	language={{
 		locale,
@@ -521,6 +520,12 @@
 	}
 	@container site-header (width >= 1024px) {
 		.nav-compact-search {
+			display: none;
+		}
+	}
+	/* With both toggles in the pill, the narrowest headers keep the search word and drop its icon. */
+	@container site-header (width < 360px) {
+		.nav-compact-search > :global(svg) {
 			display: none;
 		}
 	}

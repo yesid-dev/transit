@@ -5,7 +5,7 @@ import { createLiveStore, type LiveStore } from '#lib/v1/live/store.svelte.ts';
 import { livePresentation } from '#lib/v1/live/livePresentation.ts';
 import { ManifestSchema } from '#lib/v1/schemas/index.ts';
 import { SvelteSet } from 'svelte/reactivity';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { searchTransit } from '#lib/search/transitSearch.ts';
 import { TRANSIT_MODE_FILTERS, type TransitModeKey } from '#lib/search/stopMode.ts';
 import type { RouteIndexEntry } from '#lib/v1/schemas/index.ts';
@@ -27,6 +27,53 @@ it.each(['en', 'fr'] as const)('labels search and the four menu groups in %s', a
 		expect(menu.getByRole('heading', { name: group.label[locale] })).toBeInTheDocument();
 	}
 });
+
+/** Reports observed elements at a phone width once mounted, as the browser's first layout does. */
+const phoneObservers: PhoneWidthObserver[] = [];
+class PhoneWidthObserver {
+	private readonly targets = new Set<Element>();
+	constructor(private readonly callback: ResizeObserverCallback) {
+		phoneObservers.push(this);
+	}
+	observe(target: Element): void {
+		this.targets.add(target);
+	}
+	unobserve(target: Element): void {
+		this.targets.delete(target);
+	}
+	disconnect(): void {
+		this.targets.clear();
+	}
+	deliver(width: number): void {
+		const entries = [...this.targets].map((target) => ({ target, contentRect: { width } }));
+		this.callback(entries as unknown as ResizeObserverEntry[], this as unknown as ResizeObserver);
+	}
+}
+
+it.each(['en', 'fr'] as const)(
+	'keeps the theme and language toggles in a phone-width pill, never in the menu, in %s',
+	async (locale) => {
+		phoneObservers.length = 0;
+		vi.stubGlobal('ResizeObserver', PhoneWidthObserver);
+		onTestFinished(() => {
+			vi.unstubAllGlobals();
+		});
+		const copy = navPillCopy[locale];
+		const view = render(NavPill, { props: { locale } });
+		for (const observer of phoneObservers) observer.deliver(390);
+		await tick();
+		const pill = within(view.getByTestId('nav-pill'));
+		const named = { name: `${copy.language}: ${copy.names[locale]} (EN FR)` };
+		expect(pill.getByRole('switch', { name: copy.theme })).toBeInTheDocument();
+		expect(pill.getByRole('link', named)).toHaveAttribute('data-sveltekit-reload', 'true');
+		await fireEvent.click(view.getByRole('button', { name: copy.openMenu }));
+		expect(view.getByRole('dialog')).toBeInTheDocument();
+		expect(view.getAllByRole('switch', { name: copy.theme })).toEqual([
+			pill.getByRole('switch', { name: copy.theme }),
+		]);
+		expect(view.getAllByTestId('language-toggle')).toEqual([pill.getByRole('link', named)]);
+	},
+);
 
 it.each(['en', 'fr'] as const)('gates alert navigation by capability in %s', async (locale) => {
 	const base = PublicProviderCatalogSchema.parse(catalog).providers[0];
