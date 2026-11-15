@@ -6,8 +6,8 @@ import shutil
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import AbstractContextManager, contextmanager, suppress
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Protocol
+from pathlib import Path, PureWindowsPath
+from typing import Any, Protocol, cast
 from uuid import uuid4
 
 from botocore.exceptions import BotoCoreError, ClientError
@@ -100,28 +100,59 @@ class LocalBronzeStorage(BronzeStorage):
     root: Path
 
     def put_if_absent(self, temp_path: Path, storage_path: str) -> str:
-        final_path = self.root / Path(storage_path)
+        key = Path(storage_path)
+        windows_key = PureWindowsPath(storage_path)
+        if key.anchor or windows_key.anchor or ".." in key.parts or ".." in windows_key.parts:
+            raise ValueError(f"invalid_archive_destination: {storage_path}")
+        final_path = self.root / key
+        root = self.root.absolute()
+        if (
+            final_path.absolute() == root
+            or not final_path.absolute().is_relative_to(root)
+            or not final_path.resolve().is_relative_to(root.resolve())
+        ):
+            raise ValueError(f"invalid_archive_destination: {storage_path}")
+        if not root.is_dir():
+            raise ValueError(f"archive_root_missing: {self.root}")
+        # Existing directories may be left by a failed or interrupted publication.
+        directories = []
+        for directory in final_path.absolute().parents:
+            directories.append(directory)
+            if directory == root:
+                break
         final_path.parent.mkdir(parents=True, exist_ok=True)
         temporary = final_path.with_name(f".transit-bronze-{uuid4().hex}.tmp")
-        created = False
+        created = linked = False
         try:
             with temporary.open("xb") as destination:
                 created = True
                 with temp_path.open("rb") as source:
                     shutil.copyfileobj(source, destination)
+                destination.flush()
+                os.fsync(destination.fileno())
             # Only completed, closed files become visible at the object key.
             try:
                 os.link(temporary, final_path)
+                linked = True
             except FileExistsError as exc:
                 raise ObjectAlreadyExists(
                     f"Bronze archive path already exists: {final_path}"
                 ) from exc
+            if os.name != "nt":
+                # Windows cannot fsync directories; file fsync above is mandatory.
+                for directory in directories:
+                    descriptor = os.open(directory, os.O_RDONLY | cast(Any, os).O_DIRECTORY)
+                    try:
+                        os.fsync(descriptor)
+                    finally:
+                        os.close(descriptor)
         except BaseException as failure:
             if created:
-                try:
-                    temporary.unlink(missing_ok=True)
-                except OSError as cleanup_error:
-                    failure.add_note(f"Temporary Bronze cleanup failed: {cleanup_error}")
+                for path in (temporary, final_path) if linked else (temporary,):
+                    try:
+                        path.unlink(missing_ok=True)
+                    except OSError as cleanup_error:
+                        failure.add_note(f"Temporary Bronze cleanup failed: {cleanup_error}")
             raise
         else:
             temporary.unlink()

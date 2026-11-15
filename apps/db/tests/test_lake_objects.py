@@ -14,6 +14,7 @@ from transit_ops.lake.objects import ObjectKeyTaken, object_digest, put_create_o
 
 def test_put_create_only_creates_then_reports_equal_for_the_same_bytes(tmp_path):
     storage = LocalBronzeStorage(storage_backend="local", root=tmp_path / "objects")
+    storage.root.mkdir(exist_ok=True)
     source = tmp_path / "copy"
     source.write_bytes(b"abc")
 
@@ -30,6 +31,7 @@ def test_put_create_only_creates_then_reports_equal_for_the_same_bytes(tmp_path)
 @pytest.mark.parametrize("replacement", [b"abd", b"abcd", b""])
 def test_put_create_only_refuses_different_bytes_and_leaves_the_object(tmp_path, replacement):
     storage = LocalBronzeStorage(storage_backend="local", root=tmp_path / "objects")
+    storage.root.mkdir(exist_ok=True)
     source = tmp_path / "copy"
     source.write_bytes(b"abc")
     assert put_create_only(storage, source, "archive/copy") == "created"
@@ -52,6 +54,7 @@ def test_put_create_only_refuses_different_bytes_and_leaves_the_object(tmp_path,
 )
 def test_object_digest_streams_size_and_sha256(tmp_path, monkeypatch, payload, digest):
     storage = LocalBronzeStorage(storage_backend="local", root=tmp_path / "objects")
+    storage.root.mkdir(exist_ok=True)
     source = tmp_path / "copy"
     source.write_bytes(payload)
     storage.put_if_absent(source, "archive/copy")
@@ -84,6 +87,7 @@ def test_object_digest_streams_size_and_sha256(tmp_path, monkeypatch, payload, d
 )
 def test_expected_identity_refuses_source_before_upload(tmp_path, occupied, expected):
     storage = LocalBronzeStorage("local", tmp_path / "objects")
+    storage.root.mkdir(exist_ok=True)
     source = tmp_path / "source"
     source.write_bytes(b"abc")
     if occupied:
@@ -99,6 +103,7 @@ def test_expected_identity_refuses_source_before_upload(tmp_path, occupied, expe
 
 def test_expected_identity_accepts_creation_and_equal_replay(tmp_path):
     storage = LocalBronzeStorage("local", tmp_path / "objects")
+    storage.root.mkdir(exist_ok=True)
     source = tmp_path / "source"
     expected = (hashlib.sha256(b"abc").hexdigest(), 3)
     source.write_bytes(b"abc")
@@ -123,6 +128,7 @@ def test_storage_failure_propagates_and_keeps_source(tmp_path):
 @pytest.mark.parametrize("abort", [False, True])
 def test_overlapping_writer_never_accepts_partial_bytes(tmp_path, monkeypatch, abort):
     storage = LocalBronzeStorage("local", tmp_path / "objects")
+    storage.root.mkdir(exist_ok=True)
     source, contender = tmp_path / "source", tmp_path / "contender"
     source.write_bytes(b"prefix-tail")
     contender.write_bytes(b"prefix")
@@ -158,6 +164,7 @@ def test_overlapping_writer_never_accepts_partial_bytes(tmp_path, monkeypatch, a
 
 def test_interrupted_copy_leaves_no_published_object(tmp_path, monkeypatch):
     storage = LocalBronzeStorage("local", tmp_path / "objects")
+    storage.root.mkdir(exist_ok=True)
     source = tmp_path / "source"
     source.write_bytes(b"prefix-tail")
 
@@ -178,6 +185,7 @@ def test_interrupted_copy_leaves_no_published_object(tmp_path, monkeypatch):
 
 def test_process_exit_after_partial_copy_does_not_reserve_key(tmp_path):
     source, root = tmp_path / "source", tmp_path / "objects"
+    root.mkdir()
     source.write_bytes(b"prefix-tail")
     program = """
 import os, sys
@@ -197,6 +205,7 @@ put_create_only(bronze.LocalBronzeStorage('local', Path(sys.argv[2])),
     )
     assert child.returncode == 71, child.stderr.decode()
     storage = LocalBronzeStorage("local", root)
+    storage.root.mkdir(exist_ok=True)
     assert not storage.exists("copy")
     assert source.read_bytes() == b"prefix-tail"
     assert put_create_only(storage, source, "copy") == "created"
