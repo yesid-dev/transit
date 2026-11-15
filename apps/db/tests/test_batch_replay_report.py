@@ -192,8 +192,40 @@ def test_count_delegation_and_reordering():
 
 
 def test_golden_report_bytes():
-    assert report(duckdb_version="fixture").to_json() == (
+    different = replace(replay(Decimal("1.00"), "1.00"), build_id="build", engine_version="fixture")
+    absent = compare_family("unported", None, output(), None, bodies_loaded=False)
+    actual = replace(
+        report(),
+        families=(different, absent),
+        duckdb_version="fixture",
+        input_files=(("f", "b" * 64),),
+    )
+    assert actual.to_json() == (
         b'{"as_of_utc":"2026-11-02T07:00:00.000000Z","code_commit":'
         b'"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","duckdb_version":"fixture",'
-        b'"families":[],"input_files":[],"local_date":"2026-11-01","provider_id":"test"}'
+        b'"families":[{"build_id":"build","code_commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",'
+        b'"difference_count":1,"differences":[{"actual":"1.00","column":"v",'
+        b'"expected":{"decimal":{"digits":[1,0,0],"exponent":-2,"sign":0}},'
+        b'"key":{"tuple":[1]},"kind":"type","relation":"gold.test"}],'
+        b'"duckdb_rows":{"gold.test":1},"engine_version":"fixture","family_id":"test",'
+        b'"postgres_rows":{"gold.test":1},"reason":null,"status":"different"},'
+        b'{"build_id":null,"code_commit":null,"difference_count":0,"differences":[],"duckdb_rows":null,'
+        b'"engine_version":null,"family_id":"unported","postgres_rows":{"gold.test":1},'
+        b'"reason":null,"status":"not_implemented"}],"input_files":[["f",'
+        b'"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"]],'
+        b'"local_date":"2026-11-01","provider_id":"test"}'
     )
+
+
+@pytest.mark.parametrize("field", ["code_commit", "engine_version"])
+def test_provenance_requires_build_id(field):
+    absent = compare_family("test", None, output(), None, bodies_loaded=False)
+    with pytest.raises(ValueError, match="build_id"):
+        report(replace(absent, **{field: "fixture"}))
+
+
+@pytest.mark.parametrize("base", [int, str, float])
+def test_native_subclasses_are_refused(base):
+    value = type("Unsupported", (base,), {})("nan" if base is float else "1")
+    with pytest.raises(TypeError, match="Unsupported"):
+        report(replay(value, 1)).to_json()

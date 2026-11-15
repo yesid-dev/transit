@@ -92,7 +92,7 @@ def _differences(left: FamilyOutput, right: FamilyOutput) -> list[RowDifference 
 
 
 def _value(value: object) -> object:
-    if isinstance(value, float) and not math.isfinite(value):
+    if type(value) is float and not math.isfinite(value):
         return {"float": "NaN" if math.isnan(value) else "Infinity" if value > 0 else "-Infinity"}
     if isinstance(value, Decimal):
         sign, digits, exponent = value.as_tuple()
@@ -126,7 +126,7 @@ def _value(value: object) -> object:
     if isinstance(value, dict):
         pairs = [[_value(k), _value(v)] for k, v in value.items()]
         return {"dict": sorted(pairs, key=lambda pair: json.dumps(pair[0], sort_keys=True))}
-    if value is None or isinstance(value, (str, int, float, bool)):
+    if value is None or type(value) in (str, int, float, bool):
         return value
     raise TypeError(f"unsupported replay value: {type(value).__name__}")
 
@@ -153,7 +153,10 @@ class ReplayReport:
         if len(set(ids)) != len(ids):
             raise ValueError("duplicate family_id")
         for family in self.families:
-            if family.build_id is not None:
+            if family.build_id is None:
+                if family.code_commit is not None or family.engine_version is not None:
+                    raise ValueError(f"{family.family_id}: provenance requires build_id")
+            else:
                 if family.code_commit != self.code_commit:
                     raise ValueError(f"{family.family_id}: code_commit differs from manifest")
                 if family.engine_version != self.duckdb_version:
