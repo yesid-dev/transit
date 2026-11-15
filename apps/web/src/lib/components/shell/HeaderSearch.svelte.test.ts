@@ -317,3 +317,23 @@ it('carries no standing notice on the field', () => {
 	expect(view.input).not.toHaveAttribute('aria-describedby');
 	expect(view.queryByText(/Your searches are sent/)).toBeNull();
 });
+
+it.each([
+	['en', () => geocoded(), 'No address found for “casgrain”.'],
+	['fr', () => geocoded(), 'Aucune adresse trouvée pour « casgrain ».'],
+	['en', () => new Response('', { status: 503 }), 'Address search is unavailable right now.'],
+] as const)(
+	'speaks the address outcome after no transit match (%s)',
+	async (locale, answer, said) => {
+		const request = vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer());
+		try {
+			const view = show('casgrain', '/', 'all', locale);
+			await fireEvent.click(
+				view.getByRole('option', { name: /^(Search addresses|Chercher des adresses)/ }),
+			);
+			await waitFor(() => expect(view.getByRole('status')).toHaveTextContent(said));
+		} finally {
+			request.mockRestore();
+		}
+	},
+);

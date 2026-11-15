@@ -107,16 +107,17 @@
 	const summary = $derived.by(() => {
 		const say = headerSearchCopy[locale];
 		if (!shown) return '';
+		// What the requested address lookup answered, spoken whatever the transit result.
+		const outcome =
+			address?.state === 'none'
+				? say.addressesNone(text)
+				: address?.state === 'failed'
+					? say.addressesFailed
+					: '';
 		if (list.total === 0 && !list.pending)
-			return [say.noResult(text), address?.state === 'failed' ? say.addressesFailed : '']
-				.join(' ')
-				.trim();
+			return [say.noResult(text), outcome].filter(Boolean).join(' ');
 		const counts = say.totals(total('route'), total('stop'), total('vehicle') ?? 0);
-		const notes = [
-			...list.unsearched.map(say.unsearched),
-			...(address?.state === 'none' ? [say.addressesNone(text)] : []),
-			...(address?.state === 'failed' ? [say.addressesFailed] : []),
-		];
+		const notes = [...list.unsearched.map(say.unsearched), outcome].filter(Boolean);
 		return notes.length ? [counts && `${counts}.`, ...notes].filter(Boolean).join(' ') : counts;
 	});
 	let announcement = $state('');

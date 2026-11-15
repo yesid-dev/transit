@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { geoCaSearchUrl, geocode, geocodeSuggestions, type GeocodeFetcher } from './geoCa';
+import {
+	GeocodeUnavailable,
+	geoCaSearchUrl,
+	geocode,
+	geocodeSuggestions,
+	type GeocodeFetcher,
+} from './geoCa';
 
 const AREA = {
 	bbox: [-74.05, 45.35, -73.35, 45.75],
@@ -331,5 +337,25 @@ describe('geocode', () => {
 		);
 		await expect(geocode('G1R 5M1', AREA, farFetcher)).resolves.toBeNull();
 		expect(farFetcher).toHaveBeenCalledOnce();
+	});
+});
+
+describe('upstream failure', () => {
+	it.each([
+		['an HTTP error', async () => new Response('', { status: 503 })],
+		['a network failure', async () => Promise.reject(new Error('offline'))],
+		['an unreadable body', async () => new Response('not json')],
+		['a non-array payload', async () => new Response('{"error":"busy"}')],
+	] as [string, GeocodeFetcher][])('reports %s instead of an empty answer', async (_, fetcher) => {
+		await expect(geocodeSuggestions('casgrain', AREA, fetcher, 2)).rejects.toBeInstanceOf(
+			GeocodeUnavailable,
+		);
+		// The single-result call keeps its contract: no location.
+		await expect(geocode('casgrain', AREA, fetcher)).resolves.toBeNull();
+	});
+
+	it('answers an empty list only for a completed search with nothing in the area', async () => {
+		const fetcher: GeocodeFetcher = async () => new Response('[]');
+		await expect(geocodeSuggestions('casgrain', AREA, fetcher, 2)).resolves.toEqual([]);
 	});
 });

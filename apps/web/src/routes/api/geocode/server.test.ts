@@ -7,7 +7,8 @@ const providers = vi.hoisted(() => ({
 	geocodeSuggestions: vi.fn(),
 }));
 
-vi.mock('#lib/geocode/geoCa.ts', () => ({
+vi.mock('#lib/geocode/geoCa.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/geocode/geoCa.ts')>()),
 	geocode: providers.geocode,
 	geocodeSuggestions: providers.geocodeSuggestions,
 }));
@@ -375,5 +376,27 @@ describe('/api/geocode limiter', () => {
 		expect(limit).toHaveBeenCalledWith({ key: '__missing_cf_connecting_ip__' });
 		expect(response.headers.get('retry-after')).toBe('60');
 		expect(providerCallCount()).toBe(0);
+	});
+});
+
+describe('/api/geocode upstream failure', () => {
+	it('answers a bounded, non-cacheable 503 when Geo.ca fails, and an empty list only when it answered', async () => {
+		const actual =
+			await vi.importActual<typeof import('#lib/geocode/geoCa.ts')>('#lib/geocode/geoCa.ts');
+		providers.geocodeSuggestions.mockImplementation(actual.geocodeSuggestions);
+		const suggest = (upstream: Response) => {
+			const request = event('?q=casgrain&suggest=1&limit=2');
+			Object.assign(request, { fetch: vi.fn(async () => upstream) });
+			return GET(request);
+		};
+
+		const failed = await suggest(new Response('', { status: 503 }));
+		expect(failed.status).toBe(503);
+		expect(failed.headers.get('cache-control')).toBe('no-store');
+		expect(await responseBody(failed)).toEqual({ error: 'geocoder_unavailable' });
+
+		const empty = await suggest(new Response('[]'));
+		expect(empty.status).toBe(200);
+		expect(await responseBody(empty)).toEqual({ results: [] });
 	});
 });

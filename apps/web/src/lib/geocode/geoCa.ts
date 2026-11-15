@@ -6,6 +6,14 @@ export type { GeocodedLocation, GeocodePrecision } from './types';
 
 export type GeocodeFetcher = (input: URL, init?: RequestInit) => Promise<Response>;
 
+/** Geo.ca could not answer (HTTP, network or payload failure): not the same as finding nothing. */
+export class GeocodeUnavailable extends Error {
+	constructor() {
+		super('geocoder_unavailable');
+		this.name = 'GeocodeUnavailable';
+	}
+}
+
 const GEO_CA_KEYS = 'locate,nominatim,fsa,geonames';
 const CANADIAN_POSTAL_CODE_RE =
 	/\b([ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z])\s*(\d[ABCEGHJ-NPRSTV-Z]\d)\b/i;
@@ -38,8 +46,14 @@ export async function geocode(
 	area: GeocodeArea,
 	fetcher: GeocodeFetcher = fetch,
 ): Promise<GeocodedLocation | null> {
-	const [first] = await geocodeSuggestions(query, area, fetcher, 1);
-	return first ?? null;
+	// The single-result call keeps its contract: a failed lookup is no location.
+	try {
+		const [first] = await geocodeSuggestions(query, area, fetcher, 1);
+		return first ?? null;
+	} catch (error) {
+		if (error instanceof GeocodeUnavailable) return null;
+		throw error;
+	}
 }
 
 export async function geocodeSuggestions(
@@ -50,8 +64,7 @@ export async function geocodeSuggestions(
 ): Promise<GeocodedLocation[]> {
 	if (!query.trim() || limit <= 0) return [];
 
-	const geoCaResults = await geocodeGeoCa(query, area, fetcher).catch(() => []);
-	return geoCaResults.slice(0, limit);
+	return (await geocodeGeoCa(query, area, fetcher)).slice(0, limit);
 }
 
 async function geocodeGeoCa(
@@ -59,17 +72,21 @@ async function geocodeGeoCa(
 	area: GeocodeArea,
 	fetcher: GeocodeFetcher,
 ): Promise<GeocodedLocation[]> {
-	const response = await fetcher(geoCaSearchUrl(query, area), {
-		headers: {
-			accept: 'application/json',
-			'accept-language': `${area.lang}-CA,${area.lang};q=0.8`,
-			'user-agent': 'transit.yesid.dev citizen map (https://transit.yesid.dev)',
-		},
-	});
-	if (!response.ok) return [];
-
-	const payload: unknown = await response.json();
-	if (!Array.isArray(payload)) return [];
+	let payload: unknown;
+	try {
+		const response = await fetcher(geoCaSearchUrl(query, area), {
+			headers: {
+				accept: 'application/json',
+				'accept-language': `${area.lang}-CA,${area.lang};q=0.8`,
+				'user-agent': 'transit.yesid.dev citizen map (https://transit.yesid.dev)',
+			},
+		});
+		if (!response.ok) throw new GeocodeUnavailable();
+		payload = await response.json();
+	} catch {
+		throw new GeocodeUnavailable();
+	}
+	if (!Array.isArray(payload)) throw new GeocodeUnavailable();
 
 	return rankedGeoCaLocations(query, payload, area.bbox);
 }
