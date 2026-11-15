@@ -45,7 +45,7 @@ SEED = [
 ]
 
 
-def write_inputs(root, request=REQUEST, rows=SEED, feed_stamps=None):
+def write_inputs(root, request=REQUEST, rows=SEED, feed_stamps=None, provider_id="seed"):
     with duckdb.connect(config={"TimeZone": "UTC"}) as conn:
         conn.execute(
             "CREATE TABLE seed(route_id TEXT, stop_id TEXT, occupancy_status INTEGER, "
@@ -64,15 +64,15 @@ def write_inputs(root, request=REQUEST, rows=SEED, feed_stamps=None):
                 path = root / relation / f"{window}.parquet"
                 path.parent.mkdir(parents=True, exist_ok=True)
                 conn.execute(
-                    "COPY (SELECT 'seed'::TEXT provider_id, * FROM seed "
+                    "COPY (SELECT ?::TEXT provider_id, * FROM seed "
                     "WHERE captured_at_utc::DATE = ?::DATE) TO ? (FORMAT PARQUET)",
-                    [window, str(path)],
+                    [provider_id, window, str(path)],
                 )
         path = root / "core.providers" / "all.parquet"
         path.parent.mkdir(parents=True, exist_ok=True)
         conn.execute(
-            "COPY (SELECT 'seed'::TEXT provider_id, ?::TEXT timezone) TO ? (FORMAT PARQUET)",
-            [request.timezone, str(path)],
+            "COPY (SELECT ?::TEXT provider_id, ?::TEXT timezone) TO ? (FORMAT PARQUET)",
+            [provider_id, request.timezone, str(path)],
         )
 
 
@@ -126,24 +126,27 @@ def test_family_preserves_bands_fallback_filters_and_exact_numeric_rows(tmp_path
     assert result.output.bodies == {}
 
 
-def expected_occupancy_row(relation, hour, day=DAY, stamp=STAMP):
+def expected_occupancy_row(relation, hour, day=DAY, stamp=STAMP, provider_id="seed"):
     if "hourly" in relation:
-        return ("seed", "A", day, hour, 1, 0, 1, 0, 0, 0, stamp)
-    return ("seed", day, "S" if "stop_" in relation else "A", 1, 0, 1, 0, 0, 0, stamp)
+        return (provider_id, "A", day, hour, 1, 0, 1, 0, 0, 0, stamp)
+    return (provider_id, day, "S" if "stop_" in relation else "A", 1, 0, 1, 0, 0, 0, stamp)
 
 
 @pytest.mark.parametrize("relation", builder.tables[:3])
 @pytest.mark.parametrize("zone,feed,capture,hour", SKEW_CASES)
+@pytest.mark.parametrize("provider_id", ["seed", "occupancy_crowding_seed"])
 def test_feed_day_includes_capture_outside_its_utc_windows(
-    tmp_path, relation, zone, feed, capture, hour
+    tmp_path, relation, zone, feed, capture, hour, provider_id
 ):
-    request = replace(REQUEST, local_dates=(DAY,), timezone=zone)
-    write_inputs(tmp_path, request, [("A", "S", 1, 1, capture, 20261101)], [feed])
+    request = replace(REQUEST, local_dates=(DAY,), timezone=zone, provider_id=provider_id)
+    write_inputs(tmp_path, request, [("A", "S", 1, 1, capture, 20261101)], [feed], provider_id)
     assert capture[:10] not in utc_days(request)
     result = run_family(
         builder, request, inputs_root=tmp_path, workdir=tmp_path, code_commit="a" * 40
     )
-    assert result.output.tables[relation].rows == (expected_occupancy_row(relation, hour),)
+    assert result.output.tables[relation].rows == (
+        expected_occupancy_row(relation, hour, provider_id=provider_id),
+    )
 
 
 @pytest.mark.parametrize("zone,feed,capture,hour", SKEW_CASES)

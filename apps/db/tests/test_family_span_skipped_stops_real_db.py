@@ -23,11 +23,22 @@ from transit_ops.gold import rollups
 from transit_ops.lake.parquet_codec import write_window
 from transit_ops.lake.table_export import WindowSpec, export_window
 
+PROVIDER = "span_skipped_stops_seed"
+RELATIONS = (
+    *builder.tables,
+    "gold.warm_rollup_periods",
+    "gold.fact_trip_delay_snapshot",
+    "raw.realtime_snapshot_index",
+    "raw.ingestion_runs",
+    "core.feed_endpoints",
+    "core.providers",
+)
+
 
 def seed_facts(real_db_engine, seed_provider, req, rows):
     with real_db_engine.begin() as conn:
-        seed_provider(conn, "seed", display_name="Span seed", timezone=req.timezone)
-        params = dict(p="seed", e=98100001, r=98100002, s=98100003, ts=req.as_of_utc, n=len(rows))
+        seed_provider(conn, PROVIDER, display_name="Span seed", timezone=req.timezone)
+        params = dict(p=PROVIDER, e=98100001, r=98100002, s=98100003, ts=req.as_of_utc, n=len(rows))
         real_db_seed.feed_endpoints(conn, params)
         real_db_seed.ingestion_runs(conn, params)
         real_db_seed.realtime_snapshot_index(conn, params)
@@ -39,10 +50,11 @@ def seed_facts(real_db_engine, seed_provider, req, rows):
                     "(provider_id,realtime_snapshot_id,entity_index,captured_at_utc,"
                     "feed_timestamp_utc,snapshot_date_key,snapshot_local_date,route_id,trip_id,"
                     "start_date,delay_seconds,stop_time_update_count,skipped_stop_count) "
-                    "VALUES ('seed',:s,:i,:capture,:feed,:key,:day,:route,:trip,"
+                    "VALUES (:provider,:s,:i,:capture,:feed,:key,:day,:route,:trip,"
                     ":service,:delay,:n,:k)"
                 ),
                 dict(
+                    provider=PROVIDER,
                     s=params["s"],
                     i=entity,
                     capture=datetime.fromisoformat(capture),
@@ -73,14 +85,14 @@ def write_daily_reference(real_db_engine, monkeypatch, req):
         feed_days = conn.execute(
             rollups.SELECT_AVAILABLE_PERCENTILE_DAYS,
             dict(
-                provider_id="seed",
+                provider_id=PROVIDER,
                 floor_key=20250601,
                 today_key=20250901,
             ),
         ).all()
     rollups.build_daily_rollups(
         real_db_engine,
-        "seed",
+        PROVIDER,
         calendars=rollups.DailyRollupCalendars((), feed_days, ()),
         today_local=req.as_of_utc.date(),
         now=req.as_of_utc,
@@ -95,7 +107,7 @@ def write_reference(real_db_engine, req):
             kind = relation.removeprefix("gold.")
             rollups._write_daily_rollup(
                 conn,
-                provider_id="seed",
+                provider_id=PROVIDER,
                 rollup_kind=kind,
                 upsert=rollups.REBUILDABLE_KINDS[kind].upsert,
                 local_date=run_day,
@@ -112,7 +124,7 @@ def export_inputs(real_db_engine, req, tmp_path):
             path.parent.mkdir(parents=True, exist_ok=True)
             exported = export_window(
                 conn.connection.driver_connection,
-                WindowSpec(need.relation, "seed", need.window),
+                WindowSpec(need.relation, PROVIDER, need.window),
                 path.with_suffix(".csv"),
                 statement_timeout_s=60,
             )
@@ -121,16 +133,18 @@ def export_inputs(real_db_engine, req, tmp_path):
 
 def cleanup(real_db_engine):
     with real_db_engine.begin() as conn:
-        for relation in (
-            *builder.tables,
-            "gold.warm_rollup_periods",
-            "gold.fact_trip_delay_snapshot",
-            "raw.realtime_snapshot_index",
-            "raw.ingestion_runs",
-            "core.feed_endpoints",
-            "core.providers",
-        ):
-            conn.execute(text(f"DELETE FROM {relation} WHERE provider_id='seed'"))
+        for relation in RELATIONS:
+            conn.execute(
+                text(f"DELETE FROM {relation} WHERE provider_id = :provider"),
+                {"provider": PROVIDER},
+            )
+    with real_db_engine.connect() as conn:
+        for relation in RELATIONS:
+            count = conn.execute(
+                text(f"SELECT COUNT(*) FROM {relation} WHERE provider_id = :provider"),
+                {"provider": PROVIDER},
+            ).scalar_one()
+            assert count == 0, f"{relation} leaked {count} rows for {PROVIDER}"
 
 
 @pytest.mark.parametrize(
@@ -150,8 +164,9 @@ def test_span_and_skipped_stops_match_postgres_exported_facts(
 ):
     if rows is None:
         rows = [*SEED, *rounding_rows()]
-    seed_facts(real_db_engine, seed_provider, req, rows)
+    req = replace(req, provider_id=PROVIDER)
     try:
+        seed_facts(real_db_engine, seed_provider, req, rows)
         if req.local_dates == ISOLATED_REQUEST.local_dates:
             write_daily_reference(real_db_engine, monkeypatch, req)
         else:
@@ -167,12 +182,12 @@ def test_span_and_skipped_stops_match_postgres_exported_facts(
             first = datetime.fromisoformat("2025-06-03 16:12:00+00:00")
             last = datetime.fromisoformat("2025-06-04 04:30:00+00:00")
             assert span.rows == (
-                ("seed", req.local_dates[0], "B10", first, last, 738, 180, 240, 2, req.as_of_utc),
+                (PROVIDER, req.local_dates[0], "B10", first, last, 738, 180, 240, 2, req.as_of_utc),
             )
         with real_db_engine.connect() as conn:
             for relation, table in actual.output.tables.items():
                 expected = read_table_rows(
-                    conn, relation, table.key, provider_id="seed", local_dates=req.local_dates
+                    conn, relation, table.key, provider_id=PROVIDER, local_dates=req.local_dates
                 )
                 assert compare_tables(expected, table) == [], relation
     finally:

@@ -16,10 +16,21 @@ from transit_ops.gold import rollups
 from transit_ops.lake.parquet_codec import write_window
 from transit_ops.lake.table_export import WindowSpec, export_window
 
+PROVIDER = "percentiles_histograms_seed"
+RELATIONS = (
+    *builder.tables,
+    "gold.warm_rollup_periods",
+    "gold.fact_trip_delay_snapshot",
+    "raw.realtime_snapshot_index",
+    "raw.ingestion_runs",
+    "core.feed_endpoints",
+    "core.providers",
+)
+
 
 def seed_facts(conn, seed_provider, request, rows):
-    seed_provider(conn, "seed", display_name="Percentile seed", timezone=request.timezone)
-    params = dict(p="seed", e=98270001, r=98270002, s=98270003, ts=request.as_of_utc, n=len(rows))
+    seed_provider(conn, PROVIDER, display_name="Percentile seed", timezone=request.timezone)
+    params = dict(p=PROVIDER, e=98270001, r=98270002, s=98270003, ts=request.as_of_utc, n=len(rows))
     real_db_seed.feed_endpoints(conn, params)
     real_db_seed.ingestion_runs(conn, params)
     real_db_seed.realtime_snapshot_index(conn, params)
@@ -52,7 +63,7 @@ def export_inputs(engine, root, request):
             window = request.as_of_utc.strftime("%Y-%m") if need.window == "all" else need.window
             exported = export_window(
                 conn.connection.driver_connection,
-                WindowSpec(need.relation, "seed", window),
+                WindowSpec(need.relation, PROVIDER, window),
                 path.with_suffix(".csv"),
                 statement_timeout_s=60,
             )
@@ -68,7 +79,7 @@ def build_postgres(engine, request):
     ):
         rollups._build_percentile_days(
             engine,
-            provider_id="seed",
+            provider_id=PROVIDER,
             rollup_kind=f"{entity}_percentile_daily",
             upsert=source,
             today_key=int((request.local_dates[-1] + timedelta(days=1)).strftime("%Y%m%d")),
@@ -93,6 +104,7 @@ def test_percentiles_match_postgres_and_plain_math(
             as_of_utc=datetime(2026, 11, 15, tzinfo=UTC),
         )
         rows = [("cutoff", "cutoff", 1, "2026-11-01T00:00:00+00:00")]
+    request = replace(request, provider_id=PROVIDER)
     db = prepare_replay_database(
         real_db_engine.url.render_as_string(hide_password=False), os.environ
     )
@@ -112,20 +124,24 @@ def test_percentiles_match_postgres_and_plain_math(
                         conn,
                         relation,
                         table.key,
-                        provider_id="seed",
+                        provider_id=PROVIDER,
                         local_dates=request.local_dates,
                     )
                     assert compare_tables(expected, table) == [], relation
     finally:
-        with db.engine.begin() as conn:
-            for relation in (
-                *builder.tables,
-                "gold.warm_rollup_periods",
-                "gold.fact_trip_delay_snapshot",
-                "raw.realtime_snapshot_index",
-                "raw.ingestion_runs",
-                "core.feed_endpoints",
-                "core.providers",
-            ):
-                conn.execute(text(f"DELETE FROM {relation} WHERE provider_id='seed'"))
-        db.engine.dispose()
+        try:
+            with db.engine.begin() as conn:
+                for relation in RELATIONS:
+                    conn.execute(
+                        text(f"DELETE FROM {relation} WHERE provider_id = :provider"),
+                        {"provider": PROVIDER},
+                    )
+            with db.engine.connect() as conn:
+                for relation in RELATIONS:
+                    count = conn.execute(
+                        text(f"SELECT COUNT(*) FROM {relation} WHERE provider_id = :provider"),
+                        {"provider": PROVIDER},
+                    ).scalar_one()
+                    assert count == 0, f"{relation} leaked {count} rows for {PROVIDER}"
+        finally:
+            db.engine.dispose()
