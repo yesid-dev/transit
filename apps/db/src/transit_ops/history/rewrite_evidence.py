@@ -30,6 +30,11 @@ def _hash(value: object) -> bool:
     return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
 
 
+def _control_text(value: object, field: str) -> None:
+    if isinstance(value, str) and re.search(r"[\x00-\x1f\x7f-\x9f]", value):
+        raise ValueError(f"malformed {field}: forbidden control character")
+
+
 def _rewrite(value: object, command: object, counts: Mapping[str, object]) -> None:
     rewrite = _keys(
         value,
@@ -39,6 +44,8 @@ def _rewrite(value: object, command: object, counts: Mapping[str, object]) -> No
     )
     if type(rewrite["schema"]) is not int or rewrite["schema"] != 1:
         raise ValueError("unknown evidence version")
+    _control_text(command, "command")
+    _control_text(rewrite["operation_id"], "operation_id")
     if not isinstance(rewrite["operation_id"], str) or not rewrite["operation_id"].strip():
         raise ValueError("malformed operation_id")
     version = rewrite["expected_current_version"]
@@ -47,6 +54,7 @@ def _rewrite(value: object, command: object, counts: Mapping[str, object]) -> No
     if rewrite["expected_working_changed_at_utc"] is not None:
         _stamp(rewrite["expected_working_changed_at_utc"])
     edition = _keys(rewrite["edition"], "provider_id dataset_version_id checksum_sha256", "edition")
+    _control_text(edition["provider_id"], "provider_id")
     if (
         not isinstance(edition["provider_id"], str)
         or not edition["provider_id"].strip()
@@ -64,6 +72,8 @@ def _provenance(value: object, command: object, counts: Mapping[str, object]) ->
         "provenance",
     )
     ids, hashes = p["capture_ids"], p["source_hashes"]
+    for field in ("command", "mode", "code_revision_unknown_reason"):
+        _control_text(p[field], field)
     if (
         p["command"] != command
         or not isinstance(p["mode"], str)
@@ -131,6 +141,8 @@ def decode_processing_evidence(
         }
         if not isinstance(details, Mapping) or set(details) not in (keys, keys | {"rewrite"}):
             raise ValueError("invalid keys")
+        if "rewrite" not in details and not isinstance(details, dict):
+            raise ValueError("invalid keys")
         stamp, counts = details["completed_at_utc"], details["rows_by_capture"]
         if (
             not isinstance(details["command"], str)
@@ -139,7 +151,7 @@ def decode_processing_evidence(
             or not re.fullmatch(
                 r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}Z", stamp
             )
-            or not isinstance(counts, Mapping)
+            or not isinstance(counts, Mapping if "rewrite" in details else dict)
         ):
             raise ValueError("invalid evidence fields")
         if any(
@@ -151,9 +163,9 @@ def decode_processing_evidence(
             for key, value in counts.items()
         ):
             raise ValueError("invalid capture counts")
-        if len({int(k) for k in counts}) != len(counts):
-            raise ValueError("invalid capture counts: duplicate identity")
         if "rewrite" in details:
+            if len({int(k) for k in counts}) != len(counts):
+                raise ValueError("invalid capture counts: duplicate identity")
             _rewrite(details["rewrite"], details["command"], counts)
         return _stamp(stamp), {int(k): v for k, v in counts.items()}
     except (ValueError, TypeError, KeyError) as exc:

@@ -50,6 +50,18 @@ def rewrite_metadata():
     }
 
 
+def test_legacy_capture_aliases_keep_last_value_while_rich_records_refuse():
+    details = evidence()
+    details["rows_by_capture"] = {"1": 2, "01": 5}
+    legacy = {key: value for key, value in details.items() if key != "rewrite"}
+    assert decode_processing_evidence(legacy, index_family="realtime_snapshot", sequence=23) == (
+        datetime(2026, 11, 1, 12, tzinfo=UTC),
+        {1: 5},
+    )
+    with pytest.raises(PollRecordInvalid, match="event 23:.*duplicate identity"):
+        decode_processing_evidence(details, index_family="realtime_snapshot", sequence=23)
+
+
 def test_rewrite_evidence_keeps_expected_version_edition_and_provenance():
     rewrite = rewrite_metadata()
     details = processing_evidence_details(
@@ -172,3 +184,30 @@ def test_unknown_provenance_and_utc_normalization_are_explicit():
     assert details["rewrite"] == rewrite
     rewrite["provenance"]["capture_ids"].append(19)
     assert details["rewrite"]["provenance"]["capture_ids"] == [17, 18]
+
+
+@pytest.mark.parametrize(
+    "section,field",
+    [
+        (None, "operation_id"),
+        ("edition", "provider_id"),
+        ("provenance", "mode"),
+        ("provenance", "code_revision_unknown_reason"),
+        ("provenance", "command"),
+    ],
+)
+@pytest.mark.parametrize("control", [chr(i) for i in (*range(32), *range(127, 160))])
+@pytest.mark.parametrize("entry_point", ["encoder", "decoder"])
+def test_rich_text_refuses_controls_by_field(section, field, control, entry_point):
+    details = evidence()
+    rewrite = details["rewrite"]
+    target = rewrite if section is None else rewrite[section]
+    target[field] = "bad" + control + "text"
+    if field == "command":
+        details["command"] = target[field]
+    sequence = 0 if entry_point == "encoder" else 23
+    with pytest.raises(PollRecordInvalid, match=f"event {sequence}:.*{field}"):
+        if entry_point == "encoder":
+            evidence(command=details["command"], rewrite=rewrite)
+        else:
+            decode_processing_evidence(details, index_family="realtime_snapshot", sequence=23)
