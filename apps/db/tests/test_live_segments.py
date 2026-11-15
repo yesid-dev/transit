@@ -4,12 +4,13 @@ from dataclasses import asdict, replace
 from datetime import UTC
 
 import pytest
-from test_live_facts import parsed_vehicle
+from test_live_captures import _parse
+from test_live_facts import parsed_vehicle, seed_fact_edition, trip_message
 from test_live_local_file import AT, CAPTURE, POLL, SETTINGS, opened
 
 from transit_ops.history.poll_record import ProcessingEntry
 from transit_ops.ingestion.storage import LocalBronzeStorage
-from transit_ops.live.facts import apply_capture, read_vehicle_facts
+from transit_ops.live.facts import apply_capture, read_trip_facts, read_vehicle_facts
 from transit_ops.live.local_file import LocalFile, LocalFileMismatch
 from transit_ops.live.segments import SegmentInvalid, export_segment, read_segment
 
@@ -58,6 +59,7 @@ def test_mixed_committed_segment_round_trips(tmp_path):
             restored = dict(zip(frames["captures"].columns, row, strict=True))
             assert {name: restored[name] for name in asdict(original)} == asdict(original)
         assert frames["fact_vehicle_snapshot"].rows == ()
+        assert frames["fact_trip_delay_snapshot"].rows == ()
         assert export_segment(local, storage) is None
 
 
@@ -92,16 +94,38 @@ def test_facts_raw_and_silver_failure_and_empty_capture_remain_distinct(tmp_path
             ],
             endpoint_key="vehicles",
         )
+        seed_fact_edition(local)
+        trip = _parse(trip_message())
+        apply_capture(local, trip, provider_timezone="America/Toronto")
         expected = read_vehicle_facts(local)
+        expected_trip = read_trip_facts(local)
         segment = export_segment(local, storage)
         frames = read_segment(local, storage, segment)
         assert frames["fact_vehicle_snapshot"] == expected
+        assert frames["fact_trip_delay_snapshot"] == expected_trip
+        trip_row = dict(
+            zip(expected_trip.columns, frames["fact_trip_delay_snapshot"].rows[0], strict=True)
+        )
+        for name in ("feed_timestamp_utc", "captured_at_utc"):
+            assert trip_row[name] == getattr(trip.capture, name)
+            assert trip_row[name].tzinfo is UTC
+            assert trip_row[name].microsecond == 123456
+        assert trip_row["delay_seconds"] == 180
         assert len(frames["captures"].rows) == 1
         assert len(frames["processing"].rows) == 1
-        assert frames["fact_processing"].rows[0][-1] == len(expected.rows)
+        assert {r[1]: r[-1] for r in frames["fact_processing"].rows} == {
+            "trip_updates": len(expected_trip.rows),
+            "vehicle_positions": len(expected.rows),
+        }
         manifest = json.loads(storage.read_bytes(segment.prefix + "/manifest.json"))
         assert all(p["object_sha256"] and p["row_sha256"] for p in manifest["tables"])
         assert all(t != "TIMESTAMP" for p in manifest["tables"] for _, t in p["schema"])
+        before = {key: storage.read_bytes(key) for key in storage.list_keys("live/")}
+        assert apply_capture(local, trip, provider_timezone="America/Toronto") == 0
+        assert export_segment(local, storage) is None
+        assert {key: storage.read_bytes(key) for key in storage.list_keys("live/")} == before
+        assert f"{segment.prefix}/fact_trip_delay_snapshot.parquet" in before
+        assert manifest["version"] == 2
 
 
 @pytest.mark.parametrize("cut", [1, 3, 6])
@@ -380,7 +404,10 @@ def test_abrupt_exit_after_verified_publication_recovers_original_cut(tmp_path):
     with closing(opened(path)) as local:
         local.record_polls([POLL], endpoint_key="vehicles")
         apply_capture(local, parsed_vehicle(), provider_timezone="UTC")
+        seed_fact_edition(local)
+        apply_capture(local, _parse(trip_message()), provider_timezone="America/Toronto")
         expected = read_vehicle_facts(local)
+        expected_trip = read_trip_facts(local)
     program = """
 import os, sys
 from pathlib import Path
@@ -422,6 +449,8 @@ export_segment(local, LocalBronzeStorage('local', Path(sys.argv[2])))
         assert recovered == original
         frames = read_segment(local, storage, recovered)
         assert frames["fact_vehicle_snapshot"] == expected
+        assert frames["fact_trip_delay_snapshot"] == expected_trip
+        assert recovered.prefix == manifest_key.removesuffix("/manifest.json")
         (poll,) = frames["polls"].rows
         restored = dict(zip(frames["polls"].columns, poll, strict=True))
         assert {n: restored[n] for n in asdict(POLL)} == asdict(POLL)
@@ -432,3 +461,16 @@ export_segment(local, LocalBronzeStorage('local', Path(sys.argv[2])))
         keys = [k for k in storage.list_keys("live/") if k.endswith("/manifest.json")]
         assert sorted(keys) == sorted([manifest_key, following.prefix + "/manifest.json"])
         assert export_segment(local, storage) is None
+
+
+def test_version_one_segment_manifest_refuses_by_name(tmp_path):
+    storage = store(tmp_path)
+    with closing(opened(tmp_path / "live.db")) as local:
+        local.record_polls([POLL], endpoint_key="vehicles")
+        segment = export_segment(local, storage)
+        path = storage.root / segment.prefix / "manifest.json"
+        manifest = json.loads(path.read_bytes())
+        manifest["version"] = 1
+        path.write_text(json.dumps(manifest), encoding="utf-8")
+        with pytest.raises(SegmentInvalid, match="segment_version_unsupported.*1"):
+            read_segment(local, storage, segment)
