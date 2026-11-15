@@ -27,25 +27,35 @@ type Kind = 'route' | 'stop';
 type Rows = NonNullable<RouteReliabilityIndex['weekly_routes']> | null;
 type Reader = (kind: Kind, now: number) => Rows;
 
-/** Validate once per file; the shared clock can then check availability cheaply. */
-export function createPublishedWeeklyRanking(value: unknown): Reader {
-	const parsed = RouteReliabilityIndexSchema.safeParse(value);
-	if (!parsed.success) return () => null;
-	const index = parsed.data;
+/**
+ * Whether a validated weekly index is the current publication at `now`, whatever its rows hold.
+ * The one currency rule for every reader of the weekly ranking.
+ */
+export function weeklyIndexIsCurrent(index: RouteReliabilityIndex, now: number): boolean {
 	const generated = Date.parse(index.generated_utc);
 	const published = Date.parse(index.published_utc ?? index.generated_utc);
 	const scheduled =
 		index.next_publish_utc != null ? Date.parse(index.next_publish_utc) : legacyDeadline(published);
 	const deadline = weeklyPublicationDeadline(published, scheduled);
-	if (![generated, published, deadline].every(Number.isFinite) || scheduled <= published)
-		return () => null;
+	return (
+		[generated, published, deadline].every(Number.isFinite) &&
+		scheduled > published &&
+		Number.isFinite(now) &&
+		generated <= now &&
+		published <= now &&
+		now < deadline
+	);
+}
+
+/** Validate once per file; the shared clock can then check availability cheaply. */
+export function createPublishedWeeklyRanking(value: unknown): Reader {
+	const parsed = RouteReliabilityIndexSchema.safeParse(value);
+	if (!parsed.success) return () => null;
+	const index = parsed.data;
 	const eligible = (rows: typeof index.weekly_routes): Rows =>
 		rows?.some((row) => row.state === 'ranked' && row.pct != null) ? rows : null;
 	const rows = { route: eligible(index.weekly_routes), stop: eligible(index.weekly_stops) };
-	return (kind, now) =>
-		Number.isFinite(now) && generated <= now && published <= now && now < deadline
-			? rows[kind]
-			: null;
+	return (kind, now) => (weeklyIndexIsCurrent(index, now) ? rows[kind] : null);
 }
 
 export function publishedWeeklyRanking(value: unknown, kind: Kind, now = Date.now()) {

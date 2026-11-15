@@ -226,6 +226,30 @@ describe('presentStopRecord: absence is never a reassuring zero', () => {
 		expect(view.period).toBe('November 4 to 10, 2026 · 7 complete days');
 	});
 
+	it("says a fresh publication's unranked state even when no stop ranks (R1094-2)", () => {
+		const unranked = [
+			{ state: 'too_few_units', id: '52409', ...WINDOW },
+			{ state: 'no_live_data', id: '11000', ...WINDOW },
+		];
+		const at = (rows: unknown[], now = NOW) =>
+			presentStopRecord({ stopId: '52409', index: settled(index(rows)), now }, 'en', CONTEXT);
+		const fresh = at(unranked);
+		expect([fresh.state, fresh.status, fresh.figure]).toEqual([
+			'unmeasured',
+			'Too few readings in this period to publish a share.',
+			null,
+		]);
+		expect(fresh.period).toBe('November 4 to 10, 2026 · 7 complete days');
+		const expired = at(unranked, Date.parse('2026-12-01T00:00:00Z'));
+		expect([expired.state, expired.figure]).toEqual(['not-current', null]);
+		const absent = at([{ state: 'not_measured', id: '11000', ...WINDOW }]);
+		expect([absent.state, absent.status, absent.figure]).toEqual([
+			'not-listed',
+			'This stop is not in the latest weekly record.',
+			null,
+		]);
+	});
+
 	it('speaks each absence in French', () => {
 		const rows = [ranked('11000', 210, 120), { state: 'too_few_units', id: '52409', ...WINDOW }];
 		expect(
@@ -263,9 +287,30 @@ describe('presentStopRecord: every shown number passes its math checks', () => {
 		expect(share.latePct).toBeLessThanOrEqual(100);
 		expect(Number.isFinite(share.latePct)).toBe(true);
 		expect(Object.is(share.latePct, -0)).toBe(false);
-		expect(Math.abs(share.latePct - (100 * bounded) / readings)).toBeLessThanOrEqual(0.05);
+		// One-decimal rounding is within half a tenth of the exact share (float noise aside).
+		expect(Math.abs(share.latePct - (100 * bounded) / readings)).toBeLessThanOrEqual(0.05 + 1e-9);
 		expect(view.figure).not.toMatch(/NaN|Infinity|-0/);
 	});
+
+	it.each([
+		[80, 1, '1.3%', '80 readings; 1 more than 5 minutes late.'],
+		[400, 3, '0.8%', '400 readings; 3 more than 5 minutes late.'],
+	])(
+		'keeps exact half-step rounding: %i readings, %i late is %s (R1094-3)',
+		(readings, late, figure, evidence) => {
+			// 1/80 = 1.25% and 3/400 = 0.75% round half away from zero to 1.3% and 0.8%.
+			const view = presentStopRecord(
+				{ stopId: '52409', index: settled(index([ranked('52409', readings, late)])), now: NOW },
+				'en',
+				CONTEXT,
+			);
+			expect([view.state, view.figure, view.evidence[0].value]).toEqual([
+				'measured',
+				figure,
+				evidence,
+			]);
+		},
+	);
 
 	it('refuses a row whose late readings exceed its readings, or whose share disagrees', () => {
 		const broken = [

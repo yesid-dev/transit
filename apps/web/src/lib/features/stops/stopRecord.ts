@@ -1,7 +1,7 @@
 import { intl, type Locale } from '#lib/i18n/index.ts';
 import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
 import { fmtLocalePct } from '#lib/utils/format.ts';
-import { createPublishedWeeklyRanking } from '#lib/v1/ranking/published.ts';
+import { weeklyIndexIsCurrent } from '#lib/v1/ranking/published.ts';
 import { RouteReliabilityIndexSchema } from '#lib/v1/schemas/route_reliability_index.ts';
 import { detailCopy } from './stops.copy';
 
@@ -80,10 +80,11 @@ function locate({ stopId, index, now }: StopRecordInput): Located {
 	}
 	const parsed = RouteReliabilityIndexSchema.safeParse(index.data);
 	if (!parsed.success) return { state: 'failed' };
-	if ((parsed.data.weekly_stops?.length ?? 0) === 0) return { state: 'unpublished' };
-	// The home page's reader decides currency, so both pages show or withhold the same figure.
-	const rows = createPublishedWeeklyRanking(index.data)('stop', now);
-	if (rows == null) return { state: 'not-current' };
+	const rows = parsed.data.weekly_stops ?? [];
+	if (rows.length === 0) return { state: 'unpublished' };
+	// The home page's currency rule, so both pages show or withhold the same figure. A current
+	// publication where no stop ranks still says why this stop has no share.
+	if (!weeklyIndexIsCurrent(parsed.data, now)) return { state: 'not-current' };
 	const row = rows.find((candidate) => candidate.id === stopId);
 	if (row == null) return { state: 'not-listed' };
 	if (row.state !== 'ranked') return { state: 'unmeasured', row };
@@ -91,22 +92,38 @@ function locate({ stopId, index, now }: StopRecordInput): Located {
 	return share == null ? { state: 'failed' } : { state: 'measured', row, share };
 }
 
-/** Owner ruling 6: counts are whole and ordered, the share is bounded and agrees with them. */
+/** Tenths of a percent, rounded half away from zero, in exact integer arithmetic. */
+function shareTenths(part: number, whole: number): bigint {
+	const scaled = 1000n * BigInt(part);
+	const total = BigInt(whole);
+	const quotient = scaled / total;
+	return 2n * (scaled - quotient * total) >= total ? quotient + 1n : quotient;
+}
+
+/**
+ * Owner ruling 6: counts are whole and ordered, the share is bounded and is exactly the published
+ * one-decimal rounding of late readings over readings (from the definition, not a float tolerance).
+ */
 function checkedShare(row: Extract<WeeklyRow, { state: 'ranked' }>): StopRecordShare | null {
 	const readings = row.denominator;
 	const lateReadings = row.denominator - row.numerator;
 	const latePct = row.severe_pct;
 	if (
 		latePct == null ||
-		!Number.isInteger(readings) ||
-		!Number.isInteger(lateReadings) ||
+		!Number.isSafeInteger(readings) ||
+		!Number.isSafeInteger(lateReadings) ||
 		readings <= 0 ||
 		lateReadings < 0 ||
 		lateReadings > readings ||
 		!Number.isFinite(latePct) ||
 		latePct < 0 ||
-		latePct > 100 ||
-		Math.abs(latePct - (100 * lateReadings) / readings) > 0.05
+		latePct > 100
+	)
+		return null;
+	const tenths = Math.round(latePct * 10);
+	if (
+		Math.abs(latePct * 10 - tenths) > 1e-6 ||
+		BigInt(tenths) !== shareTenths(lateReadings, readings)
 	)
 		return null;
 	return {
