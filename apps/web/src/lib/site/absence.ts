@@ -14,10 +14,12 @@ export type ValueAbsenceKey =
 	| 'not-reported'
 	| 'not-reporting'
 	| 'not-in-schedule'
+	| 'window-not-supplied'
 	| 'no-prediction'
 	| 'end-of-route'
 	| 'inferred'
 	| 'no-observations'
+	| 'crowding-not-available'
 	| 'histogram-not-published'
 	| 'not-published'
 	| 'no-retained-dates'
@@ -66,10 +68,15 @@ export const ABSENCE_COPY: Record<Locale, Record<AbsenceReasonKey, ReasonCopy>> 
 		'not-reported': { short: 'Unknown', why: 'not reported in the live feed' },
 		'not-reporting': { short: 'Stale', why: 'this vehicle is not reporting' },
 		'not-in-schedule': { short: 'Unknown', why: 'not in the schedule' },
+		'window-not-supplied': { short: 'Unknown', why: 'time window not supplied' },
 		'no-prediction': { short: 'No estimate', why: 'no prediction available' },
 		'end-of-route': { short: 'End of line', why: 'no next stop, the trip has ended' },
 		inferred: { short: 'Estimated', why: 'estimated, not published directly' },
 		'no-observations': { short: 'No data', why: 'not enough readings yet' },
+		'crowding-not-available': {
+			short: 'No data',
+			why: 'crowding information is not available here',
+		},
 		'histogram-not-published': {
 			short: 'No histogram',
 			why: 'the selected view does not publish a delay histogram',
@@ -127,10 +134,15 @@ export const ABSENCE_COPY: Record<Locale, Record<AbsenceReasonKey, ReasonCopy>> 
 		'not-reported': { short: 'Inconnu', why: 'non signalé dans le flux en direct' },
 		'not-reporting': { short: 'Obsolète', why: 'ce véhicule ne se signale pas' },
 		'not-in-schedule': { short: 'Inconnu', why: 'absent de l’horaire' },
+		'window-not-supplied': { short: 'Inconnu', why: 'plage horaire non fournie' },
 		'no-prediction': { short: 'Aucune estimation', why: 'aucune prévision disponible' },
 		'end-of-route': { short: 'Terminus', why: 'aucun arrêt suivant, le trajet est terminé' },
 		inferred: { short: 'Estimé', why: 'estimé, non publié directement' },
 		'no-observations': { short: 'Aucune donnée', why: 'pas assez de mesures' },
+		'crowding-not-available': {
+			short: 'Aucune donnée',
+			why: 'aucune information sur l’occupation ici',
+		},
 		'histogram-not-published': {
 			short: 'Aucun histogramme',
 			why: 'la vue sélectionnée ne publie pas d’histogramme des retards',

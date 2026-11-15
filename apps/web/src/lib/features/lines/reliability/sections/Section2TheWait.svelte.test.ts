@@ -205,3 +205,21 @@ describe('Section2TheWait — reporting-shift summary', () => {
 		},
 	);
 });
+
+describe('Section2TheWait — section name', () => {
+	it.each([
+		['en', 'Gaps between first reports', 'The wait'],
+		['fr', 'Écarts entre les premiers signalements', "L'attente"],
+	] as const)('names the measure the chart shows (%s)', (locale, name, old) => {
+		const view = render(Section2TheWait, {
+			props: {
+				wait: waitVm([hw('am_peak', 18, 60, 0.2, 9, 60)], true),
+				locale,
+				copy: reliabilityCopy[locale],
+				mode: 'week',
+			},
+		});
+		expect(view.getAllByText(name).length).toBeGreaterThan(0);
+		expect(view.queryByText(old)).toBeNull();
+	});
+});

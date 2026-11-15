@@ -226,7 +226,7 @@ export const reliabilityCopy = defineCopy({
 				question: 'Quand est-ce fiable, et quand ça se gâte ?',
 			},
 			theWait: {
-				label: "L'attente",
+				label: 'Écarts entre les premiers signalements',
 				question: 'Combien de temps faut-il attendre, et les véhicules sont-ils collés ?',
 			},
 			runAndFit: {
@@ -450,7 +450,10 @@ export const reliabilityCopy = defineCopy({
 				label: 'When to ride',
 				question: 'When is it good, and when does it fall apart?',
 			},
-			theWait: { label: 'The wait', question: 'How long will you wait, and do vehicles bunch?' },
+			theWait: {
+				label: 'Gaps between first reports',
+				question: 'How long will you wait, and do vehicles bunch?',
+			},
 			runAndFit: { label: 'Service & space', question: 'Will the vehicle run, and will you fit?' },
 			worstStops: { label: "Where it's worst", question: 'Where does the delay pile up?' },
 			detailShow: 'Show the detail',

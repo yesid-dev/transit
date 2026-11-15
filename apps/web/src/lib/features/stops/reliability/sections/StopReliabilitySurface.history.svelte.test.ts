@@ -348,6 +348,7 @@ describe('StopReliabilitySurface retained Stop history', () => {
 				locale === 'fr' ? 'Écart p90 − médiane : 2,5 min.' : 'p90 − median spread: 2.5 min.',
 			);
 			expect(detail).toHaveTextContent('2026-01-31 · 40');
+			expect(detail).not.toHaveTextContent(stopReliabilityCopy[locale].scope.latestDay);
 			expect(harness.loadStopHistoryRange).toHaveBeenCalledTimes(1);
 		},
 	);
@@ -537,6 +538,53 @@ describe('StopReliabilitySurface retained Stop history', () => {
 			expect.soft(historyCopy?.correction?.malformed).toBeTruthy();
 			expect.soft(historyCopy?.correction?.['outside-coverage']).toBeTruthy();
 		}
+	});
+});
+
+describe('StopReliabilitySurface figure periods', () => {
+	const ALL_HISTORY_SECTIONS = ['stop-rel-habits', 'stop-rel-weekday', 'stop-rel-time'];
+	const scopeIn = (container: HTMLElement, id: string) =>
+		container.querySelector(`#${id} [data-slot="all-history-scope"]`);
+
+	it.each([
+		[
+			'en',
+			'Latest complete day',
+			'All available history: Jan 31, 2026 to Feb 1, 2026. These figures do not change with the selected dates.',
+		],
+		[
+			'fr',
+			'Dernier jour complet',
+			'Tout l’historique disponible : du 31 janv. 2026 au 1 févr. 2026. Ces chiffres ne changent pas avec les dates choisies.',
+		],
+	] as const)(
+		'names the period of each figure the dates do not change (%s)',
+		async (locale, day, all) => {
+			const history = createHistory();
+			const view = renderSurface(history, locale);
+			await waitFor(() => expect(history.index).not.toBeNull());
+
+			expect(view.container.querySelector('[data-slot="stop-percentiles"]')).toHaveTextContent(day);
+			for (const id of ALL_HISTORY_SECTIONS)
+				expect(scopeIn(view.container, id)).toHaveTextContent(all);
+			for (const id of [
+				'stop-rel-trend',
+				'stop-rel-pane',
+				'stop-rel-crowding',
+				'stop-rel-by-route',
+			]) {
+				expect(scopeIn(view.container, id)).toBeNull();
+			}
+		},
+	);
+
+	it('claims no history dates when the retained index is absent', async () => {
+		harness.getStopHistoryIndex.mockResolvedValue(null);
+		const history = createHistory();
+		const view = renderSurface(history);
+		await waitFor(() => expect(history.state).toBe('current'));
+
+		expect(view.container.querySelector('[data-slot="all-history-scope"]')).toBeNull();
 	});
 });
 

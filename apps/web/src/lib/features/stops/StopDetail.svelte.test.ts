@@ -1141,10 +1141,10 @@ describe('StopDetail reliability — crowding (occupancy_mix)', () => {
 	});
 
 	it.each([
-		['null EN', 'en', null, 'not enough readings yet'],
+		['null EN', 'en', null, 'crowding information is not available here'],
 		['undefined', 'en', undefined, null],
 		['all-zero', 'en', { empty: 0, many_seats: 0, few_seats: 0, standing: 0, full: 0 }, null],
-		['null FR', 'fr', null, 'pas assez de mesures'],
+		['null FR', 'fr', null, 'aucune information sur l’occupation ici'],
 	] as const)('stands down with honest crowding absence: %s', (_, locale, mix, note) => {
 		reliabilityData = { ...RELIABILITY, occupancy_mix: mix };
 		renderReliability(locale);

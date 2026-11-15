@@ -24,6 +24,7 @@
 		directionHeadsigns: Record<number, string>;
 		history: LineHistoryResource;
 		historyOnlyReliability?: RouteReliability | null;
+		noLiveData?: boolean;
 		articleSummary?: Snippet;
 		importClusters?: () => Promise<RouteReliabilityClustersModule>;
 		initialClusters?: RouteReliabilityClustersModule['default'];
@@ -59,6 +60,7 @@
 		directionHeadsigns,
 		history,
 		historyOnlyReliability = null,
+		noLiveData = false,
 		articleSummary,
 		importClusters,
 		initialClusters,
@@ -145,7 +147,11 @@
 	{#if resource.settled && resource.error == null && resource.data == null && historyOnlyReliability != null && history.state !== 'current'}
 		{@render loaded(historyOnlyReliability)}
 	{:else}
-		<ResourceBoundary {resource} lang={locale}>
+		<ResourceBoundary
+			{resource}
+			lang={locale}
+			emptyVariant={noLiveData ? 'empty-line-no-live-data' : 'empty'}
+		>
 			{#snippet children(reliability)}
 				{@render loaded(reliability)}
 			{/snippet}

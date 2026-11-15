@@ -12,6 +12,7 @@
 	interface SectionPercentilesProps {
 		percentiles: { p50: number | null; p90: number | null };
 		dailyPercentiles?: ReturnType<typeof selectDailyPercentiles>;
+		scope?: string;
 		locale: Locale;
 		copy: StopReliabilityCopy;
 		presentation?: 'standalone' | 'article-body';
@@ -19,6 +20,7 @@
 	let {
 		percentiles,
 		dailyPercentiles = null,
+		scope,
 		locale,
 		copy,
 		presentation = 'standalone',
@@ -33,6 +35,7 @@
 	{presentation}
 	dataSlot="stop-percentiles"
 >
+	{#if scope}<p class="stop-percentile-scope" data-slot="figure-scope">{scope}</p>{/if}
 	<div class="stop-reliability-percentile-tiles">
 		<MetricDisplay
 			value={min(percentiles.p50)}
@@ -57,6 +60,13 @@
 </StopReliabilityPresenter>
 
 <style>
+	.stop-percentile-scope {
+		margin: 0;
+		font-family: var(--font-mono);
+		font-size: var(--text-caption);
+		line-height: 1.3;
+		color: var(--muted-foreground);
+	}
 	.stop-reliability-percentile-tiles {
 		display: flex;
 		flex-wrap: wrap;

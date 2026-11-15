@@ -178,4 +178,50 @@ describe('LazyRouteReliabilityPane', () => {
 		);
 		expect(alert).not.toBeVisible();
 	});
+
+	it.each([
+		['published data', resource(reliability('1')), null, history],
+		[
+			'retained history',
+			resource(null),
+			reliability('1'),
+			{ state: 'ready' } as LineHistoryResource,
+		],
+	])('still renders %s for a line without live data', async (_, current, retained, lineHistory) => {
+		const initialClusters = (
+			await import('./reliability/__fixtures__/RouteReliabilityClustersStub.svelte')
+		).default;
+		const view = render(LazyRouteReliabilityPane, {
+			props: {
+				entityId: '1',
+				resource: current,
+				historyOnlyReliability: retained,
+				noLiveData: true,
+				locale: 'en',
+				directionHeadsigns: {},
+				history: lineHistory,
+				initialClusters,
+			},
+		});
+		expect(view.getByTestId('route-reliability-clusters-stub')).toBeInTheDocument();
+		expect(view.container).not.toHaveTextContent('Transit cannot measure');
+	});
+
+	it.each([
+		['loading', { data: null, error: null, loading: true, settled: false }, 'skeleton'],
+		['error', { data: null, error: new Error('down'), loading: false, settled: true }, 'error-v1'],
+	] as const)('keeps the %s state for a line without live data', (_, state, variant) => {
+		const view = render(LazyRouteReliabilityPane, {
+			props: {
+				entityId: '1',
+				resource: { ...state, reload: vi.fn() },
+				noLiveData: true,
+				locale: 'en',
+				directionHeadsigns: {},
+				history,
+			},
+		});
+		expect(view.container.querySelector(`[data-variant="${variant}"]`)).not.toBeNull();
+		expect(view.container).not.toHaveTextContent('Transit cannot measure');
+	});
 });

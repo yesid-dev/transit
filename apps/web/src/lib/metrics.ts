@@ -162,6 +162,7 @@ export type SupplementalMetricKey =
 	| 'vehicleCount'
 	| 'affectedCounts'
 	| 'silentTrip'
+	| 'tripPredictions'
 	| 'alertCause'
 	| 'alertEffect'
 	| 'alertSeverity'
@@ -225,6 +226,13 @@ const SUPPLEMENTAL_METRIC_TIPS: Readonly<Record<SupplementalMetricKey, Supplemen
 		oneLiner: {
 			fr: 'Les trajets prévus en circulation maintenant, hors métro, sans véhicule correspondant dans l’instantané actuel. Un trajet peut avoir émis plus tôt; son absence actuelle ne confirme pas une annulation.',
 			en: 'Scheduled non-metro trips running now with no matching vehicle in the current snapshot. A trip may have reported earlier; its current absence does not confirm a cancellation.',
+		},
+	},
+	tripPredictions: {
+		anchor: 'metrics-provenance',
+		oneLiner: {
+			fr: 'Chaque rangée est la plus récente prévision de l’agence pour ce trajet à un arrêt. Les prévisions ne sont pas des arrivées observées.',
+			en: 'Each row is the agency’s latest prediction for this trip at one stop. Predictions are not observed arrivals.',
 		},
 	},
 	alertCause: {
