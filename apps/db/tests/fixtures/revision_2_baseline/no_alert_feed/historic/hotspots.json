@@ -11,14 +11,6 @@
    "name": "Ligne 10",
    "severity": "high",
    "otp_delta_pts": 0.0
-  },
-  {
-   "rank": 2,
-   "type": "stop",
-   "id": "S3",
-   "name": "Arret S3",
-   "severity": "high",
-   "otp_delta_pts": -25.0
   }
  ],
  "by_grain": [

@@ -109,3 +109,27 @@ def test_line_ranking_reads_the_published_week_without_requiring_a_daily_list():
         ("R", 118, 200, 59)
     ]
     assert (result[0].window_start, result[0].window_end) == ("2026-11-04", "2026-11-10")
+
+
+def test_legacy_stop_ranking_requires_thirty_readings():
+    from _sqlfakes import NamedQueryConn
+
+    from transit_ops.snapshots.builders.historic.small_surfaces import build_hotspots
+
+    rows = [
+        dict(
+            entity_kind="stop",
+            entity_id=key,
+            issue_count=5,
+            severity_label="high",
+            stop_obs=observations,
+            stop_severe=15,
+        )
+        for key, observations in (("thin", 29), ("supported", 30))
+    ]
+    result = build_hotspots(
+        NamedQueryConn({"hotspots.list": rows}),
+        provider_id="test",
+        generated_utc="2026-11-11T00:00:00Z",
+    )
+    assert [(entry.id, entry.rank) for entry in result.hotspots] == [("supported", 1)]

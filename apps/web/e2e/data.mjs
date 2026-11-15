@@ -111,6 +111,10 @@ hedgedReliability.periods_by_grain = [
 ];
 files['/__layout/hedged/v1/stm/historic/route_reliability/24.json'] =
 	JSON.stringify(hedgedReliability);
+files['/__layout/hedged/v1/stm/historic/route_reliability/index.json'] = JSON.stringify({
+	generated_utc: generated,
+	route_ids: ['24'],
+});
 const hedgedRoutes = JSON.parse(files['/v1/stm/static/routes_index.json']);
 hedgedRoutes.routes = hedgedRoutes.routes.filter(({ id }) => id === '24');
 hedgedRoutes.routes.push({ id: '25', short: '25', long: 'Ontario', type: 3 });

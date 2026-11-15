@@ -407,6 +407,7 @@ UNGUARDED: dict[str, dict[str, str]] = {
     },
     "historic/receipts/{date}.json": {"vehicles": "always null (small_surfaces.py:799)"},
     "historic/route_reliability/{id}.json": {
+        "weak_stops": "no stop reaches MIN_N_RATE readings in the legacy window",
         "headway": "one trip per route, direction, service date and shift (rollups.py:1472-1473)",
         "headway_by_grain": "needs two trips of a route direction at one stop and shift",
         "weak_stops_by_grain": "no stop reaches the Wilson floor in its window (_spine.py:545)",
