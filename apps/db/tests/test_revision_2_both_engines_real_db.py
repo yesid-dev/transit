@@ -355,7 +355,13 @@ def _seed_request(provider):
     days = tuple(sorted(set(seed.DAYS)))
     open_window = (seed.BUILD_CLOCK.astimezone(seed.TZ).date() - days[0]).days
     return BuildRequest(
-        provider, days, seed.BUILD_CLOCK, seed.RETENTION_DAYS, open_window, str(seed.TZ)
+        provider, days, seed.BUILD_CLOCK, seed.RETENTION_DAYS, open_window, str(seed.TZ),
+        # R28b current_at_build: seed._base(provider) + 20 is the seed's current edition.
+        edition_by_day=(
+            {day: seed._base(provider) + 20 for day in days}
+            if provider in seed.PROVIDERS.values() else None
+        ),
+        edition_source="current_at_build" if provider in seed.PROVIDERS.values() else None,
     )
 
 

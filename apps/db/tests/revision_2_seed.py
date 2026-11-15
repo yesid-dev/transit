@@ -189,7 +189,7 @@ def _seed_provider(conn, provider_id: str, alerts: bool) -> None:
     db_seed.ingestion_runs(conn, run, run_kind="'static_schedule'")
     db_seed.dataset_versions(
         conn,
-        run | {"h": "r2" * 32},
+        run | {"h": hashlib.sha256(b"r2").hexdigest()},
         dataset_version_id=":d",
         source_ingestion_run_id=":r",
         loaded_at_utc="'2025-05-30T12:00:00Z'",

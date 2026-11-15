@@ -2,7 +2,7 @@
 
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Protocol, runtime_checkable
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -21,8 +21,16 @@ class BuildRequest:
     fact_retention_days: int
     open_window_days: int
     timezone: str
+    # R28b: callers supply current_at_build until the edition index owns day validity.
+    edition_by_day: Mapping[date, int] | None = field(default=None, kw_only=True)
+    edition_source: str | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
+        if self.edition_by_day is not None:
+            if self.edition_source != "current_at_build":
+                raise ValueError("edition_source must be current_at_build for edition_by_day")
+        elif self.edition_source is not None:
+            raise ValueError("edition_source requires edition_by_day")
         if not isinstance(self.provider_id, str) or not self.provider_id.strip():
             raise ValueError("provider_id must be a nonempty string")
         if not isinstance(self.local_dates, tuple) or any(

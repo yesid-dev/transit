@@ -41,6 +41,11 @@ class BuildManifest(BuildRequest):
             "+00:00", "Z"
         )
         payload["local_dates"] = [day.isoformat() for day in self.local_dates]
+        editions = payload.pop("edition_by_day")
+        if editions is not None:
+            payload["edition_by_day"] = {day.isoformat(): value for day, value in editions.items()}
+        else:
+            payload.pop("edition_source")
         return json.dumps(
             payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
         ).encode("utf-8")
