@@ -6,7 +6,10 @@ from typing import Annotated
 
 import typer
 
+from transit_ops.batch import switch as switch
+
 app = typer.Typer(help="Replay and compare batch builds.")
+
 
 
 @app.callback(invoke_without_command=True)

@@ -28,6 +28,7 @@ from transit_ops.sql_registry import query_name
 
 @pytest.fixture(autouse=True)
 def fixed_rollup_clock(monkeypatch):
+    monkeypatch.setattr(rollups, "switches_for", lambda *_: SimpleNamespace(enabled=frozenset))
     now = datetime(2026, 3, 26, 12, tzinfo=UTC)
     monkeypatch.setattr(rollups, "utc_now", lambda: now)
     monkeypatch.setattr(delay_periods, "utc_now", lambda: now)

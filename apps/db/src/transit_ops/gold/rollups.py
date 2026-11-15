@@ -10,6 +10,8 @@ from datetime import UTC, date, datetime, timedelta
 from sqlalchemy import bindparam
 from sqlalchemy.engine import Engine, Row
 
+from transit_ops.batch.families.ownership import TABLE_OWNERS
+from transit_ops.control.switches import switches_for
 from transit_ops.db.connection import make_engine, set_daily_warm_transaction_timeouts
 from transit_ops.gold.delay_cohorts import delay_window_is_complete
 from transit_ops.gold.delay_days import (
@@ -1893,6 +1895,9 @@ class WarmRollupStageReceipt:
     table: str
     duration_seconds: float
     rows: int
+    engine: str = "postgres"
+    build_id: str | None = None
+    status: str = "completed"
 
     def display_dict(self) -> dict[str, object]:
         return {
@@ -1901,7 +1906,9 @@ class WarmRollupStageReceipt:
             "stage": self.stage,
             "kind": self.kind,
             "table": self.table,
-            "status": "completed",
+            "status": self.status,
+            "engine": self.engine,
+            "build_id": self.build_id,
             "duration_seconds": self.duration_seconds,
             "rows": self.rows,
         }
@@ -1978,7 +1985,16 @@ def _run_warm_rollup_stage(
     table: str,
     operation: Callable[[], int],
     progress: PeriodBuildProgress | None = None,
+    enabled_switches: frozenset[str] = frozenset(),
 ) -> WarmRollupStageReceipt:
+    owner = TABLE_OWNERS.get(f"gold.{table}")
+    if owner is not None and f"batch_engine:{owner}" in enabled_switches:
+        receipt = WarmRollupStageReceipt(
+            provider_id, stage, kind, table, 0.0, 0,
+            engine="duckdb", status="skipped_engine_duckdb",
+        )
+        logger.info("%s", json.dumps(receipt.display_dict(), sort_keys=True))
+        return receipt
     identity: dict[str, object] = {
         "event": "warm_rollup_stage",
         "provider_id": provider_id,
@@ -2196,6 +2212,7 @@ def build_daily_rollups(
     today_local: date,
     now: datetime,
     retention_days: int,
+    enabled_switches: frozenset[str] = frozenset(),
 ) -> dict[str, WarmRollupStageReceipt]:
     calendars_by_source: dict[object, Sequence[Row[tuple[date, int]]]] = {
         SELECT_MISSING_CAPTURE_DAYS: calendars.capture,
@@ -2228,6 +2245,7 @@ def build_daily_rollups(
     for kind_name in DAILY_BUILD_ORDER:
         kind = REBUILDABLE_KINDS[kind_name]
         receipts[kind_name] = _run_warm_rollup_stage(
+            enabled_switches=enabled_switches,
             provider_id=provider_id,
             stage="append_only_daily",
             kind=kind.rollup_kind,
@@ -2286,6 +2304,7 @@ def build_warm_rollups(
         set_daily_warm_transaction_timeouts(conn)
         if as_of_utc is None:
             as_of_utc = conn.execute(_BUILD_AS_OF_SQL).scalar_one()
+        enabled_switches = switches_for(conn, settings).enabled()
         seeded = provider_is_seeded(conn, provider_id)
     if not seeded:
         logger.info(
@@ -2337,6 +2356,7 @@ def build_warm_rollups(
 
     trip_delay_progress = PeriodBuildProgress()
     trip_delay_receipt = _run_warm_rollup_stage(
+        enabled_switches=enabled_switches,
         provider_id=provider_id,
         stage="trip_delay_5m",
         kind="trip_delay_summary_5m",
@@ -2358,6 +2378,7 @@ def build_warm_rollups(
     daily_receipts = build_daily_rollups(
         engine,
         provider_id,
+        enabled_switches=enabled_switches,
         calendars=DailyRollupCalendars(
             capture=capture_available_days,
             feed=trip_available_days,
@@ -2421,6 +2442,7 @@ def build_warm_rollups(
                 return _safe_rowcount(result)
 
         receipt = _run_warm_rollup_stage(
+            enabled_switches=enabled_switches,
             provider_id=provider_id,
             stage="reporting_aggregate",
             kind="reporting_aggregate",
@@ -2431,6 +2453,7 @@ def build_warm_rollups(
         reporting_aggregate_row_counts[table_name] = receipt.rows
 
     changed_hours = _run_warm_rollup_stage(
+        enabled_switches=enabled_switches,
         provider_id=provider_id,
         stage="changed_delay_hours",
         kind="changed_delay_hours",
