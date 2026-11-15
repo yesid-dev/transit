@@ -346,14 +346,10 @@ def validate_alert_bundle(root: Path, request: BuildRequest) -> tuple[tuple[str,
     bundle = bundles[0]
     stamp = datetime.fromisoformat(bundle["snapshot_at_utc"])
     coverage = datetime.fromisoformat(bundle["coverage_from_utc"])
-    if stamp.utcoffset() is None or coverage.utcoffset() is None or stamp > request.as_of_utc:
-        raise ValueError("alert bundle snapshot_at_utc exceeds replay cutoff")
-    for day in request.local_dates:
-        from datetime import time
+    from transit_ops.lake.alert_bundle import CLOSURE_RELATIONS, validate_coverage
 
-        if datetime.combine(day, time(), ZoneInfo(request.timezone)) < coverage:
-            raise ValueError(f"alert_bundle_outside_coverage: {day} {bundle['version']}")
-    for relation in MEMBERS:
+    validate_coverage(stamp, coverage, request.local_dates, request.timezone, request.as_of_utc)
+    for relation in (*MEMBERS, *CLOSURE_RELATIONS):
         file = root / relation / "all.parquet"
         if not file.is_file():
             raise ValueError(f"missing bundle member: {relation}")

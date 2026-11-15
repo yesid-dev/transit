@@ -653,14 +653,39 @@ def test_changed_bootstrap_refuses_before_any_other_payload(tmp_path, monkeypatc
 
 
 def bundle(storage, keys, stamp=STAMP):
-    from transit_ops.lake.alert_bundle import PREFIX
+    from transit_ops.lake.alert_bundle import CLOSURE_RELATIONS, PREFIX
 
+    closure = []
+    for relation in CLOSURE_RELATIONS:
+        path = storage.root / (relation + ".parquet")
+        with duckdb.connect() as conn:
+            conn.execute(
+                "COPY (SELECT * FROM (VALUES (1, 'sample'), (2, 'other')) "
+                "t(id,provider_id)) TO ? (FORMAT parquet)",
+                [str(path)],
+            )
+        payload = path.read_bytes()
+        digest = hashlib.sha256(payload).hexdigest()
+        key = f"archive/v1/bundle-closure/{relation}/{digest}.parquet"
+        put(storage, key, payload)
+        closure.append(
+            dict(
+                dataset_id=relation,
+                provider_id="_shared",
+                key=key,
+                object_sha256=digest,
+                object_bytes=len(payload),
+                rows=2,
+                proof=dict(verified=True, object_sha256=digest, object_bytes=len(payload), rows=2),
+            )
+        )
     value = dict(
-        format_version=1,
+        format_version=2,
         kind="silver_alert_state",
         snapshot_at_utc=stamp.isoformat(),
         coverage_from_utc="2026-10-04T07:00:00+00:00",
         members=[json.loads(storage.read_bytes(proof_key(k))) for k in keys],
+        closure=closure,
     )
     body = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
     version = hashlib.sha256(body).hexdigest()
@@ -705,9 +730,9 @@ def test_alert_bundle_pins_members_and_filters_shared_children(tmp_path):
     alert_copies(storage, version=2)  # New member receipts alone cannot replace a bundle.
     needs = [InputNeed("silver.i3_alerts", "all")]
     sources = resolve_sources(needs, storage, "sample", STAMP, {})
-    assert {s.key for s in sources} == set(keys)
+    assert {s.key for s in sources if not s.receipt.get("bundle_closure")} == set(keys)
     root = tmp_path / "scoped"
-    receipts = materialize(sources, {k: storage.root / k for k in keys}, root, STAMP)
+    receipts = materialize(sources, {s.key: storage.root / s.key for s in sources}, root, STAMP)
     for r in receipts:
         assert r["rows_kept"] == 1 and r["rows_dropped"] == 1
         assert r["bundle_version"] == version and r["snapshot_at_utc"] == STAMP.isoformat()
@@ -744,27 +769,13 @@ def test_missing_bundle_member_refuses_by_name(tmp_path, missing):
 
 
 def test_receipts_declared_inputs_resolve_after_r31():
-    from transit_ops.batch.build import BuildRequest, utc_days
+    from transit_ops.batch.build import BuildRequest
+    from transit_ops.batch.families.receipts import builder
     from transit_ops.batch.replay import family_input_needs
 
-    # #1088 at 5973f4a, ReceiptsBuilder.inputs; the family has not merged on this base.
-    # Keep this contract fixture until the real builder lands; no family code changes.
-    class ReceiptsInputs:
-        family_id = "receipts"
-
-        def inputs(self, request):
-            return (
-                InputNeed("core.providers", "all"),
-                InputNeed("silver.i3_alerts", "all"),
-                *(InputNeed("gold.route_delay_spine", f"local:{d}") for d in request.local_dates),
-                *(InputNeed("gold.stop_delay_hourly", d) for d in utc_days(request)),
-            )
-
     request = BuildRequest("sample", (datetime(2026, 11, 1).date(),), STAMP, 14, 7, "UTC")
-    from transit_ops.batch.families.receipts import builder
-
-    selected = builder if builder is not None else ReceiptsInputs()
-    assert InputNeed("silver.i3_alerts", "all") in family_input_needs([selected], request)
+    assert builder is not None
+    assert InputNeed("silver.i3_alerts", "all") in family_input_needs([builder], request)
 
 
 def test_alert_fetch_manifest_pins_scoped_files_and_refuses_later_pruned_coverage(tmp_path):
@@ -788,7 +799,7 @@ def test_alert_fetch_manifest_pins_scoped_files_and_refuses_later_pruned_coverag
     document = json.loads((root / "alert-bundle.json").read_text())
     document[0]["coverage_from_utc"] = "2026-11-02T00:00:00+00:00"
     (root / "alert-bundle.json").write_text(json.dumps(document))
-    with pytest.raises(ValueError, match="alert_bundle_outside_coverage.*2026-11-01"):
+    with pytest.raises(ValueError, match="bundle_coverage.*2026-11-01"):
         validate_alert_bundle(root, request)
 
 
@@ -828,5 +839,146 @@ def test_new_bundle_replaces_all_members_at_its_actual_cutoff(tmp_path):
     later = STAMP + timedelta(hours=1)
     bundle(storage, second, later)
     need = [InputNeed("silver.i3_alert_active_periods", "all")]
-    assert {s.key for s in resolve_sources(need, storage, "sample", STAMP, {})} == set(first)
-    assert {s.key for s in resolve_sources(need, storage, "sample", later, {})} == set(second)
+    assert {
+        s.key
+        for s in resolve_sources(need, storage, "sample", STAMP, {})
+        if not s.receipt.get("bundle_closure")
+    } == set(first)
+    assert {
+        s.key
+        for s in resolve_sources(need, storage, "sample", later, {})
+        if not s.receipt.get("bundle_closure")
+    } == set(second)
+
+
+@pytest.mark.parametrize(
+    "day,cut",
+    [
+        ("2026-11-10", "2026-11-03T07:00:00+00:00"),
+        ("2026-11-01", "2026-11-02T04:30:00+00:00"),
+        ("2026-03-08", "2026-03-09T03:30:00+00:00"),
+    ],
+)
+def test_bundle_refuses_a_day_whose_end_is_after_snapshot(tmp_path, day, cut):
+    from transit_ops.batch.build import BuildRequest
+    from transit_ops.batch.replay import validate_alert_bundle
+
+    root = tmp_path / "inputs"
+    root.mkdir()
+    (root / "alert-bundle.json").write_text(
+        json.dumps(
+            [
+                dict(
+                    version="a" * 64,
+                    snapshot_at_utc=cut,
+                    coverage_from_utc="2026-01-01T00:00:00+00:00",
+                    files={},
+                )
+            ]
+        )
+    )
+    request = BuildRequest(
+        "sample",
+        (datetime.fromisoformat(day).date(),),
+        datetime(2026, 11, 14, tzinfo=UTC),
+        30,
+        7,
+        "America/Toronto",
+    )
+    with pytest.raises(ValueError, match="bundle_coverage"):
+        validate_alert_bundle(root, request)
+
+
+def test_alert_bundle_uses_only_its_pinned_parent_closure(tmp_path):
+    from transit_ops.lake.alert_bundle import CLOSURE_RELATIONS
+
+    storage = store(tmp_path)
+    keys = alert_copies(storage)
+    bundle(storage, keys)
+    need = [InputNeed("silver.i3_alerts", "all"), InputNeed("raw.i3_alert_snapshots", "all")]
+    before = resolve_sources(need, storage, "sample", STAMP, {})
+    for relation in CLOSURE_RELATIONS:
+        archive(
+            storage, relation, "2026-11", "SELECT 'sample' AS provider_id WHERE false", version=99
+        )
+    after = resolve_sources(need, storage, "sample", STAMP, {})
+    assert before == after
+    assert {s.needs[0].relation for s in after if s.receipt.get("bundle_closure")} == set(
+        CLOSURE_RELATIONS
+    )
+
+
+def test_bundle_missing_closure_refuses_by_parent_name(tmp_path):
+    storage = store(tmp_path)
+    bundle(storage, alert_copies(storage))
+    source = next(
+        s
+        for s in resolve_sources(
+            [InputNeed("silver.i3_alerts", "all")], storage, "sample", STAMP, {}
+        )
+        if s.needs[0].relation == "raw.i3_alert_snapshots"
+    )
+    (storage.root / source.key).unlink()
+    with pytest.raises(ValueError, match="bundle_parent_missing: raw.i3_alert_snapshots"):
+        resolve_sources([InputNeed("silver.i3_alerts", "all")], storage, "sample", STAMP, {})
+
+
+@pytest.mark.parametrize(
+    "day,start,end",
+    [
+        ("2026-11-01", "2026-11-01T04:00:00+00:00", "2026-11-02T05:00:00+00:00"),
+        ("2026-03-08", "2026-03-08T05:00:00+00:00", "2026-03-09T04:00:00+00:00"),
+    ],
+)
+def test_bundle_accepts_the_complete_dst_day_exactly_at_its_cutoff(tmp_path, day, start, end):
+    from transit_ops.batch.build import BuildRequest
+    from transit_ops.batch.replay import validate_alert_bundle
+    from transit_ops.lake.alert_bundle import CLOSURE_RELATIONS, MEMBERS
+
+    hashes = {}
+    for relation in (*MEMBERS, *CLOSURE_RELATIONS):
+        path = tmp_path / relation / "all.parquet"
+        path.parent.mkdir()
+        path.write_bytes(b"fixture")
+        hashes[relation] = hashlib.sha256(b"fixture").hexdigest()
+    (tmp_path / "alert-bundle.json").write_text(
+        json.dumps(
+            [dict(version="a" * 64, snapshot_at_utc=end, coverage_from_utc=start, files=hashes)]
+        )
+    )
+    request = BuildRequest(
+        "sample",
+        (datetime.fromisoformat(day).date(),),
+        datetime(2026, 11, 14, tzinfo=UTC),
+        30,
+        7,
+        "America/Toronto",
+    )
+    assert validate_alert_bundle(tmp_path, request)[0][0] == "alert-bundle.json"
+
+
+def test_source_preflight_refuses_future_day_before_payload_download(tmp_path, monkeypatch):
+    from transit_ops.batch.build import BuildRequest
+
+    storage = store(tmp_path)
+    bundle(storage, alert_copies(storage))
+    request = BuildRequest(
+        "sample",
+        (datetime(2026, 11, 10).date(),),
+        datetime(2026, 11, 14, tzinfo=UTC),
+        30,
+        7,
+        "America/Toronto",
+    )
+    monkeypatch.setattr(
+        LocalBronzeStorage, "open_stream", lambda *a, **kw: pytest.fail("payload downloaded")
+    )
+    with pytest.raises(ValueError, match="bundle_coverage: 2026-11-10"):
+        resolve_sources(
+            [InputNeed("silver.i3_alerts", "all")],
+            storage,
+            "sample",
+            request.as_of_utc,
+            {},
+            request=request,
+        )

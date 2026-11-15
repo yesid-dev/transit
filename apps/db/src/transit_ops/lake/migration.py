@@ -92,6 +92,11 @@ def require_read_reserve(not_after: datetime, timeout: int) -> None:
         raise MigrationRefused("not_after", "insufficient reserve for export, recheck and margin")
 
 
+def require_group_reserve(not_after: datetime, timeout: int, members: int) -> None:
+    if datetime.now(UTC) + timedelta(seconds=(members + 1) * timeout + READ_MARGIN_S) >= not_after:
+        raise MigrationRefused("not_after", "insufficient reserve for complete bundle and closure")
+
+
 class _PlanReads:
     def __init__(
         self, connection: Connection[Any], budget: int, timeout: int, not_after: datetime | None
@@ -334,7 +339,11 @@ def _groups(
     groups = []
     for (provider,) in candidates:
         validate_provider_id(provider)
-        if has_provider and providers is not None and provider not in providers:
+        if (
+            providers is not None
+            and provider not in providers
+            and (has_provider or get_dataset(catalog.name).copy_group is None)
+        ):
             continue
         predicate = sql.SQL("provider_id=%s") if has_provider else sql.SQL("true")
         values = (provider,) if has_provider else ()
@@ -540,6 +549,13 @@ def plan_migration(
     singles = tuple(
         sorted((w for w in windows if not get_dataset(w.spec.dataset_id).copy_group), key=_order)
     )
+    if grouped:
+        from transit_ops.lake.alert_bundle import validate_members
+
+        try:
+            validate_members(grouped)
+        except ValueError as error:
+            raise MigrationRefused("copy_group_incomplete", str(error)) from error
     units = (PlannedWindow(grouped[0], "whole_state", grouped),) if grouped else ()
     return MigrationPlan(inventory, singles + units, tuple(skipped), target)
 
@@ -569,7 +585,7 @@ def run_migration(
         ),
     }
     outcomes: dict[str, dict[str, int]] = {}
-    from transit_ops.lake.alert_bundle import copy_group
+    from transit_ops.lake.alert_bundle import CLOSURE_RELATIONS, copy_group
 
     for window in plan.windows:
         if window.copy_group_members:
@@ -632,15 +648,24 @@ def run_migration(
             **target,
         }
         try:
-            require_read_reserve(not_after, statement_timeout_s)
-            if still_locked is not None and not still_locked():
-                raise MigrationRefused("migration_lock_lost")
+            require_group_reserve(
+                not_after, statement_timeout_s, len(specs) + len(CLOSURE_RELATIONS)
+            )
+            if still_locked is not None:
+                try:
+                    if not still_locked():
+                        raise MigrationRefused("migration_lock_lost")
+                except Exception as error:
+                    raise MigrationRefused("migration_lock_lost") from error
             if shutil.disk_usage(work_dir).free < WORK_SPACE_FLOOR:
                 raise MigrationRefused("work_space")
             from tempfile import mkdtemp
 
             directory = Path(mkdtemp(prefix="bundle-", dir=work_dir))
             with connect() as connection:
+                require_group_reserve(
+                    not_after, statement_timeout_s, len(specs) + len(CLOSURE_RELATIONS)
+                )
                 bundle = copy_group(
                     connection,
                     storage,
@@ -648,6 +673,7 @@ def run_migration(
                     work_dir=directory,
                     copied_by=copied_by,
                     statement_timeout_s=statement_timeout_s,
+                    not_after=not_after,
                 )
             record.update(
                 outcome="copied",

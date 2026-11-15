@@ -27,7 +27,15 @@ from transit_ops.batch.fetch_inputs import fetch_inputs, needs_for_replay
 from transit_ops.batch.private_area import PrivateArea
 from transit_ops.history.datasets import HistoryDataset, TableSource, get_dataset
 from transit_ops.ingestion.storage import BronzeStorage
-from transit_ops.lake.alert_bundle import GROUP, MEMBERS, PREFIX, validate_members
+from transit_ops.lake.alert_bundle import (
+    CLOSURE_RELATIONS,
+    GROUP,
+    MEMBERS,
+    PREFIX,
+    BundleRefused,
+    validate_coverage,
+    validate_members,
+)
 from transit_ops.lake.archive_keys import (
     parse_proof_key,
     proof_key,
@@ -99,6 +107,7 @@ def fetch_from_catalog(
                 catalog,
             ),
             bootstrap_editions=uses_editions,
+            request=request,
         )
 
 
@@ -341,7 +350,7 @@ def _bundle_sources(storage: BronzeStorage, provider: str, as_of: datetime) -> t
         if key != PREFIX + version + ".json":
             raise ValueError(f"invalid bundle digest: {key}")
         value = json.loads(payload)
-        if value.get("format_version") != 1 or value.get("kind") != GROUP:
+        if value.get("format_version") != 2 or value.get("kind") != GROUP:
             raise ValueError(f"invalid bundle: {key}")
         stamp = datetime.fromisoformat(value["snapshot_at_utc"])
         if stamp.utcoffset() is None:
@@ -358,24 +367,36 @@ def _bundle_sources(storage: BronzeStorage, provider: str, as_of: datetime) -> t
             for m in records
         ]
     )
+    closure = value.get("closure", [])
+    if len(closure) != len(CLOSURE_RELATIONS) or {m["dataset_id"] for m in closure} != set(
+        CLOSURE_RELATIONS
+    ):
+        missing = set(CLOSURE_RELATIONS) - {m["dataset_id"] for m in closure}
+        raise BundleRefused("bundle_parent_missing", sorted(missing))
     result = []
-    for m in records:
+    for m in records + closure:
         key = m["key"]
-        expected = table_copy_key(
-            m["dataset_id"],
-            m["provider_id"],
-            m["revision"],
-            "month",
-            m["window_key"],
-            m["content_version"],
-            m["schema_version"],
-        )
-        if key != expected:
-            raise ValueError(f"bundle member identity: {m['dataset_id']}")
-        if not storage.exists(proof_key(key)) or not storage.exists(key):
-            raise SourcesMissing([InputNeed(m["dataset_id"], "all")])
-        if _document(storage, proof_key(key)) != m:
-            raise ValueError(f"bundle member proof differs: {m['dataset_id']}")
+        is_closure = m["dataset_id"] in CLOSURE_RELATIONS
+        if is_closure:
+            expected = f"archive/v1/bundle-closure/{m['dataset_id']}/{m['object_sha256']}.parquet"
+            if key != expected or not storage.exists(key):
+                raise BundleRefused("bundle_parent_missing", m["dataset_id"])
+        else:
+            expected = table_copy_key(
+                m["dataset_id"],
+                m["provider_id"],
+                m["revision"],
+                "month",
+                m["window_key"],
+                m["content_version"],
+                m["schema_version"],
+            )
+            if key != expected:
+                raise ValueError(f"bundle member identity: {m['dataset_id']}")
+            if not storage.exists(proof_key(key)) or not storage.exists(key):
+                raise SourcesMissing([InputNeed(m["dataset_id"], "all")])
+            if _document(storage, proof_key(key)) != m:
+                raise ValueError(f"bundle member proof differs: {m['dataset_id']}")
         _verified(m, key)
         receipt = dict(
             m,
@@ -383,6 +404,7 @@ def _bundle_sources(storage: BronzeStorage, provider: str, as_of: datetime) -> t
             bundle_snapshot_at_utc=stamp.isoformat(),
             bundle_coverage_from_utc=value["coverage_from_utc"],
             replay_provider=provider,
+            bundle_closure=is_closure,
         )
         result.append(Source(key, receipt, (InputNeed(m["dataset_id"], "all"),)))
     return tuple(result)
@@ -394,6 +416,8 @@ def resolve_sources(
     provider: str,
     as_of: datetime,
     editions: Mapping[int, str],
+    *,
+    request: BuildRequest | None = None,
 ) -> tuple[Source, ...]:
     """Preflight every need before payload reads; select only current proven revisions."""
     validate_provider_id(provider)
@@ -404,7 +428,17 @@ def resolve_sources(
     if any(n.relation in MEMBERS for n in needs):
         for source in _bundle_sources(storage, provider, as_of):
             selected[source.key] = source
-        needs = tuple(n for n in needs if n.relation not in MEMBERS)
+        pinned = {s.needs[0].relation for s in selected.values()}
+        if request is not None:
+            receipt = next(iter(selected.values())).receipt
+            validate_coverage(
+                datetime.fromisoformat(receipt["bundle_snapshot_at_utc"]),
+                datetime.fromisoformat(receipt["bundle_coverage_from_utc"]),
+                request.local_dates,
+                request.timezone,
+                request.as_of_utc,
+            )
+        needs = tuple(n for n in needs if n.relation not in pinned)
     for need in needs:
         rescued = _rescue(need, storage, provider)
         if rescued:
@@ -549,7 +583,11 @@ def _filter_window(
     as_of: datetime,
     whole: set[str],
 ) -> tuple[dict[str, object], dict[InputNeed, Path]]:
-    column = _window_column(conn, source.needs[0].relation)
+    column = (
+        None
+        if source.receipt.get("bundle_closure")
+        else _window_column(conn, source.needs[0].relation)
+    )
     predicates = [_predicate(n, column, as_of) for n in source.needs]
     union = " OR ".join(f"({sql})" for sql, _ in predicates)
     params = [p for _, values in predicates for p in values]
@@ -599,7 +637,7 @@ def materialize(
             conn.execute("DROP VIEW IF EXISTS input")
             conn.from_parquet(str(path), hive_partitioning=False).create_view("input", replace=True)
             relation = source.needs[0].relation
-            if relation in MEMBERS:
+            if "bundle_version" in source.receipt:
                 provider = source.receipt["replay_provider"]
                 if relation == "silver.i3_alert_active_periods":
                     parent = next(s for s in sources if s.needs[0].relation == "silver.i3_alerts")
@@ -629,7 +667,7 @@ def materialize(
                 raise ValueError(f"Parquet schema differs: {relation} {path}")
             schemas[relation] = schema
             receipt, parts = _filter_window(conn, source, path, index, as_of, whole)
-            if relation in MEMBERS:
+            if "bundle_version" in source.receipt:
                 receipt.update(
                     rows_dropped=total - int(receipt["rows_kept"]),
                     bundle_version=source.receipt["bundle_version"],
@@ -659,6 +697,7 @@ def fetch_replay_inputs(
     needs_for: Callable[[EditionMapping], Sequence[InputNeed]],
     *,
     bootstrap_editions: bool = True,
+    request: BuildRequest | None = None,
 ) -> dict[str, object]:
     """Bootstrap only edition readers/FK needs, then preflight all payloads."""
     from transit_ops.batch.replay import absent_unread
@@ -678,7 +717,7 @@ def fetch_replay_inputs(
             mapping = edition_mapping(first, provider, bootstrap=bootstrap)
             paths[bootstrap.key] = first
             needs = tuple(needs_for(mapping))
-        sources = resolve_sources(needs, storage, provider, as_of, mapping)
+        sources = resolve_sources(needs, storage, provider, as_of, mapping, request=request)
         if mapping.bootstrap is not None:
             _check_bootstrap_current(mapping.bootstrap, storage, provider, as_of)
         for index, source in enumerate(sources):
@@ -693,11 +732,11 @@ def fetch_replay_inputs(
                 members=[
                     dict(key=m.key, object_sha256=m.receipt["object_sha256"])
                     for m in sources
-                    if m.needs[0].relation in MEMBERS
+                    if "bundle_version" in m.receipt
                 ],
                 files={
                     r: hashlib.sha256((root / r / "all.parquet").read_bytes()).hexdigest()
-                    for r in MEMBERS
+                    for r in (*MEMBERS, *CLOSURE_RELATIONS)
                 },
             )
             for s in sources

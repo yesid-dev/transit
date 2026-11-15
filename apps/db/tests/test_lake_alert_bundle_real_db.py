@@ -100,6 +100,11 @@ def test_one_snapshot_and_last_bundle_proof(alert_seed, tmp_path, monkeypatch, f
             interleaved = True
             with psycopg.connect(**args, autocommit=True) as writer:
                 insert(writer, 1)
+                writer.execute(
+                    "UPDATE raw.i3_alert_snapshots SET raw_payload_json=%s::jsonb "
+                    "WHERE i3_alert_snapshot_id=%s",
+                    ('{"late":true}', snapshot),
+                )
         return result
 
     monkeypatch.setattr(table_export, "_copy", copy)
@@ -112,6 +117,7 @@ def test_one_snapshot_and_last_bundle_proof(alert_seed, tmp_path, monkeypatch, f
                 raise OSError("mid-group failure")
             return super().put_if_absent(path, key)
 
+    (tmp_path / "objects").mkdir()
     storage = Storage("local", tmp_path / "objects")
     work = tmp_path / "work"
     work.mkdir()
@@ -142,6 +148,13 @@ def test_one_snapshot_and_last_bundle_proof(alert_seed, tmp_path, monkeypatch, f
     document = json.loads(storage.read_bytes(events[-1]))
     assert document["snapshot_at_utc"] == result.snapshot_at_utc
     assert len(document["members"]) == 3
+    assert {m["dataset_id"] for m in document["closure"]} == {
+        "raw.i3_alert_snapshots",
+        "raw.ingestion_runs",
+        "raw.ingestion_objects",
+        "core.feed_endpoints",
+        "core.providers",
+    }
     with duckdb.connect() as db:
         for member in result.members:
             rows = db.execute(
@@ -152,6 +165,60 @@ def test_one_snapshot_and_last_bundle_proof(alert_seed, tmp_path, monkeypatch, f
             assert rows == [
                 (0,)
             ]  # The concurrent version and all its children are outside the cut.
+    parent = next(m for m in document["closure"] if m["dataset_id"] == "raw.i3_alert_snapshots")
+    with duckdb.connect() as db:
+        payload = db.execute(
+            "SELECT raw_payload_json FROM read_parquet(?) WHERE i3_alert_snapshot_id=?",
+            [str(storage.root / parent["key"]), snapshot],
+        ).fetchone()[0]
+        assert json.loads(payload) == {}  # Concurrent parent mutation is outside this same cut too.
     assert conn.execute(
         "SELECT count(*) FROM silver.i3_alerts WHERE provider_id=%s", (PROVIDER,)
     ).fetchone() == (2,)
+
+
+def test_bundle_closure_is_exact_without_independent_parent_copies(
+    alert_seed, tmp_path, real_db_engine
+):
+    from sqlalchemy import inspect
+
+    from transit_ops.batch.input_sources import fetch_replay_inputs
+    from transit_ops.batch.inputs import resolve_inputs
+    from transit_ops.batch.replay import validate_parent_rows
+
+    conn, args, snapshot, insert = alert_seed
+    root = tmp_path / "archive"
+    root.mkdir()
+    storage = LocalBronzeStorage("local", root)
+    work = tmp_path / "work"
+    work.mkdir()
+    specs = [
+        WindowSpec(r, "_shared" if r.endswith("active_periods") else PROVIDER, "2026-11")
+        for r in MEMBERS
+    ]
+    result = copy_group(
+        conn, storage, specs, work_dir=work, copied_by="a" * 40, statement_timeout_s=60
+    )
+    proof = json.loads(storage.read_bytes(PREFIX + result.version + ".json"))
+    with duckdb.connect() as db:
+        for parent in proof["closure"]:
+            rows = db.execute(
+                "SELECT provider_id FROM read_parquet(?)", [str(storage.root / parent["key"])]
+            ).fetchall()
+            assert rows == (
+                [] if parent["dataset_id"] == "raw.ingestion_objects" else [(PROVIDER,)]
+            )
+    # No independent parent archive copies exist; only the pinned closure can satisfy replay.
+    inputs = tmp_path / "inputs"
+    inputs.mkdir()
+    receipt = fetch_replay_inputs(
+        storage,
+        inputs,
+        PROVIDER,
+        datetime.now(UTC) + timedelta(seconds=1),
+        lambda _: [InputNeed("silver.i3_alerts", "all")],
+        bootstrap_editions=False,
+    )
+    needs = tuple(InputNeed(n["relation"], n["window"]) for n in receipt["needs"])
+    # Use the source's catalog only; validation reads Parquet and never loads or changes this DB.
+    validate_parent_rows(resolve_inputs(needs, inputs), inspect(real_db_engine))

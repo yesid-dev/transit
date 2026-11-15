@@ -683,3 +683,103 @@ def test_migration_plan_expands_alert_selection_into_one_group(planning):
         ("silver.i3_alert_informed_entities", "p"),
         ("silver.i3_alert_active_periods", "_shared"),
     }
+
+
+def test_provider_filter_does_not_widen_unrelated_shared_tables(planning):
+    assert planning(names=("gold.report_labels",), providers=["p"]).windows == ()
+
+
+def test_empty_provider_alert_group_refuses_at_plan_time(planning):
+    with pytest.raises(ValueError, match="copy_group_incomplete"):
+        planning(
+            names=(
+                "silver.i3_alerts",
+                "silver.i3_alert_informed_entities",
+                "silver.i3_alert_active_periods",
+            ),
+            datasets=["silver.i3_alerts"],
+            providers=["missing"],
+        )
+
+
+@pytest.mark.parametrize("failure", ["not_after", "migration_lock_lost", "work_space"])
+def test_group_run_refusals_are_named(tmp_path, monkeypatch, failure):
+    from datetime import timedelta
+
+    from transit_ops.lake import migration as m
+
+    specs = tuple(
+        WindowSpec(r, "_shared" if r.endswith("active_periods") else "p", "2026-11")
+        for r in (
+            "silver.i3_alerts",
+            "silver.i3_alert_informed_entities",
+            "silver.i3_alert_active_periods",
+        )
+    )
+    plan = MigrationPlan(
+        SimpleNamespace(complete=True), (PlannedWindow(specs[0], "whole_state", specs),), ()
+    )
+
+    def lost():
+        raise OSError("lock disconnected")
+
+    monkeypatch.setattr(
+        m.shutil,
+        "disk_usage",
+        lambda _: SimpleNamespace(free=0 if failure == "work_space" else 2 * m.WORK_SPACE_FLOOR),
+    )
+    result = run_migration(
+        plan,
+        lambda: pytest.fail("must refuse before connecting"),
+        None,
+        work_dir=tmp_path,
+        copied_by="a" * 40,
+        statement_timeout_s=60,
+        not_after=datetime.now(UTC) + timedelta(seconds=421 if failure == "not_after" else 5000),
+        still_locked=lost if failure == "migration_lock_lost" else lambda: True,
+        log=lambda _: None,
+    )
+    assert result.failure["reason"] == failure
+
+
+def test_group_rechecks_reserve_after_connect(tmp_path, monkeypatch):
+    from datetime import timedelta
+
+    from transit_ops.lake import migration as m
+    from transit_ops.lake.alert_bundle import MEMBERS
+
+    now = [datetime(2099, 1, 1, tzinfo=UTC)]
+    deadline = now[0] + timedelta(seconds=1000)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now[0]
+
+    monkeypatch.setattr(m, "datetime", Clock)
+    monkeypatch.setattr(
+        m.shutil, "disk_usage", lambda _: SimpleNamespace(free=2 * m.WORK_SPACE_FLOOR)
+    )
+    specs = tuple(
+        WindowSpec(r, "_shared" if r.endswith("active_periods") else "p", "2026-11")
+        for r in MEMBERS
+    )
+    plan = MigrationPlan(
+        SimpleNamespace(complete=True), (PlannedWindow(specs[0], "whole_state", specs),), ()
+    )
+
+    def connect():
+        now[0] += timedelta(seconds=200)
+        return nullcontext(Source())
+
+    result = run_migration(
+        plan,
+        connect,
+        None,
+        work_dir=tmp_path,
+        copied_by="a" * 40,
+        statement_timeout_s=60,
+        not_after=deadline,
+        log=lambda _: None,
+    )
+    assert result.failure["reason"] == "not_after"
