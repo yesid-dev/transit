@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { fmtCount, fmtDelayMin, fmtPct } from './format';
+import { describe, expect, expectTypeOf, it } from 'vitest';
+import { fmtCount, fmtDelayMin, fmtLocalePct, fmtPct, type FormatLang } from './format';
 
 const ABSENT = [null, undefined, NaN, Infinity, -Infinity] as const;
 
@@ -162,4 +162,55 @@ describe('metric display rounding', () => {
 			}
 		},
 	);
+});
+
+const NBSP = '\u00a0';
+
+describe('fmtLocalePct — reader-facing percentage in the reader’s locale', () => {
+	it('82 percentage points read as 82 per cent in each locale’s typography', () => {
+		expect(fmtLocalePct(82, 'en')).toBe('82%');
+		expect(fmtLocalePct(82, 'fr')).toBe(`82${NBSP}%`);
+	});
+
+	it('absence is never a percentage, and a measured zero is', () => {
+		for (const locale of ['en', 'fr'] as const) {
+			for (const v of ABSENT) {
+				expect(fmtLocalePct(v, locale)).toBeNull();
+				expect(fmtLocalePct(v, locale, { noData: 'no data' })).toBe('no data');
+			}
+		}
+		expect(fmtLocalePct(0, 'en')).toBe('0%');
+		expect(fmtLocalePct(0, 'fr')).toBe(`0${NBSP}%`);
+	});
+
+	it.each([
+		[4.2, undefined, '4.2%', `4,2${NBSP}%`],
+		[2.55, undefined, '2.6%', `2,6${NBSP}%`],
+		[-2.55, undefined, '-2.6%', `-2,6${NBSP}%`],
+		[-0.04, undefined, '0%', `0${NBSP}%`],
+		[2.5, 'round', '3%', `3${NBSP}%`],
+		[-2.5, 'round', '-3%', `-3${NBSP}%`],
+		[3, 'fixed1', '3.0%', `3,0${NBSP}%`],
+	] as const)('%s with %s rounding keeps decimal half-away ties', (v, rounding, en, fr) => {
+		expect(fmtLocalePct(v, 'en', { rounding })).toBe(en);
+		expect(fmtLocalePct(v, 'fr', { rounding })).toBe(fr);
+	});
+
+	it('French groups thousands with the same no-break space as counts', () => {
+		expect(fmtCount(1234, { locale: 'fr' })).toBe(`1${NBSP}234`);
+		expect(fmtLocalePct(1234, 'fr')).toBe(`1${NBSP}234${NBSP}%`);
+		expect(fmtLocalePct(1234, 'en')).toBe('1,234%');
+	});
+
+	it('takes the locale explicitly: no host, provider or time-zone input', () => {
+		expectTypeOf(fmtLocalePct).parameter(1).toEqualTypeOf<FormatLang>();
+	});
+
+	it('leaves existing fmtPct calls as they were while giving the reader form', () => {
+		expect(fmtPct(82, { locale: 'fr' })).toBe('82%');
+		expect(fmtPct(82, { locale: 'fr', suffix: ' %' })).toBe('82 %');
+		expect(fmtPct(2.55, { rounding: 'fixed1', locale: 'fr' })).toBe('2,6%');
+		expect(fmtLocalePct(82, 'fr')).toBe(`82${NBSP}%`);
+		expect(fmtLocalePct(2.55, 'fr', { rounding: 'fixed1' })).toBe(`2,6${NBSP}%`);
+	});
 });

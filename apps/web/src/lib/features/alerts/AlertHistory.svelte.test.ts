@@ -385,14 +385,14 @@ describe('AlertHistory article shell', () => {
 		expect(copyEn.cards).toEqual({
 			window: {
 				title: 'Alerts in window',
-				subtitle: expect.stringMatching(/\?$/),
+				subtitle: 'How many alerts were there, and how long did the agency say they would last?',
 			},
 			breakdown: {
 				title: 'Breakdown',
 				subtitle: expect.stringMatching(/\?$/),
 			},
 			log: {
-				title: 'Past alerts',
+				title: 'Alert archive',
 				subtitle: expect.stringMatching(/\?$/),
 			},
 		});
@@ -418,14 +418,14 @@ describe('AlertHistory article shell', () => {
 		expect(copyFr.cards).toEqual({
 			window: {
 				title: 'Avis dans la fenêtre',
-				subtitle: expect.stringMatching(/\?$/),
+				subtitle: 'Combien d’avis, et quelle durée l’agence annonçait-elle ?',
 			},
 			breakdown: {
 				title: 'Répartition',
 				subtitle: expect.stringMatching(/\?$/),
 			},
 			log: {
-				title: 'Avis passés',
+				title: 'Archive des avis',
 				subtitle: expect.stringMatching(/\?$/),
 			},
 		});
@@ -450,7 +450,7 @@ describe('AlertHistory article shell', () => {
 		).toHaveLength(1);
 
 		const rail = container.querySelector('[data-slot="surface-rail"]') as HTMLElement;
-		for (const title of ['Alerts in window', 'Breakdown', 'Past alerts']) {
+		for (const title of ['Alerts in window', 'Breakdown', 'Alert archive']) {
 			expect(within(rail).getByRole('button', { name: title })).toBeInTheDocument();
 		}
 	});
@@ -495,7 +495,7 @@ describe('AlertHistory article shell', () => {
 
 		await fireEvent.click(within(filters).getByRole('radio', { name: 'Lines' }));
 		expect(screen.getByRole('dialog', { name: 'Filters & contents' })).toBeInTheDocument();
-		await fireEvent.click(within(sheet).getByRole('button', { name: 'Past alerts' }));
+		await fireEvent.click(within(sheet).getByRole('button', { name: 'Alert archive' }));
 		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 		expect(container.querySelector('[data-slot="surface-rail"]')).toBe(rail);
 	});
@@ -693,12 +693,19 @@ describe('AlertHistory log', () => {
 });
 
 describe('AlertHistory headline', () => {
-	it('shows the in-window alert count + median duration sublabel', () => {
+	it('shows the in-window alert count + median stated duration sublabel', () => {
 		render(AlertHistoryScreen);
 		const card = document.querySelector('[data-slot="alert-headline"]');
 		expect(card).not.toBeNull();
 		expect(card).toHaveTextContent('2');
 		expect(card).toHaveTextContent(copyEn.headline.median(1125));
+	});
+
+	it('names the median as the duration the agency stated, in both languages', () => {
+		expect(copyEn.headline.median(90)).toBe('median stated duration 90 min');
+		expect(copyEn.breakdown.median(90)).toBe('median stated duration 90 min');
+		expect(alertHistoryCopy.fr.headline.median(90)).toBe('durée médiane annoncée 90 min');
+		expect(alertHistoryCopy.fr.breakdown.median(90)).toBe('durée médiane annoncée 90 min');
 	});
 });
 
@@ -1110,7 +1117,7 @@ describe('AlertHistory retained archive integration', () => {
 		expect(screen.queryByText('Other route')).toBeNull();
 		expect(within(card(container, 'alerts-window')).getByText('2')).toBeInTheDocument();
 		expect(
-			within(card(container, 'alerts-window')).getByText('median duration 90 min'),
+			within(card(container, 'alerts-window')).getByText('median stated duration 90 min'),
 		).toBeInTheDocument();
 		const causes = within(card(container, 'alerts-breakdown')).getByRole('list', {
 			name: /distribution by cause/i,

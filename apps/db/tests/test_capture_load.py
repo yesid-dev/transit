@@ -21,6 +21,7 @@ def test_shared_realtime_operation_preserves_exact_receipts_and_failure_stage(
     silver = _realtime_silver_result("trip_updates", 20)
     original = RuntimeError("failed https://example.test/feed?api_key=private-d1-secret")
     calls = []
+    observed = []
 
     def resolver(backend):
         pytest.fail("delegate storage resolution")
@@ -56,6 +57,7 @@ def test_shared_realtime_operation_preserves_exact_receipts_and_failure_stage(
         registry=object(),
         engine=object(),
         bronze_storage_resolver=resolver,
+        on_trip_updates_loaded=lambda payload, ref: observed.append((payload, ref)),
     )
     assert "private-d1-secret" not in caplog.text
     assert "committed-capture-a" not in caplog.text
@@ -64,7 +66,11 @@ def test_shared_realtime_operation_preserves_exact_receipts_and_failure_stage(
         assert result.silver is silver
         assert result.failure is None
         assert calls == ["archived", "silver"]
+        assert observed[0][0] == b"committed-capture-a"
+        assert observed[0][1].capture_row_id == 20
+        assert observed[0][1].captured_at_utc == captured.completed_at_utc
     else:
+        assert observed == []
         assert result.silver is None
         assert result.capture is (None if fault == "capture" else captured)
         assert result.failure.stage == ("capture" if fault == "capture" else "silver")

@@ -50,7 +50,7 @@ export const copy = defineCopy({
 		},
 		cards: {
 			worst: {
-				title: 'Worst repeat offender',
+				title: 'Highest share of late readings',
 				subtitle: 'Do severe delays keep happening?',
 			},
 			trips: {
@@ -83,7 +83,7 @@ export const copy = defineCopy({
 				'Bars show the share of readings more than five minutes late. Ranking uses the Wilson lower bound to account for sample size. Recurrence counts late-prone days among the days observed; those days need not be consecutive.',
 		},
 		hero: {
-			label: 'Worst repeat offender',
+			label: 'Highest share of late readings',
 			overline: '#1 offender',
 			recurrenceLabel: 'Recurrence',
 			rateWithCi: (ratePct, lo, hi) =>
@@ -117,7 +117,9 @@ export const copy = defineCopy({
 		},
 		recurrence: {
 			naturalFrequency: (lateDays, observedDays) =>
-				`Late-prone on ${lateDays} of ${observedDays} observed days`,
+				observedDays === 1
+					? 'Seen on one day only. One day does not show a repeated pattern.'
+					: `Late-prone on ${lateDays} of ${observedDays} observed days`,
 			unknown: 'recurrence not recorded',
 		},
 		note: {
@@ -199,7 +201,7 @@ export const copy = defineCopy({
 		},
 		cards: {
 			worst: {
-				title: 'Pire récidiviste',
+				title: 'Plus forte part de relevés en retard',
 				subtitle: 'Les retards graves se répètent-ils ?',
 			},
 			trips: {
@@ -232,7 +234,7 @@ export const copy = defineCopy({
 				'Les barres montrent la part des relevés à plus de cinq minutes de retard. Le classement utilise la borne inférieure de Wilson pour tenir compte de la taille de l’échantillon. La récurrence compte les jours sujets aux retards parmi les jours observés, sans exiger qu’ils soient consécutifs.',
 		},
 		hero: {
-			label: 'Pire récidiviste',
+			label: 'Plus forte part de relevés en retard',
 			overline: 'Récidiviste n°1',
 			recurrenceLabel: 'Récurrence',
 			rateWithCi: (ratePct: string, lo: string, hi: string) =>
@@ -266,7 +268,9 @@ export const copy = defineCopy({
 		},
 		recurrence: {
 			naturalFrequency: (lateDays: number, observedDays: number) =>
-				`Sujet aux retards ${lateDays} ${lateDays === 1 ? 'jour' : 'jours'} sur ${observedDays} ${observedDays === 1 ? 'observé' : 'observés'}`,
+				observedDays === 1
+					? 'Observé un seul jour. Un seul jour ne montre pas une tendance répétée.'
+					: `Sujet aux retards ${lateDays} ${lateDays === 1 ? 'jour' : 'jours'} sur ${observedDays} observés`,
 			unknown: 'récurrence non consignée',
 		},
 		note: {

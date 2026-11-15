@@ -181,7 +181,7 @@ describe('chromeSearchResults', () => {
 		expect(stops[0]?.id).toBe('9999111');
 	});
 
-	it('collapses a station name attached to many stops (different codes) to one', () => {
+	it('keeps a station name without a published mode as separate stops (different codes)', () => {
 		const station: StopIndexEntry[] = [
 			{ id: '1', code: '10280', name: 'Station Henri-Bourassa', lat: 45.554, lon: -73.668 },
 			{ id: '50301', code: '50301', name: 'Station Henri-Bourassa', lat: 45.554, lon: -73.669 },
@@ -191,8 +191,7 @@ describe('chromeSearchResults', () => {
 		const stops = chromeSearchResults('henri bourassa', { stops: station }).filter(
 			(r) => r.kind === 'stop',
 		);
-		expect(stops).toHaveLength(1);
-		expect(stops[0]?.id).toBe('1');
+		expect(stops.map((r) => r.id)).toEqual(['1', '50301', '50303']);
 	});
 
 	it('keeps two distinct same-named non-station stops separate', () => {
