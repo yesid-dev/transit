@@ -57,10 +57,10 @@
 		display: inline-flex;
 		align-items: center;
 		min-height: 44px;
-		color: var(--accent-text);
+		color: var(--primary);
 	}
 	.invite-actions a:focus-visible {
-		outline: 2px solid var(--accent-text);
+		outline: 2px solid var(--primary);
 		outline-offset: 2px;
 	}
 </style>

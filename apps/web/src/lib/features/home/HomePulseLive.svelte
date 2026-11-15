@@ -211,7 +211,7 @@
 		gap: 0.5rem;
 		min-height: 44px;
 		padding: 0 0.25rem;
-		color: var(--accent-text);
+		color: var(--primary);
 		font: inherit;
 		font-weight: 600;
 		background: none;
@@ -224,7 +224,7 @@
 		text-underline-offset: 0.2em;
 	}
 	.live-refresh:focus-visible {
-		outline: 2px solid var(--accent-text);
+		outline: 2px solid var(--primary);
 		outline-offset: 2px;
 	}
 	.live-refresh:disabled {

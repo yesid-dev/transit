@@ -169,13 +169,17 @@ for (const locale of PUBLISHED_LOCALES) {
 		page,
 	}) => {
 		await page.goto(start(locale));
-		const width = page.viewportSize()!.width;
-		const pill = (await page.getByTestId('nav-pill').boundingBox())!;
-		expect(pill.x).toBeGreaterThanOrEqual(0);
-		expect(pill.x + pill.width).toBeLessThanOrEqual(width);
-		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
-			width,
-		);
+		const projectWidth = page.viewportSize()!;
+		// The brand cluster is widest relative to the room on the narrowest phone.
+		for (const width of [320, projectWidth.width]) {
+			await page.setViewportSize({ width, height: projectWidth.height });
+			const pill = (await page.getByTestId('nav-pill').boundingBox())!;
+			expect(pill.x, `pill start at ${width}px`).toBeGreaterThanOrEqual(0);
+			expect(pill.x + pill.width, `pill end at ${width}px`).toBeLessThanOrEqual(width);
+			expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+				width,
+			);
+		}
 
 		// Text-agnostic: the visible label inside the city control, whatever the catalog provides.
 		const header = page.getByRole('navigation', { name: copy.nav });

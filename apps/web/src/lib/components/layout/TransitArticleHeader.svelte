@@ -113,8 +113,11 @@
 		border-radius: var(--radius-pill);
 		background: color-mix(in srgb, var(--article-accent, var(--primary)) 12%, transparent);
 	}
+	/* The sections control appears only once the record's sections arrive, so it keeps its own row:
+	   sharing the actions' row where it fits would rewrap the header when it appears. */
 	:global(.transit-article-header[data-record-stamp])
 		:global([data-slot='article-header-controls']) {
+		flex-basis: 100%;
 		min-height: 44px;
 	}
 	.record-notice {

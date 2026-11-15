@@ -338,7 +338,14 @@
 		{:else}
 			{@const shown = visibleCount(group.total)}
 			{#if group.kind === 'route'}
-				<EntityList grid cards items={matches.routes.slice(0, shown)} key={(r) => r.id} max={shown}>
+				<EntityList
+					grid
+					cards
+					interactive
+					items={matches.routes.slice(0, shown)}
+					key={(r) => r.id}
+					max={shown}
+				>
 					{#snippet row(r)}
 						{@const hint = routeModeHint(r.type)}
 						<div use:observeRouteReliability={{ id: r.id, known: r.reliability }}>
@@ -360,7 +367,14 @@
 					{/snippet}
 				</EntityList>
 			{:else if group.kind === 'stop'}
-				<EntityList grid cards items={matches.stops.slice(0, shown)} key={(s) => s.id} max={shown}>
+				<EntityList
+					grid
+					cards
+					interactive
+					items={matches.stops.slice(0, shown)}
+					key={(s) => s.id}
+					max={shown}
+				>
 					{#snippet row(s)}
 						{@const hint = stopModeHint(s)}
 						{@const tag = stopModeTag(s)}
@@ -386,6 +400,7 @@
 				<EntityList
 					grid
 					cards
+					interactive
 					items={matches.pages.slice(0, shown)}
 					key={(p) => p.href}
 					max={shown}
@@ -402,6 +417,7 @@
 				<EntityList
 					grid
 					cards
+					interactive
 					items={matches.vehicles.slice(0, shown)}
 					key={(v) => v.id}
 					max={shown}
@@ -526,7 +542,7 @@
 							{say.heading('address', addresses.length)}
 						</h2>
 					</div>
-					<EntityList grid cards items={addresses} key={(hit) => hit.id}>
+					<EntityList grid cards interactive items={addresses} key={(hit) => hit.id}>
 						{#snippet row(hit)}
 							<TransitEntityRow href={addressHref(hit)} title={hit.label} />
 						{/snippet}

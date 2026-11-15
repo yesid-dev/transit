@@ -48,7 +48,7 @@
 		border-color: var(--primary-hover);
 	}
 	.home-search a:focus-visible {
-		outline: 2px solid var(--accent-text);
+		outline: 2px solid var(--primary);
 		outline-offset: 3px;
 	}
 	.home-search a :global(.home-search-icon) {
