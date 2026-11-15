@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { centerFromProviderBbox, mapViewportOptions, MONTREAL_MAP_BOUNDS } from './viewport';
+import { centerFromProviderBbox, mapViewportOptions } from './viewport';
 import providers from '../../../../e2e/providers.json';
 import montreal from '../../../../static/map/basemap-montreal-posters.json';
 import ottawa from '../../../../static/map/basemap-ottawa-posters.json';
@@ -22,7 +22,7 @@ describe('extract coverage at the minimum camera zoom', () => {
 			const view = mapViewportOptions(provider.fit_bounds, padding, provider.max_bounds, {
 				width,
 				height,
-			});
+			})!;
 			const x = (lon: number) => (lon + 180) / 360;
 			const y = (lat: number) => (1 - Math.asinh(Math.tan((lat * Math.PI) / 180)) / Math.PI) / 2;
 			const scale = 512 * 2 ** view.minZoom!;
@@ -53,17 +53,43 @@ describe('extract coverage at the minimum camera zoom', () => {
 });
 
 describe('mapViewportOptions', () => {
-	it('keeps the citizen map constrained to the Montréal service area', () => {
-		expect(MONTREAL_MAP_BOUNDS).toEqual([
-			[-74.1, 45.25],
-			[-73.2, 45.75],
-		]);
-		expect(mapViewportOptions()).toMatchObject({
-			maxBounds: MONTREAL_MAP_BOUNDS,
-			minZoom: 9,
-			maxZoom: 16,
-			renderWorldCopies: false,
-		});
+	it('no camera is produced without provider bounds', () => {
+		const size = { width: 390, height: 844 };
+		for (const bbox of [
+			undefined,
+			null,
+			[],
+			[-123.3, 49.0, -122.5],
+			[-123.3, 49.0, -122.5, 49.4, 0],
+			[Number.NaN, 49.0, -122.5, 49.4],
+			[-123.3, 49.0, Number.POSITIVE_INFINITY, 49.4],
+			[-122.5, 49.0, -123.3, 49.4],
+			[-123.3, 49.4, -122.5, 49.0],
+			[-123.3, 49.0, -123.3, 49.4],
+			[-123.3, 49.0, -122.5, 49.0],
+			[-190, 49.0, -122.5, 49.4],
+			[-123.3, -95, -122.5, 49.4],
+		]) {
+			expect(centerFromProviderBbox(bbox)).toBeNull();
+			expect(mapViewportOptions(bbox)).toBeNull();
+			expect(mapViewportOptions(bbox, 40, [-124, 48.5, -122, 49.8], size)).toBeNull();
+		}
+	});
+
+	it('constrains to published fit bounds when published max bounds are invalid', () => {
+		const fit = [
+			[-123.3, 49.0],
+			[-122.5, 49.4],
+		];
+		for (const maxBbox of [undefined, null, [Number.NaN, 0, 0, 0], [-122, 48.5, -124, 49.8]]) {
+			expect(mapViewportOptions([-123.3, 49.0, -122.5, 49.4], 40, maxBbox)).toMatchObject({
+				bounds: fit,
+				maxBounds: fit,
+				minZoom: 9,
+				maxZoom: 16,
+				renderWorldCopies: false,
+			});
+		}
 	});
 
 	it('accepts a provider bbox so each provider can constrain to its own city', () => {
@@ -98,12 +124,12 @@ describe('mapViewportOptions', () => {
 
 	it('derives the initial camera center from the provider bbox', () => {
 		const center = centerFromProviderBbox([-74.176, 45.237, -73.276, 45.867]);
-		expect(center[0]).toBeCloseTo(-73.726);
-		expect(center[1]).toBeCloseTo(45.552);
+		expect(center?.[0]).toBeCloseTo(-73.726);
+		expect(center?.[1]).toBeCloseTo(45.552);
 	});
 
 	it('reduces tile churn during zoom and repeated theme interactions', () => {
-		expect(mapViewportOptions()).toMatchObject({
+		expect(mapViewportOptions([-123.3, 49.0, -122.5, 49.4])).toMatchObject({
 			refreshExpiredTiles: false,
 			maxTileCacheZoomLevels: 8,
 			fadeDuration: 0,

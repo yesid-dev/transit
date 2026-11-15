@@ -13,6 +13,7 @@ const MAP_LISTENER_TYPES = [
 	'movestart',
 	'boxzoomend',
 ] as const;
+const STAGE_BOUNDS = [-74, 45, -73, 46];
 
 const harness = vi.hoisted(() => {
 	function deferred<T>() {
@@ -328,6 +329,7 @@ function releaseImports(): void {
 async function bootStage(extraProps: Record<string, unknown> = {}) {
 	const props = {
 		importers: harness.importers,
+		bounds: STAGE_BOUNDS,
 		basemapLoader: vi.fn(async () => null),
 		...extraProps,
 	};
@@ -363,6 +365,7 @@ describe('MapStage boot lifecycle', () => {
 		render(Stage, {
 			props: {
 				importers: harness.importers,
+				bounds: STAGE_BOUNDS,
 				basemapLoader: ({ signal }: { signal: AbortSignal }) => {
 					signals.push(signal);
 					return Promise.resolve(null);
@@ -481,6 +484,7 @@ describe('MapStage boot lifecycle', () => {
 		render(Stage, {
 			props: {
 				importers: harness.importers,
+				bounds: STAGE_BOUNDS,
 				basemapLoader,
 				locale: {
 					'Map.Title': 'Interactive map',
@@ -517,6 +521,7 @@ describe('MapStage boot lifecycle', () => {
 		render(Stage, {
 			props: {
 				importers: harness.importers,
+				bounds: STAGE_BOUNDS,
 				basemapLoader: vi.fn(async () => Promise.reject(new Error('offline'))),
 				onerror,
 			},
@@ -539,6 +544,7 @@ describe('MapStage boot lifecycle', () => {
 			render(Stage, {
 				props: {
 					importers: harness.importers,
+					bounds: STAGE_BOUNDS,
 					basemapLoader: (ctx?: { signal: AbortSignal }) => {
 						signal = ctx?.signal;
 						return basemapPromise;
@@ -583,6 +589,7 @@ describe('MapStage boot lifecycle', () => {
 			render(Stage, {
 				props: {
 					importers: harness.importers,
+					bounds: STAGE_BOUNDS,
 					basemapLoader: (ctx?: { signal: AbortSignal }) => {
 						signal = ctx?.signal;
 						return Promise.resolve(null);
@@ -645,6 +652,7 @@ describe('MapStage boot lifecycle', () => {
 			render(Stage, {
 				props: {
 					importers: harness.importers,
+					bounds: STAGE_BOUNDS,
 					basemapLoader: vi.fn(async () => null),
 					onerror: (failure: Failure | null) => {
 						if (failure) failures.push(failure);
@@ -690,6 +698,7 @@ describe('MapStage boot lifecycle', () => {
 		render(Stage, {
 			props: {
 				importers: harness.importers,
+				bounds: STAGE_BOUNDS,
 				basemapLoader: vi.fn(async () => null),
 				onerror: (failure: Failure | null) => {
 					if (failure) failures.push(failure);
@@ -713,6 +722,7 @@ describe('MapStage boot lifecycle', () => {
 		const view = render(Stage, {
 			props: {
 				importers: harness.importers,
+				bounds: STAGE_BOUNDS,
 				basemapLoader: (ctx?: { signal: AbortSignal }) => {
 					signal = ctx?.signal;
 					return new Promise<null>(() => {});
@@ -736,6 +746,7 @@ describe('MapStage boot lifecycle', () => {
 		const view = render(Stage, {
 			props: {
 				importers: harness.importers,
+				bounds: STAGE_BOUNDS,
 				basemapLoader: (ctx?: { signal: AbortSignal }) => {
 					signal = ctx?.signal;
 					return Promise.resolve(null);
@@ -1030,6 +1041,7 @@ describe('MapStage boot lifecycle', () => {
 		render(Stage, {
 			props: {
 				importers: harness.importers,
+				bounds: STAGE_BOUNDS,
 				basemapLoader: vi.fn(async () => null),
 				onerror: (failure: Failure | null) => {
 					if (failure) failures.push(failure);
@@ -1051,6 +1063,7 @@ describe('MapStage boot lifecycle', () => {
 		const view = render(Stage, {
 			props: {
 				importers: harness.importers,
+				bounds: STAGE_BOUNDS,
 				basemapLoader: vi.fn(async () => null),
 				onerror: (failure: Failure | null) => {
 					if (failure) failures.push(failure);
@@ -1075,6 +1088,7 @@ describe('MapStage boot lifecycle', () => {
 		const view = render(Stage, {
 			props: {
 				importers: harness.importers,
+				bounds: STAGE_BOUNDS,
 				basemapLoader: vi.fn(async () => null),
 				theme: 'dark',
 				onthemerepaint,
@@ -1106,6 +1120,7 @@ describe('MapStage boot lifecycle', () => {
 
 		await view.rerender({
 			importers: harness.importers,
+			bounds: STAGE_BOUNDS,
 			basemapLoader: vi.fn(async () => null),
 			theme: 'light',
 			basemap: {
@@ -1275,7 +1290,9 @@ describe('MapStage boot lifecycle', () => {
 				: null;
 		});
 		const onerror = vi.fn();
-		const view = render(Stage, { props: { importers: harness.importers, onerror } });
+		const view = render(Stage, {
+			props: { importers: harness.importers, bounds: STAGE_BOUNDS, onerror },
+		});
 		releaseImports();
 		await waitFor(() => expect(onerror).toHaveBeenCalledOnce());
 
@@ -1536,6 +1553,68 @@ describe('MapStage boot lifecycle', () => {
 	});
 });
 
+describe('MapStage published bounds', () => {
+	function renderUnframed(bounds?: readonly number[]) {
+		const maplibre = vi.fn(harness.importers.maplibre);
+		const failures: Array<Failure | null> = [];
+		const props = {
+			importers: { ...harness.importers, maplibre },
+			basemapLoader: vi.fn(async () => null),
+			bounds,
+			onerror: (failure: Failure | null) => failures.push(failure),
+		};
+		const view = render(Stage, { props });
+		releaseImports();
+		return { view, props, maplibre, failures };
+	}
+
+	it.each([[undefined], [[]], [[Number.NaN, 49, -122.5, 49.4]], [[-122.5, 49, -123.3, 49.4]]])(
+		'missing bounds never construct MapLibre: %j',
+		async (bounds) => {
+			const reload = vi.fn();
+			vi.stubGlobal('location', { reload });
+			const { view, maplibre, failures } = renderUnframed(bounds);
+			await waitFor(() => expect(failures.at(-1)?.kind).toBe('bounds'));
+			await settle();
+			expect(maplibre).not.toHaveBeenCalled();
+			expect(harness.state.constructorCalls).toBe(0);
+			expect(view.container.querySelector('[data-map-runtime]')).toBeNull();
+
+			await failures.at(-1)!.retry();
+			expect(reload).toHaveBeenCalledOnce();
+			expect(harness.state.constructorCalls).toBe(0);
+		},
+	);
+
+	it('valid bounds recover after an unavailable provider', async () => {
+		const { view, props, failures } = renderUnframed();
+		await waitFor(() => expect(failures.at(-1)?.kind).toBe('bounds'));
+
+		await view.rerender({ ...props, bounds: [-123.3, 49.0, -122.5, 49.4] });
+		await waitFor(() => expect(harness.state.maps).toHaveLength(1));
+		expect(failures.at(-1)).toBeNull();
+		const first = harness.state.maps[0]!;
+		expect(first.options.bounds).toEqual([
+			[-123.3, 49.0],
+			[-122.5, 49.4],
+		]);
+
+		await view.rerender({ ...props, bounds: [] });
+		await waitFor(() => expect(failures.at(-1)?.kind).toBe('bounds'));
+		expect(first.remove).toHaveBeenCalledOnce();
+		expect(first.fitBounds).not.toHaveBeenCalled();
+
+		await view.rerender({ ...props, bounds: [138.9, 35.4, 140.1, 36.0] });
+		await waitFor(() => expect(harness.state.maps).toHaveLength(2));
+		expect(harness.state.maps[1]!.options.bounds).toEqual([
+			[138.9, 35.4],
+			[140.1, 36.0],
+		]);
+		expect(harness.state.maps[1]!.jumpTo).not.toHaveBeenCalled();
+		view.unmount();
+	});
+});
+
 describe('MapStage attribution one-shot', () => {
 	it('waits for populated attribution and preserves native keyboard reopening and closing', async () => {
 		const stageModule =
@@ -1567,6 +1646,7 @@ describe('MapStage attribution one-shot', () => {
 		const view = render(Stage, {
 			props: {
 				importers: harness.importers,
+				bounds: STAGE_BOUNDS,
 				basemapLoader: vi.fn(async () => null),
 			},
 		});
@@ -1600,6 +1680,7 @@ describe('MapStage attribution one-shot', () => {
 			const view = render(Stage, {
 				props: {
 					importers: harness.importers,
+					bounds: STAGE_BOUNDS,
 					basemapLoader: vi.fn(async () => null),
 					oncleanupfailure,
 				},

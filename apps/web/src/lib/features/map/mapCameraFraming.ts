@@ -2,6 +2,12 @@ import { centerFromProviderBbox, type MapFitPadding } from '../../components/map
 import type { Manifest } from '#lib/v1/schemas/index.ts';
 import type { PublicProvider } from '#lib/v1/providers.ts';
 
+/** First valid published candidate, in priority order. */
+function published(...candidates: Array<readonly number[] | null | undefined>) {
+	return candidates.find((candidate) => centerFromProviderBbox(candidate) !== null);
+}
+
+/** Catalogue framing, then the manifest's service bounds; none valid means no camera. */
 export function mapCameraFraming({
 	manifest,
 	provider,
@@ -9,11 +15,13 @@ export function mapCameraFraming({
 	manifest: Pick<Manifest, 'bbox'>;
 	provider?: Pick<PublicProvider, 'fit_bounds' | 'max_bounds'> | null;
 }) {
-	const bounds = provider?.fit_bounds ?? manifest.bbox;
+	const bounds = published(provider?.fit_bounds, manifest.bbox);
+	const center = centerFromProviderBbox(bounds);
+	if (!bounds || !center) return null;
 	return {
 		bounds,
-		maxBounds: provider?.max_bounds ?? manifest.bbox,
-		center: centerFromProviderBbox(bounds),
+		maxBounds: published(provider?.max_bounds, manifest.bbox) ?? bounds,
+		center,
 	};
 }
 

@@ -2,12 +2,6 @@ import type { MapOptions } from 'maplibre-gl';
 
 export type MapFitPadding = NonNullable<NonNullable<MapOptions['fitBoundsOptions']>['padding']>;
 
-export const MONTREAL_MAP_BOUNDS: [[number, number], [number, number]] = [
-	[-74.1, 45.25],
-	[-73.2, 45.75],
-];
-const MONTREAL_MAP_CENTER: [number, number] = [-73.5673, 45.5017];
-
 export type MapViewportOptions = {
 	bounds: [[number, number], [number, number]];
 	maxBounds: [[number, number], [number, number]];
@@ -22,22 +16,24 @@ export type MapViewportOptions = {
 	| 'fadeDuration'
 >;
 
+/** Published bounds only: finite, ordered and geographic, or no camera at all. */
 function boundsFromProviderBbox(
 	bbox?: readonly number[] | null,
-): [[number, number], [number, number]] {
-	if (bbox?.length !== 4 || !bbox.every(Number.isFinite)) return MONTREAL_MAP_BOUNDS;
+): [[number, number], [number, number]] | null {
+	if (bbox?.length !== 4 || !bbox.every(Number.isFinite)) return null;
 	const [minLon, minLat, maxLon, maxLat] = bbox;
-	if (minLon >= maxLon || minLat >= maxLat) return MONTREAL_MAP_BOUNDS;
+	if (minLon < -180 || maxLon > 180 || minLat < -90 || maxLat > 90) return null;
+	if (minLon >= maxLon || minLat >= maxLat) return null;
 	return [
 		[minLon, minLat],
 		[maxLon, maxLat],
 	];
 }
 
-export function centerFromProviderBbox(bbox?: readonly number[] | null): [number, number] {
-	if (bbox?.length !== 4 || !bbox.every(Number.isFinite)) return MONTREAL_MAP_CENTER;
-	const [minLon, minLat, maxLon, maxLat] = bbox;
-	if (minLon >= maxLon || minLat >= maxLat) return MONTREAL_MAP_CENTER;
+export function centerFromProviderBbox(bbox?: readonly number[] | null): [number, number] | null {
+	const bounds = boundsFromProviderBbox(bbox);
+	if (!bounds) return null;
+	const [[minLon, minLat], [maxLon, maxLat]] = bounds;
 	return [(minLon + maxLon) / 2, (minLat + maxLat) / 2];
 }
 
@@ -47,13 +43,14 @@ export function mapViewportOptions(
 	maxBbox?: readonly number[] | null,
 	size?: { width: number; height: number },
 	preserveView?: { center: { lng: number; lat: number }; zoom: number },
-): MapViewportOptions {
+): MapViewportOptions | null {
 	const bounds = boundsFromProviderBbox(providerBbox);
+	if (!bounds) return null;
 	// maxBounds may be LOOSER than the initial fit so the camera can show map
 	// beyond the (island-focused) fit window — e.g. the west overflow revealed by
 	// a left fit-padding — without MapLibre clamping it back. Falls back to the
-	// fit bounds when not supplied.
-	let maxBounds = maxBbox ? boundsFromProviderBbox(maxBbox) : bounds;
+	// published fit bounds when absent or invalid.
+	let maxBounds = boundsFromProviderBbox(maxBbox) ?? bounds;
 	let minZoom = 9;
 	let offset: [number, number] = [0, 0];
 	if (size && size.width > 0 && size.height > 0) {

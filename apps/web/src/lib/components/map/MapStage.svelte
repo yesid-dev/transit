@@ -22,7 +22,14 @@
 		pmtiles: () => import('pmtiles'),
 	};
 
-	export type MapStageFailureKind = 'importer' | 'protocol' | 'style' | 'construct' | 'setup';
+	/** `bounds`: no valid published bounds, so no camera and no map is constructed. */
+	export type MapStageFailureKind =
+		| 'bounds'
+		| 'importer'
+		| 'protocol'
+		| 'style'
+		| 'construct'
+		| 'setup';
 	export interface MapStageFailure {
 		readonly kind: MapStageFailureKind;
 		readonly retry: () => Promise<void>;
@@ -68,7 +75,7 @@
 <script lang="ts">
 	import { measureMapFocusInset } from '#lib/features/map/mapFocusInset.ts';
 	import { browser, dev } from '$app/env';
-	import { onMount, tick } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { cn } from '#lib/utils/index.ts';
 	import type { BasemapFile } from '#lib/v1/schemas/index.ts';
 	import { applyBasemapTheme, resolveBasemapStyle, type BasemapTheme } from './basemap';
@@ -380,9 +387,9 @@
 		onerror?.({ kind, retry: () => retry(attempt.generation, kind) });
 	}
 
-	function reportRecoveryFailure(attempt: BootAttempt): void {
-		activeFailure = { kind: 'setup', generation: attempt.generation };
-		onerror?.({ kind: 'setup', retry: () => retry(attempt.generation, 'setup') });
+	function reportFailure(generation: number, kind: MapStageFailureKind): void {
+		activeFailure = { kind, generation };
+		onerror?.({ kind, retry: () => retry(generation, kind) });
 	}
 
 	function captureRecoveryFocus(attempt: BootAttempt, instance: MapLibreMap): RecoveryFocus {
@@ -446,7 +453,7 @@
 		}
 		if (!isCurrentAttempt(attempt)) return;
 		if (!cleanupAttempt(attempt)) {
-			reportRecoveryFailure(attempt);
+			reportFailure(attempt.generation, 'setup');
 			return;
 		}
 		const nextGeneration = ++attemptKey;
@@ -471,7 +478,12 @@
 		});
 	}
 
-	async function retry(generation: number, kind: MapStageFailureKind): Promise<void> {
+	/** Importer and bounds retries reload the page, which refetches the published metadata. */
+	async function retry(
+		generation: number,
+		kind: MapStageFailureKind,
+		reload = kind === 'importer' || kind === 'bounds',
+	): Promise<void> {
 		if (
 			!mounted ||
 			retryPending ||
@@ -481,7 +493,7 @@
 			return;
 		}
 		retryPending = true;
-		if (kind === 'importer') {
+		if (reload) {
 			window.location.reload();
 			return;
 		}
@@ -498,6 +510,8 @@
 
 	async function startAttempt(generation: number, recoveryView?: RecoveryView): Promise<void> {
 		if (!mounted || !container || activeAttempt?.initializing) return;
+		// Without published bounds there is no camera: import, tiles and constructor all stay idle.
+		if (!camera.initial(cameraInputs())) return reportFailure(generation, 'bounds');
 		const attempt: BootAttempt = {
 			generation,
 			container,
@@ -541,9 +555,11 @@
 				theme,
 			);
 
+			failureKind = 'bounds';
+			const viewport = camera.initial(cameraInputs());
+			if (!viewport) throw new Error('Published map bounds are unavailable');
 			failureKind = 'construct';
 			preflightWebgl();
-			const viewport = camera.initial(cameraInputs());
 			const runtimeContainer = document.createElement('div');
 			runtimeContainer.style.width = '100%';
 			runtimeContainer.style.height = '100%';
@@ -668,8 +684,18 @@
 		};
 	});
 
+	// Bounds that become invalid release the map; bounds that become valid start one in place.
 	$effect(() => {
-		if (map) camera.update(map, cameraInputs());
+		const inputs = cameraInputs();
+		const framed = camera.initial(inputs) !== null;
+		const instance = map;
+		untrack(() => {
+			if (!framed) {
+				if (activeAttempt && !activeAttempt.initializing) failAttempt(activeAttempt, 'bounds');
+			} else if (instance) camera.update(instance, inputs);
+			else if (activeFailure?.kind === 'bounds')
+				void retry(activeFailure.generation, 'bounds', false);
+		});
 	});
 
 	$effect(() => {
