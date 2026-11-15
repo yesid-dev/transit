@@ -20,7 +20,7 @@ for (const entity of [
 	test(`${entity.path}: Back from a menu link restores the rendered tab and period`, async ({
 		page,
 	}) => {
-		await page.goto(`${entity.path}?provider=stm`);
+		await page.goto(`${entity.path}?provider=stm`, { waitUntil: 'networkidle' });
 		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 		const title = await page.getByRole('heading', { level: 1 }).textContent();
 		const record = page.getByRole('tab', { name: 'Record', exact: true });

@@ -3,10 +3,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import DetailTabControllerHarness from './__fixtures__/DetailTabControllerHarness.svelte';
 
 const navigation = vi.hoisted(() => {
-	const page = { url: new URL('http://localhost/lines/161'), state: { source: 'test' } };
+	const page = {
+		url: new URL('http://localhost/lines/161'),
+		state: { source: 'test' },
+		shallow: null as { url: URL } | null,
+	};
 	return {
 		page,
-		goto: vi.fn((url: string | URL) => {
+		replaceState: vi.fn((url: string | URL) => {
 			Object.assign(page, { url: new URL(url, 'http://localhost') });
 			window.history.replaceState({}, '', `${page.url.pathname}${page.url.search}${page.url.hash}`);
 		}),
@@ -14,7 +18,7 @@ const navigation = vi.hoisted(() => {
 });
 
 vi.mock('$app/state', () => ({ page: navigation.page }));
-vi.mock('$app/navigation', () => ({ goto: navigation.goto }));
+vi.mock('$app/navigation', () => ({ replaceState: navigation.replaceState }));
 
 function setExternalUrl(value: string): URL {
 	const url = new URL(value, 'http://localhost');
@@ -29,8 +33,19 @@ function controller(): HTMLElement {
 
 describe('bidirectional detail tab controller', () => {
 	beforeEach(() => {
-		navigation.goto.mockClear();
+		navigation.page.shallow = null;
+		navigation.replaceState.mockClear();
 		setExternalUrl('/lines/161?window=am#service-profile');
+	});
+	it('restores the tab from shallow history rather than the loaded page URL', async () => {
+		navigation.page.shallow = {
+			url: new URL('http://localhost/lines/161?tab=schedule&grain=month'),
+		};
+		const view = render(DetailTabControllerHarness, { props: { url: navigation.page.url } });
+		expect(controller()).toHaveAttribute('data-active', 'schedule');
+		await view.rerender({ url: new URL(navigation.page.url) });
+		expect(controller()).toHaveAttribute('data-active', 'schedule');
+		expect(navigation.replaceState).not.toHaveBeenCalled();
 	});
 
 	it('accepts external same-route query and back-forward changes without writing stale local state', async () => {
@@ -40,22 +55,22 @@ describe('bidirectional detail tab controller', () => {
 		const detailUrl = setExternalUrl('/lines/161?window=am&tab=detail#service-profile');
 		await view.rerender({ url: detailUrl });
 		await waitFor(() => expect(controller()).toHaveAttribute('data-active', 'detail'));
-		expect(navigation.goto).not.toHaveBeenCalled();
+		expect(navigation.replaceState).not.toHaveBeenCalled();
 
 		const recordUrl = setExternalUrl('/lines/161?window=am#service-profile');
 		await view.rerender({ url: recordUrl });
 		await waitFor(() => expect(controller()).toHaveAttribute('data-active', 'reliability'));
-		expect(navigation.goto).not.toHaveBeenCalled();
+		expect(navigation.replaceState).not.toHaveBeenCalled();
 	});
 
-	it('replaces the router URL for local clicks, preserves unrelated params, and omits Reliability', async () => {
+	it('uses replaceState for local clicks, preserves unrelated params, and omits Reliability', async () => {
 		render(DetailTabControllerHarness, { props: { url: navigation.page.url } });
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Schedule' }));
 		expect(controller()).toHaveAttribute('data-active', 'schedule');
-		expect(navigation.goto).toHaveBeenCalledTimes(1);
+		expect(navigation.replaceState).toHaveBeenCalledTimes(1);
 		let written = new URL(
-			navigation.goto.mock.calls.at(-1)?.[0] as string | URL,
+			navigation.replaceState.mock.calls.at(-1)?.[0] as string | URL,
 			window.location.origin,
 		);
 		expect(written.searchParams.get('tab')).toBe('schedule');
@@ -64,18 +79,18 @@ describe('bidirectional detail tab controller', () => {
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Detail' }));
 		expect(controller()).toHaveAttribute('data-active', 'detail');
-		expect(navigation.goto).toHaveBeenCalledTimes(2);
+		expect(navigation.replaceState).toHaveBeenCalledTimes(2);
 		written = new URL(
-			navigation.goto.mock.calls.at(-1)?.[0] as string | URL,
+			navigation.replaceState.mock.calls.at(-1)?.[0] as string | URL,
 			window.location.origin,
 		);
 		expect(written.searchParams.get('tab')).toBe('detail');
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Reliability' }));
 		expect(controller()).toHaveAttribute('data-active', 'reliability');
-		expect(navigation.goto).toHaveBeenCalledTimes(3);
+		expect(navigation.replaceState).toHaveBeenCalledTimes(3);
 		written = new URL(
-			navigation.goto.mock.calls.at(-1)?.[0] as string | URL,
+			navigation.replaceState.mock.calls.at(-1)?.[0] as string | URL,
 			window.location.origin,
 		);
 		expect(written.searchParams.has('tab')).toBe(false);
@@ -87,9 +102,9 @@ describe('bidirectional detail tab controller', () => {
 		const legacyUrl = setExternalUrl('/stop/57191?tab=next&from=2026-01-31&to=2026-02-01&line=51');
 		render(DetailTabControllerHarness, { props: { url: legacyUrl } });
 
-		await waitFor(() => expect(navigation.goto).toHaveBeenCalledOnce());
+		await waitFor(() => expect(navigation.replaceState).toHaveBeenCalledOnce());
 		const written = new URL(
-			navigation.goto.mock.calls[0][0] as string | URL,
+			navigation.replaceState.mock.calls[0][0] as string | URL,
 			window.location.origin,
 		);
 		expect(controller()).toHaveAttribute('data-active', 'reliability');
@@ -107,9 +122,9 @@ describe('bidirectional detail tab controller', () => {
 		const rest = 'provider=stm&from=2026-01-31&to=2026-02-01';
 		const url = setExternalUrl(`/fr/lines/24?tab=${tabs}&${rest}#record`);
 		render(DetailTabControllerHarness, { props: { url } });
-		await waitFor(() => expect(navigation.goto).toHaveBeenCalledOnce());
+		await waitFor(() => expect(navigation.replaceState).toHaveBeenCalledOnce());
 		expect(controller()).toHaveAttribute('data-active', active);
-		const written = new URL(navigation.goto.mock.calls[0][0], 'http://localhost');
+		const written = new URL(navigation.replaceState.mock.calls[0][0], 'http://localhost');
 		expect(written.href.replace(written.origin, '')).toBe(`/fr/lines/24?${rest}${tab}#record`);
 	});
 });

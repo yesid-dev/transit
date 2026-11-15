@@ -1,5 +1,5 @@
 import { page } from '$app/state';
-import { goto } from '$app/navigation';
+import { replaceState } from '$app/navigation';
 import { detailTabFromSearchParams, detailTabQueryValue, type DetailTab } from './detailTabs';
 import { currentMirrorUrl, mirrorSearchParam } from './urlMirror';
 
@@ -10,14 +10,16 @@ export interface DetailTabController {
 }
 
 export function createDetailTabController(initialUrl: URL): DetailTabController {
-	let active = $state<DetailTab>(detailTabFromSearchParams(initialUrl.searchParams));
+	const seedUrl = new URL((page.shallow?.url ?? initialUrl).href);
+	let active = $state<DetailTab>(detailTabFromSearchParams(seedUrl.searchParams));
 
 	function syncFromUrl(url: URL): void {
-		const next = detailTabFromSearchParams(url.searchParams);
+		const viewUrl = new URL((page.shallow?.url ?? url).href);
+		const next = detailTabFromSearchParams(viewUrl.searchParams);
 		active = next;
 
 		const canonicalValue = detailTabQueryValue(next);
-		const values = url.searchParams.getAll('tab');
+		const values = viewUrl.searchParams.getAll('tab');
 		const isCanonical =
 			canonicalValue === null
 				? values.length === 0
@@ -28,7 +30,7 @@ export function createDetailTabController(initialUrl: URL): DetailTabController 
 		canonical.searchParams.delete('tab');
 		if (canonicalValue !== null) canonical.searchParams.set('tab', canonicalValue);
 		try {
-			void goto(canonical, { replace: true, reset: false, state: { ...page.state } });
+			replaceState(canonical, { ...page.state });
 		} catch {
 			// The router may not be ready; the URL hint is best effort, as in the mirror.
 		}
@@ -40,7 +42,7 @@ export function createDetailTabController(initialUrl: URL): DetailTabController 
 		},
 		set active(next: DetailTab) {
 			active = next;
-			mirrorSearchParam('tab', detailTabQueryValue(next), { navigate: true });
+			mirrorSearchParam('tab', detailTabQueryValue(next));
 		},
 		syncFromUrl,
 	};

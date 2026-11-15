@@ -17,7 +17,11 @@ import {
 } from '#lib/v1/history/rangeResource.svelte.ts';
 
 const harness = vi.hoisted(() => ({
-	page: { url: new URL('http://localhost/network'), state: {} },
+	page: {
+		url: new URL('http://localhost/network'),
+		state: {},
+		shallow: null as { url: URL } | null,
+	},
 }));
 vi.mock('$app/state', () => ({ page: harness.page }));
 vi.mock('#lib/site/urlMirror.ts', () => ({
@@ -83,12 +87,48 @@ function history<T = Dataset>() {
 
 beforeEach(() => {
 	harness.page.url = new URL('http://localhost/network?focus=keep');
+	harness.page.shallow = null;
 });
 afterEach(() => {
 	for (const destroy of roots.splice(0)) destroy();
 });
 
 describe('reliability view-state public contract', () => {
+	it.each(['/lines/51', '/stop/57191'])(
+		'restores the chosen grain from the shallow history URL on %s',
+		(path) => {
+			harness.page.url = new URL(`http://localhost${path}`);
+			harness.page.shallow = { url: new URL(`http://localhost${path}?grain=month`) };
+			const resource = history();
+			const view = mount(() =>
+				createReliabilityViewState({
+					snapshot: () => calendar,
+					retained: { resource: () => resource.value, copy: () => copy },
+					grains: { keys: RELIABILITY_GRAINS, labels },
+					locale: () => 'en',
+				}),
+			);
+			expect(view.grain).toBe('month');
+		},
+	);
+	it('restores the line range request from shallow history before mirroring it', () => {
+		harness.page.url = new URL('http://localhost/lines/51');
+		harness.page.shallow = {
+			url: new URL('http://localhost/lines/51?from=2026-01-31&to=2026-02-01'),
+		};
+		const resource = history();
+		const view = mount(() =>
+			createReliabilityViewState({
+				snapshot: () => calendar,
+				retained: { resource: () => resource.value, copy: () => copy },
+				grains: { keys: ['day', 'week', 'month', 'range'] as const, labels },
+				locale: () => 'en',
+			}),
+		);
+		expect(view.grain).toBe('range');
+		expect(view.navigator?.value).toEqual({ from: '2026-01-31', to: '2026-02-01' });
+		expect(resource.value.request).toMatchObject({ rawFrom: '2026-01-31', rawTo: '2026-02-01' });
+	});
 	it.each(['grain=week,month', 'grain=bogus&grain=week', 'grain=%20week'])(
 		'opens the first valid calendar grain from %s',
 		(query) => {
