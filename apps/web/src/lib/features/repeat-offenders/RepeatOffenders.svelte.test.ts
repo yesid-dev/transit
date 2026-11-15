@@ -362,9 +362,7 @@ describe('RepeatOffenders — approved analytical article', () => {
 		expect(card(container, 'repeat-trips')).not.toBeNull();
 		expect(container.querySelector('[data-toc="repeat-vehicles"]')).toBeNull();
 		const rail = container.querySelector('[data-slot="surface-rail"]') as HTMLElement;
-		expect(
-			within(rail).getByRole('button', { name: 'Highest share of late readings' }),
-		).toBeInTheDocument();
+		expect(within(rail).getByRole('button', { name: 'Most repeated delays' })).toBeInTheDocument();
 		expect(within(rail).getByRole('button', { name: 'Trips' })).toBeInTheDocument();
 		expect(within(rail).queryByRole('button', { name: 'Vehicles' })).toBeNull();
 		expect(card(container, 'repeat-trips').querySelector('[data-slot="badge"]')).toHaveTextContent(
@@ -506,7 +504,7 @@ describe('RepeatOffenders — approved analytical article', () => {
 		});
 		expect(repeatCopy.en.cards).toEqual({
 			worst: {
-				title: 'Highest share of late readings',
+				title: 'Most repeated delays',
 				subtitle: expect.stringMatching(/\?$/),
 			},
 			trips: {
@@ -520,7 +518,7 @@ describe('RepeatOffenders — approved analytical article', () => {
 		});
 		expect(repeatCopy.fr.cards).toEqual({
 			worst: {
-				title: 'Plus forte part de relevés en retard',
+				title: 'Retards les plus récurrents',
 				subtitle: expect.stringMatching(/\?$/),
 			},
 			trips: {
