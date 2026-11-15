@@ -1,64 +1,88 @@
 <script lang="ts">
-	import { STATUS_GLYPH, statusVar } from '#lib/components/dataviz/tokens.ts';
+	import {
+		OCCUPANCY_GLYPH,
+		STATUS_GLYPH,
+		occupancyVar,
+		statusVar,
+	} from '#lib/components/dataviz/tokens.ts';
 	import type { Locale } from '#lib/i18n/index.ts';
-	import { STATUS_LABELS } from '#lib/v1/enumLabels.ts';
-	import { STATUS_CODES } from '#lib/v1/schemas/types.ts';
 	import MarkerGlyph from './MarkerGlyph.svelte';
 	import { copy } from './map.copy';
+	import { mapLegend, type LegendColourBy, type LegendMark } from './mapLegend';
 
 	interface Props {
 		locale: Locale;
+		/** What the map colours buses by; the colour group explains only that. */
+		colourBy: LegendColourBy;
+		/** The map's own cutoff for the "no recent position" mark, in seconds. */
+		staleCutoffS: number;
 		/** Repeats the sentence under the map title where the title block has no room for it. */
 		lead?: boolean;
 	}
 
-	let { locale, lead = false }: Props = $props();
+	let { locale, colourBy, staleCutoffS, lead = false }: Props = $props();
 	const t = $derived(copy[locale]);
+	const legend = $derived(mapLegend(locale, { colourBy, staleCutoffS }));
+
+	// The same tables that draw the markers give each row its colour and badge shape.
+	function colourOf(mark: LegendMark): string | undefined {
+		if (mark.kind === 'status') return statusVar(mark.code);
+		if (mark.kind === 'occupancy') return occupancyVar(mark.code);
+		return undefined;
+	}
+	function glyphOf(mark: LegendMark): string | undefined {
+		if (mark.kind === 'status') return STATUS_GLYPH[mark.code];
+		if (mark.kind === 'occupancy') return OCCUPANCY_GLYPH[mark.code];
+		return undefined;
+	}
+	function entryOf(mark: LegendMark): string {
+		return mark.kind === 'stale' ? 'not-reporting' : mark.kind;
+	}
 </script>
 
 {#if lead}<p class="mf-legend-lead" data-slot="map-legend-lead">{t.headingLead}</p>{/if}
 
-<ul class="mf-legend" aria-label={t.legend.title} data-slot="map-legend">
-	{#each STATUS_CODES as code (code)}
-		<li
-			class="mf-legend-entry"
-			data-legend-group="status"
-			data-legend-entry="status"
-			data-status={code}
-		>
-			<span class="mf-legend-mark" style="color:{statusVar(code)}" aria-hidden="true">
-				<MarkerGlyph kind="bus" />
-			</span>
-			<span class="mf-legend-text" data-slot="map-legend-label"
-				>{STATUS_LABELS[locale][code]}<span
-					class="mf-legend-glyph"
-					style="color:{statusVar(code)}"
-					aria-hidden="true">{STATUS_GLYPH[code]}</span
-				></span
+<ul class="mf-legend" aria-label={t.legend.title} data-slot="map-legend" data-colour-by={colourBy}>
+	{#each legend.groups as group (group.id)}
+		<li class="mf-legend-group" data-legend-heading={group.id}>{group.heading}</li>
+		{#each group.rows as row (row.id)}
+			{@const colour = colourOf(row.mark)}
+			{@const glyph = glyphOf(row.mark)}
+			<li
+				class="mf-legend-entry"
+				data-legend-group={group.id}
+				data-legend-entry={entryOf(row.mark)}
+				data-status={row.mark.kind === 'status' ? row.mark.code : undefined}
+				data-occupancy={row.mark.kind === 'occupancy' ? row.mark.code : undefined}
 			>
-		</li>
+				<span
+					class="mf-legend-mark"
+					class:mf-legend-stop={row.mark.kind === 'stop'}
+					class:mf-legend-silent={row.mark.kind === 'stale'}
+					style:color={colour}
+					aria-hidden="true"
+				>
+					{#if row.mark.kind === 'status' || row.mark.kind === 'occupancy'}
+						<MarkerGlyph kind="bus" />
+					{:else if row.mark.kind === 'stop'}
+						<MarkerGlyph kind="stop" />
+					{:else if row.mark.kind === 'heading'}
+						<svg viewBox="0 0 26 26" role="presentation">
+							<path d="M13 5 19 13.5 13 10.6 7 13.5Z" fill="currentColor" />
+							<circle cx="13" cy="19" r="2.5" fill="currentColor" opacity="0.45" />
+						</svg>
+					{:else}!{/if}
+				</span>
+				<span class="mf-legend-text" data-slot="map-legend-label">
+					<span class="mf-legend-label">{row.label}</span>
+					{#if row.definition}<span class="mf-legend-def">{row.definition}</span>{/if}
+				</span>
+				{#if glyph}<span class="mf-legend-glyph" aria-hidden="true">{glyph}</span>{/if}
+			</li>
+		{/each}
 	{/each}
-	<li class="mf-legend-entry" data-legend-group="symbols" data-legend-entry="heading">
-		<span class="mf-legend-mark" aria-hidden="true">
-			<svg viewBox="0 0 26 26" role="presentation">
-				<path d="M13 5 19 13.5 13 10.6 7 13.5Z" fill="currentColor" />
-				<circle cx="13" cy="19" r="2.5" fill="currentColor" opacity="0.45" />
-			</svg>
-		</span>
-		<span class="mf-legend-text" data-slot="map-legend-label">{t.legend.heading}</span>
-	</li>
-	<li class="mf-legend-entry" data-legend-group="symbols" data-legend-entry="stop">
-		<span class="mf-legend-mark mf-legend-stop" aria-hidden="true">
-			<MarkerGlyph kind="stop" />
-		</span>
-		<span class="mf-legend-text" data-slot="map-legend-label">{t.legend.stop}</span>
-	</li>
-	<li class="mf-legend-entry" data-legend-group="symbols" data-legend-entry="not-reporting">
-		<span class="mf-legend-mark mf-legend-silent" aria-hidden="true">!</span>
-		<span class="mf-legend-text" data-slot="map-legend-label">{t.legend.notReporting}</span>
-	</li>
 </ul>
-<p class="mf-legend-note">{t.legend.zoomBadges}</p>
+<p class="mf-legend-note">{legend.note}</p>
 
 <style>
 	.mf-legend-lead {
@@ -71,39 +95,49 @@
 		margin: 0;
 		padding: 0;
 		list-style: none;
-	}
-	.mf-legend-entry {
-		display: grid;
-		grid-template-columns: calc(var(--spacing) * 5) minmax(0, 1fr);
-		align-items: center;
-		gap: calc(var(--spacing) * 2);
-		min-height: calc(var(--spacing) * 7);
-		padding-block: var(--spacing);
 		font-family: var(--font-body);
 		font-size: var(--text-caption);
 		line-height: 1.4;
 		color: var(--foreground);
 	}
-	.mf-legend-entry[data-legend-entry='heading'] {
+	/* One list, three tracks on every row: mark, words, badge shape. */
+	.mf-legend-entry {
+		display: grid;
+		grid-template-columns: calc(var(--spacing) * 5) minmax(0, 1fr) calc(var(--spacing) * 4);
+		align-items: start;
+		gap: calc(var(--spacing) * 2);
+		padding-block: calc(var(--spacing) * 0.75);
+	}
+	.mf-legend-group {
 		margin-top: calc(var(--spacing) * 2);
 		padding-top: calc(var(--spacing) * 2);
+		padding-bottom: calc(var(--spacing) * 0.5);
 		border-top: 1px solid var(--border-hairline);
+		font-weight: 600;
+	}
+	.mf-legend-group:first-child {
+		margin-top: 0;
+		padding-top: 0;
+		border-top: 0;
 	}
 	.mf-legend-mark {
 		display: inline-grid;
 		place-items: center;
 		justify-self: center;
 		width: calc(var(--spacing) * 4);
-		height: calc(var(--spacing) * 4);
+		height: 1.4em;
 		color: var(--foreground);
 		--marker-glyph-cut: var(--card);
 	}
-	.mf-legend-mark svg {
+	.mf-legend-mark :global(svg) {
 		display: block;
 		width: 100%;
-		height: 100%;
+		height: calc(var(--spacing) * 4);
 	}
 	.mf-legend-silent {
+		align-self: start;
+		height: calc(var(--spacing) * 4);
+		margin-top: 0.2em;
 		font-weight: 800;
 		line-height: 1;
 		color: var(--background);
@@ -114,11 +148,15 @@
 		color: var(--map-stop-fill);
 	}
 	.mf-legend-text {
+		display: grid;
 		min-width: 0;
 	}
-	[data-legend-group='status'] .mf-legend-text {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) calc(var(--spacing) * 4);
+	.mf-legend-label {
+		font-weight: 500;
+	}
+	.mf-legend-def {
+		color: var(--muted-foreground);
+		text-wrap: pretty;
 	}
 	.mf-legend-glyph {
 		text-align: center;

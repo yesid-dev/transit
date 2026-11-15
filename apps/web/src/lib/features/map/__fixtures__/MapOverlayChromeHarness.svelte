@@ -101,6 +101,7 @@
 	onclear={() => {}}
 	{isDesktop}
 	filtersStore={store}
+	staleCutoffS={150}
 	{detailOpen}
 	{hoverPeek}
 	{detailSelection}

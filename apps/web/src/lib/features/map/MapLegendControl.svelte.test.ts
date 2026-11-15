@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import MapLegendControl from './MapLegendControl.svelte';
 import { copy } from './map.copy';
 
+const legend = { colourBy: 'status', staleCutoffS: 150 } as const;
+
 afterEach(() => localStorage.clear());
 describe('MapLegendControl', () => {
 	it.each(['en', 'fr'] as const)(
@@ -11,7 +13,7 @@ describe('MapLegendControl', () => {
 			(
 				window as typeof window & { happyDOM: { setInnerWidth: (width: number) => void } }
 			).happyDOM.setInnerWidth(390);
-			render(MapLegendControl, { locale, presentation: 'phone' });
+			render(MapLegendControl, { locale, presentation: 'phone', ...legend });
 			const button = screen.getByRole('button', { name: copy[locale].legend.title });
 			expect(button).toHaveAttribute('aria-expanded', 'false');
 			await fireEvent.click(button);
@@ -30,7 +32,7 @@ describe('MapLegendControl', () => {
 		},
 	);
 	it('starts expanded on desktop and remembers collapse across mounts', async () => {
-		const view = render(MapLegendControl, { locale: 'en', presentation: 'desktop' });
+		const view = render(MapLegendControl, { locale: 'en', presentation: 'desktop', ...legend });
 		const header = view.getByRole('button', { name: 'Legend' });
 		const viewport = view.getByRole('region', { name: 'Legend' });
 		expect(viewport).toHaveAttribute('tabindex', '0');
@@ -41,7 +43,7 @@ describe('MapLegendControl', () => {
 		expect(header).toHaveAttribute('aria-expanded', 'false');
 		expect(localStorage.getItem('transit:legend-collapsed')).toBe('true');
 		view.unmount();
-		const restored = render(MapLegendControl, { locale: 'en', presentation: 'desktop' });
+		const restored = render(MapLegendControl, { locale: 'en', presentation: 'desktop', ...legend });
 		await waitFor(() =>
 			expect(restored.getByRole('button', { name: 'Legend' })).toHaveAttribute(
 				'aria-expanded',

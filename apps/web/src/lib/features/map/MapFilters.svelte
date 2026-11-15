@@ -8,7 +8,7 @@
 	const { line } = transitDisplay();
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import PanelSizeHandle from './PanelSizeHandle.svelte';
-	import { intl } from '#lib/i18n/index.ts';
+	import { intl, type Locale } from '#lib/i18n/index.ts';
 	import BusFrontIcon from '@lucide/svelte/icons/bus-front';
 	import PanelLeftCloseIcon from '@lucide/svelte/icons/panel-left-close';
 	import RouteIcon from '@lucide/svelte/icons/route';
@@ -17,10 +17,10 @@
 	import { onMount, tick, type Snippet } from 'svelte';
 	import { browser } from '$app/env';
 	import type { AlertEntityKind, EntityKind, FilterStore } from '#lib/filters/index.ts';
-	import type { Locale } from '#lib/i18n/index.ts';
 	import type { RouteIndexEntry, StopIndexEntry } from '#lib/v1/index.ts';
 	import { OCCUPANCY_CODES, STATUS_CODES } from '#lib/v1/schemas/types.ts';
-	import { OCCUPANCY_LABELS, STATUS_LABELS } from '#lib/v1/enumLabels.ts';
+	import { OCCUPANCY_LABELS } from '#lib/v1/enumLabels.ts';
+	import { mapStatusLabel } from './mapStatusLabels';
 	import {
 		STATUS_GLYPH,
 		occupancyGlyph,
@@ -468,7 +468,7 @@
 							type="button"
 							class="mf-chip"
 							data-on={store.status.includes(code)}
-							aria-label={STATUS_LABELS[locale][code]}
+							aria-label={mapStatusLabel(locale, code)}
 							checked={store.status.includes(code)}
 							style="--chip:{statusVar(code)}"
 							onclick={() => toggleStatus(code)}
@@ -480,7 +480,7 @@
 								data-m6d-glyph-code={code}
 								aria-hidden="true">{STATUS_GLYPH[code]}</span
 							>
-							<span class="mf-chip-text">{STATUS_LABELS[locale][code]}</span>
+							<span class="mf-chip-text">{mapStatusLabel(locale, code)}</span>
 						</CheckboxRow>
 					{/each}
 				</div>

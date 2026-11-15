@@ -4,6 +4,7 @@
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { FilterStore } from '#lib/filters/index.ts';
 	import type { LatLon, WithDistance } from '#lib/components/map/index.ts';
+	import { colourDimension } from '#lib/components/map/vehicleLayer.ts';
 	import type { GeocodePrecision, GeocodeSuggestion } from '#lib/geocode/types.ts';
 	import type { StopIndexEntry } from '#lib/v1/schemas/index.ts';
 	import type { MapCopy } from './map.copy';
@@ -40,6 +41,8 @@
 		onclear: () => void;
 		isDesktop: boolean;
 		filtersStore: FilterStore;
+		/** The live map's cutoff for a vehicle with no recent position, in seconds. */
+		staleCutoffS: number;
 		detailOpen: boolean;
 		hoverPeek: MapHoverPeekModel | null;
 		/** The selection the expanded detail panel is showing, if any. */
@@ -67,11 +70,13 @@
 		onclear,
 		isDesktop,
 		filtersStore,
+		staleCutoffS,
 		detailOpen,
 		hoverPeek,
 		detailSelection = null,
 		controls,
 	}: Props = $props();
+	const colourBy = $derived(colourDimension(filtersStore.state));
 	// Hovering what the open panel already shows would only repeat it over the map.
 	const visiblePeek = $derived(peekRepeatsDetail(hoverPeek, detailSelection) ? null : hoverPeek);
 
@@ -127,7 +132,7 @@
 		<div class="map-filter-panel" bind:clientHeight={panelHeight}>
 			{@render controls(undefined)}
 		</div>
-		<MapLegendControl {locale} presentation="desktop" />
+		<MapLegendControl {locale} presentation="desktop" {colourBy} {staleCutoffS} />
 	</div>
 {/if}
 
@@ -144,6 +149,8 @@
 <MapLegendControl
 	{locale}
 	presentation="phone"
+	{colourBy}
+	{staleCutoffS}
 	hidden={detailOpen}
 	bind:open={legendOpen}
 	onopenchange={(open) => {

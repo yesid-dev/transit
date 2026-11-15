@@ -648,6 +648,7 @@
 				onclear={nearMeController.clear}
 				isDesktop={desktop.current}
 				filtersStore={filters}
+				staleCutoffS={liveTimingFor(manifest).staleCutoffS}
 				{detailOpen}
 				{hoverPeek}
 				detailSelection={desktop.current && detailOpen && !detailCollapsed

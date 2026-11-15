@@ -40,7 +40,8 @@ function activeAlerts(f: FilterState): readonly string[] | null {
 }
 
 // Status colours are the default; a ticked crowding box (with no status ticked) switches to crowding.
-function colourDimension(f: FilterState): 'status' | 'occupancy' {
+// The map legend follows this same rule.
+export function colourDimension(f: FilterState): 'status' | 'occupancy' {
 	if (activeStatus(f)) return 'status';
 	if (activeOccupancy(f)) return 'occupancy';
 	return 'status';
