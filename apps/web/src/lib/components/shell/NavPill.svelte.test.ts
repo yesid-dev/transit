@@ -62,6 +62,18 @@ for (const locale of ['en', 'fr'] as const)
 		});
 
 it.each([
+	['en', 'yesid. (opens in a new tab)', '/?provider=stm'],
+	['fr', 'yesid. (nouvel onglet)', '/fr?provider=stm'],
+] as const)('reads "yesid. | Transit" in the %s header', (locale, houseName, home) => {
+	const view = render(NavPill, { props: { locale, providerId: 'stm' } });
+	const nav = view.getByRole('navigation', { name: navPillCopy[locale].nav });
+	const house = within(nav).getByRole('link', { name: houseName });
+	expect(house).toHaveAttribute('href', 'https://yesid.dev');
+	expect(house).toHaveAttribute('target', '_blank');
+	expect(within(nav).getByRole('link', { name: 'Transit' })).toHaveAttribute('href', home);
+});
+
+it.each([
 	['en', 'Other networks unavailable'],
 	['fr', 'Autres réseaux indisponibles'],
 ] as const)('explains discovery failure in the %s picker', (locale, label) => {
