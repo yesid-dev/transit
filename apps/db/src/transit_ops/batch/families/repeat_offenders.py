@@ -39,8 +39,13 @@ def _upsert(index: int) -> TextClause:
     else:
         # rollups.py:1151-1155,1180-1184: numeric(12,2) pooled mean.
         # Integer half-away-from-zero avoids DuckDB's DOUBLE decimal division.
+        # The copy-out codec stores PG arrays as lossless VARCHAR, while native
+        # family fixtures use LIST. Decode either spelling into the declared int2[].
+        histogram = (
+            "CAST(replace(replace(sp.delay_histogram::VARCHAR, '{', '['), '}', ']') AS SMALLINT[])"
+        )
         for alias, denominator in (
-            ("sp", "SUM((SELECT COALESCE(SUM(x), 0) FROM unnest(sp.delay_histogram) AS u(x)))"),
+            ("sp", f"SUM(COALESCE(list_sum({histogram}), 0))"),
             ("s", "SUM(s.observation_count)"),
         ):
             total = f"SUM({alias}.sum_delay_seconds)::HUGEINT"

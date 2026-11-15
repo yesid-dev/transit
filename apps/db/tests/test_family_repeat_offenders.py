@@ -167,3 +167,49 @@ def test_retention_boundary_accepts_the_entire_day_and_refuses_partial_day(tmp_p
     ]
     with pytest.raises(ValueError, match="retention_edge_day 2026-11-01"):
         build(tmp_path, replace(request, as_of_utc=request.as_of_utc + timedelta(microseconds=1)))
+
+
+def test_weekly_histograms_read_lossless_postgres_array_text_exports(tmp_path):
+    import csv
+    from shutil import copyfile
+
+    from transit_ops.lake.parquet_codec import write_window
+    from transit_ops.lake.table_schema import TableSchema
+
+    native, exported = tmp_path / "native", tmp_path / "exported"
+    write_inputs(native)
+    schema = TableSchema.from_columns(
+        [
+            ("provider_id", "text", True),
+            ("route_id", "text", True),
+            ("provider_local_date", "date", True),
+            ("severe_delay_count", "integer", True),
+            ("sum_delay_seconds", "bigint", True),
+            ("delay_histogram", "smallint[]", False),
+        ],
+        ("provider_id", "route_id", "provider_local_date"),
+    )
+    for source in native.rglob("*.parquet"):
+        target = exported / source.relative_to(native)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if source.parent.name != "gold.route_delay_spine":
+            copyfile(source, target)
+            continue
+        with duckdb.connect() as conn:
+            rows = conn.execute("SELECT * FROM read_parquet(?)", [str(source)]).fetchall()
+        with target.with_suffix(".csv").open("w", encoding="utf-8", newline="") as file:
+            writer = csv.writer(file, lineterminator="\n")
+            writer.writerow(c.name for c in schema.columns)
+            for row in rows:
+                # COPY array text, including NULL elements.
+                histogram = "{" + ",".join(str(n) for n in row[-1]) + ",NULL}"
+                writer.writerow((*row[:-1], histogram))
+        write_window(target.with_suffix(".csv"), schema, target, metadata={}, temp_dir=tmp_path)
+        with duckdb.connect() as conn:
+            assert (
+                conn.execute("DESCRIBE SELECT * FROM read_parquet(?)", [str(target)]).fetchall()[
+                    -1
+                ][1]
+                == "VARCHAR"
+            )
+    assert build(exported) == build(native)

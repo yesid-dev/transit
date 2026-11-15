@@ -1,5 +1,8 @@
-from datetime import datetime
+from datetime import UTC, datetime, time, timedelta
+from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
+import pytest
 import real_db_seed
 from sqlalchemy import text
 from test_family_repeat_offenders import REQUEST, SEED, SPINES
@@ -12,7 +15,41 @@ from transit_ops.batch.run import run_family
 from transit_ops.gold import rollups
 
 
-def test_repeat_tables_equal_postgres_on_exported_inputs(real_db_engine, seed_provider, tmp_path):
+@pytest.fixture
+def reference_retention_clock(monkeypatch):
+    monkeypatch.setattr(rollups, "materialization_time", lambda _: REQUEST.as_of_utc)
+
+
+def test_reference_retention_uses_build_stamp_after_seed_ages(
+    monkeypatch, reference_retention_clock
+):
+    day = REQUEST.local_dates[0]
+    zone = ZoneInfo(REQUEST.timezone)
+    bounds = tuple(
+        datetime.combine(day + timedelta(days=i), time(), zone).astimezone(UTC) for i in (0, 1)
+    )
+    future_clock = bounds[0] + timedelta(days=REQUEST.fact_retention_days + 365)
+    # Only database results are substituted; execute the owning retention guard.
+    conn = SimpleNamespace(
+        execute=lambda *args: SimpleNamespace(one=lambda: bounds, scalar_one=lambda: future_clock)
+    )
+    with monkeypatch.context() as unpinned:
+        unpinned.setattr(rollups, "materialization_time", lambda _: future_clock)
+        with pytest.raises(ValueError, match="begins before the UTC fact-retention cutoff"):
+            rollups._check_retained_capture_day(
+                conn, REQUEST.provider_id, day, REQUEST.fact_retention_days
+            )
+    assert (
+        rollups._check_retained_capture_day(
+            conn, REQUEST.provider_id, day, REQUEST.fact_retention_days
+        )
+        == bounds
+    )
+
+
+def test_repeat_tables_equal_postgres_on_exported_inputs(
+    real_db_engine, seed_provider, tmp_path, reference_retention_clock
+):
     provider = REQUEST.provider_id
     # PG ABS(INTEGER_MIN) aborts, tracked by R29.4; the offline test proves the fix.
     rows = [r for r in SEED if r[3] != -2147483648]
@@ -99,16 +136,23 @@ def test_repeat_tables_equal_postgres_on_exported_inputs(real_db_engine, seed_pr
                 )
                 assert compare_tables(expected, table) == [], relation
     finally:
+        relations = (
+            *builder.tables,
+            "gold.route_delay_spine",
+            "gold.stop_delay_spine",
+            "gold.warm_rollup_periods",
+            "gold.fact_trip_delay_snapshot",
+            "raw.realtime_snapshot_index",
+            "raw.ingestion_runs",
+            "core.feed_endpoints",
+            "core.providers",
+        )
         with real_db_engine.begin() as conn:
-            for relation in (
-                *builder.tables,
-                "gold.route_delay_spine",
-                "gold.stop_delay_spine",
-                "gold.warm_rollup_periods",
-                "gold.fact_trip_delay_snapshot",
-                "raw.realtime_snapshot_index",
-                "raw.ingestion_runs",
-                "core.feed_endpoints",
-                "core.providers",
-            ):
+            for relation in relations:
                 conn.execute(text(f"DELETE FROM {relation} WHERE provider_id=:p"), {"p": provider})
+        with real_db_engine.connect() as conn:
+            for relation in relations:
+                remaining = conn.execute(
+                    text(f"SELECT COUNT(*) FROM {relation} WHERE provider_id=:p"), {"p": provider}
+                ).scalar_one()
+                assert remaining == 0, f"leaked repeat twin rows: {relation}"
