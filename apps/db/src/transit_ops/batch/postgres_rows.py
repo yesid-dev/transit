@@ -4,22 +4,46 @@ from collections.abc import Sequence
 from datetime import date
 from typing import Any
 
+from psycopg import Connection as PgConnection
 from sqlalchemy import Connection, bindparam, text
 
 from transit_ops.batch.build import TableRows
 
 
 def _catalog(conn: Connection, parts: list[str]) -> Sequence[Any]:
+    driver = conn.connection.driver_connection
+    if not isinstance(driver, PgConnection):
+        raise ValueError(f"{'.'.join(parts)}: psycopg connection required")
+    if driver.autocommit:
+        raise ValueError(f"{'.'.join(parts)}: DBAPI autocommit refused")
     conn.exec_driver_sql(
         "SELECT set_config(name,value,true) FROM (VALUES ('TimeZone','UTC'),"
         "('DateStyle','ISO,YMD'),('IntervalStyle','iso_8601'),"
         "('extra_float_digits','1'),('bytea_output','hex')) settings(name,value)"
     )
     return conn.execute(
-        text(
-            "SELECT column_name, data_type, numeric_precision FROM information_schema.columns "
-            "WHERE table_schema=:schema AND table_name=:table ORDER BY ordinal_position"
-        ),
+        text("""
+            WITH RECURSIVE column_types AS (
+                SELECT a.attname, t.oid, t.typtype, t.typbasetype
+                FROM pg_catalog.pg_attribute a
+                JOIN pg_catalog.pg_class r ON r.oid = a.attrelid
+                JOIN pg_catalog.pg_namespace n ON n.oid = r.relnamespace
+                JOIN pg_catalog.pg_type t ON t.oid = a.atttypid
+                WHERE n.nspname = :schema AND r.relname = :table
+                  AND a.attnum > 0 AND NOT a.attisdropped
+                UNION ALL
+                SELECT c.attname, b.oid, b.typtype, b.typbasetype
+                FROM column_types c
+                JOIN pg_catalog.pg_type b ON b.oid = c.typbasetype
+                WHERE c.typtype = 'd'
+            )
+            SELECT c.column_name, c.data_type, c.numeric_precision,
+                   EXISTS (SELECT 1 FROM column_types t WHERE t.attname = c.column_name
+                           AND t.typtype IN ('r', 'm')) AS is_range
+            FROM information_schema.columns c
+            WHERE c.table_schema = :schema AND c.table_name = :table
+            ORDER BY c.ordinal_position
+        """),
         dict(schema=parts[0], table=parts[1]),
     ).all()
 
@@ -43,9 +67,9 @@ def read_table_rows(
         raise ValueError(f"{relation}: missing columns {sorted(required - set(columns))}")
     quote = conn.dialect.identifier_preparer.quote_identifier
     expressions = []
-    for name, kind, precision in catalog:
-        if kind == "USER-DEFINED":
-            raise ValueError(f"{relation}.{name}: unsupported USER-DEFINED type")
+    for name, kind, precision, is_range in catalog:
+        if is_range or kind == "USER-DEFINED":
+            raise ValueError(f"{relation}.{name}: unsupported PostgreSQL type: {kind}")
         column = quote(name)
         exact_text = kind in {"ARRAY", "json", "jsonb", "interval", "time with time zone"}
         exact_text |= kind == "numeric" and precision is None

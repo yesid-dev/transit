@@ -25,11 +25,80 @@ from transit_ops.lake.table_export import WindowSpec, export_window
 PROVEN_FAMILIES: tuple[str, ...] = ()
 
 
+@pytest.mark.parametrize("base", ["numrange", "nummultirange"])
+def test_reader_refuses_ranges_through_domains(real_db_engine, base):
+    with real_db_engine.connect() as conn, conn.begin() as transaction:
+        try:
+            conn.exec_driver_sql(
+                "CREATE TEMP TABLE domain_probe ON COMMIT DROP AS "
+                "SELECT 'seed'::text provider_id, 1 id"
+            )
+            schema = conn.exec_driver_sql(
+                "SELECT pg_my_temp_schema()::regnamespace::text"
+            ).scalar_one()
+            value = "[1.50,2.50)" if base == "numrange" else "{[1.50,2.50)}"
+            for name in ("direct", "nested"):
+                conn.exec_driver_sql(f"CREATE DOMAIN pg_temp.reader_{name} AS {base}")
+                conn.exec_driver_sql(
+                    f"ALTER TABLE domain_probe ADD bad pg_temp.reader_{name} DEFAULT '{value}'"
+                )
+                with pytest.raises(ValueError, match=rf"{schema}.domain_probe.bad"):
+                    read_table_rows(
+                        conn,
+                        f"{schema}.domain_probe",
+                        ("id",),
+                        provider_id="seed",
+                        local_dates=None,
+                    )
+                conn.exec_driver_sql("ALTER TABLE domain_probe DROP bad")
+                base = "pg_temp.reader_direct"
+        finally:
+            transaction.rollback()
+
+
+def test_reader_refuses_dbapi_autocommit(real_db_engine):
+    with real_db_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        original = conn.exec_driver_sql(
+            "SELECT current_setting('extra_float_digits'), current_setting('TimeZone')"
+        ).one()
+        try:
+            conn.exec_driver_sql(
+                "CREATE TEMP TABLE autocommit_probe AS SELECT "
+                "'seed'::text provider_id, 1 id, "
+                "0.30000000000000004::float8 value, now() stamp"
+            )
+            conn.exec_driver_sql(
+                "SELECT set_config('extra_float_digits','0',false), "
+                "set_config('TimeZone','America/Toronto',false)"
+            )
+            schema = conn.exec_driver_sql(
+                "SELECT pg_my_temp_schema()::regnamespace::text"
+            ).scalar_one()
+            assert conn.in_transaction()  # SQLAlchemy's transaction flag is not DBAPI autocommit.
+            with pytest.raises(ValueError, match=rf"{schema}.autocommit_probe.*DBAPI autocommit"):
+                read_table_rows(
+                    conn,
+                    f"{schema}.autocommit_probe",
+                    ("id",),
+                    provider_id="seed",
+                    local_dates=None,
+                )
+        finally:
+            conn.exec_driver_sql("DROP TABLE IF EXISTS autocommit_probe")
+            conn.execute(
+                text(
+                    "SELECT set_config('extra_float_digits',:digits,false), "
+                    "set_config('TimeZone',:zone,false)"
+                ),
+                dict(digits=original[0], zone=original[1]),
+            )
+
+
 @pytest.mark.parametrize("fault", [None, "numrange", "nummultirange", "session", "null"])
 def test_reader_preserves_postgres_text_and_sorts_keys(real_db_engine, fault):
     with real_db_engine.connect() as conn, conn.begin():
         conn.exec_driver_sql("""
-            CREATE TEMP TABLE reader_probe AS
+            CREATE TEMP TABLE reader_probe ON COMMIT DROP AS
             SELECT 'seed'::text provider_id, DATE '2025-06-03' provider_local_date, n id,
                    CASE WHEN n=2 THEN 1.500 END amount,
                    CASE WHEN n=2 THEN '{1.50,NULL}'::numeric[] END items,
