@@ -294,18 +294,21 @@ export function createReliabilityViewState<
 			options.retained == null ||
 			(rangeChoice == null && (resource == null || windowOverride !== undefined))
 		) {
-			mirrorSearchParams({ grain: grainParam, ...extra });
+			mirrorSearchParams({ grain: grainParam, ...extra }, { navigate: true });
 			return;
 		}
 		const canonical =
 			rangeChoice != null ? requestWindow : (resource?.resolved?.canonicalWindow ?? currentWindow);
 		const pending = rangeChoice == null && active && resource?.resolved == null;
-		mirrorSearchParams({
-			grain: grainParam,
-			from: canonical?.from ?? (pending && request.hasFrom ? request.rawFrom : null),
-			to: canonical?.to ?? (pending && request.hasTo ? request.rawTo : null),
-			...extra,
-		});
+		mirrorSearchParams(
+			{
+				grain: grainParam,
+				from: canonical?.from ?? (pending && request.hasFrom ? request.rawFrom : null),
+				to: canonical?.to ?? (pending && request.hasTo ? request.rawTo : null),
+				...extra,
+			},
+			{ navigate: true },
+		);
 	});
 
 	const coverageText = $derived.by(() => {

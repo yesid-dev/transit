@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 let mockUrl = new URL('http://localhost/lines/51');
 const replaceState = vi.fn();
+const goto = vi.fn();
 vi.mock('$app/state', () => ({
 	page: {
 		get url() {
@@ -11,6 +12,7 @@ vi.mock('$app/state', () => ({
 	},
 }));
 vi.mock('$app/navigation', () => ({
+	goto: (...args: unknown[]) => goto(...args),
 	replaceState: (...args: unknown[]) => replaceState(...args),
 }));
 
@@ -88,6 +90,17 @@ describe('mirrorSearchParams (batched, race-free)', () => {
 	beforeEach(() => {
 		replaceState.mockReset();
 		mockUrl = new URL('http://localhost/lines/51');
+		goto.mockReset();
+	});
+
+	it('persists period changes as the router URL while replacing the current entry', () => {
+		mockUrl = new URL('http://localhost/lines/51?tab=schedule&provider=stm#record');
+		mirrorSearchParams({ grain: 'month' }, { navigate: true });
+		expect(goto).toHaveBeenCalledOnce();
+		const [url, options] = goto.mock.calls[0];
+		expect(url.href).toBe('http://localhost/lines/51?tab=schedule&provider=stm&grain=month#record');
+		expect(options).toEqual({ replace: true, reset: false, state: page.state });
+		expect(replaceState).not.toHaveBeenCalled();
 	});
 
 	it('clears grain+from+to in ONE replaceState (the per-param clobber fix)', () => {

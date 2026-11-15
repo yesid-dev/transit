@@ -1,5 +1,5 @@
 import { page } from '$app/state';
-import { replaceState } from '$app/navigation';
+import { goto } from '$app/navigation';
 import { detailTabFromSearchParams, detailTabQueryValue, type DetailTab } from './detailTabs';
 import { currentMirrorUrl, mirrorSearchParam } from './urlMirror';
 
@@ -28,7 +28,7 @@ export function createDetailTabController(initialUrl: URL): DetailTabController 
 		canonical.searchParams.delete('tab');
 		if (canonicalValue !== null) canonical.searchParams.set('tab', canonicalValue);
 		try {
-			replaceState(canonical, { ...page.state });
+			void goto(canonical, { replace: true, reset: false, state: { ...page.state } });
 		} catch {
 			// The router may not be ready; the URL hint is best effort, as in the mirror.
 		}
@@ -40,7 +40,7 @@ export function createDetailTabController(initialUrl: URL): DetailTabController 
 		},
 		set active(next: DetailTab) {
 			active = next;
-			mirrorSearchParam('tab', detailTabQueryValue(next));
+			mirrorSearchParam('tab', detailTabQueryValue(next), { navigate: true });
 		},
 		syncFromUrl,
 	};
