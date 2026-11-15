@@ -11,7 +11,7 @@ from typing import Final, Literal
 
 import duckdb
 
-from transit_ops.lake.csv_validation import CSV_OPTIONS, validate_csv
+from transit_ops.lake.csv_validation import csv_options, validate_csv
 from transit_ops.lake.table_schema import TableSchema
 
 
@@ -31,6 +31,8 @@ class ParquetCodec:
 
 
 DEFAULT_CODEC: Final = ParquetCodec()
+MAX_ROW_GROUP_ROWS: Final = 122_880
+MEMORY_LIMIT = "256MiB"
 
 
 @dataclass(frozen=True)
@@ -65,6 +67,8 @@ def connect(temp_dir: Path) -> duckdb.DuckDBPyConnection:
             "autoinstall_known_extensions": False,
             "autoload_known_extensions": False,
             "temp_directory": str(temp_dir),
+            "memory_limit": MEMORY_LIMIT,
+            "max_temp_directory_size": "20GiB",
         },
     )
     try:
@@ -81,7 +85,9 @@ def read_canonical_csv(
     _literal_path(csv_path)
     validate_csv(connection, csv_path, schema)
     return connection.sql(
-        f"SELECT * FROM read_csv(?, columns=?, {CSV_OPTIONS})",
+        # Serial vector batching preserves legacy Parquet row-group boundaries
+        # and object bytes when the CSV buffer is smaller than the input.
+        f"SELECT * FROM read_csv(?, columns=?, {csv_options(csv_path)}, parallel=false)",
         params=[str(csv_path), schema.duckdb_types()],
     )
 
@@ -141,6 +147,10 @@ def write_window(
     temp_dir: Path,
     codec: ParquetCodec = DEFAULT_CODEC,
 ) -> WrittenWindow:
+    # Preserve the existing layout (and object digest), while preventing callers
+    # from expanding the writer's per-group buffering without a bound.
+    if type(codec.row_group_rows) is not int or not 1 <= codec.row_group_rows <= MAX_ROW_GROUP_ROWS:
+        raise ValueError(f"row_group_rows must be between 1 and {MAX_ROW_GROUP_ROWS}")
     for path in (csv_path, parquet_path, temp_dir):
         _literal_path(path)
     if parquet_path.exists():

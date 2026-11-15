@@ -22,6 +22,8 @@ from transit_ops.history.datasets import (
     get_dataset,
     window_start,
 )
+from transit_ops.lake.csv_validation import _records, csv_options
+from transit_ops.lake.parquet_codec import _digest, connect
 from transit_ops.lake.table_schema import InvalidSchema, TableSchema, UnsupportedColumnType
 
 
@@ -165,7 +167,7 @@ def build_copy_statement(
     dataset_version_id: int | None = None,
     text_keys: frozenset[str] = frozenset(),
 ) -> tuple[sql.Composed, tuple[object, ...]]:
-    """Select every catalog column unchanged, ordered by the full primary key.
+    """Stream every column unchanged; canonical ordering happens on the local copy.
 
     No cast changes PostgreSQL's text for numeric, arrays or JSON.
     """
@@ -207,14 +209,93 @@ def build_copy_statement(
         else sql.SQL("")
     )
     return sql.SQL(
-        "COPY (SELECT {} FROM {}{} ORDER BY {}) "
-        "TO STDOUT WITH (FORMAT csv, HEADER true, ENCODING 'UTF8')"
+        "COPY (SELECT {} FROM {}{}{}) TO STDOUT WITH (FORMAT csv, HEADER true, ENCODING 'UTF8')"
     ).format(
         sql.SQL(", ").join(sql.Identifier(column.name) for column in schema.columns),
         sql.Identifier(*source.table.split(".")),
         where,
-        order_by(schema, text_keys=text_keys),
+        sql.SQL("")
+        if _sort_types(schema) is not None
+        else sql.SQL(" ORDER BY {}").format(order_by(schema, text_keys=text_keys)),
     ), values
+
+
+def _sort_types(schema: TableSchema) -> list[str] | None:
+    # Arrays, blank-padded char, unconstrained numeric and extension types have
+    # PostgreSQL-specific comparison semantics. Keep their existing source order.
+    types = []
+    for key in schema.primary_key:
+        column = next(c for c in schema.columns if c.name == key)
+        kind = column.pg_type
+        if kind in {"text", "character varying"} or re.fullmatch(
+            r"character varying\([0-9]+\)", kind
+        ):
+            types.append("VARCHAR")
+        elif kind in {
+            "boolean",
+            "smallint",
+            "integer",
+            "bigint",
+            "real",
+            "double precision",
+            "date",
+            "timestamp with time zone",
+            "timestamp without time zone",
+            "uuid",
+        }:
+            types.append(TableSchema.from_columns([(key, kind, True)], [key]).duckdb_types()[key])
+        else:
+            return None
+    return types
+
+
+def _canonicalize(path: Path, schema: TableSchema) -> tuple[str, int]:
+    """Sort only typed keys and file offsets; copy original records byte for byte."""
+    types = _sort_types(schema)
+    if types is None:
+        return _digest(path)
+    with TemporaryDirectory(dir=path.parent, prefix=".order-") as directory:
+        work = Path(directory)
+        index = work / "keys.csv"
+        indices = [
+            next(i for i, c in enumerate(schema.columns) if c.name == k) for k in schema.primary_key
+        ]
+        with path.open("rb") as source, index.open("w", encoding="utf8", newline="") as target:
+            header = source.readline()
+            offset = source.tell()
+
+            def lines() -> Iterator[str]:
+                for line in source:
+                    yield line.decode("utf8")
+
+            writer = csv.writer(target, lineterminator="\n", quoting=csv.QUOTE_ALL)
+            for record in _records(lines(), tuple(c.name for c in schema.columns)):
+                end = source.tell()
+                writer.writerow([*(record[i] for i in indices), offset, end - offset])
+                offset = end
+        ordered = work / "ordered.csv"
+        columns = {f"k{i}": kind for i, kind in enumerate(types)}
+        columns.update(byte_offset="BIGINT", byte_length="BIGINT")
+        with connect(work) as connection, path.open("rb") as source, ordered.open("wb") as output:
+            output.write(header)
+            if index.stat().st_size:
+                connection.execute(
+                    f"SELECT byte_offset, byte_length FROM read_csv(?, columns=?, "
+                    f"{csv_options(index).replace('header=true', 'header=false')}) "
+                    f"ORDER BY {', '.join(f'k{i}' for i in range(len(types)))}",
+                    [str(index), columns],
+                )
+                while batch := connection.fetchmany(1024):
+                    for offset, length in batch:
+                        source.seek(offset)
+                        while length:
+                            block = source.read(min(length, 1024 * 1024))
+                            if not block:
+                                raise SchemaDrift("CSV truncated during canonical ordering")
+                            output.write(block)
+                            length -= len(block)
+        os.replace(ordered, path)
+    return _digest(path)
 
 
 def _catalog(
@@ -336,7 +417,9 @@ def export_window(
             with temporary.open("xb") as output:
                 digest, size, rows = _copy(connection, statement, values, output)
                 output.flush()
-                os.fsync(output.fileno())
+        digest, size = _canonicalize(temporary, schema)
+        with temporary.open("r+b") as output:
+            os.fsync(output.fileno())
         with temporary.open(encoding="utf8", newline="") as stream:
             if next(csv.reader(stream), None) != [column.name for column in schema.columns]:
                 raise SchemaDrift("CSV header differs from catalog")
@@ -350,16 +433,16 @@ def recheck_window(
     *,
     statement_timeout_s: int,
     expected_schema: TableSchema | None = None,
+    temp_dir: Path | None = None,
 ) -> tuple[str, int, int]:
-    with _snapshot(connection, spec, statement_timeout_s, expected_schema) as (
-        _,
-        statement,
-        values,
-        _,
-        _,
-        _,
-    ):
-        return _copy(connection, statement, values)
+    with TemporaryDirectory(dir=temp_dir, prefix=".recheck-") as directory:
+        path = Path(directory) / "window.csv"
+        with _snapshot(connection, spec, statement_timeout_s, expected_schema) as snapshot:
+            schema, statement, values = snapshot[:3]
+            with path.open("xb") as output:
+                _, _, rows = _copy(connection, statement, values, output)
+        digest, size = _canonicalize(path, schema)
+        return digest, size, rows
 
 
 class _GroupReads:
@@ -474,12 +557,14 @@ def export_group(
             schema, text_keys = _catalog(guarded, source, None)
             if spec.dataset_id in queries:
                 statement = sql.SQL(
-                    "COPY (SELECT {} FROM ({}) selected ORDER BY {}) "
+                    "COPY (SELECT {} FROM ({}) selected{}) "
                     "TO STDOUT WITH (FORMAT csv, HEADER true, ENCODING 'UTF8')"
                 ).format(
                     sql.SQL(", ").join(sql.Identifier(c.name) for c in schema.columns),
                     queries[spec.dataset_id],
-                    order_by(schema, text_keys=text_keys),
+                    sql.SQL("")
+                    if _sort_types(schema) is not None
+                    else sql.SQL(" ORDER BY {}").format(order_by(schema, text_keys=text_keys)),
                 )
                 values: tuple[object, ...] = ()
             else:
@@ -492,6 +577,11 @@ def export_group(
                 ExportedWindow(spec, destination, digest, size, rows, schema, at, version)
             )
         reads.cap()
+    results = [
+        replace(item, content_sha256=digest, content_bytes=size)
+        for item in results
+        for digest, size in [_canonicalize(item.csv_path, item.schema)]
+    ]
     for item in results:
         with item.csv_path.open("r+b") as stream:
             os.fsync(stream.fileno())

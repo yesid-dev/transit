@@ -15,7 +15,7 @@ from typing import Literal
 import duckdb
 
 from transit_ops.ingestion.storage import BronzeStorage
-from transit_ops.lake.csv_validation import CSV_OPTIONS
+from transit_ops.lake.csv_validation import csv_options
 from transit_ops.lake.parquet_codec import connect, read_canonical_csv
 from transit_ops.lake.table_schema import TableSchema
 
@@ -323,7 +323,7 @@ def _check_text(
             expressions.append(f"CAST({column} AS VARCHAR)")
     with connection.cursor() as source, connection.cursor() as copy:
         source.execute(
-            f"SELECT * FROM read_csv(?, columns=?, {CSV_OPTIONS})",
+            f"SELECT * FROM read_csv(?, columns=?, {csv_options(csv_path)})",
             [str(csv_path), dict.fromkeys(types, "VARCHAR")],
         )
         copy.execute("SET TimeZone='UTC'")

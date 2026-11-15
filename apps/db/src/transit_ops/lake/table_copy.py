@@ -381,6 +381,7 @@ def _prepare(
         spec,
         statement_timeout_s=statement_timeout_s,
         expected_schema=exported.schema,
+        temp_dir=temporary,
     )
     if current != (exported.content_sha256, exported.content_bytes, exported.rows):
         raise ServerChanged("source differs from exported window")

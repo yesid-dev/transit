@@ -22,6 +22,29 @@ CSV_OPTIONS = (
 )
 
 
+def csv_options(path: Path) -> str:
+    """Size the reader buffer for the largest record, not the whole file.
+
+    Count CSV record bytes in bounded chunks; doubled quotes toggle twice.
+    PostgreSQL's field ceiling remains a validation rule, not an allocation.
+    """
+    largest, size, quoted = 2 * 1024**2, 0, False
+    with path.open("rb") as source:
+        while block := source.read(1024 * 1024):
+            start = 0
+            for match in re.finditer(b'["\\n]', block):
+                size += match.end() - start
+                start = match.end()
+                if match[0] == b'"':
+                    quoted = not quoted
+                elif not quoted:
+                    largest = max(largest, size)
+                    size = 0
+            size += len(block) - start
+    largest = max(largest, size)
+    return re.sub(r"max_line_size=[0-9]+", f"max_line_size={largest}", CSV_OPTIONS)
+
+
 class InvalidCsvValue(ValueError):
     """A CSV record or column value is malformed or unsupported."""
 
@@ -142,7 +165,7 @@ def validate_csv(connection: duckdb.DuckDBPyConnection, path: Path, schema: Tabl
     try:
         with connection.cursor() as source, connection.cursor() as checker:
             source.execute(
-                f"SELECT * FROM read_csv(?, columns=?, {CSV_OPTIONS})",
+                f"SELECT * FROM read_csv(?, columns=?, {csv_options(path)})",
                 [str(path), dict.fromkeys(types, "VARCHAR")],
             )
             checker.execute("SET TimeZone='UTC'")
