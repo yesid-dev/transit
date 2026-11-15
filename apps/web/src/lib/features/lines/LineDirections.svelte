@@ -2,312 +2,253 @@
 	import type { RouteFile, StopPrediction } from '#lib/v1/index.ts';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { RouteDetailCopy } from './lines.copy';
-
 	export interface LineDirectionsProps {
 		directions: RouteFile['directions'];
-		predictions: ReadonlyMap<string, StopPrediction>;
+		predictions?: ReadonlyMap<string, StopPrediction>;
+		mode?: 'live' | 'schedule';
 		locale: Locale;
 		copy: RouteDetailCopy;
-		/** The network's zone (the manifest's `tz`); predicted arrivals read in it. */
 		timeZone?: string;
 	}
 </script>
 
 <script lang="ts">
-	import '#lib/components/surface/compact-row.css';
-	import { readableName } from '#lib/components/surface/readableName.ts';
-	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
-	import { liveAbsenceReason, readLiveAbsenceContext } from '#lib/site/absence.ts';
-	const absenceContext = readLiveAbsenceContext();
 	import { getLocalizeHref } from '#lib/i18n/index.ts';
 	import { routeFor } from '#lib/nav/index.ts';
+	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { stopNameFallback } from '#lib/site/absence.ts';
 	import { formatLocalClock } from '#lib/utils/time.ts';
-	import { delayLabel, delayTone } from '#lib/site/delayPresentation.ts';
+	import { delayMeasurement } from '#lib/site/delayPresentation.ts';
 	import { AbsentValue } from '#lib/components/edge/index.ts';
-	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
-
-	const localizeHref = getLocalizeHref();
-
-	let { directions, predictions, locale, copy, timeZone }: LineDirectionsProps = $props();
+	import { lineViewsCopy } from './lineViews.copy';
+	import { Button } from '@yesid/ui/button';
+	let {
+		directions,
+		predictions = new Map(),
+		mode = 'live',
+		locale,
+		copy,
+		timeZone,
+	}: LineDirectionsProps = $props();
+	const t = $derived(lineViewsCopy[locale]);
 	const uid = $props.id();
-
-	const stopHref = (stopId: string): string =>
-		localizeHref(routeFor({ kind: 'stop', id: stopId }), locale);
-
-	const timeLabel = (iso: string): string => formatLocalClock(new Date(iso), locale, timeZone);
+	const localizeHref = getLocalizeHref();
+	let selected = $state('0');
+	let expanded = $state<readonly string[]>([]);
+	const dirs = $derived(directions ?? []);
+	const index = $derived(Number(selected) < dirs.length ? Number(selected) : 0);
+	const direction = $derived(dirs[index]);
+	const name = (dir: NonNullable<RouteFile['directions']>[number]) =>
+		dir.headsign ?? copy.direction(dir.dir);
+	const stopHref = (id: string) => localizeHref(routeFor({ kind: 'stop', id }), locale);
+	const rows = $derived((direction?.stops ?? []).filter((stop) => predictions.has(stop.id)));
+	const shared = $derived(
+		(direction?.stops ?? []).some((stop) =>
+			dirs.some((dir, i) => i !== index && dir.stops?.some((other) => other.id === stop.id)),
+		),
+	);
+	function toggle(key: string) {
+		expanded = expanded.includes(key)
+			? expanded.filter((value) => value !== key)
+			: [...expanded, key];
+	}
 </script>
 
-{#if (directions ?? []).length > 0}
-	<div class="line-directions-pane" data-slot="line-directions">
+<div class="line-directions-pane" data-slot="line-directions" data-mode={mode}>
+	{#if dirs.length === 0}
+		<p>{t.noDestinations}</p>
+	{:else if mode === 'schedule'}
 		<div class="line-directions">
-			{#each directions ?? [] as dir, di (di)}
+			{#each dirs as dir, di (di)}
+				{@const stops = dir.stops ?? []}
 				<details class="line-direction">
-					<summary class="line-direction-head">
-						<span
-							id="{uid}-direction-{di}"
-							class="line-direction-name readable-name"
-							title={dir.headsign ?? copy.direction(dir.dir)}
-							use:readableName
-						>
-							{dir.headsign ?? copy.direction(dir.dir)}
-						</span>
-						<span class="line-direction-meta">
-							{copy.stopsCount((dir.stops ?? []).length)}
-						</span>
-						<ChevronRightIcon size={16} strokeWidth={2.4} aria-hidden="true" />
-					</summary>
-					{#if (dir.stops ?? []).length > 0}
-						<table class="line-stops" aria-labelledby="{uid}-direction-{di}">
-							<thead>
-								<tr>
-									<th scope="col">{copy.stopColumns.stop}</th>
-									<th scope="col">{copy.stopColumns.arrival}</th>
-									<th scope="col">{copy.stopColumns.delay}</th>
-								</tr>
-							</thead>
-							<tbody>
-								{#each dir.stops ?? [] as stop, si (stop.id + '-' + si)}
-									{@const prediction = predictions.get(stop.id) ?? null}
-									<tr class="line-stop">
-										<th scope="row">
-											<a class="line-stop-link" href={stopHref(stop.id)}>
-												<span class="sr-only">{copy.viewStop} </span>
-												<span class="line-stop-seq">{stop.seq}</span>
-												<span
-													class="line-stop-name readable-name"
-													title={stop.name
-														? stopDisplayName(stop.name)
-														: stopNameFallback(stop.id, locale)}
-													use:readableName
-													>{stop.name
-														? stopDisplayName(stop.name)
-														: stopNameFallback(stop.id, locale)}</span
-												>
-												<ChevronRightIcon size={14} strokeWidth={2.4} aria-hidden="true" />
-											</a>
-										</th>
-										{#if prediction}
-											<td class="line-stop-live">
-												{#if prediction.etaUtc}
-													<time class="line-stop-eta" datetime={prediction.etaUtc}>
-														{timeLabel(prediction.etaUtc)}
-													</time>
-												{:else}
-													<span class="line-stop-eta">{copy.approaching}</span>
-												{/if}
-											</td>
-											<td class="line-stop-live">
-												{#if prediction.delayMin != null}
-													<span class="line-stop-delay" data-tone={delayTone(prediction.delayMin)}>
-														{delayLabel(prediction.delayMin, copy)}
-													</span>
-												{:else}
-													<AbsentValue
-														reason={liveAbsenceReason('trip-prediction-delay', absenceContext())}
-														variant="row"
-														{locale}
-													/>
-												{/if}
-											</td>
-										{:else}
-											<td class="line-stop-live" colspan="2">
-												<AbsentValue
-													reason={liveAbsenceReason('trip-prediction', absenceContext())}
-													variant="row"
-													{locale}
-												/>
-											</td>
-										{/if}
-									</tr>
-								{/each}
-							</tbody>
-						</table>
-					{/if}
+					<summary
+						><span>{name(dir)}</span><span class="count">{copy.stopsCount(stops.length)}</span
+						></summary
+					>
+					<ol id="{uid}-stops-{di}">
+						{#each expanded.includes(String(di)) ? stops : stops.slice(0, 6) as stop, si (stop.id + '-' + si)}
+							<li>
+								<a href={stopHref(stop.id)}
+									><span class="sr-only">{copy.viewStop} {stop.seq} </span>{stop.name
+										? stopDisplayName(stop.name)
+										: stopNameFallback(stop.id, locale)}</a
+								>
+							</li>
+						{/each}
+					</ol>
+					{#if stops.length > 6}<Button
+							variant="outline"
+							class="min-h-11"
+							aria-expanded={expanded.includes(String(di))}
+							aria-controls="{uid}-stops-{di}"
+							onclick={() => toggle(String(di))}
+							>{expanded.includes(String(di)) ? t.showLess : t.showAll(stops.length)}</Button
+						>{/if}
 				</details>
 			{/each}
 		</div>
-	</div>
-{/if}
+	{:else}
+		<label for="{uid}-destination">{t.destination}</label>
+		<select
+			id="{uid}-destination"
+			value={selected}
+			onchange={(event) => (selected = event.currentTarget.value)}
+		>
+			{#each dirs as dir, di (di)}<option value={String(di)}>{name(dir)}</option>{/each}
+		</select>
+		<p>{t.predictionCaveat}</p>
+		{#if shared}<p>{t.shared}</p>{/if}
+		{#if rows.length > 0 && direction}
+			<table id="{uid}-predictions">
+				<caption>{t.predictionCaption(name(direction))}</caption>
+				<thead
+					><tr
+						><th scope="col">{copy.stopColumns.stop}</th><th scope="col">{t.predictedTime}</th><th
+							scope="col">{t.offsetColumn}</th
+						></tr
+					></thead
+				>
+				<tbody>
+					{#each expanded.includes('live-' + selected) ? rows : rows.slice(0, 6) as stop, si (stop.id + '-' + si)}
+						{@const prediction = predictions.get(stop.id)!}
+						<tr>
+							<th scope="row"
+								><a href={stopHref(stop.id)}
+									><span class="sr-only">{copy.viewStop} {stop.seq} </span>{stop.name
+										? stopDisplayName(stop.name)
+										: stopNameFallback(stop.id, locale)}</a
+								></th
+							>
+							<td
+								>{#if prediction.etaUtc}<time datetime={prediction.etaUtc}
+										>{formatLocalClock(new Date(prediction.etaUtc), locale, timeZone)}</time
+									>{:else}{copy.approaching}{/if}</td
+							>
+							<td
+								>{#if Number.isFinite(prediction.delayMin) && prediction.delayMin != null}{delayMeasurement(
+										prediction.delayMin,
+									)}{:else}<AbsentValue
+										variant="compact"
+										disclosure={false}
+										reason="not-reported"
+										{locale}
+									/>{/if}</td
+							>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+			{#if rows.length > 6}<Button
+					variant="outline"
+					class="min-h-11"
+					aria-expanded={expanded.includes('live-' + selected)}
+					aria-controls="{uid}-predictions"
+					onclick={() => toggle('live-' + selected)}
+					>{expanded.includes('live-' + selected) ? t.showLess : t.showAll(rows.length)}</Button
+				>{/if}
+		{:else}<p data-slot="no-predictions">{t.noPredictions}</p>{/if}
+	{/if}
+</div>
 
 <style>
 	.line-directions-pane {
+		min-width: 0;
 		container-type: inline-size;
-		container-name: line-directions;
 	}
 	.line-directions {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 1.25rem;
+		display: grid;
+		gap: 1.5rem;
 	}
-	@container line-directions (min-width: 44rem) {
-		.line-directions {
-			display: grid;
-			grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr));
-			gap: 1.5rem 2rem;
-			align-items: start;
-		}
-	}
-	.line-direction-head {
+	summary {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
+		justify-content: space-between;
 		gap: 0.75rem;
 		min-height: 2.75rem;
 		cursor: pointer;
-		list-style: none;
+		font-weight: 600;
 	}
-	.line-direction-head::-webkit-details-marker {
-		display: none;
-	}
-	.line-direction-head:focus-visible {
-		outline: 2px solid var(--ring);
-		outline-offset: 2px;
-		border-radius: var(--radius-md);
-	}
-	.line-direction-head :global(svg) {
-		flex: none;
-		color: var(--muted-foreground);
-	}
-	.line-direction-head:hover :global(svg) {
-		color: var(--foreground);
-	}
-	.line-direction[open] > .line-direction-head :global(svg) {
-		rotate: 90deg;
-	}
-	.line-direction-name {
-		flex: 1 1 auto;
+	summary span {
 		min-width: 0;
-		font-family: var(--font-heading);
-		font-weight: 600;
-		font-size: var(--text-subheading);
-		color: var(--foreground);
-	}
-	.line-direction-meta {
-		flex-shrink: 0;
-		font-family: var(--font-mono);
-		font-size: var(--text-small);
-		color: var(--muted-foreground);
-	}
-	.line-stops {
-		width: 100%;
-		margin-top: 0.5rem;
-		border-collapse: collapse;
-	}
-	.line-stops thead th {
-		padding: 0 0 0.375rem 0.75rem;
-		font-family: var(--font-mono);
-		font-size: var(--text-micro);
-		font-weight: 600;
-		color: var(--muted-foreground);
-		text-align: start;
-		text-wrap: balance;
-		vertical-align: bottom;
-	}
-	/* Words, not letters: the section's break-anywhere wrapping would shrink these columns to a glyph. */
-	.line-stops thead th,
-	.line-stop-live {
 		overflow-wrap: normal;
 		word-break: normal;
 	}
-	.line-stops thead th:first-child {
-		width: 100%;
-		padding-inline-start: 0;
-	}
-	.line-stop th {
-		padding: 0;
-		font-weight: inherit;
-		text-align: start;
-	}
-	.line-stop {
-		border-bottom: 1px solid var(--border-subtle, var(--border));
-	}
-	.line-stop:last-child {
-		border-bottom: none;
-	}
-	.line-stop-link {
-		display: grid;
-		grid-template-columns: 2ch minmax(0, 1fr) auto;
-		width: calc(100% + 1rem);
-	}
-	.line-stop-seq {
-		min-width: 2ch;
-		font-family: var(--font-mono);
-		font-size: var(--text-small);
+	.count {
 		color: var(--muted-foreground);
-		text-align: right;
+		font-size: var(--text-small);
 	}
-	.line-stop-name {
-		font-size: var(--text-card-body);
-		color: var(--foreground);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: normal;
-		transition: color var(--duration-fast) var(--ease-out);
-	}
-	.line-stop-live {
-		padding-inline-start: 0.75rem;
-		font-family: var(--font-mono);
-		font-size: var(--text-micro);
-	}
-	.line-stop-eta {
-		white-space: nowrap;
+	label {
+		display: block;
 		font-weight: 600;
-		color: var(--foreground);
+		margin-bottom: 0.5rem;
 	}
-	.line-stop-delay {
+	select {
+		width: 100%;
+		min-height: 2.75rem;
+		background: var(--background);
+		color: var(--foreground);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-sm);
+		padding: 0.5rem;
+		font: inherit;
+	}
+	p {
+		color: var(--muted-foreground);
+		line-height: 1.5;
+	}
+	table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: var(--text-small);
+	}
+	caption {
+		text-align: start;
+		margin-bottom: 0.75rem;
+		color: var(--muted-foreground);
+	}
+	th,
+	td {
+		text-align: start;
+		padding: 0.5rem 0.25rem;
+		vertical-align: top;
+		overflow-wrap: normal;
+		word-break: normal;
+		border-bottom: 1px solid var(--border);
+	}
+	th {
+		font-weight: 500;
+	}
+	td {
+		font-variant-numeric: tabular-nums;
+	}
+	td:last-child {
+		white-space: nowrap;
+	}
+	a {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.375rem;
-		font-weight: 600;
-		color: var(--muted-foreground);
+		min-height: 2.75rem;
+		color: var(--foreground);
+		text-decoration: underline;
+		text-underline-offset: 0.2em;
 	}
-	.line-stop-delay::before {
-		content: '';
-		width: 0.4rem;
-		height: 0.4rem;
-		border-radius: var(--radius-pill);
-		background: currentcolor;
-		flex: none;
+	a:focus-visible,
+	summary:focus-visible,
+	select:focus-visible {
+		outline: 2px solid var(--ring);
+		outline-offset: 2px;
 	}
-	.line-stop-delay[data-tone='none'] {
-		color: var(--muted-foreground);
+	ol {
+		padding-left: 1.5rem;
 	}
-	.line-stop-delay[data-tone='none']::before {
-		display: none;
+	li {
+		padding-block: 0.125rem;
 	}
-	.line-stop-delay[data-tone='early'] {
-		color: var(--dataviz-status-early);
-	}
-	.line-stop-delay[data-tone='on-time'] {
-		color: var(--dataviz-status-on-time);
-	}
-	.line-stop-delay[data-tone='late'] {
-		color: var(--dataviz-status-late);
-	}
-	.line-stop-delay[data-tone='severe'] {
-		color: var(--dataviz-status-severe);
-	}
-	.line-stop-link :global(svg) {
-		opacity: 0.45;
-		transition:
-			opacity var(--duration-fast) var(--ease-out),
-			transform var(--duration-fast) var(--ease-out);
-	}
-	.line-stop-link:hover :global(svg) {
-		opacity: 1;
-		transform: translateX(2px);
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.line-stop-link,
-		.line-stop-name,
-		.line-stop-link :global(svg) {
-			transition: none;
-		}
-		.line-stop-link:hover :global(svg) {
-			transform: none;
+	@container (min-width: 42rem) {
+		.line-directions {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
 	}
 </style>

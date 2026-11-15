@@ -204,7 +204,16 @@ const liveStore = {
 			retainedGeneration: '2026-06-15T12:00:00Z',
 			health: { state: 'live', retained: true, ageSeconds: 12, isStale: false, notice: null },
 		},
-		alerts: { health: { ageSeconds: 300 as number | null, retained: true } },
+		alerts: {
+			phase: 'ready' as 'ready' | 'failed' | 'loading' | 'idle',
+			health: {
+				ageSeconds: 300 as number | null,
+				retained: true,
+				state: 'live' as 'live' | 'never-loaded' | 'failed-no-data' | 'retained-stale' | 'retrying',
+				isStale: false,
+				notice: null as null | 'stale' | 'refresh-unavailable',
+			},
+		},
 	},
 	isStale: false,
 	start: vi.fn(),
@@ -266,6 +275,7 @@ let routesIndexData: { generated_utc: string; routes: { id: string; reliability?
 };
 
 function resetRouteSurfaceState(): void {
+	routeManifest.provider = 'stm';
 	routeProvider.value = undefined;
 	routeProvider.realLive = false;
 	routeDetailNav.replaceState.mockReset().mockImplementation(routeDetailNav.defaultReplaceState);
@@ -280,6 +290,14 @@ function resetRouteSurfaceState(): void {
 	reliabilityResourceState = { data: null, error: null, loading: false, settled: true };
 	reliabilityReloadSpy.mockReset();
 	createLiveStoreSpy.mockReset();
+	Object.assign(liveStore.familyStates.alerts, { phase: 'ready' });
+	Object.assign(liveStore.familyStates.alerts.health, {
+		state: 'live',
+		retained: true,
+		isStale: false,
+		notice: null,
+		ageSeconds: 300,
+	});
 	liveStore.start.mockReset();
 	liveStore.stop.mockReset();
 }
@@ -401,7 +419,7 @@ afterEach(() => {
 afterAll(() => {
 	// Includes three extra mounts for provider/locale absence coverage, plus alert ages,
 	// plus three for the Record tab of a line without live data.
-	expect(vi.mocked(renderSvelte).mock.calls.length).toBeLessThanOrEqual(62);
+	expect(vi.mocked(renderSvelte).mock.calls.length).toBeLessThanOrEqual(70);
 });
 
 describe('RouteDetail article cover and focus scope', () => {
@@ -571,6 +589,21 @@ describe('RouteDetail article cover and focus scope', () => {
 		recordHealth.verdict = null;
 	});
 
+	it('copies the selected Schedule view and its provider after a shallow tab change', async () => {
+		const writeText = vi.fn(async (_text: string) => {});
+		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+		try {
+			renderRoute();
+			await fireEvent.click(screen.getByRole('tab', { name: 'Schedule' }));
+			await fireEvent.click(screen.getByRole('button', { name: 'Copy link' }));
+			const copied = new URL(writeText.mock.calls[0][0]);
+			expect(copied.searchParams.get('tab')).toBe('schedule');
+			expect(copied.searchParams.get('provider')).toBe('stm');
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
 	it('keeps tab URLs shareable while preserving unrelated search parameters', async () => {
 		routeDetailNav.page.url = new URL('http://localhost/lines/161?window=am');
 		renderRoute();
@@ -614,7 +647,7 @@ describe('RouteDetail article cover and focus scope', () => {
 		const scheduleCards = Array.from(
 			view.container.querySelectorAll<HTMLElement>('[data-toc^="line-schedule-"]'),
 		);
-		expect(scheduleCards).toHaveLength(2);
+		expect(scheduleCards).toHaveLength(3);
 		for (const card of scheduleCards) {
 			expect(card.querySelector('[data-section-trigger]')).toHaveAttribute(
 				'aria-expanded',
@@ -649,7 +682,7 @@ describe('RouteDetail article cover and focus scope', () => {
 		) as HTMLElement;
 		const scheduleCards = Array.from(scheduleStack?.children ?? []);
 
-		expect(scheduleCards).toHaveLength(2);
+		expect(scheduleCards).toHaveLength(3);
 		for (const card of scheduleCards) {
 			expect(card.matches('[data-slot="card"].section-card[data-toc^="line-schedule-"]')).toBe(
 				true,
@@ -666,13 +699,17 @@ describe('RouteDetail article cover and focus scope', () => {
 		const rail = view.container.querySelector('[data-slot="detail-shell-left"]') as HTMLElement;
 
 		expect(within(rail).getByRole('button', { name: 'On this page' })).toBeInTheDocument();
-		expect(within(rail).getByRole('button', { name: 'Live service' })).toBeInTheDocument();
-		expect(within(rail).getByRole('button', { name: 'Service profile' })).toBeInTheDocument();
-		expect(within(rail).getByRole('button', { name: 'Directions' })).toBeInTheDocument();
+		expect(within(rail).getByRole('button', { name: 'Vehicles on this line' })).toBeInTheDocument();
+		expect(within(rail).getByRole('button', { name: 'Current reports' })).toBeInTheDocument();
+		expect(
+			within(rail).getByRole('button', { name: 'Predictions by destination' }),
+		).toBeInTheDocument();
 
 		await fireEvent.click(screen.getByRole('tab', { name: 'Schedule' }));
-		expect(within(rail).getByRole('button', { name: 'Service span' })).toBeInTheDocument();
-		expect(within(rail).getByRole('button', { name: 'Service periods' })).toBeInTheDocument();
+		expect(within(rail).getByRole('button', { name: 'Available schedule' })).toBeInTheDocument();
+		expect(
+			within(rail).getByRole('button', { name: 'Planned time between departures' }),
+		).toBeInTheDocument();
 	});
 
 	it('keeps static route detail ahead of late live content', () => {
@@ -683,8 +720,8 @@ describe('RouteDetail article cover and focus scope', () => {
 
 		expect(Array.from(stack.children).map((section) => section.getAttribute('data-toc'))).toEqual([
 			'line-detail-profile',
-			'line-detail-directions',
 			'line-detail-live',
+			'line-detail-directions',
 		]);
 	});
 
@@ -973,7 +1010,7 @@ describe('RouteDetail article schedule structure', () => {
 			for (const label of periodLabels)
 				expect(within(table).getByText(label, { exact: true })).toBeInTheDocument();
 			expect(within(table).queryByText(/^(am_peak|midday|weekend)$/)).toBeNull();
-			expect(within(table).getByText('6.0 min')).toBeInTheDocument();
+			expect(within(table).getByText('6 min')).toBeInTheDocument();
 		},
 	);
 });
@@ -993,25 +1030,27 @@ describe('RouteDetail Detail tab: clickable stops + live readout', () => {
 	it('shows a known delay and a shared absence for a null-delay prediction', () => {
 		renderRoute();
 
-		expect(screen.getByText('2 min late')).toBeInTheDocument();
+		expect(screen.getByText('+2 min')).toBeInTheDocument();
 		expect(screen.getByText('8:05 a.m.')).toHaveAttribute('datetime', '2026-06-15T12:05:00Z');
 
 		const stop = screen.getByRole('row', { name: /^View stop 2 Second stop / });
 		const absence = stop.querySelector('[data-slot="absent-value"]');
 		expect(absence).not.toBeNull();
-		expect(absence).toHaveAttribute('data-density', 'row');
+		expect(absence).toHaveAttribute('data-density', 'compact');
 		expect(stop).not.toHaveTextContent('No delay');
 	});
 
-	it('states no prediction without inferring whether a live bus exists', () => {
+	it('keeps stops without predictions in Schedule instead of empty live rows', async () => {
 		renderRoute();
-
-		const stop = screen.getByRole('row', { name: /^View stop 3 Third stop / });
-		const absence = stop.querySelector('[data-slot="absent-value"]');
-		expect(absence).toHaveAttribute('data-density', 'row');
-		expect(absence).toHaveTextContent('No estimate · no prediction available');
-		expect(stop).not.toHaveTextContent('No live bus');
-		expect(stop.querySelector('time')).toBeNull();
+		expect(screen.queryByRole('row', { name: /Third stop/ })).toBeNull();
+		await fireEvent.click(screen.getByRole('tab', { name: 'Schedule' }));
+		const destination = document.querySelector(
+			'[data-slot="line-directions"][data-mode="schedule"] details',
+		)!;
+		await fireEvent.click(destination.querySelector('summary')!);
+		expect(
+			within(destination as HTMLElement).getByRole('link', { name: /Third stop/ }),
+		).toBeInTheDocument();
 	});
 
 	it('renders the live freshness chip when a live build is present', () => {
@@ -1032,6 +1071,36 @@ describe('RouteDetail Detail tab: service alerts affecting this route', () => {
 		});
 		expect(screen.getByText(note)).toBeInTheDocument();
 	});
+	it.each([
+		['never-loaded', 'loading', false, null],
+		['failed-no-data', 'failed', false, 'refresh-unavailable'],
+		['retrying', 'failed', true, 'refresh-unavailable'],
+		['retained-stale', 'ready', true, 'stale'],
+	] as const)(
+		'does not call an %s alert feed a current empty feed',
+		(state, phase, retained, notice) => {
+			liveAlerts = retained ? { generated_utc: '2026-06-15T12:00:00Z', alerts: [] } : null;
+			Object.assign(liveStore.familyStates.alerts, { phase });
+			Object.assign(liveStore.familyStates.alerts.health, {
+				state,
+				retained,
+				notice,
+				isStale: state === 'retained-stale',
+			});
+			const { container } = renderRoute();
+			expect(container).not.toHaveTextContent('No current notices reported for this line.');
+			expect(container).toHaveTextContent(
+				'Current notices are unavailable. This does not mean there are no disruptions.',
+			);
+		},
+	);
+	it('names a genuinely fresh empty alert report as empty', () => {
+		liveAlerts = { generated_utc: '2026-06-15T12:00:00Z', alerts: [] };
+		const { container } = renderRoute();
+		expect(container).toHaveTextContent('No current notices reported for this line.');
+		expect(container).not.toHaveTextContent('Current notices are unavailable.');
+	});
+
 	it('omits an unknown alerts age', () => {
 		liveStore.familyStates.alerts.health.ageSeconds = null;
 		try {
@@ -1151,8 +1220,8 @@ describe('RouteDetail Detail tab: HONEST ABSENCE (no live bus)', () => {
 			expect(
 				screen.getByText(
 					locale === 'en'
-						? 'live positions are not published here'
-						: 'les positions en direct ne sont pas publiées ici',
+						? 'Transit cannot measure this line’s actual service with the data available.'
+						: 'Transit ne peut pas mesurer le service réel de cette ligne avec les données disponibles.',
 				),
 			).toBeInTheDocument();
 			routeManifest.provider = 'stm';
@@ -1242,5 +1311,27 @@ describe.each(['en', 'fr'] as const)('RouteDetail roster published status in %s'
 
 		expect(link.getAttribute('aria-label')).toContain(STATUS_LABELS[locale][status]);
 		if (measurement) expect(link.getAttribute('aria-label')).toContain(measurement);
+	});
+});
+
+describe.each(['en', 'fr'] as const)('RouteDetail rail capability in %s', (locale) => {
+	it('opens an old live URL on the capability statement and the available schedule', async () => {
+		routeDetailNav.page.url = new URL('http://localhost/lines/161?tab=detail&provider=stm');
+		routeFileData = { ...ROUTE_FILE, type: 1 };
+		liveIndex = buildIndex([]);
+		const { container } = routeSurface.mount(RouteDetail, {
+			props: { id: '161', seed: routeSeed() },
+			context: new Map([[Symbol.for('@yesid/ui/locale'), () => locale]]),
+		});
+		await waitFor(() =>
+			expect(container.querySelector('[data-slot="line-no-live"]')).not.toBeNull(),
+		);
+		expect(container.querySelector('[data-slot="freshness-stamp"]')).toBeNull();
+		expect(container.querySelector('[data-testid="route-roster"]')).toBeNull();
+		expect(screen.queryByRole('combobox')).toBeNull();
+		expect(screen.queryByRole('tab', { name: detailCopy[locale].tabs.detail })).toBeNull();
+		expect(screen.getByRole('table')).toHaveTextContent(
+			locale === 'en' ? 'Time window not supplied' : 'Plage horaire non fournie',
+		);
 	});
 });

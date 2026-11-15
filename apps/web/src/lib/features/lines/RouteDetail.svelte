@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { createRecordStamp } from '#lib/v1/recordStamp.svelte.ts';
-	import { readableName } from '#lib/components/surface/readableName.ts';
+	import LineSchedule from './LineSchedule.svelte';
+	import { lineViewsCopy } from './lineViews.copy';
+	import RecordCopyButton from './reliability/sections/RecordCopyButton.svelte';
+	import { Button } from '@yesid/ui/button';
 	import '#lib/components/surface/compact-row.css';
 	import ArticleHeader from '#lib/components/layout/TransitArticleHeader.svelte';
 	import { liveTimingFor } from '#lib/components/map/liveTiming.ts';
@@ -16,8 +19,9 @@
 	import { onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { createDetailTabController } from '#lib/site/detailTabController.svelte.ts';
+	import { currentMirrorUrl } from '#lib/site/urlMirror.ts';
 	import { getLocale, getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
-	import { fmtDelayMin as sharedFmtDelayMin } from '#lib/utils/index.ts';
+
 	import { mapHrefFor, routeFor } from '#lib/nav/index.ts';
 	import { createLiveStore } from '#lib/v1/live/store.svelte.ts';
 	import { providerHasAlerts } from '#lib/v1/providers.ts';
@@ -51,12 +55,10 @@
 	import { StatusBadge } from '#lib/components/dataviz/index.ts';
 	import { ArticleSectionStack, type ArticleMetaEntry } from '#lib/components/layout/index.ts';
 
-	import { ScheduleTable, type ScheduleRow } from '#lib/components/schedule/index.ts';
 	import { CollapsibleSection, type TocEntry, SectionHeading } from '@yesid/ui/brand';
 	import { articleNavigationCopy } from '#lib/components/shared/index.ts';
 	import SectionsToggle from '#lib/components/shared/SectionsToggle.svelte';
-	import MetricDisplay from '#lib/components/brand/MetricDisplay.svelte';
-	import { formatUtc } from '#lib/utils/time.ts';
+
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import LazyRouteReliabilityPane, {
 		type RouteReliabilityClustersModule,
@@ -67,14 +69,12 @@
 		type LineHistorySeed,
 	} from './reliability/data/lineHistoryResource.svelte';
 	import { directionHeadsigns } from './directions';
-	import MetricInfo from '#lib/features/metrics/MetricInfo.svelte';
-	import type { MetricKey } from '#lib/metrics.ts';
+
 	import { detailCopy } from './lines.copy';
 	import LineDirections from './LineDirections.svelte';
 	import { absenceSentence } from '#lib/site/absence.ts';
 	import { delayMeasurement } from '#lib/site/delayPresentation.ts';
 	import { STATUS_LABELS } from '#lib/v1/enumLabels.ts';
-	import { dayTypeLabel, shiftLabel } from '#lib/features/reliability/shiftGrains.ts';
 
 	const localizeHref = getLocalizeHref();
 
@@ -96,14 +96,16 @@
 		lineHistorySeed,
 		initialClusters,
 		initialImportFailed,
-		preparedArticleTime,
 	}: RouteDetailProps = $props();
 
 	const locale = getLocale();
 	const t = $derived(detailCopy[locale]);
+	const viewCopy = $derived(lineViewsCopy[locale]);
 
 	const tabs = $derived(
-		(['reliability', 'detail', 'schedule'] as const).map((key) => ({ key, label: t.tabs[key] })),
+		(['reliability', 'detail', 'schedule'] as const)
+			.filter((key) => !noLiveData || key !== 'detail')
+			.map((key) => ({ key, label: t.tabs[key] })),
 	);
 	const detailTabController = createDetailTabController(new URL(page.url.href));
 	$effect(() => detailTabController.syncFromUrl(new URL(page.url.href)));
@@ -179,25 +181,12 @@
 		() => detailTabController.active === 'reliability',
 	);
 	const articleEdgeLeft = $derived([t.kicker, titleName.number].filter(Boolean).join(' '));
-	const articleGeneratedUtc = $derived(
-		presentation.publicationUtc ?? route.data?.generated_utc ?? null,
-	);
-	const articleTimeText = $derived(
-		articleGeneratedUtc
-			? preparedArticleTime?.routeId === id &&
-				preparedArticleTime.iso === articleGeneratedUtc &&
-				preparedArticleTime.locale === locale
-				? preparedArticleTime.text
-				: formatUtc(articleGeneratedUtc, locale)
-			: null,
-	);
-	const articleEdgeRight = $derived(
-		detailTabController.active === 'reliability' ? shortName : (articleTimeText ?? shortName),
-	);
+
 	const articleMeta = $derived.by((): readonly ArticleMetaEntry[] => {
 		const entries: ArticleMetaEntry[] = [];
 		if (shortName) entries.push({ label: t.article.provider, text: shortName });
-		const stamp = detailTabController.active === 'reliability' ? record.meta(locale) : null;
+		const stamp =
+			detailTabController.active === 'reliability' && !noLiveData ? record.meta(locale) : null;
 		if (stamp) entries.push(stamp);
 		return entries;
 	});
@@ -207,6 +196,14 @@
 	);
 
 	const routeAlerts = $derived(alertsForRoute(live.alerts?.alerts, id));
+	const currentAlertReport = $derived(
+		live.alerts != null &&
+			live.familyStates.alerts.phase === 'ready' &&
+			live.familyStates.alerts.health.state === 'live' &&
+			live.familyStates.alerts.health.retained &&
+			!live.familyStates.alerts.health.isStale &&
+			live.familyStates.alerts.health.notice == null,
+	);
 
 	const provenance = createResource<Provenance>(() => getProvenance());
 
@@ -243,36 +240,60 @@
 		return delay == null ? Number.NEGATIVE_INFINITY : delay;
 	}
 
+	const noLiveData = $derived(absenceReason?.key === 'metro-no-realtime');
+	const articleEdgeRight = shortName;
+
+	$effect(() => {
+		if (noLiveData && detailTabController.active === 'detail')
+			detailTabController.active = 'reliability';
+	});
 	const hasListColumn = $derived(roster.length > 0 || routeAlerts.length > 0);
+	const recordHref = $derived.by(() => {
+		const url = currentMirrorUrl();
+		url.searchParams.delete('tab');
+		url.searchParams.delete('view');
+		url.searchParams.set('provider', manifest.provider);
+		return url.pathname + url.search + url.hash;
+	});
+	const shareUrl = $derived.by(() => {
+		const url = new URL(recordHref, 'https://transit.yesid.dev');
+		if (detailTabController.active !== 'reliability')
+			url.searchParams.set('tab', detailTabController.active);
+		return url.href;
+	});
+	const scheduleLoadedUtc = $derived(
+		provenance.data?.sources?.find((source) => source.feed === 'static_schedule')
+			?.last_loaded_utc ?? null,
+	);
 	const articleNav = $derived(articleNavigationCopy[locale]);
 	const detailTocEntries = $derived.by<TocEntry[]>(() => {
 		if (route.data == null) return [];
 		const entries: TocEntry[] = [
 			{
 				id: 'line-detail-profile',
-				title: t.profile.title,
+				title: viewCopy.live,
 				level: 2,
 				badge: { kind: 'number', value: 1 },
 				children: [],
 			},
 			{
 				id: 'line-detail-directions',
-				title: t.directions,
+				title: viewCopy.predictions,
 				level: 2,
-				badge: { kind: 'number', value: 2 },
+				badge: { kind: 'number', value: 3 },
 				children: [],
 			},
 		];
 		if (hasListColumn) {
 			entries.push({
 				id: 'line-detail-live',
-				title: t.liveService.title,
+				title: viewCopy.roster,
 				level: 2,
-				badge: { kind: 'number', value: 3 },
+				badge: { kind: 'number', value: 2 },
 				children: [],
 			});
 		}
-		return entries;
+		return [entries[0], ...entries.slice(2), entries[1]];
 	});
 	const scheduleTocEntries = $derived.by<TocEntry[]>(() =>
 		route.data == null
@@ -280,22 +301,32 @@
 			: [
 					{
 						id: 'line-schedule-span',
-						title: t.serviceSpan,
+						title: viewCopy.schedule,
 						level: 2,
 						badge: { kind: 'number', value: 1 },
 						children: [],
 					},
 					{
 						id: 'line-schedule-periods',
-						title: t.servicePeriods,
+						title: viewCopy.intervals,
 						level: 2,
 						badge: { kind: 'number', value: 2 },
+						children: [],
+					},
+					{
+						id: 'line-schedule-destinations',
+						title: viewCopy.destinations,
+						level: 2,
 						children: [],
 					},
 				],
 	);
 	const articleToc = $derived({
-		entries: { detail: detailTocEntries, schedule: scheduleTocEntries },
+		entries: {
+			reliability: noLiveData ? scheduleTocEntries : [],
+			detail: detailTocEntries,
+			schedule: scheduleTocEntries,
+		},
 		heading: articleNav.heading,
 		sectionKey: `line-${id}-toc`,
 		counterPrefix: 'SEC',
@@ -303,24 +334,17 @@
 		closeAria: articleNav.closeAria,
 	});
 
-	const showAbsenceNote = $derived(presentation.stamp.generatedUtc != null && roster.length === 0);
+	const showAbsenceNote = $derived(roster.length === 0);
 
 	const tripHref = (tripId: string): string =>
 		localizeHref(routeFor({ kind: 'trip', id: tripId }), locale);
-
-	const fmtMin = (v: number | null | undefined): string | null =>
-		sharedFmtDelayMin(v, { rounding: 'fixed1' });
 </script>
-
-{#snippet scheduleInfo(key: MetricKey, name: string)}
-	<MetricInfo class="route-metric-info" metricKey={key} {locale} {name} side="bottom" />
-{/snippet}
 
 <EntityDetail
 	{tabs}
 	{articleToc}
 	bind:active={detailTabController.active}
-	paneOwnedRailKeys={['reliability']}
+	paneOwnedRailKeys={noLiveData ? [] : ['reliability']}
 >
 	{#snippet articleHeader()}
 		<ArticleHeader
@@ -331,8 +355,10 @@
 			backHref={localizeHref('/lines', locale)}
 			backLabel={t.article.back}
 			meta={articleMeta}
-			metaPending={detailTabController.active === 'reliability' && record.pending}
-			notice={detailTabController.active === 'reliability' ? record.notice(locale) : null}
+			metaPending={detailTabController.active === 'reliability' && !noLiveData && record.pending}
+			notice={detailTabController.active === 'reliability' && !noLiveData
+				? record.notice(locale)
+				: null}
 			edgeLeft={articleEdgeLeft}
 			edgeRight={articleEdgeRight}
 			titleId="line-title"
@@ -351,104 +377,94 @@
 	{/snippet}
 
 	{#snippet pane(key)}
-		{#if key === 'detail'}
+		{#if noLiveData}
+			<ResourceBoundary resource={route} lang={locale}>
+				{#snippet children(file)}<LineSchedule
+						{file}
+						{locale}
+						noLive
+						loadedUtc={scheduleLoadedUtc}
+						{recordHref}
+						{shareUrl}
+					/>{/snippet}
+			</ResourceBoundary>
+		{:else if key === 'detail'}
 			<ResourceBoundary resource={route} lang={locale}>
 				{#snippet children(file)}
-					<ArticleSectionStack>
+					<ArticleSectionStack class="route-live-grid">
 						{#key id}
 							<CollapsibleSection
-								title={t.profile.title}
-								subtitle={t.profile.summary}
+								title={viewCopy.live}
+								subtitle={viewCopy.changing}
 								headerVariant="article-summary"
 								index={0}
 								anchor="line-detail-profile"
 							>
-								<div class="route-profile-grid">
-									<MetricDisplay
-										value={String(file.directions?.length ?? 0)}
-										label={t.profile.directions}
-										size="sm"
-									/>
-									<MetricDisplay
-										value={String(
-											(file.directions ?? []).reduce(
-												(total, direction) => total + (direction.stops?.length ?? 0),
-												0,
-											),
-										)}
-										label={t.profile.stops}
-										size="sm"
-									/>
-									<MetricDisplay
-										value={file.first_departure ?? null}
-										absentReason="no-observations"
-										{locale}
-										label={t.firstDeparture}
-										size="sm"
-									/>
-									<MetricDisplay
-										value={file.last_departure ?? null}
-										absentReason="no-observations"
-										{locale}
-										label={t.lastDeparture}
-										size="sm"
-									/>
-								</div>
-							</CollapsibleSection>
-
-							<CollapsibleSection
-								title={t.directions}
-								headerVariant="article-summary"
-								index={1}
-								subtitle={t.questions.directions}
-								anchor="line-detail-directions"
-							>
-								<div class="route-section">
-									{#if absenceReason?.key !== 'metro-no-realtime' && (presentation.stamp.generatedUtc != null || presentation.stamp.ageSeconds != null)}
-										<div class="route-section-head route-section-head--meta">
-											<FreshnessStamp variant="live" presentation={presentation.stamp} {locale} />
-										</div>
-									{/if}
-									{#if showAbsenceNote}
-										<EdgeState
-											variant="empty"
-											lang={locale}
-											layout="mobile"
-											emptyReason={absenceReason}
-											class="route-absence-note"
+								<div class="route-live-summary">
+									<FreshnessStamp variant="live" presentation={presentation.stamp} {locale} />
+									<Button
+										variant="outline"
+										class="min-h-11"
+										onclick={() => live.refresh({ force: true })}>{viewCopy.refresh}</Button
+									>
+									{#if presentation.notice.kind !== 'none'}<p role="status">
+											{presentation.notice.message}
+											{presentation.notice.body}
+										</p>{/if}
+									<p class="route-reporting">
+										<MaybeValue
+											value={live.familyStates.vehicles.health.retained
+												? viewCopy.reporting(roster.length)
+												: null}
+											reason={liveAbsenceReason('vehicle-delay', {
+												familyStates: live.familyStates,
+											})}
+											{locale}
 										/>
+									</p>
+									<a class="route-record-link" href={recordHref}>{viewCopy.record}</a>
+									<RecordCopyButton
+										label={viewCopy.copyLive}
+										done={viewCopy.copied}
+										fallbackLabel={viewCopy.copyFallback}
+										text={shareUrl}
+									/>
+									{#if !providerHasAlerts(v1.provider)}<p>
+											{viewCopy.alertsUnavailable}
+										</p>{:else if !currentAlertReport}<p>
+											{viewCopy.alertsUnknown}
+										</p>{:else if routeAlerts.length === 0}<p>{viewCopy.noAlerts}</p>{/if}
+									<AffectedAlerts
+										alerts={routeAlerts}
+										{locale}
+										copy={t.alerts}
+										testId="route-alerts"
+									/>
+									{#if providerHasAlerts(v1.provider) && routeAlerts.length > 0 && live.familyStates.alerts.health.ageSeconds != null}
+										<p class="route-alerts-age">
+											<FreshnessStamp
+												variant="live"
+												subject="alerts"
+												presentation={feedPresentation(live.familyStates.alerts, locale)}
+												{locale}
+											/>
+										</p>
 									{/if}
-									<LineDirections directions={file.directions} {predictions} {...l10n} copy={t} />
 								</div>
 							</CollapsibleSection>
 
 							{#if hasListColumn}
 								<CollapsibleSection
-									title={t.liveService.title}
-									subtitle={t.liveService.summary}
+									title={viewCopy.roster}
+									subtitle={viewCopy.offset}
 									headerVariant="article-summary"
-									index={2}
+									index={1}
 									anchor="line-detail-live"
 								>
 									<div class="route-aside">
-										<AffectedAlerts
-											alerts={routeAlerts}
-											{locale}
-											copy={t.alerts}
-											testId="route-alerts"
-										/>
-										{#if providerHasAlerts(v1.provider) && routeAlerts.length > 0 && live.familyStates.alerts.health.ageSeconds != null}
-											<p class="route-alerts-age">
-												<FreshnessStamp
-													variant="live"
-													subject="alerts"
-													presentation={feedPresentation(live.familyStates.alerts, locale)}
-													{locale}
-												/>
-											</p>
-										{/if}
 										{#if roster.length > 0}
 											<div class="route-roster" data-testid="route-roster">
+												<p class="route-band-definition">{viewCopy.bands}</p>
 												<div class="route-section-head">
 													<SectionHeading level={2} overline={t.roster.heading} />
 													<span class="route-roster-count">{t.roster.count(roster.length)}</span>
@@ -485,8 +501,7 @@
 																		/></span
 																	>
 																	{#if bus.next_stop != null}<span
-																			class="route-roster-next readable-name"
-																			use:readableName
+																			class="route-roster-next"
 																			title={t.roster.nextStop(
 																				route.data?.directions
 																					?.flatMap((d) => d.stops ?? [])
@@ -533,81 +548,38 @@
 									</div>
 								</CollapsibleSection>
 							{/if}
+							<CollapsibleSection
+								title={viewCopy.predictions}
+								headerVariant="article-summary"
+								index={2}
+								anchor="line-detail-directions"
+							>
+								<div class="route-section">
+									{#if showAbsenceNote}
+										<EdgeState
+											variant="empty"
+											lang={locale}
+											layout="mobile"
+											emptyReason={absenceReason}
+											class="route-absence-note"
+										/>
+									{/if}
+									<LineDirections directions={file.directions} {predictions} {...l10n} copy={t} />
+								</div>
+							</CollapsibleSection>
 						{/key}
 					</ArticleSectionStack>
 				{/snippet}
 			</ResourceBoundary>
 		{:else if key === 'schedule'}
 			<ResourceBoundary resource={route} lang={locale}>
-				{#snippet children(file)}
-					<div class="route-schedule-cq">
-						<ArticleSectionStack data-section-sequence="line-schedule">
-							<CollapsibleSection
-								title={t.serviceSpan}
-								headerVariant="article-summary"
-								index={0}
-								subtitle={t.questions.span}
-								anchor="line-schedule-span"
-							>
-								<p class="route-schedule-intro" data-slot="schedule-intro">{t.scheduleIntro}</p>
-								<div class="route-schedule-span">
-									<div class="route-departures">
-										<div class="route-metric-cell">
-											<MetricDisplay
-												value={file.first_departure ?? null}
-												absentReason="not-in-schedule"
-												{locale}
-												label={t.firstDeparture}
-												size="sm"
-											/>
-											{@render scheduleInfo('serviceSpan', t.firstDeparture)}
-										</div>
-										<div class="route-metric-cell">
-											<MetricDisplay
-												value={file.last_departure ?? null}
-												absentReason="not-in-schedule"
-												{locale}
-												label={t.lastDeparture}
-												size="sm"
-											/>
-											{@render scheduleInfo('serviceSpan', t.lastDeparture)}
-										</div>
-									</div>
-								</div>
-							</CollapsibleSection>
-							<CollapsibleSection
-								title={t.servicePeriods}
-								headerVariant="article-summary"
-								index={1}
-								subtitle={t.questions.periods}
-								anchor="line-schedule-periods"
-							>
-								{#snippet headerActions()}
-									{@render scheduleInfo('headway', t.servicePeriods)}
-								{/snippet}
-								<div class="route-schedule-periods">
-									{#if (file.service_periods ?? []).length > 0}
-										<ScheduleTable
-											mode="service"
-											rows={(file.service_periods ?? []).map(
-												(period): ScheduleRow => ({
-													kind: 'service',
-													period: dayTypeLabel(shiftLabel(period.shift, locale), locale),
-													window: period.window,
-													headway: fmtMin(period.headway_min),
-												}),
-											)}
-											{locale}
-											labels={t.scheduleTable}
-										/>
-									{:else}
-										<EdgeState variant="empty" lang={locale} />
-									{/if}
-								</div>
-							</CollapsibleSection>
-						</ArticleSectionStack>
-					</div>
-				{/snippet}
+				{#snippet children(file)}<LineSchedule
+						{file}
+						{locale}
+						loadedUtc={scheduleLoadedUtc}
+						{recordHref}
+						{shareUrl}
+					/>{/snippet}
 			</ResourceBoundary>
 		{:else}
 			<LazyRouteReliabilityPane
@@ -627,15 +599,43 @@
 </EntityDetail>
 
 <style>
+	@media (min-width: 72rem) {
+		:global(.article-section-stack.route-live-grid[data-slot='article-section-stack']) {
+			display: grid;
+			grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+			align-items: start;
+		}
+		:global(.route-live-grid > [data-toc='line-detail-profile']) {
+			grid-column: 1 / -1;
+		}
+		:global(.route-live-grid > [data-toc='line-detail-directions']) {
+			grid-column: 2;
+		}
+	}
+	.route-reporting {
+		min-block-size: 3em;
+	}
+	.route-live-summary {
+		display: grid;
+		justify-items: start;
+		gap: 0.75rem;
+	}
+	.route-live-summary p,
+	.route-band-definition {
+		margin: 0;
+		line-height: 1.5;
+		color: var(--muted-foreground);
+	}
+	.route-record-link {
+		display: inline-flex;
+		align-items: center;
+		min-height: 2.75rem;
+		color: var(--accent-text);
+	}
 	.route-section {
 		display: flex;
 		flex-direction: column;
 		gap: 1.25rem;
-	}
-	.route-profile-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
-		gap: 1rem;
 	}
 	.route-alerts-age {
 		margin: 0;
@@ -653,9 +653,6 @@
 		align-items: baseline;
 		justify-content: space-between;
 		gap: 0.75rem;
-	}
-	.route-section-head--meta {
-		justify-content: flex-end;
 	}
 	.route-roster {
 		display: flex;
@@ -698,6 +695,8 @@
 	}
 	.route-roster-next {
 		flex-basis: 100%;
+		overflow-wrap: normal;
+		word-break: normal;
 	}
 	.route-roster-link {
 		flex: 1 1 auto;
@@ -717,36 +716,6 @@
 	a.route-roster-link:hover :global(svg) {
 		opacity: 1;
 		transform: translateX(2px);
-	}
-	.route-departures {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 1.5rem;
-	}
-	.route-metric-cell {
-		display: inline-flex;
-		align-items: flex-start;
-		gap: 0.375rem;
-	}
-	.route-schedule-cq {
-		display: flex;
-		flex-direction: column;
-	}
-	.route-schedule-intro {
-		margin: 0 0 var(--space-card-gap);
-		font-size: var(--text-small);
-		line-height: 1.5;
-		color: var(--foreground);
-	}
-	.route-schedule-span {
-		display: flex;
-		flex-direction: column;
-		gap: 1.25rem;
-	}
-	.route-schedule-periods {
-		display: flex;
-		flex-direction: column;
-		gap: 1.25rem;
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.route-roster-link,
