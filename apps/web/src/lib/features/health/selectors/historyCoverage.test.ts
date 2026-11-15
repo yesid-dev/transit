@@ -271,6 +271,45 @@ describe('selectHistoryCoverage', () => {
 		});
 	});
 
+	it('never counts days the date list could not have seen when it was published', () => {
+		// Production on 2026-11-15: STM's alert archive spans the periods agencies announce.
+		const published = (families: NonNullable<HistoricAvailabilityIndex['families']>) =>
+			selectHistoryCoverage({ generated_utc: iso('2026-11-11T07:11:02Z'), families });
+		const family = (key: 'alerts' | 'receipts', first: string, last: string) => ({
+			family: key,
+			selection_mode: 'range' as const,
+			index_path: `historic/${key}/index.json`,
+			first_available_date: first,
+			last_available_date: last,
+			gaps: [],
+		});
+		const [alerts, receipts] = published([
+			family('alerts', '2010-03-16', '2028-03-31'),
+			family('receipts', '2026-05-25', '2026-11-11'),
+		]);
+
+		expect(alerts).toMatchObject({
+			state: 'past-publication',
+			days: null,
+			firstDate: '2010-03-16',
+			lastDate: '2028-03-31',
+		});
+		// 171 days, May 25 to Nov 11 inclusive, ending on the day the list was published.
+		expect(receipts).toMatchObject({
+			state: 'no-gaps',
+			days: { inWindow: 171, missing: 0, withRecords: 171, gapRuns: 0 },
+		});
+		// A zone ahead of UTC can already be on the next calendar day; two days ahead cannot.
+		expect(published([family('alerts', '2026-11-01', '2026-11-12')])[0]).toMatchObject({
+			state: 'no-gaps',
+			days: { inWindow: 12, withRecords: 12 },
+		});
+		expect(published([family('alerts', '2026-11-01', '2026-11-13')])[0]).toMatchObject({
+			state: 'past-publication',
+			days: null,
+		});
+	});
+
 	it('keeps every day count whole, in range and equal to the sum of its parts', () => {
 		// A small seeded generator replaces a committed fixture; a day-by-day count is the oracle.
 		let seed = 20261115;
@@ -296,6 +335,11 @@ describe('selectHistoryCoverage', () => {
 					},
 				]),
 			);
+			// The list is published on Jul 14 (day 194): nothing after Jul 15 (day 195) is counted.
+			if (last > 195) {
+				expect(row).toMatchObject({ state: 'past-publication', days: null });
+				continue;
+			}
 			const missingDays = new Set<number>();
 			for (let offset = first; offset <= last; offset += 1)
 				if (gaps.some((gap) => gap.start_date <= day(offset) && day(offset) <= gap.end_date))

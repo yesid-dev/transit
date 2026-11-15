@@ -111,6 +111,57 @@ it('shows an absent family as not published, never as zero days', async () => {
 	expect(receipts).not.toHaveTextContent(/\b0\b|days with records/);
 });
 
+it.each([
+	['en', 'Alerts', 'Mar 16, 2010 – Mar 31, 2028', /\d of [\d,]+ days with records/],
+	['fr', 'Alertes', '16 mars 2010 – 31 mars 2028', /jours sur [\d\s]+ avec des données/],
+] as const)(
+	'%s: dates its years and refuses to count a window that runs past the list’s publication',
+	async (locale, alerts, window, counted) => {
+		// Production on 2026-11-15: STM's alert archive spans 2010 to 2028 in a list published in 2026.
+		const withAlerts: HistoricAvailabilityIndex = {
+			...root,
+			families: [
+				...root.families!,
+				{
+					family: 'alerts',
+					selection_mode: 'range',
+					index_path: 'historic/alerts/index.json',
+					first_available_date: '2010-03-16',
+					last_available_date: '2028-03-31',
+					gaps: [],
+				},
+			],
+		};
+		const t = copy[locale].historyCoverage;
+		render(
+			SectionHistoryCoverage,
+			props({
+				rows: selectHistoryCoverage(withAlerts),
+				inventory: selectHistoryInventory(withAlerts),
+				copy: copy[locale],
+				locale,
+			}),
+		);
+		const list = screen.getByRole('list', { name: t.indexLabel });
+		const alertsRow = within(list).getByRole('button', { name: alerts }).closest('li')!;
+
+		expect(alertsRow).toHaveTextContent(window);
+		expect(alertsRow).toHaveTextContent(t.days.unreadable);
+		expect(alertsRow).not.toHaveTextContent(counted);
+		expect(alertsRow).not.toHaveTextContent(/6[\s,.]?591/);
+		// Windows inside the list's own year keep their short dates.
+		expect(
+			within(list).getByRole('button', { name: t.families.network }).closest('li'),
+		).not.toHaveTextContent('2026');
+
+		await fireEvent.click(within(list).getByRole('button', { name: alerts }));
+		const panel = screen.getByRole('region', { name: t.evidence.region(alerts) });
+		expect(panel).toHaveTextContent(window);
+		expect(panel).toHaveTextContent(t.days.pastPublication);
+		expect(panel).not.toHaveTextContent(counted);
+	},
+);
+
 it('says which families a record warning affects is not published, without inventing one', () => {
 	render(SectionHistoryCoverage, props({ recordWarning: true }));
 

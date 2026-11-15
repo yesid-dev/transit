@@ -55,6 +55,8 @@ export type HistoryCoverageState =
 	| 'unpublished'
 	| 'no-dates'
 	| 'unreadable-dates'
+	/** The window runs past the day its date list was published, so it is not a count of records. */
+	| 'past-publication'
 	| 'gaps-unknown'
 	| 'no-gaps'
 	| 'gaps';
@@ -118,6 +120,7 @@ function dayNumber(value: string | null | undefined): number | null {
 
 function coverage(
 	published: HistoricFamilyAvailability | undefined,
+	latestDay: number | null,
 ): Pick<HistoryCoverageFamilyView, 'state' | 'days'> {
 	if (published === undefined) return { state: 'unpublished', days: null };
 	if (!date(published.first_available_date) || !date(published.last_available_date))
@@ -126,6 +129,8 @@ function coverage(
 	const last = dayNumber(published.last_available_date);
 	if (first == null || last == null || last < first)
 		return { state: 'unreadable-dates', days: null };
+	// No family can hold records for a day that had not begun when its date list was published.
+	if (latestDay != null && last > latestDay) return { state: 'past-publication', days: null };
 	const inWindow = last - first + 1;
 	const unknown = { inWindow, missing: null, withRecords: null, gapRuns: null };
 	// Each gap clipped to the window; one unreadable gap makes the whole count unknown.
@@ -155,12 +160,13 @@ function coverage(
 function row(
 	key: HistoryCoverageFamilyKey,
 	published: HistoricFamilyAvailability | undefined,
+	latestDay: number | null,
 ): HistoryCoverageFamilyView {
 	const metricRows = metrics(published?.metrics);
 	return {
 		key,
 		published: published !== undefined,
-		...coverage(published),
+		...coverage(published, latestDay),
 		collectionGenerationId: published?.collection_generation_id?.trim() || null,
 		selectionMode: published?.selection_mode ?? null,
 		firstDate: date(published?.first_available_date),
@@ -197,11 +203,15 @@ export function selectHistoryCoverage(
 ): readonly HistoryCoverageFamilyView[] {
 	const families = root?.families ?? [];
 	if (families.length === 0) return [];
+	// The list's UTC publication day, plus one: a zone ahead of UTC may already be on the next day.
+	const publishedDay = dayNumber(String(root?.generated_utc ?? '').slice(0, 10));
+	const latestDay = publishedDay == null ? null : publishedDay + 1;
 
 	return HISTORY_COVERAGE_FAMILIES.map((key) =>
 		row(
 			key,
 			families.find((family) => family.family === key),
+			latestDay,
 		),
 	);
 }

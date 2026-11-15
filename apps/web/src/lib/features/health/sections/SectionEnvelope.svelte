@@ -56,16 +56,16 @@
 </div>
 
 <style>
+	/* Technical evidence, so neutral ink: data colours such as crowding are kept for their data. */
 	.publish-run-card {
-		--publish-run-tone: var(--dataviz-occupancy-standing);
 		display: flex;
 		flex-direction: column;
 		gap: 0.875rem;
 		min-width: 0;
 		padding: 1rem 1.125rem 1.125rem;
-		border: 1px solid color-mix(in srgb, var(--publish-run-tone) 42%, var(--border) 58%);
+		border: 1px solid var(--border);
 		border-radius: var(--radius-lg);
-		background: color-mix(in srgb, var(--publish-run-tone) 7%, var(--card) 93%);
+		background: var(--card);
 	}
 	.publish-run-header {
 		display: flex;
@@ -76,10 +76,9 @@
 	.publish-run-badge {
 		display: inline-flex;
 		padding: 0.375rem;
-		border: 1px solid color-mix(in srgb, var(--publish-run-tone) 52%, var(--border) 48%);
+		border: 1px solid var(--border);
 		border-radius: var(--radius-pill);
-		color: var(--publish-run-tone);
-		background: color-mix(in srgb, var(--publish-run-tone) 13%, transparent);
+		color: var(--muted-foreground);
 	}
 	.publish-run-id {
 		display: block;
