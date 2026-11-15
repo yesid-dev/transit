@@ -1,8 +1,16 @@
 import { defineCopy, type Locale } from '#lib/i18n/copy.ts';
-import type { SurfaceTarget } from '#lib/nav/index.ts';
+import {
+	NAV_GROUPS,
+	NAV_ITEMS,
+	YESID_HOUSE_LINK,
+	type BilingualLabel,
+	type NavGroupKey,
+	type NavItem,
+} from '#lib/content/nav.ts';
 
 type CopyKey =
 	| 'auditBody'
+	| 'notPlanner'
 	| 'auditMore'
 	| 'readMore'
 	| 'readLess'
@@ -11,77 +19,39 @@ type CopyKey =
 	| 'cadenceLive'
 	| 'headline'
 	| 'headlineAccent'
-	| 'clearFilters'
-	| 'filterLabel'
-	| 'filterAll'
-	| 'filterByQuestion'
-	| 'filterByKind'
-	| 'tempoNow'
-	| 'tempoRecord'
-	| 'tempoMethod'
-	| 'filterEmpty'
-	| 'qWhere'
-	| 'qTrust'
-	| 'qPromise'
-	| 'qMethod'
 	| 'exploreNav';
 
 export const homeCopy = defineCopy({
 	fr: {
 		auditBody:
 			'Transit est un registre public et indépendant du service d’autobus que {city} reçoit réellement.',
+		notPlanner: 'Ce n’est pas un planificateur de trajets.',
 		auditMore:
 			'Il montre à quelle fréquence les autobus du réseau {operator} sont en retard, de combien, et sur quelles lignes et à quels arrêts, à partir des données ouvertes de la société de transport.',
 		readMore: 'En savoir plus',
 		readLess: 'Réduire',
 		audience:
-			'Il s’adresse aux résidents, aux groupes citoyens, aux journalistes et aux élus qui veulent des faits pour exiger un meilleur service. Ce n’est pas un planificateur de trajets, et le site n’est pas affilié au réseau {operator}.',
+			'Il s’adresse aux résidents, aux groupes citoyens, aux journalistes et aux élus qui veulent des faits pour exiger un meilleur service. Le site n’est pas affilié au réseau {operator}.',
 		cadence:
 			'Le bilan de fiabilité est republié chaque semaine. Quand une donnée manque, nous le disons.',
 		cadenceLive: 'Les données en direct sont actualisées environ toutes les {seconds} secondes.',
 		headline: 'Le transport à {city},',
 		headlineAccent: 'à l’épreuve des données.',
-		clearFilters: 'Effacer les filtres',
-		filterLabel: 'Filtres',
-		filterAll: 'Tous',
-		filterByQuestion: 'Par question',
-		filterByKind: 'Par genre',
-		tempoNow: 'En direct',
-		tempoRecord: 'Le bilan',
-		tempoMethod: 'La méthode',
-		filterEmpty:
-			'Rien ne correspond à ces filtres. Effacez-les pour retrouver toutes les destinations.',
-		qWhere: 'Comment va le réseau ?',
-		qTrust: 'À quelle ligne se fier ?',
-		qPromise: 'Ont-ils tenu parole ?',
-		qMethod: 'Derrière les chiffres',
 		exploreNav: 'Tout explorer',
 	},
 	en: {
 		auditBody: 'Transit is an independent public record of the bus service {city} actually gets.',
+		notPlanner: 'It is not a trip planner.',
 		auditMore:
 			'It shows how often {operator} buses run late, by how much, and on which lines and stops, using the agency’s own open data.',
 		readMore: 'Read more',
 		readLess: 'Show less',
 		audience:
-			'It is for residents, advocates, journalists and councillors who want evidence when they ask for better service. It is not a trip planner, and it is not affiliated with {operator}.',
+			'It is for residents, advocates, journalists and councillors who want evidence when they ask for better service. It is not affiliated with {operator}.',
 		cadence: 'The reliability record is republished every week. When data is missing, we say so.',
 		cadenceLive: 'Live data refreshes about every {seconds} seconds.',
 		headline: 'How {city}’s',
 		headlineAccent: 'transit holds up.',
-		clearFilters: 'Clear filters',
-		filterLabel: 'Filters',
-		filterAll: 'All',
-		filterByQuestion: 'By question',
-		filterByKind: 'By kind',
-		tempoNow: 'Live now',
-		tempoRecord: 'The record',
-		tempoMethod: 'The method',
-		filterEmpty: 'Nothing matches these filters. Clear them to see every destination.',
-		qWhere: 'How is the network running?',
-		qTrust: 'Which line can I trust?',
-		qPromise: 'Did they keep their promise?',
-		qMethod: 'Behind the numbers',
 		exploreNav: 'Explore everything',
 	},
 } satisfies Readonly<Record<Locale, Readonly<Record<CopyKey, string>>>>);
@@ -104,166 +74,95 @@ export function homeCadence(locale: Locale, liveSeconds: number | null | undefin
 	return `${t.cadenceLive.replace('{seconds}', String(liveSeconds))} ${t.cadence}`;
 }
 
-export type HomeTempo = 'now' | 'record' | 'method';
-
-interface HomeEntryBody {
-	readonly tempo: HomeTempo;
-	readonly title: Readonly<Record<Locale, string>>;
-	readonly desc: Readonly<Record<Locale, string>>;
+/** One destination in the home's groups: a menu page, or the house link that leaves Transit. */
+export interface HomeEntry {
+	readonly href: string;
+	readonly title: BilingualLabel;
+	readonly desc: BilingualLabel | null;
+	readonly external: boolean;
 }
 
-export type HomeEntry =
-	| (HomeEntryBody & { readonly kind: 'surface'; readonly target: SurfaceTarget })
-	| (HomeEntryBody & { readonly kind: 'link'; readonly href: string });
-
 export interface HomeGroup {
-	readonly key: 'where-bus' | 'trust-line' | 'promise' | 'method';
-	readonly question: () => string;
+	readonly key: NavGroupKey;
+	readonly label: BilingualLabel;
 	readonly entries: readonly HomeEntry[];
 }
 
-export function homeGroups(t: HomeCopy, alertsAvailable = true): readonly HomeGroup[] {
-	const groups: readonly HomeGroup[] = [
-		{
-			key: 'where-bus',
-			question: () => t.qWhere,
-			entries: [
-				{
-					kind: 'surface',
-					target: { kind: 'map' },
-					tempo: 'now',
-					title: { fr: 'Carte du réseau', en: 'Network map' },
-					desc: {
-						fr: alertsAvailable
-							? 'Consultez les positions reçues et les avis de service. Sélectionnez un marqueur pour voir ses détails.'
-							: 'Consultez les positions reçues. Sélectionnez un marqueur pour voir ses détails.',
-						en: alertsAvailable
-							? 'Explore reported vehicle positions and service alerts. Select a marker to inspect its details.'
-							: 'Explore reported vehicle positions. Select a marker to inspect its details.',
-					},
-				},
-				{
-					kind: 'surface',
-					target: { kind: 'stop' },
-					tempo: 'now',
-					title: { fr: 'Arrêts', en: 'Stops' },
-					desc: {
-						fr: 'Les passages prévus et la fiabilité observée à chaque arrêt.',
-						en: 'Predicted departures and reported reliability at each stop.',
-					},
-				},
-			],
-		},
-		{
-			key: 'trust-line',
-			question: () => t.qTrust,
-			entries: [
-				{
-					kind: 'surface',
-					target: { kind: 'line' },
-					tempo: 'record',
-					title: { fr: 'Lignes', en: 'Lines' },
-					desc: {
-						fr: 'Une page par ligne : l’horaire, les retards, et sa tenue jour après jour.',
-						en: 'One page per line: the schedule, the delays, and how it holds up day after day.',
-					},
-				},
-				{
-					kind: 'surface',
-					target: { kind: 'network-health' },
-					tempo: 'now',
-					title: { fr: 'Santé du réseau', en: 'Network health' },
-					desc: {
-						fr: 'Les conditions observées sur le réseau, avec les retards et la couverture des données.',
-						en: 'Reported conditions across the network, with delays and feed coverage.',
-					},
-				},
-				{
-					kind: 'link',
-					href: '/hotspots',
-					tempo: 'record',
-					title: { fr: 'Points chauds', en: 'Hotspots' },
-					desc: {
-						fr: 'Les lignes et les arrêts le plus souvent en retard de plus de 5 minutes, classés sur l’ensemble du réseau.',
-						en: 'The lines and stops most often more than 5 minutes late, ranked across the whole network.',
-					},
-				},
-			],
-		},
-		{
-			key: 'promise',
-			question: () => t.qPromise,
-			entries: [
-				{
-					kind: 'link',
-					href: '/receipt',
-					tempo: 'record',
-					title: { fr: 'Reçu quotidien', en: 'Daily receipt' },
-					desc: {
-						fr: 'Les retards du jour et les trajets observés, comparés aux volumes prévus.',
-						en: 'Daily delays and observed service counts, compared with the schedule.',
-					},
-				},
-				{
-					kind: 'link',
-					href: '/repeat-offenders',
-					tempo: 'record',
-					title: { fr: 'Récidivistes', en: 'Repeat offenders' },
-					desc: {
-						fr: 'Les trajets et les véhicules le plus souvent en retard de plus de 5 minutes, classés au grand jour.',
-						en: 'The trips and buses most often more than 5 minutes late, ranked in the open.',
-					},
-				},
-				{
-					kind: 'link',
-					href: '/alerts',
-					tempo: 'now',
-					title: { fr: 'Avis', en: 'Alerts' },
-					desc: {
-						fr: 'Les perturbations en vigueur en ce moment, et l’historique des précédentes.',
-						en: 'Service disruptions in effect right now, plus the record of past ones.',
-					},
-				},
-			],
-		},
-		{
-			key: 'method',
-			question: () => t.qMethod,
-			entries: [
-				{
-					kind: 'link',
-					href: '/metrics',
-					tempo: 'method',
-					title: { fr: 'Comment on mesure', en: 'How we measure' },
-					desc: {
-						fr: 'Chaque chiffre expliqué simplement : ce qu’il mesure et les limites des données.',
-						en: 'Every number explained in plain words: what it measures and the limits of the data.',
-					},
-				},
-				{
-					kind: 'link',
-					href: '/status',
-					tempo: 'method',
-					title: { fr: 'Santé des données', en: 'Data health' },
-					desc: {
-						fr: 'Nos données sont-elles fraîches ? Le dernier signal de chaque flux, et les trous qu’on connaît.',
-						en: 'Is our data fresh? When each feed last answered, and the gaps we know about.',
-					},
-				},
-			],
-		},
-	];
-	return groups.map((group) => ({
-		...group,
-		entries: group.entries.filter(
-			(entry) => alertsAvailable || !(entry.kind === 'link' && entry.href === '/alerts'),
-		),
+type Described = Exclude<NavItem['key'], 'overview'>;
+
+const DESCRIPTIONS: Readonly<Record<Described, BilingualLabel>> = {
+	map: {
+		en: 'Every bus, live, where it reports itself',
+		fr: 'Chaque bus en direct, là où il se signale',
+	},
+	network: {
+		en: 'Delays, trends and data coverage',
+		fr: 'Retards, tendances et couverture des données',
+	},
+	lines: {
+		en: 'One page per line: the schedule, the delays, and how it holds up day after day.',
+		fr: 'Une page par ligne : l’horaire, les retards, et sa tenue jour après jour.',
+	},
+	stops: {
+		en: 'Predicted departures and reported reliability at each stop.',
+		fr: 'Les passages prévus et la fiabilité observée à chaque arrêt.',
+	},
+	hotspots: {
+		en: 'The lines and stops most often more than 5 minutes late, ranked across the whole network.',
+		fr: 'Les lignes et les arrêts le plus souvent en retard de plus de 5 minutes, classés sur l’ensemble du réseau.',
+	},
+	repeatOffenders: {
+		en: 'The trips and buses most often more than 5 minutes late, ranked in the open.',
+		fr: 'Les trajets et les véhicules le plus souvent en retard de plus de 5 minutes, classés au grand jour.',
+	},
+	receipt: {
+		en: 'Daily delays and observed service counts, compared with the schedule.',
+		fr: 'Les retards du jour et les trajets observés, comparés aux volumes prévus.',
+	},
+	alerts: {
+		en: 'Service disruptions in effect right now, plus the record of past ones.',
+		fr: 'Les perturbations en vigueur en ce moment, et l’historique des précédentes.',
+	},
+	metrics: {
+		en: 'Every number explained in plain words: what it measures and the limits of the data.',
+		fr: 'Chaque chiffre expliqué simplement : ce qu’il mesure et les limites des données.',
+	},
+	status: {
+		en: 'Is our data fresh? When each feed last answered, and the gaps we know about.',
+		fr: 'Nos données sont-elles fraîches ? Le dernier signal de chaque flux, et les trous qu’on connaît.',
+	},
+};
+
+/**
+ * The menu's four groups, in the menu's order and words, each page with one line on what it
+ * answers. The home itself is left out; Service alerts only when the network has an alert feed.
+ */
+export function homeGroups(alertsAvailable = true): readonly HomeGroup[] {
+	return NAV_GROUPS.map((group) => ({
+		key: group.key,
+		label: group.label,
+		entries: [
+			...NAV_ITEMS.filter(
+				(item): item is NavItem & { key: Described } =>
+					item.group === group.key &&
+					item.key !== 'overview' &&
+					(item.requires !== 'alerts' || alertsAvailable),
+			).map((item) => ({
+				href: item.href,
+				title: item.label,
+				desc: DESCRIPTIONS[item.key],
+				external: false,
+			})),
+			...(group.key === 'about'
+				? [
+						{
+							href: YESID_HOUSE_LINK.href,
+							title: YESID_HOUSE_LINK.label,
+							desc: null,
+							external: true,
+						},
+					]
+				: []),
+		],
 	}));
 }
-
-export const HOME_FILTER_COUNT_LABEL: Readonly<
-	Record<Locale, { readonly singular: string; readonly plural: string }>
-> = {
-	en: { singular: '{count} destination', plural: '{count} destinations' },
-	fr: { singular: '{count} destination', plural: '{count} destinations' },
-};

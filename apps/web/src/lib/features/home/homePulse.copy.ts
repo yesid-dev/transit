@@ -25,14 +25,16 @@ type PulseKey =
 	| 'rankTitle'
 	| 'worstLines'
 	| 'worstStops'
-	| 'worstNote'
-	| 'worstThrough'
+	| 'rankMeasure'
+	| 'rankOrder'
+	| 'rankPeriod'
+	| 'rankReadings'
 	| 'worstUnavailable'
 	| 'worstNotCurrent'
 	| 'worstError'
 	| 'unavailable'
 	| 'lateRate'
-	| 'allHotspots';
+	| 'openRankings';
 
 export const homePulseCopy = defineCopy({
 	fr: {
@@ -58,17 +60,19 @@ export const homePulseCopy = defineCopy({
 		liveUnavailable: 'Chiffres en direct indisponibles',
 		openMap: 'Ouvrir la carte en direct',
 		rankTitle: 'Lignes et arrêts à examiner',
-		worstLines: 'Lignes les plus en retard',
-		worstStops: 'Arrêts les plus en retard',
-		worstNote:
-			'Part des mesures en retard de plus de 5 min, sur 7 jours. Le bilan est republié chaque semaine.',
-		worstThrough: 'Données jusqu’au {date}',
+		worstLines: 'Lignes',
+		worstStops: 'Arrêts',
+		rankMeasure: 'Part des relevés en retard de plus de 5 minutes.',
+		rankOrder:
+			'Classés selon la part affichée, de la plus élevée à la plus faible. Des positions voisines ne montrent pas forcément une différence nette.',
+		rankPeriod: 'Du {dates}, {n} jours complets',
+		rankReadings: '{n} relevés',
 		worstUnavailable: 'Aucun classement hebdomadaire publié pour l’instant.',
 		worstNotCurrent: 'Aucun classement hebdomadaire à jour n’est disponible.',
 		worstError: 'Le classement n’a pas pu être chargé.',
 		unavailable: 'indisponible',
-		lateRate: '{pct} des mesures en retard de plus de 5 min',
-		allHotspots: 'Tous les points chauds',
+		lateRate: '{pct} des relevés en retard de plus de 5 minutes',
+		openRankings: 'Ouvrir les classements complets',
 	},
 	en: {
 		recordTitle: 'Latest complete record',
@@ -93,42 +97,40 @@ export const homePulseCopy = defineCopy({
 		liveUnavailable: 'Live numbers unavailable',
 		openMap: 'Open live map',
 		rankTitle: 'Lines and stops to investigate',
-		worstLines: 'Most delayed lines',
-		worstStops: 'Most delayed stops',
-		worstNote:
-			'Share of readings more than 5 min late, over 7 days. The record is republished weekly.',
-		worstThrough: 'Data through {date}',
+		worstLines: 'Lines',
+		worstStops: 'Stops',
+		rankMeasure: 'Share of readings more than 5 minutes late.',
+		rankOrder:
+			'Ordered by the share shown, highest first. Nearby positions do not necessarily show a clear difference.',
+		rankPeriod: '{dates}, {n} complete days',
+		rankReadings: '{n} readings',
 		worstUnavailable: 'No weekly ranking has been published yet.',
 		worstNotCurrent: 'No current weekly ranking is available.',
 		worstError: 'The rankings could not be loaded.',
 		unavailable: 'unavailable',
-		lateRate: '{pct} of readings more than 5 min late',
-		allHotspots: 'All hotspots',
+		lateRate: '{pct} of readings more than 5 minutes late',
+		openRankings: 'Open the full rankings',
 	},
 } satisfies Readonly<Record<Locale, Readonly<Record<PulseKey, string>>>>);
 
 export type HomePulseCopy = (typeof homePulseCopy)[Locale];
 
-type InviteKey = 'title' | 'body' | 'contribute' | 'code' | 'contact' | 'support';
+type InviteKey = 'title' | 'body' | 'contribute' | 'code' | 'contact';
 
 export const homeInviteCopy = defineCopy({
 	fr: {
 		title: 'Aidez à étendre Transit',
-		body: 'Transit est un projet à code source ouvert, et nous cherchons des contributeurs. Il fonctionne avec toute société de transport qui publie des données GTFS et GTFS-Realtime, et les villes mesurées aujourd’hui ne sont que les premières. Ajoutez votre ville, améliorez une mesure, corrigez un défaut ou aidez à l’hébergement.',
+		body: 'Transit est un projet à code source ouvert, et nous cherchons des contributeurs. Il fonctionne avec toute société de transport qui publie des données GTFS et GTFS-Realtime, et les villes mesurées aujourd’hui ne sont que les premières.',
 		contribute: 'Comment contribuer',
 		code: 'Voir le code',
 		contact: 'Écrivez-nous',
-		support:
-			'Transit est un projet indépendant et bénévole. L’aide à l’hébergement est ce qui permet d’accueillir d’autres villes.',
 	},
 	en: {
 		title: 'Help extend Transit',
-		body: 'Transit is open source, and we are looking for contributors. It works with any agency that publishes GTFS and GTFS-Realtime data, and the cities measured today are only the first. Add your city, improve a metric, fix something or help with hosting.',
+		body: 'Transit is open source, and we are looking for contributors. It works with any agency that publishes GTFS and GTFS-Realtime data, and the cities measured today are only the first.',
 		contribute: 'How to contribute',
 		code: 'View the code',
 		contact: 'Get in touch',
-		support:
-			'Transit is an independent, volunteer project. Hosting help is what lets more cities join.',
 	},
 } satisfies Readonly<Record<Locale, Readonly<Record<InviteKey, string>>>>);
 
