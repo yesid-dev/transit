@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 import re
+import runpy
 import shutil
 import signal
 import socket
@@ -19,7 +20,7 @@ import tracemalloc
 from contextlib import ExitStack, contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from subprocess import PIPE, Popen, TimeoutExpired
+from subprocess import Popen, TimeoutExpired
 from types import SimpleNamespace
 from typing import Any, TypedDict
 
@@ -28,6 +29,7 @@ import duckdb
 from transit_ops.history.probe import peak_rss  # type: ignore[import-untyped]
 
 HOST = sys.platform + ":" + socket.gethostname()
+diagnostics = runpy.run_path(str(Path(__file__).with_name("measure_fact_day_worker.py")))
 RECOVERY_ERRORS = (
     "scratch_ownership_invalid scratch_owner_proof_unavailable "
     "scratch_cleanup_failed scratch_recovery_incomplete"
@@ -294,10 +296,6 @@ WORKER = (
     "import runpy,sys,tempfile; tempfile.tempdir=sys.argv[2]; "
     "n=runpy.run_path(sys.argv[1]); sys.exit(n['main'](sys.argv[3:],worker=True))"
 )
-BOOT = (
-    "import runpy,sys; n=runpy.run_path(sys.argv[1]); code=sys.argv.pop(4); "
-    "proof=sys.argv.pop(3); n['lifeline'](sys.argv[2],proof); exec(code)"
-)
 
 
 def process_birth(pid: int) -> str | None:
@@ -501,7 +499,7 @@ def scratch(parent: Path) -> Any:
         yield root, proof
 
 
-def lifeline(directory: str, proof: str) -> None:
+def lifeline(directory: str, proof: str, *, error_fd: int = 2) -> None:
     root = Path(directory)
     expected = owned_snapshot(root)
     if expected[1].get("invocation") != proof:
@@ -522,8 +520,14 @@ def lifeline(directory: str, proof: str) -> None:
                 failed, reason = str(error.args[1]), str(error.args[0])
             finally:
                 try:
-                    if failed or root.exists():
-                        os.write(2, leftover_receipt(failed or root, reason).encode())
+                    receipt = dict(
+                        status="failed",
+                        reason="lifeline_lost",
+                        error_detail="Parent lifeline closed (EOF)",
+                        cleanup_reason=reason if failed or root.exists() else None,
+                        leftover_paths=[str(failed or root)] if failed or root.exists() else [],
+                    )
+                    os.write(error_fd, (json.dumps(receipt) + "\n").encode())
                 finally:
                     os._exit(1)
 
@@ -541,14 +545,23 @@ def _supervise(
         if status or recovery["leftover_paths"]:
             return (status[0] if status else 1), ""
         with scratch(scratch_root) as (root, proof):
-            with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as report:
+            with (
+                tempfile.TemporaryFile(mode="w+", encoding="utf-8") as report,
+                tempfile.TemporaryFile(mode="w+b") as errors,
+            ):
                 script, base = str(Path(__file__).resolve()), vars(sys)["_base_executable"]
                 windows = sys.platform == "win32" and sys.executable != base
                 executable = base if windows else sys.executable
                 env = {**os.environ, "__PYVENV_LAUNCHER__": sys.executable} if windows else None
                 payload = [str(root), proof, worker, *argv]
-                command = [executable, "-I", "-c", BOOT, script, *payload]
-                process = Popen(command, stdin=PIPE, stdout=report, env=env)
+                bootstrap = str(Path(script).with_name("measure_fact_day_worker.py"))
+                command = [executable, "-I", bootstrap, script, *payload]
+                try:
+                    process = diagnostics["launch"](
+                        Popen, command, report=report, errors=errors, env=env
+                    )
+                except OSError as error:
+                    return 1, json.dumps(diagnostics["failure"]("worker_start_failed", error))
                 assert process.stdin is not None
                 try:
                     while not status:
@@ -570,13 +583,31 @@ def _supervise(
                         process.stdin.close()
                 report.seek(0)
                 stdout = "" if status else report.read()
+                errors.seek(0, os.SEEK_END)
+                offset = max(0, errors.tell() - 16384)
+                errors.seek(offset)
+                if offset:
+                    errors.readline()  # Discard a partial line before redaction.
+                detail = diagnostics["safe_detail"](errors.read().decode("utf-8", errors="replace"))
     finally:
         for number, handler in previous.items():
             signal.signal(number, handler)
     code = status[0] if status else process.wait()
-    return (code if code >= 0 else 128 - code), (
-        stdout or '{"status":"failed","reason":"measurement_failed"}\n'
-    )
+    code = code if code >= 0 else 128 - code
+    try:
+        output = json.loads(stdout)
+        if not isinstance(output, dict):
+            raise ValueError("invalid_worker_report")
+    except (ValueError, TypeError):
+        code = code or 1
+        output = dict(status="failed", reason="worker_crashed")
+    if code:
+        if output.get("status") != "failed" or not output.get("reason"):
+            output = dict(status="failed", reason="worker_crashed")
+        output["error_detail"] = diagnostics["safe_detail"](
+            detail + "\n" + output.get("error_detail", f"Worker exited with code {code}")
+        )
+    return code, json.dumps(output)
 
 
 def supervise(argv: list[str], *, worker: str = WORKER, scratch_root: Path | None = None) -> int:
@@ -599,7 +630,7 @@ def supervise(argv: list[str], *, worker: str = WORKER, scratch_root: Path | Non
         )
         if reason in RECOVERY_ERRORS and len(error.args) > 1 and error.args[1] is not None:
             recovery["leftover_paths"].append(str(error.args[1]))
-        code, output = 1, dict(status="failed", reason=reason)
+        code, output = 1, diagnostics["failure"](reason, error)
     output.update(recovery)
     sys.stdout.write(json.dumps(output) + "\n")
     return code
@@ -622,7 +653,7 @@ def main(argv: list[str] | None = None, *, worker: bool = False) -> int:
             if str(error) == "bundled_timezone_unavailable"
             else "measurement_failed"
         )
-        sys.stdout.write(json.dumps(dict(status="failed", reason=reason)) + "\n")
+        sys.stdout.write(json.dumps(diagnostics["failure"](reason, error)) + "\n")
         return 1
     sys.stdout.write(json.dumps(result, sort_keys=True, default=str) + "\n")
     return 0

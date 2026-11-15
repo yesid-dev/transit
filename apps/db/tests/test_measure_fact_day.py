@@ -141,7 +141,7 @@ with r.guarded(source,Mock(db_phase_s=0.05)): time.sleep(10)
     assert measure.supervise([], worker=probe) == 75
     assert not list(tmp_path.glob("transit-measure-*"))
     output = capsys.readouterr()
-    assert json.loads(output.out)["reason"] == "measurement_failed" and not output.err
+    assert json.loads(output.out)["reason"] == "worker_crashed" and not output.err
 
 
 def change_owner(root, kind, parent):
@@ -185,6 +185,9 @@ def test_parent_stop_reaps_worker_and_preserves_outside_sentinel(tmp_path, stop,
                 if result.poll() is None:
                     result.kill()
         pid, directory, port = json.loads(ready.read_text())
+        if not stop.startswith("SIG"):
+            assert json.loads(error)["reason"] == "lifeline_lost"
+            assert "EOF" in json.loads(error)["error_detail"]
         with socket.socket() as observer:
             observer.settimeout(2)
             if observer.connect_ex(("127.0.0.1", port)) == 0:
@@ -199,13 +202,13 @@ def test_parent_stop_reaps_worker_and_preserves_outside_sentinel(tmp_path, stop,
             assert (Path(directory) / "nested/fact.csv.partial").read_bytes() == b"private"
             receipt = json.loads(error)
             assert receipt["leftover_paths"] == [directory]
-            assert receipt["reason"] == "unsafe_delete_unavailable"
+            assert receipt["cleanup_reason"] == "unsafe_delete_unavailable"
         else:
             assert not Path(directory).exists(), "owned scratch remains after worker exit"
         assert sentinel.read_text() == "preserve"
         if stop.startswith("SIG"):
             assert result.returncode == 128 + getattr(signal, stop)
-            assert json.loads(output)["reason"] == "measurement_failed" and not error
+            assert json.loads(output)["reason"] == "worker_crashed" and not error
     finally:
         if ready.exists():
             pid, _, port = json.loads(ready.read_text())
@@ -663,3 +666,102 @@ def test_fact_measurement_uses_one_snapshot_for_csv_and_postgres_oracle(
     monkeypatch.setattr(measure.rescue, "copy_fact_table", copy)
     report = measure.measure(args)
     assert changed and report["family_comparison"]["status"] == "equal"
+
+
+def test_isolated_worker_uses_project_environment(tmp_path, capsys):
+    probe = (
+        "import json,sys; import duckdb,transit_ops; "
+        "print(json.dumps(dict(status='ok', isolated=sys.flags.isolated)))"
+    )
+    assert measure.supervise([], worker=probe, scratch_root=tmp_path) == 0
+    assert json.loads(capsys.readouterr().out)["isolated"] == 1
+
+
+def test_worker_exception_names_failure_with_redacted_detail(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:TOP_SECRET@host/db")
+    worker = "raise RuntimeError('cannot connect postgresql://user:TOP_SECRET@host/db')"
+    assert measure.supervise([], worker=worker, scratch_root=tmp_path) == 1
+    result = json.loads(capsys.readouterr().out)
+    assert result["reason"] == "measurement_failed"
+    assert "RuntimeError: cannot connect" in result["error_detail"]
+    assert "TOP_SECRET" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("kind", ["start", "import", "crash", "lifeline"])
+def test_supervisor_names_worker_boundary_failures(tmp_path, capsys, monkeypatch, kind):
+    real = measure.Popen
+
+    def launch(command, **kwargs):
+        if kind == "start":
+            raise FileNotFoundError("synthetic interpreter missing")
+        if kind == "import":
+            command[4] = str(tmp_path / "missing-measurement.py")
+        if kind == "lifeline":
+            command[6] = "invalid-proof"
+        return real(command, **kwargs)
+
+    monkeypatch.setattr(measure, "Popen", launch)
+    assert measure.supervise([], worker="import os; os._exit(7)", scratch_root=tmp_path) != 0
+    result = json.loads(capsys.readouterr().out)
+    expected = {
+        "start": "worker_start_failed",
+        "import": "worker_import_failed",
+        "crash": "worker_crashed",
+        "lifeline": "worker_start_failed",
+    }
+    assert result["reason"] == expected[kind]
+    expected_detail = (
+        "ValueError" if kind == "lifeline" else "code 7" if kind == "crash" else "FileNotFoundError"
+    )
+    assert expected_detail in result["error_detail"]
+
+
+def test_default_worker_preserves_wrapper_environment_before_database_read(
+    tmp_path, capsys, monkeypatch
+):
+    for key in ("PGPASSWORD", "DATABASE_URL", "BRONZE_S3_SECRET_KEY"):
+        monkeypatch.setenv(key, "SYNTHETIC_" + key)
+    probe = """import os,runpy,sys,tempfile
+n=runpy.run_path(sys.argv[1]); tempfile.tempdir=sys.argv[2]
+def connect(*args, **kwargs):
+ for key in ('PGPASSWORD','DATABASE_URL','BRONZE_S3_SECRET_KEY'):
+  assert os.environ[key] == 'SYNTHETIC_' + key
+ assert sys.prefix != sys.base_prefix
+ assert sys.flags.isolated == 1
+ raise RuntimeError('wrapper environment preserved before database read')
+n['rescue'].connect.__globals__['get_settings'] = lambda: type('Settings', (), {'DATABASE_URL': 'postgresql://localhost/test'})()
+n['rescue'].psycopg.connect = connect
+sys.exit(n['main'](sys.argv[3:], worker=True))
+"""
+    args = "--provider stm --date 2026-11-12 --not-after 2099-11-15T05:45:00Z".split()
+    assert measure.supervise(args, worker=probe, scratch_root=tmp_path) == 1
+    result = json.loads(capsys.readouterr().out)
+    assert (
+        "RuntimeError: wrapper environment preserved before database read" in result["error_detail"]
+    )
+
+
+def test_worker_stderr_tail_is_bounded_and_redacted(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv("PGPASSWORD", "SYNTHETIC_PASSWORD")
+    worker = """import os,sys
+sys.stderr.write('noise\\n' * 5000)
+sys.stderr.write('RuntimeError: synthetic failure password=SYNTHETIC_PASSWORD\\n')
+sys.stderr.flush()
+os._exit(9)
+"""
+    assert measure.supervise([], worker=worker, scratch_root=tmp_path) == 9
+    result = json.loads(capsys.readouterr().out)
+    assert result["reason"] == "worker_crashed"
+    assert "RuntimeError: synthetic failure" in result["error_detail"]
+    assert len(result["error_detail"]) <= 2048
+    assert len(result["error_detail"].splitlines()) <= 8
+    assert "SYNTHETIC_PASSWORD" not in json.dumps(result)
+
+
+def test_nonzero_exit_cannot_return_a_success_report(tmp_path, capsys):
+    assert (
+        measure.supervise([], worker="print('{}'); raise SystemExit(3)", scratch_root=tmp_path) == 3
+    )
+    result = json.loads(capsys.readouterr().out)
+    assert result["reason"] == "worker_crashed"
+    assert "code 3" in result["error_detail"]
