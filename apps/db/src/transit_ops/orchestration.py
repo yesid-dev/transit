@@ -18,12 +18,14 @@ from transit_ops.capture_load import (
     CaptureLoadResult,
     _DisplayResult,
     _log_step_success,
+    _ReceiptIdentityError,
     _run_capture_load_steps,
     _run_timed_realtime_step,
     capture_and_load_realtime,
 )
 from transit_ops.core.models import ProviderManifest
 from transit_ops.db.connection import make_engine, require_database_url
+from transit_ops.failed_load_tag import format_failed_load_error
 from transit_ops.gold import (
     GoldBuildResult,
     GoldRealtimeRefreshResult,
@@ -49,6 +51,7 @@ from transit_ops.ingestion.common import (
 )
 from transit_ops.ingestion.i3 import _capture_i3_alerts, _capture_service_alerts
 from transit_ops.ingestion.storage import BronzeStorageResolver, BronzeStorageScope
+from transit_ops.live.captures import ParsePolicy
 from transit_ops.maintenance import (
     prune_gold_storage,
     prune_silver_storage,
@@ -68,6 +71,7 @@ from transit_ops.silver import (
 )
 from transit_ops.silver.static_gtfs import prepare_static_application
 from transit_ops.snapshots.live_scope import live_publish_scope
+from transit_ops.snapshots.live_trip_updates import LiveTripUpdates, latest_stored_trip_updates
 from transit_ops.snapshots.publish import publish_snapshot
 from transit_ops.worker_watchdog import worker_progress, worker_stopping, worker_watchdog
 
@@ -490,7 +494,10 @@ def _endpoint_cycle_result(
                 engine,
                 provider_id=provider_id,
                 endpoint_key=endpoint_key,
-                error_message=error_message,
+                error_message=(
+                    format_failed_load_error(error_message, failure.capture_row_id)
+                    if failure.capture_row_id is not None else error_message
+                ),
                 started_at_utc=failure.started_at_utc,
             )
     return RealtimeEndpointCycleResult(
@@ -536,9 +543,15 @@ def _capture_and_load_alert_endpoint(
             bronze_storage_resolver=bronze_storage_resolver,
         )
 
+    source_verified = False
+
     def load_capture(captured: I3IngestionResult) -> _DisplayResult:
+        nonlocal source_verified
         if captured.provider_id != provider_id or captured.endpoint_key != endpoint_key:
-            raise ValueError("Alert capture receipt does not match the requested source")
+            raise _ReceiptIdentityError(
+                "Alert capture receipt does not match the requested source", "capture_identity"
+            )
+        source_verified = True
         loaded = load_i3_to_silver(
             provider_id,
             snapshot_id=captured.i3_alert_snapshot_id,
@@ -550,8 +563,15 @@ def _capture_and_load_alert_endpoint(
             loaded.provider_id != provider_id
             or loaded.i3_alert_snapshot_id != captured.i3_alert_snapshot_id
         ):
-            raise ValueError("Alert Silver receipt does not match the captured snapshot")
+            raise _ReceiptIdentityError(
+                "Alert Silver receipt does not match the captured snapshot", "silver_identity"
+            )
         return loaded
+
+    def capture_row_id_of(captured: I3IngestionResult) -> int:
+        if not source_verified:
+            raise ValueError("Capture source identity has not been verified")
+        return captured.i3_alert_snapshot_id
 
     outcome = _run_capture_load_steps(
         provider_id,
@@ -560,6 +580,7 @@ def _capture_and_load_alert_endpoint(
         silver_load_step=load_capture,
         capture_label_prefix=capture_label_prefix,
         silver_label_prefix=silver_label_prefix,
+        capture_row_id_of=capture_row_id_of,
     )
     return _endpoint_cycle_result(
         provider_id,
@@ -615,6 +636,19 @@ def _capture_and_load_service_alerts(
     )
 
 
+def _worker_trip_updates(
+    provider_id: str, *, settings: Settings, manifest: ProviderManifest,
+    engine: Engine, bronze_storage_resolver: BronzeStorageResolver,
+) -> LiveTripUpdates | None:
+    if "trip_updates" not in realtime_endpoints_for_manifest(manifest):
+        return None
+    policy = ParsePolicy.from_manifest(manifest)
+    return LiveTripUpdates(provider_id, policy=policy, fallback=partial(
+        latest_stored_trip_updates, provider_id, settings=settings, policy=policy,
+        engine=engine, bronze_storage_resolver=bronze_storage_resolver,
+    ))
+
+
 def _capture_and_load_realtime_source(
     provider_id: str,
     endpoint_key: str,
@@ -623,6 +657,7 @@ def _capture_and_load_realtime_source(
     registry: ProviderRegistry,
     engine: Engine,
     bronze_storage_resolver: BronzeStorageResolver,
+    live_trip_updates: LiveTripUpdates | None = None,
 ) -> RealtimeEndpointCycleResult:
     if endpoint_key == I3_ALERT_ENDPOINT:
         return _capture_and_load_i3_alerts(
@@ -647,6 +682,7 @@ def _capture_and_load_realtime_source(
         registry=registry,
         engine=engine,
         bronze_storage_resolver=bronze_storage_resolver,
+        on_trip_updates_loaded=live_trip_updates.accept if live_trip_updates else None,
     )
     return _endpoint_cycle_result(
         provider_id,
@@ -664,6 +700,7 @@ def _best_effort_publish_live(
     settings: Settings,
     engine: Engine,
     registry: ProviderRegistry | None = None,
+    live_trip_updates: LiveTripUpdates | None = None,
 ) -> int:
     if not (
         getattr(settings, "SNAPSHOT_R2_BUCKET", None)
@@ -677,6 +714,7 @@ def _best_effort_publish_live(
             settings=settings,
             registry=registry,
             engine=engine,
+            live_trip_updates=live_trip_updates,
         )
         return 0
     except Exception:  # noqa: BLE001 — best-effort: never fail the cycle on publish
@@ -693,6 +731,7 @@ def _run_realtime_cycle(
     last_captures: dict[str, datetime] | None = None,
     last_attempts: dict[str, datetime] | None = None,
     bronze_storage_resolver: BronzeStorageResolver,
+    live_trip_updates: LiveTripUpdates | None = None,
 ) -> RealtimeCycleResult:
     settings = settings or get_settings()
     registry = registry or _provider_registry(settings)
@@ -783,6 +822,7 @@ def _run_realtime_cycle(
             registry=registry,
             engine=engine,
             bronze_storage_resolver=bronze_storage_resolver,
+            live_trip_updates=live_trip_updates,
         )
         endpoint_results.append(endpoint_result)
         if last_captures is not None and endpoint_result.status == "succeeded":
@@ -848,6 +888,7 @@ def _run_realtime_cycle(
             settings=settings,
             engine=engine,
             registry=registry,
+            live_trip_updates=live_trip_updates,
         )
 
     completed_at_utc = utc_now()
@@ -887,6 +928,8 @@ def run_realtime_cycle(
     last_captures: dict[str, datetime] | None = None,
 ) -> RealtimeCycleResult:
     settings = settings or get_settings()
+    registry = registry or _provider_registry(settings)
+    engine = _engine(settings, engine)
     scope = BronzeStorageScope(settings, project_root=_project_root())
     try:
         return _run_realtime_cycle(
@@ -896,6 +939,11 @@ def run_realtime_cycle(
             engine=engine,
             last_captures=last_captures,
             bronze_storage_resolver=scope.resolve,
+            live_trip_updates=_worker_trip_updates(
+                provider_id, settings=settings, manifest=registry.get_provider(provider_id),
+                engine=engine,
+                bronze_storage_resolver=scope.resolve,
+            ),
         )
     finally:
         try:
@@ -1010,6 +1058,10 @@ def _run_realtime_worker_loop(
 
     cycle_number = 0
     previous_cycle_start_utc: datetime | None = None
+    live_trip_updates = _worker_trip_updates(
+        provider_id, settings=settings, manifest=manifest, engine=engine,
+        bronze_storage_resolver=bronze_storage_resolver,
+    )
     last_captures: dict[str, datetime] = {}
     last_attempts: dict[str, datetime] = {}
     while max_cycles is None or cycle_number < max_cycles:
@@ -1046,6 +1098,7 @@ def _run_realtime_worker_loop(
                 settings=settings,
                 registry=registry,
                 engine=engine,
+                live_trip_updates=live_trip_updates,
                 last_captures=last_captures,
                 last_attempts=last_attempts,
                 bronze_storage_resolver=bronze_storage_resolver,

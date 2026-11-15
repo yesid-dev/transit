@@ -574,7 +574,9 @@ def guarded(connection: Any, args: Any, *, deadline: float | None = None) -> Any
                 blocked = monitor.execute(
                     "SELECT EXISTS (SELECT FROM pg_stat_activity WHERE pid <> %s "
                     "AND %s = ANY(pg_blocking_pids(pid))) OR EXISTS (SELECT FROM pg_locks "
-                    "WHERE NOT granted AND mode='AccessExclusiveLock' AND relation IN "
+                    "WHERE database = (SELECT oid FROM pg_database "
+                    "WHERE datname = current_database()) "
+                    "AND NOT granted AND mode='AccessExclusiveLock' AND relation IN "
                     "('gold.fact_trip_delay_snapshot'::regclass, "
                     "'gold.fact_vehicle_snapshot'::regclass))",
                     (pid, pid),

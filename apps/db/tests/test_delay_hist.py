@@ -122,7 +122,7 @@ def test_input_checks() -> None:
             merge_hist([(2, bins, counts)], layout=2)
         with pytest.raises(ValueError, match=problem):
             quantile_bin(bins, counts, 0.5)
-    for layout in [1, 3]:
+    for layout in [1, 4]:
         with pytest.raises(ValueError, match="layout"):
             hist_edges_sql(layout)
         with pytest.raises(ValueError, match="layout"):

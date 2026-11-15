@@ -10,9 +10,11 @@ from typing import Literal, Protocol
 
 from sqlalchemy.engine import Engine
 
+from transit_ops.failed_load_tag import format_failed_load_error
 from transit_ops.ingestion.common import redact_error_message, utc_now
 from transit_ops.ingestion.realtime_gtfs import RealtimeIngestionResult, _capture_realtime_feed
 from transit_ops.ingestion.storage import BronzeStorageResolver
+from transit_ops.live.captures import CaptureRef
 from transit_ops.providers import ProviderRegistry
 from transit_ops.settings import Settings
 from transit_ops.silver.realtime_gtfs import RealtimeSilverLoadResult, _load_realtime_to_silver
@@ -30,6 +32,7 @@ class CaptureLoadFailure:
     kind: Literal["operation", "capture_identity", "silver_identity"]
     error: Exception
     started_at_utc: datetime
+    capture_row_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -99,6 +102,7 @@ def _run_capture_load_steps[Captured: _DisplayResult, Loaded: _DisplayResult](
     silver_load_step: Callable[[Captured], Loaded],
     capture_label_prefix: str,
     silver_label_prefix: str,
+    capture_row_id_of: Callable[[Captured], int] | None = None,
 ) -> CaptureLoadResult[Captured, Loaded]:
     endpoint_started_at = time.perf_counter()
     capture_duration_seconds: float | None = None
@@ -156,6 +160,18 @@ def _run_capture_load_steps[Captured: _DisplayResult, Loaded: _DisplayResult](
                 exc,
                 silver_load_started_at_utc,
             )
+            if failure.kind != "capture_identity" and capture_row_id_of is not None:
+                try:
+                    capture_row_id = capture_row_id_of(capture_result)
+                    format_failed_load_error("", capture_row_id)
+                except Exception:
+                    # Optional provenance must not replace the original load failure.
+                    pass
+                else:
+                    failure = CaptureLoadFailure(
+                        failure.stage, failure.kind, exc, silver_load_started_at_utc,
+                        capture_row_id,
+                    )
 
     return CaptureLoadResult(
         capture=capture_result,
@@ -184,7 +200,10 @@ def capture_and_load_realtime(
     registry: ProviderRegistry,
     engine: Engine,
     bronze_storage_resolver: BronzeStorageResolver,
+    on_trip_updates_loaded: Callable[[bytes, CaptureRef], None] | None = None,
 ) -> RealtimeCaptureLoadResult:
+    source_verified = False
+
     def capture() -> _CapturedRealtime:
         receipt, payload = _capture_realtime_feed(
             provider_id,
@@ -197,12 +216,14 @@ def capture_and_load_realtime(
         return _CapturedRealtime(receipt, payload)
 
     def load(captured: _CapturedRealtime) -> RealtimeSilverLoadResult:
+        nonlocal source_verified
         receipt = captured.receipt
         if (receipt.provider_id, receipt.endpoint_key) != (provider_id, endpoint_key):
             raise _ReceiptIdentityError(
                 "Realtime capture receipt does not match the requested source",
                 "capture_identity",
             )
+        source_verified = True
         silver = _load_realtime_to_silver(
             provider_id,
             endpoint_key,
@@ -224,6 +245,11 @@ def capture_and_load_realtime(
             )
         return silver
 
+    def capture_row_id_of(captured: _CapturedRealtime) -> int:
+        if not source_verified:
+            raise ValueError("Capture source identity has not been verified")
+        return captured.receipt.realtime_snapshot_id
+
     result = _run_capture_load_steps(
         provider_id,
         endpoint_key,
@@ -231,7 +257,21 @@ def capture_and_load_realtime(
         silver_load_step=load,
         capture_label_prefix="capture-realtime",
         silver_label_prefix="load-realtime-silver",
+        capture_row_id_of=capture_row_id_of,
     )
+    if (result.failure is None and result.capture is not None
+            and endpoint_key == "trip_updates" and on_trip_updates_loaded is not None):
+        captured = result.capture
+        receipt = captured.receipt
+        try:
+            on_trip_updates_loaded(captured.payload, CaptureRef(
+                receipt.provider_id, receipt.endpoint_key, receipt.realtime_snapshot_id,
+                receipt.completed_at_utc, receipt.feed_timestamp_utc,
+                receipt.byte_size, receipt.checksum_sha256,
+            ))
+        except Exception as exc:
+            # Silver has committed; an optional observer cannot falsify its outcome.
+            logger.error("Trip updates holder update failed: %s", redact_error_message(str(exc)))
     return CaptureLoadResult(
         capture=result.capture.receipt if result.capture is not None else None,
         silver=result.silver,

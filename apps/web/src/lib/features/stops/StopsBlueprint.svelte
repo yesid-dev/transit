@@ -14,10 +14,18 @@
 		BlueprintStationSection,
 	} from '@yesid/ui/blueprints';
 	import { getLocale } from '#lib/i18n/index.ts';
+	import { routeModeKey } from '#lib/search/stopMode.ts';
 	import { page } from '$app/state';
 
 	const locale = getLocale();
-	const operator = $derived(page.data?.provider?.labels[locale].operator ?? 'STM');
+	const operator = $derived(page.data?.provider?.labels?.[locale]?.operator ?? null);
+	const modes = $derived(
+		new Set(
+			(page.data?.routesIndex?.routes ?? []).map((route: { type: number }) =>
+				routeModeKey(route.type),
+			),
+		),
+	);
 </script>
 
 <BlueprintShell
@@ -32,12 +40,16 @@
 		<BlueprintSimpleShelter class="edge-detail" style="top:-10%;left:20%;width:55%;height:50%;" />
 		<BlueprintStopPost class="edge-detail" style="top:-2%;left:76%;width:24%;height:48%;" />
 		<BlueprintStationSection class="edge-detail" style="top:-4%;left:30%;width:50%;height:60%;" />
-		<BlueprintBusSide {operator} class="edge-detail" style="top:0;left:50%;width:50%;height:44%;" />
+		{#if operator && modes.has('bus')}<BlueprintBusSide
+				{operator}
+				class="edge-detail"
+				style="top:0;left:50%;width:50%;height:44%;"
+			/>{/if}
 		<BlueprintSignal class="edge-detail" style="top:0;left:8%;width:24%;height:30%;" />
-		<BlueprintMetroPlatformCirculationPlan
-			class="edge-detail"
-			style="top:2%;left:42%;width:52%;height:42%;"
-		/>
+		{#if modes.has('metro')}<BlueprintMetroPlatformCirculationPlan
+				class="edge-detail"
+				style="top:2%;left:42%;width:52%;height:42%;"
+			/>{/if}
 		<BlueprintHeatedGlassShelterSection
 			class="edge-detail"
 			style="top:5%;left:0;width:34%;height:27%;"

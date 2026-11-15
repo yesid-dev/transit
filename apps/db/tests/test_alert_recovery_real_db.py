@@ -9,6 +9,7 @@ import pytest
 from sqlalchemy import event, text
 from sqlalchemy.exc import DBAPIError
 from test_alert_recovery import NOW, REPORTS, candidate
+from test_alert_recovery_captures import END, START, manifest
 from test_alert_recovery_published import index, page
 from typer.testing import CliRunner
 
@@ -248,7 +249,8 @@ def test_entry_found_in_an_older_published_generation_is_written_back(target, tm
     index(storage, *page(storage, "newest"))
     items, evidence = read_published_candidates(storage, provider_id=p, recovered_at_utc=NOW)
     reports = (REPORTS[0], evidence, REPORTS[2])
-    readers = dict(build_recovery_source_readers(storage, settings=Settings(_env_file=None)))
+    readers = dict(build_recovery_source_readers(storage, settings=Settings(_env_file=None),
+        manifest=manifest(p), capture_from=START, capture_to=END))
     readers.update({k: v for k, v in complete_readers(items).items() if k != "published"})
     report = run_alert_archive_recovery(
         engine, provider_id=p, source_readers=readers, dry_run=False, recovered_at_utc=NOW
@@ -306,6 +308,7 @@ def test_entry_no_source_holds_is_reported(target, tmp_path, complete):
         readers = build_recovery_source_readers(
             LocalSnapshotStorage(str(tmp_path), f"v1/{p}"),
             settings=Settings(_env_file=None, BRONZE_S3_BUCKET=None),
+            manifest=manifest(p), capture_from=START, capture_to=END,
         )
     report = run_alert_archive_recovery(engine, provider_id=p, source_readers=readers,
                                        expected_ids=["lost", "a"], recovered_at_utc=NOW)
@@ -402,9 +405,9 @@ def invoke_cli(monkeypatch, tmp_path, engine, p, readers, apply=False):
         SNAPSHOT_STORAGE_BACKEND="local", SNAPSHOT_LOCAL_ROOT=str(tmp_path)))
     monkeypatch.setattr(command, "make_engine", lambda settings: engine)
     monkeypatch.setattr(command.ProviderRegistry, "from_project_root", lambda **kw: type(
-        "Registry", (), {"get_provider": lambda self, p: None})())
+        "Registry", (), {"get_provider": lambda self, p: manifest(p)})())
     monkeypatch.setattr(command, "build_recovery_source_readers",
-                        lambda storage, *, settings: readers)
+                        lambda storage, *, settings, manifest, capture_from, capture_to: readers)
     return CliRunner().invoke(app, ["recover-alert-archive-entries", p, "--capture-from",
         "2020-01-01T00:00:00Z", "--capture-to", "2020-02-01T00:00:00Z"] +
         (["--apply"] if apply else []))
@@ -414,7 +417,9 @@ def test_sql_reader_failure_keeps_other_evidence_reportable(target, tmp_path):
     engine, p = target
     storage = LocalSnapshotStorage(str(tmp_path), f"v1/{p}")
     index(storage, *page(storage, "older"))
-    readers = dict(build_recovery_source_readers(storage, settings=Settings(_env_file=None)))
+    readers = dict(build_recovery_source_readers(storage, settings=Settings(_env_file=None),
+        manifest=manifest(p), capture_from=START, capture_to=END))
+    readers.pop("capture")
     observed = []
 
     def invalid_backup_cast(connection, **kwargs):

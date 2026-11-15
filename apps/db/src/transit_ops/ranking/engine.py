@@ -132,8 +132,6 @@ def rank_entities(
     network: Mapping[str, int] | None = None,
 ) -> list[RankedEntity]:
     """Rank eligible entities, retaining every other row in state/id order."""
-    if spec.pair is not None:
-        raise NotImplementedError("paired tie-breaking is not implemented")
     if rules.rounding != "half_away_from_zero" or rules.tie_order != (
         "exact_value",
         "pair",
@@ -154,11 +152,12 @@ def rank_entities(
         n, d = row.counts[spec.numerator], _denominator(row, spec, network)
         value = Fraction(n * spec.scale[0], d * spec.scale[1])
         key = value if spec.worse == "lower" else -value
-        ordered.append((key, -row.counts[spec.floor_trips_of], row.entity_id, item))
+        pair_key = _pair_key(row, spec.pair, window_days, rules, network)
+        ordered.append((key, pair_key, -row.counts[spec.floor_trips_of], row.entity_id, item))
     result = []
     previous = None
     rank = 0
-    for position, (_, _, _, item) in enumerate(sorted(ordered), 1):
+    for position, (_, _, _, _, item) in enumerate(sorted(ordered), 1):
         if item.shown_units != previous:
             rank = position
         result.append(replace(item, rank=rank))
@@ -166,6 +165,28 @@ def rank_entities(
     return result + sorted(
         unranked, key=lambda item: (_STATE_ORDER.index(item.state), item.entity_id)
     )
+
+
+def _pair_key(
+    row: EntityWindow,
+    pair: MeasureSpec | None,
+    window_days: int,
+    rules: RankingRules,
+    network: Mapping[str, int] | None,
+) -> tuple[int, Fraction]:
+    if (
+        pair is None
+        or measure_state(row, pair, window_days=window_days, rules=rules, network=network)
+        != "ranked"
+    ):
+        return (1, Fraction(0))
+    if pair.numerator is None:
+        raise ValueError("a named numerator is required")
+    value = Fraction(
+        row.counts[pair.numerator] * pair.scale[0],
+        _denominator(row, pair, network) * pair.scale[1],
+    )
+    return (0, value if pair.worse == "lower" else -value)
 
 
 def _result(

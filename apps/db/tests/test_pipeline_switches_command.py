@@ -9,9 +9,28 @@ from typer.testing import CliRunner
 
 from transit_ops import cli
 from transit_ops import pipeline_switches as switches
+from transit_ops.control import switches as stores
+from transit_ops.control.objects import ObjectConflict, ObjectRateLimited
 from transit_ops.pipeline_switches import set_switch
 
 runner = CliRunner()
+
+
+@pytest.mark.parametrize("error", [ObjectConflict("private\ndetail"), ObjectRateLimited("private")])
+@pytest.mark.parametrize("args", [
+    ["list-pipeline-switches"], ["show-pipeline-switch", "x"],
+    ["set-pipeline-switch", "x", "off", "--reason", "r", "--actor", "a"],
+])
+def test_storage_errors_are_one_line(database, monkeypatch, error, args):
+    def fail(*a, **kw):
+        raise error
+
+    store = SimpleNamespace(list_switches=fail, show_switch=fail, set_switch=fail)
+    monkeypatch.setattr(stores, "switches_for", lambda *a: store)
+    result = runner.invoke(cli.app, args)
+    assert result.exit_code == 1
+    assert result.stderr == "Pipeline switch storage operation failed.\n"
+    assert database[-1] == "dispose"
 
 
 @pytest.fixture
