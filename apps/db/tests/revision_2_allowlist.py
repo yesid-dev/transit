@@ -39,6 +39,20 @@ FILE_RULES: tuple[FileRule, ...] = (
         "historic/route_reliability/index.json",
         ("weekly_routes", "weekly_stops", "published_utc", "next_publish_utc"),
     ),
+    *(
+        FileRule(
+            path,
+            tuple(
+                f"by_grain[*].{group}[*].{field}"
+                for group in ("entries", "tray")
+                for field in ("route_short_name", "departure_time", "headsign")
+            ),
+        )
+        for path in (
+            "historic/repeat_offenders.json",
+            "historic/history/repeat_offenders/generations/{h}/{date}.json",
+        )
+    ),
     FileRule("historic/**"),
     FileRule("provenance.json"),
     FileRule("providers.json"),
@@ -165,6 +179,7 @@ def _matches(pattern: str, path: str) -> bool:
         re.escape(pattern)
         .replace(r"\{id\}", "[^/]+")
         .replace(r"\{date\}", "[^/]+")
+        .replace(r"\{h\}", "[0-9a-f]{64}")
         .replace(r"\*\*", ".*")
     )
     return re.fullmatch(expression, path) is not None
@@ -316,6 +331,12 @@ def compare_schemas_with_baseline(baseline: Mapping, exported: Mapping) -> list[
             ):
                 problems.append(f"{name}: $ unlisted schema")
         else:
+            # Point-day schema names differ from their generation-addressed paths.
+            point_path = {
+                "historic_repeat_offenders_day": (
+                    "historic/history/repeat_offenders/generations/{h}/{date}.json"
+                ),
+            }.get(name)
             # Per-entity schemas use singular names (static_route, static_stop).
             rule = next(
                 (
@@ -323,6 +344,7 @@ def compare_schemas_with_baseline(baseline: Mapping, exported: Mapping) -> list[
                     for r in FILE_RULES
                     if r.pattern.replace("s/{id}", "").replace("/", "_").removesuffix(".json")
                     == name
+                    or r.pattern == point_path
                 ),
                 None,
             )

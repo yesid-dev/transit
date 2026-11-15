@@ -5,6 +5,8 @@ import type { SurfaceHeadCopy } from '#lib/components/surface/index.ts';
 
 export const copy = defineCopy({
 	en: {
+		departure: (line: string, time: string | null, headsign: string | null) =>
+			`Line ${line}${time ? `, ${time}` : ''}${headsign ? ` toward ${headsign}` : ''}`,
 		kicker: 'ACCOUNTABILITY · REPEAT OFFENDERS',
 		heading: 'Repeat offenders',
 		subheading: '// RÉCIDIVISTES',
@@ -50,7 +52,7 @@ export const copy = defineCopy({
 		},
 		cards: {
 			worst: {
-				title: 'Highest share of late readings',
+				title: 'Most repeated delays',
 				subtitle: 'Do severe delays keep happening?',
 			},
 			trips: {
@@ -80,10 +82,10 @@ export const copy = defineCopy({
 		headline: {
 			label: 'Severe-delay rate',
 			explanation:
-				'Bars show the share of readings more than five minutes late. Ranking uses the Wilson lower bound to account for sample size. Recurrence counts late-prone days among the days observed; those days need not be consecutive.',
+				'Bars show the share of readings more than five minutes late. Entries need at least 30 readings, three observed days and two late days. Order follows the number of late days, then average delay. Observed days need not be consecutive.',
 		},
 		hero: {
-			label: 'Highest share of late readings',
+			label: 'Most repeated delays',
 			overline: '#1 offender',
 			recurrenceLabel: 'Recurrence',
 			rateWithCi: (ratePct, lo, hi) =>
@@ -127,9 +129,9 @@ export const copy = defineCopy({
 			samples: 'n',
 		},
 		tray: {
-			heading: 'Below the reliable-reading floor',
-			reason: 'Too few observations to rank (fewer than 30 readings) · not ranked.',
-			listLabel: 'Un-ranked offenders, below the observations floor',
+			heading: 'Not ranked',
+			reason: 'Ranking requires at least 30 readings, three observed days and two late days.',
+			listLabel: 'Unranked repeat offenders',
 			rowSubtitle: (kind, id) => `${kind} ${id}`,
 		},
 		type: {
@@ -153,6 +155,8 @@ export const copy = defineCopy({
 		recurrenceUnknown: 'recurrence not recorded',
 	},
 	fr: {
+		departure: (line: string, time: string | null, headsign: string | null) =>
+			`Ligne ${line}${time ? `, ${time}` : ''}${headsign ? ` vers ${headsign}` : ''}`,
 		kicker: 'REDDITION DE COMPTES · RÉCIDIVISTES',
 		heading: 'Récidivistes',
 		subheading: '// REPEAT OFFENDERS',
@@ -201,7 +205,7 @@ export const copy = defineCopy({
 		},
 		cards: {
 			worst: {
-				title: 'Plus forte part de relevés en retard',
+				title: 'Retards les plus récurrents',
 				subtitle: 'Les retards graves se répètent-ils ?',
 			},
 			trips: {
@@ -231,10 +235,10 @@ export const copy = defineCopy({
 		headline: {
 			label: 'Taux de retards graves',
 			explanation:
-				'Les barres montrent la part des relevés à plus de cinq minutes de retard. Le classement utilise la borne inférieure de Wilson pour tenir compte de la taille de l’échantillon. La récurrence compte les jours sujets aux retards parmi les jours observés, sans exiger qu’ils soient consécutifs.',
+				'Les barres montrent la part des relevés à plus de cinq minutes de retard. Il faut au moins 30 relevés, trois jours observés et deux jours avec retard. Le classement suit le nombre de jours avec retard, puis le retard moyen. Les jours observés ne sont pas nécessairement consécutifs.',
 		},
 		hero: {
-			label: 'Plus forte part de relevés en retard',
+			label: 'Retards les plus récurrents',
 			overline: 'Récidiviste n°1',
 			recurrenceLabel: 'Récurrence',
 			rateWithCi: (ratePct: string, lo: string, hi: string) =>
@@ -278,9 +282,10 @@ export const copy = defineCopy({
 			samples: 'n',
 		},
 		tray: {
-			heading: 'Sous le seuil de lecture fiable',
-			reason: 'Trop peu d’observations pour un classement (moins de 30 relevés) · non classés.',
-			listLabel: 'Récidivistes non classés, sous le seuil d’observations',
+			heading: 'Non classés',
+			reason:
+				'Le classement exige au moins 30 relevés, trois jours observés et deux jours avec retard.',
+			listLabel: 'Récidivistes non classés',
 			rowSubtitle: (kind: string, id: string) => `${kind} ${id}`,
 		},
 		type: {

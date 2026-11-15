@@ -42,6 +42,7 @@ from transit_ops.snapshots.builders.historic.ranking_kernel import (
     merge_hotspot_grain,
     otp_delta_points,
 )
+from transit_ops.snapshots.builders.historic.repeat_offenders_history import OFFENDER_LABEL_JOIN_SQL
 from transit_ops.snapshots.contract import (
     ALERT_HISTORY_BYTE_CEILING,
     NOT_REPORTED_ROUTES_CAP,
@@ -404,6 +405,11 @@ _REPEAT_OFFENDERS_SQL = named_query(
 )
 
 
+def _scalar_offender_delay(seconds):
+    value = _avg_delay_min(seconds)
+    return 0.0 if value == 0 else value
+
+
 def build_repeat_offenders(
     conn: Connection, *, provider_id: str, generated_utc: str
 ) -> RepeatOffenders:
@@ -421,7 +427,7 @@ def build_repeat_offenders(
             recurrence=f"{r['recurrence_days']}/{r['window_days']}d",
             recurrence_days=_opt_int(r["recurrence_days"]),
             window_days=_opt_int(r["window_days"]),
-            avg_delay_min=_avg_delay_min(r["avg_delay_seconds"]),
+            avg_delay_min=_scalar_offender_delay(r["avg_delay_seconds"]),
             severity=r["severity_label"],
         )
         for r in rows
@@ -439,7 +445,8 @@ _OFFENDERS_ANCHOR_SQL = named_query(
 _OFFENDERS_WINDOW_SQL = named_query(
     "repeat.offenders.by_grain",
     """
-    SELECT
+    SELECT sp.*, label.route_short_name, label.trip_headsign AS headsign, label.departure_time
+    FROM (SELECT provider_id, CAST(:win_end AS date) AS provider_local_date,
         entity_kind,
         entity_id,
         route_id,
@@ -452,7 +459,9 @@ _OFFENDERS_WINDOW_SQL = named_query(
     FROM gold.repeat_offender_daily_spine
     WHERE provider_id = :provider_id
       AND provider_local_date >= :win_start AND provider_local_date <= :win_end
-    GROUP BY entity_kind, entity_id, route_id
+    GROUP BY provider_id, entity_kind, entity_id, route_id) sp
+    JOIN gold.dim_provider dp ON dp.provider_id = sp.provider_id
+    """ + OFFENDER_LABEL_JOIN_SQL + """
     """,
 )
 

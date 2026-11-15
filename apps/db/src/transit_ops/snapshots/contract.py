@@ -830,12 +830,15 @@ class Offender(BaseModel):
 
 
 class RepeatOffenderEntry(BaseModel):
-    # Trip/vehicle ranks restart per kind; recurrence is evidence, not the rank key.
+    # Ranks restart per kind: repeated late dates, then unrounded pooled lateness.
     rank: int | None = None
     type: str
     id: str
     route: str | None = None
     route_name: str | None = None
+    route_short_name: str | None = None
+    departure_time: str | None = None
+    headsign: str | None = None
     severity: str | None = None
     observation_count: int | None = None
     severe_count: int | None = None

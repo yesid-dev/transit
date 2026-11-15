@@ -9,19 +9,14 @@
 	import { onDestroy } from 'svelte';
 	import { page } from '$app/state';
 	import { getLocale, getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
-	import { routeFor, type SurfaceKind, type SurfaceTarget } from '#lib/nav/index.ts';
+	import { routeFor, type SurfaceKind } from '#lib/nav/index.ts';
 	import {
 		fromSearchParams,
 		toSearchParams,
 		emptyFilterState,
 		type WorstN,
 	} from '#lib/filters/index.ts';
-	import {
-		fmtCount,
-		fmtDelayMin,
-		fmtDelayMin as sharedFmtDelayMin,
-		fmtPct,
-	} from '#lib/utils/index.ts';
+	import { fmtCount, fmtDelayMin, fmtPct } from '#lib/utils/index.ts';
 	import { formatDateKey } from '#lib/utils/time.ts';
 	import { availabilityFromPointCollectionIndex } from '#lib/v1/history/selection.ts';
 	import { createHistoryCorrectionPresentation } from '#lib/v1/history/datePresentation.svelte.ts';
@@ -34,7 +29,7 @@
 		getRepeatOffendersHistoryDay,
 		getRepeatOffendersHistoryIndex,
 	} from '#lib/v1/repositories/historic.ts';
-	import type { RepeatOffenderEntry, Offender } from '#lib/v1/schemas/index.ts';
+	import type { RepeatOffenderEntry } from '#lib/v1/schemas/index.ts';
 	import type {
 		HistoricCollectionIndex,
 		RepeatOffenders as RepeatOffendersData,
@@ -48,19 +43,12 @@
 		type GrainSegment,
 	} from '#lib/components/surface/index.ts';
 	import { ArticleSectionStack, type ArticleMetaEntry } from '#lib/components/layout/index.ts';
-	import {
-		DashboardGrid,
-		DetailFrame,
-		SurfaceRail,
-		type SurfaceRailContext,
-	} from '@yesid/ui/layout';
+	import { DetailFrame, SurfaceRail, type SurfaceRailContext } from '@yesid/ui/layout';
 	import { AbsentValue } from '#lib/components/edge/index.ts';
-	import { CollapsibleSection, TocNav, SectionHeading } from '@yesid/ui/brand';
+	import { CollapsibleSection, TocNav } from '@yesid/ui/brand';
 	import { TypedInformationCard } from '#lib/components/shared/index.ts';
 	import SectionsToggle from '#lib/components/shared/SectionsToggle.svelte';
 	import { prefersReducedMotion } from '@yesid/motion/stores/reducedMotion';
-	import { RankedRow } from '#lib/components/dataviz/index.ts';
-	import { DELAY_DIST_DOMAIN } from '#lib/features/reliability/domains.ts';
 	import MetricInfo from '#lib/features/metrics/MetricInfo.svelte';
 
 	import {
@@ -76,7 +64,6 @@
 	} from '#lib/reliability/ladderCap.ts';
 	import { selectOffenderLadder, type OffenderPopoverEvidence } from './selectors/offenderLadder';
 	import { buildOffenderEvidenceRows } from './selectors/offenderEvidence';
-	import { buildOffenderLedger } from './selectors/offenderLedger';
 	import RepeatOffendersSection from './sections/RepeatOffendersSection.svelte';
 	import { copy as COPY } from './repeatOffenders.copy';
 
@@ -132,11 +119,13 @@
 		ladderGrains(
 			offenders.data?.by_grain?.map((grain) => ({
 				...grain,
-				entries: (grain.entries ?? []).filter((entry) => (entry.observed_days ?? 0) >= 3),
+				entries: (grain.entries ?? []).filter(
+					(entry) => (entry.observed_days ?? 0) >= 3 && (entry.recurrence_days ?? 0) >= 2,
+				),
 				tray: [
 					...(grain.tray ?? []),
 					...(grain.entries ?? [])
-						.filter((entry) => (entry.observed_days ?? 0) < 3)
+						.filter((entry) => (entry.observed_days ?? 0) < 3 || (entry.recurrence_days ?? 0) < 2)
 						.map((entry) => ({ ...entry, rank: null })),
 				],
 			})),
@@ -175,7 +164,7 @@
 		const kind: SurfaceKind = 'line';
 		return localizeHref(routeFor({ kind, id: route }), locale);
 	}
-	const { unnamed, spoken, typeLabel } = createOffenderNames(
+	const { unnamed, spoken } = createOffenderNames(
 		() => display.directory,
 		() => t,
 	);
@@ -342,37 +331,10 @@
 			: t.window[grainKey],
 	);
 
-	function fmtMin(v: number | null): string | null {
-		return sharedFmtDelayMin(v, { rounding: 'fixed1', suffix: t.units.min });
-	}
-	function legacyHref(o: Offender): string {
-		const target: SurfaceTarget =
-			o.type === 'stop'
-				? { kind: 'stop', id: o.id }
-				: o.route?.trim()
-					? { kind: 'line', id: o.route.trim() }
-					: o.type === 'route'
-						? { kind: 'line', id: o.id }
-						: { kind: 'stop', id: o.id };
-		return localizeHref(routeFor(target), locale);
-	}
-	const legacyRows = $derived(
-		buildOffenderLedger(offenders.data?.offenders ?? [], {
-			directory: display.directory,
-			typeLabel,
-			recurrenceLabel: t.recurrenceLabel,
-			recurrenceUnknown: t.recurrenceUnknown,
-			fmtMin,
-			href: legacyHref,
-		}),
-	);
-
 	const hasGrains = $derived(present.size > 0);
-	const hasLegacy = $derived((offenders.data?.offenders?.length ?? 0) > 0);
-	const isEmpty = $derived(!hasGrains && !hasLegacy);
+	const isEmpty = $derived(!hasGrains);
 	const showCombinedRail = $derived(
-		(offenders.data != null && (hasGrains || hasLegacy)) ||
-			(offenders.mode === 'history' && hasHistoryNavigator),
+		(offenders.data != null && hasGrains) || (offenders.mode === 'history' && hasHistoryNavigator),
 	);
 	const showWorstN = $derived(
 		hasGrains && (tripLadder.total > SMALLEST_WORST_N || vehicleLadder.total > SMALLEST_WORST_N),
@@ -386,7 +348,7 @@
 			title: t.cards.worst.title,
 			subtitle:
 				offenders.mode === 'history' ? t.history.retainedWorstSubtitle : t.cards.worst.subtitle,
-			present: hasGrains || hasLegacy,
+			present: hasGrains,
 		},
 		{
 			id: 'repeat-trips',
@@ -593,55 +555,6 @@
 										<p>{t.caveat}</p>
 									</TypedInformationCard>
 								</div>
-							{:else if section.id === 'repeat-worst'}
-								<div class="repeat-offenders-block">
-									<SectionHeading level={3} overline={t.listSection}>
-										{#snippet explainer()}
-											<MetricInfo
-												metricKey="severe"
-												{locale}
-												name={t.ladder.severeRateLabel}
-												side="bottom"
-											/>
-										{/snippet}
-									</SectionHeading>
-									<p class="repeat-offenders-caption">{t.rowCaption}</p>
-									<DashboardGrid
-										as="ul"
-										minTile="360px"
-										gutter={false}
-										class="repeat-offenders-ranked"
-										aria-label={t.listSummary}
-									>
-										{#each legacyRows as row (row.key)}
-											<li class="repeat-offenders-item">
-												<a
-													class="repeat-offenders-link"
-													href={row.href}
-													data-sveltekit-preload-data="hover"
-													data-slot="offender-link"
-												>
-													<RankedRow
-														bare
-														rank={row.rank}
-														title={row.title}
-														subtitle={row.subtitle}
-														severity={row.severity}
-														value={row.value}
-														domain={DELAY_DIST_DOMAIN}
-														unit={t.units.min}
-														display={row.display}
-														absentReason="no-observations"
-														{locale}
-													/>
-												</a>
-											</li>
-										{/each}
-									</DashboardGrid>
-									<TypedInformationCard kind="caveat" label={t.caveatLabel}>
-										<p>{t.caveat}</p>
-									</TypedInformationCard>
-								</div>
 							{:else if section.id === 'repeat-trips'}
 								<RepeatOffendersSection
 									heading={t.ladder.heading}
@@ -766,33 +679,8 @@
 		line-height: 1.55;
 		color: var(--muted-foreground);
 	}
-	.repeat-offenders-block {
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-	}
 	:global(.dashboard-grid.repeat-offenders-ranked) {
 		margin-inline: auto;
-	}
-	.repeat-offenders-item {
-		display: block;
-	}
-	.repeat-offenders-link {
-		display: block;
-		text-decoration: none;
-		color: inherit;
-		border-radius: var(--radius-lg);
-	}
-	.repeat-offenders-link:focus-visible {
-		outline: 2px solid var(--ring);
-		outline-offset: 2px;
-	}
-	.repeat-offenders-caption {
-		margin: 0;
-		font-family: var(--font-mono);
-		font-size: var(--text-small);
-		line-height: 1.4;
-		color: var(--muted-foreground);
 	}
 	.repeat-offenders-note {
 		display: flex;

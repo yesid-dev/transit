@@ -233,3 +233,12 @@ it('ladder rows lead with the line number', () => {
 	expect(result.spec.rows[0].label).toBe('1 · Confederation');
 	expect(result.spec.rows[0].spoken).toBe('Line 1 · Confederation');
 });
+
+it('uses the same departure label when only its destination is known', () => {
+	const result = selectOffenderLadder([entry({ headsign: 'Monk' })], 10, 'en', {
+		...labels,
+		unnamed: () => 'Line 11 toward Monk',
+	});
+	if (result.spec.kind !== 'magnitude-bars') throw new Error('expected magnitude-bars');
+	expect(result.spec.rows[0].label).toBe('Line 11 toward Monk');
+});

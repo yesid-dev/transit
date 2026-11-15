@@ -362,9 +362,7 @@ describe('RepeatOffenders — approved analytical article', () => {
 		expect(card(container, 'repeat-trips')).not.toBeNull();
 		expect(container.querySelector('[data-toc="repeat-vehicles"]')).toBeNull();
 		const rail = container.querySelector('[data-slot="surface-rail"]') as HTMLElement;
-		expect(
-			within(rail).getByRole('button', { name: 'Highest share of late readings' }),
-		).toBeInTheDocument();
+		expect(within(rail).getByRole('button', { name: 'Most repeated delays' })).toBeInTheDocument();
 		expect(within(rail).getByRole('button', { name: 'Trips' })).toBeInTheDocument();
 		expect(within(rail).queryByRole('button', { name: 'Vehicles' })).toBeNull();
 		expect(card(container, 'repeat-trips').querySelector('[data-slot="badge"]')).toHaveTextContent(
@@ -448,39 +446,14 @@ describe('RepeatOffenders — approved analytical article', () => {
 		});
 	});
 
-	it('keeps null evidence absent, served zero honest, and an unmapped row actionless', () => {
-		payload.current = {
-			generated_utc: GENERATED,
-			offenders: [],
-			by_grain: [
-				{
-					grain: 'week',
-					entries: [
-						{
-							rank: 1,
-							type: 'trip',
-							id: 'T0',
-							observed_days: 3,
-							route: null,
-							severe_pct: null,
-							observation_count: 0,
-							avg_delay_min: null,
-						},
-					],
-					tray: [],
-				},
-			],
-		} satisfies RepeatOffendersData as RepeatOffendersData;
-		render(RepeatOffenders);
-		expect(capturedRow('trip-T0-').tapPopover).toEqual({
-			key: 'trip-T0-',
-			heading: 'Item T0',
-			meta: 'Trip T0',
-			rows: [
-				{ label: 'Recurrence', value: 'recurrence not recorded' },
-				{ label: 'Readings', value: '0' },
-			],
-		});
+	it('moves an older one-day recurrence to the unranked tray even with three observed days', () => {
+		const entry = payload.current!.by_grain![0].entries![0];
+		Object.assign(entry, { recurrence_days: 1, observed_days: 3 });
+		const { container } = render(RepeatOffenders);
+		expect(JSON.stringify(capturedLadders.current)).not.toContain(
+			`trip-${entry.id}-${entry.route}`,
+		);
+		expect(container.querySelector('[data-slot="offender-tray"]')).not.toBeNull();
 	});
 
 	it('uses the approved bilingual chart-popover vocabulary', () => {
@@ -531,7 +504,7 @@ describe('RepeatOffenders — approved analytical article', () => {
 		});
 		expect(repeatCopy.en.cards).toEqual({
 			worst: {
-				title: 'Highest share of late readings',
+				title: 'Most repeated delays',
 				subtitle: expect.stringMatching(/\?$/),
 			},
 			trips: {
@@ -545,7 +518,7 @@ describe('RepeatOffenders — approved analytical article', () => {
 		});
 		expect(repeatCopy.fr.cards).toEqual({
 			worst: {
-				title: 'Plus forte part de relevés en retard',
+				title: 'Retards les plus récurrents',
 				subtitle: expect.stringMatching(/\?$/),
 			},
 			trips: {
@@ -648,35 +621,6 @@ describe('RepeatOffenders — approved analytical article', () => {
 			else Reflect.deleteProperty(Element.prototype, 'animate');
 			document.querySelectorAll('[role="dialog"]').forEach((element) => element.remove());
 		}
-	});
-
-	it('renders the legacy fallback as one Worst card with one matching contents entry', () => {
-		payload.current = {
-			generated_utc: GENERATED,
-			offenders: [
-				{
-					type: 'route',
-					id: '11',
-					route: '11',
-					route_name: 'Montagne / Sommet',
-					avg_delay_min: 12.4,
-					recurrence: 'most weekday afternoons',
-					severity: 'critical',
-				},
-			],
-		} satisfies RepeatOffendersData as RepeatOffendersData;
-		const { container } = render(RepeatOffenders);
-		expect(card(container, 'repeat-worst')).not.toBeNull();
-		expect(container.querySelector('[data-toc="repeat-trips"]')).toBeNull();
-		expect(container.querySelector('[data-toc="repeat-vehicles"]')).toBeNull();
-		const rail = container.querySelector('[data-slot="surface-rail"]') as HTMLElement;
-		expect(
-			within(rail).getAllByRole('button', { name: 'Highest share of late readings' }),
-		).toHaveLength(1);
-		expect(within(card(container, 'repeat-worst')).getByRole('link')).toHaveAttribute(
-			'href',
-			'/lines/11',
-		);
 	});
 
 	it('keeps the published-empty state outside cards and removes the combined rail', () => {
@@ -838,117 +782,14 @@ describe('RepeatOffenders — S14 re-seat (by_grain ladders)', () => {
 	});
 });
 
-describe('RepeatOffenders — legacy fallback ledger (by_grain absent)', () => {
-	it('renders the scalar offenders[] as a ranked ledger worst-first, each linking to its route/stop', () => {
-		payload.current = {
-			generated_utc: GENERATED,
-			offenders: [
-				{
-					type: 'route',
-					id: '11',
-					route: '11',
-					route_name: 'Montagne / Sommet',
-					avg_delay_min: 12.4,
-					recurrence: 'most weekday afternoons',
-					severity: 'critical',
-				},
-				{
-					type: 'stop',
-					id: '57191',
-					route: null,
-					route_name: null,
-					avg_delay_min: 6.2,
-					recurrence: null,
-					severity: 'high',
-				},
-			],
-		} satisfies RepeatOffendersData as RepeatOffendersData;
-
-		render(RepeatOffenders);
-
-		const list = screen.getByRole('list', { name: /ranked by average delay/i });
-		const items = within(list).getAllByRole('listitem');
-		expect(items).toHaveLength(2);
-		const links = within(list).getAllByRole('link');
-		expect(links).toHaveLength(2);
-		expect(links[0]).toHaveTextContent('Montagne / Sommet');
-		expect(links[0]).toHaveTextContent('12.4 min');
-		expect(links[0]).toHaveAttribute('href', '/lines/11');
-		expect(links[1]).toHaveAttribute('href', '/stop/57191');
-		expect(links[1]).toHaveTextContent('6.2 min');
-	});
-
-	it('shows the styled honest-absence chip for a null average delay, never a fabricated 0', () => {
-		payload.current = {
-			generated_utc: GENERATED,
-			offenders: [
-				{
-					type: 'route',
-					id: '24',
-					route: '24',
-					route_name: 'Sherbrooke',
-					avg_delay_min: null,
-					recurrence: 'weekday PM peaks',
-					severity: 'watch',
-				},
-			],
-		} satisfies RepeatOffendersData as RepeatOffendersData;
-
-		const { container } = render(RepeatOffenders);
-		const chip = container.querySelector('[data-slot="absent-value"]');
-		expect(chip).not.toBeNull();
-		expect(chip?.getAttribute('data-tone')).toBe('unknown');
-		expect(chip).toHaveTextContent(/No data/i);
-		expect(chip).toHaveTextContent(/not enough readings yet/i);
-		expect(screen.queryByText(/0\.0 min/)).not.toBeInTheDocument();
-	});
-
-	it('reads the honest recurrence fallback when a legacy row carries no recurrence string', () => {
-		payload.current = {
-			generated_utc: GENERATED,
-			offenders: [
-				{
-					type: 'stop',
-					id: '99',
-					route: null,
-					route_name: null,
-					avg_delay_min: 8,
-					recurrence: null,
-				},
-			],
-		} satisfies RepeatOffendersData as RepeatOffendersData;
-		render(RepeatOffenders);
-		expect(screen.getByText(/recurrence not recorded/i)).toBeInTheDocument();
-	});
-
-	it('renders BOTH rows when two offenders share an id on different routes (no each_key_duplicate)', () => {
-		payload.current = {
-			generated_utc: GENERATED,
-			offenders: [
-				{ type: 'route', id: '42010', route: '49', route_name: null, avg_delay_min: 11.3 },
-				{ type: 'route', id: '42010', route: '55', route_name: null, avg_delay_min: 9.7 },
-			],
-		} satisfies RepeatOffendersData as RepeatOffendersData;
-
-		expect(() => render(RepeatOffenders)).not.toThrow();
-		const list = screen.getByRole('list', { name: /ranked by average delay/i });
-		expect(within(list).getAllByRole('listitem')).toHaveLength(2);
-		const links = within(list).getAllByRole('link');
-		expect(links[0]).toHaveAttribute('href', '/lines/49');
-		expect(links[1]).toHaveAttribute('href', '/lines/55');
-	});
-
-	it('routes an empty payload to the boundary empty state, never an invented row', () => {
-		payload.current = {
-			generated_utc: GENERATED,
-			offenders: [],
-			by_grain: [],
-		} satisfies RepeatOffendersData as RepeatOffendersData;
-		render(RepeatOffenders);
-		expect(
-			screen.queryByRole('list', { name: /ranked by average delay/i }),
-		).not.toBeInTheDocument();
-	});
+it('does not rank the legacy scalar ledger when windowed recurrence evidence is absent', () => {
+	payload.current = {
+		generated_utc: GENERATED,
+		offenders: [{ type: 'trip', id: 'legacy', route: '36', avg_delay_min: 60 }],
+	};
+	const { container } = render(RepeatOffenders);
+	expect(container.querySelector('[data-slot="offenders-empty"]')).not.toBeNull();
+	expect(container.querySelector('[data-slot="offender-link"]')).toBeNull();
 });
 
 it('shows the record stamp and no publication time', async () => {

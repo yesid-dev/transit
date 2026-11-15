@@ -1,12 +1,12 @@
 {
  "schema_version": 1,
  "methodology_version": "history-1",
- "publish_generation_id": "r2guard_alerts@2025-09-02T00:00:00Z",
+ "publish_generation_id": "r2guard_plain@2025-09-02T00:00:00Z",
  "generated_utc": "2025-09-01T06:00:00Z",
  "family": "repeat_offenders",
  "selection_mode": "date",
  "entity_id": null,
- "collection_generation_id": "74f8e2d5f879c900dee686619472317c5444252dbf0e858ff11d14ebf5f63206",
+ "collection_generation_id": "1ec95cb371fef41d4a20761eb3013c54b7b34bf1df4e8e83b034255a5b6761df",
  "first_available_date": "2025-06-03",
  "last_available_date": "2025-08-19",
  "available_dates": [
@@ -54,44 +54,44 @@
    "byte_size": 175
   },
   {
-   "path": "historic/history/repeat_offenders/generations/6439561966044363dbe51decb48fa277c1e9441080996cd2c313fea7a6b5b52f/2025-06-19.json",
+   "path": "historic/history/repeat_offenders/generations/4933fd37ecf36d3d83f0f3f331e9886724ca06612ece0069bc6947fbe53ade0a/2025-06-19.json",
    "coverage_start": "2025-06-19",
    "coverage_end": "2025-06-19",
    "count": 1,
-   "sha256": "6439561966044363dbe51decb48fa277c1e9441080996cd2c313fea7a6b5b52f",
-   "byte_size": 870
+   "sha256": "4933fd37ecf36d3d83f0f3f331e9886724ca06612ece0069bc6947fbe53ade0a",
+   "byte_size": 994
   },
   {
-   "path": "historic/history/repeat_offenders/generations/216134d88bb94955df5468aac85f51eb52807dfa38dd86323ebadb98de0fa991/2025-07-03.json",
+   "path": "historic/history/repeat_offenders/generations/c5edda6cde4c629de755838d5d3620f8c6c87ded67b812431fd40b1bc5ebed2b/2025-07-03.json",
    "coverage_start": "2025-07-03",
    "coverage_end": "2025-07-03",
    "count": 1,
-   "sha256": "216134d88bb94955df5468aac85f51eb52807dfa38dd86323ebadb98de0fa991",
-   "byte_size": 870
+   "sha256": "c5edda6cde4c629de755838d5d3620f8c6c87ded67b812431fd40b1bc5ebed2b",
+   "byte_size": 994
   },
   {
-   "path": "historic/history/repeat_offenders/generations/e4d9b2e889cf0b3ad7a1f378611d3ff4844b1870a47729241633a96324cd953e/2025-07-19.json",
+   "path": "historic/history/repeat_offenders/generations/015946979155b9498cebb08219e3e070f50759d1b516bf8ce545f84edd12adf6/2025-07-19.json",
    "coverage_start": "2025-07-19",
    "coverage_end": "2025-07-19",
    "count": 1,
-   "sha256": "e4d9b2e889cf0b3ad7a1f378611d3ff4844b1870a47729241633a96324cd953e",
-   "byte_size": 870
+   "sha256": "015946979155b9498cebb08219e3e070f50759d1b516bf8ce545f84edd12adf6",
+   "byte_size": 994
   },
   {
-   "path": "historic/history/repeat_offenders/generations/bcf89131292f5ce02ecd3ed2bf9ef0016590607f948a87dd1419fd586fece1c4/2025-08-03.json",
+   "path": "historic/history/repeat_offenders/generations/3256cf079c6047d24f347eb2cd07fd136b6c7a59e2cfb08a046b3b79e3b5a592/2025-08-03.json",
    "coverage_start": "2025-08-03",
    "coverage_end": "2025-08-03",
    "count": 1,
-   "sha256": "bcf89131292f5ce02ecd3ed2bf9ef0016590607f948a87dd1419fd586fece1c4",
-   "byte_size": 870
+   "sha256": "3256cf079c6047d24f347eb2cd07fd136b6c7a59e2cfb08a046b3b79e3b5a592",
+   "byte_size": 994
   },
   {
-   "path": "historic/history/repeat_offenders/generations/40c9cc1b1f840f2a53a3d91c6ef74fa05762567242af305a0648399abc95f861/2025-08-19.json",
+   "path": "historic/history/repeat_offenders/generations/53e410daf71976471ab918f95a3a261f378a66690e829f2738005010fb118811/2025-08-19.json",
    "coverage_start": "2025-08-19",
    "coverage_end": "2025-08-19",
    "count": 1,
-   "sha256": "40c9cc1b1f840f2a53a3d91c6ef74fa05762567242af305a0648399abc95f861",
-   "byte_size": 870
+   "sha256": "53e410daf71976471ab918f95a3a261f378a66690e829f2738005010fb118811",
+   "byte_size": 994
   }
  ],
  "metrics": []

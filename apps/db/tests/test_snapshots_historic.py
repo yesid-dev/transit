@@ -1814,9 +1814,10 @@ def test_by_grain_ranks_per_kind_and_sets_window_days() -> None:
     assert month.window_days == 30
     trips = [e for e in week.entries if e.type == "trip"]
     vehs = [e for e in week.entries if e.type == "vehicle"]
-    assert [e.rank for e in trips] == [1, 2]
+    assert [e.rank for e in trips] == [1]
     assert [e.rank for e in vehs] == [1]
-    assert week.total_ranked_trips == 2
+    assert week.total_ranked_trips == 1
+    assert [entry.id for entry in week.tray] == ["T_OK"]
     assert week.total_ranked_vehicles == 1
     assert trips[0].id == "T_BAD"
     assert trips[0].route_name == "Route Nine"
@@ -1893,7 +1894,7 @@ def test_by_grain_pooled_avg_honest_none_on_zero_denominator() -> None:
     assert grains == []
 
 
-def test_offender_ladder_preserves_caller_order_for_exact_ties() -> None:
+def test_offender_ladder_uses_route_identity_for_exact_ties() -> None:
     rows = [
         dict(
             _offender_spine_row(
@@ -1916,7 +1917,7 @@ def test_offender_ladder_preserves_caller_order_for_exact_ties() -> None:
         sorted(rows, key=lambda row: str(row["route_id"])), "trip", {}
     )
 
-    assert [entry.route for entry in current] == ["Z", "A"]
+    assert [entry.route for entry in current] == ["A", "Z"]
     assert [entry.route for entry in historical] == ["A", "Z"]
 
 

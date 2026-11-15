@@ -500,8 +500,8 @@
   {
    "family": "repeat_offenders",
    "selection_mode": "date",
-   "index_path": "historic/history/repeat_offenders/generations/3217ce8532d24b15c26dcf4ba82121b77f6c8fe3fe81b964a72b94fdefc7eef0/index.json",
-   "collection_generation_id": "74f8e2d5f879c900dee686619472317c5444252dbf0e858ff11d14ebf5f63206",
+   "index_path": "historic/history/repeat_offenders/generations/a8da44c3aef024522a6bc8ca65ec335ccccd5a56f907e234984f129328266a4f/index.json",
+   "collection_generation_id": "1ec95cb371fef41d4a20761eb3013c54b7b34bf1df4e8e83b034255a5b6761df",
    "first_available_date": "2025-06-03",
    "last_available_date": "2025-08-19",
    "gaps": [

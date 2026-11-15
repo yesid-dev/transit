@@ -1,3 +1,4 @@
+import { resolveOffenderName } from '../offenderNames';
 import type { LineDirectory } from '#lib/site/lineDirectory.ts';
 import type { Locale } from '#lib/i18n/index.ts';
 import {
@@ -24,21 +25,14 @@ export function selectOffenderLadder(
 	const directory = labels.directory;
 	const result = encodeSevereLadder(entries, cap, locale, labels, {
 		key: (entry) => `${entry.type}-${entry.id}-${entry.route ?? ''}`,
-		label: (entry) =>
-			directory && entry.route
-				? directory.name(entry.route, entry.route_name).label
-				: (entry.route_name ?? labels.unnamed(entry)),
+		label: (entry) => resolveOffenderName(entry, directory, labels.unnamed).label,
 	});
 	if (directory && result.spec.kind === 'magnitude-bars') {
 		result.spec = {
 			...result.spec,
 			rows: result.spec.rows.map((row, i) => ({
 				...row,
-				spoken: entries[i].route
-					? directory.name(entries[i].route!, entries[i].route_name).spoken
-					: entries[i].route_name
-						? directory.spoken(row.label)
-						: row.label,
+				spoken: resolveOffenderName(entries[i], directory, labels.unnamed).spoken,
 			})),
 		};
 	}
