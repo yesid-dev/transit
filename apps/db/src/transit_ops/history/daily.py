@@ -11,9 +11,10 @@ from sqlalchemy import Connection, text
 
 from transit_ops.history import daily_selection as selection
 from transit_ops.history import datasets as declarations
-from transit_ops.history import ledger, store
+from transit_ops.history import ledger, ledger_select, store
 from transit_ops.history.close_runs import close_unfinished_runs
 from transit_ops.history.daily_selection import CaptureDay
+from transit_ops.history.ledger_store import WindowIdentity
 from transit_ops.history.seal_captures import CopyContentMissing, WindowNotClosed
 from transit_ops.history.verify import Verification
 from transit_ops.ingestion.storage import BronzeStorageResolver
@@ -89,12 +90,12 @@ def _switch(connection: Connection) -> datetime | None:
 def _preflight(admission: "_Admission") -> datetime | None:
     connection, result = admission.connection, admission.result
     with connection.begin():
-        names = (
-            "core.history_window",
-            "core.history_archive_copy",
-            "core.history_event",
-            "core.pipeline_switches",
-        )
+        if not admission.available():
+            return None
+        if not ledger_select.ledger_for(connection).ready():
+            result.stop_reason = "ledger_missing"
+            return None
+        names = ("core.pipeline_switches",)
         for name in names:
             if not admission.available():
                 return None
@@ -102,7 +103,7 @@ def _preflight(admission: "_Admission") -> datetime | None:
                 connection.execute(text("SELECT to_regclass(:name)"), {"name": name}).scalar_one()
                 is None
             ):
-                result.stop_reason = "disabled" if name == names[-1] else "ledger_missing"
+                result.stop_reason = "disabled"
                 return None
         if not admission.available():
             return None
@@ -140,14 +141,10 @@ class _Admission:
 
 def _pending(connection: Connection, day: CaptureDay) -> list[ledger.ArchiveCopy]:
     with connection.begin():
-        window = ledger.window_state(
-            connection,
-            dataset_id=day.dataset_id,
-            provider_id=day.provider_id,
-            window_key=day.utc_date.isoformat(),
+        window = ledger_select.ledger_for(connection).window_state(
+            WindowIdentity(day.dataset_id, day.provider_id, day.utc_date.isoformat())
         )
-        copies = ledger.find_copies(
-            connection,
+        copies = ledger_select.ledger_for(connection).find_copies(
             dataset_id=day.dataset_id,
             provider_id=day.provider_id,
             start=day.utc_date,

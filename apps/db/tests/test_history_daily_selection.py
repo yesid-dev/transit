@@ -96,7 +96,10 @@ def test_noncapture_dataset_fails_before_reads(monkeypatch):
 
 
 @pytest.mark.parametrize("hour,expected", [(0, 2), (1, 3)])
-def test_empty_floor_is_separate_from_older_evidence(hour, expected):
+def test_empty_floor_is_separate_from_older_evidence(hour, expected, monkeypatch):
+    from transit_ops.history.ledger_postgres import PostgresLedger
+
+    monkeypatch.setattr(PostgresLedger, "list_windows", lambda *a, **kw: [])
     conn = Mock()
     conn.execute.side_effect = [Mock(scalars=lambda: ["network"]), []]
     capture_days(conn, datasets=["capture.trip_updates"], start=date.min,

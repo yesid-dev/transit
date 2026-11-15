@@ -38,6 +38,52 @@ class PostgresLedger:
     def __init__(self, connection: Connection) -> None:
         self.connection = connection
 
+    def ready(self) -> bool:
+        return all(
+            self.connection.execute(text("SELECT to_regclass(:name)"), {"name": name}).scalar_one()
+            is not None
+            for name in ("core.history_window", "core.history_archive_copy", "core.history_event")
+        )
+
+    def list_windows(
+        self,
+        *,
+        dataset_id: str,
+        revision: int = 0,
+        provider_id: str | None = None,
+        start: date | None = None,
+        end: date | None = None,
+    ) -> list[WindowState]:
+        from transit_ops.history import datasets
+
+        ledger._check_revision(datasets.get_dataset(dataset_id), revision)
+        if start is not None and end is not None and start > end:
+            raise ValueError("start must not be after end")
+        clauses = ["dataset_id=:dataset_id", "revision=:revision"]
+        values: dict[str, object] = dict(dataset_id=dataset_id, revision=revision)
+        for name, value, clause in (
+            ("provider_id", provider_id, "provider_id=:provider_id"),
+            ("start", start, "window_start>=:start"),
+            ("end", end, "window_start<=:end"),
+        ):
+            if value is not None:
+                clauses.append(clause)
+                values[name] = value
+        rows = self.connection.execute(
+            text(
+                "SELECT window_key, provider_id FROM core.history_window WHERE "
+                + " AND ".join(clauses)
+                + " ORDER BY provider_id, window_start, window_key"
+            ),
+            values,
+        )
+        return [
+            state
+            for key, provider in rows
+            if (state := self.window_state(WindowIdentity(dataset_id, provider, key, revision)))
+            is not None
+        ]
+
     def record_audit(
         self,
         identity: WindowIdentity,

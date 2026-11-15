@@ -4,14 +4,15 @@ import hashlib
 import heapq
 from collections.abc import Iterator, Sequence
 from contextlib import ExitStack, closing
-from dataclasses import dataclass, fields, replace
+from dataclasses import asdict, dataclass, fields, replace
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
 
 from sqlalchemy import Connection, text
 
-from transit_ops.history import ledger
+from transit_ops.history import ledger, ledger_select
 from transit_ops.history.datasets import CaptureSource, IndexFamily, get_dataset, utc_day_closes_at
+from transit_ops.history.ledger_store import WindowIdentity
 from transit_ops.history.manifest import Manifest, read_copy_manifest
 from transit_ops.history.poll_record import CaptureEntry, PollEntry, PollRecord, poll_record_sha256
 from transit_ops.history.reader_bytes import archive_payloads, object_payload
@@ -437,19 +438,17 @@ def _poll_days(connection: Connection, source: CaptureSource, params: dict[str, 
 
 
 def _archive_days(connection: Connection, params: dict[str, Any]) -> set[date]:
+    store = ledger_select.ledger_for(connection)
+    # A poll can finish after its UTC start day, so include older archive windows.
+    windows = store.list_windows(dataset_id=params["dataset_id"],
+                                 provider_id=params["provider_id"])
     return {
-        date.fromisoformat(key)
-        for key in connection.execute(
-            text("""
-            SELECT w.window_key FROM core.history_window w
-            JOIN core.history_archive_copy c
-              USING (dataset_id, provider_id, revision, window_key)
-            WHERE w.dataset_id=:dataset_id AND w.provider_id=:provider_id AND w.revision=0
-              AND c.content_version=w.current_version
-              AND c.first_time_utc < :end_utc AND c.last_time_utc >= :start_utc
-        """),
-            params,
-        ).scalars()
+        date.fromisoformat(copy.window_key)
+        for window in windows if window.window_start is not None
+        for copy in store.find_copies(dataset_id=params["dataset_id"],
+            provider_id=params["provider_id"], start=window.window_start, end=window.window_start)
+        if copy.is_current and copy.first_time_utc is not None and copy.last_time_utc is not None
+        and copy.first_time_utc < params["end_utc"] and copy.last_time_utc >= params["start_utc"]
     }
 
 
@@ -485,11 +484,8 @@ def _archive_plan(
     )
     pending = False
     if state in ("partial", "trimmed"):
-        status = ledger.window_state(
-            connection,
-            dataset_id="capture." + feed,
-            provider_id=provider,
-            window_key=day.isoformat(),
+        status = ledger_select.ledger_for(connection).window_state(
+            WindowIdentity("capture." + feed, provider, day.isoformat())
         )
         assert status is not None
         remainder = status.remainder_fingerprint
@@ -517,8 +513,7 @@ def _current_copy(
 ) -> ledger.ArchiveCopy | None:
     if window.get("current_version") is None:
         return None
-    copies = ledger.find_copies(
-        connection,
+    copies = ledger_select.ledger_for(connection).find_copies(
         dataset_id="capture." + feed,
         provider_id=provider,
         start=day,
@@ -566,8 +561,7 @@ def _working_record(
 ) -> PollRecord:
     current = None
     if version is not None:
-        copies = ledger.find_copies(
-            connection,
+        copies = ledger_select.ledger_for(connection).find_copies(
             dataset_id="capture." + feed,
             provider_id=provider,
             start=day,
@@ -650,16 +644,9 @@ def _endpoint(connection: Connection, params: dict[str, Any]) -> dict[str, Any] 
 
 
 def _windows(connection: Connection, params: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    rows = connection.execute(
-        text(
-            "SELECT window_key, working_state, current_version, working_changed_at_utc "
-            "FROM core.history_window "
-            "WHERE dataset_id=:dataset_id AND provider_id=:provider_id AND revision=0 "
-            "AND window_key=ANY(:keys)"
-        ),
-        params,
-    ).mappings()
-    return {row["window_key"]: dict(row) for row in rows}
+    return {w.window_key: asdict(w) for w in ledger_select.ledger_for(connection).list_windows(
+        dataset_id=params["dataset_id"], provider_id=params["provider_id"]
+    ) if w.window_key in params["keys"]}
 
 
 def _feed_plan(

@@ -374,7 +374,10 @@ def test_failed_verification_continues_and_resumes_next_run(runner, monkeypatch)
     assert runner.run().success
 
 
-def test_provider_discovery_includes_open_day_attempts():
+def test_provider_discovery_includes_open_day_attempts(monkeypatch):
+    from transit_ops.history.ledger_postgres import PostgresLedger
+
+    monkeypatch.setattr(PostgresLedger, "list_windows", lambda *a, **kw: [])
     conn = Mock()
     conn.execute.return_value.scalars.return_value = ["inactive"]
     assert selection.capture_providers(conn, now=NOW) == ["inactive"]
@@ -414,6 +417,8 @@ def test_status_failure_after_cap_is_retained(runner, monkeypatch):
 
 @pytest.mark.parametrize("expire_after", [1, 2, 3, 4, 5])
 def test_discovery_checks_deadline_before_every_query(runner, monkeypatch, expire_after):
+    from transit_ops.history.ledger_postgres import PostgresLedger
+
     original = runner.conn.execute.side_effect
     queries = []
 
@@ -434,6 +439,9 @@ def test_discovery_checks_deadline_before_every_query(runner, monkeypatch, expir
     runner.conn.execute.side_effect = execute
     monkeypatch.setattr(selection, "_PROVIDERS", "probe discovery")
     monkeypatch.setattr(selection, "_DAYS", "probe discovery")
+    monkeypatch.setattr(PostgresLedger, "list_windows", lambda *a, **kw: execute(
+        "probe discovery", kw
+    ))
     result = runner.run(
         datasets=[FEED, "capture.vehicle_positions", "capture.i3_alerts", "capture.service_alerts"],
         time_budget_seconds=1,

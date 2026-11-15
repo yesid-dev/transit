@@ -10,7 +10,8 @@ from typing import Literal
 from sqlalchemy import Connection, text
 
 from transit_ops.history import datasets as declarations
-from transit_ops.history import ledger
+from transit_ops.history import ledger, ledger_select
+from transit_ops.history.ledger_store import WindowIdentity
 from transit_ops.history.working_captures import rows_fingerprint
 
 
@@ -76,8 +77,6 @@ _PROVIDERS = """
             AND r.started_at_utc >= :qualify_from AND r.started_at_utc < :end_at
           OFFSET 0 -- Keep the per-endpoint existence probe correlated.
       )
-    UNION
-    SELECT provider_id FROM core.history_window WHERE dataset_id = ANY(:capture_ids)
 """
 
 _DAYS = """
@@ -86,9 +85,6 @@ WITH evidenced AS (
     FROM raw.ingestion_runs r JOIN core.feed_endpoints e USING (provider_id, feed_endpoint_id)
     WHERE e.endpoint_key = :endpoint AND r.started_at_utc >= :start_at
       AND r.started_at_utc < :end_at
-    UNION
-    SELECT provider_id, window_start FROM core.history_window
-    WHERE dataset_id = :dataset AND revision = 0 AND window_start BETWEEN :start_day AND :end_day
 ), absent AS (
     SELECT e.provider_id, d::date AS day
     FROM core.feed_endpoints e
@@ -127,7 +123,13 @@ def _providers(
             end_at=_instant(end),
         ),
     ).scalars()
-    return [str(provider) for provider in rows]
+    providers = {str(provider) for provider in rows}
+    for dataset, _ in captures:
+        _admit(before_query)
+        providers.update(w.provider_id for w in ledger_select.ledger_for(connection).list_windows(
+            dataset_id=dataset
+        ))
+    return sorted(providers)
 
 
 def capture_days(
@@ -174,6 +176,13 @@ def capture_days(
             ),
         )
         days.update(CaptureDay(p, dataset, d, empty_since) for p, d in rows)
+        _admit(before_query)
+        days.update(
+            CaptureDay(w.provider_id, dataset, w.window_start, empty_since)
+            for w in ledger_select.ledger_for(connection).list_windows(
+                dataset_id=dataset, start=start, end=end
+            ) if w.window_start is not None
+        )
     return sorted(days)
 
 
@@ -276,14 +285,10 @@ def capture_day_status(
     closes = declarations.utc_day_closes_at(day.utc_date)
     if _instant(now) < _instant(closes):
         return CaptureDayStatus("unchanged", "still_open")
-    window = ledger.window_state(
-        connection,
-        dataset_id=day.dataset_id,
-        provider_id=day.provider_id,
-        window_key=day.utc_date.isoformat(),
+    window = ledger_select.ledger_for(connection).window_state(
+        WindowIdentity(day.dataset_id, day.provider_id, day.utc_date.isoformat())
     )
-    copies = ledger.find_copies(
-        connection,
+    copies = ledger_select.ledger_for(connection).find_copies(
         dataset_id=day.dataset_id,
         provider_id=day.provider_id,
         start=day.utc_date,

@@ -155,6 +155,22 @@ class WindowSession(Protocol):
 
 
 class LedgerStore(Protocol):
+    def ready(self) -> bool: ...
+    def list_windows(
+        self,
+        *,
+        dataset_id: str,
+        revision: int = 0,
+        provider_id: str | None = None,
+        start: date | None = None,
+        end: date | None = None,
+    ) -> list[WindowState]:
+        """Inclusive optional date bounds; order by provider, window_start, key.
+
+        Undated windows follow dated windows and are excluded by date bounds.
+        """
+        ...
+
     def record_audit(
         self,
         identity: WindowIdentity,
