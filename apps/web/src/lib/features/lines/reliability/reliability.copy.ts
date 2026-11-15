@@ -12,11 +12,25 @@ export interface CitationArgs {
 	readonly figure: string;
 	readonly dates: string;
 	readonly readings: string | null;
+	/** The published record's identity; each part only when the record supplies it. */
+	readonly published: string | null;
+	readonly generation: string | null;
+	readonly method: string | null;
 	readonly href: string;
 }
 
+/** "Record published …, generation …, method …." from the parts supplied, or nothing. */
+function identity(parts: readonly (string | false | null)[]): string {
+	const text = parts.filter(Boolean).join(', ');
+	return text ? ` ${text.charAt(0).toUpperCase()}${text.slice(1)}.` : '';
+}
+
 export type ReliabilityClusterKey =
-	'punctuality' | 'waitRegularity' | 'serviceDelivered' | 'crowding' | 'habits';
+	| 'punctuality'
+	| 'waitRegularity'
+	| 'serviceDelivered'
+	| 'crowding'
+	| 'habits';
 
 export const reliabilityCopy = defineCopy({
 	fr: {
@@ -273,7 +287,7 @@ export const reliabilityCopy = defineCopy({
 			citeCopied: 'Citation copiée',
 			copyFallback: 'Copiez ce texte :',
 			citation: (a: CitationArgs) =>
-				`Transit (${a.host}). Ligne ${a.line}, ${a.provider}\u00a0: ${a.figure} des relevés à l’heure, ${a.dates}, ${a.readings == null ? 'nombre de relevés non publié' : `selon ${a.readings} relevés`}. ${a.href}`,
+				`Transit (${a.host}). Ligne ${a.line}, ${a.provider}\u00a0: ${a.figure} des relevés à l’heure, ${a.dates}, ${a.readings == null ? 'nombre de relevés non publié' : `selon ${a.readings} relevés`}.${identity([a.published && `bilan publié le ${a.published}`, a.generation && `génération ${a.generation}`, a.method && `méthode ${a.method}`])} ${a.href}`,
 			daily: {
 				title: 'Jour par jour',
 				summary: (low: string, high: string, lowDay: string) =>
@@ -544,7 +558,7 @@ export const reliabilityCopy = defineCopy({
 			citeCopied: 'Citation copied',
 			copyFallback: 'Copy this text:',
 			citation: (a) =>
-				`Transit (${a.host}). Line ${a.line}, ${a.provider}: ${a.figure} of readings on time, ${a.dates}, ${a.readings == null ? 'reading count not published' : `based on ${a.readings} readings`}. ${a.href}`,
+				`Transit (${a.host}). Line ${a.line}, ${a.provider}: ${a.figure} of readings on time, ${a.dates}, ${a.readings == null ? 'reading count not published' : `based on ${a.readings} readings`}.${identity([a.published && `record published ${a.published}`, a.generation && `generation ${a.generation}`, a.method && `method ${a.method}`])} ${a.href}`,
 			daily: {
 				title: 'Day by day',
 				summary: (low, high, lowDay) => `Between ${low} and ${high} each day. Lowest on ${lowDay}.`,

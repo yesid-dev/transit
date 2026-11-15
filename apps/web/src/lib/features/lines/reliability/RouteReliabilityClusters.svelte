@@ -27,7 +27,7 @@
 	import { applyRetainedLineHistory, clearRetainedLineHistory } from './data/retainedHistory';
 	import type { LineHistoryResource } from './data/lineHistoryResource.svelte';
 	import Section0Verdict from './sections/Section0Verdict.svelte';
-	import { selectLineRecord, type RecordCitation } from './selectors/lineRecord';
+	import { selectLineRecord, sharedPublication, type RecordCitation } from './selectors/lineRecord';
 	import { selectDailyOnTime } from './selectors/punctualityTrend';
 	import Section1WhenToRide from './sections/Section1WhenToRide.svelte';
 	import Section2TheWait from './sections/Section2TheWait.svelte';
@@ -130,6 +130,12 @@
 		return { from: new Date(to - 13 * 86_400_000).toISOString().slice(0, 10), to: period.to };
 	});
 	const daily = $derived(selectDailyOnTime(clusters.punctuality.trend, dailyWindow));
+	// A chosen range cites its retained partitions; anything else cites the line file shown.
+	const publication = $derived(
+		explicitHistory && retainedReady && view.history.value
+			? view.history.value.publication
+			: sharedPublication([data]),
+	);
 	const dailyPercentiles = $derived(
 		explicitHistory && retainedReady && mode === 'range'
 			? selectDailyPercentiles(view.history.value?.aggregate ?? null)
@@ -303,6 +309,7 @@
 							{mode}
 							{dailyPercentiles}
 							{citation}
+							{publication}
 						/>
 					</div>
 

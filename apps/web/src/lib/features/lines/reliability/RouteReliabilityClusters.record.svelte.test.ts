@@ -22,13 +22,20 @@ vi.mock('@yesid/motion/stores/reducedMotion', () => ({
 	isPrefersReducedMotion: () => false,
 }));
 
+/** The publication the record comes from, as the line file supplies it. */
+const PUBLICATION = {
+	publish_generation_id: 'octranspo@2026-11-11T06:00:00Z',
+	methodology_version: 'reliability-2',
+} as Partial<RouteReliability>;
+
 /** Thirty complete days ending November 10: 80 of 100 readings on time, then the week below. */
 const LAST_WEEK = [70, 72, 68, 65, 71, 79, 73];
-function thirtyDays(): RouteReliability {
+function thirtyDays(identity: Partial<RouteReliability> = PUBLICATION): RouteReliability {
 	const end = Date.parse('2026-11-10T00:00:00Z');
 	return withClosedPeriods({
 		id: '6',
 		generated_utc: '2026-11-11T06:00:00Z',
+		...identity,
 		periods: Array.from({ length: 30 }, (_, index) => {
 			const onTime = index >= 23 ? LAST_WEEK[index - 23] : 80;
 			return {
@@ -130,14 +137,24 @@ describe('line Record: one answer, its evidence and its actions', () => {
 		await waitFor(() => expect(screen.getByText('Link copied')).toBeInTheDocument());
 	});
 
-	it('copies a citation with the line, provider, figure, dates, readings and link', async () => {
+	it('copies a citation naming the published record: date, generation and method', async () => {
 		const writeText = vi.fn(async () => {});
 		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
 		renderRecord();
 		await fireEvent.click(screen.getByRole('button', { name: 'Cite this record' }));
 		expect(writeText).toHaveBeenCalledWith(
-			'Transit (localhost). Line 6 Greenboro / Rockcliffe, OC Transpo: 71% of readings on time, November 4 to 10, 2026, based on 700 readings. http://localhost/lines/6?provider=octranspo&from=2026-11-04&to=2026-11-10',
+			'Transit (localhost). Line 6 Greenboro / Rockcliffe, OC Transpo: 71% of readings on time, November 4 to 10, 2026, based on 700 readings. Record published Nov 11, 2026, generation octranspo@2026-11-11T06:00:00Z, method reliability-2. http://localhost/lines/6?provider=octranspo&from=2026-11-04&to=2026-11-10',
 		);
+	});
+
+	it('leaves out publication fields the record does not supply, inventing none', async () => {
+		const writeText = vi.fn(async (_text: string) => {});
+		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+		render(RouteReliabilityClusters, { data: thirtyDays({}), locale: 'fr', citation });
+		await fireEvent.click(screen.getByRole('button', { name: 'Citer ce bilan' }));
+		const text = writeText.mock.calls[0][0];
+		expect(text).toMatch(/selon 700 relevés\. Bilan publié le 11 nov\. 2026\. http:/u);
+		expect(text).not.toMatch(/génération|méthode/u);
 	});
 
 	it('shows no share, delay or severe share from zero readings', async () => {

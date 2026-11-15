@@ -24,8 +24,18 @@
 	const dates = $derived(
 		rows.length ? formatRecordDates(rows[0].date, rows[rows.length - 1].date, locale) : null,
 	);
-	/** Printed values and weekday names fit up to 7 columns; more columns keep day numbers only. */
-	const density = $derived(rows.length <= 7 ? 'low' : rows.length <= 14 ? 'medium' : 'high');
+	/** Column-count group: how much chart width every column needs for its printed labels. */
+	const fit = $derived(
+		rows.length <= 3
+			? 's'
+			: rows.length <= 5
+				? 'm'
+				: rows.length <= 7
+					? 'l'
+					: rows.length <= 14
+						? 'xl'
+						: 'none',
+	);
 	const weekday = (date: string) =>
 		intl
 			.dateTime(locale, { weekday: 'short', timeZone: 'UTC' })
@@ -36,7 +46,7 @@
 </script>
 
 <div class="day-chart-wrap" data-slot="otp-trend">
-	<figure class="day-chart" data-density={density}>
+	<figure class="day-chart" data-fit={fit}>
 		<figcaption class="day-chart__cap">{dates ? t.caption(dates) : t.title}</figcaption>
 		<div class="day-chart__frame">
 			<span class="day-chart__rule" style:--v="0" aria-hidden="true"></span>
@@ -202,19 +212,42 @@
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
 	}
-	.day-chart[data-density='medium'] .day-chart__v,
-	.day-chart[data-density='medium'] .day-chart__weekday,
-	.day-chart[data-density='high'] .day-chart__v,
-	.day-chart[data-density='high'] .day-chart__weekday,
-	.day-chart[data-density='high'] li:not([data-tick]) .day-chart__x {
+	/* A printed value needs about 60 px of column (a French "89,8 %" is 52 px), a weekday name less:
+	   both show only when the chart's own width gives every column that room, never shrunk or
+	   clipped. Screen readers and the table always have every value. Past 7 columns, day numbers
+	   mark each week until there is room for all of them. */
+	.day-chart__v,
+	.day-chart__weekday,
+	.day-chart:is([data-fit='xl'], [data-fit='none']) li:not([data-tick]) .day-chart__x {
 		visibility: hidden;
+	}
+	@container day-chart (min-width: 14rem) {
+		.day-chart[data-fit='s'] :is(.day-chart__v, .day-chart__weekday) {
+			visibility: visible;
+		}
+	}
+	@container day-chart (min-width: 21rem) {
+		.day-chart[data-fit='m'] :is(.day-chart__v, .day-chart__weekday) {
+			visibility: visible;
+		}
+	}
+	@container day-chart (min-width: 23.5rem) {
+		.day-chart[data-fit='xl'] li:not([data-tick]) .day-chart__x {
+			visibility: visible;
+		}
+	}
+	@container day-chart (min-width: 29rem) {
+		.day-chart[data-fit='l'] :is(.day-chart__v, .day-chart__weekday) {
+			visibility: visible;
+		}
 	}
 	@container day-chart (min-width: 40rem) {
 		.day-chart {
 			--plot-h: 168px;
 		}
-		.day-chart[data-density='medium'] .day-chart__v,
-		.day-chart[data-density='medium'] .day-chart__weekday {
+	}
+	@container day-chart (min-width: 55rem) {
+		.day-chart[data-fit='xl'] :is(.day-chart__v, .day-chart__weekday) {
 			visibility: visible;
 		}
 	}

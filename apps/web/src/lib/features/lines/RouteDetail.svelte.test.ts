@@ -772,7 +772,8 @@ describe('RouteDetail retained-history ownership', () => {
 
 		await waitFor(() => expect(lineHistoryHarness.getLineHistoryIndex).toHaveBeenCalledTimes(1));
 		const firstContext = lineHistoryHarness.getLineHistoryIndex.mock.calls[0]?.[1] as
-			{ signal: AbortSignal } | undefined;
+			| { signal: AbortSignal }
+			| undefined;
 		expect(lineHistoryHarness.getLineHistoryIndex.mock.calls[0]?.[0]).toBe('161');
 		expect(firstContext?.signal.aborted).toBe(false);
 
@@ -783,7 +784,8 @@ describe('RouteDetail retained-history ownership', () => {
 		expect(lineHistoryHarness.loadLineHistoryRange).not.toHaveBeenCalled();
 
 		const secondContext = lineHistoryHarness.getLineHistoryIndex.mock.calls[1]?.[1] as
-			{ signal: AbortSignal } | undefined;
+			| { signal: AbortSignal }
+			| undefined;
 		view.unmount();
 		expect(secondContext?.signal.aborted).toBe(true);
 	});

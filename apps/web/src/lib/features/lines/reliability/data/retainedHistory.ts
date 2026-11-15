@@ -3,6 +3,7 @@ import { roundHalfAwayFromZero } from '#lib/utils/index.ts';
 import { elapsedUtcMinutes } from '#lib/utils/time.ts';
 import { mergeLineHistory, selectLineHistoryPartitionRefs } from '#lib/v1/history/families.ts';
 import { wilsonBounds } from '#lib/v1/stats.ts';
+import { sharedPublication, type RecordPublication } from '../selectors/lineRecord';
 import type {
 	CancellationPeriod,
 	HistoricCollectionIndex,
@@ -24,6 +25,8 @@ export interface RetainedLineHistory {
 	readonly serviceSpans: readonly ServiceSpanPeriod[];
 	readonly skippedStops: readonly SkippedStopPeriod[];
 	readonly retainedDayCount: number;
+	/** The partitions this range was built from, as one publication identity. */
+	readonly publication: RecordPublication;
 }
 
 const CALENDAR_GRAINS = new Set(['day', 'week', 'month']);
@@ -209,6 +212,11 @@ export function buildRetainedLineHistory(
 		range: oneDayRange(entityId, index, partitions, date),
 	}));
 	const retainedDayCount = daily.filter(({ range }) => range.delay.value != null).length;
+	const publication = sharedPublication(
+		partitions.filter((partition) =>
+			partition.days.some((day) => window.from <= day.date && day.date <= window.to),
+		),
+	);
 	const periods = daily.flatMap(({ date, range }) => {
 		const value = dailyPeriod(date, range);
 		return value == null ? [] : [value];
@@ -243,6 +251,7 @@ export function buildRetainedLineHistory(
 			serviceSpans,
 			skippedStops,
 			retainedDayCount,
+			publication,
 		},
 		status: allChannelsComplete(aggregate) ? 'complete' : 'partial',
 	};

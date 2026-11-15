@@ -400,6 +400,43 @@ describe('RouteReliabilityClusters retained Line history', () => {
 		}
 	});
 
+	it('cites a retained range by its own publication, never the current snapshot’s', async () => {
+		harness.page.url = new URL(
+			'http://localhost/lines/A%2FB?tab=reliability&from=2026-01-31&to=2026-01-31',
+		);
+		harness.loadLineHistoryRange.mockResolvedValue([
+			LineHistoryPartitionSchema.parse({
+				...retainedPartitions[0],
+				generated_utc: '2026-02-03T05:00:00Z',
+				publish_generation_id: 'stm@2026-02-03T05:00:00Z',
+				methodology_version: 'reliability-2',
+			}),
+		]);
+		const writeText = vi.fn(async (_text: string) => {});
+		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+		const history = createHistory();
+		const view = render(RouteReliabilityClusters, {
+			props: {
+				data: current,
+				locale: 'en',
+				history,
+				citation: { line: 'A/B', providerId: 'stm', providerName: 'STM' },
+			},
+		});
+		try {
+			await waitFor(() => expect(history.state).toBe('ready'));
+			await fireEvent.click(view.getByRole('button', { name: 'Cite this record' }));
+			const text = writeText.mock.calls[0][0];
+			expect(text).toContain(
+				'Record published Feb 3, 2026, generation stm@2026-02-03T05:00:00Z, method reliability-2.',
+			);
+			expect(text).not.toContain('Jul 13, 2026');
+		} finally {
+			history.destroy();
+			vi.unstubAllGlobals();
+		}
+	});
+
 	it('keeps the default no-range service structure unchanged', async () => {
 		const history = createHistory();
 		const view = render(RouteReliabilityClusters, {

@@ -13,7 +13,13 @@
 	import { SEVERE_DOMAIN } from '#lib/features/reliability/shiftGrains.ts';
 	import { selectPunctualityDistribution } from '../selectors/punctualityDistribution';
 	import { selectBullet } from '../selectors/bullet';
-	import { recordLink, type LineRecord, type RecordCitation } from '../selectors/lineRecord';
+	import {
+		recordLink,
+		type LineRecord,
+		type RecordCitation,
+		type RecordPublication,
+	} from '../selectors/lineRecord';
+	import { formatDateKey } from '#lib/utils/time.ts';
 	import type { DailyOnTime } from '../selectors/punctualityTrend';
 	import { formatRecordDates } from '../recordDates';
 	import {
@@ -34,6 +40,8 @@
 		mode?: 'day' | 'week' | 'month' | 'range';
 		dailyPercentiles?: ReturnType<typeof selectDailyPercentiles>;
 		citation?: RecordCitation;
+		/** The published record behind this answer, for the citation. */
+		publication?: RecordPublication;
 	}
 	let {
 		vm,
@@ -44,6 +52,7 @@
 		mode = 'day',
 		dailyPercentiles = null,
 		citation,
+		publication,
 	}: Section0VerdictProps = $props();
 
 	const t = $derived(copy.record);
@@ -75,6 +84,12 @@
 					figure: pct(answer.percent)!,
 					dates,
 					readings: answer.readings == null ? null : count(answer.readings),
+					// Dated like the record stamp: the publication's day, with its year for a citation.
+					published: /^\d{4}-\d{2}-\d{2}/.test(publication?.generatedUtc ?? '')
+						? formatDateKey(publication!.generatedUtc!.slice(0, 10), locale, true)
+						: null,
+					generation: publication?.generationId ?? null,
+					method: publication?.methodVersion ?? null,
 					href,
 				})
 			: null;

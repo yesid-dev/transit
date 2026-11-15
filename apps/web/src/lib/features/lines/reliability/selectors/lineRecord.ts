@@ -158,3 +158,34 @@ export interface RecordCitation {
 	readonly providerId: string;
 	readonly providerName: string;
 }
+
+/** Which published record a figure comes from; a field is null when it is not supplied. */
+export interface RecordPublication {
+	readonly generatedUtc: string | null;
+	readonly generationId: string | null;
+	readonly methodVersion: string | null;
+}
+
+interface PublicationSource {
+	readonly generated_utc?: string | null;
+	readonly publish_generation_id?: string | null;
+	readonly methodology_version?: string | null;
+}
+
+/**
+ * The publication identity shared by every source of a figure: one file, or the retained
+ * partitions a chosen range was built from. A field the sources disagree on, or do not supply,
+ * stays null rather than being borrowed from another publication.
+ */
+export function sharedPublication(sources: readonly PublicationSource[]): RecordPublication {
+	const shared = (pick: (source: PublicationSource) => string | null | undefined) => {
+		const values = new Set(sources.map((source) => pick(source)?.trim() || null));
+		const [only] = values;
+		return values.size === 1 && only ? only : null;
+	};
+	return {
+		generatedUtc: shared((source) => source.generated_utc),
+		generationId: shared((source) => source.publish_generation_id),
+		methodVersion: shared((source) => source.methodology_version),
+	};
+}
