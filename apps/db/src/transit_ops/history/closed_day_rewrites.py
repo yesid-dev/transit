@@ -1,5 +1,13 @@
 """Dormant guards; callers own frozen input inventory and transactions.
 
+Untagged changed events from mark_changed/lock_window are window state marks,
+not rewrite audits. Reconciliation ignores those marks: changed rewrite audits
+carry rewrite.operation_id and phase started/failed/silver_only; completion
+processing_evidence carries that same operation_id (control rulings 32/33a).
+The caller allocates one fresh operation_id per rewrite, shared across its
+windows. This helper refuses same-window reuse; it is not a global allocator.
+Transaction retries reuse their admitted ticket with a fresh observer.
+
 LOCK ORDER: caller transaction/provider build lock, then history window sessions
 sorted by provider/dataset/window/revision, then affected fact/day locks. Retain
 those sessions through finish; never open a second session on a held window.
@@ -146,6 +154,10 @@ def begin_rewrite(
         _present(state, identity)
         if now < utc_day_closes_at(date.fromisoformat(identity.window_key)):
             return None
+        for event in window.events():
+            previous = event.details.get("rewrite")
+            if isinstance(previous, Mapping) and previous.get("operation_id") == operation_id:
+                raise ValueError(f"rewrite_operation_id_reused: {operation_id}")
         window.mark_changed(actor=actor)
         changed = window.state()
         ticket = RewriteTicket(

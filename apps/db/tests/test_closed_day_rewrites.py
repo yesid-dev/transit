@@ -61,3 +61,33 @@ def test_nul_is_refused_before_writes(field):
     window.mark_changed.assert_not_called()
     window.hold.assert_not_called()
     store.record_audit.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "kind,phase",
+    [
+        ("changed", "started"),
+        ("changed", "failed"),
+        ("changed", "silver_only"),
+        ("processing_evidence", None),
+    ],
+)
+def test_duplicate_operation_id_refuses_before_mark_hold_or_audit(kind, phase):
+    store, window = store_for("present")
+    window.now.return_value = datetime(2026, 11, 3, tzinfo=UTC)
+    state = window.state.return_value
+    state.current_version, state.working_changed_at_utc, state.hold_until_utc = (
+        None,
+        window.now(),
+        None,
+    )
+    window.events.return_value = [
+        SimpleNamespace(
+            kind=kind, details={"phase": phase, "rewrite": {"operation_id": "rewrite-17"}}
+        )
+    ]
+    with pytest.raises(ValueError, match="rewrite_operation_id_reused: rewrite-17"):
+        begin_rewrite(store, ID, **ARGS)
+    window.mark_changed.assert_not_called()
+    window.hold.assert_not_called()
+    store.record_audit.assert_not_called()

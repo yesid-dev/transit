@@ -29,10 +29,10 @@ def target(real_db_engine):
             )
 
 
-def admit(target):
+def admit(target, **changes):
     engine, identity = target
     with engine.begin() as connection:
-        return begin_rewrite(PostgresLedger(connection), identity, **ARGS)
+        return begin_rewrite(PostgresLedger(connection), identity, **(ARGS | changes))
 
 
 def test_closed_day_gets_a_durable_started_record_and_twenty_four_hour_hold(target):
@@ -144,3 +144,98 @@ def test_rewrite_records_expected_current_version_without_calling_it_window_sequ
             assert decode_processing_evidence(
                 details, index_family="realtime_snapshot", sequence=events[0].sequence
             )[1] == {17: 0}
+
+
+@pytest.mark.parametrize("phase", ["failed", "silver_only", "completed"])
+def test_every_tagged_event_is_a_correlated_rewrite_audit(target, phase):
+    ticket = admit(target)
+    engine, identity = target
+    with engine.begin() as connection:
+        store = PostgresLedger(connection)
+        options = (
+            {}
+            if phase != "completed"
+            else dict(
+                edition=dict(
+                    provider_id=identity.provider_id, dataset_version_id=42, checksum_sha256=None
+                ),
+                rows_by_capture={17: 0},
+            )
+        )
+        record_rewrite_outcome(store, ticket, phase=phase, **options)
+    with engine.begin() as connection:
+        events = PostgresLedger(connection).events(identity)
+        assert any(e.kind == "changed" and "rewrite" not in e.details for e in events)
+        tagged = [e for e in events if "rewrite" in e.details]
+        assert [(e.kind, e.details.get("phase")) for e in tagged] == [
+            ("changed", "started"),
+            ("processing_evidence", None) if phase == "completed" else ("changed", phase),
+        ]
+        for event in tagged:
+            assert event.details["rewrite"]["operation_id"] == ticket.operation_id
+            if event.kind == "changed":
+                assert event.details["phase"] in {"started", "failed", "silver_only"}
+            else:
+                assert event.kind == "processing_evidence"
+                assert decode_processing_evidence(
+                    event.details, index_family="realtime_snapshot", sequence=event.sequence
+                )[1] == {17: 0}
+
+
+def test_two_distinct_rewrite_ids_are_accepted(target):
+    first = admit(target)
+    second = admit(target, operation_id="rewrite-fresh")
+    assert (first.operation_id, second.operation_id) == ("rewrite-17", "rewrite-fresh")
+    engine, identity = target
+    with engine.begin() as connection:
+        events = PostgresLedger(connection).events(identity)
+        assert [
+            e.details["rewrite"]["operation_id"]
+            for e in events
+            if e.details.get("phase") == "started"
+        ] == ["rewrite-17", "rewrite-fresh"]
+
+
+def test_duplicate_operation_id_is_refused_without_changing_the_window(target):
+    admit(target)
+    engine, identity = target
+    with engine.begin() as connection:
+        store = PostgresLedger(connection)
+        before = store.window_state(identity), store.events(identity)
+        with pytest.raises(ValueError, match="rewrite_operation_id_reused: rewrite-17"):
+            begin_rewrite(store, identity, **ARGS)
+        assert (store.window_state(identity), store.events(identity)) == before
+
+
+def test_fresh_start_after_completion_stays_unresolved_until_its_own_outcome(target):
+    first = admit(target)
+    engine, identity = target
+    with engine.begin() as connection:
+        record_rewrite_outcome(
+            PostgresLedger(connection),
+            first,
+            phase="completed",
+            edition=dict(
+                provider_id=identity.provider_id, dataset_version_id=42, checksum_sha256=None
+            ),
+            rows_by_capture={17: 0},
+        )
+    second = admit(target, operation_id="rewrite-fresh")
+    with engine.begin() as connection:
+        store = PostgresLedger(connection)
+        events = store.events(identity)
+        completions = [e for e in events if e.kind == "processing_evidence"]
+        assert [e.details["rewrite"]["operation_id"] for e in completions] == ["rewrite-17"]
+        assert [
+            e.details["phase"]
+            for e in events
+            if e.details.get("rewrite", {}).get("operation_id") == "rewrite-fresh"
+        ] == ["started"]
+        record_rewrite_outcome(store, second, phase="silver_only")
+    with engine.begin() as connection:
+        events = PostgresLedger(connection).events(identity)
+        assert [
+            e.details["phase"]
+            for e in events
+            if e.details.get("rewrite", {}).get("operation_id") == "rewrite-fresh"
+        ] == ["started", "silver_only"]
