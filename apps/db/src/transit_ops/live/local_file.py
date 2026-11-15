@@ -10,10 +10,11 @@ from typing import Final, get_args, get_type_hints
 
 import duckdb
 
-from transit_ops.history.poll_record import CaptureEntry, PollEntry
+from transit_ops.history.poll_record import CaptureEntry, PollEntry, ProcessingEntry
 from transit_ops.live.settings import LaneSettings
 
-SCHEMA_VERSION: Final = 1
+# Version 1 files must be rebuilt from retained source evidence, never adopted in place.
+SCHEMA_VERSION: Final = 2
 _TYPES = {int: "BIGINT", bool: "BOOLEAN", str: "VARCHAR", datetime: "TIMESTAMP"}
 _OWNERS: set[Path] = set()
 _OWNER_LOCK = RLock()
@@ -112,6 +113,7 @@ class LocalFile:
         for table, kind, key in (
             ("polls", PollEntry, "ingestion_run_id"),
             ("captures", CaptureEntry, "capture_row_id"),
+            ("processing", ProcessingEntry, "ingestion_run_id"),
         ):
             columns = [
                 f'"{name}" {_TYPES[(get_args(t) or (t,))[0]]}'
@@ -171,11 +173,17 @@ class LocalFile:
     def record_captures(self, captures: Sequence[CaptureEntry], *, endpoint_key: str) -> int:
         return self._record("captures", "capture_row_id", captures, endpoint_key)
 
+    def record_processing(self, entries: Sequence[ProcessingEntry], *, endpoint_key: str) -> int:
+        """Store failed Silver attempts; provenance validation belongs to LocalPollRecords."""
+        if any(e.stage != "silver_load" or e.status != "failed" for e in entries):
+            raise ValueError("only failed Silver attempts are durable local processing records")
+        return self._record("processing", "ingestion_run_id", entries, endpoint_key)
+
     def _record(
         self,
         table: str,
         key: str,
-        entries: Sequence[PollEntry] | Sequence[CaptureEntry],
+        entries: Sequence[PollEntry] | Sequence[CaptureEntry] | Sequence[ProcessingEntry],
         endpoint: str,
     ) -> int:
         inserted = 0

@@ -124,7 +124,12 @@ def test_non_binary_collation_is_refused_on_first_open(tmp_path):
 
 @pytest.mark.parametrize(
     "table, column",
-    [("meta", "provider_id"), ("polls", "endpoint_key"), ("captures", "storage_path")],
+    [
+        ("meta", "provider_id"),
+        ("polls", "endpoint_key"),
+        ("captures", "storage_path"),
+        ("processing", "error_message"),
+    ],
 )
 def test_non_binary_collation_is_refused_on_reopen(tmp_path, table, column):
     path = tmp_path / "worker.db"
@@ -419,3 +424,15 @@ def test_constraint_drift_is_refused_without_changing_rows(tmp_path, constraint)
         opened(path).close()
     with duckdb.connect(str(path)) as conn:
         assert conn.execute("SELECT ingestion_run_id FROM polls").fetchall() == [(1,)]
+
+
+def test_version_one_file_requires_rebuild_without_adopting_rows(tmp_path):
+    path = tmp_path / "worker.db"
+    with closing(opened(path)) as local:
+        local.record_polls([POLL], endpoint_key="vehicles")
+        local.connection.execute("DROP TABLE processing")
+        local.connection.execute("UPDATE meta SET schema_version=1")
+    before = persisted_state(path)
+    with pytest.raises(LocalFileMismatch):
+        opened(path)
+    assert persisted_state(path) == before
