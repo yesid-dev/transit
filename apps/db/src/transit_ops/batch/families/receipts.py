@@ -31,7 +31,10 @@ _UPSERT = named_query(
             SUM(severe_delay_count)::HUGEINT severe,
             SUM(delayed_trip_count)::HUGEINT delayed,
             SUM(sum_delay_seconds)::HUGEINT delay_sum,
-            SUM(list_sum(delay_histogram))::HUGEINT samples
+            -- Copy-out stores arrays as PG text; native family inputs use LIST.
+            -- Decode both as the declared int2[], preserving NULL/empty arrays.
+            SUM(COALESCE(list_sum(CAST(replace(replace(
+                delay_histogram::VARCHAR, '{', '['), '}', ']') AS SMALLINT[])), 0))::HUGEINT samples
         FROM gold.route_delay_spine
         WHERE provider_id = :provider_id AND provider_local_date = :day
         GROUP BY route_id, hour_of_day_local

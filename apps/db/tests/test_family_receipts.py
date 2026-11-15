@@ -160,3 +160,75 @@ def test_archive_preflight_reaches_the_deferred_alert_source():
     assert builder is not None
     with pytest.raises(ValueError, match="input_not_archived: receipts silver.i3_alerts"):
         family_input_needs([builder], REQUEST)
+
+
+def test_histograms_match_native_lists_after_canonical_export(tmp_path):
+    import csv
+    from shutil import copyfile
+
+    from transit_ops.lake.parquet_codec import write_window
+    from transit_ops.lake.table_schema import TableSchema
+
+    native, exported = tmp_path / "native", tmp_path / "exported"
+    routes = [
+        *ROUTES,
+        ("nullable", 2, 0, 0, 1, 601, [1, None, 1]),
+        ("empty", 2, 0, 0, 0, 0, []),
+        ("null", 2, 0, 0, 0, 0, None),
+        ("all-null", 2, 0, 0, 0, 0, [None]),
+    ]
+    write_inputs(native, routes=routes, stops=[s for s in STOPS if s[0] is not None])
+    pg_types = {
+        "VARCHAR": "text",
+        "DATE": "date",
+        "INTEGER": "integer",
+        "BIGINT": "bigint",
+        "BIGINT[]": "smallint[]",
+        "DECIMAL(12,2)": "numeric(12,2)",
+        "TIMESTAMP WITH TIME ZONE": "timestamp with time zone",
+    }
+    for source in native.rglob("*.parquet"):
+        target = exported / source.relative_to(native)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        route = source.parent.name == "gold.route_delay_spine"
+        if not route and source.parent.name != "gold.stop_delay_hourly":
+            copyfile(source, target)
+            continue
+        key = (
+            ("provider_id", "route_id", "provider_local_date", "hour_of_day_local", "direction_id")
+            if route
+            else ("provider_id", "period_start_utc", "stop_id")
+        )
+        with duckdb.connect(config={"TimeZone": "UTC"}) as conn:
+            columns = conn.execute(
+                "DESCRIBE SELECT * FROM read_parquet(?)", [str(source)]
+            ).fetchall()
+            projection = (
+                "*" if route else "* REPLACE (period_start_utc::VARCHAR AS period_start_utc)"
+            )
+            rows = conn.execute(
+                f"SELECT {projection} FROM read_parquet(?)", [str(source)]
+            ).fetchall()
+        schema = TableSchema.from_columns(
+            [(name, pg_types[kind], name in key) for name, kind, *_ in columns], key
+        )
+        with target.with_suffix(".csv").open("w", encoding="utf-8", newline="") as stream:
+            stream.write(",".join(c.name for c in schema.columns) + "\n")
+            writer = csv.writer(stream, lineterminator="\n", quoting=csv.QUOTE_NOTNULL)
+            for row in rows:
+                if route and row[-1] is not None:
+                    histogram = (
+                        "{" + ",".join("NULL" if n is None else str(n) for n in row[-1]) + "}"
+                    )
+                    row = (*row[:-1], histogram)
+                writer.writerow(row)
+        write_window(target.with_suffix(".csv"), schema, target, metadata={}, temp_dir=tmp_path)
+    builder = resolve_builder("receipts")
+    outputs = [
+        run_family(builder, REQUEST, inputs_root=root, workdir=root, code_commit="a" * 40).output
+        for root in (native, exported)
+    ]
+    assert outputs[0] == outputs[1]
+    assert outputs[1].tables["gold.citizen_accountability_daily"].rows == (
+        ("receipts_seed", DAY, 5, 1, 9, 4, 2, Decimal("36.0000"), STAMP),
+    )
