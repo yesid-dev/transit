@@ -41,15 +41,18 @@ def read_table_rows(
         expressions.append(f"{column}::text AS {column}" if exact_text else column)
     where = f"{quote('provider_id')} = :provider_id"
     params: dict[str, Any] = {"provider_id": provider_id}
-    if local_dates is not None:
+    if local_dates:
         where += f" AND {quote(date_column)} IN :local_dates"
         params["local_dates"] = tuple(local_dates)
+    elif local_dates is not None:
+        # An untyped empty expanding bind becomes an INTEGER subquery on PostgreSQL.
+        where += " AND false"
     # Dynamic identifiers share one diagnostic name, not one registered SQL body.
     statement = text(
         "-- q:batch.postgres_rows.read\n"
         f"SELECT {', '.join(expressions)} FROM {'.'.join(map(quote, parts))} WHERE {where}",
     )
-    if local_dates is not None:
+    if local_dates:
         statement = statement.bindparams(bindparam("local_dates", expanding=True))
     indexes = tuple(columns.index(name) for name in key)
     rows = [tuple(row) for row in conn.execute(statement, params)]
