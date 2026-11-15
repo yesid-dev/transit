@@ -269,7 +269,11 @@ describe('LinesIndex published sort', () => {
 		try {
 			render(LinesIndex);
 			await screen.findByTestId('lines-sort-worst');
-			times.set('now', Date.parse('2026-11-18T07:00:00Z'));
+			for (const at of ['2026-11-18T07:30:00Z', '2026-11-18T08:01:00Z']) {
+				times.set('now', Date.parse(at));
+				await waitFor(() => expect(screen.getByTestId('lines-sort-worst')).toBeInTheDocument());
+			}
+			times.set('now', Date.parse('2026-11-19T19:00:00Z'));
 			await waitFor(() => expect(screen.queryByTestId('lines-sort-worst')).toBeNull());
 		} finally {
 			restore();
