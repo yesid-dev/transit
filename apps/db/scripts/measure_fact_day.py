@@ -545,10 +545,7 @@ def _supervise(
         if status or recovery["leftover_paths"]:
             return (status[0] if status else 1), ""
         with scratch(scratch_root) as (root, proof):
-            with (
-                tempfile.TemporaryFile(mode="w+", encoding="utf-8") as report,
-                tempfile.TemporaryFile(mode="w+b") as errors,
-            ):
+            with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as report:
                 script, base = str(Path(__file__).resolve()), vars(sys)["_base_executable"]
                 windows = sys.platform == "win32" and sys.executable != base
                 executable = base if windows else sys.executable
@@ -557,12 +554,11 @@ def _supervise(
                 bootstrap = str(Path(script).with_name("measure_fact_day_worker.py"))
                 command = [executable, "-I", bootstrap, script, *payload]
                 try:
-                    process = diagnostics["launch"](
-                        Popen, command, report=report, errors=errors, env=env
-                    )
+                    process = diagnostics["launch"](Popen, command, report=report, env=env)
                 except OSError as error:
                     return 1, json.dumps(diagnostics["failure"]("worker_start_failed", error))
                 assert process.stdin is not None
+                errors = diagnostics["StderrTail"](process.stderr)
                 try:
                     while not status:
                         try:
@@ -580,15 +576,12 @@ def _supervise(
                                 process.kill()
                                 process.wait(timeout=2)
                     finally:
-                        process.stdin.close()
+                        try:
+                            process.stdin.close()
+                        finally:
+                            detail = errors.finish()
                 report.seek(0)
                 stdout = "" if status else report.read()
-                errors.seek(0, os.SEEK_END)
-                offset = max(0, errors.tell() - 16384)
-                errors.seek(offset)
-                if offset:
-                    errors.readline()  # Discard a partial line before redaction.
-                detail = diagnostics["safe_detail"](errors.read().decode("utf-8", errors="replace"))
     finally:
         for number, handler in previous.items():
             signal.signal(number, handler)
