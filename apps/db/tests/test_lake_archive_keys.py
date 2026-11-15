@@ -120,7 +120,7 @@ def test_copy_version_counts_orphans_and_receipts_and_recognizes_content(tmp_pat
     key = table_copy_key("core.providers", "_shared", 0, "month", "2026-11", 4, 2)
     receipt = storage.root / proof_key(key)
     receipt.parent.mkdir(parents=True)
-    receipt.write_text(json.dumps({"content_sha256": "a" * 64}))
+    receipt.write_text(json.dumps({"content_sha256": "a" * 64, "proof": {"verified": True}}))
     orphan = storage.root / key.replace(".c4.", ".c8.")
     orphan.write_bytes(b"orphan")
     # Other windows and revisions do not change this window's version.
@@ -186,7 +186,9 @@ def test_unproven_object_does_not_deduplicate_and_latest_matching_receipt_wins(t
     assert (result.version, result.key) == (2, None)
     for version in (2, 10):
         candidate = table_copy_key(*args[1:], version, 1)
-        (storage.root / proof_key(candidate)).write_text(json.dumps({"content_sha256": "a" * 64}))
+        (storage.root / proof_key(candidate)).write_text(
+            json.dumps({"content_sha256": "a" * 64, "proof": {"verified": True}})
+        )
     result = resolve_copy_version(*args, "a" * 64, schema_version=1)
     assert result.version == 10
     assert result.key == table_copy_key(*args[1:], 10, 1)
@@ -202,7 +204,7 @@ def test_reverted_content_and_type_only_schema_change_advance_version(tmp_path):
         key = table_copy_key(*args[1:], version, 1)
         path = storage.root / proof_key(key)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"content_sha256": digest}))
+        path.write_text(json.dumps({"content_sha256": digest, "proof": {"verified": True}}))
     reverted = resolve_copy_version(*args, "a" * 64, schema_version=1)
     assert (reverted.version, reverted.key) == (3, None)
     for schema_version, pg_type in enumerate(("integer", "bigint"), 1):

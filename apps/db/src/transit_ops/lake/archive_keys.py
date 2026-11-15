@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -122,7 +123,10 @@ def resolve_schema_version(storage: BronzeStorage, dataset_id: str, schema: Tabl
     version = max((version for version, _ in versions), default=0) + 1
     with TemporaryDirectory(prefix="transit-schema-") as directory:
         path = Path(directory) / "schema.json"
-        path.write_bytes(payload)
+        with path.open("xb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
         put_create_only(storage, path, schema_key(dataset_id, version), expected=expected)
     return version
 
@@ -169,6 +173,9 @@ def resolve_copy_version(
             digest = value.get("content_sha256") if isinstance(value, dict) else None
             if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
                 raise ValueError(f"Invalid table copy receipt: {key}")
+            proof = value.get("proof")
+            if not isinstance(proof, dict) or proof.get("verified") is not True:
+                continue  # Unverified receipts are absent for deduplication (R29).
             candidate = (parts.version, parts.schema_version, digest)
             latest = max(latest, candidate) if latest else candidate
     if latest and latest[1:] == (schema_version, content_sha256):
