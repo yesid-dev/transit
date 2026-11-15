@@ -562,7 +562,8 @@ def trip_math_window(case, scenario):
         poll_records=(record,),
         cycles=(
             CycleSpec(
-                feed + timedelta(seconds=30), (("realtime_snapshot", capture.capture_row_id),)
+                (feed + timedelta(seconds=30)).replace(microsecond=0),
+                (("realtime_snapshot", capture.capture_row_id),),
             ),
         ),
     )
