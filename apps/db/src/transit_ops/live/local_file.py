@@ -167,6 +167,31 @@ class LocalFile:
             if outer:
                 self._active = self._failed = False
 
+    def verify_fact_tables(self, definitions: dict[str, str]) -> None:
+        """Create the fact extension atomically, or verify every existing table.
+
+        A partially present extension is incompatible; rebuild disposable state
+        from retained evidence. Verification also runs before identical retries.
+        """
+        with self.transaction() as conn:
+            existing = {
+                r[0]
+                for r in conn.execute(
+                    "SELECT table_name FROM duckdb_tables() WHERE schema_name='main' "
+                    "AND database_name=current_database() AND NOT temporary"
+                ).fetchall()
+            }
+            fresh = not existing.intersection(definitions)
+            for table, definition in definitions.items():
+                if not fresh and table not in existing:
+                    raise LocalFileMismatch(f"{table}: fact table missing")
+                conn.execute(f"CREATE TEMP TABLE _fact_expected ({definition})")
+                if fresh:
+                    conn.execute(f"CREATE TABLE {table} ({definition})")
+                if _table_shape(conn, table) != _table_shape(conn, "_fact_expected"):
+                    raise LocalFileMismatch(f"{table}: fact table shape differs")
+                conn.execute("DROP TABLE _fact_expected")
+
     def record_polls(self, polls: Sequence[PollEntry], *, endpoint_key: str) -> int:
         return self._record("polls", "ingestion_run_id", polls, endpoint_key)
 
