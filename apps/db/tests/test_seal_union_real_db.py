@@ -77,6 +77,20 @@ def snapshot(engine, endpoint):
         )
 
 
+def record_remainder(conn, endpoint):
+    # Synthetic trim evidence: no production trim command is invoked.
+    fp = rows_fingerprint(conn, provider_id=PROVIDER, endpoint_key=endpoint, utc_date=DAY)
+    conn.execute(
+        text(
+            "INSERT INTO core.history_event "
+            "(dataset_id,provider_id,revision,window_key,kind,details,actor) "
+            "VALUES (:d,:p,0,:day,'trim',jsonb_build_object("
+            "'remainder_fingerprint',CAST(:fp AS text)),'test')"
+        ),
+        dict(d="capture." + endpoint, p=PROVIDER, day=DAY.isoformat(), fp=fp),
+    )
+
+
 def trim(engine, root, endpoint, state="trimmed", remainder=True):
     add(engine, root, endpoint, 1, b"old bytes")
     first = run(engine, root, endpoint)
@@ -90,9 +104,6 @@ def trim(engine, root, endpoint, state="trimmed", remainder=True):
             "ingestion_runs",
         ):
             conn.execute(text(f"DELETE FROM raw.{table} WHERE provider_id=:p"), {"p": PROVIDER})
-        fingerprint = rows_fingerprint(
-            conn, provider_id=PROVIDER, endpoint_key=endpoint, utc_date=DAY
-        )
         conn.execute(
             text(
                 "UPDATE core.history_window SET working_state=:s, "
@@ -101,16 +112,7 @@ def trim(engine, root, endpoint, state="trimmed", remainder=True):
             {"p": PROVIDER, "s": state},
         )
         if remainder:
-            # Synthetic trim evidence: no production trim command is invoked.
-            conn.execute(
-                text(
-                    "INSERT INTO core.history_event "
-                    "(dataset_id,provider_id,revision,window_key,kind,details,actor) "
-                    "VALUES (:d,:p,0,:day,'trim',"
-                    "jsonb_build_object('remainder_fingerprint',CAST(:fp AS text)),'test')"
-                ),
-                dict(d="capture." + endpoint, p=PROVIDER, day=DAY.isoformat(), fp=fingerprint),
-            )
+            record_remainder(conn, endpoint)
     (root / old.captures[0].storage_path).unlink()
     return first, old
 
@@ -159,16 +161,7 @@ def test_partial_day_reseal_keeps_failed_unfinished_and_unpacked_entries(
             text("UPDATE core.history_window SET working_state='partial' WHERE provider_id=:p"),
             {"p": PROVIDER},
         )
-        fp = rows_fingerprint(conn, provider_id=PROVIDER, endpoint_key=endpoint, utc_date=DAY)
-        conn.execute(
-            text(
-                "INSERT INTO core.history_event "
-                "(dataset_id,provider_id,revision,window_key,kind,details,actor) "
-                "VALUES (:d,:p,0,:day,'trim',jsonb_build_object("
-                "'remainder_fingerprint',CAST(:fp AS text)),'test')"
-            ),
-            dict(d="capture." + endpoint, p=PROVIDER, day=DAY.isoformat(), fp=fp),
-        )
+        record_remainder(conn, endpoint)
     (tmp_path / old.captures[0].storage_path).unlink()
     add(engine, tmp_path, endpoint, 5)
     result = run(engine, tmp_path, endpoint)
@@ -230,7 +223,7 @@ def test_waiting_union_is_reused_only_for_the_same_base_and_remainder(engine, tm
         conn.execute(
             text(
                 "UPDATE core.history_archive_copy SET details=details || "
-                "'{\"union_base_version\":99}'::jsonb WHERE provider_id=:p AND content_version=2"
+                "jsonb_build_object('union_base_version',99) WHERE provider_id=:p AND content_version=2"
             ),
             {"p": PROVIDER},
         )

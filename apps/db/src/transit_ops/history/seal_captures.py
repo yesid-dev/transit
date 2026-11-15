@@ -79,7 +79,7 @@ def _reusable_copy(
         return None
     trimmed = window.working_state in ("partial", "trimmed")
     current = next((c for c in copies if c.content_version == window.current_version), None)
-    remainder = window.remainder_fingerprint
+    remainder = window.remainder_fingerprint if trimmed else None
     if trimmed:
         current = _trimmed_current(window, copies)
         if remainder is None:
@@ -132,7 +132,9 @@ def _read_day(
     provider_id: str,
     endpoint_key: str,
     utc_date: date,
-) -> tuple[int, str, PollRecord, str, _UnionSource | None] | ledger.ArchiveCopy:
+) -> (
+    tuple[int, str, PollRecord, str] | tuple[int, str, PollRecord, str, _UnionSource] | ledger.ArchiveCopy
+):
     with connection.begin():
         connection.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"))
         now = connection.execute(text("SELECT now()")).scalar_one()
@@ -165,9 +167,12 @@ def _read_day(
         reusable = _reusable_copy(window, copies, fingerprint)
         if reusable is not None:
             return reusable
-        record, source = _changed_record(
+        changed = _changed_record(
             connection, storage, window, copies, provider_id, endpoint_key, utc_date
         )
+        record, source = changed if isinstance(changed, tuple) else (changed, None)
+        if source is None:
+            return feed.feed_endpoint_id, feed.feed_kind, record, fingerprint
         return feed.feed_endpoint_id, feed.feed_kind, record, fingerprint, source
 
 
@@ -179,7 +184,7 @@ def _changed_record(
     provider_id: str,
     endpoint_key: str,
     utc_date: date,
-) -> tuple[PollRecord, _UnionSource | None]:
+) -> PollRecord | tuple[PollRecord, _UnionSource]:
     current = next(
         (c for c in copies if window and c.content_version == window.current_version), None
     )
@@ -205,7 +210,7 @@ def _changed_record(
             assert window is not None and current is not None
             return union_capture_record(manifest, record), _UnionSource(window, current, manifest)
         _require_content(manifest, record)
-    return record, None
+    return record
 
 
 def _insert_allocated(
@@ -573,7 +578,8 @@ def seal_capture_day(
     day = _read_day(connection, storage, provider_id, endpoint_key, utc_date)
     if isinstance(day, ledger.ArchiveCopy):
         return day
-    feed_id, feed_kind, record, fingerprint, source = day
+    feed_id, feed_kind, record, fingerprint = day[:4]
+    source = day[4] if len(day) == 5 else None
     with tempfile.TemporaryDirectory() as folder:
         directory = Path(folder)
         if source is None:
