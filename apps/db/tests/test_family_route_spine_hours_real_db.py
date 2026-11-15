@@ -126,10 +126,10 @@ def test_family_matches_postgres_and_preserves_dirty_state_after_loadback(
         if replacement == "invalid_count":
             conn.execute(
                 text(
-                    "UPDATE silver.rt_feed_snapshots SET manifest_json="
-                    "'{\"entity_count\":1.0000000000000001}'::jsonb "
-                    "WHERE provider_id='seed'"
-                )
+                    "UPDATE silver.rt_feed_snapshots SET manifest_json=CAST(:manifest AS jsonb) "
+                    "WHERE provider_id=:provider"
+                ),
+                {"manifest": '{"entity_count":1.0000000000000001}', "provider": "seed"},
             )
         export_postgres(conn, tmp_path, request)
         if replacement == "invalid_count":
