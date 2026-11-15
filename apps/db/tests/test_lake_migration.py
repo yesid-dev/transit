@@ -122,6 +122,28 @@ def test_working_only_tables_are_never_planned(planning):
     assert planning(("silver.rt_entities",)).windows == ()
 
 
+def test_edition_probe_joins_registry_by_primary_key(planning, monkeypatch):
+    execute = Source.execute
+
+    def record(self, query, values=None):
+        statement = query.as_string() if hasattr(query, "as_string") else str(query)
+        if "WITH RECURSIVE keys" in statement:
+            return SimpleNamespace(fetchall=lambda: [(42,)])
+        if "LEFT JOIN core.dataset_versions" in statement:
+            self.queries.append((statement, values))
+            return SimpleNamespace(fetchone=lambda: ("p", 42))
+        if 'SELECT provider_id FROM "silver"."stop_times"' in statement:
+            return SimpleNamespace(fetchone=lambda: ("p",))
+        if "WHERE dataset_version_id=%s AND provider_id=%s" in statement:
+            return SimpleNamespace(fetchone=lambda: (1,))
+        return execute(self, query, values)
+
+    monkeypatch.setattr(Source, "execute", record)
+    Source.queries = []
+    planning(("silver.stop_times",))
+    assert any("LEFT JOIN core.dataset_versions" in q for q, _ in Source.queries)
+
+
 def test_plan_order_is_whole_state_then_months_oldest_first_then_editions_then_facts(
     planning,
     monkeypatch,

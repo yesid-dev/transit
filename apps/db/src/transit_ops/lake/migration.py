@@ -24,6 +24,7 @@ from transit_ops.history.datasets import (
 from transit_ops.ingestion.storage import BronzeStorage
 from transit_ops.lake.archive_keys import validate_provider_id
 from transit_ops.lake.catalog import CatalogTable, read_catalog
+from transit_ops.lake.edition_identity import registered_keys
 from transit_ops.lake.inventory import Inventory, take_inventory
 from transit_ops.lake.table_copy import TableCopy, copy_table_window
 from transit_ops.lake.table_export import WindowSpec, validate_timeout
@@ -208,13 +209,12 @@ def _editions(
     source: TableSource,
     provider: str,
 ) -> list[str]:
-    candidates = connection.execute(
-        "SELECT dataset_version_id, COALESCE(checksum_sha256, content_hash) "
-        "FROM core.dataset_versions WHERE provider_id=%s ORDER BY dataset_version_id",
-        (provider,),
-    ).fetchall()
+    try:
+        candidates = registered_keys(connection, provider)
+    except ValueError as exc:
+        raise MigrationRefused("edition_identity", (source.table, provider, str(exc))) from exc
     keys = []
-    for edition, checksum in candidates:
+    for edition, key in candidates.items():
         present = connection.execute(
             sql.SQL("SELECT EXISTS (SELECT 1 FROM {}{} AND {}=%s)").format(
                 table, where, sql.Identifier(cast(str, source.window_column))
@@ -223,9 +223,7 @@ def _editions(
         ).fetchone()
         if present != (True,):
             continue
-        if not isinstance(checksum, str) or sum(c == checksum for _, c in candidates) != 1:
-            raise MigrationRefused("edition_identity", (source.table, provider, edition))
-        keys.append(checksum)
+        keys.append(key)
     return sorted(keys)
 
 
@@ -303,27 +301,24 @@ def _edition_registry(
     if prefix not in {(edition,), ("provider_id", edition)}:
         raise MigrationRefused("edition_identity", (catalog.name, "edition index prefix"))
     for key in _loose_keys(connection, catalog.name, prefix):
-        if prefix[0] == "provider_id":
-            provider, version = key
-        else:
-            version = key[0]
-            row = connection.execute(
-                sql.SQL("SELECT provider_id FROM {} WHERE {}=%s LIMIT 1").format(
-                    sql.Identifier(*catalog.name.split(".")), sql.Identifier(edition)
-                ),
-                (version,),
-            ).fetchone()
-            assert row is not None
-            provider = row[0]
-        if (
-            connection.execute(
-                "SELECT 1 FROM core.dataset_versions "
-                "WHERE dataset_version_id=%s AND provider_id=%s",
-                (version, provider),
-            ).fetchone()
-            is None
-        ):
-            raise MigrationRefused("edition_identity", (catalog.name, provider, version))
+        # Bind the complete PK prefix before reading provider_id. In particular,
+        # never aggregate provider_id across the millions of stop_times rows.
+        bounds = sql.SQL(" AND ").join(
+            sql.SQL("t.{}=%s").format(sql.Identifier(c)) for c in prefix
+        )
+        row = connection.execute(
+            sql.SQL(
+                "SELECT t.provider_id, v.dataset_version_id FROM {} t "
+                "LEFT JOIN core.dataset_versions v "
+                "ON v.dataset_version_id=t.{} AND v.provider_id=t.provider_id "
+                "WHERE {} LIMIT 1"
+            ).format(sql.Identifier(*catalog.name.split(".")), sql.Identifier(edition), bounds),
+            key,
+        ).fetchone()
+        assert row is not None
+        provider, registered = row
+        if registered is None:
+            raise MigrationRefused("edition_identity", (catalog.name, provider, key[-1]))
 
 
 def _groups(

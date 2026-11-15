@@ -285,14 +285,9 @@ def _snapshot(
         schema, text_keys = _catalog(connection, source, expected)
         edition = None
         if dataset.archive_grain == "edition":
-            matches = connection.execute(
-                "SELECT dataset_version_id FROM core.dataset_versions WHERE provider_id=%s "
-                "AND COALESCE(checksum_sha256, content_hash)=%s",
-                (spec.provider_id, spec.window_key),
-            ).fetchall()
-            if len(matches) != 1:
-                raise ExportRefused("window")
-            edition = matches[0][0]
+            from transit_ops.lake.edition_identity import resolve_edition
+
+            edition = resolve_edition(connection, spec.provider_id, spec.window_key)
         spec = resolve_cut_spec(connection, spec, schema)
         statement, values = build_copy_statement(
             spec, schema, dataset_version_id=edition, text_keys=text_keys

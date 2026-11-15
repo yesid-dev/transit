@@ -103,6 +103,126 @@ def test_dry_run_plans_seeded_windows_and_writes_nothing(source, history, tmp_pa
             plan(source, names)
 
 
+def test_repeated_content_editions_plan_copy_and_resume(source, history, real_db_engine, tmp_path):
+    names, provider = history
+    table = names[1]
+    original = source.execute(f"SELECT edition_id FROM {table}").fetchone()[0]
+    source.execute(
+        "UPDATE core.dataset_versions SET checksum_sha256=NULL WHERE dataset_version_id=%s",
+        (original,),
+    )
+    repeated = source.execute(
+        "INSERT INTO core.dataset_versions "
+        "(provider_id,feed_endpoint_id,source_ingestion_run_id,content_hash,checksum_sha256) "
+        "SELECT provider_id,feed_endpoint_id,source_ingestion_run_id,content_hash,NULL "
+        "FROM core.dataset_versions WHERE dataset_version_id=%s RETURNING dataset_version_id",
+        (original,),
+    ).fetchone()[0]
+    try:
+        source.execute(f"INSERT INTO {table} VALUES (%s,2,NULL,%s)", (provider, repeated))
+        planned = plan(source, [table], [provider])
+        assert {w.spec.window_key for w in planned.windows} == {
+            "b" * 64,
+            "b" * 64 + f".v{repeated}",
+        }
+        root = tmp_path / "objects"
+        root.mkdir()
+        storage = LocalBronzeStorage("local", root)
+
+        def connect():
+            return psycopg.connect(**guarded_connect_kwargs(real_db_engine.url), autocommit=True)
+
+        for expected in ("copied", "already_copied"):
+            records = []
+            result = run_migration(
+                planned,
+                connect,
+                storage,
+                work_dir=tmp_path,
+                copied_by="a" * 40,
+                statement_timeout_s=60,
+                not_after=datetime(2099, 1, 1, tzinfo=UTC),
+                log=records.append,
+            )
+            assert result.failure is None
+            assert result.outcomes == {"edition": {expected: 2}}
+        import duckdb
+
+        for key in storage.list_keys("archive/"):
+            if key.endswith(".parquet"):
+                with duckdb.connect() as conn:
+                    rows = conn.execute(
+                        "SELECT edition_id FROM read_parquet(?)", [str(storage.root / key)]
+                    ).fetchall()
+                assert rows == [(repeated if f".v{repeated}." in key else original,)]
+    finally:
+        source.execute(f"DELETE FROM {table} WHERE edition_id=%s", (repeated,))
+        source.execute("DELETE FROM core.dataset_versions WHERE dataset_version_id=%s", (repeated,))
+
+
+@pytest.mark.parametrize("edition_first", [False, True])
+def test_edition_planner_queries_have_index_backed_explain_shapes(
+    source, history, monkeypatch, edition_first
+):
+    names, provider = history
+    table = names[1]
+    if edition_first:
+        from dataclasses import replace
+
+        key = ("edition_id", "provider_id", "id")
+        source.execute(f"ALTER TABLE {table} DROP CONSTRAINT {table.split('.')[1]}_pkey")
+        source.execute(f"ALTER TABLE {table} ADD PRIMARY KEY (edition_id,provider_id,id)")
+        source.execute(
+            f"ALTER TABLE {table} ADD FOREIGN KEY (provider_id) "
+            "REFERENCES core.providers(provider_id)"
+        )
+        declared = datasets.get_dataset(table)
+        declarations = {
+            **datasets.HISTORY_DATASETS,
+            table: replace(declared, source=replace(declared.source, key_columns=key)),
+        }
+        monkeypatch.setattr(datasets, "HISTORY_DATASETS", declarations)
+        monkeypatch.setattr(inventory, "HISTORY_DATASETS", declarations)
+    queries = []
+
+    class Recording:
+        def __getattr__(self, name):
+            return getattr(source, name)
+
+        def execute(self, query, values=None):
+            statement = query.as_string() if hasattr(query, "as_string") else str(query)
+            if table.replace(".", '"."') in statement:
+                queries.append((statement, values))
+            return source.execute(query, values)
+
+    plan(Recording(), [table], [provider])
+    assert queries
+    assert any("LEFT JOIN core.dataset_versions" in q for q, _ in queries)
+    # Small seed tables naturally favor seq scans. Disable them only for EXPLAIN
+    # to prove these actual planner queries have usable index paths, not timings.
+    with source.transaction():
+        source.execute("SET LOCAL enable_seqscan=off")
+        for statement, values in queries:
+            assert "min(" not in statement.lower()
+            explained = source.execute("EXPLAIN (FORMAT JSON) " + statement, values).fetchone()[0]
+
+            def nodes(node):
+                yield node
+                for child in node.get("Plans", []):
+                    yield from nodes(child)
+
+            relation_nodes = [
+                n
+                for n in nodes(explained[0]["Plan"])
+                if n.get("Relation Name") == table.split(".")[1]
+            ]
+            assert relation_nodes
+            assert all(
+                n["Node Type"] in {"Index Scan", "Index Only Scan", "Bitmap Heap Scan"}
+                for n in relation_nodes
+            ), explained
+
+
 def test_execute_copies_every_planned_window_to_local_storage_with_proofs(
     source,
     history,

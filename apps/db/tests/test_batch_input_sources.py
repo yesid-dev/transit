@@ -204,6 +204,27 @@ def test_ambiguous_edition_id_refuses(tmp_path):
         edition_mapping(storage.root / key, "sample")
 
 
+def test_repeated_sto_content_resolves_each_version_to_its_own_proven_copy(tmp_path):
+    storage = store(tmp_path)
+    boot = bootstrap(
+        storage,
+        "SELECT 'sample' AS provider_id, id::BIGINT AS dataset_version_id, "
+        "NULL::VARCHAR AS checksum_sha256, repeat('c',64) AS content_hash, "
+        "'static_schedule' AS dataset_kind, id=133 AS is_current, "
+        "TIMESTAMPTZ '2026-11-01 00:00:00+00' AS loaded_at_utc "
+        "FROM (VALUES (132), (133)) t(id)",
+    )
+    mapping = edition_mapping(storage.root / boot, "sample")
+    for ident, window in ((132, "c" * 64), (133, "c" * 64 + ".v133")):
+        need = InputNeed("silver.trips", f"edition:{ident}")
+        with pytest.raises(SourcesMissing):
+            resolve_sources([need], storage, "sample", STAMP, mapping)
+        key = archive(
+            storage, "silver.trips", window, f"SELECT {ident}::BIGINT AS dataset_version_id"
+        )
+        assert resolve_sources([need], storage, "sample", STAMP, mapping)[0].key == key
+
+
 @pytest.mark.parametrize("missing", [True, False])
 def test_bad_bootstrap_refuses_before_other_downloads(tmp_path, monkeypatch, missing):
     storage = store(tmp_path)

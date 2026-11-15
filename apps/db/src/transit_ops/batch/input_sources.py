@@ -43,6 +43,7 @@ from transit_ops.lake.archive_keys import (
     table_copy_key,
     validate_provider_id,
 )
+from transit_ops.lake.edition_identity import edition_keys
 from transit_ops.lake.table_export import WindowSpec
 from transit_ops.settings import Settings
 
@@ -526,24 +527,11 @@ def edition_mapping(
 ) -> EditionMapping:
     with duckdb.connect() as conn:
         rows = conn.execute(
-            "SELECT dataset_version_id, COALESCE(checksum_sha256, content_hash) "
+            "SELECT dataset_version_id, checksum_sha256, content_hash "
             "FROM read_parquet(?, hive_partitioning=false) WHERE provider_id=?",
             [str(path), provider],
         ).fetchall()
-    mapping: dict[int, str] = {}
-    for ident, checksum in rows:
-        if (
-            type(ident) is not int
-            or ident <= 0
-            or not isinstance(checksum, str)
-            or not re.fullmatch("[0-9a-f]{64}", checksum)
-        ):
-            raise ValueError(f"invalid edition mapping: {ident}")
-        if ident in mapping and mapping[ident] != checksum:
-            raise ValueError(f"ambiguous edition id: {ident}")
-        if checksum in mapping.values() and mapping.get(ident) != checksum:
-            raise ValueError(f"ambiguous edition checksum: {checksum}")
-        mapping[ident] = checksum
+    mapping = edition_keys(rows)
     with duckdb.connect() as conn:
         selected = conn.execute(
             "SELECT dataset_version_id FROM read_parquet(?, hive_partitioning=false) "
