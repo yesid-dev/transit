@@ -765,3 +765,26 @@ def test_nonzero_exit_cannot_return_a_success_report(tmp_path, capsys):
     result = json.loads(capsys.readouterr().out)
     assert result["reason"] == "worker_crashed"
     assert "code 3" in result["error_detail"]
+
+
+def test_real_worker_completes_local_measurement_and_reports_json(tmp_path, capsys):
+    source = tmp_path / "source"
+    source.mkdir()
+    for table in measure.rescue.SCHEMAS:
+        fixture_csv(source, table)
+    worker = """import runpy,sys,tempfile,shutil
+from pathlib import Path
+n=runpy.run_path(sys.argv[1]); tempfile.tempdir=sys.argv[2]
+def source(args, folder):
+ for table in n['rescue'].SCHEMAS:
+  shutil.copyfile(Path(sys.argv[3])/(table+'.csv'), folder/(table+'.csv'))
+ return dict(tables={t:{} for t in n['rescue'].SCHEMAS},family_oracle={})
+n['measure'].__globals__['read_source']=source
+sys.exit(n['main'](sys.argv[4:],worker=True))
+"""
+    args = "--provider sample --date 2026-11-01 --not-after 2099-11-15T05:45:00Z".split()
+    assert measure.supervise([str(source), *args], worker=worker, scratch_root=tmp_path) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["family_comparison"]["status"] == "not_applicable_empty_sample"
+    assert all(len(t["codecs"]["parquet"]) == 12 for t in result["tables"].values())
+    assert not list(tmp_path.glob("transit-measure-*"))
