@@ -1,5 +1,6 @@
 import hashlib
 import json
+import shutil
 from dataclasses import replace
 
 import pytest
@@ -9,6 +10,7 @@ from test_live_oracle_seed import case as case
 from typer.testing import CliRunner
 
 from transit_ops.cli import app
+from transit_ops.live.oracle import report
 from transit_ops.providers import ProviderRegistry
 
 
@@ -60,6 +62,70 @@ def test_malformed_window_is_refused_before_database_access(tmp_path, monkeypatc
     assert result.exit_code == 1
     assert "malformed_window" in result.output
     assert not output.exists()
+
+
+@pytest.mark.parametrize("malformation", ["id", "bool", "zero", "key", "edition", "reference"])
+def test_endpoint_preflight_refuses_without_database_access(
+    command_case, tmp_path, monkeypatch, malformation
+):
+    case, _, path = command_case
+    value = json.loads(case.window.to_json())
+    if malformation in {"id", "bool", "zero"}:
+        value["feed_endpoints"]["static_schedule"] = {
+            "id": "NOT_AN_INTEGER",
+            "bool": True,
+            "zero": 0,
+        }[malformation]
+    elif malformation == "key":
+        value["feed_endpoints"] = [[123, 901]]
+    elif malformation == "edition":
+        value["edition"]["feed_endpoint_id"] = 999
+    else:
+        del value["feed_endpoints"]["trip_updates"]
+    path.write_text(json.dumps(value), encoding="utf-8")
+
+    def refuse(*args, **kwargs):
+        pytest.fail("malformed window attempted database replay")
+
+    monkeypatch.setattr(report, "replay_window", refuse)
+    output = tmp_path / "output"
+    result = CliRunner().invoke(
+        app, ["live-oracle", "replay", "--window", str(path), "--output", str(output)]
+    )
+    assert result.exit_code == 1
+    assert "malformed_window" in result.output
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("promotion_fails", [False, True])
+def test_promotion_and_exit_status_agree(command_case, tmp_path, monkeypatch, promotion_fails):
+    from pathlib import Path
+
+    _, run, _ = command_case
+    output = tmp_path / "output"
+    completed = output / "completed"
+    original_cleanup = shutil.rmtree
+    original_rename = Path.rename
+
+    def cleanup(path, *args, **kwargs):
+        if completed.exists():
+            raise PermissionError("post-promotion cleanup denied")
+        return original_cleanup(path, *args, **kwargs)
+
+    def rename(path, target):
+        if target == completed and promotion_fails:
+            raise PermissionError("promotion denied")
+        return original_rename(path, target)
+
+    # Isolate filesystem finalization; real replay is covered by the real-db tests below.
+    monkeypatch.setattr(report, "replay_window", lambda *a, **kw: iter(()))
+    monkeypatch.setattr(shutil, "rmtree", cleanup)
+    monkeypatch.setattr(Path, "rename", rename)
+    result = run(output)
+    assert result.exit_code == (1 if promotion_fails else 0), result.output
+    assert (completed / "receipt.json").exists() is (not promotion_fails)
+    if not promotion_fails:
+        assert json.loads((completed / "receipt.json").read_bytes())["status"] == "completed"
 
 
 @pytest.mark.parametrize("failure", ["foreign", "conflict", "corrupt", "alerts", "escape"])

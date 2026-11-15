@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import shutil
 import subprocess
 import tempfile
 from collections.abc import Mapping
@@ -13,6 +14,25 @@ from transit_ops.live.oracle.runner import replay_window
 from transit_ops.live.oracle.window import ReplayWindow
 from transit_ops.providers import ProviderRegistry
 from transit_ops.settings import Settings
+
+
+def _validate_endpoints(window: ReplayWindow, registry: ProviderRegistry) -> None:
+    endpoints = window.feed_endpoints
+    if not all(
+        isinstance(key, str) and type(value) is int and value > 0
+        for key, value in endpoints.items()
+    ):
+        raise ValueError("feed_endpoints: expected string keys and positive integer IDs")
+    if len(set(endpoints.values())) != len(endpoints):
+        raise ValueError("feed_endpoints: IDs must be unique")
+    manifest = registry.get_provider(window.provider_id)
+    if endpoints.keys() - manifest.feeds.keys():
+        raise ValueError("feed_endpoints: endpoint is not declared by the provider")
+    static = manifest.static_feed().endpoint_key
+    if endpoints.get(static) != window.edition.feed_endpoint_id:
+        raise ValueError("edition: feed_endpoint_id differs from static endpoint")
+    if any(record.feed_day.endpoint_key not in endpoints for record in window.poll_records):
+        raise ValueError("poll record: endpoint is missing from feed_endpoints")
 
 
 def _local_path(root: Path, key: str) -> Path:
@@ -93,6 +113,7 @@ def write_replay_report(
     source = window_path.read_bytes()
     try:
         window = ReplayWindow.from_json(source)
+        _validate_endpoints(window, registry)
     except Exception as exc:
         raise ValueError("malformed_window") from exc
     bronze = _inputs(window, Path(settings.BRONZE_LOCAL_ROOT).resolve())
@@ -106,8 +127,8 @@ def write_replay_report(
         output.mkdir(parents=True, exist_ok=False)
     except FileExistsError as exc:
         raise ValueError("output_path_conflict: output already exists") from exc
-    with tempfile.TemporaryDirectory(prefix=".partial-", dir=output) as temporary:
-        staging = Path(temporary) / "completed"
+    staging = Path(tempfile.mkdtemp(prefix=".partial-", dir=output)).resolve()
+    try:
         objects = staging / "objects"
         objects.mkdir(parents=True)
         cycles = []
@@ -135,3 +156,8 @@ def write_replay_report(
         }
         (staging / "receipt.json").write_bytes(canonical_json(receipt))
         staging.rename(output / "completed")
+    except BaseException:
+        # Only a failed, unpromoted directory needs cleanup. Nothing runs after promotion.
+        if staging.parent == output.resolve() and staging.name.startswith(".partial-"):
+            shutil.rmtree(staging)
+        raise
