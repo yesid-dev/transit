@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/svelte';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import HomePulse from './HomePulse.svelte';
+import { homePulseCopy } from './homePulse.copy';
 import { createLineDirectory } from '#lib/site/lineDirectory.ts';
 
 const { state, createLiveStoreSpy } = vi.hoisted(() => ({
@@ -102,7 +103,14 @@ const dayRanking = {
 			date: '2026-11-04',
 			window_end: '2026-11-10',
 			entries: [
-				{ id: '7-354', type: 'route', rank: 1, name: 'Carleton <> St-Laurent', severe_pct: 24 },
+				{
+					id: '7-354',
+					type: 'route',
+					rank: 1,
+					name: 'Carleton <> St-Laurent',
+					severe_pct: 24,
+					observation_count: 100,
+				},
 				{ id: 'S9', type: 'stop', rank: 2, name: 'RIDEAU / SUSSEX', severe_pct: 21.5 },
 			],
 		},
@@ -118,6 +126,76 @@ afterEach(() => {
 });
 
 describe('Home accountability strip', () => {
+	it.each(['en', 'fr'] as const)('withholds stale weekly lines in %s', (locale) => {
+		state.hotspots = { ...dayRanking, generated_utc: '2026-11-04T00:00:00Z' };
+		render(HomePulse, { props: { locale, city: 'Ottawa', manifest } });
+		const lines = screen.getByRole('region', { name: homePulseCopy[locale].worstLines });
+		expect(within(lines).queryByRole('link')).toBeNull();
+		expect(within(lines).getByRole('status')).toHaveTextContent(
+			homePulseCopy[locale].worstUnavailable,
+		);
+	});
+	it.each(['en', 'fr'] as const)('withholds absent weekly lines in %s', (locale) => {
+		render(HomePulse, { props: { locale, city: 'Ottawa', manifest } });
+		const lines = screen.getByRole('region', { name: homePulseCopy[locale].worstLines });
+		expect(within(lines).queryByRole('link')).toBeNull();
+		expect(within(lines).getByRole('status')).toHaveTextContent(
+			homePulseCopy[locale].worstUnavailable,
+		);
+	});
+	it.each(['en', 'fr'] as const)(
+		'orders the five eligible lines by their shown late share (%s)',
+		(locale) => {
+			state.hotspots = {
+				...dayRanking,
+				by_grain: [
+					{
+						...dayRanking.by_grain[0],
+						entries: [
+							...Array.from({ length: 5 }, (_, i) => ({
+								id: `thin${i}`,
+								type: 'route',
+								rank: i + 1,
+								severe_pct: 100,
+								observation_count: 29,
+							})),
+							...[
+								['302', 54.2, 100],
+								['646', 55.1, 100],
+								['A', 50, 30],
+								['B', 50, 60],
+								['C', 50, 60],
+								['last', 1, 100],
+							].map(([id, severe_pct, observation_count], i) => ({
+								id,
+								type: 'route',
+								rank: i + 6,
+								severe_pct,
+								observation_count,
+							})),
+						],
+					},
+				],
+			};
+			render(HomePulse, { props: { locale, city: 'Ottawa', manifest } });
+			const links = within(
+				screen.getByRole('region', { name: homePulseCopy[locale].worstLines }),
+			).getAllByRole('link');
+			expect(links.map((link) => link.getAttribute('href'))).toEqual(
+				['646', '302', 'B', 'C', 'A'].map((id) => `${locale === 'fr' ? '/fr' : ''}/lines/${id}`),
+			);
+			const values = links.map((link) =>
+				Number(
+					link
+						.querySelector('.pulse-rank-rate')!
+						.textContent!.replace(/[^0-9.,]/g, '')
+						.replace(',', '.'),
+				),
+			);
+			expect(values).toEqual([55.1, 54.2, 50, 50, 50]);
+			for (let i = 1; i < values.length; i++) expect(values[i]).toBeLessThanOrEqual(values[i - 1]);
+		},
+	);
 	it('always offers the map and network health, even before data boots', () => {
 		render(HomePulse, { props: { locale: 'en', city: 'Ottawa', manifest: null } });
 		expect(screen.getByRole('heading', { name: 'Right now in Ottawa' })).toBeInTheDocument();
@@ -253,3 +331,9 @@ describe('Home accountability strip', () => {
 		expect(screen.getByText(/^Data through/)).toHaveTextContent('10');
 	});
 });
+
+beforeEach(() => {
+	vi.useFakeTimers({ toFake: ['Date'] });
+	vi.setSystemTime(new Date('2026-11-15T12:00:00Z'));
+});
+afterEach(() => vi.useRealTimers());

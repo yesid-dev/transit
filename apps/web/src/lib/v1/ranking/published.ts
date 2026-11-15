@@ -4,7 +4,7 @@ import {
 } from '#lib/v1/schemas/route_reliability_index.ts';
 
 // Legacy indexes carry the publication date's midnight stamp, not its actual time.
-function legacyDeadline(generated: number): number {
+export function legacyDeadline(generated: number): number {
 	const next = new Date(generated);
 	const days = (3 - next.getUTCDay() + 7) % 7 || 7;
 	next.setUTCDate(next.getUTCDate() + days);

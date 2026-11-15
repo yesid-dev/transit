@@ -64,6 +64,14 @@ afterEach(() => {
 });
 
 describe('Home civic overview and directory', () => {
+	it('elides que before Ottawa in the French lede', () => {
+		state.locale = 'fr';
+		state.city = 'Ottawa';
+		const { container } = renderHome();
+		expect(container.querySelector('[data-slot="home-audit-brief"]')).toHaveTextContent(
+			"Transit est un registre public et indépendant du service d’autobus qu'Ottawa reçoit réellement.",
+		);
+	});
 	it.each(['en', 'fr'] as const)('omits the directory destination total in %s', (locale) => {
 		state.locale = locale;
 		renderHome();

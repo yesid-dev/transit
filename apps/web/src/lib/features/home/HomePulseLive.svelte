@@ -50,11 +50,14 @@
 	const pulse = $derived(selectLivePulse(live.network));
 	const liveFailed = $derived(live.familyStates.network.health.state === 'failed-no-data');
 	const worst = $derived.by(() => {
-		const current = selectWorst(hotspots.data, display.directory, { limit: RANK_ROWS });
+		const current = selectWorst(hotspots.data, display.directory, {
+			limit: RANK_ROWS,
+			now: rankingRuntime.clock.serverNow,
+		});
 		if (!current) return null;
 		return {
 			...current,
-			through: weeklyStops?.find((row) => row.state === 'ranked')?.window_end ?? current.through,
+			through: current.through,
 			stops: (weeklyStops ?? [])
 				.filter((row) => row.state === 'ranked')
 				.slice(0, RANK_ROWS)

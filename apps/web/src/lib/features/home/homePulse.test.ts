@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NetworkFile } from '#lib/v1/schemas/network.ts';
 import type { Hotspots } from '#lib/v1/schemas/generated/historic_hotspots.ts';
 import { selectLivePulse, selectWorst } from './homePulse';
@@ -62,15 +62,33 @@ describe('selectWorst', () => {
 	const hotspots = {
 		generated_utc: '2026-11-11T00:00:00Z',
 		by_grain: [
-			{ grain: 'day', date: '2026-11-10', entries: [{ id: '99', type: 'route', rank: 1 }] },
+			{
+				grain: 'day',
+				date: '2026-11-10',
+				entries: [{ id: '99', type: 'route', rank: 1, observation_count: 30, severe_pct: 0 }],
+			},
 			{
 				grain: 'week',
 				date: '2026-11-04',
 				window_end: '2026-11-10',
 				entries: [
 					{ id: 'S9', type: 'stop', rank: 3, name: 'RIDEAU / SUSSEX', severe_pct: 21.5 },
-					{ id: '11', type: 'route', rank: 2, name: 'Waller <> Bayshore', severe_pct: 19 },
-					{ id: '7-354', type: 'route', rank: 1, name: 'Carleton <> St-Laurent', severe_pct: 24 },
+					{
+						id: '11',
+						type: 'route',
+						rank: 2,
+						name: 'Waller <> Bayshore',
+						severe_pct: 19,
+						observation_count: 100,
+					},
+					{
+						id: '7-354',
+						type: 'route',
+						rank: 1,
+						name: 'Carleton <> St-Laurent',
+						severe_pct: 24,
+						observation_count: 100,
+					},
 					{ id: 'S1', type: 'stop', rank: 4, name: null, severe_pct: null },
 				],
 			},
@@ -97,8 +115,22 @@ describe('selectWorst', () => {
 				{
 					grain: 'week',
 					entries: [
-						{ id: '11', type: 'route', rank: 1, name: 'Waller <> Bayshore', severe_pct: 30 },
-						{ id: '11', type: 'route', rank: 2, name: 'Waller <> Bayshore', severe_pct: 20 },
+						{
+							id: '11',
+							type: 'route',
+							rank: 1,
+							name: 'Waller <> Bayshore',
+							severe_pct: 30,
+							observation_count: 100,
+						},
+						{
+							id: '11',
+							type: 'route',
+							rank: 2,
+							name: 'Waller <> Bayshore',
+							severe_pct: 20,
+							observation_count: 100,
+						},
 						{ id: '11', type: 'stop', rank: 3, name: 'STOP ELEVEN', severe_pct: 10 },
 					],
 				},
@@ -116,3 +148,9 @@ describe('selectWorst', () => {
 		expect(selectWorst(null, routes)).toBeNull();
 	});
 });
+
+beforeEach(() => {
+	vi.useFakeTimers({ toFake: ['Date'] });
+	vi.setSystemTime(new Date('2026-11-15T12:00:00Z'));
+});
+afterEach(() => vi.useRealTimers());

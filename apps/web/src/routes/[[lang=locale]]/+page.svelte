@@ -24,7 +24,9 @@
 		...homeCopy[locale],
 		cadence: homeCadence(locale, data.v1?.manifest.files.live.ttl_s),
 		headline: homeCopy[locale].headline.replace('{city}', city),
-		auditBody: homeCopy[locale].auditBody.replace('{city}', city),
+		auditBody: homeCopy[locale].auditBody
+			.replace('{city}', city)
+			.replace('que Ottawa', "qu'Ottawa"),
 		auditMore: homeCopy[locale].auditMore.replace('{operator}', operator),
 		audience: homeCopy[locale].audience.replace('{operator}', operator),
 	});
