@@ -4,11 +4,12 @@
 	import ArticleHeader from '#lib/components/layout/TransitArticleHeader.svelte';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { createReliabilityViewState } from '#lib/reliability/viewState.svelte.ts';
-	import { createArticleNavigation } from '#lib/site/articleNavigation.svelte.ts';
 	import { onDestroy } from 'svelte';
 	import { page } from '$app/state';
-	import { getLocale, getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
-	import { routeFor, type SurfaceKind } from '#lib/nav/index.ts';
+	import { getLocale, getLocalizeHref, intl, type Locale } from '#lib/i18n/index.ts';
+	import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
+	import { routeFor } from '#lib/nav/index.ts';
+	import { metricInfoCopy, metricInfoFor } from '#lib/metrics.ts';
 	import {
 		fromSearchParams,
 		toSearchParams,
@@ -26,8 +27,7 @@
 		getHotspotsHistoryDay,
 		getHotspotsHistoryIndex,
 	} from '#lib/v1/repositories/historic.ts';
-	import type { HistoricCollectionIndex, HotspotEntry, Hotspots } from '#lib/v1/schemas/index.ts';
-	import type { ChartDatumPopoverModel } from '#lib/components/dataviz/chart/index.ts';
+	import type { HistoricCollectionIndex, Hotspots } from '#lib/v1/schemas/index.ts';
 	import {
 		ArticleControlStack,
 		HistoryNavigator,
@@ -35,36 +35,35 @@
 		GrainPicker,
 		type GrainSegment,
 	} from '#lib/components/surface/index.ts';
-	import { ArticleSectionStack, type ArticleMetaEntry } from '#lib/components/layout/index.ts';
-	import { DetailFrame, SurfaceRail, type SurfaceRailContext } from '@yesid/ui/layout';
-	import { AbsentValue } from '#lib/components/edge/index.ts';
-	import { CollapsibleSection, TocNav } from '@yesid/ui/brand';
+	import type { ArticleMetaEntry } from '#lib/components/layout/index.ts';
+	import { DetailFrame, SurfaceRail } from '@yesid/ui/layout';
+	import { CollapsibleSection } from '@yesid/ui/brand';
 	import SectionsToggle from '#lib/components/shared/SectionsToggle.svelte';
-	import { prefersReducedMotion } from '@yesid/motion/stores/reducedMotion';
-	import { fmtCount, fmtDelayMin, fmtPct } from '#lib/utils/index.ts';
+	import { fmtLocalePct } from '#lib/utils/format.ts';
 	import { formatDateKey } from '#lib/utils/time.ts';
-
+	import { ladderGrains } from '#lib/reliability/ladderGrains.ts';
+	import { worstNCap, DEFAULT_WORST_N } from '#lib/reliability/ladderCap.ts';
 	import {
-		ladderGrains,
-		HOTSPOT_GRAINS,
-		type HotspotGrainKey,
-	} from '#lib/reliability/ladderGrains.ts';
-	import {
-		worstNCap,
-		DEFAULT_WORST_N,
-		worstNSegments as buildWorstNSegments,
-		SMALLEST_WORST_N,
-	} from '#lib/reliability/ladderCap.ts';
-	import { selectHotspotLadder, type HotspotPopoverEvidence } from './selectors/hotspotLadder';
-	import HotspotSection from './sections/HotspotSection.svelte';
+		formatDayRange,
+		readHotspotRanking,
+		type RankedRow,
+		type RankingKind,
+	} from './selectors/hotspotRanking';
+	import HotspotSection, { type HotspotRowView } from './sections/HotspotSection.svelte';
+	import HotspotEvidence from './sections/HotspotEvidence.svelte';
 	import { copy as COPY } from './hotspots.copy';
+
+	/** The approved periods: 7 complete days by default, 30 as the alternative. */
+	const PERIODS = ['week', 'month'] as const;
+	type Period = (typeof PERIODS)[number];
 
 	let { manifest = null }: { manifest?: Manifest | null } = $props();
 	const display = transitDisplay();
 	const localizeHref = getLocalizeHref();
-
 	const locale: Locale = getLocale();
 	const t = $derived(COPY[locale]);
+	const terms = $derived(transitTerms[locale]);
+	const count = (n: number) => intl.number(locale).format(n);
 
 	const hotspots = createHistoryDateResource<HistoricCollectionIndex, Hotspots>(
 		{
@@ -78,250 +77,243 @@
 		},
 	);
 	onDestroy(() => hotspots.destroy());
-	const generatedUtc = $derived(hotspots.data?.generated_utc ?? null);
-	const grains = $derived(ladderGrains(hotspots.data?.by_grain, HOTSPOT_GRAINS));
-	const ladders = $derived(grains.ladders);
-	const present = $derived(grains.present);
+
+	const initial = new URLSearchParams(page.url.search);
+	let kind = $state<RankingKind>(initial.get('kind') === 'stops' ? 'stop' : 'route');
+	let selectedId = $state<string | null>(initial.get('selected'));
+	let expanded = $state(initial.has('selected'));
+	let worstN = $state<WorstN>(fromSearchParams(initial).worstN ?? DEFAULT_WORST_N);
+
 	const availableDates = $derived(hotspots.availableDates);
-	const dateOptions = $derived(availableDates.map((date) => ({ date })));
 	const hasHistoryNavigator = $derived(availableDates.length > 0);
-	const historyCoverageText = $derived(
-		availableDates.length === 0
-			? null
-			: t.history.coverage(
-					formatDateKey(availableDates[0], locale),
-					formatDateKey(availableDates[availableDates.length - 1], locale),
-				),
-	);
-	const historySelectionText = $derived(
-		hotspots.selectedDate == null
-			? null
-			: t.history.selection(formatDateKey(hotspots.selectedDate, locale)),
-	);
 	const historyCorrection = createHistoryCorrectionPresentation(
 		hotspots,
 		() => t.history.correction,
 	);
 	function selectHistoryDate(date: string | undefined): void {
 		historyCorrection.clear();
-		hotspots.setRequest({
-			hasDate: date !== undefined,
-			rawDate: date ?? null,
-		});
+		hotspots.setRequest({ hasDate: date !== undefined, rawDate: date ?? null });
 	}
+	const requestedDate = $derived(
+		hotspots.request.hasDate && hotspots.resolved == null
+			? hotspots.request.rawDate
+			: hotspots.canonicalDate,
+	);
 
-	const grainLabels = $derived({
-		day: t.grain.day,
-		week: t.grain.week,
-		month: t.grain.month,
-		shift: { label: t.grain.shift, compactLabel: t.grain.shiftCompact },
-	});
+	const grains = $derived(ladderGrains(hotspots.data?.by_grain, PERIODS));
 	const view = createReliabilityViewState({
 		snapshot: () => hotspots.data,
-		grains: { keys: HOTSPOT_GRAINS, labels: () => grainLabels, present: () => present },
+		grains: {
+			keys: PERIODS,
+			labels: () => ({ week: t.period.week, month: t.period.month }),
+			present: () => grains.present,
+		},
 		locale: () => locale,
 		url: () => {
 			const state = emptyFilterState();
 			if (worstN !== DEFAULT_WORST_N) state.worstN = worstN;
-			const date =
-				hotspots.request.hasDate && hotspots.resolved == null
-					? hotspots.request.rawDate
-					: hotspots.canonicalDate;
-			return { date, n: toSearchParams(state).get('n') };
+			return {
+				date: requestedDate,
+				n: toSearchParams(state).get('n'),
+				kind: kind === 'stop' ? 'stops' : null,
+				selected: selectedId,
+			};
 		},
 	});
-	const grainKey = $derived<HotspotGrainKey>(view.grain);
-	const showGrainPicker = $derived(present.size > 1);
-
-	let worstN = $state<WorstN>(
-		fromSearchParams(new URLSearchParams(page.url.search)).worstN ?? DEFAULT_WORST_N,
+	const period = $derived<Period>(view.grain);
+	const ranking = $derived(readHotspotRanking(grains.ladders.get(period), kind));
+	const dates = $derived(ranking.state === 'absent' ? null : ranking.period);
+	const range = $derived(dates ? formatDayRange(dates.from, dates.to, locale) : null);
+	const periodText = $derived(
+		dates && range
+			? t.period.line(range, terms.completeDays(dates.days, count(dates.days)))
+			: t.period.unknown,
 	);
-	const cap = $derived(worstNCap(worstN));
-	const worstSegments = $derived<GrainSegment<WorstN>[]>(buildWorstNSegments(t.worstN.all));
-
-	function navKindFor(type: string): SurfaceKind | null {
-		const kind = type.toLowerCase();
-		if (kind === 'route' || kind === 'line') return 'line';
-		if (kind === 'stop') return 'stop';
-		return null;
-	}
-	function hrefFor(entry: HotspotEntry): string | null {
-		const kind = navKindFor(entry.type);
-		return kind ? localizeHref(routeFor({ kind, id: entry.id }), locale) : null;
-	}
-	function typeTag(type: string): string | null {
-		const kind = navKindFor(type);
-		if (kind === 'line') return t.type.route;
-		if (kind === 'stop') return t.type.stop;
-		return null;
-	}
-	function tapPopoverFor(
-		entry: HotspotEntry,
-		href: string | null,
-		evidence: HotspotPopoverEvidence,
-	): ChartDatumPopoverModel {
-		const heading = nameFor(entry);
-		const rows: Array<{ label: string; value: string }> = [];
-		const severe = fmtPct(entry.severe_pct, { locale, suffix: t.units.pct });
-		if (severe != null) rows.push({ label: t.ladder.severeRateLabel, value: severe });
-		if (evidence.wilsonLo != null && evidence.wilsonHi != null) {
-			const lower = fmtPct(evidence.wilsonLo, { locale, suffix: t.units.pct });
-			const upper = fmtPct(evidence.wilsonHi, { locale, suffix: t.units.pct });
-			if (lower != null && upper != null) {
-				rows.push({ label: t.ladder.ci, value: `${lower}–${upper}` });
-			}
-		}
-		const averageDelay = fmtDelayMin(entry.avg_delay_min, {
-			rounding: 'auto',
+	const recordSearch = $derived(dates ? `from=${dates.from}&to=${dates.to}` : undefined);
+	const recordHref = (id: string, of: RankingKind = kind) =>
+		localizeHref(
+			routeFor({ kind: of === 'route' ? 'line' : 'stop', id, search: recordSearch }),
 			locale,
-			suffix: t.units.min,
-		});
-		if (averageDelay != null) {
-			rows.push({ label: t.chart.popover.averageDelay, value: averageDelay });
-		}
-		const readings = fmtCount(entry.observation_count, { locale });
-		if (readings != null) rows.push({ label: t.chart.popover.readings, value: readings });
+		);
 
-		const kind = navKindFor(entry.type);
-		const actionLabel =
-			kind === 'line'
-				? t.chart.popover.viewLine
-				: kind === 'stop'
-					? t.chart.popover.viewStop
-					: null;
+	function identityOf(id: string, published: string | null) {
+		if (kind === 'stop') return { number: null, name: published ?? id };
+		const line = display.lineName(id, published);
+		const number = line.number ?? (line.name ? null : id);
+		return { number, name: line.name && line.name !== number ? line.name : null };
+	}
+	function rowView(row: RankedRow, eligible: number | null): HotspotRowView {
+		const { number, name } = identityOf(row.id, row.name);
+		const identity = [number, name].filter(Boolean).join(', ');
 		return {
-			key: `${entry.type}-${entry.id}`,
-			heading,
-			meta: typeTag(entry.type) ?? entry.type,
-			rows,
-			...(actionLabel && href ? { action: { href, label: actionLabel } } : {}),
+			key: row.key,
+			id: row.id,
+			position: row.position,
+			positionText: t.ranking.position(
+				count(row.position),
+				eligible == null ? null : count(eligible),
+			),
+			number,
+			name,
+			kindWord: t.kindWord[kind],
+			identity,
+			spoken: `${t.kindWord[kind]} ${identity}`,
+			share: fmtLocalePct(row.latePct, locale),
+			readingsText:
+				row.readings == null ? t.readingsUnknown : t.readings(row.readings, count(row.readings)),
+			href: recordHref(row.id),
+			stopId: kind === 'stop' ? row.id : null,
 		};
 	}
-	function ladderNote(entry: HotspotEntry): string {
-		const parts: string[] = [];
-		if (entry.severe_pct != null) {
-			parts.push(`${t.note.severe} ${Math.round(entry.severe_pct)}${t.units.pct}`);
-		}
-		if (entry.avg_delay_min != null) {
-			parts.push(`${t.note.avg} ${Math.round(entry.avg_delay_min * 10) / 10}${t.units.min}`);
-		}
-		if (entry.observation_count != null) parts.push(`${t.note.samples}=${entry.observation_count}`);
-		return parts.join(' · ');
-	}
-
-	const activeLadder = $derived(ladders.get(grainKey));
-	const nameFor = (entry: HotspotEntry, spoken = false): string =>
-		navKindFor(entry.type) === 'line'
-			? display.lineName(entry.id, entry.name)[spoken ? 'spoken' : 'label']
-			: (entry.name ?? t.unnamed(entry.id));
-	function ladderFor(kind: 'route' | 'stop', total: number | null | undefined) {
-		const entries = (activeLadder?.entries ?? []).filter((entry) => entry.type === kind);
-		const result = selectHotspotLadder(entries, cap, locale, {
-			directory: display.directory,
-			title: t.ladder.heading,
-			rowLabel: kind === 'route' ? t.type.route : t.type.stop,
-			xLabel: t.ladder.severeRateLabel,
-			unit: t.units.pct,
-			ciLabel: t.ladder.ci,
-			note: ladderNote,
-			unnamed: t.unnamed,
-			href: hrefFor,
-			tapPopover: tapPopoverFor,
-		});
-		return { ...result, total: total ?? result.total };
-	}
-	const routeLadder = $derived(ladderFor('route', activeLadder?.total_ranked_routes));
-	const stopLadder = $derived(ladderFor('stop', activeLadder?.total_ranked_stops));
-
-	interface TrayRow {
-		readonly key: string;
-		readonly title: string;
-		readonly type: string;
-		readonly id: string;
-		readonly observationCount: number | null;
-		readonly href: string | null;
-		readonly ariaLabel: string;
-	}
-	function trayFor(kind: 'route' | 'stop'): TrayRow[] {
-		return (activeLadder?.tray ?? [])
-			.filter((entry) => entry.type === kind)
-			.map((entry) => {
-				const title = nameFor(entry);
-				return {
-					key: `${entry.type}-${entry.id}`,
-					title,
-					type: typeTag(entry.type) ?? entry.type,
-					id: entry.id,
-					observationCount: entry.observation_count ?? null,
-					href: hrefFor(entry),
-					ariaLabel: nameFor(entry, true),
-				};
-			});
-	}
-	const routeTray = $derived(trayFor('route'));
-	const stopTray = $derived(trayFor('stop'));
-	const windowCaption = $derived(
-		hotspots.mode === 'history' && hotspots.selectedDate != null
-			? t.history.retainedWindow(formatDateKey(hotspots.selectedDate, locale))
-			: t.window[grainKey],
+	const rows = $derived(
+		ranking.state === 'ranked' ? ranking.rows.map((row) => rowView(row, ranking.eligible)) : [],
 	);
-	const controlsSummary = $derived(
-		view.segments.find((segment) => segment.key === grainKey)?.label ?? '',
-	);
-	const isEmpty = $derived(present.size === 0);
-	const showCombinedRail = $derived(
-		(hotspots.data != null && present.size > 0) ||
-			(hotspots.mode === 'history' && hasHistoryNavigator),
-	);
-	const showWorstN = $derived(
-		routeLadder.total > SMALLEST_WORST_N || stopLadder.total > SMALLEST_WORST_N,
-	);
-
-	const sectionDefs = $derived([
-		{
-			id: 'hotspots-lines',
-			number: 1,
-			title: t.cards.lines.title,
-			subtitle: t.cards.lines.subtitle,
-			present: routeLadder.shown > 0 || routeTray.length > 0,
-		},
-		{
-			id: 'hotspots-stops',
-			number: 2,
-			title: t.cards.stops.title,
-			subtitle: t.cards.stops.subtitle,
-			present: stopLadder.shown > 0 || stopTray.length > 0,
-		},
-	]);
-	const navigation = createArticleNavigation(() => sectionDefs, {
-		behavior: () => ($prefersReducedMotion ? 'auto' : 'smooth'),
+	const shownRows = $derived(rows.slice(0, worstNCap(worstN)));
+	const selected = $derived(shownRows.find((row) => row.id === selectedId) ?? shownRows[0] ?? null);
+	const defaultCap = worstNCap(DEFAULT_WORST_N);
+	const toggle = $derived.by(() => {
+		if (shownRows.length < rows.length)
+			return {
+				label: t.ranking.showAll(kind, count(rows.length)),
+				onclick: () => (worstN = 'all'),
+			};
+		if (worstN !== DEFAULT_WORST_N && rows.length > defaultCap)
+			return {
+				label: t.ranking.showFewer(kind, count(defaultCap)),
+				onclick: () => (worstN = DEFAULT_WORST_N),
+			};
+		return null;
 	});
-	const tocEntries = $derived(navigation.entries);
-	const { navigate } = navigation;
+	const countText = $derived(
+		ranking.state === 'ranked'
+			? t.ranking.count(
+					kind,
+					[shownRows.length, count(shownRows.length)],
+					[ranking.published, count(ranking.published)],
+					ranking.eligible == null ? null : [ranking.eligible, count(ranking.eligible)],
+				)
+			: '',
+	);
+	const finding = $derived.by(() => {
+		if (ranking.state === 'absent') return t.finding.absent[period];
+		if (ranking.state === 'invalid') return t.finding.invalid;
+		if (ranking.state === 'none') return t.finding.none[kind];
+		return t.finding[kind](rows[0].identity);
+	});
+
+	const belowFloor = $derived(ranking.state === 'absent' ? null : ranking.belowFloor);
+	const excludedSummary = $derived.by(() => {
+		if (belowFloor == null) return '';
+		const { count: total, examples } = belowFloor;
+		if (examples.length > 0)
+			return total == null
+				? t.excluded.examples(examples.length, count(examples.length))
+				: t.excluded.complete(kind, total, count(total));
+		return total === 0 ? t.excluded.zero[kind] : t.excluded.unknown[kind];
+	});
+
+	const methodVersion = $derived(hotspots.data?.methodology_version?.trim() || null);
+	const methodText = $derived(
+		methodVersion ? t.evidence.method(methodVersion) : t.evidence.methodUnknown,
+	);
+	const generatedUtc = $derived(hotspots.data?.generated_utc ?? null);
+	const publishedOn = $derived(generatedUtc?.slice(0, 10) ?? null);
+	const sentence = (text: string) =>
+		locale === 'fr' ? text.charAt(0).toLowerCase() + text.slice(1) : text;
+
+	function sameViewUrl(row: HotspotRowView): string {
+		const query = [
+			kind === 'stop' ? 'kind=stops' : null,
+			period === PERIODS[0] ? null : `grain=${period}`,
+			hotspots.canonicalDate ? `date=${hotspots.canonicalDate}` : null,
+			`selected=${encodeURIComponent(row.id)}`,
+		]
+			.filter((part) => part != null)
+			.join('&');
+		return new URL(localizeHref(`/hotspots?${query}`, locale), page.url.origin).href;
+	}
+	function citation(row: HotspotRowView): string {
+		return t.citation({
+			provider: manifest?.display_name?.trim() || null,
+			subject: row.spoken,
+			share: row.share,
+			period: range ? sentence(range) : null,
+			readings: row.readingsText,
+			published:
+				publishedOn && /^\d{4}-\d{2}-\d{2}$/.test(publishedOn)
+					? sentence(formatDayRange(publishedOn, publishedOn, locale))
+					: null,
+			method: methodText,
+			url: sameViewUrl(row),
+		});
+	}
+
+	function selectRow(key: string): void {
+		const row = shownRows.find((candidate) => candidate.key === key);
+		if (!row) return;
+		if (!wide && row.key === selected?.key && expanded) {
+			expanded = false;
+			return;
+		}
+		selectedId = row.id;
+		expanded = true;
+	}
+	function selectKind(next: RankingKind): void {
+		if (next === kind) return;
+		kind = next;
+		selectedId = null;
+		expanded = false;
+	}
+	function selectPeriod(next: string): void {
+		if (next === view.grain) return;
+		view.selectGrain(next);
+		selectedId = null;
+		expanded = false;
+	}
+	const kindSegments = $derived<GrainSegment<RankingKind>[]>([
+		{ key: 'route', label: t.kind.route },
+		{ key: 'stop', label: t.kind.stop },
+	]);
+
+	const paneId = $props.id();
+	let frameWidth = $state(0);
+	// The container query below shows the side pane at 60rem; the buttons follow the same rule.
+	const wide = $derived(
+		frameWidth > 0 &&
+			frameWidth >= 60 * (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16),
+	);
+
 	const record = createRecordStamp(
 		() => manifest,
 		() => generatedUtc,
 	);
 	const articleMeta = $derived.by((): readonly ArticleMetaEntry[] => {
-		const entries: ArticleMetaEntry[] = [];
 		const stamp = record.meta(locale);
-		if (stamp) entries.push(stamp);
-		if (tocEntries.length > 0) entries.push(t.article.sections(tocEntries.length));
-		return entries;
+		return stamp ? [stamp] : [];
 	});
+	const metricHref = $derived(
+		`${localizeHref('/metrics', locale)}#${metricInfoFor('severe', locale).anchor}`,
+	);
 </script>
 
-{#snippet combinedRail({ closeSheet }: SurfaceRailContext)}
+{#snippet historyRail()}
 	{#snippet historyControls()}
 		{#key historyCorrection.revision}
 			<HistoryNavigator
 				mode="date"
 				date={hotspots.selectedDate ?? undefined}
-				{dateOptions}
+				dateOptions={availableDates.map((date) => ({ date }))}
 				previousDate={hotspots.previousDate}
 				nextDate={hotspots.nextDate}
-				coverageText={historyCoverageText}
-				selectionText={historySelectionText}
+				coverageText={availableDates.length === 0
+					? null
+					: t.history.coverage(
+							formatDateKey(availableDates[0], locale),
+							formatDateKey(availableDates[availableDates.length - 1], locale),
+						)}
+				selectionText={hotspots.selectedDate == null
+					? null
+					: t.history.selection(formatDateKey(hotspots.selectedDate, locale))}
 				announcement={historyCorrection.announcement}
 				liveAnnouncement={false}
 				{locale}
@@ -330,67 +322,40 @@
 			/>
 		{/key}
 	{/snippet}
-	{#snippet primaryControls()}
-		<GrainPicker
-			segments={view.segments}
-			value={view.grain}
-			onSelect={view.selectGrain}
-			label={t.grain.label}
-			variant="time-grid"
-		/>
-	{/snippet}
-	{#snippet secondaryControls()}
-		<GrainPicker segments={worstSegments} bind:value={worstN} label={t.worstN.label} />
-	{/snippet}
-	{#snippet windowCaptionControl()}
-		<p class="hotspots-window" data-slot="active-window" aria-live="polite">
-			{windowCaption}
-		</p>
-	{/snippet}
-
-	<CollapsibleSection independent title={t.rail.controls}>
-		<ArticleControlStack
-			history={hasHistoryNavigator ? historyControls : undefined}
-			primary={showGrainPicker ? primaryControls : undefined}
-			secondary={showWorstN ? secondaryControls : undefined}
-			caption={windowCaptionControl}
-		/>
-	</CollapsibleSection>
-	{#if tocEntries.length > 0}
-		<div class="hotspots-rail-toc" data-slot="section-toc">
-			<TocNav
-				entries={tocEntries}
-				navigation={navigation.navigation}
-				heading={t.rail.toc}
-				counterPrefix={t.rail.counterPrefix}
-				onNavigate={(id) => {
-					closeSheet();
-					void navigate(id);
-				}}
-			/>
-		</div>
-	{/if}
-{/snippet}
-
-{#snippet railCell()}
 	<SurfaceRail
-		rail={combinedRail}
+		rail={railBody}
 		label={t.rail.label}
-		summary={controlsSummary}
+		summary={hotspots.selectedDate == null ? '' : formatDateKey(hotspots.selectedDate, locale)}
 		openAria={t.rail.open}
 		closeAria={t.rail.close}
 	/>
+	{#snippet railBody()}
+		<CollapsibleSection independent title={t.rail.controls}>
+			<ArticleControlStack history={historyControls} />
+		</CollapsibleSection>
+	{/snippet}
+{/snippet}
+
+{#snippet evidence(row: HotspotRowView, level: 2 | 3)}
+	<HotspotEvidence
+		{row}
+		{level}
+		period={periodText}
+		method={methodText}
+		link={sameViewUrl(row)}
+		citation={citation(row)}
+		copy={t}
+		{locale}
+	/>
+{/snippet}
+{#snippet inlineEvidence(row: HotspotRowView)}
+	{@render evidence(row, 3)}
 {/snippet}
 
 <DetailFrame
 	class="hotspots-detail"
 	railScroll
-	rail={showCombinedRail ? railCell : undefined}
-	toc={{
-		navigation: navigation.navigation,
-		landFragments: true,
-		entries: navigation.registeredEntries,
-	}}
+	rail={hasHistoryNavigator ? historyRail : undefined}
 >
 	{#snippet header()}
 		<ArticleHeader
@@ -419,66 +384,259 @@
 	>
 		{historyCorrection.announcement ?? ''}
 	</p>
-	<ResourceBoundary resource={hotspots} lang={locale}>
-		{#if isEmpty}
-			<div class="hotspots-note" data-slot="hotspots-empty">
-				<AbsentValue variant="block" reason="no-observations" {locale} />
-			</div>
-		{:else}
-			<ArticleSectionStack data-slot="hotspots-sections">
-				{#each sectionDefs as section (section.id)}
-					{#if section.present}
-						<CollapsibleSection
-							title={section.title}
-							subtitle={section.subtitle}
-							headerVariant="article-summary"
-							anchor={section.id}
-							index={section.number - 1}
-							open={true}
+	<div class="hotspots-page" data-slot="hotspots-page">
+		<p class="hotspots-purpose">{t.purpose}</p>
+		<ResourceBoundary resource={hotspots} lang={locale}>
+			<section class="hotspots-controls" aria-label={t.kind.label} data-slot="hotspots-controls">
+				<div class="hotspots-pickers">
+					<GrainPicker
+						segments={kindSegments}
+						value={kind}
+						onSelect={(key) => selectKind(key as RankingKind)}
+						label={t.kind.label}
+					/>
+					<GrainPicker
+						segments={view.segments}
+						value={view.grain}
+						onSelect={selectPeriod}
+						label={t.period.label}
+					/>
+				</div>
+				<p class="hotspots-period" data-slot="hotspots-period">{periodText}</p>
+				<p class="hotspots-measure">{t.measure}</p>
+			</section>
+
+			<h2 class="hotspots-finding" data-slot="hotspots-finding">{finding}</h2>
+
+			{#if ranking.state === 'ranked' && selected}
+				<div class="hotspots-workspace-frame" bind:clientWidth={frameWidth}>
+					<div class="hotspots-workspace">
+						<HotspotSection
+							heading={t.ranking.heading[kind]}
+							count={countText}
+							rows={shownRows}
+							selected={selected.key}
+							{wide}
+							{expanded}
+							{paneId}
+							onSelect={selectRow}
+							{toggle}
+							evidence={inlineEvidence}
+							copy={t}
+						/>
+						<aside
+							id={paneId}
+							class="hotspots-evidence-pane"
+							aria-label={t.evidence.heading}
+							data-slot="hotspot-evidence-pane"
 						>
-							{#if section.id === 'hotspots-lines'}
-								<HotspotSection
-									heading={t.ladder.heading}
-									ladder={routeLadder}
-									tray={routeTray}
-									{windowCaption}
-									chartScrollLabel={t.chart.scroll(t.cards.lines.title)}
-									{locale}
-									copy={t}
-								/>
-							{:else}
-								<HotspotSection
-									heading={t.ladder.heading}
-									ladder={stopLadder}
-									tray={stopTray}
-									{windowCaption}
-									chartScrollLabel={t.chart.scroll(t.cards.stops.title)}
-									{locale}
-									copy={t}
-								/>
-							{/if}
-						</CollapsibleSection>
+							{@render evidence(selected, 2)}
+						</aside>
+					</div>
+				</div>
+			{/if}
+
+			{#if belowFloor}
+				<section
+					class="hotspots-exclusions"
+					aria-labelledby="hotspots-exclusions-heading"
+					data-slot="hotspot-exclusions"
+				>
+					<h2 id="hotspots-exclusions-heading" class="hotspots-section-heading">
+						{t.exclusions.heading[kind]}
+					</h2>
+					<ul class="hotspots-exclusion-rows">
+						<li>
+							<span>{t.exclusions.floor}</span>
+							<span class="hotspots-exclusion-total" data-slot="hotspot-floor-total">
+								{belowFloor.count == null
+									? t.exclusions.unknown
+									: t.exclusions.total(kind, belowFloor.count, count(belowFloor.count))}
+							</span>
+						</li>
+						{#if kind === 'route'}
+							<li>
+								<span>{t.exclusions.noLive}</span>
+								<span class="hotspots-exclusion-total">{t.exclusions.unknown}</span>
+							</li>
+						{/if}
+					</ul>
+					{#if kind === 'route'}
+						<p class="hotspots-meta">{t.exclusions.noLiveLimit}</p>
 					{/if}
-				{/each}
-			</ArticleSectionStack>
-		{/if}
-	</ResourceBoundary>
+					{#if belowFloor.examples.length === 0}
+						<p class="hotspots-meta" data-slot="hotspot-excluded-summary">{excludedSummary}</p>
+					{/if}
+				</section>
+
+				{#if belowFloor.examples.length > 0}
+					<CollapsibleSection title={t.excluded.title} anchor="hotspots-excluded">
+						{#snippet summary()}
+							<p class="hotspots-meta" data-slot="hotspot-excluded-summary">{excludedSummary}</p>
+						{/snippet}
+						<ul class="hotspots-excluded" aria-label={t.excluded.label[kind]}>
+							{#each belowFloor.examples as example (example.key)}
+								{@const identity = identityOf(example.id, example.name)}
+								{@const named = [identity.number, identity.name].filter(Boolean).join(', ')}
+								<li>
+									<a href={recordHref(example.id)} aria-label="{t.kindWord[kind]} {named}"
+										>{named}</a
+									>
+									<span class="hotspots-excluded-readings">
+										{example.readings == null
+											? t.readingsUnknown
+											: t.readings(example.readings, count(example.readings))}
+									</span>
+									<span class="hotspots-meta">{t.exclusions.floor}</span>
+								</li>
+							{/each}
+						</ul>
+					</CollapsibleSection>
+				{/if}
+			{/if}
+
+			<CollapsibleSection title={t.method.title} anchor="hotspots-method">
+				{#snippet summary()}
+					<p class="hotspots-meta">{t.method.summary}</p>
+				{/snippet}
+				<div class="hotspots-method">
+					<p>{t.method.engine}</p>
+					<p>{t.method.definition}</p>
+					<p>{t.method.bounds}</p>
+					<p>{methodText}</p>
+					<a href={metricHref}>{metricInfoCopy[locale].link}</a>
+				</div>
+			</CollapsibleSection>
+		</ResourceBoundary>
+	</div>
 </DetailFrame>
 
 <style>
-	.hotspots-window {
+	/* Room for the ranking and its selected evidence side by side on desktop. */
+	:global([data-slot='detail-shell'].hotspots-detail) {
+		--detail-center-max: var(--container-wide);
+	}
+	.hotspots-page {
+		display: grid;
+		gap: 1.5rem;
+		min-width: 0;
+	}
+	.hotspots-page :global(p) {
 		margin: 0;
-		font-family: var(--font-mono);
-		font-size: var(--text-caption);
+	}
+	.hotspots-purpose {
+		font-size: var(--text-detail-subheading-mobile);
 		line-height: 1.5;
+	}
+	.hotspots-controls {
+		display: grid;
+		gap: 0.5rem;
+		min-width: 0;
+	}
+	.hotspots-pickers {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.75rem 1.25rem;
+	}
+	.hotspots-period {
+		font-weight: 600;
+	}
+	.hotspots-measure,
+	.hotspots-meta {
+		color: var(--muted-foreground);
+		font-size: var(--text-small);
+	}
+	.hotspots-finding {
+		margin: 0;
+		font-size: var(--text-heading);
+		line-height: 1.3;
+		overflow-wrap: anywhere;
+	}
+	.hotspots-workspace-frame {
+		container: hotspots-workspace / inline-size;
+		min-width: 0;
+	}
+	.hotspots-workspace {
+		display: grid;
+		align-items: start;
+		gap: 1.5rem;
+	}
+	.hotspots-evidence-pane {
+		display: none;
+		padding: 1rem;
+		border: 1px solid var(--border);
+		border-radius: var(--radius-lg);
+	}
+	.hotspots-section-heading {
+		margin: 0;
+		font-size: var(--text-heading);
+		line-height: 1.25;
+	}
+	.hotspots-exclusions {
+		display: grid;
+		gap: 0.75rem;
+		padding-top: 1.25rem;
+		border-top: 1px solid var(--border);
+	}
+	.hotspots-exclusion-rows,
+	.hotspots-excluded {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+	.hotspots-exclusion-rows li {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: space-between;
+		gap: 0.25rem 1rem;
+		padding-block: 0.5rem;
+		border-bottom: 1px solid var(--border);
+	}
+	.hotspots-exclusion-total {
 		color: var(--muted-foreground);
 	}
-	.hotspots-rail-toc {
-		margin-top: 0.25rem;
+	.hotspots-excluded li {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		gap: 0.25rem 0.75rem;
+		padding-block: 0.625rem;
+		border-bottom: 1px solid var(--border);
 	}
-	.hotspots-note {
-		display: flex;
-		justify-content: center;
-		padding: 0.5rem 0;
+	.hotspots-excluded a {
+		display: inline-flex;
+		align-items: center;
+		min-height: var(--size-tap-min);
+		overflow-wrap: anywhere;
+	}
+	.hotspots-excluded .hotspots-meta {
+		grid-column: 1 / -1;
+	}
+	.hotspots-excluded-readings {
+		align-self: center;
+		font-variant-numeric: tabular-nums;
+	}
+	.hotspots-method {
+		display: grid;
+		gap: 0.75rem;
+	}
+	.hotspots-method a {
+		display: inline-flex;
+		align-items: center;
+		justify-self: start;
+		min-height: var(--size-tap-min);
+	}
+	@container hotspots-workspace (min-width: 60rem) {
+		.hotspots-workspace {
+			grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+		}
+		.hotspots-evidence-pane {
+			display: block;
+		}
+	}
+	@media (--desktop-min) {
+		.hotspots-purpose {
+			font-size: var(--text-detail-subheading-desktop);
+		}
 	}
 </style>

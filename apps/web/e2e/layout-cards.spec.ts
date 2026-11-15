@@ -318,3 +318,118 @@ for (const locale of ['en', 'fr'] as const)
 				}
 			}
 		});
+
+// A ranked week with full-length names, a 30-reading-floor example and seven rows.
+const hotspotsWeek = {
+	generated_utc: '2026-06-15T12:00:00Z',
+	methodology_version: 'r2',
+	by_grain: [
+		{
+			grain: 'week',
+			date: '2026-06-08',
+			window_end: '2026-06-14',
+			entries: [
+				...Array.from({ length: 7 }, (_, i) => ({
+					rank: i + 1,
+					type: 'route',
+					id: i === 0 ? '24' : `24${i}`,
+					name: 'Bayshore / Carlingwood <> Dunrobin / Carp / Stittsville / Place d’Orléans',
+					observation_count: 1000 + i,
+					severe_count: 900 - 10 * i,
+					severe_pct: Math.round((1000 * (900 - 10 * i)) / (1000 + i)) / 10,
+					wilson_lo: 5 * (i + 1),
+					wilson_hi: 5 * (i + 1) + 10,
+				})),
+				{
+					rank: 1,
+					type: 'stop',
+					id: '52095',
+					name: 'Station Berri-UQAM / Sainte-Catherine Est (côté nord)',
+					observation_count: 64,
+					severe_count: 60,
+					severe_pct: 93.8,
+				},
+			],
+			tray: [{ type: 'stop', id: '5581', name: 'Doctor Leach / Ad. 5581', observation_count: 2 }],
+			total_ranked_routes: 173,
+			total_ranked_stops: 4930,
+			tray_total: 1,
+		},
+	],
+};
+
+for (const locale of ['en', 'fr'] as const)
+	test(`${locale} hotspots rows keep whole names, 44 px targets and a still page`, async ({
+		page,
+	}) => {
+		await page.clock.setFixedTime(Date.parse('2026-06-15T12:00:30Z'));
+		let release = (): void => {};
+		const held = new Promise<void>((resolve) => (release = resolve));
+		await page.route('**/v1/**', async (route) => {
+			const url = new URL(route.request().url());
+			if (url.pathname.endsWith('/historic/hotspots.json')) {
+				await held;
+				return route.fulfill({ json: hotspotsWeek });
+			}
+			url.pathname = `/__layout/fresh${url.pathname}`;
+			await route.fulfill({ response: await route.fetch({ url: url.href }) });
+		});
+		await page.setViewportSize({ width: 320, height: 900 });
+		await page.goto(`${localizeHref('/hotspots', locale)}?provider=stm`);
+		const purpose = page.getByText(
+			locale === 'en'
+				? 'Lines and stops to investigate in the published record.'
+				: 'Des lignes et des arrêts à examiner dans le bilan publié.',
+		);
+		await expect(purpose).toBeVisible();
+		// The shared header's stamp may wrap once it is known; the page body keeps its place below it.
+		const header = page.locator('[data-slot="article-header"]');
+		const offset = async () =>
+			(await purpose.boundingBox())!.y -
+			(await header.boundingBox())!.y -
+			(await header.boundingBox())!.height;
+		const before = await offset();
+		release();
+		const rows = page.locator('[data-slot="hotspot-rows"] > li > button');
+		await expect(rows).toHaveCount(7);
+		expect(Math.abs((await offset()) - before), 'page body below the header').toBeLessThan(1);
+
+		// This spec owns its widths: the two phones, a tablet and the desktop split.
+		for (const width of [320, 390, 768, 1280]) {
+			await page.setViewportSize({ width, height: 900 });
+			await page.evaluate(() => document.fonts.ready);
+			const at = `${locale} ${width}px`;
+			expect(
+				await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+				`${at}: no page-wide horizontal scroll`,
+			).toBe(true);
+			for (const row of await rows.all()) {
+				const box = (await row.boundingBox())!;
+				expect(box.height, `${at}: row target`).toBeGreaterThanOrEqual(44);
+				expect(box.x + box.width, `${at}: row inside the viewport`).toBeLessThanOrEqual(width);
+				expect(
+					await row
+						.locator('[data-slot="hotspot-row-name"]')
+						.evaluate((name) => name.scrollWidth <= name.clientWidth + 1),
+					`${at}: whole name`,
+				).toBe(true);
+			}
+			const pane = page.locator('[data-slot="hotspot-evidence-pane"]');
+			if (width >= 1280) {
+				await expect(pane, `${at}: side pane`).toBeVisible();
+				await expect(rows.first()).toHaveAttribute('aria-pressed', 'true');
+				continue;
+			}
+			await expect(pane, `${at}: no side pane`).toBeHidden();
+			await expect(rows.first()).toHaveAttribute('aria-expanded', /true|false/);
+			if ((await rows.first().getAttribute('aria-expanded')) === 'false')
+				await rows.first().click();
+			const evidence = page.locator('[data-slot="hotspot-row-evidence"]:not([hidden])');
+			await expect(evidence).toBeVisible();
+			for (const action of await evidence.locator('a, button').all()) {
+				const box = (await action.boundingBox())!;
+				expect(box.height, `${at}: evidence action target`).toBeGreaterThanOrEqual(44);
+				expect(box.x + box.width, `${at}: evidence action inside`).toBeLessThanOrEqual(width);
+			}
+		}
+	});
