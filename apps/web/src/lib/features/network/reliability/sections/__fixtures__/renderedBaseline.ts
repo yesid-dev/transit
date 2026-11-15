@@ -26,8 +26,28 @@ const snapshot = join(
 const generatedToken = () => /\bc[1-9]\d*\b/g;
 // Svelte cssHash emits svelte-${(hash >>> 0).toString(36)}: canonical unsigned base36.
 const scopeToken = () => /(?<![\w-])svelte-(?:0|[1-9a-z][0-9a-z]{0,6})(?![\w-])/g;
-const readRecords = () =>
-	readFileSync(snapshot, 'utf8')
+export interface CaptureConfiguration {
+	sha: string;
+	tree: string;
+	snapshot: string;
+	modeEnvironment: string;
+	artifactsEnvironment: string;
+	inventory: string[];
+	selector: string;
+	identity: string;
+}
+const networkConfiguration: CaptureConfiguration = {
+	sha,
+	tree,
+	snapshot,
+	inventory,
+	modeEnvironment: 'NETWORK_RENDER_MODE',
+	artifactsEnvironment: 'NETWORK_RENDER_ARTIFACTS',
+	selector: '[data-network-section]',
+	identity: 'data-network-section',
+};
+const readRecords = (snapshotPath = snapshot) =>
+	readFileSync(snapshotPath, 'utf8')
 		.trim()
 		.split('\n')
 		.map((line) => JSON.parse(line));
@@ -65,9 +85,13 @@ export function captureEnvironment(width = 1280): void {
 	expect(window.matchMedia('(min-width: 1024px)').matches).toBe(width >= 1024);
 }
 
-export function baselineInventory(prefix: string, keys: string[]): void {
-	if (process.env.NETWORK_RENDER_MODE === 'capture') return;
-	const records = readRecords();
+export function baselineInventory(
+	prefix: string,
+	keys: string[],
+	config = networkConfiguration,
+): void {
+	if (process.env[config.modeEnvironment] === 'capture') return;
+	const records = readRecords(config.snapshot);
 	expect(
 		records
 			.filter((entry) => entry.key.startsWith(prefix))
@@ -99,7 +123,12 @@ export function unreachableBaseline(key: string): void {
 	}
 }
 
-export function renderedBaseline(key: string, container: HTMLElement): void {
+export function renderedBaseline(
+	key: string,
+	container: HTMLElement,
+	config = networkConfiguration,
+): void {
+	const { sha, tree, inventory } = config;
 	const raw = container.outerHTML;
 	const attributes = new Set([
 		'id',
@@ -133,8 +162,8 @@ export function renderedBaseline(key: string, container: HTMLElement): void {
 	};
 	const rawCapture: Record<string, string | null> = { surface: raw };
 	for (const name of inventory) capture[name] = rawCapture[name] = null;
-	for (const tile of container.querySelectorAll<HTMLElement>('[data-network-section]')) {
-		const name = tile.dataset.networkSection!;
+	for (const tile of container.querySelectorAll<HTMLElement>(config.selector)) {
+		const name = tile.getAttribute(config.identity)!;
 		expect(inventory, `unexpected tile ${name}`).toContain(name);
 		expect(capture[name], `duplicate tile ${name}`).toBeNull();
 		rawCapture[name] = tile.outerHTML;
@@ -149,10 +178,10 @@ export function renderedBaseline(key: string, container: HTMLElement): void {
 			Object.entries(capture).map(([name, html]) => [name, fingerprint(html)]),
 		),
 	};
-	const directory = process.env.NETWORK_RENDER_ARTIFACTS;
-	const mode = process.env.NETWORK_RENDER_MODE;
+	const directory = process.env[config.artifactsEnvironment];
+	const mode = process.env[config.modeEnvironment];
 	if (mode === 'capture' || mode === 'compare') {
-		if (!directory) throw new Error('NETWORK_RENDER_ARTIFACTS is required');
+		if (!directory) throw new Error(`${config.artifactsEnvironment} is required`);
 		mkdirSync(directory, { recursive: true });
 		for (const [name, html] of Object.entries(capture)) {
 			const path = join(directory, `${key}.${name}.html`);
@@ -172,7 +201,7 @@ export function renderedBaseline(key: string, container: HTMLElement): void {
 			return;
 		}
 	}
-	const records = readRecords();
+	const records = readRecords(config.snapshot);
 	expect(
 		records.filter((entry) => entry.key === key),
 		`baseline case ${key}`,
