@@ -1,7 +1,9 @@
 """Read-only history planning and sequential, resumable archive copies."""
 
-from collections.abc import Callable, Sequence
-from dataclasses import asdict, dataclass
+import shutil
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from time import monotonic
@@ -21,6 +23,11 @@ from transit_ops.lake.table_copy import copy_table_window
 from transit_ops.lake.table_export import WindowSpec, validate_timeout
 from transit_ops.settings import get_settings
 
+READ_MARGIN_S = 300
+WORK_SPACE_FLOOR = 10 * 1024**3
+# "transit" / "lake": one session owns the complete plan and copy run.
+MIGRATION_LOCK_KEY = (1953653102, 1818323813)
+
 
 class MigrationRefused(ValueError):
     def __init__(self, reason: str, detail: object = "") -> None:
@@ -39,12 +46,62 @@ class MigrationPlan:
     inventory: Inventory
     windows: tuple[PlannedWindow, ...]
     skipped_open: tuple[WindowSpec, ...]
+    database_target: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
 class MigrationSummary:
     outcomes: dict[str, dict[str, int]]
     failure: dict[str, object] | None
+    storage_target: dict[str, object] = field(default_factory=dict)
+
+
+@contextmanager
+def migration_lock(connection: Connection[Any]) -> Iterator[None]:
+    if not connection.autocommit or connection.info.transaction_status != TransactionStatus.IDLE:
+        raise MigrationRefused("not_read_only")
+    row = connection.execute("SELECT pg_try_advisory_lock(%s, %s)", MIGRATION_LOCK_KEY).fetchone()
+    if row != (True,):
+        raise MigrationRefused("migration_running", "transit lake migration session lock")
+    try:
+        yield
+    finally:
+        connection.execute("SELECT pg_advisory_unlock(%s, %s)", MIGRATION_LOCK_KEY)
+
+
+def require_read_reserve(not_after: datetime, timeout: int) -> None:
+    if datetime.now(UTC) + timedelta(seconds=2 * timeout + READ_MARGIN_S) >= not_after:
+        raise MigrationRefused("not_after", "insufficient reserve for export, recheck and margin")
+
+
+class _PlanReads:
+    def __init__(
+        self, connection: Connection[Any], budget: int, timeout: int, not_after: datetime | None
+    ) -> None:
+        self.connection, self.timeout = connection, timeout
+        self.end = monotonic() + budget
+        self.not_after = not_after
+
+    def remaining(self) -> float:
+        left = self.end - monotonic()
+        if self.not_after is not None:
+            left = min(left, (self.not_after - datetime.now(UTC)).total_seconds())
+        if left <= 0:
+            raise MigrationRefused("plan_budget")
+        return left
+
+    def execute(self, statement: Any, values: Any = None) -> Any:
+        milliseconds = max(1, int(min(self.remaining(), self.timeout) * 1000))
+        self.connection.execute(
+            "SELECT set_config('statement_timeout', %s, true)", (str(milliseconds),)
+        )
+        try:
+            result = self.connection.execute(statement, values)
+        except Exception:
+            self.remaining()
+            raise
+        self.remaining()
+        return result
 
 
 class _CatalogResult:
@@ -125,31 +182,96 @@ def _editions(
     source: TableSource,
     provider: str,
 ) -> list[str]:
-    ids = connection.execute(
-        sql.SQL("SELECT DISTINCT {} FROM {}{}").format(
-            sql.Identifier(cast(str, source.window_column)), table, where
-        ),
-        values,
+    candidates = connection.execute(
+        "SELECT dataset_version_id, COALESCE(checksum_sha256, content_hash) "
+        "FROM core.dataset_versions WHERE provider_id=%s ORDER BY dataset_version_id",
+        (provider,),
     ).fetchall()
     keys = []
-    for (edition,) in ids:
-        matches = connection.execute(
-            "SELECT COALESCE(checksum_sha256, content_hash) FROM core.dataset_versions "
-            "WHERE dataset_version_id=%s AND provider_id=%s",
-            (edition, provider),
-        ).fetchall()
-        if len(matches) != 1 or not isinstance(matches[0][0], str):
-            raise MigrationRefused("edition_identity", (source.table, provider, edition))
-        checksum = matches[0][0]
-        count = connection.execute(
-            "SELECT count(*) FROM core.dataset_versions WHERE provider_id=%s "
-            "AND COALESCE(checksum_sha256, content_hash)=%s",
-            (provider, checksum),
+    for edition, checksum in candidates:
+        present = connection.execute(
+            sql.SQL("SELECT EXISTS (SELECT 1 FROM {}{} AND {}=%s)").format(
+                table, where, sql.Identifier(cast(str, source.window_column))
+            ),
+            (*values, edition),
         ).fetchone()
-        if count != (1,):
+        if present != (True,):
+            continue
+        if not isinstance(checksum, str) or sum(c == checksum for _, c in candidates) != 1:
             raise MigrationRefused("edition_identity", (source.table, provider, edition))
         keys.append(checksum)
     return sorted(keys)
+
+
+def _groups(
+    connection: Connection[Any],
+    catalog: CatalogTable,
+    source: TableSource,
+    providers: Sequence[str] | None,
+) -> list[tuple[str, int]]:
+    has_provider = any(c.name == "provider_id" for c in catalog.columns)
+    candidates = (
+        connection.execute("SELECT provider_id FROM core.providers ORDER BY provider_id").fetchall()
+        if has_provider
+        else [("_shared",)]
+    )
+    table = sql.Identifier(*source.table.split("."))
+    groups = []
+    for (provider,) in candidates:
+        validate_provider_id(provider)
+        if providers is not None and provider not in providers:
+            continue
+        predicate = sql.SQL("provider_id=%s") if has_provider else sql.SQL("true")
+        values = (provider,) if has_provider else ()
+        if source.revision_column:
+            column = sql.Identifier(source.revision_column)
+            # The declared revision tables have (provider_id, revision, ...) indexes.
+            revisions = connection.execute(
+                sql.SQL(
+                    "WITH RECURSIVE revisions(r) AS (SELECT min({c}) FROM {t} WHERE {p} "
+                    "UNION ALL SELECT (SELECT min({c}) FROM {t} WHERE {p} AND {c}>r) "
+                    "FROM revisions WHERE r IS NOT NULL) "
+                    "SELECT r FROM revisions WHERE r IS NOT NULL"
+                ).format(c=column, t=table, p=predicate),
+                values + values,
+            ).fetchall()
+        else:
+            edition = get_dataset(catalog.name).archive_grain == "edition"
+            present = (
+                not has_provider
+                or edition
+                or connection.execute(
+                    sql.SQL("SELECT EXISTS (SELECT 1 FROM {} WHERE {})").format(table, predicate),
+                    values,
+                ).fetchone()
+                == (True,)
+            )
+            revisions = [(source.fixed_revision,)] if present else []
+        for (revision,) in revisions:
+            if type(revision) is not int or revision < 0:
+                raise MigrationRefused("revision", (source.table, revision))
+            groups.append((provider, revision))
+    return groups
+
+
+def _null_window(
+    connection: Connection[Any],
+    catalog: CatalogTable,
+    source: TableSource,
+    table: sql.Identifier,
+    where: sql.Composed,
+    values: tuple[object, ...],
+) -> None:
+    column = next(c for c in catalog.columns if c.name == source.window_column)
+    if not column.not_null:
+        missing = connection.execute(
+            sql.SQL("SELECT EXISTS (SELECT 1 FROM {}{} AND {} IS NULL)").format(
+                table, where, sql.Identifier(column.name)
+            ),
+            values,
+        ).fetchone()
+        if missing == (True,):
+            raise MigrationRefused("missing_window", catalog.name)
 
 
 def _table_windows(
@@ -165,28 +287,17 @@ def _table_windows(
     source = cast(TableSource, dataset.source)
     table = sql.Identifier(*source.table.split("."))
     has_provider = any(c.name == "provider_id" for c in catalog.columns)
-    provider_expr = sql.Identifier("provider_id") if has_provider else sql.Literal("_shared")
-    revision_expr = (
-        sql.Identifier(source.revision_column)
-        if source.revision_column
-        else sql.Literal(source.fixed_revision)
-    )
-    groups = (
-        connection.execute(
-            sql.SQL("SELECT DISTINCT {}, {} FROM {}").format(provider_expr, revision_expr, table)
-        ).fetchall()
-        if has_provider or source.revision_column
-        else [("_shared", source.fixed_revision)]
-    )
     windows, skipped = [], []
-    for provider, revision in sorted(groups):
-        validate_provider_id(provider)
-        if providers is not None and provider not in providers:
-            continue
-        if type(revision) is not int or revision < 0:
-            raise MigrationRefused("revision", (source.table, revision))
-        where = sql.SQL(" WHERE {}=%s AND {}=%s").format(provider_expr, revision_expr)
-        values = (provider, revision)
+    for provider, revision in _groups(connection, catalog, source, providers):
+        predicates: list[sql.Composable] = []
+        values: list[object] = []
+        if has_provider:
+            predicates.append(sql.SQL("provider_id=%s"))
+            values.append(provider)
+        if source.revision_column:
+            predicates.append(sql.SQL("{}=%s").format(sql.Identifier(source.revision_column)))
+            values.append(revision)
+        where = sql.SQL(" WHERE ") + sql.SQL(" AND ").join(predicates or [sql.SQL("true")])
         if source.window_column is None:
             windows.append(
                 PlannedWindow(
@@ -194,36 +305,30 @@ def _table_windows(
                     "whole_state",
                 )
             )
-        elif dataset.archive_grain == "edition":
+            continue
+        _null_window(connection, catalog, source, table, where, tuple(values))
+        if dataset.archive_grain == "edition":
             windows.extend(
                 PlannedWindow(WindowSpec(catalog.name, provider, key, revision), "closed")
-                for key in _editions(connection, table, where, values, source, provider)
+                for key in _editions(connection, table, where, tuple(values), source, provider)
             )
-        else:
-            row = connection.execute(
-                sql.SQL(
-                    "SELECT min({}), max({}), count(*) FILTER (WHERE {} IS NULL) FROM {}{}"
-                ).format(
-                    sql.Identifier(source.window_column),
-                    sql.Identifier(source.window_column),
-                    sql.Identifier(source.window_column),
-                    table,
-                    where,
-                ),
-                values,
-            ).fetchone()
-            assert row is not None
-            first, last, missing = row
-            if missing:
-                raise MigrationRefused("missing_window", catalog.name)
-            if first is not None:
-                first = first.date() if isinstance(first, datetime) else first
-                last = last.date() if isinstance(last, datetime) else last
-                planned, opened = _dated_windows(
-                    catalog.name, provider, revision, first, last, now, include_open, open_days
-                )
-                windows.extend(planned)
-                skipped.extend(opened)
+            continue
+        row = connection.execute(
+            sql.SQL("SELECT min({c}), max({c}) FROM {t}{w}").format(
+                c=sql.Identifier(source.window_column), t=table, w=where
+            ),
+            tuple(values),
+        ).fetchone()
+        assert row is not None
+        first, last = row
+        if first is not None:
+            first = first.date() if isinstance(first, datetime) else first
+            last = last.date() if isinstance(last, datetime) else last
+            planned, opened = _dated_windows(
+                catalog.name, provider, revision, first, last, now, include_open, open_days
+            )
+            windows.extend(planned)
+            skipped.extend(opened)
     return windows, skipped
 
 
@@ -243,11 +348,18 @@ def plan_migration(
     providers: Sequence[str] | None,
     statement_timeout_s: int,
     now_utc: datetime | None = None,
+    plan_budget_s: int = 300,
+    not_after: datetime | None = None,
 ) -> MigrationPlan:
     """Pin to midnight UTC unless an explicit instant on today_utc is supplied."""
     validate_timeout(statement_timeout_s)
     if not connection.autocommit or connection.info.transaction_status != TransactionStatus.IDLE:
         raise MigrationRefused("not_read_only")
+    if type(plan_budget_s) is not int or not 1 <= plan_budget_s <= 1800:
+        raise MigrationRefused("plan_budget")
+    if not_after is not None and not_after.utcoffset() != timedelta(0):
+        raise MigrationRefused("not_after_utc")
+    reads = _PlanReads(connection, plan_budget_s, statement_timeout_s, not_after)
     now = now_utc or datetime.combine(today_utc, time(), UTC)
     if now.utcoffset() != timedelta(0) or now.date() != today_utc:
         raise MigrationRefused("clock")
@@ -267,13 +379,19 @@ def plan_migration(
             statement_timeout=str(statement_timeout_s * 1000),
         )
         for key, value in guards.items():
-            connection.execute("SELECT set_config(%s, %s, true)", (key, value))
-        catalog = read_catalog(cast(CatalogConnection, _CatalogAdapter(connection)))
+            reads.execute("SELECT set_config(%s, %s, true)", (key, value))
+        catalog = read_catalog(
+            cast(CatalogConnection, _CatalogAdapter(cast(Connection[Any], reads)))
+        )
         inventory = take_inventory(catalog)
         if not inventory.complete:
             raise MigrationRefused("inventory_incomplete", asdict(inventory))
         if datasets is not None and set(datasets) - set(inventory.copied):
             raise MigrationRefused("datasets", sorted(set(datasets) - set(inventory.copied)))
+        identity = reads.execute(
+            "SELECT current_database(), current_user, inet_server_addr()::text"
+        ).fetchone()
+        target = dict(zip(("database", "user", "server_addr"), identity, strict=True))
         windows, skipped = [], []
         for table in catalog:
             if table.name not in inventory.copied or (
@@ -281,7 +399,7 @@ def plan_migration(
             ):
                 continue
             planned, opened = _table_windows(
-                connection,
+                cast(Connection[Any], reads),
                 table,
                 today_utc,
                 now,
@@ -291,7 +409,8 @@ def plan_migration(
             )
             windows.extend(planned)
             skipped.extend(opened)
-    return MigrationPlan(inventory, tuple(sorted(windows, key=_order)), tuple(skipped))
+    reads.remaining()
+    return MigrationPlan(inventory, tuple(sorted(windows, key=_order)), tuple(skipped), target)
 
 
 def run_migration(
@@ -304,25 +423,34 @@ def run_migration(
     statement_timeout_s: int,
     not_after: datetime,
     log: Callable[[dict[str, object]], None],
+    storage_target: dict[str, object] | None = None,
 ) -> MigrationSummary:
     validate_timeout(statement_timeout_s)
     if not_after.utcoffset() != timedelta(0):
         raise MigrationRefused("not_after_utc")
     if not plan.inventory.complete:
         raise MigrationRefused("inventory_incomplete")
+    target = storage_target or {
+        "storage_backend": getattr(storage, "storage_backend", "unspecified"),
+        "storage_location": str(
+            getattr(storage, "bucket", getattr(storage, "root", "unspecified"))
+        ),
+    }
     outcomes: dict[str, dict[str, int]] = {}
     for window in plan.windows:
-        record: dict[str, object] = {"spec": asdict(window.spec)}
+        record: dict[str, object] = {"spec": asdict(window.spec), **target}
         started = monotonic()
         try:
-            if datetime.now(UTC) >= not_after:
-                raise MigrationRefused("not_after")
+            require_read_reserve(not_after, statement_timeout_s)
+            if shutil.disk_usage(work_dir).free < WORK_SPACE_FLOOR:
+                raise MigrationRefused(
+                    "work_space", f"requires at least {WORK_SPACE_FLOOR} free bytes"
+                )
             from tempfile import mkdtemp
 
             directory = Path(mkdtemp(prefix="window-", dir=work_dir))
             with connect() as connection:
-                if datetime.now(UTC) >= not_after:
-                    raise MigrationRefused("not_after")
+                require_read_reserve(not_after, statement_timeout_s)
                 result = copy_table_window(
                     connection,
                     storage,
@@ -345,7 +473,7 @@ def run_migration(
                 seconds=monotonic() - started,
             )
             log(record)
-            return MigrationSummary(outcomes, record)
+            return MigrationSummary(outcomes, record, target)
         record["seconds"] = monotonic() - started
         log(record)
         group = (
@@ -355,4 +483,4 @@ def run_migration(
         )
         counts = outcomes.setdefault(group, {})
         counts[result.outcome] = counts.get(result.outcome, 0) + 1
-    return MigrationSummary(outcomes, None)
+    return MigrationSummary(outcomes, None, target)

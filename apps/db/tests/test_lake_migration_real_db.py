@@ -154,3 +154,43 @@ def test_execute_copies_every_planned_window_to_local_storage_with_proofs(
         "edition": {"already_copied": 1},
     }
     assert before == {key: storage.read_bytes(key) for key in storage.list_keys("archive/")}
+
+
+def test_session_lock_refuses_a_second_migration(source, real_db_engine):
+    from transit_ops.lake.migration import MigrationRefused, migration_lock
+
+    with psycopg.connect(**guarded_connect_kwargs(real_db_engine.url), autocommit=True) as other:
+        with migration_lock(source):
+            with pytest.raises(MigrationRefused, match="migration_running"):
+                with migration_lock(other):
+                    pytest.fail("second migration acquired the session lock")
+        with migration_lock(other):
+            assert other.execute("SELECT 1").fetchone() == (1,)
+
+
+def test_revision_bounds_use_each_declared_revision(source, history, monkeypatch):
+    from dataclasses import replace
+
+    names, provider = history
+    table = names[0]
+    source.execute(f"ALTER TABLE {table} ADD COLUMN revision int NOT NULL DEFAULT 0")
+    source.execute(f"ALTER TABLE {table} DROP CONSTRAINT {table.split('.')[1]}_pkey")
+    source.execute(f"ALTER TABLE {table} ADD PRIMARY KEY (provider_id, revision, id)")
+    source.execute(f"UPDATE {table} SET revision=7 WHERE id=1")
+    declared = datasets.get_dataset(table)
+    updated = replace(
+        declared,
+        source=replace(
+            declared.source,
+            revision_column="revision",
+            key_columns=("provider_id", "revision", "id"),
+        ),
+    )
+    declarations = {**datasets.HISTORY_DATASETS, table: updated}
+    monkeypatch.setattr(datasets, "HISTORY_DATASETS", declarations)
+    monkeypatch.setattr(inventory, "HISTORY_DATASETS", declarations)
+    result = plan(source, [table], [provider])
+    assert [(w.spec.window_key, w.spec.revision) for w in result.windows] == [
+        ("2026-05", 0),
+        ("2026-06", 7),
+    ]
