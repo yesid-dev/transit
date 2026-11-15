@@ -479,7 +479,6 @@ def test_wrong_rescue_identity_is_refused(tmp_path):
 
 def test_cli_prints_one_json_line_with_local_receipts(tmp_path, monkeypatch):
     from contextlib import nullcontext
-    from types import SimpleNamespace
 
     from typer.testing import CliRunner
 
@@ -493,11 +492,19 @@ def test_cli_prints_one_json_line_with_local_receipts(tmp_path, monkeypatch):
 
     storage = store(tmp_path)
     bootstrap(storage)
+    archive(
+        storage,
+        "core.providers",
+        "2026-11",
+        "SELECT 'sample' AS provider_id, 'America/Toronto' AS timezone",
+    )
 
     class Builder(OccupancyCrowdingBuilder):
         family_id = "headways"
 
         def inputs(self, request):
+            assert request.timezone == "America/Toronto"
+            assert request.as_of_utc == datetime(2026, 11, 2, 7, tzinfo=UTC)
             return ()
 
     class Catalog:
@@ -518,12 +525,15 @@ def test_cli_prints_one_json_line_with_local_receipts(tmp_path, monkeypatch):
     monkeypatch.setattr(
         providers,
         "load_providers",
-        lambda: {
-            "sample": SimpleNamespace(timezone="America/Toronto"),
-        },
+        lambda: pytest.fail("local declarations read"),
     )
     monkeypatch.setattr(
-        replay, "postgres_input_needs", lambda *_: (InputNeed("core.dataset_versions", "all"),)
+        replay,
+        "postgres_input_needs",
+        lambda *_: (
+            InputNeed("core.dataset_versions", "all"),
+            InputNeed("core.providers", "all"),
+        ),
     )
     get_settings.cache_clear()
     root = tmp_path / "inputs"
@@ -545,7 +555,10 @@ def test_cli_prints_one_json_line_with_local_receipts(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert len(result.stdout.splitlines()) == 1
     value = json.loads(result.stdout)
-    assert value["needs"] == [{"relation": "core.dataset_versions", "window": "all"}]
+    assert value["needs"] == [
+        {"relation": "core.dataset_versions", "window": "all"},
+        {"relation": "core.providers", "window": "all"},
+    ]
     assert value["bytes"] > 0
     assert value["receipts"][0]["rows_kept"] == 1
 
@@ -606,8 +619,6 @@ def test_requested_unreplayable_family_refuses_before_any_storage(
 ):
     from typer.testing import CliRunner
 
-    from transit_ops.batch import input_sources
-    from transit_ops.batch.build import BuildRequest
     from transit_ops.batch.families import headways
     from transit_ops.batch.families.occupancy_crowding import OccupancyCrowdingBuilder
     from transit_ops.commands.batch import app
@@ -620,11 +631,6 @@ def test_requested_unreplayable_family_refuses_before_any_storage(
             return (InputNeed("silver.rt_entities", "all"),)
 
     monkeypatch.setattr(headways, "builder", Builder() if working_only else None)
-    monkeypatch.setattr(
-        input_sources,
-        "replay_request",
-        lambda *a: BuildRequest("sample", (datetime(2026, 11, 1).date(),), STAMP, 14, 7, "UTC"),
-    )
     monkeypatch.setattr(history, "history_storage", lambda *a: pytest.fail("storage opened"))
     result = CliRunner().invoke(
         app,
@@ -634,6 +640,10 @@ def test_requested_unreplayable_family_refuses_before_any_storage(
             "sample",
             "--date",
             "2026-11-01",
+            "--timezone",
+            "UTC",
+            "--as-of",
+            STAMP.isoformat(),
             "--inputs",
             str(tmp_path),
             "--family",

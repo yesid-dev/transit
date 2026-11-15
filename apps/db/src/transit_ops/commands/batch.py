@@ -40,8 +40,13 @@ def fetch_command(
     """Fetch proven inputs using the guarded disposable database's FK catalog."""
     import json
 
+    from transit_ops.batch.archive_provider import (
+        archived_request,
+        assert_final_provider,
+        replay_identity,
+    )
     from transit_ops.batch.editions import reads_editions
-    from transit_ops.batch.input_sources import fetch_from_catalog, replay_request
+    from transit_ops.batch.input_sources import fetch_from_catalog
     from transit_ops.batch.replay import family_input_needs, replay_builders
     from transit_ops.history.storage import history_storage
     from transit_ops.settings import get_settings
@@ -49,8 +54,18 @@ def fetch_command(
     scope = None
     try:
         settings = get_settings()
+        local_date, stamp = replay_identity(provider, day, as_of)
+        builders = tuple(replay_builders(family or []).values())
         if timezone is None:
-            request = replay_request(provider, day, as_of, settings)
+            scope = history_storage(settings)
+            request = archived_request(
+                scope.resolve(settings.BRONZE_STORAGE_BACKEND),
+                inputs,
+                provider,
+                local_date,
+                stamp,
+                settings,
+            )
         else:
             from transit_ops.batch.build import BuildRequest
 
@@ -65,21 +80,18 @@ def fetch_command(
                 settings.GOLD_REPORTING_OPEN_WINDOW_DAYS,
                 timezone,
             )
-        builders = tuple(replay_builders(family or []).values())
         family_input_needs(
             tuple(b for b in builders if not reads_editions((b.family_id,))), request
         )
-        scope = history_storage(settings)
+        if scope is None:
+            scope = history_storage(settings)
         result = fetch_from_catalog(
             scope.resolve(settings.BRONZE_STORAGE_BACKEND),
             inputs,
             request,
             builders,
         )
-        if timezone is not None:
-            from transit_ops.batch.daily_inputs import assert_timezone
-
-            assert_timezone(inputs, provider, timezone)
+        assert_final_provider(inputs, request)
         typer.echo(json.dumps(result, sort_keys=True, separators=(",", ":")))
     except Exception as error:
         typer.echo(str(error), err=True)
