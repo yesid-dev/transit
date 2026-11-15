@@ -13,8 +13,8 @@ import duckdb
 from transit_ops.history.poll_record import CaptureEntry, PollEntry, ProcessingEntry
 from transit_ops.live.settings import LaneSettings
 
-# Version 1 files must be rebuilt from retained source evidence, never adopted in place.
-SCHEMA_VERSION: Final = 2
+# Earlier files must be rebuilt from retained source evidence, never adopted in place.
+SCHEMA_VERSION: Final = 3
 _TYPES = {int: "BIGINT", bool: "BOOLEAN", str: "VARCHAR", datetime: "TIMESTAMP"}
 _OWNERS: set[Path] = set()
 _OWNER_LOCK = RLock()
@@ -110,6 +110,18 @@ class LocalFile:
 
     def _initialize(self, provider: str) -> None:
         tables = {"meta": "schema_version INTEGER, provider_id VARCHAR"}
+        tables.update(
+            {
+                "segment_clock": "next_seq BIGINT NOT NULL CHECK(next_seq > 0)",
+                "segment_exports": "first_seq BIGINT PRIMARY KEY, last_seq BIGINT NOT NULL, "
+                "manifest VARCHAR NOT NULL, completed BOOLEAN NOT NULL",
+                "segment_fact_members": "provider_id VARCHAR NOT NULL, "
+                "endpoint_key VARCHAR NOT NULL, "
+                "capture_row_id BIGINT NOT NULL, application_sha256 VARCHAR NOT NULL, "
+                "segment_seq BIGINT NOT NULL, "
+                "PRIMARY KEY(provider_id, endpoint_key, capture_row_id)",
+            }
+        )
         for table, kind, key in (
             ("polls", PollEntry, "ingestion_run_id"),
             ("captures", CaptureEntry, "capture_row_id"),
@@ -141,8 +153,24 @@ class LocalFile:
                 conn.execute("DROP TABLE _local_expected")
             if fresh:
                 conn.execute("INSERT INTO meta VALUES (?, ?)", [SCHEMA_VERSION, provider])
+                conn.execute("INSERT INTO segment_clock VALUES (1)")
             if conn.execute("SELECT * FROM meta").fetchall() != [(SCHEMA_VERSION, provider)]:
                 raise LocalFileMismatch(f"{self._path}: meta provider or schema version differs")
+
+    def verify_shape(self) -> None:
+        """Recheck exact base/segment shapes and collations without changing state.
+
+        Requiring existing metadata prevents initialization's fresh-file branch;
+        the shared verifier can only create and drop its temporary shape probes.
+        """
+        with self.transaction() as conn:
+            try:
+                rows = conn.execute("SELECT schema_version, provider_id FROM meta").fetchall()
+            except duckdb.Error as exc:
+                raise LocalFileMismatch("meta table missing or incompatible") from exc
+            if len(rows) != 1 or rows[0][0] != SCHEMA_VERSION:
+                raise LocalFileMismatch("meta schema version differs")
+            self._initialize(rows[0][1])
 
     @contextmanager
     def transaction(self) -> Iterator[duckdb.DuckDBPyConnection]:
@@ -195,6 +223,20 @@ class LocalFile:
     def record_polls(self, polls: Sequence[PollEntry], *, endpoint_key: str) -> int:
         return self._record("polls", "ingestion_run_id", polls, endpoint_key)
 
+    def require_committed(self) -> None:
+        """External durability work cannot observe an enclosing uncommitted write."""
+        if self._active:
+            raise LocalFileMismatch("segment_requires_committed_transaction")
+
+    def next_segment_sequence(self) -> int:
+        """Allocate a local record/application sequence inside the owning transaction."""
+        rows = self.connection.execute(
+            "UPDATE segment_clock SET next_seq=next_seq+1 RETURNING next_seq-1"
+        ).fetchall()
+        if len(rows) != 1:
+            raise LocalFileMismatch("segment_clock_invalid")
+        return int(rows[0][0])
+
     def record_captures(self, captures: Sequence[CaptureEntry], *, endpoint_key: str) -> int:
         return self._record("captures", "capture_row_id", captures, endpoint_key)
 
@@ -230,6 +272,8 @@ class LocalFile:
                 if rows and rows != [tuple(values.values())]:
                     raise LocalFileMismatch(f"{table} key {identity!r} differs")
                 if not rows:
+                    values["segment_seq"] = self.next_segment_sequence()
+                    columns += ', "segment_seq"'
                     placeholders = ", ".join("?" for _ in values)
                     conn.execute(
                         f"INSERT INTO {table} ({columns}) VALUES ({placeholders})",
