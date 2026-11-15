@@ -15,7 +15,6 @@ if TYPE_CHECKING:
 app = typer.Typer(help="Replay and compare batch builds.")
 
 
-
 @app.callback(invoke_without_command=True)
 def main(ctx: typer.Context) -> None:
     if ctx.invoked_subcommand is None:
@@ -40,6 +39,7 @@ def fetch_command(
     """Fetch proven inputs using the guarded disposable database's FK catalog."""
     import json
 
+    from transit_ops.batch.editions import reads_editions
     from transit_ops.batch.input_sources import fetch_from_catalog, replay_request
     from transit_ops.batch.replay import family_input_needs, replay_builders
     from transit_ops.history.storage import history_storage
@@ -50,7 +50,9 @@ def fetch_command(
         settings = get_settings()
         request = replay_request(provider, day, as_of, settings)
         builders = tuple(replay_builders(family or []).values())
-        family_input_needs(builders, request)
+        family_input_needs(
+            tuple(b for b in builders if not reads_editions((b.family_id,))), request
+        )
         scope = history_storage(settings)
         result = fetch_from_catalog(
             scope.resolve(settings.BRONZE_STORAGE_BACKEND),
@@ -173,6 +175,24 @@ def _accept_shadow_report(checkpoint: "Checkpoint", path: Path) -> None:
     accept(checkpoint, family_from_payload(matches[0]))
 
 
+def _shadow_editions(request: "BuildRequest", families: list[str]) -> "BuildRequest":
+    from sqlalchemy import text
+
+    from transit_ops.batch.editions import postgres_rows, reads_editions, with_editions
+    from transit_ops.db.connection import make_engine
+    from transit_ops.settings import Settings
+
+    if not reads_editions(families):
+        return request
+    engine = make_engine(Settings())
+    try:
+        with engine.connect() as conn, conn.begin():
+            conn.execute(text("SET TRANSACTION READ ONLY"))
+            return with_editions(request, families, postgres_rows(conn, request.provider_id))
+    finally:
+        engine.dispose()
+
+
 @app.command("shadow-build")
 def shadow_command(
     provider: Annotated[str, typer.Option("--provider")],
@@ -209,18 +229,26 @@ def shadow_command(
             raise ValueError("family builder is not implemented")
         workdir.mkdir(parents=True, exist_ok=True)
         request = _shadow_request(provider, local_date, stamp, inputs, workdir)
+        edition_request = _shadow_editions(request, family)
         storage = get_bronze_storage(Settings(), project_root=Path(__file__).resolve().parents[3])
         store = CheckpointStore(workdir / "checkpoints")
         commit = _code_commit()
         for builder in builders:
             assert isinstance(builder, FamilyBuilder)
+            from transit_ops.batch.editions import reads_editions
+
+            family_request = edition_request if reads_editions((builder.family_id,)) else request
             with PrivateArea(workdir) as area:
                 tables = area / "tables"
                 tables.mkdir()
                 exporter = ShadowBuilder(builder, tables)
                 try:
                     result = run_family(
-                        exporter, request, inputs_root=inputs, workdir=area, code_commit=commit
+                        exporter,
+                        family_request,
+                        inputs_root=inputs,
+                        workdir=area,
+                        code_commit=commit,
                     )
                 except (BatchEngineError, ShadowRefused):
                     raise

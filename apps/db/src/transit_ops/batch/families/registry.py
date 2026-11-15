@@ -10,6 +10,7 @@ class FamilySlot:
     packet_id: str
     display_name: str
     module_path: str
+    reads_editions: bool = False
 
 
 class UnknownFamilyError(LookupError):
@@ -33,6 +34,7 @@ FAMILIES: Mapping[str, FamilySlot] = MappingProxyType(
             "LS2.8",
             "Cancellations and service states",
             "transit_ops.batch.families.cancellations_service_states",
+            reads_editions=True,
         ),
         "headways": FamilySlot("LS2.9", "Headways", "transit_ops.batch.families.headways"),
         "span_skipped_stops": FamilySlot(
