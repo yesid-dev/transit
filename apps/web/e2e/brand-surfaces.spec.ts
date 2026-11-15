@@ -135,8 +135,10 @@ test('homepage ground follows window scrolling and reverses without moving the t
 	await expect(props).toHaveCount(1);
 });
 
-test('the home strip holds its place while its numbers and rankings arrive', async ({ page }) => {
-	// Hold the live and ranking files before the first measurement.
+test('the home cards hold their place while the record, live numbers and rankings arrive', async ({
+	page,
+}) => {
+	// Hold the record, live and ranking files before the first measurement.
 	let release = (): void => {};
 	const held = new Promise<void>((resolve) => (release = resolve));
 	const generated_utc = new Date().toISOString();
@@ -153,6 +155,36 @@ test('the home strip holds its place while its numbers and rankings arrive', asy
 				non_responding: 7,
 				feed_freshness_s: 15,
 				coverage_pct: 90,
+			},
+		});
+	});
+	await page.route('**/v1/stm/historic/network_trend.json', async (route) => {
+		await held;
+		await route.fulfill({
+			json: {
+				generated_utc,
+				weekly: [
+					{ date: '2026-06-01', otp_pct: 91, observation_count: 1_234_567 },
+					{ date: '2026-06-08', otp_pct: 88, observation_count: 1_300_000 },
+				],
+			},
+		});
+	});
+	await page.route('**/v1/stm/historic/history/index.json', async (route) => {
+		await held;
+		await route.fulfill({
+			json: {
+				generated_utc,
+				families: [
+					{
+						family: 'network',
+						selection_mode: 'range',
+						index_path: 'historic/history/network/index.json',
+						first_available_date: '2026-06-01',
+						last_available_date: '2026-06-14',
+						gaps: [],
+					},
+				],
 			},
 		});
 	});
@@ -210,16 +242,19 @@ test('the home strip holds its place while its numbers and rankings arrive', asy
 	const below = page.locator('[data-slot="home-search"]');
 	const documentTop = () =>
 		below.evaluate((element) => element.getBoundingClientRect().top + window.scrollY);
-	await expect(strip.getByRole('term')).toHaveCount(5);
+	await expect(strip.locator('[data-live]')).toHaveCount(2);
 	const before = await documentTop();
 	release();
-	await expect(strip.locator('[data-pulse="in-service"]')).toContainText('321');
+	await expect(strip.locator('[data-live="reporting"]')).toContainText('321');
+	await expect(strip.locator('[data-slot="home-record"]')).toContainText(
+		'88% of readings were on time.',
+	);
 	await expect(strip.getByRole('link', { name: /Sherbrooke/ })).toBeVisible();
 	await expect(strip.getByRole('link', { name: /Fixture stop/ })).toBeVisible();
 	expect(Math.abs((await documentTop()) - before)).toBeLessThanOrEqual(1);
 });
 
-test('the home strip holds its place when the live numbers cannot be loaded', async ({ page }) => {
+test('the home cards hold their place when the live numbers cannot be loaded', async ({ page }) => {
 	// French on the narrowest phone: the longest message in the least room.
 	await page.setViewportSize({ width: 320, height: 800 });
 	let release = (): void => {};
@@ -233,7 +268,7 @@ test('the home strip holds its place when the live numbers cannot be loaded', as
 	const below = page.locator('[data-slot="home-search"]');
 	const documentTop = () =>
 		below.evaluate((element) => element.getBoundingClientRect().top + window.scrollY);
-	await expect(strip.getByRole('term')).toHaveCount(5);
+	await expect(strip.locator('[data-live]')).toHaveCount(2);
 	const before = await documentTop();
 	release();
 	await expect(strip.getByText('Chiffres en direct indisponibles')).toBeVisible();

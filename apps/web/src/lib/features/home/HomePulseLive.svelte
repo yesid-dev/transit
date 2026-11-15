@@ -1,470 +1,268 @@
 <script lang="ts">
-	import { getV1Runtime } from '#lib/v1/runtime.ts';
+	import RefreshIcon from '@lucide/svelte/icons/refresh-cw';
 	import { onMount, untrack } from 'svelte';
-	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
+	import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
 	import { routeFor } from '#lib/nav/index.ts';
+	import { FreshnessStamp } from '#lib/components/surface/index.ts';
+	import { refreshMessage, type RefreshResult } from '#lib/components/shell/refreshResult.ts';
+	import { fmtCount } from '#lib/utils/index.ts';
 	import { liveReader } from '#lib/v1/adapter/index.ts';
 	import { livePresentation } from '#lib/v1/live/livePresentation.ts';
 	import { LIVE_FAMILIES, createLiveStore } from '#lib/v1/live/store.svelte.ts';
-	import { getPublishedReliabilityIndex, getHotspots } from '#lib/v1/repositories/historic.ts';
-	import { createPublishedWeeklyRanking } from '#lib/v1/ranking/published.ts';
-	import { createResource } from '#lib/v1/resource.svelte.ts';
 	import type { Manifest } from '#lib/v1/schemas/index.ts';
-	import { AbsentValue } from '#lib/components/edge/index.ts';
-	import { FreshnessStamp } from '#lib/components/surface/index.ts';
-	import { fmtCount, fmtPct } from '#lib/utils/index.ts';
-	import { formatDateKey } from '#lib/utils/time.ts';
-	import { selectLivePulse, selectWorst, type PulseRank } from './homePulse';
+	import { stampText } from '#lib/v1/stamp.ts';
+	import { selectLivePulse } from './homePulse';
 	import type { HomePulseCopy } from './homePulse.copy';
-
-	const display = transitDisplay();
 
 	interface Props {
 		readonly locale: Locale;
-		readonly manifest: Manifest;
+		/** Absent before the data context boots: the card keeps its shape and its link. */
+		readonly manifest: Manifest | null;
 		readonly copy: HomePulseCopy;
 	}
 
 	let { locale, manifest, copy: t }: Props = $props();
 	const localizeHref = getLocalizeHref();
 
-	/** Rows each ranking shows; the list reserves this height before its data arrives. */
-	const RANK_ROWS = 5;
-
 	// The provider is fixed for this page's lifetime; switching cities remounts the page.
-	const live = untrack(() => createLiveStore(manifest, liveReader, { families: ['network'] }));
+	const live = untrack(() =>
+		manifest ? createLiveStore(manifest, liveReader, { families: ['network'] }) : null,
+	);
 	onMount(() => {
-		live.start();
-		return () => live.stop();
-	});
-	const hotspots = createResource((signal) => getHotspots({ signal }), {
-		key: () => 'home-hotspots',
+		live?.start();
+		return () => live?.stop();
 	});
 
-	const rankingRuntime = getV1Runtime();
-	onMount(() => rankingRuntime.clock.subscribe());
-	const weeklyIndex = createResource((signal) => getPublishedReliabilityIndex({ signal }), {
-		key: () => 'home-weekly-ranking',
-	});
-	const weeklyReader = $derived(createPublishedWeeklyRanking(weeklyIndex.data));
-	const weeklyStops = $derived(weeklyReader('stop', rankingRuntime.clock.serverNow));
-	const pulse = $derived(selectLivePulse(live.network));
-	const liveFailed = $derived(live.familyStates.network.health.state === 'failed-no-data');
-	const worstLines = $derived(
-		selectWorst(hotspots.data, display.directory, {
-			limit: RANK_ROWS,
-			now: rankingRuntime.clock.serverNow,
-		}),
-	);
-	interface PulseRanking {
-		readonly ranks: readonly PulseRank[];
-		readonly through: string | null;
-		readonly settled: boolean;
-		readonly error: unknown;
-		readonly published: boolean;
-	}
-	const lineRanking: PulseRanking = $derived({
-		ranks: worstLines?.lines ?? [],
-		through: worstLines?.through ?? null,
-		settled: hotspots.settled,
-		error: hotspots.error,
-		published: hotspots.data?.by_grain?.some((window) => window.grain === 'week') ?? false,
-	});
-	const stopRanking: PulseRanking = $derived({
-		ranks: (weeklyStops ?? [])
-			.filter((row) => row.state === 'ranked')
-			.slice(0, RANK_ROWS)
-			.map((row) => ({
-				kind: 'stop' as const,
-				id: row.id,
-				label: row.name ?? row.id,
-				severePct: row.severe_pct ?? null,
-			})),
-		through: weeklyStops?.find((row) => row.state === 'ranked')?.window_end ?? null,
-		settled: weeklyIndex.settled,
-		error: weeklyIndex.error,
-		published: (weeklyIndex.data?.weekly_stops?.length ?? 0) > 0,
-	});
+	const pulse = $derived(selectLivePulse(live?.network ?? null));
+	const failed = $derived(live?.familyStates.network.health.state === 'failed-no-data' && !pulse);
 	const presentation = $derived(
-		livePresentation({
-			familyStates: live.familyStates,
-			families: LIVE_FAMILIES,
-			locale,
-			page: 'network',
-			networkFeedAgeAtPublication: live.network?.feed_freshness_s ?? null,
-		}),
+		live
+			? livePresentation({
+					familyStates: live.familyStates,
+					families: LIVE_FAMILIES,
+					locale,
+					page: 'network',
+					networkFeedAgeAtPublication: live.network?.feed_freshness_s ?? null,
+				})
+			: null,
 	);
 
-	const pct = (value: number | null) => fmtPct(value, { locale, suffix: '%' });
-	const count = (value: number) => fmtCount(value, { locale }) ?? String(value);
-	const rankHref = (rank: PulseRank) =>
-		localizeHref(routeFor({ kind: rank.kind, id: rank.id }), locale);
-
-	interface PulseTile {
-		readonly key: string;
-		readonly label: string;
-		readonly value: string | null;
-		/** Present when the tile reserves a line for the count its figure is out of. */
-		readonly of?: string;
-		readonly note: string | null;
-		/**
-		 * Present when the figure can be held back for too few readings. The held wording shares the
-		 * figure's space and its note shares the note's, so the tile keeps one size in every state.
-		 */
-		readonly held?: { readonly shown: boolean; readonly note: string };
+	let refreshing = false;
+	let result = $state<RefreshResult | null>(null);
+	async function refresh(): Promise<void> {
+		if (!live || refreshing) return;
+		refreshing = true;
+		result = null;
+		const shownAtMs = Date.parse(live.network?.generated_utc ?? '');
+		try {
+			await live.refresh({ force: true });
+			result = { kind: 'updated', atMs: Date.now() };
+		} catch {
+			result = { kind: 'failed', shownAtMs: Number.isFinite(shownAtMs) ? shownAtMs : Date.now() };
+		} finally {
+			refreshing = false;
+		}
 	}
 
-	const onTime = $derived(pulse?.onTime ?? null);
-
-	// Labels and notes are known before any data, so every tile has its final size at first paint.
-	const tiles: readonly PulseTile[] = $derived([
+	const count = (value: number | null | undefined) =>
+		value == null ? null : (fmtCount(value, { locale }) ?? null);
+	// French names 0 and 1 in the singular, English only 1.
+	const one = (value: number | null | undefined) =>
+		value != null && (locale === 'fr' ? value < 2 : value === 1);
+	const counts = $derived([
 		{
-			key: 'in-service',
-			label: t.inService,
-			value: pulse ? count(pulse.inService) : null,
+			key: 'reporting',
+			value: count(pulse?.reporting),
+			label: one(pulse?.reporting) ? t.reportingOne : t.reporting,
+			reserve: t.reporting,
 			note: null,
 		},
 		{
-			key: 'on-time',
-			label: t.onTime,
-			value: onTime?.kind === 'share' ? pct(onTime.pct) : null,
-			note: t.onTimeNote,
-			held:
-				onTime?.kind === 'thin'
-					? {
-							shown: true,
-							note: t.onTimeThinNote
-								.replace('{n}', count(onTime.readings))
-								.replace('{total}', count(onTime.inService)),
-						}
-					: { shown: false, note: '' },
-		},
-		{
-			key: 'late',
-			label: t.severeLate,
-			value: pulse?.severeLate == null ? null : count(pulse.severeLate),
-			// Its own line, reserved before the data: a count beside the figure does not fit a phone tile.
-			of: pulse?.severeLate == null ? '' : t.ofCount.replace('{n}', count(pulse.withReading)),
-			note: t.severeLateNote,
-		},
-		{
-			key: 'early',
-			label: t.early,
-			value: pulse?.early == null ? null : count(pulse.early),
-			note: t.earlyNote,
-		},
-		{
-			key: 'not-reporting',
-			label: t.notReporting,
-			value: pulse ? count(pulse.notReporting) : null,
-			note: t.notReportingNote,
+			key: 'silent',
+			value: count(pulse?.silent),
+			label: one(pulse?.silent) ? t.silentOne : t.silent,
+			reserve: t.silent,
+			note: one(pulse?.silent) ? t.silentNoteOne : t.silentNote,
 		},
 	]);
+	// The longest stamp this card can show: before the first reading, or long behind.
+	const stampReserve = $derived(
+		[
+			...(['unknown', 'behind'] as const).map((state) =>
+				stampText(
+					{ form: 'live', subject: 'data', state, ageSeconds: 3_540, generatedUtc: null },
+					locale,
+					manifest?.tz,
+				),
+			),
+			t.liveUnavailable,
+		].reduce((a, b) => (b.length > a.length ? b : a)),
+	);
 </script>
 
-<div class="pulse-live" data-slot="home-pulse-live">
-	<div class="pulse-stamp">
-		{#if liveFailed && !pulse}
-			<p class="pulse-absent" role="status">{t.liveUnavailable}</p>
-		{:else}
-			<FreshnessStamp variant="live" presentation={presentation.stamp} {locale} />
-		{/if}
-	</div>
-	<dl class="pulse-tiles" aria-busy={!pulse && !liveFailed}>
-		{#each tiles as tile (tile.key)}
-			<div class="pulse-tile" data-pulse={tile.key}>
-				<dt>{tile.label}</dt>
-				<dd>
-					<span class="pulse-figure" class:pulse-stack={!!tile.held}>
-						{#if tile.value != null}
-							<span class="pulse-value">{tile.value}</span>
-						{:else if tile.held?.shown}
-							<span class="pulse-held" data-slot="pulse-held">{t.onTimeThin}</span>
-						{:else if pulse}
-							<AbsentValue variant="compact" reason="no-observations" {locale} />
-						{:else}
-							<span class="pulse-value pulse-value--absent" aria-hidden="true">—</span>
-							{#if liveFailed}<span class="sr-only">{t.unavailable}</span>{/if}
-						{/if}
-						{#if tile.held && !tile.held.shown}
-							<span class="pulse-held pulse-reserve" aria-hidden="true">{t.onTimeThin}</span>
-						{/if}
-					</span>
-					{#if tile.note}
-						<span class="pulse-note">
-							{#if tile.of != null}<span class="pulse-of">{tile.of}</span>{/if}
-							{#if tile.held?.shown}
-								<span class="pulse-stack">
-									<span>{tile.held.note}</span>
-									<span class="pulse-reserve" aria-hidden="true">{tile.note}</span>
-								</span>
-							{:else}
-								{tile.note}
-							{/if}
-						</span>
-					{/if}
-				</dd>
-			</div>
-		{/each}
-	</dl>
-</div>
-
-<div class="pulse-worst" data-slot="home-pulse-worst" style:--pulse-rows={RANK_ROWS}>
-	<p class="pulse-worst-note">{t.worstNote}</p>
-	<div class="pulse-worst-lists">
-		{@render rankList(t.worstLines, lineRanking, 'lines')}
-		{@render rankList(t.worstStops, stopRanking, 'stops')}
-	</div>
-	<a class="pulse-more" href={localizeHref('/hotspots', locale)}>{t.allHotspots} →</a>
-</div>
-
-{#snippet rankList(title: string, ranking: PulseRanking, key: string)}
-	<section class="pulse-rank" aria-labelledby={`pulse-${key}`}>
-		<h3 id={`pulse-${key}`}>{title}</h3>
-		<p class="pulse-worst-note pulse-worst-through">
-			{#if ranking.through}{t.worstThrough.replace(
-					'{date}',
-					formatDateKey(ranking.through, locale),
-				)}{/if}
-		</p>
-		<div class="pulse-rank-body" aria-busy={!ranking.settled}>
-			{#if ranking.ranks.length}
-				<ol>
-					{#each ranking.ranks as rank (rank.id)}
-						<li>
-							<a href={rankHref(rank)}>
-								<span class="pulse-rank-name">
-									{#if rank.kind === 'line'}
-										<span class="pulse-rank-text" title={rank.label} aria-hidden="true"
-											>{rank.label}</span
-										>
-										<span class="sr-only">{rank.spoken}</span>
-									{:else}
-										<span class="pulse-rank-text" title={rank.label}>{rank.label}</span>
-									{/if}
-								</span>
-								{#if rank.severePct != null}
-									<!-- The caption above names the measure; each row repeats it for screen readers. -->
-									<span class="pulse-rank-rate" aria-hidden="true">{pct(rank.severePct)}</span>
-									<span class="sr-only"
-										>{t.lateRate.replace('{pct}', pct(rank.severePct) ?? '')}</span
-									>
-								{/if}
-							</a>
-						</li>
-					{/each}
-				</ol>
-			{:else if ranking.error}
-				<p class="pulse-absent" role="status">{t.worstError}</p>
-			{:else if ranking.settled}
-				<p class="pulse-absent" role="status">
-					{ranking.published ? t.worstNotCurrent : t.worstUnavailable}
-				</p>
+<section class="home-live" data-slot="home-pulse-live" aria-labelledby="home-live-title">
+	<h2 id="home-live-title">{transitTerms[locale].liveNow}</h2>
+	<div class="live-head">
+		<div class="slot live-stamp">
+			{#if failed}
+				<p class="live-absent" role="status">{t.liveUnavailable}</p>
+			{:else if presentation}
+				<p><FreshnessStamp variant="live" presentation={presentation.stamp} {locale} /></p>
 			{/if}
+			<p class="reserve" aria-hidden="true" data-reserve={stampReserve}></p>
 		</div>
-	</section>
-{/snippet}
+		<button type="button" class="live-refresh" onclick={refresh} disabled={!live}>
+			<RefreshIcon size={16} strokeWidth={1.8} aria-hidden="true" />
+			{t.refresh}
+		</button>
+	</div>
+	<p class="live-result" aria-live="polite" data-failed={result?.kind === 'failed'}>
+		{#if result}{refreshMessage(result, locale, manifest?.tz)}{/if}
+	</p>
+	<ul class="live-counts" aria-busy={!pulse && !failed}>
+		{#each counts as item (item.key)}
+			<li data-live={item.key}>
+				<span class="live-n">
+					{#if item.value != null}{item.value}{:else}<span aria-hidden="true">—</span
+						>{#if pulse || failed}<span class="sr-only">{t.unavailable}</span>{/if}{/if}
+				</span>
+				<span class="live-t">
+					<span class="slot">
+						<span>{item.label}</span>
+						<span class="reserve" aria-hidden="true" data-reserve={item.reserve}></span>
+					</span>
+					{#if item.note}<span class="live-note">{item.note}</span>{/if}
+				</span>
+			</li>
+		{/each}
+	</ul>
+	<p class="home-card-actions">
+		<a class="home-card-action" href={localizeHref(routeFor({ kind: 'map' }), locale)}
+			>{t.openMap}</a
+		>
+	</p>
+</section>
 
 <style>
-	/*
-	 * Nothing here may change size when data arrives: content below the strip must not move.
-	 * Each slot reserves its final height with a minimum, never by cutting its content off, and each
-	 * live value has a line to itself so no value has to share a phone tile's width.
-	 */
-	.pulse-live,
-	.pulse-worst {
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-		min-width: 0;
+	.home-live p {
+		margin: 0;
 	}
-	.pulse-stamp {
-		display: flex;
-		align-items: center;
-		min-block-size: 4lh;
-	}
-	.pulse-tiles {
+	/* The stamp takes the card's full width so it wraps as little as it can; Refresh sits under it. */
+	.live-head {
 		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: 1px;
-		margin: 0;
-		background: var(--border-subtle);
-		border: 1px solid var(--border-subtle);
-	}
-	.pulse-tile {
-		display: flex;
-		flex-direction: column;
-		gap: 0.375rem;
-		min-width: 0;
-		padding: 0.875rem 1rem;
-		background: var(--card);
-	}
-	.pulse-tile:first-child {
-		grid-column: 1 / -1;
-	}
-	.pulse-tile dt {
-		font-size: var(--text-small);
-		color: var(--muted-foreground);
-	}
-	.pulse-tile dd {
-		display: flex;
-		flex-direction: column;
+		justify-items: start;
 		gap: 0.25rem;
-		margin: 0;
 	}
-	.pulse-figure {
-		display: flex;
-		align-items: center;
+	.slot {
+		display: grid;
+		align-items: start;
+	}
+	.slot > * {
+		grid-area: 1 / 1;
 		min-width: 0;
-		min-height: calc(var(--text-heading) * 1.1);
 	}
-	.pulse-value {
+	.reserve {
+		visibility: hidden;
+	}
+	.reserve::after {
+		content: attr(data-reserve);
+	}
+	.live-stamp {
+		justify-self: stretch;
+		min-height: 44px;
+		align-content: center;
+		font-size: var(--text-small);
+		line-height: 1.5;
+	}
+	/* A flex wrapper: an inline stamp would add line-box space the reserve does not have. */
+	.live-stamp > p {
+		display: flex;
+	}
+	/* The dot stays beside the stamp's first line; the words wrap under themselves. */
+	.live-stamp :global(.freshness-stamp) {
+		flex-wrap: nowrap;
+		align-items: flex-start;
+	}
+	.live-stamp :global(.freshness-stamp > :first-child) {
+		margin-top: calc(0.5lh - 3px);
+	}
+	.live-stamp .reserve {
+		padding-left: calc(6px + 0.5rem);
+		font-family: var(--font-mono);
+	}
+	.live-absent {
+		color: var(--secondary-foreground);
+	}
+	.live-refresh {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		min-height: 44px;
+		padding: 0 0.25rem;
+		color: var(--accent-text);
+		font: inherit;
+		font-weight: 600;
+		background: none;
+		border: 0;
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+	}
+	.live-refresh:hover {
+		text-decoration: underline;
+		text-underline-offset: 0.2em;
+	}
+	.live-refresh:focus-visible {
+		outline: 2px solid var(--accent-text);
+		outline-offset: 2px;
+	}
+	.live-refresh:disabled {
+		color: var(--muted-foreground);
+		cursor: default;
+		text-decoration: none;
+	}
+	.live-result {
+		font-size: var(--text-small);
+		line-height: 1.5;
+		color: var(--secondary-foreground);
+	}
+	.live-result[data-failed='true'] {
+		color: var(--foreground);
+	}
+	.live-counts {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+	.live-counts li {
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr);
+		column-gap: 0.75rem;
+		align-items: baseline;
+	}
+	/* A fixed figure column: the labels wrap the same before and after the numbers arrive. */
+	.live-n {
+		min-inline-size: 5ch;
 		font-family: var(--font-heading);
 		font-size: var(--text-heading);
 		font-weight: 800;
 		line-height: 1.1;
+		text-align: end;
 		font-variant-numeric: tabular-nums;
 		color: var(--foreground);
 	}
-	.pulse-value--absent {
-		font-size: var(--text-body);
-		color: var(--muted-foreground);
-	}
-	/* A held-back share reads as a status, never as a figure someone could screenshot. */
-	.pulse-held {
-		font-size: var(--text-small);
-		font-weight: 700;
-		line-height: 1.3;
-		color: var(--secondary-foreground);
-	}
-	/* Alternatives share one grid cell, so the tile takes the larger of the two in every state. */
-	.pulse-stack {
-		display: grid;
-		align-items: start;
-	}
-	.pulse-stack > :global(*) {
-		grid-area: 1 / 1;
-	}
-	.pulse-reserve {
-		visibility: hidden;
-	}
-	.pulse-of {
-		display: block;
-		min-height: 1lh;
-		font-variant-numeric: tabular-nums;
-		color: var(--secondary-foreground);
-	}
-	.pulse-note,
-	.pulse-worst-note {
-		margin: 0;
-		font-size: var(--text-small);
-		line-height: 1.45;
-		color: var(--muted-foreground);
-	}
-	.pulse-worst-through {
-		min-height: 1lh;
-	}
-	.pulse-absent {
-		margin: 0;
-		color: var(--secondary-foreground);
-		font-size: var(--text-small);
-	}
-	.pulse-worst-lists {
-		display: grid;
-		gap: 1.25rem;
-	}
-	.pulse-rank {
-		min-width: 0;
-	}
-	.pulse-rank h3 {
-		margin: 0 0 0.5rem;
-		font-family: var(--font-heading);
-		font-size: var(--text-body);
-		font-weight: 800;
-	}
-	.pulse-rank-body {
-		min-height: calc(var(--pulse-rows) * 2.75rem);
-	}
-	.pulse-rank ol {
+	.live-t {
 		display: flex;
 		flex-direction: column;
-		margin: 0;
-		padding: 0;
-		list-style: none;
-		counter-reset: pulse-rank;
+		gap: 0.125rem;
+		min-width: 0;
+		line-height: 1.4;
 	}
-	.pulse-rank li {
-		counter-increment: pulse-rank;
-	}
-	.pulse-rank a {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 1rem;
-		height: 2.75rem;
-		border-bottom: 1px solid var(--border-subtle);
-		color: var(--foreground);
-		text-decoration: none;
-	}
-	.pulse-rank a::before {
-		content: counter(pulse-rank);
-		flex: none;
-		width: 1.25rem;
-		font-family: var(--font-mono);
+	.live-note {
+		font-size: var(--text-small);
 		color: var(--muted-foreground);
-	}
-	.pulse-rank a:hover {
-		color: var(--accent-text);
-	}
-	.pulse-rank a:focus-visible,
-	.pulse-more:focus-visible {
-		outline: 2px solid var(--accent-text);
-		outline-offset: 2px;
-	}
-	.pulse-rank-name {
-		display: flex;
-		flex: 1;
-		align-items: baseline;
-		gap: 0.5rem;
-		min-width: 0;
-	}
-	.pulse-rank-text {
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	.pulse-rank-rate {
-		flex: none;
-		font-size: var(--text-small);
-		font-variant-numeric: tabular-nums;
-		color: var(--secondary-foreground);
-	}
-	.pulse-more {
-		align-self: flex-start;
-		min-height: 44px;
-		display: inline-flex;
-		align-items: center;
-		color: var(--accent-text);
-		font-family: var(--font-mono);
-		font-size: var(--text-small);
-	}
-	@media (min-width: 640px) {
-		.pulse-stamp {
-			min-block-size: 3lh;
-		}
-		.pulse-worst-lists {
-			grid-template-columns: repeat(2, minmax(0, 1fr));
-			column-gap: 2rem;
-		}
-	}
-	@media (--desktop-min) {
-		.pulse-tiles {
-			grid-template-columns: repeat(5, minmax(0, 1fr));
-		}
-		.pulse-tile:first-child {
-			grid-column: auto;
-		}
 	}
 </style>

@@ -254,12 +254,6 @@ for (const locale of ['en', 'fr'] as const)
 			'[data-network-section="network-reporting"]',
 			'[data-network-section="network-live-headline"] [data-slot="metric-display"] >> nth=0',
 		],
-		[
-			'/',
-			'[data-slot="home-pulse-live"]',
-			'[data-slot="home-pulse-worst"]',
-			'[data-pulse="on-time"] dd',
-		],
 	] as const)
 		test(`${locale} ${path} live on-time share keeps one size shown or held`, async ({ page }) => {
 			await page.clock.setFixedTime(Date.parse('2026-06-15T12:00:30Z'));

@@ -1,20 +1,28 @@
 import { defineCopy, type Locale } from '#lib/i18n/copy.ts';
 
 type PulseKey =
-	| 'title'
-	| 'inService'
-	| 'onTime'
-	| 'onTimeNote'
-	| 'onTimeThin'
-	| 'onTimeThinNote'
-	| 'severeLate'
-	| 'severeLateNote'
-	| 'ofCount'
-	| 'early'
-	| 'earlyNote'
-	| 'notReporting'
-	| 'notReportingNote'
+	| 'recordTitle'
+	| 'recordPeriod'
+	| 'recordShare'
+	| 'recordDefinition'
+	| 'recordBasis'
+	| 'recordUnits'
+	| 'recordBefore'
+	| 'recordThin'
+	| 'recordUnpublished'
+	| 'recordNone'
+	| 'recordError'
+	| 'openRecord'
+	| 'reporting'
+	| 'reportingOne'
+	| 'silent'
+	| 'silentOne'
+	| 'silentNote'
+	| 'silentNoteOne'
+	| 'refresh'
 	| 'liveUnavailable'
+	| 'openMap'
+	| 'rankTitle'
 	| 'worstLines'
 	| 'worstStops'
 	| 'worstNote'
@@ -24,28 +32,32 @@ type PulseKey =
 	| 'worstError'
 	| 'unavailable'
 	| 'lateRate'
-	| 'allHotspots'
-	| 'openMap'
-	| 'openMapNote'
-	| 'openNetwork'
-	| 'openNetworkNote';
+	| 'allHotspots';
 
 export const homePulseCopy = defineCopy({
 	fr: {
-		title: 'En ce moment à {city}',
-		inService: 'Bus en service',
-		onTime: 'À l’heure',
-		onTimeNote: 'de 1 min d’avance à 5 min de retard, parmi les bus mesurés',
-		onTimeThin: 'Pas assez de relevés',
-		onTimeThinNote: 'Relevés de retard pour seulement {n} bus sur {total}',
-		severeLate: 'Plus de 5 min de retard',
-		severeLateNote: 'bus avec une mesure de retard',
-		ofCount: 'sur {n}',
-		early: 'Plus de 1 min d’avance',
-		earlyNote: 'un bus en avance peut laisser des gens à l’arrêt',
-		notReporting: 'Trajets sans signal',
-		notReportingNote: 'prévus, mais aucun bus ne se signale',
+		recordTitle: 'Dernier bilan complet',
+		recordPeriod: 'Du {dates}, dernière semaine complète',
+		recordShare: 'des relevés étaient à l’heure.',
+		recordDefinition: 'À l’heure : d’une minute d’avance à 5 minutes de retard.',
+		recordBasis: 'Selon {n} relevés.',
+		recordUnits: 'Ce ne sont ni des trajets ni des passagers.',
+		recordBefore: 'la semaine précédente, du {dates}.',
+		recordThin: 'Pas assez de relevés pour établir une part : {n} cette semaine.',
+		recordUnpublished: 'Aucune part de relevés à l’heure n’est publiée pour cette semaine.',
+		recordNone: 'Aucune semaine complète n’est encore publiée.',
+		recordError: 'Le bilan n’a pas pu être chargé.',
+		openRecord: 'Ouvrir le bilan du réseau',
+		reporting: 'véhicules se signalent',
+		reportingOne: 'véhicule se signale',
+		silent: 'trajets silencieux',
+		silentOne: 'trajet silencieux',
+		silentNote: 'Prévus en ce moment, mais aucun véhicule ne se signale.',
+		silentNoteOne: 'Prévu en ce moment, mais aucun véhicule ne se signale.',
+		refresh: 'Actualiser',
 		liveUnavailable: 'Chiffres en direct indisponibles',
+		openMap: 'Ouvrir la carte en direct',
+		rankTitle: 'Lignes et arrêts à examiner',
 		worstLines: 'Lignes les plus en retard',
 		worstStops: 'Arrêts les plus en retard',
 		worstNote:
@@ -57,26 +69,30 @@ export const homePulseCopy = defineCopy({
 		unavailable: 'indisponible',
 		lateRate: '{pct} des mesures en retard de plus de 5 min',
 		allHotspots: 'Tous les points chauds',
-		openMap: 'Carte du réseau',
-		openMapNote: 'Chaque bus en direct, là où il se signale',
-		openNetwork: 'Santé du réseau',
-		openNetworkNote: 'Retards, tendances et couverture des données',
 	},
 	en: {
-		title: 'Right now in {city}',
-		inService: 'Buses in service',
-		onTime: 'On time',
-		onTimeNote: '1 min early to 5 min late, among buses with a delay reading',
-		onTimeThin: 'Not enough readings',
-		onTimeThinNote: 'Delay readings for only {n} of {total} buses',
-		severeLate: 'More than 5 min late',
-		severeLateNote: 'buses with a delay reading',
-		ofCount: 'of {n}',
-		early: 'More than 1 min early',
-		earlyNote: 'an early bus can leave riders behind',
-		notReporting: 'Trips without a signal',
-		notReportingNote: 'scheduled, but no bus is reporting',
+		recordTitle: 'Latest complete record',
+		recordPeriod: '{dates}, latest complete week',
+		recordShare: 'of readings were on time.',
+		recordDefinition: 'On time: 1 minute early to 5 minutes late.',
+		recordBasis: 'Based on {n} readings.',
+		recordUnits: 'These are not trips or passengers.',
+		recordBefore: 'the week before, {dates}.',
+		recordThin: 'Not enough readings to state a share: {n} this week.',
+		recordUnpublished: 'No on-time share is published for this week.',
+		recordNone: 'No complete week is published yet.',
+		recordError: 'The record could not be loaded.',
+		openRecord: 'Open the network record',
+		reporting: 'vehicles reporting',
+		reportingOne: 'vehicle reporting',
+		silent: 'silent trips',
+		silentOne: 'silent trip',
+		silentNote: 'Scheduled now, but no vehicle is reporting.',
+		silentNoteOne: 'Scheduled now, but no vehicle is reporting.',
+		refresh: 'Refresh',
 		liveUnavailable: 'Live numbers unavailable',
+		openMap: 'Open live map',
+		rankTitle: 'Lines and stops to investigate',
 		worstLines: 'Most delayed lines',
 		worstStops: 'Most delayed stops',
 		worstNote:
@@ -88,10 +104,6 @@ export const homePulseCopy = defineCopy({
 		unavailable: 'unavailable',
 		lateRate: '{pct} of readings more than 5 min late',
 		allHotspots: 'All hotspots',
-		openMap: 'Network map',
-		openMapNote: 'Every bus, live, where it reports itself',
-		openNetwork: 'Network health',
-		openNetworkNote: 'Delays, trends and data coverage',
 	},
 } satisfies Readonly<Record<Locale, Readonly<Record<PulseKey, string>>>>);
 

@@ -1,21 +1,28 @@
-import { render, screen, within } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import HomePulse from './HomePulse.svelte';
 import { homePulseCopy } from './homePulse.copy';
 import { createLineDirectory } from '#lib/site/lineDirectory.ts';
 
-const { state, createLiveStoreSpy } = vi.hoisted(() => ({
+const { state, createLiveStoreSpy, refreshSpy } = vi.hoisted(() => ({
 	state: {
 		network: null as Record<string, unknown> | null,
 		healthState: 'live' as string,
+		refreshFails: false,
 		hotspots: null as Record<string, unknown> | null,
 		hotspotsSettled: true,
 		hotspotsError: null as Error | null,
 		weeklyIndex: null as Record<string, unknown> | null,
 		weeklySettled: true,
 		weeklyError: null as Error | null,
+		trend: null as Record<string, unknown> | null,
+		trendSettled: true,
+		trendError: null as Error | null,
+		history: null as Record<string, unknown> | null,
+		historySettled: true,
 	},
 	createLiveStoreSpy: vi.fn(),
+	refreshSpy: vi.fn(),
 }));
 
 vi.mock('#lib/nav/index.ts', async () => {
@@ -49,39 +56,61 @@ vi.mock('#lib/v1/live/store.svelte.ts', () => ({
 			},
 			start: vi.fn(),
 			stop: vi.fn(),
+			refresh: async (options: unknown) => {
+				refreshSpy(options);
+				if (state.refreshFails) throw new Error('fixture refresh failure');
+			},
 		};
 	},
 }));
 vi.mock('#lib/v1/resource.svelte.ts', () => ({
 	createResource: (_loader: unknown, options?: { key?: () => unknown }) => {
 		const key = options?.key?.();
+		const pick = <T>(values: Record<string, T>, fallback: T): T =>
+			typeof key === 'string' && key in values ? values[key] : fallback;
 		return {
 			get data() {
-				if (key === 'home-hotspots') return state.hotspots;
-				if (key === 'home-weekly-ranking') return state.weeklyIndex;
-				return {
-					routes: [{ id: '7-354', short: '7' }],
-				};
+				return pick<unknown>(
+					{
+						'home-hotspots': state.hotspots,
+						'home-weekly-ranking': state.weeklyIndex,
+						'home-network-trend': state.trend,
+						'home-history-index': state.history,
+					},
+					{ routes: [{ id: '7-354', short: '7' }] },
+				);
 			},
 			get error() {
-				return key === 'home-hotspots'
-					? state.hotspotsError
-					: key === 'home-weekly-ranking'
-						? state.weeklyError
-						: null;
+				return pick<Error | null>(
+					{
+						'home-hotspots': state.hotspotsError,
+						'home-weekly-ranking': state.weeklyError,
+						'home-network-trend': state.trendError,
+					},
+					null,
+				);
 			},
 			loading: false,
 			get settled() {
-				return key === 'home-hotspots'
-					? state.hotspotsSettled
-					: key === 'home-weekly-ranking'
-						? state.weeklySettled
-						: true;
+				return pick(
+					{
+						'home-hotspots': state.hotspotsSettled,
+						'home-weekly-ranking': state.weeklySettled,
+						'home-network-trend': state.trendSettled,
+						'home-history-index': state.historySettled,
+					},
+					true,
+				);
 			},
 		};
 	},
 }));
-vi.mock('#lib/v1/repositories/historic.ts', () => ({ getHotspots: vi.fn() }));
+vi.mock('#lib/v1/repositories/historic.ts', () => ({
+	getHotspots: vi.fn(),
+	getPublishedReliabilityIndex: vi.fn(),
+	getNetworkTrend: vi.fn(),
+	getHistoricAvailability: vi.fn(),
+}));
 vi.mock('#lib/v1/repositories/static.ts', () => ({ getRoutesIndex: vi.fn() }));
 
 const manifest = { provider: 'fixture', tz: 'America/Toronto' } as never;
@@ -133,22 +162,55 @@ const weeklyStopIndex = {
 	],
 };
 
+// Ottawa's published files of 2026-11-11: collection began October 2, closed through November 10.
+const ottawaTrend = {
+	generated_utc: '2026-11-11T00:00:00Z',
+	weekly: [
+		{ date: '2026-10-26', otp_pct: 76, observation_count: 6_741_817 },
+		{ date: '2026-11-02', otp_pct: 75, observation_count: 6_910_589 },
+		{ date: '2026-11-09', otp_pct: 79, observation_count: 2_476_953 },
+	],
+};
+const ottawaHistory = {
+	families: [
+		{
+			family: 'network',
+			selection_mode: 'range',
+			index_path: 'historic/history/network/index.json',
+			first_available_date: '2026-10-02',
+			last_available_date: '2026-11-10',
+			gaps: [],
+		},
+	],
+};
+
 afterEach(() => {
 	state.network = null;
 	state.healthState = 'live';
+	state.refreshFails = false;
 	state.hotspots = null;
 	state.hotspotsSettled = true;
 	state.hotspotsError = null;
 	state.weeklyIndex = null;
 	state.weeklySettled = true;
 	state.weeklyError = null;
+	state.trend = null;
+	state.trendSettled = true;
+	state.trendError = null;
+	state.history = null;
+	state.historySettled = true;
 	createLiveStoreSpy.mockClear();
+	refreshSpy.mockClear();
 });
 
-describe('Home accountability strip', () => {
+/** Visible text with every kind of space as one plain space (fr-CA groups with no-break spaces). */
+const text = (element: HTMLElement) => element.textContent!.replace(/\s+/g, ' ').trim();
+const card = (name: string) => screen.getByRole('region', { name });
+
+describe('Home record, live and ranking cards', () => {
 	it.each(['en', 'fr'] as const)('keeps fresh stops when hotspots are missing (%s)', (locale) => {
 		state.weeklyIndex = weeklyStopIndex;
-		render(HomePulse, { props: { locale, city: 'Ottawa', manifest } });
+		render(HomePulse, { props: { locale, manifest } });
 		const stops = screen.getByRole('region', { name: homePulseCopy[locale].worstStops });
 		expect(within(stops).getByRole('link', { name: /Rideau/ })).toBeVisible();
 		expect(stops).toHaveTextContent(
@@ -160,7 +222,7 @@ describe('Home accountability strip', () => {
 		(locale) => {
 			state.hotspots = dayRanking;
 			state.weeklyIndex = { ...weeklyStopIndex, generated_utc: '2026-11-04T00:00:00Z' };
-			render(HomePulse, { props: { locale, city: 'Ottawa', manifest } });
+			render(HomePulse, { props: { locale, manifest } });
 			expect(
 				within(screen.getByRole('region', { name: homePulseCopy[locale].worstLines })).getByRole(
 					'link',
@@ -179,7 +241,7 @@ describe('Home accountability strip', () => {
 			vi.setSystemTime(new Date(at));
 			state.hotspots = dayRanking;
 			state.weeklyIndex = weeklyStopIndex;
-			render(HomePulse, { props: { locale: 'en', city: 'Ottawa', manifest } });
+			render(HomePulse, { props: { locale: 'en', manifest } });
 			for (const name of ['Most delayed lines', 'Most delayed stops'])
 				expect(within(screen.getByRole('region', { name })).getByRole('link')).toBeVisible();
 		},
@@ -190,7 +252,7 @@ describe('Home accountability strip', () => {
 			by_grain: [{ ...dayRanking.by_grain[0], date: '2026-10-28', window_end: '2026-11-03' }],
 		};
 		state.weeklyIndex = weeklyStopIndex;
-		render(HomePulse, { props: { locale, city: 'Ottawa', manifest } });
+		render(HomePulse, { props: { locale, manifest } });
 		const lines = screen.getByRole('region', { name: homePulseCopy[locale].worstLines });
 		const stops = screen.getByRole('region', { name: homePulseCopy[locale].worstStops });
 		expect(lines).toHaveTextContent(
@@ -205,7 +267,7 @@ describe('Home accountability strip', () => {
 	it.each(['en', 'fr'] as const)('keeps fresh stops when hotspots are stale (%s)', (locale) => {
 		state.weeklyIndex = weeklyStopIndex;
 		state.hotspots = { ...dayRanking, generated_utc: '2026-11-04T00:00:00Z' };
-		render(HomePulse, { props: { locale, city: 'Ottawa', manifest } });
+		render(HomePulse, { props: { locale, manifest } });
 		const stops = screen.getByRole('region', { name: homePulseCopy[locale].worstStops });
 		expect(within(stops).getByRole('link', { name: /Rideau/ })).toBeVisible();
 		expect(stops).toHaveTextContent(
@@ -223,7 +285,7 @@ describe('Home accountability strip', () => {
 		(locale) => {
 			state.hotspotsSettled = false;
 			state.weeklyIndex = weeklyStopIndex;
-			render(HomePulse, { props: { locale, city: 'Ottawa', manifest } });
+			render(HomePulse, { props: { locale, manifest } });
 			const lines = screen.getByRole('region', { name: homePulseCopy[locale].worstLines });
 			const stops = screen.getByRole('region', { name: homePulseCopy[locale].worstStops });
 			expect(lines.querySelector('[aria-busy]')).toHaveAttribute('aria-busy', 'true');
@@ -234,7 +296,7 @@ describe('Home accountability strip', () => {
 	it.each(['en', 'fr'] as const)('keeps lines when only the stop source fails (%s)', (locale) => {
 		state.hotspots = dayRanking;
 		state.weeklyError = new Error('fixture failure');
-		render(HomePulse, { props: { locale, city: 'Ottawa', manifest } });
+		render(HomePulse, { props: { locale, manifest } });
 		expect(
 			within(screen.getByRole('region', { name: homePulseCopy[locale].worstLines })).getByRole(
 				'link',
@@ -248,7 +310,7 @@ describe('Home accountability strip', () => {
 	});
 	it.each(['en', 'fr'] as const)('withholds stale weekly lines in %s', (locale) => {
 		state.hotspots = { ...dayRanking, generated_utc: '2026-11-04T00:00:00Z' };
-		render(HomePulse, { props: { locale, city: 'Ottawa', manifest } });
+		render(HomePulse, { props: { locale, manifest } });
 		const lines = screen.getByRole('region', { name: homePulseCopy[locale].worstLines });
 		expect(within(lines).queryByRole('link')).toBeNull();
 		expect(within(lines).getByRole('status')).toHaveTextContent(
@@ -256,7 +318,7 @@ describe('Home accountability strip', () => {
 		);
 	});
 	it.each(['en', 'fr'] as const)('withholds absent weekly lines in %s', (locale) => {
-		render(HomePulse, { props: { locale, city: 'Ottawa', manifest } });
+		render(HomePulse, { props: { locale, manifest } });
 		const lines = screen.getByRole('region', { name: homePulseCopy[locale].worstLines });
 		expect(within(lines).queryByRole('link')).toBeNull();
 		expect(within(lines).getByRole('status')).toHaveTextContent(
@@ -297,7 +359,7 @@ describe('Home accountability strip', () => {
 					},
 				],
 			};
-			render(HomePulse, { props: { locale, city: 'Ottawa', manifest } });
+			render(HomePulse, { props: { locale, manifest } });
 			const links = within(
 				screen.getByRole('region', { name: homePulseCopy[locale].worstLines }),
 			).getAllByRole('link');
@@ -316,100 +378,183 @@ describe('Home accountability strip', () => {
 			for (let i = 1; i < values.length; i++) expect(values[i]).toBeLessThanOrEqual(values[i - 1]);
 		},
 	);
-	it('always offers the map and network health, even before data boots', () => {
-		render(HomePulse, { props: { locale: 'en', city: 'Ottawa', manifest: null } });
-		expect(screen.getByRole('heading', { name: 'Right now in Ottawa' })).toBeInTheDocument();
-		const links = screen.getAllByRole('link').map((link) => link.getAttribute('href'));
-		expect(links).toEqual(['/map', '/network']);
-		expect(createLiveStoreSpy).not.toHaveBeenCalled();
-	});
-
-	it('shows live counts with the denominator behind the late count', () => {
-		state.network = liveNetwork;
-		render(HomePulse, { props: { locale: 'en', city: 'Ottawa', manifest } });
-		expect(createLiveStoreSpy).toHaveBeenCalledWith(manifest, { families: ['network'] });
-		const late = screen.getByText('More than 5 min late').closest('div') as HTMLElement;
-		expect(late).toHaveTextContent('42');
-		expect(late).toHaveTextContent('of 260');
-		expect(late).toHaveTextContent('buses with a delay reading');
-		expect(screen.getByText('Buses in service').closest('div')).toHaveTextContent('355');
-		expect(screen.getByText('Trips without a signal').closest('div')).toHaveTextContent('18');
-		expect(screen.getByText('More than 1 min early').closest('div')).toHaveTextContent('71');
-		expect(screen.getByText('On time').closest('div')).toHaveTextContent(
-			'1 min early to 5 min late',
-		);
-	});
-
-	it('has its final shape before any data arrives, so nothing below it moves', () => {
-		state.healthState = 'never-loaded';
-		state.hotspotsSettled = false;
-		state.weeklySettled = false;
-		render(HomePulse, { props: { locale: 'en', city: 'Ottawa', manifest } });
-		expect(screen.getAllByRole('term').map((term) => term.textContent)).toEqual([
-			'Buses in service',
-			'On time',
-			'More than 5 min late',
-			'More than 1 min early',
-			'Trips without a signal',
-		]);
-		expect(screen.getByRole('region', { name: 'Most delayed lines' })).toBeInTheDocument();
-		expect(screen.getByRole('region', { name: 'Most delayed stops' })).toBeInTheDocument();
-		expect(screen.getByRole('link', { name: /All hotspots/ })).toBeInTheDocument();
-		expect(screen.queryByRole('status')).toBeNull();
-		// The count the late figure is out of has its line before the number exists.
-		const late = screen.getByText('More than 5 min late').closest('div') as HTMLElement;
-		expect(late.querySelector('.pulse-of')?.textContent).toBe('');
-	});
-
-	it('explains a figure no reading stands behind instead of printing a number', () => {
-		state.network = {
-			...liveNetwork,
-			on_time_pct: null,
-			status_dist: { on_time: 0, late: 0, severe: 0, early: 0, unknown: 355 },
-		};
-		render(HomePulse, { props: { locale: 'en', city: 'Ottawa', manifest } });
-		for (const label of ['On time', 'More than 5 min late', 'More than 1 min early']) {
-			const tile = screen.getByText(label).closest('div') as HTMLElement;
-			expect(
-				within(tile).getByRole('button', { name: 'No data, not enough readings yet' }),
-			).toBeInTheDocument();
-			expect(tile).not.toHaveTextContent(/\d(?! min)/);
-		}
-		expect(screen.getByText('Buses in service').closest('div')).toHaveTextContent('355');
-	});
-
 	it.each([
-		['en', 'On time', 'Not enough readings', '10 of 328'],
-		['fr', 'À l’heure', 'Pas assez de relevés', '10 bus sur 328'],
+		[
+			'en',
+			[
+				'Latest complete record',
+				'November 2 to 8, latest complete week',
+				'75% of readings were on time.',
+				'On time: 1 minute early to 5 minutes late.',
+				'Based on 6,910,589 readings. These are not trips or passengers.',
+				'76% the week before, October 26 to November 1.',
+				'Record · data through Nov 10 · published Nov 11',
+			],
+			'Open the network record',
+			'/network',
+		],
+		[
+			'fr',
+			[
+				'Dernier bilan complet',
+				'Du 2 au 8 novembre, dernière semaine complète',
+				'75 % des relevés étaient à l’heure.',
+				'À l’heure : d’une minute d’avance à 5 minutes de retard.',
+				'Selon 6 910 589 relevés. Ce ne sont ni des trajets ni des passagers.',
+				'76 % la semaine précédente, du 26 octobre au 1er novembre.',
+				'Bilan · données jusqu’au 10 nov. · publié le 11 nov.',
+			],
+			'Ouvrir le bilan du réseau',
+			'/fr/network',
+		],
 	] as const)(
-		'holds back an on-time share that too few buses stand behind (%s)',
-		(locale, label, held, count) => {
-			// Ottawa, as reported: 10 of 328 buses in service had a delay reading.
-			state.network = {
-				...liveNetwork,
-				vehicles_in_service: 328,
-				on_time_pct: 10,
-				status_dist: { on_time: 1, late: 0, severe: 7, early: 2, unknown: 318 },
-			};
-			render(HomePulse, { props: { locale, city: 'Ottawa', manifest } });
-			const tile = screen.getByText(label).closest('div') as HTMLElement;
-			expect(tile).toHaveTextContent(held);
-			expect(tile).toHaveTextContent(count);
-			expect(tile).not.toHaveTextContent('%');
+		'states the latest complete week with its own dates, readings and stamp (%s)',
+		(locale, lines, action, href) => {
+			state.trend = ottawaTrend;
+			state.history = ottawaHistory;
+			render(HomePulse, { props: { locale, manifest } });
+			const record = card(lines[0]);
+			for (const line of lines) expect(text(record)).toContain(line);
+			// The open week (79%, November 9 on) is not the record.
+			expect(text(record)).not.toMatch(/79|9 to 15|9 au 15/);
+			expect(within(record).getByRole('link', { name: action })).toHaveAttribute('href', href);
 		},
 	);
 
+	it.each([
+		[
+			'too few readings',
+			{ observation_count: 12 },
+			'Not enough readings to state a share: 12 this week.',
+		],
+		['no published share', { otp_pct: null }, 'No on-time share is published for this week.'],
+	])('keeps the week but holds back a share with %s', (_case, change, sentence) => {
+		state.trend = { ...ottawaTrend, weekly: [{ ...ottawaTrend.weekly[1], ...change }] };
+		state.history = ottawaHistory;
+		render(HomePulse, { props: { locale: 'en', manifest } });
+		const record = card('Latest complete record');
+		expect(text(record)).toContain('November 2 to 8, latest complete week');
+		expect(within(record).getByRole('status')).toHaveTextContent(sentence);
+		expect(text(record)).not.toContain('%');
+		expect(text(record)).not.toContain('Based on');
+	});
+
+	it('tells a record that cannot load apart from one that has no complete week', () => {
+		state.trendError = new Error('fixture failure');
+		state.history = ottawaHistory;
+		const failed = render(HomePulse, { props: { locale: 'en', manifest } });
+		expect(within(card('Latest complete record')).getByRole('status')).toHaveTextContent(
+			'The record could not be loaded.',
+		);
+		failed.unmount();
+		state.trendError = null;
+		state.trend = { ...ottawaTrend, weekly: [ottawaTrend.weekly[2]] };
+		render(HomePulse, { props: { locale: 'en', manifest } });
+		const record = card('Latest complete record');
+		expect(within(record).getByRole('status')).toHaveTextContent(
+			'No complete week is published yet.',
+		);
+		expect(text(record)).not.toMatch(/\d+ ?%/);
+	});
+
+	it.each([
+		[
+			'en',
+			'Live now',
+			['355 vehicles reporting', '18 silent trips', 'Scheduled now, but no vehicle is reporting.'],
+		],
+		[
+			'fr',
+			'En direct',
+			[
+				'355 véhicules se signalent',
+				'18 trajets silencieux',
+				'Prévus en ce moment, mais aucun véhicule ne se signale.',
+			],
+		],
+	] as const)('shows what is live now as counts, never a share (%s)', (locale, title, lines) => {
+		state.network = liveNetwork;
+		render(HomePulse, { props: { locale, manifest } });
+		expect(createLiveStoreSpy).toHaveBeenCalledWith(manifest, { families: ['network'] });
+		const live = card(title);
+		for (const line of lines) expect(text(live)).toContain(line);
+		// The file publishes a 57% live share; the card does not show it, or any percentage.
+		expect(text(live)).not.toContain('%');
+		expect(within(live).getByRole('link', { name: homePulseCopy[locale].openMap })).toHaveAttribute(
+			'href',
+			locale === 'fr' ? '/fr/map' : '/map',
+		);
+	});
+
+	it.each([
+		['en', '1 vehicle reporting', '1 silent trip'],
+		['fr', '1 véhicule se signale', '1 trajet silencieux'],
+	] as const)('names one vehicle and one trip in the singular (%s)', (locale, vehicles, trips) => {
+		state.network = { ...liveNetwork, vehicles_in_service: 1, non_responding: 1 };
+		render(HomePulse, { props: { locale, manifest } });
+		const live = card(locale === 'fr' ? 'En direct' : 'Live now');
+		expect(text(live)).toContain(vehicles);
+		expect(text(live)).toContain(trips);
+	});
+
 	it('says the live numbers are unavailable instead of showing zeros', () => {
 		state.healthState = 'failed-no-data';
-		render(HomePulse, { props: { locale: 'fr', city: 'Montréal', manifest } });
-		expect(screen.getByText(/Chiffres en direct indisponibles/)).toHaveAttribute('role', 'status');
-		for (const label of ['Bus en service', 'À l’heure', 'Plus de 5 min de retard'])
-			expect(screen.getByText(label).closest('div')).not.toHaveTextContent(/\d(?! min)/);
+		render(HomePulse, { props: { locale: 'fr', manifest } });
+		const live = card('En direct');
+		expect(within(live).getByText('Chiffres en direct indisponibles')).toHaveAttribute(
+			'role',
+			'status',
+		);
+		expect(text(live)).not.toMatch(/\d/);
+	});
+
+	it.each([
+		[false, 'Live data updated at 7:00 a.m.'],
+		[true, 'Could not refresh. Showing data from 6:50 p.m.'],
+	])(
+		'refreshes the live numbers on request and says what happened (fails: %s)',
+		async (fails, said) => {
+			state.network = liveNetwork;
+			state.refreshFails = fails;
+			render(HomePulse, { props: { locale: 'en', manifest } });
+			const live = card('Live now');
+			await fireEvent.click(within(live).getByRole('button', { name: 'Refresh' }));
+			expect(refreshSpy).toHaveBeenCalledWith({ force: true });
+			await vi.waitFor(() =>
+				expect(within(live).getByText(said)).toHaveAttribute('aria-live', 'polite'),
+			);
+		},
+	);
+
+	it('has its final shape before any data arrives, and offers the record and the map', () => {
+		state.healthState = 'never-loaded';
+		state.trendSettled = false;
+		state.historySettled = false;
+		state.hotspotsSettled = false;
+		state.weeklySettled = false;
+		render(HomePulse, { props: { locale: 'en', manifest } });
+		for (const name of ['Latest complete record', 'Live now', 'Lines and stops to investigate'])
+			expect(screen.getByRole('heading', { level: 2, name })).toBeInTheDocument();
+		expect(text(card('Live now'))).toContain('vehicles reporting');
+		expect(text(card('Live now'))).toContain('silent trips');
+		expect(screen.getByRole('region', { name: 'Most delayed lines' })).toBeInTheDocument();
+		expect(screen.queryByRole('status')).toBeNull();
+		expect(text(card('Latest complete record'))).not.toMatch(/\d/);
+	});
+
+	it('offers the record and the live map, even before the data boots', () => {
+		render(HomePulse, { props: { locale: 'en', manifest: null } });
+		expect(
+			[card('Latest complete record'), card('Live now')].map((region) =>
+				within(region).getByRole('link').getAttribute('href'),
+			),
+		).toEqual(['/network', '/map']);
+		expect(createLiveStoreSpy).not.toHaveBeenCalled();
 	});
 
 	it('tells a failed ranking load apart from a ranking that does not exist yet', () => {
 		state.network = liveNetwork;
-		render(HomePulse, { props: { locale: 'en', city: 'Ottawa', manifest } });
+		render(HomePulse, { props: { locale: 'en', manifest } });
 		const lines = screen.getByRole('region', { name: 'Most delayed lines' });
 		expect(within(lines).getByRole('status')).toHaveTextContent(
 			'No weekly ranking has been published yet.',
@@ -421,7 +566,7 @@ describe('Home accountability strip', () => {
 		state.hotspots = dayRanking;
 		state.weeklyIndex = weeklyStopIndex;
 		render(HomePulse, {
-			props: { locale: 'en', city: 'Ottawa', manifest },
+			props: { locale: 'en', manifest },
 			context: new Map([
 				[
 					Symbol.for('transit.line-directory'),

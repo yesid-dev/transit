@@ -40,8 +40,8 @@ function renderHome() {
 }
 
 const destinations = [
-	['/network', 'Network health', 'Santé du réseau'],
-	['/map', 'Network map', 'Carte du réseau'],
+	['/network', 'Open the network record', 'Ouvrir le bilan du réseau'],
+	['/map', 'Open live map', 'Ouvrir la carte en direct'],
 	['/stops', 'Stops', 'Arrêts'],
 	['/lines', 'Lines', 'Lignes'],
 	['/hotspots', 'Hotspots', 'Points chauds'],
@@ -110,7 +110,7 @@ describe('Home civic overview and directory', () => {
 		(locale) => {
 			state.locale = locale;
 			const { container } = renderHome();
-			const strip = container.querySelector('[data-slot="home-pulse-shortcuts"]') as HTMLElement;
+			const strip = container.querySelector('[data-slot="home-pulse"]') as HTMLElement;
 			const links = [...within(strip).getAllByRole('link'), ...within(nav()).getAllByRole('link')];
 			expect(links).toHaveLength(10);
 			for (const [path, en, fr] of destinations) {
@@ -145,7 +145,7 @@ describe('Home civic overview and directory', () => {
 			within(strip)
 				.getAllByRole('link')
 				.map((link) => link.getAttribute('href')),
-		).toEqual(['/map', '/network']);
+		).toEqual(['/network', '/map']);
 		expect(strip.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 		expect(search.compareDocumentPosition(nav()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 		expect(createLiveStoreSpy).not.toHaveBeenCalled();
