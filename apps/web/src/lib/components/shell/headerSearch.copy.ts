@@ -9,6 +9,8 @@ const counts = (...parts: (string | false)[]) => parts.filter(Boolean).join(', '
 export const headerSearchCopy = {
 	en: {
 		kind: { route: 'Line', stop: 'Stop', vehicle: 'Vehicle', address: 'Address' },
+		sheetTitle: 'Search',
+		closeSheet: 'Close search',
 		heading: (kind: Kind, n: number | null) =>
 			`${{ route: 'Lines', stop: 'Stops', vehicle: 'Live vehicles', address: 'Addresses' }[kind]}${n === null ? '' : ` · ${n}`}`,
 		seeAll: (n: number | null, query: string) =>
@@ -33,6 +35,8 @@ export const headerSearchCopy = {
 	},
 	fr: {
 		kind: { route: 'Ligne', stop: 'Arrêt', vehicle: 'Véhicule', address: 'Adresse' },
+		sheetTitle: 'Recherche',
+		closeSheet: 'Fermer la recherche',
 		heading: (kind: Kind, n: number | null) =>
 			`${{ route: 'Lignes', stop: 'Arrêts', vehicle: 'Véhicules en direct', address: 'Adresses' }[kind]}${n === null ? '' : ` · ${n}`}`,
 		seeAll: (n: number | null, query: string) =>
