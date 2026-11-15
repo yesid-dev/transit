@@ -254,6 +254,7 @@ def test_default_and_sequential_publication_have_identical_bytes(real_db_engine,
 def test_replay_dispatches_alert_capture_without_a_realtime_receipt(case, failure):
     from contextlib import nullcontext
     from types import SimpleNamespace
+    from unittest.mock import MagicMock
 
     from transit_ops.live.oracle import ReplayFailed
     from transit_ops.silver.i3 import RawI3AlertSnapshot
@@ -266,7 +267,7 @@ def test_replay_dispatches_alert_capture_without_a_realtime_receipt(case, failur
     if failure == "endpoint":
         record = replace(record, feed_day=replace(record.feed_day, endpoint_key="trip_updates"))
     window = replace(case.window, poll_records=(record,), cycles=(cycle,))
-    target = SimpleNamespace(engine=SimpleNamespace(begin=lambda: nullcontext(object())))
+    target = SimpleNamespace(engine=SimpleNamespace(begin=lambda: nullcontext(MagicMock())))
     with (
         patch("transit_ops.live.oracle.runner.oracle_database", return_value=nullcontext(target)),
         patch("transit_ops.live.oracle.runner.seed_static"),

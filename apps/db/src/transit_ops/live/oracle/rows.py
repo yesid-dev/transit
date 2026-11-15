@@ -20,6 +20,10 @@ class TableRows:
     rows: tuple[tuple[object, ...], ...]
 
 
+class RowContractMismatch(ValueError):
+    pass
+
+
 _COMMON = dict(
     provider_id="text",
     realtime_snapshot_id="bigint",
@@ -68,6 +72,19 @@ def _read(
     schema: dict[str, str],
     keys: tuple[str, ...],
 ) -> TableRows:
+    actual = dict(
+        connection.execute(
+            text(
+                "SELECT attname, format_type(atttypid, atttypmod) FROM pg_attribute "
+                "WHERE attrelid=to_regclass(:table) AND attnum>0 AND NOT attisdropped"
+            ),
+            {"table": table},
+        )
+        .tuples()
+        .all()
+    )
+    if actual != schema:
+        raise RowContractMismatch(f"{table}: column/type contract differs: {actual!r}")
     columns = tuple(schema)
     projection = ", ".join(
         f't."{c}"::text AS "{c}"' if kind == "jsonb" else f't."{c}"' for c, kind in schema.items()
@@ -84,7 +101,7 @@ def _read(
     result = connection.execute(
         text(
             f"SELECT {projection} FROM {table} t WHERE {scope} ORDER BY "
-            + ", ".join(f't."{c}"' for c in keys)
+            + ", ".join(f't."{c}"' + (' COLLATE "C"' if schema[c] == "text" else "") for c in keys)
         ),
         {"provider_id": provider_id},
     )

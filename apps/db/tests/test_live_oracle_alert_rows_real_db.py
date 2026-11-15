@@ -1,14 +1,16 @@
 import hashlib
 import json
 import os
-from contextlib import closing, nullcontext
+import re
+from contextlib import closing, contextmanager, nullcontext
 from dataclasses import replace
 from datetime import timedelta
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
 from google.transit import gtfs_realtime_pb2 as rt
-from sqlalchemy import text
+from sqlalchemy import event, text
 from test_live_oracle_runner import replay_case as replay_case
 from test_live_oracle_seed import case as case
 from test_live_oracle_seed import poll_record
@@ -20,11 +22,98 @@ from transit_ops.ingestion.i3 import extract_i3_metadata, extract_service_alerts
 from transit_ops.live.compare import compare_rows, rows_digest
 from transit_ops.live.local_file import LocalFile
 from transit_ops.live.oracle import PinnedClock, ReplayFailed, oracle_database, replay_window
+from transit_ops.live.oracle.rows import read_cycle_rows
 from transit_ops.live.oracle.window import CycleSpec
+from transit_ops.providers import ProviderRegistry
 from transit_ops.silver.i3 import RawI3AlertSnapshot, load_i3_snapshot_to_silver
 from transit_ops.static.alert_apply import apply_alert_snapshot
-from transit_ops.static.alert_seed_contract import TABLES
+from transit_ops.static.alert_seed_contract import KEYS, SCHEMAS, TABLES
 from transit_ops.static.alert_state import seed_alert_state
+
+# Expected evidence is declared independently of the reader and its returned metadata.
+FACT_TABLES = ("gold.fact_trip_delay_snapshot", "gold.fact_vehicle_snapshot")
+ALERT_TABLES = (
+    "silver.i3_alerts",
+    "silver.i3_alert_informed_entities",
+    "silver.i3_alert_active_periods",
+    "raw.alert_feed_observations",
+    "raw.alert_language_observations",
+)
+COMMON = {
+    "provider_id": "text",
+    "realtime_snapshot_id": "bigint",
+    "entity_index": "integer",
+    "snapshot_date_key": "integer",
+    "snapshot_local_date": "date",
+    "feed_timestamp_utc": "timestamp with time zone",
+    "captured_at_utc": "timestamp with time zone",
+}
+EXPECTED_FACTS = {
+    FACT_TABLES[0]: COMMON
+    | {
+        "entity_id": "text",
+        "trip_id": "text",
+        "route_id": "text",
+        "direction_id": "integer",
+        "start_date": "date",
+        "vehicle_id": "text",
+        "trip_schedule_relationship": "integer",
+        "delay_seconds": "integer",
+        "stop_time_update_count": "integer",
+        "delay_stop_id": "text",
+        "delay_stop_sequence": "integer",
+        "skipped_stop_count": "integer",
+        "occupancy_status": "integer",
+    },
+    FACT_TABLES[1]: COMMON
+    | {
+        "position_timestamp_utc": "timestamp with time zone",
+        "entity_id": "text",
+        "vehicle_id": "text",
+        "trip_id": "text",
+        "route_id": "text",
+        "stop_id": "text",
+        "current_stop_sequence": "integer",
+        "current_status": "integer",
+        "occupancy_status": "integer",
+        "latitude": "double precision",
+        "longitude": "double precision",
+        "bearing": "double precision",
+        "speed": "double precision",
+    },
+}
+
+
+def assert_contract(outcome):
+    assert tuple(t.table for t in outcome.facts) == FACT_TABLES
+    assert tuple(t.table for t in outcome.alert_state) == ALERT_TABLES
+    for table in outcome.facts + outcome.alert_state:
+        schema = EXPECTED_FACTS[table.table] if table.table in FACT_TABLES else SCHEMAS[table.table]
+        keys = (
+            ("provider_id", "realtime_snapshot_id", "entity_index")
+            if table.table in FACT_TABLES
+            else KEYS[table.table]
+        )
+        columns = tuple(schema)
+        assert table.columns == columns
+        assert table.types == tuple(schema.values())
+        assert table.key_columns == tuple(columns.index(k) for k in keys)
+        assert all(len(row) == len(columns) for row in table.rows)
+
+
+@pytest.mark.parametrize("drift", ["added", "missing", "type"])
+def test_cycle_reader_refuses_catalog_drift_by_table_name(drift):
+    catalog = dict(EXPECTED_FACTS[FACT_TABLES[0]])
+    if drift == "added":
+        catalog["new_fact"] = "integer"
+    elif drift == "missing":
+        del catalog["delay_seconds"]
+    else:
+        catalog["delay_seconds"] = "bigint"
+    connection = MagicMock()
+    connection.execute.return_value.tuples.return_value.all.return_value = list(catalog.items())
+    with pytest.raises(ValueError, match="gold.fact_trip_delay_snapshot.*contract"):
+        read_cycle_rows(connection, provider_id="catalog_test")
 
 
 def alert_bytes(endpoint, alerts):
@@ -46,7 +135,22 @@ def alert_bytes(endpoint, alerts):
 def alerts_case(replay_case, request):
     case = replay_case
     endpoint = request.param
+    provider_id = "oracle_" + uuid4().hex
     manifest = case.registry.get_provider(case.window.provider_id)
+    manifest.provider.provider_id = provider_id
+    manifest_path = case.registry.config_dir / "test.yaml"
+    # JSON is valid YAML; reload through the same public manifest interface as production.
+    manifest_path.write_text(manifest.model_dump_json(), encoding="utf-8")
+    case.registry = ProviderRegistry(case.registry.config_dir, case.settings)
+    case.window = replace(
+        case.window,
+        provider_id=provider_id,
+        poll_records=tuple(
+            replace(record, feed_day=replace(record.feed_day, provider_id=provider_id))
+            for record in case.window.poll_records
+        ),
+    )
+    manifest = case.registry.get_provider(provider_id)
     template = manifest.feeds["trip_updates"]
     feed_type = I3AlertsFeedConfig if endpoint == "i3_alerts" else ServiceAlertsFeedConfig
     manifest.feeds[endpoint] = feed_type.model_validate(
@@ -101,17 +205,85 @@ def alerts_case(replay_case, request):
     return case, endpoint
 
 
+@contextmanager
+def tracked_owner(admin):
+    names, outstanding = [], set()
+
+    def checkout(connection, *_):
+        outstanding.add(id(connection))
+
+    def checkin(connection, *_):
+        outstanding.discard(id(connection))
+
+    @contextmanager
+    def owner(*args, **kwargs):
+        with oracle_database(*args, **kwargs) as oracle:
+            engine = oracle.engine
+            event.listen(engine, "checkout", checkout)
+            event.listen(engine, "checkin", checkin)
+            with engine.connect() as connection:
+                name = connection.execute(text("SELECT current_database()")).scalar_one()
+                assert re.fullmatch(r".+_oracle_[0-9a-f]{16}", name)
+                names.append(name)
+            try:
+                yield oracle
+            finally:
+                assert not outstanding, "runner leaked a checked-out connection"
+
+    try:
+        with patch("transit_ops.live.oracle.runner.oracle_database", owner):
+            yield names
+    finally:
+        for name in names:
+            try:
+                with admin.connect() as connection:
+                    assert (
+                        connection.execute(
+                            text("SELECT count(*) FROM pg_database WHERE datname=:n"), {"n": name}
+                        ).scalar_one()
+                        == 0
+                    )
+                    assert (
+                        connection.execute(
+                            text("SELECT count(*) FROM pg_stat_activity WHERE datname=:n"),
+                            {"n": name},
+                        ).scalar_one()
+                        == 0
+                    )
+            finally:
+                # An ownership regression must fail without leaving the test database behind.
+                with admin.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+                    quoted = connection.dialect.identifier_preparer.quote(name)
+                    connection.exec_driver_sql(f"DROP DATABASE IF EXISTS {quoted} WITH (FORCE)")
+        assert not outstanding
+
+
 def replay(case, real_db_engine):
-    return list(
-        replay_window(
-            case.window,
-            admin_url=real_db_engine.url.render_as_string(hide_password=False),
-            environment=os.environ,
-            settings=case.settings,
-            registry=case.registry,
-            bronze=case.bronze,
+    def consistent_rows(connection, **kwargs):
+        assert tuple(
+            connection.exec_driver_sql(
+                "SELECT current_setting('transaction_read_only'), "
+                "current_setting('transaction_isolation')"
+            ).one()
+        ) == ("on", "repeatable read")
+        return read_cycle_rows(connection, **kwargs)
+
+    with (
+        tracked_owner(real_db_engine) as names,
+        patch("transit_ops.live.oracle.runner.read_cycle_rows", side_effect=consistent_rows),
+    ):
+        result = list(
+            replay_window(
+                case.window,
+                admin_url=real_db_engine.url.render_as_string(hide_password=False),
+                environment=os.environ,
+                settings=case.settings,
+                registry=case.registry,
+                bronze=case.bronze,
+            )
         )
-    )
+        assert len(names) == 1
+        return result
 
 
 def test_mixed_replay_returns_stable_typed_rows_and_independent_alert_parity(
@@ -137,6 +309,7 @@ def test_mixed_replay_returns_stable_typed_rows_and_independent_alert_parity(
     ) as local:
         seed_alert_state(local, seed)
         for cycle, outcome in zip(case.window.cycles, first, strict=True):
+            assert_contract(outcome)
             _, sid = next(ref for ref in cycle.captures if ref[0] == "alert_snapshot")
             _, capture = case.window.capture("alert_snapshot", sid)
             body = (case.bronze("local").root / capture.storage_path).read_bytes()
@@ -154,7 +327,7 @@ def test_mixed_replay_returns_stable_typed_rows_and_independent_alert_parity(
             )
             for table in outcome.alert_state:
                 candidate = [
-                    tuple(row[c] for c in table.columns) for row in read(local, table.table)
+                    tuple(row[c] for c in SCHEMAS[table.table]) for row in read(local, table.table)
                 ]
                 assert compare_rows(table.table, table.key_columns, table.rows, candidate) == []
                 assert rows_digest(table.rows) == rows_digest(candidate)
@@ -222,3 +395,78 @@ def test_failed_alert_load_rolls_back_capture_and_yields_no_success(real_db_engi
         with oracle.engine.connect() as connection:
             for table in TABLES[:5]:
                 assert connection.execute(text(f"SELECT count(*) FROM {table}")).scalar_one() == 0
+
+
+def test_public_runner_cleans_up_after_alert_failure(real_db_engine, alerts_case):
+    case, _ = alerts_case
+
+    def load(connection, **kwargs):
+        load_i3_snapshot_to_silver(connection, **kwargs)
+        raise RuntimeError("alert write failed")
+
+    with tracked_owner(real_db_engine) as names:
+        with patch("transit_ops.live.oracle.runner.load_i3_snapshot_to_silver", side_effect=load):
+            with pytest.raises(ReplayFailed) as error:
+                list(
+                    replay_window(
+                        case.window,
+                        admin_url=real_db_engine.url.render_as_string(hide_password=False),
+                        environment=os.environ,
+                        settings=case.settings,
+                        registry=case.registry,
+                        bronze=case.bronze,
+                    )
+                )
+            assert str(error.value.__cause__) == "alert write failed"
+        assert len(names) == 1
+
+
+def test_alert_only_replay_keeps_both_empty_typed_fact_tables(real_db_engine, alerts_case):
+    case, _ = alerts_case
+    case.window = replace(
+        case.window, cycles=(replace(case.window.cycles[0], captures=(("alert_snapshot", 1501),)),)
+    )
+    (outcome,) = replay(case, real_db_engine)
+    assert_contract(outcome)
+    assert all(table.rows == () for table in outcome.facts)
+
+
+def test_empty_evidence_has_every_declared_column_type_and_key(alerts_case):
+    from types import SimpleNamespace
+
+    case, _ = alerts_case
+    schemas = EXPECTED_FACTS | {name: SCHEMAS[name] for name in ALERT_TABLES}
+    connection = MagicMock()
+
+    def execute(statement, params):
+        result = MagicMock()
+        if "pg_attribute" in str(statement):
+            result.tuples.return_value.all.return_value = list(schemas[params["table"]].items())
+        else:
+            result.__iter__.return_value = iter(())
+        return result
+
+    connection.execute.side_effect = execute
+    facts, alerts = read_cycle_rows(connection, provider_id=case.window.provider_id)
+    assert_contract(SimpleNamespace(facts=facts, alert_state=alerts))
+    assert all(table.rows == () for table in facts + alerts)
+
+
+def test_added_columns_in_any_evidence_table_refuse_by_name(real_db_engine, alerts_case):
+    case, _ = alerts_case
+    with oracle_database(
+        real_db_engine.url.render_as_string(hide_password=False),
+        clock=PinnedClock(case.window.serving_initialized_at_utc),
+        environment=os.environ,
+    ) as oracle:
+        for table in FACT_TABLES + ALERT_TABLES:
+            with oracle.engine.connect() as connection:
+                transaction = connection.begin()
+                try:
+                    connection.exec_driver_sql(
+                        f"ALTER TABLE {table} ADD COLUMN contract_probe integer"
+                    )
+                    with pytest.raises(ValueError, match=table + ".*contract"):
+                        read_cycle_rows(connection, provider_id=case.window.provider_id)
+                finally:
+                    transaction.rollback()

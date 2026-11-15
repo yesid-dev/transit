@@ -169,6 +169,9 @@ def replay_window(
                     )
                 written = tuple((key, sink.objects[key]) for key in sink.take_written())
                 with oracle.engine.begin() as connection:
+                    connection.exec_driver_sql(
+                        "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"
+                    )
                     facts, alert_state = read_cycle_rows(connection, provider_id=window.provider_id)
                 outcome = CycleOutcome(
                     clock.instant, written, dict(sink.objects), facts, alert_state
