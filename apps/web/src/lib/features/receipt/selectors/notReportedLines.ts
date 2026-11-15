@@ -24,13 +24,17 @@ export interface NoLiveDataLine {
 }
 
 export interface NotReportedVM {
-	/** Lines that publish live data but never appeared in it. */
+	/** Listed lines that publish live data but never appeared in it. */
 	readonly rows: NotReportedRow[];
-	readonly shown: number;
-	/** All not-reported lines minus the listed lines that publish no live data. */
-	readonly total: number | null;
 	/** Listed lines that publish no live data, so they could never appear live. */
 	readonly noLiveData: readonly NoLiveDataLine[];
+	/** The published count of every not-reported line, listed or not. */
+	readonly total: number | null;
+	/**
+	 * Lines beyond the published list, whose live-data status is unknown: total minus every
+	 * listed line. Null when the total is missing or smaller than the list.
+	 */
+	readonly hidden: number | null;
 	readonly hasData: boolean;
 }
 
@@ -67,11 +71,12 @@ export function selectNotReportedLines(
 		display: labels.fmtScheduled(r.scheduledTripDays),
 		href: labels.href(r.id),
 	}));
+	const hidden = count == null || count < listed.length ? null : count - listed.length;
 	return {
 		rows,
-		shown: rows.length,
-		total: count == null ? null : Math.max(count - noLiveData.length, 0),
 		noLiveData,
-		hasData: listed.length > 0,
+		total: count,
+		hidden,
+		hasData: listed.length > 0 || (hidden ?? 0) > 0,
 	};
 }

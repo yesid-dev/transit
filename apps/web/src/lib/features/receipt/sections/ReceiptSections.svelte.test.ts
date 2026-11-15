@@ -102,9 +102,9 @@ const notReportedList: NotReportedVM = {
 			ariaLabel: 'View line 51',
 		},
 	],
-	shown: 1,
-	total: 1,
 	noLiveData: [],
+	total: 1,
+	hidden: 0,
 	hasData: true,
 };
 
@@ -113,7 +113,7 @@ const notReportedProps = {
 	heading: 'Scheduled but never appeared',
 	caveat: 'No live-feed reading was observed.',
 	noLiveData: { heading: 'No live data', caveat: 'These lines publish no live data.' },
-	shownOfTotal: (shown: number, total: number) => `Showing ${shown} of ${total}`,
+	hiddenNote: (n: number) => `${n} more lines are not listed.`,
 	locale: 'en' as const,
 };
 

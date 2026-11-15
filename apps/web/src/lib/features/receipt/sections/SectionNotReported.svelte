@@ -9,7 +9,7 @@
 		heading: string;
 		caveat: string;
 		noLiveData: { heading: string; caveat: string };
-		shownOfTotal: (shown: number, total: number) => string;
+		hiddenNote: (n: number) => string;
 		locale: Locale;
 		headingLevel?: 2 | 3;
 	}
@@ -18,23 +18,16 @@
 		heading,
 		caveat,
 		noLiveData,
-		shownOfTotal,
+		hiddenNote,
 		locale,
 		headingLevel = 2,
 	}: SectionNotReportedProps = $props();
-
-	const truncated = $derived(list.total != null && list.total > list.shown);
 </script>
 
 <section class="receipt-not-reported" data-slot="receipt-not-reported" aria-label={heading}>
-	{#if list.rows.length > 0 || truncated}
+	{#if list.rows.length > 0}
 		<SectionHeading level={headingLevel} overline={heading} />
 		<p class="receipt-not-reported-caveat" data-slot="receipt-not-reported-caveat">{caveat}</p>
-		{#if truncated}
-			<p class="receipt-not-reported-note" data-slot="receipt-shown-of-total">
-				{shownOfTotal(list.shown, list.total ?? list.shown)}
-			</p>
-		{/if}
 		<ul class="receipt-not-reported-list" role="list" aria-label={heading}>
 			{#each list.rows as row (row.key)}
 				<li class="receipt-not-reported-item">
@@ -76,6 +69,11 @@
 				</li>
 			{/each}
 		</ul>
+	{/if}
+	{#if list.hidden != null && list.hidden > 0}
+		<p class="receipt-not-reported-note" data-slot="receipt-not-reported-hidden">
+			{hiddenNote(list.hidden)}
+		</p>
 	{/if}
 </section>
 

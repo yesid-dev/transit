@@ -560,7 +560,7 @@
 									heading={t.notReported.heading}
 									caveat={t.notReported.caveat}
 									noLiveData={t.noLiveData}
-									shownOfTotal={t.notReported.shownOfTotal}
+									hiddenNote={t.notReported.hidden}
 									headingLevel={3}
 									{locale}
 								/>

@@ -110,7 +110,10 @@ export const copy = defineCopy({
 			heading: 'Scheduled but never appeared',
 			rowLabel: 'Line',
 			scheduled: (n) => `${n} scheduled`,
-			shownOfTotal: (shown, total) => `Showing ${shown} of ${total}`,
+			hidden: (n: number) =>
+				n === 1
+					? '1 more line with scheduled trips is not listed. This receipt cannot show whether it publishes live data.'
+					: `${intl.number('en').format(n)} more lines with scheduled trips are not listed. This receipt cannot show whether they publish live data.`,
 			caveat:
 				'Lines with scheduled trips that never appeared in the live feed on the selected day and were not explicitly cancelled. This list identifies lines, not individual buses.',
 		},
@@ -268,7 +271,10 @@ export const copy = defineCopy({
 			heading: 'Planifiés mais jamais apparus',
 			rowLabel: 'Ligne',
 			scheduled: (n: number) => `${n} planifiés`,
-			shownOfTotal: (shown: number, total: number) => `Affichage de ${shown} sur ${total}`,
+			hidden: (n: number) =>
+				n === 1
+					? '1 autre ligne avec des trajets planifiés n’est pas listée. Ce reçu ne permet pas de savoir si elle publie des données en direct.'
+					: `${intl.number('fr').format(n)} autres lignes avec des trajets planifiés ne sont pas listées. Ce reçu ne permet pas de savoir si elles publient des données en direct.`,
 			caveat:
 				'Les lignes dont des trajets planifiés ne sont jamais apparus dans le flux en direct le jour sélectionné, sans annulation explicite. Cette liste identifie les lignes, pas les véhicules individuels.',
 		},
