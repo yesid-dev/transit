@@ -10,6 +10,7 @@ import { navPillCopy } from '../src/lib/i18n/messages';
 import { headerSearchCopy } from '../src/lib/components/shell/headerSearch.copy';
 import { AUDIT_NAV, LEGAL_NAV, SURFACE_NAV } from '../src/lib/content/nav';
 import { DEFAULT_LOCALE, PUBLISHED_LOCALES, type Locale } from '../src/lib/i18n/config';
+import { localizeHref } from '../src/lib/i18n/routing';
 import { tripCopy } from '../src/lib/features/trips/trips.copy';
 
 const fixture = (name: string) =>
@@ -50,22 +51,70 @@ test.describe('accessibility', { tag: '@theme' }, () => {
 		for (const path of pages) {
 			const url = localized(path, locale);
 			test(`${url} has no serious or critical axe violations`, async ({ page }) => {
+				const lineLive = path === `/lines/${line.id}?tab=detail`;
+				if (lineLive) {
+					// Give each published stop a report so every destination's visible links reach axe.
+					const stops = [
+						...new Set<string>(
+							line.directions.flatMap((direction: { stops: { id: string }[] }) =>
+								direction.stops.map((stop) => stop.id),
+							),
+						),
+					];
+					await page.route(/\/v1\/stm\/live\/trips\.json(?:\?|$)/, async (route) => {
+						const response = await route.fetch();
+						const body = await response.json();
+						await route.fulfill({
+							response,
+							json: {
+								...body,
+								generated_utc: departures.generated_utc,
+								feed_captured_utc: departures.generated_utc,
+								trips: {
+									...body.trips,
+									'a11y-line-predictions': {
+										route: lineId,
+										status: 'on_time',
+										stops: stops.map((stop) => ({
+											stop,
+											eta_utc: new Date(
+												Date.parse(departures.generated_utc) + 300_000,
+											).toISOString(),
+											delay_min: 0,
+										})),
+									},
+								},
+							},
+						});
+					});
+				}
 				// As in the layout audit below, scan after client-side fixture data settles.
-				await page.goto(url, { waitUntil: 'networkidle' });
+				await page.goto(lineLive ? localizeHref(path, locale, 'stm') : url, {
+					waitUntil: 'networkidle',
+				});
 				await expect(page.getByRole('main')).toBeVisible();
-				if (path === `/lines/${line.id}?tab=detail`) {
-					for (const direction of await page.locator('[data-slot="line-directions"] summary').all())
-						await direction.click();
-					await expect(page.locator('.line-stop-link')).toHaveCount(lineStopCount);
-					// Axe's label-in-name check needs the text on screen, not merely in the DOM.
-					for (const [index, link] of (await page.locator('.line-stop-link').all()).entries()) {
-						await link.scrollIntoViewIfNeeded();
-						await link.evaluate(
-							(element, index) => element.setAttribute('data-axe-stop', String(index)),
-							index,
-						);
-						await expectAccessible(page, { include: `[data-axe-stop="${index}"]` });
+				if (lineLive) {
+					const pane = page.locator('[data-slot="line-directions"][data-mode="live"]');
+					const destination = pane.getByRole('combobox');
+					await expect(destination).toBeVisible();
+					await expect(destination.getByRole('option')).toHaveCount(line.directions.length);
+					let scanned = 0;
+					for (const [index, direction] of line.directions.entries()) {
+						await destination.selectOption(String(index));
+						const links = pane.getByRole('table').getByRole('rowheader').getByRole('link');
+						await expect(links).toHaveCount(direction.stops.length);
+						// Axe's label-in-name check needs the selected destination's links on screen.
+						for (const link of await links.all()) {
+							await link.scrollIntoViewIfNeeded();
+							await link.evaluate(
+								(element, index) => element.setAttribute('data-axe-stop', String(index)),
+								scanned,
+							);
+							await expectAccessible(page, { include: `[data-axe-stop="${scanned}"]` });
+							scanned += 1;
+						}
 					}
+					expect(scanned).toBe(lineStopCount);
 				}
 				if (path === `/trip/${tripId}`) {
 					await expect(page.locator('.trip-stop-link')).toHaveCount(trips[tripId].stops.length);
