@@ -4,6 +4,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from datetime import datetime
+from typing import Literal
 
 from transit_ops.history.poll_record import CaptureEntry, PollRecord, canonical_json, typed_value
 
@@ -43,6 +44,7 @@ class ReplayWindow:
     edition: EditionInput
     serving_initialized_at_utc: datetime
     cycles: tuple[CycleSpec, ...]
+    initial_state: Literal["empty"] = "empty"
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "feed_endpoints", dict(self.feed_endpoints))
@@ -99,6 +101,10 @@ def _aware(value: object, path: str) -> None:
 
 
 def _validate(window: ReplayWindow) -> None:
+    if window.initial_state != "empty":
+        raise WindowInvalid(
+            "only empty-start windows are supported; prior alert state is unavailable"
+        )
     _aware(asdict(window), "window")
     for record in window.poll_records:
         if record.feed_day.provider_id != window.provider_id:
