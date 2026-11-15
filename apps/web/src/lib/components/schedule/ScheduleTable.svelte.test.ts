@@ -41,7 +41,7 @@ function scheduleChassis(
 
 	expect(frame).toHaveClass('data-table-frame', 'schedule-table-frame');
 	expect(frame).toHaveAttribute('data-mode', mode);
-	expect(frame).toHaveAttribute('data-responsive', 'scroll');
+	expect(frame).toHaveAttribute('data-responsive', mode === 'service' ? 'stack' : 'scroll');
 	expect(frame).toHaveAttribute('data-frame', 'card');
 	expect(frame).toHaveAttribute('data-collapse', 'collapse');
 	expect(frame).toHaveAttribute('data-header-band', 'terminal');
@@ -291,7 +291,7 @@ describe('ScheduleTable — service mode', () => {
 		).toBeInTheDocument();
 		expect(
 			within(table).getByRole('columnheader', { name: SERVICE_LABELS.window }),
-		).toHaveAttribute('data-numeric', 'true');
+		).not.toHaveAttribute('data-numeric');
 		expect(
 			within(table).getByRole('columnheader', { name: SERVICE_LABELS.headway }),
 		).toHaveAttribute('data-numeric', 'true');
@@ -301,7 +301,7 @@ describe('ScheduleTable — service mode', () => {
 		);
 		expect(table.querySelector('tbody [data-column="window"]')).toHaveAttribute(
 			'data-align',
-			'end',
+			'start',
 		);
 		expect(table.querySelector('tbody [data-column="headway"]')).toHaveAttribute(
 			'data-align',
@@ -313,8 +313,8 @@ describe('ScheduleTable — service mode', () => {
 	});
 
 	it.each([
-		['en', 'Unknown, time window not supplied', 'Unknown, not in the schedule'],
-		['fr', 'Inconnu, plage horaire non fournie', 'Inconnu, absent de l’horaire'],
+		['en', 'Time window not supplied', 'Unknown, not in the schedule'],
+		['fr', 'Plage horaire non fournie', 'Inconnu, absent de l’horaire'],
 	] as const)(
 		'says a published headway’s missing time window was not supplied, in its cell only (%s)',
 		(locale, windowName, headwayName) => {
@@ -327,11 +327,9 @@ describe('ScheduleTable — service mode', () => {
 			});
 
 			const table = screen.getByRole('table', { name: SERVICE_LABELS.caption });
-			const [windowCell, headwayCell] = [
-				...table.querySelectorAll('tbody [data-column="window"], tbody [data-column="headway"]'),
-			].filter((cell) => cell.querySelector('[data-slot="absent-value"]'));
-			expect(windowCell).toHaveAttribute('data-column', 'window');
-			expect(within(windowCell as HTMLElement).getByLabelText(windowName)).toBeInTheDocument();
+			const windowCell = table.querySelector('tbody [data-column="window"]') as HTMLElement;
+			const headwayCell = table.querySelectorAll('tbody [data-column="headway"]')[1] as HTMLElement;
+			expect(windowCell).toHaveTextContent(windowName);
 			expect(headwayCell).toHaveAttribute('data-column', 'headway');
 			expect(within(headwayCell as HTMLElement).getByLabelText(headwayName)).toBeInTheDocument();
 		},

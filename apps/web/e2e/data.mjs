@@ -45,6 +45,35 @@ for (const [key, body] of Object.entries(b9)) {
 	if (/^(static\/(routes|stops)|historic\/(route|stop)_reliability)\//.test(key))
 		files[`/v1/stm/${key}`] ??= JSON.stringify(body);
 }
+// T4 Live/Schedule: real-size destination lists, isolated from the ordinary line fixture.
+const lineStops = Array.from({ length: 61 }, (_, i) => ({
+	id: `t4-${i}`,
+	seq: i + 1,
+	name: `Station de l’Université / Boulevard Édouard-Montpetit et chemin de la Côte-des-Neiges ${i + 1}`,
+}));
+files['/v1/stm/static/routes/9003.json'] = JSON.stringify({
+	...b9['static/routes/24.json'],
+	id: '9003',
+	short: '9003',
+	long: 'Long destinations and live reports',
+	type: 3,
+	directions: [61, 61, 25, 25].map((size, i) => ({
+		dir: i % 2,
+		headsign: ['Greenboro / Rockcliffe', 'Rockcliffe via station', 'Billings Bridge', 'Rideau'][i],
+		stops: lineStops.slice(0, size),
+	})),
+	service_periods: [
+		{ shift: 'am_peak', window: '06:00–09:00', headway_min: 9 },
+		{ shift: 'afternoon', window: '15:00–19:00', headway_min: 15 },
+		{ shift: 'night', window: null, headway_min: 30.5 },
+	],
+});
+files['/v1/stm/static/routes/9004.json'] = JSON.stringify({
+	...JSON.parse(files['/v1/stm/static/routes/9003.json']),
+	id: '9004',
+	short: '9004',
+	type: 1,
+});
 // Line 9001: seven complete days of 1,000 readings with one-decimal shares (89.8% ...), the widest
 // daily labels a phone must place without overlap. Built from a seed, not a committed fixture.
 const decimalWeek = [898, 912, 887, 905, 893, 921, 879];

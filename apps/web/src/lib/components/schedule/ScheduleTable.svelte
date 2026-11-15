@@ -149,7 +149,7 @@
 	{#if service.window}
 		{service.window}
 	{:else}
-		<AbsentValue variant="row" reason="window-not-supplied" {locale} />
+		<span>{locale === 'fr' ? 'Plage horaire non fournie' : 'Time window not supplied'}</span>
 	{/if}
 {/snippet}
 
@@ -249,7 +249,6 @@
 			{
 				key: 'window',
 				header: labels.window ?? '',
-				numeric: true,
 				cell: serviceWindowCell,
 			},
 			{
@@ -261,11 +260,7 @@
 		] satisfies readonly DataTableColumn<ScheduleServiceRow>[]}
 		key={(service, i) => `${service.period}-${i}`}
 		caption={labels.caption}
-		responsive={{
-			mode: 'scroll',
-			minWidth: '34rem',
-			minWidthCompact: '32rem',
-		}}
+		responsive={{ mode: 'stack', at: 'tablet' }}
 		frame="card"
 		borderCollapse="collapse"
 		headerBand="terminal"
@@ -276,6 +271,11 @@
 {/if}
 
 <style>
+	:global(.schedule-table-frame[data-mode='service'] .data-table :is(th, td)) {
+		white-space: normal;
+		overflow-wrap: normal;
+		word-break: normal;
+	}
 	:global(.schedule-table-frame.data-table-frame[data-frame='card']) {
 		background: var(--surface-2);
 	}

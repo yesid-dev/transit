@@ -74,11 +74,11 @@ vi.mock('#lib/v1/live/store.svelte.ts', () => ({
 		network: null,
 		index: { vehiclesByRoute: new Map(), byVehicleId: new Map(), byStopId: new Map() },
 		familyStates: Object.fromEntries(
-			['departures', 'alerts'].map((family) => [
+			['vehicles', 'trips', 'departures', 'alerts', 'network'].map((family) => [
 				family,
 				{
 					phase: 'ready',
-					health: { state: 'live', ageSeconds: 0, isStale: false, notice: null },
+					health: { state: 'live', retained: true, ageSeconds: 0, isStale: false, notice: null },
 				},
 			]),
 		),
