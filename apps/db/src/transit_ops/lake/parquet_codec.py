@@ -85,7 +85,9 @@ def read_canonical_csv(
     _literal_path(csv_path)
     validate_csv(connection, csv_path, schema)
     return connection.sql(
-        f"SELECT * FROM read_csv(?, columns=?, {csv_options(csv_path)})",
+        # Serial vector batching preserves legacy Parquet row-group boundaries
+        # and object bytes when the CSV buffer is smaller than the input.
+        f"SELECT * FROM read_csv(?, columns=?, {csv_options(csv_path)}, parallel=false)",
         params=[str(csv_path), schema.duckdb_types()],
     )
 

@@ -139,6 +139,73 @@ def test_same_input_gives_the_same_parquet_bytes(tmp_path):
     assert first.path.read_bytes() == second.path.read_bytes()
 
 
+def _write_pre_budget_codec(source, schema, destination):
+    # Frozen scan/COPY settings from ad870eb63b079155fed87f267ac14d38d450176a.
+    # Do not use current codec/reader helpers: this is the pre-change byte oracle.
+    options = (
+        "auto_detect=false, header=true, delim=',', quote='\"', escape='\"', nullstr='', "
+        "allow_quoted_nulls=false, strict_mode=true, ignore_errors=false, hive_partitioning=false, "
+        f"max_line_size={1664 * (2 * 1024**3 + 3)}"
+    )
+    content = hashlib.sha256(source.read_bytes()).hexdigest()
+    with duckdb.connect(
+        config={
+            "threads": 1,
+            "preserve_insertion_order": True,
+            "autoinstall_known_extensions": False,
+            "autoload_known_extensions": False,
+            "temp_directory": str(destination.parent),
+        }
+    ) as connection:
+        connection.execute("SET TimeZone='UTC'")
+        relation = connection.sql(
+            f"SELECT * FROM read_csv(?, columns=?, {options})",
+            params=[str(source), schema.duckdb_types()],
+        )
+        count = relation.aggregate("count(*)").fetchall()[0][0]
+        metadata = {
+            "transit.schema": schema.to_json().decode(),
+            "transit.content_sha256": content,
+            "transit.rows": str(count),
+            "transit.codec": '{"compression":"zstd","level":9,"row_group_rows":122880}',
+        }
+        relation.create_view("window_rows")
+        connection.execute(
+            "COPY (SELECT * FROM window_rows) TO ? (FORMAT parquet, "
+            "COMPRESSION zstd, COMPRESSION_LEVEL ?, ROW_GROUP_SIZE ?, KV_METADATA ?)",
+            [str(destination), 9, 122_880, dict(sorted(metadata.items()))],
+        )
+
+
+def test_codec_preserves_pre_change_bytes_across_buffer_and_row_group_boundaries(tmp_path):
+    source = tmp_path / "input.csv"
+    with source.open("w", encoding="utf8", newline="") as stream:
+        stream.write("id,payload\n")
+        for i in range(160_000):
+            stream.write(f"{i},{hashlib.sha256(str(i).encode()).hexdigest() * 2}\n")
+    assert source.stat().st_size > 8 * 1024**2  # exceeds the new reader's default buffer
+    schema = TableSchema.from_columns([("id", "integer", True), ("payload", "text", False)], ["id"])
+    legacy = tmp_path / "legacy.parquet"
+    _write_pre_budget_codec(source, schema, legacy)
+    # Independently measured using the actual pre-change writer on pinned DuckDB.
+    legacy_sha = hashlib.sha256(legacy.read_bytes()).hexdigest()
+    assert legacy_sha == "e7cc9cdaecd3e85e170e95a97f56ccaadcbea61364639bd17384df9927d59277"
+    written = write_window(source, schema, tmp_path / "new.parquet", metadata={}, temp_dir=tmp_path)
+    assert written.rows == 160_000
+    assert (
+        written.content_sha256 == "84ceb9264224a879a2388dcd1e0c3ec768c191eac4fcc9dcf40bb4b5abaa64e2"
+    )
+    assert written.sha256 == legacy_sha
+    assert written.path.read_bytes() == legacy.read_bytes()
+    with connect(tmp_path) as connection:
+        for path in (legacy, written.path):
+            assert connection.execute(
+                "SELECT row_group_num_rows FROM parquet_metadata(?) "
+                "WHERE column_id=0 ORDER BY row_group_id",
+                [str(path)],
+            ).fetchall() == [(122_880,), (37_120,)]
+
+
 def test_key_value_metadata_records_schema_digest_and_codec(tmp_path):
     window = write(tmp_path, metadata={"owner": "a'b"})
     with duckdb.connect() as connection:

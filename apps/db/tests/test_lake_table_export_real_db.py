@@ -194,6 +194,16 @@ def test_binary_order_matches_old_copy_and_has_no_postgres_sort(source, monkeypa
             )
         spec = WindowSpec(table, "_shared", "2026-11")
         result = export(source, spec, tmp_path / "new.csv")
+        assert result.rows == 6
+        with result.csv_path.open(encoding="utf8", newline="") as stream:
+            assert [row["label_key"] for row in csv.DictReader(stream)] == [
+                "10",
+                "9",
+                "B",
+                "_x",
+                "a",
+                "é",
+            ]
         old = tmp_path / "old.csv"
         with _snapshot(source, spec, 60) as snapshot:
             schema, statement, values = snapshot[:3]
