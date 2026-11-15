@@ -3,21 +3,22 @@
 	import CollapsibleSection from '../CollapsibleSection.svelte';
 
 	const SECTIONS = [
-		{ dataSection: 'verdict', eyebrow: 'AT A GLANCE', question: 'Can I trust this line?' },
 		{
 			dataSection: 'when-to-ride',
-			eyebrow: 'WHEN TO RIDE',
-			question: 'When should I take this line?',
+			title: 'By time of day',
+			summary: 'Between 87% and 91% by period of the day. Lowest: Afternoon peak.',
 		},
-		{ dataSection: 'the-wait', eyebrow: 'THE WAIT', question: 'How long will I wait?' },
-		{ dataSection: 'run-and-fit', eyebrow: 'RUN AND FIT', question: 'Will I make my trip?' },
-		{ dataSection: 'worst-stops', eyebrow: 'WORST STOPS', question: 'Where does it fail?' },
+		{
+			dataSection: 'the-wait',
+			title: 'Waiting and gaps',
+			summary: 'Waiting time is not measured here.',
+		},
 	] as const;
 </script>
 
 <SectionsToggle />
-{#each SECTIONS as section, index (section.dataSection)}
-	<CollapsibleSection {...section} number={index + 1}>
-		<p data-testid={`reliability-section-body-${section.dataSection}`}>Rider answer</p>
+{#each SECTIONS as section (section.dataSection)}
+	<CollapsibleSection {...section}>
+		<p data-testid={`reliability-section-body-${section.dataSection}`}>Evidence</p>
 	</CollapsibleSection>
 {/each}

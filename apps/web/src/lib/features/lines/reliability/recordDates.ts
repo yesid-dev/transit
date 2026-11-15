@@ -1,4 +1,5 @@
 import { intl, type Locale } from '#lib/i18n/copy.ts';
+import type { CutScope } from './selectors/evidence';
 
 function parseKey(key: string): Date | null {
 	if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return null;
@@ -52,4 +53,10 @@ export function formatRecordDates(
 	const startText = `${a.month} ${a.day}${sameYear ? '' : `, ${a.year}`}`;
 	const endText = sameMonth ? b.day : `${b.month} ${b.day}`;
 	return `${startText} to ${endText}${year || !sameYear ? `, ${b.year}` : ''}`;
+}
+
+/** The days one published cut covers, in words, or `history` for an all-history cut; null when unnamed. */
+export function scopeDates(scope: CutScope, locale: Locale, history: string): string | null {
+	if (scope.kind === 'window') return formatRecordDates(scope.from, scope.to, locale);
+	return scope.kind === 'history' ? history : null;
 }

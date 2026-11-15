@@ -174,7 +174,7 @@ describe('RouteReliabilityClusters', () => {
 		await assertRailIndependence({
 			container,
 			panelNames: [copy.controls.viewLabel, copy.controls.toc],
-			contentCount: 5,
+			contentCount: 6,
 			bulkAction: 'store',
 		});
 	});
@@ -241,6 +241,7 @@ describe('RouteReliabilityClusters', () => {
 			copy.sections.theWait,
 			copy.sections.runAndFit,
 			copy.sections.worstStops,
+			copy.sections.crowding,
 		]) {
 			expect(
 				within(screen.getByRole('region', { name: section.label })).getByRole('button', {
@@ -271,7 +272,7 @@ describe('RouteReliabilityClusters', () => {
 
 		const readout = container.querySelector('.toc-counter-text');
 		expect(readout).not.toBeNull();
-		expect(readout?.textContent?.replace(/\s+/g, ' ').trim()).toContain('SEC 1 / 5');
+		expect(readout?.textContent?.replace(/\s+/g, ' ').trim()).toContain('SEC 1 / 6');
 	});
 
 	it('renders every section honestly empty (no crash, no dropped section) with an empty contract', () => {
@@ -285,6 +286,7 @@ describe('RouteReliabilityClusters', () => {
 		expect(screen.getAllByText(copy.sections.theWait.label)[0]).toBeInTheDocument();
 		expect(screen.getAllByText(copy.sections.runAndFit.label)[0]).toBeInTheDocument();
 		expect(screen.getAllByText(copy.sections.worstStops.label)[0]).toBeInTheDocument();
+		expect(screen.getAllByText(copy.sections.crowding.label)[0]).toBeInTheDocument();
 
 		expect(container.querySelectorAll('[data-slot="absent-value"]').length).toBeGreaterThan(0);
 	});

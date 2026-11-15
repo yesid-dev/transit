@@ -6,7 +6,7 @@ import sparse from './__fixtures__/b9/sparse.json' with { type: 'json' };
 export const FIXTURES = Object.freeze({ rich, sparse });
 export const SURFACES = Object.freeze(['line', 'stop', 'network']);
 export const MARK_KINDS = Object.freeze(
-	'trend histogram dot-strip magnitude-bars dumbbell line sparkline bullet heatmap stacked-share service-span'.split(
+	'trend histogram dot-strip magnitude-bars line sparkline bullet heatmap stacked-share service-span'.split(
 		' ',
 	),
 );
@@ -158,7 +158,7 @@ const TABLE_COPY = Object.freeze({
 		avgStop: 'Average delay',
 		severe: 'Severe-delay share',
 		scheduled: 'Scheduled gap',
-		observed: 'Feed-appearance gap',
+		observed: 'Gap between first reports',
 		excess: 'Excess wait',
 		cov: 'Spread (CoV)',
 		bunched: 'Closely spaced appearances',
@@ -184,7 +184,7 @@ const TABLE_COPY = Object.freeze({
 		avgStop: 'Retard moyen',
 		severe: 'Part des retards graves',
 		scheduled: 'Intervalle prévu',
-		observed: 'Intervalle dans le flux',
+		observed: 'Intervalle entre premiers relevés',
 		excess: 'Attente excédentaire',
 		cov: 'Régularité (CV)',
 		bunched: 'Apparitions rapprochées',
@@ -653,6 +653,52 @@ function shareOf(row, digits) {
 /** The record answer: a whole percent, never from a share the record does not publish. */
 const recordShare = (row) => (finite(row?.otp_pct) == null ? null : shareOf(row, 0));
 
+const tenthPct = (value, locale) =>
+	new Intl.NumberFormat(localeTag(locale), {
+		style: 'percent',
+		minimumFractionDigits: 1,
+		maximumFractionDigits: 1,
+	}).format(value / 100);
+const TIME_OF_DAY_COPY = Object.freeze({
+	en: {
+		headers: ['Period', 'On time', 'Readings'],
+		dayType: 'Day type',
+		absent: 'Not published for this period',
+	},
+	fr: {
+		headers: ['Période', 'À l’heure', 'Relevés'],
+		dayType: 'Type de jour',
+		absent: 'Non publié pour cette période',
+	},
+});
+const STOP_COPY = Object.freeze({
+	en: {
+		valueNote: ' of readings more than 5 minutes late',
+		reading: 'reading',
+		readings: 'readings',
+	},
+	fr: {
+		valueNote: ' des relevés avec plus de 5 minutes de retard',
+		reading: 'relevé',
+		readings: 'relevés',
+	},
+});
+const GAPS_COPY = Object.freeze({
+	en: {
+		headers: ['Period', 'Scheduled', 'Between first reports'],
+		summary:
+			'Waiting time is not measured here. These are gaps between first reports, not arrivals at your stop.',
+		frequency:
+			'Frequent service Which periods count as frequent will come from a published classification. Transit never guesses it from a line’s name or from one schedule period.',
+	},
+	fr: {
+		headers: ['Période', 'Prévu', 'Entre premiers relevés'],
+		summary:
+			'Le temps d’attente n’est pas mesuré ici. Ce sont des intervalles entre les premiers relevés, pas entre les passages à votre arrêt.',
+		frequency:
+			'Service fréquent Les périodes considérées comme fréquentes viendront d’une classification publiée. Transit ne la devine jamais à partir du nom d’une ligne ni d’une seule période de l’horaire.',
+	},
+});
 const LINE_DAILY_COPY = Object.freeze({
 	en: { headers: ['Day', 'On time', 'Readings', 'Average delay'], gap: 'Not published' },
 	fr: { headers: ['Jour', 'À l’heure', 'Relevés', 'Retard moyen'], gap: 'Non publié' },
@@ -772,13 +818,13 @@ function lineOracle(fixture, locale, view) {
 					'silent_trip_days',
 				].map((field) => [field, sumField(retained, 'cancellation', field)]),
 			)
-		: latestDated(raw.cancellations ?? []);
+		: ((raw.cancellations ?? []).find((row) => row.date === closedDate) ?? null);
 	const skipped = retained.length
 		? {
 				skipped_stop_count: sumField(retained, 'skipped_stops', 'skipped_stop_count'),
 				stop_time_update_count: sumField(retained, 'skipped_stops', 'stop_time_update_count'),
 			}
-		: latestDated(raw.skipped_stops ?? []);
+		: ((raw.skipped_stops ?? []).find((row) => row.date === closedDate) ?? null);
 	const retainedSpan = retained.at(-1)?.service_span;
 	const span = retainedSpan
 		? {
@@ -831,6 +877,19 @@ function lineOracle(fixture, locale, view) {
 		independentlyRanked.every((row, index) => row.id === eligibleStops[index]?.id),
 		'weak-stop publisher order does not match Wilson, delay, and id ranking',
 	);
+	const chosenRange = view.includes('from=');
+	// A chosen range has no stop, time-of-day or gap cut of its own: those sections say so instead.
+	const listedStops = chosenRange
+		? []
+		: eligibleStops
+				.map((row, index) => ({ row, index }))
+				.sort(
+					(a, b) =>
+						b.row.severe_pct - a.row.severe_pct ||
+						b.row.observation_count - a.row.observation_count ||
+						a.index - b.index,
+				)
+				.map(({ row }) => row);
 	const windowedBreakdown = (raw.periods_by_grain ?? []).find((row) => row.grain === 'day');
 	const breakdown = windowedBreakdown ?? {
 		by_shift: (raw.periods ?? []).filter((row) => SHIFTS.includes(row.grain)),
@@ -852,43 +911,65 @@ function lineOracle(fixture, locale, view) {
 			return finite(row?.observation_count) >= 30 ? finite(row?.otp_pct) : null;
 		}),
 	]);
-	const timeRows = {
-		shift: byShift
-			.filter((row) => finite(row.severe_pct) != null)
-			.map((row) => [row.grain, row.severe_pct]),
-		dayType: byDayType
-			.filter((row) => finite(row.severe_pct) != null)
-			.map((row) => [row.grain, row.severe_pct]),
-		onTime: [...byShift, ...byDayType]
-			.filter((row) => finite(row.otp_pct) != null && windowedBreakdown != null)
-			.map((row) => [row.grain, row.otp_pct]),
-		crosstab: crosstabRows.some((row) => row.slice(1).some((value) => value != null))
-			? crosstabRows
-			: [],
-		weekday: Array.from({ length: 7 }, (_, index) => {
-			const iso = index + 1;
+	const timeCopy = TIME_OF_DAY_COPY[locale];
+	const timeShareRows = (rows) =>
+		rows.map((row) => {
+			const share = shareOf(row, 0);
 			return [
-				iso,
-				finite(
-					(breakdown.day_of_week ?? raw.day_of_week ?? []).find(
-						(row) => row.day_of_week_iso === iso,
-					)?.avg_delay_min,
-				),
+				row.grain,
+				share == null
+					? { value: null, text: timeCopy.absent }
+					: {
+							value: share,
+							text: new Intl.NumberFormat(localeTag(locale), { style: 'percent' }).format(
+								share / 100,
+							),
+						},
+				share == null || row.observation_count == null
+					? { value: null, text: '' }
+					: { value: row.observation_count, text: countText(row.observation_count, locale) },
 			];
-		}),
-	};
+		});
+	const timeTableRows = [
+		...timeShareRows(byShift),
+		...(byDayType.length ? [[timeCopy.dayType], ...timeShareRows(byDayType)] : []),
+	];
+	const timeTable =
+		chosenRange || !timeTableRows.some((row) => row[1]?.value != null)
+			? { headers: [], rows: [] }
+			: { headers: timeCopy.headers, rows: timeTableRows };
+	const timeRows = chosenRange
+		? { shift: [], dayType: [], crosstab: [], weekday: [] }
+		: {
+				shift: byShift
+					.filter((row) => finite(row.severe_pct) != null)
+					.map((row) => [row.grain, row.severe_pct]),
+				dayType: byDayType
+					.filter((row) => finite(row.severe_pct) != null)
+					.map((row) => [row.grain, row.severe_pct]),
+				crosstab: crosstabRows.some((row) => row.slice(1).some((value) => value != null))
+					? crosstabRows
+					: [],
+				weekday: Array.from({ length: 7 }, (_, index) => {
+					const iso = index + 1;
+					return [
+						iso,
+						finite(
+							(breakdown.day_of_week ?? raw.day_of_week ?? []).find(
+								(row) => row.day_of_week_iso === iso,
+							)?.avg_delay_min,
+						),
+					];
+				}),
+			};
 	const windowedHeadway = (raw.headway_by_grain ?? []).find((row) => row.grain === 'day');
-	const headwayRows = windowedHeadway?.headway ?? raw.headway ?? [];
+	const headwayRows = chosenRange ? [] : (windowedHeadway?.headway ?? raw.headway ?? []);
 	const primaryHeadway = headwayRows.some((row) => row.direction_id == null && row.day_type == null)
 		? headwayRows.filter((row) => row.direction_id == null && row.day_type == null)
 		: headwayRows;
-	const headwayMetric = (field) =>
-		primaryHeadway.some((row) => finite(row[field]) != null)
-			? primaryHeadway.map((row) => [row.shift, finite(row[field])])
-			: [];
 	const headwayDisplay = {
 		dumbbell: primaryHeadway.some(
-			(row) => finite(row.scheduled_min) != null && finite(row.observed_min) != null,
+			(row) => finite(row.scheduled_min) > 0 || finite(row.observed_min) > 0,
 		)
 			? primaryHeadway.map((row) => [
 					row.shift,
@@ -896,28 +977,17 @@ function lineOracle(fixture, locale, view) {
 					finite(row.observed_min),
 				])
 			: [],
-		excess: headwayMetric('excess_wait_min'),
-		cov: headwayMetric('cov'),
-		bunched: headwayMetric('bunched_pct'),
-		compare:
-			windowedHeadway == null
-				? []
-				: primaryHeadway
-						.filter((row) => finite(row.observed_min) != null)
-						.map((row) => compareDisplay(row, row.shift, locale, 'wait')),
-		headline: (() => {
-			const values = primaryHeadway.flatMap((row) => {
-				const value = finite(row.excess_wait_min);
-				return value == null ? [] : [value];
-			});
-			if (values.length === 0) return { value: null, text: '' };
-			const value = values.reduce((sum, item) => sum + item, 0) / values.length;
-			return { value: round(value), text: `${value.toFixed(1)} min` };
-		})(),
+		summary: GAPS_COPY[locale].summary,
+		frequency: GAPS_COPY[locale].frequency,
 	};
 	const byDow = raw.occupancy_by_dow ?? [];
 	const activeMix =
-		(raw.occupancy_by_grain ?? []).find((row) => row.grain === 'day')?.mix ?? raw.occupancy_mix;
+		// A grain shows only its own mix, never the file-level one under the grain's name. The range
+		// cell is read after the runner's day -> range round trip, which clears the chosen dates: a
+		// range without dates has no mix of its own, so no figure is shown.
+		chosenRange
+			? null
+			: ((raw.occupancy_by_grain ?? []).find((row) => row.grain === 'day')?.mix ?? null);
 	const occupancyShares = {
 		active: shareRows(activeMix, OCCUPANCY),
 		weekday: shareRows(
@@ -955,12 +1025,17 @@ function lineOracle(fixture, locale, view) {
 						text: `${Math.round(((finite(activeMix[dominantCode]) ?? 0) / activeTotal) * 100)}%`,
 					},
 				};
-	const onTimeDisplays =
-		windowedBreakdown == null
-			? []
-			: [...byShift, ...byDayType]
-					.filter((row) => finite(row.otp_pct) != null)
-					.map((row) => compareDisplay(row, row.grain, locale, 'onTime'));
+	const cancellationPct = pct(
+		finite(cancellation?.canceled_trip_days),
+		finite(cancellation?.total_trip_days),
+	);
+	const skippedPct = pct(
+		finite(skipped?.skipped_stop_count),
+		finite(skipped?.stop_time_update_count),
+	);
+	const completenessPct = retained.length
+		? pct(finite(cancellation?.delivered_trip_days), finite(cancellation?.scheduled_trip_days))
+		: null;
 	const serviceCaptions = {
 		completeness:
 			retained.length && finite(cancellation?.scheduled_trip_days) > 0
@@ -969,17 +1044,17 @@ function lineOracle(fixture, locale, view) {
 					: `${countText(cancellation.delivered_trip_days, locale)} observed non-cancelled trip-days / ${countText(cancellation.scheduled_trip_days, locale)} scheduled${cancellation.silent_trip_days == null ? '' : ` · ${countText(cancellation.silent_trip_days, locale)} count shortfall`}. Trip identities are not matched.`
 				: null,
 		cancellation:
-			finite(cancellation?.total_trip_days) > 0
-				? locale === 'fr'
-					? `${countText(cancellation.canceled_trip_days, locale)} annulés sur ${countText(cancellation.total_trip_days, locale)} jours-trajets`
-					: `${countText(cancellation.canceled_trip_days, locale)} of ${countText(cancellation.total_trip_days, locale)} trip-days canceled`
-				: null,
+			cancellationPct == null
+				? null
+				: locale === 'fr'
+					? `${countText(cancellation.canceled_trip_days, locale)} sur ${countText(cancellation.total_trip_days, locale)} (${tenthPct(cancellationPct, locale)})`
+					: `${countText(cancellation.canceled_trip_days, locale)} of ${countText(cancellation.total_trip_days, locale)} (${tenthPct(cancellationPct, locale)})`,
 		skipped:
-			finite(skipped?.stop_time_update_count) > 0
-				? locale === 'fr'
-					? `${countText(skipped.skipped_stop_count, locale)} ignorés sur ${countText(skipped.stop_time_update_count, locale)} mises à jour d'arrêt`
-					: `${countText(skipped.skipped_stop_count, locale)} of ${countText(skipped.stop_time_update_count, locale)} stop updates skipped`
-				: null,
+			skippedPct == null
+				? null
+				: locale === 'fr'
+					? `${countText(skipped.skipped_stop_count, locale)} des ${countText(skipped.stop_time_update_count, locale)} mises à jour d’arrêt (${tenthPct(skippedPct, locale)})`
+					: `${countText(skipped.skipped_stop_count, locale)} of ${countText(skipped.stop_time_update_count, locale)} stop updates (${tenthPct(skippedPct, locale)})`,
 	};
 	const scalar = (value, unit, fixed = false) => ({
 		value,
@@ -1004,17 +1079,6 @@ function lineOracle(fixture, locale, view) {
 			unit: 'min',
 		};
 	};
-	const cancellationPct = pct(
-		finite(cancellation?.canceled_trip_days),
-		finite(cancellation?.total_trip_days),
-	);
-	const skippedPct = pct(
-		finite(skipped?.skipped_stop_count),
-		finite(skipped?.stop_time_update_count),
-	);
-	const completenessPct = retained.length
-		? pct(finite(cancellation?.delivered_trip_days), finite(cancellation?.scheduled_trip_days))
-		: null;
 	const scalars = {
 		otp: {
 			value: recordPct,
@@ -1028,9 +1092,13 @@ function lineOracle(fixture, locale, view) {
 		p50: recordMin(day?.p50_min),
 		p90: recordMin(day?.p90_min),
 		severe: scalar(measured ? finite(day?.severe_pct) : null, '%'),
-		completeness: scalar(completenessPct, '%', true),
-		cancellation: scalar(cancellationPct, '%', true),
-		skipped: scalar(skippedPct, '%', true),
+		completeness: {
+			value: completenessPct,
+			text: completenessPct == null ? '' : tenthPct(completenessPct, locale),
+			unit: '%',
+		},
+		cancellation: { value: cancellationPct, text: serviceCaptions.cancellation ?? '', unit: '%' },
+		skipped: { value: skippedPct, text: serviceCaptions.skipped ?? '', unit: '%' },
 	};
 	const delayByCrowdingRows = OCCUPANCY.map((band) => [
 		band,
@@ -1073,31 +1141,23 @@ function lineOracle(fixture, locale, view) {
 			trips: finite(span?.trip_count),
 		}),
 		observation('line.weak_stops.eligible_ids', {
-			headers: eligibleStops.length
-				? locale === 'fr'
-					? ['Arrêts affichés', 'Taux de retard grave']
-					: ['Stops shown', 'Severe-delay rate']
-				: [],
-			rows: eligibleStops.map((row) => {
-				const ciLo = round(100 - row.wilson_hi);
-				const ciHi = round(100 - row.wilson_lo);
-				return {
-					name: row.name ?? row.id,
-					value: row.severe_pct,
-					unit: '%',
-					ciLo,
-					ciHi,
-					text: `${row.severe_pct}%\u00a0(${locale === 'fr' ? 'IC 95 %' : '95% CI'} ${ciLo}%–${ciHi}%)`,
-				};
-			}),
+			headers: [],
+			rows: listedStops.map((row) => ({
+				name: row.name ?? row.id,
+				value: row.severe_pct,
+				unit: '%',
+				readings: row.observation_count,
+				text: `${new Intl.NumberFormat(localeTag(locale), { style: 'percent', maximumFractionDigits: 1 }).format(row.severe_pct / 100)}${STOP_COPY[locale].valueNote}`,
+				readingsText: `${countText(row.observation_count, locale)} ${row.observation_count === 1 ? STOP_COPY[locale].reading : STOP_COPY[locale].readings}`,
+			})),
 		}),
 		observation(
 			'line.weak_stops.hrefs',
-			eligibleStops.map(
+			listedStops.map(
 				(row) => `${locale === 'fr' ? '/fr' : ''}/stop/${encodeURIComponent(row.id)}`,
 			),
 		),
-		observation('line.weak_stops.raw_count', windowedStops.length),
+		observation('line.weak_stops.raw_count', listedStops.length),
 		observation('line.pane.freshness_iso', raw.generated_utc?.slice(0, 10) ?? null),
 		observation('line.trend.rows', lineDailyTable(raw, closedDate, view, locale, retained)),
 		observation('line.habits.tiers', {
@@ -1107,17 +1167,29 @@ function lineOracle(fixture, locale, view) {
 		observation('line.time.rows', {
 			shift: table([c.group, '%'], timeRows.shift),
 			dayType: table([c.dayType, c.severe], timeRows.dayType, ['%']),
-			onTime: onTimeDisplays,
+			onTime: timeTable,
 			crosstab: table([c.shift, c.weekday, c.weekend], timeRows.crosstab, ['', ''], '·'),
 			weekday: table([c.day, c.avg], timeRows.weekday, [''], '·'),
 		}),
 		observation('line.headway.rows', {
-			dumbbell: table([c.row, c.scheduled, c.observed], headwayDisplay.dumbbell),
-			excess: table([c.shift, c.excess], headwayDisplay.excess, [' min']),
-			cov: table([c.shift, c.cov], headwayDisplay.cov),
-			bunched: table([c.shift, c.bunched], headwayDisplay.bunched, ['%']),
-			compare: headwayDisplay.compare,
-			headline: headwayDisplay.headline,
+			dumbbell: {
+				headers: headwayDisplay.dumbbell.length ? GAPS_COPY[locale].headers : [],
+				rows: headwayDisplay.dumbbell.map(([shift, ...minutes]) => [
+					shift,
+					...minutes.map((value) =>
+						!(value > 0)
+							? { value: null, text: TIME_OF_DAY_COPY[locale].absent }
+							: {
+									value: round(value),
+									text: new Intl.NumberFormat(localeTag(locale), {
+										maximumFractionDigits: 1,
+									}).format(round(value)),
+								},
+					),
+				]),
+			},
+			summary: headwayDisplay.summary,
+			frequency: headwayDisplay.frequency,
 		}),
 		observation('line.occupancy.shares', {
 			active: shareTable(occupancyShares.active),
@@ -1913,14 +1985,46 @@ export function runOracleSelfCheck() {
 		'hand stop pooled severe 29/180',
 	);
 	expectLiteral(
-		expectedDomainObservations('rich', 'line')[11]
-			?.value.rows.slice(0, 2)
-			.map(({ name, value, unit, ciLo, ciHi }) => ({ name, value, unit, ciLo, ciHi })),
+		expectedDomainObservations('rich', 'line')[11]?.value.rows.slice(0, 2),
 		[
-			{ name: 'B9 Stop 01', value: 50, unit: '%', ciLo: 40.4, ciHi: 59.6 },
-			{ name: 'B9 Stop 02', value: 48, unit: '%', ciLo: 38.5, ciHi: 57.7 },
+			{
+				name: 'B9 Stop 01',
+				value: 50,
+				unit: '%',
+				readings: 100,
+				text: '50% of readings more than 5 minutes late',
+				readingsText: '100 readings',
+			},
+			{
+				name: 'B9 Stop 02',
+				value: 48,
+				unit: '%',
+				readings: 100,
+				text: '48% of readings more than 5 minutes late',
+				readingsText: '100 readings',
+			},
 		],
-		'hand publisher Wilson order and accessible severe-scale mirror',
+		'hand stop list by late share, readings and no complementary interval',
+	);
+	expectLiteral(
+		expectedDomainObservations('rich', 'line', 'en', '/lines/24?from=2026-08-27&to=2026-08-29')
+			.filter((row) => ['line.weak_stops.raw_count', 'line.time.rows'].includes(row.id))
+			.map((row) => (row.id === 'line.time.rows' ? row.value.onTime : row.value)),
+		[0, { headers: [], rows: [] }],
+		'a chosen range lends no stop or time-of-day cut from the latest day',
+	);
+	expectLiteral(
+		expectedDomainObservations('rich', 'line')
+			.find((row) => row.id === 'line.time.rows')
+			?.value.onTime.rows.map((row) => [row[0], row[1]?.value ?? null]),
+		[
+			['am_peak', 70],
+			['pm_peak', 60],
+			['Day type', null],
+			['weekday', 74],
+			['weekend', 85],
+		],
+		'hand time of day from counts 35/50, 30/50, 59/80, 34/40 (published 84 is not the counts)',
 	);
 	expectLiteral(
 		routeFile(FIXTURES.rich)

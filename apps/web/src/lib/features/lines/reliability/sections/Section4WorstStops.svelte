@@ -1,133 +1,140 @@
 <script lang="ts">
 	import { getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
-	import { SectionLabel } from '@yesid/ui/brand';
+	import { stopNameFallback } from '#lib/site/absence.ts';
+	import { fmtNumber } from '#lib/utils/index.ts';
+	import { fmtLocalePct } from '#lib/utils/format.ts';
+	import type { WeakStop } from '#lib/v1/index.ts';
 	import CollapsibleSection from './CollapsibleSection.svelte';
-	import { AbsentValue } from '#lib/components/edge/index.ts';
-	import { Chart } from '#lib/components/dataviz/chart/index.ts';
-	import { GrainPicker, type GrainSegment } from '#lib/components/surface/index.ts';
-	import MetricInfo from '#lib/features/metrics/MetricInfo.svelte';
-	import { selectWeakStops } from '../selectors/weakStops';
-	import type { PunctualityVM } from '../clusters';
+	import { selectStopDelays, type CutScope } from '../selectors/evidence';
+	import { scopeDates } from '../recordDates';
 	import type { ReliabilityCopy } from '../reliability.copy';
 
-	const localizeHref = getLocalizeHref();
-
 	interface Section4WorstStopsProps {
-		punctuality: PunctualityVM;
+		stops: readonly WeakStop[];
+		/** Which days the published stop figures cover. */
+		scope: CutScope;
 		locale: Locale;
 		copy: ReliabilityCopy;
 	}
-	let { punctuality, locale, copy }: Section4WorstStopsProps = $props();
+	let { stops, scope, locale, copy }: Section4WorstStopsProps = $props();
 
-	const WORST_N_SEGMENTS = $derived<GrainSegment<string>[]>([
-		{ key: '5', label: '5' },
-		{ key: '10', label: '10' },
-		{ key: '15', label: copy.strip.worstNAll },
-	]);
-	let worstN = $state('10');
-	const worstNCount = $derived(Number(worstN));
-
-	const weakStopNote = (w: {
-		severe_pct?: number | null;
-		avg_delay_min?: number | null;
-		observation_count?: number | null;
-	}): string => {
-		const n = copy.strip.weakStopNote;
-		const parts: string[] = [];
-		if (w.severe_pct != null)
-			parts.push(`${n.severe} ${Math.round(w.severe_pct)}${copy.units.pct}`);
-		if (w.avg_delay_min != null)
-			parts.push(`${n.avg} ${Math.round(w.avg_delay_min * 10) / 10}${copy.units.min}`);
-		if (w.observation_count != null) parts.push(`${n.samples}=${w.observation_count}`);
-		return parts.join(' · ');
-	};
-
-	const weakStops = $derived(
-		selectWeakStops(
-			punctuality.weakStops,
-			worstNCount,
-			locale,
-			{
-				title: copy.strip.weakStopsHeading,
-				rowLabel: copy.strip.worstNLabel,
-				xLabel: copy.strip.avgDelayMin,
-				unit: copy.units.min,
-				severeXLabel: copy.strip.severeRateLabel,
-				severeUnit: copy.units.pct,
-				note: weakStopNote,
-				ciLabel: copy.strip.weakStopCi,
-				stopHref: (id) => localizeHref(`/stop/${id}`, locale),
-			},
-			{ preRanked: punctuality.weakStopsWindowed },
-		),
+	const FIRST = 5;
+	const localizeHref = getLocalizeHref();
+	const t = $derived(copy.evidence.stops);
+	const e = $derived(copy.evidence);
+	const rows = $derived(scope.kind === 'none' ? [] : selectStopDelays(stops));
+	let showAll = $state(false);
+	const visible = $derived(showAll ? rows : rows.slice(0, FIRST));
+	const pct = (value: number) => fmtLocalePct(value, locale)!;
+	const count = (value: number) => fmtNumber(value, { locale, rounding: 'round' })!;
+	const name = (row: { id: string; name: string | null }) =>
+		row.name ?? stopNameFallback(row.id, locale);
+	const dates = $derived(scopeDates(scope, locale, e.history));
+	const summary = $derived(
+		rows[0] ? t.summary(name(rows[0]), pct(rows[0].percent)) : e.summaryAbsent,
 	);
-	const weakStopsHeading = $derived(
-		weakStops.total > weakStops.shown
-			? `${copy.strip.weakStopsHeading} · ${weakStops.shown}/${weakStops.total}`
-			: `${copy.strip.weakStopsHeading} · ${weakStops.shown}`,
-	);
+	const listId = 'line-stop-delays';
 </script>
 
-<CollapsibleSection
-	dataSection="worst-stops"
-	number={5}
-	eyebrow={copy.sections.worstStops.label}
-	question={copy.sections.worstStops.question}
->
-	{#if weakStops.shown > 0}
-		<div class="section-primary" data-slot="weak-stops" data-card="primary">
-			<div class="weak-stops-head">
-				<span class="label-with-info">
-					<SectionLabel text={weakStopsHeading} variant="metric" />
-					<MetricInfo
-						class="cluster-info"
-						metricKey="weakStops"
-						{locale}
-						name={copy.strip.weakStopsHeading}
-						side="bottom"
-					/>
-				</span>
-				{#if weakStops.total > 5}
-					<GrainPicker
-						segments={WORST_N_SEGMENTS}
-						bind:value={worstN}
-						label={copy.strip.worstNLabel}
-					/>
-				{/if}
-			</div>
-			<p class="caption" data-slot="weak-stops-window">{copy.windows.weakStops}</p>
-			<div data-slot="weak-stops-list">
-				<Chart spec={weakStops.spec} />
-			</div>
+<CollapsibleSection dataSection="worst-stops" title={copy.sections.worstStops.label} {summary}>
+	{#if rows.length > 0}
+		<div class="evidence-body" data-slot="stop-delays" data-total={rows.length}>
+			<p class="evidence-lead">
+				{t.lead}
+				{#if dates}{e.scope(dates)}{/if}
+			</p>
+			<p class="evidence-note">{t.order}</p>
+			<ol class="stop-list" id={listId} aria-label={copy.sections.worstStops.label}>
+				{#each visible as row, index (row.id)}
+					<li class="stop-row" data-slot="stop-delay-row">
+						<span class="stop-row__pos" aria-hidden="true">{index + 1}</span>
+						<a class="stop-row__name" href={localizeHref(`/stop/${row.id}`, locale)}>{name(row)}</a>
+						<span class="stop-row__meta">
+							<span class="stop-row__value" data-slot="stop-delay-value"
+								>{pct(row.percent)}<span class="sr-only">{t.valueNote}</span></span
+							>
+							<span class="stop-row__readings" data-slot="stop-delay-readings">
+								{row.readings == null
+									? t.readingsAbsent
+									: e.readings(count(row.readings), row.readings)}
+							</span>
+						</span>
+					</li>
+				{/each}
+			</ol>
+			{#if rows.length > FIRST}
+				<button
+					type="button"
+					class="evidence-toggle"
+					data-slot="stop-delays-toggle"
+					aria-expanded={showAll}
+					aria-controls={listId}
+					onclick={() => (showAll = !showAll)}
+				>
+					{showAll ? t.showFewer : t.showAll(count(rows.length))}
+				</button>
+			{/if}
 		</div>
 	{:else}
-		<div data-slot="worst-stops-empty">
-			<AbsentValue variant="block" reason="no-observations" {locale} />
-		</div>
+		<p class="evidence-body" data-slot="worst-stops-empty">
+			<span class="evidence-absent" data-slot="absent-value"
+				>{scope.kind === 'none' && scope.range ? t.absentRange : e.notPublished}</span
+			>
+		</p>
 	{/if}
 </CollapsibleSection>
 
 <style>
-	.section-primary {
-		display: flex;
-		flex-direction: column;
-		gap: 0.625rem;
+	.stop-list {
+		display: grid;
+		margin: 0;
+		padding: 0;
+		list-style: none;
 	}
-	.weak-stops-head {
+	.stop-row {
+		display: grid;
+		grid-template-columns: 1.5rem minmax(0, 1fr);
+		column-gap: 0.75rem;
+		align-items: baseline;
+		padding-block: 0.25rem;
+		border-block-end: 1px solid var(--border-subtle);
+	}
+	.stop-row__pos {
+		color: var(--muted-foreground);
+		font-variant-numeric: tabular-nums;
+	}
+	/* Full public names wrap; the link keeps a 44 px target. */
+	.stop-row__name {
+		display: inline-flex;
+		align-items: center;
+		min-block-size: var(--size-tap-min);
+		min-width: 0;
+		overflow-wrap: anywhere;
+		text-wrap: pretty;
+	}
+	.stop-row__meta {
+		grid-column: 2;
 		display: flex;
 		flex-wrap: wrap;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.5rem 1rem;
+		gap: 0.25rem 1rem;
+		padding-block-end: 0.5rem;
+		font-variant-numeric: tabular-nums;
 	}
-	.label-with-info {
-		min-width: 0;
+	.stop-row__value {
+		font-weight: 600;
 	}
-	.caption {
-		margin: 0;
-		font-family: var(--font-mono);
-		font-size: var(--text-small);
-		line-height: 1.4;
+	.stop-row__readings {
 		color: var(--muted-foreground);
+		font-size: var(--text-small);
+	}
+	@container line-evidence (min-width: 36rem) {
+		.stop-row {
+			grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+		}
+		.stop-row__meta {
+			grid-column: 3;
+			justify-content: end;
+			padding-block-end: 0;
+		}
 	}
 </style>
