@@ -371,12 +371,16 @@ function canonical(value: unknown): string {
 }
 const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
 
-/** A real retained-history state: the root advertises one Hotspots day, its index and file. */
-function hotspotsHistory(root: { families?: unknown[] }, provider: string) {
-	const date = '2026-06-14';
-	const day = JSON.stringify({ ...hotspotsWeek, date, publish_generation_id: null });
+/** A real retained-history state: the root advertises one retained day, its index and file. */
+function retainedHistory(
+	family: 'hotspots' | 'repeat_offenders',
+	day: string,
+	date: string,
+	root: { families?: unknown[] },
+	provider: string,
+) {
 	const ref = {
-		path: `historic/history/hotspots/generations/${sha256(day)}/${date}.json`,
+		path: `historic/history/${family}/generations/${sha256(day)}/${date}.json`,
 		coverage_start: date,
 		coverage_end: date,
 		count: 1,
@@ -384,7 +388,7 @@ function hotspotsHistory(root: { families?: unknown[] }, provider: string) {
 		byte_size: Buffer.byteLength(day),
 	};
 	const basis = {
-		family: 'hotspots',
+		family,
 		selection_mode: 'date',
 		entity_id: null,
 		first_available_date: date,
@@ -404,9 +408,9 @@ function hotspotsHistory(root: { families?: unknown[] }, provider: string) {
 		publish_generation_id: `${provider}@published-run`,
 	});
 	// The root points at a generation-pinned index whose bytes hash to the path's SHA-256.
-	const indexPath = `historic/history/hotspots/generations/${sha256(index)}/index.json`;
+	const indexPath = `historic/history/${family}/generations/${sha256(index)}/index.json`;
 	const edge = {
-		family: 'hotspots',
+		family,
 		selection_mode: 'date',
 		index_path: indexPath,
 		collection_generation_id: generation,
@@ -422,6 +426,12 @@ function hotspotsHistory(root: { families?: unknown[] }, provider: string) {
 		day,
 		ref,
 	};
+}
+
+function hotspotsHistory(root: { families?: unknown[] }, provider: string) {
+	const date = '2026-06-14';
+	const day = JSON.stringify({ ...hotspotsWeek, date, publish_generation_id: null });
+	return retainedHistory('hotspots', day, date, root, provider);
 }
 
 type Sampled = Window & { samples?: string[] };
@@ -520,6 +530,177 @@ for (const provider of ['stm', 'octranspo'])
 				await expect(first).toHaveAttribute('aria-expanded', /true|false/);
 				if ((await first.getAttribute('aria-expanded')) === 'false') await first.click();
 				const evidence = page.locator('[data-slot="hotspot-row-evidence"]:not([hidden])');
+				await expect(evidence).toBeVisible();
+				for (const action of await evidence.locator('a, button').all()) {
+					const box = (await action.boundingBox())!;
+					expect(box.height, `${at}: evidence action target`).toBeGreaterThanOrEqual(44);
+					expect(box.x + box.width, `${at}: evidence action inside`).toBeLessThanOrEqual(width);
+				}
+			}
+		});
+
+const OFFENDER_LINE = 'Bayshore / Carlingwood <> Dunrobin / Carp / Stittsville / Place d’Orléans';
+const offenderShare = (late: number, readings: number) => Math.round((1000 * late) / readings) / 10;
+/** One trip or bus row as the #1080 publisher writes it, with its bounds around the share. */
+function offender(type: 'trip' | 'vehicle', rank: number | null, i: number) {
+	const readings = 90 + i;
+	const pct = offenderShare(60, readings);
+	return {
+		rank,
+		type,
+		id: type === 'trip' ? `30218194${i}` : `46${70 + i}`,
+		route: '24',
+		route_name: OFFENDER_LINE,
+		...(type === 'trip'
+			? {
+					route_short_name: '24',
+					departure_time: `${7 + i}:42:00`,
+					headsign: 'Carlingwood <> Dunrobin / Carp / Stittsville',
+				}
+			: {}),
+		observation_count: readings,
+		severe_count: 60,
+		severe_pct: pct,
+		wilson_lo: Math.max(0, Math.round((100 - pct - 8) * 10) / 10),
+		wilson_hi: Math.min(100, Math.round((100 - pct + 8) * 10) / 10),
+		recurrence_days: rank == null ? 1 : 6 - Math.floor(i / 2),
+		observed_days: rank == null ? 1 : 6,
+		window_days: 7,
+		avg_delay_min: 20 - i,
+	};
+}
+// A ranked week with full-length line names and departures, two buses and one row below the rule.
+const offendersWeek = {
+	generated_utc: '2026-06-15T12:00:00Z',
+	methodology_version: 'reliability-2',
+	by_grain: [
+		{
+			grain: 'week',
+			window_days: 7,
+			entries: [
+				...Array.from({ length: 7 }, (_, i) => offender('trip', i + 1, i)),
+				offender('vehicle', 1, 0),
+				offender('vehicle', 2, 1),
+			],
+			tray: [offender('trip', null, 9)],
+			total_ranked_trips: 120,
+			total_ranked_vehicles: 41,
+			tray_total: 1,
+		},
+	],
+};
+
+function offendersHistory(root: { families?: unknown[] }, provider: string) {
+	const date = '2026-06-14';
+	const day = JSON.stringify({
+		...offendersWeek,
+		date,
+		publish_generation_id: null,
+		by_grain: offendersWeek.by_grain.map((grain) => ({
+			...grain,
+			date: '2026-06-08',
+			window_end: date,
+		})),
+	});
+	return retainedHistory('repeat_offenders', day, date, root, provider);
+}
+
+for (const provider of ['stm', 'octranspo'])
+	for (const locale of ['en', 'fr'] as const)
+		test(`${provider} ${locale} repeat offenders keep 7 + 5 with history, whole names and 44 px targets`, async ({
+			page,
+		}) => {
+			await page.clock.setFixedTime(Date.parse('2026-06-15T12:00:30Z'));
+			let discover = (): void => {};
+			const discovery = new Promise<void>((resolve) => (discover = resolve));
+			let history: ReturnType<typeof offendersHistory> | null = null;
+			await page.route('**/v1/**', async (route) => {
+				const url = new URL(route.request().url());
+				const path = url.pathname.replace('/octranspo/', '/stm/');
+				if (path.endsWith('/historic/repeat_offenders.json'))
+					return route.fulfill({ json: offendersWeek });
+				if (history && path.endsWith(history.indexPath)) {
+					await discovery;
+					return route.fulfill({ body: history.index, contentType: 'application/json' });
+				}
+				if (history && path.endsWith(history.ref.path))
+					return route.fulfill({ body: history.day, contentType: 'application/json' });
+				url.pathname = `/__layout/fresh${path}`;
+				const response = await route.fetch({ url: url.href });
+				if (!path.endsWith('/historic/history/index.json')) return route.fulfill({ response });
+				history = offendersHistory(await response.json(), provider);
+				await route.fulfill({ response, json: history.root });
+			});
+			await page.setViewportSize({ width: 1280, height: 900 });
+			await page.goto(`${localizeHref('/repeat-offenders', locale)}?provider=${provider}`);
+			const rows = page.locator('[data-slot="offender-rows"] > li > button');
+			const controls = page.locator('[data-slot="offenders-controls"]');
+			const navigator = controls.locator('[data-slot="history-navigator"]');
+			await expect(controls).toBeVisible();
+			// The ranking waits for history discovery, so discovery cannot move it afterwards.
+			await page.waitForTimeout(500);
+			await expect(rows).toHaveCount(0);
+			await page.evaluate(() => {
+				const samples: string[] = [];
+				(window as Sampled).samples = samples;
+				const sample = () => {
+					const frame = document.querySelector('.offenders-workspace-frame');
+					if (frame) {
+						const box = frame.getBoundingClientRect();
+						samples.push(`${box.top + window.scrollY}:${box.left}:${box.width}`);
+					}
+					if (samples.length < 60) requestAnimationFrame(sample);
+				};
+				requestAnimationFrame(sample);
+			});
+			discover();
+			await expect(rows).toHaveCount(7);
+			await expect(navigator).toBeVisible();
+			await page.waitForFunction(() => ((window as Sampled).samples ?? []).length >= 60);
+			const samples = await page.evaluate(() => (window as Sampled).samples ?? []);
+			expect(new Set(samples).size, 'workspace once shown').toBe(1);
+
+			// This spec owns its widths: the desktop split, a tablet and the two phones.
+			for (const width of [1280, 768, 390, 320]) {
+				await page.setViewportSize({ width, height: 900 });
+				await page.evaluate(() => document.fonts.ready);
+				const at = `${provider} ${locale} ${width}px`;
+				await expect(navigator, `${at}: history control`).toBeVisible();
+				expect(
+					await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+					`${at}: no page-wide horizontal scroll`,
+				).toBe(true);
+				for (const row of await rows.all()) {
+					const box = (await row.boundingBox())!;
+					expect(box.height, `${at}: row target`).toBeGreaterThanOrEqual(44);
+					expect(box.x + box.width, `${at}: row inside the viewport`).toBeLessThanOrEqual(width);
+					const late = (await row.locator('[data-slot="ranking-rate"]').boundingBox())!;
+					expect(late.x + late.width, `${at}: late days inside their row`).toBeLessThanOrEqual(
+						box.x + box.width + 0.5,
+					);
+					for (const slot of ['offender-row-name', 'offender-row-line'])
+						expect(
+							await row
+								.locator(`[data-slot="${slot}"]`)
+								.evaluate((name) => name.scrollWidth <= name.clientWidth + 1),
+							`${at}: whole ${slot}`,
+						).toBe(true);
+				}
+				const pane = page.locator('[data-slot="offender-evidence-pane"]');
+				if (width >= 1280) {
+					await expect(pane, `${at}: 7 + 5 side pane`).toBeVisible();
+					await rows.nth(2).click();
+					await expect(rows.nth(2)).toHaveAttribute('aria-pressed', 'true');
+					await expect(pane).toContainText(
+						locale === 'en' ? 'Position 3 of 120' : 'Position 3 sur 120',
+					);
+					continue;
+				}
+				await expect(pane, `${at}: no side pane`).toBeHidden();
+				const first = rows.first();
+				await expect(first).toHaveAttribute('aria-expanded', /true|false/);
+				if ((await first.getAttribute('aria-expanded')) === 'false') await first.click();
+				const evidence = page.locator('[data-slot="offender-row-evidence"]:not([hidden])');
 				await expect(evidence).toBeVisible();
 				for (const action of await evidence.locator('a, button').all()) {
 					const box = (await action.boundingBox())!;

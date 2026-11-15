@@ -311,9 +311,13 @@ test('rankings name lines by number in both languages', async ({ page }) => {
 		await expect(unindexed).toBeVisible();
 		await expect(unindexed.locator('[data-slot="hotspot-row-name"]')).toHaveText('Lansdowne');
 		await page.goto(localizeHref('/repeat-offenders', lang));
-		await expect(page.locator('[data-slot="offenders-hero"]').getByRole('link')).toHaveText(
-			'1 · Confederation',
-		);
+		const offender = page.locator('[data-slot="offender-rows"]').getByRole('button', {
+			name: new RegExp(
+				`\\b${lang === 'fr' ? 'Trajet T1 sur la ligne 1' : 'Trip T1 on line 1'} \\(Confederation\\)\\.`,
+			),
+		});
+		await expect(offender).toBeVisible();
+		await expect(offender.locator('[data-slot="offender-row-line"]')).toHaveText('Confederation');
 		await page.goto(localizeHref('/receipt', lang));
 		await expect(
 			page.locator('[data-slot="receipt-worst"]').getByRole('link', {

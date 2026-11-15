@@ -2,42 +2,50 @@ import type { LineDirectory } from '#lib/site/lineDirectory.ts';
 import type { RepeatOffenderEntry } from '#lib/v1/schemas/index.ts';
 import type { RepeatOffendersCopy } from './repeatOffenders.copy';
 
+/** How a ranked trip or bus is named on the page, in its language. */
+export interface OffenderIdentity {
+	/** The line number shown as a plate; null when the row names no line. */
+	readonly number: string | null;
+	/** What is ranked: "07:42 toward Monk", "Trip 302181944" or "Bus 4672". */
+	readonly primary: string;
+	/** The line's full published name, never truncated; null when unknown or equal to its number. */
+	readonly lineName: string | null;
+	/** One sentence naming the row, for findings, citations and screen readers. */
+	readonly label: string;
+}
+
+/** "07:42" from a service clock; hours past 24 stay as published. */
 function departureClock(value: string | null | undefined): string | null {
 	const parts = /^(\d+):(\d{1,2}):(\d{1,2})$/.exec(value?.trim() ?? '');
 	if (!parts || Number(parts[2]) > 59 || Number(parts[3]) > 59) return null;
 	return `${parts[1]}:${parts[2].padStart(2, '0')}`;
 }
 
-export function resolveOffenderName(
+/**
+ * Names a row from what the record publishes. A departure's clock and destination appear only
+ * when published (#1080); older files name the trip by its number instead, never by an invented
+ * departure. The published historical line number wins over today's directory.
+ */
+export function offenderIdentity(
 	entry: RepeatOffenderEntry,
-	directory: LineDirectory | undefined,
-	fallback: (entry: RepeatOffenderEntry) => string,
-): { label: string; spoken: string } {
-	if (
-		entry.route?.trim() &&
-		[entry.route_short_name, entry.departure_time, entry.headsign].some((value) => value?.trim())
-	) {
-		const label = fallback(entry);
-		return { label, spoken: label };
-	}
-	if (directory && entry.route) return directory.name(entry.route, entry.route_name);
-	const label = entry.route_name ?? fallback(entry);
-	return { label, spoken: directory && entry.route_name ? directory.spoken(label) : label };
-}
-
-export function createOffenderNames(lines: () => LineDirectory, copy: () => RepeatOffendersCopy) {
-	const name = (entry: RepeatOffenderEntry) =>
-		resolveOffenderName(entry, lines(), (item) => {
-			const route = item.route?.trim();
-			if (!route) return copy().unnamed(item.id);
-			const line = item.route_short_name?.trim() || route;
-			const departure = departureClock(item.departure_time);
-			return copy().departure(line, departure, item.headsign?.trim() || null);
-		});
-	return {
-		unnamed: (entry: RepeatOffenderEntry) => name(entry).label,
-		spoken: (entry: RepeatOffenderEntry) => name(entry).spoken,
-		typeLabel: (type: string) =>
-			new Map(Object.entries(copy().type)).get(type) ?? copy().type.other,
-	};
+	directory: LineDirectory,
+	copy: RepeatOffendersCopy,
+): OffenderIdentity {
+	const route = entry.route?.trim() || null;
+	const line = route ? directory.name(route, entry.route_name) : null;
+	const number = entry.route_short_name?.trim() || line?.number || route;
+	const lineName = line?.name && line.name !== number ? line.name : null;
+	const time = departureClock(entry.departure_time);
+	const headsign = entry.headsign?.trim() || null;
+	const departure = entry.type === 'trip' && (time != null || headsign != null);
+	const primary = departure
+		? copy.departureDetail(time, headsign)
+		: `${entry.type === 'vehicle' ? copy.type.vehicle : copy.type.trip} ${entry.id}`;
+	const label =
+		number == null
+			? primary
+			: departure
+				? copy.departure(number, time, headsign)
+				: copy.onLine(primary, number, lineName);
+	return { number, primary, lineName, label };
 }
