@@ -6,9 +6,11 @@ from datetime import UTC, datetime, time, timedelta
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
+import duckdb
 import pytest
 import revision_2_seed as seed
 import test_revision_2_projection as g1
+from psycopg import sql
 from sqlalchemy import MetaData, Table, and_, text
 
 from transit_ops.batch.build import BuildRequest, FamilyBuilder, FamilyOutput, InputNeed, TableRows
@@ -18,11 +20,25 @@ from transit_ops.batch.pg_load import pinned_replay_engine, prepare_replay_datab
 from transit_ops.batch.postgres_rows import read_table_rows
 from transit_ops.batch.run import key_matches, run_family
 from transit_ops.gold import delay_hours
-from transit_ops.history.datasets import TableSource, get_dataset
+from transit_ops.history.datasets import WORKING_ONLY, TableSource, get_dataset
 from transit_ops.lake.parquet_codec import write_window
 from transit_ops.lake.table_export import WindowSpec, export_window
+from transit_ops.lake.table_schema import TableSchema
 
-PROVEN_FAMILIES: tuple[str, ...] = ("occupancy_crowding",)
+
+def _proven_families() -> tuple[str, ...]:
+    families = tuple(name for name in FAMILIES if resolve_builder(name) is not None)
+    assert "occupancy_crowding" in families, families
+    return families
+
+
+def test_proven_families_follow_registered_builders(monkeypatch):
+    builders = {"ported": object(), "pending": None, "occupancy_crowding": object()}
+    monkeypatch.setitem(globals(), "FAMILIES", dict.fromkeys(builders))
+    monkeypatch.setitem(globals(), "resolve_builder", builders.__getitem__)
+    assert _proven_families() == ("ported", "occupancy_crowding")
+    builders["pending"] = object()
+    assert _proven_families() == ("ported", "pending", "occupancy_crowding")
 
 
 @pytest.mark.parametrize("base", ["numrange", "nummultirange"])
@@ -242,10 +258,50 @@ def filter_window(csv_path, column, window, *, timezone):
     return filtered
 
 
+def _export_seed_rows(engine, need, destination, root):
+    with engine.begin() as conn:
+        table = Table(
+            need.relation.split(".")[1],
+            MetaData(),
+            schema=need.relation.split(".")[0],
+            autoload_with=conn,
+        )
+        columns = conn.execute(
+            text(
+                "SELECT attname, format_type(atttypid, atttypmod), attnotnull "
+                "FROM pg_attribute WHERE attrelid=to_regclass(:relation) "
+                "AND attnum > 0 AND NOT attisdropped ORDER BY attnum"
+            ),
+            {"relation": need.relation},
+        ).all()
+        schema = TableSchema.from_columns(columns, tuple(c.name for c in table.primary_key))
+        conn.exec_driver_sql("SET LOCAL TimeZone='UTC'")
+        conn.exec_driver_sql("SET LOCAL DateStyle='ISO, YMD'")
+        conn.exec_driver_sql("SET LOCAL extra_float_digits=1")
+        statement = sql.SQL(
+            "COPY (SELECT * FROM {} ORDER BY {}) TO STDOUT WITH (FORMAT csv, HEADER true)"
+        ).format(
+            sql.Identifier(*need.relation.split(".")),
+            sql.SQL(", ").join(map(sql.Identifier, schema.primary_key)),
+        )
+        path = destination.with_suffix(".csv")
+        with conn.connection.driver_connection.cursor() as cursor, path.open("wb") as output:
+            with cursor.copy(statement) as copied:
+                for block in copied:
+                    output.write(block)
+    write_window(path, schema, destination, metadata={}, temp_dir=root)
+
+
 def _export_inputs(engine, builder, request, root):
     for need in builder.inputs(request):
         destination = root / need.relation / (need.window.replace(":", "=", 1) + ".parquet")
         destination.parent.mkdir(parents=True, exist_ok=True)
+        if need.relation in WORKING_ONLY or (
+            need.window == "all"
+            and need.relation in {"raw.ingestion_runs", "raw.ingestion_objects"}
+        ):
+            _export_seed_rows(engine, need, destination, root)
+            continue
         dataset = get_dataset(need.relation)
         source = dataset.source
         assert isinstance(source, TableSource), need
@@ -295,9 +351,26 @@ def _dirty_after_load(conn, tables, provider):
         transaction.rollback()
 
 
+def _seed_request(provider):
+    days = tuple(sorted(set(seed.DAYS)))
+    open_window = (seed.BUILD_CLOCK.astimezone(seed.TZ).date() - days[0]).days
+    return BuildRequest(
+        provider, days, seed.BUILD_CLOCK, seed.RETENTION_DAYS, open_window, str(seed.TZ)
+    )
+
+
+def test_seed_request_bounds_the_open_window():
+    request = _seed_request("seed")
+    assert request.local_dates == seed.DAYS
+    assert request.as_of_utc.astimezone(seed.TZ).date() - timedelta(
+        days=request.open_window_days
+    ) == min(seed.DAYS)
+    assert max(request.local_dates) == max(seed.DAYS)
+
+
 def test_every_implemented_family_matches_postgres_on_the_seed(seeded, record_property):
+    proven_families = _proven_families()
     engine, settings, root = seeded
-    days = seed.DAYS
     compared = []
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
     for name in FAMILIES:
@@ -306,7 +379,7 @@ def test_every_implemented_family_matches_postgres_on_the_seed(seeded, record_pr
             continue
         assert isinstance(builder, FamilyBuilder), name
         for p in seed.PROVIDERS.values():
-            req = BuildRequest(p, days, seed.BUILD_CLOCK, seed.RETENTION_DAYS, 36000, str(seed.TZ))
+            req = _seed_request(p)
             _export_inputs(engine, builder, req, root / name / p)
             expected = _bodies(engine, settings, p)
             inputs = root / name / p
@@ -323,7 +396,7 @@ def test_every_implemented_family_matches_postgres_on_the_seed(seeded, record_pr
         compared.append(name)
     record_property("compared_family_count", len(compared))
     record_property("compared_families", ",".join(compared) or "(none)")
-    assert compared == list(PROVEN_FAMILIES), f"Compared {len(compared)} families: {compared}"
+    assert compared == list(proven_families), f"Compared {len(compared)} families: {compared}"
 
 
 def test_dated_all_is_refused_before_io(tmp_path):
@@ -332,9 +405,61 @@ def test_dated_all_is_refused_before_io(tmp_path):
         _export_inputs(None, builder, SimpleNamespace(), tmp_path)
 
 
-def test_family_count_requires_an_independent_declaration(monkeypatch):
-    monkeypatch.setitem(globals(), "PROVEN_FAMILIES", ("missing",))
-    monkeypatch.setitem(globals(), "FAMILIES", {})
+@pytest.mark.parametrize(
+    "relation",
+    [
+        "silver.rt_feed_snapshots",
+        "silver.rt_entities",
+        "silver.rt_trip_updates",
+        "raw.ingestion_runs",
+        "raw.ingestion_objects",
+    ],
+)
+def test_seed_projection_bypasses_history_windows(tmp_path, monkeypatch, relation):
+    exported = []
+    monkeypatch.setitem(
+        globals(),
+        "_export_seed_rows",
+        lambda engine, need, destination, root: exported.append((need, destination)),
+    )
+    need = InputNeed(relation, "all")
+    builder = SimpleNamespace(inputs=lambda _: (need,))
+    _export_inputs(None, builder, SimpleNamespace(), tmp_path)
+    assert exported == [(need, tmp_path / relation / "all.parquet")]
+
+
+def test_seed_projections_preserve_every_identity(seeded):
+    engine, _, root = seeded
+    relations = (
+        "silver.rt_feed_snapshots",
+        "silver.rt_entities",
+        "silver.rt_trip_updates",
+        "raw.ingestion_runs",
+        "raw.ingestion_objects",
+    )
+    for relation in relations:
+        destination = root / (relation + ".parquet")
+        _export_seed_rows(engine, InputNeed(relation, "all"), destination, root)
+        with engine.connect() as conn:
+            schema, name = relation.split(".")
+            table = Table(name, MetaData(), schema=schema, autoload_with=conn)
+            keys = tuple(table.primary_key)
+            expected = conn.execute(table.select().with_only_columns(*keys).order_by(*keys)).all()
+        assert expected, relation
+        with duckdb.connect() as conn:
+            actual = (
+                conn.read_parquet(str(destination))
+                .project(",".join(c.name for c in keys))
+                .order(",".join(c.name for c in keys))
+                .fetchall()
+            )
+        assert actual == list(map(tuple, expected)), relation
+
+
+@pytest.mark.parametrize("families", [{}, {"pending": None}])
+def test_family_count_requires_occupancy_crowding(monkeypatch, families):
+    monkeypatch.setitem(globals(), "FAMILIES", families)
+    monkeypatch.setitem(globals(), "resolve_builder", families.__getitem__)
     check = test_every_implemented_family_matches_postgres_on_the_seed
     with pytest.raises(AssertionError):
         check((None, None, None), lambda *_: None)
@@ -367,7 +492,7 @@ def test_nonempty_family_uses_the_reference_build_stamp(seeded, monkeypatch):
     builder.inputs = lambda r: tuple(InputNeed(rel, f"local:{d}") for d in r.local_dates)
     builder.build = build
     for name, value in dict(
-        FAMILIES={"probe": None}, resolve_builder=lambda _: builder, PROVEN_FAMILIES=("probe",)
+        FAMILIES={"occupancy_crowding": None}, resolve_builder=lambda _: builder
     ).items():
         monkeypatch.setitem(globals(), name, value)
     test_every_implemented_family_matches_postgres_on_the_seed(seeded, lambda *_: None)
