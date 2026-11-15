@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping
 from datetime import UTC, date, datetime, time, timedelta
+from functools import lru_cache
 from typing import cast
 from zoneinfo import ZoneInfo
 
@@ -15,6 +16,7 @@ from transit_ops.batch.families.route_spine_hours_sql import (
     MEAN,
     NAMES,
     cohort,
+    cohort_bad_counts,
     hourly,
     port,
     query,
@@ -38,6 +40,32 @@ def _bounds(request: BuildRequest, day: date) -> tuple[datetime, datetime]:
     zone = ZoneInfo(request.timezone)
     start = datetime.combine(day, time(), zone)
     return start.astimezone(UTC), (start + timedelta(days=1)).astimezone(UTC)
+
+
+@lru_cache(maxsize=256)
+def _check_hour_offsets(timezone: str, day: date) -> None:
+    zone = ZoneInfo(timezone)
+    start = datetime.combine(day, time(), zone).astimezone(UTC)
+    end = datetime.combine(day + timedelta(days=1), time(), zone).astimezone(UTC)
+    # TZif transitions have whole-second resolution. Include transitions within the day,
+    # even when both local midnights would otherwise appear to have supported offsets.
+    for second in range(int((end - start).total_seconds())):
+        instant = start + timedelta(seconds=second)
+        offset = cast(timedelta, instant.astimezone(zone).utcoffset())
+        if offset % timedelta(hours=1):
+            raise ValueError(f"fractional_utc_offset {timezone} {day}")
+
+
+def _complete_period(session: BatchSession, request: BuildRequest, period: datetime) -> bool:
+    params = dict(
+        provider_id=request.provider_id, from_utc=period, until_utc=period + timedelta(minutes=5)
+    )
+    if session.execute(cohort_bad_counts(), params).scalar_one():
+        raise ValueError(
+            "Retained capture evidence is incomplete: entity_count must be "
+            f"an exact JSON integer for {period.isoformat()}"
+        )
+    return bool(session.execute(cohort(), params).scalar_one())
 
 
 def _prepare(session: BatchSession, provider_id: str) -> None:
@@ -86,12 +114,7 @@ def _prepare(session: BatchSession, provider_id: str) -> None:
 def _periods(session: BatchSession, request: BuildRequest, start: datetime, end: datetime) -> None:
     params = dict(
         provider_id=request.provider_id,
-        since_utc=max(
-            start,
-            delay_periods.period_start(
-                request.as_of_utc - timedelta(days=request.fact_retention_days - 1)
-            ),
-        ),
+        since_utc=start,
         closed_before=end,
         repair_premature=False,
     )
@@ -109,17 +132,7 @@ def _periods(session: BatchSession, request: BuildRequest, start: datetime, end:
         needs_proof = session.execute(
             port("needs_proof", delay_periods._REPLACEMENT_NEEDS_PROOF), binds
         ).scalar_one()
-        if (
-            needs_proof
-            and not session.execute(
-                cohort(),
-                dict(
-                    provider_id=request.provider_id,
-                    from_utc=period,
-                    until_utc=period + timedelta(minutes=5),
-                ),
-            ).scalar_one()
-        ):
+        if needs_proof and not _complete_period(session, request, period):
             incomplete.append(period.isoformat())
             continue
         session.execute(port("delete_period", delay_periods._DELETE_PERIOD_SUMMARIES), binds)
@@ -194,6 +207,7 @@ class RouteSpineHoursBuilder:
         # All fact predicates in this family use capture time, never feed-day keys.
         cutoff = request.as_of_utc - timedelta(days=request.fact_retention_days)
         for day in request.local_dates:
+            _check_hour_offsets(request.timezone, day)
             if _bounds(request, day)[0] < cutoff:
                 raise ValueError(f"retention_edge_day {day}: cutoff={cutoff.isoformat()}")
         days = utc_days(request)

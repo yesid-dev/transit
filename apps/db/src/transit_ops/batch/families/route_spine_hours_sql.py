@@ -54,18 +54,31 @@ def port(name: str, source: TextClause) -> TextClause:
     return query(name, sql)
 
 
+def _ghost_filters(sql: str) -> str:
+    bound = delay_periods.GHOST_DELAY_ABS_SECONDS
+    return re.sub(
+        rf"ABS\(((?:[a-z_][a-z0-9_]*\.)?delay_seconds)\)\s*(<=|>)\s*{bound}",
+        lambda match: (
+            f"{match[1]} {'BETWEEN' if match[2] == '<=' else 'NOT BETWEEN'} -{bound} AND {bound}"
+        ),
+        sql,
+    )
+
+
 def summary() -> TextClause:
     sql = str(port("summary_source", delay_periods.UPSERT_TRIP_DELAY_SUMMARY_5M))
+    bound = delay_periods.GHOST_DELAY_ABS_SECONDS
     # Round integer sums/counts at the target column scale, without a float AVG.
     sql = sql.replace(
-        "AVG(delay_seconds::numeric) FILTER (WHERE ABS(delay_seconds) <= 3600)",
-        "delay_mean(SUM(delay_seconds::HUGEINT) FILTER (WHERE ABS(delay_seconds) <= 3600) * 100, "
-        "COUNT(delay_seconds) FILTER (WHERE ABS(delay_seconds) <= 3600))",
+        f"AVG(delay_seconds::numeric) FILTER (WHERE ABS(delay_seconds) <= {bound})",
+        "delay_mean(SUM(delay_seconds::HUGEINT) FILTER "
+        f"(WHERE ABS(delay_seconds) <= {bound}) * 100, "
+        f"COUNT(delay_seconds) FILTER (WHERE ABS(delay_seconds) <= {bound}))",
     ).replace(
         "AVG(delay_seconds::numeric)",
         "delay_mean(SUM(delay_seconds::HUGEINT) * 100, COUNT(delay_seconds))",
     )
-    return query("summary", sql.split("\n", 1)[1])
+    return query("summary", _ghost_filters(sql.split("\n", 1)[1]))
 
 
 def spine() -> TextClause:
@@ -80,7 +93,7 @@ def spine() -> TextClause:
         "(CAST(:local_date AS date) + 1)::timestamp",
         "(CAST(:local_date AS date) + INTERVAL '1 day')::timestamp",
     )
-    return query("spine", sql.split("\n", 1)[1])
+    return query("spine", _ghost_filters(sql.split("\n", 1)[1]))
 
 
 def hourly() -> TextClause:
@@ -104,10 +117,25 @@ def hourly() -> TextClause:
 def cohort() -> TextClause:
     sql = delay_cohorts._COHORT_SQL.replace(
         "s.manifest_json @> jsonb_build_object('entity_count', c.entity_count)",
-        "(json_type(s.manifest_json, '$.entity_count') IN ('BIGINT','UBIGINT','DOUBLE') "
-        "AND CAST(json_extract(s.manifest_json, '$.entity_count') AS DOUBLE) = c.entity_count)",
+        "(json_type(s.manifest_json, '$.entity_count') IN ('BIGINT','UBIGINT') "
+        "AND TRY_CAST(json_extract(s.manifest_json, '$.entity_count') AS HUGEINT) "
+        "= c.entity_count)",
     )
     return query("cohort", sql)
+
+
+def cohort_bad_counts() -> TextClause:
+    # Reuse exactly the source's capture/frame population for the named refusal.
+    ctes = delay_cohorts._COHORT_SQL.split("    SELECT EXISTS", 1)[0]
+    return query(
+        "cohort_bad_counts",
+        ctes
+        + """
+        SELECT EXISTS (SELECT 1 FROM frames AS s WHERE
+            json_type(s.manifest_json, '$.entity_count') IS NULL OR
+            json_type(s.manifest_json, '$.entity_count') NOT IN ('BIGINT','UBIGINT'))
+    """,
+    )
 
 
 MEAN = query(

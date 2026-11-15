@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from zoneinfo import ZoneInfo
@@ -6,6 +7,7 @@ import duckdb
 import pytest
 
 from transit_ops.batch.build import BuildRequest
+from transit_ops.batch.engine import InputRefused
 from transit_ops.batch.families.registry import resolve_builder
 from transit_ops.batch.families.route_spine_hours import builder
 from transit_ops.batch.families.route_spine_hours_sql import DDL, NAMES
@@ -19,6 +21,11 @@ REQUEST = BuildRequest(
     10,
     "America/Toronto",
 )
+EDGE_REQUEST = replace(REQUEST, local_dates=(date(2026, 10, 22),))
+EDGE_ROWS = [
+    ("A", "before", 0, 60, "2026-10-22T05:00:00+00:00"),
+    ("A", "after", 0, 300, "2026-10-22T13:00:00+00:00"),
+]
 
 
 def test_family_declares_prior_rows_and_every_cohort_evidence_relation():
@@ -107,15 +114,15 @@ def export_inputs(conn, root, request=REQUEST):
         )
 
 
-def write_inputs(root, seed=SEED):
+def write_inputs(root, seed=SEED, request=REQUEST):
     with duckdb.connect(config={"TimeZone": "UTC"}) as conn:
         create_inputs(conn)
-        conn.execute("INSERT INTO core.providers VALUES ('seed', 'America/Toronto')")
+        conn.execute("INSERT INTO core.providers VALUES ('seed', ?)", [request.timezone])
         conn.executemany(
             "INSERT INTO gold.fact_trip_delay_snapshot VALUES ('seed', 1, ?, ?, ?, ?, ?, ?)",
             [(i, *row) for i, row in enumerate(seed)],
         )
-        export_inputs(conn, root)
+        export_inputs(conn, root, request)
 
 
 def run(root, request=REQUEST):
@@ -331,7 +338,19 @@ def test_replacement_without_silver_cohort_is_refused(tmp_path):
         run(tmp_path)
 
 
-@pytest.mark.parametrize("fault", [None, "checksum", "manifest", "entities", "facts"])
+@pytest.mark.parametrize(
+    "fault",
+    [
+        None,
+        "checksum",
+        "manifest",
+        "entities",
+        "facts",
+        "fractional_count",
+        "rounded_count",
+        "float_integer",
+    ],
+)
 def test_replacement_requires_matching_complete_cohort(tmp_path, fault):
     capture = "2026-11-01 05:30:00+00"
     with duckdb.connect(config={"TimeZone": "UTC"}) as conn:
@@ -371,15 +390,80 @@ def test_replacement_requires_matching_complete_cohort(tmp_path, fault):
             'SET manifest_json=\'{"entity_count":"1"}\'',
             "entities": "DELETE FROM silver.rt_entities",
             "facts": "DELETE FROM gold.fact_trip_delay_snapshot",
+            "fractional_count": "UPDATE silver.rt_feed_snapshots "
+            "SET manifest_json='{\"entity_count\":1.5}'",
+            "rounded_count": "UPDATE silver.rt_feed_snapshots "
+            "SET manifest_json='{\"entity_count\":1.0000000000000001}'",
+            "float_integer": "UPDATE silver.rt_feed_snapshots "
+            "SET manifest_json='{\"entity_count\":1.0}'",
         }
         if fault:
             conn.execute(changes[fault])
         export_inputs(conn, tmp_path)
     if fault:
-        with pytest.raises(ValueError, match="Retained capture evidence is incomplete"):
+        with pytest.raises(ValueError, match="Retained capture evidence is incomplete") as caught:
             run(tmp_path)
+        if fault in {"fractional_count", "rounded_count", "float_integer"}:
+            assert "entity_count" in str(caught.value)
     else:
         output = run(tmp_path).output
         summary = records(output.tables[builder.tables[0]])
         assert [(r["route_id"], r["usable_delay_sum_seconds"]) for r in summary] == [("A", 60)]
         assert records(output.tables[builder.tables[1]])[0]["built_at_utc"] == REQUEST.as_of_utc
+
+
+def test_accepted_retention_boundary_day_reconciles_every_fact(tmp_path):
+    write_inputs(tmp_path, EDGE_ROWS, EDGE_REQUEST)
+    output = run(tmp_path, EDGE_REQUEST).output
+    for relation, table in output.tables.items():
+        rows = records(table)
+        assert sum(row["observation_count"] for row in rows) == 2, relation
+        column = "sum_delay_seconds" if relation.endswith("spine") else "usable_delay_sum_seconds"
+        assert sum(row[column] for row in rows) == 360, relation
+    check_math(output, EDGE_ROWS)
+
+
+def test_partial_day_input_is_refused_by_its_missing_capture_day(tmp_path):
+    write_inputs(tmp_path, EDGE_ROWS, EDGE_REQUEST)
+    missing = tmp_path / "gold.fact_trip_delay_snapshot" / "2026-10-22.parquet"
+    assert missing.resolve().is_relative_to(tmp_path.resolve())
+    missing.unlink()
+    with pytest.raises(InputRefused, match="gold.fact_trip_delay_snapshot window 2026-10-22"):
+        run(tmp_path, EDGE_REQUEST)
+
+
+@pytest.mark.parametrize(
+    "zone,day,stamp",
+    [
+        ("America/St_Johns", date(2026, 11, 2), REQUEST.as_of_utc),
+        # This day starts at +09:00, then folds back into a +08:30 offset before it ends.
+        ("Asia/Pyongyang", date(2015, 8, 14), datetime(2015, 8, 17, tzinfo=UTC)),
+    ],
+)
+def test_fractional_offset_day_is_refused_before_input_io(tmp_path, zone, day, stamp):
+    request = replace(REQUEST, timezone=zone, local_dates=(day,), as_of_utc=stamp)
+    with pytest.raises(ValueError, match=f"fractional_utc_offset.*{zone}.*{day}"):
+        run(tmp_path / "absent", request)
+    assert not (tmp_path / "absent").exists()
+
+
+def test_integer_extremes_are_outliers_without_overflow(tmp_path):
+    seed = [
+        ("A", str(i), 0, delay, "2026-11-01T09:00:00+00:00")
+        for i, delay in enumerate((-2147483648, 2147483647))
+    ]
+    write_inputs(tmp_path, seed)
+    output = run(tmp_path).output
+    check_math(output, seed)
+    summary, hour, spine = [records(output.tables[relation])[0] for relation in builder.tables]
+    assert (
+        summary["outlier_count"],
+        summary["avg_delay_seconds"],
+        summary["usable_delay_sum_seconds"],
+    ) == (2, Decimal("-0.50"), 0)
+    assert (
+        hour["usable_delay_observation_count"],
+        hour["usable_delay_sum_seconds"],
+        hour["avg_delay_seconds"],
+    ) == (0, 0, None)
+    assert spine["sum_delay_seconds"] == 0
