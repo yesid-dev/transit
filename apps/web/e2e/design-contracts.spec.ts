@@ -151,12 +151,11 @@ for (const input of ['desktop', 'touch-only', 'hybrid'] as const) {
 				expect(capabilities.touch > 0).toBe(input !== 'desktop');
 				const wordmarks = page.locator('[data-slot="wordmark-letters"]');
 				expect(await wordmarks.count()).toBeGreaterThan(0);
-				for (const wordmark of await page.locator('header [data-slot="wordmark-letters"]').all()) {
-					const letters = (await wordmark.textContent())!.length;
-					await expect
-						.poll(() => wordmark.locator('div').count())
-						.toBe(input !== 'touch-only' && reducedMotion === 'no-preference' ? letters : 0);
-				}
+				// yesid.design 0.44.0 ProductBrand: the header's house wordmark is still, like the footer's.
+				expect(await page.locator('header [data-slot="wordmark-letters"]').count()).toBeGreaterThan(
+					0,
+				);
+				await expect(page.locator('header [data-slot="wordmark-letters"] div')).toHaveCount(0);
 				await expect(page.locator('footer [data-slot="wordmark-letters"] div')).toHaveCount(0);
 				const segment = page
 					.getByRole('radiogroup', { name: stopReliabilityCopy.en.grain.label })

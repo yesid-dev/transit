@@ -38,7 +38,7 @@
 		isSurfaceActive,
 	} from '#lib/content/nav.ts';
 	import { navPillCopy } from '#lib/i18n/messages.ts';
-	import { Wordmark } from '@yesid/ui/brand';
+	import { ProductBrand } from '@yesid/ui/brand';
 	import { SiteHeader } from '@yesid/ui/layout';
 	import RefreshButton from './RefreshButton.svelte';
 	import { providerHref, providerHasAlerts, type PublicProvider } from '#lib/v1/providers.ts';
@@ -161,20 +161,15 @@
 	});
 </script>
 
-<!-- "yesid. | Transit": the house wordmark keeps the header's one mount animation; nav-wordmark
-     takes SiteHeader's brand size tiers and its links-fit measurement. -->
 {#snippet brand()}
-	<span class="nav-wordmark nav-brand">
-		<Wordmark
-			href={YESID_HOUSE_LINK.href}
-			external
-			autoPlay
-			class="nav-brand-house"
-			aria-label={`yesid. ${navCopy.newTab}`}
-		/>
-		<span class="nav-brand-divider" aria-hidden="true"></span>
-		<a href={localizeHref('/', locale, providerId)} class="nav-brand-product">Transit</a>
-	</span>
+	<ProductBrand
+		product="Transit"
+		href={localizeHref('/', locale, providerId)}
+		houseHref={YESID_HOUSE_LINK.href}
+		houseExternal
+		houseLabel={`yesid. ${navCopy.newTab}`}
+		class="nav-product-brand"
+	/>
 {/snippet}
 
 {#snippet searchField()}
@@ -258,42 +253,17 @@
 		--pill-h: 72px;
 	}
 
-	.nav-brand {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.3em;
-		flex-shrink: 0;
-		white-space: nowrap;
+	/* Transit's pill also holds refresh and search, so on phones the 18px brand pushes the pill off
+	   screen. ProductBrand takes a caller size; below SiteHeader's narrow tier only the product
+	   name stays (the house link is in the menu). */
+	@container site-header (width < 400px) {
+		:global(.nav-product-brand) {
+			font-size: 1rem;
+		}
 	}
-	/* The product leads, as in the footer cluster; the house mark is the smaller signature. */
-	.nav-brand :global(.nav-brand-house) {
-		font-size: 0.8em;
-	}
-	.nav-brand-divider {
-		width: 2px;
-		height: 1em;
-		flex-shrink: 0;
-		background: var(--border-brand);
-	}
-	.nav-brand-product {
-		display: inline-flex;
-		align-items: center;
-		min-block-size: var(--size-tap-min);
-		border-radius: var(--radius-sm);
-		font-family: var(--font-heading);
-		font-weight: 700;
-		color: var(--foreground);
-		text-decoration: none;
-		transition: color var(--duration-fast) var(--ease-default);
-	}
-	.nav-brand-product:hover {
-		color: var(--primary);
-	}
-	/* Below SiteHeader's narrow tier the six controls leave room for the product name only; the
-	   house link stays in the menu. */
 	@container site-header (width < 375px) {
-		.nav-brand :global(.nav-brand-house),
-		.nav-brand-divider {
+		:global(.nav-product-brand > [data-slot='wordmark']),
+		:global(.nav-product-brand > [aria-hidden='true']) {
 			display: none;
 		}
 	}
@@ -408,7 +378,6 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.nav-brand-product,
 		.nav-compact-search {
 			transition: none;
 		}
