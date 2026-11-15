@@ -22,7 +22,16 @@ from transit_ops.backups import (
     list_database_backups,
     run_database_backup,
 )
-from transit_ops.commands import batch, batch_families, control, lake, live, operations, static
+from transit_ops.commands import (
+    batch,
+    batch_families,
+    control,
+    lake,
+    live,
+    live_oracle,
+    operations,
+    static,
+)
 from transit_ops.commands.alert_recovery import recover_alert_archive_entries_command
 from transit_ops.core.models import FeedKind, ProviderManifest
 from transit_ops.daily_run import DailyRun
@@ -106,6 +115,7 @@ app.add_typer(live.app, name="live-engine")
 app.add_typer(control.app, name="lake-control")
 app.add_typer(static.app, name="lake-static")
 app.add_typer(operations.app, name="lake-ops")
+app.add_typer(live_oracle.app, name="live-oracle")
 app.command("recover-alert-archive-entries")(recover_alert_archive_entries_command)
 
 
