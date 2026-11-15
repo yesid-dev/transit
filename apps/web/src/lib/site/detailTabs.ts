@@ -5,7 +5,7 @@ export function detailTabQueryValue(tab: DetailTab): string | null {
 	return tab === 'reliability' ? null : tab;
 }
 
-export function detailTabFromSearchParams(searchParams: URLSearchParams): DetailTab {
+export function detailTabFromSearchParams(searchParams: Pick<URLSearchParams, 'get'>): DetailTab {
 	const value = searchParams.get('tab');
 	return value === 'detail' || value === 'schedule' ? value : 'reliability';
 }

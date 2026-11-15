@@ -91,7 +91,9 @@ export function createReliabilityViewState<
 	K extends string = 'day' | 'week' | 'month',
 	D extends Snapshot | null | undefined = S,
 >(options: ViewOptions<S, R, K, D>) {
-	const params = new SvelteURLSearchParams(untrack(() => page.url.search));
+	// Back loads page.url, then restores the entry's shallow selection separately.
+	const restoredShallow = untrack(() => page.shallow?.url);
+	const params = new SvelteURLSearchParams(untrack(() => (restoredShallow ?? page.url).search));
 	const seed = fromSearchParams(params);
 	// A line's range is a separate view choice; stop/network keep grain and dates independent.
 	const rangeChoice = options.grains.keys.find((key) => key === 'range');
@@ -237,6 +239,9 @@ export function createReliabilityViewState<
 	$effect(() => {
 		if (!initialized) {
 			initialized = true;
+			if (restoredShallow && resource != null) {
+				setRequest(historyRangeRequestFromSearchParams(params));
+			}
 			if (rangeChoice != null && resource == null) {
 				const local = resolveWindow(seed.window, new SvelteSet(currentDates));
 				selectWindow(local ?? undefined);

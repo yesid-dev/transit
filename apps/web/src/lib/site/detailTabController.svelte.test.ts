@@ -3,7 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import DetailTabControllerHarness from './__fixtures__/DetailTabControllerHarness.svelte';
 
 const navigation = vi.hoisted(() => {
-	const page = { url: new URL('http://localhost/lines/161'), state: { source: 'test' } };
+	const page = {
+		url: new URL('http://localhost/lines/161'),
+		state: { source: 'test' },
+		shallow: null as { url: URL } | null,
+	};
 	return {
 		page,
 		replaceState: vi.fn((url: string | URL) => {
@@ -29,8 +33,19 @@ function controller(): HTMLElement {
 
 describe('bidirectional detail tab controller', () => {
 	beforeEach(() => {
+		navigation.page.shallow = null;
 		navigation.replaceState.mockClear();
 		setExternalUrl('/lines/161?window=am#service-profile');
+	});
+	it('restores the tab from shallow history rather than the loaded page URL', async () => {
+		navigation.page.shallow = {
+			url: new URL('http://localhost/lines/161?tab=schedule&grain=month'),
+		};
+		const view = render(DetailTabControllerHarness, { props: { url: navigation.page.url } });
+		expect(controller()).toHaveAttribute('data-active', 'schedule');
+		await view.rerender({ url: new URL(navigation.page.url) });
+		expect(controller()).toHaveAttribute('data-active', 'schedule');
+		expect(navigation.replaceState).not.toHaveBeenCalled();
 	});
 
 	it('accepts external same-route query and back-forward changes without writing stale local state', async () => {

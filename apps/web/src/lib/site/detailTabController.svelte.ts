@@ -10,14 +10,16 @@ export interface DetailTabController {
 }
 
 export function createDetailTabController(initialUrl: URL): DetailTabController {
-	let active = $state<DetailTab>(detailTabFromSearchParams(initialUrl.searchParams));
+	const seedUrl = page.shallow?.url ?? initialUrl;
+	let active = $state<DetailTab>(detailTabFromSearchParams(seedUrl.searchParams));
 
 	function syncFromUrl(url: URL): void {
-		const next = detailTabFromSearchParams(url.searchParams);
+		const viewUrl = page.shallow?.url ?? url;
+		const next = detailTabFromSearchParams(viewUrl.searchParams);
 		active = next;
 
 		const canonicalValue = detailTabQueryValue(next);
-		const values = url.searchParams.getAll('tab');
+		const values = viewUrl.searchParams.getAll('tab');
 		const isCanonical =
 			canonicalValue === null
 				? values.length === 0
