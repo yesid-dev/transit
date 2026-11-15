@@ -199,28 +199,21 @@ describe('RouteReliabilityClusters', () => {
 		async (locale) => {
 			const view = render(RouteReliabilityClusters, { props: { data: populated, locale } });
 			const t = reliabilityCopy[locale];
-			const captions = () =>
-				[
-					...view.container.querySelectorAll('[data-slot="verdict-kpis"] .metric-bullet__caption'),
-				].map((node) => node.textContent);
-			const exact =
-				locale === 'en'
-					? ['Median of reported predicted delays', '90th percentile of reported predicted delays']
-					: ['Médiane des relevés de retard prédit', '90e percentile des relevés de retard prédit'];
-			const estimated = [t.strip.notPublished, t.strip.notPublished];
-			expect.soft(captions()).toEqual(exact);
+			const percentiles = () =>
+				['p50', 'p90'].map((metric) =>
+					view.container
+						.querySelector(`[data-slot="record-delays"] [data-metric="${metric}"] dd`)
+						?.textContent?.trim(),
+				);
+			// The latest day publishes its own median (2 min) and 90th percentile (9 min).
+			const exact = locale === 'en' ? ['2.0 min', '9.0 min'] : ['2,0 min', '9,0 min'];
+			expect.soft(percentiles()).toEqual(exact);
 			for (const name of [t.controls.thisWeek, t.controls.thisMonth]) {
 				await fireEvent.click(view.getByRole('radio', { name: new RegExp(name) }));
-				expect(
-					[
-						...view.container.querySelectorAll(
-							'[data-slot="verdict-kpis"] [data-slot="absent-value"]',
-						),
-					].map((node) => node.textContent),
-				).toEqual(estimated);
+				expect(percentiles()).toEqual([t.record.delays.notPublished, t.record.delays.notPublished]);
 			}
 			await fireEvent.click(view.getByRole('radio', { name: new RegExp(t.controls.latestDay) }));
-			expect(captions()).toEqual(exact);
+			expect(percentiles()).toEqual(exact);
 		},
 	);
 
@@ -243,7 +236,7 @@ describe('RouteReliabilityClusters', () => {
 	it('renders the rider-question controls in the connected stack', () => {
 		render(RouteReliabilityClusters, { props: { data: populated, locale: 'en' } });
 		for (const section of [
-			copy.sections.verdict,
+			{ label: copy.record.daily.title },
 			copy.sections.whenToRide,
 			copy.sections.theWait,
 			copy.sections.runAndFit,

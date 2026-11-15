@@ -1,16 +1,17 @@
 <script module lang="ts">
-	import type { Component, Snippet } from 'svelte';
+	import type { Component } from 'svelte';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { RouteReliability } from '#lib/v1/index.ts';
 	import type { Resource } from '#lib/v1/resource.svelte.ts';
 	import type { LineHistoryResource } from './reliability/data/lineHistoryResource.svelte';
+	import type { RecordCitation } from './reliability/selectors/lineRecord';
 
 	type ClustersProps = {
 		data: RouteReliability;
 		locale: Locale;
 		directionHeadsigns?: Record<number, string>;
 		history?: LineHistoryResource;
-		articleSummary?: Snippet;
+		citation?: RecordCitation;
 	};
 
 	export type RouteReliabilityClustersModule = {
@@ -25,7 +26,7 @@
 		history: LineHistoryResource;
 		historyOnlyReliability?: RouteReliability | null;
 		noLiveData?: boolean;
-		articleSummary?: Snippet;
+		citation?: RecordCitation;
 		importClusters?: () => Promise<RouteReliabilityClustersModule>;
 		initialClusters?: RouteReliabilityClustersModule['default'];
 		initialImportFailed?: boolean;
@@ -61,7 +62,7 @@
 		history,
 		historyOnlyReliability = null,
 		noLiveData = false,
-		articleSummary,
+		citation,
 		importClusters,
 		initialClusters,
 		initialImportFailed = false,
@@ -125,7 +126,7 @@
 {#snippet loaded(data: RouteReliability)}
 	{#if Clusters}
 		{#key entityId}
-			<Clusters {data} {locale} {directionHeadsigns} {history} {articleSummary} />
+			<Clusters {data} {locale} {directionHeadsigns} {history} {citation} />
 		{/key}
 	{:else if importError}
 		<StateNotice

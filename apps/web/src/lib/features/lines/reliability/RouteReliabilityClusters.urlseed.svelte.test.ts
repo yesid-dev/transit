@@ -74,9 +74,10 @@ describe('RouteReliabilityClusters — ?grain seed + availability clamp (S7-B PR
 		expect(container.querySelector('[role="radio"][aria-checked="true"]')).toHaveAccessibleName(
 			/Latest complete day/,
 		);
-		expect(container.querySelector('[data-slot="verdict"]')).toHaveAttribute(
-			'data-status',
-			'tentative',
+		// 738 of 900 is 82%, but its range (79% to 84%) crosses the 80% reference: uncertain.
+		expect(container.querySelector('[data-slot="record-classification"]')).toHaveAttribute(
+			'data-classification',
+			'uncertain',
 		);
 		expect(mockUrl.searchParams.get('grain')).toBe('day');
 	});

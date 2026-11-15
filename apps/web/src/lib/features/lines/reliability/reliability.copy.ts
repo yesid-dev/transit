@@ -4,12 +4,19 @@ import { historyCopy } from '#lib/components/surface/historyCopy.ts';
 import type { VerdictCopy } from '#lib/v1/verdict.ts';
 import { routeVerdictCopy } from './routeVerdict.copy';
 
+/** A citation's parts, each already formatted by the caller for its locale. */
+export interface CitationArgs {
+	readonly host: string;
+	readonly line: string;
+	readonly provider: string;
+	readonly figure: string;
+	readonly dates: string;
+	readonly readings: string | null;
+	readonly href: string;
+}
+
 export type ReliabilityClusterKey =
-	| 'punctuality'
-	| 'waitRegularity'
-	| 'serviceDelivered'
-	| 'crowding'
-	| 'habits';
+	'punctuality' | 'waitRegularity' | 'serviceDelivered' | 'crowding' | 'habits';
 
 export const reliabilityCopy = defineCopy({
 	fr: {
@@ -237,6 +244,58 @@ export const reliabilityCopy = defineCopy({
 			detailShow: 'Voir le détail',
 			detailHide: 'Masquer le détail',
 		},
+		record: {
+			period: (dates: string, days: string) =>
+				`${dates.charAt(0).toUpperCase()}${dates.slice(1)}, ${days}`,
+			answerAfter: ' des relevés étaient à l’heure.',
+			band: 'À l’heure : d’une minute d’avance à moins de 5 minutes de retard.',
+			classification: {
+				reliable: 'Classification de Transit : ponctualité fiable.',
+				uneven: 'Classification de Transit : ponctualité inégale.',
+				unreliable: 'Classification de Transit : ponctualité peu fiable.',
+				uncertain: 'Classification de Transit : incertaine pour ces relevés.',
+				'too-few': 'Pas assez de relevés pour juger.',
+			},
+			absent: 'Aucune part de relevés à l’heure n’est publiée pour cette période.',
+			readings: (shown: string, count: number) =>
+				`Selon ${shown} ${count < 2 ? 'relevé' : 'relevés'}.`,
+			readingsNote: 'Ce ne sont ni des trajets ni des passagers.',
+			readingsAbsent: 'Nombre de relevés non publié pour ce résultat.',
+			comparison: (days: number, shown: string) =>
+				days === 1
+					? 'Aucune comparaison avec la journée précédente n’est encore publiée pour cette ligne.'
+					: `Aucune comparaison avec les ${shown} jours précédents n’est encore publiée pour cette ligne.`,
+			interval: (lo: string, hi: string) => `Intervalle d’incertitude\u00a0: de ${lo} à ${hi}.`,
+			intervalNote:
+				'Les relevés répétés d’un même trajet peuvent rendre cet intervalle trop étroit.',
+			intervalAbsent: 'Intervalle d’incertitude : non disponible pour ce résultat.',
+			linkCopied: 'Lien copié',
+			citeCopied: 'Citation copiée',
+			copyFallback: 'Copiez ce texte :',
+			citation: (a: CitationArgs) =>
+				`Transit (${a.host}). Ligne ${a.line}, ${a.provider}\u00a0: ${a.figure} des relevés à l’heure, ${a.dates}, ${a.readings == null ? 'nombre de relevés non publié' : `selon ${a.readings} relevés`}. ${a.href}`,
+			daily: {
+				title: 'Jour par jour',
+				summary: (low: string, high: string, lowDay: string) =>
+					`Entre ${low} et ${high} selon le jour. Le plus bas\u00a0: ${lowDay}.`,
+				summaryAbsent: 'Moins de 2 jours mesurés : pas de comparaison jour par jour.',
+				caption: (dates: string) => `Relevés à l’heure chaque jour, ${dates}, en pourcentage`,
+				reference: 'Ligne pointillée : seuil de classification de 80 % de Transit.',
+				hideTable: 'Masquer le tableau',
+				tableCaption: (dates: string) => `Relevés à l’heure et retard moyen, ${dates}`,
+				columns: {
+					day: 'Jour',
+					onTime: 'À l’heure',
+					readings: 'Relevés',
+					avgDelay: 'Retard moyen',
+				},
+				gap: 'Non publié',
+			},
+			delays: {
+				avg: 'Retard moyen',
+				notPublished: 'Non publié pour cette période',
+			},
+		},
 		verdict: routeVerdictCopy.fr.verdict,
 	},
 	en: {
@@ -458,6 +517,49 @@ export const reliabilityCopy = defineCopy({
 			worstStops: { label: "Where it's worst", question: 'Where does the delay pile up?' },
 			detailShow: 'Show the detail',
 			detailHide: 'Hide the detail',
+		},
+		record: {
+			period: (dates, days) => `${dates}, ${days}`,
+			answerAfter: ' of readings were on time.',
+			band: 'On time: from 1 minute early to less than 5 minutes late.',
+			classification: {
+				reliable: 'Transit’s classification: reliable punctuality.',
+				uneven: 'Transit’s classification: uneven punctuality.',
+				unreliable: 'Transit’s classification: unreliable punctuality.',
+				uncertain: 'Transit’s classification: uncertain for these readings.',
+				'too-few': 'Not enough readings to judge.',
+			},
+			absent: 'No share of readings on time is published for this period.',
+			readings: (shown, count) => `Based on ${shown} ${count === 1 ? 'reading' : 'readings'}.`,
+			readingsNote: 'These are not trips or passengers.',
+			readingsAbsent: 'Reading count not published for this result.',
+			comparison: (days, shown) =>
+				days === 1
+					? 'No comparison with the previous day is published for this line yet.'
+					: `No comparison with the previous ${shown} days is published for this line yet.`,
+			interval: (lo, hi) => `Uncertainty range: ${lo} to ${hi}.`,
+			intervalNote: 'Repeated readings from the same trip can make this range too narrow.',
+			intervalAbsent: 'Uncertainty range: not available for this result.',
+			linkCopied: 'Link copied',
+			citeCopied: 'Citation copied',
+			copyFallback: 'Copy this text:',
+			citation: (a) =>
+				`Transit (${a.host}). Line ${a.line}, ${a.provider}: ${a.figure} of readings on time, ${a.dates}, ${a.readings == null ? 'reading count not published' : `based on ${a.readings} readings`}. ${a.href}`,
+			daily: {
+				title: 'Day by day',
+				summary: (low, high, lowDay) => `Between ${low} and ${high} each day. Lowest on ${lowDay}.`,
+				summaryAbsent: 'Fewer than 2 measured days: no day-by-day comparison.',
+				caption: (dates) => `Readings on time each day, ${dates}, in percent`,
+				reference: 'Dashed line: Transit’s 80% classification reference.',
+				hideTable: 'Hide table',
+				tableCaption: (dates) => `Readings on time and average delay, ${dates}`,
+				columns: { day: 'Day', onTime: 'On time', readings: 'Readings', avgDelay: 'Average delay' },
+				gap: 'Not published',
+			},
+			delays: {
+				avg: 'Average delay',
+				notPublished: 'Not published for this period',
+			},
 		},
 		verdict: routeVerdictCopy.en.verdict,
 	},

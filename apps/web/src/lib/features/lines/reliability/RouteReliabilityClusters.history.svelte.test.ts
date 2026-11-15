@@ -344,27 +344,15 @@ describe('RouteReliabilityClusters retained Line history', () => {
 			try {
 				await waitFor(() => expect(history.state).toBe('ready'));
 				const tiles = () =>
-					[
-						...view.container.querySelectorAll(
-							'[data-slot="verdict-kpis"] [data-slot="metric-bullet"]',
-						),
-					].slice(2);
-				const exact =
-					locale === 'en'
-						? [
-								'Median of reported predicted delays',
-								'90th percentile of reported predicted delays',
-							]
-						: [
-								'Médiane des relevés de retard prédit',
-								'90e percentile des relevés de retard prédit',
-							];
-				expect
-					.soft(tiles().map((tile) => tile.querySelector('.metric-bullet__caption')?.textContent))
-					.toEqual(exact);
-				expect(
-					tiles().map((tile) => tile.querySelector('.metric-bullet__value')?.textContent?.trim()),
-				).toEqual(['1.0 min', '3.0 min']);
+					['p50', 'p90'].map(
+						(metric) =>
+							view.container.querySelector(
+								`[data-slot="record-delays"] [data-metric="${metric}"] dd`,
+							) as HTMLElement,
+					);
+				expect(tiles().map((tile) => tile.textContent?.trim())).toEqual(
+					locale === 'en' ? ['1.0 min', '3.0 min'] : ['1,0 min', '3,0 min'],
+				);
 				expect(harness.loadLineHistoryRange).toHaveBeenCalledTimes(1);
 				history.setRequest(
 					historyRangeRequestFromSearchParams(new URLSearchParams('from=2026-01-31&to=2026-02-01')),
@@ -398,9 +386,9 @@ describe('RouteReliabilityClusters retained Line history', () => {
 				'p90 − median spread: 2.0 min. 2026-01-31 · 10 eligible delay predictions.',
 			);
 			const distribution = verdict.querySelector('[data-slot="delay-distribution"]') as HTMLElement;
-			expect(distribution.querySelector('[data-slot="delay-dist-readout"]')).toHaveTextContent(
-				'Median delay 1.0 min · 90th-percentile delay 3.0 min',
-			);
+			const delays = verdict.querySelector('[data-slot="record-delays"]') as HTMLElement;
+			expect(delays.querySelector('[data-metric="p50"] dd')).toHaveTextContent('1.0 min');
+			expect(delays.querySelector('[data-metric="p90"] dd')).toHaveTextContent('3.0 min');
 			expect(distribution.querySelector('[data-slot="absent-value"]')).toHaveTextContent(
 				'the selected view does not publish a delay histogram',
 			);

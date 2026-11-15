@@ -1,21 +1,13 @@
 {
 	"line": [
-		["Reliability is uncertain: 80% of 100 delay observations in the on-time band.", 100],
-		["Fiabilité incertaine : 80 % de 100 relevés de retard dans la plage de ponctualité.", 100],
-		["Reliability is uncertain: 1000 delay observations, but no usable uncertainty range.", 1000],
-		[
-			"Fiabilité incertaine : 1000 relevés de retard, mais aucune plage d’incertitude exploitable.",
-			1000
-		],
-		["Not enough delay observations (12) to judge reliability.", 12],
-		[
-			"Ran reliably, about 9 in 10 delay observations in the on-time band (87%, 95% CI: 80–92%).",
-			null
-		],
-		[
-			"Service fiable, environ 9 relevés de retard sur 10 dans la plage de ponctualité (87 %, IC 95 % : 80–92 %).",
-			null
-		]
+		["Based on 100 readings. These are not trips or passengers.", 100],
+		["Selon 100 relevés. Ce ne sont ni des trajets ni des passagers.", 100],
+		["Based on 12,345 readings. These are not trips or passengers.", 12345],
+		["Selon 12 345 relevés. Ce ne sont ni des trajets ni des passagers.", 12345],
+		["Based on 1 reading. These are not trips or passengers.", 1],
+		["Selon 1 relevé. Ce ne sont ni des trajets ni des passagers.", 1],
+		["Reading count not published for this result.", null],
+		["Nombre de relevés non publié pour ce résultat.", null]
 	],
 	"stop": [
 		["In this daily summary, 85% of 120 known predictions are not severely late.", 120],

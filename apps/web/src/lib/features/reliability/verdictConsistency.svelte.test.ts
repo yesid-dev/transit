@@ -136,6 +136,34 @@ function publishedPoint(window: ReliabilityWindow) {
 	};
 }
 
+/** The line answers once, in its record block; stop and network keep their verdict banner. */
+const LINE_STATUS: Record<string, string> = {
+	reliable: 'reliable',
+	uneven: 'patchy',
+	unreliable: 'unreliable',
+	uncertain: 'tentative',
+	'too-few': 'tentative',
+};
+function verdictOf(container: HTMLElement) {
+	const record = container.querySelector('[data-slot="line-record"]');
+	if (record) {
+		const classification = record
+			.querySelector('[data-slot="record-classification"]')
+			?.getAttribute('data-classification');
+		return {
+			status: classification ? LINE_STATUS[classification] : null,
+			ban: record.querySelector('[data-slot="record-figure"]')?.textContent ?? '',
+			text: record.textContent ?? '',
+		};
+	}
+	const verdict = container.querySelector('[data-slot="verdict"]');
+	return {
+		status: verdict?.getAttribute('data-status') ?? null,
+		ban: container.querySelector('.verdict__ban')?.textContent ?? '',
+		text: verdict?.textContent ?? '',
+	};
+}
+
 describe('the same reliability evidence across every surface', () => {
 	it('renders a reliable Verdict on all five surfaces', async () => {
 		const point = {
@@ -173,13 +201,8 @@ describe('the same reliability evidence across every surface', () => {
 			() => render(NetworkSurface),
 		]) {
 			const view = mount();
-			await waitFor(() =>
-				expect(view.container.querySelector('[data-slot="verdict"]')).toHaveAttribute(
-					'data-status',
-					'reliable',
-				),
-			);
-			expect(view.container.querySelector('.verdict__ban')).toHaveTextContent('85%');
+			await waitFor(() => expect(verdictOf(view.container).status).toBe('reliable'));
+			expect(verdictOf(view.container).ban).toContain('85%');
 			expect(harness.page.url.searchParams.get('grain')).toBeNull();
 			cleanup();
 		}
@@ -257,50 +280,25 @@ it.each(['line', 'stop', 'network'] as const)(
 		} as NetworkTrend;
 		harness.page.url = new URL('http://localhost/lines/24?grain=week');
 		let view = selectedSurface(entity);
-		await waitFor(() =>
-			expect(view.container.querySelector('[data-slot="verdict"]')).toHaveAttribute(
-				'data-status',
-				'reliable',
-			),
-		);
+		await waitFor(() => expect(verdictOf(view.container).status).toBe('reliable'));
 		await fireEvent.click(view.getAllByRole('radio', { name: /month|30 days/i })[0]);
-		await waitFor(() =>
-			expect(view.container.querySelector('[data-slot="verdict"]')).toHaveAttribute(
-				'data-status',
-				'tentative',
-			),
-		);
+		await waitFor(() => expect(verdictOf(view.container).status).toBe('tentative'));
 		expect(harness.page.url.searchParams.get('grain')).toBe('month');
 		cleanup();
 		view = selectedSurface(entity);
-		await waitFor(() =>
-			expect(view.container.querySelector('[data-slot="verdict"]')).toHaveAttribute(
-				'data-status',
-				'tentative',
-			),
-		);
+		await waitFor(() => expect(verdictOf(view.container).status).toBe('tentative'));
 		await fireEvent.click(
 			view.getAllByRole('radio', {
 				name: entity === 'line' ? /Latest complete day/i : /^day|daily/i,
 			})[0],
 		);
-		await waitFor(() =>
-			expect(view.container.querySelector('[data-slot="verdict"]')).toHaveAttribute(
-				'data-status',
-				'tentative',
-			),
-		);
-		expect(view.container.querySelector('[data-slot="verdict"]')).toHaveTextContent('12');
+		await waitFor(() => expect(verdictOf(view.container).status).toBe('tentative'));
+		expect(verdictOf(view.container).text).toContain('12');
 		expect(harness.page.url.searchParams.get('grain')).toBe('day');
 		cleanup();
 		view = selectedSurface(entity);
-		await waitFor(() =>
-			expect(view.container.querySelector('[data-slot="verdict"]')).toHaveAttribute(
-				'data-status',
-				'tentative',
-			),
-		);
-		expect(view.container.querySelector('[data-slot="verdict"]')).toHaveTextContent('12');
+		await waitFor(() => expect(verdictOf(view.container).status).toBe('tentative'));
+		expect(verdictOf(view.container).text).toContain('12');
 	},
 );
 
@@ -313,9 +311,7 @@ it('banner, list and pane agree on one window', async () => {
 	]) {
 		harness.page.url = new URL('http://localhost/lines/24');
 		const view = mount();
-		await waitFor(() =>
-			expect(view.container.querySelector('[data-slot="verdict"]')).toHaveTextContent('84%'),
-		);
+		await waitFor(() => expect(verdictOf(view.container).text).toContain('84%'));
 		if (view.queryAllByRole('radio').length)
 			expect(view.getByRole('radio', { name: /Last 7 days/, checked: true })).toBeInTheDocument();
 		cleanup();
@@ -348,7 +344,5 @@ it.each([true, false])('opens an enabled closed choice when a week exists: %s', 
 	const choice = view.getByRole('radio', { checked: true });
 	expect(choice).toBeEnabled();
 	expect(choice).toHaveAccessibleName(hasWeek ? /Last 7 days/ : /Latest complete day/);
-	expect(view.container.querySelector('[data-slot="verdict"]')).toHaveTextContent(
-		hasWeek ? '84%' : '85%',
-	);
+	expect(verdictOf(view.container).text).toContain(hasWeek ? '84%' : '85%');
 });

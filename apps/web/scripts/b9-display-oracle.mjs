@@ -625,6 +625,99 @@ function sumField(rows, group, field) {
 	return rows.reduce((sum, row) => sum + (finite(row[group]?.[field]) ?? 0), 0);
 }
 
+const localeTag = (locale) => (locale === 'fr' ? 'fr-CA' : 'en-CA');
+const isCount = (value) => Number.isInteger(value) && value >= 0;
+/** A published reading count is whole and at least one; an unpublished one is no objection. */
+const readingsValid = (row) =>
+	row?.observation_count == null || (isCount(row.observation_count) && row.observation_count > 0);
+
+/**
+ * A share of readings on time, from its definition: with both counts published, on time over
+ * readings, rounded half up to `digits`; with no on-time count, the published share itself.
+ */
+function shareOf(row, digits) {
+	if (!readingsValid(row)) return null;
+	const n = row?.observation_count;
+	const on = row?.on_time;
+	const scale = 10 ** digits;
+	if (on != null)
+		return n != null && isCount(on) && on <= n
+			? Math.floor((200 * scale * on + n) / (2 * n)) / scale
+			: null;
+	const otp = finite(row?.otp_pct);
+	return otp != null && otp >= 0 && otp <= 100
+		? Math.sign(otp) * round(Math.abs(otp), digits)
+		: null;
+}
+
+/** The record answer: a whole percent, never from a share the record does not publish. */
+const recordShare = (row) => (finite(row?.otp_pct) == null ? null : shareOf(row, 0));
+
+const LINE_DAILY_COPY = Object.freeze({
+	en: { headers: ['Day', 'On time', 'Readings', 'Average delay'], gap: 'Not published' },
+	fr: { headers: ['Jour', 'À l’heure', 'Relevés', 'Retard moyen'], gap: 'Non publié' },
+});
+const DAY_SIGNAL = ['otp_pct', 'avg_delay_min', 'p50_min', 'p90_min', 'severe_pct'];
+
+/** Day by day: one share a day, tenths rounded half up from integer counts, with its own table. */
+function lineDailyTable(raw, closedDate, view, locale) {
+	const params = new URLSearchParams(view.split('?')[1] ?? '');
+	const from = params.get('from');
+	const to = params.get('to');
+	const byDate = new Map();
+	for (const row of raw.periods ?? [])
+		if (row.grain === 'day' && row.date && DAY_SIGNAL.some((key) => row[key] != null))
+			byDate.set(row.date, row);
+	// The window: a chosen range, or the latest complete day and the 13 days before it.
+	const day = (key, shift = 0) =>
+		new Date(Date.parse(`${key}T00:00:00Z`) + shift * 86_400_000).toISOString().slice(0, 10);
+	const latest = (raw.periods ?? [])
+		.filter(
+			(row) => row.grain === 'day' && row.date && closedDate != null && row.date <= closedDate,
+		)
+		.map((row) => row.date)
+		.sort()
+		.at(-1);
+	const [lo, hi] =
+		from && to ? (from <= to ? [from, to] : [to, from]) : latest ? [day(latest, -13), latest] : [];
+	const dates = [];
+	for (let key = lo; key && key <= hi; key = day(key, 1)) dates.push(key);
+	// Every day of the window has a row; a day the record does not publish is a gap.
+	const rows = dates.map((date) => byDate.get(date) ?? { date });
+	const tag = localeTag(locale);
+	const copy = LINE_DAILY_COPY[locale];
+	const cell = (value, text) => ({ value, text: value == null ? copy.gap : text(value) });
+	return {
+		headers: rows.length ? copy.headers : [],
+		rows: rows.map((row) => {
+			const share = shareOf(row, 1);
+			const counted = share != null && row.observation_count != null;
+			const avg = row.observation_count === 0 ? null : finite(row.avg_delay_min);
+			return [
+				new Intl.DateTimeFormat(tag, {
+					weekday: 'long',
+					month: 'long',
+					day: 'numeric',
+					timeZone: 'UTC',
+				}).format(new Date(`${row.date}T00:00:00Z`)),
+				cell(share, (value) =>
+					new Intl.NumberFormat(tag, { style: 'percent', maximumFractionDigits: 1 }).format(
+						value / 100,
+					),
+				),
+				cell(counted ? row.observation_count : null, (value) =>
+					new Intl.NumberFormat(tag).format(value),
+				),
+				cell(
+					avg == null ? null : Math.sign(avg) * round(Math.abs(avg)) + 0,
+					(value) =>
+						`${new Intl.NumberFormat(tag, { maximumFractionDigits: 1 }).format(value)} min`,
+				),
+			];
+		}),
+	};
+}
+
 function lineOracle(fixture, locale, view) {
 	const raw = routeFile(fixture);
 	const closedDate = raw.periods_by_grain?.find((row) => row.grain === 'day')?.date;
@@ -721,15 +814,6 @@ function lineOracle(fixture, locale, view) {
 		independentlyRanked.every((row, index) => row.id === eligibleStops[index]?.id),
 		'weak-stop publisher order does not match Wilson, delay, and id ranking',
 	);
-	const trendRows = (raw.periods ?? [])
-		.filter(
-			(row) =>
-				row.grain === 'day' &&
-				row.date <= raw.periods_by_grain?.find((row) => row.grain === 'day')?.date,
-		)
-		.slice()
-		.sort((a, b) => a.date.localeCompare(b.date));
-	const recentTrendRows = trendRows.slice(-14);
 	const windowedBreakdown = (raw.periods_by_grain ?? []).find((row) => row.grain === 'day');
 	const breakdown = windowedBreakdown ?? {
 		by_shift: (raw.periods ?? []).filter((row) => SHIFTS.includes(row.grain)),
@@ -741,16 +825,6 @@ function lineOracle(fixture, locale, view) {
 		(rows ?? []).slice().sort((a, b) => order.indexOf(a.grain) - order.indexOf(b.grain));
 	const byShift = orderRows(breakdown.by_shift, SHIFTS);
 	const byDayType = orderRows(breakdown.by_daytype, DAY_TYPES);
-	const trendSource = view.includes('from=')
-		? recentTrendRows.map((row) => [
-				row.date,
-				finite(row.observation_count) > 0 && finite(row.on_time) != null
-					? (row.on_time / row.observation_count) * 100
-					: finite(row.otp_pct),
-				finite(row.avg_delay_min),
-			])
-		: byShift.map((row) => [row.grain, finite(row.otp_pct), finite(row.avg_delay_min)]);
-	const displayedTrend = trendSource.filter((row) => row[1] != null).length >= 2 ? trendSource : [];
 	const crosstab = new Map(
 		(breakdown.by_shift_daytype ?? []).map((row) => [`${row.shift}|${row.day_type}`, row]),
 	);
@@ -896,6 +970,23 @@ function lineOracle(fixture, locale, view) {
 			value == null ? '' : `${fixed ? value.toFixed(1) : value}${unit === 'min' ? ' min' : '%'}`,
 		unit,
 	});
+	// The record's own figures, in the reader's locale; none of them from zero readings.
+	const measured = day?.observation_count !== 0;
+	const recordPct = recordShare(day);
+	const recordMin = (value) => {
+		const shown = measured ? finite(value) : null;
+		return {
+			value: shown,
+			text:
+				shown == null
+					? ''
+					: `${new Intl.NumberFormat(localeTag(locale), {
+							minimumFractionDigits: 1,
+							maximumFractionDigits: 1,
+						}).format(shown)} min`,
+			unit: 'min',
+		};
+	};
 	const cancellationPct = pct(
 		finite(cancellation?.canceled_trip_days),
 		finite(cancellation?.total_trip_days),
@@ -908,11 +999,18 @@ function lineOracle(fixture, locale, view) {
 		? pct(finite(cancellation?.delivered_trip_days), finite(cancellation?.scheduled_trip_days))
 		: null;
 	const scalars = {
-		otp: scalar(finite(day?.otp_pct), '%'),
-		avg: scalar(finite(day?.avg_delay_min), 'min', true),
-		p50: scalar(finite(day?.p50_min), 'min', true),
-		p90: scalar(finite(day?.p90_min), 'min', true),
-		severe: scalar(finite(day?.severe_pct), '%'),
+		otp: {
+			value: recordPct,
+			text:
+				recordPct == null
+					? ''
+					: new Intl.NumberFormat(localeTag(locale), { style: 'percent' }).format(recordPct / 100),
+			unit: '%',
+		},
+		avg: recordMin(day?.avg_delay_min),
+		p50: recordMin(day?.p50_min),
+		p90: recordMin(day?.p90_min),
+		severe: scalar(measured ? finite(day?.severe_pct) : null, '%'),
 		completeness: scalar(completenessPct, '%', true),
 		cancellation: scalar(cancellationPct, '%', true),
 		skipped: scalar(skippedPct, '%', true),
@@ -924,20 +1022,14 @@ function lineOracle(fixture, locale, view) {
 	const c = TABLE_COPY[locale];
 	const histogram = histogramTable(closedDay?.delay_histogram ?? [], locale, true, c.observations);
 	return [
-		observation('line.day.otp_pct', finite(day?.otp_pct)),
-		observation('line.day.avg_delay_min', finite(day?.avg_delay_min)),
-		observation('line.day.p50_min', finite(day?.p50_min)),
-		observation('line.day.p90_min', finite(day?.p90_min)),
-		observation('line.day.severe_pct', finite(day?.severe_pct)),
+		observation('line.day.otp_pct', recordPct),
+		observation('line.day.avg_delay_min', scalars.avg.value),
+		observation('line.day.p50_min', scalars.p50.value),
+		observation('line.day.p90_min', scalars.p90.value),
+		observation('line.day.severe_pct', scalars.severe.value),
 		observation(
 			'line.day.observation_count',
-			verdictCount(
-				finite(day?.otp_pct),
-				finite(day?.observation_count),
-				finite(day?.on_time),
-				finite(day?.wilson_lo),
-				finite(day?.wilson_hi),
-			),
+			recordPct != null ? (day.observation_count ?? null) : null,
 		),
 		observation('line.day.cancellation_pct', cancellationPct),
 		observation('line.day.skipped_pct', skippedPct),
@@ -990,10 +1082,7 @@ function lineOracle(fixture, locale, view) {
 		),
 		observation('line.weak_stops.raw_count', windowedStops.length),
 		observation('line.pane.freshness_iso', raw.generated_utc?.slice(0, 10) ?? null),
-		observation(
-			'line.trend.rows',
-			trendTable([c.x, c.otp, c.avg], displayedTrend, locale, ['%', ' min']),
-		),
+		observation('line.trend.rows', lineDailyTable(raw, closedDate, view, locale)),
 		observation('line.habits.tiers', {
 			table: heatmapTable(heatmapTiers(raw.habits), locale),
 			bestTime: bestTimeText(raw.habits, locale),
@@ -1597,8 +1686,8 @@ export function runOracleSelfCheck() {
 		expectedDomainObservations('sparse', 'line').find(
 			(row) => row.id === 'line.day.observation_count',
 		)?.value,
-		0,
-		'thin-sample hedge preserves the reported zero observation count',
+		null,
+		'zero readings publish no share and no reading count',
 	);
 	for (const [iso, locale, expected] of [
 		['2026-11-01T05:30:00Z', 'en', 'Nov 1, 2026, 01:30:00 GMT-4'],

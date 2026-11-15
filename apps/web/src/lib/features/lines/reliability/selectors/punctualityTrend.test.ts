@@ -1,115 +1,114 @@
 import { describe, expect, it } from 'vitest';
-import { selectPunctualityTrend, type PunctualityTrendLabels } from './punctualityTrend';
-import { DELAY_POS_DOMAIN, OTP_DOMAIN } from '#lib/features/reliability/domains.ts';
-import type { PunctualityVM } from '../clusters';
+import type { ReliabilityPeriod } from '#lib/v1/index.ts';
+import { selectDailyOnTime } from './punctualityTrend';
 
-const labels: PunctualityTrendLabels = {
-	title: 'On-time % · trend',
-	otpLabel: 'On-time %',
-	retardLabel: 'Avg delay',
-	pctUnit: '%',
-	minUnit: ' min',
-	shiftLabel: (g) => g.toUpperCase(),
-	shiftShort: (g) => g.slice(0, 2).toUpperCase(),
-};
+const day = (date: string, extra: Partial<ReliabilityPeriod>): ReliabilityPeriod =>
+	({ grain: 'day', date, ...extra }) as ReliabilityPeriod;
 
-function vmWith(over: Partial<PunctualityVM>): PunctualityVM {
-	return {
-		headline: {
-			otpPct: null,
-			avgDelayMin: null,
-			p50Min: null,
-			p90Min: null,
-			severePct: null,
-			delayHistogram: null,
-		},
-		trend: [],
-		dayOfWeek: [],
-		weakStops: [],
-		peakOffPeak: { byShift: [], byDayType: [] },
-		byShiftDaytype: [],
-		isEmpty: false,
-		...over,
-	} as unknown as PunctualityVM;
-}
+const counted = (date: string, onTime: number, readings: number, avg = 2.5) =>
+	day(date, { on_time: onTime, observation_count: readings, avg_delay_min: avg });
 
-const shiftRows = [
-	{ grain: 'am_peak', otpPct: 90, avgDelayMin: 0.6 },
-	{ grain: 'pm_peak', otpPct: 84, avgDelayMin: 1.6 },
-	{ grain: 'midday', otpPct: 88, avgDelayMin: 1.0 },
-];
-
-const dailyRows = [
-	{
-		date: '2026-06-18',
-		otp_pct: 86,
-		avg_delay_min: 1.2,
-		wilson_lo: 80,
-		wilson_hi: 91,
-		observation_count: 140,
-	},
-	{
-		date: '2026-06-19',
-		otp_pct: 88,
-		avg_delay_min: 1.0,
-		wilson_lo: 83,
-		wilson_hi: 92,
-		observation_count: 160,
-	},
-	{
-		date: '2026-06-20',
-		otp_pct: null,
-		avg_delay_min: null,
-		wilson_lo: null,
-		wilson_hi: null,
-		observation_count: 0,
-	},
-];
-
-describe('selectPunctualityTrend — the granularity matrix', () => {
-	it('DAY grain → the intra-day shift pattern on a band x-scale (no Wilson band)', () => {
-		const vm = vmWith({ peakOffPeak: { byShift: shiftRows, byDayType: [] } as never });
-		const spec = selectPunctualityTrend(vm, 'day', 'en', labels);
-		expect(spec.kind).toBe('trend');
-		if (spec.kind !== 'trend') return;
-		expect(spec.xScale).toBe('band');
-		expect(spec.hasBand).toBe(false);
-		expect(spec.points.map((p) => p.x)).toEqual(['AM', 'MI', 'PM']);
-		expect(spec.points.map((p) => p.xLabel)).toEqual(['AM_PEAK', 'MIDDAY', 'PM_PEAK']);
-		expect(spec.points.map((p) => p.y)).toEqual([90, 88, 84]);
-		expect(spec.points.map((p) => p.y2)).toEqual([0.6, 1.0, 1.6]);
+describe('selectDailyOnTime', () => {
+	it('gives one on-time share per day from its own counts, to one decimal', () => {
+		const result = selectDailyOnTime([
+			counted('2026-11-04', 700, 1000),
+			counted('2026-11-05', 717, 1000),
+			counted('2026-11-06', 1, 8, 4.25),
+		]);
+		expect(result.rows).toEqual([
+			{ date: '2026-11-04', percent: 70, readings: 1000, avgDelayMin: 2.5 },
+			{ date: '2026-11-05', percent: 71.7, readings: 1000, avgDelayMin: 2.5 },
+			// 1 / 8 = 12.5% exactly; 4.25 minutes rounds half away from zero.
+			{ date: '2026-11-06', percent: 12.5, readings: 8, avgDelayMin: 4.3 },
+		]);
 	});
 
-	it('WEEK grain → the dated daily series on a time x-scale, with the Wilson band', () => {
-		const vm = vmWith({ trend: dailyRows as never });
-		const spec = selectPunctualityTrend(vm, 'week', 'en', labels);
-		expect(spec.kind).toBe('trend');
-		if (spec.kind !== 'trend') return;
-		expect(spec.xScale).toBe('time');
-		expect(spec.hasBand).toBe(true);
-		expect(typeof spec.points[0].x).toBe('number');
-		expect(spec.points[0].xLabel).toBe('2026-06-18');
-		expect(spec.points[0].bandLo).toBe(80);
-		expect(spec.points[0].bandHi).toBe(91);
-		expect(spec.points[2].y).toBeNull();
+	it('names the lowest and highest days, the earliest on a tie', () => {
+		const result = selectDailyOnTime([
+			counted('2026-11-04', 70, 100),
+			counted('2026-11-05', 648, 1000),
+			counted('2026-11-06', 79, 100),
+			counted('2026-11-07', 648, 1000),
+		]);
+		expect(result.low).toEqual({ date: '2026-11-05', percent: 64.8 });
+		expect(result.high).toEqual({ date: '2026-11-06', percent: 79 });
 	});
 
-	it('carries the ABSOLUTE domains the renderer pins (never an extent)', () => {
-		const vm = vmWith({ peakOffPeak: { byShift: shiftRows, byDayType: [] } as never });
-		const spec = selectPunctualityTrend(vm, 'day', 'en', labels);
-		if (spec.kind !== 'trend') throw new Error('expected trend');
-		expect(spec.domain).toBe(OTP_DOMAIN);
-		expect(spec.secondary?.domain).toBe(DELAY_POS_DOMAIN);
-		expect(spec.target).toBe(80);
-		expect(spec.minN).toBe(30);
-		expect(spec.minPointsForLine).toBe(7);
+	it('keeps only the days inside a chosen window', () => {
+		const result = selectDailyOnTime(
+			[
+				counted('2026-11-03', 50, 100),
+				counted('2026-11-04', 70, 100),
+				counted('2026-11-05', 80, 100),
+			],
+			{ from: '2026-11-04', to: '2026-11-05' },
+		);
+		expect(result.rows.map((row) => row.date)).toEqual(['2026-11-04', '2026-11-05']);
 	});
 
-	it('fewer than two real points → honest absence, never a one-dot line', () => {
-		const vm = vmWith({ trend: [dailyRows[0], dailyRows[2]] as never });
-		const spec = selectPunctualityTrend(vm, 'week', 'en', labels);
-		expect(spec.kind).toBe('absence');
-		if (spec.kind !== 'absence') return;
-		expect(spec.reason).toBe('no-observations');
+	it('shows a gap, never a zero, for a day whose counts break their definition', () => {
+		const result = selectDailyOnTime([
+			counted('2026-11-04', 120, 100),
+			day('2026-11-05', { otp_pct: 81.25, avg_delay_min: -0.04 }),
+			day('2026-11-06', { avg_delay_min: 3 }),
+		]);
+		expect(result.rows).toEqual([
+			{ date: '2026-11-04', percent: null, readings: null, avgDelayMin: 2.5 },
+			{ date: '2026-11-05', percent: 81.3, readings: null, avgDelayMin: 0 },
+			{ date: '2026-11-06', percent: null, readings: null, avgDelayMin: 3 },
+		]);
+		expect(Object.is(result.rows[1].avgDelayMin, -0)).toBe(false);
+	});
+
+	it('draws every day of the window, with a gap for a day the record does not publish', () => {
+		const result = selectDailyOnTime(
+			[counted('2026-11-04', 70, 100), counted('2026-11-06', 80, 100)],
+			{ from: '2026-11-03', to: '2026-11-06' },
+		);
+		expect(result.rows).toEqual([
+			{ date: '2026-11-03', percent: null, readings: null, avgDelayMin: null },
+			{ date: '2026-11-04', percent: 70, readings: 100, avgDelayMin: 2.5 },
+			{ date: '2026-11-05', percent: null, readings: null, avgDelayMin: null },
+			{ date: '2026-11-06', percent: 80, readings: 100, avgDelayMin: 2.5 },
+		]);
+	});
+
+	it('keeps a day’s published share when only its reading count is published', () => {
+		const [row] = selectDailyOnTime([
+			day('2026-11-04', { observation_count: 12, otp_pct: 20.04, avg_delay_min: 3 }),
+		]).rows;
+		expect(row).toEqual({ date: '2026-11-04', percent: 20, readings: 12, avgDelayMin: 3 });
+	});
+
+	it('shows no average delay for a day with zero readings', () => {
+		const [row] = selectDailyOnTime([
+			day('2026-11-04', { on_time: 0, observation_count: 0, otp_pct: 0, avg_delay_min: 0 }),
+		]).rows;
+		expect(row).toEqual({ date: '2026-11-04', percent: null, readings: null, avgDelayMin: null });
+	});
+
+	it('draws no low or high from fewer than two measured days', () => {
+		const result = selectDailyOnTime([counted('2026-11-04', 70, 100), day('2026-11-05', {})]);
+		expect(result.low).toBeNull();
+		expect(result.high).toBeNull();
+	});
+
+	it('keeps each share inside its definition across generated seeds', () => {
+		let state = 4_101_115;
+		const next = (max: number) => {
+			state = (state * 1_103_515_245 + 12_345) % 2_147_483_648;
+			return state % max;
+		};
+		for (let trial = 0; trial < 300; trial += 1) {
+			const readings = 1 + next(20_000);
+			const onTime = next(readings + 1);
+			const [row] = selectDailyOnTime([counted('2026-11-04', onTime, readings)]).rows;
+			// The shown tenths are exact, rounded half up, from the integer counts.
+			expect(Math.round(row.percent! * 10)).toBe(
+				Math.floor((2000 * onTime + readings) / (2 * readings)),
+			);
+			expect(row.percent! >= 0 && row.percent! <= 100).toBe(true);
+			expect(row.readings).toBe(readings);
+		}
 	});
 });
