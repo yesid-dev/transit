@@ -34,6 +34,7 @@
 					label={card.label}
 					value={card.value}
 					absentReason={card.absentReason}
+					absentParams={card.absentParams}
 					{locale}
 					size="lg"
 				>

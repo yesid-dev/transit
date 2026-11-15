@@ -1,4 +1,5 @@
 import type { NetworkFile, NetworkShift, TrendPoint } from './index';
+import { liveOnTimeShare } from './live/onTimeShare';
 import type { Receipt } from './schemas/receipts';
 
 function receiptStatesView(states: Receipt['service_states']) {
@@ -99,7 +100,7 @@ export function networkReliabilityView(
 			live == null
 				? null
 				: ({
-						onTimePct: live.on_time_pct ?? null,
+						onTime: liveOnTimeShare(live),
 						coveragePct: live.coverage_pct ?? null,
 						p50Min: live.delay_p50_min ?? null,
 						p90Min: live.delay_p90_min ?? null,

@@ -7,6 +7,7 @@ export interface KpiCardVM {
 	readonly label: string;
 	readonly key: MetricKey | SupplementalMetricKey;
 	readonly absentReason?: AbsenceReasonKey;
+	readonly absentParams?: Readonly<Record<string, string>>;
 }
 
 export interface HeadlineKpisVM {
@@ -27,13 +28,23 @@ export interface HeadlineKpisLabels {
 }
 
 export function selectHeadlineKpis(net: NetworkFile, labels: HeadlineKpisLabels): HeadlineKpisVM {
+	const onTime = net.onTime;
 	return {
 		headline: [
 			{
-				value: labels.pctOrNull(net.onTimePct),
+				value: onTime.kind === 'share' ? labels.pctOrNull(onTime.pct) : null,
 				label: labels.onTime,
 				key: 'liveOtp',
-				absentReason: 'not-reported',
+				// Too few buses with a delay reading: say so instead of headlining their share.
+				...(onTime.kind === 'thin'
+					? {
+							absentReason: 'thin-coverage',
+							absentParams: {
+								n: labels.fmtCount(onTime.readings),
+								total: labels.fmtCount(onTime.inService),
+							},
+						}
+					: { absentReason: 'not-reported' }),
 			},
 			{
 				value: labels.pctOrNull(net.coveragePct),

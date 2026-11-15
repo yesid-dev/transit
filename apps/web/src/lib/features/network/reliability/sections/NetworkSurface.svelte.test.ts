@@ -496,6 +496,11 @@ describe('NetworkSurface drilldown', () => {
 
 describe('NetworkSurface live cards (S9C)', () => {
 	it('renders exactly four live headline cards in their metric order with explainers', () => {
+		// Enough buses with a delay reading to headline the on-time share.
+		Object.assign(network, {
+			vehicles_in_service: 40,
+			status_dist: { early: 0, on_time: 24, late: 8, severe: 8, unknown: 0 },
+		});
 		const { container } = render(NetworkSurface);
 		const headline = container.querySelector('[data-network-section="network-live-headline"]')!;
 		const cards = [...headline.querySelectorAll('[data-slot="explained-metric-card"]')];
@@ -515,6 +520,26 @@ describe('NetworkSurface live cards (S9C)', () => {
 			'1 min',
 			'6 min',
 		]);
+	});
+
+	it.each([
+		['en', 'Not enough readings, delay readings for only 10 of 328 buses'],
+		['fr', 'Pas assez de mesures, mesures de retard pour seulement 10 bus sur 328'],
+	] as const)('holds back a live on-time share too few buses stand behind (%s)', (locale, why) => {
+		Object.assign(network, {
+			vehicles_in_service: 328,
+			on_time_pct: 10,
+			status_dist: { early: 2, on_time: 1, late: 0, severe: 7, unknown: 318 },
+		});
+		const { container } = render(NetworkSurface, {
+			context: new Map([[Symbol.for('@yesid/ui/locale'), () => locale]]),
+		});
+		const onTime = container.querySelector(
+			'[data-network-section="network-live-headline"] [data-slot="metric-display"]',
+		)!;
+		expect(onTime.querySelector('[data-slot="absent-value"]')).toHaveAttribute('aria-label', why);
+		expect(onTime.querySelector('.metric-value')).toBeNull();
+		expect(onTime).not.toHaveTextContent('%');
 	});
 
 	it('renders the styled honest-absence chip (not a plain "no data") for a null live tile', () => {

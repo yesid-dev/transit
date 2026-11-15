@@ -25,7 +25,7 @@ describe('selectLivePulse', () => {
 	it('reports buses more than five minutes late against buses with a delay reading', () => {
 		expect(selectLivePulse(network())).toEqual({
 			inService: 355,
-			onTimePct: 57,
+			onTime: { kind: 'share', pct: 57, readings: 260, inService: 355 },
 			severeLate: 42,
 			withReading: 260,
 			early: 71,
@@ -43,7 +43,7 @@ describe('selectLivePulse', () => {
 		);
 		expect(pulse?.severeLate).toBeNull();
 		expect(pulse?.early).toBeNull();
-		expect(pulse?.onTimePct).toBeNull();
+		expect(pulse?.onTime).toEqual({ kind: 'absent' });
 	});
 
 	it('has nothing to say before the live snapshot arrives', () => {

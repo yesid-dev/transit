@@ -5,6 +5,8 @@ type PulseKey =
 	| 'inService'
 	| 'onTime'
 	| 'onTimeNote'
+	| 'onTimeThin'
+	| 'onTimeThinNote'
 	| 'severeLate'
 	| 'severeLateNote'
 	| 'ofCount'
@@ -33,6 +35,8 @@ export const homePulseCopy = defineCopy({
 		inService: 'Bus en service',
 		onTime: 'À l’heure',
 		onTimeNote: 'de 1 min d’avance à 5 min de retard, parmi les bus mesurés',
+		onTimeThin: 'Pas assez de mesures',
+		onTimeThinNote: 'Mesures de retard pour seulement {n} bus sur {total}',
 		severeLate: 'Plus de 5 min de retard',
 		severeLateNote: 'bus avec une mesure de retard',
 		ofCount: 'sur {n}',
@@ -61,6 +65,8 @@ export const homePulseCopy = defineCopy({
 		inService: 'Buses in service',
 		onTime: 'On time',
 		onTimeNote: '1 min early to 5 min late, among buses with a delay reading',
+		onTimeThin: 'Not enough readings',
+		onTimeThinNote: 'Delay readings for only {n} of {total} buses',
 		severeLate: 'More than 5 min late',
 		severeLateNote: 'buses with a delay reading',
 		ofCount: 'of {n}',

@@ -160,6 +160,27 @@ describe('Home accountability strip', () => {
 		expect(screen.getByText('Buses in service').closest('div')).toHaveTextContent('355');
 	});
 
+	it.each([
+		['en', 'On time', 'Not enough readings', '10 of 328'],
+		['fr', 'À l’heure', 'Pas assez de mesures', '10 bus sur 328'],
+	] as const)(
+		'holds back an on-time share that too few buses stand behind (%s)',
+		(locale, label, held, count) => {
+			// Ottawa, as reported: 10 of 328 buses in service had a delay reading.
+			state.network = {
+				...liveNetwork,
+				vehicles_in_service: 328,
+				on_time_pct: 10,
+				status_dist: { on_time: 1, late: 0, severe: 7, early: 2, unknown: 318 },
+			};
+			render(HomePulse, { props: { locale, city: 'Ottawa', manifest } });
+			const tile = screen.getByText(label).closest('div') as HTMLElement;
+			expect(tile).toHaveTextContent(held);
+			expect(tile).toHaveTextContent(count);
+			expect(tile).not.toHaveTextContent('%');
+		},
+	);
+
 	it('says the live numbers are unavailable instead of showing zeros', () => {
 		state.healthState = 'failed-no-data';
 		render(HomePulse, { props: { locale: 'fr', city: 'Montréal', manifest } });

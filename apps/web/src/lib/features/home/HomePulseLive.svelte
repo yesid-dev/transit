@@ -65,7 +65,14 @@
 		/** Present when the tile reserves a line for the count its figure is out of. */
 		readonly of?: string;
 		readonly note: string | null;
+		/**
+		 * Present when the figure can be held back for too few readings. The held wording shares the
+		 * figure's space and its note shares the note's, so the tile keeps one size in every state.
+		 */
+		readonly held?: { readonly shown: boolean; readonly note: string };
 	}
+
+	const onTime = $derived(pulse?.onTime ?? null);
 
 	// Labels and notes are known before any data, so every tile has its final size at first paint.
 	const tiles: readonly PulseTile[] = $derived([
@@ -78,8 +85,17 @@
 		{
 			key: 'on-time',
 			label: t.onTime,
-			value: pulse ? pct(pulse.onTimePct) : null,
+			value: onTime?.kind === 'share' ? pct(onTime.pct) : null,
 			note: t.onTimeNote,
+			held:
+				onTime?.kind === 'thin'
+					? {
+							shown: true,
+							note: t.onTimeThinNote
+								.replace('{n}', count(onTime.readings))
+								.replace('{total}', count(onTime.inService)),
+						}
+					: { shown: false, note: '' },
 		},
 		{
 			key: 'late',
@@ -117,20 +133,32 @@
 			<div class="pulse-tile" data-pulse={tile.key}>
 				<dt>{tile.label}</dt>
 				<dd>
-					<span class="pulse-figure">
+					<span class="pulse-figure" class:pulse-stack={!!tile.held}>
 						{#if tile.value != null}
 							<span class="pulse-value">{tile.value}</span>
+						{:else if tile.held?.shown}
+							<span class="pulse-held" data-slot="pulse-held">{t.onTimeThin}</span>
 						{:else if pulse}
 							<AbsentValue variant="compact" reason="no-observations" {locale} />
 						{:else}
 							<span class="pulse-value pulse-value--absent" aria-hidden="true">—</span>
 							{#if liveFailed}<span class="sr-only">{t.unavailable}</span>{/if}
 						{/if}
+						{#if tile.held && !tile.held.shown}
+							<span class="pulse-held pulse-reserve" aria-hidden="true">{t.onTimeThin}</span>
+						{/if}
 					</span>
 					{#if tile.note}
 						<span class="pulse-note">
 							{#if tile.of != null}<span class="pulse-of">{tile.of}</span>{/if}
-							{tile.note}
+							{#if tile.held?.shown}
+								<span class="pulse-stack">
+									<span>{tile.held.note}</span>
+									<span class="pulse-reserve" aria-hidden="true">{tile.note}</span>
+								</span>
+							{:else}
+								{tile.note}
+							{/if}
 						</span>
 					{/if}
 				</dd>
@@ -259,6 +287,24 @@
 	.pulse-value--absent {
 		font-size: var(--text-body);
 		color: var(--muted-foreground);
+	}
+	/* A held-back share reads as a status, never as a figure someone could screenshot. */
+	.pulse-held {
+		font-size: var(--text-small);
+		font-weight: 700;
+		line-height: 1.3;
+		color: var(--secondary-foreground);
+	}
+	/* Alternatives share one grid cell, so the tile takes the larger of the two in every state. */
+	.pulse-stack {
+		display: grid;
+		align-items: center;
+	}
+	.pulse-stack > :global(*) {
+		grid-area: 1 / 1;
+	}
+	.pulse-reserve {
+		visibility: hidden;
 	}
 	.pulse-of {
 		display: block;
