@@ -155,7 +155,7 @@ def _accept_shadow_report(checkpoint: "Checkpoint", path: Path) -> None:
     import json
 
     from transit_ops.batch.checkpoints import NotAccepted, accept
-    from transit_ops.batch.replay_report import FamilyReplay
+    from transit_ops.batch.replay_report import family_from_payload
 
     data = json.loads(path.read_bytes())
     manifest = checkpoint.manifest
@@ -168,9 +168,9 @@ def _accept_shadow_report(checkpoint: "Checkpoint", path: Path) -> None:
     ):
         raise NotAccepted("replay report provenance differs from checkpoint")
     matches = [f for f in data["families"] if f["family_id"] == manifest.family_id]
-    if len(matches) != 1 or matches[0].get("differences"):
+    if len(matches) != 1:
         raise NotAccepted("requires exactly one identical family replay")
-    accept(checkpoint, FamilyReplay(**matches[0]))
+    accept(checkpoint, family_from_payload(matches[0]))
 
 
 @app.command("shadow-build")

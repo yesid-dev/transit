@@ -8,6 +8,7 @@ from sqlalchemy.sql.elements import TextClause
 
 from transit_ops.batch.build import BuildRequest, FamilyOutput, InputNeed, TableRows, utc_days
 from transit_ops.batch.engine import BatchSession
+from transit_ops.batch.sanity import Invariant
 from transit_ops.gold import rollups
 from transit_ops.sql_registry import named_query
 
@@ -77,6 +78,26 @@ class OccupancyCrowdingBuilder:
     tables = tuple(f"gold.{name}" for name in _NAMES)
     published_keys: tuple[str, ...] = ()
     variants: Mapping[str, TextClause] = {}
+    invariants = tuple(
+        rule
+        for name in _NAMES[:3]
+        for rule in (
+            Invariant(f"gold.{name}", "count", _BANDS),
+            Invariant(f"gold.{name}", "sum", _BANDS, name="bands_sum"),
+        )
+    ) + (
+        Invariant("gold.route_delay_by_crowding_daily", "count", ("delay_observation_count",)),
+        Invariant("gold.route_delay_by_crowding_daily", "percentiles", ("p50_delay_seconds",)),
+        Invariant(
+            "gold.route_occupancy_band_hourly",
+            "sum",
+            ("observation_count",),
+            name="hourly_daily",
+            total_table="gold.route_occupancy_band_daily",
+            total_column="observation_count",
+            group_by=("provider_id", "provider_local_date", "route_id"),
+        ),
+    )
 
     def inputs(self, request: BuildRequest) -> tuple[InputNeed, ...]:
         cutoff = request.as_of_utc - timedelta(days=request.fact_retention_days)

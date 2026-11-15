@@ -17,7 +17,7 @@ from transit_ops.batch.compare import (
 )
 from transit_ops.batch.manifest import BuildManifest, ManifestInput
 from transit_ops.batch.private_area import PrivateArea
-from transit_ops.batch.replay_report import FamilyReplay, _value
+from transit_ops.batch.replay_report import FamilyReplay, _value, family_payload
 from transit_ops.batch.run import BuildResult, key_matches
 from transit_ops.ingestion.storage import LocalBronzeStorage
 from transit_ops.lake.objects import ObjectKeyTaken, put_create_only
@@ -195,11 +195,14 @@ class AcceptedBuild:
 def accept(checkpoint: Checkpoint, replay: FamilyReplay) -> AcceptedBuild:
     manifest = checkpoint.manifest
     if (
-        replay.status != "identical"
+        replay.status not in {"identical", "identical_after_normalization"}
         or replay.build_id != checkpoint.build_id
         or replay.family_id != manifest.family_id
-        or replay.differences
-        or replay.difference_count
+        or any(d.difference_class != "representation" for d in replay.differences)
+        or replay.difference_counts.get("value", 0)
+        or replay.difference_count != replay.difference_counts.get("representation", 0)
+        or (replay.status == "identical" and replay.difference_count != 0)
+        or (replay.status == "identical_after_normalization" and replay.difference_count == 0)
         or replay.code_commit != manifest.code_commit
         or replay.engine_version != manifest.engine_version
     ):
@@ -220,7 +223,7 @@ def accept(checkpoint: Checkpoint, replay: FamilyReplay) -> AcceptedBuild:
         manifest.engine,
         manifest.revision,
         outputs,
-        hashlib.sha256(canonical(asdict(replay))).hexdigest(),
+        hashlib.sha256(canonical(family_payload(replay))).hexdigest(),
     )
     data = asdict(accepted)
     data["local_date"] = accepted.local_date.isoformat()

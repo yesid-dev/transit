@@ -149,7 +149,14 @@ def test_typed_diagnostics_are_distinguishable_and_strict_json(left, right):
 
     body = json.loads(report(family).to_json(), parse_constant=invalid)
     diagnostic = body["families"][0]["differences"][0]
-    assert family.status == "different"
+    assert family.status == (
+        "identical_after_normalization"
+        if isinstance(left, float)
+        and isinstance(right, float)
+        and left == right
+        or (left, right) == (0.1 + 0.2, 0.3)
+        else "different"
+    )
     assert json.dumps(diagnostic["expected"]) != json.dumps(diagnostic["actual"])
 
 
@@ -196,20 +203,28 @@ def test_golden_report_bytes():
     absent = compare_family("unported", None, output(), None, bodies_loaded=False)
     actual = replace(
         report(),
-        families=(different, absent),
+        families=(
+            replace(replay(), family_id="same", build_id="same-build", engine_version="fixture"),
+            different,
+            absent,
+        ),
         duckdb_version="fixture",
         input_files=(("f", "b" * 64),),
     )
     assert actual.to_json() == (
         b'{"as_of_utc":"2026-11-02T07:00:00.000000Z","code_commit":'
         b'"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","duckdb_version":"fixture",'
-        b'"families":[{"build_id":"build","code_commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",'
-        b'"difference_count":1,"differences":[{"actual":"1.00","column":"v",'
+        b'"families":[{"build_id":"same-build","code_commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",'
+        b'"difference_count":0,"difference_counts":{"representation":0,"value":0},"differences":[],'
+        b'"duckdb_rows":{"gold.test":1},"engine_version":"fixture","family_id":"same",'
+        b'"output_digests":{"bodies":{},"tables":{"gold.test":{"columns":["id","v"],"key":["id"],"rows":1,"sha256":"ce46173b7c4a10b6677c6357436e27639e8e0f2565a99319d7ac949d9ec100d8"}}},"postgres_rows":{"gold.test":1},"reason":null,"status":"identical"},{"build_id":"build","code_commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",'
+        b'"difference_count":1,"difference_counts":{"representation":0,"value":1},"differences":[{'
+        b'"actual":"1.00","column":"v","difference_class":"value",'
         b'"expected":{"decimal":{"digits":[1,0,0],"exponent":-2,"sign":0}},'
         b'"key":{"tuple":[1]},"kind":"type","relation":"gold.test"}],'
         b'"duckdb_rows":{"gold.test":1},"engine_version":"fixture","family_id":"test",'
         b'"output_digests":null,"postgres_rows":{"gold.test":1},"reason":null,"status":"different"},'
-        b'{"build_id":null,"code_commit":null,"difference_count":0,"differences":[],"duckdb_rows":null,'
+        b'{"build_id":null,"code_commit":null,"difference_count":0,"difference_counts":{"representation":0,"value":0},"differences":[],"duckdb_rows":null,'
         b'"engine_version":null,"family_id":"unported","output_digests":null,"postgres_rows":{"gold.test":1},'
         b'"reason":null,"status":"not_implemented"}],"input_files":[["f",'
         b'"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"]],'
@@ -229,3 +244,18 @@ def test_native_subclasses_are_refused(base):
     value = type("Unsupported", (base,), {})("nan" if base is float else "1")
     with pytest.raises(TypeError, match="Unsupported"):
         report(replay(value, 1)).to_json()
+
+
+@pytest.mark.parametrize(
+    "left,right,status,counts",
+    [
+        (0.0, -0.0, "identical_after_normalization", {"representation": 1, "value": 0}),
+        (0.3, 0.31, "different", {"representation": 0, "value": 1}),
+        (1, 1, "identical", {"representation": 0, "value": 0}),
+    ],
+)
+def test_family_class_counts(left, right, status, counts):
+    family = replay(left, right)
+    assert family.status == status
+    assert family.difference_counts == counts
+    assert report(family).exit_code() == (2 if status == "different" else 0)

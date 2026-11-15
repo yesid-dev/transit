@@ -1,4 +1,4 @@
-"""Strict engine parity checks; diagnostics never relax equality.
+"""Engine differences, classified using R28 canonical float precision.
 
 Exactness covers the Python values supplied by the reader. Interval, json/jsonb,
 numeric arrays, timetz and unconstrained numeric must arrive as PostgreSQL's exact
@@ -16,6 +16,7 @@ from types import MappingProxyType
 from typing import Literal
 
 from transit_ops.batch.build import TableRows
+from transit_ops.batch.sanity import canonical_float
 
 RUNTIME_ONLY_COLUMNS: Mapping[str, frozenset[str]] = MappingProxyType(
     {
@@ -36,6 +37,7 @@ class BodyDifference:
     path: str | None
     expected: str | None
     actual: str | None
+    difference_class: Literal["representation", "value"] = "value"
 
 
 @dataclass(frozen=True)
@@ -46,6 +48,7 @@ class RowDifference:
     column: str | None
     expected: object
     actual: object
+    difference_class: Literal["representation", "value"] = "value"
 
 
 @dataclass(frozen=True)
@@ -80,6 +83,14 @@ def _identity(value: object) -> object:
     if isinstance(value, dict):
         return type(value), frozenset((_identity(k), _identity(v)) for k, v in value.items())
     return type(value), value
+
+
+def _canonical(value: object) -> object:
+    if isinstance(value, float):
+        return type(value), canonical_float(value)
+    if isinstance(value, tuple):
+        return type(value), tuple(_canonical(v) for v in value)
+    return _identity(value)
 
 
 def _json_path(left: object, right: object, path: str = "$") -> str | None:
@@ -170,7 +181,25 @@ def _compare_flags(expected: TableRows, actual: TableRows) -> list[RowDifference
     return differences
 
 
-def compare_tables(expected: TableRows, actual: TableRows) -> list[RowDifference]:
+def _key_rows(table: TableRows, rows, indexes, seen, exact_columns):
+    result = {}
+    for row in rows:
+        key = tuple(row[i] for i in indexes)
+        exact = _identity(key)
+        normalized = tuple(
+            _identity(v) if name in exact_columns else _canonical(v)
+            for name, v in zip(table.key, key, strict=True)
+        )
+        previous = seen.setdefault(normalized, exact)
+        if previous != exact:
+            raise ValueError(f"{table.relation} key={key!r}: canonical key collision")
+        result[exact] = row
+    return result
+
+
+def compare_tables(
+    expected: TableRows, actual: TableRows, *, exact_columns: frozenset[str] = frozenset()
+) -> list[RowDifference]:
     shape = expected.relation, expected.columns, expected.key
     other_shape = actual.relation, actual.columns, actual.key
     required = RUNTIME_ONLY_COLUMNS.get(expected.relation, frozenset())
@@ -185,8 +214,9 @@ def compare_tables(expected: TableRows, actual: TableRows) -> list[RowDifference
     columns, left_rows = _project(expected)
     _, right_rows = _project(actual)
     indexes = [columns.index(name) for name in expected.key]
-    left = {_identity(tuple(row[i] for i in indexes)): row for row in left_rows}
-    right = {_identity(tuple(row[i] for i in indexes)): row for row in right_rows}
+    seen = {}
+    left = _key_rows(expected, left_rows, indexes, seen, exact_columns)
+    right = _key_rows(actual, right_rows, indexes, seen, exact_columns)
     differences = []
     for identity in dict.fromkeys((*left, *right)):
         a, b = left.get(identity), right.get(identity)
@@ -203,6 +233,16 @@ def compare_tables(expected: TableRows, actual: TableRows) -> list[RowDifference
         for column, x, y in zip(columns, a, b, strict=True):
             if _identity(x) != _identity(y):
                 kind: Literal["type", "value"] = "type" if type(x) is not type(y) else "value"
-                differences.append(RowDifference(expected.relation, key, kind, column, x, y))
+                classification = (
+                    "representation"
+                    if (type(x) is float and type(y) is float and x == y == 0.0)
+                    or (column not in exact_columns and _canonical(x) == _canonical(y))
+                    else "value"
+                )
+                differences.append(
+                    RowDifference(expected.relation, key, kind, column, x, y, classification)
+                )
     # Diagnose kind differences before derived clocks can read invalid values.
-    return differences or _compare_flags(expected, actual)
+    if any(d.difference_class == "value" for d in differences):
+        return differences
+    return differences + _compare_flags(expected, actual)

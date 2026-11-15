@@ -15,6 +15,7 @@ from transit_ops.batch.engine import (
 from transit_ops.batch.inputs import resolve_inputs
 from transit_ops.batch.manifest import BuildManifest, ManifestInput
 from transit_ops.batch.private_area import PrivateArea
+from transit_ops.batch.sanity import build_checked
 
 
 class InputChanged(InputRefused):
@@ -121,7 +122,7 @@ def run_family(
         try:
             with open_batch_session(inputs, workdir=area, variants=builder.variants) as session:
                 opened = True
-                output = builder.build(session, request)
+                output = build_checked(builder, session, request)
         except Exception as error:
             try:
                 _check_inputs(captured, before)

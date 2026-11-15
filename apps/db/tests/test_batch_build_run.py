@@ -490,3 +490,40 @@ def test_public_key_matching():
     assert key_matches("historic/toy/day.json", ("historic/toy/*.json",))
     assert not key_matches("historic/toy/sub/day.json", ("historic/toy/*.json",))
     assert not key_matches("Historic/toy/day.json", ("historic/toy/*.json",))
+
+
+@pytest.mark.parametrize("value", [float("nan"), "bad\x00text"])
+def test_runner_checks_universal_outputs(build_case, value):
+    request, kwargs = build_case
+
+    class Bad(ToyBuilder):
+        def build(self, session, request):
+            table = TableRows(self.tables[0], ("id", "v"), ("id",), ((1, value),))
+            return FamilyOutput({table.relation: table}, {})
+
+    with pytest.raises(ValueError, match="gold.toy_daily.*1.*invariant"):
+        run_family(Bad(), request, **kwargs)
+
+
+def test_runner_enforces_declaration_and_preserves_float(build_case):
+    from transit_ops.batch.sanity import Invariant
+
+    request, kwargs = build_case
+
+    class Declared(ToyBuilder):
+        invariants = (Invariant("gold.toy_daily", "count", ("n",)),)
+        count = -1
+
+        def build(self, session, request):
+            table = TableRows(
+                self.tables[0], ("id", "n", "v"), ("id",), ((1, self.count, 0.1 + 0.2),)
+            )
+            return FamilyOutput({table.relation: table}, {})
+
+    builder = Declared()
+    with pytest.raises(ValueError, match="gold.toy_daily.*1.*count"):
+        run_family(builder, request, **kwargs)
+    builder.count = 1
+    assert run_family(builder, request, **kwargs).output.tables[builder.tables[0]].rows == (
+        (1, 1, 0.1 + 0.2),
+    )
