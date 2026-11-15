@@ -5,9 +5,8 @@
 	import { resetFocusAfterNavigation } from '@yesid/ui/brand';
 	import { delocalizePath, localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import { navPillCopy } from '#lib/i18n/messages.ts';
-	import type { GeocodeSuggestion } from '#lib/geocode/types.ts';
+	import { createAddressLookup } from '#lib/search/addressLookup.svelte.ts';
 	import {
-		canSearchAddresses,
 		searchHitHref,
 		searchPageHref,
 		withAddresses,
@@ -49,40 +48,13 @@
 	let form = $state<HTMLFormElement>();
 	let results = $state<ReturnType<typeof SearchResultsList>>();
 	let active = $state<string | null>(null);
-	// Addresses are sent only when the reader asks, for the text in the field at that moment.
-	type Lookup = { query: string; state: 'loading' | 'done' | 'failed'; found: GeocodeSuggestion[] };
-	let lookup = $state<Lookup | null>(null);
-	const asked = $derived(lookup?.query === text ? lookup : null);
+	const lookup = createAddressLookup(() => ({ providerId, locale }));
+	const asked = $derived(lookup.for(text));
 	const shownList = $derived(asked?.state === 'done' ? withAddresses(list, asked.found) : list);
-	const address = $derived(
-		!canSearchAddresses(text) || (asked?.state === 'done' && asked.found.length > 0)
-			? null
-			: {
-					state: !asked
-						? ('ask' as const)
-						: asked.state === 'done'
-							? ('none' as const)
-							: asked.state,
-					onask: askAddresses,
-				},
-	);
-	async function askAddresses(): Promise<void> {
-		const asking = text;
-		const settle = (state: Lookup['state'], found: GeocodeSuggestion[] = []) => {
-			if (lookup?.query === asking) lookup = { query: asking, state, found };
-		};
-		lookup = { query: asking, state: 'loading', found: [] };
-		try {
-			const response = await fetch(
-				`/api/geocode?provider=${encodeURIComponent(providerId)}&lang=${locale}&q=${encodeURIComponent(asking)}&suggest=1&limit=2`,
-			);
-			if (!response.ok) return settle('failed');
-			const payload = (await response.json()) as { results?: GeocodeSuggestion[] };
-			settle('done', payload.results ?? []);
-		} catch {
-			settle('failed');
-		}
-	}
+	const address = $derived.by(() => {
+		const state = lookup.row(text);
+		return state ? { state, onask: () => lookup.ask(text) } : null;
+	});
 	const listed = $derived(list.groups.length > 0 || (list.total === 0 && !list.pending));
 	const shown = $derived(
 		open && text.length > 0 && (listed || (presentation?.notice.kind ?? 'none') !== 'none'),
