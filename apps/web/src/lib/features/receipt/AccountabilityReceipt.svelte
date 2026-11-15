@@ -24,6 +24,7 @@
 	import { recordClosedThrough, isClosedDay } from '#lib/v1/closedWindow.ts';
 	import type { Receipt } from '#lib/v1/index.ts';
 	import { getV1Context } from '#lib/v1/boot.ts';
+	import { providerHasAlerts, routeHasNoLiveData } from '#lib/v1/providers.ts';
 	import { receiptObservation } from './selectors/observation';
 	import ObservationCopy from './ObservationCopy.svelte';
 	import {
@@ -201,6 +202,8 @@
 					stops: t.counts.stops,
 					alerts: t.counts.alerts,
 					vehicles: t.counts.vehicles,
+					noAlertFeed: t.counts.noAlertFeed,
+					hasAlertFeed: providerHasAlerts(page.data?.provider),
 					fmtCount,
 				})
 			: [],
@@ -255,6 +258,7 @@
 			rowLabel: t.notReported.rowLabel,
 			href: (id) => localizeHref(routeFor({ kind: 'line', id }), locale),
 			fmtScheduled: (v) => (v == null ? null : t.notReported.scheduled(v)),
+			hasNoLiveData: (id) => routeHasNoLiveData(manifest.provider, display.directory.type(id)),
 		}),
 	);
 
@@ -555,6 +559,7 @@
 									list={notReported}
 									heading={t.notReported.heading}
 									caveat={t.notReported.caveat}
+									noLiveData={t.noLiveData}
 									shownOfTotal={t.notReported.shownOfTotal}
 									headingLevel={3}
 									{locale}

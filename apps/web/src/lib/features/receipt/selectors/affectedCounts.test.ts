@@ -6,8 +6,15 @@ const labels = {
 	stops: 'Stops',
 	alerts: 'Alerts',
 	vehicles: 'Vehicles',
+	noAlertFeed: 'No alert feed',
+	hasAlertFeed: true,
 	fmtCount: (v: number | null | undefined) => (v == null ? null : String(v)),
 };
+const alertsOf = (alerts: number | null, hasAlertFeed: boolean) =>
+	selectAffectedCounts(
+		{ affectedRoutes: 1, affectedStops: 1, alerts, vehicles: null },
+		{ ...labels, hasAlertFeed },
+	).find((c) => c.key === 'alerts')?.value;
 
 describe('selectAffectedCounts', () => {
 	it('builds routes/stops/alerts cells and OMITS the always-null vehicles cell', () => {
@@ -34,5 +41,13 @@ describe('selectAffectedCounts', () => {
 		);
 		expect(cells.find((c) => c.key === 'routes')?.value).toBeNull();
 		expect(cells.find((c) => c.key === 'stops')?.value).toBe('0');
+	});
+
+	it('says there is no alert feed instead of a zero or missing alert count', () => {
+		expect(alertsOf(0, false)).toBe('No alert feed');
+		expect(alertsOf(null, false)).toBe('No alert feed');
+		expect(alertsOf(0, true)).toBe('0');
+		expect(alertsOf(null, true)).toBeNull();
+		expect(alertsOf(3, false)).toBe('3');
 	});
 });

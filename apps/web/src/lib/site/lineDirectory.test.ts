@@ -30,6 +30,8 @@ it('labels a line by its number, then its name', () => {
 		expect(directory.name('104E').label).toBe(`${word} 104E`);
 		expect(directory.name('104E').spoken).toBe(`${word} 104E`);
 		expect(directory.number('104E')).toBe('104E');
+		expect(directory.type('1-373')).toBe(1);
+		expect(directory.type('104E')).toBeNull();
 		expect(directory.spoken('Confederation')).toBe(`${word} Confederation`);
 		expect(createLineDirectory(null, copy).name('49').number).toBeNull();
 		expect(createLineDirectory(null, copy).name('49', 'Published').label).toBe('Published');

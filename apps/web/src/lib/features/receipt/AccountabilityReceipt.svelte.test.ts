@@ -16,13 +16,15 @@ import { HistoricAvailabilityIndexSchema } from '#lib/v1/schemas/index.ts';
 import { mirrorSearchParam } from '#lib/site/urlMirror.ts';
 vi.mock('#lib/site/urlMirror.ts', () => ({ mirrorSearchParam: vi.fn() }));
 import { assertRailIndependence } from '../../../tests/railIndependence';
+import { createLineDirectory } from '#lib/site/lineDirectory.ts';
 
 vi.mock('$app/env/public', async () => ({
 	...(await import('./../../../tests/publicEnv.ts')).PUBLIC_ENV,
 	...{},
 }));
+const pageData = vi.hoisted(() => ({ provider: undefined as unknown }));
 vi.mock('$app/state', () => ({
-	page: { url: new URL('http://localhost/receipt'), state: {} },
+	page: { url: new URL('http://localhost/receipt'), state: {}, data: pageData },
 }));
 
 let reconciliationIntersectionCallback: IntersectionObserverCallback | undefined;
@@ -212,6 +214,7 @@ afterEach(() => {
 	vi.useRealTimers();
 	baselineManifest.provider = 'stm';
 	baselineManifest.display_name = 'STM';
+	pageData.provider = undefined;
 });
 
 const stableCases = ['populated', 'absent-receipt', 'absent-index', 'older', 'open'];
@@ -646,6 +649,47 @@ describe('AccountabilityReceipt headline + counts', () => {
 		expect(screen.getByText('12')).toBeInTheDocument();
 		expect(screen.getByText('5')).toBeInTheDocument();
 		expect(screen.getByText('Alert message versions')).toBeInTheDocument();
+	});
+
+	it('names a missing alert feed and the lines that publish no live data', async () => {
+		baselineManifest.provider = 'octranspo';
+		pageData.provider = { inputs: { i3_alerts: false, service_alerts: false } };
+		const base = withAllCuts();
+		receiptData = {
+			...base,
+			alerts: 0,
+			service_states: {
+				...base.service_states,
+				not_reported_route_count: 2,
+				not_reported_routes: [
+					{ id: '1-350', name: 'Confederation', scheduled_trip_days: 400 },
+					{ id: '51', name: 'Édouard-Montpetit', scheduled_trip_days: 12 },
+				],
+			},
+		};
+		const routes = [
+			{ id: '1-350', short: '1', long: 'Confederation', type: 0 },
+			{ id: '51', short: '51', type: 3 },
+		];
+		const { container } = render(AccountabilityReceipt, {
+			context: new Map([
+				[
+					Symbol.for('transit.line-directory'),
+					() => createLineDirectory(routes, { line: (id) => id }),
+				],
+			]),
+		});
+		await screen.findByText('82%');
+		const counts = container.querySelector('[data-slot="receipt-affected"]') as HTMLElement;
+		expect(within(counts).getByText('No alert feed')).toBeInTheDocument();
+		const silent = card(container, 'receipt-silent');
+		expect(within(silent).getByText('No live data')).toBeInTheDocument();
+		expect(within(silent).getByText('These lines publish no live data.')).toBeInTheDocument();
+		expect(within(silent).getByRole('link', { name: '1 · Confederation' })).toHaveAttribute(
+			'href',
+			'/lines/1-350',
+		);
+		expect(within(silent).getAllByRole('link')).toHaveLength(2);
 	});
 
 	it('links the worst route to its detail page and the worst stop to its detail page', async () => {

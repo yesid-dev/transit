@@ -1,6 +1,7 @@
 import { serviceComparisonCopy } from '#lib/v1/serviceComparison.ts';
 import { intl, defineCopy, type Locale } from '#lib/i18n/copy.ts';
 import { articleCopy } from '#lib/components/layout/articleCopy.ts';
+import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
 import type { SurfaceHeadCopy } from '#lib/components/surface/index.ts';
 
 export const copy = defineCopy({
@@ -113,6 +114,10 @@ export const copy = defineCopy({
 			caveat:
 				'Lines with scheduled trips that never appeared in the live feed on the selected day and were not explicitly cancelled. This list identifies lines, not individual buses.',
 		},
+		noLiveData: {
+			heading: transitTerms.en.noLiveData,
+			caveat: 'These lines publish no live data.',
+		},
 		receiptSection: 'The receipt',
 		terminalTitle: 'service-receipt',
 		terminalTag: 'DAILY',
@@ -127,6 +132,7 @@ export const copy = defineCopy({
 			routes: 'Lines with severe reports',
 			stops: 'Stops with severe reports',
 			alerts: 'Alert message versions',
+			noAlertFeed: 'No alert feed',
 			vehicles: 'Vehicles',
 		},
 		worstSection: 'Highest mean delays',
@@ -266,6 +272,10 @@ export const copy = defineCopy({
 			caveat:
 				'Les lignes dont des trajets planifiés ne sont jamais apparus dans le flux en direct le jour sélectionné, sans annulation explicite. Cette liste identifie les lignes, pas les véhicules individuels.',
 		},
+		noLiveData: {
+			heading: transitTerms.fr.noLiveData,
+			caveat: 'Ces lignes ne publient aucune donnée en direct.',
+		},
 		receiptSection: 'Le reçu',
 		terminalTitle: 'recu-de-service',
 		terminalTag: 'QUOTIDIEN',
@@ -280,6 +290,7 @@ export const copy = defineCopy({
 			routes: 'Lignes avec retards graves',
 			stops: 'Arrêts avec retards graves',
 			alerts: 'Versions d’avis',
+			noAlertFeed: 'Aucun flux d’avis',
 			vehicles: 'Véhicules',
 		},
 		worstSection: 'Retards moyens les plus élevés',

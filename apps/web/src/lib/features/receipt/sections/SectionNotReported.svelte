@@ -8,6 +8,7 @@
 		list: NotReportedVM;
 		heading: string;
 		caveat: string;
+		noLiveData: { heading: string; caveat: string };
 		shownOfTotal: (shown: number, total: number) => string;
 		locale: Locale;
 		headingLevel?: 2 | 3;
@@ -16,6 +17,7 @@
 		list,
 		heading,
 		caveat,
+		noLiveData,
 		shownOfTotal,
 		locale,
 		headingLevel = 2,
@@ -25,39 +27,56 @@
 </script>
 
 <section class="receipt-not-reported" data-slot="receipt-not-reported" aria-label={heading}>
-	<SectionHeading level={headingLevel} overline={heading} />
-	<p class="receipt-not-reported-caveat" data-slot="receipt-not-reported-caveat">{caveat}</p>
-	{#if truncated}
-		<p class="receipt-not-reported-note" data-slot="receipt-shown-of-total">
-			{shownOfTotal(list.shown, list.total ?? list.shown)}
-		</p>
+	{#if list.rows.length > 0 || truncated}
+		<SectionHeading level={headingLevel} overline={heading} />
+		<p class="receipt-not-reported-caveat" data-slot="receipt-not-reported-caveat">{caveat}</p>
+		{#if truncated}
+			<p class="receipt-not-reported-note" data-slot="receipt-shown-of-total">
+				{shownOfTotal(list.shown, list.total ?? list.shown)}
+			</p>
+		{/if}
+		<ul class="receipt-not-reported-list" role="list" aria-label={heading}>
+			{#each list.rows as row (row.key)}
+				<li class="receipt-not-reported-item">
+					<a
+						class="receipt-not-reported-link"
+						href={row.href}
+						data-sveltekit-preload-data="hover"
+						data-slot="not-reported-link"
+						aria-label={row.ariaLabel}
+					>
+						<RankedRow
+							bare
+							rank={row.rank}
+							title={row.title}
+							subtitle={row.subtitle}
+							severity={row.severity}
+							value={row.value}
+							domain={NOT_REPORTED_DOMAIN}
+							display={row.display}
+							absentReason="not-reported"
+							{locale}
+						/>
+					</a>
+				</li>
+			{/each}
+		</ul>
 	{/if}
-	<ul class="receipt-not-reported-list" role="list" aria-label={heading}>
-		{#each list.rows as row (row.key)}
-			<li class="receipt-not-reported-item">
-				<a
-					class="receipt-not-reported-link"
-					href={row.href}
-					data-sveltekit-preload-data="hover"
-					data-slot="not-reported-link"
-					aria-label={row.ariaLabel}
-				>
-					<RankedRow
-						bare
-						rank={row.rank}
-						title={row.title}
-						subtitle={row.subtitle}
-						severity={row.severity}
-						value={row.value}
-						domain={NOT_REPORTED_DOMAIN}
-						display={row.display}
-						absentReason="not-reported"
-						{locale}
-					/>
-				</a>
-			</li>
-		{/each}
-	</ul>
+	{#if list.noLiveData.length > 0}
+		<SectionHeading level={headingLevel} overline={noLiveData.heading} />
+		<p class="receipt-not-reported-caveat" data-slot="receipt-no-live-data-caveat">
+			{noLiveData.caveat}
+		</p>
+		<ul class="receipt-no-live-data-list" role="list" aria-label={noLiveData.heading}>
+			{#each list.noLiveData as line (line.key)}
+				<li>
+					<a href={line.href} data-sveltekit-preload-data="hover" data-slot="no-live-data-link">
+						{line.title}
+					</a>
+				</li>
+			{/each}
+		</ul>
+	{/if}
 </section>
 
 <style>
@@ -91,6 +110,14 @@
 	}
 	.receipt-not-reported-item {
 		display: block;
+	}
+	.receipt-no-live-data-list {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem 1.25rem;
+		margin: 0;
+		padding: 0;
+		list-style: none;
 	}
 	.receipt-not-reported-link {
 		display: block;

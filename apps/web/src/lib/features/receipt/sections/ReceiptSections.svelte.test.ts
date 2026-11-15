@@ -104,6 +104,7 @@ const notReportedList: NotReportedVM = {
 	],
 	shown: 1,
 	total: 1,
+	noLiveData: [],
 	hasData: true,
 };
 
@@ -111,6 +112,7 @@ const notReportedProps = {
 	list: notReportedList,
 	heading: 'Scheduled but never appeared',
 	caveat: 'No live-feed reading was observed.',
+	noLiveData: { heading: 'No live data', caveat: 'These lines publish no live data.' },
 	shownOfTotal: (shown: number, total: number) => `Showing ${shown} of ${total}`,
 	locale: 'en' as const,
 };

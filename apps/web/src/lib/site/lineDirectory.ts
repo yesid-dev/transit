@@ -10,6 +10,8 @@ export interface LineDirectory {
 	spoken(label: string): string;
 	name(id: string, publishedName?: string | null): LineName;
 	number(id: string): string;
+	/** GTFS route_type from the routes index; null when the line is not in it. */
+	type(id: string): number | null;
 }
 
 export function createLineDirectory(
@@ -21,6 +23,7 @@ export function createLineDirectory(
 	return {
 		spoken,
 		number: (id) => index.get(id)?.short || id,
+		type: (id) => index.get(id)?.type ?? null,
 		name(id, publishedName) {
 			const route = index.get(id);
 			const number = route?.short?.trim() || null;

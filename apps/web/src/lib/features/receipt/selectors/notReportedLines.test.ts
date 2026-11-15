@@ -7,6 +7,7 @@ const labels = {
 	rowLabel: 'Line',
 	href: (id: string) => `/lines/${id}`,
 	fmtScheduled: (v: number | null | undefined) => (v == null ? null : `${v} scheduled`),
+	hasNoLiveData: () => false,
 };
 
 describe('selectNotReportedLines', () => {
@@ -39,6 +40,55 @@ describe('selectNotReportedLines', () => {
 		);
 		expect(vm.shown).toBe(1);
 		expect(vm.total).toBe(200);
+	});
+
+	it('groups lines that publish no live data apart from lines that never appeared', () => {
+		const vm = selectNotReportedLines(
+			{
+				notReportedRouteCount: 60,
+				notReportedRoutes: [
+					{ id: '1', name: 'Verte', scheduledTripDays: 900 },
+					{ id: '51', name: 'Édouard-Montpetit', scheduledTripDays: 12 },
+					{ id: '2', name: 'Orange', scheduledTripDays: 800 },
+					{ id: '24', name: 'Sherbrooke', scheduledTripDays: 8 },
+				],
+			},
+			{ ...labels, hasNoLiveData: (id) => id === '1' || id === '2' },
+		);
+		expect(vm.noLiveData.map((line) => [line.title, line.href])).toEqual([
+			['Verte', '/lines/1'],
+			['Orange', '/lines/2'],
+		]);
+		expect(vm.rows.map((row) => [row.key, row.rank])).toEqual([
+			['51', 1],
+			['24', 2],
+		]);
+		expect([vm.shown, vm.total, vm.hasData]).toEqual([2, 58, true]);
+		// Parts sum to their totals; nothing negative.
+		expect(vm.shown + vm.noLiveData.length).toBe(4);
+		expect(vm.total! + vm.noLiveData.length).toBe(60);
+	});
+
+	it('still has data when every listed line publishes no live data', () => {
+		const vm = selectNotReportedLines(
+			{
+				notReportedRouteCount: 1,
+				notReportedRoutes: [{ id: '1', name: 'Verte', scheduledTripDays: 900 }],
+			},
+			{ ...labels, hasNoLiveData: () => true },
+		);
+		expect([vm.rows.length, vm.noLiveData.length, vm.shown, vm.total, vm.hasData]).toEqual([
+			0,
+			1,
+			0,
+			0,
+			true,
+		]);
+		const unknownTotal = selectNotReportedLines(
+			{ notReportedRoutes: [{ id: '1', name: null, scheduledTripDays: null }] },
+			{ ...labels, hasNoLiveData: () => true },
+		);
+		expect(unknownTotal.total).toBeNull();
 	});
 
 	it('stands down on ramp-in — an ABSENT list is honest-absence, not an empty "all reported"', () => {
