@@ -7,9 +7,11 @@ from sqlalchemy import text
 from test_family_occupancy_crowding import (
     DAY,
     REQUEST,
+    RETENTION_FEEDS,
+    RETENTION_REQUEST,
+    RETENTION_ROWS,
     SEED,
     SKEW_CASES,
-    STAMP,
     expected_occupancy_row,
 )
 
@@ -24,7 +26,7 @@ from transit_ops.lake.table_export import WindowSpec, export_window
 
 def seed_facts(conn, seed_provider, request, rows, feed_stamps):
     seed_provider(conn, "seed", display_name="Occupancy seed", timezone=request.timezone)
-    params = dict(p="seed", e=98110001, r=98110002, s=98110003, ts=STAMP, n=len(rows))
+    params = dict(p="seed", e=98110001, r=98110002, s=98110003, ts=request.as_of_utc, n=len(rows))
     real_db_seed.feed_endpoints(conn, params)
     real_db_seed.ingestion_runs(conn, params)
     real_db_seed.realtime_snapshot_index(conn, params)
@@ -65,17 +67,19 @@ def seed_facts(conn, seed_provider, request, rows, feed_stamps):
                 upsert=rollups.REBUILDABLE_KINDS[name].upsert,
                 local_date=day,
                 date_key=int(day.strftime("%Y%m%d")),
-                now=STAMP,
+                now=request.as_of_utc,
                 retention_days=36500,
             )
 
 
-@pytest.mark.parametrize("skew", [None, *SKEW_CASES])
+@pytest.mark.parametrize("skew", [None, *SKEW_CASES, "retention_cutoff"])
 def test_family_matches_postgres_on_exported_fallback_inputs(
     real_db_engine, seed_provider, tmp_path, skew
 ):
     request, rows, feeds = REQUEST, SEED, None
-    if skew:
+    if skew == "retention_cutoff":
+        request, rows, feeds, hour = RETENTION_REQUEST, RETENTION_ROWS, RETENTION_FEEDS, 0
+    elif skew:
         zone, feed, capture, hour = skew
         request = replace(REQUEST, local_dates=(DAY,), timezone=zone)
         rows, feeds = [("A", "S", 1, 1, capture, 20261101)], [feed]
@@ -87,7 +91,9 @@ def test_family_matches_postgres_on_exported_fallback_inputs(
             for need in builder.inputs(request):
                 path = tmp_path / need.relation / f"{need.window}.parquet"
                 path.parent.mkdir(parents=True, exist_ok=True)
-                window = STAMP.strftime("%Y-%m") if need.window == "all" else need.window
+                window = (
+                    request.as_of_utc.strftime("%Y-%m") if need.window == "all" else need.window
+                )
                 exported = export_window(
                     conn.connection.driver_connection,
                     WindowSpec(need.relation, "seed", window),
@@ -107,7 +113,11 @@ def test_family_matches_postgres_on_exported_fallback_inputs(
                 )
                 assert compare_tables(expected, rows) == [], relation
                 if skew and relation in builder.tables[:3]:
-                    assert expected.rows == (expected_occupancy_row(relation, hour),)
+                    assert expected.rows == (
+                        expected_occupancy_row(
+                            relation, hour, request.local_dates[0], request.as_of_utc
+                        ),
+                    )
     finally:
         with real_db_engine.begin() as conn:
             for relation in (

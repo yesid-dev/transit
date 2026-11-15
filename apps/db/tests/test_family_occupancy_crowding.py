@@ -12,6 +12,15 @@ from transit_ops.batch.run import run_family
 DAY = date(2026, 11, 1)
 STAMP = datetime(2026, 11, 4, 12, 0, 0, 123456, UTC)
 REQUEST = BuildRequest("seed", (DAY, date(2026, 11, 2)), STAMP, 14, 10, "America/Toronto")
+RETENTION_REQUEST = replace(
+    REQUEST,
+    local_dates=(date(2026, 10, 23),),
+    as_of_utc=datetime(2026, 11, 5, tzinfo=UTC),
+    timezone="Etc/UTC",
+)
+# The skew allowance starts exactly at the retention cutoff; equality is buildable.
+RETENTION_ROWS = [("A", "S", 1, 1, "2026-10-22 00:00:00+00", 20261023)]
+RETENTION_FEEDS = ["2026-10-23 00:00:00+00"]
 # R26 assumes feed time is no more than one UTC day ahead of capture time.
 # Capture may lag feed by any amount, up to the build stamp, within retained facts.
 SKEW_CASES = (
@@ -117,10 +126,10 @@ def test_family_preserves_bands_fallback_filters_and_exact_numeric_rows(tmp_path
     assert result.output.bodies == {}
 
 
-def expected_occupancy_row(relation, hour):
+def expected_occupancy_row(relation, hour, day=DAY, stamp=STAMP):
     if "hourly" in relation:
-        return ("seed", "A", DAY, hour, 1, 0, 1, 0, 0, 0, STAMP)
-    return ("seed", DAY, "S" if "stop_" in relation else "A", 1, 0, 1, 0, 0, 0, STAMP)
+        return ("seed", "A", day, hour, 1, 0, 1, 0, 0, 0, stamp)
+    return ("seed", day, "S" if "stop_" in relation else "A", 1, 0, 1, 0, 0, 0, stamp)
 
 
 @pytest.mark.parametrize("relation", builder.tables[:3])
@@ -177,12 +186,11 @@ def test_occupancy_reads_skew_allowance_and_capture_through_build_day(tmp_path, 
         assert result.output.tables[relation].rows == (expected_occupancy_row(relation, hour),)
 
 
-@pytest.mark.parametrize("day,first", [(DAY, "2026-10-31"), (date(2026, 10, 1), "2026-10-21")])
-def test_occupancy_windows_clip_to_retention_and_crowding_keeps_capture_days(day, first):
-    request = replace(REQUEST, local_dates=(day,))
+def test_buildable_occupancy_windows_keep_skew_day_and_crowding_keeps_capture_days():
+    request = replace(REQUEST, local_dates=(DAY,))
     needs = builder.inputs(request)
     vehicle_days = [n.window for n in needs if n.relation == "gold.fact_vehicle_snapshot"]
-    assert vehicle_days[0] == first
+    assert vehicle_days[0] == "2026-10-31"
     assert vehicle_days[-1] == "2026-11-04"
     assert all(
         date.fromisoformat(right) - date.fromisoformat(left) == timedelta(days=1)
@@ -191,3 +199,61 @@ def test_occupancy_windows_clip_to_retention_and_crowding_keeps_capture_days(day
     assert tuple(
         n.window for n in needs if n.relation == "gold.fact_trip_delay_snapshot"
     ) == utc_days(request)
+
+
+@pytest.mark.parametrize(
+    "day",
+    [
+        pytest.param(date(2026, 10, 21), id="archived_row_may_have_been_pruned"),
+        pytest.param(date(2026, 10, 20), id="older_row_may_remain_in_prune_backlog"),
+        pytest.param(date(2026, 10, 22), id="skew_allowance_crosses_exact_cutoff"),
+    ],
+)
+def test_retention_edge_day_is_refused_before_opening_inputs(tmp_path, day):
+    request = replace(REQUEST, local_dates=(day, DAY), timezone="Etc/UTC")
+    # R26a refuses ambiguous membership, regardless of archive rows or prune backlog.
+    with pytest.raises(ValueError) as caught:
+        run_family(
+            builder,
+            request,
+            inputs_root=tmp_path / "missing",
+            workdir=tmp_path,
+            code_commit="a" * 40,
+        )
+    assert "retention_edge_day" in str(caught.value)
+    assert day.isoformat() in str(caught.value)
+    assert "2026-10-21T12:00:00.123456+00:00" in str(caught.value)
+
+
+@pytest.mark.parametrize("zone,hour", [("Etc/UTC", 0), ("America/Toronto", 4)])
+def test_retention_guard_preserves_local_midnight_and_microseconds(tmp_path, zone, hour):
+    boundary = replace(
+        RETENTION_REQUEST,
+        timezone=zone,
+        as_of_utc=datetime(2026, 11, 5, hour, tzinfo=UTC),
+    )
+    assert builder.inputs(boundary)
+    request = replace(boundary, as_of_utc=boundary.as_of_utc + timedelta(microseconds=1))
+    with pytest.raises(ValueError) as caught:
+        run_family(
+            builder,
+            request,
+            inputs_root=tmp_path / "missing",
+            workdir=tmp_path,
+            code_commit="a" * 40,
+        )
+    assert "retention_edge_day 2026-10-23" in str(caught.value)
+    assert f"2026-10-22T{hour:02}:00:00.000001+00:00" in str(caught.value)
+
+
+def test_buildable_day_keeps_fact_exactly_at_retention_cutoff(tmp_path):
+    request = RETENTION_REQUEST
+    write_inputs(tmp_path, request, RETENTION_ROWS, RETENTION_FEEDS)
+    result = run_family(
+        builder, request, inputs_root=tmp_path, workdir=tmp_path, code_commit="a" * 40
+    )
+    for relation in builder.tables[:3]:
+        assert result.output.tables[relation].rows == (
+            expected_occupancy_row(relation, 0, date(2026, 10, 23), request.as_of_utc),
+        )
+    assert result.output.tables[builder.tables[3]].rows == ()

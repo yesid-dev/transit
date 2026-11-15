@@ -1,7 +1,8 @@
 """Closed-day occupancy and co-observed crowding through the batch seam."""
 
 from collections.abc import Mapping
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.sql.elements import TextClause
 
@@ -78,13 +79,19 @@ class OccupancyCrowdingBuilder:
     variants: Mapping[str, TextClause] = {}
 
     def inputs(self, request: BuildRequest) -> tuple[InputNeed, ...]:
+        cutoff = request.as_of_utc - timedelta(days=request.fact_retention_days)
+        zone = ZoneInfo(request.timezone)
+        for day in request.local_dates:
+            first_instant = datetime.combine(day, time(), zone).astimezone(UTC)
+            # R26a keeps retention from deciding membership of an occupancy feed day.
+            if first_instant - timedelta(days=1) < cutoff:
+                raise ValueError(
+                    f"retention_edge_day {day.isoformat()}: cutoff={cutoff.isoformat()}"
+                )
         capture_days = utc_days(request)
         # Occupancy selects feed-day keys, whereas files partition by capture day (R26).
         # Allow one prior UTC day of clock skew and arbitrary capture lag until the stamp.
-        first = max(
-            date.fromisoformat(capture_days[0]) - timedelta(days=1),
-            (request.as_of_utc - timedelta(days=request.fact_retention_days)).date(),
-        )
+        first = date.fromisoformat(capture_days[0]) - timedelta(days=1)
         last = request.as_of_utc.date()
         occupancy_days = tuple(
             (first + timedelta(days=offset)).isoformat()
