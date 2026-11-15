@@ -107,7 +107,7 @@ def test_empty_lane_invocation_performs_no_work(lane, monkeypatch):
 
 def test_existing_cli_commands_keep_their_registration_and_help():
     commands = get_command(app).commands
-    assert set(commands) - set(LANES) == set(BASELINE)
+    assert set(commands) - set(LANES) == set(BASELINE) | {"live-oracle"}
     snapshot = {name: command_snapshot(commands[name]) for name in BASELINE}
     canonical = json.dumps(snapshot, sort_keys=True, separators=(",", ":"))
     assert hashlib.sha256(canonical.encode("utf-8")).hexdigest() == COMMAND_STRUCTURE_DIGEST
