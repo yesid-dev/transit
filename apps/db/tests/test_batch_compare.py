@@ -58,9 +58,9 @@ def test_missing_and_extra_keys_are_reported_sorted():
 
 
 @pytest.mark.parametrize("left,right", [(0.1 + 0.2, 0.3), (0.0, -0.0)])
-def test_float_comparison_is_bitwise(left, right):
+def test_float_comparison_classifies_representation(left, right):
     assert compare_tables(table(left), table(right)) == [
-        RowDifference("gold.toy", (1,), "value", "value", left, right)
+        RowDifference("gold.toy", (1,), "value", "value", left, right, "representation")
     ]
 
 
@@ -169,10 +169,8 @@ def test_keys_keep_types_and_every_row_is_counted():
     ]
     assert compare_tables(table("same"), expected)[0].kind == "extra"
     assert {d.kind for d in compare_tables(table(1), table(1, key=True))} == {"missing", "extra"}
-    assert {d.kind for d in compare_tables(table(1, key=0.0), table(1, key=-0.0))} == {
-        "missing",
-        "extra",
-    }
+    with pytest.raises(ValueError, match="key.*collision"):
+        compare_tables(table(1, key=0.0), table(1, key=-0.0))
 
 
 def test_runtime_only_columns_are_exactly_the_declared_ones():
@@ -263,3 +261,13 @@ def test_warm_flag_refuses_naive_clock_by_name(column):
     table = runtime_table(**{column: datetime(2026, 11, 1)})
     with pytest.raises(ValueError, match=column):
         compare_tables(table, table)
+
+
+@pytest.mark.parametrize(
+    "left,right,classification",
+    [(0.1 + 0.2, 0.3, "representation"), (0.0, -0.0, "representation"), (0.3, 0.31, "value")],
+)
+def test_difference_classes(left, right, classification):
+    (difference,) = compare_tables(table(left), table(right))
+    assert difference.difference_class == classification
+    assert (difference.expected, difference.actual) == (left, right)

@@ -17,6 +17,7 @@ from transit_ops.batch.checkpoints import AcceptedBuild, Checkpoint, safe_compon
 from transit_ops.batch.engine import BatchInput, BatchSession, open_batch_session
 from transit_ops.batch.private_area import PrivateArea
 from transit_ops.batch.run import OutputRefused, key_matches
+from transit_ops.batch.sanity import build_checked
 from transit_ops.ingestion.storage import BronzeStorage
 from transit_ops.lake.objects import ObjectKeyTaken, object_digest, put_create_only
 from transit_ops.sql_registry import named_query
@@ -180,8 +181,12 @@ def write_shadow(
 def _export_projection(table: TableRows) -> str:
     replacements = []
     for i, name in enumerate(table.columns):
-        if any(isinstance(row[i], str) for row in table.rows):
-            quoted = '"' + name.replace('"', '""') + '"'
+        quoted = '"' + name.replace('"', '""') + '"'
+        if any(isinstance(row[i], float) for row in table.rows):
+            replacements.append(
+                f"CASE WHEN {quoted}=0 THEN 0.0::DOUBLE ELSE {quoted} END AS {quoted}"
+            )
+        elif any(isinstance(row[i], str) for row in table.rows):
             replacements.append(f"CAST({quoted} AS VARCHAR) AS {quoted}")
     return "* REPLACE (" + ", ".join(replacements) + ")" if replacements else "*"
 
@@ -195,13 +200,14 @@ class ShadowBuilder:
         self.tables = builder.tables
         self.published_keys = builder.published_keys
         self.variants = builder.variants
+        self.invariants = getattr(builder, "invariants", ())
         self.tables_dir = tables_dir
 
     def inputs(self, request: BuildRequest) -> tuple[InputNeed, ...]:
         return self.builder.inputs(request)
 
     def build(self, session: BatchSession, request: BuildRequest) -> FamilyOutput:
-        output = self.builder.build(session, request)
+        output = build_checked(self.builder, session, request)
         for relation, table in output.tables.items():
             if not re.fullmatch(r"[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*", relation):
                 raise ShadowRefused(f"invalid table: {relation}")

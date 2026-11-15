@@ -4,7 +4,8 @@ import json
 import math
 import re
 from dataclasses import asdict, dataclass, replace
-from datetime import UTC, date, datetime, time, timedelta
+from dataclasses import field as dataclass_field
+from datetime import UTC, date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Literal
@@ -14,12 +15,15 @@ import duckdb
 from transit_ops.batch.build import FamilyBuilder, FamilyOutput
 from transit_ops.batch.compare import BodyDifference, RowDifference, compare_bodies, compare_tables
 from transit_ops.batch.run import BuildResult
+from transit_ops.batch.sanity import count_columns
 
 
 @dataclass(frozen=True)
 class FamilyReplay:
     family_id: str
-    status: Literal["identical", "different", "not_implemented", "not_compared"]
+    status: Literal[
+        "identical", "identical_after_normalization", "different", "not_implemented", "not_compared"
+    ]
     build_id: str | None
     postgres_rows: dict[str, int]
     duckdb_rows: dict[str, int] | None
@@ -29,6 +33,9 @@ class FamilyReplay:
     engine_version: str | None = None
     difference_count: int = 0
     output_digests: dict[str, object] | None = None
+    difference_counts: dict[str, int] = dataclass_field(
+        default_factory=lambda: {"representation": 0, "value": 0}
+    )
 
 
 def compare_family(
@@ -63,19 +70,34 @@ def compare_family(
     if skipped:
         return replace(replay, reason="rollup history not loaded")
     assert duckdb is not None
-    differences = _differences(postgres, duckdb.output)
+    differences = _differences(
+        postgres, duckdb.output, count_columns(getattr(builder, "invariants", ()))
+    )
     from transit_ops.batch.checkpoints import output_digests
 
+    counts = {
+        kind: sum(d.difference_class == kind for d in differences)
+        for kind in ("representation", "value")
+    }
     return replace(
         replay,
-        status="different" if differences else "identical",
+        status=(
+            "different"
+            if counts["value"]
+            else "identical_after_normalization"
+            if differences
+            else "identical"
+        ),
         differences=tuple(differences[:50]),
         difference_count=len(differences),
-        output_digests=output_digests(duckdb.output) if not differences else None,
+        output_digests=output_digests(duckdb.output) if not counts["value"] else None,
+        difference_counts=counts,
     )
 
 
-def _differences(left: FamilyOutput, right: FamilyOutput) -> list[RowDifference | BodyDifference]:
+def _differences(
+    left: FamilyOutput, right: FamilyOutput, counts: dict[str, frozenset[str]]
+) -> list[RowDifference | BodyDifference]:
     differences: list[RowDifference | BodyDifference] = []
     for name in sorted(left.tables.keys() | right.tables.keys()):
         a, b = left.tables.get(name), right.tables.get(name)
@@ -91,7 +113,7 @@ def _differences(left: FamilyOutput, right: FamilyOutput) -> list[RowDifference 
                 )
             )
         else:
-            differences.extend(compare_tables(a, b))
+            differences.extend(compare_tables(a, b, exact_columns=counts.get(name, frozenset())))
     return differences + compare_bodies(left.bodies, right.bodies)
 
 
@@ -133,6 +155,81 @@ def _value(value: object) -> object:
     if value is None or type(value) in (str, int, float, bool):
         return value
     raise TypeError(f"unsupported replay value: {type(value).__name__}")
+
+
+def family_payload(family: FamilyReplay) -> dict:
+    """The report and acceptance hash share this lossless diagnostic encoding."""
+    payload = asdict(family)
+    for difference in payload["differences"]:
+        for name in ("key", "expected", "actual"):
+            difference[name] = _value(difference[name])
+    return payload
+
+
+_VALUE_TYPES = {
+    f"{t.__module__}.{t.__qualname__}": t
+    for t in (
+        str,
+        int,
+        float,
+        bool,
+        bytes,
+        tuple,
+        list,
+        dict,
+        type(None),
+        date,
+        datetime,
+        time,
+        timedelta,
+        Decimal,
+    )
+}
+
+
+def _decode_value(value):
+    if isinstance(value, list):
+        return [_decode_value(v) for v in value]
+    if not isinstance(value, dict):
+        return value
+    if set(value) == {"tuple"}:
+        return tuple(_decode_value(v) for v in value["tuple"])
+    if set(value) == {"dict"}:
+        return {_decode_value(k): _decode_value(v) for k, v in value["dict"]}
+    if set(value) == {"decimal"}:
+        d = value["decimal"]
+        exponent = {"NaN": "n", "sNaN": "N", "Infinity": "F"}.get(d["exponent"], d["exponent"])
+        return Decimal((d["sign"], tuple(d["digits"]), exponent))
+    if set(value) == {"float"}:
+        return float(value["float"])
+    if set(value) == {"date"}:
+        return date.fromisoformat(value["date"])
+    if set(value) == {"datetime", "fold"}:
+        return datetime.fromisoformat(value["datetime"]).replace(fold=value["fold"])
+    if set(value) == {"timedelta"}:
+        return timedelta(microseconds=value["timedelta"])
+    if set(value) == {"bytes_hex"}:
+        return bytes.fromhex(value["bytes_hex"])
+    if set(value) == {"time", "tz", "utcoffset"}:
+        result = time.fromisoformat(value["time"])
+        offset = _decode_value(value["utcoffset"])
+        if value["tz"] and offset is None:
+            raise ValueError("replay time timezone cannot be reconstructed")
+        return result.replace(tzinfo=timezone(offset) if value["tz"] else None)
+    if set(value) == {"type"}:
+        return _VALUE_TYPES[value["type"]]
+    raise ValueError("invalid typed replay value")
+
+
+def family_from_payload(payload: dict) -> FamilyReplay:
+    differences = []
+    for raw in payload["differences"]:
+        data = {**raw, **{name: _decode_value(raw[name]) for name in ("key", "expected", "actual")}}
+        difference = RowDifference(**data) if "relation" in raw else BodyDifference(**data)
+        if isinstance(difference, RowDifference) and not isinstance(difference.key, tuple):
+            raise ValueError("replay row key must be a typed tuple")
+        differences.append(difference)
+    return FamilyReplay(**{**payload, "differences": tuple(differences)})
 
 
 @dataclass(frozen=True)
@@ -189,11 +286,9 @@ class ReplayReport:
         )
         payload["local_date"] = self.local_date.isoformat()
         payload["input_files"] = sorted(self.input_files)
-        payload["families"] = [asdict(f) for f in sorted(self.families, key=lambda f: f.family_id)]
-        for family in payload["families"]:
-            for difference in family["differences"]:
-                for field in ("key", "expected", "actual"):
-                    difference[field] = _value(difference[field])
+        payload["families"] = [
+            family_payload(f) for f in sorted(self.families, key=lambda f: f.family_id)
+        ]
         if not timings:
             del payload["postgres_seconds"], payload["duckdb_seconds"]
         return json.dumps(

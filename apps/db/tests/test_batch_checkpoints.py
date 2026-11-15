@@ -121,3 +121,33 @@ def test_acceptance_must_bind_the_replayed_output(tmp_path, damage):
     with pytest.raises(NotAccepted):
         accept(checkpoint, evidence)
     assert not (checkpoint.path / "accepted.json").exists()
+
+
+@pytest.mark.parametrize(
+    "left,right,status", [(0.0, -0.0, "identical_after_normalization"), (0.3, 0.31, "different")]
+)
+def test_acceptance_classes(tmp_path, left, right, status):
+    from transit_ops.batch.compare import compare_tables
+
+    build = result(right)
+    checkpoint = CheckpointStore(tmp_path).record(build, DAY)
+    differences = tuple(
+        compare_tables(
+            result(left).output.tables["gold.sample"], build.output.tables["gold.sample"]
+        )
+    )
+    evidence = replace(
+        replay(build),
+        status=status,
+        differences=differences,
+        difference_count=1,
+        difference_counts={
+            "representation": int(status != "different"),
+            "value": int(status == "different"),
+        },
+    )
+    if status == "different":
+        with pytest.raises(NotAccepted):
+            accept(checkpoint, evidence)
+    else:
+        assert accept(checkpoint, evidence).build_id == build.manifest.build_id
