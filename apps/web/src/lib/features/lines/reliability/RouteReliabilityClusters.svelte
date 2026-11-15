@@ -33,10 +33,14 @@
 	import Section2TheWait from './sections/Section2TheWait.svelte';
 	import Section3RunAndFit from './sections/Section3RunAndFit.svelte';
 	import Section4WorstStops from './sections/Section4WorstStops.svelte';
+	import SectionCrowding from './sections/SectionCrowding.svelte';
+	import { cutScope } from './selectors/evidence';
+	import { formatRecordDates } from './recordDates';
 
 	interface RouteReliabilityClustersProps {
 		data: RouteReliability;
 		locale: Locale;
+		/** Accepted for the pane contract; the gaps name periods of the day, not directions. */
 		directionHeadsigns?: Record<number, string>;
 		class?: string;
 		history?: LineHistoryResource;
@@ -48,7 +52,7 @@
 	let {
 		data,
 		locale,
-		directionHeadsigns = {},
+
 		class: className,
 		history,
 		articleSummary,
@@ -142,6 +146,44 @@
 			: null,
 	);
 
+	// Each evidence cut names its own days; a chosen range never borrows the latest day's cut.
+	const closedThrough = $derived(routeClosedThrough(selectedData));
+	const cutDate = (rows: readonly { grain: string; date?: string | null }[] | null | undefined) =>
+		rows?.find((row) => row.grain === (mode === 'range' ? 'day' : mode))?.date ?? null;
+	const timeScope = $derived(
+		cutScope({
+			mode,
+			date: cutDate(selectedData.periods_by_grain),
+			closedThrough,
+			windowed: clusters.punctuality.windowed,
+			// Every cut of the same publication row shares its days: periods, day types, weekdays.
+			hasRows:
+				clusters.punctuality.peakOffPeak.byShift.length +
+					clusters.punctuality.peakOffPeak.byDayType.length +
+					clusters.punctuality.dayOfWeek.length +
+					clusters.punctuality.byShiftDaytype.length >
+				0,
+		}),
+	);
+	const stopScope = $derived(
+		cutScope({
+			mode,
+			date: cutDate(selectedData.weak_stops_by_grain),
+			closedThrough,
+			windowed: clusters.punctuality.weakStopsWindowed,
+			hasRows: clusters.punctuality.weakStops.length > 0,
+		}),
+	);
+	const gapScope = $derived(
+		cutScope({
+			mode,
+			date: cutDate(selectedData.headway_by_grain),
+			closedThrough,
+			windowed: clusters.waitRegularity.windowed,
+			hasRows: !clusters.waitRegularity.isEmpty,
+		}),
+	);
+
 	const retainedDataAbsence = $derived(describeAbsence('no-retained-data', locale));
 
 	const activeWindowCaption = $derived.by<string>(() => {
@@ -177,13 +219,23 @@
 					? copy.controls.thisMonth
 					: copy.controls.latestDay,
 	);
+	// A grain's crowding mix names its grain (the file publishes no dates for it); a chosen
+	// range's mix is that range's retained days.
+	const crowdingScope = $derived(
+		mode !== 'range'
+			? controlsSummary
+			: record.period
+				? formatRecordDates(record.period.from, record.period.to, locale)
+				: null,
+	);
 
 	const sectionNav = $derived([
 		{ id: 'rel-verdict', label: copy.sections.verdict.label },
 		{ id: 'rel-when-to-ride', label: copy.sections.whenToRide.label },
-		{ id: 'rel-the-wait', label: copy.sections.theWait.label },
-		{ id: 'rel-run-and-fit', label: copy.sections.runAndFit.label },
 		{ id: 'rel-worst-stops', label: copy.sections.worstStops.label },
+		{ id: 'rel-run-and-fit', label: copy.sections.runAndFit.label },
+		{ id: 'rel-the-wait', label: copy.sections.theWait.label },
+		{ id: 'rel-crowding', label: copy.sections.crowding.label },
 	]);
 
 	const tocEntries: TocEntry[] = $derived(
@@ -322,9 +374,38 @@
 						<Section1WhenToRide
 							punctuality={clusters.punctuality}
 							habits={clusters.habits}
+							scope={timeScope}
 							{locale}
 							{copy}
-							{mode}
+						/>
+					</div>
+
+					<div
+						class="reliability-band"
+						id="rel-worst-stops"
+						data-toc="rel-worst-stops"
+						data-band="worst-stops"
+					>
+						<Section4WorstStops
+							stops={clusters.punctuality.weakStops}
+							scope={stopScope}
+							{locale}
+							{copy}
+						/>
+					</div>
+
+					<div
+						class="reliability-band"
+						id="rel-run-and-fit"
+						data-toc="rel-run-and-fit"
+						data-band="run-and-fit"
+					>
+						<Section3RunAndFit
+							service={clusters.serviceDelivered}
+							period={record.period}
+							{locale}
+							{copy}
+							showServiceCompleteness={explicitHistory && retainedReady}
 						/>
 					</div>
 
@@ -337,36 +418,19 @@
 						<Section2TheWait
 							wait={clusters.waitRegularity}
 							serviceSpans={clusters.serviceDelivered.serviceSpans}
+							scope={gapScope}
 							{locale}
 							{copy}
-							{directionHeadsigns}
-							{mode}
 						/>
 					</div>
 
 					<div
 						class="reliability-band"
-						id="rel-run-and-fit"
-						data-toc="rel-run-and-fit"
-						data-band="run-and-fit"
+						id="rel-crowding"
+						data-toc="rel-crowding"
+						data-band="crowding"
 					>
-						<Section3RunAndFit
-							service={clusters.serviceDelivered}
-							crowding={clusters.crowding}
-							{locale}
-							{copy}
-							windowLabel={controlsSummary}
-							showServiceCompleteness={explicitHistory && retainedReady}
-						/>
-					</div>
-
-					<div
-						class="reliability-band"
-						id="rel-worst-stops"
-						data-toc="rel-worst-stops"
-						data-band="worst-stops"
-					>
-						<Section4WorstStops punctuality={clusters.punctuality} {locale} {copy} />
+						<SectionCrowding crowding={clusters.crowding} scope={crowdingScope} {locale} {copy} />
 					</div>
 				</ArticleSectionStack>
 			</div>

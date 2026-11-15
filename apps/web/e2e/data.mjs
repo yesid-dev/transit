@@ -83,6 +83,108 @@ files['/v1/stm/historic/route_reliability/9001.json'] = JSON.stringify({
 	],
 });
 
+// Line 9002: a month of real-size history behind the evidence sections, with the longest stop
+// names a phone must wrap (never clip). Generated from a seed, not a committed fixture.
+let seed = 9002;
+const next = (max) => {
+	seed = (Math.imul(seed, 1_664_525) + 1_013_904_223) >>> 0;
+	return seed % (max + 1);
+};
+const monthDates = Array.from({ length: 30 }, (_, day) =>
+	new Date(Date.UTC(2026, 7, day + 1)).toISOString().slice(0, 10),
+);
+const counted = (grain, readings) => {
+	const on_time = Math.round(readings * (0.78 + next(150) / 1000));
+	return { grain, observation_count: readings, on_time, severe_pct: next(120) / 10 };
+};
+const cutFor = (grain, date, scale) => ({
+	grain,
+	date,
+	by_shift: ['am_peak', 'midday', 'pm_peak', 'evening', 'night'].map((shift) =>
+		counted(shift, scale * (2_000 + next(9_000))),
+	),
+	by_daytype: [counted('weekday', scale * 40_000), counted('weekend', scale * 9_000)],
+});
+const stopNames = [
+	'Queen-Mary / Frère-André (Oratoire Saint-Joseph du Mont-Royal), quai en direction est',
+	'Côte-des-Neiges / chemin de la Côte-Sainte-Catherine (Hôpital général juif)',
+	'Station Université-de-Montréal / Édouard-Montpetit, débarcadère des autobus',
+	'Boulevard Décarie / avenue Van Horne, arrêt temporaire pendant les travaux',
+	'Édouard-Montpetit / avenue Louis-Colin (Pavillon Roger-Gaudry)',
+	'Saint-Denis / Sherbrooke',
+	'Queen-Mary / de la Côte-des-Neiges',
+	'Côte-Sainte-Catherine / Dunlop',
+	'Édouard-Montpetit / de Stirling',
+	'Jean-Brillant / McKenna',
+	'Decelles / Queen-Mary',
+	'Station Snowdon (Queen-Mary / Westbury)',
+	'Lacombe / Gatineau',
+	'Darlington / Jean-Brillant',
+	'Wilderton / Van Horne',
+];
+const stopCut = (grain, date) => ({
+	grain,
+	date,
+	stops: stopNames.map((name, index) => ({
+		id: `9002${String(index + 1).padStart(2, '0')}`,
+		name,
+		avg_delay_min: (60 - index * 3) / 10,
+		observation_count: 400 + next(3_000),
+		severe_pct: 64 - index * 3.7 + next(9) / 10,
+		wilson_lo: 30 + index * 3,
+		wilson_hi: 36 + index * 3,
+	})),
+});
+const gapCut = (grain, date) => ({
+	grain,
+	date,
+	headway: [
+		['am_peak', 4],
+		['midday', 10],
+		['pm_peak', 4],
+		['evening', 12],
+		['night', 30],
+	].map(([shift, scheduled]) => ({
+		shift,
+		scheduled_min: scheduled,
+		observed_min: scheduled + next(40) / 10,
+		bunched_pct: next(300) / 10,
+		cov: next(90) / 100,
+		observation_count: 150 + next(200),
+	})),
+});
+const [monthStart, weekStart, closed] = [monthDates[0], monthDates.at(-7), monthDates.at(-1)];
+files['/v1/stm/static/routes/9002.json'] = JSON.stringify({
+	...b9['static/routes/24.json'],
+	id: '9002',
+	short: '9002',
+	long: 'Long stop names and a month of history',
+});
+files['/v1/stm/historic/route_reliability/9002.json'] = JSON.stringify({
+	...b9['historic/route_reliability/24.json'],
+	id: '9002',
+	periods: monthDates.map((date) => ({ ...counted('day', 40_000 + next(20_000)), date })),
+	periods_by_grain: [
+		cutFor('day', closed, 1),
+		cutFor('week', weekStart, 7),
+		cutFor('month', monthStart, 30),
+	],
+	weak_stops_by_grain: [
+		stopCut('day', closed),
+		stopCut('week', weekStart),
+		stopCut('month', monthStart),
+	],
+	headway_by_grain: [gapCut('day', closed), gapCut('week', weekStart), gapCut('month', monthStart)],
+	cancellations: monthDates.map((date) => {
+		const seen = 900 + next(300);
+		return { grain: 'day', date, canceled_trip_days: next(60), total_trip_days: seen };
+	}),
+	skipped_stops: monthDates.map((date) => {
+		const updates = 1_500_000 + next(900_000);
+		return { date, skipped_stop_count: next(40_000), stop_time_update_count: updates };
+	}),
+});
+
 const server = createServer((request, response) => {
 	// No Date header: the app anchors its clock to it, which would undo page.clock.
 	response.sendDate = false;

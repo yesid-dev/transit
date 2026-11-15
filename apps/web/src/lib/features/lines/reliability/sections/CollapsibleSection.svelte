@@ -5,30 +5,33 @@
 	import { CollapsibleSection as SharedCollapsibleSection } from '@yesid/ui/brand';
 
 	interface CollapsibleSectionProps {
-		eyebrow: string;
-		question: string;
+		/** The section's name, as M2 writes it; the heading is the only toggle. */
+		title: string;
+		/** One finding in words, kept visible when the section is closed. */
+		summary: string;
 		dataSection: string;
-		number?: number;
 		open?: boolean;
 		children: Snippet;
 	}
 	let {
-		eyebrow,
-		question,
+		title,
+		summary,
 		dataSection,
-		number,
 		open = $bindable(true),
 		children,
 	}: CollapsibleSectionProps = $props();
 </script>
 
-<section class="section" data-section={dataSection} aria-label={eyebrow}>
+{#snippet summaryLine()}
+	<p class="evidence-summary" data-slot="section-summary">{summary}</p>
+{/snippet}
+
+<section class="section" data-section={dataSection} aria-label={title}>
 	<SharedCollapsibleSection
-		title={eyebrow}
+		{title}
 		anchor={`rel-${dataSection}`}
-		subtitle={question}
+		summary={summaryLine}
 		headerVariant="article-summary"
-		index={number == null ? null : number - 1}
 		bind:open
 	>
 		{@render children()}
@@ -38,5 +41,11 @@
 <style>
 	.section {
 		width: 100%;
+	}
+	.evidence-summary {
+		margin: 0;
+		color: var(--muted-foreground);
+		font-size: var(--text-small);
+		text-wrap: pretty;
 	}
 </style>

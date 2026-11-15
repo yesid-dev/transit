@@ -98,10 +98,10 @@ const labelMap = (value) =>
 	);
 const SEMANTIC_LABELS = Object.freeze({
 	en: labelMap(
-		'AM peak=am_peak|Midday=midday|PM peak=pm_peak|Evening=evening|Night=night|AM=am_peak|Mid=midday|PM=pm_peak|Eve=evening|Weekday=weekday|Weekend=weekend|Monday=1|Tuesday=2|Wednesday=3|Thursday=4|Friday=5|Saturday=6|Sunday=7|Mon=1|Tue=2|Wed=3|Thu=4|Fri=5|Sat=6|Sun=7|Empty=empty|Many seats=many_seats|Few seats=few_seats|Standing=standing|Full=full|Early=early|On-time=on_time|Late=late|Severe=severe|Unknown=unknown',
+		'Morning peak=am_peak|Afternoon peak=pm_peak|Weekdays=weekday|Weekends=weekend|AM peak=am_peak|Midday=midday|PM peak=pm_peak|Evening=evening|Night=night|AM=am_peak|Mid=midday|PM=pm_peak|Eve=evening|Weekday=weekday|Weekend=weekend|Monday=1|Tuesday=2|Wednesday=3|Thursday=4|Friday=5|Saturday=6|Sunday=7|Mon=1|Tue=2|Wed=3|Thu=4|Fri=5|Sat=6|Sun=7|Empty=empty|Many seats=many_seats|Few seats=few_seats|Standing=standing|Full=full|Early=early|On-time=on_time|Late=late|Severe=severe|Unknown=unknown',
 	),
 	fr: labelMap(
-		'Pointe AM=am_peak|Journée=midday|Pointe PM=pm_peak|Soirée=evening|Nuit=night|AM=am_peak|Jour=midday|PM=pm_peak|Soir=evening|Semaine=weekday|Fin de semaine=weekend|Lundi=1|Mardi=2|Mercredi=3|Jeudi=4|Vendredi=5|Samedi=6|Dimanche=7|Lun=1|Mar=2|Mer=3|Jeu=4|Ven=5|Sam=6|Dim=7|Vide=empty|Plusieurs places=many_seats|Peu de places=few_seats|Debout=standing|Plein=full|En avance=early|À l’heure=on_time|En retard=late|Sévère=severe|Inconnu=unknown',
+		'Pointe du matin=am_peak|Mi-journée=midday|Pointe de l’après-midi=pm_peak|Jours de semaine=weekday|Fins de semaine=weekend|Pointe AM=am_peak|Journée=midday|Pointe PM=pm_peak|Soirée=evening|Nuit=night|AM=am_peak|Jour=midday|PM=pm_peak|Soir=evening|Semaine=weekday|Fin de semaine=weekend|Lundi=1|Mardi=2|Mercredi=3|Jeudi=4|Vendredi=5|Samedi=6|Dimanche=7|Lun=1|Mar=2|Mer=3|Jeu=4|Ven=5|Sam=6|Dim=7|Vide=empty|Plusieurs places=many_seats|Peu de places=few_seats|Debout=standing|Plein=full|En avance=early|À l’heure=on_time|En retard=late|Sévère=severe|Inconnu=unknown',
 	),
 });
 
@@ -221,24 +221,6 @@ async function readHistogram(page, root, multiplier = 1) {
 	};
 }
 
-async function readCompareRows(page, root, locale) {
-	const labels = SEMANTIC_LABELS[locale];
-	const rows = await page.locator(`${root} li`).evaluateAll((elements) =>
-		elements.map((element) => ({
-			label: element.querySelector('.compare-label')?.textContent?.trim() ?? '',
-			value: element.querySelector('.compare-value')?.textContent?.trim() ?? '',
-			state: element.getAttribute('data-prior'),
-			delta: element.querySelector('[data-slot="delta-stat"]')?.getAttribute('aria-label') ?? '',
-		})),
-	);
-	return rows.map((row) => ({
-		key: labels[row.label] ?? row.label,
-		value: displayCell(row.value),
-		state: row.state,
-		delta: normalizeObservation(row.delta),
-	}));
-}
-
 async function readText(page, selector) {
 	const value = await page
 		.locator(selector)
@@ -275,25 +257,25 @@ async function collectLine(page, cell) {
 	const readingsLine = page.locator('[data-section="verdict"] [data-slot="record-readings"]');
 	const verdictText =
 		(await readingsLine.count()) > 0 ? await readingsLine.first().innerText() : '';
-	const runBulletText = async (slot) =>
-		(await readValues(page, `[data-slot="${slot}"]`, '.metric-bullet__value'))[0] ?? null;
-	const completenessValue = await runBulletText('service-completeness');
-	const cancellationValue = await runBulletText('cancellations');
-	const skippedValue = await runBulletText('skipped-stops');
+	// Trip facts read "36 of 1,019 (3.5%)": the share is the parenthesised part.
+	const factValue = (slot) =>
+		readText(page, `[data-slot="trip-facts"] [data-slot="${slot}"] [data-slot="fact-value"]`);
+	const shareOf = (text) => parseNumber(text?.match(/\(([^()]*)\)$/u)?.[1] ?? null);
+	const completenessValue = await factValue('service-completeness');
+	const cancellationValue = await factValue('cancellations');
+	const skippedValue = await factValue('skipped-stops');
 	const completeness = parseNumber(completenessValue);
-	const cancellation = parseNumber(cancellationValue);
-	const skipped = parseNumber(skippedValue);
+	const cancellation = shareOf(cancellationValue);
+	const skipped = shareOf(skippedValue);
 	const completenessText = await page
-		.locator('[data-slot="service-completeness"] .metric-bullet__caption')
+		.locator('[data-slot="service-completeness"] .fact-def')
 		.allInnerTexts();
-	const counts = completenessText[0]?.match(/\d+(?:[ ,]\d{3})*/gu)?.map(parseNumber) ?? [];
+	const counts =
+		completenessText[0]?.match(/\d+(?:[ ,\u00a0\u202f]\d{3})*/gu)?.map(parseNumber) ?? [];
 	const serviceCaptions = {
-		completeness: await readText(
-			page,
-			'[data-slot="service-completeness"] .metric-bullet__caption',
-		),
-		cancellation: await readText(page, '[data-slot="cancellations"] .metric-bullet__caption'),
-		skipped: await readText(page, '[data-slot="skipped-stops"] .metric-bullet__caption'),
+		completeness: await readText(page, '[data-slot="service-completeness"] .fact-def'),
+		cancellation: cancellationValue,
+		skipped: skippedValue,
 	};
 	const span = page.locator('[data-sub="service-span"]');
 	const spanMetrics = (
@@ -307,25 +289,20 @@ async function collectLine(page, cell) {
 	const spanText = (await span.count()) > 0 ? await span.innerText() : '';
 	const clocks = await spanTimeline.locator('.dv-span-end-clock').allTextContents();
 	const spanDate = spanText.match(/\d{4}-\d{2}-\d{2}/u)?.[0] ?? null;
-	const weak = page.locator('[data-slot="weak-stops"]');
-	if ((await weak.count()) > 0) {
-		const all = weak.getByRole('radio', { name: /^(?:All|Tous)$/u });
-		if ((await all.count()) > 0) await all.click();
-	}
-	const weakNames = await page
-		.locator('[data-slot="weak-stops-list"] table tbody th')
-		.allTextContents();
-	const weakValues = await page
-		.locator('[data-slot="weak-stops-list"] table tbody td')
-		.allTextContents();
-	const weakHeaders = await page
-		.locator('[data-slot="weak-stops-list"] table thead th')
-		.allTextContents();
-	const weakHrefs = await page
-		.locator('[data-slot="weak-stops-list"] table tbody a')
-		.evaluateAll((links) => links.map((link) => new URL(link.href).pathname));
-	const weakHeading = (await weak.count()) > 0 ? await weak.innerText() : '';
-	const rawCount = parseNumber(weakHeading.match(/[·]\s*\d+\/(\d+)/u)?.[1] ?? weakNames.length);
+	// Stops with delays: open the whole list, then read each row as shown.
+	const weak = page.locator('[data-slot="stop-delays"]');
+	const showAll = weak.locator('[data-slot="stop-delays-toggle"][aria-expanded="false"]');
+	if ((await showAll.count()) > 0) await showAll.click();
+	const weakRows = await weak.locator('[data-slot="stop-delay-row"]').evaluateAll((rows) =>
+		rows.map((row) => ({
+			name: row.querySelector('a')?.textContent?.trim() ?? '',
+			href: new URL(row.querySelector('a')?.href ?? '', location.href).pathname,
+			value: row.querySelector('[data-slot="stop-delay-value"]')?.textContent?.trim() ?? '',
+			readings: row.querySelector('[data-slot="stop-delay-readings"]')?.textContent?.trim() ?? '',
+		})),
+	);
+	const weakHrefs = weakRows.map((row) => row.href);
+	const rawCount = (await weak.count()) > 0 ? Number(await weak.getAttribute('data-total')) : 0;
 	const delayByCrowding = await readSemanticTable(
 		page,
 		'[data-slot="delay-by-crowding"]',
@@ -385,29 +362,25 @@ async function collectLine(page, cell) {
 	const timeRows = {
 		shift: await readSemanticTable(page, '[data-slot="shift-severe-strip"]', cell.locale),
 		dayType: await readSemanticTable(page, '[data-slot="peak-day-type"]', cell.locale),
-		onTime: await readCompareRows(page, '[data-slot="on-time-compare"]', cell.locale),
+		onTime: await readSemanticTable(
+			page,
+			'[data-section="when-to-ride"]',
+			cell.locale,
+			'[data-slot="time-of-day"]',
+		),
 		crosstab: await readSemanticTable(page, '[data-slot="shift-daytype-crosstab"]', cell.locale),
 		weekday: await readSemanticTable(page, '[data-slot="habits-weekday"]', cell.locale),
 	};
 	const headwayRows = {
-		dumbbell: await readSemanticTable(page, '[data-slot="headway-dumbbell"]', cell.locale),
-		excess: await readSemanticTable(
+		dumbbell: await readSemanticTable(
 			page,
-			'[data-slot="shift-regularity-charts"] [data-metric="excess"]',
+			'[data-section="the-wait"]',
 			cell.locale,
+			'[data-slot="gaps-table"]',
 		),
-		cov: await readSemanticTable(
-			page,
-			'[data-slot="shift-regularity-charts"] [data-metric="cov"]',
-			cell.locale,
-		),
-		bunched: await readSemanticTable(
-			page,
-			'[data-slot="shift-regularity-charts"] [data-metric="bunched"]',
-			cell.locale,
-		),
-		compare: await readCompareRows(page, '[data-slot="wait-compare"]', cell.locale),
-		headline: await readMetricValue(page, '[data-slot="excess-wait-headline"]'),
+		// The limits stay in words whatever the data: waiting is not measured, frequency is unpublished.
+		summary: await readText(page, '[data-section="the-wait"] [data-slot="section-summary"]'),
+		frequency: await readText(page, '[data-slot="frequency-unpublished"]'),
 	};
 	const dowGroups = await page.locator('[data-slot="crowding-dow-cell"]').evaluateAll((elements) =>
 		elements.map((element) => ({
@@ -488,20 +461,15 @@ async function collectLine(page, cell) {
 			trips: spanMetrics[3] ?? null,
 		}),
 		observation('line.weak_stops.eligible_ids', {
-			headers: weakHeaders.map(normalizeObservation),
-			rows: weakNames.map((name, index) => {
-				const numbers = [
-					...(weakValues[index] ?? '').replaceAll(',', '.').matchAll(/\d+(?:\.\d+)?/gu),
-				].map((match) => Number(match[0]));
-				return {
-					name: name.trim(),
-					value: numbers[0] ?? null,
-					unit: (weakValues[index] ?? '').includes('%') ? '%' : null,
-					ciLo: numbers.at(-2) ?? null,
-					ciHi: numbers.at(-1) ?? null,
-					text: normalizeObservation(weakValues[index] ?? ''),
-				};
-			}),
+			headers: [],
+			rows: weakRows.map((row) => ({
+				name: row.name,
+				value: parseNumber(row.value),
+				unit: row.value.includes('%') ? '%' : null,
+				readings: parseNumber(row.readings),
+				text: normalizeObservation(row.value),
+				readingsText: normalizeObservation(row.readings),
+			})),
 		}),
 		observation('line.weak_stops.hrefs', weakHrefs),
 		observation('line.weak_stops.raw_count', rawCount),
@@ -990,7 +958,14 @@ async function verifySsr(page, cell, fixture, html) {
 		}, html);
 		invariant(
 			JSON.stringify(ssr.bands) ===
-				JSON.stringify(['verdict', 'when-to-ride', 'the-wait', 'run-and-fit', 'worst-stops']),
+				JSON.stringify([
+					'verdict',
+					'when-to-ride',
+					'worst-stops',
+					'run-and-fit',
+					'the-wait',
+					'crowding',
+				]),
 			`${cell.path} SSR omitted or reordered reliability bands`,
 		);
 		invariant(!ssr.importError, `${cell.path} SSR contains a reliability import failure`);
@@ -1173,17 +1148,35 @@ async function verifyTextSemantics(page, cell, fixture) {
 async function verifyControls(page, cell) {
 	if (cell.fixture !== 'rich') return;
 	if (cell.surface === 'line') {
-		const weak = page.locator('[data-slot="weak-stops"]');
-		for (const [name, count] of [
-			[/^5$/u, 5],
-			[/^10$/u, 10],
-			[/^(?:All|Tous)$/u, 15],
-		]) {
+		// Five stops first; the one toggle shows every published stop, then five again.
+		const weak = page.locator('[data-slot="stop-delays"]');
+		const toggle = weak.locator('[data-slot="stop-delays-toggle"]');
+		// A chosen range has no stop cut of its own: no list, and the absence said in words.
+		const chosenRange = cell.path.includes('from=');
+		invariant(
+			(await weak.count()) === (chosenRange ? 0 : 1) &&
+				(await page
+					.locator('[data-slot="worst-stops-empty"] [data-slot="absent-value"]')
+					.count()) === (chosenRange ? 1 : 0),
+			`${cell.path} stop list ${chosenRange ? 'borrowed the latest day for a range' : 'missing'}`,
+		);
+		const total = chosenRange ? 0 : Number(await weak.getAttribute('data-total'));
+		invariant(
+			chosenRange || total === 15,
+			`${cell.path} stop list total ${total}, expected the fixture's 15`,
+		);
+		for (const [expanded, count] of chosenRange
+			? []
+			: [
+					['false', 5],
+					['true', total],
+					['false', 5],
+				]) {
 			await page.evaluate((phase) => (window.__b9Phase = phase), `weak-${count}`);
-			await weak.getByRole('radio', { name }).click();
+			if ((await toggle.getAttribute('aria-expanded')) !== expanded) await toggle.click();
 			invariant(
-				(await weak.locator('table tbody tr').count()) === count,
-				`${cell.path} weak-stop ${name} did not truncate to ${count}`,
+				(await weak.locator('[data-slot="stop-delay-row"]').count()) === count,
+				`${cell.path} stop list did not show ${count} rows`,
 			);
 		}
 		const grain = page.locator('[data-slot="surface-rail"] [data-slot="grain-picker"]').first();
@@ -1277,7 +1270,6 @@ const MARK_SELECTORS = Object.freeze({
 	histogram: ['[data-slot="histogram-mark"]', 'rect.dv-histmark-bar'],
 	'dot-strip': ['[data-slot="dot-strip-mark"]', 'circle[class*="dv-stripmark-"]'],
 	'magnitude-bars': ['[data-slot="magnitude-bars-mark"]', 'rect[class*="dv-barmark-"]'],
-	dumbbell: ['[data-slot="dumbbell-mark"]', 'rect.dv-dumbbell-conn'],
 	line: ['[data-slot="line-mark"]', '.dv-line-spline'],
 	sparkline: ['[data-slot="sparkline-mark"]', '.dv-sparkline-spline'],
 	bullet: ['[data-slot="bullet-mark"]', 'rect[class*="dv-bullet--"]'],
@@ -1309,55 +1301,51 @@ const MARK_SIGNATURES = Object.freeze({
 		unit: 's',
 		axis: ['Delay, early to late (min)', '-5', '0', '5', '10', '30'],
 	},
+	// First drawn on the French closed-day cell: a chosen range shows no time-of-day cut.
 	'dot-strip': {
 		domain: [0, 100],
 		unit: '%',
 		axis: [
-			'Severe delay by time of day (%)',
+			'Retards graves par période (%)',
 			'0',
 			'20',
 			'40',
 			'60',
 			'80',
 			'100',
-			'AM peak',
-			'PM peak',
+			'Pointe AM',
+			'Pointe PM',
 		],
 	},
+	// The range cell's only magnitude bars are delay by crowding, the chosen range's own mix.
 	'magnitude-bars': {
-		domain: [0, 100],
-		unit: '%',
-		axis: ['Severe-delay share', '0', '20', '40', '60', '80', '100', 'Weekday', 'Weekend'],
-	},
-	dumbbell: {
-		domain: [0, 35],
+		domain: [0, 8],
 		unit: 'min',
 		axis: [
-			'Headway (min)',
+			'Avg delay',
 			'0',
-			'5',
-			'10',
-			'15',
-			'20',
-			'25',
-			'30',
-			'35',
-			'AM peak',
-			'Midday',
-			'PM peak',
+			'2',
+			'4',
+			'6',
+			'8',
+			'Empty',
+			'Many seats · No data',
+			'Few seats · No data',
+			'Standing',
+			'Full',
 		],
 	},
 	line: {
 		domain: [0, 100],
 		unit: '%',
 		axis: [
-			'Shift',
+			'Période',
 			'AM',
-			'Mid',
+			'Jour',
 			'PM',
-			'Eve',
-			'Night',
-			'On-time',
+			'Soir',
+			'Nuit',
+			'Ponctualité',
 			'0',
 			'20',
 			'40',
@@ -1500,7 +1488,11 @@ async function verifyGeometry(page, seen, cell) {
 			'histogram collapsed true bin widths',
 		);
 	}
-	if ((await page.locator('[data-slot="service-span-timeline"]').count()) > 0) {
+	// English clocks; the French cells now reach this pass for the first day cuts only.
+	if (
+		cell.locale === 'en' &&
+		(await page.locator('[data-slot="service-span-timeline"]').count()) > 0
+	) {
 		const clocks = await page
 			.locator('[data-slot="service-span-timeline"] .dv-span-end-clock')
 			.allTextContents();
@@ -2083,7 +2075,8 @@ async function runGate({ fixtures = FIXTURES, cells = CELLS, runs = 2, synthetic
 						);
 					}
 				}
-				if (run === 0 && cell.fixture === 'rich' && cell.locale === 'en') {
+				// Every rich cell: the closed-day line cell (French) is the first to draw the day's cuts.
+				if (run === 0 && cell.fixture === 'rich') {
 					await verifyGeometry(page, geometrySeen, cell);
 				}
 				await verifyControls(page, cell);

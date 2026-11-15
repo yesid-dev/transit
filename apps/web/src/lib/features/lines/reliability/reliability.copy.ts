@@ -53,9 +53,6 @@ export const reliabilityCopy = defineCopy({
 			cancellationRatePct: "Taux d'annulation",
 			skippedStopRatePct: "Taux d'arrêts ignorés",
 			serviceCompletenessPct: serviceComparisonCopy.fr.label,
-			cancellationFraction: (c: string, total: string) => `${c} annulés sur ${total} jours-trajets`,
-			skippedFraction: (s: string, total: string) =>
-				`${s} ignorés sur ${total} mises à jour d'arrêt`,
 			serviceCompletenessFraction: serviceComparisonCopy.fr.fraction,
 			p50Caption: 'Médiane des relevés de retard prédit',
 			p90Caption: '90e percentile des relevés de retard prédit',
@@ -70,28 +67,17 @@ export const reliabilityCopy = defineCopy({
 				'Les estimations du retard médian et du 90e percentile sont indisponibles ici. Consultez une vue par semaine ou par mois.',
 			severePct: 'Part des retards graves',
 			severeCaption: 'Part des relevés à retard connu classés en retard grave',
-			weakStopsHeading: 'Les arrêts les plus en retard',
-			worstNLabel: 'Arrêts affichés',
-			severeRateLabel: 'Taux de retard grave',
-			worstNAll: 'Tous',
-			weakStopNote: { severe: 'grave', avg: 'moy.', samples: 'n' },
-			weakStopCi: 'IC 95 %',
-			excessWaitCaption: '0 = le service respecte (ou dépasse) sa fréquence prévue',
 			skippedStopCaption: 'Arrêts non desservis',
 			wilsonBandCaption:
 				'Bande ombrée : intervalle de Wilson à 95 %. Plus il est large, moins l’estimation est précise. Les relevés répétés d’un même trajet peuvent le rendre trop étroit. Pointillés : cible de 80 %.',
-			rampInNote: 'Les signalements manquants peuvent masquer des interruptions de service.',
 			regularity: {
 				regular: 'Apparitions régulières',
 				irregular: 'Apparitions irrégulières',
 			},
 		},
 		windows: {
-			trend: '30 derniers jours',
 			trendByDay: 'Par jour',
 			trendByTimeOfDay: 'Par moment de la journée',
-			crowding: '30 derniers jours',
-			weakStops: 'Cumul hebdomadaire',
 			habits: 'Toutes les données accumulées',
 			serviceSpan: (date: string | null) =>
 				date ? `Dernière journée de service · ${date}` : 'Dernière journée de service',
@@ -135,17 +121,10 @@ export const reliabilityCopy = defineCopy({
 			obs: (n: number) => `n=${n}`,
 			lowSample: 'moins de 30 observations',
 		},
-		regularityTerms: {
-			scheduledGap: 'Intervalle prévu',
-			observedGap: 'Intervalle dans le flux',
-			excessWait: 'Attente excédentaire',
-			spread: 'Régularité (CV)',
-			clumped: 'Apparitions rapprochées',
-			bunchingHelp:
-				'Chaque ligne compare l’intervalle médian prévu (●) à celui des premières apparitions de trajets dans le flux (●). La part d’apparitions rapprochées estime les intervalles inférieurs à la moitié de la médiane. Ces écarts ne mesurent ni les arrivées à votre arrêt ni votre attente réelle.',
-		},
 		serviceSpanTimeline: {
 			heading: 'Premières apparitions de trajets',
+			spanMetric: 'Écart entre premières captures',
+			tripCount: 'Identifiants de trajet observés',
 			ariaLabel: (first: string, last: string) =>
 				`Premières captures des trajets, du premier relevé le plus tôt à ${first} au premier relevé le plus tard à ${last}`,
 			firstTrip: 'Premier relevé le plus tôt',
@@ -158,26 +137,6 @@ export const reliabilityCopy = defineCopy({
 				'Les extrémités marquent des premières captures. Les dates locales et décalages UTC accompagnent un axe en heures écoulées; l’écart affiché s’arrondit à la minute. Les retards viennent du premier relevé du premier trajet et du dernier relevé du dernier trajet, qui peut être postérieur à l’extrémité droite.',
 		},
 		units: { pct: '%', min: ' min' },
-		priorDelta: {
-			onTimeHeading: 'Ponctualité par période',
-			waitHeading: 'Attente par période',
-			vsPrior: {
-				day: 'p/r à la veille',
-				week: 'p/r à la sem. préc.',
-				month: 'p/r au mois préc.',
-			},
-			noPrior: {
-				day: 'pas de veille',
-				week: 'pas de semaine précédente',
-				month: 'pas de mois précédent',
-			},
-			onTimeNoun: 'ponctualité',
-			waitNoun: 'attente',
-			pts: 'pts',
-			ptOne: 'pt',
-			caption:
-				'Écart observé pour la même période dans la fenêtre précédente. La couverture des données et les trajets représentés peuvent différer.',
-		},
 		controls: {
 			viewLabel: 'Vue',
 			grainLabel: 'Granularité',
@@ -242,21 +201,99 @@ export const reliabilityCopy = defineCopy({
 				question: 'Peut-on compter sur cette ligne ?',
 				terminal: { title: 'verdict', tag: 'FIABILITÉ' },
 			},
-			whenToRide: {
-				label: 'Quand voyager',
-				question: 'Quand est-ce fiable, et quand ça se gâte ?',
-			},
-			theWait: {
-				label: 'Écarts entre les premiers signalements',
-				question: 'Combien de temps faut-il attendre, et les véhicules sont-ils collés ?',
-			},
-			runAndFit: {
-				label: 'Service et place',
-				question: 'Le véhicule passe-t-il, et y aura-t-il de la place ?',
-			},
-			worstStops: { label: 'Les pires arrêts', question: 'Où le retard s’accumule-t-il ?' },
+			whenToRide: { label: 'Selon l’heure de la journée' },
+			theWait: { label: 'Attente et intervalles' },
+			runAndFit: { label: 'Trajets annulés et manquants' },
+			worstStops: { label: 'Arrêts touchés par des retards' },
+			crowding: { label: 'Occupation' },
 			detailShow: 'Voir le détail',
 			detailHide: 'Masquer le détail',
+		},
+		evidence: {
+			scope: (dates: string) => `Période de ces données : ${dates}.`,
+			history: 'tout l’historique disponible',
+			notPublished: 'Non publié pour cette période',
+			summaryAbsent: 'Non publié pour cette période.',
+			readings: (shown: string, count: number) => `${shown} ${count === 1 ? 'relevé' : 'relevés'}`,
+			timeOfDay: {
+				summary: (low: string, high: string, lowest: string) =>
+					`Entre ${low} et ${high} selon la période de la journée. Le plus bas : ${lowest}.`,
+				summaryOne: (period: string, share: string) =>
+					`${period} : ${share} des relevés à l’heure.`,
+				absentRange:
+					'Les retards selon l’heure ne sont pas encore publiés pour une période choisie.',
+				caption: 'Relevés à l’heure selon la période de la journée',
+				columns: { period: 'Période', onTime: 'À l’heure', readings: 'Relevés' },
+				dayType: 'Type de jour',
+				and: ' et ',
+				periods: {
+					am_peak: 'Pointe du matin',
+					midday: 'Mi-journée',
+					pm_peak: 'Pointe de l’après-midi',
+					evening: 'Soirée',
+					night: 'Nuit',
+					weekday: 'Jours de semaine',
+					weekend: 'Fins de semaine',
+				} as Record<string, string>,
+				pattern: 'Profil par heure, tout l’historique disponible',
+				patternNote:
+					'Un score composite comparé seulement à l’intérieur de cette ligne. Ce n’est ni un taux de retard ni un classement entre lignes, et il ne change pas avec les dates choisies.',
+			},
+			stops: {
+				summary: (stop: string, share: string) =>
+					`${stop} a la part la plus élevée : ${share} de ses relevés avaient plus de 5 minutes de retard.`,
+				lead: 'Part des relevés en retard de plus de 5 minutes, par arrêt.',
+				order:
+					'Le classement publié a retenu ces arrêts en tenant compte de l’incertitude. Ils sont listés ici selon leur part.',
+				valueNote: ' des relevés avec plus de 5 minutes de retard',
+				readingsAbsent: 'Relevés non publiés',
+				showAll: (count: string) => `Voir les ${count} arrêts`,
+				showFewer: 'Voir moins d’arrêts',
+				absentRange: 'Les retards par arrêt ne sont pas encore publiés pour une période choisie.',
+			},
+			trips: {
+				summary: (cancelled: string, seen: string, share: string) =>
+					`${cancelled} des ${seen} trajets vus dans les données en direct ont été signalés annulés (${share}).`,
+				cancelled: 'Trajets annulés',
+				cancelledValue: (cancelled: string, seen: string, share: string) =>
+					`${cancelled} sur ${seen} (${share})`,
+				cancelledDef: (dates: string, seen: string) =>
+					`Trajets vus dans les données en direct que la société de transport a signalés comme annulés, ${dates}. Les ${seen} trajets sont ceux apparus dans les données en direct, pas tous les trajets prévus.`,
+				coverage: (days: string, of: string) => `Publié pour ${days} de ces ${of} jours.`,
+				missing: 'Trajets manquants',
+				missingDef:
+					'Prévus pendant une journée terminée, jamais vus dans les données en direct et non annoncés comme annulés.',
+				silent: 'Trajets silencieux',
+				silentValue: 'Comptés en direct seulement.',
+				seeLive: 'Voir en direct',
+				silentDef: 'Prévus en ce moment, mais aucun véhicule ne se signale.',
+				skipped: 'Arrêts sautés',
+				skippedValue: (skipped: string, updates: string, share: string) =>
+					`${skipped} des ${updates} mises à jour d’arrêt (${share})`,
+				skippedDef:
+					'Chaque trajet envoie de nombreuses mises à jour d’arrêt. On compte des mises à jour, pas des arrêts physiques.',
+				note: 'Des rapports absents des données en direct peuvent cacher des trous dans le service.',
+			},
+			gaps: {
+				summary:
+					'Le temps d’attente n’est pas mesuré ici. Ce sont des intervalles entre les premiers relevés, pas entre les passages à votre arrêt.',
+				caption: 'Intervalle médian en minutes, selon la période de la journée.',
+				scheduled: 'Prévu',
+				firstReports: 'Entre premiers relevés',
+				definition:
+					'Le premier relevé est le moment où un trajet apparaît pour la première fois dans les données en direct. Aucune des deux colonnes n’indique votre temps d’attente.',
+				absentRange: 'Les intervalles ne sont pas encore publiés pour une période choisie.',
+				frequentTitle: 'Service fréquent',
+				frequent:
+					'Les périodes considérées comme fréquentes viendront d’une classification publiée. Transit ne la devine jamais à partir du nom d’une ligne ni d’une seule période de l’horaire.',
+			},
+			crowding: {
+				summary: (band: string, share: string) => `${band} dans ${share} des relevés d’occupation.`,
+				absent: 'Aucune donnée d’occupation pour ce bilan.',
+				absentBody:
+					'L’information sur l’occupation n’est pas disponible pour cette ligne et cette période.',
+				note: 'Parts des relevés d’occupation, pas des autobus ni des usagers. Elles ne garantissent pas une place.',
+			},
 		},
 		record: {
 			period: (dates: string, days: string) =>
@@ -332,8 +369,6 @@ export const reliabilityCopy = defineCopy({
 			cancellationRatePct: 'Cancellation rate',
 			skippedStopRatePct: 'Skipped-stop rate',
 			serviceCompletenessPct: serviceComparisonCopy.en.label,
-			cancellationFraction: (c, total) => `${c} of ${total} trip-days canceled`,
-			skippedFraction: (s, total) => `${s} of ${total} stop updates skipped`,
 			serviceCompletenessFraction: serviceComparisonCopy.en.fraction,
 			p50Caption: 'Median of reported predicted delays',
 			p90Caption: '90th percentile of reported predicted delays',
@@ -348,28 +383,17 @@ export const reliabilityCopy = defineCopy({
 				'Median and 90th-percentile delay estimates are unavailable here. Check a week or month view.',
 			severePct: 'Severe-delay share',
 			severeCaption: 'Share of known-delay readings classified as severe',
-			weakStopsHeading: 'The stops with the most delay',
-			worstNLabel: 'Stops shown',
-			severeRateLabel: 'Severe-delay rate',
-			worstNAll: 'All',
-			weakStopNote: { severe: 'severe', avg: 'avg', samples: 'n' },
-			weakStopCi: '95% CI',
-			excessWaitCaption: '0 = runs on schedule (met or beat its planned frequency)',
 			skippedStopCaption: "Stops the vehicle didn't serve",
 			wilsonBandCaption:
 				'Shaded band: 95% Wilson interval. Wider means less precision; repeated updates from the same trip can make it too narrow. Dashed line: the 80% target.',
-			rampInNote: 'Missing feed reports can hide service gaps.',
 			regularity: {
 				regular: 'Regular feed gaps',
 				irregular: 'Irregular feed gaps',
 			},
 		},
 		windows: {
-			trend: 'Last 30 days',
 			trendByDay: 'By day',
 			trendByTimeOfDay: 'By time of day',
-			crowding: 'Last 30 days',
-			weakStops: 'Weekly aggregate',
 			habits: 'All accrued data',
 			serviceSpan: (date) => (date ? `Latest service day · ${date}` : 'Latest service day'),
 		},
@@ -412,17 +436,10 @@ export const reliabilityCopy = defineCopy({
 			obs: (n) => `n=${n}`,
 			lowSample: 'fewer than 30 observations',
 		},
-		regularityTerms: {
-			scheduledGap: 'Scheduled gap',
-			observedGap: 'Feed-appearance gap',
-			excessWait: 'Excess wait',
-			spread: 'Spread (CoV)',
-			clumped: 'Closely spaced appearances',
-			bunchingHelp:
-				'Each row compares the scheduled median gap (●) with the median gap between trips first appearing in the feed (●). The closely spaced share estimates gaps below half the median. These gaps measure neither arrivals at your stop nor your actual wait.',
-		},
 		serviceSpanTimeline: {
 			heading: 'Trip first appearances',
+			spanMetric: 'First-report span',
+			tripCount: 'Trip IDs observed',
 			ariaLabel: (first, last) =>
 				`First captured trip reports, from the earliest at ${first} to the latest at ${last}`,
 			firstTrip: 'Earliest first report',
@@ -435,26 +452,6 @@ export const reliabilityCopy = defineCopy({
 				'Both endpoints mark first captured reports. Local dates and UTC offsets accompany an elapsed-hour axis; the span label rounds to whole minutes. Delay markers use the first trip’s earliest report and the last trip’s latest report, which may follow the right endpoint.',
 		},
 		units: { pct: '%', min: ' min' },
-		priorDelta: {
-			onTimeHeading: 'On-time by time of day',
-			waitHeading: 'Wait by shift',
-			vsPrior: {
-				day: 'vs prior day',
-				week: 'vs prior week',
-				month: 'vs prior month',
-			},
-			noPrior: {
-				day: 'no prior day',
-				week: 'no prior week',
-				month: 'no prior month',
-			},
-			onTimeNoun: 'on-time',
-			waitNoun: 'wait',
-			pts: 'pts',
-			ptOne: 'pt',
-			caption:
-				'Observed difference for the same time period in the previous window. Feed coverage and the trips represented can differ.',
-		},
 		controls: {
 			viewLabel: 'View',
 			grainLabel: 'Granularity',
@@ -519,18 +516,94 @@ export const reliabilityCopy = defineCopy({
 				question: 'Can you count on this line?',
 				terminal: { title: 'verdict', tag: 'RELIABILITY' },
 			},
-			whenToRide: {
-				label: 'When to ride',
-				question: 'When is it good, and when does it fall apart?',
-			},
-			theWait: {
-				label: 'Gaps between first reports',
-				question: 'How long will you wait, and do vehicles bunch?',
-			},
-			runAndFit: { label: 'Service & space', question: 'Will the vehicle run, and will you fit?' },
-			worstStops: { label: "Where it's worst", question: 'Where does the delay pile up?' },
+			whenToRide: { label: 'By time of day' },
+			theWait: { label: 'Waiting and gaps' },
+			runAndFit: { label: 'Cancelled and missing trips' },
+			worstStops: { label: 'Stops with delays' },
+			crowding: { label: 'Crowding' },
 			detailShow: 'Show the detail',
 			detailHide: 'Hide the detail',
+		},
+		evidence: {
+			scope: (dates) => `Period of these figures: ${dates}.`,
+			history: 'all available history',
+			notPublished: 'Not published for this period',
+			summaryAbsent: 'Not published for this period.',
+			readings: (shown, count) => `${shown} ${count === 1 ? 'reading' : 'readings'}`,
+			timeOfDay: {
+				summary: (low, high, lowest) =>
+					`Between ${low} and ${high} by period of the day. Lowest: ${lowest}.`,
+				summaryOne: (period, share) => `${period}: ${share} of readings on time.`,
+				absentRange: 'Delays by time of day are not yet published for a chosen period.',
+				caption: 'Readings on time by period of the day',
+				columns: { period: 'Period', onTime: 'On time', readings: 'Readings' },
+				dayType: 'Day type',
+				and: ' and ',
+				periods: {
+					am_peak: 'Morning peak',
+					midday: 'Midday',
+					pm_peak: 'Afternoon peak',
+					evening: 'Evening',
+					night: 'Night',
+					weekday: 'Weekdays',
+					weekend: 'Weekends',
+				},
+				pattern: 'Pattern by hour, all available history',
+				patternNote:
+					'A composite score compared only within this line. It is neither a delay rate nor a ranking across lines, and it does not change with the selected dates.',
+			},
+			stops: {
+				summary: (stop, share) =>
+					`${stop} has the highest share: ${share} of its readings were more than 5 minutes late.`,
+				lead: 'Share of readings more than 5 minutes late, per stop.',
+				order:
+					'The published ranking chose these stops, taking uncertainty into account. They are listed here by their share.',
+				valueNote: ' of readings more than 5 minutes late',
+				readingsAbsent: 'Readings not published',
+				showAll: (count) => `Show all ${count} stops`,
+				showFewer: 'Show fewer stops',
+				absentRange: 'Delays by stop are not yet published for a chosen period.',
+			},
+			trips: {
+				summary: (cancelled, seen, share) =>
+					`${cancelled} of the ${seen} trips seen in the live data were reported cancelled (${share}).`,
+				cancelled: 'Cancelled trips',
+				cancelledValue: (cancelled, seen, share) => `${cancelled} of ${seen} (${share})`,
+				cancelledDef: (dates, seen) =>
+					`Trips seen in the live data that the agency reported as cancelled, ${dates}. The ${seen} are trips that appeared in the live data, not every scheduled trip.`,
+				coverage: (days, of) => `Published for ${days} of these ${of} days.`,
+				missing: 'Missing trips',
+				missingDef:
+					'Scheduled on a completed day, never seen in the live data and not announced as cancelled.',
+				silent: 'Silent trips',
+				silentValue: 'Counted live only.',
+				seeLive: 'See live now',
+				silentDef: 'Scheduled now, but no vehicle is reporting.',
+				skipped: 'Skipped stops',
+				skippedValue: (skipped, updates, share) =>
+					`${skipped} of ${updates} stop updates (${share})`,
+				skippedDef: 'Each trip sends many stop updates. This counts updates, not physical stops.',
+				note: 'Reports missing from the live data can hide gaps in service.',
+			},
+			gaps: {
+				summary:
+					'Waiting time is not measured here. These are gaps between first reports, not arrivals at your stop.',
+				caption: 'Median gap in minutes, by period of the day.',
+				scheduled: 'Scheduled',
+				firstReports: 'Between first reports',
+				definition:
+					'A first report is the moment a trip first appears in the live data. Neither column is how long you waited.',
+				absentRange: 'Gaps are not yet published for a chosen period.',
+				frequentTitle: 'Frequent service',
+				frequent:
+					'Which periods count as frequent will come from a published classification. Transit never guesses it from a line’s name or from one schedule period.',
+			},
+			crowding: {
+				summary: (band, share) => `${band} in ${share} of occupancy readings.`,
+				absent: 'No crowding data for this record.',
+				absentBody: 'Crowding information is not available for this line and period.',
+				note: 'Shares of occupancy readings, not of buses or riders. They do not promise a seat.',
+			},
 		},
 		record: {
 			period: (dates, days) => `${dates}, ${days}`,
