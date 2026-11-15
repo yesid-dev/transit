@@ -210,3 +210,57 @@ def test_stdout_json_cannot_impersonate_the_result_pipe(tmp_path, capsys, monkey
     assert result["reason"] == "worker_crashed"
     assert result["detail"] == "omitted"
     assert "q7Z" not in json.dumps(result)
+
+
+def test_success_report_refuses_undeclared_fields(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv("PGPASSWORD", "ONLY_REVIEW_SECRET")
+    worker = """import runpy,sys
+n=runpy.run_path(sys.argv[1])
+n['main'].__globals__['measure']=lambda args: dict(
+ status='ok',ONLY_REVIEW_SECRET='ONLY_REVIEW_SECRET')
+sys.exit(n['main'](sys.argv[3:],worker=True))
+"""
+    args = "--provider sample --date 2026-11-01 --not-after 2099-11-15T05:45:00Z".split()
+    assert measure.supervise(args, worker=worker, scratch_root=tmp_path) == 1
+    result = json.loads(capsys.readouterr().out)
+    assert result["reason"] == "invalid_worker_report"
+    assert "ONLY_REVIEW_SECRET" not in json.dumps(result)
+
+
+def test_lifeline_pipe_cannot_write_to_callers_log(tmp_path, capsys):
+    import os
+
+    log = tmp_path / "caller.log"
+    worker = """import os,threading
+for thread in threading.enumerate():
+ target=getattr(thread,'_target',None)
+ if getattr(target,'__name__','')=='watch':
+  values=dict(zip(target.__code__.co_freevars,(cell.cell_contents for cell in target.__closure__)))
+  if 'error_fd' in values:
+   os.write(values['error_fd'],b'RAW_BYPASS_ONLY_REVIEW_SECRET\\n')
+raise RuntimeError('private')
+"""
+    original = os.dup(2)
+    try:
+        with log.open("wb") as sink:
+            os.dup2(sink.fileno(), 2)
+            code = measure.supervise([], worker=worker, scratch_root=tmp_path)
+    finally:
+        os.dup2(original, 2)
+        os.close(original)
+    assert code == 1
+    assert b"RAW_BYPASS_ONLY_REVIEW_SECRET" not in log.read_bytes()
+    assert json.loads(capsys.readouterr().out)["reason"] == "measurement_failed"
+
+
+def test_deep_json_report_refusal_preserves_observed_exit(tmp_path, capsys):
+    worker = """import os,sys
+payload=memoryview(b'['*100000+b'0'+b']'*100000)
+while payload:
+ payload=payload[os.write(sys._transit_measure_report_fd,payload):]
+os._exit(7)
+"""
+    assert measure.supervise([], worker=worker, scratch_root=tmp_path) == 7
+    result = json.loads(capsys.readouterr().out)
+    assert result["reason"] == "invalid_worker_report"
+    assert result["exit_status"] == 7

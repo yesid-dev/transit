@@ -560,7 +560,7 @@ def _supervise(
             bootstrap = str(Path(script).with_name("measure_fact_day_worker.py"))
             command = [executable, "-I", bootstrap, script, str(root), proof, worker, *argv]
             try:
-                process, report = transport["launch"](Popen, command, env=env)
+                process, report, receipts = transport["launch"](Popen, command, env=env)
             except OSError as error:
                 return 1, json.dumps(diagnostics["failure"]("worker_start_failed", error, detail))
             captures = []
@@ -569,6 +569,7 @@ def _supervise(
                     (report, 2097152),
                     (process.stdout, 65536),
                     (process.stderr, 65536),
+                    (receipts, 65536),
                 ):
                     captures.append(transport["PipeCapture"](stream, limit))
                 while not status:
@@ -589,7 +590,7 @@ def _supervise(
                 finally:
                     process.stdin.close()
                     received = [capture.finish() for capture in captures]
-                    for stream in (report, process.stdout, process.stderr):
+                    for stream in (report, process.stdout, process.stderr, receipts):
                         if not stream.closed:
                             stream.close()
     finally:
@@ -597,17 +598,37 @@ def _supervise(
             signal.signal(number, handler)
     code = status[0] if status else process.wait()
     code = code if code >= 0 else 128 - code
+    observed = code
     raw, truncated, capture = received[0]
     try:
-        packet = json.loads(raw) if not truncated and capture == "complete" else None
+        if not raw and received[3][0] and received[3][2] == "complete":
+            receipt = diagnostics["report_schema"]["load_packet"](received[3][0])
+            packet = (
+                dict(kind="failure", data=receipt)
+                if (isinstance(receipt, dict) and receipt.get("reason") == "lifeline_lost")
+                else None
+            )
+        else:
+            packet = (
+                diagnostics["report_schema"]["load_packet"](raw)
+                if (not truncated and capture == "complete")
+                else None
+            )
         if not isinstance(packet, dict) or packet.get("kind") not in ("success", "failure"):
             raise ValueError("invalid_worker_report")
         output = packet["data"]
         if not isinstance(output, dict):
             raise ValueError("invalid_worker_report")
         failed = packet["kind"] == "failure"
-    except (ValueError, KeyError, TypeError):
-        output, failed = {}, True
+        if not failed and not diagnostics["report_schema"]["valid_report"](output):
+            raise ValueError("invalid_worker_report")
+    except (ValueError, KeyError, TypeError, RecursionError, MemoryError, OverflowError):
+        reason = (
+            "invalid_worker_report"
+            if raw or truncated or capture != "complete"
+            else "worker_crashed"
+        )
+        output, failed = dict(status="failed", reason=reason), True
     if code or failed:
         code = code or 1
         if not failed or output.get("status") != "failed":
@@ -619,9 +640,12 @@ def _supervise(
                 for data, cut, state in received[1:]
                 if state == "complete"
             ]
-            output["error_detail"] = "\n".join(part for part in parts if isinstance(part, str))
+            output["error_detail"] = "\n".join(
+                part for part in parts if isinstance(part, str) and part
+            )
         output["stderr_capture"] = received[2][2]
         output = diagnostics["protect_result"](output, code, detail)
+        output["exit_status"] = observed
     return code, json.dumps(output)
 
 
@@ -636,7 +660,13 @@ def supervise(argv: list[str], *, worker: str = WORKER, scratch_root: Path | Non
             else "scratch_recovery_incomplete"
         )
         fallback = fallback if recovery["leftover_paths"] else "interrupted"
-        output = json.loads(text) if text else dict(status="failed", reason=fallback)
+        output = (
+            json.loads(text)
+            if text
+            else diagnostics["protect_result"](
+                dict(status="failed", reason=fallback), code, "--diagnostic-detail" in argv
+            )
+        )
     except Exception as error:
         reason = (
             error.args[0]
@@ -646,7 +676,6 @@ def supervise(argv: list[str], *, worker: str = WORKER, scratch_root: Path | Non
         if reason in RECOVERY_ERRORS and len(error.args) > 1 and error.args[1] is not None:
             recovery["leftover_paths"].append(str(error.args[1]))
         code, output = 1, diagnostics["failure"](reason, error, "--diagnostic-detail" in argv)
-    output = diagnostics["protect_result"](output, code, "--diagnostic-detail" in argv)
     output.update(recovery)
     sys.stdout.write(json.dumps(output) + "\n")
     return code

@@ -47,11 +47,12 @@ class PipeCapture:
 
 
 def launch(factory, command, *, env):
-    original = os.dup(2)
+    receipt_read, receipt_write = os.pipe()
+    receipts = os.fdopen(receipt_read, "rb", buffering=0)
     read, write = os.pipe()
     stream = os.fdopen(read, "rb", buffering=0)
     try:
-        descriptors = (original, write)
+        descriptors = (receipt_write, write)
         if sys.platform == "win32":
             import msvcrt
             from subprocess import STARTUPINFO
@@ -73,12 +74,13 @@ def launch(factory, command, *, env):
             env=env,
             **options,
         )
-        return process, stream
+        return process, stream, receipts
     except BaseException:
         stream.close()
+        receipts.close()
         raise
     finally:
-        os.close(original)
+        os.close(receipt_write)
         os.close(write)
 
 

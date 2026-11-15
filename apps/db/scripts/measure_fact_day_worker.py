@@ -11,6 +11,7 @@ from pathlib import Path
 from urllib.parse import quote, quote_plus, unquote, unquote_to_bytes, urlsplit
 
 transport = runpy.run_path(str(Path(__file__).with_name("measure_fact_day_transport.py")))
+report_schema = runpy.run_path(str(Path(__file__).with_name("measure_fact_day_report.py")))
 
 # Fixed metadata, reviewed with the source. New or dynamically named types map to other.
 BUILTIN_EXCEPTIONS = frozenset(
@@ -209,13 +210,15 @@ def exception_name(error: BaseException) -> str:
 
 
 def protect_result(output: dict, code: int, diagnostic_detail: bool = False) -> dict:
-    if not code and not short_credential():
-        return output  # Successful measurements retain their structured measurement data.
+    if not code:
+        if report_schema["valid_report"](output):
+            return output
+        output, code = dict(reason="invalid_worker_report"), 1
     reasons = (
         "worker_start_failed worker_import_failed worker_crashed lifeline_lost measurement_failed "
         "bundled_timezone_unavailable scratch_ownership_invalid scratch_owner_proof_unavailable "
         "scratch_cleanup_failed scratch_recovery_incomplete unsafe_delete_unavailable "
-        "interrupted invalid_arguments"
+        "interrupted invalid_arguments invalid_worker_report"
     ).split()
     name = output.get("exception_type")
     known = isinstance(name, str) and (name in BUILTIN_EXCEPTIONS or name in TRANSIT_EXCEPTIONS)
@@ -254,8 +257,6 @@ def emit_result(output: dict, code: int = 0, diagnostic_detail: bool = False) ->
     failed = bool(code) or output.get("status") == "failed"
     if failed:
         output = protect_result(output, code or 1, diagnostic_detail)
-    elif short_credential():
-        output = protect_result(output, 0, diagnostic_detail)
     descriptor = vars(sys).get("_transit_measure_report_fd")
     if descriptor is None:
         sys.stdout.write(json.dumps(output, sort_keys=True, default=str) + "\n")
@@ -267,7 +268,7 @@ def emit_result(output: dict, code: int = 0, diagnostic_detail: bool = False) ->
 
 
 def boot() -> int:
-    original_stderr = transport["receive_descriptor"](sys.argv.pop(1))
+    receipt_descriptor = transport["receive_descriptor"](sys.argv.pop(1))
     vars(sys)["_transit_measure_report_fd"] = transport["receive_descriptor"](sys.argv.pop(1))
     detail = "--diagnostic-detail" in sys.argv
     reason = "worker_import_failed"
@@ -277,7 +278,7 @@ def boot() -> int:
         proof = sys.argv.pop(3)
         reason = "worker_start_failed"
         namespace["lifeline"](
-            sys.argv[2], proof, error_fd=original_stderr, diagnostic_detail=detail
+            sys.argv[2], proof, error_fd=receipt_descriptor, diagnostic_detail=detail
         )
         reason = "measurement_failed"
         exec(

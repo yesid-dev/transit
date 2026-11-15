@@ -16,6 +16,17 @@ SCRIPT = Path(__file__).parents[1] / "scripts/measure_fact_day.py"
 spec = importlib.util.spec_from_file_location("measure", SCRIPT)
 measure = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(measure)
+EMPTY_REPORT = dict(
+    tables={},
+    queries=[],
+    family_comparison=dict(outputs={}),
+    duckdb_version="test",
+    python_version="test",
+    python_traced_peak_bytes=0,
+    memory_basis="Python traced peak excludes native allocations; process lifetime RSS",
+    native_peak_rss_bytes=None,
+    native_peak_rss_reason=None,
+)
 ACTIVE_WRITER = """import json,os,signal,socket,sys,time
 from pathlib import Path
 signal.signal(signal.SIGTERM,signal.SIG_IGN)
@@ -185,9 +196,8 @@ def test_parent_stop_reaps_worker_and_preserves_outside_sentinel(tmp_path, stop,
                 if result.poll() is None:
                     result.kill()
         pid, directory, port = json.loads(ready.read_text())
-        if not stop.startswith("SIG"):
-            assert json.loads(error)["reason"] == "lifeline_lost"
-            assert json.loads(error)["detail"] == "omitted"
+        # Orphan cleanup still runs, but a dead supervisor cannot forward its receipt pipe.
+        assert not error
         with socket.socket() as observer:
             observer.settimeout(2)
             if observer.connect_ex(("127.0.0.1", port)) == 0:
@@ -197,12 +207,8 @@ def test_parent_stop_reaps_worker_and_preserves_outside_sentinel(tmp_path, stop,
                     pass
         if stop in ("invocation", "path", "replacement"):
             assert all(p.exists() and p.read_bytes() == value for p, value in preserved.items())
-            assert json.loads(error)["leftover_paths"] == [directory]
         elif stop == "abrupt" and sys.platform == "win32":
             assert (Path(directory) / "nested/fact.csv.partial").read_bytes() == b"private"
-            receipt = json.loads(error)
-            assert receipt["leftover_paths"] == [directory]
-            assert receipt["cleanup_reason"] == "unsafe_delete_unavailable"
         else:
             assert not Path(directory).exists(), "owned scratch remains after worker exit"
         assert sentinel.read_text() == "preserve"
@@ -332,9 +338,9 @@ def test_start_sweeps_only_provably_dead_markers(tmp_path, capsys, monkeypatch, 
     monkeypatch.setattr(os, "unlink", locked)
     monkeypatch.setattr(measure.time, "monotonic", lambda: clock[0])
     monkeypatch.setattr(measure.time, "sleep", lambda delay: clock.__setitem__(0, clock[0] + delay))
-    assert measure.supervise([], worker="report({})", scratch_root=tmp_path) == (
-        1 if windows or lock == "persistent" else 0
-    )
+    assert measure.supervise(
+        [], worker="report(" + repr(EMPTY_REPORT) + ")", scratch_root=tmp_path
+    ) == (1 if windows or lock == "persistent" else 0)
     receipt = json.loads(capsys.readouterr().out)
     if windows:
         assert receipt["reason"] == "unsafe_delete_unavailable" and not receipt["swept_paths"]
@@ -671,10 +677,10 @@ def test_fact_measurement_uses_one_snapshot_for_csv_and_postgres_oracle(
 def test_isolated_worker_uses_project_environment(tmp_path, capsys):
     probe = (
         "import json,sys; import duckdb,transit_ops; "
-        "report(dict(status='ok', isolated=sys.flags.isolated))"
+        "assert sys.flags.isolated == 1; report(" + repr(EMPTY_REPORT) + ")"
     )
     assert measure.supervise([], worker=probe, scratch_root=tmp_path) == 0
-    assert json.loads(capsys.readouterr().out)["isolated"] == 1
+    assert json.loads(capsys.readouterr().out)["duckdb_version"] == "test"
 
 
 def test_worker_exception_names_failure_with_redacted_detail(tmp_path, capsys, monkeypatch):
@@ -769,7 +775,12 @@ os._exit(9)
 
 def test_nonzero_exit_cannot_return_a_success_report(tmp_path, capsys):
     assert (
-        measure.supervise([], worker="report({}); raise SystemExit(3)", scratch_root=tmp_path) == 3
+        measure.supervise(
+            [],
+            worker="report(" + repr(EMPTY_REPORT) + "); raise SystemExit(3)",
+            scratch_root=tmp_path,
+        )
+        == 3
     )
     result = json.loads(capsys.readouterr().out)
     assert result["reason"] == "worker_crashed"
