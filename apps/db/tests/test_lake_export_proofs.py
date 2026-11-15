@@ -2,6 +2,7 @@
 
 import csv
 import io
+import json
 import os
 from contextlib import contextmanager
 from dataclasses import replace
@@ -167,7 +168,7 @@ def edition(source, owned, fact_source, monkeypatch):
         monkeypatch.setattr(
             datasets, "HISTORY_DATASETS", {**datasets.HISTORY_DATASETS, owned.dataset_id: declared}
         )
-        yield replace(owned, provider_id=provider, window_key="b" * 64)
+        yield replace(owned, provider_id=provider, window_key=f"{'b' * 64}.v{version}")
     finally:
         source.execute("DELETE FROM core.dataset_versions WHERE dataset_version_id=%s", (version,))
 
@@ -315,14 +316,22 @@ def test_edition_resolution_is_provider_scoped_and_unique(source, fact_source, t
                 (provider, ids[-1]),
             )
             if index == 0:
+                spec = replace(spec, edition_assignments=json.dumps({ids[0]: "a" * 64}))
                 assert export(source, spec, tmp_path / "edition.csv").rows == 1
                 with pytest.raises(engine.ExportRefused, match="window"):
                     recheck(
                         source,
                         engine.WindowSpec(spec.dataset_id, provider + "-other", spec.window_key),
                     )
+        original = export(source, spec, tmp_path / "original.csv")
+        qualified = replace(spec, window_key="a" * 64 + f".v{ids[1]}")
+        repeated = export(source, qualified, tmp_path / "repeated.csv")
+        for result, expected in ((original, ids[0]), (repeated, ids[1])):
+            with result.csv_path.open(encoding="utf8", newline="") as stream:
+                rows = list(csv.DictReader(stream))
+            assert [int(row["dataset_version_id"]) for row in rows] == [expected]
         with pytest.raises(engine.ExportRefused, match="window"):
-            recheck(source, spec)
+            recheck(source, replace(spec, edition_assignments="{}"))
     finally:
         source.execute("DELETE FROM silver.routes WHERE dataset_version_id=ANY(%s)", (ids,))
         source.execute("DELETE FROM core.dataset_versions WHERE dataset_version_id=ANY(%s)", (ids,))

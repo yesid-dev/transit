@@ -24,6 +24,14 @@ from transit_ops.history.datasets import (
 from transit_ops.ingestion.storage import BronzeStorage
 from transit_ops.lake.archive_keys import validate_provider_id
 from transit_ops.lake.catalog import CatalogTable, read_catalog
+from transit_ops.lake.edition_assignments import archive_assignments, persist_assignments
+from transit_ops.lake.edition_identity import (
+    assignment_json,
+    edition_keys,
+    merge_assignments,
+    parse_assignments,
+    registration_rows,
+)
 from transit_ops.lake.inventory import Inventory, take_inventory
 from transit_ops.lake.table_copy import TableCopy, copy_table_window
 from transit_ops.lake.table_export import WindowSpec, validate_timeout
@@ -207,14 +215,10 @@ def _editions(
     values: tuple[object, ...],
     source: TableSource,
     provider: str,
+    candidates: dict[int, str],
 ) -> list[str]:
-    candidates = connection.execute(
-        "SELECT dataset_version_id, COALESCE(checksum_sha256, content_hash) "
-        "FROM core.dataset_versions WHERE provider_id=%s ORDER BY dataset_version_id",
-        (provider,),
-    ).fetchall()
     keys = []
-    for edition, checksum in candidates:
+    for edition, key in candidates.items():
         present = connection.execute(
             sql.SQL("SELECT EXISTS (SELECT 1 FROM {}{} AND {}=%s)").format(
                 table, where, sql.Identifier(cast(str, source.window_column))
@@ -223,9 +227,7 @@ def _editions(
         ).fetchone()
         if present != (True,):
             continue
-        if not isinstance(checksum, str) or sum(c == checksum for _, c in candidates) != 1:
-            raise MigrationRefused("edition_identity", (source.table, provider, edition))
-        keys.append(checksum)
+        keys.append(key)
     return sorted(keys)
 
 
@@ -303,27 +305,24 @@ def _edition_registry(
     if prefix not in {(edition,), ("provider_id", edition)}:
         raise MigrationRefused("edition_identity", (catalog.name, "edition index prefix"))
     for key in _loose_keys(connection, catalog.name, prefix):
-        if prefix[0] == "provider_id":
-            provider, version = key
-        else:
-            version = key[0]
-            row = connection.execute(
-                sql.SQL("SELECT provider_id FROM {} WHERE {}=%s LIMIT 1").format(
-                    sql.Identifier(*catalog.name.split(".")), sql.Identifier(edition)
-                ),
-                (version,),
-            ).fetchone()
-            assert row is not None
-            provider = row[0]
-        if (
-            connection.execute(
-                "SELECT 1 FROM core.dataset_versions "
-                "WHERE dataset_version_id=%s AND provider_id=%s",
-                (version, provider),
-            ).fetchone()
-            is None
-        ):
-            raise MigrationRefused("edition_identity", (catalog.name, provider, version))
+        # Bind the complete PK prefix before reading provider_id. In particular,
+        # never aggregate provider_id across the millions of stop_times rows.
+        bounds = sql.SQL(" AND ").join(
+            sql.SQL("t.{}=%s").format(sql.Identifier(c)) for c in prefix
+        )
+        row = connection.execute(
+            sql.SQL(
+                "SELECT t.provider_id, v.dataset_version_id FROM {} t "
+                "LEFT JOIN core.dataset_versions v "
+                "ON v.dataset_version_id=t.{} AND v.provider_id=t.provider_id "
+                "WHERE {} LIMIT 1"
+            ).format(sql.Identifier(*catalog.name.split(".")), sql.Identifier(edition), bounds),
+            key,
+        ).fetchone()
+        assert row is not None
+        provider, registered = row
+        if registered is None:
+            raise MigrationRefused("edition_identity", (catalog.name, provider, key[-1]))
 
 
 def _groups(
@@ -410,6 +409,7 @@ def _table_windows(
     include_open: bool,
     providers: Sequence[str] | None,
     open_days: int,
+    storage: BronzeStorage | None = None,
 ) -> tuple[list[PlannedWindow], list[WindowSpec]]:
     dataset = get_dataset(catalog.name)
     source = cast(TableSource, dataset.source)
@@ -429,10 +429,27 @@ def _table_windows(
             predicates.append(sql.SQL("{}=%s").format(sql.Identifier(source.revision_column)))
             values.append(revision)
         where = sql.SQL(" WHERE ") + sql.SQL(" AND ").join(predicates or [sql.SQL("true")])
+        assignments = {}
+        candidates = {}
+        if dataset.archive_grain == "edition" or catalog.name == "core.dataset_versions":
+            rows = registration_rows(connection, provider)
+            digests = [w.split(".")[0] for w in edition_keys(rows).values()]
+            try:
+                assignments = archive_assignments(storage, provider, digests)
+                candidates = edition_keys(rows, assignments=assignments)
+                assignments = merge_assignments(assignments, candidates)
+            except ValueError as exc:
+                raise MigrationRefused("edition_identity", str(exc)) from exc
         if source.window_column is None:
             windows.append(
                 PlannedWindow(
-                    WindowSpec(catalog.name, provider, today.strftime("%Y-%m"), revision),
+                    WindowSpec(
+                        catalog.name,
+                        provider,
+                        today.strftime("%Y-%m"),
+                        revision,
+                        edition_assignments=assignment_json(assignments),
+                    ),
                     "whole_state",
                 )
             )
@@ -440,8 +457,19 @@ def _table_windows(
         _null_window(connection, catalog, source, table, where, tuple(values))
         if dataset.archive_grain == "edition":
             windows.extend(
-                PlannedWindow(WindowSpec(catalog.name, provider, key, revision), "closed")
-                for key in _editions(connection, table, where, tuple(values), source, provider)
+                PlannedWindow(
+                    WindowSpec(
+                        catalog.name,
+                        provider,
+                        key,
+                        revision,
+                        edition_assignments=assignment_json(assignments),
+                    ),
+                    "closed",
+                )
+                for key in _editions(
+                    connection, table, where, tuple(values), source, provider, candidates
+                )
             )
             continue
         row = connection.execute(
@@ -570,6 +598,7 @@ def plan_migration(
                     else providers
                 ),
                 get_settings().GOLD_REPORTING_OPEN_WINDOW_DAYS,
+                storage,
             )
             planned_windows.extend(planned)
             skipped.extend(opened)
@@ -682,6 +711,9 @@ def run_migration(
                         raise MigrationRefused("migration_lock_lost")
                 except Exception as error:
                     raise MigrationRefused("migration_lock_lost") from error
+            persist_assignments(
+                storage, window.spec.provider_id, parse_assignments(window.spec.edition_assignments)
+            )
             if window.archive_copy is not None:
                 result = window.archive_copy
             else:

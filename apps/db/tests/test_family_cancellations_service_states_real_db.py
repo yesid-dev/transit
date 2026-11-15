@@ -20,6 +20,7 @@ from transit_ops.batch.compare import compare_tables
 from transit_ops.batch.families.cancellations_service_states import builder
 from transit_ops.batch.postgres_rows import read_table_rows
 from transit_ops.gold import rollups
+from transit_ops.lake.edition_identity import registered_keys
 from transit_ops.lake.parquet_codec import write_window
 from transit_ops.lake.table_export import WindowSpec, export_window
 
@@ -94,11 +95,12 @@ def export_inputs(engine, req, root):
         path = root / need.relation / (need.window.replace(":", "=") + ".parquet")
         path.parent.mkdir(parents=True, exist_ok=True)
         window = need.window
-        if window.startswith("edition:"):
-            window = f"{int(window.split(':')[1]):064x}"
-        elif window == "all":
+        edition_id = int(window.split(":")[1]) if window.startswith("edition:") else None
+        if window == "all":
             window = req.as_of_utc.strftime("%Y-%m")
         with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            if edition_id is not None:
+                window = registered_keys(conn.connection.driver_connection, PROVIDER)[edition_id]
             exported = export_window(
                 conn.connection.driver_connection,
                 WindowSpec(need.relation, PROVIDER, window),

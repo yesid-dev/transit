@@ -43,6 +43,12 @@ from transit_ops.lake.archive_keys import (
     table_copy_key,
     validate_provider_id,
 )
+from transit_ops.lake.edition_assignments import archive_assignments, parquet_assignments
+from transit_ops.lake.edition_identity import (
+    EditionIdentityRefused,
+    edition_keys,
+    merge_assignments,
+)
 from transit_ops.lake.table_export import WindowSpec
 from transit_ops.settings import Settings
 
@@ -336,7 +342,9 @@ def _windows_for(
     if dataset.archive_grain == "edition":
         ident = int(need.window.removeprefix("edition:"))
         if ident not in editions:
-            raise ValueError(f"unknown edition id: {need.relation} {need.window}")
+            raise EditionIdentityRefused(
+                f"edition_identity: unknown edition id: {need.relation} {need.window}"
+            )
         return [editions[ident]]
     if dataset.archive_grain == "month":
         if need.window == "all":
@@ -523,27 +531,20 @@ def edition_mapping(
     provider: str,
     *,
     bootstrap: Source | None = None,
+    storage: BronzeStorage | None = None,
 ) -> EditionMapping:
     with duckdb.connect() as conn:
         rows = conn.execute(
-            "SELECT dataset_version_id, COALESCE(checksum_sha256, content_hash) "
+            "SELECT dataset_version_id, checksum_sha256, content_hash "
             "FROM read_parquet(?, hive_partitioning=false) WHERE provider_id=?",
             [str(path), provider],
         ).fetchall()
-    mapping: dict[int, str] = {}
-    for ident, checksum in rows:
-        if (
-            type(ident) is not int
-            or ident <= 0
-            or not isinstance(checksum, str)
-            or not re.fullmatch("[0-9a-f]{64}", checksum)
-        ):
-            raise ValueError(f"invalid edition mapping: {ident}")
-        if ident in mapping and mapping[ident] != checksum:
-            raise ValueError(f"ambiguous edition id: {ident}")
-        if checksum in mapping.values() and mapping.get(ident) != checksum:
-            raise ValueError(f"ambiguous edition checksum: {checksum}")
-        mapping[ident] = checksum
+    embedded = parquet_assignments(path)
+    unresolved = [
+        w.split(".")[0] for ident, w in edition_keys(rows).items() if ident not in embedded
+    ]
+    assignments = merge_assignments(embedded, archive_assignments(storage, provider, unresolved))
+    mapping = edition_keys(rows, assignments=assignments)
     with duckdb.connect() as conn:
         selected = conn.execute(
             "SELECT dataset_version_id FROM read_parquet(?, hive_partitioning=false) "
@@ -624,6 +625,10 @@ def _filter_window(
     ).fetchone()
     assert counts is not None
     total, kept = counts
+    if any(n.window.startswith("edition:") for n in source.needs) and total != kept:
+        raise EditionIdentityRefused(
+            f"edition_identity: copy contains another edition: {source.key}"
+        )
     receipt = dict(
         key=source.key,
         object_sha256=source.receipt["object_sha256"],
@@ -673,6 +678,7 @@ def materialize(
     *,
     memory_limit_mb: int = 1024,
     temp_max_mb: int = 2048,
+    edition_assignments: Mapping[int, str] | None = None,
 ) -> list[dict[str, object]]:
     """Filter archive ranges before either engine reads; retain per-window row accounting."""
     targets: dict[InputNeed, list[Path]] = defaultdict(list)
@@ -784,10 +790,23 @@ def materialize(
                     scan + " r SEMI JOIN merge_chosen k ON r.filename=k.source_file "
                     "AND r.file_row_number=k.source_row"
                 )
+            metadata = {}
+            if need.relation == "core.dataset_versions":
+                from transit_ops.lake.edition_identity import assignment_json
+
+                assignments = merge_assignments(
+                    edition_assignments or {},
+                    *(
+                        parquet_assignments(paths[s.key])
+                        for s in sources
+                        if s.needs[0].relation == need.relation
+                    ),
+                )
+                metadata = {"edition_assignments": assignment_json(assignments)}
             conn.execute(
                 f"COPY (SELECT {columns} FROM {source_sql}) TO ? "
-                "(FORMAT parquet, ROW_GROUP_SIZE 2048)",
-                [sql_paths, str(destination)],
+                f"(FORMAT parquet, ROW_GROUP_SIZE 2048{', KV_METADATA ?' if metadata else ''})",
+                [sql_paths, str(destination)] + ([metadata] if metadata else []),
             )
     return receipts
 
@@ -817,7 +836,7 @@ def fetch_replay_inputs(
             bootstrap_need = InputNeed("core.dataset_versions", "all")
             bootstrap = resolve_sources([bootstrap_need], storage, provider, as_of, {})[0]
             first = _download(bootstrap, storage, area / "bootstrap")
-            mapping = edition_mapping(first, provider, bootstrap=bootstrap)
+            mapping = edition_mapping(first, provider, bootstrap=bootstrap, storage=storage)
             paths[bootstrap.key] = first
             needs = needs_for(mapping)
         sources = resolve_sources(
@@ -834,7 +853,7 @@ def fetch_replay_inputs(
         for index, source in enumerate(sources):
             if source.key not in paths:
                 paths[source.key] = _download(source, storage, area / str(index))
-        receipts = materialize(sources, paths, root, as_of)
+        receipts = materialize(sources, paths, root, as_of, edition_assignments=mapping.checksums)
         from transit_ops.batch.input_provenance import write_input_receipts
 
         write_input_receipts(

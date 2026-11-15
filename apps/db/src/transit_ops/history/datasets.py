@@ -137,7 +137,7 @@ def validate_declarations(
 def window_start(dataset: HistoryDataset, window_key: str) -> date | None:
     grain = dataset.archive_grain
     if grain == "edition":
-        if re.fullmatch(r"[0-9a-f]{64}", window_key):
+        if re.fullmatch(r"[0-9a-f]{64}(?:\.v[1-9][0-9]*)?", window_key):
             return None
     else:
         pattern = r"[0-9]{4}-[0-9]{2}" if grain == "month" else r"[0-9]{4}-[0-9]{2}-[0-9]{2}"

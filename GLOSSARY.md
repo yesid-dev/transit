@@ -17,6 +17,9 @@ The fixed instant used as now throughout one replay cycle, including its stamps,
 The record that one copy was read back and found equal to what it means, row for row; without it a copy is not verified. Typed row equality alone still needs the canonical-text check before verification.
 _Avoid_: receipt (an upload record)
 
+**Edition identity**:
+The stable name that distinguishes one registered schedule edition in the archive, including registrations that repeat the same source content.
+
 **Edition index**:
 The record that groups a schedule edition's table copies and their proofs, identifies their GTFS file and field names, and states whether its source zip is archived.
 

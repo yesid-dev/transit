@@ -57,7 +57,9 @@ def test_rescue_receipt_resolves_exact_identity(tmp_path):
     assert [(s.key, s.needs) for s in sources] == [(key, (need,))]
 
 
-def archive(storage, relation, window, query, *, revision=0, version=1, provider="sample"):
+def archive(
+    storage, relation, window, query, *, revision=0, version=1, provider="sample", assignments=None
+):
     key = table_copy_key(
         relation, provider, revision, get_dataset(relation).archive_grain, window, version, 1
     )
@@ -65,7 +67,10 @@ def archive(storage, relation, window, query, *, revision=0, version=1, provider
     path.parent.mkdir(parents=True, exist_ok=True)
     with duckdb.connect() as conn:
         conn.execute("SET TimeZone='UTC'")
-        conn.execute(f"COPY ({query}) TO ? (FORMAT parquet)", [str(path)])
+        conn.execute(
+            f"COPY ({query}) TO ? (FORMAT parquet, KV_METADATA ?)",
+            [str(path), {"edition_assignments": json.dumps(assignments or {})}],
+        )
         rows = conn.execute("SELECT count(*) FROM read_parquet(?)", [str(path)]).fetchone()[0]
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     record = dict(
@@ -87,7 +92,7 @@ def archive(storage, relation, window, query, *, revision=0, version=1, provider
     return key
 
 
-def bootstrap(storage, query=None):
+def bootstrap(storage, query=None, *, assignments=None):
     return archive(
         storage,
         "core.dataset_versions",
@@ -99,6 +104,7 @@ def bootstrap(storage, query=None):
             "'static_schedule' AS dataset_kind, true AS is_current, "
             "TIMESTAMPTZ '2026-11-01 00:00:00+00' AS loaded_at_utc"
         ),
+        assignments=assignments if assignments is not None else {7: "c" * 64},
     )
 
 
@@ -202,6 +208,239 @@ def test_ambiguous_edition_id_refuses(tmp_path):
     )
     with pytest.raises(ValueError, match="ambiguous edition id: 7"):
         edition_mapping(storage.root / key, "sample")
+
+
+def test_repeated_sto_content_resolves_each_version_to_its_own_proven_copy(tmp_path):
+    storage = store(tmp_path)
+    boot = bootstrap(
+        storage,
+        "SELECT 'sample' AS provider_id, id::BIGINT AS dataset_version_id, "
+        "NULL::VARCHAR AS checksum_sha256, repeat('c',64) AS content_hash, "
+        "'static_schedule' AS dataset_kind, id=133 AS is_current, "
+        "TIMESTAMPTZ '2026-11-01 00:00:00+00' AS loaded_at_utc "
+        "FROM (VALUES (132), (133)) t(id)",
+        assignments={132: "c" * 64, 133: "c" * 64 + ".v133"},
+    )
+    mapping = edition_mapping(storage.root / boot, "sample")
+    for ident, window in ((132, "c" * 64), (133, "c" * 64 + ".v133")):
+        need = InputNeed("silver.trips", f"edition:{ident}")
+        with pytest.raises(SourcesMissing):
+            resolve_sources([need], storage, "sample", STAMP, mapping)
+        key = archive(
+            storage, "silver.trips", window, f"SELECT {ident}::BIGINT AS dataset_version_id"
+        )
+        assert resolve_sources([need], storage, "sample", STAMP, mapping)[0].key == key
+
+
+@pytest.mark.parametrize("old_metadata", [False, True])
+def test_pruned_registry_replays_exact_versions_from_old_and_new_bootstrap(tmp_path, old_metadata):
+    from transit_ops.lake.edition_assignments import persist_assignments, stored_assignments
+
+    storage = store(tmp_path)
+    assigned = {132: "c" * 64, 133: "c" * 64 + ".v133"}
+    for ident, window in assigned.items():
+        archive(storage, "silver.trips", window, f"SELECT {ident}::BIGINT AS dataset_version_id")
+    registry = (
+        "SELECT 'sample' AS provider_id, id::BIGINT AS dataset_version_id, "
+        "NULL::VARCHAR AS checksum_sha256, repeat('c',64) AS content_hash, "
+        "'static_schedule' AS dataset_kind, id=133 AS is_current, "
+        "TIMESTAMPTZ '2026-10-01 00:00:00+00' AS loaded_at_utc "
+        "FROM (VALUES (132), (133)) t(id)"
+    )
+    archive(
+        storage,
+        "core.dataset_versions",
+        "2026-10",
+        registry,
+        assignments=assigned if old_metadata else None,
+    )
+    persist_assignments(storage, "sample", assigned)
+    # Retention removes 132 before the next registry snapshot. No surviving
+    # registration can take its name, even when replay uses the old bootstrap.
+    archive(
+        storage,
+        "core.dataset_versions",
+        "2026-11",
+        registry + " WHERE id=133",
+        assignments=stored_assignments(storage, "sample"),
+    )
+    before = {key: storage.read_bytes(key) for key in storage.list_keys("archive/")}
+    for month, ids in ((10, (132, 133)), (11, (133,))):
+        root = tmp_path / f"fetch-{month}"
+        root.mkdir()
+        needs = [InputNeed("core.dataset_versions", "all")]
+        needs += [InputNeed("silver.trips", f"edition:{ident}") for ident in ids]
+        result = fetch_replay_inputs(
+            storage,
+            root,
+            "sample",
+            datetime(2026, month, 25, tzinfo=UTC),
+            lambda mapping, needs=needs: needs,
+        )
+        for ident in ids:
+            with duckdb.connect() as conn:
+                rows = conn.execute(
+                    "SELECT dataset_version_id FROM read_parquet(?)",
+                    [str(root / "silver.trips" / f"edition={ident}.parquet")],
+                ).fetchall()
+            assert rows == [(ident,)]
+        assert all(r["rows_dropped"] == 0 for r in result["receipts"])
+        local = edition_mapping(root / "core.dataset_versions" / "all.parquet", "sample")
+        assert {ident: local[ident] for ident in ids} == {ident: assigned[ident] for ident in ids}
+    assert before == {key: storage.read_bytes(key) for key in storage.list_keys("archive/")}
+
+
+@pytest.mark.parametrize("failure", ["empty", "corrupt"])
+def test_unprovable_legacy_ownership_refuses_before_replay(tmp_path, failure):
+    storage = store(tmp_path)
+    bootstrap(storage, assignments={})
+    key = archive(
+        storage,
+        "silver.trips",
+        "c" * 64,
+        "SELECT 7::BIGINT AS dataset_version_id" + (" WHERE false" if failure == "empty" else ""),
+    )
+    if failure == "corrupt":
+        (storage.root / key).write_bytes(b"corrupt")
+    root = tmp_path / "inputs"
+    root.mkdir()
+    with pytest.raises(ValueError, match="edition_identity"):
+        fetch_replay_inputs(
+            storage, root, "sample", STAMP, lambda _: [InputNeed("silver.trips", "edition:7")]
+        )
+    assert not list(root.glob("silver.*"))
+
+
+def legacy_ownership_copy(
+    storage, provider, *, owner=42, empty=False, row_provider=None, assignments=None
+):
+    from transit_ops.lake.archive_keys import schema_key
+    from transit_ops.lake.edition_identity import assignment_json
+    from transit_ops.lake.parquet_codec import write_window
+    from transit_ops.lake.parquet_verify import Expected, prove_window
+    from transit_ops.lake.table_copy import _receipt
+    from transit_ops.lake.table_export import ExportedWindow, WindowSpec
+    from transit_ops.lake.table_schema import TableSchema
+
+    schema = TableSchema.from_columns(
+        [("dataset_version_id", "bigint", True), ("provider_id", "text", True)],
+        ["dataset_version_id", "provider_id"],
+    )
+    spec = WindowSpec("silver.trips", provider, "c" * 64)
+    csv = storage.root / "legacy.csv"
+    csv.write_text(
+        "dataset_version_id,provider_id\n" + ("" if empty else f"42,{row_provider or provider}\n"),
+        encoding="utf8",
+        newline="",
+    )
+    digest = hashlib.sha256(csv.read_bytes()).hexdigest()
+    path = storage.root / "legacy.parquet"
+    metadata = (
+        {}
+        if owner is None
+        else {
+            "edition_assignments": assignment_json(
+                assignments if assignments is not None else {owner: spec.window_key}
+            )
+        }
+    )
+    written = write_window(
+        csv,
+        schema,
+        path,
+        metadata=metadata,
+        temp_dir=storage.root,
+    )
+    rows = 0 if empty else 1
+    proof = prove_window(
+        csv, path, schema, expect=Expected(digest, rows, written.sha256), temp_dir=storage.root
+    )
+    key = table_copy_key("silver.trips", provider, 0, "edition", spec.window_key, 1, 1)
+    target = storage.root / key
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(path.read_bytes())
+    schema_path = storage.root / schema_key("silver.trips", 1)
+    schema_path.parent.mkdir(parents=True, exist_ok=True)
+    schema_path.write_bytes(schema.to_json())
+    exported = ExportedWindow(spec, csv, digest, csv.stat().st_size, rows, schema, STAMP, "test")
+    put(storage, proof_key(key), _receipt(exported, written, proof, key, 1, 1, "a" * 40))
+    return key
+
+
+@pytest.mark.parametrize("provider", ["stm", "octranspo"])
+def test_legacy_owner_is_adopted_from_verified_rows_without_recopy(tmp_path, provider):
+    from transit_ops.lake.edition_assignments import archive_assignments, persist_assignments
+    from transit_ops.lake.edition_identity import edition_keys
+
+    storage = store(tmp_path)
+    key = legacy_ownership_copy(storage, provider, owner=None)
+    before = {k: storage.read_bytes(k) for k in storage.list_keys("archive/v1/tables/")}
+    assigned = archive_assignments(storage, provider, ["c" * 64])
+    assert assigned == {42: "c" * 64}
+    persist_assignments(storage, provider, assigned)
+    assert edition_keys([(42, None, "c" * 64)], assignments=assigned) == {42: "c" * 64}
+    # The old owner can disappear; a new registration is still qualified.
+    assert edition_keys([(43, None, "c" * 64)], assignments=assigned) == {43: "c" * 64 + ".v43"}
+    need = InputNeed("silver.trips", "edition:42")
+    assert resolve_sources([need], storage, provider, STAMP, assigned)[0].key == key
+    assert before == {k: storage.read_bytes(k) for k in storage.list_keys("archive/v1/tables/")}
+
+
+def test_legacy_object_adopts_only_the_owner_established_by_its_rows(tmp_path):
+    from transit_ops.lake.edition_assignments import archive_assignments
+
+    storage = store(tmp_path)
+    legacy_ownership_copy(storage, "stm", assignments={42: "c" * 64, 133: "c" * 64 + ".v133"})
+    assert archive_assignments(storage, "stm", ["c" * 64]) == {42: "c" * 64}
+
+
+@pytest.mark.parametrize(
+    "case", ["contradictory", "empty", "provider", "rows", "schema", "missing"]
+)
+def test_legacy_adoption_requires_coherent_proof_and_nonempty_owner_rows(tmp_path, case):
+    from transit_ops.lake.edition_assignments import archive_assignments
+
+    storage = store(tmp_path)
+    key = legacy_ownership_copy(
+        storage,
+        "stm",
+        owner=43 if case == "contradictory" else 42,
+        empty=case == "empty",
+        row_provider="octranspo" if case == "provider" else None,
+    )
+    if case in {"rows", "schema", "missing"}:
+        receipt = json.loads(storage.read_bytes(proof_key(key)))
+        if case == "rows":
+            receipt["rows"] = receipt["proof"]["rows"] = 2
+        elif case == "schema":
+            receipt["proof"]["schema_sha256"] = "d" * 64
+        else:
+            receipt["proof"]["missing_from_copy"] = 1
+        (storage.root / proof_key(key)).write_text(json.dumps(receipt), encoding="utf8")
+    with pytest.raises(ValueError, match="edition_identity"):
+        archive_assignments(storage, "stm", ["c" * 64])
+
+
+def test_proven_copy_of_another_edition_refuses_instead_of_becoming_empty(tmp_path):
+    storage = store(tmp_path)
+    assigned = {133: "c" * 64 + ".v133"}
+    bootstrap(
+        storage,
+        "SELECT 'sample' AS provider_id, 133::BIGINT AS dataset_version_id, "
+        "NULL::VARCHAR AS checksum_sha256, repeat('c',64) AS content_hash, "
+        "'static_schedule' AS dataset_kind, true AS is_current, "
+        "TIMESTAMPTZ '2026-11-01 00:00:00+00' AS loaded_at_utc",
+        assignments=assigned,
+    )
+    archive(storage, "silver.trips", assigned[133], "SELECT 132::BIGINT AS dataset_version_id")
+    root = tmp_path / "inputs"
+    root.mkdir()
+    with pytest.raises(ValueError, match="edition_identity") as error:
+        fetch_replay_inputs(
+            storage, root, "sample", STAMP, lambda _: [InputNeed("silver.trips", "edition:133")]
+        )
+    assert error.value.reason == "edition_identity"
+    assert not list(root.glob("silver.*"))
 
 
 @pytest.mark.parametrize("missing", [True, False])
