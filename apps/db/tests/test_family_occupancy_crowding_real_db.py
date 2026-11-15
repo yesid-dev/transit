@@ -36,15 +36,17 @@ RELATIONS = (
 )
 
 
-def seed_facts(conn, seed_provider, request, rows, feed_stamps):
-    seed_provider(conn, PROVIDER, display_name="Occupancy seed", timezone=request.timezone)
-    params = dict(p=PROVIDER, e=98110001, r=98110002, s=98110003, ts=request.as_of_utc, n=len(rows))
+def seed_facts(conn, seed_provider, request, rows, feed_stamps, *, provider_id):
+    seed_provider(conn, provider_id, display_name="Occupancy seed", timezone=request.timezone)
+    params = dict(
+        p=provider_id, e=98110001, r=98110002, s=98110003, ts=request.as_of_utc, n=len(rows)
+    )
     real_db_seed.feed_endpoints(conn, params)
     real_db_seed.ingestion_runs(conn, params)
     real_db_seed.realtime_snapshot_index(conn, params)
     for index, (route, stop, occupancy, delay, capture, key) in enumerate(rows):
         values = dict(
-            p=PROVIDER,
+            p=provider_id,
             s=params["s"],
             i=index,
             route=route,
@@ -74,7 +76,7 @@ def seed_facts(conn, seed_provider, request, rows, feed_stamps):
             name = relation.removeprefix("gold.")
             rollups._write_daily_rollup(
                 conn,
-                provider_id=PROVIDER,
+                provider_id=provider_id,
                 rollup_kind=name,
                 upsert=rollups.REBUILDABLE_KINDS[name].upsert,
                 local_date=day,
@@ -98,7 +100,7 @@ def test_family_matches_postgres_on_exported_fallback_inputs(
     request = replace(request, provider_id=PROVIDER)
     try:
         with real_db_engine.begin() as conn:
-            seed_facts(conn, seed_provider, request, rows, feeds)
+            seed_facts(conn, seed_provider, request, rows, feeds, provider_id=PROVIDER)
         # The exporter owns a read-only transaction on an idle autocommit connection.
         with real_db_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
             for need in builder.inputs(request):
