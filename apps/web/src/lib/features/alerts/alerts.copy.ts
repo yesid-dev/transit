@@ -34,18 +34,18 @@ export const alertHistoryCopy = defineCopy({
 		cards: {
 			window: {
 				title: 'Avis dans la fenêtre',
-				subtitle: 'Combien d’avis, et combien de temps ont duré ceux qui sont résolus ?',
+				subtitle: 'Combien d’avis, et quelle durée l’agence annonçait-elle ?',
 			},
 			breakdown: {
 				title: 'Répartition',
 				subtitle: 'Qu’est-ce qui a causé les perturbations, et quelle était leur gravité ?',
 			},
 			log: {
-				title: 'Avis passés',
+				title: 'Archive des avis',
 				subtitle: 'Que s’est-il passé, et quand ?',
 			},
 		},
-		logSection: 'Avis passés',
+		logSection: 'Archive des avis',
 		logListLabel: 'Avis de service passés, du plus récent au plus ancien',
 		count: (shown: number, total: number) =>
 			`${shown} sur ${total} avis ${shown === 1 ? 'affiché' : 'affichés'}`,
@@ -131,7 +131,7 @@ export const alertHistoryCopy = defineCopy({
 			value: (count: number) => intl.number('fr').format(count),
 			explanation:
 				'Le nombre d’avis de service actifs dans la plage de dates choisie, avec leur durée médiane. On compte les avis distincts, jamais une estimation.',
-			median: (min: number) => `durée médiane ${min} min`,
+			median: (min: number) => `durée médiane annoncée ${min} min`,
 			tip: 'Le nombre d’avis distincts dont la fenêtre active recoupe la plage choisie.',
 			linkLabel: 'Comment c’est mesuré',
 		},
@@ -144,7 +144,7 @@ export const alertHistoryCopy = defineCopy({
 			byEffectLabel: 'Répartition des avis par effet',
 			bySeverityLabel: 'Répartition des avis par gravité',
 			buckets: (count: number) => `${intl.number('fr').format(count)} avis`,
-			median: (min: number) => `durée médiane ${min} min`,
+			median: (min: number) => `durée médiane annoncée ${min} min`,
 			unspecified: 'Non précisé',
 		},
 	},
@@ -173,18 +173,18 @@ export const alertHistoryCopy = defineCopy({
 		cards: {
 			window: {
 				title: 'Alerts in window',
-				subtitle: 'How many alerts were there, and how long did resolved ones last?',
+				subtitle: 'How many alerts were there, and how long did the agency say they would last?',
 			},
 			breakdown: {
 				title: 'Breakdown',
 				subtitle: 'What caused the disruptions, and how serious were they?',
 			},
 			log: {
-				title: 'Past alerts',
+				title: 'Alert archive',
 				subtitle: 'What happened, and when?',
 			},
 		},
-		logSection: 'Past alerts',
+		logSection: 'Alert archive',
 		logListLabel: 'Past service alerts, newest first',
 		count: (shown, total) => `Showing ${shown} of ${alertCount(total)}`,
 		more: (n) => `+${n} more`,
@@ -266,7 +266,7 @@ export const alertHistoryCopy = defineCopy({
 			value: (count) => intl.number('en').format(count),
 			explanation:
 				'How many service alerts were active in the chosen date range, with their median duration. We count distinct alerts, never an estimate.',
-			median: (min) => `median duration ${min} min`,
+			median: (min) => `median stated duration ${min} min`,
 			tip: 'The count of distinct alerts whose active window overlaps the chosen range.',
 			linkLabel: 'How this is measured',
 		},
@@ -279,7 +279,7 @@ export const alertHistoryCopy = defineCopy({
 			byEffectLabel: 'Alert distribution by effect',
 			bySeverityLabel: 'Alert distribution by severity',
 			buckets: alertCount,
-			median: (min) => `median duration ${min} min`,
+			median: (min) => `median stated duration ${min} min`,
 			unspecified: 'Unspecified',
 		},
 	},
