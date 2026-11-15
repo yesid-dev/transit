@@ -5,7 +5,10 @@
 		readonly figure: string | null;
 		readonly figureText: string;
 		readonly averageDelay: string;
+		/** The late count, never the total in its place. */
 		readonly lateReadings: string;
+		/** The total, shown on its own only when the late count is not published. */
+		readonly readings: string | null;
 		readonly interval: string;
 		readonly seen: string;
 	}
@@ -73,8 +76,14 @@
 		</div>
 		<div>
 			<dt>{copy.evidence.lateReadings}</dt>
-			<dd>{view.lateReadings}</dd>
+			<dd data-slot="offender-late-readings">{view.lateReadings}</dd>
 		</div>
+		{#if view.readings != null}
+			<div>
+				<dt>{copy.evidence.readings}</dt>
+				<dd data-slot="offender-readings">{view.readings}</dd>
+			</div>
+		{/if}
 		<div>
 			<dt>{copy.evidence.interval}</dt>
 			<dd data-slot="offender-interval">{view.interval}</dd>

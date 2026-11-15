@@ -132,7 +132,8 @@ export const copy = defineCopy({
 				`${late} of ${readings} (${share})`,
 			interval: 'Uncertainty range for that share',
 			intervalValue: (lower: string, upper: string) => `${lower} to ${upper}`,
-			noInterval: 'Not published in this record',
+			notPublished: 'Not published in this record',
+			readings: 'Readings',
 			seen: 'Days seen in the period',
 			seenValue: (seen: string, window: string) => `${seen} of ${window}`,
 			period: 'Complete period',
@@ -176,8 +177,8 @@ export const copy = defineCopy({
 		unranked: {
 			title: 'Published rows not ranked',
 			label: { trip: 'Published trips not ranked', vehicle: 'Published buses not ranked' },
-			summary: (kind: Kind, n: number, shown: string, complete: boolean) =>
-				`${shown} published ${kind === 'trip' ? (n === 1 ? 'trip' : 'trips') : n === 1 ? 'bus' : 'buses'} below the rule.${complete ? '' : ' The record lists only part of them.'}`,
+			summary: (kind: Kind, n: number, shown: string, complete: boolean, belowRule: boolean) =>
+				`${shown} published ${kind === 'trip' ? (n === 1 ? 'trip' : 'trips') : n === 1 ? 'bus' : 'buses'} ${belowRule ? 'below the rule' : 'not ranked'}.${complete ? '' : ' The record lists only part of them.'}`,
 			none: {
 				trip: 'This record lists no trip below the rule.',
 				vehicle: 'This record lists no bus below the rule.',
@@ -186,6 +187,9 @@ export const copy = defineCopy({
 				readings: 'Fewer than 30 readings.',
 				observedDays: 'Seen on fewer than 3 days.',
 				lateDays: 'Late on fewer than 2 days.',
+				readingsUnknown: 'Reading count not published.',
+				observedDaysUnknown: 'Days seen not published.',
+				lateDaysUnknown: 'Late days not published.',
 			} satisfies Record<UnrankedReason, string>,
 			unexplained: 'Not ranked in this record.',
 		},
@@ -315,7 +319,8 @@ export const copy = defineCopy({
 				`${late} sur ${readings} (${share})`,
 			interval: 'Intervalle d’incertitude de cette part',
 			intervalValue: (lower: string, upper: string) => `de ${lower} à ${upper}`,
-			noInterval: 'Non publié dans ce bilan',
+			notPublished: 'Non publié dans ce bilan',
+			readings: 'Relevés',
 			seen: 'Jours observés dans la période',
 			seenValue: (seen: string, window: string) => `${seen} sur ${window}`,
 			period: 'Période complète',
@@ -360,8 +365,8 @@ export const copy = defineCopy({
 		unranked: {
 			title: 'Rangées publiées non classées',
 			label: { trip: 'Trajets publiés non classés', vehicle: 'Bus publiés non classés' },
-			summary: (kind: Kind, n: number, shown: string, complete: boolean) =>
-				`${shown} ${kind !== 'vehicle' ? (n < 2 ? 'trajet publié' : 'trajets publiés') : n < 2 ? 'bus publié' : 'bus publiés'} sous la règle.${complete ? '' : ' Le bilan n’en liste qu’une partie.'}`,
+			summary: (kind: Kind, n: number, shown: string, complete: boolean, belowRule: boolean) =>
+				`${shown} ${kind !== 'vehicle' ? (n < 2 ? 'trajet publié' : 'trajets publiés') : n < 2 ? 'bus publié' : 'bus publiés'} ${belowRule ? 'sous la règle' : n < 2 ? 'non classé' : 'non classés'}.${complete ? '' : ' Le bilan n’en liste qu’une partie.'}`,
 			none: {
 				trip: 'Ce bilan ne liste aucun trajet sous la règle.',
 				vehicle: 'Ce bilan ne liste aucun bus sous la règle.',
@@ -370,6 +375,9 @@ export const copy = defineCopy({
 				readings: 'Moins de 30 relevés.',
 				observedDays: 'Vu moins de 3 jours.',
 				lateDays: 'En retard moins de 2 jours.',
+				readingsUnknown: 'Nombre de relevés non publié.',
+				observedDaysUnknown: 'Jours observés non publiés.',
+				lateDaysUnknown: 'Jours en retard non publiés.',
 			} satisfies Record<UnrankedReason, string>,
 			unexplained: 'Non classé dans ce bilan.',
 		},

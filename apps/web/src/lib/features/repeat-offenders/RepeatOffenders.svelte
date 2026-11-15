@@ -53,6 +53,7 @@
 		type RankedOffender,
 	} from './selectors/offenderRanking';
 	import { offenderIdentity } from './offenderNames';
+	import { isMeasured } from './selectors/offenderRanking';
 	import RepeatOffendersSection, {
 		type OffenderRowView,
 	} from './sections/RepeatOffendersSection.svelte';
@@ -229,13 +230,19 @@
 			figure: days ? t.evidence.figure(count(lateDays), count(observedDays)) : null,
 			figureText: days ? t.evidence.lateDays(lateDays, observedDays) : t.lateDaysUnknown,
 			averageDelay: minutes(figures.averageDelayMin) ?? t.averageDelayUnknown,
+			// The late count is never stood in for by the total: unknown stays unknown.
 			lateReadings:
-				readings != null && lateReadings != null && latePct != null
-					? t.evidence.lateShare(count(lateReadings), readingsText(figures), pct(latePct))
-					: readingsText(figures),
+				lateReadings == null
+					? t.evidence.notPublished
+					: readings == null
+						? t.readings(lateReadings, count(lateReadings))
+						: latePct == null
+							? t.evidence.figure(count(lateReadings), readingsText(figures))
+							: t.evidence.lateShare(count(lateReadings), readingsText(figures), pct(latePct)),
+			readings: lateReadings == null ? readingsText(figures) : null,
 			interval: interval
 				? t.evidence.intervalValue(pct(interval.lower), pct(interval.upper))
-				: t.evidence.noInterval,
+				: t.evidence.notPublished,
 			seen:
 				observedDays == null
 					? t.lateDaysUnknown
@@ -524,6 +531,10 @@
 										unranked.rows.length,
 										count(unranked.rows.length),
 										unranked.complete,
+										unranked.rows.every(
+											(row) =>
+												row.reasons.length > 0 && row.reasons.every((reason) => isMeasured(reason)),
+										),
 									)}
 								</p>
 							{/snippet}

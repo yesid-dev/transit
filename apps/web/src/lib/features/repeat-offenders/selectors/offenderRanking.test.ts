@@ -188,6 +188,39 @@ describe('readOffenderRanking', () => {
 		expect(result.unranked.complete).toBe(true);
 	});
 
+	it.each([
+		[
+			'readings',
+			{ observation_count: null, severe_count: null, severe_pct: null },
+			'readingsUnknown',
+		],
+		['days seen', { observed_days: null }, 'observedDaysUnknown'],
+		['late days', { recurrence_days: null }, 'lateDaysUnknown'],
+	] as const)(
+		'keeps a row with unpublished %s unranked as unknown, never as fewer than the floor',
+		(_case, over, unknown) => {
+			const row = seedRow('trip', null, { wilson_lo: null, wilson_hi: null, ...over });
+			const result = readOffenderRanking(seedGrain({ entries: [], tray: [row] }), 'trip');
+			if (result.state !== 'none') throw new Error('Expected no ranked trip');
+			expect(result.unranked.rows[0].reasons).toEqual([unknown]);
+		},
+	);
+
+	it('says fewer than the floor only for a published count below it, zero included', () => {
+		const zero = seedRow('trip', null, {
+			observation_count: 0,
+			severe_count: 0,
+			severe_pct: null,
+			wilson_lo: null,
+			wilson_hi: null,
+			recurrence_days: 0,
+			observed_days: 0,
+		});
+		const result = readOffenderRanking(seedGrain({ entries: [], tray: [zero] }), 'trip');
+		if (result.state !== 'none') throw new Error('Expected no ranked trip');
+		expect(result.unranked.rows[0].reasons).toEqual(['readings', 'observedDays', 'lateDays']);
+	});
+
 	it('moves rows ranked under an earlier rule to not ranked and keeps the publisher’s numbers', () => {
 		// Today’s files: a one-day trip ranked first by the earlier rule.
 		const grain = seedGrain({

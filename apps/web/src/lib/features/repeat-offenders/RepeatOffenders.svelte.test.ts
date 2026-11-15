@@ -431,6 +431,88 @@ describe('RepeatOffenders', () => {
 		expect(within(unranked()).getAllByRole('listitem')).toHaveLength(10);
 	});
 
+	it.each([
+		[
+			'en',
+			'2 published trips not ranked.',
+			'Reading count not published. Days seen not published. Late days not published.',
+			'Fewer than 30 readings. Seen on fewer than 3 days. Late on fewer than 2 days.',
+		],
+		[
+			'fr',
+			'2 trajets publiés non classés.',
+			'Nombre de relevés non publié. Jours observés non publiés. Jours en retard non publiés.',
+			'Moins de 30 relevés. Vu moins de 3 jours. En retard moins de 2 jours.',
+		],
+	] as const)(
+		'tells unpublished eligibility counts from measured ones below the rule in %s',
+		(locale, summary, unknown, measured) => {
+			currentLocale.value = locale;
+			const data = seed();
+			const base = { rank: null, type: 'trip', route: '36', window_days: 7 };
+			data.by_grain![0].tray = [
+				{ ...base, id: 'UNPUBLISHED' },
+				{
+					...base,
+					id: 'ZERO',
+					observation_count: 0,
+					severe_count: 0,
+					recurrence_days: 0,
+					observed_days: 0,
+				},
+			];
+			data.by_grain![0].tray_total = 2;
+			show(data);
+
+			const [absent, zero] = within(
+				screen.getByRole('list', {
+					name: locale === 'en' ? 'Published trips not ranked' : 'Trajets publiés non classés',
+				}),
+			).getAllByRole('listitem');
+			expect(absent).toHaveTextContent(unknown);
+			expect(absent.textContent).not.toMatch(/Fewer than|Moins de|fewer than|moins de/);
+			expect(zero).toHaveTextContent(measured);
+			// Eligibility is not established for every listed row, so the summary stays neutral.
+			expect(screen.getByText(summary)).toBeInTheDocument();
+		},
+	);
+
+	it.each([
+		['en', 'Not published in this record', 'Readings', '90 readings', '60 of 90 readings'],
+		['fr', 'Non publié dans ce bilan', 'Relevés', '90 relevés', '60 sur 90 relevés'],
+	] as const)(
+		'never shows the total under the late-readings label in %s',
+		async (locale, unpublished, totalLabel, total, withoutShare) => {
+			currentLocale.value = locale;
+			const lateOf = () =>
+				openEvidence().querySelector('[data-slot="offender-late-readings"]')?.textContent?.trim();
+			const data = seed();
+			const first = data.by_grain![0].entries![0];
+			data.by_grain![0].entries![0] = {
+				...first,
+				severe_count: null,
+				severe_pct: null,
+				wilson_lo: null,
+				wilson_hi: null,
+			};
+			const missing = show(data);
+			await fireEvent.click(rowButtons()[0]);
+			expect(lateOf()).toBe(unpublished);
+			const readings = openEvidence().querySelector('[data-slot="offender-readings"]');
+			expect(readings?.previousElementSibling).toHaveTextContent(totalLabel);
+			expect(readings).toHaveTextContent(total);
+			missing.unmount();
+
+			const shareless = seed();
+			const row = shareless.by_grain![0].entries![0];
+			shareless.by_grain![0].entries![0] = { ...row, severe_pct: null };
+			show(shareless);
+			await fireEvent.click(rowButtons()[0]);
+			expect(lateOf()).toBe(withoutShare);
+			expect(lateOf()).not.toBe(total);
+		},
+	);
+
 	it('keeps unpublished figures absent, never a reassuring zero', async () => {
 		const data = seed();
 		const week = data.by_grain![0];

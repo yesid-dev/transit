@@ -8,8 +8,14 @@ export const OBSERVED_DAYS_FLOOR = 3;
 export const LATE_DAYS_FLOOR = 2;
 
 export type OffenderKind = 'trip' | 'vehicle';
-/** Which part of the rule a not-ranked row misses. */
-export type UnrankedReason = 'readings' | 'observedDays' | 'lateDays';
+/** A published count below its floor. */
+export type MeasuredReason = 'readings' | 'observedDays' | 'lateDays';
+/** Which part of the rule a not-ranked row misses, or cannot show because a count is unpublished. */
+export type UnrankedReason =
+	| MeasuredReason
+	| 'readingsUnknown'
+	| 'observedDaysUnknown'
+	| 'lateDaysUnknown';
 
 /** One published period of the repeat-offenders file (current or a retained day). */
 export interface OffenderGrainSource {
@@ -164,13 +170,23 @@ function figuresOf(entry: RepeatOffenderEntry, windowDays: number | null): Offen
 	};
 }
 
-/** The parts of the rule a row misses; an unpublished figure cannot meet it. */
+/** True when the reason is a published count below its floor, not an unpublished one. */
+export const isMeasured = (reason: UnrankedReason): reason is MeasuredReason =>
+	!reason.endsWith('Unknown');
+
+/**
+ * The parts of the rule a row misses. An unpublished count cannot meet the rule, but it is not
+ * a count below the floor either: it gets its own reason.
+ */
 function missedRule(entry: RepeatOffenderEntry): UnrankedReason[] {
-	const reasons: UnrankedReason[] = [];
-	if ((entry.observation_count ?? 0) < READING_FLOOR) reasons.push('readings');
-	if ((entry.observed_days ?? 0) < OBSERVED_DAYS_FLOOR) reasons.push('observedDays');
-	if ((entry.recurrence_days ?? 0) < LATE_DAYS_FLOOR) reasons.push('lateDays');
-	return reasons;
+	const checks = [
+		[entry.observation_count, READING_FLOOR, 'readings'],
+		[entry.observed_days, OBSERVED_DAYS_FLOOR, 'observedDays'],
+		[entry.recurrence_days, LATE_DAYS_FLOOR, 'lateDays'],
+	] as const;
+	return checks.flatMap(([value, floor, reason]): UnrankedReason[] =>
+		value == null ? [`${reason}Unknown`] : value < floor ? [reason] : [],
+	);
 }
 
 /** More late days first; on equal late days, the longer average delay first. */
