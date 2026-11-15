@@ -109,9 +109,9 @@
 	});
 
 	function close(): void {
+		if (sheet) return sheet.leave(); // the sheet clears the text once it has slid away
 		query = '';
 		open = false;
-		sheet?.leave();
 	}
 
 	async function keydown(event: KeyboardEvent): Promise<void> {
@@ -269,12 +269,15 @@
 		flex: 1;
 		flex-direction: column;
 		align-items: stretch;
+		/* Shrinks to the sheet, so the list scrolls and the pinned row stays on screen. */
+		min-height: 0;
 	}
 	.nav-search-sheet :global(.nav-search-icon) {
 		top: calc((var(--size-tap-min) - 14px) / 2);
 		left: 0.875rem;
 	}
 	.nav-search-sheet .nav-search-input {
+		flex: none;
 		width: 100%;
 		padding-left: 2.25rem;
 		/* At least 16 px, so phones do not zoom into the field. */

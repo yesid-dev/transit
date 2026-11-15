@@ -113,6 +113,7 @@ it('a chosen row replaces the sheet in history and leads to the record', async (
 	expect(back).not.toHaveBeenCalled();
 	expect(view.trigger).not.toHaveFocus();
 	expect(view.behind).not.toHaveAttribute('inert');
+	expect((await show(view)).field).toHaveValue('');
 });
 
 it('Enter with nothing highlighted opens the search page in place of the sheet', async () => {

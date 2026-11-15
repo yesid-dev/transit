@@ -77,6 +77,9 @@
 	function leave(): void {
 		leaving = true;
 		open = false;
+		// The page is live again at once, so the router can announce where the reader lands.
+		restore?.();
+		restore = null;
 	}
 
 	let hadEntry = false;
@@ -127,7 +130,9 @@
 			event.preventDefault();
 			restore?.();
 			restore = null;
-			if (!leaving) trigger?.focus({ preventScroll: true });
+			// After a choice the new page takes focus and the text goes, as in the desktop list.
+			if (leaving) query = '';
+			else trigger?.focus({ preventScroll: true });
 		}}
 	>
 		<div class="search-sheet-top">
