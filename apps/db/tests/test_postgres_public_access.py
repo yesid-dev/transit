@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import os
 import subprocess
 from pathlib import Path
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ACCESS_DIR = REPO_ROOT / "infra" / "postgres-serving-access"
@@ -27,6 +30,102 @@ def _active_lines(text: str) -> list[str]:
         for line in text.splitlines()
         if line.split("#", 1)[0].strip()
     ]
+
+
+def _render_batch_shadow(role: str | None, **settings: str) -> subprocess.CompletedProcess[bytes]:
+    controlled = (
+        "POSTGRES_DB",
+        "POSTGRES_USER",
+        "TRANSIT_APP_ROLE",
+        "TRANSIT_REPORTING_ROLE",
+        "TRANSIT_DB_ROLE",
+        "TRANSIT_DB_PUBLIC_MODE",
+        "TRANSIT_BATCH_SHADOW_ROLE",
+    )
+    env = {name: value for name, value in os.environ.items() if name not in controlled}
+    if role is not None:
+        env["TRANSIT_BATCH_SHADOW_ROLE"] = role
+    env.update(settings)
+    return subprocess.run(["bash", str(HBA_RENDERER)], capture_output=True, check=False, env=env)
+
+
+@pytest.mark.parametrize("role", [None, ""])
+def test_hba_renderer_batch_shadow_disabled_preserves_default_bytes(role) -> None:
+    result = _render_batch_shadow(role)
+
+    assert result.returncode == 0
+    assert result.stderr == b""
+    # Independently captured from the unchanged renderer under Linux Bash.
+    assert hashlib.sha256(result.stdout).hexdigest() == (
+        "8dcfd4e218581d2190a8c11d057e1a628a9c799568109cba86cd6efa073b7b23"
+    )
+
+
+@pytest.mark.parametrize("mode", ["ssh", "allow"])
+@pytest.mark.parametrize(
+    "database,role", [("transit", "transit_batch_shadow"), ("analytics", "batch-shadow_2")]
+)
+def test_hba_renderer_batch_shadow_adds_only_one_ipv4_rule_before_rejects(mode, database, role):
+    settings = {"POSTGRES_DB": database, "TRANSIT_DB_PUBLIC_MODE": mode}
+    default = _render_batch_shadow(None, **settings)
+    enabled = _render_batch_shadow(role, **settings)
+
+    assert default.returncode == enabled.returncode == 0
+    assert default.stderr == enabled.stderr == b""
+    expected = f"hostssl {database} {role} 0.0.0.0/0 scram-sha-256"
+    lines = _active_lines(enabled.stdout.decode())
+    assert [line for line in lines if role in line.split()] == [expected]
+    assert lines[lines.index("hostnossl all all 0.0.0.0/0 reject") - 1] == expected
+    physical = enabled.stdout.splitlines(keepends=True)
+    extra = [line for line in physical if role.encode() in line.split()]
+    assert len(extra) == 1
+    assert b"".join(line for line in physical if line != extra[0]) == default.stdout
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        "all",
+        "ALL",
+        "bad role",
+        " leading",
+        "trailing ",
+        " ",
+        "\t",
+        "shadow\nhost all all 0.0.0.0/0 trust",
+        "bad/role",
+        "role,other",
+        "123shadow",
+        "-shadow",
+    ],
+)
+def test_hba_renderer_batch_shadow_invalid_identifier_refuses_before_output(role):
+    result = _render_batch_shadow(role)
+
+    assert result.returncode == 64
+    assert result.stdout == b""
+    assert b"invalid TRANSIT_BATCH_SHADOW_ROLE" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "role,settings",
+    [
+        ("transit", {}),
+        ("transit_app", {}),
+        ("transit-reporting", {}),
+        ("transit-db", {}),
+        ("owner2", {"POSTGRES_USER": "owner2"}),
+        ("app2", {"TRANSIT_APP_ROLE": "app2"}),
+        ("reporting2", {"TRANSIT_REPORTING_ROLE": "reporting2"}),
+        ("db2", {"TRANSIT_DB_ROLE": "db2"}),
+    ],
+)
+def test_hba_renderer_batch_shadow_collision_refuses_before_output(role, settings):
+    result = _render_batch_shadow(role, **settings)
+
+    assert result.returncode == 64
+    assert result.stdout == b""
+    assert b"invalid TRANSIT_BATCH_SHADOW_ROLE" in result.stderr
 
 
 def test_hba_renderer_limits_public_access_to_tls_reporting_and_app_owner() -> None:

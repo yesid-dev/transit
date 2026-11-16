@@ -7,6 +7,7 @@ app_login_role="${TRANSIT_APP_ROLE:-transit_app}"
 reporting_role="${TRANSIT_REPORTING_ROLE:-transit-reporting}"
 db_role="${TRANSIT_DB_ROLE:-transit-db}"
 db_public_mode="${TRANSIT_DB_PUBLIC_MODE:-ssh}"
+batch_shadow_role="${TRANSIT_BATCH_SHADOW_ROLE:-}"
 
 validate_hba_identifier() {
   local name="$1"
@@ -28,6 +29,16 @@ validate_hba_identifier "POSTGRES_USER" "$app_role"
 validate_hba_identifier "TRANSIT_APP_ROLE" "$app_login_role"
 validate_hba_identifier "TRANSIT_REPORTING_ROLE" "$reporting_role"
 validate_hba_identifier "TRANSIT_DB_ROLE" "$db_role"
+
+if [[ -n "$batch_shadow_role" ]]; then
+  validate_hba_identifier "TRANSIT_BATCH_SHADOW_ROLE" "$batch_shadow_role"
+  for existing_role in "$app_role" "$app_login_role" "$reporting_role" "$db_role"; do
+    if [[ "$batch_shadow_role" == "$existing_role" ]]; then
+      printf 'invalid TRANSIT_BATCH_SHADOW_ROLE: collides with existing role: %q\n' "$batch_shadow_role" >&2
+      exit 64
+    fi
+  done
+fi
 
 cat <<HBA
 # Managed by Transit. Public TCP is limited to TLS + app owner/reporting.
@@ -58,6 +69,10 @@ if [[ "$db_public_mode" == "allow" ]]; then
 hostssl     ${database}   ${db_role}          0.0.0.0/0       scram-sha-256
 hostssl     ${database}   ${db_role}          ::/0            scram-sha-256
 HBA
+fi
+
+if [[ -n "$batch_shadow_role" ]]; then
+  printf 'hostssl     %s   %s   0.0.0.0/0       scram-sha-256\n' "$database" "$batch_shadow_role"
 fi
 
 cat <<HBA
