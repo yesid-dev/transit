@@ -89,9 +89,12 @@ test.describe('accessibility', { tag: '@theme' }, () => {
 					});
 				}
 				// As in the layout audit below, scan after client-side fixture data settles.
-				await page.goto(lineLive ? localizeHref(path, locale, 'stm') : url, {
-					waitUntil: 'networkidle',
-				});
+				await page.goto(
+					lineLive || path.startsWith('/trip/') ? localizeHref(path, locale, 'stm') : url,
+					{
+						waitUntil: 'networkidle',
+					},
+				);
 				await expect(page.getByRole('main')).toBeVisible();
 				if (lineLive) {
 					const pane = page.locator('[data-slot="line-directions"][data-mode="live"]');
@@ -117,14 +120,25 @@ test.describe('accessibility', { tag: '@theme' }, () => {
 					expect(scanned).toBe(lineStopCount);
 				}
 				if (path === `/trip/${tripId}`) {
-					await expect(page.locator('.trip-stop-link')).toHaveCount(trips[tripId].stops.length);
-					for (const [index, link] of (await page.locator('.trip-stop-link').all()).entries()) {
-						await link.scrollIntoViewIfNeeded();
-						await link.evaluate(
-							(element, index) => element.setAttribute('data-axe-stop', String(index)),
+					const count = trips[tripId].stops.length;
+					const table = page.getByRole('table', {
+						name: tripCopy[locale].reportedPredictions,
+						exact: true,
+					});
+					await expect(table.getByRole('rowheader')).toHaveCount(Math.min(6, count));
+					if (count > 6)
+						await page
+							.getByRole('button', { name: tripCopy[locale].showAll(count), exact: true })
+							.click();
+					const rows = table.locator('tbody tr');
+					await expect(rows).toHaveCount(count);
+					for (const [index, row] of (await rows.all()).entries()) {
+						await row.scrollIntoViewIfNeeded();
+						await row.evaluate(
+							(element, index) => element.setAttribute('data-axe-trip-row', String(index)),
 							index,
 						);
-						await expectAccessible(page, { include: `[data-axe-stop="${index}"]` });
+						await expectAccessible(page, { include: `[data-axe-trip-row="${index}"]` });
 					}
 				}
 				if (path === '/trip/TEmpty') {
@@ -190,7 +204,9 @@ for (const locale of PUBLISHED_LOCALES) {
 			page,
 		}) => {
 			// networkidle: the client-side data lands before the page is measured.
-			await page.goto(url, { waitUntil: 'networkidle' });
+			await page.goto(path.startsWith('/trip/') ? localizeHref(path, locale, 'stm') : url, {
+				waitUntil: 'networkidle',
+			});
 			await page.keyboard.press('Tab');
 			await expect(page.locator(':focus')).toHaveAttribute('href', '#main');
 			await expect(page.locator(':focus')).toHaveAccessibleName(navPillCopy[locale].skipToContent);

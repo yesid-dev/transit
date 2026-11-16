@@ -134,44 +134,34 @@ for (const locale of ['en', 'fr'] as const)
 			await expect(link).toHaveAccessibleName(new RegExp(name.split(' / ')[0]));
 			await expect(link.locator('[title]')).toHaveAttribute('title', name);
 			const geometry = await link.evaluate((el) => {
+				const row = el.closest('tr')!;
 				const name = el.querySelector('.trip-stop-name')!;
-				const time = el.querySelector('time')!;
+				const time = row.querySelector('time')!;
 				const nr = name.getBoundingClientRect(),
-					tr = time.getBoundingClientRect();
+					tr = time.getBoundingClientRect(),
+					lr = el.getBoundingClientRect();
 				return {
-					height: nr.height,
-					lineHeight: parseFloat(getComputedStyle(name).lineHeight),
+					clipped:
+						name.scrollHeight > name.clientHeight + 1 || name.scrollWidth > name.clientWidth + 1,
 					nameTop: nr.top,
 					nameBottom: nr.bottom,
+					nameRight: nr.right,
 					timeTop: tr.top,
 					timeBottom: tr.bottom,
+					timeLeft: tr.left,
+					linkHeight: lr.height,
 				};
 			});
-			expect(geometry.height).toBeLessThanOrEqual(geometry.lineHeight * 2 + 1);
-			// The header is centred, so every wrapped line of its actions is too.
-			const offCentre = await page.locator('.trip-head-actions').evaluate((row) => {
-				const edge = row.getBoundingClientRect();
-				const lines = new Map<number, DOMRect[]>();
-				for (const child of row.children) {
-					const box = child.getBoundingClientRect();
-					if (box.width === 0) continue;
-					const middle = Math.round((box.top + box.bottom) / 2);
-					lines.set(middle, [...(lines.get(middle) ?? []), box]);
-				}
-				return [...lines.values()].map((boxes) =>
-					Math.abs(
-						Math.min(...boxes.map((b) => b.left)) -
-							edge.left -
-							(edge.right - Math.max(...boxes.map((b) => b.right))),
-					),
-				);
-			});
-			expect(offCentre.length).toBeGreaterThan(0);
-			for (const gap of offCentre) expect(gap).toBeLessThanOrEqual(2);
-			if (page.viewportSize()!.width >= 1280) {
+			expect(geometry.clipped).toBe(false);
+			expect(geometry.linkHeight).toBeGreaterThanOrEqual(44);
+			if (page.viewportSize()!.width >= 1024) {
+				expect(geometry.nameRight).toBeLessThanOrEqual(geometry.timeLeft);
 				expect(geometry.timeTop).toBeLessThan(geometry.nameBottom);
 				expect(geometry.timeBottom).toBeGreaterThan(geometry.nameTop);
-			}
+			} else expect(geometry.timeTop).toBeGreaterThanOrEqual(geometry.nameBottom);
+			expect(await page.locator('html').evaluate((el) => el.scrollWidth)).toBeLessThanOrEqual(
+				page.viewportSize()!.width,
+			);
 		});
 
 for (const locale of ['en', 'fr'] as const)
