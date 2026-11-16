@@ -329,6 +329,14 @@ export const reliabilityCopy = defineCopy({
 			copyFallback: 'Copiez ce texte :',
 			citation: (a: CitationArgs) =>
 				`Transit (${a.host}). Ligne ${a.line}, ${a.provider}\u00a0: ${a.figure} des relevés à l’heure, ${a.dates}, ${a.readings == null ? 'nombre de relevés non publié' : `selon ${a.readings} relevés`}.${identity([a.published && `bilan publié le ${a.published}`, a.generation && `génération ${a.generation}`, a.method && `méthode ${a.method}`])} ${a.href}`,
+			edition: {
+				corrected: (published: string) =>
+					`Ce bilan a été corrigé après la création de ce lien. Voici l’édition actuelle, publiée le ${published}.`,
+				different: 'Ce lien renvoie à une autre publication. Voici le bilan disponible.',
+				unverifiable:
+					'Le bilan disponible ne fournit pas assez de détails de publication pour vérifier l’édition visée par ce lien.',
+				unavailable: 'L’édition visée par ce lien n’est pas disponible pour ces dates.',
+			},
 			daily: {
 				title: 'Jour par jour',
 				summary: (low: string, high: string, lowDay: string) =>
@@ -640,6 +648,14 @@ export const reliabilityCopy = defineCopy({
 			copyFallback: 'Copy this text:',
 			citation: (a) =>
 				`Transit (${a.host}). Line ${a.line}, ${a.provider}: ${a.figure} of readings on time, ${a.dates}, ${a.readings == null ? 'reading count not published' : `based on ${a.readings} readings`}.${identity([a.published && `record published ${a.published}`, a.generation && `generation ${a.generation}`, a.method && `method ${a.method}`])} ${a.href}`,
+			edition: {
+				corrected: (published: string) =>
+					`This record was corrected after this link was made. Showing the current edition, published ${published}.`,
+				different: 'This link refers to another publication. Showing the available record.',
+				unverifiable:
+					'The available record does not supply enough publication details to verify this link’s edition.',
+				unavailable: 'The edition requested by this link is not available for these dates.',
+			},
 			daily: {
 				title: 'Day by day',
 				summary: (low, high, lowDay) => `Between ${low} and ${high} each day. Lowest on ${lowDay}.`,

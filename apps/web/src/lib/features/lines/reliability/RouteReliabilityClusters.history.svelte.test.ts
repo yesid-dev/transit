@@ -390,6 +390,8 @@ describe('RouteReliabilityClusters retained Line history', () => {
 				readings_basis: 'in_clamp_delay_predictions',
 				record_readings: '100',
 			});
+			const retainedUrl = new URL(downloadedTable(link('record')!)[0].record_url);
+			expect(retainedUrl.searchParams.get('generation')).toBe('retained-g');
 			expect(downloadedTable(link('severe-readings')!)[0]).toMatchObject({
 				late_share_pct: '2',
 				readings: '100',
@@ -414,6 +416,7 @@ describe('RouteReliabilityClusters retained Line history', () => {
 				publication_generation_id: 'current-g1',
 				publication_methodology_version: 'current-method',
 			});
+			expect(new URL(relative[0].record_url).searchParams.get('generation')).toBe('current-g1');
 			expect(downloadedTable(link('crowding-mix')!)[0]).toMatchObject({
 				source: 'retained_partitions',
 				scope: 'window',
@@ -434,6 +437,7 @@ describe('RouteReliabilityClusters retained Line history', () => {
 				readings: '40',
 				publication_generation_id: 'current-g1',
 			});
+			expect(new URL(diagnostic().record_url).searchParams.get('generation')).toBe('current-g1');
 			expect(link('time-of-day')).toBeNull();
 			expect(link('gaps')).toBeNull();
 			expect(link('stop-delays')).toBeNull();
@@ -457,7 +461,11 @@ describe('RouteReliabilityClusters retained Line history', () => {
 					publication_generation_id: 'current-g2',
 				}),
 			);
+			expect(new URL(diagnostic().record_url).searchParams.get('generation')).toBe('current-g2');
 			expect(downloadedTable(link('record')!)[0].publication_generation_id).toBe('retained-g');
+			expect(
+				new URL(downloadedTable(link('record')!)[0].record_url).searchParams.get('generation'),
+			).toBe('retained-g');
 		} finally {
 			history.destroy();
 		}
@@ -923,6 +931,97 @@ describe('RouteReliabilityClusters retained Line history', () => {
 			expect(link.getAttribute('href')).not.toMatch(/[?&](?:tab|grain|from|to)=/);
 		}
 		history.destroy();
+	});
+
+	it('marks a current-file link unverifiable when the settled retained range supplies no generation', async () => {
+		harness.page.url = new URL(
+			'http://localhost/lines/A%2FB?tab=reliability&from=2026-01-31&to=2026-02-01&generation=current-g&published=2026-11-11T06%3A00%3A00Z&method=current-method',
+		);
+		const history = createHistory();
+		const view = render(RouteReliabilityClusters, {
+			props: { data: current, locale: 'en', history },
+		});
+		try {
+			await waitFor(() => expect(history.state).toBe('ready'));
+			const notice = view.container.querySelector('[data-slot="record-edition"]');
+			expect(notice).toHaveTextContent(reliabilityCopy.en.record.edition.unverifiable);
+		} finally {
+			history.destroy();
+		}
+	});
+
+	it('states a corrected retained edition from its own newer publication, never the current file', async () => {
+		harness.page.url = new URL(
+			'http://localhost/lines/A%2FB?tab=reliability&from=2026-01-31&to=2026-02-01&generation=retained-old&published=2026-01-01T00%3A00%3A00Z&method=reliability-1',
+		);
+		harness.loadLineHistoryRange.mockResolvedValue([
+			{
+				...retainedPartitions[0],
+				generated_utc: '2026-07-13T12:00:00Z',
+				publish_generation_id: 'retained-g',
+				methodology_version: 'reliability-2',
+			},
+			{
+				...retainedPartitions[1],
+				generated_utc: '2026-07-13T12:00:00Z',
+				publish_generation_id: 'retained-g',
+				methodology_version: 'reliability-2',
+			},
+		]);
+		const history = createHistory();
+		const view = render(RouteReliabilityClusters, {
+			props: { data: current, locale: 'en', history },
+		});
+		try {
+			await waitFor(() => expect(history.state).toBe('ready'));
+			const notice = view.container.querySelector('[data-slot="record-edition"]');
+			expect(notice).toHaveTextContent(reliabilityCopy.en.record.edition.corrected('Jul 13, 2026'));
+			expect(notice).not.toHaveTextContent('Nov 11, 2026');
+		} finally {
+			history.destroy();
+		}
+	});
+
+	it.each(['loading-range', 'error'] as const)(
+		'makes no edition conclusion while the retained read is %s',
+		(state) => {
+			harness.page.url = new URL(
+				'http://localhost/lines/A%2FB?tab=reliability&from=2026-01-31&to=2026-02-01&generation=old-g&published=2026-01-01T00%3A00%3A00Z&method=old',
+			);
+			const view = render(RouteReliabilityClusters, {
+				props: { data: current, locale: 'en', history: staticHistory(state) },
+			});
+			expect(view.container.querySelector('[data-slot="record-edition"]')).toBeNull();
+		},
+	);
+
+	it('says the requested edition is unavailable for a settled retained no-data period', () => {
+		harness.page.url = new URL(
+			'http://localhost/lines/A%2FB?tab=reliability&from=2026-01-31&to=2026-02-01&generation=old-g&published=2026-01-01T00%3A00%3A00Z&method=old',
+		);
+		const view = render(RouteReliabilityClusters, {
+			props: { data: current, locale: 'en', history: staticHistory('no-data') },
+		});
+		expect(view.container.querySelector('[data-slot="record-edition"]')).toHaveTextContent(
+			reliabilityCopy.en.record.edition.unavailable,
+		);
+	});
+
+	it('strips the record period and edition hints from the Record→Live link', async () => {
+		harness.page.url = new URL(
+			'http://localhost/lines/A%2FB?tab=reliability&grain=week&provider=stm&focus=keep&generation=old&published=2026-01-01T00%3A00%3A00Z&method=old',
+		);
+		const view = render(RouteReliabilityClusters, {
+			props: { data: current, locale: 'en' },
+		});
+		const section = view.container.querySelector<HTMLElement>('[data-band="run-and-fit"]')!;
+		const href = within(section).getByRole('link', { name: 'See live now' }).getAttribute('href')!;
+		const url = new URL(href, 'http://localhost');
+		expect(url.searchParams.get('tab')).toBe('detail');
+		expect(url.searchParams.get('provider')).toBe('stm');
+		expect(url.searchParams.get('focus')).toBe('keep');
+		for (const key of ['grain', 'from', 'to', 'generation', 'published', 'method'])
+			expect(url.searchParams.get(key)).toBeNull();
 	});
 
 	it('defines honest retained-history and current-only copy in English and French', () => {

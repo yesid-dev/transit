@@ -121,7 +121,7 @@ describe('line Record: one answer, its evidence and its actions', () => {
 				attribution: citation.attribution,
 			});
 			expect(answer.record_url).toBe(
-				`http://localhost${locale === 'fr' ? '/fr' : ''}/lines/6?provider=octranspo&from=2026-11-04&to=2026-11-10`,
+				`http://localhost${locale === 'fr' ? '/fr' : ''}/lines/6?provider=octranspo&from=2026-11-04&to=2026-11-10&generation=octranspo%402026-11-11T06%3A00%3A00Z&published=2026-11-11T06%3A00%3A00Z&method=reliability-2`,
 			);
 			const grain = screen.getAllByRole('radio', {
 				name: locale === 'fr' ? 'Dernier jour complet' : 'Latest complete day',
@@ -210,13 +210,13 @@ describe('line Record: one answer, its evidence and its actions', () => {
 			);
 	});
 
-	it('copies a link that keeps the provider, the record view and the exact dates', async () => {
+	it('copies a link that keeps the provider, the record view, the exact dates and publication', async () => {
 		const writeText = vi.fn(async () => {});
 		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
 		renderRecord();
 		await fireEvent.click(screen.getByRole('button', { name: 'Copy link' }));
 		expect(writeText).toHaveBeenCalledWith(
-			'http://localhost/lines/6?provider=octranspo&from=2026-11-04&to=2026-11-10',
+			'http://localhost/lines/6?provider=octranspo&from=2026-11-04&to=2026-11-10&generation=octranspo%402026-11-11T06%3A00%3A00Z&published=2026-11-11T06%3A00%3A00Z&method=reliability-2',
 		);
 		await waitFor(() => expect(screen.getByText('Link copied')).toBeInTheDocument());
 	});
@@ -227,7 +227,7 @@ describe('line Record: one answer, its evidence and its actions', () => {
 		renderRecord();
 		await fireEvent.click(screen.getByRole('button', { name: 'Cite this record' }));
 		expect(writeText).toHaveBeenCalledWith(
-			'Transit (localhost). Line 6 Greenboro / Rockcliffe, OC Transpo: 71% of readings on time, November 4 to 10, 2026, based on 700 readings. Record published Nov 11, 2026, generation octranspo@2026-11-11T06:00:00Z, method reliability-2. http://localhost/lines/6?provider=octranspo&from=2026-11-04&to=2026-11-10',
+			'Transit (localhost). Line 6 Greenboro / Rockcliffe, OC Transpo: 71% of readings on time, November 4 to 10, 2026, based on 700 readings. Record published Nov 11, 2026, generation octranspo@2026-11-11T06:00:00Z, method reliability-2. http://localhost/lines/6?provider=octranspo&from=2026-11-04&to=2026-11-10&generation=octranspo%402026-11-11T06%3A00%3A00Z&published=2026-11-11T06%3A00%3A00Z&method=reliability-2',
 		);
 	});
 

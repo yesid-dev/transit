@@ -8,6 +8,7 @@ import {
 	type VerdictStatus,
 } from '#lib/v1/verdict.ts';
 import { selectDirectoryRecord, type DirectoryComparison } from './directoryEvidence';
+import { applyEditionParams, EDITION_QUERY_KEYS } from './reliability/recordEdition';
 import type {
 	RecordClassification,
 	RecordPeriod,
@@ -102,6 +103,8 @@ export interface DirectoryLineHrefInput {
 	readonly from?: string | null;
 	readonly to?: string | null;
 	readonly days?: number | null;
+	/** The selected evidence's own publication identity, never the directory's or another row's. */
+	readonly publication?: RecordPublication | null;
 }
 
 const DIRECTORY_ONLY_PARAMS = [
@@ -115,12 +118,14 @@ const DIRECTORY_ONLY_PARAMS = [
 	'grain',
 	'from',
 	'to',
+	...EDITION_QUERY_KEYS,
 ] as const;
 
 /**
  * A line's Record (or Schedule) link, built from the directory's own URL: the reader's locale and
  * provider stay, the directory's own view state goes, and the link carries the selected evidence's
- * actual complete days — never the directory's current week when the evidence is another one.
+ * actual complete days and publication identity — never the directory's current week or another
+ * row's edition.
  */
 export function directoryLineHref(input: DirectoryLineHrefInput): string {
 	const next = new URL(input.base.href);
@@ -132,12 +137,13 @@ export function directoryLineHref(input: DirectoryLineHrefInput): string {
 		next.searchParams.set('from', input.from);
 		next.searchParams.set('to', input.to);
 	}
+	applyEditionParams(next.searchParams, input.publication ?? null);
 	return next.pathname + next.search;
 }
 
-/** The same link, opening the line's Schedule view. It never carries a record period. */
+/** The same link, opening the line's Schedule view. It never carries a record period or edition. */
 export function directoryScheduleHref(
-	input: Omit<DirectoryLineHrefInput, 'from' | 'to' | 'days'>,
+	input: Omit<DirectoryLineHrefInput, 'from' | 'to' | 'days' | 'publication'>,
 ): string {
 	const next = new URL(input.base.href);
 	next.pathname = new URL(input.path, input.base.origin).pathname;
@@ -149,7 +155,7 @@ export function directoryScheduleHref(
 
 /** A line's map view: the requested path with the reader's provider, nothing else. */
 export function directoryProviderHref(
-	input: Omit<DirectoryLineHrefInput, 'from' | 'to' | 'days'>,
+	input: Omit<DirectoryLineHrefInput, 'from' | 'to' | 'days' | 'publication'>,
 ): string {
 	const next = new URL(input.path, input.base.origin);
 	next.searchParams.set('provider', input.providerId);

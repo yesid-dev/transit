@@ -313,6 +313,7 @@
 			from: evidence.from,
 			to: evidence.to,
 			days: evidence.days,
+			publication: evidence.publication,
 		});
 	}
 

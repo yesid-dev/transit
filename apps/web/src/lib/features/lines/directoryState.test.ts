@@ -289,6 +289,72 @@ describe('directory links carry the evidence, not the directory', () => {
 			}),
 		).toBe('/fr/map?route=24&focus=route%3A24&provider=stm');
 	});
+
+	it('writes the row’s own publication identity over any inherited edition hint', () => {
+		const hinted = new URL(
+			'http://localhost/fr/lines?provider=stm&q=24&keep=1&generation=old&published=2020-01-01T00%3A00%3A00Z&method=old',
+		);
+		expect(
+			directoryLineHref({
+				base: hinted,
+				path: '/fr/lines/24',
+				providerId: 'stm',
+				from: '2026-10-28',
+				to: '2026-11-03',
+				days: 7,
+				publication: {
+					generatedUtc: '2026-11-04T05:00:00Z',
+					generationId: 'retained@2026-11-04',
+					methodVersion: 'reliability-2',
+				},
+			}),
+		).toBe(
+			'/fr/lines/24?provider=stm&keep=1&from=2026-10-28&to=2026-11-03&generation=retained%402026-11-04&published=2026-11-04T05%3A00%3A00Z&method=reliability-2',
+		);
+	});
+
+	it('omits unknown fields and never borrows a requested or current hint', () => {
+		const hinted = new URL(
+			'http://localhost/fr/lines?provider=stm&generation=old&published=2020-01-01T00%3A00%3A00Z&method=old',
+		);
+		expect(
+			directoryLineHref({
+				base: hinted,
+				path: '/fr/lines/24',
+				providerId: 'stm',
+				from: '2026-11-04',
+				to: '2026-11-10',
+				days: 7,
+				publication: { generatedUtc: null, generationId: 'own-g', methodVersion: null },
+			}),
+		).toBe('/fr/lines/24?provider=stm&from=2026-11-04&to=2026-11-10&generation=own-g');
+		expect(
+			directoryLineHref({
+				base: hinted,
+				path: '/fr/lines/24',
+				providerId: 'stm',
+				from: '2026-11-04',
+				to: '2026-11-10',
+				days: 7,
+			}),
+		).toBe('/fr/lines/24?provider=stm&from=2026-11-04&to=2026-11-10');
+	});
+
+	it('clears edition hints from Schedule and map links, which never open a record', () => {
+		const hinted = new URL(
+			'http://localhost/fr/lines?provider=stm&keep=1&generation=old&published=2020-01-01T00%3A00%3A00Z&method=old',
+		);
+		expect(directoryScheduleHref({ base: hinted, path: '/fr/lines/24', providerId: 'stm' })).toBe(
+			'/fr/lines/24?provider=stm&keep=1&tab=schedule',
+		);
+		expect(
+			directoryProviderHref({
+				base: hinted,
+				path: '/fr/map?route=24&focus=route%3A24',
+				providerId: 'stm',
+			}),
+		).toBe('/fr/map?route=24&focus=route%3A24&provider=stm');
+	});
 });
 
 describe('problem assessment', () => {
