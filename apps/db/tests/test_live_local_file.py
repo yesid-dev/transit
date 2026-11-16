@@ -466,7 +466,7 @@ def test_version_two_file_is_refused_without_changing_it(tmp_path):
             local.connection.execute(f"DROP TABLE {table}")
     before = path.read_bytes()
     for _ in range(2):
-        with pytest.raises(LocalFileMismatch, match="segment_clock table missing"):
+        with pytest.raises(LocalFileMismatch, match="meta schema version.*2.*refused"):
             opened(path)
         assert path.read_bytes() == before
     with duckdb.connect(str(path)) as conn:
