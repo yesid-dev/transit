@@ -1,4 +1,5 @@
 import type { Locale } from '#lib/i18n/config.ts';
+import { applyEditionParams } from './recordEdition';
 import type { RecordPublication } from './selectors/lineRecord';
 
 export interface CsvContext {
@@ -79,19 +80,20 @@ const METADATA = [
 	'attribution',
 ] as const;
 
-function recordUrl(context: CsvContext, scope: CsvScope): string {
+function recordUrl(context: CsvContext, source: CsvSource): string {
 	try {
 		const origin = new URL(context.origin);
 		if (!['https:', 'http:'].includes(origin.protocol)) return '';
 		const prefix = context.locale === 'fr' ? '/fr' : '';
 		const target = new URL(`${prefix}/lines/${encodeURIComponent(context.lineId)}`, origin.origin);
 		target.searchParams.set('provider', context.providerId);
-		if (scope.from && scope.to) {
-			target.searchParams.set('from', scope.from);
-			target.searchParams.set('to', scope.to);
+		if (source.scope.from && source.scope.to) {
+			target.searchParams.set('from', source.scope.from);
+			target.searchParams.set('to', source.scope.to);
 		}
-		const mixGrain = /^undated_(day|week|month)_mix$/u.exec(scope.kind)?.[1];
+		const mixGrain = /^undated_(day|week|month)_mix$/u.exec(source.scope.kind)?.[1];
 		if (mixGrain) target.searchParams.set('grain', mixGrain);
+		applyEditionParams(target.searchParams, source.publication);
 		return target.href;
 	} catch (error) {
 		if (!(error instanceof TypeError)) throw error;
@@ -116,7 +118,7 @@ export function downloadCsv(
 	)
 		return null;
 	const { scope, publication } = source;
-	const url = recordUrl(context, scope);
+	const url = recordUrl(context, source);
 	const records = rows.map((row) => [
 		source.source,
 		context.providerId,

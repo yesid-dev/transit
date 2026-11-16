@@ -575,6 +575,16 @@ for (const lang of PUBLISHED_LOCALES)
 const DIRECTORY_LONG_NAME =
 	'Sherbrooke / Station Université de Montréal et chemin de la Côte-des-Neiges / Terminus des voyageurs';
 const DIRECTORY_IDS = Array.from({ length: 235 }, (_, index) => String(index + 1));
+const DIRECTORY_ROUTE_PUBLICATION = {
+	generated_utc: '2026-11-11T05:00:00Z',
+	methodology_version: 'reliability-2',
+};
+const DIRECTORY_RECORD_QUERY = new URLSearchParams({
+	from: '2026-11-04',
+	to: '2026-11-10',
+	published: DIRECTORY_ROUTE_PUBLICATION.generated_utc,
+	method: DIRECTORY_ROUTE_PUBLICATION.methodology_version,
+}).toString();
 /** A published line whose id is not an invented ASCII alphabet: it is used verbatim in the URL. */
 const OPAQUE_LINE = { id: 'ligne 24/été', short: '24 bis', long: 'Ligne opaque', type: 3 } as const;
 
@@ -633,9 +643,8 @@ async function stubLinesDirectory(
 	const routeFile = (id: string) => {
 		const onTime = id === '5' ? 500 : 900;
 		return {
-			generated_utc: '2026-11-11T05:00:00Z',
+			...DIRECTORY_ROUTE_PUBLICATION,
 			id,
-			methodology_version: 'reliability-2',
 			periods_by_grain: [
 				{ grain: 'day', date: '2026-11-10' },
 				{
@@ -725,7 +734,7 @@ for (const lang of PUBLISHED_LOCALES)
 				const firstLine = localizeHref('/lines/1', lang, provider);
 				await expect(rows.first().locator('a.directory-name')).toHaveAttribute(
 					'href',
-					`${firstLine}&from=2026-11-04&to=2026-11-10`,
+					`${firstLine}&${DIRECTORY_RECORD_QUERY}`,
 				);
 				// The whole published name, never truncated.
 				await expect(rows.first().locator('.directory-long')).toHaveText(DIRECTORY_LONG_NAME);
@@ -927,12 +936,14 @@ test('en: the selected preview cites the record it actually shows, with a copy f
 
 	const copy = indexCopy.en;
 	const preview = page.locator('[data-slot="directory-preview"]');
+	const recordHref = `${localizeHref('/lines/1', 'en', 'stm')}&${DIRECTORY_RECORD_QUERY}`;
+	const absoluteRecordUrl = new URL(recordHref, page.url()).href;
 	await expect(preview).toContainText(copy.measure('90%'));
 	await expect(preview.locator('.preview-dates')).toHaveText('November 4 to 10, 7 complete days');
 	await expect(preview).toContainText(copy.basis('1,000'));
 	await expect(preview.locator('a', { hasText: copy.openRecord })).toHaveAttribute(
 		'href',
-		`${localizeHref('/lines/1', 'en', 'stm')}&from=2026-11-04&to=2026-11-10`,
+		recordHref,
 	);
 	await expect(preview.locator('a', { hasText: copy.schedule })).toHaveAttribute(
 		'href',
@@ -969,9 +980,7 @@ test('en: the selected preview cites the record it actually shows, with a copy f
 			decodeURIComponent((await recordCsv.getAttribute('href'))!.split(',').slice(1).join(',')),
 		)[0].attribution,
 	).toBe(fixture('manifest.json').attribution);
-	expect(cell(recordRows[1], 'record_url')).toContain(
-		'/lines/1?provider=stm&from=2026-11-04&to=2026-11-10',
-	);
+	expect(cell(recordRows[1], 'record_url')).toBe(absoluteRecordUrl);
 
 	// Headless denies the clipboard, so the citation stays selectable instead of being lost.
 	await preview.getByRole('button', { name: copy.cite, exact: true }).click();
@@ -983,10 +992,6 @@ test('en: the selected preview cites the record it actually shows, with a copy f
 	expect(citation).toContain('November 4 to 10, 2026');
 	expect(citation).toContain('1,000');
 	expect(citation).toContain('method reliability-2');
-	const absoluteRecordUrl = new URL(
-		'/lines/1?provider=stm&from=2026-11-04&to=2026-11-10',
-		page.url(),
-	).href;
 	expect(citation).toMatch(
 		new RegExp(`${absoluteRecordUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`),
 	);

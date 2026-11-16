@@ -192,6 +192,8 @@ files['/v1/stm/static/routes/9002.json'] = JSON.stringify({
 files['/v1/stm/historic/route_reliability/9002.json'] = JSON.stringify({
 	...b9['historic/route_reliability/24.json'],
 	id: '9002',
+	// One explicit edition identity so copied links and their later openings can be checked.
+	publish_generation_id: 'stm@2026-08-30T06:00:00Z',
 	periods: monthDates.map((date) => ({ ...counted('day', 40_000 + next(20_000)), date })),
 	periods_by_grain: [
 		cutFor('day', closed, 1),
@@ -214,8 +216,19 @@ files['/v1/stm/historic/route_reliability/9002.json'] = JSON.stringify({
 	}),
 });
 // Reuse this generated line for provider/locale export journeys, including its server render.
-for (const family of ['static/routes', 'historic/route_reliability'])
-	files[`/v1/octranspo/${family}/9002.json`] = files[`/v1/stm/${family}/9002.json`];
+for (const family of ['static/routes', 'historic/route_reliability']) {
+	const shared = files[`/v1/stm/${family}/9002.json`];
+	if (family === 'historic/route_reliability') {
+		const route = JSON.parse(shared);
+		route.publish_generation_id = String(route.publish_generation_id ?? '').replace(
+			/^stm@/u,
+			'octranspo@',
+		);
+		files[`/v1/octranspo/${family}/9002.json`] = JSON.stringify(route);
+	} else {
+		files[`/v1/octranspo/${family}/9002.json`] = shared;
+	}
+}
 
 const server = createServer((request, response) => {
 	// No Date header: the app anchors its clock to it, which would undo page.clock.

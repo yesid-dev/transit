@@ -528,6 +528,54 @@ describe('Lines directory — comparison and the problem filter stay separate', 
 		);
 		await waitFor(() => expect(counts(container)).toBe('Patchy or unreliable: 1 of 3 checked.'));
 	});
+
+	it('gives each row its own source identity, ranked or excluded, never the headline’s', async () => {
+		h.state.published = {
+			...weekly([
+				{
+					id: '3',
+					state: 'ranked',
+					rank: 1,
+					numerator: 30,
+					denominator: 100,
+					pct: 30,
+					window_start: '2026-11-04',
+					window_end: '2026-11-10',
+				},
+				{ id: '2', state: 'too_few_units', window_start: '2026-10-28', window_end: '2026-11-03' },
+			]),
+			publish_generation_id: 'stm@2026-11-11T05:00:00Z',
+		};
+		h.state.routes = h.routesFor(3);
+		const { container } = render(LinesDirectory);
+		await waitFor(() => expect(screen.getByTestId('lines-sort-worst')).not.toBeDisabled());
+		await fireEvent.click(screen.getByTestId('lines-sort-worst'));
+		await waitFor(() => expect(h.state.url.searchParams.get('sort')).toBe('worst'));
+		await waitFor(() => expect(rows(container)).toHaveLength(3));
+
+		const [ranked, current, excluded] = rows(container).map((row) =>
+			row.querySelector('a.directory-name')?.getAttribute('href'),
+		);
+		expect(ranked).toBe(
+			'/lines/3?provider=stm&from=2026-11-04&to=2026-11-10&generation=stm%402026-11-11T05%3A00%3A00Z&published=2026-11-11T05%3A00%3A00Z&method=reliability-2',
+		);
+		expect(current).toBe(
+			'/lines/1?provider=stm&from=2026-11-04&to=2026-11-10&published=2026-11-11T05%3A00%3A00Z&method=reliability-2',
+		);
+		expect(excluded).toBe(
+			'/lines/2?provider=stm&from=2026-10-28&to=2026-11-03&generation=stm%402026-11-11T05%3A00%3A00Z&published=2026-11-11T05%3A00%3A00Z&method=reliability-2',
+		);
+	});
+
+	it('never invents dates or identity for a row whose read has not settled', async () => {
+		h.state.routes = h.routesFor(3);
+		h.gates.set('1', { promise: new Promise(() => {}), resolve: () => {} });
+		const { container } = render(LinesDirectory);
+		await waitFor(() => expect(rows(container)).toHaveLength(3));
+		expect(rows(container)[0].querySelector('a.directory-name')?.getAttribute('href')).toBe(
+			'/lines/1?provider=stm',
+		);
+	});
 });
 
 describe('Lines directory — preview, links and citation', () => {
@@ -573,7 +621,8 @@ describe('Lines directory — preview, links and citation', () => {
 		render(LinesDirectory);
 		await screen.findByRole('link', { name: 'Download this record (CSV)' });
 		await fireEvent.click(screen.getByRole('button', { name: 'Copy record link' }));
-		const href = 'http://localhost/lines/1?provider=stm&from=2026-11-04&to=2026-11-10';
+		const href =
+			'http://localhost/lines/1?provider=stm&from=2026-11-04&to=2026-11-10&published=2026-11-11T05%3A00%3A00Z&method=reliability-2';
 		expect(writeText).toHaveBeenCalledWith(href);
 		expect(await screen.findByRole('textbox', { name: 'Copy this link:' })).toHaveValue(href);
 	});
@@ -610,7 +659,7 @@ describe('Lines directory — preview, links and citation', () => {
 			expect(rowLinks(container)[0]?.getAttribute('href')).toContain('from=2026-11-04'),
 		);
 		expect(rowLinks(container)[0]?.getAttribute('href')).toBe(
-			'/lines/1?provider=stm&from=2026-11-04&to=2026-11-10',
+			'/lines/1?provider=stm&from=2026-11-04&to=2026-11-10&published=2026-11-11T05%3A00%3A00Z&method=reliability-2',
 		);
 	});
 
@@ -644,7 +693,7 @@ describe('Lines directory — preview, links and citation', () => {
 		expect(cited).toMatch(/Record published Nov\.? 11, 2026/);
 		expect(cited).toContain('method reliability-2');
 		expect(cited).toMatch(
-			/http:\/\/localhost\/lines\/1\?provider=stm&from=2026-11-04&to=2026-11-10$/u,
+			/http:\/\/localhost\/lines\/1\?provider=stm&from=2026-11-04&to=2026-11-10&published=2026-11-11T05%3A00%3A00Z&method=reliability-2$/u,
 		);
 		expect(cited.toLowerCase()).not.toContain('permanent');
 	});
@@ -675,6 +724,55 @@ describe('Lines directory — preview, links and citation', () => {
 		// Line 30 publishes no file: its own state, and no invented figure.
 		expect(table.cell(table.rows[29], 'line_id')).toBe('"30"');
 		expect(table.cell(table.rows[29], 'value_pct')).toBe('');
+	});
+
+	it('writes each displayed row’s own Record URL identity and the selected row’s own', async () => {
+		h.state.published = {
+			generated_utc: '2026-11-11T05:00:00Z',
+			methodology_version: 'reliability-2',
+			publish_generation_id: 'stm@2026-11-11T05:00:00Z',
+			weekly_routes: [
+				{
+					id: '3',
+					state: 'ranked',
+					rank: 1,
+					numerator: 30,
+					denominator: 100,
+					pct: 30,
+					window_start: '2026-11-04',
+					window_end: '2026-11-10',
+				},
+			],
+		};
+		h.state.routes = h.routesFor(3);
+		h.state.desktop = true;
+		const { container } = render(LinesDirectory);
+		await waitFor(() => expect(screen.getByTestId('lines-sort-worst')).not.toBeDisabled());
+		await fireEvent.click(screen.getByTestId('lines-sort-worst'));
+		await waitFor(() => expect(rows(container)).toHaveLength(3));
+
+		const displayed = container.querySelector<HTMLAnchorElement>('[data-slot="directory-csv"]')!;
+		const table = csvTable(decodeURIComponent(displayed.href.split(',').slice(1).join(',')));
+		const plain = (value: string) => value.replace(/^"|"$/gu, '');
+		const ranked = new URL(plain(table.cell(table.rows[0], 'record_url')));
+		expect(ranked.searchParams.get('generation')).toBe('stm@2026-11-11T05:00:00Z');
+		expect(ranked.searchParams.get('published')).toBe('2026-11-11T05:00:00Z');
+		expect(ranked.searchParams.get('method')).toBe('reliability-2');
+		const current = new URL(plain(table.cell(table.rows[1], 'record_url')));
+		expect(current.searchParams.get('generation')).toBeNull();
+		expect(current.searchParams.get('published')).toBe('2026-11-11T05:00:00Z');
+		expect(current.searchParams.get('method')).toBe('reliability-2');
+
+		const selected = await waitFor(() => {
+			const link = container.querySelector<HTMLAnchorElement>('[data-slot="directory-record-csv"]');
+			if (!link) throw new Error('selected export still arriving');
+			return link;
+		});
+		const selectedTable = csvTable(decodeURIComponent(selected.href.split(',').slice(1).join(',')));
+		const selectedUrl = new URL(plain(selectedTable.cell(selectedTable.rows[0], 'record_url')));
+		expect(selectedUrl.searchParams.get('generation')).toBe('stm@2026-11-11T05:00:00Z');
+		expect(selectedUrl.searchParams.get('from')).toBe('2026-11-04');
+		expect(selectedUrl.searchParams.get('to')).toBe('2026-11-10');
 	});
 
 	it.each([

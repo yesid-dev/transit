@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import type { RouteReliability } from '#lib/v1/index.ts';
 import { verdictForWindow } from '#lib/v1/verdict.ts';
 import { withClosedPeriods } from '../__fixtures__/closedWeek';
-import { selectLineRecord, type RecordMode } from './lineRecord';
+import {
+	recordLink,
+	selectLineRecord,
+	type RecordPublication,
+	type RecordMode,
+} from './lineRecord';
 
 /** A line file built from a small seed: one dated day row per (on time, readings) pair. */
 function seedLine(end: string, days: readonly (readonly [number, number])[]): RouteReliability {
@@ -176,5 +181,73 @@ describe('selectLineRecord', () => {
 				expect(percent <= interval.hi && interval.hi <= 100).toBe(true);
 			}
 		}
+	});
+});
+
+describe('recordLink', () => {
+	const period = { from: '2026-11-04', to: '2026-11-10', days: 7 };
+	const actual: RecordPublication = {
+		generatedUtc: '2026-11-11T06:00:00Z',
+		generationId: 'stm@2026-11-11T06:00:00Z',
+		methodVersion: 'reliability-2',
+	};
+	const url = (query: string) => {
+		const search = new URLSearchParams(query);
+		return {
+			origin: 'https://transit.example',
+			pathname: '/fr/lines/6',
+			searchParams: search,
+		};
+	};
+
+	it('keeps provider, locale, period and unrelated filters while replacing stale edition keys', () => {
+		const href = recordLink(
+			url(
+				'provider=oc&locale=fr&keep=1&tab=schedule&grain=month&from=2020-01-01&to=2020-01-02&generation=old&generation=old-2&published=2020-01-01T00%3A00%3A00Z&method=old',
+			),
+			'stm',
+			period,
+			actual,
+		);
+		const parsed = new URL(href);
+		expect(parsed.pathname).toBe('/fr/lines/6');
+		expect(parsed.searchParams.get('provider')).toBe('stm');
+		expect(parsed.searchParams.get('locale')).toBe('fr');
+		expect(parsed.searchParams.get('keep')).toBe('1');
+		expect(parsed.searchParams.get('tab')).toBeNull();
+		expect(parsed.searchParams.get('grain')).toBeNull();
+		expect(parsed.searchParams.get('from')).toBe(period.from);
+		expect(parsed.searchParams.get('to')).toBe(period.to);
+		expect(parsed.searchParams.getAll('generation')).toEqual([actual.generationId]);
+		expect(parsed.searchParams.get('published')).toBe(actual.generatedUtc);
+		expect(parsed.searchParams.get('method')).toBe(actual.methodVersion);
+	});
+
+	it('clears every edition hint when the shown source supplies none, inventing nothing', () => {
+		const href = recordLink(
+			url('provider=stm&generation=old&published=2020-01-01T00%3A00%3A00Z&method=old'),
+			'stm',
+			period,
+			{ generatedUtc: null, generationId: null, methodVersion: null },
+		);
+		const parsed = new URL(href);
+		expect(parsed.searchParams.get('generation')).toBeNull();
+		expect(parsed.searchParams.get('published')).toBeNull();
+		expect(parsed.searchParams.get('method')).toBeNull();
+		expect(parsed.searchParams.get('provider')).toBe('stm');
+	});
+
+	it('writes only each usable field and keeps an opaque Unicode ID encoded', () => {
+		const opaque = 'ligne/中央 ?#&=🚌';
+		const href = recordLink(url('provider=stm'), null, period, {
+			generatedUtc: '2026-02-30T00:00:00Z',
+			generationId: opaque,
+			methodVersion: 'x'.repeat(513),
+		});
+		const parsed = new URL(href);
+		expect(parsed.searchParams.get('generation')).toBe(opaque);
+		expect(parsed.searchParams.get('published')).toBeNull();
+		expect(parsed.searchParams.get('method')).toBeNull();
+		expect(parsed.search).not.toContain('中央');
 	});
 });

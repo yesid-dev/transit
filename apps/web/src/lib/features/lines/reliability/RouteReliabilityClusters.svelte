@@ -29,7 +29,13 @@
 	import { applyRetainedLineHistory, clearRetainedLineHistory } from './data/retainedHistory';
 	import type { LineHistoryResource } from './data/lineHistoryResource.svelte';
 	import Section0Verdict from './sections/Section0Verdict.svelte';
-	import { selectLineRecord, sharedPublication, type RecordCitation } from './selectors/lineRecord';
+	import {
+		selectLineRecord,
+		sharedPublication,
+		type RecordCitation,
+		type RecordPublication,
+	} from './selectors/lineRecord';
+	import { compareEdition, hasEditionRequest, parseEditionRequest } from './recordEdition';
 	import { selectDailyOnTime } from './selectors/punctualityTrend';
 	import Section1WhenToRide from './sections/Section1WhenToRide.svelte';
 	import Section2TheWait from './sections/Section2TheWait.svelte';
@@ -136,10 +142,13 @@
 		return { from: new Date(to - 13 * 86_400_000).toISOString().slice(0, 10), to: period.to };
 	});
 	const daily = $derived(selectDailyOnTime(clusters.punctuality.trend, dailyWindow));
-	// A chosen range cites its retained partitions; anything else cites the line file shown.
-	const publication = $derived(
-		explicitHistory && retainedReady && view.history.value
-			? view.history.value.publication
+	// A chosen range cites its retained partitions; a pending read never borrows the current file's
+	// publication as if it described the retained selection.
+	const publication = $derived<RecordPublication>(
+		explicitHistory
+			? retainedReady && view.history.value
+				? view.history.value.publication
+				: { generatedUtc: null, generationId: null, methodVersion: null }
 			: sharedPublication([data]),
 	);
 	const exportContext = $derived<CsvContext | undefined>(
@@ -167,6 +176,17 @@
 			(!explicitHistory || retainedReady) && record.period
 				? { kind: 'window', from: record.period.from, to: record.period.to }
 				: { kind: 'none' },
+	});
+	// Only a settled, displayed record may state how the link's requested edition relates to it.
+	// A pending or failed retained read, and a range with no record, make no edition claim.
+	const editionRequest = $derived(parseEditionRequest(page.url.searchParams));
+	const edition = $derived.by(() => {
+		if (!hasEditionRequest(editionRequest)) return null;
+		if (explicitHistory && view.history.state === 'no-data') return 'unavailable' as const;
+		if (explicitHistory && !retainedReady) return null;
+		if (selectedSource.scope.kind === 'none') return null;
+		const compared = compareEdition(editionRequest, publication);
+		return compared === 'match' || compared === 'none' ? null : compared;
 	});
 	const dailyPercentiles = $derived(
 		explicitHistory && retainedReady && mode === 'range'
@@ -398,6 +418,7 @@
 							{dailyPercentiles}
 							{citation}
 							{publication}
+							{edition}
 							{percentileReadings}
 							{exportContext}
 							exportSource={selectedSource}

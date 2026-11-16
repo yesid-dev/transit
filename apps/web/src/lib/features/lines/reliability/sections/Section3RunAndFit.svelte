@@ -8,6 +8,7 @@
 	import { fmtLocalePct } from '#lib/utils/format.ts';
 	import CollapsibleSection from './CollapsibleSection.svelte';
 	import { selectTripFacts } from '../selectors/evidence';
+	import { clearEditionParams } from '../recordEdition';
 	import type { RecordPeriod } from '../selectors/lineRecord';
 	import { formatRecordDates } from '../recordDates';
 	import type { ServiceDeliveredVM } from '../clusters';
@@ -53,10 +54,12 @@
 	);
 	const coverage = (days: number) =>
 		period && days < period.days ? t.coverage(count(days), count(period.days)) : null;
-	// The Live now view counts silent trips; it opens on the same line and provider.
+	// The Live now view counts silent trips; it opens on the same line and provider, with no
+	// record period or edition hint surviving the move to live.
 	const liveHref = $derived.by(() => {
 		const url = new URL(page.url.href);
 		for (const key of ['from', 'to', 'grain']) url.searchParams.delete(key);
+		clearEditionParams(url.searchParams);
 		url.searchParams.set('tab', 'detail');
 		return `${url.pathname}${url.search}`;
 	});

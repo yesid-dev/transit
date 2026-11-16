@@ -48,8 +48,10 @@
 		mode?: 'day' | 'week' | 'month' | 'range';
 		dailyPercentiles?: ReturnType<typeof selectDailyPercentiles>;
 		citation?: RecordCitation;
-		/** The published record behind this answer, for the citation. */
+		/** The published record behind this answer, for the citation and edition link. */
 		publication?: RecordPublication;
+		/** The link's requested edition compared with the settled publication actually shown. */
+		edition?: 'corrected' | 'different' | 'unverifiable' | 'unavailable' | null;
 	}
 	let {
 		exportContext,
@@ -65,6 +67,7 @@
 		dailyPercentiles = null,
 		citation,
 		publication,
+		edition = null,
 	}: Section0VerdictProps = $props();
 
 	const t = $derived(copy.record);
@@ -84,7 +87,9 @@
 		const dates = formatRecordDates(period.from, period.to, locale);
 		return dates ? t.period(dates, terms.completeDays(period.days, count(period.days))) : null;
 	});
-	const href = $derived(recordLink(page.url, citation?.providerId ?? null, period));
+	const href = $derived(
+		recordLink(page.url, citation?.providerId ?? null, period, publication ?? null),
+	);
 	const citationText = $derived.by(() => {
 		if (!citation || !period || answer.kind !== 'figure') return null;
 		const dates = formatRecordDates(period.from, period.to, locale, { year: true });
@@ -105,6 +110,15 @@
 					href,
 				})
 			: null;
+	});
+
+	const editionText = $derived.by(() => {
+		if (!edition) return null;
+		if (edition !== 'corrected') return t.edition[edition];
+		const published = /^\d{4}-\d{2}-\d{2}/u.test(publication?.generatedUtc ?? '')
+			? formatDateKey(publication!.generatedUtc!.slice(0, 10), locale, true)
+			: null;
+		return published ? t.edition.corrected(published) : t.edition.different;
 	});
 
 	// Zero readings have no average, percentile or share: those figures are withheld, never 0.
@@ -233,6 +247,11 @@
 				</p>
 			{:else}
 				<p class="line-record__line line-record__line--absent">{@render absent(t.absent)}</p>
+			{/if}
+			{#if editionText}
+				<p class="line-record__edition" data-slot="record-edition" role="status" aria-live="polite">
+					{editionText}
+				</p>
 			{/if}
 		</div>
 
@@ -438,6 +457,14 @@
 	.line-record__def {
 		color: var(--muted-foreground);
 		font-size: var(--text-small);
+	}
+	.line-record__edition {
+		color: var(--muted-foreground);
+		font-size: var(--text-small);
+		line-height: 1.45;
+		text-wrap: pretty;
+		padding-inline-start: 0.625rem;
+		border-inline-start: 2px solid var(--border-subtle);
 	}
 	.line-record__lead {
 		color: var(--foreground);

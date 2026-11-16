@@ -62,7 +62,7 @@ describe('line Record flat CSV', () => {
 			',"readings_more_than_5_minutes_late","%",30,"","","published","","retained@g1","",',
 		);
 		expect(file.csv).toContain(
-			'"https://transit.example/fr/lines/6%2Fa%20%3F%C3%A9?provider=octranspo&from=2026-10-01&to=2026-10-03","","x/y",0',
+			'"https://transit.example/fr/lines/6%2Fa%20%3F%C3%A9?provider=octranspo&from=2026-10-01&to=2026-10-03&generation=retained%40g1","","x/y",0',
 		);
 		expect(decodeURIComponent(file.href.slice(file.href.indexOf(',') + 1))).toBe(file.csv);
 	});
@@ -81,7 +81,7 @@ describe('line Record flat CSV', () => {
 			['value_pct'],
 			[{ unit: '%', cells: [100] }],
 		)!;
-		expect(file.csv).toContain('?provider=octranspo&grain=day');
+		expect(file.csv).toContain('?provider=octranspo&grain=day&generation=retained%40g1');
 		expect(file.filename).toContain('undated_day_mix-displayed-rows.csv');
 		expect(file.csv).not.toContain('2026-10-01');
 	});

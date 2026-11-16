@@ -1,5 +1,6 @@
 import type { RouteReliability } from '#lib/v1/index.ts';
 import { routeClosedThrough, trailingRouteWindow } from '#lib/v1/closedWindow.ts';
+import { applyEditionParams } from '../recordEdition';
 import {
 	selectVerdictWindow,
 	VERDICT_MIN_N,
@@ -128,8 +129,9 @@ export function selectLineRecord(input: LineRecordInput): LineRecord {
 }
 
 /**
- * The record's own link: the page it is on, its provider, the Record view (the bare URL) and the
- * exact complete days it covers, so a copied link keeps showing the same days.
+ * The record's own link: the page it is on, its provider, the Record view (the bare URL), the exact
+ * complete days it covers and the identity of the publication actually shown. Stale edition hints
+ * are removed before the actual source's usable fields are written.
  */
 export function recordLink(
 	url: {
@@ -139,6 +141,7 @@ export function recordLink(
 	},
 	providerId: string | null,
 	period: RecordPeriod | null,
+	publication?: RecordPublication | null,
 ): string {
 	const next = new URL(url.pathname, url.origin);
 	const replaced = new Set(period ? ['tab', 'grain', 'from', 'to'] : ['tab']);
@@ -149,6 +152,7 @@ export function recordLink(
 		next.searchParams.set('from', period.from);
 		next.searchParams.set('to', period.to);
 	}
+	applyEditionParams(next.searchParams, publication ?? null);
 	return next.href;
 }
 
