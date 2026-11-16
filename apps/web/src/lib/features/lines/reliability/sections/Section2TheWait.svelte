@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { downloadCsv, type CsvContext, type CsvSource } from '../recordCsv';
+	import { gapRows, spanRows } from '../recordCsvModels';
+	import CsvDownload from './CsvDownload.svelte';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { intl } from '#lib/i18n/copy.ts';
 	import { absenceShort } from '#lib/site/absence.ts';
@@ -17,6 +20,9 @@
 	import type { ReliabilityCopy } from '../reliability.copy';
 
 	interface Section2TheWaitProps {
+		exportContext?: CsvContext;
+		exportSource?: CsvSource;
+		spanSource?: CsvSource;
 		wait: WaitRegularityVM;
 		serviceSpans?: ServiceSpanPeriod[];
 		/** Which days the published gap cut covers. */
@@ -25,7 +31,16 @@
 		copy: ReliabilityCopy;
 	}
 
-	let { wait, serviceSpans = [], scope, locale, copy }: Section2TheWaitProps = $props();
+	let {
+		wait,
+		serviceSpans = [],
+		scope,
+		locale,
+		copy,
+		exportContext,
+		exportSource,
+		spanSource,
+	}: Section2TheWaitProps = $props();
 
 	const e = $derived(copy.evidence);
 	const t = $derived(copy.evidence.gaps);
@@ -113,12 +128,53 @@
 				]
 			: [],
 	);
+	const gapsCsv = $derived(
+		downloadCsv(
+			exportContext,
+			shown && exportSource ? { ...exportSource, scope } : undefined,
+			'gaps',
+			[
+				'period_key',
+				'period',
+				'direction_id',
+				'day_type',
+				'scheduled_gap_min',
+				'first_report_gap_min',
+			],
+			gapRows(rows, label),
+		),
+	);
+	const spanCsv = $derived(
+		downloadCsv(
+			exportContext,
+			spanSource && spanSource.scope.kind !== 'none'
+				? {
+						...spanSource,
+						scope: latestSpan?.date
+							? { kind: 'window', from: latestSpan.date, to: latestSpan.date }
+							: { kind: 'undated_service_span' },
+					}
+				: undefined,
+			'service-span',
+			[
+				'date',
+				'first_trip_utc',
+				'last_trip_utc',
+				'service_span_min',
+				'first_delay_min',
+				'last_delay_min',
+				'trip_count',
+			],
+			latestSpan ? spanRows(latestSpan) : [],
+		),
+	);
 </script>
 
 <CollapsibleSection dataSection="the-wait" title={copy.sections.theWait.label} summary={t.summary}>
 	<div class="evidence-body">
 		{#if shown}
 			<div class="gaps">
+				<CsvDownload file={gapsCsv} label={copy.sections.theWait.label} {copy} />
 				<table class="evidence-table" data-slot="gaps-table">
 					<caption
 						>{t.caption}
@@ -165,6 +221,7 @@
 		{#if latestSpan}
 			<Detail label={copy.sections.detailShow} labelOpen={copy.sections.detailHide}>
 				<div class="span" data-sub="service-span" data-card>
+					<CsvDownload file={spanCsv} label={spanCopy.heading} {copy} />
 					<div class="span-head">
 						<span class="label-with-info">
 							<SectionLabel text={spanCopy.heading} variant="metric" />

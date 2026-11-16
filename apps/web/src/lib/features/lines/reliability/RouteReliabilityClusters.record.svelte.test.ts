@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RouteReliability } from '#lib/v1/index.ts';
 import RouteReliabilityClusters from './RouteReliabilityClusters.svelte';
 import { withClosedPeriods } from './__fixtures__/closedWeek';
+import { downloadedTable } from './__fixtures__/csvTable';
 
 vi.mock('#lib/v1/index.ts', async () => ({
 	...(await import('#lib/v1/history/index.ts')),
@@ -57,6 +58,7 @@ const citation = {
 	line: '6 Greenboro / Rockcliffe',
 	providerId: 'octranspo',
 	providerName: 'OC Transpo',
+	attribution: 'Contains information licensed under the Open Government Licence – City of Ottawa.',
 };
 
 function renderRecord(locale: 'en' | 'fr' = 'en') {
@@ -66,6 +68,88 @@ function renderRecord(locale: 'en' | 'fr' = 'en') {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('line Record: one answer, its evidence and its actions', () => {
+	it('offers a histogram only for a published daily distribution, with explicit open bounds and no inferred weekly bins', async () => {
+		const data = thirtyDays();
+		data.periods!.at(-1)!.delay_histogram = [
+			{ lo_sec: null, hi_sec: -60, count: 2 },
+			{ lo_sec: -60, hi_sec: 300, count: 90 },
+			{ lo_sec: 300, hi_sec: null, count: 8 },
+		];
+		const view = render(RouteReliabilityClusters, { data, locale: 'en', citation });
+		const histogram = () =>
+			view.container.querySelector<HTMLAnchorElement>('a[download*="-delay-histogram-"]');
+		expect(histogram()).toBeNull();
+		await fireEvent.click(screen.getAllByRole('radio', { name: 'Latest complete day' })[0]);
+		const verdict = view.container.querySelector<HTMLElement>('[data-band="verdict"]')!;
+		await fireEvent.click(within(verdict).getByRole('button', { name: 'Show the detail' }));
+		const rows = downloadedTable(histogram()!);
+		expect(
+			rows.map((r) => [r.value, r.lower_bound, r.upper_bound, r.lower_open, r.upper_open]),
+		).toEqual([
+			['2', '', '-1', 'unbounded', 'bounded'],
+			['90', '-1', '5', 'bounded', 'bounded'],
+			['8', '5', '', 'bounded', 'unbounded'],
+		]);
+		expect(rows[0]).toMatchObject({
+			unit: 'readings; min',
+			reference_p50: '1.5',
+			reference_p90: '6',
+			window_from: '2026-11-10',
+			window_to: '2026-11-10',
+		});
+		expect(histogram()!.href).not.toMatch(/Infinity/u);
+	});
+	it.each(['en', 'fr'] as const)(
+		'exports the %s answer and the latest day’s 14-day table with their own periods and source identity',
+		async (locale) => {
+			const view = renderRecord(locale);
+			const link = (block: string) =>
+				view.container.querySelector<HTMLAnchorElement>(`a[download*="-${block}-"]`)!;
+			const answer = downloadedTable(link('record'))[0];
+			expect(answer).toMatchObject({
+				provider: 'octranspo',
+				locale,
+				window_from: '2026-11-04',
+				window_to: '2026-11-10',
+				on_time_pct: '71',
+				readings: '700',
+				interval_low_pct: '68',
+				interval_high_pct: '74',
+				source: 'current_line_file',
+				publication_generation_id: 'octranspo@2026-11-11T06:00:00Z',
+				publication_methodology_version: 'reliability-2',
+				attribution: citation.attribution,
+			});
+			expect(answer.record_url).toBe(
+				`http://localhost${locale === 'fr' ? '/fr' : ''}/lines/6?provider=octranspo&from=2026-11-04&to=2026-11-10`,
+			);
+			const grain = screen.getAllByRole('radio', {
+				name: locale === 'fr' ? 'Dernier jour complet' : 'Latest complete day',
+			})[0];
+			await fireEvent.click(grain);
+			await waitFor(() =>
+				expect(downloadedTable(link('record'))[0].window_from).toBe('2026-11-10'),
+			);
+			const daily = downloadedTable(link('day-by-day'));
+			expect(daily).toHaveLength(14);
+			expect(daily[0]).toMatchObject({
+				date: '2026-10-28',
+				window_from: '2026-10-28',
+				window_to: '2026-11-10',
+				on_time_pct: '80',
+				average_delay_min: '2.5',
+				readings: '100',
+			});
+			expect(daily.at(-1)).toMatchObject({ date: '2026-11-10', on_time_pct: '73' });
+			expect(link('day-by-day').download).toContain('2026-10-28-2026-11-10-displayed-rows.csv');
+			expect(link('delay-histogram')).toBeNull();
+			const controlsBefore = view.container.querySelectorAll('[aria-expanded="true"]').length;
+			await fireEvent.click(link('day-by-day'));
+			expect(view.container.querySelectorAll('[aria-expanded="true"]')).toHaveLength(
+				controlsBefore,
+			);
+		},
+	);
 	it('answers the 7-day record once, outside every collapsible section', () => {
 		const { container } = renderRecord();
 		const answer = container.querySelector('[data-slot="record-answer"]') as HTMLElement;

@@ -1,4 +1,8 @@
 <script lang="ts">
+	import { downloadCsv, csvPercent, type CsvContext, type CsvSource } from '../recordCsv';
+	import { answerRows, delayRows } from '../recordCsvModels';
+	import { chartRows, CHART_COLUMNS } from '../chartCsv';
+	import CsvDownload from './CsvDownload.svelte';
 	import './reliability-sections.css';
 	import { page } from '$app/state';
 	import type { Locale } from '#lib/i18n/index.ts';
@@ -32,6 +36,10 @@
 	import RecordCopyButton from './RecordCopyButton.svelte';
 
 	interface Section0VerdictProps {
+		exportContext?: CsvContext;
+		exportSource?: CsvSource;
+		averageDelayReadings?: number | null;
+		percentileReadings?: number | null;
 		vm: PunctualityVM;
 		record: LineRecord;
 		daily: DailyOnTime;
@@ -44,6 +52,10 @@
 		publication?: RecordPublication;
 	}
 	let {
+		exportContext,
+		exportSource,
+		averageDelayReadings = null,
+		percentileReadings = null,
 		vm,
 		record,
 		daily,
@@ -122,6 +134,51 @@
 	);
 	const hasDist = $derived(headline.p50Min != null || headline.p90Min != null);
 	const severePct = $derived<number | null>(measured ? headline.severePct : null);
+	const recordCsv = $derived(
+		downloadCsv(
+			exportContext,
+			exportSource,
+			'record',
+			['on_time_pct', 'interval_low_pct', 'interval_high_pct', 'classification'],
+			answerRows(record),
+		),
+	);
+	const delaysCsv = $derived(
+		downloadCsv(
+			exportContext,
+			exportSource,
+			'delay-summary',
+			['delay_min', 'record_readings'],
+			delayRows(headline, averageDelayReadings, percentileReadings),
+		),
+	);
+	const histogramCsv = $derived(
+		downloadCsv(
+			exportContext,
+			exportSource,
+			'delay-histogram',
+			CHART_COLUMNS,
+			chartRows(distSpec, 'delay_histogram'),
+		),
+	);
+	const severeCsv = $derived(
+		downloadCsv(
+			exportContext,
+			exportSource,
+			'severe-readings',
+			['late_share_pct'],
+			csvPercent(severePct) == null
+				? []
+				: [
+						{
+							measure: 'readings_more_than_5_minutes_late',
+							unit: '%',
+							readings: headline.observationCount,
+							cells: [severePct],
+						},
+					],
+		),
+	);
 	const severeBullet = $derived(
 		selectBullet(severePct, locale, {
 			title: copy.strip.severePct,
@@ -206,6 +263,7 @@
 				</p>
 			{/if}
 			<div class="line-record__actions" data-slot="record-actions">
+				<CsvDownload file={recordCsv} label={copy.sections.verdict.label} {copy} />
 				<RecordCopyButton
 					label={terms.action.copyLink}
 					done={t.linkCopied}
@@ -232,7 +290,7 @@
 			>
 				<div class="line-record__body">
 					{#if daily.rows.length > 0}
-						<DailyOnTimeChart {daily} {locale} {copy} />
+						<DailyOnTimeChart {daily} {locale} {copy} {exportContext} {exportSource} />
 					{/if}
 
 					<dl class="line-record__delays" data-slot="record-delays">
@@ -245,6 +303,7 @@
 							</div>
 						{/each}
 					</dl>
+					<CsvDownload file={delaysCsv} label={t.delays.avg} {copy} />
 
 					<Detail label={copy.sections.detailShow} labelOpen={copy.sections.detailHide}>
 						<div class="block" data-slot="delay-distribution" data-card>
@@ -261,6 +320,7 @@
 								</span>
 							</div>
 							{#if distSpec.kind === 'histogram'}
+								<CsvDownload file={histogramCsv} label={copy.strip.delayDistHeading} {copy} />
 								<Chart spec={distSpec} />
 								<p class="caption" data-slot="delay-dist-caption">{copy.strip.delayDistCaption}</p>
 							{:else}
@@ -297,6 +357,7 @@
 								</span>
 							</div>
 							<Chart spec={severeBullet} />
+							<CsvDownload file={severeCsv} label={copy.strip.severePct} {copy} />
 							<p class="caption" data-slot="severe-caption">{copy.strip.severeCaption}</p>
 						</div>
 					</Detail>

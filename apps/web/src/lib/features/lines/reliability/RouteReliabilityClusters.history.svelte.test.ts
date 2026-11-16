@@ -20,6 +20,7 @@ import {
 import RouteReliabilityClusters from './RouteReliabilityClusters.svelte';
 import { reliabilityCopy } from './reliability.copy';
 import { describeAbsence } from '#lib/site/absence.ts';
+import { downloadedTable } from './__fixtures__/csvTable';
 
 const harness = vi.hoisted(() => {
 	const page = { url: new URL('http://localhost/lines/A%2FB?tab=reliability'), state: {} };
@@ -289,6 +290,202 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe('RouteReliabilityClusters retained Line history', () => {
+	it('exports a partial range’s daily gap and unavailable trip facts without current mix or fabricated completeness', async () => {
+		harness.page.url = new URL(
+			'http://localhost/lines/A%2FB?provider=octranspo&from=2026-01-31&to=2026-02-01',
+		);
+		const first = retainedPartitions[0].days[0];
+		harness.loadLineHistoryRange.mockResolvedValue([
+			{ ...retainedPartitions[0], days: [{ date: first.date, delay: first.delay }] },
+			{ ...retainedPartitions[1], days: [{ date: '2026-02-01' }] },
+		]);
+		const history = createHistory();
+		try {
+			const view = render(RouteReliabilityClusters, {
+				data: current,
+				locale: 'en',
+				history,
+				citation: { line: 'A/B', providerId: 'octranspo', providerName: 'OC Transpo' },
+			});
+			const link = (block: string) =>
+				view.container.querySelector<HTMLAnchorElement>(`a[download*="-${block}-"]`);
+			await waitFor(() => expect(link('day-by-day')).not.toBeNull());
+			const days = downloadedTable(link('day-by-day')!);
+			expect(days.map((r) => [r.date, r.on_time_pct, r.readings, r.state])).toEqual([
+				['2026-01-31', '20', '10', 'published'],
+				['2026-02-01', '', '', 'gap'],
+			]);
+			const facts = downloadedTable(link('trip-facts')!);
+			expect(facts.map((r) => [r.measure, r.state, r.numerator, r.denominator])).toEqual([
+				['cancelled', 'not_published', '', ''],
+				['missing_trips', 'not_published', '', ''],
+				['silent_trips', 'live_only', '', ''],
+				['skipped', 'not_published', '', ''],
+			]);
+			expect(link('crowding-mix')).toBeNull();
+		} finally {
+			history.destroy();
+		}
+	});
+	it('keeps retained answers and the current undated diagnostics on separate identities through load and refresh', async () => {
+		harness.page.url = new URL(
+			'http://localhost/lines/A%2FB?provider=stm&from=2026-01-31&to=2026-02-01',
+		);
+		const gate = deferred<LineHistoryPartition[]>();
+		harness.loadLineHistoryRange.mockReturnValueOnce(gate.promise);
+		const history = createHistory();
+		const citation = {
+			line: 'A/B',
+			providerId: 'stm',
+			providerName: 'STM',
+			attribution: 'Contains STM data made available under CC BY 4.0.',
+		};
+		const data = {
+			...current,
+			generated_utc: '2026-11-11T06:00:00Z' as IsoUtc,
+			publish_generation_id: 'current-g1',
+			methodology_version: 'current-method',
+			delay_by_crowding: [
+				{ band: 'full' as const, avg_delay_min: -2.5, p50_min: -3, observation_count: 40 },
+			],
+		};
+		const view = render(RouteReliabilityClusters, { data, locale: 'en', citation, history });
+		const link = (block: string) =>
+			view.container.querySelector<HTMLAnchorElement>(`a[download*="-${block}-"]`);
+		try {
+			await waitFor(() => expect(history.state).toBe('loading-range'));
+			expect(link('record')).toBeNull();
+			expect(link('trip-facts')).toBeNull();
+			gate.resolve(
+				retainedPartitions.map((p, index) => ({
+					...p,
+					generated_utc: index === 0 ? generatedUtc : ('2026-08-13T12:00:00Z' as IsoUtc),
+					publish_generation_id: 'retained-g',
+					methodology_version: index === 0 ? 'retained-old' : 'retained-new',
+				})),
+			);
+			await waitFor(() => expect(link('record')).not.toBeNull());
+			for (const band of ['verdict', 'the-wait', 'when-to-ride', 'crowding']) {
+				const section = view.container.querySelector<HTMLElement>(`[data-band="${band}"]`)!;
+				await fireEvent.click(
+					within(section).getByRole('button', { name: reliabilityCopy.en.sections.detailShow }),
+				);
+			}
+			expect(downloadedTable(link('record')!)[0]).toMatchObject({
+				source: 'retained_partitions',
+				on_time_pct: '83',
+				readings: '100',
+				window_from: window.from,
+				window_to: window.to,
+				publication_generated_utc: '',
+				publication_generation_id: 'retained-g',
+				publication_methodology_version: '',
+				attribution: citation.attribution,
+			});
+			expect(
+				downloadedTable(link('delay-summary')!).find((r) => r.measure === 'average_delay'),
+			).toMatchObject({
+				delay_min: '1.1',
+				readings: '95',
+				readings_basis: 'in_clamp_delay_predictions',
+				record_readings: '100',
+			});
+			expect(downloadedTable(link('severe-readings')!)[0]).toMatchObject({
+				late_share_pct: '2',
+				readings: '100',
+			});
+			expect(downloadedTable(link('service-span')!)[0]).toMatchObject({
+				source: 'retained_partitions',
+				date: '2026-02-01',
+				window_from: '2026-02-01',
+				window_to: '2026-02-01',
+				trip_count: '9',
+				last_delay_min: '-0.5',
+			});
+			const relative = downloadedTable(link('relative-pattern')!);
+			expect(relative[0]).toMatchObject({
+				source: 'current_line_file',
+				scope: 'history',
+				window_from: '',
+				window_to: '',
+				value: '0.5',
+				unit: 'row_relative_score',
+				publication_generated_utc: data.generated_utc,
+				publication_generation_id: 'current-g1',
+				publication_methodology_version: 'current-method',
+			});
+			expect(downloadedTable(link('crowding-mix')!)[0]).toMatchObject({
+				source: 'retained_partitions',
+				scope: 'window',
+				window_from: window.from,
+				window_to: window.to,
+				readings: '',
+				publication_generation_id: 'retained-g',
+			});
+			const diagnostic = () =>
+				downloadedTable(link('crowding-delay')!).find((r) => r.key === 'full')!;
+			expect(diagnostic()).toMatchObject({
+				source: 'current_line_file',
+				scope: 'undated_diagnostics',
+				window_from: '',
+				window_to: '',
+				value: '-2.5',
+				p50_delay_min: '-3',
+				readings: '40',
+				publication_generation_id: 'current-g1',
+			});
+			expect(link('time-of-day')).toBeNull();
+			expect(link('gaps')).toBeNull();
+			expect(link('stop-delays')).toBeNull();
+			const fetches = harness.loadLineHistoryRange.mock.calls.length;
+			await fireEvent.click(link('record')!);
+			expect(harness.loadLineHistoryRange).toHaveBeenCalledTimes(fetches);
+			await view.rerender({
+				data: {
+					...data,
+					publish_generation_id: 'current-g2',
+					delay_by_crowding: [{ band: 'full', avg_delay_min: 7.5, observation_count: 80 }],
+				},
+				locale: 'en',
+				citation,
+				history,
+			});
+			await waitFor(() =>
+				expect(diagnostic()).toMatchObject({
+					value: '7.5',
+					readings: '80',
+					publication_generation_id: 'current-g2',
+				}),
+			);
+			expect(downloadedTable(link('record')!)[0].publication_generation_id).toBe('retained-g');
+		} finally {
+			history.destroy();
+		}
+	});
+
+	it.each(['loading-range', 'error', 'no-data'] as const)(
+		'offers no selected-record downloads for %s retained ranges',
+		(state) => {
+			harness.page.url = new URL(
+				'http://localhost/lines/A%2FB?provider=stm&from=2026-01-31&to=2026-02-01',
+			);
+			const view = render(RouteReliabilityClusters, {
+				data: current,
+				locale: 'en',
+				history: staticHistory(state),
+				citation: { line: 'A/B', providerId: 'stm', providerName: 'STM' },
+			});
+			for (const block of [
+				'record',
+				'day-by-day',
+				'delay-summary',
+				'service-span',
+				'trip-facts',
+				'crowding-mix',
+			])
+				expect(view.container.querySelector(`a[download*="-${block}-"]`)).toBeNull();
+		},
+	);
 	it('renders accepted server counts and source date immediately without reloading the selected partition', async () => {
 		harness.page.url = new URL(
 			'http://localhost/lines/A%2FB?tab=reliability&from=2026-01-31&to=2026-01-31',
@@ -340,7 +537,14 @@ describe('RouteReliabilityClusters retained Line history', () => {
 			);
 			harness.loadLineHistoryRange.mockResolvedValueOnce([retainedPartitions[0]]);
 			const history = createHistory();
-			const view = render(RouteReliabilityClusters, { props: { data: current, locale, history } });
+			const view = render(RouteReliabilityClusters, {
+				props: {
+					data: current,
+					locale,
+					history,
+					citation: { line: 'A/B', providerId: 'stm', providerName: 'STM' },
+				},
+			});
 			try {
 				await waitFor(() => expect(history.state).toBe('ready'));
 				const tiles = () =>
@@ -353,6 +557,15 @@ describe('RouteReliabilityClusters retained Line history', () => {
 				expect(tiles().map((tile) => tile.textContent?.trim())).toEqual(
 					locale === 'en' ? ['1.0 min', '3.0 min'] : ['1,0 min', '3,0 min'],
 				);
+				const csv = view.container.querySelector<HTMLAnchorElement>(
+					'a[download*="-delay-summary-"]',
+				)!;
+				expect(downloadedTable(csv).find((row) => row.measure === 'p50_delay')).toMatchObject({
+					delay_min: '1',
+					readings: '10',
+					readings_basis: 'published_delay_percentile_observations',
+					record_readings: '10',
+				});
 				expect(harness.loadLineHistoryRange).toHaveBeenCalledTimes(1);
 				history.setRequest(
 					historyRangeRequestFromSearchParams(new URLSearchParams('from=2026-01-31&to=2026-02-01')),

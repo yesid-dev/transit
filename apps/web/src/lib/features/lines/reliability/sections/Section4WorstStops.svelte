@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { downloadCsv, type CsvContext, type CsvSource } from '../recordCsv';
+	import { stopRows } from '../recordCsvModels';
+	import CsvDownload from './CsvDownload.svelte';
 	import { getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
 	import { stopNameFallback } from '#lib/site/absence.ts';
 	import { fmtNumber } from '#lib/utils/index.ts';
@@ -10,13 +13,16 @@
 	import type { ReliabilityCopy } from '../reliability.copy';
 
 	interface Section4WorstStopsProps {
+		exportContext?: CsvContext;
+		exportSource?: CsvSource;
 		stops: readonly WeakStop[];
 		/** Which days the published stop figures cover. */
 		scope: CutScope;
 		locale: Locale;
 		copy: ReliabilityCopy;
 	}
-	let { stops, scope, locale, copy }: Section4WorstStopsProps = $props();
+	let { stops, scope, locale, copy, exportContext, exportSource }: Section4WorstStopsProps =
+		$props();
 
 	const FIRST = 5;
 	const localizeHref = getLocalizeHref();
@@ -34,6 +40,15 @@
 		rows[0] ? t.summary(name(rows[0]), pct(rows[0].percent)) : e.summaryAbsent,
 	);
 	const listId = 'line-stop-delays';
+	const file = $derived(
+		downloadCsv(
+			exportContext,
+			exportSource ? { ...exportSource, scope } : undefined,
+			'stop-delays',
+			['position', 'stop_id', 'stop_name', 'name_state', 'late_share_pct'],
+			stopRows(visible, name),
+		),
+	);
 </script>
 
 <CollapsibleSection dataSection="worst-stops" title={copy.sections.worstStops.label} {summary}>
@@ -44,6 +59,7 @@
 				{#if dates}{e.scope(dates)}{/if}
 			</p>
 			<p class="evidence-note">{t.order}</p>
+			<CsvDownload {file} label={copy.sections.worstStops.label} {copy} />
 			<ol class="stop-list" id={listId} aria-label={copy.sections.worstStops.label}>
 				{#each visible as row, index (row.id)}
 					<li class="stop-row" data-slot="stop-delay-row">

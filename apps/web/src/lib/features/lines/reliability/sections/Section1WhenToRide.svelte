@@ -1,4 +1,8 @@
 <script lang="ts">
+	import { csvCount, downloadCsv, type CsvContext, type CsvSource } from '../recordCsv';
+	import { timeRows } from '../recordCsvModels';
+	import { chartRows, CHART_COLUMNS } from '../chartCsv';
+	import CsvDownload from './CsvDownload.svelte';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { absenceShort } from '#lib/site/absence.ts';
 	import { fmtNumber, fmtPct } from '#lib/utils/index.ts';
@@ -14,6 +18,7 @@
 		shiftLabelShort as shiftGrainLabelShort,
 		severeShareToSeverity,
 		DAY_TYPE_GRAIN_ORDER,
+		SHIFT_GRAIN_ORDER,
 		SEVERE_DOMAIN,
 	} from '#lib/features/reliability/shiftGrains.ts';
 	import { selectPunctualityTimeOfDay } from '../selectors/punctualityTimeOfDay';
@@ -29,6 +34,8 @@
 	import { habitsBandCopy } from '../Cluster05Habits.copy';
 
 	interface Section1WhenToRideProps {
+		exportContext?: CsvContext;
+		exportSource?: CsvSource;
 		punctuality: PunctualityVM;
 		habits: HabitsVM;
 		/** Which days the published time-of-day cut covers. */
@@ -36,7 +43,15 @@
 		locale: Locale;
 		copy: ReliabilityCopy;
 	}
-	let { punctuality, habits, scope, locale, copy }: Section1WhenToRideProps = $props();
+	let {
+		punctuality,
+		habits,
+		scope,
+		locale,
+		copy,
+		exportContext,
+		exportSource,
+	}: Section1WhenToRideProps = $props();
 
 	const band = $derived(habitsBandCopy[locale]);
 	const e = $derived(copy.evidence);
@@ -178,6 +193,85 @@
 	const hasCrosstab = $derived(shown && crosstabLines.hasData);
 	const hasWeekday = $derived(shown && weekdayCycle.hasData);
 	const hasDetail = $derived(hasHeatmap || hasPeak || hasCrosstab || hasWeekday);
+	const source = $derived(exportSource ? { ...exportSource, scope } : undefined);
+	const timeCsv = $derived(
+		downloadCsv(
+			exportContext,
+			hasRows ? source : undefined,
+			'time-of-day',
+			['group', 'period_key', 'period', 'on_time_pct'],
+			timeRows(timeOfDay, periodName),
+		),
+	);
+	const peakCsv = $derived(
+		downloadCsv(exportContext, hasPeak ? source : undefined, 'peak-and-day-type', CHART_COLUMNS, [
+			...chartRows(timeOfDaySpec, 'severe_readings_by_period').map((row) => ({
+				...row,
+				readings: csvCount(
+					punctuality.peakOffPeak.byShift.findLast((r) => r.grain === row.cells[0])
+						?.observationCount,
+				),
+				readingsBasis: 'published_period_observations',
+			})),
+			...chartRows(dayTypeBars, 'severe_readings_by_day_type').map((row) => ({
+				...row,
+				readings: csvCount(dayTypeRows.find((r) => r.grain === row.cells[0])?.observationCount),
+				readingsBasis: 'published_day_type_observations',
+			})),
+		]),
+	);
+	const crosstabCsv = $derived(
+		downloadCsv(
+			exportContext,
+			hasCrosstab ? source : undefined,
+			'period-day-type',
+			CHART_COLUMNS,
+			chartRows(crosstabLines.spec, 'on_time_share_by_period_and_day_type').map((row) => ({
+				...row,
+				readings: csvCount(
+					punctuality.byShiftDaytype.findLast(
+						(cell) =>
+							cell.shift === SHIFT_GRAIN_ORDER[Number(row.cells[0])] &&
+							cell.day_type === (row.cells[2] === copy.peak.weekday ? 'weekday' : 'weekend'),
+					)?.observation_count,
+				),
+				readingsBasis: 'on_time_share',
+			})),
+		),
+	);
+	const weekdayCsv = $derived(
+		downloadCsv(
+			exportContext,
+			hasWeekday ? source : undefined,
+			'weekday-delay',
+			[...CHART_COLUMNS, 'source_observation_count'],
+			chartRows(weekdayCycle.spec, 'average_delay_by_weekday').map((row) => ({
+				...row,
+				cells: [
+					...row.cells,
+					csvCount(
+						punctuality.dayOfWeek.findLast(
+							(cell) => cell.day_of_week_iso === Number(row.cells[0]) + 1,
+						)?.observation_count,
+					),
+				],
+			})),
+		),
+	);
+	const relativeCsv = $derived(
+		downloadCsv(
+			exportContext,
+			exportSource ? { ...exportSource, scope: { kind: 'history' } } : undefined,
+			'relative-pattern',
+			[...CHART_COLUMNS, 'scale'],
+			hasHeatmap
+				? chartRows(heatmapSpec, 'row_relative_problem_score').map((row) => ({
+						...row,
+						cells: [...row.cells, habits.scale],
+					}))
+				: [],
+		),
+	);
 </script>
 
 {#snippet shareRow(row: ShareRow)}
@@ -200,6 +294,7 @@
 <CollapsibleSection dataSection="when-to-ride" title={copy.sections.whenToRide.label} {summary}>
 	<div class="evidence-body">
 		{#if hasRows}
+			<CsvDownload file={timeCsv} label={copy.sections.whenToRide.label} {copy} />
 			<table class="evidence-table" data-slot="time-of-day">
 				<caption
 					>{t.caption}. {#if dates}{e.scope(dates)}{/if}</caption
@@ -233,6 +328,7 @@
 			<Detail label={copy.sections.detailShow} labelOpen={copy.sections.detailHide}>
 				{#if hasPeak}
 					<div class="block" data-slot="peak-off-peak" data-card>
+						<CsvDownload file={peakCsv} label={copy.peak.heading} {copy} />
 						<span class="label-with-info">
 							<SectionLabel text={copy.peak.heading} variant="metric" />
 							<MetricInfo
@@ -265,6 +361,7 @@
 
 				{#if hasCrosstab}
 					<div class="block" data-slot="shift-daytype-crosstab" data-card>
+						<CsvDownload file={crosstabCsv} label={copy.crosstab.heading} {copy} />
 						<span class="label-with-info">
 							<SectionLabel text={copy.crosstab.heading} variant="metric" />
 							<MetricInfo
@@ -285,6 +382,7 @@
 
 				{#if hasWeekday}
 					<div class="block" data-slot="habits-weekday" data-card>
+						<CsvDownload file={weekdayCsv} label={band.weekdayHeading} {copy} />
 						<span class="label-with-info">
 							<SectionLabel text={band.weekdayHeading} variant="metric" />
 							<MetricInfo
@@ -305,6 +403,7 @@
 
 				{#if hasHeatmap}
 					<div class="block" data-slot="habits-heatmap" data-card>
+						<CsvDownload file={relativeCsv} label={t.pattern} {copy} />
 						<span class="label-with-info">
 							<SectionLabel text={t.pattern} variant="metric" />
 							<MetricInfo

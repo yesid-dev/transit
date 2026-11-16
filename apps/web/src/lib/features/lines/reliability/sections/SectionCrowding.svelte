@@ -1,4 +1,8 @@
 <script lang="ts">
+	import { downloadCsv, csvCount, type CsvContext, type CsvSource } from '../recordCsv';
+	import { rounded } from '../recordCsvModels';
+	import { chartRows, mixPanelRows, CHART_COLUMNS } from '../chartCsv';
+	import CsvDownload from './CsvDownload.svelte';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { absenceShort } from '#lib/site/absence.ts';
 	import { fmtDelayMin } from '#lib/utils/index.ts';
@@ -22,13 +26,24 @@
 	import MetricBullet from './MetricBullet.svelte';
 
 	interface SectionCrowdingProps {
+		exportContext?: CsvContext;
+		exportSource?: CsvSource;
+		diagnosticSource?: CsvSource;
 		crowding: CrowdingVM;
 		/** The mix shown and the days it covers, chosen together (`crowdingFigure`). */
 		figure: CrowdingFigure;
 		locale: Locale;
 		copy: ReliabilityCopy;
 	}
-	let { crowding, figure, locale, copy }: SectionCrowdingProps = $props();
+	let {
+		crowding,
+		figure,
+		locale,
+		copy,
+		exportContext,
+		exportSource,
+		diagnosticSource,
+	}: SectionCrowdingProps = $props();
 
 	const e = $derived(copy.evidence);
 	const t = $derived(copy.evidence.crowding);
@@ -130,6 +145,54 @@
 			}),
 		})) ?? null,
 	);
+	const mixCsv = $derived(
+		downloadCsv(
+			exportContext,
+			exportSource,
+			'crowding-mix',
+			[...CHART_COLUMNS, 'dominant'],
+			dominant == null
+				? []
+				: chartRows(mixShareSpec, 'crowding_mix_share').map((row) => ({
+						...row,
+						cells: [...row.cells, row.cells[1] === dominant.label ? 'yes' : 'no'],
+					})),
+		),
+	);
+	const delayCsv = $derived(
+		downloadCsv(
+			exportContext,
+			diagnosticSource,
+			'crowding-delay',
+			[...CHART_COLUMNS, 'p50_delay_min'],
+			chartRows(crowdingDelay.spec, 'average_delay_by_crowding').map((row) => {
+				const cell = crowding.delayByCrowding.findLast((cell) => cell.band === row.cells[0]);
+				return {
+					...row,
+					readings: row.cells[3] == null ? null : csvCount(cell?.observation_count),
+					cells: [...row.cells, row.cells[3] == null ? null : rounded(cell?.p50_min)],
+				};
+			}),
+		),
+	);
+	const dayTypeCsv = $derived(
+		downloadCsv(
+			exportContext,
+			diagnosticSource,
+			'crowding-day-type',
+			CHART_COLUMNS,
+			mixPanelRows(dayTypeCells, 'crowding_mix_by_day_type'),
+		),
+	);
+	const weekdayCsv = $derived(
+		downloadCsv(
+			exportContext,
+			diagnosticSource,
+			'crowding-weekday',
+			CHART_COLUMNS,
+			mixPanelRows(weekdayStrips ?? [], 'crowding_mix_by_weekday'),
+		),
+	);
 </script>
 
 <CollapsibleSection dataSection="crowding" title={copy.sections.crowding.label} {summary}>
@@ -139,6 +202,7 @@
 				<span class="evidence-absent" data-slot="absent-value">{t.absentBody}</span>
 			</p>
 		{:else}
+			<CsvDownload file={mixCsv} label={copy.clusters.crowding} {copy} />
 			{#if scope}<p class="evidence-lead" data-slot="crowding-window">{e.scope(scope)}</p>{/if}
 			<MetricBullet
 				label={dominant.label}
@@ -161,11 +225,13 @@
 		{#if dominant != null || crowding.delayByCrowding.length > 0 || weekdayWeekend || weekdayStrips}
 			<Detail label={copy.sections.detailShow} labelOpen={copy.sections.detailHide}>
 				<div class="block" data-slot="delay-by-crowding" data-card>
+					<CsvDownload file={delayCsv} label={copy.delayByCrowding.heading} {copy} />
 					<SectionLabel text={copy.delayByCrowding.heading} variant="metric" />
 					<Chart spec={crowdingDelay.spec} />
 				</div>
 				{#if weekdayWeekend}
 					<div class="block" data-slot="crowding-weekday-weekend" data-card>
+						<CsvDownload file={dayTypeCsv} label={copy.peak.dayType} {copy} />
 						<SectionLabel text={copy.peak.dayType} variant="metric" />
 						<div class="two-col">
 							{#each dayTypeCells as { key, spec, label } (key)}
@@ -183,6 +249,7 @@
 				{/if}
 				{#if weekdayStrips}
 					<div class="block" data-slot="crowding-by-dow" data-card>
+						<CsvDownload file={weekdayCsv} label={copy.byDow.heading} {copy} />
 						<SectionLabel text={copy.byDow.heading} variant="metric" />
 						<p class="cell-label">{copy.byDow.caption}</p>
 						<ul class="dow" aria-label={copy.byDow.heading}>
