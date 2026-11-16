@@ -190,4 +190,35 @@ describe('Record edition comparison', () => {
 			),
 		).toBe('unverifiable');
 	});
+
+	it.each([
+		{
+			field: 'generation',
+			actual: publication('bad\u0007id', '2026-11-11T06:00:00Z', 'm1'),
+		},
+		{
+			field: 'published',
+			actual: publication('old-g', '2026-02-30T06:00:00Z', 'm1'),
+		},
+		{
+			field: 'method',
+			actual: publication('old-g', '2026-11-04T06:00:00Z', 'm'.repeat(513)),
+		},
+	])('keeps unusable selected $field unknown in links and comparison', ({ field, actual }) => {
+		const link = new URLSearchParams();
+		applyEditionParams(link, actual);
+		expect(link.has(field)).toBe(false);
+		expect(compareEdition(publication('old-g', '2026-11-04T06:00:00Z', 'm1'), actual)).toBe(
+			'unverifiable',
+		);
+	});
+
+	it('does not require unusable selected fields that the link never requested', () => {
+		expect(
+			compareEdition(
+				publication('same-g', null, null),
+				publication('same-g', '2026-02-30T06:00:00Z', 'm'.repeat(513)),
+			),
+		).toBe('match');
+	});
 });

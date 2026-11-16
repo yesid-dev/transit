@@ -128,23 +128,28 @@ export function compareEdition(
 	actual: RecordPublication,
 ): EditionComparison {
 	if (!hasEditionRequest(requested)) return 'none';
+	const selected: RecordPublication = {
+		generationId: usableText(actual.generationId),
+		generatedUtc: usableInstant(actual.generatedUtc),
+		methodVersion: usableText(actual.methodVersion),
+	};
 	if (
-		(requested.generationId != null && actual.generationId == null) ||
-		(requested.generatedUtc != null && actual.generatedUtc == null) ||
-		(requested.methodVersion != null && actual.methodVersion == null)
+		(requested.generationId != null && selected.generationId == null) ||
+		(requested.generatedUtc != null && selected.generatedUtc == null) ||
+		(requested.methodVersion != null && selected.methodVersion == null)
 	)
 		return 'unverifiable';
 	const generationDiffers =
-		requested.generationId != null && requested.generationId !== actual.generationId;
+		requested.generationId != null && requested.generationId !== selected.generationId;
 	const publishedDiffers =
 		requested.generatedUtc != null &&
-		instantOf(requested.generatedUtc) !== instantOf(actual.generatedUtc);
+		instantOf(requested.generatedUtc) !== instantOf(selected.generatedUtc);
 	const methodDiffers =
-		requested.methodVersion != null && requested.methodVersion !== actual.methodVersion;
+		requested.methodVersion != null && requested.methodVersion !== selected.methodVersion;
 	if (!generationDiffers && !publishedDiffers && !methodDiffers) return 'match';
-	if (generationDiffers && requested.generationId && actual.generationId) {
+	if (generationDiffers && requested.generationId && selected.generationId) {
 		const requestedInstant = instantOf(requested.generatedUtc);
-		const actualInstant = instantOf(actual.generatedUtc);
+		const actualInstant = instantOf(selected.generatedUtc);
 		if (requestedInstant != null && actualInstant != null && actualInstant > requestedInstant)
 			return 'corrected';
 	}
