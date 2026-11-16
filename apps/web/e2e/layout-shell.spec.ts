@@ -31,19 +31,87 @@ async function singleLine(label: Locator) {
 	).toBe(1);
 }
 
+// Owner ruling (16 November 2026): grouped menus read as organized columns from 768px and as one
+// column below it. Layout offsets, not client rects, so the menu's opening transform cannot skew them.
+async function menuRows(page: Page) {
+	return page.evaluate(() => {
+		const headings = [
+			...document.querySelectorAll<HTMLElement>('[role="dialog"] .menu-group-heading'),
+		];
+		const rows = new Map<number, number>();
+		for (const heading of headings) {
+			const top = Math.round(heading.offsetTop);
+			rows.set(top, (rows.get(top) ?? 0) + 1);
+		}
+		return [...rows.values()];
+	});
+}
+
+// The owner also asked for equal symmetric space on both sides of every navbar `|`. Measure the real
+// gap from each visible divider to its nearest visible neighbour, including ProductBrand's divider.
+async function pillDividerGaps(page: Page) {
+	return page.evaluate(() => {
+		const shown = (element: Element | null): element is HTMLElement => {
+			if (!(element instanceof HTMLElement)) return false;
+			if (getComputedStyle(element).visibility === 'hidden') return false;
+			// An out-of-flow control (Transit drops the provider row below the pill on phones)
+			// does not set the flow space beside a divider.
+			if (['absolute', 'fixed'].includes(getComputedStyle(element).position)) return false;
+			return element.getBoundingClientRect().width > 0.5;
+		};
+		const neighbour = (element: Element, step: 'previous' | 'next') => {
+			for (
+				let node = element[step === 'previous' ? 'previousElementSibling' : 'nextElementSibling'];
+				node;
+				node = node[step === 'previous' ? 'previousElementSibling' : 'nextElementSibling']
+			)
+				if (shown(node)) return node;
+			return null;
+		};
+		const pill = document.querySelector('[data-testid="nav-pill"]')!;
+		return [...pill.querySelectorAll('.nav-divider, .product-brand-divider')]
+			.filter(shown)
+			.map((divider) => {
+				const box = divider.getBoundingClientRect();
+				const parent = divider.parentElement!;
+				const before = neighbour(divider, 'previous') ?? neighbour(parent, 'previous');
+				const after = neighbour(divider, 'next') ?? neighbour(parent, 'next');
+				return {
+					label: divider.className,
+					left: before ? box.left - before.getBoundingClientRect().right : null,
+					right: after ? after.getBoundingClientRect().left - box.right : null,
+				};
+			});
+	});
+}
+
 for (const locale of ['en', 'fr'] as const)
 	test(`${locale} shell keeps its labelled search and both toggles at every header width`, async ({
 		page,
 	}) => {
 		await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
 		const copy = navPillCopy[locale];
-		for (const width of [320, 360, 390, 768, 1206, 1280]) {
+		for (const width of [320, 360, 390, 767, 768, 1206, 1280]) {
 			await page.setViewportSize({ width, height: 900 });
 			await page.goto(localizeHref('/privacy?provider=stm', locale));
 			await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 			const pill = page.getByTestId('nav-pill');
 			await pillFits(pill);
 			await singleLine(pill.locator('[data-slot="product-brand-name"]'));
+
+			// Every `|` keeps the same space on both sides, whatever tier supplies it. Below 360px the
+			// kit draws no navbar divider at all, so 320px has nothing to measure.
+			const gaps = await pillDividerGaps(page);
+			if (width >= 360) expect(gaps.length, `visible dividers at ${width}px`).toBeGreaterThan(0);
+			for (const gap of gaps) {
+				expect(gap.left, `${width}px ${gap.label} left gap`).not.toBeNull();
+				expect(gap.right, `${width}px ${gap.label} right gap`).not.toBeNull();
+				expect(
+					Math.abs(gap.left! - gap.right!),
+					`${width}px ${gap.label} gaps`,
+				).toBeLessThanOrEqual(1);
+				expect(Math.min(gap.left!, gap.right!)).toBeGreaterThan(0);
+			}
 			const theme = pill.getByRole('switch', { name: copy.theme });
 			const language = pill.getByTestId('language-toggle');
 			const menu = pill.getByRole('button', { name: copy.openMenu, exact: true });
@@ -61,6 +129,14 @@ for (const locale of ['en', 'fr'] as const)
 			await menu.focus();
 			await page.keyboard.press('Enter');
 			await expect(page.getByRole('dialog', { name: copy.menu })).toBeVisible();
+			// One column below 768px; organized columns from 768px, four across at desktop width.
+			const rows = await menuRows(page);
+			expect(rows, `${width}px menu rows`).toEqual(
+				width < 768 ? [1, 1, 1, 1] : width === 768 ? [2, 2] : [4],
+			);
+			expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+				width,
+			);
 			await pillFits(pill);
 			await singleLine(pill.locator('[data-slot="product-brand-name"]'));
 			await targetFits(refresh, page);
