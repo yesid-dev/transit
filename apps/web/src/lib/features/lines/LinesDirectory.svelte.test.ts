@@ -19,6 +19,8 @@ const h = vi.hoisted(() => {
 		gaps: [] as string[] | null,
 		locale: 'en' as 'en' | 'fr',
 		desktop: false,
+		routesWait: null as Promise<void> | null,
+		routesFailure: false,
 		now: Date.parse('2026-11-12T12:00:00Z'),
 	};
 	function routeFile(id: string) {
@@ -106,10 +108,11 @@ vi.mock('#lib/v1/boot.ts', () => ({
 	}),
 }));
 vi.mock('#lib/v1/repositories/static.ts', () => ({
-	getRoutesIndex: async () => ({
-		generated_utc: '2026-11-11T05:00:00Z',
-		routes: h.state.routes,
-	}),
+	getRoutesIndex: async () => {
+		if (h.state.routesWait) await h.state.routesWait;
+		if (h.state.routesFailure) throw new Error('index unavailable');
+		return { generated_utc: '2026-11-11T05:00:00Z', routes: h.state.routes };
+	},
 }));
 vi.mock('#lib/v1/repositories/historic.ts', () => ({
 	getPublishedReliabilityIndex: async () => h.state.published,
@@ -220,6 +223,8 @@ beforeEach(() => {
 	h.state.gaps = [];
 	h.state.locale = 'en';
 	h.state.desktop = false;
+	h.state.routesWait = null;
+	h.state.routesFailure = false;
 	h.files.clear();
 	h.failed.clear();
 	h.missing.clear();
@@ -234,6 +239,46 @@ afterEach(() => {
 });
 
 describe('Lines directory — every published line', () => {
+	it('keeps its heading, provider and purpose while the index is loading', async () => {
+		let release!: () => void;
+		h.state.routesWait = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const { container } = render(LinesDirectory);
+		expect(screen.getByRole('heading', { level: 1, name: 'Lines' })).toBeInTheDocument();
+		const header = container.querySelector('[data-slot="blueprint-listing-header"]')!;
+		expect(header).toHaveTextContent('STM');
+		expect(header).toHaveTextContent('Every line this network publishes');
+		expect(rowLinks(container)).toHaveLength(0);
+		release();
+		await waitFor(() => expect(rowLinks(container)).toHaveLength(20));
+	});
+
+	it('keeps page identity when the index fails', async () => {
+		h.state.routesFailure = true;
+		const { container } = render(LinesDirectory);
+		await screen.findByRole('alert');
+		expect(screen.getByRole('heading', { level: 1, name: 'Lines' })).toBeInTheDocument();
+		expect(container.querySelector('[data-slot="blueprint-listing-header"]')).toHaveTextContent(
+			'STM',
+		);
+		expect(rowLinks(container)).toHaveLength(0);
+	});
+
+	it('keeps page identity for a genuinely empty provider index', async () => {
+		h.state.routes = [];
+		const { container } = render(LinesDirectory);
+		await waitFor(() =>
+			expect(
+				container.querySelector('[data-slot="edge-state"][data-variant="empty"]'),
+			).not.toBeNull(),
+		);
+		expect(screen.getByRole('heading', { level: 1, name: 'Lines' })).toBeInTheDocument();
+		expect(container.querySelector('[data-slot="blueprint-listing-header"]')).toHaveTextContent(
+			'STM',
+		);
+	});
+
 	it('opens on twenty rows of the whole network and reaches every line past the old 200 cap', async () => {
 		const { container } = render(LinesDirectory);
 
@@ -406,7 +451,7 @@ describe('Lines directory — comparison and the problem filter stay separate', 
 				window_start: '2026-11-04',
 				window_end: '2026-11-10',
 			},
-			{ id: '2', state: 'too_few_units', window_start: '2026-11-04', window_end: '2026-11-10' },
+			{ id: '2', state: 'too_few_units', window_start: '2026-10-28', window_end: '2026-11-03' },
 		]);
 		const { container } = render(LinesDirectory);
 
@@ -428,6 +473,8 @@ describe('Lines directory — comparison and the problem filter stay separate', 
 			/^\/lines\/2\?/,
 		);
 		expect(excluded.textContent).toContain('Too few vehicles measured');
+		expect(excluded.textContent).toContain('October 28 to November 3');
+		expect(excluded.textContent).toContain('Older week');
 		expect(excluded.querySelector('[data-slot="reliability-badge"]')).toBeNull();
 		expect(excluded.textContent).not.toContain('%');
 	});
@@ -465,6 +512,53 @@ describe('Lines directory — comparison and the problem filter stay separate', 
 });
 
 describe('Lines directory — preview, links and citation', () => {
+	it.each(['1', '235'])(
+		'focuses a phone URL preview for line %s and returns to a useful results target',
+		async (id) => {
+			h.state.url = new URL(`http://localhost/lines?provider=stm&line=${id}`);
+			const { container } = render(LinesDirectory);
+			const heading = await screen.findByRole('heading', { name: `Line ${id}` });
+			await waitFor(() => expect(document.activeElement).toBe(heading));
+			await fireEvent.click(screen.getByRole('button', { name: 'Back to results' }));
+			await waitFor(() => expect(h.state.url.searchParams.get('line')).toBeNull());
+			const button = container.querySelector(`[data-directory-preview-id="${id}"]`);
+			expect(document.activeElement).toBe(
+				button ?? screen.getByRole('region', { name: 'Lines in this network' }),
+			);
+		},
+	);
+
+	it('returns to the results when filtering removed the original Preview button', async () => {
+		h.state.routes = h.routesFor(3);
+		h.files.set('1', { onTime: 1000, readings: 1000 });
+		h.files.set('2', { onTime: 100, readings: 1000 });
+		const { container } = render(LinesDirectory);
+		await waitFor(() => expect(rowLinks(container)).toHaveLength(3));
+		const origin = screen.getByRole('button', { name: 'Preview line 1' });
+		await fireEvent.click(origin);
+		await screen.findByRole('heading', { name: 'Line 1' });
+		await fireEvent.click(screen.getByTestId('lines-status-problem'));
+		await waitFor(() => expect(origin.isConnected).toBe(false));
+		await fireEvent.click(screen.getByRole('button', { name: 'Back to results' }));
+		await waitFor(() =>
+			expect(document.activeElement).toBe(
+				screen.getByRole('region', { name: 'Lines in this network' }),
+			),
+		);
+	});
+
+	it('copies a complete absolute record URL and exposes that same URL on clipboard denial', async () => {
+		h.state.desktop = true;
+		const writeText = vi.fn().mockRejectedValue(new Error('denied'));
+		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+		render(LinesDirectory);
+		await screen.findByRole('link', { name: 'Download this record (CSV)' });
+		await fireEvent.click(screen.getByRole('button', { name: 'Copy record link' }));
+		const href = 'http://localhost/lines/1?provider=stm&from=2026-11-04&to=2026-11-10';
+		expect(writeText).toHaveBeenCalledWith(href);
+		expect(await screen.findByRole('textbox', { name: 'Copy this link:' })).toHaveValue(href);
+	});
+
 	it('stays closed on the phone until Preview is chosen, then returns focus to the row', async () => {
 		const { container } = render(LinesDirectory);
 		await waitFor(() => expect(counts(container)).toContain('Showing 20 of 235'));
@@ -530,7 +624,9 @@ describe('Lines directory — preview, links and citation', () => {
 		expect(cited).toContain('1,000');
 		expect(cited).toMatch(/Record published Nov\.? 11, 2026/);
 		expect(cited).toContain('method reliability-2');
-		expect(cited).toContain('/lines/1?provider=stm&from=2026-11-04&to=2026-11-10');
+		expect(cited).toMatch(
+			/http:\/\/localhost\/lines\/1\?provider=stm&from=2026-11-04&to=2026-11-10$/u,
+		);
 		expect(cited.toLowerCase()).not.toContain('permanent');
 	});
 	it('exports exactly the displayed rows as a CSV download', async () => {

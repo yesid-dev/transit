@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { getV1Runtime } from '#lib/v1/runtime.ts';
 	import { getV1Context } from '#lib/v1/boot.ts';
@@ -388,7 +388,7 @@
 		if (evidence.state === 'low-sample')
 			return [t.lowSample, datesText(evidence)].filter(Boolean).join(' · ');
 		if (evidence.state === 'loading') return checking(row.line) ? t.loading : '';
-		return stateText(evidence);
+		return [datesText(evidence), stateText(evidence)].filter(Boolean).join(' · ');
 	}
 
 	/** A status cell only exists when it can show a number, a hedge or a retry. */
@@ -398,22 +398,69 @@
 		evidence.state === 'low-sample' ||
 		evidence.state === 'failed';
 
-	let previewOrigin: { button: HTMLElement; scrollY: number } | null = null;
-	async function openPreview(line: RouteIndexEntry, event: MouseEvent): Promise<void> {
-		previewOrigin = { button: event.currentTarget as HTMLElement, scrollY: window.scrollY };
-		apply({ line: line.id });
+	let previewOrigin: { lineId: string; button: HTMLElement; scrollY: number } | null = null;
+	let resultsElement = $state<HTMLElement>();
+	let focusedPreviewId = $state<string | null>(null);
+	let alive = true;
+	onDestroy(() => {
+		alive = false;
+	});
+
+	async function focusPreview(lineId: string): Promise<void> {
 		await tick();
+		if (!alive || view.line !== lineId || selectedRow?.line.id !== lineId) return;
 		const heading = document.getElementById(previewHeadingId);
 		heading?.focus({ preventScroll: true });
 		heading?.scrollIntoView({ block: 'start' });
 	}
 
+	// A phone link can select a preview before its index arrives, without a click origin.
+	$effect(() => {
+		const lineId = view.line;
+		if (!lineId) {
+			focusedPreviewId = null;
+			return;
+		}
+		if (
+			desktop.current ||
+			selectedRow?.line.id !== lineId ||
+			untrack(() => focusedPreviewId) === lineId
+		)
+			return;
+		focusedPreviewId = lineId;
+		void focusPreview(lineId);
+	});
+
+	function previewButton(lineId: string | null): HTMLButtonElement | undefined {
+		return [
+			...(resultsElement?.querySelectorAll<HTMLButtonElement>('[data-directory-preview-id]') ?? []),
+		].find((button) => button.dataset.directoryPreviewId === lineId);
+	}
+
+	async function openPreview(line: RouteIndexEntry, event: MouseEvent): Promise<void> {
+		previewOrigin = {
+			lineId: line.id,
+			button: event.currentTarget as HTMLElement,
+			scrollY: window.scrollY,
+		};
+		focusedPreviewId = line.id;
+		apply({ line: line.id });
+		await focusPreview(line.id);
+	}
+
 	async function backToResults(): Promise<void> {
+		const lineId = view.line;
 		const origin = previewOrigin;
 		apply({ line: null });
 		await tick();
-		origin?.button.focus({ preventScroll: true });
-		if (origin) window.scrollTo({ top: origin.scrollY });
+		if (origin?.lineId === lineId && origin.button.isConnected) {
+			origin.button.focus({ preventScroll: true });
+			window.scrollTo({ top: origin.scrollY });
+			return;
+		}
+		const target = previewButton(lineId) ?? resultsElement;
+		target?.focus({ preventScroll: true });
+		target?.scrollIntoView({ block: target === resultsElement ? 'start' : 'center' });
 	}
 </script>
 
@@ -484,20 +531,26 @@
 	</FilterSection>
 {/snippet}
 
-<ResourceBoundary resource={routes} lang={locale} isEmpty={(d) => d.routes.length === 0}>
-	<ListingFrame
-		presentation="reading"
-		rule="dimension"
-		heading={t.heading}
-		subtitle={providerName}
-		description={t.lede}
-		filterLabel={t.controlsLabel}
-		resultCountText={countText}
-		search={listingSearch}
-		filters={listingFilters}
-	>
+<ListingFrame
+	presentation="reading"
+	rule="dimension"
+	heading={t.heading}
+	subtitle={providerName}
+	description={t.lede}
+	filterLabel={t.controlsLabel}
+	resultCountText={routes.data ? countText : undefined}
+	search={listingSearch}
+	filters={listingFilters}
+>
+	<ResourceBoundary resource={routes} lang={locale} isEmpty={(d) => d.routes.length === 0}>
 		<div class="directory" data-slot="lines-directory">
-			<div class="directory-results">
+			<div
+				class="directory-results"
+				bind:this={resultsElement}
+				tabindex="-1"
+				role="region"
+				aria-label={t.listLabel}
+			>
 				<div class="directory-toolbar">
 					<p class="directory-count" data-slot="directory-counts">{countText}</p>
 					{#if displayedCsv}
@@ -602,6 +655,7 @@
 										<button
 											type="button"
 											class="directory-preview tap-press"
+											data-directory-preview-id={row.line.id}
 											aria-label={t.previewLine(row.line.short)}
 											onclick={(event) => openPreview(row.line, event)}
 										>
@@ -668,8 +722,8 @@
 				</div>
 			{/if}
 		</div>
-	</ListingFrame>
-</ResourceBoundary>
+	</ResourceBoundary>
+</ListingFrame>
 
 <style>
 	.directory {
@@ -684,6 +738,11 @@
 		flex-direction: column;
 		gap: 0.75rem;
 		min-width: 0;
+		scroll-margin-block-start: calc(var(--chrome-offset) + 1rem);
+	}
+	.directory-results:focus-visible {
+		outline: 2px solid var(--ring);
+		outline-offset: 4px;
 	}
 	.directory-count,
 	.directory-note,

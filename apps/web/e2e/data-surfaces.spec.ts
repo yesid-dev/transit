@@ -612,7 +612,12 @@ async function stubLinesDirectory(
 		weekly_routes: [
 			ranked('77', 40, 100, 40, 1),
 			ranked('7', 55, 100, 55, 2),
-			{ id: '2', state: 'too_few_units' as const, ...week },
+			{
+				id: '2',
+				state: 'too_few_units' as const,
+				window_start: '2026-10-28',
+				window_end: '2026-11-03',
+			},
 		],
 	};
 	const routes = [
@@ -787,6 +792,8 @@ for (const lang of PUBLISHED_LOCALES)
 					`${localizeHref('/lines/2', lang, provider)}&`,
 				);
 				await expect(excluded).toContainText(copy.unranked.too_few_units);
+				await expect(excluded).toContainText(formatRecordDates('2026-10-28', '2026-11-03', lang)!);
+				await expect(excluded).toContainText(copy.older);
 				await expect(excluded.locator('[data-slot="reliability-badge"]')).toHaveCount(0);
 			});
 
@@ -966,6 +973,44 @@ test('en: the selected preview cites the record it actually shows, with a copy f
 	expect(citation).toContain('November 4 to 10, 2026');
 	expect(citation).toContain('1,000');
 	expect(citation).toContain('method reliability-2');
-	expect(citation).toContain('/lines/1?provider=stm&from=2026-11-04&to=2026-11-10');
+	const absoluteRecordUrl = new URL(
+		'/lines/1?provider=stm&from=2026-11-04&to=2026-11-10',
+		page.url(),
+	).href;
+	expect(citation).toMatch(
+		new RegExp(`${absoluteRecordUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`),
+	);
 	expect(citation.toLowerCase()).not.toContain('permanent');
+	await preview.getByRole('button', { name: copy.copyRecord, exact: true }).click();
+	await expect(fallback).toHaveCount(2);
+	await expect(preview.getByLabel(copy.copyFallback, { exact: true })).toHaveValue(
+		absoluteRecordUrl,
+	);
 });
+
+for (const lang of PUBLISHED_LOCALES)
+	for (const id of ['1', '235'])
+		test(`${lang}: phone URL preview ${id} focuses the report and returns to results`, async ({
+			page,
+		}) => {
+			await page.clock.setFixedTime(Date.parse('2026-11-12T12:00:00Z'));
+			await stubLinesDirectory(page);
+			await page.setViewportSize({ width: 320, height: 900 });
+			await page.goto(`${localizeHref('/lines', lang, 'stm')}&line=${id}`, {
+				waitUntil: 'networkidle',
+			});
+			const preview = page.locator('[data-slot="directory-preview"]');
+			await expect(preview.locator('h2')).toBeFocused();
+			await expect(preview.locator('h2')).toBeInViewport();
+			await preview
+				.getByRole('button', { name: indexCopy[lang].backToResults, exact: true })
+				.click();
+			await expect(preview).toHaveCount(0);
+			const target =
+				id === '1'
+					? page.locator(`[data-directory-preview-id="${id}"]`)
+					: page.locator('.directory-results');
+			await expect(target).toBeFocused();
+			await expect(target).toBeInViewport();
+			await expect(page).not.toHaveURL(/line=/);
+		});

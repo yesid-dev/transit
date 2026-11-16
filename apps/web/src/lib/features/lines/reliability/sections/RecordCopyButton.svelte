@@ -16,16 +16,21 @@
 	let copyState = $state<'idle' | 'copied' | 'fallback'>('idle');
 	/** The text the clipboard took; a new period's text is not announced as copied. */
 	let copied = $state<string | null>(null);
+	let fallbackText = $state<string | null>(null);
 	let fallback = $state<HTMLTextAreaElement>();
 
 	async function copy(): Promise<void> {
+		const submitted = text;
 		try {
-			await navigator.clipboard.writeText(text);
-			copied = text;
+			await navigator.clipboard.writeText(submitted);
+			copied = submitted;
 			copyState = 'copied';
 		} catch {
+			if (text !== submitted) return;
+			fallbackText = submitted;
 			copyState = 'fallback';
 			await tick();
+			if (text !== submitted) return;
 			fallback?.focus();
 			fallback?.select();
 		}
@@ -37,9 +42,9 @@
 	<p class="record-copy__status" role="status" aria-live="polite" aria-atomic="true">
 		{copyState === 'copied' && copied === text ? done : ''}
 	</p>
-	{#if copyState === 'fallback'}
+	{#if copyState === 'fallback' && fallbackText === text}
 		<label class="record-copy__label" for={id}>{fallbackLabel}</label>
-		<textarea {id} bind:this={fallback} readonly value={text} rows="4"></textarea>
+		<textarea {id} bind:this={fallback} readonly value={fallbackText ?? ''} rows="4"></textarea>
 	{/if}
 </div>
 

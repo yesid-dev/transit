@@ -48,6 +48,7 @@
 
 	const t = $derived(indexCopy[locale]);
 	const share = $derived(reliabilityCopy[locale].record);
+	const shareHref = $derived(new URL(recordHref, page.url.origin).href);
 	const numberFmt = $derived(intl.number(locale));
 	const mode = $derived(routeModeHint(line.type));
 
@@ -93,7 +94,7 @@
 				: null,
 			generation: evidence.publication.generationId,
 			method: evidence.publication.methodVersion,
-			href: recordHref,
+			href: shareHref,
 		});
 	});
 
@@ -196,7 +197,7 @@
 			label={t.copyRecord}
 			done={t.copyRecordDone}
 			fallbackLabel={t.copyFallback}
-			text={recordHref}
+			text={shareHref}
 		/>
 		{#if citation}
 			<RecordCopyButton
