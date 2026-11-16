@@ -18,6 +18,8 @@ from transit_ops.live.edition import EDITION_TABLES, EditionId, loaded_edition
 from transit_ops.live.local_file import LocalFile
 
 Row = dict[str, Any]
+MAX_DELAY_SECONDS = 3600
+REMOVED_TRIPS = frozenset({3, 7})  # CANCELED and DELETED override child predictions.
 
 
 class TripHolder(Protocol):
@@ -177,28 +179,66 @@ def _trip_rows(parsed: ParsedCapture | None, provider: str) -> tuple[list[Row], 
         return [], []
     if parsed.capture.provider_id != provider or parsed.capture.endpoint_key != "trip_updates":
         raise ValueError("trip capture identity differs")
-    return _rows(parsed.frames["rt_trip_updates"]), _rows(
-        parsed.frames["rt_trip_update_stop_times"]
-    )
+    deleted = {r["entity_index"] for r in _rows(parsed.frames["rt_entities"]) if r["is_deleted"]}
+    trips = [r for r in _rows(parsed.frames["rt_trip_updates"]) if r["entity_index"] not in deleted]
+    return trips, _rows(parsed.frames["rt_trip_update_stop_times"])
 
 
-def _match(schedule: list[Row], trip: Row, stop: Row) -> Row | None:
-    matches = [
-        r
-        for r in schedule
-        if r["trip_id"] == trip["trip_id"]
-        and (
-            r["stop_sequence"] == stop["stop_sequence"]
-            if stop["stop_sequence"] is not None
-            else stop["stop_id"] is not None and r["stop_id"] == stop["stop_id"]
-        )
-    ]
-    if len(matches) != 1:
-        return None
-    row = matches[0]
-    if stop["stop_id"] is not None and stop["stop_id"] != row["stop_id"]:
+@dataclass(frozen=True)
+class _StopIndex:
+    sequence: dict[tuple[Any, Any], Row | None]
+    stop_id: dict[tuple[Any, Any], Row | None]
+    windows: dict[Any, tuple[int, int]]
+
+
+def _index_stops(frame: Frame, relevant_trips: set[Any]) -> _StopIndex:
+    sequence: dict[tuple[Any, Any], Row | None] = {}
+    stop_id: dict[tuple[Any, Any], Row | None] = {}
+    windows: dict[Any, tuple[int, int]] = {}
+    trip_column = frame.columns.index("trip_id")
+    # Read the tuple stream once; copy only trips used by eligible realtime children.
+    for values in frame.rows:
+        trip_id = values[trip_column]
+        if trip_id not in relevant_trips:
+            continue
+        row: Row = dict(zip(frame.columns, values, strict=True))
+        key = (trip_id, row["stop_sequence"])
+        sequence[key] = None if key in sequence else row
+        key = (trip_id, row["stop_id"])
+        stop_id[key] = None if key in stop_id else row
+        events = [
+            _seconds(row[k]) for k in ("arrival_time", "departure_time") if row[k] is not None
+        ]
+        if events:
+            low, high = windows.get(trip_id, (min(events), max(events)))
+            windows[trip_id] = (min(low, *events), max(high, *events))
+    return _StopIndex(sequence, stop_id, windows)
+
+
+def _match(schedule: _StopIndex, trip: Row, stop: Row) -> Row | None:
+    if stop["stop_sequence"] is not None:
+        row = schedule.sequence.get((trip["trip_id"], stop["stop_sequence"]))
+    elif stop["stop_id"] is not None:
+        row = schedule.stop_id.get((trip["trip_id"], stop["stop_id"]))
+    else:
+        row = None
+    if row is not None and stop["stop_id"] is not None and stop["stop_id"] != row["stop_id"]:
         return None
     return row
+
+
+def _service_is_current(trip: Row, schedule: _StopIndex, timezone: str, cycle: datetime) -> bool:
+    window = schedule.windows.get(trip["trip_id"])
+    if trip["start_date"] is None or window is None:
+        return False
+    # Use elapsed GTFS events, not civil-day age. A trip can be current beyond
+    # 48h, but cannot certify a delay once even its permitted delay band expires.
+    elapsed = cycle - service_anchor(trip["start_date"], timezone)
+    return (
+        timedelta(seconds=window[0] - MAX_DELAY_SECONDS)
+        <= elapsed
+        <= timedelta(seconds=window[1] + MAX_DELAY_SECONDS)
+    )
 
 
 def _stop_key(stop: Row) -> tuple[Any, ...]:
@@ -210,13 +250,19 @@ def _stop_key(stop: Row) -> tuple[Any, ...]:
     )
 
 
-def _delay(trip: Row, stops: list[Row], schedule: list[Row], timezone: str) -> int | None:
-    if trip["start_date"] is None or trip["schedule_relationship"] == 3:
+def _delay(
+    trip: Row, stops: list[Row], schedule: _StopIndex, timezone: str, cycle: datetime
+) -> int | None:
+    if trip["schedule_relationship"] in REMOVED_TRIPS or not _service_is_current(
+        trip, schedule, timezone, cycle
+    ):
         return None
     candidates = []
     for stop in stops:
+        if stop["schedule_relationship"] in (1, 2):
+            continue
         match = _match(schedule, trip, stop)
-        if stop["schedule_relationship"] in (1, 2) or match is None:
+        if match is None:
             continue
         for kind in ("arrival", "departure"):
             stamp, service_time = stop[f"{kind}_time_utc"], match[f"{kind}_time"]
@@ -233,11 +279,9 @@ def _delay(trip: Row, stops: list[Row], schedule: list[Row], timezone: str) -> i
     return min(candidates)[1] if candidates else None
 
 
-def _departures(
-    trip: Row, children: list[Row], schedule: list[Row], provider: str, cycle: datetime
-) -> list[Row]:
+def _predictions(trip: Row, children: list[Row], schedule: _StopIndex, provider: str) -> list[Row]:
     departures: list[Row] = []
-    if trip["schedule_relationship"] == 3:
+    if trip["schedule_relationship"] in REMOVED_TRIPS:
         return []
     for stop in children:
         if stop["schedule_relationship"] in (1, 2):
@@ -246,7 +290,7 @@ def _departures(
         match = _match(schedule, trip, stop)
         # An explicit ID remains useful for added trips; ambiguous ID-less stops do not.
         stop_id = stop["stop_id"] or (match["stop_id"] if match else None)
-        if stamp is not None and _aware(stamp) >= cycle and stop_id is not None:
+        if stamp is not None and stop_id is not None:
             departures.append(
                 dict(
                     provider_id=provider,
@@ -270,21 +314,41 @@ def _movement(
     cycle: datetime,
 ) -> tuple[list[Row], list[Row]]:
     trips, stops = _trip_rows(parsed, provider)
-    schedule = _rows(inputs.selected.frames["edition_stop_times"])
-    delays, departures = [], []
+    children_by_entity: dict[Any, list[Row]] = {}
+    for stop in stops:
+        children_by_entity.setdefault(stop["entity_index"], []).append(stop)
+    trips = [t for t in trips if t["schedule_relationship"] not in REMOVED_TRIPS]
+    relevant = {
+        t["trip_id"]
+        for t in trips
+        if t["trip_id"] is not None
+        and any(
+            s["schedule_relationship"] not in (1, 2)
+            and (s["arrival_time_utc"] is not None or s["departure_time_utc"] is not None)
+            for s in children_by_entity.get(t["entity_index"], [])
+        )
+    }
+    schedule = (
+        _index_stops(inputs.selected.frames["edition_stop_times"], relevant)
+        if relevant
+        else _StopIndex({}, {}, {})
+    )
+    departures = []
     groups: dict[tuple[Any, ...], list[tuple[int, int]]] = {}
     for trip in trips:
-        children = [s for s in stops if s["entity_index"] == trip["entity_index"]]
-        delay = _delay(trip, children, schedule, timezone)
-        day = cycle.astimezone(ZoneInfo(timezone)).date()
-        if (
-            delay is not None
-            and abs(delay) <= 3600
-            and trip["start_date"] >= day - timedelta(days=1)
-        ):
+        children = children_by_entity.get(trip["entity_index"], [])
+        delay = _delay(trip, children, schedule, timezone, cycle)
+        if delay is not None and abs(delay) <= MAX_DELAY_SECONDS:
             key = (trip["trip_id"], trip["route_id"], trip["direction_id"])
             groups.setdefault(key, []).append((delay, len(children)))
-        departures.extend(_departures(trip, children, schedule, provider, cycle))
+        departures.extend(_predictions(trip, children, schedule, provider))
+    return _delay_summaries(groups, provider), departures
+
+
+def _delay_summaries(
+    groups: dict[tuple[Any, ...], list[tuple[int, int]]], provider: str
+) -> list[Row]:
+    delays = []
     for key, values in groups.items():
         average = (Decimal(sum(v[0] for v in values)) / len(values)).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
@@ -300,7 +364,7 @@ def _movement(
                 stop_time_observation_count=sum(v[1] for v in values),
             )
         )
-    return delays, departures
+    return delays
 
 
 def _vehicles(
@@ -411,7 +475,8 @@ def project_running(
         raise ValueError("local provider differs")
     running = running_trips(inputs, provider_id=provider_id, timezone=timezone, cycle=cycle)
     parsed = holder.latest() if trip_policy.enabled else None
-    delays, departures = _movement(parsed, inputs, provider_id, timezone, cycle)
+    delays, predictions = _movement(parsed, inputs, provider_id, timezone, cycle)
+    departures = [p for p in predictions if p["predicted_departure_utc"] >= cycle]
     vehicles, receipt = _vehicles(local, provider_id) if vehicle_policy.enabled else ([], None)
     trip_identity = (
         None
@@ -421,7 +486,7 @@ def project_running(
     trip_evidence = _evidence(trip_policy, cycle, trip_identity)
     vehicle_evidence = _evidence(vehicle_policy, cycle, receipt)
     _rank_departures(departures)
-    vehicles = _vehicle_stops(vehicles, departures, inputs)
+    vehicles = _vehicle_stops(vehicles, predictions, inputs)
     _attach_delays(vehicles, delays)
     vehicles.sort(
         key=lambda r: (

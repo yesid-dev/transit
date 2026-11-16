@@ -2,12 +2,13 @@
 
 from dataclasses import replace
 from datetime import UTC, date, datetime
+from decimal import Decimal
 
 import pytest
 from sqlalchemy import text
 from test_live_captures import _parse
 from test_live_facts import trip_message
-from test_live_running import AT, inputs, project, with_frame
+from test_live_running import AT, inputs, long_service_case, project, with_frame
 from test_live_running import local as local
 from test_running_service_clock_real_db import _calendar, _edition, _trip
 
@@ -64,14 +65,14 @@ def test_running_0096_same_clock_rows_and_independent_math(
 
 
 @pytest.mark.parametrize(
-    "cancelled,skipped,expected_pg", [(False, False, 1), (True, False, 1), (False, True, 1)]
+    "relationship,skipped,expected_pg", [(0, False, 1), (3, False, 1), (0, True, 1), (7, False, 1)]
 )
 def test_departure_view_differences_are_classified(
-    real_db_engine, local, cancelled, skipped, expected_pg
+    real_db_engine, local, relationship, skipped, expected_pg
 ):
     message = trip_message()
     trip = message.entity[0].trip_update
-    trip.trip.schedule_relationship = 3 if cancelled else 0
+    trip.trip.schedule_relationship = relationship
     stop = trip.stop_time_update[0]
     stop.schedule_relationship = 1 if skipped else 0
     stop.stop_id = "站"
@@ -84,13 +85,13 @@ def test_departure_view_differences_are_classified(
             for table in tables:
                 conn.execute(
                     text(
-                        f"CREATE TEMP TABLE ls36_{table} ON COMMIT DROP "
+                        f"CREATE TEMP TABLE {table} ON COMMIT DROP "
                         f"AS SELECT * FROM silver.{table} WITH NO DATA"
                     )
                 )
             conn.execute(
                 text(
-                    "INSERT INTO ls36_rt_feed_snapshots "
+                    "INSERT INTO pg_temp.rt_feed_snapshots "
                     "(rt_feed_snapshot_id,provider_id,endpoint_key,captured_at_utc,"
                     "source_realtime_snapshot_id) VALUES (42,'network','trip_updates',:at,42)"
                 ),
@@ -104,7 +105,7 @@ def test_departure_view_differences_are_classified(
                     names = ",".join(columns)
                     placeholders = ",".join(":" + name for name in columns)
                     conn.execute(
-                        text(f"INSERT INTO ls36_{table} ({names}) VALUES ({placeholders})"), row
+                        text(f"INSERT INTO pg_temp.{table} ({names}) VALUES ({placeholders})"), row
                     )
             definition = (
                 conn.execute(
@@ -116,13 +117,15 @@ def test_departure_view_differences_are_classified(
                 .strip()
                 .removesuffix(";")
             )
+            # Retarget schemas only: implicit basenames and explicit aliases in
+            # the installed definition must continue to resolve to the same rows.
             for table in tables:
-                definition = definition.replace("silver." + table, "ls36_" + table)
+                definition = definition.replace("silver." + table, "pg_temp." + table)
             definition = definition.replace("now()", "CAST(:cycle AS timestamptz)")
             pg = conn.execute(text(definition), {"cycle": AT}).mappings().all()
             assert len(pg) == expected_pg
-            if cancelled or skipped:
-                # R28(b): PG 0093 exposes cancelled/skipped service. Local correct
+            if relationship in (3, 7) or skipped:
+                # R28(b): PG 0093 exposes cancelled/skipped/deleted service. Local correct
                 # passenger-service math excludes it. Requires SQL/methodology work
                 # by its owner before activation, never imitate it for parity.
                 assert ours == ()
@@ -135,9 +138,44 @@ def test_departure_view_differences_are_classified(
             tx.rollback()
 
 
-def test_current_delay_view_same_named_values_and_clock(real_db_engine, local):
-    from decimal import Decimal
+def _current_delay_rows(conn, observations, cycle):
+    conn.execute(
+        text(
+            "CREATE TEMP TABLE latest_trip_delay_snapshot ON COMMIT DROP "
+            "AS SELECT * FROM gold.latest_trip_delay_snapshot WITH NO DATA"
+        )
+    )
+    conn.execute(
+        text("CREATE TEMP TABLE dim_provider (provider_id text, timezone text) ON COMMIT DROP")
+    )
+    conn.execute(text("INSERT INTO pg_temp.dim_provider VALUES ('network','America/Toronto')"))
+    for entity, day, delay, count in observations:
+        conn.execute(
+            text("""
+            INSERT INTO pg_temp.latest_trip_delay_snapshot
+                (provider_id,realtime_snapshot_id,entity_index,trip_id,route_id,direction_id,
+                 start_date,captured_at_utc,delay_seconds,stop_time_update_count)
+            VALUES ('network',42,:entity,'行程','路线',1,:day,:at,:delay,:count)
+        """),
+            dict(entity=entity, day=day, at=cycle, delay=delay, count=count),
+        )
+    definition = (
+        conn.execute(
+            text("SELECT pg_get_viewdef('gold.current_trip_delay_computed'::regclass,true)")
+        )
+        .scalar_one()
+        .strip()
+        .removesuffix(";")
+    )
+    definition = (
+        definition.replace("gold.latest_trip_delay_snapshot", "pg_temp.latest_trip_delay_snapshot")
+        .replace("gold.dim_provider", "pg_temp.dim_provider")
+        .replace("now()", "CAST(:cycle AS timestamptz)")
+    )
+    return conn.execute(text(definition), {"cycle": cycle}).mappings().all()
 
+
+def test_current_delay_view_same_named_values_and_clock(real_db_engine, local):
     message = trip_message()
     message.entity.add().CopyFrom(message.entity[0])
     message.entity[1].id = "second"
@@ -145,48 +183,29 @@ def test_current_delay_view_same_named_values_and_clock(real_db_engine, local):
     ours = project(local, _parse(message)).delays[0]
     with real_db_engine.connect() as conn, conn.begin() as tx:
         try:
-            conn.execute(
-                text(
-                    "CREATE TEMP TABLE ls36_delays ON COMMIT DROP AS SELECT * FROM gold.latest_t"
-                    "rip_delay_snapshot WITH NO DATA"
-                )
+            # Same named observations: (180+120)/2 = 150, four child observations.
+            (pg,) = _current_delay_rows(
+                conn, [(0, date(2026, 6, 20), 180, 2), (1, date(2026, 6, 20), 120, 2)], AT
             )
-            conn.execute(
-                text(
-                    "CREATE TEMP TABLE ls36_providers (provider_id text, timezone text) ON COMMI"
-                    "T DROP"
-                )
-            )
-            conn.execute(text("INSERT INTO ls36_providers VALUES ('network','America/Toronto')"))
-            # Same two named entity observations: 12:03/12:02Z minus 08:00 EDT.
-            conn.execute(
-                text(
-                    "INSERT INTO ls36_delays (provider_id,realtime_snapshot_id,entity_index,trip"
-                    "_id,route_id,direction_id,start_date,captured_at_utc,delay_seconds,stop_tim"
-                    "e_update_count) "
-                    "VALUES ('network',42,0,'行程','路线',1,'2026-06-20',:at,180,2),"
-                    "('network',42,1,'行程','路线',1,'2026-06-20',:at,120,2)"
-                ),
-                {"at": AT},
-            )
-            definition = (
-                conn.execute(
-                    text("SELECT pg_get_viewdef('gold.current_trip_delay_computed'::regclass,true)")
-                )
-                .scalar_one()
-                .strip()
-                .removesuffix(";")
-            )
-            definition = (
-                definition.replace("gold.latest_trip_delay_snapshot", "ls36_delays")
-                .replace("gold.dim_provider", "ls36_providers")
-                .replace("now()", "CAST(:cycle AS timestamptz)")
-            )
-            pg = conn.execute(text(definition), {"cycle": AT}).mappings().one()
-            # R28(c), representation only. Independently: sum=300,count=2,mean=150.
             for row in (ours, pg):
                 assert row["avg_delay_seconds"] == Decimal("150.00")
                 assert row["max_delay_seconds"] == 180
                 assert row["stop_time_observation_count"] == 4
+        finally:
+            tx.rollback()
+
+
+def test_49_hour_service_delay_pg_date_cutoff_is_class_b(real_db_engine, local):
+    cycle, parsed = long_service_case(local)
+    ours = project(local, parsed, cycle).delays
+    assert ours[0]["avg_delay_seconds"] == Decimal("90.00")
+    assert ours[0]["stop_time_observation_count"] == 2
+    with real_db_engine.connect() as conn, conn.begin() as tx:
+        try:
+            # June20 anchor04Z +49h = June22 05Z; 05:01:30 prediction = +90s.
+            pg = _current_delay_rows(conn, [(0, date(2026, 6, 20), 90, 2)], cycle)
+            # R28(b): existing SQL's yesterday cutoff drops valid current service.
+            # Reconcile the SQL/methodology before activation; never imitate it.
+            assert pg == []
         finally:
             tx.rollback()

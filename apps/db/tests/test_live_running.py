@@ -335,3 +335,233 @@ def test_freshness_boundary_and_exact_fractional_age(local):
     result = project(local, empty, AT + timedelta(seconds=60, microseconds=1))
     assert result.trip_evidence.state == "stale"
     assert result.trip_evidence.age_seconds == Decimal("60.000001")
+
+
+def parse_at(message, endpoint, at):
+    from hashlib import sha256
+
+    from test_live_captures import POLICY as parse_policy
+
+    from transit_ops.live.captures import CaptureRef, parse_capture
+
+    payload = message.SerializeToString()
+    capture = CaptureRef("network", endpoint, 42, at, at, len(payload), sha256(payload).hexdigest())
+    return parse_capture(payload, capture, parse_policy)
+
+
+def vehicle_without_stop(local, captured_at=AT):
+    from test_live_facts import vehicle_message
+
+    message = vehicle_message()
+    for entity in message.entity:
+        if entity.HasField("vehicle"):
+            entity.vehicle.ClearField("stop_id")
+    apply_capture(
+        local,
+        parse_at(message, "vehicle_positions", captured_at),
+        provider_timezone="America/Toronto",
+    )
+
+
+def test_vehicle_fallback_uses_capture_clock_without_relaxing_departures(local):
+    vehicle_without_stop(local)
+    message = trip_message()
+    trip = message.entity[0].trip_update
+    trip.stop_time_update[0].arrival.time = int(AT.timestamp()) + 10
+    trip.stop_time_update[0].stop_id = "站"
+    later = trip.stop_time_update.add(stop_sequence=5, stop_id="later")
+    later.arrival.time = int(AT.timestamp()) + 40
+    result = project(local, _parse(message), AT + timedelta(seconds=30))
+    assert result.trip_evidence.state == result.vehicle_evidence.state == "fresh"
+    assert result.vehicles[0]["next_stop"] == "站"
+    assert result.vehicles[0]["next_stop_lat"] == 45.5
+    assert [r["stop_id"] for r in result.departures] == ["later"]
+
+
+@pytest.mark.parametrize("relationship", [3, 7])
+def test_removed_trip_children_cannot_seed_any_movement(local, relationship):
+    vehicle_without_stop(local)
+    message = trip_message()
+    trip = message.entity[0].trip_update
+    trip.trip.schedule_relationship = relationship
+    trip.stop_time_update[0].arrival.time = int(AT.timestamp()) + 90
+    parsed = _parse(message)
+    assert parsed.frames["rt_trip_updates"].column("schedule_relationship") == [relationship]
+    result = project(local, parsed)
+    assert result.departures == result.delays == ()
+    assert result.vehicles[0]["next_stop"] is None
+    assert result.vehicles[0]["trip_avg_delay_seconds"] is None
+
+
+def long_service_case(local, captured_at=None):
+    # June 20 noon EDT is 16Z; anchor=04Z; +49h=June 22 05Z, plus 90s delay.
+    at = datetime(2026, 6, 22, 5, tzinfo=UTC)
+    local.connection.execute("UPDATE edition_stop_times SET arrival_time='49:00:00'")
+    local.connection.execute(
+        "UPDATE edition_trip_service_span SET first_seconds=176400,last_seconds=176460"
+    )
+    message = trip_message()
+    message.entity[0].trip_update.stop_time_update[0].arrival.time = int(at.timestamp()) + 90
+    message.header.timestamp = int(at.timestamp())
+    captured_at = at if captured_at is None else captured_at
+    return captured_at, parse_at(message, "trip_updates", captured_at)
+
+
+def test_fresh_49_hour_delay_and_vehicle_are_current(local):
+    at, parsed = long_service_case(local)
+    vehicle_without_stop(local, at)
+    result = project(local, parsed, at)
+    assert result.trip_evidence.state == result.vehicle_evidence.state == "fresh"
+    assert result.running == (("路线", "行程"),)
+    assert result.departures[0]["predicted_departure_utc"] == datetime(
+        2026, 6, 22, 5, 1, 30, tzinfo=UTC
+    )
+    assert result.delays[0]["avg_delay_seconds"] == Decimal("90.00")
+    assert result.vehicles[0]["trip_avg_delay_seconds"] == Decimal("90.00")
+
+
+def test_expired_short_service_cannot_certify_current_delay(local):
+    at, parsed = long_service_case(local)
+    local.connection.execute("UPDATE edition_stop_times SET arrival_time='08:00:00'")
+    local.connection.execute(
+        "UPDATE edition_trip_service_span SET first_seconds=28800,last_seconds=28860"
+    )
+    # A fresh capture carrying an old short-service event cannot certify current delay.
+    message = trip_message()
+    message.entity[0].trip_update.stop_time_update[0].arrival.time = int(
+        datetime(2026, 6, 20, 12, 1, 30, tzinfo=UTC).timestamp()
+    )
+    parsed = parse_at(message, "trip_updates", at)
+    vehicle_without_stop(local, at)
+    result = project(local, parsed, at)
+    assert result.trip_evidence.state == "fresh"
+    assert result.running == result.departures == result.delays == ()
+    assert result.vehicles[0]["trip_avg_delay_seconds"] is None
+
+
+@pytest.mark.parametrize(
+    "capture_kind",
+    [
+        "missing",
+        "empty",
+        "disabled",
+        "removed",
+        "skipped",
+        "no-data",
+        "no-children",
+        "entity-deleted",
+    ],
+)
+def test_no_applicable_trip_never_reads_static_stop_times(local, capture_kind):
+    one = inputs(local)
+    selected = replace(
+        one.selected,
+        frames={k: v for k, v in one.selected.frames.items() if k != "edition_stop_times"},
+    )
+    one = replace(one, selected=selected, current=(selected,))
+    message = trip_message()
+    if capture_kind == "removed":
+        message.entity[0].trip_update.trip.schedule_relationship = 7
+    if capture_kind == "skipped":
+        message.entity[0].trip_update.stop_time_update[0].schedule_relationship = 1
+    if capture_kind == "no-data":
+        message.entity[0].trip_update.stop_time_update[0].schedule_relationship = 2
+    if capture_kind == "no-children":
+        message.entity[0].trip_update.ClearField("stop_time_update")
+    if capture_kind == "entity-deleted":
+        message.entity[0].is_deleted = True
+    if capture_kind == "empty":
+        message = pb.FeedMessage(header=dict(gtfs_realtime_version="2.0"))
+    parsed = None if capture_kind == "missing" else _parse(message)
+    result = project_running(
+        local,
+        Holder(parsed),
+        one,
+        provider_id="network",
+        timezone="UTC",
+        cycle=AT,
+        trip_policy=FeedPolicy(capture_kind != "disabled", 60),
+        vehicle_policy=POLICY,
+    )
+    assert result.delays == result.departures == ()
+
+
+def test_schedule_matching_does_one_pass_without_copying_irrelevant_rows(local, monkeypatch):
+    from transit_ops.live import running
+
+    class CountedRows(tuple):
+        scans = 0
+
+        def __iter__(self):
+            self.scans += 1
+            return super().__iter__()
+
+    one = inputs(local)
+    selected = with_frame(
+        one.selected,
+        "edition_stop_times",
+        [
+            ("irrelevant", 1, "00:00:00", None, "unused"),
+            ("行程", 3, "08:00:00", None, "站"),
+        ],
+    )
+    frame = selected.frames["edition_stop_times"]
+    counted = CountedRows(frame.rows)
+    selected = replace(
+        selected, frames={**selected.frames, frame.table: replace(frame, rows=counted)}
+    )
+    one = replace(one, selected=selected, current=(selected,))
+    original = running._rows
+
+    def rows(frame):
+        assert frame.table != "edition_stop_times", "Do not copy the full edition into dictionaries"
+        return original(frame)
+
+    monkeypatch.setattr(running, "_rows", rows)
+    message = trip_message()
+    for i in range(2):
+        entity = message.entity.add()
+        entity.CopyFrom(message.entity[0])
+        entity.id = str(i)
+    result = project_running(
+        local,
+        Holder(_parse(message)),
+        one,
+        provider_id="network",
+        timezone="America/Toronto",
+        cycle=AT,
+        trip_policy=POLICY,
+        vehicle_policy=POLICY,
+    )
+    assert result.delays[0]["avg_delay_seconds"] == Decimal("180.00")
+    assert result.delays[0]["stop_time_observation_count"] == 6
+    assert counted.scans == 1
+
+
+@pytest.mark.parametrize("match_kind", ["duplicate-sequence", "ambiguous-id", "sequence"])
+def test_stop_index_refuses_ambiguity_but_sequence_disambiguates(local, match_kind):
+    local.connection.execute(
+        "INSERT INTO edition_stop_times VALUES ('行程',5,'08:00:00',NULL,'站')"
+    )
+    if match_kind == "duplicate-sequence":
+        local.connection.execute("UPDATE edition_stop_times SET stop_sequence=3")
+    message = trip_message()
+    if match_kind == "ambiguous-id":
+        stop = message.entity[0].trip_update.stop_time_update[0]
+        stop.ClearField("stop_sequence")
+        stop.stop_id = "站"
+    result = project(local, _parse(message))
+    if match_kind == "sequence":
+        assert result.delays[0]["avg_delay_seconds"] == Decimal("180.00")
+    else:
+        assert result.delays == ()
+
+
+@pytest.mark.parametrize(
+    "offset,available", [(-3601, False), (-3600, True), (3600, True), (3601, False)]
+)
+def test_elapsed_service_delay_window_preserves_one_hour_bounds(local, offset, available):
+    cycle = datetime(2026, 6, 22, 5, tzinfo=UTC) + timedelta(seconds=offset)
+    _, parsed = long_service_case(local, captured_at=cycle)
+    result = project(local, parsed, cycle)
+    assert bool(result.delays) is available
