@@ -641,16 +641,54 @@ def _capture_and_load_service_alerts(
 
 
 def _worker_trip_updates(
-    provider_id: str, *, settings: Settings, manifest: ProviderManifest,
-    engine: Engine, bronze_storage_resolver: BronzeStorageResolver,
+    provider_id: str,
+    *,
+    settings: Settings,
+    manifest: ProviderManifest,
+    engine: Engine,
+    bronze_storage_resolver: BronzeStorageResolver,
+    worker_state: WorkerState | None = None,
 ) -> LiveTripUpdates | None:
     if "trip_updates" not in realtime_endpoints_for_manifest(manifest):
         return None
     policy = ParsePolicy.from_manifest(manifest)
-    return LiveTripUpdates(provider_id, policy=policy, fallback=partial(
-        latest_stored_trip_updates, provider_id, settings=settings, policy=policy,
-        engine=engine, bronze_storage_resolver=bronze_storage_resolver,
-    ))
+    if settings.LIGHTER_STORAGE.live.trip_updates_fallback not in ("postgres", "local"):
+        raise ValueError("local_trip_updates_unknown_fallback")
+    if settings.LIGHTER_STORAGE.live.trip_updates_fallback == "local":
+        from transit_ops.history.poll_record import CaptureEntry
+        from transit_ops.live.trip_updates import LocalTripUpdatesError, latest_local_trip_updates
+
+        if worker_state is None:
+            raise LocalTripUpdatesError("local_trip_updates_requires_borrowed_owner")
+
+        def resolve_bytes(entry: CaptureEntry) -> bytes:
+            if entry.packed:
+                raise LocalTripUpdatesError("local_trip_updates_worker_packed_unsupported")
+            return bronze_storage_resolver(entry.storage_backend).read_bytes(entry.storage_path)
+
+        return LiveTripUpdates(
+            provider_id,
+            policy=policy,
+            fallback=partial(
+                latest_local_trip_updates,
+                provider_id,
+                local=worker_state.local,
+                policy=policy,
+                resolve_bytes=resolve_bytes,
+            ),
+        )
+    return LiveTripUpdates(
+        provider_id,
+        policy=policy,
+        fallback=partial(
+            latest_stored_trip_updates,
+            provider_id,
+            settings=settings,
+            policy=policy,
+            engine=engine,
+            bronze_storage_resolver=bronze_storage_resolver,
+        ),
+    )
 
 
 def _capture_and_load_realtime_source(
@@ -966,6 +1004,7 @@ def run_realtime_cycle(
                 live_trip_updates=_worker_trip_updates(
                     provider_id, settings=settings, manifest=registry.get_provider(provider_id),
                     engine=engine, bronze_storage_resolver=scope.resolve,
+                    worker_state=state,
                 ),
             )
     finally:
@@ -1085,6 +1124,7 @@ def _run_realtime_worker_loop(
     live_trip_updates = _worker_trip_updates(
         provider_id, settings=settings, manifest=manifest, engine=engine,
         bronze_storage_resolver=bronze_storage_resolver,
+        worker_state=worker_state,
     )
     last_captures: dict[str, datetime] = {}
     last_attempts: dict[str, datetime] = {}
