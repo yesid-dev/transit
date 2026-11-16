@@ -68,7 +68,7 @@ def peak(service: str, *, worker: bool = False, **changes) -> dict:
         "complete": True,
         "gaps": [],
         "cpu_cores": 0.1,
-        "container_memory_bytes": 4_000_000,
+        "container_memory_bytes": 5_000_000,
         "process_rss_bytes": 2_000_000 if worker else None,
         "pid_peak": 8,
         "worker": worker,
@@ -140,18 +140,25 @@ def test_transition_services_admit_then_render_exact_limits():
     plan = plan_resources(peaks, disk=disk, concurrent_services=tuple(transition))
 
     rendered = render(compose)
-    # Only measured workers are configured; every base service took part in admission.
-    assert sorted(rendered["services"]) == sorted(WORKERS)
+    assert sorted(rendered["services"]) == transition
+    for name in transition:
+        admitted = plan.services[name]
+        actual = rendered["services"][name]
+        assert actual["cpus"] == admitted.cpus
+        assert actual["mem_limit"] == actual["memswap_limit"] == admitted.memory_bytes
+        assert actual["pids_limit"] == admitted.pids_limit
+        if name not in WORKERS:
+            assert set(actual) == {"cpus", "mem_limit", "memswap_limit", "pids_limit"}
     worker = rendered["services"]["worker"]
     assert worker["cpus"] == 0.15
-    assert worker["mem_limit"] == 6_000_000
-    assert worker["memswap_limit"] == 6_000_000
+    assert worker["mem_limit"] == 7_500_000
+    assert worker["memswap_limit"] == 7_500_000
     assert worker["pids_limit"] == 12
     storage = json.loads(worker["environment"]["LIGHTER_STORAGE"])
     assert storage == {
         "live": {
             "local_dir": "/app/data/live",
-            "duckdb_memory_limit_mb": 3,
+            "duckdb_memory_limit_mb": 4,
             "duckdb_threads": 1,
             "temp_dir_max_mb": 6,
         }
@@ -160,12 +167,12 @@ def test_transition_services_admit_then_render_exact_limits():
     assert proof["concurrent_services"] == transition
     assert proof["total"] == {
         "cpus": 1.05,
-        "memory_bytes": 42_000_000,
+        "memory_bytes": 52_500_000,
         "disk_budget_bytes": 63_000_000,
     }
     assert proof["headroom"] == {
         "cpus": 1.45,
-        "memory_bytes": 8_547_934_592,
+        "memory_bytes": 8_537_434_592,
         "disk_budget_bytes": 31_937_000_000,
     }
     assert proof["total"] == {
@@ -176,12 +183,12 @@ def test_transition_services_admit_then_render_exact_limits():
     assert proof["source_proof_hashes"] == sorted(plan.source_proof_hashes)
     assert proof["limits"]["postgres"] == {
         "cpus": 0.15,
-        "memory_bytes": 6_000_000,
-        "memswap_bytes": 6_000_000,
+        "memory_bytes": 7_500_000,
+        "memswap_bytes": 7_500_000,
         "pids_limit": 12,
     }
     assert proof["reservations"]["worker"]["disk_budget_bytes"] == RESERVATION
-    assert proof["reservations"]["worker"]["duckdb_memory_mb"] == 3
+    assert proof["reservations"]["worker"]["duckdb_memory_mb"] == 4
     assert proof["reservations"]["worker"]["temp_dir_max_mb"] == 6
 
 
@@ -362,7 +369,7 @@ def test_only_lighter_storage_is_added_and_unrelated_settings_survive():
     assert stm_lanes["copy_out"] == {"batch_rows": 5000}
     assert stm_lanes["live"] == {
         "local_dir": "/app/data/live",
-        "duckdb_memory_limit_mb": 3,
+        "duckdb_memory_limit_mb": 4,
         "duckdb_threads": 1,
         "temp_dir_max_mb": 6,
         "recording_mode": "opaque",
@@ -375,7 +382,7 @@ def test_only_lighter_storage_is_added_and_unrelated_settings_survive():
         "copy_out": {"batch_rows": 7000},
         "live": {
             "local_dir": "/app/data/live",
-            "duckdb_memory_limit_mb": 3,
+            "duckdb_memory_limit_mb": 4,
             "duckdb_threads": 1,
             "temp_dir_max_mb": 6,
         },
@@ -394,7 +401,7 @@ def test_only_lighter_storage_is_added_and_unrelated_settings_survive():
 def test_environment_list_form_and_key_level_child_override():
     compose = {
         "services": {
-            "parent": {"environment": ["LIGHTER_STORAGE={\"live\":{\"duckdb_threads\":4}}"]},
+            "parent": {"environment": ['LIGHTER_STORAGE={"live":{"duckdb_threads":4}}']},
             "worker": {"extends": {"service": "parent"}, "environment": ["PGAPPNAME=child"]},
         }
     }
@@ -417,8 +424,10 @@ def test_environment_list_form_and_key_level_child_override():
             },
             "inheritance cycle",
         ),
-        ({"services": {"worker": {"extends": {"file": "other.yml", "service": "base"}}}},
-         "external Compose files"),
+        (
+            {"services": {"worker": {"extends": {"file": "other.yml", "service": "base"}}}},
+            "external Compose files",
+        ),
         ({"services": {"worker": {"extends": "missing"}}}, "unknown service"),
         (
             {"services": {"worker": {"environment": {"LIGHTER_STORAGE": "${LIVE_JSON}"}}}},
@@ -451,24 +460,32 @@ def test_unresolvable_extends_and_placeholders_refuse(compose, match):
 def test_decimal_mb_floor_and_admitted_threads():
     compose = {"services": {"worker": {}}}
     evidence = evidence_payload(["worker"])
-    evidence["peaks"][0].update(cpu_cores=1.0, container_memory_bytes=4_000_000)
+    evidence["peaks"][0].update(cpu_cores=1.0, container_memory_bytes=5_000_000)
     rendered = render(compose, evidence=evidence, bindings={"worker": "stm"})
     storage = json.loads(rendered["services"]["worker"]["environment"]["LIGHTER_STORAGE"])
     assert rendered["services"]["worker"]["cpus"] == 1.5
-    assert rendered["services"]["worker"]["mem_limit"] == 6_000_000
-    # 3.6 decimal MB floors to 3, never 4 MiB-ish rounding up.
-    assert storage["live"]["duckdb_memory_limit_mb"] == 3
+    assert rendered["services"]["worker"]["mem_limit"] == 7_500_000
+    # 4.5 decimal MB floors to 4.
+    assert storage["live"]["duckdb_memory_limit_mb"] == 4
     assert storage["live"]["duckdb_threads"] == 2
     assert storage["live"]["temp_dir_max_mb"] == 6
     assert rendered["x-transit-resource-plan"]["reservations"]["worker"]["threads"] == 2
 
 
-def test_below_one_decimal_mb_refuses():
+def test_below_one_decimal_mb_refuses(monkeypatch):
     compose = {"services": {"worker": {}}}
     evidence = evidence_payload(["worker"])
-    evidence["peaks"][0]["container_memory_bytes"] = 1_000_000
+    real = compose_limits.plan_resources
+
+    def tiny_app(*args, **kwargs):
+        plan = real(*args, **kwargs)
+        limit = replace(plan.services["worker"], duckdb_memory_bytes=999_999)
+        return replace(plan, services={"worker": limit})
+
+    monkeypatch.setattr(compose_limits, "plan_resources", tiny_app)
     with pytest.raises(ComposeLimitsRefused, match="duckdb_memory_limit_mb.*below one decimal MB"):
         render(compose, evidence=evidence, bindings={"worker": "stm"})
+    monkeypatch.setattr(compose_limits, "plan_resources", real)
     tiny_temp = evidence_payload(["worker"])
     for item in tiny_temp["disk"]["items"]:
         item["occupied_bytes"] = 1
@@ -498,8 +515,11 @@ def test_zero_or_unrepresentable_admitted_limits_refuse(monkeypatch, changes, ma
 
     monkeypatch.setattr(compose_limits, "plan_resources", fake)
     with pytest.raises(ComposeLimitsRefused, match=match):
-        render({"services": {"worker": {}}}, evidence=evidence_payload(["worker"]),
-               bindings={"worker": "stm"})
+        render(
+            {"services": {"worker": {}}},
+            evidence=evidence_payload(["worker"]),
+            bindings={"worker": "stm"},
+        )
 
 
 def test_evidence_json_types_are_not_coerced():

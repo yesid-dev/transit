@@ -35,6 +35,9 @@ from transit_ops.operations.resource_plan import (
 
 LIVE_CONTAINER_DIR: Final = "/app/data/live"
 BYTES_PER_MB: Final = 1_000_000
+# Linux Engine rejects lower nonzero memory caps; this is representability,
+# never an increase to the admission owner's budget.
+MIN_CONTAINER_MEMORY_BYTES: Final = 6_291_456
 _PROVIDER_ID: Final = re.compile(r"[a-z][a-z0-9_-]{0,31}\Z")
 
 _EVIDENCE_FIELDS: Final = frozenset({"peaks", "disk"})
@@ -126,10 +129,38 @@ def parse_json_document(text: str, name: str) -> Any:
         _refuse(f"{name}: malformed JSON ({exc.msg})")
 
 
+class _ComposeLoader(yaml.SafeLoader):  # type: ignore[misc]
+    """Safe YAML with unique explicit keys; merges retain YAML precedence."""
+
+    def __init__(self, stream: Any) -> None:
+        super().__init__(stream)
+        self._checked_nodes: set[int] = set()
+
+    def flatten_mapping(self, node: Any) -> None:
+        if id(node) in self._checked_nodes:
+            return
+        self._checked_nodes.add(id(node))
+        explicit: set[Any] = set()
+        for key_node, _ in node.value:
+            if key_node.tag == "tag:yaml.org,2002:merge":
+                key = "<<"
+            else:
+                key = self.construct_object(key_node, deep=False)
+            try:
+                if key in explicit:
+                    _refuse(f"compose: duplicate explicit mapping key {key!r}")
+                explicit.add(key)
+            except TypeError:
+                _refuse("compose: unhashable mapping key")
+        # Flatten only after checking explicit keys. Inherited keys may be
+        # overridden explicitly, and earlier merge-sequence entries win.
+        super().flatten_mapping(node)
+
+
 def parse_compose_yaml(text: str) -> dict[str, Any]:
     """Safe-load a base Compose document; YAML aliases never become Python objects."""
     try:
-        document = yaml.safe_load(text)
+        document = yaml.load(text, Loader=_ComposeLoader)
     except yaml.YAMLError as exc:
         _refuse(f"compose: malformed YAML ({type(exc).__name__})")
     return _object(document, "compose")
@@ -186,6 +217,9 @@ def parse_evidence(payload: Any) -> tuple[tuple[ServicePeak, ...], DiskPeak]:
     if not isinstance(items, list):
         _refuse("evidence.disk.items: list required")
     reservations = _object(disk["reservations"], "evidence.disk.reservations")
+    for service, value in reservations.items():
+        if type(value) is not int:
+            _refuse(f"evidence.disk.reservations.{service}: JSON integer required")
     return (
         tuple(_peak(value, index) for index, value in enumerate(peaks)),
         DiskPeak(
@@ -262,18 +296,16 @@ def _service_environment(definition: Mapping[str, Any], name: str) -> dict[str, 
         if not separator:
             # A bare entry imports the host environment. It is never copied, and a
             # LIGHTER_STORAGE host reference cannot be resolved without reading it.
-            if key == "LIGHTER_STORAGE":
-                _refuse(f"{name}.environment.LIGHTER_STORAGE: host reference is unresolvable")
             environment[key] = None
             continue
         environment[key] = value
     return environment
 
 
-def _effective_environment(
+def _inheritance_chain(
     services: Mapping[str, Mapping[str, Any]], name: str
-) -> dict[str, Any]:
-    """Merge same-file extends at the environment-KEY level, child last."""
+) -> list[Mapping[str, Any]]:
+    """Resolve only same-file inheritance, independently of environment values."""
     chain: list[Mapping[str, Any]] = []
     visited: list[str] = []
     current: str | None = name
@@ -286,8 +318,13 @@ def _effective_environment(
         visited.append(current)
         chain.append(definition)
         current = _extends_parent(definition, name)
+    return chain
+
+
+def _effective_environment(services: Mapping[str, Mapping[str, Any]], name: str) -> dict[str, Any]:
+    """Merge same-file extends at the environment-KEY level, child last."""
     environment: dict[str, Any] = {}
-    for definition in reversed(chain):
+    for definition in reversed(_inheritance_chain(services, name)):
         environment.update(_service_environment(definition, name))
     return environment
 
@@ -310,6 +347,8 @@ def _patched_storage(
     """Return the worker's LIGHTER_STORAGE JSON with only owned live fields changed."""
     name = f"{service}.environment.LIGHTER_STORAGE"
     existing = environment.get("LIGHTER_STORAGE")
+    if "LIGHTER_STORAGE" in environment and existing is None:
+        _refuse(f"{name}: host reference is unresolvable")
     if existing is None:
         document: dict[str, Any] = {}
     else:
@@ -356,17 +395,14 @@ def _validated_bindings(
             _refuse(f"worker bindings.{service}: unsafe provider id {provider!r}")
         if provider in owners:
             _refuse(
-                f"worker bindings.{service}: provider id {provider!r}"
-                f" also binds {owners[provider]}"
+                f"worker bindings.{service}: provider id {provider!r} also binds {owners[provider]}"
             )
         owners[provider] = service
         validated[service] = provider
     return validated
 
 
-def _owned_volumes(
-    base_compose: Mapping[str, Any], bindings: Mapping[str, str]
-) -> dict[str, str]:
+def _owned_volumes(base_compose: Mapping[str, Any], bindings: Mapping[str, str]) -> dict[str, str]:
     raw = base_compose.get("volumes")
     declared = {} if raw is None else _object(raw, "compose.volumes")
     owned: dict[str, str] = {}
@@ -378,23 +414,30 @@ def _owned_volumes(
     return owned
 
 
-def _representable(service: str, limit: ServiceLimit) -> tuple[int, int]:
-    """Return the decimal-MB memory and temp values, refusing unrepresentable ones."""
+def _container_representable(service: str, limit: ServiceLimit) -> None:
+    """Refuse container limits the target Engine cannot enforce as admitted."""
     if type(limit.cpus) is not float or not math.isfinite(limit.cpus) or limit.cpus <= 0:
         _refuse(f"{service}.cpus: positive finite admitted value required")
     for field in (
         "memory_bytes",
         "memswap_bytes",
         "pids_limit",
-        "threads",
-        "duckdb_memory_bytes",
-        "temp_max_bytes",
     ):
         value = getattr(limit, field)
         if type(value) is not int or value <= 0:
             _refuse(f"{service}.{field}: positive integer admitted value required")
     if limit.memswap_bytes != limit.memory_bytes:
         _refuse(f"{service}.memswap_bytes: must equal admitted memory_bytes")
+    if limit.memory_bytes < MIN_CONTAINER_MEMORY_BYTES:
+        _refuse(f"{service}.memory_bytes: Linux Engine minimum is {MIN_CONTAINER_MEMORY_BYTES}")
+
+
+def _representable(service: str, limit: ServiceLimit) -> tuple[int, int]:
+    """Return decimal-MB worker budgets without increasing admitted bounds."""
+    for field in ("threads", "duckdb_memory_bytes", "temp_max_bytes"):
+        value = getattr(limit, field)
+        if type(value) is not int or value <= 0:
+            _refuse(f"{service}.{field}: positive integer admitted value required")
     memory_mb = limit.duckdb_memory_bytes // BYTES_PER_MB
     temp_mb = limit.temp_max_bytes // BYTES_PER_MB
     if memory_mb < 1:
@@ -473,6 +516,8 @@ def render_compose_limits(
     """Render the override mapping for an admitted plan; inputs are never mutated."""
     services = _services(base_compose)
     concurrent = tuple(sorted(services))
+    for service in concurrent:
+        _inheritance_chain(services, service)
     plan = plan_resources(peaks, disk=disk, concurrent_services=concurrent)
     if plan.pilot_unresolved:
         _refuse("pilot unresolved: " + ", ".join(plan.pilot_unresolved))
@@ -480,21 +525,24 @@ def render_compose_limits(
     owned = _owned_volumes(base_compose, bindings)
     rendered_services: dict[str, Any] = {}
     rendered_mb: dict[str, tuple[int, int]] = {}
-    for service in sorted(bindings):
+    for service in sorted(plan.services):
         limit = plan.services[service]
-        memory_mb, temp_mb = _representable(service, limit)
-        rendered_mb[service] = (memory_mb, temp_mb)
-        environment = _effective_environment(services, service)
-        rendered_services[service] = {
+        _container_representable(service, limit)
+        patch: dict[str, Any] = {
             "cpus": limit.cpus,
-            "environment": {
-                "LIGHTER_STORAGE": _patched_storage(service, environment, limit, memory_mb, temp_mb)
-            },
             "mem_limit": limit.memory_bytes,
             "memswap_limit": limit.memswap_bytes,
             "pids_limit": limit.pids_limit,
-            "volumes": [f"{owned[service]}:{LIVE_CONTAINER_DIR}"],
         }
+        if service in bindings:
+            memory_mb, temp_mb = _representable(service, limit)
+            rendered_mb[service] = (memory_mb, temp_mb)
+            environment = _effective_environment(services, service)
+            patch["environment"] = {
+                "LIGHTER_STORAGE": _patched_storage(service, environment, limit, memory_mb, temp_mb)
+            }
+            patch["volumes"] = [f"{owned[service]}:{LIVE_CONTAINER_DIR}"]
+        rendered_services[service] = patch
     return {
         "services": rendered_services,
         "volumes": {owned[service]: None for service in sorted(owned)},
