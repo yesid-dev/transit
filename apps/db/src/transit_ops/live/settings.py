@@ -11,6 +11,7 @@ class LaneSettings(BaseModel):
     duckdb_threads: PositiveInt | None = None
     temp_dir_max_mb: PositiveInt | None = None
     recording: bool = False
+    trip_updates_fallback: Literal["postgres", "local"] = "postgres"
     initial_cut_path: Path | None = None
     initial_cut_sha256: str | None = None
     alert_seed_path: Path | None = None
