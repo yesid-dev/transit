@@ -6,6 +6,7 @@ import signal
 import threading
 import time
 from collections.abc import Callable
+from contextlib import nullcontext
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from functools import partial
@@ -52,6 +53,7 @@ from transit_ops.ingestion.common import (
 from transit_ops.ingestion.i3 import _capture_i3_alerts, _capture_service_alerts
 from transit_ops.ingestion.storage import BronzeStorageResolver, BronzeStorageScope
 from transit_ops.live.captures import ParsePolicy
+from transit_ops.live.worker_state import WorkerState, worker_state_scope
 from transit_ops.maintenance import (
     prune_gold_storage,
     prune_silver_storage,
@@ -732,6 +734,7 @@ def _run_realtime_cycle(
     last_attempts: dict[str, datetime] | None = None,
     bronze_storage_resolver: BronzeStorageResolver,
     live_trip_updates: LiveTripUpdates | None = None,
+    worker_state: WorkerState | None = None,
 ) -> RealtimeCycleResult:
     settings = settings or get_settings()
     registry = registry or _provider_registry(settings)
@@ -742,6 +745,8 @@ def _run_realtime_cycle(
     # Failed attempts retain the configured cadence without advancing capture freshness.
     manifest = registry.get_provider(provider_id)
     cycle_endpoints = realtime_endpoints_for_manifest(manifest)
+    if worker_state is not None:
+        worker_state.sync()
     initialize_realtime_serving(
         provider_id,
         [key for key in cycle_endpoints if key in GTFS_REALTIME_ENDPOINTS],
@@ -825,6 +830,8 @@ def _run_realtime_cycle(
             live_trip_updates=live_trip_updates,
         )
         endpoint_results.append(endpoint_result)
+        if worker_state is not None:
+            worker_state.sync()
         if last_captures is not None and endpoint_result.status == "succeeded":
             last_captures[endpoint_key] = started_at_utc
             if last_attempts is not None:
@@ -932,19 +939,24 @@ def run_realtime_cycle(
     engine = _engine(settings, engine)
     scope = BronzeStorageScope(settings, project_root=_project_root())
     try:
-        return _run_realtime_cycle(
-            provider_id,
-            settings=settings,
-            registry=registry,
-            engine=engine,
-            last_captures=last_captures,
-            bronze_storage_resolver=scope.resolve,
-            live_trip_updates=_worker_trip_updates(
-                provider_id, settings=settings, manifest=registry.get_provider(provider_id),
-                engine=engine,
-                bronze_storage_resolver=scope.resolve,
-            ),
+        owner = worker_state_scope(
+            settings=settings.LIGHTER_STORAGE.live, engine=engine,
+            manifest=registry.get_provider(provider_id), resolver=scope.resolve,
         )
+        with owner as state:
+            return _run_realtime_cycle(
+                provider_id,
+                settings=settings,
+                registry=registry,
+                engine=engine,
+                last_captures=last_captures,
+                bronze_storage_resolver=scope.resolve,
+                **({"worker_state": state} if state is not None else {}),
+                live_trip_updates=_worker_trip_updates(
+                    provider_id, settings=settings, manifest=registry.get_provider(provider_id),
+                    engine=engine, bronze_storage_resolver=scope.resolve,
+                ),
+            )
     finally:
         try:
             scope.close()
@@ -1014,6 +1026,7 @@ def _run_realtime_worker_loop(
     utc_now_fn: Callable[[], datetime] = utc_now,
     should_shutdown: Callable[[], bool] | None = None,
     bronze_storage_resolver: BronzeStorageResolver,
+    worker_state: WorkerState | None = None,
 ) -> None:
     registry = registry or _provider_registry(settings)
     engine = engine or make_engine(settings, connect_timeout=10)
@@ -1102,6 +1115,7 @@ def _run_realtime_worker_loop(
                 last_captures=last_captures,
                 last_attempts=last_attempts,
                 bronze_storage_resolver=bronze_storage_resolver,
+                **({"worker_state": worker_state} if worker_state is not None else {}),
             )
         except Exception as exc:  # noqa: BLE001 — one bad cycle must not kill the loop
             cycle_duration_seconds = round(perf_counter_fn() - cycle_started_at, 3)
@@ -1232,7 +1246,16 @@ def run_realtime_worker_loop(
     ):
         bronze_storage_scope = BronzeStorageScope(settings, project_root=_project_root())
         try:
-            with live_publish_scope(provider_id, settings):
+            owner = nullcontext(None)
+            if settings.LIGHTER_STORAGE.live.recording:
+                registry = registry or _provider_registry(settings)
+                engine = engine or make_engine(settings, connect_timeout=10)
+                owner = worker_state_scope(
+                    settings=settings.LIGHTER_STORAGE.live, engine=engine,
+                    manifest=registry.get_provider(provider_id),
+                    resolver=bronze_storage_scope.resolve,
+                )
+            with live_publish_scope(provider_id, settings), owner as state:
                 return _run_realtime_worker_loop(
                     provider_id,
                     settings=settings,
@@ -1244,6 +1267,7 @@ def run_realtime_worker_loop(
                     utc_now_fn=utc_now_fn,
                     should_shutdown=should_shutdown,
                     bronze_storage_resolver=bronze_storage_scope.resolve,
+                    **({"worker_state": state} if state is not None else {}),
                 )
         finally:
             try:

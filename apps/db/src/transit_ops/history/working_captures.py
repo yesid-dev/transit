@@ -9,6 +9,7 @@ from typing import Any
 
 from sqlalchemy import Connection, text
 
+from transit_ops.failed_load_tag import parse_failed_load_capture_row_id
 from transit_ops.history import ledger_select
 from transit_ops.history.datasets import CaptureSource, get_dataset
 from transit_ops.history.ledger_store import WindowIdentity
@@ -130,7 +131,7 @@ def poll_entry(row: dict[str, Any], family: str) -> PollEntry:
 
 
 def _captures(
-    connection: Connection, family: str, params: dict[str, Any]
+    connection: Connection, family: str, params: dict[str, Any], *, predicate: str = _PREDICATE
 ) -> tuple[CaptureEntry, ...]:
     table, key = _INDEX[family]
     alert = family == "alert_snapshot"
@@ -152,11 +153,109 @@ def _captures(
                {"r" if alert else "i"}.entity_count, r.http_status_code, {extras}
         FROM {table} i JOIN raw.ingestion_runs r ON r.ingestion_run_id = i.ingestion_run_id
         LEFT JOIN raw.ingestion_objects o ON o.ingestion_object_id = i.ingestion_object_id
-        WHERE {_PREDICATE}
+        WHERE {predicate}
     """),
         params,
     ).mappings()
     return tuple(_capture(dict(row), family) for row in rows)
+
+
+def read_working_runs(
+    connection: Connection, *, provider_id: str, run_ids: list[int]
+) -> tuple[PollRecord, ...]:
+    """Read a bounded set of terminal run identities, independent of UTC day.
+
+    No Gold scan. Canonical leading tags resolve exact recorded attribution;
+    untagged legacy failures retain explicitly weaker by-time/unknown attribution.
+    The caller owns a repeatable read transaction and a durable pagination cursor.
+    """
+    if not run_ids:
+        return ()
+    params: dict[str, Any] = dict(provider_id=provider_id, run_ids=run_ids)
+    feeds = connection.execute(text(
+        "SELECT DISTINCT f.endpoint_key FROM raw.ingestion_runs r "
+        "JOIN core.feed_endpoints f USING(feed_endpoint_id) "
+        "WHERE r.provider_id=:provider_id AND r.ingestion_run_id=ANY(:run_ids)"
+    ), params).scalars()
+    records = []
+    for endpoint in feeds:
+        if endpoint not in ("trip_updates", "vehicle_positions", "i3_alerts", "service_alerts"):
+            continue
+        records.extend(_working_endpoint_runs(connection, endpoint, params))
+    return tuple(records)
+
+
+def _working_endpoint_runs(
+    connection: Connection, endpoint: str, params: dict[str, Any]
+) -> list[PollRecord]:
+    params = dict(params, endpoint_key=endpoint)
+    feed = _feed(connection, params)
+    params["feed_endpoint_id"] = feed["feed_endpoint_id"]
+    family = ("realtime_snapshot" if endpoint in ("trip_updates", "vehicle_positions")
+              else "alert_snapshot")
+    table, key = _INDEX[family]
+    predicate = ("r.provider_id=:provider_id AND r.feed_endpoint_id=:feed_endpoint_id "
+                 "AND r.ingestion_run_id=ANY(:run_ids) AND r.run_kind <> 'silver_load'")
+    rows = connection.execute(text(f"""
+        SELECT r.ingestion_run_id, r.run_kind, r.status, r.requested_at_utc, r.started_at_utc,
+               r.completed_at_utc, r.http_status_code, r.error_message, r.feed_timestamp_utc,
+               r.entity_count, i.{key} AS capture_row_id, i.captured_at_utc
+        FROM raw.ingestion_runs r LEFT JOIN {table} i ON i.ingestion_run_id=r.ingestion_run_id
+        WHERE {predicate}
+    """), params).mappings()
+    polls = tuple(poll_entry(dict(row), family) for row in rows)
+    captures = list(_captures(connection, family, params, predicate=predicate))
+    failures = _working_failures(connection, family, params,
+                                 feed["refresh_interval_seconds"], captures)
+    days = {p.started_at_utc.astimezone(UTC).date() for p in polls}
+    days.update(p.started_at_utc.astimezone(UTC).date() for p in failures
+                if p.started_at_utc is not None)
+    # Capture metadata can cross midnight or accompany a later failed load.
+    days.update(c.started_at_utc.astimezone(UTC).date() for c in captures)
+    return [PollRecord(FeedDayKey(params["provider_id"], endpoint, family, day),
+                       tuple(p for p in polls if p.started_at_utc.astimezone(UTC).date() == day),
+                       tuple(c for c in captures if c.started_at_utc.astimezone(UTC).date() == day),
+                       tuple(p for p in failures if p.started_at_utc is not None
+                             and p.started_at_utc.astimezone(UTC).date() == day),
+                       feed["refresh_interval_seconds"], None) for day in sorted(days)]
+
+
+def _working_failures(
+    connection: Connection, family: str, params: dict[str, Any],
+    interval: int | None, captures: list[CaptureEntry],
+) -> list[ProcessingEntry]:
+    table, key = _INDEX[family]
+    failures = []
+    for row in connection.execute(text(
+        "SELECT ingestion_run_id, status, started_at_utc, completed_at_utc, error_message "
+        "FROM raw.ingestion_runs WHERE provider_id=:provider_id "
+        "AND feed_endpoint_id=:feed_endpoint_id AND ingestion_run_id=ANY(:run_ids) "
+        "AND run_kind='silver_load' AND status='failed'"
+    ), params).mappings():
+        capture_id = parse_failed_load_capture_row_id(row["error_message"])
+        attribution = "recorded" if capture_id is not None else None
+        if capture_id is None and interval is not None:
+            candidate = connection.execute(text(
+                f"SELECT {key}, captured_at_utc FROM {table} "
+                "WHERE provider_id=:provider_id AND feed_endpoint_id=:feed_endpoint_id "
+                "AND captured_at_utc<=:at ORDER BY captured_at_utc DESC, "
+                f"{key} DESC LIMIT 1"
+            ), dict(params, at=row["started_at_utc"])).fetchone()
+            if (candidate is not None and row["started_at_utc"] - candidate[1]
+                    <= timedelta(seconds=interval)):
+                capture_id, attribution = candidate[0], "by_time"
+        if capture_id is not None:
+            exact = _captures(connection, family, dict(params, capture_id=capture_id),
+                              predicate="r.provider_id=:provider_id AND "
+                              "r.feed_endpoint_id=:feed_endpoint_id AND "
+                              f"i.{key}=:capture_id")
+            if len(exact) != 1:
+                raise PollRecordInvalid("recorded failed load capture missing")
+            if exact[0] not in captures:
+                captures.append(exact[0])
+        failures.append(ProcessingEntry("silver_load", family, capture_id, attribution,
+                                       rows=None, **row))
+    return failures
 
 
 def _capture(row: dict[str, Any], family: str) -> CaptureEntry:

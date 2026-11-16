@@ -14,7 +14,7 @@ from transit_ops.history.poll_record import CaptureEntry, PollEntry, ProcessingE
 from transit_ops.live.settings import LaneSettings
 
 # Earlier files must be rebuilt from retained source evidence, never adopted in place.
-SCHEMA_VERSION: Final = 3
+SCHEMA_VERSION: Final = 4
 _TYPES = {int: "BIGINT", bool: "BOOLEAN", str: "VARCHAR", datetime: "TIMESTAMP"}
 _OWNERS: set[Path] = set()
 _OWNER_LOCK = RLock()
@@ -112,6 +112,19 @@ class LocalFile:
         tables = {"meta": "schema_version INTEGER, provider_id VARCHAR"}
         tables.update(
             {
+                "recording_cursor": "provider_id VARCHAR PRIMARY KEY, "
+                "initial_run_id BIGINT NOT NULL, "
+                "after_run_id BIGINT NOT NULL, sweep_last_run_id BIGINT NOT NULL, "
+                "seed_sha256 VARCHAR NOT NULL",
+                "local_applications": "endpoint_key VARCHAR NOT NULL, "
+                "capture_row_id BIGINT NOT NULL, "
+                "status VARCHAR NOT NULL, error_message VARCHAR, "
+                "PRIMARY KEY(endpoint_key, capture_row_id)",
+                "recording_cadence": "endpoint_key VARCHAR PRIMARY KEY, "
+                "declared_interval_seconds BIGINT",
+                "local_serving": "endpoint_key VARCHAR PRIMARY KEY, "
+                "capture_row_id BIGINT NOT NULL, "
+                "captured_at_utc TIMESTAMP NOT NULL, feed_timestamp_utc TIMESTAMP NOT NULL",
                 "segment_clock": "next_seq BIGINT NOT NULL CHECK(next_seq > 0)",
                 "segment_exports": "first_seq BIGINT PRIMARY KEY, last_seq BIGINT NOT NULL, "
                 "manifest VARCHAR NOT NULL, completed BOOLEAN NOT NULL",
@@ -141,6 +154,13 @@ class LocalFile:
                 "WHERE database_name=current_database() AND schema_name='main' AND NOT temporary"
             ).fetchall()
             fresh = not existing
+            if not fresh and ("meta",) in existing:
+                version = conn.execute("SELECT schema_version FROM meta").fetchall()
+                if version != [(SCHEMA_VERSION,)]:
+                    raise LocalFileMismatch(
+                        f"{self._path}: meta schema version {version!r} refused; "
+                        f"requires {SCHEMA_VERSION}"
+                    )
             for table, definition in tables.items():
                 if not fresh and (table,) not in existing:
                     raise LocalFileMismatch(f"{self._path}: {table} table missing")
