@@ -1,51 +1,40 @@
 <script lang="ts">
-	import { readableName } from '#lib/components/surface/readableName.ts';
-	import '#lib/components/surface/compact-row.css';
-	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
+	import { untrack } from 'svelte';
+	import { SvelteMap } from 'svelte/reactivity';
+	import { getLocale, getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
+	import { mapHrefFor, routeFor } from '#lib/nav/index.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
-	const { line, directory } = transitDisplay();
 	import { liveAbsenceReason } from '#lib/site/absence.ts';
 	import { livePresentation } from '#lib/v1/live/livePresentation.ts';
 	import { LIVE_FAMILIES } from '#lib/v1/live/store.svelte.ts';
-	import { getLocale, getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
-	import { mapHrefFor, routeFor } from '#lib/nav/index.ts';
 	import { createLiveResource } from '#lib/v1/live/resource.ts';
-	import { untrack } from 'svelte';
-	import { SvelteMap } from 'svelte/reactivity';
-	import { usePageTitle } from '#lib/seo/pageTitle.ts';
-	import { tripDirection } from './tripDirection';
-	import { getRoute, getStopsIndex } from '#lib/v1/repositories/static.ts';
 	import { getV1Context } from '#lib/v1/boot.ts';
-	import type { Trip, StopsIndex } from '#lib/v1/index.ts';
+	import { getRoute, getStopsIndex } from '#lib/v1/repositories/static.ts';
 	import { createResource } from '#lib/v1/resource.svelte.ts';
+	import type { RouteFile, StopsIndex } from '#lib/v1/index.ts';
+	import { usePageTitle } from '#lib/seo/pageTitle.ts';
 	import { ArticleHeader, DetailFrame } from '@yesid/ui/layout';
-	import { ArticleSectionStack } from '#lib/components/layout/index.ts';
 	import { ResourceBoundary, FreshnessStamp } from '#lib/components/surface/index.ts';
-	import { SectionLabel, SectionHeading } from '@yesid/ui/brand';
 	import { StatusBadge } from '#lib/components/dataviz/index.ts';
-	import MapDrilldownLink from '#lib/components/surface/MapDrilldownLink.svelte';
 	import { MaybeValue } from '#lib/components/edge/index.ts';
 	import { StateNotice } from '@yesid/ui/feedback';
-	import MetricInfo from '#lib/features/metrics/MetricInfo.svelte';
-	import { metricName } from '#lib/metrics.ts';
-	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
+	import MapDrilldownLink from '#lib/components/surface/MapDrilldownLink.svelte';
+	import RecordCopyButton from '#lib/features/lines/reliability/sections/RecordCopyButton.svelte';
 	import { formatUtc } from '#lib/utils/time.ts';
-	import { delayMeasurement, delayTone, delayLabel } from '#lib/site/delayPresentation.ts';
+	import { delayMeasurement } from '#lib/site/delayPresentation.ts';
+	import MetricInfo from '#lib/features/metrics/MetricInfo.svelte';
+	import { tripDirection } from './tripDirection';
 	import { tripCopy } from './trips.copy';
+	import { reportedOffset, tripReportCsv } from './tripReportCsv';
+	import TripPredictionTable from './TripPredictionTable.svelte';
 
-	const localizeHref = getLocalizeHref();
-
-	interface TripDetailProps {
-		id: string;
-	}
-
-	let { id }: TripDetailProps = $props();
-
+	let { id }: { id: string } = $props();
 	const locale: Locale = getLocale();
 	const t = $derived(tripCopy[locale]);
 	const manifest = getV1Context().manifest;
+	const localizeHref = getLocalizeHref();
+	const display = transitDisplay();
 	const { live, resource: trips } = createLiveResource(manifest, 'trips');
-
 	const presentation = $derived(
 		livePresentation({
 			familyStates: live.familyStates,
@@ -54,108 +43,155 @@
 			page: 'trip',
 		}),
 	);
-	const trip = $derived<Trip | null>(trips.data?.trips?.[id] ?? null);
-	const titles = new SvelteMap<string, Promise<string>>();
-	let resolved = $state<{ id: string; title: string } | null>(null);
+	const trip = $derived(trips.data?.trips?.[id] ?? null);
+	const routeRequests = new SvelteMap<string, Promise<RouteFile | null>>();
+	let resolved = $state<{ tripId: string; routeId: string; file: RouteFile | null } | null>(null);
 	$effect(() => {
-		const current = trip;
 		const tripId = id;
-		if (!current) return;
+		const routeId = trip?.route;
+		if (!routeId) return;
 		let active = true;
-		let pending = untrack(() => titles.get(tripId));
+		let pending = untrack(() => routeRequests.get(routeId));
 		if (!pending) {
-			const lineTitle = untrack(() =>
-				current.route ? directory.spoken(directory.number(current.route)) : t.heading(tripId),
-			);
-			pending = (current.route ? getRoute(current.route) : Promise.resolve(null))
-				.catch(() => null)
-				.then((route) => {
-					const headsign = tripDirection(
-						(current.stops ?? []).map((stop) => stop.stop),
-						route?.directions ?? [],
-					);
-					return headsign ? lineTitle + ' · ' + headsign : lineTitle;
-				});
-			titles.set(tripId, pending);
+			pending = getRoute(routeId).catch(() => null);
+			routeRequests.set(routeId, pending);
 		}
-		void pending.then((title) => {
-			if (active) resolved = { id: tripId, title };
+		void pending.then((file) => {
+			if (active) resolved = { tripId, routeId, file };
 		});
 		return () => {
 			active = false;
 		};
 	});
-	const heading = $derived(trip && resolved?.id === id ? resolved.title : null);
-	usePageTitle(() => heading);
-	const pageResource = $derived({
-		...trips,
-		data: trip && heading === null ? null : trips.data,
-		loading: trips.loading || (trip != null && heading === null),
-		settled: trips.settled && !(trip && heading === null),
-	});
-	const unknownStatusAndDelay = $derived(trip?.status === 'unknown' && trip.delay_min == null);
+	const routeFile = $derived(
+		resolved?.tripId === id && resolved.routeId === trip?.route ? resolved.file : null,
+	);
+	const identity = $derived(trip?.route ? display.lineName(trip.route, routeFile?.long) : null);
+	const lineLabel = $derived(
+		identity && (identity.number || identity.name)
+			? identity.spoken
+			: trip?.route
+				? t.lineId(trip.route)
+				: null,
+	);
+	const predictions = $derived(trip?.stops ?? []);
+	const direction = $derived(
+		tripDirection(
+			predictions.map((stop) => stop.stop),
+			routeFile?.directions ?? [],
+		),
+	);
+	usePageTitle(() =>
+		[t.reportTitle, lineLabel ?? t.heading(id), direction].filter(Boolean).join(' · '),
+	);
 	const stopsIndex = createResource<StopsIndex | null>(() => getStopsIndex());
-	const stopNameById = $derived.by<Record<string, string>>(() => {
-		const m: Record<string, string> = {};
-		for (const s of stopsIndex.data?.stops ?? []) m[s.id] = s.name;
-		return m;
-	});
-
-	const stopNameFor = (stopId: string): string => stopDisplayName(stopNameById[stopId] ?? stopId);
-	const reportedPredictions = $derived(trip?.stops ?? []);
-	const predictionCount = $derived(reportedPredictions.length);
-
-	const routeHref = (routeId: string): string =>
-		localizeHref(routeFor({ kind: 'line', id: routeId }), locale);
-
-	const stopHref = (stopId: string): string =>
-		localizeHref(routeFor({ kind: 'stop', id: stopId }), locale);
-
-	const timeLabel = (iso: string): string =>
-		formatUtc(iso, locale, { hour: '2-digit', minute: '2-digit', hour12: false });
-	const generatedUtc = $derived(presentation.publicationUtc);
-	const shortName = manifest.short_name?.trim() || manifest.display_name;
+	const stopNames = $derived(
+		Object.fromEntries((stopsIndex.data?.stops ?? []).map((stop) => [stop.id, stop.name])),
+	);
+	const offset = $derived(reportedOffset(trip?.delay_min));
+	const unknownStatusAndDelay = $derived(trip?.status === 'unknown' && offset === null);
+	const generatedUtc = $derived(
+		trips.data?.generated_utc && Number.isFinite(Date.parse(trips.data.generated_utc))
+			? trips.data.generated_utc
+			: null,
+	);
+	const reportTimeZone = manifest.tz || 'UTC';
+	const absoluteTime = $derived(
+		generatedUtc
+			? formatUtc(generatedUtc, locale, {
+					year: 'numeric',
+					month: 'short',
+					day: 'numeric',
+					hour: 'numeric',
+					minute: '2-digit',
+					second: '2-digit',
+					timeZoneName: 'short',
+					timeZone: reportTimeZone,
+				})
+			: null,
+	);
+	const currentReport = $derived(
+		live.familyStates.trips.phase === 'ready' &&
+			live.familyStates.trips.health.state === 'live' &&
+			live.familyStates.trips.health.retained &&
+			!live.familyStates.trips.health.isStale &&
+			live.familyStates.trips.health.notice === null,
+	);
+	const href = (path: string) => localizeHref(path, locale, manifest.provider);
+	const lineRecordHref = $derived(
+		trip?.route ? href(routeFor({ kind: 'line', id: trip.route })) : null,
+	);
+	const liveLink = $derived(
+		new URL(href(routeFor({ kind: 'trip', id })), 'https://transit.yesid.dev').href,
+	);
+	const csv = $derived(
+		trip
+			? 'data:text/csv;charset=utf-8,' +
+					encodeURIComponent(
+						tripReportCsv({
+							provider: manifest.provider,
+							tripId: id,
+							trip,
+							report: trips.data,
+							timeZone: manifest.tz ?? null,
+							stopNames,
+						}),
+					)
+			: null,
+	);
 </script>
 
-{#snippet etaInfo()}
-	<MetricInfo metricKey="tripPredictions" {locale} name={t.reportedPredictions} side="bottom" />
+{#snippet copyLiveLink()}
+	<div class="trip-copy-action">
+		<RecordCopyButton
+			label={t.copyLive}
+			done={t.linkCopied}
+			fallbackLabel={t.copyFallback}
+			text={liveLink}
+		/>
+		<p class="trip-live-hint">{t.changing}</p>
+	</div>
 {/snippet}
 
-{#snippet reportFreshness()}
-	<FreshnessStamp
-		variant="live"
-		presentation={presentation.stamp}
-		class="trip-report-stamp"
-		{locale}
-	/>
+{#snippet lineContext()}
+	<div class="trip-line-context">
+		{#if lineRecordHref}
+			<p class="trip-line-identity">{lineLabel}</p>
+			{#if direction}<p class="trip-direction">{t.toward(direction)}</p>{/if}
+			<a class="trip-record-link" href={lineRecordHref}>{t.lineRecord}</a>
+		{:else}
+			<MaybeValue
+				value={null}
+				reason={liveAbsenceReason('trip-route', { familyStates: live.familyStates })}
+				{locale}
+				variant="row"
+			/>
+		{/if}
+	</div>
 {/snippet}
 
-<ResourceBoundary resource={pageResource} lang={locale}>
-	{#snippet children(_file)}
-		<DetailFrame data-slot="trip-detail" measure="46rem">
-			{#snippet header()}
-				<ArticleHeader
-					category={t.kicker}
-					title={heading ?? t.standDownHeading}
-					subtitle={t.subheading}
-					backHref={trip?.route ? routeHref(trip.route) : localizeHref('/', locale)}
-					backLabel={trip?.route ? t.backLine(directory.spoken(line(trip.route))) : t.back}
-					meta={trip?.route ? [t.heading(id), shortName] : [shortName]}
-					titleId="trip-title"
-				>
-					{#snippet actions()}
-						<div class="trip-head-actions">
-							{#if generatedUtc != null}{@render reportFreshness()}{/if}
-							{#if trip}<MapDrilldownLink
-									href={localizeHref(mapHrefFor({ trip: id }, locale), locale)}
-									context={t.viewTripOnMap(id)}
-									label={t.viewOnMap}
-								/>{/if}
-						</div>
-					{/snippet}
-				</ArticleHeader>
-			{/snippet}
-			<ArticleSectionStack>
+<DetailFrame class="trip-report" measure="46rem" rule="dimension">
+	{#snippet header()}
+		<ArticleHeader
+			presentation="reading"
+			category={t.kicker}
+			title={t.reportTitle}
+			subtitle={t.subheading}
+			backHref={href('/lines')}
+			backLabel={t.back}
+			meta={[t.heading(id), manifest.short_name?.trim() || manifest.display_name]}
+			titleId="trip-title"
+		/>
+	{/snippet}
+	{#snippet right()}
+		<section class="trip-context" aria-label={t.contextHeading}>
+			<h2>{t.contextHeading}</h2>
+			{@render lineContext()}
+		</section>
+	{/snippet}
+	<ResourceBoundary resource={trips} lang={locale}>
+		{#snippet children(_file)}
+			<div class="trip-body">
 				{#if presentation.notice.kind !== 'none'}
 					<StateNotice
 						title={presentation.notice.message}
@@ -167,365 +203,194 @@
 						data-testid="trip-report-notice"
 					/>
 				{/if}
-				{#if trip == null}
-					<div class="trip-standdown" data-testid="trip-standdown">
-						<p class="trip-standdown-body">{t.standDownBody}</p>
-					</div>
+				<div class="trip-report-time" data-slot="trip-report-time">
+					<p>
+						{t.reportTime}: {#if generatedUtc}<time datetime={generatedUtc}>{absoluteTime}</time
+							>{:else}{t.timeUnavailable}{/if}
+					</p>
+					{#if generatedUtc}<FreshnessStamp
+							variant="live"
+							presentation={presentation.stamp}
+							{locale}
+							class="trip-report-stamp"
+						/>{/if}
+				</div>
+				{#if trip === null}
+					<section
+						class="trip-standdown"
+						data-testid="trip-standdown"
+						aria-label={t.standDownHeading}
+					>
+						<h2>{t.standDownHeading}</h2>
+						<p>{currentReport ? t.standDownBody : t.standDownShown}</p>
+						<div class="trip-recovery">
+							<a href={href('/lines')}>{t.findLine}</a><a href={href('/search')}>{t.search}</a>
+						</div>
+						{@render copyLiveLink()}
+					</section>
 				{:else}
-					<div class="trip-body">
-						<div class="trip-summary">
-							<div class="trip-summary-cell">
-								<span class="trip-cell-head">
-									<SectionLabel text={t.verdictHeading} variant="metric" />
-									<MetricInfo
-										metricKey="avgDelay"
+					<div class="trip-summary">
+						{@render lineContext()}
+						<div class="trip-delay-report">
+							<h2>{t.reportedDelay}</h2>
+							<div class="trip-verdict">
+								<StatusBadge
+									status={trip.status}
+									label={t.status[trip.status]}
+									mode={unknownStatusAndDelay ? 'dot' : 'legend'}
+									aria-hidden={unknownStatusAndDelay || undefined}
+								/>
+								<span class="trip-verdict-delay"
+									><MaybeValue
+										value={delayMeasurement(offset)}
+										variant={unknownStatusAndDelay ? 'row' : 'inline'}
+										reason={liveAbsenceReason('trip-delay', { familyStates: live.familyStates })}
 										{locale}
-										name={metricName('avgDelay', locale)}
-										side="bottom"
-									/>
-								</span>
-
-								<span class="trip-verdict">
-									<StatusBadge
-										status={trip.status}
-										label={t.status[trip.status]}
-										mode={unknownStatusAndDelay ? 'dot' : 'legend'}
-										aria-hidden={unknownStatusAndDelay || undefined}
-									/>
-									<span class="trip-verdict-delay">
-										<MaybeValue
-											value={delayMeasurement(trip.delay_min)}
-											variant={unknownStatusAndDelay ? 'row' : 'inline'}
-											reason={liveAbsenceReason('trip-delay', { familyStates: live.familyStates })}
-											{locale}
-										/>
-									</span>
-								</span>
-							</div>
-
-							<div class="trip-summary-cell">
-								<SectionLabel text={t.route} variant="metric" />
-								<MaybeValue
-									present={trip.route != null}
-									reason={liveAbsenceReason('trip-route', { familyStates: live.familyStates })}
-									{locale}
+									/></span
 								>
-									<a
-										class="trip-route-link"
-										href={routeHref(trip.route!)}
-										aria-label={directory.spoken(line(trip.route!))}
-									>
-										<span class="trip-route-code">{line(trip.route ?? '')}</span>
-										<ChevronRightIcon size={14} strokeWidth={2.4} aria-hidden="true" />
-									</a>
-								</MaybeValue>
 							</div>
 						</div>
-
-						<section class="trip-stops-section" aria-label={t.reportedPredictions}>
-							<SectionHeading level={2} overline={t.reportedPredictions} explainer={etaInfo} />
-							{#if reportedPredictions.length > 0}
-								<span class="trip-prediction-count">{t.predictionCount(predictionCount)}</span>
-								<ol class="trip-stops" aria-label={t.stopsListLabel}>
-									{#each reportedPredictions as stop, si (stop.stop + '-' + si)}
-										<li class="trip-stop">
-											<a class="trip-stop-link" href={stopHref(stop.stop)}>
-												<span class="sr-only">{t.viewStop} </span>
-												<span
-													class="trip-stop-name readable-name"
-													use:readableName
-													title={stopNameFor(stop.stop)}>{stopNameFor(stop.stop)}</span
-												>
-												<span class="trip-stop-meta">
-													<time class="trip-stop-eta" datetime={stop.eta_utc}>
-														{timeLabel(stop.eta_utc)}
-													</time>
-													<span class="trip-stop-prediction">{t.predictionLabel}</span>
-
-													<MaybeValue
-														present={stop.delay_min != null}
-														reason={liveAbsenceReason('trip-delay', {
-															familyStates: live.familyStates,
-														})}
-														{locale}
-													>
-														<span class="trip-stop-delay" data-tone={delayTone(stop.delay_min)}>
-															{delayLabel(stop.delay_min, t)}
-														</span>
-													</MaybeValue>
-												</span>
-												<ChevronRightIcon size={14} strokeWidth={2.4} aria-hidden="true" />
-											</a>
-										</li>
-									{/each}
-								</ol>
-							{:else}
-								<StateNotice
-									title={t.noPredictions}
-									presentation="silo"
-									role="status"
-									aria-live="polite"
-									data-testid="trip-no-stops"
-								/>
-							{/if}
-							<p class="trip-prediction-caveat">{t.predictionCaveat}</p>
-						</section>
 					</div>
+					<div class="trip-head-actions">
+						{@render copyLiveLink()}
+						<a
+							class="trip-action"
+							href={csv}
+							download={'trip-' + encodeURIComponent(id) + '-all-predictions.csv'}>{t.download}</a
+						>
+						<MapDrilldownLink
+							href={href(mapHrefFor({ trip: id }, locale))}
+							context={t.viewTripOnMap(id)}
+							label={t.viewOnMap}
+						/>
+					</div>
+					<section class="trip-stops-section" aria-label={t.reportedPredictions}>
+						<div class="trip-section-heading">
+							<h2>{t.reportedPredictions}</h2>
+							<MetricInfo
+								metricKey="tripPredictions"
+								{locale}
+								name={t.reportedPredictions}
+								side="bottom"
+							/>
+						</div>
+						<p class="trip-observed-caveat">{t.observedCaveat}</p>
+						<p class="trip-prediction-caveat">{t.predictionCaveat}</p>
+						<p class="trip-prediction-count">{t.predictionCount(predictions.length)}</p>
+						{#if predictions.length}
+							{#key id}<TripPredictionTable
+									{predictions}
+									{stopNames}
+									{locale}
+									provider={manifest.provider}
+									timeZone={reportTimeZone}
+									absenceReason={liveAbsenceReason('trip-delay', {
+										familyStates: live.familyStates,
+									})}
+								/>{/key}
+						{:else}<StateNotice
+								title={t.noPredictions}
+								presentation="silo"
+								role="status"
+								aria-live="polite"
+								data-testid="trip-no-stops"
+							/>{/if}
+					</section>
 				{/if}
-			</ArticleSectionStack>
-		</DetailFrame>
-	{/snippet}
-</ResourceBoundary>
+			</div>
+		{/snippet}
+	</ResourceBoundary>
+</DetailFrame>
 
 <style>
-	.trip-standdown {
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
+	.trip-copy-action {
+		display: grid;
+		gap: 0.5rem;
+		min-width: 0;
 	}
-	.trip-standdown-body {
+	.trip-live-hint {
 		margin: 0;
-		max-width: var(--measure-lede);
+		max-width: var(--measure-body);
 		color: var(--muted-foreground);
-		font-size: var(--text-subheading);
-		line-height: 1.6;
+		font-size: var(--text-small);
+		line-height: 1.5;
 	}
-
+	.trip-head-actions {
+		align-items: flex-start;
+	}
+	.trip-body {
+		display: grid;
+		gap: 1.5rem;
+		min-width: 0;
+	}
+	.trip-report-time p,
+	.trip-line-context p,
+	.trip-standdown p,
+	.trip-stops-section p {
+		margin: 0;
+		line-height: 1.5;
+	}
+	.trip-report-time,
+	.trip-line-context,
+	.trip-delay-report,
+	.trip-standdown {
+		display: grid;
+		gap: 0.5rem;
+	}
+	.trip-summary {
+		display: grid;
+		gap: 1.5rem;
+	}
+	.trip-line-identity {
+		font-weight: 600;
+	}
+	.trip-direction,
+	.trip-prediction-caveat {
+		color: var(--muted-foreground);
+	}
+	.trip-verdict,
+	.trip-head-actions,
+	.trip-recovery,
+	.trip-section-heading {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.75rem 1rem;
+	}
+	.trip-verdict-delay {
+		color: var(--muted-foreground);
+		font-variant-numeric: tabular-nums;
+	}
+	.trip-stops-section {
+		display: grid;
+		gap: 0.75rem;
+		min-width: 0;
+	}
+	h2 {
+		margin: 0;
+		font-family: var(--font-heading);
+		font-size: var(--text-subheading);
+		font-weight: 600;
+	}
+	.trip-record-link,
+	.trip-action,
+	.trip-recovery a {
+		display: inline-flex;
+		min-height: 2.75rem;
+		align-items: center;
+		color: var(--accent-text);
+		text-underline-offset: 0.2em;
+	}
+	a:focus-visible {
+		outline: 2px solid var(--ring);
+		outline-offset: 2px;
+	}
 	:global(.trip-report-stamp) {
 		max-width: 100%;
 		flex-wrap: wrap;
 	}
-
-	.trip-head-actions {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		justify-content: center;
-		gap: 1rem;
-	}
-
-	.trip-body {
-		display: flex;
-		flex-direction: column;
-		gap: 1.5rem;
-	}
-	.trip-summary {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 1.5rem 2.5rem;
-	}
-	.trip-summary-cell {
-		min-width: 0;
-		max-width: 100%;
-		display: flex;
-		flex-direction: column;
-		gap: 0.375rem;
-	}
-	.trip-route-link {
-		display: inline-flex;
-		min-inline-size: var(--size-tap-min);
-		align-items: center;
-		gap: 0.375rem;
-
-		min-height: var(--size-tap-min);
-		text-decoration: none;
-		color: var(--foreground);
-		transition: color var(--duration-fast) var(--ease-out);
-	}
-	.trip-route-code {
-		font-family: var(--font-mono);
-		font-weight: 700;
-		font-size: var(--text-subheading);
-		color: var(--accent-text);
-	}
-	.trip-route-link :global(svg) {
-		opacity: 0.45;
-		transition:
-			opacity var(--duration-fast) var(--ease-out),
-			transform var(--duration-fast) var(--ease-out);
-	}
-	.trip-route-link:hover :global(svg) {
-		opacity: 1;
-		transform: translateX(2px);
-	}
-	.trip-route-link:focus-visible {
-		outline: 2px solid var(--ring);
-		outline-offset: 2px;
-	}
-
-	.trip-cell-head {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.375rem;
-	}
-
-	.trip-verdict {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		flex-wrap: wrap;
-	}
-	.trip-verdict-delay {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.375rem;
-		font-family: var(--font-mono);
-		font-weight: 600;
-		font-size: var(--text-body);
-		color: var(--muted-foreground);
-	}
-
-	.trip-prediction-count {
-		font-family: var(--font-mono);
-		font-size: var(--text-micro);
-		letter-spacing: var(--tracking-eyebrow);
-		text-transform: uppercase;
-		color: var(--muted-foreground);
-	}
-
-	.trip-stops-section {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-	}
-	.trip-stops {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-	}
-	.trip-stop {
-		border-bottom: 1px solid var(--border-subtle, var(--border));
-	}
-	.trip-stop:last-child {
-		border-bottom: none;
-	}
-	.trip-stop-link {
+	.trip-context {
 		display: grid;
-		grid-template-columns: minmax(0, max-content) auto auto;
-		justify-content: start;
-		width: calc(100% + 1rem);
-	}
-	.trip-stop-name {
-		display: -webkit-box;
-		-webkit-box-orient: vertical;
-		-webkit-line-clamp: 2;
-		line-clamp: 2;
-		overflow: hidden;
-		overflow-wrap: anywhere;
-	}
-	.trip-stop-name {
-		font-family: var(--font-mono);
-		font-size: var(--text-card-body);
-		color: var(--foreground);
-		overflow: hidden;
-		transition: color var(--duration-fast) var(--ease-out);
-	}
-	.trip-stop-meta {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		font-family: var(--font-mono);
-		font-size: var(--text-micro);
-	}
-	.trip-stop-eta {
-		white-space: nowrap;
-		font-weight: 600;
-		color: var(--foreground);
-	}
-	.trip-stop-prediction {
-		color: var(--muted-foreground);
-		text-transform: uppercase;
-		letter-spacing: var(--tracking-eyebrow);
-	}
-	.trip-stop-delay {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.375rem;
-		font-weight: 600;
-		white-space: nowrap;
-		color: var(--muted-foreground);
-	}
-	.trip-stop-delay::before {
-		content: '';
-		width: 0.375rem;
-		height: 0.375rem;
-		border-radius: var(--radius-pill);
-		background: currentcolor;
-		flex: none;
-	}
-	.trip-stop-delay[data-tone='none'] {
-		color: var(--muted-foreground);
-	}
-	.trip-stop-delay[data-tone='none']::before {
-		display: none;
-	}
-	.trip-stop-delay[data-tone='early'] {
-		color: var(--dataviz-status-early);
-	}
-	.trip-stop-delay[data-tone='on-time'] {
-		color: var(--dataviz-status-on-time);
-	}
-	.trip-stop-delay[data-tone='late'] {
-		color: var(--dataviz-status-late);
-	}
-	.trip-stop-delay[data-tone='severe'] {
-		color: var(--dataviz-status-severe);
-	}
-	.trip-stop-link :global(svg) {
-		opacity: 0.45;
-		transition:
-			opacity var(--duration-fast) var(--ease-out),
-			transform var(--duration-fast) var(--ease-out);
-	}
-	.trip-stop-link:hover :global(svg) {
-		opacity: 1;
-		transform: translateX(2px);
-	}
-	.trip-stop-link:focus-visible {
-		outline: 2px solid var(--ring);
-		outline-offset: 2px;
-	}
-	.trip-prediction-caveat {
-		margin: 0.5rem 0 0;
-		max-width: var(--measure-body);
-		font-family: var(--font-mono);
-		font-size: var(--text-micro);
-		line-height: 1.4;
-		color: var(--muted-foreground);
-	}
-	@media (max-width: 40rem) {
-		.trip-stop-link {
-			grid-template-columns: minmax(0, 1fr) auto;
-			row-gap: 0.375rem;
-		}
-		.trip-stop-name {
-			grid-column: 1;
-			white-space: normal;
-			overflow-wrap: anywhere;
-		}
-		.trip-stop-meta {
-			grid-column: 1;
-			min-width: 0;
-			flex-wrap: wrap;
-		}
-		.trip-stop-link :global(svg) {
-			grid-column: 2;
-			grid-row: 1 / span 2;
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.trip-route-link,
-		.trip-route-link :global(svg),
-		.trip-stop-link,
-		.trip-stop-name,
-		.trip-stop-link :global(svg) {
-			transition: none;
-		}
-		.trip-route-link:hover :global(svg),
-		.trip-stop-link:hover :global(svg) {
-			transform: none;
-		}
+		gap: 1rem;
 	}
 </style>

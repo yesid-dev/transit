@@ -146,14 +146,17 @@ test('a trip page shows one heading without breadcrumbs', async ({ page }) => {
 		});
 		for (const id of [Object.keys(trips)[0], 'TLine']) {
 			const route = trips[id].route;
-			const heading = directory.spoken(directory.number(route));
-			await page.goto(localizeHref('/trip/' + id, lang, provider));
+			const identity = directory.name(route);
+			const lineLabel =
+				identity.number || identity.name ? identity.spoken : tripCopy[lang].lineId(route);
+			const heading = tripCopy[lang].reportTitle;
+			await page.goto(localizeHref('/trip/' + id, lang, provider), { waitUntil: 'networkidle' });
 			await expect(page.getByRole('navigation', { name: /Breadcrumb|Fil d/ })).toHaveCount(0);
 			await expect(page.getByRole('heading', { level: 1 })).toHaveText(heading);
 			await expect(
-				page.getByRole('link', { name: tripCopy[lang].backLine(heading), exact: true }),
+				page.getByRole('link', { name: tripCopy[lang].lineRecord, exact: true }).first(),
 			).toHaveAttribute('href', localizeHref('/lines/' + route, lang, provider));
-			await expect(page).toHaveTitle(heading + ' · Transit');
+			await expect(page).toHaveTitle(heading + ' · ' + lineLabel + ' · Transit');
 		}
 	}
 });
@@ -326,3 +329,241 @@ test('rankings name lines by number in both languages', async ({ page }) => {
 		).toContainText('1 · Confederation');
 	}
 });
+
+for (const lang of PUBLISHED_LOCALES)
+	for (const provider of ['stm', 'octranspo'])
+		for (const width of [320, 390, 768, 1280])
+			test(`${lang} ${provider} ${width}: trip report keeps long predictions, source context and delayed identity usable`, async ({
+				page,
+			}, info) => {
+				const lineId = provider === 'stm' ? '80' : '1-373';
+				const count = provider === 'stm' ? 19 : 23;
+				let oldCapture = false;
+				let failedReport = false;
+				const generated = fixture('trips.json').generated_utc;
+				const names = Array.from({ length: count }, (_, i) => ({
+					id: `R48-${i}`,
+					name: `Station Université de Montréal / Boulevard Édouard-Montpetit et chemin de la Côte-des-Neiges ${i + 1}`,
+					lat: 45.5,
+					lon: -73.6,
+				}));
+				const predictions = names.map((stop, i) => ({
+					stop: stop.id,
+					eta_utc: '2026-06-15T12:05:00Z',
+					delay_min: i % 4 === 0 ? -2 : i % 4 === 1 ? 0 : i % 4 === 2 ? null : 6,
+				}));
+				let releaseReport = () => {},
+					releaseRoute = () => {},
+					releaseNames = () => {};
+				let reportReady = Promise.resolve(),
+					routeReady = Promise.resolve(),
+					namesReady = Promise.resolve();
+				await page.addInitScript(() =>
+					Object.defineProperty(navigator, 'clipboard', {
+						configurable: true,
+						value: {
+							writeText: async (text: string) => {
+								Object.assign(window, { tripCopied: text });
+							},
+						},
+					}),
+				);
+				await page.route(
+					/\/v1\/(?:stm|octranspo)\/(?:live\/trips\.json|static\/stops_index\.json|static\/routes\/[^/]+\.json)(?:\?|$)/,
+					async (route) => {
+						const path = new URL(route.request().url()).pathname;
+						if (path.endsWith('/live/trips.json')) {
+							await reportReady;
+							if (failedReport) {
+								await route.fulfill({ status: 503, body: 'unavailable' });
+								return;
+							}
+							await route.fulfill({
+								json: {
+									generated_utc: generated,
+									feed_captured_utc: oldCapture ? '2026-06-15T11:50:00Z' : generated,
+									schema_version: 1,
+									methodology_version: 'live-2',
+									publish_generation_id: `${provider}@${generated}`,
+									trips: {
+										R48: { status: 'severe', delay_min: 4, route: lineId, stops: predictions },
+									},
+								},
+							});
+						} else if (path.endsWith('/stops_index.json')) {
+							await namesReady;
+							await route.fulfill({ json: { generated_utc: generated, stops: names } });
+						} else {
+							await routeReady;
+							await route.fulfill({
+								json: {
+									generated_utc: generated,
+									id: lineId,
+									long: 'Fixture public line',
+									directions: [
+										{
+											dir: 0,
+											headsign: 'Fixture terminal',
+											stops: names.map((stop, i) => ({ id: stop.id, seq: i + 1, name: stop.name })),
+										},
+									],
+								},
+							});
+						}
+					},
+				);
+				{
+					await page.setViewportSize({ width, height: 900 });
+					reportReady = new Promise<void>((resolve) => {
+						releaseReport = resolve;
+					});
+					routeReady = new Promise<void>((resolve) => {
+						releaseRoute = resolve;
+					});
+					namesReady = new Promise<void>((resolve) => {
+						releaseNames = resolve;
+					});
+					await page.goto(localizeHref('/trip/R48', lang, provider));
+					await page.evaluate(() => document.fonts.ready);
+					const header = page.locator('[data-slot="article-header"]');
+					await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+						tripCopy[lang].reportTitle,
+					);
+					const before = await header.boundingBox();
+					releaseReport();
+					const table = page.getByRole('table', {
+						name: tripCopy[lang].reportedPredictions,
+						exact: true,
+					});
+					await expect(table.getByRole('rowheader')).toHaveCount(6);
+					await expect(table.getByRole('rowheader').first()).toContainText(
+						lang === 'en' ? 'name unavailable' : 'nom indisponible',
+					);
+					await expect(page.locator('.trip-verdict [data-slot="status-badge"]')).toHaveAttribute(
+						'data-status',
+						'severe',
+					);
+					await expect(page.locator('.trip-verdict-delay')).toHaveText('+4 min');
+					expect((await header.boundingBox())!.height).toBe(before!.height);
+					await expect(page.locator('.trip-direction')).toHaveCount(0);
+					releaseRoute();
+					releaseNames();
+					await expect(table.locator('.trip-stop-name').first()).toHaveText(names[0].name);
+					await expect(table.getByRole('rowheader').first().getByRole('link')).toHaveAccessibleName(
+						`${tripCopy[lang].viewStop} ${names[0].name}`,
+					);
+					await expect(page.locator('.trip-summary .trip-direction')).toHaveText(
+						tripCopy[lang].toward('Fixture terminal'),
+					);
+					expect((await header.boundingBox())!.height).toBe(before!.height);
+					await expect(page.locator('[data-slot="trip-report-time"] p time')).toHaveAttribute(
+						'datetime',
+						generated,
+					);
+					await expect(page.locator('[data-slot="trip-report-time"] p time')).toContainText('UTC');
+					const precedes = await page
+						.locator('.trip-observed-caveat')
+						.evaluate((element) =>
+							Boolean(
+								element.compareDocumentPosition(
+									element.closest('section')!.querySelector('table')!,
+								) & Node.DOCUMENT_POSITION_FOLLOWING,
+							),
+						);
+					expect(precedes).toBe(true);
+					const expand = page.getByRole('button', {
+						name: tripCopy[lang].showAll(count),
+						exact: true,
+					});
+					await expand.press('Enter');
+					await expect(table.getByRole('rowheader')).toHaveCount(count);
+					const links = table.getByRole('rowheader').getByRole('link');
+					expect(
+						await links.evaluateAll((nodes) => nodes.map((node) => node.getAttribute('href'))),
+					).toEqual(names.map((stop) => localizeHref('/stop/' + stop.id, lang, provider)));
+					await links.first().focus();
+					await expect(links.first()).toBeFocused();
+					await links.first().press('Tab');
+					await expect(links.nth(1)).toBeFocused();
+					const defects = await table.evaluate((element) => {
+						const problems: string[] = [];
+						for (const link of element.querySelectorAll<HTMLElement>('.trip-stop-link')) {
+							const name = link.querySelector<HTMLElement>('.trip-stop-name')!;
+							if (link.getBoundingClientRect().height < 44) problems.push('small link');
+							if (
+								name.scrollHeight > name.clientHeight + 1 ||
+								name.scrollWidth > name.clientWidth + 1
+							)
+								problems.push('clipped name');
+							if (getComputedStyle(name).fontFamily.toLowerCase().includes('mono'))
+								problems.push('mono name');
+						}
+						for (const cell of element.querySelectorAll('th,td')) {
+							const box = cell.getBoundingClientRect();
+							if (box.width && box.right > document.documentElement.clientWidth + 1)
+								problems.push('cell overflow');
+							if (getComputedStyle(cell).wordBreak === 'break-all') problems.push('word shredded');
+						}
+						return problems;
+					});
+					expect(defects, `${lang} ${provider} ${width}`).toEqual([]);
+					await expect(
+						page.getByRole('link', { name: tripCopy[lang].lineRecord, exact: true }).first(),
+					).toHaveAttribute('href', localizeHref('/lines/' + lineId, lang, provider));
+					const download = page.getByRole('link', { name: tripCopy[lang].download, exact: true });
+					const csv = decodeURIComponent(
+						(await download.getAttribute('href'))!.split(',').slice(1).join(','),
+					);
+					expect(csv.split('\r\n')).toHaveLength(count + 1);
+					expect(csv).toContain('"schema_version","methodology_version","publish_generation_id"');
+					expect(csv).toContain(
+						`,1,"live-2","${provider}@${generated}","${generated}","${generated}"`,
+					);
+					expect(csv.split('\r\n')[1].endsWith(',-2')).toBe(true);
+					await page.getByRole('button', { name: tripCopy[lang].copyLive, exact: true }).click();
+					expect(await page.evaluate(() => Reflect.get(window, 'tripCopied'))).toBe(
+						`https://transit.yesid.dev${localizeHref('/trip/R48', lang, provider)}`,
+					);
+					await page.getByRole('button', { name: tripCopy[lang].showFewer, exact: true }).click();
+					await expect(table.getByRole('rowheader')).toHaveCount(6);
+					expect(await page.locator('html').evaluate((node) => node.scrollWidth)).toBe(width);
+					if (width === 320 || width === 1280) {
+						await table.getByRole('rowheader').first().scrollIntoViewIfNeeded();
+						await page.screenshot({
+							path: info.outputPath(`trip-${lang}-${provider}-${width}.png`),
+						});
+					}
+				}
+				await page.goto(localizeHref('/trip/R48-missing', lang, provider));
+				await expect(page.getByTestId('trip-standdown')).toContainText(
+					tripCopy[lang].standDownBody,
+				);
+				await expect(
+					page.getByRole('link', { name: tripCopy[lang].findLine, exact: true }),
+				).toHaveAttribute('href', localizeHref('/lines', lang, provider));
+				await expect(
+					page.getByRole('link', { name: tripCopy[lang].search, exact: true }),
+				).toHaveAttribute('href', localizeHref('/search', lang, provider));
+
+				oldCapture = true;
+				await page.goto(localizeHref('/trip/R48', lang, provider));
+				await expect(page.getByTestId('trip-report-notice')).toContainText(
+					tripCopy[lang].reportBehind,
+				);
+				await expect(page.locator('[data-slot="trip-report-time"] p time')).toHaveAttribute(
+					'datetime',
+					generated,
+				);
+				await expect(page.locator('[data-slot="freshness-stamp"]')).toHaveAttribute(
+					'data-age-seconds',
+					'630',
+				);
+				await expect(page.getByRole('table').getByRole('rowheader')).toHaveCount(6);
+				failedReport = true;
+				await page.goto(localizeHref('/trip/R48', lang, provider));
+				await expect(
+					page.locator('[data-slot="edge-state"][data-variant="error-v1"]'),
+				).toBeVisible();
+				await expect(page.getByTestId('trip-standdown')).toHaveCount(0);
+				await expect(page.locator('[data-slot="trip-report-time"]')).toHaveCount(0);
+			});

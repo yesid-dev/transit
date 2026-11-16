@@ -217,7 +217,9 @@ describe('TripDetail with the shared live store', () => {
 		expect(stamp().querySelector('time')).toHaveAttribute('datetime', report().generated_utc);
 		fixture.trips.mockResolvedValue(report(30));
 		await advance(30);
-		expect(screen.getByRole('heading', { name: 'Line 24' })).toBeInTheDocument();
+		expect(
+			screen.getByRole('heading', { level: 1, name: 'Trip prediction report' }),
+		).toBeInTheDocument();
 		expect(screen.queryByTestId('trip-standdown')).toBeNull();
 	});
 
@@ -273,7 +275,7 @@ describe('TripDetail with the shared live store', () => {
 });
 
 it.each(['found', 'missing', 'failed'] as const)(
-	'waits for a %s route lookup and freezes its first heading',
+	'keeps a known report visible through a %s optional route lookup',
 	async (outcome) => {
 		let finish!: (value: unknown) => void;
 		let fail!: (reason: Error) => void;
@@ -292,7 +294,13 @@ it.each(['found', 'missing', 'failed'] as const)(
 		fixture.trips.mockResolvedValue(initial);
 		render(TripDetail, { props: { id: 'probe' } });
 		await settle();
-		expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument();
+		const initialHeading = screen.getByRole('heading', {
+			level: 1,
+			name: 'Trip prediction report',
+		});
+		expect(document.querySelectorAll('.trip-stop-link')).toHaveLength(2);
+		expect(stamp().querySelector('time')).toHaveAttribute('datetime', initial.generated_utc);
+		expect(document.querySelector('.trip-direction')).toBeNull();
 		if (outcome === 'failed') fail(new Error('optional route unavailable'));
 		else
 			finish(
@@ -312,11 +320,15 @@ it.each(['found', 'missing', 'failed'] as const)(
 						},
 			);
 		await settle();
-		const heading = outcome === 'found' ? 'Line 24 · Terminal' : 'Line 24';
-		expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(heading);
+		expect(screen.getByRole('heading', { level: 1 })).toBe(initialHeading);
+		if (outcome === 'found') expect(screen.getAllByText('Toward Terminal')).toHaveLength(2);
+		else expect(document.querySelector('.trip-direction')).toBeNull();
 		fixture.trips.mockResolvedValue(report(30));
 		await advance(30);
-		expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(heading);
+		expect(screen.getByRole('heading', { level: 1 })).toBe(initialHeading);
+		expect(document.querySelector('.trip-direction')).toBeNull();
+		expect(stamp().querySelector('time')).toHaveAttribute('datetime', report(30).generated_utc);
+
 		expect(fixture.route).toHaveBeenCalledTimes(1);
 	},
 );
