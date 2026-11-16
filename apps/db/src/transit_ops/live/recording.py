@@ -2,19 +2,22 @@
 
 from collections.abc import Callable
 from datetime import UTC
+from typing import get_type_hints
 
-from sqlalchemy import Engine, text
+from sqlalchemy import Connection, Engine, text
 
 from transit_ops.history.poll_record import CaptureEntry, PollRecord
 from transit_ops.history.working_captures import read_working_runs
 from transit_ops.ingestion.common import redact_error_message
 from transit_ops.live.local_file import LocalFile, LocalFileMismatch
-from transit_ops.live.poll_records import LocalPollRecords
+from transit_ops.live.poll_records import LocalPollRecords, _entry
 
 
 class Recorder:
     def __init__(self, local: LocalFile, *, provider_id: str):
         self.local, self.provider_id = local, provider_id
+        self.sweep_complete = False
+        self.completed_upper: int | None = None
 
     def initialize(self, *, initial_run_id: int, seed_sha256: str) -> None:
         with self.local.transaction() as conn:
@@ -118,7 +121,9 @@ class Recorder:
             ],
         )
 
-    def catch_up(self, engine: Engine, *, page_size: int) -> tuple[PollRecord, ...]:
+    def catch_up(
+        self, engine: Engine, *, page_size: int, current_run_ids: tuple[int, ...] = ()
+    ) -> tuple[PollRecord, ...]:
         """Bound each tick by run identities, then sweep again for late commits.
 
         No maximum id is a commit watermark. Repeated sweeps also discover terminal
@@ -133,28 +138,9 @@ class Recorder:
         initial, after, upper = cursor
         with engine.connect() as pg, pg.begin():
             pg.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"))
-            if upper == initial:
-                upper = pg.execute(
-                    text(
-                        "SELECT greatest(coalesce(max(ingestion_run_id), :initial), :initial) "
-                        "FROM raw.ingestion_runs WHERE provider_id=:provider"
-                    ),
-                    dict(initial=initial, provider=self.provider_id),
-                ).scalar_one()
-            ids = list(
-                pg.execute(
-                    text(
-                        "SELECT ingestion_run_id FROM raw.ingestion_runs "
-                        "WHERE provider_id=:provider "
-                        "AND ingestion_run_id > :after AND ingestion_run_id <= :upper "
-                        "AND completed_at_utc IS NOT NULL "
-                        "AND status IN ('succeeded', 'failed') "
-                        "ORDER BY ingestion_run_id LIMIT :limit"
-                    ),
-                    dict(provider=self.provider_id, after=after, upper=upper, limit=page_size),
-                ).scalars()
+            records, ids, upper, unfinished = self._source_page(
+                pg, initial, after, upper, page_size, current_run_ids
             )
-            records = read_working_runs(pg, provider_id=self.provider_id, run_ids=ids)
         with self.local.transaction() as conn:
             for record in records:
                 self.record(record)
@@ -162,4 +148,101 @@ class Recorder:
                 "UPDATE recording_cursor SET after_run_id=?, sweep_last_run_id=?",
                 [ids[-1] if ids else initial, upper if ids else initial],
             )
+        self.sweep_complete = not ids and not unfinished
+        self.completed_upper = upper if self.sweep_complete else None
         return records
+
+    def _source_page(
+        self,
+        pg: Connection,
+        initial: int,
+        after: int,
+        upper: int,
+        page_size: int,
+        current_run_ids: tuple[int, ...],
+    ) -> tuple[tuple[PollRecord, ...], list[int], int, bool]:
+        if upper == initial:
+            upper = pg.execute(
+                text(
+                    "SELECT greatest(coalesce(max(ingestion_run_id), :initial), :initial) "
+                    "FROM raw.ingestion_runs WHERE provider_id=:provider"
+                ),
+                dict(initial=initial, provider=self.provider_id),
+            ).scalar_one()
+        ids = _run_ids(pg, self.provider_id, initial, page_size, after=after, upper=upper)
+        tail = _run_ids(pg, self.provider_id, initial, page_size)
+        selected = sorted(set(ids) | set(tail) | set(current_run_ids))
+        records = read_working_runs(pg, provider_id=self.provider_id, run_ids=selected)
+        unfinished = pg.execute(
+            text(
+                "SELECT EXISTS(SELECT 1 FROM raw.ingestion_runs WHERE provider_id=:provider "
+                "AND ingestion_run_id > :initial AND ingestion_run_id <= :upper "
+                "AND feed_endpoint_id IN (SELECT feed_endpoint_id FROM core.feed_endpoints "
+                "WHERE provider_id=:provider AND endpoint_key IN "
+                "('trip_updates','vehicle_positions','i3_alerts','service_alerts')) "
+                "AND (completed_at_utc IS NULL OR status NOT IN ('succeeded', 'failed')))"
+            ),
+            dict(provider=self.provider_id, initial=initial, upper=upper),
+        ).scalar_one()
+        return records, ids, upper, bool(unfinished)
+
+    def ready_current(self, run_ids: set[int]) -> None:
+        """Mark a completely observed current capture batch eligible for projection.
+
+        Status alone never certifies application; facts and serving still require
+        apply()'s atomic success. Eligibility uses existing metadata and allocates no identity.
+        """
+        if not run_ids:
+            return
+        with self.local.transaction() as conn:
+            conn.execute(
+                "INSERT INTO local_applications SELECT endpoint_key, capture_row_id, 'ready', NULL "
+                "FROM captures WHERE list_contains(?::BIGINT[], ingestion_run_id) "
+                "ON CONFLICT DO NOTHING",
+                [sorted(run_ids)],
+            )
+
+    def pending_captures(
+        self, limit: int, *, through_run_id: int | None = None
+    ) -> list[tuple[str, CaptureEntry]]:
+        """Schedule bounded work over all durable pages, with vehicles before trips."""
+        columns = ", ".join('c."' + n + '"' for n in get_type_hints(CaptureEntry))
+        rows = self.local.connection.execute(
+            f"SELECT c.endpoint_key, {columns} FROM captures c LEFT JOIN local_applications a "
+            "ON c.endpoint_key=a.endpoint_key AND c.capture_row_id=a.capture_row_id "
+            "WHERE coalesce(a.status, '') <> 'succeeded' AND c.ingestion_run_id > "
+            "(SELECT coalesce(max(initial_run_id), 0) FROM recording_cursor) "
+            "AND (?::BIGINT IS NULL OR c.ingestion_run_id <= ?::BIGINT "
+            "OR a.status IN ('ready', 'failed')) "
+            "ORDER BY CASE c.endpoint_key WHEN 'vehicle_positions' THEN 0 "
+            "WHEN 'trip_updates' THEN 2 ELSE 1 END, c.captured_at_utc, c.capture_row_id LIMIT ?",
+            [through_run_id, through_run_id, limit],
+        ).fetchall()
+        return [(r[0], _entry(CaptureEntry, r[1:])) for r in rows]
+
+
+def _run_ids(
+    pg: Connection,
+    provider: str,
+    initial: int,
+    page_size: int,
+    *,
+    after: int | None = None,
+    upper: int | None = None,
+) -> list[int]:
+    params: dict[str, object] = dict(provider=provider, initial=initial, limit=page_size)
+    boundary, order = "ingestion_run_id > :initial", "DESC"
+    if after is not None:
+        params.update(after=after, upper=upper)
+        boundary, order = "ingestion_run_id > :after AND ingestion_run_id <= :upper", "ASC"
+    return list(
+        pg.execute(
+            text(
+                "SELECT ingestion_run_id FROM raw.ingestion_runs WHERE provider_id=:provider "
+                f"AND {boundary} AND completed_at_utc IS NOT NULL "
+                "AND status IN ('succeeded', 'failed') "
+                f"ORDER BY ingestion_run_id {order} LIMIT :limit"
+            ),
+            params,
+        ).scalars()
+    )

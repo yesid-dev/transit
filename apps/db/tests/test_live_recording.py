@@ -193,14 +193,19 @@ class PageEngine:
         pass
 
     def execute(self, statement, params=None):
+        self.statement = str(statement)
         if params is not None and "limit" in params:
             self.requests.append(params)
-            self.ids = sorted(i for i in self.visible if params["after"] < i <= params["upper"])[
-                : params["limit"]
-            ]
+            if "after" in params:
+                self.ids = sorted(i for i in self.visible if params["after"] < i <= params["upper"])
+            else:
+                self.ids = sorted((i for i in self.visible if i > params["initial"]), reverse=True)
+            self.ids = self.ids[: params["limit"]]
         return self
 
     def scalar_one(self):
+        if "EXISTS" in self.statement:
+            return getattr(self, "unfinished", False)
         return max(self.visible, default=0)
 
     def scalars(self):
@@ -288,8 +293,9 @@ def test_worker_records_before_edition_failure_and_reports_unavailable(tmp_path,
         settings=settings, engine=engine, manifest=MANIFEST, resolver=lambda _: storage
     ) as state:
         state.sync()
-        assert state.unavailable == "edition_missing"
         assert state.local.connection.execute("SELECT count(*) FROM polls").fetchone() == (6,)
+        state.sync()  # complete input collection before attempting edition/application
+        assert state.unavailable == "edition_missing"
         assert state.local.connection.execute(
             "SELECT completed FROM segment_exports"
         ).fetchall() == [(True,)]

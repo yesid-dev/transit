@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from functools import partial
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from sqlalchemy.engine import Engine
 
@@ -53,7 +53,6 @@ from transit_ops.ingestion.common import (
 from transit_ops.ingestion.i3 import _capture_i3_alerts, _capture_service_alerts
 from transit_ops.ingestion.storage import BronzeStorageResolver, BronzeStorageScope
 from transit_ops.live.captures import ParsePolicy
-from transit_ops.live.worker_state import WorkerState, worker_state_scope
 from transit_ops.maintenance import (
     prune_gold_storage,
     prune_silver_storage,
@@ -76,6 +75,9 @@ from transit_ops.snapshots.live_scope import live_publish_scope
 from transit_ops.snapshots.live_trip_updates import LiveTripUpdates, latest_stored_trip_updates
 from transit_ops.snapshots.publish import publish_snapshot
 from transit_ops.worker_watchdog import worker_progress, worker_stopping, worker_watchdog
+
+if TYPE_CHECKING:
+    from transit_ops.live.worker_state import WorkerState
 
 GTFS_REALTIME_ENDPOINTS = ("trip_updates", "vehicle_positions")
 I3_ALERT_ENDPOINT = "i3_alerts"
@@ -831,11 +833,16 @@ def _run_realtime_cycle(
         )
         endpoint_results.append(endpoint_result)
         if worker_state is not None:
-            worker_state.sync()
+            receipt_id = (endpoint_result.capture_result or {}).get("ingestion_run_id")
+            worker_state.sync(
+                current_run_ids=(receipt_id,) if type(receipt_id) is int else (), project=False,
+            )
         if last_captures is not None and endpoint_result.status == "succeeded":
             last_captures[endpoint_key] = started_at_utc
             if last_attempts is not None:
                 last_attempts.pop(endpoint_key, None)
+    if worker_state is not None:
+        worker_state.sync()
     step_timings_seconds = {
         f"capture_{endpoint_result.endpoint_key}": endpoint_result.capture_duration_seconds
         for endpoint_result in endpoint_results
@@ -939,10 +946,14 @@ def run_realtime_cycle(
     engine = _engine(settings, engine)
     scope = BronzeStorageScope(settings, project_root=_project_root())
     try:
-        owner = worker_state_scope(
-            settings=settings.LIGHTER_STORAGE.live, engine=engine,
-            manifest=registry.get_provider(provider_id), resolver=scope.resolve,
-        )
+        owner = nullcontext(None)
+        if settings.LIGHTER_STORAGE.live.recording:
+            from transit_ops.live.worker_state import worker_state_scope
+
+            owner = worker_state_scope(
+                settings=settings.LIGHTER_STORAGE.live, engine=engine,
+                manifest=registry.get_provider(provider_id), resolver=scope.resolve,
+            )
         with owner as state:
             return _run_realtime_cycle(
                 provider_id,
@@ -1248,6 +1259,8 @@ def run_realtime_worker_loop(
         try:
             owner = nullcontext(None)
             if settings.LIGHTER_STORAGE.live.recording:
+                from transit_ops.live.worker_state import worker_state_scope
+
                 registry = registry or _provider_registry(settings)
                 engine = engine or make_engine(settings, connect_timeout=10)
                 owner = worker_state_scope(

@@ -9,7 +9,7 @@ from functools import partial
 from hashlib import sha256
 from urllib.parse import quote
 
-from sqlalchemy import Engine
+from sqlalchemy import Engine, text
 
 from transit_ops.core.models import ProviderManifest
 from transit_ops.history.poll_record import CaptureEntry, PollRecord
@@ -17,7 +17,12 @@ from transit_ops.ingestion.common import redact_error_message
 from transit_ops.ingestion.i3 import extract_i3_metadata, extract_service_alerts_metadata
 from transit_ops.ingestion.storage import BronzeStorageResolver
 from transit_ops.live.captures import CaptureRef, ParsePolicy, parse_capture
-from transit_ops.live.edition import current_edition_id, load_edition_from_postgres
+from transit_ops.live.edition import (
+    current_dim_versions,
+    current_edition_id,
+    load_edition_from_postgres,
+    loaded_edition,
+)
 from transit_ops.live.facts import apply_capture
 from transit_ops.live.local_file import LocalFile
 from transit_ops.live.recording import Recorder
@@ -45,52 +50,111 @@ class WorkerState:
         self.settings, self.resolver = settings, resolver
         self.recorder = Recorder(local, provider_id=manifest.provider.provider_id)
         self.unavailable: str | None = "local_not_observed"
+        self._recovery_ready = False
+        self._required_current: set[int] = set()
+        self._current_batch: set[int] = set()
+        self._recovered_through: int | None = None
 
-    def sync(self) -> None:
+    def sync(self, *, current_run_ids: tuple[int, ...] = (), project: bool = True) -> None:
         """Observe all terminal outcomes; a local error never falsifies PG success."""
         try:
-            self._sync()
+            self._sync(current_run_ids=current_run_ids, project=project)
         except Exception as exc:
             self.unavailable = redact_error_message(str(exc))
             logger.error("Local recording unavailable: %s", self.unavailable)
 
-    def _sync(self) -> None:
+    def _sync(self, *, current_run_ids: tuple[int, ...], project: bool) -> None:
         provider = self.manifest.provider.provider_id
-        records = self.recorder.catch_up(self.engine, page_size=self.settings.catchup_page_size)
+        self._required_current.update(current_run_ids)
+        self._current_batch.update(current_run_ids)
+        records = self.recorder.catch_up(
+            self.engine,
+            page_size=self.settings.catchup_page_size,
+            current_run_ids=tuple(self._required_current),
+        )
+        self._required_current.difference_update(
+            p.ingestion_run_id for r in records for p in r.polls
+        )
+        self._required_current.difference_update(
+            p.ingestion_run_id for r in records for p in r.processing
+        )
+        self._recovery_ready |= self.recorder.sweep_complete
+        if self.recorder.completed_upper is not None:
+            self._recovered_through = max(
+                self._recovered_through or 0, self.recorder.completed_upper
+            )
+        if project and not self._required_current:
+            self.recorder.ready_current(self._current_batch)
+            self._current_batch.clear()
         try:
-            failures = self._apply_records(provider, records)
+            failures = (
+                self._apply_records(provider, (), through_run_id=self._recovered_through)
+                if project and self._recovery_ready and not self._required_current
+                else []
+            )
         finally:
             # Pending cuts are retried even when edition loading/application fails.
             backend = self.settings.segment_storage_backend
             assert backend is not None
             export_segment(self.local, self.resolver(backend))
-        pending = self.local.connection.execute(
-            "SELECT 1 FROM local_applications WHERE status='failed' LIMIT 1"
-        ).fetchone()
-        self.unavailable = (
-            failures[0] if failures else "local_application_failed" if pending else None
-        )
+        if self._required_current:
+            self.unavailable = "local_current_receipt_missing"
+        elif not self._recovery_ready:
+            self.unavailable = "local_recovery_pending"
+        else:
+            self.unavailable = (
+                failures[0]
+                if failures
+                else "local_application_pending"
+                if self.recorder.pending_captures(1)
+                else None
+            )
 
-    def _apply_records(self, provider: str, records: tuple[PollRecord, ...]) -> list[str]:
-        # Edition loader owns its own idle transactions on both connections.
-        with self.engine.connect() as pg:
-            edition = current_edition_id(pg, provider_id=provider)
-            pg.rollback()
-            load_edition_from_postgres(self.local.connection, pg, edition)
-        failures = []
+    def _apply_records(
+        self, provider: str, records: tuple[PollRecord, ...], *, through_run_id: int | None = None
+    ) -> list[str]:
+        # Direct batch callers share the same durable queue as paged recovery.
         for record in records:
-            for capture in record.captures:
-                endpoint = record.feed_day.endpoint_key
-                try:
-                    self.recorder.apply(
-                        endpoint,
-                        capture.capture_row_id,
-                        partial(self._apply, endpoint, capture),
-                        capture=capture,
-                    )
-                except Exception as exc:
-                    failures.append(redact_error_message(str(exc)))
+            self.recorder.record(record)
+        pending = self.recorder.pending_captures(
+            self.settings.catchup_page_size,
+            through_run_id=through_run_id,
+        )
+        self._ensure_edition(provider)
+        if not pending:
+            return []
+        failures = []
+        for endpoint, capture in pending:
+            try:
+                self.recorder.apply(
+                    endpoint,
+                    capture.capture_row_id,
+                    partial(self._apply, endpoint, capture),
+                    capture=capture,
+                )
+            except Exception as exc:
+                failures.append(redact_error_message(str(exc)))
+                # Stateful alerts must retain first-seen continuity; trip facts
+                # must never finalize before an earlier required vehicle application.
+                break
         return failures
+
+    def _ensure_edition(self, provider: str) -> None:
+        self.local.require_committed()
+        with self.engine.connect() as pg:
+            with pg.begin():
+                pg.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"))
+                edition = current_edition_id(pg, provider_id=provider)
+                dimensions = current_dim_versions(pg, provider_id=provider)
+            exists = self.local.connection.execute(
+                "SELECT 1 FROM duckdb_tables() WHERE table_name='edition_meta' "
+                "AND schema_name='main' AND database_name=current_database()"
+            ).fetchone()
+            loaded = loaded_edition(self.local.connection) if exists else None
+            if loaded == edition and loaded is not None and loaded.dimension_versions == dimensions:
+                return
+            # The loader owns its idle transaction; never enter it from apply().
+            load_edition_from_postgres(self.local.connection, pg, edition)
 
     def _apply(self, endpoint: str, capture: CaptureEntry) -> None:
         payload = self.resolver(capture.storage_backend).read_bytes(capture.storage_path)
@@ -111,7 +175,7 @@ class WorkerState:
                 if endpoint == "service_alerts"
                 else extract_i3_metadata
             )(payload, provider_id=provider)
-            apply_alert_snapshot(
+            result = apply_alert_snapshot(
                 self.local,
                 RawI3AlertSnapshot(
                     capture.capture_row_id,
@@ -122,6 +186,8 @@ class WorkerState:
                 ),
                 loaded_at_utc=capture.captured_at_utc,
             )
+            if result.skipped_older_capture:
+                raise ValueError(f"local_alert_repair_required:{capture.capture_row_id}")
 
 
 def _verified_seed(settings: LaneSettings, provider: str) -> tuple[AlertSeed, int]:
