@@ -658,6 +658,19 @@ describe('Lines directory — preview, links and citation', () => {
 		expect(table.cell(table.rows[29], 'value_pct')).toBe('');
 	});
 
+	it.each([
+		['en', 'November 4 to 10, 7 complete days'],
+		['fr', 'du 4 au 10 novembre, 7 jours complets'],
+	] as const)('names the selected period once in %s', async (locale, expected) => {
+		h.state.desktop = true;
+		h.state.locale = locale;
+		const { container } = render(LinesDirectory);
+		await waitFor(() =>
+			expect(container.querySelector('.preview-dates')).toHaveTextContent(expected),
+		);
+		expect(container.querySelector('.preview-dates')?.textContent?.trim()).toBe(expected);
+	});
+
 	it('exports the selected record only when a figure and complete days exist', async () => {
 		h.state.desktop = true;
 		const { container } = render(LinesDirectory);

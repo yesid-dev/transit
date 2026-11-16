@@ -927,7 +927,7 @@ test('en: the selected preview cites the record it actually shows, with a copy f
 	const copy = indexCopy.en;
 	const preview = page.locator('[data-slot="directory-preview"]');
 	await expect(preview).toContainText(copy.measure('90%'));
-	await expect(preview).toContainText(copy.period('November 4 to 10', copy.completeDays('7')));
+	await expect(preview.locator('.preview-dates')).toHaveText('November 4 to 10, 7 complete days');
 	await expect(preview).toContainText(copy.basis('1,000'));
 	await expect(preview.locator('a', { hasText: copy.openRecord })).toHaveAttribute(
 		'href',
@@ -1002,6 +1002,12 @@ for (const lang of PUBLISHED_LOCALES)
 			const preview = page.locator('[data-slot="directory-preview"]');
 			await expect(preview.locator('h2')).toBeFocused();
 			await expect(preview.locator('h2')).toBeInViewport();
+			if (id === '1')
+				await expect(preview.locator('.preview-dates')).toHaveText(
+					lang === 'fr'
+						? 'du 4 au 10 novembre, 7 jours complets'
+						: 'November 4 to 10, 7 complete days',
+				);
 			await preview
 				.getByRole('button', { name: indexCopy[lang].backToResults, exact: true })
 				.click();
