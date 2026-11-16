@@ -362,8 +362,8 @@ def _seed_feed_endpoints(connection, manifest: ProviderManifest, settings: Setti
 
 @app.callback()
 def main(ctx: typer.Context) -> None:
-    if ctx.invoked_subcommand == "history-probe-pack":
-        return  # This command validates input before reading settings and redacts failures.
+    if ctx.invoked_subcommand in ("history-probe-pack", "lake-ops"):
+        return  # These pure commands own input validation without application settings.
     try:
         settings = get_settings()
     except ValueError:
