@@ -168,10 +168,20 @@ class Recorder:
         with self.local.transaction() as conn:
             for record in records:
                 self.record(record)
-            if ids:
+            known = set(ids)
+            known.update(p.ingestion_run_id for record in records for p in record.polls)
+            known.update(c.ingestion_run_id for record in records for c in record.captures)
+            known.update(
+                p.ingestion_run_id
+                for record in records
+                for p in record.processing
+                if p.ingestion_run_id is not None
+            )
+            known = {identity for identity in known if identity > initial}
+            if known:
                 conn.executemany(
                     "INSERT INTO recording_coverage VALUES (?, false) ON CONFLICT DO NOTHING",
-                    [(i,) for i in ids],
+                    [(i,) for i in sorted(known)],
                 )
             observed = _observed_runs(records)
             conn.execute(
@@ -258,24 +268,23 @@ class Recorder:
         self, limit: int, *, through_run_id: int | None = None, for_application: bool = False
     ) -> list[tuple[str, CaptureEntry]]:
         """Schedule bounded work over all durable pages, with vehicles before trips."""
+        # Vehicle facts depend only on their own captured input. Admit known vehicles
+        # before the historical horizon so a ready trip cannot overtake one, even
+        # when its ingestion-run ID is higher. The bounded queue always sorts them first.
+        # Batch readiness is not proof that historical dependencies were enumerated.
         columns = ", ".join('c."' + n + '"' for n in get_type_hints(CaptureEntry))
         rows = self.local.connection.execute(
             f"SELECT c.endpoint_key, {columns} FROM captures c LEFT JOIN local_applications a "
             "ON c.endpoint_key=a.endpoint_key AND c.capture_row_id=a.capture_row_id "
             "WHERE coalesce(a.status, '') <> 'succeeded' AND c.ingestion_run_id > "
             "(SELECT coalesce(max(initial_run_id), 0) FROM recording_cursor) "
-            "AND (?::BIGINT IS NULL OR c.ingestion_run_id <= ?::BIGINT "
-            "OR a.status IN ('ready', 'failed')) "
+            "AND ((?::BOOLEAN AND c.endpoint_key='vehicle_positions') OR ("
+            "(?::BIGINT IS NULL OR c.ingestion_run_id <= ?::BIGINT) "
             "AND (NOT ?::BOOLEAN OR NOT EXISTS(SELECT 1 FROM recording_coverage o "
-            "WHERE o.ingestion_run_id <= c.ingestion_run_id AND (NOT o.terminal_recorded "
-            "OR (o.ingestion_run_id > coalesce(?::BIGINT, o.ingestion_run_id) "
-            "AND NOT EXISTS(SELECT 1 FROM captures x JOIN local_applications xa "
-            "ON x.endpoint_key=xa.endpoint_key AND x.capture_row_id=xa.capture_row_id "
-            "WHERE x.ingestion_run_id=o.ingestion_run_id "
-            "AND xa.status IN ('ready','failed','succeeded')))))) "
+            "WHERE o.ingestion_run_id <= c.ingestion_run_id AND NOT o.terminal_recorded)))) "
             "ORDER BY CASE c.endpoint_key WHEN 'vehicle_positions' THEN 0 "
             "WHEN 'trip_updates' THEN 2 ELSE 1 END, c.captured_at_utc, c.capture_row_id LIMIT ?",
-            [through_run_id, through_run_id, for_application, through_run_id, limit],
+            [for_application, through_run_id, through_run_id, for_application, limit],
         ).fetchall()
         return [(r[0], _entry(CaptureEntry, r[1:])) for r in rows]
 

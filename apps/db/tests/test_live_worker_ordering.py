@@ -191,7 +191,7 @@ def test_unordered_alerts_keep_first_seen_identity_and_children(worker):
 
 
 def test_already_advanced_alert_refuses_false_convergence(worker):
-    state, _, storage, _ = worker
+    state, engine, storage, _ = worker
     payload = json.dumps({"alerts": [ALERT]}).encode()
     first = capture(storage, "i3_alerts", 101, payload)
     newer = capture(storage, "i3_alerts", 102, payload, seconds=1)
@@ -200,6 +200,9 @@ def test_already_advanced_alert_refuses_false_convergence(worker):
     assert state.local.connection.execute(
         "SELECT status FROM local_applications WHERE capture_row_id=101"
     ).fetchone() == ("failed",)
+    engine.visible.update({101: first, 102: newer})
+    state.sync()
+    assert state.unavailable is not None
     state.sync()
     assert state.unavailable == "local_alert_repair_required:101"
 

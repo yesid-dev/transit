@@ -4,8 +4,8 @@ from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
-from test_live_facts import seed_fact_edition
-from test_live_worker_ordering import trip_enrichment, trip_vehicle
+from test_live_facts import seed_fact_edition, vehicle_message
+from test_live_worker_ordering import capture, trip_enrichment, trip_vehicle
 from test_live_worker_ordering import worker as worker
 
 from transit_ops.live import worker_state
@@ -185,6 +185,93 @@ def test_success_without_required_raw_capture_cannot_cover_the_run(worker, monke
         state.sync()
     assert state.unavailable is not None
     assert trip_enrichment(state.local) == []
+
+
+@pytest.mark.parametrize("vehicle_run_id", [100, 102])
+@pytest.mark.parametrize("reopen_ready", [False, True])
+def test_current_trip_waits_for_tail_vehicle_outside_covered_prefix(
+    worker, vehicle_run_id, reopen_ready
+):
+    state, engine, storage, _ = worker
+    trip, vehicle = trip_vehicle(storage)
+    vehicle = replace(
+        vehicle,
+        captures=(replace(vehicle.captures[0], ingestion_run_id=vehicle_run_id),),
+        polls=(replace(vehicle.polls[0], ingestion_run_id=vehicle_run_id),),
+    )
+    engine.visible = {identity: failed_poll(trip, identity) for identity in range(1, 21)}
+    try:
+        for _ in range(11):
+            state.sync()
+        assert state.recorder.completed_upper == 20
+        engine.visible.update({vehicle_run_id: vehicle, 101: trip})
+        state.sync(current_run_ids=(101,), project=False)
+        assert state.local.connection.execute(
+            "SELECT ingestion_run_id, capture_row_id FROM captures ORDER BY ingestion_run_id"
+        ).fetchall() == sorted([(vehicle_run_id, 102), (101, 101)])
+        if reopen_ready:
+            # Crash after committing the current batch's eligibility, before projection.
+            state.recorder.ready_current({101})
+            state = reopen(state)
+        state.sync()
+        early = trip_enrichment(state.local)
+        assert early in ([], [("bus-0", 2)])
+        if not early:
+            assert state.unavailable is not None
+            assert not state.local.connection.execute(
+                "SELECT 1 FROM local_applications WHERE endpoint_key='trip_updates' "
+                "AND status='succeeded'"
+            ).fetchone()
+        for _ in range(16):
+            state.sync()
+        assert trip_enrichment(state.local) == [("bus-0", 2)]
+        assert state.unavailable is None
+        state = reopen(state)
+        state.sync()
+        assert trip_enrichment(state.local) == [("bus-0", 2)]
+        assert state.local.connection.execute(
+            "SELECT count(*) FROM fact_processing"
+        ).fetchone() == (2,)
+    finally:
+        state.local.close()
+
+
+@pytest.mark.parametrize("reopen_ready", [False, True])
+def test_current_trip_waits_for_vehicle_outside_recent_tail(worker, reopen_ready):
+    state, engine, storage, _ = worker
+    trip, vehicle = trip_vehicle(storage)
+    vehicle = replace(
+        vehicle,
+        captures=(replace(vehicle.captures[0], ingestion_run_id=50),),
+        polls=(replace(vehicle.polls[0], ingestion_run_id=50),),
+    )
+    unrelated = vehicle_message()
+    for entity in unrelated.entity:
+        entity.vehicle.trip.trip_id = "unrelated"
+    tail_vehicle = capture(storage, "vehicle_positions", 100, unrelated.SerializeToString())
+    engine.visible = {identity: failed_poll(trip, identity) for identity in range(1, 7)}
+    try:
+        for _ in range(4):
+            state.sync()
+        assert state.recorder.completed_upper == 6
+        engine.visible.update({50: vehicle, 100: tail_vehicle, 101: trip})
+        state.sync(current_run_ids=(101,), project=False)
+        assert state.local.connection.execute(
+            "SELECT ingestion_run_id FROM captures ORDER BY ingestion_run_id"
+        ).fetchall() == [(100,), (101,)]
+        if reopen_ready:
+            state.recorder.ready_current({101})
+            state = reopen(state)
+        state.sync()
+        state.sync()
+        assert trip_enrichment(state.local) == []
+        assert state.unavailable is not None
+        for _ in range(8):
+            state.sync()
+        assert trip_enrichment(state.local) == [("bus-0", 2)]
+        assert state.unavailable is None
+    finally:
+        state.local.close()
 
 
 def test_failed_raw_commit_retains_obligation_and_reopen_retries(worker, monkeypatch):
