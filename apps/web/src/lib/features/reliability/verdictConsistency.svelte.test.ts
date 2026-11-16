@@ -29,6 +29,7 @@ const harness = vi.hoisted(() => {
 });
 vi.mock('$app/state', () => ({ page: harness.page }));
 vi.mock('#lib/site/urlMirror.ts', () => ({
+	currentMirrorUrl: () => new URL(harness.page.url),
 	mirrorSearchParams: harness.mirrorSearchParams,
 	mirrorSearchParam: vi.fn(),
 }));
@@ -72,7 +73,17 @@ vi.mock('#lib/v1/repositories/provenance.ts', () => ({
 }));
 vi.mock('#lib/v1/boot.ts', () => ({
 	getV1Context: () => ({
-		manifest: { short_name: 'Test', display_name: 'Test', files: { live: { ttl_s: 30 } } },
+		manifest: {
+			provider: 'stm',
+			tz: 'America/Toronto',
+			short_name: 'Test',
+			display_name: 'Test',
+			files: { live: { ttl_s: 30 } },
+		},
+		provider: {
+			labels: { en: { operator: 'Test' }, fr: { operator: 'Test' } },
+			inputs: { i3_alerts: true, service_alerts: true },
+		},
 		lang: 'en',
 		labels: {},
 	}),
@@ -208,7 +219,6 @@ describe('the same reliability evidence across every surface', () => {
 		}
 		const listing = render(LinesIndex);
 		await waitFor(() => expect(listing.getByTestId('lines-sort-worst')).toBeInTheDocument());
-		await fireEvent.click(listing.getByTestId('lines-sort-worst'));
 		await waitFor(() =>
 			expect(listing.container.querySelector('[data-slot="reliability-badge"]')).toHaveAttribute(
 				'data-status',
@@ -217,6 +227,14 @@ describe('the same reliability evidence across every surface', () => {
 		);
 		expect(listing.container.querySelector('[data-slot="reliability-badge"]')).toHaveTextContent(
 			'85%',
+		);
+		// The published comparison carries its own figure and dates, without inventing a verdict.
+		await waitFor(() => expect(listing.getByTestId('lines-sort-worst')).toBeEnabled());
+		await fireEvent.click(listing.getByTestId('lines-sort-worst'));
+		await waitFor(() =>
+			expect(
+				listing.container.querySelector('[data-slot="reliability-badge"]'),
+			).toHaveAccessibleName('85% on time, week to Nov 2'),
 		);
 		await fireEvent.click(listing.getByTestId('lines-status-problem'));
 		await waitFor(() =>
@@ -323,10 +341,16 @@ it('list uses the same closed week on arrival', async () => {
 	harness.route = { ...closedWeek, id: '24' };
 	harness.publishedPct = 84;
 	const view = render(LinesIndex);
-	await fireEvent.click(await view.findByTestId('lines-sort-worst'));
 	await waitFor(() =>
 		expect(view.container.querySelector('[data-slot="reliability-badge"]')).toHaveAccessibleName(
-			/84.*week to Nov 10/,
+			'84%, Share of readings on time, November 4 to 10',
+		),
+	);
+	await waitFor(() => expect(view.getByTestId('lines-sort-worst')).toBeEnabled());
+	await fireEvent.click(view.getByTestId('lines-sort-worst'));
+	await waitFor(() =>
+		expect(view.container.querySelector('[data-slot="reliability-badge"]')).toHaveAccessibleName(
+			'84% on time, week to Nov 10',
 		),
 	);
 });

@@ -597,6 +597,18 @@ test('listing headers draw at the package ink and rest their copy on the band fl
 		await page.goto(href);
 		const header = page.locator('[data-slot="blueprint-listing-header"]');
 		if (!(await header.count())) continue;
+		const presentation = await page
+			.locator('[data-slot="listing-frame"]')
+			.first()
+			.getAttribute('data-presentation');
+		if (href === '/lines') {
+			// The approved Lines directory is a reading frame: a visible title, no artwork at all.
+			expect(presentation, href).toBe('reading');
+			await expect(header.locator('h1')).toBeVisible();
+			await expect(header.locator('[data-slot="blueprint-listing-art"]')).toHaveCount(0);
+			continue;
+		}
+		expect(presentation, href).toBe('expressive');
 		listings += 1;
 		await page.evaluate(() => document.fonts.ready);
 		for (const theme of ['dark', 'light'] as const) {

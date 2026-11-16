@@ -18,6 +18,7 @@ vi.mock('./repositories/static', () => ({
 }));
 
 import { createReliabilityLoader } from './reliabilitySnapshot.svelte';
+import type { ReliabilitySnapshot } from './reliabilitySnapshot.svelte';
 
 function routesIndex(entries: Array<{ id: string; reliability?: boolean }>): RoutesIndex {
 	return {
@@ -453,5 +454,124 @@ it('list verdict and sparkline end on the last closed day', async () => {
 		otpPct: 84,
 		observationCount: 227378,
 		series: [85],
+	});
+});
+
+describe('createReliabilityLoader — route source, failure and retry', () => {
+	it('keeps the route file on the snapshot so a row can read its own record', async () => {
+		const file = routeFile('24', [70, 80, 95]);
+		routeFetch.mockResolvedValue(file);
+		let snap: ReliabilitySnapshot = { phase: 'idle', otpPct: null, verdict: null, series: [] };
+		const cleanup = $effect.root(() => {
+			const loader = createReliabilityLoader('route');
+			loader.request({ id: '24', known: true });
+			flushSync();
+			$effect(() => {
+				snap = loader.get('24');
+			});
+		});
+		await vi.waitFor(() => {
+			flushSync();
+			expect(snap.phase).toBe('ready');
+		});
+		expect(snap.routeData).toBe(file);
+		cleanup();
+	});
+
+	it('names a failed read as failed, distinct from an unpublished row', async () => {
+		routeFetch.mockRejectedValueOnce(new Error('network down')).mockResolvedValue(null);
+		let failedSnap: ReliabilitySnapshot = {
+			phase: 'idle',
+			otpPct: null,
+			verdict: null,
+			series: [],
+		};
+		let missingSnap: ReliabilitySnapshot = {
+			phase: 'idle',
+			otpPct: null,
+			verdict: null,
+			series: [],
+		};
+		const cleanup = $effect.root(() => {
+			const loader = createReliabilityLoader('route');
+			loader.request({ id: 'boom', known: true });
+			loader.request({ id: 'ghost', known: true });
+			flushSync();
+			$effect(() => {
+				failedSnap = loader.get('boom');
+				missingSnap = loader.get('ghost');
+			});
+		});
+		await vi.waitFor(() => {
+			flushSync();
+			expect(failedSnap.phase).toBe('empty');
+			expect(missingSnap.phase).toBe('empty');
+			expect(routeFetch).toHaveBeenCalledTimes(2);
+		});
+		expect(failedSnap.failed).toBe(true);
+		expect(failedSnap.routeData ?? null).toBeNull();
+		expect(failedSnap).not.toHaveProperty('error');
+		expect(missingSnap.failed ?? false).toBe(false);
+		cleanup();
+	});
+
+	it('retries only a failed read, through the same queue and ceiling, once', async () => {
+		routeFetch.mockRejectedValueOnce(new Error('network down'));
+		let snap: ReliabilitySnapshot = { phase: 'idle', otpPct: null, verdict: null, series: [] };
+		let loaderRef!: ReturnType<typeof createReliabilityLoader>;
+		const cleanup = $effect.root(() => {
+			const loader = createReliabilityLoader('route');
+			loaderRef = loader;
+			loader.request({ id: 'boom', known: true });
+			flushSync();
+			$effect(() => {
+				snap = loader.get('boom');
+			});
+		});
+		await vi.waitFor(() => {
+			flushSync();
+			expect(snap.failed).toBe(true);
+		});
+		routeFetch.mockResolvedValue(routeFile('boom', [90, 95]));
+		// A row that is not failed never starts a read from retry().
+		loaderRef.retry({ id: 'other', known: true });
+		expect(routeFetch).toHaveBeenCalledTimes(1);
+		loaderRef.retry({ id: 'boom', known: true });
+		await vi.waitFor(() => {
+			flushSync();
+			expect(snap.phase).toBe('ready');
+		});
+		expect(routeFetch).toHaveBeenCalledTimes(2);
+		expect(snap.failed ?? false).toBe(false);
+		// One click, one read: a settled row ignores further retries.
+		loaderRef.retry({ id: 'boom', known: true });
+		expect(routeFetch).toHaveBeenCalledTimes(2);
+		cleanup();
+	});
+
+	it('keeps the four-request ceiling while several failed rows are retried', async () => {
+		const gates = new Map<string, ReturnType<typeof deferred<RouteReliability | null>>>();
+		routeFetch.mockRejectedValue(new Error('network down'));
+		let loaderRef!: ReturnType<typeof createReliabilityLoader>;
+		const cleanup = $effect.root(() => {
+			const loader = createReliabilityLoader('route');
+			loaderRef = loader;
+			for (let i = 0; i < 8; i++) loader.request({ id: `r${i}`, known: true });
+			flushSync();
+		});
+		await vi.waitFor(() => expect(loaderRef.get('r7').failed).toBe(true));
+		routeFetch.mockImplementation((id: string) => {
+			const d = deferred<RouteReliability | null>();
+			gates.set(id, d);
+			return d.promise;
+		});
+		for (let i = 0; i < 8; i++) loaderRef.retry({ id: `r${i}`, known: true });
+		flushSync();
+		expect(loaderRef.inFlight).toBe(4);
+		gates.get('r0')!.resolve(null);
+		gates.get('r1')!.resolve(null);
+		await vi.waitFor(() => expect(gates.size).toBe(6));
+		expect(loaderRef.inFlight).toBe(4);
+		cleanup();
 	});
 });

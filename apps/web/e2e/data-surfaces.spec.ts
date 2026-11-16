@@ -8,6 +8,8 @@ import { createLineDirectory } from '../src/lib/site/lineDirectory';
 import { routeNameFallback } from '../src/lib/site/nameFallback';
 import { tripCopy } from '../src/lib/features/trips/trips.copy';
 import { DEFAULT_LOCALE as locale, PUBLISHED_LOCALES } from '../src/lib/i18n/config';
+import { indexCopy } from '../src/lib/features/lines/lines.copy';
+import { formatRecordDates } from '../src/lib/features/lines/reliability/recordDates';
 import { localizeHref } from '../src/lib/i18n/routing';
 import { STATUS_LABELS } from '../src/lib/v1/enumLabels';
 import { stampCopy } from '../src/lib/v1/stamp.copy';
@@ -567,3 +569,454 @@ for (const lang of PUBLISHED_LOCALES)
 				await expect(page.getByTestId('trip-standdown')).toHaveCount(0);
 				await expect(page.locator('[data-slot="trip-report-time"]')).toHaveCount(0);
 			});
+
+// UX-T4.9/T4.10: the Lines directory is a finder of the current published records.
+const DIRECTORY_LONG_NAME =
+	'Sherbrooke / Station Université de Montréal et chemin de la Côte-des-Neiges / Terminus des voyageurs';
+const DIRECTORY_IDS = Array.from({ length: 235 }, (_, index) => String(index + 1));
+/** A published line whose id is not an invented ASCII alphabet: it is used verbatim in the URL. */
+const OPAQUE_LINE = { id: 'ligne 24/été', short: '24 bis', long: 'Ligne opaque', type: 3 } as const;
+
+async function stubLinesDirectory(
+	page: Page,
+	options: { opaque?: boolean } = {},
+): Promise<{ indexRequests: number[]; fileRequests: string[] }> {
+	const indexRequests: number[] = [];
+	const fileRequests: string[] = [];
+	const members = options.opaque
+		? [...DIRECTORY_IDS.slice(0, 40), OPAQUE_LINE.id]
+		: DIRECTORY_IDS.slice(0, 40);
+	const week = { window_start: '2026-11-04', window_end: '2026-11-10' };
+	const ranked = (
+		id: string,
+		numerator: number,
+		denominator: number,
+		pct: number,
+		rank: number,
+	) => ({
+		id,
+		state: 'ranked' as const,
+		rank,
+		numerator,
+		denominator,
+		pct,
+		...week,
+	});
+	const index = {
+		schema_version: 1,
+		methodology_version: 'reliability-2',
+		generated_utc: '2026-11-11T07:00:00Z',
+		published_utc: '2026-11-11T07:00:00Z',
+		next_publish_utc: '2026-11-18T07:00:00Z',
+		route_ids: members,
+		weekly_routes: [
+			ranked('77', 40, 100, 40, 1),
+			ranked('7', 55, 100, 55, 2),
+			{
+				id: '2',
+				state: 'too_few_units' as const,
+				window_start: '2026-10-28',
+				window_end: '2026-11-03',
+			},
+		],
+	};
+	const routes = [
+		...DIRECTORY_IDS.map((id, position) => ({
+			id,
+			short: id,
+			long: position === 0 ? DIRECTORY_LONG_NAME : `Line ${id} route`,
+			type: id === '4' ? 1 : id === '2' ? 0 : 3,
+		})),
+		...(options.opaque ? [OPAQUE_LINE] : []),
+	];
+	const routeFile = (id: string) => {
+		const onTime = id === '5' ? 500 : 900;
+		return {
+			generated_utc: '2026-11-11T05:00:00Z',
+			id,
+			methodology_version: 'reliability-2',
+			periods_by_grain: [
+				{ grain: 'day', date: '2026-11-10' },
+				{
+					grain: 'week',
+					date: '2026-11-04',
+					by_daytype: [{ grain: 'weekday', observation_count: 1000, on_time: onTime }],
+				},
+			],
+			periods: [{ grain: 'day', date: '2026-11-10', observation_count: 1000, on_time: onTime }],
+		};
+	};
+	await page.route('**/v1/**', async (route) => {
+		const path = new URL(route.request().url()).pathname;
+		if (path.endsWith('/static/routes_index.json'))
+			return route.fulfill({
+				json: { generated_utc: '2026-11-11T05:00:00Z', routes },
+			});
+		if (path.endsWith('/historic/route_reliability/index.json')) {
+			indexRequests.push(1);
+			return route.fulfill({ json: index });
+		}
+		const file = path.match(/\/historic\/route_reliability\/([^/]+)\.json$/u);
+		if (file) fileRequests.push(file[1]);
+		if (file && members.includes(file[1])) return route.fulfill({ json: routeFile(file[1]) });
+		if (path.endsWith('/provenance.json'))
+			return route.fulfill({
+				json: {
+					generated_utc: '2026-11-11T05:00:00Z',
+					methodology: { min_n_rate: 30, wilson_z: 1.96 },
+					gaps: ['metro_realtime'],
+				},
+			});
+		return route.continue();
+	});
+	return { indexRequests, fileRequests };
+}
+
+/** Words split across lines inside a row: the directory must break between words, never inside one. */
+function directoryBrokenWords(): string[] {
+	const words: string[] = [];
+	for (const row of document.querySelectorAll('[data-slot="entity-result-row"]')) {
+		const bounds = row.getBoundingClientRect();
+		const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
+		while (walker.nextNode()) {
+			const node = walker.currentNode;
+			for (const match of node.textContent!.matchAll(/\S+/g)) {
+				// A break after a hyphen is normal typography: each hyphen-delimited part must stay whole.
+				let offset = 0;
+				for (const part of match[0].split(/(?<=-)/u)) {
+					const start = match.index! + offset;
+					offset += part.length;
+					if (!part.trim()) continue;
+					const range = document.createRange();
+					range.setStart(node, start);
+					range.setEnd(node, start + part.length);
+					const rects = [...range.getClientRects()];
+					if (
+						new Set(rects.map((rect) => Math.round(rect.top))).size > 1 ||
+						rects.some((rect) => rect.left < bounds.left - 1 || rect.right > bounds.right + 1)
+					)
+						words.push(part);
+				}
+			}
+		}
+	}
+	return words;
+}
+
+for (const lang of PUBLISHED_LOCALES)
+	for (const provider of ['stm', 'octranspo'])
+		for (const width of [320, 390, 768, 1280])
+			test(`${lang} ${provider} ${width}: the lines directory finds every published line`, async ({
+				page,
+			}) => {
+				await page.clock.setFixedTime(Date.parse('2026-11-12T12:00:00Z'));
+				await stubLinesDirectory(page);
+				await page.setViewportSize({ width, height: 900 });
+				await page.goto(localizeHref('/lines', lang, provider), { waitUntil: 'networkidle' });
+
+				const copy = indexCopy[lang];
+				const comparisonDates = formatRecordDates('2026-11-04', '2026-11-10', lang)!;
+				const counts = page.locator('[data-slot="directory-counts"]');
+				await expect(counts).toHaveText(copy.counts('20', '235', '235'));
+
+				const rows = page.locator('[data-slot="entity-result-row"]');
+				await expect(rows).toHaveCount(20);
+				const firstLine = localizeHref('/lines/1', lang, provider);
+				await expect(rows.first().locator('a.directory-name')).toHaveAttribute(
+					'href',
+					`${firstLine}&from=2026-11-04&to=2026-11-10`,
+				);
+				// The whole published name, never truncated.
+				await expect(rows.first().locator('.directory-long')).toHaveText(DIRECTORY_LONG_NAME);
+				expect(await page.evaluate(directoryBrokenWords)).toEqual([]);
+				expect(await page.locator('html').evaluate((node) => node.scrollWidth)).toBeLessThanOrEqual(
+					width,
+				);
+
+				for (const selector of ['a.directory-name', 'button.directory-preview']) {
+					const box = await page.locator(selector).first().boundingBox();
+					expect(box!.height).toBeGreaterThanOrEqual(44);
+				}
+
+				// Every match stays reachable past the old 200-row ceiling, and the increment is honest.
+				const more = page.locator('.directory-more-button');
+				await expect(more).toHaveText(copy.showMore('20'));
+				await more.click();
+				await expect(rows).toHaveCount(40);
+				const displayedCsv = page.locator('[data-slot="directory-csv"]');
+				await expect(displayedCsv).toHaveAttribute('download', 'lines-displayed-records.csv');
+				const exportedRows = decodeURIComponent(
+					(await displayedCsv.getAttribute('href'))!.split(',').slice(1).join(','),
+				).split('\r\n');
+				// The file holds exactly the rows on screen, header included.
+				expect(exportedRows).toHaveLength(41);
+				expect(exportedRows[1]).toContain(`"${provider}"`);
+				expect(exportedRows[1]).toContain('"2026-11-04"');
+
+				// One selected preview: default on desktop, chosen by the rider on the phone.
+				const preview = page.locator('[data-slot="directory-preview"]');
+				const list = page.locator('[data-slot="entity-list"]');
+				if (width < 1024) {
+					await expect(preview).toHaveCount(0);
+					const button = page.locator('button.directory-preview').first();
+					await button.click();
+					await expect(preview).toBeVisible();
+					const heading = page.locator('[data-slot="directory-preview"] h2');
+					await expect(heading).toBeFocused();
+					const listBox = (await list.boundingBox())!;
+					const previewBox = (await preview.boundingBox())!;
+					expect(previewBox.y).toBeGreaterThanOrEqual(listBox.y + listBox.height - 1);
+					await page.getByRole('button', { name: copy.backToResults, exact: true }).click();
+					await expect(preview).toHaveCount(0);
+					await expect(button).toBeFocused();
+				} else {
+					await expect(preview).toBeVisible();
+					const listBox = (await list.boundingBox())!;
+					const previewBox = (await preview.boundingBox())!;
+					expect(previewBox.x).toBeGreaterThanOrEqual(listBox.x + listBox.width - 1);
+				}
+
+				// Comparison keeps the published order and explains the lines below it. The filter panel
+				// starts closed below 1024px, as it does for every listing.
+				if (width < 1024)
+					await page.getByRole('button', { name: copy.controlsLabel, exact: true }).click();
+				await page.getByTestId('lines-sort-worst').click();
+				await expect(rows.first().locator('[data-slot="reliability-badge"]')).toContainText('40');
+				const rankedHref = await rows.first().locator('a.directory-name').getAttribute('href');
+				expect(rankedHref).toContain(`${localizeHref('/lines/77', lang, provider)}&`);
+				await expect(page.locator('[data-slot="directory-comparison"]')).toHaveText(
+					copy.comparisonContext(comparisonDates),
+				);
+				const excluded = rows.nth(3);
+				expect(await excluded.locator('a.directory-name').getAttribute('href')).toContain(
+					`${localizeHref('/lines/2', lang, provider)}&`,
+				);
+				await expect(excluded).toContainText(copy.unranked.too_few_units);
+				await expect(excluded).toContainText(formatRecordDates('2026-10-28', '2026-11-03', lang)!);
+				await expect(excluded).toContainText(copy.older);
+				await expect(excluded.locator('[data-slot="reliability-badge"]')).toHaveCount(0);
+			});
+
+for (const lang of PUBLISHED_LOCALES)
+	test(`${lang}: the last partial page is restored by the URL, not asked for again`, async ({
+		page,
+	}) => {
+		await page.clock.setFixedTime(Date.parse('2026-11-12T12:00:00Z'));
+		await stubLinesDirectory(page);
+		await page.setViewportSize({ width: 320, height: 900 });
+		await page.goto(localizeHref('/lines', lang, 'stm') + '&shown=240', {
+			waitUntil: 'networkidle',
+		});
+
+		const copy = indexCopy[lang];
+		const rows = page.locator('[data-slot="entity-result-row"]');
+		await expect(rows).toHaveCount(235);
+		await expect(page.locator('[data-slot="directory-counts"]')).toHaveText(
+			copy.counts('235', '235', '235'),
+		);
+		// Every restored row still resolves its own evidence once it is read.
+		await expect(rows.first().locator('[data-slot="reliability-badge"]')).toContainText('90');
+		await rows.last().scrollIntoViewIfNeeded();
+		await expect(rows.last()).toContainText(copy.notPublished);
+		await expect(page.locator('.directory-more-button')).toHaveCount(0);
+		// A reload keeps the same 235 rows: the URL carries the twenty-row page, not a partial one.
+		await page.reload({ waitUntil: 'networkidle' });
+		await expect(rows).toHaveCount(235);
+		await expect(page.locator('[data-slot="directory-counts"]')).toHaveText(
+			copy.counts('235', '235', '235'),
+		);
+	});
+
+for (const lang of PUBLISHED_LOCALES)
+	test(`${lang}: the problem filter lists by number and reports what it could not check`, async ({
+		page,
+	}) => {
+		await page.clock.setFixedTime(Date.parse('2026-11-12T12:00:00Z'));
+		await stubLinesDirectory(page);
+		await page.setViewportSize({ width: 1280, height: 900 });
+		await page.goto(localizeHref('/lines', lang, 'stm'), { waitUntil: 'networkidle' });
+
+		const copy = indexCopy[lang];
+		await page.getByTestId('lines-sort-worst').click();
+		await page.getByTestId('lines-status-problem').click();
+		await expect(page.locator('.directory-notice[role="status"]')).toContainText(
+			copy.problemNotice,
+		);
+		await expect(page).toHaveURL(/status=problem/);
+		await expect(page).not.toHaveURL(/sort=worst/);
+
+		// Line 5 is the one uneven record; the rest of the checked lines are healthy or unmeasured.
+		const rows = page.locator('[data-slot="entity-result-row"]');
+		await expect(rows).toHaveCount(1);
+		expect(await rows.first().locator('a.directory-name').getAttribute('href')).toContain(
+			`${localizeHref('/lines/5', lang, 'stm')}&`,
+		);
+		await expect(page.locator('[data-slot="directory-counts"]')).toHaveText(
+			copy.problemCounts('1', '235', '0', '0'),
+		);
+	});
+
+for (const lang of PUBLISHED_LOCALES)
+	test(`${lang}: without a published weekly ranking the directory says so and stays by number`, async ({
+		page,
+	}) => {
+		// The default fixture publication predates the frozen clock, so no comparison is admitted.
+		await page.clock.setFixedTime(Date.parse('2026-06-15T12:00:30Z'));
+		await page.goto(localizeHref('/lines', lang, 'stm'), { waitUntil: 'networkidle' });
+
+		const copy = indexCopy[lang];
+		const control = page.getByTestId('lines-sort-worst');
+		await expect(control).toBeDisabled();
+		await expect(page.locator(`#${await control.getAttribute('aria-describedby')}`)).toHaveText(
+			copy.comparisonUnavailable,
+		);
+		await expect(page).not.toHaveURL(/sort=worst/);
+		const first = page.locator('a.directory-name').first();
+		// This line publishes no record, so its link carries the provider and no invented period.
+		expect(await first.getAttribute('href')).toBe(localizeHref('/lines/1-373', lang, 'stm'));
+
+		// A query with no match explains itself and offers the way back.
+		await page.getByTestId('lines-filter-input').fill('zzzz');
+		await expect(page.getByText(copy.noMatch('zzzz'))).toBeVisible();
+		await page.getByRole('button', { name: copy.clearFilters, exact: true }).click();
+		await expect(page.locator('[data-slot="entity-result-row"]').first()).toBeVisible();
+		await expect(page).not.toHaveURL(/q=/);
+	});
+
+test('en: an opaque published line id selects its record, and an unknown id reads nothing', async ({
+	page,
+}) => {
+	await page.clock.setFixedTime(Date.parse('2026-11-12T12:00:00Z'));
+	const stub = await stubLinesDirectory(page, { opaque: true });
+	await page.setViewportSize({ width: 1280, height: 900 });
+	const copy = indexCopy.en;
+	await page.goto(
+		`${localizeHref('/lines', 'en', 'stm')}&line=${encodeURIComponent(OPAQUE_LINE.id)}&shown=240`,
+		{ waitUntil: 'networkidle' },
+	);
+
+	const preview = page.locator('[data-slot="directory-preview"]');
+	await expect(preview.locator('h2')).toHaveText(copy.lineHeading(OPAQUE_LINE.short));
+	// The record link carries the published id verbatim (URI-encoded), nothing invented.
+	expect(await preview.locator('a', { hasText: copy.openRecord }).getAttribute('href')).toContain(
+		encodeURIComponent(OPAQUE_LINE.id),
+	);
+	await expect
+		.poll(() => stub.fileRequests.map((id) => decodeURIComponent(id)))
+		.toContain(OPAQUE_LINE.id);
+
+	// An id that is not a published line is a hint only: no preview, and no read for it.
+	stub.fileRequests.length = 0;
+	await page.goto(`${localizeHref('/lines', 'en', 'stm')}&line=${encodeURIComponent('ghost/id')}`, {
+		waitUntil: 'networkidle',
+	});
+	await expect(page.locator('[data-slot="entity-result-row"]').first()).toBeVisible();
+	await expect(preview).toHaveCount(0);
+	await page.waitForTimeout(300);
+	expect(stub.fileRequests.map((id) => decodeURIComponent(id))).not.toContain('ghost/id');
+});
+
+test('en: the selected preview cites the record it actually shows, with a copy fallback', async ({
+	page,
+}) => {
+	await page.clock.setFixedTime(Date.parse('2026-11-12T12:00:00Z'));
+	await stubLinesDirectory(page);
+	await page.setViewportSize({ width: 1280, height: 900 });
+	await page.goto(localizeHref('/lines', 'en', 'stm'), { waitUntil: 'networkidle' });
+
+	const copy = indexCopy.en;
+	const preview = page.locator('[data-slot="directory-preview"]');
+	await expect(preview).toContainText(copy.measure('90%'));
+	await expect(preview.locator('.preview-dates')).toHaveText('November 4 to 10, 7 complete days');
+	await expect(preview).toContainText(copy.basis('1,000'));
+	await expect(preview.locator('a', { hasText: copy.openRecord })).toHaveAttribute(
+		'href',
+		`${localizeHref('/lines/1', 'en', 'stm')}&from=2026-11-04&to=2026-11-10`,
+	);
+	await expect(preview.locator('a', { hasText: copy.schedule })).toHaveAttribute(
+		'href',
+		`${localizeHref('/lines/1', 'en', 'stm')}&tab=schedule`,
+	);
+
+	// Each answer offers its own export: the displayed rows and this selected record.
+	const displayed = page.locator('[data-slot="directory-csv"]');
+	await expect(displayed).toHaveAttribute('download', 'lines-displayed-records.csv');
+	const displayedRows = decodeURIComponent(
+		(await displayed.getAttribute('href'))!.split(',').slice(1).join(','),
+	).split('\r\n');
+	const columns = displayedRows[0].split(',').map((name) => name.replace(/^"|"$/gu, ''));
+	const cell = (line: string, name: string) =>
+		line.split(',')[columns.indexOf(name)]?.replace(/^"|"$/gu, '') ?? '';
+	expect(displayedRows).toHaveLength(21);
+	expect(cell(displayedRows[1], 'provider')).toBe('stm');
+	const recordCsv = preview.locator('[data-slot="directory-record-csv"]');
+	await expect(recordCsv).toHaveAttribute(
+		'download',
+		'line-1-2026-11-04-2026-11-10-selected-record.csv',
+	);
+	const recordRows = decodeURIComponent(
+		(await recordCsv.getAttribute('href'))!.split(',').slice(1).join(','),
+	).split('\r\n');
+	expect(recordRows).toHaveLength(2);
+	expect(cell(recordRows[1], 'value_pct')).toBe('90');
+	expect(cell(recordRows[1], 'record_url')).toContain(
+		'/lines/1?provider=stm&from=2026-11-04&to=2026-11-10',
+	);
+
+	// Headless denies the clipboard, so the citation stays selectable instead of being lost.
+	await preview.getByRole('button', { name: copy.cite, exact: true }).click();
+	const fallback = preview.locator('textarea');
+	await expect(fallback).toBeVisible();
+	const citation = await fallback.inputValue();
+	expect(citation).toContain('Line 1, STM');
+	expect(citation).toContain('90%');
+	expect(citation).toContain('November 4 to 10, 2026');
+	expect(citation).toContain('1,000');
+	expect(citation).toContain('method reliability-2');
+	const absoluteRecordUrl = new URL(
+		'/lines/1?provider=stm&from=2026-11-04&to=2026-11-10',
+		page.url(),
+	).href;
+	expect(citation).toMatch(
+		new RegExp(`${absoluteRecordUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`),
+	);
+	expect(citation.toLowerCase()).not.toContain('permanent');
+	await preview.getByRole('button', { name: copy.copyRecord, exact: true }).click();
+	await expect(fallback).toHaveCount(2);
+	await expect(preview.getByLabel(copy.copyFallback, { exact: true })).toHaveValue(
+		absoluteRecordUrl,
+	);
+});
+
+for (const lang of PUBLISHED_LOCALES)
+	for (const id of ['1', '235'])
+		test(`${lang}: phone URL preview ${id} focuses the report and returns to results`, async ({
+			page,
+		}) => {
+			await page.clock.setFixedTime(Date.parse('2026-11-12T12:00:00Z'));
+			await stubLinesDirectory(page);
+			await page.setViewportSize({ width: 320, height: 900 });
+			await page.goto(`${localizeHref('/lines', lang, 'stm')}&line=${id}`, {
+				waitUntil: 'networkidle',
+			});
+			const preview = page.locator('[data-slot="directory-preview"]');
+			await expect(preview.locator('h2')).toBeFocused();
+			await expect(preview.locator('h2')).toBeInViewport();
+			if (id === '1')
+				await expect(preview.locator('.preview-dates')).toHaveText(
+					lang === 'fr'
+						? 'du 4 au 10 novembre, 7 jours complets'
+						: 'November 4 to 10, 7 complete days',
+				);
+			await preview
+				.getByRole('button', { name: indexCopy[lang].backToResults, exact: true })
+				.click();
+			await expect(preview).toHaveCount(0);
+			const target =
+				id === '1'
+					? page.locator(`[data-directory-preview-id="${id}"]`)
+					: page.locator('.directory-results');
+			await expect(target).toBeFocused();
+			await expect(target).toBeInViewport();
+			await expect(page).not.toHaveURL(/line=/);
+		});

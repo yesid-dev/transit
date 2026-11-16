@@ -45,41 +45,100 @@ for (const provider of ['stm', 'octranspo'])
 				);
 				const list = page.locator('[data-slot="entity-list"]').first();
 				await expect(list).toBeVisible();
-				// The same viewport exercises both sides of each container boundary.
-				for (const [width, columns] of [
-					[743, 1],
-					[744, 2],
-					[1127, 2],
-					[1128, 3],
-				]) {
-					await list.evaluate((el, width) => {
-						el.parentElement!.style.width = `${width}px`;
-					}, width);
-					await expect
-						.poll(() =>
-							list.evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').length),
-						)
-						.toBe(columns);
-				}
+				const reading = path === '/lines';
 				const row = list.locator('[data-slot="entity-result-row"]').first();
-				for (const [width, stacked] of [
-					[470, false],
-					[420, true],
-				]) {
-					await list.evaluate((el, width) => {
-						el.parentElement!.style.width = `${width}px`;
-					}, width);
-					await row.scrollIntoViewIfNeeded();
-					const status = row.locator('[data-slot="entity-result-status"]');
-					await expect(status).toBeVisible();
-					await expect(status.locator('[data-slot="reliability-badge"]')).toContainText('95');
-					await expect
-						.poll(async () => {
-							const main = await row.locator('[data-slot="entity-result-main"]').boundingBox();
-							const badge = await status.boundingBox();
-							return badge!.y >= main!.y + main!.height;
-						})
-						.toBe(stacked);
+				if (reading) {
+					// The Lines directory is one card of aligned rows, never a card grid.
+					await expect(list.locator('[data-slot="card"]')).toHaveCount(0);
+					expect(await row.evaluate((el) => (el.closest('[data-slot="card"]') ? 1 : 0))).toBe(1);
+					// The same three widths exercise the row itself: wide, stacked, and phone.
+					for (const [width, stacked] of [
+						[743, false],
+						[470, false],
+						[320, true],
+					] as const) {
+						await list.evaluate((el, next) => {
+							el.parentElement!.style.width = `${next}px`;
+						}, width);
+						await row.scrollIntoViewIfNeeded();
+						const status = row.locator('[data-slot="entity-result-status"]');
+						await expect(status).toBeVisible();
+						await expect(status.locator('[data-slot="reliability-badge"]')).toContainText('95');
+						expect(
+							await row.evaluate((element) => {
+								const name = element.querySelector('.readable-name') as HTMLElement;
+								const evidence = element.querySelector(
+									'[data-slot="entity-result-status"]',
+								) as HTMLElement;
+								const action = element.querySelector(
+									'[data-slot="entity-result-action"]',
+								) as HTMLElement;
+								const box = element.getBoundingClientRect();
+								const problems: string[] = [];
+								if (name.scrollWidth > name.clientWidth + 1) problems.push('name clipped');
+								if (getComputedStyle(name).wordBreak === 'break-all')
+									problems.push('word shredded');
+								for (const node of [name, evidence, action]) {
+									const rect = node.getBoundingClientRect();
+									if (rect.left < box.left - 1 || rect.right > box.right + 1)
+										problems.push('outside row');
+								}
+								const overlaps = (a: DOMRect, b: DOMRect) =>
+									a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+								if (overlaps(name.getBoundingClientRect(), evidence.getBoundingClientRect()))
+									problems.push('name overlaps evidence');
+								if (overlaps(name.getBoundingClientRect(), action.getBoundingClientRect()))
+									problems.push('name overlaps action');
+								if (name.getBoundingClientRect().height < 44) problems.push('small name target');
+								if (action.getBoundingClientRect().height < 44)
+									problems.push('small action target');
+								return problems;
+							}),
+						).toEqual([]);
+						await expect
+							.poll(async () => {
+								const main = await row.locator('[data-slot="entity-result-main"]').boundingBox();
+								const badge = await status.boundingBox();
+								return badge!.y >= main!.y + main!.height;
+							})
+							.toBe(stacked);
+					}
+				} else {
+					// The same viewport exercises both sides of each container boundary.
+					for (const [width, columns] of [
+						[743, 1],
+						[744, 2],
+						[1127, 2],
+						[1128, 3],
+					]) {
+						await list.evaluate((el, width) => {
+							el.parentElement!.style.width = `${width}px`;
+						}, width);
+						await expect
+							.poll(() =>
+								list.evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').length),
+							)
+							.toBe(columns);
+					}
+					for (const [width, stacked] of [
+						[470, false],
+						[420, true],
+					] as const) {
+						await list.evaluate((el, width) => {
+							el.parentElement!.style.width = `${width}px`;
+						}, width);
+						await row.scrollIntoViewIfNeeded();
+						const status = row.locator('[data-slot="entity-result-status"]');
+						await expect(status).toBeVisible();
+						await expect(status.locator('[data-slot="reliability-badge"]')).toContainText('95');
+						await expect
+							.poll(async () => {
+								const main = await row.locator('[data-slot="entity-result-main"]').boundingBox();
+								const badge = await status.boundingBox();
+								return badge!.y >= main!.y + main!.height;
+							})
+							.toBe(stacked);
+					}
 				}
 			});
 
