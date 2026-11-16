@@ -23,6 +23,17 @@ export interface ReliabilitySnapshot {
 	readonly hedge?: string;
 	readonly closedThrough?: string | null;
 	readonly kind?: ReliabilityKind;
+	/**
+	 * The validated file behind the row, route kind only. Lets a consumer read the record's own
+	 * dates, readings and publication identity without a second request. Null when no file is
+	 * published for the row; a read that failed sets `failed` instead.
+	 */
+	readonly routeData?: RouteReliability | null;
+	/**
+	 * The read itself failed (network, server or malformed file), which is not the same as a row
+	 * whose file is simply absent or unpublished. Carries no message: the surface owns the words.
+	 */
+	readonly failed?: boolean;
 }
 
 const MAX_IN_FLIGHT = 4;
@@ -76,6 +87,9 @@ function summarize(
 		series,
 		closedThrough,
 		kind,
+		// A consumer that needs the record's own dates or publication reads this file; stops have no
+		// equivalent record contract here, so their snapshots leave it undefined.
+		routeData: kind === 'route' ? (file as RouteReliability) : undefined,
 	};
 }
 
@@ -94,6 +108,12 @@ function targetKnown(target: ReliabilityTarget): boolean | undefined {
 export interface ReliabilityLoader {
 	get(id: string): ReliabilitySnapshot;
 	request(target: ReliabilityTarget): void;
+	/**
+	 * Re-asks for a row whose read actually failed, through the same queue and four-request
+	 * ceiling. A row that is loading, published or simply unpublished is left alone, so a click
+	 * never starts an automatic retry loop.
+	 */
+	retry(target: ReliabilityTarget): void;
 	reliability: (node: Element, target: ReliabilityTarget) => { destroy(): void };
 	readonly inFlight: number;
 }
@@ -182,7 +202,9 @@ export function createReliabilityLoader(
 					set(id, summarizeFor(file));
 				})
 				.catch(() => {
-					set(id, NO_DATA_SNAPSHOT);
+					// A failed read is not an unpublished row: it keeps no message, but says the read
+					// failed so the surface can name it and offer one retry.
+					set(id, { ...NO_DATA_SNAPSHOT, failed: true });
 				})
 				.finally(() => {
 					inFlight--;
@@ -222,6 +244,14 @@ export function createReliabilityLoader(
 		return cache.get(id) ?? EMPTY_SNAPSHOT;
 	}
 
+	function retry(target: ReliabilityTarget): void {
+		const id = targetId(target);
+		if (!id || cache.get(id)?.failed !== true) return;
+		cache.delete(id);
+		started.delete(id);
+		request(target);
+	}
+
 	function reliability(node: Element, target: ReliabilityTarget): { destroy(): void } {
 		if (typeof IntersectionObserver === 'undefined') {
 			request(target);
@@ -250,6 +280,7 @@ export function createReliabilityLoader(
 	return {
 		get,
 		request,
+		retry,
 		reliability,
 		get inFlight() {
 			return inFlight;
