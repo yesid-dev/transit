@@ -17,6 +17,7 @@ from functools import cache
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import duckdb
 from sqlalchemy.engine.reflection import Inspector
@@ -328,12 +329,31 @@ def _rescue(need: InputNeed, storage: BronzeStorage, provider: str) -> Source | 
     return Source(key, record, (need,))
 
 
+def _local_bounds(
+    need: InputNeed, column: str, request: BuildRequest | None
+) -> tuple[date, date] | tuple[datetime, datetime]:
+    day = date.fromisoformat(need.window.removeprefix("local:"))
+    # These declared clocks are DATE-local, including period_start_local (0093).
+    if column in {"provider_local_date", "period_start_local"}:
+        return day, day + timedelta(days=1)
+    if not column.endswith("_utc"):
+        raise ValueError(f"local_window: unsupported clock {need.relation}.{column}")
+    if request is None:
+        raise ValueError("local_window: UTC clock requires request timezone")
+    from transit_ops.batch.window_coverage import required_end
+
+    start = datetime.combine(day, time(), ZoneInfo(request.timezone)).astimezone(UTC)
+    return start, required_end(need, (need,), request.as_of_utc, request)
+
+
 def _windows_for(
     need: InputNeed,
     dataset: HistoryDataset,
     copies: Mapping[str, Source],
     as_of: datetime,
     editions: Mapping[int, str],
+    *,
+    request: BuildRequest | None = None,
 ) -> Sequence[str]:
     assert isinstance(dataset.source, TableSource)
     if dataset.source.window_column is None:
@@ -349,6 +369,12 @@ def _windows_for(
     if dataset.archive_grain == "month":
         if need.window == "all":
             return _months(min(copies), as_of.strftime("%Y-%m")) if copies else ()
+        if need.window.startswith("local:"):
+            start, end = _local_bounds(need, dataset.source.window_column, request)
+            last = end - (
+                timedelta(microseconds=1) if isinstance(end, datetime) else timedelta(days=1)
+            )
+            return _months(start.strftime("%Y-%m"), last.strftime("%Y-%m"))
         return (need.window[:7],)
     return (need.window,)
 
@@ -489,7 +515,7 @@ def resolve_sources(
                 need.relation, storage, provider, editions
             )
         copies = inventories[need.relation]
-        windows = _windows_for(need, dataset, copies, as_of, editions)
+        windows = _windows_for(need, dataset, copies, as_of, editions, request=request)
         if not windows or any(w not in copies for w in windows):
             missing.append(need)
             continue
@@ -576,7 +602,9 @@ def _check_bootstrap_current(
         raise ValueError(f"bootstrap_source_changed: core.dataset_versions {bootstrap.key}")
 
 
-def _predicate(need: InputNeed, column: str | None, as_of: datetime) -> tuple[str, list[object]]:
+def _predicate(
+    need: InputNeed, column: str | None, as_of: datetime, *, request: BuildRequest | None = None
+) -> tuple[str, list[object]]:
     if column is None:
         return "true", []
     quoted = '"' + column.replace('"', '""') + '"'
@@ -584,6 +612,9 @@ def _predicate(need: InputNeed, column: str | None, as_of: datetime) -> tuple[st
         return f"{quoted} = ?", [int(need.window.split(":")[1])]
     if need.window == "all":
         return f"{quoted} < ?", [as_of]
+    if need.window.startswith("local:"):
+        start, end = _local_bounds(need, column, request)
+        return f"{quoted} >= ? AND {quoted} < ?", [start, end]
     start = datetime.fromisoformat(need.window).replace(tzinfo=UTC)
     return f"{quoted} >= ? AND {quoted} < ?", [start, start + timedelta(days=1)]
 
@@ -611,13 +642,15 @@ def _filter_window(
     index: int,
     as_of: datetime,
     whole: set[str],
+    *,
+    request: BuildRequest | None = None,
 ) -> tuple[dict[str, object], dict[InputNeed, Path]]:
     column = (
         None
         if source.receipt.get("bundle_closure")
         else _window_column(conn, source.needs[0].relation)
     )
-    predicates = [_predicate(n, column, as_of) for n in source.needs]
+    predicates = [_predicate(n, column, as_of, request=request) for n in source.needs]
     union = " OR ".join(f"({sql})" for sql, _ in predicates)
     params = [p for _, values in predicates for p in values]
     counts = conn.execute(
@@ -679,6 +712,7 @@ def materialize(
     memory_limit_mb: int = 1024,
     temp_max_mb: int = 2048,
     edition_assignments: Mapping[int, str] | None = None,
+    request: BuildRequest | None = None,
 ) -> list[dict[str, object]]:
     """Filter archive ranges before either engine reads; retain per-window row accounting."""
     targets: dict[InputNeed, list[Path]] = defaultdict(list)
@@ -725,7 +759,9 @@ def materialize(
             if relation in schemas and schema != schemas[relation]:
                 raise ValueError(f"Parquet schema differs: {relation} {path}")
             schemas[relation] = schema
-            receipt, parts = _filter_window(conn, source, path, index, as_of, whole)
+            receipt, parts = _filter_window(
+                conn, source, path, index, as_of, whole, request=request
+            )
             if "bundle_version" in source.receipt:
                 receipt.update(
                     rows_dropped=total - int(receipt["rows_kept"]),
@@ -853,7 +889,9 @@ def fetch_replay_inputs(
         for index, source in enumerate(sources):
             if source.key not in paths:
                 paths[source.key] = _download(source, storage, area / str(index))
-        receipts = materialize(sources, paths, root, as_of, edition_assignments=mapping.checksums)
+        receipts = materialize(
+            sources, paths, root, as_of, edition_assignments=mapping.checksums, request=request
+        )
         from transit_ops.batch.input_provenance import write_input_receipts
 
         write_input_receipts(
