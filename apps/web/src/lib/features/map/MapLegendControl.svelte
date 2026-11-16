@@ -119,6 +119,10 @@
 			showCloseButton={false}
 			class="map-legend-sheet"
 			data-slot="map-legend-sheet"
+			onInteractOutside={(event) => {
+				// The trigger's click owns the toggle; outside dismissal must not close first.
+				if (event.target instanceof Node && trigger?.contains(event.target)) event.preventDefault();
+			}}
 			onOpenAutoFocus={focusSheet}
 			onCloseAutoFocus={restoreFocus}
 		>
