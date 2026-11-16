@@ -7,6 +7,7 @@ import pytest
 from test_live_captures import POLICY, _message
 from test_live_local_file import CAPTURE, POLL, opened
 
+from transit_ops.live.captures import CaptureRef
 from transit_ops.live.trip_updates import LocalTripUpdatesError, latest_local_trip_updates
 from transit_ops.snapshots.live_trip_updates import LiveTripUpdates
 
@@ -35,6 +36,9 @@ def test_holder_reads_latest_raw_once_without_advancing_serving(tmp_path):
                         ingestion_run_id=capture_id,
                         capture_row_id=capture_id,
                         feed_timestamp_utc=capture.feed_timestamp_utc,
+                        time_utc=capture.captured_at_utc,
+                        started_at_utc=capture.started_at_utc,
+                        completed_at_utc=capture.captured_at_utc,
                     )
                 ],
                 endpoint_key="trip_updates",
@@ -84,6 +88,9 @@ def evidence(tmp_path):
                         ingestion_run_id=identity,
                         capture_row_id=identity,
                         feed_timestamp_utc=entry.feed_timestamp_utc,
+                        time_utc=entry.captured_at_utc,
+                        started_at_utc=entry.started_at_utc,
+                        completed_at_utc=entry.captured_at_utc,
                     )
                 ],
                 endpoint_key="trip_updates",
@@ -170,6 +177,52 @@ def test_missing_or_storage_error_is_named_and_never_tries_older(evidence, failu
     with pytest.raises(LocalTripUpdatesError, match=failure.__name__):
         read(local, resolve)
     assert seen == [20]
+
+
+@pytest.mark.parametrize("missing", ["latest", "all"])
+def test_stored_poll_without_capture_refuses_before_reading_older(evidence, missing):
+    local, _, _ = evidence
+    if missing == "latest":
+        local.connection.execute("DELETE FROM captures WHERE capture_row_id=20")
+    else:
+        local.connection.execute("DELETE FROM captures")
+    with pytest.raises(LocalTripUpdatesError, match="local_trip_updates_"):
+        read(local, lambda _: pytest.fail("dangling evidence must refuse before reading bytes"))
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "UPDATE captures SET captured_at_utc=TIMESTAMP '2099-01-01' WHERE capture_row_id=20",
+        "UPDATE captures SET captured_at_utc=TIMESTAMP '2000-01-01' WHERE capture_row_id=20",
+        "UPDATE polls SET time_utc=TIMESTAMP '2099-01-01' WHERE ingestion_run_id=20",
+        "UPDATE polls SET time_utc=TIMESTAMP '2000-01-01' WHERE ingestion_run_id=20",
+        "UPDATE polls SET started_at_utc=NULL WHERE ingestion_run_id=20",
+        "UPDATE polls SET started_at_utc=TIMESTAMP '2099-01-01' WHERE ingestion_run_id=20",
+        "UPDATE polls SET completed_at_utc=NULL WHERE ingestion_run_id=20",
+    ],
+)
+def test_inconsistent_poll_clock_cannot_hide_or_promote_capture(evidence, change):
+    local, payload, entries = evidence
+    local.connection.execute(change)
+    holder = LiveTripUpdates(
+        "network", policy=POLICY, fallback=lambda: read(local, lambda _: payload)
+    )
+    with pytest.raises(LocalTripUpdatesError, match="local_trip_updates_"):
+        holder.latest()
+    holder.accept(
+        payload,
+        CaptureRef.from_entry(
+            replace(
+                entries[1],
+                capture_row_id=30,
+                captured_at_utc=entries[1].captured_at_utc + timedelta(seconds=1),
+            ),
+            provider_id="network",
+            endpoint_key="trip_updates",
+        ),
+    )
+    assert holder.latest().capture.capture_row_id == 30
 
 
 def test_real_missing_latest_object_does_not_read_existing_older(evidence, tmp_path):

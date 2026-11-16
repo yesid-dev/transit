@@ -1,6 +1,7 @@
 """Read one raw trip capture through borrowed local and byte-resolution resources."""
 
 from collections.abc import Callable
+from datetime import datetime
 from typing import TYPE_CHECKING, get_type_hints
 
 from transit_ops.history.poll_record import CaptureEntry
@@ -31,18 +32,22 @@ def latest_local_trip_updates(
         ).fetchall() != [(SCHEMA_VERSION, provider_id)]:
             raise LocalTripUpdatesError("local_trip_updates_provider_mismatch")
         columns = ", ".join('c."' + n + '"' for n in get_type_hints(CaptureEntry))
-        # Retain contradictory latest namespaces for validation, rather than
-        # filtering them into a successful older fallback. Failed raw polls
-        # cannot promote a capture; Silver/application status is irrelevant.
+        # Preserve both sides of stored success, including a dangling poll. Rank
+        # by either copy of the capture clock so moving one backward cannot hide
+        # contradictory latest evidence. Validation still requires the clocks to agree.
         row = local.connection.execute(
-            f"SELECT {columns}, c.endpoint_key FROM captures c WHERE "
-            "(c.endpoint_key='trip_updates' OR EXISTS (SELECT 1 FROM polls p "
-            "WHERE p.ingestion_run_id=c.ingestion_run_id AND p.endpoint_key='trip_updates')) "
-            "ORDER BY c.captured_at_utc DESC NULLS FIRST, c.capture_row_id DESC LIMIT 1"
+            f"SELECT c.capture_row_id, {columns}, c.endpoint_key FROM captures c "
+            "FULL OUTER JOIN polls p ON p.ingestion_run_id=c.ingestion_run_id "
+            "WHERE c.endpoint_key='trip_updates' OR (p.endpoint_key='trip_updates' AND "
+            "(c.capture_row_id IS NOT NULL OR (p.status='stored' AND p.run_status='succeeded'))) "
+            "ORDER BY greatest(c.captured_at_utc, p.time_utc) DESC NULLS FIRST, "
+            "greatest(c.capture_row_id, p.capture_row_id) DESC NULLS FIRST LIMIT 1"
         ).fetchone()
         if row is None:
             return None
-        entry = _entry(CaptureEntry, row[:-1])
+        if row[0] is None:
+            raise LocalTripUpdatesError("local_trip_updates_capture_missing")
+        entry = _entry(CaptureEntry, row[1:-1])
         _validate_binding(local, entry, row[-1], provider_id)
         return parse_capture(
             resolve_bytes(entry),
@@ -62,7 +67,8 @@ def _validate_binding(
 
     rows = local.connection.execute(
         "SELECT index_family, endpoint_key, run_kind, status, run_status, capture_row_id, "
-        "feed_timestamp_utc, feed_timestamp_source FROM polls WHERE ingestion_run_id=?",
+        "feed_timestamp_utc, feed_timestamp_source, time_utc, started_at_utc, completed_at_utc "
+        "FROM polls WHERE ingestion_run_id=?",
         [entry.ingestion_run_id],
     ).fetchall()
     expected = (
@@ -74,11 +80,15 @@ def _validate_binding(
         entry.capture_row_id,
         entry.feed_timestamp_utc.replace(tzinfo=None),
         entry.feed_timestamp_source,
+        entry.captured_at_utc.replace(tzinfo=None),
+        entry.started_at_utc.replace(tzinfo=None),
     )
     if (
         endpoint != "trip_updates"
         or entry.index_family != "realtime_snapshot"
-        or rows != [expected]
+        or len(rows) != 1
+        or rows[0][:-1] != expected
+        or not isinstance(rows[0][-1], datetime)
     ):
         raise LocalTripUpdatesError("local_trip_updates_poll_identity_mismatch")
     if (

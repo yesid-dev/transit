@@ -99,6 +99,9 @@ def test_loop_and_standalone_holders_borrow_invocation_owner(tmp_path, monkeypat
                     ingestion_run_id=20,
                     capture_row_id=20,
                     feed_timestamp_utc=entry.feed_timestamp_utc,
+                    time_utc=entry.captured_at_utc,
+                    started_at_utc=entry.started_at_utc,
+                    completed_at_utc=entry.captured_at_utc,
                 )
             ],
             endpoint_key="trip_updates",
@@ -172,7 +175,15 @@ def test_worker_refuses_packed_before_reading_whole_object(tmp_path):
             [replace(CAPTURE, ingestion_object_id=1)], endpoint_key="trip_updates"
         )
         local.record_polls(
-            [replace(POLL, feed_timestamp_utc=CAPTURE.feed_timestamp_utc)],
+            [
+                replace(
+                    POLL,
+                    feed_timestamp_utc=CAPTURE.feed_timestamp_utc,
+                    time_utc=CAPTURE.captured_at_utc,
+                    started_at_utc=CAPTURE.started_at_utc,
+                    completed_at_utc=CAPTURE.captured_at_utc,
+                )
+            ],
             endpoint_key="trip_updates",
         )
         holder = orchestration._worker_trip_updates(
