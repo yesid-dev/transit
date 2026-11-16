@@ -227,12 +227,26 @@ def test_visible_inflight_source_run_holds_recovery_projection(worker):
     state, engine, storage, _ = worker
     trip, vehicle = trip_vehicle(storage)
     engine.visible = {101: trip, 102: vehicle}
-    engine.unfinished = True
+    engine.pending = {100}
     for _ in range(3):
         state.sync()
     assert trip_enrichment(state.local) == []
     assert state.unavailable == "local_recovery_pending"
-    engine.unfinished = False
+    engine.pending.clear()
+    engine.visible[100] = replace(
+        trip,
+        captures=(),
+        polls=(
+            replace(
+                trip.polls[0],
+                ingestion_run_id=100,
+                capture_row_id=None,
+                status="failed",
+                run_status="failed",
+                error_message="capture_failed",
+            ),
+        ),
+    )
     for _ in range(3):
         state.sync()
     assert trip_enrichment(state.local) == [("bus-0", 2)]

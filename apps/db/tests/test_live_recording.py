@@ -1,7 +1,7 @@
 import json
 from contextlib import closing
-from dataclasses import replace
-from datetime import timedelta
+from dataclasses import asdict, replace
+from datetime import datetime, timedelta
 from hashlib import sha256
 from types import SimpleNamespace
 
@@ -194,10 +194,15 @@ class PageEngine:
 
     def execute(self, statement, params=None):
         self.statement = str(statement)
-        if params is not None and "limit" in params:
+        if params is not None and "run_ids" in params:
+            self.ids = [i for i in params["run_ids"] if i in self.visible]
+        elif params is not None and "limit" in params:
             self.requests.append(params)
             if "after" in params:
-                self.ids = sorted(i for i in self.visible if params["after"] < i <= params["upper"])
+                identities = set(self.visible)
+                if "completed_at_utc" not in self.statement:
+                    identities.update(getattr(self, "pending", ()))
+                self.ids = sorted(i for i in identities if params["after"] < i <= params["upper"])
             else:
                 self.ids = sorted((i for i in self.visible if i > params["initial"]), reverse=True)
             self.ids = self.ids[: params["limit"]]
@@ -214,17 +219,24 @@ class PageEngine:
 
 def test_bounded_sweeps_recover_observer_gap_late_commit_and_midnight(tmp_path, monkeypatch):
     engine = PageEngine()
-    first = replace(RECORD, processing=())
+    first = replace(
+        RECORD,
+        processing=(),
+        polls=(replace(RECORD.polls[0], ingestion_run_id=20, capture_row_id=20),),
+        captures=(replace(RECORD.captures[0], ingestion_run_id=20, capture_row_id=20),),
+    )
+
+    def next_day(entry, **identity):
+        times = {
+            k: v + timedelta(days=1) for k, v in asdict(entry).items() if isinstance(v, datetime)
+        }
+        return replace(entry, **times, **identity)
+
     late = replace(
         first,
         feed_day=replace(first.feed_day, utc_date=first.feed_day.utc_date + timedelta(days=1)),
-        polls=tuple(replace(p, ingestion_run_id=p.ingestion_run_id + 100) for p in first.polls),
-        captures=tuple(
-            replace(
-                c, capture_row_id=c.capture_row_id + 100, ingestion_run_id=c.ingestion_run_id + 100
-            )
-            for c in first.captures
-        ),
+        polls=(next_day(first.polls[0], ingestion_run_id=10, capture_row_id=10),),
+        captures=(next_day(first.captures[0], ingestion_run_id=10, capture_row_id=10),),
     )
     engine.visible[20] = first
     monkeypatch.setattr(
@@ -238,13 +250,19 @@ def test_bounded_sweeps_recover_observer_gap_late_commit_and_midnight(tmp_path, 
         recorder.initialize(initial_run_id=0, seed_sha256="seed")
         recorder.catch_up(engine, page_size=1)
     engine.visible[10] = late  # lower identity commits after the higher identity
-    engine.visible[30] = first  # new traffic must not extend the sweep indefinitely
+    engine.visible[30] = replace(
+        first,
+        polls=(replace(first.polls[0], ingestion_run_id=30, capture_row_id=30),),
+        captures=(replace(first.captures[0], ingestion_run_id=30, capture_row_id=30),),
+    )
     with closing(LocalFile.open(path, provider_id="network", settings=SETTINGS)) as local:
         recorder = Recorder(local, provider_id="network")
         recorder.initialize(initial_run_id=0, seed_sha256="seed")
         recorder.catch_up(engine, page_size=1)  # completes the old sweep
         recorder.catch_up(engine, page_size=1)  # discovers the late commit
-        assert local.connection.execute("SELECT count(*) FROM polls").fetchone() == (12,)
+        assert local.connection.execute(
+            "SELECT ingestion_run_id FROM polls ORDER BY 1"
+        ).fetchall() == [(10,), (20,), (30,)]
         assert all(p["limit"] == 1 for p in engine.requests)
 
 

@@ -78,7 +78,7 @@ class WorkerState:
         self._required_current.difference_update(
             p.ingestion_run_id for r in records for p in r.processing
         )
-        self._recovery_ready |= self.recorder.sweep_complete
+        self._recovery_ready |= self.recorder.completed_upper is not None
         if self.recorder.completed_upper is not None:
             self._recovered_through = max(
                 self._recovered_through or 0, self.recorder.completed_upper
@@ -99,7 +99,7 @@ class WorkerState:
             export_segment(self.local, self.resolver(backend))
         if self._required_current:
             self.unavailable = "local_current_receipt_missing"
-        elif not self._recovery_ready:
+        elif not self._recovery_ready or self.recorder._due_runs(1):
             self.unavailable = "local_recovery_pending"
         else:
             self.unavailable = (
@@ -119,6 +119,7 @@ class WorkerState:
         pending = self.recorder.pending_captures(
             self.settings.catchup_page_size,
             through_run_id=through_run_id,
+            for_application=True,
         )
         self._ensure_edition(provider)
         if not pending:

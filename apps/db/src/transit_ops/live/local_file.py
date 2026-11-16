@@ -13,8 +13,8 @@ import duckdb
 from transit_ops.history.poll_record import CaptureEntry, PollEntry, ProcessingEntry
 from transit_ops.live.settings import LaneSettings
 
-# Earlier files must be rebuilt from retained source evidence, never adopted in place.
-SCHEMA_VERSION: Final = 4
+# Before activation, earlier formats are refused without migration or automatic rebuild.
+SCHEMA_VERSION: Final = 5
 _TYPES = {int: "BIGINT", bool: "BOOLEAN", str: "VARCHAR", datetime: "TIMESTAMP"}
 _OWNERS: set[Path] = set()
 _OWNER_LOCK = RLock()
@@ -115,7 +115,10 @@ class LocalFile:
                 "recording_cursor": "provider_id VARCHAR PRIMARY KEY, "
                 "initial_run_id BIGINT NOT NULL, "
                 "after_run_id BIGINT NOT NULL, sweep_last_run_id BIGINT NOT NULL, "
-                "seed_sha256 VARCHAR NOT NULL",
+                "seed_sha256 VARCHAR NOT NULL, covered_through BIGINT, "
+                "sweep_enumerated BOOLEAN NOT NULL",
+                "recording_coverage": "ingestion_run_id BIGINT PRIMARY KEY "
+                "CHECK(ingestion_run_id > 0), terminal_recorded BOOLEAN NOT NULL",
                 "local_applications": "endpoint_key VARCHAR NOT NULL, "
                 "capture_row_id BIGINT NOT NULL, "
                 "status VARCHAR NOT NULL, error_message VARCHAR, "

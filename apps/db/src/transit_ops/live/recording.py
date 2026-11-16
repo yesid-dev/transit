@@ -31,7 +31,7 @@ class Recorder:
                     raise LocalFileMismatch("recording_initial_cut_or_seed_changed")
                 return
             conn.execute(
-                "INSERT INTO recording_cursor VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO recording_cursor VALUES (?, ?, ?, ?, ?, NULL, false)",
                 [self.provider_id, initial_run_id, initial_run_id, initial_run_id, seed_sha256],
             )
 
@@ -138,19 +138,72 @@ class Recorder:
         initial, after, upper = cursor
         with engine.connect() as pg, pg.begin():
             pg.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"))
-            records, ids, upper, unfinished = self._source_page(
-                pg, initial, after, upper, page_size, current_run_ids
+            records, ids, upper = self._source_page(
+                pg,
+                initial,
+                after,
+                upper,
+                page_size,
+                tuple(sorted(set(current_run_ids) | set(self._due_runs(page_size)))),
             )
+        self._commit_page(records, ids, initial, upper)
+        return records
+
+    def _due_runs(self, limit: int) -> tuple[int, ...]:
+        rows = self.local.connection.execute(
+            "SELECT ingestion_run_id FROM recording_coverage WHERE NOT terminal_recorded "
+            "ORDER BY ingestion_run_id LIMIT ?",
+            [limit],
+        ).fetchall()
+        return tuple(r[0] for r in rows)
+
+    def _commit_page(
+        self, records: tuple[PollRecord, ...], ids: list[int], initial: int, upper: int
+    ) -> None:
+        """Raw evidence, per-identity obligations and eligibility share one commit.
+
+        Enumeration alone never releases a horizon. Every enumerated identity
+        must also have committed terminal evidence, including after reopen.
+        """
         with self.local.transaction() as conn:
             for record in records:
                 self.record(record)
+            if ids:
+                conn.executemany(
+                    "INSERT INTO recording_coverage VALUES (?, false) ON CONFLICT DO NOTHING",
+                    [(i,) for i in ids],
+                )
+            observed = _observed_runs(records)
             conn.execute(
-                "UPDATE recording_cursor SET after_run_id=?, sweep_last_run_id=?",
-                [ids[-1] if ids else initial, upper if ids else initial],
+                "UPDATE recording_coverage SET terminal_recorded=true "
+                "WHERE list_contains(?::BIGINT[], ingestion_run_id)",
+                [sorted(observed)],
             )
-        self.sweep_complete = not ids and not unfinished
-        self.completed_upper = upper if self.sweep_complete else None
-        return records
+            outstanding = conn.execute(
+                "SELECT 1 FROM recording_coverage WHERE NOT terminal_recorded "
+                "AND ingestion_run_id > ? AND ingestion_run_id <= ? LIMIT 1",
+                [initial, upper],
+            ).fetchone()
+            previous = conn.execute(
+                "SELECT covered_through, sweep_enumerated FROM recording_cursor"
+            ).fetchone()
+            if previous is None:
+                raise ValueError("recording_initial_cut_missing")
+            enumerated = previous[1] or not ids
+            complete = enumerated and outstanding is None
+            covered = max(previous[0] or initial, upper) if complete else previous[0]
+            conn.execute(
+                "UPDATE recording_cursor SET after_run_id=?, sweep_last_run_id=?, "
+                "covered_through=?, sweep_enumerated=?",
+                [
+                    initial if complete or not ids else ids[-1],
+                    initial if complete else upper,
+                    covered,
+                    False if complete else enumerated,
+                ],
+            )
+        self.sweep_complete = complete
+        self.completed_upper = covered
 
     def _source_page(
         self,
@@ -160,7 +213,7 @@ class Recorder:
         upper: int,
         page_size: int,
         current_run_ids: tuple[int, ...],
-    ) -> tuple[tuple[PollRecord, ...], list[int], int, bool]:
+    ) -> tuple[tuple[PollRecord, ...], list[int], int]:
         if upper == initial:
             upper = pg.execute(
                 text(
@@ -172,19 +225,18 @@ class Recorder:
         ids = _run_ids(pg, self.provider_id, initial, page_size, after=after, upper=upper)
         tail = _run_ids(pg, self.provider_id, initial, page_size)
         selected = sorted(set(ids) | set(tail) | set(current_run_ids))
-        records = read_working_runs(pg, provider_id=self.provider_id, run_ids=selected)
-        unfinished = pg.execute(
-            text(
-                "SELECT EXISTS(SELECT 1 FROM raw.ingestion_runs WHERE provider_id=:provider "
-                "AND ingestion_run_id > :initial AND ingestion_run_id <= :upper "
-                "AND feed_endpoint_id IN (SELECT feed_endpoint_id FROM core.feed_endpoints "
-                "WHERE provider_id=:provider AND endpoint_key IN "
-                "('trip_updates','vehicle_positions','i3_alerts','service_alerts')) "
-                "AND (completed_at_utc IS NULL OR status NOT IN ('succeeded', 'failed')))"
-            ),
-            dict(provider=self.provider_id, initial=initial, upper=upper),
-        ).scalar_one()
-        return records, ids, upper, bool(unfinished)
+        terminal = list(
+            pg.execute(
+                text(
+                    "SELECT ingestion_run_id FROM raw.ingestion_runs WHERE provider_id=:provider "
+                    "AND ingestion_run_id=ANY(:run_ids) AND completed_at_utc IS NOT NULL "
+                    "AND status IN ('succeeded', 'failed')"
+                ),
+                dict(provider=self.provider_id, run_ids=selected),
+            ).scalars()
+        )
+        records = read_working_runs(pg, provider_id=self.provider_id, run_ids=terminal)
+        return records, ids, upper
 
     def ready_current(self, run_ids: set[int]) -> None:
         """Mark a completely observed current capture batch eligible for projection.
@@ -203,7 +255,7 @@ class Recorder:
             )
 
     def pending_captures(
-        self, limit: int, *, through_run_id: int | None = None
+        self, limit: int, *, through_run_id: int | None = None, for_application: bool = False
     ) -> list[tuple[str, CaptureEntry]]:
         """Schedule bounded work over all durable pages, with vehicles before trips."""
         columns = ", ".join('c."' + n + '"' for n in get_type_hints(CaptureEntry))
@@ -214,9 +266,16 @@ class Recorder:
             "(SELECT coalesce(max(initial_run_id), 0) FROM recording_cursor) "
             "AND (?::BIGINT IS NULL OR c.ingestion_run_id <= ?::BIGINT "
             "OR a.status IN ('ready', 'failed')) "
+            "AND (NOT ?::BOOLEAN OR NOT EXISTS(SELECT 1 FROM recording_coverage o "
+            "WHERE o.ingestion_run_id <= c.ingestion_run_id AND (NOT o.terminal_recorded "
+            "OR (o.ingestion_run_id > coalesce(?::BIGINT, o.ingestion_run_id) "
+            "AND NOT EXISTS(SELECT 1 FROM captures x JOIN local_applications xa "
+            "ON x.endpoint_key=xa.endpoint_key AND x.capture_row_id=xa.capture_row_id "
+            "WHERE x.ingestion_run_id=o.ingestion_run_id "
+            "AND xa.status IN ('ready','failed','succeeded')))))) "
             "ORDER BY CASE c.endpoint_key WHEN 'vehicle_positions' THEN 0 "
             "WHEN 'trip_updates' THEN 2 ELSE 1 END, c.captured_at_utc, c.capture_row_id LIMIT ?",
-            [through_run_id, through_run_id, limit],
+            [through_run_id, through_run_id, for_application, through_run_id, limit],
         ).fetchall()
         return [(r[0], _entry(CaptureEntry, r[1:])) for r in rows]
 
@@ -232,17 +291,37 @@ def _run_ids(
 ) -> list[int]:
     params: dict[str, object] = dict(provider=provider, initial=initial, limit=page_size)
     boundary, order = "ingestion_run_id > :initial", "DESC"
+    terminal = "AND completed_at_utc IS NOT NULL AND status IN ('succeeded', 'failed') "
     if after is not None:
         params.update(after=after, upper=upper)
         boundary, order = "ingestion_run_id > :after AND ingestion_run_id <= :upper", "ASC"
+        terminal = ""  # Enumerate in-flight identities; completion needs their durable receipts.
     return list(
         pg.execute(
             text(
                 "SELECT ingestion_run_id FROM raw.ingestion_runs WHERE provider_id=:provider "
-                f"AND {boundary} AND completed_at_utc IS NOT NULL "
-                "AND status IN ('succeeded', 'failed') "
+                f"AND {boundary} {terminal}"
+                "AND feed_endpoint_id IN (SELECT feed_endpoint_id FROM core.feed_endpoints "
+                "WHERE provider_id=:provider AND endpoint_key IN "
+                "('trip_updates','vehicle_positions','i3_alerts','service_alerts')) "
                 f"ORDER BY ingestion_run_id {order} LIMIT :limit"
             ),
             params,
         ).scalars()
     )
+
+
+def _observed_runs(records: tuple[PollRecord, ...]) -> set[int]:
+    observed = {
+        p.ingestion_run_id
+        for r in records
+        for p in r.polls
+        if p.run_status in ("succeeded", "failed") and p.status != "capture_missing"
+    }
+    observed.update(
+        p.ingestion_run_id
+        for r in records
+        for p in r.processing
+        if p.ingestion_run_id is not None and p.stage == "silver_load" and p.status == "failed"
+    )
+    return observed
