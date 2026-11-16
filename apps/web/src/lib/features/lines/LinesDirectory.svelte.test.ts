@@ -287,21 +287,24 @@ describe('Lines directory — every published line', () => {
 		);
 		expect(rowLinks(container)).toHaveLength(20);
 
-		let guard = 0;
-		while (guard++ < 20) {
-			const more = screen.queryByRole('button', { name: /Show .* more lines?|Show the last line/ });
-			if (!more) break;
-			const before = rowLinks(container).length;
+		for (const expected of [40, 60, 80, 100, 120, 140, 160, 180, 200, 220, 235]) {
+			// Scope the accessibility query to this control, rather than recomputing the
+			// accessible names of every Preview button in the growing 235-line inventory.
+			const pagination = container.querySelector<HTMLElement>('.directory-more')!;
+			const more = within(pagination).getByRole('button', {
+				name: expected === 235 ? 'Show 15 more lines' : 'Show 20 more lines',
+			});
 			await fireEvent.click(more);
-			await waitFor(() => expect(rowLinks(container).length).toBeGreaterThan(before));
+			await waitFor(() => expect(rowLinks(container)).toHaveLength(expected));
+			expect(counts(container)).toBe(
+				`Showing ${expected} of 235 matching lines, 235 in this network.`,
+			);
 		}
 		await waitFor(() => expect(rowLinks(container)).toHaveLength(235));
 		expect(rowLinks(container).at(-1)?.getAttribute('href')).toMatch(/^\/lines\/235\?/);
 		// The page stays on the twenty-row grid, so a reload or Back restores this last page.
 		expect(new URLSearchParams(h.state.url.search).get('shown')).toBe('240');
-		expect(
-			screen.queryByRole('button', { name: /Show .* more lines?|Show the last line/ }),
-		).toBeNull();
+		expect(container.querySelector('.directory-more')).toBeNull();
 	});
 
 	it('numbers lines in numeric order by default, not the alphabetical order', async () => {
