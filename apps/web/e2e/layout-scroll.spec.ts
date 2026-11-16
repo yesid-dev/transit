@@ -73,8 +73,10 @@ function legalMetrics(page: Page): Promise<LegalMetrics> {
 		const docBottom = (element: Element) => element.getBoundingClientRect().bottom + scrollY;
 		const main = document.querySelector<HTMLElement>('main')!;
 		const article = document.querySelector<HTMLElement>('[data-testid="legal-document"]')!;
-		// The chrome wrapper is a zero-height fixed layer; the pill is what riders see.
+		// The network label can extend below the pill on phones; both are fixed chrome.
 		const pill = document.querySelector<HTMLElement>('[data-testid="nav-pill"]')!;
+		const provider = pill.querySelector('select')!.closest('label')!;
+		const chrome = [pill, provider].filter((element) => element.checkVisibility());
 		let contentSpill = article.getBoundingClientRect().right - innerWidth;
 		for (const descendant of article.querySelectorAll('*')) {
 			const rect = descendant.getBoundingClientRect();
@@ -84,7 +86,7 @@ function legalMetrics(page: Page): Promise<LegalMetrics> {
 		return {
 			root: px(getComputedStyle(document.documentElement).fontSize),
 			mainContentTop: docTop(main) + px(getComputedStyle(main).paddingTop),
-			chromeBottom: docBottom(pill),
+			chromeBottom: Math.max(...chrome.map(docBottom)),
 			firstTop: docTop(article.firstElementChild!.firstElementChild!),
 			lastContentBottom: docBottom(article.lastElementChild!.lastElementChild!),
 			articleBottom: docBottom(article),
@@ -132,12 +134,17 @@ for (const kind of ['privacy', 'terms', 'accessibility'] as const) {
 					link.remove();
 				}, id!);
 				await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(0);
-				const pill = page.locator('[data-testid="nav-pill"]');
 				const anchored = page.locator(`[id="${id}"]`);
 				await expect(anchored).toBeInViewport();
-				expect((await anchored.boundingBox())!.y).toBeGreaterThanOrEqual(
-					(await pill.boundingBox())!.height - 1,
-				);
+				const chromeBottom = await page.getByTestId('nav-pill').evaluate((pill) => {
+					const provider = pill.querySelector('select')!.closest('label')!;
+					return Math.max(
+						...[pill, provider]
+							.filter((element) => element.checkVisibility())
+							.map((element) => element.getBoundingClientRect().bottom),
+					);
+				});
+				expect((await anchored.boundingBox())!.y).toBeGreaterThanOrEqual(chromeBottom - 1);
 
 				// Text scaling keeps the same single clearance at the narrowest width.
 				if (provider === 'stm' && !prefix) {
