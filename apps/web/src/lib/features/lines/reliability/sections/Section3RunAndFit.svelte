@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { downloadCsv, type CsvContext, type CsvSource } from '../recordCsv';
+	import { tripRows } from '../recordCsvModels';
+	import CsvDownload from './CsvDownload.svelte';
 	import { page } from '$app/state';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { fmtNumber } from '#lib/utils/index.ts';
@@ -11,6 +14,8 @@
 	import type { ReliabilityCopy } from '../reliability.copy';
 
 	interface Section3RunAndFitProps {
+		exportContext?: CsvContext;
+		exportSource?: CsvSource;
 		service: ServiceDeliveredVM;
 		/** The record's own complete days; trip counts cover exactly these. */
 		period: RecordPeriod | null;
@@ -21,6 +26,8 @@
 	}
 
 	let {
+		exportContext,
+		exportSource,
 		service,
 		period,
 		locale,
@@ -58,6 +65,15 @@
 			? service.scheduledService
 			: null,
 	);
+	const file = $derived(
+		downloadCsv(
+			exportContext,
+			exportSource,
+			'trip-facts',
+			['value_pct', 'numerator', 'denominator', 'basis_unit', 'observed_days', 'silent_trip_days'],
+			tripRows(facts, completeness, service.serviceCompletenessPct),
+		),
+	);
 </script>
 
 {#snippet absent()}
@@ -66,6 +82,7 @@
 
 <CollapsibleSection dataSection="run-and-fit" title={copy.sections.runAndFit.label} {summary}>
 	<div class="evidence-body">
+		<CsvDownload {file} label={copy.sections.runAndFit.label} {copy} />
 		<dl class="evidence-facts" data-slot="trip-facts">
 			<div data-slot="cancellations">
 				<dt>{t.cancelled}</dt>

@@ -20,9 +20,78 @@ import Section2TheWait from './Section2TheWait.svelte';
 import Section3RunAndFit from './Section3RunAndFit.svelte';
 import Section4WorstStops from './Section4WorstStops.svelte';
 import SectionCrowding from './SectionCrowding.svelte';
+import { downloadedTable } from '../__fixtures__/csvTable';
 
 const week: CutScope = { kind: 'window', from: '2026-11-04', to: '2026-11-10' };
 const range: CutScope = { kind: 'none', range: true };
+
+describe('displayed stop CSV', () => {
+	it.each(['en', 'fr'] as const)(
+		'keeps the %s five/full/fewer rows, full fallback names, source and independent period together',
+		async (locale) => {
+			const stops = Array.from({ length: 8 }, (_, i) => ({
+				id: 'stop/' + i,
+				name: i === 0 ? null : `Station, "Long"\n${i}`,
+				severe_pct: 20 - i,
+				observation_count: 100 + i,
+			}));
+			const props = {
+				stops,
+				scope: { kind: 'window' as const, from: '2026-09-02', to: '2026-09-08' },
+				locale,
+				copy: reliabilityCopy[locale],
+				exportContext: { lineId: '6', providerId: 'octranspo', locale, origin: 'http://localhost' },
+				exportSource: {
+					source: 'current_line_file',
+					publication: {
+						generatedUtc: '2026-11-11T06:00:00Z',
+						generationId: 'own-g',
+						methodVersion: null,
+					},
+					scope: { kind: 'history' },
+				},
+			};
+			const view = render(Section4WorstStops, props);
+			const link = () => view.container.querySelector<HTMLAnchorElement>('a[download]')!;
+			const first = downloadedTable(link());
+			expect(first).toHaveLength(5);
+			expect(first[0]).toMatchObject({
+				stop_id: 'stop/0',
+				name_state: 'fallback',
+				late_share_pct: '20',
+				readings: '100',
+				window_from: '2026-09-02',
+				window_to: '2026-09-08',
+				publication_generation_id: 'own-g',
+				publication_methodology_version: '',
+				attribution: '',
+			});
+			expect(first[1].stop_name).toBe('Station, "Long"\n1');
+			const toggle = view.container.querySelector<HTMLButtonElement>(
+				'[data-slot="stop-delays-toggle"]',
+			)!;
+			await fireEvent.click(toggle);
+			expect(downloadedTable(link()).map((r) => r.stop_id)).toEqual(stops.map((s) => s.id));
+			await fireEvent.click(link());
+			expect(toggle).toHaveAttribute('aria-expanded', 'true');
+			await fireEvent.click(toggle);
+			expect(downloadedTable(link())).toHaveLength(5);
+			await view.rerender({
+				...props,
+				stops: stops.slice(4),
+				exportSource: {
+					...props.exportSource,
+					publication: { ...props.exportSource.publication, generationId: 'new-g' },
+				},
+			});
+			expect(downloadedTable(link())).toHaveLength(4);
+			expect(downloadedTable(link())[0]).toMatchObject({
+				stop_id: 'stop/4',
+				publication_generation_id: 'new-g',
+			});
+		},
+	);
+});
 
 const cut = (
 	grain: string,
@@ -74,6 +143,78 @@ const shifts = [
 ];
 
 describe('By time of day', () => {
+	it('exports its independent cut dates and all-history fallback without borrowing a record period', async () => {
+		const props = {
+			punctuality: {
+				...punctuality(shifts),
+				byShiftDaytype: [
+					{ shift: 'am_peak', day_type: 'weekday', observation_count: 31, otp_pct: 0 },
+				],
+				dayOfWeek: [{ day_of_week_iso: 1, avg_delay_min: -2.5, observation_count: 80 }],
+			},
+			habits: noHabits,
+			scope: { kind: 'window' as const, from: '2026-09-01', to: '2026-09-07' },
+			locale: 'en' as const,
+			copy: reliabilityCopy.en,
+			exportContext: {
+				lineId: '24',
+				providerId: 'stm',
+				locale: 'en' as const,
+				origin: 'http://localhost',
+			},
+			exportSource: {
+				source: 'current_line_file',
+				publication: {
+					generatedUtc: '2026-11-11T06:00:00Z',
+					generationId: null,
+					methodVersion: 'own-method',
+				},
+				scope: { kind: 'history' },
+			},
+		};
+		const view = render(Section1WhenToRide, props);
+		const link = () =>
+			view.container.querySelector<HTMLAnchorElement>('a[download*="-time-of-day-"]')!;
+		expect(downloadedTable(link())[0]).toMatchObject({
+			window_from: '2026-09-01',
+			window_to: '2026-09-07',
+			on_time_pct: '91',
+			readings: '80927',
+			publication_generation_id: '',
+			publication_methodology_version: 'own-method',
+		});
+		await fireEvent.click(
+			within(view.container).getByRole('button', { name: reliabilityCopy.en.sections.detailShow }),
+		);
+		const detail = (block: string) =>
+			downloadedTable(
+				view.container.querySelector<HTMLAnchorElement>(`a[download*="-${block}-"]`)!,
+			);
+		expect(detail('peak-and-day-type')[0]).toMatchObject({
+			value: '4',
+			readings: '80927',
+			readings_basis: 'published_period_observations',
+		});
+		expect(detail('period-day-type')[0]).toMatchObject({
+			value: '0',
+			readings: '31',
+			readings_basis: 'on_time_share',
+		});
+		expect(detail('weekday-delay')[0]).toMatchObject({
+			value: '-2.5',
+			readings: '',
+			source_observation_count: '80',
+			unit: 'min',
+		});
+		await view.rerender({ ...props, scope: { kind: 'history' } });
+		expect(downloadedTable(link())[0]).toMatchObject({
+			scope: 'history',
+			window_from: '',
+			window_to: '',
+		});
+		await view.rerender({ ...props, scope: range });
+		expect(view.container.querySelector('a[download]')).toBeNull();
+	});
 	it('shows the record’s measure for each period of the day, with the cut’s own days', () => {
 		const view = render(Section1WhenToRide, {
 			props: {

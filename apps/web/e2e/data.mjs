@@ -213,6 +213,9 @@ files['/v1/stm/historic/route_reliability/9002.json'] = JSON.stringify({
 		return { date, skipped_stop_count: next(40_000), stop_time_update_count: updates };
 	}),
 });
+// Reuse this generated line for provider/locale export journeys, including its server render.
+for (const family of ['static/routes', 'historic/route_reliability'])
+	files[`/v1/octranspo/${family}/9002.json`] = files[`/v1/stm/${family}/9002.json`];
 
 const server = createServer((request, response) => {
 	// No Date header: the app anchors its clock to it, which would undo page.clock.

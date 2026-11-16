@@ -14,6 +14,7 @@ import { localizeHref } from '../src/lib/i18n/routing';
 import { STATUS_LABELS } from '../src/lib/v1/enumLabels';
 import { stampCopy } from '../src/lib/v1/stamp.copy';
 import { intl } from '../src/lib/i18n/copy';
+import { csvTable } from '../src/lib/features/lines/reliability/__fixtures__/csvTable';
 
 const fixture = (name: string) =>
 	JSON.parse(readFileSync(new URL(`./${name}`, import.meta.url), 'utf8'));
@@ -944,11 +945,15 @@ test('en: the selected preview cites the record it actually shows, with a copy f
 	const displayedRows = decodeURIComponent(
 		(await displayed.getAttribute('href'))!.split(',').slice(1).join(','),
 	).split('\r\n');
-	const columns = displayedRows[0].split(',').map((name) => name.replace(/^"|"$/gu, ''));
 	const cell = (line: string, name: string) =>
-		line.split(',')[columns.indexOf(name)]?.replace(/^"|"$/gu, '') ?? '';
+		csvTable(displayedRows[0] + '\r\n' + line)[0][name] ?? '';
 	expect(displayedRows).toHaveLength(21);
 	expect(cell(displayedRows[1], 'provider')).toBe('stm');
+	expect(
+		csvTable(
+			decodeURIComponent((await displayed.getAttribute('href'))!.split(',').slice(1).join(',')),
+		)[0].attribution,
+	).toBe(fixture('manifest.json').attribution);
 	const recordCsv = preview.locator('[data-slot="directory-record-csv"]');
 	await expect(recordCsv).toHaveAttribute(
 		'download',
@@ -959,6 +964,11 @@ test('en: the selected preview cites the record it actually shows, with a copy f
 	).split('\r\n');
 	expect(recordRows).toHaveLength(2);
 	expect(cell(recordRows[1], 'value_pct')).toBe('90');
+	expect(
+		csvTable(
+			decodeURIComponent((await recordCsv.getAttribute('href'))!.split(',').slice(1).join(',')),
+		)[0].attribution,
+	).toBe(fixture('manifest.json').attribution);
 	expect(cell(recordRows[1], 'record_url')).toContain(
 		'/lines/1?provider=stm&from=2026-11-04&to=2026-11-10',
 	);

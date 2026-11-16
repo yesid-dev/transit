@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { downloadCsv, type CsvContext, type CsvSource } from '../recordCsv';
+	import { dailyRows } from '../recordCsvModels';
+	import CsvDownload from './CsvDownload.svelte';
 	import { Button } from '@yesid/ui/button';
 	import { intl, type Locale } from '#lib/i18n/index.ts';
 	import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
@@ -10,17 +13,36 @@
 	import type { ReliabilityCopy } from '../reliability.copy';
 
 	interface DailyOnTimeChartProps {
+		exportContext?: CsvContext;
+		exportSource?: CsvSource;
 		daily: DailyOnTime;
 		locale: Locale;
 		copy: ReliabilityCopy;
 	}
 
-	let { daily, locale, copy }: DailyOnTimeChartProps = $props();
+	let { daily, locale, copy, exportContext, exportSource }: DailyOnTimeChartProps = $props();
 	const t = $derived(copy.record.daily);
 	const id = $props.id();
 	let tableOpen = $state(false);
 
 	const rows = $derived(daily.rows);
+	const file = $derived(
+		downloadCsv(
+			exportContext,
+			exportSource && rows.length
+				? {
+						...exportSource,
+						scope:
+							exportSource.scope.kind === 'none'
+								? exportSource.scope
+								: { kind: 'window', from: rows[0].date, to: rows[rows.length - 1].date },
+					}
+				: undefined,
+			'day-by-day',
+			['date', 'on_time_pct', 'average_delay_min'],
+			dailyRows(daily),
+		),
+	);
 	const dates = $derived(
 		rows.length ? formatRecordDates(rows[0].date, rows[rows.length - 1].date, locale) : null,
 	);
@@ -79,6 +101,7 @@
 	</figure>
 
 	<div class="day-chart__actions">
+		<CsvDownload {file} label={t.title} {copy} />
 		<Button
 			variant="outline"
 			size="sm"
@@ -267,6 +290,9 @@
 		opacity: 0.85;
 	}
 	.day-chart__actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
 		margin-top: 0.25rem;
 	}
 	.day-table {

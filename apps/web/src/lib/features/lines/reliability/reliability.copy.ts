@@ -34,6 +34,10 @@ export type ReliabilityClusterKey =
 
 export const reliabilityCopy = defineCopy({
 	fr: {
+		csv: {
+			displayed: 'CSV des lignes affichées',
+			context: (label: string) => `CSV des lignes affichées : ${label}`,
+		},
 		clusters: {
 			punctuality: 'Ponctualité',
 			serviceDelivered: serviceComparisonCopy.fr.section,
@@ -350,6 +354,10 @@ export const reliabilityCopy = defineCopy({
 		verdict: routeVerdictCopy.fr.verdict,
 	},
 	en: {
+		csv: {
+			displayed: 'CSV of displayed rows',
+			context: (label: string) => `CSV of displayed rows: ${label}`,
+		},
 		clusters: {
 			punctuality: 'Punctuality',
 			serviceDelivered: serviceComparisonCopy.en.section,

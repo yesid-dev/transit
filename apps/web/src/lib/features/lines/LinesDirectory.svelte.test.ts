@@ -18,6 +18,7 @@ const h = vi.hoisted(() => {
 		routes: [] as unknown[],
 		gaps: [] as string[] | null,
 		locale: 'en' as 'en' | 'fr',
+		attribution: null as string | null,
 		desktop: false,
 		routesWait: null as Promise<void> | null,
 		routesFailure: false,
@@ -100,6 +101,9 @@ vi.mock('#lib/v1/boot.ts', () => ({
 	getV1Context: () => ({
 		manifest: {
 			provider: 'stm',
+			get attribution() {
+				return h.state.attribution;
+			},
 			short_name: 'STM',
 			display_name: 'STM',
 			tz: 'America/Toronto',
@@ -217,6 +221,7 @@ beforeEach(() => {
 	});
 	refreshEpoch.value = 0;
 	h.state.now = CLOCK_NOW;
+	h.state.attribution = null;
 	h.state.url = new URL('http://localhost/lines?provider=stm');
 	h.state.published = { generated_utc: '2026-11-11T05:00:00Z' };
 	h.state.routes = h.routesFor(235);
@@ -239,6 +244,17 @@ afterEach(() => {
 });
 
 describe('Lines directory — every published line', () => {
+	it.each([null, 'Contains STM data made available under CC BY 4.0.'])(
+		'exports the manifest attribution exactly, including unknown %s',
+		async (attribution) => {
+			h.state.attribution = attribution;
+			const { container } = render(LinesDirectory);
+			await waitFor(() => expect(rows(container).length).toBeGreaterThan(0));
+			const link = container.querySelector<HTMLAnchorElement>('[data-slot="directory-csv"]')!;
+			const table = csvTable(decodeURIComponent(link.href.split(',').slice(1).join(',')));
+			expect(table.cell(table.rows[0], 'attribution')).toBe('"' + (attribution ?? '') + '"');
+		},
+	);
 	it('keeps its heading, provider and purpose while the index is loading', async () => {
 		let release!: () => void;
 		h.state.routesWait = new Promise<void>((resolve) => {

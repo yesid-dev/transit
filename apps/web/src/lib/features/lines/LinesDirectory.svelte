@@ -278,6 +278,7 @@
 		providerId,
 		providerName,
 		locale,
+		attribution: v1.manifest.attribution,
 		// Downloads name the application's own origin so their links stay usable away from the page.
 		origin: page.url.origin,
 		modeTag: (line: RouteIndexEntry) => routeModeHint(line.type).tag,

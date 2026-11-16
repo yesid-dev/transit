@@ -157,6 +157,7 @@ export interface RecordCitation {
 	readonly line: string;
 	readonly providerId: string;
 	readonly providerName: string;
+	readonly attribution?: string | null;
 }
 
 /** Which published record a figure comes from; a field is null when it is not supplied. */

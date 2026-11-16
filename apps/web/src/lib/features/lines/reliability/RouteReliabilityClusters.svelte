@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { page } from '$app/state';
+	import type { CsvContext, CsvSource } from './recordCsv';
 	import { cn } from '#lib/utils/index.ts';
 	import { formatDateKey } from '#lib/utils/time.ts';
 	import { selectDailyPercentiles } from '#lib/site/dailyPercentiles.ts';
@@ -140,9 +142,42 @@
 			? view.history.value.publication
 			: sharedPublication([data]),
 	);
+	const exportContext = $derived<CsvContext | undefined>(
+		citation
+			? {
+					providerId: citation.providerId,
+					providerName: citation.providerName,
+					lineId: data.id,
+					lineName: citation.line,
+					locale,
+					origin: page.url.origin,
+					attribution: citation.attribution,
+				}
+			: undefined,
+	);
+	const currentSource = $derived<CsvSource>({
+		source: 'current_line_file',
+		publication: sharedPublication([data]),
+		scope: { kind: 'history' },
+	});
+	const selectedSource = $derived<CsvSource>({
+		source: explicitHistory ? 'retained_partitions' : 'current_line_file',
+		publication,
+		scope:
+			(!explicitHistory || retainedReady) && record.period
+				? { kind: 'window', from: record.period.from, to: record.period.to }
+				: { kind: 'none' },
+	});
 	const dailyPercentiles = $derived(
 		explicitHistory && retainedReady && mode === 'range'
 			? selectDailyPercentiles(view.history.value?.aggregate ?? null)
+			: null,
+	);
+	const percentileReadings = $derived(
+		explicitHistory && retainedReady && record.period?.days === 1
+			? (view.history.value?.aggregate.delayPercentiles.value?.find(
+					(entry) => entry.date === record.period?.from,
+				)?.value.observation_count ?? null)
 			: null,
 	);
 
@@ -363,6 +398,12 @@
 							{dailyPercentiles}
 							{citation}
 							{publication}
+							{percentileReadings}
+							{exportContext}
+							exportSource={selectedSource}
+							averageDelayReadings={explicitHistory && retainedReady
+								? (view.history.value?.aggregate.delay.value?.inClampObservationCount ?? null)
+								: null}
 						/>
 					</div>
 
@@ -375,6 +416,8 @@
 						<Section1WhenToRide
 							punctuality={clusters.punctuality}
 							habits={clusters.habits}
+							{exportContext}
+							exportSource={currentSource}
 							scope={timeScope}
 							{locale}
 							{copy}
@@ -389,6 +432,8 @@
 					>
 						<Section4WorstStops
 							stops={clusters.punctuality.weakStops}
+							{exportContext}
+							exportSource={currentSource}
 							scope={stopScope}
 							{locale}
 							{copy}
@@ -403,6 +448,8 @@
 					>
 						<Section3RunAndFit
 							service={clusters.serviceDelivered}
+							{exportContext}
+							exportSource={selectedSource}
 							period={record.period}
 							{locale}
 							{copy}
@@ -418,6 +465,9 @@
 					>
 						<Section2TheWait
 							wait={clusters.waitRegularity}
+							{exportContext}
+							exportSource={currentSource}
+							spanSource={selectedSource}
 							serviceSpans={clusters.serviceDelivered.serviceSpans}
 							scope={gapScope}
 							{locale}
@@ -431,7 +481,17 @@
 						data-toc="rel-crowding"
 						data-band="crowding"
 					>
-						<SectionCrowding crowding={clusters.crowding} figure={crowding} {locale} {copy} />
+						<SectionCrowding
+							crowding={clusters.crowding}
+							figure={crowding}
+							{locale}
+							{copy}
+							{exportContext}
+							diagnosticSource={{ ...currentSource, scope: { kind: 'undated_diagnostics' } }}
+							exportSource={mode === 'range'
+								? selectedSource
+								: { ...currentSource, scope: { kind: `undated_${mode}_mix` } }}
+						/>
 					</div>
 				</ArticleSectionStack>
 			</div>

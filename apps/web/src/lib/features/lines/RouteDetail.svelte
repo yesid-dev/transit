@@ -173,6 +173,7 @@
 		line: [titleName.number, titleName.name].filter(Boolean).join(' ') || titleName.label,
 		providerId: manifest.provider,
 		providerName: v1.provider?.labels[locale]?.operator ?? shortName ?? manifest.provider,
+		attribution: manifest.attribution,
 	});
 	const record = createRecordStamp(
 		() => manifest,
