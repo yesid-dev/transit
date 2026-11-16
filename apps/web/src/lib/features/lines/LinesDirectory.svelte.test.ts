@@ -22,6 +22,7 @@ const h = vi.hoisted(() => {
 		desktop: false,
 		routesWait: null as Promise<void> | null,
 		routesFailure: false,
+		intersecting: true,
 		now: Date.parse('2026-11-12T12:00:00Z'),
 	};
 	function routeFile(id: string) {
@@ -147,12 +148,13 @@ vi.mock('#lib/v1/repositories/provenance.ts', () => ({
 	getProvenance: async () => ({ gaps: h.state.gaps }),
 }));
 
-class ImmediateIntersectionObserver {
+class IntersectionObserverFixture {
 	constructor(private callback: IntersectionObserverCallback) {}
 	root = null;
 	rootMargin = '200px';
 	thresholds = [0];
 	observe(target: Element) {
+		if (!h.state.intersecting) return;
 		this.callback(
 			[{ isIntersecting: true, target } as unknown as IntersectionObserverEntry],
 			this as unknown as IntersectionObserver,
@@ -202,7 +204,7 @@ function csvTable(csv: string): {
 }
 
 beforeEach(() => {
-	vi.stubGlobal('IntersectionObserver', ImmediateIntersectionObserver);
+	vi.stubGlobal('IntersectionObserver', IntersectionObserverFixture);
 	restoreRuntime = configureV1Runtime({
 		clock: {
 			get serverNow() {
@@ -230,6 +232,7 @@ beforeEach(() => {
 	h.state.desktop = false;
 	h.state.routesWait = null;
 	h.state.routesFailure = false;
+	h.state.intersecting = true;
 	h.files.clear();
 	h.failed.clear();
 	h.missing.clear();
@@ -296,6 +299,9 @@ describe('Lines directory — every published line', () => {
 	});
 
 	it('opens on twenty rows of the whole network and reaches every line past the old 200 cap', async () => {
+		// Inventory paging must work before the row records load. Keep rows unobserved here;
+		// the record-loading cases below retain immediate intersection callbacks.
+		h.state.intersecting = false;
 		const { container } = render(LinesDirectory);
 
 		await waitFor(() =>
@@ -318,6 +324,10 @@ describe('Lines directory — every published line', () => {
 		}
 		await waitFor(() => expect(rowLinks(container)).toHaveLength(235));
 		expect(rowLinks(container).at(-1)?.getAttribute('href')).toMatch(/^\/lines\/235\?/);
+		expect(rowLinks(container).map((link) => link.getAttribute('href')?.split('?')[0])).toEqual(
+			Array.from({ length: 235 }, (_, i) => `/lines/${i + 1}`),
+		);
+		expect(h.fetches.size).toBe(0);
 		// The page stays on the twenty-row grid, so a reload or Back restores this last page.
 		expect(new URLSearchParams(h.state.url.search).get('shown')).toBe('240');
 		expect(container.querySelector('.directory-more')).toBeNull();
