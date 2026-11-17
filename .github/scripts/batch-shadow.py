@@ -188,13 +188,34 @@ def write_json(path: Path, data: Any) -> None:
     path.write_text(json.dumps(data, sort_keys=True, indent=2) + "\n", encoding="utf8")
 
 
+def explicit_manual_archive() -> bool:
+    if (
+        os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch"
+        or os.environ.get("GITHUB_REF") != "refs/heads/main"
+        or os.environ.get("INPUT_MODE") != "archive"
+    ):
+        return False
+    try:
+        for name in ("PROVIDERS", "FAMILIES"):
+            value = os.environ.get(name, "")
+            selection(value, value.split(","))
+        day = os.environ.get("DAY", "")
+        if date.fromisoformat(day).isoformat() != day:
+            return False
+        stamp = datetime.fromisoformat(os.environ.get("AS_OF", ""))
+        return stamp.utcoffset() == timedelta(0) and stamp <= datetime.now(UTC)
+    except ValueError:
+        return False
+
+
 def require_configuration(export: bool = False, *, storage: bool = True) -> None:
     names = ["BRONZE_S3_ACCESS_KEY", "BRONZE_S3_SECRET_KEY"] if storage else []
     if export:
         names += ["DATABASE_URL"]
     missing = [name for name in names if not os.environ.get(name)]
-    if os.environ.get("BATCH_SHADOW_PROVISIONED") != "true":
-        missing.append("batch-shadow environment: BATCH_SHADOW_PROVISIONED=true")
+    enabled = os.environ.get("BATCH_SHADOW_PROVISIONED")
+    if enabled != "true" and not (enabled == "false" and not export and explicit_manual_archive()):
+        missing.append("batch-shadow environment: automation or explicit main archive required")
     if missing:
         raise ValueError("provisioning_missing: " + ", ".join(missing))
 
