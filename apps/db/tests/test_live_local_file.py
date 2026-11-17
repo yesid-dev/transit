@@ -295,7 +295,7 @@ if sys.argv[3] == 'lock':
     try:
         ns['opened'](Path(sys.argv[2]))
     except LocalFileLocked as exc:
-        assert type(exc.__cause__).__name__ == 'IOException', repr(exc.__cause__)
+        assert isinstance(exc.__cause__, OSError), repr(exc.__cause__)
     else:
         raise AssertionError('second writer admitted')
 else:

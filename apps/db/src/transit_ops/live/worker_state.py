@@ -26,6 +26,7 @@ from transit_ops.live.edition import (
 from transit_ops.live.facts import apply_capture
 from transit_ops.live.local_file import LocalFile
 from transit_ops.live.recording import Recorder
+from transit_ops.live.recovery import open_worker_file
 from transit_ops.live.segments import export_segment
 from transit_ops.live.settings import LaneSettings
 from transit_ops.silver.i3 import RawI3AlertSnapshot
@@ -263,7 +264,7 @@ def worker_state_scope(
     seed, initial_run_id = _verified_seed(settings, provider)
     assert settings.local_dir is not None
     settings.local_dir.mkdir(parents=True, exist_ok=True)
-    local = LocalFile.open(
+    local = open_worker_file(
         settings.local_dir / ("provider-" + quote(provider, safe="") + ".duckdb"),
         provider_id=provider,
         settings=settings,
