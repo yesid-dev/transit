@@ -835,6 +835,7 @@ def test_prune_gold_fact_history_deletes_rows_older_than_cutoff() -> None:
 
     cutoff_utc, deleted_row_counts = prune_gold_fact_history(
         connection,
+        mode="legacy",
         provider_id="stm",
         retention_days=2,
         now_utc=now_utc,
@@ -853,6 +854,7 @@ def test_prune_gold_fact_history_dry_run_returns_counts_without_deleting() -> No
 
     cutoff_utc, counts = prune_gold_fact_history(
         connection,
+        mode="legacy",
         provider_id="stm",
         retention_days=2,
         dry_run=True,
@@ -873,6 +875,7 @@ def test_prune_gold_fact_history_zero_retention_is_noop() -> None:
 
     cutoff_utc, deleted_row_counts = prune_gold_fact_history(
         connection,
+        mode="legacy",
         provider_id="stm",
         retention_days=0,
     )
@@ -891,6 +894,7 @@ def test_prune_gold_fact_history_binds_batch_param() -> None:
 
     prune_gold_fact_history(
         connection,
+        mode="legacy",
         provider_id="stm",
         retention_days=2,
         batch_size=24680,
@@ -908,6 +912,7 @@ def test_prune_gold_fact_history_floors_batch_at_one() -> None:
 
     prune_gold_fact_history(
         connection,
+        mode="legacy",
         provider_id="stm",
         retention_days=2,
         batch_size=0,
@@ -920,15 +925,13 @@ def test_prune_gold_fact_history_floors_batch_at_one() -> None:
 
 
 def test_prune_gold_storage_threads_gold_fact_prune_batch_setting() -> None:
-    class BatchedGoldPruneSettings:
-        GOLD_FACT_RETENTION_DAYS = 2
-        GOLD_FACT_PRUNE_BATCH = 9999
+    from transit_ops.settings import Settings
 
     engine = PerBeginRecordingEngine()
 
     prune_gold_storage(
         "stm",
-        settings=BatchedGoldPruneSettings(),  # type: ignore[arg-type]
+        settings=Settings(_env_file=None, GOLD_FACT_RETENTION_DAYS=2, GOLD_FACT_PRUNE_BATCH=9999),
         engine=engine,  # type: ignore[arg-type]
     )
 
