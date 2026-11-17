@@ -59,6 +59,15 @@ function mapHarness() {
 	};
 }
 
+function paletteHarness() {
+	const forcedColors = Object.assign(new EventTarget(), { matches: false });
+	const darkScheme = new EventTarget();
+	vi.spyOn(window, 'matchMedia').mockImplementation(
+		(query) => (query === '(forced-colors: active)' ? forcedColors : darkScheme) as MediaQueryList,
+	);
+	return { forcedColors, darkScheme };
+}
+
 const cleanups: Array<() => void> = [];
 
 function runtimeHarness() {
@@ -122,6 +131,28 @@ afterEach(() => {
 });
 
 describe('map runtime ownership', () => {
+	it('rebakes the mounted overlay when forced colours or their scheme change', async () => {
+		const { forcedColors, darkScheme } = paletteHarness();
+		const { runtime } = runtimeHarness();
+		const target = mapHarness();
+		runtime.ready(target.map);
+		await tick();
+		const foreground = rendering.createOverlay.mock.results[0].value;
+		darkScheme.dispatchEvent(new Event('change'));
+		expect(rendering.retint).toHaveBeenCalledTimes(1);
+		forcedColors.matches = true;
+		forcedColors.dispatchEvent(new Event('change'));
+		darkScheme.dispatchEvent(new Event('change'));
+		expect(rendering.retint).toHaveBeenCalledTimes(3);
+		expect(foreground.setSprites).toHaveBeenCalledTimes(2);
+		expect(foreground.redraw).toHaveBeenCalledTimes(2);
+		runtime.release(target.map);
+		await tick();
+		forcedColors.dispatchEvent(new Event('change'));
+		darkScheme.dispatchEvent(new Event('change'));
+		expect(rendering.retint).toHaveBeenCalledTimes(3);
+	});
+
 	it('reinstalls static layers and the foreground after MapLibre internally restores its style', () => {
 		const { runtime } = runtimeHarness();
 		const target = mapHarness();
@@ -268,6 +299,9 @@ describe('map runtime ownership', () => {
 	});
 
 	it('keeps a failed foreground disposal reachable until a later replacement retries it', () => {
+		const { forcedColors, darkScheme } = paletteHarness();
+		const stopForced = vi.spyOn(forcedColors, 'removeEventListener');
+		const stopScheme = vi.spyOn(darkScheme, 'removeEventListener');
 		const { runtime } = runtimeHarness();
 		const first = mapHarness();
 		const second = mapHarness();
@@ -280,6 +314,12 @@ describe('map runtime ownership', () => {
 		expect(() => runtime.ready(second.map)).toThrow(failure);
 		expect(runtime.map).toBe(first.map);
 		expect(second.on).not.toHaveBeenCalled();
+		expect(stopForced).toHaveBeenCalledWith('change', expect.any(Function));
+		expect(stopScheme).toHaveBeenCalledWith('change', expect.any(Function));
+		forcedColors.matches = true;
+		forcedColors.dispatchEvent(new Event('change'));
+		darkScheme.dispatchEvent(new Event('change'));
+		expect(rendering.retint).toHaveBeenCalledTimes(1);
 		runtime.ready(second.map);
 		expect(overlay.destroy).toHaveBeenCalledTimes(2);
 		expect(runtime.map).toBe(second.map);

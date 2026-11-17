@@ -371,7 +371,14 @@ export function bakeVehicleSprites(
 	registerVehicleImages = true,
 ): VehicleSpriteReceipt {
 	const background = resolveColor(BUS_HALO_TOKEN, BUS_HALO_FALLBACK);
-	const foreground = resolveColor(SILENT_FILL_TOKEN, SILENT_FILL_FALLBACK);
+	const forced = window.matchMedia('(forced-colors: active)').matches;
+	// Canvas keeps its pixels when the browser forces DOM colours. Resolve an explicit
+	// system-colour pair so the plate and the glyph do not both resolve to CanvasText.
+	const forcedFill = forced ? resolveColor('CanvasText', '#000') : null;
+	const vehicleHalo = forced ? resolveColor('Canvas', '#fff') : background;
+	const vehicleFill = (token: string, fallback: string) =>
+		forcedFill ?? resolveColor(token, fallback);
+	const foreground = vehicleFill(SILENT_FILL_TOKEN, SILENT_FILL_FALLBACK);
 	const canvases: HTMLCanvasElement[] = [];
 	const sprites: { id: string; index: number }[] = [];
 	const badges: { id: string; image: number; mask: number }[] = [];
@@ -385,13 +392,13 @@ export function bakeVehicleSprites(
 	for (const code of STATUS_CODES as readonly StatusCode[]) {
 		add(
 			bodyIconId('status', code),
-			busCanvas(resolveColor(statusVar(code), '#8a8a8a'), background),
+			busCanvas(vehicleFill(statusVar(code), '#8a8a8a'), vehicleHalo),
 		);
 	}
 	for (const code of OCCUPANCY_CODES as readonly OccupancyCode[]) {
 		add(
 			bodyIconId('occupancy', code),
-			busCanvas(resolveColor(occupancyVar(code), '#7a5fb0'), background),
+			busCanvas(vehicleFill(occupancyVar(code), '#7a5fb0'), vehicleHalo),
 		);
 	}
 	for (const code of STATUS_CODES as readonly StatusCode[]) {
@@ -399,8 +406,8 @@ export function bakeVehicleSprites(
 		const glyph = STATUS_GLYPH[code];
 		badges.push({
 			id,
-			image: add(id, stateBadgeCanvas(glyph, foreground, background)),
-			mask: queue(stateGlyphMaskCanvas(glyph, background)),
+			image: add(id, stateBadgeCanvas(glyph, foreground, vehicleHalo)),
+			mask: queue(stateGlyphMaskCanvas(glyph, vehicleHalo)),
 		});
 	}
 	for (const code of OCCUPANCY_CODES as readonly OccupancyCode[]) {
@@ -408,13 +415,13 @@ export function bakeVehicleSprites(
 		const glyph = occupancyGlyph(code);
 		badges.push({
 			id,
-			image: add(id, stateBadgeCanvas(glyph, foreground, background)),
-			mask: queue(stateGlyphMaskCanvas(glyph, background)),
+			image: add(id, stateBadgeCanvas(glyph, foreground, vehicleHalo)),
+			mask: queue(stateGlyphMaskCanvas(glyph, vehicleHalo)),
 		});
 	}
-	add(BUS_ICON, busCanvas(resolveColor(BUS_FILL_TOKEN, BUS_FILL_FALLBACK), background));
-	add(HEADING_ICON, chevronCanvas(foreground, background));
-	add(SILENT_ICON, silentBadgeCanvas(foreground, background));
+	add(BUS_ICON, busCanvas(vehicleFill(BUS_FILL_TOKEN, BUS_FILL_FALLBACK), vehicleHalo));
+	add(HEADING_ICON, chevronCanvas(foreground, vehicleHalo));
+	add(SILENT_ICON, silentBadgeCanvas(foreground, vehicleHalo));
 	add(STOP_ICON, stopPinCanvas(resolveColor(STOP_FILL_TOKEN, STOP_FILL_FALLBACK), background));
 
 	const images = readSpriteCanvases(canvases);

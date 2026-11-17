@@ -39,10 +39,36 @@ export function createMapRuntime(options: {
 	let interactionDisposers: readonly (() => void)[] = [];
 	let restorationPending: MapLibreMap | null = null;
 	let reportSetupFailure: (() => void) | null = null;
+	let stopObservingPalette: (() => void) | undefined;
 	const emphasis = createMapEmphasisController(options.selection);
 	const layers = createMapLayerFeedController();
+
+	function repaint(m: MapLibreMap): void {
+		if (map !== m) return;
+		const { sprites, pin } = retintMapLayers(m);
+		foreground?.setSprites(sprites, pin);
+		foreground?.redraw();
+	}
+
+	function observePalette(m: MapLibreMap): () => void {
+		const forcedColors = window.matchMedia('(forced-colors: active)');
+		const darkScheme = window.matchMedia('(prefers-color-scheme: dark)');
+		const onForcedChange = () => repaint(m);
+		const onSchemeChange = () => {
+			if (forcedColors.matches) repaint(m);
+		};
+		forcedColors.addEventListener('change', onForcedChange);
+		darkScheme.addEventListener('change', onSchemeChange);
+		return () => {
+			forcedColors.removeEventListener('change', onForcedChange);
+			darkScheme.removeEventListener('change', onSchemeChange);
+		};
+	}
+
 	function release(m: MapLibreMap): void {
 		if (map !== m) return;
+		stopObservingPalette?.();
+		stopObservingPalette = undefined;
 		const released = ownerCleanup.releaseMapOwnerReceipts(vehicleMotion, interactionDisposers, () =>
 			emphasis.clear(m),
 		);
@@ -252,17 +278,12 @@ export function createMapRuntime(options: {
 			map = m;
 			reportSetupFailure = reportFailure ?? null;
 			install(m);
+			stopObservingPalette ??= observePalette(m);
 		},
 		styleLoad(m: MapLibreMap) {
 			if (map === m) reinstallAfterStyleLoad(m);
 		},
-		repaint(m: MapLibreMap) {
-			if (map === m) {
-				const { sprites, pin } = retintMapLayers(m);
-				foreground?.setSprites(sprites, pin);
-				foreground?.redraw();
-			}
-		},
+		repaint,
 		release,
 	};
 }
