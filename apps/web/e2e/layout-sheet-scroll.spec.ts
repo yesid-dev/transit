@@ -20,7 +20,7 @@ for (const locale of ['en', 'fr'])
 				url.pathname = '/__layout/fresh' + url.pathname;
 				await route.fulfill({ response: await route.fetch({ url: url.href }) });
 			});
-			await page.goto(`${locale === 'fr' ? '/fr' : ''}/map?focus=vehicle:layout-bus`, {
+			await page.goto(`${locale === 'fr' ? '/fr' : ''}/map?provider=stm&focus=vehicle:layout-bus`, {
 				waitUntil: 'networkidle',
 			});
 			await expect
@@ -93,13 +93,39 @@ for (const locale of ['en', 'fr'])
 					).toBeGreaterThanOrEqual(0);
 				expect(geometry.headerBottom).toBeLessThan(viewport.height);
 				expect(geometry.body, JSON.stringify(geometry)).toBeGreaterThan(0);
-				await expect
-					.poll(() =>
-						page
-							.locator('.map-hero')
-							.evaluate((el) => JSON.parse((el as HTMLElement).dataset.cameraPadding!).bottom),
-					)
-					.toBeCloseTo(geometry.height + 16, 0);
+				await expect(async () => {
+					const fit = await page.locator('.map-hero').evaluate((el) => {
+						const canvas = el.querySelector('.maplibregl-canvas')!.getBoundingClientRect();
+						const heading = el.querySelector('.map-head')!.getBoundingClientRect();
+						const sheet = document.querySelector('[data-slot="bottom-sheet"]')!;
+						const controls = ['.map-filter-pill-container', '.map-near', '[data-slot="map-north"]']
+							.map((selector) => el.querySelector(selector)?.getBoundingClientRect())
+							.filter((r) => r && r.width > 0 && r.height > 0);
+						return {
+							padding: JSON.parse((el as HTMLElement).dataset.cameraPadding!) as {
+								top: number;
+								bottom: number;
+							},
+							height: canvas.height,
+							top: Math.max(0, heading.bottom - canvas.top),
+							bottom: Math.max(
+								sheet.getBoundingClientRect().height,
+								...controls.map((r) => canvas.bottom - r!.top),
+							),
+						};
+					});
+					expect(fit.padding.top).toBeGreaterThanOrEqual(16);
+					expect(fit.padding.bottom).toBeGreaterThanOrEqual(16);
+					expect(fit.padding.top + fit.padding.bottom).toBeLessThan(fit.height);
+					if (fit.top + fit.bottom + 32 < fit.height) {
+						// Feasible fits clear the actual chrome, independently of point-focus limits.
+						expect(fit.padding.top).toBeCloseTo(fit.top + 16, 0);
+						expect(fit.padding.bottom).toBeCloseTo(fit.bottom + 16, 0);
+					} else {
+						// An overfull sheet cannot be used verbatim as map fit padding.
+						expect(fit.padding.bottom).toBeLessThan(fit.bottom + 16);
+					}
+				}).toPass({ timeout: 5000 });
 				await body.evaluate((el) => {
 					el.scrollTop = el.scrollHeight;
 				});

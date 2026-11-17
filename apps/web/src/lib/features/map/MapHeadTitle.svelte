@@ -125,6 +125,7 @@
 			padding: 0;
 		}
 		.map-heading {
+			flex-grow: 1;
 			font-size: var(--text-subheading);
 		}
 		.map-lead {

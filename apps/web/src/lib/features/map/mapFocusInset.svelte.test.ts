@@ -81,6 +81,19 @@ afterEach(() => {
 });
 
 describe('map focus inset arithmetic', () => {
+	it('preserves the real landscape title clearance when the provider fit is feasible', () => {
+		const { map } = mountedMap();
+		const { adapter } = measurementAdapter({ width: 844, height: 390, detailOffset: '0px' });
+		adapter.headingRect = () => rect(400, 172);
+		adapter.chromeInsets = () => ({ left: 0, bottom: 0 });
+		expect(measureMapFocusInset(map, adapter).fitPadding).toEqual({
+			top: 188,
+			right: 16,
+			bottom: 16,
+			left: 16,
+		});
+	});
+
 	it('keeps a geographic camera when landscape title and controls exceed the available height', () => {
 		const { map } = mountedMap();
 		const { adapter } = measurementAdapter({ width: 844, height: 390, detailOffset: '0px' });

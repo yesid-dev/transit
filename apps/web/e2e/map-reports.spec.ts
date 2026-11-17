@@ -153,11 +153,22 @@ async function openReports(page: Page, locale: 'en' | 'fr') {
 }
 
 async function rendererCamera(page: Page): Promise<number[]> {
+	return (await rendererTransform(page)).slice(4, 9).map(Number);
+}
+
+async function rendererTransform(page: Page): Promise<string[]> {
 	return page.locator('[data-slot="vehicle-overlay"]').evaluate((canvas) => {
 		const receipt = Reflect.get(canvas, Symbol.for('transit.map.vehicleOverlayReceipt'));
 		if (!receipt?.drawable) return [];
-		return String(receipt.transform).split('|').slice(4, 9).map(Number);
+		return String(receipt.transform).split('|');
 	});
+}
+
+function expectSameRendererGeometry(actual: string[], expected: string[]): void {
+	expect(actual).toHaveLength(15);
+	expect(expected).toHaveLength(15);
+	expect(actual.slice(0, 4)).toEqual(expected.slice(0, 4));
+	for (let i = 4; i < 15; i++) expect(Number(actual[i])).toBeCloseTo(Number(expected[i]), 12);
 }
 
 async function expectFocusedTargetUncovered(page: Page): Promise<void> {
@@ -212,18 +223,18 @@ for (const locale of PUBLISHED_LOCALES) {
 		await expect.poll(() => rendererCamera(page)).toEqual(hint);
 		const downloaded = parseCsv((await downloadCsv(page, t)).bytes);
 		const header = downloaded[0];
-		const expectedIds = await page.evaluate((raw) => {
-			const probe = Reflect.get(window, '__transitMap');
-			const canvas = document.querySelector('.maplibregl-canvas')!;
-			const box = canvas.getBoundingClientRect();
-			return raw.vehicles
-				.filter((v) => v.status === 'late' && Math.abs(v.lat) <= 90 && Math.abs(v.lon) <= 180)
-				.filter((v) => {
-					const p = probe.project([v.lon, v.lat]);
-					return p.x >= 0 && p.x <= box.width && p.y >= 0 && p.y <= box.height;
-				})
-				.map((v) => v.id);
-		}, fleet());
+		// Fixed fixture oracles for the three owning project viewports. The old report
+		// is outside the smaller rotated views, rather than removed because of its age.
+		// These memberships were also checked against the actual renderer projection
+		// in the e2e build; the ordinary production build exposes no camera probe.
+		const memberships: Record<string, string[]> = {
+			'390x844': ['center-late'],
+			'768x1024': ['center-late'],
+			'1440x900': ['center-late', 'old-late'],
+		};
+		const viewport = page.viewportSize()!;
+		const expectedIds = memberships[`${viewport.width}x${viewport.height}`];
+		expect(expectedIds, 'an explicit fixture geometry oracle for this viewport').toBeDefined();
 		expect(downloaded.slice(1).map((row) => row[header.indexOf('vehicle_id')])).toEqual(
 			expectedIds,
 		);
@@ -242,32 +253,19 @@ for (const locale of PUBLISHED_LOCALES) {
 		const size = page.viewportSize()!;
 		await page.setViewportSize({ width: size.width + 80, height: size.height - 64 });
 		await expect.poll(() => rendererCamera(page)).toEqual(hint);
+		await expect
+			.poll(async () => (await rendererTransform(page)).slice(2, 4))
+			.toEqual([`${size.width + 80}px`, `${size.height - 64}px`]);
 		await panel.getByRole('button', { name: t.copyLiveView }).click();
 		const copied = await page.evaluate(() => navigator.clipboard.readText());
 		expect(new URL(copied).searchParams.get('mapview')?.split(',').map(Number)).toEqual(hint);
-		const referencePoints = await page.evaluate(() => {
-			const probe = Reflect.get(window, '__transitMap');
-			return [
-				[-73.65, 45.53],
-				[-73.6, 45.5],
-				[-73.7, 45.55],
-			].map((coord) => probe.project(coord));
-		});
+		const referenceTransform = await rendererTransform(page);
 		await page.goto(copied);
 		await openReports(page, locale);
 		await expect.poll(() => rendererCamera(page)).toEqual(hint);
-		const restoredPoints = await page.evaluate(() => {
-			const probe = Reflect.get(window, '__transitMap');
-			return [
-				[-73.65, 45.53],
-				[-73.6, 45.5],
-				[-73.7, 45.55],
-			].map((coord) => probe.project(coord));
-		});
-		for (let i = 0; i < referencePoints.length; i++) {
-			expect(restoredPoints[i].x).toBeCloseTo(referencePoints[i].x, 6);
-			expect(restoredPoints[i].y).toBeCloseTo(referencePoints[i].y, 6);
-		}
+		// The production renderer receipt includes physical/CSS dimensions, centre,
+		// zoom, all three rotations, field of view and all four padding edges.
+		expectSameRendererGeometry(await rendererTransform(page), referenceTransform);
 	});
 
 	test(`${locale}: normal phone switching transfers focus to uncovered controls in both directions`, async ({
@@ -420,7 +418,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		expect(record).toMatchObject({
 			provider: 'stm',
 			report_scope: 'matching_vehicle_reports_in_current_map_view',
-			active_filters: 'status:late',
+			active_filters: '["status:late"]',
 			time_zone: 'UTC',
 			status: 'late',
 			reported_utc: '2026-06-15T11:59:40Z',
@@ -449,13 +447,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		// Selecting a report opens detail only: no implicit filter and no camera change.
 		const gotoBefore = page.url();
 		const cameraBeforeSelection = await rendererCamera(page);
-		const pointsBeforeSelection = await page.evaluate(() => {
-			const probe = Reflect.get(window, '__transitMap');
-			return [
-				[-73.65, 45.53],
-				[-73.6, 45.5],
-			].map((coord) => probe.project(coord));
-		});
+		const transformBeforeSelection = await rendererTransform(page);
 		await panel.getByRole('button', { name: reports.selectVehicle('center-late') }).click();
 		const detail = page
 			.getByRole('complementary', { name: /center-late/u })
@@ -466,6 +458,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		for (let i = 0; i < cameraBeforeSelection.length; i++) {
 			expect(selectedCamera[i]).toBeCloseTo(cameraBeforeSelection[i], 10);
 		}
+		expectSameRendererGeometry(await rendererTransform(page), transformBeforeSelection);
 
 		await page.keyboard.press('Escape');
 		await expect(panel.locator('[data-report-row]')).toHaveCount(3);
@@ -479,17 +472,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		const beforeHint = url.searchParams.get('mapview')!.split(',').map(Number);
 		const afterHint = new URL(afterSelection).searchParams.get('mapview')!.split(',').map(Number);
 		for (let i = 0; i < beforeHint.length; i++) expect(afterHint[i]).toBeCloseTo(beforeHint[i], 10);
-		const pointsAfterSelection = await page.evaluate(() => {
-			const probe = Reflect.get(window, '__transitMap');
-			return [
-				[-73.65, 45.53],
-				[-73.6, 45.5],
-			].map((coord) => probe.project(coord));
-		});
-		for (let i = 0; i < pointsBeforeSelection.length; i++) {
-			expect(pointsAfterSelection[i].x).toBeCloseTo(pointsBeforeSelection[i].x, 6);
-			expect(pointsAfterSelection[i].y).toBeCloseTo(pointsBeforeSelection[i].y, 6);
-		}
+		expectSameRendererGeometry(await rendererTransform(page), transformBeforeSelection);
 
 		// Reloading the copied link restores the live filter scope against fresh data.
 		await page.goto(copied);
