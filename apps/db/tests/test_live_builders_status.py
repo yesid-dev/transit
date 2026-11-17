@@ -81,6 +81,68 @@ def test_bundle_preserves_provider_map_bounds(local):
     assert json.loads(result["vehicles.json"])["vehicles"] == []
 
 
+@pytest.mark.parametrize(
+    "longitude,latitude,visible",
+    [
+        (-74, 45, True),
+        (-73, 46, True),
+        (-73.5, 10, False),
+        (-74.0001, 45.5, False),
+        (-73.5, 46.0001, False),
+    ],
+)
+def test_map_and_network_use_same_bbox_without_losing_raw_presence(
+    local, longitude, latitude, visible
+):
+    message = vehicle_message()
+    del message.entity[1:]
+    message.entity[0].vehicle.position.longitude = longitude
+    message.entity[0].vehicle.position.latitude = latitude
+    apply_capture(local, parsed_vehicle(message), provider_timezone="America/Toronto")
+    result = build(local, context(endpoints=("vehicle_positions",)))
+    network = json.loads(result["network.json"])
+    assert len(json.loads(result["vehicles.json"])["vehicles"]) == int(visible)
+    assert network["vehicles_in_service"] == network["status_dist"]["unknown"] == int(visible)
+    assert network["coverage_pct"] == (0 if visible else None)
+    assert network["occupancy_mix"] == (
+        {"empty": 0, "many_seats": 0, "few_seats": 1, "standing": 0, "full": 0} if visible else None
+    )
+    assert network["non_responding"] == 0
+
+
+def test_null_bbox_is_unbounded_for_map_and_network(local):
+    message = vehicle_message()
+    del message.entity[1:]
+    message.entity[0].vehicle.position.latitude = 10
+    apply_capture(local, parsed_vehicle(message), provider_timezone="America/Toronto")
+    ctx = context(endpoints=("vehicle_positions",))
+    provider = ctx.rows("provider")[0]
+    provider.update(
+        {k: None for k in ("min_longitude", "min_latitude", "max_longitude", "max_latitude")}
+    )
+    result = build(local, replace(ctx, provider=captured([provider])))
+    assert len(json.loads(result["vehicles.json"])["vehicles"]) == 1
+    assert json.loads(result["network.json"])["vehicles_in_service"] == 1
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"min_longitude": None},
+        {"min_latitude": None},
+        {"max_longitude": None},
+        {"max_latitude": None},
+        {"min_latitude": 47},
+        {"max_longitude": -75},
+    ],
+)
+def test_inconsistent_bbox_refuses_by_name(local, changes):
+    ctx = context()
+    provider = ctx.rows("provider")[0] | changes
+    with pytest.raises(ValueError, match="provider bounds"):
+        build(local, replace(ctx, provider=captured([provider])))
+
+
 @pytest.mark.parametrize("name", ["provider", "endpoints", "editions", "tiers", "feeds"])
 def test_every_missing_store_refuses(local, name):
     with pytest.raises(ValueError, match=name):
@@ -182,7 +244,7 @@ def test_independent_network_math(local):
         Evidence("missing"),
         Evidence("missing"),
     )
-    result = build_network(local, context(), projection, set())
+    result = build_network(local, context(), projection, set(), bounds=None)
     assert result.vehicles_in_service == 8
     assert result.on_time_pct == 43  # 3 within [-60,300) out of 7 known? -60 is on-time.
     assert result.coverage_pct == 88
@@ -224,6 +286,71 @@ def test_alert_continuity_and_empty_observations(local):
     assert empty["alerts"] == result["alerts"]
 
 
+@pytest.mark.parametrize(
+    "start,end,active",
+    [
+        (-7200, -3600, False),
+        (3600, None, False),
+        (0, None, True),
+        (-3600, 0, True),
+        (None, None, True),
+        (None, 0, True),
+        (None, -0.000001, False),
+        (0.000001, None, False),
+    ],
+)
+def test_alert_current_window_uses_explicit_inclusive_cycle(local, start, end, active):
+    from test_local_alert_apply import ALERT
+    from test_local_alert_seed import bundle
+
+    from transit_ops.silver.i3 import RawI3AlertSnapshot
+    from transit_ops.static.alert_apply import apply_alert_snapshot
+    from transit_ops.static.alert_state import seed_alert_state
+
+    seed = bundle()
+    for table in seed.tables.values():
+        table.rows.clear()
+    seed_alert_state(local, seed)
+    period = {
+        k: (AT + timedelta(seconds=v)).isoformat()
+        for k, v in (("start", start), ("end", end))
+        if v is not None
+    }
+    payload = ALERT | {"activePeriods": [period]}
+    apply_alert_snapshot(
+        local,
+        RawI3AlertSnapshot(101, "network", "America/Toronto", AT, [payload]),
+        loaded_at_utc=AT,
+    )
+    result = json.loads(build(local, context(endpoints=("i3_alerts",)))["alerts.json"])
+    assert [a["id"] for a in result["alerts"]] == (["avis"] if active else [])
+    assert result["feed_captured_utc"] == "2026-06-20T12:10:00Z"
+
+
+@pytest.mark.parametrize("endpoint", ["trip_updates", "vehicle_positions"])
+@pytest.mark.parametrize("retained", [False, True])
+def test_disabled_feed_keeps_committed_health_history_without_resolving(local, endpoint, retained):
+    class Forbidden:
+        def latest(self):
+            pytest.fail("disabled holder resolved")
+
+    if retained:
+        local.connection.execute(
+            "INSERT INTO local_serving VALUES (?,9,?,?)", [endpoint, AT - timedelta(seconds=30), AT]
+        )
+    feeds = captured([dict(provider_id="network", endpoint_key=endpoint, status="succeeded")])
+    ctx = replace(context(), feeds=feeds)
+    result = build(local, ctx, Forbidden())
+    health = json.loads(result["status/data_health.json"])
+    assert health["feeds"] == [
+        dict(feed=endpoint, status="succeeded", age_s=30 if retained else None)
+    ]
+    assert json.loads(result["trips.json"])["feed_captured_utc"] is None
+    if retained:
+        with pytest.raises(ValueError, match="serving_mismatch"):
+            build(local, replace(context(endpoints=(endpoint,)), feeds=feeds))
+
+
 def test_tier_gate_and_poll_success_do_not_promote_serving(local):
     ctx = context(endpoints=("trip_updates",))
     identity = dict(provider_id="network")
@@ -248,6 +375,40 @@ def test_tier_gate_and_poll_success_do_not_promote_serving(local):
     assert health["feeds"][0]["age_s"] is None
     assert health["lanes"][0]["age_s"] is None
     assert health["lanes"][0]["gate"]["errors"] == 1
+
+
+@pytest.mark.parametrize(
+    "stamp,expected",
+    [
+        ("2026-06-20T12:09:00.123456+00:00", "2026-06-20T12:09:00Z"),
+        ("2026-06-20T08:09:00.123456-04:00", "2026-06-20T12:09:00Z"),
+        ("2026-06-20T12:09:00Z", "2026-06-20T12:09:00Z"),
+        (None, None),
+    ],
+)
+def test_gate_timestamp_uses_public_utc_seconds_without_mutating_context(local, stamp, expected):
+    tiers = captured(
+        [
+            dict(
+                provider_id="network",
+                tier="static",
+                gate_errors=1,
+                gate_verdict="error",
+                gate_generated_utc=stamp,
+            )
+        ]
+    )
+    ctx = replace(context(), tiers=tiers)
+    before = tiers.body
+    health = json.loads(build(local, ctx)["status/data_health.json"])
+    assert health["lanes"][0]["gate"] == {
+        "checks_run": None,
+        "errors": 1,
+        "warnings": None,
+        "verdict": "error",
+        "generated_utc": expected,
+    }
+    assert tiers.body == before
 
 
 @pytest.mark.parametrize(

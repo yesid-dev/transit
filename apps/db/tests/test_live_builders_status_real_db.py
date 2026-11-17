@@ -13,12 +13,15 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import text
 from test_live_builders_status import captured, context
+from test_live_facts import parsed_vehicle, vehicle_message
 from test_live_running import AT, Holder, inputs
 from test_live_running import local as local
 from test_local_alert_apply import ALERT
 from test_local_alert_seed import bundle
 
 from transit_ops.live.builders_status import build_bundle
+from transit_ops.live.facts import apply_capture
+from transit_ops.live.running import FeedPolicy
 from transit_ops.providers.registry import ProviderRegistry
 from transit_ops.silver.i3 import RawI3AlertSnapshot
 from transit_ops.snapshots.builders import live
@@ -108,7 +111,8 @@ def prepare_alerts(pg, ctx, local):
     view = pg.execute(
         text("SELECT pg_get_viewdef('gold.current_i3_alerts'::regclass,true)")
     ).scalar_one()
-    pg.execute(text("CREATE TEMP VIEW current_i3_alerts AS " + view.replace("silver.", "pg_temp.")))
+    view = view.replace("silver.", "pg_temp.").replace("now()", f"TIMESTAMPTZ '{AT.isoformat()}'")
+    pg.execute(text("CREATE TEMP VIEW current_i3_alerts AS " + view))
 
 
 @pytest.mark.parametrize("provider", ["stm", "octranspo"])
@@ -196,6 +200,156 @@ def cycle_fixture(local, provider, synthetic):
     return ctx, settings
 
 
+@pytest.mark.parametrize(
+    "start,end,active",
+    [
+        (0, None, True),
+        (-3600, 0, True),
+        (0.000001, None, False),
+        (None, -0.000001, False),
+        (None, None, True),
+    ],
+)
+def test_alert_view_window_is_frozen_at_explicit_cycle(real_db_engine, local, start, end, active):
+    ctx, _ = cycle_fixture(local, "network", False)
+    period = {
+        k: (AT + timedelta(seconds=v)).isoformat()
+        for k, v in (("start", start), ("end", end))
+        if v is not None
+    }
+    payload = ALERT | {"id": "window", "activePeriods": [period]}
+    apply_alert_snapshot(
+        local,
+        RawI3AlertSnapshot(102, "network", "America/Toronto", AT, [payload]),
+        loaded_at_utc=AT,
+    )
+    ours = build_bundle(local, Holder(None), inputs(local), ctx)["alerts.json"]
+    assert {r["id"] for r in json.loads(ours)["alerts"]} == (
+        {"avis", "window"} if active else {"avis"}
+    )
+    with real_db_engine.connect() as pg, pg.begin() as tx:
+        try:
+            prepare(pg, ctx, local)
+            expected = live.build_alerts(Sources(pg), provider_id="network", generated_utc=_iso(AT))
+            assert ours == snapshot_json_bytes(expected), "new engine alert-window error"
+        finally:
+            tx.rollback()
+
+
+@pytest.mark.parametrize(
+    "latitude,unbounded,count",
+    [
+        (10, False, 0),
+        (45.5, False, 1),
+        (10, True, 1),
+        (45, False, 1),
+        (46, False, 1),
+    ],
+)
+def test_network_uses_installed_map_bbox_population(
+    real_db_engine, local, latitude, unbounded, count
+):
+    ctx, _ = cycle_fixture(local, "network", False)
+    message = vehicle_message()
+    del message.entity[1:]
+    message.entity[0].vehicle.position.latitude = latitude
+    apply_capture(local, parsed_vehicle(message), provider_timezone="America/Toronto")
+    provider = ctx.rows("provider")[0]
+    if unbounded:
+        provider.update(
+            {k: None for k in ("min_longitude", "min_latitude", "max_longitude", "max_latitude")}
+        )
+    ctx = replace(
+        ctx,
+        provider=captured([provider]),
+        endpoints=captured(
+            ctx.rows("endpoints") + [dict(provider_id="network", endpoint_key="vehicle_positions")]
+        ),
+        vehicle_policy=FeedPolicy(True, 60),
+    )
+    result = build_bundle(local, Holder(None), inputs(local), ctx)
+    ours = result["network.json"]
+    assert json.loads(ours)["vehicles_in_service"] == count
+    assert len(json.loads(result["vehicles.json"])["vehicles"]) == count
+    with real_db_engine.connect() as pg, pg.begin() as tx:
+        try:
+            prepare(pg, ctx, local)
+            prepare_map_views(pg, provider, latitude)
+            expected = live.build_network(
+                Sources(pg), provider_id="network", generated_utc=_iso(AT)
+            )
+            assert ours == snapshot_json_bytes(expected), "new engine bbox-population error"
+        finally:
+            tx.rollback()
+
+
+def prepare_map_views(pg, provider, latitude):
+    pg.execute(
+        text(
+            "CREATE TEMP TABLE dim_provider ON COMMIT DROP AS "
+            "SELECT * FROM gold.dim_provider WITH NO DATA"
+        )
+    )
+    fields = ["provider_id", "min_longitude", "min_latitude", "max_longitude", "max_latitude"]
+    pg.execute(
+        text(
+            f"INSERT INTO pg_temp.dim_provider ({','.join(fields)}) "
+            f"VALUES ({','.join(':' + k for k in fields)})"
+        ),
+        provider,
+    )
+    pg.execute(
+        text(
+            "INSERT INTO pg_temp.latest_vehicle_snapshot "
+            "(provider_id,realtime_snapshot_id,entity_index,vehicle_id,trip_id,"
+            "latitude,longitude,occupancy_status) "
+            "VALUES ('network',42,0,'bus-0','行程',:lat,-73.5,2)"
+        ),
+        dict(lat=latitude),
+    )
+    pg.execute(text("DROP TABLE pg_temp.current_vehicle_map_with_status"))
+    for name in ("current_vehicle_map", "current_vehicle_map_with_status"):
+        view = pg.execute(text(f"SELECT pg_get_viewdef('gold.{name}'::regclass,true)")).scalar_one()
+        view = view.replace("gold.", "pg_temp.").replace("now()", f"TIMESTAMPTZ '{AT.isoformat()}'")
+        pg.execute(text(f"CREATE TEMP VIEW {name} AS " + view))
+
+
+@pytest.mark.parametrize("endpoint", ["trip_updates", "vehicle_positions"])
+@pytest.mark.parametrize("retained", [False, True])
+def test_disabled_feed_health_matches_retained_serving_history(
+    real_db_engine, local, endpoint, retained
+):
+    ctx, _ = cycle_fixture(local, "network", False)
+    ctx = replace(
+        ctx,
+        feeds=captured([dict(provider_id="network", endpoint_key=endpoint, status="succeeded")]),
+    )
+    if retained:
+        local.connection.execute(
+            "INSERT INTO local_serving VALUES (?,9,?,?)", [endpoint, AT - timedelta(seconds=30), AT]
+        )
+    ours = build_bundle(local, Holder(None), inputs(local), ctx)["status/data_health.json"]
+    assert json.loads(ours)["feeds"][0]["age_s"] == (30 if retained else None)
+    with real_db_engine.connect() as pg, pg.begin() as tx:
+        try:
+            prepare(pg, ctx, local)
+            if retained:
+                pg.execute(
+                    text(
+                        "INSERT INTO pg_temp.realtime_serving_state "
+                        "(provider_id,endpoint_key,realtime_snapshot_id,captured_at_utc) "
+                        "VALUES ('network',:endpoint,9,:stamp)"
+                    ),
+                    dict(endpoint=endpoint, stamp=AT - timedelta(seconds=30)),
+                )
+            expected = live.build_data_health(
+                Sources(pg), provider_id="network", generated_utc=_iso(AT)
+            )
+            assert ours == snapshot_json_bytes(expected), "new engine disabled-history error"
+        finally:
+            tx.rollback()
+
+
 def test_pg_network_detector_against_independent_counts(real_db_engine, local):
     from decimal import Decimal
 
@@ -224,7 +378,7 @@ def test_pg_network_detector_against_independent_counts(real_db_engine, local):
         Evidence("missing"),
         Evidence("missing"),
     )
-    ours = build_network(local, context(), projection, set())
+    ours = build_network(local, context(), projection, set(), bounds=None)
     assert (ours.on_time_pct, ours.coverage_pct, ours.delay_p90_min) == (43, 88, 9)
     with real_db_engine.connect() as pg, pg.begin() as tx:
         try:

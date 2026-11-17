@@ -51,6 +51,29 @@ from transit_ops.snapshots.serialization import snapshot_json_bytes
 from transit_ops.static.alert_apply import _jsonb
 from transit_ops.static.alert_seed_contract import SCHEMAS
 
+type Bounds = tuple[float, float, float, float]
+
+
+def _bounds(provider: dict[str, Any]) -> Bounds | None:
+    values = [
+        provider[k] for k in ("min_longitude", "min_latitude", "max_longitude", "max_latitude")
+    ]
+    if all(v is None for v in values):
+        return None
+    if any(type(v) not in (int, float) for v in values):
+        raise ValueError("invalid provider bounds")
+    west, south, east, north = (float(v) for v in values)
+    if not (-180 <= west <= east <= 180 and -90 <= south <= north <= 90):
+        raise ValueError("invalid provider bounds")
+    return west, south, east, north
+
+
+def _within_bounds(row: dict[str, Any], bounds: Bounds | None) -> bool:
+    if bounds is None:
+        return True
+    west, south, east, north = bounds
+    return bool(south <= row["latitude"] <= north and west <= row["longitude"] <= east)
+
 
 def _rows(local: LocalFile, table: str, provider: str) -> list[dict[str, Any]]:
     # Fetch timestamptz as ISO text: DuckDB's Python conversion requires optional pytz.
@@ -181,7 +204,12 @@ def build_alerts(local: LocalFile, context: PublicationContext, enabled: bool) -
         if key not in selected or rank(row) > rank(selected[key]):
             selected[key] = row
     ordered = sorted(
-        selected.items(),
+        (
+            (k, r)
+            for k, r in selected.items()
+            if (r["active_period_start_utc"] or r["captured_at_utc"]) <= cycle
+            and (r["active_period_end_utc"] is None or r["active_period_end_utc"] >= cycle)
+        ),
         key=lambda p: (
             p[1]["active_period_start_utc"] is None,
             p[1]["active_period_start_utc"] or cycle,
@@ -199,9 +227,9 @@ def build_alerts(local: LocalFile, context: PublicationContext, enabled: bool) -
     )
 
 
-def _certificate(
-    local: LocalFile, endpoint: str, evidence: Any, cycle: datetime
-) -> datetime | None:
+def _serving_record(
+    local: LocalFile, endpoint: str, cycle: datetime
+) -> tuple[int, datetime] | None:
     row = local.connection.execute(
         "SELECT capture_row_id, captured_at_utc FROM local_serving WHERE endpoint_key=?", [endpoint]
     ).fetchone()
@@ -209,6 +237,16 @@ def _certificate(
         return None
     stamp = event(row[1].replace(tzinfo=UTC), cycle, endpoint)
     assert stamp is not None
+    return row[0], stamp
+
+
+def _certificate(
+    local: LocalFile, endpoint: str, evidence: Any, cycle: datetime
+) -> datetime | None:
+    row = _serving_record(local, endpoint, cycle)
+    if row is None:
+        return None
+    stamp = row[1]
     actual = (evidence.capture_id, evidence.captured_at)
     if actual == (row[0], stamp):
         return stamp
@@ -220,6 +258,16 @@ def _certificate(
     ):
         raise ValueError(f"local_{endpoint}_serving_mismatch")
     return None
+
+
+def _health_stamp(
+    local: LocalFile, endpoint: str, evidence: Any, cycle: datetime
+) -> datetime | None:
+    if evidence.state != "unsupported":
+        return _certificate(local, endpoint, evidence, cycle)
+    # Disabling a capability does not erase its last committed serving history.
+    row = _serving_record(local, endpoint, cycle)
+    return row[1] if row is not None else None
 
 
 def _non_responding(
@@ -259,11 +307,16 @@ def _freshness(
 
 
 def build_network(
-    local: LocalFile, context: PublicationContext, projection: Projection, endpoints: set[str]
+    local: LocalFile,
+    context: PublicationContext,
+    projection: Projection,
+    endpoints: set[str],
+    *,
+    bounds: Bounds | None,
 ) -> NetworkFile:
     dist = StatusDist()
     occupancy: Counter[str] = Counter()
-    vehicles = [r for r in projection.vehicles if r["trip_id"]]
+    vehicles = [r for r in projection.vehicles if r["trip_id"] and _within_bounds(r, bounds)]
     for row in vehicles:
         code = movement._status(row["trip_avg_delay_seconds"])
         setattr(dist, code, getattr(dist, code) + 1)
@@ -353,7 +406,7 @@ def build_data_health(
     for tier, label in (("live", "live"), ("static", "static"), ("historic", "rollup")):
         for row in (r for r in tiers if r["tier"] == tier):
             stamp = event(row.get("generated_utc"), context.cycle, "tier")
-            event(row.get("gate_generated_utc"), context.cycle, "gate")
+            gate_stamp = event(row.get("gate_generated_utc"), context.cycle, "gate")
             lanes.append(
                 LaneHealth(
                     lane=label,
@@ -362,7 +415,7 @@ def build_data_health(
                     files_written=row.get("files_written"),
                     files_skipped=row.get("files_skipped"),
                     files_total=row.get("files_total"),
-                    gate=_data_health_gate(row),
+                    gate=_data_health_gate(row | {"gate_generated_utc": gate_stamp}),
                 )
             )
     feeds = []
@@ -373,7 +426,7 @@ def build_data_health(
     for row in sorted(context.rows("feeds"), key=lambda r: r["endpoint_key"]):
         endpoint = row["endpoint_key"]
         if endpoint in evidence:
-            stamp = _certificate(local, endpoint, evidence[endpoint], context.cycle)
+            stamp = _health_stamp(local, endpoint, evidence[endpoint], context.cycle)
         elif endpoint in ("i3_alerts", "service_alerts"):
             stamp = _observed(local, context)
         else:
@@ -430,6 +483,7 @@ def build_bundle(
     local: LocalFile, holder: TripHolder, inputs: ScheduleInputs, context: PublicationContext
 ) -> dict[str, bytes]:
     provider, endpoints, tiers, projection = _project(local, holder, inputs, context)
+    bounds = _bounds(provider)
     cycle = aware(context.cycle, "cycle")
     assert context.trip_policy is not None
     stamp = movement._serving_stamp(
@@ -440,19 +494,14 @@ def build_bundle(
         "vehicles.json": movement._vehicles(
             projection,
             generated,
-            (
-                provider["min_longitude"],
-                provider["min_latitude"],
-                provider["max_longitude"],
-                provider["max_latitude"],
-            ),
+            bounds,
         ),
         "trips.json": movement._trips(projection, cycle, stamp),
         "stop_departures.json": movement._departures(projection, generated, stamp),
         "alerts.json": build_alerts(
             local, context, bool(endpoints & {"i3_alerts", "service_alerts"})
         ),
-        "network.json": build_network(local, context, projection, endpoints),
+        "network.json": build_network(local, context, projection, endpoints, bounds=bounds),
         "status/data_health.json": build_data_health(local, context, projection, tiers),
         "manifest.json": build_manifest(context, provider, endpoints, tiers),
     }
