@@ -14,6 +14,7 @@ import {
 } from './state';
 
 const KEY_ORDER = [
+	'id_format',
 	'out_of_service',
 	'route',
 	'stop',
@@ -68,13 +69,15 @@ function dedupe(values: readonly string[]): string[] {
 
 export function fromSearchParams(sp: URLSearchParams): FilterState {
 	const state = emptyFilterState();
+	const repeatedIds = sp.getAll('id_format').length === 1 && sp.get('id_format') === 'repeat';
 	if (sp.get('out_of_service') === '1') state.showOutOfService = true;
 
 	for (const [key, field] of Object.entries(SET_KEY_TO_FIELD) as [
 		'route' | 'stop' | 'trip' | 'vehicle',
 		IdSetKey,
 	][]) {
-		for (const token of collect(sp, key)) state[field].add(token);
+		const ids = repeatedIds ? sp.getAll(key).filter((id) => id.length > 0) : collect(sp, key);
+		for (const token of ids) state[field].add(token);
 	}
 
 	const status = normalizeStatus(collect(sp, 'status'));
@@ -113,9 +116,17 @@ export function fromSearchParams(sp: URLSearchParams): FilterState {
 
 export function toSearchParams(s: FilterState): URLSearchParams {
 	const sp = new URLSearchParams();
+	// Legacy comma lists stay unchanged. A declared repeated-value encoding is needed
+	// only when a literal ID itself contains a delimiter or significant edge whitespace.
+	const repeatedIds = Object.values(SET_KEY_TO_FIELD).some((field) =>
+		[...s[field]].some((id) => id.includes(',') || id !== id.trim()),
+	);
 
 	for (const key of KEY_ORDER) {
 		switch (key) {
+			case 'id_format':
+				if (repeatedIds) sp.set(key, 'repeat');
+				break;
 			case 'out_of_service':
 				if (s.showOutOfService) sp.set(key, '1');
 				break;
@@ -124,7 +135,9 @@ export function toSearchParams(s: FilterState): URLSearchParams {
 			case 'trip':
 			case 'vehicle': {
 				const set = s[SET_KEY_TO_FIELD[key]];
-				if (set.size > 0) sp.set(key, [...set].sort().join(','));
+				if (repeatedIds) {
+					for (const id of [...set].sort()) sp.append(key, id);
+				} else if (set.size > 0) sp.set(key, [...set].sort().join(','));
 				break;
 			}
 			case 'status': {

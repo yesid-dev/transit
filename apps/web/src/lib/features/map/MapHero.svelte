@@ -72,7 +72,7 @@
 	import { mapReportFilterLabels } from './mapReportFilterSummary';
 	import { mapReportsCopy } from './mapReports.copy';
 	import { buildMapReportLiveViewHref } from './mapReportsLink';
-	import { parseMapViewHint, type MapViewHint } from './mapViewHint';
+	import { parseMapViewHint, mapViewHintWithinRuntime, type MapViewHint } from './mapViewHint';
 	import MapReportsPanel from './MapReportsPanel.svelte';
 
 	interface Props {
@@ -274,7 +274,7 @@
 			if (event.key !== 'Escape' || event.defaultPrevented) return;
 			if (document.querySelector('[data-slot="bottom-sheet"][data-state="open"]')) return;
 			viewMode = 'map';
-			void tick().then(focusMapViewSwitch);
+			void tick().then(() => focusMapViewSwitch());
 		};
 		document.addEventListener('keydown', onKey);
 		return () => document.removeEventListener('keydown', onKey);
@@ -341,6 +341,16 @@
 			},
 			filter: filters.state,
 			alertVehicleIds,
+			alertPublication: live.alerts,
+			alertHealth: {
+				loading: live.familyStates.alerts.phase === 'loading',
+				retained: live.familyStates.alerts.health.retained,
+				failing:
+					live.familyStates.alerts.health.state === 'retrying' ||
+					live.familyStates.alerts.health.state === 'failed-no-data' ||
+					live.familyStates.alerts.health.notice === 'refresh-unavailable',
+				stale: live.familyStates.alerts.health.isStale,
+			},
 			camera: reportCamera,
 			serverNow: dataClock.serverNow,
 			staleCutoffS: liveTimingFor(manifest).staleCutoffS,
@@ -383,18 +393,21 @@
 		}
 		viewMode = next;
 		if (next === 'reports') reportsReturnFocus = null;
+		void tick().then(() => focusMapViewSwitch(next));
 	}
 
 	function closeReports(): void {
 		if (desktop.current) reportsPaneOpen = false;
-		else viewMode = 'map';
+		else {
+			viewMode = 'map';
+			void tick().then(() => focusMapViewSwitch());
+		}
 	}
 
-	function focusMapViewSwitch(): void {
+	function focusMapViewSwitch(surface: 'map' | 'reports' = 'map'): void {
+		const owner = surface === 'reports' ? '.map-reports-overlay' : '[data-slot="map-view-choice"]';
 		heroEl
-			?.querySelector<HTMLElement>(
-				'[data-slot="map-view-choice"] [role="radio"][aria-checked="true"]',
-			)
+			?.querySelector<HTMLElement>(`${owner} [role="radio"][aria-checked="true"]`)
 			?.focus({ preventScroll: true });
 	}
 
@@ -410,6 +423,7 @@
 	}
 
 	function selectReportVehicle(id: string): void {
+		camera.interact();
 		reportsReturnFocus = id;
 		commitPickedSelection({ kind: 'vehicle', id });
 		detailCollapsed = detailWidthPx === 56;
@@ -425,6 +439,7 @@
 		session.select(next, 'pick');
 	}
 	function selectPickedFeature(next: MapSelection) {
+		if (next.kind === 'vehicle') camera.interact();
 		commitPickedSelection(next);
 		detailCollapsed = detailWidthPx === 56;
 		// A vehicle pick opens its detail in place; only route and stop picks move the camera.
@@ -521,7 +536,13 @@
 			const hint = pendingViewHint;
 			pendingViewHint = null;
 			// An explicit focus or near-me search is this page's own intent and outranks the link.
-			if (hint && !focusController.pending && !nearMeController.origin) {
+			if (
+				hint &&
+				!focusController.pending &&
+				!nearMeController.origin &&
+				mapViewHintWithinRuntime(hint, m)
+			) {
+				camera.interact();
 				m.jumpTo({
 					center: [hint.center[0], hint.center[1]],
 					zoom: hint.zoom,

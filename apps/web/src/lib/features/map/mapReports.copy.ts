@@ -16,6 +16,7 @@ export const copy = defineCopy({
 				old === 1 ? 'has' : 'have'
 			} no recent position.`,
 		reportsEmpty: 'No reports match these filters.',
+		stopsOnly: 'Scheduled stops are not vehicle position reports.',
 		unscoped: (count: string, n: number) =>
 			`${count} matching ${n === 1 ? 'report has' : 'reports have'} no usable location and ${
 				n === 1 ? 'is' : 'are'
@@ -24,11 +25,15 @@ export const copy = defineCopy({
 		copyDisclaimer: 'This link opens the live view, which changes.',
 		downloadCsv: 'Download displayed reports (CSV)',
 		copied: 'Link copied.',
-		copyFailed: 'Could not copy the link. Copy it from the address bar.',
+		copyFailed: 'Could not copy the link.',
 		loading: 'Loading vehicle reports…',
+		loadingAlerts: 'Loading alert filter data…',
 		unavailableView: 'Reports are unavailable until the map view is ready.',
 		unavailableSource: 'Live vehicle reports are unavailable right now.',
 		unavailableClock: 'Vehicle report times are unavailable right now.',
+		unavailableAlerts: 'The alert filter is unavailable right now.',
+		alertSourceTime: 'Alert source time',
+		alertRetainedWarning: 'This filter uses the last available alerts.',
 		retainedWarning: 'Live updates are failing. These are the last available reports.',
 		staleWarning: 'The live feed has not updated recently. These are the last available reports.',
 		sourceTime: 'Source time',
@@ -52,6 +57,7 @@ export const copy = defineCopy({
 				old < 2 ? 'n’a pas' : 'n’ont pas'
 			} de position récente.`,
 		reportsEmpty: 'Aucun relevé ne correspond à ces filtres.',
+		stopsOnly: 'Les arrêts prévus à l’horaire ne sont pas des relevés de position de véhicules.',
 		unscoped: (count: string, n: number) =>
 			`${count} ${n < 2 ? 'relevé correspondant n’a pas' : 'relevés correspondants n’ont pas'} de position utilisable et ${
 				n < 2 ? 'ne figure pas' : 'ne figurent pas'
@@ -60,11 +66,15 @@ export const copy = defineCopy({
 		copyDisclaimer: 'Ce lien ouvre la vue en direct, dont le contenu change.',
 		downloadCsv: 'Télécharger les relevés affichés (CSV)',
 		copied: 'Lien copié.',
-		copyFailed: 'Impossible de copier le lien. Copiez-le depuis la barre d’adresse.',
+		copyFailed: 'Impossible de copier le lien.',
 		loading: 'Chargement des relevés de véhicules…',
+		loadingAlerts: 'Chargement des données du filtre d’alertes…',
 		unavailableView: 'Les relevés sont indisponibles tant que la vue de la carte n’est pas prête.',
 		unavailableSource: 'Les relevés de véhicules en direct sont indisponibles pour l’instant.',
 		unavailableClock: 'Les heures des relevés de véhicules sont indisponibles pour l’instant.',
+		unavailableAlerts: 'Le filtre d’alertes est indisponible pour l’instant.',
+		alertSourceTime: 'Heure de la source des alertes',
+		alertRetainedWarning: 'Ce filtre utilise les dernières alertes disponibles.',
 		retainedWarning: 'Les mises à jour en direct échouent. Voici les derniers relevés disponibles.',
 		staleWarning:
 			'Le flux en direct n’a pas été mis à jour récemment. Voici les derniers relevés disponibles.',

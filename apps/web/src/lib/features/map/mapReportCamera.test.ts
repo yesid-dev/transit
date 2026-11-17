@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { emptyFilterState } from '#lib/filters/index.ts';
+import { VehiclesFileSchema } from '#lib/v1/schemas/index.ts';
+import { buildMapReportView } from './mapReports';
 import {
 	captureMapReportCamera,
 	isCoordinateInCapturedView,
@@ -7,8 +10,16 @@ import {
 } from './mapReportCamera';
 
 function source(overrides: Partial<MapReportCameraSource> = {}): MapReportCameraSource {
+	const project =
+		overrides.project ??
+		(([lon, lat]: [number, number]) => ({ x: (lon + 74) * 1000, y: (46 - lat) * 1000 }));
 	const handling: MapReportCameraSource = {
-		project: ([lon, lat]: [number, number]) => ({ x: (lon + 74) * 1000, y: (46 - lat) * 1000 }),
+		project,
+		_camera: {
+			transform: {
+				clone: () => ({ locationToScreenPoint: ({ lng, lat }) => project([lng, lat]) }),
+			},
+		},
 		getCenter: () => ({ lng: -73.6, lat: 45.5 }),
 		getZoom: () => 11,
 		getBearing: () => 0,
@@ -25,6 +36,68 @@ function source(overrides: Partial<MapReportCameraSource> = {}): MapReportCamera
 }
 
 describe('captured map report camera', () => {
+	it('keeps its projection when a later source or clock update arrives during camera movement', () => {
+		let offset = 0;
+		const live = {
+			...source({ project: () => ({ x: 20 + offset, y: 20 }) }),
+			_camera: {
+				transform: {
+					clone: () => {
+						const capturedOffset = offset;
+						return { locationToScreenPoint: () => ({ x: 20 + capturedOffset, y: 20 }) };
+					},
+				},
+			},
+		};
+		const camera = captureMapReportCamera(live)!;
+		const before = camera.project([-73.6, 45.5]);
+		const vehicle = {
+			id: 'first',
+			lat: 45.5,
+			lon: -73.6,
+			status: 'on_time' as const,
+			trip: 'trip',
+			updated_utc: '2026-11-16T20:59:30Z',
+		};
+		const input = {
+			camera,
+			filter: emptyFilterState(),
+			alertVehicleIds: new Set<string>(),
+			health: null,
+			serverNow: Date.parse('2026-11-16T21:00:00Z'),
+			staleCutoffS: 150,
+			providerId: 'stm',
+			providerName: 'STM',
+			locale: 'en' as const,
+			filters: [],
+		};
+		const previous = buildMapReportView({
+			...input,
+			source: VehiclesFileSchema.parse({
+				generated_utc: '2026-11-16T20:59:40Z',
+				vehicles: [vehicle],
+			}),
+		});
+		offset = 2000;
+		const refreshed = buildMapReportView({
+			...input,
+			serverNow: input.serverNow + 1000,
+			source: VehiclesFileSchema.parse({
+				generated_utc: '2026-11-16T21:00:00Z',
+				vehicles: [vehicle, { ...vehicle, id: 'second' }],
+			}),
+		});
+		if (previous.kind !== 'ready' || refreshed.kind !== 'ready')
+			throw new Error('ready captures required');
+		expect(previous.model.inViewCount).toBe(1);
+		expect(refreshed.model.rows.map((row) => row.vehicleId)).toEqual(['first', 'second']);
+		expect(refreshed.model.camera).toEqual(previous.model.camera);
+		expect(refreshed.model.generatedUtc).toBe('2026-11-16T21:00:00Z');
+		expect(camera.project([-73.6, 45.5])).toEqual(before);
+		expect(isCoordinateInCapturedView(camera, [-73.6, 45.5])).toBe(true);
+		expect(camera.center).toEqual([-73.6, 45.5]);
+	});
+
 	it('copies the settled camera and the actual canvas size', () => {
 		const camera = captureMapReportCamera(source())!;
 		expect(camera).toMatchObject({
@@ -40,6 +113,7 @@ describe('captured map report camera', () => {
 
 	it('is unavailable before the map exists or without a real box', () => {
 		expect(captureMapReportCamera(null)).toBeNull();
+		expect(captureMapReportCamera(source({ _camera: undefined }))).toBeNull();
 		expect(
 			captureMapReportCamera(source({ getCanvas: () => ({ clientWidth: 0, clientHeight: 800 }) })),
 		).toBeNull();

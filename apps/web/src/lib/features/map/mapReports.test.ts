@@ -49,6 +49,12 @@ function input(overrides: Partial<MapReportInput> = {}): MapReportInput {
 		health: { retained: true, failing: false, stale: false },
 		filter: emptyFilterState(),
 		alertVehicleIds: new Set<string>(),
+		alertPublication: {
+			generated_utc: '2026-11-16T20:58:00Z',
+			publish_generation_id: 'alerts-1',
+			methodology_version: 'alerts-method',
+		},
+		alertHealth: { retained: true, failing: false, stale: false },
 		camera,
 		serverNow: NOW,
 		staleCutoffS: 150,
@@ -74,6 +80,48 @@ function ids(view: ReturnType<typeof buildMapReportView>): string[] {
 }
 
 describe('map report view', () => {
+	it('keeps unknown alert-filter evidence unavailable and retains known last-available matches', () => {
+		const filter = { ...emptyFilterState(), alerts: ['has_alert' as const] };
+		expect(buildMapReportView(input({ filter, alertPublication: null }))).toEqual({
+			kind: 'unavailable',
+			reason: 'alerts',
+		});
+		expect(
+			buildMapReportView(
+				input({
+					filter,
+					alertPublication: null,
+					alertHealth: { retained: false, failing: false, stale: false, loading: true },
+				}),
+			),
+		).toEqual({ kind: 'loading', reason: 'alerts' });
+		const retained = model({
+			filter,
+			alertVehicleIds: new Set(['bus-1']),
+			alertHealth: { retained: true, failing: true, stale: true },
+		});
+		expect(retained.rows.map((row) => row.vehicleId)).toEqual(['bus-1']);
+		expect(retained.alertFilter).toEqual({
+			generatedUtc: '2026-11-16T20:58:00Z',
+			generationId: 'alerts-1',
+			methodVersion: 'alerts-method',
+			dataState: 'last_available',
+		});
+		expect(retained.generatedUtc).toBe('2026-11-16T20:59:40Z');
+		expect(model({ alertPublication: null }).alertFilter).toBeNull();
+	});
+
+	it('keeps different opaque restrictions distinct while a clipboard operation is pending', () => {
+		const joined = emptyFilterState();
+		joined.routes.add('a|stop:b');
+		const separate = emptyFilterState();
+		separate.routes.add('a');
+		separate.stops.add('b');
+		expect(model({ filter: joined, filters: mapReportFilterTokens(joined) }).identity).not.toBe(
+			model({ filter: separate, filters: mapReportFilterTokens(separate) }).identity,
+		);
+	});
+
 	it('reuses the map renderer predicate for every filter category', () => {
 		const vehicles = [
 			vehicle({ id: 'on-time' }),

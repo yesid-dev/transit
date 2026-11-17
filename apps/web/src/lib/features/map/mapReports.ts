@@ -14,6 +14,20 @@ export interface MapReportSourceHealth {
 	/** The latest poll failed; the numbers belong to the retained file. */
 	readonly failing: boolean;
 	readonly stale: boolean;
+	readonly loading?: boolean;
+}
+
+export interface MapReportPublication {
+	readonly generated_utc: string;
+	readonly publish_generation_id?: string | null;
+	readonly methodology_version?: string | null;
+}
+
+export interface MapReportAlertContext {
+	readonly generatedUtc: string;
+	readonly generationId: string | null;
+	readonly methodVersion: string | null;
+	readonly dataState: 'current' | 'last_available';
 }
 
 export type MapReportAgeBasis = 'reported_utc' | 'updated_utc';
@@ -67,6 +81,7 @@ export interface MapReportModel {
 	readonly evaluatedUtc: string;
 	readonly attribution: string | null;
 	readonly sourceHealth: MapReportSourceHealth | null;
+	readonly alertFilter: MapReportAlertContext | null;
 	readonly rows: readonly MapReportRow[];
 	readonly inViewCount: number;
 	readonly noRecentInViewCount: number;
@@ -74,10 +89,10 @@ export interface MapReportModel {
 	readonly unscopedMatchingCount: number;
 }
 
-export type MapReportUnavailableReason = 'view' | 'source' | 'clock';
+export type MapReportUnavailableReason = 'view' | 'source' | 'clock' | 'alerts';
 
 export type MapReportView =
-	| { readonly kind: 'loading' }
+	| { readonly kind: 'loading'; readonly reason?: 'alerts' }
 	| { readonly kind: 'unavailable'; readonly reason: MapReportUnavailableReason }
 	| { readonly kind: 'ready'; readonly model: MapReportModel };
 
@@ -86,6 +101,9 @@ export interface MapReportInput {
 	readonly health: MapReportSourceHealth | null;
 	readonly filter: FilterState;
 	readonly alertVehicleIds: ReadonlySet<string>;
+	/** Publication and health of the same alert input that produced alertVehicleIds. */
+	readonly alertPublication?: MapReportPublication | null;
+	readonly alertHealth?: MapReportSourceHealth | null;
 	readonly camera: MapReportCamera | null;
 	readonly serverNow: number;
 	readonly staleCutoffS: number;
@@ -154,6 +172,24 @@ export function buildMapReportView(input: MapReportInput): MapReportView {
 		return state?.failing ? { kind: 'unavailable', reason: 'source' } : { kind: 'loading' };
 	}
 	if (!Array.isArray(source.vehicles)) return { kind: 'unavailable', reason: 'source' };
+	const alertPublication = input.alertPublication ?? null;
+	const alertUsed = (filter.alerts?.length ?? 0) > 0;
+	if (alertUsed && !alertPublication)
+		return input.alertHealth?.loading
+			? { kind: 'loading', reason: 'alerts' }
+			: { kind: 'unavailable', reason: 'alerts' };
+	const alertFilter: MapReportAlertContext | null =
+		alertUsed && alertPublication
+			? {
+					generatedUtc: alertPublication.generated_utc,
+					generationId: alertPublication.publish_generation_id ?? null,
+					methodVersion: alertPublication.methodology_version ?? null,
+					dataState:
+						!input.alertHealth || input.alertHealth.failing || input.alertHealth.stale
+							? 'last_available'
+							: 'current',
+				}
+			: null;
 
 	const rows: MapReportRow[] = [];
 	let unscopedMatchingCount = 0;
@@ -178,14 +214,15 @@ export function buildMapReportView(input: MapReportInput): MapReportView {
 	}
 
 	const filters = [...input.filters];
-	const identity = [
+	const identity = JSON.stringify([
 		input.providerId,
 		source.generated_utc,
 		source.publish_generation_id ?? '',
 		source.methodology_version ?? '',
-		filters.join('|'),
+		filters,
 		mapReportCameraKey(camera),
-	].join('\u0000');
+		alertFilter,
+	]);
 
 	return {
 		kind: 'ready',
@@ -213,6 +250,7 @@ export function buildMapReportView(input: MapReportInput): MapReportView {
 			evaluatedUtc: new Date(serverNow).toISOString(),
 			attribution: input.attribution && input.attribution.trim() ? input.attribution : null,
 			sourceHealth: input.health,
+			alertFilter,
 			rows,
 			inViewCount: rows.length,
 			noRecentInViewCount: rows.filter((row) => row.noRecentPosition).length,

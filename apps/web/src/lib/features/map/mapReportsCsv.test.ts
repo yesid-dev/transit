@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { emptyFilterState } from '#lib/filters/index.ts';
 import type { Vehicle, VehiclesFile } from '#lib/v1/schemas/index.ts';
-import { buildMapReportView } from './mapReports';
+import { buildMapReportView, mapReportFilterTokens } from './mapReports';
 import { MAP_REPORT_CSV_COLUMNS, mapReportsCsv } from './mapReportsCsv';
 import type { MapReportCamera } from './mapReportCamera';
 
@@ -97,9 +97,88 @@ function record(csv: string): Record<string, string> {
 }
 
 describe('map report CSV', () => {
+	it('keeps alert-filter provenance separate from vehicle publication and retains its warning state', () => {
+		const filter = { ...emptyFilterState(), alerts: ['has_alert' as const] };
+		const row = record(
+			capturedCsv([vehicle()], {
+				filter,
+				filters: mapReportFilterTokens(filter),
+				alertVehicleIds: new Set(['bus-1']),
+				alertPublication: {
+					generated_utc: '2026-11-16T20:58:00Z',
+					publish_generation_id: 'alert-gen',
+					methodology_version: 'alert-method',
+				},
+				alertHealth: { retained: true, failing: true, stale: true },
+			}).csv,
+		);
+		expect(row).toMatchObject({
+			source_generated_utc: '2026-11-16T20:59:40Z',
+			publication_generation_id: 'gen-1',
+			alert_filter_generated_utc: '2026-11-16T20:58:00Z',
+			alert_filter_generation_id: 'alert-gen',
+			alert_filter_methodology_version: 'alert-method',
+			alert_filter_data_state: 'last_available',
+		});
+	});
+
+	it('exports an unambiguous filter vector when literal IDs contain separators', () => {
+		const filter = emptyFilterState();
+		filter.routes.add('a;stop:b');
+		filter.vehicles.add('bus,branch');
+		const row = record(
+			capturedCsv([vehicle({ id: 'bus,branch', route: 'a;stop:b' })], {
+				filter,
+				filters: mapReportFilterTokens(filter),
+			}).csv,
+		);
+		expect(JSON.parse(row.active_filters)).toEqual(['route:a;stop:b', 'vehicle:bus,branch']);
+	});
+
 	it('writes the fixed header in the documented order', () => {
 		const [header] = parse(capturedCsv([vehicle()]).csv);
-		expect(header).toEqual([...MAP_REPORT_CSV_COLUMNS]);
+		expect(header).toEqual([
+			'provider',
+			'provider_name',
+			'locale',
+			'report_scope',
+			'active_filters',
+			'view_center_lon',
+			'view_center_lat',
+			'view_zoom',
+			'view_bearing',
+			'view_pitch',
+			'view_width_px',
+			'view_height_px',
+			'view_bbox_west',
+			'view_bbox_south',
+			'view_bbox_east',
+			'view_bbox_north',
+			'source_generated_utc',
+			'publication_generation_id',
+			'methodology_version',
+			'alert_filter_generated_utc',
+			'alert_filter_generation_id',
+			'alert_filter_methodology_version',
+			'alert_filter_data_state',
+			'time_zone',
+			'evaluated_utc',
+			'attribution',
+			'vehicle_id',
+			'route_id',
+			'trip_id',
+			'next_stop_id',
+			'status',
+			'occupancy',
+			'delay_min',
+			'reported_utc',
+			'updated_utc',
+			'report_age_basis',
+			'report_age_seconds',
+			'no_recent_position',
+			'latitude',
+			'longitude',
+		]);
 	});
 
 	it('exports the captured metadata and the raw source row', () => {
@@ -110,7 +189,7 @@ describe('map report CSV', () => {
 			provider_name: 'STM',
 			locale: 'en',
 			report_scope: 'matching_vehicle_reports_in_current_map_view',
-			active_filters: 'route:24',
+			active_filters: '["route:24"]',
 			view_center_lon: '-73.6',
 			view_center_lat: '45.5',
 			view_zoom: '11',
@@ -119,6 +198,10 @@ describe('map report CSV', () => {
 			source_generated_utc: '2026-11-16T20:59:40Z',
 			publication_generation_id: 'gen-1',
 			methodology_version: 'm1',
+			alert_filter_generated_utc: '',
+			alert_filter_generation_id: '',
+			alert_filter_methodology_version: '',
+			alert_filter_data_state: 'not_used',
 			time_zone: 'America/Toronto',
 			evaluated_utc: '2026-11-16T21:00:00.000Z',
 			attribution: 'Source credit',

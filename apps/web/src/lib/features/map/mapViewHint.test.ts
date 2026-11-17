@@ -7,6 +7,7 @@ import {
 	MAP_VIEW_MIN_ZOOM,
 	MAP_VIEW_PARAM,
 	parseMapViewHint,
+	mapViewHintWithinRuntime,
 	serializeMapViewHint,
 	setMapViewHint,
 } from './mapViewHint';
@@ -18,6 +19,30 @@ function params(value: string): URLSearchParams {
 }
 
 describe('map view hint', () => {
+	it('preserves an actual provider-fit camera below zoom nine without precision loss', () => {
+		const camera = {
+			center: [-73.600000000123, 45.500000000456] as const,
+			zoom: 8.123456789,
+			bearing: 12.3456789,
+			pitch: 23.456789,
+		};
+		expect(parseMapViewHint(params(serializeMapViewHint(camera)), BOUNDS)).toEqual(camera);
+	});
+
+	it('checks the receiving map limits before applying a parsed camera', () => {
+		const camera = { center: [-73.6, 45.5] as const, zoom: 8.123456789, bearing: 0, pitch: 20 };
+		const limits = {
+			getMinZoom: () => 8.1,
+			getMaxZoom: () => 16,
+			getMinPitch: () => 0,
+			getMaxPitch: () => 60,
+		};
+		expect(mapViewHintWithinRuntime(camera, limits)).toBe(true);
+		expect(mapViewHintWithinRuntime(camera, { ...limits, getMinZoom: () => 9 })).toBe(false);
+		expect(mapViewHintWithinRuntime(camera, { ...limits, getMaxPitch: () => 10 })).toBe(false);
+		expect(mapViewHintWithinRuntime(camera, { ...limits, getMinZoom: () => NaN })).toBe(false);
+	});
+
 	it('round-trips one actual camera', () => {
 		const hint = { center: [-73.6, 45.5] as const, zoom: 12.5, bearing: -33.3, pitch: 20 };
 		const parsed = parseMapViewHint(params(serializeMapViewHint(hint)), BOUNDS);
@@ -102,19 +127,41 @@ describe('copied live view link', () => {
 	});
 
 	it('clears record periods and old-live hints', () => {
-		const url = new URL(
-			buildMapReportLiveViewHref(
-				new URL(
-					'http://localhost/map?provider=stm&from=2026-01-01&to=2026-01-02&grain=day&date=2026-01-03&n=10',
-				),
-				emptyFilterState(),
-				camera,
-				'stm',
-			)!,
+		const base = new URL(
+			'http://localhost/map?provider=stm&from=2026-01-01&to=2026-01-02&grain=day&date=2026-01-03&n=10&generation=old&published=2026-01-01T00:00:00Z&method=old&edition=old',
 		);
-		for (const key of ['from', 'to', 'grain', 'date', 'n']) {
+		const url = new URL(
+			buildMapReportLiveViewHref(base, fromSearchParams(base.searchParams), camera, 'stm')!,
+		);
+		for (const key of [
+			'from',
+			'to',
+			'grain',
+			'date',
+			'n',
+			'generation',
+			'published',
+			'method',
+			'edition',
+		]) {
 			expect(url.searchParams.has(key)).toBe(false);
 		}
+	});
+
+	it('restores opaque live IDs containing a comma without turning one ID into multiple restrictions', () => {
+		const filter = emptyFilterState();
+		filter.routes.add('line,branch');
+		filter.routes.add('literal%2C');
+		filter.stops.add('stop,platform');
+		const href = buildMapReportLiveViewHref(
+			new URL('http://localhost/map'),
+			filter,
+			camera,
+			'stm',
+		)!;
+		const restored = fromSearchParams(new URL(href).searchParams);
+		expect([...restored.routes].sort()).toEqual([...filter.routes].sort());
+		expect([...restored.stops]).toEqual([...filter.stops]);
 	});
 
 	it('is unavailable without a captured camera', () => {

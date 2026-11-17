@@ -72,12 +72,16 @@
 
 	function sourceTime(): string {
 		if (!model) return '';
-		const date = new Date(model.generatedUtc);
+		return publicationTime(model.generatedUtc);
+	}
+
+	function publicationTime(iso: string): string {
+		const date = new Date(iso);
 		if (Number.isNaN(date.getTime())) return '';
-		return formatUtc(model.generatedUtc, locale, {
+		return formatUtc(iso, locale, {
 			dateStyle: 'medium',
 			timeStyle: 'short',
-			timeZone: model.timeZone,
+			timeZone: model?.timeZone,
 		});
 	}
 
@@ -89,7 +93,7 @@
 		const identity = snapshotId;
 		const token = ++copyToken;
 		const copied = await copyLiveView();
-		if (token !== copyToken) return;
+		if (token !== copyToken || identity !== snapshotId) return;
 		if (!copied) {
 			copyState = 'failed';
 			copiedSnapshot = null;
@@ -140,21 +144,28 @@
 
 		{#if filterLabels.length > 0}
 			<div class="map-reports-filters" role="group" aria-label={mapT.activeTitle}>
-				{#each filterLabels as label (label)}
+				{#each filterLabels as label, index (index)}
 					<span class="map-reports-filter">{label}</span>
 				{/each}
 			</div>
 		{/if}
 
 		{#if view.kind === 'loading'}
-			<StateNotice title={t.loading} tone="neutral" presentation="row" role="status" />
+			<StateNotice
+				title={view.reason === 'alerts' ? t.loadingAlerts : t.loading}
+				tone="neutral"
+				presentation="row"
+				role="status"
+			/>
 		{:else if view.kind === 'unavailable'}
 			<StateNotice
 				title={view.reason === 'view'
 					? t.unavailableView
 					: view.reason === 'clock'
 						? t.unavailableClock
-						: t.unavailableSource}
+						: view.reason === 'alerts'
+							? t.unavailableAlerts
+							: t.unavailableSource}
 				glyph="!"
 				tone="warning"
 				presentation="row"
@@ -166,6 +177,17 @@
 				<time datetime={model.generatedUtc}>{sourceTime()}</time>
 				<span class="map-reports-zone">{model.timeZone}</span>
 			</p>
+			{#if model.alertFilter}
+				<p class="map-reports-source" data-slot="map-report-alert-source">
+					<span class="map-reports-source-label">{t.alertSourceTime}</span>
+					<time datetime={model.alertFilter.generatedUtc}
+						>{publicationTime(model.alertFilter.generatedUtc)}</time
+					>
+				</p>
+				{#if model.alertFilter.dataState === 'last_available'}
+					<p class="map-reports-warning" role="status">{t.alertRetainedWarning}</p>
+				{/if}
+			{/if}
 			{#if model.sourceHealth?.failing}
 				<p class="map-reports-warning" role="status">{t.retainedWarning}</p>
 			{:else if model.sourceHealth?.stale}
@@ -178,6 +200,9 @@
 				<p class="map-reports-count" data-slot="map-reports-count">
 					{t.reportsCount(count, noRecent, model.inViewCount, model.noRecentInViewCount)}
 				</p>
+			{/if}
+			{#if model.filters.includes('entity:stop') && !model.filters.includes('entity:bus')}
+				<p class="map-reports-empty">{t.stopsOnly}</p>
 			{/if}
 			{#if model.unscopedMatchingCount > 0}
 				<p class="map-reports-unscoped" data-slot="map-reports-unscoped">
@@ -439,7 +464,7 @@
 	}
 	.map-reports-overlay {
 		position: absolute;
-		inset: 0;
+		inset: var(--chrome-offset) 0 0;
 		z-index: var(--z-map-detail, 24);
 		display: flex;
 		flex-direction: column;

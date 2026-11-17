@@ -87,6 +87,56 @@ function renderPanel(
 }
 
 describe('map reports panel', () => {
+	it('names the retained alert input separately from the vehicle source', () => {
+		const ready = view();
+		if (ready.kind !== 'ready') throw new Error('ready fixture required');
+		renderPanel({
+			model: {
+				...ready,
+				model: {
+					...ready.model,
+					alertFilter: {
+						generatedUtc: '2026-11-16T20:58:00Z',
+						generationId: 'alert-gen',
+						methodVersion: null,
+						dataState: 'last_available',
+					},
+				},
+			},
+		});
+		expect(screen.getByText('Alert source time')).toBeInTheDocument();
+		expect(screen.getByText('This filter uses the last available alerts.')).toBeInTheDocument();
+		expect(document.querySelector('[data-slot="map-report-alert-source"] time')).toHaveAttribute(
+			'datetime',
+			'2026-11-16T20:58:00Z',
+		);
+	});
+
+	it('keeps distinct restrictions that have the same displayed stop name', async () => {
+		const panel = renderPanel();
+		await panel.rerender({ ...panel.props, filterLabels: ['Same stop', 'Same stop'] });
+		expect(screen.getAllByText('Same stop')).toHaveLength(2);
+	});
+
+	it.each(['en', 'fr'] as const)(
+		'explains the Stops-only scope in %s without treating stops as reports',
+		(locale) => {
+			const empty = view([]);
+			if (empty.kind !== 'ready') throw new Error('ready fixture required');
+			renderPanel({
+				locale,
+				model: { ...empty, model: { ...empty.model, filters: ['entity:stop'] } },
+			});
+			expect(
+				screen.getByText(
+					locale === 'en'
+						? 'Scheduled stops are not vehicle position reports.'
+						: 'Les arrêts prévus à l’horaire ne sont pas des relevés de position de véhicules.',
+				),
+			).toBeInTheDocument();
+		},
+	);
+
 	it('states the scope, source time, row count and the overlapping old-position subset', () => {
 		renderPanel({
 			model: view([
@@ -141,11 +191,7 @@ describe('map reports panel', () => {
 	it('reports a clipboard failure honestly', async () => {
 		renderPanel({ copyLiveView: async () => false });
 		await fireEvent.click(screen.getByRole('button', { name: 'Copy live view link' }));
-		await waitFor(() =>
-			expect(
-				screen.getByText('Could not copy the link. Copy it from the address bar.'),
-			).toBeInTheDocument(),
-		);
+		await waitFor(() => expect(screen.getByText('Could not copy the link.')).toBeInTheDocument());
 	});
 
 	it('shows a true empty state with a header-only export', () => {

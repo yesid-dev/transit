@@ -3,8 +3,8 @@ import { isInsideBounds } from '#lib/geocode/types.ts';
 /** One clear, single-valued query parameter for the copied client camera. */
 export const MAP_VIEW_PARAM = 'mapview';
 
-/** The runtime camera limits the map itself is constructed with. */
-export const MAP_VIEW_MIN_ZOOM = 9;
+/** The pinned renderer's lower bound; the provider-fit minimum is checked on application. */
+export const MAP_VIEW_MIN_ZOOM = -2;
 export const MAP_VIEW_MAX_ZOOM = 16;
 export const MAP_VIEW_MAX_PITCH = 60;
 
@@ -15,23 +15,36 @@ export interface MapViewHint {
 	readonly pitch: number;
 }
 
-function rounded(value: number, digits: number): number {
-	const next = Number(value.toFixed(digits));
-	return next === 0 ? 0 : next;
-}
-
 /** The actual captured camera, compactly. Never a guessed centre from a bounding box. */
 export function serializeMapViewHint(view: MapViewHint): string {
-	return [
-		rounded(view.center[0], 6),
-		rounded(view.center[1], 6),
-		rounded(view.zoom, 3),
-		rounded(view.bearing, 2),
-		rounded(view.pitch, 2),
-	].join(',');
+	return [view.center[0], view.center[1], view.zoom, view.bearing, view.pitch]
+		.map((value) => (value === 0 ? 0 : value))
+		.join(',');
 }
 
-const PART = /^-?(?:\d+\.?\d*|\.\d+)$/u;
+const PART = /^-?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/iu;
+
+export interface MapViewRuntimeLimits {
+	getMinZoom(): number;
+	getMaxZoom(): number;
+	getMinPitch(): number;
+	getMaxPitch(): number;
+}
+
+/** A copied value must fit the actual receiving viewport, never a guessed provider-fit floor. */
+export function mapViewHintWithinRuntime(hint: MapViewHint, map: MapViewRuntimeLimits): boolean {
+	const minZoom = map.getMinZoom(),
+		maxZoom = map.getMaxZoom();
+	const minPitch = map.getMinPitch(),
+		maxPitch = map.getMaxPitch();
+	return (
+		[minZoom, maxZoom, minPitch, maxPitch].every(Number.isFinite) &&
+		hint.zoom >= minZoom &&
+		hint.zoom <= maxZoom &&
+		hint.pitch >= minPitch &&
+		hint.pitch <= maxPitch
+	);
+}
 
 /**
  * Reads one well-formed hint. Duplicates, extra parts, control characters, non-finite values,

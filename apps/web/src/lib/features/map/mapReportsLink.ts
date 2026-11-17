@@ -17,10 +17,21 @@ export function buildMapReportLiveViewHref(
 	if (!camera) return null;
 	const url = new URL(base.href);
 	for (const key of FILTER_SEARCH_PARAM_KEYS) url.searchParams.delete(key);
+	for (const key of ['generation', 'published', 'method', 'edition']) url.searchParams.delete(key);
 	url.searchParams.delete(MAP_FOCUS_PARAM);
 	url.searchParams.delete(MAP_VIEW_PARAM);
 	clearNearTargetSearchParams(url.searchParams);
-	const live = toSearchParams(filter);
+	const live = toSearchParams({
+		routes: filter.routes,
+		stops: filter.stops,
+		trips: filter.trips,
+		vehicles: filter.vehicles,
+		showOutOfService: filter.showOutOfService,
+		status: filter.status,
+		occupancy: filter.occupancy,
+		entities: filter.entities,
+		alerts: filter.alerts,
+	});
 	for (const [key, value] of live) url.searchParams.append(key, value);
 	url.searchParams.set('provider', providerId);
 	setMapViewHint(url.searchParams, camera);

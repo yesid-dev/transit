@@ -6,9 +6,45 @@ import type { FilterState } from './state';
 const sp = (q: string) => new URLSearchParams(q);
 const round = (q: string) => toSearchParams(fromSearchParams(sp(q))).toString();
 
+describe('lossless opaque ID query encoding', () => {
+	it.each([
+		['route', 'routes'],
+		['stop', 'stops'],
+		['trip', 'trips'],
+		['vehicle', 'vehicles'],
+	] as const)(
+		'round-trips literal delimiters, percent text and whitespace in %s IDs',
+		(key, field) => {
+			const state = fromSearchParams(sp(''));
+			const ids = ['branch,platform', 'literal%2C', 'é/中', ' edge '];
+			for (const id of ids) state[field].add(id);
+			const encoded = toSearchParams(state);
+			expect(encoded.get('id_format')).toBe('repeat');
+			expect(encoded.getAll(key)).toEqual([...ids].sort());
+			expect([...fromSearchParams(new URLSearchParams(encoded.toString()))[field]].sort()).toEqual(
+				[...ids].sort(),
+			);
+		},
+	);
+
+	it('keeps legacy comma-list links and ordinary canonical output unchanged', () => {
+		const state = fromSearchParams(sp('route=55,24&status=late'));
+		expect([...state.routes]).toEqual(['55', '24']);
+		expect(toSearchParams(state).toString()).toBe('route=24%2C55&status=late');
+		expect(toSearchParams(state).has('id_format')).toBe(false);
+	});
+
+	it('drops the encoding marker when the remaining IDs fit the legacy representation', () => {
+		const state = fromSearchParams(sp('id_format=repeat&route=branch%2Cplatform&route=24'));
+		state.routes.delete('branch,platform');
+		expect(toSearchParams(state).toString()).toBe('route=24');
+	});
+});
+
 describe('filter URL key inventory', () => {
 	it('exports every canonical filter key in an immutable order', () => {
 		expect(FILTER_SEARCH_PARAM_KEYS).toEqual([
+			'id_format',
 			'out_of_service',
 			'route',
 			'stop',

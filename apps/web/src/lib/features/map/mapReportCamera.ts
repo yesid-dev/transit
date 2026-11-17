@@ -1,3 +1,5 @@
+import { LngLat } from 'maplibre-gl';
+
 /** The captured camera a report snapshot belongs to. */
 export interface MapReportCamera {
 	readonly center: readonly [number, number];
@@ -24,6 +26,14 @@ export interface MapReportCamera {
 /** The map facts a report capture needs, structurally satisfied by MapLibre's Map. */
 export interface MapReportCameraSource {
 	project(coord: [number, number]): { readonly x: number; readonly y: number };
+	/** Pinned MapLibre renderer access is isolated here, never retained as a live projection. */
+	readonly _camera?: {
+		readonly transform: {
+			clone(): {
+				locationToScreenPoint(coord: LngLat): { readonly x: number; readonly y: number };
+			};
+		};
+	};
 	getCenter(): { readonly lng: number; readonly lat: number };
 	getZoom(): number;
 	getBearing(): number;
@@ -60,6 +70,11 @@ export function captureMapReportCamera(map: MapReportCameraSource | null): MapRe
 		north: bounds.getNorth(),
 	};
 	if (![bbox.west, bbox.south, bbox.east, bbox.north].every(Number.isFinite)) return null;
+	// MapLibre 6.4's project() delegates to this renderer transform. Its clone retains
+	// padding, rotation and pitch without consulting a subsequently moving camera.
+	// Fail closed if an upgraded renderer no longer supplies the required capability.
+	const projection = map._camera?.transform.clone();
+	if (!projection) return null;
 	return {
 		center: [center.lng, center.lat],
 		zoom,
@@ -69,7 +84,7 @@ export function captureMapReportCamera(map: MapReportCameraSource | null): MapRe
 		height,
 		bbox,
 		project: (coord) => {
-			const point = map.project([coord[0], coord[1]]);
+			const point = projection.locationToScreenPoint(new LngLat(coord[0], coord[1]));
 			return { x: point.x, y: point.y };
 		},
 	};

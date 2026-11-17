@@ -152,6 +152,236 @@ async function openReports(page: Page, locale: 'en' | 'fr') {
 	return panel;
 }
 
+async function rendererCamera(page: Page): Promise<number[]> {
+	return page.locator('[data-slot="vehicle-overlay"]').evaluate((canvas) => {
+		const receipt = Reflect.get(canvas, Symbol.for('transit.map.vehicleOverlayReceipt'));
+		if (!receipt?.drawable) return [];
+		return String(receipt.transform).split('|').slice(4, 9).map(Number);
+	});
+}
+
+async function expectFocusedTargetUncovered(page: Page): Promise<void> {
+	await expect
+		.poll(() =>
+			page.evaluate(() => {
+				const target = document.activeElement;
+				if (!(target instanceof HTMLElement) || target.closest('[inert]')) return false;
+				const box = target.getBoundingClientRect();
+				if (
+					box.width <= 0 ||
+					box.height <= 0 ||
+					box.left < 0 ||
+					box.top < 0 ||
+					box.right > innerWidth ||
+					box.bottom > innerHeight
+				)
+					return false;
+				const xs = [
+					box.left + Math.min(8, box.width / 4),
+					box.left + box.width / 2,
+					box.right - Math.min(8, box.width / 4),
+				];
+				const ys = [
+					box.top + Math.min(8, box.height / 4),
+					box.top + box.height / 2,
+					box.bottom - Math.min(8, box.height / 4),
+				];
+				return xs.every((x) =>
+					ys.every((y) => {
+						const hit = document.elementFromPoint(x, y);
+						return hit === target || (hit != null && target.contains(hit));
+					}),
+				);
+			}),
+		)
+		.toBe(true);
+}
+
+for (const locale of PUBLISHED_LOCALES) {
+	test(`${locale}: a copied non-default camera survives reports, resize and reload with real rotated geometry`, async ({
+		page,
+	}) => {
+		await page.clock.install({ time: Date.parse(GENERATED) + 30_000 });
+		await serveFleet(page, () => fleet());
+		const hint = [-73.65, 45.53, 12, 35, 20];
+		await page.goto(
+			`${localizeHref(map, locale)}?provider=stm&status=late&mapview=${hint.join(',')}`,
+		);
+		const t = reportsCopy[locale];
+		const panel = await openReports(page, locale);
+		await expect.poll(() => rendererCamera(page)).toEqual(hint);
+		const downloaded = parseCsv((await downloadCsv(page, t)).bytes);
+		const header = downloaded[0];
+		const expectedIds = await page.evaluate((raw) => {
+			const probe = Reflect.get(window, '__transitMap');
+			const canvas = document.querySelector('.maplibregl-canvas')!;
+			const box = canvas.getBoundingClientRect();
+			return raw.vehicles
+				.filter((v) => v.status === 'late' && Math.abs(v.lat) <= 90 && Math.abs(v.lon) <= 180)
+				.filter((v) => {
+					const p = probe.project([v.lon, v.lat]);
+					return p.x >= 0 && p.x <= box.width && p.y >= 0 && p.y <= box.height;
+				})
+				.map((v) => v.id);
+		}, fleet());
+		expect(downloaded.slice(1).map((row) => row[header.indexOf('vehicle_id')])).toEqual(
+			expectedIds,
+		);
+		expect(
+			await panel
+				.locator('[data-report-row]')
+				.evaluateAll((rows) => rows.map((row) => row.getAttribute('data-report-id'))),
+		).toEqual(expectedIds);
+		for (const row of downloaded.slice(1)) {
+			expect(
+				['view_center_lon', 'view_center_lat', 'view_zoom', 'view_bearing', 'view_pitch'].map(
+					(key) => Number(row[header.indexOf(key)]),
+				),
+			).toEqual(hint);
+		}
+		const size = page.viewportSize()!;
+		await page.setViewportSize({ width: size.width + 80, height: size.height - 64 });
+		await expect.poll(() => rendererCamera(page)).toEqual(hint);
+		await panel.getByRole('button', { name: t.copyLiveView }).click();
+		const copied = await page.evaluate(() => navigator.clipboard.readText());
+		expect(new URL(copied).searchParams.get('mapview')?.split(',').map(Number)).toEqual(hint);
+		const referencePoints = await page.evaluate(() => {
+			const probe = Reflect.get(window, '__transitMap');
+			return [
+				[-73.65, 45.53],
+				[-73.6, 45.5],
+				[-73.7, 45.55],
+			].map((coord) => probe.project(coord));
+		});
+		await page.goto(copied);
+		await openReports(page, locale);
+		await expect.poll(() => rendererCamera(page)).toEqual(hint);
+		const restoredPoints = await page.evaluate(() => {
+			const probe = Reflect.get(window, '__transitMap');
+			return [
+				[-73.65, 45.53],
+				[-73.6, 45.5],
+				[-73.7, 45.55],
+			].map((coord) => probe.project(coord));
+		});
+		for (let i = 0; i < referencePoints.length; i++) {
+			expect(restoredPoints[i].x).toBeCloseTo(referencePoints[i].x, 6);
+			expect(restoredPoints[i].y).toBeCloseTo(referencePoints[i].y, 6);
+		}
+	});
+
+	test(`${locale}: normal phone switching transfers focus to uncovered controls in both directions`, async ({
+		page,
+	}) => {
+		await page.setViewportSize({ width: 390, height: 844 });
+		await page.clock.install({ time: Date.parse(GENERATED) + 30_000 });
+		await serveFleet(page, () => fleet());
+		await page.goto(`${localizeHref(map, locale)}?provider=stm`);
+		const t = reportsCopy[locale];
+		const mapChoice = page.getByRole('radio', { name: t.mapTab, exact: true }).first();
+		await mapChoice.focus();
+		await mapChoice.press('ArrowRight');
+		await page.keyboard.press('Space');
+		const overlay = page.locator('.map-reports-overlay');
+		await expect(overlay).toBeVisible();
+		await expect(overlay.getByRole('radio', { name: t.reportsTab, exact: true })).toBeFocused();
+		await expectFocusedTargetUncovered(page);
+		await page.keyboard.press('Tab');
+		await expectFocusedTargetUncovered(page);
+		expect(
+			await page.evaluate(() => Boolean(document.activeElement?.closest('.map-reports-overlay'))),
+		).toBe(true);
+		await page.keyboard.press('Shift+Tab');
+		await page.keyboard.press('ArrowLeft');
+		await page.keyboard.press('Space');
+		await expect(overlay).toHaveCount(0);
+		await expect(mapChoice).toBeFocused();
+		await expectFocusedTargetUncovered(page);
+		await page.keyboard.press('Tab');
+		await expectFocusedTargetUncovered(page);
+	});
+}
+
+const networkFixtures = JSON.parse(
+	readFileSync(new URL('./providers.json', import.meta.url), 'utf8'),
+);
+for (const provider of ['stm', 'octranspo'])
+	for (const locale of PUBLISHED_LOCALES) {
+		test(`${provider} ${locale}: reports preserve provider identity and raw source positions at each width`, async ({
+			page,
+		}) => {
+			const published = networkFixtures.providers.find(
+				(row: { id: string }) => row.id === provider,
+			);
+			if (!published) throw new Error('published provider fixture required');
+			const [west, south, east, north] = published.fit_bounds as number[];
+			const lon = (west + east) / 2,
+				lat = (south + north) / 2;
+			const file = {
+				generated_utc: GENERATED,
+				publish_generation_id: `${provider}@reports-e2e`,
+				methodology_version: 'e2e',
+				vehicles: [
+					{
+						id: `${provider}-recent`,
+						lat,
+						lon,
+						trip: 'fixture-trip',
+						status: 'on_time',
+						delay_min: 0,
+						updated_utc: '2026-06-15T11:59:50Z',
+					},
+					{
+						id: `${provider}-old`,
+						lat: lat + (north - south) / 20,
+						lon,
+						trip: 'fixture-trip',
+						status: 'late',
+						delay_min: -2,
+						reported_utc: '2026-06-15T11:54:00Z',
+						updated_utc: '2026-06-15T11:54:00Z',
+					},
+				],
+			};
+			await page.clock.install({ time: Date.parse(GENERATED) + 30_000 });
+			await serveFleet(page, () => file);
+			const t = reportsCopy[locale];
+			for (const width of [320, 390, 768, 1280]) {
+				await page.setViewportSize({ width, height: 900 });
+				await page.goto(`${localizeHref(map, locale)}?provider=${provider}`);
+				const panel = await openReports(page, locale);
+				await expect(panel.locator('[data-report-row]')).toHaveCount(2);
+				await expect(panel.locator('[data-slot="map-reports-count"]')).toHaveText(
+					t.reportsCount('2', '1', 2, 1),
+				);
+				const rows = parseCsv((await downloadCsv(page, t)).bytes),
+					header = rows[0];
+				expect(rows.slice(1).map((row) => row[header.indexOf('vehicle_id')])).toEqual(
+					file.vehicles.map((row) => row.id),
+				);
+				for (let i = 0; i < file.vehicles.length; i++) {
+					const row = rows[i + 1],
+						source = file.vehicles[i];
+					expect(row[header.indexOf('provider')]).toBe(provider);
+					expect(row[header.indexOf('locale')]).toBe(locale);
+					expect(row[header.indexOf('publication_generation_id')]).toBe(file.publish_generation_id);
+					expect(Number(row[header.indexOf('latitude')])).toBe(source.lat);
+					expect(Number(row[header.indexOf('longitude')])).toBe(source.lon);
+					expect(Number(row[header.indexOf('delay_min')])).toBe(source.delay_min);
+				}
+				await panel.getByRole('button', { name: t.copyLiveView }).click();
+				const copied = new URL(await page.evaluate(() => navigator.clipboard.readText()));
+				expect(copied.searchParams.get('provider')).toBe(provider);
+				expect(copied.pathname).toBe(localizeHref(map, locale));
+			}
+			await page.goto(`${localizeHref(map, locale)}?provider=${provider}&entity=stop`);
+			const panel = await openReports(page, locale);
+			await expect(panel.getByText(t.stopsOnly)).toBeVisible();
+			await expect(panel.locator('[data-report-row]')).toHaveCount(0);
+			expect(parseCsv((await downloadCsv(page, t)).bytes)).toHaveLength(1);
+		});
+	}
+
 async function downloadCsv(page: Page, t: (typeof reportsCopy)['en'] | (typeof reportsCopy)['fr']) {
 	const download = page.waitForEvent('download');
 	await page.getByRole('link', { name: t.downloadCsv }).click();
@@ -218,12 +448,24 @@ for (const locale of PUBLISHED_LOCALES) {
 
 		// Selecting a report opens detail only: no implicit filter and no camera change.
 		const gotoBefore = page.url();
+		const cameraBeforeSelection = await rendererCamera(page);
+		const pointsBeforeSelection = await page.evaluate(() => {
+			const probe = Reflect.get(window, '__transitMap');
+			return [
+				[-73.65, 45.53],
+				[-73.6, 45.5],
+			].map((coord) => probe.project(coord));
+		});
 		await panel.getByRole('button', { name: reports.selectVehicle('center-late') }).click();
 		const detail = page
 			.getByRole('complementary', { name: /center-late/u })
 			.or(page.getByRole('dialog', { name: /center-late/u }));
 		await expect(detail).toBeVisible();
 		expect(page.url()).toBe(gotoBefore);
+		const selectedCamera = await rendererCamera(page);
+		for (let i = 0; i < cameraBeforeSelection.length; i++) {
+			expect(selectedCamera[i]).toBeCloseTo(cameraBeforeSelection[i], 10);
+		}
 
 		await page.keyboard.press('Escape');
 		await expect(panel.locator('[data-report-row]')).toHaveCount(3);
@@ -232,10 +474,22 @@ for (const locale of PUBLISHED_LOCALES) {
 		).toBeFocused();
 		await panel.getByRole('button', { name: reports.copyLiveView }).click();
 		const afterSelection = await page.evaluate(() => navigator.clipboard.readText());
-		// The camera did not move for the selection: the copied hint is byte-identical.
-		expect(new URL(afterSelection).searchParams.get('mapview')).toBe(
-			url.searchParams.get('mapview'),
-		);
+		// Constraint updates can differ by an IEEE-754 ulp. Keep the actual camera and
+		// projected geometry fixed, rather than hiding a real move behind rounded URL text.
+		const beforeHint = url.searchParams.get('mapview')!.split(',').map(Number);
+		const afterHint = new URL(afterSelection).searchParams.get('mapview')!.split(',').map(Number);
+		for (let i = 0; i < beforeHint.length; i++) expect(afterHint[i]).toBeCloseTo(beforeHint[i], 10);
+		const pointsAfterSelection = await page.evaluate(() => {
+			const probe = Reflect.get(window, '__transitMap');
+			return [
+				[-73.65, 45.53],
+				[-73.6, 45.5],
+			].map((coord) => probe.project(coord));
+		});
+		for (let i = 0; i < pointsBeforeSelection.length; i++) {
+			expect(pointsAfterSelection[i].x).toBeCloseTo(pointsBeforeSelection[i].x, 6);
+			expect(pointsAfterSelection[i].y).toBeCloseTo(pointsBeforeSelection[i].y, 6);
+		}
 
 		// Reloading the copied link restores the live filter scope against fresh data.
 		await page.goto(copied);
@@ -385,6 +639,82 @@ test('unknown live data is unavailable, not zero', async ({ page }) => {
 	await expect(panel.locator('[data-slot="map-reports-count"]')).toHaveCount(0);
 });
 
+test('unknown alert-filter evidence does not turn valid vehicle reports into a reassuring zero', async ({
+	page,
+}) => {
+	await page.clock.install({ time: Date.parse(GENERATED) + 30_000 });
+	await serveFleet(page, () => fleet());
+	await page.route('**/live/alerts.json', (route) =>
+		route.fulfill({ status: 500, body: 'unavailable' }),
+	);
+	await page.goto(`${localizeHref(map, 'en')}?provider=stm&alert=has_alert`);
+	const panel = await openReports(page, 'en');
+	await expect(panel.getByText(reportsCopy.en.reportsEmpty)).toHaveCount(0);
+	await expect(panel.getByRole('link', { name: reportsCopy.en.downloadCsv })).toHaveCount(0);
+	await expect(panel.getByRole('status')).toContainText(/alert/i);
+});
+
+test('retained alert matches keep their own source identity and recover to a known empty filter', async ({
+	page,
+}) => {
+	await page.clock.install({ time: Date.parse(GENERATED) + 30_000 });
+	await serveFleet(page, () => fleet());
+	let failing = false;
+	let alertFile = {
+		generated_utc: '2026-06-15T12:00:10Z',
+		publish_generation_id: 'stm@alerts-scope-e2e',
+		methodology_version: 'alerts-e2e',
+		alerts: [{ id: 'route24', header_key: 'fixture-alert', severity: 'watch', routes: ['24'] }],
+	};
+	await page.route('**/live/alerts.json', (route) =>
+		failing
+			? route.fulfill({ status: 500, body: 'unavailable' })
+			: route.fulfill({ json: alertFile }),
+	);
+	await page.goto(`${localizeHref(map, 'en')}?provider=stm&alert=has_alert`);
+	const t = reportsCopy.en;
+	const panel = await openReports(page, 'en');
+	await expect(panel.locator('[data-report-row]')).toHaveCount(2);
+	await expect(panel.locator('[data-slot="map-report-alert-source"] time')).toHaveAttribute(
+		'datetime',
+		alertFile.generated_utc,
+	);
+	const current = parseCsv((await downloadCsv(page, t)).bytes);
+	let header = current[0];
+	for (const row of current.slice(1)) {
+		expect(row[header.indexOf('source_generated_utc')]).toBe(GENERATED);
+		expect(row[header.indexOf('alert_filter_generated_utc')]).toBe(alertFile.generated_utc);
+		expect(row[header.indexOf('alert_filter_generation_id')]).toBe(alertFile.publish_generation_id);
+		expect(row[header.indexOf('alert_filter_methodology_version')]).toBe('alerts-e2e');
+		expect(row[header.indexOf('alert_filter_data_state')]).toBe('current');
+	}
+	failing = true;
+	await page.clock.fastForward('00:35');
+	await expect(panel.getByText(t.alertRetainedWarning)).toBeVisible();
+	await expect(panel.locator('[data-report-row]')).toHaveCount(2);
+	const retained = parseCsv((await downloadCsv(page, t)).bytes);
+	header = retained[0];
+	for (const row of retained.slice(1)) {
+		expect(row[header.indexOf('alert_filter_generated_utc')]).toBe(alertFile.generated_utc);
+		expect(row[header.indexOf('alert_filter_data_state')]).toBe('last_available');
+	}
+	failing = false;
+	alertFile = {
+		...alertFile,
+		generated_utc: '2026-06-15T12:01:20Z',
+		publish_generation_id: 'stm@alerts-recovered-e2e',
+		alerts: [],
+	};
+	await page.clock.fastForward('00:35');
+	await expect(panel.getByText(t.reportsEmpty)).toBeVisible();
+	await expect(panel.getByText(t.alertRetainedWarning)).toHaveCount(0);
+	await expect(panel.locator('[data-slot="map-report-alert-source"] time')).toHaveAttribute(
+		'datetime',
+		alertFile.generated_utc,
+	);
+	expect(parseCsv((await downloadCsv(page, t)).bytes)).toHaveLength(1);
+});
+
 test('report list holds 320px French, a short laptop and 200% text with reachable focus @theme', async ({
 	page,
 }) => {
@@ -424,6 +754,8 @@ test('report list holds 320px French, a short laptop and 200% text with reachabl
 	await expectNoHorizontalOverflow(page);
 	await expectTapTargets(page, { exclude: ['.maplibregl-ctrl'] });
 	await expectAccessible(page);
+	await page.getByRole('link', { name: reports.downloadCsv }).focus();
+	await expectFocusedTargetUncovered(page);
 	await page.evaluate(() => {
 		document.documentElement.style.fontSize = '';
 	});

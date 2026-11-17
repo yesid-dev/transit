@@ -107,8 +107,22 @@
 		getCanvas: () => fakeCanvas,
 		getCenter: () => ({ lng: -73.57, lat: 45.51 }),
 		getZoom: () => 11,
+		getMinZoom: () => 7,
+		getMaxZoom: () => 16,
+		getMinPitch: () => 0,
+		getMaxPitch: () => 60,
 		getBearing: () => 0,
 		getPitch: () => 0,
+		_camera: {
+			transform: {
+				clone: () => ({
+					locationToScreenPoint: ({ lng, lat }: { lng: number; lat: number }) => ({
+						x: (lng + 73.7) * 1000,
+						y: (45.6 - lat) * 1000,
+					}),
+				}),
+			},
+		},
 		getBounds: () => ({
 			getWest: () => -73.7,
 			getSouth: () => 45.4,

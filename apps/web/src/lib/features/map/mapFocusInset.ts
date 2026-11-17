@@ -119,10 +119,15 @@ export function measureMapFocusInset(
 	return {
 		fitPadding: coveredArea(
 			{
-				top: Math.max(0, heading ? heading.bottom - containerRect.top : 0),
-				right: Math.max(0, rawRight),
-				bottom: Math.max(0, rawBottom, chrome.bottom),
-				left: Math.max(0, chrome.fitLeft ?? chrome.left),
+				// Fit and point focus share the existing visible-span budget. Raw chrome
+				// heights can exceed a short canvas and produce an invalid geographic fit.
+				top: topOcclusion,
+				right: rightOcclusion,
+				bottom: clampOcclusion(
+					Math.max(0, rawBottom, chrome.bottom),
+					containerHeight - topOcclusion,
+				),
+				left: clampOcclusion(chrome.fitLeft ?? chrome.left, containerWidth - rightOcclusion),
 			},
 			16,
 		).routePadding,
