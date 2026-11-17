@@ -217,6 +217,13 @@ def test_unarchived_family_refuses_before_reference(
         pytest.fail("unarchived inputs reached the native reference")
 
     monkeypatch.setattr(adapter, "build_reference", unexpected_reference)
+    # The shared fixture clears all builders; restore the selected implementations.
+    for family, name in (
+        ("route_spine_hours", "RouteSpineHoursBuilder"),
+        ("repeat_offenders", "RepeatOffendersBuilder"),
+    ):
+        module = import_module(FAMILIES[family].module_path)
+        monkeypatch.setattr(module, "builder", getattr(module, name)())
     with pytest.raises(
         ValueError, match=r"input_not_archived: route_spine_hours silver\.rt_feed_snapshots"
     ):
