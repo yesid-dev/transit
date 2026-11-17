@@ -9,12 +9,15 @@ import json
 import os
 import runpy
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
 import duckdb
 import pytest
+import yaml
 from sqlalchemy import create_engine
 from test_batch_replay_real_db import DAY, STAMP
 from test_batch_replay_real_db import replay_inputs as replay_inputs
@@ -25,6 +28,97 @@ from transit_ops.batch.families import occupancy_crowding
 from transit_ops.commands import batch
 
 OCCUPANCY = occupancy_crowding.builder
+
+
+def test_manual_archive_plan_with_workflow_libpq_environment(real_db_engine, tmp_path):
+    github = Path(__file__).resolve().parents[3] / ".github"
+    workflow = yaml.safe_load((github / "workflows/batch-shadow.yml").read_text(encoding="utf8"))
+    step = next(
+        s for s in workflow["jobs"]["shadow"]["steps"] if "batch-shadow.py plan" in s.get("run", "")
+    )
+    script_dir = tmp_path / ".github/scripts"
+    script_dir.mkdir(parents=True)
+    shutil.copyfile(github / "scripts/batch-shadow.py", script_dir / "batch-shadow.py")
+    workdir = tmp_path / "apps/db"
+    workdir.mkdir(parents=True)
+    if os.name == "nt":
+        # Use the native shell shipped with Git on Windows.
+        git = shutil.which("git")
+        assert git is not None
+        bash = str(Path(git).resolve().parents[1] / "bin/bash.exe")
+    else:
+        bash = "bash"
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k.upper()
+        in {"PATH", "SYSTEMROOT", "TEMP", "TMP", "LANG", "WINDIR", "LOCALAPPDATA", "APPDATA"}
+    }
+    env.update(
+        {
+            "GITHUB_EVENT_NAME": "workflow_dispatch",
+            "GITHUB_REF": "refs/heads/main",
+            "GITHUB_SHA": "a" * 40,
+            "BATCH_SHADOW_PROVISIONED": "false",
+            "AS_OF": "2026-11-13T07:00:00Z",
+            "DAY": "2026-11-12",
+            "PROVIDERS": "stm",
+            "FAMILIES": "occupancy_crowding",
+            "INPUT_MODE": "archive",
+            "BRONZE_STORAGE_BACKEND": "s3",
+            "VIRTUAL_ENV": sys.prefix,
+            "UV_OFFLINE": "1",
+            "TRANSIT_REPLAY_DATABASE_URL": real_db_engine.url.render_as_string(hide_password=False),
+            "TRANSIT_TEST_DATABASE_DISPOSABLE": "I_UNDERSTAND_THIS_DATABASE_IS_DISPOSABLE",
+        }
+    )
+    env.update(
+        dict.fromkeys(
+            (
+                "PGHOST",
+                "PGHOSTADDR",
+                "PGPORT",
+                "PGDATABASE",
+                "PGUSER",
+                "PGSERVICE",
+                "PGSERVICEFILE",
+                "PGOPTIONS",
+            ),
+            "",
+        )
+    )
+    result = subprocess.run(
+        [bash, "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", step["run"]],
+        cwd=workdir,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    plan = json.loads((workdir / "artifacts/batch-shadow/daily-inputs.json").read_bytes())
+    assert plan["code_commit"] == env["GITHUB_SHA"]
+    assert plan["input_mode"] == "archive"
+    assert plan["planned_at"] == "2026-11-13T07:00:00+00:00"
+    assert plan["matrix"] == [
+        {
+            "provider": "stm",
+            "day": "2026-11-12",
+            "families": ["occupancy_crowding"],
+            "alerts": False,
+            "timezone": "America/Toronto",
+        }
+    ]
+    assert plan["family_refusals"] == []
+    assert set(plan["datasets"]) == {
+        "gold.fact_trip_delay_snapshot",
+        "gold.fact_vehicle_snapshot",
+        "raw.ingestion_runs",
+        "raw.ingestion_objects",
+        "raw.realtime_snapshot_index",
+        "core.providers",
+        "core.feed_endpoints",
+    }
 
 
 def test_source_role_catalog_refuses_the_disposable_writer(real_db_engine):

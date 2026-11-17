@@ -101,7 +101,9 @@ jobs:
           command.upgrade(config, 'head')
           PY
       - name: Freeze family/provider/day matrix and required datasets
-        run: uv run python ../../.github/scripts/batch-shadow.py plan
+        run: |
+          unset PGHOST PGHOSTADDR PGPORT PGDATABASE PGUSER PGSERVICE PGSERVICEFILE PGOPTIONS
+          uv run python ../../.github/scripts/batch-shadow.py plan
       # The owner must also restrict batch-shadow environment deployment branches
       # to main before provisioning keys. workflow_run accepts successful main only.
       # All exports are sequential inside lake migrate's global session lock;
