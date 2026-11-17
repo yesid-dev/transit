@@ -2,6 +2,7 @@
 	import type { StampPresentation } from '#lib/v1/live/livePresentation.ts';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import MapFreshness from './MapFreshness.svelte';
+	import MapViewSwitch from './MapViewSwitch.svelte';
 
 	interface Props {
 		locale: Locale;
@@ -9,17 +10,33 @@
 		/** What colour and shape mean. Below desktop width the legend's first line carries it. */
 		lead: string;
 		presentation: StampPresentation;
+		/** The Map / Reports in this view choice, when the surface offers reports. */
+		viewMode?: 'map' | 'reports';
+		onviewchange?: (next: 'map' | 'reports') => void;
 		/** Rendered height of the title block, so the controls below it can clear it. */
 		height?: number;
 	}
 
-	let { locale, heading, lead, presentation, height = $bindable(0) }: Props = $props();
+	let {
+		locale,
+		heading,
+		lead,
+		presentation,
+		viewMode = 'map',
+		onviewchange,
+		height = $bindable(0),
+	}: Props = $props();
 </script>
 
 <div class="map-overlay map-head" bind:offsetHeight={height}>
 	<MapFreshness placement="head" {presentation} {locale} />
 	<div class="map-title-row">
 		<h1 class="map-heading">{heading}<span class="map-dot">.</span></h1>
+		{#if onviewchange}
+			<div class="map-view-choice" data-slot="map-view-choice">
+				<MapViewSwitch value={viewMode} {locale} onchange={onviewchange} />
+			</div>
+		{/if}
 	</div>
 	<p class="map-lead" data-slot="map-lead">{lead}</p>
 </div>
@@ -42,12 +59,16 @@
 	.map-title-row {
 		display: flex;
 		align-self: flex-start;
-		align-items: center;
+		align-items: flex-start;
+		flex-wrap: wrap;
 		gap: 0.5rem;
 		min-width: 0;
 		padding: 0.25rem 0.5rem;
 		background: var(--card);
 		border-radius: var(--radius-sm);
+	}
+	.map-view-choice {
+		min-width: 0;
 	}
 	.map-heading {
 		margin: 0;
@@ -100,7 +121,11 @@
 			justify-content: flex-end;
 			text-align: right;
 		}
+		.map-view-choice {
+			padding: 0;
+		}
 		.map-heading {
+			flex-grow: 1;
 			font-size: var(--text-subheading);
 		}
 		.map-lead {

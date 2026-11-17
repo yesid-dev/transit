@@ -91,10 +91,8 @@ export function measureMapFocusInset(
 	const containerHeight = Math.max(0, containerRect.height);
 	const hero = container.closest('.map-hero');
 	const heading = hero ? adapter.headingRect(hero) : null;
-	const topOcclusion = clampOcclusion(
-		heading ? heading.bottom - containerRect.top : 0,
-		containerHeight,
-	);
+	const rawTop = Math.max(0, heading ? heading.bottom - containerRect.top : 0);
+	const topOcclusion = clampOcclusion(rawTop, containerHeight);
 	const rawRight = hero ? parseDetailOffset(adapter.detailOffset(hero), adapter.rootFontSize()) : 0;
 	const measuredSheetHeight = adapter.bottomSheetHeight();
 	const chrome = adapter.chromeInsets?.(container) ?? { left: 0, bottom: 0 };
@@ -106,6 +104,13 @@ export function measureMapFocusInset(
 				: measuredSheetHeight;
 	const rightOcclusion = clampOcclusion(rawRight, containerWidth);
 	const bottomOcclusion = clampOcclusion(rawBottom, containerHeight - topOcclusion);
+	const fitBottom = Math.max(0, rawBottom, chrome.bottom);
+	const fitLeft = Math.max(0, chrome.fitLeft ?? chrome.left);
+	const fitRight = Math.max(0, rawRight);
+	// Keep actual chrome clearance whenever the fit has room for both 16px margins.
+	// Only overfull axes need the point-focus budget to keep geographic fitting valid.
+	const verticalFit = rawTop + fitBottom + 32 < containerHeight;
+	const horizontalFit = fitLeft + fitRight + 32 < containerWidth;
 
 	const { pointOffset, routePadding } = coveredArea(
 		{
@@ -119,10 +124,10 @@ export function measureMapFocusInset(
 	return {
 		fitPadding: coveredArea(
 			{
-				top: Math.max(0, heading ? heading.bottom - containerRect.top : 0),
-				right: Math.max(0, rawRight),
-				bottom: Math.max(0, rawBottom, chrome.bottom),
-				left: Math.max(0, chrome.fitLeft ?? chrome.left),
+				top: verticalFit ? rawTop : topOcclusion,
+				right: horizontalFit ? fitRight : rightOcclusion,
+				bottom: verticalFit ? fitBottom : clampOcclusion(fitBottom, containerHeight - topOcclusion),
+				left: horizontalFit ? fitLeft : clampOcclusion(fitLeft, containerWidth - rightOcclusion),
 			},
 			16,
 		).routePadding,

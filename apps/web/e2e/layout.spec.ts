@@ -13,7 +13,7 @@ const stop = Object.keys(fixture('departures').stops)[0];
 const trip = Object.keys(fixture('trips').trips)[0];
 const pages = [
 	'/',
-	'/map?vehicle=layout-bus',
+	'/map?provider=stm&vehicle=layout-bus',
 	'/lines',
 	'/stops',
 	'/stops?q=Fixture',

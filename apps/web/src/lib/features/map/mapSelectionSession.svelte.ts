@@ -241,17 +241,12 @@ export function createMapSelectionSession(options: MapSelectionSessionOptions) {
 		selectedDetail ? `${selectedDetail.kind}:${selectedDetail.id}` : 'empty',
 	);
 	const SELECTION_WRITE = { authority: 'selection', ownership: 'claim-new' } as const;
-	function addSelectionFilter(selection: MapSelection): void {
-		const chips: Chip[] = [{ kind: selection.kind, value: selection.id }];
-		if (selection.kind === 'vehicle') {
-			const route = live.index.byVehicleId.get(selection.id)?.route;
-			if (route) chips.push({ kind: 'route', value: route });
-		}
-		filters.applyChips(chips, SELECTION_WRITE);
-	}
 
+	/**
+	 * A pick opens detail only. Selection never adds a vehicle or route restriction: the map keeps
+	 * showing every vehicle the reader's own filters admit, and a camera move stays explicit.
+	 */
 	function commitPickedSelection(next: MapSelection): void {
-		addSelectionFilter(next);
 		selectionController.selectPicked(next);
 	}
 

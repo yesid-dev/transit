@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { expect } from '@playwright/test';
 import { test } from './layout-test';
 import { copy } from '../src/lib/features/map/map.copy';
+import { copy as reportsCopy } from '../src/lib/features/map/mapReports.copy';
 import { localizeHref } from '../src/lib/i18n/routing';
 
 type Probe = {
@@ -40,6 +41,11 @@ for (const provider of providers)
 			await expect(neighbours[0]).toBeVisible();
 			await neighbours[1].focus();
 			await page.keyboard.press('Tab');
+			// The Map / Reports switch is the next control before the near-me button.
+			await expect(
+				page.getByRole('radio', { name: reportsCopy[locale].mapTab, exact: true }),
+			).toBeFocused();
+			await page.keyboard.press('Tab');
 			await expect(neighbours[0]).toBeFocused();
 			const before = await Promise.all(neighbours.map((el) => el.boundingBox()));
 			await page.evaluate(() => window.__transitMap.setOrientation(35, 30));
@@ -61,6 +67,7 @@ for (const provider of providers)
 			}
 			await page.getByLabel(t.attributionToggle, { exact: true }).focus();
 			await page.keyboard.press('Tab');
+			await page.keyboard.press('Tab');
 			await expect(north).toBeFocused();
 			await page.keyboard.press('Enter');
 			await expect(north).toHaveCount(0);
@@ -75,6 +82,7 @@ for (const provider of providers)
 			await expect(page.getByRole('region', { name: t.mapCanvasLabel })).toBeFocused();
 			await page.evaluate(() => window.__transitMap.setOrientation(-20, 0));
 			await neighbours[1].focus();
+			await page.keyboard.press('Tab');
 			await page.keyboard.press('Tab');
 			await expect(north).toBeFocused();
 			await page.keyboard.press('Space');

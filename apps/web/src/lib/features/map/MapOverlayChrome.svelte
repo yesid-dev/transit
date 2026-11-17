@@ -47,6 +47,8 @@
 		hoverPeek: MapHoverPeekModel | null;
 		/** The selection the expanded detail panel is showing, if any. */
 		detailSelection?: MapSelection | null;
+		viewMode: 'map' | 'reports';
+		onviewchange: (next: 'map' | 'reports') => void;
 		controls: Snippet<[{ collapsible?: boolean } | undefined]>;
 	}
 
@@ -74,6 +76,8 @@
 		detailOpen,
 		hoverPeek,
 		detailSelection = null,
+		viewMode,
+		onviewchange,
 		controls,
 	}: Props = $props();
 	const colourBy = $derived(colourDimension(filtersStore.state));
@@ -100,6 +104,8 @@
 		heading={t.heading}
 		lead={t.headingLead}
 		presentation={presentation.stamp}
+		{viewMode}
+		{onviewchange}
 		bind:height={headHeight}
 	/>
 	<MapFreshness placement="floating" presentation={presentation.stamp} {locale} />

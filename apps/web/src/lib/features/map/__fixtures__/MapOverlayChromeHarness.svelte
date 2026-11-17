@@ -29,6 +29,7 @@
 		detailOpen?: boolean;
 		hoverPeek?: MapHoverPeek | null;
 		detailSelection?: MapSelection | null;
+		viewMode?: 'map' | 'reports';
 		onstopselect?: (stop: WithDistance<StopIndexEntry>) => void;
 	}
 
@@ -44,6 +45,7 @@
 		detailOpen = false,
 		hoverPeek = null,
 		detailSelection = null,
+		viewMode = 'map',
 		onstopselect = () => {},
 	}: Props = $props();
 
@@ -105,5 +107,7 @@
 	{detailOpen}
 	{hoverPeek}
 	{detailSelection}
+	{viewMode}
+	onviewchange={() => {}}
 	controls={mapControls}
 />

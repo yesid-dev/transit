@@ -1,5 +1,6 @@
 import { tick } from 'svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { mapViewportOptions } from '#lib/components/map/viewport.ts';
 
 import {
 	deferMapFocusInset,
@@ -80,6 +81,38 @@ afterEach(() => {
 });
 
 describe('map focus inset arithmetic', () => {
+	it('preserves the real landscape title clearance when the provider fit is feasible', () => {
+		const { map } = mountedMap();
+		const { adapter } = measurementAdapter({ width: 844, height: 390, detailOffset: '0px' });
+		adapter.headingRect = () => rect(400, 172);
+		adapter.chromeInsets = () => ({ left: 0, bottom: 0 });
+		expect(measureMapFocusInset(map, adapter).fitPadding).toEqual({
+			top: 188,
+			right: 16,
+			bottom: 16,
+			left: 16,
+		});
+	});
+
+	it('keeps a geographic camera when landscape title and controls exceed the available height', () => {
+		const { map } = mountedMap();
+		const { adapter } = measurementAdapter({ width: 844, height: 390, detailOffset: '0px' });
+		adapter.headingRect = () => rect(400, 218.796875);
+		adapter.chromeInsets = () => ({ left: 0, bottom: 156 });
+		const inset = measureMapFocusInset(map, adapter);
+		expect(inset.fitPadding.top + inset.fitPadding.bottom).toBeLessThan(390);
+		const viewport = mapViewportOptions(
+			[-74.176, 45.237, -73.276, 45.867],
+			inset.fitPadding,
+			[-74.3, 45, -72.9, 46],
+			{ width: 844, height: 390 },
+		)!;
+		for (const [lon, lat] of viewport.maxBounds) {
+			expect(Math.abs(lon)).toBeLessThanOrEqual(180);
+			expect(Math.abs(lat)).toBeLessThanOrEqual(90);
+		}
+	});
+
 	it.each(
 		[1280, 1440, 1536, 1600, 1920, 2560].flatMap((width) =>
 			[0, 320, 400, 560].map((right) => ({ width, right })),
