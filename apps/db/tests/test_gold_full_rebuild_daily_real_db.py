@@ -19,12 +19,54 @@ from test_gold_realtime_identity_real_db import _live, _state
 from test_gold_realtime_identity_real_db import capture as capture
 from test_gold_snapshot_replay_real_db import _gold_state, _prune_silver, _rows
 
+from transit_ops.control.settings import FactPruningHeld, LaneSettings
 from transit_ops.gold import delay_days
 from transit_ops.gold.marts import build_gold_marts
 
 
 def rebuild(engine, settings):
     return build_gold_marts(PROVIDER, settings=settings, registry=_StubRegistry(), engine=engine)
+
+
+def test_held_full_rebuild_preserves_both_fact_histories_after_silver_expiry(
+    capture, engine, settings
+):
+    settings.LIGHTER_STORAGE.control = LaneSettings(fact_prune_mode="hold")
+    trip = capture(0)
+    vehicle = capture(1, endpoint="vehicle_positions")
+    _live(engine, settings, trip, vehicle)
+    tables = ("fact_trip_delay_snapshot", "fact_vehicle_snapshot")
+    before = {table: _rows(engine, table) for table in tables}
+    for table, receipt in zip(tables, (trip, vehicle), strict=True):
+        assert [r["realtime_snapshot_id"] for r in before[table]] == [receipt.realtime_snapshot_id]
+
+    with engine.begin() as conn:
+        for receipt in (trip, vehicle):
+            _prune_silver(conn, receipt.realtime_snapshot_id)
+            assert (
+                conn.execute(
+                    text(
+                        "SELECT count(*) FROM silver.rt_feed_snapshots "
+                        "WHERE provider_id=:p AND source_realtime_snapshot_id=:id"
+                    ),
+                    {"p": PROVIDER, "id": receipt.realtime_snapshot_id},
+                ).scalar_one()
+                == 0
+            )
+
+    transactions = []
+
+    def record_begin(connection):
+        transactions.append(connection)
+
+    event.listen(engine, "begin", record_begin)
+    try:
+        with pytest.raises(FactPruningHeld, match="^fact_pruning_held$"):
+            rebuild(engine, settings)
+    finally:
+        event.remove(engine, "begin", record_begin)
+    assert transactions == []
+    assert {table: _rows(engine, table) for table in tables} == before
 
 
 @pytest.mark.parametrize("frozen_dirty", [False, True])

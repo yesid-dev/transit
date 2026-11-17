@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 
-from transit_ops.control.settings import FactPruneMode
+from transit_ops.control.settings import FactPruneMode, require_fact_pruning_allowed
 from transit_ops.db.connection import make_engine, set_daily_warm_transaction_timeouts
 from transit_ops.ingestion.common import utc_now
 from transit_ops.settings import Settings, get_settings
@@ -197,10 +197,6 @@ class WarmRollupStoragePruneResult:
         return payload
 
 
-class FactPruningHeld(ValueError):
-    """The transition policy has suspended both Gold fact deletes."""
-
-
 def prune_gold_fact_history(
     connection: Connection,
     *,
@@ -211,10 +207,7 @@ def prune_gold_fact_history(
     now_utc: datetime | None = None,
     mode: FactPruneMode,
 ) -> tuple[datetime | None, dict[str, int]]:
-    if mode not in ("legacy", "hold"):
-        raise ValueError("invalid_fact_prune_mode")
-    if mode == "hold" and not dry_run:
-        raise FactPruningHeld("fact_pruning_held")
+    require_fact_pruning_allowed(mode, dry_run=dry_run)
     if retention_days <= 0:
         return None, {
             "gold.fact_trip_delay_snapshot": 0,

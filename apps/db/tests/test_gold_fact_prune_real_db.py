@@ -6,10 +6,8 @@ import pytest
 import real_db_seed as db_seed
 from sqlalchemy import text
 
-from transit_ops.maintenance.gold import (
-    FactPruningHeld,
-    prune_gold_fact_history,
-)
+from transit_ops.control.settings import FactPruningHeld
+from transit_ops.maintenance.gold import prune_gold_fact_history
 
 PROVIDER = "stm_goldfactprune_test"
 ENDPOINT_ID = 992014

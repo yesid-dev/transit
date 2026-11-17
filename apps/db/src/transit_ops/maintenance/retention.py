@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy.engine import Engine
 
+from transit_ops.control.settings import FactPruningHeld
 from transit_ops.db.connection import make_engine
 from transit_ops.ingestion.common import utc_now
 from transit_ops.settings import Settings, get_settings
@@ -148,7 +149,7 @@ def prune(
                         engine=engine,
                         dry_run=policy.dry_run,
                     )
-                except gold.FactPruningHeld as exc:
+                except FactPruningHeld as exc:
                     held_tiers[tier] = str(exc)
                     continue
             case RetentionTier.I3:
@@ -238,7 +239,7 @@ def prune_gold_storage(
         engine=engine,
     )
     if reason := receipt.held_tiers.get(RetentionTier.GOLD):
-        raise gold.FactPruningHeld(reason)
+        raise FactPruningHeld(reason)
     result = receipt.results[RetentionTier.GOLD]
     assert isinstance(result, gold.GoldStoragePruneResult)
     return result
