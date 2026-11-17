@@ -12,6 +12,7 @@ export const REQUIRED_QUEUE_JOBS = [
   "e2e (1)",
   "e2e (2)",
   "e2e (3)",
+  "e2e (4)",
   "ci",
 ];
 const OPTIONAL_QUEUE_JOBS = new Set([
