@@ -218,6 +218,31 @@ def test_manual_archive_cannot_enter_production_export(manual_archive, monkeypat
         manual_archive["export_inputs"]({})
 
 
+def test_plan_connection_failure_keeps_only_public_category_and_stage(
+    manual_archive, tmp_path, monkeypatch, capsys
+):
+    from sqlalchemy.exc import OperationalError
+
+    monkeypatch.setenv("PGSERVICEFILE", "private-service-file")
+
+    def fail_at_connection(stamp):
+        assert manual_archive["os"].environ["PGSERVICEFILE"] == "private-service-file"
+        raise OperationalError(
+            "private statement",
+            {"key": "private parameter"},
+            RuntimeError("private service or URL"),
+        )
+
+    monkeypatch.setitem(manual_archive, "plan", fail_at_connection)
+    assert manual_archive["run_stage"]("plan") == 1
+    assert json.loads((tmp_path / "public/refusal.json").read_bytes()) == {
+        "refusal": "database_operational_error",
+        "stage": "plan",
+    }
+    output = capsys.readouterr()
+    assert output.err.strip() == "database_operational_error" and output.out == ""
+
+
 @pytest.mark.parametrize("name", ["PROVIDERS", "FAMILIES"])
 def test_manual_archive_plan_rejects_unknown_selection(manual_archive, monkeypatch, name):
     from contextlib import contextmanager

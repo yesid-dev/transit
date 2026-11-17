@@ -19,6 +19,8 @@ from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 from zoneinfo import ZoneInfo
 
+from sqlalchemy.exc import OperationalError
+
 ROOT = Path("artifacts/batch-shadow")
 REFUSALS = (
     "migration_running",
@@ -621,12 +623,23 @@ def main(stage: str) -> None:
     write_json(ROOT / "public/daily-inputs.json", safe_evidence(data))
 
 
-if __name__ == "__main__":
+def run_stage(stage: str) -> int:
     try:
-        main(sys.argv[1])
+        main(stage)
     except Exception as error:
-        # Preserve named failures without dumping connection diagnostics/secrets.
-        reason = refusal_name(str(error))
-        write_json(ROOT / "public/refusal.json", {"refusal": reason})
+        reason = (
+            "database_operational_error"
+            if isinstance(error, OperationalError)
+            else refusal_name(str(error))
+        )
+        public_stage = (
+            stage if stage in {"plan", "export", "fetch", "replay", "shadow"} else "unknown"
+        )
+        write_json(ROOT / "public/refusal.json", {"refusal": reason, "stage": public_stage})
         print(reason, file=sys.stderr)
-        sys.exit(1)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(run_stage(sys.argv[1] if len(sys.argv) > 1 else ""))
