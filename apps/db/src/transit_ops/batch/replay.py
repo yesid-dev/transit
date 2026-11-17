@@ -29,6 +29,7 @@ from transit_ops.batch.pg_load import (
     pinned_replay_engine,
     reset_replay_tables,
 )
+from transit_ops.batch.pg_reference import build_reference
 from transit_ops.batch.postgres_rows import read_table_rows
 from transit_ops.batch.private_area import PrivateArea
 from transit_ops.batch.replay_report import ReplayReport, compare_family
@@ -415,6 +416,43 @@ def replay_day(
         raise ReplayDatabaseRefused("Use prepare_replay_database")
     ReplayReport(provider_id, local_date, as_of_utc, code_commit)
     builders = replay_builders(families)
+    if any(builder.published_keys and builder.tables for builder in builders.values()):
+        raise ValueError("body_reference_scope_conflict: row and body outputs need separate scopes")
+    if len(builders) > 1:
+        reports = [
+            replay_day(
+                engine=engine,
+                provider_id=provider_id,
+                local_date=local_date,
+                as_of_utc=as_of_utc,
+                inputs_root=inputs_root,
+                workdir=workdir,
+                families=(family,),
+                code_commit=code_commit,
+                publish_bodies=publish_bodies,
+            )
+            for family in builders
+        ]
+        identities: dict[str, str] = {}
+        for report in reports:
+            for path, digest in report.input_files:
+                if path in identities and identities[path] != digest:
+                    raise InputChanged(f"replay input changed between families: {path}")
+                identities[path] = digest
+        for path, digest in identities.items():
+            with (inputs_root / path).open("rb") as stream:
+                if hashlib.file_digest(stream, "sha256").hexdigest() != digest:
+                    raise InputChanged(f"replay input changed between families: {path}")
+        return ReplayReport(
+            provider_id,
+            local_date,
+            as_of_utc,
+            code_commit,
+            input_files=tuple(sorted(identities.items())),
+            families=tuple(f for report in reports for f in report.families),
+            postgres_seconds=sum(report.postgres_seconds or 0 for report in reports),
+            duckdb_seconds=sum(report.duckdb_seconds or 0 for report in reports),
+        )
     provider_input = resolve_inputs((InputNeed("core.providers", "all"),), inputs_root)
     provider_hash = _hashes(inputs_root, (InputNeed("core.providers", "all"),))
     with PrivateArea(workdir) as area, open_batch_session(provider_input, workdir=area) as session:
@@ -521,16 +559,21 @@ def replay_day(
                         raise
                     windows = sorted(n.window for n in needed if n.relation == relation)
                     raise ValueError(f"fk_parent_outside_range: {relation} {windows}") from error
-        rollups.build_warm_rollups(
-            provider_id,
-            engine=pinned,
-            settings=settings,
-            as_of_utc=as_of_utc,
-            wall_clock_utc=as_of_utc,
-        )
+        # Body-only slots retain the existing historic collection path. Row
+        # families must never refresh their copied upstream Gold inputs.
+        if any(builder.published_keys for builder in builders.values()):
+            rollups.build_warm_rollups(
+                provider_id,
+                engine=pinned,
+                settings=settings,
+                as_of_utc=as_of_utc,
+                wall_clock_utc=as_of_utc,
+            )
         outputs = {}
         with pinned.connect() as conn:
             for family, builder in builders.items():
+                if not builder.published_keys:
+                    build_reference(conn, requests[family], builder.tables)
                 tables = (
                     builder.tables
                     if builder
@@ -539,7 +582,7 @@ def replay_day(
                 outputs[family] = _postgres_output(
                     conn, provider_id, local_date, tables, request.timezone
                 )
-            if publish_bodies:
+            if publish_bodies and any(builder.published_keys for builder in builders.values()):
                 bodies = _collect_bodies(conn, provider_id, settings, as_of_utc)
                 for family, builder in builders.items():
                     if builder:
