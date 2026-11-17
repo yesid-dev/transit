@@ -150,7 +150,7 @@ describe('MetricsExplainer', () => {
 			container.querySelectorAll<HTMLElement>('.metrics-stat-rail > [data-slot="card"]'),
 		);
 
-		expect(sectionCards).toHaveLength(METRICS.length + 3);
+		expect(sectionCards).toHaveLength(METRICS.length + 4);
 		expect(railCards).toHaveLength(2);
 		for (const card of [...sectionCards, ...railCards]) {
 			expect(card).toHaveAttribute('data-header-variant', 'article-summary');

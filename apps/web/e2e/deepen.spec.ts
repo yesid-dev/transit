@@ -148,7 +148,7 @@ test('mobile Metrics keeps its landing and active item when the TOC reopens duri
 		'aria-expanded',
 		'false',
 	);
-	await expect(pill).toHaveAttribute('aria-label', /^On-time % 2\/17/);
+	await expect(pill).toHaveAttribute('aria-label', /^On-time % 3\/18/);
 	await expect
 		.poll(() =>
 			page
