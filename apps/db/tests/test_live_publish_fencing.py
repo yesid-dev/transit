@@ -1,5 +1,6 @@
 from dataclasses import replace
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 from test_live_facts import parsed_vehicle, vehicle_message
@@ -15,6 +16,44 @@ from transit_ops.control.objects import ObjectRateLimited
 from transit_ops.live.facts import apply_capture
 from transit_ops.live.publish import TTL
 from transit_ops.snapshots import publish
+
+
+@pytest.mark.parametrize("zone", [UTC, ZoneInfo("America/Toronto")])
+def test_ownership_clock_advances_across_fall_back(case, zone):
+    owner, _, _, control, clock = case
+    start = datetime(2026, 11, 1, 5, 59, 50, tzinfo=UTC)
+    finish = start + timedelta(seconds=20)
+    clock[0] = start.astimezone(zone)
+    run(case)
+    before = lease(control)
+    assert (before.expires_at_utc - finish).total_seconds() == 70
+    clock[0] = finish.astimezone(zone)
+    result = run(case)
+    assert result.lease.expires_at_utc == finish + TTL
+    assert (result.lease.holder, result.lease.epoch) == (before.holder, before.epoch)
+
+
+@pytest.mark.parametrize("zone", [UTC, ZoneInfo("America/Toronto")])
+def test_ownership_clock_rollback_across_folds_cannot_publish_or_renew(case, zone):
+    owner, _, store, control, _ = case
+    start = datetime(2026, 11, 1, 5, 59, 50, tzinfo=UTC)
+    before = acquire_lease(
+        control,
+        provider_id="network",
+        lane="live",
+        holder=owner.holder,
+        ttl=TTL,
+        clock=lambda: start,
+    )
+    owner.lease = before
+    readings = iter([start + timedelta(seconds=30), start + timedelta(seconds=5)])
+    last = start + timedelta(seconds=5)
+    owner.clock = lambda: next(readings, last).astimezone(zone)
+    with pytest.raises(LeaseLost, match="clock moved backwards"):
+        run(case)
+    assert lease(control) == before
+    assert owner.target.key("manifest.json") not in store.objects
+    assert read_heartbeat(control, provider_id="network", tier="live") is None
 
 
 @pytest.mark.parametrize("failure", ["renewal", "stale_token", "other_holder"])

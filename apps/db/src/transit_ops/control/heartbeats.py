@@ -107,13 +107,14 @@ def _write_then_renew(
 ) -> Lease:
     if not timedelta(seconds=30) <= ttl <= timedelta(hours=1):
         raise ValueError("TTL from 30 seconds to one hour required")
-    last = lease.last_updated_utc
+    last = lease.last_updated_utc.astimezone(UTC)
 
     def checked_clock() -> datetime:
         nonlocal last
         now = clock()
         if now.utcoffset() is None:
             raise ValueError("lease clock must be timezone aware")
+        now = now.astimezone(UTC)
         if now < last:
             raise LeaseLost("clock moved backwards")
         last = now

@@ -1,6 +1,7 @@
 import json
 from dataclasses import asdict, replace
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 from test_control_leases import NOW, TTL, acquire, control_objects  # noqa: F401
@@ -260,6 +261,39 @@ def opt_in(objects, lease, *, now=NOW, ttl=TTL, value=None, clock=None):
         clock=clock or (lambda: now),
         renew_after_write=True,
     )
+
+
+@pytest.mark.parametrize("zone", [UTC, ZoneInfo("America/Toronto")])
+def test_write_first_forward_clock_crosses_fall_back(objects, zone):
+    start = datetime(2026, 11, 1, 5, 59, 50, tzinfo=UTC)
+    lease = acquire(objects, now=start)
+    finish = start + timedelta(seconds=11)
+    readings = iter([start + timedelta(seconds=9), finish])
+
+    def clock():
+        return next(readings, finish).astimezone(zone)
+
+    value = beat(generated_utc=start, recorded_at_utc=finish)
+    renewed = opt_in(objects, lease, value=value, clock=clock)
+    assert renewed.expires_at_utc == finish + TTL
+    assert (renewed.holder, renewed.epoch) == (lease.holder, lease.epoch)
+    assert m.read_heartbeat(objects, provider_id=lease.provider_id, tier=lease.lane) is not None
+
+
+@pytest.mark.parametrize("zone", [UTC, ZoneInfo("America/Toronto")])
+def test_write_first_backward_instant_across_folds_refuses_before_mutation(objects, zone):
+    start = datetime(2026, 11, 1, 5, 59, 50, tzinfo=UTC)
+    lease = acquire(objects, now=start)
+    readings = iter([start + timedelta(seconds=30), start + timedelta(seconds=5)])
+    last = start + timedelta(seconds=5)
+
+    def clock():
+        return next(readings, last).astimezone(zone)
+
+    with pytest.raises(LeaseLost, match="clock moved backwards"):
+        opt_in(objects, lease, value=beat(generated_utc=start, recorded_at_utc=last), clock=clock)
+    assert read_lease(objects, provider_id=lease.provider_id, lane=lease.lane) == lease
+    assert objects.read(KEY) is None
 
 
 @pytest.mark.parametrize("fault", [ObjectConflict, ObjectRateLimited])

@@ -12,7 +12,7 @@ import logging
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
@@ -166,6 +166,7 @@ class LocalPublisher:
     def _clock(self) -> datetime:
         now = self.clock()
         live_cycle_stamp(now)
+        now = now.astimezone(UTC)
         if self._last_clock is not None and now < self._last_clock:
             raise LeaseLost("publication ownership clock moved backwards")
         self._last_clock = now
