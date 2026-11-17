@@ -32,6 +32,7 @@
 	import { createFilterStore, fromSearchParams } from '#lib/filters/index.ts';
 	import { nearTargetFromSearchParams } from '#lib/search/mapNear.ts';
 	import { parseMapFocus } from '#lib/search/mapFocus.ts';
+	import { lineLabel, stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { RightPanel } from '#lib/components/shell/index.ts';
 	import { MapStage, nearestStops, type WithDistance } from '#lib/components/map/index.ts';
 	import { createVehicleMotion } from './vehicleMotion';
@@ -66,6 +67,13 @@
 	import { createMapRuntime, type MapRuntimeFeed } from './mapRuntime.svelte';
 	import { createMapSelectionSession, type MapSelection } from './mapSelectionSession.svelte';
 	import * as ownerCleanup from './mapOwnerCleanup';
+	import { captureMapReportCamera, type MapReportCamera } from './mapReportCamera';
+	import { buildMapReportView, mapReportFilterTokens } from './mapReports';
+	import { mapReportFilterLabels } from './mapReportFilterSummary';
+	import { mapReportsCopy } from './mapReports.copy';
+	import { buildMapReportLiveViewHref } from './mapReportsLink';
+	import { parseMapViewHint, type MapViewHint } from './mapViewHint';
+	import MapReportsPanel from './MapReportsPanel.svelte';
 
 	interface Props {
 		onready?: () => void;
@@ -157,6 +165,13 @@
 		if (urlIdentity === ingestedUrlIdentity) return;
 		ingestedUrlIdentity = urlIdentity;
 		filters.replaceFromUrl(readMapFilters(url.searchParams), urlCoordinator.settle(url));
+		if (!ingestedViewHint) {
+			ingestedViewHint = true;
+			pendingViewHint = parseMapViewHint(
+				url.searchParams,
+				v1.provider?.max_bounds ?? manifest.bbox ?? null,
+			);
+		}
 		if (!alertsAvailable && url.searchParams.has('alert')) {
 			const next = new URL(url);
 			next.searchParams.delete('alert');
@@ -223,6 +238,48 @@
 	});
 	const map = $derived(runtime.map);
 
+	// One camera capture per settled move or resize. Animation frames never rebuild the list.
+	$effect(() => {
+		const instance = map;
+		if (!instance) {
+			reportCamera = null;
+			return;
+		}
+		// Listener registration and projection read the map's own state; only `map` is a dependency.
+		return untrack(() => {
+			let frame = 0;
+			const capture = () => {
+				frame = 0;
+				reportCamera = captureMapReportCamera(instance);
+			};
+			const onMoveEnd = () => capture();
+			const onResize = () => {
+				if (!frame) frame = requestAnimationFrame(capture);
+			};
+			instance.on('moveend', onMoveEnd);
+			instance.on('resize', onResize);
+			capture();
+			return () => {
+				instance.off('moveend', onMoveEnd);
+				instance.off('resize', onResize);
+				if (frame) cancelAnimationFrame(frame);
+			};
+		});
+	});
+
+	// On a phone, Escape leaves the report list for the map and returns focus to the switch.
+	$effect(() => {
+		if (desktop.current || viewMode !== 'reports') return;
+		const onKey = (event: KeyboardEvent) => {
+			if (event.key !== 'Escape' || event.defaultPrevented) return;
+			if (document.querySelector('[data-slot="bottom-sheet"][data-state="open"]')) return;
+			viewMode = 'map';
+			void tick().then(focusMapViewSwitch);
+		};
+		document.addEventListener('keydown', onKey);
+		return () => document.removeEventListener('keydown', onKey);
+	});
+
 	const detailOpen = $derived(session.detailOpen);
 	$effect(() => {
 		if (!detailOpen) detailCollapsed = detailWidthPx === 56;
@@ -256,6 +313,108 @@
 			vehicleCount: live.vehicles?.vehicles.length ?? null,
 		}),
 	);
+
+	let viewMode = $state<'map' | 'reports'>('map');
+	let reportsPaneOpen = $state(false);
+	let reportsScrollTop = $state(0);
+	let reportsReturnFocus = $state<string | null>(null);
+	let reportCamera = $state.raw<MapReportCamera | null>(null);
+	let pendingViewHint: MapViewHint | null = null;
+	let ingestedViewHint = false;
+	const reportsOpen = $derived(desktop.current ? reportsPaneOpen : viewMode === 'reports');
+	const viewSwitchValue = $derived<'map' | 'reports'>(reportsOpen ? 'reports' : 'map');
+	const reportsCopy = $derived(mapReportsCopy(locale));
+	const providerName = $derived(
+		v1.provider?.labels[locale].operator ?? manifest.city ?? manifest.provider,
+	);
+	const reportView = $derived.by(() => {
+		const health = live.familyStates.vehicles.health;
+		return buildMapReportView({
+			source: live.vehicles,
+			health: {
+				retained: health.retained,
+				failing:
+					health.state === 'retrying' ||
+					health.state === 'failed-no-data' ||
+					health.notice === 'refresh-unavailable',
+				stale: health.isStale,
+			},
+			filter: filters.state,
+			alertVehicleIds,
+			camera: reportCamera,
+			serverNow: dataClock.serverNow,
+			staleCutoffS: liveTimingFor(manifest).staleCutoffS,
+			providerId: manifest.provider,
+			providerName,
+			locale,
+			timeZone: manifest.tz,
+			attribution: manifest.attribution,
+			filters: mapReportFilterTokens(filters.state),
+		});
+	});
+	const reportSnapshotId = $derived(reportView.kind === 'ready' ? reportView.model.identity : '');
+	const reportFilterLabels = $derived(
+		mapReportFilterLabels(filters.state, locale, {
+			line: (id) => lineLabel(id, session.routesIndex),
+			stop: (id) => {
+				const stop = session.stops.find((candidate) => candidate.id === id);
+				return stop ? stopDisplayName(stop.name) : id;
+			},
+		}),
+	);
+	const reportsLiveViewHref = $derived(
+		buildMapReportLiveViewHref(
+			urlCoordinator.currentUrl(),
+			filters.state,
+			reportCamera,
+			manifest.provider,
+		),
+	);
+
+	function setView(next: 'map' | 'reports'): void {
+		if (desktop.current) {
+			if (next === 'reports') {
+				if (detailOpen) closeDetail();
+				reportsPaneOpen = true;
+			} else {
+				reportsPaneOpen = false;
+			}
+			return;
+		}
+		viewMode = next;
+		if (next === 'reports') reportsReturnFocus = null;
+	}
+
+	function closeReports(): void {
+		if (desktop.current) reportsPaneOpen = false;
+		else viewMode = 'map';
+	}
+
+	function focusMapViewSwitch(): void {
+		heroEl
+			?.querySelector<HTMLElement>(
+				'[data-slot="map-view-choice"] [role="radio"][aria-checked="true"]',
+			)
+			?.focus({ preventScroll: true });
+	}
+
+	async function copyReportLink(): Promise<boolean> {
+		const href = reportsLiveViewHref;
+		if (!href || typeof navigator === 'undefined' || !navigator.clipboard) return false;
+		try {
+			await navigator.clipboard.writeText(href);
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	function selectReportVehicle(id: string): void {
+		reportsReturnFocus = id;
+		commitPickedSelection({ kind: 'vehicle', id });
+		detailCollapsed = detailWidthPx === 56;
+	}
+
 	$effect(() => {
 		const routes = session.loadedRoutes;
 		untrack(() => {
@@ -268,11 +427,23 @@
 	function selectPickedFeature(next: MapSelection) {
 		commitPickedSelection(next);
 		detailCollapsed = detailWidthPx === 56;
-		focusSelection(next);
+		// A vehicle pick opens its detail in place; only route and stop picks move the camera.
+		if (next.kind !== 'vehicle') focusSelection(next);
 	}
 	function closeDetail() {
 		session.close();
 		detailCollapsed = detailWidthPx === 56;
+		if (reportsOpen) {
+			const id = reportsReturnFocus;
+			reportsReturnFocus = null;
+			void tick().then(() => {
+				const pane = heroEl?.querySelector<HTMLElement>('[data-slot="map-reports"]');
+				const target =
+					(id && pane?.querySelector<HTMLElement>(`[data-report-select="${CSS.escape(id)}"]`)) ||
+					pane?.querySelector<HTMLElement>('.map-reports-title');
+				target?.focus({ preventScroll: true });
+			});
+		}
 	}
 	const selectFromDetail = (next: MapSelection) => {
 		session.select(next, 'detail');
@@ -346,7 +517,20 @@
 				if (intent.kind === 'point') focusCoordinate(m, intent.coord, intent.minZoom);
 				else focusSelection(intent.selection, m);
 			});
-		} else nearMeController.refocus();
+		} else {
+			const hint = pendingViewHint;
+			pendingViewHint = null;
+			// An explicit focus or near-me search is this page's own intent and outranks the link.
+			if (hint && !focusController.pending && !nearMeController.origin) {
+				m.jumpTo({
+					center: [hint.center[0], hint.center[1]],
+					zoom: hint.zoom,
+					bearing: hint.bearing,
+					pitch: hint.pitch,
+				});
+			}
+			nearMeController.refocus();
+		}
 		onready?.();
 	}
 
@@ -431,7 +615,7 @@
 	$effect(() => {
 		const el = heroEl;
 		if (!el) return;
-		const open = detailOpen && desktop.current;
+		const open = desktop.current && (detailOpen || reportsPaneOpen);
 		const dispose = publishRailOffset(el, detailWidthPx, open, detailCollapsed, detailDragging);
 		return () => releaseMapOwner(dispose);
 	});
@@ -440,6 +624,7 @@
 	$effect(() => {
 		const instance = map;
 		void detailOpen;
+		void reportsPaneOpen;
 		void detailWidthPx;
 		void detailCollapsed;
 		void desktop.current;
@@ -585,6 +770,41 @@
 	/>
 {/snippet}
 
+{#snippet reportsPanelContent(presentation: 'pane' | 'overlay')}
+	<MapReportsPanel
+		{locale}
+		view={reportView}
+		{providerName}
+		filterLabels={reportFilterLabels}
+		line={(id) => lineLabel(id, session.routesIndex)}
+		snapshotId={reportSnapshotId}
+		liveViewHref={reportsLiveViewHref}
+		{presentation}
+		copyLiveView={copyReportLink}
+		onselect={selectReportVehicle}
+		onclose={closeReports}
+		bind:scrollTop={reportsScrollTop}
+	/>
+{/snippet}
+
+{#snippet reportsPane()}
+	<!-- prettier-ignore -->
+
+	<RightPanel
+		locale={locale}
+		title={reportsCopy.reportsTitle}
+		surfaceKey="map-reports"
+		canGoBack={false}
+		onclose={closeReports}
+		collapsed={detailCollapsed}
+		ontogglecollapse={toggleDetailCollapsed}
+		resizable
+		selectionKind="reports"
+	>
+		{@render reportsPanelContent('pane')}
+	</RightPanel>
+{/snippet}
+
 {#snippet motionHeader(collapsed: boolean)}
 	<MapMotionControl {locale} copy={t} {collapsed} />
 {/snippet}
@@ -611,7 +831,11 @@
 {/snippet}
 
 {#snippet mapSurface()}
-	<div class="map-surface">
+	<div
+		class="map-surface"
+		inert={!desktop.current && viewMode === 'reports' ? true : undefined}
+		data-slot="map-surface"
+	>
 		<MapSurfaceCanvasLayer {mapBody} />
 
 		{#if mapFailure}
@@ -654,6 +878,8 @@
 				detailSelection={desktop.current && detailOpen && !detailCollapsed
 					? session.selected
 					: null}
+				viewMode={viewSwitchValue}
+				onviewchange={setView}
 				controls={mapControls}
 			/>
 		{/if}
@@ -670,8 +896,13 @@
 	data-motion-vehicle-count={runtime.processedMotion?.vehicleCount}
 	bind:this={heroEl}
 	bind:clientWidth={mapWidthPx}
+	data-map-view={viewSwitchValue}
 >
 	{@render mapSurface()}
+
+	{#if !desktop.current && viewMode === 'reports'}
+		{@render reportsPanelContent('overlay')}
+	{/if}
 
 	{#if desktop.current && detailOpen}
 		<MapDetailOverlay
@@ -681,6 +912,15 @@
 			bind:dragging={detailDragging}
 			resizeAria={detailResizeAria}
 			{detailPanel}
+		/>
+	{:else if desktop.current && reportsPaneOpen}
+		<MapDetailOverlay
+			{locale}
+			bind:widthPx={detailWidthPx}
+			bind:collapsed={detailCollapsed}
+			bind:dragging={detailDragging}
+			resizeAria={detailResizeAria}
+			detailPanel={reportsPane}
 		/>
 	{/if}
 

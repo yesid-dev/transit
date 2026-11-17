@@ -47,7 +47,12 @@ export function colourDimension(f: FilterState): 'status' | 'occupancy' {
 	return 'status';
 }
 
-function matchesFilter(v: Vehicle, f: FilterState, alertVehicleIds: ReadonlySet<string>): boolean {
+/** The renderer's one matching rule. Lists that describe the map's vehicles reuse it. */
+export function matchesFilter(
+	v: Vehicle,
+	f: FilterState,
+	alertVehicleIds: ReadonlySet<string>,
+): boolean {
 	const as = activeStatus(f);
 	if (as && !as.includes(v.status)) return false;
 	const ao = activeOccupancy(f);
@@ -61,6 +66,11 @@ function matchesFilter(v: Vehicle, f: FilterState, alertVehicleIds: ReadonlySet<
 	const ae = activeEntities(f);
 	if (ae && !ae.includes('bus')) return false;
 	return true;
+}
+
+/** The map's scope rule: in-service vehicles, plus out-of-service ones when ticked. */
+export function inVehicleScope(v: Vehicle, f: FilterState): boolean {
+	return isInService(v) || Boolean(f.showOutOfService);
 }
 
 function iconFor(
@@ -108,7 +118,7 @@ export function toVehicleFeatures(
 	return {
 		type: 'FeatureCollection',
 		features: vehicles
-			.filter((v) => isInService(v) || filter.showOutOfService)
+			.filter((v) => inVehicleScope(v, filter))
 			.map((v) => {
 				const { body, mark, matched } = iconFor(v, filter, dim, alertVehicleIds);
 				const stale = silence && notReporting(v, silence.serverNow, silence.staleCutoffS) ? 1 : 0;

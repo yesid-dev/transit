@@ -216,13 +216,14 @@ describe('map selection session', () => {
 		},
 	);
 
-	it('keeps a vehicle for two successful omissions, then auto-closes and clears only selection-owned filters', async () => {
+	it('opens a picked vehicle without adding filters, keeps its grace, then auto-closes', async () => {
 		const h = setup('route=pinned');
 		await settled();
 		h.session.select({ kind: 'vehicle', id: 'bus-1' }, 'pick');
 		flushSync();
-		expect(h.filters.vehicles.has('bus-1')).toBe(true);
-		expect(h.filters.routes.has('24')).toBe(true);
+		// Selection is detail only: no vehicle or route restriction is written.
+		expect(h.filters.vehicles.has('bus-1')).toBe(false);
+		expect([...h.filters.routes]).toEqual(['pinned']);
 		expect(h.session.detail?.id).toBe('bus-1');
 		for (let omission = 0; omission < 2; omission++) {
 			h.omit();
@@ -282,21 +283,26 @@ describe('map selection session', () => {
 		expect(h.session.stack).toEqual([]);
 	});
 
-	it('preserves user-promoted and URL-adopted filters when the detail closes', async () => {
+	it('leaves user and URL-adopted filters untouched when a vehicle detail closes', async () => {
 		const h = setup();
 		await settled();
+		// The picked vehicle is not restricted out of the map, so other vehicles stay matched.
 		h.session.select({ kind: 'vehicle', id: 'bus-1' }, 'pick');
+		expect(h.filters.isEmpty).toBe(true);
 		h.session.applyFilter({ kind: 'route', value: '24' });
+		expect([...h.filters.routes]).toEqual(['24']);
 		h.session.close();
 		expect([...h.filters.routes]).toEqual(['24']);
 		expect([...h.filters.vehicles]).toEqual([]);
 		h.session.select({ kind: 'vehicle', id: 'bus-1' }, 'pick');
+		expect([...h.filters.routes]).toEqual(['24']);
 		h.filters.replaceFromUrl(
 			fromSearchParams(new URLSearchParams('route=24&vehicle=bus-1')),
 			'adopt',
 		);
 		h.session.close();
 		expect([...h.filters.vehicles]).toEqual(['bus-1']);
+		expect([...h.filters.routes]).toEqual(['24']);
 	});
 
 	it('leases trips or departures only for committed selections and releases on close', async () => {

@@ -54,6 +54,8 @@
 
 	const fakeCanvas = {
 		style: { cursor: '' },
+		clientWidth: 390,
+		clientHeight: 700,
 		addEventListener: (type: string, handler: Handler) => {
 			const list = canvasHandlers.get(type) ?? [];
 			list.push(handler);
@@ -103,6 +105,21 @@
 			receipt.recordSourceCount(id, 0);
 		},
 		getCanvas: () => fakeCanvas,
+		getCenter: () => ({ lng: -73.57, lat: 45.51 }),
+		getZoom: () => 11,
+		getBearing: () => 0,
+		getPitch: () => 0,
+		getBounds: () => ({
+			getWest: () => -73.7,
+			getSouth: () => 45.4,
+			getEast: () => -73.4,
+			getNorth: () => 45.6,
+		}),
+		project: ([lon, lat]: [number, number]) => ({
+			x: (lon + 73.7) * 1000,
+			y: (45.6 - lat) * 1000,
+		}),
+		jumpTo: () => {},
 		overlayPick: () => (pickLayer === VEHICLE_BODY_LAYER ? 'bus-1' : null),
 		getLayer: (id: string) => (id === STOPS_LAYER ? { id } : undefined),
 		queryRenderedFeatures: (_point: unknown, options: { layers: string[] }) =>

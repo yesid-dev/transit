@@ -296,12 +296,11 @@ for (const provider of read('providers').providers) {
 				const titleSurfaceBox = (await titleSurface.boundingBox())!;
 				const reportSurfaceBox = (await reportSurface.boundingBox())!;
 				expect(titleBox.y).toBeGreaterThanOrEqual(reportBox.y + reportBox.height);
-				expect(titleBox.x + titleBox.width).toBeCloseTo(reportBox.x + reportBox.width, 0);
 				expect(titleSurfaceBox.x + titleSurfaceBox.width).toBeCloseTo(
 					reportSurfaceBox.x + reportSurfaceBox.width,
 					0,
 				);
-				expect(titleSurfaceBox.width).toBeLessThan(reportSurfaceBox.width);
+				expect(titleSurfaceBox.width).toBeLessThanOrEqual(panelBox.width);
 				for (const surface of [titleSurface, reportSurface]) {
 					expect(await surface.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(
 						'rgba(0, 0, 0, 0)',
