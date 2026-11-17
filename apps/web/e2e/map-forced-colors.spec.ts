@@ -15,7 +15,8 @@ for (const scheme of ['light', 'dark'] as const) {
 			const [lon, lat] = [-73.65, 45.53];
 			await page.clock.setFixedTime(Date.parse(published) + 30_000);
 			await page.emulateMedia({ colorScheme: scheme, forcedColors: 'none' });
-			await page.addInitScript(() => {
+			await page.addInitScript((theme) => {
+				localStorage.setItem('theme', theme);
 				const state = window as OverlayProbe;
 				const clear = CanvasRenderingContext2D.prototype.clearRect;
 				CanvasRenderingContext2D.prototype.clearRect = function (...args) {
@@ -51,7 +52,7 @@ for (const scheme of ['light', 'dark'] as const) {
 					}
 					return Reflect.apply(draw, this, args);
 				};
-			});
+			}, scheme);
 			await page.route('**/live/vehicles.json', (route) =>
 				route.fulfill({
 					json: {
@@ -80,25 +81,47 @@ for (const scheme of ['light', 'dark'] as const) {
 			await expect.poll(sizes).toEqual(expected);
 			const ordinary = await painted();
 
+			const systemColours = () =>
+				page.evaluate(() =>
+					['CanvasText', 'Canvas'].map((color) => {
+						const probe = document.createElement('span');
+						probe.style.color = color;
+						document.body.append(probe);
+						const actual = getComputedStyle(probe).color.match(/\d+/g)!.map(Number);
+						probe.remove();
+						return [...actual, 255];
+					}),
+				);
+			async function expectForcedPaint(pair: number[][]) {
+				expect(pair[0]).not.toEqual(pair[1]);
+				await expect
+					.poll(async () => (await painted()).map(({ center }) => center))
+					.toEqual([pair[0], ...expected.slice(1).map(() => pair[1])]);
+				const forced = await painted();
+				expect(forced[0].window).not.toEqual(forced[0].center);
+				for (const badge of forced.slice(1)) expect(badge.plate).toEqual(pair[0]);
+				expect(await sizes()).toEqual(expected);
+			}
+
 			await page.emulateMedia({ forcedColors: 'active', colorScheme: scheme });
-			const pair = await page.evaluate(() =>
-				['CanvasText', 'Canvas'].map((color) => {
-					const probe = document.createElement('span');
-					probe.style.color = color;
-					document.body.append(probe);
-					const actual = getComputedStyle(probe).color.match(/\d+/g)!.map(Number);
-					probe.remove();
-					return [...actual, 255];
-				}),
-			);
-			expect(pair[0]).not.toEqual(pair[1]);
-			await expect
-				.poll(async () => (await painted()).map(({ center }) => center))
-				.toEqual([pair[0], ...expected.slice(1).map(() => pair[1])]);
-			const forced = await painted();
-			expect(forced[0].window).not.toEqual(forced[0].center);
-			for (const badge of forced.slice(1)) expect(badge.plate).toEqual(pair[0]);
-			expect(await sizes()).toEqual(expected);
+			const pair = await systemColours();
+			await expectForcedPaint(pair);
+
+			if (scheme === 'light' && zoom === 15) {
+				const overlay = page.locator('[data-slot="vehicle-overlay"]');
+				const generation = () =>
+					overlay.evaluate(
+						(element) =>
+							Reflect.get(element, Symbol.for('transit.map.vehicleOverlayReceipt')).generation,
+					);
+				const mounted = await generation();
+				await page.emulateMedia({ forcedColors: 'active', colorScheme: 'dark' });
+				const darkPair = await systemColours();
+				expect(darkPair).toEqual([pair[1], pair[0]]);
+				await expectForcedPaint(darkPair);
+				expect(await generation()).toBe(mounted);
+				await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+			}
 
 			await page.emulateMedia({ forcedColors: 'none', colorScheme: scheme });
 			await expect.poll(painted).toEqual(ordinary);

@@ -39,6 +39,7 @@ export function createMapRuntime(options: {
 	let interactionDisposers: readonly (() => void)[] = [];
 	let restorationPending: MapLibreMap | null = null;
 	let reportSetupFailure: (() => void) | null = null;
+	let stopObservingPalette: (() => void) | undefined;
 	const emphasis = createMapEmphasisController(options.selection);
 	const layers = createMapLayerFeedController();
 
@@ -49,17 +50,25 @@ export function createMapRuntime(options: {
 		foreground?.redraw();
 	}
 
-	$effect(() => {
-		const m = map;
-		if (!m) return;
+	function observePalette(m: MapLibreMap): () => void {
 		const forcedColors = window.matchMedia('(forced-colors: active)');
-		const onChange = () => repaint(m);
-		forcedColors.addEventListener('change', onChange);
-		return () => forcedColors.removeEventListener('change', onChange);
-	});
+		const darkScheme = window.matchMedia('(prefers-color-scheme: dark)');
+		const onForcedChange = () => repaint(m);
+		const onSchemeChange = () => {
+			if (forcedColors.matches) repaint(m);
+		};
+		forcedColors.addEventListener('change', onForcedChange);
+		darkScheme.addEventListener('change', onSchemeChange);
+		return () => {
+			forcedColors.removeEventListener('change', onForcedChange);
+			darkScheme.removeEventListener('change', onSchemeChange);
+		};
+	}
 
 	function release(m: MapLibreMap): void {
 		if (map !== m) return;
+		stopObservingPalette?.();
+		stopObservingPalette = undefined;
 		const released = ownerCleanup.releaseMapOwnerReceipts(vehicleMotion, interactionDisposers, () =>
 			emphasis.clear(m),
 		);
@@ -269,6 +278,7 @@ export function createMapRuntime(options: {
 			map = m;
 			reportSetupFailure = reportFailure ?? null;
 			install(m);
+			stopObservingPalette ??= observePalette(m);
 		},
 		styleLoad(m: MapLibreMap) {
 			if (map === m) reinstallAfterStyleLoad(m);
