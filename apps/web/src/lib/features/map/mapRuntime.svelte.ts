@@ -41,6 +41,23 @@ export function createMapRuntime(options: {
 	let reportSetupFailure: (() => void) | null = null;
 	const emphasis = createMapEmphasisController(options.selection);
 	const layers = createMapLayerFeedController();
+
+	function repaint(m: MapLibreMap): void {
+		if (map !== m) return;
+		const { sprites, pin } = retintMapLayers(m);
+		foreground?.setSprites(sprites, pin);
+		foreground?.redraw();
+	}
+
+	$effect(() => {
+		const m = map;
+		if (!m) return;
+		const forcedColors = window.matchMedia('(forced-colors: active)');
+		const onChange = () => repaint(m);
+		forcedColors.addEventListener('change', onChange);
+		return () => forcedColors.removeEventListener('change', onChange);
+	});
+
 	function release(m: MapLibreMap): void {
 		if (map !== m) return;
 		const released = ownerCleanup.releaseMapOwnerReceipts(vehicleMotion, interactionDisposers, () =>
@@ -256,13 +273,7 @@ export function createMapRuntime(options: {
 		styleLoad(m: MapLibreMap) {
 			if (map === m) reinstallAfterStyleLoad(m);
 		},
-		repaint(m: MapLibreMap) {
-			if (map === m) {
-				const { sprites, pin } = retintMapLayers(m);
-				foreground?.setSprites(sprites, pin);
-				foreground?.redraw();
-			}
-		},
+		repaint,
 		release,
 	};
 }

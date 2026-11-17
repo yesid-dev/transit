@@ -122,6 +122,24 @@ afterEach(() => {
 });
 
 describe('map runtime ownership', () => {
+	it('rebakes the mounted overlay on a forced-colours change and detaches at map release', async () => {
+		const forcedColors = new EventTarget();
+		vi.spyOn(window, 'matchMedia').mockReturnValue(forcedColors as MediaQueryList);
+		const { runtime } = runtimeHarness();
+		const target = mapHarness();
+		runtime.ready(target.map);
+		await tick();
+		const foreground = rendering.createOverlay.mock.results[0].value;
+		forcedColors.dispatchEvent(new Event('change'));
+		expect(rendering.retint).toHaveBeenCalledTimes(2);
+		expect(foreground.setSprites).toHaveBeenCalledTimes(1);
+		expect(foreground.redraw).toHaveBeenCalledTimes(1);
+		runtime.release(target.map);
+		await tick();
+		forcedColors.dispatchEvent(new Event('change'));
+		expect(rendering.retint).toHaveBeenCalledTimes(2);
+	});
+
 	it('reinstalls static layers and the foreground after MapLibre internally restores its style', () => {
 		const { runtime } = runtimeHarness();
 		const target = mapHarness();
