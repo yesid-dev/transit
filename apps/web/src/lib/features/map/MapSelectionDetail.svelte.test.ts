@@ -252,10 +252,12 @@ function installLeafContainerSizeSeam(file: string, outerWidthPx: number): HTMLS
 
 describe('MapSelectionDetail', () => {
 	it.each([
-		['en', 'America/Toronto', '20:06', '20:16'],
+		['en', 'America/Toronto', '8:06 p.m.', '8:16 p.m.'],
 		['fr', 'America/Toronto', '20 h 06', '20 h 16'],
-		['en', 'America/Vancouver', '17:06', '17:16'],
+		['en', 'America/Vancouver', '5:06 p.m.', '5:16 p.m.'],
 		['fr', 'America/Vancouver', '17 h 06', '17 h 16'],
+		['en', 'Australia/Sydney', '10:06 a.m.', '10:16 a.m.'],
+		['fr', 'Australia/Sydney', '10 h 06', '10 h 16'],
 	] as const)(
 		'keeps trip stops and selected-zone ETAs when the vehicle next stop is unreported (%s, %s)',
 		(locale, timeZone, firstTime, secondTime) => {
@@ -290,6 +292,27 @@ describe('MapSelectionDetail', () => {
 			expect(container).toHaveTextContent('Mont-Royal / Saint-Laurent');
 			expect(container).toHaveTextContent('Van Horne / Rockland');
 			expect(detail?.kind === 'vehicle' && detail.nextStops[0].etaUtc).toBe('2026-06-15T00:06:00Z');
+		},
+	);
+
+	it.each(['en', 'fr'] as const)(
+		'shows no reader clock without a published network zone (%s)',
+		(locale) => {
+			const detail = resolveMapSelection(
+				{ kind: 'vehicle', id: 'veh-1' },
+				{ index, stops, alerts, routes },
+			);
+			const { container } = render(MapSelectionDetail, { props: { detail, locale } });
+
+			// A host-zone fallback would print a real clock here; the dot keeps the gap honest.
+			expect(detailValue(container, 'ETA')).toHaveTextContent('·');
+			expect([...container.querySelectorAll('time')].map((node) => node.textContent)).toEqual([
+				'·',
+				'·',
+			]);
+			const stopRow = container.querySelector<HTMLElement>('[data-detail-stop-id="stop-2"]')!;
+			expect(stopRow.getAttribute('aria-label')).toContain('·');
+			expect(stopRow.getAttribute('aria-label')).not.toMatch(/\d{1,2}(?::| h )\d{2}/);
 		},
 	);
 
@@ -583,50 +606,57 @@ describe('MapSelectionDetail', () => {
 	);
 
 	it.each([
-		['America/Toronto', '20:06', '20:36'],
-		['America/Vancouver', '17:06', '17:36'],
-	])('renders both departure rungs in %s', (timeZone, firstTime, lastTime) => {
-		const detail = resolveMapSelection(
-			{ kind: 'stop', id: 'stop-1' },
-			{ index, stops, alerts, stopFiles, now: new Date('2026-06-15T16:30:00Z') },
-		);
-		if (detail?.kind !== 'stop') throw new Error('expected stop detail');
-		const expandedDetail = {
-			...detail,
-			departures: [
-				...(detail.departures ?? []),
-				{ route: '18', trip: 'trip-18-a', eta_utc: utc('2026-06-15T00:26:00Z'), delay_min: 0 },
-				{ route: '80', trip: 'trip-80-a', eta_utc: utc('2026-06-15T00:36:00Z'), delay_min: 0 },
-			],
-		};
-		const { container } = render(MapSelectionDetail, {
-			props: { detail: expandedDetail, locale: 'en', timeZone },
-		});
-		expect(container.querySelector('[data-slot="detail-departures"] time')).toHaveTextContent(
-			firstTime,
-		);
-		expect(container.querySelector('[data-slot="detail-more-departures"] li')).toHaveTextContent(
-			lastTime,
-		);
-		const routeTimes = container.querySelector<HTMLElement>('[data-slot="detail-route-times"]')!;
-		const moreDepartures = container.querySelector<HTMLElement>(
-			'[data-slot="detail-more-departures"]',
-		)!;
-		expect(routeTimes.querySelector('button')).toHaveAccessibleName(/Select line/);
-		expect(moreDepartures).toHaveAttribute('data-ladder-expand', '560');
-		expect(routeTimes.compareDocumentPosition(moreDepartures)).toBe(
-			Node.DOCUMENT_POSITION_FOLLOWING,
-		);
-		expect(
-			container.querySelector('[data-slot="detail-more-departures"] details'),
-		).not.toBeInTheDocument();
-		expect(
-			container.querySelector('[data-slot="detail-more-departures-content"]'),
-		).toBeInTheDocument();
-		expect(container.querySelector('[data-slot="detail-schedule-tail"]')).not.toHaveAttribute(
-			'open',
-		);
-	});
+		['en', 'America/Toronto', '8:06 p.m.', '8:36 p.m.'],
+		['fr', 'America/Toronto', '20 h 06', '20 h 36'],
+		['en', 'America/Vancouver', '5:06 p.m.', '5:36 p.m.'],
+		['fr', 'America/Vancouver', '17 h 06', '17 h 36'],
+	] as const)(
+		'renders both departure rungs in %s (%s)',
+		(locale, timeZone, firstTime, lastTime) => {
+			const detail = resolveMapSelection(
+				{ kind: 'stop', id: 'stop-1' },
+				{ index, stops, alerts, stopFiles, now: new Date('2026-06-15T16:30:00Z') },
+			);
+			if (detail?.kind !== 'stop') throw new Error('expected stop detail');
+			const expandedDetail = {
+				...detail,
+				departures: [
+					...(detail.departures ?? []),
+					{ route: '18', trip: 'trip-18-a', eta_utc: utc('2026-06-15T00:26:00Z'), delay_min: 0 },
+					{ route: '80', trip: 'trip-80-a', eta_utc: utc('2026-06-15T00:36:00Z'), delay_min: 0 },
+				],
+			};
+			const { container } = render(MapSelectionDetail, {
+				props: { detail: expandedDetail, locale, timeZone },
+			});
+			expect(container.querySelector('[data-slot="detail-departures"] time')).toHaveTextContent(
+				firstTime,
+			);
+			expect(container.querySelector('[data-slot="detail-more-departures"] li')).toHaveTextContent(
+				lastTime,
+			);
+			const routeTimes = container.querySelector<HTMLElement>('[data-slot="detail-route-times"]')!;
+			const moreDepartures = container.querySelector<HTMLElement>(
+				'[data-slot="detail-more-departures"]',
+			)!;
+			expect(routeTimes.querySelector('button')).toHaveAccessibleName(
+				locale === 'en' ? /Select line/ : /Sélectionner la ligne/,
+			);
+			expect(moreDepartures).toHaveAttribute('data-ladder-expand', '560');
+			expect(routeTimes.compareDocumentPosition(moreDepartures)).toBe(
+				Node.DOCUMENT_POSITION_FOLLOWING,
+			);
+			expect(
+				container.querySelector('[data-slot="detail-more-departures"] details'),
+			).not.toBeInTheDocument();
+			expect(
+				container.querySelector('[data-slot="detail-more-departures-content"]'),
+			).toBeInTheDocument();
+			expect(container.querySelector('[data-slot="detail-schedule-tail"]')).not.toHaveAttribute(
+				'open',
+			);
+		},
+	);
 
 	it('links the +N more indicator to the exact full-analysis action through DetailInlineAction', () => {
 		const detail = resolveMapSelection(
@@ -661,23 +691,34 @@ describe('MapSelectionDetail', () => {
 	});
 
 	it.each([
-		['America/Toronto', '20:06'],
-		['America/Vancouver', '17:06'],
-	])('composes each bus row name with its %s ETA', (timeZone, expectedTime) => {
-		const { getByRole } = render(DetailBusRow, {
-			props: {
-				vehicle: vehicles[0],
-				etaUtc: utc('2026-06-15T00:06:00Z'),
-				timeZone,
-				locale: 'en',
-				t: MAP_SELECTION_DETAIL_COPY.en,
-				onselect: () => {},
-			},
-		});
-		expect(getByRole('button')).toHaveAccessibleName(
-			`Select vehicle veh-1, Line 24, ${expectedTime}, Late, Delay: +4 min`,
-		);
-	});
+		['en', 'America/Toronto', 'Select vehicle veh-1, Line 24, 8:06 p.m., Late, Delay: +4 min'],
+		[
+			'fr',
+			'America/Toronto',
+			'Sélectionner le véhicule veh-1, Ligne 24, 20 h 06, En retard, Retard: +4 min',
+		],
+		['en', 'America/Vancouver', 'Select vehicle veh-1, Line 24, 5:06 p.m., Late, Delay: +4 min'],
+		[
+			'fr',
+			'America/Vancouver',
+			'Sélectionner le véhicule veh-1, Ligne 24, 17 h 06, En retard, Retard: +4 min',
+		],
+	] as const)(
+		'composes each bus row name with its %s clock in %s',
+		(locale, timeZone, expectedName) => {
+			const { getByRole } = render(DetailBusRow, {
+				props: {
+					vehicle: vehicles[0],
+					etaUtc: utc('2026-06-15T00:06:00Z'),
+					timeZone,
+					locale,
+					t: MAP_SELECTION_DETAIL_COPY[locale],
+					onselect: () => {},
+				},
+			});
+			expect(getByRole('button')).toHaveAccessibleName(expectedName);
+		},
+	);
 
 	it('keeps row preview until both pointer and keyboard focus leave without changing selection', async () => {
 		const vehicleDetail = resolveMapSelection(

@@ -463,7 +463,9 @@ for (const lang of PUBLISHED_LOCALES)
 						'datetime',
 						generated,
 					);
-					await expect(page.locator('[data-slot="trip-report-time"] p time')).toContainText('UTC');
+					await expect(page.locator('[data-slot="trip-report-time"] p time')).toContainText(
+						lang === 'en' ? 'EDT' : 'HAE',
+					);
 					const precedes = await page
 						.locator('.trip-observed-caveat')
 						.evaluate((element) =>

@@ -538,16 +538,25 @@
 			// An explicit focus or near-me search is this page's own intent and outranks the link.
 			if (
 				hint &&
+				framing &&
 				!focusController.pending &&
 				!nearMeController.origin &&
 				mapViewHintWithinRuntime(hint, m)
 			) {
-				camera.interact();
-				m.jumpTo({
+				const canvas = m.getCanvas();
+				const inputs = {
+					...framing,
+					size: { width: canvas.clientWidth, height: canvas.clientHeight },
+				};
+				// Restore constraints around the copied view before setting its centre.
+				// A different initial title height must not clamp the link to the new fit.
+				camera.attach(m, inputs, {
+					...camera.capture(m, inputs),
 					center: [hint.center[0], hint.center[1]],
 					zoom: hint.zoom,
 					bearing: hint.bearing,
 					pitch: hint.pitch,
+					owner: 'user',
 				});
 			}
 			nearMeController.refocus();

@@ -371,6 +371,16 @@ for (const provider of ['stm', 'octranspo'])
 				const copied = new URL(await page.evaluate(() => navigator.clipboard.readText()));
 				expect(copied.searchParams.get('provider')).toBe(provider);
 				expect(copied.pathname).toBe(localizeHref(map, locale));
+				const copiedTransform = await rendererTransform(page);
+				await page.goto(copied.href);
+				const reopened = await openReports(page, locale);
+				await expect(async () => {
+					expectSameRendererGeometry(await rendererTransform(page), copiedTransform);
+				}).toPass({ timeout: 5000 });
+				await expect(reopened.locator('[data-report-row]')).toHaveCount(2);
+				await expect(reopened.locator('[data-slot="map-reports-count"]')).toHaveText(
+					t.reportsCount('2', '1', 2, 1),
+				);
 			}
 			await page.goto(`${localizeHref(map, locale)}?provider=${provider}&entity=stop`);
 			const panel = await openReports(page, locale);
@@ -402,7 +412,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		await expect(panel.getByText('STM')).toBeVisible();
 		await expect(panel.getByText(reports.reportsScope)).toBeVisible();
 		await expect(panel.getByText(reports.sourceTime)).toBeVisible();
-		await expect(panel.getByText('UTC')).toBeVisible();
+		await expect(panel.getByText('America/Toronto')).toBeVisible();
 		// Offscreen reports belong to another viewport and are not in this count.
 		await expect(panel.locator('[data-slot="map-reports-count"]')).toHaveText(
 			reports.reportsCount('3', '1', 3, 1),
@@ -419,7 +429,7 @@ for (const locale of PUBLISHED_LOCALES) {
 			provider: 'stm',
 			report_scope: 'matching_vehicle_reports_in_current_map_view',
 			active_filters: '["status:late"]',
-			time_zone: 'UTC',
+			time_zone: 'America/Toronto',
 			status: 'late',
 			reported_utc: '2026-06-15T11:59:40Z',
 			latitude: '45.55',

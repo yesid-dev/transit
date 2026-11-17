@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { IsoUtc } from '#lib/v1/schemas/index.ts';
 import type { MapSelectionDetail } from './selectionSession/mapSelection';
 import * as detailLogic from './mapSelectionDetail.logic';
+import { timeLabel } from './mapSelectionDetail.logic';
 
 type DetailAction = { href: string; label: string } | null;
 const iso = (value: string) => value as IsoUtc;
@@ -230,5 +231,43 @@ describe('detailIdentity', () => {
 		expect(actionFor(stopDetail, 'fr')?.label).toBe(
 			'Voir l’analyse complète de l’arrêt stop-missing-name',
 		);
+	});
+});
+
+describe('timeLabel', () => {
+	it.each([
+		['2026-07-14T23:21:00Z', 'America/Toronto', 'en', '7:21 p.m.'],
+		['2026-07-14T23:21:00Z', 'America/Toronto', 'fr', '19 h 21'],
+		['2026-07-14T23:21:00Z', 'America/Vancouver', 'en', '4:21 p.m.'],
+		['2026-07-14T23:21:00Z', 'America/Vancouver', 'fr', '16 h 21'],
+		['2026-11-14T05:00:00Z', 'America/Toronto', 'en', '12:00 a.m.'],
+		['2026-11-14T05:00:00Z', 'America/Toronto', 'fr', '0 h 00'],
+	] as const)('reads %s in %s for %s as %s', (iso, timeZone, locale, expected) => {
+		expect(timeLabel(iso, locale, timeZone)).toBe(expected);
+	});
+
+	it('keeps absent instants as empty text', () => {
+		expect(timeLabel(null, 'en', 'America/Toronto')).toBe('');
+		expect(timeLabel(undefined, 'fr', 'America/Toronto')).toBe('');
+		expect(timeLabel('', 'en', 'America/Toronto')).toBe('');
+	});
+
+	it('shows the existing dot for an invalid instant or a missing network zone', () => {
+		expect(timeLabel('not-a-date', 'en', 'America/Toronto')).toBe('·');
+		expect(timeLabel('2026-07-14T23:21:00Z', 'en', undefined)).toBe('·');
+		expect(timeLabel('2026-07-14T23:21:00Z', 'fr', '')).toBe('·');
+	});
+
+	it('does not read the host clock when the network zone is missing', () => {
+		expect(timeLabel('2026-07-14T23:21:00Z', 'en')).toBe('·');
+		expect(timeLabel('2026-11-14T05:00:00Z', 'fr')).toBe('·');
+	});
+
+	it('keeps the invalid-instant dot before refusing an explicitly invalid zone', () => {
+		expect(timeLabel('not-a-date', 'en', 'Not/AZone')).toBe('·');
+	});
+
+	it('refuses an explicitly invalid network zone instead of repairing it', () => {
+		expect(() => timeLabel('2026-07-14T23:21:00Z', 'en', 'Not/AZone')).toThrow(RangeError);
 	});
 });

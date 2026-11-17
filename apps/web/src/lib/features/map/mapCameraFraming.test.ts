@@ -358,6 +358,34 @@ describe('camera interface through the transform adapter', () => {
 	}
 });
 
+it('restores a copied fit-level camera before the receiving bounds can clamp its centre', () => {
+	const viewport = { label: 'copied phone view', width: 390, height: 900 };
+	const inputs = {
+		bounds: [...ISLAND_FIT_BOUNDS],
+		maxBounds: [...MAP_MAX_BOUNDS],
+	};
+	const { map, controller, value } = transformCamera(viewport, inputs, 16);
+	// Exact camera from the failed source-backed production acceptance. It is inside
+	// the published panning area, but the receiving initial fit has a tighter centre.
+	const copied = {
+		center: [-73.72605, 45.601900433879365] as [number, number],
+		zoom: 8.977690061813307,
+		bearing: 0,
+		pitch: 0,
+	};
+	controller.attach(map, value, {
+		...controller.capture(map, value),
+		...copied,
+		owner: 'user',
+	});
+	expect(map.getCenter().lng).toBeCloseTo(copied.center[0], 12);
+	expect(map.getCenter().lat).toBeCloseTo(copied.center[1], 12);
+	expect(map.getZoom()).toBeCloseTo(copied.zoom, 12);
+	controller.update(map, { ...value, fitPadding: { top: 172, bottom: 16, left: 16, right: 16 } });
+	expect(map.getCenter().lat).toBeCloseTo(copied.center[1], 12);
+	expect(map.getZoom()).toBeCloseTo(copied.zoom, 12);
+});
+
 it('refits on rotation and detail opening only while fit-owned', () => {
 	const viewport = { label: 'rotating', width: 390, height: 844 };
 	const inputs = initialCamera(
