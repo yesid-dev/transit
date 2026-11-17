@@ -27,12 +27,22 @@ const artifact = {
   expired: false,
   name: `transit-web-${env.GITHUB_SHA}-production-2-${seal}`,
 };
+const browserJobs = [1, 2, 3, 4].map((shard) => ({
+  name: `e2e (${shard})`,
+  run_id: run.id,
+  run_attempt: run.run_attempt,
+  status: "completed",
+  conclusion: "success",
+}));
 const api =
-  (runs = [run], artifacts = [artifact]) =>
-  async (path) =>
-    path.startsWith("/actions/workflows/")
-      ? { workflow_runs: runs }
-      : { artifacts };
+  (runs = [run], artifacts = [artifact], jobs = browserJobs) =>
+  async (path) => {
+    if (path.startsWith("/actions/workflows/")) return { workflow_runs: runs };
+    if (path === "/actions/runs/123/artifacts?per_page=100") return { artifacts };
+    if (path === "/actions/runs/123/attempts/2/jobs?per_page=100")
+      return { jobs, total_count: jobs.length };
+    throw new Error(`Unexpected API request: ${path}`);
+  };
 
 test("fallback is the default without a successful same-SHA queue producer", async () => {
   assert.equal(await selectPromotion(env, api([])), null);
@@ -82,6 +92,23 @@ test("promotion is bound to repository, exact SHA, successful workflow, attempt 
     ),
     null,
   );
+});
+
+test("a successful merge group without four successful shards on the artifact attempt uses a source build", async () => {
+  const firstThree = browserJobs.slice(0, 3);
+  const fourth = browserJobs[3];
+  for (const jobs of [
+    [],
+    firstThree,
+    [...firstThree, { ...fourth, conclusion: "skipped" }],
+    [...firstThree, { ...fourth, conclusion: "failure" }],
+    [...firstThree, { ...fourth, conclusion: "cancelled" }],
+    [...firstThree, { ...fourth, run_attempt: 1 }],
+    [...firstThree, { ...fourth, run_id: 789 }],
+    [...browserJobs, fourth],
+  ]) {
+    assert.equal(await selectPromotion(env, api([run], [artifact], jobs)), null);
+  }
 });
 
 test("API failure explicitly selects a source build, never an unverified artifact", async () => {

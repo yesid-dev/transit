@@ -1,6 +1,31 @@
 import { appendFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { REQUIRED_QUEUE_BROWSER_JOBS } from "./web-queue-gate.mjs";
+
+async function hasBrowserProof(run, api) {
+  const page = await api(
+    `/actions/runs/${run.id}/attempts/${run.run_attempt}/jobs?per_page=100`,
+  );
+  if (
+    !Array.isArray(page.jobs) ||
+    page.jobs.length !== page.total_count ||
+    page.jobs.length > 100
+  )
+    return false;
+
+  return REQUIRED_QUEUE_BROWSER_JOBS.every((name) => {
+    const matching = page.jobs.filter((job) => job.name === name);
+    if (matching.length !== 1) return false;
+    const [job] = matching;
+    return (
+      job.run_id === run.id &&
+      job.run_attempt === run.run_attempt &&
+      job.status === "completed" &&
+      job.conclusion === "success"
+    );
+  });
+}
 
 export async function selectPromotion(env, api) {
   if (env.GITHUB_EVENT_NAME !== "push" || env.GITHUB_REF !== "refs/heads/main")
@@ -41,7 +66,7 @@ export async function selectPromotion(env, api) {
         artifact.name.startsWith(prefix) &&
         /^[a-f0-9]{64}$/.test(artifact.name.slice(prefix.length)),
     );
-    if (matches.length === 1)
+    if (matches.length === 1 && (await hasBrowserProof(run, api)))
       return {
         artifact_id: String(matches[0].id),
         run_id: String(run.id),
