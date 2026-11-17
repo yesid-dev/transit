@@ -510,7 +510,7 @@ def test_due_analyze_runs_after_validation_and_before_projection(capture, engine
 def test_interleaved_transactions_retry_stale_snapshot_without_rewinding(capture, engine, settings):
     first, second = capture(0), capture(1)
     newer_at_state = Event()
-    older_at_lock = Event()
+    older_has_snapshot = Event()
     release_newer = Event()
     older_attempts = 0
 
@@ -521,10 +521,13 @@ def test_interleaved_transactions_retry_stale_snapshot_without_rewinding(capture
             and "UPDATE gold.realtime_serving_state" in statement
         ):
             newer_at_state.set()
-            assert release_newer.wait(5), "older call did not reach its lock"
+            assert release_newer.wait(5), "older call did not acquire its snapshot"
         if current_thread().name.endswith("_1") and "hashtext('gold_marts')" in statement:
             older_attempts += 1
-            older_at_lock.set()
+            # This hook runs before cursor execution, so reaching it alone does
+            # not guarantee a repeatable-read snapshot predating the newer commit.
+            connection.exec_driver_sql("SELECT pg_current_snapshot()").scalar_one()
+            older_has_snapshot.set()
 
     event.listen(engine, "before_cursor_execute", coordinate)
     try:
@@ -533,7 +536,7 @@ def test_interleaved_transactions_retry_stale_snapshot_without_rewinding(capture
             try:
                 assert newer_at_state.wait(5)
                 older = pool.submit(_live, engine, settings, first)
-                assert older_at_lock.wait(5)
+                assert older_has_snapshot.wait(5)
             finally:
                 release_newer.set()
             newer.result(timeout=5)
