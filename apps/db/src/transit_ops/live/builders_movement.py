@@ -1,6 +1,6 @@
 """Clock-explicit local movement payloads; intentionally unwired.
 
-Capture evidence supplies rows, while only committed local_serving certifies
+Capture evidence supplies rows, while only matching committed local_serving certifies
 freshness. A borrowed cold holder cannot promote its own capture timestamp.
 """
 
@@ -10,6 +10,7 @@ from typing import cast
 
 from transit_ops.live.local_file import LocalFile
 from transit_ops.live.running import (
+    Evidence,
     FeedPolicy,
     Projection,
     ScheduleInputs,
@@ -164,6 +165,32 @@ def _departures(projection: Projection, generated: str, stamp: str | None) -> St
     return StopDeparturesFile(generated_utc=generated, stops=stops, feed_captured_utc=stamp)
 
 
+def _serving_stamp(
+    local: LocalFile, evidence: Evidence, cycle: datetime, *, enabled: bool
+) -> str | None:
+    row = local.connection.execute(
+        "SELECT capture_row_id, captured_at_utc FROM local_serving "
+        "WHERE endpoint_key='trip_updates'"
+    ).fetchone()
+    if row is None:
+        return None
+    capture_id, captured = row[0], row[1].replace(tzinfo=UTC)
+    if captured > cycle:
+        raise ValueError("serving capture is after cycle")
+    if not enabled:
+        return None
+    if evidence.capture_id is None or evidence.captured_at is None:
+        raise ValueError("local_trip_updates_serving_mismatch")
+    identity = (evidence.captured_at.astimezone(UTC), evidence.capture_id)
+    committed = (captured, capture_id)
+    if identity == committed:
+        return _iso(captured)
+    if evidence.capture_id == capture_id or identity < committed:
+        raise ValueError("local_trip_updates_serving_mismatch")
+    # A newer raw cold fallback is usable, but has no matching serving certificate.
+    return None
+
+
 def build_movement(
     local: LocalFile,
     holder: TripHolder,
@@ -201,13 +228,7 @@ def build_movement(
         trip_policy=trip_policy,
         vehicle_policy=vehicle_policy,
     )
-    row = local.connection.execute(
-        "SELECT captured_at_utc FROM local_serving WHERE endpoint_key='trip_updates'"
-    ).fetchone()
-    captured = row[0].replace(tzinfo=UTC) if row else None
-    if captured is not None and captured > cycle:
-        raise ValueError("serving capture is after cycle")
-    stamp = _opt_iso(captured) if trip_policy.enabled else None
+    stamp = _serving_stamp(local, projection.trip_evidence, cycle, enabled=trip_policy.enabled)
     generated = _iso(cycle)
     return {
         "vehicles.json": snapshot_json_bytes(_vehicles(projection, generated, bounds)),
