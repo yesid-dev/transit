@@ -87,7 +87,6 @@ def _export_need(database, root, tmp_path, need):
             "percentiles_histograms",
             "span_skipped_stops",
             "headways",
-            "route_spine_hours",
         ),
     ],
 )
@@ -206,6 +205,27 @@ def test_frozen_week_survives_selected_replay(
                 ),
                 dict(p=provider),
             ).one() == (23, 26600)
+
+
+@pytest.mark.parametrize("publish_bodies", [False, True])
+def test_unarchived_family_refuses_before_reference(
+    replay_inputs, tmp_path, monkeypatch, publish_bodies
+):
+    from transit_ops.batch import replay as adapter
+
+    def unexpected_reference(*args, **kwargs):
+        pytest.fail("unarchived inputs reached the native reference")
+
+    monkeypatch.setattr(adapter, "build_reference", unexpected_reference)
+    with pytest.raises(
+        ValueError, match=r"input_not_archived: route_spine_hours silver\.rt_feed_snapshots"
+    ):
+        replay(
+            replay_inputs,
+            tmp_path,
+            ("route_spine_hours", "repeat_offenders"),
+            publish_bodies=publish_bodies,
+        )
 
 
 def test_stop_hour_input_output_overlap_carries_closed_archive_rows(
