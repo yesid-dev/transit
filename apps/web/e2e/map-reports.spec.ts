@@ -371,6 +371,16 @@ for (const provider of ['stm', 'octranspo'])
 				const copied = new URL(await page.evaluate(() => navigator.clipboard.readText()));
 				expect(copied.searchParams.get('provider')).toBe(provider);
 				expect(copied.pathname).toBe(localizeHref(map, locale));
+				const copiedTransform = await rendererTransform(page);
+				await page.goto(copied.href);
+				const reopened = await openReports(page, locale);
+				await expect(async () => {
+					expectSameRendererGeometry(await rendererTransform(page), copiedTransform);
+				}).toPass({ timeout: 5000 });
+				await expect(reopened.locator('[data-report-row]')).toHaveCount(2);
+				await expect(reopened.locator('[data-slot="map-reports-count"]')).toHaveText(
+					t.reportsCount('2', '1', 2, 1),
+				);
 			}
 			await page.goto(`${localizeHref(map, locale)}?provider=${provider}&entity=stop`);
 			const panel = await openReports(page, locale);

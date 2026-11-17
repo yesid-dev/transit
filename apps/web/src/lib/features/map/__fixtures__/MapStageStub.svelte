@@ -113,6 +113,8 @@
 		getMaxPitch: () => 60,
 		getBearing: () => 0,
 		getPitch: () => 0,
+		getRoll: () => 0,
+		getPadding: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 		_camera: {
 			transform: {
 				clone: () => ({
