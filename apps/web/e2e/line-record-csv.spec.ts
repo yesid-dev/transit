@@ -49,11 +49,18 @@ for (const provider of ['stm', 'octranspo'])
 					return csvTable(bytes);
 				}
 				await page.setViewportSize({ width, height: 1000 });
+				// The SSR-seeded CSV can be visible before the lazy history adapter finishes startup.
+				// Settle that discovery before measuring reads caused by a download.
+				const historyDiscovery = page.waitForResponse(
+					(response) =>
+						response.url() === `${dataOrigin}/v1/${provider}/historic/history/index.json`,
+				);
 				await page.goto(localizeHref('/lines/9002', locale, provider), {
 					waitUntil: 'domcontentloaded',
 				});
 				await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 				await expect(file('record')).toBeVisible();
+				expect(await (await historyDiscovery).finished()).toBeNull();
 				const record = (await download(file('record')))[0];
 				expect(record).toMatchObject({
 					provider,
