@@ -116,6 +116,125 @@ def test_missing_provisioning_lists_every_name(controller, monkeypatch):
     )
 
 
+@pytest.fixture
+def manual_archive(controller, monkeypatch):
+    for name, value in {
+        "BATCH_SHADOW_PROVISIONED": "false",
+        "GITHUB_EVENT_NAME": "workflow_dispatch",
+        "GITHUB_REF": "refs/heads/main",
+        "GITHUB_SHA": "a" * 40,
+        "INPUT_MODE": "archive",
+        "PROVIDERS": "stm",
+        "DAY": "2026-11-12",
+        "FAMILIES": "occupancy_crowding",
+        "AS_OF": "2026-11-13T07:00:00Z",
+        "BRONZE_S3_ACCESS_KEY": "fixture-key",
+        "BRONZE_S3_SECRET_KEY": "fixture-secret",
+    }.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    return controller
+
+
+def test_explicit_main_archive_dispatch_keeps_automation_disabled(manual_archive, monkeypatch):
+    from contextlib import contextmanager
+
+    from transit_ops.batch import input_sources
+
+    @contextmanager
+    def catalog():
+        yield SimpleNamespace(get_foreign_keys=lambda *a, **kw: [])
+
+    monkeypatch.setattr(input_sources, "replay_catalog", catalog)
+    manual_archive["main"]("plan")
+    planned = json.loads((manual_archive["ROOT"] / "daily-inputs.json").read_bytes())
+    assert planned["matrix"] == [
+        {
+            "provider": "stm",
+            "day": "2026-11-12",
+            "families": ["occupancy_crowding"],
+            "alerts": False,
+            "timezone": "America/Toronto",
+        }
+    ]
+    assert planned["input_mode"] == "archive"
+    assert planned["planned_at"] == "2026-11-13T07:00:00+00:00"
+    manual_archive["require_configuration"]()
+    assert manual_archive["os"].environ["BATCH_SHADOW_PROVISIONED"] == "false"
+    assert "DATABASE_URL" not in manual_archive["os"].environ
+
+
+@pytest.mark.parametrize(
+    "name,value",
+    [
+        ("BATCH_SHADOW_PROVISIONED", ""),
+        ("BATCH_SHADOW_PROVISIONED", "FALSE"),
+        ("BATCH_SHADOW_PROVISIONED", "disabled"),
+        ("GITHUB_EVENT_NAME", "workflow_run"),
+        ("GITHUB_EVENT_NAME", "pull_request_target"),
+        ("GITHUB_EVENT_NAME", ""),
+        ("GITHUB_REF", "refs/heads/other"),
+        ("GITHUB_REF", "refs/tags/main"),
+        ("GITHUB_REF", ""),
+        ("INPUT_MODE", "export"),
+        ("INPUT_MODE", ""),
+        ("PROVIDERS", ""),
+        ("PROVIDERS", "stm,stm"),
+        ("PROVIDERS", "stm,"),
+        ("PROVIDERS", "*"),
+        ("FAMILIES", ""),
+        ("FAMILIES", "occupancy_crowding, occupancy_crowding"),
+        ("FAMILIES", "*"),
+        ("DAY", ""),
+        ("DAY", "20261112"),
+        ("DAY", "2026-02-30"),
+        ("AS_OF", ""),
+        ("AS_OF", "not-an-instant"),
+        ("AS_OF", "2026-11-13T07:00:00"),
+        ("AS_OF", "2026-11-13T07:00:00+01:00"),
+        ("AS_OF", "9999-11-13T07:00:00Z"),
+    ],
+)
+def test_disabled_automation_refuses_unbounded_or_untrusted_dispatch(
+    manual_archive, monkeypatch, name, value
+):
+    monkeypatch.setenv(name, value)
+    with pytest.raises(ValueError, match="provisioning_missing"):
+        manual_archive["require_configuration"]()
+
+
+@pytest.mark.parametrize("name", ["BRONZE_S3_ACCESS_KEY", "BRONZE_S3_SECRET_KEY"])
+def test_manual_archive_still_requires_each_storage_credential(manual_archive, monkeypatch, name):
+    monkeypatch.delenv(name)
+    with pytest.raises(ValueError, match=name):
+        manual_archive["require_configuration"]()
+    # Plan/replay intentionally run without storage credentials in their own steps.
+    manual_archive["require_configuration"](storage=False)
+
+
+def test_manual_archive_cannot_enter_production_export(manual_archive, monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://fixture/db")
+    with pytest.raises(ValueError, match="provisioning_missing"):
+        manual_archive["export_inputs"]({})
+
+
+@pytest.mark.parametrize("name", ["PROVIDERS", "FAMILIES"])
+def test_manual_archive_plan_rejects_unknown_selection(manual_archive, monkeypatch, name):
+    from contextlib import contextmanager
+
+    from transit_ops.batch import input_sources
+
+    @contextmanager
+    def catalog():
+        yield SimpleNamespace(get_foreign_keys=lambda *a, **kw: [])
+
+    monkeypatch.setattr(input_sources, "replay_catalog", catalog)
+    monkeypatch.setenv(name, "unknown")
+    with pytest.raises(ValueError, match="invalid_selection"):
+        manual_archive["main"]("plan")
+    assert not (manual_archive["ROOT"] / "daily-inputs.json").exists()
+
+
 def test_export_asserts_read_only_and_uses_locked_cli_all_provider(controller, monkeypatch):
     import psycopg
 
@@ -428,6 +547,15 @@ def test_workflow_confines_production_secret_and_preserves_evidence():
     manual_guard, automatic_guard = job["if"].split("||", 1)
     assert "BATCH_SHADOW_PROVISIONED" not in manual_guard
     assert automatic_guard.lstrip().startswith("(vars.BATCH_SHADOW_PROVISIONED == 'true' &&")
+    assert job["steps"][1]["with"]["ref"] == "${{ github.sha }}"
+    for key, input_name in {
+        "PROVIDERS": "providers",
+        "DAY": "date",
+        "FAMILIES": "families",
+        "AS_OF": "as_of",
+    }.items():
+        assert job["env"][key] == "${{ inputs." + input_name + " }}"
+    assert job["env"]["INPUT_MODE"] == "${{ inputs.input_mode || 'export' }}"
     exports = [s for s in job["steps"] if "BATCH_SHADOW_DATABASE_URL" in str(s)]
     assert len(exports) == 1
     assert exports[0]["env"]["PGOPTIONS"] == "-c default_transaction_read_only=on"
