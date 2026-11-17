@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import text
-from test_live_builders_status import captured, context
+from test_live_builders_status import apply_alert_window_snapshot, captured, context
 from test_live_facts import parsed_vehicle, vehicle_message
 from test_live_running import AT, Holder, inputs
 from test_live_running import local as local
@@ -212,17 +212,7 @@ def cycle_fixture(local, provider, synthetic):
 )
 def test_alert_view_window_is_frozen_at_explicit_cycle(real_db_engine, local, start, end, active):
     ctx, _ = cycle_fixture(local, "network", False)
-    period = {
-        k: (AT + timedelta(seconds=v)).isoformat()
-        for k, v in (("start", start), ("end", end))
-        if v is not None
-    }
-    payload = ALERT | {"id": "window", "activePeriods": [period]}
-    apply_alert_snapshot(
-        local,
-        RawI3AlertSnapshot(102, "network", "America/Toronto", AT, [payload]),
-        loaded_at_utc=AT,
-    )
+    apply_alert_window_snapshot(local, start, end)
     ours = build_bundle(local, Holder(None), inputs(local), ctx)["alerts.json"]
     assert {r["id"] for r in json.loads(ours)["alerts"]} == (
         {"avis", "window"} if active else {"avis"}

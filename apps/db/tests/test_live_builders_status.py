@@ -65,6 +65,58 @@ def build(local, ctx=None, holder=None):
     return build_bundle(local, holder or Holder(None), inputs(local), ctx or context())
 
 
+def apply_alert_window_snapshot(local, start, end):
+    from test_local_alert_apply import ALERT
+
+    from transit_ops.silver.i3 import RawI3AlertSnapshot
+    from transit_ops.static.alert_apply import apply_alert_snapshot
+
+    period = {
+        k: (AT + timedelta(seconds=v)).isoformat()
+        for k, v in (("start", start), ("end", end))
+        if v is not None
+    }
+    payload = ALERT | {"id": "window", "activePeriods": [period]}
+    apply_alert_snapshot(
+        local,
+        RawI3AlertSnapshot(102, "network", "America/Toronto", AT, [ALERT, payload]),
+        loaded_at_utc=AT,
+    )
+
+
+@pytest.mark.parametrize(
+    "start,end,active",
+    [
+        (0, None, True),
+        (-3600, 0, True),
+        (0.000001, None, False),
+        (None, -0.000001, False),
+        (None, None, True),
+    ],
+)
+def test_complete_alert_window_fixture_keeps_base_message(local, start, end, active):
+    from test_local_alert_apply import ALERT
+    from test_local_alert_seed import bundle
+
+    from transit_ops.silver.i3 import RawI3AlertSnapshot
+    from transit_ops.static.alert_apply import apply_alert_snapshot
+    from transit_ops.static.alert_state import seed_alert_state
+
+    seed = bundle()
+    for table in seed.tables.values():
+        table.rows.clear()
+    seed_alert_state(local, seed)
+    apply_alert_snapshot(
+        local, RawI3AlertSnapshot(101, "network", "America/Toronto", AT, [ALERT]), loaded_at_utc=AT
+    )
+    apply_alert_window_snapshot(local, start, end)
+    alerts = json.loads(build(local, context(endpoints=("i3_alerts",)))["alerts.json"])["alerts"]
+    assert {a["id"] for a in alerts} == ({"avis", "window"} if active else {"avis"})
+    original = next(a for a in alerts if a["id"] == "avis")
+    assert str(original["message"]["snapshot_id"]) == "102"
+    assert original["routes"] == ["first"]
+
+
 def test_missing_context_refuses_by_name(local):
     with pytest.raises(ValueError, match="provider"):
         build_bundle(local, Holder(None), inputs(local), PublicationContext(AT, "network"))
