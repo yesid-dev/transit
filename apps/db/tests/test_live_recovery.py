@@ -102,12 +102,29 @@ def test_real_process_reopen_keeps_exact_committed_state_and_retry(tmp_path, sta
     path = tmp_path / "worker.duckdb"
     LocalFile.open(path, provider_id="network", settings=SETTINGS).close()
     expected = killed_fixture(path, stage)
+    assert expected["fact_vehicle_snapshot"], "committed vehicle facts must be nonempty"
+    assert expected["fact_trip_delay_snapshot"], "committed trip facts must be nonempty"
     assert Path(str(path) + ".wal").is_file(), "fixture must exercise actual DuckDB WAL"
     with closing(recovery.reopen(path, provider_id="network", settings=SETTINGS)) as local:
         assert snapshot(local) == expected, "committed evidence lost or uncommitted state recovered"
+        committed = {42, 43} if stage == "postcommit" else {42}
+        for table, identities in (
+            ("fact_vehicle_snapshot", committed),
+            ("fact_trip_delay_snapshot", {n + 100 for n in committed}),
+        ):
+            actual = local.connection.execute(
+                f"SELECT DISTINCT realtime_snapshot_id FROM {table}"
+            ).fetchall()
+            assert {r[0] for r in actual} == identities
+        assert set(
+            local.connection.execute(
+                "SELECT delay_seconds FROM fact_trip_delay_snapshot"
+            ).fetchall()
+        ) == {(180,)}
         recorder = Recorder(local, provider_id="network")
-        assert not apply(local, recorder, 42)
-        recorder.record(record(42))
+        for identity, endpoint in ((42, "vehicle_positions"), (142, "trip_updates")):
+            assert not apply(local, recorder, identity, endpoint)
+            recorder.record(record(identity, endpoint))
         assert snapshot(local) == expected, "identical retry changed committed evidence"
         assert 44 in recorder._due_runs(10), "outstanding coverage obligation disappeared"
         if stage == "pending":
@@ -125,7 +142,9 @@ def verify_pending_retry(local, tmp_path):
     manifest = json.loads(pending[2])
     assert recovered.content_sha256 == manifest["content_sha256"]
     frames = read_segment(local, storage, recovered)
-    assert frames["captures"].column("capture_row_id") == [42]
+    assert frames["captures"].column("capture_row_id") == [42, 142]
+    assert frames["fact_vehicle_snapshot"].rows
+    assert frames["fact_trip_delay_snapshot"].rows
     following = export_segment(local, storage)
     assert following.first_seq == recovered.last_seq + 1
     assert export_segment(local, storage) is None

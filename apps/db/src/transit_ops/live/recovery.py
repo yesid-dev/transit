@@ -557,6 +557,26 @@ def _verify_candidate(
     _expect_digest(candidate.path, candidate.file_sha256)
 
 
+def _check_adoption_paths(candidate: Path, original: Path, backup: Path, directory: Path) -> None:
+    inputs = [
+        _owned_path(Path(str(path) + suffix), directory)
+        for path in (candidate, original)
+        for suffix in ("", ".wal", ".recovery-pending", ".owner.lock")
+    ]
+    outputs = [
+        _owned_path(backup / name, directory)
+        for name in ("database", "wal", "manifest.json", "detached-wal")
+    ]
+    files = inputs + outputs
+    overlap = len(set(files)) != len(files) or any(
+        a != b and a.is_relative_to(b) for a in files for b in files
+    )
+    if overlap or any(
+        p == backup or p.is_relative_to(backup) or backup.is_relative_to(p) for p in inputs
+    ):
+        raise RecoveryRefused("recovery_adoption_paths_collide")
+
+
 def adopt(
     candidate: Candidate,
     *,
@@ -579,6 +599,7 @@ def adopt(
     path = _owned_path(candidate.path, owned_directory)
     if path != candidate.path or len({path, original, backup}) != 3:
         raise RecoveryRefused("recovery_adoption_paths_collide")
+    _check_adoption_paths(path, original, backup, owned_directory)
     candidate = Candidate(
         path,
         candidate.provider_id,

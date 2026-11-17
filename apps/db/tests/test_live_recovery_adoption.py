@@ -68,6 +68,63 @@ def test_explicit_adoption_can_restore_a_missing_target(tmp_path):
     assert not (tmp_path / "evidence" / "database").exists()
 
 
+@pytest.mark.parametrize(
+    "collision",
+    [
+        "candidate_wal",
+        "candidate_marker",
+        "candidate_lock",
+        "original_wal",
+        "original_marker",
+        "original_lock",
+        "backup_wal",
+        "database",
+        "wal",
+        "manifest.json",
+        "detached-wal",
+    ],
+)
+def test_adoption_rejects_entire_sidecar_footprint_before_mutation(tmp_path, collision):
+    original, backup = tmp_path / "failed.duckdb", tmp_path / "evidence"
+    suffixes = {"wal": ".wal", "marker": ".recovery-pending", "lock": ".owner.lock"}
+    name = "candidate.duckdb"
+    if collision.startswith("candidate_"):
+        name = original.name + suffixes[collision.removeprefix("candidate_")]
+    elif collision in ("database", "wal", "manifest.json", "detached-wal"):
+        backup.mkdir()
+        name = str(Path("evidence") / collision)
+    inputs, storage, payloads, _ = generate(tmp_path)
+    candidate = build(tmp_path, inputs, storage, payloads, name=name)
+    if collision.startswith("original_"):
+        original = Path(str(candidate.path) + suffixes[collision.removeprefix("original_")])
+    original.write_bytes(b"failed original")
+    wal = Path(str(original) + ".wal")
+    if wal != candidate.path:
+        wal.write_bytes(b"retained WAL")
+    if collision == "backup_wal":
+        backup = wal
+    before = adoption_files(tmp_path)
+    with pytest.raises(RecoveryRefused, match="recovery_adoption_paths_collide"):
+        adopt(
+            candidate,
+            original=original,
+            backup=backup,
+            owned_directory=tmp_path,
+            original_sha256=sha256(original.read_bytes()).hexdigest(),
+            wal_sha256=sha256(wal.read_bytes()).hexdigest(),
+            settings=SETTINGS,
+        )
+    assert adoption_files(tmp_path) == before
+    assert candidate.path.is_file()
+
+
+def adoption_files(directory):
+    return {
+        p.relative_to(directory): (None if p.is_dir() else sha256(p.read_bytes()).hexdigest())
+        for p in directory.rglob("*")
+    }
+
+
 @pytest.mark.parametrize("failure", ["original", "candidate", "outside", "backup"])
 def test_adoption_refuses_drift_and_unsafe_targets_without_losing_original(tmp_path, failure):
     candidate, options = prepared(tmp_path)
