@@ -4,14 +4,18 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { verifySealed } from "./web-build-artifact.mjs";
 
+export const REQUIRED_QUEUE_BROWSER_JOBS = [
+  "e2e (1)",
+  "e2e (2)",
+  "e2e (3)",
+  "e2e (4)",
+];
 export const REQUIRED_QUEUE_JOBS = [
   "classify",
   "prerelease-guard",
   "ci-work",
   "unit",
-  "e2e (1)",
-  "e2e (2)",
-  "e2e (3)",
+  ...REQUIRED_QUEUE_BROWSER_JOBS,
   "ci",
 ];
 const OPTIONAL_QUEUE_JOBS = new Set([

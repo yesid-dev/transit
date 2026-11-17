@@ -422,7 +422,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4]
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -441,12 +441,13 @@ jobs:
       - name: e2e
         env:
           RUN_EVENT: ${{ github.event_name }}
+          E2E_SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
         run: |
           if [ "$RUN_EVENT" = pull_request ]; then
-            bun run test:e2e --shard=${{ matrix.shard }}/3
+            bun run test:e2e --shard="$E2E_SHARD"
           else
             bun run build
-            bun x playwright test -c e2e/playwright.config.ts --project=http --project=phone --project=desktop --shard=${{ matrix.shard }}/3
+            bun x playwright test -c e2e/playwright.config.ts --project=http --project=phone --project=desktop --shard="$E2E_SHARD"
           fi
 
       - name: Upload e2e failure evidence

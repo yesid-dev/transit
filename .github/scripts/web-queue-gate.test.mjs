@@ -93,6 +93,16 @@ test("absent queue and admin bypass use the full gate", async () => {
   f.runs.length = 0;
   assert.equal(await proveQueueGate(env, f.api), null);
 });
+test("the fourth browser shard must be present and successful to reuse the queue build", async () => {
+  for (const outcome of ["missing", "failure", "cancelled"]) {
+    const f = fixture();
+    const index = f.jobs.findIndex((job) => job.name === "e2e (4)");
+    assert.notEqual(index, -1);
+    if (outcome === "missing") f.jobs.splice(index, 1);
+    else f.jobs[index].conclusion = outcome;
+    assert.equal(await proveQueueGate(env, f.api), null);
+  }
+});
 for (const event of ["pull_request", "merge_group", "workflow_dispatch"])
   test(`${event} cannot reuse a queue gate or call its API`, async () => {
     assert.equal(
