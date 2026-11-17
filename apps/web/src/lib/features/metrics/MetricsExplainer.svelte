@@ -7,6 +7,7 @@
 	import { useAvailableSectionJump } from '#lib/site/availableSectionJump.svelte.ts';
 	import { intl, getLocale, getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
 	import { getProvenance } from '#lib/v1/repositories/provenance.ts';
+	import { getHistoricAvailability } from '#lib/v1/repositories/historic.ts';
 	import { createResource } from '#lib/v1/resource.svelte.ts';
 	import ConformanceBadge from '#lib/components/surface/ConformanceBadge.svelte';
 	import { ArticleSectionStack } from '#lib/components/layout/index.ts';
@@ -30,6 +31,8 @@
 	} from './metrics.content';
 	import { metricsCopy } from './metrics.copy';
 	import MetricBody, { type MetricSqlHtml } from './MetricBody.svelte';
+	import HistoryDepth from './HistoryDepth.svelte';
+	import { historyDepthCopy } from './historyDepth.copy';
 
 	const localizeHref = getLocalizeHref();
 
@@ -44,6 +47,10 @@
 	const LIVE_POSITIONS_ANCHOR = 'live-positions';
 
 	const provenance = createResource(() => getProvenance());
+	const history = createResource(
+		(signal) => getHistoricAvailability({ signal, manifest: manifest ?? undefined }),
+		{ enabled: () => manifest != null, key: () => manifest?.provider },
+	);
 	let desktopRailVisited = $state(false);
 	$effect(() => {
 		if (desktop.current) desktopRailVisited = true;
@@ -80,6 +87,11 @@
 	const record = createRecordStamp(
 		() => manifest,
 		() => provenance.data?.generated_utc ?? null,
+		() => ({
+			rootIndex: history.data,
+			state:
+				history.loading || !history.settled ? 'loading-index' : history.error ? 'error' : 'current',
+		}),
 	);
 	const articleMeta = $derived(
 		[
@@ -97,6 +109,7 @@
 	);
 
 	const PROVENANCE_ANCHOR = 'metrics-provenance';
+	const HISTORY_ANCHOR = 'history-depth';
 	const CONFIDENCE_INTERVALS_ANCHOR = 'confidence-intervals';
 
 	const tocEntries = $derived.by((): TocEntry[] => [
@@ -107,6 +120,7 @@
 			badge: { kind: 'icon' as const, name: 'layers' },
 			children: [],
 		},
+		{ id: HISTORY_ANCHOR, title: historyDepthCopy[locale].title, level: 2, children: [] },
 		...orderedMetrics.map((entry, i) => ({
 			id: entry.anchor,
 			title: entry.name[locale],
@@ -315,6 +329,18 @@
 						</ul>
 					</div>
 				</div>
+			</CollapsibleSection>
+		</div>
+
+		<div class="section-block" id={HISTORY_ANCHOR}>
+			<CollapsibleSection
+				title={historyDepthCopy[locale].title}
+				subtitle={historyDepthCopy[locale].question}
+				headerVariant="article-summary"
+				anchor={HISTORY_ANCHOR}
+				open={true}
+			>
+				<HistoryDepth resource={history} {locale} detailsHref={localizeHref('/status', locale)} />
 			</CollapsibleSection>
 		</div>
 
