@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 
+from transit_ops.control.settings import FactPruneMode, require_fact_pruning_allowed
 from transit_ops.db.connection import make_engine, set_daily_warm_transaction_timeouts
 from transit_ops.ingestion.common import utc_now
 from transit_ops.settings import Settings, get_settings
@@ -204,7 +205,9 @@ def prune_gold_fact_history(
     batch_size: int = 50000,
     dry_run: bool = False,
     now_utc: datetime | None = None,
+    mode: FactPruneMode,
 ) -> tuple[datetime | None, dict[str, int]]:
+    require_fact_pruning_allowed(mode, dry_run=dry_run)
     if retention_days <= 0:
         return None, {
             "gold.fact_trip_delay_snapshot": 0,
@@ -259,6 +262,7 @@ def prune_gold_storage(
             retention_days=settings.GOLD_FACT_RETENTION_DAYS,
             batch_size=settings.GOLD_FACT_PRUNE_BATCH,
             dry_run=dry_run,
+            mode=settings.LIGHTER_STORAGE.control.fact_prune_mode,
         )
         completed_at_utc = utc_now()
 

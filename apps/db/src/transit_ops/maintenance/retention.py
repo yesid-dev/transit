@@ -7,13 +7,14 @@ Tier functions retain their existing transactions, clocks, SQL and archive handl
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from sqlalchemy.engine import Engine
 
+from transit_ops.control.settings import FactPruningHeld
 from transit_ops.db.connection import make_engine
 from transit_ops.ingestion.common import utc_now
 from transit_ops.settings import Settings, get_settings
@@ -73,10 +74,11 @@ class PruneReceipt:
     proof: RetentionProofReport | None
     require_exhausted: bool
     completed_at_utc: datetime
+    held_tiers: dict[RetentionTier, str] = field(default_factory=dict)
 
     @property
     def is_complete(self) -> bool:
-        if self.results.keys() != self.requested_tiers:
+        if self.held_tiers or self.results.keys() != self.requested_tiers:
             return False
         for result in self.results.values():
             if isinstance(result, (bronze.BronzeStoragePruneResult, i3.I3StoragePruneResult)):
@@ -98,6 +100,7 @@ class PruneReceipt:
             "is_complete": self.is_complete,
             "requested_tiers": sorted(self.requested_tiers),
             "results": {tier.value: result.display_dict() for tier, result in self.results.items()},
+            **({"held_tiers": self.held_tiers} if self.held_tiers else {}),
             "proof": self.proof.display_dict() if self.proof is not None else None,
             "require_exhausted": self.require_exhausted,
             "completed_at_utc": self.completed_at_utc.isoformat(),
@@ -122,6 +125,7 @@ def prune(
     engine = engine or make_engine(settings)
     budget = budget or PruneBudget()
     results: dict[RetentionTier, TierResult] = {}
+    held_tiers: dict[RetentionTier, str] = {}
     # Silver references must disappear before Bronze eligibility is evaluated.
     # i3 synchronizes its archive before deleting Silver and Raw; warm retention
     # follows that sync, matching the daily retention commands.
@@ -138,12 +142,16 @@ def prune(
                     dry_run=policy.dry_run,
                 )
             case RetentionTier.GOLD:
-                result = gold.prune_gold_storage(
-                    provider_id,
-                    settings=settings,
-                    engine=engine,
-                    dry_run=policy.dry_run,
-                )
+                try:
+                    result = gold.prune_gold_storage(
+                        provider_id,
+                        settings=settings,
+                        engine=engine,
+                        dry_run=policy.dry_run,
+                    )
+                except FactPruningHeld as exc:
+                    held_tiers[tier] = str(exc)
+                    continue
             case RetentionTier.I3:
                 result = i3.prune_i3_storage(
                     provider_id,
@@ -184,6 +192,7 @@ def prune(
         provider_id=provider_id,
         dry_run=policy.dry_run,
         requested_tiers=policy.tiers,
+        held_tiers=held_tiers,
         results=results,
         proof=proof,
         require_exhausted=policy.require_exhausted,
@@ -219,7 +228,7 @@ def prune_gold_storage(
     engine: Engine | None = None,
     dry_run: bool = False,
 ) -> gold.GoldStoragePruneResult:
-    result = prune(
+    receipt = prune(
         provider_id,
         RetentionPolicy(
             settings or get_settings(),
@@ -228,7 +237,10 @@ def prune_gold_storage(
             prove=False,
         ),
         engine=engine,
-    ).results[RetentionTier.GOLD]
+    )
+    if reason := receipt.held_tiers.get(RetentionTier.GOLD):
+        raise FactPruningHeld(reason)
+    result = receipt.results[RetentionTier.GOLD]
     assert isinstance(result, gold.GoldStoragePruneResult)
     return result
 

@@ -5,6 +5,7 @@ from datetime import datetime
 
 from sqlalchemy.engine import Connection, Engine
 
+from transit_ops.control.settings import require_fact_pruning_allowed
 from transit_ops.db.connection import make_engine
 from transit_ops.gold.delay_days import invalidate_delay_days
 from transit_ops.gold.delay_periods import invalidate_delay_snapshot, lock_delay_hours
@@ -1369,6 +1370,8 @@ def build_gold_marts(
     engine: Engine | None = None,
 ) -> GoldBuildResult:
     settings = settings or get_settings()
+    # A provider-wide rebuild drops facts whose Silver inputs have already expired.
+    require_fact_pruning_allowed(settings.LIGHTER_STORAGE.control.fact_prune_mode)
     registry = registry or ProviderRegistry.from_project_root(settings=settings)
     manifest = registry.get_provider(provider_id)
     provider_timezone = manifest.provider.timezone

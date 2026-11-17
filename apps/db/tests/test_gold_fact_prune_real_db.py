@@ -6,9 +6,8 @@ import pytest
 import real_db_seed as db_seed
 from sqlalchemy import text
 
-from transit_ops.maintenance.gold import (
-    prune_gold_fact_history,
-)
+from transit_ops.control.settings import FactPruningHeld
+from transit_ops.maintenance.gold import prune_gold_fact_history
 
 PROVIDER = "stm_goldfactprune_test"
 ENDPOINT_ID = 992014
@@ -114,6 +113,7 @@ def test_gold_budget_floor_applies_to_both_fact_tables(conn, table, batch):
     _insert_fact_rows(conn, snapshot_id=992001, count=5, captured_at=OLD, table=table)
     _, counts = prune_gold_fact_history(
         conn,
+        mode="legacy",
         provider_id=PROVIDER,
         retention_days=14,
         batch_size=batch,
@@ -121,6 +121,27 @@ def test_gold_budget_floor_applies_to_both_fact_tables(conn, table, batch):
     )
     assert counts[f"gold.{table}"] == max(batch, 1)
     assert _fact_count(conn, table) == 5 - max(batch, 1)
+
+
+def test_transition_hold_preserves_both_fact_populations_and_reports_dry_run(conn):
+    trip, vehicle = "fact_trip_delay_snapshot", "fact_vehicle_snapshot"
+    _insert_fact_rows(conn, snapshot_id=992011, count=2, captured_at=OLD, table=trip)
+    _insert_fact_rows(conn, snapshot_id=992012, count=3, captured_at=OLD, table=vehicle)
+    _insert_fact_rows(conn, snapshot_id=992013, count=1, captured_at=NOW, table=vehicle)
+    expected = {
+        trip: {(992011, 0), (992011, 1)},
+        vehicle: {(992012, 0), (992012, 1), (992012, 2), (992013, 0)},
+    }
+    with pytest.raises(FactPruningHeld, match="fact_pruning_held"):
+        prune_gold_fact_history(
+            conn, mode="hold", provider_id=PROVIDER, retention_days=14, now_utc=NOW
+        )
+    cutoff, counts = prune_gold_fact_history(
+        conn, mode="hold", provider_id=PROVIDER, retention_days=14, now_utc=NOW, dry_run=True
+    )
+    assert cutoff == NOW - timedelta(days=14)
+    assert counts == {f"gold.{trip}": 2, f"gold.{vehicle}": 3}
+    assert {name: _fact_identities(conn, name) for name in expected} == expected
 
 
 @pytest.mark.parametrize("table", ["fact_trip_delay_snapshot", "fact_vehicle_snapshot"])
@@ -150,6 +171,7 @@ def test_gold_strict_cutoff_preserves_equal_row_identities_and_exhausts(conn, ta
 
     _, counts = prune_gold_fact_history(
         conn,
+        mode="legacy",
         provider_id=PROVIDER,
         retention_days=14,
         batch_size=100,
@@ -162,6 +184,7 @@ def test_gold_strict_cutoff_preserves_equal_row_identities_and_exhausts(conn, ta
 
     _, second_counts = prune_gold_fact_history(
         conn,
+        mode="legacy",
         provider_id=PROVIDER,
         retention_days=14,
         batch_size=100,
@@ -177,6 +200,7 @@ def test_gold_fact_prune_caps_deletes_at_batch_per_cycle(conn) -> None:
 
     _cutoff, counts = prune_gold_fact_history(
         conn,
+        mode="legacy",
         provider_id=PROVIDER,
         retention_days=14,
         batch_size=10,
@@ -194,6 +218,7 @@ def test_gold_fact_prune_drains_backlog_over_multiple_cycles(conn) -> None:
     for _ in range(10):
         _cutoff, counts = prune_gold_fact_history(
             conn,
+            mode="legacy",
             provider_id=PROVIDER,
             retention_days=14,
             batch_size=10,
@@ -215,6 +240,7 @@ def test_gold_fact_prune_keeps_rows_inside_retention_window(conn) -> None:
 
     _cutoff, counts = prune_gold_fact_history(
         conn,
+        mode="legacy",
         provider_id=PROVIDER,
         retention_days=14,
         batch_size=10000,
@@ -233,6 +259,7 @@ def test_gold_fact_prune_dry_run_reports_full_backlog_unbounded(conn, table) -> 
 
     _cutoff, counts = prune_gold_fact_history(
         conn,
+        mode="legacy",
         provider_id=PROVIDER,
         retention_days=14,
         batch_size=10,

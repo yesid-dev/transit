@@ -175,7 +175,11 @@ def test_lighter_storage_settings_are_empty_by_default(monkeypatch):
     assert settings.LIGHTER_STORAGE.model_dump(exclude_none=True) == {
         **dict.fromkeys(KEYS, {}),
         "live": {"recording": False, "catchup_page_size": 64, "trip_updates_fallback": "postgres"},
-        "control": {"switch_backend": "postgres", "gc_marks_backend": "postgres"},
+        "control": {
+            "switch_backend": "postgres",
+            "gc_marks_backend": "postgres",
+            "fact_prune_mode": "legacy",
+        },
     }
     digest = "bcc76314f94600369bb408c954ba1c00a216fc0666a4a452dce429b133f7353c"
     for values in (settings.model_dump(exclude={"LIGHTER_STORAGE"}), settings.display_dict()):
@@ -193,7 +197,11 @@ def test_lighter_storage_settings_reject_unknown_nested_keys(lane, monkeypatch):
     assert Settings(_env_file=None).LIGHTER_STORAGE.model_dump(exclude_none=True) == {
         **dict.fromkeys(KEYS, {}),
         "live": {"recording": False, "catchup_page_size": 64, "trip_updates_fallback": "postgres"},
-        "control": {"switch_backend": "postgres", "gc_marks_backend": "postgres"},
+        "control": {
+            "switch_backend": "postgres",
+            "gc_marks_backend": "postgres",
+            "fact_prune_mode": "legacy",
+        },
     }
 
 
