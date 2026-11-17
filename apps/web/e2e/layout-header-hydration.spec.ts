@@ -46,30 +46,34 @@ async function settled(page: Page) {
 	}
 }
 
+// Every measurement gets its own page and context: a reused document can keep hydration state
+// from an earlier navigation (CI saw the fourth viewport find nav-hydrated already present on
+// WebKit). One promise holds the app's scripts for that page; resolving it again is a no-op, so
+// the cleanup below cannot strand a held request.
+function heldScripts() {
+	let release!: () => void;
+	const gate = new Promise<void>((resolve) => (release = resolve));
+	return { gate, release: () => release() };
+}
+
 for (const locale of ['en', 'fr'] as const)
-	test(`${locale} header holds still through hydration`, async ({ page }) => {
-		await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
-		await page.route('**/v1/**', async (route) => {
-			const url = new URL(route.request().url());
-			url.pathname = '/__layout/fresh' + url.pathname;
-			await route.fulfill({ response: await route.fetch({ url: url.href }) });
-		});
-		// Only the app's scripts wait (CSS shares their folder): the server markup is measured with
-		// its styles and fonts.
-		const held: Array<() => void> = [];
-		let holding = false;
-		await page.route('**/_app/immutable/**/*.js', async (route) => {
-			if (holding) await new Promise<void>((resolve) => held.push(resolve));
-			await route.fallback();
-		});
-		const resume = () => {
-			holding = false;
-			for (const next of held.splice(0)) next();
-		};
-		try {
-			for (const width of [320, 360, 390, 768, 1206, 1280]) {
-				holding = true;
-				await page.setViewportSize({ width, height: 900 });
+	for (const width of [320, 360, 390, 768, 1206, 1280] as const)
+		test(`${locale} ${width}px header holds still through hydration`, async ({ page }) => {
+			await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
+			await page.route('**/v1/**', async (route) => {
+				const url = new URL(route.request().url());
+				url.pathname = '/__layout/fresh' + url.pathname;
+				await route.fulfill({ response: await route.fetch({ url: url.href }) });
+			});
+			// Only the app's scripts wait (CSS shares their folder): the server markup is measured
+			// with its styles and fonts.
+			const scripts = heldScripts();
+			await page.route('**/_app/immutable/**/*.js', async (route) => {
+				await scripts.gate;
+				await route.fallback();
+			});
+			await page.setViewportSize({ width, height: 900 });
+			try {
 				await page.goto(localizeHref('/privacy?provider=stm', locale), {
 					waitUntil: 'domcontentloaded',
 				});
@@ -77,11 +81,10 @@ for (const locale of ['en', 'fr'] as const)
 				const before = await settled(page);
 				expect(before.links, `${width}px bar links`).toHaveLength(width < 1280 ? 0 : 4);
 
-				resume();
+				scripts.release();
 				await expect(page.locator(`${parts.pill}.nav-hydrated`)).toBeVisible();
 				expect(await settled(page), `${locale} ${width}px`).toEqual(before);
+			} finally {
+				scripts.release();
 			}
-		} finally {
-			resume();
-		}
-	});
+		});

@@ -444,7 +444,7 @@
 					collapsed
 					ladderExpand={560}
 					inlineAction={{
-						href: action.href,
+						href: localizeHref(action.href, locale),
 						label: `+${detail.departures.length - 3} ${t.more}`,
 						dataSlot: 'detail-more-departures-action',
 					}}

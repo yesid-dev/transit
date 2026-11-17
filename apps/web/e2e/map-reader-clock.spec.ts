@@ -15,6 +15,8 @@ test.use({ bypassCSP: true });
 const GENERATED = '2026-06-15T12:00:00Z';
 const FIRST_ETA = '2026-06-15T12:05:00Z';
 const SECOND_ETA = '2026-06-15T12:10:00Z';
+const THIRD_ETA = '2026-06-15T12:15:00Z';
+const FOURTH_ETA = '2026-06-15T12:20:00Z';
 const publishedStop = fixture('stops-index.json').stops[0];
 const publishedStopFile = fixture('stop.json');
 const publishedDepartures = fixture('departures.json');
@@ -53,6 +55,8 @@ function networkFor(provider: 'stm' | 'octranspo') {
 				[stop.id]: [
 					{ route: '80', trip: 'T1', eta_utc: FIRST_ETA, delay_min: 0 },
 					{ route: '80', trip: 'T2', eta_utc: SECOND_ETA, delay_min: 2 },
+					{ route: '80', trip: 'T3', eta_utc: THIRD_ETA, delay_min: 0 },
+					{ route: '80', trip: 'T4', eta_utc: FOURTH_ETA, delay_min: 0 },
 				],
 			},
 		},
@@ -65,6 +69,18 @@ function networkFor(provider: 'stm' | 'octranspo') {
 					route: '80',
 					delay_min: 0,
 					stops: [{ stop: stop.id, eta_utc: FIRST_ETA, delay_min: 0 }],
+				},
+				T3: {
+					status: 'on_time',
+					route: '80',
+					delay_min: 0,
+					stops: [{ stop: stop.id, eta_utc: THIRD_ETA, delay_min: 0 }],
+				},
+				T4: {
+					status: 'on_time',
+					route: '80',
+					delay_min: 0,
+					stops: [{ stop: stop.id, eta_utc: FOURTH_ETA, delay_min: 0 }],
 				},
 			},
 		},
@@ -119,8 +135,8 @@ async function openNearMe(page: Page, name: string): Promise<void> {
 }
 
 const clocks = {
-	en: { first: '8:05 a.m.', second: '8:10 a.m.' },
-	fr: { first: '8 h 05', second: '8 h 10' },
+	en: { first: '8:05 a.m.', second: '8:10 a.m.', third: '8:15 a.m.' },
+	fr: { first: '8 h 05', second: '8 h 10', third: '8 h 15' },
 } as const;
 
 const busNames = {
@@ -162,11 +178,27 @@ for (const provider of ['stm', 'octranspo'] as const) {
 				.or(page.getByRole('dialog', { name: network.stop.name }));
 			await expect(detail).toBeVisible();
 			const clock = clocks[locale];
-			await expect(detail.locator('.map-departures time')).toHaveText([clock.first, clock.second]);
+			await expect(detail.locator('.map-departures time')).toHaveText([
+				clock.first,
+				clock.second,
+				clock.third,
+			]);
 			// The same instant in the row's accessible name, including its line and status.
 			await expect(
 				detail.getByRole('button', { name: busNames[locale], exact: true }),
 			).toBeVisible();
+			// The +N more row and the panel footer must keep the selected provider and locale.
+			const expectedStopHref = `${locale === 'en' ? '' : `/${locale}`}/stop/${encodeURIComponent(network.stop.id)}?provider=${provider}`;
+			const moreAction = page.locator('[data-slot="detail-more-departures-action"]');
+			const footerAction = page.locator('[data-slot="detail-footer-action"]');
+			await expect(moreAction).toHaveText(`+1 ${locale === 'en' ? 'more' : 'de plus'}`);
+			await expect(moreAction).toHaveAttribute('href', expectedStopHref);
+			await expect(footerAction).toHaveAttribute('href', expectedStopHref);
+			const expectedStopUrl = new URL(expectedStopHref, page.url()).href;
+			await moreAction.focus();
+			await expect(moreAction).toBeFocused();
+			await page.keyboard.press('Enter');
+			await expect(page).toHaveURL(expectedStopUrl);
 		});
 	}
 }

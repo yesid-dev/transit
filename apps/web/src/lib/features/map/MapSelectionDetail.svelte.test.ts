@@ -21,6 +21,7 @@ import type {
 	Vehicle,
 } from '#lib/v1/schemas/index.ts';
 import MapSelectionDetail from './MapSelectionDetail.svelte';
+import MapSelectionDetailProviderHarness from './__fixtures__/MapSelectionDetailProviderHarness.svelte';
 import DetailBusRow from './detail/DetailBusRow.svelte';
 import { MAP_SELECTION_DETAIL_COPY } from './mapSelectionDetail.copy';
 import { detailActions } from './mapSelectionDetail.logic';
@@ -689,6 +690,66 @@ describe('MapSelectionDetail', () => {
 		expect(moreAction).toHaveTextContent('+1 more');
 		expect(moreDepartures.querySelector('h3')?.textContent ?? '').not.toContain('+1 more');
 	});
+
+	it.each([
+		['stm', 'en', '/stop/S%201%20%2F%20nord?provider=stm'],
+		['stm', 'fr', '/fr/stop/S%201%20%2F%20nord?provider=stm'],
+		['octranspo', 'en', '/stop/S%201%20%2F%20nord?provider=octranspo'],
+		['octranspo', 'fr', '/fr/stop/S%201%20%2F%20nord?provider=octranspo'],
+	] as const)(
+		'scopes the +N more action and the footer action with the selected provider and locale (%s, %s)',
+		(provider, locale, expectedHref) => {
+			const encodedStop: StopIndexEntry = {
+				id: 'S 1 / nord',
+				name: 'Fixture stop',
+				code: '54071',
+				lat: 45.51,
+				lon: -73.57,
+			};
+			const scopedIndex = buildLiveIndex({
+				vehicles: { generated_utc: utc('2026-06-15T00:00:00Z'), vehicles: [] },
+				trips: { generated_utc: utc('2026-06-15T00:00:00Z'), trips: {} },
+				stopDepartures: {
+					generated_utc: utc('2026-06-15T00:00:00Z'),
+					stops: {
+						[encodedStop.id]: [
+							{ route: '80', trip: 'T1', eta_utc: utc('2026-06-15T00:06:00Z'), delay_min: 0 },
+							{ route: '80', trip: 'T2', eta_utc: utc('2026-06-15T00:10:00Z'), delay_min: 2 },
+							{ route: '80', trip: 'T3', eta_utc: utc('2026-06-15T00:15:00Z'), delay_min: 0 },
+							{ route: '80', trip: 'T4', eta_utc: utc('2026-06-15T00:20:00Z'), delay_min: 0 },
+						],
+					},
+				},
+			});
+			const detail = resolveMapSelection(
+				{ kind: 'stop', id: encodedStop.id },
+				{
+					index: scopedIndex,
+					stops: [encodedStop],
+					alerts: [],
+					stopFiles: [],
+					now: new Date('2026-06-15T16:30:00Z'),
+				},
+			);
+			const { container } = render(MapSelectionDetailProviderHarness, {
+				props: { detail, locale, provider },
+			});
+			const moreAction = container.querySelector<HTMLAnchorElement>(
+				'[data-slot="detail-more-departures-action"]',
+			);
+			const footerAction = container.querySelector<HTMLAnchorElement>(
+				'[data-slot="detail-footer-action"]',
+			);
+
+			expect(moreAction).not.toBeNull();
+			expect(footerAction).not.toBeNull();
+			expect(moreAction).toHaveAttribute('href', expectedHref);
+			expect(footerAction).toHaveAttribute('href', expectedHref);
+			expect(moreAction).toHaveTextContent(locale === 'en' ? '+1 more' : '+1 de plus');
+			expect(container.querySelectorAll('[data-slot="detail-departures"] li')).toHaveLength(3);
+			expect(container.querySelectorAll('[data-slot="detail-more-departures"] li')).toHaveLength(1);
+		},
+	);
 
 	it.each([
 		['en', 'America/Toronto', 'Select vehicle veh-1, Line 24, 8:06 p.m., Late, Delay: +4 min'],
