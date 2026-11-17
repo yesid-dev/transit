@@ -1,7 +1,6 @@
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from unittest.mock import patch
 
 from transit_ops.gold.realtime import initialize_realtime_serving, refresh_gold_realtime
 from transit_ops.ingestion.common import project_root
@@ -158,15 +157,15 @@ def replay_window(
                 clock.set(cycle.generated_utc)
                 admit_polls(oracle, window, until_utc=clock.instant, bronze=bronze)
                 _apply_cycle(oracle, window, cycle, settings, registry, bronze)
-                with patch.object(publish, "utc_now", return_value=clock.instant):
-                    publish.publish_snapshot(
-                        window.provider_id,
-                        tier="live",
-                        settings=sequential,
-                        registry=registry,
-                        engine=oracle.engine,
-                        storage=sink,
-                    )
+                publish.publish_snapshot(
+                    window.provider_id,
+                    tier="live",
+                    settings=sequential,
+                    registry=registry,
+                    engine=oracle.engine,
+                    storage=sink,
+                    cycle=clock.instant,
+                )
                 written = tuple((key, sink.objects[key]) for key in sink.take_written())
                 with oracle.engine.begin() as connection:
                     connection.exec_driver_sql(
