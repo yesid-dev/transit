@@ -28,11 +28,10 @@ for (const locale of PUBLISHED_LOCALES) {
 		page,
 	}) => {
 		const published = generated_utc.slice(0, 10);
-		// The core manifest has no time zone; retain the year instead of guessing one.
+		// The fixture manifest publishes Toronto's zone, so a same-year date omits the year.
 		const date = new Intl.DateTimeFormat(INTL_TAGS[locale], {
 			month: 'short',
 			day: 'numeric',
-			year: 'numeric',
 			timeZone: 'UTC',
 		}).format(new Date(published));
 		const expected = stampCopy[locale].record(null, date, 'window');

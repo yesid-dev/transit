@@ -1,7 +1,7 @@
 import { stopDisplayName as displayStop } from '#lib/site/transitDisplay.ts';
 import { absenceShort, stopNameFallback } from '#lib/site/absence.ts';
 import { delayLabel } from '#lib/site/delayPresentation.ts';
-import { formatUtc } from '#lib/utils/time.ts';
+import { formatLocalClock } from '#lib/utils/time.ts';
 import { localizeHref, type Locale } from '#lib/i18n/index.ts';
 import { routeFor } from '#lib/nav/index.ts';
 
@@ -71,9 +71,13 @@ export function timeLabel(
 	locale: Locale,
 	timeZone?: string,
 ): string {
-	return iso
-		? formatUtc(iso, locale, { hour: '2-digit', minute: '2-digit', hour12: false, timeZone })
-		: '';
+	if (!iso) return '';
+	const date = new Date(iso);
+	if (Number.isNaN(date.getTime())) return '·';
+	// Without the published network zone there is no honest reader clock: the host's
+	// zone would silently show a different city's time.
+	if (!timeZone) return '·';
+	return formatLocalClock(date, locale, timeZone);
 }
 
 export function formatAge(seconds: number): string {
