@@ -412,7 +412,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		await expect(panel.getByText('STM')).toBeVisible();
 		await expect(panel.getByText(reports.reportsScope)).toBeVisible();
 		await expect(panel.getByText(reports.sourceTime)).toBeVisible();
-		await expect(panel.getByText('UTC')).toBeVisible();
+		await expect(panel.getByText('America/Toronto')).toBeVisible();
 		// Offscreen reports belong to another viewport and are not in this count.
 		await expect(panel.locator('[data-slot="map-reports-count"]')).toHaveText(
 			reports.reportsCount('3', '1', 3, 1),
@@ -429,7 +429,7 @@ for (const locale of PUBLISHED_LOCALES) {
 			provider: 'stm',
 			report_scope: 'matching_vehicle_reports_in_current_map_view',
 			active_filters: '["status:late"]',
-			time_zone: 'UTC',
+			time_zone: 'America/Toronto',
 			status: 'late',
 			reported_utc: '2026-06-15T11:59:40Z',
 			latitude: '45.55',
