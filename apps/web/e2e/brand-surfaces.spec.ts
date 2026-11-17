@@ -485,17 +485,14 @@ test('homepage props remain static without JavaScript and switch instantly with 
 	await page.locator('#main').focus();
 	await page.locator('#main').press('End');
 	await expect(props).toHaveAttribute('data-state', 'visible');
-	expect(
-		await props
-			.locator('svg')
-			.evaluateAll((elements) =>
-				elements.every(
-					(element) =>
-						getComputedStyle(element).animationName === 'none' &&
-						getComputedStyle(element).transitionDuration === '0s',
-				),
-			),
-	).toBe(true);
+	const artwork = props.locator('svg');
+	// Four props (the sign includes a nested SVG) and the fixture: observe each through
+	// CSS matchers rather than one bulk main-world array-handle evaluation.
+	await expect(artwork).toHaveCount(6);
+	for (let index = 0; index < 6; index++) {
+		await expect(artwork.nth(index)).toHaveCSS('animation-name', 'none');
+		await expect(artwork.nth(index)).toHaveCSS('transition-duration', '0s');
+	}
 });
 
 test('the stops listing header draws in as the page scrolls', async ({ page }) => {
