@@ -96,7 +96,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		);
 	});
 	for (const item of [...SURFACE_NAV, ...AUDIT_NAV, ...LEGAL_NAV]) {
-		test(`${locale}: the footer link to ${item.key} still answers`, async ({ page }) => {
+		test(`${locale}: the footer link to ${item.href} still answers`, async ({ page }) => {
 			await page.goto(start(locale));
 			await page
 				.getByTestId('footer')
