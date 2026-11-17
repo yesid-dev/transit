@@ -1,21 +1,22 @@
 <script lang="ts">
-	import { Wordmark } from '@yesid/ui/brand';
+	import { ProductBrand } from '@yesid/ui/brand';
 	import { YESID_HOUSE_LINK } from '#lib/content/nav.ts';
 
 	let { productHref }: { productHref: string } = $props();
 </script>
 
 <span class="footer-brand" data-testid="footer-brand">
-	<span class="footer-brand-row" data-testid="footer-brand-row">
-		<Wordmark href={YESID_HOUSE_LINK.href} external animate={false} class="text-lg" />
-		<span class="footer-divider" aria-hidden="true"></span>
-		<a
+	<span class="footer-brand-layout">
+		<ProductBrand
+			product="transit"
 			href={productHref}
-			data-testid="footer-wordmark"
-			class="footer-product font-heading text-2xl font-bold text-[var(--foreground)]"
-		>
-			transit
-		</a>
+			houseHref={YESID_HOUSE_LINK.href}
+			houseExternal
+			houseStyle="font-size: 1.125rem; line-height: 1.75rem"
+			productStyle="font-size: 1.5rem; line-height: 2rem; white-space: nowrap"
+			dividerStyle="block-size: 18px; display: var(--footer-brand-divider, block)"
+			style="display: flex; flex-direction: var(--footer-brand-direction, row); align-items: var(--footer-brand-align, center); gap: var(--footer-brand-gap, var(--nav-split-space, 0.5rem))"
+		/>
 	</span>
 </span>
 
@@ -29,50 +30,18 @@
 		max-inline-size: 100%;
 		min-inline-size: 0;
 	}
-	.footer-brand-row {
-		display: flex;
-		align-items: center;
-		/* The kit's one split space, the same on both sides of the divider (header and footer). */
-		gap: var(--nav-split-space, 0.5rem);
-	}
-	.footer-product {
-		display: inline-flex;
-		align-items: center;
-		min-block-size: var(--size-tap-min);
-		white-space: nowrap;
-		letter-spacing: -0.01em;
-		border-radius: var(--radius-sm);
-		transition: color var(--duration-fast) var(--ease-default);
-	}
-	.footer-product:hover {
-		color: var(--primary);
-	}
-	.footer-product:focus-visible {
-		outline: 2px solid var(--ring);
-		outline-offset: 2px;
-	}
-	.footer-divider {
-		display: inline-block;
-		width: 2px;
-		height: 18px;
-		background: var(--border-brand);
-		flex-shrink: 0;
+	.footer-brand-layout {
+		display: block;
 	}
 	/* The house mark and the product name together are wider than a phone's brand column at 200%
 	   text, before any gap. Stack them in reading order there; the decorative divider has nothing
 	   left to split and steps out. */
 	@container footer-brand (inline-size < 9.5em) {
-		.footer-brand-row {
-			flex-direction: column;
-			align-items: flex-start;
-		}
-		.footer-divider {
-			display: none;
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.footer-product {
-			transition: none;
+		.footer-brand-layout {
+			--footer-brand-direction: column;
+			--footer-brand-align: flex-start;
+			--footer-brand-gap: 0;
+			--footer-brand-divider: none;
 		}
 	}
 </style>

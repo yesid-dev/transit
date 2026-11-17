@@ -32,8 +32,9 @@ for (const provider of ['stm', 'octranspo'] as const)
 		cases.push({ route: '/', provider, locale, width: 1280, scale: 100 });
 
 const brand = (page: Page) => page.getByTestId('footer-brand');
-const house = (page: Page) => brand(page).locator('a[data-slot="wordmark"]');
-const product = (page: Page) => page.getByTestId('footer-wordmark');
+const cluster = (page: Page) => brand(page).locator('[data-slot="product-brand"]');
+const house = (page: Page) => cluster(page).locator('a[data-slot="wordmark"]');
+const product = (page: Page) => cluster(page).locator('a[data-slot="product-brand-name"]');
 
 type Box = {
 	left: number;
@@ -52,8 +53,8 @@ const metrics = (page: Page) =>
 		};
 		// The cell the footer gives the brand: the wrapper's own parent.
 		const wrapper = document.querySelector<HTMLElement>('[data-testid="footer-brand"]')!;
-		const row = document.querySelector<HTMLElement>('[data-testid="footer-brand-row"]')!;
-		const divider = row.querySelector<HTMLElement>('.footer-divider')!;
+		const row = wrapper.querySelector<HTMLElement>('[data-slot="product-brand"]')!;
+		const divider = row.querySelector<HTMLElement>(':scope > [aria-hidden="true"]')!;
 		const links = [...row.querySelectorAll('a')].map((element) => {
 			const link = element as HTMLAnchorElement;
 			const style = getComputedStyle(link);
@@ -85,7 +86,7 @@ const metrics = (page: Page) =>
 	});
 
 async function settled(page: Page) {
-	await expect(brand(page)).toBeVisible();
+	await expect(cluster(page)).toBeVisible();
 	await page.evaluate(async () => {
 		await document.fonts.ready;
 	});
@@ -165,6 +166,9 @@ for (const brandCase of cases)
 		expect(productLink!.href).toBe(localizeHref('/', locale, provider));
 		expect(houseLink!.fontSize, 'house font').toBe(scale === 200 ? '36px' : '18px');
 		expect(productLink!.fontSize, 'product font').toBe(scale === 200 ? '48px' : '24px');
+		expect([houseLink!.box.height, productLink!.box.height], 'link heights').toEqual(
+			scale === 200 ? [56, 64] : [44, 44],
+		);
 		expect([houseLink!.clipped, productLink!.clipped], 'labels clip').toEqual([false, false]);
 
 		// The wrapper fills the column the footer gives it and never leaves the page's width.
@@ -212,6 +216,8 @@ for (const brandCase of cases)
 			).toBeLessThanOrEqual(1);
 			expect(productLink!.box.left, 'product follows house').toBeGreaterThan(houseLink!.box.right);
 			expect(measured.divider.visible, 'divider splits the row').toBe(true);
+			expect(measured.divider.width, 'divider width').toBe(2);
+			expect(measured.divider.height, 'divider height').toBe(18);
 
 			const before = measured.divider.left - houseLink!.box.right;
 			const after = productLink!.box.left - measured.divider.right;
@@ -228,7 +234,7 @@ for (const brandCase of cases)
 			await page
 				.getByTestId('footer')
 				.evaluate((footer) => footer.style.setProperty('--nav-split-space', '12px'));
-			const row = page.getByTestId('footer-brand-row');
+			const row = cluster(page);
 			await expect
 				.poll(() => row.evaluate((element) => getComputedStyle(element).gap))
 				.toBe('12px');
