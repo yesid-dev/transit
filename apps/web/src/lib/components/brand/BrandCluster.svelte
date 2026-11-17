@@ -12,8 +12,8 @@
 			href={productHref}
 			houseHref={YESID_HOUSE_LINK.href}
 			houseExternal
-			houseStyle="font-size: 1.125rem"
-			productStyle="font-size: 1.5rem; white-space: nowrap"
+			houseStyle="font-size: 1.125rem; line-height: 1.75rem"
+			productStyle="font-size: 1.5rem; line-height: 2rem; white-space: nowrap"
 			dividerStyle="block-size: 18px; display: var(--footer-brand-divider, block)"
 			style="display: flex; flex-direction: var(--footer-brand-direction, row); align-items: var(--footer-brand-align, center); gap: var(--footer-brand-gap, var(--nav-split-space, 0.5rem))"
 		/>

@@ -166,6 +166,9 @@ for (const brandCase of cases)
 		expect(productLink!.href).toBe(localizeHref('/', locale, provider));
 		expect(houseLink!.fontSize, 'house font').toBe(scale === 200 ? '36px' : '18px');
 		expect(productLink!.fontSize, 'product font').toBe(scale === 200 ? '48px' : '24px');
+		expect([houseLink!.box.height, productLink!.box.height], 'link heights').toEqual(
+			scale === 200 ? [56, 64] : [44, 44],
+		);
 		expect([houseLink!.clipped, productLink!.clipped], 'labels clip').toEqual([false, false]);
 
 		// The wrapper fills the column the footer gives it and never leaves the page's width.

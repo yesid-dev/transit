@@ -95,8 +95,8 @@ for (const locale of PUBLISHED_LOCALES) {
 			`${YESID_HOUSE_LINK.label[locale]} ${copy.newTab}`,
 		);
 	});
-	test(`${locale}: every earlier URL still answers`, async ({ page }) => {
-		for (const item of [...SURFACE_NAV, ...AUDIT_NAV, ...LEGAL_NAV]) {
+	for (const item of [...SURFACE_NAV, ...AUDIT_NAV, ...LEGAL_NAV]) {
+		test(`${locale}: the footer link to ${item.key} still answers`, async ({ page }) => {
 			await page.goto(start(locale));
 			await page
 				.getByTestId('footer')
@@ -104,8 +104,8 @@ for (const locale of PUBLISHED_LOCALES) {
 				.click();
 			await expect(page).toHaveURL(samePath(localized(item.href, locale)));
 			await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-		}
-	});
+		});
+	}
 	test(`${locale}: a network with no alert feed has no Service alerts`, async ({ page }) => {
 		await page.goto(localizeHref(AUDIT_NAV[0].href, locale, 'octranspo'));
 		const menu = await openMenu(page, locale);
