@@ -1,10 +1,14 @@
 """Single-writer disposable live state and its durable local poll record."""
 
+import errno
+import os
+import sys
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
+from stat import S_ISREG
 from threading import RLock
 from typing import Final, get_args, get_type_hints
 
@@ -30,6 +34,71 @@ class LocalFileMismatch(RuntimeError):
 
 class LocalFileUnreadable(RuntimeError):
     pass
+
+
+def _lock_path(fd: int) -> None:
+    """Lock one stable sidecar inode; closing the descriptor releases ownership."""
+    if sys.platform == "win32":
+        import msvcrt
+
+        msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+    elif os.name == "posix":
+        import fcntl
+
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    else:
+        raise LocalFileUnreadable("path_reservation_unsupported_platform")
+
+
+class PathReservation:
+    """Canonical-path ownership shared by ordinary opens and explicit adoption.
+
+    The stable .owner.lock file is never removed, including on failure or crash.
+    This coordinates cooperating LocalFile clients on supported local filesystems;
+    it does not lock arbitrary DuckDB clients or unify distinct hard-link names.
+    A borrowed LocalFile must close before its reservation can be released.
+    """
+
+    def __init__(self, path: Path):
+        self.path = path.resolve()
+        self._fd: int | None = None
+        self._borrowed = False
+        with _OWNER_LOCK:
+            if self.path in _OWNERS:
+                raise LocalFileLocked(str(self.path))
+            if self.path.exists() and self.path.stat().st_nlink > 1:
+                raise LocalFileMismatch("path_reservation_hard_link_refused")
+            fd = os.open(str(self.path) + ".owner.lock", os.O_RDWR | os.O_CREAT, 0o600)
+            try:
+                _lock_path(fd)
+            except BaseException as exc:
+                os.close(fd)
+                if isinstance(exc, OSError) and exc.errno in (errno.EACCES, errno.EAGAIN):
+                    raise LocalFileLocked(str(self.path)) from exc
+                raise
+            self._fd = fd
+            _OWNERS.add(self.path)
+
+    def borrow(self, path: Path) -> None:
+        with _OWNER_LOCK:
+            if self._fd is None or path.resolve() != self.path or self._borrowed:
+                raise LocalFileLocked("path_reservation_not_available")
+            self._borrowed = True
+
+    def close(self) -> None:
+        with _OWNER_LOCK:
+            if self._borrowed:
+                raise LocalFileLocked("path_reservation_has_borrowed_handle")
+            if self._fd is not None:
+                os.close(self._fd)
+                self._fd = None
+                _OWNERS.remove(self.path)
+
+    def __enter__(self) -> "PathReservation":
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        self.close()
 
 
 def connect_live(
@@ -74,10 +143,20 @@ class LocalFile:
     def __init__(self, connection: duckdb.DuckDBPyConnection):
         self.connection = connection
         self._path: Path | None = None
+        self._reservation: PathReservation | None = None
+        self._owns_reservation = False
         self._active = self._failed = False
 
     @classmethod
-    def open(cls, path: Path, *, provider_id: str, settings: LaneSettings) -> "LocalFile":
+    def open(
+        cls,
+        path: Path,
+        *,
+        provider_id: str,
+        settings: LaneSettings,
+        reservation: PathReservation | None = None,
+        existing_only: bool = False,
+    ) -> "LocalFile":
         memory, threads, temp = (
             settings.duckdb_memory_limit_mb,
             settings.duckdb_threads,
@@ -87,26 +166,43 @@ class LocalFile:
             raise ValueError("explicit memory, thread and temp limits required")
         with _OWNER_LOCK:
             path = path.resolve()
-            if path in _OWNERS:
-                raise LocalFileLocked(str(path))
-            conn = connect_live(
-                path,
-                temp_directory=path.with_suffix(".tmp"),
-                memory_limit_mb=memory,
-                threads=threads,
-                temp_max_mb=temp,
-            )
-            local = cls(conn)
-            local._path = path
-            _OWNERS.add(path)
+            owned = reservation is None
+            reservation = reservation or PathReservation(path)
+            reservation.borrow(path)
             try:
-                local._initialize(provider_id)
-                return local
-            except BaseException as exc:
-                local.close()
-                if isinstance(exc, duckdb.Error):
-                    raise LocalFileUnreadable(str(path)) from exc
+                if Path(str(path) + ".recovery-pending").exists():
+                    raise LocalFileMismatch("recovery_adoption_pending")
+                if existing_only or path.exists():
+                    if not S_ISREG(path.stat().st_mode):
+                        raise LocalFileMismatch("recovery_path_not_regular")
+                elif Path(str(path) + ".wal").exists():
+                    raise FileNotFoundError(f"recovery_database_missing_with_wal: {path}")
+                conn = connect_live(
+                    path,
+                    temp_directory=path.with_suffix(".tmp"),
+                    memory_limit_mb=memory,
+                    threads=threads,
+                    temp_max_mb=temp,
+                )
+            except BaseException:
+                reservation._borrowed = False
+                if owned:
+                    reservation.close()
                 raise
+            local = cls(conn)
+            local._path, local._reservation, local._owns_reservation = path, reservation, owned
+            return local._initialized(provider_id)
+
+    def _initialized(self, provider_id: str) -> "LocalFile":
+        try:
+            self._initialize(provider_id)
+            return self
+        except BaseException as exc:
+            path = self._path
+            self.close()
+            if isinstance(exc, duckdb.Error):
+                raise LocalFileUnreadable(str(path)) from exc
+            raise
 
     def _initialize(self, provider: str) -> None:
         tables = {"meta": "schema_version INTEGER, provider_id VARCHAR"}
@@ -307,9 +403,14 @@ class LocalFile:
 
     def close(self) -> None:
         with _OWNER_LOCK:
-            self.connection.close()
-            if self._path is not None:
-                _OWNERS.remove(self._path)
+            try:
+                self.connection.close()
+            finally:
+                if self._reservation is not None:
+                    self._reservation._borrowed = False
+                    if self._owns_reservation:
+                        self._reservation.close()
+                    self._reservation = None
                 self._path = None
 
 
