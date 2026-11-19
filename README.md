@@ -47,6 +47,18 @@ shared UI come from pinned
 - **Map.** MapLibre draws a per-provider [Protomaps](https://protomaps.com)
   basemap that the [refresh-basemap](.github/workflows/refresh-basemap.yml)
   workflow rebuilds monthly and publishes beside the snapshots.
+- **Status colours.** Transport status takes the yesid.design status tokens:
+  on time is the page's ink, early is blue, and late and severe share red,
+  told apart by shape and word (late ▲, severe ◆). On the live map a severe
+  vehicle carries its ◆ at every zoom and the other status badges appear from
+  zoom 13; the legend states each status's exact minutes. Interface feedback
+  that is not transport status, such as Live, failed or stale, uses the kit's
+  signal colours instead;
+  [statusTokenOwnership.test.ts](apps/web/src/lib/styles/statusTokenOwnership.test.ts)
+  enforces the split. In forced-colours mode, SVG status marks take the system
+  ink, and shape, position and the legend glyphs carry the status.
+- **Site shell.** The menu has four groups: Now, Explore, Rankings and reports,
+  and About the data. The footer's top edge is the kit's hazard strip.
 
 [GLOSSARY.md](GLOSSARY.md) defines the terms used in the code and the UI, such
 as Live age, Estimated position and Silent trip.
