@@ -1234,7 +1234,7 @@ for (const lang of PUBLISHED_LOCALES)
 
 for (const lang of PUBLISHED_LOCALES)
 	for (const width of [320, 390, 1280])
-		test(`${lang} ${width}: stops finder rows keep their height when the weekly record arrives`, async ({
+		test(`${lang} ${width}: stops finder rows and preview keep their height when the weekly record arrives`, async ({
 			page,
 		}) => {
 			await page.clock.setFixedTime(Date.parse('2026-11-12T12:00:00Z'));
@@ -1242,7 +1242,12 @@ for (const lang of PUBLISHED_LOCALES)
 			const hold = new Promise<void>((resolve) => (release = resolve));
 			await stubStopsFinder(page, { hold });
 			await page.setViewportSize({ width, height: 900 });
-			await page.goto(localizeHref('/stops', lang, 'stm'), { waitUntil: 'domcontentloaded' });
+			// The measured stop is selected, so its preview is open at every width while the file loads.
+			await page.goto(localizeHref('/stops?stop=S1', lang, 'stm'), {
+				waitUntil: 'domcontentloaded',
+			});
+			const preview = page.locator('[data-slot="stops-preview"]');
+			await expect(preview).toBeVisible();
 			const rows = page.locator('[data-slot="entity-result-row"]');
 			await expect(rows).toHaveCount(20);
 			await page.evaluate(() => document.fonts.ready);
@@ -1252,6 +1257,7 @@ for (const lang of PUBLISHED_LOCALES)
 				);
 			const before = await heights();
 			const list = (await page.locator('[data-slot="entity-list"]').boundingBox())!;
+			const previewBefore = (await preview.boundingBox())!.height;
 			release();
 			await expect(rows.first().locator('[data-slot="stop-row-figure"]')).toBeVisible();
 			await expect(rows.nth(1).locator('[data-slot="stop-row-state"]')).toBeVisible();
@@ -1260,4 +1266,8 @@ for (const lang of PUBLISHED_LOCALES)
 				expect(Math.abs(height - before[index])).toBeLessThanOrEqual(1);
 			const listAfter = (await page.locator('[data-slot="entity-list"]').boundingBox())!;
 			expect(Math.abs(listAfter.height - list.height)).toBeLessThanOrEqual(1);
+			await expect(preview.locator('[data-slot="stops-preview-csv"]')).toBeVisible();
+			expect(Math.abs((await preview.boundingBox())!.height - previewBefore)).toBeLessThanOrEqual(
+				1,
+			);
 		});

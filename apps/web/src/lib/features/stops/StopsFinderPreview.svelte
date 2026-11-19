@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { Button } from '@yesid/ui/button';
 	import type { Locale } from '#lib/i18n/index.ts';
+	import { fmtLocalePct } from '#lib/utils/format.ts';
 	import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import type { StopIndexEntry } from '#lib/v1/schemas/stops_index.ts';
@@ -43,6 +45,11 @@
 	const actions = $derived(transitTerms[locale].action);
 	const shareHref = $derived(new URL(recordHref, page.url.origin).href);
 	const readings = $derived(record.share ? record.evidence[0]?.value : null);
+	const pending = $derived(record.state === 'pending');
+	const measured = $derived(record.figure != null);
+	// Room holders while the weekly file loads; never shown or read.
+	const placeholderFigure = $derived(fmtLocalePct(88.8, locale, { noData: '' }));
+	const placeholderReadings = $derived(r.readings('888', '88'));
 	const csvHref = $derived(
 		record.csv ? `data:text/csv;charset=utf-8,${encodeURIComponent(record.csv.text)}` : null,
 	);
@@ -61,16 +68,31 @@
 	<div class="preview-answer" data-state={record.state}>
 		<p class="preview-measure">{record.measure}</p>
 		<p class="preview-period" data-slot="stops-preview-period">{record.period ?? ''}</p>
-		{#if record.figure}
-			<p class="preview-figure" data-slot="stops-preview-figure">
-				<strong>{record.figure}</strong>{record.sentence}
+		<!-- Every state keeps the figure line's room: a state without a figure writes over a hidden
+		     copy, as the stop page's answer does, so the preview never grows when the file lands. -->
+		<div class="preview-body">
+			<p
+				class="preview-figure"
+				class:preview-held={!measured}
+				aria-hidden={measured ? undefined : 'true'}
+				data-slot={measured ? 'stops-preview-figure' : undefined}
+			>
+				<strong>{record.figure ?? placeholderFigure}</strong>{record.sentence}
 			</p>
-		{:else}
-			<p class="preview-figure preview-figure--absent" data-slot="stops-preview-figure">
-				{record.status}
-			</p>
+			{#if !measured}
+				<p
+					class="preview-figure preview-figure--absent preview-status"
+					data-slot="stops-preview-figure"
+				>
+					{record.status}
+				</p>
+			{/if}
+		</div>
+		{#if readings}
+			<p class="preview-basis">{readings}</p>
+		{:else if pending}
+			<p class="preview-basis preview-held" aria-hidden="true">{placeholderReadings}</p>
 		{/if}
-		{#if readings}<p class="preview-basis">{readings}</p>{/if}
 		<p class="preview-note">{r.note}</p>
 	</div>
 
@@ -86,6 +108,8 @@
 			>
 				{actions.downloadCsv}
 			</a>
+		{:else if pending}
+			<button type="button" class="preview-link" disabled>{actions.downloadCsv}</button>
 		{/if}
 	</div>
 
@@ -103,6 +127,8 @@
 				fallbackLabel={t.citeFallback}
 				text={record.citation}
 			/>
+		{:else if pending}
+			<Button variant="outline" size="sm" class="min-h-11" disabled>{actions.citeRecord}</Button>
 		{/if}
 	</div>
 
@@ -179,13 +205,14 @@
 		overflow-wrap: break-word;
 	}
 	.preview-period {
-		/* The period's line is held while the weekly file loads. */
-		min-height: 1.45em;
+		/* Two lines are held while the weekly file loads: the dates and complete days wrap on phones. */
+		min-height: 2.9em;
 		font-variant-numeric: tabular-nums;
 	}
 	.preview-figure {
 		margin: 0;
-		min-height: 2.7em;
+		/* Three lines of room: any share's sentence fits it on a phone, in both languages. */
+		min-height: 4.05em;
 		font-size: var(--text-body);
 		line-height: 1.35;
 		color: var(--foreground);
@@ -198,6 +225,26 @@
 	}
 	.preview-figure--absent {
 		color: var(--muted-foreground);
+	}
+	.preview-body {
+		position: relative;
+		min-width: 0;
+	}
+	.preview-status {
+		position: absolute;
+		inset-block-start: 0;
+		inset-inline: 0;
+	}
+	.preview-basis {
+		/* The readings sentence wraps on phones; its two lines are held while the file loads. */
+		min-height: 2.9em;
+	}
+	.preview-held {
+		visibility: hidden;
+	}
+	.preview-link:disabled {
+		cursor: not-allowed;
+		opacity: 0.6;
 	}
 	.preview-actions,
 	.preview-copy {

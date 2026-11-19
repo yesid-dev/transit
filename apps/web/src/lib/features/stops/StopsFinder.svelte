@@ -205,8 +205,9 @@
 	});
 
 	const noMatch = $derived(index.settled && !lineLoading && rows.length === 0);
+	// Nearby with a typed filter that matches nothing is a no-match, never a claim about distance.
 	const noMatchTitle = $derived(
-		nearActive
+		nearActive && !view.query
 			? t.nearNone
 			: view.route && !view.query
 				? t.noLineStops

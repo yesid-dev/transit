@@ -357,6 +357,20 @@ describe('Stops finder — nearby, on request only', () => {
 		await waitFor(() => expect(rows(container)).toHaveLength(20));
 	});
 
+	it('keeps a filter that matches nothing nearby a no-match, not a claim about distance', async () => {
+		const getCurrentPosition = vi.fn((success: PositionCallback) =>
+			success({ coords: { latitude: 45.5, longitude: -73.6 } } as GeolocationPosition),
+		);
+		vi.stubGlobal('navigator', { ...navigator, geolocation: { getCurrentPosition } });
+		vi.stubGlobal('isSecureContext', true);
+		const { container } = render(StopsIndex);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Stops near me' }));
+		await waitFor(() => expect(counts(container)).toBe('Showing 9 of 9 stops within 1 km.'));
+		await fireEvent.input(screen.getByTestId('stops-filter-input'), { target: { value: 'zzzzz' } });
+		expect(await screen.findByText('No stop matches “zzzzz”.')).toBeInTheDocument();
+		expect(screen.queryByText('No stop is within 1 km of your location.')).toBeNull();
+	});
+
 	it('says plainly when the position is refused', async () => {
 		vi.stubGlobal('navigator', {
 			...navigator,
