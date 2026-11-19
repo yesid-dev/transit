@@ -179,7 +179,10 @@
 </figure>
 
 <style>
-	:global(.dv-heatmap-cells) {
+	/* 24 columns need room for 8 hour labels: on a narrow screen the cells scroll beside the
+	   fixed day gutter instead of squeezing until the labels run together. The chart frame's own
+	   min-width: 0 is more specific than a bare class, so this rule names the frame too. */
+	.dv-heatmap-mark :global(.chart-frame.dv-heatmap-cells) {
 		min-width: 27rem;
 	}
 	:global(rect.dv-heatmap-cell) {

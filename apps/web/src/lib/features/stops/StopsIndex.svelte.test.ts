@@ -206,6 +206,37 @@ describe('Stops finder — every published stop', () => {
 			'/stop/S001?provider=stm',
 		);
 	});
+
+	it('names a stop whose lines have no live data in the stop page’s own words, EN and FR', async () => {
+		for (const [locale, words] of [
+			['en', 'No live data for the lines at this stop'],
+			['fr', 'Aucune donnée en direct pour les lignes de cet arrêt'],
+		] as const) {
+			h.state.locale = locale;
+			h.state.routes = [
+				{ id: '24', short: '24', long: 'Sherbrooke', type: 3 },
+				{ id: '2', short: '2', long: 'Orange', type: 1 },
+			];
+			h.state.stops = [
+				{
+					...h.stopsFor(1)[0],
+					id: 'M10',
+					name: 'Station Sherbrooke',
+					mode: 'metro',
+					routes: ['2'],
+				},
+				{ ...h.stopsFor(2)[1], routes: ['24', '2'] },
+			];
+			const { container, unmount } = render(StopsIndex);
+			await waitFor(() => expect(rows(container)).toHaveLength(2));
+			const capability = (name: string) =>
+				rowFor(container, name).querySelector('[data-slot="stop-row-capability"]')?.textContent;
+			expect(capability('Station Sherbrooke')).toBe(words);
+			// A bus line serving the stop has predictions: no capability claim.
+			expect(capability('Stop 002')).toBeUndefined();
+			unmount();
+		}
+	});
 });
 
 describe('Stops finder — each row’s weekly record', () => {

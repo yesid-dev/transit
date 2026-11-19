@@ -514,8 +514,8 @@ async function collectStop(page) {
 					: (element.querySelector('.metric-value')?.textContent?.trim() ?? null),
 			})),
 		);
-	const notSevereMetric = periodMetrics.find((metric) =>
-		/not-severe predictions|prévisions sans retard grave/iu.test(metric.label),
+	const lateMetric = periodMetrics.find((metric) =>
+		/more than 5 min late|plus de 5 min de retard/iu.test(metric.label),
 	);
 	const verdictText = await page
 		.locator('[data-slot="stop-reliability-sections"] [data-slot="verdict"]')
@@ -596,9 +596,9 @@ async function collectStop(page) {
 		},
 	};
 	const stopScalars = {
-		otp: {
-			value: parseNumber(notSevereMetric?.value),
-			text: normalizeObservation(notSevereMetric?.value ?? ''),
+		late: {
+			value: parseNumber(lateMetric?.value),
+			text: normalizeObservation(lateMetric?.value ?? ''),
 		},
 		percentiles: percentiles.map((value, index) => ({
 			value,
@@ -606,7 +606,7 @@ async function collectStop(page) {
 		})),
 	};
 	return [
-		observation('stop.day.otp_pct', parseNumber(notSevereMetric?.value)),
+		observation('stop.day.late_pct', parseNumber(lateMetric?.value)),
 		observation('stop.day.p50_min', percentiles[0] ?? null),
 		observation('stop.day.p90_min', percentiles[1] ?? null),
 		observation('stop.record.answer', record),

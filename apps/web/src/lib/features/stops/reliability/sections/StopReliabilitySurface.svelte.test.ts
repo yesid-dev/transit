@@ -569,40 +569,94 @@ describe('StopReliabilitySurface prediction-share verdict', () => {
 			);
 			expect(banner).toHaveAttribute('data-status', 'tentative');
 			const sentence = banner?.querySelector('p')?.textContent ?? '';
-			expect(sentence).toContain('87');
+			// The late share and its interval: 100 − 87, and 100 − 91.6 to 100 − 79.4, rounded once.
+			expect(sentence).toContain(locale === 'en' ? '13%' : '13\u00a0%');
 			expect(sentence).toContain('120');
-			expect(sentence).toContain('79');
-			expect(sentence).toContain('92');
+			expect(sentence).toContain('8–21');
 			expect
 				.soft(sentence)
 				.toMatch(
 					locale === 'en'
-						? /known predictions.*not severely late/
-						: /prévisions connues.*sans retard grave/,
+						? /known predictions.*more than five minutes late/
+						: /prévisions connues.*plus de cinq minutes de retard/,
 				);
+			expect(sentence).not.toMatch(/not severely late|sans retard grave/);
 			expect.soft(sentence).toMatch(/Wilson/);
 			expect.soft(sentence).toMatch(locale === 'en' ? /dependent/ : /dépendan/);
 			expect.soft(sentence).not.toMatch(/arrivals|à l’heure|95% sure|sûr à 95|today|aujourd’hui/);
 			const pane = container.querySelector('[data-slot="reliability-pane"]');
 			expect(pane?.textContent).toContain(
-				locale === 'en' ? 'Not-severe predictions' : 'Prévisions sans retard grave',
+				locale === 'en' ? 'More than 5 min late' : 'Plus de 5 min de retard',
 			);
-			expect(pane?.textContent).not.toMatch(/On-time %|Tendance ponctualité|Slowest 10%/);
+			expect(pane?.textContent).not.toMatch(
+				/On-time %|Tendance ponctualité|Slowest 10%|Not-severe|sans retard grave/,
+			);
 			const section = await openSection(
 				container,
 				'stop-rel-pane',
 				locale === 'en' ? 'Predicted delays' : 'Prévisions de retard',
 			);
 			const help = within(section).getByRole('button', {
-				name: /not-severe predictions|prévisions sans retard grave/i,
+				name: /more than 5 min late|plus de 5 min de retard/i,
 			});
 			await fireEvent.click(help);
 			const explanation = help.closest('.metric-info');
-			expect(explanation?.textContent).toMatch(locale === 'en' ? /300 seconds/ : /300 secondes/);
+			expect(explanation?.textContent).toMatch(
+				locale === 'en' ? /more than five minutes/ : /plus de cinq minutes/,
+			);
 			expect(explanation?.querySelector('a')).toHaveAttribute(
 				'href',
 				locale === 'en' ? '/metrics#severe' : '/fr/metrics#severe',
 			);
+		},
+	);
+});
+
+describe('StopReliabilitySurface section 02 states the record answer’s measure', () => {
+	it.each(['en', 'fr'] as const)(
+		'leads with the published late share, never its complement, in %s',
+		async (locale) => {
+			mockUrl = new URL('http://localhost/stop/57191?grain=week');
+			const { container } = render(StopReliabilitySurface, {
+				props: {
+					locale,
+					data: {
+						...data,
+						periods: [
+							{
+								grain: 'week',
+								otp_pct: 60,
+								severe_pct: 39.6,
+								observation_count: 50,
+								wilson_lo: 46.2,
+								wilson_hi: 72.4,
+							},
+						],
+					},
+				},
+			});
+			const section = await openSection(
+				container,
+				'stop-rel-pane',
+				locale === 'en' ? 'Predicted delays' : 'Prévisions de retard',
+			);
+			const figure = locale === 'en' ? '39.6%' : '39,6\u00a0%';
+			const banner = section.querySelector('[data-slot="verdict"]');
+			expect(banner?.querySelector('.verdict__ban')?.textContent).toBe(figure);
+			const sentence = banner?.querySelector('p')?.textContent ?? '';
+			expect(sentence).toMatch(
+				locale === 'en'
+					? /about 4 in 10 known predictions are more than five minutes late \(39\.6%; nominal 95% Wilson: 28–54%/
+					: /environ 4 prévisions connues sur 10 ont plus de cinq minutes de retard \(39,6\u00a0%\u00a0; Wilson nominal à 95\u00a0%\u00a0: 28–54\u00a0%/,
+			);
+			const pane = section.querySelector('[data-slot="reliability-pane"]') as HTMLElement;
+			expect(pane.textContent).toContain(figure);
+			expect(section.textContent).not.toMatch(/\b60\s?%|not severely late|sans retard grave/);
+			// The card's bar only draws the figure beside it: nothing in it takes focus (WCAG 2.5.8).
+			expect(
+				pane.querySelector('[data-slot="severity-bar"]')?.closest('[aria-hidden="true"]'),
+			).not.toBeNull();
+			expect(pane.querySelector('[data-slot="severity-bar"][tabindex]')).toBeNull();
 		},
 	);
 });

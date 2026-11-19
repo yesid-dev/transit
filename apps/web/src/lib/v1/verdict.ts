@@ -4,6 +4,7 @@ import { wilsonBoundsProportion } from '#lib/v1/stats.ts';
 import { formatDateKey } from '#lib/utils/time.ts';
 import { DEFAULT_LOCALE, PUBLISHED_LOCALES } from '#lib/i18n/config.ts';
 import { isClosedDay, routeClosedThrough, trailingRouteWindow } from './closedWindow';
+import { lateShareTenths } from '#lib/features/stops/lateShare.ts';
 import type { RouteReliability } from './index';
 
 export type VerdictStatus = 'reliable' | 'patchy' | 'unreliable' | 'tentative' | 'absent';
@@ -22,6 +23,18 @@ export interface VerdictHeadline {
 	readonly wilsonHi?: number | null;
 }
 
+/**
+ * The same headline read the other way: the share more than five minutes late and its nominal
+ * interval. From counts, the share is exact tenths rounded as the publisher rounds (ruling 6);
+ * otherwise the publisher's late share, else the complement of its published share. The interval
+ * is the complement of the unrounded bounds, rounded once.
+ */
+export interface LateFigures {
+	readonly pct: number | null;
+	readonly lo: number | null;
+	readonly hi: number | null;
+}
+
 export interface ReliabilityWindow {
 	readonly grain?: string;
 	readonly date?: string | null;
@@ -30,6 +43,7 @@ export interface ReliabilityWindow {
 	readonly on_time?: number | null;
 	readonly wilson_lo?: number | null;
 	readonly wilson_hi?: number | null;
+	readonly severe_pct?: number | null;
 }
 
 export interface ReliabilityVerdictFile {
@@ -73,6 +87,7 @@ export function retainedDelayHeadline(
 export interface ReliabilityVerdict extends VerdictHeadline, VerdictResult {
 	readonly grain: string;
 	readonly interval: { readonly lo: number; readonly hi: number } | null;
+	readonly late: LateFigures;
 	readonly hedge: string;
 }
 
@@ -166,8 +181,11 @@ export function reliabilityVerdict(
 		wilsonLo: headlineWindow?.wilson_lo ?? null,
 		wilsonHi: headlineWindow?.wilson_hi ?? null,
 	};
+	// The publisher's own late share for the headline window, when it gives one.
+	let severePct: number | null = headlineWindow?.severe_pct ?? null;
 	if (window.from && window.to) {
 		headline = { otpPct: null, observationCount: null, onTime: null };
+		severePct = null;
 		const from = window.from < window.to ? window.from : window.to;
 		const to = window.from < window.to ? window.to : window.from;
 		const dailyWindows: readonly ReliabilityWindow[] =
@@ -194,6 +212,7 @@ export function reliabilityVerdict(
 		const n = complete ? days.reduce((n, p) => n + p.observation_count!, 0) : null;
 		const on = complete ? days.reduce((n, p) => n + p.on_time!, 0) : null;
 		const rates = days.flatMap((p) => (p.otp_pct == null ? [] : [p.otp_pct]));
+		if (days.length === 1) severePct = days[0].severe_pct ?? null;
 		if (days.length > 0)
 			headline =
 				days.length === 1
@@ -215,6 +234,7 @@ export function reliabilityVerdict(
 							onTime: on,
 						};
 	}
+	if (window.aggregate) severePct = null;
 	headline = window.aggregate ?? headline;
 	const grain = window.from && window.to ? 'day' : (headlineWindow?.grain ?? 'day');
 	const classification = classify(headline);
@@ -237,12 +257,14 @@ export function reliabilityVerdict(
 					},
 				}
 			: copy;
+	const late = lateFigures(headline, classification, severePct);
 	return {
 		...shownHeadline,
 		interval: classification.interval,
-		...formatVerdict(shownHeadline, classification, mode, presentation),
+		late,
+		...formatVerdict(shownHeadline, classification, mode, presentation, late),
 		grain,
-		hedge: formatVerdict(headline, classification, mode, presentation).sentence,
+		hedge: formatVerdict(headline, classification, mode, presentation, late).sentence,
 	};
 }
 
@@ -271,6 +293,8 @@ export interface VerdictSentenceArgs {
 	readonly hedge: string;
 }
 
+const NO_LATE: LateFigures = { pct: null, lo: null, hi: null };
+
 export interface VerdictCopy {
 	readonly locale?: string;
 	readonly closedWindow?: (from: string, to: string) => string;
@@ -289,12 +313,13 @@ export interface VerdictCopy {
 		readonly n: number;
 		readonly lo: number;
 		readonly hi: number;
+		readonly late: LateFigures;
 	}) => string;
 	readonly tooFew: (window: string, n: number) => string;
 	readonly unknownCount: (window: string) => string;
 	readonly unavailableInterval: (window: string, n: number) => string;
 	readonly absent: string;
-	readonly hedgeCI: (otp: number, lo: number, hi: number) => string;
+	readonly hedgeCI: (otp: number, lo: number, hi: number, late: LateFigures) => string;
 }
 
 export const VERDICT_MIN_N = 30;
@@ -312,6 +337,8 @@ const asMode = (m: string): Mode => (m === 'week' || m === 'month' || m === 'ran
 interface Classification {
 	readonly status: VerdictStatus;
 	readonly interval: ReliabilityVerdict['interval'];
+	/** The interval's unrounded bounds, so its complement is rounded only once. */
+	readonly bounds?: { readonly lo: number; readonly hi: number };
 	readonly reason?: 'unknown-count' | 'too-few' | 'unavailable-interval';
 }
 
@@ -351,6 +378,31 @@ function classify(headline: VerdictHeadline): Classification {
 						: 'unreliable'
 					: 'tentative',
 		interval: { lo: Math.round(lo), hi: Math.round(hi) },
+		bounds: { lo, hi },
+	};
+}
+
+function lateFigures(
+	headline: VerdictHeadline,
+	result: Classification,
+	published: number | null,
+): LateFigures {
+	const n = headline.observationCount;
+	const onTime = headline.onTime;
+	const tenths = n != null && onTime != null ? lateShareTenths(n - onTime, n) : null;
+	const pct =
+		tenths != null
+			? tenths / 10
+			: published != null && Number.isFinite(published) && published >= 0 && published <= 100
+				? published
+				: headline.otpPct != null && Number.isFinite(headline.otpPct)
+					? 100 - headline.otpPct
+					: null;
+	const bounds = result.bounds;
+	return {
+		pct,
+		lo: bounds ? Math.round(100 - bounds.hi) : null,
+		hi: bounds ? Math.round(100 - bounds.lo) : null,
 	};
 }
 
@@ -359,6 +411,7 @@ function formatVerdict(
 	result: Classification,
 	mode: string,
 	verdict: VerdictCopy,
+	late: LateFigures = NO_LATE,
 ): VerdictResult {
 	const v = verdict;
 	const window = v.windowPhrase[asMode(mode)];
@@ -387,7 +440,7 @@ function formatVerdict(
 		return {
 			status: result.status,
 			ban: `${otpInt}%`,
-			sentence: v.tentative({ window, otp: otpInt, n: n!, lo: loPct, hi: hiPct }),
+			sentence: v.tentative({ window, otp: otpInt, n: n!, lo: loPct, hi: hiPct, late }),
 		};
 	}
 	const hasCounts = n != null && n > 0 && headline.onTime != null;
@@ -414,6 +467,6 @@ function formatVerdict(
 	return {
 		status: band,
 		ban: `${otpInt}%`,
-		sentence: v[band]({ window, onTen, lateTen, hedge: v.hedgeCI(otpInt, loPct, hiPct) }),
+		sentence: v[band]({ window, onTen, lateTen, hedge: v.hedgeCI(otpInt, loPct, hiPct, late) }),
 	};
 }

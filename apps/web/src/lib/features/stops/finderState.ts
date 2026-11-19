@@ -96,6 +96,18 @@ const row = (
 	distanceM,
 });
 
+/**
+ * The stop page's Live now capability rule for a row: every line serving the stop is one its
+ * provider declares without live data. A stop with no known lines makes no such claim.
+ */
+export function stopHasNoLiveData(
+	stop: Pick<StopIndexEntry, 'routes'>,
+	lineHasNoLiveData: (line: string) => boolean,
+): boolean {
+	const lines = stop.routes ?? [];
+	return lines.length > 0 && lines.every(lineHasNoLiveData);
+}
+
 const matchesQuery = (stop: StopIndexEntry, folded: string) =>
 	!folded || tokenMatchScore([stop.name, stop.code, stop.id], folded) != null;
 

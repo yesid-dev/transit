@@ -1,13 +1,24 @@
-import { defineCopy, type Locale } from '#lib/i18n/copy.ts';
+import { defineCopy, intl, type Locale } from '#lib/i18n/copy.ts';
 import { historyCopy } from '#lib/components/surface/historyCopy.ts';
-import type { VerdictCopy, VerdictSentenceArgs } from '#lib/v1/verdict.ts';
+import type { LateFigures, VerdictCopy, VerdictSentenceArgs } from '#lib/v1/verdict.ts';
+import { roundHalfAwayFromZero } from '#lib/utils/rounding.ts';
 
+// Section 02 states the record answer's own measure, the share more than five minutes late, so
+// the page never frames one fact both ways.
 const predictionShare = {
 	fr: ({ window, onTen, lateTen, hedge }: VerdictSentenceArgs) =>
-		`Dans ce résumé ${window}, environ ${onTen} prévisions connues sur 10 sont sans retard grave${hedge}; environ ${lateTen} sur 10 dépassent cinq minutes de retard.`,
+		`Dans ce résumé ${window}, environ ${lateTen} prévisions connues sur 10 ont plus de cinq minutes de retard${hedge}\u00a0; environ ${onTen} sur 10 restent sous ce seuil.`,
 	en: ({ window, onTen, lateTen, hedge }: VerdictSentenceArgs) =>
-		`In this ${window}, about ${onTen} in 10 known predictions are not severely late${hedge}; about ${lateTen} in 10 exceed five minutes late.`,
+		`In this ${window}, about ${lateTen} in 10 known predictions are more than five minutes late${hedge}; about ${onTen} in 10 are not.`,
 };
+// fmtLocalePct's rule, written against the Node-safe copy module: Playwright specs import this
+// copy, and the formatting barrel reaches UI runtime modules they cannot load.
+const lateFigure = (late: LateFigures, locale: Locale): string =>
+	late.pct == null || !Number.isFinite(late.pct)
+		? ''
+		: intl
+				.number(locale, { style: 'percent', maximumFractionDigits: 1 })
+				.format(roundHalfAwayFromZero(late.pct, 1) / 100);
 
 export const stopReliabilityCopy = defineCopy({
 	fr: {
@@ -81,8 +92,8 @@ export const stopReliabilityCopy = defineCopy({
 			reliable: predictionShare.fr,
 			patchy: predictionShare.fr,
 			unreliable: predictionShare.fr,
-			tentative: ({ window, otp, n, lo, hi }) =>
-				`Dans ce résumé ${window}, ${otp} % de ${n} prévisions connues sont sans retard grave. Bornes de Wilson nominales à 95 % : ${lo}–${hi} %; les relevés peuvent être dépendants.`,
+			tentative: ({ window, n, late }) =>
+				`Dans ce résumé ${window}, ${lateFigure(late, 'fr')} de ${n} prévisions connues ont plus de cinq minutes de retard. Bornes de Wilson nominales à 95\u00a0%\u00a0: ${late.lo}–${late.hi}\u00a0%\u00a0; les relevés peuvent être dépendants.`,
 			unknownCount: () =>
 				'Relevés insuffisants pour juger la fiabilité : nombre d’observations inconnu.',
 			unavailableInterval: (window, n) =>
@@ -90,8 +101,8 @@ export const stopReliabilityCopy = defineCopy({
 			tooFew: (window: string, n: number) =>
 				`Ce résumé ${window} contient seulement ${n} prévisions connues admissibles.`,
 			absent: 'Aucune prévision de retard admissible dans ce résumé.',
-			hedgeCI: (otp: number, lo: number, hi: number) =>
-				` (${otp} %; Wilson nominal à 95 % : ${lo}–${hi} %, relevés potentiellement dépendants)`,
+			hedgeCI: (_otp, _lo, _hi, late) =>
+				` (${lateFigure(late, 'fr')}\u00a0; Wilson nominal à 95\u00a0%\u00a0: ${late.lo}–${late.hi}\u00a0%, relevés potentiellement dépendants)`,
 		} satisfies VerdictCopy,
 		percentiles: {
 			heading: 'Retard habituel',
@@ -279,16 +290,16 @@ export const stopReliabilityCopy = defineCopy({
 			reliable: predictionShare.en,
 			patchy: predictionShare.en,
 			unreliable: predictionShare.en,
-			tentative: ({ window, otp, n, lo, hi }) =>
-				`In this ${window}, ${otp}% of ${n} known predictions are not severely late. Nominal 95% Wilson bounds: ${lo}–${hi}%; readings may be dependent.`,
+			tentative: ({ window, n, late }) =>
+				`In this ${window}, ${lateFigure(late, 'en')} of ${n} known predictions are more than five minutes late. Nominal 95% Wilson bounds: ${late.lo}–${late.hi}%; readings may be dependent.`,
 			unknownCount: () =>
 				'Not enough delay observations to judge reliability: observation count unknown.',
 			unavailableInterval: (window, n) =>
 				`This ${window} contains ${n} known predictions, but no usable uncertainty range to judge reliability.`,
 			tooFew: (window, n) => `This ${window} contains only ${n} eligible known predictions.`,
 			absent: 'No eligible predicted-delay readings in this summary.',
-			hedgeCI: (otp, lo, hi) =>
-				` (${otp}%; nominal 95% Wilson: ${lo}–${hi}%, potentially dependent readings)`,
+			hedgeCI: (_otp, _lo, _hi, late) =>
+				` (${lateFigure(late, 'en')}; nominal 95% Wilson: ${late.lo}–${late.hi}%, potentially dependent readings)`,
 		} satisfies VerdictCopy,
 		percentiles: {
 			heading: 'Typical delay',

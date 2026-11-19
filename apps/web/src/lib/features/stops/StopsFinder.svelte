@@ -23,6 +23,7 @@
 	import { StateNotice } from '@yesid/ui/feedback';
 	import { Combobox, type ComboboxOption } from '@yesid/ui/combobox';
 	import { EntityList, EntityResultRow, ResourceBoundary } from '#lib/components/surface/index.ts';
+	import { createGaugeHold, gaugeFiller } from '#lib/components/surface/gaugeHold.svelte.ts';
 	import { EdgeState } from '#lib/components/edge/index.ts';
 	import {
 		FINDER_PAGE_SIZE,
@@ -34,16 +35,20 @@
 		parseFinderState,
 		providerHref,
 		publishedOrderRows,
+		stopHasNoLiveData,
 		stopRecordHref,
 		type FinderRow,
 		type FinderState,
 	} from './finderState';
+	import { routeHasNoLiveData } from '#lib/v1/providers.ts';
 	import { periodRange, presentStopRecord, type StopRecordView } from './stopRecord';
 	import StopsFinderPreview from './StopsFinderPreview.svelte';
-	import { indexCopy } from './stops.copy';
+	import { detailCopy, indexCopy } from './stops.copy';
 
 	const locale = getLocale();
 	const t = $derived(indexCopy[locale]);
+	// The stop page's own Live now words, so a row and its page say the same about live data.
+	const noLiveDataText = $derived(detailCopy[locale].live.noCapability);
 	const localizeHref = getLocalizeHref();
 	const runtime = getV1Runtime();
 	const v1 = getV1Context();
@@ -57,6 +62,32 @@
 	const published = createResource((signal) => getPublishedReliabilityIndex({ signal }));
 	const index = createResource(() => getStopsIndex());
 	const routesIndex = createResource(() => getRoutesIndex());
+
+	/**
+	 * While the list first loads, a gauge list lays out invisibly under the skeleton: a full first
+	 * page of rows with long names and several lines, so the list's room is taken from the first
+	 * render. When the stops arrive, the region keeps that height until the reader acts or the
+	 * width changes, so the footer below never moves.
+	 */
+	const hold = createGaugeHold(() => !(index.settled && routesIndex.settled));
+	const GAUGE_NAME = gaugeFiller(
+		'Henri-Bourassa / Lajeunesse (Terminus Henri-Bourassa, quai Nord)',
+	);
+	const gaugeRows: FinderRow[] = Array.from({ length: FINDER_PAGE_SIZE }, (_, n) => ({
+		key: `gauge-${n}`,
+		stop: {
+			id: `gauge-${n}`,
+			name: GAUGE_NAME,
+			code: '00000',
+			lat: 0,
+			lon: 0,
+			mode: 'bus',
+			routes: ['000', '000', '000'],
+		},
+		towards: null,
+		distanceM: null,
+	}));
+	const gaugeCount = $derived(gaugeFiller(t.counts('00', '0,000', '0,000')));
 
 	let view = $state<FinderState>(parseFinderState(new URLSearchParams(page.url.search)));
 	$effect(() => {
@@ -263,6 +294,13 @@
 		providerHref({ base: currentMirrorUrl(), path: localizeHref('/search', locale), providerId }),
 	);
 
+	/** Unknown line types make no claim: only declared lines without live data count. */
+	function noLiveData(stop: StopIndexEntry): boolean {
+		return stopHasNoLiveData(stop, (line) =>
+			routeHasNoLiveData(providerId, routeById.get(line)?.type),
+		);
+	}
+
 	function lineShorts(stop: StopIndexEntry): string[] {
 		return (stop.routes ?? []).map((id) => routeById.get(id)?.short ?? id);
 	}
@@ -372,6 +410,87 @@
 	}
 </script>
 
+{#snippet finderCard(list: readonly FinderRow[], more: number)}
+	<Card textSize="inherit" class="finder-card">
+		<EntityList
+			items={list}
+			key={(row) => row.key}
+			max={list.length}
+			aria-label={t.listLabel}
+			class="finder-list"
+		>
+			{#snippet row(row)}
+				{@const record = recordFor(row.stop)}
+				{@const name = stopDisplayName(row.stop.name)}
+				<div class="finder-row" class:is-selected={selectedRow?.key === row.key}>
+					{#snippet status()}
+						{@const pending = record.state === 'pending'}
+						{@const measured = record.figure != null && record.period != null}
+						<!-- One shape in every state: the row keeps its size when the weekly file lands,
+							     and the held room is never read. -->
+						<span
+							class="finder-figure"
+							class:finder-held={pending}
+							data-slot={pending ? undefined : measured ? 'stop-row-figure' : 'stop-row-state'}
+							role={measured ? 'img' : undefined}
+							aria-label={measured
+								? t.row.figureLabel(record.figure ?? '', record.period ?? '')
+								: undefined}
+							aria-hidden={pending ? 'true' : undefined}
+						>
+							<span class="finder-figure-pct" class:finder-figure-none={!measured}>
+								{measured ? record.figure : t.row.noShare}
+							</span>
+							<span class:finder-held={!measured} aria-hidden={measured ? undefined : 'true'}>
+								{t.row.lateLabel}
+							</span>
+						</span>
+					{/snippet}
+					{#snippet action()}
+						<button
+							type="button"
+							class="finder-button tap-press"
+							data-stops-preview-id={row.stop.id}
+							aria-label={t.previewStop(name)}
+							onclick={(event) => openPreview(row.stop, event)}
+						>
+							{t.previewAction}
+						</button>
+					{/snippet}
+					<EntityResultRow {status} {action}>
+						<div class="finder-identity">
+							<a class="finder-name readable-name" href={recordHref(row.stop, record)}>
+								{name}
+							</a>
+							<p class="finder-meta">{metaText(row)}</p>
+							{#if noLiveData(row.stop)}
+								<p class="finder-capability" data-slot="stop-row-capability">
+									{noLiveDataText}
+								</p>
+							{/if}
+							<p class="finder-detail" data-slot="stop-row-detail">
+								{detailText(record)}
+							</p>
+						</div>
+					</EntityResultRow>
+				</div>
+			{/snippet}
+		</EntityList>
+
+		{#if more > 0}
+			<div class="finder-more">
+				<button
+					type="button"
+					class="finder-button tap-press"
+					onclick={() => apply({ shown: view.shown + FINDER_PAGE_SIZE })}
+				>
+					{more === 1 ? t.showMoreLast : t.showMore(numberFmt.format(more))}
+				</button>
+			</div>
+		{/if}
+	</Card>
+{/snippet}
+
 {#snippet listingSearch()}
 	<SearchInput
 		label={t.filterLabel}
@@ -467,146 +586,96 @@
 
 	<!-- The stops are the page: a line catalogue that fails only leaves the line filter empty. The
 	     list waits for that catalogue to settle so line names never change under the reader. -->
-	<ResourceBoundary resource={index} lang={locale} isEmpty={(d) => d.stops.length === 0}>
-		{#if !routesIndex.settled}
-			<EdgeState variant="skeleton" lang={locale} layout={desktop.current ? 'desktop' : 'mobile'} />
-		{:else}
-			<div class="finder" data-slot="stops-finder">
-				<div
-					class="finder-results"
-					bind:this={resultsElement}
-					tabindex="-1"
-					role="region"
-					aria-label={t.listLabel}
-				>
-					<p class="finder-count" data-slot="finder-counts">{countText}</p>
-					{#if lateActive && rankedWeek}
-						<p class="finder-context" data-slot="finder-order-context">
-							{t.orderContext(rankedWeek)}
-						</p>
-					{/if}
-					{#if rangeRequested}
-						<p class="finder-notice" data-slot="finder-range-notice">{t.rangeUnsupported}</p>
-					{/if}
-
-					{#if lineLoading}
-						<EdgeState
-							variant="skeleton"
-							lang={locale}
-							layout={desktop.current ? 'desktop' : 'mobile'}
-						/>
-					{:else if noMatch}
-						<StateNotice title={noMatchTitle} presentation="silo" role="status" aria-live="polite">
-							{#snippet action()}
-								<button type="button" class="finder-button tap-press" onclick={clearFilters}>
-									{t.clearFilters}
-								</button>
-							{/snippet}
-						</StateNotice>
-					{:else}
-						<Card textSize="inherit" class="finder-card">
-							<EntityList
-								items={shownRows}
-								key={(row) => row.key}
-								max={shownRows.length}
-								aria-label={t.listLabel}
-								class="finder-list"
-							>
-								{#snippet row(row)}
-									{@const record = recordFor(row.stop)}
-									{@const name = stopDisplayName(row.stop.name)}
-									<div class="finder-row" class:is-selected={selectedRow?.key === row.key}>
-										{#snippet status()}
-											{@const pending = record.state === 'pending'}
-											{@const measured = record.figure != null && record.period != null}
-											<!-- One shape in every state: the row keeps its size when the weekly file lands,
-											     and the held room is never read. -->
-											<span
-												class="finder-figure"
-												class:finder-held={pending}
-												data-slot={pending
-													? undefined
-													: measured
-														? 'stop-row-figure'
-														: 'stop-row-state'}
-												role={measured ? 'img' : undefined}
-												aria-label={measured
-													? t.row.figureLabel(record.figure ?? '', record.period ?? '')
-													: undefined}
-												aria-hidden={pending ? 'true' : undefined}
-											>
-												<span class="finder-figure-pct" class:finder-figure-none={!measured}>
-													{measured ? record.figure : t.row.noShare}
-												</span>
-												<span
-													class:finder-held={!measured}
-													aria-hidden={measured ? undefined : 'true'}
-												>
-													{t.row.lateLabel}
-												</span>
-											</span>
-										{/snippet}
-										{#snippet action()}
-											<button
-												type="button"
-												class="finder-button tap-press"
-												data-stops-preview-id={row.stop.id}
-												aria-label={t.previewStop(name)}
-												onclick={(event) => openPreview(row.stop, event)}
-											>
-												{t.previewAction}
-											</button>
-										{/snippet}
-										<EntityResultRow {status} {action}>
-											<div class="finder-identity">
-												<a class="finder-name readable-name" href={recordHref(row.stop, record)}>
-													{name}
-												</a>
-												<p class="finder-meta">{metaText(row)}</p>
-												<p class="finder-detail" data-slot="stop-row-detail">
-													{detailText(record)}
-												</p>
-											</div>
-										</EntityResultRow>
-									</div>
-								{/snippet}
-							</EntityList>
-
-							{#if moreCount > 0}
-								<div class="finder-more">
-									<button
-										type="button"
-										class="finder-button tap-press"
-										onclick={() => apply({ shown: view.shown + FINDER_PAGE_SIZE })}
-									>
-										{moreCount === 1 ? t.showMoreLast : t.showMore(numberFmt.format(moreCount))}
-									</button>
-								</div>
-							{/if}
-						</Card>
-					{/if}
+	<div class="finder-hold" use:hold.measure style:min-height={hold.minHeight}>
+		{#if hold.active}
+			<div class="finder-stack">
+				<div class="finder-gauge" aria-hidden="true" inert>
+					<div class="finder">
+						<div class="finder-results">
+							<p class="finder-count">{gaugeCount}</p>
+							{@render finderCard(gaugeRows, FINDER_PAGE_SIZE)}
+						</div>
+					</div>
 				</div>
+				<EdgeState
+					variant="skeleton"
+					lang={locale}
+					layout={desktop.current ? 'desktop' : 'mobile'}
+				/>
+			</div>
+		{:else}
+			<ResourceBoundary resource={index} lang={locale} isEmpty={(d) => d.stops.length === 0}>
+				{#if !routesIndex.settled}
+					<EdgeState
+						variant="skeleton"
+						lang={locale}
+						layout={desktop.current ? 'desktop' : 'mobile'}
+					/>
+				{:else}
+					<div class="finder" data-slot="stops-finder">
+						<div
+							class="finder-results"
+							bind:this={resultsElement}
+							tabindex="-1"
+							role="region"
+							aria-label={t.listLabel}
+						>
+							<p class="finder-count" data-slot="finder-counts">{countText}</p>
+							{#if lateActive && rankedWeek}
+								<p class="finder-context" data-slot="finder-order-context">
+									{t.orderContext(rankedWeek)}
+								</p>
+							{/if}
+							{#if rangeRequested}
+								<p class="finder-notice" data-slot="finder-range-notice">{t.rangeUnsupported}</p>
+							{/if}
 
-				{#if selectedRow}
-					{@const record = recordFor(selectedRow.stop)}
-					<div class="finder-preview-column">
-						<StopsFinderPreview
-							stop={selectedRow.stop}
-							{record}
-							{locale}
-							{providerName}
-							meta={metaText({ ...selectedRow, distanceM: null })}
-							recordHref={recordHref(selectedRow.stop, record)}
-							mapHref={mapHref(selectedRow.stop)}
-							headingId={previewHeadingId}
-							showBack={!desktop.current}
-							onBack={backToResults}
-						/>
+							{#if lineLoading}
+								<EdgeState
+									variant="skeleton"
+									lang={locale}
+									layout={desktop.current ? 'desktop' : 'mobile'}
+								/>
+							{:else if noMatch}
+								<StateNotice
+									title={noMatchTitle}
+									presentation="silo"
+									role="status"
+									aria-live="polite"
+								>
+									{#snippet action()}
+										<button type="button" class="finder-button tap-press" onclick={clearFilters}>
+											{t.clearFilters}
+										</button>
+									{/snippet}
+								</StateNotice>
+							{:else}
+								{@render finderCard(shownRows, moreCount)}
+							{/if}
+						</div>
+
+						{#if selectedRow}
+							{@const record = recordFor(selectedRow.stop)}
+							<div class="finder-preview-column">
+								<StopsFinderPreview
+									stop={selectedRow.stop}
+									{record}
+									{locale}
+									{providerName}
+									meta={metaText({ ...selectedRow, distanceM: null })}
+									recordHref={recordHref(selectedRow.stop, record)}
+									mapHref={mapHref(selectedRow.stop)}
+									headingId={previewHeadingId}
+									showBack={!desktop.current}
+									onBack={backToResults}
+								/>
+							</div>
+						{/if}
 					</div>
 				{/if}
-			</div>
+			</ResourceBoundary>
 		{/if}
-	</ResourceBoundary>
+	</div>
 </ListingFrame>
 
 <style>
@@ -616,6 +685,19 @@
 		gap: 1.5rem;
 		align-items: start;
 		min-width: 0;
+	}
+	/* A gauge and the skeleton it reserves room for share one cell; the taller sets the height. */
+	.finder-stack {
+		display: grid;
+		align-items: start;
+		min-width: 0;
+	}
+	.finder-stack > :global(*) {
+		grid-area: 1 / 1;
+		min-width: 0;
+	}
+	.finder-gauge {
+		visibility: hidden;
 	}
 	.finder-results {
 		display: flex;
@@ -745,6 +827,7 @@
 		text-decoration: underline;
 	}
 	.finder-meta,
+	.finder-capability,
 	.finder-detail {
 		margin: 0;
 		font-size: var(--text-small);
