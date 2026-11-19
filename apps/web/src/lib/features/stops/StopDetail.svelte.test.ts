@@ -296,6 +296,8 @@ let provenanceData: { generated_utc: string; gaps: string[] } = {
 	gaps: [],
 };
 let currentLocale: 'en' | 'fr' = 'en';
+// The published weekly index the home page's "Most delayed stops" reads; null = none published.
+let weeklyIndexData: unknown = null;
 const getStopSpy = vi.fn((_id: string) => stopFileData);
 const getStopReliabilitySpy = vi.fn((_id: string) => reliabilityData);
 const stopHistoryHarness = vi.hoisted(() => ({
@@ -348,6 +350,7 @@ vi.mock('#lib/v1/repositories/static.ts', () => ({
 }));
 vi.mock('#lib/v1/repositories/historic.ts', () => ({
 	getStopReliability: (id: string) => getStopReliabilitySpy(id),
+	getPublishedReliabilityIndex: () => weeklyIndexData,
 	getStopHistoryDirectory: stopHistoryHarness.getStopHistoryDirectory,
 	getStopHistoryIndex: stopHistoryHarness.getStopHistoryIndex,
 	loadStopHistoryRange: stopHistoryHarness.loadStopHistoryRange,
@@ -429,6 +432,7 @@ function resetStopSurfaceState() {
 	alertsData = { generated_utc: '2026-06-15T12:00:00Z', alerts: ALERTS };
 	provenanceData = { generated_utc: '2026-06-15T12:00:00Z', gaps: [] };
 	currentLocale = 'en';
+	weeklyIndexData = null;
 	getStopSpy.mockClear();
 	getStopReliabilitySpy.mockClear();
 	stopHistoryHarness.getStopHistoryDirectory.mockReset();
@@ -489,6 +493,29 @@ function articleCardFor(body: Element | null): HTMLElement {
 	if (!(card instanceof HTMLElement))
 		throw new Error('Expected article card around presenter body');
 	return card;
+}
+
+function weeklyRow(id: string, readings: number, late: number) {
+	return {
+		state: 'ranked',
+		id,
+		rank: 1,
+		numerator: readings - late,
+		denominator: readings,
+		pct: Math.round((100 * (readings - late)) / readings),
+		severe_pct: Math.round((1000 * late) / readings) / 10,
+		window_start: '2026-11-04',
+		window_end: '2026-11-10',
+	};
+}
+
+function weeklyIndex(rows: unknown[]) {
+	return {
+		generated_utc: '2026-11-11T07:30:00Z',
+		published_utc: '2026-11-11T07:30:00Z',
+		next_publish_utc: '2026-11-18T07:00:00Z',
+		weekly_stops: rows,
+	};
 }
 
 function renderReliability(locale: 'en' | 'fr' = currentLocale) {
@@ -556,37 +583,129 @@ describe('StopDetail article contract', () => {
 		expect(screen.getByRole('heading', { level: 1, name: 'Test stop' })).toBeInTheDocument();
 	});
 
-	it('keeps exactly one centered reliability summary while its owning rail changes by tab', async () => {
+	it('keeps one stop summary: identity on every view, the record answer and notice strip on the Record', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		vi.setSystemTime(new Date('2026-11-13T15:00:00Z'));
+		weeklyIndexData = weeklyIndex([weeklyRow('57191', 210, 120)]);
 		const { container } = render(StopDetail, { props: { id: '57191' } });
-		const summaries = () =>
-			container.querySelectorAll<HTMLElement>('[data-slot="stop-reliability-summary"]');
-		const summary = () => summaries()[0];
+		// The summary leads each view's own pane as a full-width block, never a centered banner.
+		const activePane = () =>
+			container.querySelector<HTMLElement>('[role="tabpanel"][data-state="active"]')!;
+		const identities = () => activePane().querySelectorAll('[data-slot="stop-identity"]');
+		const answer = () => container.querySelector<HTMLElement>('[data-slot="stop-record-answer"]');
+		const leadsPane = () =>
+			activePane().querySelector('[data-slot="stop-summary"]')?.parentElement ===
+			activePane().firstElementChild;
 
-		expect(summaries()).toHaveLength(1);
-		expect(summary()).toHaveTextContent('Severe-delay share');
-		expect(summary()).toHaveTextContent('6%');
-		expect(summary()).toHaveTextContent('Average delay');
-		expect(summary()).toHaveTextContent('3.2 min');
-		expect(summary().closest('[data-slot="detail-shell-summary"]')).not.toBeNull();
-		await fireEvent.click(screen.getByRole('tab', { name: 'Schedule' }));
-		expect(summaries()).toHaveLength(1);
-		expect(summary().closest('[data-slot="detail-shell-summary"]')).not.toBeNull();
-		await fireEvent.click(screen.getByRole('tab', { name: 'Record' }));
-		expect(summaries()).toHaveLength(1);
-		expect(summary().closest('[data-slot="reliability-rail-summary"]')).not.toBeNull();
+		// Live now holds the full notices, so its summary carries no strip and no answer.
+		expect(identities()).toHaveLength(1);
+		expect(leadsPane()).toBe(true);
 		expect(container.querySelector('[data-slot="detail-shell-summary"]')).toBeNull();
+		expect(answer()).toBeNull();
+		expect(container.querySelector('[data-slot="stop-current-notice"]')).toBeNull();
+
+		await fireEvent.click(screen.getByRole('tab', { name: 'Record' }));
+		expect(identities()).toHaveLength(1);
+		expect(leadsPane()).toBe(true);
+		const strip = container.querySelector('[data-slot="stop-current-notice"]') as HTMLElement;
+		expect(strip).toHaveAttribute('data-scope', 'stop');
+		expect(within(strip).getByText('2 current agency notices · STM')).toBeInTheDocument();
+		expect(within(strip).getByText('Elevator out of service')).toBeInTheDocument();
+		expect(
+			within(strip).getByText(
+				'It names this stop. This current notice does not explain the historic result.',
+			),
+		).toBeInTheDocument();
+		expect(within(strip).getByRole('link', { name: 'Read the 2 notices' })).toHaveAttribute(
+			'href',
+			'/stop/57191?tab=detail#stop-detail-notices',
+		);
+		// The answer leads the record, ahead of the reliability sections.
+		const pane = container.querySelector('[data-slot="reliability-pane"]') as HTMLElement;
+		expect(answer()!.compareDocumentPosition(pane) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+			Node.DOCUMENT_POSITION_FOLLOWING,
+		);
 	});
 
-	it('fills a percentile-only day summary from the latest daily row', () => {
-		reliabilityData = {
-			...RELIABILITY,
-			periods: [{ ...RELIABILITY.periods![0], avg_delay_min: null, severe_pct: null }],
-			daily: [{ date: '2026-06-15', observation_count: 50, severe_count: 10, avg_delay_min: 2.7 }],
-		};
-		const { container } = render(StopDetail, { props: { id: '57191' } });
-		const summary = container.querySelector('[data-slot="stop-reliability-summary"]');
-		expect(summary).toHaveTextContent('20%');
-		expect(summary).toHaveTextContent('2.7 min');
+	it.each(['en', 'fr'] as const)(
+		'leads the record with the published weekly figure the home page ranks (%s)',
+		async (locale) => {
+			vi.useFakeTimers({ toFake: ['Date'] });
+			vi.setSystemTime(new Date('2026-11-13T15:00:00Z'));
+			weeklyIndexData = weeklyIndex([weeklyRow('11000', 90, 9), weeklyRow('57191', 210, 120)]);
+			stopFileData = { ...STOP_FILE, code: '52409' };
+			const { container } = renderReliability(locale);
+			const answer = container.querySelector('[data-slot="stop-record-answer"]') as HTMLElement;
+			const expected = {
+				en: {
+					measure: 'Readings more than 5 minutes late',
+					period: 'November 4 to 10, 2026 · 7 complete days',
+					line: '57.1% of readings indicated a delay of more than 5 minutes.',
+					readings: '210 readings; 120 more than 5 minutes late.',
+					actions: ['Copy link', 'Download CSV', 'Cite this record'],
+				},
+				fr: {
+					measure: 'Relevés à plus de 5 minutes de retard',
+					period: 'Du 4 au 10 novembre 2026 · 7 jours complets',
+					line: '57,1\u00a0% des relevés indiquaient plus de 5 minutes de retard.',
+					readings: '210 relevés; 120 à plus de 5 minutes de retard.',
+					actions: ['Copier le lien', 'Télécharger le CSV', 'Citer ce bilan'],
+				},
+			}[locale];
+			expect(answer).toHaveAttribute('data-state', 'measured');
+			expect(within(answer).getByText(expected.measure)).toBeInTheDocument();
+			expect(within(answer).getByText(expected.period)).toBeInTheDocument();
+			expect(answer.querySelector('.stop-record__line')?.textContent?.trim()).toBe(expected.line);
+			expect(within(answer).getByText(expected.readings)).toBeInTheDocument();
+			const actions = within(answer).getByRole('group', {
+				name: locale === 'fr' ? 'Actions sur ce bilan' : 'Record actions',
+			});
+			const controls = Array.from(actions.querySelectorAll<HTMLElement>('a, button'));
+			expect(controls.map((control) => control.textContent?.trim())).toEqual(expected.actions);
+			expect(controls[1]).toHaveAttribute(
+				'download',
+				'transit-stm-stop-52409-2026-11-04-to-2026-11-10.csv',
+			);
+			expect(decodeURIComponent(controls[1].getAttribute('href') ?? '')).toContain(
+				'STM,57191,52409,Test stop,readings_more_than_5_min_late,2026-11-04,2026-11-10,210,120,57.1',
+			);
+
+			const writeText = vi.fn().mockResolvedValue(undefined);
+			Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+			try {
+				await fireEvent.click(controls[0]);
+				await waitFor(() =>
+					expect(
+						within(answer).getByText(locale === 'fr' ? 'Lien copié.' : 'Link copied.'),
+					).toBeInTheDocument(),
+				);
+				const record = `http://localhost${locale === 'fr' ? '/fr' : ''}/stop/57191`;
+				expect(writeText).toHaveBeenLastCalledWith(record);
+				await fireEvent.click(controls[2]);
+				await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
+				expect(writeText.mock.calls[1][0]).toBe(
+					locale === 'fr'
+						? `Transit (site non officiel). STM, arrêt 52409 « Test stop » : 57,1\u00a0% des relevés à plus de 5 minutes de retard, du 4 au 10 novembre 2026. ${record}`
+						: `Transit (unofficial website). STM, stop 52409 “Test stop”: 57.1% of readings more than 5 minutes late, November 4 to 10, 2026. ${record}`,
+				);
+			} finally {
+				Reflect.deleteProperty(navigator, 'clipboard');
+			}
+		},
+	);
+
+	it('keeps the record answer honest when no weekly record is published and the stop file is empty', () => {
+		reliabilityData = null;
+		const { container } = renderReliability('en');
+		const answer = container.querySelector('[data-slot="stop-record-answer"]') as HTMLElement;
+		expect(answer).toHaveAttribute('data-state', 'unpublished');
+		expect(answer.querySelector('[data-slot="stop-record-status"]')).toHaveTextContent(
+			'No weekly record has been published yet.',
+		);
+		// The figure line keeps its room, hidden from sight and from screen readers.
+		expect(answer.querySelector('.stop-record__line')).toHaveAttribute('aria-hidden', 'true');
+		expect(within(answer).queryByRole('link', { name: 'Download CSV' })).toBeNull();
+		expect(within(answer).getByRole('button', { name: 'Copy link' })).toBeInTheDocument();
 	});
 
 	it('shows one date-only record and follows its year rule for the schedule date', async () => {
@@ -624,18 +743,6 @@ describe('StopDetail article contract', () => {
 				),
 			).toHaveAttribute('datetime', STOP_FILE.generated_utc.slice(0, 10));
 		}
-	});
-
-	it('reserves no summary gap when this stop has no summary metrics', async () => {
-		reliabilityData = HABITS_ONLY_RELIABILITY;
-		const { container } = render(StopDetail, { props: { id: '57191' } });
-
-		expect(container.querySelector('[data-slot="stop-reliability-summary"]')).toBeNull();
-		expect(container.querySelector('[data-slot="detail-shell-summary"]')).toBeNull();
-
-		await fireEvent.click(screen.getByRole('tab', { name: 'Record' }));
-		expect(container.querySelector('[data-slot="reliability-rail-summary"]')).toBeNull();
-		expect(container.querySelector('[data-slot="reliability-rail-layout"]')).not.toBeNull();
 	});
 
 	it('uses one disclosure frame around live departures instead of nesting a terminal card', () => {
@@ -756,7 +863,7 @@ describe('StopDetail article contract', () => {
 		const detailCards = Array.from(
 			container.querySelectorAll<HTMLElement>('[data-toc^="stop-detail-"]'),
 		);
-		expect(detailCards).toHaveLength(2);
+		expect(detailCards).toHaveLength(3);
 		for (const card of detailCards) {
 			expect(card.querySelector('[data-section-trigger]')).toHaveAttribute('aria-expanded', 'true');
 		}
@@ -806,7 +913,7 @@ describe('StopDetail article contract', () => {
 		const detailCards = Array.from(detailStack?.children ?? []);
 
 		expect(detailStack).not.toBeNull();
-		expect(detailCards).toHaveLength(2);
+		expect(detailCards).toHaveLength(3);
 		for (const card of detailCards) {
 			expect(card.matches('[data-slot="card"].section-card[data-toc^="stop-detail-"]')).toBe(true);
 			expect(card.querySelector('[data-section-trigger]')).not.toBeNull();
@@ -1413,36 +1520,45 @@ describe('StopDetail live departures — HONEST ABSENCE (empty board)', () => {
 });
 
 describe('StopDetail — service alerts affecting this stop', () => {
-	it('surfaces alerts that list this stop OR a route it serves, and hides unrelated ones', () => {
+	it('separates notices naming this stop from notices that only name its lines', () => {
 		render(StopDetail, { props: { id: '57191' } });
 		fireEvent.click(screen.getByRole('tab', { name: 'Live now' }));
 
-		const alerts = document.querySelector('[data-testid="stop-alerts"]') as HTMLElement;
-		expect(alerts).not.toBeNull();
-		expect(within(alerts).getByText('Service alerts')).toBeInTheDocument();
+		const direct = document.querySelector('[data-testid="stop-alerts"]') as HTMLElement;
+		expect(within(direct).getByText('Notices naming this stop')).toBeInTheDocument();
+		expect(within(direct).getByText('Elevator out of service')).toBeInTheDocument();
+		expect(within(direct).queryByText(/Route 51/)).not.toBeInTheDocument();
 
-		expect(within(alerts).getByText('Elevator out of service')).toBeInTheDocument();
+		const lines = document.querySelector('[data-testid="stop-line-alerts"]') as HTMLElement;
+		expect(within(lines).getByText('Notices for lines serving this stop')).toBeInTheDocument();
 		expect(
-			within(alerts).getByText('Route 51 is diverted & remains in service.'),
+			within(lines).getByText('Route 51 is diverted & remains in service.'),
 		).toBeInTheDocument();
-		expect(within(alerts).queryByText('Detour on line 51')).not.toBeInTheDocument();
-		expect(within(alerts).queryByText('Unrelated alert')).not.toBeInTheDocument();
-		expect(within(alerts).getByText('Construction')).toBeInTheDocument();
-		expect(within(alerts).getByText('Detour')).toBeInTheDocument();
+		expect(
+			within(lines).getByText(
+				'These notices name a line, not this stop. Check the agency before travelling.',
+			),
+		).toBeInTheDocument();
+		expect(within(lines).getByText('Construction')).toBeInTheDocument();
+		expect(within(lines).queryByText('Elevator out of service')).not.toBeInTheDocument();
+		expect(screen.queryByText('Unrelated alert')).not.toBeInTheDocument();
 	});
 
-	it('localizes the alerts section + headlines in FR', () => {
+	it('localizes the notice groups + headlines in FR', () => {
 		currentLocale = 'fr';
 		render(StopDetail, { props: { id: '57191' } });
 		fireEvent.click(screen.getByRole('tab', { name: 'En direct' }));
 
-		const alerts = document.querySelector('[data-testid="stop-alerts"]') as HTMLElement;
-		expect(within(alerts).getByText('Avis de service')).toBeInTheDocument();
+		const lines = document.querySelector('[data-testid="stop-line-alerts"]') as HTMLElement;
+		expect(within(lines).getByText('Avis visant les lignes de cet arrêt')).toBeInTheDocument();
 		expect(
-			within(alerts).getByText('La ligne 51 est détournée & reste en service.'),
+			within(lines).getByText('La ligne 51 est détournée & reste en service.'),
 		).toBeInTheDocument();
-		expect(within(alerts).queryByText('Détour ligne 51')).not.toBeInTheDocument();
-		expect(within(alerts).getByText('Travaux')).toBeInTheDocument();
+		expect(within(lines).queryByText('Détour ligne 51')).not.toBeInTheDocument();
+		expect(within(lines).getByText('Travaux')).toBeInTheDocument();
+		expect(document.querySelector('[data-toc="stop-detail-notices"]')).toHaveTextContent(
+			'Avis de la société de transport · STM',
+		);
 	});
 
 	it('stands the alerts section down when no live alert affects this stop', () => {
@@ -1554,27 +1670,31 @@ describe('StopDetail schedule — semantic timetable + honest gaps', () => {
 	});
 });
 
-describe('StopDetail info — 2-col layout + tri-state accessibility (S8B/A3)', () => {
-	it('lays the Info pane out as facts (left) + alerts (right)', () => {
+describe('StopDetail identity — notices section + honest accessibility', () => {
+	it('puts agency notices in their own section between departures and the stop facts', () => {
 		const { container } = render(StopDetail, { props: { id: '57191' } });
-		fireEvent.click(screen.getByRole('tab', { name: 'Live now' }));
-		const info = container.querySelector('.stop-info') as HTMLElement;
-		expect(info).not.toBeNull();
-		expect(info.querySelector('.stop-info-facts')).not.toBeNull();
-		expect(info.querySelector('[data-testid="stop-alerts"]')).not.toBeNull();
+		const sections = Array.from(container.querySelectorAll('[data-toc^="stop-detail-"]'));
+		expect(sections.map((section) => section.getAttribute('data-toc'))).toEqual([
+			'stop-detail-departures',
+			'stop-detail-notices',
+			'stop-detail-facts',
+		]);
+		expect(sections[1].querySelector('[data-testid="stop-alerts"]')).not.toBeNull();
+		expect(sections[2].querySelector('[data-testid="stop-alerts"]')).toBeNull();
 	});
 
 	it.each([
-		[true, 'Wheelchair accessible'],
-		[false, 'Not wheelchair accessible'],
-		[undefined, 'Accessibility'],
-	] as const)('renders tri-state accessibility for %s', (wheelchair, expected) => {
-		if (wheelchair !== undefined) stopFileData = { ...STOP_FILE, wheelchair } as StopFile;
-		render(StopDetail, { props: { id: '57191' } });
-		fireEvent.click(screen.getByRole('tab', { name: 'Live now' }));
-		expect(screen.getByText(expected)).toBeInTheDocument();
-		if (wheelchair === undefined) {
-			expect(screen.queryByText('Wheelchair accessible')).not.toBeInTheDocument();
+		// Every field combination is covered in stopIdentity.test.ts; here, the two words shown.
+		[{ wheelchair_boarding: 'no', wheelchair: false }, 'no', 'Not wheelchair accessible'],
+		// The publisher writes wheelchair=false when the agency supplies nothing.
+		[{ wheelchair: false }, 'unknown', 'Accessibility information is not available.'],
+	] as const)('reads %o as %s access', (fields, state, sentence) => {
+		stopFileData = { ...STOP_FILE, ...fields } as StopFile;
+		const { container } = render(StopDetail, { props: { id: '57191' } });
+		const access = container.querySelector('[data-slot="stop-access"]') as HTMLElement;
+		expect(access).toHaveAttribute('data-access', state);
+		expect(access).toHaveTextContent(sentence);
+		if (state === 'unknown') {
 			expect(screen.queryByText('Not wheelchair accessible')).not.toBeInTheDocument();
 		}
 	});

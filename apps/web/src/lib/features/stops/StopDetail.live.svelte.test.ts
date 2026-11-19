@@ -51,6 +51,7 @@ vi.mock('#lib/v1/live/store.svelte.ts', async (importOriginal) => {
 vi.mock('#lib/v1/repositories/static.ts', () => ({ getStop: fixture.stop }));
 vi.mock('#lib/v1/repositories/historic.ts', () => ({
 	getStopReliability: fixture.reliability,
+	getPublishedReliabilityIndex: async () => null,
 	getStopHistoryIndex: fixture.historyIndex,
 	loadStopHistoryRange: fixture.historyRange,
 }));
@@ -282,22 +283,6 @@ describe('StopDetail independent report owners', () => {
 			expect(screen.getByTestId('stop-schedule-empty')).toBeInTheDocument();
 		},
 	);
-
-	it('does not mix a period metric with another dated observation row', async () => {
-		fixture.reliability.mockResolvedValue({
-			id: 'probe',
-			generated_utc: stamp(-3600),
-			periods: [{ grain: 'day', severe_pct: 10, avg_delay_min: null }],
-			daily: [{ date: '2026-06-12', severe_count: 2, observation_count: 10, avg_delay_min: 4 }],
-		});
-		mount();
-		await settle();
-		const summary = document.querySelector('[data-slot="stop-reliability-summary"]')!;
-		expect(summary).toHaveTextContent('10%');
-		expect(summary).not.toHaveTextContent('4 min');
-		expect(summary).not.toHaveTextContent('Jun 12');
-		expect(reportStamp('historic')).toBeNull();
-	});
 
 	it('does not borrow live time for an unavailable historic report', async () => {
 		fixture.page.url = new URL('http://localhost/stop/probe?tab=reliability');

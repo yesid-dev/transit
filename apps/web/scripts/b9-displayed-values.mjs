@@ -520,12 +520,22 @@ async function collectStop(page) {
 		.locator('[data-slot="stop-reliability-sections"] [data-slot="verdict"]')
 		.first()
 		.innerText();
-	const summaryText = await readValues(
-		page,
-		'[data-slot="stop-reliability-summary"] [data-slot="metric-display"]',
-		'.metric-value',
-	);
-	const summary = summaryText.map(parseNumber);
+	// The record answer reads the published weekly index after the stop file; wait for its state.
+	const recordRoot = '[data-slot="stop-record-answer"]:not([data-state="pending"])';
+	await page.locator(recordRoot).waitFor({ state: 'attached', timeout: 30_000 });
+	const recordState = await page.locator(recordRoot).getAttribute('data-state');
+	// Other states keep a hidden copy of the figure line for its room; only a measured one is shown.
+	const recordFigure =
+		recordState === 'measured' ? await readText(page, `${recordRoot} .stop-record__figure`) : null;
+	const recordReadings = await readText(page, `${recordRoot} .stop-record__facts dd`);
+	const record = {
+		state: recordState,
+		late_pct: parseNumber(recordFigure),
+		text: recordFigure ?? '',
+		period: (await readText(page, `${recordRoot} [data-slot="stop-record-period"]`)) ?? '',
+		// The first two numbers are the readings and the late readings; "5 minutes" follows.
+		counts: (recordReadings?.match(/\d[\d\s\u00a0\u202f,]*/gu) ?? []).slice(0, 2).map(parseNumber),
+	};
 	const percentileText = await readValues(
 		page,
 		'[data-slot="stop-percentiles"] [data-slot="metric-display"]',
@@ -575,10 +585,6 @@ async function collectStop(page) {
 			value: parseNumber(notSevereMetric?.value),
 			text: normalizeObservation(notSevereMetric?.value ?? ''),
 		},
-		summary: summary.map((value, index) => ({
-			value,
-			text: normalizeObservation(summaryText[index] ?? ''),
-		})),
 		percentiles: percentiles.map((value, index) => ({
 			value,
 			text: normalizeObservation(percentileText[index] ?? ''),
@@ -590,10 +596,9 @@ async function collectStop(page) {
 	};
 	return [
 		observation('stop.day.otp_pct', parseNumber(notSevereMetric?.value)),
-		observation('stop.day.avg_delay_min', summary[1] ?? null),
 		observation('stop.day.p50_min', percentiles[0] ?? null),
 		observation('stop.day.p90_min', percentiles[1] ?? null),
-		observation('stop.day.severe_pct', summary[0] ?? null),
+		observation('stop.record.answer', record),
 		observation('stop.day.observation_count', stopVerdictObservationCount(verdictText)),
 		observation('stop.daily.rows', dailyRows),
 		observation('stop.range.severe_pct', rangeValues[0] ?? null),
@@ -823,6 +828,12 @@ function verifyLedger(cell, fixture, ledger) {
 			['ssr', labelPath, 200, 1],
 			['browser', 'historic/history/index.json', historyStatus, 1],
 			['browser', 'historic/stop_reliability/52095.json', 200, 1],
+			[
+				'browser',
+				'historic/route_reliability/index.json',
+				fixture.files['historic/route_reliability/index.json'] ? 200 : 404,
+				1,
+			],
 			['browser', 'live/stop_departures.json', 200, 1],
 			['browser', 'live/alerts.json', 200, 1],
 			['browser', 'status/data_health.json', 404, 1],
