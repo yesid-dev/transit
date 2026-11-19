@@ -50,6 +50,9 @@ MAX_UNCOMPARED_CYCLE_SHARE: float | None = 0.05
 # Live ruling 24.2 (provisional): a judged key present in every compared cycle over at least
 # this continuous span, and still in the window's last compared cycle, persists.
 PERSISTENT_UNADJUDICATED_SECONDS: float | None = 600.0
+# Live ruling 25b.1 (provisional): a judged key in more than this share of a provider's
+# compared cycles fails whether or not it persists; a correct engine's differences are rare.
+INTERMITTENT_DIFFERENCE_SHARE: float | None = 0.10
 # Live ruling 25.1: the two named non-differences; every other class is judged.
 EXEMPT_CLASSES = frozenset({"representation", "clock_skew"})
 # Live rulings 24.2, 25.1 and 25a: the persistence-tested classes. Others are unowned.
@@ -85,6 +88,7 @@ class EvidenceInvalid(ValueError):
 class Thresholds:
     max_uncompared_cycle_share: float | None = MAX_UNCOMPARED_CYCLE_SHARE
     persistent_unadjudicated_seconds: float | None = PERSISTENT_UNADJUDICATED_SECONDS
+    intermittent_difference_share: float | None = INTERMITTENT_DIFFERENCE_SHARE
 
 
 def _mapping(value: object, name: str) -> Mapping[str, Any]:
@@ -363,6 +367,10 @@ class Verdict:
                     "value": self.thresholds.persistent_unadjudicated_seconds,
                     "owner": "live rulings 24.2 (provisional) and 25.1",
                 },
+                "intermittent_difference_share": {
+                    "value": self.thresholds.intermittent_difference_share,
+                    "owner": "live ruling 25b.1 (provisional)",
+                },
                 "exempt_classes": {
                     "value": sorted(EXEMPT_CLASSES),
                     "owner": "live ruling 25.1",
@@ -596,6 +604,16 @@ def _coverage(bundle: EvidenceBundle) -> tuple[int, dict[str, object], list[str]
     return max(0, expected - len(bundle.cycles)), details, []
 
 
+def refuse_duplicate_cycles(cycles: Iterable[CycleRecord]) -> None:
+    """Live ruling 25b.3: a repeated cycle start (copied or overlapping logs) is malformed."""
+    seen: set[datetime] = set()
+    for cycle in cycles:
+        if cycle.started_at is not None:
+            if cycle.started_at in seen:
+                raise EvidenceInvalid(f"duplicate_cycle:{cycle.started_at.isoformat()}")
+            seen.add(cycle.started_at)
+
+
 def _trailing_run(effective: Sequence[tuple[datetime, set[str]]], key: str) -> tuple[float, int]:
     """Seconds and compared cycles of the run that ends at the last compared cycle."""
     run = 0
@@ -652,6 +670,8 @@ def publication_gate(bundle: EvidenceBundle, thresholds: Thresholds) -> GateResu
             klass = _difference_class(key)
             by_class[klass] += count
             adjudication = bundle.adjudications.get(key)
+            if klass == SCHEMA_CLASS:  # Live ruling 25b.2: never excused by adjudication.
+                adjudication = None
             if adjudication is not None and adjudication.covers(record.cycle):
                 item = ruled.setdefault(key, {"count": 0, "cycles": 0, "ruling": adjudication})
                 item["count"] += count
@@ -664,7 +684,9 @@ def publication_gate(bundle: EvidenceBundle, thresholds: Thresholds) -> GateResu
 
     fails: list[str] = []
     unowned: set[str] = set()
-    methodology, transient, persistent = [], [], []
+    methodology: list[dict[str, object]] = []
+    transient: list[dict[str, object]] = []
+    persistent: list[dict[str, object]] = []
     for key, item in sorted(ruled.items()):
         ruling: Adjudication = item["ruling"]
         if ruling.klass == "a":
@@ -682,6 +704,7 @@ def publication_gate(bundle: EvidenceBundle, thresholds: Thresholds) -> GateResu
             }
         )
     limit = thresholds.persistent_unadjudicated_seconds
+    frequent_share = thresholds.intermittent_difference_share
     for key in sorted(judged):
         klass = _difference_class(key)
         if klass == SCHEMA_CLASS:
@@ -695,13 +718,18 @@ def publication_gate(bundle: EvidenceBundle, thresholds: Thresholds) -> GateResu
             "cycles": judged_cycles[key],
             "span_seconds": seconds,
             "trailing_cycles": run,
+            "cycle_share": judged_cycles[key] / len(compared),
         }
-        if run and limit is not None and seconds >= limit:
-            persistent.append(entry)
+        frequent = frequent_share is not None and judged_cycles[key] > frequent_share * len(
+            compared
+        )
+        lasting = bool(run) and limit is not None and seconds >= limit
+        (persistent if lasting else transient).append(entry)
+        if lasting:
             fails.append(f"persistent_{klass}:{key}")
-            continue
-        transient.append(entry)
-        if klass not in JUDGED_CLASSES:
+        if frequent:
+            fails.append(f"frequent_{klass}:{key}")  # Live ruling 25b.1.
+        if not (lasting or frequent) and klass not in JUDGED_CLASSES:
             unowned.add(f"unowned_class:{klass}")  # Live ruling 25.1: never a pass.
 
     max_share = thresholds.max_uncompared_cycle_share
@@ -710,6 +738,7 @@ def publication_gate(bundle: EvidenceBundle, thresholds: Thresholds) -> GateResu
     for name, value in (
         ("max_uncompared_cycle_share", max_share),
         ("persistent_unadjudicated_seconds", limit),
+        ("intermittent_difference_share", frequent_share),
     ):
         if value is None:
             unowned.add(name)

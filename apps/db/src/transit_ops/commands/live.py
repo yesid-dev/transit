@@ -100,6 +100,7 @@ def admission(
         WindowCpu,
         evaluate,
         read_worker_log,
+        refuse_duplicate_cycles,
     )
     from transit_ops.operations.compose_limits import ComposeLimitsRefused, parse_evidence
 
@@ -108,6 +109,8 @@ def admission(
         raise typer.BadParameter("start must be before end")
     if output.exists():
         raise typer.BadParameter(f"{output.name}: already exists")
+    if not output.parent.is_dir():
+        raise typer.BadParameter(f"{output.parent}: output_directory_missing")
     if (resources is None) != (worker_service is None):
         raise typer.BadParameter("--resources and --worker-service go together")
     try:
@@ -115,14 +118,22 @@ def admission(
             raise EvidenceInvalid("log_listed_twice")
         cycles: tuple[Any, ...] = ()
         for path in log:
-            with path.open(encoding="utf-8") as lines:
-                cycles += read_worker_log(
-                    lines, provider_id=provider, start=window[0], end=window[1]
-                )
+            try:
+                with path.open(encoding="utf-8") as lines:
+                    cycles += read_worker_log(
+                        lines, provider_id=provider, start=window[0], end=window[1]
+                    )
+            except UnicodeDecodeError as exc:
+                raise EvidenceInvalid(f"not_utf8:{path.name}") from exc
+        refuse_duplicate_cycles(cycles)  # Live ruling 25b.3.
         observed: tuple[RestartObservation, ...] = ()
         if restarts is not None:
             records = []
-            for number, line in enumerate(restarts.read_text(encoding="utf-8").splitlines(), 1):
+            try:
+                content = restarts.read_text(encoding="utf-8")
+            except UnicodeDecodeError as exc:
+                raise EvidenceInvalid(f"not_utf8:{restarts.name}") from exc
+            for number, line in enumerate(content.splitlines(), 1):
                 if line.strip():
                     try:
                         value = json.loads(line)
@@ -143,10 +154,13 @@ def admission(
             if not isinstance(document, dict):
                 raise EvidenceInvalid("adjudications_invalid")
             rulings = {key: Adjudication.from_dict(key, value) for key, value in document.items()}
-        poll = poll_seconds if poll_seconds is not None else _default_poll_seconds()
-        cadence, tick = _schedule(provider, providers, poll)
     except (OSError, ComposeLimitsRefused, EvidenceInvalid) as exc:
         raise typer.BadParameter(f"evidence_malformed:{exc}") from exc
+    poll = poll_seconds if poll_seconds is not None else _default_poll_seconds()
+    try:
+        cadence, tick = _schedule(provider, providers, poll)
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(f"provider_declaration_invalid:{type(exc).__name__}") from exc
     verdict = evaluate(
         EvidenceBundle(
             provider_id=provider,

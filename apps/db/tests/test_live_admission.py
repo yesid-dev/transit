@@ -203,7 +203,7 @@ def test_every_judged_class_fails_when_it_persists(key, count):
     result = gate(evaluate(bundle(cycles=every_cycle({key: count}))), "publication")
     klass = key.rsplit(":", 1)[-1]
     assert result.outcome == "fail"
-    assert result.reasons == (f"persistent_{klass}:{key}",)
+    assert result.reasons == (f"persistent_{klass}:{key}", f"frequent_{klass}:{key}")
 
 
 def once(key, at=59):
@@ -217,7 +217,7 @@ def test_an_unlisted_class_is_threshold_unowned_and_still_fails_when_persistent(
     result = gate(evaluate(bundle(cycles=once(novel))), "publication")
     assert (result.outcome, result.reasons) == ("threshold_unowned", ("unowned_class:novel",))
     persistent = gate(evaluate(bundle(cycles=every_cycle({novel: 1}))), "publication")
-    assert persistent.reasons == (f"persistent_novel:{novel}",)
+    assert persistent.reasons == (f"persistent_novel:{novel}", f"frequent_novel:{novel}")
 
 
 def test_a_restart_window_with_transient_unobserved_files_passes():
@@ -232,7 +232,10 @@ def test_a_restart_window_with_transient_unobserved_files_passes():
     persistent = gate(
         evaluate(bundle(cycles=every_cycle({"publication:unobserved": 1}))), "publication"
     )
-    assert persistent.reasons == ("persistent_unobserved:publication:unobserved",)
+    assert persistent.reasons == (
+        "persistent_unobserved:publication:unobserved",
+        "frequent_unobserved:publication:unobserved",
+    )
 
 
 def test_a_single_columns_difference_fails_as_a_schema_difference():
@@ -310,13 +313,15 @@ def test_unadjudicated_key_fails_only_when_it_persists_to_the_end_of_the_window(
             for n in range(60)
         )
 
-    persistent = gate(evaluate(bundle(cycles=run(29, 59))), "publication")
+    # Persistence alone: the frequency rule (25b.1) is lifted out of the way here.
+    only = Thresholds(intermittent_difference_share=1.0)
+    persistent = gate(evaluate(bundle(cycles=run(29, 59)), only), "publication")
     assert persistent.reasons == (f"persistent_unadjudicated:{UNADJUDICATED}",)
     assert persistent.details["persistent"][0]["span_seconds"] == 600.0
-    short = gate(evaluate(bundle(cycles=run(31, 59))), "publication")
+    short = gate(evaluate(bundle(cycles=run(31, 59)), only), "publication")
     assert short.outcome == "pass"
     assert short.details["transient"][0]["count"] == 58
-    healed = gate(evaluate(bundle(cycles=run(0, 58))), "publication")
+    healed = gate(evaluate(bundle(cycles=run(0, 58)), only), "publication")
     assert healed.outcome == "pass"
     assert healed.details["differences_by_class"] == {"unadjudicated": 118}
 
@@ -350,13 +355,48 @@ def test_an_adjudication_outside_its_validity_interval_reverts_to_unadjudicated(
         ),
         "publication",
     )
-    assert result.reasons == (f"persistent_unadjudicated:{UNADJUDICATED}",)
+    assert result.reasons == (
+        f"persistent_unadjudicated:{UNADJUDICATED}",
+        f"frequent_unadjudicated:{UNADJUDICATED}",
+    )
     assert result.details["methodology_items"][0]["cycles"] == 15
     other_key = {"publication:live/network.json:unadjudicated": adjudication("b")}
     assert gate(
         evaluate(bundle(cycles=every_cycle({UNADJUDICATED: 1}), adjudications=other_key)),
         "publication",
-    ).reasons == (f"persistent_unadjudicated:{UNADJUDICATED}",)
+    ).reasons == (
+        f"persistent_unadjudicated:{UNADJUDICATED}",
+        f"frequent_unadjudicated:{UNADJUDICATED}",
+    )
+
+
+def test_a_key_missing_every_other_cycle_fails_as_frequent_without_persisting():
+    lost = "facts:fact_vehicle_snapshot:missing"
+    alternating = tuple(
+        cycle(20 * n, shadow(20 * n, counts={lost: 500} if n % 2 else {})) for n in range(60)
+    )
+    result = gate(evaluate(bundle(cycles=alternating)), "publication")
+    assert result.reasons == (f"frequent_missing:{lost}",)
+    assert result.details["persistent"] == []
+    rare = tuple(
+        cycle(20 * n, shadow(20 * n, counts={lost: 1} if n in (3, 17, 30, 44, 50) else {}))
+        for n in range(60)
+    )
+    assert gate(evaluate(bundle(cycles=rare)), "publication").outcome == "pass"
+    excused = {lost: adjudication("b")}
+    assert gate(
+        evaluate(bundle(cycles=alternating, adjudications=excused)), "publication"
+    ).outcome == ("pass")
+
+
+def test_an_adjudication_never_excuses_a_columns_difference():
+    columns = "facts:fact_vehicle_snapshot:columns"
+    result = gate(
+        evaluate(bundle(cycles=once(columns, at=10), adjudications={columns: adjudication("b")})),
+        "publication",
+    )
+    assert result.reasons == ("schema_columns:facts:fact_vehicle_snapshot",)
+    assert result.details["methodology_items"] == []
 
 
 def test_representation_and_clock_skew_differences_never_fail_by_themselves():
@@ -690,4 +730,42 @@ def test_cli_malformed_evidence_exits_2_by_name(tmp_path, change, what):
     result = CliRunner().invoke(app, arguments(paths, output))
     assert result.exit_code == 2, result.output
     assert "evidence_malformed:" in result.output and what in result.output
+    assert not output.exists()
+
+
+def test_cli_refuses_the_same_cycles_from_two_files(tmp_path):
+    paths = files(tmp_path, log_lines=worker_log(60))
+    copy = tmp_path / "worker-copy.log"
+    copy.write_bytes(paths["log"].read_bytes())
+    output = tmp_path / "verdict.json"
+    command = arguments(paths, output, end=START + timedelta(minutes=20))
+    command[command.index("--log") + 1 : command.index("--log") + 1] = [str(copy), "--log"]
+    result = CliRunner().invoke(app, command)
+    assert result.exit_code == 2, result.output
+    assert "evidence_malformed:duplicate_cycle" in result.output
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("target", ["log", "restarts"])
+def test_cli_text_that_is_not_utf8_exits_2_by_name(tmp_path, target):
+    paths = files(tmp_path, log_lines=worker_log(60))
+    paths[target].write_bytes(b"\xff\xfe not text\n")
+    output = tmp_path / "verdict.json"
+    result = CliRunner().invoke(app, arguments(paths, output))
+    assert result.exit_code == 2, result.output
+    assert f"evidence_malformed:not_utf8:{paths[target].name}" in result.output
+    assert not output.exists()
+
+
+def test_cli_configuration_errors_exit_2_by_name(tmp_path):
+    paths = files(tmp_path, log_lines=worker_log(60))
+    missing = tmp_path / "absent" / "verdict.json"
+    result = CliRunner().invoke(app, arguments(paths, missing))
+    assert result.exit_code == 2 and "output_directory_missing" in result.output
+    providers = tmp_path / "providers"
+    providers.mkdir()
+    (providers / "stm.yaml").write_text("declaration: 2\nid: stm\n", encoding="utf-8")
+    output = tmp_path / "verdict.json"
+    result = CliRunner().invoke(app, [*arguments(paths, output), "--providers", str(providers)])
+    assert result.exit_code == 2 and "provider_declaration_invalid" in result.output
     assert not output.exists()
