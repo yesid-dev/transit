@@ -3,6 +3,8 @@
 	"by_grain": [
 		{
 			"grain": "week",
+			"date": "2026-06-08",
+			"window_end": "2026-06-14",
 			"entries": [
 				{
 					"rank": 1,
