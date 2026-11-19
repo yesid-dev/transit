@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RouteReliability, StopReliability, NetworkTrend } from '#lib/v1/index.ts';
 import { isoUtc } from '#lib/v1/schemas/types.ts';
 import type { ReliabilityWindow } from '#lib/v1/verdict.ts';
+import { lateShareTenths } from '#lib/features/stops/lateShare.ts';
 import LinesIndex from '../lines/LinesIndex.svelte';
 import RouteDetail from '../lines/RouteDetail.svelte';
 import RouteReliabilityClusters from '../lines/reliability/RouteReliabilityClusters.svelte';
@@ -197,23 +198,40 @@ describe('the same reliability evidence across every surface', () => {
 				},
 			],
 		};
+		// The stop states the other side of the same readings: its late share, from the same counts
+		// with the publisher's rounding (600 of 4,000 readings late: exactly 15.0 %).
+		const lateTenths = lateShareTenths(4000 - 3400, 4000)!;
+		expect(lateTenths).toBe(150);
 		harness.stop = {
 			id: '24',
 			generated_utc: harness.route.generated_utc,
 			periods: [
-				{ grain: 'day', otp_pct: 85, observation_count: 4000, wilson_lo: 84, wilson_hi: 86 },
+				{
+					grain: 'day',
+					otp_pct: 85,
+					severe_pct: lateTenths / 10,
+					observation_count: 4000,
+					wilson_lo: 84,
+					wilson_hi: 86,
+				},
 			],
 		};
 		harness.network = { generated_utc: harness.route.generated_utc, series: [point] };
-		for (const mount of [
-			() => render(RouteDetail, { props: { id: '24', seed: { id: '24', name: '24' } } }),
-			() => render(RouteReliabilityClusters, { props: { data: harness.route!, locale: 'en' } }),
-			() => render(StopReliabilitySurface, { props: { data: harness.stop!, locale: 'en' } }),
-			() => render(NetworkSurface),
-		]) {
+		for (const [mount, figure] of [
+			[() => render(RouteDetail, { props: { id: '24', seed: { id: '24', name: '24' } } }), '85%'],
+			[
+				() => render(RouteReliabilityClusters, { props: { data: harness.route!, locale: 'en' } }),
+				'85%',
+			],
+			[
+				() => render(StopReliabilitySurface, { props: { data: harness.stop!, locale: 'en' } }),
+				'15%',
+			],
+			[() => render(NetworkSurface), '85%'],
+		] as const) {
 			const view = mount();
 			await waitFor(() => expect(verdictOf(view.container).status).toBe('reliable'));
-			expect(verdictOf(view.container).ban).toContain('85%');
+			expect(verdictOf(view.container).ban).toContain(figure);
 			expect(harness.page.url.searchParams.get('grain')).toBeNull();
 			cleanup();
 		}
@@ -240,6 +258,65 @@ describe('the same reliability evidence across every surface', () => {
 		await waitFor(() =>
 			expect(listing.container.querySelector('[data-slot="reliability-badge"]')).toBeNull(),
 		);
+	});
+});
+
+describe('the late share and the on-time share of one body of readings', () => {
+	it('round independently, so their sum may differ from 100 by the coarser rounding', async () => {
+		// 1,454 of 10,000 readings late: 14.54 %, shown to one decimal as 14.5 %. The other 8,546 are
+		// 85.46 %, shown whole as 85 %. 14.5 + 85 = 99.5: each figure is the correct rounding of the
+		// same counts, and the gap is never more than the whole-number rounding (0.5 point). The
+		// stop never derives its figure from the other surface's rounded share (100 − 85 = 15 %).
+		const n = 10_000;
+		const late = 1_454;
+		const lateTenths = lateShareTenths(late, n)!;
+		expect(lateTenths).toBe(145);
+		const window = {
+			date: '2026-11-02',
+			otp_pct: 85,
+			observation_count: n,
+			wilson_lo: 84.8,
+			wilson_hi: 86.1,
+		};
+		harness.route = {
+			id: '24',
+			generated_utc: isoUtc().parse('2026-11-02T00:00:00Z'),
+			periods: [{ ...window, grain: 'day', on_time: n - late }],
+			periods_by_grain: [
+				{ grain: 'day', date: window.date },
+				{
+					grain: 'week',
+					date: '2026-10-27',
+					by_daytype: [{ grain: 'weekday', observation_count: n, on_time: n - late }],
+				},
+			],
+		};
+		harness.stop = {
+			id: '24',
+			generated_utc: harness.route.generated_utc,
+			// A stop period carries no date (the shape the stop file publishes).
+			periods: [
+				{
+					grain: 'day',
+					otp_pct: window.otp_pct,
+					severe_pct: lateTenths / 10,
+					observation_count: n,
+					wilson_lo: window.wilson_lo,
+					wilson_hi: window.wilson_hi,
+				},
+			],
+		};
+		const line = render(RouteReliabilityClusters, {
+			props: { data: harness.route, locale: 'en' },
+		});
+		await waitFor(() => expect(verdictOf(line.container).status).toBe('reliable'));
+		const onTime = verdictOf(line.container).text.match(/(\d+)%/)?.[1];
+		expect(onTime).toBe('85');
+		cleanup();
+		const stop = render(StopReliabilitySurface, { props: { data: harness.stop, locale: 'en' } });
+		await waitFor(() => expect(verdictOf(stop.container).status).toBe('reliable'));
+		expect(verdictOf(stop.container).ban).toBe('14.5%');
+		expect(Math.abs(lateTenths / 10 + Number(onTime) - 100)).toBeLessThanOrEqual(0.5);
 	});
 });
 
