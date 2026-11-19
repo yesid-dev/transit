@@ -752,9 +752,7 @@ describe('StopDetail article contract', () => {
 		) as HTMLElement;
 
 		expect(departuresCard.querySelector('[data-slot="terminal-panel"]')).toBeNull();
-		expect(
-			within(departuresCard).getByRole('table', { name: 'Reported departures' }),
-		).toBeInTheDocument();
+		expect(within(departuresCard).getByRole('table', { name: /51/ })).toBeInTheDocument();
 	});
 
 	it('localizes the article identity labels without replacing their real values', () => {
@@ -939,7 +937,9 @@ describe('StopDetail article contract', () => {
 		const rail = container.querySelector('[data-slot="detail-shell-left"]') as HTMLElement;
 
 		expect(within(rail).getByRole('button', { name: 'On this page' })).toBeInTheDocument();
-		expect(within(rail).getByRole('button', { name: 'Next departures' })).toBeInTheDocument();
+		expect(
+			within(rail).getByRole('button', { name: 'Predictions at this stop' }),
+		).toBeInTheDocument();
 		expect(within(rail).getByRole('button', { name: 'Stop information' })).toBeInTheDocument();
 
 		await fireEvent.click(screen.getByRole('tab', { name: 'Schedule' }));
@@ -1455,59 +1455,115 @@ describe('StopDetail reliability — by time of day (shift + day-type grains)', 
 	});
 });
 
-describe('StopDetail live departures — status filter', () => {
-	it('narrows the board to late departures and back', async () => {
+const predictions = () =>
+	document.querySelector('[data-slot="stop-live-predictions"]') as HTMLElement;
+const lineHeadings = () =>
+	within(predictions())
+		.getAllByRole('heading', { level: 3 })
+		.map((heading) => heading.textContent?.replace(/\s+/g, ' ').trim());
+
+describe('StopDetail Live now — predictions grouped by line', () => {
+	it.each(['en', 'fr'] as const)(
+		'groups each line with its schedule destination, time, status and offset (%s)',
+		(locale) => {
+			currentLocale = locale;
+			stopFileData = {
+				...STOP_FILE,
+				scheduled: [
+					{ route: '51', headsign: 'Station Laurier', times: ['08:00'] },
+					{ route: '51', headsign: 'Édouard-Montpetit', times: ['08:05'] },
+				],
+			} as unknown as StopFile;
+			const t = detailCopy[locale].live;
+			render(StopDetail, { props: { id: '57191' } });
+
+			expect(lineHeadings()).toEqual(
+				locale === 'en'
+					? [
+							'Line 51 Toward Station Laurier or Édouard-Montpetit',
+							'Line 80 Destination not in this stop’s schedule',
+						]
+					: [
+							'Ligne 51 Vers Station Laurier ou Édouard-Montpetit',
+							'Ligne 80 Destination absente de l’horaire de cet arrêt',
+						],
+			);
+			const line51 = within(predictions()).getByRole('table', { name: /51/ });
+			const rows = within(line51).getAllByRole('row').slice(1);
+			expect(rows.map((row) => row.querySelector('td')?.textContent?.trim())).toEqual([
+				`▲${t.bands.late}`,
+				`▼${t.bands.early}`,
+			]);
+			expect(rows.map((row) => row.querySelector('td:last-child')?.textContent?.trim())).toEqual([
+				'+4 min',
+				'−2 min',
+			]);
+			expect(within(predictions()).getByText(t.total(3, 2))).toBeInTheDocument();
+			expect(within(predictions()).getByText(t.destinationCaveat)).toBeInTheDocument();
+			expect(screen.getByRole('link', { name: t.record })).toHaveAttribute(
+				'href',
+				locale === 'en' ? '/stop/57191' : '/fr/stop/57191',
+			);
+		},
+	);
+
+	it('names both statuses a rounded minute can stand for, with a shape only for one', () => {
+		liveStore.index.byStopId.set('57191', [
+			{ eta_utc: '2026-06-15T12:05:00Z', route: '51', delay_min: 1 },
+			{ eta_utc: '2026-06-15T12:06:00Z', route: '51', delay_min: 6 },
+			{ eta_utc: '2026-06-15T12:07:00Z', route: '80', delay_min: null },
+		] as StopDeparture[]);
 		render(StopDetail, { props: { id: '57191' } });
-
-		expect(screen.getByText('Showing 3 of 3 departures')).toBeInTheDocument();
-
-		await fireEvent.click(screen.getByRole('button', { name: 'Late' }));
-		expect(screen.getByText('Showing 1 of 3 departures')).toBeInTheDocument();
-		expect(screen.getByText('+4 min late')).toBeInTheDocument();
-		expect(screen.queryByText('2 min early')).not.toBeInTheDocument();
-
-		await fireEvent.click(screen.getByRole('button', { name: 'Late' }));
-		expect(screen.getByText('Showing 3 of 3 departures')).toBeInTheDocument();
+		const statuses = [...predictions().querySelectorAll('tbody td:first-of-type')];
+		expect(statuses.map((cell) => cell.textContent?.trim()).slice(0, 2)).toEqual([
+			'On time or late',
+			'■5+ min late',
+		]);
+		expect(statuses[0]!.querySelector('[aria-hidden="true"]')).toBeNull();
+		expect(statuses[2]!.querySelector('[data-slot="absent-value"]')).not.toBeNull();
+		expect(screen.queryByText(/Severe/)).toBeNull();
 	});
 
-	it('shows an honest empty state when a filter combination matches nothing', async () => {
+	it('offers an order only once two lines are listed, and it reorders the lines', async () => {
+		liveStore.index.byStopId.set('57191', [
+			{ eta_utc: '2026-06-15T12:01:00Z', route: '80', delay_min: 0 },
+			{ eta_utc: '2026-06-15T12:05:00Z', route: '7', delay_min: 0 },
+		] as StopDeparture[]);
 		render(StopDetail, { props: { id: '57191' } });
+		expect(lineHeadings().map((name) => name?.split(' ')[1])).toEqual(['80', '7']);
+		await fireEvent.change(screen.getByRole('combobox', { name: 'Order' }), {
+			target: { value: 'line' },
+		});
+		expect(lineHeadings().map((name) => name?.split(' ')[1])).toEqual(['7', '80']);
+	});
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Early' }));
-		await fireEvent.click(screen.getByRole('button', { name: '80' }));
-
-		const empty = screen.getByTestId('departures-filter-empty');
-		expect(empty).toBeInTheDocument();
-		expect(empty).toHaveAttribute('data-slot', 'state-notice');
-		expect(empty).toHaveAttribute('data-presentation', 'silo');
-		expect(screen.getByText('Showing 0 of 3 departures')).toBeInTheDocument();
+	it('shows no order control for a single line', () => {
+		render(StopDetail, { props: { id: '99999' } });
+		expect(predictions()).toBeInTheDocument();
+		expect(screen.queryByRole('combobox', { name: 'Order' })).toBeNull();
 	});
 });
 
-describe('StopDetail live departures — HONEST ABSENCE (empty board)', () => {
-	it('describes only report absence when a served route has a silent trip', () => {
-		stopFileData = {
-			...STOP_FILE,
-			scheduled: [{ route: '51', headsign: 'X', times: ['00:00', '23:59'] }],
-		} as unknown as StopFile;
+describe('StopDetail Live now — each absence says what it is', () => {
+	it('an empty current report does not say no vehicle is coming, and points to the schedule', () => {
 		useSilentBoard = true;
 		render(StopDetail, { props: { id: '57191' } });
-
-		expect(
-			screen.getByText('No departures reported for this stop in this report.'),
-		).toBeInTheDocument();
-		expect(screen.queryByText('scheduled, but nothing is reporting live')).toBeNull();
+		const t = detailCopy.en.live;
+		expect(screen.getByTestId('stop-live-state')).toHaveTextContent(t.none);
+		expect(predictions()).toBeNull();
+		expect(screen.queryByRole('combobox', { name: 'Order' })).toBeNull();
+		expect(screen.getByRole('link', { name: t.schedule })).toHaveAttribute(
+			'href',
+			'/stop/57191?tab=schedule',
+		);
 	});
 
-	it('falls back to the generic honest no-data copy when no reason is derivable', () => {
-		stopFileData = { ...STOP_FILE, scheduled: [] } as unknown as StopFile;
+	it('a stop no line serves expects no predictions (fr)', () => {
+		currentLocale = 'fr';
 		useSilentBoard = true;
+		stopFileData = { ...STOP_FILE, routes_served: [] } as unknown as StopFile;
 		render(StopDetail, { props: { id: '57191' } });
-
-		expect(
-			screen.getByText('No departures reported for this stop in this report.'),
-		).toBeInTheDocument();
-		expect(screen.queryByText('scheduled, but nothing is reporting live')).not.toBeInTheDocument();
+		expect(screen.getByTestId('stop-live-state')).toHaveTextContent(detailCopy.fr.live.noService);
 	});
 });
 
@@ -1574,53 +1630,20 @@ describe('StopDetail — service alerts affecting this stop', () => {
 });
 
 describe('StopDetail — per-stop state resets on navigation', () => {
-	it('clears the departures status filter when the stop id changes', async () => {
+	it('returns the prediction order to soonest first when the stop id changes', async () => {
+		liveStore.index.byStopId.set('99999', [
+			{ eta_utc: '2026-06-15T12:01:00Z', route: '80', delay_min: 0 },
+			{ eta_utc: '2026-06-15T12:05:00Z', route: '7', delay_min: 0 },
+		] as StopDeparture[]);
 		const { rerender } = render(StopDetail, { props: { id: '57191' } });
-
-		await fireEvent.click(screen.getByRole('button', { name: 'Late' }));
-		expect(screen.getByText('Showing 1 of 3 departures')).toBeInTheDocument();
+		const order = () => screen.getByRole('combobox', { name: 'Order' }) as HTMLSelectElement;
+		await fireEvent.change(order(), { target: { value: 'line' } });
+		expect(order().value).toBe('line');
 
 		await rerender({ id: '99999' });
 
-		expect(screen.getByText('Showing 2 of 2 departures')).toBeInTheDocument();
-		expect(screen.getByRole('button', { name: 'Late' })).toHaveAttribute('aria-pressed', 'false');
-	});
-});
-
-const SEVERE_DEPARTURES = [
-	{ eta_utc: '2026-06-15T12:05:00Z', route: '51', delay_min: 9 },
-	{ eta_utc: '2026-06-15T12:08:00Z', route: '80', delay_min: 0 },
-] as StopDeparture[];
-
-describe('StopDetail live departures — colored statuses (S8B)', () => {
-	it('offers all four tone chips incl. a representable SEVERE (not absorbed into late)', () => {
-		render(StopDetail, { props: { id: '57191' } });
-		expect(screen.getByRole('button', { name: /On-time/ })).toBeInTheDocument();
-		expect(screen.getByRole('button', { name: /Late/ })).toBeInTheDocument();
-		expect(screen.getByRole('button', { name: /Severe/ })).toBeInTheDocument();
-		expect(screen.getByRole('button', { name: /Early/ })).toBeInTheDocument();
-	});
-
-	it('tints each departure caption with the shared status fill AND a redundant glyph', () => {
-		const { container } = render(StopDetail, { props: { id: '57191' } });
-		const late = Array.from(container.querySelectorAll('.stop-departure-delay')).find((el) =>
-			el.textContent?.includes('+4 min late'),
-		) as HTMLElement;
-		expect(late).toBeDefined();
-		expect(late.getAttribute('data-tone')).toBe('late');
-		expect(late.getAttribute('style') ?? '').toContain('--dataviz-status-late');
-		expect(late.querySelector('.stop-departure-glyph')?.textContent).toBe('▲');
-	});
-
-	it('bands a >=5 min departure to the SEVERE tone (its own severe fill)', () => {
-		liveStore.index.byStopId.set('SEVERE-1', SEVERE_DEPARTURES);
-		const { container } = render(StopDetail, { props: { id: 'SEVERE-1' } });
-		const severe = Array.from(container.querySelectorAll('.stop-departure-delay')).find(
-			(el) => el.getAttribute('data-tone') === 'severe',
-		) as HTMLElement;
-		expect(severe).toBeDefined();
-		expect(severe.getAttribute('style') ?? '').toContain('--dataviz-status-severe');
-		liveStore.index.byStopId.delete('SEVERE-1');
+		expect(order().value).toBe('soonest');
+		expect(lineHeadings().map((name) => name?.split(' ')[1])).toEqual(['80', '7']);
 	});
 });
 
@@ -1663,7 +1686,7 @@ describe('StopDetail schedule — semantic timetable + honest gaps', () => {
 });
 
 describe('StopDetail identity — notices section + honest accessibility', () => {
-	it('puts agency notices in their own section between departures and the stop facts', () => {
+	it('puts agency notices in their own section between predictions and the stop facts', () => {
 		const { container } = render(StopDetail, { props: { id: '57191' } });
 		const sections = Array.from(container.querySelectorAll('[data-toc^="stop-detail-"]'));
 		expect(sections.map((section) => section.getAttribute('data-toc'))).toEqual([

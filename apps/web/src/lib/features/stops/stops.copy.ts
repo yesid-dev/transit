@@ -93,7 +93,6 @@ export type StopsIndexCopy = (typeof indexCopy)[Locale];
 export const detailCopy = defineCopy({
 	fr: {
 		questions: {
-			departures: 'Quand le prochain véhicule est-il annoncé ?',
 			schedule: 'Quelles lignes passent ici, et quand ?',
 		},
 		kicker: 'ARRÊT',
@@ -131,32 +130,46 @@ export const detailCopy = defineCopy({
 			title: 'Informations sur l’arrêt',
 			summary: 'Où est cet arrêt, et quels services y sont offerts ?',
 		},
-		next: {
-			terminal: { title: 'passages-en-direct', tag: 'EN DIRECT' },
-			heading: 'Prochains passages',
-			none: 'Aucun passage communiqué pour cet arrêt dans ce rapport.',
-			scope: 'Le rapport contient au plus deux prédictions par ligne. Elles peuvent changer.',
-			late: (min: number) => `+${min} min de retard`,
-			early: (min: number) => `${Math.abs(min)} min d’avance`,
-			onTime: 'à l’heure',
-			route: 'Ligne',
-			table: {
-				caption: 'Passages communiqués',
-				route: 'Ligne',
-				departure: 'Passage',
-				status: 'État',
-			},
-			controlsLabel: 'Filtres',
-			filter: {
-				statusLabel: 'Filtrer par statut',
-				onTime: 'À l’heure',
-				late: 'En retard',
+		live: {
+			heading: 'Prévisions à cet arrêt',
+			changing: 'Cette vue change à mesure que de nouveaux rapports arrivent.',
+			refresh: 'Actualiser',
+			record: 'Voir le bilan',
+			schedule: 'Voir l’horaire',
+			total: (n: number, lines: number) =>
+				`${n} ${n === 1 ? 'prévision' : 'prévisions'} pour ${lines} ${lines === 1 ? 'ligne' : 'lignes'} dans ce rapport.`,
+			order: 'Ordre',
+			orderSoonest: 'Le plus tôt d’abord',
+			orderLine: 'Par numéro de ligne',
+			noLine: 'Ligne non indiquée',
+			toward: (destinations: string) => `Vers ${destinations}`,
+			noDestination: 'Destination absente de l’horaire de cet arrêt',
+			time: 'Heure prévue',
+			status: 'État',
+			offset: 'Écart',
+			trip: 'rapport du trajet',
+			timeUnreadable: 'Heure illisible',
+			bands: {
 				early: 'En avance',
-				routeLabel: 'Filtrer par ligne',
-				allRoutes: 'Toutes les lignes',
-				noMatches: 'Aucun passage ne correspond à ce filtre.',
-				showing: (shown: number, total: number) => `${shown} sur ${total} passages affichés`,
+				on_time: 'À l’heure',
+				late: 'En retard',
+				severe: '5+ min de retard',
 			},
+			either: (first: string, second: string) => `${first} ou ${second.toLowerCase()}`,
+			caveat:
+				'Chaque heure est une prévision communiquée pour un trajet de cette ligne à cet arrêt. Le rapport en garde au plus deux par ligne, et elles peuvent changer.',
+			destinationCaveat:
+				'Les destinations viennent de l’horaire de cet arrêt. Une prévision ne nomme pas la destination de son trajet.',
+			statusNote:
+				'L’état et l’écart reposent sur le retard prévu moyen du trajet, arrondi à la minute : en avance, plus de 1 min d’avance; à l’heure, à moins de 1 min; en retard, de 1 min à moins de 5 min; 5+ min de retard, 5 min ou plus. Quand la minute arrondie peut tomber de part et d’autre d’une limite, les deux états sont nommés.',
+			noCapability: 'Aucune donnée en direct pour les lignes de cet arrêt',
+			noCapabilityBody:
+				'Transit ne reçoit aucune prévision pour les lignes qui desservent cet arrêt.',
+			noService:
+				'Aucune ligne n’est publiée comme desservant cet arrêt : aucune prévision n’est attendue.',
+			none: 'Aucune prévision reçue pour cet arrêt dans le rapport actuel. Cela ne veut pas dire qu’aucun véhicule ne viendra.',
+			staleNone:
+				'Le dernier rapport reçu n’est plus à jour : il ne peut pas dire s’il y a des prévisions maintenant.',
 		},
 		alerts: {
 			heading: 'Avis de service',
@@ -254,7 +267,6 @@ export const detailCopy = defineCopy({
 	},
 	en: {
 		questions: {
-			departures: 'When is the next vehicle predicted?',
 			schedule: 'Which lines stop here, and when?',
 		},
 		kicker: 'STOP',
@@ -292,32 +304,44 @@ export const detailCopy = defineCopy({
 			title: 'Stop information',
 			summary: 'Where is this stop, and what service can you use here?',
 		},
-		next: {
-			terminal: { title: 'live-departures', tag: 'LIVE' },
-			heading: 'Next departures',
-			none: 'No departures reported for this stop in this report.',
-			scope: 'The report includes up to two predictions per line. They may change.',
-			late: (min) => `+${min} min late`,
-			early: (min) => `${Math.abs(min)} min early`,
-			onTime: 'on time',
-			route: 'Line',
-			table: {
-				caption: 'Reported departures',
-				route: 'Line',
-				departure: 'Departure',
-				status: 'Status',
-			},
-			controlsLabel: 'Filters',
-			filter: {
-				statusLabel: 'Filter by status',
-				onTime: 'On time',
-				late: 'Late',
+		live: {
+			heading: 'Predictions at this stop',
+			changing: 'This view changes as new reports arrive.',
+			refresh: 'Refresh',
+			record: 'See the record',
+			schedule: 'See the schedule',
+			total: (n, lines) =>
+				`${n} ${n === 1 ? 'prediction' : 'predictions'} for ${lines} ${lines === 1 ? 'line' : 'lines'} in this report.`,
+			order: 'Order',
+			orderSoonest: 'Soonest first',
+			orderLine: 'By line number',
+			noLine: 'Line not given',
+			toward: (destinations) => `Toward ${destinations}`,
+			noDestination: 'Destination not in this stop’s schedule',
+			time: 'Predicted time',
+			status: 'Status',
+			offset: 'Offset',
+			trip: 'trip report',
+			timeUnreadable: 'Time not readable',
+			bands: {
 				early: 'Early',
-				routeLabel: 'Filter by line',
-				allRoutes: 'All lines',
-				noMatches: 'No departures match this filter.',
-				showing: (shown, total) => `Showing ${shown} of ${total} departures`,
+				on_time: 'On time',
+				late: 'Late',
+				severe: '5+ min late',
 			},
+			either: (first, second) => `${first} or ${second.toLowerCase()}`,
+			caveat:
+				'Each time is a reported prediction for one trip of that line at this stop. The report keeps up to two per line, and they can change.',
+			destinationCaveat:
+				'Destinations come from this stop’s schedule. A prediction does not name its trip’s destination.',
+			statusNote:
+				'Status and offset use the trip’s average predicted delay, rounded to the minute: early is more than 1 min early; on time, within 1 min; late, from 1 to under 5 min late; 5+ min late, 5 min or more. When the rounded minute could fall on either side of a limit, both statuses are named.',
+			noCapability: 'No live data for the lines at this stop',
+			noCapabilityBody: 'Transit receives no predictions for the lines serving this stop.',
+			noService: 'No line is published as serving this stop, so no predictions are expected.',
+			none: 'No predictions reported for this stop in the current report. This does not mean no vehicle is coming.',
+			staleNone:
+				'The last report received is out of date, so it cannot say whether predictions exist now.',
 		},
 		alerts: {
 			heading: 'Service alerts',

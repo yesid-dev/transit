@@ -1,17 +1,7 @@
 <script lang="ts">
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	const { line } = transitDisplay();
-	import { liveAbsenceReason, readLiveAbsenceContext } from '#lib/site/absence.ts';
-	const absenceContext = readLiveAbsenceContext();
 	import type { Locale } from '#lib/i18n/index.ts';
-	import { formatUtc } from '#lib/utils/time.ts';
-	import {
-		delayLabel,
-		delayTone,
-		rowGlyph,
-		rowColorVar,
-		type DelayLabelCopy,
-	} from '#lib/site/delayPresentation.ts';
 	import { DataTable, type DataTableColumn } from '@yesid/ui/table';
 	import { AbsentValue } from '#lib/components/edge/index.ts';
 
@@ -22,14 +12,6 @@
 		readonly times: string[];
 	}
 
-	export interface ScheduleBoardRow {
-		readonly kind: 'board';
-		readonly route?: string | null;
-		readonly eta_utc: string;
-		readonly delay_min?: number | null;
-		readonly trip?: string | null;
-	}
-
 	export interface ScheduleServiceRow {
 		readonly kind: 'service';
 		readonly period: string;
@@ -37,15 +19,13 @@
 		readonly headway?: string | null;
 	}
 
-	export type ScheduleRow = ScheduleGridRow | ScheduleBoardRow | ScheduleServiceRow;
+	export type ScheduleRow = ScheduleGridRow | ScheduleServiceRow;
 
 	export interface ScheduleTableLabels {
 		readonly caption: string;
 		readonly route?: string;
 		readonly destination?: string;
 		readonly departures?: string;
-		readonly departure?: string;
-		readonly status?: string;
 		readonly period?: string;
 		readonly window?: string;
 		readonly headway?: string;
@@ -53,32 +33,19 @@
 
 	export interface ScheduleTableProps {
 		rows: ScheduleRow[];
-		mode: 'grid' | 'board' | 'service';
+		mode: 'grid' | 'service';
 		locale: Locale;
 		labels: ScheduleTableLabels;
 		cap?: number;
 		moreLabel?: (n: number) => string;
-		delayCopy?: DelayLabelCopy;
-		routeFallback?: string;
 	}
 
-	let {
-		rows,
-		mode,
-		locale,
-		labels,
-		cap = 30,
-		moreLabel,
-		delayCopy,
-		routeFallback,
-	}: ScheduleTableProps = $props();
+	let { rows, mode, locale, labels, cap = 30, moreLabel }: ScheduleTableProps = $props();
 
 	const gridRows = $derived(rows.filter((row): row is ScheduleGridRow => row.kind === 'grid'));
-	const boardRows = $derived(rows.filter((row): row is ScheduleBoardRow => row.kind === 'board'));
 	const serviceRows = $derived(
 		rows.filter((row): row is ScheduleServiceRow => row.kind === 'service'),
 	);
-	const EMPTY_DELAY_COPY: DelayLabelCopy = { early: () => '', late: () => '', onTime: '' };
 </script>
 
 {#snippet gridRouteCell(entry: ScheduleGridRow)}
@@ -110,34 +77,6 @@
 		{/if}
 	{:else}
 		<AbsentValue variant="row" reason="no-observations" {locale} />
-	{/if}
-{/snippet}
-
-{#snippet boardRouteCell(departure: ScheduleBoardRow)}
-	<span class="stop-departure-route">{departure.route ? line(departure.route) : routeFallback}</span
-	>
-{/snippet}
-
-{#snippet boardDepartureCell(departure: ScheduleBoardRow)}
-	<span class="stop-departure-eta">
-		<time datetime={departure.eta_utc}>{formatUtc(departure.eta_utc, locale)}</time>
-	</span>
-{/snippet}
-
-{#snippet boardStatusCell(departure: ScheduleBoardRow)}
-	{#if departure.delay_min == null}
-		<AbsentValue
-			variant="row"
-			reason={liveAbsenceReason('prediction-delay', absenceContext())}
-			{locale}
-		/>
-	{:else}
-		{@const tone = delayTone(departure.delay_min)}
-		<span class="stop-departure-delay" style:color={rowColorVar(tone)} data-tone={tone}>
-			{#if rowGlyph(tone)}<span class="stop-departure-glyph" aria-hidden="true"
-					>{rowGlyph(tone)}</span
-				>{/if}{delayLabel(departure.delay_min, delayCopy ?? EMPTY_DELAY_COPY)}
-		</span>
 	{/if}
 {/snippet}
 
@@ -190,43 +129,6 @@
 		responsive={{
 			mode: 'scroll',
 			minWidth: '42rem',
-			minWidthCompact: '32rem',
-		}}
-		frame="card"
-		borderCollapse="collapse"
-		headerBand="terminal"
-		tableClass="schedule-table"
-		class="schedule-table-frame"
-		data-mode={mode}
-	/>
-{:else if mode === 'board'}
-	<DataTable
-		rows={boardRows}
-		columns={[
-			{
-				key: 'route',
-				header: labels.route ?? '',
-				rowHeader: true,
-				cell: boardRouteCell,
-			},
-			{
-				key: 'departure',
-				header: labels.departure ?? '',
-				numeric: true,
-				cell: boardDepartureCell,
-			},
-			{
-				key: 'status',
-				header: labels.status ?? '',
-				cell: boardStatusCell,
-			},
-		] satisfies readonly DataTableColumn<ScheduleBoardRow>[]}
-		key={(departure, i) =>
-			`${departure.trip ?? departure.route ?? 'dep'}-${departure.eta_utc}-${i}`}
-		caption={labels.caption}
-		responsive={{
-			mode: 'scroll',
-			minWidth: '34rem',
 			minWidthCompact: '32rem',
 		}}
 		frame="card"
@@ -326,17 +228,6 @@
 	.stop-schedule-time-more {
 		margin: 0.5rem 0 0;
 		color: var(--muted-foreground);
-	}
-	.stop-departure-delay {
-		display: inline-flex;
-		align-items: baseline;
-		gap: 0.375rem;
-		white-space: nowrap;
-		color: var(--muted-foreground);
-	}
-	.stop-departure-glyph {
-		font-size: var(--text-micro);
-		line-height: 1;
 	}
 	@media (max-width: 48rem) {
 		:global(.schedule-table.data-table th),

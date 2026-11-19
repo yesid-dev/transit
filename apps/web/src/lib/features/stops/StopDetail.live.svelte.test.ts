@@ -3,6 +3,7 @@ import { flushSync } from 'svelte';
 import { createSubscriber } from 'svelte/reactivity';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { configureV1Runtime } from '#lib/v1/runtime.ts';
+import { createLineDirectory } from '#lib/site/lineDirectory.ts';
 import StopDetail from './StopDetail.svelte';
 
 const fixture = vi.hoisted(() => ({
@@ -31,7 +32,12 @@ vi.mock('$app/navigation', () => ({
 }));
 vi.mock('#lib/v1/boot.ts', () => ({
 	getV1Context: () => ({
-		manifest: { short_name: 'STM', display_name: 'STM', files: { live: { ttl_s: 30 } } },
+		manifest: {
+			provider: 'stm',
+			short_name: 'STM',
+			display_name: 'STM',
+			files: { live: { ttl_s: 30 } },
+		},
 	}),
 }));
 vi.mock('#lib/v1/live/store.svelte.ts', async (importOriginal) => {
@@ -123,12 +129,24 @@ async function manualRefresh() {
 	flushSync();
 	await settle();
 }
+// Line 1 is a metro line (GTFS type 1), which STM declares without live data.
+const directory = createLineDirectory(
+	[
+		{ id: '1', short: '1', type: 1 },
+		{ id: '24', short: '24', type: 3 },
+	],
+	{ line: (id) => `Line ${id}` },
+);
 function mount(locale: 'en' | 'fr' = 'en') {
 	return render(StopDetail, {
 		props: { id: 'probe', seed: { id: 'probe', name: 'Test stop' } },
-		context: new Map([[Symbol.for('@yesid/ui/locale'), () => locale]]),
+		context: new Map<symbol, unknown>([
+			[Symbol.for('@yesid/ui/locale'), () => locale],
+			[Symbol.for('transit.line-directory'), () => directory],
+		]),
 	});
 }
+const liveState = () => screen.queryByTestId('stop-live-state');
 const reportStamp = (family: string) =>
 	document.querySelector(`.stop-report[data-source="${family}"] [data-slot="freshness-stamp"]`);
 
@@ -207,15 +225,13 @@ describe('StopDetail independent report owners', () => {
 		expect(reportStamp('departures')).toBeNull();
 		expect(reportStamp('alerts')).toHaveAttribute('data-stale', 'false');
 		const board = screen
-			.getByRole('heading', { name: /Next departures/ })
+			.getByRole('heading', { name: /Predictions at this stop/ })
 			.closest('[data-slot="card"]')!;
 		fixture.stopDepartures.mockResolvedValue(departures());
 		await fireEvent.click(within(board as HTMLElement).getByRole('button', { name: /retry/i }));
 		await settle();
 		expect(reportStamp('departures')).toHaveAttribute('data-stale', 'false');
-		expect(
-			within(board as HTMLElement).getByRole('table', { name: 'Reported departures' }),
-		).toBeInTheDocument();
+		expect(within(board as HTMLElement).getByRole('table', { name: /24/ })).toBeInTheDocument();
 	});
 
 	it('retains a failed departure report, ages it at3×TTL, and accepts a new generation', async () => {
@@ -283,6 +299,54 @@ describe('StopDetail independent report owners', () => {
 			expect(screen.getByTestId('stop-schedule-empty')).toBeInTheDocument();
 		},
 	);
+
+	it.each(['en', 'fr'] as const)(
+		'says an out-of-date empty report cannot tell whether predictions exist (%s)',
+		async (locale) => {
+			fixture.stopDepartures.mockResolvedValue({ generated_utc: stamp(-600), stops: {} });
+			mount(locale);
+			await settle();
+			expect(reportStamp('departures')).toHaveAttribute('data-stale', 'true');
+			expect(liveState()).toHaveTextContent(
+				locale === 'en'
+					? 'The last report received is out of date, so it cannot say whether predictions exist now.'
+					: 'Le dernier rapport reçu n’est plus à jour : il ne peut pas dire s’il y a des prévisions maintenant.',
+			);
+		},
+	);
+
+	it('a fresh empty report says only that none were reported', async () => {
+		fixture.stopDepartures.mockResolvedValue({ generated_utc: stamp(), stops: {} });
+		mount();
+		await settle();
+		expect(liveState()).toHaveTextContent(
+			'No predictions reported for this stop in the current report. This does not mean no vehicle is coming.',
+		);
+	});
+
+	it('a stop served only by lines without live data states that, with no live stamp or refresh', async () => {
+		fixture.stop.mockResolvedValue({ ...staticStop, routes_served: ['1'] });
+		fixture.stopDepartures.mockResolvedValue({ generated_utc: stamp(), stops: {} });
+		mount('fr');
+		await settle();
+		expect(liveState()).toHaveTextContent('Aucune donnée en direct pour les lignes de cet arrêt');
+		expect(liveState()).toHaveTextContent(
+			'Transit ne reçoit aucune prévision pour les lignes qui desservent cet arrêt.',
+		);
+		expect(reportStamp('departures')).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Actualiser' })).toBeNull();
+		expect(screen.getByRole('link', { name: 'Voir l’horaire' })).toBeInTheDocument();
+	});
+
+	it('keeps a retained list on screen after a failed refresh, with its notice', async () => {
+		mount();
+		await settle();
+		fixture.stopDepartures.mockRejectedValue(new Error('controlled departure failure'));
+		await advance(30);
+		expect(screen.getByTestId('stop-departures-notice')).toHaveTextContent('Refresh unavailable');
+		expect(screen.getByRole('table', { name: /24/ })).toBeInTheDocument();
+		expect(liveState()).toBeNull();
+	});
 
 	it('does not borrow live time for an unavailable historic report', async () => {
 		fixture.page.url = new URL('http://localhost/stop/probe?tab=reliability');

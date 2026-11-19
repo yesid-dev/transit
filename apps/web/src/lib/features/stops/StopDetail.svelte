@@ -3,16 +3,16 @@
 	import ArticleHeader from '#lib/components/layout/TransitArticleHeader.svelte';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
-	const { line } = transitDisplay();
+	const display = transitDisplay();
 	import { provideLiveAbsenceContext } from '#lib/site/absence.ts';
 	import { getV1Runtime } from '#lib/v1/runtime.ts';
 	const clock = getV1Runtime().clock;
 	import { feedPresentation } from '#lib/v1/live/livePresentation.ts';
-	import { providerHasAlerts } from '#lib/v1/providers.ts';
-	import { ToggleChip, CollapsibleSection, type TocEntry } from '@yesid/ui/brand';
+	import { providerHasAlerts, routeHasNoLiveData } from '#lib/v1/providers.ts';
+	import { CollapsibleSection, type TocEntry } from '@yesid/ui/brand';
+	import { Button } from '@yesid/ui/button';
 	import { onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
-	import { SvelteSet } from 'svelte/reactivity';
 	import { getLocale, getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
 	import type { DetailTab } from '#lib/site/detailTabs.ts';
 	import { createDetailTabController } from '#lib/site/detailTabController.svelte.ts';
@@ -27,15 +27,7 @@
 	import { historyRangeRequestFromSearchParams } from '#lib/v1/history/rangeResource.svelte.ts';
 	import type { StopFile, StopReliability, StopDeparture } from '#lib/v1/index.ts';
 	import { createResource, type ResourceSeed } from '#lib/v1/resource.svelte.ts';
-	import {
-		delayTone,
-		toneColorVar,
-		TONE_GLYPH,
-		type ChipTone,
-	} from '#lib/site/delayPresentation.ts';
 	import { ScheduleTable, type ScheduleRow } from '#lib/components/schedule/index.ts';
-	import { STATUS_LABELS } from '#lib/v1/enumLabels.ts';
-	import type { StatusCode } from '#lib/v1/schemas/index.ts';
 	import {
 		EntityDetail,
 		ResourceBoundary,
@@ -46,10 +38,8 @@
 	import { EdgeState } from '#lib/components/edge/index.ts';
 	import { StateNotice } from '@yesid/ui/feedback';
 	import { ArticleSectionStack, type ArticleMetaEntry } from '#lib/components/layout/index.ts';
-	import { ControlsRail } from '@yesid/ui/layout';
 	import { articleNavigationCopy } from '#lib/components/shared/index.ts';
 	import SectionsToggle from '#lib/components/shared/SectionsToggle.svelte';
-	import { Separator } from '@yesid/ui/separator';
 	import { desktop } from '@yesid/ui/state';
 	import type { IdentitySeed } from '#lib/v1/serverContext.ts';
 	import { mapHrefFor, routeFor } from '#lib/nav/index.ts';
@@ -65,6 +55,8 @@
 	import { stopAccess, stopNotices } from './stopIdentity';
 	import StopIdentity from './StopIdentity.svelte';
 	import StopRecordAnswer from './StopRecordAnswer.svelte';
+	import StopLivePredictions from './StopLivePredictions.svelte';
+	import { presentStopLive, type StopLiveOrder } from './stopPredictions';
 	import { alertUnavailableCopy } from '#lib/components/surface/alertAvailabilityCopy.ts';
 
 	const localizeHref = getLocalizeHref();
@@ -100,7 +92,7 @@
 	const detailTocEntries = $derived<TocEntry[]>([
 		{
 			id: 'stop-detail-departures',
-			title: t.next.heading,
+			title: t.live.heading,
 			level: 2,
 			badge: { kind: 'number', value: 1 },
 			children: [],
@@ -257,57 +249,25 @@
 			(value.by_route?.length ?? 0) === 0 &&
 			(value.daily?.length ?? 0) === 0);
 
-	const DEPARTURE_TONES: readonly ChipTone[] = ['on-time', 'late', 'severe', 'early'];
-
-	const TONE_STATUS: Record<ChipTone, StatusCode> = {
-		early: 'early',
-		'on-time': 'on_time',
-		late: 'late',
-		severe: 'severe',
-	};
-	const toneLabel = (tone: ChipTone): string => STATUS_LABELS[locale][TONE_STATUS[tone]];
-
-	const statusFilter = new SvelteSet<ChipTone>();
-	let routeFilter = $state<string | null>(null);
-
+	let liveOrder = $state<StopLiveOrder>('soonest');
 	$effect(() => {
 		void id;
-		statusFilter.clear();
-		routeFilter = null;
+		liveOrder = 'soonest';
 	});
-
-	function toggleStatus(s: ChipTone): void {
-		if (statusFilter.has(s)) statusFilter.delete(s);
-		else statusFilter.add(s);
-	}
-
-	const departureRoutes = $derived.by<string[]>(() => {
-		const seen = new SvelteSet<string>();
-		const out: string[] = [];
-		for (const d of departures ?? []) {
-			if (d.route != null && !seen.has(d.route)) {
-				seen.add(d.route);
-				out.push(d.route);
-			}
-		}
-		return out;
-	});
-
-	$effect(() => {
-		if (routeFilter != null && !departureRoutes.includes(routeFilter)) routeFilter = null;
-	});
-
-	const filteredDepartures = $derived.by<readonly StopDeparture[] | null>(() => {
-		if (departures == null) return null;
-		return departures.filter((d) => {
-			if (statusFilter.size > 0) {
-				const tone = delayTone(d.delay_min);
-				if (tone === 'none' || !statusFilter.has(tone)) return false;
-			}
-			if (routeFilter != null && d.route !== routeFilter) return false;
-			return true;
-		});
-	});
+	const departureHealth = $derived(live.familyStates.departures.health);
+	const liveView = $derived(
+		presentStopLive({
+			departures,
+			reportStale: departureHealth.isStale,
+			servedLines,
+			scheduled: stop.data?.scheduled ?? null,
+			lineHasNoLiveData: (line) =>
+				routeHasNoLiveData(manifest.provider, display.directory.type(line)),
+			lineNumber: (line) => display.line(line),
+			order: liveOrder,
+		}),
+	);
+	const scheduleHref = $derived(localizeHref(`${stopPath}?tab=schedule`, locale));
 	$effect(() => clock.subscribe());
 </script>
 
@@ -506,105 +466,56 @@
 			<ArticleSectionStack>
 				{#key id}
 					<CollapsibleSection
-						title={t.next.heading}
+						title={t.live.heading}
 						headerVariant="article-summary"
 						index={0}
-						subtitle={t.questions.departures}
+						subtitle={t.live.changing}
 						anchor="stop-detail-departures"
 					>
 						<ResourceBoundary resource={departureReport} lang={locale}>
 							{#snippet children(_report)}
-								<div class="stop-next">
-									{@render liveStatus(live, 'departures')}
-									{#if departures?.length === 0}
+								<div class="stop-next" data-state={liveView.kind}>
+									{#if liveView.kind === 'no-capability'}
 										<StateNotice
-											title={t.next.none}
+											title={t.live.noCapability}
+											body={t.live.noCapabilityBody}
 											presentation="silo"
-											role="status"
-											aria-live="polite"
-											data-testid="stop-departures-empty"
+											data-testid="stop-live-state"
 										/>
 									{:else}
-										<ControlsRail label={t.next.controlsLabel}>
-											<div
-												class="stop-chip-group"
-												role="group"
-												aria-label={t.next.filter.statusLabel}
+										<div class="stop-live-report">
+											{@render liveStatus(live, 'departures')}
+											<Button
+												variant="outline"
+												class="min-h-11 self-start"
+												onclick={() => live.refresh({ force: true })}>{t.live.refresh}</Button
 											>
-												{#each DEPARTURE_TONES as tone (tone)}
-													<ToggleChip
-														pressed={statusFilter.has(tone)}
-														onclick={() => toggleStatus(tone)}
-													>
-														<span
-															class="stop-chip-glyph"
-															style:color={toneColorVar(tone)}
-															aria-hidden="true">{TONE_GLYPH[tone]}</span
-														>
-														{toneLabel(tone)}
-													</ToggleChip>
-												{/each}
-											</div>
-											{#if departureRoutes.length > 1}
-												<div
-													class="stop-chip-group"
-													role="group"
-													aria-label={t.next.filter.routeLabel}
-												>
-													<ToggleChip
-														pressed={routeFilter == null}
-														onclick={() => (routeFilter = null)}
-													>
-														{t.next.filter.allRoutes}
-													</ToggleChip>
-													{#each departureRoutes as route (route)}
-														<ToggleChip
-															pressed={routeFilter === route}
-															onclick={() => (routeFilter = routeFilter === route ? null : route)}
-														>
-															{line(route)}
-														</ToggleChip>
-													{/each}
-												</div>
-											{/if}
-											<p class="stop-departures-count" aria-live="polite">
-												{t.next.filter.showing(
-													filteredDepartures?.length ?? 0,
-													departures?.length ?? 0,
-												)}
-											</p>
-										</ControlsRail>
-
-										<Separator variant="hazard" hazardSize="sm" />
-
-										{#if (filteredDepartures?.length ?? 0) === 0}
+										</div>
+										{#if liveView.kind === 'list'}
+											<StopLivePredictions
+												view={liveView}
+												bind:order={liveOrder}
+												{locale}
+												timeZone={manifest.tz}
+											/>
+										{:else if liveView.kind !== 'pending'}
 											<StateNotice
-												title={t.next.filter.noMatches}
+												title={liveView.kind === 'no-service'
+													? t.live.noService
+													: liveView.kind === 'stale-none'
+														? t.live.staleNone
+														: t.live.none}
 												presentation="silo"
 												role="status"
 												aria-live="polite"
-												data-testid="departures-filter-empty"
-											/>
-										{:else}
-											<ScheduleTable
-												mode="board"
-												rows={(filteredDepartures ?? []).map(
-													(d): ScheduleRow => ({
-														kind: 'board',
-														route: d.route,
-														eta_utc: d.eta_utc,
-														delay_min: d.delay_min,
-														trip: d.trip,
-													}),
-												)}
-												{locale}
-												labels={t.next.table}
-												delayCopy={t.next}
-												routeFallback={t.next.route}
+												data-testid="stop-live-state"
 											/>
 										{/if}
 									{/if}
-									<p class="stop-report-note">{t.next.scope}</p>
+									<p class="stop-live-links">
+										<a href={localizeHref(stopPath, locale)}>{t.live.record}</a>
+										{#if liveView.kind !== 'list'}<a href={scheduleHref}>{t.live.schedule}</a>{/if}
+									</p>
 								</div>
 							{/snippet}
 						</ResourceBoundary>
@@ -754,10 +665,29 @@
 		flex-direction: column;
 		gap: 1rem;
 	}
-	.stop-chip-glyph {
-		margin-inline-end: 0.375rem;
-		font-size: var(--text-micro);
-		line-height: 1;
+	.stop-live-report {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		min-width: 0;
+	}
+	.stop-live-links {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0 1.5rem;
+		margin: 0;
+	}
+	.stop-live-links a {
+		display: inline-flex;
+		align-items: center;
+		min-height: var(--size-tap-min);
+		color: var(--accent-text);
+		text-decoration: underline;
+		text-underline-offset: 0.2em;
+	}
+	.stop-live-links a:focus-visible {
+		outline: 2px solid var(--ring);
+		outline-offset: 2px;
 	}
 
 	.stop-schedule {
@@ -776,17 +706,5 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 1.5rem;
-	}
-
-	.stop-chip-group {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.375rem;
-	}
-	.stop-departures-count {
-		margin: 0;
-		font-family: var(--font-mono);
-		font-size: var(--text-small);
-		color: var(--muted-foreground);
 	}
 </style>
