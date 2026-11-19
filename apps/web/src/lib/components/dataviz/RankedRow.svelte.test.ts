@@ -17,28 +17,28 @@ describe('RankedRow — the dataviz-row template contract', () => {
 		expect(screen.getByText('1')).toBeInTheDocument();
 	});
 
-	it('a regression delta (default higherIsBetter=false) is ▲ on the severity-critical token', () => {
+	it('a regression delta (default higherIsBetter=false) is ▲ on the destructive token', () => {
 		const { container } = render(RankedRow, { props: { ...base, delta: 2.1 } });
 		const el = deltaEl(container)!;
 		expect(el).toHaveAttribute('role', 'img');
 		expect(el.getAttribute('aria-label')).toBe('change +2.1');
 		expect(el.textContent).toContain('▲');
-		expect(el.getAttribute('style')).toContain('var(--dataviz-severity-critical)');
+		expect(el.getAttribute('style')).toContain('var(--destructive)');
 	});
 
-	it('an improvement delta is ▼ on the on-time token', () => {
+	it('an improvement delta is ▼ on the success token', () => {
 		const { container } = render(RankedRow, { props: { ...base, delta: -1.5 } });
 		const el = deltaEl(container)!;
 		expect(el.getAttribute('aria-label')).toBe('change -1.5');
 		expect(el.textContent).toContain('▼');
-		expect(el.getAttribute('style')).toContain('var(--dataviz-status-on-time)');
+		expect(el.getAttribute('style')).toContain('var(--success)');
 	});
 
 	it('higherIsBetter flips the colour verdict (a rise is good)', () => {
 		const { container } = render(RankedRow, {
 			props: { ...base, delta: 3, higherIsBetter: true },
 		});
-		expect(deltaEl(container)!.getAttribute('style')).toContain('var(--dataviz-status-on-time)');
+		expect(deltaEl(container)!.getAttribute('style')).toContain('var(--success)');
 	});
 
 	it('a missing delta has no stray separator and preserves the no-data announcement', () => {

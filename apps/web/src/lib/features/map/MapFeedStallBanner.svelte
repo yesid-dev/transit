@@ -61,7 +61,7 @@
 	.map-live-edge[data-state='unavailable'],
 	.map-live-edge[data-state='selected-family-failure'],
 	.map-live-edge[data-state='global-stall'] {
-		border-color: color-mix(in srgb, var(--dataviz-status-late) 48%, var(--border-rule) 52%);
+		border-color: color-mix(in srgb, var(--accent-text) 48%, var(--border-rule) 52%);
 	}
 	@media (--desktop-max) {
 		.map-live-edge:is(

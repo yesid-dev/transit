@@ -12,10 +12,6 @@ html {
 
 :root {
 	--text-stat-value: 1.75rem;
-	--dataviz-vehicle-on-time: var(--dataviz-status-on-time);
-	--dataviz-vehicle-delayed: var(--dataviz-status-late);
-	--dataviz-vehicle-cancelled: var(--dataviz-status-severe);
-	--dataviz-vehicle-no-data: var(--dataviz-status-unknown);
 	--map-stop-fill: var(--accent);
 	--size-detail-panel: 360px;
 	--size-detail-rail: 3.7rem;
@@ -54,10 +50,6 @@ html {
 	--color-dataviz-heatmap-3: var(--dataviz-heatmap-3);
 	--color-dataviz-heatmap-4: var(--dataviz-heatmap-4);
 	--color-dataviz-heatmap-nodata: var(--dataviz-heatmap-nodata);
-	--color-dataviz-vehicle-on-time: var(--dataviz-vehicle-on-time);
-	--color-dataviz-vehicle-delayed: var(--dataviz-vehicle-delayed);
-	--color-dataviz-vehicle-cancelled: var(--dataviz-vehicle-cancelled);
-	--color-dataviz-vehicle-no-data: var(--dataviz-vehicle-no-data);
 }
 
 body {

@@ -27,7 +27,7 @@
 		flex-direction: column;
 		gap: 0.5rem;
 		padding: 0.875rem 1rem;
-		border: 1px solid var(--dataviz-status-late);
+		border: 1px solid var(--accent-text);
 		border-radius: var(--radius-md);
 		background: var(--muted);
 	}

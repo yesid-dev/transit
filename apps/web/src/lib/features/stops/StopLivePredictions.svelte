@@ -5,8 +5,8 @@
 	import { delayMeasurement } from '#lib/site/delayPresentation.ts';
 	import { liveAbsenceReason, readLiveAbsenceContext } from '#lib/site/absence.ts';
 	import { AbsentValue } from '#lib/components/edge/index.ts';
+	import { STATUS_GLYPH, statusVar } from '#lib/components/dataviz/tokens.ts';
 	import { formatLocalClock } from '#lib/utils/time.ts';
-	import type { DelayBandCode } from '#lib/v1/live/statusBands.ts';
 	import { departureStatusText, type StopLiveOrder, type StopLiveView } from './stopPredictions';
 	import { detailCopy } from './stops.copy';
 
@@ -29,15 +29,6 @@
 	const listFormat = $derived(
 		new Intl.ListFormat(locale === 'fr' ? 'fr-CA' : 'en-CA', { type: 'disjunction' }),
 	);
-
-	// Shapes as well as colours: ▼ early, ● on time, ▲ late, ■ 5+ min late. A minute on a limit gets none.
-	const GLYPH: Record<DelayBandCode, string> = { early: '▼', on_time: '●', late: '▲', severe: '■' };
-	const TONE: Record<DelayBandCode, string> = {
-		early: 'var(--dataviz-status-early)',
-		on_time: 'var(--dataviz-status-on-time)',
-		late: 'var(--dataviz-status-late)',
-		severe: 'var(--dataviz-status-severe)',
-	};
 </script>
 
 <div class="stop-live" data-slot="stop-live-predictions">
@@ -105,11 +96,12 @@
 								<td class="stop-live__status">
 									{#if row.status.kind === 'known'}
 										{@const single = row.status.bands.length === 1 ? row.status.bands[0] : null}
+										<!-- The map legend's shapes: 5+ min late (◆) never differs from late (▲) by colour alone. -->
 										<span data-bands={row.status.bands.join(' ')}
 											>{#if single}<span
 													class="stop-live__glyph"
-													style:color={TONE[single]}
-													aria-hidden="true">{GLYPH[single]}</span
+													style:color={statusVar(single)}
+													aria-hidden="true">{STATUS_GLYPH[single]}</span
 												>{/if}{departureStatusText(row.delayMin, t)}</span
 										>
 									{:else}

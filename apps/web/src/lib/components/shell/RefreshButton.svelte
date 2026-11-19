@@ -167,7 +167,7 @@
 		box-shadow: none;
 	}
 	[data-slot='refresh-result'][data-failed='true'] {
-		border-color: var(--dataviz-status-late);
+		border-color: var(--accent-text);
 	}
 
 	.refresh-icon.spin {
@@ -175,7 +175,7 @@
 		transform-origin: center;
 	}
 	.refresh-icon.failed {
-		color: var(--dataviz-status-late);
+		color: var(--accent-text);
 	}
 	@keyframes refresh-spin {
 		to {

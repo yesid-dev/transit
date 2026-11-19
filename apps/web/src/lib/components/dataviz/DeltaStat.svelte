@@ -27,7 +27,7 @@
 	const colorVar = $derived.by(() => {
 		if (!hasDelta || delta === 0) return 'var(--dataviz-status-unknown)';
 		const improvement = higherIsBetter ? delta! > 0 : delta! < 0;
-		return improvement ? 'var(--dataviz-status-on-time)' : 'var(--dataviz-severity-critical)';
+		return improvement ? 'var(--success)' : 'var(--destructive)';
 	});
 	const text = $derived(!hasDelta ? '' : (display ?? (delta! > 0 ? `+${delta}` : `${delta}`)));
 	const ariaLabel = $derived(

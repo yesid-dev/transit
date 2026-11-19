@@ -19,7 +19,7 @@ export function selectDailyChange(
 			points === 0
 				? 'var(--muted-foreground)'
 				: points > 0
-					? 'var(--dataviz-status-on-time)'
-					: 'var(--dataviz-status-late)',
+					? 'var(--success)'
+					: 'var(--accent-text)',
 	};
 }

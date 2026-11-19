@@ -9,13 +9,7 @@
 	import { CodeBlock } from '@yesid/ui/brand';
 
 	export type InformationKind =
-		| 'definition'
-		| 'math'
-		| 'sql'
-		| 'not-really'
-		| 'caveat'
-		| 'pipeline-note'
-		| 'note';
+		'definition' | 'math' | 'sql' | 'not-really' | 'caveat' | 'pipeline-note' | 'note';
 
 	export interface TypedInformationCardProps {
 		kind: InformationKind;
@@ -110,10 +104,10 @@
 		);
 	}
 	.typed-information-card[data-kind='not-really'] {
-		--information-accent: var(--dataviz-status-severe);
+		--information-accent: var(--destructive);
 	}
 	.typed-information-card[data-kind='caveat'] {
-		--information-accent: var(--dataviz-status-late);
+		--information-accent: var(--accent-text);
 	}
 	.typed-information-card[data-kind='pipeline-note'] {
 		--information-accent: var(--dataviz-occupancy-standing);

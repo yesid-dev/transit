@@ -109,7 +109,7 @@
 		color: var(--accent-text);
 	}
 	.conformance-badge[data-verdict='out_of_norm'] .conformance-badge-label {
-		color: var(--dataviz-status-late);
+		color: var(--accent-text);
 	}
 	.conformance-badge-detail {
 		color: var(--muted-foreground);
