@@ -7,7 +7,7 @@
 	import { AbsentValue } from '#lib/components/edge/index.ts';
 	import { formatLocalClock } from '#lib/utils/time.ts';
 	import type { DelayBandCode } from '#lib/v1/live/statusBands.ts';
-	import type { DepartureStatus, StopLiveOrder, StopLiveView } from './stopPredictions';
+	import { departureStatusText, type StopLiveOrder, type StopLiveView } from './stopPredictions';
 	import { detailCopy } from './stops.copy';
 
 	interface Props {
@@ -30,7 +30,7 @@
 		new Intl.ListFormat(locale === 'fr' ? 'fr-CA' : 'en-CA', { type: 'disjunction' }),
 	);
 
-	// Shapes as well as colours: ▼ early, ● on time, ▲ late, ■ 5+ min late. Two bands get no shape.
+	// Shapes as well as colours: ▼ early, ● on time, ▲ late, ■ 5+ min late. A minute on a limit gets none.
 	const GLYPH: Record<DelayBandCode, string> = { early: '▼', on_time: '●', late: '▲', severe: '■' };
 	const TONE: Record<DelayBandCode, string> = {
 		early: 'var(--dataviz-status-early)',
@@ -38,10 +38,6 @@
 		late: 'var(--dataviz-status-late)',
 		severe: 'var(--dataviz-status-severe)',
 	};
-	function statusWords(status: Extract<DepartureStatus, { kind: 'known' }>): string {
-		const [first, second] = status.bands.map((band) => t.bands[band]);
-		return second ? t.either(first!, second) : (first ?? '');
-	}
 </script>
 
 <div class="stop-live" data-slot="stop-live-predictions">
@@ -114,7 +110,7 @@
 													class="stop-live__glyph"
 													style:color={TONE[single]}
 													aria-hidden="true">{GLYPH[single]}</span
-												>{/if}{statusWords(row.status)}</span
+												>{/if}{departureStatusText(row.delayMin, t)}</span
 										>
 									{:else}
 										<AbsentValue

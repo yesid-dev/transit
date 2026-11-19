@@ -1507,7 +1507,7 @@ describe('StopDetail Live now — predictions grouped by line', () => {
 		},
 	);
 
-	it('names both statuses a rounded minute can stand for, with a shape only for one', () => {
+	it('gives the rounded minute where it sits on a limit, with a shape only for one band', () => {
 		liveStore.index.byStopId.set('57191', [
 			{ eta_utc: '2026-06-15T12:05:00Z', route: '51', delay_min: 1 },
 			{ eta_utc: '2026-06-15T12:06:00Z', route: '51', delay_min: 6 },
@@ -1516,7 +1516,7 @@ describe('StopDetail Live now — predictions grouped by line', () => {
 		render(StopDetail, { props: { id: '57191' } });
 		const statuses = [...predictions().querySelectorAll('tbody td:first-of-type')];
 		expect(statuses.map((cell) => cell.textContent?.trim()).slice(0, 2)).toEqual([
-			'On time or late',
+			'About 1 min late',
 			'■5+ min late',
 		]);
 		expect(statuses[0]!.querySelector('[aria-hidden="true"]')).toBeNull();

@@ -27,6 +27,26 @@ export function departureStatus(minute: number | null | undefined): DepartureSta
 	return { kind: 'known', bands };
 }
 
+export interface DepartureStatusCopy {
+	readonly bands: Readonly<Record<DelayBandCode, string>>;
+	/** The rounded minute in words, for a minute that straddles a band limit. */
+	readonly about: (minutes: number, early: boolean) => string;
+}
+
+/**
+ * A status in words: the one band a minute certainly falls in, or, where the minute straddles a
+ * limit, the rounded minute itself ("About 1 min late"), never two bands. Null without a minute.
+ */
+export function departureStatusText(
+	minute: number | null | undefined,
+	copy: DepartureStatusCopy,
+): string | null {
+	const status = departureStatus(minute);
+	if (status.kind === 'unknown') return null;
+	if (status.bands.length === 1) return copy.bands[status.bands[0]!];
+	return copy.about(Math.abs(minute!), minute! < 0);
+}
+
 export interface StopPredictionRow {
 	/** Null when the published time cannot be read. */
 	readonly etaUtc: string | null;

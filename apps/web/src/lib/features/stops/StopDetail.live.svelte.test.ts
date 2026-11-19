@@ -227,6 +227,13 @@ describe('StopDetail independent report owners', () => {
 		const board = screen
 			.getByRole('heading', { name: /Predictions at this stop/ })
 			.closest('[data-slot="card"]')!;
+		// The way out survives a failed first report.
+		expect(
+			within(board as HTMLElement).getByRole('link', { name: 'See the record' }),
+		).toHaveAttribute('href', '/stop/probe');
+		expect(
+			within(board as HTMLElement).getByRole('link', { name: 'See the schedule' }),
+		).toHaveAttribute('href', '/stop/probe?tab=schedule');
 		fixture.stopDepartures.mockResolvedValue(departures());
 		await fireEvent.click(within(board as HTMLElement).getByRole('button', { name: /retry/i }));
 		await settle();

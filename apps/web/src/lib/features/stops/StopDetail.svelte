@@ -512,13 +512,14 @@
 											/>
 										{/if}
 									{/if}
-									<p class="stop-live-links">
-										<a href={localizeHref(stopPath, locale)}>{t.live.record}</a>
-										{#if liveView.kind !== 'list'}<a href={scheduleHref}>{t.live.schedule}</a>{/if}
-									</p>
 								</div>
 							{/snippet}
 						</ResourceBoundary>
+						<!-- Outside the report's boundary: the way out stays through every live state. -->
+						<p class="stop-live-links">
+							<a href={localizeHref(stopPath, locale)}>{t.live.record}</a>
+							{#if liveView.kind !== 'list'}<a href={scheduleHref}>{t.live.schedule}</a>{/if}
+						</p>
 					</CollapsibleSection>
 
 					<CollapsibleSection
@@ -675,7 +676,7 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0 1.5rem;
-		margin: 0;
+		margin: 1rem 0 0;
 	}
 	.stop-live-links a {
 		display: inline-flex;

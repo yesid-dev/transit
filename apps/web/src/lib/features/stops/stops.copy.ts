@@ -155,13 +155,14 @@ export const detailCopy = defineCopy({
 				late: 'En retard',
 				severe: '5+ min de retard',
 			},
-			either: (first: string, second: string) => `${first} ou ${second.toLowerCase()}`,
+			about: (minutes: number, early: boolean) =>
+				`Environ ${minutes} min ${early ? 'd’avance' : 'de retard'}`,
 			caveat:
 				'Chaque heure est une prévision communiquée pour un trajet de cette ligne à cet arrêt. Le rapport en garde au plus deux par ligne, et elles peuvent changer.',
 			destinationCaveat:
 				'Les destinations viennent de l’horaire de cet arrêt. Une prévision ne nomme pas la destination de son trajet.',
 			statusNote:
-				'L’état et l’écart reposent sur le retard prévu moyen du trajet, arrondi à la minute : en avance, plus de 1 min d’avance; à l’heure, à moins de 1 min; en retard, de 1 min à moins de 5 min; 5+ min de retard, 5 min ou plus. Quand la minute arrondie peut tomber de part et d’autre d’une limite, les deux états sont nommés.',
+				'L’état et l’écart reposent sur le retard prévu moyen du trajet, arrondi à la minute : en avance, plus de 1 min d’avance; à l’heure, à moins de 1 min; en retard, de 1 min à moins de 5 min; 5+ min de retard, 5 min ou plus. Quand la minute arrondie tombe sur une limite, l’état donne plutôt cette minute : environ 1 min d’avance, environ 1 min de retard ou environ 5 min de retard.',
 			noCapability: 'Aucune donnée en direct pour les lignes de cet arrêt',
 			noCapabilityBody:
 				'Transit ne reçoit aucune prévision pour les lignes qui desservent cet arrêt.',
@@ -329,13 +330,13 @@ export const detailCopy = defineCopy({
 				late: 'Late',
 				severe: '5+ min late',
 			},
-			either: (first, second) => `${first} or ${second.toLowerCase()}`,
+			about: (minutes, early) => `About ${minutes} min ${early ? 'early' : 'late'}`,
 			caveat:
 				'Each time is a reported prediction for one trip of that line at this stop. The report keeps up to two per line, and they can change.',
 			destinationCaveat:
 				'Destinations come from this stop’s schedule. A prediction does not name its trip’s destination.',
 			statusNote:
-				'Status and offset use the trip’s average predicted delay, rounded to the minute: early is more than 1 min early; on time, within 1 min; late, from 1 to under 5 min late; 5+ min late, 5 min or more. When the rounded minute could fall on either side of a limit, both statuses are named.',
+				'Status and offset use the trip’s average predicted delay, rounded to the minute: early is more than 1 min early; on time, within 1 min; late, from 1 to under 5 min late; 5+ min late, 5 min or more. When the rounded minute sits on a limit, the status gives that minute instead: about 1 min early, about 1 min late or about 5 min late.',
 			noCapability: 'No live data for the lines at this stop',
 			noCapabilityBody: 'Transit receives no predictions for the lines serving this stop.',
 			noService: 'No line is published as serving this stop, so no predictions are expected.',

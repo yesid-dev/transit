@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { LIVE_STATUS_BANDS, type DelayBandCode } from '#lib/v1/live/statusBands.ts';
-import { departureStatus, presentStopLive, type StopLiveInput } from './stopPredictions';
+import {
+	departureStatus,
+	departureStatusText,
+	presentStopLive,
+	type StopLiveInput,
+} from './stopPredictions';
+import { detailCopy } from './stops.copy';
 
 const at = (minutes: number) => new Date(Date.UTC(2026, 5, 15, 12, minutes)).toISOString();
 type Seed = Omit<StopLiveInput, 'departures'> & {
@@ -189,5 +195,38 @@ describe('presentStopLive', () => {
 
 	it('has no report to present before one is loaded', () => {
 		expect(presentStopLive(input({ departures: null })).kind).toBe('pending');
+	});
+});
+
+describe('departureStatusText', () => {
+	it.each([
+		['en', -1, 'About 1 min early'],
+		['en', 1, 'About 1 min late'],
+		['en', 5, 'About 5 min late'],
+		['fr', -1, 'Environ 1 min d’avance'],
+		['fr', 1, 'Environ 1 min de retard'],
+		['fr', 5, 'Environ 5 min de retard'],
+		['en', 0, 'On time'],
+		['en', -2, 'Early'],
+		['fr', 6, '5+ min de retard'],
+	] as const)('%s %i min reads "%s"', (locale, minute, words) => {
+		expect(departureStatusText(minute, detailCopy[locale].live)).toBe(words);
+	});
+
+	it('names one band, or the rounded minute when the minute straddles a limit, never two bands', () => {
+		const copy = detailCopy.en.live;
+		const bandWords = Object.values(copy.bands);
+		for (let minute = -40; minute <= 40; minute += 1) {
+			const status = departureStatus(minute);
+			const text = departureStatusText(minute, copy);
+			if (status.kind === 'known' && status.bands.length === 1)
+				expect(text, `${minute}`).toBe(copy.bands[status.bands[0]!]);
+			else
+				expect(text, `${minute}`).toBe(
+					`About ${Math.abs(minute)} min ${minute < 0 ? 'early' : 'late'}`,
+				);
+			expect(bandWords.filter((word) => text?.includes(word)).length).toBeLessThanOrEqual(1);
+		}
+		expect(departureStatusText(null, copy)).toBeNull();
 	});
 });

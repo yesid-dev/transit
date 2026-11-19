@@ -123,7 +123,7 @@ for (const locale of PUBLISHED_LOCALES) {
 			const headings = list.getByRole('heading', { level: 3 });
 			await expect(headings.first()).toContainText(hub.routes_served[0]!);
 			await expect(list.getByRole('link', { name: new RegExp(live.trip) })).toHaveCount(24);
-			await expect(list.getByText(live.either(live.bands.on_time, live.bands.late))).toHaveCount(3);
+			await expect(list.getByText(live.about(1, false))).toHaveCount(3);
 			if (width === 320 || width === 1280) {
 				await panel.locator('[data-toc="stop-detail-departures"]').screenshot({
 					path: testInfo.outputPath(`stop-live-${locale}-${width}.png`),
