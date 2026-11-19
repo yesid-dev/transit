@@ -7,9 +7,11 @@ from transit_ops.static.alert_seed_contract import SCHEMAS
 
 def test_reader_matches_local_relations_and_reads_only_the_cycle(real_db_engine):
     read = postgres_rows(real_db_engine, "shadow-reader-absent")
-    rows = read((1, 2), True)
+    evidence = read((1, 2), True)
+    rows = evidence.tables
+    assert evidence.now.utcoffset() is not None
     assert rows["fact_trip_delay_snapshot"].columns == tuple(n for n, _ in TRIP_COLUMNS)
     assert rows["fact_vehicle_snapshot"].columns == tuple(n for n, _ in VEHICLE_COLUMNS)
     assert rows[ALERTS].columns == tuple(SCHEMAS[ALERTS])
     assert all(table.rows == () for table in rows.values())
-    assert ALERTS not in read((), False)
+    assert ALERTS not in read((), False).tables

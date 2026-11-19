@@ -16,11 +16,13 @@ import hashlib
 import json
 import logging
 import math
+import sys
 import time
 from collections import Counter, deque
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 from uuid import uuid4
 
@@ -48,7 +50,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 type ContextSource = Callable[[datetime], PublicationContext]
-type PostgresRows = Callable[[tuple[int, ...], bool], Mapping[str, TableRows]]
+type PostgresRows = Callable[[tuple[int, ...], bool], PostgresEvidence]
 type PublicPublish = Callable[[PayloadSink, datetime], int]
 
 ALERT_ENDPOINTS = frozenset({"i3_alerts", "service_alerts"})
@@ -59,9 +61,12 @@ _ALERT_KEY = ("i3_alert_snapshot_id", "alert_index")
 _DIFFERENCE_LIMIT = 100_000
 _SAMPLES = 20
 _WINDOW = 120
+# Both trips builders keep departures before cycle + 60 min; PG measures from its now().
+_DEPARTURE_HORIZON = timedelta(minutes=60)
+_TRIPS = "live/trips.json"
 
 
-class ShadowRefused(RuntimeError):
+class ShadowRefused(ValueError):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
         self.reason = reason
@@ -106,6 +111,112 @@ def _row_class(difference: RowDifference) -> str:
     if difference.kind in ("missing", "extra", "columns"):
         return difference.kind
     return "representation" if difference.difference_class == "representation" else "unadjudicated"
+
+
+def _windows_working_set() -> int:
+    import ctypes
+    from ctypes import wintypes
+
+    class Counters(ctypes.Structure):
+        _fields_ = [("cb", wintypes.DWORD), ("PageFaultCount", wintypes.DWORD)] + [
+            (name, ctypes.c_size_t)
+            for name in (
+                "PeakWorkingSetSize",
+                "WorkingSetSize",
+                "QuotaPeakPagedPoolUsage",
+                "QuotaPagedPoolUsage",
+                "QuotaPeakNonPagedPoolUsage",
+                "QuotaNonPagedPoolUsage",
+                "PagefileUsage",
+                "PeakPagefileUsage",
+            )
+        ]
+
+    counters = Counters()
+    counters.cb = ctypes.sizeof(counters)
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.GetCurrentProcess.restype = wintypes.HANDLE
+    psapi = ctypes.WinDLL("psapi", use_last_error=True)
+    psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD]
+    if not psapi.GetProcessMemoryInfo(
+        kernel.GetCurrentProcess(), ctypes.byref(counters), ctypes.sizeof(counters)
+    ):
+        raise ctypes.WinError(ctypes.get_last_error())
+    return int(counters.WorkingSetSize)
+
+
+def current_rss() -> int | None:
+    """Resident bytes now, unlike the lifetime peak; None when the platform cannot say."""
+    try:
+        if sys.platform == "win32":
+            return _windows_working_set()
+        if sys.platform == "linux":
+            for line in Path("/proc/self/status").read_text().splitlines():
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1]) * 1024
+    except (OSError, ValueError):
+        return None
+    return None
+
+
+def _generation(body: bytes) -> object:
+    data = json.loads(body)
+    return data.get("publish_generation_id") if isinstance(data, dict) else None
+
+
+def _canonical(value: object) -> bytes:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode()
+
+
+def without_clock_skew(body: bytes, low: datetime, high: datetime) -> tuple[bytes, int]:
+    """Drop trip ETAs that only PostgreSQL's later now() admitted into its window.
+
+    Departures in [cycle + horizon, postgres_now + horizon) are a clock artifact, not
+    math. A trip PostgreSQL listed only for such departures disappears with them.
+    """
+    data = json.loads(body)
+    dropped = 0
+    trips = data.get("trips") or {}
+    for trip_id, trip in list(trips.items()):
+        stops = trip.get("stops") or []
+        kept = [s for s in stops if not low <= datetime.fromisoformat(s["eta_utc"]) < high]
+        dropped += len(stops) - len(kept)
+        trip["stops"] = kept
+        if stops and not kept and trip.get("status") == "unknown" and trip["delay_min"] is None:
+            del trips[trip_id]
+    return _canonical(data), dropped
+
+
+def _pair_publications(
+    public: Mapping[str, bytes],
+    shadow: Mapping[str, bytes],
+    *,
+    cycle: datetime,
+    postgres_now: datetime,
+    counts: Counter[str],
+) -> tuple[dict[str, bytes], dict[str, bytes]]:
+    """Keep only same-generation files; attribute the PostgreSQL now() window by name."""
+    left: dict[str, bytes] = {}
+    right: dict[str, bytes] = {}
+    for key in sorted(public.keys() | shadow.keys()):
+        if key not in public or key not in shadow:
+            # A restarted owner has not yet seen what the other side reused.
+            counts["publication:unobserved"] += 1
+        elif _generation(public[key]) != _generation(shadow[key]):
+            # Built at different cycles (skip, refusal, overrun or restart): never paired.
+            counts[f"publication:{key}:unpaired"] += 1
+        elif key == _TRIPS and postgres_now > cycle:
+            expected, dropped = without_clock_skew(
+                public[key], cycle + _DEPARTURE_HORIZON, postgres_now + _DEPARTURE_HORIZON
+            )
+            if dropped:
+                counts[f"publication:{key}:clock_skew"] += dropped
+                left[key], right[key] = expected, _canonical(json.loads(shadow[key]))
+            else:
+                left[key], right[key] = public[key], shadow[key]
+        else:
+            left[key], right[key] = public[key], shadow[key]
+    return left, right
 
 
 class PublicTee:
@@ -154,7 +265,8 @@ class ShadowEvidence:
     samples: tuple[str, ...]
     shadow_seconds: float
     p95_seconds: float | None
-    rss_peak_bytes: int | None
+    rss_bytes: int | None
+    process_peak_rss_bytes: int | None
 
     def display_dict(self) -> dict[str, object]:
         return {
@@ -168,12 +280,24 @@ class ShadowEvidence:
             "samples": list(self.samples),
             "shadow_seconds": round(self.shadow_seconds, 3),
             "p95_seconds": None if self.p95_seconds is None else round(self.p95_seconds, 3),
-            "rss_peak_bytes": self.rss_peak_bytes,
+            "rss_bytes": self.rss_bytes,
+            "process_peak_rss_bytes": self.process_peak_rss_bytes,
         }
 
 
 class _Invalid(Exception):
     pass
+
+
+@dataclass(frozen=True)
+class PostgresEvidence:
+    """The authority's rows plus its now(), read once per cycle after publication.
+
+    That now() bounds the publication transaction's own now() from above.
+    """
+
+    now: datetime
+    tables: Mapping[str, TableRows]
 
 
 def _ordered(
@@ -224,10 +348,11 @@ def local_rows(
 def postgres_rows(engine: Engine, provider_id: str) -> PostgresRows:
     """Read the authority's committed rows for the same captures, read-only."""
 
-    def read(snapshot_ids: tuple[int, ...], alerts: bool) -> dict[str, TableRows]:
+    def read(snapshot_ids: tuple[int, ...], alerts: bool) -> PostgresEvidence:
         result = {}
         with engine.connect() as conn, conn.begin():
             conn.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"))
+            now = conn.execute(text("SELECT now()")).scalar_one()
             for table, spec in _FACTS.items():
                 names = tuple(name for name, _ in spec)
                 rows = conn.execute(
@@ -254,7 +379,7 @@ def postgres_rows(engine: Engine, provider_id: str) -> PostgresRows:
                 result[ALERTS] = _ordered(
                     ALERTS, tuple(schema), _ALERT_KEY, [tuple(r) for r in rows]
                 )
-        return result
+        return PostgresEvidence(now, result)
 
     return read
 
@@ -282,13 +407,15 @@ class PairedShadow:
     objects: ConditionalObjects
     clock: Callable[[], datetime] = utc_now
     perf: Callable[[], float] = time.perf_counter
-    rss: Callable[[], tuple[int | None, str | None]] = peak_rss
+    rss: Callable[[], int | None] = current_rss
+    peak: Callable[[], tuple[int | None, str | None]] = peak_rss
     evidence: ShadowEvidence | None = None
     _public_bytes: dict[str, bytes] = field(default_factory=dict)
     _shadow_bytes: dict[str, bytes] = field(default_factory=dict)
     _durations: deque[float] = field(default_factory=lambda: deque(maxlen=_WINDOW))
     _publisher: LocalPublisher | None = None
     _overran: bool = False
+    _rss_bytes: int | None = None
 
     def __post_init__(self) -> None:
         admit_role(self.settings, context_source=self.context_source)
@@ -308,7 +435,10 @@ class PairedShadow:
             # The comparison target is the latest public state, even when refused.
             self._public_bytes.update(tee.written)
         started = self.perf()
-        refusal = self._admission()
+        try:
+            refusal = self._admission()
+        except Exception as exc:  # noqa: BLE001 - admission probes never reach public work
+            refusal = f"shadow_admission_refused:{type(exc).__name__}"
         identity: dict[str, object] = {
             "cycle": cycle.isoformat(),
             "realtime_snapshot_ids": sorted(snapshot_ids),
@@ -347,11 +477,18 @@ class PairedShadow:
             tuple(samples),
             seconds,
             _p95(self._durations),
-            self.rss()[0],
+            self._rss_bytes,
+            self._peak(),
         )
         line = "paired_shadow " + json.dumps(self.evidence.display_dict(), sort_keys=True)
         (logger.info if status == "compared" else logger.warning)("%s", line)
         return failures
+
+    def _peak(self) -> int | None:
+        try:
+            return self.peak()[0]
+        except Exception:  # noqa: BLE001 - telemetry only
+            return None
 
     def close(self) -> None:
         """Graceful stop: release the shadow lease so a restart need not wait for expiry."""
@@ -370,11 +507,12 @@ class PairedShadow:
             # One-cycle backoff: a slow shadow can never take every cycle's slack.
             self._overran = False
             return "shadow_admission_refused:previous_overrun"
-        peak, _ = self.rss()
-        if peak is None:
+        # Current RSS, so admission returns once a spike subsides; the peak is telemetry.
+        self._rss_bytes = rss = self.rss()
+        if rss is None:
             return "shadow_admission_refused:rss_unavailable"
         limit = self.settings.shadow_rss_limit_mb
-        if limit is None or peak >= limit * 2**20:
+        if limit is None or rss >= limit * 2**20:
             return "shadow_admission_refused:rss_limit"
         return None
 
@@ -409,29 +547,32 @@ class PairedShadow:
                 hashlib.sha256(manifest).hexdigest() if manifest is not None else None
             )
 
-        common = sorted(self._public_bytes.keys() & self._shadow_bytes.keys())
-        # A restarted owner has not yet seen keys the other side reused: not a difference.
-        unobserved = len(self._public_bytes.keys() ^ self._shadow_bytes.keys())
-        if unobserved:
-            counts["publication:unobserved"] += unobserved
-        for difference in compare_publications(
-            {key: self._public_bytes[key] for key in common},
-            {key: self._shadow_bytes[key] for key in common},
-            project_clock=True,
-            limit=_DIFFERENCE_LIMIT,
-        ):
+        endpoints = {row["endpoint_key"] for row in context.rows("endpoints")}
+        alerts = bool(endpoints & ALERT_ENDPOINTS)
+        theirs = self.postgres_rows(snapshot_ids, alerts)
+        identity["postgres_now"] = theirs.now.isoformat()
+        expected, actual = _pair_publications(
+            self._public_bytes,
+            self._shadow_bytes,
+            cycle=cycle,
+            postgres_now=theirs.now,
+            counts=counts,
+        )
+        differences = compare_publications(
+            expected, actual, project_clock=True, limit=_DIFFERENCE_LIMIT
+        )
+        if len(differences) >= _DIFFERENCE_LIMIT:
+            counts["publication:truncated"] += 1
+        for difference in differences:
             kind = publication_class(difference)
             counts[f"publication:{difference.key}:{kind}"] += 1
             if len(samples) < _SAMPLES:
                 samples.append(f"{difference.key} {difference.path} [{kind}]")
 
-        endpoints = {row["endpoint_key"] for row in context.rows("endpoints")}
-        alerts = bool(endpoints & ALERT_ENDPOINTS)
         mine = local_rows(self.state.local, self.provider_id, snapshot_ids, alerts=alerts)
-        theirs = self.postgres_rows(snapshot_ids, alerts)
-        for relation, actual in mine.items():
+        for relation, rows in mine.items():
             surface = "alerts" if relation == ALERTS else "facts"
-            for row in compare_tables(theirs[relation], actual):
+            for row in compare_tables(theirs.tables[relation], rows):
                 kind = _row_class(row)
                 counts[f"{surface}:{relation}:{kind}"] += 1
                 if len(samples) < _SAMPLES:

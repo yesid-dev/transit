@@ -26,7 +26,12 @@ from transit_ops.live.facts import apply_capture, read_trip_facts, read_vehicle_
 from transit_ops.live.oracle.sink import RecordingSink
 from transit_ops.live.publish import LocalBuildSource, ShadowTarget
 from transit_ops.live.settings import LaneSettings
-from transit_ops.live.shadow import PairedShadow, ShadowRefused, admit_role
+from transit_ops.live.shadow import (
+    PairedShadow,
+    PostgresEvidence,
+    ShadowRefused,
+    admit_role,
+)
 from transit_ops.snapshots.publish import build_live_from_source
 from transit_ops.snapshots.storage import SnapshotStorage
 
@@ -83,20 +88,23 @@ def recorded_postgres(local, *, endpoints=(), mutate=lambda key, payload: payloa
     return publish
 
 
-def postgres_vehicle_rows(local, change=None, ids=(42,)):
+def postgres_vehicle_rows(local, change=None, ids=(42,), now=AT):
     vehicles, trips = read_vehicle_facts(local), read_trip_facts(local)
     rows = [list(row) for row in vehicles.rows if row[1] in ids]
     if change is not None:
         change({name: index for index, name in enumerate(vehicles.columns)}, rows)
     key = ("provider_id", "realtime_snapshot_id", "entity_index")
-    return {
-        "fact_trip_delay_snapshot": TableRows(
-            "fact_trip_delay_snapshot", trips.columns, key, trips.rows
-        ),
-        "fact_vehicle_snapshot": TableRows(
-            "fact_vehicle_snapshot", vehicles.columns, key, tuple(map(tuple, rows))
-        ),
-    }
+    return PostgresEvidence(
+        now,
+        {
+            "fact_trip_delay_snapshot": TableRows(
+                "fact_trip_delay_snapshot", trips.columns, key, trips.rows
+            ),
+            "fact_vehicle_snapshot": TableRows(
+                "fact_vehicle_snapshot", vehicles.columns, key, tuple(map(tuple, rows))
+            ),
+        },
+    )
 
 
 def shadow(local, *, settings=ROLE, rows=None, endpoints=(), **options):
@@ -104,7 +112,7 @@ def shadow(local, *, settings=ROLE, rows=None, endpoints=(), **options):
     options.setdefault("store", MemorySnapshotStore())
     options.setdefault("objects", control())
     options.setdefault("clock", Clock())
-    options.setdefault("rss", lambda: (64 * 2**20, None))
+    options.setdefault("rss", lambda: 64 * 2**20)
     options.setdefault("state", State(local))
     return PairedShadow(
         provider_id="network",
@@ -193,7 +201,8 @@ def test_postgres_authoritative_cycle_classifies_differences_without_gating(reco
     assert evidence.identity["edition"] == 7
     assert evidence.identity["public_keys_written"] == sorted(public.objects)
     shown = evidence.display_dict()
-    for name in ("shadow_seconds", "p95_seconds", "rss_peak_bytes"):
+    assert evidence.identity["postgres_now"] == AT.isoformat()
+    for name in ("shadow_seconds", "p95_seconds", "rss_bytes", "process_peak_rss_bytes"):
         assert shown[name] is not None
     logged = [r for r in caplog.records if r.message.startswith("paired_shadow ")]
     assert json.loads(logged[-1].message.removeprefix("paired_shadow "))["status"] == "compared"
@@ -291,9 +300,9 @@ def test_overrun_invalidates_then_backs_off_one_cycle(recorded):
 @pytest.mark.parametrize(
     ("rss", "unavailable", "reason"),
     [
-        ((600 * 2**20, None), None, "shadow_admission_refused:rss_limit"),
-        ((None, "no probe"), None, "shadow_admission_refused:rss_unavailable"),
-        ((1, None), "local_recovery_pending", "shadow_admission_refused:local_recovery_pending"),
+        (600 * 2**20, None, "shadow_admission_refused:rss_limit"),
+        (None, None, "shadow_admission_refused:rss_unavailable"),
+        (1, "local_recovery_pending", "shadow_admission_refused:local_recovery_pending"),
     ],
 )
 def test_admission_refusal_is_named_and_public_still_publishes(recorded, rss, unavailable, reason):
@@ -341,7 +350,7 @@ def test_alert_state_is_compared_per_cycle(local):
     changed[0][header] = "other"
     pg = {**mine, "silver.i3_alerts": replace(alerts, rows=tuple(map(tuple, changed)))}
     endpoints = ("i3_alerts",)
-    paired = shadow(local, rows=lambda ids, alerts: pg, endpoints=endpoints)
+    paired = shadow(local, rows=lambda ids, alerts: PostgresEvidence(AT, pg), endpoints=endpoints)
     paired.run_cycle(recorded_postgres(local, endpoints=endpoints), snapshot_ids=())
     assert paired.evidence.counts == {"alerts:silver.i3_alerts:unadjudicated": 1}
 
@@ -434,29 +443,150 @@ def test_default_cycle_publishes_exactly_as_before(monkeypatch):
     assert len(calls) == 1 and "storage" not in calls[0] and "cycle" not in calls[0]
 
 
-def test_worker_loop_routes_the_shadow_to_every_cycle(monkeypatch):
+class Closing:
+    def __init__(self):
+        self.closed = 0
+
+    def close(self):
+        self.closed += 1
+
+
+def worker_loop(monkeypatch, cycle, shadow, **options):
     registry = _fake_registry_with_intervals()
     manifest = registry.get_provider("stm")
     monkeypatch.setattr(
         orchestration, "_validate_realtime_worker_startup", lambda *a, **kw: manifest
     )
-    seen = []
-
-    def cycle(provider_id, **kwargs):
-        seen.append(kwargs.get("shadow"))
-        return _worker_loop_cycle_result(provider_id)
-
     monkeypatch.setattr(orchestration, "_run_realtime_cycle", cycle)
-    marker = object()
     orchestration._run_realtime_worker_loop(
         "stm",
         settings=_pipeline_settings(),
         registry=registry,
         engine=object(),
-        sleep_fn=lambda _: None,
+        sleep_fn=options.pop("sleep_fn", lambda _: None),
         max_cycles=2,
-        should_shutdown=lambda: False,
+        should_shutdown=options.pop("should_shutdown", lambda: False),
         bronze_storage_resolver=lambda _: None,
-        shadow=marker,
+        shadow=shadow,
     )
-    assert seen == [marker, marker]
+
+
+def test_worker_loop_routes_the_shadow_and_closes_it_on_graceful_stop(monkeypatch):
+    seen, owner = [], Closing()
+
+    def cycle(provider_id, **kwargs):
+        seen.append(kwargs.get("shadow"))
+        assert owner.closed == 0
+        return _worker_loop_cycle_result(provider_id)
+
+    stops = iter([False, True])
+    worker_loop(monkeypatch, cycle, owner, should_shutdown=lambda: next(stops))
+    assert seen == [owner] and owner.closed == 1
+
+
+def test_worker_loop_closes_the_shadow_when_the_loop_raises(monkeypatch):
+    owner = Closing()
+
+    def cycle(provider_id, **kwargs):
+        return _worker_loop_cycle_result(provider_id)
+
+    def interrupted(_):
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        worker_loop(monkeypatch, cycle, owner, sleep_fn=interrupted)
+    assert owner.closed == 1
+
+
+def test_refused_role_records_no_worker_start(monkeypatch):
+    import typer
+
+    from transit_ops import cli
+
+    settings = _pipeline_settings().model_copy(
+        update={
+            "LIGHTER_STORAGE": _pipeline_settings().LIGHTER_STORAGE.model_copy(
+                update={"live": LaneSettings(**{**ROLE, "shadow": "local_authoritative"})}
+            )
+        }
+    )
+    monkeypatch.setattr(cli, "get_settings", lambda: settings)
+    monkeypatch.setattr(cli, "_install_worker_shutdown_handlers", lambda: lambda: False)
+    monkeypatch.setattr(cli, "observe_start", lambda _: pytest.fail("start recorded"))
+    with pytest.raises(typer.BadParameter, match="local_ingress_unavailable"):
+        cli.run_realtime_worker_command("stm", max_cycles=1)
+
+
+def test_files_built_at_different_cycles_are_unpaired_not_compared(recorded):
+    """A refused cycle lets the public side rebuild; later files pair by generation only."""
+    public, state, clock = RecordingSink(), State(recorded), Clock()
+    paired = shadow(recorded, public=public, state=state, clock=clock)
+    paired.run_cycle(recorded_postgres(recorded), snapshot_ids=(42,))
+    assert paired.evidence.counts == {}
+
+    def rebuilt_differently(sink, cycle):
+        source = LocalBuildSource(recorded, Holder(None), inputs(recorded), context_at(cycle))
+        items = build_live_from_source(source, provider_id="network", cycle=cycle, prior=None)
+        for key, payload, tier in items:
+            if key == "live/network.json":
+                payload = payload.model_copy(update={"vehicles_in_service": 99})
+            sink.put_json(key, payload, tier=tier)
+        return 0
+
+    state.unavailable, clock.at = "local_recovery_pending", AT + timedelta(seconds=30)
+    paired.run_cycle(rebuilt_differently, snapshot_ids=())
+    assert paired.evidence.status == "refused"
+    state.unavailable, clock.at = None, AT + timedelta(seconds=60)
+    paired.run_cycle(recorded_postgres(recorded), snapshot_ids=())
+    counts = paired.evidence.counts
+    assert paired.evidence.status == "compared"
+    assert counts["publication:live/network.json:unpaired"] == 1
+    assert not any(key.endswith(":unadjudicated") for key in counts)
+
+
+def test_postgres_now_window_departures_are_clock_skew(recorded):
+    """PG keeps ETAs before its now() + 60 min; the local build uses the cycle instant."""
+    skew = timedelta(seconds=5)
+    inside = (AT + timedelta(minutes=60, seconds=2)).isoformat()
+    outside = (AT + timedelta(minutes=60, seconds=9)).isoformat()
+
+    def window(key, payload):
+        if key != "live/trips.json":
+            return payload
+        data = payload.model_dump(mode="json")
+        data["trips"]["skewed"] = {
+            "route": "r",
+            "status": "unknown",
+            "delay_min": None,
+            "stops": [{"stop": "s", "eta_utc": inside, "delay_min": None}],
+        }
+        data["trips"]["late"] = {
+            "route": "r",
+            "status": "unknown",
+            "delay_min": None,
+            "stops": [{"stop": "s", "eta_utc": outside, "delay_min": None}],
+        }
+        return data
+
+    paired = shadow(
+        recorded,
+        rows=lambda ids, alerts: postgres_vehicle_rows(recorded, ids=ids, now=AT + skew),
+    )
+    paired.run_cycle(recorded_postgres(recorded, mutate=window), snapshot_ids=(42,))
+    evidence = paired.evidence
+    assert evidence.identity["postgres_now"] == (AT + skew).isoformat()
+    assert evidence.counts["publication:live/trips.json:clock_skew"] == 1
+    assert evidence.counts["publication:live/trips.json:unadjudicated"] >= 1  # "late" stays.
+    assert "skewed" not in " ".join(evidence.samples)
+
+
+def test_rss_spike_refuses_that_cycle_and_admission_returns(recorded):
+    readings = iter([600 * 2**20, 64 * 2**20])
+    paired = shadow(recorded, rss=lambda: next(readings), peak=lambda: (600 * 2**20, None))
+    publish = recorded_postgres(recorded)
+    paired.run_cycle(publish, snapshot_ids=(42,))
+    assert paired.evidence.reason == "shadow_admission_refused:rss_limit"
+    paired.run_cycle(publish, snapshot_ids=(42,))
+    assert paired.evidence.status == "compared"
+    shown = paired.evidence.display_dict()
+    assert (shown["rss_bytes"], shown["process_peak_rss_bytes"]) == (64 * 2**20, 600 * 2**20)

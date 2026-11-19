@@ -68,6 +68,7 @@ from transit_ops.maintenance import (
 from transit_ops.orchestration import (
     _install_worker_shutdown_handlers,
     realtime_endpoints_for_manifest,
+    refuse_unadmitted_shadow,
     run_pruner_loop,
     run_realtime_cycle,
     run_realtime_worker_loop,
@@ -1439,6 +1440,11 @@ def run_realtime_worker_command(
 
     should_shutdown = _install_worker_shutdown_handlers()
     settings = get_settings()
+    try:
+        # A refused role exits by name without recording a worker start.
+        refuse_unadmitted_shadow(settings)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
     with worker_watchdog(
         timeout=settings.REALTIME_WATCHDOG_SECONDS,
         shutdown_grace=settings.REALTIME_SHUTDOWN_GRACE_SECONDS,

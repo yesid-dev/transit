@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from sqlalchemy.engine import Engine
 
@@ -762,7 +762,8 @@ def _best_effort_publish_live(
             registry=registry,
             engine=engine,
             live_trip_updates=live_trip_updates,
-            **({"storage": storage, "cycle": cycle} if storage is not None else {}),
+            storage=storage,
+            cycle=cycle,
         )
         return 0
     except Exception:  # noqa: BLE001 — best-effort: never fail the cycle on publish
@@ -997,7 +998,7 @@ def run_realtime_cycle(
     last_captures: dict[str, datetime] | None = None,
 ) -> RealtimeCycleResult:
     settings = settings or get_settings()
-    _refuse_unadmitted_shadow(settings)
+    refuse_unadmitted_shadow(settings)
     registry = registry or _provider_registry(settings)
     engine = _engine(settings, engine)
     scope = BronzeStorageScope(settings, project_root=_project_root())
@@ -1034,7 +1035,7 @@ def run_realtime_cycle(
             )
 
 
-def _refuse_unadmitted_shadow(settings: Settings) -> None:
+def refuse_unadmitted_shadow(settings: Settings) -> None:
     """Worker selector: "off" keeps today's worker; every other role refuses by name.
 
     Inverted roles wait for local ingress (LS3.9c). The PostgreSQL-authoritative
@@ -1096,6 +1097,17 @@ def _install_worker_shutdown_handlers() -> Callable[[], bool]:
 
 
 def _run_realtime_worker_loop(
+    provider_id: str, *, shadow: PairedShadow | None = None, **options: Any
+) -> None:
+    """Drive worker cycles; a paired shadow is closed on graceful stop and on error."""
+    try:
+        _drive_realtime_worker(provider_id, shadow=shadow, **options)
+    finally:
+        if shadow is not None:
+            shadow.close()
+
+
+def _drive_realtime_worker(
     provider_id: str,
     *,
     settings: Settings,
@@ -1160,6 +1172,12 @@ def _run_realtime_worker_loop(
     )
     last_captures: dict[str, datetime] = {}
     last_attempts: dict[str, datetime] = {}
+    # Optional borrowed owners reach each cycle only when present.
+    owners: dict[str, Any] = {}
+    if worker_state is not None:
+        owners["worker_state"] = worker_state
+    if shadow is not None:
+        owners["shadow"] = shadow
     while max_cycles is None or cycle_number < max_cycles:
         worker_progress()
         if should_shutdown():
@@ -1198,8 +1216,7 @@ def _run_realtime_worker_loop(
                 last_captures=last_captures,
                 last_attempts=last_attempts,
                 bronze_storage_resolver=bronze_storage_resolver,
-                **({"worker_state": worker_state} if worker_state is not None else {}),
-                **({"shadow": shadow} if shadow is not None else {}),
+                **owners,
             )
         except Exception as exc:  # noqa: BLE001 — one bad cycle must not kill the loop
             cycle_duration_seconds = round(perf_counter_fn() - cycle_started_at, 3)
@@ -1324,7 +1341,7 @@ def run_realtime_worker_loop(
     should_shutdown: Callable[[], bool] | None = None,
 ) -> None:
     settings = settings or get_settings()
-    _refuse_unadmitted_shadow(settings)
+    refuse_unadmitted_shadow(settings)
     with worker_watchdog(
         timeout=settings.REALTIME_WATCHDOG_SECONDS,
         shutdown_grace=settings.REALTIME_SHUTDOWN_GRACE_SECONDS,
