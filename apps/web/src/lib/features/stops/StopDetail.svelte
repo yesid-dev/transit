@@ -112,17 +112,10 @@
 			children: [],
 		},
 	]);
-	const scheduleTocEntries = $derived<TocEntry[]>([
-		{
-			id: 'stop-schedule-service',
-			title: t.schedule.heading,
-			level: 2,
-			badge: { kind: 'number', value: 1 },
-			children: [],
-		},
-	]);
+	// The Schedule view has one section: a contents list of one ("1 / 1") navigates nowhere,
+	// so it gets no rail card and no phone pill, as a line's Record without sections does.
 	const articleToc = $derived({
-		entries: { detail: detailTocEntries, schedule: scheduleTocEntries },
+		entries: { detail: detailTocEntries, schedule: [] },
 		heading: articleNav.heading,
 		sectionKey: `stop-${id}-toc`,
 		counterPrefix: 'SEC',

@@ -517,7 +517,7 @@ export const OBSERVATION_IDS = Object.freeze({
 		line.weak_stops.hrefs line.weak_stops.raw_count line.pane.freshness_iso line.trend.rows
 		line.habits.tiers line.time.rows line.headway.rows line.occupancy.shares
 		line.delay_by_crowding line.week.histogram`),
-	stop: ids(`stop.day.otp_pct stop.day.p50_min stop.day.p90_min stop.record.answer
+	stop: ids(`stop.day.late_pct stop.day.p50_min stop.day.p90_min stop.record.answer
 		stop.day.observation_count stop.daily.rows stop.daily.limits stop.routes.ranked stop.habits.tiers
 		stop.weekday.rows stop.time.rows stop.occupancy.shares stop.display.scalars stop.pane.freshness_iso`),
 	network: ids(`network.live.vehicles network.live.on_time_pct network.live.coverage_pct
@@ -1401,10 +1401,20 @@ function stopOracle(fixture, locale, view) {
 	const occupancyMix = stopOccupancyMix(raw, retained);
 	const occupancyRows = shareRows(occupancyMix, OCCUPANCY);
 	const stopDominant = dominantShare(occupancyMix, OCCUPANCY);
+	// Section 02 states the record answer's measure: the publisher's late share, else the
+	// complement of its whole-number share, never the share that is not late.
+	const dayLate =
+		finite(day?.severe_pct) ?? (finite(day?.otp_pct) == null ? null : 100 - day.otp_pct);
 	const stopScalars = {
-		otp: {
-			value: finite(day?.otp_pct),
-			text: finite(day?.otp_pct) == null ? '' : `${Math.round(day.otp_pct)}%`,
+		late: {
+			value: dayLate,
+			text:
+				dayLate == null
+					? ''
+					: new Intl.NumberFormat(localeTag(locale), {
+							style: 'percent',
+							maximumFractionDigits: 1,
+						}).format(dayLate / 100),
 		},
 		percentiles: [
 			{
@@ -1418,7 +1428,7 @@ function stopOracle(fixture, locale, view) {
 		],
 	};
 	return [
-		observation('stop.day.otp_pct', finite(day?.otp_pct)),
+		observation('stop.day.late_pct', dayLate),
 		observation('stop.day.p50_min', finite(day?.p50_min)),
 		observation('stop.day.p90_min', finite(day?.p90_min)),
 		observation('stop.record.answer', stopRecordAnswer(fixture, raw, locale)),

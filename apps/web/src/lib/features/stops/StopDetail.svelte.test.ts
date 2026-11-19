@@ -932,7 +932,7 @@ describe('StopDetail article contract', () => {
 		expect(scheduleCards[0]?.querySelector('[data-section-trigger]')).not.toBeNull();
 	});
 
-	it('renders article navigation that follows the active Detail and Schedule sections', async () => {
+	it('renders article navigation for Detail and none for the one-section Schedule', async () => {
 		const { container } = render(StopDetail, { props: { id: '57191' } });
 		const rail = container.querySelector('[data-slot="detail-shell-left"]') as HTMLElement;
 
@@ -942,10 +942,12 @@ describe('StopDetail article contract', () => {
 		).toBeInTheDocument();
 		expect(within(rail).getByRole('button', { name: 'Stop information' })).toBeInTheDocument();
 
+		// A contents list of one section ("1 / 1") navigates nowhere: no card, no phone pill.
 		await fireEvent.click(screen.getByRole('tab', { name: 'Schedule' }));
+		expect(screen.queryByRole('button', { name: 'On this page' })).toBeNull();
 		expect(
-			within(rail).getByRole('button', { name: 'Sample weekday schedule' }),
-		).toBeInTheDocument();
+			container.querySelector('[data-slot="detail-shell-left"]')?.textContent ?? '',
+		).not.toMatch(/Sample weekday schedule|SEC/);
 	});
 
 	it('preserves a manual facts-card choice across a tab round-trip', async () => {
@@ -1004,7 +1006,7 @@ describe('StopDetail retained-history ownership', () => {
 		const pane = view.container.querySelector('[data-slot="reliability-pane"]') as HTMLElement;
 		expect(pane).not.toBeNull();
 		expect(within(pane).getByText('Week')).toBeInTheDocument();
-		expect(within(pane).getByText('79%')).toBeInTheDocument();
+		expect(within(pane).getByText('8%')).toBeInTheDocument();
 		expect(stopHistoryHarness.loadStopHistoryRange).not.toHaveBeenCalled();
 
 		await waitFor(() => expect(stopHistoryHarness.getStopHistoryIndex).toHaveBeenCalledOnce());

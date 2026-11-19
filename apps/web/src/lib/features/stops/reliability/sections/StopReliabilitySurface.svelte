@@ -3,6 +3,7 @@
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { routeFor } from '#lib/nav/index.ts';
 	import { fmtDelayMin } from '#lib/utils/index.ts';
+	import { fmtLocalePct } from '#lib/utils/format.ts';
 	import type { DateWindow } from '#lib/filters/index.ts';
 	import { absenceSentence, absenceShort, describeAbsence } from '#lib/site/absence.ts';
 	import { availabilityFromCollectionIndex } from '#lib/v1/history/selection.ts';
@@ -149,7 +150,11 @@
 		return copy.scope.allHistory(date(coverage.firstDate), date(coverage.lastDate));
 	});
 
-	const stopVerdict = $derived(view.verdict);
+	// The banner's figure is the late share it describes, as in the record answer.
+	const stopVerdict = $derived({
+		...view.verdict,
+		ban: view.verdict.ban == null ? null : fmtLocalePct(view.verdict.late.pct, locale),
+	});
 
 	const fmtMin = (v: number | null): string =>
 		fmtDelayMin(v, { rounding: 'fixed1', noData: noObservationLabel });

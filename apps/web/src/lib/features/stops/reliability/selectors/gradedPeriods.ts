@@ -12,11 +12,11 @@ export function selectGradedPeriods(
 			const hasRealP50 = p.p50_min != null;
 			return {
 				grain: grainLabel(p.grain),
-				otpPct: p.otp_pct ?? null,
+				// The publisher's late share; else the complement of its whole-number share.
+				latePct: p.severe_pct ?? (p.otp_pct != null ? 100 - p.otp_pct : null),
 				delayMin: hasRealP50 ? p.p50_min! : (p.avg_delay_min ?? null),
 				delayKind: hasRealP50 ? ('median' as const) : ('avg' as const),
 				p90Min: p.p90_min ?? null,
-				severePct: p.severe_pct ?? null,
 			};
 		});
 }

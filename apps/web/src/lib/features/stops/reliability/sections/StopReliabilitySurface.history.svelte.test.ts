@@ -410,7 +410,7 @@ describe('StopReliabilitySurface retained Stop history', () => {
 				expect.soft(view.container.querySelector(`[data-slot="${slot}"]`)).not.toBeNull();
 			}
 			const predictionPane = view.container.querySelector('[data-slot="stop-reliability-pane"]');
-			expect(predictionPane).toHaveTextContent('22%');
+			expect(predictionPane).toHaveTextContent(locale === 'en' ? '31%' : '31 %');
 			expect(predictionPane?.querySelector('[data-slot="prediction-scope"]')).toHaveTextContent(
 				localizedScope,
 			);
@@ -630,7 +630,7 @@ historyViewContract('stop', {
 		);
 		expect(
 			container.querySelector('[data-slot="stop-reliability-pane"] [data-slot="verdict"]'),
-		).toHaveTextContent('91%');
+		).toHaveTextContent('9%');
 		expect(container.querySelector('[data-slot="prediction-scope"]')).toHaveTextContent(
 			/verdict.*selected/i,
 		);
