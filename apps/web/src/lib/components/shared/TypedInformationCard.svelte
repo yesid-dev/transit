@@ -9,7 +9,13 @@
 	import { CodeBlock } from '@yesid/ui/brand';
 
 	export type InformationKind =
-		'definition' | 'math' | 'sql' | 'not-really' | 'caveat' | 'pipeline-note' | 'note';
+		| 'definition'
+		| 'math'
+		| 'sql'
+		| 'not-really'
+		| 'caveat'
+		| 'pipeline-note'
+		| 'note';
 
 	export interface TypedInformationCardProps {
 		kind: InformationKind;
