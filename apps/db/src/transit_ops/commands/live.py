@@ -34,6 +34,22 @@ def _document(path: Path, name: str) -> Any:
         raise EvidenceInvalid(f"{name}_json_invalid") from exc
 
 
+def _text(path: Path) -> str:
+    from transit_ops.live.admission import EvidenceInvalid
+
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise EvidenceInvalid(f"not_utf8:{path.name}") from exc
+
+
+def _new_output(output: Path) -> None:
+    if output.exists():
+        raise typer.BadParameter(f"{output.name}: already exists")
+    if not output.parent.is_dir():
+        raise typer.BadParameter(f"{output.parent}: output_directory_missing")
+
+
 def _schedule(
     provider_id: str, providers: Path, poll_seconds: int
 ) -> tuple[int | None, int | None]:
@@ -99,6 +115,7 @@ def admission(
         RestartObservation,
         WindowCpu,
         evaluate,
+        read_restart_records,
         read_worker_log,
         refuse_duplicate_cycles,
     )
@@ -107,10 +124,7 @@ def admission(
     window = _instant(start, "start"), _instant(end, "end")
     if window[0] >= window[1]:
         raise typer.BadParameter("start must be before end")
-    if output.exists():
-        raise typer.BadParameter(f"{output.name}: already exists")
-    if not output.parent.is_dir():
-        raise typer.BadParameter(f"{output.parent}: output_directory_missing")
+    _new_output(output)
     if (resources is None) != (worker_service is None):
         raise typer.BadParameter("--resources and --worker-service go together")
     try:
@@ -128,19 +142,7 @@ def admission(
         refuse_duplicate_cycles(cycles)  # Live ruling 25b.3.
         observed: tuple[RestartObservation, ...] = ()
         if restarts is not None:
-            records = []
-            try:
-                content = restarts.read_text(encoding="utf-8")
-            except UnicodeDecodeError as exc:
-                raise EvidenceInvalid(f"not_utf8:{restarts.name}") from exc
-            for number, line in enumerate(content.splitlines(), 1):
-                if line.strip():
-                    try:
-                        value = json.loads(line)
-                    except ValueError as exc:
-                        raise EvidenceInvalid(f"restart_record_json_invalid:line {number}") from exc
-                    records.append(RestartObservation.from_dict(value))
-            observed = tuple(records)
+            observed = read_restart_records(_text(restarts).splitlines())
         plan = None
         if resources is not None and worker_service is not None:
             peaks, disk = parse_evidence(_document(resources, "resources"))
@@ -181,3 +183,41 @@ def admission(
     typer.echo(text, nl=False)
     if not verdict.eligible:
         raise typer.Exit(1)
+
+
+@app.command("window-cpu")
+def window_cpu(
+    samples: Annotated[
+        Path,
+        typer.Option(help="One complete run of scripts/sample_transit_containers.py (JSONL)."),
+    ],
+    service: Annotated[str, typer.Option(help="The worker's Compose service in that run.")],
+    output: Annotated[Path, typer.Option(help="New --window-cpu JSON file; must not exist.")],
+) -> None:
+    """Write the admission gate's --window-cpu file from the merged container sampler's run.
+
+    Reads only the samples file: run the sampler once over a span that covers the admission
+    window first. One run lasts at most 24 h and its last sample lands an interval before
+    its end, so it can't cover a full 24-hour window; joined runs are refused. Nothing runs
+    this automatically. Exit 2 on a malformed, incomplete or joined run.
+    """
+    from hashlib import sha256
+
+    from transit_ops.live.admission import EvidenceInvalid, window_cpu_from_samples
+
+    _new_output(output)
+    try:
+        content = samples.read_bytes()
+        try:
+            text = content.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise EvidenceInvalid(f"not_utf8:{samples.name}") from exc
+        cpu = window_cpu_from_samples(
+            text.splitlines(), service=service, measurement_sha=sha256(content).hexdigest()
+        )
+    except (OSError, EvidenceInvalid) as exc:
+        raise typer.BadParameter(f"evidence_malformed:{exc}") from exc
+    document = json.dumps(cpu.display_dict(), indent=2, sort_keys=True) + "\n"
+    with output.open("x", encoding="utf-8", newline="\n") as target:
+        target.write(document)
+    typer.echo(document, nl=False)
