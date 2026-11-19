@@ -344,7 +344,10 @@ describe('receipt closed days', () => {
 		expect(
 			screen.getByText(t.history.latestComplete(formatDateKey('2026-11-10', 'en'))),
 		).toBeInTheDocument();
-		expect(screen.getByText(t.history.latestCompleteLabel)).toBeInTheDocument();
+		// The header names the day by its stamp; the rail says it is the latest complete day.
+		expect(
+			screen.getByText(new RegExp(`day of ${formatDateKey('2026-11-10', 'en')}`)),
+		).toBeInTheDocument();
 		expect(mirrorSearchParam).toHaveBeenLastCalledWith('date', null);
 		expect(container.querySelector('[data-slot="receipt-incomplete-day"]')).toBeNull();
 		expect(screen.getByLabelText(t.dayVerdict.label)).toBeInTheDocument();

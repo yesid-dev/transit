@@ -24,11 +24,7 @@ describe('Daily Receipt article copy', () => {
 			tagsAria: 'Page keywords',
 			tags: ['receipt', 'reliability', 'service', 'accountability'],
 			generatedLabel: 'GENERATED',
-			selectedLabel: 'FOR',
-			sections: expect.any(Function),
 		});
-		expect(copy.en.article.sections(1)).toBe('1 section');
-		expect(copy.en.article.sections(4)).toBe('4 sections');
 
 		expect(copy.en.rail).toEqual({
 			label: 'Day & contents',
@@ -67,11 +63,7 @@ describe('Daily Receipt article copy', () => {
 			tagsAria: 'Mots-clés de la page',
 			tags: ['reçu', 'fiabilité', 'service', 'imputabilité'],
 			generatedLabel: 'PRODUIT',
-			selectedLabel: 'POUR LE',
-			sections: expect.any(Function),
 		});
-		expect(copy.fr.article.sections(1)).toBe('1 section');
-		expect(copy.fr.article.sections(4)).toBe('4 sections');
 
 		expect(copy.fr.rail).toEqual({
 			label: 'Jour et sommaire',

@@ -16,8 +16,8 @@ const inventory = [
 	'observation-copy',
 ];
 const config: CaptureConfiguration = {
-	sha: '4fa605a11f9f2237cc4de5fb5805d570d52a1d39',
-	tree: '3ccf0dd1e614bc983e13084c45cb773b76019e05',
+	sha: 'ed81697c0d8b483e396d5fc1416e059485b31557',
+	tree: '19f3ef3b20c494ae1326f5c23719e26d63c83b9e',
 	snapshot: join(
 		process.cwd(),
 		'src/lib/features/receipt/__fixtures__/receipt-render-baseline.jsonl',

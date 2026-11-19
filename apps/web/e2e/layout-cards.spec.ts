@@ -683,7 +683,8 @@ for (const provider of ['stm', 'octranspo'])
 			});
 			await page.setViewportSize({ width: 1280, height: 900 });
 			await page.goto(`${localizeHref('/repeat-offenders', locale)}?provider=${provider}`);
-			const rows = page.locator('[data-slot="offender-rows"] > li > button');
+			// Visible rows only: while the record loads, an invisible gauge holds the ranking's room.
+			const rows = page.locator('[data-slot="offender-rows"] > li > button:visible');
 			const controls = page.locator('[data-slot="offenders-controls"]');
 			const navigator = controls.locator('[data-slot="history-navigator"]');
 			await expect(controls).toBeVisible();
@@ -694,7 +695,9 @@ for (const provider of ['stm', 'octranspo'])
 				const samples: string[] = [];
 				(window as Sampled).samples = samples;
 				const sample = () => {
-					const frame = document.querySelector('.offenders-workspace-frame');
+					const frame = [...document.querySelectorAll('.offenders-workspace-frame')].find(
+						(candidate) => getComputedStyle(candidate).visibility !== 'hidden',
+					);
 					if (frame) {
 						const box = frame.getBoundingClientRect();
 						samples.push(`${box.top + window.scrollY}:${box.left}:${box.width}`);
