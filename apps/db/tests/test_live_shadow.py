@@ -134,11 +134,14 @@ def recorded(local):
 def test_default_off_is_todays_worker_and_inverted_roles_refuse_by_name(tmp_path):
     assert admit_role(LaneSettings()) is False
     assert LaneSettings().ingress == "postgres"
+    # Standalone local ingress with no shadow role refuses by name (live ruling 27.2).
+    with pytest.raises(ShadowRefused, match="^local_ingress_requires_shadow_role$"):
+        admit_role(LaneSettings(ingress="local"))
     with pytest.raises(ShadowRefused) as refused:
         admit_role(LaneSettings(**{**ROLE, "shadow": "local_authoritative"}))
     assert refused.value.reason == "local_authoritative_requires_local_ingress"
-    # With local ingress selected, local_authoritative still refuses until seed and floors exist.
-    with pytest.raises(ShadowRefused, match="local_ingress_requires_alert_seed_path"):
+    # With local ingress selected, local_authoritative still refuses until cut, seed & floors exist.
+    with pytest.raises(ShadowRefused, match="local_ingress_requires_initial_cut_path"):
         admit_role(LaneSettings(**{**ROLE, "shadow": "local_authoritative", "ingress": "local"}))
     local_inputs = {
         **ROLE,
@@ -149,6 +152,8 @@ def test_default_off_is_todays_worker_and_inverted_roles_refuse_by_name(tmp_path
         "duckdb_threads": 1,
         "temp_dir_max_mb": 32,
         "segment_storage_backend": "local",
+        "initial_cut_path": tmp_path / "cut.json",
+        "initial_cut_sha256": "c" * 64,
         "alert_seed_path": tmp_path / "seed.json",
         "alert_seed_sha256": "a" * 64,
         "identity_floors_path": tmp_path / "floors.json",

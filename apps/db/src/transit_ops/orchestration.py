@@ -784,7 +784,13 @@ def _run_local_realtime_cycle(
     live_trip_updates: LiveTripUpdates | None,
     worker_state: WorkerState | None,
 ) -> RealtimeCycleResult:
-    """Local ingress cycle: no PostgreSQL engine, clock, write, or cutover publication."""
+    """Local ingress cycle: no PostgreSQL capture, clock, write, or cutover publication."""
+    from transit_ops.live.shadow import ShadowRefused
+
+    if settings.LIGHTER_STORAGE.live.shadow == "off":
+        raise ShadowRefused("local_ingress_requires_shadow_role")
+    if settings.LIGHTER_STORAGE.live.shadow == "postgres_authoritative":
+        raise ShadowRefused("postgres_authoritative_forbids_local_ingress")
     if worker_state is None:
         raise ValueError("local_ingress_requires_borrowed_owner")
     started_at_utc = utc_now()
@@ -844,7 +850,25 @@ def _run_local_realtime_cycle(
         if last_attempts is not None:
             last_attempts[endpoint_key] = attempt_started_at_utc
         ep_started = time.perf_counter()
-        outcome = worker_state.capture_local(endpoint_key)
+        try:
+            outcome = worker_state.capture_local(endpoint_key)
+        except Exception as exc:
+            ep_duration = round(time.perf_counter() - ep_started, 3)
+            message = redact_error_message(str(exc))
+            logger.error("Local capture failed for %s/%s: %s", provider_id, endpoint_key, message)
+            endpoint_results.append(
+                RealtimeEndpointCycleResult(
+                    endpoint_key=endpoint_key,
+                    status="failed",
+                    capture_duration_seconds=ep_duration,
+                    silver_load_duration_seconds=None,
+                    total_endpoint_duration_seconds=ep_duration,
+                    capture_result=None,
+                    silver_load_result=None,
+                    error_message=message,
+                )
+            )
+            continue
         ep_duration = round(time.perf_counter() - ep_started, 3)
         captured_entries.append((len(endpoint_results), endpoint_key, outcome.capture_row_id))
         endpoint_results.append(
@@ -1196,7 +1220,10 @@ def refuse_unadmitted_shadow(settings: Settings, *, worker_loop: bool = True) ->
     The PostgreSQL-authoritative shadow borrows the worker loop's LocalFile owner,
     so a one-shot cycle refuses it rather than silently running without the shadow.
     """
-    if settings.LIGHTER_STORAGE.live.shadow != "off":
+    if (
+        settings.LIGHTER_STORAGE.live.shadow != "off"
+        or settings.LIGHTER_STORAGE.live.ingress == "local"
+    ):
         from transit_ops.live.shadow import ShadowRefused, admit_role, validate_shadow_config
 
         if admit_role(settings.LIGHTER_STORAGE.live):
@@ -1204,10 +1231,6 @@ def refuse_unadmitted_shadow(settings: Settings, *, worker_loop: bool = True) ->
                 raise ShadowRefused("shadow_requires_worker_loop")
             # Static shadow configuration refuses here, before any worker start.
             validate_shadow_config(settings)
-    elif settings.LIGHTER_STORAGE.live.ingress == "local":
-        from transit_ops.live.ingest import validate_local_ingress_settings
-
-        validate_local_ingress_settings(settings.LIGHTER_STORAGE.live)
 
 
 def _validate_realtime_worker_startup(
@@ -1290,6 +1313,13 @@ def _drive_realtime_worker(
 ) -> None:
     registry = registry or _provider_registry(settings)
     local_mode = settings.LIGHTER_STORAGE.live.ingress == "local"
+    if local_mode:
+        from transit_ops.live.shadow import ShadowRefused
+
+        if settings.LIGHTER_STORAGE.live.shadow == "off":
+            raise ShadowRefused("local_ingress_requires_shadow_role")
+        if settings.LIGHTER_STORAGE.live.shadow == "postgres_authoritative":
+            raise ShadowRefused("postgres_authoritative_forbids_local_ingress")
     engine = None if local_mode else (engine or make_engine(settings, connect_timeout=10))
     if max_cycles is not None and max_cycles <= 0:
         raise ValueError("max_cycles must be greater than 0 when provided.")
@@ -1337,7 +1367,7 @@ def _drive_realtime_worker(
         bronze_storage_resolver=bronze_storage_resolver,
         worker_state=worker_state,
     )
-    if shadow is None and settings.LIGHTER_STORAGE.live.shadow != "off":
+    if shadow is None and settings.LIGHTER_STORAGE.live.shadow == "postgres_authoritative":
         from transit_ops.live.shadow import ShadowRefused, worker_shadow
 
         if worker_state is None:

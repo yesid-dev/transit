@@ -416,3 +416,175 @@ def test_naive_timestamp_in_floors_document_is_refused(tmp_path):
             path, expected_sha256=sha256(raw).hexdigest(), seed=seed, alert_seed_sha256=seed_sha
         )
     assert AT.tzinfo is UTC
+
+
+def test_fresh_install_refuses_when_exported_segments_or_watermarks_exist(tmp_path):
+    from transit_ops.ingestion.storage import LocalBronzeStorage
+    from transit_ops.live.segments import SHADOW_SEGMENTS_PREFIX, export_segment
+
+    seed, _, seed_sha, _, floors_path, floors_sha = write_seed_and_floors(
+        tmp_path,
+        seed=empty_seed(global_max=100),
+        ingestion_run_id=100,
+        ingestion_object_id=100,
+        realtime_snapshot_id=100,
+        alert_snapshot_id=100,
+    )
+    verified = verify_identity_floors(
+        floors_path, expected_sha256=floors_sha, seed=seed, alert_seed_sha256=seed_sha
+    )
+
+    # 1. File deleted after exporting a shadow segment refuses fresh install (and never restarts
+    # at floor+1), even when local_dir is moved to an empty directory.
+    storage = LocalBronzeStorage("local", tmp_path / "bronze")
+    storage.root.mkdir(parents=True, exist_ok=True)
+    db1 = tmp_path / "run1" / "provider-network.duckdb"
+    db1.parent.mkdir()
+    with closing(LocalFile.open(db1, provider_id="network", settings=SETTINGS)) as local:
+        seed_alert_state(local, seed)
+        alloc = IdentityAllocator(local, provider_id="network")
+        alloc.initialize(verified, floors_sha256=floors_sha, seed=seed, segment_storage=storage)
+        res = alloc.reserve(
+            attempt_key="att-seg",
+            endpoint_key="vehicle_positions",
+            index_family="realtime_snapshot",
+            outcome="stored",
+            request_digest="a" * 64,
+        )
+        assert res.capture_row_id == 101
+        local.record_polls(
+            [replace(POLL, ingestion_run_id=101, capture_row_id=101)],
+            endpoint_key="vehicle_positions",
+        )
+        local.record_captures(
+            [replace(CAPTURE, ingestion_run_id=101, ingestion_object_id=101, capture_row_id=101)],
+            endpoint_key="vehicle_positions",
+        )
+        seg = export_segment(local, storage, root_prefix=SHADOW_SEGMENTS_PREFIX)
+        assert seg is not None and seg.prefix.startswith(SHADOW_SEGMENTS_PREFIX + "/")
+
+    db1.unlink()
+    db2 = tmp_path / "run2_empty_dir" / "provider-network.duckdb"
+    db2.parent.mkdir()
+    with closing(LocalFile.open(db2, provider_id="network", settings=SETTINGS)) as local:
+        seed_alert_state(local, seed)
+        with pytest.raises(IdentityRefused, match="^identity_history_exists$"):
+            IdentityAllocator(local, provider_id="network").initialize(
+                verified, floors_sha256=floors_sha, seed=seed, segment_storage=storage
+            )
+
+    # 2. Exported production segment also refuses fresh install.
+    prod_storage = LocalBronzeStorage("local", tmp_path / "prod_bronze")
+    prod_storage.root.mkdir(parents=True, exist_ok=True)
+    db_prod = tmp_path / "prod_run" / "provider-network.duckdb"
+    db_prod.parent.mkdir()
+    with closing(LocalFile.open(db_prod, provider_id="network", settings=SETTINGS)) as local:
+        seed_alert_state(local, seed)
+        local.record_polls(
+            [replace(POLL, ingestion_run_id=101, capture_row_id=101)],
+            endpoint_key="vehicle_positions",
+        )
+        assert export_segment(local, prod_storage) is not None
+    db_prod_fresh = tmp_path / "prod_fresh" / "provider-network.duckdb"
+    db_prod_fresh.parent.mkdir()
+    with closing(LocalFile.open(db_prod_fresh, provider_id="network", settings=SETTINGS)) as local:
+        seed_alert_state(local, seed)
+        with pytest.raises(IdentityRefused, match="^identity_history_exists$"):
+            IdentityAllocator(local, provider_id="network").initialize(
+                verified, floors_sha256=floors_sha, seed=seed, segment_storage=prod_storage
+            )
+
+    # 3. Deleted DB file with surviving identity watermark refuses even with zero segments.
+    db_wm = tmp_path / "wm_run" / "provider-network.duckdb"
+    db_wm.parent.mkdir()
+    with closing(LocalFile.open(db_wm, provider_id="network", settings=SETTINGS)) as local:
+        seed_alert_state(local, seed)
+        alloc = IdentityAllocator(local, provider_id="network")
+        alloc.initialize(verified, floors_sha256=floors_sha, seed=seed)
+        alloc.reserve(
+            attempt_key="att-wm",
+            endpoint_key="vehicle_positions",
+            index_family="realtime_snapshot",
+            outcome="stored",
+            request_digest="b" * 64,
+        )
+    db_wm.unlink()
+    with closing(LocalFile.open(db_wm, provider_id="network", settings=SETTINGS)) as local:
+        seed_alert_state(local, seed)
+        with pytest.raises(IdentityRefused, match="^identity_history_exists$"):
+            IdentityAllocator(local, provider_id="network").initialize(
+                verified, floors_sha256=floors_sha, seed=seed
+            )
+
+    # 4. Existing committed watermark (or invalid marker) beside fresh DB refuses.
+    for suffix in (".committed.json", ".committed.invalid"):
+        db_cw = tmp_path / f"cw_{suffix.strip('.')}" / "provider-network.duckdb"
+        db_cw.parent.mkdir()
+        (db_cw.parent / (db_cw.name + suffix)).write_text("{}", encoding="utf-8")
+        with closing(LocalFile.open(db_cw, provider_id="network", settings=SETTINGS)) as local:
+            seed_alert_state(local, seed)
+            with pytest.raises(IdentityRefused, match="^identity_history_exists$"):
+                IdentityAllocator(local, provider_id="network").initialize(
+                    verified, floors_sha256=floors_sha, seed=seed
+                )
+
+
+def test_reserve_caches_retained_maxima_per_scope(tmp_path, monkeypatch):
+    from transit_ops.live import identity as identity_module
+
+    seed, _, seed_sha, _, floors_path, floors_sha = write_seed_and_floors(
+        tmp_path,
+        seed=empty_seed(global_max=100),
+        ingestion_run_id=100,
+        ingestion_object_id=100,
+        realtime_snapshot_id=100,
+        alert_snapshot_id=100,
+    )
+    verified = verify_identity_floors(
+        floors_path, expected_sha256=floors_sha, seed=seed, alert_seed_sha256=seed_sha
+    )
+    calls = 0
+    real_scan = identity_module._retained_maxima
+
+    def spy_scan(conn):
+        nonlocal calls
+        calls += 1
+        return real_scan(conn)
+
+    monkeypatch.setattr(identity_module, "_retained_maxima", spy_scan)
+    with closing(
+        LocalFile.open(tmp_path / "cached.duckdb", provider_id="network", settings=SETTINGS)
+    ) as local:
+        seed_alert_state(local, seed)
+        alloc = IdentityAllocator(local, provider_id="network")
+        alloc.initialize(verified, floors_sha256=floors_sha, seed=seed)
+        assert calls == 1
+        for i in range(5):
+            res = alloc.reserve(
+                attempt_key=f"att-{i}",
+                endpoint_key="vehicle_positions",
+                index_family="realtime_snapshot",
+                outcome="stored",
+                request_digest=f"{i:064x}",
+            )
+            assert res.capture_row_id == 101 + i
+        assert calls == 1
+
+
+def test_verify_identity_floors_refuses_floor_below_initial_cut(tmp_path):
+    seed, _, seed_sha, _, floors_path, floors_sha = write_seed_and_floors(
+        tmp_path,
+        seed=empty_seed(global_max=100),
+        ingestion_run_id=100,
+        ingestion_object_id=100,
+        realtime_snapshot_id=100,
+        alert_snapshot_id=100,
+    )
+    with pytest.raises(IdentityRefused, match="local_identity_floor_below_evidence:ingestion_run"):
+        verify_identity_floors(
+            floors_path,
+            expected_sha256=floors_sha,
+            seed=seed,
+            alert_seed_sha256=seed_sha,
+            initial_cut_run_id=101,
+        )

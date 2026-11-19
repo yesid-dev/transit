@@ -94,6 +94,8 @@ class LocalState(Protocol):
 def admit_role(settings: LaneSettings) -> bool:
     """Validate the selected role; True only for an admitted PostgreSQL-authoritative shadow."""
     if settings.shadow == "off":
+        if settings.ingress == "local":
+            raise ShadowRefused("local_ingress_requires_shadow_role")
         return False
     if settings.shadow == "local_authoritative":
         if settings.ingress != "local":

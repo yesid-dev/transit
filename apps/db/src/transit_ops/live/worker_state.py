@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 import logging
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from functools import partial
 from hashlib import sha256
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, get_type_hints
 from urllib.parse import quote
 
 from sqlalchemy import Engine, text
@@ -22,6 +22,8 @@ from transit_ops.ingestion.storage import BronzeStorageResolver
 from transit_ops.live.admission import restart_evidence_path
 from transit_ops.live.captures import CaptureRef, ParsePolicy, parse_capture
 from transit_ops.live.edition import (
+    EditionId,
+    EditionMissing,
     current_dim_versions,
     current_edition_id,
     load_edition_from_postgres,
@@ -29,9 +31,10 @@ from transit_ops.live.edition import (
 )
 from transit_ops.live.facts import apply_capture
 from transit_ops.live.local_file import LocalFile, LocalFileMismatch
+from transit_ops.live.poll_records import _entry
 from transit_ops.live.recording import Recorder
 from transit_ops.live.recovery import open_worker_file
-from transit_ops.live.segments import export_segment
+from transit_ops.live.segments import SHADOW_SEGMENTS_PREFIX, export_segment
 from transit_ops.live.settings import LaneSettings
 from transit_ops.silver.i3 import RawI3AlertSnapshot
 from transit_ops.static.alert_apply import apply_alert_snapshot
@@ -55,10 +58,12 @@ class WorkerState:
         settings: LaneSettings,
         resolver: BronzeStorageResolver,
         ingestor: LocalIngestor | None = None,
+        edition_loader: Callable[[LocalFile, str], EditionId | None] | None = None,
     ):
         self.local, self.engine, self.manifest = local, engine, manifest
         self.settings, self.resolver = settings, resolver
         self.ingestor = ingestor
+        self.edition_loader = edition_loader
         self.recorder = (
             ingestor.recorder
             if ingestor is not None
@@ -85,26 +90,85 @@ class WorkerState:
         endpoint_key: str,
         *,
         attempt_key: str | None = None,
-        deduplicate_identical: bool = False,
     ) -> LocalCaptureOutcome:
         """Capture one endpoint through the borrowed single-owner local ingestor."""
         if self.ingestor is None:
             raise ValueError("local_ingress_not_configured")
-        return self.ingestor.capture_endpoint(
-            endpoint_key, attempt_key=attempt_key, deduplicate_identical=deduplicate_identical
-        )
+        return self.ingestor.capture_endpoint(endpoint_key, attempt_key=attempt_key)
+
+    def _loaded_local_edition(self, provider: str) -> EditionId | None:
+        exists = self.local.connection.execute(
+            "SELECT 1 FROM duckdb_tables() WHERE table_name='edition_meta' "
+            "AND schema_name='main' AND database_name=current_database()"
+        ).fetchone()
+        loaded = loaded_edition(self.local.connection) if exists else None
+        if loaded is None or loaded.provider_id != provider:
+            return None
+        return loaded
+
+    def _ensure_local_edition(self, provider: str) -> EditionId | None:
+        """Load the static schedule edition through live/edition.py (#883) when available."""
+        self.local.require_committed()
+        if self.edition_loader is not None:
+            try:
+                self.edition_loader(self.local, provider)
+            except EditionMissing:
+                return None
+        elif self.engine is not None:
+            try:
+                self._ensure_edition(provider)
+            except EditionMissing:
+                return None
+        return self._loaded_local_edition(provider)
+
+    def _local_pending_captures(self) -> list[tuple[str, CaptureEntry]]:
+        columns = ", ".join('c."' + n + '"' for n in get_type_hints(CaptureEntry))
+        rows = self.local.connection.execute(
+            f"SELECT c.endpoint_key, {columns} FROM captures c LEFT JOIN local_applications a "
+            "ON c.endpoint_key=a.endpoint_key AND c.capture_row_id=a.capture_row_id "
+            "WHERE coalesce(a.status, '') <> 'succeeded' AND c.ingestion_run_id > "
+            "(SELECT coalesce(max(initial_run_id), 0) FROM recording_cursor) "
+            "ORDER BY CASE c.endpoint_key WHEN 'vehicle_positions' THEN 0 "
+            "WHEN 'trip_updates' THEN 2 ELSE 1 END, c.captured_at_utc, c.capture_row_id"
+        ).fetchall()
+        return [(str(r[0]), _entry(CaptureEntry, r[1:])) for r in rows]
 
     def apply_local(self, *, live_trip_updates: Any = None) -> dict[tuple[str, int], str]:
-        """Apply pending locally recorded captures without PostgreSQL and export segments."""
+        """Apply pending locally recorded captures and export pre-cutover shadow segments."""
         if self.ingestor is None:
             raise ValueError("local_ingress_not_configured")
+        from transit_ops.live.ingest import application_input_signature
+
         provider = self.manifest.provider.provider_id
+        timezone = self.manifest.provider.timezone
         failures: dict[tuple[str, int], str] = {}
+        deferred_failures: dict[tuple[str, int], str] = {}
+        remaining_actionable = False
         try:
-            pending = self.recorder.pending_captures(
-                self.settings.catchup_page_size, for_application=True
-            )
+            edition = self._ensure_local_edition(provider)
+            recorded_failures = self.ingestor.recorded_application_failures()
+            pending = self._local_pending_captures()
+            blocked_endpoints: set[str] = set()
+            attempted = 0
             for endpoint, capture in pending:
+                if endpoint == "trip_updates" and "vehicle_positions" in blocked_endpoints:
+                    continue
+                if endpoint in blocked_endpoints:
+                    continue
+                sig = application_input_signature(
+                    endpoint, capture, provider_timezone=timezone, edition=edition
+                )
+                prior = recorded_failures.get((endpoint, capture.capture_row_id))
+                if prior is not None and prior[0] == sig:
+                    # Failed application already recorded for identical inputs (ruling 27.5).
+                    deferred_failures[(endpoint, capture.capture_row_id)] = prior[1]
+                    if endpoint != "trip_updates":
+                        blocked_endpoints.add(endpoint)
+                    continue
+                if attempted >= self.settings.catchup_page_size:
+                    remaining_actionable = True
+                    continue
+                attempted += 1
                 started = self.ingestor.clock()
                 try:
                     applied = self.recorder.apply(
@@ -117,10 +181,16 @@ class WorkerState:
                     message = redact_error_message(str(exc))
                     failures[(endpoint, capture.capture_row_id)] = message
                     self.ingestor.record_application_failure(
-                        endpoint, capture, error=exc, started_at_utc=started
+                        endpoint,
+                        capture,
+                        error=exc,
+                        started_at_utc=started,
+                        input_signature=sig,
                     )
-                    # Preserve chronological alert continuity and vehicle-before-trip order.
-                    break
+                    if endpoint != "trip_updates":
+                        blocked_endpoints.add(endpoint)
+                    continue
+                self.ingestor.clear_application_failure(endpoint, capture.capture_row_id)
                 if applied and endpoint == "trip_updates" and live_trip_updates is not None:
                     try:
                         payload = self.resolver(capture.storage_backend).read_bytes(
@@ -139,12 +209,17 @@ class WorkerState:
         finally:
             backend = self.settings.segment_storage_backend
             assert backend is not None
-            export_segment(self.local, self.resolver(backend))
+            # Pre-cutover local segments stay under the shadow prefix (live ruling 27.2).
+            export_segment(
+                self.local, self.resolver(backend), root_prefix=SHADOW_SEGMENTS_PREFIX
+            )
         self.unavailable = (
             next(iter(failures.values()))
             if failures
+            else next(iter(deferred_failures.values()))
+            if deferred_failures
             else "local_application_pending"
-            if self.recorder.pending_captures(1)
+            if remaining_actionable
             else None
         )
         return failures
@@ -254,6 +329,12 @@ class WorkerState:
         provider = self.manifest.provider.provider_id
         timezone = self.manifest.provider.timezone
         if endpoint in ("vehicle_positions", "trip_updates"):
+            if (
+                endpoint == "trip_updates"
+                and self.settings.ingress == "local"
+                and self._loaded_local_edition(provider) is None
+            ):
+                raise EditionMissing("local_trip_updates_edition_missing")
             parsed = parse_capture(
                 payload,
                 CaptureRef.from_entry(capture, provider_id=provider, endpoint_key=endpoint),
@@ -341,19 +422,46 @@ def _verified_cut(settings: LaneSettings, seed: AlertSeed) -> int:
     return initial
 
 
+def _assert_ingress_mode(local: LocalFile, *, local_mode: bool) -> None:
+    """Enforce sticky per-file ingress mode in both directions (live ruling 27.3)."""
+    existing = {
+        str(row[0])
+        for row in local.connection.execute(
+            "SELECT table_name FROM duckdb_tables() "
+            "WHERE database_name=current_database() AND schema_name='main' AND NOT temporary"
+        ).fetchall()
+    }
+    has_local_identity = bool(
+        existing.intersection(
+            ("local_identity_meta", "local_identity_namespaces", "local_identity_reservations")
+        )
+    )
+    if not local_mode:
+        if has_local_identity:
+            raise LocalFileMismatch("ingress_mode_changed")
+        return
+    if not has_local_identity:
+        has_pg_state = any(
+            local.connection.execute(f"SELECT 1 FROM {table} LIMIT 1").fetchone() is not None
+            for table in ("recording_cursor", "polls", "captures", "processing")
+        )
+        if has_pg_state:
+            raise LocalFileMismatch("ingress_mode_changed")
+
+
 def _ensure_local_cursor(
-    recorder: Recorder, *, provider: str, floor_run_id: int, seed_sha256: str
+    recorder: Recorder, *, provider: str, initial_run_id: int, seed_sha256: str
 ) -> None:
     with recorder.local.transaction() as conn:
         rows = conn.execute("SELECT * FROM recording_cursor").fetchall()
         if not rows:
-            recorder.initialize(initial_run_id=floor_run_id, seed_sha256=seed_sha256)
+            recorder.initialize(initial_run_id=initial_run_id, seed_sha256=seed_sha256)
             return
         if (
             len(rows) != 1
             or rows[0][0] != provider
             or rows[0][4] != seed_sha256
-            or int(rows[0][1]) > floor_run_id
+            or int(rows[0][1]) != initial_run_id
         ):
             raise LocalFileMismatch("recording_initial_cut_or_seed_changed")
 
@@ -367,6 +475,7 @@ def worker_state_scope(
     resolver: BronzeStorageResolver,
     record_restart: bool = False,
     app_settings: Settings | None = None,
+    edition_loader: Callable[[LocalFile, str], EditionId | None] | None = None,
 ) -> Iterator[WorkerState | None]:
     """Own the provider's worker file for this scope.
 
@@ -388,6 +497,7 @@ def worker_state_scope(
         if app_settings is None:
             raise ValueError("local_ingress_requires_app_settings")
         seed = _verified_alert_seed(settings, provider)
+        initial_run_id = _verified_cut(settings, seed)
         assert settings.identity_floors_path is not None
         assert settings.identity_floors_sha256 is not None
         assert settings.alert_seed_sha256 is not None
@@ -396,8 +506,8 @@ def worker_state_scope(
             expected_sha256=settings.identity_floors_sha256,
             seed=seed,
             alert_seed_sha256=settings.alert_seed_sha256,
+            initial_cut_run_id=initial_run_id,
         )
-        initial_run_id = floors.ingestion_run_id
     else:
         seed, initial_run_id = _verified_seed(settings, provider)
         floors = None
@@ -411,23 +521,28 @@ def worker_state_scope(
         restart_evidence=restart_evidence_path(path) if record_restart else None,
     )
     try:
+        _assert_ingress_mode(local, local_mode=local_mode)
         seed_alert_state(local, seed)
         assert settings.alert_seed_sha256 is not None
         if local_mode:
             assert floors is not None and app_settings is not None
             assert settings.identity_floors_sha256 is not None
-            allocator = IdentityAllocator(local, provider_id=provider)
+            assert settings.segment_storage_backend is not None
+            segment_storage = resolver(settings.segment_storage_backend)
+            allocator = IdentityAllocator(local, provider_id=provider, watermark_database=path)
             allocator.initialize(
                 floors,
                 floors_sha256=settings.identity_floors_sha256,
                 seed=seed,
                 alert_seed_sha256=settings.alert_seed_sha256,
+                segment_storage=segment_storage,
+                watermark_database=path,
             )
             recorder = Recorder(local, provider_id=provider)
             _ensure_local_cursor(
                 recorder,
                 provider=provider,
-                floor_run_id=floors.ingestion_run_id,
+                initial_run_id=initial_run_id,
                 seed_sha256=settings.alert_seed_sha256,
             )
             spool_dir = settings.local_dir / ("spool-" + quote(provider, safe=""))
@@ -440,13 +555,16 @@ def worker_state_scope(
                 recorder=recorder,
                 allocator=allocator,
             )
+            # Startup crash recovery: finish committed spools and sweep uncommitted orphans.
+            ingestor.resume_pending()
             state = WorkerState(
                 local,
-                engine=None,
+                engine=engine,
                 manifest=manifest,
                 settings=settings,
                 resolver=resolver,
                 ingestor=ingestor,
+                edition_loader=edition_loader,
             )
             yield state
         else:

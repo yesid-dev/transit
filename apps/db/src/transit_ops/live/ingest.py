@@ -58,10 +58,12 @@ from transit_ops.ingestion.realtime_gtfs import (
 )
 from transit_ops.ingestion.storage import BronzeStorageResolver
 from transit_ops.lake.objects import ObjectKeyTaken, object_digest, put_create_only
+from transit_ops.live.edition import EditionId
 from transit_ops.live.identity import IdentityAllocator, IdentityReservation
-from transit_ops.live.local_file import LocalFile
+from transit_ops.live.local_file import LocalFile, LocalFileMismatch, _table_shape
 from transit_ops.live.recording import Recorder
 from transit_ops.live.settings import LaneSettings
+from transit_ops.s3 import ObjectStorageError
 from transit_ops.settings import Settings
 
 SPOOL_FORMAT_VERSION: Final = 1
@@ -71,8 +73,19 @@ _REALTIME_ENDPOINTS: Final = frozenset({"trip_updates", "vehicle_positions"})
 _ALERT_ENDPOINTS: Final = frozenset({"i3_alerts", "service_alerts"})
 _ALL_ENDPOINTS: Final = _REALTIME_ENDPOINTS | _ALERT_ENDPOINTS
 _BENIGN_HEADERS: Final = frozenset({"accept", "user-agent"})
+_APP_FAILURE_TABLE: Final = "local_application_failures"
+_APP_FAILURE_DEF: Final = (
+    "endpoint_key VARCHAR NOT NULL, "
+    "capture_row_id BIGINT NOT NULL, "
+    "input_signature VARCHAR NOT NULL, "
+    "ingestion_run_id BIGINT NOT NULL CHECK(ingestion_run_id > 0), "
+    "error_message VARCHAR NOT NULL, "
+    "PRIMARY KEY(endpoint_key, capture_row_id)"
+)
 
 LOCAL_INGRESS_REQUIRED_FIELDS: Final[tuple[str, ...]] = (
+    "initial_cut_path",
+    "initial_cut_sha256",
     "alert_seed_path",
     "alert_seed_sha256",
     "identity_floors_path",
@@ -85,7 +98,7 @@ LOCAL_INGRESS_REQUIRED_FIELDS: Final[tuple[str, ...]] = (
 )
 
 type CommitStage = Literal["spool", "bronze", "identity", "record"]
-type CaptureOutcomeKind = Literal["stored", "failed", "skipped_identical"]
+type CaptureOutcomeKind = Literal["stored", "failed"]
 type EndpointConfig = RealtimeIngestionConfig | I3IngestionConfig
 type Fetcher = Callable[..., DownloadedArtifact]
 
@@ -99,15 +112,51 @@ class LocalIngestIntegrityError(RuntimeError):
 
 
 def validate_local_ingress_settings(settings: LaneSettings) -> None:
-    """Refuse by name unless every seed, floor, storage, and resource input is supplied."""
+    """Refuse by name unless a role owns local ingress and all cut/seed/floor inputs exist."""
+    if settings.shadow == "off":
+        raise LocalIngestRefused("local_ingress_requires_shadow_role")
+    if settings.shadow == "postgres_authoritative":
+        raise LocalIngestRefused("postgres_authoritative_forbids_local_ingress")
     for field_name in LOCAL_INGRESS_REQUIRED_FIELDS:
         value = getattr(settings, field_name, None)
         if value is None or (isinstance(value, str) and not value.strip()):
             raise LocalIngestRefused(f"local_ingress_requires_{field_name}")
-    for digest_field in ("alert_seed_sha256", "identity_floors_sha256"):
+    for digest_field in ("initial_cut_sha256", "alert_seed_sha256", "identity_floors_sha256"):
         digest = getattr(settings, digest_field)
         if not isinstance(digest, str) or _SHA256_RE.fullmatch(digest) is None:
             raise LocalIngestRefused(f"local_ingress_invalid_{digest_field}")
+
+
+def application_input_signature(
+    endpoint_key: str,
+    capture: CaptureEntry,
+    *,
+    provider_timezone: str,
+    edition: EditionId | None,
+) -> str:
+    """Deterministic fingerprint of the inputs needed to apply one capture."""
+    edition_key: object = (
+        None
+        if endpoint_key != "trip_updates" or edition is None
+        else [
+            edition.provider_id,
+            edition.dataset_version_id,
+            edition.source_version,
+            list(edition.dimension_versions),
+        ]
+    )
+    return hashlib.sha256(
+        _canonical_json(
+            {
+                "endpoint_key": endpoint_key,
+                "capture_row_id": capture.capture_row_id,
+                "sha256": capture.sha256,
+                "byte_size": capture.byte_size,
+                "provider_timezone": provider_timezone,
+                "edition": edition_key,
+            }
+        )
+    ).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -235,7 +284,7 @@ class _SpoolReceipt:
             raise LocalIngestIntegrityError("local_ingest_spool_corrupt:digest_mismatch")
         if body["provider_id"] != expected_provider:
             raise LocalIngestIntegrityError("local_ingest_spool_provider_mismatch")
-        if body["outcome"] not in ("stored", "failed", "skipped_identical"):
+        if body["outcome"] not in ("stored", "failed"):
             raise LocalIngestIntegrityError("local_ingest_spool_corrupt:outcome")
         if body["endpoint_key"] not in _ALL_ENDPOINTS:
             raise LocalIngestIntegrityError("local_ingest_spool_corrupt:endpoint")
@@ -463,27 +512,6 @@ def _build_poll_record(
             duplicate_of_row_id=None,
             missing_reason=None,
         )
-    elif receipt.outcome == "skipped_identical":
-        assert receipt.duplicate_of_row_id is not None
-        poll = PollEntry(
-            ingestion_run_id=reservation.ingestion_run_id,
-            run_kind=receipt.run_kind,
-            status="skipped_identical",
-            run_status="succeeded",
-            requested_at_utc=receipt.started_at_utc,
-            started_at_utc=receipt.started_at_utc,
-            completed_at_utc=receipt.completed_at_utc,
-            time_utc=receipt.completed_at_utc,
-            http_status_code=receipt.http_status_code,
-            error_message=None,
-            feed_timestamp_utc=receipt.feed_timestamp_utc,
-            feed_timestamp_source=receipt.feed_timestamp_source,
-            entity_count=receipt.entity_count,
-            index_family=receipt.index_family,
-            capture_row_id=None,
-            duplicate_of_row_id=receipt.duplicate_of_row_id,
-            missing_reason=None,
-        )
     else:
         poll = PollEntry(
             ingestion_run_id=reservation.ingestion_run_id,
@@ -582,10 +610,60 @@ class LocalIngestor:
                     f"local_ingest_spool_missing:{reservation.attempt_key}"
                 )
 
+    def _verify_recorded_bronze(self, reservation: IdentityReservation) -> None:
+        if reservation.outcome != "stored":
+            return
+        assert reservation.capture_row_id is not None
+        row = self.local.connection.execute(
+            "SELECT storage_backend, storage_path, sha256, byte_size FROM captures "
+            "WHERE index_family=? AND capture_row_id=?",
+            [reservation.index_family, reservation.capture_row_id],
+        ).fetchone()
+        if row is None:
+            raise LocalIngestIntegrityError("local_ingest_recorded_row_missing:capture")
+        backend, path, expected_sha, expected_size = (
+            str(row[0]),
+            str(row[1]),
+            str(row[2]),
+            int(row[3]),
+        )
+        try:
+            actual = object_digest(self.resolver(backend), path)
+        except Exception as exc:
+            raise LocalIngestIntegrityError("local_ingest_torn_bytes:bronze_readback") from exc
+        if actual != (expected_sha, expected_size):
+            raise LocalIngestIntegrityError("local_ingest_torn_bytes:bronze_readback")
+
+    def cleanup_orphans(self) -> None:
+        """Sweep uncommitted orphan staging files under the owner lock (never touch Bronze)."""
+        self.local.require_committed()
+        if not self.spool_dir.is_dir():
+            return
+        tmp_dir = self.spool_dir / ".tmp"
+        if tmp_dir.is_dir():
+            for entry in list(tmp_dir.iterdir()):
+                if entry.is_file():
+                    entry.unlink(missing_ok=True)
+        for leftover in self.spool_dir.glob("*.tmp"):
+            if leftover.is_file():
+                leftover.unlink(missing_ok=True)
+        for payload_path in sorted(self.spool_dir.glob("*.payload")):
+            attempt_key = payload_path.name.removesuffix(".payload")
+            if self._receipt_path(attempt_key).exists():
+                continue
+            if _ATTEMPT_KEY_RE.fullmatch(attempt_key) is not None:
+                existing = self.allocator.get_reservation(attempt_key)
+                if existing is not None:
+                    if not existing.recorded:
+                        continue
+                    self._verify_recorded_bronze(existing)
+            payload_path.unlink(missing_ok=True)
+
     def resume_pending(self, *, endpoint_key: str | None = None) -> tuple[LocalCaptureOutcome, ...]:
         """Complete every committed local spool without issuing any HTTP request."""
         self.local.require_committed()
         self.allocator.require_initialized()
+        self.cleanup_orphans()
         pending = self._pending_spools(endpoint_key=endpoint_key)
         self._check_unrecorded_reservations(endpoint_key=endpoint_key, pending=pending)
         return tuple(self._finish_spooled(receipt, resumed=True) for receipt in pending)
@@ -595,7 +673,6 @@ class LocalIngestor:
         endpoint_key: str,
         *,
         attempt_key: str | None = None,
-        deduplicate_identical: bool = False,
     ) -> LocalCaptureOutcome:
         """Fetch one endpoint once, durably spool verified bytes, allocate IDs, and record."""
         self.local.require_committed()
@@ -604,7 +681,7 @@ class LocalIngestor:
         if attempt_key is not None and _ATTEMPT_KEY_RE.fullmatch(attempt_key) is None:
             raise LocalIngestRefused("local_ingest_invalid_attempt_key")
 
-        # 1. Explicit attempt retry: return committed outcome with zero HTTP work.
+        # 1. Explicit attempt retry: verify Bronze before cleaning staging, return with zero HTTP.
         if attempt_key is not None:
             existing = self.allocator.get_reservation(attempt_key)
             if existing is not None:
@@ -613,33 +690,29 @@ class LocalIngestor:
                 if existing.outcome == "silver_load_failed":
                     raise LocalIngestIntegrityError("local_ingest_attempt_outcome_mismatch")
                 if existing.recorded:
+                    self._verify_recorded_bronze(existing)
                     self._cleanup_staging(attempt_key)
                     return self._recorded_outcome(existing)
 
-        # 2. Recover any pending committed spool for this endpoint before issuing HTTP work.
+        # 2. Drain any pending committed spool for this endpoint before issuing fresh HTTP work.
         pending = self._pending_spools(endpoint_key=endpoint_key)
         self._check_unrecorded_reservations(endpoint_key=endpoint_key, pending=pending)
         if pending:
-            if attempt_key is None:
-                return self._finish_spooled(pending[0], resumed=True)
-            matching = [r for r in pending if r.attempt_key == attempt_key]
-            if matching:
-                return self._finish_spooled(matching[0], resumed=True)
+            if attempt_key is not None:
+                matching = [r for r in pending if r.attempt_key == attempt_key]
+                if matching:
+                    return self._finish_spooled(matching[0], resumed=True)
             for earlier in pending:
                 self._finish_spooled(earlier, resumed=True)
 
         # 3. Fresh single HTTP fetch + Commit 1 (durable spool).
         key = attempt_key or uuid4().hex
-        receipt = self._fetch_and_spool(
-            endpoint_key, attempt_key=key, deduplicate_identical=deduplicate_identical
-        )
+        receipt = self._fetch_and_spool(endpoint_key, attempt_key=key)
         if self.after_commit is not None:
             self.after_commit("spool")
         return self._finish_spooled(receipt, resumed=False)
 
-    def _fetch_and_spool(
-        self, endpoint_key: str, *, attempt_key: str, deduplicate_identical: bool
-    ) -> _SpoolReceipt:
+    def _fetch_and_spool(self, endpoint_key: str, *, attempt_key: str) -> _SpoolReceipt:
         family = _endpoint_family(endpoint_key)
         config, default_filename, ssl_context = _build_endpoint_config(
             self.manifest, self.settings, endpoint_key
@@ -674,7 +747,7 @@ class LocalIngestor:
             payload = artifact.temp_path.read_bytes()
             actual_sha = hashlib.sha256(payload).hexdigest()
             if len(payload) != artifact.byte_size or actual_sha != artifact.checksum_sha256:
-                raise LocalIngestIntegrityError("local_ingest_torn_bytes:download")
+                raise ValueError("local_ingest_torn_bytes:download")
             check_capture_deadline(deadline)
             completed_at_utc = max(self.clock().astimezone(UTC), started_at_utc.astimezone(UTC))
             if family == "realtime_snapshot":
@@ -745,41 +818,6 @@ class LocalIngestor:
             return receipt
 
         assert payload is not None and actual_sha is not None and feed_ts is not None
-        duplicate_of = (
-            self._matching_latest_capture(family, endpoint_key, actual_sha, len(payload))
-            if deduplicate_identical
-            else None
-        )
-        if duplicate_of is not None:
-            receipt = _SpoolReceipt.create(
-                version=SPOOL_FORMAT_VERSION,
-                provider_id=self.provider_id,
-                endpoint_key=endpoint_key,
-                index_family=family,
-                attempt_key=attempt_key,
-                outcome="skipped_identical",
-                run_kind=config.feed_kind,
-                declared_interval_seconds=config.refresh_interval_seconds,
-                started_at_utc=started_at_utc.astimezone(UTC),
-                completed_at_utc=completed_at_utc,
-                http_status_code=http_status_code,
-                error_message=None,
-                storage_backend=None,
-                storage_path=None,
-                object_kind=None,
-                source_url=safe_source_url,
-                byte_size=len(payload),
-                sha256=actual_sha,
-                feed_timestamp_utc=feed_ts,
-                feed_timestamp_source=feed_ts_source,
-                entity_count=entity_count,
-                api_version=api_version,
-                alert_count=alert_count,
-                duplicate_of_row_id=duplicate_of,
-            )
-            _write_file_durable(self._receipt_path(attempt_key), receipt.to_json())
-            return receipt
-
         storage_path = _storage_path_for(
             endpoint_key,
             provider_id=self.provider_id,
@@ -824,86 +862,41 @@ class LocalIngestor:
             raise
         return receipt
 
-    def _matching_latest_capture(
-        self, index_family: str, endpoint_key: str, expected_sha: str, expected_size: int
-    ) -> int | None:
-        row = self.local.connection.execute(
-            "SELECT capture_row_id, sha256, byte_size, storage_backend, storage_path "
-            "FROM captures WHERE index_family=? AND endpoint_key=? "
-            "ORDER BY captured_at_utc DESC, capture_row_id DESC LIMIT 1",
-            [index_family, endpoint_key],
-        ).fetchone()
-        if row is None:
-            return None
-        capture_id, prev_sha, prev_size, backend, path = (
-            int(row[0]),
-            str(row[1]),
-            int(row[2]),
-            str(row[3]),
-            str(row[4]),
-        )
-        if (prev_sha, prev_size) != (expected_sha, expected_size):
-            return None
-        try:
-            actual = object_digest(self.resolver(backend), path)
-        except Exception as exc:
-            raise LocalIngestIntegrityError("local_ingest_torn_bytes:duplicate_reference") from exc
-        if actual != (expected_sha, expected_size):
-            raise LocalIngestIntegrityError("local_ingest_torn_bytes:duplicate_reference")
-        return capture_id
-
     def _ensure_bronze_durable(self, receipt: _SpoolReceipt) -> None:
-        if receipt.outcome == "stored":
-            assert receipt.storage_backend is not None and receipt.storage_path is not None
-            assert receipt.sha256 is not None and receipt.byte_size is not None
-            expected = (receipt.sha256, receipt.byte_size)
-            storage = self.resolver(receipt.storage_backend)
-            payload_path = self._payload_path(receipt.attempt_key)
-            if payload_path.exists():
-                if _file_digest(payload_path) != expected:
-                    raise LocalIngestIntegrityError("local_ingest_torn_bytes:spool_payload")
-                tmp_dir = self.spool_dir / ".tmp"
-                tmp_dir.mkdir(parents=True, exist_ok=True)
-                upload_copy = tmp_dir / f"upload_{receipt.attempt_key}_{uuid4().hex}.bin"
-                try:
-                    shutil.copyfile(payload_path, upload_copy)
-                    put_create_only(storage, upload_copy, receipt.storage_path, expected=expected)
-                except ObjectKeyTaken as exc:
-                    raise LocalIngestIntegrityError(
-                        f"local_ingest_immutable_byte_conflict:{receipt.storage_path}"
-                    ) from exc
-                except ValueError as exc:
-                    raise LocalIngestIntegrityError(
-                        "local_ingest_torn_bytes:spool_payload"
-                    ) from exc
-                finally:
-                    upload_copy.unlink(missing_ok=True)
-            elif not storage.exists(receipt.storage_path):
-                raise LocalIngestIntegrityError("local_ingest_torn_bytes:payload_missing")
+        if receipt.outcome != "stored":
+            return
+        assert receipt.storage_backend is not None and receipt.storage_path is not None
+        assert receipt.sha256 is not None and receipt.byte_size is not None
+        expected = (receipt.sha256, receipt.byte_size)
+        storage = self.resolver(receipt.storage_backend)
+        payload_path = self._payload_path(receipt.attempt_key)
+        if payload_path.exists():
+            if _file_digest(payload_path) != expected:
+                raise LocalIngestIntegrityError("local_ingest_torn_bytes:spool_payload")
+            tmp_dir = self.spool_dir / ".tmp"
+            tmp_dir.mkdir(parents=True, exist_ok=True)
+            upload_copy = tmp_dir / f"upload_{receipt.attempt_key}_{uuid4().hex}.bin"
             try:
-                actual = object_digest(storage, receipt.storage_path)
-            except Exception as exc:
-                raise LocalIngestIntegrityError("local_ingest_torn_bytes:bronze_readback") from exc
-            if actual != expected:
-                raise LocalIngestIntegrityError("local_ingest_torn_bytes:bronze_readback")
-        elif receipt.outcome == "skipped_identical":
-            assert receipt.duplicate_of_row_id is not None
-            assert receipt.sha256 is not None and receipt.byte_size is not None
-            row = self.local.connection.execute(
-                "SELECT sha256, byte_size, storage_backend, storage_path FROM captures "
-                "WHERE index_family=? AND endpoint_key=? AND capture_row_id=?",
-                [receipt.index_family, receipt.endpoint_key, receipt.duplicate_of_row_id],
-            ).fetchone()
-            if row is None or (str(row[0]), int(row[1])) != (receipt.sha256, receipt.byte_size):
-                raise LocalIngestIntegrityError("local_ingest_torn_bytes:duplicate_reference")
-            try:
-                actual = object_digest(self.resolver(str(row[2])), str(row[3]))
-            except Exception as exc:
+                shutil.copyfile(payload_path, upload_copy)
+                put_create_only(storage, upload_copy, receipt.storage_path, expected=expected)
+            except ObjectKeyTaken as exc:
                 raise LocalIngestIntegrityError(
-                    "local_ingest_torn_bytes:duplicate_reference"
+                    f"local_ingest_immutable_byte_conflict:{receipt.storage_path}"
                 ) from exc
-            if actual != (receipt.sha256, receipt.byte_size):
-                raise LocalIngestIntegrityError("local_ingest_torn_bytes:duplicate_reference")
+            except ObjectStorageError:
+                raise
+            except ValueError as exc:
+                raise LocalIngestIntegrityError("local_ingest_torn_bytes:spool_payload") from exc
+            finally:
+                upload_copy.unlink(missing_ok=True)
+        elif not storage.exists(receipt.storage_path):
+            raise LocalIngestIntegrityError("local_ingest_torn_bytes:payload_missing")
+        try:
+            actual = object_digest(storage, receipt.storage_path)
+        except Exception as exc:
+            raise LocalIngestIntegrityError("local_ingest_torn_bytes:bronze_readback") from exc
+        if actual != expected:
+            raise LocalIngestIntegrityError("local_ingest_torn_bytes:bronze_readback")
 
     def _finish_spooled(self, receipt: _SpoolReceipt, *, resumed: bool) -> LocalCaptureOutcome:
         # Stage 4: Bronze durability & immutable-byte readback BEFORE identity/record commits.
@@ -934,10 +927,11 @@ class LocalIngestor:
             self.allocator.mark_recorded(
                 receipt.attempt_key, request_digest=receipt.receipt_sha256
             )
+        self.allocator.write_watermark()
         if self.after_commit is not None:
             self.after_commit("record")
 
-        # Stage 7: Remove staging spool files (never touch Bronze storage bytes).
+        # Stage 7: Remove staging spool files ONLY after Bronze was verified & record committed.
         self._cleanup_staging(receipt.attempt_key)
         return LocalCaptureOutcome(
             provider_id=receipt.provider_id,
@@ -1021,6 +1015,54 @@ class LocalIngestor:
             resumed_from_spool=True,
         )
 
+    def _ensure_app_failure_table(self, conn: Any, *, create: bool) -> bool:
+        exists = (
+            conn.execute(
+                "SELECT 1 FROM duckdb_tables() WHERE database_name=current_database() "
+                "AND schema_name='main' AND NOT temporary AND table_name=?",
+                [_APP_FAILURE_TABLE],
+            ).fetchone()
+            is not None
+        )
+        if not exists and not create:
+            return False
+        conn.execute(f"CREATE TEMP TABLE _app_failure_expected ({_APP_FAILURE_DEF})")
+        try:
+            if not exists:
+                conn.execute(f"CREATE TABLE {_APP_FAILURE_TABLE} ({_APP_FAILURE_DEF})")
+            if _table_shape(conn, _APP_FAILURE_TABLE) != _table_shape(
+                conn, "_app_failure_expected"
+            ):
+                raise LocalIngestIntegrityError("local_ingest_app_failure_table_shape_differs")
+        except LocalFileMismatch as exc:
+            raise LocalIngestIntegrityError("local_ingest_app_failure_table_shape_differs") from exc
+        finally:
+            conn.execute("DROP TABLE _app_failure_expected")
+        return True
+
+    def recorded_application_failures(self) -> dict[tuple[str, int], tuple[str, str]]:
+        """Return (endpoint_key, capture_row_id) -> (input_signature, error_message)."""
+        self.local.require_committed()
+        with self.local.transaction() as conn:
+            if not self._ensure_app_failure_table(conn, create=False):
+                return {}
+            rows = conn.execute(
+                f"SELECT endpoint_key, capture_row_id, input_signature, error_message "
+                f"FROM {_APP_FAILURE_TABLE}"
+            ).fetchall()
+        return {(str(r[0]), int(r[1])): (str(r[2]), str(r[3])) for r in rows}
+
+    def clear_application_failure(self, endpoint_key: str, capture_row_id: int) -> None:
+        """Clear a recorded failure once the capture succeeds on a new input."""
+        self.local.require_committed()
+        with self.local.transaction() as conn:
+            if not self._ensure_app_failure_table(conn, create=False):
+                return
+            conn.execute(
+                f"DELETE FROM {_APP_FAILURE_TABLE} WHERE endpoint_key=? AND capture_row_id=?",
+                [endpoint_key, capture_row_id],
+            )
+
     def record_application_failure(
         self,
         endpoint_key: str,
@@ -1030,8 +1072,9 @@ class LocalIngestor:
         started_at_utc: datetime,
         completed_at_utc: datetime | None = None,
         attempt_key: str | None = None,
+        input_signature: str | None = None,
     ) -> int:
-        """Record a failed local Silver/fact application with canonical failed-load tag."""
+        """Record a failed local Silver/fact application once per input signature."""
         self.local.require_committed()
         self.allocator.require_initialized()
         family = _endpoint_family(endpoint_key)
@@ -1046,15 +1089,29 @@ class LocalIngestor:
         if attempt_key is not None and _ATTEMPT_KEY_RE.fullmatch(attempt_key) is None:
             raise LocalIngestRefused("local_ingest_invalid_attempt_key")
         redacted = _redact(str(error))[:1950]
-        key = attempt_key or f"appfail-{capture.capture_row_id}-{uuid4().hex[:16]}"
+        signature = (
+            input_signature
+            if input_signature is not None
+            else hashlib.sha256(
+                _canonical_json(
+                    {
+                        "endpoint_key": endpoint_key,
+                        "capture_row_id": capture.capture_row_id,
+                        "sha256": capture.sha256,
+                        "error": redacted,
+                    }
+                )
+            ).hexdigest()
+        )
+        key = attempt_key or f"appfail-{endpoint_key}-{capture.capture_row_id}-{signature[:16]}"
+        # Timestamp-free digest so retrying the same failure attempt is idempotent.
         digest = hashlib.sha256(
             _canonical_json(
                 {
                     "endpoint_key": endpoint_key,
                     "index_family": family,
                     "capture_row_id": capture.capture_row_id,
-                    "started_at_utc": _iso_utc(started),
-                    "completed_at_utc": _iso_utc(completed),
+                    "input_signature": signature,
                     "error": redacted,
                 }
             )
@@ -1063,6 +1120,7 @@ class LocalIngestor:
         interval = int(feed.refresh_interval_seconds) if feed is not None else None
         day = FeedDayKey(self.provider_id, endpoint_key, family, started.date())
         with self.local.transaction() as conn:
+            self._ensure_app_failure_table(conn, create=True)
             reservation = self.allocator.reserve(
                 attempt_key=key,
                 endpoint_key=endpoint_key,
@@ -1070,27 +1128,41 @@ class LocalIngestor:
                 outcome="silver_load_failed",
                 request_digest=digest,
             )
-            if reservation.recorded:
-                return reservation.ingestion_run_id
-            entry = ProcessingEntry(
-                stage="silver_load",
-                index_family=family,
-                capture_row_id=capture.capture_row_id,
-                attribution="recorded",
-                status="failed",
-                started_at_utc=started,
-                completed_at_utc=completed,
-                error_message=redacted,
-                rows=None,
-                ingestion_run_id=reservation.ingestion_run_id,
-            )
-            record = PollRecord(day, (), (), (entry,), interval, None)
-            validate_record(record)
-            self.recorder.record(record)
+            if not reservation.recorded:
+                entry = ProcessingEntry(
+                    stage="silver_load",
+                    index_family=family,
+                    capture_row_id=capture.capture_row_id,
+                    attribution="recorded",
+                    status="failed",
+                    started_at_utc=started,
+                    completed_at_utc=completed,
+                    error_message=redacted,
+                    rows=None,
+                    ingestion_run_id=reservation.ingestion_run_id,
+                )
+                record = PollRecord(day, (), (), (entry,), interval, None)
+                validate_record(record)
+                self.recorder.record(record)
+                conn.execute(
+                    "INSERT INTO recording_coverage VALUES (?, true) "
+                    "ON CONFLICT (ingestion_run_id) DO UPDATE SET terminal_recorded=true",
+                    [reservation.ingestion_run_id],
+                )
+                self.allocator.mark_recorded(key, request_digest=digest)
             conn.execute(
-                "INSERT INTO recording_coverage VALUES (?, true) "
-                "ON CONFLICT (ingestion_run_id) DO UPDATE SET terminal_recorded=true",
-                [reservation.ingestion_run_id],
+                f"INSERT INTO {_APP_FAILURE_TABLE} VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT (endpoint_key, capture_row_id) DO UPDATE SET "
+                "input_signature=excluded.input_signature, "
+                "ingestion_run_id=excluded.ingestion_run_id, "
+                "error_message=excluded.error_message",
+                [
+                    endpoint_key,
+                    capture.capture_row_id,
+                    signature,
+                    reservation.ingestion_run_id,
+                    redacted,
+                ],
             )
-            self.allocator.mark_recorded(key, request_digest=digest)
+        self.allocator.write_watermark()
         return reservation.ingestion_run_id

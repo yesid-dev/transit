@@ -8,17 +8,23 @@ IDs start strictly above explicitly supplied, digest-verified global maxima
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final, cast
+from uuid import uuid4
 
 import duckdb
 
 from transit_ops.live.local_file import LocalFile, LocalFileMismatch, _table_shape
+from transit_ops.live.segments import provider_has_exported_segments
 from transit_ops.static.alert_seed_contract import AlertSeed
+
+if TYPE_CHECKING:
+    from transit_ops.ingestion.storage import BronzeStorage
 
 # Before activation, incompatible identity formats bump this version and refuse (live 21).
 IDENTITY_FORMAT_VERSION: Final = 1
@@ -30,7 +36,7 @@ NAMESPACES: Final[tuple[str, ...]] = (
     "alert_snapshot",
 )
 _INDEX_FAMILIES: Final = frozenset({"realtime_snapshot", "alert_snapshot"})
-_OUTCOMES: Final = frozenset({"stored", "failed", "skipped_identical", "silver_load_failed"})
+_OUTCOMES: Final = frozenset({"stored", "failed", "silver_load_failed"})
 _SHA256_RE: Final = re.compile(r"^[0-9a-f]{64}$")
 _ATTEMPT_KEY_RE: Final = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 _MAX_BIGINT: Final = 2**63 - 1
@@ -234,6 +240,7 @@ def verify_identity_floors(
     expected_sha256: str,
     seed: AlertSeed,
     alert_seed_sha256: str,
+    initial_cut_run_id: int | None = None,
 ) -> IdentityFloors:
     """Read, digest-verify, and cross-check an operator-supplied floors artifact."""
     if not isinstance(expected_sha256, str) or _SHA256_RE.fullmatch(expected_sha256) is None:
@@ -259,7 +266,78 @@ def verify_identity_floors(
         and floors.alert_snapshot_id < seed.global_max_snapshot_id
     ):
         raise IdentityRefused("local_identity_floor_below_evidence:alert_snapshot")
+    if initial_cut_run_id is not None:
+        if not _valid_floor(initial_cut_run_id):
+            raise IdentityRefused("local_identity_floors_invalid:initial_cut_run_id")
+        if floors.ingestion_run_id < initial_cut_run_id:
+            raise IdentityRefused("local_identity_floor_below_evidence:ingestion_run")
     return floors
+
+
+def identity_watermark_path(database: Path) -> Path:
+    return Path(str(database) + ".identity.json")
+
+
+def _committed_watermark_paths(database: Path) -> tuple[Path, Path]:
+    return (
+        Path(str(database) + ".committed.json"),
+        Path(str(database) + ".committed.invalid"),
+    )
+
+
+def _database_path(local: LocalFile, override: Path | None = None) -> Path | None:
+    candidate = override if override is not None else getattr(local, "_path", None)
+    if isinstance(candidate, Path) and str(candidate) != ":memory:":
+        return candidate
+    return None
+
+
+def _write_watermark_atomic(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    try:
+        with tmp.open("wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+        if os.name != "nt":
+            fd = os.open(path.parent, os.O_RDONLY | cast(Any, os).O_DIRECTORY)
+            try:
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def _read_identity_watermark(path: Path) -> dict[str, Any]:
+    try:
+        raw = json.loads(path.read_bytes().decode("utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        raise IdentityRefused("identity_history_exists") from exc
+    if not isinstance(raw, dict):
+        raise IdentityRefused("identity_history_exists")
+    return raw
+
+
+def _reservation_maxima(conn: duckdb.DuckDBPyConnection) -> dict[str, int]:
+    row = conn.execute(
+        "SELECT coalesce(max(ingestion_run_id), 0), "
+        "coalesce(max(ingestion_object_id), 0), "
+        "coalesce(max(CASE WHEN index_family='realtime_snapshot' THEN capture_row_id END), 0), "
+        "coalesce(max(CASE WHEN index_family='alert_snapshot' THEN capture_row_id END), 0) "
+        "FROM local_identity_reservations"
+    ).fetchone()
+    if row is None:
+        return dict.fromkeys(NAMESPACES, 0)
+    return {
+        "ingestion_run": int(row[0]),
+        "ingestion_object": int(row[1]),
+        "realtime_snapshot": int(row[2]),
+        "alert_snapshot": int(row[3]),
+    }
 
 
 @dataclass(frozen=True)
@@ -441,11 +519,106 @@ def _verify_alert_seed_checkpoint(
 class IdentityAllocator:
     """Atomic, crash-safe local ID allocator over a borrowed LocalFile."""
 
-    def __init__(self, local: LocalFile, *, provider_id: str) -> None:
+    def __init__(
+        self,
+        local: LocalFile,
+        *,
+        provider_id: str,
+        watermark_database: Path | None = None,
+    ) -> None:
         if not _valid_provider(provider_id):
             raise IdentityRefused("local_identity_invalid_provider")
         self.local = local
         self.provider_id = provider_id
+        self._watermark_database = _database_path(local, watermark_database)
+        self._verified_retained: dict[str, int] | None = None
+
+    def write_watermark(self) -> None:
+        """Persist monotonic identity high-water mark beside the database file."""
+        if self._watermark_database is None or self.local._active:
+            return
+        conn = self.local.connection
+        meta = conn.execute(
+            "SELECT format_version, provider_id, floors_sha256 FROM local_identity_meta"
+        ).fetchone()
+        if meta is None:
+            return
+        ns_rows = conn.execute(
+            "SELECT namespace, next_id FROM local_identity_namespaces"
+        ).fetchall()
+        counts = conn.execute(
+            "SELECT count(*), coalesce(sum(CASE WHEN recorded THEN 1 ELSE 0 END), 0) "
+            "FROM local_identity_reservations"
+        ).fetchone()
+        assert counts is not None
+        document = {
+            "format_version": int(meta[0]),
+            "provider_id": str(meta[1]),
+            "floors_sha256": str(meta[2]),
+            "next_ids": {str(ns): int(val) for ns, val in ns_rows},
+            "reservation_count": int(counts[0]),
+            "recorded_count": int(counts[1]),
+        }
+        payload = json.dumps(
+            document, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+        ).encode("utf-8")
+        _write_watermark_atomic(identity_watermark_path(self._watermark_database), payload)
+
+    def _refuse_if_external_history(
+        self,
+        *,
+        segment_storage: BronzeStorage | None,
+        db_path: Path | None,
+    ) -> None:
+        if segment_storage is not None and provider_has_exported_segments(
+            segment_storage, self.provider_id
+        ):
+            raise IdentityRefused("identity_history_exists")
+        if db_path is not None:
+            if identity_watermark_path(db_path).exists():
+                raise IdentityRefused("identity_history_exists")
+            if any(marker.exists() for marker in _committed_watermark_paths(db_path)):
+                raise IdentityRefused("identity_history_exists")
+
+    def _verify_against_identity_watermark(
+        self,
+        conn: duckdb.DuckDBPyConnection,
+        *,
+        db_path: Path | None,
+        floors_sha256: str,
+        ns_map: dict[str, tuple[int, int]],
+    ) -> None:
+        if db_path is None:
+            return
+        wm_path = identity_watermark_path(db_path)
+        if not wm_path.exists():
+            return
+        wm = _read_identity_watermark(wm_path)
+        if (
+            wm.get("format_version") != IDENTITY_FORMAT_VERSION
+            or wm.get("provider_id") != self.provider_id
+            or wm.get("floors_sha256") != floors_sha256
+            or not isinstance(wm.get("next_ids"), dict)
+        ):
+            raise IdentityRefused("identity_history_exists")
+        wm_next = wm["next_ids"]
+        for namespace in NAMESPACES:
+            prior = wm_next.get(namespace)
+            if type(prior) is not int or ns_map[namespace][1] < prior:
+                raise IdentityRefused("identity_history_exists")
+        counts = conn.execute(
+            "SELECT count(*), coalesce(sum(CASE WHEN recorded THEN 1 ELSE 0 END), 0) "
+            "FROM local_identity_reservations"
+        ).fetchone()
+        assert counts is not None
+        res_count, rec_count = wm.get("reservation_count"), wm.get("recorded_count")
+        if (
+            type(res_count) is not int
+            or type(rec_count) is not int
+            or int(counts[0]) < res_count
+            or int(counts[1]) < rec_count
+        ):
+            raise IdentityRefused("identity_history_exists")
 
     def initialize(
         self,
@@ -454,6 +627,8 @@ class IdentityAllocator:
         floors_sha256: str,
         seed: AlertSeed,
         alert_seed_sha256: str | None = None,
+        segment_storage: BronzeStorage | None = None,
+        watermark_database: Path | None = None,
     ) -> None:
         """Install verified cutover floors once, or verify exact match on reopen."""
         if _SHA256_RE.fullmatch(floors_sha256) is None:
@@ -472,6 +647,12 @@ class IdentityAllocator:
             or floors.seed_snapshot_at_utc.astimezone(UTC) != seed.snapshot_at.astimezone(UTC)
         ):
             raise IdentityRefused("local_identity_floors_seed_mismatch")
+        db_path = (
+            _database_path(self.local, watermark_database)
+            if watermark_database is not None
+            else self._watermark_database
+        )
+        self._watermark_database = db_path
         with self.local.transaction() as conn:
             if conn.execute("SELECT provider_id FROM meta").fetchall() != [(self.provider_id,)]:
                 raise IdentityRefused("local_identity_provider_mismatch")
@@ -499,6 +680,10 @@ class IdentityAllocator:
                     raise IdentityRefused("local_identity_state_corrupt")
                 if conn.execute("SELECT 1 FROM local_identity_reservations LIMIT 1").fetchone():
                     raise IdentityRefused("local_identity_state_corrupt")
+                # Never install fresh floors when prior segments or watermarks exist (ruling 27.1).
+                self._refuse_if_external_history(
+                    segment_storage=segment_storage, db_path=db_path
+                )
                 for namespace in NAMESPACES:
                     floor_value = floors.floor_for(namespace)
                     if floor_value < retained[namespace]:
@@ -514,24 +699,34 @@ class IdentityAllocator:
                         for ns in NAMESPACES
                     ],
                 )
-                return
-            if len(existing_meta) != 1 or existing_meta[0] != expected_meta:
-                raise IdentityRefused("local_identity_floors_changed")
-            ns_rows = conn.execute(
-                "SELECT namespace, floor_value, next_id FROM local_identity_namespaces"
-            ).fetchall()
-            ns_map = {
-                str(ns): (int(floor_val), int(next_val))
-                for ns, floor_val, next_val in ns_rows
-            }
-            if set(ns_map) != set(NAMESPACES) or len(ns_rows) != len(NAMESPACES):
-                raise IdentityRefused("local_identity_state_corrupt")
-            for namespace in NAMESPACES:
-                floor_value, next_id = ns_map[namespace]
-                if floor_value != floors.floor_for(namespace):
+            else:
+                if len(existing_meta) != 1 or existing_meta[0] != expected_meta:
                     raise IdentityRefused("local_identity_floors_changed")
-                if next_id <= floor_value or next_id <= retained[namespace]:
-                    raise IdentityRefused(f"local_identity_checkpoint_below_evidence:{namespace}")
+                ns_rows = conn.execute(
+                    "SELECT namespace, floor_value, next_id FROM local_identity_namespaces"
+                ).fetchall()
+                ns_map = {
+                    str(ns): (int(floor_val), int(next_val))
+                    for ns, floor_val, next_val in ns_rows
+                }
+                if set(ns_map) != set(NAMESPACES) or len(ns_rows) != len(NAMESPACES):
+                    raise IdentityRefused("local_identity_state_corrupt")
+                for namespace in NAMESPACES:
+                    floor_value, next_id = ns_map[namespace]
+                    if floor_value != floors.floor_for(namespace):
+                        raise IdentityRefused("local_identity_floors_changed")
+                    if next_id <= floor_value or next_id <= retained[namespace]:
+                        raise IdentityRefused(
+                            f"local_identity_checkpoint_below_evidence:{namespace}"
+                        )
+                self._verify_against_identity_watermark(
+                    conn,
+                    db_path=db_path,
+                    floors_sha256=floors_sha256,
+                    ns_map=ns_map,
+                )
+        self._verified_retained = dict(retained)
+        self.write_watermark()
 
     def require_initialized(self) -> None:
         """Refuse allocation when verified seed or floors have not been installed."""
@@ -573,6 +768,7 @@ class IdentityAllocator:
         if not isinstance(request_digest, str) or _SHA256_RE.fullmatch(request_digest) is None:
             raise IdentityRefused("local_identity_invalid_request_digest")
 
+        allocated: dict[str, int] = {}
         with self.local.transaction() as conn:
             self.require_initialized()
             existing = _fetch_reservation(conn, attempt_key)
@@ -586,13 +782,14 @@ class IdentityAllocator:
                     raise IdentityRefused("local_identity_reservation_conflict")
                 return existing
 
-            retained = _retained_maxima(conn)
+            if self._verified_retained is None:
+                self._verified_retained = _retained_maxima(conn)
+            res_max = _reservation_maxima(conn)
             needed = (
                 ("ingestion_run", "ingestion_object", index_family)
                 if outcome == "stored"
                 else ("ingestion_run",)
             )
-            allocated: dict[str, int] = {}
             for namespace in needed:
                 row = conn.execute(
                     "SELECT floor_value, next_id FROM local_identity_namespaces WHERE namespace=?",
@@ -601,7 +798,8 @@ class IdentityAllocator:
                 if row is None:
                     raise IdentityRefused("local_identity_state_corrupt")
                 floor_value, next_id = int(row[0]), int(row[1])
-                if next_id <= floor_value or next_id <= retained[namespace]:
+                bound = max(floor_value, self._verified_retained[namespace], res_max[namespace])
+                if next_id <= bound:
                     raise IdentityRefused(f"local_identity_checkpoint_below_evidence:{namespace}")
                 if next_id >= _MAX_BIGINT:
                     raise IdentityRefused(f"local_identity_overflow:{namespace}")
@@ -638,7 +836,14 @@ class IdentityAllocator:
                     reservation.capture_row_id,
                 ],
             )
-            return reservation
+        if not self.local._active:
+            if self._verified_retained is not None:
+                for namespace, value in allocated.items():
+                    self._verified_retained[namespace] = max(
+                        self._verified_retained[namespace], value
+                    )
+            self.write_watermark()
+        return reservation
 
     def get_reservation(self, attempt_key: str) -> IdentityReservation | None:
         with self.local.transaction() as conn:
@@ -679,6 +884,7 @@ class IdentityAllocator:
                 "UPDATE local_identity_reservations SET recorded = true WHERE attempt_key = ?",
                 [attempt_key],
             )
+        self.write_watermark()
 
 
 def _fetch_reservation(

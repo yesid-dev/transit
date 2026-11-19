@@ -321,8 +321,7 @@ def test_records_failed_duplicate_empty_and_corrected_outcomes_with_redaction_an
             b"not-valid-protobuf",
             empty_vp,
             valid_vp,
-            valid_vp,  # duplicate with deduplicate_identical=True -> skipped_identical
-            valid_vp,  # duplicate stored (default PG parity)
+            valid_vp,  # duplicate stored (PG parity)
             alert_v1,
             alert_v2,  # corrected English text on same content_hash
             empty_alerts,
@@ -371,15 +370,7 @@ def test_records_failed_duplicate_empty_and_corrected_outcomes_with_redaction_an
         valid_res = ingestor.capture_endpoint("vehicle_positions")
         assert (valid_res.outcome, valid_res.capture_row_id) == ("stored", 102)
 
-        # 5. Duplicate capture with deduplicate_identical=True -> skipped_identical referencing 102.
-        dup_skip = ingestor.capture_endpoint("vehicle_positions", deduplicate_identical=True)
-        assert (dup_skip.outcome, dup_skip.capture_row_id, dup_skip.duplicate_of_row_id) == (
-            "skipped_identical",
-            None,
-            102,
-        )
-
-        # 6. Duplicate capture with default mode -> stored as capture_row_id=103.
+        # 5. Duplicate capture is stored as capture_row_id=103 (PG parity).
         dup_stored = ingestor.capture_endpoint("vehicle_positions")
         assert (dup_stored.outcome, dup_stored.capture_row_id) == ("stored", 103)
 
@@ -644,8 +635,8 @@ def test_subprocess_crash_at_each_commit_boundary_recovers_with_zero_duplicate_h
             clock=StepClock(AT + timedelta(seconds=30)),
             fetcher=retry_fetcher,
         )
-        # Retry WITHOUT passing attempt_key too (worker-loop restart behavior!).
-        recovered = ingestor.capture_endpoint("vehicle_positions")
+        # Startup crash recovery completes the spooled capture with zero HTTP calls.
+        (recovered,) = ingestor.resume_pending()
         assert retry_fetcher.calls == []
         assert recovered.resumed_from_spool is True
         assert (
@@ -787,7 +778,32 @@ def test_local_trip_updates_applied_after_seeded_edition_with_zero_postgres(tmp_
         ).fetchall() == [(102, 180)]
 
 
-def local_ingress_settings(tmp_path: Path, *, floors_values: dict[str, int] | None = None):
+def write_initial_cut(
+    tmp_path: Path, *, seed, seed_sha: str, initial_run_id: int = 200
+) -> tuple[Path, str]:
+    payload = json.dumps(
+        {
+            "version": 1,
+            "provider_id": seed.provider_id,
+            "alert_seed_sha256": seed_sha,
+            "seed_snapshot_at_utc": seed.snapshot_at.isoformat(),
+            "initial_run_id": initial_run_id,
+        },
+        sort_keys=True,
+    ).encode("utf-8")
+    cut_path = tmp_path / "initial_cut.json"
+    cut_path.write_bytes(payload)
+    return cut_path, sha256(payload).hexdigest()
+
+
+def local_ingress_settings(
+    tmp_path: Path,
+    *,
+    floors_values: dict[str, int] | None = None,
+    initial_run_id: int | None = None,
+    shadow: str = "local_authoritative",
+):
+    tmp_path.mkdir(parents=True, exist_ok=True)
     fv = floors_values or {
         "ingestion_run_id": 200,
         "ingestion_object_id": 200,
@@ -797,10 +813,19 @@ def local_ingress_settings(tmp_path: Path, *, floors_values: dict[str, int] | No
     seed, seed_path, seed_sha, _, floors_path, floors_sha = write_seed_and_floors(
         tmp_path, seed=empty_seed(global_max=fv["alert_snapshot_id"]), **fv
     )
+    cut_run_id = fv["ingestion_run_id"] if initial_run_id is None else initial_run_id
+    cut_path, cut_sha = write_initial_cut(
+        tmp_path, seed=seed, seed_sha=seed_sha, initial_run_id=cut_run_id
+    )
     lane = LANE_SETTINGS.model_copy(
         update={
             "ingress": "local",
+            "shadow": shadow,
+            "shadow_budget_seconds": 30.0 if shadow != "off" else None,
+            "shadow_rss_limit_mb": 512 if shadow != "off" else None,
             "local_dir": tmp_path / "local_state",
+            "initial_cut_path": cut_path,
+            "initial_cut_sha256": cut_sha,
             "alert_seed_path": seed_path,
             "alert_seed_sha256": seed_sha,
             "identity_floors_path": floors_path,
@@ -817,9 +842,70 @@ def local_ingress_settings(tmp_path: Path, *, floors_values: dict[str, int] | No
     )
 
 
+def fake_edition_engine(monkeypatch, *, version: int = 7, source: str = "v1"):
+    """Fake read-only PG engine that routes through live/edition.py (#883)."""
+    from contextlib import contextmanager
+
+    from transit_ops.live import worker_state
+    from transit_ops.live.edition import EditionId
+
+    class FakeEditionEngine:
+        def __init__(self) -> None:
+            self.version = version
+            self.source = source
+            self.loads: list[EditionId] = []
+            self.available = True
+
+        @contextmanager
+        def connect(self):
+            yield self
+
+        @contextmanager
+        def begin(self):
+            yield self
+
+        def execute(self, *_args, **_kwargs):
+            return None
+
+    engine = FakeEditionEngine()
+
+    def current_id(_pg, *, provider_id: str):
+        from transit_ops.live.edition import EditionMissing
+
+        if not engine.available:
+            raise EditionMissing(f"no edition for {provider_id}")
+        return EditionId(provider_id, engine.version, engine.source)
+
+    def load_from_pg(duck, _pg, edition: EditionId):
+        engine.loads.append(edition)
+        # Populate the exact 8 edition_* tables using the live/edition.py contract.
+        from transit_ops.live.edition import create_edition_tables
+
+        create_edition_tables(duck)
+        duck.execute("DELETE FROM edition_meta")
+        duck.execute("DELETE FROM edition_stop_times")
+        duck.execute("DELETE FROM edition_trips")
+        duck.execute(
+            "INSERT INTO edition_meta VALUES (?, ?, ?, ?, ?)",
+            [edition.provider_id, edition.dataset_version_id, edition.source_version, None, None],
+        )
+        duck.execute("INSERT INTO edition_trips VALUES ('行程', '路线', 'svc-1')")
+        duck.execute(
+            "INSERT INTO edition_stop_times VALUES ('行程', 3, '08:00:00', NULL, '站')"
+        )
+        return {"edition_meta": 1, "edition_trips": 1, "edition_stop_times": 1}
+
+    monkeypatch.setattr(worker_state, "current_edition_id", current_id)
+    monkeypatch.setattr(worker_state, "current_dim_versions", lambda *_a, **_kw: (None, None))
+    monkeypatch.setattr(worker_state, "load_edition_from_postgres", load_from_pg)
+    return engine
+
+
 @pytest.mark.parametrize(
     "missing_field",
     [
+        "initial_cut_path",
+        "initial_cut_sha256",
         "alert_seed_path",
         "alert_seed_sha256",
         "identity_floors_path",
@@ -835,7 +921,7 @@ def test_local_ingress_refuses_by_name_when_any_seed_floor_or_limit_is_missing(
     tmp_path, missing_field
 ):
     from transit_ops import orchestration
-    from transit_ops.live.ingest import LocalIngestRefused
+    from transit_ops.live.shadow import ShadowRefused
 
     settings, _ = local_ingress_settings(tmp_path)
     incomplete = settings.LIGHTER_STORAGE.live.model_copy(update={missing_field: None})
@@ -844,10 +930,450 @@ def test_local_ingress_refuses_by_name_when_any_seed_floor_or_limit_is_missing(
             "LIGHTER_STORAGE": settings.LIGHTER_STORAGE.model_copy(update={"live": incomplete})
         }
     )
-    with pytest.raises(LocalIngestRefused, match=f"local_ingress_requires_{missing_field}"):
+    with pytest.raises(ShadowRefused, match=f"local_ingress_requires_{missing_field}"):
         orchestration.run_realtime_cycle("network", settings=bad_settings)
-    with pytest.raises(LocalIngestRefused, match=f"local_ingress_requires_{missing_field}"):
+    with pytest.raises(ShadowRefused, match=f"local_ingress_requires_{missing_field}"):
         orchestration.run_realtime_worker_loop("network", settings=bad_settings, max_cycles=1)
+
+
+def test_standalone_local_ingress_without_shadow_role_refuses_by_name(tmp_path):
+    from transit_ops import orchestration
+    from transit_ops.live.ingest import LocalIngestRefused
+    from transit_ops.live.shadow import ShadowRefused
+    from transit_ops.live.worker_state import worker_state_scope
+
+    standalone, _ = local_ingress_settings(tmp_path / "standalone", shadow="off")
+    with pytest.raises(ShadowRefused, match="^local_ingress_requires_shadow_role$"):
+        orchestration.run_realtime_cycle("network", settings=standalone)
+    with pytest.raises(ShadowRefused, match="^local_ingress_requires_shadow_role$"):
+        orchestration.run_realtime_worker_loop("network", settings=standalone, max_cycles=1)
+    storage = LocalBronzeStorage("local", Path(standalone.BRONZE_LOCAL_ROOT))
+    with pytest.raises(LocalIngestRefused, match="^local_ingress_requires_shadow_role$"):
+        with worker_state_scope(
+            settings=standalone.LIGHTER_STORAGE.live,
+            app_settings=standalone,
+            engine=None,
+            manifest=build_manifest(),
+            resolver=lambda _: storage,
+        ):
+            pass
+
+    # Even with local_authoritative and all inputs, top-level entrypoints refuse before cutover.
+    local_auth, _ = local_ingress_settings(tmp_path / "cutover_off", shadow="local_authoritative")
+    with pytest.raises(ShadowRefused, match="^local_authoritative_cutover_disabled$"):
+        orchestration.run_realtime_cycle("network", settings=local_auth)
+    with pytest.raises(ShadowRefused, match="^local_authoritative_cutover_disabled$"):
+        orchestration.run_realtime_worker_loop("network", settings=local_auth, max_cycles=1)
+
+
+def test_local_ingress_refuses_floor_below_verified_initial_cut(tmp_path):
+    from transit_ops.live.identity import IdentityRefused
+    from transit_ops.live.worker_state import worker_state_scope
+
+    settings, _ = local_ingress_settings(tmp_path, initial_run_id=205)
+    storage = LocalBronzeStorage("local", Path(settings.BRONZE_LOCAL_ROOT))
+    with pytest.raises(
+        IdentityRefused, match="local_identity_floor_below_evidence:ingestion_run"
+    ):
+        with worker_state_scope(
+            settings=settings.LIGHTER_STORAGE.live,
+            app_settings=settings,
+            engine=None,
+            manifest=build_manifest(),
+            resolver=lambda _: storage,
+        ):
+            pass
+
+
+def test_deleted_local_file_after_segment_export_refuses_identity_history_exists(
+    tmp_path, monkeypatch
+):
+    from transit_ops.live import ingest as ingest_module
+    from transit_ops.live.identity import IdentityRefused
+    from transit_ops.live.segments import PRODUCTION_SEGMENTS_PREFIX, SHADOW_SEGMENTS_PREFIX
+    from transit_ops.live.worker_state import worker_state_scope
+
+    settings, _ = local_ingress_settings(tmp_path)
+    storage = LocalBronzeStorage("local", Path(settings.BRONZE_LOCAL_ROOT))
+    manifest = build_manifest()
+    fetcher = ScriptedFetcher([vehicle_message().SerializeToString()])
+    monkeypatch.setattr(ingest_module, "download_to_tempfile", fetcher)
+
+    with worker_state_scope(
+        settings=settings.LIGHTER_STORAGE.live,
+        app_settings=settings,
+        engine=None,
+        manifest=manifest,
+        resolver=lambda _: storage,
+    ) as state:
+        assert state is not None
+        outcome = state.capture_local("vehicle_positions")
+        assert outcome.capture_row_id == 201
+        state.apply_local()
+
+    # Segment went strictly under the shadow prefix, never production.
+    assert list(storage.list_keys(f"{SHADOW_SEGMENTS_PREFIX}/network/"))
+    assert not list(storage.list_keys(f"{PRODUCTION_SEGMENTS_PREFIX}/network/"))
+
+    # Wipe the entire local_dir (database + watermarks) and reopen: must refuse, never restart 201.
+    import shutil
+
+    assert settings.LIGHTER_STORAGE.live.local_dir is not None
+    shutil.rmtree(settings.LIGHTER_STORAGE.live.local_dir)
+    with pytest.raises(IdentityRefused, match="^identity_history_exists$"):
+        with worker_state_scope(
+            settings=settings.LIGHTER_STORAGE.live,
+            app_settings=settings,
+            engine=None,
+            manifest=manifest,
+            resolver=lambda _: storage,
+        ):
+            pass
+
+
+def test_ingress_mode_is_sticky_per_file_in_both_directions(tmp_path):
+    from transit_ops.live.local_file import LocalFileMismatch
+    from transit_ops.live.worker_state import worker_state_scope
+
+    # 1. Local ingress file reopened under PostgreSQL ingress refuses ingress_mode_changed.
+    settings_l, _ = local_ingress_settings(tmp_path / "local_to_pg")
+    storage_l = LocalBronzeStorage("local", Path(settings_l.BRONZE_LOCAL_ROOT))
+    manifest = build_manifest()
+    with worker_state_scope(
+        settings=settings_l.LIGHTER_STORAGE.live,
+        app_settings=settings_l,
+        engine=None,
+        manifest=manifest,
+        resolver=lambda _: storage_l,
+    ):
+        pass
+    pg_lane = settings_l.LIGHTER_STORAGE.live.model_copy(
+        update={"ingress": "postgres", "shadow": "off", "recording": True}
+    )
+    with pytest.raises(LocalFileMismatch, match="^ingress_mode_changed$"):
+        with worker_state_scope(
+            settings=pg_lane,
+            engine=None,
+            manifest=manifest,
+            resolver=lambda _: storage_l,
+        ):
+            pass
+
+    # 2. PostgreSQL ingress file reopened under local ingress refuses ingress_mode_changed.
+    settings_p, _ = local_ingress_settings(tmp_path / "pg_to_local")
+    storage_p = LocalBronzeStorage("local", Path(settings_p.BRONZE_LOCAL_ROOT))
+    pg_lane_p = settings_p.LIGHTER_STORAGE.live.model_copy(
+        update={"ingress": "postgres", "shadow": "off", "recording": True}
+    )
+    with worker_state_scope(
+        settings=pg_lane_p,
+        engine=None,
+        manifest=manifest,
+        resolver=lambda _: storage_p,
+    ):
+        pass
+    with pytest.raises(LocalFileMismatch, match="^ingress_mode_changed$"):
+        with worker_state_scope(
+            settings=settings_p.LIGHTER_STORAGE.live,
+            app_settings=settings_p,
+            engine=None,
+            manifest=manifest,
+            resolver=lambda _: storage_p,
+        ):
+            pass
+
+
+def test_one_endpoint_error_is_recorded_and_local_cycle_continues(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from transit_ops import orchestration
+    from transit_ops.ingestion.storage import BronzeStorageError
+    from transit_ops.live import ingest as ingest_module
+    from transit_ops.live.worker_state import worker_state_scope
+
+    settings, _ = local_ingress_settings(tmp_path)
+    storage = LocalBronzeStorage("local", Path(settings.BRONZE_LOCAL_ROOT))
+    manifest = build_manifest()
+    registry = SimpleNamespace(get_provider=lambda _pid: manifest)
+    vp_bytes = vehicle_message().SerializeToString()
+    tu_bytes = trip_message().SerializeToString()
+    i3_bytes = json.dumps({"apiVersion": "2.0", "alerts": [ALERT]}).encode("utf-8")
+    sa_bytes = service_alert_pb_bytes()
+
+    # Craft a torn download (checksum mismatch) for i3_alerts, healthy bytes for others.
+    def torn_aware_fetcher(
+        *, source_url, temp_dir, headers=None, default_filename="artifact.bin", **_kwargs
+    ):
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        path = temp_dir / f"dl_{len(calls)}.bin"
+        calls.append(source_url)
+        if "i3-alerts" in source_url:
+            path.write_bytes(i3_bytes)
+            return DownloadedArtifact(
+                temp_path=path,
+                byte_size=len(i3_bytes),
+                checksum_sha256="0" * 64,  # torn download digest mismatch
+                http_status_code=200,
+                source_url=source_url,
+            )
+        body = (
+            vp_bytes
+            if "vehicle-positions" in source_url
+            else tu_bytes
+            if "trip-updates" in source_url
+            else sa_bytes
+        )
+        path.write_bytes(body)
+        return DownloadedArtifact(
+            temp_path=path,
+            byte_size=len(body),
+            checksum_sha256=sha256(body).hexdigest(),
+            http_status_code=200,
+            source_url=source_url,
+        )
+
+    calls: list[str] = []
+    monkeypatch.setattr(ingest_module, "download_to_tempfile", torn_aware_fetcher)
+    edition_engine = fake_edition_engine(monkeypatch)
+
+    # Inject a transient Bronze upload error on vehicle_positions only.
+    real_put = ingest_module.put_create_only
+    fail_once = {"vp": True}
+
+    def flaky_put(store, src, key, *, expected):
+        if fail_once["vp"] and "vehicle_positions" in key:
+            fail_once["vp"] = False
+            raise BronzeStorageError("transient bronze outage")
+        return real_put(store, src, key, expected=expected)
+
+    monkeypatch.setattr(ingest_module, "put_create_only", flaky_put)
+
+    with worker_state_scope(
+        settings=settings.LIGHTER_STORAGE.live,
+        app_settings=settings,
+        engine=edition_engine,
+        manifest=manifest,
+        resolver=lambda _: storage,
+    ) as state:
+        assert state is not None
+        result = orchestration._run_realtime_cycle(
+            "network",
+            settings=settings,
+            registry=registry,
+            engine=None,
+            bronze_storage_resolver=lambda _: storage,
+            worker_state=state,
+        )
+        assert result.status == "partial_failure"
+        by_ep = {r.endpoint_key: r for r in result.endpoint_results}
+        assert by_ep["vehicle_positions"].status == "failed"
+        assert "transient bronze outage" in (by_ep["vehicle_positions"].error_message or "")
+        assert by_ep["i3_alerts"].status == "failed"
+        assert "local_ingest_torn_bytes:download" in (by_ep["i3_alerts"].error_message or "")
+        assert by_ep["trip_updates"].status == "succeeded"
+        assert by_ep["service_alerts"].status == "succeeded"
+        # Torn download was recorded as a failed poll in canonical polls table.
+        failed_polls = state.local.connection.execute(
+            "SELECT endpoint_key, status, error_message FROM polls WHERE status='failed'"
+        ).fetchall()
+        assert len(failed_polls) == 1
+        assert failed_polls[0][0] == "i3_alerts"
+        assert "local_ingest_torn_bytes:download" in (failed_polls[0][2] or "")
+
+    # Reopening worker_state_scope recovers the spooled vehicle_positions capture via resume_pending
+    # with zero HTTP calls!
+    calls_before = len(calls)
+    with worker_state_scope(
+        settings=settings.LIGHTER_STORAGE.live,
+        app_settings=settings,
+        engine=edition_engine,
+        manifest=manifest,
+        resolver=lambda _: storage,
+    ) as state:
+        assert state is not None
+        assert len(calls) == calls_before
+        vp_rows = state.local.connection.execute(
+            "SELECT count(*) FROM captures WHERE endpoint_key='vehicle_positions'"
+        ).fetchone()
+        assert vp_rows == (1,)
+
+
+def test_failed_application_records_once_does_not_loop_and_retries_on_new_edition(
+    tmp_path, monkeypatch
+):
+    from transit_ops.live import ingest as ingest_module
+    from transit_ops.live.worker_state import worker_state_scope
+
+    settings, _ = local_ingress_settings(tmp_path)
+    storage = LocalBronzeStorage("local", Path(settings.BRONZE_LOCAL_ROOT))
+    manifest = build_manifest()
+    vp_bytes = vehicle_message().SerializeToString()
+    tu_bytes = trip_message().SerializeToString()
+    i3_bytes = json.dumps({"apiVersion": "2.0", "alerts": [ALERT]}).encode("utf-8")
+    fetcher = ScriptedFetcher([vp_bytes, tu_bytes, i3_bytes])
+    monkeypatch.setattr(ingest_module, "download_to_tempfile", fetcher)
+
+    # Start with NO edition available: trip_updates must refuse by name and record ONCE.
+    edition_engine = fake_edition_engine(monkeypatch)
+    edition_engine.available = False
+
+    with worker_state_scope(
+        settings=settings.LIGHTER_STORAGE.live,
+        app_settings=settings,
+        engine=edition_engine,
+        manifest=manifest,
+        resolver=lambda _: storage,
+    ) as state:
+        assert state is not None
+        vp = state.capture_local("vehicle_positions")
+        tu = state.capture_local("trip_updates")
+        al = state.capture_local("i3_alerts")
+        assert (vp.capture_row_id, tu.capture_row_id, al.capture_row_id) == (201, 202, 201)
+
+        # Cycle 1: vehicle_positions and i3_alerts apply; trip_updates refuses by name once.
+        failures1 = state.apply_local()
+        assert ("trip_updates", 202) in failures1
+        assert "local_trip_updates_edition_missing" in failures1[("trip_updates", 202)]
+        assert state.local.connection.execute(
+            "SELECT count(*) FROM fact_vehicle_snapshot"
+        ).fetchone()[0] > 0
+        assert state.local.connection.execute(
+            "SELECT count(*) FROM fact_trip_delay_snapshot"
+        ).fetchone() == (0,)
+        proc_after_1 = state.local.connection.execute(
+            "SELECT ingestion_run_id, capture_row_id, error_message FROM processing"
+        ).fetchall()
+        assert len(proc_after_1) == 1
+        assert parse_failed_load_capture_row_id(proc_after_1[0][2]) == 202
+        next_run_after_1 = state.local.connection.execute(
+            "SELECT next_id FROM local_identity_namespaces WHERE namespace='ingestion_run'"
+        ).fetchone()[0]
+
+        # Cycles 2..4 with still no edition: MUST NOT retry or burn any run IDs or processing rows!
+        for _ in range(3):
+            failures_repeat = state.apply_local()
+            assert failures_repeat == {}
+        assert state.local.connection.execute(
+            "SELECT count(*) FROM processing"
+        ).fetchone() == (1,)
+        assert state.local.connection.execute(
+            "SELECT next_id FROM local_identity_namespaces WHERE namespace='ingestion_run'"
+        ).fetchone()[0] == next_run_after_1
+
+        # Now make a static edition available via merged loader #883: previously failed trip_updates
+        # retries automatically and applies fact_trip_delay_snapshot!
+        edition_engine.available = True
+        failures_after_edition = state.apply_local()
+        assert failures_after_edition == {}
+        assert len(edition_engine.loads) == 1
+        assert state.local.connection.execute(
+            "SELECT realtime_snapshot_id, delay_seconds FROM fact_trip_delay_snapshot"
+        ).fetchall() == [(202, 180)]
+
+        # A poison capture (tampered Bronze bytes) also records once and never loops.
+        fetcher.responses.append(empty_pb_bytes(int(AT.timestamp()) + 30))
+        poison = state.capture_local("vehicle_positions")
+        assert poison.storage_path is not None and poison.capture_row_id == 203
+        (storage.root / poison.storage_path).write_bytes(b"corrupted")
+        poison_failures = state.apply_local()
+        assert ("vehicle_positions", 203) in poison_failures
+        proc_after_poison = state.local.connection.execute(
+            "SELECT count(*) FROM processing"
+        ).fetchone()[0]
+        next_run_after_poison = state.local.connection.execute(
+            "SELECT next_id FROM local_identity_namespaces WHERE namespace='ingestion_run'"
+        ).fetchone()[0]
+        for _ in range(3):
+            assert state.apply_local() == {}
+        assert state.local.connection.execute(
+            "SELECT count(*) FROM processing"
+        ).fetchone()[0] == proc_after_poison
+        assert state.local.connection.execute(
+            "SELECT next_id FROM local_identity_namespaces WHERE namespace='ingestion_run'"
+        ).fetchone()[0] == next_run_after_poison
+
+
+def test_worker_startup_resumes_pending_spools_cleans_orphans_and_does_not_skip_fetch(
+    tmp_path, monkeypatch
+):
+    from transit_ops.live import ingest as ingest_module
+    from transit_ops.live.worker_state import worker_state_scope
+
+    settings, _ = local_ingress_settings(tmp_path)
+    storage = LocalBronzeStorage("local", Path(settings.BRONZE_LOCAL_ROOT))
+    manifest = build_manifest()
+    vp1 = vehicle_message().SerializeToString()
+    vp2 = empty_pb_bytes(int(AT.timestamp()) + 20)
+    i3_bytes = json.dumps({"apiVersion": "2.0", "alerts": [ALERT]}).encode("utf-8")
+    http_err = HTTPError(
+        "https://example.invalid/vehicle-positions.pb",
+        503,
+        "upstream down",
+        hdrs=None,  # type: ignore[arg-type]
+        fp=None,
+    )
+    fetcher = ScriptedFetcher([i3_bytes, http_err, vp1, vp2])
+    monkeypatch.setattr(ingest_module, "download_to_tempfile", fetcher)
+
+    # 1. Crash after spool on an alert endpoint AND on a failed outcome, plus leave orphan files.
+    with worker_state_scope(
+        settings=settings.LIGHTER_STORAGE.live,
+        app_settings=settings,
+        engine=None,
+        manifest=manifest,
+        resolver=lambda _: storage,
+    ) as state:
+        assert state is not None and state.ingestor is not None
+        spool_dir = state.ingestor.spool_dir
+        state.ingestor.after_commit = lambda stage: (
+            (_ for _ in ()).throw(RuntimeError("crash_spool")) if stage == "spool" else None
+        )
+        with pytest.raises(RuntimeError, match="crash_spool"):
+            state.capture_local("i3_alerts")
+        with pytest.raises(RuntimeError, match="crash_spool"):
+            state.capture_local("vehicle_positions")  # failed HTTP outcome spooled!
+        # Simulate crash between payload write and receipt write + leftover .tmp file.
+        (spool_dir / "uncommitted-orphan.payload").write_bytes(b"uncommitted-bytes")
+        (spool_dir / ".tmp").mkdir(parents=True, exist_ok=True)
+        (spool_dir / ".tmp" / "half-download.part").write_bytes(b"partial")
+
+    # 2. Startup open automatically calls resume_pending (0 HTTP), sweeps orphans, cleans spools.
+    calls_before_startup = len(fetcher.calls)
+    with worker_state_scope(
+        settings=settings.LIGHTER_STORAGE.live,
+        app_settings=settings,
+        engine=None,
+        manifest=manifest,
+        resolver=lambda _: storage,
+    ) as state:
+        assert state is not None and state.ingestor is not None
+        spool_dir = state.ingestor.spool_dir
+        assert len(fetcher.calls) == calls_before_startup
+        assert not list(spool_dir.glob("*.spool.json"))
+        assert not list(spool_dir.glob("*.payload"))
+        assert not list((spool_dir / ".tmp").glob("*")) if (spool_dir / ".tmp").exists() else True
+        # Both the alert capture and the failed vehicle poll were durably recorded.
+        assert state.local.connection.execute(
+            "SELECT endpoint_key, capture_row_id FROM captures WHERE endpoint_key='i3_alerts'"
+        ).fetchall() == [("i3_alerts", 201)]
+        assert state.local.connection.execute(
+            "SELECT endpoint_key, status FROM polls WHERE endpoint_key='vehicle_positions'"
+        ).fetchall() == [("vehicle_positions", "failed")]
+
+        # 3. If a spool is pending mid-run, capture_local drains it AND still performs fresh fetch.
+        state.ingestor.after_commit = lambda stage: (
+            (_ for _ in ()).throw(RuntimeError("mid_crash")) if stage == "spool" else None
+        )
+        with pytest.raises(RuntimeError, match="mid_crash"):
+            state.capture_local("vehicle_positions")
+        state.ingestor.after_commit = None
+        fresh = state.capture_local("vehicle_positions")
+        assert fresh.resumed_from_spool is False
+        assert fresh.capture_row_id == 202
+        vp_ids = state.local.connection.execute(
+            "SELECT capture_row_id FROM captures WHERE endpoint_key='vehicle_positions' ORDER BY 1"
+        ).fetchall()
+        assert vp_ids == [(201,), (202,)]
 
 
 def test_orchestration_local_cycle_and_worker_loop_use_zero_postgres_and_one_local_file(
@@ -857,22 +1383,23 @@ def test_orchestration_local_cycle_and_worker_loop_use_zero_postgres_and_one_loc
 
     from transit_ops import orchestration
     from transit_ops.live import ingest as ingest_module
+    from transit_ops.live.segments import PRODUCTION_SEGMENTS_PREFIX, SHADOW_SEGMENTS_PREFIX
     from transit_ops.live.worker_state import worker_state_scope
 
     settings, _ = local_ingress_settings(tmp_path)
-    manifest = build_manifest()
-    # Keep endpoints to vehicle_positions + i3_alerts + service_alerts (no edition needed)
-    manifest = manifest.model_copy(
-        update={"feeds": {k: v for k, v in manifest.feeds.items() if k != "trip_updates"}}
-    )
+    manifest = build_manifest()  # Full 4-endpoint manifest including trip_updates!
     registry = SimpleNamespace(get_provider=lambda pid: manifest)
     vp_bytes = vehicle_message().SerializeToString()
+    tu_bytes = trip_message().SerializeToString()
     i3_bytes = json.dumps({"apiVersion": "2.0", "alerts": [ALERT]}).encode("utf-8")
     sa_bytes = service_alert_pb_bytes()
 
-    fetcher = ScriptedFetcher([vp_bytes, i3_bytes, sa_bytes, vp_bytes, i3_bytes, sa_bytes])
+    fetcher = ScriptedFetcher(
+        [tu_bytes, vp_bytes, i3_bytes, sa_bytes, tu_bytes, vp_bytes, i3_bytes, sa_bytes]
+    )
     monkeypatch.setattr(ingest_module, "download_to_tempfile", fetcher)
-    # Any attempt to touch PostgreSQL or public cutover publish must fail loudly.
+    edition_engine = fake_edition_engine(monkeypatch)
+    # Any attempt to touch PG capture/serving/gold or public cutover publish must fail loudly.
     monkeypatch.setattr(
         orchestration, "make_engine", lambda *a, **k: pytest.fail("touched postgres make_engine")
     )
@@ -897,31 +1424,55 @@ def test_orchestration_local_cycle_and_worker_loop_use_zero_postgres_and_one_loc
         lambda *a, **k: pytest.fail("enabled cutover publish"),
     )
 
-    # 1. One-shot local cycle succeeds without DATABASE_URL.
-    cycle_result = orchestration.run_realtime_cycle(
-        "network", settings=settings, registry=registry
-    )
-    assert cycle_result.status == "succeeded"
-    assert cycle_result.successful_endpoint_count == 3
-    assert len(fetcher.calls) == 3
-
-    # 2. Worker loop runs one cycle, borrows the single LocalFile, and releases it on stop.
-    orchestration.run_realtime_worker_loop(
-        "network",
-        settings=settings.model_copy(update={"REALTIME_POLL_SECONDS": 20}),
-        registry=registry,
-        max_cycles=1,
-        sleep_fn=lambda _: None,
-        should_shutdown=lambda: False,
-    )
-    assert len(fetcher.calls) == 6
-
-    # 3. Verify durable state, separate namespaces, segments, and PG sync refusal.
     storage = LocalBronzeStorage("local", Path(settings.BRONZE_LOCAL_ROOT))
+    # 1. Local cycle runs all 4 endpoints (including trip_updates) with 1 fetch per endpoint.
     with worker_state_scope(
         settings=settings.LIGHTER_STORAGE.live,
         app_settings=settings,
-        engine=None,
+        engine=edition_engine,
+        manifest=manifest,
+        resolver=lambda _: storage,
+    ) as state:
+        assert state is not None
+        cycle_result = orchestration._run_realtime_cycle(
+            "network",
+            settings=settings,
+            registry=registry,
+            engine=None,
+            bronze_storage_resolver=lambda _: storage,
+            worker_state=state,
+        )
+        assert cycle_result.status == "succeeded"
+        assert cycle_result.successful_endpoint_count == 4
+        assert len(fetcher.calls) == 4
+
+    # 2. Worker loop runs one cycle, borrows the single LocalFile, and releases it on stop.
+    with worker_state_scope(
+        settings=settings.LIGHTER_STORAGE.live,
+        app_settings=settings,
+        engine=edition_engine,
+        manifest=manifest,
+        resolver=lambda _: storage,
+    ) as state:
+        assert state is not None
+        orchestration._run_realtime_worker_loop(
+            "network",
+            settings=settings.model_copy(update={"REALTIME_POLL_SECONDS": 20}),
+            registry=registry,
+            engine=None,
+            max_cycles=1,
+            sleep_fn=lambda _: None,
+            should_shutdown=lambda: False,
+            bronze_storage_resolver=lambda _: storage,
+            worker_state=state,
+        )
+        assert len(fetcher.calls) == 8
+
+    # 3. Verify durable state, separate namespaces, shadow-only segments, trip facts, PG sync guard.
+    with worker_state_scope(
+        settings=settings.LIGHTER_STORAGE.live,
+        app_settings=settings,
+        engine=edition_engine,
         manifest=manifest,
         resolver=lambda _: storage,
     ) as state:
@@ -934,7 +1485,7 @@ def test_orchestration_local_cycle_and_worker_loop_use_zero_postgres_and_one_loc
         al_ids = state.local.connection.execute(
             "SELECT capture_row_id FROM captures WHERE index_family='alert_snapshot' ORDER BY 1"
         ).fetchall()
-        assert rt_ids == [(201,), (202,)]
+        assert rt_ids == [(201,), (202,), (203,), (204,)]
         assert al_ids == [(201,), (202,), (203,), (204,)]
         assert state.local.connection.execute(
             "SELECT count(*) FROM segment_exports WHERE completed"
@@ -942,3 +1493,9 @@ def test_orchestration_local_cycle_and_worker_loop_use_zero_postgres_and_one_loc
         assert state.local.connection.execute(
             "SELECT count(*) FROM fact_vehicle_snapshot"
         ).fetchone()[0] >= 2
+        assert state.local.connection.execute(
+            "SELECT count(*) FROM fact_trip_delay_snapshot"
+        ).fetchone()[0] >= 2
+        # Pre-cutover segments live strictly under shadow prefix, never production prefix.
+        assert list(storage.list_keys(f"{SHADOW_SEGMENTS_PREFIX}/network/"))
+        assert not list(storage.list_keys(f"{PRODUCTION_SEGMENTS_PREFIX}/network/"))
