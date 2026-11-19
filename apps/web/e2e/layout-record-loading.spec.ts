@@ -77,6 +77,8 @@ const pages = [
 		path: '/repeat-offenders?provider=stm',
 		held: /\/historic\/repeat_offenders/,
 		first: '[data-slot="offenders-controls"]',
+		// The record's own top: it must not move up when no history navigator arrives.
+		record: '.offenders-record',
 		loaded: '[data-slot="offender-rows"] > li > button:visible',
 		scope: 'window',
 	},
@@ -85,6 +87,7 @@ const pages = [
 		path: '/receipt?provider=stm',
 		held: /\/historic\/receipts\//,
 		first: '[data-slot="detail-shell-center"]',
+		record: '[data-slot="receipt-sections"]',
 		loaded: '[data-slot="receipt-headline"]:visible',
 		scope: 'day',
 	},
@@ -116,18 +119,23 @@ async function holdFiles(page: Page, held: RegExp) {
 	return gate;
 }
 
-function frame(page: Page, first: string) {
-	return page.evaluate((first) => {
-		const top = (selector: string) => document.querySelector(selector)!.getBoundingClientRect().top;
-		return {
-			header: document.querySelector('.transit-article-header')!.getBoundingClientRect().height,
-			first: top(first),
-			footer: top('[data-testid="footer"]'),
-		};
-	}, first);
+function frame(page: Page, first: string, record: string) {
+	return page.evaluate(
+		([first, record]) => {
+			const top = (selector: string) =>
+				document.querySelector(selector)?.getBoundingClientRect().top ?? null;
+			return {
+				header: document.querySelector('.transit-article-header')!.getBoundingClientRect().height,
+				first: top(first),
+				record: top(record),
+				footer: top('[data-testid="footer"]'),
+			};
+		},
+		[first, record],
+	);
 }
 
-for (const { name, path, held, first, loaded, scope } of pages)
+for (const { name, path, held, first, record, loaded, scope } of pages)
 	for (const locale of ['en', 'fr'] as const)
 		test(`${locale} ${name} holds still while its record loads`, async ({ page }) => {
 			const gate = await holdFiles(page, held);
@@ -146,7 +154,7 @@ for (const { name, path, held, first, loaded, scope } of pages)
 					await page.evaluate(() =>
 						Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 2000))]),
 					);
-					const before = await frame(page, first);
+					const before = await frame(page, first, record);
 
 					gate.holding = false;
 					for (const release of gate.releases.splice(0)) release();
@@ -157,7 +165,7 @@ for (const { name, path, held, first, loaded, scope } of pages)
 					await page.evaluate(
 						() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
 					);
-					expect(await frame(page, first), `${width} px`).toEqual(before);
+					expect(await frame(page, first, record), `${width} px`).toEqual(before);
 				}
 			} finally {
 				gate.holding = false;

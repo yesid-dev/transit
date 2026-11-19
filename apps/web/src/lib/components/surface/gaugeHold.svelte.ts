@@ -3,9 +3,10 @@
  * `active` is true: the region lays out a gauge (the record at its fullest published shape,
  * drawn invisibly) and `measure` records its height. When the real record replaces the gauge,
  * `minHeight` holds that height, so a shorter record leaves room rather than pulling up what
- * lies below. The hold ends when the reader acts (a pointer or key press) or the viewport width
- * changes: the page then moves because of them, not because data arrived. Later loads, such as
- * another date the reader picks, are the reader's own and keep the page's usual states.
+ * lies below. The hold ends when the reader acts (a pointer or key press, or a scroll) or the
+ * viewport width changes: the page then moves because of them, not because data arrived. Later
+ * loads, such as another date the reader picks, are the reader's own and keep the page's usual
+ * states.
  */
 export function createGaugeHold(loading: () => boolean) {
 	let landed = $state(false);
@@ -25,10 +26,12 @@ export function createGaugeHold(loading: () => boolean) {
 		window.addEventListener('pointerdown', release, true);
 		window.addEventListener('keydown', release, true);
 		window.addEventListener('resize', resize);
+		window.addEventListener('scroll', release, { passive: true });
 		return () => {
 			window.removeEventListener('pointerdown', release, true);
 			window.removeEventListener('keydown', release, true);
 			window.removeEventListener('resize', resize);
+			window.removeEventListener('scroll', release);
 		};
 	});
 	return {
@@ -44,8 +47,12 @@ export function createGaugeHold(loading: () => boolean) {
 			observer.observe(node);
 			return { destroy: () => observer.disconnect() };
 		},
+		/** True after the first record arrived while the page still keeps the gauge's room. */
+		get held() {
+			return landed && holding && reserve > 0;
+		},
 		get minHeight(): string | undefined {
-			return landed && holding && reserve > 0 ? `${reserve}px` : undefined;
+			return this.held ? `${reserve}px` : undefined;
 		},
 	};
 }

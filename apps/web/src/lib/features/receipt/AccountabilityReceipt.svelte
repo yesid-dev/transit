@@ -552,6 +552,7 @@
 					subtitle={section.subtitle}
 					headerVariant="article-summary"
 					anchor={gauge ? undefined : section.id}
+					independent={gauge}
 					index={section.number - 1}
 					open={true}
 				>

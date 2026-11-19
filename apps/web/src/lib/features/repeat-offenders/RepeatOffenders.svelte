@@ -488,10 +488,10 @@
 					label={t.period.label}
 				/>
 			</div>
-			{#if gauge || hasHistoryNavigator}
+			{#if gauge || hold.held || hasHistoryNavigator}
 				<!-- The navigator's room is held by a gauge of its fullest shape until the record arrives. -->
 				<div class="offenders-stack">
-					{#if gauge}
+					{#if gauge || (hold.held && !hasHistoryNavigator)}
 						<div class="offenders-gauge" aria-hidden="true" inert>
 							<HistoryNavigator
 								mode="date"
@@ -590,7 +590,11 @@
 		</section>
 
 		{#if unranked.rows.length > 0}
-			<CollapsibleSection title={t.unranked.title} anchor="repeat-offenders-unranked">
+			<CollapsibleSection
+				title={t.unranked.title}
+				anchor={gauge ? undefined : 'repeat-offenders-unranked'}
+				independent={gauge}
+			>
 				{#snippet summary()}
 					<p class="offenders-meta" data-slot="offender-unranked-summary">
 						{t.unranked.summary(
@@ -650,7 +654,11 @@
 		{/if}
 	{/if}
 
-	<CollapsibleSection title={t.method.title} anchor="repeat-offenders-method">
+	<CollapsibleSection
+		title={t.method.title}
+		anchor={gauge ? undefined : 'repeat-offenders-method'}
+		independent={gauge}
+	>
 		{#snippet summary()}
 			<p class="offenders-meta">{t.method.summary}</p>
 		{/snippet}
