@@ -1,11 +1,13 @@
 """Generate complete cold inputs from a tiny real owner, never production state."""
 
 import json
+import shutil
 from contextlib import closing
 from dataclasses import asdict, replace
 from datetime import timedelta
 from hashlib import sha256
 
+import pytest
 from test_live_captures import AT
 from test_live_facts import seed_fact_edition, trip_message, vehicle_message
 from test_live_local_file import CAPTURE, POLL, RECORD, SETTINGS
@@ -27,6 +29,7 @@ from transit_ops.live.recovery import (
     _replay_digest,
     _state,
     frames_sha256,
+    reconstruct,
 )
 from transit_ops.live.segments import export_segment
 from transit_ops.silver.i3 import RawI3AlertSnapshot
@@ -130,6 +133,74 @@ def generate(tmp_path, historical=False):
         )
         state = _state(local)
     return seal(inputs, frames_sha256(state)), storage, payloads, state
+
+
+def build(tmp_path, inputs, storage, payloads, name="candidate.duckdb"):
+    return reconstruct(
+        tmp_path / name,
+        owned_directory=tmp_path,
+        inputs=inputs,
+        storage=storage,
+        resolver=lambda c: payloads[(c.index_family, c.capture_row_id)],
+        settings=SETTINGS,
+    )
+
+
+CANDIDATE = "candidate.duckdb"
+# Shared by every module that imports the fixtures, per pytest base directory.
+_TEMPLATES = {}
+
+
+def _copy_owner(root, tmp_path, name=CANDIDATE):
+    for path in root.iterdir():
+        target = tmp_path / path.name
+        if path.name.startswith(CANDIDATE):
+            target = tmp_path / (name + path.name.removeprefix(CANDIDATE))
+        if path.is_dir():
+            shutil.copytree(path, target)
+        else:
+            shutil.copyfile(path, target)
+
+
+@pytest.fixture(scope="session")
+def cold_templates(tmp_path_factory):
+    """Generate and build each owner once; the inputs are frozen and the files are copied."""
+    made = _TEMPLATES.setdefault(tmp_path_factory.getbasetemp(), {})
+
+    def template(historical, built):
+        if (historical, built) not in made:
+            root = tmp_path_factory.mktemp("cold-template")
+            if built:
+                source, inputs, payloads, expected, _ = template(historical, False)
+                _copy_owner(source, root)
+                storage = LocalBronzeStorage("local", root / "segments")
+                candidate = build(root, inputs, storage, payloads)
+            else:
+                inputs, _, payloads, expected = generate(root, historical)
+                candidate = None
+            made[historical, built] = root, inputs, payloads, expected, candidate
+        return made[historical, built]
+
+    return template
+
+
+@pytest.fixture
+def cold(tmp_path, cold_templates):
+    """Return generate()'s result for a private byte copy of the owner in tmp_path.
+
+    With built=True, also return the candidate build() would make at `name`, with its
+    sidecars renamed alongside it.
+    """
+
+    def copy(historical=False, *, built=False, name=CANDIDATE):
+        root, inputs, payloads, expected, candidate = cold_templates(historical, built)
+        _copy_owner(root, tmp_path, name)
+        storage = LocalBronzeStorage("local", tmp_path / "segments")
+        if not built:
+            return inputs, storage, dict(payloads), expected
+        return inputs, storage, dict(payloads), expected, replace(candidate, path=tmp_path / name)
+
+    return copy
 
 
 def generate_applications(local, recorder, storage, payloads, historical):
