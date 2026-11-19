@@ -121,6 +121,13 @@ export default defineConfig({
 							// The footer brand owns its narrow and desktop matrix in every case; a
 							// project viewport would only run each case again.
 							...(width === 1440 ? [] : [/layout-footer-brand\.spec\.ts/]),
+							// Status chart contrast: one phone and one desktop width in each theme.
+							...(width === 390 || width === 1280 ? [] : [/layout-chart-contrast\.spec\.ts/]),
+							// Forced colours: only Chromium emulates them; the 1280 projects supply
+							// the saved light and dark themes.
+							...(browserName === 'chromium' && width === 1280
+								? []
+								: [/layout-chart-contrast-forced\.spec\.ts/]),
 							// Panel sizes also needs rich server-boot fixtures.
 							...(process.env.TRANSIT_E2E_PANEL_SIZES === '1'
 								? []
