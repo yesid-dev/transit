@@ -15,6 +15,7 @@ from test_live_shadow import Clock, recorded_postgres, shadow
 
 from transit_ops.live import recovery
 from transit_ops.live.admission import (
+    ShadowRecord,
     classify_restart,
     committed_rows,
     declared_cadence,
@@ -63,6 +64,10 @@ def test_killed_shadow_worker_reopens_inside_the_gate_with_every_committed_row(t
         restarted = shadow(local, clock=Clock(AT + timedelta(minutes=1)))
         restarted.run_cycle(recorded_postgres(local), snapshot_ids=(42,))
         assert restarted.evidence.status == "compared", restarted.evidence
+        # The gate reads exactly what the shadow logs.
+        logged = json.loads(json.dumps(restarted.evidence.display_dict()))
+        record = ShadowRecord.from_dict(logged)
+        assert (record.status, record.capture_seconds) == ("compared", logged["capture_seconds"])
 
 
 def test_a_committed_row_missing_after_reopen_is_lost_committed_row(tmp_path):
