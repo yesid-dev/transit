@@ -166,14 +166,16 @@ class SnapshotConditionalObjects:
                 yield logical_key
 
 
-def _bronze_objects(settings: Settings, prefix: str) -> SnapshotConditionalObjects:
-    store: SnapshotStorage | LocalSnapshotStorage
+def bronze_store(settings: Settings, prefix: str) -> SnapshotStorage | LocalSnapshotStorage:
+    """A private-bucket store under one prefix; never the public snapshot bucket."""
     if settings.BRONZE_STORAGE_BACKEND == "local":
-        store = LocalSnapshotStorage(settings.BRONZE_LOCAL_ROOT, prefix)
-    else:
-        bucket = validate_s3_bucket_name(settings.BRONZE_S3_BUCKET, setting="BRONZE_S3_BUCKET")
-        store = SnapshotStorage(build_s3_client(settings), bucket=bucket, base_prefix=prefix)
-    return SnapshotConditionalObjects(store)
+        return LocalSnapshotStorage(settings.BRONZE_LOCAL_ROOT, prefix)
+    bucket = validate_s3_bucket_name(settings.BRONZE_S3_BUCKET, setting="BRONZE_S3_BUCKET")
+    return SnapshotStorage(build_s3_client(settings), bucket=bucket, base_prefix=prefix)
+
+
+def _bronze_objects(settings: Settings, prefix: str) -> SnapshotConditionalObjects:
+    return SnapshotConditionalObjects(bronze_store(settings, prefix))
 
 
 def ledger_objects(settings: Settings) -> SnapshotConditionalObjects:

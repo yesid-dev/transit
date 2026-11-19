@@ -143,21 +143,24 @@ def test_default_off_is_todays_worker_and_inverted_roles_refuse_by_name():
     ):
         settings = {k: v for k, v in ROLE.items() if k != missing}
         with pytest.raises(ShadowRefused, match=reason):
-            admit_role(LaneSettings(**settings), context_source=context_at)
-    # No owner captures a PostgreSQL publication context yet: refuse, never guess one.
-    with pytest.raises(ShadowRefused, match="publication_context_capture_unavailable"):
-        admit_role(LaneSettings(**ROLE))
-    assert admit_role(LaneSettings(**ROLE), context_source=context_at) is True
+            admit_role(LaneSettings(**settings))
+    # The PostgreSQL publication context is captured in production (LS3.9b2).
+    assert admit_role(LaneSettings(**ROLE)) is True
+
+
+def role_settings(role=ROLE, **updates):
+    return _pipeline_settings().model_copy(
+        update={
+            "LIGHTER_STORAGE": _pipeline_settings().LIGHTER_STORAGE.model_copy(
+                update={"live": LaneSettings(**role)}
+            ),
+            **updates,
+        }
+    )
 
 
 def test_worker_selector_refuses_before_any_capture(monkeypatch):
-    settings = _pipeline_settings().model_copy(
-        update={
-            "LIGHTER_STORAGE": _pipeline_settings().LIGHTER_STORAGE.model_copy(
-                update={"live": LaneSettings(**{**ROLE, "shadow": "local_authoritative"})}
-            )
-        }
-    )
+    settings = role_settings({**ROLE, "shadow": "local_authoritative"})
     monkeypatch.setattr(
         orchestration, "_run_realtime_worker_loop", lambda *a, **k: pytest.fail("ran")
     )
@@ -165,6 +168,9 @@ def test_worker_selector_refuses_before_any_capture(monkeypatch):
         orchestration.run_realtime_worker_loop("stm", settings=settings, max_cycles=1)
     with pytest.raises(ShadowRefused, match="local_ingress_unavailable"):
         orchestration.run_realtime_cycle("stm", settings=settings)
+    # A one-shot cycle has no LocalFile owner: refuse rather than drop the shadow.
+    with pytest.raises(ShadowRefused, match="shadow_requires_worker_loop"):
+        orchestration.run_realtime_cycle("stm", settings=role_settings())
 
 
 def test_postgres_authoritative_cycle_classifies_differences_without_gating(recorded, caplog):
@@ -282,7 +288,8 @@ def test_public_failure_is_not_compared_and_keeps_its_failure_count(recorded):
 
 
 def test_overrun_invalidates_then_backs_off_one_cycle(recorded):
-    ticks = iter([0.0, 5.0, 10.0, 10.0, 20.0, 20.5])
+    # Admitted cycles time the context capture and the comparison; a refusal only the latter.
+    ticks = iter([0.0, 1.0, 1.0, 5.0, 10.0, 10.0, 20.0, 20.0, 20.0, 20.5])
     paired = shadow(
         recorded, settings={**ROLE, "shadow_budget_seconds": 1.0}, perf=lambda: next(ticks)
     )
@@ -590,3 +597,115 @@ def test_rss_spike_refuses_that_cycle_and_admission_returns(recorded):
     assert paired.evidence.status == "compared"
     shown = paired.evidence.display_dict()
     assert (shown["rss_bytes"], shown["process_peak_rss_bytes"]) == (64 * 2**20, 600 * 2**20)
+
+
+def test_context_is_captured_before_the_public_publication_records_its_tier_state(recorded):
+    public, seen = RecordingSink(), []
+
+    def context_source(cycle):
+        seen.append(sorted(public.objects))
+        return context_at(cycle)
+
+    paired = shadow(recorded, public=public, context_source=context_source)
+    paired.run_cycle(recorded_postgres(recorded), snapshot_ids=(42,))
+    assert seen == [[]] and "manifest.json" in public.objects
+    assert paired.evidence.status == "compared"
+    assert len(paired.evidence.identity["context_sha256"]) == 64
+
+
+def test_capture_refusal_is_named_shadow_evidence_and_public_still_publishes(recorded):
+    from transit_ops.live.context_capture import ContextMissing
+
+    def context_source(cycle):
+        raise ContextMissing("tiers")
+
+    public = RecordingSink()
+    paired = shadow(recorded, public=public, context_source=context_source)
+    assert paired.run_cycle(recorded_postgres(recorded), snapshot_ids=(42,)) == 0
+    assert (paired.evidence.status, paired.evidence.reason) == (
+        "invalid",
+        "ContextMissing: publication_context_missing:tiers",
+    )
+    assert "manifest.json" in public.objects
+
+
+def test_worker_loop_starts_postgres_authoritative_and_runs_a_paired_cycle(recorded, monkeypatch):
+    """End to end: production capture -> local candidate -> classified evidence."""
+    from test_live_context_capture import Engine, manifest, registry, sources
+
+    from transit_ops.live import shadow as shadow_module
+    from transit_ops.live.context_capture import assemble
+    from transit_ops.snapshots import live_scope
+
+    endpoints = ("vehicle_positions",)
+    declared = manifest(feeds=endpoints)
+    providers = registry(declared)
+    rows = sources(endpoints=endpoints)
+    public, store, objects = RecordingSink(), MemorySnapshotStore(), control()
+    monkeypatch.setattr(live_scope, "worker_live_storage", lambda provider_id, settings: public)
+    monkeypatch.setattr(shadow_module, "_private_store", lambda settings: store)
+    monkeypatch.setattr(shadow_module, "_private_objects", lambda settings: objects)
+    monkeypatch.setattr(
+        orchestration, "_validate_realtime_worker_startup", lambda *a, **kw: declared
+    )
+    built = []
+
+    def cycle(provider_id, **kwargs):
+        paired = kwargs["shadow"]
+        built.append(paired)
+        # Deterministic probes for this cycle; the production defaults read the host.
+        paired.clock, paired.rss = Clock(), lambda: 64 * 2**20
+
+        def publish(sink, at):
+            # The authority publishes this cycle from the same PostgreSQL facts.
+            ctx = assemble(
+                at, "network", rows, registry=providers, public_base_url="https://example.org"
+            )
+            source = LocalBuildSource(recorded, Holder(None), inputs(recorded), ctx)
+            prior = sink.get_json("manifest.json")
+            for key, payload, tier in build_live_from_source(
+                source, provider_id="network", cycle=at, prior=prior
+            ):
+                sink.put_json(key, payload, tier=tier)
+            return 0
+
+        paired.run_cycle(publish, snapshot_ids=(42,))
+        return _worker_loop_cycle_result(provider_id)
+
+    monkeypatch.setattr(orchestration, "_run_realtime_cycle", cycle)
+    settings = role_settings(SNAPSHOT_PUBLIC_BASE_URL="https://example.org")
+    orchestration._run_realtime_worker_loop(
+        "network",
+        settings=settings,
+        registry=providers,
+        engine=Engine(rows),
+        sleep_fn=lambda _: None,
+        max_cycles=1,
+        should_shutdown=lambda: False,
+        bronze_storage_resolver=lambda _: None,
+        worker_state=State(recorded),
+    )
+
+    (paired,) = built
+    evidence = paired.evidence
+    assert (evidence.status, evidence.reason) == ("compared", None)
+    # The fake authority holds no fact rows: every recorded local row is classified extra.
+    recorded_rows = sum(row[1] == 42 for row in read_vehicle_facts(recorded).rows)
+    assert recorded_rows and evidence.counts == {"facts:fact_vehicle_snapshot:extra": recorded_rows}
+    assert evidence.identity["edition"] == 7
+    assert store.keys and all(key.startswith(SHADOW_PREFIX) for key in store.keys)
+    assert paired._publisher is None  # The loop's graceful stop released the shadow lease.
+
+
+def test_admission_error_never_blocks_the_public_publication(recorded):
+    def broken_probe():
+        raise OSError("probe failed")
+
+    public = RecordingSink()
+    paired = shadow(recorded, public=public, rss=broken_probe)
+    assert paired.run_cycle(recorded_postgres(recorded), snapshot_ids=(42,)) == 0
+    assert (paired.evidence.status, paired.evidence.reason) == (
+        "refused",
+        "shadow_admission_refused:OSError",
+    )
+    assert "manifest.json" in public.objects
