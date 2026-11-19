@@ -77,7 +77,9 @@ from transit_ops.snapshots.publish import publish_snapshot
 from transit_ops.worker_watchdog import worker_progress, worker_stopping, worker_watchdog
 
 if TYPE_CHECKING:
+    from transit_ops.live.shadow import PairedShadow
     from transit_ops.live.worker_state import WorkerState
+    from transit_ops.snapshots.protocols import PayloadSink
 
 GTFS_REALTIME_ENDPOINTS = ("trip_updates", "vehicle_positions")
 I3_ALERT_ENDPOINT = "i3_alerts"
@@ -743,6 +745,8 @@ def _best_effort_publish_live(
     engine: Engine,
     registry: ProviderRegistry | None = None,
     live_trip_updates: LiveTripUpdates | None = None,
+    storage: PayloadSink | None = None,
+    cycle: datetime | None = None,
 ) -> int:
     if not (
         getattr(settings, "SNAPSHOT_R2_BUCKET", None)
@@ -750,6 +754,7 @@ def _best_effort_publish_live(
     ):
         return 0
     try:
+        # A paired shadow supplies its tee storage and the one canonical cycle instant.
         publish_snapshot(
             provider_id,
             tier="live",
@@ -757,6 +762,7 @@ def _best_effort_publish_live(
             registry=registry,
             engine=engine,
             live_trip_updates=live_trip_updates,
+            **({"storage": storage, "cycle": cycle} if storage is not None else {}),
         )
         return 0
     except Exception:  # noqa: BLE001 — best-effort: never fail the cycle on publish
@@ -775,6 +781,7 @@ def _run_realtime_cycle(
     bronze_storage_resolver: BronzeStorageResolver,
     live_trip_updates: LiveTripUpdates | None = None,
     worker_state: WorkerState | None = None,
+    shadow: PairedShadow | None = None,
 ) -> RealtimeCycleResult:
     settings = settings or get_settings()
     registry = registry or _provider_registry(settings)
@@ -935,12 +942,22 @@ def _run_realtime_cycle(
 
     live_publish_failures = 0
     if successful_endpoint_count and gold_error_message is None:
-        live_publish_failures = _best_effort_publish_live(
+        publish = partial(
+            _best_effort_publish_live,
             provider_id,
             settings=settings,
             engine=engine,
             registry=registry,
             live_trip_updates=live_trip_updates,
+        )
+        # Same capture stream: a paired shadow sees this cycle's loads, never a second fetch.
+        live_publish_failures = (
+            publish()
+            if shadow is None
+            else shadow.run_cycle(
+                lambda storage, cycle: publish(storage=storage, cycle=cycle),
+                snapshot_ids=tuple(s.realtime_snapshot_id for s in gold_snapshots),
+            )
         )
 
     completed_at_utc = utc_now()
@@ -980,6 +997,7 @@ def run_realtime_cycle(
     last_captures: dict[str, datetime] | None = None,
 ) -> RealtimeCycleResult:
     settings = settings or get_settings()
+    _refuse_unadmitted_shadow(settings)
     registry = registry or _provider_registry(settings)
     engine = _engine(settings, engine)
     scope = BronzeStorageScope(settings, project_root=_project_root())
@@ -1014,6 +1032,19 @@ def run_realtime_cycle(
             logger.error(
                 "Failed to close cycle Bronze storage scope: %s", redact_error_message(str(exc))
             )
+
+
+def _refuse_unadmitted_shadow(settings: Settings) -> None:
+    """Worker selector: "off" keeps today's worker; every other role refuses by name.
+
+    Inverted roles wait for local ingress (LS3.9c). The PostgreSQL-authoritative
+    shadow is routed below, but no owner captures its per-cycle PostgreSQL
+    publication context yet, so production admission refuses rather than guess one.
+    """
+    if settings.LIGHTER_STORAGE.live.shadow != "off":
+        from transit_ops.live.shadow import admit_role
+
+        admit_role(settings.LIGHTER_STORAGE.live)
 
 
 def _validate_realtime_worker_startup(
@@ -1077,6 +1108,7 @@ def _run_realtime_worker_loop(
     should_shutdown: Callable[[], bool] | None = None,
     bronze_storage_resolver: BronzeStorageResolver,
     worker_state: WorkerState | None = None,
+    shadow: PairedShadow | None = None,
 ) -> None:
     registry = registry or _provider_registry(settings)
     engine = engine or make_engine(settings, connect_timeout=10)
@@ -1167,6 +1199,7 @@ def _run_realtime_worker_loop(
                 last_attempts=last_attempts,
                 bronze_storage_resolver=bronze_storage_resolver,
                 **({"worker_state": worker_state} if worker_state is not None else {}),
+                **({"shadow": shadow} if shadow is not None else {}),
             )
         except Exception as exc:  # noqa: BLE001 — one bad cycle must not kill the loop
             cycle_duration_seconds = round(perf_counter_fn() - cycle_started_at, 3)
@@ -1291,6 +1324,7 @@ def run_realtime_worker_loop(
     should_shutdown: Callable[[], bool] | None = None,
 ) -> None:
     settings = settings or get_settings()
+    _refuse_unadmitted_shadow(settings)
     with worker_watchdog(
         timeout=settings.REALTIME_WATCHDOG_SECONDS,
         shutdown_grace=settings.REALTIME_SHUTDOWN_GRACE_SECONDS,
