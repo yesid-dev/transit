@@ -25,7 +25,7 @@ def _seed_departure_editions(conn, change_date="2026-07-02", matching_trip=True)
             RETURNING ingestion_run_id,feed_endpoint_id
         )
         INSERT INTO core.dataset_versions(provider_id,feed_endpoint_id,
-            source_ingestion_run_id,dataset_kind,content_hash,is_current,observed_from_utc)
+            source_ingestion_run_id,dataset_kind,content_hash,is_current,loaded_at_utc)
         SELECT 'stm_dense_ro',feed_endpoint_id,ingestion_run_id,'static_schedule',
                repeat('a',64),true,'2026-01-01' FROM run RETURNING dataset_version_id
     """)
@@ -71,15 +71,14 @@ def _seed_departure_editions(conn, change_date="2026-07-02", matching_trip=True)
     # A newer current edition must not rename the retained June departure.
     conn.execute(
         text("""
-        UPDATE core.dataset_versions SET is_current = false,
-            observed_until_utc = :change_date WHERE dataset_version_id = :v
+        UPDATE core.dataset_versions SET is_current = false WHERE dataset_version_id = :v
     """),
         dict(v=version, change_date=change_date),
     )
     future = conn.execute(
         text("""
         INSERT INTO core.dataset_versions(provider_id,feed_endpoint_id,
-            source_ingestion_run_id,dataset_kind,content_hash,is_current,observed_from_utc)
+            source_ingestion_run_id,dataset_kind,content_hash,is_current,loaded_at_utc)
         SELECT provider_id,feed_endpoint_id,source_ingestion_run_id,dataset_kind,
                repeat('b',64),true,:change_date FROM core.dataset_versions
         WHERE dataset_version_id = :v RETURNING dataset_version_id
