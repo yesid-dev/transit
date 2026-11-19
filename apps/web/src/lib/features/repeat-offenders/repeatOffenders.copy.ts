@@ -117,6 +117,8 @@ export const copy = defineCopy({
 			`Late on ${lateShown} of ${seenShown} ${seen === 1 ? 'day' : 'days'} seen`,
 		lateDaysUnknown: 'Late days not published',
 		averageDelay: (minutes: string) => `${minutes} average delay`,
+		averageEarly: (minutes: string) => `${minutes} early on average`,
+		averageOnTime: 'On time on average',
 		averageDelayUnknown: 'Average delay not published',
 		readings: (n: number, shown: string) => `${shown} ${n === 1 ? 'reading' : 'readings'}`,
 		readingsUnknown: 'Reading count not published',
@@ -127,6 +129,7 @@ export const copy = defineCopy({
 			lateDays: (_late: number, seen: number) =>
 				`${seen === 1 ? 'day' : 'days'} seen had a reading more than 5 minutes late.`,
 			averageDelay: 'Average delay',
+			early: (minutes: string) => `${minutes} early`,
 			lateReadings: 'Readings more than 5 minutes late',
 			lateShare: (late: string, readings: string, share: string) =>
 				`${late} of ${readings} (${share})`,
@@ -305,6 +308,8 @@ export const copy = defineCopy({
 			`En retard ${lateShown} ${late < 2 ? 'jour' : 'jours'} sur ${seenShown} ${seen < 2 ? 'observé' : 'observés'}`,
 		lateDaysUnknown: 'Jours en retard non publiés',
 		averageDelay: (minutes: string) => `${minutes} de retard moyen`,
+		averageEarly: (minutes: string) => `${minutes} d’avance en moyenne`,
+		averageOnTime: 'À l’heure en moyenne',
 		averageDelayUnknown: 'Retard moyen non publié',
 		readings: (n: number, shown: string) => `${shown} ${n < 2 ? 'relevé' : 'relevés'}`,
 		readingsUnknown: 'Nombre de relevés non publié',
@@ -315,6 +320,7 @@ export const copy = defineCopy({
 			lateDays: (late: number, seen: number) =>
 				`${seen < 2 ? 'jour observé' : 'jours observés'} ${late < 2 ? 'comptait' : 'comptaient'} un relevé en retard de plus de 5 minutes.`,
 			averageDelay: 'Retard moyen',
+			early: (minutes: string) => `${minutes} en avance`,
 			lateReadings: 'Relevés en retard de plus de 5 minutes',
 			lateShare: (late: string, readings: string, share: string) =>
 				`${late} sur ${readings} (${share})`,

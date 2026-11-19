@@ -79,6 +79,7 @@ vi.mock('#lib/v1/resource.svelte.ts', () => ({
 }));
 
 import RepeatOffenders from './RepeatOffenders.svelte';
+import { createHistoryDateResource } from '#lib/v1/history/dateResource.svelte.ts';
 
 // fr-CA puts a no-break space before the percent sign.
 const NB = String.fromCharCode(0xa0);
@@ -513,6 +514,43 @@ describe('RepeatOffenders', () => {
 		},
 	);
 
+	// The owner's approved wording (2026-11-19): an early average reads as early, zero as on time,
+	// decided on the value as shown (one decimal). Expected text is written out, never formatted.
+	it.each([
+		['en', -8.44, '8.4 min early on average', '8.4 min early'],
+		['en', -0.05, '0.1 min early on average', '0.1 min early'],
+		['en', -0.04, 'On time on average', 'On time'],
+		['en', 0, 'On time on average', 'On time'],
+		['en', 0.04, 'On time on average', 'On time'],
+		['en', 8.4, '8.4 min average delay', '8.4 min'],
+		['fr', -8.44, '8,4 min d’avance en moyenne', '8,4 min en avance'],
+		['fr', -0.05, '0,1 min d’avance en moyenne', '0,1 min en avance'],
+		['fr', -0.04, 'À l’heure en moyenne', 'À l’heure'],
+		['fr', 0, 'À l’heure en moyenne', 'À l’heure'],
+		['fr', 0.04, 'À l’heure en moyenne', 'À l’heure'],
+		['fr', 8.4, '8,4 min de retard moyen', '8,4 min'],
+	] as const)('reads a %s average of %s min as "%s"', async (locale, value, line, evidence) => {
+		currentLocale.value = locale;
+		const data = seed();
+		// The third trip ties the second on late days, so any average up to 12.3 keeps the order.
+		data.by_grain![0].entries![2] = { ...data.by_grain![0].entries![2], avg_delay_min: value };
+		show(data);
+
+		const third = rowButtons()[2];
+		const delay = third.querySelector('.offender-row-delay')!;
+		expect(delay).toHaveTextContent(new RegExp(`^${line}$`));
+		expect(third).toHaveTextContent(`${line}.`);
+		await fireEvent.click(third);
+		const label = locale === 'en' ? 'Average delay' : 'Retard moyen';
+		const term = [...openEvidence().querySelectorAll('dt')].find(
+			(dt) => dt.textContent?.trim() === label,
+		)!;
+		expect(term.nextElementSibling).toHaveTextContent(new RegExp(`^${evidence}$`));
+		// No sign anywhere a reader sees this trip's average.
+		expect(delay.textContent).not.toMatch(/[-−]/);
+		expect(term.nextElementSibling!.textContent).not.toMatch(/[-−]/);
+	});
+
 	it('keeps unpublished figures absent, never a reassuring zero', async () => {
 		const data = seed();
 		const week = data.by_grain![0];
@@ -613,6 +651,34 @@ describe('RepeatOffenders', () => {
 		await fireEvent.click(within(inline).getByRole('button', { name: 'Citer ce bilan' }));
 		expect(writeText).toHaveBeenLastCalledWith(
 			'Transit. STM. Ligne 36, 07:42 vers Monk : en retard 4 jours sur 6 observés, du 11 au 17 novembre 2026. 90 relevés. Bilan publié le 18 novembre 2026. Version de la méthode : reliability-2. http://localhost/fr/repeat-offenders?date=2026-11-17&selected=302181941%4036&provider=stm',
+		);
+	});
+
+	it('holds the loaded room with a hidden, inert gauge whose rows keep a link’s box', () => {
+		const loaded = vi.mocked(createHistoryDateResource).getMockImplementation()!;
+		vi.mocked(createHistoryDateResource).mockImplementationOnce((...args) => ({
+			...loaded(...args),
+			resolved: null,
+			data: null,
+			value: null,
+			loading: true,
+			settled: false,
+			state: 'loading-current',
+		}));
+		const { container } = show();
+
+		const record = container.querySelector('.offenders-gauge.offenders-record')!;
+		expect(record).toHaveAttribute('aria-hidden', 'true');
+		expect(record).toHaveAttribute('inert');
+		// No line link: its rows name no real line. Only the method's definition link.
+		const links = [...record.querySelectorAll('a[href]')].map((a) => a.getAttribute('href'));
+		expect(links.every((href) => href!.startsWith('/metrics'))).toBe(true);
+		// Rows below the rule and the evidence action keep the 44 px link box a real row has.
+		expect(record.querySelectorAll('.offenders-unranked li a:not([href])')).toHaveLength(10);
+		expect(record.querySelector('[data-slot="offender-record-link"]')).not.toHaveAttribute('href');
+		// Its early average reads as the longest approved form, never with a sign.
+		expect(record.querySelector('.offender-row-delay')).toHaveTextContent(
+			/^10\.5 min early on average$/,
 		);
 	});
 

@@ -41,7 +41,7 @@
 	import { DetailFrame } from '@yesid/ui/layout';
 	import { CollapsibleSection } from '@yesid/ui/brand';
 	import SectionsToggle from '#lib/components/shared/SectionsToggle.svelte';
-	import { fmtDelayMin, fmtLocalePct } from '#lib/utils/format.ts';
+	import { fmtLocalePct } from '#lib/utils/format.ts';
 	import { formatDateKey } from '#lib/utils/time.ts';
 	import { ladderGrains, OFFENDER_GRAINS } from '#lib/reliability/ladderGrains.ts';
 	import { worstNCap, DEFAULT_WORST_N } from '#lib/reliability/ladderCap.ts';
@@ -60,6 +60,7 @@
 	import OffenderEvidence, { type OffenderEvidenceView } from './sections/OffenderEvidence.svelte';
 	import { copy as COPY } from './repeatOffenders.copy';
 	import { offenderGauge } from './offenderGauge';
+	import { averageDelay } from './offenderDelay';
 	import { EdgeState } from '#lib/components/edge/index.ts';
 	import { desktop } from '@yesid/ui/state';
 	import { createGaugeHold, gaugeFiller } from '#lib/components/surface/gaugeHold.svelte.ts';
@@ -173,17 +174,26 @@
 			: null;
 	const refOf = (entry: RepeatOffenderEntry) => `${entry.id}@${entry.route ?? ''}`;
 
-	const minutes = (value: number | null) =>
-		fmtDelayMin(value, { rounding: 'auto', locale, suffix: ' min' });
 	function lateDaysText(figures: OffenderFigures): string {
 		const { lateDays, observedDays } = figures;
 		return lateDays == null || observedDays == null
 			? t.lateDaysUnknown
 			: t.lateDays(lateDays, observedDays, count(lateDays), count(observedDays));
 	}
+	// An early average reads as early, never as a negative delay (owner ruling 6).
 	function averageDelayText(figures: OffenderFigures): string {
-		const value = minutes(figures.averageDelayMin);
-		return value == null ? t.averageDelayUnknown : t.averageDelay(value);
+		const delay = averageDelay(figures.averageDelayMin, locale);
+		if (delay == null) return t.averageDelayUnknown;
+		if (delay.direction === 'onTime') return t.averageOnTime;
+		return delay.direction === 'early'
+			? t.averageEarly(delay.minutes)
+			: t.averageDelay(delay.minutes);
+	}
+	function averageDelayValue(figures: OffenderFigures): string {
+		const delay = averageDelay(figures.averageDelayMin, locale);
+		if (delay == null) return t.averageDelayUnknown;
+		if (delay.direction === 'onTime') return terms.band.onTime;
+		return delay.direction === 'early' ? t.evidence.early(delay.minutes) : delay.minutes;
 	}
 	const readingsText = (figures: OffenderFigures) =>
 		figures.readings == null
@@ -256,7 +266,7 @@
 		return {
 			figure: days ? t.evidence.figure(count(lateDays), count(observedDays)) : null,
 			figureText: days ? t.evidence.lateDays(lateDays, observedDays) : t.lateDaysUnknown,
-			averageDelay: minutes(figures.averageDelayMin) ?? t.averageDelayUnknown,
+			averageDelay: averageDelayValue(figures),
 			// The late count is never stood in for by the total: unknown stays unknown.
 			lateReadings:
 				lateReadings == null
@@ -439,6 +449,7 @@
 		citation={citation(row)}
 		copy={t}
 		{locale}
+		{gauge}
 	/>
 {/snippet}
 {#snippet inlineEvidence(row: OffenderRowView)}
@@ -619,7 +630,8 @@
 						<li>
 							<span class="offenders-unranked-name">
 								{#if identity.number}<span class="offender-plate">{identity.number}</span>{/if}
-								{#if href}
+								<!-- The gauge keeps the link's box, a 44 px target, with no destination. -->
+								{#if href || gauge}
 									<a {href} aria-label={identity.label}>{identity.primary}</a>
 								{:else}
 									<span>{identity.primary}</span>

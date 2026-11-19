@@ -36,7 +36,8 @@ function offenders() {
 						wilson_hi: 94.4,
 						recurrence_days: Math.max(2, 7 - Math.floor(index / 3)),
 						observed_days: 7,
-						avg_delay_min: Number((5 - index * 0.1).toFixed(1)),
+						// Late, then on time, then early: published averages can be negative.
+						avg_delay_min: Number((1.2 - index * 0.2).toFixed(1)),
 					}
 				: {
 						// 1 of 20 readings: 5 %, inside 1 % to 20 %; below every floor.

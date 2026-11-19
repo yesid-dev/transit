@@ -33,6 +33,8 @@
 		citation: string;
 		copy: RepeatOffendersCopy;
 		locale: Locale;
+		/** The loading gauge's evidence: it keeps the record link's room with no destination. */
+		gauge?: boolean;
 	}
 	let {
 		row,
@@ -45,6 +47,7 @@
 		citation,
 		copy,
 		locale,
+		gauge = false,
 	}: OffenderEvidenceProps = $props();
 	const action = $derived(transitTerms[locale].action);
 </script>
@@ -102,7 +105,7 @@
 	<p class="offender-evidence-meta">{copy.evidence.noComparison}</p>
 	<p class="offender-evidence-meta">{method}</p>
 	<div class="offender-evidence-actions">
-		{#if row.href}
+		{#if row.href || gauge}
 			<a
 				class="offender-evidence-open"
 				href={row.href}
