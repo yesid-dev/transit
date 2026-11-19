@@ -52,8 +52,10 @@ MAX_UNCOMPARED_CYCLE_SHARE: float | None = 0.05
 PERSISTENT_UNADJUDICATED_SECONDS: float | None = 600.0
 # Live ruling 25.1: the two named non-differences; every other class is judged.
 EXEMPT_CLASSES = frozenset({"representation", "clock_skew"})
-# Live rulings 24.2 and 25.1: the judged classes with an owner. Others are unowned.
-JUDGED_CLASSES = frozenset({"unadjudicated", "missing", "extra", "unpaired"})
+# Live rulings 24.2, 25.1 and 25a: the persistence-tested classes. Others are unowned.
+JUDGED_CLASSES = frozenset({"unadjudicated", "missing", "extra", "unpaired", "unobserved"})
+# Live ruling 25a: a structural schema difference fails on first occurrence, no span.
+SCHEMA_CLASS = "columns"
 # Live ruling 25.1: the comparison hit its difference limit; the cycle is uncompared.
 TRUNCATED = "truncated"
 # Live ruling 24.3: the restart bound is the shortest declared cadence of the live feeds
@@ -682,6 +684,9 @@ def publication_gate(bundle: EvidenceBundle, thresholds: Thresholds) -> GateResu
     limit = thresholds.persistent_unadjudicated_seconds
     for key in sorted(judged):
         klass = _difference_class(key)
+        if klass == SCHEMA_CLASS:
+            fails.append(f"schema_columns:{key.rsplit(':', 1)[0]}")
+            continue
         seconds, run = _trailing_run(effective, key)
         entry = {
             "key": key,

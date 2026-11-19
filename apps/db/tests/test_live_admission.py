@@ -206,15 +206,43 @@ def test_every_judged_class_fails_when_it_persists(key, count):
     assert result.reasons == (f"persistent_{klass}:{key}",)
 
 
-def test_an_unlisted_class_is_threshold_unowned_and_still_fails_when_persistent():
-    columns = "facts:fact_vehicle_snapshot:columns"
-    brief = tuple(
-        cycle(20 * n, shadow(20 * n, counts={columns: 1} if n == 59 else {})) for n in range(60)
+def once(key, at=59):
+    return tuple(
+        cycle(20 * n, shadow(20 * n, counts={key: 1} if n == at else {})) for n in range(60)
     )
-    result = gate(evaluate(bundle(cycles=brief)), "publication")
-    assert (result.outcome, result.reasons) == ("threshold_unowned", ("unowned_class:columns",))
-    persistent = gate(evaluate(bundle(cycles=every_cycle({columns: 1}))), "publication")
-    assert persistent.reasons == (f"persistent_columns:{columns}",)
+
+
+def test_an_unlisted_class_is_threshold_unowned_and_still_fails_when_persistent():
+    novel = "facts:fact_vehicle_snapshot:novel"
+    result = gate(evaluate(bundle(cycles=once(novel))), "publication")
+    assert (result.outcome, result.reasons) == ("threshold_unowned", ("unowned_class:novel",))
+    persistent = gate(evaluate(bundle(cycles=every_cycle({novel: 1}))), "publication")
+    assert persistent.reasons == (f"persistent_novel:{novel}",)
+
+
+def test_a_restart_window_with_transient_unobserved_files_passes():
+    # Live ruling 25a: after a restart the owner has not yet seen what the other reused.
+    restarted = tuple(
+        cycle(20 * n, shadow(20 * n, counts={"publication:unobserved": 3} if n < 3 else {}))
+        for n in range(60)
+    )
+    result = gate(evaluate(bundle(cycles=restarted)), "publication")
+    assert result.outcome == "pass", result.reasons
+    assert result.details["transient"][0]["class"] == "unobserved"
+    persistent = gate(
+        evaluate(bundle(cycles=every_cycle({"publication:unobserved": 1}))), "publication"
+    )
+    assert persistent.reasons == ("persistent_unobserved:publication:unobserved",)
+
+
+def test_a_single_columns_difference_fails_as_a_schema_difference():
+    result = gate(
+        evaluate(bundle(cycles=once("facts:fact_vehicle_snapshot:columns", at=10))), "publication"
+    )
+    assert (result.outcome, result.reasons) == (
+        "fail",
+        ("schema_columns:facts:fact_vehicle_snapshot",),
+    )
 
 
 def test_truncated_comparisons_are_uncompared_shadow_attributable_cycles():
