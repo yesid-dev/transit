@@ -550,13 +550,9 @@
 					{#each belowFloor.examples as example (example.key)}
 						{@const identity = identityOf(example.id, example.name)}
 						{@const named = [identity.number, identity.name].filter(Boolean).join(', ')}
-						{@const href = recordHref(example.id)}
 						<li>
-							{#if href}
-								<a {href} aria-label="{t.kindWord[kind]} {named}">{named}</a>
-							{:else}
-								<span>{named}</span>
-							{/if}
+							<!-- The gauge keeps the link's box, a 44 px target, with no destination. -->
+							<a href={recordHref(example.id)} aria-label="{t.kindWord[kind]} {named}">{named}</a>
 							<span class="hotspots-excluded-readings">
 								{example.readings == null
 									? t.readingsUnknown

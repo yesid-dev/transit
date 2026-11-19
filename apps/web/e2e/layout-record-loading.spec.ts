@@ -72,8 +72,10 @@ function offenders() {
 }
 
 /** A current hotspots file shaped like a published one: more rows than the first page shows, both
- * kinds, both periods with their dates, and rows below the reading floor. Every figure obeys its
- * checks: each share is its late count over its readings, and the published bound only rises. */
+ * kinds, both periods with their dates, and the rows below the reading floor STM published on
+ * 2026-11-18 (11 lines and 48 stops over 7 days); the 30-day tray fills the publisher's cap of 60
+ * with more lines. Every figure obeys its checks: each share is its late count over its readings,
+ * and the published bound only rises. */
 function hotspots() {
 	const names = {
 		route: 'Saint-Michel / Ahuntsic',
@@ -95,40 +97,48 @@ function hotspots() {
 		type,
 		id: type === 'route' ? `9${index}` : `6${index}`,
 		name: names[type],
-		observation_count: 12 + index,
+		observation_count: 1 + (index % 29),
 	});
-	const grain = (name: 'week' | 'month', from: string) => ({
+	const grain = (name: 'week' | 'month', from: string, routes: number, stops: number) => ({
 		grain: name,
 		date: from,
 		window_end: '2026-06-14',
 		entries: (['route', 'stop'] as const).flatMap((type) =>
 			Array.from({ length: 14 }, (_, index) => entry(type, index)),
 		),
-		tray: (['route', 'stop'] as const).flatMap((type) =>
-			Array.from({ length: 4 }, (_, index) => below(type, index)),
-		),
+		tray: [
+			...Array.from({ length: routes }, (_, index) => below('route', index)),
+			...Array.from({ length: stops }, (_, index) => below('stop', index)),
+		],
 		total_ranked_routes: 203,
 		total_ranked_stops: 4930,
-		tray_total: 8,
+		tray_total: routes + stops,
 	});
 	return {
 		generated_utc: '2026-06-15T12:00:00Z',
 		methodology_version: 'reliability-2',
-		by_grain: [grain('week', '2026-06-08'), grain('month', '2026-05-16')],
+		by_grain: [grain('week', '2026-06-08', 11, 48), grain('month', '2026-05-16', 25, 35)],
 	};
 }
 
+/** Hotspots as a link opens it: the default view, or the stops or 30-day view a deep link names. */
+const hotspotsPage = (provider: 'stm' | 'octranspo', view?: 'kind=stops' | 'grain=month') => ({
+	name: ['hotspots', provider === 'stm' && !view ? null : provider, view].filter(Boolean).join(' '),
+	path: `/hotspots?provider=${provider}${view ? `&${view}` : ''}`,
+	held: /\/historic\/hotspots/,
+	first: '[data-slot="hotspots-controls"]',
+	// The record's own top: it must not move up when no history navigator arrives.
+	record: '.hotspots-record',
+	loaded: '[data-slot="hotspot-rows"] > li > button:visible',
+	scope: 'window' as const,
+});
+
 const pages = [
-	{
-		name: 'hotspots',
-		path: '/hotspots?provider=stm',
-		held: /\/historic\/hotspots/,
-		first: '[data-slot="hotspots-controls"]',
-		// The record's own top: it must not move up when no history navigator arrives.
-		record: '.hotspots-record',
-		loaded: '[data-slot="hotspot-rows"] > li > button:visible',
-		scope: 'window',
-	},
+	hotspotsPage('stm'),
+	...(['stm', 'octranspo'] as const).flatMap((provider) => [
+		hotspotsPage(provider, 'kind=stops'),
+		hotspotsPage(provider, 'grain=month'),
+	]),
 	{
 		name: 'repeat offenders',
 		path: '/repeat-offenders?provider=stm',

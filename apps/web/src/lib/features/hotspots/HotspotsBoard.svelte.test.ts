@@ -72,6 +72,7 @@ vi.mock('#lib/v1/resource.svelte.ts', () => ({
 }));
 
 import HotspotsBoard from './HotspotsBoard.svelte';
+import { TRAY_CAP } from './selectors/hotspotRanking';
 import { createHistoryDateResource } from '#lib/v1/history/dateResource.svelte.ts';
 
 // fr-CA puts a no-break space before the percent sign.
@@ -483,6 +484,9 @@ describe('HotspotsBoard', () => {
 		const record = container.querySelector('.hotspots-gauge.hotspots-record')!;
 		// Its rows reserve the published cap: ten rows and the button that shows all.
 		expect(record.querySelectorAll('[data-slot="hotspot-rows"] > li')).toHaveLength(10);
+		// Every row below the floor the publisher can send, each with a link's box and no destination.
+		expect(record.querySelectorAll('.hotspots-excluded li > a:not([href])')).toHaveLength(TRAY_CAP);
+		expect(record.querySelector('[data-slot="hotspot-record-link"]')).not.toHaveAttribute('href');
 		// Its dates only shape the period line: none reaches the page as a date.
 		expect(record.querySelector('[data-slot="hotspots-period"]')).toHaveTextContent(
 			'Mnnnnnnnn 00 nn 00, 0000, 0 nnnnnnnn nnnn.',

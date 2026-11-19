@@ -4,6 +4,13 @@ import { intl } from '#lib/i18n/index.ts';
 
 /** The publisher's eligibility floor (MIN_N_HOTSPOT): ranked rows have at least this many readings. */
 export const READING_FLOOR = 30;
+/** The publisher's ranked-row cap per kind and period (HOTSPOTS_BY_GRAIN_CAP). */
+export const RANKED_CAP = 50;
+/**
+ * The publisher's cap on rows below the floor per period (HOTSPOTS_TRAY_CAP), lines and stops
+ * together: one kind alone can fill it.
+ */
+export const TRAY_CAP = 60;
 
 export type RankingKind = 'route' | 'stop';
 
