@@ -51,6 +51,10 @@
 	import HotspotSection, { type HotspotRowView } from './sections/HotspotSection.svelte';
 	import HotspotEvidence from './sections/HotspotEvidence.svelte';
 	import { copy as COPY } from './hotspots.copy';
+	import { hotspotGauge } from './hotspotGauge';
+	import { EdgeState } from '#lib/components/edge/index.ts';
+	import { desktop } from '@yesid/ui/state';
+	import { createGaugeHold, gaugeFiller } from '#lib/components/surface/gaugeHold.svelte.ts';
 
 	/** The approved periods: 7 complete days by default, 30 as the alternative. */
 	const PERIODS = ['week', 'month'] as const;
@@ -83,6 +87,26 @@
 	let expanded = $state(initial.has('selected'));
 	let worstN = $state<WorstN>(fromSearchParams(initial).worstN ?? DEFAULT_WORST_N);
 
+	/**
+	 * While the first record loads, the page lays out the gauge record invisibly under a skeleton: every
+	 * region takes its loaded room from the first render. When the real record arrives, the page
+	 * keeps the gauge's height until the reader acts or the width changes, so nothing below moves.
+	 */
+	const hold = createGaugeHold(
+		() =>
+			hotspots.data == null && hotspots.error == null && (hotspots.loading || !hotspots.settled),
+	);
+	const gauge = $derived(hold.active);
+	const source = $derived(hotspots.data ?? (gauge ? hotspotGauge : null));
+	// The gauge navigator prints filler shaped like its longest captions, never a date.
+	const GAUGE_PICKER = [{ date: '0001-01-01' }];
+	const gaugeDays = $derived({
+		coverage: gaugeFiller(
+			t.history.coverage(formatDateKey('2000-09-30', locale), formatDateKey('2000-09-30', locale)),
+		),
+		selection: gaugeFiller(t.history.selection(formatDateKey('2000-09-30', locale))),
+	});
+
 	const availableDates = $derived(hotspots.availableDates);
 	const hasHistoryNavigator = $derived(availableDates.length > 0);
 	// The ranking waits for history discovery, so its controls never push the rows down later.
@@ -101,7 +125,7 @@
 			: hotspots.canonicalDate,
 	);
 
-	const grains = $derived(ladderGrains(hotspots.data?.by_grain, PERIODS));
+	const grains = $derived(ladderGrains(source?.by_grain, PERIODS));
 	const view = createReliabilityViewState({
 		snapshot: () => hotspots.data,
 		grains: {
@@ -125,17 +149,23 @@
 	const ranking = $derived(readHotspotRanking(grains.ladders.get(period), kind));
 	const dates = $derived(ranking.state === 'absent' ? null : ranking.period);
 	const range = $derived(dates ? formatDayRange(dates.from, dates.to, locale) : null);
-	const periodText = $derived(
-		dates && range
-			? t.period.line(range, terms.completeDays(dates.days, count(dates.days)))
-			: t.period.unknown,
-	);
+	const periodText = $derived.by(() => {
+		const text =
+			dates && range
+				? t.period.line(range, terms.completeDays(dates.days, count(dates.days)))
+				: t.period.unknown;
+		// The gauge's dates only shape its text: none of them reaches the page as a date.
+		return gauge ? gaugeFiller(text) : text;
+	});
 	const recordSearch = $derived(dates ? `from=${dates.from}&to=${dates.to}` : undefined);
+	// The gauge links nowhere: its rows name no real line or stop.
 	const recordHref = (id: string, of: RankingKind = kind) =>
-		localizeHref(
-			routeFor({ kind: of === 'route' ? 'line' : 'stop', id, search: recordSearch }),
-			locale,
-		);
+		gauge
+			? null
+			: localizeHref(
+					routeFor({ kind: of === 'route' ? 'line' : 'stop', id, search: recordSearch }),
+					locale,
+				);
 
 	function identityOf(id: string, published: string | null) {
 		if (kind === 'stop') return { number: null, name: published ?? id };
@@ -213,7 +243,7 @@
 		return total === 0 ? t.excluded.zero[kind] : t.excluded.unknown[kind];
 	});
 
-	const methodVersion = $derived(hotspots.data?.methodology_version?.trim() || null);
+	const methodVersion = $derived(source?.methodology_version?.trim() || null);
 	const methodText = $derived(
 		methodVersion ? t.evidence.method(methodVersion) : t.evidence.methodUnknown,
 	);
@@ -374,7 +404,12 @@
 	>
 		{historyCorrection.announcement ?? ''}
 	</p>
-	<div class="hotspots-page" data-slot="hotspots-page">
+	<div
+		class="hotspots-page"
+		data-slot="hotspots-page"
+		use:hold.measure
+		style:min-height={hold.minHeight}
+	>
 		<p class="hotspots-purpose">{t.purpose}</p>
 		<!-- Controls stay usable while a record loads; the ranking below waits for history discovery. -->
 		<section class="hotspots-controls" aria-label={t.controls} data-slot="hotspots-controls">
@@ -392,120 +427,166 @@
 					label={t.period.label}
 				/>
 			</div>
-			{#if hasHistoryNavigator}{@render historyControls()}{/if}
-		</section>
-		<ResourceBoundary resource={hotspots} lang={locale}>
-			{#if discovered}
-				<div class="hotspots-controls">
-					<p class="hotspots-period" data-slot="hotspots-period">{periodText}</p>
-					<p class="hotspots-measure">{t.measure}</p>
-				</div>
-
-				<h2 class="hotspots-finding" data-slot="hotspots-finding">{finding}</h2>
-
-				{#if ranking.state === 'ranked' && selected}
-					<div class="hotspots-workspace-frame" bind:clientWidth={frameWidth}>
-						<div class="hotspots-workspace">
-							<HotspotSection
-								heading={t.ranking.heading[kind]}
-								count={countText}
-								rows={shownRows}
-								selected={selected.key}
-								{wide}
-								{expanded}
-								{paneId}
-								onSelect={selectRow}
-								{toggle}
-								evidence={inlineEvidence}
-								copy={t}
+			{#if gauge || hold.held || hasHistoryNavigator}
+				<!-- The navigator's room is held by a gauge of its fullest shape until the record arrives. -->
+				<div class="hotspots-stack">
+					{#if gauge || (hold.held && !hasHistoryNavigator)}
+						<div class="hotspots-gauge" aria-hidden="true" inert>
+							<HistoryNavigator
+								mode="date"
+								dateOptions={GAUGE_PICKER}
+								coverageText={gaugeDays.coverage}
+								selectionText={gaugeDays.selection}
+								liveAnnouncement={false}
+								{locale}
+								labels={t.history.navigator}
 							/>
-							<aside
-								id={paneId}
-								class="hotspots-evidence-pane"
-								aria-label={t.evidence.heading}
-								data-slot="hotspot-evidence-pane"
-							>
-								{@render evidence(selected, 2)}
-							</aside>
 						</div>
-					</div>
-				{/if}
-
-				{#if belowFloor}
-					<section
-						class="hotspots-exclusions"
-						aria-labelledby="hotspots-exclusions-heading"
-						data-slot="hotspot-exclusions"
-					>
-						<h2 id="hotspots-exclusions-heading" class="hotspots-section-heading">
-							{t.exclusions.heading[kind]}
-						</h2>
-						<ul class="hotspots-exclusion-rows">
-							<li>
-								<span>{t.exclusions.floor}</span>
-								<span class="hotspots-exclusion-total" data-slot="hotspot-floor-total">
-									{belowFloor.count == null
-										? t.exclusions.unknown
-										: t.exclusions.total(kind, belowFloor.count, count(belowFloor.count))}
-								</span>
-							</li>
-							{#if kind === 'route'}
-								<li>
-									<span>{t.exclusions.noLive}</span>
-									<span class="hotspots-exclusion-total">{t.exclusions.unknown}</span>
-								</li>
-							{/if}
-						</ul>
-						{#if kind === 'route'}
-							<p class="hotspots-meta">{t.exclusions.noLiveLimit}</p>
-						{/if}
-						{#if belowFloor.examples.length === 0}
-							<p class="hotspots-meta" data-slot="hotspot-excluded-summary">{excludedSummary}</p>
-						{/if}
-					</section>
-
-					{#if belowFloor.examples.length > 0}
-						<CollapsibleSection title={t.excluded.title} anchor="hotspots-excluded">
-							{#snippet summary()}
-								<p class="hotspots-meta" data-slot="hotspot-excluded-summary">{excludedSummary}</p>
-							{/snippet}
-							<ul class="hotspots-excluded" aria-label={t.excluded.label[kind]}>
-								{#each belowFloor.examples as example (example.key)}
-									{@const identity = identityOf(example.id, example.name)}
-									{@const named = [identity.number, identity.name].filter(Boolean).join(', ')}
-									<li>
-										<a href={recordHref(example.id)} aria-label="{t.kindWord[kind]} {named}"
-											>{named}</a
-										>
-										<span class="hotspots-excluded-readings">
-											{example.readings == null
-												? t.readingsUnknown
-												: t.readings(example.readings, count(example.readings))}
-										</span>
-										<span class="hotspots-meta">{t.exclusions.floor}</span>
-									</li>
-								{/each}
-							</ul>
-						</CollapsibleSection>
 					{/if}
-				{/if}
-
-				<CollapsibleSection title={t.method.title} anchor="hotspots-method">
-					{#snippet summary()}
-						<p class="hotspots-meta">{t.method.summary}</p>
-					{/snippet}
-					<div class="hotspots-method">
-						<p>{t.method.engine}</p>
-						<p>{t.method.definition}</p>
-						<p>{t.method.bounds}</p>
-						<p>{methodText}</p>
-						<a href={metricHref}>{metricInfoCopy[locale].link}</a>
-					</div>
-				</CollapsibleSection>
+					{#if hasHistoryNavigator}{@render historyControls()}{/if}
+				</div>
 			{/if}
-		</ResourceBoundary>
+		</section>
+		{#if gauge}
+			<div class="hotspots-stack">
+				<div class="hotspots-gauge hotspots-record" aria-hidden="true" inert>
+					{@render body()}
+				</div>
+				<EdgeState
+					variant="skeleton"
+					lang={locale}
+					layout={desktop.current ? 'desktop' : 'mobile'}
+				/>
+			</div>
+		{:else}
+			<ResourceBoundary resource={hotspots} lang={locale}>
+				{#if discovered}
+					<div class="hotspots-record">{@render body()}</div>
+				{/if}
+			</ResourceBoundary>
+		{/if}
 	</div>
 </DetailFrame>
+
+{#snippet body()}
+	<div class="hotspots-controls">
+		<p class="hotspots-period" data-slot="hotspots-period">{periodText}</p>
+		<p class="hotspots-measure">{t.measure}</p>
+	</div>
+
+	<h2 class="hotspots-finding" data-slot="hotspots-finding">{finding}</h2>
+
+	{#if ranking.state === 'ranked' && selected}
+		<div class="hotspots-workspace-frame" bind:clientWidth={frameWidth}>
+			<div class="hotspots-workspace">
+				<HotspotSection
+					heading={t.ranking.heading[kind]}
+					count={countText}
+					rows={shownRows}
+					selected={selected.key}
+					{wide}
+					{expanded}
+					{paneId}
+					onSelect={selectRow}
+					{toggle}
+					evidence={inlineEvidence}
+					copy={t}
+				/>
+				<aside
+					id={paneId}
+					class="hotspots-evidence-pane"
+					aria-label={t.evidence.heading}
+					data-slot="hotspot-evidence-pane"
+				>
+					{@render evidence(selected, 2)}
+				</aside>
+			</div>
+		</div>
+	{/if}
+
+	{#if belowFloor}
+		<section
+			class="hotspots-exclusions"
+			aria-labelledby="hotspots-exclusions-heading"
+			data-slot="hotspot-exclusions"
+		>
+			<h2 id="hotspots-exclusions-heading" class="hotspots-section-heading">
+				{t.exclusions.heading[kind]}
+			</h2>
+			<ul class="hotspots-exclusion-rows">
+				<li>
+					<span>{t.exclusions.floor}</span>
+					<span class="hotspots-exclusion-total" data-slot="hotspot-floor-total">
+						{belowFloor.count == null
+							? t.exclusions.unknown
+							: t.exclusions.total(kind, belowFloor.count, count(belowFloor.count))}
+					</span>
+				</li>
+				{#if kind === 'route'}
+					<li>
+						<span>{t.exclusions.noLive}</span>
+						<span class="hotspots-exclusion-total">{t.exclusions.unknown}</span>
+					</li>
+				{/if}
+			</ul>
+			{#if kind === 'route'}
+				<p class="hotspots-meta">{t.exclusions.noLiveLimit}</p>
+			{/if}
+			{#if belowFloor.examples.length === 0}
+				<p class="hotspots-meta" data-slot="hotspot-excluded-summary">{excludedSummary}</p>
+			{/if}
+		</section>
+
+		{#if belowFloor.examples.length > 0}
+			<CollapsibleSection
+				title={t.excluded.title}
+				anchor={gauge ? undefined : 'hotspots-excluded'}
+				independent={gauge}
+			>
+				{#snippet summary()}
+					<p class="hotspots-meta" data-slot="hotspot-excluded-summary">{excludedSummary}</p>
+				{/snippet}
+				<ul class="hotspots-excluded" aria-label={t.excluded.label[kind]}>
+					{#each belowFloor.examples as example (example.key)}
+						{@const identity = identityOf(example.id, example.name)}
+						{@const named = [identity.number, identity.name].filter(Boolean).join(', ')}
+						{@const href = recordHref(example.id)}
+						<li>
+							{#if href}
+								<a {href} aria-label="{t.kindWord[kind]} {named}">{named}</a>
+							{:else}
+								<span>{named}</span>
+							{/if}
+							<span class="hotspots-excluded-readings">
+								{example.readings == null
+									? t.readingsUnknown
+									: t.readings(example.readings, count(example.readings))}
+							</span>
+							<span class="hotspots-meta">{t.exclusions.floor}</span>
+						</li>
+					{/each}
+				</ul>
+			</CollapsibleSection>
+		{/if}
+	{/if}
+
+	<CollapsibleSection
+		title={t.method.title}
+		anchor={gauge ? undefined : 'hotspots-method'}
+		independent={gauge}
+	>
+		{#snippet summary()}
+			<p class="hotspots-meta">{t.method.summary}</p>
+		{/snippet}
+		<div class="hotspots-method">
+			<p>{t.method.engine}</p>
+			<p>{t.method.definition}</p>
+			<p>{t.method.bounds}</p>
+			<p>{methodText}</p>
+			<a href={metricHref}>{metricInfoCopy[locale].link}</a>
+		</div>
+	</CollapsibleSection>
+{/snippet}
 
 <style>
 	/* Room for the ranking and its selected evidence side by side on desktop. */
@@ -514,8 +595,27 @@
 	}
 	.hotspots-page {
 		display: grid;
+		align-content: start;
 		gap: 1.5rem;
 		min-width: 0;
+	}
+	.hotspots-record {
+		display: grid;
+		gap: 1.5rem;
+		min-width: 0;
+	}
+	/* A gauge and what it reserves room for share one cell; the taller one sets the height. */
+	.hotspots-stack {
+		display: grid;
+		align-items: start;
+		min-width: 0;
+	}
+	.hotspots-stack > :global(*) {
+		grid-area: 1 / 1;
+		min-width: 0;
+	}
+	.hotspots-gauge {
+		visibility: hidden;
 	}
 	.hotspots-page :global(p) {
 		margin: 0;

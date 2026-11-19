@@ -55,12 +55,14 @@
 	<p class="hotspot-evidence-meta" data-slot="hotspot-no-interval">{copy.evidence.noInterval}</p>
 	<p class="hotspot-evidence-meta">{method}</p>
 	<div class="hotspot-evidence-actions">
-		<a
-			class="hotspot-evidence-open"
-			href={row.href}
-			aria-label="{action.openRecord}: {row.spoken}"
-			data-slot="hotspot-record-link">{action.openRecord}</a
-		>
+		{#if row.href}
+			<a
+				class="hotspot-evidence-open"
+				href={row.href}
+				aria-label="{action.openRecord}: {row.spoken}"
+				data-slot="hotspot-record-link">{action.openRecord}</a
+			>
+		{/if}
 		<CopyAction
 			text={link}
 			label={action.copyLink}

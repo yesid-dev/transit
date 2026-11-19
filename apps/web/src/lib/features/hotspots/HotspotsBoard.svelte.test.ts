@@ -72,6 +72,7 @@ vi.mock('#lib/v1/resource.svelte.ts', () => ({
 }));
 
 import HotspotsBoard from './HotspotsBoard.svelte';
+import { createHistoryDateResource } from '#lib/v1/history/dateResource.svelte.ts';
 
 // fr-CA puts a no-break space before the percent sign.
 const NB = String.fromCharCode(0xa0);
@@ -454,6 +455,42 @@ describe('HotspotsBoard', () => {
 		expect(writeText).toHaveBeenLastCalledWith(
 			`Transit. OC Transpo. Ligne 303, ${BAYSHORE} : 85${NB}% des relevés en retard de plus de 5 minutes, du 4 au 10 novembre 2026. 173 relevés. Bilan publié le 11 novembre 2026. Version de la méthode : r2. http://localhost/fr/hotspots?date=2026-11-10&selected=303&provider=octranspo`,
 		);
+	});
+
+	it('holds the loaded room with a hidden, inert gauge that links nowhere while the record loads', () => {
+		const loaded = vi.mocked(createHistoryDateResource).getMockImplementation()!;
+		vi.mocked(createHistoryDateResource).mockImplementationOnce((...args) => ({
+			...loaded(...args),
+			resolved: null,
+			data: null,
+			value: null,
+			loading: true,
+			settled: false,
+			state: 'loading-current',
+		}));
+		const { container } = show();
+
+		const gauges = [...container.querySelectorAll('.hotspots-gauge')];
+		// The navigator's room and the record's room, each under its own gauge.
+		expect(gauges).toHaveLength(2);
+		for (const gauge of gauges) {
+			expect(gauge).toHaveAttribute('aria-hidden', 'true');
+			expect(gauge).toHaveAttribute('inert');
+			// No record link: its rows name no real line or stop. Only the method's definition link.
+			const links = [...gauge.querySelectorAll('a[href]')].map((a) => a.getAttribute('href'));
+			expect(links.every((href) => href!.startsWith('/metrics'))).toBe(true);
+		}
+		const record = container.querySelector('.hotspots-gauge.hotspots-record')!;
+		// Its rows reserve the published cap: ten rows and the button that shows all.
+		expect(record.querySelectorAll('[data-slot="hotspot-rows"] > li')).toHaveLength(10);
+		// Its dates only shape the period line: none reaches the page as a date.
+		expect(record.querySelector('[data-slot="hotspots-period"]')).toHaveTextContent(
+			'Mnnnnnnnn 00 nn 00, 0000, 0 nnnnnnnn nnnn.',
+		);
+		expect(record.textContent).not.toMatch(/September|2000/);
+		// Readers see the skeleton and no row they could reach.
+		expect(screen.queryByRole('list', { name: /^(Lines|Stops)$/ })).toBeNull();
+		expect(container.querySelector('[data-slot="hotspots-page"]')).not.toHaveAttribute('style');
 	});
 
 	it('shows the record stamp without a publication time', async () => {

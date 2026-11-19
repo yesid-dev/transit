@@ -18,8 +18,8 @@
 		readonly identity: string;
 		readonly share: string | null;
 		readonly readingsText: string;
-		/** The record for the same dates and provider. */
-		readonly href: string;
+		/** The record for the same dates and provider; null for the loading gauge's rows. */
+		readonly href: string | null;
 		readonly stopId: string | null;
 	}
 </script>

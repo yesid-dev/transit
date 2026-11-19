@@ -1,6 +1,6 @@
 import { defineCopy, type Locale } from '#lib/i18n/copy.ts';
 import { articleCopy } from '#lib/components/layout/articleCopy.ts';
-import { historyCopy } from '#lib/components/surface/historyCopy.ts';
+import { endOnDate, historyCopy } from '#lib/components/surface/historyCopy.ts';
 import type { SurfaceHeadCopy } from '#lib/components/surface/index.ts';
 import type { UnrankedReason } from './selectors/offenderRanking';
 
@@ -49,8 +49,8 @@ export const copy = defineCopy({
 					single: 'History date',
 				},
 			}),
-			coverage: (first, last) => `History available: ${first} to ${last}.`,
-			selection: (date) => `Showing date: ${date}.`,
+			coverage: (first, last) => `History available: ${first} to ${endOnDate(last)}`,
+			selection: (date) => `Showing date: ${endOnDate(date)}`,
 			correction: {
 				malformed: 'That date was not valid. Showing the latest repeat offenders.',
 				'outside-coverage':
@@ -230,8 +230,9 @@ export const copy = defineCopy({
 					single: 'Date historique',
 				},
 			}),
-			coverage: (first: string, last: string) => `Historique disponible : du ${first} au ${last}.`,
-			selection: (date: string) => `Date affichée : ${date}.`,
+			coverage: (first: string, last: string) =>
+				`Historique disponible : du ${first} au ${endOnDate(last)}`,
+			selection: (date: string) => `Date affichée : ${endOnDate(date)}`,
 			correction: {
 				malformed: 'Cette date n’était pas valide. Affichage des récidivistes les plus récents.',
 				'outside-coverage':
