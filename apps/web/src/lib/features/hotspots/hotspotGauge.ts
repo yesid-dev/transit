@@ -1,22 +1,26 @@
 import type { HotspotEntry, HotspotGrain, Hotspots } from '#lib/v1/schemas/index.ts';
 import { isoUtc } from '#lib/v1/schemas/types.ts';
+import { worstNCap, DEFAULT_WORST_N } from '#lib/reliability/ladderCap.ts';
+import { RANKED_CAP, TRAY_CAP } from './selectors/hotspotRanking';
 
 /**
  * The record the page lays out, invisibly, while the real one loads: every region at its fullest
  * published shape, so the real record takes the room it reserved and nothing below it moves.
  * Each period ranks one line and one stop more than the first page shows (the "show all" button
- * appears) and lists as many rows below the reading floor. Names are filler shaped like long real
- * ones (capitals "M", letters "n", digits "0"): the 65-character line name the home's rankings
- * reserve (#1095) and a long stop name, so nothing in the page's HTML reads as data. Its dates
+ * appears). Below the reading floor, each kind lists the publisher's whole tray cap, because one
+ * kind alone can fill it and the page lists every published row of the chosen kind. Names are
+ * filler shaped like long real ones (capitals "M", letters "n", digits "0"), all as long as the
+ * 65-character line name the home's rankings reserve (#1095), so nothing in the page's HTML
+ * reads as data. Its dates
  * fall in September (the longest month name in both languages) of a year no record covers, and
  * the page prints them as filler.
  * Every figure obeys the ranking's checks.
  */
 const NAMES = {
 	route: 'Mnnnnnnn nnnnnn-nnnnn / Mnnnnnn Mnnnn-Mnnnnnnn <> Mnnn nnnnnnnnnn',
-	stop: 'Mnnnnnn Mnnnn-MMMM / Mnnnnn-Mnnnnnnnn Mnn (nnnn nnnn)',
+	stop: 'Mnnnnnn Mnnnn-MMMM / Mnnnnn-Mnnnnnnnn Mnn (nnnn nnnn) Mnnnnnnnnnn',
 } as const;
-const ROWS = 11;
+const RANKED = Math.min(worstNCap(DEFAULT_WORST_N) + 1, RANKED_CAP);
 
 function ranked(type: 'route' | 'stop', rank: number): HotspotEntry {
 	return {
@@ -44,14 +48,14 @@ function grain(name: 'week' | 'month', from: string): HotspotGrain {
 		date: from,
 		window_end: '2000-09-30',
 		entries: kinds.flatMap((type) =>
-			Array.from({ length: ROWS }, (_, index) => ranked(type, index + 1)),
+			Array.from({ length: RANKED }, (_, index) => ranked(type, index + 1)),
 		),
 		tray: kinds.flatMap((type) =>
-			Array.from({ length: ROWS }, (_, index) => belowFloor(type, index + 1)),
+			Array.from({ length: TRAY_CAP }, (_, index) => belowFloor(type, index + 1)),
 		),
 		total_ranked_routes: 99_999,
 		total_ranked_stops: 99_999,
-		tray_total: kinds.length * ROWS,
+		tray_total: kinds.length * TRAY_CAP,
 	};
 }
 
