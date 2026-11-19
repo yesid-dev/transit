@@ -4,10 +4,13 @@ PostgreSQL is the only admitted public authority. Inverted roles need local ingr
 with durable identity floors (LS3.9c) and refuse by name until it exists. The local
 candidate borrows the worker-owned LocalFile and runs after the public publication,
 sequentially on the owning thread. It writes only through the fenced ShadowTarget,
-whose keys can never address public objects. A shadow exception, overrun or refused
-admission marks that cycle's shadow evidence by name; public output, freshness and
-cadence never depend on it. Differences are counted evidence for math adjudication
-(owner ruling 4): PostgreSQL detects them, it never gates the local candidate.
+whose keys can never address public objects, in the private bucket under its own lease
+namespace. Its PostgreSQL publication context is captured once per cycle, read-only,
+before the public publication records this cycle's tier state (live/context_capture.py).
+A shadow exception, overrun or refused admission marks that cycle's shadow evidence by
+name; public output, freshness and cadence never depend on it. Differences are counted
+evidence for math adjudication (owner ruling 4): PostgreSQL detects them, it never gates
+the local candidate.
 """
 
 from __future__ import annotations
@@ -34,6 +37,7 @@ from transit_ops.control.leases import LeaseLost, release_lease
 from transit_ops.history.probe import peak_rss
 from transit_ops.ingestion.common import redact_error_message, utc_now
 from transit_ops.live.compare import Difference, compare_publications
+from transit_ops.live.context_capture import NAMES as CONTEXT_SOURCES
 from transit_ops.live.facts import TRIP_COLUMNS, VEHICLE_COLUMNS
 from transit_ops.live.publish import LocalBuildSource, LocalPublisher, ShadowTarget
 from transit_ops.live.running import ScheduleInputs, TripHolder, cached_schedule
@@ -41,6 +45,7 @@ from transit_ops.static.alert_seed_contract import SCHEMAS
 
 if TYPE_CHECKING:
     from transit_ops.control.objects import ConditionalObjects
+    from transit_ops.live.context_capture import Registry
     from transit_ops.live.local_file import LocalFile
     from transit_ops.live.publication_context import PublicationContext
     from transit_ops.live.settings import LaneSettings
@@ -72,6 +77,13 @@ class ShadowRefused(ValueError):
         self.reason = reason
 
 
+class CycleShadow(Protocol):
+    """What the worker loop routes each cycle to and closes on stop."""
+
+    def run_cycle(self, publish: PublicPublish, *, snapshot_ids: tuple[int, ...]) -> int: ...
+    def close(self) -> None: ...
+
+
 class LocalState(Protocol):
     """The LS3.9a owner: its LocalFile is borrowed, never reopened."""
 
@@ -79,7 +91,7 @@ class LocalState(Protocol):
     unavailable: str | None
 
 
-def admit_role(settings: LaneSettings, *, context_source: ContextSource | None = None) -> bool:
+def admit_role(settings: LaneSettings) -> bool:
     """Validate the selected role; True only for an admitted PostgreSQL-authoritative shadow."""
     if settings.shadow == "off":
         return False
@@ -90,10 +102,6 @@ def admit_role(settings: LaneSettings, *, context_source: ContextSource | None =
     for name in ("shadow_budget_seconds", "shadow_rss_limit_mb"):
         if getattr(settings, name) is None:
             raise ShadowRefused(f"shadow_requires_{name}")
-    if context_source is None:
-        # Nothing yet captures a PostgreSQL PublicationContext (feed freshness policy
-        # has no stored owner); a guessed context would fabricate local freshness.
-        raise ShadowRefused("publication_context_capture_unavailable")
     return True
 
 
@@ -267,6 +275,8 @@ class ShadowEvidence:
     p95_seconds: float | None
     rss_bytes: int | None
     process_peak_rss_bytes: int | None
+    # Part of shadow_seconds spent before the public publish: the delay it cost the cycle.
+    capture_seconds: float = 0.0
 
     def display_dict(self) -> dict[str, object]:
         return {
@@ -279,6 +289,7 @@ class ShadowEvidence:
             "difference_total": sum(self.counts.values()),
             "samples": list(self.samples),
             "shadow_seconds": round(self.shadow_seconds, 3),
+            "capture_seconds": round(self.capture_seconds, 3),
             "p95_seconds": None if self.p95_seconds is None else round(self.p95_seconds, 3),
             "rss_bytes": self.rss_bytes,
             "process_peak_rss_bytes": self.process_peak_rss_bytes,
@@ -418,7 +429,7 @@ class PairedShadow:
     _rss_bytes: int | None = None
 
     def __post_init__(self) -> None:
-        admit_role(self.settings, context_source=self.context_source)
+        admit_role(self.settings)
         self._store = _ShadowStore(self.store)
         self._target = ShadowTarget(self.provider_id, self._store)
         # Live 20: candidates publish sequentially, keeping uploads off other threads.
@@ -429,16 +440,27 @@ class PairedShadow:
     def run_cycle(self, publish: PublicPublish, *, snapshot_ids: tuple[int, ...]) -> int:
         """Return the public failure count; the shadow never raises into the cycle."""
         cycle = self.clock()
+        self._rss_bytes = None  # A failed probe never reports a previous cycle's RSS.
+        try:
+            refusal = self._admission()
+        except Exception as exc:  # noqa: BLE001 - admission probes never reach public work
+            refusal = f"shadow_admission_refused:{type(exc).__name__}"
+        context: PublicationContext | Exception | None = None
+        capture_seconds = 0.0
+        if refusal is None:
+            # PostgreSQL's builders read tier state before this cycle's publish records it.
+            began = self.perf()
+            try:
+                context = self.context_source(cycle)
+            except Exception as exc:  # noqa: BLE001 - reported as this cycle's shadow evidence
+                context = exc
+            capture_seconds = self.perf() - began
         tee = PublicTee(self.public)
         failures = publish(tee, cycle)
         if not failures:
             # The comparison target is the latest public state, even when refused.
             self._public_bytes.update(tee.written)
         started = self.perf()
-        try:
-            refusal = self._admission()
-        except Exception as exc:  # noqa: BLE001 - admission probes never reach public work
-            refusal = f"shadow_admission_refused:{type(exc).__name__}"
         identity: dict[str, object] = {
             "cycle": cycle.isoformat(),
             "realtime_snapshot_ids": sorted(snapshot_ids),
@@ -451,7 +473,9 @@ class PairedShadow:
         if refusal is None:
             status, reason = "compared", None
             try:
-                self._compare(cycle, failures, tee.written, snapshot_ids, identity, counts, samples)
+                self._compare(
+                    cycle, context, failures, tee.written, snapshot_ids, identity, counts, samples
+                )
             except _Invalid as exc:
                 status, reason = "invalid", str(exc)
             except Exception as exc:  # noqa: BLE001 - shadow failures never reach public work
@@ -459,7 +483,7 @@ class PairedShadow:
                     "invalid",
                     f"{type(exc).__name__}: {redact_error_message(str(exc))}",
                 )
-        seconds = self.perf() - started
+        seconds = self.perf() - started + capture_seconds
         if refusal is None:
             self._durations.append(seconds)
             budget = self.settings.shadow_budget_seconds
@@ -479,6 +503,7 @@ class PairedShadow:
             _p95(self._durations),
             self._rss_bytes,
             self._peak(),
+            capture_seconds,
         )
         line = "paired_shadow " + json.dumps(self.evidence.display_dict(), sort_keys=True)
         (logger.info if status == "compared" else logger.warning)("%s", line)
@@ -519,6 +544,7 @@ class PairedShadow:
     def _compare(
         self,
         cycle: datetime,
+        context: PublicationContext | Exception | None,
         failures: int,
         written: Mapping[str, bytes],
         snapshot_ids: tuple[int, ...],
@@ -530,7 +556,18 @@ class PairedShadow:
             raise _Invalid("public_publication_failed")
         if not written:
             raise _Invalid("public_publication_absent")
-        context = self.context_source(cycle)
+        if isinstance(context, Exception):
+            raise context
+        assert context is not None
+        for name in CONTEXT_SOURCES:
+            context.rows(name)  # A missing source refuses by name before any build.
+        # Input identity: the captured PostgreSQL facts this cycle compared against.
+        identity["context_sha256"] = hashlib.sha256(
+            json.dumps(
+                {name: getattr(context, name).body.decode() for name in CONTEXT_SOURCES},
+                sort_keys=True,
+            ).encode()
+        ).hexdigest()
         selected = cached_schedule(self.state.local)
         identity["edition"] = selected.edition.dataset_version_id
         inputs = ScheduleInputs(
@@ -595,3 +632,161 @@ class PairedShadow:
             raise
         prefix = self._target.key("manifest.json").removesuffix("manifest.json")
         return {key.removeprefix(prefix): body for key, body in self._store.written.items()}
+
+
+class _NoTripFeed:
+    """A provider that declares no trip_updates feed has no trip capture to hold."""
+
+    def latest(self) -> None:
+        return None
+
+
+# Private-bucket prefixes for shadow objects and, separately, its lease namespace.
+SHADOW_PREFIXES = ("shadow", "shadow/control/v1")
+
+
+def _private_store(settings: Settings) -> SnapshotObjectStore:
+    from transit_ops.control.objects import bronze_store
+
+    return bronze_store(settings, SHADOW_PREFIXES[0])
+
+
+def _private_objects(settings: Settings) -> ConditionalObjects:
+    from transit_ops.control.objects import SnapshotConditionalObjects, bronze_store
+
+    # Its own lease namespace: the shadow can never fence a public local publisher.
+    return SnapshotConditionalObjects(bronze_store(settings, SHADOW_PREFIXES[1]))
+
+
+def validate_shadow_config(settings: Settings) -> None:
+    """Every static shadow check, run before a worker start is recorded.
+
+    A shadow-only misconfiguration must exit by name before observe_start, never
+    crash-loop the worker that carries the provider's public publication.
+    """
+    from transit_ops.s3 import validated_s3_target
+    from transit_ops.snapshots.storage import LocalSnapshotStorage
+
+    if settings.SNAPSHOT_STORAGE_BACKEND == "local":
+        if not settings.SNAPSHOT_LOCAL_ROOT:
+            raise ShadowRefused("shadow_requires_public_publication")
+    elif not settings.SNAPSHOT_R2_BUCKET:
+        raise ShadowRefused("shadow_requires_public_publication")
+    else:
+        try:
+            validated_s3_target(settings, bucket_setting="SNAPSHOT_R2_BUCKET")
+        except ValueError as exc:
+            raise ShadowRefused("shadow_public_storage_invalid") from exc
+    try:
+        if settings.BRONZE_STORAGE_BACKEND == "local":
+            for prefix in SHADOW_PREFIXES:
+                LocalSnapshotStorage(settings.BRONZE_LOCAL_ROOT, prefix)
+        else:
+            validated_s3_target(settings, bucket_setting="BRONZE_S3_BUCKET")
+    except ValueError as exc:
+        raise ShadowRefused("shadow_private_storage_invalid") from exc
+    if not (settings.SNAPSHOT_PUBLIC_BASE_URL or "").strip():
+        raise ShadowRefused("shadow_requires_public_base_url")
+
+
+@dataclass
+class UnavailableShadow:
+    """A shadow that could not be built at runtime: the worker publishes as today.
+
+    Each cycle publishes through the default path (no tee, no explicit cycle) and
+    records named refused evidence, so the failure is visible but never stops the
+    provider's public ingestion.
+    """
+
+    reason: str
+    clock: Callable[[], datetime] = utc_now
+    evidence: ShadowEvidence | None = None
+
+    def run_cycle(self, publish: PublicPublish, *, snapshot_ids: tuple[int, ...]) -> int:
+        # Today's path: publish() with no tee and no explicit cycle.
+        failures = publish(None, None)  # type: ignore[arg-type]
+        cycle = self.clock()
+        self.evidence = ShadowEvidence(
+            cycle,
+            "refused",
+            self.reason,
+            {"cycle": cycle.isoformat(), "realtime_snapshot_ids": sorted(snapshot_ids)},
+            {},
+            (),
+            0.0,
+            None,
+            None,
+            None,
+        )
+        logger.warning(
+            "%s", "paired_shadow " + json.dumps(self.evidence.display_dict(), sort_keys=True)
+        )
+        return failures
+
+    def close(self) -> None:
+        return None
+
+
+def worker_shadow(
+    provider_id: str,
+    *,
+    settings: Settings,
+    registry: Registry,
+    engine: Engine,
+    state: LocalState,
+    trips: TripHolder | None,
+) -> PairedShadow | UnavailableShadow:
+    """Build the admitted PostgreSQL-authoritative shadow for the worker loop.
+
+    Static configuration was refused by name before the worker started. Anything
+    that still fails here (client construction, the live scope) invalidates the
+    shadow by name while the worker keeps publishing.
+    """
+    try:
+        return _paired_shadow(
+            provider_id,
+            settings=settings,
+            registry=registry,
+            engine=engine,
+            state=state,
+            trips=trips,
+        )
+    except Exception as exc:  # noqa: BLE001 - a shadow failure never stops public work
+        reason = exc.reason if isinstance(exc, ShadowRefused) else type(exc).__name__
+        logger.error("paired shadow unavailable: %s", reason)
+        return UnavailableShadow(f"shadow_unavailable:{reason}")
+
+
+def _paired_shadow(
+    provider_id: str,
+    *,
+    settings: Settings,
+    registry: Registry,
+    engine: Engine,
+    state: LocalState,
+    trips: TripHolder | None,
+) -> PairedShadow:
+    from transit_ops.live.context_capture import postgres_context
+    from transit_ops.snapshots.live_scope import worker_live_storage
+
+    validate_shadow_config(settings)
+    public = worker_live_storage(provider_id, settings)
+    if public is None:
+        raise ShadowRefused("shadow_public_storage_unavailable")
+    return PairedShadow(
+        provider_id=provider_id,
+        settings=settings.LIGHTER_STORAGE.live,
+        publish_settings=settings,
+        state=state,
+        context_source=postgres_context(
+            engine,
+            provider_id=provider_id,
+            registry=registry,
+            public_base_url=settings.SNAPSHOT_PUBLIC_BASE_URL,
+        ),
+        postgres_rows=postgres_rows(engine, provider_id),
+        trips=_NoTripFeed() if trips is None else trips,
+        public=public,
+        store=_private_store(settings),
+        objects=_private_objects(settings),
+    )
