@@ -116,23 +116,28 @@ async function expectResetOnIdChange(
 	const triggers = () => [...container.querySelectorAll<HTMLButtonElement>(selector)];
 	await waitFor(() => expect(triggers().length).toBeGreaterThan(0));
 	const previous = triggers();
-	for (const trigger of previous) {
-		expect(trigger).toHaveAttribute('aria-expanded', 'true');
+	// Each card's own default (a page may open some and close others), then every card flipped:
+	// a remount that kept the old state would show the flipped value, never the default.
+	const defaults = previous.map((trigger) => trigger.getAttribute('aria-expanded'));
+	for (const value of defaults) expect(['true', 'false']).toContain(value);
+	const flipped = defaults.map((value) => (value === 'true' ? 'false' : 'true'));
+	for (const [index, trigger] of previous.entries()) {
 		await fireEvent.click(trigger);
-		expect(trigger).toHaveAttribute('aria-expanded', 'false');
+		expect(trigger).toHaveAttribute('aria-expanded', flipped[index]);
 	}
 	await rerenderSame();
-	for (const trigger of previous) {
+	for (const [index, trigger] of previous.entries()) {
 		expect(trigger.isConnected).toBe(true);
-		expect(trigger).toHaveAttribute('aria-expanded', 'false');
+		expect(trigger).toHaveAttribute('aria-expanded', flipped[index]);
 	}
 	await rerenderNext();
 	await waitFor(() => {
 		const next = triggers();
 		expect(next).toHaveLength(previous.length);
 		for (const trigger of previous) expect(trigger.isConnected).toBe(false);
-		for (const trigger of next) expect(trigger).toHaveAttribute('aria-expanded', 'true');
+		expect(next.map((trigger) => trigger.getAttribute('aria-expanded'))).toEqual(defaults);
 	});
+	return defaults;
 }
 
 describe.each([false, true])('entity disclosure identity with seeded static data=%s', (seeded) => {
@@ -150,7 +155,7 @@ describe.each([false, true])('entity disclosure identity with seeded static data
 				tab === 'reliability'
 					? '[data-slot="reliability-clusters"] [data-band] [data-section-trigger]'
 					: `[data-toc^="line-${tab}-"] [data-section-trigger]`;
-			await expectResetOnIdChange(
+			const defaults = await expectResetOnIdChange(
 				view.container,
 				selector,
 				() => view.rerender(props('24')),
@@ -159,6 +164,7 @@ describe.each([false, true])('entity disclosure identity with seeded static data
 					await view.rerender(props('51'));
 				},
 			);
+			expect(defaults.every((value) => value === 'true')).toBe(true);
 		},
 	);
 	it.each(['detail', 'schedule', 'reliability'] as const)(
@@ -175,7 +181,7 @@ describe.each([false, true])('entity disclosure identity with seeded static data
 				tab === 'reliability'
 					? '.stop-reliability [data-toc^="stop-rel-"] [data-section-trigger]'
 					: `[data-toc^="stop-${tab === 'schedule' ? 'schedule' : 'detail'}-"] [data-section-trigger]`;
-			await expectResetOnIdChange(
+			const defaults = await expectResetOnIdChange(
 				view.container,
 				selector,
 				() => view.rerender(props('52095')),
@@ -183,6 +189,14 @@ describe.each([false, true])('entity disclosure identity with seeded static data
 					navigation.setPath(`/stop/52096?tab=${tab}`);
 					await view.rerender(props('52096'));
 				},
+			);
+			// The record opens Day by day and keeps its breakdowns closed (UX-T6.4); the other
+			// views open every card.
+			if (tab === 'reliability') expect(defaults.length).toBeGreaterThan(1);
+			expect(defaults).toEqual(
+				tab === 'reliability'
+					? ['true', ...Array<string>(defaults.length - 1).fill('false')]
+					: defaults.map(() => 'true'),
 			);
 		},
 	);
