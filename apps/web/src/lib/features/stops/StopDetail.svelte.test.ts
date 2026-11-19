@@ -629,6 +629,19 @@ describe('StopDetail article contract', () => {
 		expect(answer()!.compareDocumentPosition(pane) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
 			Node.DOCUMENT_POSITION_FOLLOWING,
 		);
+
+		// Schedule shows the strip too, after its sections, never above them.
+		await fireEvent.click(screen.getByRole('tab', { name: 'Schedule' }));
+		const scheduleStrip = activePane().querySelector(
+			'[data-slot="stop-current-notice"]',
+		) as HTMLElement;
+		expect(scheduleStrip).not.toBeNull();
+		const scheduleStack = activePane().querySelector(
+			'[data-section-sequence="stop-schedule"]',
+		) as HTMLElement;
+		expect(
+			scheduleStack.compareDocumentPosition(scheduleStrip) & Node.DOCUMENT_POSITION_FOLLOWING,
+		).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 	});
 
 	it.each(['en', 'fr'] as const)(

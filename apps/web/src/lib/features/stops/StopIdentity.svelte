@@ -37,11 +37,11 @@
 	<div class="stop-identity__row">
 		{#if pending}
 			<!-- An unseen one-line row with an access note holds the room, wrapping as one would. -->
-			<div class="stop-identity__served stop-identity__held" aria-hidden="true">
+			<div class="stop-identity__served stop-identity__held" aria-hidden="true" inert>
 				<span class="stop-identity__served-label">{t.info.routesServed}</span>
 				<span class="stop-identity__line"><span class="stop-identity__plate">000</span></span>
 			</div>
-			<p class="stop-identity__access stop-identity__held" aria-hidden="true">
+			<p class="stop-identity__access stop-identity__held" aria-hidden="true" inert>
 				<AccessibilityIcon />{t.info.wheelchairNo}
 			</p>
 		{/if}

@@ -116,6 +116,58 @@ for (const locale of ['en', 'fr'] as const)
 		}
 	});
 
+// The other views lead with their first section; the alert report must not push it either.
+// Schedule shows the strip (production: +193 px, CLS 0.05-0.06); Live now holds the notices in
+// its own second section and shows no strip.
+const VIEWS = [
+	{ tab: 'schedule', first: 'stop-schedule-service', arrived: '[data-slot="stop-current-notice"]' },
+	{ tab: 'detail', first: 'stop-detail-departures', arrived: '[data-testid="stop-alerts"]' },
+] as const;
+
+const sectionTop = (page: Page, id: string) =>
+	page.evaluate(
+		(id) =>
+			document
+				.querySelector(`[role="tabpanel"][data-state="active"] [data-toc="${id}"]`)
+				?.getBoundingClientRect().top ?? null,
+		id,
+	);
+
+for (const { tab, first, arrived } of VIEWS)
+	for (const locale of ['en', 'fr'] as const)
+		test(`${locale} stop ${tab} view keeps its first section still while current notices arrive`, async ({
+			page,
+		}) => {
+			await page.clock.setFixedTime(Date.parse(generated) + 30_000);
+			const gate = await serve(page, /\/live\/alerts\.json$/);
+			try {
+				for (const viewport of VIEWPORTS) {
+					gate.holding = true;
+					const entered = new Promise<void>((resolve) => (gate.entered = resolve));
+					await page.setViewportSize(viewport);
+					await page.goto(`${localizeHref('/stop/S1', locale)}?provider=stm&tab=${tab}`, {
+						waitUntil: 'domcontentloaded',
+					});
+					await entered;
+					await expect(
+						page.locator(`[role="tabpanel"][data-state="active"] [data-toc="${first}"]`),
+					).toBeVisible();
+					await settle(page);
+					const before = await sectionTop(page, first);
+					expect(before, `${viewport.width} px`).not.toBeNull();
+
+					gate.holding = false;
+					for (const release of gate.releases.splice(0)) release();
+					await expect(page.locator(`${arrived}:visible`).first()).toBeVisible();
+					await frames(page);
+					expect(await sectionTop(page, first), `${viewport.width} px`).toBe(before);
+				}
+			} finally {
+				gate.holding = false;
+				for (const release of gate.releases.splice(0)) release();
+			}
+		});
+
 for (const locale of ['en', 'fr'] as const)
 	test(`${locale} stop record answer keeps still while the stop's own file arrives`, async ({
 		page,

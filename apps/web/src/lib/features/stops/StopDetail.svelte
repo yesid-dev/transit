@@ -409,16 +409,23 @@
 					: null}
 			/>
 			{@render historicStatus()}
+			<!-- After the answer: the live alert report lands after first paint. -->
+			{@render currentNotice(true)}
 		{/if}
-		<!-- Last: the live alert report lands after first paint and must not push the answer. -->
-		<StopCurrentNotice
-			{locale}
-			{operator}
-			current={alertsAvailable && !onLive ? notices.current : []}
-			{noticeHref}
-			record={onRecord}
-		/>
 	</div>
+{/snippet}
+
+<!-- The strip arrives with the live alert report, after first paint, so it always follows what
+     the reader already sees: the record's answer, or the Schedule view's sections. Live now holds
+     the full notices in its own section and shows no strip. -->
+{#snippet currentNotice(onRecord: boolean)}
+	<StopCurrentNotice
+		{locale}
+		{operator}
+		current={alertsAvailable && !onLive ? notices.current : []}
+		{noticeHref}
+		record={onRecord}
+	/>
 {/snippet}
 
 <EntityDetail
@@ -583,6 +590,7 @@
 					</CollapsibleSection>
 				{/key}
 			</ArticleSectionStack>
+			<div class="stop-trailing-notice">{@render currentNotice(false)}</div>
 		{:else if key === 'reliability'}
 			<!-- The record's answer stays in one place while the reliability file loads, fails or arrives. -->
 			<div class="stop-lead">{@render stopSummary(true)}</div>
@@ -642,6 +650,10 @@
 		inline-size: 100%;
 		margin-block-end: var(--space-card-gap);
 		container-type: inline-size;
+	}
+	/* Room above the Schedule view's strip only when one shows. */
+	.stop-trailing-notice:has(:global([data-slot='stop-current-notice'])) {
+		margin-block-start: var(--space-card-gap);
 	}
 	.stop-summary {
 		display: flex;
