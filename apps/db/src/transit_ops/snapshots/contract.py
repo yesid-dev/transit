@@ -853,6 +853,8 @@ class RepeatOffenderEntry(BaseModel):
 
 class RepeatOffenderGrain(BaseModel):
     # Recurrence windows are week/month; sub-MIN_N tray entries must still recur on two days.
+    # date/window_end are the inclusive local service dates the figures cover. They come last
+    # so retained-day files, which have always carried them, keep their serialized key order.
     grain: str
     window_days: int | None = None
     entries: list[RepeatOffenderEntry] = Field(default_factory=list)
@@ -860,6 +862,8 @@ class RepeatOffenderGrain(BaseModel):
     total_ranked_trips: int | None = None
     total_ranked_vehicles: int | None = None
     tray_total: int | None = None
+    date: str | None = None
+    window_end: str | None = None
 
 
 REPEAT_OFFENDERS_BYTE_CEILING = 262144

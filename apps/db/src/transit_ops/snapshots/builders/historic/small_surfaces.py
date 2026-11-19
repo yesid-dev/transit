@@ -507,6 +507,8 @@ def _repeat_offenders_by_grain(
                 total_ranked_trips=trip_total,
                 total_ranked_vehicles=veh_total,
                 tray_total=tray_total,
+                date=_iso_date(win_start),
+                window_end=_iso_date(win_end),
             )
         )
     return out

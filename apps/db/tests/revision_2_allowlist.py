@@ -46,11 +46,13 @@ FILE_RULES: tuple[FileRule, ...] = (
                 f"by_grain[*].{group}[*].{field}"
                 for group in ("entries", "tray")
                 for field in ("route_short_name", "departure_time", "headsign")
-            ),
+            )
+            + period,
         )
-        for path in (
-            "historic/repeat_offenders.json",
-            "historic/history/repeat_offenders/generations/{h}/{date}.json",
+        for path, period in (
+            # Retained days have always named their period; the current file now does too.
+            ("historic/repeat_offenders.json", ("by_grain[*].date", "by_grain[*].window_end")),
+            ("historic/history/repeat_offenders/generations/{h}/{date}.json", ()),
         )
     ),
     FileRule("historic/receipts/{id}.json", ("service_states.beyond_schedule_trip_days",)),
