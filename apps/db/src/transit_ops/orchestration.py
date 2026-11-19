@@ -1380,6 +1380,7 @@ def run_realtime_worker_loop(
                     settings=settings.LIGHTER_STORAGE.live, engine=engine,
                     manifest=registry.get_provider(provider_id),
                     resolver=bronze_storage_scope.resolve,
+                    record_restart=True,
                 )
             with live_publish_scope(provider_id, settings), owner as state:
                 return _run_realtime_worker_loop(

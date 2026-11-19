@@ -196,8 +196,10 @@ def window_cpu(
 ) -> None:
     """Write the admission gate's --window-cpu file from the merged container sampler's run.
 
-    Reads only the samples file: run the sampler over a span that covers the admission
-    window first. Nothing runs this automatically. Exit 2 on a malformed or incomplete run.
+    Reads only the samples file: run the sampler once over a span that covers the admission
+    window first. One run lasts at most 24 h and its last sample lands an interval before
+    its end, so it can't cover a full 24-hour window; joined runs are refused. Nothing runs
+    this automatically. Exit 2 on a malformed, incomplete or joined run.
     """
     from hashlib import sha256
 

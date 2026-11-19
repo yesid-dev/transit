@@ -255,7 +255,13 @@ def worker_state_scope(
     engine: Engine,
     manifest: ProviderManifest,
     resolver: BronzeStorageResolver,
+    record_restart: bool = False,
 ) -> Iterator[WorkerState | None]:
+    """Own the provider's worker file for this scope.
+
+    ``record_restart`` is for the worker loop only: each of its reopens appends a restart
+    record beside the file. One-shot cycles are not worker restarts and record nothing.
+    """
     if not settings.recording:
         yield None
         return
@@ -270,7 +276,7 @@ def worker_state_scope(
         path,
         provider_id=provider,
         settings=settings,
-        restart_evidence=restart_evidence_path(path),
+        restart_evidence=restart_evidence_path(path) if record_restart else None,
     )
     try:
         seed_alert_state(local, seed)

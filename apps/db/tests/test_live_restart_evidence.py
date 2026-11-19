@@ -17,6 +17,7 @@ from test_sample_transit_containers import fake_run
 from typer.testing import CliRunner
 
 from transit_ops.cli import app
+from transit_ops.live import admission
 from transit_ops.live.admission import (
     WORKER_REOPEN_POINT,
     EvidenceInvalid,
@@ -28,7 +29,7 @@ from transit_ops.live.admission import (
     restart_evidence_path,
     window_cpu_from_samples,
 )
-from transit_ops.live.local_file import LocalFileUnreadable
+from transit_ops.live.local_file import LocalFileMismatch, LocalFileUnreadable
 from transit_ops.live.recovery import open_worker_file
 from transit_ops.live.worker_state import worker_state_scope
 
@@ -125,14 +126,18 @@ def test_a_record_that_cannot_be_written_never_fails_the_reopen(tmp_path, caplog
     assert "live_restart_record_unwritable:" in caplog.text
 
 
-def test_the_worker_owner_records_each_reopen_but_not_the_first_creation(tmp_path):
+def test_only_the_worker_loop_records_its_reopens_and_never_the_first_creation(tmp_path):
     settings = configured(tmp_path)
     evidence = restart_evidence_path(tmp_path / "provider-network.duckdb")
-    with worker_state_scope(settings=settings, engine=None, manifest=MANIFEST, resolver=None):
+    scope = dict(settings=settings, engine=None, manifest=MANIFEST, resolver=None)
+    with worker_state_scope(**scope, record_restart=True):
+        pass
+    assert not evidence.exists()
+    with worker_state_scope(**scope):  # A one-shot cycle is not a worker restart.
         pass
     assert not evidence.exists()
 
-    with worker_state_scope(settings=settings, engine=None, manifest=MANIFEST, resolver=None):
+    with worker_state_scope(**scope, record_restart=True):
         pass
     (record,) = records(evidence)
     assert (record.provider_id, record.point, record.reopened, record.refusal) == (
@@ -143,11 +148,55 @@ def test_the_worker_owner_records_each_reopen_but_not_the_first_creation(tmp_pat
     )
 
 
+def test_a_torn_last_line_is_closed_so_only_it_is_refused(tmp_path):
+    path = tmp_path / "provider-network.duckdb"
+    open_worker_file(path, provider_id="network", settings=SETTINGS).close()
+    evidence = restart_evidence_path(path)
+    evidence.write_bytes(b'{"provider_id":"network","obs')  # A write cut short by a full disk.
+    with closing(
+        open_worker_file(path, provider_id="network", settings=SETTINGS, restart_evidence=evidence)
+    ):
+        pass
+
+    lines = evidence.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 2
+    with pytest.raises(EvidenceInvalid, match="restart_record_json_invalid:line 1"):
+        read_restart_records(lines)
+    (record,) = read_restart_records(lines[1:])
+    assert (record.point, record.reopened) == (WORKER_REOPEN_POINT, True)
+
+
+def test_a_full_restart_file_stops_growing_and_says_so(tmp_path, monkeypatch, caplog):
+    path = tmp_path / "provider-network.duckdb"
+    open_worker_file(path, provider_id="network", settings=SETTINGS).close()
+    evidence = restart_evidence_path(path)
+    monkeypatch.setattr(admission, "RESTART_EVIDENCE_MAX_BYTES", 1)
+    evidence.write_bytes(b"\n")
+    with caplog.at_level(logging.ERROR, logger="transit_ops.live.admission"):
+        open_worker_file(
+            path, provider_id="network", settings=SETTINGS, restart_evidence=evidence
+        ).close()
+    assert evidence.read_bytes() == b"\n"
+    assert "live_restart_record_file_full:1" in caplog.text
+
+
+def test_a_refused_open_while_adoption_is_pending_is_recorded_by_name(tmp_path):
+    path = tmp_path / "provider-network.duckdb"
+    Path(str(path) + ".recovery-pending").write_bytes(b"{}")
+    evidence = restart_evidence_path(path)
+    with pytest.raises(LocalFileMismatch, match="recovery_adoption_pending"):
+        open_worker_file(path, provider_id="network", settings=SETTINGS, restart_evidence=evidence)
+    (record,) = records(evidence)
+    assert (record.reopened, record.refusal) == (False, "recovery_adoption_pending")
+    assert classify_restart(record, 20) == "recovery_adoption_pending"
+
+
 # Window CPU from the merged #854 sampler's own output.
 
 
 def sampler_rows(percents, *, service="worker", start=START - timedelta(minutes=1), **summary):
     """A small run in the sampler's JSONL shape: one row per minute, then its summary."""
+    measured = [p for p in percents if isinstance(p, int | float)]
     rows = []
     for n, percent in enumerate(percents):
         at = (start + timedelta(minutes=n)).isoformat()
@@ -169,7 +218,14 @@ def sampler_rows(percents, *, service="worker", start=START - timedelta(minutes=
             "elapsed_seconds": 60.0 * len(percents),
             "interrupted": False,
             "outcome": 0,
-            "services": {service: {"samples": len(percents), "errors": 0, "restarts": 0}},
+            "services": {
+                service: {
+                    "samples": len(percents),
+                    "errors": 0,
+                    "restarts": 0,
+                    "metrics": {"cpu_percent": {"max": max(measured, default=None)}},
+                }
+            },
         }
         | summary
     )
@@ -213,6 +269,29 @@ def test_the_merged_sampler_output_becomes_the_window_cpu_the_gate_parses():
             "gap",
         ),
         (["{not json"], "json_invalid:line 1"),
+        # Two runs joined with cat, 20 h apart: the time between them was never measured.
+        (
+            sampler_rows([10.0, 20.0])
+            + sampler_rows([10.0, 20.0], start=START + timedelta(hours=20)),
+            "multiple_runs",
+        ),
+        # A dropped sample row (the run's own peak was higher) disagrees with its summary.
+        (
+            sampler_rows([10.0, 90.0, 20.0])[:2] + sampler_rows([10.0, 90.0, 20.0])[4:],
+            "summary_mismatch",
+        ),
+        (sampler_rows([10.0, "abc"]), "cpu_unmeasured"),
+        (sampler_rows([10.0, True]), "cpu_unmeasured"),
+        (
+            [json.dumps({"kind": "error", "service": "worker", "reason": "missing stats row"})]
+            + sampler_rows([10.0]),
+            "reading_failed",
+        ),
+        (
+            [json.dumps({"kind": "error", "reason": "Docker observation failed"})]
+            + sampler_rows([10.0]),
+            "reading_failed",
+        ),
     ],
 )
 def test_a_sampler_run_that_did_not_measure_the_whole_window_is_refused_by_name(lines, name):
@@ -240,6 +319,11 @@ def test_window_cpu_cli_writes_the_file_and_refuses_malformed_samples_by_name(tm
     assert refused.exit_code == 2
     assert "evidence_malformed:window_cpu_samples_truncated" in refused.output
     assert not (tmp_path / "other.json").exists()
+
+    samples.write_text("\n".join(sampler_rows([10.0, "abc"])) + "\n", encoding="utf-8")
+    forged = CliRunner().invoke(app, [*command, "--output", str(tmp_path / "other.json")])
+    assert forged.exit_code == 2
+    assert "evidence_malformed:window_cpu_samples_cpu_unmeasured" in forged.output
 
 
 # End to end: a generated log plus the two written files through the gate CLI.

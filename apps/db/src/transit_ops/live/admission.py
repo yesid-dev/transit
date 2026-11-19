@@ -75,6 +75,8 @@ RULING_12_TRIGGERS = ("lost_committed_row", "failed_wal_replay", "missed_restart
 PUBLIC_SIDE_REASONS = frozenset({"public_publication_failed", "public_publication_absent"})
 # The point every restart record of the running worker's own reopen carries.
 WORKER_REOPEN_POINT = "worker_reopen"
+# About 32,000 restart records; beyond it a crash loop stops growing the file (logged).
+RESTART_EVIDENCE_MAX_BYTES = 8 * 2**20
 APPROVAL = (
     "eligibility only: the 24-hour live shadow, any deploy, role flip and cutover "
     "need the owner's separate approval"
@@ -332,11 +334,13 @@ def window_cpu_from_samples(
     """The service's peak CPU from one complete run of the #854 container sampler.
 
     The sampler takes one ``docker stats`` reading per interval, so the measurement covers
-    its first to its last sample of the service. A run that was interrupted, truncated,
-    missed a slot, failed a reading or left the service unmeasured is refused by name.
+    its first to its last sample of the service. One run lasts at most 86400 s and its last
+    sample lands an interval before that, so it never covers a full 24-hour window: choose
+    a shorter window, or run the sampler once over a span that covers it. Joined runs are
+    refused, since the time between them was never measured. A run that was interrupted,
+    truncated, missed a slot, failed a reading, left the service unmeasured or disagrees
+    with its own summary is refused by name.
     """
-    from transit_ops.operations.resource_plan import ResourceEvidenceMissing, ServicePeak
-
     rows = []
     for number, line in enumerate(lines, 1):
         if line.strip():
@@ -344,6 +348,8 @@ def window_cpu_from_samples(
                 rows.append(_mapping(json.loads(line), "row"))
             except (ValueError, EvidenceInvalid) as exc:
                 raise EvidenceInvalid(f"window_cpu_samples_json_invalid:line {number}") from exc
+    if sum(r.get("kind") == "summary" for r in rows) > 1:
+        raise EvidenceInvalid("window_cpu_samples_multiple_runs")
     if not rows or rows[-1].get("kind") != "summary":
         raise EvidenceInvalid("window_cpu_samples_summary_missing")
     summary = rows[-1]
@@ -360,10 +366,23 @@ def window_cpu_from_samples(
         raise EvidenceInvalid("window_cpu_samples_service_unmeasured")
     try:
         percents = [_mapping(r["metrics"], "metrics")["cpu_percent"] for r in samples]
-        cores = max(ServicePeak.cores_from_docker_percent(p) for p in percents)
         instants = [_aware(r["utc"], "window_cpu_samples_utc") for r in samples]
-    except (KeyError, ResourceEvidenceMissing) as exc:
+    except KeyError as exc:
         raise EvidenceInvalid("window_cpu_samples_cpu_unmeasured") from exc
+    if any(type(p) not in (int, float) or not math.isfinite(p) or p < 0 for p in percents):
+        raise EvidenceInvalid("window_cpu_samples_cpu_unmeasured")
+    peak = max(percents)
+    # The run's own summary binds the sample count and the peak (no rows dropped or added).
+    try:
+        own = _mapping(_mapping(summary["services"], "services")[service], "service")
+        reported = (own["samples"], own["errors"], own["metrics"]["cpu_percent"]["max"])
+    except (KeyError, TypeError, EvidenceInvalid) as exc:
+        raise EvidenceInvalid("window_cpu_samples_summary_mismatch") from exc
+    if reported != (len(samples), 0, peak):
+        raise EvidenceInvalid("window_cpu_samples_summary_mismatch")
+    from transit_ops.operations.resource_plan import ServicePeak
+
+    cores = ServicePeak.cores_from_docker_percent(peak)
     return WindowCpu.from_dict(
         WindowCpu(service, cores, min(instants), max(instants), measurement_sha).display_dict()
     )
@@ -553,11 +572,24 @@ def restart_evidence_path(database: Path) -> Path:
 
 
 def append_restart_record(evidence: Path, observation: RestartObservation) -> None:
-    """Append one record durably. A failure is logged by name and never raised."""
+    """Append one record durably. A failure is logged by name and never raised.
+
+    A torn last line (a partial write, e.g. disk full) is closed with a newline first, so
+    the gate refuses that line by number and every later record stays readable. Past
+    RESTART_EVIDENCE_MAX_BYTES (a crash loop) nothing more is appended.
+    """
     line = json.dumps(observation.display_dict(), sort_keys=True, separators=(",", ":"))
     try:
-        with evidence.open("a", encoding="utf-8", newline="\n") as target:
-            target.write(line + "\n")
+        with evidence.open("a+b") as target:
+            size = target.seek(0, os.SEEK_END)
+            if size >= RESTART_EVIDENCE_MAX_BYTES:
+                logger.error("live_restart_record_file_full:%s", RESTART_EVIDENCE_MAX_BYTES)
+                return
+            torn = False
+            if size:
+                target.seek(size - 1)
+                torn = target.read(1) != b"\n"
+            target.write((b"\n" if torn else b"") + line.encode("utf-8") + b"\n")
             target.flush()
             os.fsync(target.fileno())
     except Exception as exc:  # noqa: BLE001 - the reopen never depends on its evidence
