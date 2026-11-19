@@ -24,6 +24,7 @@ import {
 	expectedDomainObservationsFromFixture,
 	expectedDefaultLineHeadline,
 	expectedScheduleTruth,
+	expectedStopLatestDay,
 	normalizeObservation,
 	runOracleSelfCheck,
 } from './b9-display-oracle.mjs';
@@ -542,13 +543,27 @@ async function collectStop(page) {
 		'.metric-value',
 	);
 	const percentiles = percentileText.map(parseNumber);
-	const rangeText = await readValues(
-		page,
-		'[data-slot="daily-range-verdict"] [data-slot="metric-display"]',
-		'.metric-value',
+	// Day by day: every cell of its table (the table stays in the page while it is closed), and
+	// every number its limits state (days, gaps, readings per day).
+	const dailyRows = (
+		await page
+			.locator('[data-slot="stop-daily"] tbody tr')
+			.evaluateAll((rows) =>
+				rows.map((row) =>
+					Array.from(row.querySelectorAll('th,td'), (cell) => cell.textContent?.trim() ?? ''),
+				),
+			)
+	).map(([day, ...cells]) => [
+		normalizeObservation(day),
+		...cells.map((text) => ({ value: parseNumber(text), text: normalizeObservation(text) })),
+	]);
+	const dailyLimits = (
+		await page.locator('[data-slot="day-by-day-scope"] li').allTextContents()
+	).map((text) =>
+		(text.replace(/(?<=\d)[\u00a0\u202f](?=\d{3}\b)/gu, '').match(/\d[\d,]*/gu) ?? []).map(
+			parseNumber,
+		),
 	);
-	const rangeValues = rangeText.map(parseNumber);
-	const dailyRows = await readSemanticTable(page, '[data-slot="daily-trend-chart"]', 'en');
 	const routeRows = await page.locator('[data-slot="stop-by-route"] a').evaluateAll((links) =>
 		links.map((link) => ({
 			id: new URL(link.href).pathname.split('/').at(-1),
@@ -589,10 +604,6 @@ async function collectStop(page) {
 			value,
 			text: normalizeObservation(percentileText[index] ?? ''),
 		})),
-		range: rangeValues.map((value, index) => ({
-			value,
-			text: normalizeObservation(rangeText[index] ?? ''),
-		})),
 	};
 	return [
 		observation('stop.day.otp_pct', parseNumber(notSevereMetric?.value)),
@@ -601,12 +612,7 @@ async function collectStop(page) {
 		observation('stop.record.answer', record),
 		observation('stop.day.observation_count', stopVerdictObservationCount(verdictText)),
 		observation('stop.daily.rows', dailyRows),
-		observation('stop.range.severe_pct', rangeValues[0] ?? null),
-		observation('stop.range.observations', rangeValues[2] ?? null),
-		observation(
-			'stop.range.below_min_n',
-			(await page.locator('[data-slot="below-min-n"]').count()) > 0,
-		),
+		observation('stop.daily.limits', dailyLimits),
 		observation('stop.routes.ranked', rankedRoutes),
 		observation('stop.habits.tiers', habitsTiers),
 		observation('stop.weekday.rows', weekdayRows),
@@ -1126,7 +1132,10 @@ function expectedSurfaceState(cell, fixture) {
 		cell.surface === 'network' && !(latest?.observation_count > 0)
 			? NETWORK_TERMINAL_SELECTOR
 			: null;
-	return { representativeDate: terminalSelector ? null : (latest?.date ?? null), terminalSelector };
+	// The stop names its days in words: its representative date is the latest day it draws.
+	const representativeDate =
+		cell.surface === 'stop' ? expectedStopLatestDay(fixture, cell.locale) : (latest?.date ?? null);
+	return { representativeDate: terminalSelector ? null : representativeDate, terminalSelector };
 }
 
 async function verifyTextSemantics(page, cell, fixture) {
@@ -1277,7 +1286,12 @@ async function verifyResponsiveRailFocus(page, cell) {
 }
 
 const MARK_SELECTORS = Object.freeze({
-	trend: ['[data-slot="trend-mark"]', '.dv-trendmark-otp, .dv-trendmark-retard'],
+	// The network history trend is the surviving two-measure trend: chosen by its row, never by
+	// whichever trend mark a page happens to render first.
+	trend: [
+		'[data-slot="network-history-trend-row"] figure[data-slot="trend-mark"]',
+		'.dv-trendmark-otp, .dv-trendmark-retard',
+	],
 	histogram: ['[data-slot="histogram-mark"]', 'rect.dv-histmark-bar'],
 	'dot-strip': ['[data-slot="dot-strip-mark"]', 'circle[class*="dv-stripmark-"]'],
 	'magnitude-bars': ['[data-slot="magnitude-bars-mark"]', 'rect[class*="dv-barmark-"]'],
@@ -1290,16 +1304,20 @@ const MARK_SELECTORS = Object.freeze({
 });
 
 const MARK_SIGNATURES = Object.freeze({
+	// The network history trend on the rich fixture's chosen range (August 27 to 29): retained
+	// on-time 5/10, 2/10, 9/10 give otpTrendDomain([50, 20, 90]) = [18, 92] with the 80% reference
+	// inside; the delay series is DELAY_DIST_DOMAIN. The stop record draws its days without this
+	// mark (UX-T6.3), so the line and stop no longer represent it.
 	trend: {
 		domain: [
-			[0, 100],
-			[0, 8],
+			[18, 92],
+			[0, 15],
 		],
 		unit: ['%', 'min'],
-		axis: ['0', '20', '40', '60', '80', '100', '0', '2', '4', '6', '8'],
-		// Axis titles sit in HTML above the plot so long EN/FR labels never clip. The line record
-		// draws one measure a day without this mark; the first two-measure trend is the stop's.
-		titles: ['Severe-delay share (%)', 'Average delay (min)'],
+		axis: ['20', '40', '60', '80', '2026-08-27', '2026-08-28', '2026-08-29', '0', '5', '10', '15'],
+		// Axis titles sit in HTML above the plot so long EN/FR labels never clip. They are pinned as
+		// rendered: the network labels already carry their unit, which the mark repeats.
+		titles: ['On-time % (%)', 'Slowest 10% (min) (min)'],
 	},
 	histogram: {
 		domain: [-300, 1800],

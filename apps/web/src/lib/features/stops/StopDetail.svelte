@@ -454,7 +454,14 @@
 			record={onRecord}
 		/>
 		{#if onRecord}
-			<StopRecordAnswer view={recordAnswer} {locale} url={recordUrl} />
+			<StopRecordAnswer
+				view={recordAnswer}
+				{locale}
+				url={recordUrl}
+				sourceHref={reliability.data != null || historyOnlyReliability != null
+					? '#stop-rel-source'
+					: null}
+			/>
 			{@render historicStatus()}
 		{/if}
 	</div>
@@ -679,6 +686,7 @@
 					<StopReliabilitySurface
 						data={historyOnlyReliability}
 						{locale}
+						recordWindow={recordAnswer.window}
 						history={stopHistory}
 						syncUrl={detailTabController.active === 'reliability'}
 					/>
@@ -691,6 +699,7 @@
 								<StopReliabilitySurface
 									data={r}
 									{locale}
+									recordWindow={recordAnswer.window}
 									history={stopHistory}
 									syncUrl={detailTabController.active === 'reliability'}
 								/>

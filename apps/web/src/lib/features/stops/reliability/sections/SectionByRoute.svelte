@@ -1,28 +1,28 @@
 <script lang="ts">
-	import type { Locale } from '#lib/i18n/index.ts';
+	import { Button } from '@yesid/ui/button';
+	import { intl, type Locale } from '#lib/i18n/index.ts';
 	import { RankedRow } from '#lib/components/dataviz/index.ts';
-	import { AbsentValue } from '#lib/components/edge/index.ts';
 	import type { RankedRouteRow } from '../selectors/rankedRoutes';
 	import type { StopReliabilityCopy } from '../stops-reliability.copy';
 	import StopReliabilityPresenter from './StopReliabilityPresenter.svelte';
 
+	/** A long list shows its first rows, then "Show all": the rest stay in the page, hidden. */
+	const FIRST_ROWS = 5;
+
 	interface SectionByRouteProps {
 		rows: readonly RankedRouteRow[];
-		hasAssociations: boolean;
 		locale: Locale;
 		copy: StopReliabilityCopy;
 		presentation?: 'standalone' | 'article-body';
 	}
-	let {
-		rows,
-		hasAssociations,
-		locale,
-		copy,
-		presentation = 'standalone',
-	}: SectionByRouteProps = $props();
+	let { rows, locale, copy, presentation = 'standalone' }: SectionByRouteProps = $props();
+
+	const listId = $props.id();
+	let showAll = $state(false);
+	const bounded = $derived(rows.length > FIRST_ROWS);
 </script>
 
-{#if rows.length > 0 || hasAssociations}
+{#if rows.length > 0}
 	<StopReliabilityPresenter
 		heading={copy.byRoute}
 		metricKey="avgDelay"
@@ -30,33 +30,45 @@
 		{presentation}
 		dataSlot="stop-by-route"
 	>
-		{#if rows.length > 0}
-			<ul class="stop-reliability-route-list" role="list">
-				{#each rows as row (row.key)}
-					<li>
-						<a
-							class="stop-reliability-route-link"
-							href={row.href}
-							data-sveltekit-preload-data="hover"
-						>
-							<RankedRow
-								bare
-								rank={row.rank}
-								title={row.title}
-								severity={row.severity}
-								value={row.value}
-								domain={row.domain}
-								unit={row.unit}
-								display={row.display}
-								{locale}
-							/>
-							<span class="sr-only">{row.ariaLabel}</span>
-						</a>
-					</li>
-				{/each}
-			</ul>
-		{:else}
-			<AbsentValue variant="block" reason="no-observations" {locale} />
+		<ul class="stop-reliability-route-list" role="list" id={listId}>
+			{#each rows as row, index (row.key)}
+				<li hidden={bounded && !showAll && index >= FIRST_ROWS}>
+					<a
+						class="stop-reliability-route-link"
+						href={row.href}
+						data-sveltekit-preload-data="hover"
+					>
+						<RankedRow
+							bare
+							rank={row.rank}
+							title={row.title}
+							severity={row.severity}
+							value={row.value}
+							domain={row.domain}
+							unit={row.unit}
+							display={row.display}
+							{locale}
+						/>
+						<span class="sr-only">{row.ariaLabel}</span>
+					</a>
+				</li>
+			{/each}
+		</ul>
+		{#if bounded}
+			<div>
+				<Button
+					variant="outline"
+					size="sm"
+					class="min-h-11"
+					aria-expanded={showAll}
+					aria-controls={listId}
+					onclick={() => (showAll = !showAll)}
+				>
+					{showAll
+						? copy.showFewerLines
+						: copy.showAllLines(intl.number(locale).format(rows.length))}
+				</Button>
+			</div>
 		{/if}
 	</StopReliabilityPresenter>
 {/if}

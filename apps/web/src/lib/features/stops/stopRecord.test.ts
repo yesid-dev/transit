@@ -58,7 +58,9 @@ describe('presentStopRecord: the published weekly figure', () => {
 		expect(view.evidence).toEqual([
 			{ label: 'Readings', value: '210 readings; 120 more than 5 minutes late.' },
 			{ label: 'Uncertainty', value: 'No interval published for this measure and period.' },
+			{ label: 'Comparison', value: 'A comparable result is not published for this period.' },
 		]);
+		expect(view.window).toEqual({ from: '2026-11-04', to: '2026-11-10' });
 	});
 
 	it('speaks French with French typography and the first of the month as « 1er »', () => {
@@ -147,6 +149,7 @@ describe('presentStopRecord: absence is never a reassuring zero', () => {
 		expect(view.figure).toBeNull();
 		expect(view.csv).toBeNull();
 		expect(view.citation).toBeNull();
+		expect(view.window).toBeNull();
 		return [view.state, view.status];
 	};
 
@@ -188,20 +191,24 @@ describe('presentStopRecord: absence is never a reassuring zero', () => {
 		]);
 	});
 
-	it('keeps the same two evidence rows in every state, saying what is not published', () => {
+	it('keeps the same three evidence rows in every state, saying what is not published', () => {
 		const rows = (data: unknown, settledFlag = true) =>
 			presentStopRecord(
 				{ stopId: '52409', index: { data, error: null, settled: settledFlag }, now: NOW },
 				'en',
 				CONTEXT,
 			).evidence;
+		// Loading holds only the count: the other two rows say the same in every state, and
+		// showing them keeps the evidence column the same height when the record arrives.
 		expect(rows(null, false)).toEqual([
 			{ label: 'Readings', value: null },
-			{ label: 'Uncertainty', value: null },
+			{ label: 'Uncertainty', value: 'No interval published for this measure and period.' },
+			{ label: 'Comparison', value: 'A comparable result is not published for this period.' },
 		]);
 		const unpublished = [
 			{ label: 'Readings', value: 'Reading count not published for this result.' },
 			{ label: 'Uncertainty', value: 'No interval published for this measure and period.' },
+			{ label: 'Comparison', value: 'A comparable result is not published for this period.' },
 		];
 		expect(rows(index(null))).toEqual(unpublished);
 		expect(
@@ -224,6 +231,8 @@ describe('presentStopRecord: absence is never a reassuring zero', () => {
 		);
 		expect([view.state, view.status, view.figure]).toEqual(['unmeasured', status, null]);
 		expect(view.period).toBe('November 4 to 10, 2026 · 7 complete days');
+		// The chart below still draws the week the row names.
+		expect(view.window).toEqual({ from: '2026-11-04', to: '2026-11-10' });
 	});
 
 	it("says a fresh publication's unranked state even when no stop ranks (R1094-2)", () => {

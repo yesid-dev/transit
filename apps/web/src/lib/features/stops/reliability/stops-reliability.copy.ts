@@ -11,16 +11,6 @@ const predictionShare = {
 
 export const stopReliabilityCopy = defineCopy({
 	fr: {
-		questions: {
-			trend: 'Les retards diminuent-ils au fil des jours ?',
-			percentiles: 'Quel retard est habituel, et jusqu’où peut-il aller ?',
-			pane: 'Que prévoient les rapports pour cet arrêt ?',
-			habits: 'À quels moments les retards reviennent-ils ?',
-			weekday: 'Quels jours faut-il prévoir plus de temps ?',
-			time: 'À quel moment de la journée les retards sont-ils les plus graves ?',
-			crowding: 'Les véhicules observés ici étaient-ils bondés ?',
-			byRoute: 'Quelles lignes prennent le plus de retard ici ?',
-		},
 		byRoute: 'Retard moyen par ligne',
 		noRouteBreakdown: 'Aucun détail par ligne pour cet arrêt.',
 		paneHeading: 'Prévisions de retard',
@@ -104,7 +94,7 @@ export const stopReliabilityCopy = defineCopy({
 				` (${otp} %; Wilson nominal à 95 % : ${lo}–${hi} %, relevés potentiellement dépendants)`,
 		} satisfies VerdictCopy,
 		percentiles: {
-			heading: 'Retard journalier',
+			heading: 'Retard habituel',
 			typical: 'Retard médian',
 			typicalCaption: 'Médiane des relevés de retard prédit',
 			p90: 'Retard au 90e percentile',
@@ -159,38 +149,66 @@ export const stopReliabilityCopy = defineCopy({
 			barLabel: 'Répartition de l’occupation des véhicules observés à cet arrêt',
 			dominantLabel: 'Occupation la plus fréquente',
 		},
-		trend: {
-			heading: 'Tendance journalière',
-			chartTitle: 'Part des retards graves · par jour',
-			severeLabel: 'Part des retards graves',
-			avgLabel: 'Retard moyen',
-			pctUnit: '%',
-			minUnit: ' min',
-			verdictHeading: 'Sur la période choisie',
-			pooledSevere: 'Part des retards graves',
-			pooledAvg: 'Retard moyen',
-			observations: 'Observations',
-			wilsonCaption: (lo: string, hi: string) => `Intervalle de confiance à 95 % : ${lo} – ${hi} %`,
-			rangeWindow: (days: number, from: string, to: string) =>
-				`${days} ${days === 1 ? 'jour' : 'jours'} avec données · ${from} au ${to}`,
-			singleDay: (date: string) => `Journée du ${date}`,
-			caveat:
-				'La « part des retards graves » est un indicateur indirect (retards > 5 min); un arrêt n’a pas de ponctualité programmée. Ne pas comparer au taux de ponctualité d’une ligne.',
-			belowMinN: (n: number) =>
-				`Trop peu d’observations sur cette période (${n}) pour afficher un pourcentage fiable.`,
+		dayByDay: {
+			heading: 'Jour par jour',
+			summary: (low: string, high: string, highDay: string) =>
+				`Entre ${low} et ${high} selon le jour. Le plus élevé\u00a0: ${highDay}.`,
+			summaryAbsent: 'Moins de 2 jours mesurés\u00a0: pas de comparaison jour par jour.',
+			caption: (dates: string) =>
+				`Relevés à plus de 5 minutes de retard chaque jour, ${dates}, en pourcentage`,
+			hideTable: 'Masquer le tableau',
+			tableCaption: (dates: string) => `Relevés à plus de 5 minutes de retard, ${dates}`,
+			columns: {
+				day: 'Jour',
+				share: 'Part',
+				readings: 'Relevés',
+				late: 'Plus de 5 min de retard',
+			},
+			notPublished: 'Non publié',
+			noReadings: 'Aucun relevé',
+			scopeLabel: 'Limites de ces jours',
+			basis: {
+				record: (days: string) =>
+					`Les ${days} mêmes jours que le bilan ci-dessus. Le bilan additionne leurs relevés; il ne fait pas la moyenne de ces parts quotidiennes.`,
+				chosen: 'Les dates choisies. Le bilan ci-dessus reste la semaine publiée.',
+				latest: (days: string) => `Les ${days} derniers jours du fichier de cet arrêt.`,
+			},
+			gaps: (gaps: number, shownGaps: string, shownDays: string) =>
+				gaps === 1
+					? `${shownGaps} de ces ${shownDays} jours n’a pas de part publiée. C’est une lacune, pas un zéro.`
+					: `${shownGaps} de ces ${shownDays} jours n’ont pas de part publiée. Ce sont des lacunes, pas des zéros.`,
+			noGaps: 'Chaque jour a une part publiée.',
+			readings: (fewest: string, most: string) =>
+				`Entre ${fewest} et ${most} relevés par jour. Une journée avec peu de relevés peut varier fortement.`,
+			readingsSame: (count: number, shown: string) =>
+				count === 1 ? `${shown} relevé chaque jour.` : `${shown} relevés chaque jour.`,
+		},
+		summaries: {
+			percentiles: (p50: string, p90: string) =>
+				`Médiane ${p50}; 9 relevés sur 10 à ${p90} ou moins.`,
+			habits: 'Des nombres relatifs à cet arrêt, pas la probabilité d’un retard.',
+			allHistory: 'Tout l’historique disponible, pas les dates choisies.',
+			crowding: 'Sa propre période\u00a0: les 30 derniers jours.',
+			byRoute: (count: number, shown: string) =>
+				count === 1
+					? 'Retard prévu moyen de la seule ligne.'
+					: `Retard prévu moyen de chacune des ${shown} lignes.`,
+		},
+		showAllLines: (shown: string) => `Afficher les ${shown} lignes`,
+		showFewerLines: 'Afficher moins de lignes',
+		source: {
+			heading: 'Source et méthode',
+			summary: 'Ce qu’est un relevé et la publication de cet arrêt.',
+			reading:
+				'Un relevé est une prédiction communiquée, pas un trajet ou un passager. Les données disponibles n’expliquent pas la cause d’un retard.',
+			built: 'Fichier de l’arrêt produit le',
+			method: 'Version de la méthode',
+			generation: 'Génération de publication',
+			notSupplied: 'Non fourni dans ce fichier.',
+			howWeMeasure: 'Comment on mesure',
 		},
 	},
 	en: {
-		questions: {
-			trend: 'Are delays getting better over time?',
-			percentiles: 'What delay is typical, and how bad can it get?',
-			pane: 'What do the reports predict for this stop?',
-			habits: 'When do delays keep coming back?',
-			weekday: 'Which days should you allow more time?',
-			time: 'When during the day are delays most severe?',
-			crowding: 'How crowded were vehicles seen here?',
-			byRoute: 'Which lines are most delayed here?',
-		},
 		byRoute: 'Avg delay by line',
 		noRouteBreakdown: 'No per-line breakdown for this stop.',
 		paneHeading: 'Predicted delays',
@@ -273,7 +291,7 @@ export const stopReliabilityCopy = defineCopy({
 				` (${otp}%; nominal 95% Wilson: ${lo}–${hi}%, potentially dependent readings)`,
 		} satisfies VerdictCopy,
 		percentiles: {
-			heading: 'Daily delay',
+			heading: 'Typical delay',
 			typical: 'Median delay',
 			typicalCaption: 'Median of reported predicted delays',
 			p90: '90th-percentile delay',
@@ -319,25 +337,60 @@ export const stopReliabilityCopy = defineCopy({
 			barLabel: 'Occupancy mix of vehicles observed at this stop',
 			dominantLabel: 'Most common loading',
 		},
-		trend: {
-			heading: 'Daily trend',
-			chartTitle: 'Severe-delay share · by day',
-			severeLabel: 'Severe-delay share',
-			avgLabel: 'Average delay',
-			pctUnit: '%',
-			minUnit: ' min',
-			verdictHeading: 'Over the selected window',
-			pooledSevere: 'Severe-delay share',
-			pooledAvg: 'Average delay',
-			observations: 'Observations',
-			wilsonCaption: (lo, hi) => `95% confidence interval: ${lo}–${hi}%`,
-			rangeWindow: (days, from, to) =>
-				`${days} ${days === 1 ? 'day' : 'days'} with data · ${from} to ${to}`,
-			singleDay: (date) => `Day of ${date}`,
-			caveat:
-				'“Severe-delay share” is a proxy (delays over 5 min); a stop has no scheduled on-time definition. Do not compare it to a line’s on-time rate.',
-			belowMinN: (n) =>
-				`Too few observations over this window (${n}) to print a reliable percentage.`,
+		dayByDay: {
+			heading: 'Day by day',
+			summary: (low, high, highDay) => `Between ${low} and ${high} a day. Highest on ${highDay}.`,
+			summaryAbsent: 'Fewer than 2 measured days: no day-by-day comparison.',
+			caption: (dates) => `Readings more than 5 minutes late each day, ${dates}, in percent`,
+			hideTable: 'Hide table',
+			tableCaption: (dates) => `Readings more than 5 minutes late, ${dates}`,
+			columns: {
+				day: 'Day',
+				share: 'Share',
+				readings: 'Readings',
+				late: 'More than 5 min late',
+			},
+			notPublished: 'Not published',
+			noReadings: 'No readings',
+			scopeLabel: 'Limits of these days',
+			basis: {
+				record: (days) =>
+					`The same ${days} days as the record above. The record adds up their readings; it does not average these daily shares.`,
+				chosen: 'The dates you chose. The record above stays the published week.',
+				latest: (days) => `The latest ${days} days in this stop’s file.`,
+			},
+			gaps: (gaps, shownGaps, shownDays) =>
+				gaps === 1
+					? `${shownGaps} of these ${shownDays} days has no published share. It is a gap, not a zero.`
+					: `${shownGaps} of these ${shownDays} days have no published share. They are gaps, not zeros.`,
+			noGaps: 'Every day has a published share.',
+			readings: (fewest, most) =>
+				`Between ${fewest} and ${most} readings a day. A day with few readings can swing widely.`,
+			readingsSame: (count, shown) =>
+				count === 1 ? `${shown} reading each day.` : `${shown} readings each day.`,
+		},
+		summaries: {
+			percentiles: (p50, p90) => `Median ${p50}; 9 in 10 readings at or below ${p90}.`,
+			habits: 'Relative counts within this stop, not the chance of a delay.',
+			allHistory: 'All available history, not the selected dates.',
+			crowding: 'Its own period: the last 30 days.',
+			byRoute: (count, shown) =>
+				count === 1
+					? 'Average predicted delay for the one line.'
+					: `Average predicted delay for each of the ${shown} lines.`,
+		},
+		showAllLines: (shown) => `Show all ${shown} lines`,
+		showFewerLines: 'Show fewer lines',
+		source: {
+			heading: 'Source and method',
+			summary: 'What a reading is, and this stop’s publication.',
+			reading:
+				'One reading is one reported prediction, not one trip or passenger. The available data does not explain the cause of a delay.',
+			built: 'Stop file built on',
+			method: 'Method version',
+			generation: 'Publication generation',
+			notSupplied: 'Not supplied in this file.',
+			howWeMeasure: 'How we measure',
 		},
 	},
 }) satisfies Readonly<Record<Locale, { readonly verdict: VerdictCopy }>>;
