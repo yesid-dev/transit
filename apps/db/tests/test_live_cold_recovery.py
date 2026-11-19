@@ -2,7 +2,9 @@ from contextlib import closing
 from dataclasses import replace
 
 import pytest
-from cold_recovery_fixture import generate, seal
+from cold_recovery_fixture import build, seal
+from cold_recovery_fixture import cold as cold
+from cold_recovery_fixture import cold_templates as cold_templates
 from test_live_local_file import SETTINGS
 
 from transit_ops.history.poll_record import ProcessingEntry
@@ -12,25 +14,13 @@ from transit_ops.live.recovery import (
     _read_frame,
     _state,
     frames_sha256,
-    reconstruct,
     reopen,
 )
 from transit_ops.live.segments import export_segment
 
 
-def build(tmp_path, inputs, storage, payloads, name="candidate.duckdb"):
-    return reconstruct(
-        tmp_path / name,
-        owned_directory=tmp_path,
-        inputs=inputs,
-        storage=storage,
-        resolver=lambda c: payloads[(c.index_family, c.capture_row_id)],
-        settings=SETTINGS,
-    )
-
-
-def test_complete_generated_inputs_rebuild_both_fact_families_and_alert_continuity(tmp_path):
-    inputs, storage, payloads, expected = generate(tmp_path)
+def test_complete_generated_inputs_rebuild_both_fact_families_and_alert_continuity(cold, tmp_path):
+    inputs, storage, payloads, expected = cold()
     result = build(tmp_path, inputs, storage, payloads)
     with closing(reopen(result.path, provider_id="network", settings=SETTINGS)) as local:
         assert frames_sha256(_state(local)) == frames_sha256(expected)
@@ -48,8 +38,10 @@ def test_complete_generated_inputs_rebuild_both_fact_families_and_alert_continui
         build(tmp_path, inputs, storage, payloads)
 
 
-def test_original_application_order_and_historical_editions_are_required_and_replayed(tmp_path):
-    inputs, storage, payloads, expected = generate(tmp_path, historical=True)
+def test_original_application_order_and_historical_editions_are_required_and_replayed(
+    cold, tmp_path
+):
+    inputs, storage, payloads, expected = cold(historical=True)
     result = build(tmp_path, inputs, storage, payloads)
     with closing(reopen(result.path, provider_id="network", settings=SETTINGS)) as local:
         assert frames_sha256(_state(local)) == frames_sha256(expected)
@@ -64,8 +56,10 @@ def test_original_application_order_and_historical_editions_are_required_and_rep
         build(tmp_path, missing, storage, payloads, "incomplete.duckdb")
 
 
-def test_cold_restore_keeps_failed_source_attribution_without_claiming_capture_identity(tmp_path):
-    inputs, storage, payloads, _ = generate(tmp_path)
+def test_cold_restore_keeps_failed_source_attribution_without_claiming_capture_identity(
+    cold, tmp_path
+):
+    inputs, storage, payloads, _ = cold()
     from test_live_captures import AT
 
     failure = ProcessingEntry(
@@ -112,15 +106,15 @@ def test_cold_restore_keeps_failed_source_attribution_without_claiming_capture_i
         "applications",
     ],
 )
-def test_incomplete_sources_refuse_instead_of_building_empty_state(tmp_path, missing):
-    inputs, storage, payloads, _ = generate(tmp_path)
+def test_incomplete_sources_refuse_instead_of_building_empty_state(cold, tmp_path, missing):
+    inputs, storage, payloads, _ = cold()
     inputs = replace(inputs, **{missing: b"" if missing in ("alert_seed", "cut") else ()})
     with pytest.raises(RecoveryRefused):
         build(tmp_path, inputs, storage, payloads)
 
 
-def test_bad_retained_bytes_refuse_and_preserve_source_and_candidate_evidence(tmp_path):
-    inputs, storage, payloads, _ = generate(tmp_path)
+def test_bad_retained_bytes_refuse_and_preserve_source_and_candidate_evidence(cold, tmp_path):
+    inputs, storage, payloads, _ = cold()
     original = (tmp_path / "source.duckdb").read_bytes()
     payloads[("alert_snapshot", 101)] = b"wrong"
     with pytest.raises(RecoveryRefused, match="retained_bytes_mismatch"):
@@ -146,8 +140,8 @@ def test_bad_retained_bytes_refuse_and_preserve_source_and_candidate_evidence(tm
         "exports",
     ],
 )
-def test_even_digest_verified_cut_must_prove_complete_consistent_inputs(tmp_path, failure):
-    inputs, storage, payloads, expected = generate(tmp_path)
+def test_even_digest_verified_cut_must_prove_complete_consistent_inputs(cold, tmp_path, failure):
+    inputs, storage, payloads, expected = cold()
     overrides = {}
     if failure == "inventory":
         inputs = replace(inputs, inventory=inputs.inventory[1:])

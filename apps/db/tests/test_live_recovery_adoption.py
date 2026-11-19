@@ -7,8 +7,8 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
-from cold_recovery_fixture import generate
-from test_live_cold_recovery import build
+from cold_recovery_fixture import cold as cold
+from cold_recovery_fixture import cold_templates as cold_templates
 from test_live_local_file import SETTINGS
 from test_live_path_reservation import kill_after_ready
 
@@ -16,9 +16,8 @@ from transit_ops.live.local_file import LocalFileLocked, LocalFileMismatch
 from transit_ops.live.recovery import RecoveryRefused, adopt, reopen
 
 
-def prepared(tmp_path):
-    inputs, storage, payloads, _ = generate(tmp_path)
-    candidate = build(tmp_path, inputs, storage, payloads)
+def prepared(cold, tmp_path):
+    *_, candidate = cold(built=True)
     original = tmp_path / "failed.duckdb"
     original.write_bytes(b"failed original")
     wal = Path(str(original) + ".wal")
@@ -34,8 +33,8 @@ def prepared(tmp_path):
     return candidate, options
 
 
-def test_adoption_preserves_verified_original_and_wal_then_opens_candidate(tmp_path):
-    candidate, options = prepared(tmp_path)
+def test_adoption_preserves_verified_original_and_wal_then_opens_candidate(cold, tmp_path):
+    candidate, options = prepared(cold, tmp_path)
     original, backup = options["original"], options["backup"]
     adopt(candidate, **options)
     assert (backup / "database").read_bytes() == b"failed original"
@@ -50,9 +49,8 @@ def test_adoption_preserves_verified_original_and_wal_then_opens_candidate(tmp_p
     assert not Path(str(original) + ".recovery-pending").exists()
 
 
-def test_explicit_adoption_can_restore_a_missing_target(tmp_path):
-    inputs, storage, payloads, _ = generate(tmp_path)
-    candidate = build(tmp_path, inputs, storage, payloads)
+def test_explicit_adoption_can_restore_a_missing_target(cold, tmp_path):
+    *_, candidate = cold(built=True)
     original = tmp_path / "missing.duckdb"
     adopt(
         candidate,
@@ -84,7 +82,7 @@ def test_explicit_adoption_can_restore_a_missing_target(tmp_path):
         "detached-wal",
     ],
 )
-def test_adoption_rejects_entire_sidecar_footprint_before_mutation(tmp_path, collision):
+def test_adoption_rejects_entire_sidecar_footprint_before_mutation(cold, tmp_path, collision):
     original, backup = tmp_path / "failed.duckdb", tmp_path / "evidence"
     suffixes = {"wal": ".wal", "marker": ".recovery-pending", "lock": ".owner.lock"}
     name = "candidate.duckdb"
@@ -93,8 +91,7 @@ def test_adoption_rejects_entire_sidecar_footprint_before_mutation(tmp_path, col
     elif collision in ("database", "wal", "manifest.json", "detached-wal"):
         backup.mkdir()
         name = str(Path("evidence") / collision)
-    inputs, storage, payloads, _ = generate(tmp_path)
-    candidate = build(tmp_path, inputs, storage, payloads, name=name)
+    *_, candidate = cold(built=True, name=name)
     if collision.startswith("original_"):
         original = Path(str(candidate.path) + suffixes[collision.removeprefix("original_")])
     original.write_bytes(b"failed original")
@@ -126,8 +123,8 @@ def adoption_files(directory):
 
 
 @pytest.mark.parametrize("failure", ["original", "candidate", "outside", "backup"])
-def test_adoption_refuses_drift_and_unsafe_targets_without_losing_original(tmp_path, failure):
-    candidate, options = prepared(tmp_path)
+def test_adoption_refuses_drift_and_unsafe_targets_without_losing_original(cold, tmp_path, failure):
+    candidate, options = prepared(cold, tmp_path)
     original = options["original"]
     before = original.read_bytes()
     if failure == "original":
@@ -170,8 +167,10 @@ recovery.adopt(candidate, original=original, backup=Path(data['backup']),
 
 
 @pytest.mark.parametrize("stage", ["detached", "replaced"])
-def test_real_process_interruption_preserves_evidence_and_requires_explicit_finish(tmp_path, stage):
-    candidate, options = prepared(tmp_path)
+def test_real_process_interruption_preserves_evidence_and_requires_explicit_finish(
+    cold, tmp_path, stage
+):
+    candidate, options = prepared(cold, tmp_path)
     original, backup = options["original"], options["backup"]
     arguments = dict(
         candidate={**asdict(candidate), "path": str(candidate.path)},
@@ -196,8 +195,8 @@ def test_real_process_interruption_preserves_evidence_and_requires_explicit_fini
         pass
 
 
-def test_real_owner_refuses_adoption_before_creating_backup(tmp_path):
-    candidate, options = prepared(tmp_path)
+def test_real_owner_refuses_adoption_before_creating_backup(cold, tmp_path):
+    candidate, options = prepared(cold, tmp_path)
     # The normal owner and cold adoption contend on the same path reservation.
     original = tmp_path / "source.duckdb"
     options.update(
@@ -229,10 +228,10 @@ def test_real_owner_refuses_adoption_before_creating_backup(tmp_path):
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="requires native Windows file-sharing behavior")
-def test_windows_locked_original_refuses_before_backup_or_replace(tmp_path):
+def test_windows_locked_original_refuses_before_backup_or_replace(cold, tmp_path):
     import duckdb
 
-    candidate, options = prepared(tmp_path)
+    candidate, options = prepared(cold, tmp_path)
     original = tmp_path / "source.duckdb"
     before = original.read_bytes()
     options.update(original=original, original_sha256=sha256(before).hexdigest(), wal_sha256=None)
