@@ -77,7 +77,7 @@ from transit_ops.snapshots.publish import publish_snapshot
 from transit_ops.worker_watchdog import worker_progress, worker_stopping, worker_watchdog
 
 if TYPE_CHECKING:
-    from transit_ops.live.shadow import PairedShadow
+    from transit_ops.live.shadow import CycleShadow
     from transit_ops.live.worker_state import WorkerState
     from transit_ops.snapshots.protocols import PayloadSink
 
@@ -782,7 +782,7 @@ def _run_realtime_cycle(
     bronze_storage_resolver: BronzeStorageResolver,
     live_trip_updates: LiveTripUpdates | None = None,
     worker_state: WorkerState | None = None,
-    shadow: PairedShadow | None = None,
+    shadow: CycleShadow | None = None,
 ) -> RealtimeCycleResult:
     settings = settings or get_settings()
     registry = registry or _provider_registry(settings)
@@ -1043,10 +1043,13 @@ def refuse_unadmitted_shadow(settings: Settings, *, worker_loop: bool = True) ->
     rather than silently running without the shadow.
     """
     if settings.LIGHTER_STORAGE.live.shadow != "off":
-        from transit_ops.live.shadow import ShadowRefused, admit_role
+        from transit_ops.live.shadow import ShadowRefused, admit_role, validate_shadow_config
 
-        if admit_role(settings.LIGHTER_STORAGE.live) and not worker_loop:
-            raise ShadowRefused("shadow_requires_worker_loop")
+        if admit_role(settings.LIGHTER_STORAGE.live):
+            if not worker_loop:
+                raise ShadowRefused("shadow_requires_worker_loop")
+            # Static shadow configuration refuses here, before any worker start.
+            validate_shadow_config(settings)
 
 
 def _validate_realtime_worker_startup(
@@ -1098,10 +1101,10 @@ def _install_worker_shutdown_handlers() -> Callable[[], bool]:
 
 
 def _run_realtime_worker_loop(
-    provider_id: str, *, shadow: PairedShadow | None = None, **options: Any
+    provider_id: str, *, shadow: CycleShadow | None = None, **options: Any
 ) -> None:
     """Drive worker cycles; a paired shadow is closed on graceful stop and on error."""
-    built: list[PairedShadow] = []  # The admitted shadow the drive builds for itself.
+    built: list[CycleShadow] = []  # The admitted shadow the drive builds for itself.
     try:
         _drive_realtime_worker(provider_id, shadow=shadow, built_shadow=built, **options)
     finally:
@@ -1123,8 +1126,8 @@ def _drive_realtime_worker(
     should_shutdown: Callable[[], bool] | None = None,
     bronze_storage_resolver: BronzeStorageResolver,
     worker_state: WorkerState | None = None,
-    shadow: PairedShadow | None = None,
-    built_shadow: list[PairedShadow] | None = None,
+    shadow: CycleShadow | None = None,
+    built_shadow: list[CycleShadow] | None = None,
 ) -> None:
     registry = registry or _provider_registry(settings)
     engine = engine or make_engine(settings, connect_timeout=10)

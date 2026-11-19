@@ -629,8 +629,8 @@ def test_capture_refusal_is_named_shadow_evidence_and_public_still_publishes(rec
     assert "manifest.json" in public.objects
 
 
-def test_worker_loop_starts_postgres_authoritative_and_runs_a_paired_cycle(recorded, monkeypatch):
-    """End to end: production capture -> local candidate -> classified evidence."""
+def run_worker_loop(recorded, monkeypatch, *, after=lambda paired: None, public=None):
+    """Drive the real worker loop with the production capture over a recorded window."""
     from test_live_context_capture import Engine, manifest, registry, sources
 
     from transit_ops.live import shadow as shadow_module
@@ -641,7 +641,8 @@ def test_worker_loop_starts_postgres_authoritative_and_runs_a_paired_cycle(recor
     declared = manifest(feeds=endpoints)
     providers = registry(declared)
     rows = sources(endpoints=endpoints)
-    public, store, objects = RecordingSink(), MemorySnapshotStore(), control()
+    public = RecordingSink() if public is None else public
+    store, objects = MemorySnapshotStore(), control()
     monkeypatch.setattr(live_scope, "worker_live_storage", lambda provider_id, settings: public)
     monkeypatch.setattr(shadow_module, "_private_store", lambda settings: store)
     monkeypatch.setattr(shadow_module, "_private_objects", lambda settings: objects)
@@ -670,13 +671,13 @@ def test_worker_loop_starts_postgres_authoritative_and_runs_a_paired_cycle(recor
             return 0
 
         paired.run_cycle(publish, snapshot_ids=(42,))
+        after(paired)
         return _worker_loop_cycle_result(provider_id)
 
     monkeypatch.setattr(orchestration, "_run_realtime_cycle", cycle)
-    settings = role_settings(SNAPSHOT_PUBLIC_BASE_URL="https://example.org")
     orchestration._run_realtime_worker_loop(
         "network",
-        settings=settings,
+        settings=role_settings(SNAPSHOT_PUBLIC_BASE_URL="https://example.org"),
         registry=providers,
         engine=Engine(rows),
         sleep_fn=lambda _: None,
@@ -685,8 +686,13 @@ def test_worker_loop_starts_postgres_authoritative_and_runs_a_paired_cycle(recor
         bronze_storage_resolver=lambda _: None,
         worker_state=State(recorded),
     )
-
     (paired,) = built
+    return paired, store
+
+
+def test_worker_loop_starts_postgres_authoritative_and_runs_a_paired_cycle(recorded, monkeypatch):
+    """End to end: production capture -> local candidate -> classified evidence."""
+    paired, store = run_worker_loop(recorded, monkeypatch)
     evidence = paired.evidence
     assert (evidence.status, evidence.reason) == ("compared", None)
     # The fake authority holds no fact rows: every recorded local row is classified extra.
@@ -695,6 +701,20 @@ def test_worker_loop_starts_postgres_authoritative_and_runs_a_paired_cycle(recor
     assert evidence.identity["edition"] == 7
     assert store.keys and all(key.startswith(SHADOW_PREFIX) for key in store.keys)
     assert paired._publisher is None  # The loop's graceful stop released the shadow lease.
+
+
+def test_worker_loop_closes_the_shadow_it_built_when_the_loop_raises(recorded, monkeypatch):
+    seen = []
+
+    def interrupted(paired):
+        seen.append((paired, paired._publisher))  # The paired cycle holds the shadow lease.
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        run_worker_loop(recorded, monkeypatch, after=interrupted)
+    ((paired, publisher),) = seen
+    assert publisher is not None and publisher.lease is not None
+    assert paired._publisher is None  # The loop's finally closed the shadow it built.
 
 
 def test_admission_error_never_blocks_the_public_publication(recorded):
@@ -709,3 +729,98 @@ def test_admission_error_never_blocks_the_public_publication(recorded):
         "shadow_admission_refused:OSError",
     )
     assert "manifest.json" in public.objects
+
+
+def test_capture_delay_is_reported_apart_and_a_timeout_refuses_only_the_shadow(recorded, caplog):
+    from transit_ops.live.context_capture import CaptureTimeout
+
+    def timed_out(cycle):
+        raise CaptureTimeout("statement_timeout")
+
+    public = RecordingSink()
+    ticks = iter([0.0, 2.0, 2.0, 2.5])  # Capture 2 s (before publish), then 0.5 s.
+    paired = shadow(recorded, public=public, context_source=timed_out, perf=lambda: next(ticks))
+    caplog.set_level(logging.INFO, logger="transit_ops.live.shadow")
+    assert paired.run_cycle(recorded_postgres(recorded), snapshot_ids=(42,)) == 0
+    assert "manifest.json" in public.objects  # The public publish still ran.
+    evidence = paired.evidence
+    assert (evidence.status, evidence.reason) == (
+        "invalid",
+        "CaptureTimeout: publication_context_timeout:statement_timeout",
+    )
+    assert (evidence.capture_seconds, evidence.shadow_seconds) == (2.0, 2.5)
+    logged = [r for r in caplog.records if r.message.startswith("paired_shadow ")]
+    line = json.loads(logged[-1].message.removeprefix("paired_shadow "))
+    assert (line["capture_seconds"], line["shadow_seconds"]) == (2.0, 2.5)
+
+
+def test_runtime_construction_failure_keeps_the_worker_publishing(recorded, monkeypatch):
+    from transit_ops.live.shadow import UnavailableShadow, worker_shadow
+    from transit_ops.snapshots import live_scope
+
+    monkeypatch.setattr(live_scope, "worker_live_storage", lambda provider_id, settings: None)
+    built = worker_shadow(
+        "network",
+        settings=role_settings(SNAPSHOT_PUBLIC_BASE_URL="https://example.org"),
+        registry=None,
+        engine=None,
+        state=State(recorded),
+        trips=None,
+    )
+    assert isinstance(built, UnavailableShadow)
+    calls = []
+    assert (
+        built.run_cycle(
+            lambda storage, cycle: calls.append((storage, cycle)) or 0, snapshot_ids=(42,)
+        )
+        == 0
+    )
+    assert calls == [(None, None)]  # Today's publish: no tee and no explicit cycle.
+    assert (built.evidence.status, built.evidence.reason) == (
+        "refused",
+        "shadow_unavailable:shadow_public_storage_unavailable",
+    )
+    built.close()
+
+
+@pytest.mark.parametrize(
+    ("updates", "reason"),
+    [
+        (
+            dict(SNAPSHOT_STORAGE_BACKEND="s3", SNAPSHOT_R2_BUCKET=None),
+            "shadow_requires_public_publication",
+        ),
+        (
+            dict(SNAPSHOT_STORAGE_BACKEND="local", SNAPSHOT_LOCAL_ROOT=None),
+            "shadow_requires_public_publication",
+        ),
+        (
+            dict(SNAPSHOT_STORAGE_BACKEND="s3", SNAPSHOT_R2_BUCKET="public/v1"),
+            "shadow_public_storage_invalid",
+        ),
+        (
+            dict(BRONZE_STORAGE_BACKEND="s3", BRONZE_S3_BUCKET="private/v1"),
+            "shadow_private_storage_invalid",
+        ),
+        (dict(SNAPSHOT_PUBLIC_BASE_URL=None), "shadow_requires_public_base_url"),
+        (dict(SNAPSHOT_PUBLIC_BASE_URL="  "), "shadow_requires_public_base_url"),
+    ],
+)
+def test_misconfigured_shadow_exits_by_name_before_a_worker_start(monkeypatch, updates, reason):
+    import typer
+
+    from transit_ops import cli
+
+    settings = role_settings(**{"SNAPSHOT_PUBLIC_BASE_URL": "https://example.org", **updates})
+    monkeypatch.setattr(cli, "get_settings", lambda: settings)
+    monkeypatch.setattr(cli, "_install_worker_shutdown_handlers", lambda: lambda: False)
+    monkeypatch.setattr(cli, "observe_start", lambda _: pytest.fail("start recorded"))
+    monkeypatch.setattr(cli, "run_realtime_worker_loop", lambda *a, **k: pytest.fail("ran"))
+    with pytest.raises(typer.BadParameter, match=f"^{reason}$"):
+        cli.run_realtime_worker_command("stm", max_cycles=1)
+
+
+def test_well_configured_shadow_passes_the_static_checks():
+    from transit_ops.orchestration import refuse_unadmitted_shadow
+
+    refuse_unadmitted_shadow(role_settings(SNAPSHOT_PUBLIC_BASE_URL="https://example.org"))

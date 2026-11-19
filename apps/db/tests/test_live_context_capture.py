@@ -6,14 +6,18 @@ from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
+from sqlalchemy.exc import OperationalError
 from test_live_builders_status import context
-from test_live_facts import parsed_vehicle
-from test_live_running import AT, Holder, inputs
+from test_live_facts import parsed_vehicle, trip_message
+from test_live_running import AT, Holder, inputs, parse_at
 from test_live_running import local as local
 
 from transit_ops.capture_coverage.rules import FRESH_FEED_AGE_SECONDS
 from transit_ops.live import builders_status
 from transit_ops.live.context_capture import (
+    CAPTURE_LOCK_TIMEOUT_MS,
+    CAPTURE_STATEMENT_TIMEOUT_MS,
+    CaptureTimeout,
     ContextMissing,
     assemble,
     feed_policy,
@@ -150,6 +154,8 @@ def test_capture_is_detached_canonical_rows_at_the_cycle_with_registry_display_i
         (lambda rows, options: rows.pop("feeds"), "feeds"),
         (lambda rows, options: rows["provider"].clear(), "provider"),
         (lambda rows, options: options.update(public_base_url=None), "public_base_url"),
+        (lambda rows, options: options.update(public_base_url=""), "public_base_url"),
+        (lambda rows, options: options.update(public_base_url="  "), "public_base_url"),
         (
             lambda rows, options: options.update(registry=registry(manifest(provider="other"))),
             "provider_registry",
@@ -174,8 +180,9 @@ def test_naive_timestamps_refuse_rather_than_guess_a_zone():
 def test_budget_labels_evidence_only_and_never_changes_a_published_byte(local):
     """Live ruling 23: changing or crossing the freshness budget changes no byte."""
     apply_capture(local, parsed_vehicle(), provider_timezone="America/Toronto")
-    cycle = AT + timedelta(seconds=90)  # The recorded vehicle capture is 90 s old.
-    base = context(endpoints=("vehicle_positions",))
+    trips = Holder(parse_at(trip_message(), "trip_updates", AT))
+    cycle = AT + timedelta(seconds=90)  # Both recorded captures are 90 s old.
+    base = context(endpoints=("trip_updates", "vehicle_positions"))
     base = replace(
         base,
         cycle=cycle,
@@ -184,18 +191,26 @@ def test_budget_labels_evidence_only_and_never_changes_a_published_byte(local):
             for name in ("provider", "endpoints", "editions", "tiers", "feeds")
         },
     )
-    resolved = capture(cycle).vehicle_policy
+    resolved = capture(cycle).vehicle_policy.freshness_seconds
     states, bundles = set(), set()
-    for budget in (0, 89, 91, resolved.freshness_seconds, 10**9):
-        ctx = replace(base, vehicle_policy=FeedPolicy(True, budget))
-        projection = builders_status._project(local, Holder(None), inputs(local), ctx)[3]
-        states.add(projection.vehicle_evidence.state)
-        bundle = builders_status.build_bundle(local, Holder(None), inputs(local), ctx)
+    budgets = (0, 89, 91, resolved, 10**9)
+    for trip_budget, vehicle_budget in [(b, b) for b in budgets] + [(0, 10**9), (10**9, 0)]:
+        ctx = replace(
+            base,
+            trip_policy=FeedPolicy(True, trip_budget),
+            vehicle_policy=FeedPolicy(True, vehicle_budget),
+        )
+        projection = builders_status._project(local, trips, inputs(local), ctx)[3]
+        states.add((projection.trip_evidence.state, projection.vehicle_evidence.state))
+        bundle = builders_status.build_bundle(local, trips, inputs(local), ctx)
         bundles.add(tuple(sorted(bundle.items())))
-    assert states == {"stale", "fresh"}  # The budget is crossed in both directions.
+    # Each budget is crossed in both directions, together and independently.
+    assert {"stale", "fresh"} <= {trip for trip, _ in states}
+    assert {"stale", "fresh"} <= {vehicle for _, vehicle in states}
+    assert {("stale", "fresh"), ("fresh", "stale")} <= states
     assert len(bundles) == 1
-    vehicles = json.loads(dict(next(iter(bundles)))["vehicles.json"])["vehicles"]
-    assert vehicles  # Stale evidence still publishes the same recorded vehicles.
+    published = dict(next(iter(bundles)))
+    assert json.loads(published["vehicles.json"])["vehicles"]  # Stale still publishes.
 
 
 class Result:
@@ -217,8 +232,8 @@ class Result:
 class Connection:
     """Answers the five named context reads; records every statement it was given."""
 
-    def __init__(self, rows, log):
-        self.rows, self.log = rows, log
+    def __init__(self, rows, log, fail=None):
+        self.rows, self.log, self.fail = rows, log, fail or {}
 
     def __enter__(self):
         return self
@@ -236,15 +251,27 @@ class Connection:
             return Result([{"now": AT}])  # The paired authority's own now() (#1153).
         if name is None:
             return Result([])
+        if name in self.fail:
+            raise self.fail[name]
         return Result([dict(row) for row in self.rows[name.removeprefix("live.context.")]])
 
 
 class Engine:
-    def __init__(self, rows):
-        self.rows, self.log = rows, []
+    def __init__(self, rows, fail=None):
+        self.rows, self.log, self.fail = rows, [], fail
 
     def connect(self):
-        return Connection(self.rows, self.log)
+        return Connection(self.rows, self.log, self.fail)
+
+
+class DriverError(Exception):
+    def __init__(self, sqlstate):
+        super().__init__(f"server error {sqlstate}")
+        self.sqlstate = sqlstate
+
+
+def cancelled(sqlstate):
+    return OperationalError("SELECT ...", {}, DriverError(sqlstate))
 
 
 def test_postgres_capture_is_one_read_only_snapshot_of_the_copied_queries_without_clock_reads():
@@ -255,15 +282,42 @@ def test_postgres_capture_is_one_read_only_snapshot_of_the_copied_queries_withou
     assert ctx == capture()
     statements = [sql for sql, _ in engine.log]
     assert "READ ONLY" in statements[0] and "REPEATABLE READ" in statements[0]
-    assert [query_name(sql) for sql in statements[1:]] == [
+    # Bounded before any read: the capture runs ahead of the public publish.
+    assert statements[1:3] == [
+        f"SET LOCAL statement_timeout = {CAPTURE_STATEMENT_TIMEOUT_MS}",
+        f"SET LOCAL lock_timeout = {CAPTURE_LOCK_TIMEOUT_MS}",
+    ]
+    assert (CAPTURE_STATEMENT_TIMEOUT_MS, CAPTURE_LOCK_TIMEOUT_MS) == (2000, 500)
+    assert [query_name(sql) for sql in statements[3:]] == [
         "live.context.provider",
         "live.context.editions",
         "live.context.endpoints",
         "live.context.tiers",
         "live.context.feeds",
     ]
-    assert all(params == {"provider_id": "network"} for _, params in engine.log[1:])
+    assert all(params == {"provider_id": "network"} for _, params in engine.log[3:])
     assert not any("now()" in sql.lower() for sql in statements)
     assert not any(
         word in sql.upper() for sql in statements for word in ("INSERT ", "UPDATE ", "DELETE ")
     )
+
+
+@pytest.mark.parametrize(
+    ("sqlstate", "name"), [("57014", "statement_timeout"), ("55P03", "lock_timeout")]
+)
+def test_slow_or_locked_capture_refuses_by_name(sqlstate, name):
+    engine = Engine(sources(), fail={"live.context.feeds": cancelled(sqlstate)})
+    capture_now = postgres_context(
+        engine, provider_id="network", registry=registry(), public_base_url=BASE_URL
+    )
+    with pytest.raises(CaptureTimeout, match=f"^publication_context_timeout:{name}$"):
+        capture_now(AT)
+
+
+def test_other_database_errors_are_not_relabelled_as_timeouts():
+    engine = Engine(sources(), fail={"live.context.tiers": cancelled("42P01")})
+    capture_now = postgres_context(
+        engine, provider_id="network", registry=registry(), public_base_url=BASE_URL
+    )
+    with pytest.raises(OperationalError):
+        capture_now(AT)

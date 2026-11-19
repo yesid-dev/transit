@@ -4,10 +4,15 @@ Each read copies the query the PostgreSQL manifest and data-health builders run
 (snapshots/builders/live.py), without their now() ages: the local builders age
 every fact against the cycle instant. The five reads share one REPEATABLE READ,
 READ ONLY transaction on the worker's engine, taken before the public publication
-records this cycle's tier state, so both candidates read the same facts. Display
+records this cycle's tier state. Known limit: that is a separate snapshot from the
+publication's own, so a static/historic publish or edition load committing between
+them shows up as a counted difference (a detector false positive, never a false
+pass). The capture runs ahead of the public publish, so it is bounded: a slow or
+blocked read refuses that cycle's shadow by name and the publish proceeds. Display
 inputs come from the same owners the PostgreSQL manifest uses: the provider
-registry and SNAPSHOT_PUBLIC_BASE_URL. A missing input refuses by name; an empty
-result is a successfully read empty store, never a substitute for a missing one.
+registry and SNAPSHOT_PUBLIC_BASE_URL (blank counts as missing). A missing input
+refuses by name; an empty result is a successfully read empty store, never a
+substitute for a missing one.
 
 Live ruling 23: a feed's freshness budget is FRESH_FEED_AGE_SECONDS plus the
 provider's declared live_source_lag_seconds, and `enabled` follows the declared
@@ -22,6 +27,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 
 from transit_ops.capture_coverage.rules import FRESH_FEED_AGE_SECONDS
 from transit_ops.live.publication_context import CapturedRows, PublicationContext, aware
@@ -36,6 +42,19 @@ if TYPE_CHECKING:
 SOURCE = "postgres"
 NAMES = ("provider", "editions", "endpoints", "tiers", "feeds")
 _READ_ONLY = text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+# The capture delays the public publish, so it fails fast instead of waiting. Its
+# costliest read (the data-health feeds view) takes milliseconds; 2 s per statement
+# caps a pathological plan far inside the realtime tick, and 500 ms bounds a wait
+# behind an ACCESS EXCLUSIVE lock (such as a repack swap) that would otherwise
+# queue the publish behind it. SET LOCAL ends with the read-only transaction.
+CAPTURE_STATEMENT_TIMEOUT_MS = 2000
+CAPTURE_LOCK_TIMEOUT_MS = 500
+_TIMEOUTS = (
+    text(f"SET LOCAL statement_timeout = {CAPTURE_STATEMENT_TIMEOUT_MS}"),
+    text(f"SET LOCAL lock_timeout = {CAPTURE_LOCK_TIMEOUT_MS}"),
+)
+# PostgreSQL query_canceled (statement_timeout) and lock_not_available (lock_timeout).
+_TIMEOUT_STATES = {"57014": "statement_timeout", "55P03": "lock_timeout"}
 
 # manifest.provider
 _PROVIDER = named_query(
@@ -144,6 +163,12 @@ class ContextMissing(ValueError):
         self.name = name
 
 
+class CaptureTimeout(ValueError):
+    def __init__(self, name: str) -> None:
+        super().__init__(f"publication_context_timeout:{name}")
+        self.name = name
+
+
 def feed_policy(manifest: ProviderManifest, endpoint: str) -> FeedPolicy:
     """Live ruling 23: the one existing fresh-feed rule plus the declared source lag."""
     feed = manifest.feeds.get(endpoint)
@@ -181,7 +206,7 @@ def assemble(
         raise ContextMissing("provider")
     if provider_id not in registry.list_provider_ids():
         raise ContextMissing("provider_registry")
-    if public_base_url is None:
+    if not (public_base_url or "").strip():
         raise ContextMissing("public_base_url")
     manifest = registry.get_provider(provider_id)
     rows = {name: [dict(row) for row in sources[name]] for name in NAMES}
@@ -215,9 +240,18 @@ def postgres_context(
     """The production ContextSource: one read-only snapshot per call, no PG clock."""
 
     def capture(cycle: datetime) -> PublicationContext:
-        with engine.connect() as conn, conn.begin():
-            conn.execute(_READ_ONLY)
-            sources = read_sources(conn, provider_id)
+        try:
+            with engine.connect() as conn, conn.begin():
+                conn.execute(_READ_ONLY)
+                for timeout in _TIMEOUTS:
+                    conn.execute(timeout)
+                sources = read_sources(conn, provider_id)
+        except DBAPIError as exc:
+            orig = exc.orig
+            state = getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)
+            if state in _TIMEOUT_STATES:
+                raise CaptureTimeout(_TIMEOUT_STATES[state]) from exc
+            raise
         return assemble(
             cycle, provider_id, sources, registry=registry, public_base_url=public_base_url
         )
