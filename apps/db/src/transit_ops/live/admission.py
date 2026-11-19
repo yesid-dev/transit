@@ -21,13 +21,16 @@ from __future__ import annotations
 
 import itertools
 import json
+import logging
 import math
+import os
 import re
 import time
 from collections import Counter, deque
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -43,6 +46,8 @@ if TYPE_CHECKING:
     from transit_ops.core.models import ProviderManifest
     from transit_ops.live.local_file import LocalFile
     from transit_ops.live.settings import LaneSettings
+
+logger = logging.getLogger(__name__)
 
 # Live ruling 24.1 (storage orchestrator 10, 2026-11-19; provisional): the largest share of
 # a provider's window that may be shadow-attributable invalid or refused cycles.
@@ -68,6 +73,8 @@ STATIC_FEED_KINDS = frozenset({"static_schedule", "gis_static"})
 RULING_12_TRIGGERS = ("lost_committed_row", "failed_wal_replay", "missed_restart_gate")
 # Shadow reasons that are the public side failing, excluded from the share (ruling 24.1).
 PUBLIC_SIDE_REASONS = frozenset({"public_publication_failed", "public_publication_absent"})
+# The point every restart record of the running worker's own reopen carries.
+WORKER_REOPEN_POINT = "worker_reopen"
 APPROVAL = (
     "eligibility only: the 24-hour live shadow, any deploy, role flip and cutover "
     "need the owner's separate approval"
@@ -309,6 +316,58 @@ class WindowCpu:
             sha,
         )
 
+    def display_dict(self) -> dict[str, object]:
+        return {
+            "service": self.service,
+            "cpu_cores": self.cpu_cores,
+            "start": self.start.isoformat(),
+            "end": self.end.isoformat(),
+            "measurement_sha": self.measurement_sha,
+        }
+
+
+def window_cpu_from_samples(
+    lines: Iterable[str], *, service: str, measurement_sha: str
+) -> WindowCpu:
+    """The service's peak CPU from one complete run of the #854 container sampler.
+
+    The sampler takes one ``docker stats`` reading per interval, so the measurement covers
+    its first to its last sample of the service. A run that was interrupted, truncated,
+    missed a slot, failed a reading or left the service unmeasured is refused by name.
+    """
+    from transit_ops.operations.resource_plan import ResourceEvidenceMissing, ServicePeak
+
+    rows = []
+    for number, line in enumerate(lines, 1):
+        if line.strip():
+            try:
+                rows.append(_mapping(json.loads(line), "row"))
+            except (ValueError, EvidenceInvalid) as exc:
+                raise EvidenceInvalid(f"window_cpu_samples_json_invalid:line {number}") from exc
+    if not rows or rows[-1].get("kind") != "summary":
+        raise EvidenceInvalid("window_cpu_samples_summary_missing")
+    summary = rows[-1]
+    if summary.get("truncated") or any(r.get("kind") == "truncation" for r in rows):
+        raise EvidenceInvalid("window_cpu_samples_truncated")
+    if summary.get("outcome") != 0 or summary.get("interrupted") is not False:
+        raise EvidenceInvalid(f"window_cpu_samples_incomplete:{summary.get('outcome')}")
+    if any(r.get("kind") == "gap" for r in rows):
+        raise EvidenceInvalid("window_cpu_samples_gap")
+    if any(r.get("kind") == "error" and r.get("service") in (None, service) for r in rows):
+        raise EvidenceInvalid("window_cpu_samples_reading_failed")
+    samples = [r for r in rows if r.get("kind") == "sample" and r.get("service") == service]
+    if not samples:
+        raise EvidenceInvalid("window_cpu_samples_service_unmeasured")
+    try:
+        percents = [_mapping(r["metrics"], "metrics")["cpu_percent"] for r in samples]
+        cores = max(ServicePeak.cores_from_docker_percent(p) for p in percents)
+        instants = [_aware(r["utc"], "window_cpu_samples_utc") for r in samples]
+    except (KeyError, ResourceEvidenceMissing) as exc:
+        raise EvidenceInvalid("window_cpu_samples_cpu_unmeasured") from exc
+    return WindowCpu.from_dict(
+        WindowCpu(service, cores, min(instants), max(instants), measurement_sha).display_dict()
+    )
+
 
 @dataclass(frozen=True)
 class EvidenceBundle:
@@ -484,6 +543,75 @@ def lost_rows(expected: Mapping[str, Sequence[str]], actual: Mapping[str, Sequen
     )
 
 
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def restart_evidence_path(database: Path) -> Path:
+    """The JSON-lines restart records beside a worker file; the gate's ``--restarts`` input."""
+    return Path(str(database) + ".restarts.jsonl")
+
+
+def append_restart_record(evidence: Path, observation: RestartObservation) -> None:
+    """Append one record durably. A failure is logged by name and never raised."""
+    line = json.dumps(observation.display_dict(), sort_keys=True, separators=(",", ":"))
+    try:
+        with evidence.open("a", encoding="utf-8", newline="\n") as target:
+            target.write(line + "\n")
+            target.flush()
+            os.fsync(target.fileno())
+    except Exception as exc:  # noqa: BLE001 - the reopen never depends on its evidence
+        logger.error("live_restart_record_unwritable:%s", type(exc).__name__)
+        return
+    logger.info("live_restart %s", line)
+
+
+def read_restart_records(lines: Iterable[str]) -> tuple[RestartObservation, ...]:
+    """The gate's reader of ``--restarts``: one JSON record per non-blank line."""
+    records = []
+    for number, line in enumerate(lines, 1):
+        if line.strip():
+            try:
+                value = json.loads(line)
+            except ValueError as exc:
+                raise EvidenceInvalid(f"restart_record_json_invalid:line {number}") from exc
+            records.append(RestartObservation.from_dict(value))
+    return tuple(records)
+
+
+def _measured_reopen(
+    open_file: Callable[[], LocalFile],
+    path: Path,
+    *,
+    provider_id: str,
+    point: str,
+    committed: Mapping[str, Sequence[str]] | None,
+    clock: Callable[[], datetime],
+) -> tuple[RestartObservation, LocalFile | None, Exception | None]:
+    """Open through #1142's boundary and classify it; the caller owns the open handle."""
+    observed_at = clock()
+    wal_present = Path(str(path) + ".wal").exists()
+    started = time.perf_counter()
+    try:
+        local = open_file()
+    except Exception as exc:  # noqa: BLE001 - every reopen failure is named below
+        refusal = reopen_refusal(exc, wal_present=wal_present)
+        observation = RestartObservation(
+            provider_id, observed_at, point, False, None, wal_present, refusal, None
+        )
+        return observation, None, exc
+    seconds = time.perf_counter() - started
+    try:
+        lost = None if committed is None else lost_rows(committed, committed_rows(local))
+    except BaseException:
+        local.close()
+        raise
+    observation = RestartObservation(
+        provider_id, observed_at, point, True, seconds, wal_present, None, lost
+    )
+    return observation, local, None
+
+
 def observe_restart(
     path: Path,
     *,
@@ -491,32 +619,57 @@ def observe_restart(
     settings: LaneSettings,
     committed: Mapping[str, Sequence[str]] | None,
     point: str,
-    clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+    evidence: Path | None = None,
+    clock: Callable[[], datetime] = _utc_now,
 ) -> RestartObservation:
     """Reopen a killed worker's file through #1142's boundary and measure it.
 
     ``committed`` is what the dead process had committed; None leaves loss unmeasured.
+    With ``evidence``, the observation is also appended there as a restart record.
     """
     from transit_ops.live.recovery import reopen
 
-    observed_at = clock()
-    wal_present = Path(str(path) + ".wal").exists()
-    started = time.perf_counter()
-    try:
-        local = reopen(path, provider_id=provider_id, settings=settings)
-    except Exception as exc:  # noqa: BLE001 - every reopen failure is named below
-        refusal = reopen_refusal(exc, wal_present=wal_present)
-        return RestartObservation(
-            provider_id, observed_at, point, False, None, wal_present, refusal, None
-        )
-    seconds = time.perf_counter() - started
-    try:
-        lost = None if committed is None else lost_rows(committed, committed_rows(local))
-    finally:
-        local.close()
-    return RestartObservation(
-        provider_id, observed_at, point, True, seconds, wal_present, None, lost
+    observation, local, _ = _measured_reopen(
+        partial(reopen, path, provider_id=provider_id, settings=settings),
+        path,
+        provider_id=provider_id,
+        point=point,
+        committed=committed,
+        clock=clock,
     )
+    if local is not None:
+        local.close()
+    if evidence is not None:
+        append_restart_record(evidence, observation)
+    return observation
+
+
+def recorded_reopen(
+    open_file: Callable[[], LocalFile],
+    path: Path,
+    *,
+    provider_id: str,
+    evidence: Path,
+    clock: Callable[[], datetime] = _utc_now,
+) -> LocalFile:
+    """The worker's own reopen: one restart record, then the handle or the original refusal.
+
+    Nothing outside the file witnessed what the dead worker committed, so committed-row
+    loss stays unmeasured (None) and the gate names it ``measurement_unavailable``.
+    """
+    observation, local, error = _measured_reopen(
+        open_file,
+        path,
+        provider_id=provider_id,
+        point=WORKER_REOPEN_POINT,
+        committed=None,
+        clock=clock,
+    )
+    append_restart_record(evidence, observation)
+    if error is not None:
+        raise error
+    assert local is not None
+    return local
 
 
 def classify_restart(observation: RestartObservation, cadence_seconds: int | None) -> str:

@@ -703,11 +703,26 @@ def reopen(path: Path, *, provider_id: str, settings: LaneSettings) -> LocalFile
     return LocalFile.open(path, provider_id=provider_id, settings=settings, existing_only=True)
 
 
-def open_worker_file(path: Path, *, provider_id: str, settings: LaneSettings) -> LocalFile:
+def open_worker_file(
+    path: Path,
+    *,
+    provider_id: str,
+    settings: LaneSettings,
+    restart_evidence: Path | None = None,
+) -> LocalFile:
     """Allow initial creation, but never initialize over an orphaned DuckDB WAL.
 
     Existing files retain LocalFile's named locked/unreadable/schema refusals.
     An unreadable file alone does not establish that DuckDB WAL replay failed.
     This function owns only the returned handle; callers close it in finally.
+
+    With ``restart_evidence``, opening an existing file or its WAL is a reopen: one
+    restart record is appended there whatever the outcome, and a record that cannot be
+    written is logged, never raised. Initial creation is not a restart.
     """
-    return LocalFile.open(path, provider_id=provider_id, settings=settings)
+    open_file = partial(LocalFile.open, path, provider_id=provider_id, settings=settings)
+    if restart_evidence is None or not (path.exists() or Path(str(path) + ".wal").exists()):
+        return open_file()
+    from transit_ops.live.admission import recorded_reopen
+
+    return recorded_reopen(open_file, path, provider_id=provider_id, evidence=restart_evidence)

@@ -16,6 +16,7 @@ from transit_ops.history.poll_record import CaptureEntry, PollRecord
 from transit_ops.ingestion.common import redact_error_message
 from transit_ops.ingestion.i3 import extract_i3_metadata, extract_service_alerts_metadata
 from transit_ops.ingestion.storage import BronzeStorageResolver
+from transit_ops.live.admission import restart_evidence_path
 from transit_ops.live.captures import CaptureRef, ParsePolicy, parse_capture
 from transit_ops.live.edition import (
     current_dim_versions,
@@ -264,10 +265,12 @@ def worker_state_scope(
     seed, initial_run_id = _verified_seed(settings, provider)
     assert settings.local_dir is not None
     settings.local_dir.mkdir(parents=True, exist_ok=True)
+    path = settings.local_dir / ("provider-" + quote(provider, safe="") + ".duckdb")
     local = open_worker_file(
-        settings.local_dir / ("provider-" + quote(provider, safe="") + ".duckdb"),
+        path,
         provider_id=provider,
         settings=settings,
+        restart_evidence=restart_evidence_path(path),
     )
     try:
         seed_alert_state(local, seed)
