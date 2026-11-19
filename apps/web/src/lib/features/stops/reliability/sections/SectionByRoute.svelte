@@ -41,6 +41,7 @@
 						<RankedRow
 							bare
 							rank={row.rank}
+							showRank={rows.length > 1}
 							title={row.title}
 							severity={row.severity}
 							value={row.value}

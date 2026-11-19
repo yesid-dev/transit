@@ -620,11 +620,28 @@ describe('StopDetail article contract', () => {
 			'href',
 			'/stop/57191?tab=detail#stop-detail-notices',
 		);
+		// The strip arrives with the live report after first paint, so it follows the answer.
+		expect(answer()!.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+			Node.DOCUMENT_POSITION_FOLLOWING,
+		);
 		// The answer leads the record, ahead of the reliability sections.
 		const pane = container.querySelector('[data-slot="reliability-pane"]') as HTMLElement;
 		expect(answer()!.compareDocumentPosition(pane) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
 			Node.DOCUMENT_POSITION_FOLLOWING,
 		);
+
+		// Schedule shows the strip too, after its sections, never above them.
+		await fireEvent.click(screen.getByRole('tab', { name: 'Schedule' }));
+		const scheduleStrip = activePane().querySelector(
+			'[data-slot="stop-current-notice"]',
+		) as HTMLElement;
+		expect(scheduleStrip).not.toBeNull();
+		const scheduleStack = activePane().querySelector(
+			'[data-section-sequence="stop-schedule"]',
+		) as HTMLElement;
+		expect(
+			scheduleStack.compareDocumentPosition(scheduleStrip) & Node.DOCUMENT_POSITION_FOLLOWING,
+		).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 	});
 
 	it.each(['en', 'fr'] as const)(

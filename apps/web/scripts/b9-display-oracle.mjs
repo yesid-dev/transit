@@ -658,6 +658,12 @@ const tenthPct = (value, locale) =>
 		minimumFractionDigits: 1,
 		maximumFractionDigits: 1,
 	}).format(value / 100);
+/** Minutes to one fixed decimal in the reader's locale: "5.5 min", « 5,5 min ». */
+const tenthMin = (value, locale) =>
+	`${new Intl.NumberFormat(localeTag(locale), {
+		minimumFractionDigits: 1,
+		maximumFractionDigits: 1,
+	}).format(value)} min`;
 const TIME_OF_DAY_COPY = Object.freeze({
 	en: {
 		headers: ['Period', 'On time', 'Readings'],
@@ -1373,7 +1379,7 @@ function stopOracle(fixture, locale, view) {
 			const severe = finite(row.observation_count) >= 5 ? finite(row.severe_pct) : null;
 			return [
 				row.day_of_week_iso,
-				{ value: row.avg_delay_min, text: `${row.avg_delay_min.toFixed(1)} min` },
+				{ value: row.avg_delay_min, text: tenthMin(row.avg_delay_min, locale) },
 				{
 					values: severe == null ? [] : [severe],
 					text:
@@ -1381,7 +1387,7 @@ function stopOracle(fixture, locale, view) {
 							? locale === 'fr'
 								? 'Retard moyen'
 								: 'Avg delay'
-							: `${locale === 'fr' ? 'Part des retards graves' : 'Severe-delay share'} ${severe.toFixed(1)}%`,
+							: `${locale === 'fr' ? 'Part des retards graves' : 'Severe-delay share'} ${tenthPct(severe, locale)}`,
 				},
 			];
 		});
@@ -1392,7 +1398,7 @@ function stopOracle(fixture, locale, view) {
 			.sort((a, b) => b.severe_pct - a.severe_pct || keys.indexOf(a.grain) - keys.indexOf(b.grain))
 			.map((row) => [
 				row.grain,
-				{ value: row.severe_pct, text: `${row.severe_pct.toFixed(1)}%` },
+				{ value: row.severe_pct, text: tenthPct(row.severe_pct, locale) },
 				{
 					values: [],
 					text: locale === 'fr' ? 'Part des retards graves' : 'Severe-delay share',
@@ -1419,11 +1425,11 @@ function stopOracle(fixture, locale, view) {
 		percentiles: [
 			{
 				value: finite(day?.p50_min),
-				text: finite(day?.p50_min) == null ? '' : `${day.p50_min.toFixed(1)} min`,
+				text: finite(day?.p50_min) == null ? '' : tenthMin(day.p50_min, locale),
 			},
 			{
 				value: finite(day?.p90_min),
-				text: finite(day?.p90_min) == null ? '' : `${day.p90_min.toFixed(1)} min`,
+				text: finite(day?.p90_min) == null ? '' : tenthMin(day.p90_min, locale),
 			},
 		],
 	};

@@ -6,6 +6,7 @@ import type { StopReliabilityPeriod } from '#lib/v1/schemas/index.ts';
 const labels = {
 	shiftLabel: (g: string) => `S:${g}`,
 	dayTypeLabel: (g: string) => `T:${g}`,
+	locale: 'en' as const,
 };
 
 describe('selectTimeOfDay', () => {

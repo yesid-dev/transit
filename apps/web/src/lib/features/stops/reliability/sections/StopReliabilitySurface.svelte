@@ -42,6 +42,7 @@
 	import { selectCrowdingMix } from '../selectors/crowdingMix';
 	import { selectDayByDay } from '../selectors/dailyTrend';
 	import { dayByDaySummary } from '../selectors/dayByDayText';
+	import { periodRange } from '../../stopRecord';
 	import { stopReliabilityCopy } from '../stops-reliability.copy';
 
 	import SectionPercentiles from './SectionPercentiles.svelte';
@@ -157,7 +158,7 @@
 	});
 
 	const fmtMin = (v: number | null): string =>
-		fmtDelayMin(v, { rounding: 'fixed1', noData: noObservationLabel });
+		fmtDelayMin(v, { locale, rounding: 'fixed1', noData: noObservationLabel });
 	const rankedRoutes = $derived(
 		selectRankedRoutes(
 			data.by_route,
@@ -174,6 +175,7 @@
 			severeShare: copy.weekday.severeShare,
 			avgDelay: copy.weekday.avgDelay,
 			weekdayLabel: (iso) => weekdayLabel(iso, locale),
+			locale,
 		}),
 	);
 	const hasWeekday = $derived(rankedWeekdays.length > 0);
@@ -182,6 +184,7 @@
 		selectTimeOfDay(data.periods, {
 			shiftLabel: (g) => shiftLabel(g, locale),
 			dayTypeLabel: (g) => dayTypeLabel(g, locale),
+			locale,
 		}),
 	);
 
@@ -228,6 +231,12 @@
 	const percentilesSummary = $derived(
 		dayPercentiles?.p50 != null && dayPercentiles.p90 != null
 			? copy.summaries.percentiles(fmtMinutes(dayPercentiles.p50)!, fmtMinutes(dayPercentiles.p90)!)
+			: null,
+	);
+	// One line has no ranking: its single value is the record's week, so it says which days.
+	const byRouteWindow = $derived(
+		rankedRoutes.length === 1 && recordWindow != null
+			? periodRange(recordWindow.from, recordWindow.to, locale)
 			: null,
 	);
 	const byRouteSummary = $derived(
@@ -536,6 +545,11 @@
 								{#snippet headerActions()}
 									{@render metricInfo('avgDelay', copy.byRoute)}
 								{/snippet}
+								{#if byRouteWindow}
+									<p class="stop-reliability-window" data-slot="by-route-window">
+										{byRouteWindow}
+									</p>
+								{/if}
 								<SectionByRoute rows={rankedRoutes} {locale} {copy} presentation="article-body" />
 							</CollapsibleSection>
 						</div>

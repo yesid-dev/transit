@@ -7,6 +7,7 @@ import {
 	SEVERE_DOMAIN,
 } from '#lib/features/reliability/shiftGrains.ts';
 import type { SeverityCode, StopReliabilityPeriod } from '#lib/v1/schemas/index.ts';
+import { fmtLocalePct, type FormatLang } from '#lib/utils/format.ts';
 
 export interface TimeOfDayRow {
 	readonly key: string;
@@ -44,6 +45,7 @@ function rankBySevere(
 	rows: readonly ShiftRow[],
 	order: readonly string[],
 	label: (g: string) => string,
+	locale: FormatLang,
 ): TimeOfDayRow[] {
 	const real = rows.filter((r) => r.severePct != null);
 	const rank = (g: string) => {
@@ -63,7 +65,7 @@ function rankBySevere(
 				value: sev,
 				domain: SEVERE_DOMAIN,
 				unit: '%',
-				display: `${sev.toFixed(1)}%`,
+				display: fmtLocalePct(sev, locale, { rounding: 'fixed1' })!,
 			};
 		});
 }
@@ -71,6 +73,8 @@ function rankBySevere(
 export interface TimeOfDayLabels {
 	shiftLabel: (grain: string) => string;
 	dayTypeLabel: (grain: string) => string;
+	/** Shares in the reader's locale: "14,0 %" in French. */
+	locale: FormatLang;
 }
 
 export interface TimeOfDayVM {
@@ -84,7 +88,12 @@ export function selectTimeOfDay(
 	labels: TimeOfDayLabels,
 ): TimeOfDayVM {
 	const { byShift, byDayType } = partition(periods ?? []);
-	const shiftRows = rankBySevere(byShift, SHIFT_GRAIN_ORDER, labels.shiftLabel);
-	const dayTypeRows = rankBySevere(byDayType, DAY_TYPE_GRAIN_ORDER, labels.dayTypeLabel);
+	const shiftRows = rankBySevere(byShift, SHIFT_GRAIN_ORDER, labels.shiftLabel, labels.locale);
+	const dayTypeRows = rankBySevere(
+		byDayType,
+		DAY_TYPE_GRAIN_ORDER,
+		labels.dayTypeLabel,
+		labels.locale,
+	);
 	return { shiftRows, dayTypeRows, hasTimeOfDay: shiftRows.length > 0 || dayTypeRows.length > 0 };
 }

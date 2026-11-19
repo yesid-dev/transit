@@ -25,7 +25,7 @@
 		copy,
 		presentation = 'standalone',
 	}: SectionPercentilesProps = $props();
-	const min = (v: number | null): string | null => fmtDelayMin(v, { rounding: 'fixed1' });
+	const min = (v: number | null): string | null => fmtDelayMin(v, { locale, rounding: 'fixed1' });
 </script>
 
 <StopReliabilityPresenter
