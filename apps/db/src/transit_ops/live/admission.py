@@ -75,6 +75,12 @@ RULING_12_TRIGGERS = ("lost_committed_row", "failed_wal_replay", "missed_restart
 PUBLIC_SIDE_REASONS = frozenset({"public_publication_failed", "public_publication_absent"})
 # The point every restart record of the running worker's own reopen carries.
 WORKER_REOPEN_POINT = "worker_reopen"
+# What witnessed the dead worker's committed rows outside the reopened file: the worker's
+# durable watermark (live/watermark.py) or a restart probe's own handshake. Live ruling
+# 12: a record without one never verified loss and is ``measurement_unavailable``.
+DURABLE_WATERMARK = "durable_watermark"
+PROBE_HANDSHAKE = "probe_handshake"
+RESTART_VERIFIERS = frozenset({DURABLE_WATERMARK, PROBE_HANDSHAKE})
 # About 32,000 restart records; beyond it a crash loop stops growing the file (logged).
 RESTART_EVIDENCE_MAX_BYTES = 8 * 2**20
 APPROVAL = (
@@ -215,10 +221,13 @@ class RestartObservation:
     wal_present: bool
     refusal: str | None
     committed_rows_lost: int | None
+    verified_by: str | None
 
     @classmethod
     def from_dict(cls, value: object) -> RestartObservation:
         data = _mapping(value, "restart_record")
+        if "verified_by" not in data:  # Records written before LS3.10c: unverified.
+            data = {**data, "verified_by": None}
         _exact(data, cls.__dataclass_fields__, "restart_record")
         if type(data["reopened"]) is not bool or type(data["wal_present"]) is not bool:
             raise EvidenceInvalid("restart_record_flags_invalid")
@@ -228,6 +237,9 @@ class RestartObservation:
         if data["refusal"] is not None and not isinstance(data["refusal"], str):
             raise EvidenceInvalid("restart_record_refusal_invalid")
         seconds = data["reopen_seconds"]
+        verified_by, lost = data["verified_by"], data["committed_rows_lost"]
+        if verified_by is not None and (verified_by not in RESTART_VERIFIERS or lost is None):
+            raise EvidenceInvalid("restart_record_verified_by_invalid")
         return cls(
             data["provider_id"],
             _aware(data["observed_at"], "restart_record_observed_at"),
@@ -236,7 +248,8 @@ class RestartObservation:
             None if seconds is None else _number(seconds, "restart_record_reopen_seconds"),
             data["wal_present"],
             data["refusal"],
-            _optional_int(data["committed_rows_lost"], "restart_record_committed_rows_lost"),
+            _optional_int(lost, "restart_record_committed_rows_lost"),
+            verified_by,
         )
 
     def display_dict(self) -> dict[str, object]:
@@ -249,6 +262,7 @@ class RestartObservation:
             "wal_present": self.wal_present,
             "refusal": self.refusal,
             "committed_rows_lost": self.committed_rows_lost,
+            "verified_by": self.verified_by,
         }
 
 
@@ -617,10 +631,14 @@ def _measured_reopen(
     *,
     provider_id: str,
     point: str,
-    committed: Mapping[str, Sequence[str]] | None,
+    witness: Callable[[LocalFile], tuple[int | None, str | None]] | None,
     clock: Callable[[], datetime],
 ) -> tuple[RestartObservation, LocalFile | None, Exception | None]:
-    """Open through #1142's boundary and classify it; the caller owns the open handle."""
+    """Open through #1142's boundary and classify it; the caller owns the open handle.
+
+    ``witness`` counts the committed rows the reopened file lacks and names what witnessed
+    them outside the file; without one, or when it returns None, loss stays unmeasured.
+    """
     observed_at = clock()
     wal_present = Path(str(path) + ".wal").exists()
     started = time.perf_counter()
@@ -629,17 +647,25 @@ def _measured_reopen(
     except Exception as exc:  # noqa: BLE001 - every reopen failure is named below
         refusal = reopen_refusal(exc, wal_present=wal_present)
         observation = RestartObservation(
-            provider_id, observed_at, point, False, None, wal_present, refusal, None
+            provider_id, observed_at, point, False, None, wal_present, refusal, None, None
         )
         return observation, None, exc
     seconds = time.perf_counter() - started
     try:
-        lost = None if committed is None else lost_rows(committed, committed_rows(local))
+        lost, verified_by = (None, None) if witness is None else witness(local)
     except BaseException:
         local.close()
         raise
     observation = RestartObservation(
-        provider_id, observed_at, point, True, seconds, wal_present, None, lost
+        provider_id,
+        observed_at,
+        point,
+        True,
+        seconds,
+        wal_present,
+        None,
+        lost,
+        None if lost is None else verified_by,
     )
     return observation, local, None
 
@@ -656,17 +682,21 @@ def observe_restart(
 ) -> RestartObservation:
     """Reopen a killed worker's file through #1142's boundary and measure it.
 
-    ``committed`` is what the dead process had committed; None leaves loss unmeasured.
-    With ``evidence``, the observation is also appended there as a restart record.
+    ``committed`` is what the dead process had committed, from its own handshake; None
+    leaves loss unmeasured. With ``evidence``, the observation is also appended there.
     """
     from transit_ops.live.recovery import reopen
+
+    def handshake(local: LocalFile) -> tuple[int | None, str | None]:
+        assert committed is not None
+        return lost_rows(committed, committed_rows(local)), PROBE_HANDSHAKE
 
     observation, local, _ = _measured_reopen(
         partial(reopen, path, provider_id=provider_id, settings=settings),
         path,
         provider_id=provider_id,
         point=point,
-        committed=committed,
+        witness=None if committed is None else handshake,
         clock=clock,
     )
     if local is not None:
@@ -686,15 +716,21 @@ def recorded_reopen(
 ) -> LocalFile:
     """The worker's own reopen: one restart record, then the handle or the original refusal.
 
-    Nothing outside the file witnessed what the dead worker committed, so committed-row
-    loss stays unmeasured (None) and the gate names it ``measurement_unavailable``.
+    The dead worker's last durable watermark witnesses what it committed (live/watermark.py).
+    Without a sound one, loss stays unmeasured and the gate names it
+    ``measurement_unavailable``; the reopened file alone never verifies itself.
     """
+    from transit_ops.live.watermark import verify_committed
+
+    def watermark(local: LocalFile) -> tuple[int | None, str | None]:
+        return verify_committed(path, local, provider_id=provider_id), DURABLE_WATERMARK
+
     observation, local, error = _measured_reopen(
         open_file,
         path,
         provider_id=provider_id,
         point=WORKER_REOPEN_POINT,
-        committed=None,
+        witness=watermark,
         clock=clock,
     )
     append_restart_record(evidence, observation)
@@ -707,7 +743,11 @@ def recorded_reopen(
 def classify_restart(observation: RestartObservation, cadence_seconds: int | None) -> str:
     if not observation.reopened:
         return observation.refusal or "reopen_unclassified"
-    if observation.committed_rows_lost is None or observation.reopen_seconds is None:
+    if (
+        observation.verified_by is None
+        or observation.committed_rows_lost is None
+        or observation.reopen_seconds is None
+    ):
         return "measurement_unavailable"
     if observation.committed_rows_lost:
         return "lost_committed_row"

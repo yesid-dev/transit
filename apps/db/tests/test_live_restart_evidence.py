@@ -5,6 +5,7 @@ import json
 import logging
 from contextlib import closing
 from datetime import timedelta
+from functools import partial
 from hashlib import sha256
 from pathlib import Path
 
@@ -26,11 +27,13 @@ from transit_ops.live.admission import (
     committed_rows,
     observe_restart,
     read_restart_records,
+    recorded_reopen,
     restart_evidence_path,
     window_cpu_from_samples,
 )
 from transit_ops.live.local_file import LocalFileMismatch, LocalFileUnreadable
 from transit_ops.live.recovery import open_worker_file
+from transit_ops.live.watermark import write_committed_watermark
 from transit_ops.live.worker_state import worker_state_scope
 
 SAMPLER = Path(__file__).parents[1] / "scripts" / "sample_transit_containers.py"
@@ -329,23 +332,39 @@ def test_window_cpu_cli_writes_the_file_and_refuses_malformed_samples_by_name(tm
 # End to end: a generated log plus the two written files through the gate CLI.
 
 
-def written_evidence(tmp_path, *, percents, lost_row=False):
-    """Restart record from a real reopen; window CPU from sampler rows spanning the window."""
+def written_evidence(tmp_path, *, percents, lost_row=False, watermark=None):
+    """Restart record from a real reopen; window CPU from sampler rows spanning the window.
+
+    With ``watermark`` (True or False), the record is the worker's own reopen, with or
+    without the committed watermark its last cycle wrote; otherwise a probe's handshake.
+    """
     database = tmp_path / "provider-stm.duckdb"
     with closing(open_worker_file(database, provider_id="stm", settings=SETTINGS)) as local:
         committed = committed_rows(local)
+        if watermark:
+            assert write_committed_watermark(database, local, provider_id="stm", cycle_at=START)
     if lost_row:
         committed["meta"] = [*committed["meta"], '["x"]']
     evidence = restart_evidence_path(database)
-    observe_restart(
-        database,
-        provider_id="stm",
-        settings=SETTINGS,
-        committed=committed,
-        point="worker_kill",
-        evidence=evidence,
-        clock=lambda: START + timedelta(minutes=5),
-    )
+    if watermark is not None:
+        reopened = recorded_reopen(
+            partial(open_worker_file, database, provider_id="stm", settings=SETTINGS),
+            database,
+            provider_id="stm",
+            evidence=evidence,
+            clock=lambda: START + timedelta(minutes=5),
+        )
+        reopened.close()
+    else:
+        observe_restart(
+            database,
+            provider_id="stm",
+            settings=SETTINGS,
+            committed=committed,
+            point="worker_kill",
+            evidence=evidence,
+            clock=lambda: START + timedelta(minutes=5),
+        )
     samples = tmp_path / "samples.jsonl"
     rows = sampler_rows(percents, service="worker-stm")
     samples.write_text("\n".join(rows) + "\n", encoding="utf-8")
@@ -381,6 +400,28 @@ def test_the_gate_admits_a_window_from_written_restart_and_cpu_evidence(tmp_path
     assert verdict["outcome"] == "eligible"
     assert verdict["gates"]["recovery"]["details"]["restarts"][0]["category"] == "recovered"
     assert verdict["gates"]["resources"]["details"]["window_cpu_cores"] == 0.2
+
+
+def test_the_gate_admits_a_window_whose_worker_restart_its_watermark_verified(tmp_path):
+    result, verdict = gate_with_written_evidence(tmp_path, percents=[20.0] * 13, watermark=True)
+    assert result.exit_code == 0, result.output
+    assert verdict["outcome"] == "eligible"
+    (restart,) = verdict["gates"]["recovery"]["details"]["restarts"]
+    assert (restart["point"], restart["verified_by"], restart["category"]) == (
+        WORKER_REOPEN_POINT,
+        "durable_watermark",
+        "recovered",
+    )
+
+
+def test_a_worker_restart_without_its_watermark_keeps_the_window_ineligible(tmp_path):
+    result, verdict = gate_with_written_evidence(tmp_path, percents=[20.0] * 13, watermark=False)
+    assert result.exit_code == 1
+    recovery = verdict["gates"]["recovery"]
+    assert (recovery["outcome"], recovery["reasons"]) == (
+        "unavailable",
+        ["measurement_unavailable"],
+    )
 
 
 def test_the_gate_names_the_failure_in_written_evidence(tmp_path):

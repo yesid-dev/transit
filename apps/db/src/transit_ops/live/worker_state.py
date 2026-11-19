@@ -7,8 +7,10 @@ import logging
 import re
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from datetime import datetime
 from functools import partial
 from hashlib import sha256
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, get_type_hints
 from urllib.parse import quote
 
@@ -38,6 +40,7 @@ from transit_ops.live.recording import Recorder
 from transit_ops.live.recovery import open_worker_file
 from transit_ops.live.segments import SHADOW_SEGMENTS_PREFIX, export_segment
 from transit_ops.live.settings import LaneSettings
+from transit_ops.live.watermark import write_committed_watermark
 from transit_ops.s3 import ObjectStorageError
 from transit_ops.silver.i3 import RawI3AlertSnapshot
 from transit_ops.static.alert_apply import apply_alert_snapshot
@@ -63,8 +66,10 @@ class WorkerState:
         ingestor: LocalIngestor | None = None,
         edition_engine: Engine | None = None,
         edition_loader: Callable[[LocalFile, str], EditionId | None] | None = None,
+        watermark_database: Path | None = None,
     ):
         self.local, self.engine, self.manifest = local, engine, manifest
+        self.watermark_database = watermark_database
         self.settings, self.resolver = settings, resolver
         self.ingestor = ingestor
         self.edition_engine = edition_engine
@@ -244,6 +249,19 @@ class WorkerState:
             else None
         )
         return all_failures
+
+    def mark_committed(self, cycle_at: datetime) -> None:
+        """After a cycle's last local commit, write the worker loop's durable watermark.
+
+        Only a worker loop's state has one; a failure is logged by name, never raised.
+        """
+        if self.watermark_database is not None:
+            write_committed_watermark(
+                self.watermark_database,
+                self.local,
+                provider_id=self.manifest.provider.provider_id,
+                cycle_at=cycle_at,
+            )
 
     def _sync(self, *, current_run_ids: tuple[int, ...], project: bool) -> None:
         if self.engine is None:
@@ -506,7 +524,8 @@ def worker_state_scope(
     """Own the provider's worker file for this scope.
 
     ``record_restart`` is for the worker loop only: each of its reopens appends a restart
-    record beside the file. One-shot cycles are not worker restarts and record nothing.
+    record beside the file, verified against the committed watermark its cycles write
+    there. One-shot cycles are not worker restarts and record nothing.
     """
     local_mode = settings.ingress == "local"
     if not settings.recording and not local_mode:
@@ -603,11 +622,17 @@ def worker_state_scope(
                 ingestor=ingestor,
                 edition_engine=resolved_edition_engine,
                 edition_loader=edition_loader,
+                watermark_database=path if record_restart else None,
             )
             yield state
         else:
             state = WorkerState(
-                local, engine=engine, manifest=manifest, settings=settings, resolver=resolver
+                local,
+                engine=engine,
+                manifest=manifest,
+                settings=settings,
+                resolver=resolver,
+                watermark_database=path if record_restart else None,
             )
             state.recorder.initialize(
                 initial_run_id=initial_run_id, seed_sha256=settings.alert_seed_sha256

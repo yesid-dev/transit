@@ -25,6 +25,7 @@ from transit_ops.live.local_file import SCHEMA_VERSION, LocalFile, PathReservati
 from transit_ops.live.recording import Recorder
 from transit_ops.live.segments import SEGMENT_FORMAT_VERSION, Segment, read_segment
 from transit_ops.live.settings import LaneSettings
+from transit_ops.live.watermark import committed_watermark_path, invalidate_watermark
 from transit_ops.silver.i3 import RawI3AlertSnapshot
 from transit_ops.static.alert_apply import apply_alert_snapshot
 from transit_ops.static.alert_seed_contract import TABLES as ALERT_TABLES
@@ -693,6 +694,9 @@ def _adopt_reserved(
         _replace_owned(wal, detached, directory)
     elif wal_sha is not None:
         _expect_digest(detached, wal_sha)
+    # The old file's committed watermark must never witness the adopted one.
+    if not invalidate_watermark(original):
+        raise RecoveryRefused("recovery_watermark_invalidation_refused")
     _replace_owned(candidate.path, original, directory)
     _expect_digest(original, candidate.file_sha256)
     marker.unlink()
@@ -723,6 +727,8 @@ def open_worker_file(
     open_file = partial(LocalFile.open, path, provider_id=provider_id, settings=settings)
     traces = (path, *(Path(str(path) + s) for s in (".wal", ".recovery-pending")))
     if restart_evidence is None or not any(p.exists() for p in traces):
+        if restart_evidence is not None and committed_watermark_path(path).exists():
+            invalidate_watermark(path)  # A watermark of a removed file witnesses nothing.
         return open_file()
     from transit_ops.live.admission import recorded_reopen
 

@@ -97,7 +97,8 @@ class Recorder:
                 conn.execute(
                     "INSERT INTO local_applications VALUES (?, ?, 'failed', ?) "
                     "ON CONFLICT DO UPDATE SET status='failed', "
-                    "error_message=excluded.error_message",
+                    "error_message=excluded.error_message "
+                    "WHERE local_applications.status <> 'succeeded'",
                     [*identity, redact_error_message(str(exc))],
                 )
             raise

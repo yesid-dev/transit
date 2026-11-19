@@ -12,8 +12,10 @@ from cold_recovery_fixture import cold_templates as cold_templates
 from test_live_local_file import SETTINGS
 from test_live_path_reservation import kill_after_ready
 
+from transit_ops.live.admission import classify_restart, read_restart_records, restart_evidence_path
 from transit_ops.live.local_file import LocalFileLocked, LocalFileMismatch
-from transit_ops.live.recovery import RecoveryRefused, adopt, reopen
+from transit_ops.live.recovery import RecoveryRefused, adopt, open_worker_file, reopen
+from transit_ops.live.watermark import FORMAT, MEASURES, committed_watermark_path
 
 
 def prepared(cold, tmp_path):
@@ -243,3 +245,21 @@ def test_windows_locked_original_refuses_before_backup_or_replace(cold, tmp_path
     assert not options["backup"].exists()
     assert candidate.path.exists()
     assert not Path(str(original) + ".recovery-pending").exists()
+
+
+def test_the_first_worker_reopen_after_adoption_is_unmeasured_not_a_lost_row(cold, tmp_path):
+    candidate, options = prepared(cold, tmp_path)
+    original = options["original"]
+    # The failed file's last watermark claims far more than the cut-built candidate holds.
+    state = dict.fromkeys(MEASURES, 10**6)
+    document = {"format": FORMAT, "provider_id": "network", "cycle_at": "2026-06-20T12:00:00+00:00"}
+    committed_watermark_path(original).write_text(json.dumps({**document, "state": state}))
+    adopt(candidate, **options)
+
+    evidence = restart_evidence_path(original)
+    open_worker_file(
+        original, provider_id="network", settings=SETTINGS, restart_evidence=evidence
+    ).close()
+    (record,) = read_restart_records(evidence.read_text(encoding="utf-8").splitlines())
+    assert (record.reopened, record.committed_rows_lost, record.verified_by) == (True, None, None)
+    assert classify_restart(record, 20) == "measurement_unavailable"

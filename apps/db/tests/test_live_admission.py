@@ -22,6 +22,7 @@ from transit_ops.live.admission import (
     WindowCpu,
     classify_restart,
     evaluate,
+    read_restart_records,
     read_worker_log,
     reopen_refusal,
 )
@@ -62,7 +63,10 @@ def cycle(seconds, record=..., *, status="succeeded", duration=4.0, attempted=2,
 
 def restart(*, provider="stm", at=START + timedelta(minutes=5), **changes):
     return replace(
-        RestartObservation(provider, at, "committed", True, 0.4, True, None, 0), **changes
+        RestartObservation(
+            provider, at, "committed", True, 0.4, True, None, 0, "durable_watermark"
+        ),
+        **changes,
     )
 
 
@@ -172,6 +176,29 @@ def test_unmeasured_restarts_are_unavailable_never_a_pass():
     result = gate(evaluate(bundle(restarts=(unmeasured,))), "recovery")
     assert (result.outcome, result.reasons) == ("unavailable", ("measurement_unavailable",))
     assert classify_restart(restart(), None) == "cadence_undeclared"
+
+
+def test_a_restart_record_without_a_witness_never_verified_its_rows():
+    # Records written before the committed watermark carry a count but no verifier.
+    legacy = {**restart().display_dict(), "committed_rows_lost": 0}
+    del legacy["verified_by"]
+    (record,) = read_restart_records([json.dumps(legacy)])
+    assert record.verified_by is None
+    assert classify_restart(record, 20) == "measurement_unavailable"
+    result = gate(evaluate(bundle(restarts=(record,))), "recovery")
+    assert (result.outcome, result.reasons) == ("unavailable", ("measurement_unavailable",))
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"verified_by": "reopened_file"},
+        {"verified_by": "durable_watermark", "committed_rows_lost": None},
+    ],
+)
+def test_a_restart_record_with_an_unknown_or_empty_verification_is_malformed(changes):
+    with pytest.raises(EvidenceInvalid, match="restart_record_verified_by_invalid"):
+        RestartObservation.from_dict({**restart().display_dict(), **changes})
 
 
 def test_restart_records_bind_to_their_provider_and_the_window():
@@ -586,6 +613,7 @@ def files(tmp_path, *, log_lines, restarts=None, adjudications=None, cpu=None):
             "wal_present": True,
             "refusal": None,
             "committed_rows_lost": 0,
+            "verified_by": "durable_watermark",
         }
     ]
     paths = {"log": log}
@@ -694,6 +722,7 @@ def test_cli_without_restart_evidence_in_the_window_is_not_eligible(tmp_path):
         "wal_present": True,
         "refusal": None,
         "committed_rows_lost": 0,
+        "verified_by": "durable_watermark",
     }
     paths = files(tmp_path, log_lines=worker_log(60), restarts=[late])
     output = tmp_path / "verdict.json"
