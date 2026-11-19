@@ -3,8 +3,8 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, vi } from 'vitest';
 
-const sha = '52a363070b3739354724843cc3c86b9a74b248ca';
-const tree = '1394b468e7fae8764249950a452a9ec26e8992d8';
+const sha = '468aac8d7baf6838f1c14bfe3c8dda7abad4a7ca';
+const tree = 'eadd041133808d4bf17e4453a5f9dad0bc1c65b4';
 const normalization = 'svelte-client-cN-scope-v2';
 const inventory = [
 	'network-live-headline',
