@@ -28,6 +28,9 @@ from transit_ops.live.compare import canonical_row
 from transit_ops.live.local_file import LocalFile
 
 SEGMENT_FORMAT_VERSION = 2
+PRODUCTION_SEGMENTS_PREFIX = "live/v1/segments"
+SHADOW_SEGMENTS_PREFIX = "shadow/live/v1/segments"
+SEGMENT_ROOT_PREFIXES = (PRODUCTION_SEGMENTS_PREFIX, SHADOW_SEGMENTS_PREFIX)
 FACT_TABLES: tuple[tuple[str, str, Callable[[LocalFile], Frame]], ...] = (
     ("fact_vehicle_snapshot", "vehicle_positions", facts.read_vehicle_facts),
     ("fact_trip_delay_snapshot", "trip_updates", facts.read_trip_facts),
@@ -45,6 +48,7 @@ class Segment:
     first_seq: int
     last_seq: int
     content_sha256: str
+    root_prefix: str = PRODUCTION_SEGMENTS_PREFIX
 
     def __post_init__(self) -> None:
         if (
@@ -56,15 +60,25 @@ class Segment:
             or not 0 < self.first_seq <= self.last_seq < 2**63
             or not isinstance(self.content_sha256, str)
             or re.fullmatch("[0-9a-f]{64}", self.content_sha256) is None
+            or self.root_prefix not in SEGMENT_ROOT_PREFIXES
         ):
             raise SegmentInvalid("segment_identity_invalid")
 
     @property
     def prefix(self) -> str:
         return (
-            f"live/v1/segments/{quote(self.provider_id, safe='')}/"
+            f"{self.root_prefix}/{quote(self.provider_id, safe='')}/"
             f"{self.first_seq}-{self.last_seq}/{self.content_sha256}"
         )
+
+
+def provider_has_exported_segments(storage: BronzeStorage, provider_id: str) -> bool:
+    """Return True if any segment object exists for provider under production or shadow prefixes."""
+    quoted = quote(provider_id, safe="")
+    return any(
+        next(iter(storage.list_keys(f"{root}/{quoted}/")), None) is not None
+        for root in SEGMENT_ROOT_PREFIXES
+    )
 
 
 def _json(value: object) -> bytes:
@@ -192,7 +206,14 @@ def _verify(conn: duckdb.DuckDBPyConnection, path: Path, proof: dict[str, Any]) 
         raise SegmentInvalid("row_fingerprint_mismatch")
 
 
-def _identity(provider: str, first: int, last: int, proofs: list[dict[str, Any]]) -> Segment:
+def _identity(
+    provider: str,
+    first: int,
+    last: int,
+    proofs: list[dict[str, Any]],
+    *,
+    root_prefix: str = PRODUCTION_SEGMENTS_PREFIX,
+) -> Segment:
     content = [{k: p[k] for k in ("table", "schema", "rows", "row_sha256")} for p in proofs]
     digest = hashlib.sha256(
         _json(
@@ -205,15 +226,22 @@ def _identity(provider: str, first: int, last: int, proofs: list[dict[str, Any]]
             )
         )
     ).hexdigest()
-    return Segment(provider, first, last, digest)
+    return Segment(provider, first, last, digest, root_prefix=root_prefix)
 
 
-def export_segment(local: LocalFile, storage: BronzeStorage) -> Segment | None:
+def export_segment(
+    local: LocalFile,
+    storage: BronzeStorage,
+    *,
+    root_prefix: str = PRODUCTION_SEGMENTS_PREFIX,
+) -> Segment | None:
     """Export oldest pending cut, otherwise all committed unexported records.
 
     Requires the single owner's idle connection. Newer commits cannot change a
     pending cut. Earlier LocalFile versions require rebuild from retained evidence.
     """
+    if root_prefix not in SEGMENT_ROOT_PREFIXES:
+        raise SegmentInvalid("segment_identity_invalid")
     local.require_committed()
     local.verify_shape()
     with TemporaryDirectory(prefix="transit-segment-") as temporary:
@@ -239,7 +267,7 @@ def export_segment(local: LocalFile, storage: BronzeStorage) -> Segment | None:
                 return None
             proofs = _copy(local, directory, first, last)
             provider = str(conn.execute("SELECT provider_id FROM meta").fetchall()[0][0])
-            segment = _identity(provider, first, last, proofs)
+            segment = _identity(provider, first, last, proofs, root_prefix=root_prefix)
             manifest = _json(
                 dict(
                     version=SEGMENT_FORMAT_VERSION,
@@ -305,7 +333,13 @@ def _read_segment(
         proofs = manifest["tables"]
         valid = (
             manifest["content_sha256"] == segment.content_sha256
-            and _identity(manifest["provider"], manifest["first"], manifest["last"], proofs)
+            and _identity(
+                manifest["provider"],
+                manifest["first"],
+                manifest["last"],
+                proofs,
+                root_prefix=segment.root_prefix,
+            )
             == segment
             and [p["table"] for p in proofs] == list(_queries(1, 1))
         )

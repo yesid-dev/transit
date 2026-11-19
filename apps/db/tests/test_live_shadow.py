@@ -131,11 +131,42 @@ def recorded(local):
     return local
 
 
-def test_default_off_is_todays_worker_and_inverted_roles_refuse_by_name():
+def test_default_off_is_todays_worker_and_inverted_roles_refuse_by_name(tmp_path):
     assert admit_role(LaneSettings()) is False
+    assert LaneSettings().ingress == "postgres"
+    # Standalone local ingress with no shadow role refuses by name (live ruling 27.2).
+    with pytest.raises(ShadowRefused, match="^local_ingress_requires_shadow_role$"):
+        admit_role(LaneSettings(ingress="local"))
     with pytest.raises(ShadowRefused) as refused:
         admit_role(LaneSettings(**{**ROLE, "shadow": "local_authoritative"}))
-    assert refused.value.reason == "local_ingress_unavailable"
+    assert refused.value.reason == "local_authoritative_requires_local_ingress"
+    # With local ingress selected, local_authoritative still refuses until cut, seed & floors exist.
+    with pytest.raises(ShadowRefused, match="local_ingress_requires_initial_cut_path"):
+        admit_role(LaneSettings(**{**ROLE, "shadow": "local_authoritative", "ingress": "local"}))
+    local_inputs = {
+        **ROLE,
+        "shadow": "local_authoritative",
+        "ingress": "local",
+        "local_dir": tmp_path,
+        "duckdb_memory_limit_mb": 64,
+        "duckdb_threads": 1,
+        "temp_dir_max_mb": 32,
+        "segment_storage_backend": "local",
+        "initial_cut_path": tmp_path / "cut.json",
+        "initial_cut_sha256": "c" * 64,
+        "alert_seed_path": tmp_path / "seed.json",
+        "alert_seed_sha256": "a" * 64,
+        "identity_floors_path": tmp_path / "floors.json",
+        "identity_floors_sha256": "b" * 64,
+    }
+    with pytest.raises(ShadowRefused, match="local_ingress_requires_identity_floors_path"):
+        admit_role(LaneSettings(**{**local_inputs, "identity_floors_path": None}))
+    # Even with complete inputs, cutover remains off in LS3.9c.
+    with pytest.raises(ShadowRefused, match="local_authoritative_cutover_disabled"):
+        admit_role(LaneSettings(**local_inputs))
+    # Mixed PostgreSQL authority + local ingress is forbidden.
+    with pytest.raises(ShadowRefused, match="postgres_authoritative_forbids_local_ingress"):
+        admit_role(LaneSettings(**{**ROLE, "ingress": "local"}))
     for missing, reason in (
         ("recording", "shadow_requires_recording"),
         ("shadow_budget_seconds", "shadow_requires_shadow_budget_seconds"),
@@ -164,9 +195,9 @@ def test_worker_selector_refuses_before_any_capture(monkeypatch):
     monkeypatch.setattr(
         orchestration, "_run_realtime_worker_loop", lambda *a, **k: pytest.fail("ran")
     )
-    with pytest.raises(ShadowRefused, match="local_ingress_unavailable"):
+    with pytest.raises(ShadowRefused, match="local_authoritative_requires_local_ingress"):
         orchestration.run_realtime_worker_loop("stm", settings=settings, max_cycles=1)
-    with pytest.raises(ShadowRefused, match="local_ingress_unavailable"):
+    with pytest.raises(ShadowRefused, match="local_authoritative_requires_local_ingress"):
         orchestration.run_realtime_cycle("stm", settings=settings)
     # A one-shot cycle has no LocalFile owner: refuse rather than drop the shadow.
     with pytest.raises(ShadowRefused, match="shadow_requires_worker_loop"):
@@ -520,7 +551,7 @@ def test_refused_role_records_no_worker_start(monkeypatch):
     monkeypatch.setattr(cli, "get_settings", lambda: settings)
     monkeypatch.setattr(cli, "_install_worker_shutdown_handlers", lambda: lambda: False)
     monkeypatch.setattr(cli, "observe_start", lambda _: pytest.fail("start recorded"))
-    with pytest.raises(typer.BadParameter, match="local_ingress_unavailable"):
+    with pytest.raises(typer.BadParameter, match="local_authoritative_requires_local_ingress"):
         cli.run_realtime_worker_command("stm", max_cycles=1)
 
 

@@ -94,9 +94,24 @@ class LocalState(Protocol):
 def admit_role(settings: LaneSettings) -> bool:
     """Validate the selected role; True only for an admitted PostgreSQL-authoritative shadow."""
     if settings.shadow == "off":
+        if settings.ingress == "local":
+            raise ShadowRefused("local_ingress_requires_shadow_role")
         return False
-    if settings.shadow != "postgres_authoritative":
-        raise ShadowRefused("local_ingress_unavailable")
+    if settings.shadow == "local_authoritative":
+        if settings.ingress != "local":
+            raise ShadowRefused("local_authoritative_requires_local_ingress")
+        from transit_ops.live.ingest import validate_local_ingress_settings
+
+        try:
+            validate_local_ingress_settings(settings)
+        except ValueError as exc:
+            raise ShadowRefused(str(exc)) from exc
+        for name in ("shadow_budget_seconds", "shadow_rss_limit_mb"):
+            if getattr(settings, name) is None:
+                raise ShadowRefused(f"shadow_requires_{name}")
+        raise ShadowRefused("local_authoritative_cutover_disabled")
+    if settings.ingress == "local":
+        raise ShadowRefused("postgres_authoritative_forbids_local_ingress")
     if not settings.recording:
         raise ShadowRefused("shadow_requires_recording")
     for name in ("shadow_budget_seconds", "shadow_rss_limit_mb"):

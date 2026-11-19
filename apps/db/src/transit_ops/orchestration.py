@@ -647,7 +647,7 @@ def _worker_trip_updates(
     *,
     settings: Settings,
     manifest: ProviderManifest,
-    engine: Engine,
+    engine: Engine | None,
     bronze_storage_resolver: BronzeStorageResolver,
     worker_state: WorkerState | None = None,
 ) -> LiveTripUpdates | None:
@@ -656,7 +656,10 @@ def _worker_trip_updates(
     policy = ParsePolicy.from_manifest(manifest)
     if settings.LIGHTER_STORAGE.live.trip_updates_fallback not in ("postgres", "local"):
         raise ValueError("local_trip_updates_unknown_fallback")
-    if settings.LIGHTER_STORAGE.live.trip_updates_fallback == "local":
+    if (
+        settings.LIGHTER_STORAGE.live.ingress == "local"
+        or settings.LIGHTER_STORAGE.live.trip_updates_fallback == "local"
+    ):
         from transit_ops.history.poll_record import CaptureEntry
         from transit_ops.live.trip_updates import LocalTripUpdatesError, latest_local_trip_updates
 
@@ -771,6 +774,167 @@ def _best_effort_publish_live(
         return 1
 
 
+def _run_local_realtime_cycle(
+    provider_id: str,
+    *,
+    settings: Settings,
+    registry: ProviderRegistry,
+    last_captures: dict[str, datetime] | None,
+    last_attempts: dict[str, datetime] | None,
+    live_trip_updates: LiveTripUpdates | None,
+    worker_state: WorkerState | None,
+) -> RealtimeCycleResult:
+    """Local ingress cycle: no PostgreSQL capture, clock, write, or cutover publication."""
+    from transit_ops.live.shadow import ShadowRefused
+
+    if settings.LIGHTER_STORAGE.live.shadow == "off":
+        raise ShadowRefused("local_ingress_requires_shadow_role")
+    if settings.LIGHTER_STORAGE.live.shadow == "postgres_authoritative":
+        raise ShadowRefused("postgres_authoritative_forbids_local_ingress")
+    if worker_state is None:
+        raise ValueError("local_ingress_requires_borrowed_owner")
+    started_at_utc = utc_now()
+    started_at = time.perf_counter()
+    manifest = registry.get_provider(provider_id)
+    cycle_endpoints = realtime_endpoints_for_manifest(manifest)
+    refresh_intervals: dict[str, int] = {
+        endpoint_key: int(manifest.feeds[endpoint_key].refresh_interval_seconds)
+        for endpoint_key in cycle_endpoints
+        if manifest.feeds.get(endpoint_key) is not None
+    }
+    ordered_endpoints = sorted(
+        cycle_endpoints,
+        key=lambda key: getattr(manifest.feeds[key], "refresh_phase_seconds", None) is None,
+    )
+    endpoint_results: list[RealtimeEndpointCycleResult] = []
+    captured_entries: list[tuple[int, str, int | None]] = []
+    for endpoint_key in ordered_endpoints:
+        attempt_started_at_utc = utc_now() if last_attempts is not None else started_at_utc
+        interval_seconds = refresh_intervals.get(endpoint_key)
+        last_capture_at = last_captures.get(endpoint_key) if last_captures is not None else None
+        last_attempt_at = last_attempts.get(endpoint_key) if last_attempts is not None else None
+        if last_attempt_at is not None:
+            last_capture_at = max(last_capture_at or last_attempt_at, last_attempt_at)
+        due_at_utc = (
+            attempt_started_at_utc
+            if last_attempt_at is not None
+            or getattr(manifest.feeds[endpoint_key], "refresh_phase_seconds", None) is not None
+            else started_at_utc
+        )
+        if interval_seconds is not None:
+            elapsed_seconds = (
+                (due_at_utc - last_capture_at).total_seconds()
+                if last_capture_at is not None
+                else 0.0
+            )
+            if (last_captures is not None or last_attempts is not None) and not endpoint_due(
+                manifest.feeds[endpoint_key], due_at_utc, last_capture_at
+            ):
+                endpoint_results.append(
+                    RealtimeEndpointCycleResult(
+                        endpoint_key=endpoint_key,
+                        status="skipped",
+                        capture_duration_seconds=0.0,
+                        silver_load_duration_seconds=None,
+                        total_endpoint_duration_seconds=0.0,
+                        capture_result={
+                            "reason": "interval_not_elapsed",
+                            "refresh_interval_seconds": interval_seconds,
+                            "elapsed_seconds": round(elapsed_seconds, 1),
+                        },
+                        silver_load_result=None,
+                        error_message=None,
+                    )
+                )
+                continue
+        if last_attempts is not None:
+            last_attempts[endpoint_key] = attempt_started_at_utc
+        ep_started = time.perf_counter()
+        try:
+            outcome = worker_state.capture_local(endpoint_key)
+        except Exception as exc:
+            ep_duration = round(time.perf_counter() - ep_started, 3)
+            message = redact_error_message(str(exc))
+            logger.error("Local capture failed for %s/%s: %s", provider_id, endpoint_key, message)
+            endpoint_results.append(
+                RealtimeEndpointCycleResult(
+                    endpoint_key=endpoint_key,
+                    status="failed",
+                    capture_duration_seconds=ep_duration,
+                    silver_load_duration_seconds=None,
+                    total_endpoint_duration_seconds=ep_duration,
+                    capture_result=None,
+                    silver_load_result=None,
+                    error_message=message,
+                )
+            )
+            continue
+        ep_duration = round(time.perf_counter() - ep_started, 3)
+        captured_entries.append((len(endpoint_results), endpoint_key, outcome.capture_row_id))
+        endpoint_results.append(
+            RealtimeEndpointCycleResult(
+                endpoint_key=endpoint_key,
+                status="failed" if outcome.outcome == "failed" else "succeeded",
+                capture_duration_seconds=ep_duration,
+                silver_load_duration_seconds=None,
+                total_endpoint_duration_seconds=ep_duration,
+                capture_result=outcome.display_dict(),
+                silver_load_result=None,
+                error_message=outcome.error_message,
+            )
+        )
+    apply_started = time.perf_counter()
+    apply_failures = worker_state.apply_local(live_trip_updates=live_trip_updates)
+    apply_duration = round(time.perf_counter() - apply_started, 3)
+    for idx, endpoint_key, capture_id in captured_entries:
+        result = endpoint_results[idx]
+        if capture_id is not None and (endpoint_key, capture_id) in apply_failures:
+            endpoint_results[idx] = RealtimeEndpointCycleResult(
+                endpoint_key=result.endpoint_key,
+                status="failed",
+                capture_duration_seconds=result.capture_duration_seconds,
+                silver_load_duration_seconds=apply_duration,
+                total_endpoint_duration_seconds=round(
+                    (result.capture_duration_seconds or 0.0) + apply_duration, 3
+                ),
+                capture_result=result.capture_result,
+                silver_load_result=None,
+                error_message=apply_failures[(endpoint_key, capture_id)],
+            )
+        elif last_captures is not None and result.status == "succeeded":
+            last_captures[endpoint_key] = started_at_utc
+            if last_attempts is not None:
+                last_attempts.pop(endpoint_key, None)
+
+    step_timings_seconds = {
+        f"capture_{r.endpoint_key}": r.capture_duration_seconds for r in endpoint_results
+    } | {"apply_local_captures": apply_duration}
+    failed_count = sum(1 for r in endpoint_results if r.status not in {"succeeded", "skipped"})
+    succeeded_count = sum(1 for r in endpoint_results if r.status == "succeeded")
+    status = (
+        "succeeded"
+        if failed_count == 0
+        else "partial_failure"
+        if succeeded_count > 0
+        else "failed"
+    )
+    return RealtimeCycleResult(
+        provider_id=provider_id,
+        status=status,
+        started_at_utc=started_at_utc,
+        completed_at_utc=utc_now(),
+        total_duration_seconds=round(time.perf_counter() - started_at, 3),
+        successful_endpoint_count=succeeded_count,
+        failed_endpoint_count=failed_count,
+        endpoint_results=endpoint_results,
+        step_timings_seconds=step_timings_seconds,
+        gold_build=None,
+        gold_build_duration_seconds=None,
+        gold_error_message=None,
+        live_publish_failures=0,
+    )
+
+
 def _run_realtime_cycle(
     provider_id: str,
     *,
@@ -786,6 +950,16 @@ def _run_realtime_cycle(
 ) -> RealtimeCycleResult:
     settings = settings or get_settings()
     registry = registry or _provider_registry(settings)
+    if settings.LIGHTER_STORAGE.live.ingress == "local":
+        return _run_local_realtime_cycle(
+            provider_id,
+            settings=settings,
+            registry=registry,
+            last_captures=last_captures,
+            last_attempts=last_attempts,
+            live_trip_updates=live_trip_updates,
+            worker_state=worker_state,
+        )
     engine = _engine(settings, engine)
     started_at_utc = utc_now()
     started_at = time.perf_counter()
@@ -989,6 +1163,15 @@ def _run_realtime_cycle(
     )
 
 
+def _local_edition_engine(settings: Settings, engine: Engine | None = None) -> Engine | None:
+    """Build a read-only engine used solely for #883 static edition loads in local mode."""
+    if engine is not None:
+        return engine
+    if not settings.sqlalchemy_database_url:
+        return None
+    return make_engine(settings, connect_timeout=10, read_only=True)
+
+
 def run_realtime_cycle(
     provider_id: str,
     *,
@@ -1000,16 +1183,28 @@ def run_realtime_cycle(
     settings = settings or get_settings()
     refuse_unadmitted_shadow(settings, worker_loop=False)
     registry = registry or _provider_registry(settings)
-    engine = _engine(settings, engine)
+    local_mode = settings.LIGHTER_STORAGE.live.ingress == "local"
     scope = BronzeStorageScope(settings, project_root=_project_root())
+    owned_edition_engine: Engine | None = None
     try:
+        owned_edition_engine = (
+            _local_edition_engine(settings) if local_mode and engine is None else None
+        )
+        edition_engine = (
+            (engine if engine is not None else owned_edition_engine) if local_mode else None
+        )
+        engine = None if local_mode else _engine(settings, engine)
         owner = nullcontext(None)
-        if settings.LIGHTER_STORAGE.live.recording:
+        if settings.LIGHTER_STORAGE.live.recording or local_mode:
             from transit_ops.live.worker_state import worker_state_scope
 
             owner = worker_state_scope(
-                settings=settings.LIGHTER_STORAGE.live, engine=engine,
-                manifest=registry.get_provider(provider_id), resolver=scope.resolve,
+                settings=settings.LIGHTER_STORAGE.live,
+                engine=engine,
+                manifest=registry.get_provider(provider_id),
+                resolver=scope.resolve,
+                app_settings=settings if local_mode else None,
+                edition_engine=edition_engine,
             )
         with owner as state:
             return _run_realtime_cycle(
@@ -1027,6 +1222,8 @@ def run_realtime_cycle(
                 ),
             )
     finally:
+        if owned_edition_engine is not None:
+            owned_edition_engine.dispose()
         try:
             scope.close()
         except Exception as exc:
@@ -1038,11 +1235,14 @@ def run_realtime_cycle(
 def refuse_unadmitted_shadow(settings: Settings, *, worker_loop: bool = True) -> None:
     """Worker selector: "off" keeps today's worker; other roles are validated by name.
 
-    Inverted roles wait for local ingress (LS3.9c). The PostgreSQL-authoritative
-    shadow borrows the worker loop's LocalFile owner, so a one-shot cycle refuses it
-    rather than silently running without the shadow.
+    Inverted roles require local ingress with verified seed and floors (LS3.9c).
+    The PostgreSQL-authoritative shadow borrows the worker loop's LocalFile owner,
+    so a one-shot cycle refuses it rather than silently running without the shadow.
     """
-    if settings.LIGHTER_STORAGE.live.shadow != "off":
+    if (
+        settings.LIGHTER_STORAGE.live.shadow != "off"
+        or settings.LIGHTER_STORAGE.live.ingress == "local"
+    ):
         from transit_ops.live.shadow import ShadowRefused, admit_role, validate_shadow_config
 
         if admit_role(settings.LIGHTER_STORAGE.live):
@@ -1058,7 +1258,8 @@ def _validate_realtime_worker_startup(
     settings: Settings,
     registry: ProviderRegistry,
 ) -> ProviderManifest:
-    require_database_url(settings)
+    if settings.LIGHTER_STORAGE.live.ingress != "local":
+        require_database_url(settings)
     if settings.REALTIME_POLL_SECONDS <= 0:
         raise ValueError("REALTIME_POLL_SECONDS must be greater than 0.")
     if settings.REALTIME_STARTUP_DELAY_SECONDS < 0:
@@ -1130,7 +1331,15 @@ def _drive_realtime_worker(
     built_shadow: list[CycleShadow] | None = None,
 ) -> None:
     registry = registry or _provider_registry(settings)
-    engine = engine or make_engine(settings, connect_timeout=10)
+    local_mode = settings.LIGHTER_STORAGE.live.ingress == "local"
+    if local_mode:
+        from transit_ops.live.shadow import ShadowRefused
+
+        if settings.LIGHTER_STORAGE.live.shadow == "off":
+            raise ShadowRefused("local_ingress_requires_shadow_role")
+        if settings.LIGHTER_STORAGE.live.shadow == "postgres_authoritative":
+            raise ShadowRefused("postgres_authoritative_forbids_local_ingress")
+    engine = None if local_mode else (engine or make_engine(settings, connect_timeout=10))
     if max_cycles is not None and max_cycles <= 0:
         raise ValueError("max_cycles must be greater than 0 when provided.")
 
@@ -1177,11 +1386,12 @@ def _drive_realtime_worker(
         bronze_storage_resolver=bronze_storage_resolver,
         worker_state=worker_state,
     )
-    if shadow is None and settings.LIGHTER_STORAGE.live.shadow != "off":
+    if shadow is None and settings.LIGHTER_STORAGE.live.shadow == "postgres_authoritative":
         from transit_ops.live.shadow import ShadowRefused, worker_shadow
 
         if worker_state is None:
             raise ShadowRefused("shadow_requires_recording")
+        assert engine is not None
         shadow = worker_shadow(
             provider_id,
             settings=settings,
@@ -1369,20 +1579,34 @@ def run_realtime_worker_loop(
         shutdown_grace=settings.REALTIME_SHUTDOWN_GRACE_SECONDS,
     ):
         bronze_storage_scope = BronzeStorageScope(settings, project_root=_project_root())
+        owned_edition_engine: Engine | None = None
         try:
+            local_mode = settings.LIGHTER_STORAGE.live.ingress == "local"
             owner = nullcontext(None)
-            if settings.LIGHTER_STORAGE.live.recording:
+            if settings.LIGHTER_STORAGE.live.recording or local_mode:
                 from transit_ops.live.worker_state import worker_state_scope
 
                 registry = registry or _provider_registry(settings)
-                engine = engine or make_engine(settings, connect_timeout=10)
+                edition_engine: Engine | None = None
+                if not local_mode:
+                    engine = engine or make_engine(settings, connect_timeout=10)
+                else:
+                    owned_edition_engine = (
+                        _local_edition_engine(settings) if engine is None else None
+                    )
+                    edition_engine = engine if engine is not None else owned_edition_engine
+                    engine = None
                 owner = worker_state_scope(
-                    settings=settings.LIGHTER_STORAGE.live, engine=engine,
+                    settings=settings.LIGHTER_STORAGE.live,
+                    engine=engine,
                     manifest=registry.get_provider(provider_id),
                     resolver=bronze_storage_scope.resolve,
                     record_restart=True,
+                    app_settings=settings if local_mode else None,
+                    edition_engine=edition_engine,
                 )
-            with live_publish_scope(provider_id, settings), owner as state:
+            publish_ctx = nullcontext() if local_mode else live_publish_scope(provider_id, settings)
+            with publish_ctx, owner as state:
                 return _run_realtime_worker_loop(
                     provider_id,
                     settings=settings,
@@ -1397,6 +1621,8 @@ def run_realtime_worker_loop(
                     **({"worker_state": state} if state is not None else {}),
                 )
         finally:
+            if owned_edition_engine is not None:
+                owned_edition_engine.dispose()
             try:
                 bronze_storage_scope.close()
             except Exception:

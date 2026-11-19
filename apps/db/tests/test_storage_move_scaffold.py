@@ -176,6 +176,7 @@ def test_lighter_storage_settings_are_empty_by_default(monkeypatch):
         **dict.fromkeys(KEYS, {}),
         "live": {
             "recording": False,
+            "ingress": "postgres",
             "catchup_page_size": 64,
             "trip_updates_fallback": "postgres",
             "shadow": "off",
@@ -203,6 +204,7 @@ def test_lighter_storage_settings_reject_unknown_nested_keys(lane, monkeypatch):
         **dict.fromkeys(KEYS, {}),
         "live": {
             "recording": False,
+            "ingress": "postgres",
             "catchup_page_size": 64,
             "trip_updates_fallback": "postgres",
             "shadow": "off",
