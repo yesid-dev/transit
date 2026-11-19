@@ -1660,3 +1660,115 @@ def test_fetched_rescue_provenance_survives_materialization(tmp_path):
     local.write_bytes(local.read_bytes() + b"changed")
     with pytest.raises(InputRefused, match="input_provenance_missing"):
         resolve_inputs([need], root, provider_id="octranspo")
+
+
+def edition_parent_archive(storage):
+    """Edition 7 references object 5 (run 1, July) and run 2 (August) only."""
+    bootstrap(
+        storage,
+        "SELECT 'sample' AS provider_id, 7::BIGINT AS dataset_version_id, "
+        f"'{('c' * 64)}' AS checksum_sha256, NULL::VARCHAR AS content_hash, "
+        "'static_schedule' AS dataset_kind, true AS is_current, "
+        "TIMESTAMPTZ '2025-08-02 00:00:00+00' AS loaded_at_utc, "
+        "5::BIGINT AS source_ingestion_object_id, 2::BIGINT AS source_ingestion_run_id",
+    )
+    objects = (
+        "SELECT * FROM (VALUES (5, 1, 'sample', TIMESTAMPTZ '2025-08-01 00:00:05+00'), "
+        "(6, 9, 'sample', TIMESTAMPTZ '2025-08-01 00:00:06+00')) "
+        "t(ingestion_object_id, ingestion_run_id, provider_id, created_at_utc)"
+    )
+    runs = "SELECT * FROM (VALUES {}) t(ingestion_run_id, provider_id, started_at_utc)"
+    keys = {
+        "objects-2025-08": archive(storage, "raw.ingestion_objects", "2025-08", objects),
+        "objects-2025-09": archive(
+            storage,
+            "raw.ingestion_objects",
+            "2025-09",
+            objects.replace("2025-08", "2025-09").replace("(5, 1", "(8, 1"),
+        ),
+        "runs-2025-07": archive(
+            storage,
+            "raw.ingestion_runs",
+            "2025-07",
+            runs.format("(1, 'sample', TIMESTAMPTZ '2025-07-31 23:59:58+00')"),
+        ),
+        "runs-2025-08": archive(
+            storage,
+            "raw.ingestion_runs",
+            "2025-08",
+            runs.format(
+                "(2, 'sample', TIMESTAMPTZ '2025-08-01 00:00:00+00'), "
+                "(3, 'sample', TIMESTAMPTZ '2025-08-03 00:00:00+00')"
+            ),
+        ),
+    }
+    return keys
+
+
+EDITION_NEEDS = [
+    InputNeed("core.dataset_versions", "all"),
+    InputNeed("raw.ingestion_objects", "all"),
+    InputNeed("raw.ingestion_runs", "all"),
+]
+
+
+def test_pinned_edition_parents_fetch_only_referenced_months_and_rows(tmp_path, monkeypatch):
+    storage = store(tmp_path)
+    keys = edition_parent_archive(storage)
+    opened = []
+    original = LocalBronzeStorage.open_stream
+
+    def opening(self, key, **kwargs):
+        opened.append(key)
+        return original(self, key, **kwargs)
+
+    monkeypatch.setattr(LocalBronzeStorage, "open_stream", opening)
+    root = tmp_path / "inputs"
+    root.mkdir()
+    references = {
+        "raw.ingestion_objects": ("2025-08",),
+        "raw.ingestion_runs": ("2025-07", "2025-08"),
+    }
+    fetch_replay_inputs(
+        storage, root, "sample", STAMP, lambda _: EDITION_NEEDS, references=references
+    )
+    assert keys["objects-2025-09"] not in opened
+    with duckdb.connect() as conn:
+
+        def ids(relation, column):
+            return conn.execute(
+                f"SELECT {column} FROM read_parquet(?) ORDER BY 1",
+                [str(root / relation / "all.parquet")],
+            ).fetchall()
+
+        # Row-aware: the unrelated object 6 (run 9 outside the closure) never loads.
+        assert ids("raw.ingestion_objects", "ingestion_object_id") == [(5,)]
+        assert ids("raw.ingestion_runs", "ingestion_run_id") == [(1,), (2,)]
+
+
+def test_pinned_edition_parents_refuse_a_missing_referenced_row(tmp_path):
+    storage = store(tmp_path)
+    edition_parent_archive(storage)
+    root = tmp_path / "inputs"
+    root.mkdir()
+    with pytest.raises(ValueError, match="fk_parent_outside_range: raw.ingestion_runs"):
+        fetch_replay_inputs(
+            storage,
+            root,
+            "sample",
+            STAMP,
+            lambda _: EDITION_NEEDS,
+            references={
+                "raw.ingestion_objects": ("2025-08",),
+                "raw.ingestion_runs": ("2025-08",),
+            },
+        )
+
+
+def test_unpinned_edition_parents_still_require_every_month_since_the_first(tmp_path):
+    storage = store(tmp_path)
+    edition_parent_archive(storage)
+    root = tmp_path / "inputs"
+    root.mkdir()
+    with pytest.raises(SourcesMissing):
+        fetch_replay_inputs(storage, root, "sample", STAMP, lambda _: EDITION_NEEDS)

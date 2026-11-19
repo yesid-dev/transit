@@ -11,6 +11,7 @@ import runpy
 import shutil
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -216,3 +217,129 @@ def test_daily_controller_replays_seed_and_writes_accepted_content(
             )
             > 0
         )
+
+
+def test_default_export_plan_resolves_against_the_real_registry_and_catalog(
+    real_db_engine, monkeypatch
+):
+    from transit_ops.batch.daily_inputs import EDITION_REFERENCES, require_bounded_needs
+    from transit_ops.batch.families.registry import FAMILIES
+
+    script = Path(__file__).resolve().parents[3] / ".github/scripts/batch-shadow.py"
+    controller = runpy.run_path(str(script))["main"].__globals__
+    monkeypatch.setenv(
+        "TRANSIT_REPLAY_DATABASE_URL", real_db_engine.url.render_as_string(hide_password=False)
+    )
+    monkeypatch.setenv(
+        "TRANSIT_TEST_DATABASE_DISPOSABLE", "I_UNDERSTAND_THIS_DATABASE_IS_DISPOSABLE"
+    )
+    monkeypatch.setenv("GITHUB_SHA", "a" * 40)
+    monkeypatch.setenv("PROVIDERS", "stm")
+    monkeypatch.setenv("INPUT_MODE", "export")
+    for name in ("FAMILIES", "DAY", "AS_OF"):
+        monkeypatch.delenv(name, raising=False)
+    planned = controller["plan"](datetime(2026, 11, 19, 12, tzinfo=UTC))
+    excluded = {r["family"]: r["reason"] for r in planned["family_refusals"]}
+    assert excluded == {
+        "route_spine_hours": "input_not_archived:silver.rt_feed_snapshots",
+        "hotspots": "family_not_replayable",
+        "trend_history_partitions": "family_not_replayable",
+        "alerts_provenance": "family_not_replayable",
+    }
+    selected = {family for row in planned["matrix"] for family in row["families"]}
+    assert selected == set(FAMILIES) - set(excluded)
+    assert "cancellations_service_states" in selected and "occupancy_crowding" in selected
+    edition_parents = {
+        n["window"]
+        for n in planned["needs"]
+        if n["relation"] in {"raw.ingestion_objects", "raw.ingestion_runs"}
+        and not n["window"][:1].isdigit()
+    }
+    assert edition_parents == {EDITION_REFERENCES}
+    require_bounded_needs(planned["needs"])
+
+
+def test_edition_reference_months_are_row_aware_and_index_backed(real_db_engine, seed_provider):
+    from sqlalchemy import text
+
+    from transit_ops.batch.daily_inputs import (
+        EDITION_REFERENCE_MONTHS,
+        EDITION_REFERENCES,
+        edition_reference_windows,
+    )
+
+    with real_db_engine.begin() as conn:
+        seed_provider(conn, "refs", display_name="References", ignore_existing=True)
+        conn.execute(
+            text("""
+            WITH endpoint AS (
+              INSERT INTO core.feed_endpoints(provider_id, endpoint_key, feed_kind, source_format)
+              VALUES ('refs', 'schedule', 'static_schedule', 'gtfs_schedule_zip')
+              RETURNING feed_endpoint_id
+            ), runs AS (
+              INSERT INTO raw.ingestion_runs(ingestion_run_id, provider_id, feed_endpoint_id,
+                run_kind, status, started_at_utc)
+              SELECT r.id, 'refs', e.feed_endpoint_id, 'static_schedule', 'succeeded', r.at
+              FROM endpoint e CROSS JOIN (VALUES
+                (900001, TIMESTAMPTZ '2025-07-31 23:59:58+00'),
+                (900002, TIMESTAMPTZ '2025-08-02 00:00:00+00'),
+                (900003, TIMESTAMPTZ '2025-09-15 00:00:00+00'),
+                (900004, TIMESTAMPTZ '2026-11-10 00:00:00+00')) r(id, at)
+              RETURNING ingestion_run_id, feed_endpoint_id
+            ), objects AS (
+              INSERT INTO raw.ingestion_objects(ingestion_object_id, ingestion_run_id,
+                provider_id, object_kind, storage_backend, storage_path, created_at_utc)
+              SELECT o.id, o.run, 'refs', 'static_schedule', 'local', o.path, o.at
+              FROM (VALUES
+                (900005, 900001, 'a', TIMESTAMPTZ '2025-08-01 00:00:05+00'),
+                (900006, 900003, 'b', TIMESTAMPTZ '2025-09-15 00:00:05+00'),
+                (900007, 900004, 'c', TIMESTAMPTZ '2026-11-10 00:00:05+00')) o(id, run, path, at)
+              WHERE EXISTS (SELECT 1 FROM runs)
+              RETURNING ingestion_object_id
+            )
+            INSERT INTO core.dataset_versions(provider_id, feed_endpoint_id,
+              source_ingestion_run_id, source_ingestion_object_id, content_hash, is_current)
+            SELECT 'refs', e.feed_endpoint_id, v.run, v.object, repeat(v.hash, 64), v.current
+            FROM endpoint e CROSS JOIN (VALUES
+              (900002, 900005, 'c', false),
+              (900004, NULL::bigint, 'd', true)) v(run, object, hash, current)
+            WHERE EXISTS (SELECT 1 FROM objects)
+            """)
+        )
+    raw = real_db_engine.raw_connection()
+    try:
+        connection = raw.driver_connection
+        needs = [
+            {"relation": r, "window": EDITION_REFERENCES, "provider": "refs"}
+            for r in ("raw.ingestion_objects", "raw.ingestion_runs")
+        ]
+        # The September run and object exist but no edition row references them.
+        assert edition_reference_windows(needs, connection) == {
+            "refs": [
+                "raw.ingestion_objects:refs:2025-08",
+                "raw.ingestion_runs:refs:2025-07",
+                "raw.ingestion_runs:refs:2025-08",
+                "raw.ingestion_runs:refs:2026-11",
+            ]
+        }
+        with connection.transaction():
+            connection.execute("SET LOCAL enable_seqscan = off")
+            plan = connection.execute(
+                "EXPLAIN (FORMAT JSON) " + EDITION_REFERENCE_MONTHS, ("refs",)
+            ).fetchone()[0]
+    finally:
+        raw.close()
+    scans = []
+
+    def walk(node):
+        scans.append((node["Node Type"], node.get("Relation Name")))
+        for child in node.get("Plans", ()):
+            walk(child)
+
+    walk((json.loads(plan) if isinstance(plan, str) else plan)[0]["Plan"])
+    for relation in ("dataset_versions", "ingestion_objects", "ingestion_runs"):
+        assert ("Seq Scan", relation) not in scans, scans
+        assert any(
+            name == relation and kind in {"Index Scan", "Index Only Scan", "Bitmap Heap Scan"}
+            for kind, name in scans
+        ), scans

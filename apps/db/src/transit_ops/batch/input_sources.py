@@ -81,11 +81,63 @@ def replay_catalog() -> Iterator[Inspector]:
         database.engine.dispose()
 
 
+def reference_months(values: Sequence[str], provider: str) -> dict[str, tuple[str, ...]]:
+    """Parse exported ``relation:provider:YYYY-MM`` windows of edition FK parents."""
+    from transit_ops.batch.daily_inputs import EDITION_PARENTS
+    from transit_ops.history.datasets import window_start
+
+    result: dict[str, set[str]] = defaultdict(set)
+    for value in values:
+        parts = value.split(":")
+        if len(parts) != 3 or parts[0] not in EDITION_PARENTS or parts[1] != provider:
+            raise ValueError(f"reference_window: {value}")
+        window_start(get_dataset(parts[0]), parts[2])
+        result[parts[0]].add(parts[2])
+    return {relation: tuple(sorted(months)) for relation, months in result.items()}
+
+
+def _require_reference_closure(root: Path, references: Mapping[str, Sequence[str]]) -> None:
+    """Row-aware closure: every loaded edition row finds its pinned parent rows."""
+    from transit_ops.batch.daily_inputs import EDITION_METADATA, EDITION_PARENTS
+
+    metadata = root / EDITION_METADATA / "all.parquet"
+    if not references or not metadata.is_file():
+        return
+    files = [metadata]
+    for relation in EDITION_PARENTS:
+        path = root / relation / "all.parquet"
+        if not path.is_file():
+            raise ValueError(f"fk_parent_outside_range: {relation} {references.get(relation)}")
+        files.append(path)
+    scan = "read_parquet(?, hive_partitioning=false)"
+    with duckdb.connect() as conn:
+        missing = conn.execute(
+            f"WITH v AS (SELECT * FROM {scan}), o AS (SELECT * FROM {scan}), "
+            f"r AS (SELECT * FROM {scan}) SELECT "
+            "(SELECT count(*) FROM v WHERE v.source_ingestion_object_id IS NOT NULL "
+            " AND NOT EXISTS (SELECT 1 FROM o "
+            "  WHERE o.ingestion_object_id = v.source_ingestion_object_id)), "
+            "(SELECT count(*) FROM (SELECT source_ingestion_run_id AS id FROM v UNION "
+            "  SELECT o.ingestion_run_id FROM o JOIN v "
+            "  ON o.ingestion_object_id = v.source_ingestion_object_id) ids "
+            " WHERE NOT EXISTS (SELECT 1 FROM r WHERE r.ingestion_run_id = ids.id))",
+            [str(path) for path in files],
+        ).fetchone()
+    assert missing is not None
+    for relation, count in zip(EDITION_PARENTS, missing, strict=True):
+        if count:
+            raise ValueError(
+                f"fk_parent_outside_range: {relation} {list(references.get(relation, ()))}"
+            )
+
+
 def fetch_from_catalog(
     storage: BronzeStorage,
     root: Path,
     request: BuildRequest,
     builders: Sequence[FamilyBuilder],
+    *,
+    references: Mapping[str, Sequence[str]] | None = None,
 ) -> dict[str, object]:
     from transit_ops.batch.replay import postgres_input_needs
 
@@ -117,6 +169,7 @@ def fetch_from_catalog(
             ),
             bootstrap_editions=uses_editions,
             request=request,
+            references=references,
         )
 
 
@@ -474,8 +527,13 @@ def resolve_sources(
     *,
     request: BuildRequest | None = None,
     coverage_needs: Sequence[InputNeed] | None = None,
+    references: Mapping[str, Sequence[str]] | None = None,
 ) -> tuple[Source, ...]:
-    """Preflight every need before payload reads; select only current proven revisions."""
+    """Preflight every need before payload reads; select only current proven revisions.
+
+    ``references`` pins an ``all`` edition FK parent to the exported months that
+    hold its referenced rows; fetch_replay_inputs proves that row closure.
+    """
     validate_provider_id(provider)
     if as_of.utcoffset() is None:
         raise ValueError("as_of must be timezone-aware")
@@ -515,7 +573,12 @@ def resolve_sources(
                 need.relation, storage, provider, editions
             )
         copies = inventories[need.relation]
-        windows = _windows_for(need, dataset, copies, as_of, editions, request=request)
+        pinned = (references or {}).get(need.relation, ()) if need.window == "all" else ()
+        windows = (
+            tuple(pinned)
+            if pinned
+            else _windows_for(need, dataset, copies, as_of, editions, request=request)
+        )
         if not windows or any(w not in copies for w in windows):
             missing.append(need)
             continue
@@ -524,7 +587,8 @@ def resolve_sources(
             from transit_ops.lake.copy_rejections import require_usable_copy
 
             require_usable_copy(source.receipt, source.key)
-            _window_coverage(source, need, as_of, request, coverage_needs)
+            if not pinned:  # Pinned rows are proven by key, not by time coverage.
+                _window_coverage(source, need, as_of, request, coverage_needs)
             previous = selected.get(source.key)
             selected[source.key] = replace(
                 source,
@@ -644,13 +708,19 @@ def _filter_window(
     whole: set[str],
     *,
     request: BuildRequest | None = None,
+    pinned: Mapping[str, str] | None = None,
 ) -> tuple[dict[str, object], dict[InputNeed, Path]]:
     column = (
         None
         if source.receipt.get("bundle_closure")
         else _window_column(conn, source.needs[0].relation)
     )
-    predicates = [_predicate(n, column, as_of, request=request) for n in source.needs]
+    predicates = [
+        (pinned[n.relation], [])
+        if pinned and n.window == "all" and n.relation in pinned
+        else _predicate(n, column, as_of, request=request)
+        for n in source.needs
+    ]
     union = " OR ".join(f"({sql})" for sql, _ in predicates)
     params = [p for _, values in predicates for p in values]
     counts = conn.execute(
@@ -703,6 +773,39 @@ def _materialize_connection(
         ) from error
 
 
+def _reference_predicates(
+    conn: duckdb.DuckDBPyConnection,
+    sources: Sequence[Source],
+    paths: Mapping[str, Path],
+    references: Mapping[str, Sequence[str]],
+) -> dict[str, str]:
+    """Row-aware closure (R27b.2): parent keys referenced by the edition metadata rows."""
+    from transit_ops.batch.daily_inputs import EDITION_METADATA
+
+    def files(relation: str) -> list[str]:
+        return [str(paths[s.key]) for s in sources if s.needs[0].relation == relation]
+
+    metadata = files(EDITION_METADATA)
+    if not references or not metadata:
+        return {}
+    conn.read_parquet(metadata, hive_partitioning=False).create_view("edition_rows", replace=True)
+    objects = "SELECT source_ingestion_object_id FROM edition_rows"
+    runs = "SELECT source_ingestion_run_id FROM edition_rows"
+    if object_files := files("raw.ingestion_objects"):
+        conn.read_parquet(object_files, hive_partitioning=False).create_view(
+            "edition_parent_objects", replace=True
+        )
+        runs += (
+            " UNION SELECT ingestion_run_id FROM edition_parent_objects "
+            f"WHERE ingestion_object_id IN ({objects})"
+        )
+    predicates = {
+        "raw.ingestion_objects": f'"ingestion_object_id" IN ({objects})',
+        "raw.ingestion_runs": f'"ingestion_run_id" IN ({runs})',
+    }
+    return {relation: sql for relation, sql in predicates.items() if relation in references}
+
+
 def materialize(
     sources: Sequence[Source],
     paths: Mapping[str, Path],
@@ -713,8 +816,12 @@ def materialize(
     temp_max_mb: int = 2048,
     edition_assignments: Mapping[int, str] | None = None,
     request: BuildRequest | None = None,
+    references: Mapping[str, Sequence[str]] | None = None,
 ) -> list[dict[str, object]]:
-    """Filter archive ranges before either engine reads; retain per-window row accounting."""
+    """Filter archive ranges before either engine reads; retain per-window row accounting.
+
+    Pinned edition FK parents keep only the rows the edition metadata references.
+    """
     targets: dict[InputNeed, list[Path]] = defaultdict(list)
     receipts = []
     schemas: dict[str, list[tuple[Any, ...]]] = {}
@@ -722,6 +829,7 @@ def materialize(
     current_relation = [sources[0].needs[0].relation if sources else "input_sources"]
     with _materialize_connection(root, current_relation, memory_limit_mb, temp_max_mb) as conn:
         conn.execute("SET TimeZone='UTC'")
+        pinned = _reference_predicates(conn, sources, paths, references or {})
         for index, source in enumerate(sources):
             relation = source.needs[0].relation
             current_relation[0] = relation
@@ -760,7 +868,7 @@ def materialize(
                 raise ValueError(f"Parquet schema differs: {relation} {path}")
             schemas[relation] = schema
             receipt, parts = _filter_window(
-                conn, source, path, index, as_of, whole, request=request
+                conn, source, path, index, as_of, whole, request=request, pinned=pinned
             )
             if "bundle_version" in source.receipt:
                 receipt.update(
@@ -856,6 +964,7 @@ def fetch_replay_inputs(
     *,
     bootstrap_editions: bool = True,
     request: BuildRequest | None = None,
+    references: Mapping[str, Sequence[str]] | None = None,
 ) -> dict[str, object]:
     """Bootstrap only edition readers/FK needs, then preflight all payloads."""
     from transit_ops.batch.replay import absent_unread
@@ -883,6 +992,7 @@ def fetch_replay_inputs(
             mapping,
             request=request,
             coverage_needs=getattr(needs, "coverage_needs", needs),
+            references=references,
         )
         if mapping.bootstrap is not None:
             _check_bootstrap_current(mapping.bootstrap, storage, provider, as_of)
@@ -890,8 +1000,15 @@ def fetch_replay_inputs(
             if source.key not in paths:
                 paths[source.key] = _download(source, storage, area / str(index))
         receipts = materialize(
-            sources, paths, root, as_of, edition_assignments=mapping.checksums, request=request
+            sources,
+            paths,
+            root,
+            as_of,
+            edition_assignments=mapping.checksums,
+            request=request,
+            references=references,
         )
+        _require_reference_closure(root, references or {})
         from transit_ops.batch.input_provenance import write_input_receipts
 
         write_input_receipts(

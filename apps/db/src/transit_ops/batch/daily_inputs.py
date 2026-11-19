@@ -9,8 +9,70 @@ from time import monotonic
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from transit_ops.batch.build import InputNeed
 from transit_ops.history.datasets import TableSource, get_dataset, utc_day_closes_at
 from transit_ops.lake.alert_bundle import MEMBERS
+
+EDITION_METADATA = "core.dataset_versions"
+# Windowed FK parents of the whole-state edition metadata (migration 0093).
+EDITION_PARENTS = ("raw.ingestion_objects", "raw.ingestion_runs")
+# Months holding the parent rows the provider's edition metadata rows reference.
+EDITION_REFERENCES = "edition_refs"
+
+# Row-aware closure (R27b.2): every edition metadata row the replay loads, then
+# its parent rows by primary key. The provider predicate uses the leading column
+# of ix_dataset_versions_provider_endpoint_loaded; no aggregate or range scan.
+EDITION_REFERENCE_MONTHS = """
+WITH versions AS MATERIALIZED (
+ SELECT v.source_ingestion_object_id, v.source_ingestion_run_id
+ FROM core.dataset_versions v WHERE v.provider_id = %s),
+objects AS MATERIALIZED (
+ SELECT o.provider_id, o.ingestion_run_id, o.created_at_utc
+ FROM versions v JOIN raw.ingestion_objects o
+   ON o.ingestion_object_id = v.source_ingestion_object_id),
+run_ids AS (
+ SELECT source_ingestion_run_id AS ingestion_run_id FROM versions
+ UNION SELECT ingestion_run_id FROM objects)
+SELECT 'raw.ingestion_objects', provider_id,
+       to_char(created_at_utc AT TIME ZONE 'UTC', 'YYYY-MM') FROM objects
+UNION
+SELECT 'raw.ingestion_runs', r.provider_id,
+       to_char(r.started_at_utc AT TIME ZONE 'UTC', 'YYYY-MM')
+FROM run_ids i JOIN raw.ingestion_runs r ON r.ingestion_run_id = i.ingestion_run_id
+ORDER BY 1, 2, 3
+"""
+
+
+def bound_edition_parents(needs: Sequence[InputNeed]) -> tuple[tuple[str, str], ...]:
+    """Logical (relation, window) needs with whole-history edition FK parents bounded.
+
+    Only parents reached from the whole-state edition metadata qualify; any other
+    unbounded need keeps its ``all`` window and is refused by require_bounded_needs.
+    """
+    edition = InputNeed(EDITION_METADATA, "all") in needs
+    return tuple(
+        sorted(
+            {
+                (n.relation, EDITION_REFERENCES)
+                if edition and n.relation in EDITION_PARENTS and n.window == "all"
+                else (n.relation, n.window)
+                for n in needs
+            }
+        )
+    )
+
+
+def edition_reference_windows(
+    needs: Sequence[Mapping[str, str]], connection: Any
+) -> dict[str, list[str]]:
+    """Exact parent windows per edition-reading provider, by primary-key joins."""
+    providers = sorted({item["provider"] for item in needs if item["window"] == EDITION_REFERENCES})
+    result = {}
+    for provider in providers:
+        rows = connection.execute(EDITION_REFERENCE_MONTHS, (provider,)).fetchall()
+        result[provider] = sorted(f"{relation}:{owner}:{month}" for relation, owner, month in rows)
+    return result
+
 
 ROLE_CAN_WRITE = """
 WITH reachable AS (
@@ -71,23 +133,31 @@ def window_is_open(dataset_id: str, window: str, stamp: datetime, open_days: int
 
 
 def exact_windows(
-    needs: Sequence[Mapping[str, str]], stamp: datetime, connection: Any
+    needs: Sequence[Mapping[str, str]],
+    stamp: datetime,
+    connection: Any,
+    references: Mapping[str, Sequence[str]] | None = None,
 ) -> tuple[str, ...]:
     """Map the declared grain, preserving provider scope and the alert exception.
 
     Edition ids are resolved to current source checksums, never guessed.
     Unbounded ranged needs refuse before any source query. The fetch resolver
-    remains the proof authority; parent closure is never silently narrowed.
+    remains the proof authority; parent closure is never silently narrowed:
+    edition FK parents select exactly the months their referenced rows occupy.
     """
     windows: set[str] = set()
     require_bounded_needs(needs)
+    if references is None:
+        references = edition_reference_windows(needs, connection)
     for item in needs:
         relation, provider, window = item["relation"], item["provider"], item["window"]
         dataset = get_dataset(relation)
         source = dataset.source
         if not isinstance(source, TableSource):
             raise ValueError(f"input_not_archived: {relation}")
-        if relation in MEMBERS:
+        if window == EDITION_REFERENCES:
+            windows.update(w for w in references.get(provider, ()) if w.split(":")[0] == relation)
+        elif relation in MEMBERS:
             providers = connection.execute("SELECT provider_id FROM core.providers").fetchall()
             for row in providers:
                 owner = "_shared" if relation == "silver.i3_alert_active_periods" else row[0]
@@ -128,6 +198,10 @@ def exact_windows(
 
 def require_bounded_needs(needs: Sequence[Mapping[str, str]]) -> None:
     for item in needs:
+        if item["window"] == EDITION_REFERENCES:
+            if item["relation"] not in EDITION_PARENTS:
+                raise ValueError(f"unbounded_window_need: {item['relation']}")
+            continue
         source = get_dataset(item["relation"]).source
         if (
             item["relation"] not in MEMBERS
@@ -178,7 +252,7 @@ def require_window_support(
             window = item["window"].removeprefix("local:")
             if dataset.archive_grain == "edition":
                 continue
-            if window == "all":
+            if window in {"all", EDITION_REFERENCES}:
                 window = (
                     stamp.strftime("%Y-%m")
                     if dataset.archive_grain == "month"
