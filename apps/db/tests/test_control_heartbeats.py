@@ -1,6 +1,7 @@
 import json
 from dataclasses import asdict, replace
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 from test_control_leases import NOW, TTL, acquire, control_objects  # noqa: F401
@@ -249,3 +250,161 @@ def test_declared_row_types_fail_closed(objects, stored, field, value):
             write(objects, owner, beat(**{field: value}))
         assert read_lease(objects, provider_id="network:one", lane="live") == lease
         assert objects.read(KEY) == prior
+
+
+def opt_in(objects, lease, *, now=NOW, ttl=TTL, value=None, clock=None):
+    return m.write_heartbeat(
+        objects,
+        lease,
+        beat() if value is None else value,
+        ttl=ttl,
+        clock=clock or (lambda: now),
+        renew_after_write=True,
+    )
+
+
+@pytest.mark.parametrize("zone", [UTC, ZoneInfo("America/Toronto")])
+def test_write_first_forward_clock_crosses_fall_back(objects, zone):
+    start = datetime(2026, 11, 1, 5, 59, 50, tzinfo=UTC)
+    lease = acquire(objects, now=start)
+    finish = start + timedelta(seconds=11)
+    readings = iter([start + timedelta(seconds=9), finish])
+
+    def clock():
+        return next(readings, finish).astimezone(zone)
+
+    value = beat(generated_utc=start, recorded_at_utc=finish)
+    renewed = opt_in(objects, lease, value=value, clock=clock)
+    assert renewed.expires_at_utc == finish + TTL
+    assert (renewed.holder, renewed.epoch) == (lease.holder, lease.epoch)
+    assert m.read_heartbeat(objects, provider_id=lease.provider_id, tier=lease.lane) is not None
+
+
+@pytest.mark.parametrize("zone", [UTC, ZoneInfo("America/Toronto")])
+def test_write_first_backward_instant_across_folds_refuses_before_mutation(objects, zone):
+    start = datetime(2026, 11, 1, 5, 59, 50, tzinfo=UTC)
+    lease = acquire(objects, now=start)
+    readings = iter([start + timedelta(seconds=30), start + timedelta(seconds=5)])
+    last = start + timedelta(seconds=5)
+
+    def clock():
+        return next(readings, last).astimezone(zone)
+
+    with pytest.raises(LeaseLost, match="clock moved backwards"):
+        opt_in(objects, lease, value=beat(generated_utc=start, recorded_at_utc=last), clock=clock)
+    assert read_lease(objects, provider_id=lease.provider_id, lane=lease.lane) == lease
+    assert objects.read(KEY) is None
+
+
+@pytest.mark.parametrize("fault", [ObjectConflict, ObjectRateLimited])
+def test_write_first_failure_leaves_exact_lease_untouched(objects, monkeypatch, fault):
+    lease, original, attempts = acquire(objects), objects.replace, []
+
+    def failing(key, *args, **kwargs):
+        attempts.append(key)
+        if key == KEY:
+            raise fault("busy")
+        return original(key, *args, **kwargs)
+
+    monkeypatch.setattr(objects, "replace", failing)
+    with pytest.raises(LeaseLost if fault is ObjectConflict else ObjectRateLimited):
+        opt_in(objects, lease, now=NOW + timedelta(seconds=10))
+    assert read_lease(objects, provider_id=lease.provider_id, lane=lease.lane) == lease
+    assert objects.read(KEY) is None
+    assert attempts == [KEY] * (2 if fault is ObjectConflict else 1)
+
+
+def test_write_first_success_order_and_same_holder(objects, monkeypatch):
+    lease, original, writes = acquire(objects), objects.replace, []
+
+    def recording(key, *args, **kwargs):
+        writes.append(key)
+        return original(key, *args, **kwargs)
+
+    monkeypatch.setattr(objects, "replace", recording)
+    renewed = opt_in(objects, lease, now=NOW + timedelta(seconds=10))
+    assert writes == [KEY, "leases/network%3Aone/live.json"]
+    assert (renewed.holder, renewed.epoch) == (lease.holder, lease.epoch)
+    assert renewed.expires_at_utc == NOW + timedelta(seconds=100)
+
+
+@pytest.mark.parametrize("invalid", ["ttl", "naive", "backwards", "expired", "payload", "identity"])
+def test_write_first_validates_before_any_write(objects, monkeypatch, invalid):
+    lease = acquire(objects)
+    options = {
+        "ttl": dict(ttl=timedelta(seconds=29)),
+        "naive": dict(now=NOW.replace(tzinfo=None)),
+        "backwards": dict(now=NOW - timedelta(microseconds=1)),
+        "expired": dict(now=NOW + TTL),
+        "payload": dict(value=beat(files_written=-1)),
+        "identity": dict(value=beat(provider_id="other")),
+    }
+    monkeypatch.setattr(objects, "replace", lambda *a, **kw: pytest.fail("unexpected write"))
+    with pytest.raises((ValueError, LeaseLost)):
+        opt_in(objects, lease, **options[invalid])
+    assert objects.read(KEY) is None
+
+
+@pytest.mark.parametrize("change", ["same_holder", "takeover", "epoch", "token", "holder", "lane"])
+def test_write_first_refuses_changed_ownership(objects, monkeypatch, change):
+    lease = acquire(objects)
+    now = NOW + timedelta(seconds=10)
+    if change == "same_holder":
+        renew_lease(objects, lease, ttl=TTL, clock=lambda: now)
+    elif change == "takeover":
+        now = NOW + TTL
+        acquire(objects, "winner", now)
+    else:
+        lease = replace(
+            lease, **{change: {"epoch": 2, "token": "bad", "holder": "b", "lane": "static"}[change]}
+        )
+    monkeypatch.setattr(objects, "replace", lambda *a, **kw: pytest.fail("unexpected write"))
+    with pytest.raises(ValueError if change == "lane" else LeaseLost):
+        opt_in(objects, lease, now=now)
+    assert objects.read(KEY) is None
+
+
+@pytest.mark.parametrize("epoch", [1, 2])
+def test_write_first_conflict_rechecks_higher_epoch(objects, monkeypatch, epoch):
+    lease, original, attempts = acquire(objects), objects.replace, []
+
+    def conflict(key, *args, **kwargs):
+        if key == KEY and not attempts:
+            attempts.append(key)
+            seed(objects, epoch)
+            raise ObjectConflict("interleaved")
+        return original(key, *args, **kwargs)
+
+    monkeypatch.setattr(objects, "replace", conflict)
+    if epoch == 2:
+        with pytest.raises(LeaseLost):
+            opt_in(objects, lease)
+        assert read_lease(objects, provider_id=lease.provider_id, lane=lease.lane) == lease
+    else:
+        assert opt_in(objects, lease).holder == lease.holder
+
+
+@pytest.mark.parametrize("failure", ["expiry", "takeover", "renewal", "backwards"])
+def test_write_first_post_heartbeat_failure_never_claims_success(objects, monkeypatch, failure):
+    lease, original = acquire(objects), objects.replace
+    now = NOW + timedelta(seconds=10)
+
+    def interleave(key, *args, **kwargs):
+        nonlocal now
+        if key.startswith("leases/") and failure == "renewal":
+            raise ObjectRateLimited("renewal failed")
+        result = original(key, *args, **kwargs)
+        if key == KEY and failure != "renewal":
+            now = NOW - timedelta(seconds=1) if failure == "backwards" else NOW + TTL
+            if failure == "takeover":
+                acquire(objects, "winner", now)
+        return result
+
+    monkeypatch.setattr(objects, "replace", interleave)
+    with pytest.raises(ObjectRateLimited if failure == "renewal" else LeaseLost):
+        opt_in(objects, lease, clock=lambda: now)
+    assert objects.read(KEY) is not None
+    stored = read_lease(objects, provider_id=lease.provider_id, lane=lease.lane)
+    assert stored.holder == ("winner" if failure == "takeover" else lease.holder)
+    if failure != "takeover":
+        assert stored == lease

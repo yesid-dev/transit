@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime
 from typing import Any, cast
 
 from sqlalchemy import bindparam
@@ -49,6 +50,47 @@ from transit_ops.sql_registry import named_query
 logger = logging.getLogger(__name__)
 
 type _LegacyCollected = tuple[list[CollectedItem], list[CollectedItem], str, int | None]
+type LiveBuildSource = Callable[[datetime], tuple[list[PutItem], dict[str, str | None]]]
+
+
+def live_cycle_stamp(cycle: datetime) -> str:
+    if cycle.utcoffset() is None:
+        raise ValueError("publication cycle must be timezone aware")
+    return cycle.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def build_live_from_source(
+    source: LiveBuildSource, *, provider_id: str, cycle: datetime, prior: object
+) -> list[PutItem]:
+    """Explicit, detached build seam. Default PG publication never resolves a source."""
+    gen = live_cycle_stamp(cycle)
+    complete, captures = source(cycle)
+    expected = {*live_publication.FILES, "manifest.json"}
+    if len(complete) != len(expected) or {key for key, _, _ in complete} != expected:
+        raise ValueError("live source requires the complete seven-file bundle")
+    if any(tier != "live" for _, _, tier in complete):
+        raise ValueError("live source tier differs")
+    if set(captures) != {"static_schedule", "vehicle_positions", "trip_updates", "i3_alerts"}:
+        raise ValueError("live source capture inventory differs")
+    keys, generations = live_publication.select(prior, captures)
+    by_key = {key: payload for key, payload, _ in complete}
+    manifest = by_key["manifest.json"]
+    if not isinstance(manifest, Manifest) or manifest.provider != provider_id:
+        raise ValueError("live source manifest identity differs")
+    if manifest.files.live.generated_utc != gen or any(
+        getattr(payload, "generated_utc", None) != gen
+        for key, payload, _ in complete
+        if key != "manifest.json"
+    ):
+        raise ValueError("live source cycle differs")
+    manifest.files.live.input_captures = captures
+    manifest.files.live.generations = {
+        **generations,
+        **{key: envelope.publish_generation_id(provider_id, gen) for key in keys},
+    }
+    items = [(key, by_key[key], "live") for key in [*keys, "manifest.json"]]
+    envelope.stamp_envelope(items, provider_id=provider_id, stamp=gen)
+    return items
 
 
 _REPEATABLE_READ_SQL = named_query(
@@ -190,12 +232,12 @@ _STATIC_STAMP_SQL = named_query(
 )
 
 
-def _static_stamp(conn: Connection, provider_id: str) -> str:
+def _static_stamp(conn: Connection, provider_id: str, *, fallback: str | None = None) -> str:
 
     row = conn.execute(_STATIC_STAMP_SQL, {"provider_id": provider_id}).mappings().fetchone()
     if row is not None and row["loaded_at_utc"] is not None:
         return _iso(row["loaded_at_utc"])
-    return utc_now().strftime("%Y-%m-%dT00:00:00Z")
+    return fallback if fallback is not None else utc_now().strftime("%Y-%m-%dT00:00:00Z")
 
 
 def _build_live_items(
@@ -230,13 +272,23 @@ def _build_live_items(
 
 
 def _build_live_publication(
-    conn: Connection, storage: PayloadSink, *, provider_id: str, settings: Settings, gen: str
+    conn: Connection,
+    storage: PayloadSink,
+    *,
+    provider_id: str,
+    settings: Settings,
+    gen: str,
+    cycle: datetime | None = None,
 ) -> list[PutItem]:
     captures = {
         key: builders.live._feed_captured_utc(conn, provider_id, key)
         for key in sorted(set().union(*(inputs for _, inputs in live_publication.FILES.values())))
     }
-    captures["static_schedule"] = _static_stamp(conn, provider_id)
+    captures["static_schedule"] = (
+        _static_stamp(conn, provider_id)
+        if cycle is None
+        else _static_stamp(conn, provider_id, fallback=live_cycle_stamp(cycle)[:10] + "T00:00:00Z")
+    )
     read = getattr(storage, "get_json", None)
     prior = read("manifest.json") if callable(read) else None
     keys, generations = live_publication.select(prior, captures)
@@ -258,11 +310,16 @@ def _publish_live(
     settings: Settings,
     gate_report: gate.GateReport | None = None,
     gen: str | None = None,
+    cycle: datetime | None = None,
 ) -> list[str]:
     if gen is None:
-        gen = utc_now().strftime("%Y-%m-%dT%H:%M:%SZ")
+        gen = (
+            live_cycle_stamp(cycle)
+            if cycle is not None
+            else utc_now().strftime("%Y-%m-%dT%H:%M:%SZ")
+        )
     items = _build_live_publication(
-        conn, storage, provider_id=provider_id, settings=settings, gen=gen
+        conn, storage, provider_id=provider_id, settings=settings, gen=gen, cycle=cycle
     )
     envelope.stamp_envelope(items, provider_id=provider_id, stamp=gen)
     if gate_report is not None:
@@ -387,7 +444,12 @@ def publish_snapshot(
     force: bool = False,
     full_historic_rebuild: bool = False,
     live_trip_updates: LiveTripUpdates | None = None,
+    cycle: datetime | None = None,
 ) -> PublishResult:
+    if cycle is not None:
+        live_cycle_stamp(cycle)
+        if tier != "live":
+            raise ValueError("explicit cycle requires tier='live'")
     if full_historic_rebuild and tier != "historic":
         raise ValueError("--full-historic-rebuild requires tier='historic'")
 
@@ -412,6 +474,7 @@ def publish_snapshot(
                 force=force,
                 full_historic_rebuild=full_historic_rebuild,
                 live_trip_updates=live_trip_updates,
+                cycle=cycle,
             )
         finally:
             close = getattr(owned_storage, "close", None)
@@ -425,7 +488,11 @@ def publish_snapshot(
         with engine.begin() as conn:
             conn.execute(_REPEATABLE_READ_SQL)
             acquire_publication_lane(conn, provider_id=provider_id, tier=tier)
-            gen = utc_now().strftime("%Y-%m-%dT%H:%M:%SZ")
+            gen = (
+                live_cycle_stamp(cycle)
+                if cycle is not None
+                else utc_now().strftime("%Y-%m-%dT%H:%M:%SZ")
+            )
             live_report = gate.new_report(provider_id, tier, gen) if gate_enabled else None
             keys = _publish_live(
                 conn,
@@ -434,6 +501,7 @@ def publish_snapshot(
                 settings=settings,
                 gate_report=live_report,
                 gen=gen,
+                cycle=cycle,
             )
             _record_publish_state(
                 conn,
