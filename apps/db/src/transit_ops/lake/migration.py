@@ -746,6 +746,7 @@ def run_migration(
             record.update(
                 outcome="failed",
                 reason=getattr(error, "reason", type(error).__name__),
+                exception=type(error).__name__,
                 error=str(error),
                 seconds=monotonic() - started,
             )
@@ -826,6 +827,7 @@ def run_migration(
             record.update(
                 outcome="failed",
                 reason=getattr(error, "reason", type(error).__name__),
+                exception=type(error).__name__,
                 error=str(error),
             )
             log(record)

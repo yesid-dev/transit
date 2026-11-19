@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import sys
+from contextlib import closing
 from dataclasses import replace
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
@@ -55,13 +56,124 @@ REFUSALS = (
     "fk_parent_outside_range",
     "reference_window",
 )
+# Further names a lake migrate failure or log record carries. Matched only as a
+# whole name, never searched for inside free text ("window" is too common).
+LAKE_REFUSALS = (
+    "catalog_result",
+    "clock",
+    "connection_check_unsupported",
+    "copy_group_incomplete",
+    "database_not_configured",
+    "datasets",
+    "edition_identity",
+    "inventory_incomplete",
+    "known_incomplete",
+    "missing_window",
+    "not_after_utc",
+    "plan_budget",
+    "read_only_required",
+    "revision",
+    "timeout_bounds",
+    "undeclared",
+    "unknown_provider",
+    "window",
+    "window_in_pruning",
+    "work_dir_changed",
+)
+# Exception classes a public summary may name; any other class is "other".
+EXCEPTIONS = frozenset(
+    {
+        "MigrationRefused",
+        "BundleRefused",
+        "ExportRefused",
+        "EditionIdentityRefused",
+        "KnownIncomplete",
+        "ServerChanged",
+        "UnverifiedCopy",
+        "CopyDiffers",
+        "SchemaDrift",
+        "InvalidSchema",
+        "UnsupportedColumnType",
+        "InvalidCsvValue",
+        "CsvHeaderMismatch",
+        "RequiredValueMissing",
+        "ObjectKeyTaken",
+        "UndeclaredDataset",
+        "InvalidDeclaration",
+        "OperationalError",
+        "DatabaseError",
+        "ProgrammingError",
+        "InternalError",
+        "QueryCanceled",
+        "ReadOnlySqlTransaction",
+        "InsufficientPrivilege",
+        "LockNotAvailable",
+        "UndefinedTable",
+        "UndefinedColumn",
+        "ConnectionTimeout",
+        "ClientError",
+        "EndpointConnectionError",
+        "NoCredentialsError",
+        "ConnectTimeoutError",
+        "ReadTimeoutError",
+        "IOException",
+        "InvalidInputException",
+        "OutOfMemoryException",
+        "ValueError",
+        "TypeError",
+        "KeyError",
+        "LookupError",
+        "RuntimeError",
+        "AssertionError",
+        "OSError",
+        "FileExistsError",
+        "FileNotFoundError",
+        "PermissionError",
+        "TimeoutError",
+        "JSONDecodeError",
+        "MemoryError",
+    }
+)
 # Plan-time reasons that exclude one default family instead of the whole run.
 EXCLUSIONS = ("input_not_archived", "unbounded_window_need")
 DATASET = r"[a-z0-9_]+\.[a-z0-9_]+"
 
 
 def refusal_name(message: str) -> str:
+    named = message.split(":", 1)[0].strip()
+    if named in REFUSALS or named in LAKE_REFUSALS:
+        return named
     return next((name for name in REFUSALS if name in message), "command_failed")
+
+
+def exception_name(name: object) -> str:
+    return name if isinstance(name, str) and name in EXCEPTIONS else "other"
+
+
+def failure_identity(output: str) -> tuple[str, str]:
+    """Public refusal and exception names; never any part of a failure message.
+
+    Lake's structured failure record is authoritative and only its reason field is
+    named. Without one (a crash or a non-lake command), the older name search and
+    a traceback's final class apply.
+    """
+    record = None
+    for line in output.splitlines():
+        try:
+            failure = json.loads(line).get("failure")
+        except (ValueError, TypeError, AttributeError):
+            continue
+        if isinstance(failure, dict):
+            record = failure
+    if record is not None:
+        reason = record.get("reason")
+        named = reason if reason in REFUSALS or reason in LAKE_REFUSALS else "command_failed"
+        return str(named), exception_name(record.get("exception"))
+    exception = None
+    if "Traceback (most recent call last)" in output:
+        found = re.match(r"([A-Za-z_][A-Za-z0-9_.]*)(?::|$)", output.strip().splitlines()[-1])
+        exception = found.group(1).rsplit(".", 1)[-1] if found else None
+    return refusal_name(output), exception_name(exception)
 
 
 def exclusion_reason(message: str) -> str | None:
@@ -132,7 +244,7 @@ def safe_evidence(value: Any, key: str = "") -> Any:
             return value
         if key in identifiers and re.fullmatch(r"[a-z0-9_.:-]+", value):
             return value
-        if key == "windows" and re.fullmatch(r"[a-z0-9_.-]+:[a-z0-9_-]+:[a-z0-9-]+", value):
+        if key == "windows" and re.fullmatch(r"[a-z0-9_.-]+:[a-z0-9_-]+:[a-z0-9.-]+", value):
             return value
         if key in stamps and re.fullmatch(r"[0-9T:Z.+-]+", value):
             return value
@@ -142,6 +254,8 @@ def safe_evidence(value: Any, key: str = "") -> Any:
             named = re.fullmatch(rf"([a-z_]+):({DATASET})", value)
             if named and named.group(1) in EXCLUSIONS:
                 return value
+            if key == "reason" and value in {"closed", "open_included", "whole_state"}:
+                return value  # A planned window's selection, not a failure.
             return refusal_name(value)
         if key in {"outcome", "status"} and value in {
             "copied",
@@ -153,6 +267,7 @@ def safe_evidence(value: Any, key: str = "") -> Any:
             "not_compared",
             "not_implemented",
             "command_failed",
+            "skipped",
         }:
             return value
     return None
@@ -419,11 +534,13 @@ def invoke(args: list[str], receipt: Path, *, env: dict[str, str] | None = None)
                         records.append(safe_evidence(json.loads(line)))
                     except (ValueError, TypeError):
                         pass
-    summary = {"records": records, "refusal": refusal_name(output) if result.returncode else None}
+    summary: dict[str, Any] = {"records": records, "refusal": None}
+    if result.returncode:
+        refusal, exception = failure_identity(output)
+        summary.update(refusal=refusal, exit_code=int(result.returncode), exception=exception)
     write_json(ROOT / "public" / receipt.relative_to(ROOT).with_suffix(".json"), summary)
     if result.returncode:
-        reason = refusal_name(output)
-        raise ValueError(f"{reason}: {args[0]} {args[1]}; see {receipt}")
+        raise ValueError(f"{summary['refusal']}: {args[0]} {args[1]}; see {receipt}")
 
 
 def export_inputs(data: dict[str, Any]) -> None:
@@ -440,7 +557,9 @@ def export_inputs(data: dict[str, Any]) -> None:
         require_group_reserve_support,
         require_window_support,
     )
+    from transit_ops.history.storage import history_storage
     from transit_ops.lake.alert_bundle import MEMBERS
+    from transit_ops.settings import Settings
 
     require_configuration(export=True)
     if shutil.disk_usage(ROOT).free < 20_000_000_000:
@@ -451,12 +570,18 @@ def export_inputs(data: dict[str, Any]) -> None:
         require_group_reserve_support()
     require_window_support(data["needs"], stamp)
     parts = urlsplit(os.environ["DATABASE_URL"])
-    with psycopg.connect(
-        urlunsplit(parts._replace(scheme="postgresql")),
-        options="-c default_transaction_read_only=on -c statement_timeout=300000 "
-        "-c lock_timeout=1000",
-        connect_timeout=5,
-    ) as conn:
+    settings = Settings()
+    # Edition names come from the same archive the copy step reads.
+    scope = history_storage(settings)
+    with (
+        closing(scope),
+        psycopg.connect(
+            urlunsplit(parts._replace(scheme="postgresql")),
+            options="-c default_transaction_read_only=on -c statement_timeout=300000 "
+            "-c lock_timeout=1000",
+            connect_timeout=5,
+        ) as conn,
+    ):
         if conn.execute("SHOW transaction_read_only").fetchone() != ("on",):
             raise ValueError("not_read_only")
         reads = PlanningReads(conn)
@@ -464,7 +589,8 @@ def export_inputs(data: dict[str, Any]) -> None:
         result = reads.execute("SELECT count(*) FROM core.providers").fetchone()
         count = result[0] if result else 0
         references = edition_reference_windows(data["needs"], reads)
-        windows = exact_windows(data["needs"], stamp, reads, references)
+        storage = scope.resolve(settings.BRONZE_STORAGE_BACKEND)
+        windows = exact_windows(data["needs"], stamp, reads, references, storage)
     if not count:
         raise ValueError("providers_missing")
     data["windows"] = list(windows)

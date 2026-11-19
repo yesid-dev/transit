@@ -44,7 +44,7 @@ def test_exact_windows_keep_provider_days_months_and_current_edition():
 
     def execute(query, parameters):
         assert parameters == ("stm",)
-        return SimpleNamespace(fetchall=lambda: [("c" * 64,)])
+        return SimpleNamespace(fetchall=lambda: [(7, "c" * 64)])
 
     windows = exact_windows(
         [
@@ -70,8 +70,40 @@ def test_exact_windows_keep_provider_days_months_and_current_edition():
         "gold.fact_trip_delay_snapshot:stm:2026-11-14",
         "gold.fact_trip_delay_snapshot:stm:2026-11-15",
         "raw.realtime_snapshot_index:stm:2026-11",
-        "silver.trips:stm:" + "c" * 64,
+        "silver.trips:stm:" + "c" * 64 + ".v7",
     )
+
+
+def test_current_edition_uses_the_lake_name_including_an_archived_legacy_name(tmp_path):
+    import json
+
+    from transit_ops.ingestion.storage import LocalBronzeStorage
+
+    def execute(query, parameters):
+        return SimpleNamespace(fetchall=lambda: [(7, "c" * 64)])
+
+    need = [{"relation": "silver.trips", "provider": "stm", "window": "edition:1"}]
+    stamp = datetime(2026, 11, 15, 12, tzinfo=UTC)
+    archive = LocalBronzeStorage("local", tmp_path)
+    connection = SimpleNamespace(execute=execute)
+    # A new edition: lake copies it as digest.vID, so a bare checksum never selects it.
+    assert exact_windows(need, stamp, connection, {}, archive) == (
+        "silver.trips:stm:" + "c" * 64 + ".v7",
+    )
+    record = tmp_path / "archive/v1/edition-identities/stm/7.json"
+    record.parent.mkdir(parents=True)
+    record.write_text(
+        json.dumps(
+            {
+                "format_version": 1,
+                "provider_id": "stm",
+                "dataset_version_id": 7,
+                "window_key": "c" * 64,
+            }
+        )
+    )
+    # An edition the archive already owns under its legacy bare name keeps it.
+    assert exact_windows(need, stamp, connection, {}, archive) == ("silver.trips:stm:" + "c" * 64,)
 
 
 def test_alerts_are_the_only_all_provider_exception():

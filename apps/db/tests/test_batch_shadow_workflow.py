@@ -654,6 +654,94 @@ def test_public_artifacts_drop_connection_details_and_query_secrets(
     assert summary["refusal"] == "not_after"
 
 
+PRIVATE = "postgresql://writer:pw@db.example:6543/live_db SELECT * FROM core.providers"
+
+
+@pytest.mark.parametrize(
+    ("stdout", "stderr", "expected"),
+    [
+        (
+            '{"failure": {"exception": "MigrationRefused", "reason": "window"}}',
+            "window: " + PRIVATE,
+            ("window", "MigrationRefused"),
+        ),
+        (
+            json.dumps(
+                {
+                    "failure": {
+                        "exception": "OperationalError",
+                        "reason": "plan_budget",
+                        "error": PRIVATE,
+                    },
+                    "outcomes": {},
+                }
+            ),
+            "",
+            ("plan_budget", "OperationalError"),
+        ),
+        (
+            # An unknown reason or class is never replaced by a name found in the text.
+            '{"failure": {"exception": "HostError_db_example", "reason": "live_db"}}',
+            PRIVATE + " migration_running not_after",
+            ("command_failed", "other"),
+        ),
+        (
+            "",
+            "Traceback (most recent call last):\n  ...\n"
+            "psycopg.errors.QueryCanceled: canceling statement " + PRIVATE,
+            ("command_failed", "QueryCanceled"),
+        ),
+        (
+            "",
+            "Traceback (most recent call last):\nwriter.db.example: " + PRIVATE,
+            ("command_failed", "other"),
+        ),
+    ],
+)
+def test_failed_lake_command_publishes_only_named_identities(
+    controller, monkeypatch, tmp_path, stdout, stderr, expected
+):
+    monkeypatch.setattr(
+        controller["subprocess"],
+        "run",
+        lambda *a, **kw: SimpleNamespace(returncode=3, stdout=stdout, stderr=stderr),
+    )
+    with pytest.raises(ValueError) as raised:
+        controller["invoke"](["lake", "migrate"], tmp_path / "export.log")
+    artifact = (tmp_path / "public/export.json").read_text()
+    summary = json.loads(artifact)
+    assert (summary["refusal"], summary["exception"]) == expected
+    assert summary["exit_code"] == 3
+    # The stage refusal keeps the same name.
+    assert controller["refusal_name"](str(raised.value)) == expected[0]
+    for private in ("db.example", "writer", "live_db", "6543", "pw", "SELECT", "postgresql"):
+        assert private not in artifact
+
+
+def test_every_name_lake_migrate_can_report_is_publishable(controller):
+    import re
+
+    lake = Path(__file__).resolve().parents[1] / "src/transit_ops/lake"
+    names = set()
+    for path in lake.glob("*.py"):
+        if path.name == "rescue_parquet.py":  # convert-rescue only, never migrate
+            continue
+        source = path.read_text(encoding="utf8")
+        names |= set(re.findall(r"\b(?:Migration|Bundle|Export)Refused\(\s*\"([a-z_]+)\"", source))
+        names |= set(re.findall(r"^\s+reason = \"([a-z_]+)\"", source, re.MULTILINE))
+        names |= set(re.findall(r"\breason=\"([a-z_]+)\"", source))
+        names |= set(re.findall(r"\bValueError\(\"([a-z_]+)\"\)", source))
+    commands = (lake.parent / "commands/lake.py").read_text(encoding="utf8")
+    migrate = commands[commands.index("def migrate(") :]
+    names |= set(re.findall(r"\bValueError\(\"([a-z_]+)\"\)", migrate))
+    assert {"window", "plan_budget", "edition_identity", "read_only_required"} <= names
+    assert {"database_not_configured", "connection_check_unsupported"} <= names
+    published = {controller["safe_evidence"]({"refusal": name})["refusal"] for name in names}
+    assert published == names
+    for name in names:
+        assert controller["refusal_name"](f"{name}: lake migrate; see export.log") == name
+
+
 def test_replay_process_receives_no_production_or_storage_credentials(
     controller, monkeypatch, tmp_path
 ):
@@ -908,7 +996,7 @@ def test_edition_family_plan_needs_only_referenced_parent_months(controller, mon
                     ("raw.ingestion_runs", "stm", "2025-08"),
                 ]
             )
-        return SimpleNamespace(fetchall=lambda: [("c" * 64,)])
+        return SimpleNamespace(fetchall=lambda: [(1, "c" * 64)])
 
     windows = exact_windows(planned["needs"], stamp, SimpleNamespace(execute=execute))
     edition_parents = {

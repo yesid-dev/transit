@@ -11,7 +11,10 @@ from zoneinfo import ZoneInfo
 
 from transit_ops.batch.build import InputNeed
 from transit_ops.history.datasets import TableSource, get_dataset, utc_day_closes_at
+from transit_ops.ingestion.storage import BronzeStorage
 from transit_ops.lake.alert_bundle import MEMBERS
+from transit_ops.lake.edition_assignments import archive_assignments
+from transit_ops.lake.edition_identity import edition_keys
 
 EDITION_METADATA = "core.dataset_versions"
 # Windowed FK parents of the whole-state edition metadata (migration 0093).
@@ -134,20 +137,42 @@ def window_is_open(dataset_id: str, window: str, stamp: datetime, open_days: int
     return utc_day_closes_at(date.fromisoformat(window)) > stamp
 
 
+def current_edition_key(connection: Any, provider: str, storage: BronzeStorage | None) -> str:
+    """The lake's archive name for the provider's current schedule edition.
+
+    Lake names an edition digest.vID unless the archive proves a legacy bare-digest
+    name for that ID; a bare checksum alone never selects a newly named edition.
+    """
+    rows = connection.execute(
+        "SELECT dataset_version_id, COALESCE(checksum_sha256,content_hash) "
+        "FROM core.dataset_versions "
+        "WHERE provider_id=%s AND dataset_kind='static_schedule' AND is_current",
+        (provider,),
+    ).fetchall()
+    if len(rows) != 1 or not rows[0][1]:
+        raise ValueError(f"edition_unresolved: {provider}")
+    ident, digest = rows[0]
+    assigned = archive_assignments(storage, provider, [digest])
+    return edition_keys([(ident, digest, None)], assignments=assigned)[ident]
+
+
 def exact_windows(
     needs: Sequence[Mapping[str, str]],
     stamp: datetime,
     connection: Any,
     references: Mapping[str, Sequence[str]] | None = None,
+    storage: BronzeStorage | None = None,
 ) -> tuple[str, ...]:
     """Map the declared grain, preserving provider scope and the alert exception.
 
-    Edition ids are resolved to current source checksums, never guessed.
+    Edition ids are resolved to the lake's current edition names, never guessed;
+    the archive supplies legacy names (none without storage).
     Unbounded ranged needs refuse before any source query. The fetch resolver
     remains the proof authority; parent closure is never silently narrowed:
     edition FK parents select exactly the months their referenced rows occupy.
     """
     windows: set[str] = set()
+    editions: dict[str, str] = {}
     require_bounded_needs(needs)
     if references is None:
         references = edition_reference_windows(needs, connection)
@@ -167,14 +192,9 @@ def exact_windows(
         elif source.window_column is None:
             windows.add(f"{relation}:{provider}:{stamp:%Y-%m}")
         elif dataset.archive_grain == "edition":
-            rows = connection.execute(
-                "SELECT COALESCE(checksum_sha256,content_hash) FROM core.dataset_versions "
-                "WHERE provider_id=%s AND dataset_kind='static_schedule' AND is_current",
-                (provider,),
-            ).fetchall()
-            if len(rows) != 1 or not rows[0][0]:
-                raise ValueError(f"edition_unresolved: {provider}")
-            windows.add(f"{relation}:{provider}:{rows[0][0]}")
+            if provider not in editions:
+                editions[provider] = current_edition_key(connection, provider, storage)
+            windows.add(f"{relation}:{provider}:{editions[provider]}")
         elif window == "all":
             raise ValueError(f"unbounded_window_need: {relation}")
         else:
