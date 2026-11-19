@@ -90,7 +90,7 @@
 	const deltaVar = $derived.by(() => {
 		if (!hasDelta || delta === 0) return 'var(--dataviz-status-unknown)';
 		const isImprovement = higherIsBetter ? delta! > 0 : delta! < 0;
-		return isImprovement ? 'var(--dataviz-status-on-time)' : 'var(--dataviz-severity-critical)';
+		return isImprovement ? 'var(--success)' : 'var(--destructive)';
 	});
 
 	const deltaText = $derived(

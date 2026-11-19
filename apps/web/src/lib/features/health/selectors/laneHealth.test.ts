@@ -36,7 +36,7 @@ describe('selectLaneRows', () => {
 		expect(maint.gate).toBeNull();
 	});
 
-	it('maps gate verdicts to status aspects (pass→on_time, warn→unknown, fail→late)', () => {
+	it('maps gate verdicts to status aspects (pass→green, warn→unknown, fail→stop)', () => {
 		const dh: DataHealth = {
 			generated_utc: iso('2026-07-02T12:00:00Z'),
 			lanes: [
@@ -47,13 +47,13 @@ describe('selectLaneRows', () => {
 		};
 		const [live, stat, rollup] = selectLaneRows(dh, labels);
 		expect(live.gate).toMatchObject({
-			aspect: 'on_time',
+			aspect: 'green',
 			label: 'passed',
 			checksRun: 10,
 			errors: 0,
 		});
 		expect(stat.gate).toMatchObject({ aspect: 'unknown', label: 'warnings', warnings: 2 });
-		expect(rollup.gate).toMatchObject({ aspect: 'late', label: 'blocked', errors: 1 });
+		expect(rollup.gate).toMatchObject({ aspect: 'stop', label: 'blocked', errors: 1 });
 	});
 
 	it('renders an honest-NULL gate (null block or unknown verdict → no fabricated pass)', () => {

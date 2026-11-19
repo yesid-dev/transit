@@ -128,3 +128,81 @@ for (const scheme of ['light', 'dark'] as const) {
 		});
 	}
 }
+
+test('an on-time bus body repaints with the on-time status colour when the theme changes', async ({
+	page,
+}, { project }) => {
+	test.skip(project.name !== 'desktop', 'one canvas renderer check');
+	// On time is the page ink in each theme (near white on dark, near black on light), so a
+	// body left from the other theme would vanish into the basemap.
+	const published = '2026-06-15T12:00:00Z';
+	const [lon, lat] = [-73.65, 45.53];
+	await page.clock.setFixedTime(Date.parse(published) + 30_000);
+	await page.emulateMedia({ colorScheme: 'dark', forcedColors: 'none' });
+	await page.addInitScript(() => {
+		localStorage.setItem('theme', 'dark');
+		const state = window as OverlayProbe;
+		const clear = CanvasRenderingContext2D.prototype.clearRect;
+		CanvasRenderingContext2D.prototype.clearRect = function (...args) {
+			if (this.canvas.dataset.slot === 'vehicle-overlay') state.vehiclePaints = [];
+			return Reflect.apply(clear, this, args);
+		};
+		const draw = CanvasRenderingContext2D.prototype.drawImage;
+		CanvasRenderingContext2D.prototype.drawImage = function (
+			...args: [CanvasImageSource, number, number, ...number[]]
+		) {
+			const [source, , , size] = args;
+			if (this.canvas.dataset.slot === 'vehicle-overlay' && source instanceof HTMLCanvasElement) {
+				const centre = Array.from(
+					source
+						.getContext('2d')!
+						.getImageData(Math.floor(source.width / 2), Math.floor(source.height / 2), 1, 1).data,
+				);
+				state.vehiclePaints?.push({ size, center: centre, plate: [], window: [] });
+			}
+			return Reflect.apply(draw, this, args);
+		};
+	});
+	await page.route('**/live/vehicles.json', (route) =>
+		route.fulfill({
+			json: {
+				generated_utc: published,
+				publish_generation_id: 'stm@on-time-rebake-e2e',
+				vehicles: [
+					{
+						id: 'on-time-bus',
+						lon,
+						lat,
+						status: 'on_time',
+						delay_min: 0,
+						route: '24',
+						trip: 't1',
+						reported_utc: '2026-06-15T11:54:00Z',
+						updated_utc: '2026-06-15T11:54:00Z',
+					},
+				],
+			},
+		}),
+	);
+	await page.goto(`/map?provider=stm&mapview=${lon},${lat},11,0,0`);
+	const onTime = () =>
+		page.evaluate(() => {
+			const probe = document.createElement('span');
+			probe.style.color = 'var(--dataviz-status-on-time)';
+			document.body.append(probe);
+			const rgb = getComputedStyle(probe).color.match(/\d+/g)!.map(Number);
+			probe.remove();
+			return [...rgb.slice(0, 3), 255];
+		});
+	const body = () =>
+		page.evaluate(() => (window as OverlayProbe).vehiclePaints?.[0]?.center ?? null);
+
+	const dark = await onTime();
+	await expect.poll(body).toEqual(dark);
+
+	await page.getByTestId('theme-toggle').click();
+	await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+	const light = await onTime();
+	expect(light).not.toEqual(dark);
+	await expect.poll(body).toEqual(light);
+});

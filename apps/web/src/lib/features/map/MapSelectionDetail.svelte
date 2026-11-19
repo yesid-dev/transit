@@ -589,8 +589,8 @@
 		color: var(--muted-foreground);
 	}
 	:global(.detail-source-state[data-source-health]) {
-		border-color: color-mix(in srgb, var(--dataviz-status-late) 38%, var(--border) 62%);
-		background: color-mix(in srgb, var(--dataviz-status-late) 7%, var(--card) 86%);
+		border-color: color-mix(in srgb, var(--accent-text) 38%, var(--border) 62%);
+		background: color-mix(in srgb, var(--accent-text) 7%, var(--card) 86%);
 	}
 	:global(.detail-source-retry) {
 		min-block-size: var(--size-tap-min);

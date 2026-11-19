@@ -50,12 +50,12 @@
 	}
 
 	.map-freshness[data-placement='floating'][data-stale='true'] {
-		border-color: color-mix(in srgb, var(--dataviz-status-late) 38%, var(--border) 62%);
-		background: color-mix(in srgb, var(--dataviz-status-late) 7%, var(--card) 86%);
+		border-color: color-mix(in srgb, var(--accent-text) 38%, var(--border) 62%);
+		background: color-mix(in srgb, var(--accent-text) 7%, var(--card) 86%);
 	}
 	.map-freshness[data-placement='floating'][data-degraded='true'] {
-		border-color: color-mix(in srgb, var(--dataviz-status-late) 38%, var(--border) 62%);
-		background: color-mix(in srgb, var(--dataviz-status-late) 7%, var(--card) 86%);
+		border-color: color-mix(in srgb, var(--accent-text) 38%, var(--border) 62%);
+		background: color-mix(in srgb, var(--accent-text) 7%, var(--card) 86%);
 	}
 
 	.map-freshness[data-placement='floating']:hover {
@@ -63,7 +63,7 @@
 	}
 
 	.map-freshness[data-placement='floating'][data-stale='true']:hover {
-		border-color: color-mix(in srgb, var(--dataviz-status-late) 52%, var(--border) 48%);
+		border-color: color-mix(in srgb, var(--accent-text) 52%, var(--border) 48%);
 	}
 
 	.map-freshness[data-placement='floating'] :global(.freshness-stamp) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { delayTone, rowColorVar, delayLabel, delayMeasurement } from './delayPresentation';
+import { delayTone, delayLabel, delayMeasurement } from './delayPresentation';
 
 describe('delayTone', () => {
 	it('bands a delay to a calm-by-default status tone', () => {
@@ -9,16 +9,6 @@ describe('delayTone', () => {
 		expect(delayTone(0)).toBe('on-time');
 		expect(delayTone(2)).toBe('late');
 		expect(delayTone(8)).toBe('severe');
-	});
-});
-
-describe('rowColorVar', () => {
-	it('maps each tone to the dataviz STATUS scale, undefined for no-data', () => {
-		expect(rowColorVar(delayTone(null))).toBeUndefined();
-		expect(rowColorVar(delayTone(-3))).toBe('var(--dataviz-status-early)');
-		expect(rowColorVar(delayTone(0))).toBe('var(--dataviz-status-on-time)');
-		expect(rowColorVar(delayTone(2))).toBe('var(--dataviz-status-late)');
-		expect(rowColorVar(delayTone(8))).toBe('var(--dataviz-status-severe)');
 	});
 });
 

@@ -18,9 +18,9 @@ const verdictLabels: StatusVerdictLabels = {
 };
 
 describe('verdictFor', () => {
-	it('maps run statuses to a dataviz aspect + label', () => {
-		expect(verdictFor('succeeded', verdictLabels)).toEqual({ aspect: 'on_time', label: 'loaded' });
-		expect(verdictFor('failed', verdictLabels)).toEqual({ aspect: 'late', label: 'load failed' });
+	it('maps run statuses to a signal lamp + label', () => {
+		expect(verdictFor('succeeded', verdictLabels)).toEqual({ aspect: 'green', label: 'loaded' });
+		expect(verdictFor('failed', verdictLabels)).toEqual({ aspect: 'stop', label: 'load failed' });
 		expect(verdictFor('running', verdictLabels)).toEqual({ aspect: 'unknown', label: 'loading' });
 		expect(verdictFor('pending', verdictLabels)).toEqual({ aspect: 'unknown', label: 'loading' });
 	});

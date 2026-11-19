@@ -1536,7 +1536,7 @@ describe('StopDetail Live now — predictions grouped by line', () => {
 		const statuses = [...predictions().querySelectorAll('tbody td:first-of-type')];
 		expect(statuses.map((cell) => cell.textContent?.trim()).slice(0, 2)).toEqual([
 			'About 1 min late',
-			'■5+ min late',
+			'◆5+ min late',
 		]);
 		expect(statuses[0]!.querySelector('[aria-hidden="true"]')).toBeNull();
 		expect(statuses[2]!.querySelector('[data-slot="absent-value"]')).not.toBeNull();

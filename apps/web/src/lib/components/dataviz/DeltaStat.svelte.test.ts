@@ -5,25 +5,25 @@ import DeltaStat from './DeltaStat.svelte';
 const el = (c: HTMLElement) => c.querySelector<HTMLElement>('[data-slot="delta-stat"]')!;
 
 describe('DeltaStat — the delta doctrine (glyph + dataviz colour + aria)', () => {
-	it('a regression (default higherIsBetter=false) is ▲ on the severity-critical token', () => {
+	it('a regression (default higherIsBetter=false) is ▲ on the destructive token', () => {
 		const { container } = render(DeltaStat, { props: { delta: 2.1 } });
 		const s = el(container);
 		expect(s).toHaveAttribute('role', 'img');
 		expect(s.getAttribute('aria-label')).toBe('change +2.1');
 		expect(s.textContent).toContain('▲');
-		expect(s.getAttribute('style')).toContain('var(--dataviz-severity-critical)');
+		expect(s.getAttribute('style')).toContain('var(--destructive)');
 	});
 
-	it('an improvement is ▼ on the on-time token', () => {
+	it('an improvement is ▼ on the success token', () => {
 		const { container } = render(DeltaStat, { props: { delta: -1.5 } });
 		const s = el(container);
 		expect(s.textContent).toContain('▼');
-		expect(s.getAttribute('style')).toContain('var(--dataviz-status-on-time)');
+		expect(s.getAttribute('style')).toContain('var(--success)');
 	});
 
 	it('higherIsBetter flips the verdict (a rise is good)', () => {
 		const { container } = render(DeltaStat, { props: { delta: 3, higherIsBetter: true } });
-		expect(el(container).getAttribute('style')).toContain('var(--dataviz-status-on-time)');
+		expect(el(container).getAttribute('style')).toContain('var(--success)');
 	});
 
 	it('a null delta is honest no-data: neutral · + "no change data", no fabricated number', () => {

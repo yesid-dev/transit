@@ -80,11 +80,7 @@
 		{title}
 	>
 		<StatusDot
-			color={verdict === 'out_of_norm'
-				? 'caution'
-				: verdict === 'conformant'
-					? 'on_time'
-					: 'unknown'}
+			color={verdict === 'out_of_norm' ? 'caution' : verdict === 'conformant' ? 'green' : 'unknown'}
 			{label}
 		/>
 		<span class="conformance-badge-label">{label}</span>
@@ -109,7 +105,7 @@
 		color: var(--accent-text);
 	}
 	.conformance-badge[data-verdict='out_of_norm'] .conformance-badge-label {
-		color: var(--dataviz-status-late);
+		color: var(--accent-text);
 	}
 	.conformance-badge-detail {
 		color: var(--muted-foreground);

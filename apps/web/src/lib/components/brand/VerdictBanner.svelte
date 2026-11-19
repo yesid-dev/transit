@@ -4,9 +4,9 @@
 	let { result }: { result: VerdictResult } = $props();
 
 	const STATUS_COLOR: Record<VerdictResult['status'], string> = {
-		reliable: 'var(--dataviz-status-on-time)',
-		patchy: 'var(--dataviz-status-late)',
-		unreliable: 'var(--dataviz-status-severe)',
+		reliable: 'var(--success)',
+		patchy: 'var(--accent-text)',
+		unreliable: 'var(--destructive)',
 		tentative: 'var(--dataviz-status-unknown)',
 		absent: 'var(--muted-foreground)',
 	};

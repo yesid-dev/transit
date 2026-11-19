@@ -4,7 +4,7 @@
 	import { cn } from '#lib/utils/index.ts';
 	import ChartFrame from '../ChartFrame.svelte';
 	import StackedShareBar, { type ShareSeg } from './StackedShareBar.svelte';
-	import { occupancyVar, statusVar } from '#lib/components/dataviz/tokens.ts';
+	import { STATUS_GLYPH, occupancyVar, statusVar } from '#lib/components/dataviz/tokens.ts';
 	import type { StackedShareSpec } from '../ChartSpec';
 	import type { OccupancyCode, StatusCode } from '#lib/v1/schemas/index.ts';
 
@@ -37,6 +37,13 @@
 			};
 		});
 	});
+
+	// A status legend carries the map's shapes, so no two statuses differ by colour alone.
+	const glyphs = $derived(
+		spec.segments.map((s) =>
+			spec.scale === 'status' && s.status ? STATUS_GLYPH[s.status as StatusCode] : null,
+		),
+	);
 
 	const frameHeight = $derived(
 		spec.size === 'sm' ? '0.5rem' : spec.size === 'md' ? '0.625rem' : '0.875rem',
@@ -81,13 +88,22 @@
 		<ul
 			class="dv-legend-list mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-caption text-muted-foreground"
 		>
-			{#each segs as s (s.key + '-leg')}
+			{#each segs as s, i (s.key + '-leg')}
 				<li class="inline-flex items-center gap-1.5">
-					<span
-						class="dv-legend-swatch inline-block size-2"
-						style="background: {s.fill};"
-						aria-hidden="true"
-					></span>
+					{#if glyphs[i]}
+						<span
+							class="dv-legend-glyph"
+							style="color: {s.fill};"
+							aria-hidden="true"
+							data-slot="legend-glyph">{glyphs[i]}</span
+						>
+					{:else}
+						<span
+							class="dv-legend-swatch inline-block size-2"
+							style="background: {s.fill};"
+							aria-hidden="true"
+						></span>
+					{/if}
 					<span class="text-foreground">{s.label}</span>
 					<span class="font-mono tabular-nums text-foreground">{round(s.share)}%</span>
 				</li>
@@ -113,5 +129,11 @@
 
 	.dv-legend-swatch {
 		border-radius: var(--radius-sm);
+	}
+
+	.dv-legend-glyph {
+		inline-size: 1em;
+		line-height: 1;
+		text-align: center;
 	}
 </style>

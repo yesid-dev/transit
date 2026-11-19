@@ -12,10 +12,6 @@ html {
 
 :root {
 	--text-stat-value: 1.75rem;
-	--dataviz-vehicle-on-time: var(--dataviz-status-on-time);
-	--dataviz-vehicle-delayed: var(--dataviz-status-late);
-	--dataviz-vehicle-cancelled: var(--dataviz-status-severe);
-	--dataviz-vehicle-no-data: var(--dataviz-status-unknown);
 	--map-stop-fill: var(--accent);
 	--size-detail-panel: 360px;
 	--size-detail-rail: 3.7rem;
@@ -25,6 +21,23 @@ html {
 	--layout-support-rail-width: clamp(16rem, 18vw, 20rem);
 	--layout-article-main-min: 40rem;
 	--layout-article-top-space: var(--space-card-gap);
+}
+
+/* Forced colours force HTML colours but not SVG fill and stroke, and Canvas follows the system
+   theme rather than the saved one. Chart marks would keep the saved theme's status colours, and
+   on time (the page ink) could vanish into Canvas. Inside SVG, every status mark takes the system
+   ink, as vehicle bodies on the map do. Shape, dash, position and the legend glyphs carry the
+   status. Separators and bands drawn in the card colour take Canvas. */
+@media (forced-colors: active) {
+	svg {
+		--dataviz-status-early: CanvasText;
+		--dataviz-status-on-time: CanvasText;
+		--dataviz-status-late: CanvasText;
+		--dataviz-status-severe: CanvasText;
+		--dataviz-status-unknown: CanvasText;
+		--card: Canvas;
+		--signage-bg: Canvas;
+	}
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -54,10 +67,6 @@ html {
 	--color-dataviz-heatmap-3: var(--dataviz-heatmap-3);
 	--color-dataviz-heatmap-4: var(--dataviz-heatmap-4);
 	--color-dataviz-heatmap-nodata: var(--dataviz-heatmap-nodata);
-	--color-dataviz-vehicle-on-time: var(--dataviz-vehicle-on-time);
-	--color-dataviz-vehicle-delayed: var(--dataviz-vehicle-delayed);
-	--color-dataviz-vehicle-cancelled: var(--dataviz-vehicle-cancelled);
-	--color-dataviz-vehicle-no-data: var(--dataviz-vehicle-no-data);
 }
 
 body {

@@ -110,10 +110,10 @@
 		);
 	}
 	.typed-information-card[data-kind='not-really'] {
-		--information-accent: var(--dataviz-status-severe);
+		--information-accent: var(--destructive);
 	}
 	.typed-information-card[data-kind='caveat'] {
-		--information-accent: var(--dataviz-status-late);
+		--information-accent: var(--accent-text);
 	}
 	.typed-information-card[data-kind='pipeline-note'] {
 		--information-accent: var(--dataviz-occupancy-standing);
