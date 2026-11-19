@@ -62,7 +62,7 @@
 	import { offenderGauge } from './offenderGauge';
 	import { EdgeState } from '#lib/components/edge/index.ts';
 	import { desktop } from '@yesid/ui/state';
-	import { createGaugeHold } from '#lib/components/surface/gaugeHold.svelte.ts';
+	import { createGaugeHold, gaugeFiller } from '#lib/components/surface/gaugeHold.svelte.ts';
 
 	type Period = (typeof OFFENDER_GRAINS)[number];
 
@@ -106,7 +106,14 @@
 	);
 	const gauge = $derived(hold.active);
 	const source = $derived(offenders.data ?? (gauge ? offenderGauge : null));
-	const gaugeDates = ['2026-09-30', '2027-09-30'];
+	// The gauge navigator prints filler shaped like its longest captions, never a date.
+	const GAUGE_PICKER = [{ date: '0001-01-01' }];
+	const gaugeDays = $derived({
+		coverage: gaugeFiller(
+			t.history.coverage(formatDateKey('2000-09-30', locale), formatDateKey('2000-09-30', locale)),
+		),
+		selection: gaugeFiller(t.history.selection(formatDateKey('2000-09-30', locale))),
+	});
 
 	const availableDates = $derived(offenders.availableDates);
 	const hasHistoryNavigator = $derived(availableDates.length > 0);
@@ -159,8 +166,9 @@
 		return t.period.unknown;
 	});
 	const recordSearch = $derived(dates ? `from=${dates.from}&to=${dates.to}` : undefined);
+	// The gauge links nowhere: its rows name no real line.
 	const lineHref = (route: string | null | undefined) =>
-		route?.trim()
+		route?.trim() && !gauge
 			? localizeHref(routeFor({ kind: 'line', id: route.trim(), search: recordSearch }), locale)
 			: null;
 	const refOf = (entry: RepeatOffenderEntry) => `${entry.id}@${entry.route ?? ''}`;
@@ -495,14 +503,9 @@
 						<div class="offenders-gauge" aria-hidden="true" inert>
 							<HistoryNavigator
 								mode="date"
-								date={gaugeDates[1]}
-								dateOptions={gaugeDates.map((date) => ({ date }))}
-								previousDate={gaugeDates[0]}
-								coverageText={t.history.coverage(
-									formatDateKey(gaugeDates[0], locale),
-									formatDateKey(gaugeDates[1], locale),
-								)}
-								selectionText={t.history.selection(formatDateKey(gaugeDates[1], locale))}
+								dateOptions={GAUGE_PICKER}
+								coverageText={gaugeDays.coverage}
+								selectionText={gaugeDays.selection}
 								liveAnnouncement={false}
 								{locale}
 								labels={t.history.navigator}

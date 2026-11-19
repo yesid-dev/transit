@@ -63,7 +63,7 @@
 	import SectionStateCuts from './sections/SectionStateCuts.svelte';
 	import SectionNotReported from './sections/SectionNotReported.svelte';
 	import { receiptGauge } from './receiptGauge';
-	import { createGaugeHold } from '#lib/components/surface/gaugeHold.svelte.ts';
+	import { createGaugeHold, gaugeFiller } from '#lib/components/surface/gaugeHold.svelte.ts';
 	import type { RecordMetaEntry } from '#lib/v1/recordStamp.svelte.ts';
 
 	const display = transitDisplay();
@@ -198,7 +198,16 @@
 	);
 	const gauge = $derived(hold.active);
 	const shownReceipt = $derived(currentReceipt ?? (gauge ? receiptGauge : null));
-	const gaugeDates = ['2026-09-30', '2027-09-30'];
+	// The gauge navigator prints filler shaped like its longest captions, never a date.
+	const GAUGE_PICKER = [{ date: '0001-01-01' }];
+	const gaugeDays = $derived({
+		coverage: gaugeFiller(
+			t.history.coverage(formatDateKey('2000-09-30', locale), formatDateKey('2000-09-30', locale)),
+		),
+		selection: gaugeFiller(t.history.latestComplete(formatDateKey('2000-09-30', locale))),
+	});
+	const dayText = (date: string) =>
+		gauge ? gaugeFiller(formatDateKey(date, locale)) : formatDateKey(date, locale);
 	const reliability = $derived(receiptReliabilityView(shownReceipt));
 	const generatedUtc = $derived(currentReceipt?.generated_utc ?? null);
 	const observationText = $derived(
@@ -406,14 +415,9 @@
 				<div class="receipt-gauge" aria-hidden="true" inert>
 					<HistoryNavigator
 						mode="date"
-						date={gaugeDates[1]}
-						dateOptions={gaugeDates.map((date) => ({ date }))}
-						previousDate={gaugeDates[0]}
-						coverageText={t.history.coverage(
-							formatDateKey(gaugeDates[0], locale),
-							formatDateKey(gaugeDates[1], locale),
-						)}
-						selectionText={t.history.latestComplete(formatDateKey(gaugeDates[1], locale))}
+						dateOptions={GAUGE_PICKER}
+						coverageText={gaugeDays.coverage}
+						selectionText={gaugeDays.selection}
 						liveAnnouncement={false}
 						{locale}
 						labels={navigatorLabels}
@@ -561,8 +565,8 @@
 							<TerminalPanel
 								title={t.terminalTitle}
 								tag={t.terminalTag}
-								status={formatDateKey(r.date, locale)}
-								footer={[{ label: t.issuedLabel, value: formatDateKey(r.date, locale) }]}
+								status={dayText(r.date)}
+								footer={[{ label: t.issuedLabel, value: dayText(r.date) }]}
 							>
 								<div class="receipt-frame" data-slot="receipt-frame">
 									{#if (gauge || selectedClosed) && dayVerdict}

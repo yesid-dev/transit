@@ -56,3 +56,15 @@ export function createGaugeHold(loading: () => boolean) {
 		},
 	};
 }
+
+/**
+ * Text of a gauge, unreadable as data: every capital becomes "M", every other letter "n" and
+ * every digit "0", while spaces and punctuation stay, so the filler wraps like the text it
+ * stands for. Gauges are hidden, but their HTML still reaches readers without scripts.
+ */
+export function gaugeFiller(text: string): string {
+	return text
+		.replace(/\p{Ll}/gu, 'n')
+		.replace(/\p{Lu}/gu, 'M')
+		.replace(/\d/g, '0');
+}
