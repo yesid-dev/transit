@@ -1,7 +1,11 @@
+import { untrack } from 'svelte';
+
 /**
  * Keeps a page region still while its first record loads. Until `loading()` first turns false,
  * `active` is true: the region lays out a gauge (the record at its fullest published shape,
- * drawn invisibly) and `measure` records its height and width. From the render in which the
+ * drawn invisibly) and `measure` records its height and width: when the region mounts, before
+ * the render that swaps in the record, and on every later resize while the gauge shows (a
+ * ResizeObserver's first report can come after the swap on a fresh page). From the render in which the
  * real record replaces the gauge, `minHeight` holds that height, so a shorter record leaves room
  * rather than pulling up what lies below. Only the reader ends the hold: a pointer or key press,
  * a wheel or touch scroll, or a change of the region's width (its gauge height no longer
@@ -13,8 +17,18 @@ export function createGaugeHold(loading: () => boolean) {
 	let landed = $state(false);
 	let reserve = $state(0);
 	let holding = $state(true);
+	let region: HTMLElement | null = null;
+	let width = 0;
+	const record = (box: DOMRect) => {
+		reserve = box.height;
+		width = box.width;
+	};
 	const active = $derived(!landed && loading());
 	const held = $derived(!loading() && holding && reserve > 0);
+	// Runs before the record replaces the gauge in the page, so the gauge is still there to measure.
+	$effect.pre(() => {
+		if (!loading() && untrack(() => !landed) && region) record(region.getBoundingClientRect());
+	});
 	$effect(() => {
 		if (!loading()) landed = true;
 	});
@@ -35,16 +49,20 @@ export function createGaugeHold(loading: () => boolean) {
 		},
 		/** Action for the held region: records the gauge's size, and ends the hold on a new width. */
 		measure(node: HTMLElement) {
-			let width = 0;
+			region = node;
+			if (active) record(node.getBoundingClientRect());
 			const observer = new ResizeObserver(() => {
 				const box = node.getBoundingClientRect();
-				if (active) {
-					reserve = box.height;
-					width = box.width;
-				} else if (holding && width > 0 && box.width !== width) holding = false;
+				if (active) record(box);
+				else if (holding && width > 0 && box.width !== width) holding = false;
 			});
 			observer.observe(node);
-			return { destroy: () => observer.disconnect() };
+			return {
+				destroy: () => {
+					observer.disconnect();
+					if (region === node) region = null;
+				},
+			};
 		},
 		/** True after the first record arrived while the page still keeps the gauge's room. */
 		get held() {
