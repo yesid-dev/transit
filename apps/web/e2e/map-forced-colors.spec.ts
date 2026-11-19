@@ -4,6 +4,7 @@ test.use({ bypassCSP: true });
 
 type Paint = { size: number; center: number[]; plate: number[]; window: number[] };
 type OverlayProbe = Window & { vehiclePaints?: Paint[] };
+type FrameProbe = Window & { vehicleFrames?: number[][][] };
 
 for (const scheme of ['light', 'dark'] as const) {
 	for (const zoom of [11, 15]) {
@@ -129,42 +130,47 @@ for (const scheme of ['light', 'dark'] as const) {
 	}
 }
 
-test('an on-time bus body repaints with the on-time status colour when the theme changes', async ({
+test('an on-time bus body repaints with the on-time status colour in the first frame after a theme change', async ({
 	page,
 }, { project }) => {
 	test.skip(project.name !== 'desktop', 'one canvas renderer check');
 	// On time is the page ink in each theme (near white on dark, near black on light), so a
-	// body left from the other theme would vanish into the basemap.
+	// body left from the other theme would vanish into the basemap. The theme change alone
+	// must repaint: no feed frame arrives and the camera does not move before the sample.
 	const published = '2026-06-15T12:00:00Z';
 	const [lon, lat] = [-73.65, 45.53];
 	await page.clock.setFixedTime(Date.parse(published) + 30_000);
 	await page.emulateMedia({ colorScheme: 'dark', forcedColors: 'none' });
 	await page.addInitScript(() => {
 		localStorage.setItem('theme', 'dark');
-		const state = window as OverlayProbe;
+		const state = window as FrameProbe;
+		state.vehicleFrames = [];
 		const clear = CanvasRenderingContext2D.prototype.clearRect;
 		CanvasRenderingContext2D.prototype.clearRect = function (...args) {
-			if (this.canvas.dataset.slot === 'vehicle-overlay') state.vehiclePaints = [];
+			if (this.canvas.dataset.slot === 'vehicle-overlay') state.vehicleFrames!.push([]);
 			return Reflect.apply(clear, this, args);
 		};
 		const draw = CanvasRenderingContext2D.prototype.drawImage;
 		CanvasRenderingContext2D.prototype.drawImage = function (
 			...args: [CanvasImageSource, number, number, ...number[]]
 		) {
-			const [source, , , size] = args;
+			const [source] = args;
 			if (this.canvas.dataset.slot === 'vehicle-overlay' && source instanceof HTMLCanvasElement) {
 				const centre = Array.from(
 					source
 						.getContext('2d')!
 						.getImageData(Math.floor(source.width / 2), Math.floor(source.height / 2), 1, 1).data,
 				);
-				state.vehiclePaints?.push({ size, center: centre, plate: [], window: [] });
+				state.vehicleFrames!.at(-1)?.push(centre);
 			}
 			return Reflect.apply(draw, this, args);
 		};
 	});
-	await page.route('**/live/vehicles.json', (route) =>
-		route.fulfill({
+	// Serve the feed once, then hold every later poll so no feed frame can repaint the bus.
+	let feedRequests = 0;
+	await page.route('**/live/vehicles.json', (route) => {
+		if (++feedRequests > 1) return;
+		return route.fulfill({
 			json: {
 				generated_utc: published,
 				publish_generation_id: 'stm@on-time-rebake-e2e',
@@ -182,8 +188,8 @@ test('an on-time bus body repaints with the on-time status colour when the theme
 					},
 				],
 			},
-		}),
-	);
+		});
+	});
 	await page.goto(`/map?provider=stm&mapview=${lon},${lat},11,0,0`);
 	const onTime = () =>
 		page.evaluate(() => {
@@ -194,15 +200,26 @@ test('an on-time bus body repaints with the on-time status colour when the theme
 			probe.remove();
 			return [...rgb.slice(0, 3), 255];
 		});
-	const body = () =>
-		page.evaluate(() => (window as OverlayProbe).vehiclePaints?.[0]?.center ?? null);
+	const frames = () => page.evaluate(() => (window as FrameProbe).vehicleFrames ?? []);
+	const overlay = page.locator('[data-slot="vehicle-overlay"]');
+	const receipt = () =>
+		overlay.evaluate((element) => {
+			const { transform } = Reflect.get(element, Symbol.for('transit.map.vehicleOverlayReceipt'));
+			return { transform };
+		});
 
 	const dark = await onTime();
-	await expect.poll(body).toEqual(dark);
+	await expect.poll(async () => (await frames()).at(-1)?.[0] ?? null).toEqual(dark);
+	const before = await receipt();
+	const settled = (await frames()).length;
 
 	await page.getByTestId('theme-toggle').click();
 	await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
 	const light = await onTime();
 	expect(light).not.toEqual(dark);
-	await expect.poll(body).toEqual(light);
+	await expect.poll(async () => (await frames()).length).toBeGreaterThan(settled);
+	// The first frame after the toggle is the sample: it must already carry the light palette.
+	expect((await frames())[settled]?.[0]).toEqual(light);
+	const after = await receipt();
+	expect(after.transform).toBe(before.transform);
 });

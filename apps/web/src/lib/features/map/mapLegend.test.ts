@@ -124,7 +124,9 @@ describe('mapLegend', () => {
 			['heading', 'Direction of travel', null],
 			['stop', 'Stop', null],
 		]);
-		expect(legend.note).toBe('Zoom in to see each bus’s status badge.');
+		expect(legend.note).toBe(
+			'◆ marks a severe delay at every zoom. Zoom in to see the other status badges.',
+		);
 	});
 
 	it('says the same in French', () => {

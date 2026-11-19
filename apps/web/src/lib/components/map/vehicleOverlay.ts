@@ -7,12 +7,20 @@ import {
 	SILENT_ICON,
 	VEHICLE_MARKER_GEOMETRY,
 	resolveColor,
+	stateBadgeIconId,
 	type VehicleSpriteReceipt,
 } from './vehicleSprites';
 
 export const VEHICLE_OVERLAY_RECEIPT = Symbol.for('transit.map.vehicleOverlayReceipt');
-/** Below this zoom badges would land on neighbouring buses; the body colour carries the state. */
+/** Below this zoom only the severe ◆ is drawn; other badges would land on neighbouring buses. */
 export const STATUS_BADGE_MIN_ZOOM = 13;
+/** Late and severe share a body colour, so the severe ◆ is drawn at every zoom to tell them apart. */
+const ALWAYS_BADGED = stateBadgeIconId('status', 'severe');
+
+/** The state badge a vehicle shows at this zoom, if any. */
+export function visibleBadge(mark: string | undefined, zoom: number): string {
+	return mark && (zoom >= STATUS_BADGE_MIN_ZOOM || mark === ALWAYS_BADGED) ? mark : '';
+}
 
 export interface VehicleOverlayReceipt {
 	readonly generation: number;
@@ -354,8 +362,8 @@ export function createVehicleOverlay(
 			);
 			ctx.restore();
 		}
-		for (const { feature, x, y, baseSize } of zoom >= STATUS_BADGE_MIN_ZOOM ? symbols : []) {
-			const mark = feature.properties.mark;
+		for (const { feature, x, y, baseSize } of symbols) {
+			const mark = visibleBadge(feature.properties.mark, zoom);
 			if (!mark) continue;
 			const offset = feature.properties.stale
 				? VEHICLE_MARKER_GEOMETRY.stateBadge.pairedOffset
@@ -370,10 +378,9 @@ export function createVehicleOverlay(
 		}
 		for (const { feature, x, y, baseSize } of symbols) {
 			if (feature.properties.stale !== 1) continue;
-			const offset =
-				feature.properties.mark && zoom >= STATUS_BADGE_MIN_ZOOM
-					? VEHICLE_MARKER_GEOMETRY.silentBadge.pairedOffset
-					: VEHICLE_MARKER_GEOMETRY.silentBadge.offset;
+			const offset = visibleBadge(feature.properties.mark, zoom)
+				? VEHICLE_MARKER_GEOMETRY.silentBadge.pairedOffset
+				: VEHICLE_MARKER_GEOMETRY.silentBadge.offset;
 			drawSprite(
 				SILENT_ICON,
 				x + offset[0] * baseSize,
