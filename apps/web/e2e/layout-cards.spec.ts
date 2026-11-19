@@ -163,9 +163,8 @@ function brokenStatusWords(element: Element) {
 	}
 	return words;
 }
-async function holdReliability(page: Page, path: string) {
-	const entityFile =
-		path === '/lines' ? '/route_reliability/24.json' : '/stop_reliability/52095.json';
+async function holdReliability(page: Page) {
+	const entityFile = '/route_reliability/24.json';
 	const gate = {
 		holding: true,
 		state: 'ready',
@@ -195,9 +194,8 @@ async function holdReliability(page: Page, path: string) {
 			const body = await response.json();
 			Object.assign(
 				body,
-				closedWindows[
-					state === 'low-sample' ? 'low-sample' : state === 'hedge' ? 'hedge' : 'ready'
-				][path === '/lines' ? 'line' : 'stop'],
+				closedWindows[state === 'low-sample' ? 'low-sample' : state === 'hedge' ? 'hedge' : 'ready']
+					.line,
 			);
 			await route.fulfill({ response, json: body });
 		} else await route.fulfill({ response });
@@ -205,12 +203,12 @@ async function holdReliability(page: Page, path: string) {
 	return gate;
 }
 for (const locale of ['en', 'fr'] as const)
-	for (const path of ['/lines', '/stops'])
+	for (const path of ['/lines'])
 		for (const width of [320, 360, 390])
 			test(`${locale} ${path} ${width} reliability arrival keeps row height and whole words`, async ({
 				page,
 			}) => {
-				const gate = await holdReliability(page, path);
+				const gate = await holdReliability(page);
 				await page.addInitScript(() => {
 					const state = window as typeof window & {
 						__transitReliabilityTestSettledFetches: string[];
@@ -241,17 +239,10 @@ for (const locale of ['en', 'fr'] as const)
 						const pending = new Promise<PlaywrightRequest>((resolve) => {
 							gate.entered = resolve;
 						});
-						await page.goto(
-							localizeHref(
-								path === '/stops' ? '/stops?provider=stm&route=24' : '/lines?provider=stm',
-								locale,
-							),
-							{ waitUntil: 'domcontentloaded' },
-						);
-						const entityPath = localizeHref(
-							path === '/lines' ? '/lines/24' : '/stop/52095',
-							locale,
-						);
+						await page.goto(localizeHref('/lines?provider=stm', locale), {
+							waitUntil: 'domcontentloaded',
+						});
+						const entityPath = localizeHref('/lines/24', locale);
 						const row = page
 							.locator('[data-slot="entity-result-row"]')
 							.filter({ has: page.locator(`a[href^="${entityPath}?"]`) })
@@ -272,7 +263,7 @@ for (const locale of ['en', 'fr'] as const)
 									(
 										window as typeof window & { __transitReliabilityTestSettledFetches: string[] }
 									).__transitReliabilityTestSettledFetches.some((url) => url.includes(file)),
-								path === '/lines' ? '/route_reliability/24.json' : '/stop_reliability/52095.json',
+								'/route_reliability/24.json',
 							);
 							await expect(row.locator('[data-slot="entity-result-status"]')).toHaveCount(0);
 						} else

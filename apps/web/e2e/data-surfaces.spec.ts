@@ -15,6 +15,8 @@ import { STATUS_LABELS } from '../src/lib/v1/enumLabels';
 import { stampCopy } from '../src/lib/v1/stamp.copy';
 import { intl } from '../src/lib/i18n/copy';
 import { csvTable } from '../src/lib/features/lines/reliability/__fixtures__/csvTable';
+import { indexCopy as stopsIndexCopy } from '../src/lib/features/stops/stops.copy';
+import { transitTerms } from '../src/lib/i18n/transitTerms.copy';
 
 const fixture = (name: string) =>
 	JSON.parse(readFileSync(new URL(`./${name}`, import.meta.url), 'utf8'));
@@ -1036,4 +1038,226 @@ for (const lang of PUBLISHED_LOCALES)
 			await expect(target).toBeFocused();
 			await expect(target).toBeInViewport();
 			await expect(page).not.toHaveURL(/line=/);
+		});
+
+// UX-T6.6/T6.7: the Stops finder lists every published stop with its weekly record, the same
+// way the Lines directory does. STM publishes 8,383 stops a week; the seed is that size.
+const FINDER_STOP_COUNT = 8_383;
+const FINDER_LONG_NAME =
+	'Abbott / Station Université de Montréal et chemin de la Côte-des-Neiges / Terminus des voyageurs';
+const FINDER_WEEK = { window_start: '2026-11-04', window_end: '2026-11-10' };
+/** The week as the stop record names it (`periodRange`), written out so the spec checks the words. */
+const FINDER_RANGE = { en: 'November 4 to 10, 2026', fr: 'du 4 au 10 novembre 2026' } as const;
+
+function finderStops() {
+	return Array.from({ length: FINDER_STOP_COUNT }, (_, index) => ({
+		id: `S${index + 1}`,
+		name: index === 0 ? FINDER_LONG_NAME : `Stop ${index + 1}`,
+		code: String(50001 + index),
+		lat: 45.5 + (index % 100) * 0.001,
+		lon: -73.6 - Math.floor(index / 100) * 0.001,
+		mode: index === 2 ? 'metro' : 'bus',
+		routes: ['24', '51', '80', '161', '435'],
+	}));
+}
+
+/** A ranked weekly row whose share agrees with its counts, as the contract asks. */
+function finderRanked(id: string, readings: number, late: number, rank: number) {
+	return {
+		id,
+		state: 'ranked' as const,
+		rank,
+		numerator: readings - late,
+		denominator: readings,
+		pct: Math.round((100 * (readings - late)) / readings),
+		severe_pct: Math.round((1000 * late) / readings) / 10,
+		...FINDER_WEEK,
+	};
+}
+
+async function stubStopsFinder(
+	page: Page,
+	options: { hold?: Promise<void> } = {},
+): Promise<{ stopFiles: string[] }> {
+	const stopFiles: string[] = [];
+	const stops = finderStops();
+	const index = {
+		schema_version: 1,
+		methodology_version: 'reliability-2',
+		generated_utc: '2026-11-11T07:00:00Z',
+		published_utc: '2026-11-11T07:00:00Z',
+		next_publish_utc: '2026-11-18T07:00:00Z',
+		route_ids: ['24'],
+		weekly_routes: null,
+		weekly_stops: [
+			// Stop 8000 is first-ranked; the long-named stop's 1 late reading in 80 is exactly 1.25%.
+			finderRanked('S8000', 100, 40, 1),
+			finderRanked('S1', 80, 1, 2),
+			{ id: 'S2', state: 'too_few_units' as const, ...FINDER_WEEK },
+		],
+	};
+	const routes = ['24', '51', '80', '161', '435'].map((id) => ({
+		id,
+		short: id,
+		long: `Line ${id}`,
+		type: 3,
+	}));
+	await page.route('**/v1/**', async (route) => {
+		const path = new URL(route.request().url()).pathname;
+		if (path.endsWith('/static/stops_index.json'))
+			return route.fulfill({ json: { generated_utc: '2026-11-11T05:00:00Z', stops } });
+		if (path.endsWith('/static/routes_index.json'))
+			return route.fulfill({ json: { generated_utc: '2026-11-11T05:00:00Z', routes } });
+		if (path.endsWith('/historic/route_reliability/index.json')) {
+			if (options.hold) await options.hold;
+			return route.fulfill({ json: index });
+		}
+		if (/\/historic\/stop_reliability\//u.test(path)) stopFiles.push(path);
+		return route.continue();
+	});
+	return { stopFiles };
+}
+
+const finderCount = (lang: (typeof PUBLISHED_LOCALES)[number], value: number) =>
+	intl.number(lang).format(value);
+
+for (const lang of PUBLISHED_LOCALES)
+	for (const provider of ['stm', 'octranspo'])
+		for (const width of [320, 390, 768, 1280])
+			test(`${lang} ${provider} ${width}: the stops finder lists every published stop`, async ({
+				page,
+			}) => {
+				await page.clock.setFixedTime(Date.parse('2026-11-12T12:00:00Z'));
+				const { stopFiles } = await stubStopsFinder(page);
+				await page.setViewportSize({ width, height: 900 });
+				await page.goto(localizeHref('/stops', lang, provider), { waitUntil: 'networkidle' });
+
+				const copy = stopsIndexCopy[lang];
+				const total = finderCount(lang, FINDER_STOP_COUNT);
+				await expect(page.locator('[data-slot="finder-counts"]')).toHaveText(
+					copy.counts('20', total, total),
+				);
+				const rows = page.locator('[data-slot="entity-result-row"]');
+				await expect(rows).toHaveCount(20);
+
+				// The whole published name, linked to its record on the week the row shows.
+				const first = rows.first();
+				await expect(first.locator('a.finder-name')).toHaveText(FINDER_LONG_NAME);
+				await expect(first.locator('a.finder-name')).toHaveAttribute(
+					'href',
+					`${localizeHref('/stop/S1', lang, provider)}&from=2026-11-04&to=2026-11-10`,
+				);
+				const period = detailCopy[lang].record.period(
+					FINDER_RANGE[lang],
+					transitTerms[lang].completeDays(7, '7'),
+				);
+				const figure = first.locator('[data-slot="stop-row-figure"]');
+				await expect(figure).toHaveAccessibleName(
+					copy.row.figureLabel(lang === 'fr' ? '1,3 %' : '1.3%', period),
+				);
+				// A stop without a share says so in words, never with a number.
+				const tooFew = rows.nth(1);
+				await expect(tooFew.locator('[data-slot="stop-row-state"] .finder-figure-pct')).toHaveText(
+					copy.row.noShare,
+				);
+				await expect(tooFew).toContainText(copy.row.state.tooFew);
+
+				expect(await page.evaluate(directoryBrokenWords)).toEqual([]);
+				expect(await page.locator('html').evaluate((node) => node.scrollWidth)).toBeLessThanOrEqual(
+					width,
+				);
+				for (const selector of ['a.finder-name', 'button.finder-button', '.finder-way']) {
+					const box = await page.locator(selector).first().boundingBox();
+					expect(box!.height).toBeGreaterThanOrEqual(44);
+				}
+
+				const more = page.getByRole('button', { name: copy.showMore('20'), exact: true });
+				await more.click();
+				await expect(rows).toHaveCount(40);
+
+				// One selected preview: default on desktop, chosen by the rider on the phone.
+				const preview = page.locator('[data-slot="stops-preview"]');
+				const list = page.locator('[data-slot="entity-list"]');
+				if (width < 1024) {
+					await expect(preview).toHaveCount(0);
+					const button = page.getByRole('button', {
+						name: copy.previewStop(FINDER_LONG_NAME),
+						exact: true,
+					});
+					await button.click();
+					await expect(preview.locator('h2')).toBeFocused();
+					const listBox = (await list.boundingBox())!;
+					expect((await preview.boundingBox())!.y).toBeGreaterThanOrEqual(
+						listBox.y + listBox.height - 1,
+					);
+				} else {
+					await expect(preview).toBeVisible();
+					const listBox = (await list.boundingBox())!;
+					expect((await preview.boundingBox())!.x).toBeGreaterThanOrEqual(
+						listBox.x + listBox.width - 1,
+					);
+				}
+				await expect(preview.locator('h2')).toHaveText(FINDER_LONG_NAME);
+				await expect(preview.locator('[data-slot="stops-preview-period"]')).toHaveText(period);
+				const actions = transitTerms[lang].action;
+				await expect(preview.getByRole('link', { name: actions.openRecord })).toHaveAttribute(
+					'href',
+					`${localizeHref('/stop/S1', lang, provider)}&from=2026-11-04&to=2026-11-10`,
+				);
+				const map = new URL(
+					(await preview.getByRole('link', { name: actions.showOnMap }).getAttribute('href'))!,
+					'http://localhost',
+				);
+				expect(map.searchParams.get('provider')).toBe(provider);
+				expect(map.searchParams.get('stop')).toBe('S1');
+				for (const height of await preview
+					.locator('a, button')
+					.evaluateAll((elements) =>
+						elements.map((element) => element.getBoundingClientRect().height),
+					))
+					expect(height).toBeGreaterThanOrEqual(44);
+				if (width < 1024)
+					await page.getByRole('button', { name: copy.backToResults, exact: true }).click();
+
+				// The published ranking keeps the publisher's order and says what it is. The filter
+				// panel starts closed below 1024px, as it does for every listing.
+				if (width < 1024)
+					await page.getByRole('button', { name: copy.controlsLabel, exact: true }).click();
+				await page.getByTestId('stops-sort-late').click();
+				await expect(rows.first().locator('a.finder-name')).toHaveText('Stop 8000');
+				await expect(page.locator('[data-slot="finder-order-context"]')).toHaveText(
+					copy.orderContext(FINDER_RANGE[lang]),
+				);
+				// One weekly file answers every row: no stop's own history is read.
+				expect(stopFiles).toEqual([]);
+			});
+
+for (const lang of PUBLISHED_LOCALES)
+	for (const width of [320, 390, 1280])
+		test(`${lang} ${width}: stops finder rows keep their height when the weekly record arrives`, async ({
+			page,
+		}) => {
+			await page.clock.setFixedTime(Date.parse('2026-11-12T12:00:00Z'));
+			let release: () => void = () => {};
+			const hold = new Promise<void>((resolve) => (release = resolve));
+			await stubStopsFinder(page, { hold });
+			await page.setViewportSize({ width, height: 900 });
+			await page.goto(localizeHref('/stops', lang, 'stm'), { waitUntil: 'domcontentloaded' });
+			const rows = page.locator('[data-slot="entity-result-row"]');
+			await expect(rows).toHaveCount(20);
+			await page.evaluate(() => document.fonts.ready);
+			const heights = () =>
+				rows.evaluateAll((elements) =>
+					elements.slice(0, 3).map((element) => element.getBoundingClientRect().height),
+				);
+			const before = await heights();
+			const list = (await page.locator('[data-slot="entity-list"]').boundingBox())!;
+			release();
+			await expect(rows.first().locator('[data-slot="stop-row-figure"]')).toBeVisible();
+			await expect(rows.nth(1).locator('[data-slot="stop-row-state"]')).toBeVisible();
+			const after = await heights();
+			for (const [index, height] of after.entries())
+				expect(Math.abs(height - before[index])).toBeLessThanOrEqual(1);
+			const listAfter = (await page.locator('[data-slot="entity-list"]').boundingBox())!;
+			expect(Math.abs(listAfter.height - list.height)).toBeLessThanOrEqual(1);
 		});

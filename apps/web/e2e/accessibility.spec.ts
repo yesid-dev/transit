@@ -192,31 +192,33 @@ test.describe('accessibility', { tag: '@theme' }, () => {
 			await expectTapTargets(page);
 		});
 
-		test(`${locale}: the lines directory keeps its whole names and 44 px controls`, async ({
-			page,
-		}) => {
-			await page.setViewportSize({ width: 320, height: 900 });
-			// This project's storage state selects OC Transpo, whose fixture serves no index; the
-			// directory case runs against the STM fixtures the other listing cases use.
-			await page.goto(localizeHref('/lines', locale, 'stm'), { waitUntil: 'networkidle' });
-			const rows = page.locator('[data-slot="entity-result-row"]');
-			await expect(rows.first()).toBeVisible();
-			// Every published name stays whole at the narrowest width: no clipped or shredded word.
-			const clipped = await rows.evaluateAll((elements) => {
-				const problems: string[] = [];
-				for (const element of elements) {
-					for (const name of element.querySelectorAll('.readable-name')) {
-						if (name.scrollWidth > name.clientWidth + 1) problems.push(name.textContent ?? '');
-						if (getComputedStyle(name).wordBreak === 'break-all') problems.push('break-all');
+		for (const [path, name] of [
+			['/lines', 'lines directory'],
+			['/stops', 'stops finder'],
+		] as const)
+			test(`${locale}: the ${name} keeps its whole names and 44 px controls`, async ({ page }) => {
+				await page.setViewportSize({ width: 320, height: 900 });
+				// This project's storage state selects OC Transpo, whose fixture serves no index; the
+				// directory case runs against the STM fixtures the other listing cases use.
+				await page.goto(localizeHref(path, locale, 'stm'), { waitUntil: 'networkidle' });
+				const rows = page.locator('[data-slot="entity-result-row"]');
+				await expect(rows.first()).toBeVisible();
+				// Every published name stays whole at the narrowest width: no clipped or shredded word.
+				const clipped = await rows.evaluateAll((elements) => {
+					const problems: string[] = [];
+					for (const element of elements) {
+						for (const name of element.querySelectorAll('.readable-name')) {
+							if (name.scrollWidth > name.clientWidth + 1) problems.push(name.textContent ?? '');
+							if (getComputedStyle(name).wordBreak === 'break-all') problems.push('break-all');
+						}
 					}
-				}
-				return problems;
+					return problems;
+				});
+				expect(clipped).toEqual([]);
+				await expectTapTargets(page);
+				await expectNoHorizontalOverflow(page);
+				await expectAccessible(page);
 			});
-			expect(clipped).toEqual([]);
-			await expectTapTargets(page);
-			await expectNoHorizontalOverflow(page);
-			await expectAccessible(page);
-		});
 	}
 });
 
