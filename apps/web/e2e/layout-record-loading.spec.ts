@@ -3,10 +3,10 @@ import { test } from './layout-test';
 import { localizeHref } from '../src/lib/i18n/routing';
 import { stampCopy } from '../src/lib/v1/stamp.copy';
 
-// Repeat offenders and the receipt keep still while their record loads: the header, the page's
-// content column and the footer are where they were before the files arrived. Production showed
-// the footer pushed down by the arriving ranking (CLS 0.41-0.47) and the receipt's header and
-// sections growing (CLS about 1.05).
+// Hotspots, Repeat offenders and the receipt keep still while their record loads: the header, the
+// page's content column and the footer are where they were before the files arrived. Production
+// showed the footer pushed down by the arriving ranking (Hotspots CLS 0.33-0.52, Repeat offenders
+// 0.41-0.47) and the receipt's header and sections growing (CLS about 1.05).
 
 /** A current repeat-offenders file shaped like a published one: more rows than the first page
  * shows, both kinds, both periods, a tray of rows below the rule. Every figure obeys its checks. */
@@ -71,7 +71,64 @@ function offenders() {
 	};
 }
 
+/** A current hotspots file shaped like a published one: more rows than the first page shows, both
+ * kinds, both periods with their dates, and rows below the reading floor. Every figure obeys its
+ * checks: each share is its late count over its readings, and the published bound only rises. */
+function hotspots() {
+	const names = {
+		route: 'Saint-Michel / Ahuntsic',
+		stop: 'Station Berri-UQAM / Sainte-Catherine Est (côté nord)',
+	} as const;
+	const entry = (type: 'route' | 'stop', index: number) => ({
+		rank: index + 1,
+		type,
+		id: type === 'route' ? `${41 + index}` : `5${2095 + index}`,
+		name: names[type],
+		// 330 - 7i of 900 readings, rounded half away from zero like the publisher.
+		observation_count: 900,
+		severe_count: 330 - 7 * index,
+		severe_pct: Math.round((1000 * (330 - 7 * index)) / 900) / 10,
+		wilson_lo: 60 + index,
+		wilson_hi: 66 + index,
+	});
+	const below = (type: 'route' | 'stop', index: number) => ({
+		type,
+		id: type === 'route' ? `9${index}` : `6${index}`,
+		name: names[type],
+		observation_count: 12 + index,
+	});
+	const grain = (name: 'week' | 'month', from: string) => ({
+		grain: name,
+		date: from,
+		window_end: '2026-06-14',
+		entries: (['route', 'stop'] as const).flatMap((type) =>
+			Array.from({ length: 14 }, (_, index) => entry(type, index)),
+		),
+		tray: (['route', 'stop'] as const).flatMap((type) =>
+			Array.from({ length: 4 }, (_, index) => below(type, index)),
+		),
+		total_ranked_routes: 203,
+		total_ranked_stops: 4930,
+		tray_total: 8,
+	});
+	return {
+		generated_utc: '2026-06-15T12:00:00Z',
+		methodology_version: 'reliability-2',
+		by_grain: [grain('week', '2026-06-08'), grain('month', '2026-05-16')],
+	};
+}
+
 const pages = [
+	{
+		name: 'hotspots',
+		path: '/hotspots?provider=stm',
+		held: /\/historic\/hotspots/,
+		first: '[data-slot="hotspots-controls"]',
+		// The record's own top: it must not move up when no history navigator arrives.
+		record: '.hotspots-record',
+		loaded: '[data-slot="hotspot-rows"] > li > button:visible',
+		scope: 'window',
+	},
 	{
 		name: 'repeat offenders',
 		path: '/repeat-offenders?provider=stm',
@@ -99,7 +156,7 @@ async function holdFiles(page: Page, held: RegExp) {
 		entered: () => {},
 		releases: [] as Array<() => void>,
 	};
-	const current = offenders();
+	const current = { repeat_offenders: offenders(), hotspots: hotspots() };
 	await page.route('**/v1/**', async (route) => {
 		const url = new URL(route.request().url());
 		url.pathname = '/__layout/fresh' + url.pathname;
@@ -107,9 +164,10 @@ async function holdFiles(page: Page, held: RegExp) {
 			gate.entered();
 			await new Promise<void>((resolve) => gate.releases.push(resolve));
 		}
-		if (url.pathname.endsWith('/historic/repeat_offenders.json')) {
+		const family = url.pathname.match(/\/historic\/(repeat_offenders|hotspots)\.json$/)?.[1];
+		if (family === 'repeat_offenders' || family === 'hotspots') {
 			await route.fulfill({
-				json: current,
+				json: current[family],
 				headers: { 'access-control-allow-origin': '*', 'cache-control': 'no-store' },
 			});
 			return;
