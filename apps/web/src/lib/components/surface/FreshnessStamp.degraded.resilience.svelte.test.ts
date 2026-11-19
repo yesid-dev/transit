@@ -21,7 +21,7 @@ describe('FreshnessStamp degraded live truth', () => {
 			'bg-[var(--signal-caution)]',
 		);
 		expect(stamp.querySelector('[data-slot="status-dot"]')).not.toHaveClass(
-			'bg-[var(--dataviz-status-on-time)]',
+			'bg-[var(--signal-proceed)]',
 		);
 		expect(within(stamp).queryByText(/stale/)).not.toBeInTheDocument();
 	});

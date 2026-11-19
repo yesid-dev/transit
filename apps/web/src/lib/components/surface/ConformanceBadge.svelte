@@ -80,11 +80,7 @@
 		{title}
 	>
 		<StatusDot
-			color={verdict === 'out_of_norm'
-				? 'caution'
-				: verdict === 'conformant'
-					? 'on_time'
-					: 'unknown'}
+			color={verdict === 'out_of_norm' ? 'caution' : verdict === 'conformant' ? 'green' : 'unknown'}
 			{label}
 		/>
 		<span class="conformance-badge-label">{label}</span>

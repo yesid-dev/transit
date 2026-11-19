@@ -1,6 +1,8 @@
+import type { StatusDotColor } from '@yesid/ui/brand';
 import type { DataHealth, LaneHealth } from '#lib/v1/schemas/index.ts';
 
-export type GateAspect = 'on_time' | 'late' | 'unknown';
+// A lamp for the publish gate, not a vehicle status: the kit's proceed and stop signals.
+export type GateAspect = Extract<StatusDotColor, 'green' | 'stop' | 'unknown'>;
 
 export interface GateView {
 	readonly aspect: GateAspect;
@@ -44,11 +46,11 @@ function gateViewOf(gate: LaneHealth['gate'], labels: LaneLabels): GateView | nu
 	let label: string;
 	switch (verdict) {
 		case 'pass':
-			aspect = 'on_time';
+			aspect = 'green';
 			label = labels.gateVerdict.pass;
 			break;
 		case 'fail':
-			aspect = 'late';
+			aspect = 'stop';
 			label = labels.gateVerdict.fail;
 			break;
 		case 'warn':

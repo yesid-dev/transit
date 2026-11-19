@@ -93,7 +93,7 @@ it('never announces a ticking live stamp', async () => {
 	expect(view.container.querySelector('[aria-live], [role="status"]')).toBeNull();
 });
 it.each([
-	['current', false, 30, 'on-time'],
+	['current', false, 30, 'signal-proceed'],
 	['current', true, 30, 'caution'],
 	['unknown', false, null, 'unknown'],
 	['behind', false, 300, 'caution'],

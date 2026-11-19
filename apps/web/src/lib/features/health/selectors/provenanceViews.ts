@@ -1,7 +1,9 @@
+import type { StatusDotColor } from '@yesid/ui/brand';
 import { freshnessAgeSeconds } from '#lib/v1/freshness.ts';
 import type { DataHealth, Provenance, ProvenanceFreshness } from '#lib/v1/schemas/index.ts';
 
-export type FreshnessAspect = 'on_time' | 'late' | 'unknown';
+// A lamp for the feed, not a vehicle status: the kit's proceed and stop signals.
+export type FreshnessAspect = Extract<StatusDotColor, 'green' | 'stop' | 'unknown'>;
 
 export interface StatusVerdictLabels {
 	readonly ok: string;
@@ -21,9 +23,9 @@ export function verdictFor(
 ): FreshnessVerdict {
 	switch (status) {
 		case 'succeeded':
-			return { aspect: 'on_time', label: labels.ok };
+			return { aspect: 'green', label: labels.ok };
 		case 'failed':
-			return { aspect: 'late', label: labels.failed };
+			return { aspect: 'stop', label: labels.failed };
 		case 'running':
 		case 'pending':
 			return { aspect: 'unknown', label: labels.running };

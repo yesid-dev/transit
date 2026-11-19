@@ -89,7 +89,7 @@
 						<span class="health-answer-mark" data-state={shown.liveState ?? 'unknown'}>
 							<StatusDot
 								color={shown.liveState === 'current'
-									? 'on_time'
+									? 'green'
 									: shown.liveState === 'behind'
 										? 'caution'
 										: 'unknown'}

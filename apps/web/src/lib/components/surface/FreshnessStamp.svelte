@@ -77,7 +77,7 @@
 			color={live.state === 'unknown'
 				? 'unknown'
 				: live.state === 'current' && !presentation?.degraded
-					? 'on_time'
+					? 'green'
 					: 'caution'}
 			aria-hidden="true"
 		/>

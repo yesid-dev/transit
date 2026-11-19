@@ -23,10 +23,6 @@ const LEGACY_TRANSIT_DATAVIZ_COLORS = [
 	'dataviz-heatmap-3',
 	'dataviz-heatmap-4',
 	'dataviz-heatmap-nodata',
-	'dataviz-vehicle-on-time',
-	'dataviz-vehicle-delayed',
-	'dataviz-vehicle-cancelled',
-	'dataviz-vehicle-no-data',
 ] as const;
 
 describe('cn legacy behavior', () => {
