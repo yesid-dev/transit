@@ -62,6 +62,9 @@
 	import SectionTimeOfDay from './sections/SectionTimeOfDay.svelte';
 	import SectionStateCuts from './sections/SectionStateCuts.svelte';
 	import SectionNotReported from './sections/SectionNotReported.svelte';
+	import { receiptGauge } from './receiptGauge';
+	import { createGaugeHold } from '#lib/components/surface/gaugeHold.svelte.ts';
+	import type { RecordMetaEntry } from '#lib/v1/recordStamp.svelte.ts';
 
 	const display = transitDisplay();
 
@@ -119,6 +122,23 @@
 		if (!dateSeeded) return;
 		mirrorSearchParam('date', canonicalDate);
 	});
+	const navigatorLabels = $derived(
+		historyCopy(locale, {
+			mode: 'date',
+			group: t.history.group,
+			picker: {
+				group: t.dateSelectLabel,
+				start: '',
+				end: '',
+				clear: '',
+				anyStart: '',
+				anyEnd: '',
+				single: t.datePicker.label,
+			},
+			previous: t.history.previous,
+			next: t.history.next,
+		}),
+	);
 	const previousDate = $derived(
 		selectedDate ? previousAvailableDate(selectedDate, historyAvailability) : null,
 	);
@@ -156,7 +176,30 @@
 			receipt.data.date === selectedDate,
 	);
 	const currentReceipt = $derived(receiptReady ? receipt.data : null);
-	const reliability = $derived(receiptReliabilityView(currentReceipt));
+	/**
+	 * While the first day loads, the page lays out the gauge receipt invisibly under a skeleton,
+	 * so every section takes its loaded room from the first render; when the day arrives the page
+	 * keeps that height until the reader acts or the width changes. Nothing below moves when data
+	 * arrives.
+	 */
+	const indexPending = $derived(
+		index.data == null && index.error == null && (index.loading || !index.settled),
+	);
+	const hold = createGaugeHold(
+		() =>
+			indexPending ||
+			(index.data != null &&
+				hasDates &&
+				receipt.error == null &&
+				(!selectedDate ||
+					receipt.loading ||
+					!receipt.settled ||
+					(receipt.data != null && !receiptReady))),
+	);
+	const gauge = $derived(hold.active);
+	const shownReceipt = $derived(currentReceipt ?? (gauge ? receiptGauge : null));
+	const gaugeDates = ['2026-09-30', '2027-09-30'];
+	const reliability = $derived(receiptReliabilityView(shownReceipt));
 	const generatedUtc = $derived(currentReceipt?.generated_utc ?? null);
 	const observationText = $derived(
 		currentReceipt && index.data
@@ -306,31 +349,44 @@
 	const tocEntries = $derived(navigation.entries);
 	const { navigate } = navigation;
 	const railSummary = $derived(selectedDate ? formatDateKey(selectedDate, locale) : '');
-	const articleMeta = $derived.by((): readonly ArticleMetaEntry[] => {
-		const entries: ArticleMetaEntry[] = [];
-		const stamp = recordStamp({
-			manifest,
-			historyIndex: anchor.data,
-			fileGeneratedUtc: generatedUtc,
-			day: currentReceipt?.date,
-		});
-		const text = stampText(stamp, locale, manifest.tz);
-		if (text) entries.push({ text, datetime: stamp.publishedOn ?? undefined });
-		if (selectedDate) {
-			entries.push({
-				text: formatDateKey(selectedDate, locale),
-				label: latestComplete ? t.history.latestCompleteLabel : t.article.selectedLabel,
-			});
-		}
-		if (tocEntries.length > 0) entries.push(t.article.sections(tocEntries.length));
-		return entries;
-	});
 	const metaPending = $derived(
 		index.loading ||
 			!anchor.settled ||
 			!index.settled ||
 			(selectedDate !== '' && (receipt.loading || !receipt.settled)),
 	);
+	// The header names the day by its stamp alone, drawn over the room of the longest day stamp,
+	// so it has its final height before the day arrives; the rail says which day is shown.
+	const articleMeta = $derived.by((): readonly ArticleMetaEntry[] => {
+		const stamp = recordStamp({
+			manifest,
+			historyIndex: anchor.data,
+			fileGeneratedUtc: generatedUtc,
+			day: currentReceipt?.date,
+		});
+		const text = currentReceipt ? stampText(stamp, locale, manifest.tz) : '';
+		const entry: RecordMetaEntry = {
+			text,
+			...(text && stamp.publishedOn ? { datetime: stamp.publishedOn } : {}),
+			recordStamp: {
+				pending: metaPending,
+				reserve: stampText(
+					{
+						form: 'record',
+						scope: 'day',
+						dataThrough: '1999-09-30',
+						publishedOn: '1999-09-30',
+						nextUpdateUtc: null,
+						warning: false,
+					},
+					locale,
+					manifest.tz,
+				),
+				noticeReserve: null,
+			},
+		};
+		return [entry];
+	});
 </script>
 
 <p
@@ -346,36 +402,41 @@
 {#snippet combinedRail({ closeSheet }: SurfaceRailContext)}
 	<CollapsibleSection independent title={t.rail.controls}>
 		<div class="receipt-controls" data-slot="receipt-controls">
-			{#key navigatorRevision}
-				<HistoryNavigator
-					mode="date"
-					date={selectedDate}
-					{dateOptions}
-					{previousDate}
-					{nextDate}
-					coverageText={historyCoverageText}
-					selectionText={historySelectionText}
-					announcement={historyAnnouncement}
-					liveAnnouncement={false}
-					{locale}
-					labels={historyCopy(locale, {
-						mode: 'date',
-						group: t.history.group,
-						picker: {
-							group: t.dateSelectLabel,
-							start: '',
-							end: '',
-							clear: '',
-							anyStart: '',
-							anyEnd: '',
-							single: t.datePicker.label,
-						},
-						previous: t.history.previous,
-						next: t.history.next,
-					})}
-					onDateChange={selectDate}
-				/>
-			{/key}
+			{#if gauge && indexPending}
+				<div class="receipt-gauge" aria-hidden="true" inert>
+					<HistoryNavigator
+						mode="date"
+						date={gaugeDates[1]}
+						dateOptions={gaugeDates.map((date) => ({ date }))}
+						previousDate={gaugeDates[0]}
+						coverageText={t.history.coverage(
+							formatDateKey(gaugeDates[0], locale),
+							formatDateKey(gaugeDates[1], locale),
+						)}
+						selectionText={t.history.latestComplete(formatDateKey(gaugeDates[1], locale))}
+						liveAnnouncement={false}
+						{locale}
+						labels={navigatorLabels}
+					/>
+				</div>
+			{:else}
+				{#key navigatorRevision}
+					<HistoryNavigator
+						mode="date"
+						date={selectedDate}
+						{dateOptions}
+						{previousDate}
+						{nextDate}
+						coverageText={historyCoverageText}
+						selectionText={historySelectionText}
+						announcement={historyAnnouncement}
+						liveAnnouncement={false}
+						{locale}
+						labels={navigatorLabels}
+						onDateChange={selectDate}
+					/>
+				{/key}
+			{/if}
 		</div>
 	</CollapsibleSection>
 	{#if tocEntries.length > 0}
@@ -407,7 +468,7 @@
 <DetailFrame
 	class="receipt-detail"
 	railScroll
-	rail={hasDates ? railCell : undefined}
+	rail={hasDates || indexPending ? railCell : undefined}
 	toc={{
 		navigation: navigation.navigation,
 		landFragments: true,
@@ -432,7 +493,7 @@
 		</ArticleHeader>
 	{/snippet}
 
-	<ResourceBoundary resource={index} lang={locale}>
+	<div class="receipt-body" use:hold.measure style:min-height={hold.minHeight}>
 		{#if selectedDate && !selectedClosed}
 			<StateNotice
 				title={t.history.incompleteDay}
@@ -440,138 +501,147 @@
 				data-slot="receipt-incomplete-day"
 			/>
 		{/if}
-		{#if !hasDates}
-			<StateNotice
-				title={t.emptyIndex}
-				presentation="card"
-				role="status"
-				aria-live="polite"
-				data-slot="receipt-empty-index"
-			/>
-		{:else if receipt.error}
-			<EdgeState
-				variant="error-v1"
-				lang={locale}
-				layout={edgeLayout}
-				onRetry={() => receipt.reload()}
-			/>
-		{:else if !selectedDate || receipt.loading || !receipt.settled || (receipt.data != null && !receiptReady)}
-			<EdgeState variant="skeleton" lang={locale} layout={edgeLayout} />
-		{:else if receipt.data == null}
-			<StateNotice
-				title={t.emptyReceipt}
-				presentation="card"
-				role="status"
-				aria-live="polite"
-				data-slot="receipt-empty"
-			/>
+		{#if gauge}
+			<div class="receipt-stack">
+				<div class="receipt-gauge" aria-hidden="true" inert>
+					{@render sections(receiptGauge)}
+				</div>
+				<EdgeState variant="skeleton" lang={locale} layout={edgeLayout} />
+			</div>
 		{:else}
-			{@const r = receipt.data}
-			<ArticleSectionStack data-slot="receipt-sections">
-				{#each sectionDefs as section (section.id)}
-					{#if section.present}
-						<CollapsibleSection
-							title={section.title}
-							subtitle={section.subtitle}
-							headerVariant="article-summary"
-							anchor={section.id}
-							index={section.number - 1}
-							open={true}
-						>
-							{#if section.id === 'receipt-main'}
-								<div class="receipt-main-body">
-									<TerminalPanel
-										title={t.terminalTitle}
-										tag={t.terminalTag}
-										status={formatDateKey(r.date, locale)}
-										footer={[{ label: t.issuedLabel, value: formatDateKey(r.date, locale) }]}
-									>
-										<div class="receipt-frame" data-slot="receipt-frame">
-											{#if selectedClosed && dayVerdict}
-												<p
-													class="receipt-day-verdict"
-													data-slot="receipt-day-verdict"
-													aria-label={t.dayVerdict.label}
-												>
-													{dayVerdict}
-												</p>
-											{/if}
-											<div
-												class="receipt-layout"
-												class:no-worst={!worst.hasWorst}
-												data-slot="receipt-layout"
-											>
-												<SectionHeadline
-													kpis={headlineKpis}
-													heading={t.receiptSection}
-													headingLevel={3}
-													{locale}
-												/>
-												<SectionAffected
-													counts={affectedCounts}
-													heading={t.countsSection}
-													headingLevel={3}
-													{locale}
-												/>
-												{#if worst.hasWorst}
-													<SectionWorst
-														{worst}
-														heading={t.worstSection}
-														headingLevel={3}
-														{locale}
-													/>
-												{/if}
-											</div>
-										</div>
-									</TerminalPanel>
-									{#if observationText != null}
-										{#key observationText}
-											<ObservationCopy text={observationText} {locale} />
-										{/key}
-									{/if}
-									<TypedInformationCard kind="caveat" label={t.caveatLabel}>
-										<p>{t.caveat}</p>
-									</TypedInformationCard>
-								</div>
-							{:else if section.id === 'receipt-time'}
-								<SectionTimeOfDay
-									rows={timeOfDay.rows}
-									heading={t.timeOfDay.heading}
-									subtitle={t.timeOfDay.severeShare}
-									caveat={t.timeOfDay.caveat}
-									caveatLabel={t.caveatLabel}
-									headingLevel={3}
-									{locale}
-								/>
-							{:else if section.id === 'receipt-delivered'}
-								<SectionStateCuts
-									state={stateCuts}
-									heading={t.stateCuts.heading}
-									completenessLabel={t.stateCuts.completenessLabel}
-									explainer={t.stateCuts.explainer}
-									standDown={t.stateCuts.standDown}
-									splitLabel={t.stateCuts.splitLabel}
-									headingLevel={3}
-									{locale}
-								/>
-							{:else}
-								<SectionNotReported
-									list={notReported}
-									heading={t.notReported.heading}
-									caveat={t.notReported.caveat}
-									noLiveData={t.noLiveData}
-									hiddenNote={t.notReported.hidden}
-									headingLevel={3}
-									{locale}
-								/>
-							{/if}
-						</CollapsibleSection>
-					{/if}
-				{/each}
-			</ArticleSectionStack>
+			<ResourceBoundary resource={index} lang={locale}>
+				{#if !hasDates}
+					<StateNotice
+						title={t.emptyIndex}
+						presentation="card"
+						role="status"
+						aria-live="polite"
+						data-slot="receipt-empty-index"
+					/>
+				{:else if receipt.error}
+					<EdgeState
+						variant="error-v1"
+						lang={locale}
+						layout={edgeLayout}
+						onRetry={() => receipt.reload()}
+					/>
+				{:else if !selectedDate || receipt.loading || !receipt.settled || (receipt.data != null && !receiptReady)}
+					<EdgeState variant="skeleton" lang={locale} layout={edgeLayout} />
+				{:else if receipt.data == null}
+					<StateNotice
+						title={t.emptyReceipt}
+						presentation="card"
+						role="status"
+						aria-live="polite"
+						data-slot="receipt-empty"
+					/>
+				{:else}
+					{@render sections(receipt.data)}
+				{/if}
+			</ResourceBoundary>
 		{/if}
-	</ResourceBoundary>
+	</div>
 </DetailFrame>
+
+{#snippet sections(r: Receipt)}
+	<ArticleSectionStack data-slot="receipt-sections">
+		{#each sectionDefs as section (section.id)}
+			{#if section.present || gauge}
+				<CollapsibleSection
+					title={section.title}
+					subtitle={section.subtitle}
+					headerVariant="article-summary"
+					anchor={gauge ? undefined : section.id}
+					index={section.number - 1}
+					open={true}
+				>
+					{#if section.id === 'receipt-main'}
+						<div class="receipt-main-body">
+							<TerminalPanel
+								title={t.terminalTitle}
+								tag={t.terminalTag}
+								status={formatDateKey(r.date, locale)}
+								footer={[{ label: t.issuedLabel, value: formatDateKey(r.date, locale) }]}
+							>
+								<div class="receipt-frame" data-slot="receipt-frame">
+									{#if (gauge || selectedClosed) && dayVerdict}
+										<p
+											class="receipt-day-verdict"
+											data-slot="receipt-day-verdict"
+											aria-label={t.dayVerdict.label}
+										>
+											{dayVerdict}
+										</p>
+									{/if}
+									<div
+										class="receipt-layout"
+										class:no-worst={!worst.hasWorst}
+										data-slot="receipt-layout"
+									>
+										<SectionHeadline
+											kpis={headlineKpis}
+											heading={t.receiptSection}
+											headingLevel={3}
+											{locale}
+										/>
+										<SectionAffected
+											counts={affectedCounts}
+											heading={t.countsSection}
+											headingLevel={3}
+											{locale}
+										/>
+										{#if worst.hasWorst}
+											<SectionWorst {worst} heading={t.worstSection} headingLevel={3} {locale} />
+										{/if}
+									</div>
+								</div>
+							</TerminalPanel>
+							{#if observationText != null || gauge}
+								{#key observationText}
+									<ObservationCopy text={observationText ?? ''} {locale} />
+								{/key}
+							{/if}
+							<TypedInformationCard kind="caveat" label={t.caveatLabel}>
+								<p>{t.caveat}</p>
+							</TypedInformationCard>
+						</div>
+					{:else if section.id === 'receipt-time'}
+						<SectionTimeOfDay
+							rows={timeOfDay.rows}
+							heading={t.timeOfDay.heading}
+							subtitle={t.timeOfDay.severeShare}
+							caveat={t.timeOfDay.caveat}
+							caveatLabel={t.caveatLabel}
+							headingLevel={3}
+							{locale}
+						/>
+					{:else if section.id === 'receipt-delivered'}
+						<SectionStateCuts
+							state={stateCuts}
+							heading={t.stateCuts.heading}
+							completenessLabel={t.stateCuts.completenessLabel}
+							explainer={t.stateCuts.explainer}
+							standDown={t.stateCuts.standDown}
+							splitLabel={t.stateCuts.splitLabel}
+							headingLevel={3}
+							{locale}
+						/>
+					{:else}
+						<SectionNotReported
+							list={notReported}
+							heading={t.notReported.heading}
+							caveat={t.notReported.caveat}
+							noLiveData={t.noLiveData}
+							hiddenNote={t.notReported.hidden}
+							headingLevel={3}
+							{locale}
+						/>
+					{/if}
+				</CollapsibleSection>
+			{/if}
+		{/each}
+	</ArticleSectionStack>
+{/snippet}
 
 <style>
 	:global(.receipt-detail .receipt-panel) {
@@ -586,6 +656,19 @@
 	}
 	:global(.receipt-detail .receipt-primary) {
 		gap: 1rem;
+	}
+	/* A gauge and the skeleton over it share one cell; the gauge sets the height. */
+	.receipt-stack {
+		display: grid;
+		align-items: start;
+		min-width: 0;
+	}
+	.receipt-stack > :global(*) {
+		grid-area: 1 / 1;
+		min-width: 0;
+	}
+	.receipt-gauge {
+		visibility: hidden;
 	}
 	.receipt-controls,
 	.receipt-main-body {

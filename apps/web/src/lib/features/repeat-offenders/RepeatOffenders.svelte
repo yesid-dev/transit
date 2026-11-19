@@ -59,6 +59,10 @@
 	} from './sections/RepeatOffendersSection.svelte';
 	import OffenderEvidence, { type OffenderEvidenceView } from './sections/OffenderEvidence.svelte';
 	import { copy as COPY } from './repeatOffenders.copy';
+	import { offenderGauge } from './offenderGauge';
+	import { EdgeState } from '#lib/components/edge/index.ts';
+	import { desktop } from '@yesid/ui/state';
+	import { createGaugeHold } from '#lib/components/surface/gaugeHold.svelte.ts';
 
 	type Period = (typeof OFFENDER_GRAINS)[number];
 
@@ -89,6 +93,21 @@
 	let expanded = $state(initial.has('selected'));
 	let worstN = $state<WorstN>(fromSearchParams(initial).worstN ?? DEFAULT_WORST_N);
 
+	/**
+	 * While the first record loads, the page lays out the gauge record invisibly under a skeleton: every
+	 * region takes its loaded room from the first render. When the real record arrives, the page
+	 * keeps the gauge's height until the reader acts or the width changes, so nothing below moves.
+	 */
+	const hold = createGaugeHold(
+		() =>
+			offenders.data == null &&
+			offenders.error == null &&
+			(offenders.loading || !offenders.settled),
+	);
+	const gauge = $derived(hold.active);
+	const source = $derived(offenders.data ?? (gauge ? offenderGauge : null));
+	const gaugeDates = ['2026-09-30', '2027-09-30'];
+
 	const availableDates = $derived(offenders.availableDates);
 	const hasHistoryNavigator = $derived(availableDates.length > 0);
 	// The ranking waits for history discovery, so its controls never push the rows down later.
@@ -107,7 +126,7 @@
 			: offenders.canonicalDate,
 	);
 
-	const grains = $derived(ladderGrains(offenders.data?.by_grain, OFFENDER_GRAINS));
+	const grains = $derived(ladderGrains(source?.by_grain, OFFENDER_GRAINS));
 	const view = createReliabilityViewState({
 		snapshot: () => offenders.data,
 		grains: {
@@ -279,7 +298,7 @@
 		(ranking.state === 'none' || ranking.state === 'ranked') && ranking.earlierRule,
 	);
 
-	const methodVersion = $derived(offenders.data?.methodology_version?.trim() || null);
+	const methodVersion = $derived(source?.methodology_version?.trim() || null);
 	const methodText = $derived(
 		methodVersion ? t.evidence.method(methodVersion) : t.evidence.methodUnknown,
 	);
@@ -446,7 +465,12 @@
 	>
 		{historyCorrection.announcement ?? ''}
 	</p>
-	<div class="offenders-page" data-slot="offenders-page">
+	<div
+		class="offenders-page"
+		data-slot="offenders-page"
+		use:hold.measure
+		style:min-height={hold.minHeight}
+	>
 		<p class="offenders-purpose">{t.purpose}</p>
 		<!-- Controls stay usable while a record loads; the ranking below waits for history discovery. -->
 		<section class="offenders-controls" aria-label={t.controls} data-slot="offenders-controls">
@@ -464,143 +488,182 @@
 					label={t.period.label}
 				/>
 			</div>
-			{#if hasHistoryNavigator}{@render historyControls()}{/if}
-		</section>
-		<ResourceBoundary resource={offenders} lang={locale}>
-			{#if discovered}
-				<div class="offenders-controls">
-					<p class="offenders-period" data-slot="offenders-period">{periodText}</p>
-					<p class="offenders-meta">{t.measure}</p>
-				</div>
-
-				<h2 class="offenders-finding" data-slot="offenders-finding">{finding}</h2>
-				{#if earlierRule}
-					<p class="offenders-meta" data-slot="offenders-earlier-rule">{t.earlierRule}</p>
-				{/if}
-
-				{#if ranking.state === 'ranked' && selected}
-					<div class="offenders-workspace-frame" bind:clientWidth={frameWidth}>
-						<div class="offenders-workspace">
-							<RepeatOffendersSection
-								heading={t.ranking.heading[kind]}
-								count={countText}
-								rows={shownRows}
-								selected={selected.key}
-								{wide}
-								{expanded}
-								{paneId}
-								onSelect={selectRow}
-								{toggle}
-								evidence={inlineEvidence}
-								copy={t}
+			{#if gauge || hasHistoryNavigator}
+				<!-- The navigator's room is held by a gauge of its fullest shape until the record arrives. -->
+				<div class="offenders-stack">
+					{#if gauge}
+						<div class="offenders-gauge" aria-hidden="true" inert>
+							<HistoryNavigator
+								mode="date"
+								date={gaugeDates[1]}
+								dateOptions={gaugeDates.map((date) => ({ date }))}
+								previousDate={gaugeDates[0]}
+								coverageText={t.history.coverage(
+									formatDateKey(gaugeDates[0], locale),
+									formatDateKey(gaugeDates[1], locale),
+								)}
+								selectionText={t.history.selection(formatDateKey(gaugeDates[1], locale))}
+								liveAnnouncement={false}
+								{locale}
+								labels={t.history.navigator}
 							/>
-							<aside
-								id={paneId}
-								class="offenders-evidence-pane"
-								aria-label={t.evidence.heading}
-								data-slot="offender-evidence-pane"
-							>
-								{@render evidence(selected, 2)}
-							</aside>
 						</div>
-					</div>
-				{/if}
-
-				{#if unranked}
-					<section
-						class="offenders-exclusions"
-						aria-labelledby="offenders-exclusions-heading"
-						data-slot="offender-exclusions"
-					>
-						<h2 id="offenders-exclusions-heading" class="offenders-section-heading">
-							{t.exclusions.heading[kind]}
-						</h2>
-						<p>{t.exclusions.rule}</p>
-						<p class="offenders-meta">{t.evidence.scope[kind]}</p>
-						<p class="offenders-meta" data-slot="offender-excluded-total">
-							{t.exclusions.total[kind]}
-						</p>
-					</section>
-
-					{#if unranked.rows.length > 0}
-						<CollapsibleSection title={t.unranked.title} anchor="repeat-offenders-unranked">
-							{#snippet summary()}
-								<p class="offenders-meta" data-slot="offender-unranked-summary">
-									{t.unranked.summary(
-										kind,
-										unranked.rows.length,
-										count(unranked.rows.length),
-										unranked.complete,
-										unranked.rows.every(
-											(row) =>
-												row.reasons.length > 0 && row.reasons.every((reason) => isMeasured(reason)),
-										),
-									)}
-								</p>
-							{/snippet}
-							<ul class="offenders-unranked" aria-label={t.unranked.label[kind]}>
-								{#each unrankedShown as row (row.key)}
-									{@const identity = offenderIdentity(row.entry, display.directory, t)}
-									{@const href = lineHref(row.entry.route)}
-									<li>
-										<span class="offenders-unranked-name">
-											{#if identity.number}<span class="offender-plate">{identity.number}</span
-												>{/if}
-											{#if href}
-												<a {href} aria-label={identity.label}>{identity.primary}</a>
-											{:else}
-												<span>{identity.primary}</span>
-											{/if}
-										</span>
-										{#if identity.lineName}
-											<span class="offenders-meta">{identity.lineName}</span>
-										{/if}
-										<span class="offenders-unranked-figures">
-											{lateDaysText(row.figures)} · {readingsText(row.figures)}
-										</span>
-										<span class="offenders-meta">
-											{row.reasons.length === 0
-												? t.unranked.unexplained
-												: row.reasons.map((reason) => t.unranked.reasons[reason]).join(' ')}
-										</span>
-									</li>
-								{/each}
-							</ul>
-							{#if unrankedToggle}
-								<button
-									type="button"
-									class="offenders-toggle"
-									data-slot="offender-unranked-all"
-									onclick={unrankedToggle.onclick}
-								>
-									{unrankedToggle.label}
-								</button>
-							{/if}
-						</CollapsibleSection>
-					{:else}
-						<p class="offenders-meta" data-slot="offender-unranked-summary">
-							{t.unranked.none[kind]}
-						</p>
 					{/if}
-				{/if}
-
-				<CollapsibleSection title={t.method.title} anchor="repeat-offenders-method">
-					{#snippet summary()}
-						<p class="offenders-meta">{t.method.summary}</p>
-					{/snippet}
-					<div class="offenders-method">
-						<p>{t.exclusions.rule}</p>
-						<p>{t.method.order}</p>
-						<p>{t.method.definition}</p>
-						<p>{t.method.interval}</p>
-						<p>{methodText}</p>
-						<a href={metricHref}>{metricInfoCopy[locale].link}</a>
-					</div>
-				</CollapsibleSection>
+					{#if hasHistoryNavigator}{@render historyControls()}{/if}
+				</div>
 			{/if}
-		</ResourceBoundary>
+		</section>
+		{#if gauge}
+			<div class="offenders-stack">
+				<div class="offenders-gauge offenders-record" aria-hidden="true" inert>
+					{@render body()}
+				</div>
+				<EdgeState
+					variant="skeleton"
+					lang={locale}
+					layout={desktop.current ? 'desktop' : 'mobile'}
+				/>
+			</div>
+		{:else}
+			<ResourceBoundary resource={offenders} lang={locale}>
+				{#if discovered}
+					<div class="offenders-record">{@render body()}</div>
+				{/if}
+			</ResourceBoundary>
+		{/if}
 	</div>
 </DetailFrame>
+
+{#snippet body()}
+	<div class="offenders-controls">
+		<p class="offenders-period" data-slot="offenders-period">{periodText}</p>
+		<p class="offenders-meta">{t.measure}</p>
+	</div>
+
+	<h2 class="offenders-finding" data-slot="offenders-finding">{finding}</h2>
+	{#if earlierRule}
+		<p class="offenders-meta" data-slot="offenders-earlier-rule">{t.earlierRule}</p>
+	{/if}
+
+	{#if ranking.state === 'ranked' && selected}
+		<div class="offenders-workspace-frame" bind:clientWidth={frameWidth}>
+			<div class="offenders-workspace">
+				<RepeatOffendersSection
+					heading={t.ranking.heading[kind]}
+					count={countText}
+					rows={shownRows}
+					selected={selected.key}
+					{wide}
+					{expanded}
+					{paneId}
+					onSelect={selectRow}
+					{toggle}
+					evidence={inlineEvidence}
+					copy={t}
+				/>
+				<aside
+					id={paneId}
+					class="offenders-evidence-pane"
+					aria-label={t.evidence.heading}
+					data-slot="offender-evidence-pane"
+				>
+					{@render evidence(selected, 2)}
+				</aside>
+			</div>
+		</div>
+	{/if}
+
+	{#if unranked}
+		<section
+			class="offenders-exclusions"
+			aria-labelledby="offenders-exclusions-heading"
+			data-slot="offender-exclusions"
+		>
+			<h2 id="offenders-exclusions-heading" class="offenders-section-heading">
+				{t.exclusions.heading[kind]}
+			</h2>
+			<p>{t.exclusions.rule}</p>
+			<p class="offenders-meta">{t.evidence.scope[kind]}</p>
+			<p class="offenders-meta" data-slot="offender-excluded-total">
+				{t.exclusions.total[kind]}
+			</p>
+		</section>
+
+		{#if unranked.rows.length > 0}
+			<CollapsibleSection title={t.unranked.title} anchor="repeat-offenders-unranked">
+				{#snippet summary()}
+					<p class="offenders-meta" data-slot="offender-unranked-summary">
+						{t.unranked.summary(
+							kind,
+							unranked.rows.length,
+							count(unranked.rows.length),
+							unranked.complete,
+							unranked.rows.every(
+								(row) =>
+									row.reasons.length > 0 && row.reasons.every((reason) => isMeasured(reason)),
+							),
+						)}
+					</p>
+				{/snippet}
+				<ul class="offenders-unranked" aria-label={t.unranked.label[kind]}>
+					{#each unrankedShown as row (row.key)}
+						{@const identity = offenderIdentity(row.entry, display.directory, t)}
+						{@const href = lineHref(row.entry.route)}
+						<li>
+							<span class="offenders-unranked-name">
+								{#if identity.number}<span class="offender-plate">{identity.number}</span>{/if}
+								{#if href}
+									<a {href} aria-label={identity.label}>{identity.primary}</a>
+								{:else}
+									<span>{identity.primary}</span>
+								{/if}
+							</span>
+							{#if identity.lineName}
+								<span class="offenders-meta">{identity.lineName}</span>
+							{/if}
+							<span class="offenders-unranked-figures">
+								{lateDaysText(row.figures)} · {readingsText(row.figures)}
+							</span>
+							<span class="offenders-meta">
+								{row.reasons.length === 0
+									? t.unranked.unexplained
+									: row.reasons.map((reason) => t.unranked.reasons[reason]).join(' ')}
+							</span>
+						</li>
+					{/each}
+				</ul>
+				{#if unrankedToggle}
+					<button
+						type="button"
+						class="offenders-toggle"
+						data-slot="offender-unranked-all"
+						onclick={unrankedToggle.onclick}
+					>
+						{unrankedToggle.label}
+					</button>
+				{/if}
+			</CollapsibleSection>
+		{:else}
+			<p class="offenders-meta" data-slot="offender-unranked-summary">
+				{t.unranked.none[kind]}
+			</p>
+		{/if}
+	{/if}
+
+	<CollapsibleSection title={t.method.title} anchor="repeat-offenders-method">
+		{#snippet summary()}
+			<p class="offenders-meta">{t.method.summary}</p>
+		{/snippet}
+		<div class="offenders-method">
+			<p>{t.exclusions.rule}</p>
+			<p>{t.method.order}</p>
+			<p>{t.method.definition}</p>
+			<p>{t.method.interval}</p>
+			<p>{methodText}</p>
+			<a href={metricHref}>{metricInfoCopy[locale].link}</a>
+		</div>
+	</CollapsibleSection>
+{/snippet}
 
 <style>
 	/* Room for the ranking and its selected evidence side by side on desktop. */
@@ -609,11 +672,30 @@
 	}
 	.offenders-page {
 		display: grid;
+		align-content: start;
 		gap: 1.5rem;
 		min-width: 0;
 	}
 	.offenders-page :global(p) {
 		margin: 0;
+	}
+	.offenders-record {
+		display: grid;
+		gap: 1.5rem;
+		min-width: 0;
+	}
+	/* A gauge and what it reserves room for share one cell; the taller one sets the height. */
+	.offenders-stack {
+		display: grid;
+		align-items: start;
+		min-width: 0;
+	}
+	.offenders-stack > :global(*) {
+		grid-area: 1 / 1;
+		min-width: 0;
+	}
+	.offenders-gauge {
+		visibility: hidden;
 	}
 	.offenders-purpose {
 		font-size: var(--text-detail-subheading-mobile);

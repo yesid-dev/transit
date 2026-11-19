@@ -527,7 +527,7 @@ describe('AccountabilityReceipt — asynchronous date transitions', () => {
 		const rail = container.querySelector('[data-slot="surface-rail"]') as HTMLElement;
 		await waitFor(() => expect(card(container, 'receipt-silent')).not.toBeNull());
 		await activate(container, 'receipt-silent');
-		expect(within(container).getByText('4 sections')).toBeInTheDocument();
+		expect(rail.querySelector('[data-slot="section-toc"]')).not.toBeNull();
 
 		const failedRefresh = deferred<Receipt | null>();
 		receiptGates.set('2026-06-17', failedRefresh);
@@ -538,7 +538,6 @@ describe('AccountabilityReceipt — asynchronous date transitions', () => {
 		await waitFor(() => expect(within(container).getByRole('alert')).toBeInTheDocument());
 		expect(container.querySelector('[data-toc="receipt-main"]')).toBeNull();
 		expect(rail.querySelector('[data-slot="section-toc"]')).toBeNull();
-		expect(within(container).queryByText('4 sections')).toBeNull();
 
 		const successfulRetry = deferred<Receipt | null>();
 		receiptGates.set('2026-06-17', successfulRetry);

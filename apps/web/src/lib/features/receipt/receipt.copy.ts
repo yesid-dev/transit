@@ -35,8 +35,6 @@ export const copy = defineCopy({
 			watermark: 'Receipt',
 			tags: ['receipt', 'reliability', 'service', 'accountability'],
 			generatedLabel: 'GENERATED',
-			selectedLabel: 'FOR',
-			sections: (count: number) => `${count} ${count === 1 ? 'section' : 'sections'}`,
 		}),
 		rail: {
 			label: 'Day & contents',
@@ -79,7 +77,6 @@ export const copy = defineCopy({
 			next: 'Next date',
 			coverage: (first, last) => `Available receipts: ${first}–${last}`,
 			selection: (date) => `Showing: ${date}`,
-			latestCompleteLabel: 'Latest complete day',
 			latestComplete: (date: string) => `Latest complete day: ${date}`,
 			incompleteDay: 'This day is not complete yet. Figures can change.',
 			correction: {
@@ -202,8 +199,6 @@ export const copy = defineCopy({
 			watermark: 'Reçu',
 			tags: ['reçu', 'fiabilité', 'service', 'imputabilité'],
 			generatedLabel: 'PRODUIT',
-			selectedLabel: 'POUR LE',
-			sections: (count: number) => `${count} ${count === 1 ? 'section' : 'sections'}`,
 		}),
 		rail: {
 			label: 'Jour et sommaire',
@@ -247,7 +242,6 @@ export const copy = defineCopy({
 			next: 'Date suivante',
 			coverage: (first: string, last: string) => `Reçus disponibles : ${first} au ${last}`,
 			selection: (date: string) => `Affichage : ${date}`,
-			latestCompleteLabel: 'Dernier jour complet',
 			latestComplete: (date: string) => `Dernier jour complet : ${date}`,
 			incompleteDay: 'Cette journée n’est pas encore complète. Les chiffres peuvent changer.',
 			correction: {
