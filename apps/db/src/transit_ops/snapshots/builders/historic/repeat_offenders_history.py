@@ -66,13 +66,14 @@ OFFENDER_LABEL_JOIN_SQL = """
         SELECT h.route_short_name, t.trip_headsign, first_stop.departure_time
         FROM gold.dim_route_history h
         LEFT JOIN LATERAL (
+            -- The edition in force at the close is the newest one loaded by then. Static
+            -- loads leave observed_from_utc unset and captures move observed_until_utc to
+            -- their latest sighting, so neither bounds an edition.
             SELECT dv.dataset_version_id FROM core.dataset_versions dv
             WHERE dv.provider_id = h.provider_id AND dv.dataset_kind = 'static_schedule'
-              AND dv.observed_from_utc <
+              AND dv.loaded_at_utc <
                   timezone(dp.timezone, (sp.provider_local_date + 1)::timestamp)
-              AND (dv.observed_until_utc IS NULL OR dv.observed_until_utc >=
-                  timezone(dp.timezone, (sp.provider_local_date + 1)::timestamp))
-            ORDER BY dv.observed_from_utc DESC, dv.dataset_version_id DESC LIMIT 1
+            ORDER BY dv.loaded_at_utc DESC, dv.dataset_version_id DESC LIMIT 1
         ) edition ON true
         LEFT JOIN silver.trips t
           ON t.provider_id = h.provider_id
