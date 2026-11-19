@@ -166,6 +166,7 @@ def fetch_from_catalog(
                 editions,
                 catalog,
                 request=request,
+                references=references,
             ),
             bootstrap_editions=uses_editions,
             request=request,
@@ -193,8 +194,12 @@ def archive_input_needs(
     catalog: Inspector,
     *,
     request: BuildRequest | None = None,
+    references: Mapping[str, Sequence[str]] | None = None,
 ) -> tuple[InputNeed, ...]:
-    """Only verified zero-row copies can eliminate an archive FK prerequisite."""
+    """Only verified zero-row copies can eliminate an archive FK prerequisite.
+
+    A pinned edition parent is judged by its referenced months only.
+    """
     from transit_ops.batch.replay import parent_input_needs
 
     @cache
@@ -203,7 +208,14 @@ def archive_input_needs(
             return True  # Keep the FK closure until the bootstrap can resolve this edition.
         try:
             sources = resolve_sources(
-                [child], storage, provider, as_of, editions, request=request, coverage_needs=needs
+                [child],
+                storage,
+                provider,
+                as_of,
+                editions,
+                request=request,
+                coverage_needs=needs,
+                references=references,
             )
         except SourcesMissing:
             return True  # Full preflight reports this child and all unknown prerequisites.
@@ -715,6 +727,8 @@ def _filter_window(
         if source.receipt.get("bundle_closure")
         else _window_column(conn, source.needs[0].relation)
     )
+    # The alert bundle's closure copy keeps its own parents; only archive copies are pinned.
+    pinned = None if source.receipt.get("bundle_closure") else pinned
     predicates = [
         (pinned[n.relation], [])
         if pinned and n.window == "all" and n.relation in pinned

@@ -53,6 +53,7 @@ REFUSALS = (
     "group_reserve_unsupported",
     "no_replayable_family",
     "fk_parent_outside_range",
+    "reference_window",
 )
 # Plan-time reasons that exclude one default family instead of the whole run.
 EXCLUSIONS = ("input_not_archived", "unbounded_window_need")

@@ -48,6 +48,8 @@ def bound_edition_parents(needs: Sequence[InputNeed]) -> tuple[tuple[str, str], 
 
     Only parents reached from the whole-state edition metadata qualify; any other
     unbounded need keeps its ``all`` window and is refused by require_bounded_needs.
+    In the 0093 catalog no other ``all`` child reaches these parents; if one ever
+    does, the fetch row-closure check and replay's FK load refuse instead.
     """
     edition = InputNeed(EDITION_METADATA, "all") in needs
     return tuple(
