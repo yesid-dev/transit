@@ -777,6 +777,7 @@ def _best_effort_publish_live(
 def _run_local_realtime_cycle(
     provider_id: str,
     *,
+    started_at_utc: datetime,
     settings: Settings,
     registry: ProviderRegistry,
     last_captures: dict[str, datetime] | None,
@@ -793,7 +794,6 @@ def _run_local_realtime_cycle(
         raise ShadowRefused("postgres_authoritative_forbids_local_ingress")
     if worker_state is None:
         raise ValueError("local_ingress_requires_borrowed_owner")
-    started_at_utc = utc_now()
     started_at = time.perf_counter()
     manifest = registry.get_provider(provider_id)
     cycle_endpoints = realtime_endpoints_for_manifest(manifest)
@@ -936,8 +936,24 @@ def _run_local_realtime_cycle(
 
 
 def _run_realtime_cycle(
+    provider_id: str, *, worker_state: WorkerState | None = None, **options: Any
+) -> RealtimeCycleResult:
+    """Run one cycle; afterwards, even when it raised, the worker loop's watermark
+    witnesses every local commit the cycle made (mark_committed never raises)."""
+    started_at_utc = utc_now()
+    try:
+        return _realtime_cycle(
+            provider_id, started_at_utc=started_at_utc, worker_state=worker_state, **options
+        )
+    finally:
+        if worker_state is not None:
+            worker_state.mark_committed(started_at_utc)
+
+
+def _realtime_cycle(
     provider_id: str,
     *,
+    started_at_utc: datetime,
     settings: Settings | None = None,
     registry: ProviderRegistry | None = None,
     engine: Engine | None = None,
@@ -953,6 +969,7 @@ def _run_realtime_cycle(
     if settings.LIGHTER_STORAGE.live.ingress == "local":
         return _run_local_realtime_cycle(
             provider_id,
+            started_at_utc=started_at_utc,
             settings=settings,
             registry=registry,
             last_captures=last_captures,
@@ -961,7 +978,6 @@ def _run_realtime_cycle(
             worker_state=worker_state,
         )
     engine = _engine(settings, engine)
-    started_at_utc = utc_now()
     started_at = time.perf_counter()
 
     # Failed attempts retain the configured cadence without advancing capture freshness.

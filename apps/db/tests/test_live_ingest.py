@@ -1773,3 +1773,93 @@ def test_local_mode_builds_readonly_edition_engine_through_real_wiring(tmp_path,
         assert state2.local.connection.execute(
             "SELECT realtime_snapshot_id, delay_seconds FROM fact_trip_delay_snapshot"
         ).fetchall() == [(201, 180)]
+
+
+def healthy_fetcher(calls: list[str]):
+    bodies = {
+        "vehicle-positions": vehicle_message().SerializeToString(),
+        "trip-updates": trip_message().SerializeToString(),
+        "i3-alerts": json.dumps({"apiVersion": "2.0", "alerts": [ALERT]}).encode("utf-8"),
+    }
+
+    def fetch(*, source_url, temp_dir, headers=None, default_filename="artifact.bin", **_kwargs):
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        body = next((b for k, b in bodies.items() if k in source_url), service_alert_pb_bytes())
+        path = temp_dir / f"dl_{len(calls)}.bin"
+        calls.append(source_url)
+        path.write_bytes(body)
+        return DownloadedArtifact(
+            temp_path=path,
+            byte_size=len(body),
+            checksum_sha256=sha256(body).hexdigest(),
+            http_status_code=200,
+            source_url=source_url,
+        )
+
+    return fetch
+
+
+def test_a_local_mode_worker_cycle_writes_the_committed_watermark_with_identity(
+    tmp_path, monkeypatch
+):
+    """Live ruling 27.1: local cycles are witnessed, and a lost reservation is a lost row."""
+    from types import SimpleNamespace
+
+    from transit_ops import orchestration
+    from transit_ops.live import ingest as ingest_module
+    from transit_ops.live.admission import (
+        classify_restart,
+        read_restart_records,
+        restart_evidence_path,
+    )
+    from transit_ops.live.identity import IdentityRefused
+    from transit_ops.live.watermark import committed_watermark_path, verify_committed
+    from transit_ops.live.worker_state import worker_state_scope
+
+    settings, _ = local_ingress_settings(tmp_path)
+    storage = LocalBronzeStorage("local", Path(settings.BRONZE_LOCAL_ROOT))
+    manifest = build_manifest()
+    calls: list[str] = []
+    monkeypatch.setattr(ingest_module, "download_to_tempfile", healthy_fetcher(calls))
+    scope = dict(
+        settings=settings.LIGHTER_STORAGE.live,
+        app_settings=settings,
+        engine=fake_edition_engine(monkeypatch),
+        manifest=manifest,
+        resolver=lambda _: storage,
+        record_restart=True,  # The worker loop's own scope.
+    )
+    with worker_state_scope(**scope) as state:
+        assert state is not None and state.watermark_database is not None
+        database = state.watermark_database
+        orchestration._run_realtime_cycle(
+            "network",
+            settings=settings,
+            registry=SimpleNamespace(get_provider=lambda _pid: manifest),
+            engine=None,
+            bronze_storage_resolver=lambda _: storage,
+            worker_state=state,
+        )
+        document = json.loads(committed_watermark_path(database).read_bytes())
+        assert document["state"]["identity_next_ingestion_run"] > 201
+        assert document["state"]["identity_recorded"] == len(calls) > 0
+        assert verify_committed(database, state.local, provider_id="network") == 0
+        # The WAL tail holding the last reservation is gone: the allocation went backwards.
+        state.local.connection.execute(
+            "DELETE FROM local_identity_reservations WHERE ingestion_run_id="
+            "(SELECT max(ingestion_run_id) FROM local_identity_reservations)"
+        )
+        state.local.connection.execute(
+            "UPDATE local_identity_namespaces SET next_id=next_id-1 WHERE namespace='ingestion_run'"
+        )
+        assert verify_committed(database, state.local, provider_id="network") >= 1
+
+    # Two separate checks: the restart record names the loss against the committed
+    # watermark, then the allocator still refuses to allocate below recorded evidence.
+    with pytest.raises(IdentityRefused, match="checkpoint_below_evidence:ingestion_run"):
+        with worker_state_scope(**scope):
+            pass
+    lines = restart_evidence_path(database).read_text(encoding="utf-8").splitlines()
+    (record,) = read_restart_records(lines)
+    assert record.verified_by == "durable_watermark"
+    assert classify_restart(record, 20) == "lost_committed_row"
