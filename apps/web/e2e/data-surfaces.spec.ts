@@ -11,7 +11,6 @@ import { DEFAULT_LOCALE as locale, PUBLISHED_LOCALES } from '../src/lib/i18n/con
 import { indexCopy } from '../src/lib/features/lines/lines.copy';
 import { formatRecordDates } from '../src/lib/features/lines/reliability/recordDates';
 import { localizeHref } from '../src/lib/i18n/routing';
-import { STATUS_LABELS } from '../src/lib/v1/enumLabels';
 import { stampCopy } from '../src/lib/v1/stamp.copy';
 import { intl } from '../src/lib/i18n/copy';
 import { csvTable } from '../src/lib/features/lines/reliability/__fixtures__/csvTable';
@@ -166,32 +165,24 @@ test('a trip page shows one heading without breadcrumbs', async ({ page }) => {
 	}
 });
 
-test('status chips filter the departures and report their pressed state', async ({ page }) => {
-	await page.goto(`/stop/${stop}?tab=detail`);
-	const t = detailCopy[locale].next;
-	const late = page
-		.getByRole('group', { name: t.filter.statusLabel })
-		.getByRole('button', { name: STATUS_LABELS[locale].late });
-	const rows = page
-		.getByRole('table', { name: t.table.caption })
+test('Live now lists predictions under their line, statuses in words', async ({ page }) => {
+	const provider = fixture('manifest.json').provider;
+	await page.goto(localizeHref(`/stop/${stop}?tab=detail`, locale, provider));
+	const t = detailCopy[locale].live;
+	const list = page.locator('[data-slot="stop-live-predictions"]');
+	const rows = list
+		.getByRole('table')
 		.getByRole('row')
-		.filter({
-			has: page.getByRole('rowheader'),
-		});
-	const lateCount = departures.stops[stop].filter(
-		(d: { delay_min: number }) => d.delay_min > 0,
-	).length;
-
+		.filter({ has: page.getByRole('rowheader') });
 	await expect(rows).toHaveCount(departures.stops[stop].length);
-	// Server markup shows the chips before hydration wires them; retry until one responds.
-	await expect(async () => {
-		if ((await late.getAttribute('aria-pressed')) !== 'true') await late.click();
-		await expect(late).toHaveAttribute('aria-pressed', 'true', { timeout: 1_000 });
-	}).toPass();
-	await expect(rows).toHaveCount(lateCount);
-	await late.click();
-	await expect(late).toHaveAttribute('aria-pressed', 'false');
-	await expect(rows).toHaveCount(departures.stops[stop].length);
+	// One line listed: nothing to order yet.
+	await expect(page.getByRole('combobox', { name: t.order })).toHaveCount(0);
+	await expect(rows.nth(0).getByRole('cell').first()).toHaveText(new RegExp(t.bands.on_time));
+	await expect(rows.nth(1).getByRole('cell').first()).toHaveText(new RegExp(t.bands.late));
+	await expect(page.getByRole('link', { name: t.record, exact: true })).toHaveAttribute(
+		'href',
+		new RegExp(`^/stop/${stop}(?:[?]|$)`),
+	);
 });
 
 test('the roll-up period is a radio group the arrow keys move through', async ({ page }) => {

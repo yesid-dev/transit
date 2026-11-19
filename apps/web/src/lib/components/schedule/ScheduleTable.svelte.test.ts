@@ -1,6 +1,5 @@
 import { render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
-import type { DelayLabelCopy } from '#lib/site/delayPresentation.ts';
 import { detailCopy } from '#lib/features/stops/stops.copy.ts';
 import ScheduleTable, { type ScheduleRow, type ScheduleTableProps } from './ScheduleTable.svelte';
 
@@ -11,13 +10,6 @@ const GRID_LABELS = {
 	departures: 'Departures',
 };
 
-const BOARD_LABELS = {
-	caption: 'Live departures',
-	route: 'Line',
-	departure: 'Departure',
-	status: 'Status',
-};
-
 const SERVICE_LABELS = {
 	caption: 'Planned service periods',
 	period: 'Period',
@@ -25,17 +17,7 @@ const SERVICE_LABELS = {
 	headway: 'Planned headway',
 };
 
-const DELAY_COPY: DelayLabelCopy = {
-	early: (m) => `${Math.abs(m)} min early`,
-	late: (m) => `+${m} min late`,
-	onTime: 'on time',
-};
-
-function scheduleChassis(
-	container: HTMLElement,
-	caption: string,
-	mode: 'grid' | 'board' | 'service',
-) {
+function scheduleChassis(container: HTMLElement, caption: string, mode: 'grid' | 'service') {
 	const table = within(container).getByRole('table', { name: caption });
 	const frame = table.parentElement as HTMLElement;
 
@@ -58,11 +40,6 @@ describe('ScheduleTable — grid mode', () => {
 				rows: [{ kind: 'grid', route: '51', headsign: 'Nord', times: ['08:00'] }],
 				mode: 'grid',
 				labels: GRID_LABELS,
-			},
-			{
-				rows: [{ kind: 'board', route: '51', eta_utc: '2026-06-15T12:05:00Z', delay_min: 4 }],
-				mode: 'board',
-				labels: BOARD_LABELS,
 			},
 			{
 				rows: [{ kind: 'service', period: 'AM peak', window: '06:00–09:00', headway: '6.0 min' }],
@@ -155,121 +132,6 @@ describe('ScheduleTable — grid mode', () => {
 		const chip = document.querySelector('[data-slot="absent-value"]');
 		expect(chip).not.toBeNull();
 		expect(chip?.textContent).toContain('not enough readings yet');
-	});
-});
-
-describe('ScheduleTable — board mode', () => {
-	it('renders live departures as a semantic schedule table', () => {
-		const rows: ScheduleRow[] = [
-			{ kind: 'board', route: '51', eta_utc: '2026-06-15T12:05:00Z', delay_min: 4 },
-		];
-		const { container } = render(ScheduleTable, {
-			props: {
-				rows,
-				mode: 'board',
-				locale: 'en',
-				labels: BOARD_LABELS,
-				delayCopy: DELAY_COPY,
-			},
-		});
-		const table = screen.getByRole('table', { name: BOARD_LABELS.caption });
-		scheduleChassis(container, BOARD_LABELS.caption, 'board');
-		expect(
-			within(table).getByRole('columnheader', { name: BOARD_LABELS.route }),
-		).toBeInTheDocument();
-		expect(
-			within(table).getByRole('columnheader', { name: BOARD_LABELS.departure }),
-		).toHaveAttribute('data-align', 'end');
-		expect(
-			within(table).getByRole('columnheader', { name: BOARD_LABELS.departure }),
-		).toHaveAttribute('data-numeric', 'true');
-		expect(table.querySelector('tbody [data-column="departure"]')).toHaveAttribute(
-			'data-align',
-			'end',
-		);
-		expect(table.querySelector('tbody [data-column="departure"]')).toHaveAttribute(
-			'data-numeric',
-			'true',
-		);
-		expect(
-			within(table).getByRole('columnheader', { name: BOARD_LABELS.status }),
-		).toBeInTheDocument();
-	});
-
-	it('tints each departure caption with the shared status fill AND a redundant glyph', () => {
-		const rows: ScheduleRow[] = [
-			{ kind: 'board', route: '51', eta_utc: '2026-06-15T12:05:00Z', delay_min: 4 },
-		];
-		const { container } = render(ScheduleTable, {
-			props: {
-				rows,
-				mode: 'board',
-				locale: 'en',
-				labels: BOARD_LABELS,
-				delayCopy: DELAY_COPY,
-				routeFallback: 'Line',
-			},
-		});
-		const late = container.querySelector('.stop-departure-delay') as HTMLElement;
-		expect(late).not.toBeNull();
-		expect(late.getAttribute('data-tone')).toBe('late');
-		expect(late.getAttribute('style') ?? '').toContain('--dataviz-status-late');
-		expect(late.querySelector('.stop-departure-glyph')?.textContent).toBe('▲');
-		expect(late.textContent).toContain('+4 min late');
-	});
-
-	it('bands a >=5 min departure to the SEVERE tone (its own severe fill)', () => {
-		const rows: ScheduleRow[] = [
-			{ kind: 'board', route: '51', eta_utc: '2026-06-15T12:05:00Z', delay_min: 9 },
-		];
-		const { container } = render(ScheduleTable, {
-			props: { rows, mode: 'board', locale: 'en', labels: BOARD_LABELS, delayCopy: DELAY_COPY },
-		});
-		const severe = container.querySelector('.stop-departure-delay') as HTMLElement;
-		expect(severe.getAttribute('data-tone')).toBe('severe');
-		expect(severe.getAttribute('style') ?? '').toContain('--dataviz-status-severe');
-	});
-
-	for (const [locale, unknownCopy] of [
-		['en', 'Unknown · not reported in the live feed'],
-		['fr', 'Inconnu · non signalé dans le flux en direct'],
-	] as const) {
-		it(`renders truthful localized unknown copy for a null delay (${locale})`, () => {
-			const rows: ScheduleRow[] = [
-				{ kind: 'board', route: '80', eta_utc: '2026-06-15T12:08:00Z', delay_min: null },
-			];
-			const { container } = render(ScheduleTable, {
-				props: {
-					rows,
-					mode: 'board',
-					locale,
-					labels: BOARD_LABELS,
-					delayCopy: detailCopy[locale].next,
-				},
-			});
-			const none = container.querySelector('[data-slot="absent-value"]') as HTMLElement;
-			expect(none).not.toBeNull();
-			expect(none).toHaveAttribute('data-density', 'row');
-			expect(none).toHaveTextContent(unknownCopy);
-			expect(none).not.toHaveTextContent(detailCopy[locale].next.onTime);
-			expect(container.querySelector('.stop-departure-delay')).toBeNull();
-		});
-	}
-
-	it('renders the route fallback label when a departure has no route code', () => {
-		const rows: ScheduleRow[] = [{ kind: 'board', eta_utc: '2026-06-15T12:08:00Z', delay_min: 0 }];
-		const { container } = render(ScheduleTable, {
-			props: {
-				rows,
-				mode: 'board',
-				locale: 'en',
-				labels: BOARD_LABELS,
-				delayCopy: DELAY_COPY,
-				routeFallback: 'Line',
-			},
-		});
-		const route = container.querySelector('.stop-departure-route') as HTMLElement;
-		expect(route.textContent).toBe('Line');
 	});
 });
 

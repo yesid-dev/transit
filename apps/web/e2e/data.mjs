@@ -74,6 +74,59 @@ files['/v1/stm/static/routes/9004.json'] = JSON.stringify({
 	short: '9004',
 	type: 1,
 });
+// T6 Live now: a hub at the size of the busiest stops (12 lines, two predictions each, the longest
+// French destinations), a stop served only by the metro (no live data) and one no line serves.
+const t6HubLines = [
+	'24',
+	'51',
+	'80',
+	'105',
+	'107',
+	'129',
+	'160',
+	'161',
+	'165',
+	'166',
+	'368',
+	'747',
+];
+const t6Stop = (id, name, routes, scheduled) =>
+	JSON.stringify({
+		generated_utc: '2026-06-15T12:00:00Z',
+		id,
+		code: id.slice(3),
+		name,
+		lat: 45.5,
+		lon: -73.6,
+		routes_served: routes,
+		scheduled,
+	});
+files['/v1/stm/static/stops/T6-HUB.json'] = t6Stop(
+	'T6-HUB',
+	'Station Côte-des-Neiges / chemin de la Côte-Sainte-Catherine (Hôpital général juif)',
+	t6HubLines,
+	t6HubLines.flatMap((route, i) => [
+		{
+			route,
+			headsign: [
+				'Station Côte-Vertu via boulevard Décarie et chemin de la Côte-des-Neiges',
+				'Terminus Centre-ville / Gare d’autocars de Montréal',
+				'Tunney’s Pasture / Blair via Transitway',
+			][i % 3],
+			times: ['08:00'],
+		},
+		...(i % 4 === 0
+			? [{ route, headsign: 'Station Université-de-Montréal', times: ['08:10'] }]
+			: []),
+	]),
+);
+files['/v1/stm/static/stops/T6-METRO.json'] = t6Stop(
+	'T6-METRO',
+	'Station Berri-UQAM',
+	['1-373'],
+	[],
+);
+files['/v1/stm/static/stops/T6-NONE.json'] = t6Stop('T6-NONE', 'Arrêt temporaire', [], []);
 // Line 9001: seven complete days of 1,000 readings with one-decimal shares (89.8% ...), the widest
 // daily labels a phone must place without overlap. Built from a seed, not a committed fixture.
 const decimalWeek = [898, 912, 887, 905, 893, 921, 879];
