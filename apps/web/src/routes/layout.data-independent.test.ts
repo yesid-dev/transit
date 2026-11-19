@@ -19,6 +19,10 @@ it.each(['en', 'fr'] as const)('the footer shows the four groups, then Legal in 
 			}),
 		);
 	expect(groups).toHaveLength(labels.length);
+	// DEV-43: the footer's top edge is the kit hazard strip, as on yesid.dev.
+	const footer = view.container.querySelector('[data-testid="footer"]')!;
+	expect(footer.querySelector('[data-slot="footer-hazard-edge"]')).not.toBeNull();
+	expect(footer.querySelector('[data-slot="footer-street-edge"]')).toBeNull();
 });
 
 const harness = vi.hoisted(() => {
