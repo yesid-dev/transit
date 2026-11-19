@@ -23,6 +23,7 @@ from sqlalchemy import Engine, text
 
 from transit_ops import settings as settings_module
 from transit_ops.gold import rollups
+from transit_ops.gold.delay_periods import GHOST_DELAY_ABS_SECONDS, SEVERE_DELAY_SECONDS
 from transit_ops.settings import Settings
 from transit_ops.snapshots import historic_tier, publish
 from transit_ops.snapshots.builders.historic import (
@@ -251,6 +252,82 @@ def test_date_bounded_windows_follow_the_pinned_date(published):
             if re.fullmatch(r"historic/receipts/\d{4}-\d{2}-\d{2}\.json", key)
         }
         assert set(receipts["dates"]) == leaves == days
+
+
+# The definition behind every repeat-offender figure, read from the loaded delay facts: readings
+# inside the ghost clamp, per local capture day, late when more than 5 minutes late.
+_OFFENDER_READINGS_SQL = f"""
+    SELECT kind, entity_id, route_id,
+           COUNT(*) AS observation_count,
+           COUNT(*) FILTER (WHERE delay_seconds > {SEVERE_DELAY_SECONDS}) AS severe_count,
+           COUNT(DISTINCT local_date) AS observed_days,
+           COUNT(DISTINCT local_date) FILTER (WHERE delay_seconds > {SEVERE_DELAY_SECONDS})
+               AS recurrence_days
+    FROM (
+        SELECT e.kind, e.entity_id, f.route_id, f.delay_seconds,
+               timezone(dp.timezone, f.captured_at_utc)::date AS local_date
+        FROM gold.fact_trip_delay_snapshot AS f
+        JOIN gold.dim_provider AS dp USING (provider_id)
+        CROSS JOIN LATERAL (VALUES ('trip', f.trip_id), ('vehicle', f.vehicle_id))
+            AS e(kind, entity_id)
+        WHERE f.provider_id = :p AND e.entity_id IS NOT NULL AND f.route_id IS NOT NULL
+          AND ABS(f.delay_seconds) <= {GHOST_DELAY_ABS_SECONDS}
+    ) AS readings
+    WHERE local_date BETWEEN :start AND :end
+    GROUP BY kind, entity_id, route_id
+"""
+_OFFENDER_DAY = re.compile(
+    r"historic/history/repeat_offenders/generations/[0-9a-f]{64}/(\d{4}-\d{2}-\d{2})\.json"
+)
+
+
+def test_repeat_offender_dates_are_the_windows_their_counts_cover(published):
+    """Each published period names the local dates its figures were counted over.
+
+    The current file closes on the newest day of its source table, a retained day on its own date.
+    The 2025-07-03 day's month starts on 2025-06-04, the day after a capture, so a start one day
+    early would count that capture too.
+    """
+    spans = {"week": 7, "month": 30}
+    figures = ("observation_count", "severe_count", "observed_days", "recurrence_days")
+    checked: dict[str, int] = {}
+    with published.engine.connect() as conn:
+        for label, provider_id in seed.PROVIDERS.items():
+            files = published.files[label]
+            # Live captures sit on today's date but are never rolled up into the source table.
+            latest = conn.execute(
+                text(
+                    "SELECT MAX(provider_local_date) FROM gold.repeat_offender_daily_spine"
+                    " WHERE provider_id = :p"
+                ),
+                {"p": provider_id},
+            ).scalar_one()
+            closes = {"historic/repeat_offenders.json": latest.isoformat()}
+            closes |= {
+                key: match.group(1) for key in files if (match := _OFFENDER_DAY.fullmatch(key))
+            }
+            for key, close in closes.items():
+                for grain in json.loads(files[key])["by_grain"]:
+                    where = f"{label}/{key} {grain['grain']}"
+                    start, end = grain.get("date"), grain.get("window_end")
+                    assert end == close, where
+                    assert date.fromisoformat(start).isoformat() == start, where
+                    span = (date.fromisoformat(end) - date.fromisoformat(start)).days + 1
+                    assert span == spans[grain["grain"]] == grain["window_days"], where
+                    readings = conn.execute(
+                        text(_OFFENDER_READINGS_SQL),
+                        {"p": provider_id, "start": start, "end": end},
+                    ).mappings()
+                    counted = {
+                        (r["kind"], r["entity_id"], r["route_id"]): tuple(r[f] for f in figures)
+                        for r in readings
+                    }
+                    family = "current" if key == "historic/repeat_offenders.json" else "retained"
+                    for row in grain["entries"] + grain["tray"]:
+                        identity = (row["type"], row["id"], row["route"])
+                        assert counted.get(identity) == tuple(row[f] for f in figures), where
+                        checked[family] = checked.get(family, 0) + 1
+    assert checked.get("current", 0) > 0 and checked.get("retained", 0) > 0, checked
 
 
 @pytest.fixture(scope="module")
