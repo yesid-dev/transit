@@ -620,6 +620,10 @@ describe('StopDetail article contract', () => {
 			'href',
 			'/stop/57191?tab=detail#stop-detail-notices',
 		);
+		// The strip arrives with the live report after first paint, so it follows the answer.
+		expect(answer()!.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+			Node.DOCUMENT_POSITION_FOLLOWING,
+		);
 		// The answer leads the record, ahead of the reliability sections.
 		const pane = container.querySelector('[data-slot="reliability-pane"]') as HTMLElement;
 		expect(answer()!.compareDocumentPosition(pane) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(

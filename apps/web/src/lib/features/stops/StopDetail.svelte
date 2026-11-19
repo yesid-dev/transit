@@ -54,6 +54,7 @@
 	import { presentStopRecord } from './stopRecord';
 	import { stopAccess, stopNotices } from './stopIdentity';
 	import StopIdentity from './StopIdentity.svelte';
+	import StopCurrentNotice from './StopCurrentNotice.svelte';
 	import StopRecordAnswer from './StopRecordAnswer.svelte';
 	import StopLivePredictions from './StopLivePredictions.svelte';
 	import { presentStopLive, type StopLiveOrder } from './stopPredictions';
@@ -397,15 +398,7 @@
 
 {#snippet stopSummary(onRecord: boolean)}
 	<div class="stop-summary" data-slot="stop-summary">
-		<StopIdentity
-			{locale}
-			lines={servedLines}
-			{access}
-			{operator}
-			current={alertsAvailable && !onLive ? notices.current : []}
-			{noticeHref}
-			record={onRecord}
-		/>
+		<StopIdentity {locale} lines={servedLines} {access} />
 		{#if onRecord}
 			<StopRecordAnswer
 				view={recordAnswer}
@@ -417,6 +410,14 @@
 			/>
 			{@render historicStatus()}
 		{/if}
+		<!-- Last: the live alert report lands after first paint and must not push the answer. -->
+		<StopCurrentNotice
+			{locale}
+			{operator}
+			current={alertsAvailable && !onLive ? notices.current : []}
+			{noticeHref}
+			record={onRecord}
+		/>
 	</div>
 {/snippet}
 

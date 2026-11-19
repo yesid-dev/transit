@@ -5,6 +5,7 @@ import {
 	retainedDelayHeadline,
 	wilsonInterval,
 	isProblemVerdict,
+	lateShareBounds,
 	type VerdictHeadline,
 	type ReliabilityWindow,
 } from './verdict';
@@ -759,4 +760,45 @@ it('honours an explicit stop kind over route-shaped fields', () => {
 			{ kind: 'stop' },
 		),
 	).toMatchObject({ otpPct: 85, observationCount: 100 });
+});
+
+describe('the late share interval, at the figure’s precision', () => {
+	it('reads STM 62606 as 1.3% within 1.1–1.4%, never 1–1%', () => {
+		// 272 of 21,529 known predictions more than five minutes late; Wilson 1.123–1.422 %.
+		const n = 21529;
+		const late = verdictForWindow(reading({ ...h(98.7, n, n - 272) }, 'week')).late;
+		expect(late).toEqual({ pct: 1.3, lo: 1.1, hi: 1.4 });
+	});
+
+	it('holds every shown figure from counts, across sizes and shares', () => {
+		for (const n of [30, 31, 99, 120, 777, 4000, 21529])
+			for (let late = 0; late <= n; late += Math.max(1, Math.floor(n / 97))) {
+				const figures = verdictForWindow(reading({ ...h(50, n, n - late) }, 'week')).late;
+				expect(figures.lo, `${late}/${n}`).toBeLessThanOrEqual(figures.pct!);
+				expect(figures.hi, `${late}/${n}`).toBeGreaterThanOrEqual(figures.pct!);
+				// One decimal, the figure's own precision.
+				for (const bound of [figures.lo!, figures.hi!])
+					expect(Math.abs(bound * 10 - Math.round(bound * 10))).toBeLessThan(1e-9);
+			}
+	});
+
+	it('rounds half away from zero, like the figure', () => {
+		// On-time bounds 72.35–94.85 → late 5.15–27.65: both ties round up.
+		expect(lateShareBounds({ lo: 72.35, hi: 94.85 }, 10)).toEqual({ lo: 5.2, hi: 27.7 });
+		expect(lateShareBounds({ lo: 46.18, hi: 72.39 }, 39.6)).toEqual({ lo: 27.6, hi: 53.8 });
+	});
+
+	it('rounds a bound outward when half-up would exclude the shown figure', () => {
+		// Late 1.26–1.44 would round to 1.3; a figure shown as 1.2 stays inside at 1.2.
+		expect(lateShareBounds({ lo: 98.56, hi: 98.74 }, 1.24)).toEqual({ lo: 1.2, hi: 1.4 });
+		// Late 6.02–6.84 would end at 6.8; a figure shown as 6.9 stays inside at 6.9.
+		expect(lateShareBounds({ lo: 93.16, hi: 93.98 }, 6.86)).toEqual({ lo: 6.0, hi: 6.9 });
+		// No figure: plain half-up rounding.
+		expect(lateShareBounds({ lo: 98.56, hi: 98.74 }, null)).toEqual({ lo: 1.3, hi: 1.4 });
+	});
+
+	it('stays within 0–100 at the edges', () => {
+		expect(lateShareBounds({ lo: 88.65, hi: 100 }, 0)).toEqual({ lo: 0, hi: 11.4 });
+		expect(lateShareBounds({ lo: 0, hi: 3.2 }, 100)).toEqual({ lo: 96.8, hi: 100 });
+	});
 });

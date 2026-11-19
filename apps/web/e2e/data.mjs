@@ -282,6 +282,9 @@ for (const family of ['static/routes', 'historic/route_reliability']) {
 		files[`/v1/octranspo/${family}/9002.json`] = shared;
 	}
 }
+// A stop the server cannot read (not a stop file), so the page renders without it and the
+// browser loads it: the layout spec serves the real file there, late.
+files['/v1/stm/static/stops/UNSEEDED.json'] = '{}';
 
 const server = createServer((request, response) => {
 	// No Date header: the app anchors its clock to it, which would undo page.clock.

@@ -7,6 +7,7 @@ const labels = {
 	severeShare: 'Severe',
 	avgDelay: 'Avg delay',
 	weekdayLabel: (iso: number) => `D${iso}`,
+	locale: 'en' as const,
 };
 
 describe('selectWeekdaySeasonality', () => {

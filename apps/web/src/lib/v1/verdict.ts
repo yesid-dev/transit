@@ -5,6 +5,7 @@ import { formatDateKey } from '#lib/utils/time.ts';
 import { DEFAULT_LOCALE, PUBLISHED_LOCALES } from '#lib/i18n/config.ts';
 import { isClosedDay, routeClosedThrough, trailingRouteWindow } from './closedWindow';
 import { lateShareTenths } from '#lib/features/stops/lateShare.ts';
+import { roundHalfAwayFromZero } from '#lib/utils/rounding.ts';
 import type { RouteReliability } from './index';
 
 export type VerdictStatus = 'reliable' | 'patchy' | 'unreliable' | 'tentative' | 'absent';
@@ -27,7 +28,8 @@ export interface VerdictHeadline {
  * The same headline read the other way: the share more than five minutes late and its nominal
  * interval. From counts, the share is exact tenths rounded as the publisher rounds (ruling 6);
  * otherwise the publisher's late share, else the complement of its published share. The interval
- * is the complement of the unrounded bounds, rounded once.
+ * is the complement of the unrounded bounds, rounded once to the figure's own one decimal, and
+ * always holds the shown figure (ruling 6).
  */
 export interface LateFigures {
 	readonly pct: number | null;
@@ -398,12 +400,34 @@ function lateFigures(
 				: headline.otpPct != null && Number.isFinite(headline.otpPct)
 					? 100 - headline.otpPct
 					: null;
-	const bounds = result.bounds;
-	return {
-		pct,
-		lo: bounds ? Math.round(100 - bounds.hi) : null,
-		hi: bounds ? Math.round(100 - bounds.lo) : null,
-	};
+	const bounds = result.bounds ? lateShareBounds(result.bounds, pct) : null;
+	return { pct, lo: bounds?.lo ?? null, hi: bounds?.hi ?? null };
+}
+
+const clampPct = (value: number): number => Math.min(100, Math.max(0, value));
+// 100 − 88.65 is 11.349999… in binary; nine decimals drop that noise before the one that shows.
+const complementPct = (value: number): number => clampPct(roundHalfAwayFromZero(100 - value, 9));
+
+/**
+ * The late share's interval from the unrounded on-time bounds (percent), at the shown figure's
+ * precision: one decimal, rounded as the figure is. Rounding both the same way keeps their order,
+ * but a figure from another source (a published share) can sit a hair outside; then that bound
+ * rounds outward instead, so rounding alone never puts the shown figure outside its interval.
+ */
+export function lateShareBounds(
+	onTime: { readonly lo: number; readonly hi: number },
+	figure: number | null,
+): { lo: number; hi: number } {
+	const lower = complementPct(onTime.hi);
+	const upper = complementPct(onTime.lo);
+	let lo = roundHalfAwayFromZero(lower, 1);
+	let hi = roundHalfAwayFromZero(upper, 1);
+	if (figure != null && Number.isFinite(figure)) {
+		const shown = roundHalfAwayFromZero(figure, 1);
+		if (lo > shown) lo = clampPct(Math.floor(lower * 10) / 10);
+		if (hi < shown) hi = clampPct(Math.ceil(upper * 10) / 10);
+	}
+	return { lo, hi };
 }
 
 function formatVerdict(

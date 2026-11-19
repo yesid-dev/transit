@@ -19,6 +19,12 @@ const lateFigure = (late: LateFigures, locale: Locale): string =>
 		: intl
 				.number(locale, { style: 'percent', maximumFractionDigits: 1 })
 				.format(roundHalfAwayFromZero(late.pct, 1) / 100);
+// The interval's bounds at the figure's own precision, one decimal ("1.1–1.4", never "1–1").
+const lateBounds = (late: LateFigures, locale: Locale): string => {
+	const format = intl.number(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+	const bound = (value: number | null) => (value == null ? '' : format.format(value));
+	return `${bound(late.lo)}–${bound(late.hi)}`;
+};
 
 export const stopReliabilityCopy = defineCopy({
 	fr: {
@@ -93,7 +99,7 @@ export const stopReliabilityCopy = defineCopy({
 			patchy: predictionShare.fr,
 			unreliable: predictionShare.fr,
 			tentative: ({ window, n, late }) =>
-				`Dans ce résumé ${window}, ${lateFigure(late, 'fr')} de ${n} prévisions connues ont plus de cinq minutes de retard. Bornes de Wilson nominales à 95\u00a0%\u00a0: ${late.lo}–${late.hi}\u00a0%\u00a0; les relevés peuvent être dépendants.`,
+				`Dans ce résumé ${window}, ${lateFigure(late, 'fr')} de ${n} prévisions connues ont plus de cinq minutes de retard. Bornes de Wilson nominales à 95\u00a0%\u00a0: ${lateBounds(late, 'fr')}\u00a0%\u00a0; les relevés peuvent être dépendants.`,
 			unknownCount: () =>
 				'Relevés insuffisants pour juger la fiabilité : nombre d’observations inconnu.',
 			unavailableInterval: (window, n) =>
@@ -102,7 +108,7 @@ export const stopReliabilityCopy = defineCopy({
 				`Ce résumé ${window} contient seulement ${n} prévisions connues admissibles.`,
 			absent: 'Aucune prévision de retard admissible dans ce résumé.',
 			hedgeCI: (_otp, _lo, _hi, late) =>
-				` (${lateFigure(late, 'fr')}\u00a0; Wilson nominal à 95\u00a0%\u00a0: ${late.lo}–${late.hi}\u00a0%, relevés potentiellement dépendants)`,
+				` (${lateFigure(late, 'fr')}\u00a0; Wilson nominal à 95\u00a0%\u00a0: ${lateBounds(late, 'fr')}\u00a0%, relevés potentiellement dépendants)`,
 		} satisfies VerdictCopy,
 		percentiles: {
 			heading: 'Retard habituel',
@@ -291,7 +297,7 @@ export const stopReliabilityCopy = defineCopy({
 			patchy: predictionShare.en,
 			unreliable: predictionShare.en,
 			tentative: ({ window, n, late }) =>
-				`In this ${window}, ${lateFigure(late, 'en')} of ${n} known predictions are more than five minutes late. Nominal 95% Wilson bounds: ${late.lo}–${late.hi}%; readings may be dependent.`,
+				`In this ${window}, ${lateFigure(late, 'en')} of ${n} known predictions are more than five minutes late. Nominal 95% Wilson bounds: ${lateBounds(late, 'en')}%; readings may be dependent.`,
 			unknownCount: () =>
 				'Not enough delay observations to judge reliability: observation count unknown.',
 			unavailableInterval: (window, n) =>
@@ -299,7 +305,7 @@ export const stopReliabilityCopy = defineCopy({
 			tooFew: (window, n) => `This ${window} contains only ${n} eligible known predictions.`,
 			absent: 'No eligible predicted-delay readings in this summary.',
 			hedgeCI: (_otp, _lo, _hi, late) =>
-				` (${lateFigure(late, 'en')}; nominal 95% Wilson: ${late.lo}–${late.hi}%, potentially dependent readings)`,
+				` (${lateFigure(late, 'en')}; nominal 95% Wilson: ${lateBounds(late, 'en')}%, potentially dependent readings)`,
 		} satisfies VerdictCopy,
 		percentiles: {
 			heading: 'Typical delay',

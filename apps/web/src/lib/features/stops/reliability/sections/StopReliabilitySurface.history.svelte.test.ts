@@ -342,8 +342,8 @@ describe('StopReliabilitySurface retained Stop history', () => {
 			const view = renderSurface(history, locale);
 			await waitFor(() => expect(history.state).toBe('ready'));
 			const detail = view.container.querySelector('[data-slot="stop-percentiles"]');
-			expect(detail).toHaveTextContent('0.5 min');
-			expect(detail).toHaveTextContent('3.0 min');
+			expect(detail).toHaveTextContent(locale === 'fr' ? '0,5 min' : '0.5 min');
+			expect(detail).toHaveTextContent(locale === 'fr' ? '3,0 min' : '3.0 min');
 			expect(detail).toHaveTextContent(
 				locale === 'fr' ? 'Écart p90 − médiane : 2,5 min.' : 'p90 − median spread: 2.5 min.',
 			);

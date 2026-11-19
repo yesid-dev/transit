@@ -1,4 +1,5 @@
 import { DELAY_DOW_DOMAIN } from '#lib/features/reliability/shiftGrains.ts';
+import { fmtDelayMin, fmtLocalePct, type FormatLang } from '#lib/utils/format.ts';
 import type { SeverityCode, RouteDayOfWeek } from '#lib/v1/schemas/index.ts';
 
 export const MIN_WEEKDAY_SEVERE_OBSERVATIONS = 5;
@@ -19,6 +20,8 @@ export interface WeekdaySeasonalityLabels {
 	severeShare: string;
 	avgDelay: string;
 	weekdayLabel: (iso: number) => string;
+	/** Figures in the reader's locale: "6,5 min" and "20,0 %" in French. */
+	locale: FormatLang;
 }
 
 export function selectWeekdaySeasonality(
@@ -47,13 +50,13 @@ export function selectWeekdaySeasonality(
 				rank: i + 1,
 				title: labels.weekdayLabel(r.iso),
 				subtitle: severeTrusted
-					? `${labels.severeShare} ${r.severePct!.toFixed(1)}%`
+					? `${labels.severeShare} ${fmtLocalePct(r.severePct, labels.locale, { rounding: 'fixed1' })}`
 					: labels.avgDelay,
 				severity,
 				value: r.delay,
 				domain: DELAY_DOW_DOMAIN,
 				unit: ' min',
-				display: `${r.delay.toFixed(1)} min`,
+				display: fmtDelayMin(r.delay, { locale: labels.locale, rounding: 'fixed1' })!,
 			};
 		});
 }

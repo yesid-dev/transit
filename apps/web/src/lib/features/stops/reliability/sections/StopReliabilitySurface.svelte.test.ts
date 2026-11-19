@@ -297,6 +297,62 @@ describe('StopReliabilitySurface — responsive left-rail structure (P5.4)', () 
 		).toHaveAttribute('href', '/lines/51');
 	});
 
+	it.each(['en', 'fr'] as const)(
+		'gives a one-line stop its dated value without a rank in %s',
+		async (locale) => {
+			const view = render(StopReliabilitySurface, {
+				props: { data, locale, recordWindow: { from: '2026-11-04', to: '2026-11-10' } },
+			});
+			const section = await openSection(
+				view.container,
+				'stop-rel-by-route',
+				locale === 'en' ? 'Avg delay by line' : 'Retard moyen par ligne',
+			);
+			expect(section.querySelector('[data-slot="by-route-window"]')).toHaveTextContent(
+				locale === 'en' ? 'November 4 to 10, 2026' : 'du 4 au 10 novembre 2026',
+			);
+			expect(section.querySelector('.dv-rank')).toBeNull();
+			expect(section.querySelector('[data-slot="stop-by-route"] li')).toHaveTextContent(
+				locale === 'en' ? '6.0 min' : '6,0 min',
+			);
+		},
+	);
+
+	it('keeps ranking several lines, undated', async () => {
+		const view = render(StopReliabilitySurface, {
+			props: {
+				data: {
+					...data,
+					by_route: [
+						{ route: '51', avg_delay_min: 6 },
+						{ route: '80', avg_delay_min: 2.5 },
+					],
+				},
+				locale: 'en',
+				recordWindow: { from: '2026-11-04', to: '2026-11-10' },
+			},
+		});
+		const section = await openSection(view.container, 'stop-rel-by-route', 'Avg delay by line');
+		expect(section.querySelector('[data-slot="by-route-window"]')).toBeNull();
+		expect(
+			Array.from(section.querySelectorAll('.dv-rank')).map((rank) => rank.textContent?.trim()),
+		).toEqual(['1', '2']);
+	});
+
+	it('writes the pane’s minutes with a French decimal comma', async () => {
+		mockUrl = new URL('http://localhost/stop/57191?grain=week');
+		const view = render(StopReliabilitySurface, {
+			props: {
+				data: { ...data, periods: [{ grain: 'week', otp_pct: 71, avg_delay_min: 0.3 }] },
+				locale: 'fr',
+			},
+		});
+		const section = await openSection(view.container, 'stop-rel-pane', 'Prévisions de retard');
+		const pane = section.querySelector('[data-slot="reliability-pane"]') as HTMLElement;
+		expect(pane.textContent).toContain('0,3 min');
+		expect(pane.textContent).not.toContain('0.3');
+	});
+
 	it('shows the first five lines, then all of them on request, in the same order', async () => {
 		const routes = ['10', '17', '24', '31', '38', '45', '52'].map((route, index) => ({
 			route,
@@ -569,10 +625,10 @@ describe('StopReliabilitySurface prediction-share verdict', () => {
 			);
 			expect(banner).toHaveAttribute('data-status', 'tentative');
 			const sentence = banner?.querySelector('p')?.textContent ?? '';
-			// The late share and its interval: 100 − 87, and 100 − 91.6 to 100 − 79.4, rounded once.
+			// The late share and its interval: 100 − 87, and 100 − 91.6 to 100 − 79.4, at one decimal.
 			expect(sentence).toContain(locale === 'en' ? '13%' : '13\u00a0%');
 			expect(sentence).toContain('120');
-			expect(sentence).toContain('8–21');
+			expect(sentence).toContain(locale === 'en' ? '8.4–20.6%' : '8,4–20,6\u00a0%');
 			expect
 				.soft(sentence)
 				.toMatch(
@@ -646,8 +702,8 @@ describe('StopReliabilitySurface section 02 states the record answer’s measure
 			const sentence = banner?.querySelector('p')?.textContent ?? '';
 			expect(sentence).toMatch(
 				locale === 'en'
-					? /about 4 in 10 known predictions are more than five minutes late \(39\.6%; nominal 95% Wilson: 28–54%/
-					: /environ 4 prévisions connues sur 10 ont plus de cinq minutes de retard \(39,6\u00a0%\u00a0; Wilson nominal à 95\u00a0%\u00a0: 28–54\u00a0%/,
+					? /about 4 in 10 known predictions are more than five minutes late \(39\.6%; nominal 95% Wilson: 27\.6–53\.8%/
+					: /environ 4 prévisions connues sur 10 ont plus de cinq minutes de retard \(39,6\u00a0%\u00a0; Wilson nominal à 95\u00a0%\u00a0: 27,6–53,8\u00a0%/,
 			);
 			const pane = section.querySelector('[data-slot="reliability-pane"]') as HTMLElement;
 			expect(pane.textContent).toContain(figure);

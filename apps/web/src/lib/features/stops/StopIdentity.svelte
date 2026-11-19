@@ -3,25 +3,18 @@
 	import { getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
 	import { routeFor } from '#lib/nav/index.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
-	import { alertDisplayText, alertLanguageNotice } from '#lib/v1/alertDisplay.ts';
-	import type { StopAccess, StopNotice } from './stopIdentity';
+	import type { StopAccess } from './stopIdentity';
 	import { detailCopy } from './stops.copy';
 
 	interface Props {
 		locale: Locale;
 		/** Lines serving the stop, as published; null while the stop file is unavailable. */
 		lines: readonly string[] | null;
+		/** Null while the stop file loads. */
 		access: StopAccess | null;
-		operator: string;
-		/** Notices in effect now, those naming the stop first. */
-		current: readonly StopNotice[];
-		/** Where "Read the notice" leads: the Live now view's notices section. */
-		noticeHref: string;
-		/** On the record, say that a current notice does not explain the historic result. */
-		record: boolean;
 	}
 
-	let { locale, lines, access, operator, current, noticeHref, record }: Props = $props();
+	let { locale, lines, access }: Props = $props();
 
 	const { line } = transitDisplay();
 	const uid = $props.id();
@@ -36,23 +29,22 @@
 					? t.identity.accessUnknown
 					: null,
 	);
-	const lead = $derived(current[0] ?? null);
-	const leadText = $derived(lead ? alertDisplayText(lead.alert, locale) : null);
-	const leadMarker = $derived(leadText ? alertLanguageNotice(leadText, locale) : null);
-	const listFormat = $derived(
-		new Intl.ListFormat(locale === 'fr' ? 'fr-CA' : 'en-CA', { type: 'conjunction' }),
-	);
-	const leadScope = $derived(
-		lead == null
-			? null
-			: lead.scope === 'stop'
-				? t.notices.scopeStop
-				: t.notices.scopeLines(lead.lines.length, listFormat.format(lead.lines.map(line))),
-	);
+	// Nothing is known yet: the row holds a typical row's room so its arrival moves nothing below.
+	const pending = $derived(lines == null && access == null);
 </script>
 
 <div class="stop-identity" data-slot="stop-identity" aria-label={t.identity.label} role="group">
 	<div class="stop-identity__row">
+		{#if pending}
+			<!-- An unseen one-line row with an access note holds the room, wrapping as one would. -->
+			<div class="stop-identity__served stop-identity__held" aria-hidden="true">
+				<span class="stop-identity__served-label">{t.info.routesServed}</span>
+				<span class="stop-identity__line"><span class="stop-identity__plate">000</span></span>
+			</div>
+			<p class="stop-identity__access stop-identity__held" aria-hidden="true">
+				<AccessibilityIcon />{t.info.wheelchairNo}
+			</p>
+		{/if}
 		{#if lines && lines.length > 0}
 			<div class="stop-identity__served">
 				<span class="stop-identity__served-label" id={`${uid}-lines`}>{t.info.routesServed}</span>
@@ -78,31 +70,6 @@
 			</p>
 		{/if}
 	</div>
-
-	{#if lead && leadText}
-		<aside
-			class="stop-identity__notice"
-			data-slot="stop-current-notice"
-			data-scope={lead.scope}
-			aria-labelledby={`${uid}-notice`}
-		>
-			<p class="stop-identity__notice-label" id={`${uid}-notice`}>
-				{current.length === 1
-					? t.notices.current(operator)
-					: t.notices.currentMany(current.length, operator)}
-			</p>
-			<p class="stop-identity__notice-text">
-				<span lang={leadText.lang ?? undefined}>{leadText.text}</span>
-				{#if leadMarker}<span class="stop-identity__marker">{leadMarker}</span>{/if}
-			</p>
-			<p class="stop-identity__notice-scope">
-				{record ? `${leadScope} ${t.notices.notHistoric}` : leadScope}
-			</p>
-			<a class="stop-identity__notice-link" href={noticeHref}>
-				{current.length === 1 ? t.notices.readOne : t.notices.readMany(current.length)}
-			</a>
-		</aside>
-	{/if}
 </div>
 
 <style>
@@ -119,6 +86,9 @@
 		justify-content: space-between;
 		gap: 0.5rem 1.5rem;
 		min-width: 0;
+	}
+	.stop-identity__held {
+		visibility: hidden;
 	}
 	.stop-identity__served {
 		display: flex;
@@ -180,53 +150,5 @@
 		inline-size: 1.125rem;
 		block-size: 1.125rem;
 		flex: none;
-	}
-	.stop-identity__notice {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr);
-		gap: 0.25rem;
-		padding-block: 0.75rem;
-		border-block: 1px solid var(--border);
-	}
-	.stop-identity__notice p {
-		margin: 0;
-		max-width: var(--measure-lede);
-	}
-	.stop-identity__notice-label {
-		font-size: var(--text-small);
-		font-weight: 600;
-		color: var(--foreground);
-	}
-	.stop-identity__notice-text {
-		font-size: var(--text-body);
-		line-height: 1.45;
-	}
-	.stop-identity__marker {
-		margin-inline-start: 0.375rem;
-		color: var(--muted-foreground);
-		font-size: var(--text-small);
-	}
-	.stop-identity__notice-scope {
-		color: var(--muted-foreground);
-		font-size: var(--text-small);
-		line-height: 1.5;
-	}
-	.stop-identity__notice-link {
-		justify-self: start;
-		display: inline-flex;
-		align-items: center;
-		min-block-size: var(--size-tap-min);
-		color: var(--primary);
-		font-size: var(--text-small);
-		text-decoration: underline;
-		text-underline-offset: 0.2em;
-	}
-	.stop-identity__notice-link:hover {
-		text-decoration-thickness: 2px;
-	}
-	.stop-identity__notice-link:focus-visible {
-		outline: 2px solid var(--ring);
-		outline-offset: 2px;
-		border-radius: var(--radius-sm);
 	}
 </style>

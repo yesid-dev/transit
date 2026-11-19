@@ -66,7 +66,7 @@
 	const t = $derived(L[locale]);
 
 	const min = (v: number | null | undefined): string | null =>
-		fmtDelayMin(v, { rounding: 'fixed1' });
+		fmtDelayMin(v, { locale, rounding: 'fixed1' });
 
 	const lateSeries = $derived(periods.map((p) => p.latePct));
 
