@@ -456,7 +456,7 @@
 								</div>
 							{/key}
 						{/if}
-						<SiteFooter tagline={footer.tagline(footerAgency)} groups={footerGroups}>
+						<SiteFooter edge="hazard" tagline={footer.tagline(footerAgency)} groups={footerGroups}>
 							{#snippet brand()}
 								<BrandCluster productHref={localizeHref('/', locale, data.providerId)} />
 							{/snippet}
