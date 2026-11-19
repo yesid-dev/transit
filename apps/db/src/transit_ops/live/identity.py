@@ -21,6 +21,7 @@ import duckdb
 
 from transit_ops.live.local_file import LocalFile, LocalFileMismatch, _table_shape
 from transit_ops.live.segments import provider_has_exported_segments
+from transit_ops.live.watermark import identity_history_witnessed
 from transit_ops.static.alert_seed_contract import AlertSeed
 
 if TYPE_CHECKING:
@@ -276,13 +277,6 @@ def verify_identity_floors(
 
 def identity_watermark_path(database: Path) -> Path:
     return Path(str(database) + ".identity.json")
-
-
-def _committed_watermark_paths(database: Path) -> tuple[Path, Path]:
-    return (
-        Path(str(database) + ".committed.json"),
-        Path(str(database) + ".committed.invalid"),
-    )
 
 
 def _database_path(local: LocalFile, override: Path | None = None) -> Path | None:
@@ -582,7 +576,8 @@ class IdentityAllocator:
         if db_path is not None:
             if identity_watermark_path(db_path).exists():
                 raise IdentityRefused("identity_history_exists")
-            if any(marker.exists() for marker in _committed_watermark_paths(db_path)):
+            # Live ruling 27a: an all-zero identity watermark is a PostgreSQL-ingress file.
+            if identity_history_witnessed(db_path, provider_id=self.provider_id):
                 raise IdentityRefused("identity_history_exists")
 
     def _verify_against_identity_watermark(

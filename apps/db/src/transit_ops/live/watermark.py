@@ -14,6 +14,10 @@ until the worker loop's next one.
 watermark write fails (before the old one is removed, which Windows can refuse while
 another process holds it) and before an adoption replaces the file, and only a later
 successful write clears it. Either way the next reopen is unmeasured, never a pass.
+
+A reopen that finds the file gone under a sound watermark lost every row it witnessed
+(live ruling 26a). The marker then keeps that watermark's bytes, so a first local install
+can still tell a file that never allocated a local identity (live ruling 27a).
 """
 
 import json
@@ -119,14 +123,16 @@ def _write_synced(path: Path, payload: bytes) -> None:
         os.fsync(handle.fileno())
 
 
-def invalidate_watermark(database: Path) -> bool:
+def invalidate_watermark(database: Path, *, keep: bytes = b"") -> bool:
     """Make the next reopen unmeasured: mark first, then remove the old watermark.
 
-    False (logged by name) only when neither held, so a stale watermark may remain.
+    ``keep`` is the removed watermark's bytes, kept in the marker only as identity evidence
+    (live ruling 27a); any marker means no watermark witnesses the file. False (logged by
+    name) only when neither held, so a stale watermark may remain.
     """
     marked = True
     try:
-        _write_synced(invalid_marker_path(database), b"")
+        _write_synced(invalid_marker_path(database), keep)
     except OSError as exc:
         marked = False
         logger.error("live_committed_watermark_unmarkable:%s", type(exc).__name__)
@@ -167,16 +173,28 @@ def write_committed_watermark(
     return True
 
 
-def _read(database: Path, provider_id: str) -> Mapping[str, int] | str:
-    """The watermark's state, or the name of why it cannot witness the dead worker."""
-    if invalid_marker_path(database).exists():
-        return "invalidated"
+def _read_bytes(path: Path) -> bytes | str:
     try:
-        document = json.loads(committed_watermark_path(database).read_bytes())
+        return path.read_bytes()
     except FileNotFoundError:
         return "missing"
     except OSError:
         return "unreadable"
+
+
+def _read(database: Path, provider_id: str) -> tuple[Mapping[str, int] | str, bytes]:
+    """The watermark's state, or the name of why it cannot witness the dead worker."""
+    if invalid_marker_path(database).exists():
+        return "invalidated", b""
+    payload = _read_bytes(committed_watermark_path(database))
+    if isinstance(payload, str):
+        return payload, b""
+    return _parse(payload, provider_id), payload
+
+
+def _parse(payload: bytes, provider_id: str) -> Mapping[str, int] | str:
+    try:
+        document = json.loads(payload)
     except ValueError:
         return "torn"
     if not isinstance(document, dict) or set(document) != {
@@ -207,7 +225,7 @@ def verify_committed(database: Path, local: LocalFile, *, provider_id: str) -> i
     sound watermark witnesses what the dead worker committed; the gate then reads the
     restart as ``measurement_unavailable``.
     """
-    watermark = _read(database, provider_id)
+    watermark, _ = _read(database, provider_id)
     if isinstance(watermark, str):
         logger.warning("live_committed_watermark_unavailable:%s", watermark)
         return None
@@ -216,7 +234,42 @@ def verify_committed(database: Path, local: LocalFile, *, provider_id: str) -> i
     except Exception as exc:  # noqa: BLE001 - an unread state is unmeasured, never a pass
         logger.warning("live_committed_watermark_unavailable:%s", type(exc).__name__)
         return None
+    return _deficit(watermark, state)
+
+
+def _deficit(watermark: Mapping[str, int], state: Mapping[str, int]) -> int:
     rows = sum(max(0, watermark[m] - state[m]) for m in MEASURES if m not in POSITIONS)
     allocations = (watermark[m] - state[m] for m in ALLOCATIONS)
     behind = any(watermark[m] > state[m] for m in POSITIONS)
     return max(rows, *allocations, int(behind))
+
+
+def verify_vanished(database: Path, *, provider_id: str) -> tuple[int | None, bytes]:
+    """Live ruling 26a: the reopen found no file. What its watermark witnessed is lost.
+
+    Returns at least how many committed rows a sound watermark witnessed (at least one: it
+    witnessed a committed file), with its bytes for the marker that will replace it; None,
+    logged by name, when no sound watermark exists, so the restart stays unmeasured.
+    """
+    watermark, payload = _read(database, provider_id)
+    if isinstance(watermark, str):
+        logger.warning("live_committed_watermark_unavailable:%s", watermark)
+        return None, b""
+    return max(1, _deficit(watermark, dict.fromkeys(MEASURES, 0))), payload
+
+
+def identity_history_witnessed(database: Path, *, provider_id: str) -> bool:
+    """Live ruling 27a: whether a committed watermark beside ``database`` may hold identity.
+
+    Only a sound watermark (current, or kept in the marker when its file vanished) whose
+    identity measures are all zero witnesses none: a PostgreSQL-ingress file. Any other
+    watermark or marker present (torn, empty, another format or provider) fails closed.
+    """
+    for path in (committed_watermark_path(database), invalid_marker_path(database)):
+        payload = _read_bytes(path)
+        if payload == "missing":
+            continue
+        state = payload if isinstance(payload, str) else _parse(payload, provider_id)
+        if isinstance(state, str) or any(state[m] for m in _IDENTITY_MEASURES):
+            return True
+    return False

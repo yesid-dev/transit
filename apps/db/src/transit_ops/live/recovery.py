@@ -25,7 +25,11 @@ from transit_ops.live.local_file import SCHEMA_VERSION, LocalFile, PathReservati
 from transit_ops.live.recording import Recorder
 from transit_ops.live.segments import SEGMENT_FORMAT_VERSION, Segment, read_segment
 from transit_ops.live.settings import LaneSettings
-from transit_ops.live.watermark import committed_watermark_path, invalidate_watermark
+from transit_ops.live.watermark import (
+    committed_watermark_path,
+    invalid_marker_path,
+    invalidate_watermark,
+)
 from transit_ops.silver.i3 import RawI3AlertSnapshot
 from transit_ops.static.alert_apply import apply_alert_snapshot
 from transit_ops.static.alert_seed_contract import TABLES as ALERT_TABLES
@@ -722,14 +726,19 @@ def open_worker_file(
 
     With ``restart_evidence``, opening an existing file, its WAL or a pending adoption is
     a reopen: one restart record is appended there whatever the outcome, and a record
-    that cannot be written is logged, never raised. Initial creation is not a restart.
+    that cannot be written is logged, never raised. Initial creation is not a restart;
+    finding none of them beside a watermark, marker or earlier restart record is a reopen
+    of a vanished file (live ruling 26a), recorded before the file is recreated.
     """
     open_file = partial(LocalFile.open, path, provider_id=provider_id, settings=settings)
     traces = (path, *(Path(str(path) + s) for s in (".wal", ".recovery-pending")))
-    if restart_evidence is None or not any(p.exists() for p in traces):
-        if restart_evidence is not None and committed_watermark_path(path).exists():
-            invalidate_watermark(path)  # A watermark of a removed file witnesses nothing.
+    if restart_evidence is None:
         return open_file()
-    from transit_ops.live.admission import recorded_reopen
+    from transit_ops.live.admission import recorded_reopen, recorded_vanished
 
-    return recorded_reopen(open_file, path, provider_id=provider_id, evidence=restart_evidence)
+    if any(p.exists() for p in traces):
+        return recorded_reopen(open_file, path, provider_id=provider_id, evidence=restart_evidence)
+    witnesses = (committed_watermark_path(path), invalid_marker_path(path), restart_evidence)
+    if any(p.exists() for p in witnesses):
+        recorded_vanished(path, provider_id=provider_id, evidence=restart_evidence)
+    return open_file()

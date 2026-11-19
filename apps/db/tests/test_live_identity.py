@@ -529,6 +529,85 @@ def test_fresh_install_refuses_when_exported_segments_or_watermarks_exist(tmp_pa
                 )
 
 
+def installable_floors(tmp_path):
+    seed, _, seed_sha, _, floors_path, floors_sha = write_seed_and_floors(tmp_path)
+    floors = verify_identity_floors(
+        floors_path, expected_sha256=floors_sha, seed=seed, alert_seed_sha256=seed_sha
+    )
+    return seed, floors, floors_sha
+
+
+def install(path, seed, floors, floors_sha, local=None):
+    """A first local install on the worker file at ``path``."""
+    with closing(local or LocalFile.open(path, provider_id="network", settings=SETTINGS)) as local:
+        seed_alert_state(local, seed)
+        IdentityAllocator(local, provider_id="network", watermark_database=path).initialize(
+            floors, floors_sha256=floors_sha, seed=seed
+        )
+
+
+def committed_watermark_beside(path, *, install_floors=None):
+    """Write the worker file's committed watermark, then delete the file (and its WAL)."""
+    from transit_ops.live.watermark import write_committed_watermark
+
+    with closing(LocalFile.open(path, provider_id="network", settings=SETTINGS)) as local:
+        Recorder(local, provider_id="network").initialize(initial_run_id=0, seed_sha256="a" * 64)
+        if install_floors is not None:
+            seed, floors, floors_sha = install_floors
+            seed_alert_state(local, seed)
+            IdentityAllocator(local, provider_id="network").initialize(
+                floors, floors_sha256=floors_sha, seed=seed
+            )
+        at = datetime(2026, 6, 20, tzinfo=UTC)
+        assert write_committed_watermark(path, local, provider_id="network", cycle_at=at)
+    for trace in (path, path.with_name(path.name + ".wal")):
+        trace.unlink(missing_ok=True)
+
+
+@pytest.mark.parametrize("reopen", ["plain", "worker-restart"])
+def test_a_deleted_postgresql_ingress_file_never_counts_as_identity_history(tmp_path, reopen):
+    """Live ruling 27a: a committed watermark whose identity measures are all zero."""
+    from transit_ops.live.admission import restart_evidence_path
+    from transit_ops.live.recovery import open_worker_file
+
+    seed, floors, floors_sha = installable_floors(tmp_path)
+    path = tmp_path / "provider-network.duckdb"
+    committed_watermark_beside(path)  # PostgreSQL ingress: no identity tables, all zero.
+    local = None
+    if reopen == "worker-restart":  # Records the vanished file and invalidates its watermark.
+        evidence = restart_evidence_path(path)
+        evidence.write_text("", encoding="utf-8")
+        local = open_worker_file(
+            path, provider_id="network", settings=SETTINGS, restart_evidence=evidence
+        )
+    install(path, seed, floors, floors_sha, local)
+    with closing(LocalFile.open(path, provider_id="network", settings=SETTINGS)) as local:
+        row = local.connection.execute(
+            "SELECT next_id FROM local_identity_namespaces WHERE namespace='ingestion_run'"
+        ).fetchone()
+    assert row == (floors.ingestion_run_id + 1,)
+
+
+@pytest.mark.parametrize("reopen", ["plain", "worker-restart"])
+def test_a_deleted_local_file_whose_watermark_measured_identity_still_refuses(tmp_path, reopen):
+    from transit_ops.live.admission import restart_evidence_path
+    from transit_ops.live.identity import identity_watermark_path
+    from transit_ops.live.recovery import open_worker_file
+
+    seed, floors, floors_sha = installable_floors(tmp_path)
+    path = tmp_path / "provider-network.duckdb"
+    committed_watermark_beside(path, install_floors=(seed, floors, floors_sha))
+    identity_watermark_path(path).unlink()  # Only the committed watermark witnesses it.
+    local = None
+    if reopen == "worker-restart":
+        evidence = restart_evidence_path(path)
+        local = open_worker_file(
+            path, provider_id="network", settings=SETTINGS, restart_evidence=evidence
+        )
+    with pytest.raises(IdentityRefused, match="^identity_history_exists$"):
+        install(path, seed, floors, floors_sha, local)
+
+
 def test_reserve_caches_retained_maxima_per_scope(tmp_path, monkeypatch):
     from transit_ops.live import identity as identity_module
 
