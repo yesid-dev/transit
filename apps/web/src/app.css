@@ -23,6 +23,23 @@ html {
 	--layout-article-top-space: var(--space-card-gap);
 }
 
+/* Forced colours force HTML colours but not SVG fill and stroke, and Canvas follows the system
+   theme rather than the saved one. Chart marks would keep the saved theme's status colours, and
+   on time (the page ink) could vanish into Canvas. Inside SVG, every status mark takes the system
+   ink, as vehicle bodies on the map do. Shape, dash, position and the legend glyphs carry the
+   status. Separators and bands drawn in the card colour take Canvas. */
+@media (forced-colors: active) {
+	svg {
+		--dataviz-status-early: CanvasText;
+		--dataviz-status-on-time: CanvasText;
+		--dataviz-status-late: CanvasText;
+		--dataviz-status-severe: CanvasText;
+		--dataviz-status-unknown: CanvasText;
+		--card: Canvas;
+		--signage-bg: Canvas;
+	}
+}
+
 @media (prefers-reduced-motion: reduce) {
 	[data-slot='bottom-sheet'] {
 		animation: none;

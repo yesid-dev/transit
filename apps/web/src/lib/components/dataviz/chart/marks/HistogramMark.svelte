@@ -162,9 +162,15 @@
 	:global(rect.dv-histmark-early) {
 		fill: var(--dataviz-status-early);
 	}
+	/* Softened so the early and late tails lead; 0.55 keeps the bar at 3:1 on the light card. */
 	:global(rect.dv-histmark-ontime) {
 		fill: var(--dataviz-status-on-time);
-		opacity: 0.45;
+		opacity: 0.55;
+	}
+	@media (forced-colors: active) {
+		:global(rect.dv-histmark-ontime) {
+			opacity: 1;
+		}
 	}
 	:global(rect.dv-histmark-late) {
 		fill: var(--dataviz-status-late);
