@@ -592,6 +592,28 @@ test('the named sibling focus moves the camera and Escape returns to the list @t
 	await expect(page.locator('.map-reports-title').first()).toBeFocused();
 });
 
+test('Escape during the sibling flight keeps focus in the list when the opening row leaves @theme', async ({
+	page,
+}) => {
+	// With motion on, the list still shows the opening row when Escape returns focus to it.
+	// The camera then settles on the sibling, and that row leaves the list.
+	await page.emulateMedia({ reducedMotion: 'no-preference' });
+	await page.clock.install({ time: Date.parse(GENERATED) + 30_000 });
+	await serveFleet(page, () => fleet());
+	await page.goto(`${localizeHref(map, 'en')}?provider=stm&status=late`);
+	const reports = reportsCopy.en;
+	const panel = await openReports(page, 'en');
+	await panel.getByRole('button', { name: reports.selectVehicle('center-late') }).click();
+	await page.getByRole('button', { name: MAP_SELECTION_DETAIL_COPY.en.nextVehicle }).click();
+	await expect(page.getByRole('complementary', { name: /early-fallback/u })).toBeVisible();
+	await page.keyboard.press('Escape');
+	await expect(
+		panel.getByRole('button', { name: reports.selectVehicle('center-late') }),
+	).toBeFocused();
+	await expect(panel.locator('[data-report-select]')).toHaveCount(0);
+	await expect(page.locator('.map-reports-title').first()).toBeFocused();
+});
+
 test('loading, unavailable and retained states never show a reassuring zero @motion', async ({
 	page,
 }) => {

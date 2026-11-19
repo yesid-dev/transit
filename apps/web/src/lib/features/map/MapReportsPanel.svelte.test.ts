@@ -188,6 +188,24 @@ describe('map reports panel', () => {
 		await waitFor(() => expect(screen.queryByText('Link copied.')).toBeNull());
 	});
 
+	it('keeps keyboard focus in the panel when a newer view removes the focused row', async () => {
+		const { rerender } = renderPanel();
+		screen.getByRole('button', { name: 'Select vehicle bus-1' }).focus();
+
+		await rerender({ ...renderPanelProps(async () => true), view: view([]) });
+		expect(screen.getByRole('heading', { name: 'Reports in this view' })).toHaveFocus();
+	});
+
+	it('leaves focus outside the panel alone when its rows change', async () => {
+		const { rerender } = renderPanel();
+		const outside = document.body.appendChild(document.createElement('button'));
+		outside.focus();
+
+		await rerender({ ...renderPanelProps(async () => true), view: view([]) });
+		expect(outside).toHaveFocus();
+		outside.remove();
+	});
+
 	it('reports a clipboard failure honestly', async () => {
 		renderPanel({ copyLiveView: async () => false });
 		await fireEvent.click(screen.getByRole('button', { name: 'Copy live view link' }));
