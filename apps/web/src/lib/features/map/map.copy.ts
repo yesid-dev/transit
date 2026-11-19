@@ -93,7 +93,7 @@ export const copy = defineCopy({
 				`None for ${duration} or more. It can appear with any status.`,
 			heading: 'Direction of travel',
 			stop: 'Stop',
-			zoomBadges: 'Zoom in to see each bus’s status badge.',
+			zoomBadges: '◆ marks a severe delay at every zoom. Zoom in to see the other status badges.',
 			zoomCrowdingBadges: 'Zoom in to see each bus’s crowding badge.',
 		},
 		statusHelp: 'Tick a status to show only those buses.',
@@ -243,7 +243,8 @@ export const copy = defineCopy({
 				`Aucune depuis ${duration} ou plus. Peut accompagner n’importe quel état.`,
 			heading: 'Sens de déplacement',
 			stop: 'Arrêt',
-			zoomBadges: 'Zoomez pour voir le symbole de statut.',
+			zoomBadges:
+				'◆ signale un retard sévère à tout niveau de zoom. Zoomez pour voir les autres symboles de statut.',
 			zoomCrowdingBadges: 'Zoomez pour voir le symbole d’occupation.',
 		},
 		statusHelp: 'Cochez un état pour n’afficher que ces bus.',
