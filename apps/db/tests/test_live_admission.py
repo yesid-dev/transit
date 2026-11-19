@@ -3,6 +3,7 @@
 import json
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -18,6 +19,7 @@ from transit_ops.live.admission import (
     RestartObservation,
     ShadowRecord,
     Thresholds,
+    WindowCpu,
     classify_restart,
     evaluate,
     read_worker_log,
@@ -26,11 +28,15 @@ from transit_ops.live.admission import (
 from transit_ops.live.local_file import LocalFileLocked, LocalFileMismatch, LocalFileUnreadable
 from transit_ops.live.recovery import RecoveryRefused
 from transit_ops.operations.resource_plan import DISK_CATEGORIES, DiskItem, DiskPeak, ServicePeak
+from transit_ops.providers.registry import load_provider_manifest
+from transit_ops.realtime_schedule import worker_tick_seconds
 
 START = datetime(2026, 11, 20, 0, 0, tzinfo=UTC)
+WINDOW = timedelta(minutes=20)  # 60 ticks of 20 s.
 GIB = 2**30
 SHA = "a" * 64
 UNADJUDICATED = "publication:live/trips.json:unadjudicated"
+STM = Path(__file__).parents[1] / "config" / "providers" / "stm.yaml"
 
 
 def shadow(seconds, *, status="compared", reason=None, counts=None, rss=900 * 2**20):
@@ -39,7 +45,7 @@ def shadow(seconds, *, status="compared", reason=None, counts=None, rss=900 * 2*
         status,
         reason,
         counts or {},
-        {"edition": 7, "context_sha256": "c" * 64},
+        {"edition": 7, "context_sha256": "c" * 64, "public_keys_written": ["manifest.json"]},
         1.0,
         0.2,
         rss,
@@ -47,9 +53,17 @@ def shadow(seconds, *, status="compared", reason=None, counts=None, rss=900 * 2*
     )
 
 
-def cycle(seconds, record=..., *, status="succeeded", duration=4.0):
+def cycle(seconds, record=..., *, status="succeeded", duration=4.0, attempted=2, tick=20.0):
     record = shadow(seconds) if record is ... else record
-    return CycleRecord(START + timedelta(seconds=seconds), status, duration, record)
+    return CycleRecord(
+        START + timedelta(seconds=seconds), status, duration, record, attempted, tick
+    )
+
+
+def restart(*, provider="stm", at=START + timedelta(minutes=5), **changes):
+    return replace(
+        RestartObservation(provider, at, "committed", True, 0.4, True, None, 0), **changes
+    )
 
 
 def resources(rss=800 * 2**20):
@@ -61,21 +75,31 @@ def resources(rss=800 * 2**20):
     return ResourceEvidence((peak,), DiskPeak(items, {"worker-stm": 100_000}), "worker-stm")
 
 
+def window_cpu(cores=0.4, *, start=START, end=START + WINDOW):
+    return WindowCpu("worker-stm", cores, start, end, SHA)
+
+
 def bundle(**changes):
     base = EvidenceBundle(
         provider_id="stm",
         window_start=START,
-        window_end=START + timedelta(hours=1),
+        window_end=START + WINDOW,
         cycles=tuple(cycle(20 * n) for n in range(60)),
-        restarts=(RestartObservation("committed", True, 0.4, True, None, 0),),
+        restarts=(restart(),),
         cadence_seconds=20,
+        tick_seconds=20,
         resources=resources(),
+        window_cpu=window_cpu(),
     )
     return replace(base, **changes)
 
 
 def gate(verdict, name):
     return next(g for g in verdict.gates if g.gate == name)
+
+
+def every_cycle(counts, n=60):
+    return tuple(cycle(20 * i, shadow(20 * i, counts=counts)) for i in range(n))
 
 
 def test_clean_evidence_passes_every_gate_and_names_the_owner_approval():
@@ -92,18 +116,18 @@ def test_clean_evidence_passes_every_gate_and_names_the_owner_approval():
 
 
 @pytest.mark.parametrize(
-    ("observation", "category"),
+    ("changes", "category"),
     [
-        (RestartObservation("p", True, 0.4, True, None, 3), "lost_committed_row"),
+        ({"committed_rows_lost": 3}, "lost_committed_row"),
         (
-            RestartObservation("p", False, None, True, "failed_wal_replay", None),
+            {"reopened": False, "reopen_seconds": None, "refusal": "failed_wal_replay"},
             "failed_wal_replay",
         ),
-        (RestartObservation("p", True, 21.0, True, None, 0), "missed_restart_gate"),
+        ({"reopen_seconds": 21.0}, "missed_restart_gate"),
     ],
 )
-def test_each_ruling_12_trigger_fails_recovery_by_name(observation, category):
-    verdict = evaluate(bundle(restarts=(observation,)))
+def test_each_ruling_12_trigger_fails_recovery_by_name(changes, category):
+    verdict = evaluate(bundle(restarts=(restart(), restart(**changes))))
     recovery = gate(verdict, "recovery")
     assert recovery.outcome == "fail"
     assert recovery.reasons == (f"ruling_12:{category}",)
@@ -112,7 +136,7 @@ def test_each_ruling_12_trigger_fails_recovery_by_name(observation, category):
 
 
 def test_a_named_schema_refusal_fails_eligibility_without_a_fallback_trigger():
-    refused = RestartObservation("p", False, None, True, "schema_mismatch", None)
+    refused = restart(reopened=False, reopen_seconds=None, refusal="schema_mismatch")
     verdict = evaluate(bundle(restarts=(refused,)))
     assert gate(verdict, "recovery").reasons == ("refused:schema_mismatch",)
     assert verdict.display_dict()["ruling_12_triggers"] == []
@@ -144,39 +168,111 @@ def test_unmeasured_restarts_are_unavailable_never_a_pass():
     assert gate(evaluate(bundle(restarts=())), "recovery").reasons == (
         "restart_evidence_unavailable",
     )
-    unmeasured = RestartObservation("p", True, 0.4, True, None, None)
+    unmeasured = restart(committed_rows_lost=None)
     result = gate(evaluate(bundle(restarts=(unmeasured,))), "recovery")
     assert (result.outcome, result.reasons) == ("unavailable", ("measurement_unavailable",))
-    assert classify_restart(RestartObservation("p", True, 0.4, True, None, 0), None) == (
-        "cadence_undeclared"
+    assert classify_restart(restart(), None) == "cadence_undeclared"
+
+
+def test_restart_records_bind_to_their_provider_and_the_window():
+    elsewhere = (restart(provider="sto"), restart(at=START - timedelta(hours=1)))
+    result = gate(evaluate(bundle(restarts=elsewhere)), "recovery")
+    assert (result.outcome, result.reasons) == ("unavailable", ("restart_evidence_unavailable",))
+    assert result.details["ignored_restarts"] == {"other_provider": 1, "outside_window": 1}
+    # Every in-window record must pass; one slow restart among good ones fails.
+    mixed = (*elsewhere, restart(), restart(reopen_seconds=25.0))
+    assert gate(evaluate(bundle(restarts=mixed)), "recovery").reasons == (
+        "ruling_12:missed_restart_gate",
     )
 
 
-# Publication equivalence: live ruling 24.1-24.2.
+# Publication equivalence: live rulings 24.1-24.2 and 25.
+
+
+@pytest.mark.parametrize(
+    ("key", "count"),
+    [
+        ("publication:live/vehicles.json:missing", 1),  # vehicles.json never written.
+        ("facts:fact_vehicle_snapshot:missing", 500),  # Fact rows lost every cycle.
+        ("facts:fact_vehicle_snapshot:extra", 3),
+        ("publication:live/vehicles.json:unpaired", 1),
+        (UNADJUDICATED, 2),
+    ],
+)
+def test_every_judged_class_fails_when_it_persists(key, count):
+    result = gate(evaluate(bundle(cycles=every_cycle({key: count}))), "publication")
+    klass = key.rsplit(":", 1)[-1]
+    assert result.outcome == "fail"
+    assert result.reasons == (f"persistent_{klass}:{key}",)
+
+
+def test_an_unlisted_class_is_threshold_unowned_and_still_fails_when_persistent():
+    columns = "facts:fact_vehicle_snapshot:columns"
+    brief = tuple(
+        cycle(20 * n, shadow(20 * n, counts={columns: 1} if n == 59 else {})) for n in range(60)
+    )
+    result = gate(evaluate(bundle(cycles=brief)), "publication")
+    assert (result.outcome, result.reasons) == ("threshold_unowned", ("unowned_class:columns",))
+    persistent = gate(evaluate(bundle(cycles=every_cycle({columns: 1}))), "publication")
+    assert persistent.reasons == (f"persistent_columns:{columns}",)
+
+
+def test_truncated_comparisons_are_uncompared_shadow_attributable_cycles():
+    truncated = {"publication:truncated": 1, "publication:live/trips.json:representation": 9}
+    cycles = tuple(
+        cycle(20 * n, shadow(20 * n, counts=truncated if n % 15 == 0 else {})) for n in range(60)
+    )
+    result = gate(evaluate(bundle(cycles=cycles)), "publication")
+    assert result.reasons == ("uncompared_cycle_share_exceeded",)
+    assert result.details["shadow_attributable"] == {"comparison_truncated": 4}
+    assert result.details["compared_cycles"] == 56
+    assert result.details["uncompared_cycle_share"] == pytest.approx(4 / 60)
+
+
+def test_ten_minutes_of_logs_cannot_admit_a_day():
+    day = bundle(window_end=START + timedelta(hours=24), cycles=every_cycle({}, n=30))
+    result = gate(evaluate(day), "publication")
+    assert result.reasons == ("uncompared_cycle_share_exceeded",)
+    assert result.details["coverage"]["expected_cycles"] == 4320
+    assert result.details["shadow_attributable"] == {"shadow_evidence_missing": 4290}
+    assert result.details["coverage"]["max_gap_seconds"] == pytest.approx(86400 - 580)
+    nothing = gate(evaluate(bundle(cycles=())), "publication")
+    assert (nothing.outcome, nothing.reasons) == ("unavailable", ("no_cycles_observed",))
+
+
+def test_stm_ticks_with_nothing_due_are_excluded_from_the_share():
+    def tick(n):
+        if n % 6 in (2, 4):  # :20 and :40 — nothing due on STM's 10 s tick.
+            return cycle(10 * n, None, attempted=0, tick=10.0)
+        if n % 30 == 5:  # Every endpoint attempted, every one failed: public side.
+            return cycle(10 * n, None, status="failed", attempted=2, tick=10.0)
+        return cycle(10 * n, tick=10.0)
+
+    stm = bundle(cycles=tuple(tick(n) for n in range(120)), tick_seconds=10)
+    result = gate(evaluate(stm), "publication")
+    assert result.outcome == "pass", result.reasons
+    assert result.details["no_publication_due"] == 40
+    assert result.details["public_side_failures"] == {"public_cycle_failed": 4}
+    assert result.details["uncompared_cycle_share"] == 0.0
 
 
 def test_shadow_attributable_share_fails_and_public_failures_are_excluded():
-    cycles = [cycle(20 * n) for n in range(19)]
-    refused = shadow(400, status="refused", reason="shadow_admission_refused:rss_limit")
+    mixed = [cycle(20 * n) for n in range(54)]
     public = [
         cycle(20 * n, shadow(20 * n, status="invalid", reason="public_publication_failed"))
-        for n in range(30, 60)
+        for n in range(54, 59)
     ]
-    nightly = [cycle(20 * n, None, status="failed") for n in range(60, 90)]
-    passing = gate(evaluate(bundle(cycles=(*cycles, *public, *nightly))), "publication")
+    passing = gate(evaluate(bundle(cycles=(*mixed, *public, cycle(1180)))), "publication")
     assert passing.outcome == "pass"
-    assert passing.details["public_side_failures"] == {
-        "public_cycle_failed": 30,
-        "public_publication_failed": 30,
-    }
-    over = (*cycles, cycle(400, refused), cycle(420, None), *public)
-    failing = gate(evaluate(bundle(cycles=over)), "publication")
+    assert passing.details["public_side_failures"] == {"public_publication_failed": 5}
+    refused = shadow(1160, status="refused", reason="shadow_admission_refused:rss_limit")
+    worse = (*mixed[:-2], cycle(1040, refused), cycle(1060, None), *public[:-2], cycle(1180))
+    failing = gate(evaluate(bundle(cycles=worse)), "publication")
     assert failing.reasons == ("uncompared_cycle_share_exceeded",)
     assert failing.details["shadow_attributable"] == {
         "shadow_admission_refused:rss_limit": 1,
-        "shadow_evidence_missing": 1,
+        "shadow_evidence_missing": 3,
     }
-    assert failing.details["uncompared_cycle_share"] == pytest.approx(2 / 21)
 
 
 def test_unadjudicated_key_fails_only_when_it_persists_to_the_end_of_the_window():
@@ -188,58 +284,70 @@ def test_unadjudicated_key_fails_only_when_it_persists_to_the_end_of_the_window(
 
     persistent = gate(evaluate(bundle(cycles=run(29, 59))), "publication")
     assert persistent.reasons == (f"persistent_unadjudicated:{UNADJUDICATED}",)
-    assert persistent.details["persistent_unadjudicated"][0]["span_seconds"] == 600.0
+    assert persistent.details["persistent"][0]["span_seconds"] == 600.0
     short = gate(evaluate(bundle(cycles=run(31, 59))), "publication")
     assert short.outcome == "pass"
-    assert short.details["transient_unadjudicated"][0]["count"] == 58
+    assert short.details["transient"][0]["count"] == 58
     healed = gate(evaluate(bundle(cycles=run(0, 58))), "publication")
     assert healed.outcome == "pass"
     assert healed.details["differences_by_class"] == {"unadjudicated": 118}
 
 
+def adjudication(klass, *, start=START, end=START + WINDOW, math="cycle + 60 min"):
+    return Adjudication(klass, math, start, end)
+
+
 def test_class_b_corrections_are_methodology_items_and_class_a_is_an_engine_error():
-    persistent = tuple(cycle(20 * n, shadow(20 * n, counts={UNADJUDICATED: 1})) for n in range(60))
-    note = "PG counts departures from its later now(); cycle + 60 min is the definition"
+    persistent = every_cycle({UNADJUDICATED: 1})
     corrected = evaluate(
-        bundle(cycles=persistent, adjudications={UNADJUDICATED: Adjudication("b", note)})
+        bundle(cycles=persistent, adjudications={UNADJUDICATED: adjudication("b")})
     )
     assert gate(corrected, "publication").outcome == "pass"
-    assert corrected.display_dict()["methodology_items"] == [
-        {"key": UNADJUDICATED, "count": 60, "cycles": 60, "class": "b", "math": note}
-    ]
-    engine = evaluate(
-        bundle(cycles=persistent, adjudications={UNADJUDICATED: Adjudication("a", "wrong")})
+    [item] = corrected.display_dict()["methodology_items"]
+    assert (item["key"], item["count"], item["cycles"], item["class"]) == (
+        UNADJUDICATED,
+        60,
+        60,
+        "b",
     )
+    engine = evaluate(bundle(cycles=persistent, adjudications={UNADJUDICATED: adjudication("a")}))
     assert gate(engine, "publication").reasons == (f"engine_error:{UNADJUDICATED}",)
+
+
+def test_an_adjudication_outside_its_validity_interval_reverts_to_unadjudicated():
+    expired = adjudication("b", end=START + timedelta(minutes=5))
+    result = gate(
+        evaluate(
+            bundle(cycles=every_cycle({UNADJUDICATED: 1}), adjudications={UNADJUDICATED: expired})
+        ),
+        "publication",
+    )
+    assert result.reasons == (f"persistent_unadjudicated:{UNADJUDICATED}",)
+    assert result.details["methodology_items"][0]["cycles"] == 15
+    other_key = {"publication:live/network.json:unadjudicated": adjudication("b")}
+    assert gate(
+        evaluate(bundle(cycles=every_cycle({UNADJUDICATED: 1}), adjudications=other_key)),
+        "publication",
+    ).reasons == (f"persistent_unadjudicated:{UNADJUDICATED}",)
 
 
 def test_representation_and_clock_skew_differences_never_fail_by_themselves():
     counts = {
         "publication:live/network.json:representation": 3,
         "publication:live/trips.json:clock_skew": 2,
-        "facts:fact_vehicle_snapshot:missing": 1,
-        "publication:live/vehicles.json:unpaired": 1,
     }
-    cycles = tuple(cycle(20 * n, shadow(20 * n, counts=counts)) for n in range(60))
-    result = gate(evaluate(bundle(cycles=cycles)), "publication")
+    result = gate(evaluate(bundle(cycles=every_cycle(counts))), "publication")
     assert result.outcome == "pass"
-    assert result.details["differences_by_class"] == {
-        "clock_skew": 120,
-        "missing": 60,
-        "representation": 180,
-        "unpaired": 60,
-    }
+    assert result.details["differences_by_class"] == {"clock_skew": 120, "representation": 180}
 
 
-def test_unset_threshold_is_threshold_unowned_and_no_cycles_is_unavailable():
+def test_unset_threshold_is_threshold_unowned():
     unset = Thresholds(max_uncompared_cycle_share=None)
     result = gate(evaluate(bundle(), unset), "publication")
     assert (result.outcome, result.reasons) == (
         "threshold_unowned",
         ("max_uncompared_cycle_share",),
     )
-    empty = gate(evaluate(bundle(cycles=())), "publication")
-    assert (empty.outcome, empty.reasons) == ("unavailable", ("shadow_cycles_unavailable",))
 
 
 # Performance: the provider's declared cadence.
@@ -266,7 +374,10 @@ def test_performance_without_cadence_or_timing_is_unavailable():
     )
     untimed = tuple(cycle(20 * n, duration=None) for n in range(60))
     result = gate(evaluate(bundle(cycles=untimed)), "performance")
-    assert (result.outcome, result.reasons) == ("unavailable", ("public_cycle_timing_unavailable",))
+    assert (result.outcome, result.reasons) == (
+        "unavailable",
+        ("public_cycle_timing_unavailable",),
+    )
 
 
 # Resources: #901's plan_resources, never redefined here.
@@ -285,6 +396,20 @@ def test_observed_peak_is_replanned_through_the_901_ceilings():
     )
 
 
+def test_window_cpu_must_be_measured_over_the_window_and_fit_the_plan():
+    absent = gate(evaluate(bundle(window_cpu=None)), "resources")
+    assert (absent.outcome, absent.reasons) == ("unavailable", ("window_cpu_unavailable",))
+    partial = window_cpu(start=START + timedelta(minutes=1))
+    assert gate(evaluate(bundle(window_cpu=partial)), "resources").reasons == (
+        "window_cpu_outside_window",
+    )
+    busy = gate(evaluate(bundle(window_cpu=window_cpu(2.0))), "resources")
+    assert busy.reasons == (
+        "observed_cpu_exceeds_plan:tenant.cpus: requires 3.0, ceiling 2.5",
+        "window_cpu_above_worker_limit",
+    )
+
+
 def test_unmeasured_resources_are_unavailable_never_a_pass():
     no_plan = gate(evaluate(bundle(resources=None)), "resources")
     assert (no_plan.outcome, no_plan.reasons) == ("unavailable", ("resource_plan_unavailable",))
@@ -298,125 +423,243 @@ def test_unmeasured_resources_are_unavailable_never_a_pass():
 
 # Reading the worker's own log lines, and the CLI.
 
+STAMP = "2026-11-20 00:00:00,000 INFO"
 
-def log_lines(provider="stm"):
+
+def worker_log(ticks, *, provider="stm", tick=10, idle=lambda n: n % 6 in (2, 4)):
+    """A real-format worker log on STM's 10 s tick, idle at :20 and :40."""
     lines = []
-    for n in range(3):
-        at = START + timedelta(seconds=20 * n)
-        stamp = "2026-11-20 00:00:00,000 INFO"
-        record = {
-            "cycle": at.isoformat(),
-            "role": "postgres_authoritative",
-            "status": "compared",
-            "reason": None,
-            "identity": {"cycle": at.isoformat(), "edition": 7},
-            "counts": {UNADJUDICATED: 1} if n == 2 else {},
-            "difference_total": 0,
-            "samples": [],
-            "shadow_seconds": 1.5,
-            "capture_seconds": 0.25,
-            "p95_seconds": 1.5,
-            "rss_bytes": 700 * 2**20,
-            "process_peak_rss_bytes": 750 * 2**20,
+    for n in range(ticks):
+        at = START + timedelta(seconds=tick * n)
+        lines.append(
+            f"{STAMP} [transit_ops.orchestration] Starting realtime worker cycle {n + 1} "
+            f"for provider '{provider}'."
+        )
+        if not idle(n):
+            record = {
+                "cycle": at.isoformat(),
+                "role": "postgres_authoritative",
+                "status": "compared",
+                "reason": None,
+                "identity": {"cycle": at.isoformat(), "edition": 7},
+                "counts": {},
+                "difference_total": 0,
+                "samples": [],
+                "shadow_seconds": 1.5,
+                "capture_seconds": 0.25,
+                "p95_seconds": 1.5,
+                "rss_bytes": 700 * 2**20,
+                "process_peak_rss_bytes": 750 * 2**20,
+            }
+            lines.append(f"{STAMP} [transit_ops.live.shadow] paired_shadow {json.dumps(record)}")
+        result = {
+            "provider_id": provider,
+            "status": "succeeded",
+            "started_at_utc": at.isoformat(),
+            "successful_endpoint_count": 0 if idle(n) else 2,
+            "failed_endpoint_count": 0,
+        }
+        timing = {
+            "cycle_start_utc": at.isoformat(),
+            "cycle_duration_seconds": 0.1 if idle(n) else 5.0,
+            "requested_poll_seconds": float(tick),
         }
         lines += [
-            f"{stamp} [transit_ops.orchestration] Starting realtime worker cycle {n + 1} "
-            f"for provider '{provider}'.",
-            f"{stamp} [transit_ops.live.shadow] paired_shadow {json.dumps(record)}",
-            f"{stamp} [transit_ops.orchestration] Realtime worker cycle {n + 1} completed "
-            "successfully: "
-            + json.dumps(
-                {"provider_id": provider, "status": "succeeded", "started_at_utc": at.isoformat()}
-            ),
-            f"{stamp} [transit_ops.orchestration] Realtime worker cycle {n + 1} timing: "
-            + json.dumps({"cycle_start_utc": at.isoformat(), "cycle_duration_seconds": 5.0}),
+            f"{STAMP} [transit_ops.orchestration] Realtime worker cycle {n + 1} completed "
+            f"successfully: {json.dumps(result)}",
+            f"{STAMP} [transit_ops.orchestration] Realtime worker cycle {n + 1} timing: "
+            f"{json.dumps(timing)}",
         ]
-    lines += [
-        "2026-11-20 00:01:00,000 INFO [transit_ops.orchestration] Starting realtime worker "
-        f"cycle 4 for provider '{provider}'.",
-        "2026-11-20 00:01:00,000 ERROR [transit_ops.orchestration] Realtime worker cycle 4 "
-        f"for provider '{provider}' raised an unexpected exception and will be skipped",
-        "Traceback (most recent call last):",
-    ]
     return lines
 
 
 def test_worker_log_becomes_cycles_inside_the_window_only():
-    cycles = read_worker_log(
-        log_lines(),
-        provider_id="stm",
-        start=START + timedelta(seconds=10),
-        end=START + timedelta(hours=1),
-    )
-    assert [c.status for c in cycles] == ["succeeded", "succeeded", "raised"]
+    lines = worker_log(4) + [
+        f"{STAMP} [transit_ops.orchestration] Starting realtime worker cycle 5 for provider 'stm'.",
+        f"{STAMP} [transit_ops.orchestration] Realtime worker cycle 5 for provider 'stm' raised "
+        "an unexpected exception and will be skipped",
+        "Traceback (most recent call last):",
+    ]
+    end = START + timedelta(hours=1)
+    cycles = read_worker_log(lines, provider_id="stm", start=START + timedelta(seconds=5), end=end)
+    assert [(c.status, c.attempted_endpoints) for c in cycles] == [
+        ("succeeded", 2),
+        ("succeeded", 0),
+        ("succeeded", 2),
+        ("raised", None),
+    ]
     assert cycles[0].shadow.capture_seconds == 0.25 and cycles[0].duration_seconds == 5.0
-    assert cycles[2].public_failed and cycles[2].shadow is None
+    assert cycles[0].requested_poll_seconds == 10.0
+    assert cycles[1].shadow is None and not cycles[1].public_failed
+    assert cycles[3].public_failed and cycles[3].shadow is None
     assert (
-        read_worker_log(
-            log_lines("sto"), provider_id="stm", start=START, end=START + timedelta(hours=1)
-        )
+        read_worker_log(worker_log(4, provider="sto"), provider_id="stm", start=START, end=end)
         == ()
     )
 
 
 def test_corrupt_shadow_evidence_is_refused_by_name_not_skipped():
-    lines = log_lines()
+    lines = worker_log(1)
     lines[1] = lines[1].replace('"status": "compared"', '"status": "maybe"')
     with pytest.raises(EvidenceInvalid, match="shadow_status_unknown"):
         read_worker_log(lines, provider_id="stm", start=START, end=START + timedelta(hours=1))
 
 
-def test_cli_reads_shadow_logs_and_writes_the_verdict(tmp_path):
+def files(tmp_path, *, log_lines, restarts=None, adjudications=None, cpu=None):
     log = tmp_path / "worker.log"
-    log.write_text("\n".join(log_lines()) + "\n", encoding="utf-8")
-    restarts = tmp_path / "restarts.jsonl"
-    restarts.write_text(
-        json.dumps(
+    log.write_text("\n".join(log_lines) + "\n", encoding="utf-8")
+    restart_lines = restarts or [
+        {
+            "provider_id": "stm",
+            "observed_at": (START + timedelta(seconds=30)).isoformat(),
+            "point": "committed",
+            "reopened": True,
+            "reopen_seconds": 0.3,
+            "wal_present": True,
+            "refusal": None,
+            "committed_rows_lost": 0,
+        }
+    ]
+    paths = {"log": log}
+    paths["restarts"] = tmp_path / "restarts.jsonl"
+    paths["restarts"].write_text(
+        "".join(json.dumps(line) + "\n" for line in restart_lines), encoding="utf-8"
+    )
+    peak = {
+        "service": "worker-stm",
+        "measurement_sha": SHA,
+        "interval": "24h",
+        "workload": "shadow",
+        "complete": True,
+        "gaps": [],
+        "cpu_cores": 0.5,
+        "container_memory_bytes": GIB,
+        "process_rss_bytes": 800 * 2**20,
+        "pid_peak": 50,
+        "worker": True,
+    }
+    disk = {
+        "items": [
             {
-                "point": "committed",
-                "reopened": True,
-                "reopen_seconds": 0.3,
-                "wal_present": True,
-                "refusal": None,
-                "committed_rows_lost": 0,
+                "service": "worker-stm",
+                "category": category,
+                "occupied_bytes": 1000,
+                "measurement_sha": SHA,
+                "basis": "du",
+                "measurement_kind": "occupied_bytes",
             }
-        )
-        + "\n",
+            for category in DISK_CATEGORIES
+        ],
+        "reservations": {"worker-stm": 100_000},
+    }
+    paths["resources"] = tmp_path / "resources.json"
+    paths["resources"].write_text(json.dumps({"peaks": [peak], "disk": disk}), encoding="utf-8")
+    paths["cpu"] = tmp_path / "cpu.json"
+    paths["cpu"].write_text(
+        json.dumps(
+            cpu
+            or {
+                "service": "worker-stm",
+                "cpu_cores": 0.4,
+                "start": START.isoformat(),
+                "end": (START + timedelta(minutes=10)).isoformat(),
+                "measurement_sha": SHA,
+            }
+        ),
         encoding="utf-8",
     )
-    output = tmp_path / "verdict.json"
-    arguments = [
+    paths["adjudications"] = tmp_path / "adjudications.json"
+    paths["adjudications"].write_text(json.dumps(adjudications or {}), encoding="utf-8")
+    return paths
+
+
+def arguments(paths, output, *, end=START + timedelta(minutes=10)):
+    return [
         "live-engine",
         "admission",
         "--provider",
         "stm",
         "--log",
-        str(log),
+        str(paths["log"]),
         "--start",
         START.isoformat(),
         "--end",
-        (START + timedelta(hours=1)).isoformat(),
+        end.isoformat(),
         "--restarts",
-        str(restarts),
+        str(paths["restarts"]),
+        "--resources",
+        str(paths["resources"]),
+        "--worker-service",
+        "worker-stm",
+        "--window-cpu",
+        str(paths["cpu"]),
+        "--adjudications",
+        str(paths["adjudications"]),
         "--output",
         str(output),
     ]
-    result = CliRunner().invoke(app, arguments)
-    assert result.exit_code == 1, result.output  # Not eligible: no resource plan supplied.
+
+
+def test_cli_admits_a_clean_stm_window_on_its_real_tick(tmp_path):
+    assert worker_tick_seconds(load_provider_manifest(STM), 30) == 10
+    paths = files(tmp_path, log_lines=worker_log(60))
+    output = tmp_path / "verdict.json"
+    result = CliRunner().invoke(app, arguments(paths, output))
+    assert result.exit_code == 0, result.output
     verdict = json.loads(output.read_text(encoding="utf-8"))
     assert json.loads(result.stdout) == verdict
-    assert verdict["outcome"] == "not_eligible"
-    assert verdict["thresholds"]["cadence_seconds"]["value"] == 20
-    outcomes = {name: g["outcome"] for name, g in verdict["gates"].items()}
-    assert outcomes == {
-        "recovery": "pass",
-        "publication": "pass",
-        "performance": "pass",
-        "resources": "unavailable",
-    }
-    assert verdict["gates"]["publication"]["details"]["public_side_failures"] == {
-        "public_cycle_raised": 1
-    }
-    assert verdict["gates"]["resources"]["reasons"] == ["resource_plan_unavailable"]
-    again = CliRunner().invoke(app, arguments)
+    assert verdict["outcome"] == "eligible"
+    publication = verdict["gates"]["publication"]["details"]
+    assert publication["no_publication_due"] == 20
+    assert publication["coverage"]["expected_cycles"] == 60
+    again = CliRunner().invoke(app, arguments(paths, output))
     assert again.exit_code == 2 and "exists" in again.output
+
+
+def test_cli_without_restart_evidence_in_the_window_is_not_eligible(tmp_path):
+    late = {
+        "provider_id": "stm",
+        "observed_at": (START + timedelta(hours=2)).isoformat(),
+        "point": "committed",
+        "reopened": True,
+        "reopen_seconds": 0.3,
+        "wal_present": True,
+        "refusal": None,
+        "committed_rows_lost": 0,
+    }
+    paths = files(tmp_path, log_lines=worker_log(60), restarts=[late])
+    output = tmp_path / "verdict.json"
+    result = CliRunner().invoke(app, arguments(paths, output))
+    assert result.exit_code == 1, result.output
+    verdict = json.loads(output.read_text(encoding="utf-8"))
+    assert verdict["gates"]["recovery"]["reasons"] == ["restart_evidence_unavailable"]
+
+
+def _without_duration(lines):
+    return [
+        line.replace('"cycle_duration_seconds": 5.0, ', "") if " timing: " in line else line
+        for line in lines
+    ]
+
+
+def _reason_number(lines):
+    return [line.replace('"reason": null', '"reason": 7') for line in lines]
+
+
+@pytest.mark.parametrize(
+    ("change", "what"),
+    [
+        ({"log_lines": _without_duration(worker_log(60))}, "cycle_timing"),
+        ({"log_lines": _reason_number(worker_log(60))}, "shadow_reason"),
+        ({"adjudications": {UNADJUDICATED: "b"}}, "adjudication"),
+        ({"restarts": [7]}, "restart_record"),
+    ],
+)
+def test_cli_malformed_evidence_exits_2_by_name(tmp_path, change, what):
+    options = {"log_lines": worker_log(60), **change}
+    paths = files(tmp_path, **options)
+    output = tmp_path / "verdict.json"
+    result = CliRunner().invoke(app, arguments(paths, output))
+    assert result.exit_code == 2, result.output
+    assert "evidence_malformed:" in result.output and what in result.output
+    assert not output.exists()
