@@ -106,6 +106,61 @@ def test_current_edition_uses_the_lake_name_including_an_archived_legacy_name(tm
     assert exact_windows(need, stamp, connection, {}, archive) == ("silver.trips:stm:" + "c" * 64,)
 
 
+def test_unpersisted_bare_legacy_copy_keeps_its_name_and_a_same_digest_edition_does_not(tmp_path):
+    from test_batch_input_sources import legacy_ownership_copy, store
+
+    storage = store(tmp_path)
+    # A pre-#1115 copy under its bare digest, with no edition-identities record yet.
+    legacy_ownership_copy(storage, "stm", owner=None)
+    need = [{"relation": "silver.trips", "provider": "stm", "window": "edition:1"}]
+    stamp = datetime(2026, 11, 15, 12, tzinfo=UTC)
+
+    def current(ident):
+        return SimpleNamespace(
+            execute=lambda query, parameters: SimpleNamespace(fetchall=lambda: [(ident, "c" * 64)])
+        )
+
+    # The copy's rows prove edition 42 owns the bare name; edition 43 is named anew.
+    assert exact_windows(need, stamp, current(42), {}, storage) == ("silver.trips:stm:" + "c" * 64,)
+    assert exact_windows(need, stamp, current(43), {}, storage) == (
+        "silver.trips:stm:" + "c" * 64 + ".v43",
+    )
+
+
+def test_edition_names_are_resolved_from_storage_only_after_every_database_read(monkeypatch):
+    from transit_ops.batch import daily_inputs
+
+    events = []
+
+    def execute(query, parameters):
+        events.append("read")
+        return SimpleNamespace(fetchall=lambda: [(7, "c" * 64)])
+
+    def assignments(storage, provider, digests):
+        events.append("archive")
+        return {}
+
+    monkeypatch.setattr(daily_inputs, "archive_assignments", assignments)
+    need = [
+        {"relation": relation, "provider": provider, "window": "edition:1"}
+        for provider in ("octranspo", "stm")
+        for relation in ("silver.trips", "silver.routes")
+    ]
+    selection = daily_inputs.select_windows(
+        need, datetime(2026, 11, 15, 12, tzinfo=UTC), SimpleNamespace(execute=execute)
+    )
+    assert events == ["read", "read"]  # One read per provider; the archive is untouched.
+    names = selection.resolve(object())
+    assert events == ["read", "read", "archive", "archive"]
+    assert names == tuple(
+        sorted(
+            f"{relation}:{provider}:{'c' * 64}.v7"
+            for provider in ("octranspo", "stm")
+            for relation in ("silver.trips", "silver.routes")
+        )
+    )
+
+
 def test_alerts_are_the_only_all_provider_exception():
     conn = SimpleNamespace(
         execute=lambda query: SimpleNamespace(fetchall=lambda: [("stm",), ("octranspo",), ("sto",)])

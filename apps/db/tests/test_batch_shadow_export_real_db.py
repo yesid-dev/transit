@@ -203,6 +203,10 @@ def test_scheduled_export_copies_the_planned_windows_read_only(
             get_settings.cache_clear()
     summary = json.loads((tmp_path / "shadow/public/export-ordinary.json").read_bytes())
     assert summary["refusal"] is None
+    # The public copies keep the lake's edition names and each window's real reason.
+    public = controller["safe_evidence"](data)
+    for provider, (digest, version) in editions.items():
+        assert f"silver.trips:{provider}:{digest}.v{version}" in public["windows"]
     for provider, (digest, version) in editions.items():
         assert f"silver.trips:{provider}:{digest}.v{version}" in data["windows"]
         proofs = archive.list_keys(f"archive/v1/tables/silver.trips/{provider}/")

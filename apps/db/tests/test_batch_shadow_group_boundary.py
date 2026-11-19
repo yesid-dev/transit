@@ -65,8 +65,10 @@ def test_elapsed_startup_is_judged_where_fake_lake_starts_the_group(
     monkeypatch.setattr(psycopg, "connect", lambda *a, **kw: Connection())
     monkeypatch.setattr(
         daily_inputs,
-        "exact_windows",
-        lambda *a: ("core.providers:stm:2026-11", "silver.i3_alerts:stm:2026-11"),
+        "select_windows",
+        lambda *a: SimpleNamespace(
+            resolve=lambda storage: ("core.providers:stm:2026-11", "silver.i3_alerts:stm:2026-11")
+        ),
     )
 
     def invoke(args, receipt):

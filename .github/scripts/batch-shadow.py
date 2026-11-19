@@ -79,6 +79,17 @@ LAKE_REFUSALS = (
     "window",
     "window_in_pruning",
     "work_dir_changed",
+    # parquet_verify.Reason: what CopyDiffers carries. Pinned by a test.
+    "content_digest",
+    "object_digest",
+    "rows",
+    "schema",
+    "metadata",
+    "types",
+    "missing_rows",
+    "extra_rows",
+    "key_order",
+    "canonical_text",
 )
 # Exception classes a public summary may name; any other class is "other".
 EXCEPTIONS = frozenset(
@@ -98,6 +109,9 @@ EXCEPTIONS = frozenset(
         "CsvHeaderMismatch",
         "RequiredValueMissing",
         "ObjectKeyTaken",
+        "BronzeStorageError",
+        "ObjectStorageError",  # what BronzeStorageError is named at runtime
+        "ObjectAlreadyExists",
         "UndeclaredDataset",
         "InvalidDeclaration",
         "OperationalError",
@@ -150,25 +164,44 @@ def exception_name(name: object) -> str:
     return name if isinstance(name, str) and name in EXCEPTIONS else "other"
 
 
-def failure_identity(output: str) -> tuple[str, str]:
-    """Public refusal and exception names; never any part of a failure message.
+def lake_failure_record(stdout: str) -> dict[str, Any] | None:
+    """The last failure record lake wrote to stdout, in one of its two exact shapes.
 
-    Lake's structured failure record is authoritative and only its reason field is
-    named. Without one (a crash or a non-lake command), the older name search and
-    a traceback's final class apply.
+    commands/lake.py prints {"failure": {"reason", "exception"}} for an exception, and
+    run_migration's summary carries {"failure": {...reason, exception...}, "outcomes"...}.
+    Anything else, and anything on stderr, is not lake's record.
     """
     record = None
-    for line in output.splitlines():
+    for line in stdout.splitlines():
         try:
-            failure = json.loads(line).get("failure")
-        except (ValueError, TypeError, AttributeError):
+            obj = json.loads(line)
+        except ValueError:
             continue
-        if isinstance(failure, dict):
+        failure = obj.get("failure") if isinstance(obj, dict) else None
+        if not isinstance(failure, dict):
+            continue
+        exception_line = set(obj) == {"failure"} and set(failure) == {"reason", "exception"}
+        summary_line = {"failure", "outcomes"} <= set(obj) and {"reason", "exception"} <= set(
+            failure
+        )
+        if exception_line or summary_line:
             record = failure
+    return record
+
+
+def failure_identity(stdout: str, stderr: str = "") -> tuple[str, str]:
+    """Public refusal and exception names; never any part of a failure message.
+
+    Lake's structured failure record on stdout is authoritative and only its reason
+    field is named. Without one (a crash or a non-lake command), the older name
+    search and a traceback's final class apply to the combined output.
+    """
+    record = lake_failure_record(stdout)
     if record is not None:
         reason = record.get("reason")
         named = reason if reason in REFUSALS or reason in LAKE_REFUSALS else "command_failed"
         return str(named), exception_name(record.get("exception"))
+    output = stdout + "\n" + stderr
     exception = None
     if "Traceback (most recent call last)" in output:
         found = re.match(r"([A-Za-z_][A-Za-z0-9_.]*)(?::|$)", output.strip().splitlines()[-1])
@@ -509,14 +542,15 @@ def invoke(args: list[str], receipt: Path, *, env: dict[str, str] | None = None)
     )
     # CLI target headers are already redacted. Also suppress credential fragments
     # from connection diagnostics before preserving failure evidence.
-    output = result.stdout + "\n" + result.stderr
+    stdout, stderr = result.stdout, result.stderr
     for name in ("DATABASE_URL", "BRONZE_S3_ACCESS_KEY", "BRONZE_S3_SECRET_KEY"):
         secret = (env or os.environ).get(name, "")
         if secret:
-            output = output.replace(secret, "[redacted]")
+            stdout, stderr = (text.replace(secret, "[redacted]") for text in (stdout, stderr))
             password = urlsplit(secret).password if name == "DATABASE_URL" else None
             if password:
-                output = output.replace(password, "[redacted]")
+                stdout, stderr = (text.replace(password, "[redacted]") for text in (stdout, stderr))
+    output = stdout + "\n" + stderr
     receipt.parent.mkdir(parents=True, exist_ok=True)
     receipt.write_text(output, encoding="utf8")
     records = []
@@ -536,7 +570,7 @@ def invoke(args: list[str], receipt: Path, *, env: dict[str, str] | None = None)
                         pass
     summary: dict[str, Any] = {"records": records, "refusal": None}
     if result.returncode:
-        refusal, exception = failure_identity(output)
+        refusal, exception = failure_identity(stdout, stderr)
         summary.update(refusal=refusal, exit_code=int(result.returncode), exception=exception)
     write_json(ROOT / "public" / receipt.relative_to(ROOT).with_suffix(".json"), summary)
     if result.returncode:
@@ -551,11 +585,11 @@ def export_inputs(data: dict[str, Any]) -> None:
         assert_group_deadline,
         assert_read_role,
         edition_reference_windows,
-        exact_windows,
         group_deadline,
         require_bounded_needs,
         require_group_reserve_support,
         require_window_support,
+        select_windows,
     )
     from transit_ops.history.storage import history_storage
     from transit_ops.lake.alert_bundle import MEMBERS
@@ -572,25 +606,23 @@ def export_inputs(data: dict[str, Any]) -> None:
     parts = urlsplit(os.environ["DATABASE_URL"])
     settings = Settings()
     # Edition names come from the same archive the copy step reads.
-    scope = history_storage(settings)
-    with (
-        closing(scope),
-        psycopg.connect(
+    with closing(history_storage(settings)) as scope:
+        with psycopg.connect(
             urlunsplit(parts._replace(scheme="postgresql")),
             options="-c default_transaction_read_only=on -c statement_timeout=300000 "
             "-c lock_timeout=1000",
             connect_timeout=5,
-        ) as conn,
-    ):
-        if conn.execute("SHOW transaction_read_only").fetchone() != ("on",):
-            raise ValueError("not_read_only")
-        reads = PlanningReads(conn)
-        assert_read_role(reads)
-        result = reads.execute("SELECT count(*) FROM core.providers").fetchone()
-        count = result[0] if result else 0
-        references = edition_reference_windows(data["needs"], reads)
-        storage = scope.resolve(settings.BRONZE_STORAGE_BACKEND)
-        windows = exact_windows(data["needs"], stamp, reads, references, storage)
+        ) as conn:
+            if conn.execute("SHOW transaction_read_only").fetchone() != ("on",):
+                raise ValueError("not_read_only")
+            reads = PlanningReads(conn)
+            assert_read_role(reads)
+            result = reads.execute("SELECT count(*) FROM core.providers").fetchone()
+            count = result[0] if result else 0
+            references = edition_reference_windows(data["needs"], reads)
+            selection = select_windows(data["needs"], stamp, reads, references)
+        # The production connection is closed; only now are archive names listed.
+        windows = selection.resolve(scope.resolve(settings.BRONZE_STORAGE_BACKEND))
     if not count:
         raise ValueError("providers_missing")
     data["windows"] = list(windows)

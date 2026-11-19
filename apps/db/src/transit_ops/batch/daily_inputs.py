@@ -4,6 +4,7 @@ This module plans identities only. Lake owns every payload read, copy and proof.
 """
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from time import monotonic
 from typing import Any
@@ -137,12 +138,8 @@ def window_is_open(dataset_id: str, window: str, stamp: datetime, open_days: int
     return utc_day_closes_at(date.fromisoformat(window)) > stamp
 
 
-def current_edition_key(connection: Any, provider: str, storage: BronzeStorage | None) -> str:
-    """The lake's archive name for the provider's current schedule edition.
-
-    Lake names an edition digest.vID unless the archive proves a legacy bare-digest
-    name for that ID; a bare checksum alone never selects a newly named edition.
-    """
+def current_edition(connection: Any, provider: str) -> tuple[int, str]:
+    """The provider's one current schedule edition as (dataset_version_id, digest)."""
     rows = connection.execute(
         "SELECT dataset_version_id, COALESCE(checksum_sha256,content_hash) "
         "FROM core.dataset_versions "
@@ -152,8 +149,41 @@ def current_edition_key(connection: Any, provider: str, storage: BronzeStorage |
     if len(rows) != 1 or not rows[0][1]:
         raise ValueError(f"edition_unresolved: {provider}")
     ident, digest = rows[0]
+    return ident, digest
+
+
+def _edition_key(provider: str, edition: tuple[int, str], storage: BronzeStorage | None) -> str:
+    """The lake's archive name for a provider's current schedule edition.
+
+    Lake names an edition digest.vID unless the archive proves a legacy bare-digest
+    name for that ID; a bare checksum alone never selects a newly named edition.
+    """
+    ident, digest = edition
     assigned = archive_assignments(storage, provider, [digest])
     return edition_keys([(ident, digest, None)], assignments=assigned)[ident]
+
+
+@dataclass(frozen=True)
+class WindowSelection:
+    """Windows read from PostgreSQL, with edition names still to resolve from storage.
+
+    Resolving names lists and verifies archive objects, so it runs only after the
+    caller has finished every database read and released its transaction.
+    """
+
+    fixed: frozenset[str]
+    editions: Mapping[str, tuple[int, str]]
+    edition_windows: frozenset[tuple[str, str]]
+
+    def resolve(self, storage: BronzeStorage | None) -> tuple[str, ...]:
+        keys = {
+            provider: _edition_key(provider, edition, storage)
+            for provider, edition in self.editions.items()
+        }
+        resolved = {
+            f"{relation}:{provider}:{keys[provider]}" for relation, provider in self.edition_windows
+        }
+        return tuple(sorted(self.fixed | resolved))
 
 
 def exact_windows(
@@ -163,16 +193,28 @@ def exact_windows(
     references: Mapping[str, Sequence[str]] | None = None,
     storage: BronzeStorage | None = None,
 ) -> tuple[str, ...]:
+    """Select windows and resolve edition names in one call (see select_windows)."""
+    return select_windows(needs, stamp, connection, references).resolve(storage)
+
+
+def select_windows(
+    needs: Sequence[Mapping[str, str]],
+    stamp: datetime,
+    connection: Any,
+    references: Mapping[str, Sequence[str]] | None = None,
+) -> WindowSelection:
     """Map the declared grain, preserving provider scope and the alert exception.
 
     Edition ids are resolved to the lake's current edition names, never guessed;
-    the archive supplies legacy names (none without storage).
+    the archive supplies legacy names (none without storage), but only when the
+    selection is resolved, after all PostgreSQL reads here are done.
     Unbounded ranged needs refuse before any source query. The fetch resolver
     remains the proof authority; parent closure is never silently narrowed:
     edition FK parents select exactly the months their referenced rows occupy.
     """
     windows: set[str] = set()
-    editions: dict[str, str] = {}
+    editions: dict[str, tuple[int, str]] = {}
+    edition_windows: set[tuple[str, str]] = set()
     require_bounded_needs(needs)
     if references is None:
         references = edition_reference_windows(needs, connection)
@@ -193,8 +235,8 @@ def exact_windows(
             windows.add(f"{relation}:{provider}:{stamp:%Y-%m}")
         elif dataset.archive_grain == "edition":
             if provider not in editions:
-                editions[provider] = current_edition_key(connection, provider, storage)
-            windows.add(f"{relation}:{provider}:{editions[provider]}")
+                editions[provider] = current_edition(connection, provider)
+            edition_windows.add((relation, provider))
         elif window == "all":
             raise ValueError(f"unbounded_window_need: {relation}")
         else:
@@ -215,7 +257,7 @@ def exact_windows(
             for day_key in days:
                 key = day_key[:7] if dataset.archive_grain == "month" else day_key
                 windows.add(f"{relation}:{provider}:{key}")
-    return tuple(sorted(windows))
+    return WindowSelection(frozenset(windows), editions, frozenset(edition_windows))
 
 
 def require_bounded_needs(needs: Sequence[Mapping[str, str]]) -> None:
