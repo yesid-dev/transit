@@ -296,6 +296,30 @@ describe('StopReliabilitySurface — responsive left-rail structure (P5.4)', () 
 			}),
 		).toHaveAttribute('href', '/lines/51');
 	});
+
+	it('shows the first five lines, then all of them on request, in the same order', async () => {
+		const routes = ['10', '17', '24', '31', '38', '45', '52'].map((route, index) => ({
+			route,
+			avg_delay_min: 9 - index,
+		}));
+		const view = render(StopReliabilitySurface, {
+			props: { data: { ...data, by_route: routes }, locale: 'en' },
+		});
+		const section = await openSection(view.container, 'stop-rel-by-route', 'Avg delay by line');
+		const shown = () =>
+			Array.from(section.querySelectorAll('[data-slot="stop-by-route"] li'))
+				.filter((item) => !item.hasAttribute('hidden'))
+				.map((item) => item.querySelector('a')?.getAttribute('href'));
+		expect(shown()).toEqual(['/lines/10', '/lines/17', '/lines/24', '/lines/31', '/lines/38']);
+		const toggle = within(section).getByRole('button', { name: 'Show all 7 lines' });
+		expect(toggle).toHaveAttribute('aria-expanded', 'false');
+		await fireEvent.click(toggle);
+		expect(shown()).toHaveLength(7);
+		expect(toggle).toHaveAttribute('aria-expanded', 'true');
+		expect(toggle).toHaveTextContent('Show fewer lines');
+		await fireEvent.click(toggle);
+		expect(shown()).toHaveLength(5);
+	});
 });
 
 describe('StopReliabilitySurface — cohesive article disclosures', () => {
