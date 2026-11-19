@@ -60,6 +60,8 @@ export interface StopRecordView {
 	readonly sentence: string;
 	/** The state sentence for every state without a figure. */
 	readonly status: string | null;
+	/** Why a listed stop has no share this week; null in every other state. */
+	readonly unmeasured: 'tooFew' | 'noLiveData' | 'notMeasured' | null;
 	/** Always the same three rows; only the readings value is null, while the record loads. */
 	readonly evidence: readonly { readonly label: string; readonly value: string | null }[];
 	readonly share: StopRecordShare | null;
@@ -76,19 +78,43 @@ type Located =
 	| { readonly state: 'unmeasured'; readonly row: WeeklyRow }
 	| { readonly state: 'measured'; readonly row: WeeklyRow; readonly share: StopRecordShare };
 
+type ParsedIndex = {
+	readonly index: ReturnType<typeof RouteReliabilityIndexSchema.parse>;
+	readonly rows: ReadonlyMap<string, WeeklyRow>;
+} | null;
+
+/**
+ * One validation per published file: the Stops finder asks for thousands of rows from the same
+ * object, so the parse and the id lookup are kept with it rather than repeated per stop.
+ */
+const parsedIndexes = new WeakMap<object, ParsedIndex>();
+
+function parseIndex(data: unknown): ParsedIndex {
+	const cacheable = typeof data === 'object' && data !== null;
+	if (cacheable && parsedIndexes.has(data)) return parsedIndexes.get(data)!;
+	const parsed = RouteReliabilityIndexSchema.safeParse(data);
+	const value: ParsedIndex = parsed.success
+		? {
+				index: parsed.data,
+				rows: new Map((parsed.data.weekly_stops ?? []).map((row) => [row.id, row])),
+			}
+		: null;
+	if (cacheable) parsedIndexes.set(data, value);
+	return value;
+}
+
 function locate({ stopId, index, now }: StopRecordInput): Located {
 	if (index.data == null) {
 		if (index.error != null) return { state: 'failed' };
 		return { state: index.settled ? 'unpublished' : 'pending' };
 	}
-	const parsed = RouteReliabilityIndexSchema.safeParse(index.data);
-	if (!parsed.success) return { state: 'failed' };
-	const rows = parsed.data.weekly_stops ?? [];
-	if (rows.length === 0) return { state: 'unpublished' };
+	const parsed = parseIndex(index.data);
+	if (parsed == null) return { state: 'failed' };
+	if (parsed.rows.size === 0) return { state: 'unpublished' };
 	// The home page's currency rule, so both pages show or withhold the same figure. A current
 	// publication where no stop ranks still says why this stop has no share.
-	if (!weeklyIndexIsCurrent(parsed.data, now)) return { state: 'not-current' };
-	const row = rows.find((candidate) => candidate.id === stopId);
+	if (!weeklyIndexIsCurrent(parsed.index, now)) return { state: 'not-current' };
+	const row = parsed.rows.get(stopId);
 	if (row == null) return { state: 'not-listed' };
 	if (row.state !== 'ranked') return { state: 'unmeasured', row };
 	const share = checkedShare(row);
@@ -235,6 +261,7 @@ export function presentStopRecord(
 		measure: t.measure,
 		sentence: t.sentence,
 		figure: null,
+		unmeasured: null,
 		share: null,
 		csv: null,
 		citation: null,
@@ -284,6 +311,7 @@ export function presentStopRecord(
 			period: period(located.row, locale),
 			window: rowWindow(located.row),
 			status: t[UNMEASURED[located.row.state as keyof typeof UNMEASURED]],
+			unmeasured: UNMEASURED[located.row.state as keyof typeof UNMEASURED],
 		};
 	}
 	return { ...base, period: null, window: null, status: t[STATUS[located.state]] as string };

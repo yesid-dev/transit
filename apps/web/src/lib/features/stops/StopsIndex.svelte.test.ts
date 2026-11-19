@@ -1,577 +1,486 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import StopsIndex from './StopsIndex.svelte';
 
-const getStopsIndex = vi.fn();
-const getRoutesIndex = vi.fn();
-const getRoute = vi.fn();
-const getStopReliability = vi.fn();
-let viewportRequestsEnabled = true;
-const historyCalls = vi.hoisted(() => ({
-	getStopHistoryDirectory: vi.fn(),
-	getPublishedReliabilityIndex: vi.fn(),
-	getStopHistoryIndex: vi.fn(),
-	loadStopHistoryRange: vi.fn(),
-}));
+const h = vi.hoisted(() => {
+	const state = {
+		url: new URL('http://localhost/stops?provider=stm'),
+		stops: [] as unknown[],
+		routes: [] as unknown[],
+		route: null as unknown,
+		routeFailure: false,
+		routesFailure: false,
+		published: null as unknown,
+		locale: 'en' as 'en' | 'fr',
+		desktop: false,
+		now: Date.parse('2026-11-13T15:00:00Z'),
+	};
+	const calls = { route: [] as string[], history: [] as string[] };
+	/** A network of `count` stops whose names sort in id order: "Stop 001", "Stop 002", ... */
+	function stopsFor(count: number) {
+		return Array.from({ length: count }, (_, index) => {
+			const n = String(index + 1).padStart(3, '0');
+			return {
+				id: `S${n}`,
+				name: `Stop ${n}`,
+				code: `5${n}`,
+				lat: 45.5 + index * 0.001,
+				lon: -73.6,
+				mode: 'bus',
+				routes: ['24'],
+			};
+		});
+	}
+	return { state, calls, stopsFor };
+});
 
-const state = vi.hoisted(() => ({ url: new URL('http://localhost/stops') }));
-const replaceState = vi.hoisted(() =>
-	vi.fn((u: string | URL) => {
-		state.url = new URL(u, 'http://localhost');
-	}),
-);
 vi.mock('$app/state', () => ({
 	page: {
 		get url() {
-			return state.url;
+			return h.state.url;
 		},
 		state: {},
 	},
 }));
-vi.mock('$app/navigation', () => ({ replaceState }));
-
-function setUrl(path: string): void {
-	state.url = new URL(path, 'http://localhost');
-}
-
-vi.mock('#lib/v1/repositories/static.ts', () => ({
-	getStopsIndex: (...args: unknown[]) => getStopsIndex(...args),
-	getRoutesIndex: (...args: unknown[]) => getRoutesIndex(...args),
-	getRoute: (...args: unknown[]) => getRoute(...args),
+vi.mock('$app/navigation', () => ({
+	replaceState: (url: string | URL) => {
+		h.state.url = new URL(url, 'http://localhost');
+	},
+	afterNavigate: () => {},
+	goto: vi.fn(),
 }));
-vi.mock('#lib/v1/reliabilitySnapshot.svelte.ts', async () => {
-	const { SvelteMap } = await import('svelte/reactivity');
-	function reliabilityVerdict(pct: number): string {
-		return pct >= 80 ? 'reliable' : pct >= 60 ? 'patchy' : 'unreliable';
-	}
-	function createReliabilityLoader() {
-		const cache = new SvelteMap<
-			string,
-			{ phase: string; otpPct: number | null; verdict: string | null; series: number[] }
-		>();
-		const started = new Set<string>();
-		const EMPTY = { phase: 'idle', otpPct: null, verdict: null, series: [] as number[] };
-		function request(id: string): void {
-			if (!id || started.has(id)) return;
-			started.add(id);
-			void Promise.resolve(getStopReliability(id))
-				.then((file: { periods?: Array<{ grain: string; otp_pct: number | null }> } | null) => {
-					const day = file?.periods?.filter((p) => p.grain === 'day') ?? [];
-					const otp = [...day].reverse().find((p) => p.otp_pct != null)?.otp_pct ?? null;
-					cache.set(
-						id,
-						otp == null
-							? { phase: 'empty', otpPct: null, verdict: null, series: [] }
-							: { phase: 'ready', otpPct: otp, verdict: reliabilityVerdict(otp), series: [otp] },
-					);
-				})
-				.catch(() => cache.set(id, { phase: 'empty', otpPct: null, verdict: null, series: [] }));
-		}
-		return {
-			get: (id: string) => cache.get(id) ?? EMPTY,
-			request,
-			reliability: (_node: Element, id: string) => {
-				if (viewportRequestsEnabled) request(id);
-				return { destroy() {} };
+vi.mock('@yesid/ui/state', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('@yesid/ui/state')>();
+	return {
+		...actual,
+		desktop: {
+			get current() {
+				return h.state.desktop;
 			},
-			inFlight: 0,
-		};
-	}
-	return { createReliabilityLoader };
+		},
+	};
 });
-vi.mock('#lib/v1/repositories/historic.ts', () => historyCalls);
-
-const STOPS = {
-	generated_utc: '2026-06-16T02:00:00Z',
-	stops: [
-		{
-			id: '57191',
-			name: 'Van Horne / Rockland',
-			lat: 45.5,
-			lon: -73.6,
-			code: '57191',
-			mode: 'bus',
-			routes: ['161'],
-		},
-		{
-			id: '11000',
-			name: 'Station Crémazie',
-			lat: 45.55,
-			lon: -73.62,
-			code: '11000',
-			mode: 'metro',
-			routes: ['2'],
-		},
-		{
-			id: '22000',
-			name: 'Papineau / Rachel',
-			lat: 45.53,
-			lon: -73.57,
-			code: '22000',
-			mode: 'bus',
-			routes: ['29'],
-		},
-	],
-};
-const ROUTES = {
-	generated_utc: '2026-06-16T02:00:00Z',
-	routes: [
-		{ id: '80', short: '80', long: 'Avenue du Parc', type: 3 },
-		{ id: '11', short: '11', long: 'Mont-Royal', type: 3 },
-	],
-};
-
-vi.mock('#lib/v1/resource.svelte.ts', () => ({
-	createResource: (fetcher: () => Promise<unknown>) => {
-		const state = $state<{ data: unknown; error: unknown; loading: boolean; settled: boolean }>({
-			data: null,
-			error: null,
-			loading: true,
-			settled: false,
-		});
-		let sequence = 0;
-		$effect(() => {
-			const token = ++sequence;
-			let active = true;
-			state.loading = true;
-			state.error = null;
-			void Promise.resolve(fetcher())
-				.then((d) => {
-					if (active && token === sequence) state.data = d;
-				})
-				.catch((error) => {
-					if (active && token === sequence) state.error = error;
-				})
-				.finally(() => {
-					if (!active || token !== sequence) return;
-					state.loading = false;
-					state.settled = true;
-				});
-			return () => {
-				active = false;
-			};
-		});
-		return {
-			get data() {
-				return state.data;
-			},
-			get error() {
-				return state.error;
-			},
-			get loading() {
-				return state.loading;
-			},
-			get settled() {
-				return state.settled;
-			},
-			reload: vi.fn(),
-		};
+vi.mock('#lib/i18n/index.ts', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('#lib/i18n/index.ts')>();
+	return { ...actual, getLocale: () => h.state.locale };
+});
+vi.mock('#lib/v1/boot.ts', () => ({
+	getV1Context: () => ({
+		manifest: { provider: 'stm', short_name: 'STM', display_name: 'STM', tz: 'America/Toronto' },
+		provider: { labels: { en: { operator: 'STM' }, fr: { operator: 'STM' } } },
+	}),
+}));
+vi.mock('#lib/v1/repositories/static.ts', () => ({
+	getStopsIndex: async () => ({ generated_utc: '2026-11-11T05:00:00Z', stops: h.state.stops }),
+	getRoutesIndex: async () => {
+		if (h.state.routesFailure) throw new Error('catalogue unavailable');
+		return { generated_utc: '2026-11-11T05:00:00Z', routes: h.state.routes };
+	},
+	getRoute: async (id: string) => {
+		h.calls.route.push(id);
+		if (h.state.routeFailure) return null;
+		return h.state.route;
+	},
+}));
+vi.mock('#lib/v1/repositories/historic.ts', () => ({
+	getPublishedReliabilityIndex: async () => h.state.published,
+	// The finder reads one weekly file; a row never reaches a stop's own history.
+	getStopReliability: async () => {
+		h.calls.history.push('getStopReliability');
+		return null;
+	},
+	getStopHistoryIndex: async () => {
+		h.calls.history.push('getStopHistoryIndex');
+		return null;
 	},
 }));
 
+import StopsIndex from './StopsIndex.svelte';
+import { configureV1Runtime } from '#lib/v1/runtime.ts';
+
+const PUBLISHED = '2026-11-11T07:30:00Z';
+const WINDOW = { window_start: '2026-11-04', window_end: '2026-11-10' };
+
+/** A ranked weekly row whose share agrees with its counts, as the contract asks. */
+function ranked(id: string, readings: number, late: number, rank: number) {
+	const notLate = readings - late;
+	return {
+		state: 'ranked',
+		id,
+		name: id,
+		rank,
+		numerator: notLate,
+		denominator: readings,
+		pct: Math.round((100 * notLate) / readings),
+		severe_pct: Math.round((1000 * late) / readings) / 10,
+		...WINDOW,
+	};
+}
+
+function weekly(rows: unknown[]) {
+	return {
+		generated_utc: PUBLISHED,
+		published_utc: PUBLISHED,
+		next_publish_utc: '2026-11-18T07:00:00Z',
+		weekly_routes: null,
+		weekly_stops: rows,
+	};
+}
+
+let restoreRuntime: () => void = () => {};
+
+const rows = (container: HTMLElement) => [
+	...container.querySelectorAll<HTMLElement>('[data-slot="entity-result-row"]'),
+];
+const names = (container: HTMLElement) =>
+	[...container.querySelectorAll<HTMLAnchorElement>('a.finder-name')].map((a) =>
+		a.textContent?.trim(),
+	);
+const counts = (container: HTMLElement) =>
+	container.querySelector('[data-slot="finder-counts"]')?.textContent?.trim() ?? '';
+const rowFor = (container: HTMLElement, name: string) =>
+	rows(container).find((row) => row.querySelector('a.finder-name')?.textContent?.trim() === name)!;
+
 beforeEach(() => {
-	historyCalls.getPublishedReliabilityIndex.mockResolvedValue(null);
-	viewportRequestsEnabled = true;
-	getStopsIndex.mockResolvedValue(STOPS);
-	getRoutesIndex.mockResolvedValue(ROUTES);
-	getStopReliability.mockResolvedValue(null);
-	getRoute.mockResolvedValue(null);
-	setUrl('/stops');
-	replaceState.mockClear();
-	historyCalls.getStopHistoryDirectory.mockClear();
-	historyCalls.getStopHistoryIndex.mockClear();
-	historyCalls.loadStopHistoryRange.mockClear();
+	restoreRuntime = configureV1Runtime({
+		clock: {
+			get serverNow() {
+				return h.state.now;
+			},
+			noteServerEpochMs() {},
+			subscribe() {
+				return () => {};
+			},
+		},
+		refresh: { epoch: 0 },
+	});
+	h.state.url = new URL('http://localhost/stops?provider=stm');
+	h.state.stops = h.stopsFor(45);
+	h.state.routes = [{ id: '24', short: '24', long: 'Sherbrooke', type: 3 }];
+	h.state.route = null;
+	h.state.routeFailure = false;
+	h.state.routesFailure = false;
+	h.state.published = weekly([
+		ranked('S003', 80, 1, 1),
+		{ state: 'too_few_units', id: 'S002', ...WINDOW },
+	]);
+	h.state.locale = 'en';
+	h.state.now = Date.parse('2026-11-13T15:00:00Z');
+	h.state.desktop = false;
+	h.calls.route.length = 0;
+	h.calls.history.length = 0;
 });
 
 afterEach(() => {
-	vi.clearAllMocks();
+	restoreRuntime();
+	vi.unstubAllGlobals();
 });
 
-describe('StopsIndex retained-history boundary', () => {
-	it('stays current and never fans out retained discovery or partitions across the listing', async () => {
-		render(StopsIndex);
-		await screen.findByRole('combobox', { name: 'Filter by line' });
-
-		expect(historyCalls.getStopHistoryDirectory).not.toHaveBeenCalled();
-		expect(historyCalls.getStopHistoryIndex).not.toHaveBeenCalled();
-		expect(historyCalls.loadStopHistoryRange).not.toHaveBeenCalled();
-	});
-});
-
-describe('StopsIndex blueprint listing header', () => {
-	it('places controls and result data after the shared header separator', async () => {
+describe('Stops finder — every published stop', () => {
+	it('lists the network in twenty-row steps with true counts, the last step at its real size', async () => {
+		h.state.stops = h.stopsFor(41);
 		const { container } = render(StopsIndex);
-		await screen.findByRole('combobox', { name: 'Filter by line' });
-
-		const header = container.querySelector('[data-slot="blueprint-listing-header"]');
-		expect(header).not.toBeNull();
-		if (!header) return;
-
-		expect(header.querySelectorAll('h1')).toHaveLength(1);
-		expect(header.querySelector('.blueprint-bg')).toHaveAttribute('aria-hidden', 'true');
-		expect(container.querySelector('[data-slot="listing-edge-title"]')).toHaveTextContent('Stops.');
-		const separator = container.querySelector('[data-testid="listing-page-separator"]');
-		const search = container.querySelector<HTMLElement>('[data-slot="listing-search-field"]');
-		const controls = container.querySelector<HTMLElement>('[data-slot="listing-filter-panel"]');
-		const stats = header.querySelector('[data-slot="listing-header-stats"]');
-		const data = container.querySelector('[data-slot="entity-list"]');
-		expect(separator).not.toBeNull();
-		expect(search).not.toBeNull();
-		expect(controls).not.toBeNull();
-		expect(screen.getByRole('button', { name: 'Filters' })).toBeInTheDocument();
-		expect(container.querySelector('[data-slot="listing-filter-column"]')).toContainElement(search);
-		expect(container.querySelector('[data-slot="listing-filter-column"]')).toContainElement(
-			controls,
-		);
-		expect(container.querySelectorAll('[data-slot="listing-filter-section"]')).toHaveLength(2);
-		expect(stats).toHaveAccessibleName('Network inventory');
-		expect(
-			[...stats!.querySelectorAll('[data-slot="listing-header-stat"]')].map((stat) => [
-				stat.querySelector('dt')?.textContent,
-				stat.querySelector('dd')?.textContent?.trim(),
-			]),
-		).toEqual([
-			['Stops', '3'],
-			['Bus', '2'],
-			['Metro', '1'],
-			['Lines', '2'],
-		]);
-		expect(data).not.toBeNull();
-		expect(separator?.compareDocumentPosition(search as Node) ?? 0).toBe(
-			Node.DOCUMENT_POSITION_FOLLOWING,
-		);
-		expect(separator?.compareDocumentPosition(data as Node) ?? 0).toBe(
-			Node.DOCUMENT_POSITION_FOLLOWING,
-		);
+		await waitFor(() => expect(rows(container)).toHaveLength(20));
+		expect(counts(container)).toBe('Showing 20 of 41 matching stops, 41 in this network.');
+		await fireEvent.click(screen.getByRole('button', { name: 'Show 20 more stops' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Show the last stop' }));
+		expect(rows(container)).toHaveLength(41);
+		expect(counts(container)).toBe('Showing 41 of 41 matching stops, 41 in this network.');
+		expect(h.state.url.searchParams.get('shown')).toBe('60');
+		expect(screen.queryByRole('button', { name: /more stops|last stop/ })).toBeNull();
 	});
 
-	it('shows unknown mode inventory as a dash when the snapshot lacks complete mode coverage', async () => {
-		const stop = STOPS.stops[0] as unknown as { mode: string | undefined };
-		const originalMode = stop.mode;
-		stop.mode = undefined;
-		try {
-			const { container } = render(StopsIndex);
-			await screen.findByRole('combobox', { name: 'Filter by line' });
-			const statValue = (label: string) =>
-				[...container.querySelectorAll('[data-slot="listing-header-stat"]')]
-					.find((stat) => stat.querySelector('dt')?.textContent === label)
-					?.querySelector('dd');
+	it('reaches every match past the old 100-row search cap', async () => {
+		h.state.stops = h.stopsFor(130);
+		h.state.url = new URL('http://localhost/stops?provider=stm&q=stop&shown=140');
+		const { container } = render(StopsIndex);
+		await waitFor(() => expect(rows(container)).toHaveLength(130));
+		expect(counts(container)).toBe('Showing 130 of 130 matching stops, 130 in this network.');
+	});
 
-			expect(statValue('Bus')).toHaveTextContent('—');
-			expect(statValue('Metro')).toHaveTextContent('—');
-		} finally {
-			stop.mode = originalMode;
-		}
+	it('names each row by stop, sign code, mode and lines, linking to its record', async () => {
+		const { container } = render(StopsIndex);
+		await waitFor(() => expect(rows(container).length).toBeGreaterThan(0));
+		const row = rowFor(container, 'Stop 001');
+		expect(row.querySelector('.finder-meta')?.textContent).toBe('Code 5001 · Bus · Line 24');
+		expect(row.querySelector('a.finder-name')?.getAttribute('href')).toBe(
+			'/stop/S001?provider=stm',
+		);
 	});
 });
 
-describe('StopsIndex listing system', () => {
-	it('gates the route-driven catalogue on the routes index error boundary', async () => {
-		getRoutesIndex.mockRejectedValue(new Error('routes unavailable'));
+describe('Stops finder — each row’s weekly record', () => {
+	it('shows the stop page’s own late share, rounded as published, with its week and readings', async () => {
 		const { container } = render(StopsIndex);
-
 		await waitFor(() =>
 			expect(
-				container.querySelector('[data-slot="edge-state"][data-variant="error-v1"]'),
+				rowFor(container, 'Stop 003').querySelector('[data-slot="stop-row-figure"]'),
 			).not.toBeNull(),
 		);
-		expect(screen.queryByRole('heading', { name: 'Browse stops by line' })).not.toBeInTheDocument();
-	});
-
-	it('keeps inventory in the header and makes per-line cards the entire idle body', async () => {
-		const { container } = render(StopsIndex);
-		await screen.findByRole('combobox', { name: 'Filter by line' });
-
-		expect(container.querySelector('[data-slot="listing-header-stats"]')).toBeInTheDocument();
-		expect(container.querySelector('[data-slot="listing-intro"]')).toBeNull();
-		expect(container.querySelector('[data-slot="listing-overview-card"]')).toBeNull();
-		expect(container.querySelector('[data-slot="stops-census"]')).toBeNull();
-		expect(container.querySelector('.stops-browse-card')).toBeNull();
-		const list = container.querySelector('[data-slot="entity-list"]');
-		expect(list).toHaveClass('entity-list--cards', 'entity-list--grid');
-		expect(list?.querySelectorAll(':scope > li > [data-slot="card"]')).toHaveLength(
-			ROUTES.routes.length,
+		const row = rowFor(container, 'Stop 003');
+		// 1 late reading of 80 is exactly 1.25%: one decimal, half away from zero, as the publisher rounds.
+		const figure = within(row).getByRole('img', {
+			name: '1.3% of readings more than 5 minutes late, November 4 to 10, 2026 · 7 complete days',
+		});
+		expect(figure.textContent).toContain('1.3%');
+		expect(row.querySelector('[data-slot="stop-row-detail"]')?.textContent).toBe(
+			'November 4 to 10, 2026 · 80 readings',
 		);
-		expect(screen.getByRole('button', { name: /line 80 Bus Avenue du Parc/i })).toBeInTheDocument();
-		expect(screen.getByRole('button', { name: /line 11 Bus Mont-Royal/i })).toBeInTheDocument();
-		expect(
-			screen.getByRole('button', { name: /Browse stops on line 80 Bus Avenue du Parc/i }),
-		).toBeInTheDocument();
-	});
-
-	it('identifies a street stop as Bus in the shared result row', async () => {
-		const { container } = render(StopsIndex);
-		await fireEvent.input(screen.getByRole('textbox', { name: 'Filter this list' }), {
-			target: { value: 'rockland' },
-		});
-
-		await screen.findByRole('link', { name: /Van Horne \/ Rockland/i });
-		expect(
-			container.querySelector('[data-slot="entity-result-row"] [data-slot="badge"]'),
-		).toHaveTextContent('Bus');
-		expect(container.querySelectorAll('[data-slot="entity-result-row"]')).toHaveLength(1);
-	});
-
-	it('provides a browsable line catalogue that selects the existing shareable route axis', async () => {
-		getRoute.mockResolvedValue({
-			generated_utc: '2026-06-16T02:00:00Z',
-			id: '80',
-			directions: [{ dir: 0, headsign: 'South', stops: [{ id: '22000', seq: 1 }] }],
-		});
-		render(StopsIndex);
-
-		expect(
-			await screen.findByRole('heading', { name: 'Browse stops by line' }),
-		).toBeInTheDocument();
-		await fireEvent.click(screen.getByRole('button', { name: /line 80 Bus Avenue du Parc/i }));
-		await waitFor(() => {
-			const last = replaceState.mock.calls.at(-1)?.[0] as URL | undefined;
-			expect(last?.searchParams.get('route')).toBe('80');
-		});
-	});
-
-	it('shows the shared loading scaffold instead of a false empty state while a picked line loads', async () => {
-		let resolveRoute!: (value: {
-			generated_utc: string;
-			id: string;
-			directions: Array<{
-				dir: number;
-				headsign: string;
-				stops: Array<{ id: string; seq: number }>;
-			}>;
-		}) => void;
-		getRoute.mockImplementation(
-			() =>
-				new Promise((resolve) => {
-					resolveRoute = resolve;
-				}),
+		expect(row.querySelector('a.finder-name')?.getAttribute('href')).toBe(
+			'/stop/S003?provider=stm&from=2026-11-04&to=2026-11-10',
 		);
-		const { container } = render(StopsIndex);
-
-		expect(
-			await screen.findByRole('heading', { name: 'Browse stops by line' }),
-		).toBeInTheDocument();
-		await fireEvent.click(screen.getByRole('button', { name: /line 80 Bus Avenue du Parc/i }));
-		await waitFor(() => expect(getRoute).toHaveBeenCalledWith('80'));
-
-		expect(screen.queryByText('No published stop list for this line.')).not.toBeInTheDocument();
-		expect(
-			container.querySelector('[data-slot="edge-state"][data-variant="skeleton"]'),
-		).not.toBeNull();
-
-		resolveRoute({
-			generated_utc: '2026-06-16T02:00:00Z',
-			id: '80',
-			directions: [{ dir: 0, headsign: 'South', stops: [{ id: '22000', seq: 1 }] }],
-		});
-		expect(await screen.findByRole('heading', { name: 'Direction 0 · South' })).toBeInTheDocument();
 	});
 
-	it('reveals a selected line stop catalogue in accessible batches of 50', async () => {
-		const routeStops = Array.from({ length: 120 }, (_, i) => ({
-			id: `route-stop-${i}`,
-			name: `Route stop ${i + 1}`,
-			seq: i + 1,
-		}));
-		getRoute.mockResolvedValue({
-			generated_utc: '2026-06-16T02:00:00Z',
-			id: '80',
-			directions: [
-				{ dir: 0, headsign: 'South', stops: routeStops.slice(0, 60) },
-				{ dir: 1, headsign: 'North', stops: routeStops.slice(60) },
-			],
-		});
-		setUrl('/stops?route=80');
+	it('keeps absence in words, never a reassuring zero', async () => {
 		const { container } = render(StopsIndex);
-
-		await waitFor(() => expect(getRoute).toHaveBeenCalledWith('80'));
 		await waitFor(() =>
-			expect(container.querySelectorAll('[data-slot="entity-result-row"]')).toHaveLength(50),
+			expect(
+				rowFor(container, 'Stop 002').querySelector('[data-slot="stop-row-state"]'),
+			).not.toBeNull(),
 		);
-		expect(screen.getByRole('heading', { name: 'Direction 0 · South' })).toBeInTheDocument();
-		expect(screen.getByRole('heading', { name: 'Direction 1 · North' })).toBeInTheDocument();
-		expect(screen.getByRole('status', { name: 'Stop catalogue progress' })).toHaveTextContent(
-			'Showing 50 of 120 stops',
-		);
+		const tooFew = rowFor(container, 'Stop 002');
+		expect(tooFew.textContent).toContain('No share');
+		expect(tooFew.textContent).toContain('Too few readings this week');
+		const unlisted = rowFor(container, 'Stop 001');
+		expect(unlisted.textContent).toContain('Not in this week’s record');
+		expect(container.textContent).not.toMatch(/\b0(\.0)?\s?%/u);
+		expect(h.calls.history).toEqual([]);
+	});
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Load 50 more stops' }));
-		expect(container.querySelectorAll('[data-slot="entity-result-row"]')).toHaveLength(100);
-		await fireEvent.click(screen.getByRole('button', { name: 'Load 20 more stops' }));
-		expect(container.querySelectorAll('[data-slot="entity-result-row"]')).toHaveLength(120);
-		expect(screen.queryByRole('button', { name: /more stops/ })).not.toBeInTheDocument();
+	it('holds the figure’s room, unread, while the weekly file loads', async () => {
+		let release: (value: unknown) => void = () => {};
+		h.state.published = new Promise((resolve) => (release = resolve));
+		const { container } = render(StopsIndex);
+		await waitFor(() => expect(rows(container).length).toBeGreaterThan(0));
+		const row = rowFor(container, 'Stop 003');
+		expect(row.querySelector('.finder-held[aria-hidden="true"]')).not.toBeNull();
+		expect(row.querySelector('[data-slot="stop-row-detail"]')?.textContent).toBe('');
+		release(weekly([ranked('S003', 80, 1, 1)]));
+		await waitFor(() => expect(row.querySelector('[data-slot="stop-row-figure"]')).not.toBeNull());
 	});
 });
 
-describe('StopsIndex — find by typing', () => {
-	it('keeps the stop detail link and adds a separate filtered-map link', async () => {
-		render(StopsIndex);
-		await fireEvent.input(screen.getByRole('textbox', { name: 'Filter this list' }), {
-			target: { value: 'rockland' },
-		});
-		expect(await screen.findByRole('link', { name: /Van Horne \/ Rockland/i })).toHaveAttribute(
-			'href',
-			'/stop/57191',
-		);
-		expect(screen.getByRole('link', { name: /View stop 57191 on map/ })).toHaveAttribute(
-			'href',
-			'/map?stop=57191&focus=stop%3A57191',
-		);
-		const list = document.querySelector('[data-slot="entity-list"]');
-		expect(list).toHaveClass('entity-list--cards');
-		expect(list?.querySelectorAll('[data-slot="card"]')).toHaveLength(1);
-	});
-
-	it('finds an accented station typed without accents and tags it as métro', async () => {
+describe('Stops finder — narrowing and recovery', () => {
+	it('says what did not match and clears back to the whole network', async () => {
 		const { container } = render(StopsIndex);
-		await fireEvent.input(screen.getByRole('textbox', { name: 'Filter this list' }), {
-			target: { value: 'cremazie' },
-		});
-		expect(await screen.findByRole('link', { name: /Station Crémazie/i })).toHaveAttribute(
-			'href',
-			'/stop/11000',
+		await waitFor(() => expect(rows(container)).toHaveLength(20));
+		await fireEvent.input(screen.getByTestId('stops-filter-input'), { target: { value: 'zzz' } });
+		const notice = await screen.findByText('No stop matches “zzz”.');
+		expect(h.state.url.searchParams.get('q')).toBe('zzz');
+		await fireEvent.click(
+			within(notice.closest('[role="status"]')!).getByRole('button', { name: 'Clear filters' }),
 		);
-		expect(
-			container.querySelector('[data-slot="entity-result-row"] [data-slot="badge"]'),
-		).toHaveTextContent('Métro');
-	});
-});
-
-describe('StopsIndex — reliability badges (honest probe)', () => {
-	it('shows NO badge for a stop whose history 404s (never a fabricated 0%)', async () => {
-		render(StopsIndex);
-		await fireEvent.input(screen.getByRole('textbox', { name: 'Filter this list' }), {
-			target: { value: 'rockland' },
-		});
-		await screen.findByRole('link', { name: /Van Horne \/ Rockland/i });
-		await waitFor(() => expect(getStopReliability).toHaveBeenCalledWith('57191'));
-		expect(document.querySelector('[data-slot="reliability-badge"]')).toBeNull();
+		await waitFor(() => expect(rows(container)).toHaveLength(20));
+		expect(h.state.url.searchParams.has('q')).toBe(false);
 	});
 
-	it('paints a badge only for a stop with published history', async () => {
-		getStopReliability.mockImplementation((id: string) =>
-			id === '57191'
-				? Promise.resolve({
-						generated_utc: '2026-06-16T02:00:00Z',
-						id: '57191',
-						periods: [{ grain: 'day', otp_pct: 82 }],
-					})
-				: Promise.resolve(null),
-		);
-		render(StopsIndex);
-		await fireEvent.input(screen.getByRole('textbox', { name: 'Filter this list' }), {
-			target: { value: 'rockland' },
-		});
-		await screen.findByRole('link', { name: /Van Horne \/ Rockland/i });
-		await waitFor(() =>
-			expect(document.querySelector('[data-slot="reliability-badge"]')).not.toBeNull(),
-		);
-	});
-
-	it('uses published stop order without fetching offscreen badges to rank', async () => {
-		viewportRequestsEnabled = false;
-		historyCalls.getPublishedReliabilityIndex.mockResolvedValue({
-			generated_utc: new Date().toISOString(),
-			weekly_stops: ['11000', '22000', '57191'].map((id, i) => ({
-				id,
-				state: 'ranked',
-				rank: i + 1,
-				pct: 50 + i * 20,
-				numerator: 50 + i * 20,
-				denominator: 100,
-				severe_pct: 50 - i * 20,
-				window_start: '2026-11-04',
-				window_end: '2026-11-10',
-			})),
-		});
-		getRoute.mockResolvedValue({
-			generated_utc: '2026-06-16T02:00:00Z',
-			id: '80',
+	it('follows a chosen line in travel order, naming directions only by their headsign', async () => {
+		h.state.route = {
+			id: '24',
 			directions: [
 				{
 					dir: 0,
-					headsign: 'South',
+					headsign: 'Est',
 					stops: [
-						{ id: '57191', seq: 1 },
-						{ id: '11000', seq: 2 },
-						{ id: '22000', seq: 3 },
+						{ id: 'S005', seq: 1 },
+						{ id: 'S001', seq: 2 },
 					],
 				},
+				{ dir: 1, headsign: null, stops: [{ id: 'S001', seq: 1 }] },
 			],
-		});
-		setUrl('/stops?route=80');
+		};
+		h.state.url = new URL('http://localhost/stops?provider=stm&route=24');
+		const { container } = render(StopsIndex);
+		await waitFor(() => expect(rows(container)).toHaveLength(3));
+		expect(names(container)).toEqual(['Stop 005', 'Stop 001', 'Stop 001']);
+		expect(counts(container)).toBe('Showing 3 of 3 stops on line 24.');
+		const metas = [...container.querySelectorAll('.finder-meta')].map((meta) => meta.textContent);
+		expect(metas[0]).toContain('Towards Est');
+		expect(metas[2]).not.toMatch(/Towards|Direction/u);
+		expect(container.textContent).not.toContain('Direction 0');
+	});
+
+	it('says when a line has no published stop list, and offers the way back', async () => {
+		h.state.routeFailure = true;
+		h.state.url = new URL('http://localhost/stops?provider=stm&route=24');
 		render(StopsIndex);
-		await screen.findByRole('heading', { name: 'Direction 0 · South' });
-		await (await screen.findByTestId('stops-sort-worst')).click();
-		expect(
-			screen
-				.getAllByRole('listitem')
-				.map((row) => within(row).getAllByRole('link')[0].getAttribute('href')),
-		).toEqual(['/stop/11000', '/stop/22000', '/stop/57191']);
-		expect(getStopReliability).not.toHaveBeenCalled();
-		expect(screen.queryByTestId('stops-ranking-status')).toBeNull();
+		const notice = await screen.findByText('No published stop list for this line.');
+		await fireEvent.click(
+			within(notice.closest('[role="status"]')!).getByRole('button', { name: 'Clear filters' }),
+		);
+		await waitFor(() => expect(h.state.url.searchParams.has('route')).toBe(false));
+	});
+
+	it('orders by the published ranking only when a current one exists, and says what it is', async () => {
+		h.state.published = weekly([ranked('S040', 100, 30, 1), ranked('S003', 80, 1, 2)]);
+		const { container } = render(StopsIndex);
+		await waitFor(() => expect(screen.getByTestId('stops-sort-late')).toBeEnabled());
+		await fireEvent.click(screen.getByTestId('stops-sort-late'));
+		await waitFor(() =>
+			expect(names(container).slice(0, 3)).toEqual(['Stop 040', 'Stop 003', 'Stop 001']),
+		);
+		expect(container.querySelector('[data-slot="finder-order-context"]')?.textContent).toContain(
+			'Published ranking for November 4 to 10, 2026, by readings more than 5 minutes late.',
+		);
+		expect(h.state.url.searchParams.get('sort')).toBe('late');
+	});
+
+	it('explains why the published order is unavailable when no current week exists', async () => {
+		h.state.now = Date.parse('2026-12-20T12:00:00Z');
+		render(StopsIndex);
+		const order = await screen.findByTestId('stops-sort-late');
+		expect(order).toBeDisabled();
+		expect(order).toHaveAccessibleDescription(
+			'This order needs a current weekly record. The stops stay in their usual order.',
+		);
 	});
 });
 
-describe('StopsIndex — find by line', () => {
-	it('seeds the line from ?route= and lists that line’s LOSSLESS stop list, direction-grouped', async () => {
-		getRoute.mockResolvedValue({
-			generated_utc: '2026-06-16T02:00:00Z',
-			id: '80',
-			directions: [
-				{
-					dir: 0,
-					stops: [
-						{ id: '22000', seq: 1 },
-						{ id: '57191', seq: 2 },
-					],
-				},
-				{ dir: 1, stops: [{ id: '11000', seq: 1 }] },
-			],
-		});
-		setUrl('/stops?route=80');
-		render(StopsIndex);
-
-		await waitFor(() => expect(getRoute).toHaveBeenCalledWith('80'));
-		expect(await screen.findByText(/Stops on line 80/i)).toBeInTheDocument();
-		expect(screen.getByRole('link', { name: /Papineau \/ Rachel/i })).toBeInTheDocument();
-		expect(screen.getByRole('link', { name: /Van Horne \/ Rockland/i })).toBeInTheDocument();
-		expect(screen.getByRole('link', { name: /Station Crémazie/i })).toBeInTheDocument();
-		expect(screen.getByRole('heading', { name: 'Direction 0' })).toBeInTheDocument();
-		expect(screen.getByRole('heading', { name: 'Direction 1' })).toBeInTheDocument();
+describe('Stops finder — nearby, on request only', () => {
+	it('asks for the position only on action and never writes it to the URL', async () => {
+		const getCurrentPosition = vi.fn((success: PositionCallback) =>
+			success({ coords: { latitude: 45.5, longitude: -73.6 } } as GeolocationPosition),
+		);
+		vi.stubGlobal('navigator', { ...navigator, geolocation: { getCurrentPosition } });
+		vi.stubGlobal('isSecureContext', true);
+		const { container } = render(StopsIndex);
+		await waitFor(() => expect(rows(container)).toHaveLength(20));
+		expect(getCurrentPosition).not.toHaveBeenCalled();
+		await fireEvent.click(screen.getByRole('button', { name: 'Stops near me' }));
+		// The seed spaces stops about 111 m apart northwards: nine fall within 1 km.
+		await waitFor(() => expect(counts(container)).toBe('Showing 9 of 9 stops within 1 km.'));
+		expect(names(container)[0]).toBe('Stop 001');
+		expect(rowFor(container, 'Stop 002').querySelector('.finder-meta')?.textContent).toContain(
+			'110 m',
+		);
+		expect(h.state.url.search).not.toMatch(/45\.5|73\.6|near/u);
+		await fireEvent.click(screen.getByRole('button', { name: 'Stop using my location' }));
+		await waitFor(() => expect(rows(container)).toHaveLength(20));
 	});
 
-	it('shows an honest empty state when the line has no published stop list (getRoute 404)', async () => {
-		getRoute.mockResolvedValue(null);
-		setUrl('/stops?route=80');
+	it('keeps a filter that matches nothing nearby a no-match, not a claim about distance', async () => {
+		const getCurrentPosition = vi.fn((success: PositionCallback) =>
+			success({ coords: { latitude: 45.5, longitude: -73.6 } } as GeolocationPosition),
+		);
+		vi.stubGlobal('navigator', { ...navigator, geolocation: { getCurrentPosition } });
+		vi.stubGlobal('isSecureContext', true);
+		const { container } = render(StopsIndex);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Stops near me' }));
+		await waitFor(() => expect(counts(container)).toBe('Showing 9 of 9 stops within 1 km.'));
+		await fireEvent.input(screen.getByTestId('stops-filter-input'), { target: { value: 'zzzzz' } });
+		expect(await screen.findByText('No stop matches “zzzzz”.')).toBeInTheDocument();
+		expect(screen.queryByText('No stop is within 1 km of your location.')).toBeNull();
+	});
+
+	it('says plainly when the position is refused', async () => {
+		vi.stubGlobal('navigator', {
+			...navigator,
+			geolocation: {
+				getCurrentPosition: (_: PositionCallback, failure: PositionErrorCallback) =>
+					failure({ code: 1, PERMISSION_DENIED: 1, TIMEOUT: 3 } as GeolocationPositionError),
+			},
+		});
+		vi.stubGlobal('isSecureContext', true);
 		render(StopsIndex);
-		await waitFor(() => expect(getRoute).toHaveBeenCalledWith('80'));
-		const message = await screen.findByText('No published stop list for this line.');
-		expect(message).toBeInTheDocument();
-		expect(message.closest('[data-slot="state-notice"]')).toHaveAttribute(
-			'data-presentation',
-			'silo',
+		await fireEvent.click(await screen.findByRole('button', { name: 'Stops near me' }));
+		expect(
+			await screen.findByText('Location permission was refused. Filter by name or code instead.'),
+		).toBeInTheDocument();
+	});
+
+	it('leads to the address search with the reader’s provider', async () => {
+		render(StopsIndex);
+		expect(await screen.findByRole('link', { name: 'Near an address' })).toHaveAttribute(
+			'href',
+			'/search?provider=stm',
 		);
 	});
+});
 
-	it('exposes an accessible combobox (a11y AA) with the line-filter label', async () => {
+describe('Stops finder — selected preview', () => {
+	it('previews a stop with its record, Map and record links that keep provider and week', async () => {
 		const { container } = render(StopsIndex);
-		expect(await screen.findByRole('combobox', { name: 'Filter by line' })).toBeInTheDocument();
-		expect(container.querySelector('.stops-line-filter [data-slot="combobox"]')).not.toBeNull();
+		await waitFor(() => expect(rows(container)).toHaveLength(20));
+		const button = screen.getByRole('button', { name: 'Preview stop Stop 003' });
+		await fireEvent.click(button);
+		const preview = await screen.findByRole('region', { name: 'Stop 003' });
+		expect(h.state.url.searchParams.get('stop')).toBe('S003');
+		await waitFor(() =>
+			expect(within(preview).getByRole('heading', { name: 'Stop 003' })).toHaveFocus(),
+		);
+		expect(preview.querySelector('[data-slot="stops-preview-figure"]')?.textContent).toContain(
+			'1.3% of readings indicated a delay of more than 5 minutes.',
+		);
+		expect(preview.querySelector('[data-slot="stops-preview-period"]')?.textContent).toBe(
+			'November 4 to 10, 2026 · 7 complete days',
+		);
+		expect(preview.textContent).toContain('80 readings; 1 more than 5 minutes late.');
+		expect(within(preview).getByRole('link', { name: 'Open record' })).toHaveAttribute(
+			'href',
+			'/stop/S003?provider=stm&from=2026-11-04&to=2026-11-10',
+		);
+		const map = within(preview).getByRole('link', { name: 'Show on map' }).getAttribute('href')!;
+		const mapUrl = new URL(map, 'http://localhost');
+		expect(mapUrl.pathname).toBe('/map');
+		expect(mapUrl.searchParams.get('provider')).toBe('stm');
+		expect(mapUrl.searchParams.get('stop')).toBe('S003');
+		expect(within(preview).getByRole('link', { name: 'Download CSV' })).toHaveAttribute(
+			'download',
+			'transit-stm-stop-5003-2026-11-04-to-2026-11-10.csv',
+		);
+		expect(within(preview).getByRole('button', { name: 'Cite this record' })).toBeInTheDocument();
+
+		await fireEvent.click(within(preview).getByRole('button', { name: 'Back to results' }));
+		await waitFor(() => expect(button).toHaveFocus());
+		expect(h.state.url.searchParams.has('stop')).toBe(false);
 	});
 
-	it('mirrors the picked line to ?route= (codec-owned, shareable) and drops it when cleared', async () => {
-		setUrl('/stops?route=80');
-		getRoute.mockResolvedValue({
-			generated_utc: '2026-06-16T02:00:00Z',
-			id: '80',
-			directions: [{ dir: 0, stops: [{ id: '22000', seq: 1 }] }],
-		});
+	it('says why a stop has no share in its preview, with no export or citation', async () => {
+		h.state.url = new URL('http://localhost/stops?provider=stm&stop=S001');
 		render(StopsIndex);
-		const clear = await screen.findByRole('button', { name: 'Clear line filter' });
-		await fireEvent.click(clear);
-		await waitFor(() => {
-			const last = replaceState.mock.calls.at(-1)?.[0] as URL | undefined;
-			expect(last?.searchParams.has('route')).toBe(false);
-		});
+		const preview = await screen.findByRole('region', { name: 'Stop 001' });
+		await waitFor(() =>
+			expect(preview.textContent).toContain('This stop is not in the latest weekly record.'),
+		);
+		expect(within(preview).queryByRole('link', { name: 'Download CSV' })).toBeNull();
+		expect(within(preview).queryByRole('button', { name: 'Cite this record' })).toBeNull();
+	});
+
+	it('previews the first row on desktop without a selection', async () => {
+		h.state.desktop = true;
+		render(StopsIndex);
+		expect(await screen.findByRole('region', { name: 'Stop 001' })).toBeInTheDocument();
+		expect(screen.queryByRole('button', { name: 'Back to results' })).toBeNull();
+	});
+});
+
+describe('Stops finder — French', () => {
+	it('speaks French throughout, with French number and percent formats', async () => {
+		h.state.locale = 'fr';
+		h.state.stops = h.stopsFor(1200).map((stop, index) => (index === 2 ? stop : stop));
+		const { container } = render(StopsIndex);
+		await waitFor(() => expect(rows(container)).toHaveLength(20));
+		expect(counts(container)).toBe(
+			`20 arrêts affichés sur ${(1200).toLocaleString('fr-CA')} correspondants, ${(1200).toLocaleString('fr-CA')} dans ce réseau.`,
+		);
+		await waitFor(() =>
+			expect(
+				rowFor(container, 'Stop 003').querySelector('[data-slot="stop-row-figure"]'),
+			).not.toBeNull(),
+		);
+		expect(rowFor(container, 'Stop 003').textContent).toMatch(/1,3\s%/u);
+		expect(screen.getByRole('button', { name: 'Afficher 20 arrêts de plus' })).toBeInTheDocument();
+		expect(screen.getByRole('button', { name: 'Arrêts près de moi' })).toBeInTheDocument();
+	});
+});
+
+describe('Stops finder — a failed line catalogue', () => {
+	it('still lists every stop, naming lines by their published id', async () => {
+		h.state.routesFailure = true;
+		const { container } = render(StopsIndex);
+		await waitFor(() => expect(rows(container)).toHaveLength(20));
+		expect(screen.queryByText('Data unavailable')).toBeNull();
+		expect(rowFor(container, 'Stop 001').querySelector('.finder-meta')?.textContent).toBe(
+			'Code 5001 · Bus · Line 24',
+		);
 	});
 });

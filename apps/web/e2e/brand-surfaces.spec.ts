@@ -495,27 +495,6 @@ test('homepage props remain static without JavaScript and switch instantly with 
 	}
 });
 
-test('the stops listing header draws in as the page scrolls', async ({ page }) => {
-	test.skip(page.viewportSize()!.width < 1024, 'the scrub runs from 1024px');
-	await page.emulateMedia({ reducedMotion: 'no-preference' });
-	await page.goto('/stops');
-	const art = page.locator('[data-slot="listing-frame"] .blueprint-bg svg path').first();
-	const fraction = () =>
-		art.evaluate((p: SVGPathElement) => {
-			const [d, t] = p.style.strokeDasharray.split(',').map(parseFloat);
-			return d / t;
-		});
-	await expect.poll(fraction).toBeGreaterThan(0);
-	const before = await fraction();
-	const viewport = page.viewportSize()!;
-	await page.mouse.move(viewport.width / 2, viewport.height / 2);
-	await page.mouse.wheel(0, 800);
-	await expect.poll(fraction).toBeGreaterThan(before);
-	await page.emulateMedia({ reducedMotion: 'reduce' });
-	await page.reload();
-	await expect.poll(() => art.evaluate((p: SVGPathElement) => p.style.strokeDasharray)).toBe('');
-});
-
 test("a metric's defining SQL is a named, keyboard-reachable region", async ({ page }) => {
 	await page.goto('/metrics');
 	const sqlCards = '[data-slot="typed-information-card"][data-kind="sql"]';
@@ -586,64 +565,21 @@ test("a detail page's back link sits midway between the chrome and the next line
 		.toBeLessThanOrEqual(1);
 });
 
-test('listing headers draw at the package ink and rest their copy on the band floor', async ({
-	page,
-}) => {
+test('listing headers are reading frames: a visible title and no artwork', async ({ page }) => {
+	// The Lines and Stops finders were the last expressive listings; both now lead with the title.
 	let listings = 0;
 	for (const { href } of SURFACE_NAV) {
 		await page.goto(href);
 		const header = page.locator('[data-slot="blueprint-listing-header"]');
 		if (!(await header.count())) continue;
+		listings += 1;
 		const presentation = await page
 			.locator('[data-slot="listing-frame"]')
 			.first()
 			.getAttribute('data-presentation');
-		if (href === '/lines') {
-			// The approved Lines directory is a reading frame: a visible title, no artwork at all.
-			expect(presentation, href).toBe('reading');
-			await expect(header.locator('h1')).toBeVisible();
-			await expect(header.locator('[data-slot="blueprint-listing-art"]')).toHaveCount(0);
-			continue;
-		}
-		expect(presentation, href).toBe('expressive');
-		listings += 1;
-		await page.evaluate(() => document.fonts.ready);
-		for (const theme of ['dark', 'light'] as const) {
-			const { ink, drawings, gap } = await header.evaluate((band, theme) => {
-				document.documentElement.dataset.theme = theme;
-				const art = band.querySelector('[data-slot="blueprint-listing-art"]')!;
-				// What a drawing shows: its own opacity times its wrappers' inside the art slot.
-				const rendered = (drawing: Element) => {
-					let opacity = 1;
-					for (
-						let node: Element | null = drawing;
-						node && node !== art;
-						node = node.parentElement
-					) {
-						opacity *= Number(getComputedStyle(node).opacity);
-					}
-					return opacity;
-				};
-				const content = band.querySelector('[data-slot="blueprint-listing-content"]')!;
-				const copy = [
-					content.firstElementChild!.lastElementChild!,
-					...[...content.children].slice(1),
-				];
-				const lowest = Math.max(...copy.map((element) => element.getBoundingClientRect().bottom));
-				return {
-					ink: Number(getComputedStyle(art).getPropertyValue('--blueprint-ink')),
-					drawings: [...art.querySelectorAll('svg')].map(rendered),
-					gap:
-						band.getBoundingClientRect().bottom -
-						parseFloat(getComputedStyle(content).paddingBottom) -
-						lowest,
-				};
-			}, theme);
-			expect(ink, `${href} ${theme}`).toBeGreaterThan(0);
-			expect(drawings.length, `${href} ${theme}`).toBeGreaterThan(1);
-			for (const opacity of drawings) expect(opacity, `${href} ${theme}`).toBeCloseTo(ink, 3);
-			expect(Math.abs(gap), `${href} ${theme}`).toBeLessThanOrEqual(1);
-		}
+		expect(presentation, href).toBe('reading');
+		await expect(header.locator('h1')).toBeVisible();
+		await expect(header.locator('[data-slot="blueprint-listing-art"]')).toHaveCount(0);
 	}
-	expect(listings).toBeGreaterThan(0);
+	expect(listings).toBeGreaterThanOrEqual(2);
 });
