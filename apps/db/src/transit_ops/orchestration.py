@@ -1163,6 +1163,15 @@ def _run_realtime_cycle(
     )
 
 
+def _local_edition_engine(settings: Settings, engine: Engine | None = None) -> Engine | None:
+    """Build a read-only engine used solely for #883 static edition loads in local mode."""
+    if engine is not None:
+        return engine
+    if not settings.sqlalchemy_database_url:
+        return None
+    return make_engine(settings, connect_timeout=10, read_only=True)
+
+
 def run_realtime_cycle(
     provider_id: str,
     *,
@@ -1175,9 +1184,16 @@ def run_realtime_cycle(
     refuse_unadmitted_shadow(settings, worker_loop=False)
     registry = registry or _provider_registry(settings)
     local_mode = settings.LIGHTER_STORAGE.live.ingress == "local"
-    engine = None if local_mode else _engine(settings, engine)
     scope = BronzeStorageScope(settings, project_root=_project_root())
+    owned_edition_engine: Engine | None = None
     try:
+        owned_edition_engine = (
+            _local_edition_engine(settings) if local_mode and engine is None else None
+        )
+        edition_engine = (
+            (engine if engine is not None else owned_edition_engine) if local_mode else None
+        )
+        engine = None if local_mode else _engine(settings, engine)
         owner = nullcontext(None)
         if settings.LIGHTER_STORAGE.live.recording or local_mode:
             from transit_ops.live.worker_state import worker_state_scope
@@ -1188,6 +1204,7 @@ def run_realtime_cycle(
                 manifest=registry.get_provider(provider_id),
                 resolver=scope.resolve,
                 app_settings=settings if local_mode else None,
+                edition_engine=edition_engine,
             )
         with owner as state:
             return _run_realtime_cycle(
@@ -1205,6 +1222,8 @@ def run_realtime_cycle(
                 ),
             )
     finally:
+        if owned_edition_engine is not None:
+            owned_edition_engine.dispose()
         try:
             scope.close()
         except Exception as exc:
@@ -1560,6 +1579,7 @@ def run_realtime_worker_loop(
         shutdown_grace=settings.REALTIME_SHUTDOWN_GRACE_SECONDS,
     ):
         bronze_storage_scope = BronzeStorageScope(settings, project_root=_project_root())
+        owned_edition_engine: Engine | None = None
         try:
             local_mode = settings.LIGHTER_STORAGE.live.ingress == "local"
             owner = nullcontext(None)
@@ -1567,9 +1587,14 @@ def run_realtime_worker_loop(
                 from transit_ops.live.worker_state import worker_state_scope
 
                 registry = registry or _provider_registry(settings)
+                edition_engine: Engine | None = None
                 if not local_mode:
                     engine = engine or make_engine(settings, connect_timeout=10)
                 else:
+                    owned_edition_engine = (
+                        _local_edition_engine(settings) if engine is None else None
+                    )
+                    edition_engine = engine if engine is not None else owned_edition_engine
                     engine = None
                 owner = worker_state_scope(
                     settings=settings.LIGHTER_STORAGE.live,
@@ -1578,6 +1603,7 @@ def run_realtime_worker_loop(
                     resolver=bronze_storage_scope.resolve,
                     record_restart=True,
                     app_settings=settings if local_mode else None,
+                    edition_engine=edition_engine,
                 )
             publish_ctx = nullcontext() if local_mode else live_publish_scope(provider_id, settings)
             with publish_ctx, owner as state:
@@ -1595,6 +1621,8 @@ def run_realtime_worker_loop(
                     **({"worker_state": state} if state is not None else {}),
                 )
         finally:
+            if owned_edition_engine is not None:
+                owned_edition_engine.dispose()
             try:
                 bronze_storage_scope.close()
             except Exception:

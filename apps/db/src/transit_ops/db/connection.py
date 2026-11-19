@@ -22,18 +22,22 @@ def require_database_url(settings: Settings) -> str:
     return settings.sqlalchemy_database_url
 
 
-def make_engine(settings: Settings, *, connect_timeout: int | None = None) -> Engine:
-
+def make_engine(
+    settings: Settings, *, connect_timeout: int | None = None, read_only: bool = False
+) -> Engine:
+    connect_args: dict[str, object] = {
+        **({"connect_timeout": connect_timeout} if connect_timeout is not None else {}),
+        "keepalives": 1,
+        "keepalives_idle": 20,
+        "keepalives_interval": 10,
+        "keepalives_count": 6,
+    }
+    if read_only:
+        connect_args["options"] = "-c default_transaction_read_only=on"
     return create_engine(
         require_database_url(settings),
         pool_pre_ping=True,
-        connect_args={
-            **({"connect_timeout": connect_timeout} if connect_timeout is not None else {}),
-            "keepalives": 1,
-            "keepalives_idle": 20,
-            "keepalives_interval": 10,
-            "keepalives_count": 6,
-        },
+        connect_args=connect_args,
     )
 
 

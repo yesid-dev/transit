@@ -13,8 +13,10 @@ from typing import TYPE_CHECKING, Any, get_type_hints
 from urllib.parse import quote
 
 from sqlalchemy import Engine, text
+from sqlalchemy.exc import SQLAlchemyError
 
 from transit_ops.core.models import ProviderManifest
+from transit_ops.db.connection import make_engine
 from transit_ops.history.poll_record import CaptureEntry, PollRecord
 from transit_ops.ingestion.common import redact_error_message
 from transit_ops.ingestion.i3 import extract_i3_metadata, extract_service_alerts_metadata
@@ -36,6 +38,7 @@ from transit_ops.live.recording import Recorder
 from transit_ops.live.recovery import open_worker_file
 from transit_ops.live.segments import SHADOW_SEGMENTS_PREFIX, export_segment
 from transit_ops.live.settings import LaneSettings
+from transit_ops.s3 import ObjectStorageError
 from transit_ops.silver.i3 import RawI3AlertSnapshot
 from transit_ops.static.alert_apply import apply_alert_snapshot
 from transit_ops.static.alert_seed_contract import AlertSeed
@@ -58,11 +61,13 @@ class WorkerState:
         settings: LaneSettings,
         resolver: BronzeStorageResolver,
         ingestor: LocalIngestor | None = None,
+        edition_engine: Engine | None = None,
         edition_loader: Callable[[LocalFile, str], EditionId | None] | None = None,
     ):
         self.local, self.engine, self.manifest = local, engine, manifest
         self.settings, self.resolver = settings, resolver
         self.ingestor = ingestor
+        self.edition_engine = edition_engine
         self.edition_loader = edition_loader
         self.recorder = (
             ingestor.recorder
@@ -114,11 +119,17 @@ class WorkerState:
                 self.edition_loader(self.local, provider)
             except EditionMissing:
                 return None
-        elif self.engine is not None:
+        elif self.edition_engine is not None:
             try:
-                self._ensure_edition(provider)
+                self._ensure_edition(provider, engine=self.edition_engine)
             except EditionMissing:
                 return None
+            except (SQLAlchemyError, OSError) as exc:
+                logger.warning(
+                    "Local static edition load unavailable for %s: %s",
+                    provider,
+                    redact_error_message(str(exc)),
+                )
         return self._loaded_local_edition(provider)
 
     def _local_pending_captures(self) -> list[tuple[str, CaptureEntry]]:
@@ -142,6 +153,7 @@ class WorkerState:
         provider = self.manifest.provider.provider_id
         timezone = self.manifest.provider.timezone
         failures: dict[tuple[str, int], str] = {}
+        transient_failures: dict[tuple[str, int], str] = {}
         deferred_failures: dict[tuple[str, int], str] = {}
         remaining_actionable = False
         try:
@@ -169,12 +181,23 @@ class WorkerState:
                     remaining_actionable = True
                     continue
                 attempted += 1
+                # Read Bronze bytes before recording failures: storage I/O errors are transient.
+                try:
+                    payload = self.resolver(capture.storage_backend).read_bytes(
+                        capture.storage_path
+                    )
+                except (ObjectStorageError, OSError) as exc:
+                    message = redact_error_message(str(exc))
+                    transient_failures[(endpoint, capture.capture_row_id)] = message
+                    if endpoint != "trip_updates":
+                        blocked_endpoints.add(endpoint)
+                    continue
                 started = self.ingestor.clock()
                 try:
                     applied = self.recorder.apply(
                         endpoint,
                         capture.capture_row_id,
-                        partial(self._apply, endpoint, capture),
+                        partial(self._apply, endpoint, capture, payload=payload),
                         capture=capture,
                     )
                 except Exception as exc:
@@ -193,9 +216,6 @@ class WorkerState:
                 self.ingestor.clear_application_failure(endpoint, capture.capture_row_id)
                 if applied and endpoint == "trip_updates" and live_trip_updates is not None:
                     try:
-                        payload = self.resolver(capture.storage_backend).read_bytes(
-                            capture.storage_path
-                        )
                         live_trip_updates.accept(
                             payload,
                             CaptureRef.from_entry(
@@ -213,16 +233,17 @@ class WorkerState:
             export_segment(
                 self.local, self.resolver(backend), root_prefix=SHADOW_SEGMENTS_PREFIX
             )
+        all_failures = {**transient_failures, **failures}
         self.unavailable = (
-            next(iter(failures.values()))
-            if failures
+            next(iter(all_failures.values()))
+            if all_failures
             else next(iter(deferred_failures.values()))
             if deferred_failures
             else "local_application_pending"
             if remaining_actionable
             else None
         )
-        return failures
+        return all_failures
 
     def _sync(self, *, current_run_ids: tuple[int, ...], project: bool) -> None:
         if self.engine is None:
@@ -303,11 +324,12 @@ class WorkerState:
                 break
         return failures
 
-    def _ensure_edition(self, provider: str) -> None:
+    def _ensure_edition(self, provider: str, *, engine: Engine | None = None) -> None:
         self.local.require_committed()
-        if self.engine is None:
+        source = self.engine if engine is None else engine
+        if source is None:
             raise ValueError("live_recording_requires_engine")
-        with self.engine.connect() as pg:
+        with source.connect() as pg:
             with pg.begin():
                 pg.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"))
                 edition = current_edition_id(pg, provider_id=provider)
@@ -322,8 +344,11 @@ class WorkerState:
             # The loader owns its idle transaction; never enter it from apply().
             load_edition_from_postgres(self.local.connection, pg, edition)
 
-    def _apply(self, endpoint: str, capture: CaptureEntry) -> None:
-        payload = self.resolver(capture.storage_backend).read_bytes(capture.storage_path)
+    def _apply(
+        self, endpoint: str, capture: CaptureEntry, *, payload: bytes | None = None
+    ) -> None:
+        if payload is None:
+            payload = self.resolver(capture.storage_backend).read_bytes(capture.storage_path)
         if len(payload) != capture.byte_size or sha256(payload).hexdigest() != capture.sha256:
             raise ValueError("capture_bytes_mismatch")
         provider = self.manifest.provider.provider_id
@@ -475,6 +500,7 @@ def worker_state_scope(
     resolver: BronzeStorageResolver,
     record_restart: bool = False,
     app_settings: Settings | None = None,
+    edition_engine: Engine | None = None,
     edition_loader: Callable[[LocalFile, str], EditionId | None] | None = None,
 ) -> Iterator[WorkerState | None]:
     """Own the provider's worker file for this scope.
@@ -520,6 +546,7 @@ def worker_state_scope(
         settings=settings,
         restart_evidence=restart_evidence_path(path) if record_restart else None,
     )
+    owned_edition_engine: Engine | None = None
     try:
         _assert_ingress_mode(local, local_mode=local_mode)
         seed_alert_state(local, seed)
@@ -557,13 +584,24 @@ def worker_state_scope(
             )
             # Startup crash recovery: finish committed spools and sweep uncommitted orphans.
             ingestor.resume_pending()
+            resolved_edition_engine = edition_engine if edition_engine is not None else engine
+            if (
+                resolved_edition_engine is None
+                and edition_loader is None
+                and app_settings.sqlalchemy_database_url
+            ):
+                owned_edition_engine = make_engine(
+                    app_settings, connect_timeout=10, read_only=True
+                )
+                resolved_edition_engine = owned_edition_engine
             state = WorkerState(
                 local,
-                engine=engine,
+                engine=None,
                 manifest=manifest,
                 settings=settings,
                 resolver=resolver,
                 ingestor=ingestor,
+                edition_engine=resolved_edition_engine,
                 edition_loader=edition_loader,
             )
             yield state
@@ -576,4 +614,6 @@ def worker_state_scope(
             )
             yield state
     finally:
+        if owned_edition_engine is not None:
+            owned_edition_engine.dispose()
         local.close()

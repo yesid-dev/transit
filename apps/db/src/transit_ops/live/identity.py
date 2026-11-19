@@ -533,6 +533,15 @@ class IdentityAllocator:
         self._watermark_database = _database_path(local, watermark_database)
         self._verified_retained: dict[str, int] | None = None
 
+    @staticmethod
+    def _reservation_counts(conn: duckdb.DuckDBPyConnection) -> tuple[int, int]:
+        row = conn.execute(
+            "SELECT count(*), coalesce(sum(CASE WHEN recorded THEN 1 ELSE 0 END), 0) "
+            "FROM local_identity_reservations"
+        ).fetchone()
+        assert row is not None
+        return int(row[0]), int(row[1])
+
     def write_watermark(self) -> None:
         """Persist monotonic identity high-water mark beside the database file."""
         if self._watermark_database is None or self.local._active:
@@ -546,18 +555,14 @@ class IdentityAllocator:
         ns_rows = conn.execute(
             "SELECT namespace, next_id FROM local_identity_namespaces"
         ).fetchall()
-        counts = conn.execute(
-            "SELECT count(*), coalesce(sum(CASE WHEN recorded THEN 1 ELSE 0 END), 0) "
-            "FROM local_identity_reservations"
-        ).fetchone()
-        assert counts is not None
+        reservation_count, recorded_count = self._reservation_counts(conn)
         document = {
             "format_version": int(meta[0]),
             "provider_id": str(meta[1]),
             "floors_sha256": str(meta[2]),
             "next_ids": {str(ns): int(val) for ns, val in ns_rows},
-            "reservation_count": int(counts[0]),
-            "recorded_count": int(counts[1]),
+            "reservation_count": reservation_count,
+            "recorded_count": recorded_count,
         }
         payload = json.dumps(
             document, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False
@@ -606,17 +611,13 @@ class IdentityAllocator:
             prior = wm_next.get(namespace)
             if type(prior) is not int or ns_map[namespace][1] < prior:
                 raise IdentityRefused("identity_history_exists")
-        counts = conn.execute(
-            "SELECT count(*), coalesce(sum(CASE WHEN recorded THEN 1 ELSE 0 END), 0) "
-            "FROM local_identity_reservations"
-        ).fetchone()
-        assert counts is not None
+        current_res, current_rec = self._reservation_counts(conn)
         res_count, rec_count = wm.get("reservation_count"), wm.get("recorded_count")
         if (
             type(res_count) is not int
             or type(rec_count) is not int
-            or int(counts[0]) < res_count
-            or int(counts[1]) < rec_count
+            or current_res < res_count
+            or current_rec < rec_count
         ):
             raise IdentityRefused("identity_history_exists")
 

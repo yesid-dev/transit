@@ -588,3 +588,81 @@ def test_verify_identity_floors_refuses_floor_below_initial_cut(tmp_path):
             alert_seed_sha256=seed_sha,
             initial_cut_run_id=101,
         )
+
+
+def test_restored_older_database_copy_and_failing_segment_listing_refuse(tmp_path):
+    import shutil
+
+    from transit_ops.ingestion.storage import BronzeStorage
+    from transit_ops.s3 import ObjectStorageError
+
+    seed, _, seed_sha, _, floors_path, floors_sha = write_seed_and_floors(
+        tmp_path,
+        seed=empty_seed(global_max=100),
+        ingestion_run_id=100,
+        ingestion_object_id=100,
+        realtime_snapshot_id=100,
+        alert_snapshot_id=100,
+    )
+    verified = verify_identity_floors(
+        floors_path, expected_sha256=floors_sha, seed=seed, alert_seed_sha256=seed_sha
+    )
+
+    # 1. Restoring an older database copy beside a newer .identity.json watermark refuses.
+    db_path = tmp_path / "rollback" / "provider-network.duckdb"
+    db_path.parent.mkdir()
+    backup_path = tmp_path / "backup.duckdb"
+    with closing(LocalFile.open(db_path, provider_id="network", settings=SETTINGS)) as local:
+        seed_alert_state(local, seed)
+        alloc = IdentityAllocator(local, provider_id="network")
+        alloc.initialize(verified, floors_sha256=floors_sha, seed=seed)
+        r1 = alloc.reserve(
+            attempt_key="att-1",
+            endpoint_key="vehicle_positions",
+            index_family="realtime_snapshot",
+            outcome="stored",
+            request_digest="1" * 64,
+        )
+        assert r1.capture_row_id == 101
+    shutil.copy2(db_path, backup_path)
+    with closing(LocalFile.open(db_path, provider_id="network", settings=SETTINGS)) as local:
+        alloc = IdentityAllocator(local, provider_id="network")
+        alloc.initialize(verified, floors_sha256=floors_sha, seed=seed)
+        r2 = alloc.reserve(
+            attempt_key="att-2",
+            endpoint_key="vehicle_positions",
+            index_family="realtime_snapshot",
+            outcome="stored",
+            request_digest="2" * 64,
+        )
+        assert r2.capture_row_id == 102
+    # Overwrite DB with the older backup while .identity.json witnesses next_id=103 / count=2.
+    shutil.copy2(backup_path, db_path)
+    with closing(LocalFile.open(db_path, provider_id="network", settings=SETTINGS)) as local:
+        with pytest.raises(IdentityRefused, match="^identity_history_exists$"):
+            IdentityAllocator(local, provider_id="network").initialize(
+                verified, floors_sha256=floors_sha, seed=seed
+            )
+
+    # 2. A failing segment listing fails closed and never installs fresh floors.
+    class FailingListStorage(BronzeStorage):
+        def list_keys(self, prefix: str):
+            raise ObjectStorageError(f"s3 list outage for {prefix}")
+
+    db_fail = tmp_path / "list_fail" / "provider-network.duckdb"
+    db_fail.parent.mkdir()
+    with closing(LocalFile.open(db_fail, provider_id="network", settings=SETTINGS)) as local:
+        seed_alert_state(local, seed)
+        with pytest.raises(ObjectStorageError, match="s3 list outage"):
+            IdentityAllocator(local, provider_id="network").initialize(
+                verified,
+                floors_sha256=floors_sha,
+                seed=seed,
+                segment_storage=FailingListStorage("s3"),
+            )
+        assert (
+            local.connection.execute(
+                "SELECT 1 FROM duckdb_tables() WHERE table_name='local_identity_meta'"
+            ).fetchone()
+            is None
+        )

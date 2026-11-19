@@ -1499,3 +1499,277 @@ def test_orchestration_local_cycle_and_worker_loop_use_zero_postgres_and_one_loc
         # Pre-cutover segments live strictly under shadow prefix, never production prefix.
         assert list(storage.list_keys(f"{SHADOW_SEGMENTS_PREFIX}/network/"))
         assert not list(storage.list_keys(f"{PRODUCTION_SEGMENTS_PREFIX}/network/"))
+
+
+def test_transient_bronze_read_error_does_not_stall_vehicle_and_trip_application(
+    tmp_path, monkeypatch
+):
+    from transit_ops.live import ingest as ingest_module
+    from transit_ops.live.worker_state import worker_state_scope
+    from transit_ops.s3 import ObjectStorageError
+
+    settings, _ = local_ingress_settings(tmp_path)
+    storage = LocalBronzeStorage("local", Path(settings.BRONZE_LOCAL_ROOT))
+    manifest = build_manifest()
+    vp1 = vehicle_message().SerializeToString()
+    tu1 = trip_message().SerializeToString()
+    vp2 = empty_pb_bytes(int(AT.timestamp()) + 20)
+    fetcher = ScriptedFetcher([vp1, tu1, vp2])
+    monkeypatch.setattr(ingest_module, "download_to_tempfile", fetcher)
+    edition_engine = fake_edition_engine(monkeypatch)
+
+    class FlakyReadStorage(LocalBronzeStorage):
+        fail_next_read = False
+
+        def read_bytes(self, storage_path: str) -> bytes:
+            if self.fail_next_read and "vehicle_positions" in storage_path:
+                self.fail_next_read = False
+                raise ObjectStorageError("transient s3 timeout")
+            return super().read_bytes(storage_path)
+
+    flaky_storage = FlakyReadStorage("local", storage.root)
+    with worker_state_scope(
+        settings=settings.LIGHTER_STORAGE.live,
+        app_settings=settings,
+        edition_engine=edition_engine,
+        manifest=manifest,
+        resolver=lambda _: flaky_storage,
+    ) as state:
+        assert state is not None
+        c1 = state.capture_local("vehicle_positions")
+        c2 = state.capture_local("trip_updates")
+        assert (c1.capture_row_id, c2.capture_row_id) == (201, 202)
+
+        # Fail storage read once during apply_local: capture stays pending, not failed.
+        flaky_storage.fail_next_read = True
+        first_failures = state.apply_local()
+        assert ("vehicle_positions", 201) in first_failures
+        assert "transient s3 timeout" in first_failures[("vehicle_positions", 201)]
+        assert state.unavailable == first_failures[("vehicle_positions", 201)]
+        assert state.local.connection.execute("SELECT count(*) FROM processing").fetchone() == (0,)
+        assert state.local.connection.execute(
+            "SELECT count(*) FROM local_applications WHERE status='failed'"
+        ).fetchone() == (0,)
+        assert state.local.connection.execute(
+            "SELECT count(*) FROM fact_vehicle_snapshot"
+        ).fetchone() == (0,)
+        assert state.local.connection.execute(
+            "SELECT count(*) FROM fact_trip_delay_snapshot"
+        ).fetchone() == (0,)
+
+        # Storage recovers and a later healthy capture arrives: all pending captures now apply!
+        c3 = state.capture_local("vehicle_positions")
+        assert c3.capture_row_id == 203
+        recovered_failures = state.apply_local()
+        assert recovered_failures == {}
+        assert state.unavailable is None
+        assert state.local.connection.execute(
+            "SELECT DISTINCT realtime_snapshot_id FROM fact_vehicle_snapshot ORDER BY 1"
+        ).fetchall() == [(201,)]
+        assert state.local.connection.execute(
+            "SELECT capture_row_id FROM fact_processing WHERE endpoint_key='vehicle_positions' "
+            "ORDER BY 1"
+        ).fetchall() == [(201,), (203,)]
+        assert state.local.connection.execute(
+            "SELECT realtime_snapshot_id, delay_seconds FROM fact_trip_delay_snapshot"
+        ).fetchall() == [(202, 180)]
+
+
+def test_local_mode_builds_readonly_edition_engine_through_real_wiring(tmp_path, monkeypatch):
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+
+    from sqlalchemy.exc import OperationalError
+
+    from transit_ops import orchestration
+    from transit_ops.db import connection as db_connection
+    from transit_ops.live import ingest as ingest_module
+    from transit_ops.live import worker_state as worker_state_module
+    from transit_ops.live.edition import EditionId, create_edition_tables
+    from transit_ops.live.segments import PRODUCTION_SEGMENTS_PREFIX, SHADOW_SEGMENTS_PREFIX
+
+    settings, _ = local_ingress_settings(tmp_path / "real_wire")
+    settings = settings.model_copy(
+        update={
+            "DATABASE_URL": "postgresql://reader:secret@127.0.0.1:5432/transit",
+            "REALTIME_POLL_SECONDS": 20,
+        }
+    )
+    manifest = build_manifest()
+    registry = SimpleNamespace(get_provider=lambda _pid: manifest)
+    vp_bytes = vehicle_message().SerializeToString()
+    tu_bytes = trip_message().SerializeToString()
+    i3_bytes = json.dumps({"apiVersion": "2.0", "alerts": [ALERT]}).encode("utf-8")
+    sa_bytes = service_alert_pb_bytes()
+    fetcher = ScriptedFetcher([tu_bytes, vp_bytes, i3_bytes, sa_bytes])
+    monkeypatch.setattr(ingest_module, "download_to_tempfile", fetcher)
+
+    # Spy on the real make_engine: let SQLAlchemy construct the real read-only Engine, record
+    # connect_args and disposal, and intercept only engine.connect() for the offline test.
+    created_engines: list[dict[str, object]] = []
+    executed_sql: list[str] = []
+    real_make_engine = db_connection.make_engine
+    real_create_engine = db_connection.create_engine
+    pg_state = {"connect_fails": False, "loads": 0}
+
+    def spy_create_engine(url, **kwargs):
+        engine = real_create_engine(url, **kwargs)
+        record: dict[str, object] = {
+            "url": url,
+            "connect_args": kwargs.get("connect_args", {}),
+            "disposed": False,
+        }
+        created_engines.append(record)
+        orig_dispose = engine.dispose
+
+        def tracked_dispose(*a, **kw):
+            record["disposed"] = True
+            return orig_dispose(*a, **kw)
+
+        class ReadOnlyConn:
+            @contextmanager
+            def begin(self):
+                yield self
+
+            def execute(self, stmt, *_a, **_kw):
+                sql = str(stmt)
+                executed_sql.append(sql)
+                upper = sql.upper()
+                for forbidden in ("INSERT", "UPDATE", "DELETE", "NOW(", "CLOCK_TIMESTAMP"):
+                    assert forbidden not in upper, f"forbidden SQL on edition engine: {sql}"
+                return None
+
+        @contextmanager
+        def fake_connect():
+            if pg_state["connect_fails"]:
+                raise OperationalError("SELECT 1", {}, RuntimeError("pg down"))
+            yield ReadOnlyConn()
+
+        monkeypatch.setattr(engine, "connect", fake_connect)
+        monkeypatch.setattr(engine, "dispose", tracked_dispose)
+        return engine
+
+    monkeypatch.setattr(db_connection, "create_engine", spy_create_engine)
+    monkeypatch.setattr(orchestration, "make_engine", real_make_engine)
+    monkeypatch.setattr(worker_state_module, "make_engine", real_make_engine)
+    monkeypatch.setattr(
+        worker_state_module, "current_edition_id", lambda _pg, *, provider_id: EditionId(
+            provider_id, 7, "v1"
+        )
+    )
+    monkeypatch.setattr(
+        worker_state_module, "current_dim_versions", lambda *_a, **_kw: (None, None)
+    )
+
+    def load_from_pg(duck, _pg, edition: EditionId):
+        pg_state["loads"] += 1
+        create_edition_tables(duck)
+        duck.execute("DELETE FROM edition_meta")
+        duck.execute("DELETE FROM edition_stop_times")
+        duck.execute("DELETE FROM edition_trips")
+        duck.execute(
+            "INSERT INTO edition_meta VALUES (?, ?, ?, ?, ?)",
+            [edition.provider_id, edition.dataset_version_id, edition.source_version, None, None],
+        )
+        duck.execute("INSERT INTO edition_trips VALUES ('行程', '路线', 'svc-1')")
+        duck.execute("INSERT INTO edition_stop_times VALUES ('行程', 3, '08:00:00', NULL, '站')")
+        return {"edition_meta": 1, "edition_trips": 1, "edition_stop_times": 1}
+
+    monkeypatch.setattr(worker_state_module, "load_edition_from_postgres", load_from_pg)
+    monkeypatch.setattr(
+        orchestration,
+        "initialize_realtime_serving",
+        lambda *a, **k: pytest.fail("touched postgres serving"),
+    )
+    monkeypatch.setattr(
+        orchestration,
+        "refresh_gold_realtime",
+        lambda *a, **k: pytest.fail("touched postgres gold"),
+    )
+    monkeypatch.setattr(
+        orchestration,
+        "_best_effort_publish_live",
+        lambda *a, **k: pytest.fail("enabled cutover publish"),
+    )
+    # Bypass only the cutover admission gate so run_realtime_worker_loop exercises real wiring.
+    monkeypatch.setattr(orchestration, "refuse_unadmitted_shadow", lambda *a, **k: None)
+
+    orchestration.run_realtime_worker_loop(
+        "network",
+        settings=settings,
+        registry=registry,
+        max_cycles=1,
+        sleep_fn=lambda _: None,
+        should_shutdown=lambda: False,
+    )
+
+    # Exactly one read-only engine built from DATABASE_URL with read-only session defaults,
+    # used exclusively for #883 edition load, and disposed cleanly on stop.
+    assert len(created_engines) == 1
+    assert (
+        created_engines[0]["connect_args"].get("options") == "-c default_transaction_read_only=on"
+    )
+    assert created_engines[0]["disposed"] is True
+    assert pg_state["loads"] == 1
+    assert any("READ ONLY" in sql for sql in executed_sql)
+    assert len(fetcher.calls) == 4
+
+    # Verify facts, trip_updates delay, and shadow-only segments persisted cleanly.
+    storage = LocalBronzeStorage("local", Path(settings.BRONZE_LOCAL_ROOT))
+    assert list(storage.list_keys(f"{SHADOW_SEGMENTS_PREFIX}/network/"))
+    assert not list(storage.list_keys(f"{PRODUCTION_SEGMENTS_PREFIX}/network/"))
+    with worker_state_module.worker_state_scope(
+        settings=settings.LIGHTER_STORAGE.live,
+        app_settings=settings,
+        manifest=manifest,
+        resolver=lambda _: storage,
+    ) as state:
+        assert state is not None
+        assert state.engine is None
+        assert state.local.connection.execute(
+            "SELECT realtime_snapshot_id, delay_seconds FROM fact_trip_delay_snapshot"
+        ).fetchall() == [(201, 180)]
+        assert state.local.connection.execute(
+            "SELECT count(*) FROM fact_vehicle_snapshot"
+        ).fetchone()[0] > 0
+
+    # Part 2: PG connect error during #883 edition load leaves vehicles & alerts applying cleanly
+    # and refuses trip_updates by name; once PG recovers, trip_updates retries and applies.
+    settings2, _ = local_ingress_settings(tmp_path / "pg_down")
+    settings2 = settings2.model_copy(
+        update={
+            "DATABASE_URL": "postgresql://reader:secret@127.0.0.1:5432/transit",
+            "REALTIME_POLL_SECONDS": 20,
+        }
+    )
+    storage2 = LocalBronzeStorage("local", Path(settings2.BRONZE_LOCAL_ROOT))
+    fetcher2 = ScriptedFetcher([tu_bytes, vp_bytes, i3_bytes, sa_bytes])
+    monkeypatch.setattr(ingest_module, "download_to_tempfile", fetcher2)
+    pg_state["connect_fails"] = True
+    with worker_state_module.worker_state_scope(
+        settings=settings2.LIGHTER_STORAGE.live,
+        app_settings=settings2,
+        manifest=manifest,
+        resolver=lambda _: storage2,
+    ) as state2:
+        assert state2 is not None
+        res = orchestration._run_realtime_cycle(
+            "network",
+            settings=settings2,
+            registry=registry,
+            engine=None,
+            bronze_storage_resolver=lambda _: storage2,
+            worker_state=state2,
+        )
+        by_ep = {r.endpoint_key: r for r in res.endpoint_results}
+        assert by_ep["vehicle_positions"].status == "succeeded"
+        assert by_ep["i3_alerts"].status == "succeeded"
+        assert by_ep["service_alerts"].status == "succeeded"
+        assert by_ep["trip_updates"].status == "failed"
+        assert "local_trip_updates_edition_missing" in (by_ep["trip_updates"].error_message or "")
+        # Now PG recovers: next apply_local loads the edition and applies the pending trip_updates!
+        pg_state["connect_fails"] = False
+        assert state2.apply_local() == {}
+        assert state2.local.connection.execute(
+            "SELECT realtime_snapshot_id, delay_seconds FROM fact_trip_delay_snapshot"
+        ).fetchall() == [(201, 180)]
