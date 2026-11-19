@@ -1,7 +1,7 @@
-import { defineCopy, type Locale } from '#lib/i18n/copy.ts';
+import { defineCopy, intl, type Locale } from '#lib/i18n/copy.ts';
 import { historyCopy } from '#lib/components/surface/historyCopy.ts';
 import type { LateFigures, VerdictCopy, VerdictSentenceArgs } from '#lib/v1/verdict.ts';
-import { fmtLocalePct } from '#lib/utils/format.ts';
+import { roundHalfAwayFromZero } from '#lib/utils/rounding.ts';
 
 // Section 02 states the record answer's own measure, the share more than five minutes late, so
 // the page never frames one fact both ways.
@@ -11,8 +11,14 @@ const predictionShare = {
 	en: ({ window, onTen, lateTen, hedge }: VerdictSentenceArgs) =>
 		`In this ${window}, about ${lateTen} in 10 known predictions are more than five minutes late${hedge}; about ${onTen} in 10 are not.`,
 };
+// fmtLocalePct's rule, written against the Node-safe copy module: Playwright specs import this
+// copy, and the formatting barrel reaches UI runtime modules they cannot load.
 const lateFigure = (late: LateFigures, locale: Locale): string =>
-	fmtLocalePct(late.pct, locale, { noData: '' });
+	late.pct == null || !Number.isFinite(late.pct)
+		? ''
+		: intl
+				.number(locale, { style: 'percent', maximumFractionDigits: 1 })
+				.format(roundHalfAwayFromZero(late.pct, 1) / 100);
 
 export const stopReliabilityCopy = defineCopy({
 	fr: {
