@@ -1,10 +1,11 @@
 import { render, screen, within, fireEvent, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type {
-	IsoUtc,
-	Manifest,
-	RepeatOffenderEntry,
-	RepeatOffenders as RepeatOffendersData,
+import {
+	RepeatOffendersSchema,
+	type IsoUtc,
+	type Manifest,
+	type RepeatOffenderEntry,
+	type RepeatOffenders as RepeatOffendersData,
 } from '#lib/v1/schemas/index.ts';
 import { createLineDirectory } from '#lib/site/lineDirectory.ts';
 import { localizeHref } from '#lib/i18n/routing.ts';
@@ -119,8 +120,8 @@ const departure = (time: string, headsign: string | null) => ({
 });
 
 /**
- * A retained week published by the #1080 publisher (a retained day names its dates), plus
- * `extra` generated trips after the first three.
+ * A week as the publisher writes it, current or retained: departure labels (#1080) and the
+ * period's dates, plus `extra` generated trips after the first three.
  */
 function seed(extra = 0): RepeatOffendersData {
 	return {
@@ -189,7 +190,7 @@ function seed(extra = 0): RepeatOffendersData {
 	} as unknown as RepeatOffendersData;
 }
 
-/** Today's public shape: positions from the earlier rule, no departure labels, no dates. */
+/** An earlier public shape: positions from the earlier rule, no departure labels, no dates. */
 function olderRecord(): RepeatOffendersData {
 	return {
 		generated_utc: '2026-11-11T00:00:00Z' as IsoUtc,
@@ -342,6 +343,16 @@ describe('RepeatOffenders', () => {
 		expect(writeText).toHaveBeenLastCalledWith(
 			`Transit. STM. Line 36, 07:42 toward Monk: late on 4 of 6 days seen, November 11 to 17, 2026. 90 readings. Record published November 18, 2026. Method version: reliability-2. ${link}`,
 		);
+	});
+
+	it('keeps the current file’s period in the line record link once the contract reads it', async () => {
+		// The adapter reads the current file with this schema, which drops undeclared fields.
+		show(RepeatOffendersSchema.parse(seed()));
+
+		await fireEvent.click(rowButtons()[0]);
+		expect(
+			within(openEvidence()).getByRole('link', { name: 'Open the line’s record: Line 36' }),
+		).toHaveAttribute('href', '/lines/36?from=2026-11-11&to=2026-11-17&provider=stm');
 	});
 
 	it('copies a link to a row past the first ten that reopens on that row', async () => {

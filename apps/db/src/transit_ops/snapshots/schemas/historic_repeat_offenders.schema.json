@@ -314,6 +314,18 @@
     },
     "RepeatOffenderGrain": {
       "properties": {
+        "date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Date"
+        },
         "entries": {
           "items": {
             "$ref": "#/$defs/RepeatOffenderEntry"
@@ -379,6 +391,18 @@
           ],
           "default": null,
           "title": "Window Days"
+        },
+        "window_end": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window End"
         }
       },
       "required": [

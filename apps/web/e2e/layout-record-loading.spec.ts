@@ -51,7 +51,7 @@ function offenders() {
 					}),
 		};
 	};
-	const grain = (name: 'week' | 'month', window: number) => ({
+	const grain = (name: 'week' | 'month', window: number, from: string) => ({
 		grain: name,
 		window_days: window,
 		entries: (['trip', 'vehicle'] as const).flatMap((type) =>
@@ -63,11 +63,13 @@ function offenders() {
 		total_ranked_trips: 120,
 		total_ranked_vehicles: 90,
 		tray_total: 12,
+		date: from,
+		window_end: '2026-06-14',
 	});
 	return {
 		generated_utc: '2026-06-15T12:00:00Z',
 		methodology_version: 'reliability-2',
-		by_grain: [grain('week', 7), grain('month', 30)],
+		by_grain: [grain('week', 7, '2026-06-08'), grain('month', 30, '2026-05-16')],
 	};
 }
 

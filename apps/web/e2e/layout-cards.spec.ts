@@ -639,22 +639,15 @@ const offendersWeek = {
 			total_ranked_trips: 120,
 			total_ranked_vehicles: 41,
 			tray_total: 1,
+			date: '2026-06-08',
+			window_end: '2026-06-14',
 		},
 	],
 };
 
 function offendersHistory(root: { families?: unknown[] }, provider: string) {
 	const date = '2026-06-14';
-	const day = JSON.stringify({
-		...offendersWeek,
-		date,
-		publish_generation_id: null,
-		by_grain: offendersWeek.by_grain.map((grain) => ({
-			...grain,
-			date: '2026-06-08',
-			window_end: date,
-		})),
-	});
+	const day = JSON.stringify({ ...offendersWeek, date, publish_generation_id: null });
 	return retainedHistory('repeat_offenders', day, date, root, provider);
 }
 
