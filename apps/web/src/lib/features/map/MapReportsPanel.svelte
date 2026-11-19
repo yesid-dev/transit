@@ -57,6 +57,7 @@
 	const empty = $derived(model != null && model.rows.length === 0);
 
 	let rootEl = $state<HTMLElement | null>(null);
+	let headingEl = $state<HTMLElement | null>(null);
 	let scrollEl = $state<HTMLElement | null>(null);
 	let copyState = $state<'idle' | 'copied' | 'failed'>('idle');
 	let copiedSnapshot = $state<string | null>(null);
@@ -112,6 +113,23 @@
 		}
 	});
 
+	// A settled camera move, a filter or a newer snapshot can rebuild the list under a focused
+	// row. Removing that row would drop keyboard focus to the page, so it moves to the heading.
+	let focusedBeforeUpdate: Element | null = null;
+	$effect.pre(() => {
+		void view;
+		const active = document.activeElement;
+		focusedBeforeUpdate = active && rootEl?.contains(active) ? active : null;
+	});
+	$effect(() => {
+		void view;
+		const focused = focusedBeforeUpdate;
+		focusedBeforeUpdate = null;
+		if (!focused || focused.isConnected) return;
+		if (document.activeElement && document.activeElement !== document.body) return;
+		headingEl?.focus({ preventScroll: true });
+	});
+
 	$effect(() => {
 		const el = scrollEl;
 		if (!el) return;
@@ -137,7 +155,9 @@
 {#snippet body()}
 	<div class="map-reports" bind:this={rootEl} data-slot="map-reports">
 		<div class="map-reports-head">
-			<h3 id={headingId} class="map-reports-title" tabindex="-1">{t.reportsTitle}</h3>
+			<h3 id={headingId} class="map-reports-title" tabindex="-1" bind:this={headingEl}>
+				{t.reportsTitle}
+			</h3>
 		</div>
 		<p class="map-reports-provider">{providerName}</p>
 		<p class="map-reports-scope">{t.reportsScope}</p>
