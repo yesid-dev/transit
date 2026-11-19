@@ -10,18 +10,21 @@ from pathlib import Path
 
 import pytest
 from live_watermark_probe_fixture import CYCLE, DEATH
+from test_live_identity import write_seed_and_floors
 from test_live_local_file import SETTINGS
 from test_live_recording import MANIFEST, RECORD, configured
 
 from transit_ops.ingestion.storage import LocalBronzeStorage
-from transit_ops.live import watermark
+from transit_ops.live import admission, watermark
 from transit_ops.live.admission import (
+    DATABASE_VANISHED,
     DURABLE_WATERMARK,
     WORKER_REOPEN_POINT,
     classify_restart,
     read_restart_records,
     restart_evidence_path,
 )
+from transit_ops.live.identity import IdentityAllocator, verify_identity_floors
 from transit_ops.live.local_file import LocalFile
 from transit_ops.live.recording import Recorder
 from transit_ops.live.recovery import open_worker_file
@@ -33,6 +36,7 @@ from transit_ops.live.watermark import (
     write_committed_watermark,
 )
 from transit_ops.live.worker_state import worker_state_scope
+from transit_ops.static.alert_state import seed_alert_state
 
 
 def run_until_death(path, stage):
@@ -44,7 +48,9 @@ def run_until_death(path, stage):
         text=True,
         timeout=180,
     )
-    assert child.returncode == DEATH, child.stderr
+    assert child.returncode == DEATH, (
+        f"exit {child.returncode}\nstdout:\n{child.stdout}\nstderr:\n{child.stderr}"
+    )
 
 
 def worker_reopen(path):
@@ -198,21 +204,161 @@ def test_losing_the_cycles_last_flag_or_export_commit_is_lost_committed_row(tmp_
         assert verify_committed(path, local, provider_id="network") >= 1
 
 
-def test_a_watermark_of_a_removed_or_replaced_file_never_invents_a_loss(tmp_path):
+def test_a_removed_files_watermark_records_its_loss_once_and_never_witnesses_the_new_file(
+    tmp_path,
+):
     path = tmp_path / "provider-network.duckdb"
     run_until_death(path, "first")
     run_until_death(path, "marked")
     stale = committed_watermark_path(path).read_bytes()
     for trace in (path, Path(str(path) + ".wal")):
         trace.unlink(missing_ok=True)
-    # The worker loop recreates the removed file; the old watermark witnesses nothing.
+    # Live ruling 26a: the worker loop records the loss, then recreates the removed file.
+    (record,) = vanished_reopen(path)
+    assert classify_restart(record, 20) == "lost_committed_row"
+    assert invalid_marker_path(path).exists() and not committed_watermark_path(path).exists()
+    committed_watermark_path(path).write_bytes(stale)  # Even if it came back.
+    restart_evidence_path(path).unlink()
+    assert classify_restart(worker_reopen(path), 20) == "measurement_unavailable"
+
+
+def committed_file(path):
+    """A worker file with one committed recorder state and its sound watermark."""
+    with closing(open_worker_file(path, provider_id="network", settings=SETTINGS)) as local:
+        Recorder(local, provider_id="network").initialize(initial_run_id=0, seed_sha256="a" * 64)
+        assert write_committed_watermark(path, local, provider_id="network", cycle_at=CYCLE)
+    Path(str(path) + ".wal").unlink(missing_ok=True)
+
+
+def vanished_reopen(path):
+    """The worker loop's reopen of a removed file; returns every restart record."""
     evidence = restart_evidence_path(path)
     open_worker_file(
         path, provider_id="network", settings=SETTINGS, restart_evidence=evidence
     ).close()
-    assert invalid_marker_path(path).exists() and not committed_watermark_path(path).exists()
-    committed_watermark_path(path).write_bytes(stale)  # Even if it came back.
-    assert classify_restart(worker_reopen(path), 20) == "measurement_unavailable"
+    return read_restart_records(evidence.read_text(encoding="utf-8").splitlines())
+
+
+def test_a_vanished_file_under_a_sound_watermark_is_a_loss_recorded_before_recreation(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "provider-network.duckdb"
+    committed_file(path)
+    path.unlink()
+    append = admission.append_restart_record
+
+    def append_before_recreation(evidence, observation):
+        assert not path.exists()  # Recorded before the worker recreates its file...
+        assert committed_watermark_path(path).is_file()  # ...and invalidates the watermark.
+        assert not invalid_marker_path(path).exists()
+        append(evidence, observation)
+
+    monkeypatch.setattr(admission, "append_restart_record", append_before_recreation)
+    (record,) = vanished_reopen(path)
+    assert (record.point, record.reopened, record.wal_present) == (
+        WORKER_REOPEN_POINT,
+        False,
+        False,
+    )
+    assert record.refusal == DATABASE_VANISHED
+    assert record.verified_by == DURABLE_WATERMARK
+    assert record.committed_rows_lost is not None and record.committed_rows_lost >= 1
+    assert classify_restart(record, 20) == "lost_committed_row"
+    assert path.is_file() and invalid_marker_path(path).exists()
+    assert not committed_watermark_path(path).exists()
+
+
+@pytest.mark.parametrize(
+    "unsound",
+    [
+        lambda p: committed_watermark_path(p).unlink(),
+        lambda p: invalid_marker_path(p).write_bytes(b""),
+        lambda p: committed_watermark_path(p).write_bytes(b'{"format": 3'),
+        lambda p: committed_watermark_path(p).write_bytes(
+            committed_watermark_path(p).read_bytes().replace(b"network", b"other")
+        ),
+        lambda p: committed_watermark_path(p).write_bytes(
+            committed_watermark_path(p).read_bytes().replace(b'"format": 3', b'"format": 2')
+        ),
+    ],
+    ids=["no-watermark", "invalid-marker", "torn", "other-provider", "older-format"],
+)
+def test_a_vanished_file_without_a_sound_watermark_stays_unmeasured(tmp_path, unsound):
+    path = tmp_path / "provider-network.duckdb"
+    committed_file(path)
+    worker_reopen(path)  # An earlier restart: its record is the only trace once both go.
+    path.unlink()
+    unsound(path)
+
+    first, record = vanished_reopen(path)
+    assert classify_restart(first, 20) == "recovered"
+    assert (record.reopened, record.refusal) == (False, DATABASE_VANISHED)
+    assert (record.verified_by, record.committed_rows_lost) == (None, None)
+    assert classify_restart(record, 20) == "measurement_unavailable"
+    assert path.is_file() and not committed_watermark_path(path).exists()
+
+
+def test_initial_creation_is_not_a_restart(tmp_path):
+    path = tmp_path / "provider-network.duckdb"
+    open_worker_file(
+        path, provider_id="network", settings=SETTINGS, restart_evidence=restart_evidence_path(path)
+    ).close()
+    assert not restart_evidence_path(path).exists()
+
+
+def test_a_missing_database_with_its_wal_present_still_refuses(tmp_path):
+    path = tmp_path / "provider-network.duckdb"
+    committed_file(path)
+    path.unlink()
+    Path(str(path) + ".wal").write_bytes(b"wal")
+    with pytest.raises(FileNotFoundError, match="recovery_database_missing_with_wal"):
+        vanished_reopen(path)
+    (record,) = read_restart_records(
+        restart_evidence_path(path).read_text(encoding="utf-8").splitlines()
+    )
+    assert classify_restart(record, 20) == "database_missing_with_wal"
+    assert not path.exists() and committed_watermark_path(path).is_file()
+
+
+@pytest.mark.parametrize(
+    "lose",
+    [
+        "UPDATE local_identity_reservations SET recorded=false WHERE attempt_key='vehicles'",
+        "DELETE FROM local_identity_reservations WHERE attempt_key='vehicles'",
+        *(
+            f"UPDATE local_identity_namespaces SET next_id=next_id-1 WHERE namespace='{namespace}'"
+            for namespace in ("ingestion_object", "realtime_snapshot", "alert_snapshot")
+        ),
+    ],
+    ids=["recorded-flag", "reservation-row", "ingestion_object", "realtime_snapshot", "alert"],
+)
+def test_losing_one_identity_commit_alone_is_lost_committed_row(tmp_path, lose):
+    seed, _, seed_sha, _, floors_path, floors_sha = write_seed_and_floors(tmp_path)
+    floors = verify_identity_floors(
+        floors_path, expected_sha256=floors_sha, seed=seed, alert_seed_sha256=seed_sha
+    )
+    path = tmp_path / "identity.duckdb"
+    with closing(LocalFile.open(path, provider_id="network", settings=SETTINGS)) as local:
+        Recorder(local, provider_id="network").initialize(initial_run_id=0, seed_sha256="a" * 64)
+        seed_alert_state(local, seed)
+        allocator = IdentityAllocator(local, provider_id="network")
+        allocator.initialize(floors, floors_sha256=floors_sha, seed=seed)
+        for attempt, endpoint, family in (
+            ("vehicles", "vehicle_positions", "realtime_snapshot"),
+            ("alerts", "alerts", "alert_snapshot"),
+        ):
+            allocator.reserve(
+                attempt_key=attempt,
+                endpoint_key=endpoint,
+                index_family=family,
+                outcome="stored",
+                request_digest="d" * 64,
+            )
+            allocator.mark_recorded(attempt, request_digest="d" * 64)
+        assert write_committed_watermark(path, local, provider_id="network", cycle_at=CYCLE)
+        assert verify_committed(path, local, provider_id="network") == 0
+        local.connection.execute(lose)  # Only this commit's WAL tail is gone.
+        assert verify_committed(path, local, provider_id="network") >= 1
 
 
 def test_only_the_worker_loop_marks_its_cycles_and_a_failed_mark_never_fails_one(tmp_path, caplog):

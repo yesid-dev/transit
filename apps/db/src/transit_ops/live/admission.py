@@ -81,6 +81,10 @@ WORKER_REOPEN_POINT = "worker_reopen"
 DURABLE_WATERMARK = "durable_watermark"
 PROBE_HANDSHAKE = "probe_handshake"
 RESTART_VERIFIERS = frozenset({DURABLE_WATERMARK, PROBE_HANDSHAKE})
+# Live ruling 26a: the worker's reopen found no file, its WAL or a pending adoption and
+# recreates the file. Not a refusal: it names why nothing was reopened, and its sound
+# watermark decides between ``lost_committed_row`` and ``measurement_unavailable``.
+DATABASE_VANISHED = "database_vanished"
 # About 32,000 restart records; beyond it a crash loop stops growing the file (logged).
 RESTART_EVIDENCE_MAX_BYTES = 8 * 2**20
 APPROVAL = (
@@ -740,7 +744,47 @@ def recorded_reopen(
     return local
 
 
+def recorded_vanished(
+    path: Path,
+    *,
+    provider_id: str,
+    evidence: Path,
+    clock: Callable[[], datetime] = _utc_now,
+) -> None:
+    """Live ruling 26a: the worker's reopen found its file gone; record it, then invalidate.
+
+    The record comes first: the worker recreates the file only afterwards, and the old
+    watermark never witnesses the new file. A sound watermark makes it lost_committed_row;
+    without one it stays unmeasured. Its bytes stay in the marker as identity evidence.
+    """
+    from transit_ops.live.watermark import (
+        committed_watermark_path,
+        invalidate_watermark,
+        verify_vanished,
+    )
+
+    lost, witnessed = verify_vanished(path, provider_id=provider_id)
+    observation = RestartObservation(
+        provider_id,
+        clock(),
+        WORKER_REOPEN_POINT,
+        False,
+        None,
+        False,
+        DATABASE_VANISHED,
+        lost,
+        None if lost is None else DURABLE_WATERMARK,
+    )
+    append_restart_record(evidence, observation)
+    if committed_watermark_path(path).exists():
+        invalidate_watermark(path, keep=witnessed)
+
+
 def classify_restart(observation: RestartObservation, cadence_seconds: int | None) -> str:
+    if not observation.reopened and observation.refusal == DATABASE_VANISHED:
+        if observation.verified_by is not None and observation.committed_rows_lost:
+            return "lost_committed_row"
+        return "measurement_unavailable"
     if not observation.reopened:
         return observation.refusal or "reopen_unclassified"
     if (
