@@ -1,5 +1,5 @@
 import { defineCopy, intl, type Locale } from '#lib/i18n/copy.ts';
-import { historyCopy } from '#lib/components/surface/historyCopy.ts';
+import { endOnDate, historyCopy } from '#lib/components/surface/historyCopy.ts';
 import type { LateFigures, VerdictCopy, VerdictSentenceArgs } from '#lib/v1/verdict.ts';
 import { roundHalfAwayFromZero } from '#lib/utils/rounding.ts';
 
@@ -70,8 +70,9 @@ export const stopReliabilityCopy = defineCopy({
 					anyEnd: 'Dernière date',
 				},
 			}),
-			coverage: (from: string, to: string) => `Historique disponible du ${from} au ${to}.`,
-			selection: (from: string, to: string) => `Plage choisie : du ${from} au ${to}.`,
+			coverage: (from: string, to: string) =>
+				`Historique disponible du ${from} au ${endOnDate(to)}`,
+			selection: (from: string, to: string) => `Plage choisie : du ${from} au ${endOnDate(to)}`,
 			correction: {
 				malformed: 'La plage invalide a été remplacée par le portrait actuel.',
 				'outside-coverage': 'La plage non disponible a été remplacée par le portrait actuel.',
@@ -268,8 +269,8 @@ export const stopReliabilityCopy = defineCopy({
 					anyEnd: 'Last date',
 				},
 			}),
-			coverage: (from, to) => `History available from ${from} to ${to}.`,
-			selection: (from, to) => `Selected range: ${from} to ${to}.`,
+			coverage: (from, to) => `History available from ${from} to ${endOnDate(to)}`,
+			selection: (from, to) => `Selected range: ${from} to ${endOnDate(to)}`,
 			correction: {
 				malformed: 'The invalid date range was replaced with the current snapshot.',
 				'outside-coverage': 'The unavailable date range was replaced with the current snapshot.',

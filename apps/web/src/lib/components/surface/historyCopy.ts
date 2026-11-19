@@ -28,6 +28,12 @@ export interface HistoryCopyInput {
 	readonly next?: string;
 }
 
+/**
+ * Ends a history caption on a date without doubling the period of an abbreviated month: French
+ * short months such as "nov." already end in one ("Date affichée : 17 nov.", never "17 nov..").
+ */
+export const endOnDate = (date: string): string => (date.endsWith('.') ? date : `${date}.`);
+
 export function historyCopy(locale: Locale, input: HistoryCopyInput): HistoryNavigatorLabels {
 	const shared = chrome[locale];
 	const step = shared[input.mode];
