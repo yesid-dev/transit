@@ -36,8 +36,13 @@ def fetch_command(
     bodies: Annotated[bool, typer.Option("--bodies")] = False,
     as_of: Annotated[str | None, typer.Option("--as-of")] = None,
     timezone: Annotated[str | None, typer.Option("--timezone")] = None,
+    reference_window: Annotated[list[str] | None, typer.Option("--reference-window")] = None,
 ) -> None:
-    """Fetch proven inputs using the guarded disposable database's FK catalog."""
+    """Fetch proven inputs using the guarded disposable database's FK catalog.
+
+    ``--reference-window`` pins the exact months holding the edition metadata's
+    FK parent rows, as resolved by the read-only export.
+    """
     import json
 
     from transit_ops.batch.archive_provider import (
@@ -46,7 +51,7 @@ def fetch_command(
         replay_identity,
     )
     from transit_ops.batch.editions import reads_editions
-    from transit_ops.batch.input_sources import fetch_from_catalog
+    from transit_ops.batch.input_sources import fetch_from_catalog, reference_months
     from transit_ops.batch.replay import family_input_needs, replay_builders
     from transit_ops.history.storage import history_storage
     from transit_ops.settings import get_settings
@@ -90,6 +95,7 @@ def fetch_command(
             inputs,
             request,
             builders,
+            references=reference_months(reference_window or (), provider),
         )
         assert_final_provider(inputs, request)
         typer.echo(json.dumps(result, sort_keys=True, separators=(",", ":")))

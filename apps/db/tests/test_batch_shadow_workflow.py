@@ -58,28 +58,49 @@ def test_fetch_can_pin_timezone_without_loading_transitioning_declarations(tmp_p
     monkeypatch.setattr(
         input_sources,
         "fetch_from_catalog",
-        lambda store, root, request, builders: seen.append(request) or {},
+        lambda store, root, request, builders, references: seen.append((request, references)) or {},
     )
-    response = CliRunner().invoke(
-        batch.app,
-        [
-            "fetch-inputs",
-            "--provider",
-            "stm",
-            "--date",
-            "2026-11-01",
-            "--as-of",
-            "2026-11-02T07:00:00Z",
-            "--inputs",
-            str(tmp_path),
-            "--family",
-            "occupancy_crowding",
-            "--timezone",
-            "America/Toronto",
-        ],
-    )
+    args = [
+        "fetch-inputs",
+        "--provider",
+        "stm",
+        "--date",
+        "2026-11-01",
+        "--as-of",
+        "2026-11-02T07:00:00Z",
+        "--inputs",
+        str(tmp_path),
+        "--family",
+        "occupancy_crowding",
+        "--timezone",
+        "America/Toronto",
+    ]
+    response = CliRunner().invoke(batch.app, args)
     assert response.exit_code == 0, response.output
-    assert seen[0].timezone == "America/Toronto"
+    assert seen[0][0].timezone == "America/Toronto"
+    assert seen[0][1] == {}
+    pinned = [
+        "--reference-window",
+        "raw.ingestion_runs:stm:2025-07",
+        "--reference-window",
+        "raw.ingestion_objects:stm:2025-08",
+        "--reference-window",
+        "raw.ingestion_runs:stm:2025-08",
+    ]
+    response = CliRunner().invoke(batch.app, args + pinned)
+    assert response.exit_code == 0, response.output
+    assert seen[1][1] == {
+        "raw.ingestion_objects": ("2025-08",),
+        "raw.ingestion_runs": ("2025-07", "2025-08"),
+    }
+    for bad in (
+        "raw.ingestion_runs:octranspo:2025-08",
+        "gold.fact_vehicle_snapshot:stm:2025-08",
+        "raw.ingestion_runs:stm:2025-08-01",
+    ):
+        response = CliRunner().invoke(batch.app, args + ["--reference-window", bad])
+        assert response.exit_code == 1
+    assert len(seen) == 2
 
 
 @pytest.mark.parametrize(
@@ -740,3 +761,222 @@ def test_controller_fetches_proven_provider_into_existing_empty_directory(
     else:
         controller["run_row"](row, 0, "2026-11-03T07:00:00Z", "a" * 40, stage="fetch")
         assert calls[0].exit_code == 0
+
+
+def edition_catalog(monkeypatch):
+    """The real 0093 FK shape: whole-state edition metadata with windowed raw parents."""
+    from contextlib import contextmanager
+
+    from transit_ops.batch import input_sources
+
+    parents = {
+        ("core", "dataset_versions"): ("raw.ingestion_runs", "raw.ingestion_objects"),
+        ("raw", "ingestion_objects"): ("raw.ingestion_runs",),
+        ("gold", "fact_vehicle_snapshot"): ("raw.realtime_snapshot_index",),
+        ("gold", "fact_trip_delay_snapshot"): ("raw.realtime_snapshot_index",),
+        ("raw", "realtime_snapshot_index"): ("raw.ingestion_objects",),
+    }
+
+    def foreign_keys(name, schema):
+        return [
+            {"referred_schema": p.split(".")[0], "referred_table": p.split(".")[1]}
+            for p in parents.get((schema, name), ())
+        ]
+
+    @contextmanager
+    def catalog():
+        yield SimpleNamespace(get_foreign_keys=foreign_keys)
+
+    monkeypatch.setattr(input_sources, "replay_catalog", catalog)
+
+
+def unbounded_headways(monkeypatch):
+    from transit_ops.batch.build import InputNeed
+    from transit_ops.batch.families import headways
+
+    class Unbounded:
+        family_id = "headways"
+        tables = ()
+        published_keys = ()
+        variants = {}
+
+        def inputs(self, request):
+            return (InputNeed("raw.ingestion_objects", "all"),)
+
+        def build(self, *args):
+            raise AssertionError("planning must not build")
+
+    monkeypatch.setattr(headways, "builder", Unbounded())
+
+
+def test_default_run_excludes_an_unresolvable_family_by_name_and_plans_the_rest(
+    controller, monkeypatch
+):
+    edition_catalog(monkeypatch)
+    unbounded_headways(monkeypatch)
+    monkeypatch.setenv("GITHUB_SHA", "a" * 40)
+    monkeypatch.setenv("PROVIDERS", "stm")
+    monkeypatch.setenv("INPUT_MODE", "export")
+    monkeypatch.delenv("FAMILIES", raising=False)
+    planned = controller["plan"](datetime(2026, 11, 15, 12, tzinfo=UTC))
+    excluded = {r["family"]: r["reason"] for r in planned["family_refusals"]}
+    assert excluded == {
+        "headways": "unbounded_window_need:raw.ingestion_objects",
+        "route_spine_hours": "input_not_archived:silver.rt_feed_snapshots",
+        "hotspots": "family_not_replayable",
+        "trend_history_partitions": "family_not_replayable",
+        "alerts_provenance": "family_not_replayable",
+    }
+    selected = {family for row in planned["matrix"] for family in row["families"]}
+    assert selected == {
+        "stop_spine_hours",
+        "percentiles_histograms",
+        "cancellations_service_states",
+        "span_skipped_stops",
+        "occupancy_crowding",
+        "repeat_offenders",
+        "receipts",
+    }
+    # No family is dropped silently: every registered family is planned or named.
+    from transit_ops.batch.families.registry import FAMILIES
+
+    assert selected | set(excluded) == set(FAMILIES) and not selected & set(excluded)
+    public = controller["safe_evidence"](planned)
+    assert {r["family"]: r["reason"] for r in public["family_refusals"]} == excluded
+
+
+def test_explicit_unresolvable_family_still_refuses_the_run_by_name(controller, monkeypatch):
+    edition_catalog(monkeypatch)
+    unbounded_headways(monkeypatch)
+    monkeypatch.setenv("GITHUB_SHA", "a" * 40)
+    monkeypatch.setenv("PROVIDERS", "stm")
+    monkeypatch.setenv("FAMILIES", "occupancy_crowding,headways")
+    with pytest.raises(
+        ValueError, match="unbounded_window_need: raw.ingestion_objects; family headways"
+    ):
+        controller["plan"](datetime(2026, 11, 15, 12, tzinfo=UTC))
+    # Archive mode cannot read production to bound edition parents: explicit refusal.
+    monkeypatch.setenv("INPUT_MODE", "archive")
+    monkeypatch.setenv("FAMILIES", "cancellations_service_states")
+    with pytest.raises(ValueError, match="unbounded_window_need: raw.ingestion_.*family"):
+        controller["plan"](datetime(2026, 11, 15, 12, tzinfo=UTC))
+
+
+def test_every_family_excluded_refuses_instead_of_an_empty_success(controller, monkeypatch):
+    from transit_ops.batch.families import registry
+
+    edition_catalog(monkeypatch)
+    monkeypatch.setattr(registry, "resolve_builder", lambda name: None)
+    monkeypatch.setenv("GITHUB_SHA", "a" * 40)
+    monkeypatch.setenv("PROVIDERS", "stm")
+    monkeypatch.delenv("FAMILIES", raising=False)
+    with pytest.raises(ValueError, match="no_replayable_family"):
+        controller["plan"](datetime(2026, 11, 15, 12, tzinfo=UTC))
+
+
+def test_edition_family_plan_needs_only_referenced_parent_months(controller, monkeypatch):
+    from transit_ops.batch.daily_inputs import (
+        EDITION_REFERENCES,
+        exact_windows,
+        require_bounded_needs,
+    )
+
+    edition_catalog(monkeypatch)
+    monkeypatch.setenv("GITHUB_SHA", "a" * 40)
+    monkeypatch.setenv("PROVIDERS", "stm")
+    monkeypatch.setenv("INPUT_MODE", "export")
+    monkeypatch.setenv("FAMILIES", "cancellations_service_states")
+    stamp = datetime(2026, 11, 15, 12, tzinfo=UTC)
+    planned = controller["plan"](stamp)
+    assert planned["family_refusals"] == []
+    assert planned["matrix"][0]["families"] == ["cancellations_service_states"]
+    parents = {
+        (n["relation"], n["window"])
+        for n in planned["needs"]
+        if n["relation"] in {"raw.ingestion_objects", "raw.ingestion_runs"}
+    }
+    assert ("raw.ingestion_objects", EDITION_REFERENCES) in parents
+    assert ("raw.ingestion_runs", EDITION_REFERENCES) in parents
+    assert all(window != "all" for _, window in parents)
+    require_bounded_needs(planned["needs"])
+
+    def execute(query, parameters=None):
+        if "core.dataset_versions v" in query:
+            return SimpleNamespace(
+                fetchall=lambda: [
+                    ("raw.ingestion_objects", "stm", "2025-08"),
+                    ("raw.ingestion_runs", "stm", "2025-08"),
+                ]
+            )
+        return SimpleNamespace(fetchall=lambda: [("c" * 64,)])
+
+    windows = exact_windows(planned["needs"], stamp, SimpleNamespace(execute=execute))
+    edition_parents = {
+        w for w in windows if w.split(":")[0] in {"raw.ingestion_objects", "raw.ingestion_runs"}
+    }
+    # Fact-day parents keep their own month; edition parents add only the referenced month.
+    assert {w.rsplit(":", 1)[1] for w in edition_parents} <= {"2025-08", "2026-11"}
+    assert "raw.ingestion_objects:stm:2025-08" in edition_parents
+    assert "raw.ingestion_runs:stm:2025-08" in edition_parents
+
+
+def test_exclusion_reasons_keep_only_a_dataset_name_in_public_evidence(controller):
+    summary = controller["safe_evidence"](
+        {
+            "family_refusals": [
+                {
+                    "provider": "stm",
+                    "family": "headways",
+                    "reason": "unbounded_window_need:raw.ingestion_objects",
+                },
+                {"provider": "stm", "family": "receipts", "reason": "input_not_archived: pw@h/x"},
+                {"provider": "stm", "family": "x", "reason": "not_after:secret.value"},
+                {"provider": "stm", "family": "y", "reason": "input_not_archived:p://u:pw@h.db"},
+            ]
+        }
+    )
+    assert [r["reason"] for r in summary["family_refusals"]] == [
+        "unbounded_window_need:raw.ingestion_objects",
+        "input_not_archived",
+        "not_after",
+        "input_not_archived",
+    ]
+
+
+def test_fetch_stage_pins_exported_reference_windows_per_provider(
+    controller, monkeypatch, tmp_path
+):
+    commands = []
+    monkeypatch.setattr(
+        controller["shutil"], "disk_usage", lambda p: SimpleNamespace(free=25_000_000_000)
+    )
+    monkeypatch.setitem(controller, "invoke", lambda args, receipt, **kw: commands.append(args))
+    for name in ("BRONZE_S3_ACCESS_KEY", "BRONZE_S3_SECRET_KEY"):
+        monkeypatch.setenv(name, "key")
+    monkeypatch.setenv("BATCH_SHADOW_PROVISIONED", "true")
+    monkeypatch.delenv("AS_OF", raising=False)
+    row = {"provider": "stm", "day": "2026-11-14", "families": ["x"], "timezone": "UTC"}
+    data = {
+        "code_commit": "a" * 40,
+        "planned_at": "2026-11-15T12:00:00+00:00",
+        "export_finished_at": "2026-11-15T12:30:00+00:00",
+        "matrix": [row, dict(row, provider="sto")],
+        "needs": [{"relation": "raw.ingestion_runs", "window": "edition_refs", "provider": "stm"}],
+        "reference_windows": {"stm": ["raw.ingestion_runs:stm:2025-08"]},
+    }
+    controller["write_json"](tmp_path / "daily-inputs.json", data)
+    from transit_ops.batch import daily_inputs
+
+    monkeypatch.setattr(daily_inputs, "require_window_support", lambda *a, **kw: None)
+    controller["main"]("fetch")
+    stm, sto = commands
+    assert stm[stm.index("--reference-window") + 1] == "raw.ingestion_runs:stm:2025-08"
+    assert stm.count("--reference-window") == 1
+    assert "--reference-window" not in sto
+    # Planned edition references without an export cannot fall back to all history.
+    del data["reference_windows"]
+    controller["write_json"](tmp_path / "daily-inputs.json", data)
+    commands.clear()
+    with pytest.raises(ValueError, match="unbounded_window_need"):
+        controller["main"]("fetch")
+    assert commands == []

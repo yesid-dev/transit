@@ -901,8 +901,10 @@ def test_changed_bootstrap_refuses_before_any_other_payload(tmp_path, monkeypatc
     assert list(root.iterdir()) == []
 
 
-def bundle(storage, keys, stamp=STAMP):
+def bundle(storage, keys, stamp=STAMP, *, closure_queries=None):
     from transit_ops.lake.alert_bundle import CLOSURE_RELATIONS, PREFIX
+
+    overrides = closure_queries or {}
 
     closure_queries = {
         "core.providers": (
@@ -924,7 +926,7 @@ def bundle(storage, keys, stamp=STAMP):
             "SELECT *, TIMESTAMPTZ '2026-11-01 00:00:00+00' AS created_at_utc "
             "FROM (VALUES (1,'sample'),(2,'other')) t(ingestion_object_id,provider_id)"
         ),
-    }
+    } | overrides
     closure = []
     for relation in CLOSURE_RELATIONS:
         path = storage.root / (relation + ".parquet")
@@ -1660,3 +1662,289 @@ def test_fetched_rescue_provenance_survives_materialization(tmp_path):
     local.write_bytes(local.read_bytes() + b"changed")
     with pytest.raises(InputRefused, match="input_provenance_missing"):
         resolve_inputs([need], root, provider_id="octranspo")
+
+
+def edition_parent_archive(storage):
+    """Edition 7 references object 5 (run 1, July) and run 2 (August) only."""
+    bootstrap(
+        storage,
+        "SELECT 'sample' AS provider_id, 7::BIGINT AS dataset_version_id, "
+        f"'{('c' * 64)}' AS checksum_sha256, NULL::VARCHAR AS content_hash, "
+        "'static_schedule' AS dataset_kind, true AS is_current, "
+        "TIMESTAMPTZ '2025-08-02 00:00:00+00' AS loaded_at_utc, "
+        "5::BIGINT AS source_ingestion_object_id, 2::BIGINT AS source_ingestion_run_id",
+    )
+    objects = (
+        "SELECT * FROM (VALUES (5, 1, 'sample', TIMESTAMPTZ '2025-08-01 00:00:05+00'), "
+        "(6, 9, 'sample', TIMESTAMPTZ '2025-08-01 00:00:06+00')) "
+        "t(ingestion_object_id, ingestion_run_id, provider_id, created_at_utc)"
+    )
+    runs = "SELECT * FROM (VALUES {}) t(ingestion_run_id, provider_id, started_at_utc)"
+    keys = {
+        "objects-2025-08": archive(storage, "raw.ingestion_objects", "2025-08", objects),
+        "objects-2025-09": archive(
+            storage,
+            "raw.ingestion_objects",
+            "2025-09",
+            objects.replace("2025-08", "2025-09").replace("(5, 1", "(8, 1"),
+        ),
+        "runs-2025-07": archive(
+            storage,
+            "raw.ingestion_runs",
+            "2025-07",
+            runs.format("(1, 'sample', TIMESTAMPTZ '2025-07-31 23:59:58+00')"),
+        ),
+        "runs-2025-08": archive(
+            storage,
+            "raw.ingestion_runs",
+            "2025-08",
+            runs.format(
+                "(2, 'sample', TIMESTAMPTZ '2025-08-01 00:00:00+00'), "
+                "(3, 'sample', TIMESTAMPTZ '2025-08-03 00:00:00+00')"
+            ),
+        ),
+    }
+    return keys
+
+
+EDITION_NEEDS = [
+    InputNeed("core.dataset_versions", "all"),
+    InputNeed("raw.ingestion_objects", "all"),
+    InputNeed("raw.ingestion_runs", "all"),
+]
+
+
+def test_pinned_edition_parents_fetch_only_referenced_months_and_rows(tmp_path, monkeypatch):
+    storage = store(tmp_path)
+    keys = edition_parent_archive(storage)
+    opened = []
+    original = LocalBronzeStorage.open_stream
+
+    def opening(self, key, **kwargs):
+        opened.append(key)
+        return original(self, key, **kwargs)
+
+    monkeypatch.setattr(LocalBronzeStorage, "open_stream", opening)
+    root = tmp_path / "inputs"
+    root.mkdir()
+    references = {
+        "raw.ingestion_objects": ("2025-08",),
+        "raw.ingestion_runs": ("2025-07", "2025-08"),
+    }
+    fetch_replay_inputs(
+        storage, root, "sample", STAMP, lambda _: EDITION_NEEDS, references=references
+    )
+    assert keys["objects-2025-09"] not in opened
+    with duckdb.connect() as conn:
+
+        def ids(relation, column):
+            return conn.execute(
+                f"SELECT {column} FROM read_parquet(?) ORDER BY 1",
+                [str(root / relation / "all.parquet")],
+            ).fetchall()
+
+        # Row-aware: the unrelated object 6 (run 9 outside the closure) never loads.
+        assert ids("raw.ingestion_objects", "ingestion_object_id") == [(5,)]
+        assert ids("raw.ingestion_runs", "ingestion_run_id") == [(1,), (2,)]
+
+
+def test_pinned_edition_parents_refuse_a_missing_referenced_row(tmp_path):
+    storage = store(tmp_path)
+    edition_parent_archive(storage)
+    root = tmp_path / "inputs"
+    root.mkdir()
+    with pytest.raises(ValueError, match="fk_parent_outside_range: raw.ingestion_runs"):
+        fetch_replay_inputs(
+            storage,
+            root,
+            "sample",
+            STAMP,
+            lambda _: EDITION_NEEDS,
+            references={
+                "raw.ingestion_objects": ("2025-08",),
+                "raw.ingestion_runs": ("2025-08",),
+            },
+        )
+
+
+def test_unpinned_edition_parents_still_require_every_month_since_the_first(tmp_path):
+    storage = store(tmp_path)
+    edition_parent_archive(storage)
+    root = tmp_path / "inputs"
+    root.mkdir()
+    with pytest.raises(SourcesMissing):
+        fetch_replay_inputs(storage, root, "sample", STAMP, lambda _: EDITION_NEEDS)
+
+
+def edition_parent_catalog():
+    """The 0093 FKs of the whole-state edition metadata and its parents."""
+    parents = {
+        ("core", "dataset_versions"): ("ingestion_objects", "ingestion_runs"),
+        ("raw", "ingestion_objects"): ("ingestion_runs",),
+    }
+
+    class Catalog:
+        def get_foreign_keys(self, name, schema):
+            return [
+                {"referred_schema": "raw", "referred_table": parent}
+                for parent in parents.get((schema, name), ())
+            ]
+
+    return Catalog()
+
+
+def edition_builder(monkeypatch):
+    """An edition reader whose only replay input is the edition metadata itself."""
+    from transit_ops.batch import replay
+
+    monkeypatch.setattr(
+        replay,
+        "postgres_input_needs",
+        lambda request, editions: (InputNeed("core.dataset_versions", "all"),) if editions else (),
+    )
+
+    class EditionReader:
+        family_id = "cancellations_service_states"
+        tables = ()
+        published_keys = ()
+        variants = {}
+
+        def inputs(self, request):
+            return ()
+
+        def build(self, *args):
+            raise AssertionError("fetch must not build")
+
+    return EditionReader()
+
+
+@pytest.mark.parametrize("older_month", [False, True])
+def test_pinned_open_month_parents_pass_the_public_fk_preflight(tmp_path, monkeypatch, older_month):
+    from contextlib import nullcontext
+
+    from test_batch_editions import REQUEST
+
+    from transit_ops.batch import input_sources
+
+    monkeypatch.setattr(
+        input_sources, "replay_catalog", lambda: nullcontext(edition_parent_catalog())
+    )
+    storage = store(tmp_path)
+    bootstrap(
+        storage,
+        "SELECT 'sample' AS provider_id, 7::BIGINT AS dataset_version_id, "
+        f"'{('c' * 64)}' AS checksum_sha256, NULL::VARCHAR AS content_hash, "
+        "'static_schedule' AS dataset_kind, true AS is_current, "
+        "TIMESTAMPTZ '2026-11-02 00:00:00+00' AS loaded_at_utc, "
+        "5::BIGINT AS source_ingestion_object_id, 2::BIGINT AS source_ingestion_run_id",
+    )
+    open_copies = [
+        archive(
+            storage,
+            "raw.ingestion_objects",
+            "2026-11",
+            "SELECT 5::BIGINT AS ingestion_object_id, 2::BIGINT AS ingestion_run_id, "
+            "'sample' AS provider_id, TIMESTAMPTZ '2026-11-02 00:00:05+00' AS created_at_utc",
+        ),
+        archive(
+            storage,
+            "raw.ingestion_runs",
+            "2026-11",
+            "SELECT 2::BIGINT AS ingestion_run_id, 'sample' AS provider_id, "
+            "TIMESTAMPTZ '2026-11-02 00:00:00+00' AS started_at_utc",
+        ),
+    ]
+    if older_month:  # A contiguous closed month from an earlier export.
+        archive(
+            storage,
+            "raw.ingestion_objects",
+            "2026-10",
+            "SELECT 4::BIGINT AS ingestion_object_id, 1::BIGINT AS ingestion_run_id, "
+            "'sample' AS provider_id, TIMESTAMPTZ '2026-10-02 00:00:05+00' AS created_at_utc",
+        )
+    for key in open_copies:  # The export's open-month cut copy (#1107), cut before as_of.
+        record = json.loads(storage.read_bytes(proof_key(key)))
+        record.update(partial=True, cut_utc="2026-11-03T06:30:00+00:00")
+        put(storage, proof_key(key), record)
+    root = tmp_path / "inputs"
+    root.mkdir()
+    input_sources.fetch_from_catalog(
+        storage,
+        root,
+        REQUEST,
+        [edition_builder(monkeypatch)],
+        references={"raw.ingestion_objects": ("2026-11",), "raw.ingestion_runs": ("2026-11",)},
+    )
+    with duckdb.connect() as conn:
+        for relation, column, expected in (
+            ("raw.ingestion_objects", "ingestion_object_id", [(5,)]),
+            ("raw.ingestion_runs", "ingestion_run_id", [(2,)]),
+        ):
+            assert (
+                conn.execute(
+                    f"SELECT {column} FROM read_parquet(?) ORDER BY 1",
+                    [str(root / relation / "all.parquet")],
+                ).fetchall()
+                == expected
+            )
+
+
+def test_alert_bundle_closure_parents_survive_the_edition_pin(tmp_path):
+    """receipts (alerts) and an edition family share one provider-day fetch row."""
+    storage = store(tmp_path)
+    objects = (
+        "SELECT * FROM (VALUES {}) "
+        "t(ingestion_object_id, ingestion_run_id, provider_id, created_at_utc)"
+    )
+    runs = "SELECT * FROM (VALUES {}) t(ingestion_run_id, provider_id, started_at_utc)"
+    november = "TIMESTAMPTZ '2026-11-01 00:00:00+00'"
+    bundle(
+        storage,
+        alert_copies(storage),
+        closure_queries={
+            "raw.ingestion_objects": objects.format(
+                f"(1, 1, 'sample', {november}), (2, 2, 'other', {november})"
+            ),
+            "raw.ingestion_runs": runs.format(
+                f"(1, 'sample', {november}), (2, 'other', {november})"
+            ),
+        },
+    )
+    bootstrap(
+        storage,
+        "SELECT 'sample' AS provider_id, 7::BIGINT AS dataset_version_id, "
+        f"'{('c' * 64)}' AS checksum_sha256, NULL::VARCHAR AS content_hash, "
+        "'static_schedule' AS dataset_kind, true AS is_current, "
+        "TIMESTAMPTZ '2025-08-02 00:00:00+00' AS loaded_at_utc, "
+        "5::BIGINT AS source_ingestion_object_id, 6::BIGINT AS source_ingestion_run_id",
+    )
+    august = "TIMESTAMPTZ '2025-08-01 00:00:05+00'"
+    archive(
+        storage,
+        "raw.ingestion_objects",
+        "2025-08",
+        objects.format(f"(5, 6, 'sample', {august}), (9, 9, 'sample', {august})"),
+    )
+    archive(storage, "raw.ingestion_runs", "2025-08", runs.format(f"(6, 'sample', {august})"))
+    root = tmp_path / "inputs"
+    root.mkdir()
+    fetch_replay_inputs(
+        storage,
+        root,
+        "sample",
+        STAMP,
+        lambda _: [InputNeed("silver.i3_alerts", "all"), *EDITION_NEEDS],
+        references={"raw.ingestion_objects": ("2025-08",), "raw.ingestion_runs": ("2025-08",)},
+    )
+    with duckdb.connect() as conn:
+
+        def ids(relation, column):
+            return conn.execute(
+                f"SELECT {column} FROM read_parquet(?) ORDER BY 1",
+                [str(root / relation / "all.parquet")],
+            ).fetchall()
+
+        # The alert closure's provider parents (1) load beside the edition parents only;
+        # the unreferenced archive object 9 stays out.
+        assert ids("raw.ingestion_objects", "ingestion_object_id") == [(1,), (5,)]
+        assert ids("raw.ingestion_runs", "ingestion_run_id") == [(1,), (6,)]

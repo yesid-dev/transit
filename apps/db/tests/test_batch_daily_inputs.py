@@ -306,3 +306,87 @@ def test_dataset_version_fk_all_refuses_with_unrelated_history_present():
             SimpleNamespace(execute=execute),
         )
     assert queries == []
+
+
+def test_edition_parents_select_only_the_months_their_referenced_rows_occupy():
+    from transit_ops.batch.build import InputNeed
+    from transit_ops.batch.daily_inputs import (
+        EDITION_REFERENCES,
+        bound_edition_parents,
+        require_bounded_needs,
+    )
+    from transit_ops.batch.replay import parent_input_needs
+
+    class Catalog:
+        def get_foreign_keys(self, name, schema):
+            targets = {
+                ("core", "dataset_versions"): ("ingestion_runs", "ingestion_objects"),
+                ("raw", "ingestion_objects"): ("ingestion_runs",),
+            }
+            return [
+                {"referred_schema": "raw", "referred_table": parent}
+                for parent in targets.get((schema, name), ())
+            ]
+
+    needs = bound_edition_parents(
+        parent_input_needs((InputNeed("core.dataset_versions", "all"),), Catalog())
+    )
+    assert needs == (
+        ("core.dataset_versions", "all"),
+        ("raw.ingestion_objects", EDITION_REFERENCES),
+        ("raw.ingestion_runs", EDITION_REFERENCES),
+    )
+    planned = [{"relation": r, "window": w, "provider": "stm"} for r, w in needs]
+    require_bounded_needs(planned)
+    queries = []
+
+    def execute(query, parameters):
+        queries.append((query, parameters))
+        # 23 historical months exist; the editions reference only these three.
+        return SimpleNamespace(
+            fetchall=lambda: [
+                ("raw.ingestion_objects", "stm", "2025-08"),
+                ("raw.ingestion_objects", "stm", "2026-11"),
+                ("raw.ingestion_runs", "stm", "2025-07"),
+                ("raw.ingestion_runs", "stm", "2025-08"),
+                ("raw.ingestion_runs", "stm", "2026-11"),
+            ]
+        )
+
+    windows = exact_windows(
+        planned, datetime(2026, 11, 15, tzinfo=UTC), SimpleNamespace(execute=execute)
+    )
+    assert windows == (
+        "core.dataset_versions:stm:2026-11",
+        "raw.ingestion_objects:stm:2025-08",
+        "raw.ingestion_objects:stm:2026-11",
+        "raw.ingestion_runs:stm:2025-07",
+        "raw.ingestion_runs:stm:2025-08",
+        "raw.ingestion_runs:stm:2026-11",
+    )
+    # One provider-scoped query, joined on parent primary keys; never min() or ranges.
+    assert len(queries) == 1 and queries[0][1] == ("stm",)
+    sql = " ".join(queries[0][0].split()).lower()
+    assert "o.ingestion_object_id = v.source_ingestion_object_id" in sql
+    assert "r.ingestion_run_id = i.ingestion_run_id" in sql
+    assert "where v.provider_id = %s" in sql
+    assert all(word not in sql for word in ("min(", "max(", "between", "created_at_utc <", ">="))
+
+
+def test_reference_window_is_bounded_only_for_edition_parents():
+    from transit_ops.batch.build import InputNeed
+    from transit_ops.batch.daily_inputs import (
+        EDITION_REFERENCES,
+        bound_edition_parents,
+        require_bounded_needs,
+    )
+
+    with pytest.raises(ValueError, match="unbounded_window_need: gold.fact_vehicle_snapshot"):
+        require_bounded_needs(
+            [{"relation": "gold.fact_vehicle_snapshot", "window": EDITION_REFERENCES}]
+        )
+    # Without the whole-state edition metadata, an all parent stays unbounded.
+    alone = (InputNeed("raw.ingestion_objects", "all"),)
+    assert bound_edition_parents(alone) == (("raw.ingestion_objects", "all"),)
+    with pytest.raises(ValueError, match="unbounded_window_need: raw.ingestion_objects"):
+        require_bounded_needs([{"relation": "raw.ingestion_objects", "window": "all"}])

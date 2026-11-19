@@ -51,11 +51,26 @@ REFUSALS = (
     "edition_input_changed",
     "unbounded_window_need",
     "group_reserve_unsupported",
+    "no_replayable_family",
+    "fk_parent_outside_range",
+    "reference_window",
 )
+# Plan-time reasons that exclude one default family instead of the whole run.
+EXCLUSIONS = ("input_not_archived", "unbounded_window_need")
+DATASET = r"[a-z0-9_]+\.[a-z0-9_]+"
 
 
 def refusal_name(message: str) -> str:
     return next((name for name in REFUSALS if name in message), "command_failed")
+
+
+def exclusion_reason(message: str) -> str | None:
+    """`<refusal>:<dataset>` for a need that cannot resolve or be bounded, else None."""
+    name = next((name for name in EXCLUSIONS if message.startswith(name + ":")), None)
+    datasets = re.findall(DATASET, message)
+    if name is None or not datasets:
+        return None
+    return f"{name}:{datasets[-1]}"
 
 
 def safe_evidence(value: Any, key: str = "") -> Any:
@@ -124,6 +139,9 @@ def safe_evidence(value: Any, key: str = "") -> Any:
         if key in {"code_commit", "build_id", "sha256", "object_sha256", "report_sha256"}:
             return value if re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", value) else None
         if key in {"reason", "refusal"}:
+            named = re.fullmatch(rf"([a-z_]+):({DATASET})", value)
+            if named and named.group(1) in EXCLUSIONS:
+                return value
             return refusal_name(value)
         if key in {"outcome", "status"} and value in {
             "copied",
@@ -234,6 +252,7 @@ def selection(value: str, available: Any) -> list[str]:
 
 def plan(stamp: datetime) -> dict[str, Any]:
     from transit_ops.batch.build import BuildRequest, FamilyBuilder
+    from transit_ops.batch.daily_inputs import bound_edition_parents, require_bounded_needs
     from transit_ops.batch.editions import with_editions
     from transit_ops.batch.families.registry import FAMILIES, resolve_builder
     from transit_ops.batch.input_sources import replay_catalog
@@ -253,6 +272,7 @@ def plan(stamp: datetime) -> dict[str, Any]:
     resolved = {name: resolve_builder(name) for name in FAMILIES}
     explicit = os.environ.get("FAMILIES", "")
     families = selection(explicit, FAMILIES)
+    export = os.environ.get("INPUT_MODE", "export") == "export"
     rows: list[dict[str, Any]] = []
     datasets: set[str] = set()
     logical_needs: list[dict[str, str]] = []
@@ -298,25 +318,35 @@ def plan(stamp: datetime) -> dict[str, Any]:
                     needs = family_input_needs([builder], request) + postgres_input_needs(
                         request, (1,) if request.edition_by_day else ()
                     )
+                    # Before source proofs exist, unknown child counts require all FK parents.
+                    expanded = parent_input_needs(
+                        tuple(n for n in needs if n.relation not in MEMBERS), catalog
+                    )
+                    # Only a read-only export can resolve the referenced months.
+                    logical = (
+                        bound_edition_parents(expanded)
+                        if export
+                        else tuple((n.relation, n.window) for n in expanded)
+                    ) + tuple((n.relation, n.window) for n in needs if n.relation in MEMBERS)
+                    require_bounded_needs([{"relation": r, "window": w} for r, w in logical])
                 except ValueError as error:
-                    if explicit or not str(error).startswith("input_not_archived"):
+                    reason = exclusion_reason(str(error))
+                    if reason is None:
                         raise
-                    refusals.append({"provider": provider, "family": family, "reason": str(error)})
+                    if explicit:
+                        raise ValueError(f"{error}; family {family}") from error
+                    # R32(1): exclude by name and keep planning every resolvable family.
+                    refusals.append({"provider": provider, "family": family, "reason": reason})
                     continue
-                # Before source proofs exist, unknown child counts require all FK parents.
-                expanded = parent_input_needs(
-                    tuple(n for n in needs if n.relation not in MEMBERS), catalog
-                )
-                expanded += tuple(n for n in needs if n.relation in MEMBERS)
-                datasets.update(n.relation for n in expanded)
+                datasets.update(relation for relation, _ in logical)
                 logical_needs.extend(
                     {
                         "provider": provider,
-                        "relation": n.relation,
-                        "window": n.window,
+                        "relation": relation,
+                        "window": window,
                         "timezone": request.timezone,
                     }
-                    for n in expanded
+                    for relation, window in logical
                 )
                 rows.append(
                     {
@@ -327,6 +357,8 @@ def plan(stamp: datetime) -> dict[str, Any]:
                         "timezone": request.timezone,
                     }
                 )
+    if not rows:
+        raise ValueError("no_replayable_family: every selected family was excluded")
     for dataset in datasets:
         get_dataset(dataset)  # Never run an unfiltered migration for undeclared inputs.
     grouped: dict[tuple[str, str], dict[str, Any]] = {}
@@ -401,6 +433,7 @@ def export_inputs(data: dict[str, Any]) -> None:
         PlanningReads,
         assert_group_deadline,
         assert_read_role,
+        edition_reference_windows,
         exact_windows,
         group_deadline,
         require_bounded_needs,
@@ -430,10 +463,12 @@ def export_inputs(data: dict[str, Any]) -> None:
         assert_read_role(reads)
         result = reads.execute("SELECT count(*) FROM core.providers").fetchone()
         count = result[0] if result else 0
-        windows = exact_windows(data["needs"], stamp, reads)
+        references = edition_reference_windows(data["needs"], reads)
+        windows = exact_windows(data["needs"], stamp, reads, references)
     if not count:
         raise ValueError("providers_missing")
     data["windows"] = list(windows)
+    data["reference_windows"] = references
     write_json(ROOT / "daily-inputs.json", data)
     groups = {
         "ordinary": [w for w in windows if w.split(":")[0] not in MEMBERS],
@@ -511,7 +546,13 @@ def gate(report: dict[str, Any], row: dict[str, Any], stamp: str, commit: str) -
 
 
 def run_row(
-    row: dict[str, Any], index: int, stamp: str, commit: str, *, stage: str = "all"
+    row: dict[str, Any],
+    index: int,
+    stamp: str,
+    commit: str,
+    *,
+    stage: str = "all",
+    references: list[str] | tuple[str, ...] = (),
 ) -> None:
     if shutil.disk_usage(ROOT).free < 20_000_000_000:
         raise ValueError("work_space: 20 GB start/stop rule")
@@ -531,8 +572,9 @@ def run_row(
         common += ["--family", family]
     if stage in {"all", "fetch"}:
         inputs.mkdir(parents=True, exist_ok=False)
+        pinned = [part for window in references for part in ("--reference-window", window)]
         invoke(
-            ["batch", "fetch-inputs", *common, "--bodies", "--timezone", row["timezone"]],
+            ["batch", "fetch-inputs", *common, "--bodies", "--timezone", row["timezone"], *pinned],
             area / "fetch-receipts.json",
         )
     if stage == "fetch":
@@ -606,16 +648,29 @@ def main(stage: str) -> None:
                 raise ValueError("invalid_as_of: precedes selected export cuts")
             if stage == "fetch":
                 from transit_ops.batch.daily_inputs import (
+                    EDITION_REFERENCES,
                     require_bounded_needs,
                     require_window_support,
                 )
 
                 require_bounded_needs(data["needs"])
                 require_window_support(data["needs"], stamp, exact_selection=False)
+                if "reference_windows" not in data and any(
+                    n["window"] == EDITION_REFERENCES for n in data["needs"]
+                ):
+                    raise ValueError("unbounded_window_need: edition references not exported")
             data["as_of_utc"] = stamp.isoformat()
             write_json(receipt, data)
+            references = data.get("reference_windows", {})
             for index, row in enumerate(data["matrix"]):
-                run_row(row, index, stamp.isoformat(), data["code_commit"], stage=stage)
+                run_row(
+                    row,
+                    index,
+                    stamp.isoformat(),
+                    data["code_commit"],
+                    stage=stage,
+                    references=references.get(row["provider"], ()),
+                )
             data["complete"] = stage == "shadow"
         else:
             raise ValueError("unknown_stage")
