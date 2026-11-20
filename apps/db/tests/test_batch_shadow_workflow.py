@@ -320,8 +320,10 @@ def test_export_asserts_read_only_and_uses_locked_cli_all_provider(controller, m
     monkeypatch.setattr(daily_inputs, "require_group_reserve_support", lambda: None)
     monkeypatch.setattr(
         daily_inputs,
-        "exact_windows",
-        lambda *a: ("core.providers:stm:2026-11", "silver.i3_alerts:stm:2026-11"),
+        "select_windows",
+        lambda *a: SimpleNamespace(
+            resolve=lambda storage: ("core.providers:stm:2026-11", "silver.i3_alerts:stm:2026-11")
+        ),
     )
     monkeypatch.setitem(controller, "invoke", lambda args, receipt: commands.append(args))
     data = {"code_commit": "a" * 40, "needs": [], "planned_at": "2026-11-15T12:00:00Z"}
@@ -654,6 +656,188 @@ def test_public_artifacts_drop_connection_details_and_query_secrets(
     assert summary["refusal"] == "not_after"
 
 
+PRIVATE = "postgresql://writer:pw@db.example:6543/live_db SELECT * FROM core.providers"
+
+
+@pytest.mark.parametrize(
+    ("stdout", "stderr", "expected"),
+    [
+        (
+            '{"failure": {"exception": "MigrationRefused", "reason": "window"}}',
+            "window: " + PRIVATE,
+            ("window", "MigrationRefused"),
+        ),
+        (
+            json.dumps(
+                {
+                    "failure": {
+                        "exception": "OperationalError",
+                        "reason": "plan_budget",
+                        "error": PRIVATE,
+                    },
+                    "outcomes": {},
+                }
+            ),
+            "",
+            ("plan_budget", "OperationalError"),
+        ),
+        (
+            # An unknown reason or class is never replaced by a name found in the text.
+            '{"failure": {"exception": "HostError_db_example", "reason": "live_db"}}',
+            PRIVATE + " migration_running not_after",
+            ("command_failed", "other"),
+        ),
+        (
+            "",
+            "Traceback (most recent call last):\n  ...\n"
+            "psycopg.errors.QueryCanceled: canceling statement " + PRIVATE,
+            ("command_failed", "QueryCanceled"),
+        ),
+        (
+            "",
+            "Traceback (most recent call last):\nwriter.db.example: " + PRIVATE,
+            ("command_failed", "other"),
+        ),
+    ],
+)
+def test_failed_lake_command_publishes_only_named_identities(
+    controller, monkeypatch, tmp_path, stdout, stderr, expected
+):
+    monkeypatch.setattr(
+        controller["subprocess"],
+        "run",
+        lambda *a, **kw: SimpleNamespace(returncode=3, stdout=stdout, stderr=stderr),
+    )
+    with pytest.raises(ValueError) as raised:
+        controller["invoke"](["lake", "migrate"], tmp_path / "export.log")
+    artifact = (tmp_path / "public/export.json").read_text()
+    summary = json.loads(artifact)
+    assert (summary["refusal"], summary["exception"]) == expected
+    assert summary["exit_code"] == 3
+    # The stage refusal keeps the same name.
+    assert controller["refusal_name"](str(raised.value)) == expected[0]
+    for private in ("db.example", "writer", "live_db", "6543", "pw", "SELECT", "postgresql"):
+        assert private not in artifact
+
+
+def test_lake_failure_record_comes_from_stdout_never_from_stderr(controller, monkeypatch, tmp_path):
+    real = json.dumps({"failure": {"exception": "MigrationRefused", "reason": "plan_budget"}})
+    # An echoed diagnostic on stderr may carry any JSON, even a lookalike record.
+    lookalikes = [
+        json.dumps({"failure": {"exception": "OperationalError", "reason": "window"}}),
+        json.dumps({"failure": {"exception": "OperationalError", "reason": "window"}, "x": 1}),
+        json.dumps({"failure": {"reason": "window"}}),
+    ]
+    for stderr in lookalikes:
+        monkeypatch.setattr(
+            controller["subprocess"],
+            "run",
+            lambda *a, stderr=stderr, **kw: SimpleNamespace(
+                returncode=1, stdout=real, stderr="plan_budget: x\n" + stderr
+            ),
+        )
+        with pytest.raises(ValueError):
+            controller["invoke"](["lake", "migrate"], tmp_path / "export.log")
+        summary = json.loads((tmp_path / "public/export.json").read_text())
+        assert (summary["refusal"], summary["exception"]) == ("plan_budget", "MigrationRefused")
+
+
+@pytest.mark.parametrize(
+    "stdout",
+    [
+        '{"failure": {"reason": "window", "exception": "MigrationRefused", "extra": 1}}',
+        '{"failure": {"reason": "window"}}',
+        '{"failure": {"reason": "window", "exception": "MigrationRefused"}, "other": 1}',
+        '{"failure": "window"}',
+        "[1]",
+    ],
+)
+def test_only_lake_s_exact_failure_shapes_count_on_stdout(controller, stdout):
+    # Not lake's record, so the stderr name and its traceback class decide instead.
+    assert controller["failure_identity"](stdout, "not_after") == ("not_after", "other")
+
+
+def test_every_name_lake_migrate_can_report_is_publishable(controller):
+    import ast
+    import re
+    import typing
+
+    from transit_ops.lake import parquet_verify
+
+    lake = Path(__file__).resolve().parents[1] / "src/transit_ops/lake"
+    reasons = set(typing.get_args(parquet_verify.Reason))
+    names = set(reasons)
+    copy_differs = set()
+    for path in lake.glob("*.py"):
+        if path.name == "rescue_parquet.py":  # convert-rescue only, never migrate
+            continue
+        source = path.read_text(encoding="utf8")
+        for node in ast.walk(ast.parse(source)):
+            if not isinstance(node, ast.Call) or not node.args:
+                continue
+            func = (
+                node.func.attr
+                if isinstance(node.func, ast.Attribute)
+                else getattr(node.func, "id", "")
+            )
+            first = node.args[0]
+            if not (isinstance(first, ast.Constant) and isinstance(first.value, str)):
+                continue  # CopyDiffers(reason, ...) takes its names from Reason.
+            if func in {"MigrationRefused", "BundleRefused", "ExportRefused"} and re.fullmatch(
+                "[a-z_]+", first.value
+            ):
+                names.add(first.value)
+            if func == "CopyDiffers":
+                copy_differs.add(first.value)
+        names |= set(re.findall(r"^\s+reason = \"([a-z_]+)\"", source, re.MULTILINE))
+        names |= set(re.findall(r"\breason=\"([a-z_]+)\"", source))
+        names |= set(re.findall(r"\bValueError\(\"([a-z_]+)\"\)", source))
+    commands = (lake.parent / "commands/lake.py").read_text(encoding="utf8")
+    migrate = commands[commands.index("def migrate(") :]
+    names |= set(re.findall(r"\bValueError\(\"([a-z_]+)\"\)", migrate))
+    assert {"window", "plan_budget", "edition_identity", "read_only_required"} <= names
+    assert {"database_not_configured", "connection_check_unsupported"} <= names
+    assert len(reasons) == 10 and {"content_digest", "canonical_text"} <= reasons
+    assert copy_differs and copy_differs <= reasons
+    published = {controller["safe_evidence"]({"refusal": name})["refusal"] for name in names}
+    assert published == names
+    for name in names:
+        assert controller["refusal_name"](f"{name}: lake migrate; see export.log") == name
+
+
+def test_public_summaries_keep_edition_names_and_each_windows_real_reason(controller):
+    digest = "c" * 64
+    public = controller["safe_evidence"](
+        {
+            "windows": [f"silver.trips:stm:{digest}.v7", f"silver.trips:octranspo:{digest}"],
+            "records": [
+                {"spec": {"dataset_id": "silver.trips", "window_key": f"{digest}.v7"}},
+                {"reason": "closed", "outcome": "copied"},
+                {"reason": "open_included", "outcome": "copied"},
+                {"reason": "whole_state", "outcome": "already_copied"},
+                {"reason": "window_in_pruning", "outcome": "skipped"},
+            ],
+        }
+    )
+    assert public["windows"] == [
+        f"silver.trips:stm:{digest}.v7",
+        f"silver.trips:octranspo:{digest}",
+    ]
+    assert public["records"][0]["spec"]["window_key"] == f"{digest}.v7"
+    assert [r["reason"] for r in public["records"][1:]] == [
+        "closed",
+        "open_included",
+        "whole_state",
+        "window_in_pruning",
+    ]
+    assert public["records"][-1]["outcome"] == "skipped"
+
+
+def test_object_storage_failures_name_their_exception_class(controller):
+    for name in ("BronzeStorageError", "ObjectStorageError", "ObjectAlreadyExists", "CopyDiffers"):
+        assert controller["exception_name"](name) == name
+
+
 def test_replay_process_receives_no_production_or_storage_credentials(
     controller, monkeypatch, tmp_path
 ):
@@ -908,7 +1092,7 @@ def test_edition_family_plan_needs_only_referenced_parent_months(controller, mon
                     ("raw.ingestion_runs", "stm", "2025-08"),
                 ]
             )
-        return SimpleNamespace(fetchall=lambda: [("c" * 64,)])
+        return SimpleNamespace(fetchall=lambda: [(1, "c" * 64)])
 
     windows = exact_windows(planned["needs"], stamp, SimpleNamespace(execute=execute))
     edition_parents = {

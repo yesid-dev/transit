@@ -321,6 +321,13 @@ def migrate(
     except typer.Exit:
         raise
     except Exception as error:
+        # Callers publish only these identities; the message below may hold targets.
+        head = str(error).split(":", 1)[0]
+        reason = getattr(error, "reason", None) or (
+            head if re.fullmatch(r"[a-z_]+", head) else None
+        )
+        failure = {"reason": reason, "exception": type(error).__name__}
+        typer.echo(json.dumps({"failure": failure}, sort_keys=True))
         typer.echo(str(error), err=True)
         raise typer.Exit(1) from error
     finally:

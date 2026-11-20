@@ -44,7 +44,7 @@ def test_exact_windows_keep_provider_days_months_and_current_edition():
 
     def execute(query, parameters):
         assert parameters == ("stm",)
-        return SimpleNamespace(fetchall=lambda: [("c" * 64,)])
+        return SimpleNamespace(fetchall=lambda: [(7, "c" * 64)])
 
     windows = exact_windows(
         [
@@ -70,7 +70,94 @@ def test_exact_windows_keep_provider_days_months_and_current_edition():
         "gold.fact_trip_delay_snapshot:stm:2026-11-14",
         "gold.fact_trip_delay_snapshot:stm:2026-11-15",
         "raw.realtime_snapshot_index:stm:2026-11",
-        "silver.trips:stm:" + "c" * 64,
+        "silver.trips:stm:" + "c" * 64 + ".v7",
+    )
+
+
+def test_current_edition_uses_the_lake_name_including_an_archived_legacy_name(tmp_path):
+    import json
+
+    from transit_ops.ingestion.storage import LocalBronzeStorage
+
+    def execute(query, parameters):
+        return SimpleNamespace(fetchall=lambda: [(7, "c" * 64)])
+
+    need = [{"relation": "silver.trips", "provider": "stm", "window": "edition:1"}]
+    stamp = datetime(2026, 11, 15, 12, tzinfo=UTC)
+    archive = LocalBronzeStorage("local", tmp_path)
+    connection = SimpleNamespace(execute=execute)
+    # A new edition: lake copies it as digest.vID, so a bare checksum never selects it.
+    assert exact_windows(need, stamp, connection, {}, archive) == (
+        "silver.trips:stm:" + "c" * 64 + ".v7",
+    )
+    record = tmp_path / "archive/v1/edition-identities/stm/7.json"
+    record.parent.mkdir(parents=True)
+    record.write_text(
+        json.dumps(
+            {
+                "format_version": 1,
+                "provider_id": "stm",
+                "dataset_version_id": 7,
+                "window_key": "c" * 64,
+            }
+        )
+    )
+    # An edition the archive already owns under its legacy bare name keeps it.
+    assert exact_windows(need, stamp, connection, {}, archive) == ("silver.trips:stm:" + "c" * 64,)
+
+
+def test_unpersisted_bare_legacy_copy_keeps_its_name_and_a_same_digest_edition_does_not(tmp_path):
+    from test_batch_input_sources import legacy_ownership_copy, store
+
+    storage = store(tmp_path)
+    # A pre-#1115 copy under its bare digest, with no edition-identities record yet.
+    legacy_ownership_copy(storage, "stm", owner=None)
+    need = [{"relation": "silver.trips", "provider": "stm", "window": "edition:1"}]
+    stamp = datetime(2026, 11, 15, 12, tzinfo=UTC)
+
+    def current(ident):
+        return SimpleNamespace(
+            execute=lambda query, parameters: SimpleNamespace(fetchall=lambda: [(ident, "c" * 64)])
+        )
+
+    # The copy's rows prove edition 42 owns the bare name; edition 43 is named anew.
+    assert exact_windows(need, stamp, current(42), {}, storage) == ("silver.trips:stm:" + "c" * 64,)
+    assert exact_windows(need, stamp, current(43), {}, storage) == (
+        "silver.trips:stm:" + "c" * 64 + ".v43",
+    )
+
+
+def test_edition_names_are_resolved_from_storage_only_after_every_database_read(monkeypatch):
+    from transit_ops.batch import daily_inputs
+
+    events = []
+
+    def execute(query, parameters):
+        events.append("read")
+        return SimpleNamespace(fetchall=lambda: [(7, "c" * 64)])
+
+    def assignments(storage, provider, digests):
+        events.append("archive")
+        return {}
+
+    monkeypatch.setattr(daily_inputs, "archive_assignments", assignments)
+    need = [
+        {"relation": relation, "provider": provider, "window": "edition:1"}
+        for provider in ("octranspo", "stm")
+        for relation in ("silver.trips", "silver.routes")
+    ]
+    selection = daily_inputs.select_windows(
+        need, datetime(2026, 11, 15, 12, tzinfo=UTC), SimpleNamespace(execute=execute)
+    )
+    assert events == ["read", "read"]  # One read per provider; the archive is untouched.
+    names = selection.resolve(object())
+    assert events == ["read", "read", "archive", "archive"]
+    assert names == tuple(
+        sorted(
+            f"{relation}:{provider}:{'c' * 64}.v7"
+            for provider in ("octranspo", "stm")
+            for relation in ("silver.trips", "silver.routes")
+        )
     )
 
 

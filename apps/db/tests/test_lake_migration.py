@@ -251,6 +251,33 @@ def test_command_default_plans_without_storage_or_files(planning, monkeypatch, t
     assert not list(tmp_path.iterdir())
 
 
+def test_command_failure_names_its_reason_and_class_apart_from_the_message(monkeypatch, tmp_path):
+    import json
+
+    from typer.testing import CliRunner
+
+    from transit_ops.cli import app
+    from transit_ops.lake import migration as m
+    from transit_ops.settings import Settings
+
+    def refuse(*a, **kw):
+        raise m.MigrationRefused("window", "postgresql://writer:pw@db.example/live")
+
+    monkeypatch.setattr(m, "plan_migration", refuse)
+    monkeypatch.setattr("psycopg.connect", lambda *a, **kw: nullcontext(Source()))
+    monkeypatch.setattr(
+        "transit_ops.settings.get_settings",
+        lambda: Settings(DATABASE_URL="postgresql://unused/unused", _env_file=None),
+    )
+    args = ["lake", "migrate", "--statement-timeout-s", "60", "--work-dir", str(tmp_path)]
+    result = CliRunner().invoke(app, [*args, "--copied-by", "a" * 40])
+    assert result.exit_code == 1
+    assert json.loads(result.stdout.splitlines()[-1]) == {
+        "failure": {"exception": "MigrationRefused", "reason": "window"}
+    }
+    assert "db.example" not in result.stdout and "db.example" in result.stderr
+
+
 def test_execute_writes_create_only_json_log(planning, monkeypatch, tmp_path):
     import json
 
