@@ -79,6 +79,7 @@ LAKE_REFUSALS = (
     "window",
     "window_in_pruning",
     "work_dir_changed",
+    "record_too_wide",
     # parquet_verify.Reason: what CopyDiffers carries. Pinned by a test.
     "content_digest",
     "object_digest",
@@ -112,6 +113,7 @@ EXCEPTIONS = frozenset(
         "BronzeStorageError",
         "ObjectStorageError",  # what BronzeStorageError is named at runtime
         "ObjectAlreadyExists",
+        "RecordTooWide",
         "UndeclaredDataset",
         "InvalidDeclaration",
         "OperationalError",
