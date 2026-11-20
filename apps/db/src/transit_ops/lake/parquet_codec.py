@@ -4,13 +4,15 @@ import hashlib
 import json
 import os
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass
+from contextlib import ExitStack
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Final, Literal
 
 import duckdb
 
+from transit_ops.lake import wide_rows
 from transit_ops.lake.csv_validation import csv_options, validate_csv
 from transit_ops.lake.table_schema import TableSchema
 
@@ -162,10 +164,31 @@ def write_window(
         content, content_bytes = _digest(
             csv_path, (",".join(column.name for column in schema.columns) + "\n").encode()
         )
-        with connect(temp_dir) as connection:
+        # Ordinary windows keep the requested size and so their exact legacy bytes.
+        # A window whose default row group would overrun the memory budget gets a
+        # smaller, byte-targeted size chosen from the CSV bytes alone; it is
+        # recorded in the codec facts through the effective codec below.
+        requested_rows = codec.row_group_rows
+        if content_bytes > wide_rows.WIDE_WINDOW_BYTES:
+            shape = wide_rows.measure(csv_path, requested_rows)
+            codec = replace(codec, row_group_rows=wide_rows.rows_per_group(shape, requested_rows))
+        with ExitStack() as stack, connect(temp_dir) as connection:
             relation = read_canonical_csv(connection, csv_path, schema)
             count = relation.aggregate("count(*)").fetchall()[0][0]
             kv = _metadata(metadata, schema, content, count, codec)
+            if codec.row_group_rows != requested_rows:
+                # The CSV reader emits 2,048-row chunks and the writer closes a group
+                # only between chunks, so small groups need small part files.
+                parts = wide_rows.split(
+                    csv_path,
+                    Path(stack.enter_context(TemporaryDirectory(prefix=".transit-", dir=temp_dir))),
+                    codec.row_group_rows,
+                )
+                options = csv_options(csv_path)
+                relation = connection.sql(
+                    f"SELECT * FROM read_csv(?, columns=?, {options}, parallel=false)",
+                    params=[[str(part) for part in parts], schema.duckdb_types()],
+                )
             relation.create_view("window_rows")
             connection.execute(
                 "COPY (SELECT * FROM window_rows) TO ? (FORMAT parquet, "
