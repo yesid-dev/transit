@@ -14,8 +14,10 @@ their legacy bytes.
 Byte-identity boundary: a window takes the part-file path only when one of its 2,048-row
 chunks exceeds ``WIDE_CHUNK_BYTES`` or a default-size group exceeds ``WIDE_WINDOW_BYTES``.
 Measured against the 256 MiB codec on DuckDB 2.0.0: groups up to about 57 MB of
-~580 KB rows write, 75 MB fails; narrow-row groups of 71 MB write. A group over 256 MiB
-of CSV never wrote. Every window below both thresholds keeps its legacy layout and bytes.
+~580 KB rows write, 75 MB fails; narrow-row groups of 71 MB and compressible JSONB groups
+of 77 MiB write and verify, while ordinary rows from about 82 MiB per group fail in the
+writer or the verifier. Every window below both thresholds keeps its legacy layout and
+bytes.
 """
 
 import re
@@ -30,8 +32,9 @@ CHUNK_ROWS: Final = 2048
 # One reader chunk above this is far over what the codec buffers (about 57 MB of wide
 # rows passed, 75 MB failed), and below it ordinary windows keep their legacy path.
 WIDE_CHUNK_BYTES: Final = 32 * 1024**2
-# A group above the codec's whole memory budget never wrote.
-WIDE_WINDOW_BYTES: Final = 256 * 1024**2
+# Groups above this did not write and verify in the codec budget, whatever their row
+# width; the largest known group that did was 77 MiB of compressible JSONB.
+WIDE_WINDOW_BYTES: Final = 76 * 1024**2
 # Target CSV bytes per part, and so per row group and per verifier slice.
 TARGET_GROUP_BYTES: Final = 16 * 1024**2
 # One record above this is refused by name; larger ones did not fit the budget.

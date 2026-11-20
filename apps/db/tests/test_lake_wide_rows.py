@@ -245,21 +245,121 @@ def test_part_files_are_removed_when_the_write_fails(tmp_path, tiny_budget, monk
     assert not (tmp_path / "o.parquet").exists()
 
 
-def test_a_wide_copy_with_changed_text_is_refused(tmp_path, tiny_budget):
-    source = text_csv(tmp_path / "rows.csv", ["z" * 60] * 10)
+FLOAT_SCHEMA = TableSchema.from_columns(
+    [("id", "integer", True), ("v", "double precision", False), ("pad", "text", False)], ["id"]
+)
+
+
+def float_csv(path, ids=range(15), special=None):
+    """Rows of about 56 bytes: with the tiny budget, four rows to a part."""
+    special = special or {}
+    with path.open("w", encoding="utf8", newline="") as stream:
+        stream.write("id,v,pad\n")
+        for position, key in enumerate(ids):
+            stream.write(f"{key},{special.get(position, key + 0.5)},{'p' * 40}\n")
+    return path
+
+
+def prove_tampered(tmp_path, source, query):
+    """Rewrite the Parquet file with a changed query, keeping the transit.* metadata."""
     written = write_window(
-        source, TEXT_SCHEMA, tmp_path / "o.parquet", metadata={}, temp_dir=tmp_path
+        source, FLOAT_SCHEMA, tmp_path / "o.parquet", metadata={}, temp_dir=tmp_path
     )
-    changed = tmp_path / "changed.csv"
-    changed.write_text(source.read_text("utf8").replace("z" * 60, "y" * 60, 1), "utf8")
-    with pytest.raises(CopyDiffers):
+    assert written.codec.row_group_rows < 15  # several slices
+    target = tmp_path / "tampered.parquet"
+    with duckdb.connect() as connection:
+        metadata = {
+            key.decode(): value.decode()
+            for key, value in connection.execute(
+                "SELECT key, value FROM parquet_kv_metadata(?)", [str(written.path)]
+            ).fetchall()
+        }
+        connection.read_parquet(str(written.path)).create_view("original")
+        connection.execute(
+            f"COPY ({query}) TO ? (FORMAT parquet, KV_METADATA ?)", [str(target), metadata]
+        )
+    return prove_window(
+        source,
+        target,
+        FLOAT_SCHEMA,
+        expect=Expected(written.content_sha256, written.rows, None),
+        temp_dir=tmp_path,
+    )
+
+
+def test_an_equal_wide_copy_over_several_slices_is_proven(tmp_path, tiny_budget):
+    source = float_csv(tmp_path / "rows.csv")
+    written, proof = write_and_prove(source, tmp_path, FLOAT_SCHEMA)
+    assert proof.verified
+    assert len(group_sizes(written.path)) > 1
+
+
+@pytest.mark.parametrize(
+    ("query", "reason"),
+    [
+        pytest.param(
+            "SELECT id, CASE WHEN id = 12 THEN 99.5 ELSE v END AS v, pad FROM original",
+            "missing_rows",
+            id="value edit in a later slice",
+        ),
+        pytest.param(
+            "SELECT id, CASE id WHEN 1 THEN 12.5 WHEN 12 THEN 1.5 ELSE v END AS v, pad "
+            "FROM original",
+            "missing_rows",
+            id="values swapped across slices",
+        ),
+    ],
+)
+def test_a_tampered_wide_copy_is_refused_by_the_slice_difference(
+    tmp_path, tiny_budget, query, reason
+):
+    source = float_csv(tmp_path / "rows.csv")
+    with pytest.raises(CopyDiffers) as refusal:
+        prove_tampered(tmp_path, source, query)
+    assert refusal.value.reason == reason
+
+
+def test_a_duplicate_key_across_a_slice_boundary_is_refused_for_key_order(tmp_path, tiny_budget):
+    # The copy matches its CSV exactly; the key repeats where slice 1 begins (four rows a part).
+    ids = [0, 1, 2, 3, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+    source = float_csv(tmp_path / "rows.csv", ids)
+    written = write_window(
+        source, FLOAT_SCHEMA, tmp_path / "o.parquet", metadata={}, temp_dir=tmp_path
+    )
+    with pytest.raises(CopyDiffers) as refusal:
         prove_window(
-            changed,
+            source,
             written.path,
-            TEXT_SCHEMA,
-            expect=Expected(written.content_sha256, written.rows, written.sha256),
+            FLOAT_SCHEMA,
+            expect=Expected(written.content_sha256, written.rows, None),
             temp_dir=tmp_path,
         )
+    assert refusal.value.reason == "key_order"
+
+
+def test_a_flipped_negative_zero_in_a_later_slice_is_refused_for_canonical_text(
+    tmp_path, tiny_budget
+):
+    source = float_csv(tmp_path / "rows.csv", special={12: "-0"})
+    with pytest.raises(CopyDiffers) as refusal:
+        prove_tampered(
+            tmp_path,
+            source,
+            "SELECT id, CASE WHEN id = 12 THEN 0.0 ELSE v END AS v, pad FROM original",
+        )
+    assert refusal.value.reason == "canonical_text"
+
+
+def test_a_column_name_with_a_quote_survives_the_wide_verifier(tmp_path, tiny_budget):
+    schema = TableSchema.from_columns(
+        [('a" "b', "integer", True), ("payload", "text", False)], ['a" "b']
+    )
+    source = tmp_path / "rows.csv"
+    rows = "".join(f"{i},{'z' * 60}\n" for i in range(12))
+    source.write_bytes(('a" "b,payload\n' + rows).encode())
+    written, proof = write_and_prove(source, tmp_path, schema)
+    assert proof.verified
+    assert len(group_sizes(written.path)) > 1
 
 
 # --- Measuring and splitting ----------------------------------------------------------

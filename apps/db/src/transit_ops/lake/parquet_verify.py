@@ -79,6 +79,10 @@ class CopyDiffers(ValueError):
         super().__init__(f"{reason}: {detail}")
 
 
+def _quote(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
+
+
 def _literal_path(path: Path) -> None:
     if any(character in str(path) for character in "*?[]{}"):
         raise ValueError(f"Glob characters in path: {path}")
@@ -183,7 +187,7 @@ def prove_window(
     """
     for path in (csv_path, parquet_path, temp_dir):
         _literal_path(path)
-    keys = ['"' + name.replace('"', '""') + '"' for name in schema.primary_key]
+    keys = [_quote(name) for name in schema.primary_key]
     with wide_rows.window_layout(csv_path, temp_dir, MAX_ROW_GROUP_ROWS) as layout:
         checks = _check_files(csv_path, parquet_path, schema, expect, temp_dir, layout)
         with connect(temp_dir) as connection:
@@ -228,7 +232,7 @@ def _check_slices(
 ) -> None:
     types = schema.duckdb_types()
     options = csv_options(csv_path)
-    names = ", ".join(f'{mapped[name]} AS "{name}"' for name in types)
+    names = ", ".join(f"{mapped[name]} AS {_quote(name)}" for name in types)
     for part, start, end in layout.spans():
         # The whole CSV was validated by the file checks; a part is a slice of those bytes.
         connection.sql(
