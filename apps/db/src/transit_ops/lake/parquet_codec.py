@@ -82,15 +82,25 @@ def connect(temp_dir: Path) -> duckdb.DuckDBPyConnection:
 
 
 def read_canonical_csv(
-    connection: duckdb.DuckDBPyConnection, csv_path: Path, schema: TableSchema
+    connection: duckdb.DuckDBPyConnection,
+    csv_path: Path,
+    schema: TableSchema,
+    *,
+    layout: wide_rows.Layout | None = None,
+    validate: bool = True,
 ) -> duckdb.DuckDBPyRelation:
+    """The typed CSV rows in order, read from the part files when a wide layout is given."""
     _literal_path(csv_path)
-    validate_csv(connection, csv_path, schema)
+    if validate:
+        validate_csv(connection, csv_path, schema)
     return connection.sql(
         # Serial vector batching preserves legacy Parquet row-group boundaries
         # and object bytes when the CSV buffer is smaller than the input.
         f"SELECT * FROM read_csv(?, columns=?, {csv_options(csv_path)}, parallel=false)",
-        params=[str(csv_path), schema.duckdb_types()],
+        params=[
+            [str(part) for part in layout.parts] if layout else str(csv_path),
+            schema.duckdb_types(),
+        ],
     )
 
 
@@ -164,36 +174,31 @@ def write_window(
         content, content_bytes = _digest(
             csv_path, (",".join(column.name for column in schema.columns) + "\n").encode()
         )
-        # Ordinary windows keep the requested size and so their exact legacy bytes.
-        # A window whose default row group would overrun the memory budget gets a
-        # smaller, byte-targeted size chosen from the CSV bytes alone; it is
-        # recorded in the codec facts through the effective codec below.
+        # Ordinary windows keep the requested size and so their exact legacy bytes. A
+        # wide window (see wide_rows) is read through byte-targeted part files, one row
+        # group each; the largest group's row count is recorded in the codec facts.
         requested_rows = codec.row_group_rows
-        if content_bytes > wide_rows.WIDE_WINDOW_BYTES:
-            shape = wide_rows.measure(csv_path, requested_rows)
-            codec = replace(codec, row_group_rows=wide_rows.rows_per_group(shape, requested_rows))
-        with ExitStack() as stack, connect(temp_dir) as connection:
-            relation = read_canonical_csv(connection, csv_path, schema)
+        with ExitStack() as stack:
+            layout = stack.enter_context(
+                wide_rows.window_layout(csv_path, temp_dir, requested_rows)
+            )
+            if layout is not None:
+                codec = replace(codec, row_group_rows=layout.row_group_rows)
+            connection = stack.enter_context(connect(temp_dir))
+            relation = read_canonical_csv(connection, csv_path, schema, layout=layout)
             count = relation.aggregate("count(*)").fetchall()[0][0]
             kv = _metadata(metadata, schema, content, count, codec)
-            if codec.row_group_rows != requested_rows:
-                # The CSV reader emits 2,048-row chunks and the writer closes a group
-                # only between chunks, so small groups need small part files.
-                parts = wide_rows.split(
-                    csv_path,
-                    Path(stack.enter_context(TemporaryDirectory(prefix=".transit-", dir=temp_dir))),
-                    codec.row_group_rows,
-                )
-                options = csv_options(csv_path)
-                relation = connection.sql(
-                    f"SELECT * FROM read_csv(?, columns=?, {options}, parallel=false)",
-                    params=[[str(part) for part in parts], schema.duckdb_types()],
-                )
             relation.create_view("window_rows")
             connection.execute(
                 "COPY (SELECT * FROM window_rows) TO ? (FORMAT parquet, "
                 "COMPRESSION zstd, COMPRESSION_LEVEL ?, ROW_GROUP_SIZE ?, KV_METADATA ?)",
-                [str(output), codec.level, codec.row_group_rows, dict(sorted(kv.items()))],
+                [
+                    str(output),
+                    codec.level,
+                    # Every part is one source chunk, so a group of one closes after each.
+                    1 if layout is not None else codec.row_group_rows,
+                    dict(sorted(kv.items())),
+                ],
             )
             count = _readback(connection, output, schema)
         sha256, byte_size = _digest(output)

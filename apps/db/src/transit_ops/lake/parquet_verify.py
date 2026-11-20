@@ -15,8 +15,9 @@ from typing import Literal
 import duckdb
 
 from transit_ops.ingestion.storage import BronzeStorage
-from transit_ops.lake.csv_validation import csv_options
-from transit_ops.lake.parquet_codec import connect, read_canonical_csv
+from transit_ops.lake import wide_rows
+from transit_ops.lake.csv_validation import csv_options, fetch_rows
+from transit_ops.lake.parquet_codec import MAX_ROW_GROUP_ROWS, connect, read_canonical_csv
 from transit_ops.lake.table_schema import TableSchema
 
 
@@ -118,6 +119,18 @@ def check_window_files(
     """
     for path in (csv_path, parquet_path, temp_dir):
         _literal_path(path)
+    with wide_rows.window_layout(csv_path, temp_dir, MAX_ROW_GROUP_ROWS) as layout:
+        return _check_files(csv_path, parquet_path, schema, expect, temp_dir, layout)
+
+
+def _check_files(
+    csv_path: Path,
+    parquet_path: Path,
+    schema: TableSchema,
+    expect: Expected,
+    temp_dir: Path,
+    layout: wide_rows.Layout | None,
+) -> FileChecks:
     content, _ = _digest(csv_path)
     if content != expect.content_sha256:
         raise CopyDiffers("content_digest", "CSV SHA-256 differs from expected")
@@ -148,7 +161,7 @@ def check_window_files(
                 raise CopyDiffers("metadata", f"{key.decode()} differs from expected")
         _check_types(connection, parquet_path, schema)
         parquet = connection.read_parquet(str(parquet_path), hive_partitioning=False)
-        csv = read_canonical_csv(connection, csv_path, schema)
+        csv = read_canonical_csv(connection, csv_path, schema, layout=layout)
         for name, relation in (("CSV", csv), ("Parquet", parquet)):
             count = int(relation.aggregate("count(*)").fetchall()[0][0])
             if count != expect.rows:
@@ -161,24 +174,30 @@ def check_window_files(
 def prove_window(
     csv_path: Path, parquet_path: Path, schema: TableSchema, *, expect: Expected, temp_dir: Path
 ) -> WindowProof:
-    """Verify canonical text after typed equality and strict key order."""
-    checks = check_window_files(csv_path, parquet_path, schema, expect=expect, temp_dir=temp_dir)
+    """Verify canonical text after typed equality and strict key order.
+
+    A wide window (see ``wide_rows``) is checked one part-file slice at a time: each
+    slice of CSV rows against the same positions of the copy, so no scan holds more than
+    a few megabytes of wide rows. A copy passes exactly when it passes the whole-window
+    checks; only the reason reported for a failing wide copy can differ.
+    """
+    for path in (csv_path, parquet_path, temp_dir):
+        _literal_path(path)
     keys = ['"' + name.replace('"', '""') + '"' for name in schema.primary_key]
-    reason: Reason
-    with connect(temp_dir) as connection:
-        read_canonical_csv(connection, csv_path, schema).create_view("proof_csv")
-        connection.read_parquet(str(parquet_path), hive_partitioning=False).create_view(
-            "proof_copy"
-        )
-        for left, right, reason in (
-            ("proof_csv", "proof_copy", "missing_rows"),
-            # Equal counts make a nonempty reverse difference unreachable after the first passes.
-            ("proof_copy", "proof_csv", "extra_rows"),
-        ):
-            _check_difference(connection, left, right, keys, reason)
-        mapped = _positioned_copy(connection, parquet_path, schema)
-        _check_order(connection, schema, mapped)
-        _check_text(connection, csv_path, schema, mapped)
+    with wide_rows.window_layout(csv_path, temp_dir, MAX_ROW_GROUP_ROWS) as layout:
+        checks = _check_files(csv_path, parquet_path, schema, expect, temp_dir, layout)
+        with connect(temp_dir) as connection:
+            mapped = _positioned_copy(connection, parquet_path, schema)
+            if layout is None:
+                read_canonical_csv(connection, csv_path, schema).create_view("proof_csv")
+                connection.read_parquet(str(parquet_path), hive_partitioning=False).create_view(
+                    "proof_copy"
+                )
+                _check_differences(connection, keys)
+                _check_order(connection, schema, mapped)
+                _check_text(connection, csv_path, csv_path, schema, mapped)
+            else:
+                _check_slices(connection, csv_path, schema, keys, mapped, layout)
     # Bind the result to the same bytes checked before the SQL scans (H1).
     if _digest(csv_path)[0] != checks.content_sha256:
         raise CopyDiffers("content_digest", "CSV changed during row checks")
@@ -187,6 +206,43 @@ def prove_window(
     return WindowProof(
         **asdict(checks), missing_from_copy=0, extra_in_copy=0, in_key_order=True, verified=True
     )
+
+
+def _check_differences(connection: duckdb.DuckDBPyConnection, keys: list[str]) -> None:
+    reason: Reason
+    for left, right, reason in (
+        ("proof_csv", "proof_copy", "missing_rows"),
+        # Equal counts make a nonempty reverse difference unreachable after the first passes.
+        ("proof_copy", "proof_csv", "extra_rows"),
+    ):
+        _check_difference(connection, left, right, keys, reason)
+
+
+def _check_slices(
+    connection: duckdb.DuckDBPyConnection,
+    csv_path: Path,
+    schema: TableSchema,
+    keys: list[str],
+    mapped: dict[str, str],
+    layout: wide_rows.Layout,
+) -> None:
+    types = schema.duckdb_types()
+    options = csv_options(csv_path)
+    names = ", ".join(f'{mapped[name]} AS "{name}"' for name in types)
+    for part, start, end in layout.spans():
+        # The whole CSV was validated by the file checks; a part is a slice of those bytes.
+        connection.sql(
+            f"SELECT * FROM read_csv(?, columns=?, {options}, parallel=false)",
+            params=[str(part), types],
+        ).create_view("proof_csv", replace=True)
+        connection.sql(
+            f"SELECT {names} FROM proof_positioned "
+            f"WHERE file_row_number >= {start} AND file_row_number < {end}"
+        ).create_view("proof_copy", replace=True)
+        _check_differences(connection, keys)
+    _check_order(connection, schema, mapped)
+    for part, start, end in layout.spans():
+        _check_text(connection, csv_path, part, schema, mapped, start, end)
 
 
 def _check_difference(
@@ -302,9 +358,16 @@ def _same_text(text: str | None, value: object, kind: str, nan_bits: dict[str, b
 def _check_text(
     connection: duckdb.DuckDBPyConnection,
     csv_path: Path,
+    source_path: Path,
     schema: TableSchema,
     mapped: dict[str, str],
+    start: int | None = None,
+    end: int | None = None,
 ) -> None:
+    """Compare canonical text of ``source_path`` (the CSV or one part) with the copy.
+
+    ``start`` and ``end`` select the file rows of the copy that a part covers.
+    """
     types = schema.duckdb_types()
     canonical_nan = connection.execute("SELECT 'NaN'::FLOAT, 'NaN'::DOUBLE").fetchone()
     assert canonical_nan is not None
@@ -324,14 +387,21 @@ def _check_text(
     with connection.cursor() as source, connection.cursor() as copy:
         source.execute(
             f"SELECT * FROM read_csv(?, columns=?, {csv_options(csv_path)})",
-            [str(csv_path), dict.fromkeys(types, "VARCHAR")],
+            [str(source_path), dict.fromkeys(types, "VARCHAR")],
         )
         copy.execute("SET TimeZone='UTC'")
-        copy.execute(
-            f"SELECT {', '.join(expressions)} FROM proof_positioned ORDER BY file_row_number"
+        window = (
+            ""
+            if start is None
+            else f" WHERE file_row_number >= {start} AND file_row_number < {end}"
         )
-        position = 0
-        while batch := source.fetchmany(4096):
+        copy.execute(
+            f"SELECT {', '.join(expressions)} FROM proof_positioned{window} "
+            "ORDER BY file_row_number"
+        )
+        position = start or 0
+        # Both cursors hold a batch of text at once: bound it by the widest record.
+        while batch := source.fetchmany(fetch_rows(csv_path)):
             copied = copy.fetchmany(len(batch))
             for original, restored in zip(batch, copied, strict=True):
                 for (name, kind), text, value in zip(
