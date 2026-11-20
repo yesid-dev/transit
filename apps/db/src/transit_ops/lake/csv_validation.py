@@ -3,6 +3,7 @@
 import csv
 import re
 from collections.abc import Iterable, Iterator
+from functools import lru_cache
 from pathlib import Path
 
 import duckdb
@@ -22,27 +23,45 @@ CSV_OPTIONS = (
 )
 
 
-def csv_options(path: Path) -> str:
-    """Size the reader buffer for the largest record, not the whole file.
-
-    Count CSV record bytes in bounded chunks; doubled quotes toggle twice.
-    PostgreSQL's field ceiling remains a validation rule, not an allocation.
-    """
-    largest, size, quoted = 2 * 1024**2, 0, False
-    with path.open("rb") as source:
+@lru_cache(maxsize=8)
+def _largest_record(path: str, size: int, modified_ns: int) -> int:
+    largest, record, quoted = 0, 0, False
+    with Path(path).open("rb") as source:
         while block := source.read(1024 * 1024):
             start = 0
-            for match in re.finditer(b'["\\n]', block):
-                size += match.end() - start
+            for match in re.finditer(b'["\n]', block):
+                record += match.end() - start
                 start = match.end()
                 if match[0] == b'"':
                     quoted = not quoted
                 elif not quoted:
-                    largest = max(largest, size)
-                    size = 0
-            size += len(block) - start
-    largest = max(largest, size)
+                    largest = max(largest, record)
+                    record = 0
+            record += len(block) - start
+    return max(largest, record)
+
+
+def largest_record(path: Path) -> int:
+    """Bytes of the widest CSV record, quoted newlines included; doubled quotes toggle twice.
+
+    Scanned in bounded chunks once per file state, however many readers ask.
+    """
+    stat = path.stat()
+    return _largest_record(str(path), stat.st_size, stat.st_mtime_ns)
+
+
+def csv_options(path: Path) -> str:
+    """Size the reader buffer for the largest record, not the whole file.
+
+    PostgreSQL's field ceiling remains a validation rule, not an allocation.
+    """
+    largest = max(2 * 1024**2, largest_record(path))
     return re.sub(r"max_line_size=[0-9]+", f"max_line_size={largest}", CSV_OPTIONS)
+
+
+def fetch_rows(path: Path, budget: int = 32 * 1024**2) -> int:
+    """Rows to fetch at once so a batch of the widest records stays near the budget."""
+    return max(1, min(4096, budget // max(1, largest_record(path))))
 
 
 class InvalidCsvValue(ValueError):
@@ -162,17 +181,24 @@ def validate_csv(connection: duckdb.DuckDBPyConnection, path: Path, schema: Tabl
         raise ValueError(f"Glob characters in path: {path}")
     types = schema.duckdb_types()
     _record_shapes(path, tuple(types))
+    # Only typed columns are checked. Fetching the text columns too would hold up to
+    # 4,096 rows of them in Python (2.4 GB for rows near 580 KB); a count still scans
+    # every record, so malformed CSV is refused the same way.
+    checked = {name: kind for name, kind in types.items() if kind != "VARCHAR"}
+    projection = ", ".join('"' + name.replace('"', '""') + '"' for name in checked) or "count(*)"
     try:
         with connection.cursor() as source, connection.cursor() as checker:
             source.execute(
-                f"SELECT * FROM read_csv(?, columns=?, {csv_options(path)})",
+                f"SELECT {projection} FROM read_csv(?, columns=?, {csv_options(path)})",
                 [str(path), dict.fromkeys(types, "VARCHAR")],
             )
             checker.execute("SET TimeZone='UTC'")
             row = 2
-            while batch := source.fetchmany(4096):
-                _batch(checker, batch, types, row)
+            while checked and (batch := source.fetchmany(4096)):
+                _batch(checker, batch, checked, row)
                 row += len(batch)
+            if not checked:
+                source.fetchall()
     except duckdb.Error as error:
         message = str(error)
         line = re.search(r"(?:Line|line):? (\d+)", message)

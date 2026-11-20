@@ -4,13 +4,15 @@ import hashlib
 import json
 import os
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass
+from contextlib import ExitStack
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Final, Literal
 
 import duckdb
 
+from transit_ops.lake import wide_rows
 from transit_ops.lake.csv_validation import csv_options, validate_csv
 from transit_ops.lake.table_schema import TableSchema
 
@@ -80,15 +82,25 @@ def connect(temp_dir: Path) -> duckdb.DuckDBPyConnection:
 
 
 def read_canonical_csv(
-    connection: duckdb.DuckDBPyConnection, csv_path: Path, schema: TableSchema
+    connection: duckdb.DuckDBPyConnection,
+    csv_path: Path,
+    schema: TableSchema,
+    *,
+    layout: wide_rows.Layout | None = None,
+    validate: bool = True,
 ) -> duckdb.DuckDBPyRelation:
+    """The typed CSV rows in order, read from the part files when a wide layout is given."""
     _literal_path(csv_path)
-    validate_csv(connection, csv_path, schema)
+    if validate:
+        validate_csv(connection, csv_path, schema)
     return connection.sql(
         # Serial vector batching preserves legacy Parquet row-group boundaries
         # and object bytes when the CSV buffer is smaller than the input.
         f"SELECT * FROM read_csv(?, columns=?, {csv_options(csv_path)}, parallel=false)",
-        params=[str(csv_path), schema.duckdb_types()],
+        params=[
+            [str(part) for part in layout.parts] if layout else str(csv_path),
+            schema.duckdb_types(),
+        ],
     )
 
 
@@ -162,15 +174,31 @@ def write_window(
         content, content_bytes = _digest(
             csv_path, (",".join(column.name for column in schema.columns) + "\n").encode()
         )
-        with connect(temp_dir) as connection:
-            relation = read_canonical_csv(connection, csv_path, schema)
+        # Ordinary windows keep the requested size and so their exact legacy bytes. A
+        # wide window (see wide_rows) is read through byte-targeted part files, one row
+        # group each; the largest group's row count is recorded in the codec facts.
+        requested_rows = codec.row_group_rows
+        with ExitStack() as stack:
+            layout = stack.enter_context(
+                wide_rows.window_layout(csv_path, temp_dir, requested_rows)
+            )
+            if layout is not None:
+                codec = replace(codec, row_group_rows=layout.row_group_rows)
+            connection = stack.enter_context(connect(temp_dir))
+            relation = read_canonical_csv(connection, csv_path, schema, layout=layout)
             count = relation.aggregate("count(*)").fetchall()[0][0]
             kv = _metadata(metadata, schema, content, count, codec)
             relation.create_view("window_rows")
             connection.execute(
                 "COPY (SELECT * FROM window_rows) TO ? (FORMAT parquet, "
                 "COMPRESSION zstd, COMPRESSION_LEVEL ?, ROW_GROUP_SIZE ?, KV_METADATA ?)",
-                [str(output), codec.level, codec.row_group_rows, dict(sorted(kv.items()))],
+                [
+                    str(output),
+                    codec.level,
+                    # Every part is one source chunk, so a group of one closes after each.
+                    1 if layout is not None else codec.row_group_rows,
+                    dict(sorted(kv.items())),
+                ],
             )
             count = _readback(connection, output, schema)
         sha256, byte_size = _digest(output)
