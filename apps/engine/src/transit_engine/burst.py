@@ -12,8 +12,15 @@ from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from transit_engine.punctuality import CITY
 from transit_engine.server import BUSY_MESSAGE
+from transit_engine.store import CITY
+
+
+def measure_url(base: str, city: str, start: date, end: date) -> str:
+    query = urlencode(
+        {"measure": "punctuality", "city": city, "from": start.isoformat(), "to": end.isoformat()}
+    )
+    return f"{base.rstrip('/')}/measure?{query}"
 
 
 def request(url: str) -> tuple[int, bool, dict[str, Any]]:
@@ -59,21 +66,21 @@ def main() -> None:
     gate = Barrier(size)
 
     def ask(day: date) -> tuple[str, bool, float]:
-        query = urlencode({"city": args.city, "date": day.isoformat()})
         gate.wait(timeout=15)
         started = perf_counter()
         queued = False
         result = "errors"
         try:
-            status, queued, body = request(f"{base}/network-punctuality?{query}")
+            status, queued, body = request(measure_url(base, args.city, day, day))
+            evidence = body.get("evidence", {})
             if status == 503 and body.get("message") == BUSY_MESSAGE:
                 result = "busy"
             elif (
                 status == 200
-                and body.get("city") == args.city
-                and body.get("start_date") == body.get("end_date") == day.isoformat()
-                and body.get("cleaning_versions")
-                and body.get("status") in {"measured", "not_measured"}
+                and body.get("measure") == "punctuality"
+                and evidence.get("city") == args.city
+                and evidence.get("start_date") == evidence.get("end_date") == day.isoformat()
+                and body.get("state")
             ):
                 result = "answered"
         except (AttributeError, OSError, ValueError):

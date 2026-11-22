@@ -2,16 +2,18 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sys
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import parse_qs
 from uuid import uuid4
 
 import uvicorn
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 
-from transit_engine.punctuality import CITY, Store, env_int, network_day
+from transit_engine.measures import Language, Question, answer_csv, ask, methods
+from transit_engine.store import Store, env_int
 
 BUSY_MESSAGE = "busy, try again"
 LOGGER = logging.getLogger("uvicorn.error")
@@ -26,17 +28,86 @@ def peak_rss_bytes() -> int | None:
 
 
 async def respond(
-    send: ASGISendCallable, status: int, payload: dict[str, Any], *, queued: bool = False
+    send: ASGISendCallable,
+    status: int,
+    payload: dict[str, Any] | list[dict[str, Any]] | str,
+    *,
+    queued: bool = False,
 ) -> None:
+    csv_response = isinstance(payload, str)
     headers = [
-        (b"content-type", b"application/json"),
+        (b"content-type", b"text/csv; charset=utf-8" if csv_response else b"application/json"),
         (b"cache-control", b"no-store"),
         (b"x-engine-queued", b"true" if queued else b"false"),
     ]
     if status == 503:
         headers.append((b"retry-after", b"1"))
     await send({"type": "http.response.start", "status": status, "headers": headers})
-    await send({"type": "http.response.body", "body": json.dumps(payload).encode()})
+    body = payload if isinstance(payload, str) else json.dumps(payload)
+    await send({"type": "http.response.body", "body": body.encode()})
+
+
+def _date(value: str) -> date:
+    parsed = date.fromisoformat(value)
+    if parsed.isoformat() != value:
+        raise ValueError("dates must be YYYY-MM-DD")
+    return parsed
+
+
+def _question(raw: bytes) -> tuple[Question, Literal["json", "csv"], Language]:
+    required = {"measure", "city", "from", "to"}
+    optional = {"line", "direction", "stop", "departure", "hour", "day_type", "format", "lang"}
+    if len(raw) > 4096 or re.search(rb"%(?![a-fA-F0-9]{2})", raw):
+        raise ValueError("invalid query string")
+    fields = parse_qs(
+        raw.decode("ascii"),
+        keep_blank_values=True,
+        strict_parsing=True,
+        errors="strict",
+        max_num_fields=len(required | optional),
+    )
+    if not required <= fields.keys() <= required | optional or any(
+        len(values) != 1 or not values[0] for values in fields.values()
+    ):
+        raise ValueError("provide measure, city, from and to, and use each parameter once")
+    params = {name: values[0] for name, values in fields.items()}
+    for name in ("line", "stop"):
+        if (value := params.get(name)) is not None and (
+            not value.isprintable() or value != value.strip()
+        ):
+            raise ValueError(f"{name} must be a valid schedule ID")
+    direction = params.get("direction")
+    if direction is not None and direction not in {"0", "1"}:
+        raise ValueError("direction must be 0 or 1")
+    hour = params.get("hour")
+    if hour is not None and not re.fullmatch(r"[01]?[0-9]|2[0-3]", hour):
+        raise ValueError("hour must be from 0 to 23")
+    day_type = params.get("day_type")
+    if day_type is not None and day_type not in {"weekday", "saturday", "sunday"}:
+        raise ValueError("day_type must be weekday, saturday or sunday")
+    departure = params.get("departure")
+    if departure is not None and not re.fullmatch(r"[0-9]{2,6}:[0-5][0-9]:[0-5][0-9]", departure):
+        raise ValueError("departure must be a GTFS service time (HH:MM:SS)")
+    output = params.get("format", "json")
+    language = params.get("lang", "en")
+    if output not in ("json", "csv") or language not in ("en", "fr"):
+        raise ValueError("format must be json or csv and lang must be en or fr")
+    return (
+        Question(
+            params["measure"],
+            params["city"],
+            _date(params["from"]),
+            _date(params["to"]),
+            params.get("line"),
+            int(direction) if direction is not None else None,
+            params.get("stop"),
+            departure,
+            int(hour) if hour is not None else None,
+            day_type,
+        ),
+        "csv" if output == "csv" else "json",
+        "fr" if language == "fr" else "en",
+    )
 
 
 class Engine:
@@ -59,20 +130,22 @@ class Engine:
         if scope["path"] == "/healthz":
             await respond(send, 200, {"boot_id": self.boot_id, "peak_rss_bytes": peak_rss_bytes()})
             return
-        if scope["path"] != "/network-punctuality":
+        if scope["path"] == "/how-we-measure":
+            if scope["query_string"]:
+                await respond(send, 400, {"message": "this endpoint takes no parameters"})
+            else:
+                await respond(send, 200, methods())
+            return
+        if scope["path"] != "/measure":
             await respond(send, 404, {"message": "not found"})
             return
         try:
-            parameters = parse_qs(
-                scope["query_string"].decode("ascii"), strict_parsing=True, max_num_fields=2
-            )
-            [city] = parameters["city"]
-            [iso_day] = parameters["date"]
-            day = date.fromisoformat(iso_day)
-            if not CITY.fullmatch(city) or day.isoformat() != iso_day:
-                raise ValueError
-        except (KeyError, ValueError):
-            await respond(send, 400, {"message": "provide a city and a YYYY-MM-DD service date"})
+            question, output, language = _question(scope["query_string"])
+        except UnicodeError:
+            await respond(send, 400, {"message": "invalid query encoding"})
+            return
+        except ValueError as error:
+            await respond(send, 400, {"message": str(error)})
             return
 
         queued = self.slots.locked()
@@ -93,7 +166,11 @@ class Engine:
             await self.slots.acquire()
 
         # Keep the slot until DuckDB stops, including when a caller disconnects.
-        query = asyncio.create_task(asyncio.to_thread(network_day, self.store, city, day))
+        def run_query() -> dict[str, Any] | str:
+            answer = ask(self.store, question)
+            return answer_csv(answer, language) if output == "csv" else answer
+
+        query = asyncio.create_task(asyncio.to_thread(run_query))
 
         def finished(task: asyncio.Task[Any]) -> None:
             self.slots.release()
@@ -105,10 +182,10 @@ class Engine:
             answer = await asyncio.shield(query)
         except Exception as error:
             # DuckDB errors can include storage configuration. Log the class only.
-            LOGGER.error("network punctuality query failed (%s)", type(error).__name__)
+            LOGGER.error("measure query failed (%s)", type(error).__name__)
             await respond(send, 500, {"message": "query failed"}, queued=queued)
         else:
-            await respond(send, 200, dict(answer), queued=queued)
+            await respond(send, 200, answer, queued=queued)
 
 
 def main() -> None:

@@ -1,22 +1,40 @@
 # Transit engine
 
-`GET /network-punctuality?city=stm&date=2026-11-19` answers one provider's network for one local service date.
-It validates `manifest.json` under `<root>/<provider>/<service-date>/v<cleaning_version>/` and
-checks both Parquet files' sizes from storage metadata before querying them. The writer
-verifies both files before publishing the manifest and preserves versioned files as immutable.
+`GET /measure?measure=punctuality&city=stm&from=2026-11-19&to=2026-11-22` returns
+the three punctuality shares and two delay percentiles for an inclusive range of service dates.
+Use `early`, `on_time`, `late`, `median_delay`, or `p90_delay` in `measure` to select
+one value. The `value` object is keyed by measure ID, with shares from 0 to 1 and signed
+delays in seconds. A request with no filters covers the network.
 
-Each scheduled stop of each non-cancelled trip on a route with live data counts once. A stop with a
-non-null delay is early below −60 seconds, on time from −60 through 300 seconds inclusive, and late
-above 300 seconds. The response includes the city, inclusive dates, three band counts, classified
-and scheduled totals, classified over scheduled, on-time over classified, cleaning versions, method
-version, and elapsed query milliseconds.
+| Optional filter | Meaning |
+| --- | --- |
+| `line` | GTFS `route_id` |
+| `direction` | GTFS `direction_id`, either `0` or `1` |
+| `stop` | GTFS `stop_id` |
+| `departure` | Scheduled first departure in GTFS service time, such as `07:42:00` or `25:15:00`. Requires `line` and `direction`. Trips sharing the same departure slot contribute together. |
+| `hour` | Local clock hour, `0` through `23`, of the scheduled stop departure or its arrival when departure is absent |
+| `day_type` | `weekday`, `saturday` or `sunday` of the service date |
 
-`not_measured_route_without_live_data` counts scheduled stops excluded from every rate because the
-route has no live data. `not_measured_capture_gap` counts scheduled stops with a capture gap.
-Those stops stay in the scheduled total so the observed share reflects missed coverage. A day with
-a missing or invalid manifest, a missing file, or a size mismatch returns a `not measured`
-message, null counts and shares, and an empty version list.
-A present day with no observations still reports its scheduled count.
+The answer includes bilingual `state_text` and `info`, plus `evidence` with the requested dates
+and filters, scheduled and classified totals, counts per band, excluded counts by reason,
+classified over scheduled, cleaning and method versions, and query milliseconds.
+`days_measured` lists valid days in the window, `days_not_measured` lists gaps, and
+`days_included` lists the measured days selected by the day-type filter. A partial window
+includes a bilingual coverage note. The engine validates `manifest.json` under
+`<root>/<provider>/<service-date>/v<cleaning_version>/` and checks both Parquet file sizes
+before reading. A missing or invalid manifest, missing file, or wrong size makes that day a gap.
+
+Values are null when the answer is no live data, not measured, too few to judge, or unknown.
+No live data means the cut contains scheduled service only on lines without live data.
+Not measured means no valid day contributes, or every eligible stop was affected by a capture
+gap. Too few to judge means fewer than 30 classified stop events with at least one observation.
+Unknown covers a cut with no match or with no classified event for another reason. Capture
+gaps stay in the scheduled total. A measured zero share has its denominator and a zero band count.
+
+`GET /how-we-measure` returns the registry's English and French entries, including
+definitions, minimum sample, calculation method and export columns. Add
+`format=csv&lang=fr` for one row per measure with French headings or use `lang=en` for
+English. CSV includes the evidence and leaves missing values blank.
 
 | Environment variable | Default |
 | --- | --- |
@@ -51,7 +69,7 @@ In a second terminal, run the checks or ask for a day.
 uv run --locked --managed-python pytest
 uv run --locked --managed-python ruff check src tests
 uv run --locked --managed-python mypy
-Invoke-RestMethod 'http://127.0.0.1:8080/network-punctuality?city=stm&date=2026-11-19'
+Invoke-RestMethod 'http://127.0.0.1:8080/measure?measure=punctuality&city=stm&from=2026-11-19&to=2026-11-19'
 ```
 
 ## VM timing and burst
@@ -64,24 +82,22 @@ cd apps/engine
 uv sync --locked --managed-python
 export ENGINE_CLEAN_ROOT=/srv/transit/clean-days
 export END_DATE=2026-11-19
-uv run --locked transit-engine-timing --city stm --end-date "$END_DATE" --spans 1 7 30 182 365 --out timing.json
 uv run --locked transit-engine
 ```
 
 In another terminal on the VM, from `apps/engine` with the same `END_DATE`:
 
 ```sh
+uv run --locked transit-engine-timing --city stm --end-date "$END_DATE" --spans 1 7 30 182 365 --out timing.json
 uv run --locked transit-engine-burst --url http://127.0.0.1:8080 --city stm \
   --end-date "$END_DATE" --requests 32 --memory-limit-mib 1024 --out burst.json
 ```
 
-The timing script repeats the laptop benchmark's network bands, per-day trend and hour-by-weekday
-grid three times for each span. It records the production one-day query separately, including file
-discovery and connection setup. Range results include separate discovery time and first, best and
-individual query times. A missing day marks its span incomplete and produces a nonzero exit.
-Use `--timezone` when the provider's service timezone differs from `America/Toronto`. For a comparison
-with the laptop's larger configuration, set `ENGINE_QUERY_THREADS=4` and `ENGINE_QUERY_MEMORY_MIB=1908`
-(approximately 2 GB) for the timing command.
+The timing script sends three network requests per span through `/measure`. It records
+the wall time and the engine query time, including file discovery and connection setup.
+It exits nonzero on an HTTP error or an incomplete span. Use `--url` to point at another
+engine. For a comparison with a larger configuration, set `ENGINE_QUERY_THREADS=4` and
+`ENGINE_QUERY_MEMORY_MIB=1908` on the engine before starting it.
 
 The burst reports answered, busy, errors, queued, p50/p95/p99, and the service process's Linux peak
 RSS. Queued overlaps with the response outcomes. The run passes when at least one day answers,
@@ -96,7 +112,7 @@ an incomplete day or digest mismatch. With the same environment as the engine, t
 with status 1 when verification fails.
 
 ```sh
-uv run --locked python -c "from datetime import date; from transit_engine.punctuality import Store; store = Store.from_env(); conn = store.connect(); raise SystemExit(0 if store.verify(conn, 'stm', date.fromisoformat('2026-11-19')) else 1)"
+uv run --locked python -c "from datetime import date; from transit_engine.store import Store; store = Store.from_env(); conn = store.connect(); raise SystemExit(0 if store.verify(conn, 'stm', date.fromisoformat('2026-11-19')) else 1)"
 ```
 
 ### Read from R2
@@ -119,15 +135,11 @@ From the repository root, with `END_DATE` set:
 docker build --platform linux/amd64 -t transit-engine:local apps/engine
 docker run --rm --memory=1024m -p 127.0.0.1:8080:8080 \
   -e ENGINE_CLEAN_ROOT=/data -v /srv/transit/clean-days:/data:ro transit-engine:local
-docker run --rm --memory=1024m \
-  -e ENGINE_CLEAN_ROOT=/data -v /srv/transit/clean-days:/data:ro -v "$PWD:/results" \
-  transit-engine:local transit-engine-timing --city stm --end-date "$END_DATE" \
-  --spans 1 7 30 --out /results/timing.json
 ```
 
 For R2, replace the `/data` mount and its root setting with `--env-file "$ENGINE_ENV_FILE"`,
-containing the R2 settings above. The image includes `httpfs`. Run the same burst command against
-the mapped port.
+containing the R2 settings above. The image includes `httpfs`. Run the same timing and burst
+commands against the mapped port.
 
 ## Later Cloudflare Containers proof
 
@@ -149,5 +161,5 @@ uv run --locked transit-engine-burst --url "$ENGINE_URL" --city stm \
 
 Set `ENGINE_URL` to the deployed Worker URL. For a Cloudflare Access service token, inject
 `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` into the burst client's environment. The hosted
-burst measures the public one-day request shape end to end. Range timings use the timing command
-inside the same image on a Docker host.
+burst measures the public one-day request shape end to end. Use `--url "$ENGINE_URL"`
+with the timing command for hosted range requests.
