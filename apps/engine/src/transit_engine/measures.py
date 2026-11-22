@@ -23,6 +23,12 @@ from transit_engine.clean_manifest import (
     TRIP_DAYS,
     VEHICLE_POSITIONS,
 )
+from transit_engine.corridors import (
+    CORRIDOR_RUNS_SQL,
+    MAX_SEGMENT_RUN_MULTIPLE,
+    MIN_SEGMENT_RUNS,
+    SEGMENT_BIN_SECONDS,
+)
 from transit_engine.schedule import (
     BUNCHING_FRACTION,
     FREQUENT_HEADWAY_SECONDS,
@@ -64,7 +70,7 @@ from transit_engine.vehicles import (
 )
 
 Language = Literal["en", "fr"]
-EntityKind = Literal["line", "stop", "departure", "vehicle"]
+EntityKind = Literal["line", "stop", "departure", "vehicle", "segment"]
 type EntityKey = tuple[str | int | None, ...]
 
 
@@ -175,18 +181,21 @@ class Family:
     ]
     columns: dict[str, Text] = field(default_factory=dict)
     evidence_columns: dict[str, Text] = field(default_factory=dict)
+    bin_seconds: int = DELAY_BIN_SECONDS
 
 
-_HISTOGRAM = Text(
-    f"Bins are {DELAY_BIN_SECONDS} seconds wide, starting at multiples of "
-    f"{DELAY_BIN_SECONDS} seconds with the lower edge included. Cumulative counts locate "
-    "the two ranks for the percentile, then we interpolate between the midpoints of "
-    "their bins. The error is at most half a bin.",
-    f"Les classes ont une largeur de {DELAY_BIN_SECONDS} secondes. Elles commencent aux "
-    f"multiples de {DELAY_BIN_SECONDS} secondes, borne inférieure incluse. Les effectifs "
-    "cumulés situent les deux rangs du centile, puis on interpole entre les milieux des "
-    "classes correspondantes. L’erreur est d’au plus une demi-classe.",
-)
+def _histogram_text(seconds: int) -> Text:
+    return Text(
+        f"Bins are {seconds} seconds wide, starting at multiples of "
+        f"{seconds} seconds with the lower edge included. Cumulative counts locate "
+        "the two ranks for the percentile, then we interpolate between the midpoints of "
+        "their bins. The error is at most half a bin.",
+        f"Les classes ont une largeur de {seconds} secondes. Elles commencent aux "
+        f"multiples de {seconds} secondes, borne inférieure incluse. Les effectifs "
+        "cumulés situent les deux rangs du centile, puis on interpole entre les milieux des "
+        "classes correspondantes. L’erreur est d’au plus une demi-classe.",
+    )
+
 
 _STATES = {
     "measured": Text("Measured", "Mesuré"),
@@ -216,6 +225,8 @@ _ALERT_COUNTS_ID = "alert_counts"
 _WAITING_ID = "waiting_and_gaps"
 _SERVICE_OFFERED_ID = "service_offered"
 _VEHICLES_ID = "vehicles"
+_CORRIDORS_ID = "corridors"
+CORRIDOR_RANKING_DEFAULT = "median_time_lost"
 VEHICLE_RANKING_DEFAULT = "vehicle_reporting_gaps_per_100_hours"
 _BOUNDARIES = ("first_trip", "last_trip")
 
@@ -237,6 +248,8 @@ class Question:
     cause: str | None = None
     vehicle: str | None = None
     group: SeriesGroup | None = None
+    from_stop: str | None = None
+    to_stop: str | None = None
 
     def __post_init__(self, ranking: bool) -> None:
         if self.measure not in _SELECTIONS:
@@ -244,6 +257,13 @@ class Question:
         if not CITY.fullmatch(self.city) or self.start > self.end:
             raise ValueError("provide a city and an ordered service date range")
         family, _ = _SELECTIONS[self.measure]
+        if family.id == _CORRIDORS_ID:
+            if self.stop is not None or self.departure is not None:
+                raise ValueError("corridors use from_stop, to_stop and scheduled departure hour")
+            if (self.from_stop is None) != (self.to_stop is None):
+                raise ValueError("provide both from_stop and to_stop")
+        elif self.from_stop is not None or self.to_stop is not None:
+            raise ValueError("from_stop and to_stop apply to corridors")
         if self.group is not None:
             if self.group not in GROUP_COLUMNS or ranking:
                 raise ValueError("group must be day, hour, day_type, weekday_hour or direction")
@@ -293,6 +313,8 @@ class Question:
             "effect": self.effect,
             "cause": self.cause,
             "vehicle": self.vehicle,
+            "from_stop": self.from_stop,
+            "to_stop": self.to_stop,
         }
         return {name: value for name, value in cuts.items() if value is not None}
 
@@ -350,6 +372,7 @@ _UNIT_LABELS = {
     "seconds": Text("Seconds", "Secondes"),
     "count": Text("Count", "Nombre"),
     "hours": Text("Hours", "Heures"),
+    "vehicle_minutes": Text("Vehicle-minutes", "Minutes-véhicules"),
     "trips": Text("Trips", "Trajets"),
     "trips_per_hour": Text("Trips per hour", "Trajets par heure"),
     "periods": Text("Periods", "Périodes"),
@@ -360,6 +383,7 @@ _UNIT_LABELS = {
 
 def _info(family: Family, measure: Measure) -> dict[str, Any]:
     columns = _csv_columns(family)
+    histogram = _histogram_text(family.bin_seconds) if measure.percentile else None
     return {
         "id": measure.id,
         "family": family.id,
@@ -395,7 +419,7 @@ def _info(family: Family, measure: Measure) -> dict[str, Any]:
                 "counts": getattr(measure.counts or family.counts, lang),
                 "exclusions": getattr(measure.exclusions or family.exclusions, lang),
                 "limits": getattr(measure.limits or family.limits, lang),
-                **({"histogram": getattr(_HISTOGRAM, lang)} if measure.percentile else {}),
+                **({"histogram": getattr(histogram, lang)} if histogram else {}),
             }
             for lang in ("en", "fr")
         },
@@ -430,6 +454,8 @@ def _cuts(question: Question, hour_sql: str | None) -> tuple[str, list[object]]:
             "stop": "stop_id",
             "departure": _DEPARTURE_SECONDS,
             "hour": hour_sql,
+            "from_stop": "from_stop",
+            "to_stop": "to_stop",
         }.get(name)
         if expression is not None:
             filters.append(f"({expression}) = ?")
@@ -451,6 +477,7 @@ def _entity_sql(
         "line": "row(route_id)",
         "stop": "row(stop_id)",
         "departure": f"row(route_id, direction_id, ({_DEPARTURE_SECONDS})::BIGINT)",
+        "segment": "row(route_id, direction_id, from_stop, to_stop)",
     }[group]
 
 
@@ -2128,6 +2155,159 @@ _VEHICLES = Family(
     ),
 )
 
+_CORRIDOR_EXCLUSIONS = {
+    "route_without_live_data": Text("Runs without live data", "Parcours sans données en direct"),
+    "cancelled": Text("Cancelled runs", "Parcours annulés"),
+    "missing_observation": Text("Missing endpoint observation", "Observation manquante à un arrêt"),
+    "incomparable_basis": Text("Incomparable observations", "Observations non comparables"),
+    "invalid_scheduled_run": Text("Invalid scheduled run time", "Durée prévue invalide"),
+    "negative_observed_run": Text("Negative observed run time", "Durée observée négative"),
+    "excessive_observed_run": Text("Excessive observed run time", "Durée observée excessive"),
+    "capture_gap": Text("Runs across capture gaps", "Parcours touchés par une lacune de collecte"),
+}
+_CORRIDOR_BASES = {
+    "vehicle_stopped": Text("Runs from stopped vehicles", "Parcours de véhicules vus à l’arrêt"),
+    "trip_update_reported": Text("Runs from exact reports", "Parcours tirés de rapports exacts"),
+    "trip_update_passed": Text("Runs from passed-stop estimates", "Parcours estimés après passage"),
+}
+_CORRIDOR_COUNTS = {
+    "scheduled_runs": Text("Scheduled runs", "Parcours prévus"),
+    "observed_runs": Text("Observed runs", "Parcours observés"),
+    "scheduled_seconds": Text("Matched scheduled seconds", "Secondes prévues appariées"),
+    "observed_seconds": Text("Matched observed seconds", "Secondes observées appariées"),
+    **_CORRIDOR_BASES,
+}
+
+
+def _corridor_rows(
+    conn: duckdb.DuckDBPyConnection,
+    family: Family,
+    paths: dict[str, list[str]],
+    question: Question,
+    version: str,
+    group: EntityKind | None,
+) -> dict[EntityKey, Batch]:
+    hour = _LOCAL_HOUR.format("departure_at")
+    cut, parameters = _cuts(question, hour)
+    _, selected = _SELECTIONS[question.measure]
+    edge = (
+        f"(floor(lost_seconds / {family.bin_seconds}) * {family.bin_seconds})::BIGINT"
+        if any(m.percentile for m in selected)
+        else "NULL::BIGINT"
+    )
+    counters = {
+        "scheduled_runs": "count(*)",
+        "observed_runs": "count(*) FILTER (exclusion IS NULL)",
+        "scheduled_seconds": "coalesce(sum(scheduled_seconds) FILTER (exclusion IS NULL), 0)",
+        "observed_seconds": "coalesce(sum(observed_seconds) FILTER (exclusion IS NULL), 0)",
+        **{
+            basis: f"count(*) FILTER (exclusion IS NULL AND basis = '{basis}')"
+            for basis in _CORRIDOR_BASES
+        },
+        **{key: f"count(*) FILTER (exclusion = '{key}')" for key in _CORRIDOR_EXCLUSIONS},
+    }
+    routes = "list(DISTINCT route_id)" if group else "NULL"
+    window = [question.city, version, question.start, question.end]
+    rows = conn.execute(
+        f"""
+        WITH {CORRIDOR_RUNS_SQL.format(cut=cut)}
+        SELECT {_entity_sql(group, question.group, hour)} AS entity,
+            CASE WHEN exclusion IS NULL THEN {edge} END AS edge,
+            {routes}, {", ".join(counters.values())}
+        FROM runs GROUP BY entity, edge
+        """,
+        [paths[STOP_EVENTS], paths[TRIP_DAYS], *window, paths[FEED_POLLS], *window, *parameters],
+    ).fetchall()
+    return _grouped_batches(rows, counters, "observed_runs", bool(group or question.group))
+
+
+_CORRIDORS = Family(
+    id=_CORRIDORS_ID,
+    method_version="1",
+    since="2026-11-22",
+    tables=(STOP_EVENTS, TRIP_DAYS, FEED_POLLS),
+    minimum_sample=MIN_SEGMENT_RUNS,
+    bin_seconds=SEGMENT_BIN_SECONDS,
+    counts=Text(
+        "Each run pairs consecutive scheduled stops of the same trip. Time lost is the "
+        "observed elapsed time minus the scheduled elapsed time between the corresponding "
+        "events. An arrival at the first stop or a departure at the second includes that "
+        "stop’s dwell in both durations. "
+        "Hour uses the first stop’s scheduled departure, falling back to arrival. Day type "
+        "uses the trip’s service date.",
+        "Chaque parcours relie deux arrêts prévus consécutifs du même trajet. Le temps perdu "
+        "est la durée observée moins la durée prévue entre les événements correspondants. "
+        "Une arrivée au premier arrêt ou un départ du second inclut le temps d’arrêt "
+        "correspondant dans les deux durées. "
+        "L’heure est celle du départ prévu au premier arrêt, ou de son arrivée à défaut. "
+        "Le type de jour suit la date de service du trajet.",
+    ),
+    exclusions=Text(
+        "Both stops must have the same observation basis. Evidence distinguishes stopped "
+        "vehicles, exact agency reports and estimates backed by vehicle progression. We "
+        "exclude cancelled trips, missing observations or live data, nonpositive scheduled "
+        f"durations, negative observed durations and runs over {MAX_SEGMENT_RUN_MULTIPLE} "
+        "times their scheduled duration. Every recorded trip or vehicle feed must cover the "
+        f"observed span with poll intervals of at most {MAX_POLL_SPACING_SECONDS} seconds and "
+        f"publication age of at most {MAX_POLL_AGE_SECONDS} seconds.",
+        "Les deux arrêts doivent avoir la même base d’observation. Les données distinguent "
+        "les véhicules vus à l’arrêt, les rapports exacts et les estimations confirmées par "
+        "la progression du véhicule. Sont exclus les trajets annulés, les observations ou "
+        "données en direct manquantes, les durées prévues non positives, les durées observées "
+        f"négatives et celles dépassant {MAX_SEGMENT_RUN_MULTIPLE} fois la durée prévue. Chaque "
+        "flux de trajets ou de véhicules enregistré doit couvrir l’intervalle observé, avec "
+        f"au plus {MAX_POLL_SPACING_SECONDS} secondes entre relevés et "
+        f"{MAX_POLL_AGE_SECONDS} secondes depuis la publication.",
+    ),
+    limits=Text(
+        f"At least {MIN_SEGMENT_RUNS} observed runs per result, so the upper tenth represents "
+        "at least two runs. Line totals pool matched runs across segments. Times are "
+        "calculated from the observed sample.",
+        f"Au moins {MIN_SEGMENT_RUNS} parcours observés par résultat, pour que le dixième "
+        "supérieur représente au moins deux parcours. Les totaux d’une ligne regroupent "
+        "les parcours appariés de ses segments. Les durées portent sur l’échantillon observé.",
+    ),
+    measures=(
+        Measure(
+            CORRIDOR_RANKING_DEFAULT,
+            "seconds",
+            Text("Median time lost per run.", "Temps perdu médian par parcours."),
+            percentile=50,
+            worst_first_descending=True,
+            ranking_kinds=("segment",),
+        ),
+        Measure(
+            "p90_time_lost",
+            "seconds",
+            Text(
+                "90th percentile of time lost per run.", "90e centile du temps perdu par parcours."
+            ),
+            percentile=90,
+            ranking_kinds=(),
+        ),
+        Measure(
+            "mean_time_lost",
+            "seconds",
+            Text("Mean time lost per run.", "Temps perdu moyen par parcours."),
+            ranking_kinds=(),
+        ),
+        Measure(
+            "total_vehicle_minutes_lost",
+            "vehicle_minutes",
+            Text(
+                "Net vehicle-minutes lost across observed runs, including time saved.",
+                "Minutes-véhicules nettes perdues, en tenant compte du temps gagné.",
+            ),
+            worst_first_descending=True,
+            ranking_kinds=("segment", "line"),
+        ),
+    ),
+    query=_corridor_rows,
+    columns={**_CORRIDOR_COUNTS, **_CORRIDOR_EXCLUSIONS},
+    evidence_columns={"share_observed": _EVIDENCE_COLUMNS["share_observed"]},
+)
+
+
 _FAMILIES = (
     _PUNCTUALITY,
     _SERVICE_DELIVERED,
@@ -2136,6 +2316,7 @@ _FAMILIES = (
     _WAITING,
     _SERVICE_OFFERED,
     _VEHICLES,
+    _CORRIDORS,
 )
 _SELECTIONS = {
     key: (family, selected)
@@ -2147,13 +2328,18 @@ _SELECTIONS = {
 }
 
 
-def _percentile(histogram: list[tuple[int, int]], count: int, percentile: int) -> float:
+def _percentile(
+    histogram: list[tuple[int, int]],
+    count: int,
+    percentile: int,
+    bin_seconds: int = DELAY_BIN_SECONDS,
+) -> float:
     # Zero-based ranks for a continuous percentile using each bin's midpoint.
     rank, remainder = divmod((count - 1) * percentile, 100)
     seen = 0
     lower_midpoint = None
     for edge, occurrences in histogram:
-        midpoint = edge + DELAY_BIN_SECONDS / 2
+        midpoint = edge + bin_seconds / 2
         seen += occurrences
         if lower_midpoint is None and seen > rank:
             lower_midpoint = midpoint
@@ -2268,6 +2454,7 @@ class ReadWindow:
     included: list[str] = field(default_factory=list)
     missing_in_cut: bool = False
     not_tracked: list[str] = field(default_factory=list)
+    batch_days: int | None = None
 
     @property
     def no_days_measured(self) -> bool:
@@ -2293,9 +2480,7 @@ class ReadWindow:
         return _PARTIAL._asdict() if self.measured and self.missing else None
 
     def batches(self) -> Iterator[dict[str, list[str]]]:
-        # Crowding orders per-vehicle observations within each day. Keep the sort
-        # bounded to one day while retaining the usual batches for smaller tables.
-        size = 1 if VEHICLE_POSITIONS in self.paths else DAYS_PER_QUERY_BATCH
+        size = self.batch_days or DAYS_PER_QUERY_BATCH
         days_read = len(next(iter(self.paths.values())))
         for offset in range(0, days_read, size):
             yield {table: files[offset : offset + size] for table, files in self.paths.items()}
@@ -2345,7 +2530,9 @@ def read_window(
     )
     if group and family.id == _ALERT_COUNTS_ID:
         tables += (TRIP_DAYS, STOP_EVENTS) if group == "stop" else (TRIP_DAYS,)
-    window = ReadWindow({table: [] for table in tables})
+    # Keep the window sorts over dense position and corridor stop records to one day.
+    batch_days = 1 if VEHICLE_POSITIONS in tables or family.id == _CORRIDORS_ID else None
+    window = ReadWindow({table: [] for table in tables}, batch_days=batch_days)
     for ordinal in range(question.start.toordinal(), question.end.toordinal() + 1):
         day = date.fromordinal(ordinal)
         in_cut = question.day_type is None or question.day_type == _DAY_TYPES[day.weekday()]
@@ -2483,6 +2670,8 @@ def evaluate(
     *,
     hour: int | None = None,
 ) -> tuple[str, dict[str, float | None], dict[str, Any], dict[str, int]]:
+    if family.id == _CORRIDORS_ID:
+        return _corridor_answer(family, selected, totals, window)
     if family.id == _WAITING_ID:
         return _waiting_answer(
             family, selected, totals.counts, window.included, window.no_days_measured
@@ -2510,6 +2699,43 @@ def evaluate(
     return _punctuality_answer(
         family, selected, totals.counts, totals.histogram, window.included, window.no_days_measured
     )
+
+
+def _corridor_answer(
+    family: Family,
+    selected: tuple[Measure, ...],
+    totals: Batch,
+    window: ReadWindow,
+) -> tuple[str, dict[str, float | None], dict[str, Any], dict[str, int]]:
+    counts = totals.counts
+    sample = counts["observed_runs"]
+    scheduled = counts["scheduled_runs"]
+    without_live = counts["route_without_live_data"]
+    state = _state(
+        family,
+        sample,
+        scheduled - without_live,
+        counts["capture_gap"],
+        without_live,
+        window.no_days_measured,
+    )
+    values: dict[str, float | None] = dict.fromkeys(m.id for m in selected)
+    if state == "measured":
+        lost = counts["observed_seconds"] - counts["scheduled_seconds"]
+        histogram = sorted(totals.histogram.items())
+        for measure in selected:
+            if measure.percentile:
+                values[measure.id] = _percentile(
+                    histogram, sample, measure.percentile, family.bin_seconds
+                )
+            else:
+                values[measure.id] = lost / (sample if measure.id == "mean_time_lost" else 60)
+    evidence = {
+        "counts": {key: counts[key] if window.included else None for key in _CORRIDOR_COUNTS},
+        "excluded": {key: counts[key] if window.included else None for key in _CORRIDOR_EXCLUSIONS},
+        "share_observed": sample / scheduled if scheduled else None,
+    }
+    return state, values, evidence, dict.fromkeys(values, sample)
 
 
 def _waiting_answer(

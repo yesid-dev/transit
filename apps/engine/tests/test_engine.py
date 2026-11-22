@@ -42,6 +42,14 @@ FALL_BACK = date(2026, 11, 1)
 V4_EXTRA_FILES = (SCHEDULED_STOP_TIMES, "vehicle_positions.parquet", "feed_polls.parquet")
 
 
+class StopTiming(NamedTuple):
+    stop_id: str
+    arrival: int | None
+    departure: int | None
+    event: str = "arrival"
+    basis: str = "trip_update_reported"
+
+
 class Trip(NamedTuple):
     id: str
     line: str
@@ -55,6 +63,7 @@ class Trip(NamedTuple):
     notice_seconds: int | None = None
     route_type: int = 3
     basis: str = "trip_update_reported"
+    stop_times: tuple[StopTiming, ...] = ()
 
 
 class Poll(NamedTuple):
@@ -208,19 +217,35 @@ def _build_store(
                         delay += 10  # A different distribution from Thursday.
                     stop = "first" if seq == 1 else "other"
                     arrival = scheduled if delay is not None or seq != 33 else None
-                    observed = start_at + timedelta(seconds=delay) if delay is not None else None
-                    basis = "not_observed" if delay is None else trip.basis
+                    departure = None
+                    event, basis, reference = "arrival", trip.basis, start_at
+                    if trip.stop_times:
+                        timing = trip.stop_times[seq - 1]
+                        stop, event, basis = timing.stop_id, timing.event, timing.basis
+                        arrival = (
+                            start_at + timedelta(seconds=timing.arrival)
+                            if timing.arrival is not None
+                            else None
+                        )
+                        departure = (
+                            start_at + timedelta(seconds=timing.departure)
+                            if timing.departure is not None
+                            else None
+                        )
+                        reference = (departure if event == "departure" else arrival) or start_at
+                    observed = reference + timedelta(seconds=delay) if delay is not None else None
+                    basis = "not_observed" if delay is None else basis
                     stops.append(
                         (
                             *identity,
                             stop,
-                            seq,
+                            seq * 10 if trip.stop_times else seq,
                             delay,
                             arrival,
-                            None,
+                            departure,
                             observed,
                             basis,
-                            "arrival" if observed else None,
+                            event if observed else None,
                         )
                     )
                     bases[basis] += 1
