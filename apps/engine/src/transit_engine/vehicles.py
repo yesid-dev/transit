@@ -75,6 +75,8 @@ VEHICLE_COUNTS = (
     "trips_run",
     "reporting_gaps",
     "silent_us",
+    "reporting_gaps_capture_gap",
+    "reporting_gaps_capture_gap_us",
     "unfinished_trips",
     "completion_sample",
     "completion_capture_gap",
@@ -89,12 +91,17 @@ def vehicle_stats(
     tracked_ids: list[str],
     vehicle: str | None,
     by_vehicle: bool,
+    reporting: bool,
     completion: bool,
 ) -> list[tuple[Any, ...]]:
     cap_us = VEHICLE_TAIL_CAP_SECONDS * 1_000_000
     gap_us = VEHICLE_REPORTING_GAP_SECONDS * 1_000_000
     tail = vehicle_tail_sql("next_start", "last_seen_at_utc")
     entity = "vehicle_id" if by_vehicle else "NULL::VARCHAR"
+    coverage_sql = f", {POLL_COVERAGE_SQL}" if reporting or completion else ""
+    reporting_sql = ""
+    reporting_counts = "0, 0, 0, 0"
+    reporting_join = ""
     completion_sql = ""
     completion_counts = "0, 0, 0, 0"
     completion_join = ""
@@ -107,6 +114,36 @@ def vehicle_stats(
         vehicle,
         vehicle,
     ]
+    if coverage_sql:
+        params.extend([paths[FEED_POLLS], *scope])
+    if reporting:
+        reporting_sql = f"""
+        , silences AS (
+            SELECT {entity} AS entity,
+                epoch_us(next_capture) - epoch_us(last_seen_at_utc) AS gap_us,
+                EXISTS (
+                    SELECT 1 FROM coverage c
+                    WHERE c.service_date = s.service_date AND c.feed = 'vehicle_positions'
+                        AND c.covered_from <= s.last_seen_at_utc
+                        AND c.covered_to >= s.next_capture
+                ) AS covered
+            FROM sequenced s
+            WHERE service_date IS NOT NULL AND trip_id IS NOT NULL
+                AND (service_date, trip_id) = (next_service_date, next_trip)
+                AND gap_us > {gap_us}
+        ), reporting AS (
+            SELECT entity, count(*) FILTER (covered) AS gaps,
+                sum(gap_us) FILTER (covered) AS silent_us,
+                count(*) FILTER (NOT covered) AS capture_gap,
+                sum(gap_us) FILTER (NOT covered) AS capture_gap_us
+            FROM silences GROUP BY entity
+        )
+        """
+        reporting_counts = ", ".join(
+            f"coalesce(g.{name}, 0)"
+            for name in ("gaps", "silent_us", "capture_gap", "capture_gap_us")
+        )
+        reporting_join = "LEFT JOIN reporting g ON k.entity IS NOT DISTINCT FROM g.entity"
     if completion:
         completion_sql = f"""
         , endpoints AS (
@@ -124,9 +161,7 @@ def vehicle_stats(
             SELECT service_date, trip_id, count(DISTINCT vehicle_id) AS assigned_vehicles,
                 min(vehicle_id) AS assigned_vehicle
             FROM assignments GROUP BY service_date, trip_id
-        ),
-        {POLL_COVERAGE_SQL},
-        candidates AS (
+        ), candidates AS (
             SELECT a.entity, a.service_date, a.trip_id,
                 t.state = 'ran' AND t.route_has_live_data
                     AND t.scheduled_start_utc IS NOT NULL AND e.scheduled_end IS NOT NULL
@@ -167,7 +202,7 @@ def vehicle_stats(
             f"coalesce(c.{name}, 0)" for name in ("unfinished", "sample", "capture_gap", "unknown")
         )
         completion_join = "LEFT JOIN completions c ON k.entity IS NOT DISTINCT FROM c.entity"
-        params.extend([paths[STOP_EVENTS], *scope, paths[FEED_POLLS], *scope])
+        params.extend([paths[STOP_EVENTS], *scope])
     return conn.execute(
         f"""
         WITH positions AS (
@@ -194,21 +229,14 @@ def vehicle_stats(
             SELECT p.*, lead(observed_at_utc) OVER observed AS next_start,
                 lead(trip_id) OVER captured AS next_trip,
                 lead(service_date) OVER captured AS next_service_date,
-                epoch_us(lead(captured_at_utc) OVER captured) - epoch_us(last_seen_at_utc)
-                    AS gap_us
+                lead(captured_at_utc) OVER captured AS next_capture
             FROM positions p JOIN selected USING (vehicle_id)
             WINDOW observed AS (PARTITION BY vehicle_id ORDER BY observed_at_utc, captured_at_utc),
                 captured AS (PARTITION BY vehicle_id ORDER BY captured_at_utc)
         ), service AS (
             SELECT {entity} AS entity, count(DISTINCT service_date) AS days,
                 sum(greatest(epoch_us(last_seen_at_utc) - epoch_us(observed_at_utc), 0)
-                    + greatest(0, least({tail}, {cap_us}))) AS service_us,
-                count(*) FILTER (
-                    gap_us > {gap_us} AND (service_date, trip_id) = (next_service_date, next_trip)
-                ) AS reporting_gaps,
-                coalesce(sum(gap_us) FILTER (
-                    gap_us > {gap_us} AND (service_date, trip_id) = (next_service_date, next_trip)
-                ), 0) AS silent_us
+                    + greatest(0, least({tail}, {cap_us}))) AS service_us
             FROM sequenced WHERE service_date IS NOT NULL AND trip_id IS NOT NULL
             GROUP BY entity
         ), trip_entities AS (
@@ -221,14 +249,16 @@ def vehicle_stats(
             FROM assignments JOIN selected USING (vehicle_id)
             WHERE route_id IS NOT NULL GROUP BY entity
         ), keys AS (SELECT {entity} AS entity FROM selected GROUP BY entity)
+        {coverage_sql}
+        {reporting_sql}
         {completion_sql}
         SELECT k.entity, r.lines, coalesce(s.days, 0), coalesce(s.service_us, 0),
-            coalesce(t.trips_run, 0), coalesce(s.reporting_gaps, 0), coalesce(s.silent_us, 0),
-            {completion_counts}
+            coalesce(t.trips_run, 0), {reporting_counts}, {completion_counts}
         FROM keys k
         LEFT JOIN service s ON k.entity IS NOT DISTINCT FROM s.entity
         LEFT JOIN trip_counts t ON k.entity IS NOT DISTINCT FROM t.entity
         LEFT JOIN routes r ON k.entity IS NOT DISTINCT FROM r.entity
+        {reporting_join}
         {completion_join}
         """,
         params,

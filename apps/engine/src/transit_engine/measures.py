@@ -1694,6 +1694,7 @@ _VEHICLE_PUNCTUALITY = tuple(
     for measure in _PUNCTUALITY.measures
 )
 _VEHICLE_PUNCTUALITY_IDS = {measure.id for measure in _VEHICLE_PUNCTUALITY}
+_VEHICLE_REPORTING_IDS = {"vehicle_reporting_gaps", "vehicle_silent_hours", VEHICLE_RANKING_DEFAULT}
 _VEHICLE_COMPLETION_IDS = {"vehicle_unfinished_trips", "vehicle_unfinished_trips_per_100_trips"}
 _VEHICLE_COLUMNS = {
     "days_in_service": Text("Days in service", "Jours en service"),
@@ -1702,6 +1703,12 @@ _VEHICLE_COLUMNS = {
     "trips_run": Text("Trips run", "Trajets effectués"),
     "reporting_gaps": Text("Times reporting stopped", "Interruptions des signalements"),
     "silent_hours": Text("Hours without reports", "Heures sans signalement"),
+    "reporting_gaps_capture_gap": Text(
+        "Silences excluded for capture gaps", "Silences exclus pour interruption de la collecte"
+    ),
+    "reporting_gaps_capture_gap_hours": Text(
+        "Hours excluded for capture gaps", "Heures exclues pour interruption de la collecte"
+    ),
     "unfinished_trips": Text("Unfinished trips", "Trajets non terminés"),
     "completion_sample": Text("Trips assessed for completion", "Trajets évalués"),
     "completion_capture_gap": Text("Trips with capture gaps", "Trajets avec collecte interrompue"),
@@ -1723,6 +1730,17 @@ _VEHICLE_LIMITS = Text(
     "fois, ou si une part inférieure des trajets confirmés est liée à ces identifiants. "
     "La répétition d’un identifiant témoigne de sa continuité dans la journée. "
     "Une interruption indique un silence dans le flux capturé.",
+)
+_VEHICLE_REPORTING_EXCLUSIONS = Text(
+    "The vehicle-position feed must have continuous capture across the silence. Usable polls "
+    f"contain advancing, nonempty publications at most {MAX_POLL_AGE_SECONDS} seconds old "
+    f"and are at most {MAX_POLL_SPACING_SECONDS} seconds apart. Silences across capture gaps "
+    "are excluded from the count and duration and shown in the evidence.",
+    "La collecte du flux de positions doit être continue pendant le silence. Les relevés "
+    "utilisables contiennent des publications non vides plus récentes que les précédentes, "
+    f"vieilles d’au plus {MAX_POLL_AGE_SECONDS} secondes et espacées d’au plus "
+    f"{MAX_POLL_SPACING_SECONDS} secondes. Les silences pendant une interruption de la "
+    "collecte sont exclus du nombre et de la durée et figurent dans les données justificatives.",
 )
 _VEHICLE_COMPLETION_METHOD = Text(
     "A confirmed stop before the scheduled terminal indicates an unfinished trip when the "
@@ -1760,7 +1778,8 @@ def _vehicle_rows(
         tracked,
         question.vehicle,
         group == "vehicle",
-        FEED_POLLS in paths,
+        question.measure == family.id or question.measure in _VEHICLE_REPORTING_IDS,
+        question.measure == family.id or question.measure in _VEHICLE_COMPLETION_IDS,
     )
     results: dict[EntityKey, Batch] = {
         (vehicle,) if group else (): Batch(
@@ -1859,6 +1878,8 @@ _VEHICLES = Family(
                 f"successifs du même trajet. L’intervalle de collecte prévu est de "
                 f"{VEHICLE_POLL_SECONDS} secondes.",
             ),
+            extra_tables=(FEED_POLLS,),
+            exclusions=_VEHICLE_REPORTING_EXCLUSIONS,
             ranking_kinds=(),
         ),
         Measure(
@@ -1868,6 +1889,8 @@ _VEHICLES = Family(
                 "Total elapsed time in counted reporting gaps.",
                 "Durée totale des interruptions de signalement comptées.",
             ),
+            extra_tables=(FEED_POLLS,),
+            exclusions=_VEHICLE_REPORTING_EXCLUSIONS,
             ranking_kinds=(),
         ),
         Measure(
@@ -1887,6 +1910,8 @@ _VEHICLES = Family(
                 f"Le classement exige {MIN_VEHICLE_RANKING_HOURS} heures en service. Une "
                 "interruption change alors le taux d’au plus dix par 100 heures.",
             ),
+            extra_tables=(FEED_POLLS,),
+            exclusions=_VEHICLE_REPORTING_EXCLUSIONS,
             worst_first_descending=True,
             ranking_kinds=("vehicle",),
             ranking_minimum_sample=MIN_VEHICLE_RANKING_HOURS,
@@ -2570,6 +2595,7 @@ def _vehicle_answer(
 
     if not any(value is not None for value in values.values()):
         state = next(iter(states.values()))
+    reporting_measured = tracked and any(m.id in _VEHICLE_REPORTING_IDS for m in selected)
     completion_measured = tracked and any(m.id in _VEHICLE_COMPLETION_IDS for m in selected)
     return (
         state,
@@ -2579,10 +2605,18 @@ def _vehicle_answer(
                 **{
                     key: value if tracked else None
                     for key, value in vehicle_counts.items()
-                    if key not in {"unfinished_trips", "completion_sample"}
+                    if key
+                    not in {
+                        "unfinished_trips",
+                        "completion_sample",
+                        "reporting_gaps",
+                        "silent_hours",
+                    }
                 },
                 "unfinished_trips": counts["unfinished_trips"] if completion_measured else None,
                 "completion_sample": completion_sample if completion_measured else None,
+                "reporting_gaps": counts["reporting_gaps"] if reporting_measured else None,
+                "silent_hours": vehicle_counts["silent_hours"] if reporting_measured else None,
                 **{
                     key: timing_evidence.get(key.removeprefix("punctuality_"))
                     for key in _VEHICLE_COLUMNS
@@ -2590,7 +2624,15 @@ def _vehicle_answer(
                 },
             },
             "excluded": {
-                key: value if completion_measured else None for key, value in excluded.items()
+                **{key: value if completion_measured else None for key, value in excluded.items()},
+                "reporting_gaps_capture_gap": (
+                    counts["reporting_gaps_capture_gap"] if reporting_measured else None
+                ),
+                "reporting_gaps_capture_gap_hours": (
+                    counts["reporting_gaps_capture_gap_us"] / _US_PER_HOUR
+                    if reporting_measured
+                    else None
+                ),
             },
             "measure_states": states,
         },

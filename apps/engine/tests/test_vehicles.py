@@ -16,6 +16,7 @@ from transit_engine.store import Store
 
 REPORTING_RATE = "vehicle_reporting_gaps_per_100_hours"
 UNFINISHED_RATE = "vehicle_unfinished_trips_per_100_trips"
+OUTAGE_DAY = SUNDAY + timedelta(days=1)
 
 
 class Interval(NamedTuple):
@@ -31,7 +32,7 @@ class Interval(NamedTuple):
 def vehicle_history(
     tmp_path_factory: pytest.TempPathFactory,
 ) -> tuple[Store, dict[date, list[Interval]]]:
-    days = (THURSDAY, FRIDAY, SATURDAY, SUNDAY)
+    days = (THURSDAY, FRIDAY, SATURDAY, SUNDAY, OUTAGE_DAY)
     store = _build_store(
         tmp_path_factory.mktemp("vehicles"),
         6,
@@ -44,7 +45,10 @@ def vehicle_history(
             intervals: list[Interval] = []
             trips: list[tuple[object, ...]] = []
             stops: list[tuple[object, ...]] = []
-            fleet = (("101", 20), ("102", 20), ("103", 1)) if day == THURSDAY else (("101", 1),)
+            fleet = {
+                THURSDAY: (("101", 20), ("102", 20), ("103", 1)),
+                OUTAGE_DAY: (("101", 1), ("102", 1)),
+            }.get(day, (("101", 1),))
             for vehicle, count in fleet:
                 for index in range(count):
                     start = base + timedelta(minutes=36 * index)
@@ -69,7 +73,12 @@ def vehicle_history(
                                 basis,
                             )
                         )
-                    if unfinished:
+                    if day == OUTAGE_DAY or unfinished:
+                        spans = (
+                            ((0, 600, 31), (900, 2100, 61))
+                            if day == OUTAGE_DAY
+                            else ((0, 600, 31), (680, 1900, 62), (1960, 2100, 8))
+                        )
                         intervals.extend(
                             Interval(
                                 vehicle,
@@ -79,7 +88,7 @@ def vehicle_history(
                                 n,
                                 line,
                             )
-                            for first, last, n in ((0, 600, 31), (680, 1900, 62), (1960, 2100, 8))
+                            for first, last, n in spans
                         )
                     else:
                         intervals.append(Interval(vehicle, trip, start, end, 106, line))
@@ -143,8 +152,10 @@ def vehicle_history(
             for seconds in range(-300, 36 * 60 * max(n for _, n in fleet) + 180, 60):
                 stamp = base + timedelta(seconds=seconds)
                 for feed in ("vehicle_positions", "trip_updates"):
-                    # The other feed still works while trip updates go silent.
-                    failed = day == FRIDAY and feed == "trip_updates" and 600 <= seconds < 800
+                    # Only the affected endpoint has failed polls on each outage day.
+                    failed = (
+                        day == FRIDAY and feed == "trip_updates" and 600 <= seconds < 800
+                    ) or (day == OUTAGE_DAY and feed == "vehicle_positions" and 600 < seconds < 900)
                     polls.append(
                         (feed, stamp, stamp, "error" if failed else "ok", None if failed else 3)
                     )
@@ -212,6 +223,7 @@ def test_vehicle_service_and_reporting_match_independent_recomputation(
     assert result["value"]["vehicle_reporting_gaps"] == len(expected_gaps)
     assert result["value"]["vehicle_silent_hours"] == pytest.approx(sum(expected_gaps) / 3600)
     assert result["value"][REPORTING_RATE] == pytest.approx(200 / hours)
+    assert result["evidence"]["excluded"]["reporting_gaps_capture_gap"] == 0
     assert result["value"]["vehicle_lines_run"] == 1
     assert result["value"]["vehicle_trips_run"] == 21
     assert result["value"]["vehicle_days_in_service"] == 2
@@ -241,6 +253,27 @@ def test_unfinished_trip_requires_continuous_capture(
     gap_only = answer(store, "/measure", FRIDAY, FRIDAY, measure=UNFINISHED_RATE, vehicle="101")
     assert gap_only["state"] == "not_measured"
     assert gap_only["value"][UNFINISHED_RATE] is None
+
+
+def test_reporting_outage_is_excluded_from_vehicle_measures_and_ranking(
+    vehicle_history: tuple[Store, dict[date, list[Interval]]],
+) -> None:
+    store, _ = vehicle_history
+    city = answer(store, "/measure", OUTAGE_DAY, OUTAGE_DAY, measure="vehicles")
+    assert city["value"]["vehicle_reporting_gaps"] == city["value"]["vehicle_silent_hours"] == 0
+    assert city["value"][REPORTING_RATE] == 0
+    assert city["evidence"]["excluded"]["reporting_gaps_capture_gap"] == 2
+    assert city["evidence"]["excluded"]["reporting_gaps_capture_gap_hours"] == pytest.approx(
+        2 * 300 / 3600
+    )
+
+    ranking = answer(store, "/ranking", THURSDAY, OUTAGE_DAY, kind="vehicle")
+    first, second = ranking["rows"]
+    assert (first["id"], first["counts"]["reporting_gaps"]) == ("101", 2)
+    assert (second["id"], second["value"]) == ("102", 0)
+    for row in (first, second):
+        assert row["excluded"]["reporting_gaps_capture_gap"] == 1
+        assert row["excluded"]["reporting_gaps_capture_gap_hours"] == pytest.approx(300 / 3600)
 
 
 @pytest.mark.parametrize("day", (SATURDAY, SUNDAY))
