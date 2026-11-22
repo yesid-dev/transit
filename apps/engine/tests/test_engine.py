@@ -65,6 +65,7 @@ class Trip(NamedTuple):
     basis: str = "trip_update_reported"
     stop_times: tuple[StopTiming, ...] = ()
     captured: bool = False
+    stop_ids: tuple[str, ...] = ()
 
 
 class Poll(NamedTuple):
@@ -221,7 +222,11 @@ def _build_store(
                         delay = None
                     elif day == SUNDAY and delay is not None:
                         delay += 10  # A different distribution from Thursday.
-                    stop = "first" if seq == 1 else "other"
+                    stop = (
+                        trip.stop_ids[seq - 1]
+                        if trip.stop_ids
+                        else ("first" if seq == 1 else "other")
+                    )
                     arrival = scheduled if delay is not None or seq != 33 else None
                     departure = None
                     event, basis, reference = "arrival", trip.basis, start_at

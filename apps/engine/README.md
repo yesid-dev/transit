@@ -51,10 +51,11 @@ hours, `group=day_type` for weekday, Saturday and Sunday, or `group=weekday_hour
 for a 168-cell grid ordered by ISO service weekday (Monday = 1) and local hour
 (midnight = 0). For a line measure with direction data, `group=direction` returns
 GTFS directions 0 and 1 and a null direction cell when the source has unassigned
-records. `group=stop` requires a line and a punctuality measure. Its cells are ordered
-by direction, then by the scheduled GTFS stop sequence. Positions that name different
-stops on different trip patterns are separate cells, as are repeated visits to the same
-stop. Unknown directions come last. `group=departure` requires a line and a service
+records. `group=stop` requires a line and a punctuality measure. It returns one cell
+per direction and stop, pooling occurrences across trip patterns. Its `stop_sequence`
+is the most frequent scheduled GTFS sequence for that stop in the cut, with ties going
+to the smaller sequence. Cells are sorted by direction, representative sequence, and
+stop ID. Unknown directions come last. `group=departure` requires a line and a service
 delivery measure other than first or last trip. Each cell gives the scheduled, cancelled,
 missing and other outcome counts for a direction and scheduled GTFS start, ordered by
 direction and service time. Both groups accept a direction filter.
