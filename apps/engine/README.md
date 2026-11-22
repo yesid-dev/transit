@@ -149,7 +149,11 @@ New clean-day receipts carry the provider declaration's timezone, enabled realti
 feeds and optional `unpublished_vehicle_fields`. For earlier receipts the engine
 uses the historical service timezone and has no field-level publication declaration.
 An alert history file does not establish the result of individual alert polls.
-Declared alerts without attempt rows in `feed_polls` are `not_measured`.
+Cleaning v8 records attempts for declared alert feeds in `feed_polls`, including
+archived errors and duplicates recorded only in the capture manifest. The scorecard
+groups `i3_alerts` and `service_alerts` under `alerts`. STM JSON carries no feed header,
+so its alert polls support poll success and leave publication timing `unknown`.
+Declared alert feeds without attempt rows also remain `not_measured`.
 
 ## Accessibility
 
@@ -157,15 +161,15 @@ Use `measure=accessibility` for the share of scheduled trips the agency declares
 wheelchair accessible (`accessible_trips`) and the share of distinct served stops it
 declares accessible (`accessible_stops`). Each measure is also available on its own.
 The cut supports `line`, `direction`, `stop`, `hour` and `day_type`. A `stop` cut makes
-`accessible_trips` mean trips that serve that stop. Evidence gives the counts declared
-accessible (1), not accessible (2) and no information (0), which always sum to the total
-with a declared value. No information is never counted as not accessible. A stop inherits
-its parent station's declaration when it publishes none of its own.
+`accessible_trips` mean trips that serve that stop. A stop uses its declaration on the
+latest service date when it matches the cut. A stop or platform can inherit its parent
+station's declaration when it has no information of its own.
 
-The state is `not_published` when every included day has null for the field (the edition
-does not declare the column) rather than zero, and `not_measured` before cleaning v8,
-which is the first version to carry the columns. The value is the agency's declaration,
-not an observed condition.
+Evidence gives counts for accessible (1), not accessible (2), no information (0),
+and an unpublished column (null). The accessible share divides the accessible count by
+the sum of the first three counts. The state is `not_published` when all matching records
+have null, `unknown` when there are no matching records, and `not_measured` before v8.
+The measure reports the agency's schedule declaration about wheelchair accessibility.
 
 ## Rankings
 

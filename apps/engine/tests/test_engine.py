@@ -1081,7 +1081,7 @@ def test_accessibility_matches_python_recomputation(tmp_path: Path) -> None:
         + evidence["counts"]["trips_no_information"]
         == declared
     )
-    assert declared < len(scheduled)
+    assert evidence["counts"]["trips_not_published"] == len(scheduled) - declared
     value = answer["value"]["accessible_trips"]
     assert value == pytest.approx(by_value[1] / declared)
     assert 0 <= value <= 1
@@ -1106,6 +1106,28 @@ def test_accessibility_matches_python_recomputation(tmp_path: Path) -> None:
         "accessible_trips": "measured",
         "accessible_stops": "measured",
     }
+
+
+@pytest.mark.parametrize("latest", [2, None])
+def test_accessible_stops_use_latest_service_date(tmp_path: Path, latest: int | None) -> None:
+    trip = Trip("a", "A", 0, "ran", None, True, (0,), stop_wheelchair=(1, 0))
+    store = _build_store(
+        tmp_path, 8, {THURSDAY: (trip,), FRIDAY: (trip._replace(stop_wheelchair=(latest, 0)),)}
+    )
+
+    answer = query(store, measure="accessible_stops", end=FRIDAY)
+    counts = answer["evidence"]["counts"]
+    assert counts["stops_accessible"] == 0
+    assert counts["stops_not_accessible"] == int(latest == 2)
+    assert counts["stops_no_information"] == 1
+    assert counts["stops_not_published"] == int(latest is None)
+    assert sum(counts[f"stops_{part}"] for part in (
+        "accessible", "not_accessible", "no_information"
+    )) == 2 - counts["stops_not_published"]
+    assert answer["value"]["accessible_stops"] == 0
+
+    first_day = query(store, measure="accessible_stops", stop="first")
+    assert first_day["value"]["accessible_stops"] == 1
 
 
 def test_accessibility_not_published_when_column_absent(tmp_path: Path) -> None:

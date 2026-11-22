@@ -18,7 +18,7 @@ from transit_engine import measures, scorecard
 from transit_engine.clean_manifest import FEED_POLLS, PREDICTION_SAMPLES, VEHICLE_POSITIONS
 from transit_engine.measures import Question, answer_csv, ask, methods
 from transit_engine.server import Engine
-from transit_engine.store import Store
+from transit_engine.store import DEFAULT_CLEANING_VERSION, Store
 
 CITY = "fixture_city"
 FAMILY = "open_data_scorecard"
@@ -79,7 +79,9 @@ def sample(
         ),
     }
     stores = {
-        day: _build_store(tmp_path, 6 if day == FRIDAY else 7, {day: rows}, city=CITY)
+        day: _build_store(
+            tmp_path, 6 if day == FRIDAY else DEFAULT_CLEANING_VERSION, {day: rows}, city=CITY
+        )
         for day, rows in trips.items()
     }
     start = utc(THURSDAY, 12)
@@ -110,7 +112,8 @@ def sample(
     polls.extend(
         (
             Poll("vehicle_positions", start, "v", "ok", start - timedelta(seconds=700)),
-            Poll("service_alerts", start, "a", "ok", None),
+            Poll("service_alerts", start, "a", "ok", start - timedelta(seconds=5)),
+            Poll("i3_alerts", start, "b", "duplicate", None),
         )
     )
     first = utc(THURSDAY, 12, 29, 50)
@@ -187,7 +190,7 @@ def sample(
                 [(*row, row.start) for row in vehicles[day]],
                 city=CITY,
             )
-            if store.cleaning_version == 7:
+            if store.cleaning_version == DEFAULT_CLEANING_VERSION:
                 samples = (
                     [
                         (
@@ -311,6 +314,8 @@ def test_scorecard_matches_plain_python(
     assert counts["poll_success"]["trip_updates"]["by_result"] == outcomes
     assert values["poll_success"]["trip_updates"] == 1 - outcomes["error"] / outcomes.total()
     assert values["poll_success"]["alerts"] == 1
+    assert counts["poll_success"]["alerts"]["attempts"] == 2
+    assert counts["feed_age_at_capture"]["alerts"]["timestamped_successes"] == 1
     previous_poll = previous_update = None
     gap = False
     intervals: list[float] = []
@@ -389,7 +394,7 @@ def test_scorecard_matches_plain_python(
     )
     assert evidence["measure_days"]["live_trip_coverage"]["days_not_measured"] == [str(SATURDAY)]
     assert evidence["measure_days"]["prediction_error"]["days_not_measured"] == [str(FRIDAY)]
-    assert evidence["cleaning_versions"] == [6, 7]
+    assert evidence["cleaning_versions"] == [6, DEFAULT_CLEANING_VERSION]
 
     prediction = values["prediction_error"]["1"]
     assert prediction["sample_count"] == len(errors)

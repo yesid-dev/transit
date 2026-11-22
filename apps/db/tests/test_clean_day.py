@@ -564,12 +564,24 @@ def test_alert_feed_polls_record_every_attempt(tmp_path: Path) -> None:
     destination = _run(tmp_path, DAY, provider)
     with duckdb.connect(config={"TimeZone": "UTC"}) as db:
         polls = _rows(db, destination / "feed_polls.parquet")
-    assert [(p["result"], p["entity_count"]) for p in polls] == [
-        ("ok", 1),
-        ("duplicate", 1),
-        ("empty", 0),
-        ("error", None),
+    assert [p["feed"] for p in polls] == ["service_alerts"] * 4
+    assert [(p["result"], p["entity_count"], p["feed_timestamp_utc"]) for p in polls] == [
+        ("ok", 1, captured),
+        ("duplicate", 1, captured),
+        ("empty", 0, captured + timedelta(minutes=1)),
+        ("error", None, None),
     ]
+    assert [p["captured_at_utc"] for p in polls] == [
+        captured + timedelta(seconds=offset) for offset in (0, 30, 60, 120)
+    ]
+    assert [p["payload_bytes"] for p in polls] == [
+        len(feed.SerializeToString()),
+        len(feed.SerializeToString()),
+        len(_feed(captured + timedelta(minutes=1)).SerializeToString()),
+        len(malformed),
+    ]
+    assert len({p["attempt_id"] for p in polls}) == 4
+    assert polls[-1]["attempt_id"] == (tmp_path / key).name
 
 
 def test_i3_alert_feed_polls(tmp_path: Path) -> None:
@@ -579,7 +591,9 @@ def test_i3_alert_feed_polls(tmp_path: Path) -> None:
     for stamp, body in (
         (captured, original),
         (captured + timedelta(seconds=30), original),
-        (captured + timedelta(minutes=1), _alert_body("Use stop 2")),
+        (captured + timedelta(minutes=1), b'{"messages": []}'),
+        (captured + timedelta(minutes=2), b"invalid JSON"),
+        (captured + timedelta(minutes=3), b"null"),
     ):
         path = tmp_path / build_i3_object_storage_path(
             provider_id="stm", captured_at_utc=stamp, checksum_sha256=sha256(body).hexdigest()
@@ -595,7 +609,9 @@ def test_i3_alert_feed_polls(tmp_path: Path) -> None:
     assert [(p["result"], p["entity_count"], p["feed_timestamp_utc"]) for p in alert_polls] == [
         ("ok", 1, None),
         ("duplicate", 1, None),
-        ("ok", 1, None),
+        ("empty", 0, None),
+        ("error", None, None),
+        ("error", None, None),
     ]
 
 
@@ -894,6 +910,7 @@ def test_ottawa_service_day(
     vehicle.current_status = VehiclePosition.STOPPED_AT
     vehicle.position.latitude, vehicle.position.longitude = 45.4, -75.7
     _save(tmp_path, positions, "vehicle_positions", stopped_at, provider)
+    _save(tmp_path, _feed(stopped_at), "service_alerts", stopped_at, provider)
 
     destination = _run(tmp_path, day, provider)
     with duckdb.connect() as db:
@@ -986,7 +1003,7 @@ def _archive_capture(root: Path, stamp: datetime, alert_body: bytes | None = Non
         duplicate_of_row_id=poll.capture_row_id,
         time_utc=stamp + timedelta(seconds=60),
         feed_timestamp_utc=stamp,
-        feed_timestamp_source="header",
+        feed_timestamp_source="header" if alert_body is None else "capture_time",
         entity_count=1,
     )
     manifest = build_manifest(
@@ -1167,6 +1184,14 @@ def test_range_builds_skips_and_continues(
         alerts = _rows(db, (dest / marker).with_name("alerts.parquet"))
     assert len(alerts) == 1 and alerts[0]["description_en"] == "An archived alert"
     assert (alerts[0]["route_ids"], alerts[0]["stop_ids"]) == (["metro", "r"], ["s1", "s2"])
+    alert_polls = [r for r in polls if r["feed"] == "i3_alerts"]
+    assert [(r["attempt_id"], r["result"], r["entity_count"]) for r in alert_polls] == [
+        ("0", "ok", 1), ("3", "error", None), ("4", "duplicate", 1)
+    ]
+    assert all(r["feed_timestamp_utc"] is None for r in alert_polls)
+    assert alert_polls[1]["payload_bytes"] is None
+    assert alert_polls[2]["payload_bytes"] == alert_polls[0]["payload_bytes"]
+    polls = [r for r in polls if r["feed"] == "trip_updates"]
     assert [r["result"] for r in polls] == ["ok", "error", "duplicate"]
     assert polls[1]["payload_bytes"] is None
     assert polls[2]["payload_bytes"] == polls[0]["payload_bytes"]

@@ -122,7 +122,11 @@ def read_alert_capture(
     status: PollResult = "error"
     try:
         if source == SourceFormat.API_I3_JSON:
-            records = stm_json_alerts(json.loads(capture.payload), preserve_flat_targets=True)
+            payload = json.loads(capture.payload)
+            if not isinstance(payload, dict | list):
+                raise ValueError("Alert JSON must be an object or array")
+            records = stm_json_alerts(payload, preserve_flat_targets=True)
+            entities = len(records)
         else:
             message = decode_gtfs_rt(capture.payload)
             if not message.IsInitialized():
@@ -130,7 +134,7 @@ def read_alert_capture(
             if message.header.timestamp:
                 header = datetime.fromtimestamp(message.header.timestamp, UTC)
             records = gtfs_rt_alerts(capture.payload, message)
-        entities = len(records)
+            entities = len(message.entity)
         status = "ok" if entities else "empty"
     except (DecodeError, TypeError, OverflowError, OSError, ValueError):
         status = "error"

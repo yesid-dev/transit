@@ -2594,9 +2594,11 @@ _ACCESSIBILITY_COUNTS = {
     "trips_accessible": Text("Accessible trips", "Trajets accessibles"),
     "trips_not_accessible": Text("Not accessible trips", "Trajets non accessibles"),
     "trips_no_information": Text("Trips without information", "Trajets sans information"),
+    "trips_not_published": Text("Trips without a published column", "Trajets sans colonne publiée"),
     "stops_accessible": Text("Accessible stops", "Arrêts accessibles"),
     "stops_not_accessible": Text("Not accessible stops", "Arrêts non accessibles"),
     "stops_no_information": Text("Stops without information", "Arrêts sans information"),
+    "stops_not_published": Text("Stops without a published column", "Arrêts sans colonne publiée"),
 }
 
 
@@ -2650,18 +2652,27 @@ def _accessibility_rows(
         counts["trips_accessible"] = int(trips_accessible)
         counts["trips_not_accessible"] = int(trips_not_accessible)
         counts["trips_no_information"] = int(trips_no_information)
+        counts["trips_not_published"] = int(
+            trips_total - trips_accessible - trips_not_accessible - trips_no_information
+        )
     if SCHEDULED_STOP_TIMES in paths:
         hour = _LOCAL_HOUR.format("coalesce(s.scheduled_departure_utc, s.scheduled_arrival_utc)")
         cut, parameters = _cuts(question, hour)
         stops = conn.execute(
             f"""
-            SELECT count(DISTINCT stop_id),
-                count(DISTINCT stop_id) FILTER (WHERE wheelchair_boarding = 1),
-                count(DISTINCT stop_id) FILTER (WHERE wheelchair_boarding = 2),
-                count(DISTINCT stop_id) FILTER (WHERE wheelchair_boarding = 0)
-            FROM read_parquet(?, hive_partitioning = false) s
-            WHERE s.provider = ? AND s.cleaning_version = ?
-                AND s.service_date BETWEEN ? AND ? AND s.stop_id IS NOT NULL AND {cut}
+            WITH latest_stops AS (
+                SELECT s.stop_id,
+                    arg_max_null(s.wheelchair_boarding, s.service_date) AS wheelchair_boarding
+                FROM read_parquet(?, hive_partitioning = false) s
+                WHERE s.provider = ? AND s.cleaning_version = ?
+                    AND s.service_date BETWEEN ? AND ? AND s.stop_id IS NOT NULL AND {cut}
+                GROUP BY s.stop_id
+            )
+            SELECT count(*),
+                count(*) FILTER (WHERE wheelchair_boarding = 1),
+                count(*) FILTER (WHERE wheelchair_boarding = 2),
+                count(*) FILTER (WHERE wheelchair_boarding = 0)
+            FROM latest_stops
             """,
             [paths[SCHEDULED_STOP_TIMES], *window, *parameters],
         ).fetchone()
@@ -2671,6 +2682,9 @@ def _accessibility_rows(
         counts["stops_accessible"] = int(stops_accessible)
         counts["stops_not_accessible"] = int(stops_not_accessible)
         counts["stops_no_information"] = int(stops_no_information)
+        counts["stops_not_published"] = int(
+            stops_total - stops_accessible - stops_not_accessible - stops_no_information
+        )
     return {(): Batch(counts=counts)}
 
 
@@ -2684,12 +2698,14 @@ _ACCESSIBILITY = Family(
     minimum_cleaning_version=8,
     columns=_ACCESSIBILITY_COUNTS,
     counts=Text(
-        "Each scheduled trip or distinct served stop counts once. The accessible share divides "
-        "the count declared accessible (1) by the number with a declared value. A value of 0 "
-        "means no information and is never counted as not accessible.",
-        "Chaque trajet prévu ou arrêt distinct desservi compte une fois. La part accessible "
-        "divise le nombre déclaré accessible (1) par le nombre avec une valeur déclarée. La "
-        "valeur 0 signifie aucune information et n’est jamais comptée comme non accessible.",
+        "Each scheduled trip or distinct served stop counts once. Each stop uses its "
+        "declaration on its latest service date in the cut. The accessible share is the "
+        "count declared accessible (1) divided by the number with a published value. "
+        "A value of 0 means no information.",
+        "Chaque trajet prévu ou arrêt distinct desservi compte une fois. Pour chaque arrêt, "
+        "la déclaration retenue est celle de sa dernière date de service dans la sélection. "
+        "La part accessible divise le nombre déclaré accessible (1) par le nombre avec une "
+        "valeur publiée. La valeur 0 signifie aucune information.",
     ),
     exclusions=Text(
         "Trips added by the feed are excluded. Trips or stops whose edition does not declare "
@@ -3543,11 +3559,7 @@ def _accessibility_answer(
     for measure in selected:
         prefix = "trips" if measure.id == "accessible_trips" else "stops"
         total = counts[f"{prefix}_total"]
-        declared = (
-            counts[f"{prefix}_accessible"]
-            + counts[f"{prefix}_not_accessible"]
-            + counts[f"{prefix}_no_information"]
-        )
+        declared = total - counts[f"{prefix}_not_published"]
         if window.no_days_measured:
             measure_state = "not_measured"
         elif total == 0:
