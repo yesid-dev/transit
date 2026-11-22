@@ -183,10 +183,11 @@ for (const locale of ['en', 'fr'] as const)
 			const header = page.locator('[data-slot="app-frame-controls"]');
 			const { city, operator } = provider.labels[locale];
 			const fullName = `${city} · ${operator}`;
-			const picker = header.locator('.nav-provider').getByRole('combobox');
-			const label = header.locator('.nav-provider-label:visible');
+			const network = header.locator('[data-slot="network-picker"]');
+			const picker = network.getByRole('combobox');
+			const label = network.locator('span[aria-hidden="true"]:visible');
 			await expect(picker).toHaveAccessibleName(new RegExp(fullName));
-			await expect(picker).toHaveAttribute('title', fullName);
+			await expect(network).toHaveAttribute('title', fullName);
 			await expect(picker.locator('option:checked')).toHaveText(fullName);
 			const viewport = page.viewportSize()!;
 			// Exercise both phone widths in each light/dark phone project.

@@ -142,6 +142,13 @@
 		position: relative;
 	}
 
+	/* Keep tall chrome clear of keyboard focus in the footer, including through hydration. */
+	.app-shell-root:has(:global([data-slot='footer'] :focus-visible))
+		> :global([data-slot='frame-nav']) {
+		position: relative;
+		inset-block-start: auto;
+	}
+
 	:global(.app-shell-root:has([data-slot='footer'][data-in-view='true']))
 		:global(
 			:is([data-slot='surface-rail-mobile'], [data-testid='toc-pill']):not(:focus-within):not(
