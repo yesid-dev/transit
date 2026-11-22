@@ -66,6 +66,8 @@ class Trip(NamedTuple):
     stop_times: tuple[StopTiming, ...] = ()
     captured: bool = False
     stop_ids: tuple[str, ...] = ()
+    wheelchair: int | None = None
+    stop_wheelchair: tuple[int | None, int | None] | None = None
 
 
 class Poll(NamedTuple):
@@ -102,14 +104,17 @@ def _build_store(
     city: str = "stm",
 ) -> Store:
     version = str(cleaning_version)
+    wheelchair_trip = ", wheelchair_accessible INTEGER" if cleaning_version >= 8 else ""
+    wheelchair_schedule = ", wheelchair_boarding INTEGER" if cleaning_version >= 8 else ""
     with duckdb.connect() as conn:
-        conn.execute("""
+        conn.execute(
+            f"""
             CREATE TABLE trips (
                 provider VARCHAR, service_date DATE, cleaning_version VARCHAR, trip_id VARCHAR,
                 route_id VARCHAR, direction_id INTEGER, state VARCHAR, state_reason VARCHAR,
                 route_has_live_data BOOLEAN, scheduled_start_utc TIMESTAMPTZ,
                 cancellation_notice_utc TIMESTAMPTZ, route_type INTEGER,
-                first_capture_utc TIMESTAMPTZ
+                first_capture_utc TIMESTAMPTZ{wheelchair_trip}
             );
             CREATE TABLE stops (
                 provider VARCHAR, service_date DATE, cleaning_version VARCHAR, trip_id VARCHAR,
@@ -122,14 +127,15 @@ def _build_store(
                 route_id VARCHAR, direction_id INTEGER, stop_id VARCHAR,
                 scheduled_arrival_utc TIMESTAMPTZ, scheduled_departure_utc TIMESTAMPTZ,
                 stop_sequence BIGINT, scheduled_arrival_seconds BIGINT,
-                scheduled_departure_seconds BIGINT
+                scheduled_departure_seconds BIGINT{wheelchair_schedule}
             );
             CREATE TABLE polls (
                 provider VARCHAR, service_date DATE, cleaning_version VARCHAR,
                 feed VARCHAR, captured_at_utc TIMESTAMPTZ, result VARCHAR,
                 feed_timestamp_utc TIMESTAMPTZ, entity_count BIGINT, attempt_id VARCHAR
             );
-            """)
+            """
+        )
         for day, trips in (
             trips_by_day or dict.fromkeys((FALL_BACK, THURSDAY, SATURDAY, SUNDAY), TRIPS)
         ).items():
@@ -168,52 +174,62 @@ def _build_store(
                     else None
                 )
                 scheduled = start_at if trip.state != "added" else None
-                if scheduled is not None and cleaning_version in {4, 5, 6, 7}:
+                if scheduled is not None and cleaning_version in {4, 5, 6, 7, 8}:
                     first = (
                         25 * 3600 + 15 * 60 if day == FALL_BACK else 7 * 3600
                     ) + trip.offset_minutes * 60
                     last = first + trip.duration_minutes * 60
+                    boarding = trip.stop_wheelchair or (None, None)
+                    schedule_rows: list[tuple[object, ...]] = [
+                        (
+                            *identity,
+                            trip.line,
+                            trip.direction,
+                            "first",
+                            start_at - timedelta(minutes=1),
+                            start_at,
+                            1,
+                            first - 60,
+                            first,
+                        ),
+                        (
+                            *identity,
+                            trip.line,
+                            trip.direction,
+                            "other",
+                            start_at + timedelta(minutes=trip.duration_minutes),
+                            start_at + timedelta(minutes=trip.duration_minutes + 1),
+                            2,
+                            last,
+                            last + 60,
+                        ),
+                    ]
+                    if cleaning_version >= 8:
+                        schedule_rows = [
+                            (*schedule_rows[0], boarding[0]),
+                            (*schedule_rows[1], boarding[1]),
+                        ]
                     conn.executemany(
-                        "INSERT INTO schedule VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                        [
-                            (
-                                *identity,
-                                trip.line,
-                                trip.direction,
-                                "first",
-                                start_at - timedelta(minutes=1),
-                                start_at,
-                                1,
-                                first - 60,
-                                first,
-                            ),
-                            (
-                                *identity,
-                                trip.line,
-                                trip.direction,
-                                "other",
-                                start_at + timedelta(minutes=trip.duration_minutes),
-                                start_at + timedelta(minutes=trip.duration_minutes + 1),
-                                2,
-                                last,
-                                last + 60,
-                            ),
-                        ],
+                        f"INSERT INTO schedule VALUES ({', '.join('?' for _ in schedule_rows[0])})",
+                        schedule_rows,
                     )
+                trip_values: list[object] = [
+                    *identity,
+                    trip.line,
+                    trip.direction,
+                    trip.state,
+                    trip.reason,
+                    trip.live,
+                    scheduled,
+                    notice,
+                    trip.route_type,
+                    start_at if trip.captured else None,
+                ]
+                if cleaning_version >= 8:
+                    trip_values.append(trip.wheelchair)
                 conn.execute(
-                    "INSERT INTO trips VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    [
-                        *identity,
-                        trip.line,
-                        trip.direction,
-                        trip.state,
-                        trip.reason,
-                        trip.live,
-                        scheduled,
-                        notice,
-                        trip.route_type,
-                        start_at if trip.captured else None,
-                    ],
+                    f"INSERT INTO trips VALUES ({', '.join('?' for _ in trip_values)})",
+                    trip_values,
                 )
                 states[trip.state] += 1
                 stops = []
@@ -276,9 +292,9 @@ def _build_store(
                     "sha256": sha256(payload).hexdigest(),
                     "byte_size": len(payload),
                 }
-            if cleaning_version in {4, 5, 6, 7}:
+            if cleaning_version in {4, 5, 6, 7, 8}:
                 extra_files = (*V4_EXTRA_FILES, ALERTS) if cleaning_version >= 5 else V4_EXTRA_FILES
-                if cleaning_version == 7:
+                if cleaning_version in {7, 8}:
                     extra_files = (*extra_files, PREDICTION_SAMPLES)
                 for name in extra_files:
                     path = directory / name
@@ -321,15 +337,15 @@ def _build_store(
     return Store(tmp_path.as_posix(), cleaning_version=cleaning_version)
 
 
-def test_store_reads_v7_by_default_and_accepts_v3_override(
+def test_store_reads_v8_by_default_and_accepts_v3_override(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _build_store(tmp_path, cleaning_version=7)
+    _build_store(tmp_path, cleaning_version=8)
     monkeypatch.setenv("ENGINE_CLEAN_ROOT", str(tmp_path))
     monkeypatch.delenv("ENGINE_CLEANING_VERSION", raising=False)
     store = Store.from_env()
-    assert Store(tmp_path.as_posix()).cleaning_version == store.cleaning_version == 7
-    assert query(store)["evidence"]["cleaning_versions"] == [7]
+    assert Store(tmp_path.as_posix()).cleaning_version == store.cleaning_version == 8
+    assert query(store)["evidence"]["cleaning_versions"] == [8]
     monkeypatch.setenv("ENGINE_CLEANING_VERSION", "3")
     assert Store.from_env().cleaning_version == 3
 
@@ -585,7 +601,7 @@ def test_v5_requires_an_alert_receipt_or_not_tracked(tmp_path: Path) -> None:
         assert store.files(conn, "stm", THURSDAY) is None
 
 
-@pytest.mark.parametrize("cleaning_version", [3, 4, 5, 7])
+@pytest.mark.parametrize("cleaning_version", [3, 4, 5, 7, 8])
 def test_bands_use_exact_thresholds(tmp_path: Path, cleaning_version: int) -> None:
     store = _build_store(tmp_path, cleaning_version)
     result = query(store, line="A", direction=0)
@@ -1015,3 +1031,100 @@ def test_bounded_wait_queue(store: Store, monkeypatch: pytest.MonkeyPatch) -> No
         assert status == 200
 
     asyncio.run(run())
+
+
+def _accessibility_trips() -> tuple[Trip, ...]:
+    return (
+        *(
+            Trip(
+                f"acc_{index}", "A", 0, "ran", None, True, (0,),
+                wheelchair=1, stop_wheelchair=(1, 2),
+            )
+            for index in range(4)
+        ),
+        *(
+            Trip(
+                f"not_{index}", "A", 0, "ran", None, True, (0,),
+                wheelchair=2, stop_wheelchair=(1, 2),
+            )
+            for index in range(3)
+        ),
+        *(
+            Trip(
+                f"info_{index}", "A", 0, "ran", None, True, (0,),
+                wheelchair=0, stop_wheelchair=(1, 2),
+            )
+            for index in range(2)
+        ),
+        Trip("null", "A", 0, "ran", None, True, (0,), wheelchair=None, stop_wheelchair=(1, 2)),
+        Trip("added", "A", 0, "added", None, True, (0,)),
+    )
+
+
+def test_accessibility_matches_python_recomputation(tmp_path: Path) -> None:
+    trips = _accessibility_trips()
+    store = _build_store(tmp_path, 8, {THURSDAY: trips})
+    answer = query(store, measure="accessible_trips")
+    evidence = answer["evidence"]
+    assert answer["state"] == "measured"
+    assert evidence["cleaning_versions"] == [8]
+
+    scheduled = [trip for trip in trips if trip.state != "added"]
+    by_value = Counter(trip.wheelchair for trip in scheduled)
+    declared = sum(count for value, count in by_value.items() if value is not None)
+    assert evidence["counts"]["trips_accessible"] == by_value[1]
+    assert evidence["counts"]["trips_not_accessible"] == by_value[2]
+    assert evidence["counts"]["trips_no_information"] == by_value[0]
+    assert (
+        evidence["counts"]["trips_accessible"]
+        + evidence["counts"]["trips_not_accessible"]
+        + evidence["counts"]["trips_no_information"]
+        == declared
+    )
+    assert declared < len(scheduled)
+    value = answer["value"]["accessible_trips"]
+    assert value == pytest.approx(by_value[1] / declared)
+    assert 0 <= value <= 1
+
+    # The stop cut means "trips serving that stop" for trip measures.
+    served = query(store, measure="accessible_trips", stop="first")
+    assert served["state"] == "measured"
+    assert served["value"]["accessible_trips"] == value
+
+    stops = query(store, measure="accessible_stops")
+    assert stops["state"] == "measured"
+    # Distinct stops: "first" declared accessible, "other" declared not accessible.
+    assert stops["evidence"]["counts"]["stops_accessible"] == 1
+    assert stops["evidence"]["counts"]["stops_not_accessible"] == 1
+    assert stops["evidence"]["counts"]["stops_no_information"] == 0
+    assert stops["value"]["accessible_stops"] == pytest.approx(1 / 2)
+
+    family = query(store, measure="accessibility")
+    assert family["value"]["accessible_trips"] == value
+    assert family["value"]["accessible_stops"] == pytest.approx(1 / 2)
+    assert family["evidence"]["measure_states"] == {
+        "accessible_trips": "measured",
+        "accessible_stops": "measured",
+    }
+
+
+def test_accessibility_not_published_when_column_absent(tmp_path: Path) -> None:
+    trips = tuple(Trip(f"t{index}", "A", 0, "ran", None, True, (0,)) for index in range(3))
+    store = _build_store(tmp_path, 8, {THURSDAY: trips})
+    answer = query(store, measure="accessible_trips")
+    assert answer["state"] == "not_published"
+    assert answer["state_text"]["en"] == "Not published"
+    assert answer["value"] == {"accessible_trips": None}
+    assert answer["evidence"]["counts"]["trips_accessible"] == 0
+    assert query(store, measure="accessible_stops")["state"] == "not_published"
+
+
+def test_accessibility_before_v8_is_not_measured(tmp_path: Path) -> None:
+    trips = tuple(Trip(f"t{index}", "A", 0, "ran", None, True, (0,)) for index in range(3))
+    store = _build_store(tmp_path, 7, {THURSDAY: trips})
+    answer = query(store, measure="accessible_trips")
+    assert answer["state"] == "not_measured"
+    assert answer["value"] == {"accessible_trips": None}
+    assert answer["evidence"]["days_not_measured"] == [str(THURSDAY)]
+    # Other families still read the v7 day normally.
+    assert query(store, measure="punctuality")["evidence"]["days_measured"] == [str(THURSDAY)]

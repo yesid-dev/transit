@@ -207,6 +207,7 @@ class Family:
     columns: dict[str, Text] = field(default_factory=dict)
     evidence_columns: dict[str, Text] = field(default_factory=dict)
     bin_seconds: int = DELAY_BIN_SECONDS
+    minimum_cleaning_version: int | None = None
 
 
 def _histogram_text(seconds: int) -> Text:
@@ -253,6 +254,7 @@ _SERVICE_OFFERED_ID = "service_offered"
 _VEHICLES_ID = "vehicles"
 _CORRIDORS_ID = "corridors"
 CORRIDOR_RANKING_DEFAULT = "median_time_lost"
+_ACCESSIBILITY_ID = "accessibility"
 VEHICLE_RANKING_DEFAULT = "vehicle_reporting_gaps_per_100_hours"
 _BOUNDARIES = ("first_trip", "last_trip")
 
@@ -337,6 +339,8 @@ class Question:
             raise ValueError("effect and cause apply to alert counts")
         if family.id == _CROWDING_ID and self.departure is not None:
             raise ValueError("crowding does not apply to scheduled departures")
+        if family.id == _ACCESSIBILITY_ID and self.departure is not None:
+            raise ValueError("accessibility does not apply to scheduled departures")
         if family.id == _SERVICE_DELIVERED_ID and self.stop is not None:
             raise ValueError("stop does not apply to service delivered trip measures")
         if self.measure in _BOUNDARIES:
@@ -2583,6 +2587,144 @@ _SCORECARD = Family(
     },
 )
 
+
+_ACCESSIBILITY_COUNTS = {
+    "trips_accessible": Text("Accessible trips", "Trajets accessibles"),
+    "trips_not_accessible": Text("Not accessible trips", "Trajets non accessibles"),
+    "trips_no_information": Text("Trips without information", "Trajets sans information"),
+    "stops_accessible": Text("Accessible stops", "Arrêts accessibles"),
+    "stops_not_accessible": Text("Not accessible stops", "Arrêts non accessibles"),
+    "stops_no_information": Text("Stops without information", "Arrêts sans information"),
+}
+
+
+def _accessibility_rows(
+    conn: duckdb.DuckDBPyConnection,
+    _family: Family,
+    paths: dict[str, list[str]],
+    question: Question,
+    version: str,
+    _group: EntityKind | None,
+) -> dict[EntityKey, Batch]:
+    counts: Counter[str] = Counter()
+    window = [question.city, version, question.start, question.end]
+    if TRIP_DAYS in paths:
+        filters: list[str] = []
+        parameters: list[object] = []
+        for name, value in question.cuts().items():
+            if name == "line":
+                filters.append("t.route_id = ?")
+                parameters.append(value)
+            elif name == "direction":
+                filters.append("t.direction_id = ?")
+                parameters.append(value)
+            elif name == "hour":
+                filters.append(f"({_LOCAL_HOUR.format('t.scheduled_start_utc')}) = ?")
+                parameters.append(value)
+            elif name == "stop":
+                filters.append(
+                    "EXISTS (SELECT 1 FROM read_parquet(?, hive_partitioning = false) s"
+                    " WHERE s.provider = t.provider AND s.cleaning_version = t.cleaning_version"
+                    " AND s.service_date = t.service_date AND s.trip_id = t.trip_id"
+                    " AND s.stop_id = ?)"
+                )
+                parameters.extend([paths[SCHEDULED_STOP_TIMES], value])
+        trips = conn.execute(
+            f"""
+            SELECT count(*),
+                count(*) FILTER (WHERE wheelchair_accessible = 1),
+                count(*) FILTER (WHERE wheelchair_accessible = 2),
+                count(*) FILTER (WHERE wheelchair_accessible = 0)
+            FROM read_parquet(?, hive_partitioning = false) t
+            WHERE t.provider = ? AND t.cleaning_version = ?
+                AND t.service_date BETWEEN ? AND ? AND t.state <> 'added'
+                AND {" AND ".join(filters) or "true"}
+            """,
+            [paths[TRIP_DAYS], *window, *parameters],
+        ).fetchone()
+        assert trips is not None
+        trips_total, trips_accessible, trips_not_accessible, trips_no_information = trips
+        counts["trips_total"] = int(trips_total)
+        counts["trips_accessible"] = int(trips_accessible)
+        counts["trips_not_accessible"] = int(trips_not_accessible)
+        counts["trips_no_information"] = int(trips_no_information)
+    if SCHEDULED_STOP_TIMES in paths:
+        hour = _LOCAL_HOUR.format("coalesce(s.scheduled_departure_utc, s.scheduled_arrival_utc)")
+        cut, parameters = _cuts(question, hour)
+        stops = conn.execute(
+            f"""
+            SELECT count(DISTINCT stop_id),
+                count(DISTINCT stop_id) FILTER (WHERE wheelchair_boarding = 1),
+                count(DISTINCT stop_id) FILTER (WHERE wheelchair_boarding = 2),
+                count(DISTINCT stop_id) FILTER (WHERE wheelchair_boarding = 0)
+            FROM read_parquet(?, hive_partitioning = false) s
+            WHERE s.provider = ? AND s.cleaning_version = ?
+                AND s.service_date BETWEEN ? AND ? AND s.stop_id IS NOT NULL AND {cut}
+            """,
+            [paths[SCHEDULED_STOP_TIMES], *window, *parameters],
+        ).fetchone()
+        assert stops is not None
+        stops_total, stops_accessible, stops_not_accessible, stops_no_information = stops
+        counts["stops_total"] = int(stops_total)
+        counts["stops_accessible"] = int(stops_accessible)
+        counts["stops_not_accessible"] = int(stops_not_accessible)
+        counts["stops_no_information"] = int(stops_no_information)
+    return {(): Batch(counts=counts)}
+
+
+_ACCESSIBILITY = Family(
+    id=_ACCESSIBILITY_ID,
+    method_version="accessibility-v1",
+    since="2026-11-22",
+    tables=(TRIP_DAYS, SCHEDULED_STOP_TIMES),
+    query=_accessibility_rows,
+    minimum_sample=1,
+    minimum_cleaning_version=8,
+    columns=_ACCESSIBILITY_COUNTS,
+    counts=Text(
+        "Each scheduled trip or distinct served stop counts once. The accessible share divides "
+        "the count declared accessible (1) by the number with a declared value. A value of 0 "
+        "means no information and is never counted as not accessible.",
+        "Chaque trajet prévu ou arrêt distinct desservi compte une fois. La part accessible "
+        "divise le nombre déclaré accessible (1) par le nombre avec une valeur déclarée. La "
+        "valeur 0 signifie aucune information et n’est jamais comptée comme non accessible.",
+    ),
+    exclusions=Text(
+        "Trips added by the feed are excluded. Trips or stops whose edition does not declare "
+        "the accessibility column are not published rather than counted as zero.",
+        "Les trajets ajoutés par les données en direct sont exclus. Les trajets ou arrêts dont "
+        "l’édition ne déclare pas la colonne d’accessibilité sont non publiés, jamais comptés "
+        "comme zéro.",
+    ),
+    limits=Text(
+        "The value is the agency's declaration, not an observed condition. A stop inherits its "
+        "parent station's declaration when it publishes none of its own.",
+        "La valeur est la déclaration de l’exploitant, pas une condition observée. Un arrêt "
+        "hérite de la déclaration de sa station parente lorsqu’il n’en publie pas.",
+    ),
+    measures=(
+        Measure(
+            "accessible_trips",
+            "share",
+            Text(
+                "Share of scheduled trips the agency declares wheelchair accessible.",
+                "Part des trajets prévus que l’exploitant déclare accessibles en fauteuil roulant.",
+            ),
+            ranking_kinds=(),
+        ),
+        Measure(
+            "accessible_stops",
+            "share",
+            Text(
+                "Share of distinct served stops the agency declares wheelchair accessible.",
+                "Part des arrêts distincts desservis que l’exploitant déclare accessibles en "
+                "fauteuil roulant.",
+            ),
+            ranking_kinds=(),
+        ),
+    ),
+)
+
 _FAMILIES = (
     _PUNCTUALITY,
     _SERVICE_DELIVERED,
@@ -2593,6 +2735,7 @@ _FAMILIES = (
     _VEHICLES,
     _CORRIDORS,
     _SCORECARD,
+    _ACCESSIBILITY,
 )
 _SELECTIONS = {
     key: (family, selected)
@@ -2797,6 +2940,15 @@ def read_window(
     # Keep the window sorts over dense position and corridor stop records to one day.
     batch_days = 1 if VEHICLE_POSITIONS in tables or family.id == _CORRIDORS_ID else None
     window = ReadWindow({table: [] for table in tables}, batch_days=batch_days)
+    if (
+        family.minimum_cleaning_version is not None
+        and store.cleaning_version < family.minimum_cleaning_version
+    ):
+        # The family's columns do not exist before its minimum cleaning version.
+        for ordinal in range(question.start.toordinal(), question.end.toordinal() + 1):
+            window.missing.append(date.fromordinal(ordinal).isoformat())
+        window.missing_in_cut = True
+        return window
     for ordinal in range(question.start.toordinal(), question.end.toordinal() + 1):
         day = date.fromordinal(ordinal)
         in_cut = question.day_type is None or question.day_type == _DAY_TYPES[day.weekday()]
@@ -2969,6 +3121,8 @@ def evaluate(
         return _alert_answer(selected, totals, window)
     if family.id == _VEHICLES_ID:
         return _vehicle_answer(selected, totals, window)
+    if family.id == _ACCESSIBILITY_ID:
+        return _accessibility_answer(selected, totals.counts, window)
     if family.id == _SERVICE_DELIVERED_ID:
         return _delivery_answer(
             family,
@@ -3376,6 +3530,51 @@ def _scorecard_answer(
         },
         "info": [_info(family, item) for item in selected],
     }
+
+
+def _accessibility_answer(
+    selected: tuple[Measure, ...], counts: Counter[str], window: ReadWindow
+) -> tuple[str, dict[str, float | None], dict[str, Any], dict[str, int]]:
+    values: dict[str, float | None] = {}
+    states: dict[str, str] = {}
+    samples: dict[str, int] = {}
+    for measure in selected:
+        prefix = "trips" if measure.id == "accessible_trips" else "stops"
+        total = counts[f"{prefix}_total"]
+        declared = (
+            counts[f"{prefix}_accessible"]
+            + counts[f"{prefix}_not_accessible"]
+            + counts[f"{prefix}_no_information"]
+        )
+        if window.no_days_measured:
+            measure_state = "not_measured"
+        elif total == 0:
+            measure_state = "unknown"
+        elif declared == 0:
+            measure_state = "not_published"
+        else:
+            measure_state = "measured"
+        states[measure.id] = measure_state
+        samples[measure.id] = declared
+        values[measure.id] = (
+            counts[f"{prefix}_accessible"] / declared if measure_state == "measured" else None
+        )
+    if len(selected) == 1:
+        state = states[selected[0].id]
+    elif "measured" in states.values():
+        state = "measured"
+    elif all(value == "not_published" for value in states.values()):
+        state = "not_published"
+    elif all(value == "not_measured" for value in states.values()):
+        state = "not_measured"
+    else:
+        state = "unknown"
+    evidence: dict[str, Any] = {
+        "counts": {key: counts[key] if window.included else None for key in _ACCESSIBILITY_COUNTS},
+        "excluded": {},
+        "measure_states": states,
+    }
+    return state, values, evidence, samples
 
 
 def ask(store: Store, question: Question) -> dict[str, Any]:
