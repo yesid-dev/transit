@@ -115,7 +115,13 @@ def _check_types(connection: duckdb.DuckDBPyConnection, path: Path, schema: Tabl
 
 
 def check_window_files(
-    csv_path: Path, parquet_path: Path, schema: TableSchema, *, expect: Expected, temp_dir: Path
+    csv_path: Path,
+    parquet_path: Path,
+    schema: TableSchema,
+    *,
+    expect: Expected,
+    temp_dir: Path,
+    validate_csv_input: bool = True,
 ) -> FileChecks:
     """Check digests, metadata, ordered types and counts, without claiming equality.
 
@@ -124,7 +130,15 @@ def check_window_files(
     for path in (csv_path, parquet_path, temp_dir):
         _literal_path(path)
     with wide_rows.window_layout(csv_path, temp_dir, MAX_ROW_GROUP_ROWS) as layout:
-        return _check_files(csv_path, parquet_path, schema, expect, temp_dir, layout)
+        return _check_files(
+            csv_path,
+            parquet_path,
+            schema,
+            expect,
+            temp_dir,
+            layout,
+            validate_csv_input=validate_csv_input,
+        )
 
 
 def _check_files(
@@ -134,6 +148,8 @@ def _check_files(
     expect: Expected,
     temp_dir: Path,
     layout: wide_rows.Layout | None,
+    *,
+    validate_csv_input: bool = True,
 ) -> FileChecks:
     content, _ = _digest(csv_path)
     if content != expect.content_sha256:
@@ -165,7 +181,9 @@ def _check_files(
                 raise CopyDiffers("metadata", f"{key.decode()} differs from expected")
         _check_types(connection, parquet_path, schema)
         parquet = connection.read_parquet(str(parquet_path), hive_partitioning=False)
-        csv = read_canonical_csv(connection, csv_path, schema, layout=layout)
+        csv = read_canonical_csv(
+            connection, csv_path, schema, layout=layout, validate=validate_csv_input
+        )
         for name, relation in (("CSV", csv), ("Parquet", parquet)):
             count = int(relation.aggregate("count(*)").fetchall()[0][0])
             if count != expect.rows:

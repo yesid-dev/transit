@@ -64,6 +64,9 @@ select = ["B", "E", "F", "I", "UP"]
 [tool.mypy]
 python_version = "3.12"
 files = [
+    "src/transit_ops/clean_day.py",
+    "src/transit_ops/clean_day_inputs.py",
+    "src/transit_ops/clean_day_output.py",
     "src/transit_ops/pipeline_switches.py",
     "src/transit_ops/silver/static_rows.py",
     "src/transit_ops/providers/declared.py",
