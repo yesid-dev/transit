@@ -59,6 +59,7 @@ export function loadLineRecord(
 		view,
 		period,
 		city,
+		line,
 		direction,
 		sections: sections.map((section) => ({
 			section,

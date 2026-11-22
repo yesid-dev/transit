@@ -15,6 +15,16 @@ const ANSWER = {
   evidence: { cleaning_versions: [6], days_pending: [], counts: { scheduled: 100 } },
 };
 
+test("forwards the opt-in agency message detail and rejects invalid values", async (t) => {
+  const harness = fixture(t);
+  const base = `/v2/demo/measure?measure=alert_counts&${WINDOW}`;
+  assert.equal((await harness.fetch(`${base}&alert_details=1`)).status, 200);
+  assert.equal(new URL(harness.requests[0].url).searchParams.get("alert_details"), "1");
+  assert.equal((await harness.fetch(`${base}&alert_details=true`)).status, 400);
+  assert.equal((await harness.fetch(`${base}&alert_details=1&group=day`)).status, 400);
+  assert.equal(harness.requests.length, 1);
+});
+
 function fixture(t, respond = () => Response.json(ANSWER, {
   headers: { "x-transit-days-pending": "0" },
 })) {

@@ -11,6 +11,7 @@
 	import type { RecordAnswer, RecordCell } from '#lib/server/engine.ts';
 	import type { LineSection } from '#lib/server/lineRecord.ts';
 	import RecordTable from '#lib/features/record/RecordTable.svelte';
+	import { departureHref } from '#lib/features/record/departureIdentity.ts';
 	import { directionLabel, lateDepartureReading, lineAnswer } from './lineRecordText.ts';
 
 	let {
@@ -20,6 +21,9 @@
 		title,
 		headsigns,
 		stopNames,
+		url,
+		line,
+		city,
 	}: {
 		answer: RecordAnswer;
 		section: LineSection;
@@ -27,6 +31,9 @@
 		title: string;
 		headsigns: Record<number, string>;
 		stopNames: Map<string, string>;
+		url: URL;
+		line: string;
+		city: string;
 	} = $props();
 
 	const t = (en: string, fr: string) => choose(locale, en, fr);
@@ -148,7 +155,7 @@
 			])}
 		/>
 	{/if}
-{:else if 'rows' in answer}
+{:else if 'rows' in answer && answer.kind === 'departure'}
 	<p>
 		{t(
 			'Ranked by the late share of observed stop events on each scheduled departure.',
@@ -167,7 +174,13 @@
 			dir(row.direction),
 			lateDepartureReading(row, locale),
 		])}
-	/>
+	>
+		{#snippet rowLabel(label, index)}
+			{@const row = answer.rows[index]!}
+			{@const href = departureHref(url, locale, city, line, row.direction, row.departure)}
+			{#if href}<a class="inline-flex min-h-11 items-center" {href}>{label}</a>{:else}{label}{/if}
+		{/snippet}
+	</RecordTable>
 	{#if answer.info[0]}
 		<p>
 			{t(
@@ -176,7 +189,7 @@
 			)}
 		</p>
 	{/if}
-{:else}
+{:else if 'cells' in answer}
 	{@const cells = answer.cells}
 	{#if section === 'daily'}
 		<RecordTable

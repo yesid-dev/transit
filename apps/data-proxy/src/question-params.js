@@ -5,7 +5,7 @@ const COMMON_CUTS = [
 export const QUESTION_PARAMS = {
   measure: {
     required: ["from", "to", "measure"],
-    optional: [...COMMON_CUTS, "stop", "departure", "vehicle", "group"],
+    optional: [...COMMON_CUTS, "stop", "departure", "vehicle", "group", "alert_details"],
   },
   ranking: {
     required: ["from", "to", "measure", "kind"],
@@ -28,6 +28,7 @@ const VALID = {
   cause: scheduleId,
   direction: oneOf("0", "1"),
   departure: (value) => /^[0-9]{2,6}:[0-5][0-9]:[0-5][0-9]$/.test(value),
+  alert_details: oneOf("1"),
   hour: (value) => /^(?:[01]?[0-9]|2[0-3])$/.test(value),
   day_type: oneOf("weekday", "saturday", "sunday"),
   group: oneOf("day", "hour", "day_type", "weekday_hour", "direction", "stop", "departure", "line", "stop_id", "vehicle"),
@@ -78,6 +79,9 @@ export function parseQuestion(url) {
   }
   if (params.has("departure") && (!params.has("line") || !params.has("direction"))) {
     throw new Error("departure requires line and direction");
+  }
+  if (params.has("alert_details") && (params.get("measure") !== "alert_counts" || params.has("group"))) {
+    throw new Error("alert_details requires ungrouped alert_counts");
   }
   if (params.has("class") && params.get("kind") !== "line") {
     throw new Error("class applies to line rankings");

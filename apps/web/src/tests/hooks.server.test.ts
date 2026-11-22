@@ -396,6 +396,8 @@ describe('server HTML edge cache', () => {
 		['https://transit1.yesid.dev/status', '/[[lang=locale]]/status'],
 		['https://transit1.yesid.dev/lines', '/[[lang=locale]]/lines'],
 		['http://127.0.0.1:4317/fr/stops?frameMode=record', '/[[lang=locale]]/stops'],
+		['https://transit1.yesid.dev/fr/receipt', '/[[lang=locale]]/receipt'],
+		['https://transit1.yesid.dev/departure/key', '/[[lang=locale]]/departure/[key]'],
 	])('delivers streamed sections without caching or compression for %s', async (url, routeId) => {
 		const cache = cacheHarness(html('cached'));
 		const request = event(url, { cache, routeId });

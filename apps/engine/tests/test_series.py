@@ -309,6 +309,54 @@ def test_line_departure_series_and_ranking_apply_the_same_cuts(store: Store) -> 
     assert status == 400
 
 
+def test_single_departure_keeps_repeated_stops_and_exact_observations(tmp_path: Path) -> None:
+    store = _build_store(
+        tmp_path,
+        3,
+        {
+            THURSDAY: (
+                Trip(
+                    "selected",
+                    "A",
+                    0,
+                    "ran",
+                    None,
+                    True,
+                    (-61, 301, None),
+                    stop_ids=("loop", "middle", "loop"),
+                ),
+                Trip("other-direction", "A", 1, "ran", None, True, (10,)),
+            ),
+        },
+    )
+    app = Engine(store, concurrency=1, queue_size=0, queue_wait_ms=50)
+    base = urlencode(
+        {
+            "city": "stm",
+            "from": THURSDAY,
+            "to": THURSDAY,
+            "line": "A",
+            "direction": 0,
+            "departure": "07:00:00",
+        }
+    )
+    stops = base + "&measure=punctuality&group=stop"
+    status, _, raw = asyncio.run(http(app, "/measure", stops))
+    assert status == 200, raw
+    answer = json.loads(raw)
+    cells = answer["cells"]
+    assert [cell["key"]["stop"] for cell in cells] == ["loop", "middle", "loop"]
+    assert [cell["evidence"]["observed_delay_seconds"] for cell in cells] == [-61, 301, None]
+    status, _, raw = asyncio.run(http(app, "/measure", stops + "&format=csv&lang=fr"))
+    assert status == 200, raw
+    exported = csv.DictReader(io.StringIO(raw.decode()))
+    assert exported.fieldnames == answer["info"][0]["csv_columns"]["fr"]
+    assert [row["Retard observé (s)"] for row in exported] == ["-61", "301", ""]
+    status, _, raw = asyncio.run(http(app, "/measure", base + "&measure=trips_run"))
+    assert status == 200, raw
+    assert json.loads(raw)["evidence"]["trip_ids"] == ["selected"]
+
+
 @pytest.mark.parametrize(
     "suffix",
     [

@@ -182,6 +182,8 @@ class Batch:
     offered: list[OfferedCounts] = field(default_factory=list)
     vehicle_routes: set[str] = field(default_factory=set)
     stop_accessibility: dict[str, tuple[date, int | None]] = field(default_factory=dict)
+    trip_ids: set[str] = field(default_factory=set)
+    alert_messages: dict[tuple[str, str, str], dict[str, Any]] = field(default_factory=dict)
 
     def update(self, other: Batch) -> None:
         self.counts.update(other.counts)
@@ -195,6 +197,8 @@ class Batch:
             previous = self.stop_accessibility.get(stop)
             if previous is None or declaration[0] > previous[0]:
                 self.stop_accessibility[stop] = declaration
+        self.trip_ids.update(other.trip_ids)
+        self.alert_messages.update(other.alert_messages)
 
 
 @dataclass(frozen=True)
@@ -299,6 +303,7 @@ class Question:
     group: SeriesGroup | None = None
     from_stop: str | None = None
     to_stop: str | None = None
+    alert_details: bool = False
 
     def __post_init__(self, ranking: bool) -> None:
         if self.measure not in _SELECTIONS:
@@ -306,6 +311,8 @@ class Question:
         if not CITY.fullmatch(self.city) or self.start > self.end:
             raise ValueError("provide a city and an ordered service date range")
         family, _ = _SELECTIONS[self.measure]
+        if self.alert_details and (self.measure != _ALERT_COUNTS_ID or self.group or ranking):
+            raise ValueError("alert_details requires ungrouped alert_counts")
         if family.id == _CORRIDORS_ID:
             if self.stop is not None or self.departure is not None:
                 raise ValueError("corridors use from_stop, to_stop and scheduled departure hour")
@@ -494,9 +501,16 @@ _RANKING_FLOOR_KINDS = {
     "departure": Text("Departure rankings", "Les classements par départ"),
 }
 
+_ALERT_MESSAGE_COLUMN = {"alert_messages": Text("Agency messages", "Avis de l’agence")}
+_DEPARTURE_STOP_COLUMN = {
+    "observed_delay_seconds": Text("Observed delay (s)", "Retard observé (s)")
+}
 
-def _info(family: Family, measure: Measure) -> dict[str, Any]:
-    columns = _csv_columns(family)
+
+def _info(
+    family: Family, measure: Measure, extra_columns: dict[str, Text] | None = None
+) -> dict[str, Any]:
+    columns = {**_csv_columns(family), **(extra_columns or {})}
     histogram = _histogram_text(family.bin_seconds) if measure.percentile else None
     limits = measure.limits or family.limits
     coverage = _PUNCTUALITY.coverage if measure.id in _VEHICLE_PUNCTUALITY_IDS else family.coverage
@@ -753,6 +767,8 @@ def _punctuality_query(
     if question.group == "stop":
         cut_sql += " AND NOT added"
         counters["stop_occurrences"] = "count(*)"
+        if _departure_stop_order(question):
+            counters["observed_delay_seconds"] = "coalesce(sum(delay_seconds), 0)"
     elif question.group == "stop_id" or (question.group == "line" and question.stop is None):
         cut_sql += " AND NOT added"
     basis_counts = {
@@ -1240,9 +1256,12 @@ def _service_delivered_rows(
             "coalesce(sum(duration::HUGEINT * duration) FILTER (eligible), 0)"
         )
     aggregates = ", ".join(counters.values())
+    trip_ids = _single_day_departure(question)
     routes = (
         "list(DISTINCT route_id) FILTER (state <> 'added' AND route_id IS NOT NULL)"
         if group
+        else "list(DISTINCT trip_id) FILTER (state <> 'added')"
+        if trip_ids
         else "NULL"
     )
     duration_sql = "SELECT trips.*, NULL::BIGINT AS duration FROM trips"
@@ -1315,7 +1334,7 @@ def _service_delivered_rows(
     grouped = bool(group or question.group)
     groups = _grouped_batches(
         [
-            (key, edge, routes, *values)
+            (key, edge, None if trip_ids else routes, *values)
             for key, edge, routes, values, _ in rows
             if values is not None
         ],
@@ -1323,7 +1342,9 @@ def _service_delivered_rows(
         "cancellation_notices",
         grouped,
     )
-    for key, _, _, _, boundary in rows:
+    for key, _, identifiers, _, boundary in rows:
+        if identifiers and trip_ids:
+            groups[()].trip_ids.update(identifiers)
         if boundary is not None:
             measure, day, seconds, *counts = boundary
             hour, remainder = divmod(seconds, 3600)
@@ -1338,6 +1359,12 @@ def _service_delivered_rows(
             key=lambda row: (row.service_date, row.measure, row.scheduled_departure)
         )
     return groups
+
+
+def _single_day_departure(question: Question) -> bool:
+    return (
+        question.departure is not None and question.group is None and question.start == question.end
+    )
 
 
 _BOUNDARY_COUNTS = Text(
@@ -1736,6 +1763,11 @@ def _alert_rows(
         "stop": "unnest(stop_ids)",
     }[group]
     projection = "entity, source, alert_id, version, epoch_us(starts), epoch_us(ends)"
+    text_columns = (
+        ", header_en, header_fr, description_en, description_fr" if question.alert_details else ""
+    )
+    message_columns = f", route_ids, stop_ids{text_columns}" if question.alert_details else ""
+    projection += message_columns
     segments = ""
     if question.group:
         local_day = "timezone('America/Toronto', bucket)::DATE"
@@ -1774,7 +1806,7 @@ def _alert_rows(
                 route_ids, stop_ids,
                 unnest(CASE WHEN len(active_periods) = 0
                     THEN [{{'start_utc': NULL, 'end_utc': NULL}}]
-                    ELSE active_periods END) AS period
+                    ELSE active_periods END) AS period{text_columns}
             FROM read_parquet(?, hive_partitioning = false)
             WHERE provider = ? AND cleaning_version = ? AND ({" AND ".join(filters) or "true"})
         ), clipped AS (
@@ -1782,10 +1814,11 @@ def _alert_rows(
                 greatest(coalesce(period.start_utc, first_seen_at_utc), window_start) AS starts,
                 least(coalesce(period.end_utc, last_seen_at_utc), window_end) AS ends,
                 period.start_utc IS NULL AND period.end_utc IS NULL AS observed_only,
-                first_seen_at_utc, last_seen_at_utc, window_end
+                first_seen_at_utc, last_seen_at_utc, window_end{message_columns}
             FROM periods CROSS JOIN bounds
         ), valid AS (
-            SELECT DISTINCT entity, source, alert_id, version, starts, ends FROM clipped
+            SELECT DISTINCT entity, source, alert_id, version, starts, ends{message_columns}
+            FROM clipped
             WHERE starts < ends OR (observed_only AND first_seen_at_utc = last_seen_at_utc
                 AND starts = first_seen_at_utc AND starts < window_end AND starts = ends)
         )
@@ -1794,11 +1827,22 @@ def _alert_rows(
         [question.start, question.end, alert_paths, question.city, version, *arguments],
     ).fetchall()
     result: dict[EntityKey, Batch] = {}
-    for entity, source, alert_id, revision, start, end in rows:
+    for entity, source, alert_id, revision, start, end, *message in rows:
         key = tuple(entity) if question.group else (entity,) if group else ()
         result.setdefault(key, Batch()).alert_spans.add(
             AlertSpan(source, alert_id, revision, start, end)
         )
+        if message:
+            routes, stops, header_en, header_fr, description_en, description_fr = message
+            result[key].alert_messages[source, alert_id, revision] = {
+                "source": source,
+                "id": alert_id,
+                "version": revision,
+                "routes": routes,
+                "stops": stops,
+                "header": {"en": header_en, "fr": header_fr},
+                "description": {"en": description_en, "fr": description_fr},
+            }
     return result
 
 
@@ -4144,6 +4188,14 @@ def ask(store: Store, question: Question) -> dict[str, Any]:
     state, values, family_evidence, _ = evaluate(
         family, selected, totals, window, hour=question.hour
     )
+    if family.id == _SERVICE_DELIVERED_ID and _single_day_departure(question):
+        family_evidence["trip_ids"] = sorted(totals.trip_ids)
+    if question.alert_details:
+        family_evidence["alert_messages"] = (
+            [totals.alert_messages[key] for key in sorted(totals.alert_messages)]
+            if state == "measured"
+            else None
+        )
     return {
         "measure": question.measure,
         "value": values,
@@ -4151,7 +4203,10 @@ def ask(store: Store, question: Question) -> dict[str, Any]:
         "state_text": _STATES[state]._asdict(),
         "coverage_note": window.coverage_note,
         "evidence": {**window.evidence(store, question, family, started), **family_evidence},
-        "info": [_info(family, measure) for measure in selected],
+        "info": [
+            _info(family, measure, _ALERT_MESSAGE_COLUMN if question.alert_details else None)
+            for measure in selected
+        ],
     }
 
 
@@ -4163,6 +4218,14 @@ def _date_key(group: SeriesGroup, day: str, hour_key: EntityKey = ()) -> EntityK
     if group == "weekday_hour":
         return (date.fromisoformat(day).isoweekday(), *hour_key)
     return hour_key
+
+
+def _departure_stop_order(question: Question) -> bool:
+    return (
+        question.group == "stop"
+        and question.departure is not None
+        and question.start == question.end
+    )
 
 
 def _series_keys(
@@ -4183,6 +4246,8 @@ def _series_keys(
     if group == "weekday_hour":
         return [(weekday, hour) for weekday in range(1, 8) for hour in range(24)]
     if group == "stop":
+        if _departure_stop_order(question):
+            return sorted(observed, key=lambda key: (key[1], key[2]))
         return sorted(
             observed,
             key=lambda key: (key[0] is None, key[0], stop_positions[key], key[1]),
@@ -4268,7 +4333,7 @@ def _series_answer(
                         continue
                     if group not in ("line", "vehicle"):
                         key = _date_key(group, window.included[offset], key)
-                elif group == "stop":
+                elif group == "stop" and not _departure_stop_order(question):
                     direction, sequence, stop = key
                     assert isinstance(sequence, int)
                     key = (direction, stop)
@@ -4319,8 +4384,12 @@ def _series_answer(
             state, values, evidence, _ = evaluate(
                 family, selected, part, cell_window, hour=cell_hour
             )
+        if _departure_stop_order(question):
+            evidence["observed_delay_seconds"] = (
+                part.counts["observed_delay_seconds"] if part.counts["classified"] == 1 else None
+            )
         display_key = key
-        if group == "stop":
+        if group == "stop" and not _departure_stop_order(question):
             display_key = (key[0], stop_positions[key], key[1])
         elif group == "departure":
             direction, seconds = key
@@ -4349,6 +4418,8 @@ def _series_answer(
         **{key: _GROUP_LABELS[key] for key in columns},
         **_csv_columns(family),
     }
+    if _departure_stop_order(question):
+        headings.update(_DEPARTURE_STOP_COLUMN)
     series_state = {}
     if vehicles and group in ("vehicle", "line"):
         state = "measured" if cells else _vehicle_answer(selected, Batch(), window)[0]
@@ -4568,6 +4639,11 @@ def answer_csv(answer: dict[str, Any], language: Language) -> str:
     group = answer.get("group")
     if group:
         columns = {**{key: _GROUP_LABELS[key] for key in GROUP_COLUMNS[group]}, **columns}
+    cut = answer["evidence"]
+    if "alert_messages" in cut:
+        columns.update(_ALERT_MESSAGE_COLUMN)
+    if group == "stop" and "departure" in cut["cuts"] and cut["start_date"] == cut["end_date"]:
+        columns.update(_DEPARTURE_STOP_COLUMN)
     output = io.StringIO(newline="")
     writer = csv.writer(output)
     writer.writerow(getattr(label, language) for label in columns.values())

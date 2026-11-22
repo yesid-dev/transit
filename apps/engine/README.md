@@ -71,6 +71,14 @@ stop ID. Unknown directions come last. `group=departure` requires a line and a s
 delivery measure other than first or last trip. Each cell gives the scheduled, cancelled,
 missing and other outcome counts for a direction and scheduled GTFS start, ordered by
 direction and service time. Both groups accept a direction filter.
+
+For a single service date with a line, direction and exact `departure=HH:MM:SS`
+cut, `group=stop` keeps each scheduled stop sequence, including repeated stops.
+Its `observed_delay_seconds` evidence is populated for a single classified event
+at that sequence. The usual sample rule still applies to rates and percentiles.
+An ungrouped service delivery query for the same single-day departure includes
+the matching scheduled `trip_ids` in JSON evidence.
+
 `group=line` groups punctuality measures or `trips_run` by GTFS line across the network.
 With a stop cut, it returns punctuality by the lines serving that stop. `group=stop_id`
 groups punctuality by stop ID across lines and directions. For this group the response
@@ -104,6 +112,13 @@ gaps use the hour of the last sighting before the gap. Alert groups clip publish
 spans to the tracked local dates or hours and count distinct alerts and versions
 within each cell. Each cell calculates percentiles, shares and ratios from its own
 histogram or evidence totals. Distinct counts can overlap across cells.
+
+Use `measure=alert_counts&alert_details=1` without grouping to include the
+matching agency messages in `evidence.alert_messages` and in a JSON column in
+the CSV. The list contains one row per source, alert ID and version in effect
+over the requested dates, using the same clipping, filters and coverage as the
+counts. Published English and French text is nullable, and the list is null
+when alert history is unavailable.
 
 Grouped CSV uses one row per cell and prepends localized grouping columns to the
 registry headings. A family export uses JSON objects keyed by measure ID in the

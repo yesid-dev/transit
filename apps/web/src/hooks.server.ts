@@ -3,6 +3,7 @@ import type { Handle, HandleServerError, ServerInit } from '@sveltejs/kit/hooks'
 import { pathLocale } from '#lib/i18n/index.ts';
 import { readRequestLocation } from '#lib/v1/requestLocation.ts';
 import { readPublicSiteConfig } from '#lib/site/config.ts';
+import { dailyReportFrame } from '#lib/site/dailyReportFrame.ts';
 import { lineFrameView } from '#lib/site/lineFrame.ts';
 import { stopFrameView } from '#lib/site/stopFrame.ts';
 import { usesFinderRecord } from '#lib/site/finderFrame.ts';
@@ -129,7 +130,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 		lineView === 'record' ||
 		lineView === 'schedule' ||
 		method ||
-		healthRecord;
+		healthRecord ||
+		(event.route.id === '/[[lang=locale]]/receipt' && dailyReportFrame(event.url)) ||
+		event.route.id === '/[[lang=locale]]/departure/[key]';
 	const automaticSelection =
 		event.route.id?.startsWith('/[[lang=locale]]') === true &&
 		!event.url.searchParams.has('provider') &&

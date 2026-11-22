@@ -109,6 +109,9 @@
 	const siteConfig = readPublicSiteConfig();
 	const seoPath = $derived(delocalizePath(page.url.pathname));
 	const isOverviewRecord = $derived(seoPath === '/' && page.data.record != null);
+	const isStandaloneRecord = $derived(
+		page.data.report != null || seoPath.startsWith('/departure/'),
+	);
 	let constructionEdge = $state<HTMLElement>();
 	let constructionProgress = $state(1);
 
@@ -417,7 +420,7 @@
 						aria-label={mainLabel?.[locale]}
 						class={isFullBleed ? 'min-h-0 grow' : 'grow shrink-0 basis-auto'}
 					>
-						{#if !v1 && !isOverviewRecord && !isDataIndependentRoute(seoPath) && !upcomingPage(seoPath)}
+						{#if !v1 && !isOverviewRecord && !isStandaloneRecord && !isDataIndependentRoute(seoPath) && !upcomingPage(seoPath)}
 							<div
 								class="mx-auto flex h-full max-w-2xl flex-col items-center justify-center gap-4 p-6"
 							>

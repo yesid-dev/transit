@@ -119,6 +119,9 @@
 									{title}
 									{headsigns}
 									{stopNames}
+									url={pinned}
+									line={record.line}
+									city={record.city}
 								/>
 							{/if}
 							{#if result.answer.coverage_note}<p>{result.answer.coverage_note[locale]}</p>{/if}
