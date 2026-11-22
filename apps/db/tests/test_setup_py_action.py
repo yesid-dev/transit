@@ -14,6 +14,8 @@ EXPECTED_CALLERS = {
     ("ci.yml", "db-quality-work"),
     ("ci.yml", "alembic-single-head-work"),
     ("ci.yml", "real-db-tests-work"),
+    ("clean-days.yml", "plan"),
+    ("clean-days.yml", "clean"),
     ("daily-static-pipeline.yml", "run-static-pipeline"),
     ("daily-warm-rollups.yml", "prepare"),
     ("daily-warm-rollups.yml", "rollups"),

@@ -1,0 +1,122 @@
+name: Clean service days
+
+on:
+  schedule:
+    # 11:17 EST / 12:17 EDT, after overnight trips and the three-hour capture margin.
+    - cron: "17 16 * * *"
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: Provider ID (leave blank for all active providers)
+        type: string
+        required: false
+      from:
+        description: First service date (YYYY-MM-DD, inclusive)
+        type: string
+        required: true
+      to:
+        description: Last service date (YYYY-MM-DD, inclusive)
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clean-days
+  cancel-in-progress: false
+
+env:
+  UV_MANAGED_PYTHON: "1"
+
+defaults:
+  run:
+    working-directory: apps/db
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.days.outputs.matrix }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Python workspace
+        uses: ./.github/actions/setup-py
+      - name: Select provider days
+        id: days
+        env:
+          CLEAN_PROVIDER: ${{ inputs.provider }}
+          CLEAN_FROM: ${{ inputs.from }}
+          CLEAN_TO: ${{ inputs.to }}
+        run: |
+          uv run --managed-python --locked python -u - <<'PY'
+          import json
+          import os
+          from datetime import UTC, datetime, timedelta
+          from zoneinfo import ZoneInfo
+
+          from transit_ops.clean_days import parse_date
+          from transit_ops.providers.registry import ProviderRegistry
+
+          registry = ProviderRegistry.from_project_root()
+          active = registry.list_active_provider_ids()
+          selected = os.environ["CLEAN_PROVIDER"]
+          if selected and selected not in active:
+              raise SystemExit("Requested provider is unknown or inactive")
+          providers = [selected] if selected else active
+          if not providers:
+              raise SystemExit("No active providers declared")
+
+          if os.environ["GITHUB_EVENT_NAME"] == "workflow_dispatch":
+              first = parse_date(os.environ["CLEAN_FROM"])
+              last = parse_date(os.environ["CLEAN_TO"])
+              if last < first:
+                  raise SystemExit("From date must be on or before to date")
+              days = (last - first).days + 1
+              if days * len(providers) > 256:
+                  raise SystemExit("GitHub Actions allows at most 256 provider-days per backfill")
+              entries = [
+                  {"provider": provider, "day": (first + timedelta(days=offset)).isoformat()}
+                  for provider in providers
+                  for offset in range(days)
+              ]
+          else:
+              now = datetime.now(UTC)
+              entries = []
+              for provider in providers:
+                  zone = ZoneInfo(registry.get_provider(provider).provider.timezone)
+                  yesterday = now.astimezone(zone).date() - timedelta(days=1)
+                  entries.append({"provider": provider, "day": yesterday.isoformat()})
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              print("matrix=" + json.dumps({"include": entries}), file=output)
+          PY
+
+  clean:
+    name: Clean ${{ matrix.provider }} ${{ matrix.day }}
+    needs: plan
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Python workspace
+        uses: ./.github/actions/setup-py
+      - name: Build and publish one clean day
+        env:
+          CLEAN_PROVIDER: ${{ matrix.provider }}
+          CLEAN_DAY: ${{ matrix.day }}
+          CLEAN_SOURCE_S3_ENDPOINT: ${{ secrets.TRANSIT1_R2_ENDPOINT }}
+          CLEAN_SOURCE_S3_ACCESS_KEY_ID: ${{ secrets.TRANSIT1_R2_READ_ACCESS_KEY_ID }}
+          CLEAN_SOURCE_S3_SECRET_ACCESS_KEY: ${{ secrets.TRANSIT1_R2_READ_SECRET_ACCESS_KEY }}
+          CLEAN_DEST_S3_ENDPOINT: ${{ secrets.TRANSIT1_R2_ENDPOINT }}
+          CLEAN_DEST_S3_ACCESS_KEY_ID: ${{ secrets.TRANSIT1_R2_WRITE_ACCESS_KEY_ID }}
+          CLEAN_DEST_S3_SECRET_ACCESS_KEY: ${{ secrets.TRANSIT1_R2_WRITE_SECRET_ACCESS_KEY }}
+        run: |
+          uv run --managed-python --locked transit-ops clean-days \
+            --provider "$CLEAN_PROVIDER" --from "$CLEAN_DAY" --to "$CLEAN_DAY" \
+            --source s3://transit-raw --dest s3://transit-clean
