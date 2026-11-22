@@ -14,7 +14,7 @@ RUN uv sync --locked --no-dev --no-editable --extra r2 \
     && adduser --disabled-password --gecos "" appuser
 
 USER appuser
-RUN --network=none /app/.venv/bin/python -c 'import duckdb; duckdb.connect().execute("INSTALL httpfs; LOAD httpfs")'
+RUN --network=none /app/.venv/bin/python -m transit_engine.install_httpfs
 
 EXPOSE 8080
 CMD ["transit-engine"]

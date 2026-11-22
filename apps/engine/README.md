@@ -185,7 +185,7 @@ For a native VM run, install the locked `httpfs` wheel and register its extensio
 
 ```sh
 uv sync --locked --extra r2
-uv run --locked --extra r2 python -c 'import duckdb; duckdb.connect().execute("INSTALL httpfs; LOAD httpfs")'
+uv run --locked --extra r2 python -m transit_engine.install_httpfs
 ```
 
 ### Build and run the image on a Linux Docker host
