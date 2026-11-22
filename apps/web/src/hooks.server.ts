@@ -58,8 +58,17 @@ function isHtml(response: Response): boolean {
 	return (response.headers.get('content-type') ?? '').toLowerCase().includes('text/html');
 }
 
+function hasScriptNonce(response: Response): boolean {
+	return response.headers.get('content-security-policy')?.includes("'nonce-") === true;
+}
+
 function responseCanEnterHtmlCache(response: Response): boolean {
-	if (response.status !== 200 || !isHtml(response) || response.headers.has('set-cookie'))
+	if (
+		response.status !== 200 ||
+		!isHtml(response) ||
+		response.headers.has('set-cookie') ||
+		hasScriptNonce(response)
+	)
 		return false;
 	const cacheControl = response.headers.get('cache-control')?.toLowerCase() ?? '';
 	if (/(?:^|,)\s*(?:private|no-cache|no-store)(?:\s*(?:=|,|$))/.test(cacheControl)) return false;
@@ -88,6 +97,8 @@ function applyDocumentHeaders(response: Response, url: URL): void {
 export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.v1Cache = new Map();
 	event.locals.approximateLocation = readRequestLocation(event.request);
+	const overviewRecord =
+		event.route.id === '/[[lang=locale]]' && event.url.searchParams.get('frameMode') !== 'live';
 	const automaticSelection =
 		event.route.id?.startsWith('/[[lang=locale]]') === true &&
 		!event.url.searchParams.has('provider') &&
@@ -97,6 +108,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.locale = lang;
 	const cache = await edgeCache();
 	const cacheBypassed =
+		overviewRecord ||
 		automaticSelection ||
 		event.isDataRequest ||
 		cache == null ||
@@ -128,7 +140,14 @@ export const handle: Handle = async ({ event, resolve }) => {
 		preload: ({ type, path }) => type !== 'font' || preloadFont(path),
 	});
 	const response = mutableResponse(resolved, event.request.method === 'HEAD');
-	if (automaticSelection) response.headers.set('cache-control', 'no-store');
+	if (overviewRecord && response.ok) {
+		// Compression can buffer the shell and completed results behind a slow query.
+		response.headers.set('content-encoding', 'identity');
+		response.headers.set('cache-control', 'no-store, no-transform');
+	} else if (automaticSelection || hasScriptNonce(response)) {
+		// A runtime nonce belongs to this response.
+		response.headers.set('cache-control', 'no-store');
+	}
 
 	applyDocumentHeaders(response, event.url);
 

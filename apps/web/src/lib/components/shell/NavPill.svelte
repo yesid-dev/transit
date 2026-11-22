@@ -46,7 +46,7 @@
 	import RefreshButton from './RefreshButton.svelte';
 	import { providerHref, type PublicProvider } from '#lib/v1/providers.ts';
 	import { v1Provider } from '#lib/v1/config.ts';
-	import { providers as publishedNetworks } from '../../../../static/og/manifest.json';
+	import { providerDisplayNames, publishedNetwork } from '#lib/site/providerDisplay.ts';
 
 	interface NavPillProps {
 		navigation: NavigationLifecycle;
@@ -128,15 +128,8 @@
 	);
 
 	// Use the published provider names when the live catalog cannot be loaded.
-	const publishedNetwork = (id: string) => publishedNetworks.find((provider) => provider.id === id);
-	const providerNames = ({ id, labels }: Pick<PublicProvider, 'id' | 'labels'>) => {
-		const label = labels[locale];
-		const published = publishedNetwork(id)?.labels[locale];
-		const city = label.city === id ? published?.city : label.city;
-		const operator = label.operator === id ? published?.operator : label.operator;
-		const short = operator ?? city ?? navCopy.unknownNetwork;
-		return { full: city && operator && city !== operator ? `${city} · ${operator}` : short, short };
-	};
+	const providerNames = (provider: Pick<PublicProvider, 'id' | 'labels'>) =>
+		providerDisplayNames(provider, locale, navCopy.unknownNetwork);
 	const selectedProvider = $derived(
 		providers.find((provider) => provider.id === providerId) ?? publishedNetwork(providerId),
 	);

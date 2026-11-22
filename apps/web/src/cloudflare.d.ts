@@ -1,5 +1,6 @@
 declare module 'cloudflare:workers' {
 	export const env: {
+		ENGINE_ORIGIN?: string;
 		SNAPSHOTS?: import('./lib/v1/binding').R2BucketBinding;
 		DATA?: { fetch: typeof fetch };
 		WEB_VITALS?: {
