@@ -1,0 +1,8 @@
+{
+  "name": "transit-engine-container",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@cloudflare/containers": "0.3.7"
+  }
+}

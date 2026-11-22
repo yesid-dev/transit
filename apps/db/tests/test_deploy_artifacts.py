@@ -472,6 +472,7 @@ def test_ci_runs_for_db_and_ci_contract_changes() -> None:
         ".env.example",
         ".gitleaks.toml",
         "apps/db/**",
+        "apps/engine/**",
         ".github/workflows/**",
         ".github/scripts/**",
         ".github/actions/**",

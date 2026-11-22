@@ -55,6 +55,8 @@ VERSION_OWNERS = {
     ".github/actions/setup-py/action.yml",
     "apps/db/Dockerfile",
     "apps/db/Dockerfile.health",
+    "apps/engine/Dockerfile",
+    "apps/engine/pyproject.toml",
     "apps/web/package.json",
     "apps/web/browser-toolchain.json",
     "apps/web/browser-toolchain.win32-x64.json",
@@ -111,7 +113,7 @@ def _tracked_sources() -> dict[str, str]:
     for path in paths:
         if (
             not path
-            or path in {"bun.lock", "apps/db/uv.lock"}
+            or path in {"bun.lock", "apps/db/uv.lock", "apps/engine/uv.lock"}
             or path.startswith(
                 (
                     "apps/web/vendor/design/",
@@ -498,7 +500,6 @@ def test_node_and_bun_have_one_executable_workspace_contract() -> None:
 
 
 def test_python_and_uv_have_one_executable_workspace_contract() -> None:
-    pyproject = tomllib.loads((REPO_ROOT / "apps/db/pyproject.toml").read_text(encoding="utf-8"))
     setup = _yaml(REPO_ROOT / ".github/actions/setup-py/action.yml")
     steps = setup["runs"]["steps"]
     python_step = next(
@@ -509,7 +510,12 @@ def test_python_and_uv_have_one_executable_workspace_contract() -> None:
     )
 
     assert (REPO_ROOT / ".python-version").read_text(encoding="utf-8").strip() == PYTHON_LINE
-    assert pyproject["project"]["requires-python"] == ">=3.12,<3.13"
+    for workspace in ("apps/db", "apps/engine"):
+        pyproject_path = REPO_ROOT / workspace / "pyproject.toml"
+        pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+        assert pyproject["project"]["requires-python"] == ">=3.12,<3.13"
+        lock = tomllib.loads((REPO_ROOT / workspace / "uv.lock").read_text(encoding="utf-8"))
+        assert lock["requires-python"] == f"=={PYTHON_LINE}.*"
     assert python_step["with"] == {"python-version-file": ".python-version"}
     assert uv_step["with"]["version"] == UV_VERSION
     assert any(step.get("name") == "Verify Python toolchain" for step in steps)
@@ -752,6 +758,9 @@ def test_external_container_images_are_readable_and_immutable() -> None:
     assert PRODUCTION_PYTHON_VERSION in PYTHON_IMAGE
     assert _external_docker_images(sources["apps/db/Dockerfile.health"]) == [PYTHON_IMAGE]
     assert _external_docker_images(sources["apps/db/Dockerfile.postgis"]) == [POSTGRES_IMAGE]
+    engine_dockerfile = sources["apps/engine/Dockerfile"]
+    assert _external_docker_images(engine_dockerfile) == [PYTHON_IMAGE]
+    assert f'"uv=={UV_VERSION}"' in engine_dockerfile
 
     compose = _yaml(REPO_ROOT / "apps/db/docker-compose.yml")
     ci = _yaml(WORKFLOWS / "ci.yml")

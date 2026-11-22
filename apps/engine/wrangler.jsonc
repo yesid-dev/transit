@@ -1,0 +1,19 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "transit-engine",
+  "main": "./worker.js",
+  "compatibility_date": "2026-11-22",
+  "containers": [
+    {
+      "class_name": "TransitEngine",
+      "image": "./Dockerfile",
+      "instance_type": "standard-1",
+      "max_instances": 1
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "ENGINE", "class_name": "TransitEngine" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TransitEngine"] }],
+  "observability": { "enabled": true, "traces": { "enabled": true } }
+}
