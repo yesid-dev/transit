@@ -49,7 +49,7 @@ def _edition(
     day: date,
     *,
     route_type: int = 1,
-    coords: str = "45.5,-73.6",
+    coords: str | tuple[str, ...] = "45.5,-73.6",
 ) -> dict[str, str]:
     with ZipFile(path, "w") as archive:
         archive.writestr("routes.txt", f"route_id,route_type\nr,3\nmetro,{route_type}\n")
@@ -61,7 +61,10 @@ def _edition(
         archive.writestr(
             "stops.txt",
             "stop_id,stop_name,stop_lat,stop_lon\n"
-            + "".join(f"s{seq},Stop {seq},{coords}\n" for seq in range(1, 5)),
+            + "".join(
+                f"s{seq},Stop {seq},{pair}\n"
+                for seq, pair in enumerate((coords,) * 4 if isinstance(coords, str) else coords, 1)
+            ),
         )
         archive.writestr(
             "stop_times.txt",
@@ -101,6 +104,53 @@ def _save(
     path = root / key
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(payload)
+
+
+def test_gps_passage_corroborates_forecast_between_two_unambiguous_stops(tmp_path: Path) -> None:
+    edition = _edition(
+        tmp_path / "schedule.zip",
+        {"gps": ("r", ["12:00:00", "12:02:00", "12:03:00", "12:04:00"])},
+        DAY,
+        coords=("45.5,-73.6", "45.5,-73.61", "45.5,-73.62", "45.5,-73.621"),
+    )
+    (tmp_path / "editions.json").write_text(
+        json.dumps({"provider": "stm", "editions": [edition]}), encoding="utf-8"
+    )
+    noon = datetime(2026, 6, 1, 16, tzinfo=UTC)
+    for published, forecasts in ((0, {1: 20, 2: 120, 3: 190}), (170, {2: 180})):
+        captured = noon + timedelta(seconds=published)
+        feed = _feed(captured)
+        update = feed.entity.add(id="forecast").trip_update
+        update.trip.trip_id, update.trip.start_date = "gps", "20260601"
+        update.vehicle.id = "bus"
+        for sequence, estimate in forecasts.items():
+            event = update.stop_time_update.add(stop_sequence=sequence).arrival
+            event.time = int(noon.timestamp()) + estimate
+        _save(tmp_path, feed, "trip_updates", captured)
+    for seconds, longitude, ident in (
+        (80, -73.61, "bus"),
+        (140, -73.621, "different-bus"),
+        (160, -73.6205, "bus"),
+        (240, -73.621, "bus"),
+    ):
+        captured = noon + timedelta(seconds=seconds)
+        feed = _feed(captured)
+        vehicle = feed.entity.add(id="gps").vehicle
+        vehicle.trip.trip_id, vehicle.trip.start_date = "gps", "20260601"
+        vehicle.vehicle.id = ident
+        vehicle.position.latitude, vehicle.position.longitude = 45.5, longitude
+        _save(tmp_path, feed, "vehicle_positions", captured)
+    with duckdb.connect() as db:
+        rows = _rows(db, _run(tmp_path, DAY) / "stop_events.parquet")
+    assert [
+        (row["stop_sequence"], row["basis"], row["delay_seconds"])
+        for row in sorted(rows, key=lambda row: row["stop_sequence"])
+    ] == [
+        (1, "not_observed", None),
+        (2, "trip_update_passed", 60),
+        (3, "trip_update_passed", 10),
+        (4, "not_observed", None),
+    ]
 
 
 def _capture_fixture(root: Path) -> None:
@@ -981,7 +1031,14 @@ def test_range_builds_skips_and_continues(
         else:
             archive.write_bytes(original.read_bytes())
         editions.append({**entry, "path": archive.name})
-        _archive_capture(raw, stamp)
+        if day == third:
+            feed = _feed(stamp)
+            update = feed.entity.add(id="scheduled").trip_update
+            update.trip.trip_id = "night"
+            update.trip.start_date = f"{day:%Y%m%d}"
+            _save(raw, feed, "trip_updates", stamp)
+        else:
+            _archive_capture(raw, stamp)
         alert_body = json.loads(_alert_body("An archived alert"))
         alert = alert_body["messages"][0]
         del alert["informed_entities"]
@@ -1072,3 +1129,6 @@ def test_range_builds_skips_and_continues(
     latest = json.loads((dest / version_key("stm", third) / "manifest.json").read_bytes())
     assert latest["schedule_sha256"] == entry["sha256"]
     assert latest["row_counts_by_state"]["unconfirmed"] == 1
+    with duckdb.connect() as db:
+        loose_polls = _rows(db, dest / version_key("stm", third) / "feed_polls.parquet")
+    assert [row["result"] for row in loose_polls] == ["ok"]

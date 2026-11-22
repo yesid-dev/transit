@@ -205,24 +205,39 @@ def _near_stop(position: VehiclePosition, stop: ScheduledStop | None) -> bool:
 def _vehicle(
     trip: Trip, position: VehiclePosition, stamp: int, schedule: ArchiveScheduleContext, day: date
 ) -> None:
-    located = trip.locate(
-        position.current_stop_sequence if position.HasField("current_stop_sequence") else None,
-        position.stop_id,
+    sequence = (
+        position.current_stop_sequence if position.HasField("current_stop_sequence") else None
     )
+    vehicle = position.vehicle.id or None
+    gps_only = sequence is None and not position.stop_id
+    if gps_only:
+        if not vehicle or trip.added or not position.HasField("position"):
+            return
+        located = None
+        for seq, stop in trip.stops.items():
+            if _near_stop(position, schedule.stop(day, stop.stop_id)):
+                if located is not None:
+                    return  # The position fits more than one visit on this trip.
+                located = seq, stop
+    else:
+        located = trip.locate(sequence, position.stop_id)
     if located is None:
         return
     seq, stop = located
-    vehicle = position.vehicle.id or None
-    stopped = position.current_status == VehiclePosition.STOPPED_AT
+    stopped = not gps_only and position.current_status == VehiclePosition.STOPPED_AT
     if stopped:
         if not _near_stop(position, schedule.stop(day, stop.stop_id)):
             return
         stop.observe(Reading(stamp, vehicle, "vehicle_stopped", "arrival"))
     # Retain only the first passage of a sequence per vehicle and ignore regressions.
     old_seq, old_stamp = trip.progress.get(vehicle or "", (-1, -1))
-    if seq <= old_seq or stamp < old_stamp:
+    if seq <= old_seq or stamp < old_stamp or (gps_only and stamp == old_stamp):
         return
     trip.progress[vehicle or ""] = (seq, stamp)
+    # Start GPS-only progress at the first fix. A subsequent fix for the same
+    # vehicle at a unique later stop can corroborate forecasts between them.
+    if gps_only and old_seq < 0:
+        return
     for number, prior in trip.stops.items():
         if not old_seq <= number < seq or prior.prediction is None:
             continue

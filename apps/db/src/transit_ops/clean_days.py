@@ -14,15 +14,17 @@ import typer
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
-from transit_ops.clean_day import capture_window
+from transit_ops.clean_day import REALTIME_FEEDS, capture_window
 from transit_ops.clean_day_inputs import (
     Edition,
     capture_feeds,
     clean_from_inputs,
     declaration_for,
     edition_index,
+    find_loose_captures,
     load_contexts,
     merged_captures,
+    read_loose_captures,
     realtime_capture_present,
     realtime_feeds,
 )
@@ -183,6 +185,42 @@ def _failure_reason(error: Exception) -> str:
     return f"{type(error).__name__}: {error}"
 
 
+def _build_day(
+    declaration: ProviderManifest,
+    day: date,
+    editions: dict[date, Edition],
+    raw: BronzeStorage,
+    raw_prefix: str,
+    clean: BronzeStorage,
+    clean_prefix: str,
+) -> bool:
+    """Build one day, returning false for a no-raw-captures receipt."""
+    provider = declaration.provider.provider_id
+    schedules = load_contexts(declaration, day, editions, raw.read_bytes)
+    start, end = capture_window(schedules[day], day)
+    selections = list(_capture_manifests(raw, raw_prefix, declaration, start, end))
+    archived = {(manifest.endpoint_key, manifest.utc_date) for manifest, _ in selections}
+    loose = find_loose_captures(raw, raw_prefix, declaration, start, end, archived)
+    realtime_present = any(capture.family in REALTIME_FEEDS for capture in loose) or (
+        realtime_capture_present(selections, start, end)
+    )
+    if realtime_feeds(declaration) and not realtime_present:
+        if isinstance(clean, LocalBronzeStorage):
+            write_no_raw_captures(provider, day, clean.root)
+        else:
+            publish_no_raw_captures(provider, day, clean, clean_prefix)
+        return False
+    captures = merged_captures(
+        raw, raw_prefix, selections, start, end, read_loose_captures(raw, loose)
+    )
+    cleaned = clean_from_inputs(declaration, day, schedules, captures)
+    if isinstance(clean, LocalBronzeStorage):
+        write_clean_day(cleaned, clean.root)
+    else:
+        publish_clean_day(cleaned, clean, clean_prefix)
+    return True
+
+
 def run_clean_days(provider: str, first: str, last: str, source: str, dest: str) -> None:
     try:
         start_day, end_day = parse_date(first), parse_date(last)
@@ -206,24 +244,10 @@ def run_clean_days(provider: str, first: str, last: str, source: str, dest: str)
                 continue
             if editions is None:
                 editions = discover_editions(raw, raw_prefix, declaration)
-            schedules = load_contexts(declaration, day, editions, raw.read_bytes)
-            start, end = capture_window(schedules[day], day)
-            selections = list(_capture_manifests(raw, raw_prefix, declaration, start, end))
-            if realtime_feeds(declaration) and not realtime_capture_present(selections, start, end):
-                # A day the archive never captured is not a failed build.
-                if isinstance(clean, LocalBronzeStorage):
-                    write_no_raw_captures(provider, day, clean.root)
-                else:
-                    publish_no_raw_captures(provider, day, clean, clean_prefix)
-                no_captures += 1
-                continue
-            captures = merged_captures(raw, raw_prefix, selections, start, end)
-            cleaned = clean_from_inputs(declaration, day, schedules, captures)
-            if isinstance(clean, LocalBronzeStorage):
-                write_clean_day(cleaned, clean.root)
+            if _build_day(declaration, day, editions, raw, raw_prefix, clean, clean_prefix):
+                built += 1
             else:
-                publish_clean_day(cleaned, clean, clean_prefix)
-            built += 1
+                no_captures += 1
         except Exception as error:
             # A failed day must leave the next service day eligible for rebuilding.
             failed[day] = _failure_reason(error)

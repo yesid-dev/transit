@@ -62,8 +62,8 @@ class ArchiveScheduleContext:
             service_dates=dates,
             timezone=timezone,
         )
-        rows = _read_archive(provider_id, dataset_version_id, edition_sha256, archive_bytes)
-        trips, times = _trips_and_times(rows, dataset_version_id)
+        rows, times = _read_archive(provider_id, dataset_version_id, edition_sha256, archive_bytes)
+        trips = _trips(rows, times, dataset_version_id)
         stops = {
             r["stop_id"]: ScheduledStop(
                 r["stop_id"],
@@ -111,32 +111,20 @@ def _seconds(value: str | None) -> int | None:
     )
 
 
-def _trips_and_times(
-    rows: dict[str, list[dict[str, Any]]], edition: int
-) -> tuple[dict[str, ScheduledTrip], dict[str, tuple[ScheduledStopTime, ...]]]:
+def _trips(
+    rows: dict[str, list[dict[str, Any]]],
+    times: dict[str, tuple[ScheduledStopTime, ...]],
+    edition: int,
+) -> dict[str, ScheduledTrip]:
     trip_ids = [r["trip_id"] for r in rows["trips"]]
     if len(set(trip_ids)) != len(trip_ids):
         raise InvalidScheduleEdition(edition, "duplicate_trip_ids")
     frequency_ids = {r["trip_id"] for r in rows["frequencies"]}
     if frequency_ids - set(trip_ids):
         raise InvalidScheduleEdition(edition, "unknown_frequency_trip")
-    times: dict[str, dict[int, ScheduledStopTime]] = {}
-    for r in rows["stop_times"]:
-        trip_times = times.setdefault(r["trip_id"], {})
-        if r["stop_sequence"] in trip_times:
-            raise InvalidScheduleEdition(edition, "duplicate_stop_sequence")
-        trip_times[r["stop_sequence"]] = ScheduledStopTime(
-            r["stop_sequence"],
-            r["stop_id"],
-            _seconds(r["arrival_time"]),
-            _seconds(r["departure_time"]),
-            r["timepoint"],
-            r["shape_dist_traveled"],
-        )
-    ordered = {key: tuple(value[s] for s in sorted(value)) for key, value in times.items()}
     trips = {}
     for r in rows["trips"]:
-        stops = ordered.get(r["trip_id"], ())
+        stops = times.get(r["trip_id"], ())
         if not stops or stops[0].departure_s is None or stops[-1].arrival_s is None:
             raise InvalidScheduleEdition(edition, "missing_trip_endpoints")
         trips[r["trip_id"]] = ScheduledTrip(
@@ -153,7 +141,7 @@ def _trips_and_times(
             r["shape_id"],
             r["wheelchair_accessible"],
         )
-    return trips, ordered
+    return trips
 
 
 def _days(
@@ -182,7 +170,7 @@ def _days(
 
 def _read_archive(
     provider: str, edition: int, checksum: str, data: bytes | None
-) -> dict[str, list[dict[str, Any]]]:
+) -> tuple[dict[str, list[dict[str, Any]]], dict[str, tuple[ScheduledStopTime, ...]]]:
     if data is None:
         raise ScheduleMembersUnknown("schedule_members_unknown")
     try:
@@ -202,6 +190,7 @@ def _read_archive(
         if len(names) != len(set(names)):
             raise InvalidScheduleEdition(edition, "duplicate_member_basename")
         rows: dict[str, list[dict[str, Any]]] = {}
+        times: dict[str, dict[int, ScheduledStopTime]] = {}
         members = {
             table: GTFS_FILES[f"silver.{table}"].file_name
             for table in ("routes", "trips", "stops", "stop_times", "calendar", "calendar_dates")
@@ -211,13 +200,29 @@ def _read_archive(
             required_members(archive)
             for table, member in members.items():
                 assert member is not None
-                rows[table] = []
+                records = rows.setdefault(table, [])
                 for row in iter_member_rows(
                     archive, member, provider_id=provider, dataset_version_id=edition
                 ):
                     if isinstance(row, RowRejection):
                         raise InvalidScheduleEdition(edition, "invalid_member_row")
-                    rows[table].append(row)
+                    if table != "stop_times":
+                        records.append(row)
+                        continue
+                    # Store each parsed stop once. Real schedule ZIPs can contain
+                    # millions of stop times across their service calendar.
+                    trip_times = times.setdefault(row["trip_id"], {})
+                    sequence = row["stop_sequence"]
+                    if sequence in trip_times:
+                        raise InvalidScheduleEdition(edition, "duplicate_stop_sequence")
+                    trip_times[sequence] = ScheduledStopTime(
+                        sequence,
+                        row["stop_id"],
+                        _seconds(row["arrival_time"]),
+                        _seconds(row["departure_time"]),
+                        row["timepoint"],
+                        row["shape_dist_traveled"],
+                    )
             for info in archive.infolist():
                 if (
                     not info.is_dir()
@@ -238,4 +243,4 @@ def _read_archive(
             EOFError,
         ) as exc:
             raise InvalidScheduleEdition(edition, "invalid_member") from exc
-    return rows
+    return rows, {trip: tuple(stops[seq] for seq in sorted(stops)) for trip, stops in times.items()}

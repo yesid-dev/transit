@@ -4,9 +4,11 @@ import hashlib
 import json
 import re
 from collections.abc import Callable, Iterable, Iterator, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from heapq import merge
+from itertools import batched
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -16,7 +18,12 @@ from transit_ops.clean_day_realtime import DayCapture, FeedPoll
 from transit_ops.core.models import ProviderManifest, SourceFormat
 from transit_ops.history.manifest import Manifest, decode_manifest
 from transit_ops.history.pack import PackedCapture, read_pack
-from transit_ops.ingestion.storage import BronzeStorage, ByteStream, LocalBronzeStorage
+from transit_ops.ingestion.storage import (
+    BronzeStorage,
+    ByteStream,
+    LocalBronzeStorage,
+    S3BronzeStorage,
+)
 from transit_ops.lake.archive_keys import validate_provider_id
 from transit_ops.providers.registry import load_provider_manifest
 from transit_ops.providers.schedule_archive import ArchiveScheduleContext
@@ -155,28 +162,71 @@ def loose_captures(
     provider_root = root / manifest.provider.provider_id
     if not provider_root.is_dir():
         raise ValueError(f"Missing Bronze provider directory: {provider_root}")
-    files: list[tuple[datetime, str, str, Path, str]] = []
+    storage = LocalBronzeStorage(storage_backend="local", root=root)
+    files = find_loose_captures(storage, "", manifest, start, end, set())
+    if not files:
+        raise ValueError("No captures found in the service-day input window")
+    yield from read_loose_captures(storage, files)
+
+
+@dataclass(frozen=True, order=True)
+class LooseCapture:
+    captured: datetime
+    endpoint: str
+    family: str
+    key: str
+    checksum: str
+
+
+def find_loose_captures(
+    storage: BronzeStorage,
+    prefix: str,
+    manifest: ProviderManifest,
+    start: datetime,
+    end: datetime,
+    archived: set[tuple[str, date]],
+) -> list[LooseCapture]:
+    files: list[LooseCapture] = []
+    provider = manifest.provider.provider_id
     sources = alert_sources(manifest)
     for endpoint, family in capture_feeds(manifest).items():
         extension = sources[endpoint][1] if endpoint in sources else ".pb"
         day = start.date()
         while day <= end.date():
-            partition = provider_root / endpoint / f"captured_at_utc={day}"
-            for path in partition.glob(f"*{extension}"):
-                stamp, checksum, _ = path.name.split("__", 2)
-                captured = datetime.strptime(stamp, "%Y%m%dT%H%M%S%fZ").replace(tzinfo=UTC)
-                if captured.date() != day:
-                    raise ValueError(f"Capture timestamp disagrees with partition: {path}")
-                if start <= captured <= end:
-                    files.append((captured, endpoint, family, path, checksum))
+            if (endpoint, day) not in archived:
+                partition = f"{prefix}{provider}/{endpoint}/captured_at_utc={day}/"
+                for key in storage.list_keys(partition):
+                    name = key.removeprefix(partition)
+                    if "/" in name or not name.endswith(extension):
+                        continue
+                    stamp, checksum, _ = name.split("__", 2)
+                    captured = datetime.strptime(stamp, "%Y%m%dT%H%M%S%fZ").replace(tzinfo=UTC)
+                    if captured.date() != day:
+                        raise ValueError(f"Capture timestamp disagrees with partition: {key}")
+                    if start <= captured <= end:
+                        files.append(LooseCapture(captured, endpoint, family, key, checksum))
             day += timedelta(days=1)
-    if not files:
-        raise ValueError("No captures found in the service-day input window")
-    for captured, endpoint, family, path, checksum in sorted(files):
-        payload = path.read_bytes()
-        if hashlib.sha256(payload).hexdigest()[:12] != checksum:
-            raise ValueError(f"Capture checksum differs from Bronze key: {path}")
-        yield DayCapture(family, endpoint, captured, path.name, payload)
+    return sorted(files)
+
+
+def read_loose_captures(
+    storage: BronzeStorage, files: Iterable[LooseCapture]
+) -> Iterator[DayCapture]:
+    def read(file: LooseCapture) -> DayCapture:
+        payload = storage.read_bytes(file.key)
+        if hashlib.sha256(payload).hexdigest()[:12] != file.checksum:
+            raise ValueError(f"Capture checksum differs from Bronze key: {file.key}")
+        return DayCapture(
+            file.family, file.endpoint, file.captured, file.key.rsplit("/", 1)[-1], payload
+        )
+
+    if isinstance(storage, S3BronzeStorage):
+        # Keep GETs in flight without retaining a full day of payloads in memory.
+        with ThreadPoolExecutor(max_workers=10) as pool:
+            for batch in batched(files, 20):
+                yield from pool.map(read, batch)
+    else:
+        yield from map(read, files)
 
 
 def archived_captures(
@@ -215,8 +265,9 @@ def merged_captures(
     selections: Iterable[tuple[Manifest, str]],
     start: datetime,
     end: datetime,
+    loose: Iterable[DayCapture] = (),
 ) -> Iterator[DayCapture | FeedPoll]:
-    streams: list[Iterator[DayCapture | FeedPoll]] = []
+    streams: list[Iterator[DayCapture | FeedPoll]] = [iter(loose)]
     for manifest, family in selections:
         if start.date() <= manifest.utc_date <= end.date():
             streams.append(_packed_day(storage, prefix, manifest, family, start, end))
