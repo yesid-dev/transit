@@ -321,8 +321,13 @@ class Question:
                 )
         if self.group == "stop" and (self.line is None or family.id != _PUNCTUALITY.id):
             raise ValueError("group=stop requires a line and a punctuality measure")
-        if self.group == "line" and (self.stop is None or family.id != _PUNCTUALITY.id):
-            raise ValueError("group=line requires a stop and a punctuality measure")
+        if self.group == "line" and not (
+            (self.stop is not None and family.id == _PUNCTUALITY.id)
+            or (self.vehicle is not None and self.measure == "vehicle_trips_run")
+        ):
+            raise ValueError("group=line requires stop punctuality or trips run by one vehicle")
+        if self.group == "vehicle" and self.measure != "vehicle_days_in_service":
+            raise ValueError("group=vehicle requires vehicle_days_in_service")
         if self.group == "departure" and (
             self.line is None or family.id != _SERVICE_DELIVERED_ID or self.measure in _BOUNDARIES
         ):
@@ -425,6 +430,7 @@ _GROUP_LABELS = {
     "stop_sequence": Text("Stop sequence", "Ordre de l’arrêt"),
     "stop": Text("Stop ID", "Identifiant de l’arrêt"),
     "line": Text("Line ID", "Identifiant de la ligne"),
+    "vehicle": Text("Vehicle number", "Numéro de véhicule"),
     "departure": Text("Scheduled departure", "Départ prévu"),
 }
 _UNIT_LABELS = {
@@ -2171,10 +2177,11 @@ def _vehicle_rows(
     stats, stats_params = vehicle_stats_query(
         paths,
         [question.city, version, question.start, question.end],
-        group == "vehicle",
+        group == "vehicle" or question.group == "vehicle",
         question.measure == family.id or question.measure in _VEHICLE_REPORTING_IDS,
         question.measure == family.id or question.measure in _VEHICLE_COMPLETION_IDS,
         by_hour=question.group == "hour",
+        by_line=question.group == "line",
     )
     timing_cte = ""
     timing_rows = ""
@@ -3850,7 +3857,7 @@ def _series_keys(
             (key for key in observed if key[1] is not None),
             key=lambda key: (key[0] is None, key),
         )
-    if group == "line":
+    if group in ("line", "vehicle"):
         return sorted(key for key in observed if key[0] is not None)
     return [(0,), (1,), *([(None,)] if (None,) in observed else [])]
 
@@ -3874,7 +3881,11 @@ def _series_answer(
     # date also covers occupancy observations that have no trip or service date.
     position_series = (vehicles or crowding) and group != "direction"
     assert family.query is not None
-    query = replace(question, group="hour" if hourly else None) if position_series else question
+    query = (
+        replace(question, group="hour" if hourly else None)
+        if position_series and group not in ("line", "vehicle")
+        else question
+    )
     occupancy_days: set[str] = set()
     with store.connect() as conn:
         window = read_window(conn, store, question, family, selected)
@@ -3893,7 +3904,8 @@ def _series_answer(
                 elif position_series:
                     if vehicles and key == (None,):
                         continue
-                    key = _date_key(group, window.included[offset], key)
+                    if group not in ("line", "vehicle"):
+                        key = _date_key(group, window.included[offset], key)
                 elif group == "stop":
                     direction, sequence, stop = key
                     assert isinstance(sequence, int)
@@ -3969,10 +3981,15 @@ def _series_answer(
         **{key: _GROUP_LABELS[key] for key in columns},
         **_csv_columns(family),
     }
+    series_state = {}
+    if vehicles and group in ("vehicle", "line"):
+        state = "measured" if cells else _vehicle_answer(selected, Batch(), window)[0]
+        series_state = {"state": state, "state_text": _STATES[state]._asdict()}
     return {
         "measure": question.measure,
         "group": group,
         "cells": cells,
+        **series_state,
         "coverage_note": window.coverage_note,
         "evidence": window.evidence(store, question, family, started),
         "info": [

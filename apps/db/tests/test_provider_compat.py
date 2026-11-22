@@ -32,6 +32,13 @@ def test_fixture_declaration_builds_an_equal_manifest(tmp_path):
     assert actual.to_display_dict(settings) == expected.to_display_dict(settings)
 
 
+def test_vehicle_tracking_can_be_disabled_independently_of_positions(tmp_path):
+    source = declaration(tmp_path, overrides={"stable_vehicle_ids": False})
+    public = manifest_from_declaration(source).public
+    assert public.stable_vehicle_ids is False
+    assert public.model_dump()["stable_vehicle_ids"] is False
+
+
 @pytest.mark.parametrize(
     "stage,flags",
     [("candidate", (False, False)), ("capturing", (True, False)), ("public", (True, True))],

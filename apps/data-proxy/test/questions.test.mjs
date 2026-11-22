@@ -136,6 +136,21 @@ test("forwards Line and Stop Record groups and departure ranking cuts", async (t
   assert.equal(params[3].get("direction"), "1");
 });
 
+test("forwards the fleet and per-vehicle line breakdown through the public route", async (t) => {
+  const f = fixture(t, (request) =>
+    new URL(request.url).searchParams.get("format") === "csv"
+      ? new Response("Ligne,Valeur\n", { headers: { "content-type": "text/csv" } })
+      : Response.json(ANSWER));
+  assert.equal((await f.fetch(`/v2/demo/measure?measure=vehicle_days_in_service&group=vehicle&${WINDOW}`)).status, 200);
+  assert.equal((await f.fetch(`/v2/demo/measure?measure=vehicle_trips_run&vehicle=40061&group=line&format=csv&lang=fr&${WINDOW}`)).status, 200);
+  const [fleet, detail] = f.requests.map((request) => new URL(request.url).searchParams);
+  assert.equal(fleet.get("group"), "vehicle");
+  assert.equal(detail.get("group"), "line");
+  assert.equal(detail.get("vehicle"), "40061");
+  assert.equal(detail.get("format"), "csv");
+  assert.equal(detail.get("lang"), "fr");
+});
+
 test("rejects invalid questions before spending an engine slot or visitor budget", async (t) => {
   const f = fixture(t);
   for (const path of [

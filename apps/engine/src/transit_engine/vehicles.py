@@ -101,6 +101,7 @@ def vehicle_stats_query(
     completion: bool,
     *,
     by_hour: bool = False,
+    by_line: bool = False,
 ) -> tuple[str, list[object]]:
     cap_us = VEHICLE_TAIL_CAP_SECONDS * 1_000_000
     gap_us = VEHICLE_REPORTING_GAP_SECONDS * 1_000_000
@@ -115,6 +116,9 @@ def vehicle_stats_query(
     trip_starts = ""
     trip_start_join = ""
     keys = f"SELECT {entity} AS entity FROM selected GROUP BY entity"
+    if by_line:
+        entity = service_entity = "route_id"
+        keys = "SELECT entity FROM routes"
     if by_hour:
         # Attribute a trip once, using the scheduled start or its first position when unscheduled.
         trip_starts = """

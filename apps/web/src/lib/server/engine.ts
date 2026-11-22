@@ -158,6 +158,7 @@ const recordMeasure = recordEnvelope.extend({
 	evidence: evidence.extend(recordCell.shape.evidence.shape),
 });
 const recordSeries = recordEnvelope.extend({
+	...state.partial().shape,
 	cells: z.array(
 		recordCell.extend({
 			key: z.record(z.string(), z.union([z.string(), z.number(), z.null()])),

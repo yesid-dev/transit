@@ -87,6 +87,7 @@ export function recordMessage(result: EngineResult<RecordAnswer>, locale: Locale
 			return first.reason_text[locale];
 	}
 	if ('cells' in answer && answer.cells.length) return null;
+	if ('cells' in answer && answer.state_text) return answer.state_text[locale];
 	if ('value' in answer) return answer.state === 'measured' ? null : answer.state_text[locale];
 	return emptyRecord(answer.evidence, locale);
 }

@@ -99,7 +99,7 @@ it('keeps city, period and mode in both existing and upcoming menu destinations'
 	const menu = within(view.getByRole('list', { name: 'Explorer' }));
 	for (const [name, path] of [
 		['Lignes', '/fr/lines'],
-		['Véhicules', '/fr/upcoming/vehicles'],
+		['Véhicules', '/fr/vehicles'],
 	]) {
 		const href = menu.getByRole('link', { name }).getAttribute('href')!;
 		expect(new URL(href, url).pathname).toBe(path);

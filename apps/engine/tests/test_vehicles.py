@@ -252,6 +252,56 @@ def test_vehicle_service_and_reporting_match_independent_recomputation(
             assert cells[2]["state"] == "not_tracked"
 
 
+def test_fleet_days_and_vehicle_trips_by_line(
+    vehicle_history: tuple[Store, dict[date, list[Interval]]],
+) -> None:
+    store, _ = vehicle_history
+    fleet = answer(
+        store, "/measure", THURSDAY, SATURDAY, measure="vehicle_days_in_service", group="vehicle"
+    )
+    assert fleet["state"] == "measured"
+    fleet_days = {
+        cell["key"]["vehicle"]: cell["value"]["vehicle_days_in_service"] for cell in fleet["cells"]
+    }
+    assert fleet_days["101"] == 2
+    assert "102" in fleet_days
+    assert fleet["evidence"]["days_not_tracked"] == [str(SATURDAY)]
+
+    lines = answer(
+        store,
+        "/measure",
+        THURSDAY,
+        FRIDAY,
+        measure="vehicle_trips_run",
+        group="line",
+        vehicle="101",
+    )
+    individual = answer(
+        store, "/measure", THURSDAY, FRIDAY, measure="vehicle_trips_run", vehicle="101"
+    )
+    assert lines["cells"]
+    assert all(cell["key"]["line"] for cell in lines["cells"])
+    assert (
+        sum(cell["value"]["vehicle_trips_run"] for cell in lines["cells"])
+        == (individual["value"]["vehicle_trips_run"])
+    )
+    none = answer(
+        store, "/measure", SATURDAY, SATURDAY, measure="vehicle_days_in_service", group="vehicle"
+    )
+    assert none["state"] == "not_tracked"
+    assert none["cells"] == []
+    status, payload = request(
+        store,
+        "/measure",
+        measure="vehicle_days_in_service",
+        group="vehicle",
+        format="csv",
+        lang="fr",
+    )
+    assert status == 200
+    assert payload.decode().startswith("Numéro de véhicule,")
+
+
 def test_unfinished_trip_requires_continuous_capture(
     vehicle_history: tuple[Store, dict[date, list[Interval]]],
 ) -> None:
