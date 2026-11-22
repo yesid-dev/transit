@@ -9,6 +9,7 @@ SETUP_ACTION = "./.github/actions/setup-py"
 EXPECTED_CALLERS = {
     ("batch-replay.yml", "replay"),
     ("batch-shadow.yml", "shadow"),
+    ("ci.yml", "engine-tests"),
     ("ci.yml", "offline-tests-work"),
     ("ci.yml", "alembic-single-head-work"),
     ("ci.yml", "real-db-tests-work"),
@@ -94,7 +95,10 @@ def test_setup_py_composite_has_the_exact_workflow_job_map() -> None:
     assert len(calls) == len(EXPECTED_CALLERS)
     for caller, steps, setup_index in calls:
         setup = steps[setup_index]
-        assert "with" not in setup
+        if caller == ("ci.yml", "engine-tests"):
+            assert setup["with"] == {"working-directory": "apps/engine"}
+        else:
+            assert "with" not in setup
         if caller == ("historic-snapshot-gc.yml", "mark"):
             assert str(steps[setup_index - 2].get("uses", "")).startswith(
                 "actions/checkout@"

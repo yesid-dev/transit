@@ -33,7 +33,8 @@ per-query DuckDB limit to account for HTTP, Python and DuckDB allocations outsid
 
 ## Windows local run
 
-From the repository root in PowerShell, point the service at a directory with generated clean days.
+Use the repository's [Python pin](../../.python-version). From the repository root in PowerShell,
+point the service at a directory with generated clean days.
 
 ```powershell
 cd apps/engine
