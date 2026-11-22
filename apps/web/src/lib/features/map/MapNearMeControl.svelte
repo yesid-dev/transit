@@ -435,7 +435,7 @@
 		z-index: var(--z-map-popover-behind);
 		display: grid;
 		gap: 0.25rem;
-		max-height: min(18rem, calc(100dvh - 10rem));
+		max-height: min(18rem, calc(100dvh - var(--announcement-height, 0px) - 10rem));
 		overflow-y: auto;
 		scrollbar-gutter: stable;
 		padding: 0.375rem;

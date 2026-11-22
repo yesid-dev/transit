@@ -59,6 +59,7 @@ describe('content security policy', () => {
 		expect(csp?.directives?.['script-src']).toEqual([
 			'self',
 			boot.hash,
+			boot.announcementHash,
 			'https://static.cloudflareinsights.com',
 		]);
 		expect(csp?.directives?.['connect-src']).toEqual([

@@ -6,24 +6,31 @@ import type { V1Context } from '#lib/v1/boot.ts';
 import type { IsoUtc } from '#lib/v1/schemas/index.ts';
 import type { SearchList } from '#lib/search/transitSearch.ts';
 import { NAV_GROUPS } from '#lib/content/nav.ts';
+import { announcement } from '#lib/site/announcement.ts';
 import { footerCopy } from '#lib/components/layout/footer.copy.ts';
 
-it.each(['en', 'fr'] as const)('the footer shows the four groups, then Legal in %s', (locale) => {
-	const view = renderWithoutV1(locale === 'en' ? '/privacy' : '/fr/privacy', locale);
-	const groups = within(view.getByTestId('footer')).getAllByRole('navigation');
-	const labels = [...NAV_GROUPS.map((group) => group.label[locale]), footerCopy[locale].legalLabel];
-	for (const [index, name] of labels.entries())
-		expect(groups[index]).toBe(
-			within(view.getByTestId('footer')).getByRole('navigation', {
-				name: (accessibleName) => accessibleName === name,
-			}),
-		);
-	expect(groups).toHaveLength(labels.length);
-	// DEV-43: the footer's top edge is the kit hazard strip, as on yesid.dev.
-	const footer = view.container.querySelector('[data-testid="footer"]')!;
-	expect(footer.querySelector('[data-slot="footer-hazard-edge"]')).not.toBeNull();
-	expect(footer.querySelector('[data-slot="footer-street-edge"]')).toBeNull();
-});
+it.each(['en', 'fr'] as const)(
+	'the footer shows the four groups, then Information in %s',
+	(locale) => {
+		const view = renderWithoutV1(locale === 'en' ? '/privacy' : '/fr/privacy', locale);
+		const groups = within(view.getByTestId('footer')).getAllByRole('navigation');
+		const labels = [
+			...NAV_GROUPS.map((group) => group.label[locale]),
+			footerCopy[locale].infoLabel,
+		];
+		for (const [index, name] of labels.entries())
+			expect(groups[index]).toBe(
+				within(view.getByTestId('footer')).getByRole('navigation', {
+					name: (accessibleName) => accessibleName === name,
+				}),
+			);
+		expect(groups).toHaveLength(labels.length);
+		// DEV-43: the footer's top edge is the kit hazard strip, as on yesid.dev.
+		const footer = view.container.querySelector('[data-testid="footer"]')!;
+		expect(footer.querySelector('[data-slot="footer-hazard-edge"]')).not.toBeNull();
+		expect(footer.querySelector('[data-slot="footer-street-edge"]')).toBeNull();
+	},
+);
 
 const harness = vi.hoisted(() => {
 	const beforeNavigateCallbacks: Array<(navigation: unknown) => unknown> = [];
@@ -238,16 +245,19 @@ function renderWithoutV1(pathname: string, lang: 'en' | 'fr') {
 	return renderRoot(pathname, lang, null);
 }
 
-function expectLegalDestinationsAbsent(
+function expectInfoDestinationsAbsent(
 	surface: HTMLElement,
-	legalLabel: string,
+	infoLabel: string,
 	links: readonly (readonly [label: string, href: string])[],
 ): void {
 	const scoped = within(surface);
-	expect(scoped.queryByRole('group', { name: legalLabel })).not.toBeInTheDocument();
+	expect(scoped.queryByRole('group', { name: infoLabel })).not.toBeInTheDocument();
 	for (const [label, href] of links) {
 		expect(scoped.queryByRole('link', { name: label })).not.toBeInTheDocument();
-		expect(surface.querySelector(`a[href="${href}"]`)).not.toBeInTheDocument();
+		const candidates = [...surface.querySelectorAll(`a[href="${href}"]`)];
+		expect(candidates.filter((link) => !link.closest('[data-slot="announcement-banner"]'))).toEqual(
+			[],
+		);
 	}
 }
 
@@ -326,6 +336,8 @@ describe('root layout data-independent legal routes', () => {
 	it.each([
 		['/privacy', 'en', 'Open-source and third-party rights are identified'],
 		['/fr/terms', 'fr', 'Les droits liés au code ouvert et au contenu tiers sont indiqués'],
+		['/roadmap', 'en', 'Open-source and third-party rights are identified'],
+		['/fr/roadmap', 'fr', 'Les droits liés au code ouvert et au contenu tiers sont indiqués'],
 	] as const)(
 		'renders %s with v1=null and a static legal footer attribution',
 		(pathname, lang, attribution) => {
@@ -354,10 +366,11 @@ describe('root layout data-independent legal routes', () => {
 			loaded: true,
 			footer: false,
 			openMenu: 'Open menu',
-			legalLabel: 'Legal',
+			infoLabel: 'Information',
 			links: [
 				['Privacy', '/privacy'],
 				['Terms', '/terms'],
+				['Roadmap', '/roadmap'],
 			] as const,
 		},
 		{
@@ -366,10 +379,11 @@ describe('root layout data-independent legal routes', () => {
 			loaded: true,
 			footer: false,
 			openMenu: 'Ouvrir le menu',
-			legalLabel: 'Juridique',
+			infoLabel: 'Information',
 			links: [
 				['Confidentialité', '/fr/privacy'],
 				['Conditions d’utilisation', '/fr/terms'],
+				['Feuille de route', '/fr/roadmap'],
 			] as const,
 		},
 		{
@@ -378,10 +392,11 @@ describe('root layout data-independent legal routes', () => {
 			loaded: false,
 			footer: true,
 			openMenu: 'Open menu',
-			legalLabel: 'Legal',
+			infoLabel: 'Information',
 			links: [
 				['Privacy', '/privacy'],
 				['Terms', '/terms'],
+				['Roadmap', '/roadmap'],
 			] as const,
 		},
 		{
@@ -390,10 +405,11 @@ describe('root layout data-independent legal routes', () => {
 			loaded: false,
 			footer: true,
 			openMenu: 'Ouvrir le menu',
-			legalLabel: 'Juridique',
+			infoLabel: 'Information',
 			links: [
 				['Confidentialité', '/fr/privacy'],
 				['Conditions d’utilisation', '/fr/terms'],
+				['Feuille de route', '/fr/roadmap'],
 			] as const,
 		},
 		{
@@ -402,10 +418,11 @@ describe('root layout data-independent legal routes', () => {
 			loaded: true,
 			footer: true,
 			openMenu: 'Open menu',
-			legalLabel: 'Legal',
+			infoLabel: 'Information',
 			links: [
 				['Privacy', '/privacy'],
 				['Terms', '/terms'],
+				['Roadmap', '/roadmap'],
 			] as const,
 		},
 		{
@@ -414,17 +431,25 @@ describe('root layout data-independent legal routes', () => {
 			loaded: true,
 			footer: true,
 			openMenu: 'Ouvrir le menu',
-			legalLabel: 'Juridique',
+			infoLabel: 'Information',
 			links: [
 				['Confidentialité', '/fr/privacy'],
 				['Conditions d’utilisation', '/fr/terms'],
+				['Feuille de route', '/fr/roadmap'],
 			] as const,
 		},
 	])(
-		'keeps localized legal destinations footer-only for $pathname through the real root shell',
-		async ({ pathname, lang, loaded, footer, openMenu, legalLabel, links }) => {
+		'keeps the announcement and footer links out of the menu for $pathname',
+		async ({ pathname, lang, loaded, footer, openMenu, infoLabel, links }) => {
 			const view = renderRoot(pathname, lang, loaded ? loadedV1(lang) : null);
 			expect(view.container.querySelector('[data-slot="app-shell"]')).toBeInTheDocument();
+			const banner = view.container.querySelector<HTMLElement>('[data-slot="announcement-banner"]');
+			if (announcement.enabled && banner) {
+				expect(
+					within(banner).getByRole('link', { name: announcement[lang].message }),
+				).toHaveAttribute('href', announcement[lang].href);
+			}
+			expect(Boolean(banner)).toBe(announcement.enabled);
 			if (loaded) {
 				expect(
 					footer
@@ -435,24 +460,24 @@ describe('root layout data-independent legal routes', () => {
 			}
 
 			if (footer) {
-				const legalFooter = within(view.getByTestId('footer')).getByRole('navigation', {
-					name: legalLabel,
+				const infoFooter = within(view.getByTestId('footer')).getByRole('navigation', {
+					name: infoLabel,
 				});
 				for (const [label, href] of links) {
-					expect(within(legalFooter).getByRole('link', { name: label })).toHaveAttribute(
+					expect(within(infoFooter).getByRole('link', { name: label })).toHaveAttribute(
 						'href',
 						`${href}?provider=${loaded ? 'fixture' : 'stm'}`,
 					);
 				}
 			} else {
 				expect(view.queryByTestId('footer')).not.toBeInTheDocument();
-				expectLegalDestinationsAbsent(view.container, legalLabel, links);
+				expectInfoDestinationsAbsent(view.container, infoLabel, links);
 			}
 
 			await fireEvent.click(view.getByRole('button', { name: openMenu }));
 			const menu = view.getByRole('dialog');
 			expect(menu).toBeInTheDocument();
-			expectLegalDestinationsAbsent(menu, legalLabel, links);
+			expectInfoDestinationsAbsent(menu, infoLabel, links);
 
 			const chromeSurfaces = [
 				...view.container.querySelectorAll<HTMLElement>('header'),
@@ -460,7 +485,7 @@ describe('root layout data-independent legal routes', () => {
 			].filter((surface): surface is HTMLElement => surface !== null);
 			expect(chromeSurfaces.length).toBeGreaterThan(0);
 			for (const surface of chromeSurfaces) {
-				expectLegalDestinationsAbsent(surface, legalLabel, links);
+				expectInfoDestinationsAbsent(surface, infoLabel, links);
 			}
 		},
 	);

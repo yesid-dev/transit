@@ -1,4 +1,4 @@
-import { LEGAL_NAV, NAV_GROUPS, visibleNav, type NavItem } from '#lib/content/nav.ts';
+import { FOOTER_INFO_NAV, NAV_GROUPS, visibleNav, type NavItem } from '#lib/content/nav.ts';
 import { footerCopy } from '#lib/components/layout/footer.copy.ts';
 import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
 import type { SitePage } from './transitSearch.ts';
@@ -22,9 +22,9 @@ const EXPLAINS: Partial<Record<NavItem['key'], (terms: Terms) => readonly string
 	status: (t) => [t.noLiveData],
 };
 
-/** The pages search can find: the menu's pages this network has, then the legal pages. */
+/** The pages search can find: the menu's pages this network has, then the footer information pages. */
 export function sitePages(capabilities: { readonly alerts: boolean | null }): SitePage[] {
-	const legal = { en: footerCopy.en.legalLabel, fr: footerCopy.fr.legalLabel };
+	const info = { en: footerCopy.en.infoLabel, fr: footerCopy.fr.infoLabel };
 	return [
 		...visibleNav(capabilities).map((item) => ({
 			href: item.href,
@@ -35,6 +35,11 @@ export function sitePages(capabilities: { readonly alerts: boolean | null }): Si
 				return explains ? explains(transitTerms[locale]) : [];
 			}),
 		})),
-		...LEGAL_NAV.map((item) => ({ href: item.href, label: item.label, group: legal, words: [] })),
+		...FOOTER_INFO_NAV.map((item) => ({
+			href: item.href,
+			label: item.label,
+			group: info,
+			words: [],
+		})),
 	];
 }

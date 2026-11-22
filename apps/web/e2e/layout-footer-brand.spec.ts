@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { test } from './layout-test';
 import { localizeHref } from '../src/lib/i18n/routing';
+import { announcement } from '../src/lib/site/announcement';
 
 // The footer's brand cell is narrower than the brand row at 200% text: at 320px the cell is
 // 224px wide and the house mark plus the product name measure 256px before any gap. The cluster
@@ -136,6 +137,46 @@ async function expectBrandKeyboardOrder(page: Page) {
 	await expectKeyboardReachable(product(page), 'product');
 	await expect(product(page)).toHaveText('transit');
 }
+
+test('footer links clear the expanded phone announcement through hydration', async ({ page }) => {
+	await page.setViewportSize({ width: 320, height: 900 });
+	let release!: () => void;
+	const gate = new Promise<void>((resolve) => (release = resolve));
+	await page.route('**/_app/immutable/**/*.js', async (route) => {
+		await gate;
+		await route.fallback();
+	});
+	try {
+		await page.goto(localizeHref('/privacy', 'fr', 'octranspo'), { waitUntil: 'domcontentloaded' });
+		await page.addStyleTag({ content: 'html { font-size: 200%; }' });
+		await expect(page.locator('html[data-hydrated]')).toHaveCount(0);
+		// WebKit's fonts.ready also waits for the document load held by the hydration gate.
+		await expect
+			.poll(() =>
+				page.evaluate(() => [...document.fonts].some((face) => face.status === 'loading')),
+			)
+			.toBe(false);
+		await page.keyboard.press('Home');
+		const link = house(page);
+		await expectKeyboardReachable(link, 'house');
+
+		release();
+		await expect(page.locator('html[data-hydrated]')).toHaveCount(1);
+		await expect(page.locator('[data-announcement-measured]')).toHaveCount(
+			announcement.enabled ? 1 : 0,
+		);
+		await expect(link).toBeFocused();
+		const unobscured = await link.evaluate((element) => {
+			const rect = element.getBoundingClientRect();
+			const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+			return hit === element || element.contains(hit);
+		});
+		expect(unobscured, 'hydration keeps the already-focused house link clear').toBe(true);
+		await expectKeyboardReachable(product(page), 'product');
+	} finally {
+		release();
+	}
+});
 
 for (const brandCase of cases)
 	test(`${brandCase.locale} ${brandCase.provider} ${brandCase.route} ${brandCase.width}px ${brandCase.scale}% footer brand holds its column`, async ({

@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 
 export const DB_JOBS = [
   "offline-tests-work",
+  "db-quality-work",
   "alembic-single-head-work",
   "real-db-tests-work",
 ];
@@ -11,7 +12,14 @@ const ALWAYS = new Set([
   ".bun-version",
   ".python-version",
   ".env.example",
+  ".gitattributes",
+  ".gitignore",
   ".gitleaks.toml",
+  ".npmrc",
+  ".nvmrc",
+  "bun.lock",
+  "package.json",
+  "turbo.json",
 ]);
 const IGNORED = new Set([
   "CONTRIBUTING.md",
@@ -19,17 +27,11 @@ const IGNORED = new Set([
   "README.md",
   "SECURITY.md",
   "SUPPORT.md",
-  ".gitattributes",
-  ".gitignore",
-  ".npmrc",
-  "bun.lock",
-  "package.json",
-  "turbo.json",
 ]);
 const IGNORED_PREFIXES = [
   "docs/",
-  ".githooks/",
   "apps/data-proxy/",
+  "apps/engine/",
   "apps/web/",
 ];
 
@@ -62,25 +64,29 @@ export function checkRequiredJobs(needs) {
 }
 
 function changedPaths(environment) {
-  if (!["pull_request", "merge_group"].includes(environment.GITHUB_EVENT_NAME))
+  const eventName = environment.GITHUB_EVENT_NAME;
+  if (!["pull_request", "merge_group", "push"].includes(eventName))
     return null;
   try {
     const event = JSON.parse(
       readFileSync(environment.GITHUB_EVENT_PATH, "utf8"),
     );
-    const [base, head] =
-      environment.GITHUB_EVENT_NAME === "merge_group"
-        ? [event.merge_group?.base_sha, event.merge_group?.head_sha]
-        : [event.pull_request?.base?.sha, event.pull_request?.head?.sha];
+    const [base, head] = {
+      pull_request: [event.pull_request?.base?.sha, event.pull_request?.head?.sha],
+      merge_group: [event.merge_group?.base_sha, event.merge_group?.head_sha],
+      push: [event.before, event.after],
+    }[eventName];
     if (
       ![base, head].every(
         (sha) => typeof sha === "string" && /^[a-f0-9]{40}$/.test(sha),
       )
     )
       return null;
+    // A push lists the differences between the previous and new branch tips.
+    const revisions = eventName === "push" ? [base, head] : [`${base}...${head}`];
     const paths = execFileSync(
       "git",
-      ["diff", "--name-only", "--no-renames", "-z", `${base}...${head}`],
+      ["diff", "--name-only", "--no-renames", "-z", ...revisions, "--"],
       { encoding: "utf8" },
     );
     return paths.split("\0").filter(Boolean);

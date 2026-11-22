@@ -8,7 +8,7 @@ import {
 
 import { navPillCopy } from '../src/lib/i18n/messages';
 import { headerSearchCopy } from '../src/lib/components/shell/headerSearch.copy';
-import { AUDIT_NAV, LEGAL_NAV, SURFACE_NAV } from '../src/lib/content/nav';
+import { AUDIT_NAV, FOOTER_INFO_NAV, SURFACE_NAV } from '../src/lib/content/nav';
 import { DEFAULT_LOCALE, PUBLISHED_LOCALES, type Locale } from '../src/lib/i18n/config';
 import { localizeHref } from '../src/lib/i18n/routing';
 import { tripCopy } from '../src/lib/features/trips/trips.copy';
@@ -27,7 +27,7 @@ const lineStopCount = line.directions.reduce(
 const pages = [
 	'/',
 	...[...SURFACE_NAV, ...AUDIT_NAV].map(({ href }) => href),
-	...LEGAL_NAV.map(({ href }) => href),
+	...FOOTER_INFO_NAV.map(({ href }) => href),
 	`/stop/${Object.keys(departures.stops)[0]}`,
 	`/lines/${lineId}`,
 	`/lines/${lineId}?tab=detail`,
@@ -140,6 +140,13 @@ test.describe('accessibility', { tag: '@theme' }, () => {
 						);
 						await expectAccessible(page, { include: `[data-axe-trip-row="${index}"]` });
 					}
+					const lineRecord = page.getByRole('link', {
+						name: tripCopy[locale].lineRecord,
+						exact: true,
+					});
+					await expect(lineRecord).toHaveCount(1);
+					await expect(lineRecord).toBeInViewport({ ratio: 1 });
+					expect((await lineRecord.boundingBox())!.height).toBeGreaterThanOrEqual(44);
 				}
 				if (path === '/trip/TEmpty') {
 					await expect(
@@ -235,6 +242,13 @@ for (const locale of PUBLISHED_LOCALES) {
 			await page.goto(path.startsWith('/trip/') ? localizeHref(path, locale, 'stm') : url, {
 				waitUntil: 'networkidle',
 			});
+			const announcement = page.locator('[data-slot="announcement-banner"]');
+			if (await announcement.isVisible()) {
+				await page.keyboard.press('Tab');
+				await expect(announcement.getByRole('link')).toBeFocused();
+				await page.keyboard.press('Tab');
+				await expect(announcement.getByRole('button')).toBeFocused();
+			}
 			await page.keyboard.press('Tab');
 			await expect(page.locator(':focus')).toHaveAttribute('href', '#main');
 			await expect(page.locator(':focus')).toHaveAccessibleName(navPillCopy[locale].skipToContent);

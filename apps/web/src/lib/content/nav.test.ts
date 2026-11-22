@@ -104,18 +104,15 @@ describe('SURFACE_NAV manifest', () => {
 		}
 	});
 
-	it('derives the legal destinations into SECONDARY_NAV', () => {
-		const legal = (
-			navigation as typeof navigation & {
-				LEGAL_NAV: readonly {
-					href: string;
-					label: { en: string; fr: string };
-				}[];
-			}
-		).LEGAL_NAV;
-
-		expect(legal.map(({ href }) => href)).toEqual(['/privacy', '/terms', '/accessibility']);
-		expect(SECONDARY_NAV.slice(-legal.length)).toEqual(legal);
+	it('derives the footer information links into SECONDARY_NAV', () => {
+		const info = navigation.FOOTER_INFO_NAV;
+		expect(info.map(({ href }) => href)).toEqual([
+			'/privacy',
+			'/terms',
+			'/accessibility',
+			'/roadmap',
+		]);
+		expect(SECONDARY_NAV.slice(-info.length)).toEqual(info);
 	});
 });
 
