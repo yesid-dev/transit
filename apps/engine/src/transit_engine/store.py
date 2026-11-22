@@ -11,6 +11,7 @@ import duckdb
 
 from transit_engine.clean_manifest import STOP_EVENTS, TRIP_DAYS, file_identities
 
+DEFAULT_CLEANING_VERSION = 4
 CITY = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 
 
@@ -24,7 +25,7 @@ def env_int(name: str, default: int, *, minimum: int = 1) -> int:
 @dataclass(frozen=True)
 class Store:
     root: str
-    cleaning_version: int = 3
+    cleaning_version: int = DEFAULT_CLEANING_VERSION
     memory_mib: int = 256
     threads: int = 1
     s3_endpoint: str | None = None
@@ -47,7 +48,7 @@ class Store:
             endpoint = None
         return cls(
             root,
-            env_int("ENGINE_CLEANING_VERSION", 3),
+            env_int("ENGINE_CLEANING_VERSION", DEFAULT_CLEANING_VERSION),
             env_int("ENGINE_QUERY_MEMORY_MIB", 256),
             env_int("ENGINE_QUERY_THREADS", 1),
             endpoint,

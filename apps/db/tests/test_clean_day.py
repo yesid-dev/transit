@@ -161,10 +161,15 @@ def _capture_fixture(root: Path) -> None:
         (45, 1, 45.51, VehiclePosition.STOPPED_AT),
         (520, 3, 45.50, VehiclePosition.IN_TRANSIT_TO),
         (633, 3, 45.50, VehiclePosition.STOPPED_AT),
+        (650, 3, 45.50, VehiclePosition.STOPPED_AT),
         (670, 3, 45.50, VehiclePosition.STOPPED_AT),
         (680, 3, 45.50003, VehiclePosition.STOPPED_AT),  # GPS jitter
-        (690, 3, 45.5002, VehiclePosition.STOPPED_AT),  # Movement alone exceeds 15 m
-        (700, 3, 45.5002, VehiclePosition.STOPPED_AT),  # Occupancy alone changes
+        (700, 3, 45.50, VehiclePosition.STOPPED_AT),
+        (730, 3, 45.50, VehiclePosition.STOPPED_AT),
+        (790, 3, 45.50, VehiclePosition.STOPPED_AT),  # Exactly 60 seconds keeps the interval.
+        (860, 3, 45.50, VehiclePosition.STOPPED_AT),  # Same state after a reporting gap.
+        (870, 3, 45.5002, VehiclePosition.STOPPED_AT),  # Movement alone exceeds 15 m.
+        (880, 3, 45.5002, VehiclePosition.STOPPED_AT),  # Occupancy alone changes.
     ):
         stamp = MIDNIGHT + timedelta(seconds=seconds)
         feed = _feed(stamp)
@@ -175,10 +180,15 @@ def _capture_fixture(root: Path) -> None:
         vehicle.current_status = status
         vehicle.position.latitude = lat
         vehicle.position.longitude = -73.6
-        if seconds == 700:
+        if seconds == 880:
             vehicle.occupancy_status = VehiclePosition.FEW_SEATS_AVAILABLE
             vehicle.occupancy_percentage = 42
+        if seconds == 650:
+            feed.entity.add().CopyFrom(feed.entity[0])
         _save(root, feed, "vehicle_positions", stamp)
+        if seconds == 790:
+            # A replay during the gap does not extend vehicle reporting.
+            _save(root, feed, "vehicle_positions", stamp + timedelta(seconds=40))
 
     stamp = MIDNIGHT + timedelta(seconds=930)
     feed = _feed(stamp)
@@ -335,8 +345,18 @@ def test_clean_day_math_and_edition_switch(tmp_path: Path) -> None:
         positions = _rows(db, first / "vehicle_positions.parquet")
         assert not _rows(db, later / "vehicle_positions.parquet")
         polls = _rows(db, first / "feed_polls.parquet")
-    assert [row["captured_at_utc"] for row in positions] == [
-        MIDNIGHT + timedelta(seconds=seconds) for seconds in (45, 520, 633, 690, 700)
+    assert [
+        (row["captured_at_utc"], row["last_seen_at_utc"], row["readings"]) for row in positions
+    ] == [
+        (MIDNIGHT + timedelta(seconds=first), MIDNIGHT + timedelta(seconds=last), count)
+        for first, last, count in (
+            (45, 45, 1),
+            (520, 520, 1),
+            (633, 790, 7),
+            (860, 860, 1),
+            (870, 870, 1),
+            (880, 880, 1),
+        )
     ]
     assert all(
         (r["vehicle_id"], r["service_date"], r["trip_id"], r["route_id"])
@@ -348,12 +368,12 @@ def test_clean_day_math_and_edition_switch(tmp_path: Path) -> None:
     assert len(polls) == len(list((tmp_path / "stm").rglob("*.pb")))
     by_result = {r["result"]: r for r in polls}
     assert Counter(r["result"] for r in polls) == {
-        "ok": len(polls) - 3,
-        "duplicate": 1,
+        "ok": len(polls) - 4,
+        "duplicate": 2,
         "empty": 1,
         "error": 1,
     }
-    duplicate = by_result["duplicate"]
+    duplicate = next(r for r in polls if r["feed"] == "trip_updates" and r["result"] == "duplicate")
     original = next(
         r
         for r in polls

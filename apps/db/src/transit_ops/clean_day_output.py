@@ -74,6 +74,8 @@ VEHICLE_POSITIONS = TableSchema.from_columns(
         ("cleaning_version", "text", True),
         ("vehicle_id", "text", True),
         ("captured_at_utc", _TIME, True),
+        ("last_seen_at_utc", _TIME, True),
+        ("readings", "bigint", True),
         ("feed_timestamp_utc", _TIME, False),
         ("observed_at_utc", _TIME, True),
         ("service_date", "date", False),

@@ -1,7 +1,7 @@
 """Capture attempts and changes in reported vehicle state for a clean service day."""
 
 from dataclasses import dataclass, replace
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from hashlib import sha256
 from math import asin, cos, radians, sin, sqrt
 from typing import Literal, NamedTuple
@@ -14,6 +14,9 @@ from transit_ops.providers.formats import decode_gtfs_rt
 
 # Suppress small GPS fluctuations, measured from the last retained position.
 VEHICLE_MOVEMENT_METRES = 15
+# Both providers poll vehicle positions every 20 seconds. Allow two missed polls.
+REPORTING_GAP_SECONDS = 60
+_REPORTING_GAP = timedelta(seconds=REPORTING_GAP_SECONDS)
 _EARTH_RADIUS_METRES = 6_371_008.8
 
 type PollResult = Literal["ok", "empty", "duplicate", "error"]
@@ -110,6 +113,19 @@ class VehicleReading:
         if self.coords is None or last.coords is None:
             return self.coords != last.coords
         return distance_metres(*self.coords, *last.coords) > VEHICLE_MOVEMENT_METRES
+
+
+@dataclass(slots=True)
+class VehicleStateInterval:
+    first: VehicleReading
+    last_seen_at_utc: datetime
+    readings: int = 1
+
+    def can_extend(self, reading: VehicleReading) -> bool:
+        return (
+            reading.captured_at_utc - self.last_seen_at_utc <= _REPORTING_GAP
+            and not reading.changed_since(self.first)
+        )
 
 
 def vehicle_reading(

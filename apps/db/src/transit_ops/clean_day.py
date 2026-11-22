@@ -20,7 +20,7 @@ from transit_ops.capture_coverage.rules import (
 from transit_ops.clean_day_realtime import (
     DayCapture,
     FeedPoll,
-    VehicleReading,
+    VehicleStateInterval,
     distance_metres,
     read_capture,
     vehicle_reading,
@@ -334,7 +334,7 @@ class CleanDay:
     live_routes: set[str]
     schedule_anchor: int
     coverage: dict[Feed, list[CoveredInterval]] = field(default_factory=dict)
-    vehicle_positions: list[VehicleReading] = field(default_factory=list)
+    vehicle_positions: list[VehicleStateInterval] = field(default_factory=list)
     feed_polls: list[FeedPoll] = field(default_factory=list)
 
     def _covered(self, trip: Trip) -> bool:
@@ -413,12 +413,15 @@ class CleanDay:
                     )
 
     def vehicle_rows(self) -> Iterator[Row]:
-        for reading in self.vehicle_positions:
+        for interval in self.vehicle_positions:
+            reading = interval.first
             yield (
                 self.provider,
                 CLEANING_VERSION,
                 reading.vehicle_id,
                 reading.captured_at_utc,
+                interval.last_seen_at_utc,
+                interval.readings,
                 reading.feed_timestamp_utc,
                 reading.observed_at_utc,
                 *reading.state,
@@ -507,7 +510,7 @@ def build_clean_day(
         )
 
     seen: dict[tuple[str, bytes], FeedPoll] = {}
-    last_vehicle: dict[str, VehicleReading] = {}
+    last_vehicle: dict[str, VehicleStateInterval] = {}
     polls: list[PollFacts] = []
     prior_capture: datetime | None = None
     for capture in captures:
@@ -591,11 +594,14 @@ def build_clean_day(
                     matched.route_id if matched else None,
                 )
                 last = last_vehicle.get(reading.vehicle_id)
-                if last is None or (
-                    last.captured_at_utc != captured and reading.changed_since(last)
-                ):
-                    result.vehicle_positions.append(reading)
-                    last_vehicle[reading.vehicle_id] = reading
+                if last is None or last.last_seen_at_utc != captured:
+                    if last is not None and last.can_extend(reading):
+                        last.last_seen_at_utc = captured
+                        last.readings += 1
+                    else:
+                        interval = VehicleStateInterval(reading, captured)
+                        result.vehicle_positions.append(interval)
+                        last_vehicle[reading.vehicle_id] = interval
             if not has_trip or dated != day:
                 continue
             trip = trips.get(desc.trip_id)
