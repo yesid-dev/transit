@@ -22,7 +22,7 @@ classified over scheduled, cleaning and method versions, and query milliseconds.
 `days_included` lists the measured days selected by the day-type filter. A partial window
 includes a bilingual coverage note. The engine validates `manifest.json` under
 `<root>/<provider>/<service-date>/v<cleaning_version>/` and checks the query input file sizes
-before reading. Cleaning v5 and v6 also check the alerts file when the manifest lists it.
+before reading. Cleaning v5 through v7 also check the alerts file when the manifest lists it.
 A missing or invalid manifest, missing required file, or wrong size makes that day a gap.
 
 `GET /data-health?city=stm&from=2026-11-19&to=2026-11-22` reports each day in the
@@ -32,10 +32,10 @@ exists with the recorded byte size, and `missing` otherwise, with `reason` set t
 `no_manifest` or `invalid_manifest`. A valid manifest with a listed file missing or a
 wrong size makes the day `incomplete`. A day the raw archive never captured carries a
 `no_raw_captures` receipt with no data files: it is `not_measured` with the same reason,
-both here and for `/measure`, rather than `missing`. Each of the six tables is `present`
+both here and for `/measure`, rather than `missing`. Each table is `present`
 with its manifest row count, `missing`, or `not_tracked` for alerts when the manifest says
 so. A table the manifest lists but the day lacks is `missing` with `file_missing` or
-`size_mismatch`.
+`size_mismatch`. Cleaning v7 adds `prediction_samples` to the reported tables.
 
 Values are null when the answer is no live data, not measured, too few to judge, or unknown.
 No live data means the cut contains scheduled service only on lines without live data.
@@ -84,8 +84,8 @@ window. The remaining lines are regular. Classes use the included dates and day 
 across all hours. The default line list uses the class with the most scheduled trips
 among the lines in the cut. Select a class with `class=3:frequent`, or compare all
 classes with `class=all`. Stops and departures rank across the network and carry
-their contributing classes. Cleaning v6 records GTFS route types. Set
-`ENGINE_CLEANING_VERSION` to read an earlier version, which shows an unknown route type.
+their contributing classes. Cleaning v6 and v7 record GTFS route types. Cleaning
+versions before v6 show an unknown route type.
 
 The response includes ranked rows, all exclusions within the selected scope, and the
 measured and missing dates. Ties use larger samples first, then ID. `limit` limits
@@ -98,7 +98,7 @@ Use `format=csv&lang=fr` for French headings or `lang=en` for English.
 | Environment variable | Default |
 | --- | --- |
 | `ENGINE_CLEAN_ROOT` | `./clean-days` |
-| `ENGINE_CLEANING_VERSION` | `6` |
+| `ENGINE_CLEANING_VERSION` | `7` |
 | `ENGINE_HOST`, `ENGINE_PORT` | `127.0.0.1`, `8080` |
 | `ENGINE_CONCURRENCY` | 2 active queries |
 | `ENGINE_QUERY_MEMORY_MIB` | 256 MiB per DuckDB query |

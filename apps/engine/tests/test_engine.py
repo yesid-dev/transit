@@ -19,6 +19,7 @@ from transit_engine import timing
 from transit_engine.clean_manifest import (
     ALERTS,
     FEED_POLLS,
+    PREDICTION_SAMPLES,
     SCHEDULED_STOP_TIMES,
     STOP_EVENTS,
     TRIP_DAYS,
@@ -152,7 +153,7 @@ def _build_store(
                     else None
                 )
                 scheduled = start_at if trip.state != "added" else None
-                if scheduled is not None and cleaning_version in {4, 5, 6}:
+                if scheduled is not None and cleaning_version in {4, 5, 6, 7}:
                     first = (
                         25 * 3600 + 15 * 60 if day == FALL_BACK else 7 * 3600
                     ) + trip.offset_minutes * 60
@@ -239,8 +240,10 @@ def _build_store(
                     "sha256": sha256(payload).hexdigest(),
                     "byte_size": len(payload),
                 }
-            if cleaning_version in {4, 5, 6}:
+            if cleaning_version in {4, 5, 6, 7}:
                 extra_files = (*V4_EXTRA_FILES, ALERTS) if cleaning_version >= 5 else V4_EXTRA_FILES
+                if cleaning_version == 7:
+                    extra_files = (*extra_files, PREDICTION_SAMPLES)
                 for name in extra_files:
                     path = directory / name
                     source = "SELECT * FROM trips WHERE FALSE"
@@ -282,12 +285,15 @@ def _build_store(
     return Store(tmp_path.as_posix(), cleaning_version=cleaning_version)
 
 
-def test_store_defaults_to_v6_and_accepts_v3_override(
+def test_store_reads_v7_by_default_and_accepts_v3_override(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    _build_store(tmp_path, cleaning_version=7)
     monkeypatch.setenv("ENGINE_CLEAN_ROOT", str(tmp_path))
     monkeypatch.delenv("ENGINE_CLEANING_VERSION", raising=False)
-    assert Store(tmp_path.as_posix()).cleaning_version == Store.from_env().cleaning_version == 6
+    store = Store.from_env()
+    assert Store(tmp_path.as_posix()).cleaning_version == store.cleaning_version == 7
+    assert query(store)["evidence"]["cleaning_versions"] == [7]
     monkeypatch.setenv("ENGINE_CLEANING_VERSION", "3")
     assert Store.from_env().cleaning_version == 3
 
@@ -537,7 +543,7 @@ def test_v5_requires_an_alert_receipt_or_not_tracked(tmp_path: Path) -> None:
         assert store.files(conn, "stm", THURSDAY) is None
 
 
-@pytest.mark.parametrize("cleaning_version", [3, 4, 5])
+@pytest.mark.parametrize("cleaning_version", [3, 4, 5, 7])
 def test_bands_use_exact_thresholds(tmp_path: Path, cleaning_version: int) -> None:
     store = _build_store(tmp_path, cleaning_version)
     result = query(store, line="A", direction=0)
