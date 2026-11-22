@@ -67,6 +67,12 @@ direction and service time. Both groups accept a direction filter.
 `group=line` requires a stop and a punctuality measure. It returns a cell per GTFS
 route ID at that stop within the cut, in route ID order. Cells use the same sample
 and evidence rules as the corresponding `stop` + `line` queries.
+`measure=vehicle_days_in_service&group=vehicle` lists the days in service for each
+tracked vehicle. `measure=vehicle_trips_run&vehicle=101&group=line` lists the dated
+trips with known lines for one vehicle. Both groups use the same tracking checks as
+the `vehicles` family. An empty result carries its state and bilingual explanation.
+Their CSV exports include the vehicle number or line ID.
+
 Series accept up to 400 inclusive service dates and support the measure's
 usual filters. For example, use
 `/measure?measure=punctuality&city=stm&from=2026-11-19&to=2026-11-25&group=weekday_hour`.

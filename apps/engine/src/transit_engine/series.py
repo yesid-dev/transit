@@ -2,7 +2,7 @@ from datetime import date
 from typing import Literal
 
 type SeriesGroup = Literal[
-    "day", "hour", "day_type", "weekday_hour", "direction", "stop", "departure", "line"
+    "day", "hour", "day_type", "weekday_hour", "direction", "stop", "departure", "line", "vehicle"
 ]
 type GroupKey = tuple[str | int | None, ...]
 
@@ -15,6 +15,7 @@ GROUP_COLUMNS: dict[SeriesGroup, tuple[str, ...]] = {
     "stop": ("direction", "stop_sequence", "stop"),
     "departure": ("direction", "departure"),
     "line": ("line",),
+    "vehicle": ("vehicle",),
 }
 DAY_TYPES = ("weekday", "weekday", "weekday", "weekday", "weekday", "saturday", "sunday")
 HOUR_GROUPS = ("hour", "weekday_hour")

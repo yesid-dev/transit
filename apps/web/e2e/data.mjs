@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { lineEngine } from './line-engine.mjs';
 import { overviewEngine } from './overview-engine.mjs';
 import { stopEngine } from './stop-engine.mjs';
+import { vehicleEngine } from './vehicle-engine.mjs';
 
 const read = (file) => readFileSync(new URL(file, import.meta.url));
 // STM serves the listed feeds; OC Transpo serves a manifest, provenance and a passing pipeline gate.
@@ -303,11 +304,14 @@ const server = createServer((request, response) => {
 	if (question) {
 		url.pathname = `/${question[2]}`;
 		url.searchParams.set('city', question[1]);
-		const result = url.searchParams.has('stop')
-			? stopEngine(url)
-			: url.searchParams.has('line')
-				? lineEngine(url)
-				: overviewEngine(url);
+		const result =
+			question[2] === 'measure' && url.searchParams.get('measure')?.startsWith('vehicle')
+				? vehicleEngine(url)
+				: url.searchParams.has('stop')
+					? stopEngine(url)
+					: url.searchParams.has('line')
+						? lineEngine(url)
+						: overviewEngine(url);
 		if (result.csv) {
 			response.setHeader('content-type', 'text/csv; charset=utf-8');
 			response.end(result.csv);

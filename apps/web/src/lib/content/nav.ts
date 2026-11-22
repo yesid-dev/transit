@@ -107,9 +107,9 @@ export const NAV_ITEMS: readonly NavItem[] = [
 	{
 		key: 'vehicles',
 		group: 'explore',
-		href: UPCOMING + 'vehicles',
+		href: '/vehicles',
 		label: { en: 'Vehicles', fr: 'Véhicules' },
-		activePrefixes: [UPCOMING + 'vehicles'],
+		activePrefixes: ['/vehicles', '/vehicle/'],
 	},
 	{
 		key: 'hotspots',

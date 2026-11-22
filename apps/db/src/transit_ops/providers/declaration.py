@@ -172,6 +172,7 @@ class Overrides(_Block):
     geocode_context: _Text | None = None
     search_examples: list[_Text] | None = None
     max_vehicle_speed_kmh: Annotated[float, Field(gt=0, allow_inf_nan=False)] | None = None
+    stable_vehicle_ids: Annotated[bool, Field(strict=True)] | None = None
     strict_gtfs: Annotated[bool, Field(strict=True)] | None = None
 
 

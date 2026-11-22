@@ -105,8 +105,16 @@ export const handle: Handle = async ({ event, resolve }) => {
 		event.route.id === '/[[lang=locale]]/lines/[id]' ? lineFrameView(event.url) : null;
 	const stopRecord =
 		event.route.id === '/[[lang=locale]]/stop/[id]' && stopFrameView(event.url) === 'record';
+	const vehicleRecord =
+		(event.route.id === '/[[lang=locale]]/vehicles' ||
+			event.route.id === '/[[lang=locale]]/vehicle/[id]') &&
+		event.url.searchParams.get('frameMode') !== 'live';
 	const streamedRecord =
-		overviewRecord || stopRecord || lineView === 'record' || lineView === 'schedule';
+		overviewRecord ||
+		stopRecord ||
+		vehicleRecord ||
+		lineView === 'record' ||
+		lineView === 'schedule';
 	const automaticSelection =
 		event.route.id?.startsWith('/[[lang=locale]]') === true &&
 		!event.url.searchParams.has('provider') &&

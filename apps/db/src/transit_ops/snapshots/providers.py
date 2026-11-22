@@ -110,7 +110,12 @@ def build_public_provider_catalog(
                             for feed in config.feeds.values()
                         )
                         for kind in FeedKind
-                    },
+                    }
+                    | (
+                        {"stable_vehicle_ids": public.stable_vehicle_ids}
+                        if public.stable_vehicle_ids is not None
+                        else {}
+                    ),
                 )
             )
         except (ValueError, TypeError) as exc:

@@ -30,7 +30,7 @@ const VALID = {
   departure: (value) => /^[0-9]{2,6}:[0-5][0-9]:[0-5][0-9]$/.test(value),
   hour: (value) => /^(?:[01]?[0-9]|2[0-3])$/.test(value),
   day_type: oneOf("weekday", "saturday", "sunday"),
-  group: oneOf("day", "hour", "day_type", "weekday_hour", "direction", "stop", "departure", "line"),
+  group: oneOf("day", "hour", "day_type", "weekday_hour", "direction", "stop", "departure", "line", "vehicle"),
   kind: oneOf("line", "stop", "departure", "vehicle", "segment"),
   class: (value) => /^(?:all|(?:[0-9]+|unknown|mixed):(?:night|frequent|regular))$/.test(value),
   limit: (value) => /^[0-9]{1,3}$/.test(value) && Number(value) >= 1 && Number(value) <= 500,

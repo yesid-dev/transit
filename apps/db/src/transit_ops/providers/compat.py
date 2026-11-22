@@ -61,6 +61,8 @@ def _public(declaration: Declaration) -> dict[str, object]:
             max_bounds=_bounds(overrides.max_bounds),
             geocode_context=overrides.geocode_context,
         )
+        if overrides.stable_vehicle_ids is not None:
+            public["stable_vehicle_ids"] = overrides.stable_vehicle_ids
     if declaration.map:
         public.update(
             basemap_url=declaration.map.basemap_url,

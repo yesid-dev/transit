@@ -1,14 +1,18 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
+
 	let {
 		title,
 		headers,
 		rows,
 		wide = false,
+		rowLabel,
 	}: {
 		title: string;
 		headers: string[];
 		rows: string[][];
 		wide?: boolean;
+		rowLabel?: Snippet<[string]>;
 	} = $props();
 </script>
 
@@ -29,8 +33,9 @@
 		<tbody>
 			{#each rows as [label, ...values], index (index)}
 				<tr
-					><th scope="row">{label}</th>{#each values as value, column (column)}<td>{value}</td
-						>{/each}</tr
+					><th scope="row"
+						>{#if rowLabel}{@render rowLabel(label)}{:else}{label}{/if}</th
+					>{#each values as value, column (column)}<td>{value}</td>{/each}</tr
 				>
 			{/each}
 		</tbody>

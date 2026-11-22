@@ -113,6 +113,7 @@ class ProviderPublicConfig(BaseModel):
     max_bounds: ProviderBoundsConfig | None = None
     basemap_bounds: ProviderBoundsConfig | None = None
     geocode_context: str | None = None
+    stable_vehicle_ids: bool | None = Field(default=None, exclude_if=lambda value: value is None)
     basemap_url: str | None = None
     posters_url: str | None = None
     alert_links: dict[Literal["en", "fr"], AnyHttpUrl] = Field(default_factory=dict)
