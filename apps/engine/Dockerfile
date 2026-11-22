@@ -10,11 +10,11 @@ WORKDIR /app
 RUN python -m pip install --no-cache-dir "uv==0.13.4"
 COPY pyproject.toml uv.lock ./
 COPY src ./src
-RUN uv sync --locked --no-dev --no-editable \
+RUN uv sync --locked --no-dev --no-editable --extra r2 \
     && adduser --disabled-password --gecos "" appuser
 
 USER appuser
-RUN /app/.venv/bin/python -c 'import duckdb; duckdb.connect(config={"custom_extension_repository": "https://extensions.duckdb.org"}).execute("INSTALL httpfs")'
+RUN --network=none /app/.venv/bin/python -c 'import duckdb; duckdb.connect().execute("INSTALL httpfs; LOAD httpfs")'
 
 EXPOSE 8080
 CMD ["transit-engine"]

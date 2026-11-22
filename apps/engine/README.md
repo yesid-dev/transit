@@ -181,10 +181,11 @@ Use the same commands with `ENGINE_CLEAN_ROOT=s3://<bucket>/<prefix>` and
 `ENGINE_S3_ENDPOINT=<account-id>.r2.cloudflarestorage.com`. Inject
 `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and, if applicable, `AWS_SESSION_TOKEN`
 using the host's secret mechanism. The credentials need list and read access on the clean prefix.
-For a native VM run, install the matching DuckDB `httpfs` extension once as the service user.
+For a native VM run, install the locked `httpfs` wheel and register its extension as the service user.
 
 ```sh
-uv run --locked python -c 'import duckdb; duckdb.connect(config={"custom_extension_repository": "https://extensions.duckdb.org"}).execute("INSTALL httpfs")'
+uv sync --locked --extra r2
+uv run --locked --extra r2 python -c 'import duckdb; duckdb.connect().execute("INSTALL httpfs; LOAD httpfs")'
 ```
 
 ### Build and run the image on a Linux Docker host
