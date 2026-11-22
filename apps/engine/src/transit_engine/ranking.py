@@ -22,8 +22,10 @@ from transit_engine.measures import (
     _SERVICE_DELIVERED_ID,
     _STATES,
     _US_PER_HOUR,
+    _VEHICLES_ID,
     _WAITING_ID,
     DELAY_BIN_SECONDS,
+    VEHICLE_RANKING_DEFAULT,
     Batch,
     EntityKey,
     EntityKind,
@@ -83,6 +85,16 @@ _RANGE_NOTES = {
         "Recorded duration from the published alert history. Both bounds equal that duration.",
         "Durée calculée à partir de l’historique des alertes. Les deux bornes égalent cette durée.",
     ),
+    "vehicle_reporting_uncertainty_unknown": Text(
+        "Repeated reporting gaps can be related. The uncertainty of this rate is unknown.",
+        "Les interruptions de signalement peuvent être liées. L’incertitude du taux est inconnue.",
+    ),
+    "vehicle_completion_wilson_95": Text(
+        "95% Wilson interval. Trips assigned to the same vehicle can be dependent. "
+        "Treat this range as a guide.",
+        "Intervalle de Wilson à 95 %. Les trajets attribués au même véhicule peuvent être "
+        "dépendants. Cet intervalle sert de guide.",
+    ),
 }
 _NOT_MEASURED_ON_DATES = Text("Not measured on those dates", "Non mesuré à ces dates")
 
@@ -101,6 +113,8 @@ class Ranking:
         kinds = measures[0].ranking_kinds
         if kinds is not None and self.kind not in kinds:
             raise ValueError("this measure does not apply to this ranking kind")
+        if self.kind == "vehicle" and family.id != _VEHICLES_ID:
+            raise ValueError("vehicle rankings require a vehicle reporting or completion rate")
         if self.kind == "stop" and family.id == _SERVICE_DELIVERED_ID:
             raise ValueError("trip measures do not apply to stops")
         if self.question.measure in _BOUNDARIES and self.kind != "line":
@@ -203,6 +217,15 @@ def _range(
 ) -> dict[str, Any]:
     if measure.id == "excess_wait_time":
         return {"lower": None, "upper": None, "method": "matched_headways"}
+    if measure.id == VEHICLE_RANKING_DEFAULT:
+        return {"lower": None, "upper": None, "method": "vehicle_reporting_uncertainty_unknown"}
+    if measure.unit == "per_100_trips":
+        lower, upper = wilson_interval(value / 100, sample)
+        return {
+            "lower": lower * 100,
+            "upper": upper * 100,
+            "method": "vehicle_completion_wilson_95",
+        }
     if measure.unit == "seconds":
         half_bin = DELAY_BIN_SECONDS / 2
         lower, upper = value - half_bin, value + half_bin
@@ -293,18 +316,22 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
     (measure,) = selected
     totals: dict[EntityKey, Batch] = {}
     lines: dict[str, LineSchedule] = {}
-    historical = family.id in {_CROWDING_ID, _ALERT_COUNTS_ID}
+    by_vehicle = ranking.kind == "vehicle"
+    historical = family.id in {_CROWDING_ID, _ALERT_COUNTS_ID, _VEHICLES_ID}
     with store.connect() as conn:
         window = read_window(conn, store, question, family, selected, ranking.kind)
-        for batch in window.batches():
-            _line_schedules(conn, batch[TRIP_DAYS], store, question, lines)
-            if historical:
+        for offset, batch in enumerate(window.batches()):
+            if not by_vehicle:
+                _line_schedules(conn, batch[TRIP_DAYS], store, question, lines)
+            if historical and not by_vehicle:
                 _historical_schedule(
                     conn, batch, ranking.kind, totals, question.city, str(store.cleaning_version)
                 )
-            for key, result in family.query(
+            batch_results = family.query(
                 conn, family, batch, question, str(store.cleaning_version), ranking.kind
-            ).items():
+            )
+            window.record_vehicle_tracking(family, offset, batch_results)
+            for key, result in batch_results.items():
                 if key[0] is None or (ranking.kind == "departure" and key[2] is None):
                     continue
                 totals.setdefault(key, Batch()).update(result)
@@ -328,16 +355,26 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     excluded: list[dict[str, Any]] = []
     for key, result in totals.items():
-        if not result.scheduled_routes:
+        if not by_vehicle and not result.scheduled_routes:
             continue
         service_classes = sorted({classes[route] for route in result.scheduled_routes})
         if chosen_class not in {None, "all"} and chosen_class not in service_classes:
             continue
         state, values, evidence, samples = evaluate(family, selected, result, window)
         value, sample = values[measure.id], samples[measure.id]
+        displayed_sample = (
+            sample / _US_PER_HOUR if measure.id == VEHICLE_RANKING_DEFAULT else sample
+        )
+        if (
+            by_vehicle
+            and measure.ranking_minimum_sample is not None
+            and displayed_sample < measure.ranking_minimum_sample
+            and state != "not_measured"
+        ):
+            state, value = "too_few_to_judge", None
         entry = {
             **_identity(ranking.kind, key, service_classes),
-            "sample": sample,
+            "sample": displayed_sample,
             **evidence,
         }
         if historical and state in {"not_tracked", "not_measured"}:
@@ -373,6 +410,8 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
         elif len(reasons) == 1:
             state = reasons.pop()
         elif family.id == _ALERT_COUNTS_ID and window.not_tracked and not window.measured:
+            state = "not_tracked"
+        elif by_vehicle and window.not_tracked and len(window.not_tracked) == len(window.included):
             state = "not_tracked"
         else:
             state = "not_measured" if window.no_days_measured else "unknown"
@@ -410,8 +449,10 @@ _RANKING_COLUMNS = {
 def ranking_csv(answer: dict[str, Any], language: Language) -> str:
     family, _ = _SELECTIONS[answer["measure"]]
     columns = {**_RANKING_COLUMNS, **_csv_columns(family)}
-    if family.id == _CROWDING_ID:
+    if family.id == _CROWDING_ID or answer["measure"] == VEHICLE_RANKING_DEFAULT:
         columns["sample"] = Text("Sample (vehicle-hours)", "Échantillon (heures-véhicules)")
+    elif family.id == _VEHICLES_ID:
+        columns["sample"] = Text("Sample (trips)", "Échantillon (trajets)")
     output = io.StringIO(newline="")
     writer = csv.writer(output)
     writer.writerow(getattr(label, language) for label in columns.values())

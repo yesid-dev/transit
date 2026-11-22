@@ -13,7 +13,15 @@ import uvicorn
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 
 from transit_engine.health import data_health
-from transit_engine.measures import EntityKind, Language, Question, answer_csv, ask, methods
+from transit_engine.measures import (
+    VEHICLE_RANKING_DEFAULT,
+    EntityKind,
+    Language,
+    Question,
+    answer_csv,
+    ask,
+    methods,
+)
 from transit_engine.ranking import DEFAULT_LIMIT, Ranking, rank, ranking_csv
 from transit_engine.store import Store, env_int
 
@@ -66,7 +74,7 @@ def _question(
         optional.update({"measure", "class", "limit"})
     else:
         required.add("measure")
-        optional.update({"line", "direction", "stop", "departure"})
+        optional.update({"line", "direction", "stop", "departure", "vehicle"})
     if len(raw) > 4096 or re.search(rb"%(?![a-fA-F0-9]{2})", raw):
         raise ValueError("invalid query string")
     fields = parse_qs(
@@ -91,6 +99,9 @@ def _question(
             not value.isprintable() or value != value.strip()
         ):
             raise ValueError(f"{name} must be a published alert value")
+    vehicle = params.get("vehicle")
+    if vehicle is not None and (not vehicle.isprintable() or vehicle != vehicle.strip()):
+        raise ValueError("vehicle must be a valid vehicle ID")
     direction = params.get("direction")
     if direction is not None and direction not in {"0", "1"}:
         raise ValueError("direction must be 0 or 1")
@@ -110,7 +121,9 @@ def _question(
     output_format: Literal["json", "csv"] = "csv" if output == "csv" else "json"
     output_language: Language = "fr" if language == "fr" else "en"
     question = Question(
-        params.get("measure", "on_time"),
+        params.get(
+            "measure", VEHICLE_RANKING_DEFAULT if params.get("kind") == "vehicle" else "on_time"
+        ),
         params["city"],
         _date(params["from"]),
         _date(params["to"]),
@@ -123,11 +136,12 @@ def _question(
         ranking=ranking,
         effect=params.get("effect"),
         cause=params.get("cause"),
+        vehicle=vehicle,
     )
     if ranking:
         kind = params["kind"]
-        if kind not in ("line", "stop", "departure"):
-            raise ValueError("kind must be line, stop or departure")
+        if kind not in ("line", "stop", "departure", "vehicle"):
+            raise ValueError("kind must be line, stop, departure or vehicle")
         limit = params.get("limit", str(DEFAULT_LIMIT))
         if not re.fullmatch(r"[0-9]{1,3}", limit):
             raise ValueError("limit must be a positive integer")
