@@ -190,7 +190,7 @@ def test_day_without_file_and_day_without_observations(store: Store) -> None:
     assert unobserved["cleaning_versions"] == [3]
 
 
-@pytest.mark.parametrize("damage", ["no_manifest", "invalid_json", "wrong_day", "missing", "hash"])
+@pytest.mark.parametrize("damage", ["no_manifest", "invalid_json", "wrong_day", "missing", "size"])
 def test_incomplete_clean_day_is_not_measured(store: Store, damage: str) -> None:
     directory = Path(store.root) / "stm" / DAY.isoformat() / "v3"
     marker = directory / "manifest.json"
@@ -206,7 +206,7 @@ def test_incomplete_clean_day_is_not_measured(store: Store, damage: str) -> None
         (directory / TRIP_DAYS).unlink()
     else:
         path = directory / STOP_EVENTS
-        path.write_bytes(b"XXXX" + path.read_bytes()[4:])
+        path.write_bytes(path.read_bytes()[:-1])
     absent = network_day(store, "stm", date(2026, 11, 17))
     result = network_day(store, "stm", DAY)
     for field in ("status", "message", "classified", "scheduled", "cleaning_versions"):
@@ -219,8 +219,19 @@ def test_blob_discovery_checks_both_files(store: Store) -> None:
     with store.connect() as conn:
         assert remote.files(conn, "stm", DAY) is not None
         path = Path(store.root) / "stm" / DAY.isoformat() / "v3" / TRIP_DAYS
-        path.write_bytes(b"XXXX" + path.read_bytes()[4:])
+        path.write_bytes(path.read_bytes()[:-1])
         assert remote.files(conn, "stm", DAY) is None
+
+
+@pytest.mark.parametrize("remote", [False, True])
+def test_explicit_audit_detects_same_size_corruption(store: Store, remote: bool) -> None:
+    target = Store(store.root, s3_endpoint="example.invalid") if remote else store
+    with store.connect() as conn:
+        assert target.verify(conn, "stm", DAY)
+        path = Path(store.root) / "stm" / DAY.isoformat() / "v3" / STOP_EVENTS
+        path.write_bytes(b"XXXX" + path.read_bytes()[4:])
+        assert target.files(conn, "stm", DAY) is not None
+        assert not target.verify(conn, "stm", DAY)
 
 
 def test_timing_over_two_clean_days(

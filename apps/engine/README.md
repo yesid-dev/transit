@@ -1,8 +1,9 @@
 # Transit engine
 
 `GET /network-punctuality?city=stm&date=2026-11-19` answers one provider's network for one local service date.
-It reads `manifest.json` under `<root>/<provider>/<service-date>/v<cleaning_version>/` and
-checks the SHA-256 and size of each listed Parquet file before querying them.
+It validates `manifest.json` under `<root>/<provider>/<service-date>/v<cleaning_version>/` and
+checks both Parquet files' sizes from storage metadata before querying them. The writer
+verifies both files before publishing the manifest and preserves versioned files as immutable.
 
 Each scheduled stop of each non-cancelled trip on a route with live data counts once. A stop with a
 non-null delay is early below −60 seconds, on time from −60 through 300 seconds inclusive, and late
@@ -13,7 +14,7 @@ version, and elapsed query milliseconds.
 `not_measured_route_without_live_data` counts scheduled stops excluded from every rate because the
 route has no live data. `not_measured_capture_gap` counts scheduled stops with a capture gap.
 Those stops stay in the scheduled total so the observed share reflects missed coverage. A day with
-a missing or invalid manifest, a missing file, or a checksum mismatch returns a `not measured`
+a missing or invalid manifest, a missing file, or a size mismatch returns a `not measured`
 message, null counts and shares, and an empty version list.
 A present day with no observations still reports its scheduled count.
 
@@ -87,6 +88,16 @@ RSS. Queued overlaps with the response outcomes. The run passes when at least on
 every request returns a clean-day answer or explicit busy, the service process stays the same,
 and peak RSS stays below `--memory-limit-mib`. Start a fresh service for an isolated peak because
 Linux reports the process lifetime high-water mark.
+
+### Audit a clean day
+
+Use `Store.verify` for an explicit full SHA-256 audit. It reads both files and returns false for
+an incomplete day or digest mismatch. With the same environment as the engine, this exits
+with status 1 when verification fails.
+
+```sh
+uv run --locked python -c "from datetime import date; from transit_engine.punctuality import Store; store = Store.from_env(); conn = store.connect(); raise SystemExit(0 if store.verify(conn, 'stm', date.fromisoformat('2026-11-19')) else 1)"
+```
 
 ### Read from R2
 
