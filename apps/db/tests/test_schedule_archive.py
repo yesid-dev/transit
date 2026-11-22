@@ -99,9 +99,51 @@ def test_ordered_geometry_and_endpoint_rows(interior, arrival):
     assert times[1].departure_s == (None if arrival is None else 86400)
     assert times[2] == ScheduledStopTime(9, "b", 93600, 93600, 1, 12.5)
     assert ctx.stop(DAY, "a") == ScheduledStop("a", 45, -75, 1, "parent")
-    assert ctx.stop(DAY, "b") == ScheduledStop("b", None, None, None, None)
+    assert ctx.stop(DAY, "b") == ScheduledStop("b", None, None, 0, None)
     zero = context(archive(stop_times="t,0,a,00:00:00,00:00:00,,\n"))
     assert zero.trip(DAY, "t").first_stop_sequence == 0
+
+
+def test_wheelchair_values_are_declared():
+    ctx = context(archive(trips="r,s,t,,,,1\n", stops="a,A,45,-75,2,parent\n"))
+    assert ctx.trip(DAY, "t").wheelchair_accessible == 1
+    assert ctx.stop(DAY, "a").wheelchair_boarding == 2
+
+
+def test_wheelchair_boarding_inherits_the_parent_station():
+    ctx = context(
+        archive(
+            stops="station,Station,45,-75,1,\n"
+            "platform,Platform,45,-75,,station\n"
+            "unknown,Unknown,45,-75,,missing\n"
+        )
+    )
+    assert ctx.stop(DAY, "station").wheelchair_boarding == 1
+    assert ctx.stop(DAY, "platform").wheelchair_boarding == 1
+    assert ctx.stop(DAY, "unknown").wheelchair_boarding == 0
+
+
+def test_absent_wheelchair_columns_are_null():
+    headers = {
+        **HEADERS,
+        "trips": "route_id,service_id,trip_id,direction_id",
+        "stops": "stop_id,stop_name,stop_lat,stop_lon",
+    }
+    rows = {
+        **ROWS,
+        "trips": "r,s,t,\n",
+        "stops": "a,A,,\n",
+    }
+    output = BytesIO()
+    with ZipFile(output, "w") as zipfile:
+        for name, data in rows.items():
+            if data is not None:
+                zipfile.writestr(
+                    ZipInfo("nested/" + name.upper() + ".TXT"), headers[name] + "\n" + data
+                )
+    ctx = context(output.getvalue())
+    assert ctx.trip(DAY, "t").wheelchair_accessible is None
+    assert ctx.stop(DAY, "a").wheelchair_boarding is None
 
 
 @pytest.mark.parametrize(

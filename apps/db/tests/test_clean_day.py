@@ -1132,3 +1132,106 @@ def test_range_builds_skips_and_continues(
     with duckdb.connect() as db:
         loose_polls = _rows(db, dest / version_key("stm", third) / "feed_polls.parquet")
     assert [row["result"] for row in loose_polls] == ["ok"]
+
+
+def _wheelchair_edition(path: Path, *, include_wheelchair: bool = True) -> dict[str, str]:
+    trips = {
+        "night": ("r", ["24:00:00", "24:05:00", "24:10:00"]),
+        "plain": ("r", ["14:00:00"]),
+        "unknown": ("r", ["16:00:00"]),
+    }
+    with ZipFile(path, "w") as archive:
+        archive.writestr("routes.txt", "route_id,route_type\nr,3\n")
+        if include_wheelchair:
+            archive.writestr(
+                "trips.txt",
+                "route_id,service_id,trip_id,direction_id,wheelchair_accessible\n"
+                + "r,s,night,0,1\nr,s,plain,0,2\nr,s,unknown,0,\n",
+            )
+            archive.writestr(
+                "stops.txt",
+                "stop_id,stop_name,stop_lat,stop_lon,wheelchair_boarding,parent_station\n"
+                + "s1,Stop 1,45.5,-73.6,1,\n"
+                + "s2,Stop 2,45.5,-73.6,2,\n"
+                + "s3,Stop 3,45.5,-73.6,,s1\n"
+                + "s4,Stop 4,45.5,-73.6,,\n",
+            )
+        else:
+            archive.writestr(
+                "trips.txt",
+                "route_id,service_id,trip_id,direction_id\n"
+                + "r,s,night,0\nr,s,plain,0\nr,s,unknown,0\n",
+            )
+            archive.writestr(
+                "stops.txt",
+                "stop_id,stop_name,stop_lat,stop_lon\n"
+                + "s1,Stop 1,45.5,-73.6\ns2,Stop 2,45.5,-73.6\n"
+                + "s3,Stop 3,45.5,-73.6\ns4,Stop 4,45.5,-73.6\n",
+            )
+        archive.writestr(
+            "stop_times.txt",
+            "trip_id,stop_sequence,stop_id,arrival_time,departure_time\n"
+            + "".join(
+                f"{trip},{seq},s{seq},{time},{time}\n"
+                for trip, (_, times) in trips.items()
+                for seq, time in enumerate(times, 1)
+            ),
+        )
+        archive.writestr(
+            "calendar_dates.txt",
+            "service_id,date,exception_type\n"
+            + "".join(f"s,{DAY + timedelta(days=offset):%Y%m%d},1\n" for offset in range(4)),
+        )
+    return {
+        "effective_date": DAY.isoformat(),
+        "path": path.name,
+        "sha256": sha256(path.read_bytes()).hexdigest(),
+    }
+
+
+def _run_wheelchair(root: Path, include_wheelchair: bool) -> Path:
+    edition = _wheelchair_edition(root / "schedule.zip", include_wheelchair=include_wheelchair)
+    (root / "editions.json").write_text(
+        json.dumps({"provider": "stm", "editions": [edition]}), encoding="utf-8"
+    )
+    _save(root, _feed(MIDNIGHT - timedelta(hours=6)), "trip_updates", MIDNIGHT - timedelta(hours=6))
+    destination = _run(root, DAY)
+    return destination
+
+
+def test_clean_day_copies_wheelchair_accessibility(tmp_path: Path) -> None:
+    destination = _run_wheelchair(tmp_path, include_wheelchair=True)
+    with duckdb.connect(config={"TimeZone": "UTC"}) as db:
+        trips = {row["trip_id"]: row for row in _rows(db, destination / "trip_days.parquet")}
+        schedule = {
+            (row["trip_id"], row["stop_sequence"]): row
+            for row in _rows(db, destination / "scheduled_stop_times.parquet")
+        }
+    assert {key: row["wheelchair_accessible"] for key, row in trips.items()} == {
+        "night": 1,
+        "plain": 2,
+        "unknown": 0,
+    }
+    assert [
+        (schedule[key]["stop_id"], schedule[key]["wheelchair_boarding"])
+        for key in sorted(schedule)
+    ] == [
+        ("s1", 1),
+        ("s2", 2),
+        ("s3", 1),  # Inherited from its parent station s1.
+        ("s1", 1),
+        ("s1", 1),
+    ]
+    assert len(trips) == 3
+    assert len(schedule) == 5
+
+
+def test_clean_day_absent_wheelchair_columns_are_null(tmp_path: Path) -> None:
+    destination = _run_wheelchair(tmp_path, include_wheelchair=False)
+    with duckdb.connect(config={"TimeZone": "UTC"}) as db:
+        trips = _rows(db, destination / "trip_days.parquet")
+        schedule = _rows(db, destination / "scheduled_stop_times.parquet")
+    assert all(row["wheelchair_accessible"] is None for row in trips)
+    assert all(row["wheelchair_boarding"] is None for row in schedule)
+    assert len(trips) == 3
+    assert len(schedule) == 5

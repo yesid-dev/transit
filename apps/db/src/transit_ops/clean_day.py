@@ -47,8 +47,8 @@ STOPPED_AT_RADIUS_METRES = 50
 # Require several opportunities to see early reporting around departure, even
 # for short trips, at the providers' normal 20–60 second feed cadences.
 ABSENCE_LEAD_SECONDS = 300
-# v7 adds fixed-lead prediction samples for observed stop events.
-CLEANING_VERSION = "7"
+# v8 carries the schedule's declared wheelchair accessibility for trips and stops.
+CLEANING_VERSION = "8"
 PREDICTION_HORIZONS_MINUTES = (1, 3, 5, 10, 15, 20, 30)
 _PREDICTION_HORIZONS_SECONDS = tuple(minutes * 60 for minutes in PREDICTION_HORIZONS_MINUTES)
 _CAPTURE_FRAME = Struct(">qQ")  # capture second and payload length
@@ -94,6 +94,7 @@ class Stop:
     observed: Reading | None = None
     prediction: Prediction | None = None
     prediction_samples: list[tuple[int, int] | None] | None = None
+    wheelchair_boarding: int | None = None
 
     def observe(self, reading: Reading) -> None:
         prior = self.observed
@@ -120,6 +121,7 @@ class Trip:
     cancellation_notice: datetime | None = None
     progress: dict[str, tuple[int, int]] = field(default_factory=dict)
     last_source: dict[str, int] = field(default_factory=dict)
+    wheelchair_accessible: int | None = None
 
     def locate(self, sequence: int | None, stop_id: str) -> tuple[int, Stop] | None:
         if sequence is None:
@@ -168,10 +170,14 @@ def _scheduled(schedule: ArchiveScheduleContext, day: date, trip_id: str, anchor
                 previous = stamp
         if item.stop_sequence < 0:
             raise ValueError(f"Negative stop sequence for scheduled trip {trip_id}")
+        scheduled_stop = schedule.stop(day, item.stop_id)
         stops[item.stop_sequence] = Stop(
             item.stop_id,
             None if arrival is None else anchor + arrival,
             None if departure is None else anchor + departure,
+            wheelchair_boarding=(
+                scheduled_stop.wheelchair_boarding if scheduled_stop is not None else None
+            ),
         )
     counts = Counter(stop.stop_id for stop in stops.values())
     unique = {stop.stop_id: seq for seq, stop in stops.items() if counts[stop.stop_id] == 1}
@@ -182,6 +188,7 @@ def _scheduled(schedule: ArchiveScheduleContext, day: date, trip_id: str, anchor
         stops,
         end=anchor + trip.last_arrival_s,
         unique_sequences=unique,
+        wheelchair_accessible=trip.wheelchair_accessible,
     )
 
 
@@ -412,6 +419,7 @@ class CleanDay:
                 trip.last_capture,
                 trip.cancellation_notice,
                 self.route_types.get(trip.route_id) if trip.route_id is not None else None,
+                trip.wheelchair_accessible,
             )
 
     def stop_rows(self) -> Iterator[Row]:
@@ -441,6 +449,7 @@ class CleanDay:
                         None if stop.arrival is None else stop.arrival - self.schedule_anchor,
                         None if stop.departure is None else stop.departure - self.schedule_anchor,
                         self.edition_sha256,
+                        stop.wheelchair_boarding,
                     )
 
     def prediction_rows(self) -> Iterator[Row]:

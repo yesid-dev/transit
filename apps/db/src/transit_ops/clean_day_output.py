@@ -39,6 +39,7 @@ TRIP_DAYS = TableSchema.from_columns(
         ("last_capture_utc", _TIME, False),
         ("cancellation_notice_utc", _TIME, False),
         ("route_type", "integer", False),
+        ("wheelchair_accessible", "integer", False),
     ),
     _TRIP_KEY,
 )
@@ -82,6 +83,7 @@ SCHEDULED_STOP_TIMES = TableSchema.from_columns(
         ("scheduled_arrival_seconds", "bigint", False),
         ("scheduled_departure_seconds", "bigint", False),
         ("schedule_sha256", "text", True),
+        ("wheelchair_boarding", "integer", False),
     ),
     _STOP_KEY,
 )
