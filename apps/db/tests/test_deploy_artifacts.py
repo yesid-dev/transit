@@ -470,18 +470,60 @@ def test_ci_runs_for_db_and_ci_contract_changes() -> None:
     expected_paths = {
         ".python-version",
         ".env.example",
+        ".gitattributes",
+        ".githooks/**",
+        ".github/**",
+        ".gitignore",
         ".gitleaks.toml",
+        ".npmrc",
+        ".nvmrc",
         "apps/db/**",
         "apps/engine/**",
-        ".github/workflows/**",
-        ".github/scripts/**",
-        ".github/actions/**",
+        "bun.lock",
+        "contracts/**",
+        "package.json",
+        "patches/**",
+        "scripts/**",
+        "turbo.json",
         ".bun-version",
     }
 
     assert on["pull_request"]["branches"] == ["main"]
+    assert "merge_group" in on
     assert "paths" not in on["pull_request"]
+    assert on["push"]["branches"] == ["main"]
     assert set(on["push"]["paths"]) == expected_paths
+    assert document["jobs"]["engine-tests"]["steps"][2]["run"] == "uv run --locked pytest"
+
+
+def test_db_ci_shards_and_requires_every_suite_and_quality_check() -> None:
+    document = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+    jobs = document["jobs"]
+    offline = jobs["offline-tests-work"]
+    quality = jobs["db-quality-work"]
+    assert offline["timeout-minutes"] == quality["timeout-minutes"] == 15
+    assert offline["steps"][2:] == [
+        {
+            "name": "Run offline test shard",
+            "env": {"DB_TEST_SHARD": "${{ matrix.shard }}"},
+            "run": 'uv run python ../../.github/scripts/db_test_shards.py offline "$DB_TEST_SHARD"',
+        }
+    ]
+    for name in ("offline-tests-work", "real-db-tests-work"):
+        assert jobs[name]["strategy"] == {"fail-fast": False, "matrix": {"shard": [1, 2, 3]}}
+    for name in (
+        "offline-tests-work", "real-db-tests-work", "db-quality-work", "alembic-single-head-work"
+    ):
+        assert jobs[name]["needs"] == ["classify"]
+        assert jobs[name]["if"] == "${{ needs.classify.outputs.run_db == 'true' }}"
+        assert "continue-on-error" not in jobs[name]
+        assert all("continue-on-error" not in step for step in jobs[name]["steps"])
+    assert "strategy" not in quality
+    assert [step["run"] for step in quality["steps"] if "run" in step] == [
+        "uv run ruff check src tests",
+        "uv run mypy",
+        "bash scripts/verify-runtime-images.sh",
+    ]
 
 
 def test_real_db_ci_uses_a_disposable_postgres_service() -> None:
@@ -514,16 +556,19 @@ def test_real_db_ci_uses_a_disposable_postgres_service() -> None:
     scrub = "unset PGHOST PGHOSTADDR PGPORT PGDATABASE PGUSER PGSERVICE PGSERVICEFILE\n"
     assert [step["run"].strip() for step in runs] == [
         scrub + "uv run alembic upgrade head",
-        scrub + "uv run pytest tests -n 4 --dist worksteal "
-        "--max-worker-restart=0 --durations=20 -rs --junitxml=real-db-junit.xml",
+        scrub + "uv run python ../../.github/scripts/db_test_shards.py "
+        'real-db "$DB_TEST_SHARD" \\\n'
+        "  -n 4 --dist worksteal --max-worker-restart=0 --durations=20 -rs "
+        "--junitxml=real-db-junit.xml",
     ]
+    assert runs[1]["env"] == {"DB_TEST_SHARD": "${{ matrix.shard }}"}
     assert all(step["working-directory"] == "apps/db" for step in runs)
     assert job["steps"][job["steps"].index(runs[1]) + 1] == {
         "name": "Upload real-DB test results",
         "if": "${{ !cancelled() }}",
         "uses": "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9",
         "with": {
-            "name": "real-db-junit",
+            "name": "real-db-junit-${{ matrix.shard }}",
             "path": "apps/db/real-db-junit.xml",
             "retention-days": 14,
             "if-no-files-found": "warn",
@@ -538,12 +583,17 @@ def test_real_db_ci_uses_a_disposable_postgres_service() -> None:
         for step in details.get("steps", [])
         if step.get("run") == "bash scripts/verify-runtime-images.sh"
     ]
-    assert verification_steps == [("offline-tests-work", "apps/db")]
+    assert verification_steps == [("db-quality-work", "apps/db")]
 
     required_job = document["jobs"]["required-contexts"]
+    assert required_job["if"] == "${{ always() }}"
+    assert required_job["strategy"]["fail-fast"] is False
+    assert required_job["steps"][-1]["run"] == "node .github/scripts/ci-paths.mjs required"
+    assert required_job["steps"][-1]["env"] == {"NEEDS_JSON": "${{ toJSON(needs) }}"}
     assert required_job["needs"] == [
         "classify",
         "offline-tests-work",
+        "db-quality-work",
         "alembic-single-head-work",
         "real-db-tests-work",
     ]
