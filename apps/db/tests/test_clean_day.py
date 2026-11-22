@@ -523,13 +523,80 @@ def test_clean_declared_gtfs_rt_alert_feed(tmp_path: Path) -> None:
     with duckdb.connect(config={"TimeZone": "UTC"}) as db:
         _verify_manifest(db, destination, edition)
         rows = _rows(db, destination / "alerts.parquet")
-        assert not _rows(db, destination / "feed_polls.parquet")
+        polls = _rows(db, destination / "feed_polls.parquet")
+    assert [(p["feed"], p["result"], p["entity_count"]) for p in polls] == [
+        ("service_alerts", "ok", 1),
+        ("service_alerts", "ok", 1),
+    ]
     assert len({r["version"] for r in rows}) == len(rows) == 2
     for row in rows:
         assert row["source"] == "gtfs_rt_service_alerts"
         assert (row["route_ids"], row["stop_ids"]) == (["r"], ["s1"])
         assert (row["header_en"], row["header_fr"]) == (None, "Arrêt déplacé")
         assert (row["cause"], row["effect"]) == ("CONSTRUCTION", "DETOUR")
+
+
+def test_alert_feed_polls_record_every_attempt(tmp_path: Path) -> None:
+    provider = "sto"
+    edition = _edition(tmp_path / "schedule.zip", TRIPS, DAY)
+    (tmp_path / "editions.json").write_text(
+        json.dumps({"provider": provider, "editions": [edition]}), encoding="utf-8"
+    )
+    captured = MIDNIGHT - timedelta(hours=1)
+    feed = _feed(captured)
+    alert = feed.entity.add(id="a").alert
+    alert.informed_entity.add(route_id="r")
+    _save(tmp_path, feed, "service_alerts", captured, provider)
+    _save(tmp_path, feed, "service_alerts", captured + timedelta(seconds=30), provider)
+    _save(
+        tmp_path,
+        _feed(captured + timedelta(minutes=1)),
+        "service_alerts",
+        captured + timedelta(minutes=1),
+        provider,
+    )
+    malformed = b"not protobuf"
+    key = build_realtime_object_storage_path(
+        "sto", "service_alerts", captured + timedelta(minutes=2), sha256(malformed).hexdigest()
+    )
+    (tmp_path / key).write_bytes(malformed)
+
+    destination = _run(tmp_path, DAY, provider)
+    with duckdb.connect(config={"TimeZone": "UTC"}) as db:
+        polls = _rows(db, destination / "feed_polls.parquet")
+    assert [(p["result"], p["entity_count"]) for p in polls] == [
+        ("ok", 1),
+        ("duplicate", 1),
+        ("empty", 0),
+        ("error", None),
+    ]
+
+
+def test_i3_alert_feed_polls(tmp_path: Path) -> None:
+    _index(tmp_path)
+    captured = MIDNIGHT - timedelta(hours=1)
+    original = _alert_body("Use the temporary stop")
+    for stamp, body in (
+        (captured, original),
+        (captured + timedelta(seconds=30), original),
+        (captured + timedelta(minutes=1), _alert_body("Use stop 2")),
+    ):
+        path = tmp_path / build_i3_object_storage_path(
+            provider_id="stm", captured_at_utc=stamp, checksum_sha256=sha256(body).hexdigest()
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(body)
+        _save(tmp_path, _feed(stamp), "trip_updates", stamp)
+
+    destination = _run(tmp_path, DAY)
+    with duckdb.connect(config={"TimeZone": "UTC"}) as db:
+        polls = _rows(db, destination / "feed_polls.parquet")
+    alert_polls = [p for p in polls if p["feed"] == "i3_alerts"]
+    assert [(p["result"], p["entity_count"], p["feed_timestamp_utc"]) for p in alert_polls] == [
+        ("ok", 1, None),
+        ("duplicate", 1, None),
+        ("ok", 1, None),
+    ]
 
 
 def _verify_schedule(

@@ -5,8 +5,12 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from hashlib import sha256
 
+from google.protobuf.message import DecodeError  # type: ignore[import-untyped]
+
+from transit_ops.clean_day_realtime import DayCapture, FeedPoll, PollResult
 from transit_ops.core.models import ProviderManifest, SourceFormat
 from transit_ops.providers.alert_record import AlertRecord, Period
+from transit_ops.providers.formats import decode_gtfs_rt
 from transit_ops.providers.formats.alerts_gtfs_rt import gtfs_rt_alerts
 from transit_ops.providers.formats.alerts_stm_json import stm_json_alerts
 
@@ -99,17 +103,58 @@ class AlertVersion:
         )
 
 
+def read_alert_capture(
+    capture: DayCapture,
+    source: SourceFormat,
+    seen: dict[tuple[str, bytes], FeedPoll],
+) -> tuple[FeedPoll, tuple[AlertRecord, ...]]:
+    """Decode one alert capture into its poll and records, mirroring read_capture.
+
+    The payload is always parsed so that a repeated, identical publication still
+    extends each alert version's last-seen time while the attempt is reported as
+    a duplicate.
+    """
+    key = (capture.feed, sha256(capture.payload).digest())
+    previous = seen.get(key)
+    header: datetime | None = None
+    entities: int | None = None
+    records: tuple[AlertRecord, ...] = ()
+    status: PollResult = "error"
+    try:
+        if source == SourceFormat.API_I3_JSON:
+            records = stm_json_alerts(json.loads(capture.payload), preserve_flat_targets=True)
+        else:
+            message = decode_gtfs_rt(capture.payload)
+            if not message.IsInitialized():
+                raise DecodeError("Incomplete GTFS-Realtime capture")
+            if message.header.timestamp:
+                header = datetime.fromtimestamp(message.header.timestamp, UTC)
+            records = gtfs_rt_alerts(capture.payload, message)
+        entities = len(records)
+        status = "ok" if entities else "empty"
+    except (DecodeError, TypeError, OverflowError, OSError, ValueError):
+        status = "error"
+    if previous is not None and previous.result != "error":
+        status = "duplicate"
+    poll = FeedPoll(
+        capture.feed,
+        capture.captured_at_utc,
+        capture.attempt_id,
+        status,
+        header,
+        len(capture.payload),
+        entities,
+    )
+    seen[key] = poll
+    return poll, records
+
+
 def collect_alerts(
     versions: dict[tuple[str, str, SourceFormat], AlertVersion],
     source: SourceFormat,
     captured: datetime,
-    payload: bytes,
+    records: tuple[AlertRecord, ...],
 ) -> None:
-    records = (
-        stm_json_alerts(json.loads(payload), preserve_flat_targets=True)
-        if source == SourceFormat.API_I3_JSON
-        else gtfs_rt_alerts(payload)
-    )
     for record in records:
         version = _version(record)
         # Without an agency ID there is no evidence linking two different

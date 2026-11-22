@@ -13,7 +13,12 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from transit_ops.clean_day import REALTIME_FEEDS, CleanDay, build_clean_day
-from transit_ops.clean_day_alerts import AlertVersion, alert_sources, collect_alerts
+from transit_ops.clean_day_alerts import (
+    AlertVersion,
+    alert_sources,
+    collect_alerts,
+    read_alert_capture,
+)
 from transit_ops.clean_day_realtime import DayCapture, FeedPoll
 from transit_ops.core.models import ProviderManifest, SourceFormat
 from transit_ops.history.manifest import Manifest, decode_manifest
@@ -59,13 +64,16 @@ def clean_from_inputs(
     )
     sources = alert_sources(declaration)
     versions: dict[tuple[str, str, SourceFormat], AlertVersion] = {}
+    seen: dict[tuple[str, bytes], FeedPoll] = {}
     zone = schedules[day].timezone
 
     def trip_and_vehicle_captures() -> Iterator[DayCapture | FeedPoll]:
         for capture in captures:
             if isinstance(capture, DayCapture) and (source := sources.get(capture.feed)):
                 if capture.captured_at_utc.astimezone(zone).date() == day:
-                    collect_alerts(versions, source[0], capture.captured_at_utc, capture.payload)
+                    poll, records = read_alert_capture(capture, source[0], seen)
+                    collect_alerts(versions, source[0], capture.captured_at_utc, records)
+                    yield poll
             else:
                 yield capture
 
