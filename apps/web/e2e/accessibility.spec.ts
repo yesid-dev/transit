@@ -140,6 +140,13 @@ test.describe('accessibility', { tag: '@theme' }, () => {
 						);
 						await expectAccessible(page, { include: `[data-axe-trip-row="${index}"]` });
 					}
+					const lineRecord = page.getByRole('link', {
+						name: tripCopy[locale].lineRecord,
+						exact: true,
+					});
+					await expect(lineRecord).toHaveCount(1);
+					await expect(lineRecord).toBeInViewport({ ratio: 1 });
+					expect((await lineRecord.boundingBox())!.height).toBeGreaterThanOrEqual(44);
 				}
 				if (path === '/trip/TEmpty') {
 					await expect(
