@@ -1128,3 +1128,8 @@ def test_accessibility_before_v8_is_not_measured(tmp_path: Path) -> None:
     assert answer["evidence"]["days_not_measured"] == [str(THURSDAY)]
     # Other families still read the v7 day normally.
     assert query(store, measure="punctuality")["evidence"]["days_measured"] == [str(THURSDAY)]
+
+
+def test_accessibility_rejects_series_grouping(store: Store) -> None:
+    with pytest.raises(ValueError, match="series grouping"):
+        Question("accessible_trips", "stm", THURSDAY, THURSDAY, group="day")

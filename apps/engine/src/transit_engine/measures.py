@@ -341,6 +341,8 @@ class Question:
             raise ValueError("crowding does not apply to scheduled departures")
         if family.id == _ACCESSIBILITY_ID and self.departure is not None:
             raise ValueError("accessibility does not apply to scheduled departures")
+        if family.id == _ACCESSIBILITY_ID and self.group is not None:
+            raise ValueError("accessibility does not support series grouping")
         if family.id == _SERVICE_DELIVERED_ID and self.stop is not None:
             raise ValueError("stop does not apply to service delivered trip measures")
         if self.measure in _BOUNDARIES:
