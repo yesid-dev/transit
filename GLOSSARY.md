@@ -175,6 +175,12 @@ _Avoid_: latest data, headline age, freshness
 One scheduled run of a vehicle along a line, from its first stop to its last.
 _Avoid_: run, journey; in French, _voyage_
 
+**Stop event** (FR _passage à un arrêt_):
+One stop in a trip on one service date. A trip that visits the same stop twice has two stop events there.
+
+**Scheduled departure** (FR _départ prévu_):
+A line's scheduled trip slot identified by its direction and first departure time in the service day's schedule.
+
 **Trip under way**:
 A scheduled trip between its scheduled start and the last moment its prediction is still ahead, with a vehicle reporting it where the provider links vehicles to trips.
 _Avoid_: bus on the road, active trip
