@@ -4112,14 +4112,13 @@ def _series_answer(
     }
 
 
-def _punctuality_answer(
+def _punctuality_values(
     family: Family,
     selected: tuple[Measure, ...],
     counts: Counter[str],
     histogram: Counter[int],
-    included: list[str],
     missing_days: bool,
-) -> tuple[str, dict[str, float | None], dict[str, Any], dict[str, int]]:
+) -> tuple[str, dict[str, float | None]]:
     classified, scheduled = counts["classified"], counts["scheduled"]
     state = _state(
         family,
@@ -4131,29 +4130,48 @@ def _punctuality_answer(
     )
     values: dict[str, float | None] = dict.fromkeys(m.id for m in selected)
     if state == "measured":
-        bins = sorted(histogram.items())
+        bins = sorted(histogram.items()) if histogram else []
         for measure in selected:
             values[measure.id] = (
                 counts[measure.id] / classified
                 if measure.percentile is None
                 else _percentile(bins, classified, measure.percentile)
             )
+    return state, values
+
+
+def _punctuality_evidence(
+    family: Family, counts: Counter[str], included: list[str]
+) -> dict[str, Any]:
+    scheduled = counts["scheduled"]
+    return {
+        "counts": {
+            key: counts[key] if included else None
+            for key in ("scheduled", "classified", *(m.id for m in family.measures if m.band))
+        },
+        "excluded": {
+            key: counts[key] if included else None
+            for key in _COUNTS
+            if key not in ("scheduled", "classified")
+        },
+        "share_observed": counts["classified"] / scheduled if scheduled else None,
+    }
+
+
+def _punctuality_answer(
+    family: Family,
+    selected: tuple[Measure, ...],
+    counts: Counter[str],
+    histogram: Counter[int],
+    included: list[str],
+    missing_days: bool,
+) -> tuple[str, dict[str, float | None], dict[str, Any], dict[str, int]]:
+    state, values = _punctuality_values(family, selected, counts, histogram, missing_days)
     return (
         state,
         values,
-        {
-            "counts": {
-                key: counts[key] if included else None
-                for key in ("scheduled", "classified", *(m.id for m in family.measures if m.band))
-            },
-            "excluded": {
-                key: counts[key] if included else None
-                for key in _COUNTS
-                if key not in ("scheduled", "classified")
-            },
-            "share_observed": classified / scheduled if scheduled else None,
-        },
-        dict.fromkeys((m.id for m in selected), classified),
+        _punctuality_evidence(family, counts, included),
+        dict.fromkeys(values, counts["classified"]),
     )
 
 

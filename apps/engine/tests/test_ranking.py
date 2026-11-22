@@ -136,6 +136,10 @@ def test_ranked_stop_and_departure_keep_registry_cuts(
         ("N", 0, "26:00:00", "3:night"),
         ("N", 0, "26:10:00", "3:night"),
     ]
+    limited = _json(store, kind="departure", hour="2", limit="1")
+    assert limited["ranked_count"] == 2
+    assert limited["rows"] == [first]
+    assert limited["excluded"] == departures["excluded"]
     measured = _json(store, measure="p90_delay", **{"class": "all"})
     assert measured["rows"][0]["id"] == "W"
     top = measured["rows"][0]

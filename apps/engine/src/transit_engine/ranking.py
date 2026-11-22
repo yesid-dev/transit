@@ -4,11 +4,12 @@ import csv
 import io
 import json
 import re
+from bisect import bisect_right
 from collections import Counter
 from dataclasses import dataclass, field
 from math import sqrt
 from time import perf_counter
-from typing import Any
+from typing import Any, NamedTuple
 
 import duckdb
 
@@ -37,6 +38,8 @@ from transit_engine.measures import (
     Text,
     _csv_columns,
     _info,
+    _punctuality_evidence,
+    _punctuality_values,
     evaluate,
     read_window,
 )
@@ -56,6 +59,7 @@ PEAK_END_HOUR = 9
 MAX_LIMIT = 500
 DEFAULT_LIMIT = 100
 _Z_95 = 1.959963984540054
+_IDENTITY_ENCODER = json.JSONEncoder(ensure_ascii=False, separators=(",", ":"))
 
 _RANGE_NOTES = {
     "matched_headways": Text(
@@ -281,7 +285,7 @@ def _identity(kind: EntityKind, key: EntityKey, classes: list[str]) -> dict[str,
         minutes, seconds = divmod(remainder, 60)
         departure = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
         identity.update(
-            id=json.dumps([line, direction, departure], ensure_ascii=False, separators=(",", ":")),
+            id=_IDENTITY_ENCODER.encode([line, direction, departure]),
             line=line,
             direction=direction,
             departure=departure,
@@ -289,13 +293,44 @@ def _identity(kind: EntityKind, key: EntityKey, classes: list[str]) -> dict[str,
     if kind == "segment":
         line, direction, from_stop, to_stop = key
         identity.update(
-            id=json.dumps(key, ensure_ascii=False, separators=(",", ":")),
+            id=_IDENTITY_ENCODER.encode(key),
             line=line,
             direction=direction,
             from_stop=from_stop,
             to_stop=to_stop,
         )
     return identity
+
+
+class _PunctualityCandidate(NamedTuple):
+    key: EntityKey
+    classes: list[str]
+    value: float
+    sample: int
+    counts: Counter[str]
+
+
+def _punctuality_shortlist(
+    candidates: list[_PunctualityCandidate], ranking: Ranking, order: int
+) -> list[tuple[dict[str, Any], int, Counter[str]]]:
+    if not candidates:
+        return []
+
+    def score(candidate: _PunctualityCandidate) -> tuple[float, int]:
+        return order * candidate.value, -candidate.sample
+
+    candidates.sort(key=score)
+    last = min(len(candidates), ranking.limit) - 1
+    # Include every tie at the limit so the public ID still breaks it.
+    end = bisect_right(candidates, score(candidates[last]), lo=last + 1, key=score)
+    return [
+        (
+            {**_identity(ranking.kind, key, classes), "value": value, "sample": sample},
+            sample,
+            counts,
+        )
+        for key, classes, value, sample, counts in candidates[:end]
+    ]
 
 
 def _historical_schedule(
@@ -414,15 +449,26 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
         candidates = frequent_class_sizes or class_sizes
         chosen_class = min(candidates, key=lambda name: (-candidates[name], name))
     rows: list[tuple[dict[str, Any], int, Counter[str]]] = []
+    punctuality_candidates: list[_PunctualityCandidate] = []
     excluded: list[dict[str, Any]] = []
+    punctuality = family is _PUNCTUALITY
+    no_days_measured = window.no_days_measured
     for key, result in totals.items():
         if not by_vehicle and not result.scheduled_routes:
             continue
         service_classes = sorted({classes[route] for route in result.scheduled_routes})
         if chosen_class not in {None, "all"} and chosen_class not in service_classes:
             continue
-        state, values, evidence, samples = evaluate(family, selected, result, window)
-        value, sample = values[measure.id], samples[measure.id]
+        if punctuality:
+            state, values = _punctuality_values(
+                family, selected, result.counts, result.histogram, no_days_measured
+            )
+            sample = result.counts["classified"]
+            evidence: dict[str, Any] = {}
+        else:
+            state, values, evidence, samples = evaluate(family, selected, result, window)
+            sample = samples[measure.id]
+        value = values[measure.id]
         displayed_sample = (
             sample / _US_PER_HOUR if measure.id == VEHICLE_RANKING_DEFAULT else sample
         )
@@ -433,6 +479,13 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
             and state != "not_measured"
         ):
             state, value = "too_few_to_judge", None
+        if not has_own_states and not result.counts["live_candidates"]:
+            state, value = "no_live_data", None
+        if punctuality and value is not None:
+            punctuality_candidates.append(
+                _PunctualityCandidate(key, service_classes, value, sample, result.counts)
+            )
+            continue
         entry = {
             **_identity(ranking.kind, key, service_classes),
             "sample": displayed_sample,
@@ -442,16 +495,18 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
             entry["sample"] = None
         elif family.id == _CROWDING_ID:
             entry["sample"] = sample / _US_PER_HOUR
-        if not has_own_states and not result.counts["live_candidates"]:
-            state, value = "no_live_data", None
         if value is None:
             if state == "unknown" and not has_own_states:
                 state = "too_few_to_judge"
             reason = _NOT_MEASURED_ON_DATES if state == "not_measured" else _STATES[state]
+            if punctuality:
+                entry.update(_punctuality_evidence(family, result.counts, window.included))
             excluded.append({**entry, "reason": state, "reason_text": reason._asdict()})
         else:
             rows.append(({**entry, "value": value}, sample, result.counts))
     order = -1 if measure.worst_first_descending else 1
+    if punctuality:
+        rows = _punctuality_shortlist(punctuality_candidates, ranking, order)
     rows.sort(key=lambda item: (order * item[0]["value"], -item[0]["sample"], item[0]["id"]))
     excluded.sort(key=lambda row: row["id"])
     evidence = window.evidence(store, question, family, started)
@@ -476,11 +531,12 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
         "kind": ranking.kind,
         "class": chosen_class,
         "available_classes": sorted(class_sizes),
-        "ranked_count": len(rows),
+        "ranked_count": len(punctuality_candidates) if punctuality else len(rows),
         "rows": [
             {
                 "rank": position,
                 **row,
+                **(_punctuality_evidence(family, counts, window.included) if punctuality else {}),
                 "range": _range(row["value"], sample, measure, counts, family),
             }
             for position, (row, sample, counts) in enumerate(rows[: ranking.limit], start=1)
