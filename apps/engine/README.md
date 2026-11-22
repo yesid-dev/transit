@@ -44,6 +44,40 @@ gap. Too few to judge means fewer than 30 classified stop events with at least o
 Unknown covers a cut with no match or with no classified event for another reason. Capture
 gaps stay in the scheduled total. A measured zero share has its denominator and a zero band count.
 
+### Series
+
+Add `group=day` to get one cell per service date, `group=hour` for 24 local clock
+hours, `group=day_type` for weekday, Saturday and Sunday, or `group=weekday_hour`
+for a 168-cell grid ordered by ISO service weekday (Monday = 1) and local hour
+(midnight = 0). For a line measure with direction data, `group=direction` returns
+GTFS directions 0 and 1 and a null direction cell when the source has unassigned
+records. Series accept up to 400 inclusive service dates and support the measure's
+usual filters. For example, use
+`/measure?measure=punctuality&city=stm&from=2026-11-19&to=2026-11-25&group=weekday_hour`.
+
+Each entry in `cells` has a `key` object with its grouping fields, the registry's
+`value` map, bilingual `state_text`, `state`, and `evidence` with the counts,
+exclusions and included dates for that cell. Family responses retain their
+per-measure states where applicable. Cells with no valid day in scope report
+`not_measured` with null values. Measured days can still have thin samples
+or empty hours. The response envelope lists overall measured, missing and
+included dates, method and cleaning versions, and query time.
+
+Punctuality, service delivery, waiting and scheduled service use the same local time
+as their hour filters. Events without a scheduled time have no clock hour. First
+and last departures are selected from the full day and assigned to the hour of
+the boundary departure. Crowding and observed vehicle time are split at clock-hour
+boundaries. Vehicle trips use the scheduled start or first position, and reporting
+gaps use the hour of the last sighting before the gap. Alert groups clip published
+spans to the tracked local dates or hours and count distinct alerts and versions
+within each cell. Each cell calculates percentiles, shares and ratios from its own
+histogram or evidence totals. Distinct counts can overlap across cells.
+
+Grouped CSV uses one row per cell and prepends localized grouping columns to the
+registry headings. A family export uses JSON objects keyed by measure ID in the
+value, unit and state columns. A single measure keeps scalar columns and leaves
+missing values blank.
+
 `GET /how-we-measure` returns the registry's English and French entries, including
 definitions, minimum sample, calculation method and export columns. Add
 `format=csv&lang=fr` for one row per measure with French headings or use `lang=en` for

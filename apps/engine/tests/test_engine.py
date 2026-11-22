@@ -462,6 +462,12 @@ def test_service_delivered_boundaries_and_trip_cuts(
     )
     assert below_floor["state"] == "too_few_to_judge"
     assert below_floor["value"] == {"first_trip": None}
+    daily = query(store, measure="service_delivered", group="day", **weekday)
+    assert daily["cells"][0]["evidence"]["measure_states"]["first_trip"] == "too_few_to_judge"
+    assert daily["cells"][0]["evidence"]["boundary_departures"] == edges[:2]
+    hourly = query(store, measure="last_trip", group="hour", **weekday)
+    assert hourly["cells"][1]["value"]["last_trip"] == 19 / 20
+    assert hourly["cells"][7]["value"]["last_trip"] is None
     assert query(store, measure="trips_run", line="N")["state"] == "no_live_data"
     assert (
         query(store, measure="trips_run", line="A", hour=8, direction=0, departure="08:30:00")[
@@ -687,6 +693,9 @@ def test_incomplete_clean_day_is_not_measured(store: Store, damage: str) -> None
     assert result["evidence"]["days_not_measured"] == [str(THURSDAY)]
     assert result["evidence"]["days_measured"] == []
     assert result["evidence"]["counts"]["classified"] is None
+    (cell,) = query(store, group="day")["cells"]
+    assert cell["state"] == "not_measured"
+    assert cell["evidence"]["counts"]["classified"] is None
 
 
 def test_no_raw_captures_receipt_is_not_measured(store: Store) -> None:
@@ -807,6 +816,11 @@ def test_http_and_bilingual_csv_come_from_same_registry(
         "&departure=07:30:00",
         "&hour=24",
         "&day_type=weekend",
+        "&group=week",
+        "&group=",
+        "&group=day&group=hour",
+        "&group=direction",
+        "&group=day&to=2028-01-01",
         "&format=yaml",
         "&lang=es",
         "&stop=%00",
@@ -820,7 +834,7 @@ def test_invalid_parameters_fail_before_admission(store: Store, parameters: str)
     app = Engine(store, concurrency=1, queue_size=0, queue_wait_ms=50)
     params = {"measure": "punctuality", "city": "stm", "from": THURSDAY, "to": THURSDAY}
     for key in ("to", "from"):
-        if parameters.startswith(f"&{key}="):
+        if f"&{key}=" in parameters:
             params.pop(key)
     status, _, _ = asyncio.run(http(app, "/measure", urlencode(params) + parameters))
     assert status == 400

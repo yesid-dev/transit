@@ -17,7 +17,6 @@ from transit_engine.measures import (
     _ALERT_COUNTS_ID,
     _BOUNDARIES,
     _CROWDING_ID,
-    _LOCAL_HOUR,
     _SELECTIONS,
     _SERVICE_DELIVERED_ID,
     _STATES,
@@ -39,6 +38,7 @@ from transit_engine.measures import (
     read_window,
 )
 from transit_engine.schedule import FREQUENT_HEADWAY_SECONDS
+from transit_engine.series import LOCAL_HOUR as _LOCAL_HOUR
 from transit_engine.store import Store
 
 # Transit R5, "Rankings" and "Evidence, on every number":
@@ -107,6 +107,8 @@ class Ranking:
     limit: int = DEFAULT_LIMIT
 
     def __post_init__(self) -> None:
+        if self.question.group is not None:
+            raise ValueError("group applies to /measure")
         family, measures = _SELECTIONS[self.question.measure]
         if len(measures) != 1:
             raise ValueError("choose a single registry measure")

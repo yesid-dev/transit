@@ -23,6 +23,7 @@ from transit_engine.measures import (
     methods,
 )
 from transit_engine.ranking import DEFAULT_LIMIT, Ranking, rank, ranking_csv
+from transit_engine.series import SeriesGroup
 from transit_engine.store import Store, env_int
 
 BUSY_MESSAGE = "busy, try again"
@@ -74,7 +75,7 @@ def _question(
         optional.update({"measure", "class", "limit"})
     else:
         required.add("measure")
-        optional.update({"line", "direction", "stop", "departure", "vehicle"})
+        optional.update({"line", "direction", "stop", "departure", "vehicle", "group"})
     if len(raw) > 4096 or re.search(rb"%(?![a-fA-F0-9]{2})", raw):
         raise ValueError("invalid query string")
     fields = parse_qs(
@@ -137,6 +138,7 @@ def _question(
         effect=params.get("effect"),
         cause=params.get("cause"),
         vehicle=vehicle,
+        group=cast(SeriesGroup | None, params.get("group")),
     )
     if ranking:
         kind = params["kind"]
