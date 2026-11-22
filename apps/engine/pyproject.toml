@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=83.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "transit-engine"
+version = "0.1.0"
+description = "On-demand measures over Transit's clean Parquet tables."
+requires-python = ">=3.12,<3.13"
+dependencies = ["duckdb==2.0.0", "uvicorn>=0.52.0,<0.53"]
+
+[project.scripts]
+transit-engine = "transit_engine.server:main"
+transit-engine-timing = "transit_engine.timing:main"
+transit-engine-burst = "transit_engine.burst:main"
+
+[dependency-groups]
+dev = [
+  "mypy>=2.3.0,<3.0",
+  "pytest>=9.1.1,<10.0",
+  "ruff>=0.16.0,<0.18",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "UP"]
+
+[tool.mypy]
+strict = true
+files = ["src", "tests"]

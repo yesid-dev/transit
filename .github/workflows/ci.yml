@@ -11,6 +11,7 @@ on:
       - ".env.example"
       - ".gitleaks.toml"
       - "apps/db/**"
+      - "apps/engine/**"
       - ".github/workflows/**"
       - ".github/scripts/**"
       - ".github/actions/**"
@@ -33,6 +34,30 @@ env:
   COLUMNS: "200"
 
 jobs:
+  engine-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/engine
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Python workspace
+        uses: ./.github/actions/setup-py
+        with:
+          working-directory: apps/engine
+
+      - name: Run engine tests
+        run: uv run --locked pytest
+
+      - name: Ruff
+        run: uv run --locked ruff check src tests
+
+      - name: Strict Python typing
+        run: uv run --locked mypy
+
   classify:
     runs-on: ubuntu-24.04
     timeout-minutes: 5

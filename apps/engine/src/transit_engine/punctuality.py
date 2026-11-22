@@ -1,0 +1,189 @@
+import os
+import re
+from dataclasses import dataclass
+from datetime import date
+from pathlib import Path
+from time import perf_counter
+from typing import Self, TypedDict
+
+import duckdb
+
+METHOD_VERSION = "network-punctuality-v1"
+CITY = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
+
+# Source: Transit's on-demand analytics roadmap, "What on time counts",
+# confirmed by Yesito on 2026-11-20. Count each scheduled trip stop once.
+# The engine slice classifies non-null delays with -60 and 300 inclusive.
+BANDS = """count(*) AS scheduled, count(delay_seconds) AS classified,
+    count(*) FILTER (delay_seconds < -60) AS early,
+    count(*) FILTER (delay_seconds BETWEEN -60 AND 300) AS on_time,
+    count(*) FILTER (delay_seconds > 300) AS late"""
+
+# PR #1180 emits added trips with no scheduled start. A scheduled trip can
+# have untimed stops, so use the trip's schedule marker, not its stop timestamps.
+SCHEDULED_EVENTS = """
+    FROM read_parquet($1, hive_partitioning = false) s
+    SEMI JOIN read_parquet($2, hive_partitioning = false) t
+      ON (s.provider, s.service_date, s.cleaning_version, s.trip_id) =
+         (t.provider, t.service_date, t.cleaning_version, t.trip_id)
+      AND t.scheduled_start_utc IS NOT NULL
+      AND t.state IS DISTINCT FROM 'cancelled'
+    WHERE s.provider = $3 AND s.cleaning_version = $4
+      AND s.service_date BETWEEN $5 AND $6
+"""
+
+
+def env_int(name: str, default: int, *, minimum: int = 1) -> int:
+    value = int(os.environ.get(name, str(default)))
+    if value < minimum:
+        raise ValueError(f"{name} must be at least {minimum}")
+    return value
+
+
+@dataclass(frozen=True)
+class Store:
+    root: str
+    cleaning_version: int = 1
+    memory_mib: int = 256
+    threads: int = 1
+    s3_endpoint: str | None = None
+
+    @classmethod
+    def from_env(cls) -> Self:
+        root = os.environ.get("ENGINE_CLEAN_ROOT", "./clean-days")
+        endpoint = os.environ.get("ENGINE_S3_ENDPOINT")
+        if root.startswith("s3://"):
+            if not re.fullmatch(r"s3://[a-z0-9][a-z0-9.-]*(/[a-zA-Z0-9._/-]+)?/?", root):
+                raise ValueError("ENGINE_CLEAN_ROOT must be an s3://bucket[/prefix] URL")
+            if not endpoint or not re.fullmatch(r"[a-zA-Z0-9.-]+(?::[0-9]+)?", endpoint):
+                raise ValueError("ENGINE_S3_ENDPOINT must be an HTTPS host without a scheme")
+            if not all(
+                os.environ.get(key) for key in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY")
+            ):
+                raise ValueError("S3 requires AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY")
+        else:
+            root = Path(root).resolve().as_posix()
+            endpoint = None
+        return cls(
+            root,
+            env_int("ENGINE_CLEANING_VERSION", 1),
+            env_int("ENGINE_QUERY_MEMORY_MIB", 256),
+            env_int("ENGINE_QUERY_THREADS", 1),
+            endpoint,
+        )
+
+    def connect(self) -> duckdb.DuckDBPyConnection:
+        conn = duckdb.connect(
+            config={
+                "threads": self.threads,
+                "memory_limit": f"{self.memory_mib} MiB",
+                "max_temp_directory_size": "0 bytes",
+                "autoload_known_extensions": False,
+                "autoinstall_known_extensions": False,
+            },
+        )
+        if self.s3_endpoint:
+            try:
+                conn.execute("LOAD httpfs")
+                conn.execute(
+                    """
+                    CREATE SECRET clean_days (
+                        TYPE s3, KEY_ID ?, SECRET ?, SESSION_TOKEN ?,
+                        ENDPOINT ?, REGION 'auto', URL_STYLE 'path', USE_SSL true, SCOPE ?
+                    )
+                    """,
+                    [
+                        os.environ["AWS_ACCESS_KEY_ID"],
+                        os.environ["AWS_SECRET_ACCESS_KEY"],
+                        os.environ.get("AWS_SESSION_TOKEN", ""),
+                        self.s3_endpoint,
+                        f"{self.root.rstrip('/')}/",
+                    ],
+                )
+            except Exception:
+                conn.close()
+                raise
+        return conn
+
+    def files(
+        self, conn: duckdb.DuckDBPyConnection, city: str, day: date
+    ) -> tuple[str, str] | None:
+        directory = f"{self.root.rstrip('/')}/{city}/{day.isoformat()}/v{self.cleaning_version}"
+        stops = f"{directory}/stop_events.parquet"
+        trips = f"{directory}/trip_days.parquet"
+        if self.s3_endpoint:
+            # Listing the exact version prefix distinguishes missing data from
+            # access errors and works with R2's signed ListObjectsV2 requests.
+            present = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT file FROM glob(?)",
+                    [
+                        f"{directory}/*.parquet",
+                    ],
+                ).fetchall()
+            }
+            if stops not in present:
+                return None
+            if trips not in present:
+                raise FileNotFoundError("Missing trip_days for an existing clean day")
+        else:
+            try:
+                Path(stops).stat()
+            except FileNotFoundError:
+                return None
+            Path(trips).stat()
+        return stops, trips
+
+
+class Evidence(TypedDict):
+    status: str
+    message: str | None
+    city: str
+    start_date: str
+    end_date: str
+    early: int | None
+    on_time: int | None
+    late: int | None
+    classified: int | None
+    scheduled: int | None
+    share_observed: float | None
+    share_on_time: float | None
+    cleaning_versions: list[int]
+    method_version: str
+    query_ms: float
+
+
+def network_day(store: Store, city: str, day: date) -> Evidence:
+    if not CITY.fullmatch(city):
+        raise ValueError("Invalid city")
+    started = perf_counter()
+    scheduled = classified = early = on_time = late = None
+    versions: list[int] = []
+    with store.connect() as conn:
+        files = store.files(conn, city, day)
+        if files:
+            row = conn.execute(
+                f"SELECT {BANDS} {SCHEDULED_EVENTS}",
+                [*files, city, str(store.cleaning_version), day, day],
+            ).fetchone()
+            assert row is not None  # An ungrouped aggregate always returns one row.
+            scheduled, classified, early, on_time, late = row
+            versions.append(store.cleaning_version)
+    return {
+        "status": "measured" if classified else "not_measured",
+        "message": None if classified else "not measured",
+        "city": city,
+        "start_date": day.isoformat(),
+        "end_date": day.isoformat(),
+        "early": early,
+        "on_time": on_time,
+        "late": late,
+        "classified": classified,
+        "scheduled": scheduled,
+        "share_observed": classified / scheduled if scheduled and classified is not None else None,
+        "share_on_time": on_time / classified if classified and on_time is not None else None,
+        "cleaning_versions": versions,
+        "method_version": METHOD_VERSION,
+        "query_ms": (perf_counter() - started) * 1000,
+    }
