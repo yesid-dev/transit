@@ -50,7 +50,7 @@ for (const provider of ['stm', 'octranspo']) {
 	}
 }
 
-// The shell pads `main` with the one fixed-chrome clearance. A legal page adds only its own
+// The shell reserves one chrome clearance in flow. A legal page adds only its own
 // reading gap on top of it, so the first line sits one clearance below the chrome. A second
 // --chrome-offset would show up here as a gap as tall as that clearance.
 const READING_GAP_REM = 4;
@@ -73,9 +73,9 @@ function legalMetrics(page: Page): Promise<LegalMetrics> {
 		const docBottom = (element: Element) => element.getBoundingClientRect().bottom + scrollY;
 		const main = document.querySelector<HTMLElement>('main')!;
 		const article = document.querySelector<HTMLElement>('[data-testid="legal-document"]')!;
-		// The app frame controls sit below the pill and are also fixed chrome.
+		// The app frame controls and the pill form the sticky chrome.
 		const pill = document.querySelector<HTMLElement>('[data-testid="nav-pill"]')!;
-		const controls = pill.querySelector('[data-slot="app-frame-controls"]')!;
+		const controls = document.querySelector('[data-slot="app-frame-controls"]')!;
 		const chrome = [pill, controls].filter((element) => element.checkVisibility());
 		let contentSpill = article.getBoundingClientRect().right - innerWidth;
 		for (const descendant of article.querySelectorAll('*')) {
@@ -137,7 +137,7 @@ for (const kind of ['privacy', 'terms', 'accessibility'] as const) {
 				const anchored = page.locator(`[id="${id}"]`);
 				await expect(anchored).toBeInViewport();
 				const chromeBottom = await page.getByTestId('nav-pill').evaluate((pill) => {
-					const controls = pill.querySelector('[data-slot="app-frame-controls"]')!;
+					const controls = document.querySelector('[data-slot="app-frame-controls"]')!;
 					return Math.max(
 						...[pill, controls]
 							.filter((element) => element.checkVisibility())

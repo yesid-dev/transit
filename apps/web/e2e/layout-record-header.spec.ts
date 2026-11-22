@@ -3,6 +3,7 @@ import { expect, type Page } from '@playwright/test';
 import { test } from './layout-test';
 import { localizeHref } from '../src/lib/i18n/routing';
 import { stampCopy } from '../src/lib/v1/stamp.copy';
+import { waitForFrameClearance } from './layout-helpers';
 
 // A record page's header has its final height before the record's files arrive: the dated stamp,
 // the data health warning (W10) under it and the sections control all keep their room, so the
@@ -107,3 +108,59 @@ for (const { name, path, first, ...record } of pages)
 				for (const release of gate.releases.splice(0)) release();
 			}
 		});
+
+for (const locale of ['en', 'fr'] as const)
+	for (const width of [320, 360, 390, 768, 1440])
+		for (const scale of [100, 200])
+			test(`${locale} line uses its real header clearance before hydration at ${width}px and ${scale}% text with slow record files`, async ({
+				page,
+			}) => {
+				const { path, first, published } = pages[0];
+				const record = await holdRecordFiles(page, published);
+				const requestHeld = new Promise<void>((resolve) => (record.entered = resolve));
+				let releaseScripts!: () => void;
+				const scripts = new Promise<void>((resolve) => (releaseScripts = resolve));
+				await page.route('**/_app/immutable/**/*.js', async (route) => {
+					await scripts;
+					await route.fallback();
+				});
+				try {
+					await page.setViewportSize({ width, height: 900 });
+					await page.goto(localizeHref(path, locale), { waitUntil: 'domcontentloaded' });
+					await page.addStyleTag({ content: `html { font-size: ${scale}%; }` });
+					await expect(page.locator(first)).toBeVisible();
+					// WebKit can keep fonts.ready pending while the document has blocked scripts.
+					await expect
+						.poll(() =>
+							page.evaluate(() => [...document.fonts].some((font) => font.status === 'loading')),
+						)
+						.toBe(false);
+					await expect(page.locator('html[data-hydrated]')).toHaveCount(0);
+					const before = await frame(page, first);
+					const controls = page.locator('[data-slot="app-frame-controls"]');
+					const gap = await controls.evaluate((element) => {
+						const main = document.querySelector('main')!;
+						return (
+							main.getBoundingClientRect().top +
+							parseFloat(getComputedStyle(main).paddingTop) -
+							element.getBoundingClientRect().bottom -
+							parseFloat(getComputedStyle(document.documentElement).fontSize) / 2
+						);
+					});
+
+					releaseScripts();
+					await requestHeld;
+					await waitForFrameClearance(page);
+					expect(await frame(page, first)).toEqual(before);
+					expect(gap).toBeCloseTo(0);
+
+					record.holding = false;
+					for (const release of record.releases.splice(0)) release();
+					await expect(page.getByRole('link', { name: stampCopy[locale].warning })).toBeVisible();
+					expect(await frame(page, first)).toEqual(before);
+				} finally {
+					releaseScripts();
+					record.holding = false;
+					for (const release of record.releases.splice(0)) release();
+				}
+			});

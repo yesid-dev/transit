@@ -414,9 +414,7 @@
 						id="main"
 						tabindex="-1"
 						aria-label={mainLabel?.[locale]}
-						class={isFullBleed
-							? 'min-h-0 grow'
-							: 'grow shrink-0 basis-auto pt-[var(--chrome-offset)]'}
+						class={isFullBleed ? 'min-h-0 grow' : 'grow shrink-0 basis-auto'}
 					>
 						{#if !v1 && !isDataIndependentRoute(seoPath) && !upcomingPage(seoPath)}
 							<div
