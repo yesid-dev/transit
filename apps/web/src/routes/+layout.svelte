@@ -108,6 +108,7 @@
 
 	const siteConfig = readPublicSiteConfig();
 	const seoPath = $derived(delocalizePath(page.url.pathname));
+	const isOverviewRecord = $derived(seoPath === '/' && page.data.record != null);
 	let constructionEdge = $state<HTMLElement>();
 	let constructionProgress = $state(1);
 
@@ -406,7 +407,7 @@
 			<div class="flex w-full flex-col {isFullBleed ? 'h-full overflow-hidden' : ''}">
 				<div
 					id="main-flow"
-					style:overflow-anchor={seoPath === '/' ? 'none' : undefined}
+					style:overflow-anchor={seoPath === '/' && !isOverviewRecord ? 'none' : undefined}
 					class="flex flex-col {isFullBleed ? 'h-full' : 'min-h-full shrink-0'}"
 					data-lenis-prevent={isFullBleed || undefined}
 				>
@@ -416,7 +417,7 @@
 						aria-label={mainLabel?.[locale]}
 						class={isFullBleed ? 'min-h-0 grow' : 'grow shrink-0 basis-auto'}
 					>
-						{#if !v1 && !isDataIndependentRoute(seoPath) && !upcomingPage(seoPath)}
+						{#if !v1 && !isOverviewRecord && !isDataIndependentRoute(seoPath) && !upcomingPage(seoPath)}
 							<div
 								class="mx-auto flex h-full max-w-2xl flex-col items-center justify-center gap-4 p-6"
 							>
@@ -434,7 +435,7 @@
 						{/if}
 					</main>
 					{#if !isFullBleed}
-						{#if seoPath === '/'}
+						{#if seoPath === '/' && !isOverviewRecord}
 							{#key page.url.pathname}
 								<div
 									bind:this={constructionEdge}

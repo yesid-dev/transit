@@ -39,7 +39,7 @@ test('homepage ground follows window scrolling and reverses without moving the t
 	page,
 }) => {
 	await page.emulateMedia({ reducedMotion: 'no-preference' });
-	await page.goto('/');
+	await page.goto('/?frameMode=live');
 	const props = page.locator('[data-slot="construction-props"]');
 	await expect(props).toHaveAttribute('data-state', 'hidden');
 	const samples = [];
@@ -131,7 +131,7 @@ test('homepage ground follows window scrolling and reverses without moving the t
 	).toHaveCount(0);
 	await page.goto('/lines');
 	await expect(props).toHaveCount(0);
-	await page.goto('/fr');
+	await page.goto('/fr?frameMode=live');
 	await expect(props).toHaveCount(1);
 });
 
@@ -237,7 +237,7 @@ test('the home cards hold their place while the record, live numbers and ranking
 			},
 		});
 	});
-	await page.goto('/');
+	await page.goto('/?frameMode=live');
 	const strip = page.locator('[data-slot="home-pulse"]');
 	const below = page.locator('[data-slot="home-groups"]');
 	const documentTop = () =>
@@ -264,7 +264,7 @@ test('the home cards hold their place when the live numbers cannot be loaded', a
 		await held;
 		await route.fulfill({ status: 404, json: {} });
 	});
-	await page.goto('/fr');
+	await page.goto('/fr?frameMode=live');
 	const strip = page.locator('[data-slot="home-pulse"]');
 	const below = page.locator('[data-slot="home-groups"]');
 	const documentTop = () =>
@@ -311,7 +311,7 @@ test('the home cards hold their place while Refresh runs, succeeds and fails', a
 			gate = null;
 			fail = false;
 			await page.setViewportSize({ width, height: 900 });
-			await page.goto(locale === 'fr' ? '/fr' : '/');
+			await page.goto(`${locale === 'fr' ? '/fr' : '/'}?frameMode=live`);
 			const live = page.locator('[data-slot="home-pulse-live"]');
 			await expect(live.locator('[data-live="reporting"]')).toContainText('321');
 			const below = page.locator('[data-slot="home-groups"]');
@@ -403,7 +403,7 @@ test('the home ranking rows show whole names and hold their place', async ({ pag
 			let release = (): void => {};
 			held = new Promise<void>((resolve) => (release = resolve));
 			await page.setViewportSize({ width, height: 900 });
-			await page.goto(locale === 'fr' ? '/fr' : '/');
+			await page.goto(`${locale === 'fr' ? '/fr' : '/'}?frameMode=live`);
 			const below = page.locator('[data-slot="home-groups"]');
 			const top = () =>
 				below.evaluate((element) => element.getBoundingClientRect().top + window.scrollY);
@@ -462,7 +462,7 @@ test('homepage props remain static without JavaScript and switch instantly with 
 	});
 	try {
 		const fallback = await context.newPage();
-		await fallback.goto('/');
+		await fallback.goto('/?frameMode=live');
 		await expect(fallback.locator('[data-slot="construction-props"]')).toHaveAttribute(
 			'data-state',
 			'static',
@@ -482,7 +482,7 @@ test('homepage props remain static without JavaScript and switch instantly with 
 		await context.close();
 	}
 	await page.emulateMedia({ reducedMotion: 'reduce' });
-	await page.goto('/');
+	await page.goto('/?frameMode=live');
 	const props = page.locator('[data-slot="construction-props"]');
 	await expect(props).toHaveAttribute('data-state', 'hidden');
 	await page.locator('#main').focus();

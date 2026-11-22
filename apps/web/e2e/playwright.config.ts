@@ -188,7 +188,7 @@ export default defineConfig({
 		},
 		// The built worker without bindings, so server-side data comes from the fixture server.
 		{
-			command: `bun x wrangler dev --config wrangler.json --ip 127.0.0.1 --port ${port} --var PUBLIC_V1_BASE:${dataURL}/v1`,
+			command: `bun x wrangler dev --config wrangler.json --ip 127.0.0.1 --port ${port} --var PUBLIC_V1_BASE:${dataURL}/v1 --var ENGINE_ORIGIN:${dataURL}`,
 			url: baseURL,
 			reuseExistingServer: !process.env.CI,
 		},
