@@ -5,7 +5,7 @@ import os
 import re
 import sys
 from datetime import date
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from urllib.parse import parse_qs
 from uuid import uuid4
 
@@ -13,7 +13,8 @@ import uvicorn
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 
 from transit_engine.health import data_health
-from transit_engine.measures import Language, Question, answer_csv, ask, methods
+from transit_engine.measures import EntityKind, Language, Question, answer_csv, ask, methods
+from transit_engine.ranking import DEFAULT_LIMIT, Ranking, rank, ranking_csv
 from transit_engine.store import Store, env_int
 
 BUSY_MESSAGE = "busy, try again"
@@ -55,9 +56,17 @@ def _date(value: str) -> date:
     return parsed
 
 
-def _question(raw: bytes) -> tuple[Question, Literal["json", "csv"], Language]:
-    required = {"measure", "city", "from", "to"}
-    optional = {"line", "direction", "stop", "departure", "hour", "day_type", "format", "lang"}
+def _question(
+    raw: bytes, *, ranking: bool = False
+) -> tuple[Question | Ranking, Literal["json", "csv"], Language]:
+    required = {"city", "from", "to"}
+    optional = {"hour", "day_type", "format", "lang"}
+    if ranking:
+        required.add("kind")
+        optional.update({"measure", "class", "limit"})
+    else:
+        required.add("measure")
+        optional.update({"line", "direction", "stop", "departure"})
     if len(raw) > 4096 or re.search(rb"%(?![a-fA-F0-9]{2})", raw):
         raise ValueError("invalid query string")
     fields = parse_qs(
@@ -70,7 +79,7 @@ def _question(raw: bytes) -> tuple[Question, Literal["json", "csv"], Language]:
     if not required <= fields.keys() <= required | optional or any(
         len(values) != 1 or not values[0] for values in fields.values()
     ):
-        raise ValueError("provide measure, city, from and to, and use each parameter once")
+        raise ValueError(f"provide {', '.join(sorted(required))} and use each parameter once")
     params = {name: values[0] for name, values in fields.items()}
     for name in ("line", "stop"):
         if (value := params.get(name)) is not None and (
@@ -93,22 +102,31 @@ def _question(raw: bytes) -> tuple[Question, Literal["json", "csv"], Language]:
     language = params.get("lang", "en")
     if output not in ("json", "csv") or language not in ("en", "fr"):
         raise ValueError("format must be json or csv and lang must be en or fr")
-    return (
-        Question(
-            params["measure"],
-            params["city"],
-            _date(params["from"]),
-            _date(params["to"]),
-            params.get("line"),
-            int(direction) if direction is not None else None,
-            params.get("stop"),
-            departure,
-            int(hour) if hour is not None else None,
-            day_type,
-        ),
-        "csv" if output == "csv" else "json",
-        "fr" if language == "fr" else "en",
+    output_format: Literal["json", "csv"] = "csv" if output == "csv" else "json"
+    output_language: Language = "fr" if language == "fr" else "en"
+    question = Question(
+        params.get("measure", "on_time"),
+        params["city"],
+        _date(params["from"]),
+        _date(params["to"]),
+        params.get("line"),
+        int(direction) if direction is not None else None,
+        params.get("stop"),
+        departure,
+        int(hour) if hour is not None else None,
+        day_type,
+        ranking=ranking,
     )
+    if ranking:
+        kind = params["kind"]
+        if kind not in ("line", "stop", "departure"):
+            raise ValueError("kind must be line, stop or departure")
+        limit = params.get("limit", str(DEFAULT_LIMIT))
+        if not re.fullmatch(r"[0-9]{1,3}", limit):
+            raise ValueError("limit must be a positive integer")
+        selection = Ranking(question, cast(EntityKind, kind), params.get("class"), int(limit))
+        return selection, output_format, output_language
+    return question, output_format, output_language
 
 
 def _health(raw: bytes) -> tuple[str, date, date]:
@@ -159,11 +177,13 @@ class Engine:
         if scope["path"] == "/data-health":
             await self._data_health(scope["query_string"], send)
             return
-        if scope["path"] != "/measure":
+        if scope["path"] not in {"/measure", "/ranking"}:
             await respond(send, 404, {"message": "not found"})
             return
         try:
-            question, output, language = _question(scope["query_string"])
+            question, output, language = _question(
+                scope["query_string"], ranking=scope["path"] == "/ranking"
+            )
         except UnicodeError:
             await respond(send, 400, {"message": "invalid query encoding"})
             return
@@ -190,6 +210,9 @@ class Engine:
 
         # Keep the slot until DuckDB stops, including when a caller disconnects.
         def run_query() -> dict[str, Any] | str:
+            if isinstance(question, Ranking):
+                answer = rank(self.store, question)
+                return ranking_csv(answer, language) if output == "csv" else answer
             answer = ask(self.store, question)
             return answer_csv(answer, language) if output == "csv" else answer
 
@@ -205,7 +228,7 @@ class Engine:
             answer = await asyncio.shield(query)
         except Exception as error:
             # DuckDB errors can include storage configuration. Log the class only.
-            LOGGER.error("measure query failed (%s)", type(error).__name__)
+            LOGGER.error("engine query failed (%s)", type(error).__name__)
             await respond(send, 500, {"message": "query failed"}, queued=queued)
         else:
             await respond(send, 200, answer, queued=queued)

@@ -40,9 +40,9 @@ def file_identities(
         files = manifest.get("files")
         count_fields = {STOP_EVENTS: "row_counts_by_basis", TRIP_DAYS: "row_counts_by_state"}
         expected = set(count_fields)
-        if version in {"4", "5"}:
+        if version in {"4", "5", "6"}:
             expected.update(_V4_FILES)
-        if version == "5":
+        if version in {"5", "6"}:
             if "alerts" not in manifest:
                 expected.add(ALERTS)
             elif manifest["alerts"] != "not_tracked":

@@ -44,7 +44,7 @@ def clean_day(
     root: Path,
     day: date,
     *,
-    version: int = 5,
+    version: int = 6,
     alerts: str = "tracked",
     rows: dict[str, int] | None = None,
 ) -> Path:
@@ -52,7 +52,7 @@ def clean_day(
     directory.mkdir(parents=True)
     table_rows = {**ROWS, **(rows or {})}
     tables = [STOP_EVENTS, TRIP_DAYS]
-    if version in {4, 5}:
+    if version in {4, 5, 6}:
         tables += [SCHEDULED_STOP_TIMES, VEHICLE_POSITIONS, FEED_POLLS]
     if alerts == "tracked":
         tables.append(ALERTS)
@@ -87,12 +87,12 @@ def test_present_day_reports_each_table_and_its_rows(tmp_path: Path) -> None:
     result = data_health(Store(tmp_path.as_posix()), "stm", DAY, DAY)
     assert result["city"] == "stm"
     assert result["from"] == result["to"] == DAY.isoformat()
-    assert result["cleaning_version"] == "5"
+    assert result["cleaning_version"] == "6"
     [entry] = result["days"]
     assert entry["service_date"] == DAY.isoformat()
     assert entry["status"] == "present"
     assert "reason" not in entry
-    assert entry["cleaning_version"] == "5"
+    assert entry["cleaning_version"] == "6"
     assert entry["built_at_utc"] == f"{DAY}T06:30:00+00:00"
     assert list(entry["tables"]) == list(TABLE_NAMES)
     assert entry["tables"]["stop_events"] == {"status": "present", "rows": 3}
@@ -105,7 +105,7 @@ def test_no_manifest_is_a_missing_day(tmp_path: Path) -> None:
     [entry] = result["days"]
     assert entry["status"] == "missing"
     assert entry["reason"] == "no_manifest"
-    assert entry["cleaning_version"] == "5"
+    assert entry["cleaning_version"] == "6"
     assert entry["built_at_utc"] is None
     assert set(entry["tables"]) == set(TABLE_NAMES)
     assert {table["status"] for table in entry["tables"].values()} == {"missing"}
@@ -215,7 +215,9 @@ def test_route_returns_json_and_rejects_bad_parameters(tmp_path: Path) -> None:
         status, headers, body = await get(app, "/data-health", params)
         assert status == 200
         assert headers[b"content-type"] == b"application/json"
-        assert json.loads(body)["days"][0]["status"] == "present"
+        payload = json.loads(body)
+        assert payload["cleaning_version"] == "6"
+        assert payload["days"][0]["status"] == "present"
         for query in (
             params + "&format=csv",
             urlencode({"city": "STM", "from": DAY, "to": DAY}),

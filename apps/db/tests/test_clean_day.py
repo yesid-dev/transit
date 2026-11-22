@@ -534,6 +534,8 @@ def test_clean_day_math_and_edition_switch(tmp_path: Path) -> None:
     assert states["cancel"]["cancellation_notice_utc"] == MIDNIGHT - timedelta(hours=6)
     assert states["night"]["cancellation_notice_utc"] == MIDNIGHT - timedelta(hours=6)
     assert states["gap"]["route_has_live_data"] is False
+    assert states["gap"]["route_type"] == 1
+    assert states["night"]["route_type"] == 3
     assert states["gap"]["state_reason"] == "route_without_live_data"
     assert states["capture_gap"]["route_has_live_data"] is True
     assert states["capture_gap"]["state_reason"] == "capture_gap"

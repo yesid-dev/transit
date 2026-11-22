@@ -6,8 +6,8 @@ import csv
 import io
 import json
 from collections import Counter
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Iterator
+from dataclasses import InitVar, dataclass, field
 from datetime import date
 from time import perf_counter
 from typing import Any, Literal, NamedTuple
@@ -18,6 +18,8 @@ from transit_engine.clean_manifest import SCHEDULED_STOP_TIMES, STOP_EVENTS, TRI
 from transit_engine.store import CITY, Store
 
 Language = Literal["en", "fr"]
+EntityKind = Literal["line", "stop", "departure"]
+type EntityKey = tuple[str | int | None, ...]
 
 
 class Text(NamedTuple):
@@ -53,6 +55,7 @@ class Measure:
     limits: Text | None = None
     ratio: tuple[str, str] | None = None
     extra_tables: tuple[str, ...] = ()
+    worst_first_descending: bool = False
 
 
 class Departure(NamedTuple):
@@ -67,10 +70,18 @@ class Departure(NamedTuple):
     capture_gap: int
 
 
-class Batch(NamedTuple):
-    counts: Counter[str]
-    histogram: Counter[int]
-    departures: tuple[Departure, ...] = ()
+@dataclass
+class Batch:
+    counts: Counter[str] = field(default_factory=Counter)
+    histogram: Counter[int] = field(default_factory=Counter)
+    departures: list[Departure] = field(default_factory=list)
+    scheduled_routes: set[str] = field(default_factory=set)
+
+    def update(self, other: Batch) -> None:
+        self.counts.update(other.counts)
+        self.histogram.update(other.histogram)
+        self.departures.extend(other.departures)
+        self.scheduled_routes.update(other.scheduled_routes)
 
 
 @dataclass(frozen=True)
@@ -85,8 +96,8 @@ class Family:
     limits: Text
     measures: tuple[Measure, ...]
     query: Callable[
-        [duckdb.DuckDBPyConnection, Family, dict[str, list[str]], Question, str],
-        Batch,
+        [duckdb.DuckDBPyConnection, Family, dict[str, list[str]], Question, str, EntityKind | None],
+        dict[EntityKey, Batch],
     ]
 
 
@@ -133,8 +144,9 @@ class Question:
     departure: str | None = None
     hour: int | None = None
     day_type: str | None = None
+    ranking: InitVar[bool] = False
 
-    def __post_init__(self) -> None:
+    def __post_init__(self, ranking: bool) -> None:
         if self.measure not in _SELECTIONS:
             raise ValueError("unknown measure")
         if not CITY.fullmatch(self.city) or self.start > self.end:
@@ -143,7 +155,7 @@ class Question:
         if family.id == _SERVICE_DELIVERED_ID and self.stop is not None:
             raise ValueError("stop does not apply to service delivered trip measures")
         if self.measure in _BOUNDARIES:
-            if self.line is None or self.day_type is None:
+            if (self.line is None and not ranking) or self.day_type is None:
                 raise ValueError("first and last trip require line and day_type")
             if self.hour is not None or self.departure is not None:
                 raise ValueError("first and last trip use the full day, without hour or departure")
@@ -279,13 +291,38 @@ def _cuts(question: Question, hour_sql: str) -> tuple[str, list[object]]:
     return " AND ".join(filters) or "true", parameters
 
 
+def _entity_sql(group: EntityKind | None) -> str:
+    return {
+        None: "row(NULL::VARCHAR)",
+        "line": "row(route_id)",
+        "stop": "row(stop_id)",
+        "departure": f"row(route_id, direction_id, ({_DEPARTURE_SECONDS})::BIGINT)",
+    }[group]
+
+
+def _grouped_batches(
+    rows: list[tuple[Any, ...]], counters: dict[str, str], sample: str, group: EntityKind | None
+) -> dict[EntityKey, Batch]:
+    groups: dict[EntityKey, Batch] = {}
+    for key, edge, routes, *values in rows:
+        result = groups.setdefault(tuple(key) if group else (), Batch())
+        bucket = dict(zip(counters, values, strict=True))
+        result.counts.update(bucket)
+        if edge is not None:
+            result.histogram[edge] = bucket[sample]
+        if routes:
+            result.scheduled_routes.update(routes)
+    return groups
+
+
 def _punctuality_rows(
     conn: duckdb.DuckDBPyConnection,
     family: Family,
     paths: dict[str, list[str]],
     question: Question,
     version: str,
-) -> Batch:
+    group: EntityKind | None,
+) -> dict[EntityKey, Batch]:
     cut_sql, filters = _cuts(question, _LOCAL_HOUR.format("scheduled_stop_utc"))
     parameters = [
         *(paths[table] for table in family.tables),
@@ -297,7 +334,15 @@ def _punctuality_rows(
     ]
     counters = {name: sql for name, (sql, _) in _COUNTS.items()}
     counters.update({m.id: f"count(*) FILTER ({m.band})" for m in family.measures if m.band})
+    if group:
+        counters["live_candidates"] = "count(*) FILTER (NOT added AND route_has_live_data)"
     aggregates = ", ".join(counters.values())
+    routes = (
+        "list(DISTINCT route_id) FILTER (NOT added AND route_id IS NOT NULL)" if group else "NULL"
+    )
+    edge = f"floor(delay_seconds::DOUBLE / {DELAY_BIN_SECONDS})::BIGINT * {DELAY_BIN_SECONDS}"
+    if group and all(measure.percentile is None for measure in _SELECTIONS[question.measure][1]):
+        edge = "NULL::BIGINT"
     rows = conn.execute(
         f"""
         WITH events AS (
@@ -307,6 +352,7 @@ def _punctuality_rows(
                 NOT added AND t.state = 'cancelled' AS cancelled,
                 NOT added AND NOT cancelled AND NOT t.route_has_live_data AS without_live_data,
                 NOT (added OR cancelled OR without_live_data) AS scheduled,
+                t.route_has_live_data,
                 t.state_reason IS NOT DISTINCT FROM 'capture_gap' AS capture_gap,
                 CASE WHEN scheduled AND NOT capture_gap THEN s.delay_seconds END AS delay_seconds
             FROM read_parquet(?, hive_partitioning = false) s
@@ -315,21 +361,14 @@ def _punctuality_rows(
                  (t.provider, t.service_date, t.cleaning_version, t.trip_id)
             WHERE s.provider = ? AND s.cleaning_version = ? AND s.service_date BETWEEN ? AND ?
         )
-        SELECT floor(delay_seconds::DOUBLE / {DELAY_BIN_SECONDS})::BIGINT * {DELAY_BIN_SECONDS}
-            AS lower_edge, {aggregates}
+        SELECT {_entity_sql(group)} AS entity,
+            {edge} AS lower_edge, {routes}, {aggregates}
         FROM events WHERE {cut_sql}
-        GROUP BY lower_edge
+        GROUP BY entity, lower_edge
         """,
         parameters,
     ).fetchall()
-    totals: Counter[str] = Counter()
-    histogram: Counter[int] = Counter()
-    for edge, *values in rows:
-        bucket = dict(zip(counters, values, strict=True))
-        totals.update(bucket)
-        if edge is not None:
-            histogram[edge] = bucket["classified"]
-    return Batch(totals, histogram)
+    return _grouped_batches(rows, counters, "classified", group)
 
 
 _PUNCTUALITY = Family(
@@ -370,6 +409,7 @@ _PUNCTUALITY = Family(
             ),
             band=f"delay_seconds < {EARLY_LIMIT_SECONDS}",
             count_label=Text("Early stops", "Arrêts en avance"),
+            worst_first_descending=True,
         ),
         Measure(
             "on_time",
@@ -392,12 +432,14 @@ _PUNCTUALITY = Family(
             ),
             band=f"delay_seconds > {LATE_LIMIT_SECONDS}",
             count_label=Text("Late stops", "Arrêts en retard"),
+            worst_first_descending=True,
         ),
         Measure(
             "median_delay",
             "seconds",
             Text("Median delay across measured stops.", "Écart médian aux arrêts mesurés."),
             percentile=50,
+            worst_first_descending=True,
         ),
         Measure(
             "p90_delay",
@@ -407,6 +449,7 @@ _PUNCTUALITY = Family(
                 "L’écart à l’horaire que ne dépassent pas environ 90 % des arrêts mesurés.",
             ),
             percentile=90,
+            worst_first_descending=True,
         ),
     ),
 )
@@ -471,12 +514,14 @@ def _service_delivered_rows(
     paths: dict[str, list[str]],
     question: Question,
     version: str,
-) -> Batch:
+    group: EntityKind | None,
+) -> dict[EntityKey, Batch]:
     window = "provider = ? AND cleaning_version = ? AND service_date BETWEEN ? AND ?"
     cut_sql, filters = _cuts(question, _LOCAL_HOUR.format("scheduled_start_utc"))
     scope = [question.city, version, question.start, question.end]
     trips_sql = f"""
-        SELECT service_date, trip_id, scheduled_start_utc, state,
+        SELECT service_date, trip_id, route_id, direction_id, scheduled_start_utc, state,
+            route_has_live_data,
             state_reason IS NOT DISTINCT FROM 'route_without_live_data' AS without_live_data,
             state_reason IS NOT DISTINCT FROM 'capture_gap' AS capture_gap,
             state IN ('ran', 'cancelled', 'missing') AS eligible,
@@ -486,7 +531,19 @@ def _service_delivered_rows(
         WHERE {window} AND {cut_sql}
     """
     parameters = [paths[TRIP_DAYS], *scope, *filters]
-    aggregates = ", ".join(_DELIVERY_AGGREGATES.values())
+    counters = dict(_DELIVERY_AGGREGATES)
+    if group:
+        counters["live_candidates"] = "count(*) FILTER (state <> 'added' AND route_has_live_data)"
+    if group and SCHEDULED_STOP_TIMES in paths:
+        counters["squared_duration"] = (
+            "coalesce(sum(duration::HUGEINT * duration) FILTER (eligible), 0)"
+        )
+    aggregates = ", ".join(counters.values())
+    routes = (
+        "list(DISTINCT route_id) FILTER (state <> 'added' AND route_id IS NOT NULL)"
+        if group
+        else "NULL"
+    )
     duration_sql = "SELECT trips.*, NULL::BIGINT AS duration FROM trips"
     duration_params = []
     if SCHEDULED_STOP_TIMES in paths:
@@ -508,23 +565,18 @@ def _service_delivered_rows(
     rows = conn.execute(
         f"""
         WITH trips AS ({trips_sql}), durations AS ({duration_sql})
-        SELECT floor(lead_seconds / {DELAY_BIN_SECONDS})::BIGINT * {DELAY_BIN_SECONDS}
-            AS lower_edge, {aggregates}
+        SELECT {_entity_sql(group)} AS entity,
+            floor(lead_seconds / {DELAY_BIN_SECONDS})::BIGINT * {DELAY_BIN_SECONDS}
+                AS lower_edge, {routes}, {aggregates}
         FROM durations
-        GROUP BY lower_edge
+        GROUP BY entity, lower_edge
         """,
         [*parameters, *duration_params],
     ).fetchall()
-    totals: Counter[str] = Counter()
-    histogram: Counter[int] = Counter()
-    for edge, *values in rows:
-        bucket = dict(zip(_DELIVERY_AGGREGATES, values, strict=True))
-        totals.update(bucket)
-        if edge is not None:
-            histogram[edge] = bucket["cancellation_notices"]
-
-    departures: list[Departure] = []
-    if question.line and question.day_type and question.hour is None and question.departure is None:
+    groups = _grouped_batches(rows, counters, "cancellation_notices", group)
+    boundaries = question.line if group is None else question.measure in _BOUNDARIES
+    if boundaries and question.day_type and question.hour is None and question.departure is None:
+        route_partition = ", route_id" if group == "line" else ""
         edges = conn.execute(
             f"""
             WITH trips AS ({trips_sql}), scheduled AS (
@@ -534,29 +586,30 @@ def _service_delivered_rows(
                 SELECT *, min(departure_seconds) OVER day AS first_start,
                     max(departure_seconds) OVER day AS last_start
                 FROM scheduled
-                WINDOW day AS (PARTITION BY service_date)
+                WINDOW day AS (PARTITION BY service_date{route_partition})
             )
-            SELECT measure, service_date, departure_seconds, count(*),
+            SELECT {_entity_sql(group)} AS entity, measure, service_date, departure_seconds,
+                count(*),
                 count(*) FILTER (eligible), count(*) FILTER (state = 'ran'),
                 count(*) FILTER (state = 'unconfirmed'),
                 count(*) FILTER (without_live_data), count(*) FILTER (capture_gap)
             FROM bounds, LATERAL (VALUES ('first_trip', first_start), ('last_trip', last_start))
                 AS edge(measure, start_seconds)
             WHERE departure_seconds = start_seconds
-            GROUP BY measure, service_date, departure_seconds
+            GROUP BY entity, measure, service_date, departure_seconds
             ORDER BY service_date, measure
             """,
             parameters,
         ).fetchall()
-        for measure, day, seconds, *counts in edges:
+        for key, measure, day, seconds, *counts in edges:
             hour, remainder = divmod(seconds, 3600)
             minute, second = divmod(remainder, 60)
-            departures.append(
+            groups[tuple(key) if group else ()].departures.append(
                 Departure(
                     measure, day.isoformat(), f"{hour:02d}:{minute:02d}:{second:02d}", *counts
                 )
             )
-    return Batch(totals, histogram, tuple(departures))
+    return groups
 
 
 _BOUNDARY_COUNTS = Text(
@@ -645,6 +698,7 @@ _SERVICE_DELIVERED = Family(
             ),
             percentile=50,
             ratio=("cancelled", "eligible"),
+            worst_first_descending=True,
         ),
         Measure(
             "missing_trips",
@@ -654,6 +708,7 @@ _SERVICE_DELIVERED = Family(
                 "Part des trajets prévus admissibles jamais vus malgré une collecte complète.",
             ),
             ratio=("missing", "eligible"),
+            worst_first_descending=True,
         ),
         Measure(
             "service_hours",
@@ -762,35 +817,36 @@ def _delivery_answer(
     departures: list[Departure],
     included: list[str],
     missing_days: bool,
-) -> tuple[str, dict[str, float | None], dict[str, Any]]:
+) -> tuple[str, dict[str, float | None], dict[str, Any], dict[str, int]]:
     scheduled_with_live = counts["scheduled"] - counts["route_without_live_data"]
-    state = _state(
-        family,
-        counts["eligible"],
-        scheduled_with_live,
-        counts["capture_gap"],
-        counts["route_without_live_data"],
-        missing_days,
-    )
+
+    def trip_state(sample: int) -> str:
+        return _state(
+            family,
+            sample,
+            scheduled_with_live,
+            counts["capture_gap"],
+            counts["route_without_live_data"],
+            missing_days,
+        )
+
+    state = trip_state(counts["eligible"])
     values: dict[str, float | None] = {}
     states = {}
+    samples = {}
     for measure in selected:
         assert measure.ratio is not None
         numerator, denominator = measure.ratio
         top, bottom = counts[numerator], counts[denominator]
         measure_state = state
+        sample = bottom
         if measure.id == "service_hours":
-            measure_state = _state(
-                family,
-                counts["trips_with_duration"] if bottom else 0,
-                scheduled_with_live,
-                counts["capture_gap"],
-                counts["route_without_live_data"],
-                missing_days,
-            )
+            sample = counts["trips_with_duration"] if bottom else 0
+            measure_state = trip_state(sample)
         elif measure.id in _BOUNDARIES:
             edge = [departure for departure in departures if departure.measure == measure.id]
             top, bottom = sum(row.ran for row in edge), sum(row.eligible for row in edge)
+            sample = bottom
             without_live = sum(row.route_without_live_data for row in edge)
             measure_state = _state(
                 family,
@@ -801,6 +857,7 @@ def _delivery_answer(
                 missing_days,
             )
         states[measure.id] = measure_state
+        samples[measure.id] = sample
         values[measure.id] = top / bottom if measure_state == "measured" else None
     notices = counts["cancellation_notices"]
     delivery_counts: dict[str, int | float | None] = {
@@ -828,77 +885,119 @@ def _delivery_answer(
         "boundary_departures": [row._asdict() for row in departures] if departures else None,
         "measure_states": states,
     }
-    return states[selected[0].id] if len(selected) == 1 else state, values, evidence
+    return states[selected[0].id] if len(selected) == 1 else state, values, evidence, samples
+
+
+@dataclass
+class ReadWindow:
+    paths: dict[str, list[str]]
+    measured: list[str] = field(default_factory=list)
+    missing: list[str] = field(default_factory=list)
+    included: list[str] = field(default_factory=list)
+    missing_in_cut: bool = False
+
+    @property
+    def no_days_measured(self) -> bool:
+        return not self.measured or (self.missing_in_cut and not self.included)
+
+    @property
+    def coverage_note(self) -> dict[str, str] | None:
+        return _PARTIAL._asdict() if self.measured and self.missing else None
+
+    def batches(self) -> Iterator[dict[str, list[str]]]:
+        for offset in range(0, len(self.included), DAYS_PER_QUERY_BATCH):
+            yield {
+                table: files[offset : offset + DAYS_PER_QUERY_BATCH]
+                for table, files in self.paths.items()
+            }
+
+    def evidence(
+        self, store: Store, question: Question, family: Family, started: float
+    ) -> dict[str, Any]:
+        return {
+            "city": question.city,
+            "start_date": question.start.isoformat(),
+            "end_date": question.end.isoformat(),
+            "cuts": question.cuts(),
+            "days_measured": self.measured,
+            "days_not_measured": self.missing,
+            "days_included": self.included,
+            "cleaning_versions": [store.cleaning_version] if self.included else [],
+            "method_version": family.method_version,
+            "query_ms": (perf_counter() - started) * 1000,
+        }
+
+
+def read_window(
+    conn: duckdb.DuckDBPyConnection,
+    store: Store,
+    question: Question,
+    family: Family,
+    selected: tuple[Measure, ...],
+) -> ReadWindow:
+    tables = tuple(
+        dict.fromkeys((*family.tables, *(table for m in selected for table in m.extra_tables)))
+    )
+    window = ReadWindow({table: [] for table in tables})
+    for ordinal in range(question.start.toordinal(), question.end.toordinal() + 1):
+        day = date.fromordinal(ordinal)
+        in_cut = question.day_type is None or question.day_type == _DAY_TYPES[day.weekday()]
+        files = store.files(conn, question.city, day, tables)
+        if files is None:
+            window.missing.append(day.isoformat())
+            window.missing_in_cut |= in_cut
+        else:
+            window.measured.append(day.isoformat())
+            if in_cut:
+                window.included.append(day.isoformat())
+                for table, path in zip(tables, files, strict=True):
+                    window.paths[table].append(path)
+    return window
+
+
+def evaluate(
+    family: Family,
+    selected: tuple[Measure, ...],
+    totals: Batch,
+    included: list[str],
+    missing_days: bool,
+) -> tuple[str, dict[str, float | None], dict[str, Any], dict[str, int]]:
+    if family.id == _SERVICE_DELIVERED_ID:
+        return _delivery_answer(
+            family,
+            selected,
+            totals.counts,
+            totals.histogram,
+            totals.departures,
+            included,
+            missing_days,
+        )
+    return _punctuality_answer(
+        family, selected, totals.counts, totals.histogram, included, missing_days
+    )
 
 
 def ask(store: Store, question: Question) -> dict[str, Any]:
     """Read validated days and compute the selected measure or family with its evidence."""
     started = perf_counter()
     family, selected = _SELECTIONS[question.measure]
-    measured: list[str] = []
-    missing: list[str] = []
-    included: list[str] = []
-    missing_in_cut = False
-    paths: dict[str, list[str]] = {
-        table: []
-        for table in (*family.tables, *(table for m in selected for table in m.extra_tables))
-    }
-    tables = tuple(paths)
-    counts: Counter[str] = Counter()
-    histogram: Counter[int] = Counter()
-    departures: list[Departure] = []
+    totals = Batch()
     with store.connect() as conn:
-        for ordinal in range(question.start.toordinal(), question.end.toordinal() + 1):
-            day = date.fromordinal(ordinal)
-            in_cut = question.day_type is None or question.day_type == _DAY_TYPES[day.weekday()]
-            files = store.files(conn, question.city, day, tables)
-            if files is None:
-                missing.append(day.isoformat())
-                missing_in_cut |= in_cut
-            else:
-                measured.append(day.isoformat())
-                if in_cut:
-                    included.append(day.isoformat())
-                    for table, path in zip(tables, files, strict=True):
-                        paths[table].append(path)
-        for offset in range(0, len(included), DAYS_PER_QUERY_BATCH):
-            batch = {
-                table: files[offset : offset + DAYS_PER_QUERY_BATCH]
-                for table, files in paths.items()
-            }
-            result = family.query(conn, family, batch, question, str(store.cleaning_version))
-            counts.update(result.counts)
-            histogram.update(result.histogram)
-            departures.extend(result.departures)
-
-    missing_days = not measured or (missing_in_cut and not included)
-    if family.id == _SERVICE_DELIVERED_ID:
-        state, values, family_evidence = _delivery_answer(
-            family, selected, counts, histogram, departures, included, missing_days
-        )
-    else:
-        state, values, family_evidence = _punctuality_answer(
-            family, selected, counts, histogram, included, missing_days
-        )
+        window = read_window(conn, store, question, family, selected)
+        for batch in window.batches():
+            result = family.query(conn, family, batch, question, str(store.cleaning_version), None)
+            if () in result:
+                totals.update(result[()])
+    state, values, family_evidence, _ = evaluate(
+        family, selected, totals, window.included, window.no_days_measured
+    )
     return {
         "measure": question.measure,
         "value": values,
         "state": state,
         "state_text": _STATES[state]._asdict(),
-        "coverage_note": _PARTIAL._asdict() if measured and missing else None,
-        "evidence": {
-            "city": question.city,
-            "start_date": question.start.isoformat(),
-            "end_date": question.end.isoformat(),
-            "cuts": question.cuts(),
-            "days_measured": measured,
-            "days_not_measured": missing,
-            "days_included": included,
-            **family_evidence,
-            "cleaning_versions": [store.cleaning_version] if included else [],
-            "method_version": family.method_version,
-            "query_ms": (perf_counter() - started) * 1000,
-        },
+        "coverage_note": window.coverage_note,
+        "evidence": {**window.evidence(store, question, family, started), **family_evidence},
         "info": [_info(family, measure) for measure in selected],
     }
 
@@ -910,7 +1009,7 @@ def _punctuality_answer(
     histogram: Counter[int],
     included: list[str],
     missing_days: bool,
-) -> tuple[str, dict[str, float | None], dict[str, Any]]:
+) -> tuple[str, dict[str, float | None], dict[str, Any], dict[str, int]]:
     classified, scheduled = counts["classified"], counts["scheduled"]
     state = _state(
         family,
@@ -944,6 +1043,7 @@ def _punctuality_answer(
             },
             "share_observed": classified / scheduled if scheduled else None,
         },
+        dict.fromkeys((m.id for m in selected), classified),
     )
 
 
