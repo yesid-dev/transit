@@ -347,6 +347,8 @@ def _stage(day: CleanDay, temporary: Path) -> tuple[Path, dict[str, tuple[str, i
         "built_at_utc": datetime.now(UTC).isoformat(),
         "builder_git_commit": _builder_git_commit(),
     }
+    if day.scorecard_declaration is not None:
+        manifest["scorecard_declaration"] = day.scorecard_declaration
     if day.alerts is None:
         manifest["alerts"] = "not_tracked"
     else:

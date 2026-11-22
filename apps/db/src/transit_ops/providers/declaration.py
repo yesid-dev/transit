@@ -20,7 +20,7 @@ from pydantic import (
 )
 from pydantic_core import InitErrorDetails
 
-from transit_ops.core.models import ReadingPopulation
+from transit_ops.core.models import ReadingPopulation, VehicleField
 
 SITE_LOCALES: tuple[str, ...] = ("en", "fr")
 KNOWN_FORMATS: Mapping[str, frozenset[str]] = {
@@ -192,6 +192,7 @@ class Declaration(_Block):
     attribution: dict[_Locale, _Text]
     disclaimer: dict[_Locale, _Text] | None = None
     feeds: list[FeedDeclaration]
+    unpublished_vehicle_fields: list[VehicleField] = Field(default_factory=list)
     lines_without_live_data: list[GapDeclaration] | None = None
     reading_population: ReadingPopulation | None = None
     live_source_lag_seconds: _Nonnegative | None = None

@@ -288,6 +288,15 @@ def _verify_manifest(
     }
     assert manifest["schedule_sha256"] == edition["sha256"]
     assert manifest["cleaning_version"] == CLEANING_VERSION
+    declaration = clean_day_inputs.declaration_for(manifest["provider"])
+    assert manifest["scorecard_declaration"] == {
+        "timezone": declaration.provider.timezone,
+        "feeds": [
+            *sorted(set(clean_day_inputs.realtime_feeds(declaration).values())),
+            *(["alerts"] if "alerts" not in manifest else []),
+        ],
+        "unpublished_vehicle_fields": declaration.realtime.unpublished_vehicle_fields,
+    }
     if manifest["provider"] == "octranspo":
         assert manifest["alerts"] == "not_tracked"
     else:

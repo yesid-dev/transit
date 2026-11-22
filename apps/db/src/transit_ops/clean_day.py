@@ -350,6 +350,7 @@ class CleanDay:
     feed_polls: list[FeedPoll] = field(default_factory=list)
     alerts: dict[tuple[str, str, SourceFormat], AlertVersion] | None = None
     route_types: Mapping[str, int] = field(default_factory=dict)
+    scorecard_declaration: dict[str, str | list[str]] | None = None
 
     def _covered(self, trip: Trip) -> bool:
         assert trip.start is not None and trip.end is not None

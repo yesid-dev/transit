@@ -25,6 +25,28 @@ def vehicle_tail_sql(next_start: str, last_seen: str) -> str:
     )
 
 
+def vehicle_end_sql(start: str, last_seen: str, tail: str) -> str:
+    return (
+        f"greatest({start}, {last_seen}) + "
+        f"greatest(0, least({tail}, {VEHICLE_TAIL_CAP_SECONDS * 1_000_000})) "
+        "* INTERVAL '1 microsecond'"
+    )
+
+
+def vehicle_hour_weight_sql(
+    hour: str, bucket: str = "time_bucket(INTERVAL '1 hour', observed_at_utc)"
+) -> str:
+    # Intersect elapsed-hour segments with the local clock hour, including a repeated hour.
+    return f"""
+        (SELECT coalesce(sum(
+            least(epoch_us(ends_at), epoch_us(hour_start) + 3600000000)
+            - greatest(epoch_us(observed_at_utc), epoch_us(hour_start))
+        ), 0)::BIGINT
+        FROM generate_series({bucket}, ends_at, INTERVAL '1 hour') AS hours(hour_start)
+        WHERE {hour} = ?)
+    """
+
+
 # Clean positions only contain identified readings. Confirmed trips provide a
 # second check for feeds where the cleaner could not assign a stable ID at all.
 TRACKED_VEHICLES_SQL = f"""

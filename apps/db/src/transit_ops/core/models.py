@@ -13,6 +13,7 @@ from transit_ops.settings import Settings
 DEFAULT_MAX_VEHICLE_SPEED_KMH = 130
 
 ReadingPopulation = Literal["vehicle_evidence", "scheduled_window"]
+VehicleField = Literal["trip", "route", "stop", "current_status", "occupancy", "position"]
 
 
 class FeedKind(StrEnum):
@@ -278,6 +279,7 @@ class LinesWithoutLiveData(BaseModel):
 
 
 class ProviderRealtimeConfig(BaseModel):
+    unpublished_vehicle_fields: list[VehicleField] = Field(default_factory=list)
     model_config = {"extra": "forbid"}
     lines_without_live_data: list[LinesWithoutLiveData] = Field(default_factory=list)
 

@@ -115,6 +115,8 @@ class Ranking:
         if self.question.group is not None:
             raise ValueError("group applies to /measure")
         family, measures = _SELECTIONS[self.question.measure]
+        if family.query is None:
+            raise ValueError("this family does not support rankings")
         if len(measures) != 1:
             raise ValueError("choose a single registry measure")
         kinds = measures[0].ranking_kinds
@@ -337,6 +339,7 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
     started = perf_counter()
     question = ranking.question
     family, selected = _SELECTIONS[question.measure]
+    assert family.query is not None
     (measure,) = selected
     totals: dict[EntityKey, Batch] = {}
     lines: dict[str, LineSchedule] = {}
