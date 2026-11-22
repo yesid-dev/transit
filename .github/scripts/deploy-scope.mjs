@@ -2,6 +2,9 @@
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { workerMissing } from './worker-rollback.mjs';
+
+export const WEB_ORIGIN = 'https://transit1.yesid.dev';
 
 const DEPLOYABLE_PATHS = new Set([
 	'.nvmrc',
@@ -103,7 +106,7 @@ export function main(
 
 export async function liveProductionSha(fetcher = fetch) {
 	try {
-		const response = await fetcher('https://transit1.yesid.dev/health', {
+		const response = await fetcher(`${WEB_ORIGIN}/health`, {
 			redirect: 'error',
 			signal: AbortSignal.timeout(5_000),
 			headers: { 'cache-control': 'no-cache' },
@@ -123,6 +126,7 @@ export async function lockedDeploymentDecision(
 	env,
 	cwd = process.cwd(),
 	fetcher = fetch,
+	checkWorkerMissing = () => workerMissing(env.CLOUDFLARE_API_TOKEN),
 ) {
 	if (!['push', 'workflow_dispatch'].includes(env.TRANSIT_DEPLOY_EVENT)) {
 		throw new Error('Invalid locked deployment event');
@@ -139,19 +143,19 @@ export async function lockedDeploymentDecision(
 	if (git('rev-parse', 'HEAD') !== candidate)
 		throw new Error('Deployment checkout does not match candidate');
 	const automatic = env.TRANSIT_DEPLOY_EVENT === 'push';
-	if (automatic) {
-		git(
-			'fetch',
-			'--no-tags',
-			'origin',
-			'+refs/heads/main:refs/remotes/origin/main',
-		);
-		if (git('rev-parse', 'refs/remotes/origin/main') !== candidate)
-			return false;
-	}
+	git(
+		'fetch',
+		'--no-tags',
+		'origin',
+		'+refs/heads/main:refs/remotes/origin/main',
+	);
+	if (git('rev-parse', 'refs/remotes/origin/main') !== candidate)
+		return { deployWeb: false, bootstrap: false };
 	const live = await liveProductionSha(fetcher);
-	if (automatic && !live)
-		throw new Error('Cannot read live production SHA for automatic deployment');
+	if (!live) {
+		if (await checkWorkerMissing()) return { deployWeb: true, bootstrap: true };
+		throw new Error('Cannot read live production SHA for existing transit1-web');
+	}
 	if (automatic && live && live !== candidate) {
 		try {
 			git('cat-file', '-e', `${live}^{commit}`);
@@ -160,7 +164,7 @@ export async function lockedDeploymentDecision(
 		}
 		try {
 			git('merge-base', '--is-ancestor', candidate, live);
-			return false;
+			return { deployWeb: false, bootstrap: false };
 		} catch (error) {
 			if (error.status !== 1)
 				throw new Error('Cannot establish live deployment ancestry', {
@@ -174,7 +178,7 @@ export async function lockedDeploymentDecision(
 		{ write: (value) => (output += value) },
 		cwd,
 	);
-	return output === 'deploy_web=true\n';
+	return { deployWeb: output === 'deploy_web=true\n', bootstrap: false };
 }
 
 if (
@@ -182,8 +186,10 @@ if (
 	pathToFileURL(resolve(process.argv[1])).href === import.meta.url
 ) {
 	if (process.argv[2] === 'locked') {
-		const deploy = await lockedDeploymentDecision(process.env);
-		process.stdout.write(`deploy_web=${deploy}\n`);
+		const { deployWeb, bootstrap } = await lockedDeploymentDecision(process.env);
+		process.stdout.write(`deploy_web=${deployWeb}\nbootstrap=${bootstrap}\n`);
+	} else if (process.argv[2] === 'preview-ready') {
+		process.stdout.write(`ready=${Boolean(await liveProductionSha())}\n`);
 	} else {
 		const liveSha =
 			process.env.TRANSIT_DEPLOY_EVENT === 'push'

@@ -6,6 +6,32 @@ import { resolve } from "node:path";
 const VERSION =
   /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
+export async function workerMissing(token, fetcher = fetch) {
+  if (!token) throw new Error("Missing Cloudflare token for transit1-web lookup");
+  const response = await fetcher(
+    "https://api.cloudflare.com/client/v4/accounts/eccfb9bedd87d413eaf4cac6ae2285d3/workers/scripts/transit1-web/script-settings",
+    {
+      headers: { authorization: `Bearer ${token}` },
+      redirect: "error",
+      signal: AbortSignal.timeout(10_000),
+    },
+  );
+  const body = await response.json().catch(() => null);
+  if (response.ok && body?.success === true) return false;
+  if (
+    [400, 404].includes(response.status) &&
+    body?.success === false &&
+    Array.isArray(body.errors) &&
+    body.errors.length === 1 &&
+    body.errors[0]?.code === 10007
+  ) {
+    return true;
+  }
+  throw new Error(
+    `Cannot confirm whether transit1-web exists (Cloudflare HTTP ${response.status})`,
+  );
+}
+
 function runWrangler(args, execute) {
   return execute(
     process.execPath,

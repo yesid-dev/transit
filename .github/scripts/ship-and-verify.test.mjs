@@ -95,6 +95,9 @@ test("a successful deploy receipt survives failed verification and controls repo
   assert.doesNotMatch(deploy, /r2 bucket cors set|vars.PUBLIC_(?:PLAUSIBLE|CF_BEACON)/);
   assert.match(job("preview"), /!github.event.pull_request.draft/);
   assert.match(job("preview"), /versions upload --name transit1-web/);
+  assert.match(job("preview"), /id: upload\n\s+if: steps.preview_ready.outputs.ready == 'true'/);
+  assert.match(deploy, /id: previous\n\s+if: .*steps.locked_scope.outputs.bootstrap == 'false'/);
+  assert.match(deploy, /post-deploy-layout.mjs policy/);
   assert.match(deploy, /&& printf 'deployed=true\\n'/);
   for (const name of ["post-deploy-layout", "post-deploy-result"]) {
     assert.match(

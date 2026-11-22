@@ -743,14 +743,22 @@ jobs:
       - name: Set up JS workspace
         uses: ./.github/actions/setup
 
+      # Version upload can create a Worker. Production owns the first deployment.
+      - name: Check that transit1 has been deployed
+        id: preview_ready
+        working-directory: ${{ github.workspace }}
+        run: node .github/scripts/deploy-scope.mjs preview-ready >> "$GITHUB_OUTPUT"
+
       - name: Build (adapter-cloudflare)
+        if: steps.preview_ready.outputs.ready == 'true'
         run: bun run build
 
       # Uploads a version without deploying it; production traffic is untouched.
       - name: Upload preview version
         id: upload
+        if: steps.preview_ready.outputs.ready == 'true'
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.TRANSIT1_WORKER_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           # checkout builds the PR merge ref, not the feature-branch head.
           TRANSIT_COMMIT_SHA: ${{ github.sha }}
@@ -808,6 +816,7 @@ jobs:
         id: locked_scope
         working-directory: ${{ github.workspace }}
         env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           TRANSIT_DEPLOY_EVENT: ${{ github.event_name }}
           TRANSIT_DEPLOY_AFTER: ${{ github.sha }}
         run: node .github/scripts/deploy-scope.mjs locked >> "$GITHUB_OUTPUT"
@@ -849,10 +858,10 @@ jobs:
 
       - name: Capture rollback version before deployment
         id: previous
-        if: steps.locked_scope.outputs.deploy_web == 'true'
+        if: steps.locked_scope.outputs.deploy_web == 'true' && steps.locked_scope.outputs.bootstrap == 'false'
         working-directory: ${{ github.workspace }}
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.TRANSIT1_WORKER_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: node .github/scripts/worker-rollback.mjs capture
 
       - name: Deploy production Worker
@@ -860,7 +869,7 @@ jobs:
         if: steps.locked_scope.outputs.deploy_web == 'true'
         working-directory: apps/web
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.TRANSIT1_WORKER_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           TRANSIT_COMMIT_SHA: ${{ github.sha }}
           TRANSIT_BRANCH: ${{ github.ref_name }}
         run: >-
@@ -883,8 +892,7 @@ jobs:
           BROWSER_ORIGIN: https://transit1.yesid.dev
         run: |
           curl --fail --silent --show-error --max-time 20 "$BROWSER_ORIGIN/health" > /dev/null
-          headers="$(curl --fail --silent --show-error --max-time 20 -D - -o /dev/null "$BROWSER_ORIGIN/?provider=stm")"
-          grep -qi '^x-robots-tag: noindex, nofollow' <<< "$headers"
+          node ../../.github/scripts/post-deploy-layout.mjs policy
           # The smoke script also verifies legacy /data and /api/v1 routes.
           bash smoke.sh
 

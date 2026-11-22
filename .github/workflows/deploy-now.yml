@@ -117,7 +117,7 @@ jobs:
         if: inputs.target == 'web' || inputs.target == 'both'
         working-directory: apps/web
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.TRANSIT1_WORKER_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           TRANSIT_BRANCH: ${{ inputs.ref }}
           WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/deploy-web.ndjson
         run: >-

@@ -16,7 +16,7 @@ import { report } from "./post-deploy-layout.mjs";
 
 const version = "12345678-1234-1234-1234-123456789abc";
 
-test("inside the production lock, a newer deployment cannot be overwritten by an older main run", async () => {
+test("inside the production lock, only the main tip can bootstrap and an older push cannot overwrite newer code", async () => {
   const root = mkdtempSync(join(tmpdir(), "transit-deploy-order-"));
   const git = (...args) =>
     execFileSync(
@@ -52,31 +52,38 @@ test("inside the production lock, a newer deployment cannot be overwritten by an
       json: async () => ({ service: "transit1-web", commit: b }),
     });
     assert.equal(typeof scope.lockedDeploymentDecision, "function");
-    assert.equal(await scope.lockedDeploymentDecision(env, root, live), false);
-    git("branch", "-f", "main", a);
     const unavailable = async () => {
       throw new Error("identity unavailable");
     };
+    const missing = async () => true;
+    const existing = async () => false;
+    const skip = { deployWeb: false, bootstrap: false };
+    const deploy = { deployWeb: true, bootstrap: false };
+    assert.deepEqual(await scope.lockedDeploymentDecision(env, root, live), skip);
+    assert.deepEqual(await scope.lockedDeploymentDecision(env, root, unavailable, missing), skip);
+    git("branch", "-f", "main", a);
     await assert.rejects(
-      scope.lockedDeploymentDecision(env, root, unavailable),
+      scope.lockedDeploymentDecision(env, root, unavailable, existing),
       /Cannot read live production SHA/,
     );
-    assert.equal(
-      await scope.lockedDeploymentDecision(
-        { ...env, TRANSIT_DEPLOY_EVENT: "workflow_dispatch" },
-        root,
-        unavailable,
-      ),
-      true,
+    await assert.rejects(
+      scope.lockedDeploymentDecision(env, root, unavailable, async () => {
+        throw new Error("Cloudflare lookup failed");
+      }),
+      /Cloudflare lookup failed/,
     );
-    assert.equal(await scope.lockedDeploymentDecision(env, root, live), false);
-    assert.equal(
+    assert.deepEqual(
+      await scope.lockedDeploymentDecision(env, root, unavailable, missing),
+      { deployWeb: true, bootstrap: true },
+    );
+    assert.deepEqual(await scope.lockedDeploymentDecision(env, root, live), skip);
+    assert.deepEqual(
       await scope.lockedDeploymentDecision(
         { ...env, TRANSIT_DEPLOY_EVENT: "workflow_dispatch" },
         root,
         live,
       ),
-      true,
+      deploy,
     );
     git("branch", "-f", "main", b);
     git("checkout", "--detach", b);
@@ -84,13 +91,13 @@ test("inside the production lock, a newer deployment cannot be overwritten by an
       status: 200,
       json: async () => ({ service: "transit1-web", commit: a }),
     });
-    assert.equal(
+    assert.deepEqual(
       await scope.lockedDeploymentDecision(
         { ...env, TRANSIT_DEPLOY_AFTER: b },
         root,
         olderLive,
       ),
-      true,
+      deploy,
     );
   } finally {
     rmSync(root, { recursive: true, force: true });
