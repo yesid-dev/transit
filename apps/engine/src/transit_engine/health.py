@@ -12,6 +12,7 @@ from transit_engine.clean_manifest import (
     ALERTS,
     FEED_POLLS,
     NO_RAW_CAPTURES,
+    PREDICTION_SAMPLES,
     SCHEDULED_STOP_TIMES,
     STOP_EVENTS,
     TRIP_DAYS,
@@ -28,6 +29,7 @@ TABLES = (
     ("vehicle_positions", VEHICLE_POSITIONS),
     ("feed_polls", FEED_POLLS),
     ("alerts", ALERTS),
+    ("prediction_samples", PREDICTION_SAMPLES),
 )
 
 

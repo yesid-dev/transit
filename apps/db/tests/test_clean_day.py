@@ -284,6 +284,7 @@ def _verify_manifest(
         "scheduled_stop_times.parquet",
         "vehicle_positions.parquet",
         "feed_polls.parquet",
+        "prediction_samples.parquet",
     }
     assert manifest["schedule_sha256"] == edition["sha256"]
     assert manifest["cleaning_version"] == CLEANING_VERSION
@@ -308,6 +309,74 @@ def _verify_manifest(
             "sha256": sha256(payload).hexdigest(),
             "byte_size": len(payload),
         }
+
+
+def test_prediction_samples_use_latest_publication_before_each_horizon(tmp_path: Path) -> None:
+    editions = _index(tmp_path)
+    for lead, capture_lead, error in (
+        (601, 599, -12),
+        (310, 309, 17),
+        (300, 298, 31),
+        (180, 125, 2**62),  # Invalid timestamp at the cutoff cannot mask a valid prediction.
+        (180, 120, 20),
+        (230, 100, 99),  # An older publication arrives after the 3-minute candidate.
+        (60, 57, -4),
+        (59, 56, 50),
+    ):
+        published = MIDNIGHT - timedelta(seconds=lead)
+        captured = MIDNIGHT - timedelta(seconds=capture_lead)
+        feed = _feed(captured)
+        update = feed.entity.add(id="night").trip_update
+        update.trip.trip_id = "night"
+        update.trip.start_date = "20260601"
+        update.timestamp = int(published.timestamp())
+        arrival = update.stop_time_update.add(stop_sequence=1).arrival
+        if lead == 300:
+            arrival.delay = error
+        else:
+            arrival.time = int(MIDNIGHT.timestamp()) + error
+        update.stop_time_update.add(stop_sequence=2).arrival.time = int(MIDNIGHT.timestamp()) + 300
+        _save(tmp_path, feed, "trip_updates", captured)
+
+    feed = _feed(MIDNIGHT)
+    vehicle = feed.entity.add(id="v1").vehicle
+    vehicle.trip.trip_id = "night"
+    vehicle.trip.start_date = "20260601"
+    vehicle.vehicle.id = "v1"
+    vehicle.current_stop_sequence = 1
+    vehicle.current_status = VehiclePosition.STOPPED_AT
+    vehicle.position.latitude = 45.5
+    vehicle.position.longitude = -73.6
+    _save(tmp_path, feed, "vehicle_positions", MIDNIGHT)
+
+    directory = _run(tmp_path, DAY)
+    with duckdb.connect() as db:
+        stops = _rows(db, directory / "stop_events.parquet")
+        samples = _rows(db, directory / "prediction_samples.parquet")
+        _verify_manifest(db, directory, editions[0])
+    night = {row["stop_sequence"]: row for row in stops if row["trip_id"] == "night"}
+    assert night[1]["observed_at_utc"] == MIDNIGHT
+    assert night[2]["observed_at_utc"] is None
+    assert samples == [
+        {
+            "provider": "stm",
+            "service_date": DAY,
+            "route_id": "r",
+            "direction_id": 0,
+            "trip_id": "night",
+            "stop_id": "s1",
+            "stop_sequence": 1,
+            "basis": "vehicle_stopped",
+            "observed_event": "arrival",
+            "cleaning_version": CLEANING_VERSION,
+            "horizon_minutes": horizon,
+            "published_at_utc": MIDNIGHT - timedelta(seconds=lead),
+            "predicted_at_utc": MIDNIGHT + timedelta(seconds=error),
+            "error_seconds": error,
+            "actual_lead_seconds": lead,
+        }
+        for horizon, lead, error in ((1, 60, -4), (3, 180, 20), (5, 300, 31), (10, 601, -12))
+    ]
 
 
 def _alert_body(description: str) -> bytes:
@@ -937,7 +1006,7 @@ def test_range_builds_skips_and_continues(
     marker = f"{version_key('stm', DAY)}/manifest.json"
     runner = CliRunner()
     if remote:
-        for name in ("feed_polls.parquet", "alerts.parquet"):
+        for name in ("feed_polls.parquet", "prediction_samples.parquet", "alerts.parquet"):
             fake.fail_upload = name
             attempt = runner.invoke(app, [*args, DAY.isoformat()])
             assert attempt.exit_code == 1 and "ServiceUnavailable" in attempt.output
@@ -955,6 +1024,7 @@ def test_range_builds_skips_and_continues(
                 "scheduled_stop_times.parquet",
                 "vehicle_positions.parquet",
                 "feed_polls.parquet",
+                "prediction_samples.parquet",
                 "alerts.parquet",
                 "manifest.json",
             )

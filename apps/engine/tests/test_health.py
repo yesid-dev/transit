@@ -12,6 +12,7 @@ from uvicorn._types import ASGISendEvent, HTTPScope
 from transit_engine.clean_manifest import (
     ALERTS,
     FEED_POLLS,
+    PREDICTION_SAMPLES,
     SCHEDULED_STOP_TIMES,
     STOP_EVENTS,
     TRIP_DAYS,
@@ -29,6 +30,7 @@ TABLE_NAMES = (
     "vehicle_positions",
     "feed_polls",
     "alerts",
+    "prediction_samples",
 )
 ROWS = {
     STOP_EVENTS: 3,
@@ -37,6 +39,7 @@ ROWS = {
     VEHICLE_POSITIONS: 4,
     FEED_POLLS: 6,
     ALERTS: 0,
+    PREDICTION_SAMPLES: 7,
 }
 
 
@@ -52,8 +55,10 @@ def clean_day(
     directory.mkdir(parents=True)
     table_rows = {**ROWS, **(rows or {})}
     tables = [STOP_EVENTS, TRIP_DAYS]
-    if version in {4, 5, 6}:
+    if version in {4, 5, 6, 7}:
         tables += [SCHEDULED_STOP_TIMES, VEHICLE_POSITIONS, FEED_POLLS]
+    if version == 7:
+        tables.append(PREDICTION_SAMPLES)
     if alerts == "tracked":
         tables.append(ALERTS)
     files: dict[str, dict[str, int | str]] = {}
@@ -117,6 +122,28 @@ def test_present_day_reports_each_table_and_its_rows(tmp_path: Path) -> None:
     assert entry["tables"]["stop_events"] == {"status": "present", "rows": 3}
     assert entry["tables"]["trip_days"] == {"status": "present", "rows": 2}
     assert entry["tables"]["alerts"] == {"status": "present", "rows": 0}
+    assert entry["tables"]["prediction_samples"] == {"status": "missing"}
+
+
+def test_v7_requires_prediction_samples_and_reports_their_rows(tmp_path: Path) -> None:
+    directory = clean_day(tmp_path, DAY, version=7, alerts="not_tracked")
+    store = Store(tmp_path.as_posix(), cleaning_version=7)
+    [entry] = data_health(store, "stm", DAY, DAY)["days"]
+    assert entry["status"] == "present"
+    assert entry["tables"]["prediction_samples"] == {"status": "present", "rows": 7}
+
+    (directory / PREDICTION_SAMPLES).unlink()
+    [entry] = data_health(store, "stm", DAY, DAY)["days"]
+    assert entry["status"] == "incomplete"
+    assert entry["tables"]["prediction_samples"] == {"status": "missing", "reason": "file_missing"}
+
+    marker = directory / "manifest.json"
+    manifest = json.loads(marker.read_bytes())
+    del manifest["files"][PREDICTION_SAMPLES]
+    marker.write_text(json.dumps(manifest), encoding="utf-8")
+    [entry] = data_health(store, "stm", DAY, DAY)["days"]
+    assert entry["status"] == "missing"
+    assert entry["reason"] == "invalid_manifest"
 
 
 def test_no_raw_captures_is_not_measured_not_missing(tmp_path: Path) -> None:
