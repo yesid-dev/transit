@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { textDefects } from './layout-helpers';
 
 test.use({ bypassCSP: true });
 
@@ -56,6 +57,8 @@ for (const width of [390, 1440]) {
 				).toBeVisible();
 				await section.getByText(fr ? 'Citer' : 'Cite', { exact: true }).click();
 				await expect(section.getByText(/rankings-fixture-v1.*#ranking/)).toBeVisible();
+				const defects = await textDefects(page);
+				expect(defects.filter(({ selector }) => selector.startsWith('#ranking'))).toEqual([]);
 				const csv = await section.getByRole('link', { name: /CSV/ }).getAttribute('href');
 				const response = await request.get(csv!);
 				expect(response.ok()).toBeTruthy();
