@@ -712,6 +712,21 @@
 		border-radius: var(--radius-pill);
 	}
 
+	/* On short maps the filter header can consume the entire card height. Scroll the
+	   whole desktop panel so every filter remains reachable with the legend open. */
+	:global(.map-filters[data-presentation='desktop'][data-open='true'] .mf-expanded) {
+		width: 100%;
+		overflow-y: auto;
+		scrollbar-width: thin;
+		scrollbar-color: var(--border) transparent;
+	}
+
+	:global(.map-filters[data-presentation='desktop'] .mf-body) {
+		flex: none;
+		overflow: visible;
+		scrollbar-gutter: auto;
+	}
+
 	:global(.mf-chips) {
 		display: grid;
 		min-width: 0;

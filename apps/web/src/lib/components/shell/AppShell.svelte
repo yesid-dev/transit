@@ -47,9 +47,25 @@
 	let announcementHeight = $state(0);
 	$effect(() => {
 		// The phone drawers are portalled outside the shell.
-		const style = document.documentElement.style;
-		style.setProperty('--announcement-height', `${announcementHeight}px`);
-		return () => style.removeProperty('--announcement-height');
+		const root = document.documentElement;
+		root.style.setProperty('--announcement-height', `${announcementHeight}px`);
+
+		// Native focus may have scrolled before the measured chrome became sticky.
+		const focused = document.activeElement;
+		if (
+			announcementHeight > 0 &&
+			!fullViewport &&
+			focused instanceof HTMLElement &&
+			focused.matches(':focus-visible') &&
+			focused.closest('[data-slot="app-shell-row"]')
+		) {
+			const clearance = parseFloat(getComputedStyle(root).scrollPaddingTop);
+			const { top, bottom } = focused.getBoundingClientRect();
+			if (top < clearance && bottom > 0) {
+				focused.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
+			}
+		}
+		return () => root.style.removeProperty('--announcement-height');
 	});
 </script>
 
@@ -62,7 +78,12 @@
 	data-full-viewport={fullViewport}
 	data-slot="app-shell"
 >
-	<div class="app-shell-chrome" data-slot="app-shell-chrome" bind:clientHeight={announcementHeight}>
+	<div
+		class="app-shell-chrome"
+		data-slot="app-shell-chrome"
+		data-announcement-measured={announcementHeight > 0 || undefined}
+		bind:clientHeight={announcementHeight}
+	>
 		<NavPill
 			{navigation}
 			{locale}
@@ -86,8 +107,6 @@
 
 <style>
 	.app-shell-root {
-		--chrome-gap: 0.5rem;
-		--chrome-offset: calc(1rem + env(safe-area-inset-top, 0px) + var(--pill-h) + var(--chrome-gap));
 		position: relative;
 	}
 
@@ -103,6 +122,14 @@
 	.app-shell-chrome:has(:global([data-slot='announcement-banner'])) {
 		position: sticky;
 		flex: none;
+	}
+
+	/* Before hydration, browser focus scrolling cannot reserve the banner's measured height. */
+	:global(html:not([data-announcement-dismissed]))
+		.app-shell-chrome:not([data-announcement-measured]):has(
+			:global([data-slot='announcement-banner']:not([hidden]))
+		) {
+		position: relative;
 	}
 
 	.app-shell-row {

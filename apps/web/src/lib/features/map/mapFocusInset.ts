@@ -4,9 +4,16 @@ import { coveredArea } from './mapCameraCoveredArea';
 
 export const MIN_VISIBLE_SPAN_PX = 240;
 
+interface MapChromeInsets {
+	left: number;
+	bottom: number;
+	fitLeft?: number;
+	fitBesideNorth?: { right: number; bottom: number };
+}
+
 export interface MapFocusMeasurementAdapter {
 	containerRect(container: HTMLElement): DOMRect;
-	chromeInsets?(container: HTMLElement): { left: number; bottom: number; fitLeft?: number };
+	chromeInsets?(container: HTMLElement): MapChromeInsets;
 	headingRect(hero: Element): DOMRect | null;
 	detailOffset(hero: Element): string;
 	rootFontSize(): number;
@@ -37,17 +44,18 @@ const DOM_MEASUREMENT: MapFocusMeasurementAdapter = {
 			return r && r.width > 0 && r.height > 0 ? r : null;
 		};
 		const panel = rect('.map-filter-panel');
-		const controls = [
-			rect('.map-filter-pill-container'),
-			rect('.map-near'),
-			rect('[data-slot="map-north"]'),
-		].filter((r) => r !== null);
+		const controls = [rect('.map-filter-pill-container'), rect('.map-near')].filter(
+			(r) => r !== null,
+		);
+		const north = rect('[data-slot="map-north"]');
+		const bottom = Math.max(0, ...controls.map((r) => box.bottom - r.top));
 		return {
 			left: panel ? panel.right - box.left : 0,
 			// The narrow controls rail leaves the provider framing viewport-centered.
 			// Point and route focus still clear its actual covered edge.
 			fitLeft: panel && panel.width > 56 ? panel.right - box.left : 0,
-			bottom: Math.max(0, ...controls.map((r) => box.bottom - r.top)),
+			bottom: Math.max(bottom, north ? box.bottom - north.top : 0),
+			fitBesideNorth: north ? { right: box.right - north.left, bottom } : undefined,
 		};
 	},
 	containerRect: (container) => container.getBoundingClientRect(),
@@ -104,9 +112,20 @@ export function measureMapFocusInset(
 				: measuredSheetHeight;
 	const rightOcclusion = clampOcclusion(rawRight, containerWidth);
 	const bottomOcclusion = clampOcclusion(rawBottom, containerHeight - topOcclusion);
-	const fitBottom = Math.max(0, rawBottom, chrome.bottom);
+	let fitBottom = Math.max(0, rawBottom, chrome.bottom);
 	const fitLeft = Math.max(0, chrome.fitLeft ?? chrome.left);
-	const fitRight = Math.max(0, rawRight);
+	let fitRight = Math.max(0, rawRight);
+	// In landscape, the north control can exhaust the vertical fit budget from one
+	// corner. Fit beside it when that leaves enough height to clear the map heading.
+	const beside = chrome.fitBesideNorth;
+	if (beside && rawTop + fitBottom + 32 >= containerHeight) {
+		const bottom = Math.max(0, rawBottom, beside.bottom);
+		const right = Math.max(fitRight, beside.right);
+		if (rawTop + bottom + 32 < containerHeight && fitLeft + right + 32 < containerWidth) {
+			fitBottom = bottom;
+			fitRight = right;
+		}
+	}
 	// Keep actual chrome clearance whenever the fit has room for both 16px margins.
 	// Only overfull axes need the point-focus budget to keep geographic fitting valid.
 	const verticalFit = rawTop + fitBottom + 32 < containerHeight;

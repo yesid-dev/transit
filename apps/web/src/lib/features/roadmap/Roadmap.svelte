@@ -68,8 +68,6 @@
 		gap: 0.75rem;
 		border-block-start: 1px solid var(--border);
 		padding-block-start: 1rem;
-		scroll-margin-block-start: calc(
-			var(--chrome-offset, 0px) + var(--announcement-height, 0px) + 1rem
-		);
+		scroll-margin-block-start: 1rem;
 	}
 </style>
