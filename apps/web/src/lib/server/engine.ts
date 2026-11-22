@@ -33,10 +33,15 @@ const measureAnswer = state.extend({
 	coverage_note: bilingual.nullable(),
 	evidence: evidence.extend({ counts, excluded: counts }),
 });
-const rankingAnswer = state.partial().extend({
+const rankingEnvelope = state.partial().extend({
+	class: z.string().nullable(),
+	coverage_note: bilingual.nullable(),
+	info: z.array(z.object({ minimum_sample: count })).nonempty(),
+	evidence,
+});
+const rankingAnswer = rankingEnvelope.extend({
 	measure: z.literal('on_time'),
 	kind: z.enum(['line', 'stop']),
-	class: z.string().nullable(),
 	rows: z.array(
 		z.object({
 			id: z.string(),
@@ -47,9 +52,6 @@ const rankingAnswer = state.partial().extend({
 		}),
 	),
 	excluded: z.array(z.object({ reason: engineState, reason_text: bilingual })),
-	coverage_note: bilingual.nullable(),
-	info: z.array(z.object({ minimum_sample: count })).nonempty(),
-	evidence,
 });
 
 export type MeasureAnswer = z.infer<typeof measureAnswer>;
@@ -187,6 +189,54 @@ export type RecordQuery = {
 	path: '/measure' | '/ranking';
 	parameters: Record<string, string>;
 };
+
+const rankingIdentity = z.object({
+	id: z.string(),
+	classes: z.array(z.string()),
+	line: z.string().optional(),
+	direction: z.number().nullable().optional(),
+	departure: z.string().optional(),
+	sample: z.number().nonnegative().nullable(),
+	counts: recordCounts,
+});
+const rankingsRecord = rankingEnvelope.extend({
+	kind: z.enum(['line', 'stop', 'departure', 'vehicle']),
+	measure: z.string(),
+	available_classes: z.array(z.string()),
+	ranked_count: count,
+	rows: z.array(
+		rankingIdentity.extend({
+			rank: count,
+			sample: z.number().nonnegative(),
+			value: z.number(),
+			range: z.object({
+				lower: z.number().nullable(),
+				upper: z.number().nullable(),
+				method: z.string(),
+			}),
+		}),
+	),
+	excluded: z.array(rankingIdentity.extend({ reason: engineState, reason_text: bilingual })),
+	range_notes: z.record(z.string(), bilingual),
+	info: z
+		.array(
+			z.object({
+				minimum_sample: count,
+				ranking_minimum_sample: z.number().nonnegative().optional(),
+				text: z.object({
+					en: z.object({ definition: z.string() }),
+					fr: z.object({ definition: z.string() }),
+				}),
+			}),
+		)
+		.nonempty(),
+});
+
+export type RankingsRecord = z.infer<typeof rankingsRecord>;
+
+export function getRankingsRecord(parameters: Record<string, string>, period: EnginePeriod) {
+	return query('/ranking', period, parameters, rankingsRecord);
+}
 
 export function getRecordAnswer({ path, parameters }: RecordQuery, period: EnginePeriod) {
 	const schema: z.ZodType<RecordAnswer> =

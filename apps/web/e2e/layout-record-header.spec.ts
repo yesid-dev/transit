@@ -11,7 +11,7 @@ import { waitForFrameClearance } from './layout-helpers';
 const read = (path: string) => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
 const b9 = read('../scripts/__fixtures__/b9/rich.json').files;
 const recordFile =
-	/\/historic\/(?:route_reliability\/24|stop_reliability\/52095|hotspots)\.json$|\/historic\/history\/|\/status\/data_health\.json$/;
+	/\/historic\/(?:route_reliability\/24|stop_reliability\/52095)\.json$|\/historic\/history\/|\/status\/data_health\.json$/;
 const pages = [
 	{
 		name: 'line',
@@ -27,7 +27,6 @@ const pages = [
 		// The fresh layout fixtures date every file like the trips file.
 		published: read('./trips.json').generated_utc as string,
 	},
-	{ name: 'hotspots', path: '/hotspots?provider=stm', first: '[data-slot="hotspots-page"]' },
 ] as const;
 
 async function holdRecordFiles(page: Page, published: string | undefined) {

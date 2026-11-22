@@ -1,0 +1,96 @@
+export function rankingsEngine(url) {
+	const get = (key) => url.searchParams.get(key);
+	const kind = get('kind');
+	const measure = get('measure');
+	const from = get('from');
+	const vehicle = kind === 'vehicle';
+	const reporting = measure === 'vehicle_reporting_gaps_per_100_hours';
+	const median = measure === 'median_delay';
+	const ids = { line: '24', stop: 'S1', departure: '["24",0,"07:15:00"]', vehicle: 'V01' };
+	if (get('format') === 'csv') {
+		const header = get('lang') === 'fr' ? 'Rang,Type,Identifiant' : 'Rank,Kind,ID';
+		return { csv: `${header}\n1,${kind},${JSON.stringify(ids[kind])}\n` };
+	}
+	const classes = kind === 'line' ? ['3:frequent', '3:regular'] : [];
+	const serviceClass = kind === 'line' ? (get('class') ?? '3:frequent') : null;
+	const entry = {
+		id: ids[kind],
+		classes: kind === 'line' ? [serviceClass === 'all' ? '3:regular' : serviceClass] : [],
+		...(kind === 'departure' ? { line: '24', direction: 0, departure: '07:15:00' } : {}),
+		sample: reporting ? 20.5 : 100,
+		counts: reporting ? { reporting_gaps: 5 } : { on_time: 48, unfinished_trips: 12 },
+	};
+	const notTracked = vehicle && from === '2026-11-10';
+	const method = reporting
+		? 'vehicle_reporting_uncertainty_unknown'
+		: median
+			? 'histogram_half_bin'
+			: 'wilson_95';
+	return {
+		hold: from === '2026-11-09',
+		body: {
+			kind,
+			measure,
+			class: serviceClass,
+			available_classes: classes,
+			ranked_count: notTracked ? 0 : 1,
+			rows: notTracked
+				? []
+				: [
+						{
+							...entry,
+							rank: 1,
+							value: reporting ? 24.39 : median ? 30 : vehicle ? 12 : 0.48,
+							range: {
+								method,
+								lower: reporting ? null : median ? 27.5 : vehicle ? 6 : 0.38,
+								upper: reporting ? null : median ? 32.5 : vehicle ? 20 : 0.58,
+							},
+						},
+					],
+			excluded: notTracked
+				? []
+				: [
+						{
+							...entry,
+							id: 'excluded',
+							sample: 2,
+							reason: 'too_few_to_judge',
+							reason_text: { en: 'Too few to judge', fr: 'Trop peu pour juger' },
+						},
+					],
+			...(notTracked
+				? { state: 'not_tracked', state_text: { en: 'Not tracked', fr: 'Non suivi' } }
+				: {}),
+			coverage_note: null,
+			range_notes: {
+				wilson_95: { en: '95% Wilson interval.', fr: 'Intervalle de Wilson à 95 %.' },
+				histogram_half_bin: { en: 'Histogram estimate.', fr: 'Estimation par histogramme.' },
+				vehicle_reporting_uncertainty_unknown: {
+					en: 'The uncertainty of this rate is unknown.',
+					fr: 'L’incertitude du taux est inconnue.',
+				},
+			},
+			info: [
+				{
+					minimum_sample: 30,
+					...(vehicle ? { ranking_minimum_sample: reporting ? 10 : 20 } : {}),
+					text: {
+						en: { definition: 'Calculated from the observed service.' },
+						fr: { definition: 'Calculé à partir du service observé.' },
+					},
+				},
+			],
+			evidence: {
+				start_date: from,
+				end_date: get('to'),
+				days_included: [from],
+				days_measured: notTracked ? [] : [from],
+				days_not_measured: [],
+				method_version: 'rankings-fixture-v1',
+				cleaning_versions: [8],
+				query_ms: 4,
+			},
+		},
+	};
+}

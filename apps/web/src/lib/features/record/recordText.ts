@@ -1,5 +1,11 @@
 import { intl, type Locale } from '#lib/i18n/index.ts';
-import type { EngineResult, RecordAnswer, RecordCell, RecordEvidence } from '#lib/server/engine.ts';
+import type {
+	EngineResult,
+	RankingsRecord,
+	RecordAnswer,
+	RecordCell,
+	RecordEvidence,
+} from '#lib/server/engine.ts';
 import type { DateWindow } from '#lib/v1/history/window.ts';
 
 export function dateRange({ from, to }: DateWindow, locale: Locale): string {
@@ -76,7 +82,10 @@ export function choose(locale: Locale, en: string, fr: string) {
 	return locale === 'fr' ? fr : en;
 }
 
-export function recordMessage(result: EngineResult<RecordAnswer>, locale: Locale): string | null {
+export function recordMessage(
+	result: EngineResult<RecordAnswer | RankingsRecord>,
+	locale: Locale,
+): string | null {
 	if (result.kind !== 'answer') return recordConnection[result.kind][locale];
 	const answer = result.answer;
 	if ('rows' in answer) {

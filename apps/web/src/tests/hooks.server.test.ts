@@ -387,6 +387,11 @@ describe('server HTML edge cache', () => {
 		['https://transit1.yesid.dev/lines/24', '/[[lang=locale]]/lines/[id]'],
 		['http://127.0.0.1:4317/fr/lines/24?frameMode=record', '/[[lang=locale]]/lines/[id]'],
 		['https://transit1.yesid.dev/fr/lines/24?tab=schedule', '/[[lang=locale]]/lines/[id]'],
+		['https://transit1.yesid.dev/hotspots?kind=stop', '/[[lang=locale]]/hotspots'],
+		[
+			'https://transit1.yesid.dev/fr/repeat-offenders?kind=vehicle',
+			'/[[lang=locale]]/repeat-offenders',
+		],
 	])('delivers streamed sections without caching or compression for %s', async (url, routeId) => {
 		const cache = cacheHarness(html('cached'));
 		const request = event(url, { cache, routeId });

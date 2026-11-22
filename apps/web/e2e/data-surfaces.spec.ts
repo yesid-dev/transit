@@ -36,8 +36,6 @@ for (const lang of PUBLISHED_LOCALES)
 		const day = bundle['historic/receipts/index.json'].dates.at(-1);
 		// The core server synthesizes the receipt with its live fixture's publication date.
 		const records = [
-			['hotspots', fixture('hotspots.json').generated_utc, null],
-			['repeat-offenders', fixture('repeat-offenders.json').generated_utc, null],
 			['alerts', fixture('alerts.json').generated_utc, null],
 			['receipt', manifest.files.live.generated_utc, day],
 			['metrics', fixture('provenance.json').generated_utc, null],
@@ -291,33 +289,8 @@ test('the status page lists its record families on phones and says when data is 
 	await expect(index.locator('[data-slot="absent-value"]').first()).toBeVisible();
 });
 
-test('rankings name lines by number in both languages', async ({ page }) => {
-	// Hotspots ranks complete weeks; serve the fixture's ranked rows as one.
-	const week = fixture('hotspots.json');
-	week.by_grain = week.by_grain.map((grain: object) => ({
-		...grain,
-		grain: 'week',
-		date: '2026-06-08',
-		window_end: '2026-06-14',
-	}));
-	await page.route('**/historic/hotspots.json', (route) => route.fulfill({ json: week }));
+test('the receipt names its worst line in both languages', async ({ page }) => {
 	for (const lang of PUBLISHED_LOCALES) {
-		await page.goto(localizeHref('/hotspots', lang));
-		await expect(page.locator('[data-slot="hotspots-verdict"]')).toHaveCount(0);
-		const unindexed = page.locator('[data-slot="hotspot-rows"]').getByRole('button', {
-			name: new RegExp(`\\b${lang === 'fr' ? 'Ligne' : 'Line'} Lansdowne\\.`),
-		});
-		await unindexed.scrollIntoViewIfNeeded();
-		await expect(unindexed).toBeVisible();
-		await expect(unindexed.locator('[data-slot="hotspot-row-name"]')).toHaveText('Lansdowne');
-		await page.goto(localizeHref('/repeat-offenders', lang));
-		const offender = page.locator('[data-slot="offender-rows"]').getByRole('button', {
-			name: new RegExp(
-				`\\b${lang === 'fr' ? 'Trajet T1 sur la ligne 1' : 'Trip T1 on line 1'} \\(Confederation\\)\\.`,
-			),
-		});
-		await expect(offender).toBeVisible();
-		await expect(offender.locator('[data-slot="offender-row-line"]')).toHaveText('Confederation');
 		await page.goto(localizeHref('/receipt', lang));
 		await expect(
 			page.locator('[data-slot="receipt-worst"]').getByRole('link', {

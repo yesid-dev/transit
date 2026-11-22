@@ -3,154 +3,8 @@ import { test } from './layout-test';
 import { localizeHref } from '../src/lib/i18n/routing';
 import { stampCopy } from '../src/lib/v1/stamp.copy';
 
-// Hotspots, Repeat offenders and the receipt keep still while their record loads: the header, the
-// page's content column and the footer are where they were before the files arrived. Production
-// showed the footer pushed down by the arriving ranking (Hotspots CLS 0.33-0.52, Repeat offenders
-// 0.41-0.47) and the receipt's header and sections growing (CLS about 1.05).
-
-/** A current repeat-offenders file shaped like a published one: more rows than the first page
- * shows, both kinds, both periods, a tray of rows below the rule. Every figure obeys its checks. */
-function offenders() {
-	const lines = [
-		['24', 'Sherbrooke'],
-		['1-373', 'Confederation'],
-	] as const;
-	const entry = (type: 'trip' | 'vehicle', index: number, ranked: boolean) => {
-		const [route, name] = lines[index % lines.length];
-		return {
-			type,
-			id: `${type === 'trip' ? 3056330 : 46}${index}`,
-			route,
-			route_name: name,
-			route_short_name: route === '24' ? '24' : '1',
-			departure_time: null,
-			headsign: null,
-			...(ranked
-				? {
-						rank: index + 1,
-						// 57 of 798 readings: 7.1 %, inside the published 5.6 % to 9.1 %.
-						observation_count: 798,
-						severe_count: 57,
-						severe_pct: 7.1,
-						wilson_lo: 90.9,
-						wilson_hi: 94.4,
-						recurrence_days: Math.max(2, 7 - Math.floor(index / 3)),
-						observed_days: 7,
-						avg_delay_min: Number((5 - index * 0.1).toFixed(1)),
-					}
-				: {
-						// 1 of 20 readings: 5 %, inside 1 % to 20 %; below every floor.
-						observation_count: 20,
-						severe_count: 1,
-						severe_pct: 5,
-						wilson_lo: 80,
-						wilson_hi: 99,
-						recurrence_days: 1,
-						observed_days: 2,
-						avg_delay_min: 1.2,
-					}),
-		};
-	};
-	const grain = (name: 'week' | 'month', window: number, from: string) => ({
-		grain: name,
-		window_days: window,
-		entries: (['trip', 'vehicle'] as const).flatMap((type) =>
-			Array.from({ length: 14 }, (_, index) => entry(type, index, true)),
-		),
-		tray: (['trip', 'vehicle'] as const).flatMap((type) =>
-			Array.from({ length: 6 }, (_, index) => entry(type, index, false)),
-		),
-		total_ranked_trips: 120,
-		total_ranked_vehicles: 90,
-		tray_total: 12,
-		date: from,
-		window_end: '2026-06-14',
-	});
-	return {
-		generated_utc: '2026-06-15T12:00:00Z',
-		methodology_version: 'reliability-2',
-		by_grain: [grain('week', 7, '2026-06-08'), grain('month', 30, '2026-05-16')],
-	};
-}
-
-/** A current hotspots file shaped like a published one: more rows than the first page shows, both
- * kinds, both periods with their dates, and the rows below the reading floor STM published on
- * 2026-11-18 (11 lines and 48 stops over 7 days); the 30-day tray fills the publisher's cap of 60
- * with more lines. Every figure obeys its checks: each share is its late count over its readings,
- * and the published bound only rises. */
-function hotspots() {
-	const names = {
-		route: 'Saint-Michel / Ahuntsic',
-		stop: 'Station Berri-UQAM / Sainte-Catherine Est (côté nord)',
-	} as const;
-	const entry = (type: 'route' | 'stop', index: number) => ({
-		rank: index + 1,
-		type,
-		id: type === 'route' ? `${41 + index}` : `5${2095 + index}`,
-		name: names[type],
-		// 330 - 7i of 900 readings, rounded half away from zero like the publisher.
-		observation_count: 900,
-		severe_count: 330 - 7 * index,
-		severe_pct: Math.round((1000 * (330 - 7 * index)) / 900) / 10,
-		wilson_lo: 60 + index,
-		wilson_hi: 66 + index,
-	});
-	const below = (type: 'route' | 'stop', index: number) => ({
-		type,
-		id: type === 'route' ? `9${index}` : `6${index}`,
-		name: names[type],
-		observation_count: 1 + (index % 29),
-	});
-	const grain = (name: 'week' | 'month', from: string, routes: number, stops: number) => ({
-		grain: name,
-		date: from,
-		window_end: '2026-06-14',
-		entries: (['route', 'stop'] as const).flatMap((type) =>
-			Array.from({ length: 14 }, (_, index) => entry(type, index)),
-		),
-		tray: [
-			...Array.from({ length: routes }, (_, index) => below('route', index)),
-			...Array.from({ length: stops }, (_, index) => below('stop', index)),
-		],
-		total_ranked_routes: 203,
-		total_ranked_stops: 4930,
-		tray_total: routes + stops,
-	});
-	return {
-		generated_utc: '2026-06-15T12:00:00Z',
-		methodology_version: 'reliability-2',
-		by_grain: [grain('week', '2026-06-08', 11, 48), grain('month', '2026-05-16', 25, 35)],
-	};
-}
-
-/** Hotspots as a link opens it: the default view, or the stops or 30-day view a deep link names. */
-const hotspotsPage = (provider: 'stm' | 'octranspo', view?: 'kind=stops' | 'grain=month') => ({
-	name: ['hotspots', provider === 'stm' && !view ? null : provider, view].filter(Boolean).join(' '),
-	path: `/hotspots?provider=${provider}${view ? `&${view}` : ''}`,
-	held: /\/historic\/hotspots/,
-	first: '[data-slot="hotspots-controls"]',
-	// The record's own top: it must not move up when no history navigator arrives.
-	record: '.hotspots-record',
-	loaded: '[data-slot="hotspot-rows"] > li > button:visible',
-	scope: 'window' as const,
-});
-
+// The receipt keeps its reading position while the published record loads.
 const pages = [
-	hotspotsPage('stm'),
-	...(['stm', 'octranspo'] as const).flatMap((provider) => [
-		hotspotsPage(provider, 'kind=stops'),
-		hotspotsPage(provider, 'grain=month'),
-	]),
-	{
-		name: 'repeat offenders',
-		path: '/repeat-offenders?provider=stm',
-		held: /\/historic\/repeat_offenders/,
-		first: '[data-slot="offenders-controls"]',
-		// The record's own top: it must not move up when no history navigator arrives.
-		record: '.offenders-record',
-		loaded: '[data-slot="offender-rows"] > li > button:visible',
-		scope: 'window',
-	},
 	{
 		name: 'receipt',
 		path: '/receipt?provider=stm',
@@ -168,21 +22,12 @@ async function holdFiles(page: Page, held: RegExp) {
 		entered: () => {},
 		releases: [] as Array<() => void>,
 	};
-	const current = { repeat_offenders: offenders(), hotspots: hotspots() };
 	await page.route('**/v1/**', async (route) => {
 		const url = new URL(route.request().url());
 		url.pathname = '/__layout/fresh' + url.pathname;
 		if (held.test(url.pathname) && gate.holding) {
 			gate.entered();
 			await new Promise<void>((resolve) => gate.releases.push(resolve));
-		}
-		const family = url.pathname.match(/\/historic\/(repeat_offenders|hotspots)\.json$/)?.[1];
-		if (family === 'repeat_offenders' || family === 'hotspots') {
-			await route.fulfill({
-				json: current[family],
-				headers: { 'access-control-allow-origin': '*', 'cache-control': 'no-store' },
-			});
-			return;
 		}
 		await route.fulfill({ response: await route.fetch({ url: url.href }) });
 	});

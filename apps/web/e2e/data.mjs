@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { lineEngine } from './line-engine.mjs';
 import { overviewEngine } from './overview-engine.mjs';
+import { rankingsEngine } from './rankings-engine.mjs';
 import { stopEngine } from './stop-engine.mjs';
 import { vehicleEngine } from './vehicle-engine.mjs';
 
@@ -311,7 +312,9 @@ const server = createServer((request, response) => {
 					? stopEngine(url)
 					: url.searchParams.has('line')
 						? lineEngine(url)
-						: overviewEngine(url);
+						: question[2] === 'ranking' && url.searchParams.get('limit') === '500'
+							? rankingsEngine(url)
+							: overviewEngine(url);
 		if (result.csv) {
 			response.setHeader('content-type', 'text/csv; charset=utf-8');
 			response.end(result.csv);
