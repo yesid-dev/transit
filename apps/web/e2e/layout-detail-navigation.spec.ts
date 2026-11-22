@@ -43,18 +43,20 @@ async function captureDetail(
 		await handle.press('ArrowUp');
 	}
 }
-// At peek and half the site nav and provider control stay visible above the detail sheet.
+// At peek and half the site nav and app frame controls stay visible above the detail sheet.
 async function expectChromeClear(page: Page) {
 	const navPill = page.getByTestId('nav-pill');
 	await expect(navPill).toBeVisible();
-	await expect(navPill.locator('.nav-provider')).toBeVisible();
+	await expect(navPill.locator('[data-slot="app-frame-controls"]')).toBeVisible();
 	await expect
 		.poll(() =>
 			page.evaluate(() => {
 				const sheet = document.querySelector('[data-slot="bottom-sheet"]')!.getBoundingClientRect();
 				const pill = document.querySelector('[data-testid="nav-pill"]')!.getBoundingClientRect();
-				const provider = document.querySelector('.nav-provider')!.getBoundingClientRect();
-				return sheet.top - Math.max(pill.bottom, provider.bottom);
+				const controls = document
+					.querySelector('[data-slot="app-frame-controls"]')!
+					.getBoundingClientRect();
+				return sheet.top - Math.max(pill.bottom, controls.bottom);
 			}),
 		)
 		.toBeGreaterThanOrEqual(0);

@@ -8,6 +8,7 @@ import { detailCopy } from '../src/lib/features/lines/lines.copy';
 import { reliabilityCopy } from '../src/lib/features/lines/reliability/reliability.copy';
 import { PUBLISHED_LOCALES } from '../src/lib/i18n/config';
 import { localizeHref } from '../src/lib/i18n/routing';
+import { waitForFrameClearance } from './layout-helpers';
 
 const read = (path: string) => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
 const b9 = read('../scripts/__fixtures__/b9/rich.json');
@@ -300,6 +301,7 @@ for (const locale of PUBLISHED_LOCALES) {
 				exact: true,
 			});
 			const header = page.locator('[data-slot="article-header"]');
+			await waitForFrameClearance(page);
 			const before = await header.boundingBox();
 			releaseVehicles();
 			await expect(panel.locator('[data-testid="route-roster"] li')).toHaveCount(13);

@@ -196,7 +196,7 @@
 {/snippet}
 
 {#snippet actions()}
-	<div bind:this={scopeControls} class="nav-scope">
+	<div bind:this={scopeControls} class="nav-scope" data-slot="app-frame-controls">
 		<!-- The visible label is its own element, centred in the control; the native select sits on top, transparent. -->
 		<label class="nav-provider">
 			<span class="nav-provider-label nav-provider-full" aria-hidden="true" title={providerLabel}

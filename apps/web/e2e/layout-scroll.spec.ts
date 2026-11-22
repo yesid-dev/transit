@@ -73,10 +73,10 @@ function legalMetrics(page: Page): Promise<LegalMetrics> {
 		const docBottom = (element: Element) => element.getBoundingClientRect().bottom + scrollY;
 		const main = document.querySelector<HTMLElement>('main')!;
 		const article = document.querySelector<HTMLElement>('[data-testid="legal-document"]')!;
-		// The network label can extend below the pill on phones; both are fixed chrome.
+		// The app frame controls sit below the pill and are also fixed chrome.
 		const pill = document.querySelector<HTMLElement>('[data-testid="nav-pill"]')!;
-		const provider = pill.querySelector('select')!.closest('label')!;
-		const chrome = [pill, provider].filter((element) => element.checkVisibility());
+		const controls = pill.querySelector('[data-slot="app-frame-controls"]')!;
+		const chrome = [pill, controls].filter((element) => element.checkVisibility());
 		let contentSpill = article.getBoundingClientRect().right - innerWidth;
 		for (const descendant of article.querySelectorAll('*')) {
 			const rect = descendant.getBoundingClientRect();
@@ -137,9 +137,9 @@ for (const kind of ['privacy', 'terms', 'accessibility'] as const) {
 				const anchored = page.locator(`[id="${id}"]`);
 				await expect(anchored).toBeInViewport();
 				const chromeBottom = await page.getByTestId('nav-pill').evaluate((pill) => {
-					const provider = pill.querySelector('select')!.closest('label')!;
+					const controls = pill.querySelector('[data-slot="app-frame-controls"]')!;
 					return Math.max(
-						...[pill, provider]
+						...[pill, controls]
 							.filter((element) => element.checkVisibility())
 							.map((element) => element.getBoundingClientRect().bottom),
 					);

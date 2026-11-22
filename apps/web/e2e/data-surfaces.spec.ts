@@ -16,6 +16,7 @@ import { intl } from '../src/lib/i18n/copy';
 import { csvTable } from '../src/lib/features/lines/reliability/__fixtures__/csvTable';
 import { indexCopy as stopsIndexCopy } from '../src/lib/features/stops/stops.copy';
 import { transitTerms } from '../src/lib/i18n/transitTerms.copy';
+import { waitForFrameClearance } from './layout-helpers';
 
 const fixture = (name: string) =>
 	JSON.parse(readFileSync(new URL(`./${name}`, import.meta.url), 'utf8'));
@@ -420,11 +421,11 @@ for (const lang of PUBLISHED_LOCALES)
 						releaseNames = resolve;
 					});
 					await page.goto(localizeHref('/trip/R48', lang, provider));
-					await page.evaluate(() => document.fonts.ready);
 					const header = page.locator('[data-slot="article-header"]');
 					await expect(page.getByRole('heading', { level: 1 })).toHaveText(
 						tripCopy[lang].reportTitle,
 					);
+					await waitForFrameClearance(page);
 					const before = await header.boundingBox();
 					releaseReport();
 					const table = page.getByRole('table', {
