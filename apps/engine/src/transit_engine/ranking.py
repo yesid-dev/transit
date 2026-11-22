@@ -12,13 +12,16 @@ from typing import Any
 
 import duckdb
 
-from transit_engine.clean_manifest import TRIP_DAYS
+from transit_engine.clean_manifest import ALERTS, STOP_EVENTS, TRIP_DAYS
 from transit_engine.measures import (
+    _ALERT_COUNTS_ID,
     _BOUNDARIES,
+    _CROWDING_ID,
     _LOCAL_HOUR,
     _SELECTIONS,
     _SERVICE_DELIVERED_ID,
     _STATES,
+    _US_PER_HOUR,
     DELAY_BIN_SECONDS,
     Batch,
     EntityKey,
@@ -65,6 +68,16 @@ _RANGE_NOTES = {
         "The histogram estimate is within half a bin of the exact sample percentile.",
         "L’estimation est à une demi-classe ou moins du centile exact de l’échantillon.",
     ),
+    "occupancy_weighted_wilson_95": Text(
+        "Approximate 95% Wilson interval using an effective sample of state intervals "
+        "weighted by vehicle time. Intervals from the same vehicle can be dependent.",
+        "Intervalle de Wilson approximatif à 95 % avec un effectif d’intervalles "
+        "pondéré par le temps-véhicule. Les intervalles d’un véhicule peuvent être dépendants.",
+    ),
+    "recorded_alert_hours": Text(
+        "Recorded duration from the published alert history. Both bounds equal that duration.",
+        "Durée calculée à partir de l’historique des alertes. Les deux bornes égalent cette durée.",
+    ),
 }
 _NOT_MEASURED_ON_DATES = Text("Not measured on those dates", "Non mesuré à ces dates")
 
@@ -80,6 +93,9 @@ class Ranking:
         family, measures = _SELECTIONS[self.question.measure]
         if len(measures) != 1:
             raise ValueError("choose a single registry measure")
+        kinds = measures[0].ranking_kinds
+        if kinds is not None and self.kind not in kinds:
+            raise ValueError("this measure does not apply to this ranking kind")
         if self.kind == "stop" and family.id == _SERVICE_DELIVERED_ID:
             raise ValueError("trip measures do not apply to stops")
         if self.question.measure in _BOUNDARIES and self.kind != "line":
@@ -177,11 +193,20 @@ def wilson_interval(share: float, sample: float) -> tuple[float, float]:
     return lower, upper
 
 
-def _range(value: float, sample: int, measure: Measure, counts: Counter[str]) -> dict[str, Any]:
+def _range(
+    value: float, sample: int, measure: Measure, counts: Counter[str], family_id: str
+) -> dict[str, Any]:
     if measure.unit == "seconds":
         half_bin = DELAY_BIN_SECONDS / 2
         lower, upper = value - half_bin, value + half_bin
         method = "histogram_half_bin"
+    elif family_id == _ALERT_COUNTS_ID:
+        lower = upper = value
+        method = "recorded_alert_hours"
+    elif family_id == _CROWDING_ID:
+        effective_sample = counts["occupancy_us"] ** 2 / counts["squared_occupancy_us"]
+        lower, upper = wilson_interval(value, effective_sample)
+        method = "occupancy_weighted_wilson_95"
     elif measure.id == "service_hours":
         effective_sample = counts["scheduled_seconds"] ** 2 / counts["squared_duration"]
         lower, upper = wilson_interval(value, effective_sample)
@@ -213,6 +238,47 @@ def _identity(kind: EntityKind, key: EntityKey, classes: list[str]) -> dict[str,
     return identity
 
 
+def _historical_schedule(
+    conn: duckdb.DuckDBPyConnection,
+    paths: dict[str, list[str]],
+    kind: EntityKind,
+    totals: dict[EntityKey, Batch],
+    city: str,
+    version: str,
+) -> None:
+    trips = paths[TRIP_DAYS]
+    tracked = (
+        [trip for trip, alert in zip(trips, paths[ALERTS], strict=True) if alert]
+        if ALERTS in paths
+        else trips
+    )
+    source = "read_parquet(?, hive_partitioning = false) t"
+    entity = "t.route_id"
+    bindings: list[object] = [tracked, tracked, trips]
+    if kind == "stop":
+        source += """
+            JOIN read_parquet(?, hive_partitioning = false) s
+            USING (provider, cleaning_version, service_date, trip_id)
+        """
+        entity = "s.stop_id"
+        bindings.append(paths[STOP_EVENTS])
+    rows = conn.execute(
+        f"""
+        SELECT {entity} AS entity, t.route_id, bool_or(list_contains(?, t.filename)),
+            bool_or(NOT list_contains(?, t.filename))
+        FROM {source}
+        WHERE t.provider = ? AND t.cleaning_version = ? AND t.state <> 'added'
+            AND t.route_id IS NOT NULL AND entity IS NOT NULL
+        GROUP BY entity, t.route_id
+        """,
+        [*bindings, city, version],
+    ).fetchall()
+    for key, route, has_tracking, lacks_tracking in rows:
+        result = totals.setdefault((key,), Batch())
+        result.scheduled_routes.add(route)
+        result.counts.update(schedule_tracked=has_tracking, schedule_not_tracked=lacks_tracking)
+
+
 def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
     started = perf_counter()
     question = ranking.question
@@ -220,10 +286,15 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
     (measure,) = selected
     totals: dict[EntityKey, Batch] = {}
     lines: dict[str, LineSchedule] = {}
+    historical = family.id in {_CROWDING_ID, _ALERT_COUNTS_ID}
     with store.connect() as conn:
-        window = read_window(conn, store, question, family, selected)
+        window = read_window(conn, store, question, family, selected, ranking.kind)
         for batch in window.batches():
             _line_schedules(conn, batch[TRIP_DAYS], store, question, lines)
+            if historical:
+                _historical_schedule(
+                    conn, batch, ranking.kind, totals, question.city, str(store.cleaning_version)
+                )
             for key, result in family.query(
                 conn, family, batch, question, str(store.cleaning_version), ranking.kind
             ).items():
@@ -248,25 +319,31 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
         service_classes = sorted({classes[route] for route in result.scheduled_routes})
         if chosen_class not in {None, "all"} and chosen_class not in service_classes:
             continue
-        state, values, evidence, samples = evaluate(
-            family, selected, result, window.included, window.no_days_measured
-        )
+        state, values, evidence, samples = evaluate(family, selected, result, window)
         value, sample = values[measure.id], samples[measure.id]
         entry = {
             **_identity(ranking.kind, key, service_classes),
             "sample": sample,
             **evidence,
         }
-        if not result.counts["live_candidates"]:
+        if historical and state in {"not_tracked", "not_measured"}:
+            entry["sample"] = None
+        elif family.id == _CROWDING_ID:
+            entry["sample"] = sample / _US_PER_HOUR
+        if not historical and not result.counts["live_candidates"]:
             state, value = "no_live_data", None
         if value is None:
-            if state == "unknown":
+            if state == "unknown" and not historical:
                 state = "too_few_to_judge"
             reason = _NOT_MEASURED_ON_DATES if state == "not_measured" else _STATES[state]
             excluded.append({**entry, "reason": state, "reason_text": reason._asdict()})
         else:
             rows.append(
-                {**entry, "value": value, "range": _range(value, sample, measure, result.counts)}
+                {
+                    **entry,
+                    "value": value,
+                    "range": _range(value, sample, measure, result.counts, family.id),
+                }
             )
     order = -1 if measure.worst_first_descending else 1
     rows.sort(key=lambda row: (order * row["value"], -row["sample"], row["id"]))
@@ -274,6 +351,18 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
     evidence = window.evidence(store, question, family, started)
     if chosen_class:
         evidence["cuts"]["class"] = chosen_class
+    historical_state = {}
+    if historical:
+        reasons = {entry["reason"] for entry in excluded}
+        if rows:
+            state = "measured"
+        elif len(reasons) == 1:
+            state = reasons.pop()
+        elif family.id == _ALERT_COUNTS_ID and window.not_tracked and not window.measured:
+            state = "not_tracked"
+        else:
+            state = "not_measured" if window.no_days_measured else "unknown"
+        historical_state = {"state": state, "state_text": _STATES[state]._asdict()}
     return {
         "measure": measure.id,
         "kind": ranking.kind,
@@ -288,6 +377,7 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
         "range_notes": {method: note._asdict() for method, note in _RANGE_NOTES.items()},
         "info": [_info(family, measure)],
         "evidence": evidence,
+        **historical_state,
     }
 
 
@@ -306,6 +396,8 @@ _RANKING_COLUMNS = {
 def ranking_csv(answer: dict[str, Any], language: Language) -> str:
     family, _ = _SELECTIONS[answer["measure"]]
     columns = {**_RANKING_COLUMNS, **_csv_columns(family)}
+    if family.id == _CROWDING_ID:
+        columns["sample"] = Text("Sample (vehicle-hours)", "Échantillon (heures-véhicules)")
     output = io.StringIO(newline="")
     writer = csv.writer(output)
     writer.writerow(getattr(label, language) for label in columns.values())
@@ -319,7 +411,9 @@ def ranking_csv(answer: dict[str, Any], language: Language) -> str:
     entries = [*answer["rows"], *answer["excluded"]]
     if not entries:
         # Keep the window evidence exportable even when there are no known entities.
-        reason = _STATES["unknown"] if common["days_included"] else _NOT_MEASURED_ON_DATES
+        reason = _STATES.get(answer.get("state", "")) or (
+            _STATES["unknown"] if common["days_included"] else _NOT_MEASURED_ON_DATES
+        )
         entries.append({"reason_text": reason._asdict(), "counts": {}, "excluded": {}})
     for entry in entries:
         bounds = entry.get("range", {})
