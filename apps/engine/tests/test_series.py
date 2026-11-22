@@ -199,6 +199,8 @@ def test_line_departure_series_and_ranking_apply_the_same_cuts(store: Store) -> 
     assert (row["line"], row["direction"], row["departure"]) == ("A", 0, "07:00:00")
     assert row["counts"]["late"] == 8
     assert row["sample"] == 32
+    status, _, _ = asyncio.run(http(app, "/ranking", cut + "&kind=line&measure=late"))
+    assert status == 400
 
 
 @pytest.mark.parametrize(

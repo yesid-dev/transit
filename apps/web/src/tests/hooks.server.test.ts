@@ -382,9 +382,14 @@ describe('server HTML edge cache', () => {
 		expect(cache.put).not.toHaveBeenCalled();
 	});
 
-	it('delivers Overview Record chunks without caching or compressing them', async () => {
+	it.each([
+		['https://transit.yesid.dev/fr?provider=stm', '/[[lang=locale]]'],
+		['https://transit1.yesid.dev/lines/24', '/[[lang=locale]]/lines/[id]'],
+		['http://127.0.0.1:4317/fr/lines/24?frameMode=record', '/[[lang=locale]]/lines/[id]'],
+		['https://transit1.yesid.dev/fr/lines/24?tab=schedule', '/[[lang=locale]]/lines/[id]'],
+	])('delivers streamed sections without caching or compression for %s', async (url, routeId) => {
 		const cache = cacheHarness(html('cached'));
-		const request = event('https://transit.yesid.dev/fr?provider=stm', { cache });
+		const request = event(url, { cache, routeId });
 		const response = await handle({ event: request, resolve: vi.fn(async () => html('streamed')) });
 
 		expect(await response.text()).toBe('streamed');
@@ -392,6 +397,19 @@ describe('server HTML edge cache', () => {
 		expect(response.headers.get('cache-control')).toBe('no-store, no-transform');
 		expect(cache.match).not.toHaveBeenCalled();
 		expect(cache.put).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		'https://transit.yesid.dev/lines/24',
+		'https://transit1.yesid.dev/lines/24?frameMode=live&tab=detail',
+	])('preserves the cache policy for %s', async (url) => {
+		const cache = cacheHarness(html('cached'));
+		const request = event(url, { cache, routeId: '/[[lang=locale]]/lines/[id]' });
+		const response = await handle({ event: request, resolve: vi.fn(async () => html('fresh')) });
+
+		expect(await response.text()).toBe('cached');
+		expect(response.headers.get('content-encoding')).toBeNull();
+		expect(response.headers.get('x-transit-edge-cache')).toBe('HIT');
 	});
 
 	it('uses a cached GET representation for HEAD without returning a body', async () => {

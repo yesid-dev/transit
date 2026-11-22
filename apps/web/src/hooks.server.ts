@@ -3,6 +3,7 @@ import type { Handle, HandleServerError, ServerInit } from '@sveltejs/kit/hooks'
 import { pathLocale } from '#lib/i18n/index.ts';
 import { readRequestLocation } from '#lib/v1/requestLocation.ts';
 import { readPublicSiteConfig } from '#lib/site/config.ts';
+import { lineFrameView } from '#lib/site/lineFrame.ts';
 import { DOCUMENT_SECURITY_HEADERS } from '#lib/site/securityHeaders.ts';
 import { configureTransitUi } from '#lib/ui/configure.ts';
 import { preloadFont } from '@yesid/tokens/fonts';
@@ -99,6 +100,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.approximateLocation = readRequestLocation(event.request);
 	const overviewRecord =
 		event.route.id === '/[[lang=locale]]' && event.url.searchParams.get('frameMode') !== 'live';
+	const lineView =
+		event.route.id === '/[[lang=locale]]/lines/[id]' ? lineFrameView(event.url) : null;
+	const streamedRecord = overviewRecord || lineView === 'record' || lineView === 'schedule';
 	const automaticSelection =
 		event.route.id?.startsWith('/[[lang=locale]]') === true &&
 		!event.url.searchParams.has('provider') &&
@@ -108,7 +112,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.locale = lang;
 	const cache = await edgeCache();
 	const cacheBypassed =
-		overviewRecord ||
+		streamedRecord ||
 		automaticSelection ||
 		event.isDataRequest ||
 		cache == null ||
@@ -140,7 +144,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 		preload: ({ type, path }) => type !== 'font' || preloadFont(path),
 	});
 	const response = mutableResponse(resolved, event.request.method === 'HEAD');
-	if (overviewRecord && response.ok) {
+	if (streamedRecord && response.ok) {
 		// Compression can buffer the shell and completed results behind a slow query.
 		response.headers.set('content-encoding', 'identity');
 		response.headers.set('cache-control', 'no-store, no-transform');

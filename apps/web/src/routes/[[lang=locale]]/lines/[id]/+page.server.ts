@@ -1,6 +1,6 @@
 import { loadLineRecord, lineDirection } from '#lib/server/lineRecord.ts';
-import { DEFAULT_SITE_ORIGIN } from '#lib/site/config.ts';
 import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
+import { lineFrameView } from '#lib/site/lineFrame.ts';
 import { createLineDirectory } from '#lib/site/lineDirectory.ts';
 import { routeNameFallback } from '#lib/site/nameFallback.ts';
 import { linePageTitle } from '#lib/seo/riderPageTitle.ts';
@@ -22,10 +22,8 @@ export const load: PageServerLoad = async (event) => {
 	const { url } = event;
 	const tab = detailTabFromSearchParams(url.searchParams);
 	const { mode, period } = parseFrameState(url.searchParams, frameToday());
-	const framed =
-		url.origin === DEFAULT_SITE_ORIGIN ||
-		['frameMode', 'recordFrom', 'recordTo'].some((key) => url.searchParams.has(key));
-	const frameLive = framed && (mode === 'live' || tab === 'detail');
+	const view = lineFrameView(url);
+	const frameLive = view === 'live';
 	if (frameLive && (tab !== 'detail' || mode !== 'live')) {
 		const live = new URL(url);
 		live.searchParams.set('tab', 'detail');
@@ -35,14 +33,8 @@ export const load: PageServerLoad = async (event) => {
 
 	const { v1, routesIndex, lang, providerId } = await event.parent();
 	const record =
-		framed && !frameLive && period
-			? loadLineRecord(
-					tab === 'schedule' ? 'schedule' : 'record',
-					period,
-					providerId,
-					id,
-					lineDirection(url.searchParams),
-				)
+		view && view !== 'live' && period
+			? loadLineRecord(view, period, providerId, id, lineDirection(url.searchParams))
 			: null;
 	if (record) {
 		const directory = createLineDirectory(routesIndex?.routes ?? null, {
