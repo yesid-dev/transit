@@ -45,7 +45,7 @@ beforeAll(async () => {
 		'/src/lib/features/metrics/MetricBody.svelte',
 	);
 	({ load: loadPage } = await server.ssrLoadModule(
-		'/src/routes/[[lang=locale]]/metrics/+page.server.ts',
+		'/src/routes/[[lang=locale]]/metrics/archive/+page.server.ts',
 	));
 	renderBody = (entry, locale, sqlHtml) =>
 		renderSsr(ServerBody, { props: { entry, locale, sqlHtml } }).body;

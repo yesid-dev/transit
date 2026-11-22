@@ -3,10 +3,31 @@ import { getDataHealth } from '#lib/v1/repositories/dataHealth.ts';
 import { getHistoricAvailability } from '#lib/v1/repositories/historic.ts';
 import { getProvenance } from '#lib/v1/repositories/provenance.ts';
 import { serverV1Context } from '#lib/v1/serverContext.ts';
+import { getMethodCatalog, getRecordDataHealth } from '#lib/server/engine.ts';
+import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
 
 export const load: PageServerLoad = async (event) => {
-	const { v1 } = await event.parent();
-	if (!v1) return { provenanceSeed: null, dataHealthSeed: null, historicAvailabilitySeed: null };
+	const { mode, period } = parseFrameState(event.url.searchParams, frameToday());
+	const { v1, providerId: city } = await event.parent();
+	if (mode === 'record') {
+		const visitorIp = event.request.headers.get('cf-connecting-ip');
+		return {
+			view: 'record' as const,
+			record: period && {
+				city,
+				period,
+				health: getRecordDataHealth({ ...period, city, visitorIp }),
+				methods: getMethodCatalog(visitorIp),
+			},
+		};
+	}
+	if (!v1)
+		return {
+			view: 'live' as const,
+			provenanceSeed: null,
+			dataHealthSeed: null,
+			historicAvailabilitySeed: null,
+		};
 	const context = {
 		...serverV1Context(event),
 		providerId: v1.manifest.provider,
@@ -17,6 +38,7 @@ export const load: PageServerLoad = async (event) => {
 	);
 
 	return {
+		view: 'live' as const,
 		provenanceSeed:
 			provenanceResult.status === 'fulfilled'
 				? { key: 'provenance', data: provenanceResult.value }

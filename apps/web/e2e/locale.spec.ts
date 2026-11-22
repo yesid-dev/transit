@@ -6,7 +6,7 @@ import { AUDIT_NAV } from '../src/lib/content/nav';
 import { DEFAULT_LOCALE, INTL_TAGS, PUBLISHED_LOCALES, type Locale } from '../src/lib/i18n/config';
 import { stampCopy } from '../src/lib/v1/stamp.copy';
 
-const metrics = AUDIT_NAV.find((item) => item.key === 'metrics')!.href;
+const metrics = `${AUDIT_NAV.find((item) => item.key === 'metrics')!.href}/archive`;
 const localized = (href: string, locale: Locale) =>
 	locale === DEFAULT_LOCALE ? href : `/${locale}${href}`;
 const { generated_utc } = JSON.parse(

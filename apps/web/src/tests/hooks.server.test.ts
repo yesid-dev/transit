@@ -264,7 +264,7 @@ describe('server HTML edge cache', () => {
 
 	it('serves an exact-URL cache hit without invoking SvelteKit, keeping its CSP and reapplying security headers', async () => {
 		const cache = cacheHarness(html('cached', { headers: { 'content-security-policy': KIT_CSP } }));
-		const request = event('https://transit.yesid.dev/fr/metrics?grain=week', { cache });
+		const request = event('https://transit.yesid.dev/fr/metrics/archive?grain=week', { cache });
 		const resolve = vi.fn(async () => html('fresh'));
 
 		const response = await handle({ event: request, resolve });
@@ -277,7 +277,7 @@ describe('server HTML edge cache', () => {
 		expect(cache.match).toHaveBeenCalledTimes(1);
 		const key = cache.match.mock.calls[0]?.[0] as Request;
 		expect(key.method).toBe('GET');
-		expect(key.url).toBe('https://transit.yesid.dev/fr/metrics?grain=week');
+		expect(key.url).toBe('https://transit.yesid.dev/fr/metrics/archive?grain=week');
 		expect(response.headers.get('x-transit-edge-cache')).toBe('HIT');
 		expect(response.headers.get('cache-control')).toBe('no-store');
 		expect(response.headers.get('content-security-policy')).toBe(KIT_CSP);
@@ -288,8 +288,8 @@ describe('server HTML edge cache', () => {
 	it('bypasses cached HTML for a server-data request with the same normalized URL', async () => {
 		const cache = cacheHarness(html('<h1>cached document</h1>'));
 		const request = {
-			...event('https://transit.yesid.dev/fr/metrics/__data.json', { cache }),
-			url: new URL('https://transit.yesid.dev/fr/metrics'),
+			...event('https://transit.yesid.dev/fr/metrics/archive/__data.json', { cache }),
+			url: new URL('https://transit.yesid.dev/fr/metrics/archive'),
 			isDataRequest: true,
 		};
 		const payload = { type: 'data', nodes: [] };
@@ -341,7 +341,7 @@ describe('server HTML edge cache', () => {
 		['request no-store', { 'cache-control': 'no-store' }],
 	])('bypasses both cache reads and writes for %s requests', async (_label, headers) => {
 		const cache = cacheHarness(html('cached'));
-		const request = event('https://transit.yesid.dev/metrics', { cache, headers });
+		const request = event('https://transit.yesid.dev/metrics/archive', { cache, headers });
 		const resolve = vi.fn(async () => html('fresh'));
 
 		const response = await handle({ event: request, resolve });
@@ -361,7 +361,7 @@ describe('server HTML edge cache', () => {
 		['GET', html('cookie', { headers: { 'set-cookie': 'session=secret' } })],
 	] as const)('does not store an unsafe %s response variant', async (method, resolved) => {
 		const cache = cacheHarness();
-		const request = event('https://transit.yesid.dev/metrics', { cache, method });
+		const request = event('https://transit.yesid.dev/metrics/archive', { cache, method });
 
 		await handle({ event: request, resolve: vi.fn(async () => resolved) });
 
@@ -370,7 +370,7 @@ describe('server HTML edge cache', () => {
 
 	it('keeps a document with a CSP nonce out of both downstream and edge caches', async () => {
 		const cache = cacheHarness();
-		const request = event('https://transit.yesid.dev/metrics', { cache });
+		const request = event('https://transit.yesid.dev/metrics/archive', { cache });
 		const resolve = vi.fn(async () =>
 			html('streamed', {
 				headers: { 'content-security-policy': "script-src 'self' 'nonce-test'" },
@@ -392,6 +392,8 @@ describe('server HTML edge cache', () => {
 			'https://transit1.yesid.dev/fr/repeat-offenders?kind=vehicle',
 			'/[[lang=locale]]/repeat-offenders',
 		],
+		['https://transit1.yesid.dev/fr/metrics', '/[[lang=locale]]/metrics'],
+		['https://transit1.yesid.dev/status', '/[[lang=locale]]/status'],
 	])('delivers streamed sections without caching or compression for %s', async (url, routeId) => {
 		const cache = cacheHarness(html('cached'));
 		const request = event(url, { cache, routeId });
@@ -419,7 +421,7 @@ describe('server HTML edge cache', () => {
 
 	it('uses a cached GET representation for HEAD without returning a body', async () => {
 		const cache = cacheHarness(html('cached'));
-		const request = event('https://transit.yesid.dev/metrics', { cache, method: 'HEAD' });
+		const request = event('https://transit.yesid.dev/metrics/archive', { cache, method: 'HEAD' });
 		const resolve = vi.fn(async () => html('fresh'));
 
 		const response = await handle({ event: request, resolve });
@@ -437,7 +439,7 @@ describe('server HTML edge cache', () => {
 		const resolve = vi.fn(async () => html('fresh'));
 
 		const response = await handle({
-			event: event('https://transit.yesid.dev/metrics', { cache: readFailure }),
+			event: event('https://transit.yesid.dev/metrics/archive', { cache: readFailure }),
 			resolve,
 		});
 		await expect(Promise.all(readFailure.writes)).resolves.toBeDefined();

@@ -1,0 +1,30 @@
+[
+	{
+		"id": "fixture_delay",
+		"family": "punctuality",
+		"family_text": { "en": "Punctuality", "fr": "Ponctualité" },
+		"minimum_sample": 32,
+		"ranking_minimum_sample": 45,
+		"method_version": "fixture-v2",
+		"since": "2026-11-10",
+		"csv_columns": { "en": ["Measure", "Value"], "fr": ["Mesure", "Valeur"] },
+		"text": {
+			"en": {
+				"definition": "Typical delay at recorded stops.",
+				"unit": "Seconds",
+				"counts": "Each stop with a reading counts once.",
+				"exclusions": "Leaves out stops without readings.",
+				"limits": "Cannot explain why a vehicle was late.",
+				"histogram": "Reads a histogram in 15-second steps."
+			},
+			"fr": {
+				"definition": "Retard typique aux arrêts observés.",
+				"unit": "Secondes",
+				"counts": "Chaque arrêt avec une lecture compte une fois.",
+				"exclusions": "Exclut les arrêts sans lecture.",
+				"limits": "N’explique pas pourquoi un véhicule était en retard.",
+				"histogram": "Lit un histogramme par tranches de 15 secondes."
+			}
+		}
+	}
+]

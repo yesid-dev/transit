@@ -7,6 +7,8 @@ import { stopEngine } from './stop-engine.mjs';
 import { vehicleEngine } from './vehicle-engine.mjs';
 
 const read = (file) => readFileSync(new URL(file, import.meta.url));
+const methodCatalog = read('method-catalog.json');
+const cleanTableHealth = JSON.parse(read('clean-table-health.json'));
 // STM serves the listed feeds; OC Transpo serves a manifest, provenance and a passing pipeline gate.
 // Every unlisted v1 path is a 404.
 const files = Object.fromEntries(
@@ -296,6 +298,38 @@ const server = createServer((request, response) => {
 	// No Date header: the app anchors its clock to it, which would undo page.clock.
 	response.sendDate = false;
 	const url = new URL(request.url, 'http://127.0.0.1');
+	if (url.pathname === '/v2/how-we-measure' && !url.search) {
+		response.writeHead(200, { 'content-type': 'application/json' }).end(methodCatalog);
+		return;
+	}
+	const health = /^\/v2\/([^/]+)\/data-health$/.exec(url.pathname);
+	if (health) {
+		const from = url.searchParams.get('from');
+		const to = url.searchParams.get('to');
+		response.writeHead(200, { 'content-type': 'application/json' }).end(
+			JSON.stringify({
+				...cleanTableHealth,
+				city: health[1],
+				from,
+				to,
+				days: cleanTableHealth.days.filter(
+					({ service_date }) => service_date >= from && service_date <= to,
+				),
+			}),
+		);
+		return;
+	}
+	if (
+		/^\/v2\/[^/]+\/measure$/.test(url.pathname) &&
+		url.searchParams.get('measure') === 'fixture_delay' &&
+		url.searchParams.get('format') === 'csv'
+	) {
+		const header = url.searchParams.get('lang') === 'fr' ? 'Mesure,Valeur' : 'Measure,Value';
+		response
+			.writeHead(200, { 'content-type': 'text/csv; charset=utf-8' })
+			.end(`${header}\nfixture_delay,19\n`);
+		return;
+	}
 	if (request.method === 'POST' && url.pathname === '/__overview/release') {
 		for (const send of heldOverviewResponses) send();
 		response.writeHead(204).end();

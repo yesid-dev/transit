@@ -112,13 +112,19 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const rankingsRecord =
 		event.route.id === '/[[lang=locale]]/hotspots' ||
 		event.route.id === '/[[lang=locale]]/repeat-offenders';
+	const method = event.route.id === '/[[lang=locale]]/metrics';
+	const healthRecord =
+		event.route.id === '/[[lang=locale]]/status' &&
+		event.url.searchParams.get('frameMode') !== 'live';
 	const streamedRecord =
 		overviewRecord ||
 		stopRecord ||
 		vehicleRecord ||
 		rankingsRecord ||
 		lineView === 'record' ||
-		lineView === 'schedule';
+		lineView === 'schedule' ||
+		method ||
+		healthRecord;
 	const automaticSelection =
 		event.route.id?.startsWith('/[[lang=locale]]') === true &&
 		!event.url.searchParams.has('provider') &&

@@ -22,7 +22,9 @@ for (const locale of ['en', 'fr'] as const)
 			if (!body.includes('.health-summary')) await stylesHeld;
 			await route.fulfill({ response, body });
 		});
-		await page.goto(`${locale === 'fr' ? '/fr' : ''}/status?provider=stm`, { waitUntil: 'commit' });
+		await page.goto(`${locale === 'fr' ? '/fr' : ''}/status?provider=stm&frameMode=live`, {
+			waitUntil: 'commit',
+		});
 		const summary = page.locator('[data-slot="health-summary"]');
 		await expect(summary).toHaveAttribute('aria-busy', 'true');
 		await page.addStyleTag({ content: 'html { font-size: 200%; }' });
@@ -83,7 +85,8 @@ for (const provider of ['stm', 'octranspo'])
 						} else await route.fulfill({ response });
 					}),
 				);
-				await page.goto(`${locale === 'fr' ? '/fr' : ''}/${surface}?provider=${provider}`);
+				const view = surface === 'status' ? '&frameMode=live' : '';
+				await page.goto(`${locale === 'fr' ? '/fr' : ''}/${surface}?provider=${provider}${view}`);
 				if (surface === 'status') {
 					await expect(page.getByRole('heading', { level: 1 })).toHaveText(
 						healthCopy[locale].heading,

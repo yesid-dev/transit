@@ -438,7 +438,10 @@ def test_historical_methods_and_french_csv_use_the_same_registry(
     status, _, definition = asyncio.run(http(app, "/how-we-measure"))
     assert status == 200
     info = [item for item in json.loads(definition) if item["family"] == family]
-    assert info == _get(store, "/measure", family)["info"]
+    assert all(item["family_text"]["en"] and item["family_text"]["fr"] for item in info)
+    assert [
+        {key: value for key, value in entry.items() if key != "family_text"} for entry in info
+    ] == _get(store, "/measure", family)["info"]
     status, _, payload = asyncio.run(http(app, "/measure", params + "&format=csv&lang=fr"))
     assert status == 200
     rows = list(csv.reader(io.StringIO(payload.decode())))

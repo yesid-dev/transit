@@ -5,7 +5,7 @@ for (const locale of ['en', 'fr'] as const) {
 	test(`${locale}: real section prose stays open until its heading is activated`, async ({
 		page,
 	}) => {
-		await page.goto(locale === DEFAULT_LOCALE ? '/metrics' : `/${locale}/metrics`);
+		await page.goto(locale === DEFAULT_LOCALE ? '/metrics/archive' : `/${locale}/metrics/archive`);
 		// SSR exposes the expanded section before hydration wires its interactions.
 		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 		const section = page.locator('[data-testid="metrics-sections"] .section-card').first();

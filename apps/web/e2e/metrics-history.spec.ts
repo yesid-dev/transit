@@ -82,7 +82,7 @@ for (const provider of ['stm', 'octranspo']) {
 				});
 				await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
 				await page.setViewportSize({ width, height: 900 });
-				await page.goto(localizeHref('/metrics', locale, provider), { waitUntil: 'load' });
+				await page.goto(localizeHref('/metrics/archive', locale, provider), { waitUntil: 'load' });
 				await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 				const section = page.getByTestId('history-depth');
 				const t = historyDepthCopy[locale];

@@ -846,7 +846,9 @@ def test_http_and_bilingual_csv_come_from_same_registry(
         assert status == 200
         assert headers[b"x-transit-cleaning-version"] == str(store.cleaning_version).encode()
         info = [item for item in json.loads(catalog) if item["family"] == family]
-        assert info == json.loads(answer)["info"]
+        assert [
+            {key: value for key, value in entry.items() if key != "family_text"} for entry in info
+        ] == json.loads(answer)["info"]
         if family == "service_delivered":
             status, _, error = await http(app, "/measure", params + "&stop=first")
             assert status == 400
