@@ -25,6 +25,16 @@ includes a bilingual coverage note. The engine validates `manifest.json` under
 before reading. Cleaning v5 also checks the alerts file when the manifest lists it.
 A missing or invalid manifest, missing required file, or wrong size makes that day a gap.
 
+`GET /data-health?city=stm&from=2026-11-19&to=2026-11-22` reports each day in the
+inclusive range, up to 400 days, without reading Parquet contents. A day is `present`
+when `manifest.json` validates for the engine's cleaning version and every file it lists
+exists with the recorded byte size, and `missing` otherwise, with `reason` set to
+`no_manifest` or `invalid_manifest`. A valid manifest with a listed file missing or a
+wrong size makes the day `incomplete`. Each of the six tables is `present` with its
+manifest row count, `missing`, or `not_tracked` for alerts when the manifest says so. A
+table the manifest lists but the day lacks is `missing` with `file_missing` or
+`size_mismatch`.
+
 Values are null when the answer is no live data, not measured, too few to judge, or unknown.
 No live data means the cut contains scheduled service only on lines without live data.
 Not measured means no valid day contributes, or every eligible stop was affected by a capture

@@ -12,6 +12,7 @@ from uuid import uuid4
 import uvicorn
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 
+from transit_engine.health import data_health
 from transit_engine.measures import Language, Question, answer_csv, ask, methods
 from transit_engine.store import Store, env_int
 
@@ -110,6 +111,25 @@ def _question(raw: bytes) -> tuple[Question, Literal["json", "csv"], Language]:
     )
 
 
+def _health(raw: bytes) -> tuple[str, date, date]:
+    required = {"city", "from", "to"}
+    if len(raw) > 4096 or re.search(rb"%(?![a-fA-F0-9]{2})", raw):
+        raise ValueError("invalid query string")
+    fields = parse_qs(
+        raw.decode("ascii"),
+        keep_blank_values=True,
+        strict_parsing=True,
+        errors="strict",
+        max_num_fields=len(required),
+    )
+    if fields.keys() != required or any(
+        len(values) != 1 or not values[0] for values in fields.values()
+    ):
+        raise ValueError("provide city, from and to, and use each parameter once")
+    params = {name: values[0] for name, values in fields.items()}
+    return params["city"], _date(params["from"]), _date(params["to"])
+
+
 class Engine:
     def __init__(self, store: Store, concurrency: int, queue_size: int, queue_wait_ms: int):
         self.store = store
@@ -135,6 +155,9 @@ class Engine:
                 await respond(send, 400, {"message": "this endpoint takes no parameters"})
             else:
                 await respond(send, 200, methods())
+            return
+        if scope["path"] == "/data-health":
+            await self._data_health(scope["query_string"], send)
             return
         if scope["path"] != "/measure":
             await respond(send, 404, {"message": "not found"})
@@ -184,6 +207,52 @@ class Engine:
             # DuckDB errors can include storage configuration. Log the class only.
             LOGGER.error("measure query failed (%s)", type(error).__name__)
             await respond(send, 500, {"message": "query failed"}, queued=queued)
+        else:
+            await respond(send, 200, answer, queued=queued)
+
+    async def _data_health(self, raw: bytes, send: ASGISendCallable) -> None:
+        try:
+            city, start, end = _health(raw)
+        except UnicodeError:
+            await respond(send, 400, {"message": "invalid query encoding"})
+            return
+        except ValueError as error:
+            await respond(send, 400, {"message": str(error)})
+            return
+
+        # Same admission as /measure, so health cannot bypass the overload limits.
+        queued = self.slots.locked()
+        if queued:
+            if self.waiting >= self.queue_size:
+                await respond(send, 503, {"message": BUSY_MESSAGE})
+                return
+            self.waiting += 1
+            try:
+                async with asyncio.timeout(self.queue_timeout):
+                    await self.slots.acquire()
+            except TimeoutError:
+                await respond(send, 503, {"message": BUSY_MESSAGE}, queued=True)
+                return
+            finally:
+                self.waiting -= 1
+        else:
+            await self.slots.acquire()
+
+        work = asyncio.create_task(asyncio.to_thread(data_health, self.store, city, start, end))
+
+        def finished(task: asyncio.Task[Any]) -> None:
+            self.slots.release()
+            if not task.cancelled():
+                task.exception()
+
+        work.add_done_callback(finished)
+        try:
+            answer = await asyncio.shield(work)
+        except ValueError as error:
+            await respond(send, 400, {"message": str(error)}, queued=queued)
+        except Exception as error:
+            LOGGER.error("data health failed (%s)", type(error).__name__)
+            await respond(send, 500, {"message": "data health failed"}, queued=queued)
         else:
             await respond(send, 200, answer, queued=queued)
 

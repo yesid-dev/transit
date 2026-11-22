@@ -8,7 +8,9 @@ STOP_EVENTS = "stop_events.parquet"
 TRIP_DAYS = "trip_days.parquet"
 ALERTS = "alerts.parquet"
 SCHEDULED_STOP_TIMES = "scheduled_stop_times.parquet"
-_V4_FILES = (SCHEDULED_STOP_TIMES, "vehicle_positions.parquet", "feed_polls.parquet")
+VEHICLE_POSITIONS = "vehicle_positions.parquet"
+FEED_POLLS = "feed_polls.parquet"
+_V4_FILES = (SCHEDULED_STOP_TIMES, VEHICLE_POSITIONS, FEED_POLLS)
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
