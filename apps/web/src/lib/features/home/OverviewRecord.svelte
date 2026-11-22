@@ -4,6 +4,7 @@
 	import type { EngineResult, MeasureAnswer, RankingAnswer } from '#lib/server/engine.ts';
 	import type { DateWindow } from '#lib/v1/history/window.ts';
 	import CopyAction from '#lib/features/hotspots/sections/CopyAction.svelte';
+	import HomeSearch from './HomeSearch.svelte';
 	import RecordPending from './RecordPending.svelte';
 	import RecordRanking from './RecordRanking.svelte';
 	import { citationText, comparisonText, dateRange, measureText } from './overviewRecord.ts';
@@ -87,6 +88,10 @@
 		</section>
 	</Card>
 
+	<div class="max-w-md">
+		<HomeSearch {locale} />
+	</div>
+
 	<Card edge="neutral" textSize="inherit" class="px-4 sm:px-6">
 		<section aria-labelledby={`${id}-rankings`}>
 			<h2 id={`${id}-rankings`}>
@@ -115,7 +120,7 @@
 			/>
 		{/key}
 		<details>
-			<summary>{fr ? 'Citer' : 'Cite'}</summary>
+			<summary class="min-h-11 cursor-pointer py-3">{fr ? 'Citer' : 'Cite'}</summary>
 			<p>Transit{city ? ` · ${city}` : ''}. {dateRange(record.period, locale)}.</p>
 			{@render citation(record.punctuality, record.period)}
 			{@render citation(record.baseline, record.previous)}
