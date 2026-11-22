@@ -74,8 +74,12 @@ def _json(store: Store, **options: str) -> dict[str, Any]:
 
 def test_lines_match_independent_calculation_and_show_every_exclusion(
     network: tuple[Store, tuple[Trip, ...]],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    store, trips = network
+    fixture, trips = network
+    monkeypatch.setenv("ENGINE_CLEAN_ROOT", fixture.root)
+    monkeypatch.delenv("ENGINE_CLEANING_VERSION", raising=False)
+    store = Store.from_env()
     answer = _json(store)
     samples: dict[str, list[int]] = defaultdict(list)
     for trip in trips:
@@ -197,8 +201,13 @@ def test_invalid_ranking_selection_is_rejected(network: tuple[Store, tuple[Trip,
         assert _request(store, **options)[0] == 400
 
 
-def test_legacy_cleaning_marks_route_type_unknown(tmp_path: Path) -> None:
+def test_legacy_cleaning_marks_route_type_unknown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     trips = _service("A", 2, (0,) * 16)
-    store = _build_store(tmp_path, 5, {THURSDAY: trips})
+    fixture = _build_store(tmp_path, 5, {THURSDAY: trips})
+    monkeypatch.setenv("ENGINE_CLEAN_ROOT", fixture.root)
+    monkeypatch.setenv("ENGINE_CLEANING_VERSION", "5")
+    store = Store.from_env()
     request = Ranking(Question("on_time", "stm", THURSDAY, THURSDAY), "line")
     assert rank(store, request)["rows"][0]["class"] == "unknown:frequent"

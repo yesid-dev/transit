@@ -82,8 +82,8 @@ window. The remaining lines are regular. Classes use the included dates and day 
 across all hours. The default line list uses the class with the most scheduled trips
 among the lines in the cut. Select a class with `class=3:frequent`, or compare all
 classes with `class=all`. Stops and departures rank across the network and carry
-their contributing classes. Select `ENGINE_CLEANING_VERSION=6` for recorded GTFS
-route types. Earlier clean days show an unknown route type.
+their contributing classes. Cleaning v6 records GTFS route types. Set
+`ENGINE_CLEANING_VERSION` to read an earlier version, which shows an unknown route type.
 
 The response includes ranked rows, all exclusions within the selected scope, and the
 measured and missing dates. Ties use larger samples first, then ID. `limit` limits
@@ -96,7 +96,7 @@ Use `format=csv&lang=fr` for French headings or `lang=en` for English.
 | Environment variable | Default |
 | --- | --- |
 | `ENGINE_CLEAN_ROOT` | `./clean-days` |
-| `ENGINE_CLEANING_VERSION` | `5` |
+| `ENGINE_CLEANING_VERSION` | `6` |
 | `ENGINE_HOST`, `ENGINE_PORT` | `127.0.0.1`, `8080` |
 | `ENGINE_CONCURRENCY` | 2 active queries |
 | `ENGINE_QUERY_MEMORY_MIB` | 256 MiB per DuckDB query |
