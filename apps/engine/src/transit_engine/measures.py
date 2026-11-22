@@ -14,7 +14,7 @@ from typing import Any, Literal, NamedTuple
 
 import duckdb
 
-from transit_engine.clean_manifest import STOP_EVENTS, TRIP_DAYS
+from transit_engine.clean_manifest import SCHEDULED_STOP_TIMES, STOP_EVENTS, TRIP_DAYS
 from transit_engine.store import CITY, Store
 
 Language = Literal["en", "fr"]
@@ -34,6 +34,9 @@ DELAY_BIN_SECONDS = 15
 # A display floor consistent with Transit's historical 30-observation floor.
 # A few stop events can dominate a share or percentile. This is not a confidence interval.
 MIN_CLASSIFIED_STOP_EVENTS = 30
+# Below five eligible trips, one trip moves an unweighted share by over 20 points.
+# Apply the same display floor to the duration sample and to each boundary departure.
+MIN_SERVICE_DELIVERED_TRIPS = 5
 # Bound trip join memory independently of the requested range. Counts and bins are additive.
 DAYS_PER_QUERY_BATCH = 31
 
@@ -46,6 +49,27 @@ class Measure:
     band: str | None = None
     count_label: Text | None = None
     percentile: int | None = None
+    counts: Text | None = None
+    limits: Text | None = None
+    ratio: tuple[str, str] | None = None
+    extra_tables: tuple[str, ...] = ()
+
+
+class Departure(NamedTuple):
+    measure: str
+    service_date: str
+    scheduled_departure: str
+    scheduled: int
+    eligible: int
+    ran: int
+    route_without_live_data: int
+    capture_gap: int
+
+
+class Batch(NamedTuple):
+    counts: Counter[str]
+    histogram: Counter[int]
+    departures: tuple[Departure, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -61,7 +85,7 @@ class Family:
     measures: tuple[Measure, ...]
     query: Callable[
         [duckdb.DuckDBPyConnection, Family, dict[str, list[str]], Question, str],
-        tuple[Counter[str], Counter[int]],
+        Batch,
     ]
 
 
@@ -86,12 +110,14 @@ _STATES = {
 _PARTIAL = Text("Only measured days are included.", "Seuls les jours mesurés sont inclus.")
 # Both supported cities use the same service timezone. Departures reverse the
 # GTFS local-noon-minus-12-elapsed-hours anchor used by the cleaner, even on DST days.
-_LOCAL_HOUR = "hour(timezone('America/Toronto', scheduled_stop_utc))"
+_LOCAL_HOUR = "hour(timezone('America/Toronto', {}))"
 _DEPARTURE_SECONDS = """
     epoch(scheduled_start_utc)
     - epoch(timezone('America/Toronto', service_date + INTERVAL '12 hours')) + 43200
 """
 _DAY_TYPES = ("weekday", "weekday", "weekday", "weekday", "weekday", "saturday", "sunday")
+_SERVICE_DELIVERED_ID = "service_delivered"
+_BOUNDARIES = ("first_trip", "last_trip")
 
 
 @dataclass(frozen=True)
@@ -112,6 +138,14 @@ class Question:
             raise ValueError("unknown measure")
         if not CITY.fullmatch(self.city) or self.start > self.end:
             raise ValueError("provide a city and an ordered service date range")
+        family, _ = _SELECTIONS[self.measure]
+        if family.id == _SERVICE_DELIVERED_ID and self.stop is not None:
+            raise ValueError("stop does not apply to service delivered trip measures")
+        if self.measure in _BOUNDARIES:
+            if self.line is None or self.day_type is None:
+                raise ValueError("first and last trip require line and day_type")
+            if self.hour is not None or self.departure is not None:
+                raise ValueError("first and last trip use the full day, without hour or departure")
         if self.departure is not None and (self.line is None or self.direction is None):
             raise ValueError("departure requires line and direction")
 
@@ -167,7 +201,6 @@ _CSV_COLUMNS = {
     "state": Text("State", "État"),
     "coverage_note": Text("Coverage note", "Note sur la couverture"),
     **_EVIDENCE_COLUMNS,
-    **{name: label for name, (_, label) in _COUNTS.items()},
 }
 _UNIT_LABELS = {"share": Text("Share", "Part"), "seconds": Text("Seconds", "Secondes")}
 
@@ -179,9 +212,18 @@ def _info(family: Family, measure: Measure) -> dict[str, Any]:
         "unit": measure.unit,
         "method_version": family.method_version,
         "since": family.since,
-        "tables": family.tables,
+        "tables": (*family.tables, *measure.extra_tables),
         "minimum_sample": family.minimum_sample,
-        "evidence_fields": [*_EVIDENCE_COLUMNS, "counts", "excluded"],
+        "evidence_fields": [
+            *(
+                key
+                for key in _EVIDENCE_COLUMNS
+                if family.id != _SERVICE_DELIVERED_ID or key != "share_observed"
+            ),
+            "counts",
+            "excluded",
+            *(_DELIVERY_EVIDENCE if family.id == _SERVICE_DELIVERED_ID else ()),
+        ],
         "csv_columns": {
             lang: [getattr(label, lang) for label in _csv_columns(family).values()]
             for lang in ("en", "fr")
@@ -190,9 +232,9 @@ def _info(family: Family, measure: Measure) -> dict[str, Any]:
             lang: {
                 "definition": getattr(measure.definition, lang),
                 "unit": getattr(_UNIT_LABELS[measure.unit], lang),
-                "counts": getattr(family.counts, lang),
+                "counts": getattr(measure.counts or family.counts, lang),
                 "exclusions": getattr(family.exclusions, lang),
-                "limits": getattr(family.limits, lang),
+                "limits": getattr(measure.limits or family.limits, lang),
                 **({"histogram": getattr(_HISTOGRAM, lang)} if measure.percentile else {}),
             }
             for lang in ("en", "fr")
@@ -201,8 +243,12 @@ def _info(family: Family, measure: Measure) -> dict[str, Any]:
 
 
 def _csv_columns(family: Family) -> dict[str, Text]:
+    if family.id == _SERVICE_DELIVERED_ID:
+        common = {key: label for key, label in _CSV_COLUMNS.items() if key != "share_observed"}
+        return {**common, **_DELIVERY_COLUMNS, **_DELIVERY_EVIDENCE}
     return {
         **_CSV_COLUMNS,
+        **{name: label for name, (_, label) in _COUNTS.items()},
         **{m.id: m.count_label for m in family.measures if m.count_label is not None},
     }
 
@@ -211,28 +257,16 @@ def methods() -> list[dict[str, Any]]:
     return [_info(family, measure) for family in _FAMILIES for measure in family.measures]
 
 
-def _punctuality_rows(
-    conn: duckdb.DuckDBPyConnection,
-    family: Family,
-    paths: dict[str, list[str]],
-    question: Question,
-    version: str,
-) -> tuple[Counter[str], Counter[int]]:
-    parameters: list[object] = [
-        *(paths[table] for table in family.tables),
-        question.city,
-        version,
-        question.start,
-        question.end,
-    ]
+def _cuts(question: Question, hour_sql: str) -> tuple[str, list[object]]:
     filters = []
+    parameters: list[object] = []
     for name, value in question.cuts().items():
         expression = {
             "line": "route_id",
             "direction": "direction_id",
             "stop": "stop_id",
             "departure": _DEPARTURE_SECONDS,
-            "hour": _LOCAL_HOUR,
+            "hour": hour_sql,
         }.get(name)
         if expression is not None:
             filters.append(f"({expression}) = ?")
@@ -241,10 +275,27 @@ def _punctuality_rows(
                 parameters.append(hour * 3600 + minute * 60 + second)
             else:
                 parameters.append(value)
+    return " AND ".join(filters) or "true", parameters
 
+
+def _punctuality_rows(
+    conn: duckdb.DuckDBPyConnection,
+    family: Family,
+    paths: dict[str, list[str]],
+    question: Question,
+    version: str,
+) -> Batch:
+    cut_sql, filters = _cuts(question, _LOCAL_HOUR.format("scheduled_stop_utc"))
+    parameters = [
+        *(paths[table] for table in family.tables),
+        question.city,
+        version,
+        question.start,
+        question.end,
+        *filters,
+    ]
     counters = {name: sql for name, (sql, _) in _COUNTS.items()}
     counters.update({m.id: f"count(*) FILTER ({m.band})" for m in family.measures if m.band})
-    cut_sql = " AND ".join(filters) or "true"
     aggregates = ", ".join(counters.values())
     rows = conn.execute(
         f"""
@@ -277,7 +328,7 @@ def _punctuality_rows(
         totals.update(bucket)
         if edge is not None:
             histogram[edge] = bucket["classified"]
-    return totals, histogram
+    return Batch(totals, histogram)
 
 
 _PUNCTUALITY = Family(
@@ -359,7 +410,296 @@ _PUNCTUALITY = Family(
     ),
 )
 
-_FAMILIES = (_PUNCTUALITY,)
+_DELIVERY_COLUMNS = {
+    "scheduled": Text("Scheduled trips", "Trajets prévus"),
+    "eligible": Text("Eligible scheduled trips", "Trajets prévus admissibles"),
+    "ran": Text("Trips that ran", "Trajets effectués"),
+    "cancelled": Text("Cancelled trips", "Trajets annulés"),
+    "missing": Text("Missing trips", "Trajets manquants"),
+    "unconfirmed": Text("Unconfirmed trips", "Trajets non confirmés"),
+    "not_measured": Text("Trips not measured", "Trajets non mesurés"),
+    "added": Text("Added trips", "Trajets ajoutés"),
+    "route_without_live_data": Text("Trips without live data", "Trajets sans données en direct"),
+    "capture_gap": Text(
+        "Trips affected by capture gaps", "Trajets touchés par une interruption de la collecte"
+    ),
+    "cancellation_notices": Text("Cancellation notices", "Avis d’annulation"),
+    "late_cancellation_notices": Text(
+        "Cancellation notices after departure", "Avis d’annulation après le départ prévu"
+    ),
+    "trips_with_duration": Text(
+        "Eligible trips with scheduled duration", "Trajets admissibles avec une durée prévue"
+    ),
+    "scheduled_hours": Text("Eligible scheduled hours", "Heures prévues admissibles"),
+    "ran_hours": Text("Scheduled hours that ran", "Heures prévues effectuées"),
+}
+_DELIVERY_EXCLUDED = ("added", "route_without_live_data", "capture_gap")
+_DELIVERY_EVIDENCE = {
+    "share_eligible": Text("Eligible share", "Part admissible"),
+    "median_cancellation_notice_seconds": Text(
+        "Median notice time from scheduled start (s)", "Délai médian de l’avis sur le départ (s)"
+    ),
+    "boundary_departures": Text(
+        "First and last departures by date", "Premiers et derniers départs par date"
+    ),
+}
+_DELIVERY_AGGREGATES = {
+    "scheduled": "count(*) FILTER (state <> 'added')",
+    "eligible": "count(*) FILTER (eligible)",
+    **{
+        state: f"count(*) FILTER (state = '{state}')"
+        for state in ("ran", "cancelled", "missing", "unconfirmed", "not_measured", "added")
+    },
+    "route_without_live_data": "count(*) FILTER (without_live_data)",
+    "capture_gap": "count(*) FILTER (capture_gap)",
+    "cancellation_notices": "count(notice_seconds)",
+    "late_cancellation_notices": "count(*) FILTER (notice_seconds > 0)",
+    "trips_with_duration": "count(duration) FILTER (eligible)",
+    "scheduled_seconds": "coalesce(sum(duration) FILTER (eligible), 0)",
+    "ran_seconds": "coalesce(sum(duration) FILTER (state = 'ran'), 0)",
+}
+
+
+def _service_delivered_rows(
+    conn: duckdb.DuckDBPyConnection,
+    _family: Family,
+    paths: dict[str, list[str]],
+    question: Question,
+    version: str,
+) -> Batch:
+    window = "provider = ? AND cleaning_version = ? AND service_date BETWEEN ? AND ?"
+    cut_sql, filters = _cuts(question, _LOCAL_HOUR.format("scheduled_start_utc"))
+    scope = [question.city, version, question.start, question.end]
+    trips_sql = f"""
+        SELECT service_date, trip_id, scheduled_start_utc, state,
+            state_reason IS NOT DISTINCT FROM 'route_without_live_data' AS without_live_data,
+            state_reason IS NOT DISTINCT FROM 'capture_gap' AS capture_gap,
+            state IN ('ran', 'cancelled', 'missing', 'unconfirmed') AS eligible,
+            CASE WHEN state = 'cancelled'
+                THEN epoch(cancellation_notice_utc - scheduled_start_utc) END AS notice_seconds
+        FROM read_parquet(?, hive_partitioning = false)
+        WHERE {window} AND {cut_sql}
+    """
+    parameters = [paths[TRIP_DAYS], *scope, *filters]
+    aggregates = ", ".join(_DELIVERY_AGGREGATES.values())
+    duration_sql = "SELECT trips.*, NULL::BIGINT AS duration FROM trips"
+    duration_params = []
+    if SCHEDULED_STOP_TIMES in paths:
+        duration_sql = f"""
+            SELECT trips.*, CASE WHEN last_time >= first_time
+                THEN last_time - first_time END AS duration
+            FROM trips LEFT JOIN (
+                SELECT service_date, trip_id,
+                    arg_min(coalesce(scheduled_departure_seconds, scheduled_arrival_seconds),
+                        stop_sequence) AS first_time,
+                    arg_max(coalesce(scheduled_arrival_seconds, scheduled_departure_seconds),
+                        stop_sequence) AS last_time
+                FROM read_parquet(?, hive_partitioning = false)
+                WHERE {window}
+                GROUP BY service_date, trip_id
+            ) times USING (service_date, trip_id)
+        """
+        duration_params = [paths[SCHEDULED_STOP_TIMES], *scope]
+    rows = conn.execute(
+        f"""
+        WITH trips AS ({trips_sql}), durations AS ({duration_sql})
+        SELECT floor(notice_seconds / {DELAY_BIN_SECONDS})::BIGINT * {DELAY_BIN_SECONDS}
+            AS lower_edge, {aggregates}
+        FROM durations
+        GROUP BY lower_edge
+        """,
+        [*parameters, *duration_params],
+    ).fetchall()
+    totals: Counter[str] = Counter()
+    histogram: Counter[int] = Counter()
+    for edge, *values in rows:
+        bucket = dict(zip(_DELIVERY_AGGREGATES, values, strict=True))
+        totals.update(bucket)
+        if edge is not None:
+            histogram[edge] = bucket["cancellation_notices"]
+
+    departures: list[Departure] = []
+    if question.line and question.day_type and question.hour is None and question.departure is None:
+        edges = conn.execute(
+            f"""
+            WITH trips AS ({trips_sql}), scheduled AS (
+                SELECT *, ({_DEPARTURE_SECONDS})::BIGINT AS departure_seconds
+                FROM trips WHERE state <> 'added'
+            ), bounds AS (
+                SELECT *, min(departure_seconds) OVER day AS first_start,
+                    max(departure_seconds) OVER day AS last_start
+                FROM scheduled
+                WINDOW day AS (PARTITION BY service_date)
+            )
+            SELECT measure, service_date, departure_seconds, count(*),
+                count(*) FILTER (eligible), count(*) FILTER (state = 'ran'),
+                count(*) FILTER (without_live_data), count(*) FILTER (capture_gap)
+            FROM bounds, LATERAL (VALUES ('first_trip', first_start), ('last_trip', last_start))
+                AS edge(measure, start_seconds)
+            WHERE departure_seconds = start_seconds
+            GROUP BY measure, service_date, departure_seconds
+            ORDER BY service_date, measure
+            """,
+            parameters,
+        ).fetchall()
+        for measure, day, seconds, *counts in edges:
+            hour, remainder = divmod(seconds, 3600)
+            minute, second = divmod(remainder, 60)
+            departures.append(
+                Departure(
+                    measure, day.isoformat(), f"{hour:02d}:{minute:02d}:{second:02d}", *counts
+                )
+            )
+    return Batch(totals, histogram, tuple(departures))
+
+
+_BOUNDARY_COUNTS = Text(
+    "Select a line and day type, with a direction if desired. Each trip tied at the "
+    "first or last scheduled departure time counts. Evidence gives the GTFS departure "
+    "time and run counts by date. "
+    f"At least {MIN_SERVICE_DELIVERED_TRIPS} eligible trips are needed.",
+    "Choisissez une ligne et un type de jour, avec un sens si désiré. Chaque trajet "
+    "prévu à l’heure du premier ou du dernier départ compte. Les données indiquent "
+    "l’heure GTFS et les trajets effectués par date. Il faut au moins "
+    f"{MIN_SERVICE_DELIVERED_TRIPS} trajets admissibles.",
+)
+_BOUNDARY_LIMITS = Text(
+    "A confirmed trip does not tell when it actually departed. Dates with no scheduled "
+    "departure contribute no trip.",
+    "Un trajet confirmé ne révèle pas l’heure réelle du départ. Les dates sans départ "
+    "prévu ne contribuent aucun trajet.",
+)
+_SERVICE_DELIVERED = Family(
+    id=_SERVICE_DELIVERED_ID,
+    method_version="service-delivered-v1",
+    since="2026-11-22",
+    tables=(TRIP_DAYS,),
+    query=_service_delivered_rows,
+    minimum_sample=MIN_SERVICE_DELIVERED_TRIPS,
+    counts=Text(
+        "Each scheduled trip counts once. Eligible trips are those that ran, were cancelled, "
+        "went missing or were seen without a confirmed stop. "
+        f"At least {MIN_SERVICE_DELIVERED_TRIPS} eligible trips "
+        "are needed so a single trip cannot swing the share by more than 20 percentage points.",
+        "Chaque trajet prévu compte une fois. Les trajets admissibles sont ceux effectués, "
+        "annulés, manquants ou vus sans arrêt confirmé. Il faut au moins "
+        f"{MIN_SERVICE_DELIVERED_TRIPS} trajets "
+        "admissibles pour qu’un seul trajet ne change pas la part de plus de 20 points.",
+    ),
+    exclusions=Text(
+        "Added trips, trips on lines without live data and trips affected by capture gaps "
+        "are counted separately and excluded from the rates.",
+        "Les trajets ajoutés, les trajets sur les lignes sans données en direct et ceux "
+        "touchés par une interruption de la collecte sont comptés à part et exclus des taux.",
+    ),
+    limits=Text(
+        "A trip that ran had at least one confirmed stop. Unconfirmed trips were seen "
+        "without a confirmed stop and count as neither run nor missing. The feed does "
+        "not establish whether every stop was served or how many people rode.",
+        "Un trajet effectué a au moins un arrêt confirmé. Les trajets non confirmés ont "
+        "été vus sans arrêt confirmé et ne sont comptés ni comme effectués ni comme manquants. "
+        "Les données ne disent pas si tous les arrêts ont été desservis ni combien de "
+        "personnes sont montées.",
+    ),
+    measures=(
+        Measure(
+            "trips_run",
+            "share",
+            Text(
+                "Share of eligible scheduled trips that ran.",
+                "Part des trajets prévus admissibles qui ont été effectués.",
+            ),
+            ratio=("ran", "eligible"),
+        ),
+        Measure(
+            "cancelled_trips",
+            "share",
+            Text(
+                "Share of eligible scheduled trips whose latest status was cancelled.",
+                "Part des trajets prévus admissibles dont le dernier état était annulé.",
+            ),
+            counts=Text(
+                "Counts cancelled trips and uses notices on those trips to estimate the "
+                "median of notice time minus scheduled start. Positive values are notices "
+                "after the scheduled start. The evidence counts them separately.",
+                "Compte les trajets annulés et utilise leurs avis pour estimer la médiane "
+                "de l’heure de l’avis moins l’heure de départ prévue. Les valeurs positives "
+                "correspondent aux avis parus après le départ prévu, comptés à part.",
+            ),
+            limits=Text(
+                "The notice records when the feed announced the cancellation. It does not "
+                "say when riders learned about it. Without a notice time there is no lead time.",
+                "L’avis indique quand les données en direct ont annoncé l’annulation. "
+                "Il ne dit pas quand les gens l’ont apprise. Sans heure d’avis, le délai "
+                "ne peut pas être calculé.",
+            ),
+            percentile=50,
+            ratio=("cancelled", "eligible"),
+        ),
+        Measure(
+            "missing_trips",
+            "share",
+            Text(
+                "Share of eligible scheduled trips never seen while capture was complete.",
+                "Part des trajets prévus admissibles jamais vus malgré une collecte complète.",
+            ),
+            ratio=("missing", "eligible"),
+        ),
+        Measure(
+            "service_hours",
+            "share",
+            Text(
+                "Share of eligible scheduled service hours attributed to trips that ran.",
+                "Part des heures de service prévues admissibles attribuée aux trajets effectués.",
+            ),
+            counts=Text(
+                "Sum the scheduled time from the first timed stop's departure to the last "
+                "timed stop's arrival, using the other time at either stop if needed. "
+                "Compare the hours for trips that ran with all eligible scheduled hours. "
+                f"At least {MIN_SERVICE_DELIVERED_TRIPS} eligible trips with a duration "
+                "are needed.",
+                "On additionne les durées prévues du départ du premier arrêt avec un horaire "
+                "à l’arrivée au dernier, en prenant l’autre heure à l’un ou l’autre arrêt "
+                "au besoin. On compare les heures des trajets effectués aux heures prévues "
+                f"admissibles. Il faut au moins {MIN_SERVICE_DELIVERED_TRIPS} trajets admissibles "
+                "dont la durée est connue.",
+            ),
+            limits=Text(
+                "Trips without a usable scheduled duration contribute no hours. These "
+                "hours use the schedule and cannot establish actual time in service.",
+                "Les trajets sans durée prévue utilisable ne contribuent aucune heure. "
+                "Ces heures proviennent de l’horaire et ne révèlent pas la durée réelle "
+                "du service.",
+            ),
+            ratio=("ran_seconds", "scheduled_seconds"),
+            extra_tables=(SCHEDULED_STOP_TIMES,),
+        ),
+        Measure(
+            "first_trip",
+            "share",
+            Text(
+                "How often the first scheduled departure of the day ran.",
+                "Fréquence à laquelle le premier départ prévu de la journée a été effectué.",
+            ),
+            counts=_BOUNDARY_COUNTS,
+            limits=_BOUNDARY_LIMITS,
+            ratio=("ran", "eligible"),
+        ),
+        Measure(
+            "last_trip",
+            "share",
+            Text(
+                "How often the last scheduled departure of the day ran.",
+                "Fréquence à laquelle le dernier départ prévu de la journée a été effectué.",
+            ),
+            counts=_BOUNDARY_COUNTS,
+            limits=_BOUNDARY_LIMITS,
+            ratio=("ran", "eligible"),
+        ),
+    ),
+)
+
+_FAMILIES = (_PUNCTUALITY, _SERVICE_DELIVERED)
 _SELECTIONS = {
     key: (family, selected)
     for family in _FAMILIES
@@ -382,7 +722,97 @@ def _percentile(histogram: list[tuple[int, int]], count: int, percentile: int) -
             lower_midpoint = midpoint
         if lower_midpoint is not None and seen > rank + bool(remainder):
             return lower_midpoint + (midpoint - lower_midpoint) * remainder / 100
-    raise RuntimeError("histogram counts do not match the classified count")
+    raise RuntimeError("histogram counts do not match the sample count")
+
+
+def _state(
+    family: Family,
+    sample: int,
+    scheduled_with_live: int,
+    captures_missing: int,
+    without_live: int,
+    missing_days: bool,
+) -> str:
+    if missing_days or (scheduled_with_live and captures_missing == scheduled_with_live):
+        return "not_measured"
+    if not scheduled_with_live and without_live:
+        return "no_live_data"
+    if not sample:
+        return "unknown"
+    if sample < family.minimum_sample:
+        return "too_few_to_judge"
+    return "measured"
+
+
+def _delivery_answer(
+    family: Family,
+    selected: tuple[Measure, ...],
+    counts: Counter[str],
+    histogram: Counter[int],
+    departures: list[Departure],
+    included: list[str],
+    missing_days: bool,
+) -> tuple[str, dict[str, float | None], dict[str, Any]]:
+    scheduled_with_live = counts["scheduled"] - counts["route_without_live_data"]
+    state = _state(
+        family,
+        counts["eligible"],
+        scheduled_with_live,
+        counts["capture_gap"],
+        counts["route_without_live_data"],
+        missing_days,
+    )
+    values: dict[str, float | None] = {}
+    states = {}
+    for measure in selected:
+        assert measure.ratio is not None
+        numerator, denominator = measure.ratio
+        top, bottom = counts[numerator], counts[denominator]
+        measure_state = state
+        if measure.id == "service_hours":
+            measure_state = _state(
+                family,
+                counts["trips_with_duration"] if bottom else 0,
+                scheduled_with_live,
+                counts["capture_gap"],
+                counts["route_without_live_data"],
+                missing_days,
+            )
+        elif measure.id in _BOUNDARIES:
+            edge = [departure for departure in departures if departure.measure == measure.id]
+            top, bottom = sum(row.ran for row in edge), sum(row.eligible for row in edge)
+            without_live = sum(row.route_without_live_data for row in edge)
+            measure_state = _state(
+                family,
+                bottom,
+                sum(row.scheduled for row in edge) - without_live,
+                sum(row.capture_gap for row in edge),
+                without_live,
+                missing_days,
+            )
+        states[measure.id] = measure_state
+        values[measure.id] = top / bottom if measure_state == "measured" else None
+    notices = counts["cancellation_notices"]
+    delivery_counts: dict[str, int | float | None] = {
+        key: counts[key] if included else None
+        for key in _DELIVERY_COLUMNS
+        if key not in (*_DELIVERY_EXCLUDED, "scheduled_hours", "ran_hours")
+    }
+    for label, key in (("scheduled_hours", "scheduled_seconds"), ("ran_hours", "ran_seconds")):
+        delivery_counts[label] = counts[key] / 3600 if counts["trips_with_duration"] else None
+    if not any(SCHEDULED_STOP_TIMES in measure.extra_tables for measure in selected):
+        delivery_counts["trips_with_duration"] = None
+    evidence = {
+        "counts": delivery_counts,
+        "excluded": {key: counts[key] if included else None for key in _DELIVERY_EXCLUDED},
+        "share_eligible": counts["eligible"] / counts["scheduled"] if counts["scheduled"] else None,
+        "median_cancellation_notice_seconds": (
+            _percentile(sorted(histogram.items()), notices, 50) if notices else None
+        ),
+        "boundary_departures": [row._asdict() for row in departures] if departures else None,
+        "measure_states": states,
+    }
+    return states[selected[0].id] if len(selected) == 1 else state, values, evidence
 
 
 def ask(store: Store, question: Question) -> dict[str, Any]:
@@ -393,14 +823,19 @@ def ask(store: Store, question: Question) -> dict[str, Any]:
     missing: list[str] = []
     included: list[str] = []
     missing_in_cut = False
-    paths: dict[str, list[str]] = {table: [] for table in family.tables}
+    paths: dict[str, list[str]] = {
+        table: []
+        for table in (*family.tables, *(table for m in selected for table in m.extra_tables))
+    }
+    tables = tuple(paths)
     counts: Counter[str] = Counter()
     histogram: Counter[int] = Counter()
+    departures: list[Departure] = []
     with store.connect() as conn:
         for ordinal in range(question.start.toordinal(), question.end.toordinal() + 1):
             day = date.fromordinal(ordinal)
             in_cut = question.day_type is None or question.day_type == _DAY_TYPES[day.weekday()]
-            files = store.files(conn, question.city, day)
+            files = store.files(conn, question.city, day, tables)
             if files is None:
                 missing.append(day.isoformat())
                 missing_in_cut |= in_cut
@@ -408,46 +843,27 @@ def ask(store: Store, question: Question) -> dict[str, Any]:
                 measured.append(day.isoformat())
                 if in_cut:
                     included.append(day.isoformat())
-                    for table, path in zip((STOP_EVENTS, TRIP_DAYS), files, strict=True):
-                        if table in paths:
-                            paths[table].append(path)
+                    for table, path in zip(tables, files, strict=True):
+                        paths[table].append(path)
         for offset in range(0, len(included), DAYS_PER_QUERY_BATCH):
             batch = {
                 table: files[offset : offset + DAYS_PER_QUERY_BATCH]
                 for table, files in paths.items()
             }
-            batch_counts, batch_bins = family.query(
-                conn, family, batch, question, str(store.cleaning_version)
-            )
-            counts.update(batch_counts)
-            histogram.update(batch_bins)
+            result = family.query(conn, family, batch, question, str(store.cleaning_version))
+            counts.update(result.counts)
+            histogram.update(result.histogram)
+            departures.extend(result.departures)
 
-    classified = counts["classified"]
-    scheduled = counts["scheduled"]
-    if (
-        not measured
-        or (missing_in_cut and not included)
-        or (scheduled and counts["capture_gap"] == scheduled)
-    ):
-        state = "not_measured"
-    elif not scheduled and counts["route_without_live_data"]:
-        state = "no_live_data"
-    elif not classified:
-        state = "unknown"
-    elif classified < family.minimum_sample:
-        state = "too_few_to_judge"
+    missing_days = not measured or (missing_in_cut and not included)
+    if family.id == _SERVICE_DELIVERED_ID:
+        state, values, family_evidence = _delivery_answer(
+            family, selected, counts, histogram, departures, included, missing_days
+        )
     else:
-        state = "measured"
-
-    values: dict[str, float | None] = dict.fromkeys(m.id for m in selected)
-    if state == "measured":
-        bins = sorted(histogram.items())
-        for measure in selected:
-            values[measure.id] = (
-                counts[measure.id] / classified
-                if measure.percentile is None
-                else _percentile(bins, classified, measure.percentile)
-            )
+        state, values, family_evidence = _punctuality_answer(
+            family, selected, counts, histogram, included, missing_days
+        )
     return {
         "measure": question.measure,
         "value": values,
@@ -462,6 +878,45 @@ def ask(store: Store, question: Question) -> dict[str, Any]:
             "days_measured": measured,
             "days_not_measured": missing,
             "days_included": included,
+            **family_evidence,
+            "cleaning_versions": [store.cleaning_version] if included else [],
+            "method_version": family.method_version,
+            "query_ms": (perf_counter() - started) * 1000,
+        },
+        "info": [_info(family, measure) for measure in selected],
+    }
+
+
+def _punctuality_answer(
+    family: Family,
+    selected: tuple[Measure, ...],
+    counts: Counter[str],
+    histogram: Counter[int],
+    included: list[str],
+    missing_days: bool,
+) -> tuple[str, dict[str, float | None], dict[str, Any]]:
+    classified, scheduled = counts["classified"], counts["scheduled"]
+    state = _state(
+        family,
+        classified,
+        scheduled,
+        counts["capture_gap"],
+        counts["route_without_live_data"],
+        missing_days,
+    )
+    values: dict[str, float | None] = dict.fromkeys(m.id for m in selected)
+    if state == "measured":
+        bins = sorted(histogram.items())
+        for measure in selected:
+            values[measure.id] = (
+                counts[measure.id] / classified
+                if measure.percentile is None
+                else _percentile(bins, classified, measure.percentile)
+            )
+    return (
+        state,
+        values,
+        {
             "counts": {
                 key: counts[key] if included else None
                 for key in ("scheduled", "classified", *(m.id for m in family.measures if m.band))
@@ -472,12 +927,8 @@ def ask(store: Store, question: Question) -> dict[str, Any]:
                 if key not in ("scheduled", "classified")
             },
             "share_observed": classified / scheduled if scheduled else None,
-            "cleaning_versions": [store.cleaning_version] if included else [],
-            "method_version": family.method_version,
-            "query_ms": (perf_counter() - started) * 1000,
         },
-        "info": [_info(family, measure) for measure in selected],
-    }
+    )
 
 
 def answer_csv(answer: dict[str, Any], language: Language) -> str:
@@ -485,15 +936,16 @@ def answer_csv(answer: dict[str, Any], language: Language) -> str:
     columns = _csv_columns(family)
     evidence = answer["evidence"]
     common = {**evidence, **evidence["counts"], **evidence["excluded"]}
-    common["state"] = answer["state_text"][language]
     common["coverage_note"] = (answer["coverage_note"] or {}).get(language)
     output = io.StringIO(newline="")
     writer = csv.writer(output)
     writer.writerow(getattr(label, language) for label in columns.values())
     for measure in answer["info"]:
         key = measure["id"]
+        state = evidence.get("measure_states", {}).get(key, answer["state"])
         row = {
             **common,
+            "state": getattr(_STATES[state], language),
             "measure": key,
             "unit": measure["text"][language]["unit"],
             "value": answer["value"][key],

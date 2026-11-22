@@ -21,8 +21,9 @@ classified over scheduled, cleaning and method versions, and query milliseconds.
 `days_measured` lists valid days in the window, `days_not_measured` lists gaps, and
 `days_included` lists the measured days selected by the day-type filter. A partial window
 includes a bilingual coverage note. The engine validates `manifest.json` under
-`<root>/<provider>/<service-date>/v<cleaning_version>/` and checks both Parquet file sizes
-before reading. A missing or invalid manifest, missing file, or wrong size makes that day a gap.
+`<root>/<provider>/<service-date>/v<cleaning_version>/` and checks the query input file sizes
+before reading. Cleaning v5 also checks the alerts file when the manifest lists it.
+A missing or invalid manifest, missing required file, or wrong size makes that day a gap.
 
 Values are null when the answer is no live data, not measured, too few to judge, or unknown.
 No live data means the cut contains scheduled service only on lines without live data.
@@ -36,10 +37,25 @@ definitions, minimum sample, calculation method and export columns. Add
 `format=csv&lang=fr` for one row per measure with French headings or use `lang=en` for
 English. CSV includes the evidence and leaves missing values blank.
 
+Use `measure=service_delivered` for trips run, cancelled trips, missing trips,
+service hours, and first and last departures. Each share is also available on its own
+as `trips_run`, `cancelled_trips`, `missing_trips`, `service_hours`, `first_trip`,
+or `last_trip`. These measures use the local hour of the scheduled start for `hour`.
+They reject `stop`. First and last trip selections require `line` and `day_type`,
+accept `direction`, and use the full service day. A family answer gives each
+measure's state in `evidence.measure_states`.
+
+Trip counts include every state. The rate denominator excludes added trips,
+trips on routes without live data and capture gaps. The cancellation evidence
+includes the estimated median of notice time minus scheduled start and an exact count
+of positive offsets. The hours measure and the full family answer require the v4
+scheduled stop times file. The first and last departure evidence gives the GTFS time
+and scheduled, eligible and run counts for each included date with service.
+
 | Environment variable | Default |
 | --- | --- |
 | `ENGINE_CLEAN_ROOT` | `./clean-days` |
-| `ENGINE_CLEANING_VERSION` | `4` |
+| `ENGINE_CLEANING_VERSION` | `5` |
 | `ENGINE_HOST`, `ENGINE_PORT` | `127.0.0.1`, `8080` |
 | `ENGINE_CONCURRENCY` | 2 active queries |
 | `ENGINE_QUERY_MEMORY_MIB` | 256 MiB per DuckDB query |

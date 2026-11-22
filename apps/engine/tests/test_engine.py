@@ -4,7 +4,7 @@ import io
 import json
 import sys
 from collections import Counter
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
 from threading import Event
@@ -16,8 +16,19 @@ import pytest
 from uvicorn._types import ASGISendEvent, HTTPScope
 
 from transit_engine import timing
-from transit_engine.clean_manifest import ALERTS, STOP_EVENTS, TRIP_DAYS, file_identities
-from transit_engine.measures import MIN_CLASSIFIED_STOP_EVENTS, Question, ask
+from transit_engine.clean_manifest import (
+    ALERTS,
+    SCHEDULED_STOP_TIMES,
+    STOP_EVENTS,
+    TRIP_DAYS,
+    file_identities,
+)
+from transit_engine.measures import (
+    MIN_CLASSIFIED_STOP_EVENTS,
+    MIN_SERVICE_DELIVERED_TRIPS,
+    Question,
+    ask,
+)
 from transit_engine.server import Engine
 from transit_engine.store import Store
 
@@ -26,7 +37,7 @@ FRIDAY = date(2026, 11, 20)
 SATURDAY = date(2026, 11, 21)
 SUNDAY = date(2026, 11, 22)
 FALL_BACK = date(2026, 11, 1)
-V4_EXTRA_FILES = ("scheduled_stop_times.parquet", "vehicle_positions.parquet", "feed_polls.parquet")
+V4_EXTRA_FILES = (SCHEDULED_STOP_TIMES, "vehicle_positions.parquet", "feed_polls.parquet")
 
 
 class Trip(NamedTuple):
@@ -37,6 +48,9 @@ class Trip(NamedTuple):
     reason: str | None
     live: bool
     delays: tuple[int | None, ...]
+    offset_minutes: int = 0
+    duration_minutes: int = 0
+    notice_seconds: int | None = None
 
 
 TRIPS = (
@@ -57,22 +71,32 @@ def store(tmp_path: Path) -> Store:
     return _build_store(tmp_path, cleaning_version=3)
 
 
-def _build_store(tmp_path: Path, cleaning_version: int) -> Store:
+def _build_store(
+    tmp_path: Path, cleaning_version: int, trips_by_day: dict[date, tuple[Trip, ...]] | None = None
+) -> Store:
     version = str(cleaning_version)
     with duckdb.connect() as conn:
         conn.execute("""
             CREATE TABLE trips (
                 provider VARCHAR, service_date DATE, cleaning_version VARCHAR, trip_id VARCHAR,
                 route_id VARCHAR, direction_id INTEGER, state VARCHAR, state_reason VARCHAR,
-                route_has_live_data BOOLEAN, scheduled_start_utc TIMESTAMPTZ
+                route_has_live_data BOOLEAN, scheduled_start_utc TIMESTAMPTZ,
+                cancellation_notice_utc TIMESTAMPTZ
             );
             CREATE TABLE stops (
                 provider VARCHAR, service_date DATE, cleaning_version VARCHAR, trip_id VARCHAR,
                 stop_id VARCHAR, stop_sequence BIGINT, delay_seconds BIGINT,
                 scheduled_arrival_utc TIMESTAMPTZ, scheduled_departure_utc TIMESTAMPTZ
             );
+            CREATE TABLE schedule (
+                provider VARCHAR, service_date DATE, cleaning_version VARCHAR, trip_id VARCHAR,
+                stop_sequence BIGINT, scheduled_arrival_seconds BIGINT,
+                scheduled_departure_seconds BIGINT
+            );
             """)
-        for day in (FALL_BACK, THURSDAY, SATURDAY, SUNDAY):
+        for day, trips in (
+            trips_by_day or dict.fromkeys((FALL_BACK, THURSDAY, SATURDAY, SUNDAY), TRIPS)
+        ).items():
             directory = tmp_path / "stm" / str(day) / f"v{version}"
             directory.mkdir(parents=True)
             start = (
@@ -82,11 +106,26 @@ def _build_store(tmp_path: Path, cleaning_version: int) -> Store:
             )
             states: Counter[str] = Counter()
             bases: Counter[str] = Counter()
-            for trip in TRIPS:
+            for trip in trips:
                 identity = ("stm", day, version, trip.id)
-                scheduled = start if trip.state != "added" else None
+                start_at = start + timedelta(minutes=trip.offset_minutes)
+                notice = (
+                    start_at + timedelta(seconds=trip.notice_seconds)
+                    if trip.notice_seconds is not None
+                    else None
+                )
+                scheduled = start_at if trip.state != "added" else None
+                if scheduled is not None and cleaning_version in {4, 5}:
+                    first = (
+                        25 * 3600 + 15 * 60 if day == FALL_BACK else 7 * 3600
+                    ) + trip.offset_minutes * 60
+                    last = first + trip.duration_minutes * 60
+                    conn.executemany(
+                        "INSERT INTO schedule VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        [(*identity, 1, first - 60, first), (*identity, 2, last, last + 60)],
+                    )
                 conn.execute(
-                    "INSERT INTO trips VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO trips VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     [
                         *identity,
                         trip.line,
@@ -95,6 +134,7 @@ def _build_store(tmp_path: Path, cleaning_version: int) -> Store:
                         trip.reason,
                         trip.live,
                         scheduled,
+                        notice,
                     ],
                 )
                 states[trip.state] += 1
@@ -125,16 +165,22 @@ def _build_store(tmp_path: Path, cleaning_version: int) -> Store:
             if cleaning_version in {4, 5}:
                 for name in (*V4_EXTRA_FILES, ALERTS) if cleaning_version == 5 else V4_EXTRA_FILES:
                     path = directory / name
+                    source = "SELECT * FROM trips WHERE FALSE"
+                    rows = 0
+                    if name == SCHEDULED_STOP_TIMES:
+                        source = "SELECT * FROM schedule"
+                        rows = 2 * (len(trips) - states["added"])
                     conn.execute(
-                        "COPY (SELECT * FROM trips WHERE FALSE) TO ? (FORMAT PARQUET)",
+                        f"COPY ({source}) TO ? (FORMAT PARQUET)",
                         [str(path)],
                     )
                     payload = path.read_bytes()
                     files[name] = {
-                        "rows": 0,
+                        "rows": rows,
                         "sha256": sha256(payload).hexdigest(),
                         "byte_size": len(payload),
                     }
+                conn.execute("DELETE FROM schedule")
             (directory / "manifest.json").write_text(
                 json.dumps(
                     {
@@ -169,6 +215,176 @@ def query(store: Store, **kwargs: Any) -> dict[str, Any]:
     return ask(store, Question(**{**parameters, **kwargs}))
 
 
+DELIVERY_DAYS = (THURSDAY, *(date(2026, 11, day) for day in (23, 24, 25, 26, 28)))
+
+
+@pytest.fixture
+def delivery(tmp_path: Path) -> tuple[Store, dict[date, tuple[Trip, ...]]]:
+    trips_by_day: dict[date, tuple[Trip, ...]] = {}
+    for index, day in enumerate(DELIVERY_DAYS):
+        trips_by_day[day] = (
+            Trip(
+                "first", "A", 0, "missing" if index == 1 else "ran", None, True, (None, None), 0, 30
+            ),
+            Trip(
+                "mid",
+                "A",
+                0,
+                "cancelled" if index == 2 else "unconfirmed",
+                None,
+                True,
+                (None, None),
+                60,
+                45,
+                -96 if index == 2 else None,
+            ),
+            Trip("reverse", "A", 1, "ran", None, True, (0, None), 120, 15, -480),
+            Trip(
+                "end",
+                "A",
+                0,
+                "cancelled" if index == 0 else "ran",
+                None,
+                True,
+                (None, None),
+                1095,
+                90,
+                30 if index == 0 else None,
+            ),
+            Trip("gap", "A", 0, "not_measured", "capture_gap", True, (None, None), 90, 120),
+            Trip(
+                "no_live",
+                "N",
+                0,
+                "not_measured",
+                "route_without_live_data",
+                False,
+                (None, None),
+                0,
+                60,
+            ),
+            Trip("added", "A", 0, "added", None, True, (None,)),
+        )
+    return _build_store(tmp_path, 5, trips_by_day), trips_by_day
+
+
+def test_service_delivered_matches_python_across_batches(
+    delivery: tuple[Store, dict[date, tuple[Trip, ...]]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store, trips_by_day = delivery
+    monkeypatch.setattr("transit_engine.measures.DAYS_PER_QUERY_BATCH", 2)
+    answer = query(store, measure="service_delivered", end=DELIVERY_DAYS[-1], line="A")
+    evidence = answer["evidence"]
+    assert answer["state"] == "measured"
+    assert evidence["days_not_measured"] == list(
+        map(str, (FRIDAY, SATURDAY, SUNDAY, date(2026, 11, 27)))
+    )
+    assert evidence["days_included"] == list(map(str, DELIVERY_DAYS))
+    assert answer["coverage_note"]["en"] == "Only measured days are included."
+    line = [trip for trips in trips_by_day.values() for trip in trips if trip.line == "A"]
+    scheduled = [trip for trip in line if trip.state != "added"]
+    eligible = [trip for trip in scheduled if trip.reason is None]
+    ran = [trip for trip in eligible if trip.state == "ran"]
+    counts = evidence["counts"]
+    assert (
+        counts["scheduled"]
+        == len(scheduled)
+        == sum(
+            counts[state]
+            for state in ("ran", "cancelled", "missing", "unconfirmed", "not_measured")
+        )
+    )
+    assert counts["eligible"] == len(eligible)
+    assert evidence["excluded"] == {"added": 6, "route_without_live_data": 0, "capture_gap": 6}
+    assert counts["unconfirmed"] == 5
+    expected = Counter(trip.state for trip in eligible)
+    for measure, state in (
+        ("trips_run", "ran"),
+        ("missing_trips", "missing"),
+        ("cancelled_trips", "cancelled"),
+    ):
+        assert counts[state] == expected[state]
+        assert answer["value"][measure] == expected[state] / len(eligible)
+    assert counts["cancellation_notices"] == 2
+    assert counts["late_cancellation_notices"] == 1
+    assert evidence["median_cancellation_notice_seconds"] == pytest.approx((-96 + 30) / 2, abs=7.5)
+    expected_scheduled = sum(trip.duration_minutes for trip in eligible)
+    expected_ran = sum(trip.duration_minutes for trip in ran)
+    assert counts["scheduled_hours"] == expected_scheduled / 60
+    assert counts["ran_hours"] == expected_ran / 60
+    assert answer["value"]["service_hours"] == expected_ran / expected_scheduled
+
+    network = query(store, measure="service_delivered", end=DELIVERY_DAYS[-1])
+    assert network["value"] == answer["value"]
+    assert network["evidence"]["counts"]["scheduled"] == len(scheduled) + 6
+    assert network["evidence"]["excluded"]["route_without_live_data"] == 6
+
+
+def test_service_delivered_boundaries_and_trip_cuts(
+    delivery: tuple[Store, dict[date, tuple[Trip, ...]]],
+) -> None:
+    store, _ = delivery
+    weekday = {"line": "A", "day_type": "weekday", "end": DELIVERY_DAYS[-1]}
+    answer = query(store, measure="service_delivered", **weekday)
+    assert answer["value"]["first_trip"] == answer["value"]["last_trip"] == 4 / 5
+    assert answer["evidence"]["days_included"] == list(map(str, DELIVERY_DAYS[:-1]))
+    edges = answer["evidence"]["boundary_departures"]
+    assert len(edges) == 10
+    assert edges[:2] == [
+        {
+            "measure": measure,
+            "service_date": str(THURSDAY),
+            "scheduled_departure": departure,
+            "scheduled": 1,
+            "eligible": 1,
+            "ran": ran,
+            "route_without_live_data": 0,
+            "capture_gap": 0,
+        }
+        for measure, departure, ran in (("first_trip", "07:00:00", 1), ("last_trip", "25:15:00", 0))
+    ]
+    only_departure = query(
+        store, measure="trips_run", direction=0, departure="25:15:00", hour=1, **weekday
+    )
+    assert only_departure["value"]["trips_run"] == 4 / 5
+    assert only_departure["evidence"]["counts"]["scheduled"] == MIN_SERVICE_DELIVERED_TRIPS
+    assert query(store, measure="first_trip", line="A", day_type="weekday")["state"] == (
+        "too_few_to_judge"
+    )
+    assert query(store, measure="trips_run", line="N")["state"] == "no_live_data"
+    assert (
+        query(store, measure="trips_run", line="A", hour=8, direction=0, departure="08:30:00")[
+            "state"
+        ]
+        == "not_measured"
+    )
+    assert query(store, measure="trips_run", line="U")["state"] == "unknown"
+
+
+@pytest.mark.parametrize("damage", ["missing", "wrong_size"])
+def test_service_hours_checks_the_schedule_file(
+    delivery: tuple[Store, dict[date, tuple[Trip, ...]]], damage: str
+) -> None:
+    store, _ = delivery
+    path = Path(store.root) / "stm" / str(THURSDAY) / "v5" / SCHEDULED_STOP_TIMES
+    if damage == "missing":
+        path.unlink()
+    else:
+        path.write_bytes(path.read_bytes()[:-1])
+    answer = query(store, measure="service_hours")
+    assert answer["state"] == "not_measured"
+    assert answer["evidence"]["days_not_measured"] == [str(THURSDAY)]
+    assert query(store, measure="trips_run", end=DELIVERY_DAYS[-1])["state"] == "measured"
+
+
+def test_service_delivered_trip_queries_use_v3(store: Store) -> None:
+    answer = query(store, measure="missing_trips", end=SUNDAY)
+    assert answer["state"] == "measured"
+    assert answer["value"] == {"missing_trips": 3 / 18}
+    assert answer["evidence"]["cleaning_versions"] == [3]
+    assert answer["evidence"]["counts"]["scheduled_hours"] is None
+
+
 def test_v4_manifest_requires_all_five_file_entries(store: Store) -> None:
     directory = Path(store.root) / "stm" / THURSDAY.isoformat() / "v3"
     manifest = json.loads((directory / "manifest.json").read_bytes())
@@ -199,12 +415,16 @@ def test_v5_requires_an_alert_receipt_or_not_tracked(tmp_path: Path) -> None:
         assert store.verify(conn, "stm", THURSDAY)
         (directory / ALERTS).unlink()
         assert store.files(conn, "stm", THURSDAY) is None
+        assert query(store, measure="service_hours")["state"] == "not_measured"
         manifest["alerts"] = "not_tracked"
         marker.write_text(json.dumps(manifest), encoding="utf-8")
         assert store.files(conn, "stm", THURSDAY) is None  # Conflicting receipt and status.
         del manifest["files"][ALERTS]
         marker.write_text(json.dumps(manifest), encoding="utf-8")
         assert store.verify(conn, "stm", THURSDAY)
+        assert query(store, measure="service_hours")["evidence"]["days_included"] == [
+            str(THURSDAY)
+        ]
         del manifest["alerts"]
         marker.write_text(json.dumps(manifest), encoding="utf-8")
         assert store.files(conn, "stm", THURSDAY) is None
@@ -407,17 +627,26 @@ async def http(
     return start["status"], dict(start["headers"]), body.get("body", b"")
 
 
-def test_http_and_bilingual_csv_come_from_same_registry(store: Store) -> None:
+@pytest.mark.parametrize("family", ["punctuality", "service_delivered"])
+def test_http_and_bilingual_csv_come_from_same_registry(
+    store: Store, delivery: tuple[Store, dict[date, tuple[Trip, ...]]], family: str
+) -> None:
+    if family == "service_delivered":
+        store, _ = delivery
     app = Engine(store, concurrency=1, queue_size=1, queue_wait_ms=50)
-    params = urlencode({"measure": "punctuality", "city": "stm", "from": THURSDAY, "to": THURSDAY})
+    params = urlencode({"measure": family, "city": "stm", "from": THURSDAY, "to": THURSDAY})
 
     async def run() -> None:
         status, _, catalog = await http(app, "/how-we-measure")
         assert status == 200
         status, _, answer = await http(app, "/measure", params)
         assert status == 200
-        info = json.loads(catalog)
+        info = [item for item in json.loads(catalog) if item["family"] == family]
         assert info == json.loads(answer)["info"]
+        if family == "service_delivered":
+            status, _, error = await http(app, "/measure", params + "&stop=first")
+            assert status == 400
+            assert "stop does not apply" in json.loads(error)["message"]
         for lang in ("en", "fr"):
             status, headers, payload = await http(
                 app, "/measure", params + f"&format=csv&lang={lang}"

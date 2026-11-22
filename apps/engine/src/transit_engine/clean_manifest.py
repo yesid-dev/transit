@@ -7,7 +7,8 @@ from datetime import datetime, timedelta
 STOP_EVENTS = "stop_events.parquet"
 TRIP_DAYS = "trip_days.parquet"
 ALERTS = "alerts.parquet"
-_V4_FILES = ("scheduled_stop_times.parquet", "vehicle_positions.parquet", "feed_polls.parquet")
+SCHEDULED_STOP_TIMES = "scheduled_stop_times.parquet"
+_V4_FILES = (SCHEDULED_STOP_TIMES, "vehicle_positions.parquet", "feed_polls.parquet")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
