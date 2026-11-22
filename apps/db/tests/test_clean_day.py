@@ -945,7 +945,7 @@ def test_range_builds_skips_and_continues(
         fake.fail_upload = None
     first = runner.invoke(app, [*args, DAY.isoformat()])
     assert first.exit_code == 0, (first.output, first.exception)
-    assert "Built 1, skipped 0, failed 0" in first.output
+    assert "Built 1, skipped 0, no raw captures 0, failed 0" in first.output
     if remote:
         assert fake.writes == [
             f"out/{version_key('stm', DAY)}/{name}"
@@ -970,9 +970,26 @@ def test_range_builds_skips_and_continues(
     assert polls[2]["feed_timestamp_utc"] == polls[0]["feed_timestamp_utc"]
     manifest = (dest / marker).read_bytes()
     result = runner.invoke(app, [*args, third.isoformat()])
-    assert result.exit_code == 1 and "Built 1, skipped 1, failed 1" in result.output
-    assert f"{NEXT}: ValueError: No archived captures" in result.output
+    assert result.exit_code == 0, (result.output, result.exception)
+    assert "Built 1, skipped 1, no raw captures 1, failed 0" in result.output
     assert (dest / marker).read_bytes() == manifest
+    unmeasured = dest / version_key("stm", NEXT)
+    receipt = json.loads((unmeasured / "manifest.json").read_bytes())
+    assert receipt["status"] == "no_raw_captures"
+    assert receipt["provider"] == "stm"
+    assert receipt["service_date"] == NEXT.isoformat()
+    assert receipt["cleaning_version"] == CLEANING_VERSION
+    assert datetime.fromisoformat(receipt["built_at_utc"]).utcoffset() == timedelta(0)
+    assert "builder_git_commit" in receipt
+    assert "files" not in receipt
+    assert list(unmeasured.glob("*.parquet")) == []
+    if remote:
+        assert f"out/{version_key('stm', NEXT)}/manifest.json" in fake.writes
+        assert not any(
+            key.startswith(f"out/{version_key('stm', NEXT)}/")
+            and not key.endswith("/manifest.json")
+            for key in fake.writes
+        )
     latest = json.loads((dest / version_key("stm", third) / "manifest.json").read_bytes())
     assert latest["schedule_sha256"] == entry["sha256"]
     assert latest["row_counts_by_state"]["unconfirmed"] == 1

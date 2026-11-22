@@ -604,6 +604,30 @@ def test_incomplete_clean_day_is_not_measured(store: Store, damage: str) -> None
     assert result["evidence"]["counts"]["classified"] is None
 
 
+def test_no_raw_captures_receipt_is_not_measured(store: Store) -> None:
+    directory = Path(store.root) / "stm" / str(THURSDAY) / "v3"
+    for path in directory.glob("*.parquet"):
+        path.unlink()
+    (directory / "manifest.json").write_text(
+        json.dumps(
+            {
+                "status": "no_raw_captures",
+                "provider": "stm",
+                "service_date": str(THURSDAY),
+                "cleaning_version": "3",
+                "built_at_utc": f"{THURSDAY}T00:00:00+00:00",
+                "builder_git_commit": None,
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = query(store)
+    assert result["state"] == "not_measured"
+    assert result["evidence"]["days_not_measured"] == [str(THURSDAY)]
+    assert result["evidence"]["days_measured"] == []
+    assert result["evidence"]["counts"]["classified"] is None
+
+
 def test_blob_discovery_checks_both_files(store: Store) -> None:
     # Exercise httpfs's glob/read_blob query path against local files.
     remote = Store(store.root, store.cleaning_version, s3_endpoint="example.invalid")

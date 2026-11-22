@@ -23,8 +23,16 @@ from transit_ops.clean_day_inputs import (
     edition_index,
     load_contexts,
     merged_captures,
+    realtime_capture_present,
+    realtime_feeds,
 )
-from transit_ops.clean_day_output import publish_clean_day, version_key, write_clean_day
+from transit_ops.clean_day_output import (
+    publish_clean_day,
+    publish_no_raw_captures,
+    version_key,
+    write_clean_day,
+    write_no_raw_captures,
+)
 from transit_ops.core.models import ProviderManifest
 from transit_ops.history.manifest import Manifest, decode_manifest
 from transit_ops.ingestion.storage import BronzeStorage, LocalBronzeStorage, S3BronzeStorage
@@ -187,7 +195,7 @@ def run_clean_days(provider: str, first: str, last: str, source: str, dest: str)
         typer.echo(_failure_reason(error), err=True)
         raise typer.Exit(1) from None
     editions = None
-    built = skipped = 0
+    built = skipped = no_captures = 0
     failed: dict[date, str] = {}
     for ordinal in range(start_day.toordinal(), end_day.toordinal() + 1):
         day = date.fromordinal(ordinal)
@@ -200,13 +208,16 @@ def run_clean_days(provider: str, first: str, last: str, source: str, dest: str)
                 editions = discover_editions(raw, raw_prefix, declaration)
             schedules = load_contexts(declaration, day, editions, raw.read_bytes)
             start, end = capture_window(schedules[day], day)
-            captures = merged_captures(
-                raw,
-                raw_prefix,
-                _capture_manifests(raw, raw_prefix, declaration, start, end),
-                start,
-                end,
-            )
+            selections = list(_capture_manifests(raw, raw_prefix, declaration, start, end))
+            if realtime_feeds(declaration) and not realtime_capture_present(selections, start, end):
+                # A day the archive never captured is not a failed build.
+                if isinstance(clean, LocalBronzeStorage):
+                    write_no_raw_captures(provider, day, clean.root)
+                else:
+                    publish_no_raw_captures(provider, day, clean, clean_prefix)
+                no_captures += 1
+                continue
+            captures = merged_captures(raw, raw_prefix, selections, start, end)
             cleaned = clean_from_inputs(declaration, day, schedules, captures)
             if isinstance(clean, LocalBronzeStorage):
                 write_clean_day(cleaned, clean.root)
@@ -216,7 +227,9 @@ def run_clean_days(provider: str, first: str, last: str, source: str, dest: str)
         except Exception as error:
             # A failed day must leave the next service day eligible for rebuilding.
             failed[day] = _failure_reason(error)
-    typer.echo(f"Built {built}, skipped {skipped}, failed {len(failed)}")
+    typer.echo(
+        f"Built {built}, skipped {skipped}, no raw captures {no_captures}, failed {len(failed)}"
+    )
     for day, reason in failed.items():
         typer.echo(f"{day}: {reason}", err=True)
     if failed:
