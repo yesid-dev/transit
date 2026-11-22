@@ -74,7 +74,9 @@
 	const copy = $derived(translations[locale]);
 	let today = $state(frameToday());
 	const frame = $derived(parseFrameState(url.searchParams, today));
-	const overview = $derived(delocalizePath(url.pathname) === '/');
+	const path = $derived(delocalizePath(url.pathname));
+	const line = $derived(/^\/lines\/[^/]+\/?$/.test(path));
+	const usesFrameRecord = $derived(path === '/' || line);
 	const startLabel = $derived(
 		intl.dateTime(locale, { timeZone: 'UTC', dateStyle: 'long' }).format(new Date(RECORD_START)),
 	);
@@ -112,13 +114,18 @@
 
 	function selectMode(mode: FrameMode) {
 		if (frame.mode === mode) return;
-		void goto(frameHref(url, { ...frame, mode }), { shallow: !overview, state: { ...page.state } });
+		const target = new URL(frameHref(url, { ...frame, mode }), url);
+		if (line) {
+			if (mode === 'live') target.searchParams.set('tab', 'detail');
+			else target.searchParams.delete('tab');
+		}
+		void goto(target, { shallow: !usesFrameRecord, state: { ...page.state } });
 	}
 
 	function selectPeriod(period: NonNullable<typeof frame.period>) {
 		open = false;
 		void goto(frameHref(url, { ...frame, period }), {
-			shallow: !overview || frame.mode === 'live',
+			shallow: !usesFrameRecord || frame.mode === 'live',
 			state: { ...page.state },
 		});
 	}
@@ -146,7 +153,7 @@
 			<SheetTitle>{copy.period}</SheetTitle>
 			<SheetDescription id={`${uid}-note`}>
 				{copy.note(startLabel)}
-				{#if !overview}{copy.scope}{/if}
+				{#if !usesFrameRecord}{copy.scope}{/if}
 			</SheetDescription>
 			<div class="flex flex-wrap gap-2" role="group" aria-label={copy.ranges}>
 				{#each PRESETS as preset, index (preset)}

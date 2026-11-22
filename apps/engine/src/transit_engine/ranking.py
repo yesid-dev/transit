@@ -124,10 +124,10 @@ class Ranking:
             raise ValueError("this measure does not apply to this ranking kind")
         if self.kind == "segment" and family.id != _CORRIDORS_ID:
             raise ValueError("segment rankings require a corridor measure")
-        if family.id != _CORRIDORS_ID and (
+        if family.id != _CORRIDORS_ID and self.kind != "departure" and (
             self.question.line is not None or self.question.direction is not None
         ):
-            raise ValueError("line and direction ranking filters apply to corridors")
+            raise ValueError("line and direction ranking filters apply to corridors or departures")
         if self.kind == "vehicle" and family.id != _VEHICLES_ID:
             raise ValueError("vehicle rankings require a vehicle reporting or completion rate")
         if self.kind == "stop" and family.id == _SERVICE_DELIVERED_ID:

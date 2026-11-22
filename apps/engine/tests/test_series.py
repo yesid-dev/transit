@@ -114,3 +114,60 @@ def test_series_csv_has_one_row_per_cell_with_registry_headings(store: Store, me
     else:
         assert json.loads(missing["État"])["on_time"] == "Non mesuré"
         assert json.loads(missing["Valeur"])["on_time"] is None
+
+
+def test_stop_series_orders_by_direction_and_scheduled_sequence(tmp_path: Path) -> None:
+    trips = tuple(
+        Trip(f"trip-{index}", "A", 0, "ran", None, True, (0,) * 9 + (345,)) for index in range(30)
+    ) + (
+        Trip("reverse", "A", 1, "ran", None, True, (0,)),
+        Trip("other-line", "B", 0, "ran", None, True, (600,) * 11),
+    )
+    store = _build_store(tmp_path, 6, {THURSDAY: trips})
+    cells = query(store, start=THURSDAY, end=THURSDAY, line="A", group="stop")["cells"]
+    assert [(cell["key"]["direction"], cell["key"]["stop_sequence"]) for cell in cells] == [
+        *((0, index) for index in range(1, 11)),
+        (1, 1),
+    ]
+    assert cells[0]["key"]["stop"] == "first"
+    assert cells[0]["value"]["late"] == 0
+    assert cells[9]["value"]["late"] == 1
+    assert cells[9]["evidence"]["counts"]["classified"] == 30
+    assert cells[-1]["state"] == "too_few_to_judge"
+    cut = query(store, start=THURSDAY, end=THURSDAY, line="A", direction=1, group="stop")
+    assert cut["cells"] == [cells[-1]]
+
+
+def test_line_departure_series_and_ranking_apply_the_same_cuts(store: Store) -> None:
+    app = Engine(store, concurrency=1, queue_size=0, queue_wait_ms=50)
+    base = urlencode({"city": "stm", "from": THURSDAY, "to": THURSDAY})
+    cut = base + "&line=A&direction=0"
+    status, _, raw = asyncio.run(http(app, "/measure", cut + "&measure=trips_run&group=departure"))
+    assert status == 200, raw
+    (cell,) = json.loads(raw)["cells"]
+    assert cell["key"] == {"direction": 0, "departure": "07:00:00"}
+    assert cell["evidence"]["counts"]["cancelled"] == 1
+    assert cell["evidence"]["counts"]["missing"] == 1
+    assert cell["evidence"]["counts"]["scheduled"] == 3
+    assert cell["state"] == "too_few_to_judge"
+    status, _, raw = asyncio.run(http(app, "/ranking", cut + "&kind=departure&measure=late"))
+    assert status == 200, raw
+    (row,) = json.loads(raw)["rows"]
+    assert (row["line"], row["direction"], row["departure"]) == ("A", 0, "07:00:00")
+    assert row["counts"]["late"] == 8
+    assert row["sample"] == 32
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        "measure=on_time&group=stop",
+        "measure=trips_run&group=stop&line=A",
+        "measure=on_time&group=departure&line=A",
+    ],
+)
+def test_line_series_rejects_unsupported_cuts(store: Store, suffix: str) -> None:
+    app = Engine(store, concurrency=1, queue_size=0, queue_wait_ms=50)
+    base = urlencode({"city": "stm", "from": THURSDAY, "to": THURSDAY})
+    status, _, _ = asyncio.run(http(app, "/measure", base + "&" + suffix))
+    assert status == 400

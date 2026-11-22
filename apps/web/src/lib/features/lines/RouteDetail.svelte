@@ -81,6 +81,7 @@
 
 	interface RouteDetailProps {
 		id: string;
+		frameLive?: boolean;
 		seed: IdentitySeed;
 		routeSeed?: ResourceSeed<RouteFile | null>;
 		reliabilitySeed?: ResourceSeed<RouteReliability | null>;
@@ -92,6 +93,7 @@
 
 	let {
 		id,
+		frameLive = false,
 		routeSeed,
 		reliabilitySeed,
 		lineHistorySeed,
@@ -105,7 +107,7 @@
 
 	const tabs = $derived(
 		(['reliability', 'detail', 'schedule'] as const)
-			.filter((key) => !noLiveData || key !== 'detail')
+			.filter((key) => (frameLive ? key === 'detail' : !noLiveData || key !== 'detail'))
 			.map((key) => ({ key, label: t.tabs[key] })),
 	);
 	const detailTabController = createDetailTabController(new URL(page.url.href));
@@ -246,7 +248,7 @@
 	const articleEdgeRight = shortName;
 
 	$effect(() => {
-		if (noLiveData && detailTabController.active === 'detail')
+		if (!frameLive && noLiveData && detailTabController.active === 'detail')
 			detailTabController.active = 'reliability';
 	});
 	const hasListColumn = $derived(roster.length > 0 || routeAlerts.length > 0);
@@ -254,11 +256,13 @@
 		const url = currentMirrorUrl();
 		url.searchParams.delete('tab');
 		url.searchParams.delete('view');
+		if (frameLive) url.searchParams.set('frameMode', 'record');
 		url.searchParams.set('provider', manifest.provider);
 		return url.pathname + url.search + url.hash;
 	});
 	const shareUrl = $derived.by(() => {
 		const url = new URL(recordHref, readPublicSiteConfig().siteOrigin);
+		if (frameLive) url.searchParams.set('frameMode', 'live');
 		if (detailTabController.active !== 'reliability')
 			url.searchParams.set('tab', detailTabController.active);
 		return url.href;

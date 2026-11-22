@@ -1,3 +1,6 @@
+import { loadLineRecord, lineDirection } from '#lib/server/lineRecord.ts';
+import { DEFAULT_SITE_ORIGIN } from '#lib/site/config.ts';
+import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
 import { createLineDirectory } from '#lib/site/lineDirectory.ts';
 import { routeNameFallback } from '#lib/site/nameFallback.ts';
 import { linePageTitle } from '#lib/seo/riderPageTitle.ts';
@@ -16,8 +19,62 @@ export const load: PageServerLoad = async (event) => {
 
 	const id = event.params.id.trim() || event.params.id;
 	const fallback: IdentitySeed = { id, name: id };
-	const { v1, routesIndex, lang } = await event.parent();
-	if (!v1) return { seed: fallback, routeSeed: null, reliabilitySeed: null, lineHistorySeed: null };
+	const { url } = event;
+	const tab = detailTabFromSearchParams(url.searchParams);
+	const { mode, period } = parseFrameState(url.searchParams, frameToday());
+	const framed =
+		url.origin === DEFAULT_SITE_ORIGIN ||
+		['frameMode', 'recordFrom', 'recordTo'].some((key) => url.searchParams.has(key));
+	const frameLive = framed && (mode === 'live' || tab === 'detail');
+	if (frameLive && (tab !== 'detail' || mode !== 'live')) {
+		const live = new URL(url);
+		live.searchParams.set('tab', 'detail');
+		live.searchParams.set('frameMode', 'live');
+		redirect(307, live.pathname + live.search);
+	}
+
+	const { v1, routesIndex, lang, providerId } = await event.parent();
+	const record =
+		framed && !frameLive && period
+			? loadLineRecord(
+					tab === 'schedule' ? 'schedule' : 'record',
+					period,
+					providerId,
+					id,
+					lineDirection(url.searchParams),
+				)
+			: null;
+	if (record) {
+		const directory = createLineDirectory(routesIndex?.routes ?? null, {
+			line: (routeId) => routeNameFallback(routeId, lang),
+		});
+		const name = directory.name(id);
+		const metadata = v1
+			? getRoute(id, {
+					...serverV1Context(event),
+					providerId,
+					manifest: v1.manifest,
+				}).catch(() => null)
+			: Promise.resolve(null);
+		return {
+			seed: { id, name: name.label },
+			metadata,
+			seoTitle: linePageTitle(name),
+			record,
+			frameLive,
+			routeSeed: null,
+			reliabilitySeed: null,
+			lineHistorySeed: null,
+		};
+	}
+	if (!v1)
+		return {
+			seed: fallback,
+			...(frameLive ? { frameLive } : {}),
+			routeSeed: null,
+			reliabilitySeed: null,
+			lineHistorySeed: null,
+		};
 	const context = {
 		...serverV1Context(event),
 		providerId: v1.manifest.provider,
@@ -29,7 +86,7 @@ export const load: PageServerLoad = async (event) => {
 		(request.hasFrom || request.hasTo);
 	const [routeResult, reliabilityResult, historyResult] = await Promise.allSettled([
 		getRoute(id, context),
-		getRouteReliability(id, context),
+		frameLive ? Promise.resolve(null) : getRouteReliability(id, context),
 		selectedHistory
 			? loadLineHistorySeed(id, request, { ...context, signal: event.request.signal })
 			: Promise.resolve(null),
@@ -42,6 +99,7 @@ export const load: PageServerLoad = async (event) => {
 
 	return {
 		seed: { id, name: name.label },
+		...(frameLive ? { frameLive } : {}),
 		seoTitle: linePageTitle(name),
 		routeSeed: routeResult.status === 'fulfilled' ? { key: id, data: routeResult.value } : null,
 		reliabilitySeed:

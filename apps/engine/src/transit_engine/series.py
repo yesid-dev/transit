@@ -1,7 +1,9 @@
 from datetime import date
 from typing import Literal
 
-type SeriesGroup = Literal["day", "hour", "day_type", "weekday_hour", "direction"]
+type SeriesGroup = Literal[
+    "day", "hour", "day_type", "weekday_hour", "direction", "stop", "departure"
+]
 type GroupKey = tuple[str | int | None, ...]
 
 GROUP_COLUMNS: dict[SeriesGroup, tuple[str, ...]] = {
@@ -10,6 +12,8 @@ GROUP_COLUMNS: dict[SeriesGroup, tuple[str, ...]] = {
     "day_type": ("day_type",),
     "weekday_hour": ("weekday", "hour"),
     "direction": ("direction",),
+    "stop": ("direction", "stop_sequence", "stop"),
+    "departure": ("direction", "departure"),
 }
 DAY_TYPES = ("weekday", "weekday", "weekday", "weekday", "weekday", "saturday", "sunday")
 HOUR_GROUPS = ("hour", "weekday_hour")
@@ -27,6 +31,7 @@ def series_sql(group: SeriesGroup, hour: str, day: str = "service_date") -> str:
         "day_type": f"row({day_type_sql(day)})",
         "weekday_hour": f"row(isodow({day}), {hour})",
         "direction": "row(direction_id)",
+        "stop": "row(direction_id, stop_sequence, stop_id)",
     }[group]
 
 

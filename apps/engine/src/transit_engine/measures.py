@@ -294,7 +294,7 @@ class Question:
             if family.query is None:
                 raise ValueError("scorecard measures do not support group")
             if self.group not in GROUP_COLUMNS or ranking:
-                raise ValueError("group must be day, hour, day_type, weekday_hour or direction")
+                raise ValueError("group must be " + ", ".join(GROUP_COLUMNS))
             if (self.end - self.start).days >= MAX_SERIES_DAYS:
                 raise ValueError(f"a series can cover at most {MAX_SERIES_DAYS} days")
             if self.group == "direction" and (
@@ -316,6 +316,12 @@ class Question:
                         else ""
                     )
                 )
+        if self.group == "stop" and (self.line is None or family.id != _PUNCTUALITY.id):
+            raise ValueError("group=stop requires a line and a punctuality measure")
+        if self.group == "departure" and (
+            self.line is None or family.id != _SERVICE_DELIVERED_ID or self.measure in _BOUNDARIES
+        ):
+            raise ValueError("group=departure requires a line and a service delivery measure")
         if family.id == _VEHICLES_ID:
             if any(name not in {"vehicle", "day_type"} for name in self.cuts()):
                 raise ValueError("vehicle measures support vehicle and day_type")
@@ -407,6 +413,9 @@ _GROUP_LABELS = {
     "day_type": Text("Service day type", "Type de jour de service"),
     "weekday": Text("ISO weekday", "Jour de la semaine ISO"),
     "direction": Text("Direction", "Direction"),
+    "stop_sequence": Text("Stop sequence", "Ordre de l’arrêt"),
+    "stop": Text("Stop ID", "Identifiant de l’arrêt"),
+    "departure": Text("Scheduled departure", "Départ prévu"),
 }
 _UNIT_LABELS = {
     "share": Text("Share", "Part"),
@@ -518,6 +527,8 @@ def _cuts(question: Question, hour_sql: str | None) -> tuple[str, list[object]]:
 def _entity_sql(
     group: EntityKind | None, series: SeriesGroup | None = None, hour: str = "NULL"
 ) -> str:
+    if series == "departure":
+        return f"row(direction_id, ({_DEPARTURE_SECONDS})::BIGINT)"
     if series:
         return series_sql(series, hour)
     return {
@@ -581,6 +592,8 @@ def _punctuality_query(
     if group:
         counters["live_candidates"] = "count(*) FILTER (NOT added AND route_has_live_data)"
     aggregates = ", ".join(counters.values())
+    if question.group == "stop":
+        cut_sql += " AND NOT added"
     routes = (
         "list(DISTINCT route_id) FILTER (NOT added AND route_id IS NOT NULL)" if group else "NULL"
     )
@@ -595,7 +608,8 @@ def _punctuality_query(
     return (
         f"""
         WITH events AS (
-            SELECT s.service_date, t.route_id, t.direction_id, s.stop_id, t.scheduled_start_utc,
+            SELECT s.service_date, t.route_id, t.direction_id, s.stop_id, s.stop_sequence,
+                t.scheduled_start_utc,
                 coalesce(s.scheduled_departure_utc, s.scheduled_arrival_utc) AS scheduled_stop_utc,
                 t.scheduled_start_utc IS NULL AS added,
                 NOT added AND t.state = 'cancelled' AS cancelled,
@@ -819,6 +833,7 @@ def _service_delivered_rows(
     boundary_rows = ""
     if (
         boundaries
+        and question.group != "departure"
         and (question.day_type or question.group)
         and question.hour is None
         and question.departure is None
@@ -3405,6 +3420,11 @@ def _series_keys(
         return [(hour,) for hour in range(24)]
     if group == "weekday_hour":
         return [(weekday, hour) for weekday in range(1, 8) for hour in range(24)]
+    if group in {"stop", "departure"}:
+        return sorted(
+            (key for key in observed if key[1] is not None),
+            key=lambda key: (key[0] is None, key),
+        )
     return [(0,), (1,), *([(None,)] if (None,) in observed else [])]
 
 
@@ -3484,9 +3504,16 @@ def _series_answer(
             state, values, evidence, _ = evaluate(
                 family, selected, part, cell_window, hour=cell_hour
             )
+        display_key = key
+        if group == "departure":
+            direction, seconds = key
+            assert isinstance(seconds, int)
+            departure_hour, remainder = divmod(seconds, 3600)
+            minute, second = divmod(remainder, 60)
+            display_key = (direction, f"{departure_hour:02d}:{minute:02d}:{second:02d}")
         cells.append(
             {
-                "key": dict(zip(columns, key, strict=True)),
+                "key": dict(zip(columns, display_key, strict=True)),
                 "value": values,
                 "state": state,
                 "state_text": _STATES[state]._asdict(),

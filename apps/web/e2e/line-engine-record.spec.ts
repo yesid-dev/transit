@@ -1,0 +1,115 @@
+import { expect, test } from '@playwright/test';
+
+test.beforeEach(({ browserName }, info) => {
+	test.skip(browserName !== 'chromium' || info.project.name !== 'desktop');
+});
+
+for (const width of [390, 1440]) {
+	for (const locale of ['en', 'fr'] as const) {
+		const fr = locale === 'fr';
+		test(`${locale} at ${width}px shows the Line record and schedule with evidence`, async ({
+			page,
+			request,
+		}) => {
+			await page.setViewportSize({ width, height: 900 });
+			await page.goto(
+				`${fr ? '/fr' : ''}/lines/24?provider=${fr ? 'octranspo' : 'stm'}&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14`,
+			);
+			const main = page.getByRole('main');
+			const section = (name: string) => main.getByRole('region', { name, exact: true }).first();
+			const punctuality = section(fr ? 'Ponctualité' : 'On-time performance');
+			await expect(
+				punctuality.getByText(
+					fr
+						? /^Du .*80\s% des passages.*80 sur 100/
+						: /^From .*80% of observed stop events.*80 of 100/,
+				),
+			).toBeVisible();
+			await expect(
+				punctuality.getByText(fr ? 'En avance' : 'Early', { exact: true }),
+			).toBeVisible();
+			await expect(
+				punctuality.getByRole('button', { name: fr ? 'Copier le lien' : 'Copy link' }),
+			).toBeVisible();
+			await punctuality.getByText(fr ? 'Citer' : 'Cite', { exact: true }).click();
+			await expect(punctuality.getByText(/line-fixture-v1/)).toBeVisible();
+			const csv = punctuality.getByRole('link', { name: /CSV/ });
+			const response = await request.get((await csv.getAttribute('href'))!);
+			expect(response.ok()).toBeTruthy();
+			expect(await response.text()).toMatch(fr ? /^Mesure,Valeur/ : /^Measure,Value/);
+
+			const stop = section(fr ? 'Retard le long de ses arrêts' : 'Delay along its stops');
+			await expect(stop.getByRole('rowheader')).toHaveText([/1\. First stop/, /2\. Second stop/]);
+			await expect(section(fr ? 'Jour par jour' : 'Day by day').getByRole('rowheader')).toHaveCount(
+				1,
+			);
+			await expect(
+				section(fr ? 'Par heure et jour de la semaine' : 'By hour and weekday').getByRole(
+					'rowheader',
+				),
+			).toHaveCount(24);
+			await expect(
+				section(fr ? 'Par direction' : 'Each direction').getByRole('rowheader'),
+			).toHaveCount(2);
+			await expect(
+				section(
+					fr
+						? 'Trajets annulés et manquants, par départ'
+						: 'Cancelled and missing trips, by departure',
+				).getByRole('cell', { name: '6', exact: true }),
+			).toBeVisible();
+			await expect(
+				section(fr ? 'Départs le plus souvent en retard' : 'Departures late most often').getByRole(
+					'rowheader',
+					{ name: '07:00:00' },
+				),
+			).toBeVisible();
+			await expect(section(fr ? 'Achalandage' : 'Crowding')).toContainText(
+				fr ? 'Non suivi' : '25%',
+			);
+			await expect(
+				section(fr ? 'Avis de l’agence à ces dates' : 'Agency notices on these dates').getByText(
+					'3',
+					{ exact: true },
+				),
+			).toBeVisible();
+			expect(await main.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(width);
+			const filter = main.getByRole('navigation', {
+				name: fr ? 'Filtrer par direction' : 'Filter by direction',
+			});
+			await filter.locator('a').last().click();
+			await expect(page).toHaveURL(/direction=1/);
+			await expect(punctuality).toContainText(
+				fr ? /40\s% des passages/ : /40% of observed stop events/,
+			);
+
+			await main.getByRole('link', { name: fr ? 'Horaire' : 'Schedule', exact: true }).click();
+			await expect(section(fr ? 'Fréquence prévue' : 'Planned frequency')).toContainText(
+				fr ? 'Pointe du matin' : 'Morning peak',
+			);
+			await expect(
+				section(fr ? 'Premiers et derniers trajets' : 'First and last trips'),
+			).toContainText('25:15:00');
+			await expect(page).toHaveURL(/direction=1/);
+		});
+	}
+}
+
+test('Line shows patience for a slow stop query while punctuality is already readable', async ({
+	page,
+	request,
+}) => {
+	await page.goto(
+		'/lines/24?provider=stm&frameMode=record&recordFrom=2026-11-09&recordTo=2026-11-15',
+		{ waitUntil: 'commit' },
+	);
+	await expect(page.getByText(/^From .*80% of observed stop events/)).toBeVisible();
+	await expect(
+		page.getByText('Still working on this. You can wait or come back later.'),
+	).toBeVisible();
+	const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
+	expect((await request.post(`http://127.0.0.1:${dataPort}/__overview/release`)).status()).toBe(
+		204,
+	);
+	await expect(page.getByRole('rowheader', { name: /Second stop/ })).toBeVisible();
+});

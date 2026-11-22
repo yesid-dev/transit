@@ -3,6 +3,15 @@ import type { EngineResult, MeasureAnswer, RankingAnswer } from '#lib/server/eng
 import { addIsoDays } from '#lib/v1/history/selection.ts';
 import type { DateWindow } from '#lib/v1/history/window.ts';
 
+import {
+	dateRange,
+	methodEvidence,
+	percent,
+	recordConnection,
+	tally,
+} from '../record/recordText.ts';
+export { dateRange, percent, tally };
+
 const DAY_MS = 86_400_000;
 
 export function previousPeriod({ from, to }: DateWindow): DateWindow {
@@ -10,55 +19,12 @@ export function previousPeriod({ from, to }: DateWindow): DateWindow {
 	return { from: addIsoDays(from, -days), to: addIsoDays(from, -1) };
 }
 
-export function dateRange({ from, to }: DateWindow, locale: Locale): string {
-	const date = intl.dateTime(locale, { dateStyle: 'long', timeZone: 'UTC' });
-	const start = new Date(from);
-	const end = new Date(to);
-	if (from === to) {
-		const day = date.format(start);
-		return locale === 'fr' ? `Le ${day}` : `On ${day}`;
-	}
-	const sameYear = start.getUTCFullYear() === end.getUTCFullYear();
-	const sameMonth = sameYear && start.getUTCMonth() === end.getUTCMonth();
-	const monthDay = intl.dateTime(locale, { month: 'long', day: 'numeric', timeZone: 'UTC' });
-	if (locale === 'fr') {
-		const first = start.getUTCDate() === 1 ? '1er' : start.getUTCDate();
-		const beginning = sameMonth ? first : sameYear ? monthDay.format(start) : date.format(start);
-		return `Du ${beginning} au ${date.format(end)}`;
-	}
-	const beginning = sameYear ? monthDay.format(start) : date.format(start);
-	return `From ${beginning} to ${sameMonth ? `${end.getUTCDate()}, ${end.getUTCFullYear()}` : date.format(end)}`;
-}
-
-export function percent(value: number, locale: Locale): string {
-	return intl.number(locale, { style: 'percent', maximumFractionDigits: 1 }).format(value);
-}
-
-export function tally(value: number, locale: Locale): string {
-	return intl.number(locale, { maximumFractionDigits: 0 }).format(value);
-}
-
-const connection = {
-	unconfigured: {
-		en: 'The record view is being connected. Numbers will appear here.',
-		fr: 'Le bilan sera bientôt relié aux données. Les chiffres s’afficheront ici.',
-	},
-	unreachable: {
-		en: 'The record is temporarily unavailable.',
-		fr: 'Le bilan est temporairement indisponible.',
-	},
-	timeout: {
-		en: 'The record took too long to load. Try again later.',
-		fr: 'Le bilan a pris trop de temps à charger. Réessayez plus tard.',
-	},
-};
-
 export function measureText(
 	result: EngineResult<MeasureAnswer>,
 	period: DateWindow,
 	locale: Locale,
 ): string {
-	if (result.kind !== 'answer') return connection[result.kind][locale];
+	if (result.kind !== 'answer') return recordConnection[result.kind][locale];
 	const answer = result.answer;
 	if (answer.state !== 'measured') return answer.state_text[locale];
 
@@ -67,7 +33,7 @@ export function measureText(
 	const punctuality = answer.measure === 'on_time';
 	const [top, bottom] = punctuality ? [on_time, classified] : [ran, eligible];
 	if (value == null || top == null || bottom == null || bottom === 0)
-		return connection.unreachable[locale];
+		return recordConnection.unreachable[locale];
 
 	const share = percent(value, locale);
 	const dates = dateRange(period, locale);
@@ -106,7 +72,7 @@ export function comparisonText(
 }
 
 export function rankingText(result: EngineResult<RankingAnswer>, locale: Locale): string | null {
-	if (result.kind !== 'answer') return connection[result.kind][locale];
+	if (result.kind !== 'answer') return recordConnection[result.kind][locale];
 	const { rows, state_text, excluded, evidence } = result.answer;
 	if (rows.length) return null;
 	if (state_text) return state_text[locale];
@@ -119,10 +85,6 @@ export function rankingText(result: EngineResult<RankingAnswer>, locale: Locale)
 }
 
 export function citationText(answer: MeasureAnswer, period: DateWindow, locale: Locale): string {
-	const { method_version, cleaning_versions } = answer.evidence;
 	const reading = measureText({ kind: 'answer', answer }, period, locale);
-	const versions = cleaning_versions.join(', ');
-	return locale === 'fr'
-		? `${reading} Méthode ${method_version}. Nettoyage des données, version ${versions}.`
-		: `${reading} Method ${method_version}. Data cleaning version ${versions}.`;
+	return `${reading} ${methodEvidence(answer.evidence, locale)}`;
 }
