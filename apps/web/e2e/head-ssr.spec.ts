@@ -78,6 +78,30 @@ for (const locale of ['en', 'fr'] as const) {
 			);
 		}
 	});
+
+	test(`${locale}: Roadmap has its own server-rendered title and share card`, async ({
+		request,
+	}) => {
+		const path = locale === 'en' ? '/roadmap' : '/fr/roadmap';
+		const title = locale === 'en' ? 'Roadmap' : 'Feuille de route';
+		const response = await request.get(path);
+		expect(response.ok()).toBe(true);
+		const html = await response.text();
+		const head = html.slice(0, html.indexOf('</head>'));
+		expect(head).toContain(`<title>${title} · Transit</title>`);
+		expect(head).toContain(`rel="canonical" href="https://transit.yesid.dev${path}"`);
+		const image = head.match(/<meta property="og:image" content="([^"]*)"/)?.[1];
+		expect(image).toMatch(new RegExp(`/og/pages/roadmap\\.${locale}\\.png\\?v=[a-f0-9]{16}$`));
+		const url = new URL(image!);
+		const asset = await request.get(url.pathname + url.search);
+		expect(asset.ok()).toBe(true);
+		expect(
+			createHash('sha256')
+				.update(await asset.body())
+				.digest('hex')
+				.slice(0, 16),
+		).toBe(url.searchParams.get('v'));
+	});
 }
 
 test('ephemeral and error documents keep a single noindex tag', async ({ request }) => {

@@ -8,7 +8,7 @@ import {
 
 import { navPillCopy } from '../src/lib/i18n/messages';
 import { headerSearchCopy } from '../src/lib/components/shell/headerSearch.copy';
-import { AUDIT_NAV, LEGAL_NAV, SURFACE_NAV } from '../src/lib/content/nav';
+import { AUDIT_NAV, FOOTER_INFO_NAV, SURFACE_NAV } from '../src/lib/content/nav';
 import { DEFAULT_LOCALE, PUBLISHED_LOCALES, type Locale } from '../src/lib/i18n/config';
 import { localizeHref } from '../src/lib/i18n/routing';
 import { tripCopy } from '../src/lib/features/trips/trips.copy';
@@ -27,7 +27,7 @@ const lineStopCount = line.directions.reduce(
 const pages = [
 	'/',
 	...[...SURFACE_NAV, ...AUDIT_NAV].map(({ href }) => href),
-	...LEGAL_NAV.map(({ href }) => href),
+	...FOOTER_INFO_NAV.map(({ href }) => href),
 	`/stop/${Object.keys(departures.stops)[0]}`,
 	`/lines/${lineId}`,
 	`/lines/${lineId}?tab=detail`,

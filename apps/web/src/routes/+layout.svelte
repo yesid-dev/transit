@@ -1,8 +1,8 @@
 <script module lang="ts">
-	import { LEGAL_NAV } from '#lib/content/nav.ts';
+	import { FOOTER_INFO_NAV } from '#lib/content/nav.ts';
 
 	export function isDataIndependentRoute(pathname: string): boolean {
-		return LEGAL_NAV.some((item) => item.href === pathname);
+		return FOOTER_INFO_NAV.some((item) => item.href === pathname);
 	}
 </script>
 
@@ -140,7 +140,7 @@
 					alerts: data.provider ? providerHasAlerts(data.provider) : null,
 				}).filter((item) => item.group === group.key),
 			})),
-			{ label: footer.legalLabel, links: LEGAL_NAV, testId: 'footer-legal' },
+			{ label: footer.infoLabel, links: FOOTER_INFO_NAV, testId: 'footer-info' },
 		].map((group) => ({
 			...group,
 			links: [

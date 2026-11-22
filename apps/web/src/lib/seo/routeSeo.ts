@@ -1,6 +1,7 @@
 import { shareCopy, shareKey, withShareCta } from './share-copy';
 import { delocalizePath, localizeHref } from '../i18n/routing';
 import type { Locale } from '../i18n/config';
+import { roadmapTitle } from '../features/roadmap/roadmap.copy';
 import cards from '../../../static/og/manifest.json';
 
 export interface RouteSeo {
@@ -103,6 +104,9 @@ const SURFACES: Record<string, BilingualSeo> = {
 	},
 	'/accessibility': {
 		title: { en: 'Accessibility', fr: 'Accessibilité' },
+	},
+	'/roadmap': {
+		title: roadmapTitle,
 	},
 };
 

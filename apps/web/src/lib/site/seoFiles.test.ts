@@ -26,6 +26,7 @@ const SURFACES = [
 	'/privacy',
 	'/terms',
 	'/accessibility',
+	'/roadmap',
 ] as const;
 
 describe('SEO static files', () => {
