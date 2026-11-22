@@ -6,8 +6,6 @@ from collections.abc import Collection, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from functools import cache, lru_cache
-from hashlib import sha256
-from math import asin, cos, radians, sin, sqrt
 from typing import Literal, NamedTuple
 
 from google.transit.gtfs_realtime_pb2 import FeedHeader, TripDescriptor, TripUpdate, VehiclePosition
@@ -19,6 +17,14 @@ from transit_ops.capture_coverage.rules import (
     covered_intervals,
     usable_polls,
 )
+from transit_ops.clean_day_realtime import (
+    DayCapture,
+    FeedPoll,
+    VehicleStateInterval,
+    distance_metres,
+    read_capture,
+    vehicle_reading,
+)
 from transit_ops.gold.vehicle_instance_rule import (
     SANITY_DELAY_SECONDS,
     TripInstance,
@@ -26,8 +32,6 @@ from transit_ops.gold.vehicle_instance_rule import (
     resolve_vehicle_capture,
 )
 from transit_ops.gtfs.types import parse_gtfs_date, parse_gtfs_service_time, validate_wgs84_position
-from transit_ops.providers.formats import decode_gtfs_rt
-from transit_ops.providers.normalize import RawCapture
 from transit_ops.providers.schedule import ScheduledStop
 from transit_ops.providers.schedule_archive import ArchiveScheduleContext
 
@@ -37,7 +41,8 @@ STOPPED_AT_RADIUS_METRES = 50
 # Require several opportunities to see early reporting around departure, even
 # for short trips, at the providers' normal 20–60 second feed cadences.
 ABSENCE_LEAD_SECONDS = 300
-CLEANING_VERSION = "3"
+# v4 adds the scheduled stop times, vehicle positions and feed polls tables.
+CLEANING_VERSION = "4"
 REALTIME_FEEDS: tuple[Feed, ...] = ("trip_updates", "vehicle_positions")
 _REMOVED = {TripDescriptor.CANCELED, TripDescriptor.DELETED}
 _EXTRA = {
@@ -182,11 +187,7 @@ def _near_stop(position: VehiclePosition, stop: ScheduledStop | None) -> bool:
         return False
     if validate_wgs84_position(stop.lat, stop.lon) != "valid_wgs84":
         return False
-    arc = sin(radians(lat - stop.lat) / 2) ** 2 + (
-        cos(radians(lat)) * cos(radians(stop.lat)) * sin(radians(lon - stop.lon) / 2) ** 2
-    )
-    distance = 2 * 6_371_008.8 * asin(sqrt(min(1.0, arc)))
-    return distance <= STOPPED_AT_RADIUS_METRES
+    return distance_metres(lat, lon, stop.lat, stop.lon) <= STOPPED_AT_RADIUS_METRES
 
 
 def _vehicle(
@@ -331,7 +332,10 @@ class CleanDay:
     edition_sha256: str
     trips: dict[str, Trip]
     live_routes: set[str]
+    schedule_anchor: int
     coverage: dict[Feed, list[CoveredInterval]] = field(default_factory=dict)
+    vehicle_positions: list[VehicleStateInterval] = field(default_factory=list)
+    feed_polls: list[FeedPoll] = field(default_factory=list)
 
     def _covered(self, trip: Trip) -> bool:
         assert trip.start is not None and trip.end is not None
@@ -389,17 +393,64 @@ class CleanDay:
                     else (stop.arrival if stop.arrival is not None else stop.departure)
                 )
                 yield (
-                    *self._identity(trip_id, trip),
-                    stop.stop_id,
-                    seq,
-                    _timestamp(stop.arrival),
-                    _timestamp(stop.departure),
+                    *self._scheduled_fields(trip_id, trip, seq, stop),
                     _timestamp(reading.second) if reading else None,
                     reading.second - scheduled if reading and scheduled is not None else None,
                     reading.basis if reading else "not_observed",
                     reading.event if reading else None,
                     reading.vehicle_id if reading else None,
                 )
+
+    def scheduled_stop_rows(self) -> Iterator[Row]:
+        for trip_id, trip in sorted(self.trips.items()):
+            if not trip.added:
+                for seq, stop in sorted(trip.stops.items()):
+                    yield (
+                        *self._scheduled_fields(trip_id, trip, seq, stop),
+                        None if stop.arrival is None else stop.arrival - self.schedule_anchor,
+                        None if stop.departure is None else stop.departure - self.schedule_anchor,
+                        self.edition_sha256,
+                    )
+
+    def vehicle_rows(self) -> Iterator[Row]:
+        for interval in self.vehicle_positions:
+            reading = interval.first
+            yield (
+                self.provider,
+                CLEANING_VERSION,
+                reading.vehicle_id,
+                reading.captured_at_utc,
+                interval.last_seen_at_utc,
+                interval.readings,
+                reading.feed_timestamp_utc,
+                reading.observed_at_utc,
+                *reading.state,
+                *(reading.coords or (None, None)),
+            )
+
+    def poll_rows(self) -> Iterator[Row]:
+        for poll in self.feed_polls:
+            yield (
+                self.provider,
+                self.date,
+                CLEANING_VERSION,
+                poll.feed,
+                poll.captured_at_utc,
+                poll.attempt_id,
+                poll.result,
+                poll.feed_timestamp_utc,
+                poll.payload_bytes,
+                poll.entity_count,
+            )
+
+    def _scheduled_fields(self, trip_id: str, trip: Trip, seq: int, stop: Stop) -> Row:
+        return (
+            *self._identity(trip_id, trip),
+            stop.stop_id,
+            seq,
+            _timestamp(stop.arrival),
+            _timestamp(stop.departure),
+        )
 
     def _identity(self, trip_id: str, trip: Trip) -> Row:
         return (
@@ -430,7 +481,7 @@ def build_clean_day(
     provider: str,
     day: date,
     schedules: Mapping[date, ArchiveScheduleContext],
-    captures: Iterable[RawCapture],
+    captures: Iterable[DayCapture | FeedPoll],
     *,
     required_feeds: tuple[Feed, ...] = REALTIME_FEEDS,
     source_lag_seconds: int = 0,
@@ -441,7 +492,7 @@ def build_clean_day(
     trips = {
         ident: _scheduled(schedule, day, ident, anchor) for ident in schedule.days[day].trip_ids
     }
-    result = CleanDay(provider, day, schedule.days[day].edition_sha256, trips, set())
+    result = CleanDay(provider, day, schedule.days[day].edition_sha256, trips, set(), anchor)
     anchors = {d: context.service_day_start(d) for d, context in schedules.items()}
 
     @cache
@@ -458,10 +509,14 @@ def build_clean_day(
             if (trip := context.trip(d, ident)) is not None
         )
 
-    seen: set[tuple[str, bytes]] = set()
+    seen: dict[tuple[str, bytes], FeedPoll] = {}
+    last_vehicle: dict[str, VehicleStateInterval] = {}
     polls: list[PollFacts] = []
     prior_capture: datetime | None = None
     for capture in captures:
+        if isinstance(capture, FeedPoll):
+            result.feed_polls.append(capture)
+            continue
         is_update = capture.family == "trip_updates"
         feed: Feed = "trip_updates" if is_update else "vehicle_positions"
         if capture.family != feed or feed not in required_feeds:
@@ -470,19 +525,15 @@ def build_clean_day(
         if captured.utcoffset() is None or (prior_capture is not None and captured < prior_capture):
             raise ValueError("Captures must arrive in UTC time order")
         prior_capture = captured
-        key = (capture.family, sha256(capture.payload).digest())
-        if key in seen:
+        poll, message = read_capture(capture, seen)
+        result.feed_polls.append(poll)
+        if message is None:
             continue
-        seen.add(key)
-        message = decode_gtfs_rt(capture.payload)
-        if not message.IsInitialized():
-            raise ValueError(f"Incomplete GTFS-Realtime capture: {capture.label}")
+        header = poll.feed_timestamp_utc
         capture_second = int(captured.timestamp())
         feed_second = min(message.header.timestamp or capture_second, capture_second)
         if message.header.incrementality == FeedHeader.FULL_DATASET:
-            header_timestamp = (
-                _timestamp(message.header.timestamp) if message.header.timestamp else None
-            )
+            header_timestamp = header
             if header_timestamp is not None and header_timestamp > captured:
                 header_timestamp = None
             polls.append(
@@ -506,14 +557,13 @@ def build_clean_day(
                 live = entity.vehicle
             else:
                 continue
-            if not live.HasField("trip"):
-                continue
+            has_trip = live.HasField("trip")
             stamp = min(live.timestamp or feed_second, capture_second)
             desc = live.trip
+            dated = None
             if desc.start_date:
-                if _reported_service_date(desc.start_date) != day:
-                    continue
-            else:
+                dated = _reported_service_date(desc.start_date)
+            elif has_trip:
                 candidates = candidates_for(desc.trip_id)
                 published = datetime.fromtimestamp(stamp, UTC)
                 dated = _service_date(desc, published, candidates)
@@ -525,8 +575,35 @@ def build_clean_day(
                     and published.astimezone(schedule.timezone).date() == day
                 ):
                     result.live_routes.add(desc.route_id)
-                if dated != day:
-                    continue
+            if (
+                isinstance(live, VehiclePosition)
+                and live.vehicle.id
+                and (
+                    dated == day
+                    or dated is None
+                    and captured.astimezone(schedule.timezone).date() == day
+                )
+            ):
+                matched = trips.get(desc.trip_id) if dated == day else None
+                reading = vehicle_reading(
+                    live,
+                    captured,
+                    header,
+                    datetime.fromtimestamp(stamp, UTC),
+                    dated,
+                    matched.route_id if matched else None,
+                )
+                last = last_vehicle.get(reading.vehicle_id)
+                if last is None or last.last_seen_at_utc != captured:
+                    if last is not None and last.can_extend(reading):
+                        last.last_seen_at_utc = captured
+                        last.readings += 1
+                    else:
+                        interval = VehicleStateInterval(reading, captured)
+                        result.vehicle_positions.append(interval)
+                        last_vehicle[reading.vehicle_id] = interval
+            if not has_trip or dated != day:
+                continue
             trip = trips.get(desc.trip_id)
             if (trip.route_id if trip is not None else desc.route_id) in routes_without_live_data:
                 continue

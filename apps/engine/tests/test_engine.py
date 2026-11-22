@@ -16,7 +16,7 @@ import pytest
 from uvicorn._types import ASGISendEvent, HTTPScope
 
 from transit_engine import timing
-from transit_engine.clean_manifest import STOP_EVENTS, TRIP_DAYS
+from transit_engine.clean_manifest import STOP_EVENTS, TRIP_DAYS, file_identities
 from transit_engine.measures import MIN_CLASSIFIED_STOP_EVENTS, Question, ask
 from transit_engine.server import Engine
 from transit_engine.store import Store
@@ -26,6 +26,7 @@ FRIDAY = date(2026, 11, 20)
 SATURDAY = date(2026, 11, 21)
 SUNDAY = date(2026, 11, 22)
 FALL_BACK = date(2026, 11, 1)
+V4_EXTRA_FILES = ("scheduled_stop_times.parquet", "vehicle_positions.parquet", "feed_polls.parquet")
 
 
 class Trip(NamedTuple):
@@ -53,6 +54,11 @@ TRIPS = (
 
 @pytest.fixture
 def store(tmp_path: Path) -> Store:
+    return _build_store(tmp_path, cleaning_version=3)
+
+
+def _build_store(tmp_path: Path, cleaning_version: int) -> Store:
+    version = str(cleaning_version)
     with duckdb.connect() as conn:
         conn.execute("""
             CREATE TABLE trips (
@@ -67,7 +73,7 @@ def store(tmp_path: Path) -> Store:
             );
             """)
         for day in (FALL_BACK, THURSDAY, SATURDAY, SUNDAY):
-            directory = tmp_path / "stm" / str(day) / "v3"
+            directory = tmp_path / "stm" / str(day) / f"v{version}"
             directory.mkdir(parents=True)
             start = (
                 datetime(2026, 11, 2, 6, 15, tzinfo=UTC)
@@ -77,7 +83,7 @@ def store(tmp_path: Path) -> Store:
             states: Counter[str] = Counter()
             bases: Counter[str] = Counter()
             for trip in TRIPS:
-                identity = ("stm", day, "3", trip.id)
+                identity = ("stm", day, version, trip.id)
                 scheduled = start if trip.state != "added" else None
                 conn.execute(
                     "INSERT INTO trips VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -116,12 +122,25 @@ def store(tmp_path: Path) -> Store:
                     "sha256": sha256(payload).hexdigest(),
                     "byte_size": len(payload),
                 }
+            if cleaning_version == 4:
+                for name in V4_EXTRA_FILES:
+                    path = directory / name
+                    conn.execute(
+                        "COPY (SELECT * FROM trips WHERE FALSE) TO ? (FORMAT PARQUET)",
+                        [str(path)],
+                    )
+                    payload = path.read_bytes()
+                    files[name] = {
+                        "rows": 0,
+                        "sha256": sha256(payload).hexdigest(),
+                        "byte_size": len(payload),
+                    }
             (directory / "manifest.json").write_text(
                 json.dumps(
                     {
                         "provider": "stm",
                         "service_date": str(day),
-                        "cleaning_version": "3",
+                        "cleaning_version": version,
                         "schedule_sha256": "a" * 64,
                         "built_at_utc": f"{day}T00:00:00+00:00",
                         "builder_git_commit": None,
@@ -132,7 +151,17 @@ def store(tmp_path: Path) -> Store:
                 ),
                 encoding="utf-8",
             )
-    return Store(tmp_path.as_posix())
+    return Store(tmp_path.as_posix(), cleaning_version=cleaning_version)
+
+
+def test_store_defaults_to_v4_and_accepts_v3_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ENGINE_CLEAN_ROOT", str(tmp_path))
+    monkeypatch.delenv("ENGINE_CLEANING_VERSION", raising=False)
+    assert Store(tmp_path.as_posix()).cleaning_version == Store.from_env().cleaning_version == 4
+    monkeypatch.setenv("ENGINE_CLEANING_VERSION", "3")
+    assert Store.from_env().cleaning_version == 3
 
 
 def query(store: Store, **kwargs: Any) -> dict[str, Any]:
@@ -140,7 +169,29 @@ def query(store: Store, **kwargs: Any) -> dict[str, Any]:
     return ask(store, Question(**{**parameters, **kwargs}))
 
 
-def test_bands_use_exact_thresholds(store: Store) -> None:
+def test_v4_manifest_requires_all_five_file_entries(store: Store) -> None:
+    directory = Path(store.root) / "stm" / THURSDAY.isoformat() / "v3"
+    manifest = json.loads((directory / "manifest.json").read_bytes())
+    manifest["cleaning_version"] = "4"
+    files = manifest["files"]
+    for name in V4_EXTRA_FILES:
+        files[name] = {"rows": 0, "byte_size": 128, "sha256": "a" * 64}
+
+    def validate() -> dict[str, tuple[str, int]] | None:
+        return file_identities(json.dumps(manifest).encode(), "stm", THURSDAY.isoformat(), "4")
+
+    assert validate() == {
+        name: (entry["sha256"], entry["byte_size"]) for name, entry in files.items()
+    }
+    entry = files.pop("feed_polls.parquet")
+    assert validate() is None
+    files["feed_polls.parquet"] = {**entry, "rows": -1}
+    assert validate() is None
+
+
+@pytest.mark.parametrize("cleaning_version", [3, 4])
+def test_bands_use_exact_thresholds(tmp_path: Path, cleaning_version: int) -> None:
+    store = _build_store(tmp_path, cleaning_version)
     result = query(store, line="A", direction=0)
     evidence = result["evidence"]
     assert result["state"] == "measured"
@@ -159,7 +210,7 @@ def test_bands_use_exact_thresholds(store: Store) -> None:
         "capture_gap": 0,
         "unclassified": 2,
     }
-    assert evidence["cleaning_versions"] == [3]
+    assert evidence["cleaning_versions"] == [cleaning_version]
     assert evidence["query_ms"] >= 0
 
 
@@ -286,7 +337,7 @@ def test_incomplete_clean_day_is_not_measured(store: Store, damage: str) -> None
 
 def test_blob_discovery_checks_both_files(store: Store) -> None:
     # Exercise httpfs's glob/read_blob query path against local files.
-    remote = Store(store.root, s3_endpoint="example.invalid")
+    remote = Store(store.root, store.cleaning_version, s3_endpoint="example.invalid")
     with store.connect() as conn:
         assert remote.files(conn, "stm", THURSDAY) is not None
         path = Path(store.root) / "stm" / str(THURSDAY) / "v3" / TRIP_DAYS
@@ -296,7 +347,11 @@ def test_blob_discovery_checks_both_files(store: Store) -> None:
 
 @pytest.mark.parametrize("remote", [False, True])
 def test_explicit_audit_detects_same_size_corruption(store: Store, remote: bool) -> None:
-    target = Store(store.root, s3_endpoint="example.invalid") if remote else store
+    target = (
+        Store(store.root, store.cleaning_version, s3_endpoint="example.invalid")
+        if remote
+        else store
+    )
     with store.connect() as conn:
         assert target.verify(conn, "stm", THURSDAY)
         path = Path(store.root) / "stm" / str(THURSDAY) / "v3" / STOP_EVENTS

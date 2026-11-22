@@ -39,7 +39,7 @@ English. CSV includes the evidence and leaves missing values blank.
 | Environment variable | Default |
 | --- | --- |
 | `ENGINE_CLEAN_ROOT` | `./clean-days` |
-| `ENGINE_CLEANING_VERSION` | `3` |
+| `ENGINE_CLEANING_VERSION` | `4` |
 | `ENGINE_HOST`, `ENGINE_PORT` | `127.0.0.1`, `8080` |
 | `ENGINE_CONCURRENCY` | 2 active queries |
 | `ENGINE_QUERY_MEMORY_MIB` | 256 MiB per DuckDB query |
