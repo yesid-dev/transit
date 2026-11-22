@@ -16,6 +16,7 @@ from transit_engine.clean_manifest import ALERTS, STOP_EVENTS, TRIP_DAYS
 from transit_engine.measures import (
     _ALERT_COUNTS_ID,
     _BOUNDARIES,
+    _CORRIDORS_ID,
     _CROWDING_ID,
     _SELECTIONS,
     _SERVICE_DELIVERED_ID,
@@ -23,11 +24,11 @@ from transit_engine.measures import (
     _US_PER_HOUR,
     _VEHICLES_ID,
     _WAITING_ID,
-    DELAY_BIN_SECONDS,
     VEHICLE_RANKING_DEFAULT,
     Batch,
     EntityKey,
     EntityKind,
+    Family,
     Language,
     Measure,
     Question,
@@ -58,6 +59,10 @@ _RANGE_NOTES = {
     "matched_headways": Text(
         "Calculated from matched headways. Sampling uncertainty is unknown.",
         "Calculé à partir des intervalles appariés. L’incertitude d’échantillonnage est inconnue.",
+    ),
+    "observed_segment_runs": Text(
+        "Total for the observed runs. Sampling uncertainty is unknown.",
+        "Total des parcours observés. L’incertitude d’échantillonnage est inconnue.",
     ),
     "wilson_95": Text(
         "95% Wilson interval. Stop events on the same trip are dependent. "
@@ -115,6 +120,12 @@ class Ranking:
         kinds = measures[0].ranking_kinds
         if kinds is not None and self.kind not in kinds:
             raise ValueError("this measure does not apply to this ranking kind")
+        if self.kind == "segment" and family.id != _CORRIDORS_ID:
+            raise ValueError("segment rankings require a corridor measure")
+        if family.id != _CORRIDORS_ID and (
+            self.question.line is not None or self.question.direction is not None
+        ):
+            raise ValueError("line and direction ranking filters apply to corridors")
         if self.kind == "vehicle" and family.id != _VEHICLES_ID:
             raise ValueError("vehicle rankings require a vehicle reporting or completion rate")
         if self.kind == "stop" and family.id == _SERVICE_DELIVERED_ID:
@@ -215,12 +226,14 @@ def wilson_interval(share: float, sample: float) -> tuple[float, float]:
 
 
 def _range(
-    value: float, sample: int, measure: Measure, counts: Counter[str], family_id: str
+    value: float, sample: int, measure: Measure, counts: Counter[str], family: Family
 ) -> dict[str, Any]:
     if measure.id == "excess_wait_time":
         return {"lower": None, "upper": None, "method": "matched_headways"}
     if measure.id == VEHICLE_RANKING_DEFAULT:
         return {"lower": None, "upper": None, "method": "vehicle_reporting_uncertainty_unknown"}
+    if measure.unit == "vehicle_minutes":
+        return {"lower": None, "upper": None, "method": "observed_segment_runs"}
     if measure.unit == "per_100_trips":
         lower, upper = wilson_interval(value / 100, sample)
         return {
@@ -229,13 +242,13 @@ def _range(
             "method": "vehicle_completion_wilson_95",
         }
     if measure.unit == "seconds":
-        half_bin = DELAY_BIN_SECONDS / 2
+        half_bin = family.bin_seconds / 2
         lower, upper = value - half_bin, value + half_bin
         method = "histogram_half_bin"
-    elif family_id == _ALERT_COUNTS_ID:
+    elif family.id == _ALERT_COUNTS_ID:
         lower = upper = value
         method = "recorded_alert_hours"
-    elif family_id == _CROWDING_ID:
+    elif family.id == _CROWDING_ID:
         effective_sample = counts["occupancy_us"] ** 2 / counts["squared_occupancy_us"]
         lower, upper = wilson_interval(value, effective_sample)
         method = "occupancy_weighted_wilson_95"
@@ -266,6 +279,15 @@ def _identity(kind: EntityKind, key: EntityKey, classes: list[str]) -> dict[str,
             line=line,
             direction=direction,
             departure=departure,
+        )
+    if kind == "segment":
+        line, direction, from_stop, to_stop = key
+        identity.update(
+            id=json.dumps(key, ensure_ascii=False, separators=(",", ":")),
+            line=line,
+            direction=direction,
+            from_stop=from_stop,
+            to_stop=to_stop,
         )
     return identity
 
@@ -320,6 +342,7 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
     lines: dict[str, LineSchedule] = {}
     by_vehicle = ranking.kind == "vehicle"
     historical = family.id in {_CROWDING_ID, _ALERT_COUNTS_ID, _VEHICLES_ID}
+    has_own_states = historical or family.id in {_WAITING_ID, _CORRIDORS_ID}
     with store.connect() as conn:
         window = read_window(conn, store, question, family, selected, ranking.kind)
         for offset, batch in enumerate(window.batches()):
@@ -383,10 +406,10 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
             entry["sample"] = None
         elif family.id == _CROWDING_ID:
             entry["sample"] = sample / _US_PER_HOUR
-        if not historical and family.id != _WAITING_ID and not result.counts["live_candidates"]:
+        if not has_own_states and not result.counts["live_candidates"]:
             state, value = "no_live_data", None
         if value is None:
-            if state == "unknown" and not historical and family.id != _WAITING_ID:
+            if state == "unknown" and not has_own_states:
                 state = "too_few_to_judge"
             reason = _NOT_MEASURED_ON_DATES if state == "not_measured" else _STATES[state]
             excluded.append({**entry, "reason": state, "reason_text": reason._asdict()})
@@ -395,7 +418,7 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
                 {
                     **entry,
                     "value": value,
-                    "range": _range(value, sample, measure, result.counts, family.id),
+                    "range": _range(value, sample, measure, result.counts, family),
                 }
             )
     order = -1 if measure.worst_first_descending else 1
@@ -405,7 +428,7 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
     if chosen_class:
         evidence["cuts"]["class"] = chosen_class
     historical_state = {}
-    if historical or family.id == _WAITING_ID:
+    if has_own_states:
         reasons = {entry["reason"] for entry in excluded}
         if rows:
             state = "measured"
@@ -455,6 +478,13 @@ def ranking_csv(answer: dict[str, Any], language: Language) -> str:
         columns["sample"] = Text("Sample (vehicle-hours)", "Échantillon (heures-véhicules)")
     elif family.id == _VEHICLES_ID:
         columns["sample"] = Text("Sample (trips)", "Échantillon (trajets)")
+    if answer["kind"] == "segment":
+        columns.update(
+            line=Text("Line", "Ligne"),
+            direction=Text("Direction", "Direction"),
+            from_stop=Text("From stop", "Arrêt de départ"),
+            to_stop=Text("To stop", "Arrêt d’arrivée"),
+        )
     output = io.StringIO(newline="")
     writer = csv.writer(output)
     writer.writerow(getattr(label, language) for label in columns.values())

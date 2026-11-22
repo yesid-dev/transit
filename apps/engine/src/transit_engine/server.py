@@ -14,6 +14,7 @@ from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 
 from transit_engine.health import data_health
 from transit_engine.measures import (
+    CORRIDOR_RANKING_DEFAULT,
     VEHICLE_RANKING_DEFAULT,
     EntityKind,
     Language,
@@ -69,13 +70,24 @@ def _question(
     raw: bytes, *, ranking: bool = False
 ) -> tuple[Question | Ranking, Literal["json", "csv"], Language]:
     required = {"city", "from", "to"}
-    optional = {"hour", "day_type", "effect", "cause", "format", "lang"}
+    optional = {
+        "line",
+        "direction",
+        "from_stop",
+        "to_stop",
+        "hour",
+        "day_type",
+        "effect",
+        "cause",
+        "format",
+        "lang",
+    }
     if ranking:
         required.add("kind")
         optional.update({"measure", "class", "limit"})
     else:
         required.add("measure")
-        optional.update({"line", "direction", "stop", "departure", "vehicle", "group"})
+        optional.update({"stop", "departure", "vehicle", "group"})
     if len(raw) > 4096 or re.search(rb"%(?![a-fA-F0-9]{2})", raw):
         raise ValueError("invalid query string")
     fields = parse_qs(
@@ -90,7 +102,7 @@ def _question(
     ):
         raise ValueError(f"provide {', '.join(sorted(required))} and use each parameter once")
     params = {name: values[0] for name, values in fields.items()}
-    for name in ("line", "stop"):
+    for name in ("line", "stop", "from_stop", "to_stop"):
         if (value := params.get(name)) is not None and (
             not value.isprintable() or value != value.strip()
         ):
@@ -123,7 +135,11 @@ def _question(
     output_language: Language = "fr" if language == "fr" else "en"
     question = Question(
         params.get(
-            "measure", VEHICLE_RANKING_DEFAULT if params.get("kind") == "vehicle" else "on_time"
+            "measure",
+            {
+                "segment": CORRIDOR_RANKING_DEFAULT,
+                "vehicle": VEHICLE_RANKING_DEFAULT,
+            }.get(params.get("kind", ""), "on_time"),
         ),
         params["city"],
         _date(params["from"]),
@@ -139,11 +155,13 @@ def _question(
         cause=params.get("cause"),
         vehicle=vehicle,
         group=cast(SeriesGroup | None, params.get("group")),
+        from_stop=params.get("from_stop"),
+        to_stop=params.get("to_stop"),
     )
     if ranking:
         kind = params["kind"]
-        if kind not in ("line", "stop", "departure", "vehicle"):
-            raise ValueError("kind must be line, stop, departure or vehicle")
+        if kind not in ("line", "stop", "departure", "vehicle", "segment"):
+            raise ValueError("kind must be line, stop, departure, vehicle or segment")
         limit = params.get("limit", str(DEFAULT_LIMIT))
         if not re.fullmatch(r"[0-9]{1,3}", limit):
             raise ValueError("limit must be a positive integer")
