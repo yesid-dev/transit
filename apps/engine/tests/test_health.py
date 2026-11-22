@@ -135,15 +135,25 @@ def test_untracked_alerts_are_reported_without_a_file(tmp_path: Path) -> None:
     assert entry["tables"]["stop_events"] == {"status": "present", "rows": 3}
 
 
-def test_a_manifest_with_a_damaged_file_stays_present(tmp_path: Path) -> None:
+@pytest.mark.parametrize("damage", ["deleted", "size"])
+def test_a_damaged_listed_file_makes_the_day_incomplete(tmp_path: Path, damage: str) -> None:
     directory = clean_day(tmp_path, DAY)
-    (directory / TRIP_DAYS).unlink()
-    (directory / STOP_EVENTS).write_bytes(b"x")
+    if damage == "deleted":
+        (directory / TRIP_DAYS).unlink()
+    else:
+        (directory / STOP_EVENTS).write_bytes(b"x")
     [entry] = data_health(Store(tmp_path.as_posix()), "stm", DAY, DAY)["days"]
-    assert entry["status"] == "present"
-    assert entry["tables"]["trip_days"] == {"status": "missing", "reason": "file_missing"}
-    assert entry["tables"]["stop_events"] == {"status": "missing", "reason": "size_mismatch"}
+    assert entry["status"] == "incomplete"
     assert entry["tables"]["scheduled_stop_times"]["status"] == "present"
+    if damage == "deleted":
+        assert entry["tables"]["trip_days"] == {"status": "missing", "reason": "file_missing"}
+        assert entry["tables"]["stop_events"]["status"] == "present"
+    else:
+        assert entry["tables"]["stop_events"] == {
+            "status": "missing",
+            "reason": "size_mismatch",
+        }
+        assert entry["tables"]["trip_days"]["status"] == "present"
 
 
 def test_a_range_with_a_gap_lists_each_day(tmp_path: Path) -> None:

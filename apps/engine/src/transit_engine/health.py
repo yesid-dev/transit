@@ -82,6 +82,7 @@ def _day(
     manifest = json.loads(manifest_bytes)
     files = manifest["files"]
     tables: dict[str, Any] = {}
+    complete = True
     for key, name in TABLES:
         if name not in identities:
             if name == ALERTS and manifest.get("alerts") == "not_tracked":
@@ -92,11 +93,13 @@ def _day(
             tables[key] = {"status": "present", "rows": files[name]["rows"]}
         elif sizes[name] is None:
             tables[key] = {"status": "missing", "reason": "file_missing"}
+            complete = False
         else:
             tables[key] = {"status": "missing", "reason": "size_mismatch"}
+            complete = False
     return {
         "service_date": day.isoformat(),
-        "status": "present",
+        "status": "present" if complete else "incomplete",
         "cleaning_version": version,
         "built_at_utc": manifest["built_at_utc"],
         "tables": tables,
