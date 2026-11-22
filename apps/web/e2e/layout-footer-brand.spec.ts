@@ -152,7 +152,9 @@ test('footer links clear the expanded phone announcement through hydration', asy
 		await expect(page.locator('html[data-hydrated]')).toHaveCount(0);
 		// WebKit's fonts.ready also waits for the document load held by the hydration gate.
 		await expect
-			.poll(() => page.evaluate(() => [...document.fonts].some((face) => face.status === 'loading')))
+			.poll(() =>
+				page.evaluate(() => [...document.fonts].some((face) => face.status === 'loading')),
+			)
 			.toBe(false);
 		await page.keyboard.press('Home');
 		const link = house(page);
