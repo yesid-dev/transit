@@ -13,7 +13,7 @@ FEED_POLLS = "feed_polls.parquet"
 PREDICTION_SAMPLES = "prediction_samples.parquet"
 ALERT_VERSIONS = frozenset({"5", "6", "7", "8", "9"})
 STOP_ELIGIBILITY_VERSION = 9
-_UNMEASURED_STATUSES = ("no_raw_captures", "no_schedule_edition")
+_UNMEASURED_STATUSES = ("no_raw_captures", "no_schedule_edition", "schedule_archive_unreadable")
 _V4_FILES = (SCHEDULED_STOP_TIMES, VEHICLE_POSITIONS, FEED_POLLS)
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 

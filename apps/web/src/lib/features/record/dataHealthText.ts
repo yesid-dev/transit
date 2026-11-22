@@ -30,6 +30,7 @@ const reasons: Record<string, [string, string]> = {
 	],
 	no_raw_captures: ['No raw captures', 'Aucune capture brute'],
 	no_schedule_edition: ['No schedule edition', 'Aucune édition de l’horaire'],
+	schedule_archive_unreadable: ['Schedule archive unreadable', 'Archive de l’horaire illisible'],
 };
 
 export function tableName(table: string, locale: Locale) {

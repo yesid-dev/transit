@@ -155,7 +155,9 @@ def test_v9_requires_prediction_samples_and_reports_their_rows(tmp_path: Path) -
     assert entry["reason"] == "invalid_manifest"
 
 
-@pytest.mark.parametrize("reason", ["no_raw_captures", "no_schedule_edition"])
+@pytest.mark.parametrize(
+    "reason", ["no_raw_captures", "no_schedule_edition", "schedule_archive_unreadable"]
+)
 def test_unmeasured_receipt_is_settled(tmp_path: Path, reason: str) -> None:
     unmeasured_receipt(tmp_path, DAY, reason)
     [entry] = data_health(Store(tmp_path.as_posix()), "stm", DAY, DAY)["days"]

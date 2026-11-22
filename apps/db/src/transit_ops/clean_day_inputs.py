@@ -31,6 +31,7 @@ from transit_ops.ingestion.storage import (
 )
 from transit_ops.lake.archive_keys import validate_provider_id
 from transit_ops.providers.registry import load_provider_manifest
+from transit_ops.providers.schedule import InvalidScheduleEdition, ScheduleMembersUnknown
 from transit_ops.providers.schedule_archive import ArchiveScheduleContext
 
 
@@ -38,6 +39,7 @@ from transit_ops.providers.schedule_archive import ArchiveScheduleContext
 class Edition:
     key: str
     sha256: str
+    original_key: str | None = None
 
 
 def declaration_for(provider: str) -> ProviderManifest:
@@ -104,9 +106,15 @@ def schedule_contexts(
     """Use the latest declared effective date on or before each candidate day."""
     value = json.loads(index_path.read_text(encoding="utf-8"))
     editions = edition_index(value, manifest.provider.provider_id)
-    return load_contexts(
-        manifest, day, editions, lambda key: (index_path.parent / key).read_bytes()
+    contexts, _ = load_contexts(
+        manifest,
+        day,
+        {effective: (edition,) for effective, edition in editions.items()},
+        lambda key: (index_path.parent / key).read_bytes(),
     )
+    if day not in contexts:
+        raise ValueError(f"No schedule edition in force on {day}")
+    return contexts
 
 
 def edition_index(value: object, provider: str) -> dict[date, Edition]:
@@ -133,38 +141,50 @@ def edition_index(value: object, provider: str) -> dict[date, Edition]:
 def load_contexts(
     manifest: ProviderManifest,
     day: date,
-    editions: Mapping[date, Edition],
+    editions: Mapping[date, tuple[Edition, ...]],
     read: Callable[[str], bytes],
-) -> dict[date, ArchiveScheduleContext]:
+) -> tuple[dict[date, ArchiveScheduleContext], list[dict[str, str]]]:
+    """Use the latest valid original for each day and keep evidence of rejected originals."""
     provider = manifest.provider
-    grouped: dict[Edition, list[date]] = {}
-    for offset in (-1, 0, 1):
-        candidate = day + timedelta(days=offset)
-        eligible = [effective for effective in editions if effective <= candidate]
-        if eligible:
-            grouped.setdefault(editions[max(eligible)], []).append(candidate)
-    if not any(day in dates for dates in grouped.values()):
-        raise ValueError(f"No schedule edition in force on {day}")
-    result = {}
-    for ident, (edition, dates) in enumerate(grouped.items(), 1):
-        payload = read(edition.key)
-        checksum = edition.sha256
-        # Dated Bronze originals carry the first 12 hex digits in their key.
-        if len(checksum) == 12:
-            actual = hashlib.sha256(payload).hexdigest()
-            if not actual.startswith(checksum):
-                raise ValueError(f"Schedule checksum differs from Bronze key: {edition.key}")
-            checksum = actual
-        context = ArchiveScheduleContext(
-            provider_id=provider.provider_id,
-            dataset_version_id=ident,
-            edition_sha256=checksum,
-            archive_bytes=payload,
-            service_dates=dates,
-            timezone=ZoneInfo(provider.timezone),
-        )
-        result.update(dict.fromkeys(dates, context))
-    return result
+    candidates = [
+        (effective, edition)
+        for effective in sorted(editions, reverse=True)
+        for edition in editions[effective]
+    ]
+    days = [day + timedelta(days=offset) for offset in (0, -1, 1)]
+    contexts: dict[Edition, ArchiveScheduleContext | None] = {}
+    selected = {}
+    ignored = []
+    for candidate_day in days:
+        for ident, (effective, edition) in enumerate(candidates, 1):
+            if effective > candidate_day:
+                continue
+            if edition not in contexts:
+                payload = read(edition.key)
+                checksum = hashlib.sha256(payload).hexdigest()
+                # A Bronze key pins a 12-digit prefix. An archive copy pins the full digest.
+                if not checksum.startswith(edition.sha256):
+                    raise InvalidScheduleEdition(ident, "checksum_mismatch")
+                try:
+                    contexts[edition] = ArchiveScheduleContext(
+                        provider_id=provider.provider_id,
+                        dataset_version_id=ident,
+                        edition_sha256=checksum,
+                        archive_bytes=payload,
+                        service_dates=days,
+                        timezone=ZoneInfo(provider.timezone),
+                    )
+                except (InvalidScheduleEdition, ScheduleMembersUnknown):
+                    if edition.original_key is None:
+                        raise
+                    contexts[edition] = None
+                    ignored.append({"object_key": edition.original_key, "sha256": checksum})
+            if (context := contexts[edition]) is not None:
+                selected[candidate_day] = context
+                break
+        if candidate_day == day and day not in selected:
+            break
+    return selected, ignored
 
 
 def loose_captures(
