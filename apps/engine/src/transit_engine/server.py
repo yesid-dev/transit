@@ -45,6 +45,7 @@ async def respond(
     payload: dict[str, Any] | list[dict[str, Any]] | str,
     *,
     queued: bool = False,
+    cleaning_version: int | None = None,
 ) -> None:
     csv_response = isinstance(payload, str)
     headers = [
@@ -54,6 +55,8 @@ async def respond(
     ]
     if status == 503:
         headers.append((b"retry-after", b"1"))
+    if cleaning_version is not None:
+        headers.append((b"x-transit-cleaning-version", str(cleaning_version).encode("ascii")))
     await send({"type": "http.response.start", "status": status, "headers": headers})
     body = payload if isinstance(payload, str) else json.dumps(payload)
     await send({"type": "http.response.body", "body": body.encode()})
@@ -272,7 +275,9 @@ class Engine:
             LOGGER.error("engine query failed (%s)", type(error).__name__)
             await respond(send, 500, {"message": "query failed"}, queued=queued)
         else:
-            await respond(send, 200, answer, queued=queued)
+            await respond(
+                send, 200, answer, queued=queued, cleaning_version=self.store.cleaning_version
+            )
 
     async def _data_health(self, raw: bytes, send: ASGISendCallable) -> None:
         try:
@@ -318,7 +323,9 @@ class Engine:
             LOGGER.error("data health failed (%s)", type(error).__name__)
             await respond(send, 500, {"message": "data health failed"}, queued=queued)
         else:
-            await respond(send, 200, answer, queued=queued)
+            await respond(
+                send, 200, answer, queued=queued, cleaning_version=self.store.cleaning_version
+            )
 
 
 def main() -> None:
