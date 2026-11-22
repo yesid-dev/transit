@@ -101,6 +101,46 @@ full family answer require the scheduled stop times file available from v4 onwar
 departure evidence gives the GTFS time and underlying trip counts for each included
 date with service.
 
+## Open-data scorecard
+
+Use `measure=open_data_scorecard` for all seven measures or select one measure ID
+from the table. The family and the feed measures accept `day_type` in addition to
+city and inclusive service dates. Individual vehicle, trip and prediction measures
+also accept `line`, `direction`, `stop` and `hour`.
+
+| Measure | Result |
+| --- | --- |
+| `poll_success` | By feed, valid attempts (`ok`, `empty`, `duplicate`) divided by recorded attempts. Evidence includes counts for every result and the share of attempts marked `empty`. |
+| `feed_update_interval` | By feed, median and p90 time between changed publication timestamps on valid polls. Backward timestamps and intervals spanning a gap of over 120 seconds between any two capture attempts are excluded. Failed attempts count when checking for gaps. |
+| `feed_age_at_capture` | By feed, median and p90 of capture minus publication time on timestamped `ok`, `empty` and `duplicate` polls. Missing timestamps and negative ages are counted separately. |
+| `vehicle_field_completeness` | By field, share of vehicle reporting time carrying it. An explicitly unpublished field has state `not_published` for dates covered by that declaration. |
+| `live_trip_coverage` | Share of scheduled trips with a first capture on routes seen in realtime at least once in the selection. Added trips and days with a clean trip marked `capture_gap` are excluded from the rate. Trips on routes never seen have a separate count and share of all scheduled trips. |
+| `vehicles_without_trip` | Share of vehicle reporting time without a trip ID, with the count of distinct vehicles reporting without one. |
+| `prediction_error` | For 1, 3, 5, 10, 15, 20 and 30-minute horizons, count, median signed error, p90 absolute error and share within ±60 seconds. Values use `vehicle_stopped` samples. `trip_update_reported` counts are evidence and `trip_update_passed` is excluded because the observed time is itself a prediction. Fewer than 30 independent observations suppresses that horizon's statistics. |
+
+Feed-time percentiles use one-second histogram bins through 600 seconds, with
+`over_10_minutes` for a percentile that reaches the overflow bin. Capture spacing
+sets the shortest update cadence we can resolve. Feeds that update faster appear
+to update at the polling interval. Prediction
+percentiles use 15-second bins and the ±60-second share includes both boundaries.
+Vehicle time uses the same capped tail as crowding. Its hour cut intersects reporting
+intervals with the local hour. Coverage selects the scheduled start hour and trips
+serving the requested stop. Prediction error selects the observed local hour.
+
+The scorecard prefers the configured cleaning version per day and can use an older
+valid version for the measures it supports. Prediction error needs the
+`prediction_samples` file added in v7. Each measure reports its dates, versions, counts
+and exclusions in evidence. Feed, field and horizon states are under
+`dimension_states`. CSV uses one row per measure, with dimensional values and
+evidence encoded as JSON cells. Definitions and headers are available in both
+languages from `/how-we-measure`.
+
+New clean-day receipts carry the provider declaration's timezone, enabled realtime
+feeds and optional `unpublished_vehicle_fields`. For earlier receipts the engine
+uses the historical service timezone and has no field-level publication declaration.
+An alert history file does not establish the result of individual alert polls.
+Declared alerts without attempt rows in `feed_polls` are `not_measured`.
+
 ## Rankings
 
 `GET /ranking?kind=line&city=stm&from=2026-11-19&to=2026-11-22` ranks lines

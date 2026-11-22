@@ -18,6 +18,7 @@ from transit_engine.capture import MAX_POLL_AGE_SECONDS, MAX_POLL_SPACING_SECOND
 from transit_engine.clean_manifest import (
     ALERTS,
     FEED_POLLS,
+    PREDICTION_SAMPLES,
     SCHEDULED_STOP_TIMES,
     STOP_EVENTS,
     TRIP_DAYS,
@@ -29,6 +30,8 @@ from transit_engine.corridors import (
     MIN_SEGMENT_RUNS,
     SEGMENT_BIN_SECONDS,
 )
+from transit_engine.histogram import DELAY_BIN_SECONDS as DELAY_BIN_SECONDS
+from transit_engine.histogram import percentile as _percentile
 from transit_engine.schedule import (
     BUNCHING_FRACTION,
     FREQUENT_HEADWAY_SECONDS,
@@ -38,6 +41,17 @@ from transit_engine.schedule import (
     PERIODS,
     period_sql,
     periods_text,
+)
+from transit_engine.scorecard import (
+    FEED_MEASURES,
+    MIN_PREDICTION_SAMPLES,
+    SCORECARD,
+    VEHICLE_FIELDS,
+    Result,
+    coverage_counts,
+    feed_results,
+    prediction_result,
+    vehicle_counts,
 )
 from transit_engine.series import (
     DAY_TYPES as _DAY_TYPES,
@@ -65,6 +79,8 @@ from transit_engine.vehicles import (
     VEHICLE_POLL_SECONDS,
     VEHICLE_REPORTING_GAP_SECONDS,
     VEHICLE_TAIL_CAP_SECONDS,
+    vehicle_end_sql,
+    vehicle_hour_weight_sql,
     vehicle_stats_query,
     vehicle_tail_sql,
 )
@@ -84,7 +100,6 @@ class Text(NamedTuple):
 # Each scheduled trip stop counts once. Lines without live data are outside every rate.
 EARLY_LIMIT_SECONDS = -60
 LATE_LIMIT_SECONDS = 300
-DELAY_BIN_SECONDS = 15
 # A display floor consistent with Transit's historical 30-observation floor.
 # A few stop events can dominate a share or percentile. This is not a confidence interval.
 MIN_CLASSIFIED_STOP_EVENTS = 30
@@ -175,10 +190,20 @@ class Family:
     exclusions: Text
     limits: Text
     measures: tuple[Measure, ...]
-    query: Callable[
-        [duckdb.DuckDBPyConnection, Family, dict[str, list[str]], Question, str, EntityKind | None],
-        dict[EntityKey, Batch],
-    ]
+    query: (
+        Callable[
+            [
+                duckdb.DuckDBPyConnection,
+                Family,
+                dict[str, list[str]],
+                Question,
+                str,
+                EntityKind | None,
+            ],
+            dict[EntityKey, Batch],
+        ]
+        | None
+    )
     columns: dict[str, Text] = field(default_factory=dict)
     evidence_columns: dict[str, Text] = field(default_factory=dict)
     bin_seconds: int = DELAY_BIN_SECONDS
@@ -202,6 +227,7 @@ _STATES = {
     "no_live_data": Text("No live data", "Aucune donnée en direct"),
     "not_measured": Text("Not measured", "Non mesuré"),
     "not_tracked": Text("Not tracked", "Non suivi"),
+    "not_published": Text("Not published", "Non publié"),
     "too_few_to_judge": Text("Too few to judge", "Trop peu de données pour conclure"),
     "unknown": Text("Unknown", "Inconnu"),
     "no_frequent_periods": Text(
@@ -265,6 +291,8 @@ class Question:
         elif self.from_stop is not None or self.to_stop is not None:
             raise ValueError("from_stop and to_stop apply to corridors")
         if self.group is not None:
+            if family.query is None:
+                raise ValueError("scorecard measures do not support group")
             if self.group not in GROUP_COLUMNS or ranking:
                 raise ValueError("group must be day, hour, day_type, weekday_hour or direction")
             if (self.end - self.start).days >= MAX_SERIES_DAYS:
@@ -274,6 +302,19 @@ class Question:
             ):
                 raise ValueError(
                     "group=direction requires a measure that supports line and direction"
+                )
+        if family.id == SCORECARD:
+            allowed = {"day_type"}
+            if self.measure not in (*FEED_MEASURES, SCORECARD):
+                allowed.update(("line", "direction", "stop", "hour"))
+            if self.cuts().keys() - allowed:
+                raise ValueError(
+                    f"{self.measure} supports only {', '.join(sorted(allowed))}"
+                    + (
+                        ". Select an individual scorecard measure for other cuts."
+                        if self.measure == SCORECARD
+                        else ""
+                    )
                 )
         if family.id == _VEHICLES_ID:
             if any(name not in {"vehicle", "day_type"} for name in self.cuts()):
@@ -394,6 +435,8 @@ def _info(family: Family, measure: Measure) -> dict[str, Any]:
         "minimum_sample": (
             MIN_CLASSIFIED_STOP_EVENTS
             if family.id == _VEHICLES_ID and measure.id in _VEHICLE_PUNCTUALITY_IDS
+            else MIN_PREDICTION_SAMPLES
+            if measure.id == "prediction_error"
             else family.minimum_sample
         ),
         **(
@@ -407,6 +450,11 @@ def _info(family: Family, measure: Measure) -> dict[str, Any]:
             "counts",
             "excluded",
             *(_DELIVERY_EVIDENCE if family.id == _SERVICE_DELIVERED_ID else ()),
+            *(
+                ("dimension_states", "capture_gap_days", "measure_days")
+                if family.id == SCORECARD
+                else ()
+            ),
             *family.evidence_columns,
         ],
         "csv_columns": {
@@ -1061,17 +1109,7 @@ def _crowding_rows(
     elif question.hour is not None:
         start_hour = _LOCAL_HOUR.format("observed_at_utc")
         segment_hour = _LOCAL_HOUR.format("hour_start")
-        # Use elapsed-hour boundaries and then match the local hour, including both
-        # occurrences of a repeated hour when the clocks go back.
-        weight = f"""
-            (SELECT coalesce(sum(
-                least(epoch_us(ends_at), epoch_us(hour_start) + {_US_PER_HOUR})
-                - greatest(epoch_us(observed_at_utc), epoch_us(hour_start))
-            ), 0)::BIGINT
-            FROM generate_series(time_bucket(INTERVAL '1 hour', observed_at_utc),
-                ends_at, INTERVAL '1 hour') AS hours(hour_start)
-            WHERE {segment_hour} = ?)
-        """
+        weight = vehicle_hour_weight_sql(segment_hour)
         reading_cut = f"matches AND {start_hour} = ?"
         arguments.extend([question.hour] * 2)
     cap_us = CROWDING_TAIL_CAP_SECONDS * 1_000_000
@@ -1090,8 +1128,7 @@ def _crowding_rows(
             SELECT v.route_id, v.stop_id, {direction} AS direction_id,
                 v.observed_at_utc, v.readings,
                 {tail} AS tail_us,
-                greatest(v.observed_at_utc, v.last_seen_at_utc) +
-                    greatest(0, least(tail_us, {cap_us})) * INTERVAL '1 microsecond' AS ends_at,
+                {vehicle_end_sql("v.observed_at_utc", "v.last_seen_at_utc", "tail_us")} AS ends_at,
                 CASE WHEN v.occupancy_status BETWEEN 0 AND 5 THEN v.occupancy_status END AS status,
                 CASE WHEN status IS NULL AND v.occupancy_percentage >= 0
                      THEN v.occupancy_percentage END AS percentage
@@ -2308,6 +2345,228 @@ _CORRIDORS = Family(
 )
 
 
+_FEED_HISTOGRAM_LIMITS = Text(
+    "Median and 90th percentile use one-second bins through 600 seconds. A percentile "
+    "whose rank reaches the overflow bin is reported as over 10 minutes.",
+    "La médiane et le 90e centile utilisent des classes d’une seconde jusqu’à 600 secondes. "
+    "Un centile dont le rang atteint la classe de dépassement est indiqué comme supérieur à "
+    "10 minutes.",
+)
+_VEHICLE_SCORECARD_LIMITS = Text(
+    "Time follows each vehicle’s last observed state with at most 60 seconds of tail time "
+    "and 20 seconds for the final tail. The hour cut includes only time in that local hour.",
+    "La durée suit le dernier état observé de chaque véhicule, avec au plus 60 secondes "
+    "après la dernière lecture et 20 secondes pour la dernière observation. Le filtre "
+    "horaire retient uniquement la durée comprise dans cette heure locale.",
+)
+_SCORECARD = Family(
+    SCORECARD,
+    method_version="1",
+    since="2026-11-22",
+    tables=(),
+    minimum_sample=1,
+    counts=Text(
+        "Counts are shown with each result.", "Les effectifs accompagnent chaque résultat."
+    ),
+    exclusions=Text(
+        "Days without the needed clean tables are omitted.",
+        "Les jours sans les tables nettoyées requises sont omis.",
+    ),
+    limits=Text(
+        "The scorecard describes the open data the engine captured.",
+        "La fiche décrit les données ouvertes recueillies par le moteur.",
+    ),
+    measures=(
+        Measure(
+            "poll_success",
+            "share",
+            Text(
+                "Share of recorded capture attempts that returned a valid feed, including "
+                "empty and unchanged feeds.",
+                "Part des tentatives de collecte ayant renvoyé un flux valide, y compris "
+                "les flux vides ou inchangés.",
+            ),
+            counts=Text(
+                "Attempts, counts for each result, and share of attempts marked empty.",
+                "Tentatives, effectifs par résultat et part des tentatives ayant renvoyé "
+                "un flux marqué vide.",
+            ),
+            exclusions=Text(
+                "Attempts duplicated across clean-day windows count once.",
+                "Les tentatives communes à deux fenêtres ne comptent qu’une fois.",
+            ),
+            limits=Text(
+                "Feeds without recorded attempts have no measured share.",
+                "La part est non mesurée pour les flux sans tentative enregistrée.",
+            ),
+            extra_tables=(FEED_POLLS,),
+        ),
+        Measure(
+            "feed_update_interval",
+            "seconds",
+            Text(
+                "Time between consecutive changed publication timestamps, by feed.",
+                "Temps entre deux changements successifs de l’horodatage de publication, par flux.",
+            ),
+            counts=Text(
+                "Successful polls with timestamps, intervals and overflow counts.",
+                "Collectes réussies horodatées, intervalles et dépassements.",
+            ),
+            exclusions=Text(
+                "Updates use timestamped valid attempts. All attempts, including errors, "
+                "count when checking for gaps of more than 120 seconds. Intervals crossing "
+                "such a gap and backward timestamps are excluded.",
+                "Les mises à jour utilisent les tentatives valides horodatées. Toutes les "
+                "tentatives, y compris les erreurs, servent à repérer les interruptions de plus "
+                "de 120 secondes. Les intervalles qui traversent une telle interruption et les "
+                "horodatages qui reculent sont exclus.",
+            ),
+            limits=Text(
+                _FEED_HISTOGRAM_LIMITS.en + " Capture spacing sets the shortest update cadence "
+                "we can resolve. Faster feeds appear to update at the polling interval.",
+                _FEED_HISTOGRAM_LIMITS.fr
+                + " L’espacement des collectes fixe la fréquence maximale "
+                "que l’on peut observer. Un flux plus rapide semble se mettre à jour à chaque "
+                "collecte.",
+            ),
+            extra_tables=(FEED_POLLS,),
+        ),
+        Measure(
+            "feed_age_at_capture",
+            "seconds",
+            Text(
+                "Time from publication to capture on valid polls, including empty and unchanged "
+                "feeds, by feed.",
+                "Temps entre la publication et la collecte lors des tentatives valides, "
+                "y compris pour les flux vides ou inchangés, par flux.",
+            ),
+            counts=Text(
+                "Successful polls with timestamps, ages and overflow counts.",
+                "Collectes réussies horodatées, âges et dépassements.",
+            ),
+            exclusions=Text(
+                "Missing timestamps and negative ages are counted apart.",
+                "Les horodatages manquants et les âges négatifs sont comptés à part.",
+            ),
+            limits=_FEED_HISTOGRAM_LIMITS,
+            extra_tables=(FEED_POLLS,),
+        ),
+        Measure(
+            "vehicle_field_completeness",
+            "share",
+            Text(
+                "Share of vehicle reporting time with each field present: trip, route, stop, "
+                "current status, occupancy status or percentage, and position.",
+                "Part de la durée de signalement des véhicules où chaque champ est présent : "
+                "trajet, ligne, arrêt, statut actuel, statut ou pourcentage d’occupation "
+                "et position.",
+            ),
+            counts=Text(
+                "Time with the field and total reporting time, in microseconds.",
+                "Durée avec le champ et durée totale de signalement, en microsecondes.",
+            ),
+            exclusions=Text(
+                "A declaration can indicate that a field is not published.",
+                "Une déclaration peut indiquer qu’un champ est non publié.",
+            ),
+            limits=_VEHICLE_SCORECARD_LIMITS,
+            extra_tables=(VEHICLE_POSITIONS,),
+        ),
+        Measure(
+            "live_trip_coverage",
+            "share",
+            Text(
+                "Share of scheduled trips on routes seen in realtime on any measured day "
+                "that had a first capture.",
+                "Part des trajets prévus sur les lignes vues en temps réel au moins un jour "
+                "mesuré qui ont fait l’objet d’une première collecte.",
+            ),
+            counts=Text(
+                "All scheduled trips, eligible trips, trips seen, and the count and share "
+                "of scheduled trips on routes never seen in the selection.",
+                "Tous les trajets prévus, les trajets admissibles, les trajets vus et le "
+                "nombre et la part des trajets sur des lignes jamais vues dans la sélection.",
+            ),
+            exclusions=Text(
+                "The coverage rate excludes added trips, days with a capture-gap trip state, "
+                "and routes never seen in the selection.",
+                "Le taux exclut les trajets ajoutés, les jours où un trajet présente une "
+                "interruption de collecte et les lignes jamais vues dans la sélection.",
+            ),
+            limits=Text(
+                "Verified trip days can establish route presence even when a capture gap "
+                "excludes the day from the rate. The hour is the scheduled trip start. "
+                "The stop cut selects scheduled trips that serve that stop.",
+                "Les jours de trajets vérifiés peuvent établir la présence d’une ligne même "
+                "si une interruption de collecte exclut le jour du taux. L’heure correspond "
+                "au début prévu du trajet. Le filtre d’arrêt sélectionne les trajets prévus "
+                "qui desservent cet arrêt.",
+            ),
+            extra_tables=(TRIP_DAYS,),
+        ),
+        Measure(
+            "vehicles_without_trip",
+            "share",
+            Text(
+                "Share of vehicle reporting time without a trip ID.",
+                "Part de la durée de signalement des véhicules sans identifiant de trajet.",
+            ),
+            counts=Text(
+                "Reporting time, time without a trip and distinct vehicles reporting without one.",
+                "Durée de signalement, durée sans trajet et véhicules distincts signalés "
+                "sans trajet.",
+            ),
+            exclusions=Text(
+                "The line, direction and stop cuts require matching information in the "
+                "clean vehicle observations.",
+                "Les filtres de ligne, de direction et d’arrêt exigent une correspondance "
+                "dans les observations nettoyées des véhicules.",
+            ),
+            limits=_VEHICLE_SCORECARD_LIMITS,
+            extra_tables=(VEHICLE_POSITIONS,),
+        ),
+        Measure(
+            "prediction_error",
+            "seconds",
+            Text(
+                "By prediction horizon, sample count, median signed error (predicted minus "
+                "observed), 90th percentile absolute error and share within ±60 seconds.",
+                "Par horizon de prévision, effectif, médiane de l’erreur signée (prévu moins "
+                "observé), 90e centile de l’erreur absolue et part à ±60 secondes.",
+            ),
+            counts=Text(
+                "Counts by observation basis and exact inclusive ±60-second count.",
+                "Effectifs par source d’observation et nombre exact à ±60 secondes incluses.",
+            ),
+            exclusions=Text(
+                "Only observed vehicle stops enter the calculation. Trip updates reporting "
+                "a time are counted separately. Passed stops are excluded because the observed "
+                "time is itself a prediction.",
+                "Seuls les arrêts observés des véhicules entrent dans le calcul. Les heures "
+                "signalées par le flux des trajets sont comptées à part. Les arrêts dépassés "
+                "sont exclus car l’heure observée est elle-même une prédiction.",
+            ),
+            limits=Text(
+                f"Percentiles use {DELAY_BIN_SECONDS}-second bins. The ±60-second band uses an "
+                "inclusive boundary. Each horizon requires 30 independent stop observations. "
+                "The hour is the observed local hour. Requires cleaning v7 or later.",
+                f"Les centiles utilisent des classes de {DELAY_BIN_SECONDS} secondes. La bande "
+                "de ±60 secondes inclut ses bornes. Chaque horizon exige 30 observations "
+                "indépendantes. L’heure est l’heure locale observée. Nécessite le nettoyage v7 "
+                "ou une version ultérieure.",
+            ),
+            extra_tables=(PREDICTION_SAMPLES,),
+        ),
+    ),
+    query=None,
+    columns={
+        "counts": Text("Counts", "Effectifs"),
+        "excluded": Text("Exclusions", "Exclusions"),
+        "dimension_states": Text("States by dimension", "États par dimension"),
+        "capture_gap_days": Text("Capture-gap days", "Jours de collecte interrompue"),
+    },
+)
+
 _FAMILIES = (
     _PUNCTUALITY,
     _SERVICE_DELIVERED,
@@ -2317,6 +2576,7 @@ _FAMILIES = (
     _SERVICE_OFFERED,
     _VEHICLES,
     _CORRIDORS,
+    _SCORECARD,
 )
 _SELECTIONS = {
     key: (family, selected)
@@ -2326,26 +2586,6 @@ _SELECTIONS = {
         *((measure.id, (measure,)) for measure in family.measures),
     )
 }
-
-
-def _percentile(
-    histogram: list[tuple[int, int]],
-    count: int,
-    percentile: int,
-    bin_seconds: int = DELAY_BIN_SECONDS,
-) -> float:
-    # Zero-based ranks for a continuous percentile using each bin's midpoint.
-    rank, remainder = divmod((count - 1) * percentile, 100)
-    seen = 0
-    lower_midpoint = None
-    for edge, occurrences in histogram:
-        midpoint = edge + bin_seconds / 2
-        seen += occurrences
-        if lower_midpoint is None and seen > rank:
-            lower_midpoint = midpoint
-        if lower_midpoint is not None and seen > rank + bool(remainder):
-            return lower_midpoint + (midpoint - lower_midpoint) * remainder / 100
-    raise RuntimeError("histogram counts do not match the sample count")
 
 
 def _state(
@@ -2455,6 +2695,7 @@ class ReadWindow:
     missing_in_cut: bool = False
     not_tracked: list[str] = field(default_factory=list)
     batch_days: int | None = None
+    versions: dict[str, int] = field(default_factory=dict)
 
     @property
     def no_days_measured(self) -> bool:
@@ -2524,9 +2765,14 @@ def read_window(
     family: Family,
     selected: tuple[Measure, ...],
     group: EntityKind | None = None,
+    *,
+    extra_tables: tuple[str, ...] = (),
+    receipts: dict[str, bytes] | None = None,
 ) -> ReadWindow:
     tables = tuple(
-        dict.fromkeys((*family.tables, *(table for m in selected for table in m.extra_tables)))
+        dict.fromkeys(
+            (*family.tables, *(table for m in selected for table in m.extra_tables), *extra_tables)
+        )
     )
     if group and family.id == _ALERT_COUNTS_ID:
         tables += (TRIP_DAYS, STOP_EVENTS) if group == "stop" else (TRIP_DAYS,)
@@ -2536,13 +2782,26 @@ def read_window(
     for ordinal in range(question.start.toordinal(), question.end.toordinal() + 1):
         day = date.fromordinal(ordinal)
         in_cut = question.day_type is None or question.day_type == _DAY_TYPES[day.weekday()]
-        files = store.files(
-            conn,
-            question.city,
-            day,
-            tables,
-            allow_untracked_alerts=family.id == _ALERT_COUNTS_ID,
+        configured = store.cleaning_version
+        candidates = (
+            range(configured, 2, -1)
+            if family.id == SCORECARD and PREDICTION_SAMPLES not in tables and configured >= 3
+            else (configured,)
         )
+        files = None
+        for version in candidates:
+            source = store if version == configured else replace(store, cleaning_version=version)
+            files = source.files(
+                conn,
+                question.city,
+                day,
+                tables,
+                allow_untracked_alerts=family.id == _ALERT_COUNTS_ID,
+                receipts=receipts,
+            )
+            if files is not None:
+                window.versions[day.isoformat()] = version
+                break
         if files is None:
             window.missing.append(day.isoformat())
             window.missing_in_cut |= in_cut
@@ -2726,7 +2985,7 @@ def _corridor_answer(
         for measure in selected:
             if measure.percentile:
                 values[measure.id] = _percentile(
-                    histogram, sample, measure.percentile, family.bin_seconds
+                    histogram, sample, measure.percentile, width=family.bin_seconds
                 )
             else:
                 values[measure.id] = lost / (sample if measure.id == "mean_time_lost" else 60)
@@ -2866,6 +3125,232 @@ def _offered_answer(
     )
 
 
+def _scorecard_answer(
+    conn: duckdb.DuckDBPyConnection,
+    store: Store,
+    question: Question,
+    family: Family,
+    selected: tuple[Measure, ...],
+    started: float,
+) -> dict[str, Any]:
+    source_groups = (
+        FEED_MEASURES,
+        ("vehicle_field_completeness", "vehicles_without_trip"),
+        ("live_trip_coverage",),
+        ("prediction_error",),
+    )
+    results: dict[str, Result] = {}
+    measure_days: dict[str, dict[str, Any]] = {}
+    for group in source_groups:
+        items = tuple(measure for measure in selected if measure.id in group)
+        if not items:
+            continue
+        receipts: dict[str, bytes] = {}
+        extra_tables: tuple[str, ...] = ()
+        if group == source_groups[1] and question.direction is not None:
+            extra_tables = (TRIP_DAYS,)
+        if group == source_groups[2] and question.stop is not None:
+            extra_tables = (STOP_EVENTS,)
+        window = read_window(
+            conn, store, question, family, items, extra_tables=extra_tables, receipts=receipts
+        )
+        included = [(day, json.loads(receipts[day])) for day in window.included]
+        versions = sorted({str(window.versions[day]) for day in window.included})
+        declarations = {
+            day: declaration if isinstance(declaration, dict) else {}
+            for day, receipt in included
+            for declaration in (receipt.get("scorecard_declaration"),)
+        }
+        if question.hour is not None:
+            timezone = next(
+                (
+                    entry["timezone"]
+                    for entry in reversed(declarations.values())
+                    if isinstance(entry.get("timezone"), str)
+                ),
+                "America/Toronto",
+            )
+            conn.execute("SET TimeZone = ?", [timezone])
+        if group == FEED_MEASURES:
+            feeds = {feed for entry in declarations.values() for feed in entry.get("feeds", [])}
+            if any(
+                window.versions[day] >= 5 and "alerts" not in receipt for day, receipt in included
+            ):
+                feeds.add("alerts")
+            results.update(
+                feed_results(
+                    conn,
+                    window.paths[FEED_POLLS],
+                    question.city,
+                    versions,
+                    {item.id for item in items},
+                    feeds,
+                )
+            )
+        elif group == source_groups[1]:
+            filters, arguments = _cuts(question, None)
+            totals: Counter[str] = Counter()
+            denominator: Counter[str] = Counter()
+            unpublished: dict[str, list[str]] = {name: [] for name in VEHICLE_FIELDS}
+            without_trip: set[str] = set()
+            for day, paths in zip(window.included, window.batches(), strict=True):
+                counts, ids = vehicle_counts(
+                    conn,
+                    paths[VEHICLE_POSITIONS],
+                    paths.get(TRIP_DAYS),
+                    question.city,
+                    [str(window.versions[day])],
+                    filters,
+                    arguments,
+                    question.hour,
+                )
+                without_trip.update(ids)
+                totals.update(reporting_us=counts["reporting_us"], intervals=counts["intervals"])
+                totals["without_trip_us"] += counts["reporting_us"] - counts["trip"]
+                fields = declarations[day].get("unpublished_vehicle_fields", [])
+                for name in VEHICLE_FIELDS:
+                    if name in fields:
+                        unpublished[name].append(day)
+                    else:
+                        totals[name] += counts[name]
+                        denominator[name] += counts["reporting_us"]
+            declared = [entry["feeds"] for entry in declarations.values() if "feeds" in entry]
+            empty = (
+                "not_measured"
+                if not window.included
+                else "not_tracked"
+                if len(declared) == len(window.included)
+                and all("vehicle_positions" not in feeds for feeds in declared)
+                else "unknown"
+            )
+            values = {}
+            states = {}
+            for name in VEHICLE_FIELDS:
+                values[name] = totals[name] / denominator[name] if denominator[name] else None
+                states[name] = (
+                    "measured"
+                    if denominator[name]
+                    else "not_published"
+                    if unpublished[name] and len(unpublished[name]) == len(window.included)
+                    else empty
+                )
+            results[group[0]] = Result(
+                values,
+                "measured"
+                if "measured" in states.values()
+                else "not_published"
+                if all(state == "not_published" for state in states.values())
+                else empty,
+                {
+                    "intervals": totals["intervals"],
+                    **{
+                        name: {"present_us": totals[name], "reporting_us": denominator[name]}
+                        for name in VEHICLE_FIELDS
+                    },
+                },
+                {"not_published_days": unpublished},
+                states,
+            )
+            reporting = totals["reporting_us"]
+            results[group[1]] = Result(
+                totals["without_trip_us"] / reporting if reporting else None,
+                "measured" if reporting else empty,
+                {
+                    "intervals": totals["intervals"],
+                    "reporting_us": reporting,
+                    "without_trip_us": totals["without_trip_us"],
+                    "distinct_vehicles_without_trip": len(without_trip)
+                    if totals["intervals"]
+                    else None,
+                },
+            )
+        elif group == source_groups[2]:
+            filters, arguments = _cuts(replace(question, stop=None), "hour(scheduled_start_utc)")
+            results[group[0]] = coverage_counts(
+                conn,
+                list(window.batches()),
+                question.city,
+                versions,
+                filters,
+                arguments,
+                question.stop,
+            )
+        else:
+            filters, arguments = _cuts(
+                question, "hour(published_at_utc + actual_lead_seconds * INTERVAL '1 second')"
+            )
+            results[group[0]] = prediction_result(
+                conn,
+                [batch[PREDICTION_SAMPLES] for batch in window.batches()],
+                question.city,
+                versions,
+                filters,
+                arguments,
+            )
+        for item in items:
+            gap_days = set(results[item.id].gap_days)
+            dates = window.evidence(store, question, family, started)
+            for key in ("days_measured", "days_included"):
+                dates[key] = [day for day in dates[key] if day not in gap_days]
+            dates["days_not_measured"] = sorted(set(dates["days_not_measured"]) | gap_days)
+            measure_days[item.id] = {
+                key: dates[key] for key in ("days_measured", "days_included", "days_not_measured")
+            }
+            measure_days[item.id]["cleaning_versions"] = sorted(
+                {window.versions[day] for day in window.included}
+            )
+
+    asked = {item.id: results[item.id] for item in selected}
+    states_by_measure = {key: result.state for key, result in asked.items()}
+    state = next(
+        (
+            value
+            for value in (
+                "measured",
+                "too_few_to_judge",
+                "unknown",
+                "no_live_data",
+                "not_published",
+                "not_tracked",
+                "not_measured",
+            )
+            if value in states_by_measure.values()
+        ),
+        "not_measured",
+    )
+    dates = {
+        key: sorted({day for days in measure_days.values() for day in days[key]})
+        for key in ("days_measured", "days_included", "days_not_measured", "cleaning_versions")
+    }
+    partial = dates["days_included"] and dates["days_not_measured"]
+    dates["days_not_measured"] = sorted(
+        set(dates["days_not_measured"]) - set(dates["days_measured"])
+    )
+    return {
+        "measure": question.measure,
+        "value": {key: result.value for key, result in asked.items()},
+        "state": state,
+        "state_text": _STATES[state]._asdict(),
+        "coverage_note": _PARTIAL._asdict() if partial else None,
+        "evidence": {
+            "city": question.city,
+            "start_date": str(question.start),
+            "end_date": str(question.end),
+            "cuts": question.cuts(),
+            **dates,
+            "method_version": family.method_version,
+            "query_ms": (perf_counter() - started) * 1000,
+            "measure_states": states_by_measure,
+            "measure_days": measure_days,
+            "counts": {key: result.counts for key, result in asked.items()},
+            "excluded": {key: result.excluded for key, result in asked.items()},
+            "dimension_states": {key: result.states for key, result in asked.items()},
+            "capture_gap_days": {key: result.gap_days for key, result in asked.items()},
+        },
+        "info": [_info(family, item) for item in selected],
+    }
+
+
 def ask(store: Store, question: Question) -> dict[str, Any]:
     """Read validated days and compute the selected measure or family with its evidence."""
     started = perf_counter()
@@ -2874,6 +3359,8 @@ def ask(store: Store, question: Question) -> dict[str, Any]:
         return _series_answer(store, question, family, selected, question.group, started)
     totals = Batch()
     with store.connect() as conn:
+        if family.query is None:
+            return _scorecard_answer(conn, store, question, family, selected, started)
         window = read_window(conn, store, question, family, selected)
         for offset, batch in enumerate(window.batches()):
             result = family.query(conn, family, batch, question, str(store.cleaning_version), None)
@@ -2938,6 +3425,7 @@ def _series_answer(
     # Position files are already queried one service day at a time. Their manifest
     # date also covers occupancy observations that have no trip or service date.
     position_series = (vehicles or crowding) and group != "direction"
+    assert family.query is not None
     query = replace(question, group="hour" if hourly else None) if position_series else question
     occupancy_days: set[str] = set()
     with store.connect() as conn:
@@ -3229,6 +3717,10 @@ def answer_csv(answer: dict[str, Any], language: Language) -> str:
             "unit": unit,
             "value": value,
         }
+        if family.id == SCORECARD:
+            row.update(evidence["measure_days"][key])
+            for column in ("counts", "excluded", "dimension_states", "capture_gap_days"):
+                row[column] = evidence[column][key]
         writer.writerow(
             json.dumps(row[name], ensure_ascii=False)
             if isinstance(row[name], (dict, list))

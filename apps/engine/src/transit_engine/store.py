@@ -102,6 +102,7 @@ class Store:
         tables: tuple[str, ...] = _PUNCTUALITY_FILES,
         *,
         allow_untracked_alerts: bool = False,
+        receipts: dict[str, bytes] | None = None,
     ) -> tuple[str, ...] | None:
         """An empty alert path represents an explicit not-tracked receipt when allowed."""
         return self._checked_files(
@@ -111,6 +112,7 @@ class Store:
             tables,
             verify_digests=False,
             allow_untracked_alerts=allow_untracked_alerts,
+            receipts=receipts,
         )
 
     def verify(self, conn: duckdb.DuckDBPyConnection, city: str, day: date) -> bool:
@@ -129,6 +131,7 @@ class Store:
         *,
         verify_digests: bool,
         allow_untracked_alerts: bool = False,
+        receipts: dict[str, bytes] | None = None,
     ) -> tuple[str, ...] | None:
         if not CITY.fullmatch(city):
             raise ValueError("Invalid city")
@@ -192,4 +195,6 @@ class Store:
                                 return None
                 except (FileNotFoundError, IsADirectoryError):
                     return None
+        if receipts is not None:
+            receipts[day.isoformat()] = payload
         return tuple(checked_paths.get(name, "") for name in tables)

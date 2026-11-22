@@ -72,6 +72,11 @@ def clean_from_inputs(
         routes_without_live_data=routes,
     )
     result.alerts = versions if sources else None
+    result.scorecard_declaration = {
+        "timezone": declaration.provider.timezone,
+        "feeds": [*sorted(set(feeds)), *(["alerts"] if sources else [])],
+        "unpublished_vehicle_fields": sorted(set(declaration.realtime.unpublished_vehicle_fields)),
+    }
     return result
 
 

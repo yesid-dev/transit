@@ -4,6 +4,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+from transit_ops.providers.compat import manifest_from_declaration
 from transit_ops.providers.declaration import SITE_LOCALES, DeclarationError, load_declaration
 
 
@@ -26,6 +27,14 @@ def refuses(tmp_path, payload, key):
     assert "fixture_city.yaml" in str(error.value)
     assert key in str(error.value)
     return str(error.value)
+
+
+def test_unpublished_vehicle_fields_are_retained_for_clean_days(tmp_path, payload):
+    payload["unpublished_vehicle_fields"] = ["stop", "occupancy"]
+    manifest = manifest_from_declaration(load(tmp_path, payload))
+    assert manifest.realtime.unpublished_vehicle_fields == ["stop", "occupancy"]
+    payload["unpublished_vehicle_fields"] = ["unrecognized"]
+    refuses(tmp_path, payload, "unpublished_vehicle_fields")
 
 
 @pytest.mark.parametrize(

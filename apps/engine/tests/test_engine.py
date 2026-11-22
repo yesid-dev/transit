@@ -64,6 +64,7 @@ class Trip(NamedTuple):
     route_type: int = 3
     basis: str = "trip_update_reported"
     stop_times: tuple[StopTiming, ...] = ()
+    captured: bool = False
 
 
 class Poll(NamedTuple):
@@ -96,6 +97,8 @@ def _build_store(
     cleaning_version: int,
     trips_by_day: dict[date, tuple[Trip, ...]] | None = None,
     polls_by_day: dict[date, tuple[Poll, ...]] | None = None,
+    *,
+    city: str = "stm",
 ) -> Store:
     version = str(cleaning_version)
     with duckdb.connect() as conn:
@@ -104,7 +107,8 @@ def _build_store(
                 provider VARCHAR, service_date DATE, cleaning_version VARCHAR, trip_id VARCHAR,
                 route_id VARCHAR, direction_id INTEGER, state VARCHAR, state_reason VARCHAR,
                 route_has_live_data BOOLEAN, scheduled_start_utc TIMESTAMPTZ,
-                cancellation_notice_utc TIMESTAMPTZ, route_type INTEGER
+                cancellation_notice_utc TIMESTAMPTZ, route_type INTEGER,
+                first_capture_utc TIMESTAMPTZ
             );
             CREATE TABLE stops (
                 provider VARCHAR, service_date DATE, cleaning_version VARCHAR, trip_id VARCHAR,
@@ -122,13 +126,13 @@ def _build_store(
             CREATE TABLE polls (
                 provider VARCHAR, service_date DATE, cleaning_version VARCHAR,
                 feed VARCHAR, captured_at_utc TIMESTAMPTZ, result VARCHAR,
-                feed_timestamp_utc TIMESTAMPTZ, entity_count BIGINT
+                feed_timestamp_utc TIMESTAMPTZ, entity_count BIGINT, attempt_id VARCHAR
             );
             """)
         for day, trips in (
             trips_by_day or dict.fromkeys((FALL_BACK, THURSDAY, SATURDAY, SUNDAY), TRIPS)
         ).items():
-            directory = tmp_path / "stm" / str(day) / f"v{version}"
+            directory = tmp_path / city / str(day) / f"v{version}"
             directory.mkdir(parents=True)
             start = (
                 datetime(2026, 11, 2, 6, 15, tzinfo=UTC)
@@ -138,12 +142,12 @@ def _build_store(
             states: Counter[str] = Counter()
             bases: Counter[str] = Counter()
             polls = (polls_by_day or {}).get(day, ())
-            for poll in polls:
+            for index, poll in enumerate(polls):
                 captured = start + timedelta(seconds=poll.offset_seconds)
                 conn.execute(
-                    "INSERT INTO polls VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO polls VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     [
-                        "stm",
+                        city,
                         day,
                         version,
                         poll.feed,
@@ -151,10 +155,11 @@ def _build_store(
                         poll.result,
                         captured - timedelta(seconds=poll.publication_age),
                         1,
+                        str(index),
                     ],
                 )
             for trip in trips:
-                identity = ("stm", day, version, trip.id)
+                identity = (city, day, version, trip.id)
                 start_at = start + timedelta(minutes=trip.offset_minutes)
                 notice = (
                     start_at + timedelta(seconds=trip.notice_seconds)
@@ -195,7 +200,7 @@ def _build_store(
                         ],
                     )
                 conn.execute(
-                    "INSERT INTO trips VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO trips VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     [
                         *identity,
                         trip.line,
@@ -206,6 +211,7 @@ def _build_store(
                         scheduled,
                         notice,
                         trip.route_type,
+                        start_at if trip.captured else None,
                     ],
                 )
                 states[trip.state] += 1
@@ -294,7 +300,7 @@ def _build_store(
             (directory / "manifest.json").write_text(
                 json.dumps(
                     {
-                        "provider": "stm",
+                        "provider": city,
                         "service_date": str(day),
                         "cleaning_version": version,
                         "schedule_sha256": "a" * 64,

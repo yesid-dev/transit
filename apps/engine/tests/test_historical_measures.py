@@ -3,6 +3,7 @@ import csv
 import io
 import json
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
@@ -50,9 +51,12 @@ def _write_table(
     day: date,
     name: str,
     schema: str,
-    records: list[tuple[object, ...]],
+    records: Sequence[tuple[object, ...]],
+    *,
+    city: str = "stm",
 ) -> None:
-    directory = Path(store.root) / "stm" / str(day) / "v6"
+    version = str(store.cleaning_version)
+    directory = Path(store.root) / city / str(day) / f"v{version}"
     marker = directory / "manifest.json"
     manifest = json.loads(marker.read_text(encoding="utf-8"))
     conn.execute(
@@ -63,7 +67,7 @@ def _write_table(
         placeholders = ", ".join("?" for _ in range(len(records[0]) + 3))
         conn.executemany(
             f"INSERT INTO fixture VALUES ({placeholders})",
-            [("stm", "6", day, *record) for record in records],
+            [(city, version, day, *record) for record in records],
         )
     target = directory / name
     conn.execute("COPY fixture TO ? (FORMAT PARQUET)", [str(target)])
