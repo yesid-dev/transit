@@ -1,4 +1,5 @@
 <script lang="ts">
+	import InfoPage from '#lib/components/layout/InfoPage.svelte';
 	import { getLocale, type Locale } from '#lib/i18n/index.ts';
 	import { LEGAL_EFFECTIVE_DATES, legalDocument, type LegalPageKind } from './legal.copy';
 
@@ -13,79 +14,49 @@
 	const document = $derived(legalDocument(locale, kind));
 </script>
 
-<article class="legal-document" data-testid="legal-document" aria-labelledby="legal-title">
-	<header class="legal-document__header">
+<InfoPage title={document.title} titleId="legal-title" testId="legal-document">
+	{#snippet beforeTitle()}
 		<p class="legal-document__kicker">{document.kicker}</p>
-		<h1 id="legal-title">{document.title}</h1>
+	{/snippet}
+	{#snippet afterTitle()}
 		<p class="legal-document__effective">
 			{document.effectiveLabel}:
 			<time datetime={LEGAL_EFFECTIVE_DATES[kind]}>{document.effectiveDate}</time>
 		</p>
 		<p class="legal-document__summary">{document.summary}</p>
-	</header>
+	{/snippet}
 
-	<div class="legal-document__sections">
-		{#each document.sections as section (section.id)}
-			<section aria-labelledby={`legal-${section.id}`}>
-				<h2 id={`legal-${section.id}`}>{section.title}</h2>
-				{#each section.paragraphs as paragraph (paragraph)}
-					<p>{paragraph}</p>
-				{/each}
-				{#if section.bullets}
-					<ul>
-						{#each section.bullets as item (item)}
-							<li>{item}</li>
-						{/each}
-					</ul>
-				{/if}
-				{#if section.links}
-					<ul class="legal-document__links">
-						{#each section.links as link (link.href)}
-							<li>
-								<a
-									href={link.href}
-									target={link.href.startsWith('https://') ? '_blank' : undefined}
-									rel={link.href.startsWith('https://') ? 'noreferrer' : undefined}>{link.label}</a
-								>
-							</li>
-						{/each}
-					</ul>
-				{/if}
-			</section>
-		{/each}
-	</div>
-</article>
+	{#each document.sections as section (section.id)}
+		<section aria-labelledby={`legal-${section.id}`}>
+			<h2 id={`legal-${section.id}`}>{section.title}</h2>
+			{#each section.paragraphs as paragraph (paragraph)}
+				<p>{paragraph}</p>
+			{/each}
+			{#if section.bullets}
+				<ul>
+					{#each section.bullets as item (item)}
+						<li>{item}</li>
+					{/each}
+				</ul>
+			{/if}
+			{#if section.links}
+				<ul class="legal-document__links">
+					{#each section.links as link (link.href)}
+						<li>
+							<a
+								href={link.href}
+								target={link.href.startsWith('https://') ? '_blank' : undefined}
+								rel={link.href.startsWith('https://') ? 'noreferrer' : undefined}>{link.label}</a
+							>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</section>
+	{/each}
+</InfoPage>
 
 <style>
-	.legal-document {
-		display: grid;
-		gap: 3rem;
-		width: min(100% - 2rem, 52rem);
-		margin-inline: auto;
-		padding-block: 4rem 6rem;
-	}
-
-	.legal-document__header,
-	.legal-document__sections,
-	section {
-		display: grid;
-		gap: 1rem;
-	}
-
-	.legal-document__sections {
-		gap: 2.5rem;
-		font-size: var(--text-reading);
-	}
-
-	.legal-document__kicker,
-	.legal-document__effective,
-	h1,
-	h2,
-	p,
-	ul {
-		margin: 0;
-	}
-
 	.legal-document__kicker,
 	.legal-document__effective {
 		font-family: var(--font-mono);
@@ -102,35 +73,8 @@
 		color: var(--muted-foreground);
 	}
 
-	h1,
-	h2 {
-		font-family: var(--font-heading);
-		line-height: 1.25;
-	}
-
-	h1 {
-		font-size: var(--text-display);
-	}
-
-	h2 {
-		font-size: var(--text-reading-heading);
-	}
-
-	p,
-	li {
-		max-width: var(--measure-lede);
-		color: var(--secondary-foreground);
-		line-height: 1.7;
-	}
-
 	.legal-document__summary {
 		font-size: var(--text-reading-support);
-	}
-
-	ul {
-		display: grid;
-		gap: 0.5rem;
-		padding-inline-start: 1.25rem;
 	}
 
 	.legal-document__links {
@@ -142,14 +86,5 @@
 		display: inline-block;
 		min-block-size: 24px;
 		align-content: center;
-	}
-
-	@media (--desktop-min) {
-		.legal-document__sections {
-			font-size: var(--text-reading-desktop);
-		}
-		h2 {
-			font-size: var(--text-reading-heading-desktop);
-		}
 	}
 </style>

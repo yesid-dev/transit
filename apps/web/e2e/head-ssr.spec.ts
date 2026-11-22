@@ -79,17 +79,25 @@ for (const locale of ['en', 'fr'] as const) {
 		}
 	});
 
-	test(`${locale}: Roadmap has its own server-rendered title and share card`, async ({
-		request,
-	}) => {
+	test(`${locale}: Roadmap has server-rendered headings and a share card`, async ({ request }) => {
 		const path = locale === 'en' ? '/roadmap' : '/fr/roadmap';
 		const title = locale === 'en' ? 'Roadmap' : 'Feuille de route';
+		const introduction =
+			locale === 'en' ? 'What is changing in Transit' : 'Ce qui change dans Transit';
 		const response = await request.get(path);
 		expect(response.ok()).toBe(true);
 		const html = await response.text();
 		const head = html.slice(0, html.indexOf('</head>'));
 		expect(head).toContain(`<title>${title} · Transit</title>`);
 		expect(head).toContain(`rel="canonical" href="https://transit.yesid.dev${path}"`);
+		const article = html.match(
+			/<article\b[^>]*aria-labelledby="roadmap-title"[^>]*>(.*?)<\/article>/s,
+		)?.[1];
+		const headings = [...(article ?? '').matchAll(/<h([12])\b[^>]*>([^<]+)<\/h\1>/g)];
+		expect(headings.slice(0, 2).map(([, level, text]) => [level, text])).toEqual([
+			['1', title],
+			['2', introduction],
+		]);
 		const image = head.match(/<meta property="og:image" content="([^"]*)"/)?.[1];
 		expect(image).toMatch(new RegExp(`/og/pages/roadmap\\.${locale}\\.png\\?v=[a-f0-9]{16}$`));
 		const url = new URL(image!);

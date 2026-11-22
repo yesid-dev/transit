@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Badge } from '@yesid/ui/badge';
+	import InfoPage from '#lib/components/layout/InfoPage.svelte';
 	import { getLocale } from '#lib/i18n/index.ts';
 	import { HOME_INVITE_LINKS } from '#lib/features/home/homePulse.copy.ts';
 	import { ROADMAP_ENTRIES, roadmapCopy, roadmapTitle } from './roadmap.copy';
@@ -8,16 +9,15 @@
 	const copy = $derived(roadmapCopy[locale]);
 </script>
 
-<article class="roadmap" aria-labelledby="roadmap-heading">
-	<header>
-		<p class="roadmap-title">{roadmapTitle[locale]}</p>
-		<h1 id="roadmap-heading">{copy.heading}</h1>
+<InfoPage title={roadmapTitle[locale]} titleId="roadmap-title">
+	<section aria-labelledby="roadmap-introduction">
+		<h2 id="roadmap-introduction">{copy.heading}</h2>
 		<p>{copy.introduction}</p>
-	</header>
+	</section>
 
 	<section aria-labelledby="roadmap-current">
 		<h2 id="roadmap-current">{copy.currentHeading}</h2>
-		<ul>
+		<ul class="list-disc">
 			{#each copy.current as item (item)}
 				<li>{item}</li>
 			{/each}
@@ -46,61 +46,15 @@
 				.after}
 		</p>
 	</section>
-</article>
+</InfoPage>
 
 <style>
-	.roadmap {
-		display: grid;
-		gap: 2.5rem;
-		width: min(100% - 2rem, 52rem);
-		margin-inline: auto;
-		padding-block: 4rem 6rem;
-		font-size: var(--text-reading);
-		color: var(--secondary-foreground);
-		line-height: 1.7;
-	}
-
-	header,
-	section,
-	.entries > li {
-		display: grid;
-		gap: 0.75rem;
-	}
-
-	.roadmap-title {
-		font-weight: 700;
-		color: var(--primary);
-	}
-
-	h1,
-	h2,
 	h3 {
 		font-family: var(--font-heading);
 		color: var(--foreground);
 		line-height: 1.25;
-	}
-
-	h1 {
-		font-size: var(--text-display);
-	}
-
-	h2 {
-		font-size: var(--text-reading-heading);
-	}
-
-	h3 {
 		font-size: var(--text-reading-support);
 		font-weight: 700;
-	}
-
-	p,
-	ul {
-		max-width: var(--measure-lede);
-	}
-
-	ul {
-		list-style: disc;
-		padding-inline-start: 1.25em;
 	}
 
 	.entries {
@@ -110,18 +64,10 @@
 	}
 
 	.entries > li {
+		display: grid;
+		gap: 0.75rem;
 		border-block-start: 1px solid var(--border);
 		padding-block-start: 1rem;
 		scroll-margin-block-start: calc(var(--chrome-offset, 0px) + 1rem);
-	}
-
-	@media (--desktop-min) {
-		.roadmap {
-			font-size: var(--text-reading-desktop);
-		}
-
-		h2 {
-			font-size: var(--text-reading-heading-desktop);
-		}
 	}
 </style>
