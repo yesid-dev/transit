@@ -62,7 +62,7 @@ for (const locale of ['en', 'fr'] as const) {
 					url.searchParams.get('v'),
 				);
 			}
-			expect(head, path).toContain(`rel="canonical" href="https://transit.yesid.dev${path}"`);
+			expect(head, path).toContain(`rel="canonical" href="https://transit1.yesid.dev${path}"`);
 			const graph = JSON.parse(
 				head.match(/<script type="application\/ld\+json">(.*?)<\/script>/s)?.[1] ?? '{}',
 			)['@graph'];
@@ -74,7 +74,7 @@ for (const locale of ['en', 'fr'] as const) {
 			const search = new URL(website.potentialAction.target.urlTemplate.replace('{query}', 'bus'));
 			expect(search.pathname).toBe(`${locale === 'en' ? '' : '/fr'}/search`);
 			expect(search.searchParams.get('provider')).toBe(
-				new URL(path, 'https://transit.yesid.dev').searchParams.get('provider'),
+				new URL(path, 'https://transit1.yesid.dev').searchParams.get('provider'),
 			);
 		}
 	});

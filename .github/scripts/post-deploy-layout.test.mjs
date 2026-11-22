@@ -9,7 +9,7 @@ test("layout replay verifies that production reports the intended source SHA", a
   const sha = "a".repeat(40);
   const fetcher = async () => ({
     status: 200,
-    json: async () => ({ service: "transit-web", commit: sha }),
+    json: async () => ({ service: "transit1-web", commit: sha }),
   });
   await verifyDeployedSha(sha, fetcher);
   await assert.rejects(
@@ -37,7 +37,7 @@ function fakeClock() {
 
 const health = (commit) => ({
   status: 200,
-  json: async () => ({ service: "transit-web", commit }),
+  json: async () => ({ service: "transit1-web", commit }),
 });
 
 test("waits until production reports the deployed commit", async () => {

@@ -46,9 +46,9 @@ test("manual production deployment checks out the selected ref without CI depend
   assert.doesNotMatch(workflow, /needs:|run:.*(?:test|smoke)|workflow_run/);
   for (const setting of [
     "TRANSIT_BUILD_TARGET: production",
-    "PUBLIC_SITE_ORIGIN: https://transit.yesid.dev",
+    "PUBLIC_SITE_ORIGIN: https://transit1.yesid.dev",
     "PUBLIC_V1_BASE: https://data.yesid.dev/v1",
-    'PUBLIC_INDEXING: "true"',
+    'PUBLIC_INDEXING: "false"',
   ]) {
     assert.ok(workflow.includes(setting), setting);
     assert.ok(web.includes(setting), setting);
@@ -160,16 +160,35 @@ test("resolved deployment identity is the selected historical checkout and fails
     git("commit", "--quiet", "--allow-empty", "-m", "Historical source");
     const selected = git("rev-parse", "HEAD");
     git("commit", "--quiet", "--allow-empty", "-m", "Newer main");
-    assert.notEqual(git("rev-parse", "HEAD"), selected);
+    const dispatch = git("rev-parse", "HEAD");
+    assert.notEqual(dispatch, selected);
     git("checkout", "--quiet", "--detach", selected);
+    for (const target of ["web", "both"]) {
+      const rejected = runStep("Resolve deployed commit", directory, {
+        GITHUB_ENV: output,
+        DISPATCH_SHA: dispatch,
+        DEPLOY_TARGET: target,
+      });
+      assert.notEqual(rejected.status, 0, target);
+      assert.match(rejected.stderr, /Web deployment requires the current main/);
+    }
     const resolved = runStep("Resolve deployed commit", directory, {
       GITHUB_ENV: output,
+      DISPATCH_SHA: dispatch,
+      DEPLOY_TARGET: "data-proxy",
     });
     assert.equal(resolved.status, 0, resolved.stderr);
     assert.equal(
       readFileSync(output, "utf8").trim(),
       `TRANSIT_COMMIT_SHA=${selected}`,
     );
+    git("checkout", "--quiet", "--detach", dispatch);
+    const current = runStep("Resolve deployed commit", directory, {
+      GITHUB_ENV: output,
+      DISPATCH_SHA: dispatch,
+      DEPLOY_TARGET: "web",
+    });
+    assert.equal(current.status, 0, current.stderr);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

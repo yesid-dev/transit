@@ -69,7 +69,7 @@ test('documents carry the security headers and robots matches the indexing polic
 	}
 	const robots = await (await request.get('/robots.txt')).text();
 	const sitemap = await (await request.get('/sitemap.xml')).text();
-	if (/^Disallow: \/$/m.test(robots)) {
+	if (!/^Sitemap:/m.test(robots)) {
 		expect(headers['x-robots-tag']).toContain('noindex');
 		expect(sitemap).not.toContain('<loc>');
 	} else {

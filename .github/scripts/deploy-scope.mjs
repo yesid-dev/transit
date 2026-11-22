@@ -103,14 +103,14 @@ export function main(
 
 export async function liveProductionSha(fetcher = fetch) {
 	try {
-		const response = await fetcher('https://transit.yesid.dev/health', {
+		const response = await fetcher('https://transit1.yesid.dev/health', {
 			redirect: 'error',
 			signal: AbortSignal.timeout(5_000),
 			headers: { 'cache-control': 'no-cache' },
 		});
 		const body = await response.json();
 		return [200, 503].includes(response.status) &&
-			body?.service === 'transit-web' &&
+			body?.service === 'transit1-web' &&
 			/^[a-f0-9]{40}$/.test(body.commit ?? '')
 			? body.commit
 			: undefined;

@@ -34,6 +34,7 @@ export interface OgCardArt {
 
 export interface OgCard {
 	eyebrow: string;
+	hostname?: string;
 	/** A closing period becomes the orange dot; one is added when the title has no closing mark. */
 	title: string;
 	subtitle?: string;
@@ -288,8 +289,8 @@ function eyebrowSvg(text: string, width: number, measure: MeasureText): string {
 	return `<text x="${MARGIN}" y="104" ${fontAttrs(EYEBROW_FONT, size)} fill="${YELLOW}">${escapeXml(text)}</text>`;
 }
 
-function domainSvg(): string {
-	return `<text x="${OG_CARD_WIDTH - MARGIN}" y="104" ${fontAttrs({ ...EYEBROW_FONT, tracking: 0.04 }, 22)} fill="${MUTED}" text-anchor="end">transit.yesid.dev</text>`;
+function domainSvg(hostname: string): string {
+	return `<text x="${OG_CARD_WIDTH - MARGIN}" y="104" ${fontAttrs({ ...EYEBROW_FONT, tracking: 0.04 }, 22)} fill="${MUTED}" text-anchor="end">${escapeXml(hostname)}</text>`;
 }
 
 function ctaSvg(label: string, tone: OgCtaTone, measure: MeasureText): string {
@@ -344,7 +345,7 @@ export function buildOgCardSvg(card: OgCard, measure: MeasureText): string {
 	${gridSvg()}
 	${card.art?.svg ?? ''}
 	${eyebrowSvg(card.eyebrow, width, measure)}
-	${domainSvg()}
+	${card.hostname ? domainSvg(card.hostname) : ''}
 	${titleSvg(title, mark, top, measure)}
 	${subtitle ? subtitleSvg(subtitle, top + title.height + BLOCK_GAP) : ''}
 	${wordmarkSvg()}

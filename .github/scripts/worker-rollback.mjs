@@ -14,6 +14,8 @@ function runWrangler(args, execute) {
         new URL("../../node_modules/wrangler/bin/wrangler.js", import.meta.url),
       ),
       ...args,
+      "--name",
+      "transit1-web",
     ],
     {
       cwd: fileURLToPath(new URL("../../apps/web", import.meta.url)),

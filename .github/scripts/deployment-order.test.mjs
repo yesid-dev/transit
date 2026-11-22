@@ -49,7 +49,7 @@ test("inside the production lock, a newer deployment cannot be overwritten by an
     const env = { TRANSIT_DEPLOY_EVENT: "push", TRANSIT_DEPLOY_AFTER: a };
     const live = async () => ({
       status: 200,
-      json: async () => ({ service: "transit-web", commit: b }),
+      json: async () => ({ service: "transit1-web", commit: b }),
     });
     assert.equal(typeof scope.lockedDeploymentDecision, "function");
     assert.equal(await scope.lockedDeploymentDecision(env, root, live), false);
@@ -82,7 +82,7 @@ test("inside the production lock, a newer deployment cannot be overwritten by an
     git("checkout", "--detach", b);
     const olderLive = async () => ({
       status: 200,
-      json: async () => ({ service: "transit-web", commit: a }),
+      json: async () => ({ service: "transit1-web", commit: a }),
     });
     assert.equal(
       await scope.lockedDeploymentDecision(
@@ -177,7 +177,7 @@ test("rollback guidance captures the current 100-percent Worker version before m
   assert.equal(typeof worker.currentWorkerVersion, "function");
   assert.equal(
     worker.currentWorkerVersion((_node, args) => {
-      assert.deepEqual(args.slice(1), ["deployments", "list", "--json"]);
+      assert.deepEqual(args.slice(1), ["deployments", "list", "--json", "--name", "transit1-web"]);
       return JSON.stringify([
         {
           created_on: "2026-11-10T05:00:00Z",

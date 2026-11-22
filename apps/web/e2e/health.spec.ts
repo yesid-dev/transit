@@ -7,7 +7,7 @@ test('health fails closed when the Worker has no snapshot binding', async ({ req
 	expect(response.headers()['cache-control']).toBe('no-store');
 	expect(await response.json()).toMatchObject({
 		status: 'unavailable',
-		service: 'transit-web',
+		service: 'transit1-web',
 		data: 'unavailable',
 		commit: null,
 		branch: null,

@@ -46,8 +46,9 @@ export interface SitemapEntities {
 
 export function buildRobotsTxt(config: PublicSiteConfig): string {
 	return robotsTxt({
-		indexing: config.indexing,
-		sitemap: `${config.siteOrigin}/sitemap.xml`,
+		// Crawlers must be able to read the noindex response header.
+		indexing: true,
+		sitemap: config.indexing ? `${config.siteOrigin}/sitemap.xml` : undefined,
 		disallow: ['/_kit', '/fr/_kit', '/api/'],
 	});
 }

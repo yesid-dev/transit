@@ -7,7 +7,7 @@ const version = "12345678-1234-1234-1234-123456789abc";
 test("rollback defaults to previous Worker version and records Wranglers actual version", () => {
   assert.equal(
     rollback("", (_node, args, options) => {
-      assert.deepEqual(args.slice(1), ["rollback", "--yes"]);
+      assert.deepEqual(args.slice(1), ["rollback", "--yes", "--name", "transit1-web"]);
       assert.equal(basename(options.cwd), "web");
       return `Worker Version ${version} has been deployed to 100% of traffic.\nCurrent Version ID: ${version}\n`;
     }),
@@ -17,7 +17,7 @@ test("rollback defaults to previous Worker version and records Wranglers actual 
 test("explicit rollback uses an argument array and requires matching confirmation", () => {
   assert.equal(
     rollback(version, (_node, args) => {
-      assert.deepEqual(args.slice(1), ["rollback", version, "--yes"]);
+      assert.deepEqual(args.slice(1), ["rollback", version, "--yes", "--name", "transit1-web"]);
       return `Current Version ID: ${version}`;
     }),
     version,

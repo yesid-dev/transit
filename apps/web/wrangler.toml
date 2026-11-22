@@ -1,32 +1,13 @@
-# Cloudflare Worker (Static Assets) config for the Transit citizen web app
-# Deployed as a WORKER — not Pages — because the operator's
-# account API token carries Workers + Workers Routes + DNS + zone scope but
-# NOT Cloudflare Pages. adapter-cloudflare v7 targets either; the presence of
-# `main` + `[assets]` (and the absence of `pages_build_output_dir`) selects the
-# Workers build (emits `_worker.js` + `.assetsignore`, no `_routes.json`).
-#
-# /data/* stays on the existing zone-route worker (transit-data-proxy):
-# Cloudflare matches the MORE-SPECIFIC route first, so
-# `transit.yesid.dev/data/*` beats this app's `transit.yesid.dev/*` and the
-# data worker keeps serving the /v1 snapshot contract untouched. Re-run
-# apps/data-proxy/smoke.sh after any route change here.
-name = "transit-web"
+# Citizen web app. Cloudflare owns the transit1.yesid.dev Custom Domain
+# attachment outside Wrangler, so CI can publish with Worker-only permissions.
+name = "transit1-web"
 main = ".svelte-kit/cloudflare/_worker.js"
 compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
 account_id = "eccfb9bedd87d413eaf4cac6ae2285d3"
-# transit.yesid.dev is the target; no public workers.dev fallback URL.
 workers_dev = false
-# Version URLs, including pr-<number>-transit-web.<subdomain>.workers.dev from
-# web.yml. Every workers.dev host is served noindex (hooks.server.ts).
+# PR version URLs remain available on workers.dev.
 preview_urls = true
-
-# Bind the app to the apex transit host. Routes are evaluated by specificity,
-# so the data-proxy's transit.yesid.dev/data/* route takes precedence here.
-# (Declared BEFORE [assets] — a trailing array would otherwise nest under it.)
-routes = [
-  { pattern = "transit.yesid.dev/*", zone_name = "yesid.dev" },
-]
 
 [assets]
 binding = "ASSETS"
@@ -45,9 +26,12 @@ binding = "SNAPSHOTS"
 bucket_name = "transit-snapshots"
 
 [vars]
-PUBLIC_SITE_ORIGIN = "https://transit.yesid.dev"
+PUBLIC_SITE_ORIGIN = "https://transit1.yesid.dev"
 PUBLIC_V1_BASE = "https://data.yesid.dev/v1"
-PUBLIC_INDEXING = "true"
+PUBLIC_INDEXING = "false"
+PUBLIC_PLAUSIBLE_DOMAIN = ""
+PUBLIC_CF_BEACON_TOKEN = ""
+PUBLIC_VITALS_ENABLED = ""
 # Default-provider SEO identity when the selected manifest is unavailable.
 PUBLIC_PROVIDER_SHORT_NAME = "STM"
 PUBLIC_PROVIDER_CITY = "Montréal"

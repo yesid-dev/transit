@@ -4,7 +4,7 @@ const SECURITY_TXT = `Contact: https://github.com/yesid-dev/transit/security/adv
 Contact: mailto:contact@yesid.dev
 Expires: 2027-08-31T23:59:59Z
 Preferred-Languages: en, fr
-Canonical: https://transit.yesid.dev/.well-known/security.txt
+Canonical: https://transit1.yesid.dev/.well-known/security.txt
 Policy: https://github.com/yesid-dev/transit/security/policy
 `;
 

@@ -16,7 +16,7 @@ it('returns 503 when its snapshot binding is unavailable instead of claiming ok'
 	expect(response.status).toBe(503);
 	expect(await response.json()).toMatchObject({
 		status: 'unavailable',
-		service: 'transit-web',
+		service: 'transit1-web',
 		data: 'unavailable',
 		commit: null,
 		branch: null,
@@ -118,7 +118,8 @@ it('lets the real site probe observe storage recovery on its retry instead of al
 		fetchFn: async () => {
 			const response = await freshGET({} as Parameters<typeof GET>[0]);
 			statuses.push(response.status);
-			return response;
+			// The scheduled public probe still reads the legacy Worker's health contract.
+			return Response.json({ ...(await response.json()), service: 'transit-web' }, response);
 		},
 		pause: async (ms: number) => {
 			await vi.advanceTimersByTimeAsync(ms);

@@ -73,7 +73,6 @@ describe('content security policy', () => {
 			'data:',
 			'blob:',
 			'https://protomaps.github.io',
-			'https://transit.yesid.dev',
 		]);
 		expect(csp?.directives?.['worker-src']).toEqual(['self', 'blob:']);
 	});

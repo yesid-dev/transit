@@ -14,7 +14,7 @@ export const DEV_MANIFEST_PREVIEW_SOURCE = 'https://data.yesid.dev/v1/stm/manife
 export const DEV_BASEMAP_PREVIEW_SOURCE = 'https://data.yesid.dev/v1/stm/static/basemap.json';
 
 const designTokensCss = fileURLToPath(import.meta.resolve('@yesid/tokens/tokens.css'));
-const CANONICAL_SITE_ORIGIN = 'https://transit.yesid.dev';
+const LEGACY_SNAPSHOT_ORIGIN = 'https://transit.yesid.dev';
 const ssrDataTests = [
 	'src/lib/v1/live/healthPresentation.ssr.test.ts',
 	'src/lib/v1/history/rangeResource.ssr.test.ts',
@@ -33,7 +33,7 @@ function canonicalDataUrl(value: unknown): URL | null {
 	try {
 		const url = new URL(value);
 
-		return url.origin === CANONICAL_SITE_ORIGIN && /^\/data\/v1(?:\/|$)/.test(url.pathname)
+		return url.origin === LEGACY_SNAPSHOT_ORIGIN && /^\/data\/v1(?:\/|$)/.test(url.pathname)
 			? url
 			: null;
 	} catch {
@@ -196,11 +196,7 @@ export default defineConfig(({ command }) => ({
 				},
 			}),
 
-	// Dev-only snapshot proxy. Production keeps serving the same-origin `/data/v1`
-	// contract through transit-data-proxy. Local development bypasses that quota-
-	// limited Worker and reads the public R2 custom domain directly; R2 exposes the
-	// same objects at `/v1`, so strip only the local `/data` mount prefix. Vite's
-	// proxy preserves the request method and headers, including HEAD and Range.
+	// Dev-only snapshot proxy. Deployed browser reads use the public R2 domain directly.
 	server: {
 		proxy: {
 			'/data': {
