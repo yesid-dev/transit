@@ -29,7 +29,7 @@ def measure_url(base: str, city: str, start: date, end: date, *, line: str | Non
 
 
 def request(url: str) -> tuple[int, bool, dict[str, Any]]:
-    http_request = Request(url)
+    http_request = Request(url, headers={"User-Agent": "TransitEngineBenchmark/0.1"})
     token = os.environ.get("TRANSIT1_ENGINE_ACCESS_TOKEN")
     if token and http_request.type == "https":
         http_request.add_unredirected_header("Authorization", f"Bearer {token}")
