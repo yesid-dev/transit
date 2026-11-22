@@ -18,6 +18,7 @@ from uvicorn._types import ASGISendEvent, HTTPScope
 from transit_engine import timing
 from transit_engine.clean_manifest import (
     ALERTS,
+    FEED_POLLS,
     SCHEDULED_STOP_TIMES,
     STOP_EVENTS,
     TRIP_DAYS,
@@ -43,7 +44,7 @@ V4_EXTRA_FILES = (SCHEDULED_STOP_TIMES, "vehicle_positions.parquet", "feed_polls
 class Trip(NamedTuple):
     id: str
     line: str
-    direction: int
+    direction: int | None
     state: str
     reason: str | None
     live: bool
@@ -52,6 +53,14 @@ class Trip(NamedTuple):
     duration_minutes: int = 0
     notice_seconds: int | None = None
     route_type: int = 3
+    basis: str = "trip_update_reported"
+
+
+class Poll(NamedTuple):
+    feed: str
+    offset_seconds: int
+    result: str = "ok"
+    publication_age: int = 0
 
 
 TRIPS = (
@@ -73,7 +82,10 @@ def store(tmp_path: Path) -> Store:
 
 
 def _build_store(
-    tmp_path: Path, cleaning_version: int, trips_by_day: dict[date, tuple[Trip, ...]] | None = None
+    tmp_path: Path,
+    cleaning_version: int,
+    trips_by_day: dict[date, tuple[Trip, ...]] | None = None,
+    polls_by_day: dict[date, tuple[Poll, ...]] | None = None,
 ) -> Store:
     version = str(cleaning_version)
     with duckdb.connect() as conn:
@@ -87,12 +99,20 @@ def _build_store(
             CREATE TABLE stops (
                 provider VARCHAR, service_date DATE, cleaning_version VARCHAR, trip_id VARCHAR,
                 stop_id VARCHAR, stop_sequence BIGINT, delay_seconds BIGINT,
-                scheduled_arrival_utc TIMESTAMPTZ, scheduled_departure_utc TIMESTAMPTZ
+                scheduled_arrival_utc TIMESTAMPTZ, scheduled_departure_utc TIMESTAMPTZ,
+                observed_at_utc TIMESTAMPTZ, basis VARCHAR, observed_event VARCHAR
             );
             CREATE TABLE schedule (
                 provider VARCHAR, service_date DATE, cleaning_version VARCHAR, trip_id VARCHAR,
+                route_id VARCHAR, direction_id INTEGER, stop_id VARCHAR,
+                scheduled_arrival_utc TIMESTAMPTZ, scheduled_departure_utc TIMESTAMPTZ,
                 stop_sequence BIGINT, scheduled_arrival_seconds BIGINT,
                 scheduled_departure_seconds BIGINT
+            );
+            CREATE TABLE polls (
+                provider VARCHAR, service_date DATE, cleaning_version VARCHAR,
+                feed VARCHAR, captured_at_utc TIMESTAMPTZ, result VARCHAR,
+                feed_timestamp_utc TIMESTAMPTZ, entity_count BIGINT
             );
             """)
         for day, trips in (
@@ -107,6 +127,22 @@ def _build_store(
             )
             states: Counter[str] = Counter()
             bases: Counter[str] = Counter()
+            polls = (polls_by_day or {}).get(day, ())
+            for poll in polls:
+                captured = start + timedelta(seconds=poll.offset_seconds)
+                conn.execute(
+                    "INSERT INTO polls VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        "stm",
+                        day,
+                        version,
+                        poll.feed,
+                        captured,
+                        poll.result,
+                        captured - timedelta(seconds=poll.publication_age),
+                        1,
+                    ],
+                )
             for trip in trips:
                 identity = ("stm", day, version, trip.id)
                 start_at = start + timedelta(minutes=trip.offset_minutes)
@@ -122,8 +158,31 @@ def _build_store(
                     ) + trip.offset_minutes * 60
                     last = first + trip.duration_minutes * 60
                     conn.executemany(
-                        "INSERT INTO schedule VALUES (?, ?, ?, ?, ?, ?, ?)",
-                        [(*identity, 1, first - 60, first), (*identity, 2, last, last + 60)],
+                        "INSERT INTO schedule VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        [
+                            (
+                                *identity,
+                                trip.line,
+                                trip.direction,
+                                "first",
+                                start_at - timedelta(minutes=1),
+                                start_at,
+                                1,
+                                first - 60,
+                                first,
+                            ),
+                            (
+                                *identity,
+                                trip.line,
+                                trip.direction,
+                                "other",
+                                start_at + timedelta(minutes=trip.duration_minutes),
+                                start_at + timedelta(minutes=trip.duration_minutes + 1),
+                                2,
+                                last,
+                                last + 60,
+                            ),
+                        ],
                     )
                 conn.execute(
                     "INSERT INTO trips VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -148,9 +207,25 @@ def _build_store(
                         delay += 10  # A different distribution from Thursday.
                     stop = "first" if seq == 1 else "other"
                     arrival = scheduled if delay is not None or seq != 33 else None
-                    stops.append((*identity, stop, seq, delay, arrival, None))
-                    bases["not_observed" if delay is None else "trip_update_reported"] += 1
-                conn.executemany("INSERT INTO stops VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", stops)
+                    observed = start_at + timedelta(seconds=delay) if delay is not None else None
+                    basis = "not_observed" if delay is None else trip.basis
+                    stops.append(
+                        (
+                            *identity,
+                            stop,
+                            seq,
+                            delay,
+                            arrival,
+                            None,
+                            observed,
+                            basis,
+                            "arrival" if observed else None,
+                        )
+                    )
+                    bases[basis] += 1
+                conn.executemany(
+                    "INSERT INTO stops VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", stops
+                )
             files = {}
             for table, name, counts in (
                 ("stops", STOP_EVENTS, bases),
@@ -173,6 +248,9 @@ def _build_store(
                     if name == SCHEDULED_STOP_TIMES:
                         source = "SELECT * FROM schedule"
                         rows = 2 * (len(trips) - states["added"])
+                    elif name == FEED_POLLS:
+                        source = "SELECT * FROM polls"
+                        rows = len(polls)
                     conn.execute(
                         f"COPY ({source}) TO ? (FORMAT PARQUET)",
                         [str(path)],
@@ -184,6 +262,7 @@ def _build_store(
                         "byte_size": len(payload),
                     }
                 conn.execute("DELETE FROM schedule")
+                conn.execute("DELETE FROM polls")
             (directory / "manifest.json").write_text(
                 json.dumps(
                     {
