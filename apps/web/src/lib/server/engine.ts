@@ -60,20 +60,29 @@ export type EngineResult<T> =
 
 type EnginePeriod = DateWindow & { city: string };
 
-async function query<T>(
+function engineFetch(
 	path: string,
 	{ city, from, to }: EnginePeriod,
 	parameters: Record<string, string>,
+	signal: AbortSignal,
+) {
+	const origin = env.ENGINE_ORIGIN?.trim();
+	if (!origin) return null;
+	const url = new URL(path, origin);
+	url.search = new URLSearchParams({ city, from, to, ...parameters }).toString();
+	return fetch(url, { signal, redirect: 'manual' });
+}
+
+async function query<T>(
+	path: string,
+	period: EnginePeriod,
+	parameters: Record<string, string>,
 	schema: z.ZodType<T>,
 ): Promise<EngineResult<T>> {
-	const origin = env.ENGINE_ORIGIN?.trim();
-	if (!origin) return { kind: 'unconfigured' };
-
 	const signal = AbortSignal.timeout(ENGINE_TIMEOUT_MS);
 	try {
-		const url = new URL(path, origin);
-		url.search = new URLSearchParams({ city, from, to, ...parameters }).toString();
-		const response = await fetch(url, { signal, redirect: 'manual' });
+		const response = await engineFetch(path, period, parameters, signal);
+		if (!response) return { kind: 'unconfigured' };
 		if (!response.ok) return { kind: 'unreachable' };
 		const { success, data } = schema.safeParse(await response.json());
 		return success ? { kind: 'answer', answer: data } : { kind: 'unreachable' };
@@ -88,4 +97,103 @@ export function getMeasure(measure: MeasureAnswer['measure'], period: EnginePeri
 
 export function getRanking(kind: RankingAnswer['kind'], period: EnginePeriod) {
 	return query('/ranking', period, { kind, measure: 'on_time', limit: '3' }, rankingAnswer);
+}
+
+const recordCounts = z.record(z.string(), z.number().nullable().catch(null));
+const recordCell = state.extend({
+	value: z.record(z.string(), z.number().nullable()),
+	evidence: z.object({
+		counts: recordCounts,
+		days_included: z.array(z.iso.date()),
+		periods: z
+			.array(
+				z.object({
+					period_text: bilingual,
+					start_hour: count,
+					end_hour: count,
+					day_type: z.string(),
+					days: count,
+					scheduled_trips: count,
+					scheduled_clock_hours: count,
+					scheduled_frequency: z.number().nonnegative(),
+				}),
+			)
+			.optional(),
+		boundary_departures: z
+			.array(
+				z.object({
+					measure: z.enum(['first_trip', 'last_trip']),
+					service_date: z.iso.date(),
+					scheduled_departure: z.string(),
+					scheduled: count,
+				}),
+			)
+			.nullable()
+			.optional(),
+		percentage_levels: z
+			.array(
+				z.object({
+					percentage: count,
+					vehicle_seconds: z.number(),
+					share: share.nullable(),
+				}),
+			)
+			.optional(),
+	}),
+});
+const recordEnvelope = z.object({
+	evidence,
+	coverage_note: bilingual.nullable(),
+});
+const recordMeasure = recordEnvelope.extend({
+	...recordCell.shape,
+	evidence: evidence.extend(recordCell.shape.evidence.shape),
+});
+const recordSeries = recordEnvelope.extend({
+	cells: z.array(
+		recordCell.extend({
+			key: z.record(z.string(), z.union([z.string(), z.number(), z.null()])),
+		}),
+	),
+});
+const departureRanking = rankingAnswer.extend({
+	kind: z.literal('departure'),
+	measure: z.literal('late'),
+	rows: z.array(
+		rankingAnswer.shape.rows.element.extend({
+			departure: z.string(),
+			direction: z.number().nullable(),
+			counts: recordCounts,
+		}),
+	),
+});
+
+export type RecordEvidence = z.infer<typeof evidence>;
+export type RecordMeasure = z.infer<typeof recordMeasure>;
+export type RecordCell = z.infer<typeof recordCell>;
+export type RecordSeries = z.infer<typeof recordSeries>;
+export type DepartureRanking = z.infer<typeof departureRanking>;
+export type RecordAnswer = RecordMeasure | RecordSeries | DepartureRanking;
+export type RecordQuery = {
+	path: '/measure' | '/ranking';
+	parameters: Record<string, string>;
+};
+
+export function getRecordAnswer({ path, parameters }: RecordQuery, period: EnginePeriod) {
+	const schema: z.ZodType<RecordAnswer> =
+		path === '/ranking' ? departureRanking : parameters.group ? recordSeries : recordMeasure;
+	return query(path, period, parameters, schema);
+}
+
+export async function getRecordCsv(
+	{ path, parameters }: RecordQuery,
+	period: EnginePeriod,
+	lang: 'en' | 'fr',
+) {
+	return engineFetch(
+		path,
+		period,
+		{ ...parameters, format: 'csv', lang },
+		AbortSignal.timeout(ENGINE_TIMEOUT_MS),
+	);
 }

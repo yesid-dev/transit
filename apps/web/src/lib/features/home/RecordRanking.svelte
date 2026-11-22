@@ -2,7 +2,7 @@
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { EngineResult, RankingAnswer } from '#lib/server/engine.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
-	import RecordPending from './RecordPending.svelte';
+	import RecordPending from '../record/RecordPending.svelte';
 	import { percent, rankingText, tally } from './overviewRecord.ts';
 
 	let {

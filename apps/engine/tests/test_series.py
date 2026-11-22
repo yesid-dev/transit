@@ -114,3 +114,105 @@ def test_series_csv_has_one_row_per_cell_with_registry_headings(store: Store, me
     else:
         assert json.loads(missing["État"])["on_time"] == "Non mesuré"
         assert json.loads(missing["Valeur"])["on_time"] is None
+
+
+def test_stop_series_pools_stop_patterns_before_choosing_the_position(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    short = tuple(
+        Trip(
+            f"short-{index}",
+            "A",
+            0,
+            "ran",
+            None,
+            True,
+            (0, 0, 0),
+            stop_ids=("start", "before", "target"),
+        )
+        for index in range(15)
+    )
+    long = tuple(
+        Trip(
+            f"long-{index}",
+            "A",
+            0,
+            "ran",
+            None,
+            True,
+            (0, 0, 0, 0, 345),
+            stop_ids=("start", "before", "branch", "after", "target"),
+        )
+        for index in range(16)
+    )
+    reverse = Trip("reverse", "A", 1, "ran", None, True, (0,), stop_ids=("target",))
+    other_line = reverse._replace(id="other-line", line="B", direction=0)
+    later = FRIDAY + timedelta(days=3)
+    store = _build_store(
+        tmp_path, 6, {THURSDAY: (*short, reverse, other_line), FRIDAY: long[:15], later: long[15:]}
+    )
+    monkeypatch.setattr(measures, "DAYS_PER_QUERY_BATCH", 1)
+    scope = {"start": THURSDAY, "line": "A", "group": "stop"}
+
+    tied = query(store, **scope, end=FRIDAY, direction=0)
+    tied_target = [cell for cell in tied["cells"] if cell["key"]["stop"] == "target"]
+    assert len(tied_target) == 1
+    assert tied_target[0]["key"]["stop_sequence"] == 3
+    assert tied_target[0]["evidence"]["counts"]["classified"] == 30
+    assert tied_target[0]["value"]["late"] == 0.5
+
+    answer = query(store, **scope, end=later)
+    cells = answer["cells"]
+    assert [tuple(cell["key"].values()) for cell in cells] == [
+        (0, 1, "start"),
+        (0, 2, "before"),
+        (0, 3, "branch"),
+        (0, 4, "after"),
+        (0, 5, "target"),
+        (1, 1, "target"),
+    ]
+    assert cells[4]["evidence"]["counts"]["classified"] == 31
+    assert cells[4]["value"]["late"] == 16 / 31
+    assert cells[5]["state"] == "too_few_to_judge"
+    export = csv.DictReader(io.StringIO(measures.answer_csv(answer, "en")))
+    assert [(row["Direction"], row["Stop sequence"], row["Stop ID"]) for row in export] == [
+        (str(direction), str(sequence), stop)
+        for direction, sequence, stop in (tuple(cell["key"].values()) for cell in cells)
+    ]
+
+
+def test_line_departure_series_and_ranking_apply_the_same_cuts(store: Store) -> None:
+    app = Engine(store, concurrency=1, queue_size=0, queue_wait_ms=50)
+    base = urlencode({"city": "stm", "from": THURSDAY, "to": THURSDAY})
+    cut = base + "&line=A&direction=0"
+    status, _, raw = asyncio.run(http(app, "/measure", cut + "&measure=trips_run&group=departure"))
+    assert status == 200, raw
+    (cell,) = json.loads(raw)["cells"]
+    assert cell["key"] == {"direction": 0, "departure": "07:00:00"}
+    assert cell["evidence"]["counts"]["cancelled"] == 1
+    assert cell["evidence"]["counts"]["missing"] == 1
+    assert cell["evidence"]["counts"]["scheduled"] == 3
+    assert cell["state"] == "too_few_to_judge"
+    status, _, raw = asyncio.run(http(app, "/ranking", cut + "&kind=departure&measure=late"))
+    assert status == 200, raw
+    (row,) = json.loads(raw)["rows"]
+    assert (row["line"], row["direction"], row["departure"]) == ("A", 0, "07:00:00")
+    assert row["counts"]["late"] == 8
+    assert row["sample"] == 32
+    status, _, _ = asyncio.run(http(app, "/ranking", cut + "&kind=line&measure=late"))
+    assert status == 400
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        "measure=on_time&group=stop",
+        "measure=trips_run&group=stop&line=A",
+        "measure=on_time&group=departure&line=A",
+    ],
+)
+def test_line_series_rejects_unsupported_cuts(store: Store, suffix: str) -> None:
+    app = Engine(store, concurrency=1, queue_size=0, queue_wait_ms=50)
+    base = urlencode({"city": "stm", "from": THURSDAY, "to": THURSDAY})
+    status, _, _ = asyncio.run(http(app, "/measure", base + "&" + suffix))
+    assert status == 400

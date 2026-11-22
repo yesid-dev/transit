@@ -51,7 +51,15 @@ hours, `group=day_type` for weekday, Saturday and Sunday, or `group=weekday_hour
 for a 168-cell grid ordered by ISO service weekday (Monday = 1) and local hour
 (midnight = 0). For a line measure with direction data, `group=direction` returns
 GTFS directions 0 and 1 and a null direction cell when the source has unassigned
-records. Series accept up to 400 inclusive service dates and support the measure's
+records. `group=stop` requires a line and a punctuality measure. It returns one cell
+per direction and stop, pooling occurrences across trip patterns. Its `stop_sequence`
+is the most frequent scheduled GTFS sequence for that stop in the cut, with ties going
+to the smaller sequence. Cells are sorted by direction, representative sequence, and
+stop ID. Unknown directions come last. `group=departure` requires a line and a service
+delivery measure other than first or last trip. Each cell gives the scheduled, cancelled,
+missing and other outcome counts for a direction and scheduled GTFS start, ordered by
+direction and service time. Both groups accept a direction filter.
+Series accept up to 400 inclusive service dates and support the measure's
 usual filters. For example, use
 `/measure?measure=punctuality&city=stm&from=2026-11-19&to=2026-11-25&group=weekday_hour`.
 
@@ -146,7 +154,9 @@ Declared alerts without attempt rows in `feed_polls` are `not_measured`.
 `GET /ranking?kind=line&city=stm&from=2026-11-19&to=2026-11-22` ranks lines
 worst first by on-time share. Select another registry measure with `measure`, or use
 `kind=stop` or `kind=departure`. A departure groups a line, direction and scheduled
-first start in GTFS service time. A missing direction is returned as null. The `hour`
+first start in GTFS service time. A missing direction is returned as null. Departure
+rankings accept `line` and `direction` cuts. Punctuality ranks use the stop-event
+sample of the trips in that departure slot. The `hour`
 and `day_type` cuts follow the selected measure. First and last trips rank lines only
 and require `day_type`.
 

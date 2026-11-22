@@ -127,6 +127,15 @@ def test_corridors_measure_series_and_rankings(tmp_path: Path) -> None:
         day_type="weekday",
     )
     assert [r["id"] for r in ranked_cut["rows"]] == [row["id"]]
+    lines_cut = _json(
+        store,
+        kind="line",
+        measure="total_vehicle_minutes_lost",
+        line="A",
+        direction="0",
+        **{"class": "all"},
+    )
+    assert [(r["id"], r["value"]) for r in lines_cut["rows"]] == [("A", (648 + 24 * 4) / 60)]
     assert _request(store, kind="segment", measure="on_time")[0] == 400
     assert _request(store, kind="segment", from_stop="from")[0] == 400
     status, _, exported = _request(store, kind="segment", format="csv", lang="fr")

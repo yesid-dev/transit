@@ -23,6 +23,8 @@ export const load: PageLoad = async ({ data, url, parent }) => {
 		data.reliabilitySeed?.data?.periods?.some((period) => period.grain === grain);
 
 	if (
+		!data.record &&
+		!data.frameLive &&
 		detailTabFromSearchParams(url.searchParams) === 'reliability' &&
 		settledSelection &&
 		settledGrain

@@ -5,7 +5,7 @@
 	import type { DateWindow } from '#lib/v1/history/window.ts';
 	import CopyAction from '#lib/features/hotspots/sections/CopyAction.svelte';
 	import HomeSearch from './HomeSearch.svelte';
-	import RecordPending from './RecordPending.svelte';
+	import RecordPending from '../record/RecordPending.svelte';
 	import RecordRanking from './RecordRanking.svelte';
 	import { citationText, comparisonText, dateRange, measureText } from './overviewRecord.ts';
 
