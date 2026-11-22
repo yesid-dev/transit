@@ -1,7 +1,7 @@
 import { defineCopy, type Locale } from '#lib/i18n/copy.ts';
 import {
 	NAV_GROUPS,
-	NAV_ITEMS,
+	visibleNav,
 	YESID_HOUSE_LINK,
 	type BilingualLabel,
 	type NavGroupKey,
@@ -88,12 +88,12 @@ export interface HomeGroup {
 	readonly entries: readonly HomeEntry[];
 }
 
-type Described = Exclude<NavItem['key'], 'overview'>;
+type Described = Exclude<NavItem['key'], 'overview' | 'vehicles' | 'download'>;
 
 const DESCRIPTIONS: Readonly<Record<Described, BilingualLabel>> = {
 	map: {
-		en: 'Every bus, live, where it reports itself',
-		fr: 'Chaque bus en direct, là où il se signale',
+		en: 'Where are the vehicles now?',
+		fr: 'Où sont les véhicules maintenant?',
 	},
 	network: {
 		en: 'Delays, trends and data coverage',
@@ -112,7 +112,7 @@ const DESCRIPTIONS: Readonly<Record<Described, BilingualLabel>> = {
 		fr: 'Les lignes et les arrêts le plus souvent en retard de plus de 5 minutes, classés sur l’ensemble du réseau.',
 	},
 	repeatOffenders: {
-		en: 'The trips and buses most often more than 5 minutes late, ranked in the open.',
+		en: 'The trips and vehicles most often more than 5 minutes late, ranked in the open.',
 		fr: 'Les trajets et les véhicules le plus souvent en retard de plus de 5 minutes, classés au grand jour.',
 	},
 	receipt: {
@@ -142,17 +142,17 @@ export function homeGroups(alertsAvailable = true): readonly HomeGroup[] {
 		key: group.key,
 		label: group.label,
 		entries: [
-			...NAV_ITEMS.filter(
-				(item): item is NavItem & { key: Described } =>
-					item.group === group.key &&
-					item.key !== 'overview' &&
-					(item.requires !== 'alerts' || alertsAvailable),
-			).map((item) => ({
-				href: item.href,
-				title: item.label,
-				desc: DESCRIPTIONS[item.key],
-				external: false,
-			})),
+			...visibleNav({ alerts: alertsAvailable })
+				.filter(
+					(item): item is NavItem & { key: Described } =>
+						item.group === group.key && item.key in DESCRIPTIONS,
+				)
+				.map((item) => ({
+					href: item.href,
+					title: item.label,
+					desc: DESCRIPTIONS[item.key],
+					external: false,
+				})),
 			...(group.key === 'about'
 				? [
 						{

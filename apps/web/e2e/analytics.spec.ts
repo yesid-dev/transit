@@ -124,9 +124,9 @@ test('a portfolio link click is a custom event', async ({ page, context }) => {
 	);
 	await page.goto(`http://${domain}:${port}/`);
 	await expect.poll(() => payloads.filter(({ n }) => n === 'pageview').length).toBe(1);
-	const menu = await openMenu(page);
 	const popup = context.waitForEvent('page');
-	await menu
+	await page
+		.getByTestId('footer')
 		.getByRole('link', {
 			name: `${YESID_HOUSE_LINK.label.en} ${navPillCopy.en.newTab}`,
 			exact: true,
@@ -135,7 +135,7 @@ test('a portfolio link click is a custom event', async ({ page, context }) => {
 	await popup;
 	await expect
 		.poll(() => payloads.find(({ n }) => n === 'Portfolio Click')?.p)
-		.toEqual({ locale: 'en', provider: 'stm', placement: 'menu' });
+		.toEqual({ locale: 'en', provider: 'stm', placement: 'footer' });
 });
 
 test('a missing page sends a 404 event with only its path', async ({ page }) => {

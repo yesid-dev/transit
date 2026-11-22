@@ -17,6 +17,22 @@ describe('grouped navigation', () => {
 		for (const item of [...SURFACE_NAV, ...AUDIT_NAV])
 			expect(NAV_ITEMS.map((item) => item.href)).toContain(item.href);
 	});
+	it('shares the Explore order and vehicle wording with the footer', () => {
+		const footer = visibleNav({ alerts: true });
+		expect(footer.filter((item) => item.group === 'explore').map((item) => item.key)).toEqual([
+			'lines',
+			'stops',
+			'vehicles',
+		]);
+		expect(footer.find((item) => item.key === 'repeatOffenders')?.label).toEqual({
+			en: 'Worst trips and vehicles',
+			fr: 'Pires voyages et véhicules',
+		});
+		for (const { label } of [...footer, ...navigation.FRAME_MENU]) {
+			expect(label.en).not.toMatch(/\b(?:bus|buses|autobus)\b/i);
+			expect(label.fr).not.toMatch(/\b(?:bus|buses|autobus)\b/i);
+		}
+	});
 	it('alerts hide only when the capability is known false', () => {
 		const alerts = NAV_ITEMS.find((item) => item.key === 'alerts')!;
 		for (const capability of [true, null])

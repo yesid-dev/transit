@@ -3,6 +3,7 @@ import { delocalizePath, localizeHref } from '../i18n/routing';
 import type { Locale } from '../i18n/config';
 import { roadmapTitle } from '../features/roadmap/roadmap.copy';
 import cards from '../../../static/og/manifest.json';
+import { upcomingPage } from '#lib/content/nav.ts';
 
 export interface RouteSeo {
 	title: string;
@@ -128,11 +129,14 @@ function entryFor(path: string): BilingualSeo {
 	if (path.startsWith('/lines/')) return LINE_DETAIL;
 	if (path.startsWith('/stop/')) return STOP_DETAIL;
 	if (path.startsWith('/trip/')) return TRIP_DETAIL;
+	const upcoming = upcomingPage(path);
+	if (upcoming) return { title: upcoming.label };
 	return HOME;
 }
 
 export function isEphemeralPath(pathname: string): boolean {
-	return delocalizePath(pathname).startsWith('/trip/');
+	const path = delocalizePath(pathname);
+	return path.startsWith('/trip/') || Boolean(upcomingPage(path));
 }
 
 function resolveIdentity(identity?: ProviderSeoIdentity): ResolvedIdentity | null {

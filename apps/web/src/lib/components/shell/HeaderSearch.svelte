@@ -17,6 +17,7 @@
 	import type { LivePresentation } from '#lib/v1/live/livePresentation.ts';
 	import { headerSearchCopy } from './headerSearch.copy.ts';
 	import SearchResultsList from './SearchResultsList.svelte';
+	import { carryFrameState } from '#lib/site/frameState.ts';
 
 	interface Props {
 		locale: Locale;
@@ -67,7 +68,7 @@
 			text.length > 0 &&
 			(listed || (presentation?.notice.kind ?? 'none') !== 'none'),
 	);
-	const localized = (href: string) => localizeHref(href, locale, providerId);
+	const localized = (href: string) => carryFrameState(localizeHref(href, locale, providerId), url);
 	const hrefs = $derived({
 		hit: (hit: SearchHit) =>
 			localized(

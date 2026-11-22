@@ -1,5 +1,22 @@
 import type { Page } from '@playwright/test';
 
+/** Take the data-loading baseline after fonts and the frame's chrome measurement settle. */
+export async function waitForFrameClearance(page: Page): Promise<void> {
+	await page.evaluate(() => document.fonts.ready);
+	await page.waitForFunction(() => {
+		const pill = document.querySelector('[data-testid="nav-pill"]')?.getBoundingClientRect();
+		const controls = document
+			.querySelector('[data-slot="app-frame-controls"]')
+			?.getBoundingClientRect();
+		const measured = parseFloat(document.documentElement.style.getPropertyValue('--pill-h'));
+		return (
+			!!pill &&
+			!!controls &&
+			measured === Math.ceil(Math.max(pill.bottom, controls.bottom) - pill.top)
+		);
+	});
+}
+
 // Explicit page closure can dispose a fetched response. The shared fixture drains
 // normal teardown; failures on a live page must still fail the test.
 const TEARDOWN =

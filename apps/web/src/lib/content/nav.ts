@@ -38,12 +38,14 @@ export interface NavItem {
 		| 'network'
 		| 'lines'
 		| 'stops'
+		| 'vehicles'
 		| 'hotspots'
 		| 'repeatOffenders'
 		| 'receipt'
 		| 'alerts'
 		| 'metrics'
-		| 'status';
+		| 'status'
+		| 'download';
 	readonly group: NavGroupKey;
 	readonly href: string;
 	readonly label: BilingualLabel;
@@ -51,10 +53,12 @@ export interface NavItem {
 	readonly activePrefixes: readonly string[];
 	readonly exact?: boolean;
 	readonly requires?: 'alerts';
+	readonly upcoming?: string;
 }
+const UPCOMING = '/upcoming/';
 export const NAV_GROUPS: readonly { readonly key: NavGroupKey; readonly label: BilingualLabel }[] =
 	[
-		{ key: 'now', label: { en: 'Now', fr: 'En ce moment' } },
+		{ key: 'now', label: { en: 'Now', fr: 'Maintenant' } },
 		{ key: 'explore', label: { en: 'Explore', fr: 'Explorer' } },
 		{ key: 'reports', label: { en: 'Rankings and reports', fr: 'Classements et rapports' } },
 		{ key: 'about', label: { en: 'About the data', fr: 'À propos des données' } },
@@ -101,6 +105,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
 		activePrefixes: ['/stops', '/stop/'],
 	},
 	{
+		key: 'vehicles',
+		group: 'explore',
+		href: UPCOMING + 'vehicles',
+		label: { en: 'Vehicles', fr: 'Véhicules' },
+		activePrefixes: [UPCOMING + 'vehicles'],
+	},
+	{
 		key: 'hotspots',
 		group: 'reports',
 		href: '/hotspots',
@@ -111,7 +122,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
 		key: 'repeatOffenders',
 		group: 'reports',
 		href: '/repeat-offenders',
-		label: { en: 'Chronic late trips and buses', fr: 'Trajets et bus souvent en retard' },
+		label: { en: 'Worst trips and vehicles', fr: 'Pires voyages et véhicules' },
 		activePrefixes: ['/repeat-offenders'],
 	},
 	{
@@ -120,6 +131,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
 		href: '/receipt',
 		label: { en: 'Daily report', fr: 'Rapport quotidien' },
 		activePrefixes: ['/receipt'],
+		upcoming: 'daily-report',
 	},
 	{
 		key: 'alerts',
@@ -135,6 +147,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
 		href: '/metrics',
 		label: { en: 'How we measure', fr: 'Comment on mesure' },
 		activePrefixes: ['/metrics'],
+		upcoming: 'how-we-measure',
 	},
 	{
 		key: 'status',
@@ -142,11 +155,33 @@ export const NAV_ITEMS: readonly NavItem[] = [
 		href: '/status',
 		label: { en: 'Data health', fr: 'Santé des données' },
 		activePrefixes: ['/status'],
+		upcoming: 'data-health',
+	},
+	{
+		key: 'download',
+		group: 'about',
+		href: UPCOMING + 'download',
+		label: { en: 'Download the data', fr: 'Télécharger les données' },
+		activePrefixes: [UPCOMING + 'download'],
 	},
 ];
 /** Hides an item only when its capability is known to be false. */
 export function visibleNav(capabilities: { readonly alerts: boolean | null }): readonly NavItem[] {
 	return NAV_ITEMS.filter((item) => item.requires !== 'alerts' || capabilities.alerts !== false);
+}
+
+export const FRAME_MENU = NAV_ITEMS.map((item) => {
+	const href = item.upcoming ? UPCOMING + item.upcoming : item.href;
+	return {
+		...item,
+		href,
+		activePrefixes: item.upcoming ? [href] : item.activePrefixes,
+	};
+});
+
+export function upcomingPage(path: string) {
+	if (!path.startsWith(UPCOMING)) return undefined;
+	return FRAME_MENU.find((item) => item.href === path);
 }
 
 const surfaceDescriptions = {
@@ -210,6 +245,7 @@ export const SEARCH_LABEL: BilingualLabel = { en: 'Search', fr: 'Recherche' };
 export function mainLandmarkLabel(currentPath: string): BilingualLabel | null {
 	if (currentPath === '/search') return SEARCH_LABEL;
 	return (
+		upcomingPage(currentPath)?.label ??
 		NAV_ITEMS.find((item) => isSurfaceActive(item, currentPath))?.label ??
 		FOOTER_INFO_NAV.find((item) => item.href === currentPath)?.label ??
 		null

@@ -36,7 +36,7 @@ type Destination = readonly [href: string, en: string, fr: string];
 const groups: readonly (readonly [en: string, fr: string, links: readonly Destination[]])[] = [
 	[
 		'Now',
-		'En ce moment',
+		'Maintenant',
 		[
 			['/map', 'Live map', 'Carte en direct'],
 			['/network', 'Network health', 'Santé du réseau'],
@@ -55,7 +55,7 @@ const groups: readonly (readonly [en: string, fr: string, links: readonly Destin
 		'Classements et rapports',
 		[
 			['/hotspots', 'Worst lines and stops', 'Pires lignes et arrêts'],
-			['/repeat-offenders', 'Chronic late trips and buses', 'Trajets et bus souvent en retard'],
+			['/repeat-offenders', 'Worst trips and vehicles', 'Pires voyages et véhicules'],
 			['/receipt', 'Daily report', 'Rapport quotidien'],
 			['/alerts', 'Service alerts', 'Avis de service'],
 		],

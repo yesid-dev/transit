@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
-import { navPillCopy } from '../src/lib/i18n/messages';
+import { waitForFrameClearance } from './layout-helpers';
 import { SURFACE_NAV } from '../src/lib/content/nav';
 import { detailCopy } from '../src/lib/features/stops/stops.copy';
 import { copy as mapCopy } from '../src/lib/features/map/map.copy';
@@ -243,6 +243,7 @@ test('the home cards hold their place while the record, live numbers and ranking
 	const documentTop = () =>
 		below.evaluate((element) => element.getBoundingClientRect().top + window.scrollY);
 	await expect(strip.locator('[data-live]')).toHaveCount(2);
+	await waitForFrameClearance(page);
 	const before = await documentTop();
 	release();
 	await expect(strip.locator('[data-live="reporting"]')).toContainText('321');
@@ -269,6 +270,7 @@ test('the home cards hold their place when the live numbers cannot be loaded', a
 	const documentTop = () =>
 		below.evaluate((element) => element.getBoundingClientRect().top + window.scrollY);
 	await expect(strip.locator('[data-live]')).toHaveCount(2);
+	await waitForFrameClearance(page);
 	const before = await documentTop();
 	release();
 	await expect(strip.getByText('Chiffres en direct indisponibles')).toBeVisible();
@@ -406,6 +408,7 @@ test('the home ranking rows show whole names and hold their place', async ({ pag
 			const top = () =>
 				below.evaluate((element) => element.getBoundingClientRect().top + window.scrollY);
 			await expect(page.locator('[data-slot="home-pulse-worst"]')).toBeVisible();
+			await waitForFrameClearance(page);
 			const before = await top();
 			release();
 			const rows = page.locator('a.rank-row');
@@ -540,26 +543,23 @@ test("a detail page's back link sits midway between the chrome and the next line
 	await page.evaluate(() => document.fonts.ready);
 	await expect
 		.poll(async () => {
-			const [above, below] = await page.evaluate(
-				({ back, network }) => {
-					const link = [...document.querySelectorAll('a')].find(
-						(a) => a.textContent?.trim() === back,
-					)!;
-					const range = document.createRange();
-					range.selectNodeContents(link);
-					const text = range.getBoundingClientRect();
-					const pill = document.querySelector('[data-testid="nav-pill"]')!.getBoundingClientRect();
-					const select = document
-						.querySelector(`select[aria-label^="${network}"]`)!
-						.parentElement!.getBoundingClientRect();
-					const chrome = Math.max(pill.bottom, select.bottom);
-					return [
-						text.top - chrome,
-						link.nextElementSibling!.getBoundingClientRect().top - text.bottom,
-					];
-				},
-				{ back: detailCopy.en.back, network: navPillCopy.en.network },
-			);
+			const [above, below] = await page.evaluate((back) => {
+				const link = [...document.querySelectorAll('a')].find(
+					(a) => a.textContent?.trim() === back,
+				)!;
+				const range = document.createRange();
+				range.selectNodeContents(link);
+				const text = range.getBoundingClientRect();
+				const pill = document.querySelector('[data-testid="nav-pill"]')!.getBoundingClientRect();
+				const controls = document
+					.querySelector('[data-slot="app-frame-controls"]')!
+					.getBoundingClientRect();
+				const chrome = Math.max(pill.bottom, controls.bottom);
+				return [
+					text.top - chrome,
+					link.nextElementSibling!.getBoundingClientRect().top - text.bottom,
+				];
+			}, detailCopy.en.back);
 			return Math.abs(above - below);
 		})
 		.toBeLessThanOrEqual(1);
