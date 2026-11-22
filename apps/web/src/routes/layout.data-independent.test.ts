@@ -124,7 +124,8 @@ vi.mock('#lib/seo/jsonld.ts', () => ({
 	organizationJsonLd: () => ({}),
 	datasetJsonLd: () => ({}),
 }));
-vi.mock('#lib/site/config.ts', () => ({
+vi.mock('#lib/site/config.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/site/config.ts')>()),
 	readPublicSiteConfig: () => ({
 		siteOrigin: 'https://transit.yesid.dev',
 		indexing: false,
