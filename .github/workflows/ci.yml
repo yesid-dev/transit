@@ -9,12 +9,21 @@ on:
     branches: [main]
     paths:
       - ".env.example"
+      - ".gitattributes"
+      - ".githooks/**"
+      - ".github/**"
+      - ".gitignore"
       - ".gitleaks.toml"
+      - ".npmrc"
+      - ".nvmrc"
       - "apps/db/**"
       - "apps/engine/**"
-      - ".github/workflows/**"
-      - ".github/scripts/**"
-      - ".github/actions/**"
+      - "bun.lock"
+      - "contracts/**"
+      - "package.json"
+      - "patches/**"
+      - "scripts/**"
+      - "turbo.json"
       - ".bun-version"
       - ".python-version"
 
@@ -91,6 +100,10 @@ jobs:
     if: ${{ needs.classify.outputs.run_db == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -98,8 +111,22 @@ jobs:
       - name: Set up Python workspace
         uses: ./.github/actions/setup-py
 
-      - name: Run offline test suite
-        run: uv run pytest tests
+      - name: Run offline test shard
+        env:
+          DB_TEST_SHARD: ${{ matrix.shard }}
+        run: uv run python ../../.github/scripts/db_test_shards.py offline "$DB_TEST_SHARD"
+
+  db-quality-work:
+    needs: [classify]
+    if: ${{ needs.classify.outputs.run_db == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Python workspace
+        uses: ./.github/actions/setup-py
 
       - name: Ruff
         run: uv run ruff check src tests
@@ -139,6 +166,10 @@ jobs:
     if: ${{ needs.classify.outputs.run_db == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     services:
       postgres:
         image: postgis/postgis:16-3.4@sha256:44126d872ac91993766c341e369c539e8196614321765d36a6f1bab0419a5fa5
@@ -170,17 +201,20 @@ jobs:
           uv run alembic upgrade head
         working-directory: apps/db
 
-      - name: Run real-DB test suite
+      - name: Run real-DB test shard
+        env:
+          DB_TEST_SHARD: ${{ matrix.shard }}
         run: |
           unset PGHOST PGHOSTADDR PGPORT PGDATABASE PGUSER PGSERVICE PGSERVICEFILE
-          uv run pytest tests -n 4 --dist worksteal --max-worker-restart=0 --durations=20 -rs --junitxml=real-db-junit.xml
+          uv run python ../../.github/scripts/db_test_shards.py real-db "$DB_TEST_SHARD" \
+            -n 4 --dist worksteal --max-worker-restart=0 --durations=20 -rs --junitxml=real-db-junit.xml
         working-directory: apps/db
 
       - name: Upload real-DB test results
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: real-db-junit
+          name: real-db-junit-${{ matrix.shard }}
           path: apps/db/real-db-junit.xml
           retention-days: 14
           if-no-files-found: warn
@@ -190,6 +224,7 @@ jobs:
       [
         classify,
         offline-tests-work,
+        db-quality-work,
         alembic-single-head-work,
         real-db-tests-work,
       ]

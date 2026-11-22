@@ -772,7 +772,7 @@ def test_external_container_images_are_readable_and_immutable() -> None:
 
 def test_protected_ci_executes_container_runtime_proof_without_renaming_contexts() -> None:
     ci = _yaml(WORKFLOWS / "ci.yml")
-    runtime_proof_runs = _step_runs(ci["jobs"]["offline-tests-work"])
+    runtime_proof_runs = _step_runs(ci["jobs"]["db-quality-work"])
     contexts = {
         row["context"] for row in ci["jobs"]["required-contexts"]["strategy"]["matrix"]["include"]
     }
@@ -780,6 +780,7 @@ def test_protected_ci_executes_container_runtime_proof_without_renaming_contexts
     assert (REPO_ROOT / "apps/db/scripts/verify-runtime-images.sh").is_file()
     assert "verify-runtime-images.sh" in runtime_proof_runs
     assert "offline-tests-work" in ci["jobs"]["required-contexts"]["needs"]
+    assert "db-quality-work" in ci["jobs"]["required-contexts"]["needs"]
     assert contexts == {"offline-tests", "alembic-single-head", "real-db-tests"}
     assert _yaml(WORKFLOWS / "web.yml")["jobs"]["ci"]["name"] == "ci"
     assert _yaml(WORKFLOWS / "secret-scan.yml")["jobs"]["gitleaks"]["name"] == "gitleaks"

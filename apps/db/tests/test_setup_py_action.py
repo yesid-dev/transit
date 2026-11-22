@@ -11,6 +11,7 @@ EXPECTED_CALLERS = {
     ("batch-shadow.yml", "shadow"),
     ("ci.yml", "engine-tests"),
     ("ci.yml", "offline-tests-work"),
+    ("ci.yml", "db-quality-work"),
     ("ci.yml", "alembic-single-head-work"),
     ("ci.yml", "real-db-tests-work"),
     ("daily-static-pipeline.yml", "run-static-pipeline"),
