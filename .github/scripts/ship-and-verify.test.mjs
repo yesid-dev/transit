@@ -96,7 +96,10 @@ test("a successful deploy receipt survives failed verification and controls repo
   assert.match(job("preview"), /!github.event.pull_request.draft/);
   assert.match(job("preview"), /versions upload --name transit1-web/);
   assert.match(job("preview"), /id: upload\n\s+if: steps.preview_ready.outputs.ready == 'true'/);
+  assert.match(job("preview"), /Build \(adapter-cloudflare\)[\s\S]*?PUBLIC_INDEXING: "false"\n\s+run: bun run build/);
   assert.match(deploy, /id: previous\n\s+if: .*steps.locked_scope.outputs.bootstrap == 'false'/);
+  assert.match(deploy, /TRANSIT_ALLOW_EMPTY_DEPLOYMENTS: .*steps.locked_scope.outputs.recovery/);
+  assert.match(deploy, /TRANSIT_WAIT_FOR_DOMAIN: .*steps.locked_scope.outputs.bootstrap == 'true' \|\| steps.locked_scope.outputs.recovery == 'true'/);
   assert.match(deploy, /post-deploy-layout.mjs policy/);
   assert.match(deploy, /&& printf 'deployed=true\\n'/);
   for (const name of ["post-deploy-layout", "post-deploy-result"]) {

@@ -150,13 +150,16 @@ export async function lockedDeploymentDecision(
 		'+refs/heads/main:refs/remotes/origin/main',
 	);
 	if (git('rev-parse', 'refs/remotes/origin/main') !== candidate)
-		return { deployWeb: false, bootstrap: false };
+		return { deployWeb: false, bootstrap: false, recovery: false };
 	const live = await liveProductionSha(fetcher);
 	if (!live) {
-		if (await checkWorkerMissing()) return { deployWeb: true, bootstrap: true };
-		throw new Error('Cannot read live production SHA for existing transit1-web');
+		if (await checkWorkerMissing())
+			return { deployWeb: true, bootstrap: true, recovery: false };
+		if (automatic)
+			throw new Error('Cannot read live production SHA for existing transit1-web');
+		return { deployWeb: true, bootstrap: false, recovery: true };
 	}
-	if (automatic && live && live !== candidate) {
+	if (automatic && live !== candidate) {
 		try {
 			git('cat-file', '-e', `${live}^{commit}`);
 		} catch {
@@ -164,7 +167,7 @@ export async function lockedDeploymentDecision(
 		}
 		try {
 			git('merge-base', '--is-ancestor', candidate, live);
-			return { deployWeb: false, bootstrap: false };
+			return { deployWeb: false, bootstrap: false, recovery: false };
 		} catch (error) {
 			if (error.status !== 1)
 				throw new Error('Cannot establish live deployment ancestry', {
@@ -178,7 +181,7 @@ export async function lockedDeploymentDecision(
 		{ write: (value) => (output += value) },
 		cwd,
 	);
-	return { deployWeb: output === 'deploy_web=true\n', bootstrap: false };
+	return { deployWeb: output === 'deploy_web=true\n', bootstrap: false, recovery: false };
 }
 
 if (
@@ -186,8 +189,8 @@ if (
 	pathToFileURL(resolve(process.argv[1])).href === import.meta.url
 ) {
 	if (process.argv[2] === 'locked') {
-		const { deployWeb, bootstrap } = await lockedDeploymentDecision(process.env);
-		process.stdout.write(`deploy_web=${deployWeb}\nbootstrap=${bootstrap}\n`);
+		const { deployWeb, bootstrap, recovery } = await lockedDeploymentDecision(process.env);
+		process.stdout.write(`deploy_web=${deployWeb}\nbootstrap=${bootstrap}\nrecovery=${recovery}\n`);
 	} else if (process.argv[2] === 'preview-ready') {
 		process.stdout.write(`ready=${Boolean(await liveProductionSha())}\n`);
 	} else {

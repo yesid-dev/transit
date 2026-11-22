@@ -47,6 +47,7 @@ test("inside the production lock, only the main tip can bootstrap and an older p
     git("remote", "add", "origin", root);
     git("checkout", "--detach", a);
     const env = { TRANSIT_DEPLOY_EVENT: "push", TRANSIT_DEPLOY_AFTER: a };
+    const dispatch = { ...env, TRANSIT_DEPLOY_EVENT: "workflow_dispatch" };
     const live = async () => ({
       status: 200,
       json: async () => ({ service: "transit1-web", commit: b }),
@@ -57,10 +58,11 @@ test("inside the production lock, only the main tip can bootstrap and an older p
     };
     const missing = async () => true;
     const existing = async () => false;
-    const skip = { deployWeb: false, bootstrap: false };
-    const deploy = { deployWeb: true, bootstrap: false };
+    const skip = { deployWeb: false, bootstrap: false, recovery: false };
+    const deploy = { deployWeb: true, bootstrap: false, recovery: false };
     assert.deepEqual(await scope.lockedDeploymentDecision(env, root, live), skip);
     assert.deepEqual(await scope.lockedDeploymentDecision(env, root, unavailable, missing), skip);
+    assert.deepEqual(await scope.lockedDeploymentDecision(dispatch, root, unavailable, existing), skip);
     git("branch", "-f", "main", a);
     await assert.rejects(
       scope.lockedDeploymentDecision(env, root, unavailable, existing),
@@ -74,12 +76,16 @@ test("inside the production lock, only the main tip can bootstrap and an older p
     );
     assert.deepEqual(
       await scope.lockedDeploymentDecision(env, root, unavailable, missing),
-      { deployWeb: true, bootstrap: true },
+      { deployWeb: true, bootstrap: true, recovery: false },
+    );
+    assert.deepEqual(
+      await scope.lockedDeploymentDecision(dispatch, root, unavailable, existing),
+      { deployWeb: true, bootstrap: false, recovery: true },
     );
     assert.deepEqual(await scope.lockedDeploymentDecision(env, root, live), skip);
     assert.deepEqual(
       await scope.lockedDeploymentDecision(
-        { ...env, TRANSIT_DEPLOY_EVENT: "workflow_dispatch" },
+        dispatch,
         root,
         live,
       ),
@@ -205,6 +211,14 @@ test("rollback guidance captures the current 100-percent Worker version before m
   );
   assert.throws(
     () => worker.currentWorkerVersion(() => JSON.stringify([])),
+    /active/,
+  );
+  assert.equal(
+    worker.currentWorkerVersion(() => JSON.stringify([]), { allowEmpty: true }),
+    undefined,
+  );
+  assert.throws(
+    () => worker.currentWorkerVersion(() => JSON.stringify({}), { allowEmpty: true }),
     /active/,
   );
   assert.throws(

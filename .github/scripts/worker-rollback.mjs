@@ -51,7 +51,7 @@ function runWrangler(args, execute) {
   );
 }
 
-export function currentWorkerVersion(execute = execFileSync) {
+export function currentWorkerVersion(execute = execFileSync, { allowEmpty = false } = {}) {
   const deployments = JSON.parse(
     runWrangler(["deployments", "list", "--json"], execute),
   );
@@ -61,6 +61,7 @@ export function currentWorkerVersion(execute = execFileSync) {
   ) {
     throw new Error("Cannot identify active production deployment");
   }
+  if (allowEmpty && deployments.length === 0) return undefined;
   const latest = deployments
     .sort((a, b) => Date.parse(a.created_on) - Date.parse(b.created_on))
     .at(-1);
@@ -94,11 +95,15 @@ if (
 ) {
   const capture = process.argv[2] === "capture";
   const actual = capture
-    ? currentWorkerVersion()
+    ? currentWorkerVersion(execFileSync, {
+      allowEmpty: process.env.TRANSIT_ALLOW_EMPTY_DEPLOYMENTS === "true",
+    })
     : rollback(process.env.ROLLBACK_VERSION);
   appendFileSync(
     process.env.GITHUB_STEP_SUMMARY,
-    `${capture ? "Captured rollback target" : "Production web rolled back to Worker version"} \`${actual}\`.\n`,
+    actual === undefined
+      ? "No deployed transit1-web version to capture before recovery.\n"
+      : `${capture ? "Captured rollback target" : "Production web rolled back to Worker version"} \`${actual}\`.\n`,
   );
-  appendFileSync(process.env.GITHUB_OUTPUT, `version_id=${actual}\n`);
+  appendFileSync(process.env.GITHUB_OUTPUT, `version_id=${actual ?? ""}\n`);
 }

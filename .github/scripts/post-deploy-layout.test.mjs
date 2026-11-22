@@ -75,6 +75,25 @@ test("waits until production reports the deployed commit", async () => {
   assert.match(clock.logs[2], /6s/);
 });
 
+test("a newly attached domain gets a longer window to report the deploy", async () => {
+  const sha = "a".repeat(40);
+  for (const waitForDomain of [false, true]) {
+    const { deadlineMs, ...clock } = fakeClock();
+    let reads = 0;
+    const verifies = verifyDeployedSha(sha, async () => {
+      reads++;
+      return clock.now() >= 120_000 ? health(sha) : new Response(null, { status: 502 });
+    }, { ...clock, waitForDomain });
+    if (waitForDomain) {
+      await verifies;
+      assert.equal(clock.now(), 120_000);
+    } else {
+      await assert.rejects(verifies, /waited 90s/);
+    }
+    assert.equal(reads, clock.sleeps.length + 1);
+  }
+});
+
 test("a read that fails is not the end", async () => {
   const sha = "a".repeat(40);
   const clock = fakeClock();

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_SITE_ORIGIN } from '#lib/site/config.ts';
 import { GET, prerender } from './+server';
 
 describe('/.well-known/security.txt', () => {
@@ -13,7 +14,7 @@ describe('/.well-known/security.txt', () => {
 Contact: mailto:contact@yesid.dev
 Expires: 2027-08-31T23:59:59Z
 Preferred-Languages: en, fr
-Canonical: https://transit.yesid.dev/.well-known/security.txt
+Canonical: ${DEFAULT_SITE_ORIGIN}/.well-known/security.txt
 Policy: https://github.com/yesid-dev/transit/security/policy
 `);
 		expect(new Date('2027-08-31T23:59:59Z').getTime()).toBeGreaterThan(Date.now());

@@ -9,7 +9,8 @@ export async function verifyDeployedSha(
   sha,
   fetcher = fetch,
   {
-    deadlineMs = 90_000,
+    waitForDomain = false,
+    deadlineMs = waitForDomain ? 300_000 : 90_000,
     intervalMs = 3_000,
     sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     now = Date.now,
@@ -148,7 +149,9 @@ if (
   pathToFileURL(resolve(process.argv[1])).href === import.meta.url
 ) {
   if (process.argv[2] === "verify")
-    await verifyDeployedSha(process.env.GITHUB_SHA);
+    await verifyDeployedSha(process.env.GITHUB_SHA, fetch, {
+      waitForDomain: process.env.TRANSIT_WAIT_FOR_DOMAIN === "true",
+    });
   else if (process.argv[2] === "policy") await verifySitePolicy();
   else if (process.argv[2] === "report") reportAttempt();
   else throw new Error("Expected verify, policy, or report");
