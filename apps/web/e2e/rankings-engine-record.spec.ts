@@ -9,9 +9,17 @@ test.beforeEach(({ browserName }, info) => {
 
 const dates = 'recordFrom=2026-11-08&recordTo=2026-11-14';
 const lists = [
-	['hotspots', '', 'Lines', 'Lignes', /24/, /48\s?%/, /38\s?% (?:to|à) 58\s?%/],
+	['hotspots', 'line', 'Lines', 'Lignes', /24/, /48\s?%/, /38\s?% (?:to|à) 58\s?%/],
 	['hotspots', 'stop', 'Stops', 'Arrêts', /S1/, /48\s?%/, /38\s?% (?:to|à) 58\s?%/],
-	['repeat-offenders', '', 'Departures', 'Départs', /07:15:00/, /48\s?%/, /38\s?% (?:to|à) 58\s?%/],
+	[
+		'repeat-offenders',
+		'departure',
+		'Departures',
+		'Départs',
+		/07:15:00/,
+		/48\s?%/,
+		/38\s?% (?:to|à) 58\s?%/,
+	],
 	[
 		'repeat-offenders',
 		'vehicle',
@@ -23,17 +31,20 @@ const lists = [
 	],
 ] as const;
 
-for (const width of [390, 1440]) {
-	for (const locale of ['en', 'fr'] as const) {
+for (const locale of ['en', 'fr'] as const) {
+	const fr = locale === 'fr';
+	test(`${locale} ranks all four lists at phone and desktop widths`, async ({ page, request }) => {
+		await page.setViewportSize({ width: 390, height: 900 });
+		const prefix = fr ? '/fr' : '';
+		await page.goto(`${prefix}/hotspots?provider=stm&${dates}`);
+		const documentStart = await page.evaluate(() => performance.timeOrigin);
+		const main = page.getByRole('main');
+
 		for (const [path, kind, en, frLabel, identity, value, range] of lists) {
-			const fr = locale === 'fr';
 			const label = fr ? frLabel : en;
-			test(`${locale} at ${width}px ranks ${en.toLowerCase()}`, async ({ page, request }) => {
-				await page.setViewportSize({ width, height: 900 });
-				await page.goto(
-					`${fr ? '/fr' : ''}/${path}?provider=stm&${dates}${kind ? `&kind=${kind}` : ''}`,
-				);
-				const main = page.getByRole('main');
+			await test.step(label, async () => {
+				if (kind !== 'line') await main.getByRole('radio', { name: label, exact: true }).click();
+				await expect(page).toHaveURL((url) => url.pathname === `${prefix}/${path}`);
 				const title =
 					path === 'hotspots'
 						? fr
@@ -45,25 +56,36 @@ for (const width of [390, 1440]) {
 				await expect(main.getByRole('heading', { level: 1, name: title })).toBeVisible();
 				const section = main.getByRole('region', { name: label, exact: true });
 				const row = section.getByRole('listitem').filter({ hasText: identity }).first();
-				await expect(row).toContainText(value);
-				await expect(row).toContainText(range);
-				await expect(section).toContainText(fr ? 'Le minimum' : 'Minimum to rank');
-				await section.getByText(fr ? /Exclusions et motifs/ : /Excluded, with the reason/).click();
-				await expect(
-					section.getByText(fr ? /Trop peu pour juger/ : /Too few to judge/),
-				).toBeVisible();
-				await expect(
-					section.getByRole('button', { name: fr ? 'Copier le lien' : 'Copy link' }),
-				).toBeVisible();
-				await section.getByText(fr ? 'Citer' : 'Cite', { exact: true }).click();
-				await expect(section.getByText(/rankings-fixture-v1.*#ranking/)).toBeVisible();
-				const defects = await textDefects(page);
-				expect(defects.filter(({ selector }) => selector.startsWith('#ranking'))).toEqual([]);
+				const exclusions = section.getByText(
+					fr ? /Exclusions et motifs/ : /Excluded, with the reason/,
+				);
+				const cite = section.getByText(fr ? 'Citer' : 'Cite', { exact: true });
+				await exclusions.click();
+				await cite.click();
+				for (const width of [390, 1440]) {
+					await test.step(`${width}px`, async () => {
+						await page.setViewportSize({ width, height: 900 });
+						await expect(row).toContainText(value);
+						await expect(row).toContainText(range);
+						await expect(section).toContainText(fr ? 'Le minimum' : 'Minimum to rank');
+						await expect(
+							section.getByText(fr ? /Trop peu pour juger/ : /Too few to judge/),
+						).toBeVisible();
+						await expect(
+							section.getByRole('button', { name: fr ? 'Copier le lien' : 'Copy link' }),
+						).toBeVisible();
+						await expect(section.getByText(/rankings-fixture-v1.*#ranking/)).toBeVisible();
+						const defects = await textDefects(page);
+						expect(defects.filter(({ selector }) => selector.startsWith('#ranking'))).toEqual([]);
+						expect(await main.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(
+							width,
+						);
+					});
+				}
 				const csv = await section.getByRole('link', { name: /CSV/ }).getAttribute('href');
 				const response = await request.get(csv!);
 				expect(response.ok()).toBeTruthy();
 				expect(await response.text()).toMatch(fr ? /^Rang,Type,Identifiant/ : /^Rank,Kind,ID/);
-				expect(await main.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(width);
 				if (kind === 'vehicle') {
 					const measures = main.getByRole('combobox', {
 						name: fr ? 'Mesure' : 'Measure',
@@ -71,9 +93,12 @@ for (const width of [390, 1440]) {
 					});
 					await expect(measures.locator('option')).toHaveCount(2);
 				}
+				await cite.click();
+				await exclusions.click();
 			});
 		}
-	}
+		expect(await page.evaluate(() => performance.timeOrigin)).toBe(documentStart);
+	});
 }
 
 test('changes dates, class, measure and list while keeping the ranking URL shareable', async ({
