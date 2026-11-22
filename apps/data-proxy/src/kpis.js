@@ -38,7 +38,7 @@ async function readJson(env, key) {
   }
 }
 
-async function providerCatalog(env) {
+export async function providerCatalog(env) {
   const memo = catalogMemo.get(env.SNAPSHOTS);
   const nowMs = Date.now();
   if (memo && nowMs - memo.fetchedAtMs < LIVE_CADENCE_MS) return memo.promise;

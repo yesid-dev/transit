@@ -30,6 +30,12 @@ def env_int(name: str, default: int, *, minimum: int = 1) -> int:
 
 
 @dataclass(frozen=True)
+class CheckedDay:
+    files: tuple[str, ...] | None
+    settled: bool
+
+
+@dataclass(frozen=True)
 class Store:
     root: str
     cleaning_version: int = DEFAULT_CLEANING_VERSION
@@ -113,13 +119,36 @@ class Store:
             verify_digests=False,
             allow_untracked_alerts=allow_untracked_alerts,
             receipts=receipts,
+        ).files
+
+    def query_day(
+        self,
+        conn: duckdb.DuckDBPyConnection,
+        city: str,
+        day: date,
+        tables: tuple[str, ...],
+        *,
+        allow_untracked_alerts: bool = False,
+        receipts: dict[str, bytes] | None = None,
+    ) -> CheckedDay:
+        """Validate query inputs and the completeness of all published files."""
+        return self._checked_files(
+            conn,
+            city,
+            day,
+            tables,
+            verify_digests=False,
+            allow_untracked_alerts=allow_untracked_alerts,
+            check_all=True,
+            receipts=receipts,
         )
 
     def verify(self, conn: duckdb.DuckDBPyConnection, city: str, day: date) -> bool:
         """Audit the query inputs and any tracked alerts against their full SHA-256 digests."""
         return (
-            self._checked_files(conn, city, day, _PUNCTUALITY_FILES, verify_digests=True)
-            is not None
+            self._checked_files(
+                conn, city, day, _PUNCTUALITY_FILES, verify_digests=True
+            ).files is not None
         )
 
     def _checked_files(
@@ -132,11 +161,13 @@ class Store:
         verify_digests: bool,
         allow_untracked_alerts: bool = False,
         receipts: dict[str, bytes] | None = None,
-    ) -> tuple[str, ...] | None:
+        check_all: bool = False,
+    ) -> CheckedDay:
         if not CITY.fullmatch(city):
             raise ValueError("Invalid city")
         directory = f"{self.root.rstrip('/')}/{city}/{day.isoformat()}/v{self.cleaning_version}"
         marker = f"{directory}/manifest.json"
+        present: set[str] = set()
         if self.s3_endpoint:
             # A signed list distinguishes absent data from an access failure.
             present = {
@@ -144,23 +175,23 @@ class Store:
                 for row in conn.execute("SELECT file FROM glob(?)", [f"{directory}/*"]).fetchall()
             }
             if marker not in present:
-                return None
+                return CheckedDay(None, False)
             manifest = conn.execute("SELECT content FROM read_blob(?)", [marker]).fetchone()
             if manifest is None:
-                return None
+                return CheckedDay(None, False)
             payload: bytes = manifest[0]
         else:
             try:
                 payload = Path(marker).read_bytes()
             except (FileNotFoundError, IsADirectoryError):
-                return None
+                return CheckedDay(None, False)
         identities = file_identities(payload, city, day.isoformat(), str(self.cleaning_version))
         if identities is None:
-            return None
+            return CheckedDay(None, False)
         if not identities:
-            # A no-raw-captures receipt measures nothing, exactly like an absent day.
-            return None
+            return CheckedDay(None, True)
         checked_paths = {}
+        supported = True
         for name in tables:
             if name in identities:
                 checked_paths[name] = f"{directory}/{name}"
@@ -169,32 +200,50 @@ class Store:
                 and allow_untracked_alerts
                 and str(self.cleaning_version) in ALERT_VERSIONS
             ):
-                return None
+                supported = False
         if ALERTS in identities:
             checked_paths[ALERTS] = f"{directory}/{ALERTS}"
-        if self.s3_endpoint and not set(checked_paths.values()) <= present:
-            return None
-        for name, path in checked_paths.items():
-            digest, size = identities[name]
-            if self.s3_endpoint:
-                # With only size projected, httpfs uses HEAD and skips the body.
-                projection = "size, sha256(content)" if verify_digests else "size"
-                expected = (size, digest) if verify_digests else (size,)
-                actual = conn.execute(f"SELECT {projection} FROM read_blob(?)", [path]).fetchone()
-                if actual != expected:
-                    return None
-            else:
-                try:
-                    parquet = Path(path)
-                    info = parquet.stat()
-                    if not S_ISREG(info.st_mode) or info.st_size != size:
-                        return None
-                    if verify_digests:
-                        with parquet.open("rb") as stream:
-                            if file_digest(stream, "sha256").hexdigest() != digest:
-                                return None
-                except (FileNotFoundError, IsADirectoryError):
-                    return None
-        if receipts is not None:
+        if not check_all and not supported:
+            return CheckedDay(None, False)
+
+        def matches(name: str) -> bool:
+            path = f"{directory}/{name}"
+            return (not self.s3_endpoint or path in present) and self._matches_file(
+                conn, path, identities[name], verify_digests
+            )
+
+        if not all(matches(name) for name in checked_paths):
+            return CheckedDay(None, False)
+        settled = not check_all or all(
+            matches(name) for name in identities if name not in checked_paths
+        )
+        files = tuple(checked_paths.get(name, "") for name in tables) if supported else None
+        if files is not None and receipts is not None:
             receipts[day.isoformat()] = payload
-        return tuple(checked_paths.get(name, "") for name in tables)
+        return CheckedDay(files, settled)
+
+    def _matches_file(
+        self,
+        conn: duckdb.DuckDBPyConnection,
+        path: str,
+        identity: tuple[str, int],
+        verify_digests: bool,
+    ) -> bool:
+        digest, size = identity
+        if self.s3_endpoint:
+            # With only size projected, httpfs uses HEAD and skips the body.
+            projection = "size, sha256(content)" if verify_digests else "size"
+            expected = (size, digest) if verify_digests else (size,)
+            actual = conn.execute(f"SELECT {projection} FROM read_blob(?)", [path]).fetchone()
+            return actual == expected
+        try:
+            parquet = Path(path)
+            info = parquet.stat()
+            if not S_ISREG(info.st_mode) or info.st_size != size:
+                return False
+            if verify_digests:
+                with parquet.open("rb") as stream:
+                    return file_digest(stream, "sha256").hexdigest() == digest
+        except (FileNotFoundError, IsADirectoryError):
+            return False
+        return True

@@ -13,11 +13,12 @@ function routePatterns(config) {
   return [...routes[1].matchAll(/pattern\s*=\s*"([^"]+)"/g)].map((match) => match[1]);
 }
 
-test("deployment config keeps only compatibility data and KPI routes", () => {
+test("deployment config keeps both compatibility routes and adds the public question route", () => {
   const config = readFileSync(configPath, "utf8");
   assert.deepEqual(routePatterns(config), [
     "transit.yesid.dev/data/*",
     "transit.yesid.dev/api/v1/*",
+    "data.yesid.dev/v2/*",
   ]);
 });
 

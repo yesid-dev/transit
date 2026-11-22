@@ -482,6 +482,16 @@ def test_scorecard_cuts_missing_tables_and_csv(
         assert all(len(row) == len(rows[0]) for row in rows)
         assert rows[-1][3] == ("Not measured" if lang == "en" else "Non mesuré")
     engine = Engine(store, concurrency=1, queue_size=1, queue_wait_ms=100)
+    status, headers, body = asyncio.run(
+        http(
+            engine,
+            "/measure",
+            f"city={CITY}&from={FRIDAY}&to={FRIDAY}&measure=live_trip_coverage",
+        )
+    )
+    assert status == 200
+    assert headers[b"x-transit-days-pending"] == b"1"
+    assert json.loads(body)["evidence"]["days_pending"] == [str(FRIDAY)]
     status, _, body = asyncio.run(
         http(
             engine,

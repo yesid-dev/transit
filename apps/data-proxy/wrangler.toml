@@ -7,11 +7,25 @@ workers_dev = false
 routes = [
   { pattern = "transit.yesid.dev/data/*", zone_name = "yesid.dev" },
   { pattern = "transit.yesid.dev/api/v1/*", zone_name = "yesid.dev" },
+  { pattern = "data.yesid.dev/v2/*", zone_name = "yesid.dev" },
 ]
 
 [[r2_buckets]]
 binding = "SNAPSHOTS"
 bucket_name = "transit-snapshots"
+
+[[services]]
+binding = "ENGINE"
+service = "transit-engine"
+
+# Wrangler provisions and reuses the dedicated namespace on deployment.
+[[kv_namespaces]]
+binding = "QUESTION_LAST_GOOD"
+
+[[ratelimits]]
+name = "QUESTION_LIMIT"
+namespace_id = "25261122"
+simple = { limit = 30, period = 60 }
 
 [observability]
 redact_query_string = true
