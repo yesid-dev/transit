@@ -3,20 +3,28 @@ from collections import Counter
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from hashlib import sha256
+from io import BytesIO
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO, cast
 from zipfile import ZipFile
 
+import boto3
 import duckdb
 import pytest
+from botocore.exceptions import ClientError
 from google.transit.gtfs_realtime_pb2 import FeedMessage, TripDescriptor, VehiclePosition
 from history_fixtures import scripted_feed_day
 from typer.testing import CliRunner
 
+from transit_ops import clean_day_inputs
+from transit_ops.clean_day import CLEANING_VERSION
 from transit_ops.clean_day_inputs import archived_captures
+from transit_ops.clean_day_output import version_key
 from transit_ops.cli import app
 from transit_ops.history.manifest import build_manifest, encode_manifest
 from transit_ops.history.pack import write_pack
+from transit_ops.history.poll_record import PollRecord
+from transit_ops.ingestion.common import build_bronze_object_storage_path
 from transit_ops.ingestion.realtime_gtfs import build_realtime_object_storage_path
 from transit_ops.providers.registry import load_provider_manifest
 
@@ -33,9 +41,16 @@ TRIPS = {
 }
 
 
-def _edition(path: Path, trips: dict[str, tuple[str, list[str]]], day: date) -> dict[str, str]:
+def _edition(
+    path: Path,
+    trips: dict[str, tuple[str, list[str]]],
+    day: date,
+    *,
+    route_type: int = 1,
+    coords: str = "45.5,-73.6",
+) -> dict[str, str]:
     with ZipFile(path, "w") as archive:
-        archive.writestr("routes.txt", "route_id,route_type\nr,3\nmetro,1\n")
+        archive.writestr("routes.txt", f"route_id,route_type\nr,3\nmetro,{route_type}\n")
         archive.writestr(
             "trips.txt",
             "route_id,service_id,trip_id,direction_id\n"
@@ -44,7 +59,7 @@ def _edition(path: Path, trips: dict[str, tuple[str, list[str]]], day: date) -> 
         archive.writestr(
             "stops.txt",
             "stop_id,stop_name,stop_lat,stop_lon\n"
-            + "".join(f"s{seq},Stop {seq},45.5,-73.6\n" for seq in range(1, 5)),
+            + "".join(f"s{seq},Stop {seq},{coords}\n" for seq in range(1, 5)),
         )
         archive.writestr(
             "stop_times.txt",
@@ -57,7 +72,8 @@ def _edition(path: Path, trips: dict[str, tuple[str, list[str]]], day: date) -> 
         )
         archive.writestr(
             "calendar_dates.txt",
-            "service_id,date,exception_type\ns,20260601,1\ns,20260602,1\n",
+            "service_id,date,exception_type\n"
+            + "".join(f"s,{day + timedelta(days=offset):%Y%m%d},1\n" for offset in range(4)),
         )
     return {
         "effective_date": day.isoformat(),
@@ -73,9 +89,13 @@ def _feed(published: datetime) -> FeedMessage:
     return feed
 
 
-def _save(root: Path, feed: FeedMessage, family: str, captured: datetime) -> None:
+def _save(
+    root: Path, feed: FeedMessage, family: str, captured: datetime, provider: str = "stm"
+) -> None:
     payload = feed.SerializeToString()
-    key = build_realtime_object_storage_path("stm", family, captured, sha256(payload).hexdigest())
+    key = build_realtime_object_storage_path(
+        provider, family, captured, sha256(payload).hexdigest()
+    )
     path = root / key
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(payload)
@@ -166,17 +186,17 @@ def _capture_fixture(root: Path) -> None:
     _save(root, feed, "trip_updates", stamp)
 
 
-def _run(root: Path, day: date) -> Path:
-    result = CliRunner().invoke(app, _args(root, day))
+def _run(root: Path, day: date, provider: str = "stm") -> Path:
+    result = CliRunner().invoke(app, _args(root, day, provider))
     assert result.exit_code == 0, (result.output, result.exception)
-    return root / "out" / "stm" / day.isoformat() / "v2"
+    return root / "out" / version_key(provider, day)
 
 
-def _args(root: Path, day: date) -> list[str]:
+def _args(root: Path, day: date, provider: str = "stm") -> list[str]:
     return [
         "clean-day",
         "--provider",
-        "stm",
+        provider,
         "--date",
         day.isoformat(),
         "--bronze",
@@ -238,8 +258,8 @@ def test_clean_day_math_and_edition_switch(tmp_path: Path) -> None:
                     ).fetchall()
                 )
                 assert metadata[b"schedule_sha256"] == edition["sha256"].encode()
-                assert metadata[b"cleaning_version"] == b"2"
-    assert all(row["cleaning_version"] == "2" for row in trips + stops + next_stops)
+                assert metadata[b"cleaning_version"] == CLEANING_VERSION.encode()
+    assert all(row["cleaning_version"] == CLEANING_VERSION for row in trips + stops + next_stops)
     assert [(r["trip_id"], r["scheduled_arrival_utc"]) for r in next_stops] == [
         ("night", MIDNIGHT + timedelta(hours=10)),
     ]
@@ -316,6 +336,22 @@ def test_clean_day_math_and_edition_switch(tmp_path: Path) -> None:
     assert result.exit_code == 1 and "already exists" in result.output
     assert {path.name: path.read_bytes() for path in first.glob("*.parquet")} == unchanged
 
+    receipt = json.loads((first / "manifest.json").read_bytes())
+    assert receipt["provider"] == "stm" and receipt["service_date"] == DAY.isoformat()
+    assert receipt["cleaning_version"] == CLEANING_VERSION
+    assert receipt["schedule_sha256"] == editions[0]["sha256"]
+    assert datetime.fromisoformat(receipt["built_at_utc"]).utcoffset() == timedelta(0)
+    assert Counter(receipt["row_counts_by_state"]) == counts
+    assert Counter(receipt["row_counts_by_basis"]) == expected_bases
+    for name, rows in (("trip_days", trips), ("stop_events", stops)):
+        filename = f"{name}.parquet"
+        payload = (first / filename).read_bytes()
+        assert receipt["files"][filename] == {
+            "rows": len(rows),
+            "sha256": sha256(payload).hexdigest(),
+            "byte_size": len(payload),
+        }
+
 
 def test_local_archive_reads_the_selected_capture_bytes(tmp_path: Path) -> None:
     provider = load_provider_manifest(
@@ -352,3 +388,295 @@ def test_local_archive_reads_the_selected_capture_bytes(tmp_path: Path) -> None:
     )
     with pytest.raises(ValueError, match="duplicate capture"):
         list(archived_captures(provider, tmp_path, [path, path], start, end))
+
+
+@pytest.mark.parametrize("vehicles_enabled", [True, False])
+def test_ottawa_service_day(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, vehicles_enabled: bool
+) -> None:
+    day = date(2026, 11, 1)
+    # Local noon minus 12 elapsed hours is 05:00 UTC on the fall DST transition,
+    # even though 00:00 wall time still has the previous offset.
+    scheduled = datetime(2026, 11, 2, 5, tzinfo=UTC)
+    edition = _edition(
+        tmp_path / "ottawa.zip",
+        {
+            "night": ("r", ["24:00:00", "24:05:00", "24:10:00"]),
+            "quiet": ("r", ["24:00:00"]),
+            "train": ("metro", ["24:00:00"]),
+        },
+        day,
+        route_type=0,
+        coords="45.4,-75.7",
+    )
+    provider = "octranspo"
+    (tmp_path / "editions.json").write_text(
+        json.dumps({"provider": provider, "editions": [edition]}), encoding="utf-8"
+    )
+    if not vehicles_enabled:
+        declaration = clean_day_inputs.declaration_for(provider)
+        declaration.feeds["vehicle_positions"].is_enabled = False
+        monkeypatch.setattr(clean_day_inputs, "declaration_for", lambda _: declaration)
+
+    # 150-second-old feed headers fall inside Ottawa's declared lag allowance.
+    for seconds in range(-300, 301, 60):
+        captured = scheduled + timedelta(seconds=seconds)
+        for family in ("trip_updates", "vehicle_positions"):
+            feed = _feed(captured - timedelta(seconds=150))
+            feed.entity.add(id="poll")
+            _save(tmp_path, feed, family, captured, provider)
+
+    published = scheduled + timedelta(seconds=20)
+    updates = _feed(published)
+    night = updates.entity.add(id="bus").trip_update
+    night.trip.trip_id = "night"
+    night.trip.start_time = "24:00:00"
+    night.vehicle.id = "bus-007"
+    night.stop_time_update.add(stop_id="s1").arrival.delay = 12
+    wrong = updates.entity.add(id="wrong").trip_update
+    wrong.trip.trip_id = "night"
+    wrong.trip.start_time = "24:15:00"
+    item = wrong.stop_time_update.add(stop_sequence=3)
+    item.arrival.time = int(published.timestamp())
+    item.arrival.uncertainty = 0
+    train = updates.entity.add(id="train").trip_update
+    train.trip.trip_id = "train"
+    train.trip.start_date = "20261101"
+    train.stop_time_update.add(stop_id="s1").arrival.CopyFrom(item.arrival)
+    reported_at = scheduled + timedelta(minutes=10, seconds=24)
+    exact = _feed(reported_at + timedelta(seconds=10))
+    update = exact.entity.add(id="exact").trip_update
+    update.trip.trip_id = "night"
+    update.trip.start_date = "20261101"
+    arrival = update.stop_time_update.add(stop_id="s3").arrival
+    arrival.time, arrival.uncertainty = int(reported_at.timestamp()), 0
+    _save(tmp_path, updates, "trip_updates", published, provider)
+    _save(tmp_path, exact, "trip_updates", reported_at + timedelta(seconds=10), provider)
+
+    stopped_at = scheduled + timedelta(minutes=5, seconds=10)
+    positions = _feed(stopped_at)
+    vehicle = positions.entity.add(id="position").vehicle
+    vehicle.trip.trip_id = "night"
+    vehicle.trip.start_date = "20261101"
+    vehicle.stop_id = "s2"
+    vehicle.vehicle.id = "bus-007"
+    vehicle.current_status = VehiclePosition.STOPPED_AT
+    vehicle.position.latitude, vehicle.position.longitude = 45.4, -75.7
+    _save(tmp_path, positions, "vehicle_positions", stopped_at, provider)
+
+    destination = _run(tmp_path, day, provider)
+    with duckdb.connect() as db:
+        trips = {row["trip_id"]: row for row in _rows(db, destination / "trip_days.parquet")}
+        stops = {
+            row["stop_id"]: row
+            for row in _rows(db, destination / "stop_events.parquet")
+            if row["trip_id"] == "night"
+        }
+    assert trips["night"]["scheduled_start_utc"] == scheduled
+    assert trips["night"]["state"] == "ran"
+    assert trips["quiet"]["state"] == "missing"
+    assert trips["train"]["state_reason"] == "route_without_live_data"
+    assert trips["train"]["first_capture_utc"] is None
+    assert [
+        (stops[key]["basis"], stops[key]["delay_seconds"], stops[key]["vehicle_id"])
+        for key in ("s1", "s2", "s3")
+    ] == [
+        ("trip_update_passed", 12, "bus-007") if vehicles_enabled else ("not_observed", None, None),
+        ("vehicle_stopped", 10, "bus-007") if vehicles_enabled else ("not_observed", None, None),
+        ("trip_update_reported", 24, None),
+    ]
+
+
+def _archive_capture(root: Path, stamp: datetime) -> None:
+    record, _ = scripted_feed_day(  # type: ignore[no-untyped-call]
+        provider_id="stm", endpoint_key="trip_updates"
+    )
+    record = cast(PollRecord, record)
+    feed = _feed(stamp)
+    update = feed.entity.add(id="scheduled").trip_update
+    update.trip.trip_id = "night"
+    update.trip.start_date = f"{stamp:%Y%m%d}"
+    payload = feed.SerializeToString()
+    base = f"archive/v1/captures/stm/trip_updates/{stamp:%Y/%m/%Y-%m-%d}.c"
+    pack_key = f"{base}10.pack.xz"
+    pack_path = root / pack_key
+    pack_path.parent.mkdir(parents=True, exist_ok=True)
+    with pack_path.open("wb") as stream:
+        pack = write_pack([payload], stream)
+    assert pack is not None
+    capture = replace(
+        record.captures[0],
+        captured_at_utc=stamp,
+        object_created_at_utc=stamp,
+        started_at_utc=stamp,
+        feed_timestamp_utc=stamp,
+        byte_size=len(payload),
+        sha256=sha256(payload).hexdigest(),
+    )
+    poll = replace(
+        record.polls[0],
+        requested_at_utc=stamp,
+        started_at_utc=stamp,
+        completed_at_utc=stamp,
+        time_utc=stamp,
+        feed_timestamp_utc=stamp,
+    )
+    manifest = build_manifest(
+        replace(
+            record,
+            feed_day=replace(record.feed_day, utc_date=stamp.date()),
+            captures=(capture,),
+            polls=(poll,),
+            processing=(),
+        ),
+        feed_endpoint_id=1,
+        feed_kind="trip_updates",
+        content_version=10,
+        supersedes=2,
+        pack_path=pack_key,
+        pack=pack,
+        sealed_at_utc=stamp,
+        sealed_by="test",
+    )
+    (root / f"{base}2.manifest.json.gz").write_bytes(b"older version")
+    (root / f"{base}10.manifest.json.gz").write_bytes(encode_manifest(manifest))
+
+
+class _FakeS3:
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        self.writes: list[str] = []
+        self.fail_stop_upload = False
+
+    def head_object(self, *, Bucket: str, Key: str) -> None:  # noqa: N803
+        if not (self.root / Bucket / Key).is_file():
+            raise ClientError({"Error": {"Code": "404"}}, "HeadObject")
+
+    def list_objects_v2(self, *, Bucket: str, Prefix: str) -> dict[str, object]:  # noqa: N803
+        root = self.root / Bucket
+        return {
+            "Contents": [
+                {"Key": key}
+                for path in root.rglob("*")
+                if path.is_file()
+                if (key := path.relative_to(root).as_posix()).startswith(Prefix)
+            ]
+        }
+
+    def get_object(self, *, Bucket: str, Key: str) -> dict[str, BytesIO]:  # noqa: N803
+        return {"Body": BytesIO((self.root / Bucket / Key).read_bytes())}
+
+    def put_object(
+        self,
+        *,
+        Bucket: str,
+        Key: str,
+        Body: BinaryIO,
+        IfNoneMatch: str,  # noqa: N803
+    ) -> None:
+        assert Bucket == "clean"
+        assert IfNoneMatch == "*"
+        if self.fail_stop_upload and Key.endswith("stop_events.parquet"):
+            raise ClientError({"Error": {"Code": "ServiceUnavailable"}}, "PutObject")
+        path = self.root / Bucket / Key
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with path.open("xb") as target:
+                target.write(Body.read())
+        except FileExistsError as exc:
+            raise ClientError(
+                {
+                    "ResponseMetadata": {
+                        "HTTPStatusCode": 412,
+                        "HTTPHeaders": {},
+                        "RequestId": "",
+                        "HostId": "",
+                        "RetryAttempts": 0,
+                    }
+                },
+                "PutObject",
+            ) from exc
+        self.writes.append(Key)
+
+
+@pytest.mark.parametrize("remote", [False, True])
+def test_range_builds_skips_and_continues(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, remote: bool
+) -> None:
+    raw = tmp_path / "raw" / "in"
+    dest = tmp_path / "clean" / "out"
+    raw.mkdir(parents=True)
+    third = DAY + timedelta(days=2)
+    editions = []
+    for day in (DAY, third):
+        stamp = datetime(day.year, day.month, day.day, 16, tzinfo=UTC)
+        path = raw / f"{day}.zip"
+        entry = _edition(path, {"night": ("r", ["12:00:00"])}, day)
+        key = build_bronze_object_storage_path(
+            provider_id="stm",
+            endpoint_key="static_schedule",
+            partition_label="ingested_at_utc",
+            observed_at_utc=stamp - timedelta(hours=10),
+            object_name="schedule.zip",
+            checksum_sha256=entry["sha256"],
+        )
+        original = raw / key
+        original.parent.mkdir(parents=True, exist_ok=True)
+        path.rename(original)
+        archive = raw / "archive" / "v1" / "schedules" / "stm" / f"{entry['sha256']}.zip"
+        archive.parent.mkdir(parents=True, exist_ok=True)
+        if remote:
+            original.rename(archive)
+        else:
+            archive.write_bytes(original.read_bytes())
+        editions.append({**entry, "path": archive.name})
+        _archive_capture(raw, stamp)
+
+    source, destination = str(raw), str(dest)
+    fake = _FakeS3(tmp_path)
+    if remote:
+        (archive.parent / "editions.json").write_text(
+            json.dumps({"provider": "stm", "editions": editions}), encoding="utf-8"
+        )
+        source, destination = "s3://raw/in", "s3://clean/out"
+        for role in ("SOURCE", "DEST"):
+            monkeypatch.setenv(f"CLEAN_{role}_S3_ENDPOINT", "https://example.invalid")
+            monkeypatch.setenv(f"CLEAN_{role}_S3_ACCESS_KEY_ID", f"{role}-test")
+            monkeypatch.setenv(f"CLEAN_{role}_S3_SECRET_ACCESS_KEY", "dummy")
+        monkeypatch.setattr(boto3.session.Session, "client", lambda *a, **k: fake)
+    args = [
+        "clean-days",
+        "--provider",
+        "stm",
+        "--source",
+        source,
+        "--dest",
+        destination,
+        "--from",
+        DAY.isoformat(),
+        "--to",
+    ]
+    marker = f"{version_key('stm', DAY)}/manifest.json"
+    runner = CliRunner()
+    if remote:
+        fake.fail_stop_upload = True
+        attempt = runner.invoke(app, [*args, DAY.isoformat()])
+        assert attempt.exit_code == 1 and "ServiceUnavailable" in attempt.output
+        assert not (dest / marker).exists()
+        fake.fail_stop_upload = False
+    first = runner.invoke(app, [*args, DAY.isoformat()])
+    assert first.exit_code == 0, (first.output, first.exception)
+    assert "Built 1, skipped 0, failed 0" in first.output
+    if remote:
+        assert fake.writes == [
+            f"out/{version_key('stm', DAY)}/{name}"
+            for name in ("trip_days.parquet", "stop_events.parquet", "manifest.json")
+        ]
+    manifest = (dest / marker).read_bytes()
+    result = runner.invoke(app, [*args, third.isoformat()])
+    assert result.exit_code == 1 and "Built 1, skipped 1, failed 1" in result.output
+    assert f"{NEXT}: ValueError: No archived GTFS-Realtime captures" in result.output
+    assert (dest / marker).read_bytes() == manifest
+    latest = json.loads((dest / version_key("stm", third) / "manifest.json").read_bytes())
+    assert latest["schedule_sha256"] == entry["sha256"]
+    assert latest["row_counts_by_state"]["unconfirmed"] == 1

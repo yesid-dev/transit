@@ -137,21 +137,21 @@ def clean_day_command(
     """Build stop_events and trip_days for one provider service day."""
     from google.protobuf.message import DecodeError  # type: ignore[import-untyped]
 
-    from transit_ops.clean_day import REALTIME_FEEDS, build_clean_day, capture_window
-    from transit_ops.clean_day_inputs import archived_captures, loose_captures, schedule_contexts
+    from transit_ops.clean_day import capture_window
+    from transit_ops.clean_day_inputs import (
+        archived_captures,
+        clean_from_inputs,
+        declaration_for,
+        loose_captures,
+        schedule_contexts,
+    )
     from transit_ops.clean_day_output import write_clean_day
-    from transit_ops.lake.archive_keys import validate_provider_id
-    from transit_ops.providers.registry import load_provider_manifest
 
     try:
         service_date = date.fromisoformat(day)
         if service_date.isoformat() != day:
             raise ValueError("Expected a service date in YYYY-MM-DD form")
-        validate_provider_id(provider)
-        config = Path(__file__).resolve().parents[2] / "config" / "providers" / f"{provider}.yaml"
-        declaration = load_provider_manifest(config)
-        if declaration.provider.provider_id != provider:
-            raise ValueError(f"Provider manifest does not match {provider}")
+        declaration = declaration_for(provider)
         schedules = schedule_contexts(declaration, service_date, editions)
         start, end = capture_window(schedules[service_date], service_date)
         captures = (
@@ -159,23 +159,26 @@ def clean_day_command(
             if capture_manifest
             else loose_captures(declaration, bronze, start, end)
         )
-        cleaned = build_clean_day(
-            provider,
-            service_date,
-            schedules,
-            captures,
-            required_feeds=tuple(
-                family
-                for family in REALTIME_FEEDS
-                if (feed := declaration.feeds.get(family)) is not None and feed.is_enabled
-            ),
-            source_lag_seconds=declaration.provider.live_source_lag_seconds,
-        )
+        cleaned = clean_from_inputs(declaration, service_date, schedules, captures)
         destination = write_clean_day(cleaned, out)
     except (ValueError, OSError, DecodeError) as error:
         typer.echo(str(error), err=True)
         raise typer.Exit(1) from None
     typer.echo(str(destination))
+
+
+@app.command("clean-days")
+def clean_days_command(
+    provider: Annotated[str, typer.Option("--provider")],
+    first: Annotated[str, typer.Option("--from", help="First service date, inclusive.")],
+    last: Annotated[str, typer.Option("--to", help="Last service date, inclusive.")],
+    source: Annotated[str, typer.Option("--source", help="Raw archive directory or s3:// URL.")],
+    dest: Annotated[str, typer.Option("--dest", help="Clean output directory or s3:// URL.")],
+) -> None:
+    """Build clean Parquet tables for an inclusive range of provider service days."""
+    from transit_ops.clean_days import run_clean_days
+
+    run_clean_days(provider, first, last, source, dest)
 
 
 class DailyJob(StrEnum):
@@ -2073,8 +2076,13 @@ def history_probe_pack_command(
             scope = history_storage(settings)
             resources.callback(scope.close)
             connection = resources.enter_context(engine.connect())
-            report = probe_capture_day(connection, scope.resolve, provider_id=provider,
-                                       endpoint_key=feed, utc_date=selected)
+            report = probe_capture_day(
+                connection,
+                scope.resolve,
+                provider_id=provider,
+                endpoint_key=feed,
+                utc_date=selected,
+            )
         typer.echo(json.dumps(asdict(report)))
     except Exception:
         typer.echo(f"History probe failed for UTC day {selected.isoformat()}.", err=True)
@@ -2166,7 +2174,8 @@ def history_verify_command(
     else:
         current = window.current_version if window else None
         copies = [
-            c for c in copies
+            c
+            for c in copies
             if c.state == "sealed" and (current is None or c.content_version > current)
         ]
     if not copies:

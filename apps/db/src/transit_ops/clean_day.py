@@ -2,7 +2,7 @@
 
 from bisect import bisect_left, bisect_right
 from collections import Counter
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Collection, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from functools import cache, lru_cache
@@ -37,7 +37,7 @@ STOPPED_AT_RADIUS_METRES = 50
 # Require several opportunities to see early reporting around departure, even
 # for short trips, at the providers' normal 20–60 second feed cadences.
 ABSENCE_LEAD_SECONDS = 300
-CLEANING_VERSION = "2"
+CLEANING_VERSION = "3"
 REALTIME_FEEDS: tuple[Feed, ...] = ("trip_updates", "vehicle_positions")
 _REMOVED = {TripDescriptor.CANCELED, TripDescriptor.DELETED}
 _EXTRA = {
@@ -434,6 +434,7 @@ def build_clean_day(
     *,
     required_feeds: tuple[Feed, ...] = REALTIME_FEEDS,
     source_lag_seconds: int = 0,
+    routes_without_live_data: Collection[str] = (),
 ) -> CleanDay:
     schedule = schedules[day]
     anchor = int(schedule.service_day_start(day).timestamp())
@@ -461,6 +462,10 @@ def build_clean_day(
     polls: list[PollFacts] = []
     prior_capture: datetime | None = None
     for capture in captures:
+        is_update = capture.family == "trip_updates"
+        feed: Feed = "trip_updates" if is_update else "vehicle_positions"
+        if capture.family != feed or feed not in required_feeds:
+            continue
         captured = capture.captured_at_utc
         if captured.utcoffset() is None or (prior_capture is not None and captured < prior_capture):
             raise ValueError("Captures must arrive in UTC time order")
@@ -474,9 +479,7 @@ def build_clean_day(
             raise ValueError(f"Incomplete GTFS-Realtime capture: {capture.label}")
         capture_second = int(captured.timestamp())
         feed_second = min(message.header.timestamp or capture_second, capture_second)
-        is_update = capture.family == "trip_updates"
-        feed: Feed = "trip_updates" if is_update else "vehicle_positions"
-        if capture.family == feed and message.header.incrementality == FeedHeader.FULL_DATASET:
+        if message.header.incrementality == FeedHeader.FULL_DATASET:
             header_timestamp = (
                 _timestamp(message.header.timestamp) if message.header.timestamp else None
             )
@@ -518,12 +521,15 @@ def build_clean_day(
                     dated is None
                     and not candidates
                     and desc.route_id
+                    and desc.route_id not in routes_without_live_data
                     and published.astimezone(schedule.timezone).date() == day
                 ):
                     result.live_routes.add(desc.route_id)
                 if dated != day:
                     continue
             trip = trips.get(desc.trip_id)
+            if (trip.route_id if trip is not None else desc.route_id) in routes_without_live_data:
+                continue
             if trip is None:
                 if desc.route_id:
                     result.live_routes.add(desc.route_id)
