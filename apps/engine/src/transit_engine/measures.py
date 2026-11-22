@@ -809,9 +809,10 @@ _SERVICE_DELIVERED = Family(
     ),
 )
 
-# One state can contribute at most 60 seconds, the cleaner's longest tolerated
-# inter-reading gap. One hour of coverage keeps any single capped interval under 2%.
-CROWDING_INTERVAL_CAP_SECONDS = 60
+# The cleaner starts a fresh interval after a reporting gap of more than 60 seconds.
+CROWDING_TAIL_CAP_SECONDS = 60
+# With no next reading in the clean day, assume one nominal vehicle-feed poll.
+CROWDING_FINAL_TAIL_SECONDS = 20
 MIN_CROWDING_VEHICLE_HOURS = 1
 _US_PER_HOUR = 3_600_000_000
 _OCCUPANCY_LEVELS = {
@@ -830,7 +831,9 @@ _CROWDING_COLUMNS = {
         "Vehicle-seconds with occupancy", "Véhicule-secondes mesurées"
     ),
     "readings_without_occupancy": Text("Readings without occupancy", "Relevés sans achalandage"),
-    "capped_intervals": Text("Capped intervals", "Intervalles plafonnés"),
+    "capped_intervals": Text(
+        "Intervals with a capped tail", "Intervalles avec prolongement plafonné"
+    ),
     "level_vehicle_seconds": Text("Vehicle-seconds by level", "Véhicule-secondes par niveau"),
 }
 
@@ -846,7 +849,7 @@ def _crowding_rows(
     filters, arguments = _cuts(question, None)
     join = ""
     direction = "NULL::INTEGER"
-    inputs: list[object] = [paths[VEHICLE_POSITIONS]]
+    inputs: list[object] = [paths[VEHICLE_POSITIONS], question.city, version]
     if question.direction is not None:
         direction = "t.direction_id"
         join = """
@@ -855,34 +858,49 @@ def _crowding_rows(
                  (t.provider, t.cleaning_version, t.service_date, t.trip_id)
         """
         inputs.append(paths[TRIP_DAYS])
-    weight = "duration"
+    weight = "epoch_us(ends_at) - epoch_us(observed_at_utc)"
     reading_cut = "matches"
     if question.hour is not None:
         start_hour = _LOCAL_HOUR.format("observed_at_utc")
-        next_hour = _LOCAL_HOUR.format("hour_edge")
-        # A capped interval meets at most one local-hour boundary in this timezone.
+        segment_hour = _LOCAL_HOUR.format("hour_start")
+        # Use elapsed-hour boundaries and then match the local hour, including both
+        # occurrences of a repeated hour when the clocks go back.
         weight = f"""
-            CASE WHEN {start_hour} = ? THEN least(duration, until_edge) ELSE 0 END
-            + CASE WHEN {next_hour} = ? THEN greatest(0, duration - until_edge) ELSE 0 END
+            (SELECT coalesce(sum(
+                least(epoch_us(ends_at), epoch_us(hour_start) + {_US_PER_HOUR})
+                - greatest(epoch_us(observed_at_utc), epoch_us(hour_start))
+            ), 0)::BIGINT
+            FROM generate_series(time_bucket(INTERVAL '1 hour', observed_at_utc),
+                ends_at, INTERVAL '1 hour') AS hours(hour_start)
+            WHERE {segment_hour} = ?)
         """
         reading_cut = f"matches AND {start_hour} = ?"
-        arguments.extend([question.hour] * 3)
+        arguments.extend([question.hour] * 2)
+    cap_us = CROWDING_TAIL_CAP_SECONDS * 1_000_000
+    nominal_us = CROWDING_FINAL_TAIL_SECONDS * 1_000_000
     rows = conn.execute(
         f"""
-        WITH vehicles AS (
+        WITH sequenced AS (
+            SELECT provider, cleaning_version, service_date, trip_id, route_id, stop_id,
+                observed_at_utc, last_seen_at_utc, readings, occupancy_status,
+                occupancy_percentage, lead(observed_at_utc) OVER (
+                    PARTITION BY filename, vehicle_id ORDER BY observed_at_utc, captured_at_utc
+                ) AS next_start
+            FROM read_parquet(?, hive_partitioning = false)
+            WHERE provider = ? AND cleaning_version = ?
+        ), vehicles AS (
             SELECT v.route_id, v.stop_id, {direction} AS direction_id,
                 v.observed_at_utc, v.readings,
-                greatest(0, epoch_us(v.last_seen_at_utc) - epoch_us(v.observed_at_utc)) AS elapsed,
-                least(elapsed, {CROWDING_INTERVAL_CAP_SECONDS * 1_000_000}) AS duration,
-                time_bucket(INTERVAL '1 hour', v.observed_at_utc) + INTERVAL '1 hour' AS hour_edge,
-                epoch_us(hour_edge) - epoch_us(v.observed_at_utc) AS until_edge,
+                coalesce(epoch_us(v.next_start) - epoch_us(v.last_seen_at_utc), {nominal_us})
+                    AS tail_us,
+                greatest(v.observed_at_utc, v.last_seen_at_utc) +
+                    greatest(0, least(tail_us, {cap_us})) * INTERVAL '1 microsecond' AS ends_at,
                 CASE WHEN v.occupancy_status BETWEEN 0 AND 5 THEN v.occupancy_status END AS status,
                 CASE WHEN status IS NULL AND v.occupancy_percentage >= 0
                      THEN v.occupancy_percentage END AS percentage
-            FROM read_parquet(?, hive_partitioning = false) v
+            FROM sequenced v
             {join}
-            WHERE v.provider = ? AND v.cleaning_version = ?
-                AND (?::VARCHAR IS NULL OR v.route_id = ?)
+            WHERE (?::VARCHAR IS NULL OR v.route_id = ?)
         ), cuts AS (
             SELECT *, {_entity_sql(group)} AS entity, {filters} AS matches,
                 {weight} AS weight, {reading_cut} AS reading_cut
@@ -892,15 +910,13 @@ def _crowding_rows(
             count(*) FILTER (reading_cut OR (matches AND weight > 0)) AS intervals,
             coalesce(sum(readings) FILTER (reading_cut), 0) AS readings,
             coalesce(sum(weight) FILTER (matches), 0) AS vehicle_us,
-            coalesce(sum(weight * weight) FILTER (matches), 0) AS squared_us,
-            count(*) FILTER (elapsed > duration AND (reading_cut OR (matches AND weight > 0))),
+            coalesce(sum(weight::HUGEINT * weight) FILTER (matches), 0) AS squared_us,
+            count(*) FILTER (tail_us > {cap_us} AND (reading_cut OR (matches AND weight > 0))),
             count(*)
         FROM cuts GROUP BY entity, status, percentage
         """,
         [
             *inputs,
-            question.city,
-            version,
             question.line,
             question.line,
             *arguments,
@@ -931,7 +947,7 @@ def _crowding_rows(
 
 _CROWDING = Family(
     id=_CROWDING_ID,
-    method_version="crowding-v1",
+    method_version="crowding-v2",
     since="2026-11-22",
     tables=(VEHICLE_POSITIONS, TRIP_DAYS),
     minimum_sample=MIN_CROWDING_VEHICLE_HOURS,
@@ -965,16 +981,22 @@ _CROWDING = Family(
         "d’achalandage utilisable n’a été publiée.",
     ),
     limits=Text(
-        f"We cap each interval at {CROWDING_INTERVAL_CAP_SECONDS} seconds, the longest gap "
-        "allowed between readings in a cleaned interval, to limit the weight of stale "
-        f"states. One vehicle-hour keeps any one interval below 2% of measured time. "
+        "We count the full span from the first to the last reading of a state. We then "
+        "carry the last reading forward to the next interval for that vehicle, up to "
+        f"{CROWDING_TAIL_CAP_SECONDS} seconds, to limit the weight of stale readings. The "
+        f"last interval of each clean day gets {CROWDING_FINAL_TAIL_SECONDS} seconds, one "
+        "scheduled feed poll. The one-vehicle-hour floor keeps a few minutes of reports "
+        "from determining the share. "
         "We use the published status when usable and report exact percentages separately "
         "when only a percentage is usable. The full share also includes percentage-only "
         "values at or above 100%.",
-        f"Chaque intervalle est plafonné à {CROWDING_INTERVAL_CAP_SECONDS} secondes, "
-        "l’écart maximal permis entre deux relevés d’un intervalle nettoyé, pour limiter "
-        "le poids des états périmés. Avec une heure-véhicule, un intervalle représente "
-        "moins de 2 % du temps mesuré. On utilise l’état publié s’il est utilisable. "
+        "On compte toute la durée entre le premier et le dernier relevé d’un état. On "
+        "prolonge ensuite le dernier relevé jusqu’au prochain intervalle du même véhicule, "
+        f"avec un maximum de {CROWDING_TAIL_CAP_SECONDS} secondes pour limiter le poids des "
+        f"relevés périmés. Le dernier intervalle de chaque journée nettoyée reçoit "
+        f"{CROWDING_FINAL_TAIL_SECONDS} secondes, soit la cadence de collecte prévue. "
+        "Le seuil d’une heure-véhicule évite de juger l’achalandage à partir de quelques "
+        "minutes de relevés. On utilise l’état publié s’il est utilisable. "
         "Les pourcentages seuls restent distincts et ceux d’au moins 100 % entrent aussi "
         "dans la part du temps où le véhicule est plein.",
     ),
@@ -1274,11 +1296,11 @@ class ReadWindow:
         return _PARTIAL._asdict() if self.measured and self.missing else None
 
     def batches(self) -> Iterator[dict[str, list[str]]]:
-        for offset in range(0, len(self.included), DAYS_PER_QUERY_BATCH):
-            yield {
-                table: files[offset : offset + DAYS_PER_QUERY_BATCH]
-                for table, files in self.paths.items()
-            }
+        # Crowding orders per-vehicle observations within each day. Keep the sort
+        # bounded to one day while retaining the usual batches for smaller tables.
+        size = 1 if VEHICLE_POSITIONS in self.paths else DAYS_PER_QUERY_BATCH
+        for offset in range(0, len(self.included), size):
+            yield {table: files[offset : offset + size] for table, files in self.paths.items()}
 
     def evidence(
         self, store: Store, question: Question, family: Family, started: float

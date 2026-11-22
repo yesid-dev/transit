@@ -27,6 +27,7 @@ class Reading(NamedTuple):
     readings: int
     status: int | None
     percentage: int | None = None
+    vehicle: str | None = None
 
 
 class Notice(NamedTuple):
@@ -93,13 +94,17 @@ def history(tmp_path: Path) -> tuple[Store, list[Reading], dict[date, tuple[Noti
     store = _build_store(tmp_path, 6, trips)
     first = utc(THURSDAY, 12)
     readings = [
-        *(Reading("A", "first", first, 900, 8, 5) for _ in range(40)),
+        *(Reading("A", "first", first, 600, 31, 5) for _ in range(8)),
         *(Reading("A", "first", first, 30, 3, 0, 15) for _ in range(40)),
         *(Reading("A", "first", utc(SATURDAY, 12), 30, 2, None, 75) for _ in range(20)),
         Reading("A", "first", utc(SATURDAY, 12), 40, 4, None, 105),
-        Reading("A", "other", utc(THURSDAY, 12, 59, 40), 50, 4, 2),
+        Reading("A", "other", utc(THURSDAY, 12, 59, 40), 3670, 185, 2),
+        Reading("A", "first", first, 0, 1, 5, vehicle="changes-line"),
+        Reading("B", "first", first + timedelta(minutes=2), 0, 1, None, vehicle="changes-line"),
+        Reading("A", "first", first, 10, 2, 0, vehicle="short-tail"),
+        Reading("B", "first", first + timedelta(seconds=25), 0, 1, None, vehicle="short-tail"),
         Reading("A", "first", first, 60, 10, None),
-        Reading("B", "first", first, 30, 2, 3),
+        Reading("B", "first", first, 0, 1, 3),
         Reading("C", "first", first, 30, 5, 7),
         Reading("D", "first", utc(SATURDAY, 12), 30, 5, 8),
     ]
@@ -146,14 +151,16 @@ def history(tmp_path: Path) -> tuple[Store, list[Reading], dict[date, tuple[Noti
                 day,
                 VEHICLE_POSITIONS,
                 "vehicle_id VARCHAR, route_id VARCHAR, stop_id VARCHAR, trip_id VARCHAR,"
-                " observed_at_utc TIMESTAMPTZ, last_seen_at_utc TIMESTAMPTZ, readings BIGINT,"
+                " observed_at_utc TIMESTAMPTZ, captured_at_utc TIMESTAMPTZ,"
+                " last_seen_at_utc TIMESTAMPTZ, readings BIGINT,"
                 " occupancy_status INTEGER, occupancy_percentage BIGINT",
                 [
                     (
-                        f"vehicle-{index}",
+                        row.vehicle or f"vehicle-{index}",
                         row.line,
                         row.stop,
                         row.line,
+                        row.first,
                         row.first,
                         row.first + timedelta(seconds=row.seconds),
                         row.readings,
@@ -209,13 +216,15 @@ def _get(store: Store, path: str, measure: str, **cuts: object) -> dict[str, Any
 
 def test_crowding_matches_independent_vehicle_time_and_reports_coverage(
     history: tuple[Store, list[Reading], dict[date, tuple[Notice, ...]]],
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     store, readings, _ = history
-    monkeypatch.setattr(measures, "DAYS_PER_QUERY_BATCH", 1)
     answer = _get(store, "/measure", "crowding", line="A", direction=0, stop="first")
     seconds: defaultdict[str, int] = defaultdict(int)
     all_readings = occupied_readings = 0
+    by_vehicle_day: defaultdict[tuple[str, date], list[datetime]] = defaultdict(list)
+    for row in readings:
+        if row.vehicle is not None:
+            by_vehicle_day[row.vehicle, row.first.date()].append(row.first)
     for row in readings:
         if row.line != "A" or row.stop != "first":
             continue
@@ -230,8 +239,17 @@ def test_crowding_matches_independent_vehicle_time_and_reports_coverage(
             if row.status == 0
             else "75%"
         )
-        seconds[level] += min(row.seconds, 60)
-    assert seconds == {"full": 2440, "empty": 1200, "75%": 600}
+        following = [
+            stamp
+            for stamp in by_vehicle_day[row.vehicle or "", row.first.date()]
+            if stamp > row.first
+        ]
+        tail = 20
+        if following:
+            last = row.first + timedelta(seconds=row.seconds)
+            tail = min(60, max(0, int((min(following) - last).total_seconds())))
+        seconds[level] += row.seconds + tail
+    assert seconds == {"full": 5080, "empty": 2025, "75%": 1000}
     total = sum(seconds.values())
     evidence = answer["evidence"]
     assert answer["state"] == "measured"
@@ -242,13 +260,11 @@ def test_crowding_matches_independent_vehicle_time_and_reports_coverage(
     assert evidence["counts"]["occupancy_readings"] == occupied_readings
     assert evidence["counts"]["readings"] == all_readings
     assert evidence["share_occupancy_readings"] == occupied_readings / all_readings
-    assert evidence["excluded"]["capped_intervals"] == 40
+    assert evidence["excluded"]["capped_intervals"] == 1
     assert evidence["days_not_measured"] == [str(FRIDAY)]
 
-    late_hour = _get(store, "/measure", "crowding", line="A", hour=8, day_type="weekday")
-    assert late_hour["state"] == "too_few_to_judge"
-    assert late_hour["evidence"]["counts"]["occupancy_vehicle_seconds"] == 30
-    assert late_hour["evidence"]["share_occupancy_readings"] is None
+    standalone = _get(store, "/measure", "crowding", line="B")
+    assert standalone["evidence"]["counts"]["occupancy_vehicle_seconds"] == 20
     assert _get(store, "/measure", "crowding", line="A", direction=1)["state"] == "unknown"
     missing = _get(store, "/measure", "crowding", **{"from": FRIDAY, "to": FRIDAY})
     assert missing["state"] == "not_measured"
@@ -258,13 +274,30 @@ def test_crowding_matches_independent_vehicle_time_and_reports_coverage(
     assert untracked["evidence"]["share_occupancy_readings"] == 0
     ranked = _get(store, "/ranking", "crowding_full", kind="line", **{"class": "all"})
     assert [row["id"] for row in ranked["rows"]] == ["A"]
-    assert ranked["rows"][0]["value"] == seconds["full"] / (total + 50)
+    assert ranked["rows"][0]["value"] == seconds["full"] / (total + 3690)
     assert ranked["rows"][0]["range"]["method"] == "occupancy_weighted_wilson_95"
     assert {row["id"]: row["reason"] for row in ranked["excluded"]} == {
         "B": "too_few_to_judge",
         "C": "not_tracked",
         "D": "not_tracked",
     }
+
+
+def test_crowding_splits_a_long_interval_across_two_local_hour_boundaries(
+    history: tuple[Store, list[Reading], dict[date, tuple[Notice, ...]]],
+) -> None:
+    store, _, _ = history
+    weights = {}
+    coverage = {}
+    for hour in (7, 8, 9):
+        answer = _get(
+            store, "/measure", "crowding", line="A", stop="other", hour=hour, day_type="weekday"
+        )
+        evidence = answer["evidence"]
+        weights[hour] = evidence["counts"]["occupancy_vehicle_seconds"]
+        coverage[hour] = evidence["share_occupancy_readings"]
+    assert weights == {7: 20, 8: 3600, 9: 70}
+    assert coverage == {7: 1, 8: None, 9: None}
 
 
 def test_alert_counts_and_hours_match_independent_hour_sets(
