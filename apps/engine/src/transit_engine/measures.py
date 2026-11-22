@@ -7,7 +7,7 @@ import io
 import json
 from collections import Counter
 from collections.abc import Callable, Iterator
-from dataclasses import InitVar, dataclass, field
+from dataclasses import InitVar, dataclass, field, replace
 from datetime import date
 from time import perf_counter
 from typing import Any, Literal, NamedTuple
@@ -16,10 +16,24 @@ import duckdb
 
 from transit_engine.clean_manifest import (
     ALERTS,
+    FEED_POLLS,
     SCHEDULED_STOP_TIMES,
     STOP_EVENTS,
     TRIP_DAYS,
     VEHICLE_POSITIONS,
+)
+from transit_engine.schedule import (
+    BUNCHING_FRACTION,
+    FREQUENT_HEADWAY_SECONDS,
+    LONG_GAP_MULTIPLE,
+    MAX_POLL_AGE_SECONDS,
+    MAX_POLL_SPACING_SECONDS,
+    MIN_OBSERVED_HEADWAYS,
+    MIN_TRIPS_PER_HOUR,
+    PERIODS,
+    POLL_COVERAGE_SQL,
+    period_sql,
+    periods_text,
 )
 from transit_engine.store import CITY, Store
 
@@ -63,6 +77,7 @@ class Measure:
     extra_tables: tuple[str, ...] = ()
     worst_first_descending: bool = False
     ranking_kinds: tuple[EntityKind, ...] | None = None
+    source: str | None = None
 
 
 class Departure(NamedTuple):
@@ -85,6 +100,15 @@ class AlertSpan(NamedTuple):
     end: int
 
 
+class OfferedCounts(NamedTuple):
+    route_id: str
+    direction_id: int | None
+    day_type: str
+    period: str
+    trips: int
+    at_or_above_minimum: int
+
+
 @dataclass
 class Batch:
     counts: Counter[str] = field(default_factory=Counter)
@@ -92,6 +116,7 @@ class Batch:
     departures: list[Departure] = field(default_factory=list)
     scheduled_routes: set[str] = field(default_factory=set)
     alert_spans: set[AlertSpan] = field(default_factory=set)
+    offered: list[OfferedCounts] = field(default_factory=list)
 
     def update(self, other: Batch) -> None:
         self.counts.update(other.counts)
@@ -99,6 +124,7 @@ class Batch:
         self.departures.extend(other.departures)
         self.scheduled_routes.update(other.scheduled_routes)
         self.alert_spans.update(other.alert_spans)
+        self.offered.extend(other.offered)
 
 
 @dataclass(frozen=True)
@@ -138,6 +164,13 @@ _STATES = {
     "not_tracked": Text("Not tracked", "Non suivi"),
     "too_few_to_judge": Text("Too few to judge", "Trop peu de données pour conclure"),
     "unknown": Text("Unknown", "Inconnu"),
+    "no_frequent_periods": Text(
+        "No frequent periods in this selection", "Aucune période de service fréquent dans ce choix"
+    ),
+    "no_evening_or_weekend_periods": Text(
+        "No evening or weekend periods in this selection",
+        "Aucune période en soirée ou en fin de semaine dans ce choix",
+    ),
 }
 _PARTIAL = Text("Only measured days are included.", "Seuls les jours mesurés sont inclus.")
 # Both supported cities use the same service timezone. Departures reverse the
@@ -151,6 +184,8 @@ _DAY_TYPES = ("weekday", "weekday", "weekday", "weekday", "weekday", "saturday",
 _SERVICE_DELIVERED_ID = "service_delivered"
 _CROWDING_ID = "crowding"
 _ALERT_COUNTS_ID = "alert_counts"
+_WAITING_ID = "waiting_and_gaps"
+_SERVICE_OFFERED_ID = "service_offered"
 _BOUNDARIES = ("first_trip", "last_trip")
 
 
@@ -256,10 +291,14 @@ _UNIT_LABELS = {
     "seconds": Text("Seconds", "Secondes"),
     "count": Text("Count", "Nombre"),
     "hours": Text("Hours", "Heures"),
+    "trips": Text("Trips", "Trajets"),
+    "trips_per_hour": Text("Trips per hour", "Trajets par heure"),
+    "periods": Text("Periods", "Périodes"),
 }
 
 
 def _info(family: Family, measure: Measure) -> dict[str, Any]:
+    columns = _csv_columns(family)
     return {
         "id": measure.id,
         "family": family.id,
@@ -268,20 +307,16 @@ def _info(family: Family, measure: Measure) -> dict[str, Any]:
         "since": family.since,
         "tables": (*family.tables, *measure.extra_tables),
         "minimum_sample": family.minimum_sample,
+        **({"source": measure.source} if measure.source else {}),
         "evidence_fields": [
-            *(
-                key
-                for key in _EVIDENCE_COLUMNS
-                if family.id == "punctuality" or key != "share_observed"
-            ),
+            *(key for key in _EVIDENCE_COLUMNS if key in columns),
             "counts",
             "excluded",
             *(_DELIVERY_EVIDENCE if family.id == _SERVICE_DELIVERED_ID else ()),
             *family.evidence_columns,
         ],
         "csv_columns": {
-            lang: [getattr(label, lang) for label in _csv_columns(family).values()]
-            for lang in ("en", "fr")
+            lang: [getattr(label, lang) for label in columns.values()] for lang in ("en", "fr")
         },
         "text": {
             lang: {
@@ -1148,7 +1183,454 @@ _ALERT_COUNTS = Family(
 )
 
 
-_FAMILIES = (_PUNCTUALITY, _SERVICE_DELIVERED, _CROWDING, _ALERT_COUNTS)
+_WAITING_EXCLUDED = {
+    "unknown_direction": Text(
+        "Scheduled stops with unknown direction", "Arrêts prévus de direction inconnue"
+    ),
+    "route_without_live_data": Text("Pairs without live data", "Paires sans données en direct"),
+    "non_frequent": Text("Pairs outside frequent periods", "Paires hors des périodes fréquentes"),
+    "missing_observation": Text(
+        "Pairs without two usable observations", "Paires sans deux observations utilisables"
+    ),
+    "not_consecutive": Text(
+        "Pairs with another observed passage between them",
+        "Paires séparées par un autre passage observé",
+    ),
+    "overtaking_pairs": Text(
+        "Pairs observed in reverse scheduled order",
+        "Paires observées dans l’ordre inverse de l’horaire",
+    ),
+    "capture_gap": Text("Pairs without continuous capture", "Paires sans collecte continue"),
+}
+_WAITING_COLUMNS = {
+    "scheduled_headways": Text("Scheduled headways", "Intervalles prévus"),
+    "frequent_headways": Text(
+        "Scheduled headways with live data in frequent periods",
+        "Intervalles prévus avec données en direct en période fréquente",
+    ),
+    "observed_headways": Text("Matched observed headways", "Intervalles observés appariés"),
+    "scheduled_seconds": Text("Matched scheduled seconds", "Secondes prévues appariées"),
+    "observed_seconds": Text("Matched observed seconds", "Secondes observées appariées"),
+    "scheduled_squared_seconds": Text(
+        "Sum of squared scheduled headways", "Somme des carrés des intervalles prévus"
+    ),
+    "observed_squared_seconds": Text(
+        "Sum of squared observed headways", "Somme des carrés des intervalles observés"
+    ),
+    "bunching": Text("Bunched headways", "Intervalles avec regroupement"),
+    "long_gaps": Text("Long headways", "Intervalles prolongés"),
+    **_WAITING_EXCLUDED,
+}
+
+
+def _waiting_rows(
+    conn: duckdb.DuckDBPyConnection,
+    family: Family,
+    paths: dict[str, list[str]],
+    question: Question,
+    version: str,
+    group: EntityKind | None,
+) -> dict[EntityKey, Batch]:
+    hour = _LOCAL_HOUR.format("scheduled_stop_utc")
+    scope, scope_params = _cuts(replace(question, hour=None, departure=None), hour)
+    cut, cut_params = _cuts(question, hour)
+    identity = "provider, cleaning_version, service_date, trip_id"
+    counters = {
+        "scheduled_stops": "count(*)",
+        "live_candidates": "count(*) FILTER (route_has_live_data)",
+        "live_direction_stops": "count(direction_id) FILTER (route_has_live_data)",
+        "unknown_direction": "count(*) FILTER (direction_id IS NULL)",
+        "scheduled_headways": "count(*) FILTER (scheduled_pair)",
+        "frequent_headways": "count(*) FILTER (frequent AND route_has_live_data)",
+        "observed_headways": "count(*) FILTER (eligible)",
+        "scheduled_seconds": "coalesce(sum(scheduled_seconds) FILTER (eligible), 0)",
+        "observed_seconds": "coalesce(sum(observed_seconds) FILTER (eligible), 0)",
+        "scheduled_squared_seconds": (
+            "coalesce(sum(scheduled_seconds * scheduled_seconds) FILTER (eligible), 0)"
+        ),
+        "observed_squared_seconds": (
+            "coalesce(sum(observed_seconds * observed_seconds) FILTER (eligible), 0)"
+        ),
+        "route_without_live_data": ("count(*) FILTER (scheduled_pair AND NOT route_has_live_data)"),
+        "non_frequent": (
+            "count(*) FILTER (scheduled_pair AND route_has_live_data AND NOT frequent)"
+        ),
+        "missing_observation": (
+            "count(*) FILTER (frequent AND route_has_live_data "
+            "AND NOT trip_gap AND NOT observed_pair)"
+        ),
+        "not_consecutive": (
+            "count(*) FILTER (frequent AND route_has_live_data "
+            "AND observed_pair AND NOT overtaking AND NOT consecutive)"
+        ),
+        "overtaking_pairs": (
+            "count(*) FILTER (frequent AND route_has_live_data AND observed_pair AND overtaking)"
+        ),
+        "capture_gap": (
+            "count(*) FILTER (frequent AND route_has_live_data AND "
+            "(trip_gap OR (observed_pair AND NOT overtaking AND consecutive AND NOT eligible)))"
+        ),
+    }
+    counters.update(
+        {m.id: f"count(*) FILTER (eligible AND ({m.band}))" for m in family.measures if m.band}
+    )
+    routes = "list(DISTINCT route_id)" if group else "NULL"
+    window = [question.city, version, question.start, question.end]
+    rows = conn.execute(
+        f"""
+        WITH events AS (
+            SELECT s.service_date, s.trip_id, s.stop_id, s.stop_sequence,
+                t.route_id, t.direction_id, t.scheduled_start_utc, t.route_has_live_data,
+                CASE WHEN t.state <> 'added' THEN
+                    coalesce(s.scheduled_arrival_utc, s.scheduled_departure_utc)
+                END AS scheduled_stop_utc,
+                s.observed_at_utc,
+                t.state_reason IS NOT DISTINCT FROM 'capture_gap' AS trip_capture_gap,
+                coalesce(t.state = 'ran' AND t.route_has_live_data AND
+                    t.state_reason IS DISTINCT FROM 'capture_gap' AND
+                    s.basis IN ('vehicle_stopped', 'trip_update_reported') AND
+                    (s.observed_event = 'arrival' OR s.scheduled_arrival_utc IS NULL), false)
+                    AS usable_observation
+            FROM read_parquet(?, hive_partitioning = false) s
+            JOIN read_parquet(?, hive_partitioning = false) t USING ({identity})
+            WHERE s.provider = ? AND s.cleaning_version = ? AND s.service_date BETWEEN ? AND ?
+                AND t.route_id IS NOT NULL
+        ), observed_order AS (
+            SELECT *, row_number() OVER (
+                PARTITION BY service_date, route_id, direction_id, stop_id
+                ORDER BY observed_at_utc NULLS LAST, trip_id, stop_sequence
+            ) AS observed_index
+            FROM events WHERE {scope}
+        ), timetable AS (
+            SELECT *, {period_sql(hour)} AS period,
+                timezone('America/Toronto', scheduled_stop_utc)::DATE AS local_date
+            FROM observed_order WHERE scheduled_stop_utc IS NOT NULL
+        ), pairs AS (
+            SELECT *, epoch(scheduled_stop_utc - lag(scheduled_stop_utc) OVER schedule)::BIGINT
+                    AS scheduled_seconds,
+                lag(observed_at_utc) OVER schedule AS prev_observed,
+                coalesce(observed_at_utc < prev_observed, false) AS overtaking,
+                trip_capture_gap OR lag(trip_capture_gap, 1, false) OVER schedule AS trip_gap,
+                usable_observation AND lag(usable_observation, 1, false) OVER schedule
+                    AND prev_observed IS NOT NULL AND observed_at_utc IS NOT NULL
+                    AND trip_id <> lag(trip_id, 1, trip_id) OVER schedule AS observed_pair,
+                coalesce(abs(observed_index - lag(observed_index) OVER schedule) = 1, false)
+                    AS consecutive
+            FROM timetable
+            WINDOW schedule AS (
+                PARTITION BY service_date, route_id, direction_id, stop_id, local_date, period
+                ORDER BY scheduled_stop_utc, trip_id, stop_sequence
+            )
+        ), frequent_periods AS (
+            SELECT *,
+                coalesce(scheduled_seconds > 0 AND direction_id IS NOT NULL, false)
+                    AS scheduled_pair,
+                coalesce(scheduled_pair AND
+                avg(scheduled_seconds) FILTER (scheduled_seconds > 0) OVER (
+                    PARTITION BY service_date, route_id, direction_id, stop_id, local_date, period
+                ) <= {FREQUENT_HEADWAY_SECONDS}, false) AS frequent
+            FROM pairs
+        ),
+        {POLL_COVERAGE_SQL},
+        matched AS (
+            SELECT p.*,
+                epoch(observed_at_utc - prev_observed)::BIGINT AS observed_seconds,
+                frequent AND route_has_live_data AND observed_pair AND consecutive
+                    AND NOT overtaking AND coalesce(f.required_feeds = (
+                        SELECT count(DISTINCT c.feed) FROM coverage c
+                        WHERE c.service_date = p.service_date
+                          AND c.covered_from <= least(p.observed_at_utc, p.prev_observed)
+                          AND c.covered_to >= greatest(p.observed_at_utc, p.prev_observed)
+                    ), false) AS eligible
+            FROM frequent_periods p LEFT JOIN realtime_feed_counts f USING (service_date)
+            WHERE {cut}
+        )
+        SELECT {_entity_sql(group)} AS entity, NULL, {routes}, {", ".join(counters.values())}
+        FROM matched GROUP BY entity
+        """,
+        [
+            paths[STOP_EVENTS],
+            paths[TRIP_DAYS],
+            *window,
+            *scope_params,
+            paths[FEED_POLLS],
+            *window,
+            *cut_params,
+        ],
+    ).fetchall()
+    return _grouped_batches(rows, counters, "observed_headways", group)
+
+
+_WAITING = Family(
+    id=_WAITING_ID,
+    method_version="1",
+    since="2026-11-22",
+    tables=(STOP_EVENTS, TRIP_DAYS, FEED_POLLS),
+    minimum_sample=MIN_OBSERVED_HEADWAYS,
+    counts=Text(
+        "Evidence gives the number of scheduled and matched pairs, the sums and squared "
+        "sums of their intervals and the counts of bunched and long intervals.",
+        "Les données indiquent les nombres de paires prévues et appariées, la somme et la "
+        "somme des carrés de leurs intervalles, et les nombres d’intervalles courts et prolongés.",
+    ),
+    exclusions=Text(
+        "Pairs must be consecutive in the schedule and in the observations for the same "
+        "line, stop and direction. Both trips must have run and both arrivals must be "
+        "confirmed by a stopped vehicle or a time the agency marked exact. An exact "
+        "departure is accepted at a stop with only a scheduled departure. Unobserved "
+        "scheduled trips interrupt pairing. Every trip or vehicle feed recorded for the "
+        "service date must have continuous capture between observations, with at most "
+        f"{MAX_POLL_SPACING_SECONDS} seconds between "
+        f"usable polls and {MAX_POLL_AGE_SECONDS} seconds of publication age. "
+        "The direction must be known. Lines without live data are excluded.",
+        "Les passages doivent se suivre dans l’horaire et les observations pour la même "
+        "ligne, le même arrêt et la même direction. Les deux trajets doivent avoir eu lieu "
+        "et les arrivées doivent être confirmées par un véhicule à l’arrêt ou une heure "
+        "jugée exacte par l’exploitant. Un départ exact est accepté si seul le départ est "
+        "prévu à l’horaire. Un trajet prévu non observé interrompt l’appariement. "
+        "La collecte de chaque flux de trajets ou de véhicules consigné pour cette date de "
+        "service doit couvrir l’intervalle entre les observations, avec au plus "
+        f"{MAX_POLL_SPACING_SECONDS} secondes entre les relevés utilisables et "
+        f"des publications datant d’au plus {MAX_POLL_AGE_SECONDS} secondes. "
+        "La direction doit être connue. Les lignes sans données en direct sont exclues.",
+    ),
+    limits=Text(
+        f"A frequent period has at least two distinct scheduled times and a mean scheduled "
+        f"interval of at most {FREQUENT_HEADWAY_SECONDS // 60} minutes at that stop and "
+        f"direction on that service date. Local periods are {periods_text('en')}. "
+        "Each pair belongs to its later scheduled stop time and trip departure. "
+        "Pairs where vehicles overtook each other are left out. This can understate bunching. "
+        f"At least {MIN_OBSERVED_HEADWAYS} matched pairs are needed to report a value.",
+        "Une période est fréquente si elle compte au moins deux heures de passage "
+        f"distinctes et un intervalle prévu moyen d’au plus {FREQUENT_HEADWAY_SECONDS // 60} "
+        "minutes à cet arrêt et dans cette direction à cette date de service. "
+        f"Périodes locales : {periods_text('fr')}. Chaque paire est rattachée au dernier "
+        "passage prévu et au départ de son trajet. "
+        "Les paires où un véhicule a dépassé l’autre sont exclues. Cela peut sous-estimer "
+        "les regroupements de véhicules. "
+        f"Il faut au moins {MIN_OBSERVED_HEADWAYS} paires appariées pour publier une valeur.",
+    ),
+    measures=(
+        Measure(
+            "observed_headway",
+            "seconds",
+            Text(
+                "Mean observed time between matched vehicles at a stop.",
+                "Intervalle moyen observé entre les véhicules appariés à un arrêt.",
+            ),
+            ratio=("observed_seconds", "observed_headways"),
+            ranking_kinds=(),
+        ),
+        Measure(
+            "scheduled_headway",
+            "seconds",
+            Text(
+                "Mean scheduled time between the same matched vehicles.",
+                "Intervalle moyen prévu entre les mêmes véhicules appariés.",
+            ),
+            ratio=("scheduled_seconds", "observed_headways"),
+            ranking_kinds=(),
+        ),
+        Measure(
+            "bunching",
+            "share",
+            Text(
+                f"Share of matched observed headways shorter than {BUNCHING_FRACTION:.0%} "
+                "of their scheduled interval.",
+                f"Part des intervalles observés appariés inférieurs à {BUNCHING_FRACTION:.0%} "
+                "de l’intervalle prévu.",
+            ),
+            band=f"observed_seconds < {BUNCHING_FRACTION} * scheduled_seconds",
+            ratio=("bunching", "observed_headways"),
+            worst_first_descending=True,
+            ranking_kinds=("line",),
+        ),
+        Measure(
+            "long_gaps",
+            "share",
+            Text(
+                f"Share of matched observed headways longer than {LONG_GAP_MULTIPLE} times "
+                "their scheduled interval.",
+                f"Part des intervalles observés appariés supérieurs à {LONG_GAP_MULTIPLE} fois "
+                "l’intervalle prévu.",
+            ),
+            band=f"observed_seconds > {LONG_GAP_MULTIPLE} * scheduled_seconds",
+            ratio=("long_gaps", "observed_headways"),
+            ranking_kinds=(),
+        ),
+        Measure(
+            "excess_wait_time",
+            "seconds",
+            Text(
+                "Excess Wait Time is observed average wait minus scheduled average wait. "
+                "For riders arriving independently of the timetable, the average wait is "
+                "the sum of squared headways divided by twice their sum, using the same "
+                "matched pairs on both sides, following Transport for London practice.",
+                "Le temps d’attente excédentaire est l’attente moyenne observée moins "
+                "l’attente moyenne prévue. Pour les personnes qui arrivent sans consulter "
+                "l’horaire, l’attente moyenne est la somme des carrés des intervalles "
+                "divisée par deux fois leur somme. Le calcul utilise les mêmes paires "
+                "appariées des deux côtés, selon la méthode de Transport for London.",
+            ),
+            source="https://assets.publishing.service.gov.uk/media/5a7f3f5940f0b62305b85fb7/measurement-template.pdf",
+            worst_first_descending=True,
+            ranking_kinds=("line",),
+        ),
+    ),
+    query=_waiting_rows,
+    columns={"share_observed": _EVIDENCE_COLUMNS["share_observed"], **_WAITING_COLUMNS},
+)
+
+
+_OFFERED_COLUMNS = {
+    "scheduled_trips": Text("Scheduled trips", "Trajets prévus"),
+    "scheduled_clock_hours": Text("Scheduled clock hours", "Heures de l’horaire"),
+    "service_units": Text(
+        "Line and direction combinations", "Combinaisons de ligne et de direction"
+    ),
+    "eligible_periods": Text(
+        "Evening and weekend periods assessed", "Périodes évaluées en soirée et en fin de semaine"
+    ),
+    "below_minimum_service": Text(
+        "Periods below the service threshold", "Périodes sous le seuil de service"
+    ),
+}
+_OFFERED_EVIDENCE = {
+    "periods": Text("Schedule by period and day type", "Horaire par période et type de jour")
+}
+_MIN_SCHEDULE_DAYS = 1
+
+
+def _offered_rows(
+    conn: duckdb.DuckDBPyConnection,
+    family: Family,
+    paths: dict[str, list[str]],
+    question: Question,
+    version: str,
+    group: EntityKind | None,
+) -> dict[EntityKey, Batch]:
+    cut, parameters = _cuts(replace(question, hour=None), None)
+    bucket = period_sql("local_hour")
+    period_hours = (
+        "CASE period "
+        + " ".join(f"WHEN '{p.id}' THEN {p.end_hour - p.start_hour}" for p in PERIODS)
+        + " END"
+    )
+    count = "count(*)"
+    if question.hour is not None:
+        count += " FILTER (local_hour = ?)"
+        parameters.append(question.hour)
+        period_hours = "1"
+    rows = conn.execute(
+        f"""
+        WITH timetable AS (
+            SELECT service_date, route_id, direction_id, stop_id, trip_id,
+                coalesce(scheduled_departure_utc, scheduled_arrival_utc) AS stop_time,
+                min(stop_time) OVER (PARTITION BY service_date, trip_id) AS scheduled_start_utc
+            FROM read_parquet(?, hive_partitioning = false)
+            WHERE provider = ? AND cleaning_version = ? AND service_date BETWEEN ? AND ?
+                AND route_id IS NOT NULL
+        ), departures AS (
+            SELECT service_date, route_id, direction_id,
+                {_LOCAL_HOUR.format("min(stop_time)")} AS local_hour
+            FROM timetable WHERE stop_time IS NOT NULL AND {cut}
+            GROUP BY service_date, route_id, direction_id, trip_id
+        ), daily AS (
+            SELECT service_date, route_id, direction_id, {bucket} AS period, {count} AS trips
+            FROM departures GROUP BY service_date, route_id, direction_id, period
+        )
+        SELECT route_id, direction_id, CASE dayofweek(service_date)
+                WHEN 0 THEN 'sunday' WHEN 6 THEN 'saturday' ELSE 'weekday'
+            END AS day_type,
+            period, sum(trips), count(*) FILTER (trips >= {MIN_TRIPS_PER_HOUR} * ({period_hours}))
+        FROM daily GROUP BY route_id, direction_id, day_type, period
+        """,
+        [
+            paths[family.tables[0]],
+            question.city,
+            version,
+            question.start,
+            question.end,
+            *parameters,
+        ],
+    ).fetchall()
+    return {(): Batch(offered=[OfferedCounts(*row) for row in rows])}
+
+
+_SERVICE_OFFERED = Family(
+    id=_SERVICE_OFFERED_ID,
+    method_version="1",
+    since="2026-11-22",
+    tables=(SCHEDULED_STOP_TIMES,),
+    minimum_sample=_MIN_SCHEDULE_DAYS,
+    counts=Text(
+        "Evidence gives the number of scheduled trips, clock hours and evening or weekend "
+        "periods assessed, with a breakdown by local period and service day type.",
+        "Les données indiquent les nombres de trajets prévus, d’heures à l’horaire et de "
+        "périodes évaluées, par période locale et type de jour de service.",
+    ),
+    exclusions=Text(
+        "The schedule includes lines without live data. The count uses the first timed stop "
+        "of each trip, or the first timed visit to the selected stop. Missing schedules are "
+        "excluded. A line and direction seen in the selected timetable can have zero trips "
+        "in other periods and on other included dates.",
+        "L’horaire inclut les lignes sans données en direct. Chaque trajet est compté au "
+        "premier arrêt avec une heure prévue ou au premier passage avec une heure prévue "
+        "à l’arrêt choisi. Les horaires manquants sont exclus. Une ligne et une direction "
+        "présentes dans l’horaire choisi peuvent n’offrir aucun trajet à d’autres périodes "
+        "ou dates incluses.",
+    ),
+    limits=Text(
+        f"At least {_MIN_SCHEDULE_DAYS} service day with a validated schedule is required. "
+        f"Local periods are {periods_text('en')}. Frequencies use clock-hour slots, including "
+        "on clock-change days. Overnight trips keep the service date they belong to.",
+        f"Il faut au moins {_MIN_SCHEDULE_DAYS} jour de service avec un horaire validé. "
+        f"Périodes locales : {periods_text('fr')}. Les fréquences utilisent les heures "
+        "de l’horloge, même les jours de changement d’heure. Les trajets de nuit "
+        "conservent leur date de service.",
+    ),
+    measures=(
+        Measure(
+            "scheduled_trips",
+            "trips",
+            Text(
+                "Number of trips in the selected timetable.",
+                "Nombre de trajets dans l’horaire choisi.",
+            ),
+            ranking_kinds=(),
+        ),
+        Measure(
+            "scheduled_frequency",
+            "trips_per_hour",
+            Text(
+                "Scheduled trips divided by clock hours in the selected dates and periods.",
+                "Trajets prévus divisés par le nombre d’heures aux dates et périodes choisies.",
+            ),
+            ranking_kinds=(),
+        ),
+        Measure(
+            "below_minimum_service",
+            "periods",
+            Text(
+                f"Number of evening and weekend periods with fewer than {MIN_TRIPS_PER_HOUR} "
+                "scheduled trips per hour on average, assessed for each date, line and "
+                "direction in scope. The threshold corresponds to a half-hour interval "
+                "if service is evenly spaced.",
+                "Nombre de périodes en soirée ou en fin de semaine comptant en moyenne "
+                f"moins de {MIN_TRIPS_PER_HOUR} trajets prévus par heure, évaluées pour chaque "
+                "date, ligne et direction choisies. Le seuil correspond à un intervalle "
+                "d’une demi-heure si les passages sont réguliers.",
+            ),
+            ranking_kinds=(),
+        ),
+    ),
+    query=_offered_rows,
+    columns=_OFFERED_COLUMNS,
+    evidence_columns=_OFFERED_EVIDENCE,
+)
+
+
+_FAMILIES = (_PUNCTUALITY, _SERVICE_DELIVERED, _CROWDING, _ALERT_COUNTS, _WAITING, _SERVICE_OFFERED)
 _SELECTIONS = {
     key: (family, selected)
     for family in _FAMILIES
@@ -1299,7 +1781,8 @@ class ReadWindow:
         # Crowding orders per-vehicle observations within each day. Keep the sort
         # bounded to one day while retaining the usual batches for smaller tables.
         size = 1 if VEHICLE_POSITIONS in self.paths else DAYS_PER_QUERY_BATCH
-        for offset in range(0, len(self.included), size):
+        days_read = len(next(iter(self.paths.values())))
+        for offset in range(0, days_read, size):
             yield {table: files[offset : offset + size] for table, files in self.paths.items()}
 
     def evidence(
@@ -1360,6 +1843,8 @@ def read_window(
             dated.append(day.isoformat())
             if in_cut:
                 window.included.append(day.isoformat())
+            # A weekday schedule can establish that a line exists for a weekend zero.
+            if in_cut or family.id == _SERVICE_OFFERED_ID:
                 for table, path in zip(tables, files, strict=True):
                     window.paths[table].append(path)
     return window
@@ -1470,7 +1955,17 @@ def evaluate(
     selected: tuple[Measure, ...],
     totals: Batch,
     window: ReadWindow,
+    *,
+    hour: int | None = None,
 ) -> tuple[str, dict[str, float | None], dict[str, Any], dict[str, int]]:
+    if family.id == _WAITING_ID:
+        return _waiting_answer(
+            family, selected, totals.counts, window.included, window.no_days_measured
+        )
+    if family.id == _SERVICE_OFFERED_ID:
+        return _offered_answer(
+            selected, totals.offered, window.included, window.no_days_measured, hour
+        )
     if family.id == _CROWDING_ID:
         return _crowding_answer(selected, totals.counts, window)
     if family.id == _ALERT_COUNTS_ID:
@@ -1490,6 +1985,131 @@ def evaluate(
     )
 
 
+def _waiting_answer(
+    family: Family,
+    selected: tuple[Measure, ...],
+    counts: Counter[str],
+    included: list[str],
+    missing_days: bool,
+) -> tuple[str, dict[str, float | None], dict[str, Any], dict[str, int]]:
+    sample = counts["observed_headways"]
+    frequent = counts["frequent_headways"]
+    state = _state(
+        family,
+        sample,
+        frequent,
+        counts["capture_gap"],
+        0,
+        missing_days,
+    )
+    if not missing_days and not frequent:
+        if counts["live_direction_stops"]:
+            state = "no_frequent_periods"
+        elif counts["scheduled_stops"] and not counts["live_candidates"]:
+            state = "no_live_data"
+    values: dict[str, float | None] = dict.fromkeys(m.id for m in selected)
+    states = dict.fromkeys(values, state)
+    if state == "measured":
+        for measure in selected:
+            if measure.ratio:
+                numerator, denominator = measure.ratio
+                values[measure.id] = counts[numerator] / counts[denominator]
+            elif counts["observed_seconds"]:
+                actual = counts["observed_squared_seconds"] / (2 * counts["observed_seconds"])
+                scheduled = counts["scheduled_squared_seconds"] / (2 * counts["scheduled_seconds"])
+                values[measure.id] = actual - scheduled
+            else:
+                states[measure.id] = "unknown"
+    evidence = {
+        "counts": {
+            key: counts[key] if included else None
+            for key in _WAITING_COLUMNS
+            if key not in _WAITING_EXCLUDED
+        },
+        "excluded": {key: counts[key] if included else None for key in _WAITING_EXCLUDED},
+        "share_observed": sample / frequent if frequent else None,
+        "measure_states": states,
+    }
+    return (
+        states[selected[0].id] if len(selected) == 1 else state,
+        values,
+        evidence,
+        dict.fromkeys(values, sample),
+    )
+
+
+def _offered_answer(
+    selected: tuple[Measure, ...],
+    offered: list[OfferedCounts],
+    included: list[str],
+    missing_days: bool,
+    hour: int | None,
+) -> tuple[str, dict[str, float | None], dict[str, Any], dict[str, int]]:
+    # A sparse period with no departures still counts for a scope seen in the timetable.
+    units = len({(row.route_id, row.direction_id) for row in offered})
+    trips: Counter[tuple[str, str]] = Counter()
+    at_or_above: Counter[tuple[str, str]] = Counter()
+    for row in offered:
+        key = (row.day_type, row.period)
+        trips[key] += row.trips
+        at_or_above[key] += row.at_or_above_minimum
+    days_by_type = Counter(_DAY_TYPES[date.fromisoformat(day).weekday()] for day in included)
+    periods: list[dict[str, Any]] = []
+    counts: Counter[str] = Counter()
+    for p in PERIODS:
+        if hour is not None and not p.start_hour <= hour < p.end_hour:
+            continue
+        hours = 1 if hour is not None else p.end_hour - p.start_hour
+        for day_type, days in days_by_type.items():
+            key = (day_type, p.id)
+            assessed = days * units if p.id == "evening" or day_type != "weekday" else 0
+            below = assessed - at_or_above[key] if assessed else 0
+            period_counts = {
+                "scheduled_trips": trips[key],
+                "scheduled_clock_hours": days * hours,
+                "eligible_periods": assessed,
+                "below_minimum_service": below,
+            }
+            counts.update(period_counts)
+            periods.append(
+                {
+                    "period": p.id,
+                    "period_text": {"en": p.en, "fr": p.fr},
+                    "start_hour": p.start_hour if hour is None else hour,
+                    "end_hour": p.end_hour if hour is None else hour + 1,
+                    "day_type": day_type,
+                    "days": days,
+                    **period_counts,
+                    "scheduled_frequency": trips[key] / (days * hours),
+                }
+            )
+    counts["service_units"] = units
+    has_schedule = bool(units and included)
+    state = "not_measured" if missing_days else "measured" if has_schedule else "unknown"
+    states = dict.fromkeys((m.id for m in selected), state)
+    values: dict[str, float | None] = dict.fromkeys(states)
+    if state == "measured":
+        for measure in selected:
+            if measure.id == "scheduled_frequency":
+                values[measure.id] = counts["scheduled_trips"] / counts["scheduled_clock_hours"]
+            elif measure.id == "below_minimum_service" and not counts["eligible_periods"]:
+                states[measure.id] = "no_evening_or_weekend_periods"
+            else:
+                values[measure.id] = counts[measure.id]
+    evidence = {
+        "counts": {key: counts[key] if has_schedule else None for key in _OFFERED_COLUMNS},
+        "excluded": {},
+        "periods": periods if has_schedule else [],
+        "measure_states": states,
+    }
+    return (
+        states[selected[0].id] if len(selected) == 1 else state,
+        values,
+        evidence,
+        dict.fromkeys(values, len(included)),
+    )
+
+
 def ask(store: Store, question: Question) -> dict[str, Any]:
     """Read validated days and compute the selected measure or family with its evidence."""
     started = perf_counter()
@@ -1501,7 +2121,9 @@ def ask(store: Store, question: Question) -> dict[str, Any]:
             result = family.query(conn, family, batch, question, str(store.cleaning_version), None)
             if () in result:
                 totals.update(result[()])
-    state, values, family_evidence, _ = evaluate(family, selected, totals, window)
+    state, values, family_evidence, _ = evaluate(
+        family, selected, totals, window, hour=question.hour
+    )
     return {
         "measure": question.measure,
         "value": values,

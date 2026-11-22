@@ -22,6 +22,7 @@ from transit_engine.measures import (
     _SERVICE_DELIVERED_ID,
     _STATES,
     _US_PER_HOUR,
+    _WAITING_ID,
     DELAY_BIN_SECONDS,
     Batch,
     EntityKey,
@@ -35,6 +36,7 @@ from transit_engine.measures import (
     evaluate,
     read_window,
 )
+from transit_engine.schedule import FREQUENT_HEADWAY_SECONDS
 from transit_engine.store import Store
 
 # Transit R5, "Rankings" and "Evidence, on every number":
@@ -46,12 +48,15 @@ NIGHT_END_HOUR = 5
 # scheduled frequency permits a short wait without choosing a particular trip.
 PEAK_START_HOUR = 7
 PEAK_END_HOUR = 9
-FREQUENT_HEADWAY_SECONDS = 600
 MAX_LIMIT = 500
 DEFAULT_LIMIT = 100
 _Z_95 = 1.959963984540054
 
 _RANGE_NOTES = {
+    "matched_headways": Text(
+        "Calculated from matched headways. Sampling uncertainty is unknown.",
+        "Calculé à partir des intervalles appariés. L’incertitude d’échantillonnage est inconnue.",
+    ),
     "wilson_95": Text(
         "95% Wilson interval. Stop events on the same trip are dependent. "
         "Treat this range as a guide.",
@@ -196,6 +201,8 @@ def wilson_interval(share: float, sample: float) -> tuple[float, float]:
 def _range(
     value: float, sample: int, measure: Measure, counts: Counter[str], family_id: str
 ) -> dict[str, Any]:
+    if measure.id == "excess_wait_time":
+        return {"lower": None, "upper": None, "method": "matched_headways"}
     if measure.unit == "seconds":
         half_bin = DELAY_BIN_SECONDS / 2
         lower, upper = value - half_bin, value + half_bin
@@ -304,13 +311,20 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
 
     classes = {route: schedule.service_class for route, schedule in lines.items()}
     class_sizes: Counter[str] = Counter()
+    frequent_class_sizes: Counter[str] = Counter()
     for result in totals.values():
         if ranking.kind == "line":
             for route in result.scheduled_routes:
                 class_sizes[classes[route]] += lines[route].trips
+                if (
+                    family.id == _WAITING_ID
+                    and result.counts["observed_headways"] >= family.minimum_sample
+                ):
+                    frequent_class_sizes[classes[route]] += lines[route].trips
     chosen_class = ranking.service_class
     if ranking.kind == "line" and chosen_class is None and class_sizes:
-        chosen_class = min(class_sizes, key=lambda name: (-class_sizes[name], name))
+        candidates = frequent_class_sizes or class_sizes
+        chosen_class = min(candidates, key=lambda name: (-candidates[name], name))
     rows: list[dict[str, Any]] = []
     excluded: list[dict[str, Any]] = []
     for key, result in totals.items():
@@ -330,10 +344,10 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
             entry["sample"] = None
         elif family.id == _CROWDING_ID:
             entry["sample"] = sample / _US_PER_HOUR
-        if not historical and not result.counts["live_candidates"]:
+        if not historical and family.id != _WAITING_ID and not result.counts["live_candidates"]:
             state, value = "no_live_data", None
         if value is None:
-            if state == "unknown" and not historical:
+            if state == "unknown" and not historical and family.id != _WAITING_ID:
                 state = "too_few_to_judge"
             reason = _NOT_MEASURED_ON_DATES if state == "not_measured" else _STATES[state]
             excluded.append({**entry, "reason": state, "reason_text": reason._asdict()})
@@ -352,7 +366,7 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
     if chosen_class:
         evidence["cuts"]["class"] = chosen_class
     historical_state = {}
-    if historical:
+    if historical or family.id == _WAITING_ID:
         reasons = {entry["reason"] for entry in excluded}
         if rows:
             state = "measured"

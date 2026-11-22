@@ -180,7 +180,7 @@ for (const locale of ['en', 'fr'] as const)
 				waitUntil: 'networkidle',
 			});
 			await page.evaluate(() => document.fonts.ready);
-			const header = page.getByRole('banner');
+			const header = page.locator('[data-slot="app-frame-controls"]');
 			const { city, operator } = provider.labels[locale];
 			const fullName = `${city} · ${operator}`;
 			const picker = header.locator('.nav-provider').getByRole('combobox');

@@ -157,8 +157,9 @@ body {
 	}
 }
 
-/* Q25: preserve words and expose the complete name through text, title and touch. */
-.readable-name {
+/* Use the same name clamp before the article heading's touch enhancement attaches. */
+.readable-name,
+.transit-article-header h1 {
 	display: -webkit-box;
 	-webkit-box-orient: vertical;
 	-webkit-line-clamp: 2;

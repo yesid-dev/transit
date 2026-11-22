@@ -42,8 +42,7 @@
 	} from '#lib/content/nav.ts';
 	import { navPillCopy } from '#lib/i18n/messages.ts';
 	import { ProductBrand } from '@yesid/ui/brand';
-	import { AnnouncementBanner, SiteHeader } from '@yesid/ui/layout';
-	import { announcement } from '#lib/site/announcement.ts';
+	import { SiteHeader } from '@yesid/ui/layout';
 	import RefreshButton from './RefreshButton.svelte';
 	import { providerHref, type PublicProvider } from '#lib/v1/providers.ts';
 	import { v1Provider } from '#lib/v1/config.ts';
@@ -148,11 +147,11 @@
 
 	let scopeControls = $state<HTMLDivElement>();
 
-	// Map overlays and page content start below both header rows.
+	// Scroll padding and map overlays use the measured chrome. Page content follows it in flow.
 	$effect(() => {
 		if (!scopeControls || typeof ResizeObserver === 'undefined') return;
 		const control = scopeControls;
-		const pill = control.closest<HTMLElement>('[data-testid="nav-pill"]')!;
+		const pill = control.parentElement!.querySelector<HTMLElement>('[data-testid="nav-pill"]')!;
 		const doc = control.ownerDocument;
 		const root = doc.documentElement;
 		const measure = () => {
@@ -214,7 +213,7 @@
 	/>
 {/snippet}
 
-{#snippet actions()}
+{#snippet scope()}
 	<div bind:this={scopeControls} class="nav-scope" data-slot="app-frame-controls">
 		<!-- The visible label is its own element, centred in the control; the native select sits on top, transparent. -->
 		<label class="nav-provider">
@@ -253,6 +252,9 @@
 		</label>
 		<FrameControls {locale} {url} />
 	</div>
+{/snippet}
+
+{#snippet actions()}
 	<RefreshButton {locale} class="nav-refresh" />
 	<SearchSheet
 		bind:query={search}
@@ -266,32 +268,57 @@
 	/>
 {/snippet}
 
-{#if announcement.enabled}
-	<AnnouncementBanner id={announcement.id} {...announcement[locale]} />
-{/if}
-<SiteHeader
-	{navigation}
-	{home}
-	{brand}
-	{links}
-	linkTiers={{ priority3: 1280 }}
-	{menuGroups}
-	labels={navCopy}
-	language={{
-		locale,
-		locales: availableLocales,
-		href: (next) => localizeUrl(selectedUrl, next as Locale),
-		label: navCopy.language,
-		names: navCopy.names,
-		reload: true,
-	}}
-	search={searchField}
-	{actions}
-/>
+<div class="frame-nav" data-slot="frame-nav">
+	<SiteHeader
+		{navigation}
+		{home}
+		{brand}
+		{links}
+		linkTiers={{ priority3: 1280 }}
+		{menuGroups}
+		labels={navCopy}
+		language={{
+			locale,
+			locales: availableLocales,
+			href: (next) => localizeUrl(selectedUrl, next as Locale),
+			label: navCopy.language,
+			names: navCopy.names,
+			reload: true,
+		}}
+		search={searchField}
+		{actions}
+	/>
+	{@render scope()}
+</div>
 
 <style>
+	/* The map and portalled overlays still need a pre-hydration inset. It never pads page content. */
 	:root {
 		--pill-h: 140px;
+	}
+	.frame-nav {
+		position: sticky;
+		inset-block-start: var(--announcement-height, 0px);
+		z-index: var(--z-nav);
+		flex: none;
+		padding-block: var(--nav-top) var(--chrome-gap);
+		pointer-events: none;
+	}
+	/* Keep the kit's dialog and pill in flow. The open menu still covers the viewport. */
+	.frame-nav :global(.menu-dialog) {
+		position: relative;
+		inset: auto;
+	}
+	.frame-nav :global(.menu-dialog-active)::before {
+		content: '';
+		position: fixed;
+		inset: 0;
+		z-index: -1;
+		background: inherit;
+	}
+	.frame-nav :global([data-slot='site-header']) {
+		position: relative;
+		inset-block-start: auto;
 	}
 
 	/* Transit's pill also holds refresh and search, so on phones the 18px brand pushes the pill off
@@ -312,17 +339,17 @@
 	}
 
 	.nav-scope {
-		position: absolute;
-		inset-block-start: calc(100% + 8px);
-		inset-inline-start: 50%;
-		transform: translateX(-50%);
+		position: relative;
+		inset-inline-end: calc(var(--site-header-inset-end, 0px) / 2);
+		margin: 6px auto 0;
+		pointer-events: auto;
 		display: flex;
 		flex-wrap: wrap;
 		justify-content: center;
 		align-items: center;
 		gap: 0.25rem 0.5rem;
 		inline-size: max-content;
-		max-inline-size: calc(100cqi - 1rem);
+		max-inline-size: calc(100% - 1rem - var(--site-header-inset-end, 0px));
 		padding: 0.125rem 0.5rem;
 		border: 2px solid var(--border-brand);
 		border-radius: var(--radius-lg);
@@ -376,6 +403,8 @@
 			flex-wrap: wrap;
 			justify-content: center;
 		}
+	}
+	@media (width < 600px) {
 		.nav-provider-full {
 			display: none;
 		}
