@@ -31,7 +31,10 @@ function header(page: Page) {
 
 // Measured once the header's own styles and every requested font face have settled.
 async function settled(page: Page) {
-	await expect(page.locator('.nav-provider-select')).toHaveCSS('opacity', '0');
+	await expect(page.locator('[data-slot="app-frame-controls"]').getByRole('combobox')).toHaveCSS(
+		'opacity',
+		'0',
+	);
 	await expect
 		.poll(() => page.evaluate(() => [...document.fonts].some((face) => face.status === 'loading')))
 		.toBe(false);

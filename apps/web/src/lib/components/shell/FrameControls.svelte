@@ -3,18 +3,17 @@
 	import { page } from '$app/state';
 	import { SegmentedChoice } from '@yesid/ui/brand';
 	import { Button } from '@yesid/ui/button';
+	import { DateRangePicker } from '@yesid/ui/layout';
 	import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from '@yesid/ui/sheet';
 	import { delocalizePath, intl, type Locale } from '#lib/i18n/index.ts';
 	import {
 		frameHref,
 		frameToday,
 		parseFrameState,
-		periodError,
 		presetPeriod,
 		PRESETS,
 		RECORD_START,
 		type FrameMode,
-		type PeriodError,
 	} from '#lib/site/frameState.ts';
 
 	let { locale, url }: { locale: Locale; url: URL } = $props();
@@ -98,16 +97,9 @@
 	]);
 
 	let open = $state(false);
-	let start = $state('');
-	let end = $state('');
-	let error = $state<PeriodError | null>(null);
-
 	function onOpenChange(next: boolean) {
 		if (!next) return;
 		today = frameToday();
-		start = frame.period?.from ?? '';
-		end = frame.period?.to ?? '';
-		error = null;
 	}
 
 	function selectMode(mode: FrameMode) {
@@ -121,14 +113,6 @@
 			shallow: !overview || frame.mode === 'live',
 			state: { ...page.state },
 		});
-	}
-
-	function applyDates(event: SubmitEvent) {
-		event.preventDefault();
-		today = frameToday();
-		const period = { from: start, to: end, preset: null };
-		error = periodError(period, today);
-		if (!error) selectPeriod(period);
 	}
 </script>
 
@@ -164,41 +148,24 @@
 					</Button>
 				{/each}
 			</div>
-			<form class="grid gap-3" novalidate onsubmit={applyDates}>
-				<fieldset class="flex flex-wrap gap-3">
-					<legend class="mb-2">{copy.custom}</legend>
-					<label class="grid gap-1">
-						{copy.from}
-						<input
-							class="labelled-input min-h-11"
-							type="date"
-							bind:value={start}
-							min={RECORD_START}
-							max={today}
-							required
-							aria-invalid={error ? true : undefined}
-							aria-describedby={error ? `${uid}-error` : `${uid}-note`}
-						/>
-					</label>
-					<label class="grid gap-1">
-						{copy.to}
-						<input
-							class="labelled-input min-h-11"
-							type="date"
-							bind:value={end}
-							min={RECORD_START}
-							max={today}
-							required
-							aria-invalid={error ? true : undefined}
-							aria-describedby={error ? `${uid}-error` : `${uid}-note`}
-						/>
-					</label>
-				</fieldset>
-				{#if error}<p id={`${uid}-error`} role="alert">{copy.error[error]}</p>{/if}
-				<Button type="submit" size="cta-sm" wrap class="min-h-11 justify-self-start"
-					>{copy.apply}</Button
-				>
-			</form>
+			<DateRangePicker
+				presets={[]}
+				value={{ start: frame.period?.from ?? '', end: frame.period?.to ?? '' }}
+				min={RECORD_START}
+				max={today}
+				labels={{
+					legend: copy.custom,
+					presets: copy.ranges,
+					custom: copy.custom,
+					start: copy.from,
+					end: copy.to,
+					apply: copy.apply,
+					missing: copy.error.invalidDate,
+					bounds: `${copy.error.beforeRecord} ${copy.error.future}`,
+					order: copy.error.reversed,
+				}}
+				onValueChange={({ start, end }) => selectPeriod({ from: start, to: end, preset: null })}
+			/>
 		</div>
 	</SheetContent>
 </Sheet>

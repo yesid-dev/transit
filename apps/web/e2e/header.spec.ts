@@ -191,16 +191,41 @@ for (const locale of PUBLISHED_LOCALES) {
 			);
 		}
 
-		// Text-agnostic: the visible label inside the city control, whatever the catalog provides.
+		// Check the visible trigger content, including the kit's decorative chevron when present.
 		const scope = page.locator('[data-slot="app-frame-controls"]');
 		const control = scope.getByRole('combobox', { name: copy.network });
 		const box = (await control.boundingBox())!;
-		const label = (await scope
-			.locator('label', { has: page.getByRole('combobox', { name: copy.network }) })
-			.getByText(/\S/)
-			.filter({ visible: true })
-			.boundingBox())!;
-		expect(Math.abs(box.x + box.width / 2 - (label.x + label.width / 2))).toBeLessThanOrEqual(1);
+		const trigger = scope.locator('label', {
+			has: page.getByRole('combobox', { name: copy.network }),
+		});
+		const label = (await trigger.getByText(/\S/).filter({ visible: true }).boundingBox())!;
+		const chevron = trigger.locator('svg:visible');
+		const icon = (await chevron.count()) ? await chevron.boundingBox() : null;
+		const left = Math.min(label.x, icon?.x ?? label.x);
+		const right = Math.max(label.x + label.width, icon ? icon.x + icon.width : label.x);
+		expect(Math.abs(box.x + box.width / 2 - (left + right) / 2)).toBeLessThanOrEqual(1);
 		expect(Math.abs(box.y + box.height / 2 - (label.y + label.height / 2))).toBeLessThanOrEqual(1);
 	});
 }
+
+test('the kit network and custom date controls update the frame route', async ({ page }) => {
+	await page.goto('/privacy?provider=stm');
+	await expect(page.locator('html[data-hydrated]')).toHaveCount(1);
+	const controls = page.locator('[data-slot="app-frame-controls"]');
+	const network = controls.locator('[data-slot="network-picker"]').getByRole('combobox');
+	await expect(network).toHaveValue('stm');
+	await network.selectOption('octranspo');
+	await expect(page).toHaveURL((url) => url.searchParams.get('provider') === 'octranspo');
+	await expect(page.locator('html[data-hydrated]')).toHaveCount(1);
+	await controls.getByRole('button', { name: /^Period/ }).click();
+	const dialog = page.getByRole('dialog', { name: 'Period', exact: true });
+	const dates = dialog.locator('[data-slot="date-range-picker"]');
+	await dates.getByLabel('From', { exact: true }).fill('2026-10-20');
+	await dates.getByLabel('To', { exact: true }).fill('2026-10-21');
+	await dates.getByRole('button', { name: 'Show these dates' }).click();
+	await expect(page).toHaveURL(
+		(url) =>
+			url.searchParams.get('recordFrom') === '2026-10-20' &&
+			url.searchParams.get('recordTo') === '2026-10-21',
+	);
+});

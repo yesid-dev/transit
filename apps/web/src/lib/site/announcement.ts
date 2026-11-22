@@ -1,13 +1,13 @@
 export const announcement = {
 	enabled: false,
-	id: 'roadmap-1',
+	id: 'roadmap-2',
 	en: {
-		message: 'We got all the feedback and are working on it',
+		message: "A new Transit is on the way. See what's changing",
 		href: '/roadmap',
 		closeLabel: 'Close this announcement',
 	},
 	fr: {
-		message: 'Nous avons reçu tous vos commentaires et nous y travaillons',
+		message: "Un nouveau Transit s'en vient. Voyez ce qui change",
 		href: '/fr/roadmap',
 		closeLabel: 'Fermer cette annonce',
 	},
