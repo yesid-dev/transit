@@ -24,7 +24,8 @@ TRIP_DAYS = TableSchema.from_columns(
     (
         *_IDENTITY,
         ("scheduled_start_utc", _TIME, False),
-        ("state", "text", False),
+        ("state", "text", True),
+        ("state_reason", "text", False),
         ("vehicle_id", "text", False),
         ("route_has_live_data", "boolean", True),
         ("first_capture_utc", _TIME, False),
@@ -77,13 +78,23 @@ def write_clean_day(day: CleanDay, root: Path) -> Path:
                 writer = csv.writer(stream, lineterminator="\n")
                 writer.writerow(column.name for column in schema.columns)
                 writer.writerows(rows)
-            window = write_window(source, schema, target, metadata=metadata, temp_dir=temporary)
+            # The CSV is generated here from typed rows. DuckDB's strict typed
+            # COPY and the Parquet readback still check the resulting values and schema.
+            window = write_window(
+                source,
+                schema,
+                target,
+                metadata=metadata,
+                temp_dir=temporary,
+                validate_csv_input=False,
+            )
             check_window_files(
                 source,
                 target,
                 schema,
                 expect=Expected(window.content_sha256, window.rows, window.sha256),
                 temp_dir=temporary,
+                validate_csv_input=False,
             )
         # Both files become visible together. A competing successful writer
         # leaves a nonempty destination directory, which rename cannot replace.

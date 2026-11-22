@@ -158,6 +158,7 @@ def write_window(
     metadata: Mapping[str, str],
     temp_dir: Path,
     codec: ParquetCodec = DEFAULT_CODEC,
+    validate_csv_input: bool = True,
 ) -> WrittenWindow:
     # Preserve the existing layout (and object digest), while preventing callers
     # from expanding the writer's per-group buffering without a bound.
@@ -185,7 +186,9 @@ def write_window(
             if layout is not None:
                 codec = replace(codec, row_group_rows=layout.row_group_rows)
             connection = stack.enter_context(connect(temp_dir))
-            relation = read_canonical_csv(connection, csv_path, schema, layout=layout)
+            relation = read_canonical_csv(
+                connection, csv_path, schema, layout=layout, validate=validate_csv_input
+            )
             count = relation.aggregate("count(*)").fetchall()[0][0]
             kv = _metadata(metadata, schema, content, count, codec)
             relation.create_view("window_rows")

@@ -137,7 +137,7 @@ def clean_day_command(
     """Build stop_events and trip_days for one provider service day."""
     from google.protobuf.message import DecodeError  # type: ignore[import-untyped]
 
-    from transit_ops.clean_day import build_clean_day, capture_window
+    from transit_ops.clean_day import REALTIME_FEEDS, build_clean_day, capture_window
     from transit_ops.clean_day_inputs import archived_captures, loose_captures, schedule_contexts
     from transit_ops.clean_day_output import write_clean_day
     from transit_ops.lake.archive_keys import validate_provider_id
@@ -159,7 +159,18 @@ def clean_day_command(
             if capture_manifest
             else loose_captures(declaration, bronze, start, end)
         )
-        cleaned = build_clean_day(provider, service_date, schedules, captures)
+        cleaned = build_clean_day(
+            provider,
+            service_date,
+            schedules,
+            captures,
+            required_feeds=tuple(
+                family
+                for family in REALTIME_FEEDS
+                if (feed := declaration.feeds.get(family)) is not None and feed.is_enabled
+            ),
+            source_lag_seconds=declaration.provider.live_source_lag_seconds,
+        )
         destination = write_clean_day(cleaned, out)
     except (ValueError, OSError, DecodeError) as error:
         typer.echo(str(error), err=True)

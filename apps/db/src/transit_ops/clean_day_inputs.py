@@ -140,13 +140,11 @@ def _packed_day(
 ) -> Iterator[RawCapture]:
     if not start.date() <= manifest.utc_date <= end.date():
         return
-    selected = [c for c in manifest.captures if start <= c.captured_at_utc <= end]
-    if any(not c.packed for c in selected):
-        raise ValueError(f"Capture manifest includes unavailable objects: {manifest.utc_date}")
-    if not selected or manifest.pack is None:
-        return
     packed = []
+    # Entries known to be unavailable at sealing provide no poll coverage.
     entries = [c for c in manifest.captures if c.packed]
+    if manifest.pack is None or not any(start <= c.captured_at_utc <= end for c in entries):
+        return
     for entry in entries:
         assert entry.stream is not None and entry.offset is not None
         packed.append(PackedCapture(entry.stream, entry.offset, entry.byte_size, entry.sha256))

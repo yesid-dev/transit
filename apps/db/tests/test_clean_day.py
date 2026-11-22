@@ -27,6 +27,7 @@ TRIPS = {
     "night": ("r", ["24:00:00", "24:05:00", "24:10:00", "24:15:00"]),
     "cancel": ("r", ["14:00:00"]),
     "missing": ("r", ["15:00:00"]),
+    "capture_gap": ("r", ["15:05:00", "15:10:00"]),
     "forecast": ("r", ["16:00:00"]),
     "gap": ("metro", ["17:00:00"]),
 }
@@ -87,6 +88,10 @@ def _capture_fixture(root: Path) -> None:
     cancel.trip.trip_id = "cancel"
     cancel.trip.start_date = "20260601"
     cancel.trip.schedule_relationship = TripDescriptor.CANCELED
+    withdrawn = feed.entity.add(id="withdrawn").trip_update
+    withdrawn.trip.trip_id = "night"
+    withdrawn.trip.start_date = "20260601"
+    withdrawn.trip.schedule_relationship = TripDescriptor.CANCELED
     forecast = feed.entity.add(id="forecast").trip_update
     forecast.trip.trip_id = "forecast"
     forecast.trip.start_date = "20260601"
@@ -104,6 +109,19 @@ def _capture_fixture(root: Path) -> None:
     feed.entity.add().CopyFrom(feed.entity[0])
     _save(root, feed, "trip_updates", stamp + timedelta(seconds=40))
 
+    # Both feeds bracket the silent 15:00 trip. Vehicle polls lapse during
+    # the later trip even though the trip-update feed stays current.
+    for minute in range(-5, 12):
+        stamp = MIDNIGHT - timedelta(hours=9) + timedelta(minutes=minute)
+        feed = _feed(stamp)
+        feed.entity.add(id="coverage").trip_update.trip.route_id = "r"
+        _save(root, feed, "trip_updates", stamp)
+        if not 2 <= minute <= 5:
+            published = stamp - timedelta(minutes=minute - 1) if 6 <= minute <= 7 else stamp
+            feed = _feed(published)
+            feed.entity.add(id=f"coverage-{minute}").vehicle.trip.route_id = "r"
+            _save(root, feed, "vehicle_positions", stamp)
+
     for seconds, delay in ((-60, 20), (-30, 10)):
         stamp = MIDNIGHT + timedelta(seconds=seconds)
         feed = _feed(stamp)
@@ -111,6 +129,7 @@ def _capture_fixture(root: Path) -> None:
         update = entity.trip_update
         update.trip.trip_id = "night"
         update.trip.start_date = "20260601"
+        update.trip.schedule_relationship = TripDescriptor.SCHEDULED
         update.vehicle.id = "v1"
         update.stop_time_update.add(stop_sequence=1).arrival.delay = delay
         update.stop_time_update.add(stop_sequence=2).departure.delay = -40
@@ -150,7 +169,7 @@ def _capture_fixture(root: Path) -> None:
 def _run(root: Path, day: date) -> Path:
     result = CliRunner().invoke(app, _args(root, day))
     assert result.exit_code == 0, (result.output, result.exception)
-    return root / "out" / "stm" / day.isoformat() / "v1"
+    return root / "out" / "stm" / day.isoformat() / "v2"
 
 
 def _args(root: Path, day: date) -> list[str]:
@@ -219,8 +238,8 @@ def test_clean_day_math_and_edition_switch(tmp_path: Path) -> None:
                     ).fetchall()
                 )
                 assert metadata[b"schedule_sha256"] == edition["sha256"].encode()
-                assert metadata[b"cleaning_version"] == b"1"
-    assert all(row["cleaning_version"] == "1" for row in trips + stops + next_stops)
+                assert metadata[b"cleaning_version"] == b"2"
+    assert all(row["cleaning_version"] == "2" for row in trips + stops + next_stops)
     assert [(r["trip_id"], r["scheduled_arrival_utc"]) for r in next_stops] == [
         ("night", MIDNIGHT + timedelta(hours=10)),
     ]
@@ -243,7 +262,15 @@ def test_clean_day_math_and_edition_switch(tmp_path: Path) -> None:
     expected_bases["not_observed"] = sum(len(times) for _, times in TRIPS.values()) - 4
     assert Counter(r["basis"] for r in stops) == expected_bases
     assert {r["trip_id"] for r in trips if r["state"] != "added"} == TRIPS.keys()
-    public_states = {"night": "ran", "cancel": "cancelled", "missing": "missing", "extra": "added"}
+    public_states = {
+        "night": "ran",
+        "cancel": "cancelled",
+        "missing": "missing",
+        "forecast": "unconfirmed",
+        "gap": "not_measured",
+        "capture_gap": "not_measured",
+        "extra": "added",
+    }
     assert Counter(row["state"] for row in trips) == Counter(
         public_states.get(trip) for trip in (*TRIPS, "extra")
     )
@@ -252,9 +279,14 @@ def test_clean_day_math_and_edition_switch(tmp_path: Path) -> None:
     assert all(states[trip]["state"] == state for trip, state in public_states.items())
     assert states["cancel"]["first_capture_utc"] == states["cancel"]["last_capture_utc"]
     assert states["cancel"]["cancellation_notice_utc"] == MIDNIGHT - timedelta(hours=6)
-    assert states["gap"]["route_has_live_data"] is False and states["gap"]["state"] is None
+    assert states["night"]["cancellation_notice_utc"] == MIDNIGHT - timedelta(hours=6)
+    assert states["gap"]["route_has_live_data"] is False
+    assert states["gap"]["state_reason"] == "route_without_live_data"
+    assert states["capture_gap"]["route_has_live_data"] is True
+    assert states["capture_gap"]["state_reason"] == "capture_gap"
+    assert all(row["state_reason"] is None for row in trips if row["state"] != "not_measured")
     assert states["forecast"]["route_has_live_data"] is True
-    assert states["forecast"]["first_capture_utc"] and states["forecast"]["state"] is None
+    assert states["forecast"]["first_capture_utc"]
     assert states["night"]["vehicle_id"] == "v1"
     for trip, (_, expected) in TRIPS.items():
         selected = [r for r in stops if r["trip_id"] == trip]
@@ -275,7 +307,10 @@ def test_clean_day_math_and_edition_switch(tmp_path: Path) -> None:
         if delay is not None:
             expected_time = departure if row["observed_event"] == "departure" else arrival
             assert (row["observed_at_utc"] - expected_time).total_seconds() == delay
-    assert len(TRIPS) == sum(r["state"] in {"ran", "cancelled", "missing", None} for r in trips)
+    counts = Counter(row["state"] for row in trips)
+    assert len(TRIPS) == sum(
+        counts[state] for state in ("ran", "cancelled", "missing", "unconfirmed", "not_measured")
+    )
     unchanged = {path.name: path.read_bytes() for path in first.glob("*.parquet")}
     result = CliRunner().invoke(app, _args(tmp_path, DAY))
     assert result.exit_code == 1 and "already exists" in result.output
@@ -298,22 +333,22 @@ def test_local_archive_reads_the_selected_capture_bytes(tmp_path: Path) -> None:
         for entry, part in zip(record.captures[:3], pack.captures, strict=True)
     )
     manifest = build_manifest(
-        replace(record, captures=captures, polls=record.polls[:3], processing=()),
+        replace(record, captures=(*captures, *record.captures[3:])),
         feed_endpoint_id=1,
         feed_kind="trip_updates",
         content_version=1,
         supersedes=None,
         pack_path=pack_path.name,
         pack=pack,
-        sealed_at_utc=captures[-1].captured_at_utc,
+        sealed_at_utc=record.captures[-1].captured_at_utc,
         sealed_by="test",
     )
     path = tmp_path / "manifest.json.gz"
     path.write_bytes(encode_manifest(manifest))
-    start, end = captures[1].captured_at_utc, captures[2].captured_at_utc
+    start, end = captures[1].captured_at_utc, record.captures[-1].captured_at_utc
     rows = list(archived_captures(provider, tmp_path, [path], start, end))
     assert [(row.captured_at_utc, row.payload) for row in rows] == list(
-        zip((start, end), payloads[1:], strict=True)
+        zip((start, captures[2].captured_at_utc), payloads[1:], strict=True)
     )
     with pytest.raises(ValueError, match="duplicate capture"):
         list(archived_captures(provider, tmp_path, [path, path], start, end))

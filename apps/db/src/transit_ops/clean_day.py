@@ -1,17 +1,24 @@
 """Derive one service day's event rows from pinned schedule and capture evidence."""
 
-from bisect import bisect_left
+from bisect import bisect_left, bisect_right
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
-from functools import cache
+from functools import cache, lru_cache
 from hashlib import sha256
 from math import asin, cos, radians, sin, sqrt
 from typing import Literal, NamedTuple
 
-from google.transit.gtfs_realtime_pb2 import TripDescriptor, TripUpdate, VehiclePosition
+from google.transit.gtfs_realtime_pb2 import FeedHeader, TripDescriptor, TripUpdate, VehiclePosition
 
+from transit_ops.capture_coverage.rules import (
+    CoveredInterval,
+    Feed,
+    PollFacts,
+    covered_intervals,
+    usable_polls,
+)
 from transit_ops.gold.vehicle_instance_rule import (
     SANITY_DELAY_SECONDS,
     TripInstance,
@@ -27,11 +34,22 @@ from transit_ops.providers.schedule_archive import ArchiveScheduleContext
 # Allow normal GPS and platform-coordinate error on these urban networks while
 # requiring proximity on the scale of a stop, rather than a route segment.
 STOPPED_AT_RADIUS_METRES = 50
-CLEANING_VERSION = "1"
+# Require several opportunities to see early reporting around departure, even
+# for short trips, at the providers' normal 20–60 second feed cadences.
+ABSENCE_LEAD_SECONDS = 300
+CLEANING_VERSION = "2"
+REALTIME_FEEDS: tuple[Feed, ...] = ("trip_updates", "vehicle_positions")
 _REMOVED = {TripDescriptor.CANCELED, TripDescriptor.DELETED}
-_EXTRA = {TripDescriptor.ADDED, TripDescriptor.NEW, TripDescriptor.UNSCHEDULED}
+_EXTRA = {
+    TripDescriptor.ADDED,
+    TripDescriptor.NEW,
+    TripDescriptor.UNSCHEDULED,
+    TripDescriptor.SCHEDULED,
+}
+_SKIPPED_OR_NO_DATA = {TripUpdate.StopTimeUpdate.SKIPPED, TripUpdate.StopTimeUpdate.NO_DATA}
 
-type State = Literal["ran", "cancelled", "missing", "added"]
+type State = Literal["ran", "cancelled", "missing", "unconfirmed", "not_measured", "added"]
+type StateReason = Literal["route_without_live_data", "capture_gap"]
 type Basis = Literal["vehicle_stopped", "trip_update_reported", "trip_update_passed"]
 type Event = Literal["arrival", "departure"]
 type Row = tuple[object, ...]
@@ -49,12 +67,10 @@ class Reading(NamedTuple):
     event: Event
 
 
-class Prediction(NamedTuple):
-    published: int
-    reading: Reading
+type Prediction = tuple[int, int, str | None, Event]  # publication, estimate, vehicle, event
 
 
-@dataclass
+@dataclass(slots=True)
 class Stop:
     stop_id: str
     arrival: int | None = None
@@ -71,18 +87,20 @@ class Stop:
             self.observed = reading
 
 
-@dataclass
+@dataclass(slots=True)
 class Trip:
     route_id: str | None
     direction_id: int | None
     start: int | None
     stops: dict[int, Stop]
+    end: int | None = None
     added: bool = False
     unique_sequences: dict[str, int] = field(default_factory=dict)
     first_capture: datetime | None = None
     last_capture: datetime | None = None
-    # Source publication time, relationship and the capture time of the notice.
-    relationship: tuple[int, int, datetime] | None = None
+    # Source publication time and relationship from the latest trip update.
+    relationship: tuple[int, int] | None = None
+    cancellation_notice: datetime | None = None
     progress: dict[str, tuple[int, int]] = field(default_factory=dict)
     last_source: dict[str, int] = field(default_factory=dict)
 
@@ -145,6 +163,7 @@ def _scheduled(schedule: ArchiveScheduleContext, day: date, trip_id: str, anchor
         trip.direction_id,
         anchor + trip.first_departure_s,
         stops,
+        end=anchor + trip.last_arrival_s,
         unique_sequences=unique,
     )
 
@@ -194,13 +213,15 @@ def _vehicle(
     for number, prior in trip.stops.items():
         if not old_seq <= number < seq or prior.prediction is None:
             continue
-        published, reading = prior.prediction
+        published, second, prediction_vehicle, event = prior.prediction
         if (
             published <= stamp
-            and reading.second <= stamp
-            and (not reading.vehicle_id or not vehicle or reading.vehicle_id == vehicle)
+            and second <= stamp
+            and (not prediction_vehicle or not vehicle or prediction_vehicle == vehicle)
         ):
-            prior.observe(reading._replace(vehicle_id=reading.vehicle_id or vehicle))
+            prior.observe(
+                Reading(second, prediction_vehicle or vehicle, "trip_update_passed", event)
+            )
 
 
 def _update(trip: Trip, update: TripUpdate, stamp: int, captured: datetime) -> None:
@@ -211,74 +232,84 @@ def _update(trip: Trip, update: TripUpdate, stamp: int, captured: datetime) -> N
         previous[0],
         previous[1] in _REMOVED,
     ):
-        trip.relationship = (stamp, relationship, captured)
+        trip.relationship = (stamp, relationship)
     if relationship in _REMOVED:
+        trip.cancellation_notice = trip.cancellation_notice or captured
         return
     vehicle = update.vehicle.id or None
+    # Vehicle progression is shared by all stop updates in this entity.
+    if vehicle:
+        passed = max(trip.progress.get(vehicle, (-1, -1))[0], trip.progress.get("", (-1, -1))[0])
+    else:
+        passed = max((seq for seq, _ in trip.progress.values()), default=-1)
     for item in update.stop_time_update:
-        located = trip.locate(
-            item.stop_sequence if item.HasField("stop_sequence") else None, item.stop_id
-        )
-        if located is None:
+        seq, stop_id = item.stop_sequence, item.stop_id
+        stop = trip.stops.get(seq) if seq else None
+        if stop is None:
+            located = trip.locate(seq if seq or item.HasField("stop_sequence") else None, stop_id)
+            if located is None:
+                continue
+            seq, stop = located
+        elif stop_id and stop_id != stop.stop_id:
             continue
-        seq, stop = located
-        if item.schedule_relationship in (item.SKIPPED, item.NO_DATA):
-            if stop.prediction is None or stop.prediction.published <= stamp:
+        prior = stop.prediction
+        if item.schedule_relationship in _SKIPPED_OR_NO_DATA:
+            if prior is None or prior[0] <= stamp:
                 stop.prediction = None
             continue
-        prediction = _predicted_time(item, stop, stamp, vehicle)
-        if prediction is None:
-            continue
-        if prediction.basis == "trip_update_reported":
-            stop.observe(prediction)
         # At the first vehicle passage, use the last prediction received before
         # passage, provided its publication and estimated time are no later than
         # the passing reading. Never promote a later forecast simply as it ages.
-        elif not any(
-            ahead > seq
-            for ident, (ahead, _) in trip.progress.items()
-            if not vehicle or not ident or ident == vehicle
-        ) and (stop.prediction is None or stamp > stop.prediction.published):
-            stop.prediction = Prediction(stamp, prediction)
+        may_forecast = seq >= passed and (prior is None or stamp > prior[0])
+        prediction = _predicted_time(item, stop, stamp, may_forecast)
+        if prediction is None:
+            continue
+        second, event, reported = prediction
+        if reported:
+            stop.observe(Reading(second, vehicle, "trip_update_reported", event))
+        else:
+            stop.prediction = (stamp, second, vehicle, event)
 
 
 def _predicted_time(
-    item: TripUpdate.StopTimeUpdate, stop: Stop, stamp: int, vehicle: str | None
-) -> Reading | None:
-    kinds: tuple[Event, ...] = ("arrival", "departure")
-    forecast = None
-    for kind in kinds:
-        event = item.arrival if kind == "arrival" else item.departure
-        scheduled = stop.arrival if kind == "arrival" else stop.departure
-        absolute = event.time if event.HasField("time") and event.time > 0 else None
-        if absolute is not None:
-            second = absolute
-        elif scheduled is not None and event.HasField("delay"):
-            second = scheduled + event.delay
-        else:
-            continue
-        # A past absolute timestamp explicitly marked exact is the feed's
-        # report of a stop time. Absent uncertainty does not mean zero.
-        if (
-            absolute is not None
-            and event.HasField("uncertainty")
-            and event.uncertainty == 0
-            and second <= stamp
-        ):
-            return Reading(second, vehicle, "trip_update_reported", kind)
-        if forecast is None:
-            forecast = Reading(second, vehicle, "trip_update_passed", kind)
-    return forecast
+    item: TripUpdate.StopTimeUpdate, stop: Stop, stamp: int, may_forecast: bool
+) -> tuple[int, Event, bool] | None:
+    arrival, departure = item.arrival, item.departure
+    arrival_time, departure_time = arrival.time, departure.time
+    # A past absolute timestamp explicitly marked exact is the feed's
+    # report of a stop time. Absent uncertainty does not mean zero.
+    if 0 < arrival_time <= stamp and arrival.HasField("uncertainty") and arrival.uncertainty == 0:
+        return arrival_time, "arrival", True
+    if (
+        0 < departure_time <= stamp
+        and departure.HasField("uncertainty")
+        and departure.uncertainty == 0
+    ):
+        return departure_time, "departure", True
+    if not may_forecast:
+        return None
+    if arrival_time > 0:
+        return arrival_time, "arrival", False
+    if stop.arrival is not None and arrival.HasField("delay"):
+        return stop.arrival + arrival.delay, "arrival", False
+    if departure_time > 0:
+        return departure_time, "departure", False
+    if stop.departure is not None and departure.HasField("delay"):
+        return stop.departure + departure.delay, "departure", False
+    return None
+
+
+@lru_cache(maxsize=32)
+def _reported_service_date(value: str) -> date | None:
+    try:
+        return parse_gtfs_date(value, field_name="trip start_date")
+    except ValueError:
+        return None
 
 
 def _service_date(
     descriptor: TripDescriptor, published: datetime, candidates: tuple[TripInstance, ...]
 ) -> date | None:
-    if descriptor.start_date:
-        try:
-            return parse_gtfs_date(descriptor.start_date, field_name="trip start_date")
-        except ValueError:
-            return None
     if not candidates:
         return None
     if descriptor.start_time:
@@ -300,6 +331,19 @@ class CleanDay:
     edition_sha256: str
     trips: dict[str, Trip]
     live_routes: set[str]
+    coverage: dict[Feed, list[CoveredInterval]] = field(default_factory=dict)
+
+    def _covered(self, trip: Trip) -> bool:
+        assert trip.start is not None and trip.end is not None
+        start = datetime.fromtimestamp(trip.start - ABSENCE_LEAD_SECONDS, UTC)
+        end = datetime.fromtimestamp(trip.end, UTC)
+        # A continuous interval from each declared feed must bracket the span.
+        # covered_intervals uses the shared 120-second maximum between usable polls.
+        for intervals in self.coverage.values():
+            index = bisect_right(intervals, start, key=lambda interval: interval.start_utc) - 1
+            if index < 0 or intervals[index].end_utc < end:
+                return False
+        return bool(self.coverage)
 
     def trip_rows(self) -> Iterator[Row]:
         for trip_id, trip in sorted(self.trips.items()):
@@ -307,28 +351,32 @@ class CleanDay:
             vehicles = [r for r in observed if r.vehicle_id is not None]
             vehicle = min(vehicles).vehicle_id if vehicles else None
             route_live = trip.route_id in self.live_routes
-            notice = None
-            state: State | None = None
+            state: State
+            reason: StateReason | None = None
             if trip.added:
                 state = "added"
             elif trip.relationship and trip.relationship[1] in _REMOVED:
                 state = "cancelled"
-                notice = trip.relationship[2]
             elif observed:
                 state = "ran"
-            elif trip.first_capture is None and route_live:
+            elif trip.first_capture is not None:
+                state = "unconfirmed"
+            elif not route_live:
+                state, reason = "not_measured", "route_without_live_data"
+            elif self._covered(trip):
                 state = "missing"
-            # A route without live coverage or a live trip without a confirmed
-            # stop has insufficient evidence for any of the scheduled states.
+            else:
+                state, reason = "not_measured", "capture_gap"
             yield (
                 *self._identity(trip_id, trip),
                 _timestamp(trip.start),
                 state,
+                reason,
                 vehicle,
                 route_live,
                 trip.first_capture,
                 trip.last_capture,
-                notice,
+                trip.cancellation_notice,
             )
 
     def stop_rows(self) -> Iterator[Row]:
@@ -383,6 +431,9 @@ def build_clean_day(
     day: date,
     schedules: Mapping[date, ArchiveScheduleContext],
     captures: Iterable[RawCapture],
+    *,
+    required_feeds: tuple[Feed, ...] = REALTIME_FEEDS,
+    source_lag_seconds: int = 0,
 ) -> CleanDay:
     schedule = schedules[day]
     anchor = int(schedule.service_day_start(day).timestamp())
@@ -407,6 +458,7 @@ def build_clean_day(
         )
 
     seen: set[tuple[str, bytes]] = set()
+    polls: list[PollFacts] = []
     prior_capture: datetime | None = None
     for capture in captures:
         captured = capture.captured_at_utc
@@ -423,6 +475,25 @@ def build_clean_day(
         capture_second = int(captured.timestamp())
         feed_second = min(message.header.timestamp or capture_second, capture_second)
         is_update = capture.family == "trip_updates"
+        feed: Feed = "trip_updates" if is_update else "vehicle_positions"
+        if capture.family == feed and message.header.incrementality == FeedHeader.FULL_DATASET:
+            header_timestamp = (
+                _timestamp(message.header.timestamp) if message.header.timestamp else None
+            )
+            if header_timestamp is not None and header_timestamp > captured:
+                header_timestamp = None
+            polls.append(
+                PollFacts(
+                    feed,
+                    captured,
+                    "stored",
+                    None,
+                    header_timestamp,
+                    "header" if header_timestamp is not None else None,
+                    len(message.entity),
+                    True,
+                )
+            )
         for entity in message.entity:
             if entity.is_deleted:
                 continue
@@ -435,26 +506,28 @@ def build_clean_day(
             if not live.HasField("trip"):
                 continue
             stamp = min(live.timestamp or feed_second, capture_second)
-            published = datetime.fromtimestamp(stamp, UTC)
             desc = live.trip
-            dated = _service_date(desc, published, candidates_for(desc.trip_id))
-            if dated != day:
+            if desc.start_date:
+                if _reported_service_date(desc.start_date) != day:
+                    continue
+            else:
+                candidates = candidates_for(desc.trip_id)
+                published = datetime.fromtimestamp(stamp, UTC)
+                dated = _service_date(desc, published, candidates)
                 if (
                     dated is None
-                    and not desc.start_date
-                    and not candidates_for(desc.trip_id)
-                    and published.astimezone(schedule.timezone).date() == day
+                    and not candidates
                     and desc.route_id
+                    and published.astimezone(schedule.timezone).date() == day
                 ):
                     result.live_routes.add(desc.route_id)
-                continue
+                if dated != day:
+                    continue
             trip = trips.get(desc.trip_id)
             if trip is None:
                 if desc.route_id:
                     result.live_routes.add(desc.route_id)
-                if not desc.trip_id or desc.schedule_relationship not in _EXTRA | {
-                    TripDescriptor.SCHEDULED
-                }:
+                if not desc.trip_id or desc.schedule_relationship not in _EXTRA:
                     continue
                 trip = trips.setdefault(
                     desc.trip_id,
@@ -482,4 +555,15 @@ def build_clean_day(
                 _vehicle(trip, live, stamp, schedule, day)
     for trip in trips.values():
         trip.discard_reversed_readings()
+    usable = usable_polls(
+        polls,
+        read_source="worker_facts",
+        consumed_captures=None,
+        service_spans=(capture_window(schedule, day),),
+        source_lag_seconds=source_lag_seconds,
+    )
+    result.coverage = {
+        feed: covered_intervals([poll for poll in usable if poll.feed == feed])
+        for feed in required_feeds
+    }
     return result
