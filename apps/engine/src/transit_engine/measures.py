@@ -33,19 +33,33 @@ from transit_engine.schedule import (
     period_sql,
     periods_text,
 )
+from transit_engine.series import (
+    DAY_TYPES as _DAY_TYPES,
+)
+from transit_engine.series import (
+    GROUP_COLUMNS,
+    HOUR_GROUPS,
+    SeriesGroup,
+    day_type_sql,
+    matches_date,
+    series_sql,
+)
+from transit_engine.series import (
+    LOCAL_HOUR as _LOCAL_HOUR,
+)
 from transit_engine.store import CITY, Store
 from transit_engine.vehicles import (
     MIN_STABLE_ID_READINGS,
     MIN_STABLE_READING_SHARE,
     MIN_VEHICLE_RANKING_HOURS,
     MIN_VEHICLE_RANKING_TRIPS,
+    TRACKED_VEHICLES_SQL,
     TRIP_CAPTURE_LEAD_SECONDS,
     VEHICLE_COUNTS,
     VEHICLE_POLL_SECONDS,
     VEHICLE_REPORTING_GAP_SECONDS,
     VEHICLE_TAIL_CAP_SECONDS,
-    tracked_vehicle_ids,
-    vehicle_stats,
+    vehicle_stats_query,
     vehicle_tail_sql,
 )
 
@@ -73,6 +87,7 @@ MIN_CLASSIFIED_STOP_EVENTS = 30
 MIN_SERVICE_DELIVERED_TRIPS = 20
 # Bound trip join memory independently of the requested range. Counts and bins are additive.
 DAYS_PER_QUERY_BATCH = 31
+MAX_SERIES_DAYS = 400
 
 
 @dataclass(frozen=True)
@@ -191,12 +206,10 @@ _STATES = {
 _PARTIAL = Text("Only measured days are included.", "Seuls les jours mesurés sont inclus.")
 # Both supported cities use the same service timezone. Departures reverse the
 # GTFS local-noon-minus-12-elapsed-hours anchor used by the cleaner, even on DST days.
-_LOCAL_HOUR = "hour(timezone('America/Toronto', {}))"
 _DEPARTURE_SECONDS = """
     epoch(scheduled_start_utc)
     - epoch(timezone('America/Toronto', service_date + INTERVAL '12 hours')) + 43200
 """
-_DAY_TYPES = ("weekday", "weekday", "weekday", "weekday", "weekday", "saturday", "sunday")
 _SERVICE_DELIVERED_ID = "service_delivered"
 _CROWDING_ID = "crowding"
 _ALERT_COUNTS_ID = "alert_counts"
@@ -223,6 +236,7 @@ class Question:
     effect: str | None = None
     cause: str | None = None
     vehicle: str | None = None
+    group: SeriesGroup | None = None
 
     def __post_init__(self, ranking: bool) -> None:
         if self.measure not in _SELECTIONS:
@@ -230,6 +244,17 @@ class Question:
         if not CITY.fullmatch(self.city) or self.start > self.end:
             raise ValueError("provide a city and an ordered service date range")
         family, _ = _SELECTIONS[self.measure]
+        if self.group is not None:
+            if self.group not in GROUP_COLUMNS or ranking:
+                raise ValueError("group must be day, hour, day_type, weekday_hour or direction")
+            if (self.end - self.start).days >= MAX_SERIES_DAYS:
+                raise ValueError(f"a series can cover at most {MAX_SERIES_DAYS} days")
+            if self.group == "direction" and (
+                self.line is None or family.id in {_ALERT_COUNTS_ID, _VEHICLES_ID}
+            ):
+                raise ValueError(
+                    "group=direction requires a measure that supports line and direction"
+                )
         if family.id == _VEHICLES_ID:
             if any(name not in {"vehicle", "day_type"} for name in self.cuts()):
                 raise ValueError("vehicle measures support vehicle and day_type")
@@ -248,7 +273,9 @@ class Question:
         if family.id == _SERVICE_DELIVERED_ID and self.stop is not None:
             raise ValueError("stop does not apply to service delivered trip measures")
         if self.measure in _BOUNDARIES:
-            if (self.line is None and not ranking) or self.day_type is None:
+            if (self.line is None and not ranking) or (
+                self.day_type is None and self.group is None
+            ):
                 raise ValueError("first and last trip require line and day_type")
             if self.hour is not None or self.departure is not None:
                 raise ValueError("first and last trip use the full day, without hour or departure")
@@ -310,6 +337,13 @@ _CSV_COLUMNS = {
     "state": Text("State", "État"),
     "coverage_note": Text("Coverage note", "Note sur la couverture"),
     **_EVIDENCE_COLUMNS,
+}
+_GROUP_LABELS = {
+    "day": Text("Service date", "Date de service"),
+    "hour": Text("Local hour", "Heure locale"),
+    "day_type": Text("Service day type", "Type de jour de service"),
+    "weekday": Text("ISO weekday", "Jour de la semaine ISO"),
+    "direction": Text("Direction", "Direction"),
 }
 _UNIT_LABELS = {
     "share": Text("Share", "Part"),
@@ -407,7 +441,11 @@ def _cuts(question: Question, hour_sql: str | None) -> tuple[str, list[object]]:
     return " AND ".join(filters) or "true", parameters
 
 
-def _entity_sql(group: EntityKind | None) -> str:
+def _entity_sql(
+    group: EntityKind | None, series: SeriesGroup | None = None, hour: str = "NULL"
+) -> str:
+    if series:
+        return series_sql(series, hour)
     return {
         None: "row(NULL::VARCHAR)",
         "line": "row(route_id)",
@@ -417,11 +455,11 @@ def _entity_sql(group: EntityKind | None) -> str:
 
 
 def _grouped_batches(
-    rows: list[tuple[Any, ...]], counters: dict[str, str], sample: str, group: EntityKind | None
+    rows: list[tuple[Any, ...]], counters: dict[str, str], sample: str, grouped: bool
 ) -> dict[EntityKey, Batch]:
     groups: dict[EntityKey, Batch] = {}
     for key, edge, routes, *values in rows:
-        result = groups.setdefault(tuple(key) if group else (), Batch())
+        result = groups.setdefault(tuple(key) if grouped else (), Batch())
         bucket = dict(zip(counters, values, strict=True))
         result.counts.update(bucket)
         if edge is not None:
@@ -438,17 +476,29 @@ def _punctuality_rows(
     question: Question,
     version: str,
     group: EntityKind | None,
-    *,
-    vehicles: list[str] | None = None,
 ) -> dict[EntityKey, Batch]:
-    cut_sql, filters = _cuts(question, _LOCAL_HOUR.format("scheduled_stop_utc"))
-    parameters = [
+    sql, parameters, counters = _punctuality_query(family, paths, question, version, group)
+    rows = conn.execute(sql, parameters).fetchall()
+    return _grouped_batches(rows, counters, "classified", bool(group or question.group))
+
+
+def _punctuality_query(
+    family: Family,
+    paths: dict[str, list[str]],
+    question: Question,
+    version: str,
+    group: EntityKind | None,
+    *,
+    for_vehicles: bool = False,
+) -> tuple[str, list[object], dict[str, str]]:
+    hour = _LOCAL_HOUR.format("scheduled_stop_utc")
+    cut_sql, filters = _cuts(question, hour)
+    parameters: list[object] = [
         *(paths[table] for table in family.tables),
         question.city,
         version,
         question.start,
         question.end,
-        *([vehicles] if vehicles is not None else []),
         *filters,
     ]
     counters = {name: sql for name, (sql, _) in _COUNTS.items()}
@@ -460,12 +510,14 @@ def _punctuality_rows(
         "list(DISTINCT route_id) FILTER (NOT added AND route_id IS NOT NULL)" if group else "NULL"
     )
     edge = f"floor(delay_seconds::DOUBLE / {DELAY_BIN_SECONDS})::BIGINT * {DELAY_BIN_SECONDS}"
-    if group and all(measure.percentile is None for measure in _SELECTIONS[question.measure][1]):
+    if (group or question.group) and all(
+        measure.percentile is None for measure in _SELECTIONS[question.measure][1]
+    ):
         edge = "NULL::BIGINT"
     vehicle_filter = (
-        "AND s.vehicle_id IN (SELECT unnest(?::VARCHAR[]))" if vehicles is not None else ""
+        "AND s.vehicle_id IN (SELECT vehicle_id FROM selected_vehicles)" if for_vehicles else ""
     )
-    rows = conn.execute(
+    return (
         f"""
         WITH events AS (
             SELECT s.service_date, t.route_id, t.direction_id, s.stop_id, t.scheduled_start_utc,
@@ -484,14 +536,14 @@ def _punctuality_rows(
             WHERE s.provider = ? AND s.cleaning_version = ? AND s.service_date BETWEEN ? AND ?
                 {vehicle_filter}
         )
-        SELECT {_entity_sql(group)} AS entity,
+        SELECT {_entity_sql(group, question.group, hour)} AS entity,
             {edge} AS lower_edge, {routes}, {aggregates}
         FROM events WHERE {cut_sql}
         GROUP BY entity, lower_edge
         """,
         parameters,
-    ).fetchall()
-    return _grouped_batches(rows, counters, "classified", group)
+        counters,
+    )
 
 
 _PUNCTUALITY = Family(
@@ -640,7 +692,8 @@ def _service_delivered_rows(
     group: EntityKind | None,
 ) -> dict[EntityKey, Batch]:
     window = "provider = ? AND cleaning_version = ? AND service_date BETWEEN ? AND ?"
-    cut_sql, filters = _cuts(question, _LOCAL_HOUR.format("scheduled_start_utc"))
+    hour_sql = _LOCAL_HOUR.format("scheduled_start_utc")
+    cut_sql, filters = _cuts(question, hour_sql)
     scope = [question.city, version, question.start, question.end]
     trips_sql = f"""
         SELECT service_date, trip_id, route_id, direction_id, scheduled_start_utc, state,
@@ -685,53 +738,79 @@ def _service_delivered_rows(
             ) times USING (service_date, trip_id)
         """
         duration_params = [paths[SCHEDULED_STOP_TIMES], *scope]
-    rows = conn.execute(
-        f"""
-        WITH trips AS ({trips_sql}), durations AS ({duration_sql})
-        SELECT {_entity_sql(group)} AS entity,
-            floor(lead_seconds / {DELAY_BIN_SECONDS})::BIGINT * {DELAY_BIN_SECONDS}
-                AS lower_edge, {routes}, {aggregates}
-        FROM durations
-        GROUP BY entity, lower_edge
-        """,
-        [*parameters, *duration_params],
-    ).fetchall()
-    groups = _grouped_batches(rows, counters, "cancellation_notices", group)
-    boundaries = question.line if group is None else question.measure in _BOUNDARIES
-    if boundaries and question.day_type and question.hour is None and question.departure is None:
-        route_partition = ", route_id" if group == "line" else ""
-        edges = conn.execute(
-            f"""
-            WITH trips AS ({trips_sql}), scheduled AS (
-                SELECT *, ({_DEPARTURE_SECONDS})::BIGINT AS departure_seconds
+    entity = _entity_sql(group, question.group, hour_sql)
+    boundaries = question.line is not None if group is None else question.measure in _BOUNDARIES
+    boundary_sql = ""
+    boundary_rows = ""
+    if (
+        boundaries
+        and (question.day_type or question.group)
+        and question.hour is None
+        and question.departure is None
+    ):
+        partition = ", route_id" if group == "line" else ""
+        if question.group == "direction":
+            partition = ", direction_id"
+        boundary_sql = f"""
+            , scheduled AS (
+                SELECT *, {entity} AS entity, ({_DEPARTURE_SECONDS})::BIGINT AS departure_seconds
                 FROM trips WHERE state <> 'added'
             ), bounds AS (
                 SELECT *, min(departure_seconds) OVER day AS first_start,
                     max(departure_seconds) OVER day AS last_start
                 FROM scheduled
-                WINDOW day AS (PARTITION BY service_date{route_partition})
+                WINDOW day AS (PARTITION BY service_date{partition})
             )
-            SELECT {_entity_sql(group)} AS entity, measure, service_date, departure_seconds,
+        """
+        boundary_rows = """
+            UNION ALL
+            SELECT entity, NULL, NULL, NULL, row(measure, service_date, departure_seconds,
                 count(*),
                 count(*) FILTER (eligible), count(*) FILTER (state = 'ran'),
                 count(*) FILTER (state = 'unconfirmed'),
-                count(*) FILTER (without_live_data), count(*) FILTER (capture_gap)
+                count(*) FILTER (without_live_data), count(*) FILTER (capture_gap))
             FROM bounds, LATERAL (VALUES ('first_trip', first_start), ('last_trip', last_start))
                 AS edge(measure, start_seconds)
             WHERE departure_seconds = start_seconds
             GROUP BY entity, measure, service_date, departure_seconds
-            ORDER BY service_date, measure
-            """,
-            parameters,
-        ).fetchall()
-        for key, measure, day, seconds, *counts in edges:
+        """
+    rows = conn.execute(
+        f"""
+        WITH trips AS ({trips_sql}), durations AS ({duration_sql})
+        {boundary_sql}
+        SELECT {entity} AS entity,
+            floor(lead_seconds / {DELAY_BIN_SECONDS})::BIGINT * {DELAY_BIN_SECONDS}
+                AS lower_edge, {routes}, row({aggregates}), NULL
+        FROM durations GROUP BY entity, lower_edge
+        {boundary_rows}
+        """,
+        [*parameters, *duration_params],
+    ).fetchall()
+    grouped = bool(group or question.group)
+    groups = _grouped_batches(
+        [
+            (key, edge, routes, *values)
+            for key, edge, routes, values, _ in rows
+            if values is not None
+        ],
+        counters,
+        "cancellation_notices",
+        grouped,
+    )
+    for key, _, _, _, boundary in rows:
+        if boundary is not None:
+            measure, day, seconds, *counts = boundary
             hour, remainder = divmod(seconds, 3600)
             minute, second = divmod(remainder, 60)
-            groups[tuple(key) if group else ()].departures.append(
+            groups[tuple(key) if grouped else ()].departures.append(
                 Departure(
                     measure, day.isoformat(), f"{hour:02d}:{minute:02d}:{second:02d}", *counts
                 )
             )
+    for batch in groups.values():
+        batch.departures.sort(
+            key=lambda row: (row.service_date, row.measure, row.scheduled_departure)
+        )
     return groups
 
 
@@ -928,7 +1007,7 @@ def _crowding_rows(
     join = ""
     direction = "NULL::INTEGER"
     inputs: list[object] = [paths[VEHICLE_POSITIONS], question.city, version]
-    if question.direction is not None:
+    if question.direction is not None or question.group == "direction":
         direction = "t.direction_id"
         join = """
             LEFT JOIN read_parquet(?, hive_partitioning = false) t
@@ -938,7 +1017,21 @@ def _crowding_rows(
         inputs.append(paths[TRIP_DAYS])
     weight = "epoch_us(ends_at) - epoch_us(observed_at_utc)"
     reading_cut = "matches"
-    if question.hour is not None:
+    segments = ""
+    entity_hour = "NULL"
+    if question.group in HOUR_GROUPS:
+        entity_hour = _LOCAL_HOUR.format("hour_start")
+        segments = """
+            CROSS JOIN LATERAL generate_series(time_bucket(INTERVAL '1 hour', observed_at_utc),
+                ends_at, INTERVAL '1 hour') AS hours(hour_start)
+            WHERE hour_start < ends_at OR hour_start <= observed_at_utc
+        """
+        reading_cut = "matches AND hour_start = time_bucket(INTERVAL '1 hour', observed_at_utc)"
+        weight = f"""
+            least(epoch_us(ends_at), epoch_us(hour_start) + {_US_PER_HOUR})
+                - greatest(epoch_us(observed_at_utc), epoch_us(hour_start))
+        """
+    elif question.hour is not None:
         start_hour = _LOCAL_HOUR.format("observed_at_utc")
         segment_hour = _LOCAL_HOUR.format("hour_start")
         # Use elapsed-hour boundaries and then match the local hour, including both
@@ -979,9 +1072,10 @@ def _crowding_rows(
             {join}
             WHERE (?::VARCHAR IS NULL OR v.route_id = ?)
         ), cuts AS (
-            SELECT *, {_entity_sql(group)} AS entity, {filters} AS matches,
+            SELECT *, {_entity_sql(group, question.group, entity_hour)} AS entity,
+                {filters} AS matches,
                 {weight} AS weight, {reading_cut} AS reading_cut
-            FROM vehicles
+            FROM vehicles {segments}
         )
         SELECT entity, status, percentage,
             count(*) FILTER (reading_cut OR (matches AND weight > 0)) AS intervals,
@@ -1001,7 +1095,7 @@ def _crowding_rows(
     ).fetchall()
     result: dict[EntityKey, Batch] = {}
     for key, status, percentage, intervals, readings, weight, squared, capped, baseline in rows:
-        counts = result.setdefault(tuple(key) if group else (), Batch()).counts
+        counts = result.setdefault(tuple(key) if group or question.group else (), Batch()).counts
         counts.update(
             intervals=intervals,
             readings=readings,
@@ -1103,7 +1197,7 @@ def _alert_rows(
 ) -> dict[EntityKey, Batch]:
     alert_paths = [path for path in paths[ALERTS] if path]
     if not alert_paths:
-        return {(): Batch()} if group is None else {}
+        return {(): Batch()} if group is None and question.group is None else {}
     filters = []
     arguments: list[object] = []
     for cut, value in question.cuts().items():
@@ -1121,6 +1215,35 @@ def _alert_rows(
         "line": "unnest(route_ids)",
         "stop": "unnest(stop_ids)",
     }[group]
+    projection = "entity, source, alert_id, version, epoch_us(starts), epoch_us(ends)"
+    segments = ""
+    if question.group:
+        local_day = "timezone('America/Toronto', bucket)::DATE"
+        if question.group in HOUR_GROUPS:
+            bucket_start = "bucket"
+            bucket_end = "bucket + INTERVAL '1 hour'"
+            series = """
+                generate_series(time_bucket(INTERVAL '1 hour', starts), ends, INTERVAL '1 hour')
+            """
+            key_sql = f"row({local_day}::VARCHAR, {_LOCAL_HOUR.format('bucket')})"
+        else:
+            bucket_start = "timezone('America/Toronto', bucket)"
+            bucket_end = "timezone('America/Toronto', bucket + INTERVAL '1 day')"
+            series = """
+                generate_series(
+                    date_trunc('day', timezone('America/Toronto', starts)),
+                    timezone('America/Toronto', ends), INTERVAL '1 day')
+            """
+            key_sql = "row(bucket::DATE::VARCHAR)"
+        projection = f"""
+            {key_sql}, source, alert_id, version,
+            epoch_us(greatest(starts, {bucket_start})),
+            epoch_us(least(ends, {bucket_end}))
+        """
+        segments = f"""
+            CROSS JOIN LATERAL {series} AS buckets(bucket)
+            WHERE {bucket_start} < ends OR (starts = ends AND starts >= {bucket_start})
+        """
     rows = conn.execute(
         f"""
         WITH bounds AS (
@@ -1141,17 +1264,19 @@ def _alert_rows(
                 period.start_utc IS NULL AND period.end_utc IS NULL AS observed_only,
                 first_seen_at_utc, last_seen_at_utc, window_end
             FROM periods CROSS JOIN bounds
+        ), valid AS (
+            SELECT DISTINCT entity, source, alert_id, version, starts, ends FROM clipped
+            WHERE starts < ends OR (observed_only AND first_seen_at_utc = last_seen_at_utc
+                AND starts = first_seen_at_utc AND starts < window_end AND starts = ends)
         )
-        SELECT DISTINCT entity, source, alert_id, version, epoch_us(starts), epoch_us(ends)
-        FROM clipped
-        WHERE starts < ends OR (observed_only AND first_seen_at_utc = last_seen_at_utc
-            AND starts = first_seen_at_utc AND starts < window_end)
+        SELECT DISTINCT {projection} FROM valid {segments}
         """,
         [question.start, question.end, alert_paths, question.city, version, *arguments],
     ).fetchall()
     result: dict[EntityKey, Batch] = {}
     for entity, source, alert_id, revision, start, end in rows:
-        result.setdefault((entity,) if group else (), Batch()).alert_spans.add(
+        key = tuple(entity) if question.group else (entity,) if group else ()
+        result.setdefault(key, Batch()).alert_spans.add(
             AlertSpan(source, alert_id, revision, start, end)
         )
     return result
@@ -1387,7 +1512,8 @@ def _waiting_rows(
             FROM frequent_periods p LEFT JOIN realtime_feed_counts f USING (service_date)
             WHERE {cut}
         )
-        SELECT {_entity_sql(group)} AS entity, NULL, {routes}, {", ".join(counters.values())}
+        SELECT {_entity_sql(group, question.group, hour)} AS entity,
+            NULL, {routes}, {", ".join(counters.values())}
         FROM matched GROUP BY entity
         """,
         [
@@ -1400,7 +1526,7 @@ def _waiting_rows(
             *cut_params,
         ],
     ).fetchall()
-    return _grouped_batches(rows, counters, "observed_headways", group)
+    return _grouped_batches(rows, counters, "observed_headways", bool(group or question.group))
 
 
 _WAITING = Family(
@@ -1559,10 +1685,15 @@ def _offered_rows(
         + " END"
     )
     count = "count(*)"
-    if question.hour is not None:
+    hourly = question.group in HOUR_GROUPS
+    hour_column = ", local_hour" if hourly else ""
+    if hourly:
+        period_hours = "1"
+    elif question.hour is not None:
         count += " FILTER (local_hour = ?)"
         parameters.append(question.hour)
         period_hours = "1"
+    entity = _entity_sql(None, question.group, "local_hour")
     rows = conn.execute(
         f"""
         WITH timetable AS (
@@ -1579,13 +1710,13 @@ def _offered_rows(
             GROUP BY service_date, route_id, direction_id, trip_id
         ), daily AS (
             SELECT service_date, route_id, direction_id, {bucket} AS period, {count} AS trips
-            FROM departures GROUP BY service_date, route_id, direction_id, period
+                {hour_column}
+            FROM departures GROUP BY service_date, route_id, direction_id, period{hour_column}
         )
-        SELECT route_id, direction_id, CASE dayofweek(service_date)
-                WHEN 0 THEN 'sunday' WHEN 6 THEN 'saturday' ELSE 'weekday'
-            END AS day_type,
+        SELECT {entity} AS entity, route_id, direction_id,
+            {day_type_sql("service_date")} AS day_type,
             period, sum(trips), count(*) FILTER (trips >= {MIN_TRIPS_PER_HOUR} * ({period_hours}))
-        FROM daily GROUP BY route_id, direction_id, day_type, period
+        FROM daily GROUP BY entity, route_id, direction_id, day_type, period
         """,
         [
             paths[family.tables[0]],
@@ -1596,7 +1727,11 @@ def _offered_rows(
             *parameters,
         ],
     ).fetchall()
-    return {(): Batch(offered=[OfferedCounts(*row) for row in rows])}
+    results: dict[EntityKey, Batch] = {}
+    for entity_key, *values in rows:
+        key = tuple(entity_key) if question.group else ()
+        results.setdefault(key, Batch()).offered.append(OfferedCounts(*values))
+    return results
 
 
 _SERVICE_OFFERED = Family(
@@ -1768,37 +1903,83 @@ def _vehicle_rows(
     version: str,
     group: EntityKind | None,
 ) -> dict[EntityKey, Batch]:
-    tracked = tracked_vehicle_ids(conn, paths, question.city, version)
-    if not tracked:
-        return {(None,): Batch()}
-    rows = vehicle_stats(
-        conn,
+    stats, stats_params = vehicle_stats_query(
         paths,
         [question.city, version, question.start, question.end],
-        tracked,
-        question.vehicle,
         group == "vehicle",
         question.measure == family.id or question.measure in _VEHICLE_REPORTING_IDS,
         question.measure == family.id or question.measure in _VEHICLE_COMPLETION_IDS,
+        by_hour=question.group == "hour",
     )
-    results: dict[EntityKey, Batch] = {
-        (vehicle,) if group else (): Batch(
-            counts=Counter(
-                {"tracked_vehicle_days": 1, **dict(zip(VEHICLE_COUNTS, counts, strict=True))}
-            ),
-            vehicle_routes=set(routes or ()),
-        )
-        for vehicle, routes, *counts in rows
-    }
-    if () in results and (
+    timing_cte = ""
+    timing_rows = ""
+    timing_params: list[object] = []
+    timing_counters: dict[str, str] = {}
+    if group is None and (
         question.measure == family.id or question.measure in _VEHICLE_PUNCTUALITY_IDS
     ):
-        ids = [question.vehicle] if question.vehicle is not None else tracked
-        punctuality = _punctuality_rows(
-            conn, _PUNCTUALITY, paths, question, version, None, vehicles=ids
+        timing, timing_params, timing_counters = _punctuality_query(
+            _PUNCTUALITY, paths, question, version, None, for_vehicles=True
         )
-        if () in punctuality:
-            results[()].update(punctuality[()])
+        timing_columns = ", ".join(("entity", "edge", "routes", *timing_counters))
+        timing_cte = f", timing({timing_columns}) AS ({timing})"
+        timing_rows = "UNION ALL SELECT NULL, timing, false FROM timing"
+
+    stats_columns = ", ".join(("entity", "routes", *VEHICLE_COUNTS))
+    rows = conn.execute(
+        f"""
+        WITH tracking AS ({TRACKED_VEHICLES_SQL}), selected_vehicles AS (
+            SELECT vehicle_id FROM tracking, unnest(ids) AS stable(vehicle_id)
+            WHERE (?::VARCHAR IS NULL OR vehicle_id = ?)
+        ), stats({stats_columns}) AS ({stats})
+        {timing_cte}
+        SELECT stats, NULL, false FROM stats
+        {timing_rows}
+        UNION ALL SELECT NULL, NULL, true FROM tracking WHERE ids IS NULL
+        """,
+        [
+            paths[VEHICLE_POSITIONS],
+            question.city,
+            version,
+            paths[TRIP_DAYS],
+            question.city,
+            version,
+            question.vehicle,
+            question.vehicle,
+            *stats_params,
+            *timing_params,
+        ],
+    ).fetchall()
+    results: dict[EntityKey, Batch] = {}
+    timing_batches = []
+    for stats_row, timing_row, untracked in rows:
+        if untracked:
+            return {(None,): Batch()}
+        if stats_row is not None:
+            key = (stats_row["entity"],) if group or question.group else ()
+            results[key] = Batch(
+                counts=Counter(
+                    {
+                        "tracked_vehicle_days": 1,
+                        **{name: stats_row[name] for name in VEHICLE_COUNTS},
+                    }
+                ),
+                vehicle_routes=set(stats_row["routes"] or ()),
+            )
+        elif timing_row is not None:
+            timing_batches.append(
+                (
+                    timing_row["entity"],
+                    timing_row["edge"],
+                    timing_row["routes"],
+                    *(timing_row[name] for name in timing_counters),
+                )
+            )
+    for timing_key, punctuality in _grouped_batches(
+        timing_batches, timing_counters, "classified", bool(question.group)
+    ).items():
+        if timing_key in results:
+            results[timing_key].update(punctuality)
     return results
 
 
@@ -2390,9 +2571,12 @@ def _offered_answer(
     included: list[str],
     missing_days: bool,
     hour: int | None,
+    *,
+    units: int | None = None,
 ) -> tuple[str, dict[str, float | None], dict[str, Any], dict[str, int]]:
     # A sparse period with no departures still counts for a scope seen in the timetable.
-    units = len({(row.route_id, row.direction_id) for row in offered})
+    if units is None:
+        units = len({(row.route_id, row.direction_id) for row in offered})
     trips: Counter[tuple[str, str]] = Counter()
     at_or_above: Counter[tuple[str, str]] = Counter()
     for row in offered:
@@ -2460,6 +2644,8 @@ def ask(store: Store, question: Question) -> dict[str, Any]:
     """Read validated days and compute the selected measure or family with its evidence."""
     started = perf_counter()
     family, selected = _SELECTIONS[question.measure]
+    if question.group:
+        return _series_answer(store, question, family, selected, question.group, started)
     totals = Batch()
     with store.connect() as conn:
         window = read_window(conn, store, question, family, selected)
@@ -2479,6 +2665,143 @@ def ask(store: Store, question: Question) -> dict[str, Any]:
         "coverage_note": window.coverage_note,
         "evidence": {**window.evidence(store, question, family, started), **family_evidence},
         "info": [_info(family, measure) for measure in selected],
+    }
+
+
+def _date_key(group: SeriesGroup, day: str, hour_key: EntityKey = ()) -> EntityKey:
+    if group == "day":
+        return (day,)
+    if group == "day_type":
+        return (_DAY_TYPES[date.fromisoformat(day).weekday()],)
+    if group == "weekday_hour":
+        return (date.fromisoformat(day).isoweekday(), *hour_key)
+    return hour_key
+
+
+def _series_keys(
+    question: Question, group: SeriesGroup, observed: set[EntityKey]
+) -> list[EntityKey]:
+    if group == "day":
+        return [
+            (date.fromordinal(day).isoformat(),)
+            for day in range(question.start.toordinal(), question.end.toordinal() + 1)
+        ]
+    if group == "day_type":
+        return [(kind,) for kind in ("weekday", "saturday", "sunday")]
+    if group == "hour":
+        return [(hour,) for hour in range(24)]
+    if group == "weekday_hour":
+        return [(weekday, hour) for weekday in range(1, 8) for hour in range(24)]
+    return [(0,), (1,), *([(None,)] if (None,) in observed else [])]
+
+
+def _series_answer(
+    store: Store,
+    question: Question,
+    family: Family,
+    selected: tuple[Measure, ...],
+    group: SeriesGroup,
+    started: float,
+) -> dict[str, Any]:
+    totals: dict[EntityKey, Batch] = {}
+    alerts = family.id == _ALERT_COUNTS_ID
+    vehicles = family.id == _VEHICLES_ID
+    crowding = family.id == _CROWDING_ID
+    offered = family.id == _SERVICE_OFFERED_ID
+    hourly = group in HOUR_GROUPS
+    # Position files are already queried one service day at a time. Their manifest
+    # date also covers occupancy observations that have no trip or service date.
+    position_series = (vehicles or crowding) and group != "direction"
+    query = replace(question, group="hour" if hourly else None) if position_series else question
+    occupancy_days: set[str] = set()
+    with store.connect() as conn:
+        window = read_window(conn, store, question, family, selected)
+        alert_days = set(window.measured) if alerts else set()
+        for offset, batch in enumerate(window.batches()):
+            result = family.query(conn, family, batch, query, str(store.cleaning_version), None)
+            window.record_vehicle_tracking(family, offset, result)
+            if crowding and any(part.counts["published_intervals"] for part in result.values()):
+                occupancy_days.add(window.included[offset])
+            for key, part in result.items():
+                if alerts:
+                    day, *hours = key
+                    if not isinstance(day, str) or day not in alert_days:
+                        continue
+                    key = _date_key(group, day, tuple(hours))
+                elif position_series:
+                    if vehicles and key == (None,):
+                        continue
+                    key = _date_key(group, window.included[offset], key)
+                totals.setdefault(key, Batch()).update(part)
+
+    # A line's published timetable establishes that an empty hour can have zero service.
+    schedule_units = {
+        (row.route_id, row.direction_id) for part in totals.values() for row in part.offered
+    }
+    cells = []
+    columns = GROUP_COLUMNS[group]
+    untracked = set(window.not_tracked)
+    for key in _series_keys(question, group, set(totals)):
+        cell_hour = key[-1] if hourly else question.hour
+        assert cell_hour is None or isinstance(cell_hour, int)
+        in_cut = (not hourly or question.hour is None or cell_hour == question.hour) and (
+            group != "direction" or question.direction is None or key[0] == question.direction
+        )
+        included = [day for day in window.included if in_cut and matches_date(group, key, day)]
+        cell_window = ReadWindow(
+            {},
+            measured=[day for day in included if not alerts or day not in untracked],
+            included=included,
+            not_tracked=[day for day in included if day in untracked],
+        )
+        part = totals.get(key, Batch()) if included else Batch()
+        if offered:
+            units = (
+                sum(direction == key[0] for _, direction in schedule_units)
+                if group == "direction"
+                else len(schedule_units)
+            )
+            state, values, evidence, _ = _offered_answer(
+                selected, part.offered, included, not included, cell_hour, units=units
+            )
+        else:
+            if hourly and occupancy_days.intersection(included):
+                part.counts["published_intervals"] = 1
+            state, values, evidence, _ = evaluate(
+                family, selected, part, cell_window, hour=cell_hour
+            )
+        cells.append(
+            {
+                "key": dict(zip(columns, key, strict=True)),
+                "value": values,
+                "state": state,
+                "state_text": _STATES[state]._asdict(),
+                "evidence": {
+                    **evidence,
+                    "days_included": [day for day in included if day not in untracked],
+                },
+            }
+        )
+    headings = {
+        **{key: _GROUP_LABELS[key] for key in columns},
+        **_csv_columns(family),
+    }
+    return {
+        "measure": question.measure,
+        "group": group,
+        "cells": cells,
+        "coverage_note": window.coverage_note,
+        "evidence": window.evidence(store, question, family, started),
+        "info": [
+            {
+                **_info(family, measure),
+                "csv_columns": {
+                    lang: [getattr(label, lang) for label in headings.values()]
+                    for lang in ("en", "fr")
+                },
+            }
+            for measure in selected
+        ],
     }
 
 
@@ -2643,21 +2966,42 @@ def _vehicle_answer(
 def answer_csv(answer: dict[str, Any], language: Language) -> str:
     family, _ = _SELECTIONS[answer["measure"]]
     columns = _csv_columns(family)
-    evidence = answer["evidence"]
-    common = {**evidence, **evidence["counts"], **evidence["excluded"]}
-    common["coverage_note"] = (answer["coverage_note"] or {}).get(language)
+    group = answer.get("group")
+    if group:
+        columns = {**{key: _GROUP_LABELS[key] for key in GROUP_COLUMNS[group]}, **columns}
     output = io.StringIO(newline="")
     writer = csv.writer(output)
     writer.writerow(getattr(label, language) for label in columns.values())
-    for measure in answer["info"]:
-        key = measure["id"]
-        state = evidence.get("measure_states", {}).get(key, answer["state"])
+    info = answer["info"]
+    entries = [(cell, info) for cell in answer["cells"]] if group else [(answer, [m]) for m in info]
+    for cell, measures in entries:
+        evidence = {**answer["evidence"], **cell["evidence"]}
+        states = evidence.get("measure_states", {})
+        values = {
+            measure["id"]: (
+                cell["value"][measure["id"]],
+                measure["text"][language]["unit"],
+                getattr(_STATES[states.get(measure["id"], cell["state"])], language),
+            )
+            for measure in measures
+        }
+        if len(values) == 1:
+            key, (value, unit, state) = next(iter(values.items()))
+        else:
+            key = answer["measure"]
+            value = {name: fields[0] for name, fields in values.items()}
+            unit = {name: fields[1] for name, fields in values.items()}
+            state = {name: fields[2] for name, fields in values.items()}
         row = {
-            **common,
-            "state": getattr(_STATES[state], language),
+            **evidence,
+            **evidence["counts"],
+            **evidence["excluded"],
+            **cell.get("key", {}),
+            "coverage_note": (answer["coverage_note"] or {}).get(language),
+            "state": state,
             "measure": key,
-            "unit": measure["text"][language]["unit"],
-            "value": answer["value"][key],
+            "unit": unit,
+            "value": value,
         }
         writer.writerow(
             json.dumps(row[name], ensure_ascii=False)

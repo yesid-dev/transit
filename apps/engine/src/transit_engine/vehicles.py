@@ -1,11 +1,8 @@
 """Observed vehicle service and trip completion over one validated clean day."""
 
-from typing import Any
-
-import duckdb
-
 from transit_engine.capture import MAX_POLL_SPACING_SECONDS, POLL_COVERAGE_SQL
 from transit_engine.clean_manifest import FEED_POLLS, STOP_EVENTS, TRIP_DAYS, VEHICLE_POSITIONS
+from transit_engine.series import LOCAL_HOUR
 
 VEHICLE_POLL_SECONDS = 20
 VEHICLE_TAIL_CAP_SECONDS = 3 * VEHICLE_POLL_SECONDS
@@ -28,13 +25,9 @@ def vehicle_tail_sql(next_start: str, last_seen: str) -> str:
     )
 
 
-def tracked_vehicle_ids(
-    conn: duckdb.DuckDBPyConnection, paths: dict[str, list[str]], city: str, version: str
-) -> list[str]:
-    # Clean positions only contain identified readings. Confirmed trips provide a
-    # second check for feeds where the cleaner could not assign a stable ID at all.
-    ids, reading_share, trip_share = conn.execute(
-        f"""
+# Clean positions only contain identified readings. Confirmed trips provide a
+# second check for feeds where the cleaner could not assign a stable ID at all.
+TRACKED_VEHICLES_SQL = f"""
         WITH positions AS (
             SELECT vehicle_id, readings, service_date, trip_id
             FROM read_parquet(?, hive_partitioning = false)
@@ -56,17 +49,11 @@ def tracked_vehicle_ids(
             LEFT JOIN identified_trips p USING (service_date, trip_id)
             WHERE t.provider = ? AND t.cleaning_version = ? AND t.state = 'ran'
         )
-        SELECT list(vehicle_id) FILTER (stable), sum(n) FILTER (stable) / sum(n),
-            (SELECT share FROM confirmed_trips)
+        SELECT CASE WHEN sum(n) FILTER (stable) / sum(n) >= {MIN_STABLE_READING_SHARE}
+            AND coalesce((SELECT share FROM confirmed_trips), 1) >= {MIN_STABLE_READING_SHARE}
+            THEN list(vehicle_id) FILTER (stable) END AS ids
         FROM identities
-        """,
-        [paths[VEHICLE_POSITIONS], city, version, paths[TRIP_DAYS], city, version],
-    ).fetchone() or (None, None, None)
-    if reading_share is None or reading_share < MIN_STABLE_READING_SHARE:
-        return []
-    if trip_share is not None and trip_share < MIN_STABLE_READING_SHARE:
-        return []
-    return list(ids)
+"""
 
 
 VEHICLE_COUNTS = (
@@ -84,20 +71,58 @@ VEHICLE_COUNTS = (
 )
 
 
-def vehicle_stats(
-    conn: duckdb.DuckDBPyConnection,
+def vehicle_stats_query(
     paths: dict[str, list[str]],
     scope: list[object],
-    tracked_ids: list[str],
-    vehicle: str | None,
     by_vehicle: bool,
     reporting: bool,
     completion: bool,
-) -> list[tuple[Any, ...]]:
+    *,
+    by_hour: bool = False,
+) -> tuple[str, list[object]]:
     cap_us = VEHICLE_TAIL_CAP_SECONDS * 1_000_000
     gap_us = VEHICLE_REPORTING_GAP_SECONDS * 1_000_000
     tail = vehicle_tail_sql("next_start", "last_seen_at_utc")
     entity = "vehicle_id" if by_vehicle else "NULL::VARCHAR"
+    silence_entity = entity
+    service_entity = entity
+    service_weight = "greatest(epoch_us(last_seen_at_utc) - epoch_us(observed_at_utc), 0)"
+    service_weight += f" + greatest(0, least({tail}, {cap_us}))"
+    service_days = "count(DISTINCT service_date)"
+    service_segments = ""
+    trip_starts = ""
+    trip_start_join = ""
+    keys = f"SELECT {entity} AS entity FROM selected GROUP BY entity"
+    if by_hour:
+        # Attribute a trip once, using the scheduled start or its first position when unscheduled.
+        trip_starts = """
+            , observed_starts AS (
+                SELECT service_date, trip_id, min(observed_at_utc) AS first_position
+                FROM positions
+                WHERE service_date IS NOT NULL AND trip_id IS NOT NULL
+                GROUP BY service_date, trip_id
+            ), trip_starts AS (
+                SELECT service_date, trip_id, coalesce(scheduled_start_utc, first_position) AS start
+                FROM trips FULL JOIN observed_starts USING (service_date, trip_id)
+            )
+        """
+        trip_start_join = "LEFT JOIN trip_starts USING (service_date, trip_id)"
+        entity = LOCAL_HOUR.format("trip_starts.start")
+        silence_entity = LOCAL_HOUR.format("last_seen_at_utc")
+        service_entity = LOCAL_HOUR.format("hour_start")
+        service_segments = f"""
+            CROSS JOIN LATERAL (
+                SELECT make_timestamptz(epoch_us(observed_at_utc) + ({service_weight})) AS ends_at
+            )
+            CROSS JOIN LATERAL generate_series(time_bucket(INTERVAL '1 hour', observed_at_utc),
+                ends_at, INTERVAL '1 hour') AS hours(hour_start)
+        """
+        service_weight = """
+            least(epoch_us(ends_at), epoch_us(hour_start + INTERVAL '1 hour'))
+                - greatest(epoch_us(observed_at_utc), epoch_us(hour_start))
+        """
+        service_days += f" FILTER ({service_weight} > 0)"
+        keys = "SELECT range AS entity FROM range(24) WHERE EXISTS (SELECT 1 FROM selected)"
     coverage_sql = f", {POLL_COVERAGE_SQL}" if reporting or completion else ""
     reporting_sql = ""
     reporting_counts = "0, 0, 0, 0"
@@ -110,16 +135,13 @@ def vehicle_stats(
         *scope[:2],
         paths[TRIP_DAYS],
         *scope,
-        tracked_ids,
-        vehicle,
-        vehicle,
     ]
     if coverage_sql:
         params.extend([paths[FEED_POLLS], *scope])
     if reporting:
         reporting_sql = f"""
         , silences AS (
-            SELECT {entity} AS entity,
+            SELECT {silence_entity} AS entity,
                 epoch_us(next_capture) - epoch_us(last_seen_at_utc) AS gap_us,
                 EXISTS (
                     SELECT 1 FROM coverage c
@@ -203,7 +225,7 @@ def vehicle_stats(
         )
         completion_join = "LEFT JOIN completions c ON k.entity IS NOT DISTINCT FROM c.entity"
         params.extend([paths[STOP_EVENTS], *scope])
-    return conn.execute(
+    return (
         f"""
         WITH positions AS (
             SELECT vehicle_id, service_date, trip_id, route_id, observed_at_utc,
@@ -223,8 +245,7 @@ def vehicle_stats(
                 AND nullif(trim(p.vehicle_id), '') IS NOT NULL
                 AND (t.state IS NULL OR t.state IN ('ran', 'unconfirmed', 'added'))
         ), selected AS (
-            SELECT vehicle_id FROM unnest(?::VARCHAR[]) AS ids(vehicle_id)
-            WHERE ?::VARCHAR IS NULL OR vehicle_id = ?
+            SELECT vehicle_id FROM selected_vehicles
         ), sequenced AS (
             SELECT p.*, lead(observed_at_utc) OVER observed AS next_start,
                 lead(trip_id) OVER captured AS next_trip,
@@ -233,22 +254,25 @@ def vehicle_stats(
             FROM positions p JOIN selected USING (vehicle_id)
             WINDOW observed AS (PARTITION BY vehicle_id ORDER BY observed_at_utc, captured_at_utc),
                 captured AS (PARTITION BY vehicle_id ORDER BY captured_at_utc)
-        ), service AS (
-            SELECT {entity} AS entity, count(DISTINCT service_date) AS days,
-                sum(greatest(epoch_us(last_seen_at_utc) - epoch_us(observed_at_utc), 0)
-                    + greatest(0, least({tail}, {cap_us}))) AS service_us
-            FROM sequenced WHERE service_date IS NOT NULL AND trip_id IS NOT NULL
+        )
+        {trip_starts}
+        , service AS (
+            SELECT {service_entity} AS entity,
+                {service_days} AS days,
+                sum({service_weight}) AS service_us
+            FROM sequenced {service_segments}
+            WHERE service_date IS NOT NULL AND trip_id IS NOT NULL
             GROUP BY entity
         ), trip_entities AS (
             SELECT DISTINCT {entity} AS entity, service_date, trip_id
-            FROM assignments JOIN selected USING (vehicle_id)
+            FROM assignments JOIN selected USING (vehicle_id) {trip_start_join}
         ), trip_counts AS (
             SELECT entity, count(*) AS trips_run FROM trip_entities GROUP BY entity
         ), routes AS (
             SELECT {entity} AS entity, list(DISTINCT route_id) AS lines
-            FROM assignments JOIN selected USING (vehicle_id)
+            FROM assignments JOIN selected USING (vehicle_id) {trip_start_join}
             WHERE route_id IS NOT NULL GROUP BY entity
-        ), keys AS (SELECT {entity} AS entity FROM selected GROUP BY entity)
+        ), keys AS ({keys})
         {coverage_sql}
         {reporting_sql}
         {completion_sql}
@@ -262,4 +286,4 @@ def vehicle_stats(
         {completion_join}
         """,
         params,
-    ).fetchall()
+    )
