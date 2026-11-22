@@ -12,11 +12,19 @@ assert.match(day, /^\d{4}-\d{2}-\d{2}$/);
 const query = new URLSearchParams({ city, from: day, to: day });
 const url = `${ENGINE_URL}/data-health?${query}`;
 const options = { redirect: "error" };
+// A new workers.dev route can return 404 while it propagates.
+const routeDeadline = performance.now() + 60_000;
 for (const [target, headers] of [
   [url, {}],
   [`${ENGINE_URL}/healthz`, { Authorization: "Bearer invalid" }],
 ]) {
-  const response = await fetch(target, { ...options, headers, signal: AbortSignal.timeout(10_000) });
+  let response;
+  do {
+    response = await fetch(target, { ...options, headers, signal: AbortSignal.timeout(10_000) });
+    if (response.status !== 404 || performance.now() >= routeDeadline) break;
+    await response.body?.cancel();
+    await delay(1_000);
+  } while (true);
   assert.equal(response.status, 401, "The Worker must refuse unauthorized requests");
   await response.body?.cancel();
 }
