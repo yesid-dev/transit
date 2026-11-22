@@ -60,6 +60,11 @@ STOP_EVENTS = TableSchema.from_columns(
         ("basis", "text", True),
         ("observed_event", "text", False),
         ("vehicle_id", "text", False),
+        ("trip_exclusion_reason", "text", False),
+        ("route_has_live_data", "boolean", True),
+        ("scheduled_start_seconds", "bigint", False),
+        ("scheduled_local_hour", "smallint", False),
+        ("service_weekday", "smallint", True),
     ),
     _STOP_KEY,
 )

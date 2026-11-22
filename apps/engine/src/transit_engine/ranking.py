@@ -178,7 +178,7 @@ def _line_schedules(
     question: Question,
     lines: dict[str, LineSchedule],
 ) -> None:
-    route_type = "route_type" if store.cleaning_version in {6, 7, 8} else "NULL::INTEGER"
+    route_type = "route_type" if store.cleaning_version >= 6 else "NULL::INTEGER"
     hour = _LOCAL_HOUR.format("scheduled_start_utc")
     # Restrict headways to consecutive departures on the same date and direction.
     # Collapse coincident trips, which add capacity without shortening the wait.

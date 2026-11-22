@@ -175,7 +175,7 @@ def _build_store(
                     else None
                 )
                 scheduled = start_at if trip.state != "added" else None
-                if scheduled is not None and cleaning_version in {4, 5, 6, 7, 8}:
+                if scheduled is not None and cleaning_version >= 4:
                     first = (
                         25 * 3600 + 15 * 60 if day == FALL_BACK else 7 * 3600
                     ) + trip.offset_minutes * 60
@@ -285,7 +285,25 @@ def _build_store(
                 ("stops", STOP_EVENTS, bases),
                 ("trips", TRIP_DAYS, states),
             ):
-                conn.execute(f"COPY {table} TO ? (FORMAT PARQUET)", [str(directory / name)])
+                source = f"SELECT * FROM {table}"
+                if table == "stops" and cleaning_version >= 9:
+                    source = """
+                        SELECT s.*, t.route_id, t.direction_id, t.route_has_live_data,
+                            CASE WHEN t.scheduled_start_utc IS NULL THEN 'added'
+                                WHEN t.state = 'cancelled' THEN 'cancelled'
+                                WHEN NOT t.route_has_live_data THEN 'route_without_live_data'
+                                WHEN t.state_reason = 'capture_gap' THEN 'capture_gap'
+                            END AS trip_exclusion_reason,
+                            (epoch(t.scheduled_start_utc) - epoch(timezone('America/Toronto',
+                                s.service_date + INTERVAL '12 hours')) + 43200)::BIGINT
+                                AS scheduled_start_seconds,
+                            hour(timezone('America/Toronto', coalesce(
+                                s.scheduled_departure_utc, s.scheduled_arrival_utc)))::SMALLINT
+                                AS scheduled_local_hour,
+                            isodow(s.service_date)::SMALLINT AS service_weekday
+                        FROM stops s JOIN trips t USING (service_date, trip_id)
+                    """
+                conn.execute(f"COPY ({source}) TO ? (FORMAT PARQUET)", [str(directory / name)])
                 conn.execute(f"DELETE FROM {table}")
                 payload = (directory / name).read_bytes()
                 files[name] = {
@@ -293,9 +311,9 @@ def _build_store(
                     "sha256": sha256(payload).hexdigest(),
                     "byte_size": len(payload),
                 }
-            if cleaning_version in {4, 5, 6, 7, 8}:
+            if cleaning_version >= 4:
                 extra_files = (*V4_EXTRA_FILES, ALERTS) if cleaning_version >= 5 else V4_EXTRA_FILES
-                if cleaning_version in {7, 8}:
+                if cleaning_version >= 7:
                     extra_files = (*extra_files, PREDICTION_SAMPLES)
                 for name in extra_files:
                     path = directory / name
@@ -338,15 +356,15 @@ def _build_store(
     return Store(tmp_path.as_posix(), cleaning_version=cleaning_version)
 
 
-def test_store_reads_v8_by_default_and_accepts_v3_override(
+def test_store_reads_v9_by_default_and_accepts_v3_override(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _build_store(tmp_path, cleaning_version=8)
+    _build_store(tmp_path, cleaning_version=9)
     monkeypatch.setenv("ENGINE_CLEAN_ROOT", str(tmp_path))
     monkeypatch.delenv("ENGINE_CLEANING_VERSION", raising=False)
     store = Store.from_env()
-    assert Store(tmp_path.as_posix()).cleaning_version == store.cleaning_version == 8
-    assert query(store)["evidence"]["cleaning_versions"] == [8]
+    assert Store(tmp_path.as_posix()).cleaning_version == store.cleaning_version == 9
+    assert query(store)["evidence"]["cleaning_versions"] == [9]
     monkeypatch.setenv("ENGINE_CLEANING_VERSION", "3")
     assert Store.from_env().cleaning_version == 3
 
@@ -999,7 +1017,9 @@ def test_timing_over_two_clean_days(
     assert all(run["counts"]["classified"] == 68 and not run["days_not_measured"] for run in runs)
 
 
-def _long_range_answers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+def _long_range_answers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, version: int = 7
+) -> dict[str, Any]:
     start = date(2026, 10, 18)
     end = start + timedelta(days=34)
     trips_by_day: dict[date, tuple[Trip, ...]] = {
@@ -1007,15 +1027,29 @@ def _long_range_answers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict
         for offset in range(35)
         if offset != 33
     }
-    store = _build_store(tmp_path, cleaning_version=7, trips_by_day=trips_by_day)
-    wide_store = Store(store.root, cleaning_version=7, memory_mib=2048, threads=4)
+    if version >= 8:
+        trips_by_day[FALL_BACK] += (
+            Trip(
+                "overnight", "A", 0, "ran", None, True, (0, 301),
+                stop_times=(
+                    StopTiming("first", -16 * 60, 0, "departure"),
+                    StopTiming("other", 0, 3_600, "departure"),
+                ),
+            ),
+            Trip("cancelled_no_live", "N", 0, "cancelled", None, False, (0,)),
+        )
+    store = _build_store(tmp_path, cleaning_version=version, trips_by_day=trips_by_day)
+    wide_store = Store(store.root, cleaning_version=version, memory_mib=2048, threads=4)
     # Wall time is telemetry. Fix the clock so the entire public response can be compared.
     monkeypatch.setattr("transit_engine.measures.perf_counter", lambda: 1.0)
     monkeypatch.setattr("transit_engine.ranking.perf_counter", lambda: 1.0)
-    return {
+    answers = {
         "network": ask(store, Question("punctuality", "stm", start, end)),
         "line": ask(store, Question("punctuality", "stm", start, end, line="A")),
-        "grid": ask(store, Question("punctuality", "stm", start, end, group="weekday_hour")),
+        "grid": ask(
+            store if version < 8 else wide_store,
+            Question("punctuality", "stm", start, end, group="weekday_hour"),
+        ),
         "delivery": ask(store, Question("service_delivered", "stm", start, end)),
         "line_rank": rank(store, Ranking(Question("on_time", "stm", start, end), "line")),
         "stop_rank": rank(store, Ranking(Question("on_time", "stm", start, end), "stop")),
@@ -1023,6 +1057,30 @@ def _long_range_answers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict
             wide_store, Ranking(Question("on_time", "stm", start, end), "departure")
         ),
     }
+    if version >= 8:
+        answers.update(
+            {
+                "hour": ask(store, Question("punctuality", "stm", start, end, group="hour")),
+                "day_type": ask(
+                    store, Question("punctuality", "stm", start, end, group="day_type")
+                ),
+                "day": ask(store, Question("punctuality", "stm", start, end, group="day")),
+                "departure_cut": ask(
+                    store,
+                    Question(
+                        "punctuality", "stm", start, end, line="A", direction=0,
+                        departure="07:00:00", hour=7,
+                    ),
+                ),
+                "stop_series": ask(
+                    store, Question("punctuality", "stm", start, end, line="A", group="stop")
+                ),
+                "stop_percentile": rank(
+                    store, Ranking(Question("median_delay", "stm", start, end), "stop")
+                ),
+            }
+        )
+    return answers
 
 
 def test_long_range_matches_baseline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1042,6 +1100,16 @@ def test_long_range_matches_baseline(tmp_path: Path, monkeypatch: pytest.MonkeyP
         name: sha256(json.dumps(answer, sort_keys=True).encode()).hexdigest()
         for name, answer in answers.items()
     } == expected
+
+
+def test_long_range_v9_matches_v8(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    old = _long_range_answers(tmp_path, monkeypatch, 8)
+    new = _long_range_answers(tmp_path, monkeypatch, 9)
+    for answer in old.values():
+        assert answer["evidence"].pop("cleaning_versions") == [8]
+    for answer in new.values():
+        assert answer["evidence"].pop("cleaning_versions") == [9]
+    assert new == old
 
 
 def test_bounded_wait_queue(store: Store, monkeypatch: pytest.MonkeyPatch) -> None:

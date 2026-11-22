@@ -22,8 +22,15 @@ classified over scheduled, cleaning and method versions, and query milliseconds.
 `days_included` lists the measured days selected by the day-type filter. A partial window
 includes a bilingual coverage note. The engine validates `manifest.json` under
 `<root>/<provider>/<service-date>/v<cleaning_version>/` and checks the query input file sizes
-before reading. Cleaning v5 through v8 also check the alerts file when the manifest lists it.
+before reading. Cleaning v5 through v9 also check the alerts file when the manifest lists it.
 A missing or invalid manifest, missing required file, or wrong size makes that day a gap.
+
+From cleaning v9, punctuality and its ranking counts read `stop_events` directly.
+Each stop event carries the trip exclusion reason, route live-data flag and scheduled
+start in GTFS service seconds. The provider's declared timezone determines the
+scheduled stop hour, and the service date determines the weekday. An overnight
+stop keeps its trip's service weekday. Select an older cleaning version with
+`ENGINE_CLEANING_VERSION` to query its stop events through the trip join.
 
 `GET /data-health?city=stm&from=2026-11-19&to=2026-11-22` reports each day in the
 inclusive range, up to 400 days, without reading Parquet contents. A day is `present`
@@ -216,7 +223,7 @@ Use `format=csv&lang=fr` for French headings or `lang=en` for English.
 | Environment variable | Default |
 | --- | --- |
 | `ENGINE_CLEAN_ROOT` | `./clean-days` |
-| `ENGINE_CLEANING_VERSION` | `8` |
+| `ENGINE_CLEANING_VERSION` | `9` |
 | `ENGINE_HOST`, `ENGINE_PORT` | `127.0.0.1`, `8080` |
 | `ENGINE_CONCURRENCY` | 2 active queries |
 | `ENGINE_QUERY_MEMORY_MIB` | 256 MiB per DuckDB query |
