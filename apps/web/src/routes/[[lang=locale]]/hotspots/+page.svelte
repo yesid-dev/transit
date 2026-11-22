@@ -1,7 +1,8 @@
 <script lang="ts">
-	import HotspotsBoard from '#lib/features/hotspots/HotspotsBoard.svelte';
+	import { page } from '$app/state';
+	import Rankings from '#lib/features/rankings/Rankings.svelte';
 	import type { PageData } from './$types';
 	let { data }: { data: PageData } = $props();
 </script>
 
-<HotspotsBoard manifest={data.v1?.manifest} />
+<Rankings record={data} locale={data.lang} origin={page.url.origin} path="/hotspots" />

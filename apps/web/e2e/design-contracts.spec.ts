@@ -104,7 +104,11 @@ for (const locale of PUBLISHED_LOCALES) {
 		}
 		for (const path of ['/alerts', '/hotspots', '/network', '/receipt', '/repeat-offenders']) {
 			await page.goto(localizeHref(path, locale));
-			await expect(page.locator('[data-slot="detail-shell"]')).toBeVisible();
+			const surface =
+				path === '/hotspots' || path === '/repeat-offenders'
+					? '#ranking'
+					: '[data-slot="detail-shell"]';
+			await expect(page.locator(surface)).toBeVisible();
 			await expect(page.getByTestId('toc-pill')).toHaveCount(0);
 		}
 	});

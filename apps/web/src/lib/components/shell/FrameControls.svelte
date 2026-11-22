@@ -6,6 +6,7 @@
 	import { DateRangePicker } from '@yesid/ui/layout';
 	import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from '@yesid/ui/sheet';
 	import { delocalizePath, intl, type Locale } from '#lib/i18n/index.ts';
+	import { isRankingPath } from '#lib/features/rankings/rankingSelection.ts';
 	import {
 		frameHref,
 		frameToday,
@@ -75,11 +76,15 @@
 	const uid = $props.id();
 	const copy = $derived(translations[locale]);
 	let today = $state(frameToday());
-	const frame = $derived(parseFrameState(url.searchParams, today));
 	const path = $derived(delocalizePath(url.pathname));
+	const rankings = $derived(isRankingPath(path.replace(/\/$/, '')));
+	const frame = $derived.by(() => {
+		const state = parseFrameState(url.searchParams, today);
+		return rankings ? { ...state, mode: 'record' as const } : state;
+	});
 	const line = $derived(/^\/lines\/[^/]+\/?$/.test(path));
 	const stop = $derived(/^\/stop\/[^/]+\/?$/.test(path));
-	const usesFrameRecord = $derived(path === '/' || line || stop);
+	const usesFrameRecord = $derived(path === '/' || line || stop || rankings);
 	const startLabel = $derived(
 		intl.dateTime(locale, { timeZone: 'UTC', dateStyle: 'long' }).format(new Date(RECORD_START)),
 	);
@@ -127,7 +132,9 @@
 	}
 </script>
 
-<SegmentedChoice options={modes} value={frame.mode} label={copy.view} onSelect={selectMode} />
+{#if !rankings}
+	<SegmentedChoice options={modes} value={frame.mode} label={copy.view} onSelect={selectMode} />
+{/if}
 <Sheet bind:open {onOpenChange}>
 	<SheetTrigger>
 		{#snippet child({ props })}

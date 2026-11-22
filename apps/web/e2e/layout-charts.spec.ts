@@ -5,7 +5,6 @@ import { localizeHref } from '../src/lib/i18n/routing';
 
 for (const provider of ['stm', 'octranspo'])
 	for (const locale of ['en', 'fr'] as const)
-		// Hotspots and Repeat offenders draw no chart; layout-cards owns their ranked rows.
 		for (const path of ['/network'])
 			test(`${provider} ${locale} chart geometry ${path}`, async ({ page }) => {
 				await page.clock.setFixedTime(Date.parse('2026-08-29T12:00:30Z'));
