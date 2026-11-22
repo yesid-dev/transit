@@ -14,6 +14,7 @@ const OUT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../static/og')
 const renderer = createOgCardRenderer(ogFontFiles);
 const card = (path: string, locale: 'en' | 'fr', title?: string) => ({
 	eyebrow: 'TRANSIT',
+	hostname: 'transit1.yesid.dev',
 	title: title ?? resolveCardTitle(path, locale),
 	subtitle: shareCopy(path, locale).support,
 	cta: shareCopy(path, locale).cta,

@@ -78,7 +78,7 @@ async function geocodeGeoCa(
 			headers: {
 				accept: 'application/json',
 				'accept-language': `${area.lang}-CA,${area.lang};q=0.8`,
-				'user-agent': 'transit.yesid.dev citizen map (https://transit.yesid.dev)',
+				'user-agent': 'transit1.yesid.dev citizen map (https://transit1.yesid.dev)',
 			},
 		});
 		if (!response.ok) throw new GeocodeUnavailable();

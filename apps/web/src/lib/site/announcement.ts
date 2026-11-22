@@ -1,5 +1,5 @@
 export const announcement = {
-	enabled: true,
+	enabled: false,
 	id: 'roadmap-1',
 	en: {
 		message: 'We got all the feedback and are working on it',

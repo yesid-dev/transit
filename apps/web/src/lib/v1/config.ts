@@ -2,6 +2,8 @@ import * as env from '$app/env/public';
 import { DEFAULT_SITE_ORIGIN } from '#lib/site/config.ts';
 
 const DEFAULT_BASE = '/data/v1';
+// Published snapshots can still contain absolute pointers from the legacy producer.
+const LEGACY_SNAPSHOT_ORIGIN = 'https://transit.yesid.dev';
 
 const DEFAULT_PROVIDER = 'stm';
 const ABSOLUTE_URL = /^[a-z][a-z\d+\-.]*:\/\//i;
@@ -30,7 +32,11 @@ export function normalizeSnapshotPointer(value: string, provider = v1Provider())
 	}
 	const base = new URL(`${v1BaseUrl()}/${provider}/`, DEFAULT_SITE_ORIGIN);
 	const pointer = new URL(value, value.startsWith('/data/v1/') ? DEFAULT_SITE_ORIGIN : base);
-	const root = [base, new URL(`/data/v1/${provider}/`, DEFAULT_SITE_ORIGIN)].find(
+	const root = [
+		base,
+		new URL(`/data/v1/${provider}/`, DEFAULT_SITE_ORIGIN),
+		new URL(`/data/v1/${provider}/`, LEGACY_SNAPSHOT_ORIGIN),
+	].find(
 		(candidate) =>
 			pointer.origin === candidate.origin && pointer.pathname.startsWith(candidate.pathname),
 	);

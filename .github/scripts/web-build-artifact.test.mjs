@@ -110,9 +110,9 @@ function fixture(t) {
     GITHUB_OUTPUT: join(directory, "outputs"),
     GITHUB_ENV: join(directory, "env"),
     TRANSIT_BUILD_TARGET: "production",
-    PUBLIC_SITE_ORIGIN: "https://transit.yesid.dev",
+    PUBLIC_SITE_ORIGIN: "https://transit1.yesid.dev",
     PUBLIC_V1_BASE: "https://data.yesid.dev/v1",
-    PUBLIC_INDEXING: "true",
+    PUBLIC_INDEXING: "false",
   };
   const options = { root, env };
   const seal = () => {
@@ -152,7 +152,7 @@ test("configure binds each eligible event to the deployment environment", (t) =>
     else
       assert.equal(
         readFileSync(f.env.GITHUB_ENV, "utf8"),
-        "PUBLIC_SITE_ORIGIN=https://transit.yesid.dev\nPUBLIC_V1_BASE=https://data.yesid.dev/v1\nPUBLIC_INDEXING=true\n",
+        "PUBLIC_SITE_ORIGIN=https://transit1.yesid.dev\nPUBLIC_V1_BASE=https://data.yesid.dev/v1\nPUBLIC_INDEXING=false\n",
       );
   }
 });
@@ -240,7 +240,7 @@ test("restore rejects changed identity, producer attempt, public environment, an
     ["TRANSIT_BUILD_TARGET", "verification"],
     ["PUBLIC_SITE_ORIGIN", "https://other.invalid"],
     ["PUBLIC_V1_BASE", "https://other.invalid/v1"],
-    ["PUBLIC_INDEXING", "false"],
+    ["PUBLIC_INDEXING", "true"],
     ["TRANSIT_EXPECTED_MANIFEST_SHA256", "b".repeat(64)],
     ["TRANSIT_EXPECTED_MANIFEST_SHA256", ""],
   ])
@@ -301,7 +301,9 @@ test("restore rejects missing, extra, changed, linked, and unsafe staged entries
     manifest: (f) => writeFileSync(join(f.stage, "manifest.json"), "{}"),
   };
   for (const [name, mutate] of Object.entries(mutations))
-    await t.test(name, (t) => {
+    await t.test(name, {
+      skip: process.platform === "win32" && ["fifo", "unsafe"].includes(name),
+    }, (t) => {
       const f = fixture(t);
       f.seal();
       f.write(`${BUILD_TREES[0]}/existing.txt`, "keep until validated");
@@ -350,7 +352,7 @@ test("prepare rejects missing source trees, parent links, hardlinks, and special
     },
   };
   for (const [name, mutate] of Object.entries(mutations))
-    await t.test(name, (t) => {
+    await t.test(name, { skip: process.platform === "win32" && name === "fifo" }, (t) => {
       const f = fixture(t);
       mutate(f);
       assert.throws(() => prepare(f.stage, f.options));

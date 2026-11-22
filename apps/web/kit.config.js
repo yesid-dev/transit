@@ -17,13 +17,7 @@ export function cspDirectives(...scriptHashes) {
 		'base-uri': ['self'],
 		'object-src': ['none'],
 		'frame-ancestors': ['none'],
-		'img-src': [
-			'self',
-			'data:',
-			'blob:',
-			'https://protomaps.github.io',
-			'https://transit.yesid.dev',
-		],
+		'img-src': ['self', 'data:', 'blob:', 'https://protomaps.github.io'],
 		'font-src': ['self'],
 		'style-src': ['self', 'unsafe-inline'],
 		'script-src': [
@@ -64,13 +58,7 @@ const config = {
 	},
 	// src/lib/pwa/register.ts registers the worker behind the kill switch and production gate.
 	serviceWorker: { register: false },
-	// Cloudflare Worker (Static Assets) / see apps/web/wrangler.toml. /data/* is kept
-	// off this app by Cloudflare ROUTE specificity: the data-proxy worker's
-	// transit.yesid.dev/data/* route beats this app's transit.yesid.dev/*.
-	// The `routes.exclude` below only affects the Pages `_routes.json` (a no-op
-	// in the Workers build) / retained so a future switch back to Pages still
-	// hands /data/* to the snapshot worker rather than this Function.
-	adapter: adapter({ routes: { exclude: ['/data/*'] } }),
+	adapter: adapter(),
 	version: {
 		// Freshness lever for long-lived sessions. `name` already defaults to a
 		// per-build timestamp (busts the service-worker cache + /_app/version.json

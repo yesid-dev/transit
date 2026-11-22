@@ -3,13 +3,37 @@ import test from "node:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { report, verifyDeployedSha } from "./post-deploy-layout.mjs";
+import { report, verifyDeployedSha, verifySitePolicy } from "./post-deploy-layout.mjs";
+
+test("post-deploy policy verifies noindex and checks analytics without sending an event", async () => {
+  const check = (relayStatus, html = "<html></html>", robots = "noindex, nofollow") =>
+    verifySitePolicy(async (url, options) => {
+      assert.equal(options.redirect, "error");
+      if (url === "https://transit1.yesid.dev/?provider=stm") {
+        assert.equal(options.method, undefined);
+        return new Response(html, {
+          headers: { "content-type": "text/html", "x-robots-tag": robots },
+        });
+      }
+      assert.equal(url, "https://transit1.yesid.dev/relay/e");
+      assert.equal(options.method, "POST");
+      assert.deepEqual(JSON.parse(options.body), {});
+      return new Response(null, { status: relayStatus });
+    });
+  await check(404);
+  await assert.rejects(check(400), /disabled transit1 analytics relay/);
+  await assert.rejects(check(404, '<script src="https://static.cloudflareinsights.com/beacon.min.js"></script>'),
+    /Cloudflare Web Analytics beacon/);
+  await assert.rejects(check(404, '<script defer src="/cdn-cgi/rum"></script>'),
+    /Cloudflare Web Analytics beacon/);
+  await assert.rejects(check(404, "<html></html>", "index"), /missing noindex/);
+});
 
 test("layout replay verifies that production reports the intended source SHA", async () => {
   const sha = "a".repeat(40);
   const fetcher = async () => ({
     status: 200,
-    json: async () => ({ service: "transit-web", commit: sha }),
+    json: async () => ({ service: "transit1-web", commit: sha }),
   });
   await verifyDeployedSha(sha, fetcher);
   await assert.rejects(
@@ -37,7 +61,7 @@ function fakeClock() {
 
 const health = (commit) => ({
   status: 200,
-  json: async () => ({ service: "transit-web", commit }),
+  json: async () => ({ service: "transit1-web", commit }),
 });
 
 test("waits until production reports the deployed commit", async () => {
@@ -49,6 +73,25 @@ test("waits until production reports the deployed commit", async () => {
   assert.deepEqual(clock.sleeps, [3_000, 3_000]);
   assert.equal(clock.logs.length, 3);
   assert.match(clock.logs[2], /6s/);
+});
+
+test("a newly attached domain gets a longer window to report the deploy", async () => {
+  const sha = "a".repeat(40);
+  for (const waitForDomain of [false, true]) {
+    const { deadlineMs, ...clock } = fakeClock();
+    let reads = 0;
+    const verifies = verifyDeployedSha(sha, async () => {
+      reads++;
+      return clock.now() >= 120_000 ? health(sha) : new Response(null, { status: 502 });
+    }, { ...clock, waitForDomain });
+    if (waitForDomain) {
+      await verifies;
+      assert.equal(clock.now(), 120_000);
+    } else {
+      await assert.rejects(verifies, /waited 90s/);
+    }
+    assert.equal(reads, clock.sleeps.length + 1);
+  }
 });
 
 test("a read that fails is not the end", async () => {
@@ -140,6 +183,12 @@ test("a seeded failure opens the shared alert and records the rollback command; 
         }),
       /alert transport failed/,
     );
+    assert.throws(
+      () => report({ ...env, ROLLBACK_VERSION: "" }, execute),
+      /alert published$/,
+    );
+    assert.match(calls.at(-1)[1].at(-1), /No pre-deployment Worker version was captured/);
+    assert.doesNotMatch(calls.at(-1)[1].at(-1), /gh workflow run rollback/);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

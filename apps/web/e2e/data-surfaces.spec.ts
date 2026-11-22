@@ -520,7 +520,7 @@ for (const lang of PUBLISHED_LOCALES)
 					expect(csv.split('\r\n')[1].endsWith(',-2')).toBe(true);
 					await page.getByRole('button', { name: tripCopy[lang].copyLive, exact: true }).click();
 					expect(await page.evaluate(() => Reflect.get(window, 'tripCopied'))).toBe(
-						`https://transit.yesid.dev${localizeHref('/trip/R48', lang, provider)}`,
+						`https://transit1.yesid.dev${localizeHref('/trip/R48', lang, provider)}`,
 					);
 					await page.getByRole('button', { name: tripCopy[lang].showFewer, exact: true }).click();
 					await expect(table.getByRole('rowheader')).toHaveCount(6);

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { readPublicSiteConfig } from '#lib/site/config.ts';
 	import { createRecordStamp } from '#lib/v1/recordStamp.svelte.ts';
 	import LineSchedule from './LineSchedule.svelte';
 	import { lineViewsCopy } from './lineViews.copy';
@@ -257,7 +258,7 @@
 		return url.pathname + url.search + url.hash;
 	});
 	const shareUrl = $derived.by(() => {
-		const url = new URL(recordHref, 'https://transit.yesid.dev');
+		const url = new URL(recordHref, readPublicSiteConfig().siteOrigin);
 		if (detailTabController.active !== 'reliability')
 			url.searchParams.set('tab', detailTabController.active);
 		return url.href;

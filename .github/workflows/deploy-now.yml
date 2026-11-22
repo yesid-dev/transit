@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: Commit SHA or branch to deploy
+        description: Commit SHA or branch to deploy (web requires the current main dispatch SHA)
         required: true
         type: string
       target:
@@ -27,9 +27,9 @@ jobs:
       cancel-in-progress: false
     env:
       TRANSIT_BUILD_TARGET: production
-      PUBLIC_SITE_ORIGIN: https://transit.yesid.dev
+      PUBLIC_SITE_ORIGIN: https://transit1.yesid.dev
       PUBLIC_V1_BASE: https://data.yesid.dev/v1
-      PUBLIC_INDEXING: "true"
+      PUBLIC_INDEXING: "false"
     steps:
       - name: Validate deployment request
         shell: pwsh
@@ -83,10 +83,16 @@ jobs:
 
       - name: Resolve deployed commit
         shell: pwsh
+        env:
+          DISPATCH_SHA: ${{ github.sha }}
+          DEPLOY_TARGET: ${{ inputs.target }}
         run: |
           $ErrorActionPreference = 'Stop'
           $sha = (git rev-parse --verify 'HEAD^{commit}').Trim()
           if ($LASTEXITCODE -ne 0 -or $sha -cnotmatch '^[a-f0-9]{40}$') { throw 'Cannot resolve deployment commit' }
+          if ($env:DEPLOY_TARGET -cin @('web', 'both') -and $sha -cne $env:DISPATCH_SHA) {
+            throw 'Web deployment requires the current main dispatch revision. Use Roll back production web for earlier transit1 versions.'
+          }
           "TRANSIT_COMMIT_SHA=$sha" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Install selected application dependencies
@@ -101,6 +107,7 @@ jobs:
         run: bun run build
 
       - name: Apply public snapshot CORS
+        if: inputs.target == 'data-proxy' || inputs.target == 'both'
         working-directory: apps/data-proxy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -112,15 +119,11 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           TRANSIT_BRANCH: ${{ inputs.ref }}
-          PUBLIC_PLAUSIBLE_DOMAIN: ${{ vars.PUBLIC_PLAUSIBLE_DOMAIN }}
-          PUBLIC_CF_BEACON_TOKEN: ${{ vars.PUBLIC_CF_BEACON_TOKEN }}
           WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/deploy-web.ndjson
         run: >-
-          node "$RUNNER_TEMP/transit-deploy-control/node_modules/wrangler/bin/wrangler.js" deploy
+          node "$RUNNER_TEMP/transit-deploy-control/node_modules/wrangler/bin/wrangler.js" deploy --name transit1-web
           --var "TRANSIT_COMMIT_SHA:$TRANSIT_COMMIT_SHA"
           --var "TRANSIT_BRANCH:$TRANSIT_BRANCH"
-          ${PUBLIC_PLAUSIBLE_DOMAIN:+--var "PUBLIC_PLAUSIBLE_DOMAIN:$PUBLIC_PLAUSIBLE_DOMAIN"}
-          ${PUBLIC_CF_BEACON_TOKEN:+--var "PUBLIC_CF_BEACON_TOKEN:$PUBLIC_CF_BEACON_TOKEN"}
 
       - name: Record web deployment
         if: inputs.target == 'web' || inputs.target == 'both'

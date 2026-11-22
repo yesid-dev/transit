@@ -89,8 +89,18 @@ test("a successful deploy receipt survives failed verification and controls repo
   assert.match(deploy, /node .github\/scripts\/deploy-scope.mjs locked/);
   assert.ok(
     deploy.indexOf("id: locked_scope") <
-      deploy.indexOf("Apply public snapshot CORS"),
+      deploy.indexOf("Capture rollback version before deployment"),
   );
+  assert.match(deploy, /wrangler deploy --name transit1-web/);
+  assert.doesNotMatch(deploy, /r2 bucket cors set|vars.PUBLIC_(?:PLAUSIBLE|CF_BEACON)/);
+  assert.match(job("preview"), /!github.event.pull_request.draft/);
+  assert.match(job("preview"), /versions upload --name transit1-web/);
+  assert.match(job("preview"), /id: upload\n\s+if: steps.preview_ready.outputs.ready == 'true'/);
+  assert.match(job("preview"), /Build \(adapter-cloudflare\)[\s\S]*?PUBLIC_INDEXING: "false"\n\s+run: bun run build/);
+  assert.match(deploy, /id: previous\n\s+if: .*steps.locked_scope.outputs.bootstrap == 'false'/);
+  assert.match(deploy, /TRANSIT_ALLOW_EMPTY_DEPLOYMENTS: .*steps.locked_scope.outputs.recovery/);
+  assert.match(deploy, /TRANSIT_WAIT_FOR_DOMAIN: .*steps.locked_scope.outputs.bootstrap == 'true' \|\| steps.locked_scope.outputs.recovery == 'true'/);
+  assert.match(deploy, /post-deploy-layout.mjs policy/);
   assert.match(deploy, /&& printf 'deployed=true\\n'/);
   for (const name of ["post-deploy-layout", "post-deploy-result"]) {
     assert.match(

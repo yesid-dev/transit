@@ -2,6 +2,7 @@ import { fireEvent, render as renderComponent, screen, within } from '@testing-l
 import { tick } from 'svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createLineDirectory } from '#lib/site/lineDirectory.ts';
+import { DEFAULT_SITE_ORIGIN } from '#lib/site/config.ts';
 import { routeNameFallback } from '#lib/site/absence.ts';
 import { getRoute } from '#lib/v1/repositories/static.ts';
 import type { TripsFile } from '#lib/v1/index.ts';
@@ -219,7 +220,7 @@ describe.each(['en', 'fr'] as const)('trip report opening in %s', (locale) => {
 			);
 			const text = screen.getByRole('textbox');
 			expect(text).toHaveValue(
-				`https://transit.yesid.dev${locale === 'fr' ? '/fr' : ''}/trip/t161?provider=octranspo`,
+				`${DEFAULT_SITE_ORIGIN}${locale === 'fr' ? '/fr' : ''}/trip/t161?provider=octranspo`,
 			);
 			expect(text).toHaveFocus();
 		} finally {

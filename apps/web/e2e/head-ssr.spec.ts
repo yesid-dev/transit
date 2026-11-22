@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { createLineDirectory } from '../src/lib/site/lineDirectory';
 import { routeNameFallback } from '../src/lib/site/nameFallback';
+import { announcement } from '../src/lib/site/announcement';
 import { linePageTitle, stopPageTitle } from '../src/lib/seo/riderPageTitle';
 const fixture = (path: string) => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
 import { expect, test } from '@playwright/test';
@@ -62,7 +63,7 @@ for (const locale of ['en', 'fr'] as const) {
 					url.searchParams.get('v'),
 				);
 			}
-			expect(head, path).toContain(`rel="canonical" href="https://transit.yesid.dev${path}"`);
+			expect(head, path).toContain(`rel="canonical" href="https://transit1.yesid.dev${path}"`);
 			const graph = JSON.parse(
 				head.match(/<script type="application\/ld\+json">(.*?)<\/script>/s)?.[1] ?? '{}',
 			)['@graph'];
@@ -74,7 +75,7 @@ for (const locale of ['en', 'fr'] as const) {
 			const search = new URL(website.potentialAction.target.urlTemplate.replace('{query}', 'bus'));
 			expect(search.pathname).toBe(`${locale === 'en' ? '' : '/fr'}/search`);
 			expect(search.searchParams.get('provider')).toBe(
-				new URL(path, 'https://transit.yesid.dev').searchParams.get('provider'),
+				new URL(path, 'https://transit1.yesid.dev').searchParams.get('provider'),
 			);
 		}
 	});
@@ -89,7 +90,9 @@ for (const locale of ['en', 'fr'] as const) {
 		const html = await response.text();
 		const head = html.slice(0, html.indexOf('</head>'));
 		expect(head).toContain(`<title>${title} · Transit</title>`);
-		expect(head).toContain(`rel="canonical" href="https://transit.yesid.dev${path}"`);
+		expect(head).toContain(`rel="canonical" href="https://transit1.yesid.dev${path}"`);
+		expect(head.includes('<script data-announcement-id=')).toBe(announcement.enabled);
+		expect(html.includes('data-slot="announcement-banner"')).toBe(announcement.enabled);
 		const article = html.match(
 			/<article\b[^>]*aria-labelledby="roadmap-title"[^>]*>(.*?)<\/article>/s,
 		)?.[1];
@@ -101,6 +104,7 @@ for (const locale of ['en', 'fr'] as const) {
 		const image = head.match(/<meta property="og:image" content="([^"]*)"/)?.[1];
 		expect(image).toMatch(new RegExp(`/og/pages/roadmap\\.${locale}\\.png\\?v=[a-f0-9]{16}$`));
 		const url = new URL(image!);
+		expect(url.origin).toBe('https://transit1.yesid.dev');
 		const asset = await request.get(url.pathname + url.search);
 		expect(asset.ok()).toBe(true);
 		expect(

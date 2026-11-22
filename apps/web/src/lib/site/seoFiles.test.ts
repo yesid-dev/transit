@@ -51,13 +51,14 @@ describe('SEO static files', () => {
 		expect(robots).toContain('Disallow: /api/');
 	});
 
-	it('blocks crawlers and emits an empty sitemap when indexing is disabled', () => {
+	it('lets crawlers see noindex and emits an empty sitemap when indexing is disabled', () => {
 		const config = {
 			siteOrigin: 'https://preview.example.com',
 			indexing: false,
 		};
 
-		expect(buildRobotsTxt(config)).toBe('User-agent: *\nDisallow: /\n');
+		expect(buildRobotsTxt(config)).toContain('Allow: /\n');
+		expect(buildRobotsTxt(config)).not.toContain('Sitemap:');
 		expect(buildSitemapXml(config)).not.toContain('<url>');
 		expect(buildSitemapXml(config, { routeIds: ['11'], stopIds: ['10001'] })).not.toContain(
 			'<url>',

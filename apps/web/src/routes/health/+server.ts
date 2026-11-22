@@ -62,7 +62,7 @@ export const GET: RequestHandler = async () => {
 		{
 			status: readable ? 'ok' : 'unavailable',
 			data: readable ? 'readable' : 'unavailable',
-			service: 'transit-web',
+			service: 'transit1-web',
 			commit: env.TRANSIT_COMMIT_SHA ?? null,
 			branch: env.TRANSIT_BRANCH ?? null,
 			time: new Date().toISOString(),

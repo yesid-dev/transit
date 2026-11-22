@@ -1,4 +1,4 @@
-name: Roll back production web
+name: Roll back production web (transit1)
 
 on:
   workflow_dispatch:

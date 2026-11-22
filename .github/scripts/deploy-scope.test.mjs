@@ -23,11 +23,11 @@ test('live deployment SHA is read from the Worker identity even during a data ou
 	for (const status of [200, 503]) {
 		assert.equal(
 			await liveProductionSha(async (url, options) => {
-				assert.equal(url, 'https://transit.yesid.dev/health');
+				assert.equal(url, 'https://transit1.yesid.dev/health');
 				assert.equal(options.redirect, 'error');
 				return {
 					status,
-					json: async () => ({ service: 'transit-web', commit: sha }),
+					json: async () => ({ service: 'transit1-web', commit: sha }),
 				};
 			}),
 			sha,
@@ -36,7 +36,7 @@ test('live deployment SHA is read from the Worker identity even during a data ou
 	for (const body of [
 		{},
 		{ service: 'other', commit: sha },
-		{ service: 'transit-web', commit: 'short' },
+		{ service: 'transit1-web', commit: 'short' },
 	]) {
 		assert.equal(
 			await liveProductionSha(async () => ({

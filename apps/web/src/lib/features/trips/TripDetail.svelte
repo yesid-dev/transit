@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { readPublicSiteConfig } from '#lib/site/config.ts';
 	import { untrack } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 	import { getLocale, getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
@@ -122,7 +123,7 @@
 		trip?.route ? href(routeFor({ kind: 'line', id: trip.route })) : null,
 	);
 	const liveLink = $derived(
-		new URL(href(routeFor({ kind: 'trip', id })), 'https://transit.yesid.dev').href,
+		new URL(href(routeFor({ kind: 'trip', id })), readPublicSiteConfig().siteOrigin).href,
 	);
 	const csv = $derived(
 		trip

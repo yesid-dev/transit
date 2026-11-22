@@ -16,7 +16,7 @@ import { report } from "./post-deploy-layout.mjs";
 
 const version = "12345678-1234-1234-1234-123456789abc";
 
-test("inside the production lock, a newer deployment cannot be overwritten by an older main run", async () => {
+test("inside the production lock, only the main tip can bootstrap and an older push cannot overwrite newer code", async () => {
   const root = mkdtempSync(join(tmpdir(), "transit-deploy-order-"));
   const git = (...args) =>
     execFileSync(
@@ -47,50 +47,63 @@ test("inside the production lock, a newer deployment cannot be overwritten by an
     git("remote", "add", "origin", root);
     git("checkout", "--detach", a);
     const env = { TRANSIT_DEPLOY_EVENT: "push", TRANSIT_DEPLOY_AFTER: a };
+    const dispatch = { ...env, TRANSIT_DEPLOY_EVENT: "workflow_dispatch" };
     const live = async () => ({
       status: 200,
-      json: async () => ({ service: "transit-web", commit: b }),
+      json: async () => ({ service: "transit1-web", commit: b }),
     });
     assert.equal(typeof scope.lockedDeploymentDecision, "function");
-    assert.equal(await scope.lockedDeploymentDecision(env, root, live), false);
-    git("branch", "-f", "main", a);
     const unavailable = async () => {
       throw new Error("identity unavailable");
     };
+    const missing = async () => true;
+    const existing = async () => false;
+    const skip = { deployWeb: false, bootstrap: false, recovery: false };
+    const deploy = { deployWeb: true, bootstrap: false, recovery: false };
+    assert.deepEqual(await scope.lockedDeploymentDecision(env, root, live), skip);
+    assert.deepEqual(await scope.lockedDeploymentDecision(env, root, unavailable, missing), skip);
+    assert.deepEqual(await scope.lockedDeploymentDecision(dispatch, root, unavailable, existing), skip);
+    git("branch", "-f", "main", a);
     await assert.rejects(
-      scope.lockedDeploymentDecision(env, root, unavailable),
+      scope.lockedDeploymentDecision(env, root, unavailable, existing),
       /Cannot read live production SHA/,
     );
-    assert.equal(
-      await scope.lockedDeploymentDecision(
-        { ...env, TRANSIT_DEPLOY_EVENT: "workflow_dispatch" },
-        root,
-        unavailable,
-      ),
-      true,
+    await assert.rejects(
+      scope.lockedDeploymentDecision(env, root, unavailable, async () => {
+        throw new Error("Cloudflare lookup failed");
+      }),
+      /Cloudflare lookup failed/,
     );
-    assert.equal(await scope.lockedDeploymentDecision(env, root, live), false);
-    assert.equal(
+    assert.deepEqual(
+      await scope.lockedDeploymentDecision(env, root, unavailable, missing),
+      { deployWeb: true, bootstrap: true, recovery: false },
+    );
+    assert.deepEqual(
+      await scope.lockedDeploymentDecision(dispatch, root, unavailable, existing),
+      { deployWeb: true, bootstrap: false, recovery: true },
+    );
+    assert.deepEqual(await scope.lockedDeploymentDecision(env, root, live), skip);
+    assert.deepEqual(
       await scope.lockedDeploymentDecision(
-        { ...env, TRANSIT_DEPLOY_EVENT: "workflow_dispatch" },
+        dispatch,
         root,
         live,
       ),
-      true,
+      deploy,
     );
     git("branch", "-f", "main", b);
     git("checkout", "--detach", b);
     const olderLive = async () => ({
       status: 200,
-      json: async () => ({ service: "transit-web", commit: a }),
+      json: async () => ({ service: "transit1-web", commit: a }),
     });
-    assert.equal(
+    assert.deepEqual(
       await scope.lockedDeploymentDecision(
         { ...env, TRANSIT_DEPLOY_AFTER: b },
         root,
         olderLive,
       ),
-      true,
+      deploy,
     );
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -177,7 +190,7 @@ test("rollback guidance captures the current 100-percent Worker version before m
   assert.equal(typeof worker.currentWorkerVersion, "function");
   assert.equal(
     worker.currentWorkerVersion((_node, args) => {
-      assert.deepEqual(args.slice(1), ["deployments", "list", "--json"]);
+      assert.deepEqual(args.slice(1), ["deployments", "list", "--json", "--name", "transit1-web"]);
       return JSON.stringify([
         {
           created_on: "2026-11-10T05:00:00Z",
@@ -198,6 +211,14 @@ test("rollback guidance captures the current 100-percent Worker version before m
   );
   assert.throws(
     () => worker.currentWorkerVersion(() => JSON.stringify([])),
+    /active/,
+  );
+  assert.equal(
+    worker.currentWorkerVersion(() => JSON.stringify([]), { allowEmpty: true }),
+    undefined,
+  );
+  assert.throws(
+    () => worker.currentWorkerVersion(() => JSON.stringify({}), { allowEmpty: true }),
     /active/,
   );
   assert.throws(

@@ -3,13 +3,14 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { setupFailureDetails } from "./layout-setup-result.mjs";
-import { liveProductionSha } from "./deploy-scope.mjs";
+import { liveProductionSha, WEB_ORIGIN } from "./deploy-scope.mjs";
 
 export async function verifyDeployedSha(
   sha,
   fetcher = fetch,
   {
-    deadlineMs = 90_000,
+    waitForDomain = false,
+    deadlineMs = waitForDomain ? 300_000 : 90_000,
     intervalMs = 3_000,
     sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     now = Date.now,
@@ -44,6 +45,30 @@ export async function verifyDeployedSha(
   }
 }
 
+export async function verifySitePolicy(fetcher = fetch) {
+  const request = (path, options = {}) => fetcher(`${WEB_ORIGIN}${path}`, {
+    redirect: "error",
+    signal: AbortSignal.timeout(20_000),
+    ...options,
+  });
+  const page = await request("/?provider=stm");
+  if (!page.ok || !page.headers.get("content-type")?.includes("text/html"))
+    throw new Error("Cannot read transit1 HTML");
+  if (page.headers.get("x-robots-tag") !== "noindex, nofollow")
+    throw new Error("transit1 HTML is missing noindex, nofollow");
+  if (/static\.cloudflareinsights\.com\/beacon|\/cdn-cgi\/rum/i.test(await page.text()))
+    throw new Error("Cloudflare Web Analytics beacon found on transit1");
+
+  // An empty object cannot pass the relay's event schema or reach Plausible.
+  const relay = await request("/relay/e", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+  if (relay.status !== 404)
+    throw new Error(`Expected disabled transit1 analytics relay to return 404, got ${relay.status}`);
+}
+
 export function report(
   env = process.env,
   execute = execFileSync,
@@ -60,7 +85,9 @@ export function report(
     /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(
       env.ROLLBACK_VERSION ?? "",
     );
-  const command = `gh workflow run rollback.yml -R ${env.GH_REPO} --ref main${validVersion ? ` -f version=${env.ROLLBACK_VERSION}` : ""}`;
+  const rollback = validVersion
+    ? `Rollback command (captured pre-deployment Worker version):\n\n\`\`\`sh\ngh workflow run rollback.yml -R ${env.GH_REPO} --ref main -f version=${env.ROLLBACK_VERSION}\n\`\`\``
+    : "No pre-deployment Worker version was captured. For a failed first release, fix forward or detach the transit1.yesid.dev Custom Domain.";
   const slug = `${env.LAYOUT_SETUP_FAILURE ? "layout-setup" : "layout"}-${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT}`;
   const url = `https://github.com/${env.GH_REPO}/actions/runs/${env.GITHUB_RUN_ID}/attempts/${env.GITHUB_RUN_ATTEMPT}`;
   const failed =
@@ -68,7 +95,7 @@ export function report(
   const setup = env.LAYOUT_SETUP_FAILURE || null;
   const body = setup
     ? `Verification could not run for SHA ${env.GITHUB_SHA}.\n${setup.startsWith("Shard/step evidence unavailable:") ? "Whether layout ran could not be confirmed." : "Layout was not checked on the affected shards."}\n${setup}\nHealth checks: ${env.HEALTH_RESULT === "success" ? "passed" : env.HEALTH_RESULT === "failure" ? "failed" : "not confirmed (" + (env.HEALTH_RESULT ?? "unknown") + ")"}.\nRun: ${url}, attempt ${env.GITHUB_RUN_ATTEMPT}.`
-    : `Deployment verification for SHA ${env.GITHUB_SHA}: ${env.DEPLOY_RESULT ?? "unknown"}.\nFull layout grid: ${env.LAYOUT_RESULT}.\nRun: ${url}, attempt ${env.GITHUB_RUN_ATTEMPT}.\n\nRollback command (${validVersion ? "captured pre-deployment Worker version" : "previous Worker version; captured target unavailable"}):\n\n\`\`\`sh\n${command}\n\`\`\``;
+    : `Deployment verification for SHA ${env.GITHUB_SHA}: ${env.DEPLOY_RESULT ?? "unknown"}.\nFull layout grid: ${env.LAYOUT_RESULT}.\nRun: ${url}, attempt ${env.GITHUB_RUN_ATTEMPT}.\n\n${rollback}`;
   appendFileSync(env.GITHUB_STEP_SUMMARY, `${body}\n`);
   const helper = fileURLToPath(new URL("./alert-issue.sh", import.meta.url));
   const args = failed
@@ -94,7 +121,7 @@ export function report(
     throw new Error(
       setup
         ? "Layout verification could not run; setup alert published"
-        : "Post-deploy verification failed; alert published and rollback command recorded",
+        : `Post-deploy verification failed; alert published${validVersion ? " and rollback command recorded" : ""}`,
     );
 }
 
@@ -122,7 +149,10 @@ if (
   pathToFileURL(resolve(process.argv[1])).href === import.meta.url
 ) {
   if (process.argv[2] === "verify")
-    await verifyDeployedSha(process.env.GITHUB_SHA);
+    await verifyDeployedSha(process.env.GITHUB_SHA, fetch, {
+      waitForDomain: process.env.TRANSIT_WAIT_FOR_DOMAIN === "true",
+    });
+  else if (process.argv[2] === "policy") await verifySitePolicy();
   else if (process.argv[2] === "report") reportAttempt();
-  else throw new Error("Expected verify or report");
+  else throw new Error("Expected verify, policy, or report");
 }

@@ -138,7 +138,7 @@ async function expectBrandKeyboardOrder(page: Page) {
 	await expect(product(page)).toHaveText('transit');
 }
 
-test('footer links clear the expanded phone announcement through hydration', async ({ page }) => {
+test('phone announcement state leaves footer links clear through hydration', async ({ page }) => {
 	await page.setViewportSize({ width: 320, height: 900 });
 	let release!: () => void;
 	const gate = new Promise<void>((resolve) => (release = resolve));
@@ -150,6 +150,14 @@ test('footer links clear the expanded phone announcement through hydration', asy
 		await page.goto(localizeHref('/privacy', 'fr', 'octranspo'), { waitUntil: 'domcontentloaded' });
 		await page.addStyleTag({ content: 'html { font-size: 200%; }' });
 		await expect(page.locator('html[data-hydrated]')).toHaveCount(0);
+		const chrome = page.locator('[data-slot="app-shell-chrome"]');
+		if (!announcement.enabled) {
+			await expect(chrome).toHaveCSS('position', 'fixed');
+			expect(await chrome.evaluate((element) => element.getBoundingClientRect().height)).toBe(0);
+		}
+		await expect(
+			page.getByTestId('footer').getByRole('link', { name: 'Feuille de route' }),
+		).toHaveAttribute('href', '/fr/roadmap?provider=octranspo');
 		// WebKit's fonts.ready also waits for the document load held by the hydration gate.
 		await expect
 			.poll(() =>
@@ -165,6 +173,10 @@ test('footer links clear the expanded phone announcement through hydration', asy
 		await expect(page.locator('[data-announcement-measured]')).toHaveCount(
 			announcement.enabled ? 1 : 0,
 		);
+		if (!announcement.enabled) {
+			await expect(chrome).toHaveCSS('position', 'fixed');
+			expect(await chrome.evaluate((element) => element.getBoundingClientRect().height)).toBe(0);
+		}
 		await expect(link).toBeFocused();
 		const unobscured = await link.evaluate((element) => {
 			const rect = element.getBoundingClientRect();

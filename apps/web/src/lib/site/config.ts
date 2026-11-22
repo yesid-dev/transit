@@ -1,6 +1,6 @@
 import * as env from '$app/env/public';
 
-export const DEFAULT_SITE_ORIGIN = 'https://transit.yesid.dev';
+export const DEFAULT_SITE_ORIGIN = 'https://transit1.yesid.dev';
 
 export interface PublicSiteConfig {
 	readonly siteOrigin: string;
