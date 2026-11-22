@@ -102,7 +102,7 @@ def _build_store(
             start = (
                 datetime(2026, 11, 2, 6, 15, tzinfo=UTC)
                 if day == FALL_BACK
-                else datetime(2026, 11, day.day, 12, tzinfo=UTC)
+                else datetime(day.year, day.month, day.day, 12, tzinfo=UTC)
             )
             states: Counter[str] = Counter()
             bases: Counter[str] = Counter()
@@ -215,7 +215,12 @@ def query(store: Store, **kwargs: Any) -> dict[str, Any]:
     return ask(store, Question(**{**parameters, **kwargs}))
 
 
-DELIVERY_DAYS = (THURSDAY, *(date(2026, 11, day) for day in (23, 24, 25, 26, 28)))
+DELIVERY_WEEKDAYS = tuple(
+    day
+    for offset in range(31)
+    if (day := THURSDAY + timedelta(days=offset)) != FRIDAY and day.weekday() < 5
+)[:20]
+DELIVERY_DAYS = (*DELIVERY_WEEKDAYS, date(2026, 12, 19))
 
 
 @pytest.fixture
@@ -236,7 +241,7 @@ def delivery(tmp_path: Path) -> tuple[Store, dict[date, tuple[Trip, ...]]]:
                 (None, None),
                 60,
                 45,
-                -96 if index == 2 else None,
+                -1800 if index == 2 else None,
             ),
             Trip("reverse", "A", 1, "ran", None, True, (0, None), 120, 15, -480),
             Trip(
@@ -265,6 +270,12 @@ def delivery(tmp_path: Path) -> tuple[Store, dict[date, tuple[Trip, ...]]]:
             ),
             Trip("added", "A", 0, "added", None, True, (None,)),
         )
+        if index == 0:
+            # Two trips with unknown outcomes tie the day's scheduled boundaries.
+            trips_by_day[day] += (
+                Trip("first_tie", "A", 0, "unconfirmed", None, True, (None, None), 0, 60),
+                Trip("last_tie", "A", 0, "unconfirmed", None, True, (None, None), 1095, 60),
+            )
     return _build_store(tmp_path, 5, trips_by_day), trips_by_day
 
 
@@ -272,18 +283,17 @@ def test_service_delivered_matches_python_across_batches(
     delivery: tuple[Store, dict[date, tuple[Trip, ...]]], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     store, trips_by_day = delivery
-    monkeypatch.setattr("transit_engine.measures.DAYS_PER_QUERY_BATCH", 2)
+    monkeypatch.setattr("transit_engine.measures.DAYS_PER_QUERY_BATCH", 7)
     answer = query(store, measure="service_delivered", end=DELIVERY_DAYS[-1], line="A")
     evidence = answer["evidence"]
     assert answer["state"] == "measured"
-    assert evidence["days_not_measured"] == list(
-        map(str, (FRIDAY, SATURDAY, SUNDAY, date(2026, 11, 27)))
-    )
+    assert evidence["cleaning_versions"] == [5]
+    assert str(FRIDAY) in evidence["days_not_measured"]
     assert evidence["days_included"] == list(map(str, DELIVERY_DAYS))
     assert answer["coverage_note"]["en"] == "Only measured days are included."
     line = [trip for trips in trips_by_day.values() for trip in trips if trip.line == "A"]
     scheduled = [trip for trip in line if trip.state != "added"]
-    eligible = [trip for trip in scheduled if trip.reason is None]
+    eligible = [trip for trip in scheduled if trip.state in {"ran", "cancelled", "missing"}]
     ran = [trip for trip in eligible if trip.state == "ran"]
     counts = evidence["counts"]
     assert (
@@ -295,8 +305,14 @@ def test_service_delivered_matches_python_across_batches(
         )
     )
     assert counts["eligible"] == len(eligible)
-    assert evidence["excluded"] == {"added": 6, "route_without_live_data": 0, "capture_gap": 6}
-    assert counts["unconfirmed"] == 5
+    assert evidence["excluded"] == {
+        "added": len(DELIVERY_DAYS),
+        "route_without_live_data": 0,
+        "capture_gap": len(DELIVERY_DAYS),
+        "unconfirmed": 22,
+    }
+    assert counts["unconfirmed"] == 22
+    assert evidence["share_unconfirmed"] == 22 / len(scheduled)
     expected = Counter(trip.state for trip in eligible)
     for measure, state in (
         ("trips_run", "ran"),
@@ -306,8 +322,11 @@ def test_service_delivered_matches_python_across_batches(
         assert counts[state] == expected[state]
         assert answer["value"][measure] == expected[state] / len(eligible)
     assert counts["cancellation_notices"] == 2
-    assert counts["late_cancellation_notices"] == 1
-    assert evidence["median_cancellation_notice_seconds"] == pytest.approx((-96 + 30) / 2, abs=7.5)
+    assert counts["cancellations_announced_after_departure"] == 1
+    assert evidence["median_cancellation_lead_seconds"] == pytest.approx((1800 - 30) / 2, abs=7.5)
+    late_day = query(store, measure="cancelled_trips")["evidence"]
+    assert late_day["median_cancellation_lead_seconds"] == pytest.approx(-30, abs=7.5)
+    assert late_day["counts"]["cancellations_announced_after_departure"] == 1
     expected_scheduled = sum(trip.duration_minutes for trip in eligible)
     expected_ran = sum(trip.duration_minutes for trip in ran)
     assert counts["scheduled_hours"] == expected_scheduled / 60
@@ -316,8 +335,8 @@ def test_service_delivered_matches_python_across_batches(
 
     network = query(store, measure="service_delivered", end=DELIVERY_DAYS[-1])
     assert network["value"] == answer["value"]
-    assert network["evidence"]["counts"]["scheduled"] == len(scheduled) + 6
-    assert network["evidence"]["excluded"]["route_without_live_data"] == 6
+    assert network["evidence"]["counts"]["scheduled"] == len(scheduled) + len(DELIVERY_DAYS)
+    assert network["evidence"]["excluded"]["route_without_live_data"] == len(DELIVERY_DAYS)
 
 
 def test_service_delivered_boundaries_and_trip_cuts(
@@ -326,18 +345,19 @@ def test_service_delivered_boundaries_and_trip_cuts(
     store, _ = delivery
     weekday = {"line": "A", "day_type": "weekday", "end": DELIVERY_DAYS[-1]}
     answer = query(store, measure="service_delivered", **weekday)
-    assert answer["value"]["first_trip"] == answer["value"]["last_trip"] == 4 / 5
-    assert answer["evidence"]["days_included"] == list(map(str, DELIVERY_DAYS[:-1]))
+    assert answer["value"]["first_trip"] == answer["value"]["last_trip"] == 19 / 20
+    assert answer["evidence"]["days_included"] == list(map(str, DELIVERY_WEEKDAYS))
     edges = answer["evidence"]["boundary_departures"]
-    assert len(edges) == 10
+    assert len(edges) == 40
     assert edges[:2] == [
         {
             "measure": measure,
             "service_date": str(THURSDAY),
             "scheduled_departure": departure,
-            "scheduled": 1,
+            "scheduled": 2,
             "eligible": 1,
             "ran": ran,
+            "unconfirmed": 1,
             "route_without_live_data": 0,
             "capture_gap": 0,
         }
@@ -346,11 +366,14 @@ def test_service_delivered_boundaries_and_trip_cuts(
     only_departure = query(
         store, measure="trips_run", direction=0, departure="25:15:00", hour=1, **weekday
     )
-    assert only_departure["value"]["trips_run"] == 4 / 5
-    assert only_departure["evidence"]["counts"]["scheduled"] == MIN_SERVICE_DELIVERED_TRIPS
-    assert query(store, measure="first_trip", line="A", day_type="weekday")["state"] == (
-        "too_few_to_judge"
+    assert only_departure["value"]["trips_run"] == 19 / 20
+    assert only_departure["evidence"]["counts"]["eligible"] == MIN_SERVICE_DELIVERED_TRIPS == 20
+    assert only_departure["evidence"]["counts"]["scheduled"] == 21
+    below_floor = query(
+        store, measure="first_trip", line="A", day_type="weekday", end=DELIVERY_WEEKDAYS[-2]
     )
+    assert below_floor["state"] == "too_few_to_judge"
+    assert below_floor["value"] == {"first_trip": None}
     assert query(store, measure="trips_run", line="N")["state"] == "no_live_data"
     assert (
         query(store, measure="trips_run", line="A", hour=8, direction=0, departure="08:30:00")[
@@ -378,11 +401,15 @@ def test_service_hours_checks_the_schedule_file(
 
 
 def test_service_delivered_trip_queries_use_v3(store: Store) -> None:
-    answer = query(store, measure="missing_trips", end=SUNDAY)
+    answer = query(store, measure="missing_trips", start=FALL_BACK, end=SUNDAY)
     assert answer["state"] == "measured"
-    assert answer["value"] == {"missing_trips": 3 / 18}
+    assert answer["value"] == {"missing_trips": 4 / 20}
     assert answer["evidence"]["cleaning_versions"] == [3]
     assert answer["evidence"]["counts"]["scheduled_hours"] is None
+    unknown = query(store, measure="trips_run", line="U")
+    assert unknown["state"] == "unknown"
+    assert unknown["value"] == {"trips_run": None}
+    assert unknown["evidence"]["share_unconfirmed"] == 1
 
 
 def test_v4_manifest_requires_all_five_file_entries(store: Store) -> None:
@@ -422,9 +449,7 @@ def test_v5_requires_an_alert_receipt_or_not_tracked(tmp_path: Path) -> None:
         del manifest["files"][ALERTS]
         marker.write_text(json.dumps(manifest), encoding="utf-8")
         assert store.verify(conn, "stm", THURSDAY)
-        assert query(store, measure="service_hours")["evidence"]["days_included"] == [
-            str(THURSDAY)
-        ]
+        assert query(store, measure="service_hours")["evidence"]["days_included"] == [str(THURSDAY)]
         del manifest["alerts"]
         marker.write_text(json.dumps(manifest), encoding="utf-8")
         assert store.files(conn, "stm", THURSDAY) is None

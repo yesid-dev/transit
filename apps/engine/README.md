@@ -45,12 +45,15 @@ They reject `stop`. First and last trip selections require `line` and `day_type`
 accept `direction`, and use the full service day. A family answer gives each
 measure's state in `evidence.measure_states`.
 
-Trip counts include every state. The rate denominator excludes added trips,
-trips on routes without live data and capture gaps. The cancellation evidence
-includes the estimated median of notice time minus scheduled start and an exact count
-of positive offsets. The hours measure and the full family answer require the v4
-scheduled stop times file. The first and last departure evidence gives the GTFS time
-and scheduled, eligible and run counts for each included date with service.
+Trip counts include every state. Rates use 20 or more known-state trips
+(ran, cancelled or missing). Unconfirmed trips, trips on routes without live data,
+capture gaps and added trips are reported separately. The evidence includes the
+share of scheduled trips that are unconfirmed. Cancellation lead time is the
+scheduled start minus the notice time. The evidence gives its estimated median
+and an exact count of notices after the scheduled start. The hours measure and the
+full family answer require the scheduled stop times file available from v4 onward. The first and last
+departure evidence gives the GTFS time and underlying trip counts for each included
+date with service.
 
 | Environment variable | Default |
 | --- | --- |

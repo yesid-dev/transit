@@ -34,9 +34,9 @@ DELAY_BIN_SECONDS = 15
 # A display floor consistent with Transit's historical 30-observation floor.
 # A few stop events can dominate a share or percentile. This is not a confidence interval.
 MIN_CLASSIFIED_STOP_EVENTS = 30
-# Below five eligible trips, one trip moves an unweighted share by over 20 points.
+# With at least 20 known-state trips, one trip moves an unweighted share by at most 5 points.
 # Apply the same display floor to the duration sample and to each boundary departure.
-MIN_SERVICE_DELIVERED_TRIPS = 5
+MIN_SERVICE_DELIVERED_TRIPS = 20
 # Bound trip join memory independently of the requested range. Counts and bins are additive.
 DAYS_PER_QUERY_BATCH = 31
 
@@ -62,6 +62,7 @@ class Departure(NamedTuple):
     scheduled: int
     eligible: int
     ran: int
+    unconfirmed: int
     route_without_live_data: int
     capture_gap: int
 
@@ -412,7 +413,7 @@ _PUNCTUALITY = Family(
 
 _DELIVERY_COLUMNS = {
     "scheduled": Text("Scheduled trips", "Trajets prévus"),
-    "eligible": Text("Eligible scheduled trips", "Trajets prévus admissibles"),
+    "eligible": Text("Scheduled trips with known status", "Trajets prévus à l’état connu"),
     "ran": Text("Trips that ran", "Trajets effectués"),
     "cancelled": Text("Cancelled trips", "Trajets annulés"),
     "missing": Text("Missing trips", "Trajets manquants"),
@@ -424,8 +425,9 @@ _DELIVERY_COLUMNS = {
         "Trips affected by capture gaps", "Trajets touchés par une interruption de la collecte"
     ),
     "cancellation_notices": Text("Cancellation notices", "Avis d’annulation"),
-    "late_cancellation_notices": Text(
-        "Cancellation notices after departure", "Avis d’annulation après le départ prévu"
+    "cancellations_announced_after_departure": Text(
+        "Cancellations announced after scheduled start",
+        "Annulations annoncées après le départ prévu",
     ),
     "trips_with_duration": Text(
         "Eligible trips with scheduled duration", "Trajets admissibles avec une durée prévue"
@@ -436,8 +438,11 @@ _DELIVERY_COLUMNS = {
 _DELIVERY_EXCLUDED = ("added", "route_without_live_data", "capture_gap")
 _DELIVERY_EVIDENCE = {
     "share_eligible": Text("Eligible share", "Part admissible"),
-    "median_cancellation_notice_seconds": Text(
-        "Median notice time from scheduled start (s)", "Délai médian de l’avis sur le départ (s)"
+    "share_unconfirmed": Text(
+        "Unconfirmed share of scheduled trips", "Part des trajets non confirmés"
+    ),
+    "median_cancellation_lead_seconds": Text(
+        "Median cancellation lead time (s)", "Préavis médian d’annulation (s)"
     ),
     "boundary_departures": Text(
         "First and last departures by date", "Premiers et derniers départs par date"
@@ -452,8 +457,8 @@ _DELIVERY_AGGREGATES = {
     },
     "route_without_live_data": "count(*) FILTER (without_live_data)",
     "capture_gap": "count(*) FILTER (capture_gap)",
-    "cancellation_notices": "count(notice_seconds)",
-    "late_cancellation_notices": "count(*) FILTER (notice_seconds > 0)",
+    "cancellation_notices": "count(lead_seconds)",
+    "cancellations_announced_after_departure": "count(*) FILTER (lead_seconds < 0)",
     "trips_with_duration": "count(duration) FILTER (eligible)",
     "scheduled_seconds": "coalesce(sum(duration) FILTER (eligible), 0)",
     "ran_seconds": "coalesce(sum(duration) FILTER (state = 'ran'), 0)",
@@ -474,9 +479,9 @@ def _service_delivered_rows(
         SELECT service_date, trip_id, scheduled_start_utc, state,
             state_reason IS NOT DISTINCT FROM 'route_without_live_data' AS without_live_data,
             state_reason IS NOT DISTINCT FROM 'capture_gap' AS capture_gap,
-            state IN ('ran', 'cancelled', 'missing', 'unconfirmed') AS eligible,
+            state IN ('ran', 'cancelled', 'missing') AS eligible,
             CASE WHEN state = 'cancelled'
-                THEN epoch(cancellation_notice_utc - scheduled_start_utc) END AS notice_seconds
+                THEN epoch(scheduled_start_utc - cancellation_notice_utc) END AS lead_seconds
         FROM read_parquet(?, hive_partitioning = false)
         WHERE {window} AND {cut_sql}
     """
@@ -503,7 +508,7 @@ def _service_delivered_rows(
     rows = conn.execute(
         f"""
         WITH trips AS ({trips_sql}), durations AS ({duration_sql})
-        SELECT floor(notice_seconds / {DELAY_BIN_SECONDS})::BIGINT * {DELAY_BIN_SECONDS}
+        SELECT floor(lead_seconds / {DELAY_BIN_SECONDS})::BIGINT * {DELAY_BIN_SECONDS}
             AS lower_edge, {aggregates}
         FROM durations
         GROUP BY lower_edge
@@ -533,6 +538,7 @@ def _service_delivered_rows(
             )
             SELECT measure, service_date, departure_seconds, count(*),
                 count(*) FILTER (eligible), count(*) FILTER (state = 'ran'),
+                count(*) FILTER (state = 'unconfirmed'),
                 count(*) FILTER (without_live_data), count(*) FILTER (capture_gap)
             FROM bounds, LATERAL (VALUES ('first_trip', first_start), ('last_trip', last_start))
                 AS edge(measure, start_seconds)
@@ -577,20 +583,23 @@ _SERVICE_DELIVERED = Family(
     query=_service_delivered_rows,
     minimum_sample=MIN_SERVICE_DELIVERED_TRIPS,
     counts=Text(
-        "Each scheduled trip counts once. Eligible trips are those that ran, were cancelled, "
-        "went missing or were seen without a confirmed stop. "
-        f"At least {MIN_SERVICE_DELIVERED_TRIPS} eligible trips "
-        "are needed so a single trip cannot swing the share by more than 20 percentage points.",
-        "Chaque trajet prévu compte une fois. Les trajets admissibles sont ceux effectués, "
-        "annulés, manquants ou vus sans arrêt confirmé. Il faut au moins "
-        f"{MIN_SERVICE_DELIVERED_TRIPS} trajets "
-        "admissibles pour qu’un seul trajet ne change pas la part de plus de 20 points.",
+        "Each scheduled trip counts once. Rates use scheduled trips with a known status: "
+        "ran, cancelled or missing. "
+        f"At least {MIN_SERVICE_DELIVERED_TRIPS} trips with a known status are needed so "
+        "one trip cannot change the share by more than five percentage points.",
+        "Chaque trajet prévu compte une fois. Les taux utilisent les trajets prévus dont "
+        "l’état est connu : effectué, annulé ou manquant. Il faut au moins "
+        f"{MIN_SERVICE_DELIVERED_TRIPS} trajets à l’état connu pour qu’un seul trajet "
+        "ne change pas la part de plus de cinq points de pourcentage.",
     ),
     exclusions=Text(
         "Added trips, trips on lines without live data and trips affected by capture gaps "
-        "are counted separately and excluded from the rates.",
+        "are excluded from the rate and shown separately. Trips whose status could not "
+        "be confirmed are also left out of the rate and shown separately.",
         "Les trajets ajoutés, les trajets sur les lignes sans données en direct et ceux "
-        "touchés par une interruption de la collecte sont comptés à part et exclus des taux.",
+        "touchés par une interruption de la collecte sont exclus du taux et présentés à part. "
+        "Les trajets dont l’état n’a pu être confirmé sont aussi exclus du taux "
+        "et présentés à part.",
     ),
     limits=Text(
         "A trip that ran had at least one confirmed stop. Unconfirmed trips were seen "
@@ -619,12 +628,13 @@ _SERVICE_DELIVERED = Family(
                 "Part des trajets prévus admissibles dont le dernier état était annulé.",
             ),
             counts=Text(
-                "Counts cancelled trips and uses notices on those trips to estimate the "
-                "median of notice time minus scheduled start. Positive values are notices "
-                "after the scheduled start. The evidence counts them separately.",
-                "Compte les trajets annulés et utilise leurs avis pour estimer la médiane "
-                "de l’heure de l’avis moins l’heure de départ prévue. Les valeurs positives "
-                "correspondent aux avis parus après le départ prévu, comptés à part.",
+                "Counts cancelled trips and estimates the median advance notice from the "
+                "scheduled start minus the notice time. Notice 30 minutes in advance is "
+                "+1,800 seconds. Negative offsets are counted as notices after scheduled start.",
+                "Compte les trajets annulés et estime le préavis médian en soustrayant "
+                "l’heure de l’avis de l’heure du départ prévu. Un avis donné 30 minutes "
+                "à l’avance vaut +1 800 secondes. Un délai négatif correspond à un avis "
+                "donné après le départ prévu, compté à part.",
             ),
             limits=Text(
                 "The notice records when the feed announced the cancellation. It does not "
@@ -804,9 +814,15 @@ def _delivery_answer(
         delivery_counts["trips_with_duration"] = None
     evidence = {
         "counts": delivery_counts,
-        "excluded": {key: counts[key] if included else None for key in _DELIVERY_EXCLUDED},
+        # Keep unconfirmed in the state reconciliation and show why it is outside the rate.
+        "excluded": {
+            key: counts[key] if included else None for key in (*_DELIVERY_EXCLUDED, "unconfirmed")
+        },
         "share_eligible": counts["eligible"] / counts["scheduled"] if counts["scheduled"] else None,
-        "median_cancellation_notice_seconds": (
+        "share_unconfirmed": (
+            counts["unconfirmed"] / counts["scheduled"] if counts["scheduled"] else None
+        ),
+        "median_cancellation_lead_seconds": (
             _percentile(sorted(histogram.items()), notices, 50) if notices else None
         ),
         "boundary_departures": [row._asdict() for row in departures] if departures else None,
