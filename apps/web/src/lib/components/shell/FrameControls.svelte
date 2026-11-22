@@ -22,25 +22,20 @@
 	const translations = {
 		en: {
 			view: 'View',
-			live: 'Live',
+			live: 'Live now',
 			record: 'Record',
 			period: 'Period',
-			close: 'Close period picker',
-			presets: [
-				'Yesterday',
-				'Last 7 complete days',
-				'Last 28 complete days',
-				'This month',
-				'Last month',
-			],
-			custom: 'Custom dates',
-			from: 'Start date',
-			to: 'End date',
-			apply: 'Apply dates',
-			note: (date: string) => `The record starts on ${date}.`,
+			close: 'Close the controls',
+			presets: ['Yesterday', 'Last 7 complete days', 'Last 28 days', 'This month', 'Last month'],
+			ranges: 'Ready ranges',
+			custom: 'Choose other dates',
+			from: 'From',
+			to: 'To',
+			apply: 'Show these dates',
+			note: (date: string) => `Record starts ${date}.`,
 			scope: 'Current pages still use their own data and filters.',
 			error: {
-				invalidDate: 'Enter a valid start date and end date.',
+				invalidDate: 'Enter both dates.',
 				reversed: 'The end date must be on or after the start date.',
 				beforeRecord: 'Choose dates on or after the start of the record.',
 				future: 'Choose dates up to today.',
@@ -51,22 +46,23 @@
 			live: 'En direct',
 			record: 'Bilan',
 			period: 'Période',
-			close: 'Fermer le choix de la période',
+			close: 'Fermer les commandes',
 			presets: [
 				'Hier',
 				'7 derniers jours complets',
-				'28 derniers jours complets',
+				'28 derniers jours',
 				'Ce mois-ci',
 				'Le mois dernier',
 			],
-			custom: 'Dates personnalisées',
-			from: 'Date de début',
-			to: 'Date de fin',
-			apply: 'Appliquer les dates',
+			ranges: 'Plages prêtes',
+			custom: "Choisir d'autres dates",
+			from: 'Du',
+			to: 'Au',
+			apply: 'Afficher ces dates',
 			note: (date: string) => `Le bilan commence le ${date}.`,
 			scope: 'Les pages actuelles utilisent encore leurs propres données et filtres.',
 			error: {
-				invalidDate: 'Saisissez une date de début et une date de fin valides.',
+				invalidDate: 'Entrez les deux dates.',
 				reversed: 'La date de fin doit être égale ou postérieure à la date de début.',
 				beforeRecord: 'Choisissez des dates à partir du début du bilan.',
 				future: 'Choisissez des dates au plus tard aujourd’hui.',
@@ -78,10 +74,23 @@
 	const copy = $derived(translations[locale]);
 	let today = $state(frameToday());
 	const frame = $derived(parseFrameState(url.searchParams, today));
-	const dates = $derived(intl.dateTime(locale, { timeZone: 'UTC', dateStyle: 'medium' }));
-	const rangeLabel = $derived(
-		frame.period ? dates.formatRange(new Date(frame.period.from), new Date(frame.period.to)) : '',
+	const startLabel = $derived(
+		intl.dateTime(locale, { timeZone: 'UTC', dateStyle: 'long' }).format(new Date(RECORD_START)),
 	);
+	const rangeLabel = $derived.by(() => {
+		if (!frame.period) return '';
+		const { from, to } = frame.period;
+		const formatter = intl.dateTime(locale, {
+			timeZone: 'UTC',
+			month: 'short',
+			day: 'numeric',
+			year:
+				from.slice(0, 4) === today.slice(0, 4) && to.slice(0, 4) === today.slice(0, 4)
+					? undefined
+					: 'numeric',
+		});
+		return formatter.formatRange(new Date(from), new Date(to));
+	});
 	const modes = $derived([
 		{ key: 'live' as const, label: copy.live },
 		{ key: 'record' as const, label: copy.record },
@@ -123,8 +132,8 @@
 <Sheet bind:open {onOpenChange}>
 	<SheetTrigger>
 		{#snippet child({ props })}
-			<Button {...props} variant="outline" size="cta-sm" wrap class="min-h-11">
-				{copy.period}<span class="frame-range">{rangeLabel ? ` · ${rangeLabel}` : ''}</span>
+			<Button {...props} variant="outline" size="cta-sm" wrap class="min-h-11 max-w-full">
+				<span>{rangeLabel ? `${copy.period} · ${rangeLabel}` : copy.period}</span>
 			</Button>
 		{/snippet}
 	</SheetTrigger>
@@ -132,10 +141,10 @@
 		<div class="mx-auto grid w-full max-w-xl gap-4 pr-8">
 			<SheetTitle>{copy.period}</SheetTitle>
 			<SheetDescription id={`${uid}-note`}>
-				{copy.note(dates.format(new Date(RECORD_START)))}
+				{copy.note(startLabel)}
 				{copy.scope}
 			</SheetDescription>
-			<div class="flex flex-wrap gap-2" role="group" aria-label={copy.period}>
+			<div class="flex flex-wrap gap-2" role="group" aria-label={copy.ranges}>
 				{#each PRESETS as preset, index (preset)}
 					{@const period = presetPeriod(preset, today)}
 					<Button
@@ -189,11 +198,3 @@
 		</div>
 	</SheetContent>
 </Sheet>
-
-<style>
-	@container site-header (width < 600px) {
-		.frame-range {
-			display: none;
-		}
-	}
-</style>

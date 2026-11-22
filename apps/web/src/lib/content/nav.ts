@@ -53,16 +53,12 @@ export interface NavItem {
 	readonly activePrefixes: readonly string[];
 	readonly exact?: boolean;
 	readonly requires?: 'alerts';
-	readonly menu?: {
-		readonly label?: BilingualLabel;
-		readonly upcoming?: string;
-		readonly menuOnly?: boolean;
-	};
+	readonly upcoming?: string;
 }
 const UPCOMING = '/upcoming/';
 export const NAV_GROUPS: readonly { readonly key: NavGroupKey; readonly label: BilingualLabel }[] =
 	[
-		{ key: 'now', label: { en: 'Now', fr: 'En ce moment' } },
+		{ key: 'now', label: { en: 'Now', fr: 'Maintenant' } },
 		{ key: 'explore', label: { en: 'Explore', fr: 'Explorer' } },
 		{ key: 'reports', label: { en: 'Rankings and reports', fr: 'Classements et rapports' } },
 		{ key: 'about', label: { en: 'About the data', fr: 'À propos des données' } },
@@ -113,8 +109,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
 		group: 'explore',
 		href: UPCOMING + 'vehicles',
 		label: { en: 'Vehicles', fr: 'Véhicules' },
-		activePrefixes: [],
-		menu: { upcoming: 'vehicles', menuOnly: true },
+		activePrefixes: [UPCOMING + 'vehicles'],
 	},
 	{
 		key: 'hotspots',
@@ -127,9 +122,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
 		key: 'repeatOffenders',
 		group: 'reports',
 		href: '/repeat-offenders',
-		label: { en: 'Chronic late trips and buses', fr: 'Trajets et bus souvent en retard' },
+		label: { en: 'Worst trips and vehicles', fr: 'Pires voyages et véhicules' },
 		activePrefixes: ['/repeat-offenders'],
-		menu: { label: { en: 'Worst trips and vehicles', fr: 'Pires voyages et véhicules' } },
 	},
 	{
 		key: 'receipt',
@@ -137,7 +131,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
 		href: '/receipt',
 		label: { en: 'Daily report', fr: 'Rapport quotidien' },
 		activePrefixes: ['/receipt'],
-		menu: { upcoming: 'daily-report' },
+		upcoming: 'daily-report',
 	},
 	{
 		key: 'alerts',
@@ -153,7 +147,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
 		href: '/metrics',
 		label: { en: 'How we measure', fr: 'Comment on mesure' },
 		activePrefixes: ['/metrics'],
-		menu: { upcoming: 'how-we-measure' },
+		upcoming: 'how-we-measure',
 	},
 	{
 		key: 'status',
@@ -161,37 +155,29 @@ export const NAV_ITEMS: readonly NavItem[] = [
 		href: '/status',
 		label: { en: 'Data health', fr: 'Santé des données' },
 		activePrefixes: ['/status'],
-		menu: { upcoming: 'data-health' },
+		upcoming: 'data-health',
 	},
 	{
 		key: 'download',
 		group: 'about',
 		href: UPCOMING + 'download',
 		label: { en: 'Download the data', fr: 'Télécharger les données' },
-		activePrefixes: [],
-		menu: { upcoming: 'download', menuOnly: true },
+		activePrefixes: [UPCOMING + 'download'],
 	},
 ];
 /** Hides an item only when its capability is known to be false. */
 export function visibleNav(capabilities: { readonly alerts: boolean | null }): readonly NavItem[] {
-	return NAV_ITEMS.filter(
-		(item) => !item.menu?.menuOnly && (item.requires !== 'alerts' || capabilities.alerts !== false),
-	);
+	return NAV_ITEMS.filter((item) => item.requires !== 'alerts' || capabilities.alerts !== false);
 }
 
 export const FRAME_MENU = NAV_ITEMS.map((item) => {
-	const href = item.menu?.upcoming ? UPCOMING + item.menu.upcoming : item.href;
+	const href = item.upcoming ? UPCOMING + item.upcoming : item.href;
 	return {
 		...item,
 		href,
-		label: item.menu?.label ?? item.label,
-		activePrefixes: item.menu?.upcoming ? [href] : item.activePrefixes,
+		activePrefixes: item.upcoming ? [href] : item.activePrefixes,
 	};
 });
-
-export const FRAME_MENU_GROUPS = NAV_GROUPS.map((group) =>
-	group.key === 'now' ? { ...group, label: { ...group.label, fr: 'Maintenant' } } : group,
-);
 
 export function upcomingPage(path: string) {
 	if (!path.startsWith(UPCOMING)) return undefined;

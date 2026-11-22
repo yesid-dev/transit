@@ -36,7 +36,7 @@
 	import {
 		type NavItem,
 		FRAME_MENU,
-		FRAME_MENU_GROUPS,
+		NAV_GROUPS,
 		YESID_HOUSE_LINK,
 		isSurfaceActive,
 	} from '#lib/content/nav.ts';
@@ -47,6 +47,7 @@
 	import RefreshButton from './RefreshButton.svelte';
 	import { providerHref, type PublicProvider } from '#lib/v1/providers.ts';
 	import { v1Provider } from '#lib/v1/config.ts';
+	import { providers as publishedNetworks } from '../../../../static/og/manifest.json';
 
 	interface NavPillProps {
 		navigation: NavigationLifecycle;
@@ -118,7 +119,7 @@
 		})),
 	);
 	const menuGroups = $derived(
-		FRAME_MENU_GROUPS.map((group) => ({
+		NAV_GROUPS.map((group) => ({
 			label: group.label[locale],
 			items: FRAME_MENU.filter((item) => item.group === group.key).map((item) => ({
 				...toItem(item),
@@ -127,15 +128,23 @@
 		})),
 	);
 
-	const providerText = (provider: PublicProvider) =>
-		`${provider.labels[locale].city} · ${provider.labels[locale].operator}`;
-	const providerLabel = $derived.by(() => {
-		const provider = providers.find((candidate) => candidate.id === providerId);
-		return provider ? providerText(provider) : providerId;
-	});
-	const providerShortLabel = $derived(
-		providers.find((provider) => provider.id === providerId)?.labels[locale].operator ?? providerId,
+	// Use the published provider names when the live catalog cannot be loaded.
+	const publishedNetwork = (id: string) => publishedNetworks.find((provider) => provider.id === id);
+	const providerNames = ({ id, labels }: Pick<PublicProvider, 'id' | 'labels'>) => {
+		const label = labels[locale];
+		const published = publishedNetwork(id)?.labels[locale];
+		const city = label.city === id ? published?.city : label.city;
+		const operator = label.operator === id ? published?.operator : label.operator;
+		const short = operator ?? city ?? navCopy.unknownNetwork;
+		return { full: city && operator && city !== operator ? `${city} · ${operator}` : short, short };
+	};
+	const selectedProvider = $derived(
+		providers.find((provider) => provider.id === providerId) ?? publishedNetwork(providerId),
 	);
+	const selectedNames = $derived(selectedProvider ? providerNames(selectedProvider) : undefined);
+	const providerLabel = $derived(selectedNames?.full ?? navCopy.unknownNetwork);
+	const providerShortLabel = $derived(selectedNames?.short ?? providerLabel);
+	const defaultProvider = $derived(publishedNetwork(v1Provider()));
 
 	let scopeControls = $state<HTMLDivElement>();
 
@@ -208,12 +217,14 @@
 				}}
 			>
 				{#each providers as provider (provider.id)}
-					<option value={provider.id}>{providerText(provider)}</option>
+					<option value={provider.id}>{providerNames(provider).full}</option>
 				{/each}
 				{#if !providers.length}
-					<option value={providerId}>{providerId}</option>
+					<option value={providerId}>{providerLabel}</option>
 					{#if providerId !== v1Provider()}
-						<option value={v1Provider()}>{navCopy.defaultNetwork}</option>
+						<option value={v1Provider()}>
+							{defaultProvider ? providerNames(defaultProvider).full : navCopy.defaultNetwork}
+						</option>
 					{/if}
 				{/if}
 				{#if discoveryError}

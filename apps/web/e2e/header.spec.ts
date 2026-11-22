@@ -4,9 +4,9 @@ import { navPillCopy } from '../src/lib/i18n/messages';
 import {
 	AUDIT_NAV,
 	SURFACE_NAV,
-	FOOTER_INFO_NAV,
 	FRAME_MENU,
-	FRAME_MENU_GROUPS,
+	NAV_GROUPS,
+	FOOTER_INFO_NAV,
 } from '../src/lib/content/nav';
 import { DEFAULT_LOCALE, PUBLISHED_LOCALES, type Locale } from '../src/lib/i18n/config';
 import { localizeHref } from '../src/lib/i18n/routing';
@@ -79,7 +79,7 @@ for (const locale of PUBLISHED_LOCALES) {
 	test(`${locale}: the menu lists its destinations in four groups`, async ({ page }) => {
 		await page.goto(start(locale));
 		const menu = await openMenu(page, locale);
-		for (const group of FRAME_MENU_GROUPS) {
+		for (const group of NAV_GROUPS) {
 			await expect(
 				menu.getByRole('heading', { name: group.label[locale], exact: true }),
 			).toBeVisible();

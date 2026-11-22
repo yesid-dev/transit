@@ -163,6 +163,64 @@ it('does not suggest an outage when discovery succeeded', () => {
 	expect(view.queryByRole('option', { name: 'Other networks unavailable' })).toBeNull();
 });
 
+it.each(['en', 'fr'] as const)(
+	'uses public names in the %s city picker when discovery fails',
+	(locale) => {
+		const view = render(NavPill, {
+			props: { locale, providerId: 'octranspo', discoveryError: true },
+		});
+		const picker = view.getByRole('combobox', { name: /Ottawa · OC Transpo/ });
+		expect(within(picker).getByRole('option', { selected: true })).toHaveTextContent(
+			'Ottawa · OC Transpo',
+		);
+		expect(within(picker).getByRole('option', { name: 'Montréal · STM' })).toHaveValue('stm');
+		expect(
+			within(picker.parentElement!).getByText('OC Transpo', { exact: true }),
+		).toBeInTheDocument();
+	},
+);
+
+it('uses a generic label for an unknown provider id', () => {
+	const view = render(NavPill, { props: { locale: 'en', providerId: 'private-provider' } });
+	const picker = view.getByRole('combobox', { name: /Unknown network/ });
+	expect(within(picker).getByRole('option', { selected: true })).toHaveAccessibleName(
+		'Unknown network',
+	);
+	expect(picker.parentElement).not.toHaveTextContent('private-provider');
+});
+
+it('uses the operator name when snapshot boot only knows the city id', () => {
+	const label = { city: 'private-provider', operator: 'Example Transit' };
+	const view = render(NavPill, {
+		props: {
+			locale: 'en',
+			providerId: 'private-provider',
+			providers: [
+				{ id: 'private-provider', labels: { en: label, fr: label }, inputs: {}, alert_links: {} },
+			],
+			discoveryError: true,
+		},
+	});
+	const picker = view.getByRole('combobox', { name: 'Transit network: Example Transit' });
+	expect(within(picker).getByRole('option', { selected: true })).toHaveTextContent(
+		'Example Transit',
+	);
+	expect(picker.parentElement).not.toHaveTextContent('private-provider');
+});
+
+it('shows a compact selected period on the trigger in French', () => {
+	vi.useFakeTimers({ toFake: ['Date'] });
+	try {
+		vi.setSystemTime(new Date('2026-11-22T16:00:00Z'));
+		const url = new URL('https://transit.test/fr/?recordFrom=2026-11-08&recordTo=2026-11-14');
+		const view = render(NavPill, { props: { locale: 'fr', url } });
+		const trigger = view.getByRole('button', { name: /Période.*8.*14.*nov\./ });
+		expect(trigger).toHaveAttribute('aria-expanded', 'false');
+	} finally {
+		vi.useRealTimers();
+	}
+});
+
 describe('NavPill navigation lifecycle integration', () => {
 	it.each([false, true])('uses the Kit 3 fallback with redirect=%s', async (redirected) => {
 		const adapter = createNavigationRouter();
