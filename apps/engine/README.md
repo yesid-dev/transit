@@ -22,7 +22,7 @@ classified over scheduled, cleaning and method versions, and query milliseconds.
 `days_included` lists the measured days selected by the day-type filter. A partial window
 includes a bilingual coverage note. The engine validates `manifest.json` under
 `<root>/<provider>/<service-date>/v<cleaning_version>/` and checks the query input file sizes
-before reading. Cleaning v5 and v6 also check the alerts file when the manifest lists it.
+before reading. Cleaning v5 through v7 also check the alerts file when the manifest lists it.
 A missing or invalid manifest, missing required file, or wrong size makes that day a gap.
 
 `GET /data-health?city=stm&from=2026-11-19&to=2026-11-22` reports each day in the
@@ -32,10 +32,10 @@ exists with the recorded byte size, and `missing` otherwise, with `reason` set t
 `no_manifest` or `invalid_manifest`. A valid manifest with a listed file missing or a
 wrong size makes the day `incomplete`. A day the raw archive never captured carries a
 `no_raw_captures` receipt with no data files: it is `not_measured` with the same reason,
-both here and for `/measure`, rather than `missing`. Each of the six tables is `present`
+both here and for `/measure`, rather than `missing`. Each table is `present`
 with its manifest row count, `missing`, or `not_tracked` for alerts when the manifest says
 so. A table the manifest lists but the day lacks is `missing` with `file_missing` or
-`size_mismatch`.
+`size_mismatch`. Cleaning v7 adds `prediction_samples` to the reported tables.
 
 Values are null when the answer is no live data, not measured, too few to judge, or unknown.
 No live data means the cut contains scheduled service only on lines without live data.
@@ -43,6 +43,40 @@ Not measured means no valid day contributes, or every eligible stop was affected
 gap. Too few to judge means fewer than 30 classified stop events with at least one observation.
 Unknown covers a cut with no match or with no classified event for another reason. Capture
 gaps stay in the scheduled total. A measured zero share has its denominator and a zero band count.
+
+### Series
+
+Add `group=day` to get one cell per service date, `group=hour` for 24 local clock
+hours, `group=day_type` for weekday, Saturday and Sunday, or `group=weekday_hour`
+for a 168-cell grid ordered by ISO service weekday (Monday = 1) and local hour
+(midnight = 0). For a line measure with direction data, `group=direction` returns
+GTFS directions 0 and 1 and a null direction cell when the source has unassigned
+records. Series accept up to 400 inclusive service dates and support the measure's
+usual filters. For example, use
+`/measure?measure=punctuality&city=stm&from=2026-11-19&to=2026-11-25&group=weekday_hour`.
+
+Each entry in `cells` has a `key` object with its grouping fields, the registry's
+`value` map, bilingual `state_text`, `state`, and `evidence` with the counts,
+exclusions and included dates for that cell. Family responses retain their
+per-measure states where applicable. Cells with no valid day in scope report
+`not_measured` with null values. Measured days can still have thin samples
+or empty hours. The response envelope lists overall measured, missing and
+included dates, method and cleaning versions, and query time.
+
+Punctuality, service delivery, waiting and scheduled service use the same local time
+as their hour filters. Events without a scheduled time have no clock hour. First
+and last departures are selected from the full day and assigned to the hour of
+the boundary departure. Crowding and observed vehicle time are split at clock-hour
+boundaries. Vehicle trips use the scheduled start or first position, and reporting
+gaps use the hour of the last sighting before the gap. Alert groups clip published
+spans to the tracked local dates or hours and count distinct alerts and versions
+within each cell. Each cell calculates percentiles, shares and ratios from its own
+histogram or evidence totals. Distinct counts can overlap across cells.
+
+Grouped CSV uses one row per cell and prepends localized grouping columns to the
+registry headings. A family export uses JSON objects keyed by measure ID in the
+value, unit and state columns. A single measure keeps scalar columns and leaves
+missing values blank.
 
 `GET /how-we-measure` returns the registry's English and French entries, including
 definitions, minimum sample, calculation method and export columns. Add
@@ -84,8 +118,8 @@ window. The remaining lines are regular. Classes use the included dates and day 
 across all hours. The default line list uses the class with the most scheduled trips
 among the lines in the cut. Select a class with `class=3:frequent`, or compare all
 classes with `class=all`. Stops and departures rank across the network and carry
-their contributing classes. Cleaning v6 records GTFS route types. Set
-`ENGINE_CLEANING_VERSION` to read an earlier version, which shows an unknown route type.
+their contributing classes. Cleaning v6 and v7 record GTFS route types. Cleaning
+versions before v6 show an unknown route type.
 
 The response includes ranked rows, all exclusions within the selected scope, and the
 measured and missing dates. Ties use larger samples first, then ID. `limit` limits
@@ -98,7 +132,7 @@ Use `format=csv&lang=fr` for French headings or `lang=en` for English.
 | Environment variable | Default |
 | --- | --- |
 | `ENGINE_CLEAN_ROOT` | `./clean-days` |
-| `ENGINE_CLEANING_VERSION` | `6` |
+| `ENGINE_CLEANING_VERSION` | `7` |
 | `ENGINE_HOST`, `ENGINE_PORT` | `127.0.0.1`, `8080` |
 | `ENGINE_CONCURRENCY` | 2 active queries |
 | `ENGINE_QUERY_MEMORY_MIB` | 256 MiB per DuckDB query |

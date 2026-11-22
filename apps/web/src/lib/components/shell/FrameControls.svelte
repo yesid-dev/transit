@@ -4,7 +4,7 @@
 	import { SegmentedChoice } from '@yesid/ui/brand';
 	import { Button } from '@yesid/ui/button';
 	import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from '@yesid/ui/sheet';
-	import { intl, type Locale } from '#lib/i18n/index.ts';
+	import { delocalizePath, intl, type Locale } from '#lib/i18n/index.ts';
 	import {
 		frameHref,
 		frameToday,
@@ -74,6 +74,7 @@
 	const copy = $derived(translations[locale]);
 	let today = $state(frameToday());
 	const frame = $derived(parseFrameState(url.searchParams, today));
+	const overview = $derived(delocalizePath(url.pathname) === '/');
 	const startLabel = $derived(
 		intl.dateTime(locale, { timeZone: 'UTC', dateStyle: 'long' }).format(new Date(RECORD_START)),
 	);
@@ -111,12 +112,15 @@
 
 	function selectMode(mode: FrameMode) {
 		if (frame.mode === mode) return;
-		void goto(frameHref(url, { ...frame, mode }), { shallow: true, state: { ...page.state } });
+		void goto(frameHref(url, { ...frame, mode }), { shallow: !overview, state: { ...page.state } });
 	}
 
 	function selectPeriod(period: NonNullable<typeof frame.period>) {
 		open = false;
-		void goto(frameHref(url, { ...frame, period }), { shallow: true, state: { ...page.state } });
+		void goto(frameHref(url, { ...frame, period }), {
+			shallow: !overview || frame.mode === 'live',
+			state: { ...page.state },
+		});
 	}
 
 	function applyDates(event: SubmitEvent) {
@@ -142,7 +146,7 @@
 			<SheetTitle>{copy.period}</SheetTitle>
 			<SheetDescription id={`${uid}-note`}>
 				{copy.note(startLabel)}
-				{copy.scope}
+				{#if !overview}{copy.scope}{/if}
 			</SheetDescription>
 			<div class="flex flex-wrap gap-2" role="group" aria-label={copy.ranges}>
 				{#each PRESETS as preset, index (preset)}

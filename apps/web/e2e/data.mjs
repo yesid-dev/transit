@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
+import { overviewEngine } from './overview-engine.mjs';
 
 const read = (file) => readFileSync(new URL(file, import.meta.url));
 // STM serves the listed feeds; OC Transpo serves a manifest, provenance and a passing pipeline gate.
@@ -286,9 +287,26 @@ for (const family of ['static/routes', 'historic/route_reliability']) {
 // browser loads it: the layout spec serves the real file there, late.
 files['/v1/stm/static/stops/UNSEEDED.json'] = '{}';
 
+const heldOverviewResponses = new Set();
 const server = createServer((request, response) => {
 	// No Date header: the app anchors its clock to it, which would undo page.clock.
 	response.sendDate = false;
+	const url = new URL(request.url, 'http://127.0.0.1');
+	if (request.method === 'POST' && url.pathname === '/__overview/release') {
+		for (const send of heldOverviewResponses) send();
+		response.writeHead(204).end();
+		return;
+	}
+	if (url.pathname === '/measure' || url.pathname === '/ranking') {
+		const { hold, body } = overviewEngine(url);
+		response.setHeader('content-type', 'application/json');
+		const send = () => response.end(JSON.stringify(body));
+		if (hold) {
+			heldOverviewResponses.add(send);
+			response.on('close', () => heldOverviewResponses.delete(send));
+		} else send();
+		return;
+	}
 	const body =
 		process.env.TRANSIT_E2E_PANEL_SIZES === '1' && request.url.startsWith('/v1/')
 			? files['/__layout/stale' + request.url]

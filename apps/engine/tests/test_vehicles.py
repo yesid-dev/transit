@@ -239,6 +239,17 @@ def test_vehicle_service_and_reporting_match_independent_recomputation(
     assert city["value"]["vehicle_on_time"] == 41 / 81
     final_tail = answer(store, "/measure", measure="vehicle_hours_in_service", vehicle="102")
     assert final_tail["value"]["vehicle_hours_in_service"] == (19 * 2160 + 2100 + 20) / 3600
+    for group in ("day", "hour", "weekday_hour"):
+        series = answer(
+            store, "/measure", THURSDAY, SATURDAY, measure="vehicles", vehicle="101", group=group
+        )
+        cells = series["cells"]
+        for metric in ("vehicle_hours_in_service", "vehicle_trips_run", "vehicle_reporting_gaps"):
+            assert sum(cell["value"][metric] or 0 for cell in cells) == pytest.approx(
+                result["value"][metric]
+            )
+        if group == "day":
+            assert cells[2]["state"] == "not_tracked"
 
 
 def test_unfinished_trip_requires_continuous_capture(

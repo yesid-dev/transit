@@ -61,6 +61,21 @@ STOP_EVENTS = TableSchema.from_columns(
     ),
     _STOP_KEY,
 )
+PREDICTION_SAMPLES = TableSchema.from_columns(
+    (
+        *_IDENTITY,
+        ("stop_id", "text", True),
+        ("stop_sequence", "bigint", True),
+        ("basis", "text", True),
+        ("observed_event", "text", True),
+        ("horizon_minutes", "integer", True),
+        ("published_at_utc", _TIME, True),
+        ("predicted_at_utc", _TIME, True),
+        ("error_seconds", "bigint", True),
+        ("actual_lead_seconds", "bigint", True),
+    ),
+    (*_STOP_KEY, "horizon_minutes"),
+)
 SCHEDULED_STOP_TIMES = TableSchema.from_columns(
     (
         *_SCHEDULED_FIELDS,
@@ -290,6 +305,7 @@ def _stage(day: CleanDay, temporary: Path) -> tuple[Path, dict[str, tuple[str, i
         ("scheduled_stop_times", SCHEDULED_STOP_TIMES, day.scheduled_stop_rows(), None),
         ("vehicle_positions", VEHICLE_POSITIONS, day.vehicle_rows(), None),
         ("feed_polls", FEED_POLLS, day.poll_rows(), None),
+        ("prediction_samples", PREDICTION_SAMPLES, day.prediction_rows(), None),
     )
     for name, schema, rows, category in tables:
         columns = [column.name for column in schema.columns]

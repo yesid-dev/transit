@@ -48,9 +48,9 @@ const config = {
 		runes: projectRunes(import.meta.dirname),
 	},
 	inlineStyleThreshold: 60_000,
-	// Hashes, not nonces: rendered HTML is edge-cached for 30 s, so a nonce would be replayed.
+	// Runtime nonces authorize streamed load results. Prerendered pages still use hashes.
 	csp: {
-		mode: 'hash',
+		mode: 'auto',
 		directives: cspDirectives(
 			/** @type {`sha256-${string}`} */ (boot.hash),
 			/** @type {`sha256-${string}`} */ (boot.announcementHash),

@@ -298,6 +298,28 @@ def test_crowding_splits_a_long_interval_across_two_local_hour_boundaries(
         coverage[hour] = evidence["share_occupancy_readings"]
     assert weights == {7: 20, 8: 3600, 9: 70}
     assert coverage == {7: 1, 8: None, 9: None}
+    series = _get(
+        store, "/measure", "crowding", line="A", stop="other", group="hour", day_type="weekday"
+    )
+    assert {
+        hour: series["cells"][hour]["evidence"]["counts"]["occupancy_vehicle_seconds"]
+        for hour in weights
+    } == weights
+
+
+def test_alert_series_splits_midnight_and_keeps_missing_dates(
+    history: tuple[Store, list[Reading], dict[date, tuple[Notice, ...]]],
+) -> None:
+    store, _, _ = history
+    series = _get(store, "/measure", "alert_hours", line="A", group="day")
+    thursday, friday, saturday = series["cells"]
+    assert thursday["value"]["alert_hours"] == 3
+    assert friday["state"] == "not_measured"
+    assert saturday["value"]["alert_hours"] == 4
+    grid = _get(store, "/measure", "alerts", line="A", group="weekday_hour")["cells"]
+    assert grid[3 * 24]["value"]["alerts"] == 1
+    assert grid[3 * 24]["evidence"]["counts"]["alert_seconds"] == 3600
+    assert grid[4 * 24]["value"]["alerts"] is None
 
 
 def test_alert_counts_and_hours_match_independent_hour_sets(

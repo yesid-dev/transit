@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { delocalizePath } from '#lib/i18n/routing.ts';
 import { handle, handleError } from '../hooks.server';
 
 const workers = vi.hoisted(() => ({ waitUntil: vi.fn() }));
@@ -105,11 +106,13 @@ function event(
 		headers: options.headers,
 	});
 	Object.defineProperty(request, 'cf', { value: options.cf });
+	const requestUrl = new URL(url);
+	const path = delocalizePath(requestUrl.pathname);
 	return {
-		url: new URL(url),
+		url: requestUrl,
 		request,
 		locals: {},
-		route: { id: options.routeId ?? '/[[lang=locale]]' },
+		route: { id: options.routeId ?? `/[[lang=locale]]${path === '/' ? '' : path}` },
 	} as Parameters<typeof handle>[0]['event'];
 }
 
@@ -365,6 +368,32 @@ describe('server HTML edge cache', () => {
 		expect(cache.put).not.toHaveBeenCalled();
 	});
 
+	it('keeps a document with a CSP nonce out of both downstream and edge caches', async () => {
+		const cache = cacheHarness();
+		const request = event('https://transit.yesid.dev/metrics', { cache });
+		const resolve = vi.fn(async () =>
+			html('streamed', {
+				headers: { 'content-security-policy': "script-src 'self' 'nonce-test'" },
+			}),
+		);
+
+		const response = await handle({ event: request, resolve });
+		expect(response.headers.get('cache-control')).toBe('no-store');
+		expect(cache.put).not.toHaveBeenCalled();
+	});
+
+	it('delivers Overview Record chunks without caching or compressing them', async () => {
+		const cache = cacheHarness(html('cached'));
+		const request = event('https://transit.yesid.dev/fr?provider=stm', { cache });
+		const response = await handle({ event: request, resolve: vi.fn(async () => html('streamed')) });
+
+		expect(await response.text()).toBe('streamed');
+		expect(response.headers.get('content-encoding')).toBe('identity');
+		expect(response.headers.get('cache-control')).toBe('no-store, no-transform');
+		expect(cache.match).not.toHaveBeenCalled();
+		expect(cache.put).not.toHaveBeenCalled();
+	});
+
 	it('uses a cached GET representation for HEAD without returning a body', async () => {
 		const cache = cacheHarness(html('cached'));
 		const request = event('https://transit.yesid.dev/metrics', { cache, method: 'HEAD' });
@@ -385,7 +414,7 @@ describe('server HTML edge cache', () => {
 		const resolve = vi.fn(async () => html('fresh'));
 
 		const response = await handle({
-			event: event('https://transit.yesid.dev/', { cache: readFailure }),
+			event: event('https://transit.yesid.dev/metrics', { cache: readFailure }),
 			resolve,
 		});
 		await expect(Promise.all(readFailure.writes)).resolves.toBeDefined();

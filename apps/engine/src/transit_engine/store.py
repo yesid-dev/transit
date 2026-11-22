@@ -9,9 +9,15 @@ from typing import Self
 
 import duckdb
 
-from transit_engine.clean_manifest import ALERTS, STOP_EVENTS, TRIP_DAYS, file_identities
+from transit_engine.clean_manifest import (
+    ALERT_VERSIONS,
+    ALERTS,
+    STOP_EVENTS,
+    TRIP_DAYS,
+    file_identities,
+)
 
-DEFAULT_CLEANING_VERSION = 6
+DEFAULT_CLEANING_VERSION = 7
 CITY = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 _PUNCTUALITY_FILES = (STOP_EVENTS, TRIP_DAYS)
 
@@ -156,7 +162,9 @@ class Store:
             if name in identities:
                 checked_paths[name] = f"{directory}/{name}"
             elif not (
-                name == ALERTS and allow_untracked_alerts and self.cleaning_version in {5, 6}
+                name == ALERTS
+                and allow_untracked_alerts
+                and str(self.cleaning_version) in ALERT_VERSIONS
             ):
                 return None
         if ALERTS in identities:

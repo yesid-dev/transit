@@ -53,9 +53,9 @@ describe('document security headers', () => {
 });
 
 describe('content security policy', () => {
-	it('allows inline scripts only by hash and lists the data, map and analytics origins', () => {
+	it('uses per-response nonces or prerendered hashes and lists the allowed origins', () => {
 		const csp = config.csp;
-		expect(csp?.mode).toBe('hash');
+		expect(csp?.mode).toBe('auto');
 		expect(csp?.directives?.['script-src']).toEqual([
 			'self',
 			boot.hash,

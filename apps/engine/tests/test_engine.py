@@ -19,6 +19,7 @@ from transit_engine import timing
 from transit_engine.clean_manifest import (
     ALERTS,
     FEED_POLLS,
+    PREDICTION_SAMPLES,
     SCHEDULED_STOP_TIMES,
     STOP_EVENTS,
     TRIP_DAYS,
@@ -152,7 +153,7 @@ def _build_store(
                     else None
                 )
                 scheduled = start_at if trip.state != "added" else None
-                if scheduled is not None and cleaning_version in {4, 5, 6}:
+                if scheduled is not None and cleaning_version in {4, 5, 6, 7}:
                     first = (
                         25 * 3600 + 15 * 60 if day == FALL_BACK else 7 * 3600
                     ) + trip.offset_minutes * 60
@@ -239,8 +240,10 @@ def _build_store(
                     "sha256": sha256(payload).hexdigest(),
                     "byte_size": len(payload),
                 }
-            if cleaning_version in {4, 5, 6}:
+            if cleaning_version in {4, 5, 6, 7}:
                 extra_files = (*V4_EXTRA_FILES, ALERTS) if cleaning_version >= 5 else V4_EXTRA_FILES
+                if cleaning_version == 7:
+                    extra_files = (*extra_files, PREDICTION_SAMPLES)
                 for name in extra_files:
                     path = directory / name
                     source = "SELECT * FROM trips WHERE FALSE"
@@ -282,12 +285,15 @@ def _build_store(
     return Store(tmp_path.as_posix(), cleaning_version=cleaning_version)
 
 
-def test_store_defaults_to_v6_and_accepts_v3_override(
+def test_store_reads_v7_by_default_and_accepts_v3_override(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    _build_store(tmp_path, cleaning_version=7)
     monkeypatch.setenv("ENGINE_CLEAN_ROOT", str(tmp_path))
     monkeypatch.delenv("ENGINE_CLEANING_VERSION", raising=False)
-    assert Store(tmp_path.as_posix()).cleaning_version == Store.from_env().cleaning_version == 6
+    store = Store.from_env()
+    assert Store(tmp_path.as_posix()).cleaning_version == store.cleaning_version == 7
+    assert query(store)["evidence"]["cleaning_versions"] == [7]
     monkeypatch.setenv("ENGINE_CLEANING_VERSION", "3")
     assert Store.from_env().cleaning_version == 3
 
@@ -456,6 +462,12 @@ def test_service_delivered_boundaries_and_trip_cuts(
     )
     assert below_floor["state"] == "too_few_to_judge"
     assert below_floor["value"] == {"first_trip": None}
+    daily = query(store, measure="service_delivered", group="day", **weekday)
+    assert daily["cells"][0]["evidence"]["measure_states"]["first_trip"] == "too_few_to_judge"
+    assert daily["cells"][0]["evidence"]["boundary_departures"] == edges[:2]
+    hourly = query(store, measure="last_trip", group="hour", **weekday)
+    assert hourly["cells"][1]["value"]["last_trip"] == 19 / 20
+    assert hourly["cells"][7]["value"]["last_trip"] is None
     assert query(store, measure="trips_run", line="N")["state"] == "no_live_data"
     assert (
         query(store, measure="trips_run", line="A", hour=8, direction=0, departure="08:30:00")[
@@ -537,7 +549,7 @@ def test_v5_requires_an_alert_receipt_or_not_tracked(tmp_path: Path) -> None:
         assert store.files(conn, "stm", THURSDAY) is None
 
 
-@pytest.mark.parametrize("cleaning_version", [3, 4, 5])
+@pytest.mark.parametrize("cleaning_version", [3, 4, 5, 7])
 def test_bands_use_exact_thresholds(tmp_path: Path, cleaning_version: int) -> None:
     store = _build_store(tmp_path, cleaning_version)
     result = query(store, line="A", direction=0)
@@ -681,6 +693,9 @@ def test_incomplete_clean_day_is_not_measured(store: Store, damage: str) -> None
     assert result["evidence"]["days_not_measured"] == [str(THURSDAY)]
     assert result["evidence"]["days_measured"] == []
     assert result["evidence"]["counts"]["classified"] is None
+    (cell,) = query(store, group="day")["cells"]
+    assert cell["state"] == "not_measured"
+    assert cell["evidence"]["counts"]["classified"] is None
 
 
 def test_no_raw_captures_receipt_is_not_measured(store: Store) -> None:
@@ -801,6 +816,11 @@ def test_http_and_bilingual_csv_come_from_same_registry(
         "&departure=07:30:00",
         "&hour=24",
         "&day_type=weekend",
+        "&group=week",
+        "&group=",
+        "&group=day&group=hour",
+        "&group=direction",
+        "&group=day&to=2028-01-01",
         "&format=yaml",
         "&lang=es",
         "&stop=%00",
@@ -814,7 +834,7 @@ def test_invalid_parameters_fail_before_admission(store: Store, parameters: str)
     app = Engine(store, concurrency=1, queue_size=0, queue_wait_ms=50)
     params = {"measure": "punctuality", "city": "stm", "from": THURSDAY, "to": THURSDAY}
     for key in ("to", "from"):
-        if parameters.startswith(f"&{key}="):
+        if f"&{key}=" in parameters:
             params.pop(key)
     status, _, _ = asyncio.run(http(app, "/measure", urlencode(params) + parameters))
     assert status == 400

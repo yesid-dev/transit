@@ -80,6 +80,12 @@ def test_waiting_measures_match_known_pattern_and_independent_recomputation(
     assert result["evidence"]["counts"]["observed_headways"] == 48
     assert result["evidence"]["counts"]["bunching"] == 16
     assert result["evidence"]["counts"]["long_gaps"] == 8
+    daily = query(
+        store, measure="excess_wait_time", line="A", stop="first", end=FRIDAY, group="day"
+    )
+    for cell in daily["cells"]:
+        assert cell["value"]["excess_wait_time"] == pytest.approx(values["excess_wait_time"])
+        assert cell["evidence"]["counts"]["observed_headways"] == 24
     cut = query(
         store,
         measure="bunching",
@@ -246,6 +252,11 @@ def test_service_offered_matches_schedule_only_recomputation(
         "scheduled_frequency": 0,
         "below_minimum_service": 5,
     }
+    grid = query(store, **options, stop="other", group="weekday_hour")["cells"]
+    assert grid[5 * 24 + 9]["value"] == at_stop["value"]
+    assert grid[6 * 24 + 9]["value"]["scheduled_trips"] == 0
+    assert grid[4 * 24 + 9]["state"] == "not_measured"
+    assert sum(cell["value"]["scheduled_trips"] or 0 for cell in grid) == 12
     assert (
         query(store, **options, hour=7, day_type="weekday")["evidence"]["measure_states"][
             "below_minimum_service"
