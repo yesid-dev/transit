@@ -39,7 +39,8 @@ jobs:
         id: deploy
         working-directory: apps/engine
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: eccfb9bedd87d413eaf4cac6ae2285d3
+          CLOUDFLARE_API_TOKEN: ${{ secrets.TRANSIT1_ENGINE_DEPLOY_TOKEN }}
           TRANSIT1_R2_ENDPOINT: ${{ secrets.TRANSIT1_R2_ENDPOINT }}
           AWS_ACCESS_KEY_ID: ${{ secrets.TRANSIT1_R2_READ_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.TRANSIT1_R2_READ_SECRET_ACCESS_KEY }}
