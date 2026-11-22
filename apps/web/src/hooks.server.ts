@@ -4,6 +4,7 @@ import { pathLocale } from '#lib/i18n/index.ts';
 import { readRequestLocation } from '#lib/v1/requestLocation.ts';
 import { readPublicSiteConfig } from '#lib/site/config.ts';
 import { lineFrameView } from '#lib/site/lineFrame.ts';
+import { stopFrameView } from '#lib/site/stopFrame.ts';
 import { DOCUMENT_SECURITY_HEADERS } from '#lib/site/securityHeaders.ts';
 import { configureTransitUi } from '#lib/ui/configure.ts';
 import { preloadFont } from '@yesid/tokens/fonts';
@@ -102,7 +103,10 @@ export const handle: Handle = async ({ event, resolve }) => {
 		event.route.id === '/[[lang=locale]]' && event.url.searchParams.get('frameMode') !== 'live';
 	const lineView =
 		event.route.id === '/[[lang=locale]]/lines/[id]' ? lineFrameView(event.url) : null;
-	const streamedRecord = overviewRecord || lineView === 'record' || lineView === 'schedule';
+	const stopRecord =
+		event.route.id === '/[[lang=locale]]/stop/[id]' && stopFrameView(event.url) === 'record';
+	const streamedRecord =
+		overviewRecord || stopRecord || lineView === 'record' || lineView === 'schedule';
 	const automaticSelection =
 		event.route.id?.startsWith('/[[lang=locale]]') === true &&
 		!event.url.searchParams.has('provider') &&

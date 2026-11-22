@@ -55,22 +55,26 @@ const rankingAnswer = state.partial().extend({
 export type MeasureAnswer = z.infer<typeof measureAnswer>;
 export type RankingAnswer = z.infer<typeof rankingAnswer>;
 export type EngineResult<T> =
-	| { kind: 'answer'; answer: T }
-	| { kind: 'unconfigured' | 'unreachable' | 'timeout' };
+	| { kind: 'answer'; answer: T; lastGood?: true }
+	| { kind: 'unconfigured' | 'unreachable' | 'timeout' | 'busy' };
 
-type EnginePeriod = DateWindow & { city: string };
+export type EnginePeriod = DateWindow & { city: string; visitorIp?: string | null };
+const QUESTION_ORIGIN = 'https://data.yesid.dev';
 
 function engineFetch(
 	path: string,
-	{ city, from, to }: EnginePeriod,
+	{ city, from, to, visitorIp }: EnginePeriod,
 	parameters: Record<string, string>,
 	signal: AbortSignal,
 ) {
-	const origin = env.ENGINE_ORIGIN?.trim();
-	if (!origin) return null;
-	const url = new URL(path, origin);
-	url.search = new URLSearchParams({ city, from, to, ...parameters }).toString();
-	return fetch(url, { signal, redirect: 'manual' });
+	const proxy = env.QUESTION_PROXY;
+	const fixture = env.QUESTION_FIXTURE_ORIGIN;
+	if (!proxy && !fixture) return null;
+	const url = new URL(`/v2/${encodeURIComponent(city)}${path}`, proxy ? QUESTION_ORIGIN : fixture);
+	url.search = new URLSearchParams({ from, to, ...parameters }).toString();
+	const headers = proxy && visitorIp ? { 'x-transit-visitor-ip': visitorIp } : undefined;
+	const request = new Request(url, { headers, signal, redirect: 'manual' });
+	return proxy ? proxy.fetch(request) : fetch(request);
 }
 
 async function query<T>(
@@ -83,9 +87,13 @@ async function query<T>(
 	try {
 		const response = await engineFetch(path, period, parameters, signal);
 		if (!response) return { kind: 'unconfigured' };
+		if (response.status === 503 && response.headers.has('retry-after')) return { kind: 'busy' };
 		if (!response.ok) return { kind: 'unreachable' };
 		const { success, data } = schema.safeParse(await response.json());
-		return success ? { kind: 'answer', answer: data } : { kind: 'unreachable' };
+		if (!success) return { kind: 'unreachable' };
+		return response.headers.get('x-transit-answer') === 'last-good'
+			? { kind: 'answer', answer: data, lastGood: true }
+			: { kind: 'answer', answer: data };
 	} catch {
 		return { kind: signal.aborted ? 'timeout' : 'unreachable' };
 	}

@@ -1,18 +1,17 @@
 <script lang="ts">
 	import { intl, type Locale } from '#lib/i18n/index.ts';
-	import { percent, tally } from '#lib/features/record/recordText.ts';
-	import type { RecordAnswer, RecordCell } from '#lib/server/engine.ts';
-	import type { LineSection } from '#lib/server/lineRecord.ts';
-	import LineRecordTable from './LineRecordTable.svelte';
 	import {
 		choose,
-		directionLabel,
 		emptyRecord,
-		lateDepartureReading,
-		lineAnswer,
+		percent,
 		punctualityBands,
 		shareReading,
-	} from './lineRecordText.ts';
+		tally,
+	} from '#lib/features/record/recordText.ts';
+	import type { RecordAnswer, RecordCell } from '#lib/server/engine.ts';
+	import type { LineSection } from '#lib/server/lineRecord.ts';
+	import RecordTable from '#lib/features/record/RecordTable.svelte';
+	import { directionLabel, lateDepartureReading, lineAnswer } from './lineRecordText.ts';
 
 	let {
 		answer,
@@ -109,7 +108,7 @@
 				({n(answer.evidence.counts.occupancy_vehicle_seconds)}).
 			{/if}
 		</p>
-		<LineRecordTable
+		<RecordTable
 			{title}
 			headers={[t('Occupancy level', 'Niveau d’achalandage'), t('Share', 'Part')]}
 			rows={[
@@ -133,7 +132,7 @@
 			]}
 		/>
 	{:else if section === 'frequency'}
-		<LineRecordTable
+		<RecordTable
 			{title}
 			headers={[
 				t('Part of the day', 'Moment de la journée'),
@@ -156,7 +155,7 @@
 			'Classement selon la part des passages observés en retard pour chaque départ prévu.',
 		)}
 	</p>
-	<LineRecordTable
+	<RecordTable
 		{title}
 		headers={[
 			t('Departure', 'Départ'),
@@ -180,7 +179,7 @@
 {:else}
 	{@const cells = answer.cells}
 	{#if section === 'daily'}
-		<LineRecordTable
+		<RecordTable
 			{title}
 			headers={[t('Service date', 'Date de service'), t('On-time share', 'Part à l’heure')]}
 			rows={cells.map((cell) => [
@@ -197,7 +196,7 @@
 				'Part en retard selon l’heure locale prévue (passages en retard / passages observés).',
 			)}
 		</p>
-		<LineRecordTable
+		<RecordTable
 			{title}
 			wide
 			headers={[t('Hour', 'Heure'), ...weekdays.map(weekday)]}
@@ -210,7 +209,7 @@
 			])}
 		/>
 	{:else if section === 'directions'}
-		<LineRecordTable
+		<RecordTable
 			{title}
 			headers={[
 				t('Direction', 'Direction'),
@@ -228,7 +227,7 @@
 				'Comparez le retard médian et la part en retard dans l’ordre prévu des arrêts. Des branches peuvent partager un rang.',
 			)}
 		</p>
-		<LineRecordTable
+		<RecordTable
 			{title}
 			headers={[
 				t('Stop', 'Arrêt'),
@@ -251,7 +250,7 @@
 				'Les trajets annulés ont été signalés comme tels. Les trajets manquants sont sans trace de véhicule ni annulation.',
 			)}
 		</p>
-		<LineRecordTable
+		<RecordTable
 			{title}
 			headers={[
 				t('Departure', 'Départ'),
@@ -282,7 +281,7 @@
 			])}
 			<h3>{dayType(String(cell.key.day_type))}</h3>
 			{#if rows.length}
-				<LineRecordTable
+				<RecordTable
 					title={dayType(String(cell.key.day_type))}
 					headers={[
 						t('Date', 'Date'),

@@ -58,6 +58,11 @@ describe('app frame URL state', () => {
 		});
 	});
 
+	it('accepts both endpoints of the public question API’s 400-day limit', () => {
+		expect(periodError({ from: RECORD_START, to: '2027-11-16' }, '2027-12-01')).toBeNull();
+		expect(periodError({ from: RECORD_START, to: '2027-11-17' }, '2027-12-01')).toBe('tooLong');
+	});
+
 	it('round trips custom dates and carries only frame state to a different page', () => {
 		const source = url('/fr/lines?provider=octranspo&mode=rail#results');
 		const frame = {

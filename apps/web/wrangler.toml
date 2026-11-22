@@ -20,6 +20,11 @@ directory = ".svelte-kit/cloudflare"
 binding = "DATA"
 service = "transit-data-proxy"
 
+[[services]]
+binding = "QUESTION_PROXY"
+service = "transit-data-proxy"
+entrypoint = "Questions"
+
 # Direct snapshot reads for SSR. Browser bulk traffic uses the R2 custom domain;
 # this binding gives the app Worker the same no-proxy path server-side.
 [[r2_buckets]]

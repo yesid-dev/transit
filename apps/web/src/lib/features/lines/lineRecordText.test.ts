@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { RecordMeasure } from '#lib/server/engine.ts';
 import { measure, period, stateText } from '#lib/features/home/overviewRecord.fixture.ts';
-import { lineAnswer, lineCitation, punctualityBands, recordMessage } from './lineRecordText.ts';
+import { punctualityBands, recordMessage } from '#lib/features/record/recordText.ts';
+import { lineAnswer, lineCitation } from './lineRecordText.ts';
 
 const base = measure();
 const answer: RecordMeasure = {

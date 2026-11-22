@@ -2,10 +2,11 @@ import { providerLocalDateKey } from '#lib/utils/time.ts';
 import type { DateWindow } from '#lib/v1/history/window.ts';
 
 export const RECORD_START = '2026-10-13';
+export const MAX_RECORD_DAYS = 400;
 export const PRESETS = ['yesterday', '7-days', '28-days', 'this-month', 'last-month'] as const;
 export type Preset = (typeof PRESETS)[number];
 export type FrameMode = 'live' | 'record';
-export type PeriodError = 'invalidDate' | 'reversed' | 'beforeRecord' | 'future';
+export type PeriodError = 'invalidDate' | 'reversed' | 'beforeRecord' | 'future' | 'tooLong';
 
 interface FramePeriod extends DateWindow {
 	preset: Preset | null;
@@ -33,6 +34,7 @@ export function periodError({ from, to }: DateWindow, today: string): PeriodErro
 	if (from > to) return 'reversed';
 	if (from < RECORD_START) return 'beforeRecord';
 	if (to > today) return 'future';
+	if (Date.parse(to) - Date.parse(from) >= MAX_RECORD_DAYS * 86_400_000) return 'tooLong';
 	return null;
 }
 

@@ -59,6 +59,9 @@ stop ID. Unknown directions come last. `group=departure` requires a line and a s
 delivery measure other than first or last trip. Each cell gives the scheduled, cancelled,
 missing and other outcome counts for a direction and scheduled GTFS start, ordered by
 direction and service time. Both groups accept a direction filter.
+`group=line` requires a stop and a punctuality measure. It returns a cell per GTFS
+route ID at that stop within the cut, in route ID order. Cells use the same sample
+and evidence rules as the corresponding `stop` + `line` queries.
 Series accept up to 400 inclusive service dates and support the measure's
 usual filters. For example, use
 `/measure?measure=punctuality&city=stm&from=2026-11-19&to=2026-11-25&group=weekday_hour`.

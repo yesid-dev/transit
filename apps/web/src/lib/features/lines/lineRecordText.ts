@@ -1,16 +1,15 @@
 import type { Locale } from '#lib/i18n/index.ts';
 import type {
 	DepartureRanking,
-	EngineResult,
 	RecordAnswer,
 	RecordCell,
 	RecordEvidence,
 } from '#lib/server/engine.ts';
 import {
+	choose,
 	dateRange,
 	methodEvidence,
 	percent,
-	recordConnection,
 	tally,
 } from '#lib/features/record/recordText.ts';
 import type { LineDirection, LineSection } from '#lib/server/lineRecord.ts';
@@ -31,49 +30,6 @@ export const lineSectionTitles = {
 	frequency: ['Planned frequency', 'Fréquence prévue'],
 	boundaries: ['First and last trips', 'Premiers et derniers trajets'],
 } satisfies Record<LineSection, [string, string]>;
-
-export function choose(locale: Locale, en: string, fr: string) {
-	return locale === 'fr' ? fr : en;
-}
-
-export function recordMessage(result: EngineResult<RecordAnswer>, locale: Locale): string | null {
-	if (result.kind !== 'answer') return recordConnection[result.kind][locale];
-	const answer = result.answer;
-	if ('rows' in answer) {
-		if (answer.rows.length) return null;
-		if (answer.state_text) return answer.state_text[locale];
-		const first = answer.excluded[0];
-		if (first && answer.excluded.every((entry) => entry.reason === first.reason))
-			return first.reason_text[locale];
-	}
-	if ('cells' in answer && answer.cells.length) return null;
-	if ('value' in answer) return answer.state === 'measured' ? null : answer.state_text[locale];
-	return emptyRecord(answer.evidence, locale);
-}
-
-export function emptyRecord(evidence: RecordEvidence, locale: Locale) {
-	return evidence.days_included.length
-		? choose(locale, 'Unknown', 'Inconnu')
-		: choose(locale, 'Not measured', 'Non mesuré');
-}
-
-export function punctualityBands(cell: RecordCell, locale: Locale) {
-	const data = [
-		['early', choose(locale, 'Early', 'En avance')],
-		['on_time', choose(locale, 'On time', 'À l’heure')],
-		['late', choose(locale, 'Late', 'En retard')],
-	] as const;
-	return data.map(([id, label]) => ({ id, label, reading: shareReading(cell, id, locale) }));
-}
-
-export function shareReading(cell: RecordCell, id: string, locale: Locale): string {
-	if (cell.state !== 'measured') return cell.state_text[locale];
-	const share = cell.value[id];
-	const n = cell.evidence.counts[id];
-	const total = cell.evidence.counts.classified;
-	if (share == null || n == null || !total) return choose(locale, 'Unknown', 'Inconnu');
-	return `${percent(share, locale)} (${tally(n, locale)}/${tally(total, locale)})`;
-}
 
 export function lineAnswer(cell: RecordCell, evidence: RecordEvidence, locale: Locale): string {
 	if (cell.state !== 'measured') return cell.state_text[locale];

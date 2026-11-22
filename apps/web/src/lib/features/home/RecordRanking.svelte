@@ -3,6 +3,7 @@
 	import type { EngineResult, RankingAnswer } from '#lib/server/engine.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import RecordPending from '../record/RecordPending.svelte';
+	import { lastGoodNote } from '../record/recordText.ts';
 	import { percent, rankingText, tally } from './overviewRecord.ts';
 
 	let {
@@ -26,6 +27,7 @@
 		{#key ranking}<RecordPending {locale} />{/key}
 	{:then result}
 		{@const message = rankingText(result, locale)}
+		{#if result.kind === 'answer' && result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 		{#if message}
 			<p>{message}</p>
 		{:else if result.kind === 'answer'}

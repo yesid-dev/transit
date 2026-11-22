@@ -1,4 +1,4 @@
-import { getRecordAnswer, type RecordQuery } from './engine.ts';
+import { getRecordAnswer, type RecordQuery, type EnginePeriod } from './engine.ts';
 import type { DateWindow } from '#lib/v1/history/window.ts';
 
 const record = {
@@ -50,6 +50,7 @@ export function loadLineRecord(
 	city: string,
 	line: string,
 	direction: LineDirection,
+	visitorIp?: EnginePeriod['visitorIp'],
 ) {
 	const sections = (
 		view === 'record' ? Object.keys(record) : Object.keys(schedule)
@@ -61,7 +62,11 @@ export function loadLineRecord(
 		direction,
 		sections: sections.map((section) => ({
 			section,
-			answer: getRecordAnswer(lineRecordQuery(section, line, direction), { ...period, city }),
+			answer: getRecordAnswer(lineRecordQuery(section, line, direction), {
+				...period,
+				city,
+				...(visitorIp ? { visitorIp } : {}),
+			}),
 		})),
 	};
 }

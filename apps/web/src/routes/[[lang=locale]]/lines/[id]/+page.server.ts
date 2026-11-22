@@ -34,7 +34,14 @@ export const load: PageServerLoad = async (event) => {
 	const { v1, routesIndex, lang, providerId } = await event.parent();
 	const record =
 		view && view !== 'live' && period
-			? loadLineRecord(view, period, providerId, id, lineDirection(url.searchParams))
+			? loadLineRecord(
+					view,
+					period,
+					providerId,
+					id,
+					lineDirection(url.searchParams),
+					event.request.headers.get('cf-connecting-ip'),
+				)
 			: null;
 	if (record) {
 		const directory = createLineDirectory(routesIndex?.routes ?? null, {

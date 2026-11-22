@@ -5,15 +5,41 @@ import type { PageServerLoad } from './$types';
 import { canonicalDetailTabLocation } from '#lib/site/detailTabs.ts';
 import { getStop } from '#lib/v1/repositories/static.ts';
 import { serverV1Context, type IdentitySeed } from '#lib/v1/serverContext.ts';
+import { loadStopRecord } from '#lib/server/stopRecord.ts';
+import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
+import { stopFrameView, stopViewHref } from '#lib/site/stopFrame.ts';
 
 export const load: PageServerLoad = async (event) => {
 	const canonicalLocation = canonicalDetailTabLocation(event.url);
 	if (canonicalLocation) redirect(308, canonicalLocation);
 
+	const view = stopFrameView(event.url);
+	const frameLive = view === 'live';
+	if (
+		frameLive &&
+		(event.url.searchParams.get('tab') !== 'detail' ||
+			event.url.searchParams.get('frameMode') !== 'live')
+	) {
+		const live = stopViewHref(event.url, 'live');
+		redirect(307, live.pathname + live.search);
+	}
+
 	const id = event.params.id.trim() || event.params.id;
 	const fallback: IdentitySeed = { id, name: id };
-	const { v1, lang } = await event.parent();
-	if (!v1) return { seed: fallback, stopSeed: null };
+	const { v1, lang, providerId } = await event.parent();
+	const period =
+		view === 'record' ? parseFrameState(event.url.searchParams, frameToday()).period : null;
+	const frame = period
+		? {
+				record: loadStopRecord(
+					{ ...period, city: providerId, visitorIp: event.request.headers.get('cf-connecting-ip') },
+					id,
+				),
+			}
+		: frameLive
+			? { frameLive }
+			: {};
+	if (!v1) return { ...frame, seed: fallback, stopSeed: null };
 
 	try {
 		const stop = await getStop(id, {
@@ -23,11 +49,12 @@ export const load: PageServerLoad = async (event) => {
 		});
 		const name = stop?.name.trim();
 		return {
+			...frame,
 			seed: name ? { id, name } : fallback,
 			stopSeed: { key: id, data: stop },
 			...(name ? { seoTitle: stopPageTitle(stopDisplayName(name), stop?.code, lang) } : {}),
 		};
 	} catch {
-		return { seed: fallback, stopSeed: null };
+		return { ...frame, seed: fallback, stopSeed: null };
 	}
 };

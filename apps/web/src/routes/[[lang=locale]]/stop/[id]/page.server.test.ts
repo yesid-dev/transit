@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { loadStopRecord } from '#lib/server/stopRecord.ts';
 
 const harness = vi.hoisted(() => ({
 	ctx: { fetch: vi.fn(), providerId: 'octranspo', manifest: { provider: 'octranspo' } },
 	getStop: vi.fn(),
+	getRecordAnswer: vi.fn(),
 	serverV1Context: vi.fn(),
 }));
 
@@ -14,18 +16,27 @@ vi.mock('#lib/v1/serverContext.ts', () => ({
 	serverV1Context: (...args: unknown[]) => harness.serverV1Context(...args),
 }));
 
+vi.mock('#lib/server/engine.ts', () => ({ getRecordAnswer: harness.getRecordAnswer }));
+
 import { load } from './+page.server';
 
-function event(id = '1234'): Parameters<typeof load>[0] {
+function event(
+	id = '1234',
+	href = `https://transit.yesid.dev/stop/${id}`,
+): Parameters<typeof load>[0] {
 	return {
 		params: { id },
-		url: new URL(`https://transit.yesid.dev/stop/${id}`),
+		url: new URL(href),
 		fetch: vi.fn(),
+		request: new Request(href, {
+			headers: { 'cf-connecting-ip': '192.0.2.24' },
+		}),
 		locals: { v1Cache: new Map() },
 		platform: undefined,
 		parent: async () => ({
 			v1: { manifest: harness.ctx.manifest },
 			lang: 'en',
+			providerId: 'octranspo',
 			routesIndex: { routes: [{ id: '24', short: '24', long: 'Sherbrooke' }] },
 		}),
 	} as unknown as Parameters<typeof load>[0];
@@ -33,6 +44,7 @@ function event(id = '1234'): Parameters<typeof load>[0] {
 
 beforeEach(() => {
 	harness.getStop.mockReset();
+	harness.getRecordAnswer.mockReset().mockResolvedValue({ kind: 'unconfigured' });
 	harness.serverV1Context.mockReset().mockReturnValue(harness.ctx);
 });
 
@@ -133,4 +145,50 @@ it('omits seoTitle without v1', async () => {
 	const request = event();
 	Object.assign(request, { parent: async () => ({ v1: null }) });
 	expect(await load(request)).not.toHaveProperty('seoTitle');
+});
+
+it('streams the dated stop cuts without waiting for a slow per-line answer', async () => {
+	const request = event(
+		'S1',
+		'https://transit1.yesid.dev/fr/stop/S1?recordFrom=2026-10-20&recordTo=2026-10-21',
+	);
+	const result = { kind: 'answer', answer: { value: { on_time: 0.8 } } };
+	harness.getRecordAnswer.mockResolvedValueOnce(result);
+	const slow = new Promise(() => {});
+	harness.getRecordAnswer.mockReturnValueOnce(slow);
+	const data = await load(request);
+	const record: ReturnType<typeof loadStopRecord> | undefined = data?.record;
+	const sections = new Map(record?.sections.map(({ section, answer }) => [section, answer]));
+	await expect(sections.get('punctuality')).resolves.toEqual(result);
+	expect(sections.get('byLine')).toBe(slow);
+	expect(sections.get('delay')).toBe(sections.get('punctuality'));
+	expect(harness.getRecordAnswer.mock.calls).toEqual(
+		[
+			{ measure: 'punctuality' },
+			{ measure: 'on_time', group: 'line' },
+			{ measure: 'on_time', group: 'hour' },
+			{ measure: 'on_time', group: 'day' },
+			{ measure: 'alert_counts' },
+		].map((parameters) => [
+			{ path: '/measure', parameters: { ...parameters, stop: 'S1' } },
+			{
+				city: 'octranspo',
+				from: '2026-10-20',
+				to: '2026-10-21',
+				preset: null,
+				visitorIp: '192.0.2.24',
+			},
+		]),
+	);
+});
+
+it('keeps Live on the existing stop data without starting a Record query', async () => {
+	const request = event('S1', 'https://transit1.yesid.dev/stop/S1?frameMode=live');
+	await expect(load(request)).rejects.toMatchObject({
+		status: 307,
+		location: '/stop/S1?frameMode=live&tab=detail',
+	});
+	request.url.searchParams.set('tab', 'detail');
+	await expect(load(request)).resolves.toMatchObject({ frameLive: true, seed: { id: 'S1' } });
+	expect(harness.getRecordAnswer).not.toHaveBeenCalled();
 });

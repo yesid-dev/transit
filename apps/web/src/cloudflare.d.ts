@@ -1,6 +1,7 @@
 declare module 'cloudflare:workers' {
 	export const env: {
-		ENGINE_ORIGIN?: string;
+		QUESTION_PROXY?: { fetch(request: Request): Promise<Response> };
+		QUESTION_FIXTURE_ORIGIN?: string;
 		SNAPSHOTS?: import('./lib/v1/binding').R2BucketBinding;
 		DATA?: { fetch: typeof fetch };
 		WEB_VITALS?: {

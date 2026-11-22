@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { QUESTION_PARAMS } from "../src/question-params.js";
+import { serveBoundQuestion } from "../src/questions.js";
 import worker from "../src/worker.js";
 
 const WINDOW = "from=2020-01-01&to=2020-01-02";
@@ -65,9 +66,10 @@ function fixture(t, respond = () => Response.json(ANSWER, {
     },
   };
 
-  async function fetch(path, headers = {}, method = "GET") {
+  async function fetch(path, headers = {}, method = "GET", bound = false) {
     const tasks = [];
-    const response = await worker.fetch(new Request(`https://data.yesid.dev${path}`, {
+    const handler = bound ? serveBoundQuestion : worker.fetch;
+    const response = await handler(new Request(`https://data.yesid.dev${path}`, {
       method,
       headers: { origin: "https://transit1.yesid.dev", ...headers },
     }), env, { waitUntil: (task) => tasks.push(task) });
@@ -95,6 +97,43 @@ test("dated public routes accept the same query names as the engine HTTP parser"
     const proxy = QUESTION_PARAMS[route];
     assert.deepEqual(new Set(["city", ...proxy.required, ...proxy.optional]), new Set(accepted), route);
   }
+});
+
+test("only the bound entrypoint uses the forwarded visitor IP", async (t) => {
+  const f = fixture(t);
+  const edge = "192.0.2.1";
+  const visitor = "192.0.2.2";
+  const headers = { "cf-connecting-ip": edge, "x-transit-visitor-ip": visitor };
+  await f.fetch(MEASURE, headers);
+  await f.fetch(MEASURE + "&line=24", headers, "GET", true);
+  await f.fetch(MEASURE + "&line=31", { "cf-connecting-ip": visitor });
+  await f.fetch(MEASURE + "&line=32", { "cf-connecting-ip": edge });
+  assert.equal(f.visitors.length, 4);
+  assert.notEqual(f.visitors[0], f.visitors[1]);
+  assert.equal(f.visitors[0], f.visitors[3]);
+  assert.equal(f.visitors[1], f.visitors[2]);
+  assert.equal(f.requests[1].headers.get("x-transit-visitor-ip"), null);
+});
+
+test("forwards Line and Stop Record groups and departure ranking cuts", async (t) => {
+  const f = fixture(t);
+  for (const question of [
+    MEASURE + "&line=24&group=stop",
+    MEASURE.replace("measure=on_time", "measure=trips_run") + "&line=24&group=departure",
+    MEASURE + "&stop=S1&group=line",
+  ]) {
+    assert.equal((await f.fetch(question)).status, 200);
+  }
+  assert.equal(
+    (await f.fetch(`/v2/demo/ranking?measure=late&kind=departure&line=24&direction=1&${WINDOW}`)).status,
+    200,
+  );
+  const params = f.requests.map((request) => new URL(request.url).searchParams);
+  assert.deepEqual(params.slice(0, 3).map((entry) => entry.get("group")), ["stop", "departure", "line"]);
+  assert.equal(params[2].get("stop"), "S1");
+  assert.equal(params[3].get("kind"), "departure");
+  assert.equal(params[3].get("line"), "24");
+  assert.equal(params[3].get("direction"), "1");
 });
 
 test("rejects invalid questions before spending an engine slot or visitor budget", async (t) => {
