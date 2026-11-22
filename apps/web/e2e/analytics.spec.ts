@@ -122,7 +122,8 @@ test('a portfolio link click is a custom event', async ({ page, context }) => {
 	await context.route('https://yesid.dev/**', (route) =>
 		route.fulfill({ status: 200, contentType: 'text/html', body: '' }),
 	);
-	await page.goto(`http://${domain}:${port}/`);
+	// On the homepage, scrolling into the footer reveals the construction strip and moves the link.
+	await page.goto(`http://${domain}:${port}/privacy?provider=stm`);
 	await expect.poll(() => payloads.filter(({ n }) => n === 'pageview').length).toBe(1);
 	const popup = context.waitForEvent('page');
 	await page
