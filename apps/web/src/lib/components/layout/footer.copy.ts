@@ -8,7 +8,7 @@ export const footerCopy = defineCopy({
 		tagline: (agencyName: string) => `Analytique citoyenne pour ${agencyName}`,
 		disclaimer: (agencyName: string) => `Site non officiel, sans affiliation avec ${agencyName}.`,
 		auditLabel: 'Vérification',
-		legalLabel: 'Juridique',
+		infoLabel: 'Information',
 	},
 	en: {
 		navAria: 'Footer',
@@ -17,6 +17,6 @@ export const footerCopy = defineCopy({
 		tagline: (agencyName: string) => `Citizen analytics for ${agencyName}`,
 		disclaimer: (agencyName: string) => `Unofficial website, not affiliated with ${agencyName}.`,
 		auditLabel: 'Audit',
-		legalLabel: 'Legal',
+		infoLabel: 'Information',
 	},
 });

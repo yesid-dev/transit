@@ -194,7 +194,8 @@
 		width: min(21rem, calc(100vw - 2rem));
 		max-width: none;
 		max-height: calc(
-			100dvh - var(--legend-bottom) - var(--pill-h) - 2rem - env(safe-area-inset-top, 0px)
+			100dvh - var(--announcement-height, 0px) - var(--legend-bottom) - var(--pill-h) - 2rem -
+				env(safe-area-inset-top, 0px)
 		);
 		overflow-y: auto;
 		overscroll-behavior: contain;

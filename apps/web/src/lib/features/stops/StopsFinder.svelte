@@ -704,7 +704,7 @@
 		flex-direction: column;
 		gap: 0.75rem;
 		min-width: 0;
-		scroll-margin-block-start: calc(var(--chrome-offset) + 1rem);
+		scroll-margin-block-start: 1rem;
 	}
 	.finder-results:focus-visible {
 		outline: 2px solid var(--ring);

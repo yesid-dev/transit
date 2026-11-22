@@ -151,6 +151,16 @@ export const SHARE_COPY = {
 			cta: 'Lire la déclaration',
 		},
 	},
+	'/roadmap': {
+		en: {
+			support: 'The Transit rebuild and what stays available meanwhile',
+			cta: 'Read the roadmap',
+		},
+		fr: {
+			support: 'La refonte de Transit et ce qui reste accessible entre-temps',
+			cta: 'Lire la feuille de route',
+		},
+	},
 	'/lines/detail': {
 		en: {
 			support: 'Line route, directions and schedule',

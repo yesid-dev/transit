@@ -17,6 +17,7 @@ const paths = [
 	'/privacy',
 	'/terms',
 	'/accessibility',
+	'/roadmap',
 	'/lines/new',
 	'/stop/new',
 	'/trip/new',

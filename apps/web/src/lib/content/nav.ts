@@ -1,3 +1,5 @@
+import { roadmapTitle } from '#lib/features/roadmap/roadmap.copy.ts';
+
 export interface BilingualLabel {
 	readonly en: string;
 	readonly fr: string;
@@ -170,7 +172,7 @@ export const AUDIT_NAV: readonly AuditNavItem[] = (
 	['metrics', 'status', 'hotspots', 'receipt', 'repeatOffenders', 'alerts'] as const
 ).map((key) => ({ ...NAV_ITEMS.find((item) => item.key === key)!, key }));
 
-export const LEGAL_NAV: readonly SecondaryNavLink[] = [
+export const FOOTER_INFO_NAV: readonly SecondaryNavLink[] = [
 	{
 		href: '/privacy',
 		label: { en: 'Privacy', fr: 'Confidentialité' },
@@ -183,9 +185,10 @@ export const LEGAL_NAV: readonly SecondaryNavLink[] = [
 		href: '/accessibility',
 		label: { en: 'Accessibility', fr: 'Accessibilité' },
 	},
+	{ href: '/roadmap', label: roadmapTitle },
 ] as const;
 
-export const SECONDARY_NAV: readonly SecondaryNavLink[] = [...AUDIT_NAV, ...LEGAL_NAV].map(
+export const SECONDARY_NAV: readonly SecondaryNavLink[] = [...AUDIT_NAV, ...FOOTER_INFO_NAV].map(
 	(item) => ({
 		href: item.href,
 		label: item.label,
@@ -208,7 +211,7 @@ export function mainLandmarkLabel(currentPath: string): BilingualLabel | null {
 	if (currentPath === '/search') return SEARCH_LABEL;
 	return (
 		NAV_ITEMS.find((item) => isSurfaceActive(item, currentPath))?.label ??
-		LEGAL_NAV.find((item) => item.href === currentPath)?.label ??
+		FOOTER_INFO_NAV.find((item) => item.href === currentPath)?.label ??
 		null
 	);
 }

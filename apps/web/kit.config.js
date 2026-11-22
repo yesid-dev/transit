@@ -57,7 +57,10 @@ const config = {
 	// Hashes, not nonces: rendered HTML is edge-cached for 30 s, so a nonce would be replayed.
 	csp: {
 		mode: 'hash',
-		directives: cspDirectives(/** @type {`sha256-${string}`} */ (boot.hash)),
+		directives: cspDirectives(
+			/** @type {`sha256-${string}`} */ (boot.hash),
+			/** @type {`sha256-${string}`} */ (boot.announcementHash),
+		),
 	},
 	// src/lib/pwa/register.ts registers the worker behind the kill switch and production gate.
 	serviceWorker: { register: false },

@@ -253,9 +253,14 @@ for (const locale of PUBLISHED_LOCALES) {
 		const size = page.viewportSize()!;
 		await page.setViewportSize({ width: size.width + 80, height: size.height - 64 });
 		await expect.poll(() => rendererCamera(page)).toEqual(hint);
+		const bannerHeight = await page
+			.locator('[data-slot="announcement-banner"]')
+			.evaluateAll(([banner]) => banner?.getBoundingClientRect().height ?? 0);
+		// Round the remaining canvas height after subtracting any fractional banner height.
+		const mapHeight = Math.round(size.height - 64 - bannerHeight);
 		await expect
 			.poll(async () => (await rendererTransform(page)).slice(2, 4))
-			.toEqual([`${size.width + 80}px`, `${size.height - 64}px`]);
+			.toEqual([`${size.width + 80}px`, `${mapHeight}px`]);
 		await panel.getByRole('button', { name: t.copyLiveView }).click();
 		const copied = await page.evaluate(() => navigator.clipboard.readText());
 		expect(new URL(copied).searchParams.get('mapview')?.split(',').map(Number)).toEqual(hint);

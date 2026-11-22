@@ -29,6 +29,7 @@ const paths = [
 	'/receipt',
 	'/repeat-offenders',
 	'/accessibility',
+	'/roadmap',
 	'/privacy',
 	'/terms',
 ];

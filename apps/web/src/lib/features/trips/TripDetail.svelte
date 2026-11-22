@@ -153,12 +153,16 @@
 	</div>
 {/snippet}
 
-{#snippet lineContext()}
+{#snippet lineContext(placement: 'summary' | 'rail')}
 	<div class="trip-line-context">
 		{#if lineRecordHref}
 			<p class="trip-line-identity">{lineLabel}</p>
 			{#if direction}<p class="trip-direction">{t.toward(direction)}</p>{/if}
-			<a class="trip-record-link" href={lineRecordHref}>{t.lineRecord}</a>
+			<a
+				class="trip-record-link"
+				class:trip-record-link--summary={placement === 'summary'}
+				href={lineRecordHref}>{t.lineRecord}</a
+			>
 		{:else}
 			<MaybeValue
 				value={null}
@@ -170,7 +174,12 @@
 	</div>
 {/snippet}
 
-<DetailFrame class="trip-report" measure="46rem" rule="dimension">
+<DetailFrame
+	class="trip-report"
+	measure="46rem"
+	rule="dimension"
+	style="--detail-rail-top: calc(var(--chrome-offset, 0px) + var(--announcement-height, 0px));"
+>
 	{#snippet header()}
 		<ArticleHeader
 			presentation="reading"
@@ -186,7 +195,7 @@
 	{#snippet right()}
 		<section class="trip-context" aria-label={t.contextHeading}>
 			<h2>{t.contextHeading}</h2>
-			{@render lineContext()}
+			{@render lineContext('rail')}
 		</section>
 	{/snippet}
 	<ResourceBoundary resource={trips} lang={locale}>
@@ -230,7 +239,7 @@
 					</section>
 				{:else}
 					<div class="trip-summary">
-						{@render lineContext()}
+						{@render lineContext('summary')}
 						<div class="trip-delay-report">
 							<h2>{t.reportedDelay}</h2>
 							<div class="trip-verdict">
@@ -380,6 +389,11 @@
 		align-items: center;
 		color: var(--accent-text);
 		text-underline-offset: 0.2em;
+	}
+	@media (--desktop-min) {
+		.trip-record-link--summary {
+			display: none;
+		}
 	}
 	a:focus-visible {
 		outline: 2px solid var(--ring);

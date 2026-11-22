@@ -40,7 +40,8 @@
 	} from '#lib/content/nav.ts';
 	import { navPillCopy } from '#lib/i18n/messages.ts';
 	import { ProductBrand } from '@yesid/ui/brand';
-	import { SiteHeader } from '@yesid/ui/layout';
+	import { AnnouncementBanner, SiteHeader } from '@yesid/ui/layout';
+	import { announcement } from '#lib/site/announcement.ts';
 	import RefreshButton from './RefreshButton.svelte';
 	import { providerHref, providerHasAlerts, type PublicProvider } from '#lib/v1/providers.ts';
 	import { v1Provider } from '#lib/v1/config.ts';
@@ -242,6 +243,9 @@
 	/>
 {/snippet}
 
+{#if announcement.enabled}
+	<AnnouncementBanner id={announcement.id} {...announcement[locale]} />
+{/if}
 <SiteHeader
 	{navigation}
 	home={localizeHref('/', locale, providerId)}

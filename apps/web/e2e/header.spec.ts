@@ -6,7 +6,7 @@ import {
 	SURFACE_NAV,
 	NAV_ITEMS,
 	NAV_GROUPS,
-	LEGAL_NAV,
+	FOOTER_INFO_NAV,
 	YESID_HOUSE_LINK,
 } from '../src/lib/content/nav';
 import { DEFAULT_LOCALE, PUBLISHED_LOCALES, type Locale } from '../src/lib/i18n/config';
@@ -95,7 +95,7 @@ for (const locale of PUBLISHED_LOCALES) {
 			`${YESID_HOUSE_LINK.label[locale]} ${copy.newTab}`,
 		);
 	});
-	for (const item of [...SURFACE_NAV, ...AUDIT_NAV, ...LEGAL_NAV]) {
+	for (const item of [...SURFACE_NAV, ...AUDIT_NAV, ...FOOTER_INFO_NAV]) {
 		test(`${locale}: the footer link to ${item.href} still answers`, async ({ page }) => {
 			await page.goto(start(locale));
 			await page
