@@ -61,6 +61,7 @@ from transit_engine.series import (
     HOUR_GROUPS,
     SeriesGroup,
     day_type_sql,
+    local_hour_sql,
     matches_date,
     series_sql,
 )
@@ -554,7 +555,10 @@ def _grouped_batches(
 ) -> dict[EntityKey, Batch]:
     groups: dict[EntityKey, Batch] = {}
     for key, edge, routes, *values in rows:
-        result = groups.setdefault(tuple(key) if grouped else (), Batch())
+        entity = tuple(key) if grouped else ()
+        result = groups.get(entity)
+        if result is None:
+            result = groups[entity] = Batch()
         bucket = dict(zip(counters, values, strict=True))
         result.counts.update(bucket)
         if edge is not None:
@@ -572,7 +576,14 @@ def _punctuality_rows(
     version: str,
     group: EntityKind | None,
 ) -> dict[EntityKey, Batch]:
-    sql, parameters, counters = _punctuality_query(family, paths, question, version, group)
+    hour_sql = (
+        local_hour_sql(conn, "scheduled_stop_utc", question.start, question.end)
+        if question.group in HOUR_GROUPS
+        else None
+    )
+    sql, parameters, counters = _punctuality_query(
+        family, paths, question, version, group, hour_sql=hour_sql
+    )
     rows = conn.execute(sql, parameters).fetchall()
     return _grouped_batches(rows, counters, "classified", bool(group or question.group))
 
@@ -585,15 +596,18 @@ def _punctuality_query(
     group: EntityKind | None,
     *,
     for_vehicles: bool = False,
+    hour_sql: str | None = None,
 ) -> tuple[str, list[object], dict[str, str]]:
-    hour = _LOCAL_HOUR.format("scheduled_stop_utc")
+    hour = hour_sql or _LOCAL_HOUR.format("scheduled_stop_utc")
     cut_sql, filters = _cuts(question, hour)
+    scope = [question.city, version, question.start, question.end]
+    trip_cut = "AND route_id = ?" if question.line is not None else ""
     parameters: list[object] = [
-        *(paths[table] for table in family.tables),
-        question.city,
-        version,
-        question.start,
-        question.end,
+        paths[TRIP_DAYS],
+        *scope,
+        *([question.line] if trip_cut else []),
+        paths[STOP_EVENTS],
+        *scope,
         *filters,
     ]
     counters = {name: sql for name, (sql, _) in _COUNTS.items()}
@@ -604,41 +618,203 @@ def _punctuality_query(
         cut_sql += " AND NOT added"
         counters["stop_occurrences"] = "count(*)"
     aggregates = ", ".join(counters.values())
-    routes = (
-        "list(DISTINCT route_id) FILTER (NOT added AND route_id IS NOT NULL)" if group else "NULL"
-    )
+    group_columns = {
+        "line": "route_id",
+        "stop": "stop_id",
+        "departure": "route_id, direction_id, departure_seconds",
+    }.get(group or "")
+    routes = "NULL"
+    if group_columns and group in {"line", "departure"}:
+        routes = (
+            "CASE WHEN count(*) FILTER (NOT added AND route_id IS NOT NULL) > 0 THEN [route_id] END"
+        )
+    elif group:
+        routes = "list(DISTINCT route_id) FILTER (NOT added AND route_id IS NOT NULL)"
     edge = f"floor(delay_seconds::DOUBLE / {DELAY_BIN_SECONDS})::BIGINT * {DELAY_BIN_SECONDS}"
-    if (group or question.group) and all(
-        measure.percentile is None for measure in _SELECTIONS[question.measure][1]
-    ):
+    with_histogram = (for_vehicles and question.group is None) or any(
+        measure.percentile is not None for measure in _SELECTIONS[question.measure][1]
+    )
+    if not with_histogram:
         edge = "NULL::BIGINT"
+    entity = (
+        "row(route_id, direction_id, departure_seconds)"
+        if group == "departure"
+        else _entity_sql(group, question.group, hour)
+    )
+    group_by = f"GROUP BY {group_columns or 'entity'}, lower_edge"
+    if group is None and question.group is None:
+        group_by = "GROUP BY lower_edge"
+    # Trip flags and the GTFS service-time conversion are invariant across a trip's stops.
+    departure = (
+        f", ({_DEPARTURE_SECONDS})::BIGINT AS departure_seconds" if group == "departure" else ""
+    )
+    by_trip = (
+        not with_histogram
+        and group in {"line", "departure"}
+        and question.hour is None
+        and question.stop is None
+    )
+    stop_scan = """
+        FROM read_parquet(?, hive_partitioning = false) s
+        WHERE s.provider = ? AND s.cleaning_version = ? AND s.service_date BETWEEN ? AND ?
+    """
+    stop_band_ranking = group == "stop" and not with_histogram
+    by_delay_bin = stop_band_ranking or (
+        group is None and not for_vehicles and question.group != "stop"
+    )
+    stop_status = """
+        CASE
+            WHEN added THEN 1
+            WHEN cancelled THEN 2
+            WHEN without_live_data THEN 3
+            WHEN scheduled AND capture_gap THEN 4
+            WHEN scheduled THEN 5
+            ELSE 6
+        END AS unclassified_bucket
+    """
     vehicle_filter = (
         "AND s.vehicle_id IN (SELECT vehicle_id FROM selected_vehicles)" if for_vehicles else ""
     )
+    ctes = f"""
+        WITH trips AS MATERIALIZED (
+            SELECT service_date, trip_id, route_id, direction_id, scheduled_start_utc,
+                scheduled_start_utc IS NULL AS added,
+                NOT added AND state = 'cancelled' AS cancelled,
+                NOT added AND NOT cancelled AND NOT route_has_live_data AS without_live_data,
+                NOT (added OR cancelled OR without_live_data) AS scheduled,
+                route_has_live_data,
+                state_reason IS NOT DISTINCT FROM 'capture_gap' AS capture_gap
+                {departure}
+                {f", {stop_status}" if by_delay_bin else ""}
+            FROM read_parquet(?, hive_partitioning = false)
+            WHERE provider = ? AND cleaning_version = ? AND service_date BETWEEN ? AND ?
+                {trip_cut}
+        )"""
+    if by_trip:
+        # Line and departure keys come from the trip. Roll up its stop counts before
+        # joining so the range-wide aggregates process one row per trip.
+        bands = {m.id: counters[m.id] for m in family.measures if m.band}
+        stop_bands = ", ".join(
+            f"{sql} AS {name}" for name, sql in bands.items() if name != "on_time"
+        )
+        classified = "scheduled AND NOT capture_gap"
+        sums = (
+            ("n", "scheduled"),
+            ("classified", classified),
+            ("n", "added"),
+            ("n", "cancelled"),
+            ("n", "without_live_data"),
+            ("n", "scheduled AND capture_gap"),
+            ("n - classified", classified),
+            *(
+                ("classified - early - late" if name == "on_time" else name, classified)
+                for name in bands
+            ),
+            ("n", "NOT added AND route_has_live_data"),
+        )
+        aggregates = ", ".join(
+            f"coalesce(sum({column}) FILTER ({condition}), 0)" for column, condition in sums
+        )
+        return (
+            f"""
+            {ctes}, stops AS (
+                SELECT service_date, trip_id, count(*) AS n, count(delay_seconds) AS classified,
+                    {stop_bands}
+                {stop_scan}
+                GROUP BY service_date, trip_id
+            )
+            SELECT {entity}, {edge} AS lower_edge, {routes}, {aggregates}
+            FROM stops s JOIN trips t USING (service_date)
+            WHERE s.trip_id IS NOT DISTINCT FROM t.trip_id AND {cut_sql}
+            {group_by}
+            """,
+            parameters,
+            counters,
+        )
+    delay = (
+        "s.delay_seconds"
+        if by_delay_bin
+        else "CASE WHEN scheduled AND NOT capture_gap THEN s.delay_seconds END"
+    )
+    ctes += f""", stops AS (SELECT * {stop_scan} {vehicle_filter}), events AS (
+        SELECT service_date, t.route_id, t.direction_id, s.stop_id, s.stop_sequence,
+            t.scheduled_start_utc,
+            coalesce(s.scheduled_departure_utc, s.scheduled_arrival_utc) AS scheduled_stop_utc,
+            added, cancelled, without_live_data, scheduled, route_has_live_data, capture_gap,
+            {delay} AS delay_seconds
+            {", departure_seconds" if departure else ""}
+            {", unclassified_bucket" if by_delay_bin else ""}
+        FROM stops s JOIN trips t USING (service_date)
+        WHERE s.trip_id IS NOT DISTINCT FROM t.trip_id
+    )"""
+    if by_delay_bin:
+        # Delay bins are multiples of 15. Reserve 1–6 for unclassified stops, and
+        # separate exactly +300 from its late neighbors until the final rollup.
+        delay_bucket = (
+            f"WHEN delay_seconds = {LATE_LIMIT_SECONDS} THEN {LATE_LIMIT_SECONDS + 1} ELSE {edge}"
+            if with_histogram
+            else (
+                f"WHEN delay_seconds < {EARLY_LIMIT_SECONDS} THEN {EARLY_LIMIT_SECONDS - 1} "
+                f"WHEN delay_seconds > {LATE_LIMIT_SECONDS} THEN {LATE_LIMIT_SECONDS + 2} "
+                "ELSE 0"
+            )
+        )
+        normalized_edge = (
+            f"CASE WHEN bucket = {LATE_LIMIT_SECONDS + 1} THEN {LATE_LIMIT_SECONDS} "
+            "WHEN bucket NOT BETWEEN 1 AND 6 THEN bucket END"
+            if with_histogram
+            else edge
+        )
+        select_entity = f"{entity} AS entity, " if question.group else ""
+        bin_group = final_group = "entity, " if question.group else ""
+        result_entity = "entity" if question.group else entity
+        bin_live = final_live = ""
+        bin_routes = "NULL"
+        if stop_band_ranking:
+            # Resolve distinct route membership on the partial counts instead of on every stop.
+            select_entity = bin_group = "stop_id, route_id, "
+            final_group = "stop_id, "
+            result_entity = "row(stop_id)"
+            bin_routes = "list(DISTINCT route_id) FILTER (bucket <> 1 AND route_id IS NOT NULL)"
+            bin_live = ", count(*) FILTER (NOT added AND route_has_live_data) AS live"
+            final_live = ", sum(live)"
+        return (
+            f"""
+            {ctes}, bins AS (
+                SELECT {select_entity}
+                    CASE WHEN delay_seconds IS NULL OR unclassified_bucket <> 5
+                        THEN unclassified_bucket {delay_bucket} END AS bucket,
+                    count(*) AS n {bin_live}
+                FROM events WHERE {cut_sql}
+                GROUP BY {bin_group}bucket
+            )
+            SELECT {result_entity} AS entity, {normalized_edge} AS lower_edge, {bin_routes},
+                coalesce(sum(n) FILTER (bucket IN (4, 5) OR bucket NOT BETWEEN 1 AND 6), 0),
+                coalesce(sum(n) FILTER (bucket NOT BETWEEN 1 AND 6), 0),
+                coalesce(sum(n) FILTER (bucket = 1), 0),
+                coalesce(sum(n) FILTER (bucket = 2), 0),
+                coalesce(sum(n) FILTER (bucket = 3), 0),
+                coalesce(sum(n) FILTER (bucket = 4), 0),
+                coalesce(sum(n) FILTER (bucket = 5), 0),
+                coalesce(sum(n) FILTER (bucket < {EARLY_LIMIT_SECONDS}), 0),
+                coalesce(sum(n) FILTER (bucket NOT BETWEEN 1 AND 6
+                    AND bucket BETWEEN {EARLY_LIMIT_SECONDS} AND {LATE_LIMIT_SECONDS - 1}
+                    OR bucket = {LATE_LIMIT_SECONDS + 1}), 0),
+                coalesce(sum(n) FILTER (bucket >= {LATE_LIMIT_SECONDS}
+                    AND bucket <> {LATE_LIMIT_SECONDS + 1}), 0)
+                {final_live}
+            FROM bins GROUP BY {final_group}lower_edge
+            """,
+            parameters,
+            counters,
+        )
     return (
         f"""
-        WITH events AS (
-            SELECT s.service_date, t.route_id, t.direction_id, s.stop_id, s.stop_sequence,
-                t.scheduled_start_utc,
-                coalesce(s.scheduled_departure_utc, s.scheduled_arrival_utc) AS scheduled_stop_utc,
-                t.scheduled_start_utc IS NULL AS added,
-                NOT added AND t.state = 'cancelled' AS cancelled,
-                NOT added AND NOT cancelled AND NOT t.route_has_live_data AS without_live_data,
-                NOT (added OR cancelled OR without_live_data) AS scheduled,
-                t.route_has_live_data,
-                t.state_reason IS NOT DISTINCT FROM 'capture_gap' AS capture_gap,
-                CASE WHEN scheduled AND NOT capture_gap THEN s.delay_seconds END AS delay_seconds
-            FROM read_parquet(?, hive_partitioning = false) s
-            JOIN read_parquet(?, hive_partitioning = false) t
-              ON (s.provider, s.service_date, s.cleaning_version, s.trip_id) =
-                 (t.provider, t.service_date, t.cleaning_version, t.trip_id)
-            WHERE s.provider = ? AND s.cleaning_version = ? AND s.service_date BETWEEN ? AND ?
-                {vehicle_filter}
-        )
-        SELECT {_entity_sql(group, question.group, hour)} AS entity,
+        {ctes}
+        SELECT {entity} AS entity,
             {edge} AS lower_edge, {routes}, {aggregates}
         FROM events WHERE {cut_sql}
-        GROUP BY entity, lower_edge
+        {group_by}
         """,
         parameters,
         counters,
@@ -2902,8 +3078,8 @@ class ReadWindow:
             )._asdict()
         return _PARTIAL._asdict() if self.measured and self.missing else None
 
-    def batches(self) -> Iterator[dict[str, list[str]]]:
-        size = self.batch_days or DAYS_PER_QUERY_BATCH
+    def batches(self, *, days: int | None = None) -> Iterator[dict[str, list[str]]]:
+        size = self.batch_days or days or DAYS_PER_QUERY_BATCH
         days_read = len(next(iter(self.paths.values())))
         for offset in range(0, days_read, size):
             yield {table: files[offset : offset + size] for table, files in self.paths.items()}

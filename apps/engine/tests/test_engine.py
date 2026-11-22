@@ -31,6 +31,7 @@ from transit_engine.measures import (
     Question,
     ask,
 )
+from transit_engine.ranking import Ranking, rank
 from transit_engine.server import Engine
 from transit_engine.store import Store
 
@@ -965,7 +966,8 @@ def test_timing_over_two_clean_days(
     app = Engine(store, concurrency=1, queue_size=1, queue_wait_ms=50)
     out = tmp_path / "timing.json"
 
-    def request(url: str) -> tuple[int, bool, dict[str, Any]]:
+    def request(url: str, *, timeout: float) -> tuple[int, bool, dict[str, Any]]:
+        assert timeout >= 30
         parts = urlsplit(url)
         assert parts.path == "/measure"
         assert parse_qs(parts.query)["measure"] == ["punctuality"]
@@ -995,6 +997,51 @@ def test_timing_over_two_clean_days(
     runs = report["timings"][1]["runs"]
     assert len(runs) == 3
     assert all(run["counts"]["classified"] == 68 and not run["days_not_measured"] for run in runs)
+
+
+def _long_range_answers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    start = date(2026, 10, 18)
+    end = start + timedelta(days=34)
+    trips_by_day: dict[date, tuple[Trip, ...]] = {
+        start + timedelta(days=offset): TRIPS if offset % 7 < 5 else TRIPS[1:]
+        for offset in range(35)
+        if offset != 33
+    }
+    store = _build_store(tmp_path, cleaning_version=7, trips_by_day=trips_by_day)
+    wide_store = Store(store.root, cleaning_version=7, memory_mib=2048, threads=4)
+    # Wall time is telemetry. Fix the clock so the entire public response can be compared.
+    monkeypatch.setattr("transit_engine.measures.perf_counter", lambda: 1.0)
+    monkeypatch.setattr("transit_engine.ranking.perf_counter", lambda: 1.0)
+    return {
+        "network": ask(store, Question("punctuality", "stm", start, end)),
+        "line": ask(store, Question("punctuality", "stm", start, end, line="A")),
+        "grid": ask(store, Question("punctuality", "stm", start, end, group="weekday_hour")),
+        "delivery": ask(store, Question("service_delivered", "stm", start, end)),
+        "line_rank": rank(store, Ranking(Question("on_time", "stm", start, end), "line")),
+        "stop_rank": rank(store, Ranking(Question("on_time", "stm", start, end), "stop")),
+        "departure_rank": rank(
+            wide_store, Ranking(Question("on_time", "stm", start, end), "departure")
+        ),
+    }
+
+
+def test_long_range_matches_baseline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Canonical JSON digests of the complete responses from main at 8398ec29.
+    # The fixture spans two query batches, a DST transition, and one missing day.
+    expected = {
+        "network": "a99fb09d619a641b51906e307749075faaf11d975bed8f085763e368d62e0624",
+        "line": "180ccbaf48333c74bdfda9be5510934fa55c32ecd0fd9312d66fa305d6de7d32",
+        "grid": "6fb38e82a7515e5729e33421ab95a9918e0b8a0b90fd3918c3ffa2d298f32cb5",
+        "delivery": "3a033c2da4a3ffd269534552addd84ce5e83c06d9babacc384b65bc264f87e44",
+        "line_rank": "f22385aad4199d89e9bd760ed16d3a8e9ebc559cadec531ce43c87134b9bcc84",
+        "stop_rank": "288385a62248b350af22759250ac850968071cac59924163950ec907efa020b4",
+        "departure_rank": "7167025347d089d828cf204966ffca8c21b29479545b779d12a12ac308cc0cc4",
+    }
+    answers = _long_range_answers(tmp_path, monkeypatch)
+    assert {
+        name: sha256(json.dumps(answer, sort_keys=True).encode()).hexdigest()
+        for name, answer in answers.items()
+    } == expected
 
 
 def test_bounded_wait_queue(store: Store, monkeypatch: pytest.MonkeyPatch) -> None:
