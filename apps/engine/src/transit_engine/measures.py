@@ -2869,6 +2869,7 @@ class ReadWindow:
     measured: list[str] = field(default_factory=list)
     missing: list[str] = field(default_factory=list)
     pending: list[str] = field(default_factory=list)
+    unmeasured_reasons: dict[str, str] = field(default_factory=dict)
     included: list[str] = field(default_factory=list)
     missing_in_cut: bool = False
     not_tracked: list[str] = field(default_factory=list)
@@ -2915,6 +2916,7 @@ class ReadWindow:
             "cuts": question.cuts(),
             "days_measured": [day for day in self.measured if day not in untracked],
             "days_not_measured": self.missing,
+            "days_not_measured_reasons": self.unmeasured_reasons,
             "days_pending": self.pending,
             "days_included": self.measured
             if family.id == _ALERT_COUNTS_ID
@@ -2969,6 +2971,7 @@ def read_window(
         return window
     for ordinal in range(question.start.toordinal(), question.end.toordinal() + 1):
         day = date.fromordinal(ordinal)
+        day_key = day.isoformat()
         in_cut = question.day_type is None or question.day_type == _DAY_TYPES[day.weekday()]
         configured = store.cleaning_version
         candidates = (
@@ -2990,14 +2993,17 @@ def read_window(
             )
             # A preferred scorecard version can still arrive after a fallback answer.
             settled = settled and checked.settled
+            if checked.unmeasured_reason is not None:
+                window.unmeasured_reasons[day_key] = checked.unmeasured_reason
+                break
             files = checked.files
             if files is not None:
-                window.versions[day.isoformat()] = version
+                window.versions[day_key] = version
                 break
         if not settled:
-            window.pending.append(day.isoformat())
+            window.pending.append(day_key)
         if files is None:
-            window.missing.append(day.isoformat())
+            window.missing.append(day_key)
             window.missing_in_cut |= in_cut
         else:
             dated = (
@@ -3005,9 +3011,9 @@ def read_window(
                 if family.id == _ALERT_COUNTS_ID and not files[0]
                 else (window.measured)
             )
-            dated.append(day.isoformat())
+            dated.append(day_key)
             if in_cut:
-                window.included.append(day.isoformat())
+                window.included.append(day_key)
             # A weekday schedule can establish that a line exists for a weekend zero.
             if in_cut or family.id == _SERVICE_OFFERED_ID:
                 for table, path in zip(tables, files, strict=True):
@@ -3338,6 +3344,7 @@ def _scorecard_answer(
     results: dict[str, Result] = {}
     measure_days: dict[str, dict[str, Any]] = {}
     days_pending: set[str] = set()
+    unmeasured_reasons: dict[str, str] = {}
     for group in source_groups:
         items = tuple(measure for measure in selected if measure.id in group)
         if not items:
@@ -3352,6 +3359,7 @@ def _scorecard_answer(
             conn, store, question, family, items, extra_tables=extra_tables, receipts=receipts
         )
         days_pending.update(window.pending)
+        unmeasured_reasons.update(window.unmeasured_reasons)
         included = [(day, json.loads(receipts[day])) for day in window.included]
         versions = sorted({str(window.versions[day]) for day in window.included})
         declarations = {
@@ -3537,6 +3545,11 @@ def _scorecard_answer(
             "cuts": question.cuts(),
             **dates,
             "days_pending": sorted(days_pending),
+            "days_not_measured_reasons": {
+                day: unmeasured_reasons[day]
+                for day in dates["days_not_measured"]
+                if day in unmeasured_reasons
+            },
             "method_version": family.method_version,
             "query_ms": (perf_counter() - started) * 1000,
             "measure_states": states_by_measure,

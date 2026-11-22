@@ -1,3 +1,4 @@
+import json
 import os
 import re
 from dataclasses import dataclass
@@ -33,6 +34,7 @@ def env_int(name: str, default: int, *, minimum: int = 1) -> int:
 class CheckedDay:
     files: tuple[str, ...] | None
     settled: bool
+    unmeasured_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -189,7 +191,7 @@ class Store:
         if identities is None:
             return CheckedDay(None, False)
         if not identities:
-            return CheckedDay(None, True)
+            return CheckedDay(None, True, json.loads(payload)["status"])
         checked_paths = {}
         supported = True
         for name in tables:

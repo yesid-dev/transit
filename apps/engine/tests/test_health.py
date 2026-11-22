@@ -87,13 +87,14 @@ def clean_day(
     return directory
 
 
-def no_raw_captures(root: Path, day: date, *, version: int = 8) -> Path:
+def unmeasured_receipt(root: Path, day: date, reason: str) -> Path:
+    version = 8
     directory = root / "stm" / day.isoformat() / f"v{version}"
     directory.mkdir(parents=True)
     (directory / "manifest.json").write_text(
         json.dumps(
             {
-                "status": "no_raw_captures",
+                "status": reason,
                 "provider": "stm",
                 "service_date": day.isoformat(),
                 "cleaning_version": str(version),
@@ -154,11 +155,12 @@ def test_v8_requires_prediction_samples_and_reports_their_rows(tmp_path: Path) -
     assert entry["reason"] == "invalid_manifest"
 
 
-def test_no_raw_captures_is_not_measured_not_missing(tmp_path: Path) -> None:
-    no_raw_captures(tmp_path, DAY)
+@pytest.mark.parametrize("reason", ["no_raw_captures", "no_schedule_edition"])
+def test_unmeasured_receipt_is_settled(tmp_path: Path, reason: str) -> None:
+    unmeasured_receipt(tmp_path, DAY, reason)
     [entry] = data_health(Store(tmp_path.as_posix()), "stm", DAY, DAY)["days"]
     assert entry["status"] == "not_measured"
-    assert entry["reason"] == "no_raw_captures"
+    assert entry["reason"] == reason
     assert entry["cleaning_version"] == "8"
     assert entry["built_at_utc"] == f"{DAY}T06:30:00+00:00"
     assert set(entry["tables"]) == set(TABLE_NAMES)
@@ -168,8 +170,9 @@ def test_no_raw_captures_is_not_measured_not_missing(tmp_path: Path) -> None:
     assert missing[1]["reason"] == "no_manifest"
 
 
-def test_a_no_raw_captures_receipt_with_files_is_invalid(tmp_path: Path) -> None:
-    directory = no_raw_captures(tmp_path, DAY)
+@pytest.mark.parametrize("reason", ["no_raw_captures", "no_schedule_edition"])
+def test_unmeasured_receipt_with_files_is_invalid(tmp_path: Path, reason: str) -> None:
+    directory = unmeasured_receipt(tmp_path, DAY, reason)
     manifest = json.loads((directory / "manifest.json").read_bytes())
     manifest["files"] = {}
     (directory / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")

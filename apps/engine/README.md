@@ -30,9 +30,12 @@ inclusive range, up to 400 days, without reading Parquet contents. A day is `pre
 when `manifest.json` validates for the engine's cleaning version and every file it lists
 exists with the recorded byte size, and `missing` otherwise, with `reason` set to
 `no_manifest` or `invalid_manifest`. A valid manifest with a listed file missing or a
-wrong size makes the day `incomplete`. A day the raw archive never captured carries a
-`no_raw_captures` receipt with no data files: it is `not_measured` with the same reason,
-both here and for `/measure`, rather than `missing`. Each table is `present`
+wrong size makes the day `incomplete`. A receipt with `no_raw_captures` or
+`no_schedule_edition` settles a day with no Parquet files. Data health reports
+`not_measured` and the receipt reason. The `/measure` evidence maps those dates to
+their reasons in `days_not_measured_reasons` and leaves settled dates out of
+`days_pending`. Both endpoints exclude settled receipts from the
+`X-Transit-Days-Pending` header. Each table is `present`
 with its manifest row count, `missing`, or `not_tracked` for alerts when the manifest says
 so. A table the manifest lists but the day lacks is `missing` with `file_missing` or
 `size_mismatch`. Cleaning v7 adds `prediction_samples` to the reported tables and

@@ -750,28 +750,32 @@ def test_incomplete_clean_day_is_not_measured(store: Store, damage: str) -> None
     assert cell["evidence"]["counts"]["classified"] is None
 
 
-def test_no_raw_captures_receipt_is_not_measured(store: Store) -> None:
-    directory = Path(store.root) / "stm" / str(THURSDAY) / "v3"
-    for path in directory.glob("*.parquet"):
-        path.unlink()
+@pytest.mark.parametrize("reason", ["no_raw_captures", "no_schedule_edition"])
+def test_unmeasured_receipt_settles_day(tmp_path: Path, reason: str) -> None:
+    store = Store(tmp_path.as_posix(), cleaning_version=8)
+    directory = tmp_path / "stm" / str(THURSDAY) / "v8"
+    directory.mkdir(parents=True)
     (directory / "manifest.json").write_text(
         json.dumps(
             {
-                "status": "no_raw_captures",
+                "status": reason,
                 "provider": "stm",
                 "service_date": str(THURSDAY),
-                "cleaning_version": "3",
+                "cleaning_version": "8",
                 "built_at_utc": f"{THURSDAY}T00:00:00+00:00",
                 "builder_git_commit": None,
             }
         ),
         encoding="utf-8",
     )
-    result = query(store)
-    assert result["state"] == "not_measured"
-    assert result["evidence"]["days_not_measured"] == [str(THURSDAY)]
-    assert result["evidence"]["days_measured"] == []
-    assert result["evidence"]["counts"]["classified"] is None
+    for measure in ("punctuality", "accessibility", "open_data_scorecard"):
+        result = query(store, measure=measure, end=FRIDAY)
+        assert result["state"] == "not_measured"
+        assert result["evidence"]["days_not_measured"] == [str(THURSDAY), str(FRIDAY)]
+        assert result["evidence"]["days_not_measured_reasons"] == {str(THURSDAY): reason}
+        assert result["evidence"]["days_pending"] == [str(FRIDAY)]
+        assert result["evidence"]["days_measured"] == []
+    assert query(store)["evidence"]["counts"]["classified"] is None
 
 
 def test_blob_discovery_checks_both_files(store: Store) -> None:
@@ -860,11 +864,14 @@ def test_http_and_bilingual_csv_come_from_same_registry(
     asyncio.run(run())
 
 
-def test_pending_days_distinguish_incomplete_days_from_permanent_receipts(tmp_path: Path) -> None:
-    store = _build_store(tmp_path, 7)
+@pytest.mark.parametrize("reason", ["no_raw_captures", "no_schedule_edition"])
+def test_pending_days_distinguish_incomplete_days_from_permanent_receipts(
+    tmp_path: Path, reason: str
+) -> None:
+    store = _build_store(tmp_path, 8)
     app = Engine(store, concurrency=1, queue_size=1, queue_wait_ms=50)
     window = urlencode({"city": "stm", "from": THURSDAY, "to": SATURDAY})
-    predictions = tmp_path / "stm" / str(SATURDAY) / "v7" / PREDICTION_SAMPLES
+    predictions = tmp_path / "stm" / str(SATURDAY) / "v8" / PREDICTION_SAMPLES
     original = predictions.read_bytes()
     predictions.write_bytes(b"")
 
@@ -876,16 +883,16 @@ def test_pending_days_distinguish_incomplete_days_from_permanent_receipts(tmp_pa
         assert evidence["days_pending"] == [str(FRIDAY), str(SATURDAY)]
         assert evidence["days_measured"] == [str(THURSDAY), str(SATURDAY)]
 
-        receipt = tmp_path / "stm" / str(FRIDAY) / "v7" / "manifest.json"
+        receipt = tmp_path / "stm" / str(FRIDAY) / "v8" / "manifest.json"
         receipt.parent.mkdir(parents=True)
         receipt.write_text(
             json.dumps(
                 {
                     "provider": "stm",
                     "service_date": str(FRIDAY),
-                    "cleaning_version": "7",
+                    "cleaning_version": "8",
                     "built_at_utc": "2026-11-22T00:00:00Z",
-                    "status": "no_raw_captures",
+                    "status": reason,
                 }
             ),
             encoding="utf-8",
@@ -897,6 +904,7 @@ def test_pending_days_distinguish_incomplete_days_from_permanent_receipts(tmp_pa
         evidence = json.loads(body)["evidence"]
         assert evidence["days_pending"] == [str(SATURDAY)]
         assert evidence["days_not_measured"] == [str(FRIDAY)]
+        assert evidence["days_not_measured_reasons"] == {str(FRIDAY): reason}
 
         status, headers, _ = await http(app, "/ranking", window + "&kind=line&format=csv")
         assert status == 200
@@ -906,7 +914,9 @@ def test_pending_days_distinguish_incomplete_days_from_permanent_receipts(tmp_pa
         status, headers, body = await http(app, "/data-health", window)
         assert status == 200
         assert headers[b"x-transit-days-pending"] == b"0"
-        assert [day["status"] for day in json.loads(body)["days"]] == [
+        days = json.loads(body)["days"]
+        assert days[1]["reason"] == reason
+        assert [day["status"] for day in days] == [
             "present",
             "not_measured",
             "present",

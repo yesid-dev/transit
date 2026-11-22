@@ -1,7 +1,7 @@
 import json
 from collections import Counter
 from dataclasses import replace
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from hashlib import sha256
 from io import BytesIO
 from pathlib import Path
@@ -1162,10 +1162,23 @@ def test_range_builds_skips_and_continues(
             assert attempt.exit_code == 1 and "ServiceUnavailable" in attempt.output
             assert not (dest / marker).exists()
         fake.fail_upload = None
-    first = runner.invoke(app, [*args, DAY.isoformat()])
+    earlier = DAY - timedelta(days=1)
+    _archive_capture(raw, datetime.combine(earlier, time(16), UTC))
+    earlier_marker = f"{version_key('stm', earlier)}/manifest.json"
+    first = runner.invoke(app, [*args[:-2], earlier.isoformat(), "--to", DAY.isoformat()])
     assert first.exit_code == 0, (first.output, first.exception)
-    assert "Built 1, skipped 0, no raw captures 0, failed 0" in first.output
+    assert "Built 1, skipped 0, no raw captures 0, no schedule edition 1, failed 0" in first.output
+    earlier_receipt = json.loads((dest / earlier_marker).read_bytes())
+    assert earlier_receipt["status"] == "no_schedule_edition"
+    assert earlier_receipt["provider"] == "stm"
+    assert earlier_receipt["service_date"] == str(earlier)
+    assert earlier_receipt["cleaning_version"] == CLEANING_VERSION
+    assert "files" not in earlier_receipt
+    assert list((dest / earlier_marker).parent.iterdir()) == [dest / earlier_marker]
     if remote:
+        earlier_key = f"out/{earlier_marker}"
+        assert fake.writes.count(earlier_key) == 1
+        fake.writes.remove(earlier_key)
         assert fake.writes == [
             f"out/{version_key('stm', DAY)}/{name}"
             for name in (
@@ -1197,9 +1210,9 @@ def test_range_builds_skips_and_continues(
     assert polls[2]["payload_bytes"] == polls[0]["payload_bytes"]
     assert polls[2]["feed_timestamp_utc"] == polls[0]["feed_timestamp_utc"]
     manifest = (dest / marker).read_bytes()
-    result = runner.invoke(app, [*args, third.isoformat()])
+    result = runner.invoke(app, [*args[:-2], earlier.isoformat(), "--to", third.isoformat()])
     assert result.exit_code == 0, (result.output, result.exception)
-    assert "Built 1, skipped 1, no raw captures 1, failed 0" in result.output
+    assert "Built 1, skipped 2, no raw captures 1, no schedule edition 0, failed 0" in result.output
     assert (dest / marker).read_bytes() == manifest
     unmeasured = dest / version_key("stm", NEXT)
     receipt = json.loads((unmeasured / "manifest.json").read_bytes())
@@ -1222,8 +1235,11 @@ def test_range_builds_skips_and_continues(
     assert latest["schedule_sha256"] == entry["sha256"]
     assert latest["row_counts_by_state"]["unconfirmed"] == 1
     with duckdb.connect() as db:
-        loose_polls = _rows(db, dest / version_key("stm", third) / "feed_polls.parquet")
-    assert [row["result"] for row in loose_polls] == ["ok"]
+        third_polls = _rows(db, dest / version_key("stm", third) / "feed_polls.parquet")
+    assert [row["result"] for row in third_polls if row["feed"] == "trip_updates"] == ["ok"]
+    assert [row["result"] for row in third_polls if row["feed"] == "i3_alerts"] == [
+        "ok", "error", "duplicate"
+    ]
 
 
 def _wheelchair_edition(path: Path, *, include_wheelchair: bool = True) -> dict[str, str]:
