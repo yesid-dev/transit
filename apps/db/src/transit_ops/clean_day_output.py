@@ -1,4 +1,4 @@
-"""Verify both typed Parquet tables before publishing a create-only local version."""
+"""Verify the typed Parquet tables before publishing a create-only day version."""
 
 import csv
 import json
@@ -40,20 +40,69 @@ TRIP_DAYS = TableSchema.from_columns(
     ),
     _TRIP_KEY,
 )
+_SCHEDULED_FIELDS = (
+    *_IDENTITY,
+    ("stop_id", "text", True),
+    ("stop_sequence", "bigint", True),
+    ("scheduled_arrival_utc", _TIME, False),
+    ("scheduled_departure_utc", _TIME, False),
+)
+_STOP_KEY = (*_TRIP_KEY, "stop_sequence")
 STOP_EVENTS = TableSchema.from_columns(
     (
-        *_IDENTITY,
-        ("stop_id", "text", True),
-        ("stop_sequence", "bigint", True),
-        ("scheduled_arrival_utc", _TIME, False),
-        ("scheduled_departure_utc", _TIME, False),
+        *_SCHEDULED_FIELDS,
         ("observed_at_utc", _TIME, False),
         ("delay_seconds", "bigint", False),
         ("basis", "text", True),
         ("observed_event", "text", False),
         ("vehicle_id", "text", False),
     ),
-    (*_TRIP_KEY, "stop_sequence"),
+    _STOP_KEY,
+)
+SCHEDULED_STOP_TIMES = TableSchema.from_columns(
+    (
+        *_SCHEDULED_FIELDS,
+        ("scheduled_arrival_seconds", "bigint", False),
+        ("scheduled_departure_seconds", "bigint", False),
+        ("schedule_sha256", "text", True),
+    ),
+    _STOP_KEY,
+)
+VEHICLE_POSITIONS = TableSchema.from_columns(
+    (
+        ("provider", "text", True),
+        ("cleaning_version", "text", True),
+        ("vehicle_id", "text", True),
+        ("captured_at_utc", _TIME, True),
+        ("feed_timestamp_utc", _TIME, False),
+        ("observed_at_utc", _TIME, True),
+        ("service_date", "date", False),
+        ("trip_id", "text", False),
+        ("route_id", "text", False),
+        ("stop_id", "text", False),
+        ("stop_sequence", "bigint", False),
+        ("current_status", "integer", False),
+        ("occupancy_status", "integer", False),
+        ("occupancy_percentage", "bigint", False),
+        ("latitude", "double precision", False),
+        ("longitude", "double precision", False),
+    ),
+    ("provider", "vehicle_id", "captured_at_utc"),
+)
+FEED_POLLS = TableSchema.from_columns(
+    (
+        ("provider", "text", True),
+        ("service_date", "date", True),
+        ("cleaning_version", "text", True),
+        ("feed", "text", True),
+        ("captured_at_utc", _TIME, True),
+        ("attempt_id", "text", True),
+        ("result", "text", True),
+        ("feed_timestamp_utc", _TIME, False),
+        ("payload_bytes", "bigint", False),
+        ("entity_count", "bigint", False),
+    ),
+    ("provider", "service_date", "feed", "captured_at_utc", "attempt_id"),
 )
 
 
@@ -127,20 +176,24 @@ def _stage(day: CleanDay, temporary: Path) -> tuple[Path, dict[str, tuple[str, i
             )
         ),
     }
-    tables: tuple[tuple[str, TableSchema, Iterable[Row], str], ...] = (
+    tables: tuple[tuple[str, TableSchema, Iterable[Row], str | None], ...] = (
         ("trip_days", TRIP_DAYS, day.trip_rows(), "state"),
         ("stop_events", STOP_EVENTS, day.stop_rows(), "basis"),
+        ("scheduled_stop_times", SCHEDULED_STOP_TIMES, day.scheduled_stop_rows(), None),
+        ("vehicle_positions", VEHICLE_POSITIONS, day.vehicle_rows(), None),
+        ("feed_polls", FEED_POLLS, day.poll_rows(), None),
     )
     for name, schema, rows, category in tables:
         columns = [column.name for column in schema.columns]
-        index = columns.index(category)
+        index = columns.index(category) if category is not None else None
         source = temporary / f"{name}.csv"
         target = staged / f"{name}.parquet"
         with source.open("w", encoding="utf-8", newline="") as stream:
             writer = csv.writer(stream, lineterminator="\n")
             writer.writerow(columns)
             for row in rows:
-                counts[category][str(row[index])] += 1
+                if index is not None and category is not None:
+                    counts[category][str(row[index])] += 1
                 writer.writerow(row)
         # The generated CSV has typed rows. Check strict conversion and Parquet readback.
         window = write_window(

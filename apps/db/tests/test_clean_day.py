@@ -20,6 +20,7 @@ from transit_ops import clean_day_inputs
 from transit_ops.clean_day import CLEANING_VERSION
 from transit_ops.clean_day_inputs import archived_captures
 from transit_ops.clean_day_output import version_key
+from transit_ops.clean_day_realtime import DayCapture, FeedPoll
 from transit_ops.cli import app
 from transit_ops.history.manifest import build_manifest, encode_manifest
 from transit_ops.history.pack import write_pack
@@ -161,6 +162,9 @@ def _capture_fixture(root: Path) -> None:
         (520, 3, 45.50, VehiclePosition.IN_TRANSIT_TO),
         (633, 3, 45.50, VehiclePosition.STOPPED_AT),
         (670, 3, 45.50, VehiclePosition.STOPPED_AT),
+        (680, 3, 45.50003, VehiclePosition.STOPPED_AT),  # GPS jitter
+        (690, 3, 45.5002, VehiclePosition.STOPPED_AT),  # Movement alone exceeds 15 m
+        (700, 3, 45.5002, VehiclePosition.STOPPED_AT),  # Occupancy alone changes
     ):
         stamp = MIDNIGHT + timedelta(seconds=seconds)
         feed = _feed(stamp)
@@ -171,6 +175,9 @@ def _capture_fixture(root: Path) -> None:
         vehicle.current_status = status
         vehicle.position.latitude = lat
         vehicle.position.longitude = -73.6
+        if seconds == 700:
+            vehicle.occupancy_status = VehiclePosition.FEW_SEATS_AVAILABLE
+            vehicle.occupancy_percentage = 42
         _save(root, feed, "vehicle_positions", stamp)
 
     stamp = MIDNIGHT + timedelta(seconds=930)
@@ -184,6 +191,12 @@ def _capture_fixture(root: Path) -> None:
     arrival.time = int(stamp.timestamp()) - 5
     arrival.uncertainty = 0
     _save(root, feed, "trip_updates", stamp)
+    _save(root, _feed(stamp), "trip_updates", stamp + timedelta(seconds=10))
+    malformed = b"not protobuf"
+    key = build_realtime_object_storage_path(
+        "stm", "trip_updates", stamp + timedelta(seconds=20), sha256(malformed).hexdigest()
+    )
+    (root / key).write_bytes(malformed)
 
 
 def _run(root: Path, day: date, provider: str = "stm") -> Path:
@@ -241,6 +254,70 @@ def _rows(db: duckdb.DuckDBPyConnection, path: Path) -> list[dict[str, Any]]:
     ]
 
 
+def _verify_manifest(
+    db: duckdb.DuckDBPyConnection, directory: Path, edition: dict[str, str]
+) -> None:
+    manifest = json.loads((directory / "manifest.json").read_bytes())
+    expected = {
+        "trip_days.parquet",
+        "stop_events.parquet",
+        "scheduled_stop_times.parquet",
+        "vehicle_positions.parquet",
+        "feed_polls.parquet",
+    }
+    assert manifest["schedule_sha256"] == edition["sha256"]
+    assert manifest["cleaning_version"] == CLEANING_VERSION
+    assert set(manifest["files"]) == {p.name for p in directory.glob("*.parquet")} == expected
+    for name in expected:
+        path = directory / name
+        metadata = dict(
+            db.execute("SELECT key, value FROM parquet_kv_metadata(?)", [str(path)]).fetchall()
+        )
+        assert metadata[b"schedule_sha256"] == edition["sha256"].encode()
+        assert metadata[b"cleaning_version"] == CLEANING_VERSION.encode()
+        rows = _rows(db, path)
+        assert all(row["cleaning_version"] == CLEANING_VERSION for row in rows)
+        payload = path.read_bytes()
+        assert manifest["files"][name] == {
+            "rows": len(rows),
+            "sha256": sha256(payload).hexdigest(),
+            "byte_size": len(payload),
+        }
+
+
+def _verify_schedule(
+    db: duckdb.DuckDBPyConnection, directory: Path, edition: dict[str, str], anchor: datetime
+) -> None:
+    schedule = _rows(db, directory / "scheduled_stop_times.parquet")
+    stops = _rows(db, directory / "stop_events.parquet")
+    scheduled_trips = {
+        row["trip_id"]
+        for row in _rows(db, directory / "trip_days.parquet")
+        if row["state"] != "added"
+    }
+    fields = (
+        "provider",
+        "service_date",
+        "trip_id",
+        "route_id",
+        "direction_id",
+        "cleaning_version",
+        "stop_id",
+        "stop_sequence",
+        "scheduled_arrival_utc",
+        "scheduled_departure_utc",
+    )
+    assert [{key: row[key] for key in fields} for row in schedule] == [
+        {key: row[key] for key in fields} for row in stops if row["trip_id"] in scheduled_trips
+    ]
+    for row in schedule:
+        assert row["schedule_sha256"] == edition["sha256"]
+        for event in ("arrival", "departure"):
+            scheduled = row[f"scheduled_{event}_utc"]
+            seconds = (scheduled - anchor).total_seconds() if scheduled is not None else None
+            assert row[f"scheduled_{event}_seconds"] == seconds
+
+
 def test_clean_day_math_and_edition_switch(tmp_path: Path) -> None:
     editions = _index(tmp_path)
     _capture_fixture(tmp_path)
@@ -250,16 +327,43 @@ def test_clean_day_math_and_edition_switch(tmp_path: Path) -> None:
         trips = _rows(db, first / "trip_days.parquet")
         stops = _rows(db, first / "stop_events.parquet")
         next_stops = _rows(db, later / "stop_events.parquet")
-        for directory, edition in zip((first, later), editions, strict=True):
-            for path in directory.glob("*.parquet"):
-                metadata = dict(
-                    db.execute(
-                        "SELECT key, value FROM parquet_kv_metadata(?)", [str(path)]
-                    ).fetchall()
-                )
-                assert metadata[b"schedule_sha256"] == edition["sha256"].encode()
-                assert metadata[b"cleaning_version"] == CLEANING_VERSION.encode()
-    assert all(row["cleaning_version"] == CLEANING_VERSION for row in trips + stops + next_stops)
+        for directory, edition, anchor in zip(
+            (first, later), editions, (MIDNIGHT - timedelta(days=1), MIDNIGHT), strict=True
+        ):
+            _verify_manifest(db, directory, edition)
+            _verify_schedule(db, directory, edition, anchor)
+        positions = _rows(db, first / "vehicle_positions.parquet")
+        assert not _rows(db, later / "vehicle_positions.parquet")
+        polls = _rows(db, first / "feed_polls.parquet")
+    assert [row["captured_at_utc"] for row in positions] == [
+        MIDNIGHT + timedelta(seconds=seconds) for seconds in (45, 520, 633, 690, 700)
+    ]
+    assert all(
+        (r["vehicle_id"], r["service_date"], r["trip_id"], r["route_id"])
+        == ("v1", DAY, "night", "r")
+        for r in positions
+    )
+    assert positions[-1]["occupancy_status"] == VehiclePosition.FEW_SEATS_AVAILABLE
+    assert positions[-1]["occupancy_percentage"] == 42
+    assert len(polls) == len(list((tmp_path / "stm").rglob("*.pb")))
+    by_result = {r["result"]: r for r in polls}
+    assert Counter(r["result"] for r in polls) == {
+        "ok": len(polls) - 3,
+        "duplicate": 1,
+        "empty": 1,
+        "error": 1,
+    }
+    duplicate = by_result["duplicate"]
+    original = next(
+        r
+        for r in polls
+        if r["feed"] == "trip_updates"
+        and r["captured_at_utc"] == duplicate["captured_at_utc"] - timedelta(seconds=30)
+    )
+    for value in ("feed_timestamp_utc", "payload_bytes", "entity_count"):
+        assert duplicate[value] == original[value]
+    assert by_result["empty"]["entity_count"] == 0
+    assert by_result["error"]["entity_count"] is None
     assert [(r["trip_id"], r["scheduled_arrival_utc"]) for r in next_stops] == [
         ("night", MIDNIGHT + timedelta(hours=10)),
     ]
@@ -343,14 +447,6 @@ def test_clean_day_math_and_edition_switch(tmp_path: Path) -> None:
     assert datetime.fromisoformat(receipt["built_at_utc"]).utcoffset() == timedelta(0)
     assert Counter(receipt["row_counts_by_state"]) == counts
     assert Counter(receipt["row_counts_by_basis"]) == expected_bases
-    for name, rows in (("trip_days", trips), ("stop_events", stops)):
-        filename = f"{name}.parquet"
-        payload = (first / filename).read_bytes()
-        assert receipt["files"][filename] == {
-            "rows": len(rows),
-            "sha256": sha256(payload).hexdigest(),
-            "byte_size": len(payload),
-        }
 
 
 def test_local_archive_reads_the_selected_capture_bytes(tmp_path: Path) -> None:
@@ -383,9 +479,14 @@ def test_local_archive_reads_the_selected_capture_bytes(tmp_path: Path) -> None:
     path.write_bytes(encode_manifest(manifest))
     start, end = captures[1].captured_at_utc, record.captures[-1].captured_at_utc
     rows = list(archived_captures(provider, tmp_path, [path], start, end))
-    assert [(row.captured_at_utc, row.payload) for row in rows] == list(
-        zip((start, captures[2].captured_at_utc), payloads[1:], strict=True)
-    )
+    assert [
+        (row.captured_at_utc, row.payload) for row in rows if isinstance(row, DayCapture)
+    ] == list(zip((start, captures[2].captured_at_utc), payloads[1:], strict=True))
+    assert [
+        (row.attempt_id, row.result, row.feed_timestamp_utc, row.payload_bytes)
+        for row in rows
+        if isinstance(row, FeedPoll)
+    ] == [("3", "error", None, None), ("4", "error", None, None), ("5", "error", None, 7)]
     with pytest.raises(ValueError, match="duplicate capture"):
         list(archived_captures(provider, tmp_path, [path, path], start, end))
 
@@ -424,6 +525,10 @@ def test_ottawa_service_day(
         for family in ("trip_updates", "vehicle_positions"):
             feed = _feed(captured - timedelta(seconds=150))
             feed.entity.add(id="poll")
+            if family == "vehicle_positions" and seconds == -60:
+                unknown = feed.entity.add(id="unassigned").vehicle
+                unknown.vehicle.id = "unassigned"
+                unknown.position.latitude, unknown.position.longitude = 45.4, -75.7
             _save(tmp_path, feed, family, captured, provider)
 
     published = scheduled + timedelta(seconds=20)
@@ -466,12 +571,30 @@ def test_ottawa_service_day(
 
     destination = _run(tmp_path, day, provider)
     with duckdb.connect() as db:
+        _verify_manifest(db, destination, edition)
+        _verify_schedule(db, destination, edition, scheduled - timedelta(days=1))
+        position_rows = _rows(db, destination / "vehicle_positions.parquet")
+        polls = _rows(db, destination / "feed_polls.parquet")
         trips = {row["trip_id"]: row for row in _rows(db, destination / "trip_days.parquet")}
         stops = {
             row["stop_id"]: row
             for row in _rows(db, destination / "stop_events.parquet")
             if row["trip_id"] == "night"
         }
+    assert len(position_rows) == 2 * int(vehicles_enabled)
+    assert Counter(r["feed"] for r in polls) == (
+        {"trip_updates": 13, "vehicle_positions": 12} if vehicles_enabled else {"trip_updates": 13}
+    )
+    if vehicles_enabled:
+        unassigned, bus = position_rows
+        assert (unassigned["vehicle_id"], unassigned["service_date"], unassigned["trip_id"]) == (
+            "unassigned",
+            None,
+            None,
+        )
+        assert unassigned["feed_timestamp_utc"] == scheduled - timedelta(seconds=210)
+        assert bus["service_date"] == day
+        assert bus["observed_at_utc"] == stopped_at
     assert trips["night"]["scheduled_start_utc"] == scheduled
     assert trips["night"]["state"] == "ran"
     assert trips["quiet"]["state"] == "missing"
@@ -521,12 +644,29 @@ def _archive_capture(root: Path, stamp: datetime) -> None:
         time_utc=stamp,
         feed_timestamp_utc=stamp,
     )
+    failed = replace(
+        record.polls[3],
+        time_utc=stamp + timedelta(seconds=30),
+        started_at_utc=stamp + timedelta(seconds=30),
+        completed_at_utc=stamp + timedelta(seconds=30),
+        requested_at_utc=stamp + timedelta(seconds=30),
+    )
+    duplicate = replace(
+        failed,
+        ingestion_run_id=4,
+        status="skipped_identical",
+        duplicate_of_row_id=poll.capture_row_id,
+        time_utc=stamp + timedelta(seconds=60),
+        feed_timestamp_utc=stamp,
+        feed_timestamp_source="header",
+        entity_count=1,
+    )
     manifest = build_manifest(
         replace(
             record,
             feed_day=replace(record.feed_day, utc_date=stamp.date()),
             captures=(capture,),
-            polls=(poll,),
+            polls=(poll, failed, duplicate),
             processing=(),
         ),
         feed_endpoint_id=1,
@@ -546,7 +686,7 @@ class _FakeS3:
     def __init__(self, root: Path) -> None:
         self.root = root
         self.writes: list[str] = []
-        self.fail_stop_upload = False
+        self.fail_poll_upload = False
 
     def head_object(self, *, Bucket: str, Key: str) -> None:  # noqa: N803
         if not (self.root / Bucket / Key).is_file():
@@ -576,7 +716,7 @@ class _FakeS3:
     ) -> None:
         assert Bucket == "clean"
         assert IfNoneMatch == "*"
-        if self.fail_stop_upload and Key.endswith("stop_events.parquet"):
+        if self.fail_poll_upload and Key.endswith("feed_polls.parquet"):
             raise ClientError({"Error": {"Code": "ServiceUnavailable"}}, "PutObject")
         path = self.root / Bucket / Key
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -659,19 +799,32 @@ def test_range_builds_skips_and_continues(
     marker = f"{version_key('stm', DAY)}/manifest.json"
     runner = CliRunner()
     if remote:
-        fake.fail_stop_upload = True
+        fake.fail_poll_upload = True
         attempt = runner.invoke(app, [*args, DAY.isoformat()])
         assert attempt.exit_code == 1 and "ServiceUnavailable" in attempt.output
         assert not (dest / marker).exists()
-        fake.fail_stop_upload = False
+        fake.fail_poll_upload = False
     first = runner.invoke(app, [*args, DAY.isoformat()])
     assert first.exit_code == 0, (first.output, first.exception)
     assert "Built 1, skipped 0, failed 0" in first.output
     if remote:
         assert fake.writes == [
             f"out/{version_key('stm', DAY)}/{name}"
-            for name in ("trip_days.parquet", "stop_events.parquet", "manifest.json")
+            for name in (
+                "trip_days.parquet",
+                "stop_events.parquet",
+                "scheduled_stop_times.parquet",
+                "vehicle_positions.parquet",
+                "feed_polls.parquet",
+                "manifest.json",
+            )
         ]
+    with duckdb.connect() as db:
+        polls = _rows(db, (dest / marker).with_name("feed_polls.parquet"))
+    assert [r["result"] for r in polls] == ["ok", "error", "duplicate"]
+    assert polls[1]["payload_bytes"] is None
+    assert polls[2]["payload_bytes"] == polls[0]["payload_bytes"]
+    assert polls[2]["feed_timestamp_utc"] == polls[0]["feed_timestamp_utc"]
     manifest = (dest / marker).read_bytes()
     result = runner.invoke(app, [*args, third.isoformat()])
     assert result.exit_code == 1 and "Built 1, skipped 1, failed 1" in result.output

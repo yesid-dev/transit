@@ -16,7 +16,7 @@ import pytest
 from uvicorn._types import ASGISendEvent, HTTPScope
 
 from transit_engine import timing
-from transit_engine.clean_manifest import STOP_EVENTS, TRIP_DAYS
+from transit_engine.clean_manifest import STOP_EVENTS, TRIP_DAYS, file_identities
 from transit_engine.measures import MIN_CLASSIFIED_STOP_EVENTS, Question, ask
 from transit_engine.server import Engine
 from transit_engine.store import Store
@@ -138,6 +138,27 @@ def store(tmp_path: Path) -> Store:
 def query(store: Store, **kwargs: Any) -> dict[str, Any]:
     parameters = {"measure": "punctuality", "city": "stm", "start": THURSDAY, "end": THURSDAY}
     return ask(store, Question(**{**parameters, **kwargs}))
+
+
+def test_v4_manifest_requires_all_five_file_entries(store: Store) -> None:
+    directory = Path(store.root) / "stm" / THURSDAY.isoformat() / "v3"
+    manifest = json.loads((directory / "manifest.json").read_bytes())
+    manifest["cleaning_version"] = "4"
+    added = {"scheduled_stop_times.parquet", "vehicle_positions.parquet", "feed_polls.parquet"}
+    files = manifest["files"]
+    for name in added:
+        files[name] = {"rows": 0, "byte_size": 128, "sha256": "a" * 64}
+
+    def validate() -> dict[str, tuple[str, int]] | None:
+        return file_identities(json.dumps(manifest).encode(), "stm", THURSDAY.isoformat(), "4")
+
+    assert validate() == {
+        name: (entry["sha256"], entry["byte_size"]) for name, entry in files.items()
+    }
+    entry = files.pop("feed_polls.parquet")
+    assert validate() is None
+    files["feed_polls.parquet"] = {**entry, "rows": -1}
+    assert validate() is None
 
 
 def test_bands_use_exact_thresholds(store: Store) -> None:

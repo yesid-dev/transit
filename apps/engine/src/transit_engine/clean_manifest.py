@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 
 STOP_EVENTS = "stop_events.parquet"
 TRIP_DAYS = "trip_days.parquet"
+_V4_FILES = ("scheduled_stop_times.parquet", "vehicle_positions.parquet", "feed_polls.parquet")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
@@ -33,15 +34,15 @@ def file_identities(
         ):
             return None
         files = manifest.get("files")
-        if not isinstance(files, dict) or set(files) != {STOP_EVENTS, TRIP_DAYS}:
+        count_fields = {STOP_EVENTS: "row_counts_by_basis", TRIP_DAYS: "row_counts_by_state"}
+        expected = set(count_fields)
+        if version == "4":
+            expected.update(_V4_FILES)
+        if not isinstance(files, dict) or set(files) != expected:
             return None
         identities: dict[str, tuple[str, int]] = {}
-        for name, field in (
-            (STOP_EVENTS, "row_counts_by_basis"),
-            (TRIP_DAYS, "row_counts_by_state"),
-        ):
-            entry, counts = files[name], manifest.get(field)
-            if not isinstance(entry, dict) or not isinstance(counts, dict):
+        for name, entry in files.items():
+            if not isinstance(entry, dict):
                 return None
             digest, size, rows = entry.get("sha256"), entry.get("byte_size"), entry.get("rows")
             if (
@@ -51,10 +52,16 @@ def file_identities(
                 or size <= 0
                 or type(rows) is not int
                 or rows < 0
-                or any(type(count) is not int or count < 0 for count in counts.values())
-                or sum(counts.values()) != rows
             ):
                 return None
+            if field := count_fields.get(name):
+                counts = manifest.get(field)
+                if (
+                    not isinstance(counts, dict)
+                    or any(type(count) is not int or count < 0 for count in counts.values())
+                    or sum(counts.values()) != rows
+                ):
+                    return None
             identities[name] = (digest, size)
         return identities
     except (ValueError, RecursionError):

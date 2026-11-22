@@ -11,12 +11,12 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from transit_ops.clean_day import REALTIME_FEEDS, CleanDay, build_clean_day
+from transit_ops.clean_day_realtime import DayCapture, FeedPoll
 from transit_ops.core.models import ProviderManifest
 from transit_ops.history.manifest import Manifest, decode_manifest
 from transit_ops.history.pack import PackedCapture, read_pack
 from transit_ops.ingestion.storage import BronzeStorage, ByteStream, LocalBronzeStorage
 from transit_ops.lake.archive_keys import validate_provider_id
-from transit_ops.providers.normalize import RawCapture
 from transit_ops.providers.registry import load_provider_manifest
 from transit_ops.providers.schedule_archive import ArchiveScheduleContext
 
@@ -40,7 +40,7 @@ def clean_from_inputs(
     declaration: ProviderManifest,
     day: date,
     schedules: Mapping[date, ArchiveScheduleContext],
-    captures: Iterable[RawCapture],
+    captures: Iterable[DayCapture | FeedPoll],
 ) -> CleanDay:
     feeds = realtime_feeds(declaration).values()
     gaps = declaration.realtime.lines_without_live_data
@@ -131,11 +131,11 @@ def load_contexts(
 
 def loose_captures(
     manifest: ProviderManifest, root: Path, start: datetime, end: datetime
-) -> Iterator[RawCapture]:
+) -> Iterator[DayCapture]:
     provider_root = root / manifest.provider.provider_id
     if not provider_root.is_dir():
         raise ValueError(f"Missing Bronze provider directory: {provider_root}")
-    files: list[tuple[datetime, str, Path, str]] = []
+    files: list[tuple[datetime, str, str, Path, str]] = []
     for endpoint, family in realtime_feeds(manifest).items():
         day = start.date()
         while day <= end.date():
@@ -146,20 +146,20 @@ def loose_captures(
                 if captured.date() != day:
                     raise ValueError(f"Capture timestamp disagrees with partition: {path}")
                 if start <= captured <= end:
-                    files.append((captured, family, path, checksum))
+                    files.append((captured, endpoint, family, path, checksum))
             day += timedelta(days=1)
     if not files:
         raise ValueError("No GTFS-Realtime captures found in the service-day input window")
-    for captured, family, path, checksum in sorted(files):
+    for captured, endpoint, family, path, checksum in sorted(files):
         payload = path.read_bytes()
         if hashlib.sha256(payload).hexdigest()[:12] != checksum:
             raise ValueError(f"Capture checksum differs from Bronze key: {path}")
-        yield RawCapture(family, "gtfs-rt", payload, captured, str(path))
+        yield DayCapture(family, endpoint, captured, path.name, payload)
 
 
 def archived_captures(
     provider: ProviderManifest, root: Path, manifests: list[Path], start: datetime, end: datetime
-) -> Iterator[RawCapture]:
+) -> Iterator[DayCapture | FeedPoll]:
     """Read explicitly selected local pack manifests, one version per feed/UTC day."""
     families = realtime_feeds(provider)
     selections = {}
@@ -192,14 +192,13 @@ def merged_captures(
     selections: Iterable[tuple[Manifest, str]],
     start: datetime,
     end: datetime,
-) -> Iterator[RawCapture]:
-    captures = merge(
-        *(
-            _packed_day(storage, prefix, manifest, family, start, end)
-            for manifest, family in selections
-        ),
-        key=lambda capture: capture.captured_at_utc,
-    )
+) -> Iterator[DayCapture | FeedPoll]:
+    streams: list[Iterator[DayCapture | FeedPoll]] = []
+    for manifest, family in selections:
+        if start.date() <= manifest.utc_date <= end.date():
+            streams.append(_packed_day(storage, prefix, manifest, family, start, end))
+            streams.append(_manifest_only_polls(manifest, start, end))
+    captures = merge(*streams, key=lambda capture: capture.captured_at_utc)
     first = next(captures, None)
     if first is None:
         raise ValueError("No archived GTFS-Realtime captures in the service-day input window")
@@ -228,6 +227,34 @@ class _PackReader:
         return data
 
 
+def _manifest_only_polls(manifest: Manifest, start: datetime, end: datetime) -> Iterator[FeedPoll]:
+    entries = {entry.capture_row_id: entry for entry in manifest.captures}
+    for poll in manifest.polls:
+        if not start <= poll.time_utc <= end:
+            continue
+        capture = entries.get(poll.capture_row_id) if poll.capture_row_id is not None else None
+        if (
+            capture is not None
+            and capture.packed
+            and capture.ingestion_run_id == poll.ingestion_run_id
+            and start <= capture.captured_at_utc <= end
+        ):
+            # The payload supplies the outcome and header for this attempt.
+            continue
+        duplicate = poll.status == "skipped_identical"
+        if duplicate and poll.duplicate_of_row_id is not None:
+            capture = entries.get(poll.duplicate_of_row_id)
+        yield FeedPoll(
+            manifest.endpoint_key,
+            poll.time_utc,
+            str(poll.ingestion_run_id),
+            "duplicate" if duplicate else "error",
+            poll.feed_timestamp_utc if poll.feed_timestamp_source == "header" else None,
+            capture.byte_size if capture is not None else None,
+            poll.entity_count,
+        )
+
+
 def _packed_day(
     storage: BronzeStorage,
     prefix: str,
@@ -235,11 +262,8 @@ def _packed_day(
     family: str,
     start: datetime,
     end: datetime,
-) -> Iterator[RawCapture]:
-    if not start.date() <= manifest.utc_date <= end.date():
-        return
+) -> Iterator[DayCapture]:
     packed = []
-    # Entries known to be unavailable at sealing provide no poll coverage.
     entries = [c for c in manifest.captures if c.packed]
     if manifest.pack is None or not any(start <= c.captured_at_utc <= end for c in entries):
         return
@@ -253,7 +277,13 @@ def _packed_day(
             entries, read_pack(stream, manifest.streams, packed), strict=True
         ):
             if start <= entry.captured_at_utc <= end:
-                yield RawCapture(family, "gtfs-rt", payload, entry.captured_at_utc, key)
+                yield DayCapture(
+                    family,
+                    manifest.endpoint_key,
+                    entry.captured_at_utc,
+                    str(entry.ingestion_run_id),
+                    payload,
+                )
         if (
             stream.read(1)
             or stream.size != manifest.pack.byte_size

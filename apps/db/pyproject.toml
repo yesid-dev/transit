@@ -67,6 +67,7 @@ files = [
     "src/transit_ops/clean_day.py",
     "src/transit_ops/clean_day_inputs.py",
     "src/transit_ops/clean_day_output.py",
+    "src/transit_ops/clean_day_realtime.py",
     "src/transit_ops/clean_days.py",
     "src/transit_ops/pipeline_switches.py",
     "src/transit_ops/silver/static_rows.py",
