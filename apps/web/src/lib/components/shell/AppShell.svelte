@@ -44,6 +44,13 @@
 
 	const ctxLocale = getLocale();
 	const locale = $derived<Locale>(localeProp ?? ctxLocale ?? DEFAULT_LOCALE);
+	let announcementHeight = $state(0);
+	$effect(() => {
+		// The phone drawers are portalled outside the shell.
+		const style = document.documentElement.style;
+		style.setProperty('--announcement-height', `${announcementHeight}px`);
+		return () => style.removeProperty('--announcement-height');
+	});
 </script>
 
 <div
@@ -55,7 +62,7 @@
 	data-full-viewport={fullViewport}
 	data-slot="app-shell"
 >
-	<div class="app-shell-chrome" data-slot="app-shell-chrome">
+	<div class="app-shell-chrome" data-slot="app-shell-chrome" bind:clientHeight={announcementHeight}>
 		<NavPill
 			{navigation}
 			{locale}
@@ -89,6 +96,13 @@
 		inset-block-start: 0;
 		inset-inline: 0;
 		z-index: var(--z-nav);
+	}
+
+	/* Only the banner occupies space in the chrome. Keep it in flow so the map starts below it
+	   from the first paint and automatically reclaims the space when the banner is hidden. */
+	.app-shell-chrome:has(:global([data-slot='announcement-banner'])) {
+		position: sticky;
+		flex: none;
 	}
 
 	.app-shell-row {

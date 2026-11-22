@@ -180,7 +180,7 @@
 	.map-controls-column {
 		--legend-reserve: min(18rem, 32dvh);
 		--column-top: calc(var(--chrome-offset) + max(4rem, var(--map-head-height, 0px) + 0.75rem));
-		--column-room: calc(100dvh - var(--column-top) - 3rem);
+		--column-room: calc(100dvh - var(--announcement-height, 0px) - var(--column-top) - 3rem);
 		--map-legend-body-room: max(
 			0px,
 			calc(var(--column-room) - var(--map-panel-height) - var(--size-tap-min) - var(--spacing) * 4)

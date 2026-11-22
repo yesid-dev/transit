@@ -122,7 +122,7 @@ body {
 [id],
 [data-section-index],
 [data-toc] {
-	scroll-margin-top: calc(var(--chrome-offset) + 0.5rem);
+	scroll-margin-top: calc(var(--chrome-offset) + var(--announcement-height, 0px) + 0.5rem);
 }
 
 /* Match the specificity of the former component-scoped rail rules. */

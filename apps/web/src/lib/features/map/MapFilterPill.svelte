@@ -195,7 +195,8 @@
 	:global([data-m6b-controls-drawer][data-slot='sheet-content']) {
 		--map-controls-drawer-gap: 10px;
 		--map-controls-drawer-top: calc(
-			1rem + env(safe-area-inset-top, 0px) + var(--pill-h) + var(--map-controls-drawer-gap)
+			var(--announcement-height, 0px) + 1rem + env(safe-area-inset-top, 0px) + var(--pill-h) +
+				var(--map-controls-drawer-gap)
 		);
 		--map-controls-drawer-bottom: calc(
 			1rem + env(safe-area-inset-bottom, 0px) + 88px + var(--map-controls-drawer-gap) * 2

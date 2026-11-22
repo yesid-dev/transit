@@ -235,6 +235,13 @@ for (const locale of PUBLISHED_LOCALES) {
 			await page.goto(path.startsWith('/trip/') ? localizeHref(path, locale, 'stm') : url, {
 				waitUntil: 'networkidle',
 			});
+			const announcement = page.locator('[data-slot="announcement-banner"]');
+			if (await announcement.isVisible()) {
+				await page.keyboard.press('Tab');
+				await expect(announcement.getByRole('link')).toBeFocused();
+				await page.keyboard.press('Tab');
+				await expect(announcement.getByRole('button')).toBeFocused();
+			}
 			await page.keyboard.press('Tab');
 			await expect(page.locator(':focus')).toHaveAttribute('href', '#main');
 			await expect(page.locator(':focus')).toHaveAccessibleName(navPillCopy[locale].skipToContent);

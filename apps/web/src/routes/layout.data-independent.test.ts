@@ -6,6 +6,7 @@ import type { V1Context } from '#lib/v1/boot.ts';
 import type { IsoUtc } from '#lib/v1/schemas/index.ts';
 import type { SearchList } from '#lib/search/transitSearch.ts';
 import { NAV_GROUPS } from '#lib/content/nav.ts';
+import { announcement } from '#lib/site/announcement.ts';
 import { footerCopy } from '#lib/components/layout/footer.copy.ts';
 
 it.each(['en', 'fr'] as const)(
@@ -253,7 +254,10 @@ function expectInfoDestinationsAbsent(
 	expect(scoped.queryByRole('group', { name: infoLabel })).not.toBeInTheDocument();
 	for (const [label, href] of links) {
 		expect(scoped.queryByRole('link', { name: label })).not.toBeInTheDocument();
-		expect(surface.querySelector(`a[href="${href}"]`)).not.toBeInTheDocument();
+		const candidates = [...surface.querySelectorAll(`a[href="${href}"]`)];
+		expect(candidates.filter((link) => !link.closest('[data-slot="announcement-banner"]'))).toEqual(
+			[],
+		);
 	}
 }
 
@@ -435,10 +439,17 @@ describe('root layout data-independent legal routes', () => {
 			] as const,
 		},
 	])(
-		'keeps localized information destinations footer-only for $pathname through the real root shell',
+		'keeps the announcement and footer links out of the menu for $pathname',
 		async ({ pathname, lang, loaded, footer, openMenu, infoLabel, links }) => {
 			const view = renderRoot(pathname, lang, loaded ? loadedV1(lang) : null);
 			expect(view.container.querySelector('[data-slot="app-shell"]')).toBeInTheDocument();
+			const banner = view.container.querySelector('[data-slot="announcement-banner"]');
+			if (announcement.enabled && banner) {
+				expect(
+					within(banner).getByRole('link', { name: announcement[lang].message }),
+				).toHaveAttribute('href', announcement[lang].href);
+			}
+			expect(Boolean(banner)).toBe(announcement.enabled);
 			if (loaded) {
 				expect(
 					footer
