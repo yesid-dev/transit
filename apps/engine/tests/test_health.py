@@ -82,6 +82,25 @@ def clean_day(
     return directory
 
 
+def no_raw_captures(root: Path, day: date, *, version: int = 6) -> Path:
+    directory = root / "stm" / day.isoformat() / f"v{version}"
+    directory.mkdir(parents=True)
+    (directory / "manifest.json").write_text(
+        json.dumps(
+            {
+                "status": "no_raw_captures",
+                "provider": "stm",
+                "service_date": day.isoformat(),
+                "cleaning_version": str(version),
+                "built_at_utc": f"{day}T06:30:00+00:00",
+                "builder_git_commit": None,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return directory
+
+
 def test_present_day_reports_each_table_and_its_rows(tmp_path: Path) -> None:
     clean_day(tmp_path, DAY)
     result = data_health(Store(tmp_path.as_posix()), "stm", DAY, DAY)
@@ -98,6 +117,30 @@ def test_present_day_reports_each_table_and_its_rows(tmp_path: Path) -> None:
     assert entry["tables"]["stop_events"] == {"status": "present", "rows": 3}
     assert entry["tables"]["trip_days"] == {"status": "present", "rows": 2}
     assert entry["tables"]["alerts"] == {"status": "present", "rows": 0}
+
+
+def test_no_raw_captures_is_not_measured_not_missing(tmp_path: Path) -> None:
+    no_raw_captures(tmp_path, DAY)
+    [entry] = data_health(Store(tmp_path.as_posix()), "stm", DAY, DAY)["days"]
+    assert entry["status"] == "not_measured"
+    assert entry["reason"] == "no_raw_captures"
+    assert entry["cleaning_version"] == "6"
+    assert entry["built_at_utc"] == f"{DAY}T06:30:00+00:00"
+    assert set(entry["tables"]) == set(TABLE_NAMES)
+    assert {table["status"] for table in entry["tables"].values()} == {"not_measured"}
+    missing = data_health(Store(tmp_path.as_posix()), "stm", DAY, DAY + timedelta(days=1))["days"]
+    assert [day["status"] for day in missing] == ["not_measured", "missing"]
+    assert missing[1]["reason"] == "no_manifest"
+
+
+def test_a_no_raw_captures_receipt_with_files_is_invalid(tmp_path: Path) -> None:
+    directory = no_raw_captures(tmp_path, DAY)
+    manifest = json.loads((directory / "manifest.json").read_bytes())
+    manifest["files"] = {}
+    (directory / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    [entry] = data_health(Store(tmp_path.as_posix()), "stm", DAY, DAY)["days"]
+    assert entry["status"] == "missing"
+    assert entry["reason"] == "invalid_manifest"
 
 
 def test_no_manifest_is_a_missing_day(tmp_path: Path) -> None:

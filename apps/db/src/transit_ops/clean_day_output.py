@@ -110,8 +110,58 @@ FEED_POLLS = TableSchema.from_columns(
 )
 
 
+NO_RAW_CAPTURES = "no_raw_captures"
+
+
 def version_key(provider: str, day: date) -> str:
     return f"{provider}/{day.isoformat()}/v{CLEANING_VERSION}"
+
+
+def no_raw_captures_manifest(provider: str, day: date) -> dict[str, object]:
+    """Describe a service day whose window held no capture from any realtime feed."""
+    return {
+        "status": NO_RAW_CAPTURES,
+        "provider": provider,
+        "service_date": day.isoformat(),
+        "cleaning_version": CLEANING_VERSION,
+        "built_at_utc": datetime.now(UTC).isoformat(),
+        "builder_git_commit": _builder_git_commit(),
+    }
+
+
+def _stage_no_raw_captures(provider: str, day: date, staged: Path) -> Path:
+    manifest = staged / "manifest.json"
+    manifest.write_text(
+        json.dumps(no_raw_captures_manifest(provider, day), sort_keys=True) + "\n", "utf-8"
+    )
+    return manifest
+
+
+def write_no_raw_captures(provider: str, day: date, root: Path) -> Path:
+    destination = root / version_key(provider, day)
+    parent = destination.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    if destination.exists():
+        raise FileExistsError(f"Clean day already exists: {destination}")
+    with TemporaryDirectory(prefix=".clean-day-", dir=parent) as directory:
+        staged = Path(directory) / "version"
+        staged.mkdir()
+        _stage_no_raw_captures(provider, day, staged)
+        staged.rename(destination)
+    return destination
+
+
+def publish_no_raw_captures(provider: str, day: date, storage: BronzeStorage, prefix: str) -> None:
+    directory = prefix + version_key(provider, day)
+    with TemporaryDirectory(prefix="clean-day-") as temporary:
+        staged = Path(temporary) / "version"
+        staged.mkdir()
+        manifest = _stage_no_raw_captures(provider, day, staged)
+        marker = f"{directory}/manifest.json"
+        expected = manifest.read_bytes()
+        put_create_only(storage, manifest, marker)
+        if storage.read_bytes(marker) != expected:
+            raise ValueError(f"Published clean-day manifest differs: {marker}")
 
 
 def write_clean_day(day: CleanDay, root: Path) -> Path:

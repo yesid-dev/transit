@@ -148,6 +148,9 @@ class Store:
         identities = file_identities(payload, city, day.isoformat(), str(self.cleaning_version))
         if identities is None:
             return None
+        if not identities:
+            # A no-raw-captures receipt measures nothing, exactly like an absent day.
+            return None
         checked_paths = {}
         for name in tables:
             if name in identities:

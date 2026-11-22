@@ -233,6 +233,20 @@ def realtime_feeds(manifest: ProviderManifest) -> dict[str, str]:
     }
 
 
+def realtime_capture_present(
+    selections: Iterable[tuple[Manifest, str]], start: datetime, end: datetime
+) -> bool:
+    """Whether a declared realtime feed has a packed capture inside the window."""
+    return any(
+        family in REALTIME_FEEDS
+        and any(
+            capture.packed and start <= capture.captured_at_utc <= end
+            for capture in manifest.captures
+        )
+        for manifest, family in selections
+    )
+
+
 def capture_feeds(manifest: ProviderManifest) -> dict[str, str]:
     return {
         **realtime_feeds(manifest),

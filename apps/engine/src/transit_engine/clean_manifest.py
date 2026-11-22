@@ -10,6 +10,7 @@ ALERTS = "alerts.parquet"
 SCHEDULED_STOP_TIMES = "scheduled_stop_times.parquet"
 VEHICLE_POSITIONS = "vehicle_positions.parquet"
 FEED_POLLS = "feed_polls.parquet"
+NO_RAW_CAPTURES = "no_raw_captures"
 _V4_FILES = (SCHEDULED_STOP_TIMES, VEHICLE_POSITIONS, FEED_POLLS)
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
@@ -25,9 +26,6 @@ def file_identities(
             manifest.get("cleaning_version"),
         ) != (provider, day, version):
             return None
-        checksum = manifest.get("schedule_sha256")
-        if not isinstance(checksum, str) or not _SHA256.fullmatch(checksum):
-            return None
         built = manifest.get("built_at_utc")
         if not isinstance(built, str) or datetime.fromisoformat(built).utcoffset() != timedelta(0):
             return None
@@ -36,6 +34,15 @@ def file_identities(
             not isinstance(commit, str)
             or not re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", commit)
         ):
+            return None
+        status = manifest.get("status")
+        if status is not None:
+            # A no-captures receipt lists no files, so it measures nothing.
+            if status == NO_RAW_CAPTURES and "files" not in manifest:
+                return {}
+            return None
+        checksum = manifest.get("schedule_sha256")
+        if not isinstance(checksum, str) or not _SHA256.fullmatch(checksum):
             return None
         files = manifest.get("files")
         count_fields = {STOP_EVENTS: "row_counts_by_basis", TRIP_DAYS: "row_counts_by_state"}
