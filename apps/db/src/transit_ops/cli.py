@@ -120,6 +120,53 @@ app.add_typer(live_oracle.app, name="live-oracle")
 app.command("recover-alert-archive-entries")(recover_alert_archive_entries_command)
 
 
+@app.command("clean-day")
+def clean_day_command(
+    provider: Annotated[str, typer.Option("--provider")],
+    day: Annotated[str, typer.Option("--date", help="Service date, YYYY-MM-DD.")],
+    out: Annotated[Path, typer.Option("--out", help="Local Parquet output root.")],
+    bronze: Annotated[Path, typer.Option("--bronze", help="Local Bronze capture root.")],
+    editions: Annotated[Path, typer.Option("--editions", help="Local GTFS edition index JSON.")],
+    capture_manifest: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--capture-manifest", help="Selected local archive manifest. Repeat as needed."
+        ),
+    ] = None,
+) -> None:
+    """Build stop_events and trip_days for one provider service day."""
+    from google.protobuf.message import DecodeError  # type: ignore[import-untyped]
+
+    from transit_ops.clean_day import build_clean_day, capture_window
+    from transit_ops.clean_day_inputs import archived_captures, loose_captures, schedule_contexts
+    from transit_ops.clean_day_output import write_clean_day
+    from transit_ops.lake.archive_keys import validate_provider_id
+    from transit_ops.providers.registry import load_provider_manifest
+
+    try:
+        service_date = date.fromisoformat(day)
+        if service_date.isoformat() != day:
+            raise ValueError("Expected a service date in YYYY-MM-DD form")
+        validate_provider_id(provider)
+        config = Path(__file__).resolve().parents[2] / "config" / "providers" / f"{provider}.yaml"
+        declaration = load_provider_manifest(config)
+        if declaration.provider.provider_id != provider:
+            raise ValueError(f"Provider manifest does not match {provider}")
+        schedules = schedule_contexts(declaration, service_date, editions)
+        start, end = capture_window(schedules[service_date], service_date)
+        captures = (
+            archived_captures(declaration, bronze, capture_manifest, start, end)
+            if capture_manifest
+            else loose_captures(declaration, bronze, start, end)
+        )
+        cleaned = build_clean_day(provider, service_date, schedules, captures)
+        destination = write_clean_day(cleaned, out)
+    except (ValueError, OSError, DecodeError) as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(1) from None
+    typer.echo(str(destination))
+
+
 class DailyJob(StrEnum):
     prepare = "prepare"
     rollups = "rollups"
