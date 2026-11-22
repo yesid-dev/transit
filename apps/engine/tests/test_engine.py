@@ -51,6 +51,7 @@ class Trip(NamedTuple):
     offset_minutes: int = 0
     duration_minutes: int = 0
     notice_seconds: int | None = None
+    route_type: int = 3
 
 
 TRIPS = (
@@ -81,7 +82,7 @@ def _build_store(
                 provider VARCHAR, service_date DATE, cleaning_version VARCHAR, trip_id VARCHAR,
                 route_id VARCHAR, direction_id INTEGER, state VARCHAR, state_reason VARCHAR,
                 route_has_live_data BOOLEAN, scheduled_start_utc TIMESTAMPTZ,
-                cancellation_notice_utc TIMESTAMPTZ
+                cancellation_notice_utc TIMESTAMPTZ, route_type INTEGER
             );
             CREATE TABLE stops (
                 provider VARCHAR, service_date DATE, cleaning_version VARCHAR, trip_id VARCHAR,
@@ -115,7 +116,7 @@ def _build_store(
                     else None
                 )
                 scheduled = start_at if trip.state != "added" else None
-                if scheduled is not None and cleaning_version in {4, 5}:
+                if scheduled is not None and cleaning_version in {4, 5, 6}:
                     first = (
                         25 * 3600 + 15 * 60 if day == FALL_BACK else 7 * 3600
                     ) + trip.offset_minutes * 60
@@ -125,7 +126,7 @@ def _build_store(
                         [(*identity, 1, first - 60, first), (*identity, 2, last, last + 60)],
                     )
                 conn.execute(
-                    "INSERT INTO trips VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO trips VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     [
                         *identity,
                         trip.line,
@@ -135,6 +136,7 @@ def _build_store(
                         trip.live,
                         scheduled,
                         notice,
+                        trip.route_type,
                     ],
                 )
                 states[trip.state] += 1
@@ -162,8 +164,9 @@ def _build_store(
                     "sha256": sha256(payload).hexdigest(),
                     "byte_size": len(payload),
                 }
-            if cleaning_version in {4, 5}:
-                for name in (*V4_EXTRA_FILES, ALERTS) if cleaning_version == 5 else V4_EXTRA_FILES:
+            if cleaning_version in {4, 5, 6}:
+                extra_files = (*V4_EXTRA_FILES, ALERTS) if cleaning_version >= 5 else V4_EXTRA_FILES
+                for name in extra_files:
                     path = directory / name
                     source = "SELECT * FROM trips WHERE FALSE"
                     rows = 0

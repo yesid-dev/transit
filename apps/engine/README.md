@@ -22,7 +22,7 @@ classified over scheduled, cleaning and method versions, and query milliseconds.
 `days_included` lists the measured days selected by the day-type filter. A partial window
 includes a bilingual coverage note. The engine validates `manifest.json` under
 `<root>/<provider>/<service-date>/v<cleaning_version>/` and checks the query input file sizes
-before reading. Cleaning v5 also checks the alerts file when the manifest lists it.
+before reading. Cleaning v5 and v6 also check the alerts file when the manifest lists it.
 A missing or invalid manifest, missing required file, or wrong size makes that day a gap.
 
 `GET /data-health?city=stm&from=2026-11-19&to=2026-11-22` reports each day in the
@@ -64,6 +64,34 @@ and an exact count of notices after the scheduled start. The hours measure and t
 full family answer require the scheduled stop times file available from v4 onward. The first and last
 departure evidence gives the GTFS time and underlying trip counts for each included
 date with service.
+
+## Rankings
+
+`GET /ranking?kind=line&city=stm&from=2026-11-19&to=2026-11-22` ranks lines
+worst first by on-time share. Select another registry measure with `measure`, or use
+`kind=stop` or `kind=departure`. A departure groups a line, direction and scheduled
+first start in GTFS service time. A missing direction is returned as null. The `hour`
+and `day_type` cuts follow the selected measure. First and last trips rank lines only
+and require `day_type`.
+
+Line classes combine GTFS route type with a scheduled service pattern. A majority of
+starts in local hours 00:00 through 04:59 makes a line night service. Other lines are
+frequent when the average gap between consecutive distinct starts in the same
+direction and service date is at most ten minutes in the local 07:00 to 09:00 peak
+window. The remaining lines are regular. Classes use the included dates and day type
+across all hours. The default line list uses the class with the most scheduled trips
+among the lines in the cut. Select a class with `class=3:frequent`, or compare all
+classes with `class=all`. Stops and departures rank across the network and carry
+their contributing classes. Select `ENGINE_CLEANING_VERSION=6` for recorded GTFS
+route types. Earlier clean days show an unknown route type.
+
+The response includes ranked rows, all exclusions within the selected scope, and the
+measured and missing dates. Ties use larger samples first, then ID. `limit` limits
+ranked rows only, from 1 to 500, and defaults to 100. Shares carry a 95% Wilson
+interval. The service-hours interval uses an effective sample weighted by scheduled
+duration. Stop events on the same trip are dependent, so treat the bounds as a guide.
+Percentile bounds show the histogram approximation error of at most 7.5 seconds.
+Use `format=csv&lang=fr` for French headings or `lang=en` for English.
 
 | Environment variable | Default |
 | --- | --- |

@@ -44,7 +44,8 @@ STOPPED_AT_RADIUS_METRES = 50
 # for short trips, at the providers' normal 20–60 second feed cadences.
 ABSENCE_LEAD_SECONDS = 300
 # v5 adds alert versions and an explicit status for providers without an alert source.
-CLEANING_VERSION = "5"
+# v6 includes the scheduled GTFS route type in each trip row.
+CLEANING_VERSION = "6"
 REALTIME_FEEDS: tuple[Feed, ...] = ("trip_updates", "vehicle_positions")
 _REMOVED = {TripDescriptor.CANCELED, TripDescriptor.DELETED}
 _EXTRA = {
@@ -339,6 +340,7 @@ class CleanDay:
     vehicle_positions: list[VehicleStateInterval] = field(default_factory=list)
     feed_polls: list[FeedPoll] = field(default_factory=list)
     alerts: dict[tuple[str, str, SourceFormat], AlertVersion] | None = None
+    route_types: Mapping[str, int] = field(default_factory=dict)
 
     def _covered(self, trip: Trip) -> bool:
         assert trip.start is not None and trip.end is not None
@@ -384,6 +386,7 @@ class CleanDay:
                 trip.first_capture,
                 trip.last_capture,
                 trip.cancellation_notice,
+                self.route_types.get(trip.route_id) if trip.route_id is not None else None,
             )
 
     def stop_rows(self) -> Iterator[Row]:
@@ -495,7 +498,15 @@ def build_clean_day(
     trips = {
         ident: _scheduled(schedule, day, ident, anchor) for ident in schedule.days[day].trip_ids
     }
-    result = CleanDay(provider, day, schedule.days[day].edition_sha256, trips, set(), anchor)
+    result = CleanDay(
+        provider,
+        day,
+        schedule.days[day].edition_sha256,
+        trips,
+        set(),
+        anchor,
+        route_types=schedule.route_types,
+    )
     anchors = {d: context.service_day_start(d) for d, context in schedules.items()}
 
     @cache

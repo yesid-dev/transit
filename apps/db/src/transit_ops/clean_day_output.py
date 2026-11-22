@@ -38,6 +38,7 @@ TRIP_DAYS = TableSchema.from_columns(
         ("first_capture_utc", _TIME, False),
         ("last_capture_utc", _TIME, False),
         ("cancellation_notice_utc", _TIME, False),
+        ("route_type", "integer", False),
     ),
     _TRIP_KEY,
 )
