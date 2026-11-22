@@ -42,7 +42,7 @@
 	} from '#lib/content/nav.ts';
 	import { navPillCopy } from '#lib/i18n/messages.ts';
 	import { ProductBrand } from '@yesid/ui/brand';
-	import { SiteHeader } from '@yesid/ui/layout';
+	import { NetworkPicker, SiteHeader } from '@yesid/ui/layout';
 	import RefreshButton from './RefreshButton.svelte';
 	import { providerHref, type PublicProvider } from '#lib/v1/providers.ts';
 	import { v1Provider } from '#lib/v1/config.ts';
@@ -130,6 +130,19 @@
 	// Use the published provider names when the live catalog cannot be loaded.
 	const providerNames = (provider: Pick<PublicProvider, 'id' | 'labels'>) =>
 		providerDisplayNames(provider, locale, navCopy.unknownNetwork);
+	const networkOptions = $derived(
+		providers.flatMap((provider) => {
+			const { full, short } = providerNames(provider);
+			const suffix = ` · ${short}`;
+			const city = full.endsWith(suffix) ? full.slice(0, -suffix.length) : '';
+			return city ? [{ id: provider.id, city, name: short, shortCode: short }] : [];
+		}),
+	);
+	const useKitNetworkPicker = $derived(
+		!discoveryError &&
+			networkOptions.length === providers.length &&
+			networkOptions.some((network) => network.id === providerId),
+	);
 	const selectedProvider = $derived(
 		providers.find((provider) => provider.id === providerId) ?? publishedNetwork(providerId),
 	);
@@ -207,42 +220,56 @@
 {/snippet}
 
 {#snippet scope()}
-	<div bind:this={scopeControls} class="nav-scope" data-slot="app-frame-controls">
+	<div
+		bind:this={scopeControls}
+		class="nav-scope"
+		data-slot="app-frame-controls"
+		data-lenis-prevent
+	>
 		<!-- The visible label is its own element, centred in the control; the native select sits on top, transparent. -->
-		<label class="nav-provider">
-			<span class="nav-provider-label nav-provider-full" aria-hidden="true" title={providerLabel}
-				>{providerLabel}</span
-			>
-			<span class="nav-provider-label nav-provider-short" aria-hidden="true" title={providerLabel}
-				>{providerShortLabel}</span
-			>
-			<select
-				class="nav-provider-select"
-				aria-label={`${navCopy.network}: ${providerLabel}`}
-				title={providerLabel}
+		{#if useKitNetworkPicker}
+			<NetworkPicker
+				label={`${navCopy.network}: ${providerLabel}`}
+				networks={networkOptions}
 				value={providerId}
-				onchange={(event) => {
-					const href = providerHref(url, event.currentTarget.value, locale);
-					event.currentTarget.value = providerId;
-					location.assign(href);
-				}}
-			>
-				{#each providers as provider (provider.id)}
-					<option value={provider.id}>{providerNames(provider).full}</option>
-				{/each}
-				{#if !providers.length}
-					<option value={providerId}>{providerLabel}</option>
-					{#if providerId !== v1Provider()}
-						<option value={v1Provider()}>
-							{defaultProvider ? providerNames(defaultProvider).full : navCopy.defaultNetwork}
-						</option>
+				onValueChange={(id) => location.assign(providerHref(url, id, locale))}
+			/>
+		{:else}
+			<label class="nav-provider">
+				<span class="nav-provider-label nav-provider-full" aria-hidden="true" title={providerLabel}
+					>{providerLabel}</span
+				>
+				<span class="nav-provider-label nav-provider-short" aria-hidden="true" title={providerLabel}
+					>{providerShortLabel}</span
+				>
+				<select
+					class="nav-provider-select"
+					aria-label={`${navCopy.network}: ${providerLabel}`}
+					title={providerLabel}
+					value={providerId}
+					onchange={(event) => {
+						const href = providerHref(url, event.currentTarget.value, locale);
+						event.currentTarget.value = providerId;
+						location.assign(href);
+					}}
+				>
+					{#each providers as provider (provider.id)}
+						<option value={provider.id}>{providerNames(provider).full}</option>
+					{/each}
+					{#if !providers.length}
+						<option value={providerId}>{providerLabel}</option>
+						{#if providerId !== v1Provider()}
+							<option value={v1Provider()}>
+								{defaultProvider ? providerNames(defaultProvider).full : navCopy.defaultNetwork}
+							</option>
+						{/if}
 					{/if}
-				{/if}
-				{#if discoveryError}
-					<option value="" disabled>{navCopy.otherNetworksUnavailable}</option>
-				{/if}
-			</select>
-		</label>
+					{#if discoveryError}
+						<option value="" disabled>{navCopy.otherNetworksUnavailable}</option>
+					{/if}
+				</select>
+			</label>
+		{/if}
 		<FrameControls {locale} {url} />
 	</div>
 {/snippet}
@@ -347,6 +374,12 @@
 		border: 2px solid var(--border-brand);
 		border-radius: var(--radius-lg);
 		background: var(--background);
+	}
+
+	:global([data-full-viewport='true']) .nav-scope {
+		max-block-size: max(var(--size-tap-min), 20dvh);
+		overflow-y: auto;
+		overscroll-behavior: contain;
 	}
 
 	.nav-provider {

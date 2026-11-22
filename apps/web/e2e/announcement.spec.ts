@@ -11,14 +11,23 @@ test.beforeEach(async ({ page }) => {
 });
 
 for (const [prefix, message, closeLabel] of [
-	['', 'We got all the feedback and are working on it', 'Close this announcement'],
-	['/fr', 'Nous avons reçu tous vos commentaires et nous y travaillons', 'Fermer cette annonce'],
+	['', "A new Transit is on the way. See what's changing", 'Close this announcement'],
+	['/fr', "Un nouveau Transit s'en vient. Voyez ce qui change", 'Fermer cette annonce'],
 ] as const) {
 	test(`${prefix || 'en'}: a first visit has a localized Roadmap announcement`, async ({
 		page,
 	}) => {
+		await page.addInitScript(() =>
+			localStorage.setItem('yesid:announcement:roadmap-1', 'dismissed'),
+		);
 		await page.goto(`${prefix}/privacy`);
 		const announcement = page.locator(banner);
+		await expect(announcement).toHaveCSS('background-color', 'rgb(255, 182, 39)');
+		await expect(announcement.getByRole('link')).toHaveCSS('color', 'rgb(28, 24, 20)');
+		await expect(announcement.getByRole('button').locator('svg')).toHaveCSS(
+			'stroke',
+			'rgb(28, 24, 20)',
+		);
 		const link = announcement.getByRole('link', { name: message, exact: true });
 		await expect(link).toHaveAttribute('href', `${prefix}/roadmap`);
 		await expect(announcement.getByRole('button', { name: closeLabel })).toBeEnabled();
@@ -52,7 +61,7 @@ test('the same dismissal hides the banner before hydration, across routes and la
 	const script = (url: URL) => /\/_app\/immutable\/.*\.js$/.test(url.pathname);
 	await page.route(script, (route) => route.abort());
 	await page.reload();
-	await expect(page.locator('html')).toHaveAttribute('data-announcement-dismissed', 'roadmap-1');
+	await expect(page.locator('html')).toHaveAttribute('data-announcement-dismissed', config.id);
 	await expect(page.locator(hydrated)).toHaveCount(0);
 	await expect(announcement).not.toHaveAttribute('hidden');
 	await expect(announcement).toBeHidden();
@@ -60,7 +69,7 @@ test('the same dismissal hides the banner before hydration, across routes and la
 	await page.unroute(script);
 	await page.goto('/fr/terms');
 	await expect(page.locator(hydrated)).toHaveCount(1);
-	await expect(page.locator('html')).toHaveAttribute('data-announcement-dismissed', 'roadmap-1');
+	await expect(page.locator('html')).toHaveAttribute('data-announcement-dismissed', config.id);
 	await expect(announcement).toBeHidden();
 });
 
@@ -108,7 +117,11 @@ test('a wrapped phone banner leaves the map and its controls in the viewport', a
 	await expect(drawer).toBeInViewport({ ratio: 1 });
 	const pill = (await page.getByTestId('nav-pill').boundingBox())!;
 	expect((await drawer.boundingBox())!.y).toBeGreaterThanOrEqual(pill.y + pill.height);
-	await page.getByTestId('map-filter-done').click();
+	const done = page.getByTestId('map-filter-done');
+	expect((await drawer.boundingBox())!.height).toBeGreaterThanOrEqual(
+		(await done.boundingBox())!.height,
+	);
+	await done.click();
 	await close.click();
 	await expect(announcement).toBeHidden();
 	await expect.poll(async () => (await map.boundingBox())!.height).toBeCloseTo(844, 0);

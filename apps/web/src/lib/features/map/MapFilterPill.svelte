@@ -205,12 +205,16 @@
 		left: 0.75rem;
 		right: auto;
 		bottom: var(--map-controls-drawer-bottom);
+		--z-index-sheet: var(--z-overlay);
 		display: block;
 		width: min(21rem, calc(100vw - 2rem));
 		max-width: none;
 		max-height: min(
 			72dvh,
-			calc(100dvh - var(--map-controls-drawer-top) - var(--map-controls-drawer-bottom))
+			max(
+				var(--size-tap-min),
+				calc(100dvh - var(--map-controls-drawer-top) - var(--map-controls-drawer-bottom))
+			)
 		);
 		overflow-y: auto;
 		padding: 0;

@@ -130,12 +130,10 @@ for (const locale of ['en', 'fr'] as const)
 				props: { locale, providerId: provider.id, providers: [provider] },
 			});
 			const picker = view.getByRole('combobox', { name: new RegExp(fullName) });
-			expect(picker).toHaveAttribute('title', fullName);
+			const label = picker.closest('label')!;
+			expect(label).toHaveAttribute('title', fullName);
 			expect(within(picker).getByRole('option', { selected: true })).toHaveTextContent(fullName);
-			expect(within(picker.parentElement!).getByText(operator, { exact: true })).toHaveAttribute(
-				'title',
-				fullName,
-			);
+			expect(within(label).getByText(operator, { exact: true })).toBeInTheDocument();
 		});
 
 it.each([
