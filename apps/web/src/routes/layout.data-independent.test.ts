@@ -443,7 +443,7 @@ describe('root layout data-independent legal routes', () => {
 		async ({ pathname, lang, loaded, footer, openMenu, infoLabel, links }) => {
 			const view = renderRoot(pathname, lang, loaded ? loadedV1(lang) : null);
 			expect(view.container.querySelector('[data-slot="app-shell"]')).toBeInTheDocument();
-			const banner = view.container.querySelector('[data-slot="announcement-banner"]');
+			const banner = view.container.querySelector<HTMLElement>('[data-slot="announcement-banner"]');
 			if (announcement.enabled && banner) {
 				expect(
 					within(banner).getByRole('link', { name: announcement[lang].message }),
