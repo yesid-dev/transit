@@ -153,20 +153,39 @@
 		if (!scopeControls || typeof ResizeObserver === 'undefined') return;
 		const control = scopeControls;
 		const pill = control.closest<HTMLElement>('[data-testid="nav-pill"]')!;
-		const root = control.ownerDocument.documentElement;
+		const doc = control.ownerDocument;
+		const root = doc.documentElement;
 		const measure = () => {
 			const box = pill.getBoundingClientRect();
-			root.style.setProperty(
-				'--pill-h',
-				`${Math.ceil(Math.max(box.bottom, control.getBoundingClientRect().bottom) - box.top)}px`,
-			);
+			const chromeBottom = Math.max(box.bottom, control.getBoundingClientRect().bottom);
+			root.style.setProperty('--pill-h', `${Math.ceil(chromeBottom - box.top)}px`);
+
+			// Native focus can treat a link behind fixed chrome as already visible.
+			// Refresh the clearance and reveal keyboard focus when the header grows or focus moves.
+			const focused = doc.activeElement;
+			if (
+				!(focused instanceof HTMLElement) ||
+				!focused.matches(':focus-visible') ||
+				!focused.closest('[data-slot="footer"]')
+			)
+				return;
+			const { top, bottom } = focused.getBoundingClientRect();
+			if (top < chromeBottom || bottom > root.clientHeight) {
+				focused.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
+			}
+		};
+		const onFocusIn = (event: FocusEvent) => {
+			if (event.target instanceof Element && event.target.closest('[data-slot="footer"]'))
+				measure();
 		};
 		const observer = new ResizeObserver(measure);
 		observer.observe(pill.closest('[data-slot="site-header"]')!);
 		observer.observe(control);
+		doc.addEventListener('focusin', onFocusIn);
 		measure();
 		return () => {
 			observer.disconnect();
+			doc.removeEventListener('focusin', onFocusIn);
 			root.style.removeProperty('--pill-h');
 		};
 	});
@@ -272,7 +291,7 @@
 
 <style>
 	:root {
-		--pill-h: 126px;
+		--pill-h: 140px;
 	}
 
 	/* Transit's pill also holds refresh and search, so on phones the 18px brand pushes the pill off
