@@ -3,6 +3,9 @@
   "name": "transit-engine",
   "main": "./worker.js",
   "compatibility_date": "2026-11-22",
+  "workers_dev": true,
+  "preview_urls": false,
+  "vars": { "ENGINE_CLEAN_ROOT": "s3://transit-clean" },
   "containers": [
     {
       "class_name": "TransitEngine",

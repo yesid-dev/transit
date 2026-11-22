@@ -16,15 +16,23 @@ from transit_engine.server import BUSY_MESSAGE
 from transit_engine.store import CITY
 
 
-def measure_url(base: str, city: str, start: date, end: date) -> str:
-    query = urlencode(
-        {"measure": "punctuality", "city": city, "from": start.isoformat(), "to": end.isoformat()}
-    )
-    return f"{base.rstrip('/')}/measure?{query}"
+def measure_url(base: str, city: str, start: date, end: date, *, line: str | None = None) -> str:
+    query = {
+        "measure": "punctuality",
+        "city": city,
+        "from": start.isoformat(),
+        "to": end.isoformat(),
+    }
+    if line is not None:
+        query["line"] = line
+    return f"{base.rstrip('/')}/measure?{urlencode(query)}"
 
 
 def request(url: str) -> tuple[int, bool, dict[str, Any]]:
     http_request = Request(url)
+    token = os.environ.get("TRANSIT1_ENGINE_ACCESS_TOKEN")
+    if token and http_request.type == "https":
+        http_request.add_unredirected_header("Authorization", f"Bearer {token}")
     for name in ("CF-Access-Client-Id", "CF-Access-Client-Secret"):
         value = os.environ.get(name.upper().replace("-", "_"))
         if value:
@@ -80,6 +88,7 @@ def main() -> None:
                 and body.get("measure") == "punctuality"
                 and evidence.get("city") == args.city
                 and evidence.get("start_date") == evidence.get("end_date") == day.isoformat()
+                and evidence.get("days_measured") == [day.isoformat()]
                 and body.get("state")
             ):
                 result = "answered"
