@@ -44,14 +44,20 @@ def periods_text(language: str) -> str:
     )
 
 
-# Keep failed, empty, stale and repeated publications outside capture coverage.
+# Failed attempts still identify feeds that require coverage.
 POLL_COVERAGE_SQL = f"""
-    poll_times AS (
-        SELECT service_date, feed, captured_at_utc, max(feed_timestamp_utc) AS published
+    realtime_polls AS (
+        SELECT service_date, feed, captured_at_utc, feed_timestamp_utc, result, entity_count
         FROM read_parquet(?, hive_partitioning = false)
         WHERE provider = ? AND cleaning_version = ? AND service_date BETWEEN ? AND ?
-            AND feed IN ('trip_updates', 'vehicle_positions') AND result = 'ok'
-            AND entity_count > 0 AND feed_timestamp_utc IS NOT NULL
+            AND feed <> 'alerts'
+    ), realtime_feed_counts AS (
+        SELECT service_date, count(DISTINCT feed) AS required_feeds
+        FROM realtime_polls GROUP BY service_date
+    ), poll_times AS (
+        SELECT service_date, feed, captured_at_utc, max(feed_timestamp_utc) AS published
+        FROM realtime_polls
+        WHERE result = 'ok' AND entity_count > 0 AND feed_timestamp_utc IS NOT NULL
         GROUP BY service_date, feed, captured_at_utc
     ), poll_history AS (
         SELECT *, max(published) OVER (

@@ -145,7 +145,7 @@ def test_waiting_excludes_unobserved_trips_capture_gaps_and_infrequent_periods(
         "I": "no_frequent_periods",
         "M": "too_few_to_judge",
         "N": "no_live_data",
-        "O": "too_few_to_judge",
+        "O": "unknown",
         "T": "not_measured",
     }
     assert "No frequent periods" in excluded["I"]["reason_text"]["en"]
@@ -153,7 +153,34 @@ def test_waiting_excludes_unobserved_trips_capture_gaps_and_infrequent_periods(
     assert excluded["D"]["excluded"]["unknown_direction"] == 2
     assert excluded["G"]["excluded"]["capture_gap"] == 1
     assert excluded["O"]["excluded"]["not_consecutive"] == 1
+    assert excluded["O"]["excluded"]["overtaking_pairs"] == 1
+    assert excluded["O"]["counts"]["observed_headways"] == 0
+    assert excluded["O"]["excluded"]["capture_gap"] == 0
     assert excluded["T"]["excluded"]["capture_gap"] == 1
+
+
+def test_waiting_uses_the_realtime_feeds_recorded_for_each_day(tmp_path: Path) -> None:
+    trips = tuple(_trip("A", index, index * 5) for index in range(21))
+    updates = tuple(Poll("trip_updates", second) for second in range(0, 6061, 60))
+    store = _build_store(
+        tmp_path,
+        6,
+        dict.fromkeys((THURSDAY, FRIDAY), trips),
+        {
+            THURSDAY: (*updates, Poll("alerts", 0, result="error")),
+            FRIDAY: (*updates, Poll("vehicle_positions", 0, result="error")),
+        },
+    )
+    measured = query(store, measure="waiting_and_gaps", line="A")
+    assert measured["state"] == "measured"
+    assert measured["evidence"]["counts"]["observed_headways"] == 20
+    assert measured["value"]["excess_wait_time"] == 0
+    missing_feed = query(store, measure="bunching", line="A", start=FRIDAY, end=FRIDAY)
+    assert missing_feed["state"] == "not_measured"
+    assert missing_feed["evidence"]["excluded"]["capture_gap"] == 20
+    combined = query(store, measure="bunching", line="A", end=FRIDAY)
+    assert combined["evidence"]["counts"]["observed_headways"] == 20
+    assert combined["evidence"]["excluded"]["capture_gap"] == 20
 
 
 def test_service_offered_matches_schedule_only_recomputation(

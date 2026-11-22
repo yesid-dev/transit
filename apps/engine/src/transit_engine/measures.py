@@ -1196,6 +1196,10 @@ _WAITING_EXCLUDED = {
         "Pairs with another observed passage between them",
         "Paires séparées par un autre passage observé",
     ),
+    "overtaking_pairs": Text(
+        "Pairs observed in reverse scheduled order",
+        "Paires observées dans l’ordre inverse de l’horaire",
+    ),
     "capture_gap": Text("Pairs without continuous capture", "Paires sans collecte continue"),
 }
 _WAITING_COLUMNS = {
@@ -1257,11 +1261,14 @@ def _waiting_rows(
         ),
         "not_consecutive": (
             "count(*) FILTER (frequent AND route_has_live_data "
-            "AND observed_pair AND NOT consecutive)"
+            "AND observed_pair AND NOT overtaking AND NOT consecutive)"
+        ),
+        "overtaking_pairs": (
+            "count(*) FILTER (frequent AND route_has_live_data AND observed_pair AND overtaking)"
         ),
         "capture_gap": (
             "count(*) FILTER (frequent AND route_has_live_data AND "
-            "(trip_gap OR (observed_pair AND consecutive AND NOT eligible)))"
+            "(trip_gap OR (observed_pair AND NOT overtaking AND consecutive AND NOT eligible)))"
         ),
     }
     counters.update(
@@ -1302,6 +1309,7 @@ def _waiting_rows(
             SELECT *, epoch(scheduled_stop_utc - lag(scheduled_stop_utc) OVER schedule)::BIGINT
                     AS scheduled_seconds,
                 lag(observed_at_utc) OVER schedule AS prev_observed,
+                coalesce(observed_at_utc < prev_observed, false) AS overtaking,
                 trip_capture_gap OR lag(trip_capture_gap, 1, false) OVER schedule AS trip_gap,
                 usable_observation AND lag(usable_observation, 1, false) OVER schedule
                     AND prev_observed IS NOT NULL AND observed_at_utc IS NOT NULL
@@ -1325,15 +1333,17 @@ def _waiting_rows(
         ),
         {POLL_COVERAGE_SQL},
         matched AS (
-            SELECT *,
-                abs(epoch(observed_at_utc - prev_observed))::BIGINT AS observed_seconds,
+            SELECT p.*,
+                epoch(observed_at_utc - prev_observed)::BIGINT AS observed_seconds,
                 frequent AND route_has_live_data AND observed_pair AND consecutive
-                    AND 2 = (SELECT count(DISTINCT c.feed) FROM coverage c
+                    AND NOT overtaking AND coalesce(f.required_feeds = (
+                        SELECT count(DISTINCT c.feed) FROM coverage c
                         WHERE c.service_date = p.service_date
                           AND c.covered_from <= least(p.observed_at_utc, p.prev_observed)
                           AND c.covered_to >= greatest(p.observed_at_utc, p.prev_observed)
-                    ) AS eligible
-            FROM frequent_periods p WHERE {cut}
+                    ), false) AS eligible
+            FROM frequent_periods p LEFT JOIN realtime_feed_counts f USING (service_date)
+            WHERE {cut}
         )
         SELECT {_entity_sql(group)} AS entity, NULL, {routes}, {", ".join(counters.values())}
         FROM matched GROUP BY entity
@@ -1368,8 +1378,9 @@ _WAITING = Family(
         "line, stop and direction. Both trips must have run and both arrivals must be "
         "confirmed by a stopped vehicle or a time the agency marked exact. An exact "
         "departure is accepted at a stop with only a scheduled departure. Unobserved "
-        "scheduled trips interrupt pairing. Both feeds must have continuous capture "
-        f"between observations, with at most {MAX_POLL_SPACING_SECONDS} seconds between "
+        "scheduled trips interrupt pairing. Every trip or vehicle feed recorded for the "
+        "service date must have continuous capture between observations, with at most "
+        f"{MAX_POLL_SPACING_SECONDS} seconds between "
         f"usable polls and {MAX_POLL_AGE_SECONDS} seconds of publication age. "
         "The direction must be known. Lines without live data are excluded.",
         "Les passages doivent se suivre dans l’horaire et les observations pour la même "
@@ -1377,8 +1388,9 @@ _WAITING = Family(
         "et les arrivées doivent être confirmées par un véhicule à l’arrêt ou une heure "
         "jugée exacte par l’exploitant. Un départ exact est accepté si seul le départ est "
         "prévu à l’horaire. Un trajet prévu non observé interrompt l’appariement. "
-        "La collecte des deux flux doit couvrir l’intervalle entre les observations, avec "
-        f"au plus {MAX_POLL_SPACING_SECONDS} secondes entre les relevés utilisables et "
+        "La collecte de chaque flux de trajets ou de véhicules consigné pour cette date de "
+        "service doit couvrir l’intervalle entre les observations, avec au plus "
+        f"{MAX_POLL_SPACING_SECONDS} secondes entre les relevés utilisables et "
         f"des publications datant d’au plus {MAX_POLL_AGE_SECONDS} secondes. "
         "La direction doit être connue. Les lignes sans données en direct sont exclues.",
     ),
@@ -1387,12 +1399,15 @@ _WAITING = Family(
         f"interval of at most {FREQUENT_HEADWAY_SECONDS // 60} minutes at that stop and "
         f"direction on that service date. Local periods are {periods_text('en')}. "
         "Each pair belongs to its later scheduled stop time and trip departure. "
+        "Pairs where vehicles overtook each other are left out. This can understate bunching. "
         f"At least {MIN_OBSERVED_HEADWAYS} matched pairs are needed to report a value.",
         "Une période est fréquente si elle compte au moins deux heures de passage "
         f"distinctes et un intervalle prévu moyen d’au plus {FREQUENT_HEADWAY_SECONDS // 60} "
         "minutes à cet arrêt et dans cette direction à cette date de service. "
         f"Périodes locales : {periods_text('fr')}. Chaque paire est rattachée au dernier "
         "passage prévu et au départ de son trajet. "
+        "Les paires où un véhicule a dépassé l’autre sont exclues. Cela peut sous-estimer "
+        "les regroupements de véhicules. "
         f"Il faut au moins {MIN_OBSERVED_HEADWAYS} paires appariées pour publier une valeur.",
     ),
     measures=(
