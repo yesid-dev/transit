@@ -1,0 +1,168 @@
+<script lang="ts">
+	import { Card } from '@yesid/ui/card';
+	import { Surface } from '@yesid/ui/layout';
+	import { intl, localizeHref, type Locale } from '#lib/i18n/index.ts';
+	import RecordActions from '#lib/features/record/RecordActions.svelte';
+	import RecordPending from '#lib/features/record/RecordPending.svelte';
+	import RecordTable from '#lib/features/record/RecordTable.svelte';
+	import { recordSectionLinks } from '#lib/features/record/recordLinks.ts';
+	import {
+		choose,
+		dateRange,
+		lastGoodNote,
+		punctualityBands,
+		recordMessage,
+		shareReading,
+		tally,
+	} from '#lib/features/record/recordText.ts';
+	import type { RecordCell } from '#lib/server/engine.ts';
+	import type { loadStopRecord } from '#lib/server/stopRecord.ts';
+	import { carryFrameState, frameHref } from '#lib/site/frameState.ts';
+	import { stopViewHref } from '#lib/site/stopFrame.ts';
+	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
+	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
+	import type { IdentitySeed } from '#lib/v1/serverContext.ts';
+	import StopViewNav from './StopViewNav.svelte';
+	import { stopAnswer, stopCitation, stopDelay, stopSectionTitles } from './stopRecordText.ts';
+
+	let {
+		stop,
+		code,
+		locale,
+		url,
+		record,
+	}: {
+		stop: IdentitySeed;
+		code?: string | null;
+		locale: Locale;
+		url: URL;
+		record: ReturnType<typeof loadStopRecord>;
+	} = $props();
+	const display = transitDisplay();
+	const t = (en: string, fr: string) => choose(locale, en, fr);
+	const stopLabel = $derived(t(`Stop ${code || stop.id}`, `Arrêt ${code || stop.id}`));
+	const name = $derived(stop.name === stop.id ? null : stopDisplayName(stop.name));
+	const subject = $derived(name ? `${stopLabel} · ${name}` : stopLabel);
+	const pinned = $derived.by(() => {
+		const link = stopViewHref(url, 'record');
+		link.searchParams.set('provider', record.city);
+		return new URL(
+			frameHref(link, { mode: 'record', period: { ...record.period, preset: null } }),
+			url,
+		);
+	});
+	const back = $derived(carryFrameState(localizeHref('/stops', locale, record.city), pinned));
+	const day = (day: string) =>
+		intl.dateTime(locale, { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(day));
+	const label = (cell: RecordCell & { key: Record<string, string | number | null> }) => {
+		if (typeof cell.key.line === 'string') return display.lineName(cell.key.line).label;
+		if (typeof cell.key.hour === 'number') return `${String(cell.key.hour).padStart(2, '0')}:00`;
+		if (typeof cell.key.day === 'string') return day(cell.key.day);
+		return t('Unknown', 'Inconnu');
+	};
+	const count = (value: number | null | undefined) =>
+		value == null ? t('Unknown', 'Inconnu') : tally(value, locale);
+</script>
+
+<Surface>
+	<div class="grid min-w-0 gap-4">
+		<header class="grid gap-2">
+			<a href={back}>{t('All stops', 'Tous les arrêts')}</a>
+			<h1>{name ?? stopLabel}</h1>
+			{#if name}<p>{stopLabel}</p>{/if}
+			<StopViewNav url={pinned} {locale} view="record" />
+			<p>{dateRange(record.period, locale)}</p>
+		</header>
+
+		{#each record.sections as { section, answer } (section)}
+			{@const title = t(...stopSectionTitles[section])}
+			{@const links = recordSectionLinks(pinned, section)}
+			<Card edge="neutral" textSize="inherit" class="min-w-0 px-4 sm:px-6">
+				<section id={section} aria-labelledby={`${section}-title`} class="grid min-w-0 gap-3">
+					<h2 id={`${section}-title`}>{title}</h2>
+					{#await answer}
+						{#key answer}<RecordPending {locale} />{/key}
+					{:then result}
+						{@const message = recordMessage(result, locale)}
+						{#if result.kind === 'answer' && result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
+						{#if message}<p>{message}</p>{/if}
+						{#if result.kind === 'answer'}
+							{@const data = result.answer}
+							{#if !message}
+								{#if 'value' in data}
+									{#if section === 'punctuality'}
+										<p>{stopAnswer(data, locale)}</p>
+										<dl class="flex flex-wrap gap-4">
+											{#each punctualityBands(data, locale) as band (band.id)}
+												<div>
+													<dt>{band.label}</dt>
+													<dd>{band.reading}</dd>
+												</div>
+											{/each}
+										</dl>
+									{:else if section === 'delay'}
+										<dl class="flex flex-wrap gap-4">
+											<div>
+												<dt>{t('Median delay', 'Retard médian')}</dt>
+												<dd>{stopDelay(data.value.median_delay, locale)}</dd>
+											</div>
+											<div>
+												<dt>{t('90th percentile', '90e centile')}</dt>
+												<dd>{stopDelay(data.value.p90_delay, locale)}</dd>
+											</div>
+										</dl>
+									{:else if section === 'alerts'}
+										<dl class="flex flex-wrap gap-4">
+											<div>
+												<dt>{t('Distinct alerts', 'Avis distincts')}</dt>
+												<dd>{count(data.value.alerts)}</dd>
+											</div>
+											<div>
+												<dt>{t('Versions of those alerts', 'Versions de ces avis')}</dt>
+												<dd>{count(data.value.alert_versions)}</dd>
+											</div>
+										</dl>
+									{/if}
+								{:else if 'cells' in data}
+									<RecordTable
+										{title}
+										headers={[
+											section === 'byLine'
+												? t('Line', 'Ligne')
+												: section === 'hourly'
+													? t('Scheduled local hour', 'Heure locale prévue')
+													: t('Service date', 'Date de service'),
+											t(
+												'On-time share (on time / observed)',
+												'Part à l’heure (à l’heure / observés)',
+											),
+										]}
+										rows={data.cells.map((cell) => [
+											label(cell),
+											shareReading(cell, 'on_time', locale),
+										])}
+									/>
+								{/if}
+							{/if}
+							{#if data.coverage_note}<p>{data.coverage_note[locale]}</p>{/if}
+							<RecordActions
+								{locale}
+								{title}
+								href={links.share}
+								csv={links.csv}
+								citation={stopCitation(
+									subject,
+									section,
+									data,
+									locale,
+									links.share,
+									result.lastGood,
+								)}
+							/>
+						{/if}
+					{/await}
+				</section>
+			</Card>
+		{/each}
+	</div>
+</Surface>

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Locale } from '#lib/i18n/index.ts';
-	import { choose, lineViewHref } from './lineRecordText.ts';
+	import { choose } from '#lib/features/record/recordText.ts';
+	import { lineViewHref } from './lineRecordText.ts';
 
 	let { url, locale, view }: { url: URL; locale: Locale; view: 'record' | 'schedule' | 'live' } =
 		$props();

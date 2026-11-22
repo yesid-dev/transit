@@ -15,6 +15,7 @@
 	import { page } from '$app/state';
 	import { getLocale, getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
 	import type { DetailTab } from '#lib/site/detailTabs.ts';
+	import { stopViewHref } from '#lib/site/stopFrame.ts';
 	import { createDetailTabController } from '#lib/site/detailTabController.svelte.ts';
 	import { getStop } from '#lib/v1/repositories/static.ts';
 	import {
@@ -66,9 +67,10 @@
 		id: string;
 		seed: IdentitySeed;
 		stopSeed?: ResourceSeed<StopFile | null>;
+		frameLive?: boolean;
 	}
 
-	let { id, seed, stopSeed }: StopDetailProps = $props();
+	let { id, seed, stopSeed, frameLive = false }: StopDetailProps = $props();
 
 	const locale: Locale = getLocale();
 	const t = $derived(detailCopy[locale]);
@@ -85,11 +87,15 @@
 
 	const SCHEDULE_CAP = 30;
 
-	const tabs = $derived([
-		{ key: 'reliability', label: t.tabs.reliability },
-		{ key: 'detail', label: t.tabs.detail },
-		{ key: 'schedule', label: t.tabs.schedule },
-	] as const satisfies readonly { key: DetailTab; label: string }[]);
+	const tabs = $derived(
+		(
+			[
+				{ key: 'reliability', label: t.tabs.reliability },
+				{ key: 'detail', label: t.tabs.detail },
+				{ key: 'schedule', label: t.tabs.schedule },
+			] as const satisfies readonly { key: DetailTab; label: string }[]
+		).filter(({ key }) => !frameLive || key === 'detail'),
+	);
 	const detailTocEntries = $derived<TocEntry[]>([
 		{
 			id: 'stop-detail-departures',
@@ -160,6 +166,11 @@
 	const servedLines = $derived(stop.data?.routes_served ?? null);
 	const stopPath = $derived(routeFor({ kind: 'stop', id }));
 	const recordUrl = $derived(new URL(localizeHref(stopPath, locale), page.url.origin).href);
+	const recordHref = $derived(
+		frameLive
+			? stopViewHref(new URL(page.url.href), 'record').href
+			: localizeHref(stopPath, locale),
+	);
 	// The Live now view holds the full notices; the strip elsewhere leads there.
 	const onLive = $derived(detailTabController.active === 'detail');
 	const noticeHref = $derived(
@@ -518,7 +529,7 @@
 						</ResourceBoundary>
 						<!-- Outside the report's boundary: the way out stays through every live state. -->
 						<p class="stop-live-links">
-							<a href={localizeHref(stopPath, locale)}>{t.live.record}</a>
+							<a href={recordHref}>{t.live.record}</a>
 							{#if liveView.kind !== 'list'}<a href={scheduleHref}>{t.live.schedule}</a>{/if}
 						</p>
 					</CollapsibleSection>

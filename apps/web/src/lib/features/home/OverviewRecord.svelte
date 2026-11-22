@@ -6,6 +6,7 @@
 	import CopyAction from '#lib/features/hotspots/sections/CopyAction.svelte';
 	import HomeSearch from './HomeSearch.svelte';
 	import RecordPending from '../record/RecordPending.svelte';
+	import { lastGoodNote } from '../record/recordText.ts';
 	import RecordRanking from './RecordRanking.svelte';
 	import { citationText, comparisonText, dateRange, measureText } from './overviewRecord.ts';
 
@@ -39,6 +40,7 @@
 	{#await promise}
 		{#key promise}<RecordPending {locale} />{/key}
 	{:then result}
+		{#if result.kind === 'answer' && result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 		<p>{measureText(result, period, locale)}</p>
 		{#if result.kind === 'answer' && result.answer.coverage_note}
 			<p>{result.answer.coverage_note[locale]}</p>
@@ -71,6 +73,7 @@
 				{#if baseline.kind === 'answer' && baseline.answer.state !== 'measured'}
 					<p>{dateRange(record.previous, locale)}</p>
 				{/if}
+				{#if baseline.kind === 'answer' && baseline.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 				<p>{measureText(baseline, record.previous, locale)}</p>
 				{#if baseline.kind === 'answer' && baseline.answer.coverage_note}
 					<p>{baseline.answer.coverage_note[locale]}</p>

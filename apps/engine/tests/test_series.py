@@ -93,6 +93,47 @@ def test_grid_keeps_after_midnight_event_on_its_service_weekday(store: Store) ->
     )
 
 
+def test_stop_by_line_matches_individual_line_cuts_and_exports_csv(tmp_path: Path) -> None:
+    trips = tuple(
+        Trip(f"a-{index}", "A", index % 2, "ran", None, True, (0,), stop_ids=("S1",))
+        for index in range(32)
+    )
+    thin = Trip("b", "B", 0, "ran", None, True, (359,), stop_ids=("S1",))
+    elsewhere = thin._replace(id="c", line="C", stop_ids=("S2",))
+    store = _build_store(tmp_path, 6, {THURSDAY: (*trips, thin, elsewhere)})
+    scope = {"start": THURSDAY, "end": FRIDAY, "stop": "S1", "measure": "on_time"}
+    cells = query(store, **scope, group="line")["cells"]
+    assert [(row["key"]["line"], row["state"]) for row in cells] == [
+        ("A", "measured"),
+        ("B", "too_few_to_judge"),
+    ]
+    for row in cells:
+        expected = query(store, **scope, line=row["key"]["line"])
+        assert row["value"] == expected["value"]
+        assert row["evidence"]["counts"] == expected["evidence"]["counts"]
+    assert cells[0]["evidence"]["counts"]["classified"] == 32
+
+    app = Engine(store, concurrency=1, queue_size=0, queue_wait_ms=50)
+    parameters = urlencode(
+        {
+            "city": "stm",
+            "from": THURSDAY,
+            "to": FRIDAY,
+            "stop": "S1",
+            "measure": "on_time",
+            "group": "line",
+            "format": "csv",
+            "lang": "fr",
+        }
+    )
+    status, _, body = asyncio.run(http(app, "/measure", parameters))
+    assert status == 200
+    good, thin_csv = csv.DictReader(io.StringIO(body.decode()))
+    assert good["Identifiant de la ligne"] == "A"
+    assert thin_csv["Identifiant de la ligne"] == "B"
+    assert thin_csv["Valeur"] == ""
+
+
 @pytest.mark.parametrize("measure", ["on_time", "punctuality"])
 def test_series_csv_has_one_row_per_cell_with_registry_headings(store: Store, measure: str) -> None:
     app = Engine(store, concurrency=1, queue_size=0, queue_wait_ms=50)

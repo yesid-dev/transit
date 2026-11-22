@@ -8,6 +8,7 @@
 	import {
 		frameHref,
 		frameToday,
+		MAX_RECORD_DAYS,
 		parseFrameState,
 		periodError,
 		presetPeriod,
@@ -39,6 +40,7 @@
 				reversed: 'The end date must be on or after the start date.',
 				beforeRecord: 'Choose dates on or after the start of the record.',
 				future: 'Choose dates up to today.',
+				tooLong: `Choose a period of at most ${MAX_RECORD_DAYS} days.`,
 			},
 		},
 		fr: {
@@ -66,6 +68,7 @@
 				reversed: 'La date de fin doit être égale ou postérieure à la date de début.',
 				beforeRecord: 'Choisissez des dates à partir du début du bilan.',
 				future: 'Choisissez des dates au plus tard aujourd’hui.',
+				tooLong: `Choisissez une période d’au plus ${MAX_RECORD_DAYS} jours.`,
 			},
 		},
 	} as const;
@@ -76,7 +79,8 @@
 	const frame = $derived(parseFrameState(url.searchParams, today));
 	const path = $derived(delocalizePath(url.pathname));
 	const line = $derived(/^\/lines\/[^/]+\/?$/.test(path));
-	const usesFrameRecord = $derived(path === '/' || line);
+	const stop = $derived(/^\/stop\/[^/]+\/?$/.test(path));
+	const usesFrameRecord = $derived(path === '/' || line || stop);
 	const startLabel = $derived(
 		intl.dateTime(locale, { timeZone: 'UTC', dateStyle: 'long' }).format(new Date(RECORD_START)),
 	);
@@ -115,7 +119,7 @@
 	function selectMode(mode: FrameMode) {
 		if (frame.mode === mode) return;
 		const target = new URL(frameHref(url, { ...frame, mode }), url);
-		if (line) {
+		if (line || stop) {
 			if (mode === 'live') target.searchParams.set('tab', 'detail');
 			else target.searchParams.delete('tab');
 		}

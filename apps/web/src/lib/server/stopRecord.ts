@@ -1,0 +1,39 @@
+import { getRecordAnswer, type EnginePeriod, type RecordQuery } from './engine.ts';
+
+export const stopRecordQueries = {
+	punctuality: { measure: 'punctuality' },
+	byLine: { measure: 'on_time', group: 'line' },
+	hourly: { measure: 'on_time', group: 'hour' },
+	daily: { measure: 'on_time', group: 'day' },
+	alerts: { measure: 'alert_counts' },
+} as const;
+
+export type StopSection = keyof typeof stopRecordQueries | 'delay';
+
+export function stopRecordQuery(section: StopSection, stop: string): RecordQuery {
+	return {
+		path: '/measure',
+		parameters: {
+			...stopRecordQueries[section === 'delay' ? 'punctuality' : section],
+			stop,
+		},
+	};
+}
+
+export function loadStopRecord(scope: EnginePeriod, stop: string) {
+	const { from, to, city } = scope;
+	// The engine already computes both delay percentiles alongside the three bands.
+	const punctuality = getRecordAnswer(stopRecordQuery('punctuality', stop), scope);
+	const sections: StopSection[] = ['punctuality', 'byLine', 'hourly', 'daily', 'delay', 'alerts'];
+	return {
+		period: { from, to },
+		city,
+		sections: sections.map((section) => ({
+			section,
+			answer:
+				section === 'punctuality' || section === 'delay'
+					? punctuality
+					: getRecordAnswer(stopRecordQuery(section, stop), scope),
+		})),
+	};
+}

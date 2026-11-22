@@ -97,7 +97,15 @@ async function remember(cache, origin, question, version, versionKey, ttl, body,
   }
 }
 
-export async function serveQuestion(request, env, ctx) {
+export function serveQuestion(request, env, ctx) {
+  return answerQuestion(request, env, ctx, request.headers.get("cf-connecting-ip"));
+}
+
+export function serveBoundQuestion(request, env, ctx) {
+  return answerQuestion(request, env, ctx, request.headers.get("x-transit-visitor-ip"));
+}
+
+async function answerQuestion(request, env, ctx, visitorIp) {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") {
     return new Response(null, {
@@ -134,8 +142,7 @@ export async function serveQuestion(request, env, ctx) {
   if (cached) return publicAnswer(cached.body, cached.headers.get("content-type"));
 
   try {
-    const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
-    const { success } = await env.QUESTION_LIMIT.limit({ key: await hash(ip) });
+    const { success } = await env.QUESTION_LIMIT.limit({ key: await hash(visitorIp || "unknown") });
     if (!success) return busy("60");
   } catch {
     return message(503, "question limiter unavailable", { "retry-after": "60" });

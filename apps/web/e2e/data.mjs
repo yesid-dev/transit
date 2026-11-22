@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { lineEngine } from './line-engine.mjs';
 import { overviewEngine } from './overview-engine.mjs';
+import { stopEngine } from './stop-engine.mjs';
 
 const read = (file) => readFileSync(new URL(file, import.meta.url));
 // STM serves the listed feeds; OC Transpo serves a manifest, provenance and a passing pipeline gate.
@@ -298,15 +299,22 @@ const server = createServer((request, response) => {
 		response.writeHead(204).end();
 		return;
 	}
-	if (url.pathname === '/measure' || url.pathname === '/ranking') {
-		const result = url.searchParams.has('line') ? lineEngine(url) : overviewEngine(url);
+	const question = /^\/v2\/([^/]+)\/(measure|ranking)$/.exec(url.pathname);
+	if (question) {
+		url.pathname = `/${question[2]}`;
+		url.searchParams.set('city', question[1]);
+		const result = url.searchParams.has('stop')
+			? stopEngine(url)
+			: url.searchParams.has('line')
+				? lineEngine(url)
+				: overviewEngine(url);
 		if (result.csv) {
 			response.setHeader('content-type', 'text/csv; charset=utf-8');
 			response.end(result.csv);
 			return;
 		}
-		const { hold, body } = result;
-		response.setHeader('content-type', 'application/json');
+		const { hold, body, status = 200, headers = {} } = result;
+		response.writeHead(status, { 'content-type': 'application/json', ...headers });
 		const send = () => response.end(JSON.stringify(body));
 		if (hold) {
 			heldOverviewResponses.add(send);

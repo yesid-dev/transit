@@ -57,7 +57,7 @@ def test_wrangler_config_pins_public_routes_and_snapshots_bucket() -> None:
     config = _wrangler_config()
 
     assert config["name"] == "transit-data-proxy"
-    assert config["main"] == "src/worker.js"
+    assert config["main"] == "src/entrypoint.js"
     assert config["routes"] == [
         {"pattern": "transit.yesid.dev/data/*", "zone_name": "yesid.dev"},
         {"pattern": "transit.yesid.dev/api/v1/*", "zone_name": "yesid.dev"},

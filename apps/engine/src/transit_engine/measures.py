@@ -318,6 +318,8 @@ class Question:
                 )
         if self.group == "stop" and (self.line is None or family.id != _PUNCTUALITY.id):
             raise ValueError("group=stop requires a line and a punctuality measure")
+        if self.group == "line" and (self.stop is None or family.id != _PUNCTUALITY.id):
+            raise ValueError("group=line requires a stop and a punctuality measure")
         if self.group == "departure" and (
             self.line is None or family.id != _SERVICE_DELIVERED_ID or self.measure in _BOUNDARIES
         ):
@@ -415,6 +417,7 @@ _GROUP_LABELS = {
     "direction": Text("Direction", "Direction"),
     "stop_sequence": Text("Stop sequence", "Ordre de l’arrêt"),
     "stop": Text("Stop ID", "Identifiant de l’arrêt"),
+    "line": Text("Line ID", "Identifiant de la ligne"),
     "departure": Text("Scheduled departure", "Départ prévu"),
 }
 _UNIT_LABELS = {
@@ -3445,6 +3448,8 @@ def _series_keys(
             (key for key in observed if key[1] is not None),
             key=lambda key: (key[0] is None, key),
         )
+    if group == "line":
+        return sorted(key for key in observed if key[0] is not None)
     return [(0,), (1,), *([(None,)] if (None,) in observed else [])]
 
 

@@ -1,24 +1,27 @@
 <script lang="ts">
-	import { SvelteURL } from 'svelte/reactivity';
 	import { Card } from '@yesid/ui/card';
 	import { Surface } from '@yesid/ui/layout';
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
-	import CopyAction from '#lib/features/hotspots/sections/CopyAction.svelte';
+	import RecordActions from '#lib/features/record/RecordActions.svelte';
+	import { recordSectionLinks } from '#lib/features/record/recordLinks.ts';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
-	import { dateRange } from '#lib/features/record/recordText.ts';
-	import type { loadLineRecord, LineSection } from '#lib/server/lineRecord.ts';
+	import {
+		choose,
+		dateRange,
+		lastGoodNote,
+		recordMessage,
+	} from '#lib/features/record/recordText.ts';
+	import type { loadLineRecord } from '#lib/server/lineRecord.ts';
 	import { carryFrameState, frameHref } from '#lib/site/frameState.ts';
 	import type { RouteFile } from '#lib/v1/schemas/route.ts';
 	import { directionHeadsigns } from './directions.ts';
 	import LineRecordReadings from './LineRecordReadings.svelte';
 	import LineViewNav from './LineViewNav.svelte';
 	import {
-		choose,
 		directionLabel,
 		lineCitation,
 		lineSectionTitles,
 		lineViewHref,
-		recordMessage,
 	} from './lineRecordText.ts';
 
 	let {
@@ -68,21 +71,6 @@
 		);
 	});
 	const back = $derived(carryFrameState(localizeHref('/lines', locale, record.city), pinned));
-
-	function share(section: LineSection) {
-		const link = new SvelteURL(pinned);
-		link.hash = section;
-		return link.href;
-	}
-
-	function csv(section: LineSection) {
-		const link = new SvelteURL(pinned);
-		link.pathname = `${link.pathname.replace(/\/$/, '')}/record.csv`;
-		link.hash = '';
-		link.searchParams.delete('tab');
-		link.searchParams.set('section', section);
-		return link.pathname + link.search;
-	}
 </script>
 
 <Surface>
@@ -112,6 +100,7 @@
 
 		{#each record.sections as { section, answer } (section)}
 			{@const title = t(...lineSectionTitles[section])}
+			{@const links = recordSectionLinks(pinned, section)}
 			<Card edge="neutral" textSize="inherit" class="min-w-0 px-4 sm:px-6">
 				<section id={section} aria-labelledby={`${section}-title`} class="grid min-w-0 gap-3">
 					<h2 id={`${section}-title`}>{title}</h2>
@@ -119,6 +108,7 @@
 						{#key answer}<RecordPending {locale} />{/key}
 					{:then result}
 						{@const message = recordMessage(result, locale)}
+						{#if result.kind === 'answer' && result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 						{#if message}<p>{message}</p>{/if}
 						{#if result.kind === 'answer'}
 							{#if !message}
@@ -132,30 +122,13 @@
 								/>
 							{/if}
 							{#if result.answer.coverage_note}<p>{result.answer.coverage_note[locale]}</p>{/if}
-							{#key share(section)}
-								<div class="flex flex-wrap items-start gap-x-4 gap-y-2">
-									<CopyAction
-										text={share(section)}
-										label={t('Copy link', 'Copier le lien')}
-										done={t('Link copied.', 'Lien copié.')}
-										fallback={t('Copy the link below.', 'Copiez le lien ci-dessous.')}
-										fallbackLabel={t('Link to this section', 'Lien vers cette section')}
-									/>
-									<a
-										class="inline-flex min-h-11 items-center"
-										href={csv(section)}
-										download
-										aria-label={t(`Download CSV for ${title}`, `Télécharger le CSV pour ${title}`)}
-										>CSV</a
-									>
-									<details class="min-w-0">
-										<summary class="min-h-11 cursor-pointer py-3">{t('Cite', 'Citer')}</summary>
-										<p class="break-all">
-											{lineCitation(name, title, result.answer, locale, share(section))}
-										</p>
-									</details>
-								</div>
-							{/key}
+							<RecordActions
+								{locale}
+								{title}
+								href={links.share}
+								csv={links.csv}
+								citation={lineCitation(name, title, result.answer, locale, links.share)}
+							/>
 						{/if}
 					{/await}
 				</section>
