@@ -68,12 +68,12 @@ class Family:
 _HISTOGRAM = Text(
     f"Bins are {DELAY_BIN_SECONDS} seconds wide, starting at multiples of "
     f"{DELAY_BIN_SECONDS} seconds with the lower edge included. Cumulative counts locate "
-    "the two ranks for the percentile, then we interpolate between their lower edges. "
-    "The error is at most one bin.",
+    "the two ranks for the percentile, then we interpolate between the midpoints of "
+    "their bins. The error is at most half a bin.",
     f"Les classes ont une largeur de {DELAY_BIN_SECONDS} secondes. Elles commencent aux "
     f"multiples de {DELAY_BIN_SECONDS} secondes, borne inférieure incluse. Les effectifs "
-    "cumulés situent les deux rangs du centile, puis on interpole entre leurs bornes "
-    "inférieures. L’erreur est d’au plus une classe.",
+    "cumulés situent les deux rangs du centile, puis on interpole entre les milieux des "
+    "classes correspondantes. L’erreur est d’au plus une demi-classe.",
 )
 
 _STATES = {
@@ -371,16 +371,17 @@ _SELECTIONS = {
 
 
 def _percentile(histogram: list[tuple[int, int]], count: int, percentile: int) -> float:
-    # Zero-based ranks for a continuous percentile on the ordered, bin-rounded delays.
+    # Zero-based ranks for a continuous percentile using each bin's midpoint.
     rank, remainder = divmod((count - 1) * percentile, 100)
     seen = 0
-    lower = None
+    lower_midpoint = None
     for edge, occurrences in histogram:
+        midpoint = edge + DELAY_BIN_SECONDS / 2
         seen += occurrences
-        if lower is None and seen > rank:
-            lower = edge
-        if lower is not None and seen > rank + bool(remainder):
-            return lower + (edge - lower) * remainder / 100
+        if lower_midpoint is None and seen > rank:
+            lower_midpoint = midpoint
+        if lower_midpoint is not None and seen > rank + bool(remainder):
+            return lower_midpoint + (midpoint - lower_midpoint) * remainder / 100
     raise RuntimeError("histogram counts do not match the classified count")
 
 

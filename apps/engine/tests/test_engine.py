@@ -194,13 +194,13 @@ def test_multi_day_line_agrees_with_independent_recomputation(
     assert evidence["share_observed"] == len(observed) / len(scheduled)
     for band, count in bands.items():
         assert answer["value"][band] == count / len(observed)
-    assert answer["value"]["median_delay"] == 22.5
+    assert answer["value"]["median_delay"] == 30
     # Exact continuous percentiles are computed independently on the small fixture.
     for key, fraction in (("median_delay", 0.5), ("p90_delay", 0.9)):
         rank = (len(observed) - 1) * fraction
         lo = int(rank)
         exact = observed[lo] + (observed[lo + 1] - observed[lo]) * (rank - lo)
-        assert 0 <= exact - answer["value"][key] < 15
+        assert abs(exact - answer["value"][key]) <= 7.5
 
 
 def test_stop_departure_hour_and_day_type_cuts(store: Store) -> None:
