@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { QUESTION_PARAMS } from "../src/question-params.js";
 import worker from "../src/worker.js";
 
 const WINDOW = "from=2020-01-01&to=2020-01-02";
@@ -9,10 +11,12 @@ const RANKING = `/v2/demo/ranking?measure=on_time&kind=line&${WINDOW}`;
 const ANSWER = {
   value: { on_time: 0 },
   state_text: { en: "Measured", fr: "Mesuré" },
-  evidence: { cleaning_versions: [6], counts: { scheduled: 100 } },
+  evidence: { cleaning_versions: [6], days_pending: [], counts: { scheduled: 100 } },
 };
 
-function fixture(t, respond = () => Response.json(ANSWER)) {
+function fixture(t, respond = () => Response.json(ANSWER, {
+  headers: { "x-transit-days-pending": "0" },
+})) {
   const answers = new Map();
   const saved = new Map();
   const requests = [];
@@ -73,6 +77,26 @@ function fixture(t, respond = () => Response.json(ANSWER)) {
   return { fetch, env, answers, saved, requests, visitors };
 }
 
+test("dated public routes accept the same query names as the engine HTTP parser", () => {
+  const source = readFileSync(
+    new URL("../../engine/src/transit_engine/server.py", import.meta.url), "utf8",
+  );
+  const match = /def _question\([\s\S]*?required = (\{[^}]*\})\s+optional = (\{[^}]*\})\s+if ranking:\s+required\.add\("([^"]+)"\)\s+optional\.update\(\s*(\{[^}]*\})\s*\)\s+else:\s+required\.add\("([^"]+)"\)\s+optional\.update\(\s*(\{[^}]*\})\s*\)/.exec(source);
+  const health = /def _health\([^\n]*\n\s+required = (\{[^}]*\})/.exec(source);
+  assert.ok(match && health, "Review the proxy parameter contract when the engine parser changes");
+  const names = (literal) => [...literal.matchAll(/"([a-z_]+)"/g)].map((entry) => entry[1]);
+  const [, required, optional, rankRequired, rankOptional, measureRequired, measureOptional] = match;
+  const common = [...names(required), ...names(optional)];
+  for (const [route, accepted] of Object.entries({
+    measure: [...common, measureRequired, ...names(measureOptional)],
+    ranking: [...common, rankRequired, ...names(rankOptional)],
+    "data-health": names(health[1]),
+  })) {
+    const proxy = QUESTION_PARAMS[route];
+    assert.deepEqual(new Set(["city", ...proxy.required, ...proxy.optional]), new Set(accepted), route);
+  }
+});
+
 test("rejects invalid questions before spending an engine slot or visitor budget", async (t) => {
   const f = fixture(t);
   for (const path of [
@@ -93,8 +117,12 @@ test("rejects invalid questions before spending an engine slot or visitor budget
     MEASURE + "&stop=",
     MEASURE + "&stop=%C3",
     MEASURE + "&stop=%FF",
+    MEASURE + "&from_stop=%20A&to_stop=B",
     MEASURE + "&hour=24",
     MEASURE + "&day_type=weekend",
+    MEASURE + "&group=week",
+    MEASURE + "&vehicle=43%00",
+    MEASURE + "&effect=%20DETOUR",
     MEASURE + "&format=xml",
     MEASURE + "&lang=es",
     RANKING + "&limit=0",
@@ -103,7 +131,8 @@ test("rejects invalid questions before spending an engine slot or visitor budget
     RANKING + "&class=frequent",
     RANKING.replace("kind=line", "kind=stop") + "&class=all",
     RANKING.replace("kind=line", "kind=trip"),
-    RANKING + "&format=csv",
+    RANKING + "&group=day",
+    RANKING + "&direction=2",
     HEALTH + "&line=1",
     "/v2/how-we-measure?format=csv",
   ]) {
@@ -156,7 +185,7 @@ test("ranking and health pass the approved parameters to their engine routes", a
   assert.deepEqual(await (await f.fetch(HEALTH)).json(), health);
   const [ranking, dataHealth] = f.requests.map((request) => new URL(request.url));
   assert.equal(ranking.pathname, "/ranking");
-  assert.equal(ranking.searchParams.get("class"), "3:frequent");
+  assert.equal(ranking.searchParams.get("class"), "003:frequent");
   assert.equal(ranking.searchParams.get("limit"), "50");
   assert.equal(dataHealth.pathname, "/data-health");
   assert.equal(dataHealth.searchParams.get("city"), "demo");
@@ -172,6 +201,63 @@ test("today in the provider timezone gets a short TTL even after UTC midnight", 
   await f.fetch(MEASURE);
   assert.equal(f.requests.length, 2);
 });
+
+test("forwards series, vehicle, alert and corridor cuts and localized ranking CSV", async (t) => {
+  const f = fixture(t, (request) => {
+    return new URL(request.url).searchParams.get("format") === "csv"
+      ? new Response("classe,valeur\n", { headers: { "content-type": "text/csv" } })
+      : Response.json(ANSWER);
+  });
+  await f.fetch(MEASURE + "&group=weekday_hour");
+  await f.fetch(MEASURE.replace("on_time", "vehicles") + "&vehicle=45%2F68");
+  await f.fetch(MEASURE.replace("on_time", "alert_counts") + "&effect=DETOUR&cause=CONSTRUCTION");
+  const csv = await f.fetch(
+    `/v2/demo/ranking?measure=mean_time_lost&kind=line&${WINDOW}` +
+      "&line=123&direction=1&hour=07&day_type=weekday&format=csv&lang=fr",
+  );
+  assert.equal(await csv.text(), "classe,valeur\n");
+  const corridor = `/v2/demo/ranking?measure=median_time_lost&kind=segment&${WINDOW}`;
+  assert.equal((await f.fetch(corridor + "&from_stop=A%2F1&to_stop=B")).status, 200);
+  assert.equal(f.requests.length, 5);
+  const [series, vehicle, alerts, ranking, segment] = f.requests.map(
+    (req) => new URL(req.url).searchParams,
+  );
+  assert.equal(series.get("group"), "weekday_hour");
+  assert.equal(vehicle.get("vehicle"), "45/68");
+  assert.deepEqual([alerts.get("effect"), alerts.get("cause")], ["DETOUR", "CONSTRUCTION"]);
+  assert.deepEqual(
+    ["line", "direction", "hour", "day_type", "format", "lang"].map((name) => ranking.get(name)),
+    ["123", "1", "7", "weekday", "csv", "fr"],
+  );
+  assert.deepEqual(
+    ["kind", "from_stop", "to_stop"].map((name) => segment.get(name)),
+    ["segment", "A/1", "B"],
+  );
+});
+
+for (const path of [MEASURE, RANKING + "&format=csv", HEALTH]) {
+  test(`a closed window gets the long TTL only after the engine confirms settlement (${path})`, async (t) => {
+    t.mock.timers.enable({ apis: ["Date"], now: new Date("2020-01-03T14:00:00Z") });
+    const csv = path.includes("format=csv");
+    let pending;
+    const f = fixture(t, () => {
+      const headers = {
+        "content-type": csv ? "text/csv" : "application/json",
+        "x-transit-cleaning-version": "6",
+      };
+      if (pending !== undefined) headers["x-transit-days-pending"] = pending;
+      return new Response(csv ? "measure,value\n" : JSON.stringify(ANSWER), { headers });
+    });
+    for (const [readiness, ttl] of [[undefined, 30], ["1", 30], ["0", 604800]]) {
+      pending = readiness;
+      assert.equal((await f.fetch(path)).status, 200);
+      assert.equal([...f.answers].find(([key]) => key.includes("/demo/"))[1].ttl, ttl);
+      t.mock.timers.tick(31_000);
+    }
+    await f.fetch(path);
+    assert.equal(f.requests.length, 3);
+  });
+}
 
 test("cache eviction and upstream failures return the same question's saved answer", async (t) => {
   let result = "good";

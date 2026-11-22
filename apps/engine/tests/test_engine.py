@@ -839,6 +839,61 @@ def test_http_and_bilingual_csv_come_from_same_registry(
     asyncio.run(run())
 
 
+def test_pending_days_distinguish_incomplete_days_from_permanent_receipts(tmp_path: Path) -> None:
+    store = _build_store(tmp_path, 7)
+    app = Engine(store, concurrency=1, queue_size=1, queue_wait_ms=50)
+    window = urlencode({"city": "stm", "from": THURSDAY, "to": SATURDAY})
+    predictions = tmp_path / "stm" / str(SATURDAY) / "v7" / PREDICTION_SAMPLES
+    original = predictions.read_bytes()
+    predictions.write_bytes(b"")
+
+    async def run() -> None:
+        status, headers, body = await http(app, "/measure", window + "&measure=on_time")
+        assert status == 200
+        assert headers[b"x-transit-days-pending"] == b"2"
+        evidence = json.loads(body)["evidence"]
+        assert evidence["days_pending"] == [str(FRIDAY), str(SATURDAY)]
+        assert evidence["days_measured"] == [str(THURSDAY), str(SATURDAY)]
+
+        receipt = tmp_path / "stm" / str(FRIDAY) / "v7" / "manifest.json"
+        receipt.parent.mkdir(parents=True)
+        receipt.write_text(
+            json.dumps(
+                {
+                    "provider": "stm",
+                    "service_date": str(FRIDAY),
+                    "cleaning_version": "7",
+                    "built_at_utc": "2026-11-22T00:00:00Z",
+                    "status": "no_raw_captures",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        status, headers, body = await http(app, "/measure", window + "&measure=on_time&group=day")
+        assert status == 200
+        assert headers[b"x-transit-days-pending"] == b"1"
+        evidence = json.loads(body)["evidence"]
+        assert evidence["days_pending"] == [str(SATURDAY)]
+        assert evidence["days_not_measured"] == [str(FRIDAY)]
+
+        status, headers, _ = await http(app, "/ranking", window + "&kind=line&format=csv")
+        assert status == 200
+        assert headers[b"x-transit-days-pending"] == b"1"
+
+        predictions.write_bytes(original)
+        status, headers, body = await http(app, "/data-health", window)
+        assert status == 200
+        assert headers[b"x-transit-days-pending"] == b"0"
+        assert [day["status"] for day in json.loads(body)["days"]] == [
+            "present",
+            "not_measured",
+            "present",
+        ]
+
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize(
     "parameters",
     [

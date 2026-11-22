@@ -6,6 +6,7 @@ const CLOSED_TTL = 7 * 24 * 60 * 60;
 const OPEN_TTL = 30;
 const LAST_GOOD_TTL = 30 * 24 * 60 * 60;
 const VERSION_HEADER = "x-transit-cleaning-version";
+const PENDING_DAYS_HEADER = "x-transit-days-pending";
 const STALE_HEADER = "x-transit-answer";
 const PUBLIC_HEADERS = {
   ...CORS_HEADERS,
@@ -144,6 +145,7 @@ export async function serveQuestion(request, env, ctx) {
   let body;
   let contentType;
   let reportedVersion;
+  let settled = false;
   try {
     const response = await env.ENGINE.fetch(new Request(question.upstream, {
       headers: { authorization: `Bearer ${env.TRANSIT1_ENGINE_ACCESS_TOKEN}` },
@@ -167,6 +169,7 @@ export async function serveQuestion(request, env, ctx) {
       return lastGood(env, storageKey);
     }
     if (question.end) {
+      settled = response.headers.get(PENDING_DAYS_HEADER) === "0";
       const versions = json?.evidence?.cleaning_versions;
       reportedVersion = cleaningVersion(response.headers.get(VERSION_HEADER))
         ?? cleaningVersion(json?.cleaning_version)
@@ -176,8 +179,8 @@ export async function serveQuestion(request, env, ctx) {
     return lastGood(env, storageKey);
   }
 
-  const today = reportedVersion && await serviceToday(env, question.city);
-  const ttl = reportedVersion && today && question.end < today ? CLOSED_TTL : OPEN_TTL;
+  const today = reportedVersion && settled && await serviceToday(env, question.city);
+  const ttl = today && question.end < today ? CLOSED_TTL : OPEN_TTL;
   ctx.waitUntil(remember(
     cache, url.origin, question, reportedVersion, versionKey, ttl, body, contentType,
   ).catch(() => console.warn("Transit question cache write failed")));

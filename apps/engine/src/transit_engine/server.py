@@ -12,6 +12,7 @@ from uuid import uuid4
 import uvicorn
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 
+from transit_engine.clean_manifest import NO_RAW_CAPTURES
 from transit_engine.health import data_health
 from transit_engine.measures import (
     CORRIDOR_RANKING_DEFAULT,
@@ -46,6 +47,7 @@ async def respond(
     *,
     queued: bool = False,
     cleaning_version: int | None = None,
+    days_pending: int | None = None,
 ) -> None:
     csv_response = isinstance(payload, str)
     headers = [
@@ -57,6 +59,8 @@ async def respond(
         headers.append((b"retry-after", b"1"))
     if cleaning_version is not None:
         headers.append((b"x-transit-cleaning-version", str(cleaning_version).encode("ascii")))
+    if days_pending is not None:
+        headers.append((b"x-transit-days-pending", str(days_pending).encode("ascii")))
     await send({"type": "http.response.start", "status": status, "headers": headers})
     body = payload if isinstance(payload, str) else json.dumps(payload)
     await send({"type": "http.response.body", "body": body.encode()})
@@ -253,12 +257,14 @@ class Engine:
             await self.slots.acquire()
 
         # Keep the slot until DuckDB stops, including when a caller disconnects.
-        def run_query() -> dict[str, Any] | str:
+        def run_query() -> tuple[dict[str, Any] | str, int]:
             if isinstance(question, Ranking):
                 answer = rank(self.store, question)
-                return ranking_csv(answer, language) if output == "csv" else answer
-            answer = ask(self.store, question)
-            return answer_csv(answer, language) if output == "csv" else answer
+                payload = ranking_csv(answer, language) if output == "csv" else answer
+            else:
+                answer = ask(self.store, question)
+                payload = answer_csv(answer, language) if output == "csv" else answer
+            return payload, len(answer["evidence"]["days_pending"])
 
         query = asyncio.create_task(asyncio.to_thread(run_query))
 
@@ -269,14 +275,19 @@ class Engine:
 
         query.add_done_callback(finished)
         try:
-            answer = await asyncio.shield(query)
+            payload, days_pending = await asyncio.shield(query)
         except Exception as error:
             # DuckDB errors can include storage configuration. Log the class only.
             LOGGER.error("engine query failed (%s)", type(error).__name__)
             await respond(send, 500, {"message": "query failed"}, queued=queued)
         else:
             await respond(
-                send, 200, answer, queued=queued, cleaning_version=self.store.cleaning_version
+                send,
+                200,
+                payload,
+                queued=queued,
+                cleaning_version=self.store.cleaning_version,
+                days_pending=days_pending,
             )
 
     async def _data_health(self, raw: bytes, send: ASGISendCallable) -> None:
@@ -323,8 +334,18 @@ class Engine:
             LOGGER.error("data health failed (%s)", type(error).__name__)
             await respond(send, 500, {"message": "data health failed"}, queued=queued)
         else:
+            days_pending = sum(
+                day["status"] != "present"
+                and (day["status"], day.get("reason")) != ("not_measured", NO_RAW_CAPTURES)
+                for day in answer["days"]
+            )
             await respond(
-                send, 200, answer, queued=queued, cleaning_version=self.store.cleaning_version
+                send,
+                200,
+                answer,
+                queued=queued,
+                cleaning_version=self.store.cleaning_version,
+                days_pending=days_pending,
             )
 
 

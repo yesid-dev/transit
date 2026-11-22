@@ -1,11 +1,15 @@
-const ROUTES = {
+const COMMON_CUTS = [
+  "line", "direction", "hour", "day_type", "effect", "cause", "format", "lang", "from_stop", "to_stop",
+];
+
+export const QUESTION_PARAMS = {
   measure: {
     required: ["from", "to", "measure"],
-    optional: ["line", "direction", "stop", "departure", "hour", "day_type", "format", "lang"],
+    optional: [...COMMON_CUTS, "stop", "departure", "vehicle", "group"],
   },
   ranking: {
     required: ["from", "to", "measure", "kind"],
-    optional: ["class", "limit"],
+    optional: [...COMMON_CUTS, "class", "limit"],
   },
   "data-health": { required: ["from", "to"], optional: [] },
   "how-we-measure": { required: [], optional: ["lang"] },
@@ -17,11 +21,17 @@ const VALID = {
   measure: (value) => /^[a-z][a-z0-9_]*$/.test(value),
   line: scheduleId,
   stop: scheduleId,
+  from_stop: scheduleId,
+  to_stop: scheduleId,
+  vehicle: scheduleId,
+  effect: scheduleId,
+  cause: scheduleId,
   direction: oneOf("0", "1"),
   departure: (value) => /^[0-9]{2,6}:[0-5][0-9]:[0-5][0-9]$/.test(value),
   hour: (value) => /^(?:[01]?[0-9]|2[0-3])$/.test(value),
   day_type: oneOf("weekday", "saturday", "sunday"),
-  kind: oneOf("line", "stop", "departure", "vehicle"),
+  group: oneOf("day", "hour", "day_type", "weekday_hour", "direction"),
+  kind: oneOf("line", "stop", "departure", "vehicle", "segment"),
   class: (value) => /^(?:all|(?:[0-9]+|unknown|mixed):(?:night|frequent|regular))$/.test(value),
   limit: (value) => /^[0-9]{1,3}$/.test(value) && Number(value) >= 1 && Number(value) <= 500,
   format: oneOf("json", "csv"),
@@ -40,7 +50,7 @@ export function parseQuestion(url) {
   if (!catalog && !match) return null;
 
   const [, city, route] = match ?? [null, null, "how-we-measure"];
-  const { required, optional } = ROUTES[route];
+  const { required, optional } = QUESTION_PARAMS[route];
   const query = url.search.slice(1);
   if (query.length > 4096) throw new Error("query string is too long");
   const params = new URLSearchParams();
@@ -76,8 +86,6 @@ export function parseQuestion(url) {
   for (const name of ["hour", "limit"]) {
     if (params.has(name)) params.set(name, String(Number(params.get(name))));
   }
-  const serviceClass = params.get("class");
-  if (serviceClass) params.set("class", serviceClass.replace(/^0+(?=\d)/, ""));
   const csv = params.get("format") === "csv";
   // The engine's JSON and catalog already contain both languages.
   if (!csv || params.get("lang") === "en") params.delete("lang");

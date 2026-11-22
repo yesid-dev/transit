@@ -2691,6 +2691,7 @@ class ReadWindow:
     paths: dict[str, list[str]]
     measured: list[str] = field(default_factory=list)
     missing: list[str] = field(default_factory=list)
+    pending: list[str] = field(default_factory=list)
     included: list[str] = field(default_factory=list)
     missing_in_cut: bool = False
     not_tracked: list[str] = field(default_factory=list)
@@ -2737,6 +2738,7 @@ class ReadWindow:
             "cuts": question.cuts(),
             "days_measured": [day for day in self.measured if day not in untracked],
             "days_not_measured": self.missing,
+            "days_pending": self.pending,
             "days_included": self.measured
             if family.id == _ALERT_COUNTS_ID
             else [day for day in self.included if day not in untracked],
@@ -2789,9 +2791,10 @@ def read_window(
             else (configured,)
         )
         files = None
+        settled = True
         for version in candidates:
             source = store if version == configured else replace(store, cleaning_version=version)
-            files = source.files(
+            checked = source.query_day(
                 conn,
                 question.city,
                 day,
@@ -2799,9 +2802,14 @@ def read_window(
                 allow_untracked_alerts=family.id == _ALERT_COUNTS_ID,
                 receipts=receipts,
             )
+            # A preferred scorecard version can still arrive after a fallback answer.
+            settled = settled and checked.settled
+            files = checked.files
             if files is not None:
                 window.versions[day.isoformat()] = version
                 break
+        if not settled:
+            window.pending.append(day.isoformat())
         if files is None:
             window.missing.append(day.isoformat())
             window.missing_in_cut |= in_cut
@@ -3141,6 +3149,7 @@ def _scorecard_answer(
     )
     results: dict[str, Result] = {}
     measure_days: dict[str, dict[str, Any]] = {}
+    days_pending: set[str] = set()
     for group in source_groups:
         items = tuple(measure for measure in selected if measure.id in group)
         if not items:
@@ -3154,6 +3163,7 @@ def _scorecard_answer(
         window = read_window(
             conn, store, question, family, items, extra_tables=extra_tables, receipts=receipts
         )
+        days_pending.update(window.pending)
         included = [(day, json.loads(receipts[day])) for day in window.included]
         versions = sorted({str(window.versions[day]) for day in window.included})
         declarations = {
@@ -3338,6 +3348,7 @@ def _scorecard_answer(
             "end_date": str(question.end),
             "cuts": question.cuts(),
             **dates,
+            "days_pending": sorted(days_pending),
             "method_version": family.method_version,
             "query_ms": (perf_counter() - started) * 1000,
             "measure_states": states_by_measure,
