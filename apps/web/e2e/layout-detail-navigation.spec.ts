@@ -47,7 +47,7 @@ async function captureDetail(
 async function expectChromeClear(page: Page) {
 	const navPill = page.getByTestId('nav-pill');
 	await expect(navPill).toBeVisible();
-	await expect(navPill.locator('[data-slot="app-frame-controls"]')).toBeVisible();
+	await expect(page.locator('[data-slot="app-frame-controls"]')).toBeVisible();
 	await expect
 		.poll(() =>
 			page.evaluate(() => {

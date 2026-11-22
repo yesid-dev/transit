@@ -6,6 +6,8 @@
 	import { type Locale, DEFAULT_LOCALE, getLocale } from '#lib/i18n/index.ts';
 	import type { ChromeSearchScope, SearchList } from '#lib/search/transitSearch.ts';
 	import NavPill from './NavPill.svelte';
+	import { AnnouncementBanner } from '@yesid/ui/layout';
+	import { announcement } from '#lib/site/announcement.ts';
 	import type { PublicProvider } from '#lib/v1/providers.ts';
 
 	interface AppShellProps {
@@ -84,19 +86,23 @@
 		data-announcement-measured={announcementHeight > 0 || undefined}
 		bind:clientHeight={announcementHeight}
 	>
-		<NavPill
-			{navigation}
-			{locale}
-			{url}
-			{providerId}
-			{providers}
-			{discoveryError}
-			bind:search
-			{searchList}
-			{searchPresentation}
-			{searchScope}
-		/>
+		{#if announcement.enabled}
+			<AnnouncementBanner id={announcement.id} {...announcement[locale]} />
+		{/if}
 	</div>
+
+	<NavPill
+		{navigation}
+		{locale}
+		{url}
+		{providerId}
+		{providers}
+		{discoveryError}
+		bind:search
+		{searchList}
+		{searchPresentation}
+		{searchScope}
+	/>
 
 	<div class="app-shell-row min-h-0 flex-1" data-slot="app-shell-row">
 		<div class="app-shell-main relative min-w-0 flex-1 bg-transparent" data-slot="map-stage">
@@ -146,7 +152,23 @@
 		pointer-events: none;
 	}
 
+	/* The map canvas and the chrome share a row below any announcement. */
+	.app-shell-root[data-full-viewport='true'] {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-rows: auto minmax(0, 1fr);
+	}
+	.app-shell-root[data-full-viewport='true'] .app-shell-chrome {
+		grid-area: 1 / 1;
+	}
+	.app-shell-root[data-full-viewport='true'] > :global([data-slot='frame-nav']) {
+		position: relative;
+		inset-block-start: auto;
+		grid-area: 2 / 1;
+		align-self: start;
+	}
 	.app-shell-root[data-full-viewport='true'] .app-shell-row {
+		grid-area: 2 / 1;
 		overflow: hidden;
 	}
 

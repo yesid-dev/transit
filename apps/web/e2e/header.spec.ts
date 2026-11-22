@@ -192,10 +192,10 @@ for (const locale of PUBLISHED_LOCALES) {
 		}
 
 		// Text-agnostic: the visible label inside the city control, whatever the catalog provides.
-		const header = page.getByRole('navigation', { name: copy.nav });
-		const control = header.getByRole('combobox', { name: copy.network });
+		const scope = page.locator('[data-slot="app-frame-controls"]');
+		const control = scope.getByRole('combobox', { name: copy.network });
 		const box = (await control.boundingBox())!;
-		const label = (await header
+		const label = (await scope
 			.locator('label', { has: page.getByRole('combobox', { name: copy.network }) })
 			.getByText(/\S/)
 			.filter({ visible: true })
