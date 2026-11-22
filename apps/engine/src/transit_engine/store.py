@@ -94,8 +94,18 @@ class Store:
         city: str,
         day: date,
         tables: tuple[str, ...] = _PUNCTUALITY_FILES,
+        *,
+        allow_untracked_alerts: bool = False,
     ) -> tuple[str, ...] | None:
-        return self._checked_files(conn, city, day, tables, verify_digests=False)
+        """An empty alert path represents an explicit not-tracked receipt when allowed."""
+        return self._checked_files(
+            conn,
+            city,
+            day,
+            tables,
+            verify_digests=False,
+            allow_untracked_alerts=allow_untracked_alerts,
+        )
 
     def verify(self, conn: duckdb.DuckDBPyConnection, city: str, day: date) -> bool:
         """Audit the query inputs and any tracked alerts against their full SHA-256 digests."""
@@ -112,19 +122,19 @@ class Store:
         tables: tuple[str, ...],
         *,
         verify_digests: bool,
+        allow_untracked_alerts: bool = False,
     ) -> tuple[str, ...] | None:
         if not CITY.fullmatch(city):
             raise ValueError("Invalid city")
         directory = f"{self.root.rstrip('/')}/{city}/{day.isoformat()}/v{self.cleaning_version}"
         marker = f"{directory}/manifest.json"
-        paths = tuple(f"{directory}/{name}" for name in tables)
         if self.s3_endpoint:
             # A signed list distinguishes absent data from an access failure.
             present = {
                 row[0]
                 for row in conn.execute("SELECT file FROM glob(?)", [f"{directory}/*"]).fetchall()
             }
-            if not {marker, *paths} <= present:
+            if marker not in present:
                 return None
             manifest = conn.execute("SELECT content FROM read_blob(?)", [marker]).fetchone()
             if manifest is None:
@@ -136,13 +146,20 @@ class Store:
             except (FileNotFoundError, IsADirectoryError):
                 return None
         identities = file_identities(payload, city, day.isoformat(), str(self.cleaning_version))
-        if identities is None or any(name not in identities for name in tables):
+        if identities is None:
             return None
-        checked_paths = dict(zip(tables, paths, strict=True))
+        checked_paths = {}
+        for name in tables:
+            if name in identities:
+                checked_paths[name] = f"{directory}/{name}"
+            elif not (
+                name == ALERTS and allow_untracked_alerts and self.cleaning_version in {5, 6}
+            ):
+                return None
         if ALERTS in identities:
             checked_paths[ALERTS] = f"{directory}/{ALERTS}"
-            if self.s3_endpoint and checked_paths[ALERTS] not in present:
-                return None
+        if self.s3_endpoint and not set(checked_paths.values()) <= present:
+            return None
         for name, path in checked_paths.items():
             digest, size = identities[name]
             if self.s3_endpoint:
@@ -164,4 +181,4 @@ class Store:
                                 return None
                 except (FileNotFoundError, IsADirectoryError):
                     return None
-        return paths
+        return tuple(checked_paths.get(name, "") for name in tables)

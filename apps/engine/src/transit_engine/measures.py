@@ -14,7 +14,13 @@ from typing import Any, Literal, NamedTuple
 
 import duckdb
 
-from transit_engine.clean_manifest import SCHEDULED_STOP_TIMES, STOP_EVENTS, TRIP_DAYS
+from transit_engine.clean_manifest import (
+    ALERTS,
+    SCHEDULED_STOP_TIMES,
+    STOP_EVENTS,
+    TRIP_DAYS,
+    VEHICLE_POSITIONS,
+)
 from transit_engine.store import CITY, Store
 
 Language = Literal["en", "fr"]
@@ -56,6 +62,7 @@ class Measure:
     ratio: tuple[str, str] | None = None
     extra_tables: tuple[str, ...] = ()
     worst_first_descending: bool = False
+    ranking_kinds: tuple[EntityKind, ...] | None = None
 
 
 class Departure(NamedTuple):
@@ -70,18 +77,28 @@ class Departure(NamedTuple):
     capture_gap: int
 
 
+class AlertSpan(NamedTuple):
+    source: str
+    alert_id: str
+    version: str
+    start: int
+    end: int
+
+
 @dataclass
 class Batch:
     counts: Counter[str] = field(default_factory=Counter)
     histogram: Counter[int] = field(default_factory=Counter)
     departures: list[Departure] = field(default_factory=list)
     scheduled_routes: set[str] = field(default_factory=set)
+    alert_spans: set[AlertSpan] = field(default_factory=set)
 
     def update(self, other: Batch) -> None:
         self.counts.update(other.counts)
         self.histogram.update(other.histogram)
         self.departures.extend(other.departures)
         self.scheduled_routes.update(other.scheduled_routes)
+        self.alert_spans.update(other.alert_spans)
 
 
 @dataclass(frozen=True)
@@ -99,6 +116,8 @@ class Family:
         [duckdb.DuckDBPyConnection, Family, dict[str, list[str]], Question, str, EntityKind | None],
         dict[EntityKey, Batch],
     ]
+    columns: dict[str, Text] = field(default_factory=dict)
+    evidence_columns: dict[str, Text] = field(default_factory=dict)
 
 
 _HISTOGRAM = Text(
@@ -116,6 +135,7 @@ _STATES = {
     "measured": Text("Measured", "Mesuré"),
     "no_live_data": Text("No live data", "Aucune donnée en direct"),
     "not_measured": Text("Not measured", "Non mesuré"),
+    "not_tracked": Text("Not tracked", "Non suivi"),
     "too_few_to_judge": Text("Too few to judge", "Trop peu de données pour conclure"),
     "unknown": Text("Unknown", "Inconnu"),
 }
@@ -129,6 +149,8 @@ _DEPARTURE_SECONDS = """
 """
 _DAY_TYPES = ("weekday", "weekday", "weekday", "weekday", "weekday", "saturday", "sunday")
 _SERVICE_DELIVERED_ID = "service_delivered"
+_CROWDING_ID = "crowding"
+_ALERT_COUNTS_ID = "alert_counts"
 _BOUNDARIES = ("first_trip", "last_trip")
 
 
@@ -145,6 +167,8 @@ class Question:
     hour: int | None = None
     day_type: str | None = None
     ranking: InitVar[bool] = False
+    effect: str | None = None
+    cause: str | None = None
 
     def __post_init__(self, ranking: bool) -> None:
         if self.measure not in _SELECTIONS:
@@ -152,6 +176,16 @@ class Question:
         if not CITY.fullmatch(self.city) or self.start > self.end:
             raise ValueError("provide a city and an ordered service date range")
         family, _ = _SELECTIONS[self.measure]
+        if family.id == _ALERT_COUNTS_ID:
+            if any(
+                cut is not None
+                for cut in (self.direction, self.departure, self.hour, self.day_type)
+            ):
+                raise ValueError("alert counts support line, stop, effect and cause")
+        elif self.effect is not None or self.cause is not None:
+            raise ValueError("effect and cause apply to alert counts")
+        if family.id == _CROWDING_ID and self.departure is not None:
+            raise ValueError("crowding does not apply to scheduled departures")
         if family.id == _SERVICE_DELIVERED_ID and self.stop is not None:
             raise ValueError("stop does not apply to service delivered trip measures")
         if self.measure in _BOUNDARIES:
@@ -170,6 +204,8 @@ class Question:
             "departure": self.departure,
             "hour": self.hour,
             "day_type": self.day_type,
+            "effect": self.effect,
+            "cause": self.cause,
         }
         return {name: value for name, value in cuts.items() if value is not None}
 
@@ -215,7 +251,12 @@ _CSV_COLUMNS = {
     "coverage_note": Text("Coverage note", "Note sur la couverture"),
     **_EVIDENCE_COLUMNS,
 }
-_UNIT_LABELS = {"share": Text("Share", "Part"), "seconds": Text("Seconds", "Secondes")}
+_UNIT_LABELS = {
+    "share": Text("Share", "Part"),
+    "seconds": Text("Seconds", "Secondes"),
+    "count": Text("Count", "Nombre"),
+    "hours": Text("Hours", "Heures"),
+}
 
 
 def _info(family: Family, measure: Measure) -> dict[str, Any]:
@@ -231,11 +272,12 @@ def _info(family: Family, measure: Measure) -> dict[str, Any]:
             *(
                 key
                 for key in _EVIDENCE_COLUMNS
-                if family.id != _SERVICE_DELIVERED_ID or key != "share_observed"
+                if family.id == "punctuality" or key != "share_observed"
             ),
             "counts",
             "excluded",
             *(_DELIVERY_EVIDENCE if family.id == _SERVICE_DELIVERED_ID else ()),
+            *family.evidence_columns,
         ],
         "csv_columns": {
             lang: [getattr(label, lang) for label in _csv_columns(family).values()]
@@ -256,6 +298,9 @@ def _info(family: Family, measure: Measure) -> dict[str, Any]:
 
 
 def _csv_columns(family: Family) -> dict[str, Text]:
+    if family.columns:
+        common = {key: label for key, label in _CSV_COLUMNS.items() if key != "share_observed"}
+        return {**common, **family.columns, **family.evidence_columns}
     if family.id == _SERVICE_DELIVERED_ID:
         common = {key: label for key, label in _CSV_COLUMNS.items() if key != "share_observed"}
         return {**common, **_DELIVERY_COLUMNS, **_DELIVERY_EVIDENCE}
@@ -270,7 +315,7 @@ def methods() -> list[dict[str, Any]]:
     return [_info(family, measure) for family in _FAMILIES for measure in family.measures]
 
 
-def _cuts(question: Question, hour_sql: str) -> tuple[str, list[object]]:
+def _cuts(question: Question, hour_sql: str | None) -> tuple[str, list[object]]:
     filters = []
     parameters: list[object] = []
     for name, value in question.cuts().items():
@@ -764,7 +809,324 @@ _SERVICE_DELIVERED = Family(
     ),
 )
 
-_FAMILIES = (_PUNCTUALITY, _SERVICE_DELIVERED)
+# One state can contribute at most 60 seconds, the cleaner's longest tolerated
+# inter-reading gap. One hour of coverage keeps any single capped interval under 2%.
+CROWDING_INTERVAL_CAP_SECONDS = 60
+MIN_CROWDING_VEHICLE_HOURS = 1
+_US_PER_HOUR = 3_600_000_000
+_OCCUPANCY_LEVELS = {
+    0: ("crowding_empty", Text("Empty", "Vide")),
+    1: ("crowding_many_seats", Text("Many seats available", "Beaucoup de places assises libres")),
+    2: ("crowding_few_seats", Text("Few seats available", "Peu de places assises libres")),
+    3: ("crowding_standing", Text("Standing room only", "Places debout seulement")),
+    4: ("crowding_crushed", Text("Limited standing room", "Peu de places debout")),
+    5: ("crowding_full", Text("Full", "Plein")),
+}
+_CROWDING_COLUMNS = {
+    "intervals": Text("Vehicle state intervals", "Intervalles d’état des véhicules"),
+    "readings": Text("Vehicle readings", "Relevés de véhicules"),
+    "occupancy_readings": Text("Readings with occupancy", "Relevés avec achalandage"),
+    "occupancy_vehicle_seconds": Text(
+        "Vehicle-seconds with occupancy", "Véhicule-secondes mesurées"
+    ),
+    "readings_without_occupancy": Text("Readings without occupancy", "Relevés sans achalandage"),
+    "capped_intervals": Text("Capped intervals", "Intervalles plafonnés"),
+    "level_vehicle_seconds": Text("Vehicle-seconds by level", "Véhicule-secondes par niveau"),
+}
+
+
+def _crowding_rows(
+    conn: duckdb.DuckDBPyConnection,
+    family: Family,
+    paths: dict[str, list[str]],
+    question: Question,
+    version: str,
+    group: EntityKind | None,
+) -> dict[EntityKey, Batch]:
+    filters, arguments = _cuts(question, None)
+    join = ""
+    direction = "NULL::INTEGER"
+    inputs: list[object] = [paths[VEHICLE_POSITIONS]]
+    if question.direction is not None:
+        direction = "t.direction_id"
+        join = """
+            LEFT JOIN read_parquet(?, hive_partitioning = false) t
+              ON (v.provider, v.cleaning_version, v.service_date, v.trip_id) =
+                 (t.provider, t.cleaning_version, t.service_date, t.trip_id)
+        """
+        inputs.append(paths[TRIP_DAYS])
+    weight = "duration"
+    reading_cut = "matches"
+    if question.hour is not None:
+        start_hour = _LOCAL_HOUR.format("observed_at_utc")
+        next_hour = _LOCAL_HOUR.format("hour_edge")
+        # A capped interval meets at most one local-hour boundary in this timezone.
+        weight = f"""
+            CASE WHEN {start_hour} = ? THEN least(duration, until_edge) ELSE 0 END
+            + CASE WHEN {next_hour} = ? THEN greatest(0, duration - until_edge) ELSE 0 END
+        """
+        reading_cut = f"matches AND {start_hour} = ?"
+        arguments.extend([question.hour] * 3)
+    rows = conn.execute(
+        f"""
+        WITH vehicles AS (
+            SELECT v.route_id, v.stop_id, {direction} AS direction_id,
+                v.observed_at_utc, v.readings,
+                greatest(0, epoch_us(v.last_seen_at_utc) - epoch_us(v.observed_at_utc)) AS elapsed,
+                least(elapsed, {CROWDING_INTERVAL_CAP_SECONDS * 1_000_000}) AS duration,
+                time_bucket(INTERVAL '1 hour', v.observed_at_utc) + INTERVAL '1 hour' AS hour_edge,
+                epoch_us(hour_edge) - epoch_us(v.observed_at_utc) AS until_edge,
+                CASE WHEN v.occupancy_status BETWEEN 0 AND 5 THEN v.occupancy_status END AS status,
+                CASE WHEN status IS NULL AND v.occupancy_percentage >= 0
+                     THEN v.occupancy_percentage END AS percentage
+            FROM read_parquet(?, hive_partitioning = false) v
+            {join}
+            WHERE v.provider = ? AND v.cleaning_version = ?
+                AND (?::VARCHAR IS NULL OR v.route_id = ?)
+        ), cuts AS (
+            SELECT *, {_entity_sql(group)} AS entity, {filters} AS matches,
+                {weight} AS weight, {reading_cut} AS reading_cut
+            FROM vehicles
+        )
+        SELECT entity, status, percentage,
+            count(*) FILTER (reading_cut OR (matches AND weight > 0)) AS intervals,
+            coalesce(sum(readings) FILTER (reading_cut), 0) AS readings,
+            coalesce(sum(weight) FILTER (matches), 0) AS vehicle_us,
+            coalesce(sum(weight * weight) FILTER (matches), 0) AS squared_us,
+            count(*) FILTER (elapsed > duration AND (reading_cut OR (matches AND weight > 0))),
+            count(*)
+        FROM cuts GROUP BY entity, status, percentage
+        """,
+        [
+            *inputs,
+            question.city,
+            version,
+            question.line,
+            question.line,
+            *arguments,
+        ],
+    ).fetchall()
+    result: dict[EntityKey, Batch] = {}
+    for key, status, percentage, intervals, readings, weight, squared, capped, baseline in rows:
+        counts = result.setdefault(tuple(key) if group else (), Batch()).counts
+        counts.update(
+            intervals=intervals,
+            readings=readings,
+            capped_intervals=capped,
+        )
+        if status is None and percentage is None:
+            continue
+        counts.update(
+            published_intervals=baseline,
+            occupancy_readings=readings,
+            occupancy_us=weight,
+            squared_occupancy_us=squared,
+        )
+        if status is not None:
+            counts[_OCCUPANCY_LEVELS[status][0]] += weight
+        else:
+            counts[f"percentage:{percentage}"] += weight
+    return result
+
+
+_CROWDING = Family(
+    id=_CROWDING_ID,
+    method_version="crowding-v1",
+    since="2026-11-22",
+    tables=(VEHICLE_POSITIONS, TRIP_DAYS),
+    minimum_sample=MIN_CROWDING_VEHICLE_HOURS,
+    query=_crowding_rows,
+    columns=_CROWDING_COLUMNS,
+    evidence_columns={
+        "share_occupancy_readings": Text(
+            "Share of readings with occupancy", "Part avec achalandage"
+        ),
+        "percentage_levels": Text("Percentage-only levels", "Niveaux publiés en pourcentage"),
+    },
+    counts=Text(
+        "Shares divide time at each level by vehicle time with a usable occupancy value. "
+        "Coverage divides readings with occupancy by all readings in the cut. Readings "
+        "belong to the interval’s starting hour. Vehicle time is split at hour boundaries.",
+        "Pour chaque niveau, on divise sa durée par le temps-véhicule avec une valeur "
+        "d’achalandage utilisable. La couverture divise les relevés avec achalandage par "
+        "tous les relevés du filtre. Les relevés sont attribués à l’heure de début de "
+        "l’intervalle. Le temps-véhicule est réparti entre les heures qu’il chevauche.",
+    ),
+    exclusions=Text(
+        "Reports without a usable occupancy level count toward coverage only. "
+        "Boarding restrictions and unavailable status codes do not describe crowds. "
+        "A direction needs a resolved trip and a stop cut uses the reported stop ID. "
+        "The network or line is marked not tracked when no usable occupancy was published.",
+        "Les relevés sans niveau utilisable entrent seulement dans la couverture. "
+        "Les restrictions d’embarquement et les codes d’indisponibilité ne décrivent "
+        "pas l’achalandage. "
+        "La direction exige un trajet identifié et le filtre d’arrêt utilise l’arrêt "
+        "déclaré. Le réseau ou la ligne est indiqué comme non suivi si aucune valeur "
+        "d’achalandage utilisable n’a été publiée.",
+    ),
+    limits=Text(
+        f"We cap each interval at {CROWDING_INTERVAL_CAP_SECONDS} seconds, the longest gap "
+        "allowed between readings in a cleaned interval, to limit the weight of stale "
+        f"states. One vehicle-hour keeps any one interval below 2% of measured time. "
+        "We use the published status when usable and report exact percentages separately "
+        "when only a percentage is usable. The full share also includes percentage-only "
+        "values at or above 100%.",
+        f"Chaque intervalle est plafonné à {CROWDING_INTERVAL_CAP_SECONDS} secondes, "
+        "l’écart maximal permis entre deux relevés d’un intervalle nettoyé, pour limiter "
+        "le poids des états périmés. Avec une heure-véhicule, un intervalle représente "
+        "moins de 2 % du temps mesuré. On utilise l’état publié s’il est utilisable. "
+        "Les pourcentages seuls restent distincts et ceux d’au moins 100 % entrent aussi "
+        "dans la part du temps où le véhicule est plein.",
+    ),
+    measures=tuple(
+        Measure(
+            key,
+            "share",
+            Text(
+                f"Share of vehicle time at this occupancy level. {label.en}.",
+                f"Part du temps-véhicule à ce niveau d’achalandage. {label.fr}.",
+            ),
+            worst_first_descending=True,
+            ranking_kinds=("line",) if status == 5 else (),
+        )
+        for status, (key, label) in _OCCUPANCY_LEVELS.items()
+    ),
+)
+
+
+def _alert_rows(
+    conn: duckdb.DuckDBPyConnection,
+    family: Family,
+    paths: dict[str, list[str]],
+    question: Question,
+    version: str,
+    group: EntityKind | None,
+) -> dict[EntityKey, Batch]:
+    alert_paths = [path for path in paths[ALERTS] if path]
+    if not alert_paths:
+        return {(): Batch()} if group is None else {}
+    filters = []
+    arguments: list[object] = []
+    for cut, value in question.cuts().items():
+        filters.append(
+            {
+                "line": "list_contains(route_ids, ?)",
+                "stop": "list_contains(stop_ids, ?)",
+                "effect": "effect = ?",
+                "cause": "cause = ?",
+            }[cut]
+        )
+        arguments.append(value)
+    group_sql = {
+        None: "NULL::VARCHAR",
+        "line": "unnest(route_ids)",
+        "stop": "unnest(stop_ids)",
+    }[group]
+    rows = conn.execute(
+        f"""
+        WITH bounds AS (
+            SELECT timezone('America/Toronto', ?::DATE::TIMESTAMP) AS window_start,
+                timezone('America/Toronto', (?::DATE + 1)::TIMESTAMP) AS window_end
+        ), periods AS (
+            SELECT source, alert_id, version, first_seen_at_utc, last_seen_at_utc,
+                route_ids, stop_ids,
+                unnest(CASE WHEN len(active_periods) = 0
+                    THEN [{{'start_utc': NULL, 'end_utc': NULL}}]
+                    ELSE active_periods END) AS period
+            FROM read_parquet(?, hive_partitioning = false)
+            WHERE provider = ? AND cleaning_version = ? AND ({" AND ".join(filters) or "true"})
+        ), clipped AS (
+            SELECT {group_sql} AS entity, source, alert_id, version,
+                greatest(coalesce(period.start_utc, first_seen_at_utc), window_start) AS starts,
+                least(coalesce(period.end_utc, last_seen_at_utc), window_end) AS ends,
+                period.start_utc IS NULL AND period.end_utc IS NULL AS observed_only,
+                first_seen_at_utc, last_seen_at_utc, window_end
+            FROM periods CROSS JOIN bounds
+        )
+        SELECT DISTINCT entity, source, alert_id, version, epoch_us(starts), epoch_us(ends)
+        FROM clipped
+        WHERE starts < ends OR (observed_only AND first_seen_at_utc = last_seen_at_utc
+            AND starts = first_seen_at_utc AND starts < window_end)
+        """,
+        [question.start, question.end, alert_paths, question.city, version, *arguments],
+    ).fetchall()
+    result: dict[EntityKey, Batch] = {}
+    for entity, source, alert_id, revision, start, end in rows:
+        result.setdefault((entity,) if group else (), Batch()).alert_spans.add(
+            AlertSpan(source, alert_id, revision, start, end)
+        )
+    return result
+
+
+_ALERT_COUNTS = Family(
+    id=_ALERT_COUNTS_ID,
+    method_version="alert-counts-v1",
+    since="2026-11-22",
+    tables=(ALERTS,),
+    minimum_sample=0,
+    query=_alert_rows,
+    columns={
+        "alerts": Text("Distinct alerts", "Alertes distinctes"),
+        "alert_versions": Text("Distinct alert versions", "Versions d’alertes distinctes"),
+        "active_spans": Text("Distinct active spans", "Périodes actives distinctes"),
+        "alert_seconds": Text("Alert-seconds", "Secondes d’alerte"),
+    },
+    evidence_columns={
+        "days_not_tracked": Text("Days not tracked", "Jours sans suivi"),
+        "days_alerts_tracked": Text("Days with alert tracking", "Jours avec suivi des alertes"),
+    },
+    counts=Text(
+        "We count each alert ID and each version once per source. For each alert we "
+        "merge overlapping periods across its versions, clip to the requested local dates, "
+        "and sum its time with that of other alerts.",
+        "On compte chaque identifiant d’alerte et chaque version une fois par source. "
+        "Pour chaque alerte, on fusionne les périodes communes à ses versions, on se limite "
+        "aux dates locales demandées et on additionne les durées de toutes les alertes.",
+    ),
+    exclusions=Text(
+        "Line and stop filters use the IDs listed by the agency. Alerts without those "
+        "IDs stay in the network total. Effect and cause use the published values. "
+        "Zero alerts means no matching alert in the tracked history. An agency without "
+        "alert tracking is marked not tracked.",
+        "Les filtres de ligne et d’arrêt utilisent les identifiants déclarés par l’agence. "
+        "Les alertes sans ces identifiants restent dans le total du réseau. L’effet et la "
+        "cause reprennent les valeurs publiées. Zéro indique qu’aucune alerte ne correspond "
+        "dans l’historique suivi. Une agence sans suivi des alertes est indiquée comme non suivie.",
+    ),
+    limits=Text(
+        "The result describes published notices. Published bounds can extend outside the "
+        "days when the notice was captured. Missing bounds use the first or last sighting "
+        "of that version on its capture day. Gaps in the archive can omit other notices.",
+        "Le résultat décrit les avis publiés. Les bornes publiées peuvent dépasser les "
+        "jours de capture de l’avis. Une borne manquante est remplacée par la première "
+        "ou la dernière observation de la version ce jour-là. Les lacunes des archives "
+        "peuvent laisser d’autres avis de côté.",
+    ),
+    measures=(
+        Measure(
+            "alerts",
+            "count",
+            Text("Distinct alerts in effect.", "Alertes distinctes en vigueur."),
+            ranking_kinds=(),
+        ),
+        Measure(
+            "alert_versions",
+            "count",
+            Text("Distinct versions in effect.", "Versions distinctes en vigueur."),
+            ranking_kinds=(),
+        ),
+        Measure(
+            "alert_hours",
+            "hours",
+            Text("Hours of alerts in effect.", "Heures d’alerte en vigueur."),
+            worst_first_descending=True,
+            ranking_kinds=("line", "stop"),
+        ),
+    ),
+)
+
+
+_FAMILIES = (_PUNCTUALITY, _SERVICE_DELIVERED, _CROWDING, _ALERT_COUNTS)
 _SELECTIONS = {
     key: (family, selected)
     for family in _FAMILIES
@@ -895,6 +1257,7 @@ class ReadWindow:
     missing: list[str] = field(default_factory=list)
     included: list[str] = field(default_factory=list)
     missing_in_cut: bool = False
+    not_tracked: list[str] = field(default_factory=list)
 
     @property
     def no_days_measured(self) -> bool:
@@ -902,6 +1265,12 @@ class ReadWindow:
 
     @property
     def coverage_note(self) -> dict[str, str] | None:
+        if ALERTS in self.paths and self.measured and (self.missing or self.not_tracked):
+            return Text(
+                "Some dates lack alert history. Published periods can still cover those dates.",
+                "L’historique des alertes manque à certaines dates. Les périodes publiées "
+                "peuvent quand même couvrir ces dates.",
+            )._asdict()
         return _PARTIAL._asdict() if self.measured and self.missing else None
 
     def batches(self) -> Iterator[dict[str, list[str]]]:
@@ -921,10 +1290,15 @@ class ReadWindow:
             "cuts": question.cuts(),
             "days_measured": self.measured,
             "days_not_measured": self.missing,
-            "days_included": self.included,
+            "days_included": self.measured if family.id == _ALERT_COUNTS_ID else self.included,
             "cleaning_versions": [store.cleaning_version] if self.included else [],
             "method_version": family.method_version,
             "query_ms": (perf_counter() - started) * 1000,
+            **(
+                {"days_not_tracked": self.not_tracked, "days_alerts_tracked": self.measured}
+                if family.id == _ALERT_COUNTS_ID
+                else {}
+            ),
         }
 
 
@@ -934,20 +1308,34 @@ def read_window(
     question: Question,
     family: Family,
     selected: tuple[Measure, ...],
+    group: EntityKind | None = None,
 ) -> ReadWindow:
     tables = tuple(
         dict.fromkeys((*family.tables, *(table for m in selected for table in m.extra_tables)))
     )
+    if group and family.id == _ALERT_COUNTS_ID:
+        tables += (TRIP_DAYS, STOP_EVENTS) if group == "stop" else (TRIP_DAYS,)
     window = ReadWindow({table: [] for table in tables})
     for ordinal in range(question.start.toordinal(), question.end.toordinal() + 1):
         day = date.fromordinal(ordinal)
         in_cut = question.day_type is None or question.day_type == _DAY_TYPES[day.weekday()]
-        files = store.files(conn, question.city, day, tables)
+        files = store.files(
+            conn,
+            question.city,
+            day,
+            tables,
+            allow_untracked_alerts=family.id == _ALERT_COUNTS_ID,
+        )
         if files is None:
             window.missing.append(day.isoformat())
             window.missing_in_cut |= in_cut
         else:
-            window.measured.append(day.isoformat())
+            dated = (
+                window.not_tracked
+                if family.id == _ALERT_COUNTS_ID and not files[0]
+                else (window.measured)
+            )
+            dated.append(day.isoformat())
             if in_cut:
                 window.included.append(day.isoformat())
                 for table, path in zip(tables, files, strict=True):
@@ -955,13 +1343,116 @@ def read_window(
     return window
 
 
+def _crowding_answer(
+    selected: tuple[Measure, ...], counts: Counter[str], window: ReadWindow
+) -> tuple[str, dict[str, float | None], dict[str, Any], dict[str, int]]:
+    weight = counts["occupancy_us"]
+    state = "measured"
+    if window.no_days_measured:
+        state = "not_measured"
+    elif not counts["published_intervals"]:
+        state = "not_tracked"
+    elif not weight and not counts["occupancy_readings"]:
+        state = "unknown"
+    elif weight < MIN_CROWDING_VEHICLE_HOURS * _US_PER_HOUR:
+        state = "too_few_to_judge"
+    levels = {name: counts[name] for name, _ in _OCCUPANCY_LEVELS.values()}
+    percentages = {
+        int(key.removeprefix("percentage:")): value
+        for key, value in counts.items()
+        if key.startswith("percentage:") and value
+    }
+    levels["crowding_full"] += sum(us for pct, us in percentages.items() if pct >= 100)
+    values = {m.id: levels[m.id] / weight if state == "measured" else None for m in selected}
+    seconds = {name: us / 1_000_000 for name, us in levels.items()}
+    readings, occupied = counts["readings"], counts["occupancy_readings"]
+    evidence = {
+        "counts": {
+            "intervals": counts["intervals"] if window.included else None,
+            "readings": readings if window.included else None,
+            "occupancy_readings": occupied if window.included else None,
+            "occupancy_vehicle_seconds": weight / 1_000_000 if weight else None,
+            "level_vehicle_seconds": seconds if weight else None,
+        },
+        "excluded": {
+            "readings_without_occupancy": readings - occupied if window.included else None,
+            "capped_intervals": counts["capped_intervals"] if window.included else None,
+        },
+        "share_occupancy_readings": occupied / readings if readings else None,
+        "percentage_levels": [
+            {
+                "percentage": pct,
+                "vehicle_seconds": us / 1_000_000,
+                "share": us / weight if state == "measured" else None,
+            }
+            for pct, us in sorted(percentages.items())
+        ],
+    }
+    return state, values, evidence, dict.fromkeys(values, weight)
+
+
+def _alert_duration(spans: set[AlertSpan]) -> int:
+    end = 0
+    prior: tuple[str, str] | None = None
+    total = 0
+    for span in sorted(spans, key=lambda item: (item.source, item.alert_id, item.start)):
+        key = (span.source, span.alert_id)
+        if key != prior or span.start >= end:
+            total += span.end - span.start
+            end = span.end
+        elif span.end > end:
+            total += span.end - end
+            end = span.end
+        prior = key
+    return total
+
+
+def _alert_answer(
+    selected: tuple[Measure, ...], totals: Batch, window: ReadWindow
+) -> tuple[str, dict[str, float | None], dict[str, Any], dict[str, int]]:
+    spans = totals.alert_spans
+    state = "measured"
+    if (window.not_tracked and not window.measured) or (
+        totals.counts["schedule_not_tracked"]
+        and not totals.counts["schedule_tracked"]
+        and not spans
+    ):
+        state = "not_tracked"
+    elif not window.measured:
+        state = "not_measured"
+    alert_count = len({(span.source, span.alert_id) for span in spans})
+    version_count = len({(span.source, span.alert_id, span.version) for span in spans})
+    duration = _alert_duration(spans)
+    counts = {
+        "alerts": alert_count,
+        "alert_versions": version_count,
+        "active_spans": len(spans),
+        "alert_seconds": duration / 1_000_000,
+    }
+    metrics = {**counts, "alert_hours": duration / _US_PER_HOUR}
+    measured = state == "measured"
+    values = {m.id: metrics[m.id] if measured else None for m in selected}
+    return (
+        state,
+        values,
+        {
+            "counts": {key: value if measured else None for key, value in counts.items()},
+            "excluded": {},
+        },
+        dict.fromkeys(values, alert_count),
+    )
+
+
 def evaluate(
     family: Family,
     selected: tuple[Measure, ...],
     totals: Batch,
-    included: list[str],
-    missing_days: bool,
+    window: ReadWindow,
 ) -> tuple[str, dict[str, float | None], dict[str, Any], dict[str, int]]:
+    if family.id == _CROWDING_ID:
+        return _crowding_answer(selected, totals.counts, window)
+    if family.id == _ALERT_COUNTS_ID:
+        return _alert_answer(selected, totals, window)
     if family.id == _SERVICE_DELIVERED_ID:
         return _delivery_answer(
             family,
@@ -969,11 +1460,11 @@ def evaluate(
             totals.counts,
             totals.histogram,
             totals.departures,
-            included,
-            missing_days,
+            window.included,
+            window.no_days_measured,
         )
     return _punctuality_answer(
-        family, selected, totals.counts, totals.histogram, included, missing_days
+        family, selected, totals.counts, totals.histogram, window.included, window.no_days_measured
     )
 
 
@@ -988,9 +1479,7 @@ def ask(store: Store, question: Question) -> dict[str, Any]:
             result = family.query(conn, family, batch, question, str(store.cleaning_version), None)
             if () in result:
                 totals.update(result[()])
-    state, values, family_evidence, _ = evaluate(
-        family, selected, totals, window.included, window.no_days_measured
-    )
+    state, values, family_evidence, _ = evaluate(family, selected, totals, window)
     return {
         "measure": question.measure,
         "value": values,

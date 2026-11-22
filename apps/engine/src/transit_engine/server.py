@@ -60,7 +60,7 @@ def _question(
     raw: bytes, *, ranking: bool = False
 ) -> tuple[Question | Ranking, Literal["json", "csv"], Language]:
     required = {"city", "from", "to"}
-    optional = {"hour", "day_type", "format", "lang"}
+    optional = {"hour", "day_type", "effect", "cause", "format", "lang"}
     if ranking:
         required.add("kind")
         optional.update({"measure", "class", "limit"})
@@ -86,6 +86,11 @@ def _question(
             not value.isprintable() or value != value.strip()
         ):
             raise ValueError(f"{name} must be a valid schedule ID")
+    for name in ("effect", "cause"):
+        if (value := params.get(name)) is not None and (
+            not value.isprintable() or value != value.strip()
+        ):
+            raise ValueError(f"{name} must be a published alert value")
     direction = params.get("direction")
     if direction is not None and direction not in {"0", "1"}:
         raise ValueError("direction must be 0 or 1")
@@ -116,6 +121,8 @@ def _question(
         int(hour) if hour is not None else None,
         day_type,
         ranking=ranking,
+        effect=params.get("effect"),
+        cause=params.get("cause"),
     )
     if ranking:
         kind = params["kind"]
