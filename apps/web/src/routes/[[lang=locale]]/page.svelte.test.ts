@@ -20,9 +20,10 @@ vi.mock('#lib/nav/index.ts', async () => {
 vi.mock('#lib/v1/live/store.svelte.ts', () => ({ createLiveStore: createLiveStoreSpy }));
 
 function pageData() {
-	const label = { city: state.city, operator: 'Fixture Transit' };
+	const label = { city: state.city, operator: state.city === 'Ottawa' ? 'OC Transpo' : 'STM' };
 	return {
 		provider: { id: 'fixture', labels: { en: label, fr: label }, inputs: {}, alert_links: {} },
+		providerId: 'fixture',
 		v1: null,
 	};
 }
@@ -84,31 +85,20 @@ afterEach(() => {
 
 describe('Home civic overview and directory', () => {
 	it.each([
-		[
-			'fr',
-			'Ottawa',
-			'Transit est un registre public et indépendant du service d’autobus qu’Ottawa reçoit réellement.',
-		],
-		[
-			'fr',
-			'Montréal',
-			'Transit est un registre public et indépendant du service d’autobus que Montréal reçoit réellement.',
-		],
-		[
-			'en',
-			'Ottawa',
-			'Transit is an independent public record of the bus service Ottawa actually gets.',
-		],
-		[
-			'en',
-			'Montréal',
-			'Transit is an independent public record of the bus service Montréal actually gets.',
-		],
-	] as const)('composes the %s lede for %s', (locale, city, sentence) => {
+		['fr', 'Ottawa', 'le réseau Ottawa · OC Transpo'],
+		['fr', 'Montréal', 'le réseau Montréal · STM'],
+		['en', 'Ottawa', 'the Ottawa · OC Transpo network'],
+		['en', 'Montréal', 'the Montréal · STM network'],
+	] as const)('names the selected network in the %s introduction for %s', (locale, city, name) => {
 		state.locale = locale;
 		state.city = city;
 		const { container } = renderHome();
-		expect(container.querySelector('[data-slot="home-audit-brief"]')).toHaveTextContent(sentence);
+		expect(container.querySelector('.home-lede')).toHaveTextContent(name);
+		expect(container.querySelector('.home-more')).toHaveTextContent(
+			locale === 'fr'
+				? 'à quelle fréquence les véhicules sont en retard'
+				: 'how often vehicles run late',
+		);
 	});
 	it.each(['en', 'fr'] as const)(
 		'lists the menu’s four groups, every page once, with no filters or count in %s',
@@ -168,13 +158,10 @@ describe('Home civic overview and directory', () => {
 		expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
 			'How Montréal’s transit holds up.',
 		);
-		expect(container.querySelector('[data-slot="home-audit-brief"]')).toHaveTextContent(
-			'independent public record of the bus service Montréal actually gets',
-		);
 		expect(container.querySelector('.home-lede')).toHaveTextContent(
-			'Transit is an independent public record of the bus service Montréal actually gets. It is not a trip planner.',
+			'Transit is an independent public record of how the Montréal · STM network actually runs. Follow it live or explore its record for the dates you choose. It is not a trip planner.',
 		);
-		expect(screen.getByText(/It is not affiliated with Fixture Transit\./)).toBeInTheDocument();
+		expect(screen.getByText(/It is not affiliated with STM\./)).toBeInTheDocument();
 		// The home page leads to the search page; it has no search field of its own.
 		const search = screen.getByRole('link', { name: 'Search for your line or stop' });
 		expect(search).toHaveAttribute('href', '/search');
@@ -193,7 +180,7 @@ describe('Home civic overview and directory', () => {
 		expect(createLiveStoreSpy).not.toHaveBeenCalled();
 	});
 
-	it('keeps the introduction to one sentence until Read more is opened', () => {
+	it('keeps background details collapsed under Read more', () => {
 		const { container } = renderHome();
 		const brief = container.querySelector('[data-slot="home-audit-brief"]') as HTMLElement;
 		const more = within(brief).getByText('Read more').closest('details') as HTMLDetailsElement;

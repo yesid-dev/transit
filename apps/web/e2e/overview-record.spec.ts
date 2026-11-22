@@ -86,6 +86,7 @@ test('changing the custom period reloads Record and Live now still opens the exi
 	await expect(punctuality.getByText(/On November 8, 2026/)).toBeVisible();
 	await expect(page).toHaveURL(/recordTo=2026-11-08/);
 	await page.getByRole('radio', { name: 'Live now' }).click();
+	await expect(main.getByText(/how the Montréal · STM network actually runs/)).toBeVisible();
 	await expect(main.getByRole('navigation', { name: 'Explore everything' })).toBeVisible();
 	await page.goBack();
 	await expect(punctuality.getByText(/On November 8, 2026/)).toBeVisible();

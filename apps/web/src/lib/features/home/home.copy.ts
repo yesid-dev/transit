@@ -24,10 +24,10 @@ type CopyKey =
 export const homeCopy = defineCopy({
 	fr: {
 		auditBody:
-			'Transit est un registre public et indépendant du service d’autobus que {city} reçoit réellement.',
+			'Transit est un registre public et indépendant qui montre comment fonctionne {network}. Suivez le service en direct ou consultez le bilan pour les dates de votre choix.',
 		notPlanner: 'Ce n’est pas un planificateur de trajets.',
 		auditMore:
-			'Il montre à quelle fréquence les autobus du réseau {operator} sont en retard, de combien, et sur quelles lignes et à quels arrêts, à partir des données ouvertes de la société de transport.',
+			'À partir des données ouvertes de la société de transport, Transit montre à quelle fréquence les véhicules sont en retard, de combien, et sur quelles lignes et à quels arrêts.',
 		readMore: 'En savoir plus',
 		readLess: 'Réduire',
 		audience:
@@ -40,10 +40,11 @@ export const homeCopy = defineCopy({
 		exploreNav: 'Tout explorer',
 	},
 	en: {
-		auditBody: 'Transit is an independent public record of the bus service {city} actually gets.',
+		auditBody:
+			'Transit is an independent public record of how {network} actually runs. Follow it live or explore its record for the dates you choose.',
 		notPlanner: 'It is not a trip planner.',
 		auditMore:
-			'It shows how often {operator} buses run late, by how much, and on which lines and stops, using the agency’s own open data.',
+			'Using the agency’s open data, Transit shows how often vehicles run late, by how much, and on which lines and at which stops.',
 		readMore: 'Read more',
 		readLess: 'Show less',
 		audience:
@@ -58,13 +59,9 @@ export const homeCopy = defineCopy({
 
 export type HomeCopy = (typeof homeCopy)[Locale];
 
-export function homeAuditBody(locale: Locale, city: string): string {
-	const body = homeCopy[locale].auditBody;
-	const template =
-		locale === 'fr' && /^[aeiouyàâäéèêëîïôöùûüœæ]/iu.test(city)
-			? body.replace('que {city}', 'qu’{city}')
-			: body;
-	return template.replace('{city}', city);
+export function homeAuditBody(locale: Locale, label: string): string {
+	const network = locale === 'fr' ? ['le réseau', label] : ['the', label, 'network'];
+	return homeCopy[locale].auditBody.replace('{network}', network.filter(Boolean).join(' '));
 }
 
 /** How current the data is. The live rate comes from the network; none is assumed. */

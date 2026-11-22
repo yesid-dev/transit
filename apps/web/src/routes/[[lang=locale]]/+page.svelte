@@ -8,10 +8,14 @@
 	import HomePulse from '#lib/features/home/HomePulse.svelte';
 	import OverviewRecord from '#lib/features/home/OverviewRecord.svelte';
 	import { homeAuditBody, homeCadence, homeCopy } from '#lib/features/home/home.copy.ts';
+	import { providerDisplayNames, publishedNetwork } from '#lib/site/providerDisplay.ts';
 	import type { PageData } from './$types';
 
-	let { data }: { data: Pick<PageData, 'provider' | 'v1'> & Partial<Pick<PageData, 'record'>> } =
-		$props();
+	let {
+		data,
+	}: {
+		data: Pick<PageData, 'provider' | 'providerId' | 'v1'> & Partial<Pick<PageData, 'record'>>;
+	} = $props();
 	const locale: Locale = getLocale();
 	const city = $derived(
 		data.provider?.labels[locale].city ??
@@ -22,12 +26,14 @@
 	const operator = $derived(
 		data.provider?.labels[locale].operator ?? data.v1?.manifest.display_name ?? city,
 	);
+	const networkLabel = $derived(
+		providerDisplayNames(data.provider ?? publishedNetwork(data.providerId), locale, '').full,
+	);
 	const copy = $derived({
 		...homeCopy[locale],
 		cadence: homeCadence(locale, data.v1?.manifest.files.live.ttl_s),
 		headline: homeCopy[locale].headline.replace('{city}', city),
-		auditBody: homeAuditBody(locale, city),
-		auditMore: homeCopy[locale].auditMore.replace('{operator}', operator),
+		auditBody: homeAuditBody(locale, networkLabel),
 		audience: homeCopy[locale].audience.replace('{operator}', operator),
 	});
 </script>
