@@ -12,6 +12,7 @@ from test_engine import FALL_BACK, FRIDAY, THURSDAY, Trip, _build_store, http, q
 from test_engine import store as store
 
 from transit_engine import measures
+from transit_engine.series import LOCAL_HOUR, local_hour_sql
 from transit_engine.server import Engine
 from transit_engine.store import Store
 
@@ -21,6 +22,27 @@ def _quantile(delays: list[int], fraction: float) -> float:
     rank = (len(delays) - 1) * fraction
     lo, hi = math.floor(rank), math.ceil(rank)
     return delays[lo] + (delays[hi] - delays[lo]) * (rank - lo)
+
+
+def test_local_hour_keeps_timezone_semantics(store: Store) -> None:
+    with store.connect() as conn:
+        fast = local_hour_sql(conn, "ts", date(2026, 3, 1), date(2026, 11, 2))
+        standard = LOCAL_HOUR.format("ts")
+        differences = conn.execute(
+            f"""
+            SELECT count(*)
+            FROM (
+                SELECT ts FROM generate_series(
+                    TIMESTAMPTZ '2026-02-26 00:00:00+00',
+                    TIMESTAMPTZ '2026-11-06 00:00:00+00',
+                    INTERVAL '15 minutes'
+                ) data(ts)
+                UNION ALL SELECT NULL
+            )
+            WHERE ({fast}) IS DISTINCT FROM ({standard})
+            """
+        ).fetchall()
+    assert differences == [(0,)]
 
 
 def test_day_series_matches_plain_python_and_preserves_missing_days(

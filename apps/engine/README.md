@@ -264,12 +264,27 @@ uv run --locked transit-engine-burst --url http://127.0.0.1:8080 --city stm \
   --end-date "$END_DATE" --requests 32 --memory-limit-mib 1024 --out burst.json
 ```
 
-The timing script sends three requests per span through `/measure`. It records
+The timing script sends three requests per span by default. It records
 the wall time and the engine query time, including file discovery and connection setup.
 It exits nonzero on an HTTP error or an incomplete span. Use `--line` with a GTFS route ID
-to measure one line, and `--url` to point at another engine. For a comparison with a larger
-configuration, set `ENGINE_QUERY_THREADS=4` and
-`ENGINE_QUERY_MEMORY_MIB=1908` on the engine before starting it.
+to measure one line, `--kind line|stop|departure` for a ranking, `--group weekday_hour`
+for a grid, and `--measure service_delivered` for service delivered. Use `--url` to
+point at another engine.
+
+To time a year locally, copy seven measured v7 days covering all weekdays to a
+local source root. Keep their `provider/date/v7` layout. From `apps/engine` on Windows:
+
+```powershell
+uv run --locked --managed-python python scripts/repeat_clean_week.py <source-root> <new-output-root> stm 2025-11-22
+```
+
+Use a new output directory outside the repository. The script repeats the source
+week by weekday, shifts timestamps by the difference between GTFS service anchors,
+and regenerates the file identities in every receipt. The resulting year is for
+timing only. Point `ENGINE_CLEAN_ROOT` at that output, set
+`ENGINE_CLEANING_VERSION=7`, and restart the engine with `ENGINE_QUERY_THREADS`
+set to 1, 2, and 4 for comparison. Hold
+`ENGINE_QUERY_MEMORY_MIB` at 2048 for the three runs and use `--spans 30 90 365`.
 
 The burst reports answered, busy, errors, queued, p50/p95/p99, and the service process's Linux peak
 RSS. Queued overlaps with the response outcomes. The run passes when at least one day answers,

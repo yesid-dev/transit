@@ -28,7 +28,7 @@ def measure_url(base: str, city: str, start: date, end: date, *, line: str | Non
     return f"{base.rstrip('/')}/measure?{urlencode(query)}"
 
 
-def request(url: str) -> tuple[int, bool, dict[str, Any]]:
+def request(url: str, *, timeout: float = 30) -> tuple[int, bool, dict[str, Any]]:
     http_request = Request(url, headers={"User-Agent": "TransitEngineBenchmark/0.1"})
     token = os.environ.get("TRANSIT1_ENGINE_ACCESS_TOKEN")
     if token and http_request.type == "https":
@@ -38,7 +38,7 @@ def request(url: str) -> tuple[int, bool, dict[str, Any]]:
         if value:
             http_request.add_unredirected_header(name, value)
     try:
-        response = urlopen(http_request, timeout=30)
+        response = urlopen(http_request, timeout=timeout)
     except HTTPError as error:
         response = error
     with response:

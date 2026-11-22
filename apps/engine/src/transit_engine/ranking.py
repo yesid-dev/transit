@@ -18,6 +18,7 @@ from transit_engine.measures import (
     _BOUNDARIES,
     _CORRIDORS_ID,
     _CROWDING_ID,
+    _PUNCTUALITY,
     _SELECTIONS,
     _SERVICE_DELIVERED_ID,
     _STATES,
@@ -32,6 +33,7 @@ from transit_engine.measures import (
     Language,
     Measure,
     Question,
+    ReadWindow,
     Text,
     _csv_columns,
     _info,
@@ -337,34 +339,63 @@ def _historical_schedule(
         result.counts.update(schedule_tracked=has_tracking, schedule_not_tracked=lacks_tracking)
 
 
+def _rank_batches(
+    conn: duckdb.DuckDBPyConnection,
+    store: Store,
+    ranking: Ranking,
+    family: Family,
+    window: ReadWindow,
+    *,
+    historical: bool = False,
+    days: int | None = None,
+) -> dict[EntityKey, Batch]:
+    assert family.query is not None
+    question = ranking.question
+    version = str(store.cleaning_version)
+    totals: dict[EntityKey, Batch] = {}
+    for offset, batch in enumerate(window.batches(days=days)):
+        if historical and ranking.kind != "vehicle":
+            _historical_schedule(conn, batch, ranking.kind, totals, question.city, version)
+        results = family.query(conn, family, batch, question, version, ranking.kind)
+        window.record_vehicle_tracking(family, offset, results)
+        for key, result in results.items():
+            if key[0] is None or (ranking.kind == "departure" and key[2] is None):
+                continue
+            if key in totals:
+                totals[key].update(result)
+            else:
+                totals[key] = result
+    return totals
+
+
 def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
     started = perf_counter()
     question = ranking.question
     family, selected = _SELECTIONS[question.measure]
-    assert family.query is not None
     (measure,) = selected
-    totals: dict[EntityKey, Batch] = {}
     lines: dict[str, LineSchedule] = {}
     by_vehicle = ranking.kind == "vehicle"
     historical = family.id in {_CROWDING_ID, _ALERT_COUNTS_ID, _VEHICLES_ID}
     has_own_states = historical or family.id in {_WAITING_ID, _CORRIDORS_ID}
     with store.connect() as conn:
         window = read_window(conn, store, question, family, selected, ranking.kind)
-        for offset, batch in enumerate(window.batches()):
-            if not by_vehicle:
+        if (
+            family is _PUNCTUALITY
+            and ranking.kind == "departure"
+            and measure.percentile is None
+            and store.memory_mib >= 2048
+        ):
+            # Merge the large departure result in DuckDB before transferring it to Python.
+            # Keep the normal bounded batches available for denser providers.
+            try:
+                totals = _rank_batches(conn, store, ranking, family, window, days=365)
+            except duckdb.OutOfMemoryException:
+                totals = _rank_batches(conn, store, ranking, family, window)
+        else:
+            totals = _rank_batches(conn, store, ranking, family, window, historical=historical)
+        if not by_vehicle:
+            for batch in window.batches():
                 _line_schedules(conn, batch[TRIP_DAYS], store, question, lines)
-            if historical and not by_vehicle:
-                _historical_schedule(
-                    conn, batch, ranking.kind, totals, question.city, str(store.cleaning_version)
-                )
-            batch_results = family.query(
-                conn, family, batch, question, str(store.cleaning_version), ranking.kind
-            )
-            window.record_vehicle_tracking(family, offset, batch_results)
-            for key, result in batch_results.items():
-                if key[0] is None or (ranking.kind == "departure" and key[2] is None):
-                    continue
-                totals.setdefault(key, Batch()).update(result)
 
     classes = {route: schedule.service_class for route, schedule in lines.items()}
     class_sizes: Counter[str] = Counter()
@@ -382,7 +413,7 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
     if ranking.kind == "line" and chosen_class is None and class_sizes:
         candidates = frequent_class_sizes or class_sizes
         chosen_class = min(candidates, key=lambda name: (-candidates[name], name))
-    rows: list[dict[str, Any]] = []
+    rows: list[tuple[dict[str, Any], int, Counter[str]]] = []
     excluded: list[dict[str, Any]] = []
     for key, result in totals.items():
         if not by_vehicle and not result.scheduled_routes:
@@ -419,15 +450,9 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
             reason = _NOT_MEASURED_ON_DATES if state == "not_measured" else _STATES[state]
             excluded.append({**entry, "reason": state, "reason_text": reason._asdict()})
         else:
-            rows.append(
-                {
-                    **entry,
-                    "value": value,
-                    "range": _range(value, sample, measure, result.counts, family),
-                }
-            )
+            rows.append(({**entry, "value": value}, sample, result.counts))
     order = -1 if measure.worst_first_descending else 1
-    rows.sort(key=lambda row: (order * row["value"], -row["sample"], row["id"]))
+    rows.sort(key=lambda item: (order * item[0]["value"], -item[0]["sample"], item[0]["id"]))
     excluded.sort(key=lambda row: row["id"])
     evidence = window.evidence(store, question, family, started)
     if chosen_class:
@@ -453,7 +478,12 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
         "available_classes": sorted(class_sizes),
         "ranked_count": len(rows),
         "rows": [
-            {"rank": position, **row} for position, row in enumerate(rows[: ranking.limit], start=1)
+            {
+                "rank": position,
+                **row,
+                "range": _range(row["value"], sample, measure, counts, family),
+            }
+            for position, (row, sample, counts) in enumerate(rows[: ranking.limit], start=1)
         ],
         "excluded": excluded,
         "coverage_note": window.coverage_note,
