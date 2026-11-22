@@ -586,7 +586,9 @@ def _entity_value(entity: dict[str, Any], *keys: str) -> str | None:
     return _text(value)
 
 
-def _informed_entities(alert: dict[str, Any]) -> list[dict[str, object]]:
+def _informed_entities(
+    alert: dict[str, Any], *, preserve_flat_targets: bool = False
+) -> list[dict[str, object]]:
     explicit = _value(alert, "informedEntities", "informed_entities", "entities")
     if isinstance(explicit, list):
         return [entity for entity in explicit if isinstance(entity, dict)]
@@ -595,6 +597,11 @@ def _informed_entities(alert: dict[str, Any]) -> list[dict[str, object]]:
     stops = _value(alert, "stops", "stopIds", "stop_ids")
     route_ids = [str(route) for route in routes] if isinstance(routes, list) else []
     stop_ids = [str(stop) for stop in stops] if isinstance(stops, list) else []
+    if preserve_flat_targets:
+        # Separate lists identify targets without specifying route-stop pairs.
+        targets: list[dict[str, object]] = [{"routeId": route_id} for route_id in route_ids]
+        targets.extend({"stopId": stop_id} for stop_id in stop_ids)
+        return targets
     if route_ids and stop_ids:
         return [{"routeId": route_ids[0], "stopId": stop_id} for stop_id in stop_ids]
     if route_ids:

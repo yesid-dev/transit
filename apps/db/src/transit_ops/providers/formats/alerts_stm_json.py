@@ -15,15 +15,17 @@ from transit_ops.silver.i3 import (
 )
 
 
-def stm_json_alerts(payload: object) -> tuple[AlertRecord, ...]:
+def stm_json_alerts(
+    payload: object, *, preserve_flat_targets: bool = False
+) -> tuple[AlertRecord, ...]:
     return tuple(
-        _record(raw, index)
+        _record(raw, index, preserve_flat_targets=preserve_flat_targets)
         for index, raw in enumerate(_payload_alerts(payload))
         if isinstance(raw, dict)
     )
 
 
-def _record(raw: dict[str, object], index: int) -> AlertRecord:
+def _record(raw: dict[str, object], index: int, *, preserve_flat_targets: bool) -> AlertRecord:
     periods = tuple(_active_periods(raw))
     header = _value(raw, "header", "title", "summary", "header_texts")
     description = _value(raw, "description", "body", "message", "description_texts")
@@ -42,7 +44,7 @@ def _record(raw: dict[str, object], index: int) -> AlertRecord:
             _entity_value(s, "tripId", "trip_id", "trip"),
             s,
         )
-        for s in _informed_entities(raw)
+        for s in _informed_entities(raw, preserve_flat_targets=preserve_flat_targets)
     )
     identity = AlertIdentityInputs(
         alert_id,

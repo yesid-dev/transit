@@ -6,13 +6,14 @@ import subprocess
 from collections import Counter
 from collections.abc import Iterable
 from datetime import UTC, date, datetime
+from hashlib import file_digest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from transit_ops.clean_day import CLEANING_VERSION, CleanDay, Row
 from transit_ops.ingestion.storage import BronzeStorage
 from transit_ops.lake.objects import object_digest, put_create_only
-from transit_ops.lake.parquet_codec import write_window
+from transit_ops.lake.parquet_codec import connect, write_window
 from transit_ops.lake.parquet_verify import Expected, check_window_files
 from transit_ops.lake.table_schema import TableSchema
 
@@ -155,6 +156,60 @@ def _builder_git_commit() -> str | None:
         return None
 
 
+def _write_alerts(
+    day: CleanDay, target: Path, metadata: dict[str, str], temp_dir: Path
+) -> tuple[str, int, int]:
+    assert day.alerts is not None
+    # Use a typed table so lists and period bounds survive as native Parquet columns.
+    with connect(temp_dir) as connection:
+        connection.execute("""
+            CREATE TABLE alerts (
+                provider VARCHAR NOT NULL, service_date DATE NOT NULL,
+                cleaning_version VARCHAR NOT NULL, alert_id VARCHAR NOT NULL,
+                version VARCHAR NOT NULL, first_seen_at_utc TIMESTAMPTZ NOT NULL,
+                last_seen_at_utc TIMESTAMPTZ NOT NULL, header_en VARCHAR, header_fr VARCHAR,
+                description_en VARCHAR, description_fr VARCHAR,
+                active_periods STRUCT(start_utc TIMESTAMPTZ, end_utc TIMESTAMPTZ)[] NOT NULL,
+                route_ids VARCHAR[] NOT NULL, stop_ids VARCHAR[] NOT NULL,
+                cause VARCHAR, effect VARCHAR, source VARCHAR NOT NULL,
+                PRIMARY KEY (provider, service_date, alert_id, version, source)
+            )
+            """)
+        rows = [
+            alert.row(day.provider, day.date, CLEANING_VERSION, alert_id, version)
+            for (alert_id, version, _), alert in sorted(day.alerts.items())
+        ]
+        if rows:
+            placeholders = ", ".join("?" for _ in rows[0])
+            connection.executemany(f"INSERT INTO alerts VALUES ({placeholders})", rows)
+        connection.execute(
+            "COPY (SELECT * FROM alerts ORDER BY alert_id, version, source) TO ? "
+            "(FORMAT PARQUET, COMPRESSION zstd, KV_METADATA ?)",
+            [str(target), metadata],
+        )
+        expected = connection.table("alerts")
+        actual = connection.read_parquet(str(target), hive_partitioning=False)
+        actual.create_view("alert_copy")
+        readback = dict(
+            connection.execute(
+                "SELECT key, value FROM parquet_kv_metadata(?)", [str(target)]
+            ).fetchall()
+        )
+        if (
+            actual.columns != expected.columns
+            or actual.types != expected.types
+            or actual.aggregate("count(*)").fetchall() != [(len(rows),)]
+            or connection.execute(
+                "SELECT EXISTS (SELECT * FROM alert_copy EXCEPT ALL SELECT * FROM alerts)"
+            ).fetchone()
+            != (False,)
+            or readback != {key.encode(): value.encode() for key, value in metadata.items()}
+        ):
+            raise ValueError("Alerts Parquet differs from the clean-day rows or metadata")
+    with target.open("rb") as stream:
+        return file_digest(stream, "sha256").hexdigest(), target.stat().st_size, len(rows)
+
+
 def _stage(day: CleanDay, temporary: Path) -> tuple[Path, dict[str, tuple[str, int]]]:
     metadata = {
         "cleaning_version": CLEANING_VERSION,
@@ -217,7 +272,7 @@ def _stage(day: CleanDay, temporary: Path) -> tuple[Path, dict[str, tuple[str, i
         size = target.stat().st_size
         files[target.name] = (window.sha256, size)
         entries[target.name] = {"sha256": window.sha256, "byte_size": size, "rows": window.rows}
-    manifest = {
+    manifest: dict[str, object] = {
         **metadata,
         "files": entries,
         "row_counts_by_state": counts["state"],
@@ -225,5 +280,12 @@ def _stage(day: CleanDay, temporary: Path) -> tuple[Path, dict[str, tuple[str, i
         "built_at_utc": datetime.now(UTC).isoformat(),
         "builder_git_commit": _builder_git_commit(),
     }
+    if day.alerts is None:
+        manifest["alerts"] = "not_tracked"
+    else:
+        target = staged / "alerts.parquet"
+        digest, size, rows_count = _write_alerts(day, target, metadata, temporary)
+        files[target.name] = (digest, size)
+        entries[target.name] = {"sha256": digest, "byte_size": size, "rows": rows_count}
     (staged / "manifest.json").write_text(json.dumps(manifest, sort_keys=True) + "\n", "utf-8")
     return staged, files

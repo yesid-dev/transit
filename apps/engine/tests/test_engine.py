@@ -16,7 +16,7 @@ import pytest
 from uvicorn._types import ASGISendEvent, HTTPScope
 
 from transit_engine import timing
-from transit_engine.clean_manifest import STOP_EVENTS, TRIP_DAYS, file_identities
+from transit_engine.clean_manifest import ALERTS, STOP_EVENTS, TRIP_DAYS, file_identities
 from transit_engine.measures import MIN_CLASSIFIED_STOP_EVENTS, Question, ask
 from transit_engine.server import Engine
 from transit_engine.store import Store
@@ -122,8 +122,8 @@ def _build_store(tmp_path: Path, cleaning_version: int) -> Store:
                     "sha256": sha256(payload).hexdigest(),
                     "byte_size": len(payload),
                 }
-            if cleaning_version == 4:
-                for name in V4_EXTRA_FILES:
+            if cleaning_version in {4, 5}:
+                for name in (*V4_EXTRA_FILES, ALERTS) if cleaning_version == 5 else V4_EXTRA_FILES:
                     path = directory / name
                     conn.execute(
                         "COPY (SELECT * FROM trips WHERE FALSE) TO ? (FORMAT PARQUET)",
@@ -154,12 +154,12 @@ def _build_store(tmp_path: Path, cleaning_version: int) -> Store:
     return Store(tmp_path.as_posix(), cleaning_version=cleaning_version)
 
 
-def test_store_defaults_to_v4_and_accepts_v3_override(
+def test_store_defaults_to_v5_and_accepts_v3_override(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("ENGINE_CLEAN_ROOT", str(tmp_path))
     monkeypatch.delenv("ENGINE_CLEANING_VERSION", raising=False)
-    assert Store(tmp_path.as_posix()).cleaning_version == Store.from_env().cleaning_version == 4
+    assert Store(tmp_path.as_posix()).cleaning_version == Store.from_env().cleaning_version == 5
     monkeypatch.setenv("ENGINE_CLEANING_VERSION", "3")
     assert Store.from_env().cleaning_version == 3
 
@@ -189,7 +189,28 @@ def test_v4_manifest_requires_all_five_file_entries(store: Store) -> None:
     assert validate() is None
 
 
-@pytest.mark.parametrize("cleaning_version", [3, 4])
+def test_v5_requires_an_alert_receipt_or_not_tracked(tmp_path: Path) -> None:
+    store = _build_store(tmp_path, cleaning_version=5)
+    directory = tmp_path / "stm" / THURSDAY.isoformat() / "v5"
+    marker = directory / "manifest.json"
+    manifest = json.loads(marker.read_bytes())
+
+    with store.connect() as conn:
+        assert store.verify(conn, "stm", THURSDAY)
+        (directory / ALERTS).unlink()
+        assert store.files(conn, "stm", THURSDAY) is None
+        manifest["alerts"] = "not_tracked"
+        marker.write_text(json.dumps(manifest), encoding="utf-8")
+        assert store.files(conn, "stm", THURSDAY) is None  # Conflicting receipt and status.
+        del manifest["files"][ALERTS]
+        marker.write_text(json.dumps(manifest), encoding="utf-8")
+        assert store.verify(conn, "stm", THURSDAY)
+        del manifest["alerts"]
+        marker.write_text(json.dumps(manifest), encoding="utf-8")
+        assert store.files(conn, "stm", THURSDAY) is None
+
+
+@pytest.mark.parametrize("cleaning_version", [3, 4, 5])
 def test_bands_use_exact_thresholds(tmp_path: Path, cleaning_version: int) -> None:
     store = _build_store(tmp_path, cleaning_version)
     result = query(store, line="A", direction=0)

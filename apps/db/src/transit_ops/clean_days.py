@@ -17,12 +17,12 @@ from botocore.exceptions import BotoCoreError, ClientError
 from transit_ops.clean_day import capture_window
 from transit_ops.clean_day_inputs import (
     Edition,
+    capture_feeds,
     clean_from_inputs,
     declaration_for,
     edition_index,
     load_contexts,
     merged_captures,
-    realtime_feeds,
 )
 from transit_ops.clean_day_output import publish_clean_day, version_key, write_clean_day
 from transit_ops.core.models import ProviderManifest
@@ -128,7 +128,7 @@ def _capture_manifests(
     end: datetime,
 ) -> Iterator[tuple[Manifest, str]]:
     provider = declaration.provider.provider_id
-    for endpoint, family in realtime_feeds(declaration).items():
+    for endpoint, family in capture_feeds(declaration).items():
         day = start.date()
         while day <= end.date():
             base = f"archive/v1/captures/{provider}/{endpoint}/{day:%Y/%m}/{day.isoformat()}.c"

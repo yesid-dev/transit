@@ -9,9 +9,9 @@ from typing import Self
 
 import duckdb
 
-from transit_engine.clean_manifest import STOP_EVENTS, TRIP_DAYS, file_identities
+from transit_engine.clean_manifest import ALERTS, STOP_EVENTS, TRIP_DAYS, file_identities
 
-DEFAULT_CLEANING_VERSION = 4
+DEFAULT_CLEANING_VERSION = 5
 CITY = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 
 
@@ -93,7 +93,7 @@ class Store:
         return self._checked_files(conn, city, day, verify_digests=False)
 
     def verify(self, conn: duckdb.DuckDBPyConnection, city: str, day: date) -> bool:
-        """Audit both Parquet files against the manifest's full SHA-256 digests."""
+        """Audit the query inputs and any tracked alerts against their full SHA-256 digests."""
         return self._checked_files(conn, city, day, verify_digests=True) is not None
 
     def _checked_files(
@@ -124,7 +124,12 @@ class Store:
         identities = file_identities(payload, city, day.isoformat(), str(self.cleaning_version))
         if identities is None:
             return None
-        for name, path in ((STOP_EVENTS, stops), (TRIP_DAYS, trips)):
+        paths = {STOP_EVENTS: stops, TRIP_DAYS: trips}
+        if ALERTS in identities:
+            paths[ALERTS] = f"{directory}/{ALERTS}"
+            if self.s3_endpoint and paths[ALERTS] not in present:
+                return None
+        for name, path in paths.items():
             digest, size = identities[name]
             if self.s3_endpoint:
                 # With only size projected, httpfs uses HEAD and skips the body.

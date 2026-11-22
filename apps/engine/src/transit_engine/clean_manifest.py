@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 
 STOP_EVENTS = "stop_events.parquet"
 TRIP_DAYS = "trip_days.parquet"
+ALERTS = "alerts.parquet"
 _V4_FILES = ("scheduled_stop_times.parquet", "vehicle_positions.parquet", "feed_polls.parquet")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
@@ -36,8 +37,13 @@ def file_identities(
         files = manifest.get("files")
         count_fields = {STOP_EVENTS: "row_counts_by_basis", TRIP_DAYS: "row_counts_by_state"}
         expected = set(count_fields)
-        if version == "4":
+        if version in {"4", "5"}:
             expected.update(_V4_FILES)
+        if version == "5":
+            if "alerts" not in manifest:
+                expected.add(ALERTS)
+            elif manifest["alerts"] != "not_tracked":
+                return None
         if not isinstance(files, dict) or set(files) != expected:
             return None
         identities: dict[str, tuple[str, int]] = {}

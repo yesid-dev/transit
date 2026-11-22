@@ -95,4 +95,8 @@ def _record(entity: Any, index: int) -> AlertRecord:
         None,
         identity,
         raw,
+        selector_keys=tuple(
+            selector.SerializePartialToString(deterministic=True).hex()
+            for selector in entity.alert.informed_entity
+        ),
     )
