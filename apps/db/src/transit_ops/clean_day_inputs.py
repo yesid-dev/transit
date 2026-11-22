@@ -1,34 +1,78 @@
-"""Read local Bronze captures and caller-pinned GTFS editions for a service day."""
+"""Load checksum-pinned schedules and Bronze or archived captures for a service day."""
 
 import hashlib
 import json
-from collections.abc import Iterator
+import re
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from heapq import merge
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from transit_ops.clean_day import REALTIME_FEEDS, CleanDay, build_clean_day
 from transit_ops.core.models import ProviderManifest
 from transit_ops.history.manifest import Manifest, decode_manifest
 from transit_ops.history.pack import PackedCapture, read_pack
+from transit_ops.ingestion.storage import BronzeStorage, ByteStream, LocalBronzeStorage
+from transit_ops.lake.archive_keys import validate_provider_id
 from transit_ops.providers.normalize import RawCapture
+from transit_ops.providers.registry import load_provider_manifest
 from transit_ops.providers.schedule_archive import ArchiveScheduleContext
 
 
 @dataclass(frozen=True)
 class Edition:
-    path: Path
+    key: str
     sha256: str
+
+
+def declaration_for(provider: str) -> ProviderManifest:
+    validate_provider_id(provider)
+    config = Path(__file__).resolve().parents[2] / "config" / "providers" / f"{provider}.yaml"
+    declaration = load_provider_manifest(config)
+    if declaration.provider.provider_id != provider:
+        raise ValueError(f"Provider manifest does not match {provider}")
+    return declaration
+
+
+def clean_from_inputs(
+    declaration: ProviderManifest,
+    day: date,
+    schedules: Mapping[date, ArchiveScheduleContext],
+    captures: Iterable[RawCapture],
+) -> CleanDay:
+    feeds = realtime_feeds(declaration).values()
+    gaps = declaration.realtime.lines_without_live_data
+    route_types = {kind for gap in gaps for kind in gap.route_types}
+    routes = {route for gap in gaps for route in gap.route_ids}
+    routes.update(
+        route for route, kind in schedules[day].route_types.items() if kind in route_types
+    )
+    return build_clean_day(
+        declaration.provider.provider_id,
+        day,
+        schedules,
+        captures,
+        required_feeds=tuple(family for family in REALTIME_FEEDS if family in feeds),
+        source_lag_seconds=declaration.provider.live_source_lag_seconds,
+        routes_without_live_data=routes,
+    )
 
 
 def schedule_contexts(
     manifest: ProviderManifest, day: date, index_path: Path
 ) -> dict[date, ArchiveScheduleContext]:
     """Use the latest declared effective date on or before each candidate day."""
-    provider = manifest.provider
     value = json.loads(index_path.read_text(encoding="utf-8"))
-    if not isinstance(value, dict) or value.get("provider") != provider.provider_id:
+    editions = edition_index(value, manifest.provider.provider_id)
+    return load_contexts(
+        manifest, day, editions, lambda key: (index_path.parent / key).read_bytes()
+    )
+
+
+def edition_index(value: object, provider: str) -> dict[date, Edition]:
+    if not isinstance(value, dict) or value.get("provider") != provider:
         raise ValueError("Schedule index must name the selected provider")
     records = value.get("editions")
     if not isinstance(records, list) or not records:
@@ -42,8 +86,19 @@ def schedule_contexts(
         effective = date.fromisoformat(record["effective_date"])
         if effective in editions:
             raise ValueError(f"Competing schedule editions effective {effective}")
-        editions[effective] = Edition(index_path.parent / record["path"], record["sha256"])
+        if not re.fullmatch(r"[0-9a-f]{64}", record["sha256"]):
+            raise ValueError(f"Invalid schedule checksum for {effective}")
+        editions[effective] = Edition(record["path"], record["sha256"])
+    return editions
 
+
+def load_contexts(
+    manifest: ProviderManifest,
+    day: date,
+    editions: Mapping[date, Edition],
+    read: Callable[[str], bytes],
+) -> dict[date, ArchiveScheduleContext]:
+    provider = manifest.provider
     grouped: dict[Edition, list[date]] = {}
     for offset in (-1, 0, 1):
         candidate = day + timedelta(days=offset)
@@ -52,21 +107,26 @@ def schedule_contexts(
             grouped.setdefault(editions[max(eligible)], []).append(candidate)
     if not any(day in dates for dates in grouped.values()):
         raise ValueError(f"No schedule edition in force on {day}")
-    return {
-        candidate: context
-        for ident, (edition, dates) in enumerate(grouped.items(), 1)
-        for context in (
-            ArchiveScheduleContext(
-                provider_id=provider.provider_id,
-                dataset_version_id=ident,
-                edition_sha256=edition.sha256,
-                archive_bytes=edition.path.read_bytes(),
-                service_dates=dates,
-                timezone=ZoneInfo(provider.timezone),
-            ),
+    result = {}
+    for ident, (edition, dates) in enumerate(grouped.items(), 1):
+        payload = read(edition.key)
+        checksum = edition.sha256
+        # Dated Bronze originals carry the first 12 hex digits in their key.
+        if len(checksum) == 12:
+            actual = hashlib.sha256(payload).hexdigest()
+            if not actual.startswith(checksum):
+                raise ValueError(f"Schedule checksum differs from Bronze key: {edition.key}")
+            checksum = actual
+        context = ArchiveScheduleContext(
+            provider_id=provider.provider_id,
+            dataset_version_id=ident,
+            edition_sha256=checksum,
+            archive_bytes=payload,
+            service_dates=dates,
+            timezone=ZoneInfo(provider.timezone),
         )
-        for candidate in dates
-    }
+        result.update(dict.fromkeys(dates, context))
+    return result
 
 
 def loose_captures(
@@ -76,7 +136,7 @@ def loose_captures(
     if not provider_root.is_dir():
         raise ValueError(f"Missing Bronze provider directory: {provider_root}")
     files: list[tuple[datetime, str, Path, str]] = []
-    for endpoint, family in _realtime_feeds(manifest).items():
+    for endpoint, family in realtime_feeds(manifest).items():
         day = start.date()
         while day <= end.date():
             partition = provider_root / endpoint / f"captured_at_utc={day}"
@@ -101,7 +161,7 @@ def archived_captures(
     provider: ProviderManifest, root: Path, manifests: list[Path], start: datetime, end: datetime
 ) -> Iterator[RawCapture]:
     """Read explicitly selected local pack manifests, one version per feed/UTC day."""
-    families = _realtime_feeds(provider)
+    families = realtime_feeds(provider)
     selections = {}
     for path in manifests:
         manifest = decode_manifest(path.read_bytes())
@@ -113,10 +173,30 @@ def archived_captures(
         ):
             raise ValueError(f"Unexpected or duplicate capture feed/day manifest: {path}")
         selections[key] = manifest
+        if manifest.pack and not (root / manifest.pack.path).resolve().is_relative_to(
+            root.resolve()
+        ):
+            raise ValueError(f"Capture pack escapes Bronze root: {manifest.pack.path}")
+    yield from merged_captures(
+        LocalBronzeStorage(storage_backend="local", root=root),
+        "",
+        ((manifest, families[manifest.endpoint_key]) for _, manifest in sorted(selections.items())),
+        start,
+        end,
+    )
+
+
+def merged_captures(
+    storage: BronzeStorage,
+    prefix: str,
+    selections: Iterable[tuple[Manifest, str]],
+    start: datetime,
+    end: datetime,
+) -> Iterator[RawCapture]:
     captures = merge(
         *(
-            _packed_day(root, manifest, families[manifest.endpoint_key], start, end)
-            for _, manifest in sorted(selections.items())
+            _packed_day(storage, prefix, manifest, family, start, end)
+            for manifest, family in selections
         ),
         key=lambda capture: capture.captured_at_utc,
     )
@@ -127,16 +207,34 @@ def archived_captures(
     yield from captures
 
 
-def _realtime_feeds(manifest: ProviderManifest) -> dict[str, str]:
+def realtime_feeds(manifest: ProviderManifest) -> dict[str, str]:
     return {
         endpoint: feed.feed_kind.value
         for endpoint, feed in manifest.feeds.items()
-        if feed.feed_kind.value in {"trip_updates", "vehicle_positions"}
+        if feed.is_enabled and feed.feed_kind.value in REALTIME_FEEDS
     }
 
 
+class _PackReader:
+    def __init__(self, stream: ByteStream) -> None:
+        self.stream = stream
+        self.digest = hashlib.sha256()
+        self.size = 0
+
+    def read(self, size: int = -1) -> bytes:
+        data = self.stream.read(size)
+        self.digest.update(data)
+        self.size += len(data)
+        return data
+
+
 def _packed_day(
-    root: Path, manifest: Manifest, family: str, start: datetime, end: datetime
+    storage: BronzeStorage,
+    prefix: str,
+    manifest: Manifest,
+    family: str,
+    start: datetime,
+    end: datetime,
 ) -> Iterator[RawCapture]:
     if not start.date() <= manifest.utc_date <= end.date():
         return
@@ -148,12 +246,17 @@ def _packed_day(
     for entry in entries:
         assert entry.stream is not None and entry.offset is not None
         packed.append(PackedCapture(entry.stream, entry.offset, entry.byte_size, entry.sha256))
-    path = (root / manifest.pack.path).resolve()
-    if not path.is_relative_to(root.resolve()) or path.stat().st_size != manifest.pack.byte_size:
-        raise ValueError(f"Capture pack path or size differs from manifest: {manifest.pack.path}")
-    with path.open("rb") as stream:
+    key = prefix + manifest.pack.path
+    with storage.open_stream(key) as source:
+        stream = _PackReader(source)
         for entry, payload in zip(
             entries, read_pack(stream, manifest.streams, packed), strict=True
         ):
             if start <= entry.captured_at_utc <= end:
-                yield RawCapture(family, "gtfs-rt", payload, entry.captured_at_utc, str(path))
+                yield RawCapture(family, "gtfs-rt", payload, entry.captured_at_utc, key)
+        if (
+            stream.read(1)
+            or stream.size != manifest.pack.byte_size
+            or stream.digest.hexdigest() != manifest.pack.sha256
+        ):
+            raise ValueError(f"Capture pack checksum or size differs from manifest: {key}")

@@ -42,6 +42,7 @@ class ArchiveScheduleContext:
     _trips: Mapping[str, ScheduledTrip]
     _times: Mapping[str, tuple[ScheduledStopTime, ...]]
     _stops: Mapping[str, ScheduledStop]
+    route_types: Mapping[str, int]
 
     def __init__(
         self,
@@ -83,6 +84,11 @@ class ArchiveScheduleContext:
         object.__setattr__(self, "_trips", MappingProxyType(trips))
         object.__setattr__(self, "_times", MappingProxyType(times))
         object.__setattr__(self, "_stops", MappingProxyType(stops))
+        object.__setattr__(
+            self,
+            "route_types",
+            MappingProxyType({r["route_id"]: r["route_type"] for r in rows["routes"]}),
+        )
 
     def trip(self, service_date: date, trip_id: str) -> ScheduledTrip | None:
         return self._trips[trip_id] if trip_id in self.days[service_date].trip_ids else None

@@ -1,8 +1,8 @@
 # Transit engine
 
 `GET /network-punctuality?city=stm&date=2026-11-19` answers one provider's network for one local service date.
-It reads both Parquet files under `<root>/<provider>/<service-date>/v<cleaning_version>/` from the
-[clean-day writer](https://github.com/yesid-dev/transit/pull/1180).
+It reads `manifest.json` under `<root>/<provider>/<service-date>/v<cleaning_version>/` and
+checks the SHA-256 and size of each listed Parquet file before querying them.
 
 Each scheduled stop of each non-cancelled trip on a route with live data counts once. A stop with a
 non-null delay is early below −60 seconds, on time from −60 through 300 seconds inclusive, and late
@@ -13,13 +13,14 @@ version, and elapsed query milliseconds.
 `not_measured_route_without_live_data` counts scheduled stops excluded from every rate because the
 route has no live data. `not_measured_capture_gap` counts scheduled stops with a capture gap.
 Those stops stay in the scheduled total so the observed share reflects missed coverage. A day with
-no stop file returns a `not measured` message, null counts and shares, and an empty version list.
+a missing or invalid manifest, a missing file, or a checksum mismatch returns a `not measured`
+message, null counts and shares, and an empty version list.
 A present day with no observations still reports its scheduled count.
 
 | Environment variable | Default |
 | --- | --- |
 | `ENGINE_CLEAN_ROOT` | `./clean-days` |
-| `ENGINE_CLEANING_VERSION` | `1` |
+| `ENGINE_CLEANING_VERSION` | `3` |
 | `ENGINE_HOST`, `ENGINE_PORT` | `127.0.0.1`, `8080` |
 | `ENGINE_CONCURRENCY` | 2 active queries |
 | `ENGINE_QUERY_MEMORY_MIB` | 256 MiB per DuckDB query |

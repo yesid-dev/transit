@@ -1,7 +1,9 @@
 import asyncio
 import json
 import sys
+from collections import Counter
 from datetime import date
+from hashlib import sha256
 from pathlib import Path
 from threading import Event
 from typing import Never, cast
@@ -11,6 +13,7 @@ import pytest
 from uvicorn._types import ASGISendEvent, HTTPScope
 
 from transit_engine import timing
+from transit_engine.clean_manifest import STOP_EVENTS, TRIP_DAYS
 from transit_engine.punctuality import METHOD_VERSION, Evidence, Store, network_day
 from transit_engine.server import Engine
 
@@ -59,9 +62,9 @@ def store(tmp_path: Path) -> Store:
             ("2026-11-20", []),
             ("2026-11-21", ["without_live", "gap"]),
         ):
-            directory = tmp_path / "stm" / day / "v1"
+            directory = tmp_path / "stm" / day / "v3"
             directory.mkdir(parents=True)
-            identity = f"'stm' AS provider, DATE '{day}' AS service_date, '1' AS cleaning_version"
+            identity = f"'stm' AS provider, DATE '{day}' AS service_date, '3' AS cleaning_version"
             conn.execute(
                 f"""COPY (SELECT {identity}, trip_id, state, state_reason,
                        CASE WHEN scheduled THEN TIMESTAMPTZ '{day} 12:00:00+00'
@@ -78,6 +81,36 @@ def store(tmp_path: Path) -> Store:
                        WHERE NOT list_contains(?::VARCHAR[], trip_id)) TO ? (FORMAT PARQUET)""",
                 [omitted, str(directory / "stop_events.parquet")],
             )
+            states = Counter(state for ident, _, state, _ in TRIPS if ident not in omitted)
+            bases = Counter(
+                "not_observed" if value is None or day.endswith("20") else "trip_update_reported"
+                for ident, _, value in STOPS
+                if ident not in omitted
+            )
+            files = {}
+            for name, counts in ((STOP_EVENTS, bases), (TRIP_DAYS, states)):
+                payload = (directory / name).read_bytes()
+                files[name] = {
+                    "rows": sum(counts.values()),
+                    "sha256": sha256(payload).hexdigest(),
+                    "byte_size": len(payload),
+                }
+            (directory / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "provider": "stm",
+                        "service_date": day,
+                        "cleaning_version": "3",
+                        "schedule_sha256": "a" * 64,
+                        "built_at_utc": f"{day}T00:00:00+00:00",
+                        "builder_git_commit": None,
+                        "files": files,
+                        "row_counts_by_state": states,
+                        "row_counts_by_basis": bases,
+                    }
+                ),
+                encoding="utf-8",
+            )
     return Store(tmp_path.as_posix())
 
 
@@ -91,7 +124,7 @@ def test_bands_and_independent_recomputation(store: Store) -> None:
     assert result["scheduled"] == 9
     assert result["share_observed"] == 4 / 9
     assert result["share_on_time"] == 0.5
-    assert result["cleaning_versions"] == [1]
+    assert result["cleaning_versions"] == [3]
     assert result["method_version"] == METHOD_VERSION
     assert result["query_ms"] >= 0
 
@@ -154,7 +187,40 @@ def test_day_without_file_and_day_without_observations(store: Store) -> None:
     assert unobserved["classified"] == 0
     assert unobserved["share_observed"] == 0
     assert unobserved["share_on_time"] is None
-    assert unobserved["cleaning_versions"] == [1]
+    assert unobserved["cleaning_versions"] == [3]
+
+
+@pytest.mark.parametrize("damage", ["no_manifest", "invalid_json", "wrong_day", "missing", "hash"])
+def test_incomplete_clean_day_is_not_measured(store: Store, damage: str) -> None:
+    directory = Path(store.root) / "stm" / DAY.isoformat() / "v3"
+    marker = directory / "manifest.json"
+    if damage == "no_manifest":
+        marker.unlink()
+    elif damage == "invalid_json":
+        marker.write_bytes(b"{")
+    elif damage == "wrong_day":
+        value = json.loads(marker.read_bytes())
+        value["service_date"] = "2026-11-17"
+        marker.write_text(json.dumps(value), encoding="utf-8")
+    elif damage == "missing":
+        (directory / TRIP_DAYS).unlink()
+    else:
+        path = directory / STOP_EVENTS
+        path.write_bytes(b"XXXX" + path.read_bytes()[4:])
+    absent = network_day(store, "stm", date(2026, 11, 17))
+    result = network_day(store, "stm", DAY)
+    for field in ("status", "message", "classified", "scheduled", "cleaning_versions"):
+        assert dict(result)[field] == dict(absent)[field]
+
+
+def test_blob_discovery_checks_both_files(store: Store) -> None:
+    # Exercise httpfs's glob/read_blob query path against local files.
+    remote = Store(store.root, s3_endpoint="example.invalid")
+    with store.connect() as conn:
+        assert remote.files(conn, "stm", DAY) is not None
+        path = Path(store.root) / "stm" / DAY.isoformat() / "v3" / TRIP_DAYS
+        path.write_bytes(b"XXXX" + path.read_bytes()[4:])
+        assert remote.files(conn, "stm", DAY) is None
 
 
 def test_timing_over_two_clean_days(
