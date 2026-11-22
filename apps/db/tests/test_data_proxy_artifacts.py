@@ -53,7 +53,7 @@ def _workflow_triggers(workflow: dict) -> dict:
     return workflow.get("on", workflow.get(True))
 
 
-def test_wrangler_config_routes_public_contracts_to_snapshots_bucket() -> None:
+def test_wrangler_config_pins_public_routes_and_snapshots_bucket() -> None:
     config = _wrangler_config()
 
     assert config["name"] == "transit-data-proxy"
@@ -61,6 +61,7 @@ def test_wrangler_config_routes_public_contracts_to_snapshots_bucket() -> None:
     assert config["routes"] == [
         {"pattern": "transit.yesid.dev/data/*", "zone_name": "yesid.dev"},
         {"pattern": "transit.yesid.dev/api/v1/*", "zone_name": "yesid.dev"},
+        {"pattern": "data.yesid.dev/v2/*", "zone_name": "yesid.dev"},
     ]
     assert config["r2_buckets"] == [{"binding": "SNAPSHOTS", "bucket_name": "transit-snapshots"}]
 
@@ -108,9 +109,12 @@ def test_deploy_workflow_runs_worker_tests_then_wrangler_action() -> None:
     assert wrangler_steps, "deploy job must publish via `wrangler deploy`"
     wrangler_step = wrangler_steps[0]
     assert wrangler_step["env"]["CLOUDFLARE_API_TOKEN"] == "${{ secrets.CLOUDFLARE_API_TOKEN }}"
+    assert wrangler_step["env"]["TRANSIT1_ENGINE_ACCESS_TOKEN"] == (
+        "${{ secrets.TRANSIT1_ENGINE_ACCESS_TOKEN }}"
+    )
 
     deploy_runs = [step.get("run", "") for step in deploy_steps]
-    wrangler_index = next(index for index, run in enumerate(deploy_runs) if "wrangler" in run)
+    wrangler_index = deploy_steps.index(wrangler_step)
     smoke_index = next(index for index, run in enumerate(deploy_runs) if run == "bash smoke.sh")
     assert smoke_index > wrangler_index, "live smoke must verify the deployed Worker"
 
@@ -119,7 +123,14 @@ def test_deploy_workflow_runs_worker_tests_then_wrangler_action() -> None:
     assert root_pkg["devDependencies"]["wrangler"] == "4.154.0"
     assert "wrangler" not in proxy_pkg.get("devDependencies", {})
     assert any(step.get("uses") == "./.github/actions/setup" for step in deploy_steps)
-    assert wrangler_step["run"] == "../../node_modules/.bin/wrangler deploy"
+    deploy_commands = wrangler_step["run"].splitlines()
+    assert (
+        r"printf 'TRANSIT1_ENGINE_ACCESS_TOKEN=%s\n' "
+        '"${TRANSIT1_ENGINE_ACCESS_TOKEN:?Missing engine token}" > "$proxy_secrets"'
+    ) in deploy_commands
+    assert (
+        '../../node_modules/.bin/wrangler deploy --secrets-file "$proxy_secrets"' in deploy_commands
+    )
 
 
 def test_production_workflow_uses_opaque_public_base_and_web_config_exposes_origin() -> None:

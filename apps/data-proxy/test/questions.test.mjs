@@ -277,7 +277,7 @@ test("cache eviction and upstream failures return the same question's saved answ
     assert.equal(response.headers.get("x-transit-answer"), "last-good");
     assert.match(response.headers.get("access-control-expose-headers"), /X-Transit-Answer/);
     assert.equal(response.headers.get("cache-control"), "no-store");
-    assert.equal(await response.text(), exactJson.replace("{", '{"stale":true,'));
+    assert.equal(await response.text(), `{"stale":true,${exactJson.slice(1)}`);
     assert.equal(f.answers.size, 0);
   }
   assert.equal((await f.fetch(MEASURE + "&line=1")).status, 503);
