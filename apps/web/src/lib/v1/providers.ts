@@ -1,4 +1,5 @@
 import { delocalizePath, localizeHref, pathLocale } from '#lib/i18n/index.ts';
+import { carryFrameState } from '#lib/site/frameState.ts';
 import { isInsideBounds } from '#lib/geocode/types.ts';
 import type { ApproximateLocation } from './requestLocation';
 import { v1BaseUrl } from './config';
@@ -50,7 +51,7 @@ export function providerHref(url: URL, provider: string, lang = pathLocale(url.p
 		}
 	}
 	next.searchParams.set('provider', provider);
-	return next.pathname + next.search;
+	return carryFrameState(next.pathname + next.search, url);
 }
 
 function normalizeProviderUrl(url: URL, provider: string): URL {

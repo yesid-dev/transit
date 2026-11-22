@@ -1,5 +1,5 @@
 <script module lang="ts">
-	import { FOOTER_INFO_NAV } from '#lib/content/nav.ts';
+	import { FOOTER_INFO_NAV, upcomingPage } from '#lib/content/nav.ts';
 
 	export function isDataIndependentRoute(pathname: string): boolean {
 		return FOOTER_INFO_NAV.some((item) => item.href === pathname);
@@ -418,7 +418,7 @@
 							? 'min-h-0 grow'
 							: 'grow shrink-0 basis-auto pt-[var(--chrome-offset)]'}
 					>
-						{#if !v1 && !isDataIndependentRoute(seoPath)}
+						{#if !v1 && !isDataIndependentRoute(seoPath) && !upcomingPage(seoPath)}
 							<div
 								class="mx-auto flex h-full max-w-2xl flex-col items-center justify-center gap-4 p-6"
 							>

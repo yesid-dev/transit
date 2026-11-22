@@ -4,22 +4,21 @@ import { navPillCopy } from '../src/lib/i18n/messages';
 import {
 	AUDIT_NAV,
 	SURFACE_NAV,
-	NAV_ITEMS,
-	NAV_GROUPS,
 	FOOTER_INFO_NAV,
-	YESID_HOUSE_LINK,
+	FRAME_MENU,
+	FRAME_MENU_GROUPS,
 } from '../src/lib/content/nav';
 import { DEFAULT_LOCALE, PUBLISHED_LOCALES, type Locale } from '../src/lib/i18n/config';
 import { localizeHref } from '../src/lib/i18n/routing';
 
 const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const destinations = NAV_ITEMS;
+const destinations = FRAME_MENU;
 // Transit prefixes every locale but the default.
 const localized = (href: string, locale: Locale) =>
 	locale === DEFAULT_LOCALE ? href : `/${locale}${href}`;
 const home = (locale: Locale) => (locale === DEFAULT_LOCALE ? '/' : `/${locale}`);
 // Pin the fixture network rather than accepting the local Worker's approximate location.
-const start = (locale: Locale) => localizeHref(AUDIT_NAV[0].href, locale, 'stm');
+const start = (locale: Locale) => localizeHref('/lines', locale, 'stm');
 const next = (locale: Locale) =>
 	PUBLISHED_LOCALES[(PUBLISHED_LOCALES.indexOf(locale) + 1) % PUBLISHED_LOCALES.length];
 const samePath = (href: string) => (url: URL) => url.pathname === new URL(href, url).pathname;
@@ -80,7 +79,7 @@ for (const locale of PUBLISHED_LOCALES) {
 	test(`${locale}: the menu lists its destinations in four groups`, async ({ page }) => {
 		await page.goto(start(locale));
 		const menu = await openMenu(page, locale);
-		for (const group of NAV_GROUPS) {
+		for (const group of FRAME_MENU_GROUPS) {
 			await expect(
 				menu.getByRole('heading', { name: group.label[locale], exact: true }),
 			).toBeVisible();
@@ -88,12 +87,10 @@ for (const locale of PUBLISHED_LOCALES) {
 				menu.getByRole('list', { name: group.label[locale], exact: true }),
 			).toBeVisible();
 		}
-		for (const [index, item] of NAV_ITEMS.entries()) {
+		for (const [index, item] of destinations.entries()) {
 			await expect(menu.getByRole('link').nth(index)).toHaveAccessibleName(item.label[locale]);
 		}
-		await expect(menu.getByRole('link').nth(NAV_ITEMS.length)).toHaveAccessibleName(
-			`${YESID_HOUSE_LINK.label[locale]} ${copy.newTab}`,
-		);
+		await expect(menu.getByRole('link')).toHaveCount(destinations.length);
 	});
 	for (const item of [...SURFACE_NAV, ...AUDIT_NAV, ...FOOTER_INFO_NAV]) {
 		test(`${locale}: the footer link to ${item.href} still answers`, async ({ page }) => {
@@ -106,11 +103,13 @@ for (const locale of PUBLISHED_LOCALES) {
 			await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 		});
 	}
-	test(`${locale}: a network with no alert feed has no Service alerts`, async ({ page }) => {
+	test(`${locale}: the app menu keeps Service alerts for a network with no feed`, async ({
+		page,
+	}) => {
 		await page.goto(localizeHref(AUDIT_NAV[0].href, locale, 'octranspo'));
 		const menu = await openMenu(page, locale);
-		const name = NAV_ITEMS.find((item) => item.key === 'alerts')!.label[locale];
-		await expect(menu.getByRole('link', { name, exact: true })).toHaveCount(0);
+		const name = destinations.find((item) => item.key === 'alerts')!.label[locale];
+		await expect(menu.getByRole('link', { name, exact: true })).toHaveCount(1);
 		await expect(page.getByTestId('footer').getByRole('link', { name, exact: true })).toHaveCount(
 			0,
 		);
@@ -135,7 +134,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		for (const item of destinations) {
 			const icon = menu.getByRole('link', { name: item.label[locale], exact: true }).locator('svg');
 			await expect(icon).toBeVisible();
-			if (item.key === AUDIT_NAV[0].key) await expect(icon).not.toHaveCSS('fill', 'none');
+			if (item.key === 'lines') await expect(icon).not.toHaveCSS('fill', 'none');
 			else await expect(icon).toHaveCSS('fill', 'none');
 		}
 	});

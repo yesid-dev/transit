@@ -1,7 +1,7 @@
 import { defineCopy, type Locale } from '#lib/i18n/copy.ts';
 import {
 	NAV_GROUPS,
-	NAV_ITEMS,
+	visibleNav,
 	YESID_HOUSE_LINK,
 	type BilingualLabel,
 	type NavGroupKey,
@@ -88,7 +88,7 @@ export interface HomeGroup {
 	readonly entries: readonly HomeEntry[];
 }
 
-type Described = Exclude<NavItem['key'], 'overview'>;
+type Described = Exclude<NavItem['key'], 'overview' | 'vehicles' | 'download'>;
 
 const DESCRIPTIONS: Readonly<Record<Described, BilingualLabel>> = {
 	map: {
@@ -142,17 +142,17 @@ export function homeGroups(alertsAvailable = true): readonly HomeGroup[] {
 		key: group.key,
 		label: group.label,
 		entries: [
-			...NAV_ITEMS.filter(
-				(item): item is NavItem & { key: Described } =>
-					item.group === group.key &&
-					item.key !== 'overview' &&
-					(item.requires !== 'alerts' || alertsAvailable),
-			).map((item) => ({
-				href: item.href,
-				title: item.label,
-				desc: DESCRIPTIONS[item.key],
-				external: false,
-			})),
+			...visibleNav({ alerts: alertsAvailable })
+				.filter(
+					(item): item is NavItem & { key: Described } =>
+						item.group === group.key && item.key !== 'overview',
+				)
+				.map((item) => ({
+					href: item.href,
+					title: item.label,
+					desc: DESCRIPTIONS[item.key],
+					external: false,
+				})),
 			...(group.key === 'about'
 				? [
 						{

@@ -13,7 +13,8 @@
 	import ReceiptIcon from '@lucide/svelte/icons/receipt';
 	import RepeatIcon from '@lucide/svelte/icons/repeat';
 	import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
-	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
+	import TramFrontIcon from '@lucide/svelte/icons/tram-front';
+	import DownloadIcon from '@lucide/svelte/icons/download';
 	import {
 		type Locale,
 		DEFAULT_LOCALE,
@@ -30,11 +31,12 @@
 	} from '#lib/search/transitSearch.ts';
 	import HeaderSearch from './HeaderSearch.svelte';
 	import SearchSheet from './SearchSheet.svelte';
+	import FrameControls from './FrameControls.svelte';
+	import { carryFrameState } from '#lib/site/frameState.ts';
 	import {
 		type NavItem,
-		NAV_GROUPS,
-		NAV_ITEMS,
-		visibleNav,
+		FRAME_MENU,
+		FRAME_MENU_GROUPS,
 		YESID_HOUSE_LINK,
 		isSurfaceActive,
 	} from '#lib/content/nav.ts';
@@ -43,7 +45,7 @@
 	import { AnnouncementBanner, SiteHeader } from '@yesid/ui/layout';
 	import { announcement } from '#lib/site/announcement.ts';
 	import RefreshButton from './RefreshButton.svelte';
-	import { providerHref, providerHasAlerts, type PublicProvider } from '#lib/v1/providers.ts';
+	import { providerHref, type PublicProvider } from '#lib/v1/providers.ts';
 	import { v1Provider } from '#lib/v1/config.ts';
 
 	interface NavPillProps {
@@ -86,8 +88,10 @@
 		navCopy.searchAria[searchScope === 'route' || searchScope === 'stop' ? searchScope : 'all'],
 	);
 
+	const hrefFor = (href: string) => carryFrameState(localizeHref(href, locale, providerId), url);
+	const home = $derived(hrefFor('/'));
 	const toItem = (item: NavItem) => ({
-		href: localizeHref(item.href, locale, providerId),
+		href: hrefFor(item.href),
 		label: item.label[locale],
 		current: isSurfaceActive(item, currentPath),
 	});
@@ -96,6 +100,8 @@
 		map: MapIcon,
 		lines: RouteIcon,
 		stops: MapPinIcon,
+		vehicles: TramFrontIcon,
+		download: DownloadIcon,
 		network: WaypointsIcon,
 		metrics: RulerIcon,
 		status: ActivityIcon,
@@ -105,38 +111,21 @@
 		alerts: TriangleAlertIcon,
 	};
 	const links = $derived(
-		NAV_ITEMS.filter((item) => item.barLabel).map((item) => ({
+		FRAME_MENU.filter((item) => item.barLabel).map((item) => ({
 			...toItem(item),
 			label: item.barLabel![locale],
 			priority: 3 as const,
 		})),
 	);
-	const selectedProvider = $derived(providers.find((provider) => provider.id === providerId));
-	// The menu's four labelled groups; About Yesid closes the last one.
-	const menuGroups = $derived.by(() => {
-		const visible = visibleNav({
-			alerts: selectedProvider ? providerHasAlerts(selectedProvider) : null,
-		});
-		return NAV_GROUPS.map((group) => ({
+	const menuGroups = $derived(
+		FRAME_MENU_GROUPS.map((group) => ({
 			label: group.label[locale],
-			items: [
-				...visible
-					.filter((item) => item.group === group.key)
-					.map((item) => ({ ...toItem(item), icon: MENU_ICONS[item.key] })),
-				...(group.key === 'about'
-					? [
-							{
-								href: YESID_HOUSE_LINK.href,
-								label: YESID_HOUSE_LINK.label[locale],
-								external: true,
-								icon: ExternalLinkIcon,
-								ariaLabel: `${YESID_HOUSE_LINK.label[locale]} ${navCopy.newTab}`,
-							},
-						]
-					: []),
-			],
-		}));
-	});
+			items: FRAME_MENU.filter((item) => item.group === group.key).map((item) => ({
+				...toItem(item),
+				icon: MENU_ICONS[item.key],
+			})),
+		})),
+	);
 
 	const providerText = (provider: PublicProvider) =>
 		`${provider.labels[locale].city} · ${provider.labels[locale].operator}`;
@@ -148,12 +137,12 @@
 		providers.find((provider) => provider.id === providerId)?.labels[locale].operator ?? providerId,
 	);
 
-	let providerControl = $state<HTMLLabelElement>();
+	let scopeControls = $state<HTMLDivElement>();
 
-	// --pill-h spans the pill plus the provider row that drops below it on phones.
+	// Map overlays and page content start below both header rows.
 	$effect(() => {
-		if (!providerControl || typeof ResizeObserver === 'undefined') return;
-		const control = providerControl;
+		if (!scopeControls || typeof ResizeObserver === 'undefined') return;
+		const control = scopeControls;
 		const pill = control.closest<HTMLElement>('[data-testid="nav-pill"]')!;
 		const root = control.ownerDocument.documentElement;
 		const measure = () => {
@@ -165,6 +154,7 @@
 		};
 		const observer = new ResizeObserver(measure);
 		observer.observe(pill.closest('[data-slot="site-header"]')!);
+		observer.observe(control);
 		measure();
 		return () => {
 			observer.disconnect();
@@ -176,7 +166,7 @@
 {#snippet brand()}
 	<ProductBrand
 		product="Transit"
-		href={localizeHref('/', locale, providerId)}
+		href={home}
 		houseHref={YESID_HOUSE_LINK.href}
 		houseExternal
 		houseLabel={`yesid. ${navCopy.newTab}`}
@@ -197,39 +187,42 @@
 {/snippet}
 
 {#snippet actions()}
-	<!-- The visible label is its own element, centred in the control; the native select sits on top, transparent. -->
-	<label bind:this={providerControl} class="nav-provider">
-		<span class="nav-provider-label nav-provider-full" aria-hidden="true" title={providerLabel}
-			>{providerLabel}</span
-		>
-		<span class="nav-provider-label nav-provider-short" aria-hidden="true" title={providerLabel}
-			>{providerShortLabel}</span
-		>
-		<select
-			class="nav-provider-select"
-			aria-label={`${navCopy.network}: ${providerLabel}`}
-			title={providerLabel}
-			value={providerId}
-			onchange={(event) => {
-				const href = providerHref(url, event.currentTarget.value, locale);
-				event.currentTarget.value = providerId;
-				location.assign(href);
-			}}
-		>
-			{#each providers as provider (provider.id)}
-				<option value={provider.id}>{providerText(provider)}</option>
-			{/each}
-			{#if !providers.length}
-				<option value={providerId}>{providerId}</option>
-				{#if providerId !== v1Provider()}
-					<option value={v1Provider()}>{navCopy.defaultNetwork}</option>
+	<div bind:this={scopeControls} class="nav-scope">
+		<!-- The visible label is its own element, centred in the control; the native select sits on top, transparent. -->
+		<label class="nav-provider">
+			<span class="nav-provider-label nav-provider-full" aria-hidden="true" title={providerLabel}
+				>{providerLabel}</span
+			>
+			<span class="nav-provider-label nav-provider-short" aria-hidden="true" title={providerLabel}
+				>{providerShortLabel}</span
+			>
+			<select
+				class="nav-provider-select"
+				aria-label={`${navCopy.network}: ${providerLabel}`}
+				title={providerLabel}
+				value={providerId}
+				onchange={(event) => {
+					const href = providerHref(url, event.currentTarget.value, locale);
+					event.currentTarget.value = providerId;
+					location.assign(href);
+				}}
+			>
+				{#each providers as provider (provider.id)}
+					<option value={provider.id}>{providerText(provider)}</option>
+				{/each}
+				{#if !providers.length}
+					<option value={providerId}>{providerId}</option>
+					{#if providerId !== v1Provider()}
+						<option value={v1Provider()}>{navCopy.defaultNetwork}</option>
+					{/if}
 				{/if}
-			{/if}
-			{#if discoveryError}
-				<option value="" disabled>{navCopy.otherNetworksUnavailable}</option>
-			{/if}
-		</select>
-	</label>
+				{#if discoveryError}
+					<option value="" disabled>{navCopy.otherNetworksUnavailable}</option>
+				{/if}
+			</select>
+		</label>
+		<FrameControls {locale} {url} />
+	</div>
 	<RefreshButton {locale} class="nav-refresh" />
 	<SearchSheet
 		bind:query={search}
@@ -248,7 +241,7 @@
 {/if}
 <SiteHeader
 	{navigation}
-	home={localizeHref('/', locale, providerId)}
+	{home}
 	{brand}
 	{links}
 	linkTiers={{ priority3: 1280 }}
@@ -268,7 +261,7 @@
 
 <style>
 	:root {
-		--pill-h: 72px;
+		--pill-h: 126px;
 	}
 
 	/* Transit's pill also holds refresh and search, so on phones the 18px brand pushes the pill off
@@ -288,7 +281,24 @@
 		}
 	}
 
-	/* Decision 7: the city sits on the pill's own surface, its label centred. */
+	.nav-scope {
+		position: absolute;
+		inset-block-start: calc(100% + 8px);
+		inset-inline-start: 50%;
+		transform: translateX(-50%);
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		align-items: center;
+		gap: 0.25rem 0.5rem;
+		inline-size: max-content;
+		max-inline-size: calc(100cqi - 1rem);
+		padding: 0.125rem 0.5rem;
+		border: 2px solid var(--border-brand);
+		border-radius: var(--radius-lg);
+		background: var(--background);
+	}
+
 	.nav-provider {
 		--size-provider-select: 12.5rem;
 		position: relative;
@@ -343,18 +353,8 @@
 			display: block;
 		}
 		.nav-provider {
-			--size-provider-select: calc(100cqi - 2rem);
-			position: absolute;
-			inset-block-start: calc(100% + 8px);
-			inset-inline-start: 50%;
-			transform: translateX(-50%);
-			padding-inline: 1rem;
-			border: 2px solid var(--border-brand);
-			border-radius: var(--radius-pill);
-			background: color-mix(in srgb, var(--background) 92%, transparent);
-			-webkit-backdrop-filter: blur(var(--glass-blur));
-			backdrop-filter: blur(var(--glass-blur));
-			box-shadow: var(--shadow-nav);
+			max-width: 100%;
+			padding-inline: 0.5rem;
 		}
 	}
 
@@ -371,12 +371,7 @@
 
 	@media (--tablet-max) {
 		:root {
-			--pill-h: 64px;
-		}
-	}
-	@media (max-width: 599px) {
-		:root {
-			--pill-h: 110px;
+			--pill-h: 118px;
 		}
 	}
 </style>

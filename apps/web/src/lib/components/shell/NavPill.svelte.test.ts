@@ -20,31 +20,31 @@ const MENU = {
 		search: 'Search',
 		groups: [
 			['Now', ['Overview', 'Live map', 'Network health']],
-			['Explore', ['Lines', 'Stops']],
+			['Explore', ['Lines', 'Stops', 'Vehicles']],
 			[
 				'Rankings and reports',
-				['Worst lines and stops', 'Chronic late trips and buses', 'Daily report', 'Service alerts'],
+				['Worst lines and stops', 'Worst trips and vehicles', 'Daily report', 'Service alerts'],
 			],
-			['About the data', ['How we measure', 'Data health', 'About Yesid (opens in a new tab)']],
+			['About the data', ['How we measure', 'Data health', 'Download the data']],
 		],
 	},
 	fr: {
 		search: 'Rechercher',
 		groups: [
-			['En ce moment', ['Aperçu', 'Carte en direct', 'Santé du réseau']],
-			['Explorer', ['Lignes', 'Arrêts']],
+			['Maintenant', ['Aperçu', 'Carte en direct', 'Santé du réseau']],
+			['Explorer', ['Lignes', 'Arrêts', 'Véhicules']],
 			[
 				'Classements et rapports',
 				[
 					'Pires lignes et arrêts',
-					'Trajets et bus souvent en retard',
+					'Pires voyages et véhicules',
 					'Rapport quotidien',
 					'Avis de service',
 				],
 			],
 			[
 				'À propos des données',
-				['Comment on mesure', 'Santé des données', 'À propos de Yesid (nouvel onglet)'],
+				['Comment on mesure', 'Santé des données', 'Télécharger les données'],
 			],
 		],
 	},
@@ -69,21 +69,43 @@ it.each(['en', 'fr'] as const)(
 	},
 );
 
-it.each(['en', 'fr'] as const)('gates alert navigation by capability in %s', async (locale) => {
-	const base = PublicProviderCatalogSchema.parse(catalog).providers[0];
-	const provider = {
-		...base,
-		id: 'made-up',
-		inputs: { ...base.inputs, i3_alerts: false, service_alerts: false },
-	};
-	for (const providers of [[provider], []]) {
-		const view = render(NavPill, { props: { locale, providerId: provider.id, providers } });
-		await fireEvent.click(view.getByRole('button', { name: navPillCopy[locale].openMenu }));
-		const alert = within(view.getByRole('dialog')).queryByRole('link', {
-			name: (name) => name === NAV_ITEMS.find((item) => item.key === 'alerts')!.label[locale],
-		});
-		expect(Boolean(alert)).toBe(providers.length === 0);
-		view.unmount();
+it.each(['en', 'fr'] as const)(
+	'links to the alert page even without a feed in %s',
+	async (locale) => {
+		const base = PublicProviderCatalogSchema.parse(catalog).providers[0];
+		const provider = {
+			...base,
+			id: 'made-up',
+			inputs: { ...base.inputs, i3_alerts: false, service_alerts: false },
+		};
+		for (const providers of [[provider], []]) {
+			const view = render(NavPill, { props: { locale, providerId: provider.id, providers } });
+			await fireEvent.click(view.getByRole('button', { name: navPillCopy[locale].openMenu }));
+			const alert = within(view.getByRole('dialog')).queryByRole('link', {
+				name: (name) => name === NAV_ITEMS.find((item) => item.key === 'alerts')!.label[locale],
+			});
+			expect(alert).toBeInTheDocument();
+			view.unmount();
+		}
+	},
+);
+
+it('keeps city, period and mode in both existing and upcoming menu destinations', async () => {
+	const url = new URL(
+		'https://transit.test/fr/map?provider=octranspo&frameMode=live&recordFrom=2026-10-13&recordTo=2026-10-13&stop=42',
+	);
+	const view = render(NavPill, { props: { locale: 'fr', url, providerId: 'octranspo' } });
+	await fireEvent.click(view.getByRole('button', { name: navPillCopy.fr.openMenu }));
+	const menu = within(view.getByRole('list', { name: 'Explorer' }));
+	for (const [name, path] of [
+		['Lignes', '/fr/lines'],
+		['Véhicules', '/fr/upcoming/vehicles'],
+	]) {
+		const href = menu.getByRole('link', { name }).getAttribute('href')!;
+		expect(new URL(href, url).pathname).toBe(path);
+		expect(new URL(href, url).searchParams.toString()).toBe(
+			'provider=octranspo&frameMode=live&recordFrom=2026-10-13&recordTo=2026-10-13',
+		);
 	}
 });
 
