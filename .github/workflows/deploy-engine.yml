@@ -1,0 +1,89 @@
+name: Deploy Transit Engine
+
+on:
+  workflow_dispatch:
+    inputs:
+      city:
+        description: Provider slug for the clean-day smoke check
+        required: true
+        default: stm
+        type: string
+      service_date:
+        description: Measured service date for the smoke check (YYYY-MM-DD)
+        required: true
+        default: "2026-11-15"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-transit-engine
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up JS workspace
+        uses: ./.github/actions/setup
+
+      - name: Deploy Worker and Container
+        id: deploy
+        working-directory: apps/engine
+        env:
+          CLOUDFLARE_ACCOUNT_ID: eccfb9bedd87d413eaf4cac6ae2285d3
+          CLOUDFLARE_API_TOKEN: ${{ secrets.TRANSIT1_ENGINE_DEPLOY_TOKEN }}
+          TRANSIT1_R2_ENDPOINT: ${{ secrets.TRANSIT1_R2_ENDPOINT }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.TRANSIT1_R2_READ_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.TRANSIT1_R2_READ_SECRET_ACCESS_KEY }}
+          TRANSIT1_ENGINE_ACCESS_TOKEN: ${{ secrets.TRANSIT1_ENGINE_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          umask 077
+          secrets_file=$(mktemp "$RUNNER_TEMP/engine-secrets.XXXXXX.json")
+          deploy_output=$(mktemp "$RUNNER_TEMP/engine-deploy.XXXXXX")
+          trap 'rm -f "$secrets_file" "$deploy_output"' EXIT
+          node --input-type=module - "$secrets_file" <<'JS'
+          import { writeFileSync } from 'node:fs';
+
+          for (const name of ['CLOUDFLARE_API_TOKEN', 'TRANSIT1_R2_ENDPOINT', 'AWS_ACCESS_KEY_ID',
+            'AWS_SECRET_ACCESS_KEY', 'TRANSIT1_ENGINE_ACCESS_TOKEN']) {
+            if (!process.env[name]) throw new Error(`Missing deployment secret ${name}`);
+          }
+          const endpoint = process.env.TRANSIT1_R2_ENDPOINT;
+          const match = /^(?:https:\/\/)?([a-z0-9.-]+\.r2\.cloudflarestorage\.com)\/?$/i.exec(endpoint);
+          if (!match) throw new Error('Expected an HTTPS R2 S3 endpoint');
+          writeFileSync(process.argv[2], JSON.stringify({
+            ENGINE_S3_ENDPOINT: match[1],
+            AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
+            AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
+            TRANSIT1_ENGINE_ACCESS_TOKEN: process.env.TRANSIT1_ENGINE_ACCESS_TOKEN,
+          }));
+          JS
+          WRANGLER_OUTPUT_FILE_PATH="$deploy_output" \
+            node ../../node_modules/wrangler/bin/wrangler.js deploy --secrets-file "$secrets_file"
+          node --input-type=module - "$deploy_output" <<'JS'
+          import { appendFileSync, readFileSync } from 'node:fs';
+
+          const entries = readFileSync(process.argv[2], 'utf8').trim().split('\n').map(JSON.parse);
+          const deploy = entries.findLast((entry) => entry.type === 'deploy');
+          const url = deploy?.targets?.find((target) => /^https:\/\/transit-engine\.[a-z0-9-]+\.workers\.dev$/.test(target));
+          if (!url) throw new Error('Wrangler did not report the transit-engine workers.dev URL');
+          appendFileSync(process.env.GITHUB_OUTPUT, `engine_url=${url}\n`);
+          JS
+
+      - name: Verify private access and a measured clean day
+        env:
+          ENGINE_URL: ${{ steps.deploy.outputs.engine_url }}
+          TRANSIT1_ENGINE_ACCESS_TOKEN: ${{ secrets.TRANSIT1_ENGINE_ACCESS_TOKEN }}
+          SMOKE_CITY: ${{ inputs.city }}
+          SMOKE_DATE: ${{ inputs.service_date }}
+        run: node .github/scripts/smoke-engine.mjs

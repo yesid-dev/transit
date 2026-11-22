@@ -226,10 +226,11 @@ uv run --locked transit-engine-burst --url http://127.0.0.1:8080 --city stm \
   --end-date "$END_DATE" --requests 32 --memory-limit-mib 1024 --out burst.json
 ```
 
-The timing script sends three network requests per span through `/measure`. It records
+The timing script sends three requests per span through `/measure`. It records
 the wall time and the engine query time, including file discovery and connection setup.
-It exits nonzero on an HTTP error or an incomplete span. Use `--url` to point at another
-engine. For a comparison with a larger configuration, set `ENGINE_QUERY_THREADS=4` and
+It exits nonzero on an HTTP error or an incomplete span. Use `--line` with a GTFS route ID
+to measure one line, and `--url` to point at another engine. For a comparison with a larger
+configuration, set `ENGINE_QUERY_THREADS=4` and
 `ENGINE_QUERY_MEMORY_MIB=1908` on the engine before starting it.
 
 The burst reports answered, busy, errors, queued, p50/p95/p99, and the service process's Linux peak
@@ -254,10 +255,11 @@ Use the same commands with `ENGINE_CLEAN_ROOT=s3://<bucket>/<prefix>` and
 `ENGINE_S3_ENDPOINT=<account-id>.r2.cloudflarestorage.com`. Inject
 `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and, if applicable, `AWS_SESSION_TOKEN`
 using the host's secret mechanism. The credentials need list and read access on the clean prefix.
-For a native VM run, install the matching DuckDB `httpfs` extension once as the service user.
+For a native VM run, install the locked `httpfs` wheel and register its extension as the service user.
 
 ```sh
-uv run --locked python -c 'import duckdb; duckdb.connect(config={"custom_extension_repository": "https://extensions.duckdb.org"}).execute("INSTALL httpfs")'
+uv sync --locked --extra r2
+uv run --locked --extra r2 python -m transit_engine.install_httpfs
 ```
 
 ### Build and run the image on a Linux Docker host
@@ -274,25 +276,15 @@ For R2, replace the `/data` mount and its root setting with `--env-file "$ENGINE
 containing the R2 settings above. The image includes `httpfs`. Run the same timing and burst
 commands against the mapped port.
 
-## Later Cloudflare Containers proof
+## Private Cloudflare Container
 
-On a Linux Docker host with the deploy authorization, use the repository's pinned Wrangler.
-Set `ENGINE_CLEAN_ROOT` and `ENGINE_S3_ENDPOINT` for R2. Set `ENGINE_SECRETS_FILE` to a
-secret-manager-provided dotenv file outside the repository with the AWS credentials above.
-The Worker forwards requests to a single `standard-1` container.
+Run the **Deploy Transit Engine** workflow from `main` and supply a provider and a measured
+service date for the smoke check. GitHub Actions builds the image and deploys the Worker with
+the pinned Wrangler. The Worker reads `s3://transit-clean` directly through DuckDB `httpfs`
+using the repository's read-only R2 credentials. It forwards authenticated requests to one
+`standard-1` container, which sleeps after five idle minutes.
 
-```sh
-bun install --frozen-lockfile
-cd apps/engine
-node ../../node_modules/wrangler/bin/wrangler.js deploy \
-  --var "ENGINE_CLEAN_ROOT:$ENGINE_CLEAN_ROOT" --var "ENGINE_S3_ENDPOINT:$ENGINE_S3_ENDPOINT" \
-  --secrets-file "$ENGINE_SECRETS_FILE"
-uv sync --locked --managed-python
-uv run --locked transit-engine-burst --url "$ENGINE_URL" --city stm \
-  --end-date "$END_DATE" --requests 32 --memory-limit-mib 1024 --out cloudflare-burst.json
-```
-
-Set `ENGINE_URL` to the deployed Worker URL. For a Cloudflare Access service token, inject
-`CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` into the burst client's environment. The hosted
-burst measures the public one-day request shape end to end. Use `--url "$ENGINE_URL"`
-with the timing command for hosted range requests.
+Use the `workers.dev` URL from the workflow with `--url` for timing and burst. Supply
+`TRANSIT1_ENGINE_ACCESS_TOKEN` through your secret manager. Both harnesses use it as a
+bearer token over HTTPS. The burst needs a complete clean day for each request and uses
+`--memory-limit-mib 4096` for `standard-1`.

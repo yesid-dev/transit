@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = "==3.12.*"
 
 [[package]]
@@ -77,6 +77,21 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/cc/33/01ad2535ee897db2bad70cbc800655167c53afd0b955eed84f0759c2f417/duckdb-2.0.0-cp312-abi3-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:ab51ec57d329d6f3df37c0287b55d71c3fc07bb54b61d1afed09104f953b1431", size = 24371005, upload-time = "2026-10-21T12:51:06.86Z" },
     { url = "https://files.pythonhosted.org/packages/09/d3/9e8ca1242b98f04041bef09686ecfe098b41f820aa23240f63f360b64eaf/duckdb-2.0.0-cp312-abi3-win_amd64.whl", hash = "sha256:f61c96547ed432f54dae42a717fd88563eda55cb47549715fac9f61f770c205a", size = 15368860, upload-time = "2026-10-21T12:51:09.395Z" },
     { url = "https://files.pythonhosted.org/packages/37/81/6ea5dc1050f86ec4dd038a2774766b42247ba6104e7785f13a0c600e2b33/duckdb-2.0.0-cp312-abi3-win_arm64.whl", hash = "sha256:c5e6708efaa8647e0914a16f1914354419e529a1925929950e7d610418e45873", size = 15726489, upload-time = "2026-10-21T12:51:11.643Z" },
+]
+
+[[package]]
+name = "duckdb-core-ext-httpfs"
+version = "2.0.0"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/11/1b/e197bb2a78f85214a695491f94174d191fa6b2c9021fabc54dfff2baae20/duckdb_core_ext_httpfs-2.0.0-py3-none-macosx_12_0_arm64.whl", hash = "sha256:af34fec55d17a494a185fb9402e84fe82a66649de2281be334383dd37ff2bf6b", size = 6690335, upload-time = "2026-11-09T09:31:28.228Z" },
+    { url = "https://files.pythonhosted.org/packages/04/84/93c5e0b99ea5f6b8eecba5cc6c9c417ab51fceeb32c6b8e1ded88e7c0b32/duckdb_core_ext_httpfs-2.0.0-py3-none-macosx_12_0_x86_64.whl", hash = "sha256:5c6163e0e6005ad9befef7e9fc2eecde2be1ca157ec3bc78db0df5f510e21d21", size = 6673177, upload-time = "2026-11-09T09:31:30.102Z" },
+    { url = "https://files.pythonhosted.org/packages/c2/90/345007f4313f7aa764ee145781666e5dc2b8d32df3214ce1c267c3de19f1/duckdb_core_ext_httpfs-2.0.0-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:24b9240403f856193e6425330684d7b56ab228846de5bd9286f33a76f8b44a82", size = 8609950, upload-time = "2026-11-09T09:31:31.678Z" },
+    { url = "https://files.pythonhosted.org/packages/9a/01/db1b1d13784c9a8c3ba4f87ce7ce4b2df093a779aab50ecb0b9d82feeea6/duckdb_core_ext_httpfs-2.0.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:4daeb95275af3baeadace3a806681a23d72d7dc9cbf60a3c0347998d51c77ecb", size = 8648356, upload-time = "2026-11-09T09:31:33.736Z" },
+    { url = "https://files.pythonhosted.org/packages/21/c9/caece397f62168d3fb3daae96c82eb829f7bfe5d43b8cf4181570528b3ea/duckdb_core_ext_httpfs-2.0.0-py3-none-musllinux_1_2_aarch64.whl", hash = "sha256:c0bd68855fbd91f787dd3049695d2855d36d80c379218335964d306f7eceb60a", size = 8258396, upload-time = "2026-11-09T09:31:35.742Z" },
+    { url = "https://files.pythonhosted.org/packages/3a/f5/d17f86bcda142c58b9cc32884914cf2b0bb076dca5c6ec895eba19271280/duckdb_core_ext_httpfs-2.0.0-py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:6904c0c78ac7973bd4fb6228b224a3325a80cf97587ebdc99c29d12dd05d62ef", size = 8394195, upload-time = "2026-11-09T09:31:37.511Z" },
+    { url = "https://files.pythonhosted.org/packages/12/dd/6cfb2bf36aa55d215e5f22200ce6b6506c568e39ab6d216fa5cd640561a0/duckdb_core_ext_httpfs-2.0.0-py3-none-win_amd64.whl", hash = "sha256:7452b6392d5f3686b8aefeb5b6bf47616c2f83e07ed4a5ac1ff5f8f79c5fab60", size = 17196077, upload-time = "2026-11-09T09:31:39.569Z" },
+    { url = "https://files.pythonhosted.org/packages/33/0d/c931b8a9fb0063eb30d51e0c820cd453fd36d6b27cb3df06f67c3d30fafe/duckdb_core_ext_httpfs-2.0.0-py3-none-win_arm64.whl", hash = "sha256:efa525660cd16490eb524ac74d93282d14f6606088fd1b61dd312c30ba7d1b35", size = 16535682, upload-time = "2026-11-09T09:31:42.146Z" },
 ]
 
 [[package]]
@@ -240,6 +255,11 @@ dependencies = [
     { name = "uvicorn" },
 ]
 
+[package.optional-dependencies]
+r2 = [
+    { name = "duckdb-core-ext-httpfs" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "mypy" },
@@ -250,8 +270,10 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "duckdb", specifier = "==2.0.0" },
+    { name = "duckdb-core-ext-httpfs", marker = "extra == 'r2'", specifier = "==2.0.0" },
     { name = "uvicorn", specifier = ">=0.52.0,<0.53" },
 ]
+provides-extras = ["r2"]
 
 [package.metadata.requires-dev]
 dev = [

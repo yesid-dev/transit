@@ -27,8 +27,26 @@ export class TransitEngine extends Container {
   }
 }
 
+const encoder = new TextEncoder();
+
 export default {
-  fetch(request, env) {
-    return env.ENGINE.getByName("network").fetch(request);
+  async fetch(request, env) {
+    const authorization = request.headers.get("Authorization");
+    const token = env.TRANSIT1_ENGINE_ACCESS_TOKEN;
+    if (authorization && token) {
+      const [provided, expected] = await Promise.all([
+        crypto.subtle.digest("SHA-256", encoder.encode(authorization)),
+        crypto.subtle.digest("SHA-256", encoder.encode(`Bearer ${token}`)),
+      ]);
+      if (crypto.subtle.timingSafeEqual(provided, expected)) {
+        const upstream = new Request(request);
+        upstream.headers.delete("Authorization");
+        return env.ENGINE.getByName("network").fetch(upstream);
+      }
+    }
+    return Response.json({ message: "Unauthorized" }, {
+      status: 401,
+      headers: { "WWW-Authenticate": "Bearer", "Cache-Control": "no-store" },
+    });
   },
 };

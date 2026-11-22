@@ -9,6 +9,9 @@ description = "On-demand measures over Transit's clean Parquet tables."
 requires-python = ">=3.12,<3.13"
 dependencies = ["duckdb==2.0.0", "uvicorn>=0.52.0,<0.53"]
 
+[project.optional-dependencies]
+r2 = ["duckdb-core-ext-httpfs==2.0.0"]
+
 [project.scripts]
 transit-engine = "transit_engine.server:main"
 transit-engine-timing = "transit_engine.timing:main"
