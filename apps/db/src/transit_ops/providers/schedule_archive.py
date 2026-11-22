@@ -6,7 +6,7 @@ from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
 from hashlib import sha256
-from io import BytesIO
+from io import BytesIO, TextIOWrapper
 from pathlib import PurePosixPath, PureWindowsPath
 from types import MappingProxyType
 from typing import Any
@@ -62,14 +62,29 @@ class ArchiveScheduleContext:
             service_dates=dates,
             timezone=timezone,
         )
-        rows, times = _read_archive(provider_id, dataset_version_id, edition_sha256, archive_bytes)
-        trips = _trips(rows, times, dataset_version_id)
+        rows, times, trips_columns, stops_columns = _read_archive(
+            provider_id, dataset_version_id, edition_sha256, archive_bytes
+        )
+        trips = _trips(
+            rows,
+            times,
+            dataset_version_id,
+            wheelchair_accessible_present="wheelchair_accessible" in trips_columns,
+        )
+        boarding = {
+            r["stop_id"]: _declared_value(
+                r["wheelchair_boarding"], present="wheelchair_boarding" in stops_columns
+            )
+            for r in rows["stops"]
+        }
+        parents = {r["stop_id"]: r["parent_station"] for r in rows["stops"]}
+        resolved_boarding = _inherit_wheelchair_boarding(boarding, parents)
         stops = {
             r["stop_id"]: ScheduledStop(
                 r["stop_id"],
                 r["stop_lat"],
                 r["stop_lon"],
-                r["wheelchair_boarding"],
+                resolved_boarding[r["stop_id"]],
                 r["parent_station"],
             )
             for r in rows["stops"]
@@ -111,10 +126,64 @@ def _seconds(value: str | None) -> int | None:
     )
 
 
+def _member_columns(archive: ZipFile, member_name: str) -> set[str]:
+    """Column names present in a GTFS member header."""
+    with archive.open(member_name, "r") as raw, TextIOWrapper(
+        raw, encoding="utf-8-sig", newline=""
+    ) as text:
+        reader = csv.reader(text)
+        try:
+            header = next(reader)
+        except StopIteration:
+            return set()
+        return {cell.strip() for cell in header}
+
+
+def _declared_value(raw: int | None, *, present: bool) -> int | None:
+    """GTFS 0/1/2 for a present column, None when the edition omits the column.
+
+    Empty and any value other than 1 or 2 mean no information (0).
+    """
+    if not present:
+        return None
+    return raw if raw in (1, 2) else 0
+
+
+def _inherit_wheelchair_boarding(
+    boarding: Mapping[str, int | None], parents: Mapping[str, str | None]
+) -> dict[str, int | None]:
+    """Resolve 0 (no information) through each stop's parent station, per the GTFS reference."""
+    resolved: dict[str, int | None] = {}
+    resolving: set[str] = set()
+
+    def resolve(stop_id: str) -> int | None:
+        if stop_id in resolved:
+            return resolved[stop_id]
+        value = boarding.get(stop_id)
+        if value is None or value in (1, 2):
+            resolved[stop_id] = value
+            return value
+        parent = parents.get(stop_id)
+        if parent is None or parent not in boarding or stop_id in resolving:
+            resolved[stop_id] = 0
+            return 0
+        resolving.add(stop_id)
+        inherited = resolve(parent)
+        resolving.discard(stop_id)
+        resolved[stop_id] = inherited if inherited in (1, 2) else 0
+        return resolved[stop_id]
+
+    for stop_id in boarding:
+        resolve(stop_id)
+    return resolved
+
+
 def _trips(
     rows: dict[str, list[dict[str, Any]]],
     times: dict[str, tuple[ScheduledStopTime, ...]],
     edition: int,
+    *,
+    wheelchair_accessible_present: bool,
 ) -> dict[str, ScheduledTrip]:
     trip_ids = [r["trip_id"] for r in rows["trips"]]
     if len(set(trip_ids)) != len(trip_ids):
@@ -139,7 +208,7 @@ def _trips(
             r["trip_id"] in frequency_ids,
             r["block_id"],
             r["shape_id"],
-            r["wheelchair_accessible"],
+            _declared_value(r["wheelchair_accessible"], present=wheelchair_accessible_present),
         )
     return trips
 
@@ -170,7 +239,12 @@ def _days(
 
 def _read_archive(
     provider: str, edition: int, checksum: str, data: bytes | None
-) -> tuple[dict[str, list[dict[str, Any]]], dict[str, tuple[ScheduledStopTime, ...]]]:
+) -> tuple[
+    dict[str, list[dict[str, Any]]],
+    dict[str, tuple[ScheduledStopTime, ...]],
+    set[str],
+    set[str],
+]:
     if data is None:
         raise ScheduleMembersUnknown("schedule_members_unknown")
     try:
@@ -243,4 +317,12 @@ def _read_archive(
             EOFError,
         ) as exc:
             raise InvalidScheduleEdition(edition, "invalid_member") from exc
-    return rows, {trip: tuple(stops[seq] for seq in sorted(stops)) for trip, stops in times.items()}
+        member_names = {
+            PurePosixPath(name).name.lower(): name
+            for name in archive.namelist()
+            if not name.endswith("/")
+        }
+        trips_columns = _member_columns(archive, member_names[members["trips"]])
+        stops_columns = _member_columns(archive, member_names[members["stops"]])
+    ordered = {trip: tuple(stops[seq] for seq in sorted(stops)) for trip, stops in times.items()}
+    return rows, ordered, trips_columns, stops_columns

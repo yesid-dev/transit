@@ -11,8 +11,8 @@ SCHEDULED_STOP_TIMES = "scheduled_stop_times.parquet"
 VEHICLE_POSITIONS = "vehicle_positions.parquet"
 FEED_POLLS = "feed_polls.parquet"
 PREDICTION_SAMPLES = "prediction_samples.parquet"
-ALERT_VERSIONS = frozenset({"5", "6", "7"})
-NO_RAW_CAPTURES = "no_raw_captures"
+ALERT_VERSIONS = frozenset({"5", "6", "7", "8"})
+_UNMEASURED_STATUSES = ("no_raw_captures", "no_schedule_edition")
 _V4_FILES = (SCHEDULED_STOP_TIMES, VEHICLE_POSITIONS, FEED_POLLS)
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
@@ -39,8 +39,7 @@ def file_identities(
             return None
         status = manifest.get("status")
         if status is not None:
-            # A no-captures receipt lists no files, so it measures nothing.
-            if status == NO_RAW_CAPTURES and "files" not in manifest:
+            if status in _UNMEASURED_STATUSES and "files" not in manifest:
                 return {}
             return None
         checksum = manifest.get("schedule_sha256")
@@ -51,7 +50,7 @@ def file_identities(
         expected = set(count_fields)
         if version == "4" or version in ALERT_VERSIONS:
             expected.update(_V4_FILES)
-        if version == "7":
+        if version in {"7", "8"}:
             expected.add(PREDICTION_SAMPLES)
         if version in ALERT_VERSIONS:
             if "alerts" not in manifest:

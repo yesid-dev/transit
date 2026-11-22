@@ -1,3 +1,4 @@
+import json
 import os
 import re
 from dataclasses import dataclass
@@ -17,7 +18,7 @@ from transit_engine.clean_manifest import (
     file_identities,
 )
 
-DEFAULT_CLEANING_VERSION = 7
+DEFAULT_CLEANING_VERSION = 8
 CITY = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 _PUNCTUALITY_FILES = (STOP_EVENTS, TRIP_DAYS)
 
@@ -33,6 +34,7 @@ def env_int(name: str, default: int, *, minimum: int = 1) -> int:
 class CheckedDay:
     files: tuple[str, ...] | None
     settled: bool
+    unmeasured_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -189,7 +191,7 @@ class Store:
         if identities is None:
             return CheckedDay(None, False)
         if not identities:
-            return CheckedDay(None, True)
+            return CheckedDay(None, True, json.loads(payload)["status"])
         checked_paths = {}
         supported = True
         for name in tables:

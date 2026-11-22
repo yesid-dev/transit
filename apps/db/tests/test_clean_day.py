@@ -1,7 +1,7 @@
 import json
 from collections import Counter
 from dataclasses import replace
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from hashlib import sha256
 from io import BytesIO
 from pathlib import Path
@@ -523,13 +523,96 @@ def test_clean_declared_gtfs_rt_alert_feed(tmp_path: Path) -> None:
     with duckdb.connect(config={"TimeZone": "UTC"}) as db:
         _verify_manifest(db, destination, edition)
         rows = _rows(db, destination / "alerts.parquet")
-        assert not _rows(db, destination / "feed_polls.parquet")
+        polls = _rows(db, destination / "feed_polls.parquet")
+    assert [(p["feed"], p["result"], p["entity_count"]) for p in polls] == [
+        ("service_alerts", "ok", 1),
+        ("service_alerts", "ok", 1),
+    ]
     assert len({r["version"] for r in rows}) == len(rows) == 2
     for row in rows:
         assert row["source"] == "gtfs_rt_service_alerts"
         assert (row["route_ids"], row["stop_ids"]) == (["r"], ["s1"])
         assert (row["header_en"], row["header_fr"]) == (None, "Arrêt déplacé")
         assert (row["cause"], row["effect"]) == ("CONSTRUCTION", "DETOUR")
+
+
+def test_alert_feed_polls_record_every_attempt(tmp_path: Path) -> None:
+    provider = "sto"
+    edition = _edition(tmp_path / "schedule.zip", TRIPS, DAY)
+    (tmp_path / "editions.json").write_text(
+        json.dumps({"provider": provider, "editions": [edition]}), encoding="utf-8"
+    )
+    captured = MIDNIGHT - timedelta(hours=1)
+    feed = _feed(captured)
+    alert = feed.entity.add(id="a").alert
+    alert.informed_entity.add(route_id="r")
+    _save(tmp_path, feed, "service_alerts", captured, provider)
+    _save(tmp_path, feed, "service_alerts", captured + timedelta(seconds=30), provider)
+    _save(
+        tmp_path,
+        _feed(captured + timedelta(minutes=1)),
+        "service_alerts",
+        captured + timedelta(minutes=1),
+        provider,
+    )
+    malformed = b"not protobuf"
+    key = build_realtime_object_storage_path(
+        "sto", "service_alerts", captured + timedelta(minutes=2), sha256(malformed).hexdigest()
+    )
+    (tmp_path / key).write_bytes(malformed)
+
+    destination = _run(tmp_path, DAY, provider)
+    with duckdb.connect(config={"TimeZone": "UTC"}) as db:
+        polls = _rows(db, destination / "feed_polls.parquet")
+    assert [p["feed"] for p in polls] == ["service_alerts"] * 4
+    assert [(p["result"], p["entity_count"], p["feed_timestamp_utc"]) for p in polls] == [
+        ("ok", 1, captured),
+        ("duplicate", 1, captured),
+        ("empty", 0, captured + timedelta(minutes=1)),
+        ("error", None, None),
+    ]
+    assert [p["captured_at_utc"] for p in polls] == [
+        captured + timedelta(seconds=offset) for offset in (0, 30, 60, 120)
+    ]
+    assert [p["payload_bytes"] for p in polls] == [
+        len(feed.SerializeToString()),
+        len(feed.SerializeToString()),
+        len(_feed(captured + timedelta(minutes=1)).SerializeToString()),
+        len(malformed),
+    ]
+    assert len({p["attempt_id"] for p in polls}) == 4
+    assert polls[-1]["attempt_id"] == (tmp_path / key).name
+
+
+def test_i3_alert_feed_polls(tmp_path: Path) -> None:
+    _index(tmp_path)
+    captured = MIDNIGHT - timedelta(hours=1)
+    original = _alert_body("Use the temporary stop")
+    for stamp, body in (
+        (captured, original),
+        (captured + timedelta(seconds=30), original),
+        (captured + timedelta(minutes=1), b'{"messages": []}'),
+        (captured + timedelta(minutes=2), b"invalid JSON"),
+        (captured + timedelta(minutes=3), b"null"),
+    ):
+        path = tmp_path / build_i3_object_storage_path(
+            provider_id="stm", captured_at_utc=stamp, checksum_sha256=sha256(body).hexdigest()
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(body)
+        _save(tmp_path, _feed(stamp), "trip_updates", stamp)
+
+    destination = _run(tmp_path, DAY)
+    with duckdb.connect(config={"TimeZone": "UTC"}) as db:
+        polls = _rows(db, destination / "feed_polls.parquet")
+    alert_polls = [p for p in polls if p["feed"] == "i3_alerts"]
+    assert [(p["result"], p["entity_count"], p["feed_timestamp_utc"]) for p in alert_polls] == [
+        ("ok", 1, None),
+        ("duplicate", 1, None),
+        ("empty", 0, None),
+        ("error", None, None),
+        ("error", None, None),
+    ]
 
 
 def _verify_schedule(
@@ -827,6 +910,7 @@ def test_ottawa_service_day(
     vehicle.current_status = VehiclePosition.STOPPED_AT
     vehicle.position.latitude, vehicle.position.longitude = 45.4, -75.7
     _save(tmp_path, positions, "vehicle_positions", stopped_at, provider)
+    _save(tmp_path, _feed(stopped_at), "service_alerts", stopped_at, provider)
 
     destination = _run(tmp_path, day, provider)
     with duckdb.connect() as db:
@@ -919,7 +1003,7 @@ def _archive_capture(root: Path, stamp: datetime, alert_body: bytes | None = Non
         duplicate_of_row_id=poll.capture_row_id,
         time_utc=stamp + timedelta(seconds=60),
         feed_timestamp_utc=stamp,
-        feed_timestamp_source="header",
+        feed_timestamp_source="header" if alert_body is None else "capture_time",
         entity_count=1,
     )
     manifest = build_manifest(
@@ -1078,10 +1162,23 @@ def test_range_builds_skips_and_continues(
             assert attempt.exit_code == 1 and "ServiceUnavailable" in attempt.output
             assert not (dest / marker).exists()
         fake.fail_upload = None
-    first = runner.invoke(app, [*args, DAY.isoformat()])
+    earlier = DAY - timedelta(days=1)
+    _archive_capture(raw, datetime.combine(earlier, time(16), UTC))
+    earlier_marker = f"{version_key('stm', earlier)}/manifest.json"
+    first = runner.invoke(app, [*args[:-2], earlier.isoformat(), "--to", DAY.isoformat()])
     assert first.exit_code == 0, (first.output, first.exception)
-    assert "Built 1, skipped 0, no raw captures 0, failed 0" in first.output
+    assert "Built 1, skipped 0, no raw captures 0, no schedule edition 1, failed 0" in first.output
+    earlier_receipt = json.loads((dest / earlier_marker).read_bytes())
+    assert earlier_receipt["status"] == "no_schedule_edition"
+    assert earlier_receipt["provider"] == "stm"
+    assert earlier_receipt["service_date"] == str(earlier)
+    assert earlier_receipt["cleaning_version"] == CLEANING_VERSION
+    assert "files" not in earlier_receipt
+    assert list((dest / earlier_marker).parent.iterdir()) == [dest / earlier_marker]
     if remote:
+        earlier_key = f"out/{earlier_marker}"
+        assert fake.writes.count(earlier_key) == 1
+        fake.writes.remove(earlier_key)
         assert fake.writes == [
             f"out/{version_key('stm', DAY)}/{name}"
             for name in (
@@ -1100,14 +1197,22 @@ def test_range_builds_skips_and_continues(
         alerts = _rows(db, (dest / marker).with_name("alerts.parquet"))
     assert len(alerts) == 1 and alerts[0]["description_en"] == "An archived alert"
     assert (alerts[0]["route_ids"], alerts[0]["stop_ids"]) == (["metro", "r"], ["s1", "s2"])
+    alert_polls = [r for r in polls if r["feed"] == "i3_alerts"]
+    assert [(r["attempt_id"], r["result"], r["entity_count"]) for r in alert_polls] == [
+        ("0", "ok", 1), ("3", "error", None), ("4", "duplicate", 1)
+    ]
+    assert all(r["feed_timestamp_utc"] is None for r in alert_polls)
+    assert alert_polls[1]["payload_bytes"] is None
+    assert alert_polls[2]["payload_bytes"] == alert_polls[0]["payload_bytes"]
+    polls = [r for r in polls if r["feed"] == "trip_updates"]
     assert [r["result"] for r in polls] == ["ok", "error", "duplicate"]
     assert polls[1]["payload_bytes"] is None
     assert polls[2]["payload_bytes"] == polls[0]["payload_bytes"]
     assert polls[2]["feed_timestamp_utc"] == polls[0]["feed_timestamp_utc"]
     manifest = (dest / marker).read_bytes()
-    result = runner.invoke(app, [*args, third.isoformat()])
+    result = runner.invoke(app, [*args[:-2], earlier.isoformat(), "--to", third.isoformat()])
     assert result.exit_code == 0, (result.output, result.exception)
-    assert "Built 1, skipped 1, no raw captures 1, failed 0" in result.output
+    assert "Built 1, skipped 2, no raw captures 1, no schedule edition 0, failed 0" in result.output
     assert (dest / marker).read_bytes() == manifest
     unmeasured = dest / version_key("stm", NEXT)
     receipt = json.loads((unmeasured / "manifest.json").read_bytes())
@@ -1130,5 +1235,111 @@ def test_range_builds_skips_and_continues(
     assert latest["schedule_sha256"] == entry["sha256"]
     assert latest["row_counts_by_state"]["unconfirmed"] == 1
     with duckdb.connect() as db:
-        loose_polls = _rows(db, dest / version_key("stm", third) / "feed_polls.parquet")
-    assert [row["result"] for row in loose_polls] == ["ok"]
+        third_polls = _rows(db, dest / version_key("stm", third) / "feed_polls.parquet")
+    assert [row["result"] for row in third_polls if row["feed"] == "trip_updates"] == ["ok"]
+    assert [row["result"] for row in third_polls if row["feed"] == "i3_alerts"] == [
+        "ok", "error", "duplicate"
+    ]
+
+
+def _wheelchair_edition(path: Path, *, include_wheelchair: bool = True) -> dict[str, str]:
+    trips = {
+        "night": ("r", ["24:00:00", "24:05:00", "24:10:00"]),
+        "plain": ("r", ["14:00:00"]),
+        "unknown": ("r", ["16:00:00"]),
+    }
+    with ZipFile(path, "w") as archive:
+        archive.writestr("routes.txt", "route_id,route_type\nr,3\n")
+        if include_wheelchair:
+            archive.writestr(
+                "trips.txt",
+                "route_id,service_id,trip_id,direction_id,wheelchair_accessible\n"
+                + "r,s,night,0,1\nr,s,plain,0,2\nr,s,unknown,0,\n",
+            )
+            archive.writestr(
+                "stops.txt",
+                "stop_id,stop_name,stop_lat,stop_lon,wheelchair_boarding,parent_station\n"
+                + "s1,Stop 1,45.5,-73.6,1,\n"
+                + "s2,Stop 2,45.5,-73.6,2,\n"
+                + "s3,Stop 3,45.5,-73.6,,s1\n"
+                + "s4,Stop 4,45.5,-73.6,,\n",
+            )
+        else:
+            archive.writestr(
+                "trips.txt",
+                "route_id,service_id,trip_id,direction_id\n"
+                + "r,s,night,0\nr,s,plain,0\nr,s,unknown,0\n",
+            )
+            archive.writestr(
+                "stops.txt",
+                "stop_id,stop_name,stop_lat,stop_lon\n"
+                + "s1,Stop 1,45.5,-73.6\ns2,Stop 2,45.5,-73.6\n"
+                + "s3,Stop 3,45.5,-73.6\ns4,Stop 4,45.5,-73.6\n",
+            )
+        archive.writestr(
+            "stop_times.txt",
+            "trip_id,stop_sequence,stop_id,arrival_time,departure_time\n"
+            + "".join(
+                f"{trip},{seq},s{seq},{time},{time}\n"
+                for trip, (_, times) in trips.items()
+                for seq, time in enumerate(times, 1)
+            ),
+        )
+        archive.writestr(
+            "calendar_dates.txt",
+            "service_id,date,exception_type\n"
+            + "".join(f"s,{DAY + timedelta(days=offset):%Y%m%d},1\n" for offset in range(4)),
+        )
+    return {
+        "effective_date": DAY.isoformat(),
+        "path": path.name,
+        "sha256": sha256(path.read_bytes()).hexdigest(),
+    }
+
+
+def _run_wheelchair(root: Path, include_wheelchair: bool) -> Path:
+    edition = _wheelchair_edition(root / "schedule.zip", include_wheelchair=include_wheelchair)
+    (root / "editions.json").write_text(
+        json.dumps({"provider": "stm", "editions": [edition]}), encoding="utf-8"
+    )
+    _save(root, _feed(MIDNIGHT - timedelta(hours=6)), "trip_updates", MIDNIGHT - timedelta(hours=6))
+    destination = _run(root, DAY)
+    return destination
+
+
+def test_clean_day_copies_wheelchair_accessibility(tmp_path: Path) -> None:
+    destination = _run_wheelchair(tmp_path, include_wheelchair=True)
+    with duckdb.connect(config={"TimeZone": "UTC"}) as db:
+        trips = {row["trip_id"]: row for row in _rows(db, destination / "trip_days.parquet")}
+        schedule = {
+            (row["trip_id"], row["stop_sequence"]): row
+            for row in _rows(db, destination / "scheduled_stop_times.parquet")
+        }
+    assert {key: row["wheelchair_accessible"] for key, row in trips.items()} == {
+        "night": 1,
+        "plain": 2,
+        "unknown": 0,
+    }
+    assert [
+        (schedule[key]["stop_id"], schedule[key]["wheelchair_boarding"])
+        for key in sorted(schedule)
+    ] == [
+        ("s1", 1),
+        ("s2", 2),
+        ("s3", 1),  # Inherited from its parent station s1.
+        ("s1", 1),
+        ("s1", 1),
+    ]
+    assert len(trips) == 3
+    assert len(schedule) == 5
+
+
+def test_clean_day_absent_wheelchair_columns_are_null(tmp_path: Path) -> None:
+    destination = _run_wheelchair(tmp_path, include_wheelchair=False)
+    with duckdb.connect(config={"TimeZone": "UTC"}) as db:
+        trips = _rows(db, destination / "trip_days.parquet")
+        schedule = _rows(db, destination / "scheduled_stop_times.parquet")
+    assert all(row["wheelchair_accessible"] is None for row in trips)
+    assert all(row["wheelchair_boarding"] is None for row in schedule)
+    assert len(trips) == 3
+    assert len(schedule) == 5

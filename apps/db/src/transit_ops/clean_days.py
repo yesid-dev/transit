@@ -3,6 +3,7 @@
 import json
 import os
 import re
+from collections import Counter
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -29,11 +30,12 @@ from transit_ops.clean_day_inputs import (
     realtime_feeds,
 )
 from transit_ops.clean_day_output import (
+    UnmeasuredReason,
     publish_clean_day,
-    publish_no_raw_captures,
+    publish_unmeasured_day,
     version_key,
     write_clean_day,
-    write_no_raw_captures,
+    write_unmeasured_day,
 )
 from transit_ops.core.models import ProviderManifest
 from transit_ops.history.manifest import Manifest, decode_manifest
@@ -193,9 +195,10 @@ def _build_day(
     raw_prefix: str,
     clean: BronzeStorage,
     clean_prefix: str,
-) -> bool:
-    """Build one day, returning false for a no-raw-captures receipt."""
-    provider = declaration.provider.provider_id
+) -> UnmeasuredReason | None:
+    """Build one day or return the reason it cannot be measured."""
+    if day < min(editions):
+        return "no_schedule_edition"
     schedules = load_contexts(declaration, day, editions, raw.read_bytes)
     start, end = capture_window(schedules[day], day)
     selections = list(_capture_manifests(raw, raw_prefix, declaration, start, end))
@@ -205,11 +208,7 @@ def _build_day(
         realtime_capture_present(selections, start, end)
     )
     if realtime_feeds(declaration) and not realtime_present:
-        if isinstance(clean, LocalBronzeStorage):
-            write_no_raw_captures(provider, day, clean.root)
-        else:
-            publish_no_raw_captures(provider, day, clean, clean_prefix)
-        return False
+        return "no_raw_captures"
     captures = merged_captures(
         raw, raw_prefix, selections, start, end, read_loose_captures(raw, loose)
     )
@@ -218,7 +217,7 @@ def _build_day(
         write_clean_day(cleaned, clean.root)
     else:
         publish_clean_day(cleaned, clean, clean_prefix)
-    return True
+    return None
 
 
 def run_clean_days(provider: str, first: str, last: str, source: str, dest: str) -> None:
@@ -232,8 +231,16 @@ def run_clean_days(provider: str, first: str, last: str, source: str, dest: str)
     except (ValueError, OSError, BotoCoreError, ClientError) as error:
         typer.echo(_failure_reason(error), err=True)
         raise typer.Exit(1) from None
+
+    def settle(day: date, reason: UnmeasuredReason) -> None:
+        if isinstance(clean, LocalBronzeStorage):
+            write_unmeasured_day(provider, day, clean.root, reason)
+        else:
+            publish_unmeasured_day(provider, day, clean, clean_prefix, reason)
+
     editions = None
-    built = skipped = no_captures = 0
+    built = skipped = 0
+    unmeasured: Counter[UnmeasuredReason] = Counter()
     failed: dict[date, str] = {}
     for ordinal in range(start_day.toordinal(), end_day.toordinal() + 1):
         day = date.fromordinal(ordinal)
@@ -244,15 +251,18 @@ def run_clean_days(provider: str, first: str, last: str, source: str, dest: str)
                 continue
             if editions is None:
                 editions = discover_editions(raw, raw_prefix, declaration)
-            if _build_day(declaration, day, editions, raw, raw_prefix, clean, clean_prefix):
+            outcome = _build_day(declaration, day, editions, raw, raw_prefix, clean, clean_prefix)
+            if outcome is None:
                 built += 1
             else:
-                no_captures += 1
+                settle(day, outcome)
+                unmeasured[outcome] += 1
         except Exception as error:
             # A failed day must leave the next service day eligible for rebuilding.
             failed[day] = _failure_reason(error)
     typer.echo(
-        f"Built {built}, skipped {skipped}, no raw captures {no_captures}, failed {len(failed)}"
+        f"Built {built}, skipped {skipped}, no raw captures {unmeasured['no_raw_captures']}, "
+        f"no schedule edition {unmeasured['no_schedule_edition']}, failed {len(failed)}"
     )
     for day, reason in failed.items():
         typer.echo(f"{day}: {reason}", err=True)

@@ -11,7 +11,6 @@ import duckdb
 from transit_engine.clean_manifest import (
     ALERTS,
     FEED_POLLS,
-    NO_RAW_CAPTURES,
     PREDICTION_SAMPLES,
     SCHEDULED_STOP_TIMES,
     STOP_EVENTS,
@@ -83,11 +82,11 @@ def _day(
         return {**missing, "reason": "invalid_manifest"}
     # file_identities has validated this payload, so its fields are safe to read.
     manifest = json.loads(manifest_bytes)
-    if manifest.get("status") == NO_RAW_CAPTURES:
+    if not identities:
         return {
             "service_date": day.isoformat(),
             "status": "not_measured",
-            "reason": NO_RAW_CAPTURES,
+            "reason": manifest["status"],
             "cleaning_version": version,
             "built_at_utc": manifest["built_at_utc"],
             "tables": {key: {"status": "not_measured"} for key, _ in TABLES},

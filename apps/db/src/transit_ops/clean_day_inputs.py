@@ -13,7 +13,12 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from transit_ops.clean_day import REALTIME_FEEDS, CleanDay, build_clean_day
-from transit_ops.clean_day_alerts import AlertVersion, alert_sources, collect_alerts
+from transit_ops.clean_day_alerts import (
+    AlertVersion,
+    alert_sources,
+    collect_alerts,
+    read_alert_capture,
+)
 from transit_ops.clean_day_realtime import DayCapture, FeedPoll
 from transit_ops.core.models import ProviderManifest, SourceFormat
 from transit_ops.history.manifest import Manifest, decode_manifest
@@ -50,7 +55,7 @@ def clean_from_inputs(
     schedules: Mapping[date, ArchiveScheduleContext],
     captures: Iterable[DayCapture | FeedPoll],
 ) -> CleanDay:
-    feeds = realtime_feeds(declaration).values()
+    feeds = realtime_feeds(declaration)
     gaps = declaration.realtime.lines_without_live_data
     route_types = {kind for gap in gaps for kind in gap.route_types}
     routes = {route for gap in gaps for route in gap.route_ids}
@@ -59,29 +64,35 @@ def clean_from_inputs(
     )
     sources = alert_sources(declaration)
     versions: dict[tuple[str, str, SourceFormat], AlertVersion] = {}
+    seen: dict[tuple[str, bytes], FeedPoll] = {}
     zone = schedules[day].timezone
 
-    def trip_and_vehicle_captures() -> Iterator[DayCapture | FeedPoll]:
+    def clean_captures() -> Iterator[DayCapture | FeedPoll]:
         for capture in captures:
-            if isinstance(capture, DayCapture) and (source := sources.get(capture.feed)):
-                if capture.captured_at_utc.astimezone(zone).date() == day:
-                    collect_alerts(versions, source[0], capture.captured_at_utc, capture.payload)
-            else:
-                yield capture
+            if (source := sources.get(capture.feed)) is None:
+                if capture.feed in feeds:
+                    yield capture
+            elif capture.captured_at_utc.astimezone(zone).date() == day:
+                if isinstance(capture, FeedPoll):
+                    yield capture
+                else:
+                    poll, records = read_alert_capture(capture, source[0], seen)
+                    collect_alerts(versions, source[0], capture.captured_at_utc, records)
+                    yield poll
 
     result = build_clean_day(
         declaration.provider.provider_id,
         day,
         schedules,
-        trip_and_vehicle_captures(),
-        required_feeds=tuple(family for family in REALTIME_FEEDS if family in feeds),
+        clean_captures(),
+        required_feeds=tuple(family for family in REALTIME_FEEDS if family in feeds.values()),
         source_lag_seconds=declaration.provider.live_source_lag_seconds,
         routes_without_live_data=routes,
     )
     result.alerts = versions if sources else None
     result.scorecard_declaration = {
         "timezone": declaration.provider.timezone,
-        "feeds": [*sorted(set(feeds)), *(["alerts"] if sources else [])],
+        "feeds": [*sorted(set(feeds.values())), *(["alerts"] if sources else [])],
         "unpublished_vehicle_fields": sorted(set(declaration.realtime.unpublished_vehicle_fields)),
     }
     return result
@@ -271,8 +282,7 @@ def merged_captures(
     for manifest, family in selections:
         if start.date() <= manifest.utc_date <= end.date():
             streams.append(_packed_day(storage, prefix, manifest, family, start, end))
-            if family in REALTIME_FEEDS:
-                streams.append(_manifest_only_polls(manifest, start, end))
+            streams.append(_manifest_only_polls(manifest, start, end))
     captures = merge(*streams, key=lambda capture: capture.captured_at_utc)
     first = next(captures, None)
     if first is None:

@@ -22,7 +22,7 @@ classified over scheduled, cleaning and method versions, and query milliseconds.
 `days_included` lists the measured days selected by the day-type filter. A partial window
 includes a bilingual coverage note. The engine validates `manifest.json` under
 `<root>/<provider>/<service-date>/v<cleaning_version>/` and checks the query input file sizes
-before reading. Cleaning v5 through v7 also check the alerts file when the manifest lists it.
+before reading. Cleaning v5 through v8 also check the alerts file when the manifest lists it.
 A missing or invalid manifest, missing required file, or wrong size makes that day a gap.
 
 `GET /data-health?city=stm&from=2026-11-19&to=2026-11-22` reports each day in the
@@ -30,12 +30,17 @@ inclusive range, up to 400 days, without reading Parquet contents. A day is `pre
 when `manifest.json` validates for the engine's cleaning version and every file it lists
 exists with the recorded byte size, and `missing` otherwise, with `reason` set to
 `no_manifest` or `invalid_manifest`. A valid manifest with a listed file missing or a
-wrong size makes the day `incomplete`. A day the raw archive never captured carries a
-`no_raw_captures` receipt with no data files: it is `not_measured` with the same reason,
-both here and for `/measure`, rather than `missing`. Each table is `present`
+wrong size makes the day `incomplete`. A receipt with `no_raw_captures` or
+`no_schedule_edition` settles a day with no Parquet files. Data health reports
+`not_measured` and the receipt reason. The `/measure` evidence maps those dates to
+their reasons in `days_not_measured_reasons` and leaves settled dates out of
+`days_pending`. Both endpoints exclude settled receipts from the
+`X-Transit-Days-Pending` header. Each table is `present`
 with its manifest row count, `missing`, or `not_tracked` for alerts when the manifest says
 so. A table the manifest lists but the day lacks is `missing` with `file_missing` or
-`size_mismatch`. Cleaning v7 adds `prediction_samples` to the reported tables.
+`size_mismatch`. Cleaning v7 adds `prediction_samples` to the reported tables and
+cleaning v8 adds the wheelchair accessibility columns to `trip_days` and
+`scheduled_stop_times`.
 
 Values are null when the answer is no live data, not measured, too few to judge, or unknown.
 No live data means the cut contains scheduled service only on lines without live data.
@@ -150,7 +155,27 @@ New clean-day receipts carry the provider declaration's timezone, enabled realti
 feeds and optional `unpublished_vehicle_fields`. For earlier receipts the engine
 uses the historical service timezone and has no field-level publication declaration.
 An alert history file does not establish the result of individual alert polls.
-Declared alerts without attempt rows in `feed_polls` are `not_measured`.
+Cleaning v8 records attempts for declared alert feeds in `feed_polls`, including
+archived errors and duplicates recorded only in the capture manifest. The scorecard
+groups `i3_alerts` and `service_alerts` under `alerts`. STM JSON carries no feed header,
+so its alert polls support poll success and leave publication timing `unknown`.
+Declared alert feeds without attempt rows also remain `not_measured`.
+
+## Accessibility
+
+Use `measure=accessibility` for the share of scheduled trips the agency declares
+wheelchair accessible (`accessible_trips`) and the share of distinct served stops it
+declares accessible (`accessible_stops`). Each measure is also available on its own.
+The cut supports `line`, `direction`, `stop`, `hour` and `day_type`. A `stop` cut makes
+`accessible_trips` mean trips that serve that stop. A stop uses its declaration on the
+latest service date when it matches the cut. A stop or platform can inherit its parent
+station's declaration when it has no information of its own.
+
+Evidence gives counts for accessible (1), not accessible (2), no information (0),
+and an unpublished column (null). The accessible share divides the accessible count by
+the sum of the first three counts. The state is `not_published` when all matching records
+have null, `unknown` when there are no matching records, and `not_measured` before v8.
+The measure reports the agency's schedule declaration about wheelchair accessibility.
 
 ## Rankings
 
@@ -171,7 +196,7 @@ window. The remaining lines are regular. Classes use the included dates and day 
 across all hours. The default line list uses the class with the most scheduled trips
 among the lines in the cut. Select a class with `class=3:frequent`, or compare all
 classes with `class=all`. Stops and departures rank across the network and carry
-their contributing classes. Cleaning v6 and v7 record GTFS route types. Cleaning
+their contributing classes. Cleaning v6 and later record GTFS route types. Cleaning
 versions before v6 show an unknown route type.
 
 The response includes ranked rows, all exclusions within the selected scope, and the
@@ -185,7 +210,7 @@ Use `format=csv&lang=fr` for French headings or `lang=en` for English.
 | Environment variable | Default |
 | --- | --- |
 | `ENGINE_CLEAN_ROOT` | `./clean-days` |
-| `ENGINE_CLEANING_VERSION` | `7` |
+| `ENGINE_CLEANING_VERSION` | `8` |
 | `ENGINE_HOST`, `ENGINE_PORT` | `127.0.0.1`, `8080` |
 | `ENGINE_CONCURRENCY` | 2 active queries |
 | `ENGINE_QUERY_MEMORY_MIB` | 256 MiB per DuckDB query |

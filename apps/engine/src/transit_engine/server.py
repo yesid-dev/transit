@@ -12,7 +12,6 @@ from uuid import uuid4
 import uvicorn
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 
-from transit_engine.clean_manifest import NO_RAW_CAPTURES
 from transit_engine.health import data_health
 from transit_engine.measures import (
     CORRIDOR_RANKING_DEFAULT,
@@ -335,9 +334,7 @@ class Engine:
             await respond(send, 500, {"message": "data health failed"}, queued=queued)
         else:
             days_pending = sum(
-                day["status"] != "present"
-                and (day["status"], day.get("reason")) != ("not_measured", NO_RAW_CAPTURES)
-                for day in answer["days"]
+                day["status"] not in {"present", "not_measured"} for day in answer["days"]
             )
             await respond(
                 send,

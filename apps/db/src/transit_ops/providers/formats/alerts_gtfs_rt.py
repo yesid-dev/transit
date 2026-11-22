@@ -16,9 +16,12 @@ from transit_ops.providers.formats import decode_gtfs_rt
 from transit_ops.silver.i3 import _text, _timestamp, _translated_texts
 
 
-def gtfs_rt_alerts(payload: bytes) -> tuple[AlertRecord, ...]:
+def gtfs_rt_alerts(
+    payload: bytes, message: gtfs_realtime_pb2.FeedMessage | None = None
+) -> tuple[AlertRecord, ...]:
+    source = decode_gtfs_rt(payload) if message is None else message
     records: list[AlertRecord] = []
-    for entity in decode_gtfs_rt(payload).entity:
+    for entity in source.entity:
         if _has_field(entity, "alert"):
             records.append(_record(entity, len(records)))
     return tuple(records)

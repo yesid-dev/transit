@@ -9,6 +9,7 @@ from datetime import UTC, date, datetime
 from hashlib import file_digest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Literal
 
 from transit_ops.clean_day import CLEANING_VERSION, CleanDay, Row
 from transit_ops.ingestion.storage import BronzeStorage
@@ -39,6 +40,7 @@ TRIP_DAYS = TableSchema.from_columns(
         ("last_capture_utc", _TIME, False),
         ("cancellation_notice_utc", _TIME, False),
         ("route_type", "integer", False),
+        ("wheelchair_accessible", "integer", False),
     ),
     _TRIP_KEY,
 )
@@ -82,6 +84,7 @@ SCHEDULED_STOP_TIMES = TableSchema.from_columns(
         ("scheduled_arrival_seconds", "bigint", False),
         ("scheduled_departure_seconds", "bigint", False),
         ("schedule_sha256", "text", True),
+        ("wheelchair_boarding", "integer", False),
     ),
     _STOP_KEY,
 )
@@ -125,34 +128,30 @@ FEED_POLLS = TableSchema.from_columns(
 )
 
 
-NO_RAW_CAPTURES = "no_raw_captures"
+type UnmeasuredReason = Literal["no_raw_captures", "no_schedule_edition"]
 
 
 def version_key(provider: str, day: date) -> str:
     return f"{provider}/{day.isoformat()}/v{CLEANING_VERSION}"
 
 
-def no_raw_captures_manifest(provider: str, day: date) -> dict[str, object]:
-    """Describe a service day whose window held no capture from any realtime feed."""
-    return {
-        "status": NO_RAW_CAPTURES,
+def _stage_unmeasured_day(
+    provider: str, day: date, reason: UnmeasuredReason, staged: Path
+) -> Path:
+    receipt = {
+        "status": reason,
         "provider": provider,
         "service_date": day.isoformat(),
         "cleaning_version": CLEANING_VERSION,
         "built_at_utc": datetime.now(UTC).isoformat(),
         "builder_git_commit": _builder_git_commit(),
     }
-
-
-def _stage_no_raw_captures(provider: str, day: date, staged: Path) -> Path:
     manifest = staged / "manifest.json"
-    manifest.write_text(
-        json.dumps(no_raw_captures_manifest(provider, day), sort_keys=True) + "\n", "utf-8"
-    )
+    manifest.write_text(json.dumps(receipt, sort_keys=True) + "\n", "utf-8")
     return manifest
 
 
-def write_no_raw_captures(provider: str, day: date, root: Path) -> Path:
+def write_unmeasured_day(provider: str, day: date, root: Path, reason: UnmeasuredReason) -> Path:
     destination = root / version_key(provider, day)
     parent = destination.parent
     parent.mkdir(parents=True, exist_ok=True)
@@ -161,17 +160,19 @@ def write_no_raw_captures(provider: str, day: date, root: Path) -> Path:
     with TemporaryDirectory(prefix=".clean-day-", dir=parent) as directory:
         staged = Path(directory) / "version"
         staged.mkdir()
-        _stage_no_raw_captures(provider, day, staged)
+        _stage_unmeasured_day(provider, day, reason, staged)
         staged.rename(destination)
     return destination
 
 
-def publish_no_raw_captures(provider: str, day: date, storage: BronzeStorage, prefix: str) -> None:
+def publish_unmeasured_day(
+    provider: str, day: date, storage: BronzeStorage, prefix: str, reason: UnmeasuredReason
+) -> None:
     directory = prefix + version_key(provider, day)
     with TemporaryDirectory(prefix="clean-day-") as temporary:
         staged = Path(temporary) / "version"
         staged.mkdir()
-        manifest = _stage_no_raw_captures(provider, day, staged)
+        manifest = _stage_unmeasured_day(provider, day, reason, staged)
         marker = f"{directory}/manifest.json"
         expected = manifest.read_bytes()
         put_create_only(storage, manifest, marker)
