@@ -65,6 +65,7 @@ select = ["B", "E", "F", "I", "UP"]
 python_version = "3.12"
 files = [
     "src/transit_ops/clean_day.py",
+    "src/transit_ops/clean_day_alerts.py",
     "src/transit_ops/clean_day_inputs.py",
     "src/transit_ops/clean_day_output.py",
     "src/transit_ops/clean_day_realtime.py",

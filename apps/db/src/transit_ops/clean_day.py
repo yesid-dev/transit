@@ -17,6 +17,7 @@ from transit_ops.capture_coverage.rules import (
     covered_intervals,
     usable_polls,
 )
+from transit_ops.clean_day_alerts import AlertVersion
 from transit_ops.clean_day_realtime import (
     DayCapture,
     FeedPoll,
@@ -25,6 +26,7 @@ from transit_ops.clean_day_realtime import (
     read_capture,
     vehicle_reading,
 )
+from transit_ops.core.models import SourceFormat
 from transit_ops.gold.vehicle_instance_rule import (
     SANITY_DELAY_SECONDS,
     TripInstance,
@@ -41,8 +43,8 @@ STOPPED_AT_RADIUS_METRES = 50
 # Require several opportunities to see early reporting around departure, even
 # for short trips, at the providers' normal 20–60 second feed cadences.
 ABSENCE_LEAD_SECONDS = 300
-# v4 adds the scheduled stop times, vehicle positions and feed polls tables.
-CLEANING_VERSION = "4"
+# v5 adds alert versions and an explicit status for providers without an alert source.
+CLEANING_VERSION = "5"
 REALTIME_FEEDS: tuple[Feed, ...] = ("trip_updates", "vehicle_positions")
 _REMOVED = {TripDescriptor.CANCELED, TripDescriptor.DELETED}
 _EXTRA = {
@@ -336,6 +338,7 @@ class CleanDay:
     coverage: dict[Feed, list[CoveredInterval]] = field(default_factory=dict)
     vehicle_positions: list[VehicleStateInterval] = field(default_factory=list)
     feed_polls: list[FeedPoll] = field(default_factory=list)
+    alerts: dict[tuple[str, str, SourceFormat], AlertVersion] | None = None
 
     def _covered(self, trip: Trip) -> bool:
         assert trip.start is not None and trip.end is not None

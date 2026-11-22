@@ -12,7 +12,7 @@ import boto3
 import duckdb
 import pytest
 from botocore.exceptions import ClientError
-from google.transit.gtfs_realtime_pb2 import FeedMessage, TripDescriptor, VehiclePosition
+from google.transit.gtfs_realtime_pb2 import Alert, FeedMessage, TripDescriptor, VehiclePosition
 from history_fixtures import scripted_feed_day
 from typer.testing import CliRunner
 
@@ -26,6 +26,7 @@ from transit_ops.history.manifest import build_manifest, encode_manifest
 from transit_ops.history.pack import write_pack
 from transit_ops.history.poll_record import PollRecord
 from transit_ops.ingestion.common import build_bronze_object_storage_path
+from transit_ops.ingestion.i3 import build_i3_object_storage_path
 from transit_ops.ingestion.realtime_gtfs import build_realtime_object_storage_path
 from transit_ops.providers.registry import load_provider_manifest
 
@@ -245,8 +246,17 @@ def _index(root: Path) -> list[dict[str, str]]:
 
 def _rows(db: duckdb.DuckDBPyConnection, path: Path) -> list[dict[str, Any]]:
     source = db.read_parquet(str(path))
+    periods = (
+        "list_transform(active_periods, lambda p: struct_pack("
+        "start_utc := timezone('UTC', p.start_utc), end_utc := timezone('UTC', p.end_utc)"
+        ")) AS active_periods"
+    )
     projection = ", ".join(
-        f"timezone('UTC', {name}) AS {name}" if name.endswith("_utc") else name
+        periods
+        if name == "active_periods"
+        else f"timezone('UTC', {name}) AS {name}"
+        if name.endswith("_utc")
+        else name
         for name in source.columns
     )
     return [
@@ -277,6 +287,11 @@ def _verify_manifest(
     }
     assert manifest["schedule_sha256"] == edition["sha256"]
     assert manifest["cleaning_version"] == CLEANING_VERSION
+    if manifest["provider"] == "octranspo":
+        assert manifest["alerts"] == "not_tracked"
+    else:
+        assert "alerts" not in manifest
+        expected.add("alerts.parquet")
     assert set(manifest["files"]) == {p.name for p in directory.glob("*.parquet")} == expected
     for name in expected:
         path = directory / name
@@ -293,6 +308,100 @@ def _verify_manifest(
             "sha256": sha256(payload).hexdigest(),
             "byte_size": len(payload),
         }
+
+
+def _alert_body(description: str) -> bytes:
+    return json.dumps(
+        {
+            "messages": [
+                {
+                    "id": "night-work",
+                    "header": {"fr": "Travaux", "en": "Construction"},
+                    "description": {"en": description},
+                    "informed_entities": [{"route_short_name": "r", "stop_code": "s1"}],
+                    "activePeriod": [{"start": int(MIDNIGHT.timestamp()) - 600}],
+                    "cause": "Agency cause",
+                    "effect": "Agency effect",
+                }
+            ]
+        }
+    ).encode()
+
+
+def test_clean_i3_alert_versions_across_local_midnight(tmp_path: Path) -> None:
+    editions = _index(tmp_path)
+    first, repeat, revised, later = (
+        MIDNIGHT + timedelta(minutes=minute) for minute in (-10, -5, -1, 0)
+    )
+    original, updated = _alert_body("Use the temporary stop"), _alert_body("Use stop 2")
+    for captured, body in (
+        (first, original),
+        (repeat, original),
+        (revised, updated),
+        (later, updated),
+    ):
+        path = tmp_path / build_i3_object_storage_path(
+            provider_id="stm", captured_at_utc=captured, checksum_sha256=sha256(body).hexdigest()
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(body)
+        _save(tmp_path, _feed(captured), "trip_updates", captured)
+
+    current, following = _run(tmp_path, DAY), _run(tmp_path, NEXT)
+    with duckdb.connect(config={"TimeZone": "UTC"}) as db:
+        for directory, edition in zip((current, following), editions, strict=True):
+            _verify_manifest(db, directory, edition)
+        rows = _rows(db, current / "alerts.parquet")
+        next_rows = _rows(db, following / "alerts.parquet")
+
+    initial, changed = sorted(rows, key=lambda row: row["first_seen_at_utc"])
+    assert initial["version"] != changed["version"]
+    assert initial["description_en"] == "Use the temporary stop"
+    assert changed["description_en"] == "Use stop 2"
+    assert (initial["first_seen_at_utc"], initial["last_seen_at_utc"]) == (first, repeat)
+    assert (changed["first_seen_at_utc"], changed["last_seen_at_utc"]) == (revised, revised)
+    assert next_rows == [
+        {**changed, "service_date": NEXT, "first_seen_at_utc": later, "last_seen_at_utc": later}
+    ]
+    for row in rows:
+        assert (row["alert_id"], row["source"]) == ("night-work", "api_i3_json")
+        assert (row["header_en"], row["header_fr"], row["description_fr"]) == (
+            "Construction",
+            "Travaux",
+            None,
+        )
+        assert row["active_periods"] == [{"start_utc": first.replace(tzinfo=None), "end_utc": None}]
+        assert (row["route_ids"], row["stop_ids"]) == (["r"], ["s1"])
+        assert (row["cause"], row["effect"]) == ("Agency cause", "Agency effect")
+
+
+def test_clean_declared_gtfs_rt_alert_feed(tmp_path: Path) -> None:
+    provider = "sto"
+    edition = _edition(tmp_path / "schedule.zip", TRIPS, DAY)
+    (tmp_path / "editions.json").write_text(
+        json.dumps({"provider": provider, "editions": [edition]}), encoding="utf-8"
+    )
+    captured = MIDNIGHT - timedelta(hours=1)
+    feed = _feed(captured)
+    alert = feed.entity.add(id="test-alert").alert
+    alert.header_text.translation.add(language="fr", text="Arrêt déplacé")
+    selector = alert.informed_entity.add(route_id="r", stop_id="s1", direction_id=0)
+    alert.cause, alert.effect = Alert.CONSTRUCTION, Alert.DETOUR
+    _save(tmp_path, feed, "service_alerts", captured, provider)
+    selector.direction_id = 1
+    _save(tmp_path, feed, "service_alerts", captured + timedelta(minutes=1), provider)
+
+    destination = _run(tmp_path, DAY, provider)
+    with duckdb.connect(config={"TimeZone": "UTC"}) as db:
+        _verify_manifest(db, destination, edition)
+        rows = _rows(db, destination / "alerts.parquet")
+        assert not _rows(db, destination / "feed_polls.parquet")
+    assert len({r["version"] for r in rows}) == len(rows) == 2
+    for row in rows:
+        assert row["source"] == "gtfs_rt_service_alerts"
+        assert (row["route_ids"], row["stop_ids"]) == (["r"], ["s1"])
+        assert (row["header_en"], row["header_fr"]) == (None, "Arrêt déplacé")
+        assert (row["cause"], row["effect"]) == ("CONSTRUCTION", "DETOUR")
 
 
 def _verify_schedule(
@@ -630,17 +739,19 @@ def test_ottawa_service_day(
     ]
 
 
-def _archive_capture(root: Path, stamp: datetime) -> None:
+def _archive_capture(root: Path, stamp: datetime, alert_body: bytes | None = None) -> None:
+    endpoint = "trip_updates" if alert_body is None else "i3_alerts"
+    index_family = "realtime_snapshot" if alert_body is None else "alert_snapshot"
     record, _ = scripted_feed_day(  # type: ignore[no-untyped-call]
-        provider_id="stm", endpoint_key="trip_updates"
+        provider_id="stm", endpoint_key=endpoint, index_family=index_family
     )
     record = cast(PollRecord, record)
     feed = _feed(stamp)
     update = feed.entity.add(id="scheduled").trip_update
     update.trip.trip_id = "night"
     update.trip.start_date = f"{stamp:%Y%m%d}"
-    payload = feed.SerializeToString()
-    base = f"archive/v1/captures/stm/trip_updates/{stamp:%Y/%m/%Y-%m-%d}.c"
+    payload = feed.SerializeToString() if alert_body is None else alert_body
+    base = f"archive/v1/captures/stm/{endpoint}/{stamp:%Y/%m/%Y-%m-%d}.c"
     pack_key = f"{base}10.pack.xz"
     pack_path = root / pack_key
     pack_path.parent.mkdir(parents=True, exist_ok=True)
@@ -690,7 +801,7 @@ def _archive_capture(root: Path, stamp: datetime) -> None:
             processing=(),
         ),
         feed_endpoint_id=1,
-        feed_kind="trip_updates",
+        feed_kind=endpoint,
         content_version=10,
         supersedes=2,
         pack_path=pack_key,
@@ -706,7 +817,7 @@ class _FakeS3:
     def __init__(self, root: Path) -> None:
         self.root = root
         self.writes: list[str] = []
-        self.fail_poll_upload = False
+        self.fail_upload: str | None = None
 
     def head_object(self, *, Bucket: str, Key: str) -> None:  # noqa: N803
         if not (self.root / Bucket / Key).is_file():
@@ -736,7 +847,7 @@ class _FakeS3:
     ) -> None:
         assert Bucket == "clean"
         assert IfNoneMatch == "*"
-        if self.fail_poll_upload and Key.endswith("feed_polls.parquet"):
+        if self.fail_upload and Key.endswith(self.fail_upload):
             raise ClientError({"Error": {"Code": "ServiceUnavailable"}}, "PutObject")
         path = self.root / Bucket / Key
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -791,6 +902,11 @@ def test_range_builds_skips_and_continues(
             archive.write_bytes(original.read_bytes())
         editions.append({**entry, "path": archive.name})
         _archive_capture(raw, stamp)
+        alert_body = json.loads(_alert_body("An archived alert"))
+        alert = alert_body["messages"][0]
+        del alert["informed_entities"]
+        alert.update(routes=["r", "metro"], stops=["s1", "s2"])
+        _archive_capture(raw, stamp, json.dumps(alert_body).encode())
 
     source, destination = str(raw), str(dest)
     fake = _FakeS3(tmp_path)
@@ -819,11 +935,12 @@ def test_range_builds_skips_and_continues(
     marker = f"{version_key('stm', DAY)}/manifest.json"
     runner = CliRunner()
     if remote:
-        fake.fail_poll_upload = True
-        attempt = runner.invoke(app, [*args, DAY.isoformat()])
-        assert attempt.exit_code == 1 and "ServiceUnavailable" in attempt.output
-        assert not (dest / marker).exists()
-        fake.fail_poll_upload = False
+        for name in ("feed_polls.parquet", "alerts.parquet"):
+            fake.fail_upload = name
+            attempt = runner.invoke(app, [*args, DAY.isoformat()])
+            assert attempt.exit_code == 1 and "ServiceUnavailable" in attempt.output
+            assert not (dest / marker).exists()
+        fake.fail_upload = None
     first = runner.invoke(app, [*args, DAY.isoformat()])
     assert first.exit_code == 0, (first.output, first.exception)
     assert "Built 1, skipped 0, failed 0" in first.output
@@ -836,11 +953,15 @@ def test_range_builds_skips_and_continues(
                 "scheduled_stop_times.parquet",
                 "vehicle_positions.parquet",
                 "feed_polls.parquet",
+                "alerts.parquet",
                 "manifest.json",
             )
         ]
     with duckdb.connect() as db:
         polls = _rows(db, (dest / marker).with_name("feed_polls.parquet"))
+        alerts = _rows(db, (dest / marker).with_name("alerts.parquet"))
+    assert len(alerts) == 1 and alerts[0]["description_en"] == "An archived alert"
+    assert (alerts[0]["route_ids"], alerts[0]["stop_ids"]) == (["metro", "r"], ["s1", "s2"])
     assert [r["result"] for r in polls] == ["ok", "error", "duplicate"]
     assert polls[1]["payload_bytes"] is None
     assert polls[2]["payload_bytes"] == polls[0]["payload_bytes"]
@@ -848,7 +969,7 @@ def test_range_builds_skips_and_continues(
     manifest = (dest / marker).read_bytes()
     result = runner.invoke(app, [*args, third.isoformat()])
     assert result.exit_code == 1 and "Built 1, skipped 1, failed 1" in result.output
-    assert f"{NEXT}: ValueError: No archived GTFS-Realtime captures" in result.output
+    assert f"{NEXT}: ValueError: No archived captures" in result.output
     assert (dest / marker).read_bytes() == manifest
     latest = json.loads((dest / version_key("stm", third) / "manifest.json").read_bytes())
     assert latest["schedule_sha256"] == entry["sha256"]

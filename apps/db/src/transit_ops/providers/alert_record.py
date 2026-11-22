@@ -57,6 +57,8 @@ class AlertRecord:
     updated_at: datetime | None
     identity: AlertIdentityInputs
     raw: dict[str, object]
+    # A lossless selector identity when the compatibility projection omits fields.
+    selector_keys: tuple[str, ...] | None = None
 
 
 def alert_rows(

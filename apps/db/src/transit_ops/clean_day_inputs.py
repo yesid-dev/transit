@@ -11,8 +11,9 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from transit_ops.clean_day import REALTIME_FEEDS, CleanDay, build_clean_day
+from transit_ops.clean_day_alerts import AlertVersion, alert_sources, collect_alerts
 from transit_ops.clean_day_realtime import DayCapture, FeedPoll
-from transit_ops.core.models import ProviderManifest
+from transit_ops.core.models import ProviderManifest, SourceFormat
 from transit_ops.history.manifest import Manifest, decode_manifest
 from transit_ops.history.pack import PackedCapture, read_pack
 from transit_ops.ingestion.storage import BronzeStorage, ByteStream, LocalBronzeStorage
@@ -49,15 +50,29 @@ def clean_from_inputs(
     routes.update(
         route for route, kind in schedules[day].route_types.items() if kind in route_types
     )
-    return build_clean_day(
+    sources = alert_sources(declaration)
+    versions: dict[tuple[str, str, SourceFormat], AlertVersion] = {}
+    zone = schedules[day].timezone
+
+    def trip_and_vehicle_captures() -> Iterator[DayCapture | FeedPoll]:
+        for capture in captures:
+            if isinstance(capture, DayCapture) and (source := sources.get(capture.feed)):
+                if capture.captured_at_utc.astimezone(zone).date() == day:
+                    collect_alerts(versions, source[0], capture.captured_at_utc, capture.payload)
+            else:
+                yield capture
+
+    result = build_clean_day(
         declaration.provider.provider_id,
         day,
         schedules,
-        captures,
+        trip_and_vehicle_captures(),
         required_feeds=tuple(family for family in REALTIME_FEEDS if family in feeds),
         source_lag_seconds=declaration.provider.live_source_lag_seconds,
         routes_without_live_data=routes,
     )
+    result.alerts = versions if sources else None
+    return result
 
 
 def schedule_contexts(
@@ -136,11 +151,13 @@ def loose_captures(
     if not provider_root.is_dir():
         raise ValueError(f"Missing Bronze provider directory: {provider_root}")
     files: list[tuple[datetime, str, str, Path, str]] = []
-    for endpoint, family in realtime_feeds(manifest).items():
+    sources = alert_sources(manifest)
+    for endpoint, family in capture_feeds(manifest).items():
+        extension = sources[endpoint][1] if endpoint in sources else ".pb"
         day = start.date()
         while day <= end.date():
             partition = provider_root / endpoint / f"captured_at_utc={day}"
-            for path in partition.glob("*.pb"):
+            for path in partition.glob(f"*{extension}"):
                 stamp, checksum, _ = path.name.split("__", 2)
                 captured = datetime.strptime(stamp, "%Y%m%dT%H%M%S%fZ").replace(tzinfo=UTC)
                 if captured.date() != day:
@@ -149,7 +166,7 @@ def loose_captures(
                     files.append((captured, endpoint, family, path, checksum))
             day += timedelta(days=1)
     if not files:
-        raise ValueError("No GTFS-Realtime captures found in the service-day input window")
+        raise ValueError("No captures found in the service-day input window")
     for captured, endpoint, family, path, checksum in sorted(files):
         payload = path.read_bytes()
         if hashlib.sha256(payload).hexdigest()[:12] != checksum:
@@ -161,7 +178,7 @@ def archived_captures(
     provider: ProviderManifest, root: Path, manifests: list[Path], start: datetime, end: datetime
 ) -> Iterator[DayCapture | FeedPoll]:
     """Read explicitly selected local pack manifests, one version per feed/UTC day."""
-    families = realtime_feeds(provider)
+    families = capture_feeds(provider)
     selections = {}
     for path in manifests:
         manifest = decode_manifest(path.read_bytes())
@@ -169,6 +186,7 @@ def archived_captures(
         if (
             manifest.provider_id != provider.provider.provider_id
             or manifest.endpoint_key not in families
+            or manifest.feed_kind != families[manifest.endpoint_key]
             or key in selections
         ):
             raise ValueError(f"Unexpected or duplicate capture feed/day manifest: {path}")
@@ -197,11 +215,12 @@ def merged_captures(
     for manifest, family in selections:
         if start.date() <= manifest.utc_date <= end.date():
             streams.append(_packed_day(storage, prefix, manifest, family, start, end))
-            streams.append(_manifest_only_polls(manifest, start, end))
+            if family in REALTIME_FEEDS:
+                streams.append(_manifest_only_polls(manifest, start, end))
     captures = merge(*streams, key=lambda capture: capture.captured_at_utc)
     first = next(captures, None)
     if first is None:
-        raise ValueError("No archived GTFS-Realtime captures in the service-day input window")
+        raise ValueError("No archived captures in the service-day input window")
     yield first
     yield from captures
 
@@ -211,6 +230,16 @@ def realtime_feeds(manifest: ProviderManifest) -> dict[str, str]:
         endpoint: feed.feed_kind.value
         for endpoint, feed in manifest.feeds.items()
         if feed.is_enabled and feed.feed_kind.value in REALTIME_FEEDS
+    }
+
+
+def capture_feeds(manifest: ProviderManifest) -> dict[str, str]:
+    return {
+        **realtime_feeds(manifest),
+        **{
+            endpoint: manifest.feeds[endpoint].feed_kind.value
+            for endpoint in alert_sources(manifest)
+        },
     }
 
 
