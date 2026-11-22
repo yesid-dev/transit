@@ -17,7 +17,7 @@ from transit_engine.clean_manifest import (
     file_identities,
 )
 
-DEFAULT_CLEANING_VERSION = 6
+DEFAULT_CLEANING_VERSION = 7
 CITY = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 _PUNCTUALITY_FILES = (STOP_EVENTS, TRIP_DAYS)
 

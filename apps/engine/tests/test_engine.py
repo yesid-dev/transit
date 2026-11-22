@@ -285,12 +285,15 @@ def _build_store(
     return Store(tmp_path.as_posix(), cleaning_version=cleaning_version)
 
 
-def test_store_defaults_to_v6_and_accepts_v3_override(
+def test_store_reads_v7_by_default_and_accepts_v3_override(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    _build_store(tmp_path, cleaning_version=7)
     monkeypatch.setenv("ENGINE_CLEAN_ROOT", str(tmp_path))
     monkeypatch.delenv("ENGINE_CLEANING_VERSION", raising=False)
-    assert Store(tmp_path.as_posix()).cleaning_version == Store.from_env().cleaning_version == 6
+    store = Store.from_env()
+    assert Store(tmp_path.as_posix()).cleaning_version == store.cleaning_version == 7
+    assert query(store)["evidence"]["cleaning_versions"] == [7]
     monkeypatch.setenv("ENGINE_CLEANING_VERSION", "3")
     assert Store.from_env().cleaning_version == 3
 
