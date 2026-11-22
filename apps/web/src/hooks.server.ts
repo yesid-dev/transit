@@ -5,6 +5,7 @@ import { readRequestLocation } from '#lib/v1/requestLocation.ts';
 import { readPublicSiteConfig } from '#lib/site/config.ts';
 import { lineFrameView } from '#lib/site/lineFrame.ts';
 import { stopFrameView } from '#lib/site/stopFrame.ts';
+import { usesFinderRecord } from '#lib/site/finderFrame.ts';
 import { DOCUMENT_SECURITY_HEADERS } from '#lib/site/securityHeaders.ts';
 import { configureTransitUi } from '#lib/ui/configure.ts';
 import { preloadFont } from '@yesid/tokens/fonts';
@@ -116,11 +117,15 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const healthRecord =
 		event.route.id === '/[[lang=locale]]/status' &&
 		event.url.searchParams.get('frameMode') !== 'live';
+	const finderRecord =
+		(event.route.id === '/[[lang=locale]]/lines' || event.route.id === '/[[lang=locale]]/stops') &&
+		usesFinderRecord(event.url);
 	const streamedRecord =
 		overviewRecord ||
 		stopRecord ||
 		vehicleRecord ||
 		rankingsRecord ||
+		finderRecord ||
 		lineView === 'record' ||
 		lineView === 'schedule' ||
 		method ||

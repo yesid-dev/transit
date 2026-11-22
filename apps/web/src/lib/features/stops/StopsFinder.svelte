@@ -44,7 +44,11 @@
 	import { periodRange, presentStopRecord, type StopRecordView } from './stopRecord';
 	import StopsFinderPreview from './StopsFinderPreview.svelte';
 	import { detailCopy, indexCopy } from './stops.copy';
+	import type { StopsRecord } from '#lib/server/finderRecord.ts';
+	import { dateRange } from '#lib/features/record/recordText.ts';
+	import StopFinderTable from './StopFinderTable.svelte';
 
+	let { record = null }: { record?: StopsRecord | null } = $props();
 	const locale = getLocale();
 	const t = $derived(indexCopy[locale]);
 	// The stop page's own Live now words, so a row and its page say the same about live data.
@@ -59,7 +63,10 @@
 
 	onMount(() => runtime.clock.subscribe());
 
-	const published = createResource((signal) => getPublishedReliabilityIndex({ signal }));
+	const published = createResource(
+		(signal) => (record ? Promise.resolve(null) : getPublishedReliabilityIndex({ signal })),
+		{ key: () => Boolean(record) },
+	);
 	const index = createResource(() => getStopsIndex());
 	const routesIndex = createResource(() => getRoutesIndex());
 
@@ -293,6 +300,14 @@
 	const addressHref = $derived(
 		providerHref({ base: currentMirrorUrl(), path: localizeHref('/search', locale), providerId }),
 	);
+	const resultsUrl = $derived.by(() => {
+		const url = new URL(page.url.href);
+		for (const [key, value] of Object.entries(finderSearchParams(view))) {
+			if (value == null) url.searchParams.delete(key);
+			else url.searchParams.set(key, value);
+		}
+		return url;
+	});
 
 	/** Unknown line types make no claim: only declared lines without live data count. */
 	function noLiveData(stop: StopIndexEntry): boolean {
@@ -309,7 +324,7 @@
 		const lines = lineShorts(row.stop);
 		return [
 			row.stop.code ? t.row.code(row.stop.code) : null,
-			stopModeTag(row.stop),
+			record ? null : stopModeTag(row.stop),
 			lines.length > 0 ? t.row.lines(lines.length, lines.join(', ')) : null,
 			row.towards ? t.row.towards(row.towards) : null,
 			row.distanceM == null
@@ -518,39 +533,39 @@
 		</div>
 	</FilterSection>
 
-	<FilterSection>
-		{#if nearActive}
-			<div class="finder-order-note">
-				<span class="label-section text-sm font-semibold">{t.orderLabel}</span>
-				<p class="finder-order-current">{t.orderNear}</p>
-			</div>
-		{:else if lateAvailable}
-			<FilterGroup
-				label={t.orderLabel}
-				items={[{ key: 'late', label: t.orderLate }]}
-				activeKey={view.order === 'late' ? 'late' : null}
-				allLabel={defaultOrderLabel}
-				allowDeselect={false}
-				collapsible
-				testIdPrefix="stops-sort"
-				onSelect={(key) => narrow({ order: key === 'late' ? 'late' : 'default' })}
-			/>
-		{:else}
-			<div class="finder-order-note">
-				<span class="label-section text-sm font-semibold">{t.orderLabel}</span>
-				<p class="finder-order-current">{defaultOrderLabel}</p>
-				<button
-					type="button"
-					data-testid="stops-sort-late"
-					disabled
-					aria-describedby={`${previewId}-order`}
-				>
-					{t.orderLate}
-				</button>
-				<p id={`${previewId}-order`} class="finder-note">{t.orderUnavailable}</p>
-			</div>
-		{/if}
-	</FilterSection>
+	{#if !record}<FilterSection>
+			{#if nearActive}
+				<div class="finder-order-note">
+					<span class="label-section text-sm font-semibold">{t.orderLabel}</span>
+					<p class="finder-order-current">{t.orderNear}</p>
+				</div>
+			{:else if lateAvailable}
+				<FilterGroup
+					label={t.orderLabel}
+					items={[{ key: 'late', label: t.orderLate }]}
+					activeKey={view.order === 'late' ? 'late' : null}
+					allLabel={defaultOrderLabel}
+					allowDeselect={false}
+					collapsible
+					testIdPrefix="stops-sort"
+					onSelect={(key) => narrow({ order: key === 'late' ? 'late' : 'default' })}
+				/>
+			{:else}
+				<div class="finder-order-note">
+					<span class="label-section text-sm font-semibold">{t.orderLabel}</span>
+					<p class="finder-order-current">{defaultOrderLabel}</p>
+					<button
+						type="button"
+						data-testid="stops-sort-late"
+						disabled
+						aria-describedby={`${previewId}-order`}
+					>
+						{t.orderLate}
+					</button>
+					<p id={`${previewId}-order`} class="finder-note">{t.orderUnavailable}</p>
+				</div>
+			{/if}
+		</FilterSection>{/if}
 {/snippet}
 
 <ListingFrame
@@ -558,7 +573,7 @@
 	rule="dimension"
 	heading={t.heading}
 	subtitle={providerName}
-	description={t.lede}
+	description={record ? dateRange(record.period, locale) : t.lede}
 	filterLabel={t.controlsLabel}
 	resultCountText={index.data ? countText : undefined}
 	search={listingSearch}
@@ -612,7 +627,7 @@
 						layout={desktop.current ? 'desktop' : 'mobile'}
 					/>
 				{:else}
-					<div class="finder" data-slot="stops-finder">
+					<div class="finder" class:finder-record={record != null} data-slot="stops-finder">
 						<div
 							class="finder-results"
 							bind:this={resultsElement}
@@ -626,7 +641,7 @@
 									{t.orderContext(rankedWeek)}
 								</p>
 							{/if}
-							{#if rangeRequested}
+							{#if !record && rangeRequested}
 								<p class="finder-notice" data-slot="finder-range-notice">{t.rangeUnsupported}</p>
 							{/if}
 
@@ -650,11 +665,32 @@
 									{/snippet}
 								</StateNotice>
 							{:else}
-								{@render finderCard(shownRows, moreCount)}
+								{#if record}
+									<StopFinderTable
+										{record}
+										{locale}
+										url={resultsUrl}
+										stops={shownRows}
+										stopMeta={metaText}
+										{noLiveData}
+									/>
+									{#if moreCount > 0}
+										<button
+											type="button"
+											class="finder-button tap-press"
+											onclick={() => apply({ shown: view.shown + FINDER_PAGE_SIZE })}
+											>{moreCount === 1
+												? t.showMoreLast
+												: t.showMore(numberFmt.format(moreCount))}</button
+										>
+									{/if}
+								{:else}
+									{@render finderCard(shownRows, moreCount)}
+								{/if}
 							{/if}
 						</div>
 
-						{#if selectedRow}
+						{#if !record && selectedRow}
 							{@const record = recordFor(selectedRow.stop)}
 							<div class="finder-preview-column">
 								<StopsFinderPreview
@@ -894,7 +930,7 @@
 		padding: 0.75rem;
 	}
 	@media (min-width: 1024px) {
-		.finder {
+		.finder:not(.finder-record) {
 			grid-template-columns: minmax(0, 58fr) minmax(0, 42fr);
 		}
 	}

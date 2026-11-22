@@ -7,6 +7,7 @@
 	import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from '@yesid/ui/sheet';
 	import { delocalizePath, intl, type Locale } from '#lib/i18n/index.ts';
 	import { isRankingPath } from '#lib/features/rankings/rankingSelection.ts';
+	import { usesFinderRecord } from '#lib/site/finderFrame.ts';
 	import {
 		frameHref,
 		frameToday,
@@ -84,7 +85,8 @@
 	});
 	const line = $derived(/^\/lines\/[^/]+\/?$/.test(path));
 	const stop = $derived(/^\/stop\/[^/]+\/?$/.test(path));
-	const usesFrameRecord = $derived(path === '/' || line || stop || rankings);
+	const finder = $derived((path === '/lines' || path === '/stops') && usesFinderRecord(url));
+	const usesFrameRecord = $derived(path === '/' || line || stop || rankings || finder);
 	const startLabel = $derived(
 		intl.dateTime(locale, { timeZone: 'UTC', dateStyle: 'long' }).format(new Date(RECORD_START)),
 	);
@@ -125,14 +127,14 @@
 
 	function selectPeriod(period: NonNullable<typeof frame.period>) {
 		open = false;
-		void goto(frameHref(url, { ...frame, period }), {
-			shallow: !usesFrameRecord || frame.mode === 'live',
+		void goto(frameHref(url, { ...frame, period, mode: finder ? 'record' : frame.mode }), {
+			shallow: !usesFrameRecord || (frame.mode === 'live' && !finder),
 			state: { ...page.state },
 		});
 	}
 </script>
 
-{#if !rankings}
+{#if !rankings && !finder}
 	<SegmentedChoice options={modes} value={frame.mode} label={copy.view} onSelect={selectMode} />
 {/if}
 <Sheet bind:open {onOpenChange}>
