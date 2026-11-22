@@ -108,7 +108,15 @@ def main() -> None:
                         if question == PERIOD:
                             entry["counts"] = dict(
                                 zip(
-                                    ("scheduled", "classified", "early", "on_time", "late"),
+                                    (
+                                        "scheduled",
+                                        "classified",
+                                        "early",
+                                        "on_time",
+                                        "late",
+                                        "not_measured_route_without_live_data",
+                                        "not_measured_capture_gap",
+                                    ),
                                     rows[0],
                                     strict=True,
                                 )

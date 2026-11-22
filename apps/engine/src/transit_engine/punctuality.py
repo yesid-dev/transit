@@ -13,17 +13,25 @@ CITY = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 
 # Source: Transit's on-demand analytics roadmap, "What on time counts",
 # confirmed by Yesito on 2026-11-20. Count each scheduled trip stop once.
-# The engine slice classifies non-null delays with -60 and 300 inclusive.
-BANDS = """count(*) AS scheduled, count(delay_seconds) AS classified,
-    count(*) FILTER (delay_seconds < -60) AS early,
-    count(*) FILTER (delay_seconds BETWEEN -60 AND 300) AS on_time,
-    count(*) FILTER (delay_seconds > 300) AS late"""
+# Routes without live data are outside every rate. Capture-gap stops still count as scheduled.
+_WITHOUT_LIVE_DATA = """(t.state = 'not_measured'
+    AND t.state_reason IS NOT DISTINCT FROM 'route_without_live_data')"""
+BANDS = f"""
+    count(*) FILTER (NOT {_WITHOUT_LIVE_DATA}) AS scheduled,
+    count(delay_seconds) FILTER (NOT {_WITHOUT_LIVE_DATA}) AS classified,
+    count(*) FILTER (NOT {_WITHOUT_LIVE_DATA} AND delay_seconds < -60) AS early,
+    count(*) FILTER (NOT {_WITHOUT_LIVE_DATA} AND delay_seconds BETWEEN -60 AND 300) AS on_time,
+    count(*) FILTER (NOT {_WITHOUT_LIVE_DATA} AND delay_seconds > 300) AS late,
+    count(*) FILTER ({_WITHOUT_LIVE_DATA}) AS not_measured_route_without_live_data,
+    count(*) FILTER (t.state = 'not_measured' AND t.state_reason = 'capture_gap')
+        AS not_measured_capture_gap
+"""
 
-# PR #1180 emits added trips with no scheduled start. A scheduled trip can
-# have untimed stops, so use the trip's schedule marker, not its stop timestamps.
+# PR #1180 writes one trip row per provider, date and trip ID.
+# Added trips have no scheduled start. Scheduled trips can have untimed stops.
 SCHEDULED_EVENTS = """
     FROM read_parquet($1, hive_partitioning = false) s
-    SEMI JOIN read_parquet($2, hive_partitioning = false) t
+    JOIN read_parquet($2, hive_partitioning = false) t
       ON (s.provider, s.service_date, s.cleaning_version, s.trip_id) =
          (t.provider, t.service_date, t.cleaning_version, t.trip_id)
       AND t.scheduled_start_utc IS NOT NULL
@@ -147,6 +155,8 @@ class Evidence(TypedDict):
     late: int | None
     classified: int | None
     scheduled: int | None
+    not_measured_route_without_live_data: int | None
+    not_measured_capture_gap: int | None
     share_observed: float | None
     share_on_time: float | None
     cleaning_versions: list[int]
@@ -159,6 +169,7 @@ def network_day(store: Store, city: str, day: date) -> Evidence:
         raise ValueError("Invalid city")
     started = perf_counter()
     scheduled = classified = early = on_time = late = None
+    without_live_data = capture_gap = None
     versions: list[int] = []
     with store.connect() as conn:
         files = store.files(conn, city, day)
@@ -168,7 +179,7 @@ def network_day(store: Store, city: str, day: date) -> Evidence:
                 [*files, city, str(store.cleaning_version), day, day],
             ).fetchone()
             assert row is not None  # An ungrouped aggregate always returns one row.
-            scheduled, classified, early, on_time, late = row
+            scheduled, classified, early, on_time, late, without_live_data, capture_gap = row
             versions.append(store.cleaning_version)
     return {
         "status": "measured" if classified else "not_measured",
@@ -181,6 +192,8 @@ def network_day(store: Store, city: str, day: date) -> Evidence:
         "late": late,
         "classified": classified,
         "scheduled": scheduled,
+        "not_measured_route_without_live_data": without_live_data,
+        "not_measured_capture_gap": capture_gap,
         "share_observed": classified / scheduled if scheduled and classified is not None else None,
         "share_on_time": on_time / classified if classified and on_time is not None else None,
         "cleaning_versions": versions,

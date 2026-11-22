@@ -16,12 +16,13 @@ from transit_engine.server import Engine
 
 DAY = date(2026, 11, 19)
 TRIPS = [
-    ("scheduled", True, "ran"),
-    ("cancelled", True, "cancelled"),
-    ("unconfirmed", True, "unconfirmed"),
-    ("not_measured", True, "not_measured"),
-    ("added", False, "added"),
-    ("legacy", True, None),
+    ("scheduled", True, "ran", None),
+    ("cancelled", True, "cancelled", None),
+    ("unconfirmed", True, "unconfirmed", None),
+    ("without_live", True, "not_measured", "route_without_live_data"),
+    ("gap", True, "not_measured", "capture_gap"),
+    ("added", False, "added", None),
+    ("missing", True, "missing", None),
 ]
 STOPS = [
     ("scheduled", 1, -61),
@@ -31,9 +32,13 @@ STOPS = [
     ("scheduled", 5, None),
     ("cancelled", 1, 5),
     ("unconfirmed", 1, None),
-    ("not_measured", 1, None),
+    ("without_live", 1, None),
+    ("without_live", 2, None),
+    ("without_live", 3, None),
+    ("gap", 1, None),
+    ("gap", 2, None),
     ("added", 1, None),
-    ("legacy", 1, None),
+    ("missing", 1, None),
 ]
 
 
@@ -41,28 +46,37 @@ STOPS = [
 def store(tmp_path: Path) -> Store:
     with duckdb.connect() as conn:
         conn.execute("""
-            CREATE TABLE trips (trip_id VARCHAR, scheduled BOOLEAN, state VARCHAR);
+            CREATE TABLE trips (
+                trip_id VARCHAR, scheduled BOOLEAN, state VARCHAR NOT NULL, state_reason VARCHAR
+            );
             CREATE TABLE stops (trip_id VARCHAR, stop_sequence BIGINT, delay_seconds BIGINT);
             """)
-        conn.executemany("INSERT INTO trips VALUES (?, ?, ?)", TRIPS)
+        conn.executemany("INSERT INTO trips VALUES (?, ?, ?, ?)", TRIPS)
         conn.executemany("INSERT INTO stops VALUES (?, ?, ?)", STOPS)
-        for day in ("2026-11-18", "2026-11-19", "2026-11-20"):
+        for day, omitted in (
+            ("2026-11-18", ["without_live"]),
+            ("2026-11-19", []),
+            ("2026-11-20", []),
+            ("2026-11-21", ["without_live", "gap"]),
+        ):
             directory = tmp_path / "stm" / day / "v1"
             directory.mkdir(parents=True)
             identity = f"'stm' AS provider, DATE '{day}' AS service_date, '1' AS cleaning_version"
             conn.execute(
-                f"""COPY (SELECT {identity}, trip_id, state,
-                       CASE WHEN scheduled THEN TIMESTAMPTZ '2026-11-19 12:00:00+00'
-                       END AS scheduled_start_utc FROM trips) TO ? (FORMAT PARQUET)""",
-                [str(directory / "trip_days.parquet")],
+                f"""COPY (SELECT {identity}, trip_id, state, state_reason,
+                       CASE WHEN scheduled THEN TIMESTAMPTZ '{day} 12:00:00+00'
+                       END AS scheduled_start_utc FROM trips
+                       WHERE NOT list_contains(?::VARCHAR[], trip_id)) TO ? (FORMAT PARQUET)""",
+                [omitted, str(directory / "trip_days.parquet")],
             )
             delay = "NULL::BIGINT AS delay_seconds" if day.endswith("20") else "delay_seconds"
             conn.execute(
                 f"""COPY (SELECT {identity}, trip_id, stop_sequence, {delay},
                        NULL::TIMESTAMPTZ AS scheduled_arrival_utc,
                        CASE WHEN stop_sequence < 5 THEN TIMESTAMPTZ '{day} 12:00:00+00'
-                       END AS scheduled_departure_utc FROM stops) TO ? (FORMAT PARQUET)""",
-                [str(directory / "stop_events.parquet")],
+                       END AS scheduled_departure_utc FROM stops
+                       WHERE NOT list_contains(?::VARCHAR[], trip_id)) TO ? (FORMAT PARQUET)""",
+                [omitted, str(directory / "stop_events.parquet")],
             )
     return Store(tmp_path.as_posix())
 
@@ -74,14 +88,17 @@ def test_bands_and_independent_recomputation(store: Store) -> None:
     assert result["start_date"] == result["end_date"] == DAY.isoformat()
     assert (result["early"], result["on_time"], result["late"]) == (1, 2, 1)
     assert result["classified"] == 4
-    assert result["scheduled"] == 8
-    assert result["share_observed"] == result["share_on_time"] == 0.5
+    assert result["scheduled"] == 9
+    assert result["share_observed"] == 4 / 9
+    assert result["share_on_time"] == 0.5
     assert result["cleaning_versions"] == [1]
     assert result["method_version"] == METHOD_VERSION
     assert result["query_ms"] >= 0
 
     scheduled_ids = {
-        ident for ident, scheduled, state in TRIPS if scheduled and state != "cancelled"
+        ident
+        for ident, scheduled, state, reason in TRIPS
+        if scheduled and state != "cancelled" and reason != "route_without_live_data"
     }
     scheduled_stops = [delay for ident, _, delay in STOPS if ident in scheduled_ids]
     observed = [delay for delay in scheduled_stops if delay is not None]
@@ -98,16 +115,42 @@ def test_bands_and_independent_recomputation(store: Store) -> None:
     assert result["scheduled"] == len(scheduled_stops)
 
 
+def test_route_without_live_data_does_not_change_counts_or_shares(store: Store) -> None:
+    comparable = network_day(store, "stm", date(2026, 11, 18))
+    result = network_day(store, "stm", DAY)
+    assert result["scheduled"] == comparable["scheduled"] == 9
+    assert result["classified"] == comparable["classified"] == 4
+    assert result["share_observed"] == comparable["share_observed"] == 4 / 9
+    assert result["share_on_time"] == comparable["share_on_time"] == 0.5
+    assert result["not_measured_route_without_live_data"] == 3
+    assert comparable["not_measured_route_without_live_data"] == 0
+
+
+def test_capture_gap_stays_in_scheduled_and_is_reported(store: Store) -> None:
+    comparable = network_day(store, "stm", date(2026, 11, 21))
+    result = network_day(store, "stm", date(2026, 11, 18))
+    assert comparable["scheduled"] == 7
+    assert result["scheduled"] == 9
+    assert result["classified"] == comparable["classified"] == 4
+    assert comparable["share_observed"] == 4 / 7
+    assert result["share_observed"] == 4 / 9
+    assert result["share_on_time"] == comparable["share_on_time"] == 0.5
+    assert result["not_measured_capture_gap"] == 2
+    assert comparable["not_measured_capture_gap"] == 0
+
+
 def test_day_without_file_and_day_without_observations(store: Store) -> None:
     absent = network_day(store, "stm", date(2026, 11, 17))
     assert absent["status"] == "not_measured"
     assert absent["message"] == "not measured"
     assert absent["classified"] is absent["scheduled"] is absent["share_observed"] is None
+    assert absent["not_measured_route_without_live_data"] is None
+    assert absent["not_measured_capture_gap"] is None
     assert absent["cleaning_versions"] == []
 
     unobserved = network_day(store, "stm", date(2026, 11, 20))
     assert unobserved["status"] == "not_measured"
-    assert unobserved["scheduled"] == 8
+    assert unobserved["scheduled"] == 9
     assert unobserved["classified"] == 0
     assert unobserved["share_observed"] == 0
     assert unobserved["share_on_time"] is None
@@ -143,11 +186,13 @@ def test_timing_over_two_clean_days(
         row for row in report["timings"] if row["days"] == 2 and row["query"] == timing.PERIOD
     )
     assert totals["counts"] == {
-        "scheduled": 16,
+        "scheduled": 18,
         "classified": 8,
         "early": 2,
         "on_time": 4,
         "late": 2,
+        "not_measured_route_without_live_data": 3,
+        "not_measured_capture_gap": 4,
     }
     assert len(totals["runs_s"]) == 3
 

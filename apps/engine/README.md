@@ -4,12 +4,17 @@
 It reads both Parquet files under `<root>/<provider>/<service-date>/v<cleaning_version>/` from the
 [clean-day writer](https://github.com/yesid-dev/transit/pull/1180).
 
-Each scheduled stop of each non-cancelled trip counts once. A stop with a non-null delay is early below
-−60 seconds, on time from −60 through 300 seconds inclusive, and late above 300 seconds. The response
-includes the city, inclusive dates, three band counts, classified and scheduled totals, classified
-over scheduled, on-time over classified, cleaning versions, method version, and elapsed query
-milliseconds. A day with no stop file returns a `not measured` message, null counts and shares, and
-an empty version list. A present day with no observations still reports its scheduled count.
+Each scheduled stop of each non-cancelled trip on a route with live data counts once. A stop with a
+non-null delay is early below −60 seconds, on time from −60 through 300 seconds inclusive, and late
+above 300 seconds. The response includes the city, inclusive dates, three band counts, classified
+and scheduled totals, classified over scheduled, on-time over classified, cleaning versions, method
+version, and elapsed query milliseconds.
+
+`not_measured_route_without_live_data` counts scheduled stops excluded from every rate because the
+route has no live data. `not_measured_capture_gap` counts scheduled stops with a capture gap.
+Those stops stay in the scheduled total so the observed share reflects missed coverage. A day with
+no stop file returns a `not measured` message, null counts and shares, and an empty version list.
+A present day with no observations still reports its scheduled count.
 
 | Environment variable | Default |
 | --- | --- |
@@ -19,7 +24,7 @@ an empty version list. A present day with no observations still reports its sche
 | `ENGINE_CONCURRENCY` | 2 active queries |
 | `ENGINE_QUERY_MEMORY_MIB` | 256 MiB per DuckDB query |
 | `ENGINE_QUERY_THREADS` | 1 DuckDB thread per query |
-| `ENGINE_QUEUE_SIZE`, `ENGINE_QUEUE_WAIT_MS` | 4 waiting requests, 250 ms before timeout |
+| `ENGINE_QUEUE_SIZE`, `ENGINE_QUEUE_WAIT_MS` | 16 waiting requests, 5,000 ms before timeout |
 
 The service uses one HTTP process. It returns HTTP 503 with `busy, try again` and `Retry-After: 1`
 when the queue is full or a wait expires. `X-Engine-Queued` identifies requests admitted to the queue.

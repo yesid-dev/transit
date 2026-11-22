@@ -116,8 +116,8 @@ def main() -> None:
     app = Engine(
         store,
         concurrency=env_int("ENGINE_CONCURRENCY", 2),
-        queue_size=env_int("ENGINE_QUEUE_SIZE", 4, minimum=0),
-        queue_wait_ms=env_int("ENGINE_QUEUE_WAIT_MS", 250),
+        queue_size=env_int("ENGINE_QUEUE_SIZE", 16, minimum=0),
+        queue_wait_ms=env_int("ENGINE_QUEUE_WAIT_MS", 5000),
     )
     uvicorn.run(
         app,
