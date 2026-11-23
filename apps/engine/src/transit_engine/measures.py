@@ -2039,9 +2039,12 @@ def _waiting_rows(
     schedule_aggregates = ", ".join(f"{sql} AS {name}" for name, sql in schedule_counts.items())
     observed_aggregates = ", ".join(f"{sql} AS {name}" for name, sql in observed_counts.items())
     period = period_sql("local_hour")
+    # Let each consumer push its filter and projection into the event scan.
+    # Keeping the full event and schedule-cut rows alive across the window sorts
+    # can force DuckDB to spill on a dense day.
     rows = conn.execute(
         f"""
-        WITH events AS (
+        WITH events AS NOT MATERIALIZED (
             SELECT service_date, trip_id, stop_id, stop_sequence, route_id, direction_id,
                 scheduled_start_utc, route_has_live_data, state,
                 CASE WHEN state <> 'added' THEN
@@ -2110,7 +2113,7 @@ def _waiting_rows(
             JOIN realtime_feed_counts f ON f.service_date = starts.service_date
             GROUP BY starts.service_date, starts.covered_from, f.required_feeds
             HAVING count(*) = f.required_feeds
-        ), schedule_in_cut AS (
+        ), schedule_in_cut AS NOT MATERIALIZED (
             SELECT p.*, {entity} AS entity, f.scheduled_mean IS NOT NULL AS frequent
             FROM scheduled_pairs p LEFT JOIN frequent_periods f
                 USING (service_date, route_id, direction_id, stop_id, local_date, period)
