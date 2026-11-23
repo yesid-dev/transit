@@ -355,7 +355,14 @@ class LivePublisher:
             **data,
         }
 
-    def run(self, destination: BronzeStorage, prefix: str, *, once: bool) -> None:
+    def run(
+        self,
+        destination: BronzeStorage,
+        prefix: str,
+        *,
+        once: bool,
+        require_captures: bool = False,
+    ) -> None:
         previous = None
         previous_trips: tuple[object, object] | None = None
         city = self.manifest.provider.provider_id
@@ -363,6 +370,18 @@ class LivePublisher:
             try:
                 now = datetime.now(UTC)
                 snapshot = self.poll(now)
+                feeds = snapshot["feeds"]
+                assert isinstance(feeds, dict)
+                if require_captures:
+                    movement = [
+                        feed
+                        for feed in feeds.values()
+                        if feed["family"] in ("vehicle_positions", "trip_updates")
+                    ]
+                    if not movement or any(
+                        not feed["captured_at"] or feed["read_failed"] for feed in movement
+                    ):
+                        raise ValueError("No complete movement capture for dry check")
                 if snapshot != previous:
                     document = {
                         key: value for key, value in snapshot.items() if key != "trip_updates"
@@ -375,8 +394,6 @@ class LivePublisher:
                     previous = snapshot
                     LOGGER.info("Published %s live snapshot (%s bytes)", city, len(body))
                 updates = snapshot["trip_updates"]
-                feeds = snapshot["feeds"]
-                assert isinstance(feeds, dict)
                 trip_feed = next(
                     (feed for feed in feeds.values() if feed["family"] == "trip_updates"),
                     None,
@@ -435,8 +452,6 @@ def _publish_trip_scopes(
             "feed": feed,
             "etag": etag,
             "ranges": scoped.ranges,
-            "by_trip": scoped.by_trip,
-            "by_stop": scoped.by_stop,
         }
     )
     if len(index) > MAX_SNAPSHOT_BYTES:
@@ -454,18 +469,25 @@ def main() -> None:
     parser.add_argument("city")
     parser.add_argument("--source", required=True)
     parser.add_argument("--dest", required=True)
+    parser.add_argument("--provider-dir", type=Path)
     parser.add_argument("--once", action="store_true")
+    parser.add_argument("--require-captures", action="store_true")
     args = parser.parse_args()
+    if args.require_captures and not args.once:
+        parser.error("--require-captures requires --once")
     logging.basicConfig(level=logging.INFO)
     if os.environ.get("TRANSIT1_LIVE_ENABLED", "1") != "1":
         LOGGER.info("Transit1 live publisher disabled")
+        if args.require_captures:
+            raise SystemExit(1)
         return
     raw, source_prefix = _storage(args.source, "SOURCE")
     clean, dest_prefix = _storage(args.dest, "DEST")
-    LivePublisher(declaration_for(args.city), raw, source_prefix).run(
+    LivePublisher(declaration_for(args.city, directory=args.provider_dir), raw, source_prefix).run(
         clean,
         dest_prefix,
         once=args.once,
+        require_captures=args.require_captures,
     )
 
 

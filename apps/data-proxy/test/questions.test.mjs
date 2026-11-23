@@ -58,15 +58,22 @@ test("serves the per-city live object with a short edge cache through public and
 test("reads only the ranges for a live scope and rejects mixed publications", async (t) => {
   const f = fixture(t);
   const first = [{ trip_id: "t1", route_id: "a/b", stops: [{ stop_id: "s" }, { stop_id: "other" }] }];
-  const second = [{ trip_id: "t2", route_id: null, stops: [{ stop_id: "s" }] }];
-  const chunks = [first, second].map((value) => Buffer.from(JSON.stringify(value)));
+  const second = { trip_id: "t2", route_id: null, stops: [{ stop_id: "s" }] };
+  const stopCalls = [
+    ["t1", "a/b", null, null, null, 0, null, 1, null, 123, null, 0, 0],
+    ["t2", null, null, null, null, 0, null, 1, null, 124, null, null, 0],
+  ];
+  const chunks = [first, second, stopCalls].map((value) => Buffer.from(JSON.stringify(value)));
   const bundle = Buffer.concat(chunks);
   const etag = '"live-trip-42"';
   const feed = { family: "trip_updates", captured_at: "2026-11-23T19:10:00Z" };
   const index = JSON.stringify({
     version: 2, city: "demo", etag, feed,
-    ranges: { "line:a/b": [0, chunks[0].length], "trip:t2": [chunks[0].length, chunks[1].length] },
-    by_trip: { t1: ["line:a/b"], t2: ["trip:t2"] }, by_stop: { s: ["line:a/b", "trip:t2"] },
+    ranges: {
+      "line:a/b": [0, chunks[0].length],
+      "trip:t2": [chunks[0].length, chunks[1].length],
+      "stop:s": [chunks[0].length + chunks[1].length, chunks[2].length],
+    },
   });
   let changed = false;
   const ranges = [];
@@ -76,14 +83,16 @@ test("reads only the ranges for a live scope and rejects mixed publications", as
       return new Response(index, { headers: { "content-length": String(Buffer.byteLength(index)) } });
     }
     assert.equal(path, "/transit-clean/live/v2/demo/trips.bin");
-    assert.match(request.headers.get("authorization"), /SignedHeaders=host;range;x-amz-/);
+    assert.equal(request.headers.get("if-match"), etag);
+    assert.match(request.headers.get("authorization"), /SignedHeaders=host;if-match;range;x-amz-/);
     const [, start, last] = /^bytes=(\d+)-(\d+)$/.exec(request.headers.get("range"));
     ranges.push(Number(start));
+    if (changed) return new Response(null, { status: 412 });
     const body = bundle.subarray(Number(start), Number(last) + 1);
     return new Response(body, { status: 206, headers: {
       "content-length": String(body.length),
       "content-range": `bytes ${start}-${last}/${bundle.length}`,
-      etag: changed ? '"new-generation"' : etag,
+      etag,
     } });
   });
   const base = "/v2/demo/live-trips";
@@ -93,10 +102,20 @@ test("reads only the ranges for a live scope and rejects mixed publications", as
   assert.deepEqual(line, { version: 2, city: "demo", feed, trip_updates: first });
   assert.deepEqual(ranges, [0]);
   const stop = await (await f.fetch(base + "?stop=s")).json();
-  assert.deepEqual(stop.trip_updates, [{ ...first[0], stops: [{ stop_id: "s" }] }, ...second]);
-  assert.deepEqual(ranges.slice(1).toSorted((a, b) => a - b), [0, chunks[0].length]);
+  assert.deepEqual(stop.trip_updates.map(({ trip_id, stops }) => [trip_id, stops[0].stop_id, stops[0].departure]),
+    [["t1", "s", 123], ["t2", "s", 124]]);
+  assert.deepEqual(ranges, [0, chunks[0].length + chunks[1].length]);
+  const trip = await (await f.fetch(base + "?trip=t2")).json();
+  assert.deepEqual(trip.trip_updates, [second]);
+  assert.deepEqual(ranges, [0, chunks[0].length + chunks[1].length, chunks[0].length]);
   changed = true;
-  assert.equal((await f.fetch(base + "?trip=t2")).status, 503);
+  f.answers.clear();
+  const refreshing = await f.fetch(base + "?trip=t2");
+  assert.equal(refreshing.status, 503);
+  assert.equal(refreshing.headers.get("retry-after"), "1");
+  assert.equal(refreshing.headers.get("cache-control"), "no-store");
+  assert.equal((await refreshing.json()).state, "refreshing");
+  assert.equal(f.answers.size, 0);
   assert.equal(f.saved.size, 0);
 });
 

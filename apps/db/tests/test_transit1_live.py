@@ -120,10 +120,14 @@ def test_city_poll_publishes_no_inline_updates_and_scopes_durable_trip_ranges(
     assert main["feeds"]["trip_updates"]["captured_at"] == NOW.isoformat()
     packed = dest.read_bytes("live/v2/stm/trips.bin")
     index = json.loads(dest.read_bytes("live/v2/stm/trips.json"))
-    assert index["by_trip"]["unassigned"] == ["trip:unassigned"]
-    assert index["by_stop"]["common"] == ["line:24", "line:25"]
-    start, length = index["ranges"]["line:24"]
-    assert [row["trip_id"] for row in json.loads(packed[start : start + length])] == ["linked"]
+
+    def read(scope):
+        start, length = index["ranges"][scope]
+        return json.loads(packed[start : start + length])
+
+    assert read("trip:unassigned")["trip_id"] == "unassigned"
+    assert [row[0] for row in read("stop:common")] == ["linked", "other"]
+    assert [row["trip_id"] for row in read("line:24")] == ["linked"]
 
     # A scoped publication failure must leave the main city report available.
     monkeypatch.setattr("transit_ops.live.playback.MAX_TRIP_BUNDLE_BYTES", 1)
@@ -133,3 +137,13 @@ def test_city_poll_publishes_no_inline_updates_and_scopes_durable_trip_ranges(
     assert error.value.code == 1
     assert json.loads(small.read_bytes("live/v2/stm.json"))["version"] == 2
     assert not small.exists("live/v2/stm/trips.json")
+
+
+def test_installer_dry_check_requires_real_movement_captures(tmp_path):
+    source = LocalBronzeStorage("local", tmp_path / "empty")
+    publisher = LivePublisher(declaration_for("stm"), source)
+    dest = LocalBronzeStorage("local", tmp_path / "scratch")
+    with pytest.raises(SystemExit) as error:
+        publisher.run(dest, "", once=True, require_captures=True)
+    assert error.value.code == 1
+    assert not dest.exists("live/v2/stm.json")

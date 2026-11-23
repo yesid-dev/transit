@@ -1,16 +1,20 @@
+import { CleanObjectChanged } from "./clean-download-store.js";
+
 const MAX_INDEX_BYTES = 8 * 1024 * 1024;
 const MAX_BUNDLE_BYTES = 64 * 1024 * 1024;
-const PARALLEL_RANGES = 8;
 
-function own(record, key) {
-  return Object.hasOwn(record, key) ? record[key] : undefined;
-}
-
-function selects(scope, trip) {
-  if (scope.kind === "line") return trip.route_id === scope.id ? trip : null;
-  if (scope.kind === "trip") return trip.trip_id === scope.id ? trip : null;
-  const stops = trip.stops.filter((stop) => stop.stop_id === scope.id);
-  return stops.length ? { ...trip, stops } : null;
+function tripAtStop(stopId, report) {
+  const [
+    trip_id, route_id, direction_id, start_date, start_time, relationship, delay,
+    sequence, arrival, departure, arrival_delay, departure_delay, stopRelationship,
+  ] = report;
+  return {
+    trip_id, route_id, direction_id, start_date, start_time, relationship, delay,
+    stops: [{
+      stop_id: stopId, sequence, arrival, departure, arrival_delay, departure_delay,
+      relationship: stopRelationship,
+    }],
+  };
 }
 
 export async function readLiveTrips(store, city, scope) {
@@ -25,30 +29,26 @@ export async function readLiveTrips(store, city, scope) {
   if (index?.version !== 2 || index.city !== city || index.feed?.family !== "trip_updates") {
     throw new Error("Unexpected live trip index");
   }
-  const groups = scope.kind === "line"
-    ? (own(index.ranges, `line:${scope.id}`) ? [`line:${scope.id}`] : [])
-    : own(scope.kind === "trip" ? index.by_trip : index.by_stop, scope.id) ?? [];
-  const tripUpdates = [];
-  for (let i = 0; i < groups.length; i += PARALLEL_RANGES) {
-    const parts = await Promise.all(groups.slice(i, i + PARALLEL_RANGES).map(async (group) => {
-      const [offset, length] = own(index.ranges, group);
-      if (
-        !Number.isSafeInteger(offset) || !Number.isSafeInteger(length) ||
-        offset < 0 || length <= 0 || offset + length > MAX_BUNDLE_BYTES
-      ) throw new Error("Invalid live trip range");
-      const part = await store.get(`${base}.bin`, { range: { offset, length } });
-      if (!part || !index.etag || part.etag !== index.etag) {
-        await part?.body?.cancel();
-        throw new Error("Live trip publication changed");
-      }
-      return part.json();
-    }));
-    for (const part of parts) {
-      for (const trip of part) {
-        const selected = selects(scope, trip);
-        if (selected) tripUpdates.push(selected);
-      }
-    }
+  const key = `${scope.kind}:${scope.id}`;
+  const header = { version: 2, city, feed: index.feed };
+  if (!Object.hasOwn(index.ranges, key)) return { ...header, trip_updates: [] };
+  const [offset, length] = index.ranges[key];
+  if (
+    !Number.isSafeInteger(offset) || !Number.isSafeInteger(length) ||
+    offset < 0 || length <= 0 || offset + length > MAX_BUNDLE_BYTES ||
+    typeof index.etag !== "string" || !/^"[^"\r\n]+"$/.test(index.etag)
+  ) throw new Error("Invalid live trip range");
+  const part = await store.get(`${base}.bin`, {
+    range: { offset, length },
+    ifMatch: index.etag,
+  });
+  if (!part || part.etag !== index.etag) {
+    await part?.body?.cancel();
+    throw new CleanObjectChanged("Live trip publication changed");
   }
-  return { version: 2, city, feed: index.feed, trip_updates: tripUpdates };
+  const payload = await part.json();
+  const tripUpdates = scope.kind === "stop"
+    ? payload.map((report) => tripAtStop(scope.id, report))
+    : Array.isArray(payload) ? payload : [payload];
+  return { ...header, trip_updates: tripUpdates };
 }

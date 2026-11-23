@@ -1,4 +1,4 @@
-import { cleanDownloadStore } from "./clean-download-store.js";
+import { CleanObjectChanged, cleanDownloadStore } from "./clean-download-store.js";
 import { CORS_HEADERS, PREFLIGHT_HEADERS } from "./cors.js";
 import { readLiveTrips } from "./live-trips.js";
 import { parseQuestion } from "./question-params.js";
@@ -206,7 +206,13 @@ async function serveLive(env, ctx, origin, question, visitorIp) {
       ctx.waitUntil(cache.put(key, copy).catch(() => console.warn("Transit live cache write failed")));
     }
     return response;
-  } catch {
+  } catch (error) {
+    if (error instanceof CleanObjectChanged) {
+      return Response.json(
+        { message: "live trips refreshing", state: "refreshing" },
+        { status: 503, headers: { ...PUBLIC_HEADERS, "retry-after": "1" } },
+      );
+    }
     return message(503, "live publication unavailable");
   }
 }
