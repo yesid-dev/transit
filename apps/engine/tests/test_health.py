@@ -134,12 +134,16 @@ def test_v6_override_reads_days_without_prediction_samples(tmp_path: Path) -> No
     assert entry["tables"]["prediction_samples"] == {"status": "missing"}
 
 
-def test_v9_requires_prediction_samples_and_reports_their_rows(tmp_path: Path) -> None:
-    directory = clean_day(tmp_path, DAY, alerts="not_tracked")
-    store = Store(tmp_path.as_posix())
+@pytest.mark.parametrize("version", [9, 10])
+def test_prediction_samples_are_required_and_report_their_rows(
+    tmp_path: Path, version: int
+) -> None:
+    directory = clean_day(tmp_path, DAY, version=version, alerts="tracked")
+    store = Store(tmp_path.as_posix(), cleaning_version=version)
     [entry] = data_health(store, "stm", DAY, DAY)["days"]
     assert entry["status"] == "present"
     assert entry["tables"]["prediction_samples"] == {"status": "present", "rows": 7}
+    assert entry["tables"]["alerts"] == {"status": "present", "rows": ROWS[ALERTS]}
 
     (directory / PREDICTION_SAMPLES).unlink()
     [entry] = data_health(store, "stm", DAY, DAY)["days"]

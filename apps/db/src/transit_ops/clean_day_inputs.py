@@ -94,6 +94,7 @@ def clean_from_inputs(
     result.alerts = versions if sources else None
     result.scorecard_declaration = {
         "timezone": declaration.provider.timezone,
+        "live_source_lag_seconds": declaration.provider.live_source_lag_seconds,
         "feeds": [*sorted(set(feeds.values())), *(["alerts"] if sources else [])],
         "unpublished_vehicle_fields": sorted(set(declaration.realtime.unpublished_vehicle_fields)),
     }

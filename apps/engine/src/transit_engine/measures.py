@@ -1076,17 +1076,26 @@ _PUNCTUALITY = Family(
     },
     counts=Text(
         "Each scheduled stop of each trip counts once. Shares divide the band count by the "
-        "number of stops with a measured delay. Delay is signed seconds from the schedule.",
+        "number of stops with a measured delay. Delay is signed seconds from the schedule. "
+        "From cleaning v10, the archive calendar and trip timing resolve the service day, "
+        "including trips that cross midnight. At the origin, the last nearby stopped report "
+        "before the vehicle is seen past the stop measures departure.",
         "Chaque arrêt prévu de chaque trajet compte une fois. Pour chaque catégorie, on "
         "divise son nombre d’arrêts par le nombre d’arrêts dont l’écart a été mesuré. "
-        "L’écart à l’horaire est exprimé en secondes, en négatif pour l’avance.",
+        "L’écart à l’horaire est exprimé en secondes, en négatif pour l’avance. "
+        "Depuis le nettoyage v10, le calendrier archivé et les heures du trajet déterminent "
+        "le jour de service, même après minuit. Au premier arrêt, le départ correspond au "
+        "dernier relevé du véhicule immobilisé à proximité avant qu’il soit vu plus loin.",
     ),
     exclusions=Text(
         "Added trips, cancelled trips and lines without live data are excluded. Stops without "
-        "a measured delay stay in the scheduled count, including stops affected by capture gaps.",
+        "a measured delay stay in the scheduled count. From cleaning v10, an unobserved "
+        "stop is marked as a capture gap if any required feed lacks continuous capture "
+        "at its scheduled time.",
         "Les trajets ajoutés, les trajets annulés et les lignes sans données en direct sont "
-        "exclus. Les arrêts sans écart mesuré restent dans le total prévu, y compris ceux "
-        "touchés par une interruption de la collecte.",
+        "exclus. Les arrêts sans écart mesuré restent dans le total prévu. Depuis le "
+        "nettoyage v10, un arrêt non observé est marqué comme touché par une interruption "
+        "si la collecte d’un flux requis n’est pas continue à l’heure prévue.",
     ),
     limits=Text(
         "The answer covers measured days only. It cannot tell how long riders waited or "
@@ -1544,24 +1553,24 @@ def _crowding_rows(
                  (t.provider, t.cleaning_version, t.service_date, t.trip_id)
         """
         inputs.append(paths[TRIP_DAYS])
-    weight = "epoch_us(ends_at) - epoch_us(observed_at_utc)"
+    weight = "epoch_us(ends_at) - epoch_us(captured_at_utc)"
     reading_cut = "matches"
     segments = ""
     entity_hour = "NULL"
     if question.group in HOUR_GROUPS:
         entity_hour = _LOCAL_HOUR.format("hour_start")
         segments = """
-            CROSS JOIN LATERAL generate_series(time_bucket(INTERVAL '1 hour', observed_at_utc),
+            CROSS JOIN LATERAL generate_series(time_bucket(INTERVAL '1 hour', captured_at_utc),
                 ends_at, INTERVAL '1 hour') AS hours(hour_start)
-            WHERE hour_start < ends_at OR hour_start <= observed_at_utc
+            WHERE hour_start < ends_at OR hour_start <= captured_at_utc
         """
-        reading_cut = "matches AND hour_start = time_bucket(INTERVAL '1 hour', observed_at_utc)"
+        reading_cut = "matches AND hour_start = time_bucket(INTERVAL '1 hour', captured_at_utc)"
         weight = f"""
             least(epoch_us(ends_at), epoch_us(hour_start) + {_US_PER_HOUR})
-                - greatest(epoch_us(observed_at_utc), epoch_us(hour_start))
+                - greatest(epoch_us(captured_at_utc), epoch_us(hour_start))
         """
     elif question.hour is not None:
-        start_hour = _LOCAL_HOUR.format("observed_at_utc")
+        start_hour = _LOCAL_HOUR.format("captured_at_utc")
         segment_hour = _LOCAL_HOUR.format("hour_start")
         weight = vehicle_hour_weight_sql(segment_hour)
         reading_cut = f"matches AND {start_hour} = ?"
@@ -1572,17 +1581,17 @@ def _crowding_rows(
         f"""
         WITH sequenced AS (
             SELECT provider, cleaning_version, service_date, trip_id, route_id, stop_id,
-                observed_at_utc, last_seen_at_utc, readings, occupancy_status,
-                occupancy_percentage, lead(observed_at_utc) OVER (
-                    PARTITION BY filename, vehicle_id ORDER BY observed_at_utc, captured_at_utc
+                captured_at_utc, last_seen_at_utc, readings, occupancy_status,
+                occupancy_percentage, lead(captured_at_utc) OVER (
+                    PARTITION BY vehicle_id ORDER BY captured_at_utc, filename
                 ) AS next_start
             FROM read_parquet(?, hive_partitioning = false)
             WHERE provider = ? AND cleaning_version = ?
         ), vehicles AS (
             SELECT v.route_id, v.stop_id, {direction} AS direction_id,
-                v.observed_at_utc, v.readings,
+                v.captured_at_utc, v.readings,
                 {tail} AS tail_us,
-                {vehicle_end_sql("v.observed_at_utc", "v.last_seen_at_utc", "tail_us")} AS ends_at,
+                {vehicle_end_sql("v.captured_at_utc", "v.last_seen_at_utc", "tail_us")} AS ends_at,
                 CASE WHEN v.occupancy_status BETWEEN 0 AND 5 THEN v.occupancy_status END AS status,
                 CASE WHEN status IS NULL AND v.occupancy_percentage >= 0
                      THEN v.occupancy_percentage END AS percentage
@@ -1672,19 +1681,19 @@ _CROWDING = Family(
         "d’achalandage utilisable n’a été publiée.",
     ),
     limits=Text(
-        "We count the full span from the first to the last reading of a state. We then "
+        "We count the span from the first to the last capture of a state. We then "
         "carry the last reading forward to the next interval for that vehicle, up to "
         f"{CROWDING_TAIL_CAP_SECONDS} seconds, to limit the weight of stale readings. The "
-        f"last interval of each clean day gets {CROWDING_FINAL_TAIL_SECONDS} seconds, one "
+        f"final interval for each vehicle gets {CROWDING_FINAL_TAIL_SECONDS} seconds, one "
         "scheduled feed poll. The one-vehicle-hour floor keeps a few minutes of reports "
         "from determining the share. "
         "We use the published status when usable and report exact percentages separately "
         "when only a percentage is usable. The full share also includes percentage-only "
         "values at or above 100%.",
-        "On compte toute la durée entre le premier et le dernier relevé d’un état. On "
+        "On compte la durée entre la première et la dernière collecte d’un état. On "
         "prolonge ensuite le dernier relevé jusqu’au prochain intervalle du même véhicule, "
         f"avec un maximum de {CROWDING_TAIL_CAP_SECONDS} secondes pour limiter le poids des "
-        f"relevés périmés. Le dernier intervalle de chaque journée nettoyée reçoit "
+        f"relevés périmés. Le dernier intervalle de chaque véhicule reçoit "
         f"{CROWDING_FINAL_TAIL_SECONDS} secondes, soit la cadence de collecte prévue. "
         "Le seuil d’une heure-véhicule évite de juger l’achalandage à partir de quelques "
         "minutes de relevés. On utilise l’état publié s’il est utilisable. "
@@ -2392,11 +2401,14 @@ _VEHICLE_LIMITS = Text(
     f"A day is not tracked if fewer than {MIN_STABLE_READING_SHARE:.0%} of clean vehicle "
     f"readings use an ID seen at least {MIN_STABLE_ID_READINGS} times, or fewer than that "
     "share of confirmed trips can be linked to those IDs. Repeated IDs are evidence "
-    "of continuity within the day. A gap describes silence in the captured feed.",
+    "of continuity within the day. Vehicle hours use capture times, and an interval "
+    "never extends past the next capture. A gap describes silence in the captured feed.",
     f"Le suivi est indisponible un jour si moins de {MIN_STABLE_READING_SHARE:.0%} des "
     f"relevés de véhicules nettoyés ont un identifiant vu au moins {MIN_STABLE_ID_READINGS} "
     "fois, ou si une part inférieure des trajets confirmés est liée à ces identifiants. "
     "La répétition d’un identifiant témoigne de sa continuité dans la journée. "
+    "Les heures-véhicules utilisent les heures de collecte. Un intervalle se termine "
+    "au plus tard au relevé suivant. "
     "Une interruption indique un silence dans le flux capturé.",
 )
 _VEHICLE_REPORTING_EXCLUSIONS = Text(
@@ -2414,14 +2426,17 @@ _VEHICLE_REPORTING_EXCLUSIONS = Text(
 )
 _VEHICLE_COMPLETION_METHOD = Text(
     "A confirmed stop before the scheduled terminal indicates an unfinished trip when the "
-    "terminal was never confirmed and capture is continuous. Every recorded realtime feed "
+    "terminal was never confirmed and capture is continuous. From cleaning v10, a GPS fix "
+    "within 50 metres of the terminal can also confirm completion. Every recorded realtime feed "
     f"must be covered from {TRIP_CAPTURE_LEAD_SECONDS} seconds before scheduled departure "
     f"through {MAX_POLL_SPACING_SECONDS} seconds after the scheduled end or last observation, "
     "whichever is later. Usable polls contain advancing publications no more than "
     f"{MAX_POLL_AGE_SECONDS} seconds old plus the declared source lag, with spacing of at most "
     f"{MAX_POLL_SPACING_SECONDS} seconds.",
     "Un arrêt confirmé avant le terminus prévu indique un trajet non terminé si le terminus "
-    "n’a jamais été confirmé et que la collecte est continue. Chaque flux temps réel consigné "
+    "n’a jamais été confirmé et que la collecte est continue. Depuis le nettoyage v10, "
+    "une position GPS à 50 mètres ou moins du terminus peut aussi confirmer la fin du trajet. "
+    "Chaque flux temps réel consigné "
     f"doit être couvert de {TRIP_CAPTURE_LEAD_SECONDS} secondes avant le départ prévu à "
     f"{MAX_POLL_SPACING_SECONDS} secondes après la fin prévue ou la dernière observation, "
     "selon la plus tardive. Les relevés utilisables ont une publication plus récente que "
@@ -2832,10 +2847,12 @@ _FEED_HISTOGRAM_LIMITS = Text(
     "10 minutes.",
 )
 _VEHICLE_SCORECARD_LIMITS = Text(
-    "Time follows each vehicle’s last observed state with at most 60 seconds of tail time "
-    "and 20 seconds for the final tail. The hour cut includes only time in that local hour.",
-    "La durée suit le dernier état observé de chaque véhicule, avec au plus 60 secondes "
-    "après la dernière lecture et 20 secondes pour la dernière observation. Le filtre "
+    "Time follows each vehicle’s captured state, with at most 60 seconds after the last "
+    "capture of a state and up to the next capture. The final interval adds 20 seconds. "
+    "The hour cut includes only time in that local hour.",
+    "La durée suit l’état du véhicule à la collecte. Elle se prolonge jusqu’à la collecte "
+    "suivante, au plus 60 secondes après la dernière collecte de cet état. Le dernier "
+    "intervalle ajoute 20 secondes. Le filtre "
     "horaire retient uniquement la durée comprise dans cette heure locale.",
 )
 _SCORECARD = Family(
@@ -3029,13 +3046,20 @@ _SCORECARD = Family(
             limits=Text(
                 f"Percentiles use {DELAY_BIN_SECONDS}-second bins. The ±60-second band uses an "
                 f"inclusive boundary. Each horizon requires {MIN_PREDICTION_SAMPLES} "
-                "observed stop events. "
+                "observed stop events. From "
+                "cleaning v10, each bucket takes the latest forecast from its lower lead "
+                "bound up to the next horizon, exclusive. The 30-minute bucket ends before "
+                "40 minutes. Trip-update capture must cover the lead window continuously. "
                 "The hour is the observed local hour. Requires cleaning v7 or later.",
                 f"Les centiles utilisent des classes de {DELAY_BIN_SECONDS} secondes. La bande "
                 "de ±60 secondes inclut ses bornes. "
-                f"Chaque horizon exige {MIN_PREDICTION_SAMPLES} événements "
-                "observés à l’arrêt. L’heure est l’heure locale observée. "
-                "Nécessite le nettoyage v7 ou une version ultérieure.",
+                f"Chaque horizon exige {MIN_PREDICTION_SAMPLES} événements observés à l’arrêt. "
+                "Depuis le nettoyage v10, on retient la prévision la plus récente entre "
+                "l’horizon indiqué et le suivant, exclu. L’horizon de 30 minutes exclut les "
+                "avances de 40 minutes ou plus. La collecte des mises à jour des trajets "
+                "doit être continue pendant cette période. L’heure est l’heure locale "
+                "observée. Nécessite le nettoyage v7 "
+                "ou une version ultérieure.",
             ),
             extra_tables=(PREDICTION_SAMPLES,),
         ),

@@ -153,6 +153,57 @@ def test_gps_passage_corroborates_forecast_between_two_unambiguous_stops(tmp_pat
     ]
 
 
+def test_overnight_origin_departure_terminus_and_stop_capture_gap(tmp_path: Path) -> None:
+    edition = _edition(
+        tmp_path / "overnight.zip",
+        {"night": ("r", ["24:00:00", "24:02:00", "24:06:00", "24:08:00"])},
+        DAY,
+        coords=("45.5,-73.6", "45.5,-73.61", "45.5,-73.62", "45.5,-73.63"),
+    )
+    (tmp_path / "editions.json").write_text(
+        json.dumps({"provider": "stm", "editions": [edition]}), encoding="utf-8"
+    )
+    for seconds, sequence, lon, status in (
+        (-120, 1, -73.6, VehiclePosition.STOPPED_AT),
+        (0, 1, -73.6, VehiclePosition.STOPPED_AT),
+        (30, 2, -73.602, VehiclePosition.IN_TRANSIT_TO),
+        (45, 1, -73.6, VehiclePosition.STOPPED_AT),  # Regression after progression.
+        (360, 3, -73.62, VehiclePosition.STOPPED_AT),
+        (480, 4, -73.6302, VehiclePosition.IN_TRANSIT_TO),
+    ):
+        captured = MIDNIGHT + timedelta(seconds=seconds)
+        feed = _feed(captured)
+        vehicle = feed.entity.add(id="v").vehicle
+        vehicle.trip.trip_id, vehicle.trip.start_date = "night", "20260602"
+        vehicle.vehicle.id = "v"
+        vehicle.current_stop_sequence = sequence
+        vehicle.current_status = status
+        vehicle.position.latitude, vehicle.position.longitude = 45.5, lon
+        _save(tmp_path, feed, "vehicle_positions", captured)
+    for seconds in range(-300, 541, 60):
+        captured = MIDNIGHT + timedelta(seconds=seconds)
+        feed = _feed(captured)
+        feed.entity.add(id="poll")
+        _save(tmp_path, feed, "trip_updates", captured)
+
+    directory = _run(tmp_path, DAY)
+    with duckdb.connect() as db:
+        stops = sorted(
+            _rows(db, directory / "stop_events.parquet"), key=lambda r: r["stop_sequence"]
+        )
+        (trip,) = _rows(db, directory / "trip_days.parquet")
+    assert trip["state"] == "ran"
+    assert stops[0]["observed_event"] == "departure"
+    assert stops[0]["observed_at_utc"] == MIDNIGHT
+    assert stops[1]["basis"] == "not_observed"
+    assert stops[1]["trip_exclusion_reason"] == "capture_gap"
+    assert stops[2]["basis"] == "vehicle_stopped"
+    assert stops[2]["trip_exclusion_reason"] is None
+    assert stops[3]["basis"] == "not_observed"
+    assert trip["terminus_reached_at_utc"] == MIDNIGHT + timedelta(minutes=8)
+    assert trip["terminus_vehicle_id"] == "v"
+
+
 def _capture_fixture(root: Path) -> None:
     stamp = MIDNIGHT - timedelta(hours=6)
     feed = _feed(stamp)
@@ -341,6 +392,7 @@ def _verify_manifest(
     declaration = clean_day_inputs.declaration_for(manifest["provider"])
     assert manifest["scorecard_declaration"] == {
         "timezone": declaration.provider.timezone,
+        "live_source_lag_seconds": declaration.provider.live_source_lag_seconds,
         "feeds": [
             *sorted(set(clean_day_inputs.realtime_feeds(declaration).values())),
             *(["alerts"] if "alerts" not in manifest else []),
@@ -370,9 +422,23 @@ def _verify_manifest(
         }
 
 
-def test_prediction_samples_use_latest_publication_before_each_horizon(tmp_path: Path) -> None:
+@pytest.mark.parametrize("continuous", [False, True])
+def test_prediction_samples_use_latest_publication_in_each_covered_bucket(
+    tmp_path: Path, continuous: bool
+) -> None:
     editions = _index(tmp_path)
+    observed = MIDNIGHT + timedelta(minutes=5)
+    leads = [50, 100, 150, 200, 250, 350, 400, 450, 500, 550, 610, 0]
+    if continuous:
+        leads.extend(range(660, 2461, 60))
+    for lead in leads:
+        captured = observed - timedelta(seconds=lead)
+        poll = _feed(captured)
+        poll.entity.add(id="poll")
+        _save(tmp_path, poll, "trip_updates", captured)
     for lead, capture_lead, error in (
+        (1500, 1499, -26),  # In the 20-minute bucket, across a capture outage.
+        (2400, 2399, -28),  # At the exclusive cap.
         (601, 599, -12),
         (310, 309, 17),
         (300, 298, 31),
@@ -382,31 +448,30 @@ def test_prediction_samples_use_latest_publication_before_each_horizon(tmp_path:
         (60, 57, -4),
         (59, 56, 50),
     ):
-        published = MIDNIGHT - timedelta(seconds=lead)
-        captured = MIDNIGHT - timedelta(seconds=capture_lead)
+        published = observed - timedelta(seconds=lead)
+        captured = observed - timedelta(seconds=capture_lead)
         feed = _feed(captured)
         update = feed.entity.add(id="night").trip_update
         update.trip.trip_id = "night"
         update.trip.start_date = "20260601"
         update.timestamp = int(published.timestamp())
-        arrival = update.stop_time_update.add(stop_sequence=1).arrival
+        arrival = update.stop_time_update.add(stop_sequence=2).arrival
         if lead == 300:
             arrival.delay = error
         else:
-            arrival.time = int(MIDNIGHT.timestamp()) + error
-        update.stop_time_update.add(stop_sequence=2).arrival.time = int(MIDNIGHT.timestamp()) + 300
+            arrival.time = int(observed.timestamp()) + error
         _save(tmp_path, feed, "trip_updates", captured)
 
-    feed = _feed(MIDNIGHT)
+    feed = _feed(observed)
     vehicle = feed.entity.add(id="v1").vehicle
     vehicle.trip.trip_id = "night"
     vehicle.trip.start_date = "20260601"
     vehicle.vehicle.id = "v1"
-    vehicle.current_stop_sequence = 1
+    vehicle.current_stop_sequence = 2
     vehicle.current_status = VehiclePosition.STOPPED_AT
     vehicle.position.latitude = 45.5
     vehicle.position.longitude = -73.6
-    _save(tmp_path, feed, "vehicle_positions", MIDNIGHT)
+    _save(tmp_path, feed, "vehicle_positions", observed)
 
     directory = _run(tmp_path, DAY)
     with duckdb.connect() as db:
@@ -414,8 +479,11 @@ def test_prediction_samples_use_latest_publication_before_each_horizon(tmp_path:
         samples = _rows(db, directory / "prediction_samples.parquet")
         _verify_manifest(db, directory, editions[0])
     night = {row["stop_sequence"]: row for row in stops if row["trip_id"] == "night"}
-    assert night[1]["observed_at_utc"] == MIDNIGHT
-    assert night[2]["observed_at_utc"] is None
+    assert night[1]["observed_at_utc"] is None
+    assert night[2]["observed_at_utc"] == observed
+    expected = [(1, 60, -4), (3, 180, 20), (5, 300, 31), (10, 601, -12)]
+    if continuous:
+        expected.append((20, 1500, -26))
     assert samples == [
         {
             "provider": "stm",
@@ -423,18 +491,18 @@ def test_prediction_samples_use_latest_publication_before_each_horizon(tmp_path:
             "route_id": "r",
             "direction_id": 0,
             "trip_id": "night",
-            "stop_id": "s1",
-            "stop_sequence": 1,
+            "stop_id": "s2",
+            "stop_sequence": 2,
             "basis": "vehicle_stopped",
             "observed_event": "arrival",
             "cleaning_version": CLEANING_VERSION,
             "horizon_minutes": horizon,
-            "published_at_utc": MIDNIGHT - timedelta(seconds=lead),
-            "predicted_at_utc": MIDNIGHT + timedelta(seconds=error),
+            "published_at_utc": observed - timedelta(seconds=lead),
+            "predicted_at_utc": observed + timedelta(seconds=error),
             "error_seconds": error,
             "actual_lead_seconds": lead,
         }
-        for horizon, lead, error in ((1, 60, -4), (3, 180, 20), (5, 300, 31), (10, 601, -12))
+        for horizon, lead, error in expected
     ]
 
 
@@ -854,7 +922,10 @@ def _verify_stop_eligibility(db: duckdb.DuckDBPyConnection, directory: Path) -> 
             FROM read_parquet(?) s JOIN read_parquet(?) t USING (provider, service_date, trip_id)
         )
         SELECT trip_id, stop_sequence FROM legacy
-        WHERE trip_exclusion_reason IS DISTINCT FROM exclusion
+        WHERE (trip_exclusion_reason IS DISTINCT FROM exclusion AND NOT (
+                exclusion IS NULL AND observed_at_utc IS NULL
+                AND trip_exclusion_reason IS NOT DISTINCT FROM 'capture_gap'
+            ))
             OR route_has_live_data IS DISTINCT FROM trip_live
             OR scheduled_local_hour IS DISTINCT FROM local_hour
             OR service_weekday IS DISTINCT FROM isodow(service_date)
@@ -946,6 +1017,8 @@ def test_ottawa_service_day(
     _save(tmp_path, _feed(stopped_at), "service_alerts", stopped_at, provider)
 
     destination = _run(tmp_path, day, provider)
+    manifest = json.loads((destination / "manifest.json").read_bytes())
+    assert manifest["scorecard_declaration"]["live_source_lag_seconds"] == 60
     with duckdb.connect() as db:
         _verify_manifest(db, destination, edition)
         _verify_schedule(db, destination, edition, scheduled - timedelta(days=1))
@@ -1239,7 +1312,9 @@ def test_range_builds_skips_and_continues(
     assert (alerts[0]["route_ids"], alerts[0]["stop_ids"]) == (["metro", "r"], ["s1", "s2"])
     alert_polls = [r for r in polls if r["feed"] == "i3_alerts"]
     assert [(r["attempt_id"], r["result"], r["entity_count"]) for r in alert_polls] == [
-        ("0", "ok", 1), ("3", "error", None), ("4", "duplicate", 1)
+        ("0", "ok", 1),
+        ("3", "error", None),
+        ("4", "duplicate", 1),
     ]
     assert all(r["feed_timestamp_utc"] is None for r in alert_polls)
     assert alert_polls[1]["payload_bytes"] is None
@@ -1278,7 +1353,9 @@ def test_range_builds_skips_and_continues(
         third_polls = _rows(db, dest / version_key("stm", third) / "feed_polls.parquet")
     assert [row["result"] for row in third_polls if row["feed"] == "trip_updates"] == ["ok"]
     assert [row["result"] for row in third_polls if row["feed"] == "i3_alerts"] == [
-        "ok", "error", "duplicate"
+        "ok",
+        "error",
+        "duplicate",
     ]
 
 
@@ -1432,8 +1509,7 @@ def test_clean_day_copies_wheelchair_accessibility(tmp_path: Path) -> None:
         "unknown": 0,
     }
     assert [
-        (schedule[key]["stop_id"], schedule[key]["wheelchair_boarding"])
-        for key in sorted(schedule)
+        (schedule[key]["stop_id"], schedule[key]["wheelchair_boarding"]) for key in sorted(schedule)
     ] == [
         ("s1", 1),
         ("s2", 2),

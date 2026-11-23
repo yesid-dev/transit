@@ -54,7 +54,7 @@ POLL_COVERAGE_SQL = f"""
         SELECT service_date, feed, captured_at_utc, feed_timestamp_utc, result, entity_count
         FROM read_parquet(?, hive_partitioning = false)
         WHERE provider = ? AND cleaning_version = ? AND service_date BETWEEN ? AND ?
-            AND feed <> 'alerts'
+            AND feed IN ('trip_updates', 'vehicle_positions')
     ), realtime_feed_counts AS (
         SELECT service_date, count(DISTINCT feed) AS required_feeds
         FROM realtime_polls GROUP BY service_date

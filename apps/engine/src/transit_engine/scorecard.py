@@ -314,15 +314,15 @@ def vehicle_counts(
         else ""
     )
     tail = vehicle_tail_sql("v.next_start", "v.last_seen_at_utc")
-    weight = "epoch_us(ends_at) - epoch_us(observed_at_utc)"
+    weight = "epoch_us(ends_at) - epoch_us(captured_at_utc)"
     reading = "true"
     hour_args: list[object] = []
     if hour is not None:
         weight = vehicle_hour_weight_sql(
             "hour(hour_start)",
-            "time_bucket(INTERVAL '1 hour', observed_at_utc, current_setting('TimeZone'))",
+            "time_bucket(INTERVAL '1 hour', captured_at_utc, current_setting('TimeZone'))",
         )
-        reading = "(weight > 0 OR hour(observed_at_utc) = ?)"
+        reading = "(weight > 0 OR hour(captured_at_utc) = ?)"
         hour_args = [hour, hour]
     fields = ", ".join(
         f"coalesce(sum(weight) FILTER ({published}), 0)" for published in VEHICLE_FIELDS.values()
@@ -330,14 +330,14 @@ def vehicle_counts(
     row = conn.execute(
         f"""
         WITH sequenced AS (
-            SELECT *, lead(observed_at_utc) OVER (
-                PARTITION BY filename, vehicle_id ORDER BY observed_at_utc, captured_at_utc
+            SELECT *, lead(captured_at_utc) OVER (
+                PARTITION BY vehicle_id ORDER BY captured_at_utc, filename
             ) AS next_start
             FROM read_parquet(?, hive_partitioning = false)
             WHERE provider = ? AND cleaning_version = ANY(?)
         ), vehicles AS (
             SELECT v.*, {direction} AS direction_id,
-                {vehicle_end_sql("v.observed_at_utc", "v.last_seen_at_utc", tail)} AS ends_at,
+                {vehicle_end_sql("v.captured_at_utc", "v.last_seen_at_utc", tail)} AS ends_at,
                 {tail} AS tail_us
             FROM sequenced v {join}
         ), weighted AS (

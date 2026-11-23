@@ -1093,16 +1093,16 @@ def _long_range_answers(
 
 
 def test_long_range_matches_baseline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # Canonical JSON digests of the complete responses with the revised statistics rules.
+    # Canonical JSON digests with the revised statistics and v10 method text.
     # The fixture spans two query batches, a DST transition, and one missing day.
     expected = {
-        "network": "788cd2906d6352fd4984c28ed8f5048c4375cadc488b8f517ce8ad90a543dc0f",
-        "line": "f3dfccce3842d98a19078f2dbcc71c23ff71a082a30419f81ee91d72d670832e",
-        "grid": "96363ac8de444ad235d358698b2b15a5f43eb883f230f21535c469d72c12d649",
+        "network": "192e4d0068ae642b0103df2507cf76d1f4960304b8274b7b9048855bb4a94483",
+        "line": "2af04f8514c2b148da4fdc3c94d3040f59bb149a8eedf01d49ed12e9d9814e42",
+        "grid": "0fa480f1186ca9be2004df3fc5fbc11dc5ab19547444c6a84116642350200953",
         "delivery": "c0585d214d9f18d8760df1ddf5353865b073cede0f1077ab72b93a6efecf57ad",
-        "line_rank": "f21dd92d40676fdbfef610b1a2a83af61812d252ecde21f2d456ca423e12908f",
-        "stop_rank": "dd1024214e55eeff0c38f982d877f055a3ffb0d064e9ba364cd62cb69c987fbc",
-        "departure_rank": "da0f4c95783ae73e4d77c8717a442f39c65e0b2568e04a79016fb49f87c99969",
+        "line_rank": "0b84b0d64d279918d3e6bd7d7b242902601f470c8df630b4300af5af9eab13ba",
+        "stop_rank": "33fd2c190c155ea817116beb6dbfdd58c963f1aeeb14d8df12567fac7915523c",
+        "departure_rank": "e2f1c015f062e9fc1c0daa07325d99876b0d8823440f4c7773c9a50821cc97bf",
     }
     answers = _long_range_answers(tmp_path, monkeypatch)
     assert {
@@ -1111,13 +1111,16 @@ def test_long_range_matches_baseline(tmp_path: Path, monkeypatch: pytest.MonkeyP
     } == expected
 
 
-def test_long_range_v9_matches_v8(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("version", [9, 10])
+def test_long_range_one_scan_matches_v8(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, version: int
+) -> None:
     old = _long_range_answers(tmp_path, monkeypatch, 8)
-    new = _long_range_answers(tmp_path, monkeypatch, 9)
+    new = _long_range_answers(tmp_path, monkeypatch, version)
     for answer in old.values():
         assert answer["evidence"].pop("cleaning_versions") == [8]
     for answer in new.values():
-        assert answer["evidence"].pop("cleaning_versions") == [9]
+        assert answer["evidence"].pop("cleaning_versions") == [version]
     assert new == old
 
 

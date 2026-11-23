@@ -32,8 +32,10 @@ from transit_ops.clean_day_realtime import (
 )
 from transit_ops.core.models import SourceFormat
 from transit_ops.gold.vehicle_instance_rule import (
+    EARLY_START_MAX_LEAD_SECONDS,
     SANITY_DELAY_SECONDS,
     TripInstance,
+    VehicleDescriptor,
     accepted_instance,
     resolve_vehicle_capture,
 )
@@ -48,10 +50,10 @@ STOPPED_AT_RADIUS_METRES = 50
 # Require several opportunities to see early reporting around departure, even
 # for short trips, at the providers' normal 20–60 second feed cadences.
 ABSENCE_LEAD_SECONDS = 300
-# v9 carries trip eligibility and scheduled service time on stop events.
-CLEANING_VERSION = "9"
+CLEANING_VERSION = "10"
 PREDICTION_HORIZONS_MINUTES = (1, 3, 5, 10, 15, 20, 30)
 _PREDICTION_HORIZONS_SECONDS = tuple(minutes * 60 for minutes in PREDICTION_HORIZONS_MINUTES)
+_PREDICTION_LIMIT_SECONDS = 40 * 60
 _CAPTURE_FRAME = Struct(">qQ")  # capture second and payload length
 _UTC_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 _LAST_TIMESTAMP_SECOND = (datetime.max.replace(tzinfo=UTC) - _UTC_EPOCH) // timedelta(seconds=1)
@@ -123,6 +125,9 @@ class Trip:
     progress: dict[str, tuple[int, int]] = field(default_factory=dict)
     last_source: dict[str, int] = field(default_factory=dict)
     wheelchair_accessible: int | None = None
+    endpoints: tuple[int, int] | None = None
+    origin_layovers: dict[str, Reading] = field(default_factory=dict)
+    terminus: tuple[int, str] | None = None
 
     def locate(self, sequence: int | None, stop_id: str) -> tuple[int, Stop] | None:
         if sequence is None:
@@ -190,6 +195,7 @@ def _scheduled(schedule: ArchiveScheduleContext, day: date, trip_id: str, anchor
         end=anchor + trip.last_arrival_s,
         unique_sequences=unique,
         wheelchair_accessible=trip.wheelchair_accessible,
+        endpoints=(min(stops), max(stops)) if stops else None,
     )
 
 
@@ -233,15 +239,32 @@ def _vehicle(
         return
     seq, stop = located
     stopped = not gps_only and position.current_status == VehiclePosition.STOPPED_AT
-    if stopped:
-        if not _near_stop(position, schedule.stop(day, stop.stop_id)):
-            return
-        stop.observe(Reading(stamp, vehicle, "vehicle_stopped", "arrival"))
-    # Retain only the first passage of a sequence per vehicle and ignore regressions.
+    origin, terminus = trip.endpoints or (-1, -1)
     old_seq, old_stamp = trip.progress.get(vehicle or "", (-1, -1))
+    near = (stopped or seq == terminus) and (
+        gps_only or _near_stop(position, schedule.stop(day, stop.stop_id))
+    )
+    if seq == terminus and near and vehicle and stamp >= old_stamp:
+        if trip.terminus is None or stamp < trip.terminus[0]:
+            trip.terminus = (stamp, vehicle)
+    if stopped:
+        if not near:
+            return
+        if seq == origin:
+            last = trip.origin_layovers.get(vehicle or "")
+            if old_seq <= origin and (last is None or stamp > last.second):
+                trip.origin_layovers[vehicle or ""] = Reading(
+                    stamp, vehicle, "vehicle_stopped", "departure"
+                )
+        else:
+            stop.observe(Reading(stamp, vehicle, "vehicle_stopped", "arrival"))
+    # Retain only the first passage of a sequence per vehicle and ignore regressions.
     if seq <= old_seq or stamp < old_stamp or (gps_only and stamp == old_stamp):
         return
     trip.progress[vehicle or ""] = (seq, stamp)
+    if seq > origin >= old_seq and (layover := trip.origin_layovers.pop(vehicle or "", None)):
+        if layover.second <= stamp:
+            trip.stops[origin].observe(layover)
     # Start GPS-only progress at the first fix. A subsequent fix for the same
     # vehicle at a unique later stop can corroborate forecasts between them.
     if gps_only and old_seq < 0:
@@ -344,10 +367,13 @@ def _reported_service_date(value: str) -> date | None:
 
 
 def _service_date(
-    descriptor: TripDescriptor, published: datetime, candidates: tuple[TripInstance, ...]
+    descriptor: TripDescriptor,
+    published: datetime,
+    candidates: tuple[TripInstance, ...],
+    reported: date | None,
+    *,
+    advance_notice: bool,
 ) -> date | None:
-    if not candidates:
-        return None
     if descriptor.start_time:
         try:
             seconds = parse_gtfs_service_time(
@@ -356,8 +382,31 @@ def _service_date(
         except ValueError:
             return None
         candidates = tuple(c for c in candidates if c.first_departure_seconds == seconds)
-    accepted = accepted_instance(resolve_vehicle_capture(published, candidates))
+    evidence = VehicleDescriptor(reported, descriptor.start_time)
+    resolved = resolve_vehicle_capture(published, candidates, evidence)
+    accepted = accepted_instance(resolved)
+    if accepted is None and not resolved and advance_notice:
+        # Advance trip updates can be posted before a vehicle could be present.
+        # A removal can also arrive after the trip. Require a named schedule
+        # instance in both cases, with no conflicting in-window instance.
+        return next(
+            (
+                c.service_date
+                for c in candidates
+                if c.service_date == reported
+                and (
+                    descriptor.schedule_relationship in _REMOVED
+                    or published < c.start_utc - timedelta(seconds=EARLY_START_MAX_LEAD_SECONDS)
+                )
+            ),
+            None,
+        )
     return None if accepted is None else accepted.service_date
+
+
+def _covered_span(intervals: list[CoveredInterval], start: datetime, end: datetime) -> bool:
+    index = bisect_right(intervals, start, key=lambda interval: interval.start_utc) - 1
+    return index >= 0 and intervals[index].end_utc >= end
 
 
 @dataclass
@@ -374,7 +423,7 @@ class CleanDay:
     feed_polls: list[FeedPoll] = field(default_factory=list)
     alerts: dict[tuple[str, str, SourceFormat], AlertVersion] | None = None
     route_types: Mapping[str, int] = field(default_factory=dict)
-    scorecard_declaration: dict[str, str | list[str]] | None = None
+    scorecard_declaration: dict[str, int | str | list[str]] | None = None
 
     def _covered(self, trip: Trip) -> bool:
         assert trip.start is not None and trip.end is not None
@@ -382,11 +431,9 @@ class CleanDay:
         end = datetime.fromtimestamp(trip.end, UTC)
         # A continuous interval from each declared feed must bracket the span.
         # covered_intervals uses the shared 120-second maximum between usable polls.
-        for intervals in self.coverage.values():
-            index = bisect_right(intervals, start, key=lambda interval: interval.start_utc) - 1
-            if index < 0 or intervals[index].end_utc < end:
-                return False
-        return bool(self.coverage)
+        return bool(self.coverage) and all(
+            _covered_span(intervals, start, end) for intervals in self.coverage.values()
+        )
 
     def _trip_state(
         self, trip: Trip, route_live: bool, observed: bool
@@ -424,6 +471,8 @@ class CleanDay:
                 trip.cancellation_notice,
                 self.route_types.get(trip.route_id) if trip.route_id is not None else None,
                 trip.wheelchair_accessible,
+                _timestamp(trip.terminus[0]) if trip.terminus else None,
+                trip.terminus[1] if trip.terminus else None,
             )
 
     def stop_rows(self) -> Iterator[Row]:
@@ -451,6 +500,17 @@ class CleanDay:
                     else (stop.arrival if stop.arrival is not None else stop.departure)
                 )
                 bucket_time = stop.departure if stop.departure is not None else stop.arrival
+                stop_exclusion = exclusion
+                if (
+                    stop_exclusion is None
+                    and reading is None
+                    and (scheduled_time := _timestamp(scheduled)) is not None
+                    and any(
+                        not _covered_span(intervals, scheduled_time, scheduled_time)
+                        for intervals in self.coverage.values()
+                    )
+                ):
+                    stop_exclusion = "capture_gap"
                 yield (
                     *self._scheduled_fields(trip_id, trip, seq, stop),
                     _timestamp(reading.second) if reading else None,
@@ -458,7 +518,7 @@ class CleanDay:
                     reading.basis if reading else "not_observed",
                     reading.event if reading else None,
                     reading.vehicle_id if reading else None,
-                    exclusion,
+                    stop_exclusion,
                     route_live,
                     start_seconds,
                     datetime.fromtimestamp(bucket_time, self.timezone).hour
@@ -638,10 +698,17 @@ def _build_clean_day(
             if (trip := context.trip(d, ident)) is not None
         )
 
-    def trip_date(desc: TripDescriptor, stamp: int) -> date | None:
-        if desc.start_date:
-            return _reported_service_date(desc.start_date)
-        return _service_date(desc, datetime.fromtimestamp(stamp, UTC), candidates_for(desc.trip_id))
+    def trip_date(desc: TripDescriptor, stamp: int, is_update: bool) -> date | None:
+        reported = _reported_service_date(desc.start_date) if desc.start_date else None
+        candidates = candidates_for(desc.trip_id)
+        published = datetime.fromtimestamp(stamp, UTC)
+        if candidates:
+            return _service_date(desc, published, candidates, reported, advance_notice=is_update)
+        # Unknown IDs cannot override a dated schedule instance. Some feeds mark
+        # true additions as SCHEDULED, so also require a matching local date.
+        if desc.schedule_relationship != TripDescriptor.SCHEDULED:
+            return reported
+        return reported if reported == published.astimezone(schedule.timezone).date() else None
 
     seen: dict[tuple[str, bytes], FeedPoll] = {}
     last_vehicle: dict[str, VehicleStateInterval] = {}
@@ -697,7 +764,7 @@ def _build_clean_day(
             has_trip = live.HasField("trip")
             stamp = min(live.timestamp or feed_second, capture_second)
             desc = live.trip
-            dated = trip_date(desc, stamp) if has_trip else None
+            dated = trip_date(desc, stamp, is_update) if has_trip else None
             if (
                 dated is None
                 and has_trip
@@ -771,7 +838,6 @@ def _build_clean_day(
                 _vehicle(trip, live, stamp, schedule, day)
     for trip in trips.values():
         trip.discard_reversed_readings()
-    _sample_predictions(result, history, trip_date, routes_without_live_data)
     usable = usable_polls(
         polls,
         read_source="worker_facts",
@@ -783,13 +849,14 @@ def _build_clean_day(
         feed: covered_intervals([poll for poll in usable if poll.feed == feed])
         for feed in required_feeds
     }
+    _sample_predictions(result, history, trip_date, routes_without_live_data)
     return result
 
 
 def _sample_predictions(
     day: CleanDay,
     history: BinaryIO,
-    trip_date: Callable[[TripDescriptor, int], date | None],
+    trip_date: Callable[[TripDescriptor, int, bool], date | None],
     routes_without_live_data: Collection[str],
 ) -> None:
     observed_trips = {
@@ -797,7 +864,8 @@ def _sample_predictions(
         for trip_id, trip in day.trips.items()
         if any(stop.observed is not None for stop in trip.stops.values())
     }
-    if not observed_trips:
+    coverage = day.coverage.get("trip_updates", [])
+    if not observed_trips or not coverage:
         return
     history.seek(0)
     while frame := history.read(_CAPTURE_FRAME.size):
@@ -821,7 +889,7 @@ def _sample_predictions(
             ):
                 continue
             stamp = min(update.timestamp or feed_stamp, captured)
-            if trip_date(desc, stamp) != day.date:
+            if trip_date(desc, stamp, True) != day.date:
                 continue
             for item in update.stop_time_update:
                 sequence = (
@@ -837,14 +905,24 @@ def _sample_predictions(
                     or item.schedule_relationship in _SKIPPED_OR_NO_DATA
                 ):
                     continue
-                _sample_stop(stop, stop.observed, item, stamp)
+                if captured <= stop.observed.second:
+                    _sample_stop(stop, stop.observed, item, stamp, coverage)
 
 
 def _sample_stop(
-    stop: Stop, observed: Reading, item: TripUpdate.StopTimeUpdate, stamp: int
+    stop: Stop,
+    observed: Reading,
+    item: TripUpdate.StopTimeUpdate,
+    stamp: int,
+    coverage: list[CoveredInterval],
 ) -> None:
     lead = observed.second - stamp
-    if lead < _PREDICTION_HORIZONS_SECONDS[0]:
+    index = bisect_right(_PREDICTION_HORIZONS_SECONDS, lead) - 1
+    if index < 0 or lead >= _PREDICTION_LIMIT_SECONDS:
+        return
+    if not _covered_span(
+        coverage, datetime.fromtimestamp(stamp, UTC), datetime.fromtimestamp(observed.second, UTC)
+    ):
         return
     # Compare forecasts and observations of the same stop event.
     event = item.arrival if observed.event == "arrival" else item.departure
@@ -864,9 +942,6 @@ def _sample_stop(
         samples = [None] * len(_PREDICTION_HORIZONS_SECONDS)
         stop.prediction_samples = samples
     candidate = (stamp, predicted)
-    for index, horizon in enumerate(_PREDICTION_HORIZONS_SECONDS):
-        if horizon > lead:
-            break
-        previous = samples[index]
-        if previous is None or stamp > previous[0]:
-            samples[index] = candidate
+    previous = samples[index]
+    if previous is None or stamp > previous[0]:
+        samples[index] = candidate
