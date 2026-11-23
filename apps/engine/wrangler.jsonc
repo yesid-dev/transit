@@ -7,7 +7,7 @@
   "preview_urls": false,
   "vars": {
     "ENGINE_CLEAN_ROOT": "s3://transit-clean",
-    "ENGINE_CLEANING_VERSION": "9"
+    "ENGINE_CLEANING_VERSION": "10"
   },
   "containers": [
     {
