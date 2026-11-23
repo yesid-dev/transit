@@ -13,8 +13,6 @@ MIN_STABLE_READING_SHARE = 0.5
 MIN_VEHICLE_TERMINUS_SHARE = 0.5
 # One additional gap can move the ranking by at most ten gaps per 100 vehicle-hours.
 MIN_VEHICLE_RANKING_HOURS = 10
-# One additional unfinished trip moves the ranking by at most five per 100 trips.
-MIN_VEHICLE_RANKING_TRIPS = 20
 # Same pre-departure coverage margin as the cleaner's missing-trip test.
 TRIP_CAPTURE_LEAD_SECONDS = 300
 
@@ -93,7 +91,6 @@ VEHICLE_COUNTS = (
     "completion_ran_trips",
     "completion_observed_termini",
     "completion_days_below_threshold",
-    "completion_days_tracked",
 )
 
 
@@ -157,7 +154,7 @@ def vehicle_stats_query(
     reporting_counts = "0, 0, 0, 0"
     reporting_join = ""
     completion_sql = ""
-    completion_counts = "0, 0, 0, 0, 0, 0, 0, 0"
+    completion_counts = "0, 0, 0, 0, 0, 0, 0"
     completion_join = ""
     params: list[object] = [
         paths[VEHICLE_POSITIONS],
@@ -232,15 +229,12 @@ def vehicle_stats_query(
             FROM trips t LEFT JOIN endpoints e USING (service_date, trip_id)
             WHERE t.state = 'ran'
             GROUP BY t.service_date
-        ), terminus_coverage AS (
-            SELECT *, observed_termini >= {MIN_VEHICLE_TERMINUS_SHARE} * ran_trips AS tracked
-            FROM terminus_counts
         ), terminus_summary AS (
             SELECT coalesce(sum(ran_trips), 0) AS ran_trips,
                 coalesce(sum(observed_termini), 0) AS observed_termini,
-                count(*) FILTER (NOT tracked) AS days_below_threshold,
-                count(*) FILTER (tracked) AS tracked_days
-            FROM terminus_coverage
+                count(*) FILTER (observed_termini < {MIN_VEHICLE_TERMINUS_SHARE} * ran_trips)
+                    AS days_below_threshold
+            FROM terminus_counts
         ), attribution AS (
             SELECT service_date, trip_id, count(DISTINCT vehicle_id) AS assigned_vehicles,
                 min(vehicle_id) AS assigned_vehicle
@@ -293,8 +287,7 @@ def vehicle_stats_query(
             LEFT JOIN last_position lp ON lp.service_date = a.service_date
                 AND lp.trip_id = a.trip_id AND lp.vehicle_id = v.assigned_vehicle
         ), assessed AS (
-            SELECT c.*, coalesce(terminus_coverage.tracked, false) AS tracked,
-                coalesce(assessable, false) AND no_trip_gap AND EXISTS (
+            SELECT c.*, coalesce(assessable, false) AND no_trip_gap AND EXISTS (
                 SELECT 1 FROM realtime_feed_counts f
                 WHERE f.service_date = c.service_date AND f.required_feeds = (
                     SELECT count(DISTINCT coverage.feed) FROM coverage
@@ -303,24 +296,23 @@ def vehicle_stats_query(
                         AND coverage.covered_to >= c.covered_to
                 )
             ) AS eligible
-            FROM candidates c LEFT JOIN terminus_coverage USING (service_date)
+            FROM candidates c
         ), completions AS (
             SELECT entity,
-                count(*) FILTER (tracked AND eligible AND NOT completed AND reassigned_upstream)
+                count(*) FILTER (eligible AND NOT completed AND reassigned_upstream)
                     AS unfinished,
-                count(*) FILTER (tracked AND eligible AND (completed OR reassigned_upstream))
+                count(*) FILTER (eligible AND (completed OR reassigned_upstream))
                     AS sample,
-                count(*) FILTER (tracked AND assessable AND NOT eligible) AS capture_gap,
-                count(*) FILTER (tracked AND (assessable IS NOT TRUE
-                    OR (eligible AND NOT completed AND NOT reassigned_upstream))) AS unknown
+                count(*) FILTER (assessable AND NOT eligible) AS capture_gap,
+                count(*) FILTER (assessable IS NOT TRUE
+                    OR (eligible AND NOT completed AND NOT reassigned_upstream)) AS unknown
             FROM assessed GROUP BY entity
         )
         """
         completion_counts = ", ".join(
             f"coalesce(c.{name}, 0)" for name in ("unfinished", "sample", "capture_gap", "unknown")
         )
-        completion_counts += """, tc.ran_trips, tc.observed_termini,
-            tc.days_below_threshold, tc.tracked_days"""
+        completion_counts += ", tc.ran_trips, tc.observed_termini, tc.days_below_threshold"
         completion_join = """LEFT JOIN completions c ON k.entity IS NOT DISTINCT FROM c.entity
             CROSS JOIN terminus_summary tc"""
         params.extend([paths[STOP_EVENTS], *scope])

@@ -23,12 +23,10 @@ export const measures = {
 		en: 'Stopped reporting',
 		fr: 'Interruptions de signalement',
 	},
-	vehicle_unfinished_trips_per_100_trips: { en: 'Unfinished trips', fr: 'Trajets non terminés' },
 } as const;
 
 export type RankingMeasure = keyof typeof measures;
 export const reporting = 'vehicle_reporting_gaps_per_100_hours';
-export const unfinished = 'vehicle_unfinished_trips_per_100_trips';
 const punctuality = ['on_time', 'late', 'median_delay'] as const;
 const delivery = [...punctuality, 'cancelled_trips', 'missing_trips'] as const;
 export const rankingMeasures: Record<RankingKind, readonly [RankingMeasure, ...RankingMeasure[]]> =
@@ -36,7 +34,7 @@ export const rankingMeasures: Record<RankingKind, readonly [RankingMeasure, ...R
 		line: delivery,
 		stop: punctuality,
 		departure: delivery,
-		vehicle: [reporting, unfinished],
+		vehicle: [reporting],
 	};
 
 export function rankingSelection(path: RankingPath, params: URLSearchParams) {

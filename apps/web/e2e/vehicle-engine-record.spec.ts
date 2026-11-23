@@ -43,9 +43,16 @@ for (const width of [390, 1440]) {
 					name: fr ? 'Interruptions de signalement' : 'Stopped reporting',
 				}),
 			).toContainText(fr ? '16 interruptions par 100 heures' : '16 interruptions per 100 hours');
-			await expect(
-				main.getByRole('region', { name: fr ? 'Voyages non terminés' : 'Trips it did not finish' }),
-			).toContainText(fr ? '1 sur 20' : '1 of 20');
+			const completion = main.getByRole('region', {
+				name: fr ? 'Voyages non terminés' : 'Trips it did not finish',
+			});
+			await expect(completion).toContainText(fr ? 'Non suivi' : 'Not tracked');
+			await expect(completion).toContainText(
+				fr
+					? 'Les flux en direct ne montrent pas de façon fiable quand un trajet se termine tôt'
+					: 'The live feeds do not show reliably when a trip ends early',
+			);
+			await expect(completion).not.toContainText(fr ? 'sur 20 voyages' : 'of 20 trips');
 			const timing = main.getByRole('region', {
 				name: fr ? 'Son bilan de ponctualité' : 'Its on-time record',
 			});

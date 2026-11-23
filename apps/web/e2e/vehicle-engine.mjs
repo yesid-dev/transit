@@ -7,6 +7,10 @@ export function vehicleEngine(url) {
 	const to = get('to');
 	const fr = get('lang') === 'fr';
 	if (get('format') === 'csv') {
+		if (measure === 'vehicle_unfinished_trips')
+			return {
+				csv: `${fr ? 'Mesure,État' : 'Measure,State'}\n${measure},${fr ? 'Non suivi' : 'Not tracked'}\n`,
+			};
 		return { csv: `${fr ? 'Mesure,Valeur' : 'Measure,Value'}\n${measure},12\n` };
 	}
 
@@ -76,7 +80,14 @@ export function vehicleEngine(url) {
 			{ vehicle_reporting_gaps_per_100_hours: 16 },
 			{ reporting_gaps: 2 },
 		),
-		vehicle_unfinished_trips: cell({ vehicle_unfinished_trips: 1 }, { completion_sample: 20 }),
+		vehicle_unfinished_trips: {
+			...cell({ vehicle_unfinished_trips: null }, { completion_sample: 20 }, 'not_tracked'),
+			evidence: {
+				counts: { completion_sample: 20, completion_confirmed_upstream_reassignments: 0 },
+				days_included: [],
+				days_not_tracked_reasons: { [from]: 'trip_end_not_observable' },
+			},
+		},
 		vehicle_on_time: cell(
 			{ vehicle_on_time: null },
 			{ punctuality_classified: 12 },

@@ -316,18 +316,12 @@ def test_cancellation_notice_display_floor(tmp_path: Path) -> None:
     assert evidence["measure_states"]["median_cancellation_lead_seconds"] == "too_few_to_judge"
 
 
-def test_vehicle_display_floors() -> None:
+def test_vehicle_reporting_display_floor() -> None:
     window = ReadWindow({}, measured=[str(THURSDAY)], included=[str(THURSDAY)])
-    for name in ("vehicle_reporting_gaps_per_100_hours", "vehicle_unfinished_trips_per_100_trips"):
-        family, selected = measures._SELECTIONS[name]
-        counts = Counter(
-            tracked_vehicle_days=1,
-            service_us=3_600_000_000,
-            reporting_gaps=1,
-            completion_sample=9,
-            unfinished_trips=1,
-        )
-        state, values, evidence, _ = evaluate(family, selected, Batch(counts=counts), window)
-        assert state == "too_few_to_judge"
-        assert values[name] is None
-        assert evidence["counts"]["hours_in_service"] == 1
+    name = "vehicle_reporting_gaps_per_100_hours"
+    family, selected = measures._SELECTIONS[name]
+    counts = Counter(tracked_vehicle_days=1, service_us=3_600_000_000, reporting_gaps=1)
+    state, values, evidence, _ = evaluate(family, selected, Batch(counts=counts), window)
+    assert state == "too_few_to_judge"
+    assert values[name] is None
+    assert evidence["counts"]["hours_in_service"] == 1

@@ -17,6 +17,7 @@ from transit_engine.vehicles import VEHICLE_COUNTS, vehicle_stats_query
 
 REPORTING_RATE = "vehicle_reporting_gaps_per_100_hours"
 UNFINISHED_RATE = "vehicle_unfinished_trips_per_100_trips"
+UNFINISHED_COUNT = "vehicle_unfinished_trips"
 OUTAGE_DAY = SUNDAY + timedelta(days=1)
 
 
@@ -415,55 +416,76 @@ def test_fleet_days_and_vehicle_trips_by_line(
     assert payload.decode().startswith("Numéro de véhicule,")
 
 
-def test_unconfirmed_trip_is_excluded_from_the_completion_sample(
+def test_completion_diagnostics_are_retained_without_publishing_a_rate(
     vehicle_history: tuple[Store, dict[date, list[Interval]]],
 ) -> None:
     store, _ = vehicle_history
     result = answer(store, "/measure", THURSDAY, FRIDAY, measure="vehicles", vehicle="101")
-    assert result["value"]["vehicle_unfinished_trips"] == 0
-    assert result["value"][UNFINISHED_RATE] == 0
+    assert result["value"][UNFINISHED_COUNT] is None
+    assert result["value"][UNFINISHED_RATE] is None
     assert result["evidence"]["counts"]["completion_sample"] == 19
+    assert result["evidence"]["counts"]["completion_confirmed_upstream_reassignments"] == 0
     assert result["evidence"]["excluded"]["completion_unknown"] == 1
+    assert result["evidence"]["excluded"]["completion_capture_gap"] == 1
     gap_only = answer(store, "/measure", FRIDAY, FRIDAY, measure=UNFINISHED_RATE, vehicle="101")
     assert gap_only["state"] == "not_tracked"
     assert gap_only["value"][UNFINISHED_RATE] is None
 
 
-def test_low_daily_terminus_coverage_only_suppresses_completion(
+def test_unobservable_trip_ends_only_suppress_completion(
     vehicle_history: tuple[Store, dict[date, list[Interval]]],
 ) -> None:
     store, _ = vehicle_history
     result = answer(store, "/measure", FRIDAY, FRIDAY, measure="vehicles", vehicle="101")
     assert result["value"]["vehicle_hours_in_service"] > 0
-    assert result["evidence"]["measure_states"]["vehicle_unfinished_trips"] == "not_tracked"
-    assert result["value"]["vehicle_unfinished_trips"] is None
+    assert result["evidence"]["measure_states"][UNFINISHED_COUNT] == "not_tracked"
+    assert result["value"][UNFINISHED_COUNT] is None
     assert result["evidence"]["completion_coverage"] == {
         "ran_trips": 1,
         "observed_termini": 0,
+        "observed_terminus_share": 0,
         "minimum_share": 0.5,
         "days_below_threshold": 1,
-        "reason": "low_terminus_coverage",
+        "reason": "trip_end_not_observable",
     }
     count = answer(
         store, "/measure", FRIDAY, FRIDAY, measure="vehicle_unfinished_trips", vehicle="101"
     )
     assert count["state"] == "not_tracked"
     assert count["evidence"]["days_included"] == []
-    assert count["evidence"]["days_not_tracked_reasons"] == {str(FRIDAY): "low_terminus_coverage"}
+    assert count["evidence"]["days_not_tracked_reasons"] == {str(FRIDAY): "trip_end_not_observable"}
     ranking = answer(store, "/ranking", FRIDAY, FRIDAY, kind="vehicle", measure=UNFINISHED_RATE)
     assert ranking["state"] == "not_tracked"
     assert ranking["rows"] == []
-    assert ranking["evidence"]["days_not_tracked_reasons"] == {str(FRIDAY): "low_terminus_coverage"}
+    assert ranking["evidence"]["days_not_tracked_reasons"] == {
+        str(FRIDAY): "trip_end_not_observable"
+    }
 
     exact_floor = answer(store, "/measure", OUTAGE_DAY, OUTAGE_DAY, measure="vehicles")
     coverage = exact_floor["evidence"]["completion_coverage"]
     assert (coverage["observed_termini"], coverage["ran_trips"]) == (1, 2)
+    assert coverage["observed_terminus_share"] == 0.5
     assert coverage["days_below_threshold"] == 0
+    assert exact_floor["evidence"]["measure_states"][UNFINISHED_COUNT] == "not_tracked"
     series = answer(
         store, "/measure", THURSDAY, FRIDAY, measure=UNFINISHED_RATE, vehicle="101", group="day"
     )
-    assert [cell["state"] for cell in series["cells"]] == ["measured", "not_tracked"]
-    assert series["cells"][1]["evidence"]["days_included"] == []
+    assert series["state"] == "not_tracked"
+    assert [cell["state"] for cell in series["cells"]] == ["not_tracked", "not_tracked"]
+    assert all(cell["evidence"]["days_included"] == [] for cell in series["cells"])
+
+
+@pytest.mark.parametrize("day", [THURSDAY, SATURDAY, OUTAGE_DAY + timedelta(days=1)])
+@pytest.mark.parametrize("measure", [UNFINISHED_COUNT, UNFINISHED_RATE])
+def test_completion_is_not_tracked_even_with_good_coverage_or_no_rows(
+    vehicle_history: tuple[Store, dict[date, list[Interval]]], day: date, measure: str
+) -> None:
+    store, _ = vehicle_history
+    result = answer(store, "/measure", day, day, measure=measure)
+    assert result["state"] == "not_tracked"
+    assert result["value"][measure] is None
+    assert result["evidence"]["completion_coverage"]["reason"] == "trip_end_not_observable"
+    assert result["evidence"]["days_not_tracked_reasons"] == {str(day): "trip_end_not_observable"}
 
 
 def test_reporting_outage_is_excluded_from_vehicle_measures_and_ranking(
@@ -510,12 +532,13 @@ def test_vehicle_ranking_default_floors_and_exports(
     (excluded,) = result["excluded"]
     assert (excluded["id"], excluded["reason"]) == ("103", "too_few_to_judge")
     assert excluded["sample"] < result["info"][0]["ranking_minimum_sample"]
-    completion = answer(store, "/ranking", kind="vehicle", measure=UNFINISHED_RATE)
-    (row,) = completion["rows"]
-    assert (row["id"], row["value"], row["sample"]) == ("102", 0, 20)
-    assert row["range"]["lower"] == 0 < row["range"]["upper"]
-    excluded_samples = {row["id"]: row["sample"] for row in completion["excluded"]}
-    assert excluded_samples == {"101": 19, "103": 1}
+    for measure in (UNFINISHED_COUNT, UNFINISHED_RATE):
+        completion = answer(store, "/ranking", kind="vehicle", measure=measure)
+        assert completion["state"] == "not_tracked"
+        assert completion["rows"] == []
+        assert completion["evidence"]["days_not_tracked_reasons"] == {
+            str(THURSDAY): "trip_end_not_observable"
+        }
     assert request(store, "/ranking", kind="vehicle", measure="on_time")[0] == 400
     status, payload = request(store, "/measure", measure="vehicles", format="csv", lang="fr")
     assert status == 200

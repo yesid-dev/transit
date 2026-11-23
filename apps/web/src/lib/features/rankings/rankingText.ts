@@ -1,7 +1,7 @@
 import { intl, type Locale } from '#lib/i18n/index.ts';
 import type { RankingsRecord } from '#lib/server/engine.ts';
 import { choose, dateRange, methodEvidence, percent, withCoverage } from '../record/recordText.ts';
-import { reporting, unfinished, type RankingMeasure } from './rankingSelection.ts';
+import { reporting, type RankingMeasure } from './rankingSelection.ts';
 
 type Row = RankingsRecord['rows'][number];
 type Excluded = RankingsRecord['excluded'][number];
@@ -10,7 +10,6 @@ const sampleUnits = {
 	events: { en: 'observed stop events', fr: 'passages observés' },
 	trips: { en: 'eligible trips', fr: 'trajets admissibles' },
 	hours: { en: 'hours in service', fr: 'heures en service' },
-	assessed: { en: 'trips assessed', fr: 'trajets évalués' },
 };
 
 const numerators: Partial<Record<RankingMeasure, string>> = {
@@ -19,7 +18,6 @@ const numerators: Partial<Record<RankingMeasure, string>> = {
 	cancelled_trips: 'cancelled',
 	missing_trips: 'missing',
 	[reporting]: 'reporting_gaps',
-	[unfinished]: 'unfinished_trips',
 };
 
 function number(value: number, locale: Locale) {
@@ -30,8 +28,6 @@ export function rankingValue(value: number, measure: RankingMeasure, locale: Loc
 	if (measure === 'median_delay') return `${number(value, locale)} s`;
 	if (measure === reporting)
 		return `${number(value, locale)} ${choose(locale, 'per 100 h', 'par 100 h')}`;
-	if (measure === unfinished)
-		return `${number(value, locale)} ${choose(locale, 'per 100 trips', 'par 100 trajets')}`;
 	return percent(value, locale);
 }
 
@@ -52,11 +48,9 @@ export function sampleText(sample: number, measure: RankingMeasure, locale: Loca
 	const unit =
 		measure === reporting
 			? 'hours'
-			: measure === unfinished
-				? 'assessed'
-				: measure === 'cancelled_trips' || measure === 'missing_trips'
-					? 'trips'
-					: 'events';
+			: measure === 'cancelled_trips' || measure === 'missing_trips'
+				? 'trips'
+				: 'events';
 	return `${number(sample, locale)} ${sampleUnits[unit][locale]}`;
 }
 
