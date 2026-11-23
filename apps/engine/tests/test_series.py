@@ -328,7 +328,7 @@ def test_single_departure_keeps_repeated_stops_and_exact_observations(
                     (-61, 301, None),
                     stop_ids=("loop", "middle", "loop"),
                 ),
-                Trip("other-direction", "A", 1, "ran", None, True, (10,)),
+                Trip("other-direction", "A", 1, "ran", None, True, (60,) * 25 + (360,) * 5),
                 Trip("later-departure", "A", 0, "ran", None, True, (20,), offset_minutes=1),
             ),
         },
@@ -356,6 +356,13 @@ def test_single_departure_keeps_repeated_stops_and_exact_observations(
         {"direction": 0, "stop_sequence": 3, "stop": "loop"},
     ]
     assert [cell["evidence"]["observed_delay_seconds"] for cell in cells] == [-61, 301, None]
+    assert [cell["state"] for cell in cells] == [
+        "too_few_to_judge",
+        "too_few_to_judge",
+        "not_measured",
+    ]
+    assert all(cell["value"]["median_delay"] is None for cell in cells)
+    assert cells[2]["evidence"]["coverage_reason"] == "insufficient_coverage"
     status, _, raw = asyncio.run(http(app, "/measure", stops + "&format=csv&lang=fr"))
     assert status == 200, raw
     exported = csv.DictReader(io.StringIO(raw.decode()))
@@ -364,6 +371,13 @@ def test_single_departure_keeps_repeated_stops_and_exact_observations(
     status, _, raw = asyncio.run(http(app, "/measure", base + "&measure=trips_run"))
     assert status == 200, raw
     assert json.loads(raw)["evidence"]["trip_ids"] == ["selected"]
+    # The opposite departure clears the 30-stop display floor. Integer bins 60–74
+    # and 360–374 have midpoints of 67 and 367 seconds respectively.
+    other = base.replace("direction=0", "direction=1") + "&measure=punctuality"
+    status, _, raw = asyncio.run(http(app, "/measure", other))
+    assert status == 200, raw
+    value = json.loads(raw)["value"]
+    assert (value["median_delay"], value["p90_delay"]) == (67, 367)
 
 
 @pytest.mark.parametrize(

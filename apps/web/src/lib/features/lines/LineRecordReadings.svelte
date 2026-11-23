@@ -156,11 +156,18 @@
 		/>
 	{/if}
 {:else if 'rows' in answer && answer.kind === 'departure'}
+	{@const info = answer.info[0]}
+	{@const floors = info?.ranking_floors?.departure}
 	<p>
-		{t(
-			'Ranked by the late share of observed stop events on each scheduled departure.',
-			'Classement selon la part des passages observés en retard pour chaque départ prévu.',
-		)}
+		{answer.rows[0]?.ranking_bound != null
+			? t(
+					'Ranked by the lower end of each departure’s estimated late-share range.',
+					'Classement selon la borne inférieure de la fourchette estimée des retards pour chaque départ.',
+				)
+			: t(
+					'Ranked by the late share of observed stop events on each scheduled departure.',
+					'Classement selon la part des passages observés en retard pour chaque départ prévu.',
+				)}
 	</p>
 	<RecordTable
 		{title}
@@ -181,12 +188,17 @@
 			{#if href}<a class="inline-flex min-h-11 items-center" {href}>{label}</a>{:else}{label}{/if}
 		{/snippet}
 	</RecordTable>
-	{#if answer.info[0]}
+	{#if info}
 		<p>
-			{t(
-				`At least ${n(answer.info[0].minimum_sample)} observed stop events per departure.`,
-				`Au moins ${n(answer.info[0].minimum_sample)} passages observés par départ.`,
-			)}
+			{floors
+				? t(
+						`At least ${n(floors.classified)} observed stop events across ${n(floors.observed_service_dates)} or more service dates per departure.`,
+						`Au moins ${n(floors.classified)} passages observés sur ${n(floors.observed_service_dates)} dates de service ou plus par départ.`,
+					)
+				: t(
+						`At least ${n(info.minimum_sample)} observed stop events per departure.`,
+						`Au moins ${n(info.minimum_sample)} passages observés par départ.`,
+					)}
 		</p>
 	{/if}
 {:else if 'cells' in answer}

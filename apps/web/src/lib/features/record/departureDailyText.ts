@@ -76,7 +76,7 @@ const periods = [
 ];
 
 export function dailyPeriodRows(answer: RecordSeries, locale: Locale): string[][] {
-	const minimum = answer.info?.[0]?.minimum_sample;
+	const info = answer.info?.[0];
 	return periods.map(({ start, end, en, fr }) => {
 		const hours = answer.cells.filter(({ key }) => {
 			const hour = key.hour;
@@ -87,14 +87,28 @@ export function dailyPeriodRows(answer: RecordSeries, locale: Locale): string[][
 		});
 		const classified = hours.reduce((sum, cell) => sum + (cell.evidence.counts.classified ?? 0), 0);
 		const late = hours.reduce((sum, cell) => sum + (cell.evidence.counts.late ?? 0), 0);
+		const scheduled = hours.reduce((sum, cell) => sum + (cell.evidence.counts.scheduled ?? 0), 0);
+		const coverage = scheduled > 0 ? classified / scheduled : null;
 		const state = hours.find((hour) => hour.state !== 'unknown') ?? hours[0];
-		const reading = !classified
-			? (state?.state_text[locale] ?? emptyRecord(answer.evidence, locale))
-			: minimum == null
-				? choose(locale, 'Unknown', 'Inconnu')
-				: classified < minimum
-					? choose(locale, 'Too few to judge', 'Trop peu pour juger')
-					: percent(late / classified, locale);
+		let reading: string;
+		if (coverage != null && info?.minimum_coverage != null && coverage < info.minimum_coverage) {
+			reading = choose(locale, 'Insufficient coverage', 'Couverture insuffisante');
+		} else if (!classified) {
+			reading = state?.state_text[locale] ?? emptyRecord(answer.evidence, locale);
+		} else if (!info || (info.minimum_coverage != null && coverage == null)) {
+			reading = choose(locale, 'Unknown', 'Inconnu');
+		} else if (classified < info.minimum_sample) {
+			reading = choose(locale, 'Too few to judge', 'Trop peu pour juger');
+		} else {
+			reading = percent(late / classified, locale);
+			if (
+				coverage != null &&
+				info.low_coverage_below != null &&
+				coverage < info.low_coverage_below
+			) {
+				reading += choose(locale, ' (low coverage)', ' (faible couverture)');
+			}
+		}
 		return [
 			choose(locale, en, fr),
 			reading,

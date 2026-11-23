@@ -36,7 +36,18 @@ const measureAnswer = state.extend({
 const rankingEnvelope = state.partial().extend({
 	class: z.string().nullable(),
 	coverage_note: bilingual.nullable(),
-	info: z.array(z.object({ minimum_sample: count })).nonempty(),
+	info: z
+		.array(
+			z.object({
+				minimum_sample: count,
+				ranking_floors: z
+					.object({
+						departure: z.object({ observed_service_dates: count, classified: count }).optional(),
+					})
+					.optional(),
+			}),
+		)
+		.nonempty(),
 	evidence,
 });
 const rankingAnswer = rankingEnvelope.extend({
@@ -48,6 +59,7 @@ const rankingAnswer = rankingEnvelope.extend({
 			rank: count,
 			value: share,
 			sample: count,
+			ranking_bound: share.nullable().optional(),
 			range: z.object({ lower: share, upper: share, method: z.string() }),
 		}),
 	),
@@ -192,7 +204,15 @@ const recordMeasure = recordEnvelope.extend({
 });
 const recordSeries = recordEnvelope.extend({
 	...state.partial().shape,
-	info: z.array(z.object({ minimum_sample: count })).optional(),
+	info: z
+		.array(
+			z.object({
+				minimum_sample: count,
+				minimum_coverage: share.optional(),
+				low_coverage_below: share.optional(),
+			}),
+		)
+		.optional(),
 	cells: z.array(
 		recordCell.extend({
 			key: z.record(z.string(), z.union([z.string(), z.number(), z.null()])),

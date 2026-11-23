@@ -6,6 +6,8 @@ test.beforeEach(({ browserName }, info) => {
 });
 
 const period = 'provider=stm&frameMode=record&recordFrom=2026-11-18&recordTo=2026-11-20';
+// A departure must have observations on at least five service dates to appear in a ranking.
+const departurePeriod = period.replace('recordFrom=2026-11-18', 'recordFrom=2026-11-16');
 const key = (line: string) => encodeURIComponent(JSON.stringify([line, 0, '07:00:00']));
 for (const width of [390, 1440]) {
 	for (const lang of ['en', 'fr'] as const) {
@@ -16,17 +18,18 @@ for (const width of [390, 1440]) {
 			request,
 		}) => {
 			await page.setViewportSize({ width, height: 900 });
-			await page.goto(`${path}/lines/24?${period}`);
+			await page.goto(`${path}/lines/24?${departurePeriod}`);
 			const late = page.getByRole('region', {
 				name: fr ? 'Départs le plus souvent en retard' : 'Departures late most often',
 			});
 			const departure = late.getByRole('link', { name: '07:00:00' });
 			await expect(departure).toBeVisible();
+			await expect(late).toContainText(fr ? '5 dates de service' : '5 or more service dates');
 			await departure.click();
 			await expect(page).toHaveURL(/\/departure\//);
 			const main = page.getByRole('main');
 			await expect(main.getByRole('heading', { level: 1 })).toContainText('07:00');
-			await expect(main).toContainText(fr ? '1 des 2 jours observés' : '1 of 2 observed days');
+			await expect(main).toContainText(fr ? '1 des 5 jours observés' : '1 of 5 observed days');
 			await expect(main).toContainText(fr ? '360 s de retard' : '360 s late');
 			await expect(
 				main
@@ -71,11 +74,9 @@ for (const width of [390, 1440]) {
 					: 'Service delivered against scheduled',
 			);
 			await expect(delivery).toContainText('70');
-			await expect(
-				section(fr ? 'La journée en cinq périodes' : 'The day in five periods').getByRole(
-					'rowheader',
-				),
-			).toHaveCount(5);
+			const periods = section(fr ? 'La journée en cinq périodes' : 'The day in five periods');
+			await expect(periods.getByRole('rowheader')).toHaveCount(5);
+			await expect(periods).toContainText(fr ? 'Couverture insuffisante' : 'Insufficient coverage');
 			await expect(
 				section(fr ? 'Lignes à examiner' : 'Lines to inspect').getByRole('link', { name: /24/ }),
 			).toBeVisible();

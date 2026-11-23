@@ -76,29 +76,37 @@ export function departureDailyEngine(url) {
 		return {
 			body: {
 				...envelope,
-				cells: [
-					cell(
-						{ day: from },
-						measure === 'late'
-							? { classified: 10, late: 1 }
-							: { eligible: 1, cancelled: 1, missing: 0 },
-					),
-					cell(
-						{ day: to },
-						measure === 'late'
-							? { classified: 2, late: 0 }
-							: { eligible: 1, cancelled: 0, missing: 1 },
-					),
-				],
+				cells: Array.from(
+					{ length: (Date.parse(to) - Date.parse(from)) / 86_400_000 + 1 },
+					(_, index) => {
+						const day = new Date(Date.parse(from) + index * 86_400_000).toISOString().slice(0, 10);
+						return {
+							...cell(
+								{ day },
+								measure === 'late'
+									? { classified: 20, late: index === 0 ? 1 : 0 }
+									: { eligible: 1, cancelled: day === from ? 1 : 0, missing: day === to ? 1 : 0 },
+							),
+							state: 'too_few_to_judge',
+							state_text: { en: 'Too few to judge', fr: 'Trop peu pour juger' },
+						};
+					},
+				),
 			},
 		};
 	if (group === 'hour')
 		return {
 			body: {
 				...envelope,
+				info: [{ minimum_sample: 30, minimum_coverage: 0.25, low_coverage_below: 0.5 }],
 				cells: [
-					cell({ hour: 0 }, { classified: 20, late: 10 }),
-					cell({ hour: 19 }, { classified: 80, late: 10 }),
+					cell({ hour: 0 }, { scheduled: 40, classified: 20, late: 10 }),
+					cell({ hour: 19 }, { scheduled: 120, classified: 80, late: 10 }),
+					{
+						...cell({ hour: 8 }, { scheduled: 200, classified: 40, late: 10 }),
+						state: 'not_measured',
+						state_text: { en: 'Not measured', fr: 'Non mesuré' },
+					},
 				],
 			},
 		};
