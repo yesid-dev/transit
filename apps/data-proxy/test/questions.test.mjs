@@ -17,6 +17,57 @@ const ANSWER = {
   evidence: { cleaning_versions: [6], days_pending: [], counts: { scheduled: 100 } },
 };
 
+function stubLiveStorage(t, env, respond) {
+  Object.assign(env, {
+    TRANSIT1_R2_ENDPOINT: "fixture.r2.cloudflarestorage.com",
+    TRANSIT1_R2_READ_ACCESS_KEY_ID: "fixture-key",
+    TRANSIT1_R2_READ_SECRET_ACCESS_KEY: "fixture-secret",
+  });
+  return t.mock.method(globalThis, "fetch", async (input, init) => {
+    const request = new Request(input, init);
+    assert.equal(request.method, "GET");
+    assert.equal(request.url, "https://fixture.r2.cloudflarestorage.com/transit-clean/live/v1/demo.json");
+    assert.match(request.headers.get("authorization"), /^AWS4-HMAC-SHA256 Credential=fixture-key\//);
+    return respond();
+  });
+}
+
+test("serves the per-city live object with a short edge cache through public and bound routes", async (t) => {
+  const f = fixture(t);
+  const snapshot = { city: "demo", version: 1, vehicle_positions: null };
+  const body = JSON.stringify(snapshot);
+  const get = stubLiveStorage(t, f.env, () =>
+    new Response(body, { headers: { "content-length": String(Buffer.byteLength(body)) } }),
+  );
+  const path = "/v2/demo/live";
+  const first = await f.fetch(path);
+  assert.equal(first.headers.get("cache-control"), "no-store");
+  assert.deepEqual(await first.json(), snapshot);
+  const second = await f.fetch(path, {}, "GET", true);
+  assert.deepEqual(await second.json(), snapshot);
+  assert.equal([...f.answers.values()][0].ttl, 5);
+  assert.equal(get.mock.callCount(), 1);
+  assert.equal(f.requests.length, 0);
+  assert.equal(f.saved.size, 0);
+  f.env.TRANSIT1_LIVE_ENABLED = "0";
+  assert.equal((await f.fetch(path)).status, 503);
+});
+
+test("rejects live writes and malformed city paths or parameters, and leaves misses uncached", async (t) => {
+  const f = fixture(t);
+  const path = "/v2/demo/live";
+  assert.equal((await f.fetch(path)).status, 503);
+  const get = stubLiveStorage(t, f.env, () => new Response(null, { status: 404 }));
+  assert.equal((await f.fetch(path, {}, "POST")).status, 405);
+  assert.equal((await f.fetch("/v2/%2fprivate/live")).status, 400);
+  assert.equal((await f.fetch(path + "?limit=1")).status, 400);
+  assert.equal(get.mock.callCount(), 0);
+  assert.equal((await f.fetch(path)).status, 404);
+  assert.equal((await f.fetch(path)).headers.get("cache-control"), "no-store");
+  assert.equal(get.mock.callCount(), 2);
+  assert.equal(f.answers.size, 0);
+});
+
 test("forwards the opt-in agency message detail and rejects invalid values", async (t) => {
   const harness = fixture(t);
   const base = `/v2/demo/measure?measure=alert_counts&${WINDOW}`;

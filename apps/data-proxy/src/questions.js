@@ -1,8 +1,11 @@
+import { cleanDownloadStore } from "./clean-download-store.js";
 import { CORS_HEADERS, PREFLIGHT_HEADERS } from "./cors.js";
 import { parseQuestion } from "./question-params.js";
 
 export const CLOSED_TTL = 7 * 24 * 60 * 60;
 export const OPEN_TTL = 30;
+const LIVE_TTL = 5;
+const MAX_LIVE_BYTES = 8 * 1024 * 1024;
 const LAST_GOOD_TTL = 30 * 24 * 60 * 60;
 const CITY_CATALOG_KEY = "transit-city-catalog";
 const VERSION_HEADER = "x-transit-cleaning-version";
@@ -168,6 +171,37 @@ export async function probeEngine(env, signal) {
   });
 }
 
+async function serveLive(env, ctx, origin, question, visitorIp) {
+  if (env.TRANSIT1_LIVE_ENABLED === "0") return message(503, "live publication unavailable");
+  const store = cleanDownloadStore(env);
+  if (!store) return message(503, "live publication unavailable");
+  const cache = globalThis.caches?.default;
+  const key = cacheRequest(origin, question, "live");
+  const cached = await cacheMatch(cache, key);
+  if (cached) return publicAnswer(cached.body, "application/json", { cached: true });
+  const denied = await admit(env, visitorIp);
+  if (denied) return denied;
+
+  try {
+    const object = await store.get(`live/v1/${question.city}.json`);
+    if (!object) return message(404, "no live publication");
+    if (object.size > MAX_LIVE_BYTES) {
+      await object.body?.cancel();
+      return message(503, "live publication unavailable");
+    }
+    const response = publicAnswer(object.body, "application/json");
+    if (cache) {
+      const copy = new Response(response.clone().body, {
+        headers: { "cache-control": `public, max-age=${LIVE_TTL}`, "content-type": "application/json" },
+      });
+      ctx.waitUntil(cache.put(key, copy).catch(() => console.warn("Transit live cache write failed")));
+    }
+    return response;
+  } catch {
+    return message(503, "live publication unavailable");
+  }
+}
+
 async function answerQuestion(request, env, ctx, visitorIp) {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") {
@@ -185,6 +219,7 @@ async function answerQuestion(request, env, ctx, visitorIp) {
     return message(400, error instanceof URIError ? "invalid query encoding" : error.message);
   }
   if (!question) return message(404, "not found");
+  if (question.route === "live") return serveLive(env, ctx, url.origin, question, visitorIp);
 
   if (!env.ENGINE || !env.TRANSIT1_ENGINE_ACCESS_TOKEN) {
     return message(503, "engine not configured");

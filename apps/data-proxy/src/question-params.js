@@ -13,6 +13,7 @@ export const QUESTION_PARAMS = {
   },
   "search-index": { required: [], optional: [] },
   "schedule-index": { required: [], optional: [] },
+  live: { required: [], optional: [] },
   cities: { required: [], optional: [] },
   "data-health": { required: ["from", "to"], optional: [] },
   "how-we-measure": { required: [], optional: ["lang"] },
@@ -50,11 +51,11 @@ export function serviceDate(value) {
 
 export function parseQuestion(url) {
   const catalog = ["/v2/how-we-measure", "/v2/cities"].includes(url.pathname);
-  const match = /^\/v2\/([^/]+)\/(measure|ranking|data-health|search-index|schedule-index)$/.exec(url.pathname);
+  const match = /^\/v2\/([^/]+)\/(measure|ranking|data-health|search-index|schedule-index|live)$/.exec(url.pathname);
   if (!catalog && !match) return null;
 
   const [, city, route] = match ?? [null, null, url.pathname.slice("/v2/".length)];
-  if ((route === "search-index" || route === "schedule-index") && !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(city)) {
+  if (["search-index", "schedule-index", "live"].includes(route) && !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(city)) {
     throw new Error("invalid city");
   }
   const { required, optional } = QUESTION_PARAMS[route];
