@@ -91,6 +91,9 @@ jobs:
       - name: Test DB path selection
         run: node --test .github/scripts/ci-paths.test.mjs
 
+      - name: Run Worker routing tests
+        run: node --test apps/engine/test/*.test.mjs
+
       - name: Classify DB paths
         id: classify
         run: node .github/scripts/ci-paths.mjs classify

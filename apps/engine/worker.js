@@ -1,4 +1,5 @@
 import { Container } from "@cloudflare/containers";
+import { fetchEngine } from "./upstream.js";
 
 const runtimeKeys = [
   "ENGINE_CLEAN_ROOT",
@@ -39,9 +40,7 @@ export default {
         crypto.subtle.digest("SHA-256", encoder.encode(`Bearer ${token}`)),
       ]);
       if (crypto.subtle.timingSafeEqual(provided, expected)) {
-        const upstream = new Request(request);
-        upstream.headers.delete("Authorization");
-        return env.ENGINE.getByName("network").fetch(upstream);
+        return fetchEngine(request, env);
       }
     }
     return Response.json({ message: "Unauthorized" }, {

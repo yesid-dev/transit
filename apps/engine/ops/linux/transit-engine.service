@@ -1,0 +1,26 @@
+[Unit]
+Description=Transit query engine (local clean tables)
+After=local-fs.target
+
+[Service]
+DynamicUser=yes
+EnvironmentFile=/etc/transit-engine/engine.env
+LoadCredential=engine-token:/etc/transit-engine/engine-token
+Environment=ENGINE_ACCESS_TOKEN_FILE=%d/engine-token
+Environment=ENGINE_PROVIDER_DECLARATIONS=/opt/transit-engine/apps/db/config/providers
+Environment=ENGINE_HOST=127.0.0.1 ENGINE_PORT=8081
+Environment=ENGINE_CONCURRENCY=1 ENGINE_QUERY_THREADS=2 ENGINE_QUERY_MEMORY_MIB=1024
+ExecStart=/opt/transit-engine/apps/engine/.venv/bin/transit-engine
+Restart=on-failure
+RestartSec=3s
+MemoryHigh=1792M
+MemoryMax=2048M
+CPUWeight=25
+CPUQuota=200%
+Nice=10
+IOWeight=25
+ProtectSystem=strict
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -374,11 +374,64 @@ commands against the mapped port.
 
 Run the **Deploy Transit Engine** workflow from `main` and supply a provider and a measured
 service date for the smoke check. GitHub Actions builds the image and deploys the Worker with
-the pinned Wrangler. The Worker reads `s3://transit-clean` directly through DuckDB `httpfs`
-using the repository's read-only R2 credentials. It forwards authenticated requests to one
-`standard-1` container, which sleeps after five idle minutes.
+the pinned Wrangler. The Worker sends authenticated requests to the HTTPS origin in
+`TRANSIT1_ENGINE_ORIGIN` when that GitHub repository variable is set. A network or gateway
+failure sends the request to one `standard-1` Container. The Worker passes busy responses with
+`Retry-After` through and returns 504 if its own 25-second origin deadline expires.
+The Container reads `s3://transit-clean` through DuckDB `httpfs` and sleeps after five idle minutes.
 
 Use the `workers.dev` URL from the workflow with `--url` for timing and burst. Supply
 `TRANSIT1_ENGINE_ACCESS_TOKEN` through your secret manager. Both harnesses use it as a
 bearer token over HTTPS. The burst needs a complete clean day for each request and uses
 `--memory-limit-mib 4096` for `standard-1`.
+
+## Engine on the capture VM
+
+The units in `ops/linux` require Linux with systemd and cgroup v2. Install rclone and cloudflared
+at `/usr/local/bin`. Install this checkout under `/opt/transit-engine` with its provider
+declarations and `.python-version`. From its `apps/engine` directory, install the locked engine
+with `uv sync --managed-python --locked --no-dev --no-editable`. Use a uv Python install
+directory readable and traversable by the service users under `/opt/transit-engine`.
+
+Install the service and timer files under `/etc/systemd/system`. Keep `engine.env`,
+`r2.env`, `engine-token` and `tunnel-credentials.json` in `/etc/transit-engine`, owned by
+root with mode 0600. `r2.env` supplies `TRANSIT1_R2_ENDPOINT`,
+`TRANSIT1_R2_READ_ACCESS_KEY_ID` and `TRANSIT1_R2_READ_SECRET_ACCESS_KEY`.
+`engine-token` contains the existing engine bearer on one line. Create the system user
+`transit-engine-sync` without a login shell and give it ownership of
+`/var/lib/transit-engine/clean` with mode 0755. The engine and tunnel run as dynamic users.
+
+The locally managed tunnel `transit-engine-vm` uses `/etc/cloudflared/config.yml`
+to route `transit-engine-origin.yesid.dev` to `http://127.0.0.1:8081` with a final
+`http_status:404` rule. The engine requires the bearer on every HTTP route. Systemd
+provides credential copies to the services from their root-only source files.
+
+Run the first sync before starting the engine and tunnel. The sync lists completed days and
+checks disk capacity before writing. It verifies each day's files against the cleaner's
+SHA-256 digests and publishes the manifest last. It skips days it already published and
+copies new `search/v1` schedule indexes. The timer runs at 17:30 UTC, 73 minutes after the
+nightly cleaner starts. Watch the filesystem when changing versions. The mirror keeps
+existing versions and refuses writes that would take free space below 32 GiB.
+
+```sh
+# Install or update the units, then sync now.
+sudo systemctl daemon-reload
+sudo systemctl start transit-engine-sync.service
+
+# Start the engine, tunnel and scheduled sync.
+sudo systemctl enable --now transit-engine.service transit-engine-tunnel.service transit-engine-sync.timer
+
+# Check current state, next sync and logs.
+systemctl status transit-engine.service transit-engine-tunnel.service
+systemctl list-timers transit-engine-sync.timer
+sudo journalctl -u transit-engine.service -u transit-engine-sync.service -u transit-engine-tunnel.service
+
+# Stop the VM query services and sync timer.
+sudo systemctl stop transit-engine-tunnel.service transit-engine.service transit-engine-sync.timer transit-engine-sync.service
+```
+
+For rollout, verify the synchronized cleaning version and authenticated queries directly through
+the tunnel. Run **Deploy Transit Engine** from `main` with `TRANSIT1_ENGINE_ORIGIN` unset and
+verify the Container path. Set the variable to `https://transit-engine-origin.yesid.dev/` and run
+the workflow again, then verify the Worker through the tunnel. For Container-only operation,
+clear the variable and rerun the workflow.

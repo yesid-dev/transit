@@ -830,7 +830,11 @@ def test_explicit_audit_detects_same_size_corruption(store: Store, remote: bool)
 
 
 async def http(
-    app: Engine, path: str, query_string: str = ""
+    app: Engine,
+    path: str,
+    query_string: str = "",
+    *,
+    authorization: tuple[bytes, ...] = (),
 ) -> tuple[int, dict[bytes, bytes], bytes]:
     scope = cast(
         HTTPScope,
@@ -839,6 +843,7 @@ async def http(
             "method": "GET",
             "path": path,
             "query_string": query_string.encode(),
+            "headers": [(b"authorization", value) for value in authorization],
         },
     )
     messages: list[ASGISendEvent] = []
@@ -853,6 +858,21 @@ async def http(
     start, body = messages
     assert start["type"] == "http.response.start" and body["type"] == "http.response.body"
     return start["status"], dict(start["headers"]), body.get("body", b"")
+
+
+def test_private_engine_requires_bearer_even_on_health_endpoint(store: Store) -> None:
+    app = Engine(store, 1, 0, 50, access_token=b"test-engine-token")
+
+    async def run() -> None:
+        good = b"Bearer test-engine-token"
+        for values in ((), (b"Bearer wrong",), (good, good)):
+            status, headers, _ = await http(app, "/healthz", authorization=values)
+            assert status == 401
+            assert headers[b"www-authenticate"] == b"Bearer"
+        status, _, _ = await http(app, "/healthz", authorization=(good,))
+        assert status == 200
+
+    asyncio.run(run())
 
 
 @pytest.mark.parametrize("family", ["punctuality", "service_delivered"])

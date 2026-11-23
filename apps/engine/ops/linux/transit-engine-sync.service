@@ -1,0 +1,21 @@
+[Unit]
+Description=Mirror completed Transit clean days from R2
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=transit-engine-sync
+EnvironmentFile=/etc/transit-engine/engine.env
+EnvironmentFile=/etc/transit-engine/r2.env
+ExecStart=/opt/transit-engine/apps/engine/.venv/bin/python -m transit_engine.sync_clean
+UMask=0022
+MemoryMax=384M
+CPUWeight=10
+CPUQuota=50%
+Nice=15
+IOWeight=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/transit-engine/clean

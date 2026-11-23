@@ -5,6 +5,8 @@ import os
 import re
 import sys
 from datetime import date
+from hmac import compare_digest
+from pathlib import Path
 from typing import Any, Literal, cast
 from urllib.parse import parse_qs
 from uuid import uuid4
@@ -57,6 +59,8 @@ async def respond(
     ]
     if status == 503:
         headers.append((b"retry-after", b"1"))
+    if status == 401:
+        headers.append((b"www-authenticate", b"Bearer"))
     if cleaning_version is not None:
         headers.append((b"x-transit-cleaning-version", str(cleaning_version).encode("ascii")))
     if days_pending is not None:
@@ -200,19 +204,33 @@ def _health(raw: bytes) -> tuple[str, date, date]:
 
 
 class Engine:
-    def __init__(self, store: Store, concurrency: int, queue_size: int, queue_wait_ms: int):
+    def __init__(
+        self,
+        store: Store,
+        concurrency: int,
+        queue_size: int,
+        queue_wait_ms: int,
+        *,
+        access_token: bytes | None = None,
+    ):
         self.store = store
         self.slots = asyncio.BoundedSemaphore(concurrency)
         self.queue_size = queue_size
         self.queue_timeout = queue_wait_ms / 1000
         self.waiting = 0
         self.boot_id = uuid4().hex
+        self.authorization = b"Bearer " + access_token if access_token else None
 
     async def __call__(
         self, scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable
     ) -> None:
         if scope["type"] != "http":
             raise RuntimeError("Only HTTP is supported")
+        if self.authorization is not None:
+            provided = [value for name, value in scope["headers"] if name == b"authorization"]
+            if len(provided) != 1 or not compare_digest(provided[0], self.authorization):
+                await respond(send, 401, {"message": "Unauthorized"})
+                return
         if scope["method"] != "GET":
             await respond(send, 405, {"message": "use GET"})
             return
@@ -364,11 +382,18 @@ class Engine:
 
 def main() -> None:
     store = Store.from_env()
+    token_file = os.environ.get("ENGINE_ACCESS_TOKEN_FILE")
+    access_token = None
+    if token_file is not None:
+        access_token = Path(token_file).read_bytes().rstrip(b"\r\n")
+        if not re.fullmatch(rb"[!-~]+", access_token):
+            raise ValueError("ENGINE_ACCESS_TOKEN_FILE must hold one nonempty bearer token")
     app = Engine(
         store,
         concurrency=env_int("ENGINE_CONCURRENCY", 2),
         queue_size=env_int("ENGINE_QUEUE_SIZE", 16, minimum=0),
         queue_wait_ms=env_int("ENGINE_QUEUE_WAIT_MS", 5000),
+        access_token=access_token,
     )
     uvicorn.run(
         app,

@@ -6,6 +6,7 @@
   "workers_dev": true,
   "preview_urls": false,
   "vars": {
+    "ENGINE_ORIGIN": "",
     "ENGINE_CLEAN_ROOT": "s3://transit-clean",
     "ENGINE_CLEANING_VERSION": "10"
   },
