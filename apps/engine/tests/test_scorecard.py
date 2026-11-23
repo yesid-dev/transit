@@ -18,7 +18,7 @@ from transit_engine import measures, scorecard
 from transit_engine.clean_manifest import FEED_POLLS, PREDICTION_SAMPLES, VEHICLE_POSITIONS
 from transit_engine.measures import Question, answer_csv, ask, methods
 from transit_engine.server import Engine
-from transit_engine.store import DEFAULT_CLEANING_VERSION, Store
+from transit_engine.store import Store
 
 CITY = "fixture_city"
 FAMILY = "open_data_scorecard"
@@ -80,7 +80,7 @@ def sample(
     }
     stores = {
         day: _build_store(
-            tmp_path, 6 if day == FRIDAY else DEFAULT_CLEANING_VERSION, {day: rows}, city=CITY
+            tmp_path, 6 if day == FRIDAY else 11, {day: rows}, city=CITY
         )
         for day, rows in trips.items()
     }
@@ -190,7 +190,7 @@ def sample(
                 [(*row, row.start) for row in vehicles[day]],
                 city=CITY,
             )
-            if store.cleaning_version == DEFAULT_CLEANING_VERSION:
+            if store.cleaning_version == 11:
                 samples = (
                     [
                         (
@@ -209,6 +209,7 @@ def sample(
                             (3, "vehicle_stopped", errors[:-11]),
                             (1, "trip_update_reported", [999] * 3),
                             (1, "trip_update_passed", [999] * 2),
+                            (1, "vehicle_nearby", [999] * 4),
                         )
                         for i, error in enumerate(data)
                     ]
@@ -234,7 +235,7 @@ def sample(
                 "unpublished_vehicle_fields": ["stop"] if day == SATURDAY else ["stop", "position"],
             }
             marker.write_text(json.dumps(receipt), encoding="utf-8")
-    return Store(tmp_path.as_posix()), polls, vehicles, errors
+    return Store(tmp_path.as_posix(), cleaning_version=11), polls, vehicles, errors
 
 
 @pytest.mark.parametrize("measure", ["poll_success", "feed_age_at_capture", "feed_update_interval"])
@@ -417,7 +418,7 @@ def test_scorecard_matches_plain_python(
     )
     assert evidence["measure_days"]["live_trip_coverage"]["days_not_measured"] == [str(SATURDAY)]
     assert evidence["measure_days"]["prediction_error"]["days_not_measured"] == [str(FRIDAY)]
-    assert evidence["cleaning_versions"] == [6, DEFAULT_CLEANING_VERSION]
+    assert evidence["cleaning_versions"] == [6, 11]
 
     prediction = values["prediction_error"]["1"]
     assert prediction["sample_count"] == len(errors)
@@ -430,6 +431,7 @@ def test_scorecard_matches_plain_python(
     )
     assert counts["prediction_error"]["1"]["by_basis"] == {
         "vehicle_stopped": 40,
+        "vehicle_nearby": 4,
         "trip_update_reported": 3,
         "trip_update_passed": 2,
     }

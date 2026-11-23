@@ -34,6 +34,9 @@ it('shows all timing sources and warns only when most times are predictions', ()
 	expect(timingBasis({ vehicle_stopped: 50, trip_update_passed: 50 }, 'en')).toBe(
 		'Observed times: 50% vehicle reported stopped, 50% last prediction before the vehicle passed.',
 	);
+	expect(timingBasis({ vehicle_nearby: 60, trip_update_passed: 40 }, 'en')).toBe(
+		'Observed times: 60% vehicle GPS near the stop, 40% last prediction before the vehicle passed.',
+	);
 	expect(
 		timingBasis(
 			{

@@ -1,6 +1,6 @@
 {
-  "plain_counts": {"trip_state": {"ran": 84, "cancelled": 2, "missing": 0, "unconfirmed": 3, "not_measured": 0, "added": 0}, "basis": {"vehicle_stopped": 206, "trip_update_reported": 0, "trip_update_passed": 451, "not_observed": 669}, "punctuality": {"classified": 657, "on_time": 567, "early": 88, "late": 2}},
-  "clean_counts": {"trip_state": {"ran": 84, "cancelled": 2, "missing": 0, "unconfirmed": 3, "not_measured": 0, "added": 0}, "basis": {"vehicle_stopped": 206, "trip_update_reported": 0, "trip_update_passed": 450, "not_observed": 670}, "punctuality": {"classified": 656, "on_time": 567, "early": 87, "late": 2}},
+  "plain_counts": {"trip_state": {"ran": 84, "cancelled": 2, "missing": 0, "unconfirmed": 3, "not_measured": 0, "added": 0}, "basis": {"vehicle_stopped": 206, "vehicle_nearby": 0, "trip_update_reported": 0, "trip_update_passed": 451, "not_observed": 669}, "punctuality": {"classified": 657, "on_time": 567, "early": 88, "late": 2}},
+  "clean_counts": {"trip_state": {"ran": 84, "cancelled": 2, "missing": 0, "unconfirmed": 3, "not_measured": 0, "added": 0}, "basis": {"vehicle_stopped": 206, "vehicle_nearby": 0, "trip_update_reported": 0, "trip_update_passed": 450, "not_observed": 670}, "punctuality": {"classified": 656, "on_time": 567, "early": 87, "late": 2}},
   "trips": [],
   "stops": [
     [["302218773", 4], {"stop_id": "55886", "arrival": 1794750934, "departure": 1794750934, "basis": "trip_update_passed", "observed": 1794750870, "event": "arrival", "delay": -64, "punctuality": "early"}, {"stop_id": "55886", "arrival": 1794750934, "departure": 1794750934, "basis": "not_observed", "observed": null, "event": null, "delay": null, "punctuality": null}]

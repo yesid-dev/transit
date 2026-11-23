@@ -16,8 +16,9 @@ the overnight vehicle evidence. Polls containing only unrelated entities are
 omitted. This fixture exercises trip and stop evidence. It does not establish
 full-network poll coverage.
 
-`expected.json` records the v10 comparison for those lines. Both methods now
-agree on the service day, including six Saturday trips that v8 added on Sunday
+`expected.json` records the v11 comparison for those lines. The extract includes
+stopped reports, so both methods record zero GPS proximity observations. Both
+methods agree on the service day, including six Saturday trips that v8 added on Sunday
 (47 stop rows) and six Sunday trips that v8 lost when the feed labelled their
 observations Monday (31 stop rows).
 

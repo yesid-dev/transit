@@ -334,7 +334,11 @@ def _stage(
         ),
         "basis": Counter(
             dict.fromkeys(
-                ("vehicle_stopped", "trip_update_reported", "trip_update_passed", "not_observed"), 0
+                (
+                    "vehicle_stopped", "vehicle_nearby", "trip_update_reported",
+                    "trip_update_passed", "not_observed",
+                ),
+                0,
             )
         ),
     }

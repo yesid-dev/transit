@@ -180,6 +180,7 @@ export function timingBasis(counts: Counts | undefined, locale: Locale) {
 	if (!counts) return '';
 	const bases = [
 		['vehicle_stopped', 'vehicle reported stopped', 'véhicule signalé à l’arrêt'],
+		['vehicle_nearby', 'vehicle GPS near the stop', 'GPS du véhicule près de l’arrêt'],
 		['trip_update_reported', 'time reported by the agency', 'heure signalée par l’agence'],
 		[
 			'trip_update_passed',

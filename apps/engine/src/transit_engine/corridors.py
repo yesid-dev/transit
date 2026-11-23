@@ -48,7 +48,8 @@ CORRIDOR_RUNS_SQL = f"""
                     THEN 'missing_observation'
                 WHEN basis <> to_basis
                     OR basis NOT IN (
-                        'vehicle_stopped', 'trip_update_reported', 'trip_update_passed'
+                        'vehicle_stopped', 'vehicle_nearby',
+                        'trip_update_reported', 'trip_update_passed'
                     )
                     THEN 'incomparable_basis'
                 WHEN scheduled_seconds IS NULL OR scheduled_seconds <= 0

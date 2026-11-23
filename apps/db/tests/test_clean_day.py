@@ -7,6 +7,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any, BinaryIO, cast
 from zipfile import ZipFile
+from zoneinfo import ZoneInfo
 
 import boto3
 import duckdb
@@ -14,6 +15,7 @@ import pytest
 from botocore.exceptions import ClientError
 from google.transit.gtfs_realtime_pb2 import Alert, FeedMessage, TripDescriptor, VehiclePosition
 from history_fixtures import scripted_feed_day
+from plain_day import Capture, recompute
 from typer.testing import CliRunner
 
 from transit_ops import clean_day_inputs
@@ -106,7 +108,10 @@ def _save(
     path.write_bytes(payload)
 
 
-def test_gps_passage_corroborates_forecast_between_two_unambiguous_stops(tmp_path: Path) -> None:
+@pytest.mark.parametrize("has_stopped", [False, True])
+def test_gps_observation_requires_a_feed_without_stopped_reports(
+    tmp_path: Path, has_stopped: bool
+) -> None:
     edition = _edition(
         tmp_path / "schedule.zip",
         {"gps": ("r", ["12:00:00", "12:02:00", "12:03:00", "12:04:00"])},
@@ -117,40 +122,86 @@ def test_gps_passage_corroborates_forecast_between_two_unambiguous_stops(tmp_pat
         json.dumps({"provider": "stm", "editions": [edition]}), encoding="utf-8"
     )
     noon = datetime(2026, 6, 1, 16, tzinfo=UTC)
-    for published, forecasts in ((0, {1: 20, 2: 120, 3: 190}), (170, {2: 180})):
+    captures: list[Capture] = []
+    for published, forecasts in (
+        (0, {1: 20, 2: 120, 3: 190}),
+        (170, {2: 180 if has_stopped else 125}),
+    ):
         captured = noon + timedelta(seconds=published)
         feed = _feed(captured)
         update = feed.entity.add(id="forecast").trip_update
         update.trip.trip_id, update.trip.start_date = "gps", "20260601"
-        update.vehicle.id = "bus"
+        update.vehicle.id = "vehicle"
         for sequence, estimate in forecasts.items():
             event = update.stop_time_update.add(stop_sequence=sequence).arrival
             event.time = int(noon.timestamp()) + estimate
+            if estimate < published:
+                event.uncertainty = 0
         _save(tmp_path, feed, "trip_updates", captured)
+        captures.append(("trip_updates", captured, feed.SerializeToString()))
     for seconds, longitude, ident in (
-        (80, -73.61, "bus"),
-        (140, -73.621, "different-bus"),
-        (160, -73.6205, "bus"),
-        (240, -73.621, "bus"),
+        (-60, -73.6, "vehicle"),
+        (0, -73.6001, "vehicle"),
+        (50, -73.608, "vehicle"),
+        (80, -73.6102, "vehicle"),
+        (100, -73.61, "vehicle"),
+        (140, -73.621, "other-vehicle"),
+        (160, -73.6205, "vehicle"),  # Within 50 m of both stops 3 and 4.
+        (240, -73.621, "vehicle"),
+        (300, -73.622, "gapped-vehicle"),
+        (500, -73.621, "gapped-vehicle"),  # An outside fix 200 seconds earlier is too old.
     ):
         captured = noon + timedelta(seconds=seconds)
         feed = _feed(captured)
         vehicle = feed.entity.add(id="gps").vehicle
         vehicle.trip.trip_id, vehicle.trip.start_date = "gps", "20260601"
         vehicle.vehicle.id = ident
+        if seconds == 100:
+            vehicle.current_status = VehiclePosition.IN_TRANSIT_TO
         vehicle.position.latitude, vehicle.position.longitude = 45.5, longitude
         _save(tmp_path, feed, "vehicle_positions", captured)
+        captures.append(("vehicle_positions", captured, feed.SerializeToString()))
+    if has_stopped:
+        captured = noon + timedelta(minutes=5)
+        feed = _feed(captured)
+        vehicle = feed.entity.add(id="elsewhere").vehicle
+        vehicle.current_status = VehiclePosition.STOPPED_AT
+        _save(tmp_path, feed, "vehicle_positions", captured)
+        captures.append(("vehicle_positions", captured, feed.SerializeToString()))
+    else:
+        captured = noon + timedelta(seconds=270)
+        feed = _feed(captured)
+        update = feed.entity.add(id="exact").trip_update
+        update.trip.trip_id, update.trip.start_date = "gps", "20260601"
+        event = update.stop_time_update.add(stop_sequence=4).arrival
+        event.time = int(noon.timestamp()) + 240
+        event.uncertainty = 0
+        _save(tmp_path, feed, "trip_updates", captured)
+        captures.append(("trip_updates", captured, feed.SerializeToString()))
     with duckdb.connect() as db:
         rows = _rows(db, _run(tmp_path, DAY) / "stop_events.parquet")
-    assert [
-        (row["stop_sequence"], row["basis"], row["delay_seconds"])
-        for row in sorted(rows, key=lambda row: row["stop_sequence"])
-    ] == [
-        (1, "not_observed", None),
-        (2, "trip_update_passed", 60),
-        (3, "trip_update_passed", 10),
-        (4, "not_observed", None),
-    ]
+    by_sequence = {row["stop_sequence"]: row for row in rows}
+    _, _, plain = recompute(
+        tmp_path / "schedule.zip", captures, DAY, {"r"},
+        zone=ZoneInfo("America/Toronto"), no_live_types=set(),
+    )
+    if has_stopped:
+        assert [by_sequence[seq]["basis"] for seq in range(1, 5)] == [
+            "trip_update_passed", "trip_update_passed", "trip_update_passed", "not_observed",
+        ]
+        assert by_sequence[2]["delay_seconds"] == 60
+        assert not any(reading.basis == "vehicle_nearby" for reading in plain.values())
+    else:
+        for seq, seconds, event in ((1, 0, "departure"), (2, 73, "arrival")):
+            row = by_sequence[seq]
+            assert row["basis"] == "vehicle_nearby"
+            assert row["observed_event"] == event
+            observed = noon + timedelta(seconds=seconds)
+            assert row["observed_at_utc"] == observed
+            assert plain["gps", seq].basis == "vehicle_nearby"
+            assert plain["gps", seq].second == int(observed.timestamp())
+        assert by_sequence[3]["basis"] == "trip_update_passed"
+        assert by_sequence[4]["basis"] == plain["gps", 4].basis == "trip_update_reported"
 
 
 def test_overnight_origin_departure_terminus_and_stop_capture_gap(tmp_path: Path) -> None:

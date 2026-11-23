@@ -47,10 +47,12 @@ from transit_ops.providers.schedule_archive import ArchiveScheduleContext
 # Allow normal GPS and platform-coordinate error on these urban networks while
 # requiring proximity on the scale of a stop, rather than a route segment.
 STOPPED_AT_RADIUS_METRES = 50
+# Allow two p90 fix intervals at the measured slower feed cadence.
+GPS_ENTRY_MAX_GAP_SECONDS = 160
 # Require several opportunities to see early reporting around departure, even
 # for short trips, at the providers' normal 20–60 second feed cadences.
 ABSENCE_LEAD_SECONDS = 300
-CLEANING_VERSION = "10"
+CLEANING_VERSION = "11"
 PREDICTION_HORIZONS_MINUTES = (1, 3, 5, 10, 15, 20, 30)
 _PREDICTION_HORIZONS_SECONDS = tuple(minutes * 60 for minutes in PREDICTION_HORIZONS_MINUTES)
 _PREDICTION_LIMIT_SECONDS = 40 * 60
@@ -69,13 +71,16 @@ _SKIPPED_OR_NO_DATA = {TripUpdate.StopTimeUpdate.SKIPPED, TripUpdate.StopTimeUpd
 
 type State = Literal["ran", "cancelled", "missing", "unconfirmed", "not_measured", "added"]
 type StateReason = Literal["route_without_live_data", "capture_gap"]
-type Basis = Literal["vehicle_stopped", "trip_update_reported", "trip_update_passed"]
+type Basis = Literal[
+    "vehicle_stopped", "vehicle_nearby", "trip_update_reported", "trip_update_passed"
+]
 type Event = Literal["arrival", "departure"]
 type Row = tuple[object, ...]
 _BASIS_RANK: dict[Basis, int] = {
     "vehicle_stopped": 0,
-    "trip_update_reported": 1,
-    "trip_update_passed": 2,
+    "vehicle_nearby": 1,
+    "trip_update_reported": 2,
+    "trip_update_passed": 3,
 }
 
 
@@ -158,6 +163,110 @@ class Trip:
                 seconds.insert(index, reading.second)
 
 
+class GPSFix(NamedTuple):
+    trip_id: str
+    service_date: date | None
+    second: int
+    latitude: float
+    longitude: float
+
+
+class NearbyStop(NamedTuple):
+    sequence: int
+    distance: float
+    latitude: float
+    longitude: float
+
+    def entry_second(self, previous: GPSFix | None, second: int) -> int | None:
+        if previous is None or not 0 < second - previous.second <= GPS_ENTRY_MAX_GAP_SECONDS:
+            return None
+        before = distance_metres(
+            previous.latitude, previous.longitude, self.latitude, self.longitude
+        )
+        if before <= STOPPED_AT_RADIUS_METRES:
+            return None
+        fraction = (before - STOPPED_AT_RADIUS_METRES) / (before - self.distance)
+        return round(previous.second + fraction * (second - previous.second))
+
+
+@dataclass(slots=True)
+class NearbyVisits:
+    # Keep only forward visits by a single vehicle within this trip instance.
+    sequence: int = -1
+    second: int = -1
+    readings: dict[int, int] = field(default_factory=dict)
+
+    def record(
+        self, stop: NearbyStop, second: int, previous: GPSFix | None, origin: int
+    ) -> None:
+        if stop.sequence < self.sequence or second <= self.second:
+            return
+        if stop.sequence == origin:
+            self.readings[origin] = second
+        elif stop.sequence > self.sequence:
+            entry = stop.entry_second(previous, second)
+            if entry is not None:
+                self.readings[stop.sequence] = entry
+        self.sequence, self.second = stop.sequence, second
+
+    def apply(self, trip: Trip, vehicle: str) -> None:
+        assert trip.endpoints is not None
+        origin = trip.endpoints[0]
+        for seq, second in self.readings.items():
+            if seq == origin and self.sequence == origin:
+                continue
+            event: Event = "departure" if seq == origin else "arrival"
+            trip.stops[seq].observe(Reading(second, vehicle, "vehicle_nearby", event))
+
+
+@dataclass(slots=True)
+class NearbyFeed:
+    visits: dict[tuple[str, str], NearbyVisits] = field(default_factory=dict)
+    fixes: dict[str, GPSFix] = field(default_factory=dict)
+
+
+def _position_coords(position: VehiclePosition) -> tuple[float, float] | None:
+    if not position.HasField("position") or not position.position.IsInitialized():
+        return None
+    lat, lon = position.position.latitude, position.position.longitude
+    return (lat, lon) if validate_wgs84_position(lat, lon) == "valid_wgs84" else None
+
+
+def _nearby_visit(
+    trip: Trip,
+    position: VehiclePosition,
+    schedule: ArchiveScheduleContext,
+    day: date,
+) -> NearbyStop | None:
+    if (coords := _position_coords(position)) is None:
+        return None
+    lat, lon = coords
+    sequence = (
+        position.current_stop_sequence if position.HasField("current_stop_sequence") else None
+    )
+    located = trip.locate(sequence, position.stop_id)
+    match = None
+    ambiguous = False
+    for seq, stop in trip.stops.items():
+        point = schedule.stop(day, stop.stop_id)
+        if point is None or point.lat is None or point.lon is None:
+            continue
+        # More than 50 m of latitude alone cannot fit the stop radius.
+        if abs(lat - point.lat) > 0.00046:
+            continue
+        if validate_wgs84_position(point.lat, point.lon) != "valid_wgs84":
+            continue
+        distance = distance_metres(lat, lon, point.lat, point.lon)
+        if distance > STOPPED_AT_RADIUS_METRES:
+            continue
+        nearby = NearbyStop(seq, distance, point.lat, point.lon)
+        if located is not None and seq == located[0]:
+            return nearby
+        ambiguous |= match is not None
+        match = nearby
+    return None if ambiguous else match
+
+
 def _timestamp(value: int | None) -> datetime | None:
     return datetime.fromtimestamp(value, UTC) if value is not None else None
 
@@ -217,24 +326,35 @@ def _near_stop(position: VehiclePosition, stop: ScheduledStop | None) -> bool:
 
 
 def _vehicle(
-    trip: Trip, position: VehiclePosition, stamp: int, schedule: ArchiveScheduleContext, day: date
+    trip: Trip,
+    position: VehiclePosition,
+    stamp: int,
+    schedule: ArchiveScheduleContext,
+    day: date,
+    nearby: NearbyFeed | None,
+    previous_fix: GPSFix | None,
 ) -> None:
     sequence = (
         position.current_stop_sequence if position.HasField("current_stop_sequence") else None
     )
     vehicle = position.vehicle.id or None
     gps_only = sequence is None and not position.stop_id
+    match = None
     if gps_only:
         if not vehicle or trip.added or not position.HasField("position"):
             return
-        located = None
-        for seq, stop in trip.stops.items():
-            if _near_stop(position, schedule.stop(day, stop.stop_id)):
-                if located is not None:
-                    return  # The position fits more than one visit on this trip.
-                located = seq, stop
+        match = _nearby_visit(trip, position, schedule, day)
+        located = (match.sequence, trip.stops[match.sequence]) if match is not None else None
     else:
         located = trip.locate(sequence, position.stop_id)
+    if nearby is not None and vehicle and trip.endpoints is not None:
+        if not gps_only:
+            match = _nearby_visit(trip, position, schedule, day)
+        if match is not None:
+            key = position.trip.trip_id, vehicle
+            if (visits := nearby.visits.get(key)) is None:
+                nearby.visits[key] = visits = NearbyVisits()
+            visits.record(match, stamp, previous_fix, trip.endpoints[0])
     if located is None:
         return
     seq, stop = located
@@ -712,6 +832,8 @@ def _build_clean_day(
 
     seen: dict[tuple[str, bytes], FeedPoll] = {}
     last_vehicle: dict[str, VehicleStateInterval] = {}
+    stopped_feeds: set[str] = set()
+    nearby: dict[str, NearbyFeed] = {}
     polls: list[PollFacts] = []
     prior_capture: datetime | None = None
     for capture in captures:
@@ -759,12 +881,38 @@ def _build_clean_day(
                 live: TripUpdate | VehiclePosition = entity.trip_update
             elif capture.family == "vehicle_positions" and entity.HasField("vehicle"):
                 live = entity.vehicle
+                if (
+                    live.HasField("current_status")
+                    and live.current_status == VehiclePosition.STOPPED_AT
+                ):
+                    stopped_feeds.add(capture.feed)
+                    nearby.pop(capture.feed, None)
             else:
                 continue
             has_trip = live.HasField("trip")
             stamp = min(live.timestamp or feed_second, capture_second)
             desc = live.trip
             dated = trip_date(desc, stamp, is_update) if has_trip else None
+            nearby_feed = None
+            previous_fix = None
+            if (
+                isinstance(live, VehiclePosition)
+                and live.vehicle.id
+                and capture.feed not in stopped_feeds
+                and (coords := _position_coords(live)) is not None
+            ):
+                candidates = nearby.get(capture.feed)
+                if candidates is None:
+                    nearby[capture.feed] = candidates = NearbyFeed()
+                previous = candidates.fixes.get(live.vehicle.id)
+                if previous is None or stamp > previous.second:
+                    nearby_feed = candidates
+                    trip_id = desc.trip_id if desc.schedule_relationship not in _REMOVED else ""
+                    candidates.fixes[live.vehicle.id] = GPSFix(trip_id, dated, stamp, *coords)
+                    if previous is not None and (previous.trip_id, previous.service_date) == (
+                        trip_id, dated
+                    ):
+                        previous_fix = previous
             if (
                 dated is None
                 and has_trip
@@ -835,7 +983,10 @@ def _build_clean_day(
             if isinstance(live, TripUpdate):
                 _update(trip, live, stamp, captured)
             elif desc.schedule_relationship not in _REMOVED:
-                _vehicle(trip, live, stamp, schedule, day)
+                _vehicle(trip, live, stamp, schedule, day, nearby_feed, previous_fix)
+    for nearby_feed in nearby.values():
+        for (trip_id, vehicle), visits in nearby_feed.visits.items():
+            visits.apply(trips[trip_id], vehicle)
     for trip in trips.values():
         trip.discard_reversed_readings()
     usable = usable_polls(

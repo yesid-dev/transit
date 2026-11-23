@@ -634,6 +634,7 @@ def test_bands_use_exact_thresholds(tmp_path: Path, cleaning_version: int) -> No
         "on_time": 16,
         "late": 8,
         "vehicle_stopped": 0,
+        "vehicle_nearby": 0,
         "trip_update_reported": 32,
         "trip_update_passed": 0,
     }
@@ -677,7 +678,8 @@ def test_multi_day_line_agrees_with_independent_recomputation(
     )
     assert evidence["counts"] == {
         "scheduled": len(scheduled), "classified": len(observed), **bands,
-        "vehicle_stopped": 0, "trip_update_reported": len(observed), "trip_update_passed": 0,
+        "vehicle_stopped": 0, "vehicle_nearby": 0,
+        "trip_update_reported": len(observed), "trip_update_passed": 0,
     }
     assert sum(bands.values()) == len(observed) <= len(scheduled)
     assert evidence["share_observed"] == len(observed) / len(scheduled)
@@ -1117,16 +1119,16 @@ def _long_range_answers(
 
 
 def test_long_range_matches_baseline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # Canonical JSON digests with the revised statistics and v10 method text.
+    # Canonical JSON digests with the revised statistics and v11 basis and method text.
     # The fixture spans two query batches, a DST transition, and one missing day.
     expected = {
-        "network": "192e4d0068ae642b0103df2507cf76d1f4960304b8274b7b9048855bb4a94483",
-        "line": "2af04f8514c2b148da4fdc3c94d3040f59bb149a8eedf01d49ed12e9d9814e42",
-        "grid": "0fa480f1186ca9be2004df3fc5fbc11dc5ab19547444c6a84116642350200953",
+        "network": "ac977cb6a6f1e87262a0f718f843e1dda277e6c2f22bd65aa5b2309a6d2c131e",
+        "line": "f2e32cf4de38bbdeb4e32c748f3ac424ea0c5f77a76fbb897ca1e64389dea67a",
+        "grid": "f4aee9d539ccab0b32bedfac1bdabd55541410ada1992f85b9da3c5c40bca1d4",
         "delivery": "c0585d214d9f18d8760df1ddf5353865b073cede0f1077ab72b93a6efecf57ad",
-        "line_rank": "0b84b0d64d279918d3e6bd7d7b242902601f470c8df630b4300af5af9eab13ba",
-        "stop_rank": "33fd2c190c155ea817116beb6dbfdd58c963f1aeeb14d8df12567fac7915523c",
-        "departure_rank": "e2f1c015f062e9fc1c0daa07325d99876b0d8823440f4c7773c9a50821cc97bf",
+        "line_rank": "cdca9252102f588ae33cc6d01adb85fe6d5a01ba86bdc8c43af8c7f302305122",
+        "stop_rank": "a6dbd3c760292cc78e37ff9335c024eed56ff030514f7e61b99d46cea731854a",
+        "departure_rank": "6197f7211a721a412fb8e671278340b2b4e8861e3aec3bd0def3fc03e3a7f170",
     }
     answers = _long_range_answers(tmp_path, monkeypatch)
     assert {

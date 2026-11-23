@@ -173,12 +173,12 @@ def stop_sequence(stops: dict[int, Stop], item, field: str) -> int | None:
     return matches[0] if len(matches) == 1 else None
 
 
-def within_50_metres(a: tuple[float, float], b: tuple[float, float]) -> bool:
+def separation(a: tuple[float, float], b: tuple[float, float]) -> float:
     lat, lon = map(radians, a)
     stop_lat, stop_lon = map(radians, b)
     haversine = sin((lat - stop_lat) / 2) ** 2
     haversine += cos(lat) * cos(stop_lat) * sin((lon - stop_lon) / 2) ** 2
-    return 2 * 6_371_008.8 * asin(sqrt(min(1.0, haversine))) <= 50
+    return 2 * 6_371_008.8 * asin(sqrt(min(1.0, haversine)))
 
 
 def near_stop(position: pb.VehiclePosition, stop: Stop, coords: dict) -> bool:
@@ -186,9 +186,9 @@ def near_stop(position: pb.VehiclePosition, stop: Stop, coords: dict) -> bool:
         position.HasField("position")
         and position.position.IsInitialized()
         and stop.id in coords
-        and within_50_metres(
+        and separation(
             (position.position.latitude, position.position.longitude), coords[stop.id]
-        )
+        ) <= 50
     )
 
 
@@ -237,6 +237,69 @@ def vehicle_facts(trip: Trip, positions: list, coords: dict) -> tuple[dict, dict
                 )
         stopped[origin] = departures
     return stopped, progress
+
+
+def gps_coordinates(position: pb.VehiclePosition) -> tuple[float, float] | None:
+    if not position.HasField("position") or not position.position.IsInitialized():
+        return None
+    lat, lon = position.position.latitude, position.position.longitude
+    return (lat, lon) if -90 <= lat <= 90 and -180 <= lon <= 180 else None
+
+
+def nearby_facts(trip: Trip, positions: list, coords: dict, preceding_fixes: dict) -> dict:
+    readings = defaultdict(list)
+    if trip.added or not trip.stops:
+        return readings
+    by_vehicle = defaultdict(list)
+    trip_fixes = set()
+    for stamp, position in positions:
+        if not position.vehicle.id or (point := gps_coordinates(position)) is None:
+            continue
+        trip_fixes.add((position.vehicle.id, stamp))
+        distances = {
+            seq: metres for seq, stop in trip.stops.items()
+            if stop.id in coords and (metres := separation(point, coords[stop.id])) <= 50
+        }
+        if len(distances) == 1:
+            seq = next(iter(distances))
+        else:
+            seq = stop_sequence(trip.stops, position, "current_stop_sequence")
+            if seq not in distances:
+                continue
+        by_vehicle[position.vehicle.id].append((stamp, seq, distances[seq]))
+
+    origin = min(trip.stops)
+    for vehicle, fixes in by_vehicle.items():
+        visits = defaultdict(list)
+        previous_stamp, furthest = -1, -1
+        for stamp, seq, distance in sorted(fixes, key=lambda fact: fact[0]):
+            if seq >= furthest and stamp > previous_stamp:
+                previous_stamp, furthest = stamp, seq
+                visits[seq].append((distance, stamp))
+        for seq, fixes_at_stop in visits.items():
+            if seq == origin:
+                if furthest == origin:
+                    continue
+                stamp = fixes_at_stop[-1][1]
+                event = "departure"
+            else:
+                distance, stamp = fixes_at_stop[0]
+                prior = preceding_fixes.get((vehicle, stamp))
+                if prior is None:
+                    continue
+                before, location = prior
+                radius_before = separation(location, coords[trip.stops[seq].id])
+                if (
+                    (vehicle, before) not in trip_fixes
+                    or not 0 < stamp - before <= 160
+                    or radius_before <= 50
+                ):
+                    continue
+                inside_fraction = (50 - distance) / (radius_before - distance)
+                stamp = round(stamp - inside_fraction * (stamp - before))
+                event = "arrival"
+            readings[seq].append(Reading("vehicle_nearby", stamp, event, stamp, vehicle))
+    return readings
 
 
 REMOVED = {pb.TripDescriptor.CANCELED, pb.TripDescriptor.DELETED}
@@ -344,6 +407,9 @@ def recompute(
     updates, positions = defaultdict(list), defaultdict(list)
     polls: dict[str, list[tuple[float, int]]] = {"trip_updates": [], "vehicle_positions": []}
     day_code = day.strftime("%Y%m%d")
+    has_stopped = False
+    latest_fix = {}
+    preceding_fixes = {}
 
     @cache
     def windows(trip_id: str) -> list[tuple[date, int, int]]:
@@ -378,15 +444,29 @@ def recompute(
             if entity.is_deleted or not entity.HasField(field):
                 continue
             fact = getattr(entity, field)
+            if (
+                field == "vehicle"
+                and fact.HasField("current_status")
+                and fact.current_status == pb.VehiclePosition.STOPPED_AT
+            ):
+                has_stopped = True
             desc = fact.trip
             trip_id = desc.trip_id
+            stamp = min(fact.timestamp or header or int(capture_second), int(capture_second))
+            if field == "vehicle" and fact.vehicle.id and (point := gps_coordinates(fact)):
+                vehicle = fact.vehicle.id
+                prior = latest_fix.get(vehicle)
+                if prior is None or stamp > prior[1]:
+                    active_trip = trip_id if desc.schedule_relationship not in REMOVED else ""
+                    latest_fix[vehicle] = active_trip, stamp, point
+                    if active_trip and prior is not None and prior[0] == active_trip:
+                        preceding_fixes[vehicle, stamp] = prior[1], prior[2]
             trip = trips.get(trip_id)
             route = trip.route if trip else desc.route_id
             if not trip_id or route not in routes or route in no_live:
                 continue
             if desc.route_id and desc.route_id != route:
                 continue
-            stamp = min(fact.timestamp or header or int(capture_second), int(capture_second))
             if trip is not None and not trip.added:
                 if desc.start_date in operating_codes[trip_id]:
                     if desc.start_date != day_code:
@@ -429,10 +509,13 @@ def recompute(
     trip_days, events, evidence = {}, {}, {}
     for trip_id, trip in trips.items():
         stopped, progress = vehicle_facts(trip, positions[trip_id], coords)
+        nearby = (
+            {} if has_stopped else nearby_facts(trip, positions[trip_id], coords, preceding_fixes)
+        )
         exact, predictions = update_facts(trip, updates[trip_id])
         observed = {}
         for seq in trip.stops:
-            direct = stopped[seq] or exact[seq]
+            direct = stopped[seq] or nearby.get(seq) or exact[seq]
             reading = (
                 min(direct, key=lambda r: r.second)
                 if direct
@@ -523,6 +606,7 @@ def counts(trips: dict[str, TripDay], events: dict[EventKey, StopEvent]) -> dict
             name: bases[name]
             for name in (
                 "vehicle_stopped",
+                "vehicle_nearby",
                 "trip_update_reported",
                 "trip_update_passed",
                 "not_observed",
