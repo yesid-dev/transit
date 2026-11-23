@@ -42,7 +42,7 @@ const VALID = {
   lang: oneOf("en", "fr"),
 };
 
-function serviceDate(value) {
+export function serviceDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || value.startsWith("0000")) return NaN;
   const date = new Date(value);
   return Number.isFinite(+date) && date.toISOString().slice(0, 10) === value ? +date : NaN;

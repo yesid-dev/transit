@@ -2,7 +2,7 @@
 	import { FOOTER_INFO_NAV } from '#lib/content/nav.ts';
 
 	export function isDataIndependentRoute(pathname: string): boolean {
-		return FOOTER_INFO_NAV.some((item) => item.href === pathname);
+		return pathname === '/download' || FOOTER_INFO_NAV.some((item) => item.href === pathname);
 	}
 </script>
 

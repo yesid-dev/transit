@@ -38,7 +38,7 @@ export const load: LayoutServerLoad = async (event) => {
 	const lang = (params.lang as Locale | undefined) ?? locals.locale ?? DEFAULT_LOCALE;
 
 	const route = event.route.id;
-	const searchPage = route === '/[[lang=locale]]/search';
+	const needsSchedule = route !== localRoute + '/search' && route !== localRoute + '/download';
 	const loadSnapshots = usesLiveSnapshots(route, event.url);
 	const visitorIp = event.request.headers.get('cf-connecting-ip');
 	const selection = await bootProvider(
@@ -52,7 +52,7 @@ export const load: LayoutServerLoad = async (event) => {
 	if (selection.redirectHref) redirect(307, selection.redirectHref);
 	if (selection.discoveryError) event.setHeaders({ 'cache-control': 'no-store' });
 	const schedule =
-		!searchPage && selection.provider
+		needsSchedule && selection.provider
 			? await getScheduleEdition(selection.providerId, visitorIp)
 			: null;
 	const usesStopIdentities =

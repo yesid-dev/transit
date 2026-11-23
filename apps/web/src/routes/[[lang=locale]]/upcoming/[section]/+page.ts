@@ -4,10 +4,14 @@ import { delocalizePath, localizeHref, pathLocale } from '#lib/i18n/index.ts';
 import type { PageLoad } from './$types';
 
 export const load: PageLoad = ({ url }) => {
-	if (delocalizePath(url.pathname) === '/upcoming/vehicles') {
-		redirect(308, localizeHref('/vehicles', pathLocale(url.pathname)) + url.search);
+	const path = delocalizePath(url.pathname);
+	if (path === '/upcoming/vehicles' || path === '/upcoming/download') {
+		redirect(
+			308,
+			localizeHref(path.replace('/upcoming', ''), pathLocale(url.pathname)) + url.search,
+		);
 	}
-	const item = upcomingPage(delocalizePath(url.pathname));
+	const item = upcomingPage(path);
 	if (!item) error(404);
 	return { label: item.label };
 };

@@ -157,9 +157,9 @@ export const NAV_ITEMS: readonly NavItem[] = [
 	{
 		key: 'download',
 		group: 'about',
-		href: UPCOMING + 'download',
+		href: '/download',
 		label: { en: 'Download the data', fr: 'Télécharger les données' },
-		activePrefixes: [UPCOMING + 'download'],
+		activePrefixes: ['/download'],
 	},
 ];
 /** Hides an item only when its capability is known to be false. */

@@ -130,7 +130,7 @@ function engineFetch(question: EngineQuestion, signal: AbortSignal, visitorIp?: 
 	return proxy ? proxy.fetch(request) : fetch(request);
 }
 
-async function query<T>(
+export async function query<T>(
 	question: EngineQuestion,
 	schema: z.ZodType<T>,
 	visitorIp?: string | null,
