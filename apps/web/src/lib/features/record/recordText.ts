@@ -115,6 +115,15 @@ export function coverageText(evidence: RateEvidence, locale: Locale) {
 		counts?.scheduled ?? counts?.punctuality_scheduled,
 		locale,
 	);
+	if (share_observed != null && counts?.frequent_headways != null) {
+		const rate = percent(share_observed, locale);
+		const total = tally(counts.frequent_headways, locale);
+		coverage = choose(
+			locale,
+			`${rate} coverage of ${total} scheduled intervals in frequent periods`,
+			`Couverture de ${rate} sur ${total} intervalles prévus en période fréquente`,
+		);
+	}
 	if (share_eligible != null) {
 		const rate = percent(share_eligible, locale);
 		const scheduled = counts?.scheduled;
@@ -144,6 +153,22 @@ export function coverageText(evidence: RateEvidence, locale: Locale) {
 	return [coverage, low_coverage ? choose(locale, 'Low coverage', 'Faible couverture') : '']
 		.filter(Boolean)
 		.join(' · ');
+}
+
+export function periodCoverage(
+	evidence: Pick<RecordEvidence, 'start_date' | 'end_date' | 'days_included'>,
+	locale: Locale,
+) {
+	const days = tally(
+		(Date.parse(evidence.end_date) - Date.parse(evidence.start_date)) / 86_400_000 + 1,
+		locale,
+	);
+	const included = tally(evidence.days_included.length, locale);
+	return choose(
+		locale,
+		`${included} of ${days} selected days included`,
+		`Jours inclus (${included} sur ${days})`,
+	);
 }
 
 export function withCoverage(reading: string, evidence: RateEvidence, locale: Locale) {

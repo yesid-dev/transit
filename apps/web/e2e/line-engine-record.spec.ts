@@ -15,6 +15,7 @@ for (const width of [390, 1440]) {
 			await page.goto(
 				`${fr ? '/fr' : ''}/lines/24?provider=${fr ? 'octranspo' : 'stm'}&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14`,
 			);
+			await page.locator('html[data-hydrated]').waitFor({ state: 'attached' });
 			const main = page.getByRole('main');
 			const section = (name: string) => main.getByRole('region', { name, exact: true }).first();
 			const punctuality = section(fr ? 'Ponctualité' : 'On-time performance');
@@ -37,6 +38,22 @@ for (const width of [390, 1440]) {
 			const response = await request.get((await csv.getAttribute('href'))!);
 			expect(response.ok()).toBeTruthy();
 			expect(await response.text()).toMatch(fr ? /^Mesure,Valeur/ : /^Measure,Value/);
+
+			const waiting = section(fr ? 'Attente et intervalles' : 'Waiting and gaps');
+			await expect(waiting).toContainText(fr ? '24 intervalles observés' : '24 observed intervals');
+			await expect(waiting).toContainText(
+				fr ? 'Attente observée moins attente prévue.' : 'Observed wait minus scheduled wait.',
+			);
+			await expect(waiting).toContainText(
+				fr ? 'sur 48 intervalles prévus' : 'coverage of 48 scheduled intervals',
+			);
+			const offered = section(fr ? 'Service offert' : 'Service offered');
+			await expect(offered.getByRole('row', { name: /07:00–08:00/ })).toContainText('8/1');
+			await expect(offered).toContainText(fr ? 'Aucun service prévu' : 'No service scheduled');
+			await offered
+				.getByRole('link', { name: fr ? /Voir les trajets/ : /See scheduled and delivered trips/ })
+				.click();
+			await expect(page).toHaveURL(/#delivery$/);
 
 			const stop = section(fr ? 'Retard le long de ses arrêts' : 'Delay along its stops');
 			await expect(stop.getByRole('rowheader')).toHaveText([/1\. First stop/, /2\. Second stop/]);
@@ -108,8 +125,8 @@ test('Line shows patience for a slow stop query while punctuality is already rea
 		page.getByText('Still working on this. You can wait or come back later.'),
 	).toBeVisible();
 	const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
-	expect((await request.post(`http://127.0.0.1:${dataPort}/__overview/release`)).status()).toBe(
-		204,
-	);
+	expect(
+		(await request.post(`http://127.0.0.1:${dataPort}/__overview/release?fixture=line`)).status(),
+	).toBe(204);
 	await expect(page.getByRole('rowheader', { name: /Second stop/ })).toBeVisible();
 });

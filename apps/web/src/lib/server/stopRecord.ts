@@ -3,6 +3,7 @@ import { getRecordAnswer, type EnginePeriod, type RecordQuery } from './engine.t
 export const stopRecordQueries = {
 	punctuality: { measure: 'punctuality' },
 	byLine: { measure: 'on_time', group: 'line' },
+	waiting: { measure: 'waiting_and_gaps', group: 'line' },
 	hourly: { measure: 'on_time', group: 'hour' },
 	daily: { measure: 'on_time', group: 'day' },
 	alerts: { measure: 'alert_counts' },
@@ -28,6 +29,7 @@ export function loadStopRecord(scope: EnginePeriod, stop: string) {
 	const sections: StopSection[] = [
 		'punctuality',
 		'byLine',
+		'waiting',
 		'hourly',
 		'daily',
 		'delay',

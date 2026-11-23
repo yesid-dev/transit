@@ -12,6 +12,7 @@ for (const width of [390, 1440]) {
 			await page.goto(
 				`${fr ? '/fr' : '/'}?provider=${fr ? 'octranspo' : 'stm'}&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14`,
 			);
+			await page.locator('html[data-hydrated]').waitFor({ state: 'attached' });
 			const main = page.getByRole('main');
 			const punctuality = main.getByRole('region', {
 				name: fr ? 'Ponctualité' : 'On-time performance',
@@ -32,6 +33,14 @@ for (const width of [390, 1440]) {
 				previous.getByText(fr ? /400\s000 sur 507\s800/ : /400,000 of 507,800/),
 			).toBeVisible();
 			await expect(main.getByText(fr ? /Écart de/ : /Change of/)).toBeVisible();
+			await expect(
+				punctuality.getByRole('heading', { name: fr ? 'Départs en avance' : 'Early departures' }),
+			).toBeVisible();
+			await expect(punctuality).toContainText(
+				fr ? /10\s% \(50\s780\/507\s800\)/ : /10% \(50,780\/507,800\)/,
+			);
+			await expect(punctuality).toContainText(fr ? 'manque le véhicule' : 'misses the vehicle');
+			await expect(previous).toContainText(fr ? '80 % des jours mesurés' : '80% of days measured');
 			await expect(punctuality).toContainText(fr ? 'Faible couverture' : 'Low coverage');
 			await expect(punctuality).toContainText(
 				fr
@@ -69,7 +78,9 @@ test('a slow stop ranking shows patience while the other parts remain usable', a
 	await main.getByText('Cite', { exact: true }).click();
 	await expect(main.getByText(/punctuality-v2/).first()).toBeVisible();
 	const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
-	const release = await request.post(`http://127.0.0.1:${dataPort}/__overview/release`);
+	const release = await request.post(
+		`http://127.0.0.1:${dataPort}/__overview/release?fixture=overview-stop-ranking`,
+	);
 	expect(release.status()).toBe(204);
 	await expect(main.getByText('S3', { exact: true })).toBeVisible();
 	await expect(

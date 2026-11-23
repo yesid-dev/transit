@@ -16,6 +16,18 @@ for (const width of [390, 1440]) {
 			await page.setViewportSize({ width, height: 900 });
 			const path = `${fr ? '/fr' : ''}/stop/S1?provider=${fr ? 'octranspo' : 'stm'}&frameMode=record`;
 			await page.goto(`${path}&recordFrom=2026-11-08&recordTo=2026-11-14`);
+			await page.locator('html[data-hydrated]').waitFor({ state: 'attached' });
+			const waiting = page.getByRole('region', {
+				name: fr ? 'Attente par ligne' : 'Waiting by line',
+				exact: true,
+			});
+			await expect(
+				waiting.getByRole('row').filter({ has: page.getByRole('rowheader', { name: /80$/ }) }),
+			).toContainText(fr ? '24 intervalles observés' : '24 observed intervals');
+			await expect(
+				waiting.getByRole('row').filter({ has: page.getByRole('rowheader', { name: /^24\b/ }) }),
+			).toContainText(fr ? 'Trop peu pour juger' : 'Too few to judge');
+			await expect(waiting.getByRole('rowheader', { name: /999$/ })).toHaveCount(0);
 			const main = page.getByRole('main');
 			const section = (name: string) => main.getByRole('region', { name, exact: true });
 			const punctuality = section(fr ? 'Ponctualité' : 'On-time performance');
@@ -92,8 +104,10 @@ test('a slow per-line breakdown does not hold back the Stop answer', async ({ pa
 		'The record is busy right now. You can come back later.',
 	);
 	const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
-	expect((await request.post(`http://127.0.0.1:${dataPort}/__overview/release`)).status()).toBe(
-		204,
-	);
+	expect(
+		(
+			await request.post(`http://127.0.0.1:${dataPort}/__overview/release?fixture=stop-by-line`)
+		).status(),
+	).toBe(204);
 	await expect(byLine).toContainText('Too few to judge');
 });

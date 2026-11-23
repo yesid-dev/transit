@@ -66,6 +66,8 @@ describe('Line Record and Schedule on transit1', () => {
 			'hourly',
 			'directions',
 			'stops',
+			'waiting',
+			'offered',
 			'delivery',
 			'late',
 			'crowding',
@@ -96,6 +98,17 @@ describe('Line Record and Schedule on transit1', () => {
 		);
 		expect(harness.getRecordAnswer).toHaveBeenCalledWith(
 			{ path: '/measure', parameters: { measure: 'punctuality', group: 'direction', line: '24' } },
+			period,
+		);
+		expect(harness.getRecordAnswer).toHaveBeenCalledWith(
+			{ path: '/measure', parameters: { measure: 'waiting_and_gaps', line: '24', direction: '1' } },
+			period,
+		);
+		expect(harness.getRecordAnswer).toHaveBeenCalledWith(
+			{
+				path: '/measure',
+				parameters: { measure: 'scheduled_frequency', group: 'hour', line: '24', direction: '1' },
+			},
 			period,
 		);
 		await expect(data?.record?.sections.at(-1)?.answer).resolves.toEqual({ kind: 'unconfigured' });

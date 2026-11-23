@@ -360,11 +360,12 @@ class Question:
         if self.group == "line" and not (
             family.id in {_PUNCTUALITY.id, _ALERT_COUNTS_ID}
             or self.measure == "trips_run"
+            or (family.id == _WAITING_ID and self.stop is not None)
             or (self.vehicle is not None and self.measure == "vehicle_trips_run")
         ):
             raise ValueError(
                 "group=line requires punctuality, alert counts, trips_run, "
-                "or vehicle_trips_run with a vehicle"
+                "waiting and gaps with a stop, or vehicle_trips_run with a vehicle"
             )
         if self.group in ("effect", "cause") and family.id != _ALERT_COUNTS_ID:
             raise ValueError("group=effect and group=cause require alert counts")

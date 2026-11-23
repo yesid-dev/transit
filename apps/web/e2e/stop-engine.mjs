@@ -1,3 +1,5 @@
+import { waitingEngine } from './waiting-engine.mjs';
+
 export function stopEngine(url) {
 	const get = (key) => url.searchParams.get(key);
 	const from = get('from');
@@ -30,6 +32,7 @@ export function stopEngine(url) {
 		const value = measure === 'accessible_stops' ? (get('city') === 'octranspo' ? 0 : 1) : 0.8;
 		return { csv: `${header}\n${measure},${value}\n` };
 	}
+	if (measure === 'waiting_and_gaps' && group === 'line') return waitingEngine(url, evidence);
 	if (group) {
 		const cells = {
 			line: [
@@ -46,7 +49,7 @@ export function stopEngine(url) {
 		return {
 			hold:
 				group === 'line' &&
-				(from === '2026-11-09' ||
+				((from === '2026-11-09' && 'stop-by-line') ||
 					(/^2026-10-1[5-8]$/u.test(from) && ['stop', get('city'), from, to].join('-'))),
 			body: { cells, coverage_note, evidence },
 		};

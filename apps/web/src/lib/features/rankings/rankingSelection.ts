@@ -16,6 +16,8 @@ export function isRankingPath(path: string): path is RankingPath {
 export const measures = {
 	on_time: { en: 'On-time share', fr: 'Part à l’heure' },
 	late: { en: 'Late share', fr: 'Part en retard' },
+	early: { en: 'Early departure share', fr: 'Part des départs en avance' },
+	excess_wait_time: { en: 'Excess wait time', fr: 'Attente excédentaire' },
 	median_delay: { en: 'Median delay', fr: 'Retard médian' },
 	cancelled_trips: { en: 'Cancelled trip share', fr: 'Part des trajets annulés' },
 	missing_trips: { en: 'Missing trip share', fr: 'Part des trajets manquants' },
@@ -31,7 +33,7 @@ const punctuality = ['on_time', 'late', 'median_delay'] as const;
 const delivery = [...punctuality, 'cancelled_trips', 'missing_trips'] as const;
 export const rankingMeasures: Record<RankingKind, readonly [RankingMeasure, ...RankingMeasure[]]> =
 	{
-		line: delivery,
+		line: [...delivery, 'early', 'excess_wait_time'],
 		stop: punctuality,
 		departure: delivery,
 		vehicle: [reporting],

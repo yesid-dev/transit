@@ -57,11 +57,12 @@ const rateCoverage = z.object({
 	coverage_reason: z.literal('insufficient_coverage').optional(),
 });
 const rankingFloors = z.object({
+	line: z.record(z.string(), count).optional(),
 	departure: z.object({ observed_service_dates: count, classified: count }).optional(),
 });
 const measureAnswer = state.extend({
-	measure: z.enum(['on_time', 'trips_run']),
-	value: z.record(z.string(), share.nullable()),
+	measure: z.enum(['on_time', 'trips_run', 'punctuality']),
+	value: z.record(z.string(), z.number().nullable()),
 	coverage_note: bilingual.nullable(),
 	evidence: evidence.extend({ ...rateCoverage.shape, counts, excluded: counts }),
 });
@@ -170,12 +171,15 @@ export function getRanking(kind: RankingAnswer['kind'], period: EnginePeriod) {
 const recordCounts = z.record(z.string(), z.number().nullable().catch(null));
 const translatedMessage = z.object({ en: z.string().nullable(), fr: z.string().nullable() });
 const recordStateName = engineState.or(z.literal('not_published'));
+const waitingStateName = recordStateName.or(z.literal('no_frequent_periods'));
 const recordState = state.extend({ state: recordStateName });
 const recordCell = recordState.extend({
+	state: waitingStateName,
 	value: z.record(z.string(), z.number().nullable()),
 	evidence: z.object({
 		...rateCoverage.shape,
 		counts: recordCounts,
+		measure_states: z.record(z.string(), waitingStateName).optional(),
 		excluded: recordCounts.optional(),
 		days_included: z.array(z.iso.date()),
 		observed_delay_seconds: z.number().nullable().optional(),
@@ -242,27 +246,25 @@ const recordEnvelope = z.object({
 	evidence,
 	coverage_note: bilingual.nullable(),
 });
+const recordMethod = z.object({
+	id: z.string().optional(),
+	text: z
+		.object({
+			en: z.object({ definition: z.string().optional(), counts: z.string(), limits: z.string() }),
+			fr: z.object({ definition: z.string().optional(), counts: z.string(), limits: z.string() }),
+		})
+		.optional(),
+});
 const recordMeasure = recordEnvelope.extend({
 	...recordCell.shape,
 	evidence: evidence.extend(recordCell.shape.evidence.shape),
-	info: z
-		.array(
-			z.object({
-				text: z
-					.object({
-						en: z.object({ counts: z.string(), limits: z.string() }),
-						fr: z.object({ counts: z.string(), limits: z.string() }),
-					})
-					.optional(),
-			}),
-		)
-		.optional(),
+	info: z.array(recordMethod).optional(),
 });
 const recordSeries = recordEnvelope.extend({
 	...state.partial().shape,
 	info: z
 		.array(
-			z.object({
+			recordMethod.extend({
 				minimum_sample: count,
 				minimum_coverage: share.optional(),
 				low_coverage_below: share.optional(),

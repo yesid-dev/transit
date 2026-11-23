@@ -1522,18 +1522,51 @@ async function verifyEngineRecord(page, cell, replay, errors, html) {
 		`${label} touched a snapshot or made an unknown request: ${JSON.stringify(data)}`,
 	);
 	const queries = data.filter(({ path }) => /\/(measure|ranking)\?/u.test(path));
-	const cut = cell.surface === 'line' ? ['line', '24'] : ['stop', 'S1'];
+	const isLine = cell.surface === 'line';
+	const direction = new URL(cell.path, 'http://b9.local').searchParams.get('direction');
+	const expectedQueries = isLine
+		? [
+				{ measure: 'punctuality' },
+				{ measure: 'on_time', group: 'day' },
+				{ measure: 'late', group: 'weekday_hour' },
+				{ measure: 'punctuality', group: 'direction' },
+				{ measure: 'punctuality', group: 'stop' },
+				{ measure: 'waiting_and_gaps' },
+				{ measure: 'scheduled_frequency', group: 'hour' },
+				{ measure: 'trips_run', group: 'departure' },
+				{ measure: 'late', kind: 'departure', limit: '8' },
+				{ measure: 'crowding' },
+				{ measure: 'alert_counts' },
+			]
+		: [
+				{ measure: 'punctuality' },
+				{ measure: 'on_time', group: 'line' },
+				{ measure: 'waiting_and_gaps', group: 'line' },
+				{ measure: 'on_time', group: 'hour' },
+				{ measure: 'on_time', group: 'day' },
+				{ measure: 'accessible_stops' },
+				{ measure: 'alert_counts' },
+			];
+	const expectedPaths = expectedQueries.map((query) => {
+		const params = new URLSearchParams({
+			from: '2026-11-08',
+			to: '2026-11-14',
+			...(isLine ? { line: '24' } : { stop: 'S1' }),
+			...query,
+		});
+		if (isLine && direction && query.group !== 'direction' && query.measure !== 'alert_counts')
+			params.set('direction', direction);
+		params.sort();
+		return `/v2/stm/${query.kind ? 'ranking' : 'measure'}?${params}`;
+	});
+	const actualPaths = queries.map(({ path }) => {
+		const url = new URL(path, 'http://b9.local');
+		url.searchParams.sort();
+		return url.pathname + url.search;
+	});
 	invariant(
-		queries.length === (cell.surface === 'line' ? 9 : 6) &&
-			queries.every(({ path }) => {
-				const { searchParams } = new URL(path, 'http://b9.local');
-				return (
-					searchParams.get(cut[0]) === cut[1] &&
-					searchParams.get('from') === '2026-11-08' &&
-					searchParams.get('to') === '2026-11-14'
-				);
-			}),
-		`${label} made incomplete or incorrectly scoped engine reads: ${JSON.stringify(data)}`,
+		JSON.stringify(actualPaths.sort()) === JSON.stringify(expectedPaths.sort()),
+		`${label} made incomplete or incorrectly scoped engine reads\nexpected: ${JSON.stringify(expectedPaths)}\nactual: ${JSON.stringify(actualPaths)}`,
 	);
 	const hydrated = normalizeObservation(await section.innerText());
 	await page.setViewportSize({ width: 320, height: 900 });

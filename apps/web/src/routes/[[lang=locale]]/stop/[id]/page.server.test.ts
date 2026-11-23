@@ -162,11 +162,13 @@ it('streams the dated stop cuts without waiting for a slow per-line answer', asy
 	const sections = new Map(record?.sections.map(({ section, answer }) => [section, answer]));
 	await expect(sections.get('punctuality')).resolves.toMatchObject(result);
 	expect(sections.get('byLine')).toBe(slow);
+	await expect(sections.get('waiting')).resolves.toEqual({ kind: 'unconfigured' });
 	expect(sections.get('delay')).toBe(sections.get('punctuality'));
 	expect(harness.getRecordAnswer.mock.calls).toEqual(
 		[
 			{ measure: 'punctuality' },
 			{ measure: 'on_time', group: 'line' },
+			{ measure: 'waiting_and_gaps', group: 'line' },
 			{ measure: 'on_time', group: 'hour' },
 			{ measure: 'on_time', group: 'day' },
 			{ measure: 'accessible_stops' },

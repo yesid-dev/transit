@@ -2,6 +2,8 @@
 	import { intl, type Locale } from '#lib/i18n/index.ts';
 	import {
 		choose,
+		methodEvidence,
+		periodCoverage,
 		cautiousRanking,
 		coverageText,
 		departureRankingFloor,
@@ -217,7 +219,43 @@
 	{/if}
 {:else if 'cells' in answer}
 	{@const cells = answer.cells}
-	{#if section === 'daily'}
+	{#if section === 'offered'}
+		<p>
+			{t(
+				'Scheduled trips per local clock hour, averaged over the timetable days available.',
+				'Trajets prévus par heure locale, en moyenne sur les jours dont l’horaire est disponible.',
+			)}
+		</p>
+		<p>{periodCoverage(answer.evidence, locale)}. {methodEvidence(answer.evidence, locale)}</p>
+		<RecordTable
+			{title}
+			headers={[
+				t('Local time', 'Heure locale'),
+				direction == null
+					? t(
+							'Trips per hour (both directions combined)',
+							'Trajets par heure (les deux directions combinées)',
+						)
+					: t('Trips per hour', 'Trajets par heure'),
+				t('Scheduled trips / clock hours', 'Trajets prévus / heures'),
+			]}
+			rows={cells.map((cell) => {
+				const hour = Number(cell.key.hour);
+				const label = `${clock(hour)}–${clock(hour + 1)}`;
+				const { scheduled_frequency: frequency } = cell.value;
+				const { scheduled_trips: trips, scheduled_clock_hours: hours } = cell.evidence.counts;
+				if (cell.state !== 'measured' || frequency == null || trips == null || hours == null)
+					return [label, cell.state_text[locale], t('Unavailable', 'Indisponible')];
+				return [
+					label,
+					trips === 0
+						? t('No service scheduled', 'Aucun service prévu')
+						: intl.number(locale, { maximumFractionDigits: 2 }).format(frequency),
+					`${n(trips)}/${n(hours)}`,
+				];
+			})}
+		/>
+	{:else if section === 'daily'}
 		<RecordTable
 			{title}
 			headers={[t('Service date', 'Date de service'), t('On-time share', 'Part à l’heure')]}
@@ -299,13 +337,17 @@
 				t('Departure', 'Départ'),
 				t('Cancelled', 'Annulés'),
 				t('Missing', 'Manquants'),
+				t('Ran', 'Effectués'),
 				t('Scheduled', 'Prévus'),
+				t('Coverage', 'Couverture'),
 			]}
 			rows={cells.map((cell) => [
 				`${cell.key.departure} · ${dir(cell.key.direction)}`,
 				count(cell, 'cancelled', true),
 				count(cell, 'missing', true),
+				count(cell, 'ran', true),
 				count(cell, 'scheduled', true),
+				coverageText(cell.evidence, locale) || t('Unknown', 'Inconnue'),
 			])}
 		/>
 	{:else if section === 'boundaries'}

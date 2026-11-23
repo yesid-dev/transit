@@ -7,6 +7,7 @@ type Row = RankingsRecord['rows'][number];
 type Excluded = RankingsRecord['excluded'][number];
 
 const sampleUnits = {
+	headways: { en: 'observed intervals', fr: 'intervalles observés' },
 	events: { en: 'observed stop events', fr: 'passages observés' },
 	trips: { en: 'eligible trips', fr: 'trajets admissibles' },
 	hours: { en: 'hours in service', fr: 'heures en service' },
@@ -14,6 +15,7 @@ const sampleUnits = {
 
 const numerators: Partial<Record<RankingMeasure, string>> = {
 	on_time: 'on_time',
+	early: 'early',
 	late: 'late',
 	cancelled_trips: 'cancelled',
 	missing_trips: 'missing',
@@ -25,7 +27,8 @@ function number(value: number, locale: Locale) {
 }
 
 export function rankingValue(value: number, measure: RankingMeasure, locale: Locale) {
-	if (measure === 'median_delay') return `${number(value, locale)} s`;
+	if (measure === 'median_delay' || measure === 'excess_wait_time')
+		return `${number(value, locale)} s`;
 	if (measure === reporting)
 		return `${number(value, locale)} ${choose(locale, 'per 100 h', 'par 100 h')}`;
 	return percent(value, locale);
@@ -46,11 +49,13 @@ export function rankingRangeLabel(method: string, locale: Locale) {
 
 export function sampleText(sample: number, measure: RankingMeasure, locale: Locale) {
 	const unit =
-		measure === reporting
-			? 'hours'
-			: measure === 'cancelled_trips' || measure === 'missing_trips'
-				? 'trips'
-				: 'events';
+		measure === 'excess_wait_time'
+			? 'headways'
+			: measure === reporting
+				? 'hours'
+				: measure === 'cancelled_trips' || measure === 'missing_trips'
+					? 'trips'
+					: 'events';
 	return `${number(sample, locale)} ${sampleUnits[unit][locale]}`;
 }
 
@@ -61,6 +66,46 @@ export function rankingSample(row: Row, measure: RankingMeasure, locale: Locale)
 	if (count == null) return withCoverage(sample, row, locale);
 	const n = number(count, locale);
 	return withCoverage(choose(locale, `${n} in ${sample}`, `${n} sur ${sample}`), row, locale);
+}
+
+export function lineRankingFloor(
+	measure: RankingMeasure,
+	floors: Record<string, number> | undefined,
+	locale: Locale,
+) {
+	if (measure === 'early' && floors?.classified != null && floors.observed_trips != null) {
+		const events = number(floors.classified, locale);
+		const trips = number(floors.observed_trips, locale);
+		return choose(
+			locale,
+			`Each line needs at least ${events} observed stop events and ${trips} observed trips to rank.`,
+			`Chaque ligne doit compter au moins ${events} passages observés et ${trips} trajets observés pour être classée.`,
+		);
+	}
+	if (
+		measure === 'excess_wait_time' &&
+		floors?.observed_headways != null &&
+		floors.observed_trip_pairs != null
+	) {
+		const intervals = number(floors.observed_headways, locale);
+		const pairs = number(floors.observed_trip_pairs, locale);
+		return choose(
+			locale,
+			`Each line needs at least ${intervals} observed intervals and ${pairs} distinct observed trip pairs to rank.`,
+			`Chaque ligne doit compter au moins ${intervals} intervalles observés et ${pairs} paires distinctes de trajets observés pour être classée.`,
+		);
+	}
+	return null;
+}
+
+export function waitingRankingBasis(counts: Row['counts'], locale: Locale) {
+	const { observed_trip_pairs: pairs, covered_scheduled_headways: matched } = counts;
+	if (pairs == null || matched == null) return '';
+	return choose(
+		locale,
+		`${number(pairs, locale)} distinct observed trip pairs, ${number(matched, locale)} scheduled intervals in comparable windows.`,
+		`${number(pairs, locale)} paires distinctes de trajets observés, ${number(matched, locale)} intervalles prévus dans des fenêtres comparables.`,
+	);
 }
 
 export function exclusionText(row: Excluded, measure: RankingMeasure, locale: Locale) {

@@ -85,6 +85,8 @@ for (const provider of ['stm', 'octranspo'])
 			);
 			await page.goto(`${locale === 'fr' ? '/fr' : ''}/status?provider=${provider}&frameMode=live`);
 			await expect(page.getByRole('heading', { level: 1 })).toHaveText(healthCopy[locale].heading);
+			// The live store starts on hydration, after the document can finish loading.
+			await page.locator('html[data-hydrated]').waitFor({ state: 'attached' });
 			const summary = page.locator('[data-slot="health-summary"]');
 			await expect(summary).toHaveAttribute('aria-busy', 'false');
 			for (const line of await summary.locator('p').all()) {

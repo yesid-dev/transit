@@ -39,7 +39,7 @@ export function overviewEngine(url) {
 				}))
 			: [];
 		return {
-			hold: kind === 'stop' && from === '2026-11-09',
+			hold: kind === 'stop' && from === '2026-11-09' ? 'overview-stop-ranking' : false,
 			body: {
 				measure,
 				kind,
@@ -59,6 +59,8 @@ export function overviewEngine(url) {
 		? { ran: 90, eligible: 100, scheduled: 111 }
 		: {
 				on_time: onTime,
+				early: 50780,
+				late: 457020 - onTime,
 				classified: 507800,
 				scheduled: 1100000,
 				vehicle_stopped: 200000,
@@ -68,7 +70,14 @@ export function overviewEngine(url) {
 		hold: false,
 		body: {
 			measure,
-			value: { [measure]: measured ? (trips ? 0.9 : onTime / 507800) : null },
+			value:
+				measure === 'punctuality'
+					? {
+							on_time: measured ? onTime / 507800 : null,
+							early: measured ? 0.1 : null,
+							late: measured ? (457020 - onTime) / 507800 : null,
+						}
+					: { [measure]: measured ? (trips ? 0.9 : onTime / 507800) : null },
 			state: measured ? 'measured' : 'not_measured',
 			state_text: measured
 				? { en: 'Measured', fr: 'Mesuré' }

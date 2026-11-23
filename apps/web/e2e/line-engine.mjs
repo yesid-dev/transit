@@ -1,3 +1,5 @@
+import { waitingEngine } from './waiting-engine.mjs';
+
 // Engine contract fixtures for the server-side Line requests.
 export function lineEngine(url) {
 	const get = (key) => url.searchParams.get(key);
@@ -84,8 +86,23 @@ export function lineEngine(url) {
 			},
 		};
 	}
+	if (measure === 'waiting_and_gaps') {
+		return waitingEngine(url, evidence);
+	}
 	if (group) {
 		const cells = {
+			hour: [
+				cell(
+					{ hour: 7 },
+					{ scheduled_frequency: 8 },
+					{ counts: { scheduled_trips: 8, scheduled_clock_hours: 1 } },
+				),
+				cell(
+					{ hour: 8 },
+					{ scheduled_frequency: 0 },
+					{ counts: { scheduled_trips: 0, scheduled_clock_hours: 1 } },
+				),
+			],
 			day: [cell({ day: from })],
 			weekday_hour: [cell({ weekday: 1, hour: 7 })],
 			direction: [cell({ direction: 0 }), cell({ direction: 1 })],
@@ -100,7 +117,7 @@ export function lineEngine(url) {
 				cell(
 					{ direction, departure: '07:00:00' },
 					{ trips_run: 0.8 },
-					{ counts: { cancelled: 2, missing: 6, scheduled: 40 } },
+					{ counts: { cancelled: 2, missing: 6, ran: 32, scheduled: 40 } },
 				),
 			],
 			day_type: [
@@ -130,7 +147,7 @@ export function lineEngine(url) {
 		return {
 			hold:
 				group === 'stop' &&
-				(from === '2026-11-09' ||
+				((from === '2026-11-09' && 'line') ||
 					(/^2026-10-1[5-8]$/u.test(from) && ['line', get('city'), from, to].join('-'))),
 			body: { cells, coverage_note, evidence },
 		};

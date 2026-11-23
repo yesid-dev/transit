@@ -8,6 +8,8 @@ export function rankingsEngine(url) {
 	if (vehicle && !reporting) {
 		return { status: 400, body: { message: 'Vehicle rankings require reporting gaps' } };
 	}
+	const wait = measure === 'excess_wait_time';
+	const early = measure === 'early';
 	const median = measure === 'median_delay';
 	const floorGated = kind === 'departure' && from === get('to');
 	const ids = { line: '24', stop: 'S1', departure: '["24",0,"07:15:00"]', vehicle: 'V01' };
@@ -24,24 +26,34 @@ export function rankingsEngine(url) {
 		sample: reporting ? 20.5 : 100,
 		counts: reporting
 			? { reporting_gaps: 5 }
-			: {
-					scheduled: 250,
-					classified: 100,
-					on_time: 48,
-					late: 48,
-					vehicle_stopped: 50,
-					trip_update_passed: 50,
-				},
+			: wait
+				? {
+						observed_headways: 100,
+						observed_trip_pairs: 24,
+						frequent_headways: 250,
+						covered_scheduled_headways: 85,
+					}
+				: {
+						early: 4,
+						scheduled: 250,
+						classified: 100,
+						on_time: 48,
+						late: 48,
+						vehicle_stopped: 50,
+						trip_update_passed: 50,
+					},
 		...(!vehicle ? { share_observed: 0.4, low_coverage: true } : {}),
 	};
 	const notTracked = vehicle && from === '2026-11-10';
-	const method = reporting
-		? 'vehicle_reporting_uncertainty_unknown'
-		: median
-			? 'histogram_half_bin'
-			: 'wilson_95';
+	const method = wait
+		? 'matched_headways'
+		: reporting
+			? 'vehicle_reporting_uncertainty_unknown'
+			: median
+				? 'histogram_half_bin'
+				: 'wilson_95';
 	return {
-		hold: from === '2026-11-09',
+		hold: from === '2026-11-09' ? 'rankings' : false,
 		body: {
 			kind,
 			measure,
@@ -55,12 +67,12 @@ export function rankingsEngine(url) {
 							{
 								...entry,
 								rank: 1,
-								...(!reporting && !median ? { ranking_bound: 0.58 } : {}),
-								value: reporting ? 24.39 : median ? 30 : 0.48,
+								...(!reporting && !median && !wait ? { ranking_bound: 0.58 } : {}),
+								value: wait ? 42.5 : early ? 0.04 : reporting ? 24.39 : median ? 30 : 0.48,
 								range: {
 									method,
-									lower: reporting ? null : median ? 27.5 : 0.38,
-									upper: reporting ? null : median ? 32.5 : 0.58,
+									lower: wait || reporting ? null : early ? 0.02 : median ? 27.5 : 0.38,
+									upper: wait || reporting ? null : early ? 0.1 : median ? 32.5 : 0.58,
 								},
 							},
 						],
@@ -90,7 +102,12 @@ export function rankingsEngine(url) {
 			info: [
 				{
 					minimum_sample: 30,
-					ranking_floors: { departure: { observed_service_dates: 5, classified: 30 } },
+					ranking_floors: {
+						departure: { observed_service_dates: 5, classified: 30 },
+						line: wait
+							? { observed_headways: 50, observed_trip_pairs: 20 }
+							: { observed_trips: 20, classified: 100 },
+					},
 					...(vehicle ? { ranking_minimum_sample: 10 } : {}),
 					text: {
 						en: { definition: 'Calculated from the observed service.' },
