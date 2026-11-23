@@ -137,6 +137,8 @@ test("DB, CI, shared configuration and unknown paths run the DB checks", () => {
     "apps/db/uv.lock",
     ".github/scripts/ci-paths.mjs",
     ".github/workflows/web.yml",
+    ".github/actions/setup/action.yml",
+    ".github/vendor/layout-zstd/SHA256SUMS",
     ".github/actions/setup-py/action.yml",
     ".github/dependabot.yml",
     ".python-version",

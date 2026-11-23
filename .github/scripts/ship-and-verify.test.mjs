@@ -15,7 +15,7 @@ const job = (name) =>
 
 test("production and queue gates keep the complete PR grid out of the deploy path", () => {
   assert.match(job("layout"), /github.event_name == 'pull_request'/);
-  assert.match(job("post-deploy-layout"), /needs: \[deploy-production\]/);
+  assert.match(job("post-deploy-layout"), /needs: \[deploy-production, web-dependencies\]/);
   assert.match(job("post-deploy-layout"), /steps: \*layout-steps/);
   assert.match(job("layout"), /steps: &layout-steps/);
   assert.match(
@@ -33,7 +33,7 @@ test("production and queue gates keep the complete PR grid out of the deploy pat
   assert.match(job("ci"), /GITHUB_EVENT_NAME -ne 'pull_request'/);
   assert.match(
     job("deploy-production"),
-    /needs: \[ci, deploy_scope, ci-work\]/,
+    /needs: \[ci, deploy_scope, ci-work, web-dependencies\]/,
   );
   assert.doesNotMatch(job("deploy-production"), /needs:.*post-deploy/);
   assert.match(
