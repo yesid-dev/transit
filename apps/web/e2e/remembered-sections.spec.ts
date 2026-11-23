@@ -7,8 +7,6 @@ test.use({ storageState: { cookies: [], origins: [] } });
 const b9 = JSON.parse(
 	readFileSync(new URL('../scripts/__fixtures__/b9/rich.json', import.meta.url), 'utf8'),
 );
-const line = JSON.parse(readFileSync(new URL('./routes-index.json', import.meta.url), 'utf8'))
-	.routes[0].id;
 const stop = JSON.parse(readFileSync(new URL('./stops-index.json', import.meta.url), 'utf8'))
 	.stops[0].id;
 const departures = JSON.parse(readFileSync(new URL('./departures.json', import.meta.url), 'utf8'));
@@ -35,7 +33,7 @@ test('metrics starts expanded and remembers the bulk choice across pages and rel
 	expect(await page.evaluate(() => localStorage.getItem('sections-choice'))).toBeNull();
 	await action(page).click();
 	await expect(first).toHaveAttribute('aria-expanded', 'false');
-	await page.goto(`/lines/${line}?tab=reliability`);
+	await page.goto('/stop/' + stop + '?frameMode=live&tab=detail');
 	await expect(action(page)).toHaveAccessibleName('Expand all');
 	await action(page).click();
 	await page.reload();
@@ -46,53 +44,8 @@ test('metrics starts expanded and remembers the bulk choice across pages and rel
 test.describe('local data fixture rendering', () => {
 	// The fixture uses a separate localhost port outside the production connect-src policy.
 	test.use({ bypassCSP: true });
-	test('real reliability charts and departure tables measure after content opens', async ({
-		page,
-	}) => {
+	test('departure tables measure after opening remembered collapsed content', async ({ page }) => {
 		await startCollapsed(page);
-		await page.goto(`/lines/${line}?tab=reliability`);
-		await expect(action(page)).toHaveAccessibleName('Expand all');
-		await action(page).click();
-		// The record's Day by day plot: one mark per day of its closed week, then its table.
-		const daily = page.locator('[data-slot="otp-trend"]');
-		const frame = daily.locator('.day-chart__frame');
-		await frame.scrollIntoViewIfNeeded();
-		await expect(frame).toBeVisible();
-		const plot = await frame.boundingBox();
-		expect(plot!.width).toBeGreaterThan(100);
-		expect(plot!.height).toBeGreaterThan(0);
-		const lineFile = b9.files[`historic/route_reliability/${line}.json`];
-		const windowDate = (grain: string) =>
-			lineFile.periods_by_grain.find((row: { grain: string }) => row.grain === grain).date;
-		const published = lineFile.periods.filter(
-			(row: { grain: string; date: string; on_time?: number | null }) =>
-				row.grain === 'day' &&
-				row.date >= windowDate('week') &&
-				row.date <= windowDate('day') &&
-				row.on_time != null,
-		).length;
-		expect(published).toBeGreaterThan(0);
-		await expect(daily.locator('.day-chart__cols > li')).toHaveCount(7);
-		const bars = daily.locator('.day-chart__cols > li:not([data-gap]) .day-chart__bar');
-		await expect(bars).toHaveCount(published);
-		for (const height of await bars.evaluateAll((marks) =>
-			marks.map((mark) => mark.getBoundingClientRect().height),
-		))
-			expect(height).toBeGreaterThan(0);
-		await daily.getByRole('button', { name: /^(?:View table|Voir le tableau)$/u }).click();
-		const dailyTable = daily.getByRole('table');
-		await expect(dailyTable).toBeVisible();
-		expect((await dailyTable.boundingBox())!.width).toBeGreaterThan(100);
-		await expect(dailyTable.getByRole('row')).toHaveCount(8);
-		if (page.viewportSize()!.width >= 1024) {
-			const independent = page
-				.locator('.section-card:not([data-section-bulk]) [data-section-trigger]')
-				.first();
-			await expect(independent).toHaveAttribute('aria-expanded', 'true');
-			await action(page).click();
-			await expect(independent).toHaveAttribute('aria-expanded', 'true');
-			await action(page).click();
-		}
 		await page.clock.setFixedTime(Date.parse(departures.generated_utc) + 30_000);
 		await page.goto(`/stop/${stop}?tab=detail`);
 		const bulk = action(page);

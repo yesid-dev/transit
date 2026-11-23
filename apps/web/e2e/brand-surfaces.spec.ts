@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { waitForFrameClearance } from './layout-helpers';
 import { SURFACE_NAV } from '../src/lib/content/nav';
-import { detailCopy } from '../src/lib/features/stops/stops.copy';
 import { copy as mapCopy } from '../src/lib/features/map/map.copy';
 import { DEFAULT_LOCALE, PUBLISHED_LOCALES } from '../src/lib/i18n/config';
 
@@ -515,54 +514,23 @@ test("a metric's defining SQL is a named, keyboard-reachable region", async ({ p
 	expect(colors, 'the SQL is syntax-colored').toBeGreaterThan(1);
 });
 
-test("a stop page's header canvas is decorative and fills the header", async ({ page }) => {
-	await page.goto('/stop/' + stop);
-	const header = page.locator('[data-slot="article-header"]');
-	const canvas = header.locator('canvas').first();
-	await expect(canvas).toHaveAttribute('aria-hidden', 'true');
-	await expect.poll(async () => (await canvas.boundingBox())?.width ?? 0).toBeGreaterThan(0);
-	await expect
-		.poll(async () => {
-			const actual = (await canvas.boundingBox())!;
-			const expected = (await header.boundingBox())!;
-			return Math.max(
-				...(['x', 'y', 'width', 'height'] as const).map((key) =>
-					Math.abs(actual[key] - expected[key]),
-				),
-			);
-		})
-		.toBeLessThanOrEqual(1);
-});
-
-test("a detail page's back link sits midway between the chrome and the next line", async ({
+test('the Stop Record header clears the frame and gives its back link a full target', async ({
 	page,
 }) => {
 	await page.goto('/stop/' + stop);
-	const link = page.getByRole('link', { name: detailCopy.en.back, exact: true });
+	const main = page.getByRole('main');
+	const link = main.getByRole('link', { name: 'All stops', exact: true });
+	const title = main.getByRole('heading', { level: 1 });
 	await expect(link).toBeVisible();
+	await expect(title).toBeVisible();
+	await expect(main.locator('[data-slot="article-header"] canvas')).toHaveCount(0);
 	await page.evaluate(() => document.fonts.ready);
-	await expect
-		.poll(async () => {
-			const [above, below] = await page.evaluate((back) => {
-				const link = [...document.querySelectorAll('a')].find(
-					(a) => a.textContent?.trim() === back,
-				)!;
-				const range = document.createRange();
-				range.selectNodeContents(link);
-				const text = range.getBoundingClientRect();
-				const pill = document.querySelector('[data-testid="nav-pill"]')!.getBoundingClientRect();
-				const controls = document
-					.querySelector('[data-slot="app-frame-controls"]')!
-					.getBoundingClientRect();
-				const chrome = Math.max(pill.bottom, controls.bottom);
-				return [
-					text.top - chrome,
-					link.nextElementSibling!.getBoundingClientRect().top - text.bottom,
-				];
-			}, detailCopy.en.back);
-			return Math.abs(above - below);
-		})
-		.toBeLessThanOrEqual(1);
+	const chrome = (await page.locator('[data-slot="app-frame-controls"]').boundingBox())!;
+	const back = (await link.boundingBox())!;
+	const heading = (await title.boundingBox())!;
+	expect(back.y).toBeGreaterThanOrEqual(chrome.y + chrome.height);
+	expect(back.y + back.height).toBeLessThanOrEqual(heading.y);
+	expect(back.height).toBeGreaterThanOrEqual(44);
 });
 
 test('listing headers are reading frames: a visible title and no artwork', async ({ page }) => {
@@ -581,5 +549,9 @@ test('listing headers are reading frames: a visible title and no artwork', async
 		await expect(header.locator('h1')).toBeVisible();
 		await expect(header.locator('[data-slot="blueprint-listing-art"]')).toHaveCount(0);
 	}
-	expect(listings).toBeGreaterThanOrEqual(2);
+	expect(listings).toBeGreaterThanOrEqual(1);
+
+	await page.goto('/lines');
+	await expect(page.getByRole('heading', { level: 1 })).toHaveText('Lines');
+	await expect(page.locator('[data-slot="blueprint-listing-art"]')).toHaveCount(0);
 });

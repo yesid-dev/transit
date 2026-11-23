@@ -4,7 +4,6 @@ import type { RouteReliability, StopReliability, NetworkTrend } from '#lib/v1/in
 import { isoUtc } from '#lib/v1/schemas/types.ts';
 import type { ReliabilityWindow } from '#lib/v1/verdict.ts';
 import { lateShareTenths } from '#lib/features/stops/lateShare.ts';
-import LinesIndex from '../lines/LinesIndex.svelte';
 import RouteDetail from '../lines/RouteDetail.svelte';
 import RouteReliabilityClusters from '../lines/reliability/RouteReliabilityClusters.svelte';
 import StopReliabilitySurface from '../stops/reliability/sections/StopReliabilitySurface.svelte';
@@ -235,29 +234,6 @@ describe('the same reliability evidence across every surface', () => {
 			expect(harness.page.url.searchParams.get('grain')).toBeNull();
 			cleanup();
 		}
-		const listing = render(LinesIndex);
-		await waitFor(() => expect(listing.getByTestId('lines-sort-worst')).toBeInTheDocument());
-		await waitFor(() =>
-			expect(listing.container.querySelector('[data-slot="reliability-badge"]')).toHaveAttribute(
-				'data-status',
-				'reliable',
-			),
-		);
-		expect(listing.container.querySelector('[data-slot="reliability-badge"]')).toHaveTextContent(
-			'85%',
-		);
-		// The published comparison carries its own figure and dates, without inventing a verdict.
-		await waitFor(() => expect(listing.getByTestId('lines-sort-worst')).toBeEnabled());
-		await fireEvent.click(listing.getByTestId('lines-sort-worst'));
-		await waitFor(() =>
-			expect(
-				listing.container.querySelector('[data-slot="reliability-badge"]'),
-			).toHaveAccessibleName('85% on time, week to Nov 2'),
-		);
-		await fireEvent.click(listing.getByTestId('lines-status-problem'));
-		await waitFor(() =>
-			expect(listing.container.querySelector('[data-slot="reliability-badge"]')).toBeNull(),
-		);
 	});
 });
 
@@ -411,25 +387,6 @@ it('banner, list and pane agree on one window', async () => {
 			expect(view.getByRole('radio', { name: /Last 7 days/, checked: true })).toBeInTheDocument();
 		cleanup();
 	}
-});
-
-it('list uses the same closed week on arrival', async () => {
-	const { closedWeek } = await import('../lines/reliability/__fixtures__/closedWeek');
-	harness.route = { ...closedWeek, id: '24' };
-	harness.publishedPct = 84;
-	const view = render(LinesIndex);
-	await waitFor(() =>
-		expect(view.container.querySelector('[data-slot="reliability-badge"]')).toHaveAccessibleName(
-			'84%, Share of readings on time, November 4 to 10',
-		),
-	);
-	await waitFor(() => expect(view.getByTestId('lines-sort-worst')).toBeEnabled());
-	await fireEvent.click(view.getByTestId('lines-sort-worst'));
-	await waitFor(() =>
-		expect(view.container.querySelector('[data-slot="reliability-badge"]')).toHaveAccessibleName(
-			'84% on time, week to Nov 10',
-		),
-	);
 });
 
 it.each([true, false])('opens an enabled closed choice when a week exists: %s', async (hasWeek) => {

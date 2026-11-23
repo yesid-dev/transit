@@ -21,7 +21,6 @@ import {
 	validateNetworkHistoryPartition,
 	validateStopHistoryPartition,
 } from '#lib/v1/history/families.ts';
-import { strictIsoDate } from '#lib/v1/history/selection.ts';
 import type {
 	AlertArchiveEntry,
 	AlertArchiveIndex,
@@ -34,9 +33,6 @@ import type {
 	LineHistoryPartition,
 	NetworkTrend,
 	NetworkHistoryPartition,
-	Receipt,
-	ReceiptsIndex,
-	RepeatOffenders,
 	RouteReliability,
 	StopReliability,
 	StopHistoryPartition,
@@ -48,13 +44,6 @@ import {
 	historyRootPath,
 	verifyPartitionBytes,
 } from './historyIntegrity';
-
-export {
-	getHotspotsHistoryDay,
-	getHotspotsHistoryIndex,
-	getRepeatOffendersHistoryDay,
-	getRepeatOffendersHistoryIndex,
-} from './pointHistory';
 
 export const getHistoricAvailability: (
 	ctx?: AdapterCtx,
@@ -517,14 +506,8 @@ export const getNetworkTrend: (ctx?: AdapterCtx) => Promise<NetworkTrend> = (ctx
 export const getHotspots: (ctx?: AdapterCtx) => Promise<Hotspots> = (ctx) =>
 	adapter.historic.hotspots(ctx);
 
-export const getRepeatOffenders: (ctx?: AdapterCtx) => Promise<RepeatOffenders> = (ctx) =>
-	adapter.historic.repeatOffenders(ctx);
-
 export const getAlertHistory: (ctx?: AdapterCtx) => Promise<AlertHistory> = (ctx) =>
 	adapter.historic.alertHistory(ctx);
-
-export const getReceiptsIndex: (ctx?: AdapterCtx) => Promise<ReceiptsIndex> = (ctx) =>
-	adapter.historic.receiptsIndex(ctx);
 
 export async function getRouteReliabilityIndex(ctx?: AdapterCtx): Promise<Set<string> | null> {
 	const idx = await adapter.historic.routeReliabilityIndex(ctx);
@@ -533,36 +516,6 @@ export async function getRouteReliabilityIndex(ctx?: AdapterCtx): Promise<Set<st
 
 export const getPublishedReliabilityIndex = (ctx?: AdapterCtx) =>
 	adapter.historic.routeReliabilityIndex(ctx);
-
-export const getReceipt: (date: string, ctx?: AdapterCtx) => Promise<Receipt | null> = (
-	date,
-	ctx,
-) => adapter.historic.receipt(date, ctx);
-
-export async function getAdvertisedReceipt(
-	index: ReceiptsIndex,
-	date: string,
-	ctx?: AdapterCtx,
-): Promise<Receipt> {
-	if (!strictIsoDate(date)) {
-		throw new RangeError(`invalid receipt date: ${date}`);
-	}
-	if (!(index.dates ?? []).includes(date)) {
-		throw new RangeError(`receipt date is not advertised: ${date}`);
-	}
-
-	const receipt = await adapter.historic.receipt(date, ctx);
-	if (receipt === null) {
-		throw new HistoryArtifactContractError(date, 'advertised receipt not found');
-	}
-	if (receipt.date !== date) {
-		throw new HistoryArtifactContractError(
-			date,
-			`advertised receipt date mismatch (received ${receipt.date})`,
-		);
-	}
-	return receipt;
-}
 
 export const getRouteReliability: (
 	routeId: string,

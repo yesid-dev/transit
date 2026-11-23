@@ -42,6 +42,7 @@
 				<tr role={stack ? 'row' : undefined}
 					><th scope="row" role={stack ? 'rowheader' : undefined}>
 						{#if rowLabel}{@render rowLabel(label, index)}{:else if rowHrefs?.[index]}<a
+								class="inline-flex min-h-6 items-center"
 								href={rowHrefs[index]}>{label}</a
 							>{:else}{label}{/if}
 					</th>{#each values as value, column (column)}<td role={stack ? 'cell' : undefined}>

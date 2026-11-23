@@ -7,8 +7,6 @@
 	import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from '@yesid/ui/sheet';
 	import { delocalizePath, intl, type Locale } from '#lib/i18n/index.ts';
 	import { isRankingPath } from '#lib/features/rankings/rankingSelection.ts';
-	import { usesFinderRecord } from '#lib/site/finderFrame.ts';
-	import { dailyReportFrame } from '#lib/site/dailyReportFrame.ts';
 	import { networkRecordView } from '#lib/site/networkFrame.ts';
 	import {
 		frameHref,
@@ -81,7 +79,10 @@
 	let today = $state(frameToday());
 	const path = $derived(delocalizePath(url.pathname));
 	const recordOnly = $derived(
-		isRankingPath(path.replace(/\/$/, '')) || (path === '/receipt' && dailyReportFrame(url)),
+		isRankingPath(path.replace(/\/$/, '')) ||
+			path === '/receipt' ||
+			path === '/lines' ||
+			path === '/stops',
 	);
 	const frame = $derived.by(() => {
 		const state = parseFrameState(url.searchParams, today);
@@ -91,7 +92,6 @@
 	});
 	const line = $derived(/^\/lines\/[^/]+\/?$/.test(path));
 	const stop = $derived(/^\/stop\/[^/]+\/?$/.test(path));
-	const finder = $derived((path === '/lines' || path === '/stops') && usesFinderRecord(url));
 	const departure = $derived(path.startsWith('/departure/'));
 	const usesFrameRecord = $derived(
 		path === '/' ||
@@ -100,8 +100,7 @@
 			line ||
 			stop ||
 			departure ||
-			recordOnly ||
-			finder,
+			recordOnly,
 	);
 	const startLabel = $derived(
 		intl.dateTime(locale, { timeZone: 'UTC', dateStyle: 'long' }).format(new Date(RECORD_START)),
@@ -143,14 +142,14 @@
 
 	function selectPeriod(period: NonNullable<typeof frame.period>) {
 		open = false;
-		void goto(frameHref(url, { ...frame, period, mode: finder ? 'record' : frame.mode }), {
-			shallow: !usesFrameRecord || (frame.mode === 'live' && !finder),
+		void goto(frameHref(url, { ...frame, period }), {
+			shallow: !usesFrameRecord || frame.mode === 'live',
 			state: { ...page.state },
 		});
 	}
 </script>
 
-{#if !recordOnly && !finder}
+{#if !recordOnly}
 	<SegmentedChoice options={modes} value={frame.mode} label={copy.view} onSelect={selectMode} />
 {/if}
 <Sheet bind:open {onOpenChange}>

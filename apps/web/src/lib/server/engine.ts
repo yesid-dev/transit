@@ -102,6 +102,23 @@ export type EngineResult<T> =
 	| { kind: 'answer'; answer: T; lastGood?: true }
 	| { kind: 'unconfigured' | 'unreachable' | 'timeout' | 'busy' };
 
+export async function getEngineHealth() {
+	const unavailable = { proxy: 'unavailable', engine: 'unknown' } as const;
+	const signal = AbortSignal.timeout(3_000);
+	try {
+		const response = await engineFetch({ path: '/health', parameters: {} }, signal);
+		if (!response) return { proxy: 'unconfigured', engine: 'unknown' } as const;
+		if (response.status !== 200 && response.status !== 503) return unavailable;
+		const result = z
+			.object({ engine: z.enum(['ok', 'unavailable', 'unconfigured']) })
+			.safeParse(await response.json());
+		if (!result.success || (result.data.engine === 'ok') !== response.ok) return unavailable;
+		return { proxy: 'ok', engine: result.data.engine } as const;
+	} catch {
+		return unavailable;
+	}
+}
+
 function engineFetch(question: EngineQuestion, signal: AbortSignal, visitorIp?: string | null) {
 	const proxy = env.QUESTION_PROXY;
 	const fixture = env.QUESTION_FIXTURE_ORIGIN;

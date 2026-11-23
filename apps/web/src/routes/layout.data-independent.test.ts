@@ -223,6 +223,7 @@ function renderRoot(pathname: string, lang: 'en' | 'fr', v1: V1Context | null) {
 		lang,
 		v1,
 		v1Error: v1 === null,
+		loadSnapshots: pathname.includes('/map') || pathname === '/network',
 		schedule: null,
 		serverBoot: v1 ? ('succeeded' as const) : ('failed' as const),
 		providerId: v1?.manifest.provider ?? 'stm',

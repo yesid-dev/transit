@@ -1,10 +1,8 @@
-import { env as cloudflareEnv } from 'cloudflare:workers';
 import type { RequestHandler } from './$types';
 import { readPublicSiteConfig } from '#lib/site/config.ts';
 import { buildSitemapXml, type SitemapEntities } from '#lib/site/seoFiles.ts';
-import { getRoutesIndex, getStopsIndex } from '#lib/v1/repositories/static.ts';
-import { serverV1Context } from '#lib/v1/serverContext.ts';
-import { loadProviderCatalog, resolveProvider } from '#lib/v1/providers.ts';
+import { getCityCatalog, getScheduleEdition } from '#lib/server/engine.ts';
+import { resolveProvider } from '#lib/v1/providers.ts';
 
 export const prerender = false;
 
@@ -12,31 +10,31 @@ const SITEMAP_CACHE_CONTROL = 'public, max-age=3600, s-maxage=14400';
 
 export const GET: RequestHandler = async (event) => {
 	const config = readPublicSiteConfig();
-	const hasSnapshotTransport = Boolean(cloudflareEnv.SNAPSHOTS || cloudflareEnv.DATA);
-
-	let entities: SitemapEntities = {};
-	if (hasSnapshotTransport && config.indexing) {
+	let entities: SitemapEntities[] = [];
+	if (config.indexing) {
 		try {
-			const initial = serverV1Context(event);
-			const catalog = await loadProviderCatalog(initial.fetch ?? event.fetch);
+			const ip = event.request.headers.get('cf-connecting-ip');
+			const catalog = await getCityCatalog(ip);
 			const selected = resolveProvider(event.url, catalog);
 			if (selected.url.href !== event.url.href)
 				return new Response(null, {
 					status: 307,
 					headers: { location: selected.url.pathname + selected.url.search },
 				});
-			const ctx = { ...initial, providerId: selected.provider.id };
-			const [routes, stops] = await Promise.all([getRoutesIndex(ctx), getStopsIndex(ctx)]);
-			const staticLastmod = routes.generated_utc ?? stops.generated_utc ?? null;
-			entities = {
-				routeIds: routes.routes.map((r) => r.id),
-				stopIds: stops.stops.map((s) => s.id),
-				entityLastmod: staticLastmod,
-				staticLastmod,
-				providerId: event.url.searchParams.has('provider') ? selected.provider.id : undefined,
-			};
+			const explicit = event.url.searchParams.has('provider');
+			const cities = explicit ? [selected.provider] : catalog.providers;
+			entities = await Promise.all(
+				cities.map(async ({ id }) => {
+					const edition = await getScheduleEdition(id, ip);
+					return {
+						routeIds: edition?.routes.map((route) => route.id),
+						stopIds: edition?.stops.map((stop) => stop.id),
+						providerId: explicit || id !== catalog.default_provider ? id : undefined,
+					};
+				}),
+			);
 		} catch {
-			entities = {};
+			// Static pages are still crawlable if the city catalog is unavailable.
 		}
 	}
 

@@ -40,7 +40,7 @@ export const load: PageServerLoad = async (event) => {
 		: frameLive
 			? { frameLive }
 			: {};
-	if (period) {
+	if (!frameLive) {
 		const name = scheduledStop?.name.trim();
 		return {
 			...frame,

@@ -1,165 +1,95 @@
-import { readFileSync } from 'node:fs';
 import { expect, type Page } from '@playwright/test';
-import { test } from './layout-test';
+import { streamingLayoutTest as test } from './layout-test';
 import { localizeHref } from '../src/lib/i18n/routing';
-import { stampCopy } from '../src/lib/v1/stamp.copy';
 import { waitForFrameClearance } from './layout-helpers';
 
-// A record page's header has its final height before the record's files arrive: the dated stamp,
-// the data health warning (W10) under it and the sections control all keep their room, so the
-// first thing under the header never moves when they load.
-const read = (path: string) => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
-const b9 = read('../scripts/__fixtures__/b9/rich.json').files;
-const recordFile =
-	/\/historic\/(?:route_reliability\/24|stop_reliability\/52095)\.json$|\/historic\/history\/|\/status\/data_health\.json$/;
 const pages = [
-	{
-		name: 'line',
-		path: '/lines/24?provider=stm',
-		first: '[data-slot="entity-detail-tabs"]',
-		// The line's record is server-rendered from the b9 bundle.
-		published: b9['historic/route_reliability/24.json'].generated_utc as string,
-	},
-	{
-		name: 'stop',
-		path: '/stop/52095?provider=stm',
-		first: '[data-slot="entity-detail-tabs"]',
-		// The fresh layout fixtures date every file like the trips file.
-		published: read('./trips.json').generated_utc as string,
-	},
+	{ name: 'line', path: '/lines/24', section: 'stops' },
+	{ name: 'stop', path: '/stop/S1', section: 'byLine' },
 ] as const;
 
-async function holdRecordFiles(page: Page, published: string | undefined) {
-	const gate = {
-		holding: true,
-		// Called when the page asks for a record file, which is then held.
-		entered: () => {},
-		releases: [] as Array<() => void>,
-	};
-	await page.route('**/v1/**', async (route) => {
-		const url = new URL(route.request().url());
-		url.pathname = '/__layout/fresh' + url.pathname;
-		const held = recordFile.test(url.pathname) && gate.holding;
-		if (held) {
-			gate.entered();
-			await new Promise<void>((resolve) => gate.releases.push(resolve));
-		}
-		if (url.pathname.endsWith('/status/data_health.json')) {
-			// The rollup check warned on exactly this record's publication: W10 shows.
-			await route.fulfill({
-				json: {
-					generated_utc: published ?? '2026-06-15T12:00:00Z',
-					lanes: [{ lane: 'rollup', last_publish_utc: published, gate: { verdict: 'warn' } }],
-				},
-				headers: { 'access-control-allow-origin': '*', 'cache-control': 'no-store' },
-			});
-			return;
-		}
-		await route.fulfill({ response: await route.fetch({ url: url.href }) });
-	});
-	return gate;
+function frame(page: Page) {
+	return page.locator('main h1').evaluate((heading) => ({
+		header: heading.closest('header')!.getBoundingClientRect().height,
+		first: document.querySelector('#punctuality')!.getBoundingClientRect().top,
+	}));
 }
 
-function frame(page: Page, first: string) {
-	return page.evaluate((first) => {
-		const header = document.querySelector('.transit-article-header')!.getBoundingClientRect();
-		return {
-			header: header.height,
-			first: document.querySelector(first)!.getBoundingClientRect().top,
-		};
-	}, first);
-}
-
-for (const { name, path, first, ...record } of pages)
+for (const { name, path, section } of pages)
 	for (const locale of ['en', 'fr'] as const)
-		test(`${locale} ${name} header holds still while the record files load`, async ({ page }) => {
-			const published = 'published' in record ? record.published : undefined;
-			const gate = await holdRecordFiles(page, published);
-			// The whole record: data through its history's last day, published by its own file.
-			const [through, publishedOn] = stampCopy[locale].record('\0', '\0', 'window').split('\0');
-			const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-			const complete = new RegExp(`${escape(through)}.+${escape(publishedOn)}.+`);
-			try {
-				for (const width of [320, 390, 768, 1280]) {
-					gate.holding = true;
-					const held = new Promise<void>((resolve) => (gate.entered = resolve));
-					await page.setViewportSize({ width, height: 900 });
-					await page.goto(localizeHref(path, locale), { waitUntil: 'domcontentloaded' });
-					await expect(page.locator(first)).toBeVisible();
-					await held;
-					await page.evaluate(() =>
-						Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 2000))]),
-					);
-					const before = await frame(page, first);
-
-					gate.holding = false;
-					for (const release of gate.releases.splice(0)) release();
-					const stamp = page.locator('.transit-article-header .header__meta time');
-					await expect(stamp).toHaveText(complete);
-					if (published) {
-						await expect(page.getByRole('link', { name: stampCopy[locale].warning })).toBeVisible();
-						await expect(page.getByTestId('sections-toggle')).toBeVisible();
-					}
-					expect(await frame(page, first), `${width} px`).toEqual(before);
-				}
-			} finally {
-				gate.holding = false;
-				for (const release of gate.releases.splice(0)) release();
-			}
-		});
-
-for (const locale of ['en', 'fr'] as const)
-	for (const width of [320, 360, 390, 768, 1440])
-		for (const scale of [100, 200])
-			test(`${locale} line uses its real header clearance before hydration at ${width}px and ${scale}% text with slow record files`, async ({
-				page,
-			}) => {
-				const { path, first, published } = pages[0];
-				const record = await holdRecordFiles(page, published);
-				const requestHeld = new Promise<void>((resolve) => (record.entered = resolve));
-				let releaseScripts!: () => void;
-				const scripts = new Promise<void>((resolve) => (releaseScripts = resolve));
-				await page.route('**/_app/immutable/**/*.js', async (route) => {
-					await scripts;
-					await route.fallback();
-				});
-				try {
-					await page.setViewportSize({ width, height: 900 });
-					await page.goto(localizeHref(path, locale), { waitUntil: 'domcontentloaded' });
-					await page.addStyleTag({ content: `html { font-size: ${scale}%; }` });
-					await expect(page.locator(first)).toBeVisible();
-					// WebKit can keep fonts.ready pending while the document has blocked scripts.
-					await expect
-						.poll(() =>
-							page.evaluate(() => [...document.fonts].some((font) => font.status === 'loading')),
-						)
-						.toBe(false);
-					await expect(page.locator('html[data-hydrated]')).toHaveCount(0);
-					const before = await frame(page, first);
-					const controls = page.locator('[data-slot="app-frame-controls"]');
-					const gap = await controls.evaluate((element) => {
-						const main = document.querySelector('main')!;
-						return (
-							main.getBoundingClientRect().top +
-							parseFloat(getComputedStyle(main).paddingTop) -
-							element.getBoundingClientRect().bottom -
-							parseFloat(getComputedStyle(document.documentElement).fontSize) / 2
-						);
-					});
-
-					releaseScripts();
-					await requestHeld;
-					await waitForFrameClearance(page);
-					expect(await frame(page, first)).toEqual(before);
-					expect(gap).toBeCloseTo(0);
-
-					record.holding = false;
-					for (const release of record.releases.splice(0)) release();
-					await expect(page.getByRole('link', { name: stampCopy[locale].warning })).toBeVisible();
-					expect(await frame(page, first)).toEqual(before);
-				} finally {
-					releaseScripts();
-					record.holding = false;
-					for (const release of record.releases.splice(0)) release();
-				}
-			});
+		for (const width of [320, 360, 390, 768, 1440])
+			for (const scale of [100, 200])
+				test(
+					locale +
+						' ' +
+						name +
+						' header clears the chrome and stays still while a cut streams at ' +
+						width +
+						'px and ' +
+						scale +
+						'% text',
+					async ({ page, request, browserName, colorScheme }) => {
+						const city = locale === 'fr' ? 'octranspo' : 'stm';
+						const variant = (browserName === 'webkit' ? 2 : 0) + (colorScheme === 'dark' ? 1 : 0);
+						const start = '2026-10-' + String(15 + variant);
+						const end =
+							'2026-11-' +
+							String(10 + [320, 360, 390, 768, 1440].indexOf(width) * 2 + (scale === 200 ? 1 : 0));
+						const fixture = [name, city, start, end].join('-');
+						const port = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
+						const releaseCut = () =>
+							request.post('http://127.0.0.1:' + port + '/__overview/release?fixture=' + fixture);
+						let releaseScripts!: () => void;
+						const scripts = new Promise<void>((resolve) => (releaseScripts = resolve));
+						await page.route('**/_app/immutable/**/*.js', async (route) => {
+							await scripts;
+							await route.fallback();
+						});
+						const reading = page.locator('#punctuality');
+						const cut = page.locator('#' + section);
+						try {
+							await page.setViewportSize({ width, height: 900 });
+							await page.goto(
+								localizeHref(path, locale, city) + '&recordFrom=' + start + '&recordTo=' + end,
+								{ waitUntil: 'commit' },
+							);
+							await page.addStyleTag({ content: 'html { font-size: ' + scale + '%; }' });
+							await expect(reading.getByRole('heading')).toBeVisible();
+							await expect(page.locator('html[data-hydrated]')).toHaveCount(0);
+							await expect
+								.poll(() =>
+									page.locator('main h1').evaluate((heading) => {
+										const stylesheets =
+											document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]');
+										if ([...stylesheets].some((link) => !link.disabled && !link.sheet))
+											return false;
+										// Resolve the styled layout before checking its font requests.
+										heading.getBoundingClientRect();
+										return [...document.fonts].every((font) => font.status !== 'loading');
+									}),
+								)
+								.toBe(true);
+							const before = await frame(page);
+							const gap = await page
+								.locator('[data-slot="app-frame-controls"]')
+								.evaluate((element) => {
+									const heading = document.querySelector('main h1')!;
+									return (
+										heading.getBoundingClientRect().top - element.getBoundingClientRect().bottom
+									);
+								});
+							expect(gap).toBeGreaterThanOrEqual(0);
+							releaseScripts();
+							await expect(reading.locator('dl')).toBeVisible();
+							await expect(cut.getByRole('table')).toHaveCount(0);
+							expect(await frame(page)).toEqual(before);
+							expect((await releaseCut()).status()).toBe(204);
+							await expect(cut.getByRole('table').first()).toBeVisible();
+							await waitForFrameClearance(page);
+							expect(await frame(page)).toEqual(before);
+						} finally {
+							releaseScripts();
+							await releaseCut();
+						}
+					},
+				);

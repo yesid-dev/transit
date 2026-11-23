@@ -55,7 +55,9 @@
 <Surface>
 	<div class="grid min-w-0 gap-4">
 		<header class="grid gap-2">
-			<a href={back}>{t('All lines', 'Toutes les lignes')}</a>
+			<a class="inline-flex min-h-11 w-fit items-center" href={back}>
+				{t('All lines', 'Toutes les lignes')}
+			</a>
 			<h1>{name}</h1>
 			<LineViewNav url={pinned} {locale} view={record.view} />
 			<p>{dateRange(record.period, locale)}</p>

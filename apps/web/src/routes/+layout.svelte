@@ -1,5 +1,5 @@
 <script module lang="ts">
-	import { FOOTER_INFO_NAV, upcomingPage } from '#lib/content/nav.ts';
+	import { FOOTER_INFO_NAV } from '#lib/content/nav.ts';
 
 	export function isDataIndependentRoute(pathname: string): boolean {
 		return FOOTER_INFO_NAV.some((item) => item.href === pathname);
@@ -105,15 +105,6 @@
 	const siteConfig = readPublicSiteConfig();
 	const seoPath = $derived(delocalizePath(page.url.pathname));
 	const isOverviewRecord = $derived(seoPath === '/' && page.data.record != null);
-	const isStandaloneRecord = $derived(
-		page.data.record != null ||
-			page.data.finderRecord != null ||
-			page.data.alertRecord != null ||
-			page.data.selection != null ||
-			page.data.report != null ||
-			page.data.networkRecord != null ||
-			seoPath.startsWith('/departure/'),
-	);
 	let constructionEdge = $state<HTMLElement>();
 	let constructionProgress = $state(1);
 
@@ -296,7 +287,7 @@
 	});
 
 	onMount(() => {
-		if (data.v1Error && !data.v1 && seoPath !== '/search') void invalidateAll();
+		if (data.loadSnapshots && data.v1Error && !data.v1) void invalidateAll();
 
 		if (browser && navigator.serviceWorker) {
 			navigator.serviceWorker.addEventListener('message', (event) => {
@@ -397,7 +388,7 @@
 						aria-label={mainLabel?.[locale]}
 						class={isFullBleed ? 'min-h-0 grow' : 'grow shrink-0 basis-auto'}
 					>
-						{#if !v1 && !isOverviewRecord && !isStandaloneRecord && seoPath !== '/search' && !isDataIndependentRoute(seoPath) && !upcomingPage(seoPath)}
+						{#if data.loadSnapshots && !v1 && !dataIndependentRoute}
 							<div
 								class="mx-auto flex h-full max-w-2xl flex-col items-center justify-center gap-4 p-6"
 							>

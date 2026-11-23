@@ -13,7 +13,7 @@
 <nav aria-label={choose(locale, 'Stop views', 'Vues de l’arrêt')} class="flex flex-wrap gap-x-4">
 	{#each views as item (item.id)}
 		<a
-			class="inline-flex min-h-11 items-center"
+			class="inline-flex min-h-11 min-w-11 items-center"
 			aria-current={view === item.id ? 'page' : undefined}
 			href={stopViewHref(url, item.id).href}>{item.label}</a
 		>

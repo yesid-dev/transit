@@ -15,7 +15,7 @@
 <nav aria-label={choose(locale, 'Line views', 'Vues de la ligne')} class="flex flex-wrap gap-x-4">
 	{#each views as item (item.id)}
 		<a
-			class="inline-flex min-h-11 items-center"
+			class="inline-flex min-h-11 min-w-11 items-center"
 			aria-current={view === item.id ? 'page' : undefined}
 			href={lineViewHref(url, item.id).href}>{item.label}</a
 		>

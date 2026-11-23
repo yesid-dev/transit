@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createServer } from 'vite';
 
-describe('selected reliability SSR', () => {
-	it('renders the resolved component and range before client effects run', async () => {
+describe('createHistoryRangeResource SSR', () => {
+	it('exposes only accepted seed values before client effects run', async () => {
 		const server = await createServer({
 			configFile: 'vite.config.ts',
 			appType: 'custom',
@@ -39,42 +39,11 @@ describe('selected reliability SSR', () => {
 			});
 			expect(history.state).toBe('ready');
 			expect(history.value).toEqual({ count: 10 });
-			const { default: Pane } = await server.ssrLoadModule(
-				'/src/lib/features/lines/LazyRouteReliabilityPane.svelte',
-			);
-			const { default: Clusters } = await server.ssrLoadModule(
-				'/src/lib/features/lines/reliability/__fixtures__/RouteReliabilityClustersStub.svelte',
-			);
-			const { render } = await server.ssrLoadModule('svelte/server');
-			const html = render(Pane, {
-				props: {
-					entityId: '24',
-					resource: {
-						data: { id: '24', generated_utc: '2026-01-31T12:00:00Z' },
-						error: null,
-						loading: false,
-						settled: true,
-						reload() {},
-					},
-					locale: 'fr',
-					directionHeadsigns: { 0: 'Est' },
-					history,
-					initialClusters: Clusters,
-				},
-			}).body;
-			expect(html).toContain('data-entity-id="24"');
-			expect(html).toContain('data-history-state="ready"');
-			expect(html).toContain('data-locale="fr"');
-			expect(html).not.toContain('data-variant="skeleton"');
+			expect(history.resolved?.selection).toEqual({ from: '2026-01-10', to: '2026-01-20' });
 			expect(loader.loadIndex).toHaveBeenCalledTimes(1);
 			expect(loader.load).toHaveBeenCalledTimes(1);
 			history.destroy();
 
-			const { load: universal } = await server.ssrLoadModule(
-				'/src/routes/[[lang=locale]]/lines/[id]/+page.ts',
-			);
-			const { configureTransitUi } = await server.ssrLoadModule('/src/lib/ui/configure.ts');
-			configureTransitUi();
 			for (const [kind, from] of [
 				['malformed', 'bad'],
 				['outside', '2025-01-01'],
@@ -83,16 +52,16 @@ describe('selected reliability SSR', () => {
 			] as const) {
 				const fallbackLoader = {
 					...loader,
+					load: vi.fn(async () => ({ value: null, status: 'no_data' as const })),
 					loadIndex: async () => (kind === 'missing-index' ? null : { id: 'accepted' }),
 					availability: () => ({
 						...loader.availability(),
 						gaps: [{ start_date: '2026-01-15', end_date: '2026-01-15', reason: 'outage' }],
 					}),
 				};
-				const url = new URL(
-					`https://transit.yesid.dev/lines/24?tab=reliability&from=${from}&to=2026-01-20`,
+				const fallbackRequest = resources.historyRangeRequestFromSearchParams(
+					new URLSearchParams({ from, to: '2026-01-20' }),
 				);
-				const fallbackRequest = resources.historyRangeRequestFromSearchParams(url.searchParams);
 				const fallbackSeed = await resources.loadHistoryRangeSeed(
 					fallbackLoader,
 					fallbackRequest,
@@ -103,34 +72,9 @@ describe('selected reliability SSR', () => {
 					seed: () => fallbackSeed,
 				});
 				try {
-					const current = {
-						id: '24',
-						generated_utc: '2026-01-31T12:00:00Z',
-						periods: [{ grain: 'day', date: '2026-01-20', otp_pct: 80 }],
-					};
-					const data = await universal({
-						url,
-						data: {
-							seed: { id: '24', name: '24' },
-							routeSeed: null,
-							reliabilitySeed: { key: '24', data: current },
-							lineHistorySeed: { entityId: '24', ...fallbackSeed },
-						},
-					});
-					expect(data.initialClusters, kind).toBeUndefined();
-					expect(data.initialImportFailed).toBe(false);
-					const fallbackHtml = render(Pane, {
-						props: {
-							entityId: '24',
-							resource: { data: current, error: null, loading: false, settled: true, reload() {} },
-							locale: 'en',
-							directionHeadsigns: {},
-							history: fallbackHistory,
-							initialClusters: data.initialClusters,
-						},
-					}).body;
-					expect(fallbackHtml, kind).toContain('data-variant="skeleton"');
-					expect(fallbackHtml, kind).not.toContain('80%');
+					expect(fallbackHistory.state, kind).toBe('current');
+					expect(fallbackHistory.value, kind).toBeNull();
+					expect(fallbackLoader.load, kind).not.toHaveBeenCalled();
 				} finally {
 					fallbackHistory.destroy();
 				}

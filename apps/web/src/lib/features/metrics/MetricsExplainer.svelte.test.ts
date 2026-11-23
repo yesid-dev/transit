@@ -1,8 +1,6 @@
-import { stampCopy } from '#lib/v1/stamp.copy.ts';
-import { formatDateKey } from '#lib/utils/time.ts';
 vi.mock('$app/navigation', () => ({ afterNavigate: () => {} }));
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fireEvent, render, screen, within, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { flushSync, tick } from 'svelte';
 import { sections } from '@yesid/ui/state';
 import MetricsExplainer from './MetricsExplainer.svelte';
@@ -151,7 +149,7 @@ describe('MetricsExplainer', () => {
 		);
 
 		expect(sectionCards).toHaveLength(METRICS.length + 4);
-		expect(railCards).toHaveLength(2);
+		expect(railCards).toHaveLength(1);
 		for (const card of [...sectionCards, ...railCards]) {
 			expect(card).toHaveAttribute('data-header-variant', 'article-summary');
 		}
@@ -572,37 +570,9 @@ describe('MetricsExplainer', () => {
 	});
 });
 
-it('shows the record stamp and no publication time', async () => {
-	provState.data = {
-		generated_utc: '2026-07-11T04:00:00Z',
-		conformance: { status: 'conformant', extra_row_count: 0, unknown_members: [] },
-		methodology: {},
-	};
+it('links archived methodology readers to current coverage without adding a publication date', () => {
 	const { container } = render(MetricsExplainer);
-	const header = container.querySelector('[data-slot="article-header"]') as HTMLElement;
-	const expected = stampCopy.en.record(
-		null,
-		formatDateKey('2026-07-11T04:00:00Z'.slice(0, 10), 'en', true),
-		'window',
-	);
-	await waitFor(() => expect(header).toHaveTextContent(expected));
-	expect(header.querySelector('time')).toHaveAttribute(
-		'datetime',
-		'2026-07-11T04:00:00Z'.slice(0, 10),
-	);
-	expect(container.querySelector('[data-slot="article-keywords"]')).toBeNull();
-});
-
-it('keeps the provenance rail card and compliant badge', () => {
-	provState.data = {
-		generated_utc: '2026-07-11T04:00:00Z',
-		conformance: { status: 'conformant', extra_row_count: 0, unknown_members: [] },
-		methodology: {},
-	};
-	const { container } = render(MetricsExplainer);
-	const rail = container.querySelector('[data-slot="detail-shell-left"]') as HTMLElement;
-	expect(within(rail).getByRole('button', { name: en.statRail.provenance.title })).toBeVisible();
-	expect(
-		rail.querySelector('[data-slot="stat-provenance"] [data-slot="conformance-badge"]'),
-	).toHaveAttribute('data-verdict', 'conformant');
+	expect(container.querySelector('[data-slot="article-header"] time')).toBeNull();
+	const depth = container.querySelector<HTMLElement>('#history-depth')!;
+	expect(within(depth).getByRole('link')).toHaveAttribute('href', '/status');
 });

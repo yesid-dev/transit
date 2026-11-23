@@ -1,13 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { expectAccessible } from '@yesid/config/playwright';
-import { detailCopy } from '../src/lib/features/stops/stops.copy';
-import { stopReliabilityCopy } from '../src/lib/features/stops/reliability/stops-reliability.copy';
+import { networkReliabilityCopy } from '../src/lib/features/network/reliability/network-reliability.copy';
 import { PUBLISHED_LOCALES } from '../src/lib/i18n/config';
 import { localizeHref } from '../src/lib/i18n/routing';
 
 const departures = JSON.parse(readFileSync(new URL('./departures.json', import.meta.url), 'utf8'));
-const stop = Object.keys(departures.stops)[0]!;
 
 test.use({ bypassCSP: true });
 test.beforeEach(async ({ page }) => {
@@ -17,72 +15,34 @@ test.beforeEach(async ({ page }) => {
 
 for (const locale of PUBLISHED_LOCALES) {
 	for (const reducedMotion of ['reduce', 'no-preference'] as const) {
-		test(`${locale} station signage, keyboard and strip geometry with ${reducedMotion} @theme`, async ({
-			page,
-		}) => {
-			await page.emulateMedia({ reducedMotion });
-			for (const width of [390, 768, 1280, 1440]) {
-				await page.setViewportSize({ width, height: 900 });
-				await page.goto(localizeHref(`/stop/${stop}`, locale));
-				const tabs = page.getByRole('tablist');
-				const first = tabs.getByRole('tab', {
-					name: detailCopy[locale].tabs.reliability,
-					exact: true,
-				});
-				await expect(first).toHaveAttribute('data-state', 'active');
-				await expect(tabs).toHaveClass(/station-tabs/);
-				await expect(async () => {
-					await first.focus();
-					await page.keyboard.press('ArrowRight');
-					await expect(first).toHaveAttribute('aria-selected', 'false', { timeout: 1000 });
-				}).toPass();
-				const selected = tabs.locator('[aria-selected="true"]');
-				await expect(selected).toBeFocused();
-				await expect(selected).toHaveAttribute('data-state', 'active');
-				const style = await selected.evaluate((element) => {
-					const css = getComputedStyle(element);
-					return {
-						weight: css.fontWeight,
-						ring: css.outlineStyle,
-						ringColor: css.outlineColor,
-						color: css.color,
-						height: element.getBoundingClientRect().height,
-					};
-				});
-				expect(style.weight).toBe('700');
-				expect(style.ring).toBe('solid');
-				expect(style.ringColor).toBe(style.color);
-				expect(style.height).toBeGreaterThanOrEqual(44);
-				const geometry = await page
-					.locator('[data-slot="entity-detail-tabs"]')
-					.evaluate((strip) => {
-						const viewport = strip.querySelector('[data-slot="entity-detail-tabs-scroll"]')!;
-						const tab = strip.querySelector('[aria-selected="true"]')!;
-						const box = viewport.getBoundingClientRect(),
-							active = tab.getBoundingClientRect();
-						return {
-							height: strip.getBoundingClientRect().height,
-							expected: parseFloat(getComputedStyle(strip).getPropertyValue('--strip-h')) - 3,
-							pageFits: document.documentElement.scrollWidth <= innerWidth,
-							visible: active.left >= box.left - 1 && active.right <= box.right + 1,
-						};
-					});
-				expect(Math.abs(geometry.height - geometry.expected)).toBeLessThanOrEqual(1);
-				expect(geometry.pageFits).toBe(true);
-				await expect
-					.poll(async () =>
-						selected.evaluate((element) => {
-							const viewport = element
-								.closest('[data-slot="entity-detail-tabs-scroll"]')!
-								.getBoundingClientRect();
-							const box = element.getBoundingClientRect();
-							return box.left >= viewport.left - 1 && box.right <= viewport.right + 1;
-						}),
-					)
-					.toBe(true);
-				await expectAccessible(page, { include: '.entity-tabs' });
-			}
-		});
+		test(
+			locale +
+				' Stop view links keep keyboard focus and fit at each width with ' +
+				reducedMotion +
+				' @theme',
+			async ({ page }) => {
+				await page.emulateMedia({ reducedMotion });
+				for (const width of [390, 768, 1280, 1440]) {
+					await page.setViewportSize({ width, height: 900 });
+					await page.goto(localizeHref('/stop/S1', locale, 'stm'));
+					const nav = page.getByRole('navigation', { name: /Stop views|Vues de l’arrêt/ });
+					const links = nav.getByRole('link');
+					await expect(links).toHaveCount(2);
+					await expect(links.first()).toHaveAttribute('aria-current', 'page');
+					await links.first().focus();
+					await page.keyboard.press('Tab');
+					await expect(links.nth(1)).toBeFocused();
+					for (const link of await links.all()) {
+						const bounds = (await link.boundingBox())!;
+						expect(bounds.height).toBeGreaterThanOrEqual(44);
+						expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
+					}
+					await expect(page.locator('html')).toHaveJSProperty('scrollWidth', width);
+					await nav.evaluate((node) => node.setAttribute('data-axe-stop-nav', ''));
+					await expectAccessible(page, { include: '[data-axe-stop-nav]' });
+				}
+			},
+		);
 	}
 
 	test(`${locale} visible and hidden DetailFrame pills retain their navigation`, async ({
@@ -113,7 +73,9 @@ for (const locale of PUBLISHED_LOCALES) {
 			const surface =
 				path === '/hotspots' || path === '/repeat-offenders'
 					? '#ranking'
-					: '[data-slot="detail-shell"]';
+					: path === '/receipt'
+						? 'article.daily-report'
+						: '[data-slot="detail-shell"]';
 			await expect(page.locator(surface)).toBeVisible();
 			await expect(page.getByTestId('toc-pill')).toHaveCount(0);
 		}
@@ -122,7 +84,7 @@ for (const locale of PUBLISHED_LOCALES) {
 
 for (const input of ['desktop', 'touch-only', 'hybrid'] as const) {
 	for (const reducedMotion of ['reduce', 'no-preference'] as const) {
-		test(`${input} real wordmark and GrainPicker policy with ${reducedMotion} @theme`, async ({
+		test(`${input} real wordmark and app frame view control policy with ${reducedMotion} @theme`, async ({
 			browser,
 			baseURL,
 		}, testInfo) => {
@@ -146,13 +108,15 @@ for (const input of ['desktop', 'touch-only', 'hybrid'] as const) {
 						Object.defineProperty(navigator, 'maxTouchPoints', { get: () => 5 }),
 					);
 				const page = await context.newPage();
-				await page.clock.install({ time: new Date(Date.parse(departures.generated_utc) + 30_000) });
+				const clockTime = Date.parse('2026-11-22T12:00:00Z');
+				await page.clock.install({ time: clockTime });
 				await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
-				await page.goto(`/stop/${stop}?tab=reliability`);
+				await page.goto('/stop/S1?provider=stm&recordFrom=2026-11-08&recordTo=2026-11-14');
 				await expect(
-					page.getByRole('radiogroup', { name: stopReliabilityCopy.en.grain.label }).first(),
+					page.getByRole('radiogroup', { name: 'View', exact: true }).first(),
 				).toBeVisible();
-				await page.clock.pauseAt(new Date(Date.parse(departures.generated_utc) + 35_000));
+				await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+				await page.clock.pauseAt(new Date(clockTime + 5_000));
 				const capabilities = await page.evaluate(() => ({
 					pointer: matchMedia('(any-hover: hover) and (any-pointer: fine)').matches,
 					touch: navigator.maxTouchPoints,
@@ -168,7 +132,7 @@ for (const input of ['desktop', 'touch-only', 'hybrid'] as const) {
 				await expect(page.locator('header [data-slot="wordmark-letters"] div')).toHaveCount(0);
 				await expect(page.locator('footer [data-slot="wordmark-letters"] div')).toHaveCount(0);
 				const segment = page
-					.getByRole('radiogroup', { name: stopReliabilityCopy.en.grain.label })
+					.getByRole('radiogroup', { name: 'View', exact: true })
 					.first()
 					.getByRole('radio', { checked: true });
 				await expect(segment).toHaveClass(/tap-press/);
@@ -222,10 +186,10 @@ for (const locale of PUBLISHED_LOCALES) {
 			try {
 				const page = await context.newPage();
 				await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
-				await page.goto(localizeHref(`/stop/${stop}?tab=reliability`, locale));
+				await page.goto(localizeHref('/network?frameMode=live', locale));
 				const pill = page.locator('.surface-rail-pill');
 				const sheet = page.getByRole('dialog', {
-					name: stopReliabilityCopy[locale].controlsLabel,
+					name: networkReliabilityCopy[locale].viewControlsLabel,
 					exact: true,
 				});
 				await expect(async () => {

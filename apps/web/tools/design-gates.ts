@@ -129,7 +129,6 @@ export const TRANSIT_STYLE_EXEMPTIONS = {
 		'src/lib/features/alerts/sections/AlertLog.svelte',
 		'src/lib/features/health/sections/SectionEnvelope.svelte',
 		'src/lib/features/health/sections/SectionRetention.svelte',
-		'src/lib/features/receipt/sections/SectionStateCuts.svelte',
 		'src/lib/features/map/MapMotionControl.svelte',
 		'src/lib/features/map/MapSelectionDetail.svelte',
 	],

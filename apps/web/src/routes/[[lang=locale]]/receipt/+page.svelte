@@ -6,7 +6,6 @@
 	import { alertDetailsLimit } from '#lib/features/alerts/alertRecord.ts';
 	import RecordSection from '#lib/features/record/RecordSection.svelte';
 	import RecordTable from '#lib/features/record/RecordTable.svelte';
-	import AccountabilityReceipt from '#lib/features/receipt/AccountabilityReceipt.svelte';
 	import {
 		dailyPeriodRows,
 		dailyTitles,
@@ -49,6 +48,7 @@
 		const url = new URL(page.url.href);
 		if (!data) return url;
 		url.searchParams.set('provider', data.city);
+		url.searchParams.delete('date');
 		return new URL(
 			frameHref(url, { mode: 'record', period: data.period && { ...data.period, preset: null } }),
 			url,
@@ -75,6 +75,12 @@
 					{t('Print report', 'Imprimer le rapport')}
 				</button>
 			</header>
+			{#if !data.period}<p role="status">
+					{t(
+						'This date is outside the available record.',
+						'Cette date est hors du bilan disponible.',
+					)}
+				</p>{/if}
 			{#each data.sections as { section, answer } (section)}
 				{@const heading = dailyTitles[section][lang === 'fr' ? 1 : 0]}
 				<RecordSection
@@ -249,8 +255,6 @@
 			{/if}
 		</article>
 	</Surface>
-{:else}
-	<AccountabilityReceipt />
 {/if}
 
 <style>

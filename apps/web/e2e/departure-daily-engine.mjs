@@ -128,9 +128,13 @@ export function departureDailyEngine(url) {
 		);
 	}
 	if (measure === 'alert_counts') {
-		if (from === '2026-11-17')
+		if (
+			from === '2026-11-17' ||
+			(from === '2026-11-18' && ['18', '19', '21', '22'].includes(to?.slice(-2)))
+		)
 			return {
-				hold: 'daily-messages',
+				hold:
+					from === '2026-11-17' ? 'daily-messages' : ['daily-layout', get('city'), to].join('-'),
 				...result({
 					...cell(null, { alerts: null }),
 					state: 'not_tracked',

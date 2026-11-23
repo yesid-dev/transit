@@ -67,14 +67,6 @@ async function serve(page: Page, held: RegExp) {
 	return gate;
 }
 
-const answerTop = (page: Page) =>
-	page.evaluate(
-		() =>
-			document
-				.querySelector('[role="tabpanel"][data-state="active"] [data-slot="stop-record-answer"]')
-				?.getBoundingClientRect().top ?? null,
-	);
-
 const settle = (page: Page) =>
 	page.evaluate(() =>
 		Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 2000))]),
@@ -82,45 +74,10 @@ const settle = (page: Page) =>
 const frames = (page: Page) =>
 	page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 
-for (const locale of ['en', 'fr'] as const)
-	test(`${locale} stop record answer keeps still while current notices arrive`, async ({
-		page,
-	}) => {
-		await page.clock.setFixedTime(Date.parse(generated) + 30_000);
-		const gate = await serve(page, /\/live\/alerts\.json$/);
-		try {
-			for (const viewport of VIEWPORTS) {
-				gate.holding = true;
-				const entered = new Promise<void>((resolve) => (gate.entered = resolve));
-				await page.setViewportSize(viewport);
-				await page.goto(`${localizeHref('/stop/S1', locale)}?provider=stm`, {
-					waitUntil: 'domcontentloaded',
-				});
-				// The browser asks for the alert report once the page runs; the answer is already there.
-				await entered;
-				await expect(page.locator('[data-slot="stop-record-answer"]:visible')).toBeVisible();
-				await settle(page);
-				const before = await answerTop(page);
-				expect(before, `${viewport.width} px`).not.toBeNull();
-
-				gate.holding = false;
-				for (const release of gate.releases.splice(0)) release();
-				// The notice is current: the strip shows on the record, and the answer stays put.
-				await expect(page.locator('[data-slot="stop-current-notice"]:visible')).toBeVisible();
-				await frames(page);
-				expect(await answerTop(page), `${viewport.width} px`).toBe(before);
-			}
-		} finally {
-			gate.holding = false;
-			for (const release of gate.releases.splice(0)) release();
-		}
-	});
-
 // The other views lead with their first section; the alert report must not push it either.
 // Schedule shows the strip (production: +193 px, CLS 0.05-0.06); Live now holds the notices in
 // its own second section and shows no strip.
 const VIEWS = [
-	{ tab: 'schedule', first: 'stop-schedule-service', arrived: '[data-slot="stop-current-notice"]' },
 	{ tab: 'detail', first: 'stop-detail-departures', arrived: '[data-testid="stop-alerts"]' },
 ] as const;
 
@@ -167,35 +124,3 @@ for (const { tab, first, arrived } of VIEWS)
 				for (const release of gate.releases.splice(0)) release();
 			}
 		});
-
-for (const locale of ['en', 'fr'] as const)
-	test(`${locale} stop record answer keeps still while the stop's own file arrives`, async ({
-		page,
-	}) => {
-		const gate = await serve(page, /\/static\/stops\/UNSEEDED\.json$/);
-		try {
-			for (const viewport of VIEWPORTS) {
-				gate.holding = true;
-				const entered = new Promise<void>((resolve) => (gate.entered = resolve));
-				await page.setViewportSize(viewport);
-				await page.goto(`${localizeHref('/stop/UNSEEDED', locale)}?provider=stm`, {
-					waitUntil: 'domcontentloaded',
-				});
-				await entered;
-				await expect(page.locator('[data-slot="stop-record-answer"]:visible')).toBeVisible();
-				await settle(page);
-				const before = await answerTop(page);
-				expect(before, `${viewport.width} px`).not.toBeNull();
-
-				gate.holding = false;
-				for (const release of gate.releases.splice(0)) release();
-				// The lines and access row fills the room it held.
-				await expect(page.locator('[data-slot="stop-access"]:visible')).toBeVisible();
-				await frames(page);
-				expect(await answerTop(page), `${viewport.width} px`).toBe(before);
-			}
-		} finally {
-			gate.holding = false;
-			for (const release of gate.releases.splice(0)) release();
-		}
-	});

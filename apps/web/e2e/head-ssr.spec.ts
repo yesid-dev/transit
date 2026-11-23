@@ -1,9 +1,9 @@
-import { readFileSync } from 'node:fs';
 import { createLineDirectory } from '../src/lib/site/lineDirectory';
 import { routeNameFallback } from '../src/lib/site/nameFallback';
 import { announcement } from '../src/lib/site/announcement';
 import { linePageTitle, stopPageTitle } from '../src/lib/seo/riderPageTitle';
-const fixture = (path: string) => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
+import { stopDisplayName } from '../src/lib/site/transitDisplay';
+import type { ScheduleEdition } from '../src/lib/search/searchIndex';
 import { expect, test } from '@playwright/test';
 import { createHash } from 'node:crypto';
 
@@ -131,13 +131,16 @@ for (const locale of ['en', 'fr'] as const) {
 	test(
 		locale + ': a line page and a stop page name themselves in the title',
 		async ({ request }) => {
-			// The fixture server resolves these unbranded requests to its default STM network.
-			const routes = fixture('./routes-index.json').routes;
+			const port = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
+			const edition = await request.get(`http://127.0.0.1:${port}/v2/stm/schedule-index`);
+			expect(edition.ok()).toBe(true);
+			const { schedule }: { schedule: ScheduleEdition } = await edition.json();
+			const { routes } = schedule;
 			const directory = createLineDirectory(routes, {
 				line: (id) => routeNameFallback(id, locale),
 			});
-			const b9 = fixture('../scripts/__fixtures__/b9/rich.json').files;
-			const stops = [b9['static/stops/52095.json'], fixture('./stop.json')];
+			const stops = schedule.stops.filter(({ id }) => id === '52095' || id === 'S1');
+			expect(stops).toHaveLength(2);
 			const cases: [string, string][] = [
 				...routes.map(
 					(r: { id: string }) =>
@@ -145,7 +148,10 @@ for (const locale of ['en', 'fr'] as const) {
 				),
 				...stops.map(
 					(s) =>
-						['/stop/' + s.id, stopPageTitle(s.name, s.code ?? null, locale)] as [string, string],
+						['/stop/' + s.id, stopPageTitle(stopDisplayName(s.name), s.code, locale)] as [
+							string,
+							string,
+						],
 				),
 			];
 			for (const [path, title] of cases) {

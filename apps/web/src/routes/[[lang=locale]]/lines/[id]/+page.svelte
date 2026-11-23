@@ -20,17 +20,12 @@
 		headsigns={data.directionHeadsigns}
 		stopNames={data.stopNames}
 	/>
-{:else}
+{:else if data.frameLive && data.v1}
 	{#if data.frameLive}<LineViewNav {url} {locale} view="live" />{/if}
 	<RouteDetail
 		id={data.seed.id}
 		seed={data.seed}
 		frameLive={data.frameLive}
 		routeSeed={data.routeSeed ?? undefined}
-		reliabilitySeed={data.reliabilitySeed ?? undefined}
-		lineHistorySeed={data.lineHistorySeed ?? undefined}
-		initialClusters={data.initialClusters}
-		initialImportFailed={data.initialImportFailed}
-		preparedArticleTime={data.preparedArticleTime}
 	/>
 {/if}

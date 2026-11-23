@@ -1,10 +1,9 @@
-import { usesFinderRecord } from '#lib/site/finderFrame.ts';
 import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
 import { finderQuestions } from './engineQuestion.ts';
 import { getFinderSeries } from './engine.ts';
 
 function finderPeriod(url: URL) {
-	return usesFinderRecord(url) ? parseFrameState(url.searchParams, frameToday()).period : null;
+	return parseFrameState(url.searchParams, frameToday()).period;
 }
 
 export function loadLinesRecord(url: URL, city: string, request: Request) {

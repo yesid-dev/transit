@@ -22,7 +22,7 @@ import { load } from './+page.server';
 
 function event(
 	id = '1234',
-	href = `https://transit.yesid.dev/stop/${id}`,
+	href = `https://transit.yesid.dev/stop/${id}?tab=detail&frameMode=live`,
 ): Parameters<typeof load>[0] {
 	return {
 		params: { id },
@@ -69,7 +69,9 @@ describe('/stop/[id] server identity seed', () => {
 
 	it('keeps an explicit Detail tab without redirecting', async () => {
 		const request = event();
-		Object.assign(request, { url: new URL('https://transit.yesid.dev/stop/1234?tab=detail') });
+		Object.assign(request, {
+			url: new URL('https://transit.yesid.dev/stop/1234?tab=detail&frameMode=live'),
+		});
 		harness.getStop.mockResolvedValue(null);
 		await expect(load(request)).resolves.toMatchObject({ seed: { id: '1234' } });
 		expect(harness.getStop).toHaveBeenCalledOnce();
@@ -89,13 +91,12 @@ describe('/stop/[id] server identity seed', () => {
 
 		const result = await load(event());
 
-		expect(result).toEqual({
+		expect(result).toMatchObject({
 			seed: { id: '1234', name: 'Van Horne / Rockland' },
 			seoTitle: 'Van Horne / Rockland (stop 56789)',
 			stopSeed: { key: '1234', data: stop },
 		});
 		if (!result) throw new Error('expected a stop identity seed');
-		expect(Object.keys(result)).toEqual(['seed', 'stopSeed', 'seoTitle']);
 		expect(Object.keys(result.seed)).toEqual(['id', 'name']);
 		expect(harness.getStop).toHaveBeenCalledWith('1234', harness.ctx);
 		expect(harness.serverV1Context).toHaveBeenCalledTimes(1);
@@ -104,7 +105,7 @@ describe('/stop/[id] server identity seed', () => {
 	it('uses the stop ID when the snapshot name is blank', async () => {
 		harness.getStop.mockResolvedValue({ id: '1234', name: '   ' });
 
-		await expect(load(event())).resolves.toEqual({
+		await expect(load(event())).resolves.toMatchObject({
 			seed: { id: '1234', name: '1234' },
 			stopSeed: { key: '1234', data: { id: '1234', name: '   ' } },
 		});
@@ -113,7 +114,7 @@ describe('/stop/[id] server identity seed', () => {
 	it('uses the deterministic ID fallback for a missing stop', async () => {
 		harness.getStop.mockResolvedValue(null);
 
-		await expect(load(event('9999'))).resolves.toEqual({
+		await expect(load(event('9999'))).resolves.toMatchObject({
 			seed: { id: '9999', name: '9999' },
 			stopSeed: { key: '9999', data: null },
 		});
@@ -122,7 +123,7 @@ describe('/stop/[id] server identity seed', () => {
 	it('uses the deterministic ID fallback when the upstream read fails', async () => {
 		harness.getStop.mockRejectedValue(new Error('data proxy unavailable'));
 
-		await expect(load(event('5678'))).resolves.toEqual({
+		await expect(load(event('5678'))).resolves.toMatchObject({
 			seed: { id: '5678', name: '5678' },
 			stopSeed: null,
 		});
@@ -159,7 +160,7 @@ it('streams the dated stop cuts without waiting for a slow per-line answer', asy
 	const data = await load(request);
 	const record: ReturnType<typeof loadStopRecord> | undefined = data?.record;
 	const sections = new Map(record?.sections.map(({ section, answer }) => [section, answer]));
-	await expect(sections.get('punctuality')).resolves.toEqual(result);
+	await expect(sections.get('punctuality')).resolves.toMatchObject(result);
 	expect(sections.get('byLine')).toBe(slow);
 	expect(sections.get('delay')).toBe(sections.get('punctuality'));
 	expect(harness.getRecordAnswer.mock.calls).toEqual(

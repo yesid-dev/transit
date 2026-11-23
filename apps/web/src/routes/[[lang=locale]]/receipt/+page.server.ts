@@ -1,11 +1,16 @@
 import type { PageServerLoad } from './$types';
-import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
+import { frameToday, parseFrameState, periodError } from '#lib/site/frameState.ts';
 import { loadDailyRecord } from '#lib/server/departureDailyRecord.ts';
-import { dailyReportFrame } from '#lib/site/dailyReportFrame.ts';
 
 export const load: PageServerLoad = async (event) => {
-	if (!dailyReportFrame(event.url)) return { report: null };
-	const { period } = parseFrameState(event.url.searchParams, frameToday());
+	const today = frameToday();
+	const date = event.url.searchParams.has('recordFrom') ? null : event.url.searchParams.get('date');
+	const legacyPeriod = date == null ? null : { from: date, to: date, preset: null };
+	const period = legacyPeriod
+		? periodError(legacyPeriod, today)
+			? null
+			: legacyPeriod
+		: parseFrameState(event.url.searchParams, today).period;
 	const { providerId, lang, provider } = await event.parent();
 	const scope = period && {
 		...period,

@@ -11,27 +11,15 @@ const stop = Object.keys(read('departures').stops)[0];
 const trip = Object.keys(read('trips').trips)[0];
 const shots = fileURLToPath(new URL('../../../.cache/cohesion/after/', import.meta.url));
 mkdirSync(shots, { recursive: true });
-// The phone view pill must not cover the record's first heading, as loaded or scrolled to it.
-// The fixture server publishes line records for its manifest's network only; elsewhere the record
-// is an absence notice, with no rail pill and no heading.
-const recordNetwork = read('manifest').provider;
-const pillCoversHeading = (page: Page) =>
+const recordClearance = (page: Page) =>
 	page.evaluate(() => {
-		const pill = document.querySelector('[data-slot="surface-rail-mobile"] > button');
-		const heading = document.querySelector('[data-slot="reliability-rail-content"] :is(h2, h3)');
-		if (!pill && !heading) return 'no record';
-		if (!pill || !heading) return 'missing';
-		const overlap = () => {
-			const [p, h] = [pill, heading].map((el) => el.getBoundingClientRect());
-			return p.top < h.bottom && h.top < p.bottom && p.left < h.right && h.left < p.right;
-		};
-		const atLoad = overlap();
-		heading.scrollIntoView({ block: 'end', behavior: 'instant' });
-		return atLoad || overlap();
+		const controls = document.querySelector('[data-slot="app-frame-controls"]')!;
+		const title = document.querySelector('main h1')!;
+		return controls.getBoundingClientRect().bottom <= title.getBoundingClientRect().top;
 	});
 for (const provider of ['stm', 'octranspo'])
 	for (const locale of ['en', 'fr'])
-		test(`${provider} ${locale} 390 line view pill clears the record heading @layout`, async ({
+		test(`${provider} ${locale} 390 frame controls clear the Line Record heading @layout`, async ({
 			page,
 		}) => {
 			const path = (locale === 'fr' ? '/fr' : '') + '/lines/' + line + '?provider=' + provider;
@@ -45,13 +33,11 @@ for (const provider of ['stm', 'octranspo'])
 			await page.route('**/_app/immutable/**/*.js', (route) => held.then(() => route.fallback()));
 			await page.goto(path, { waitUntil: 'domcontentloaded' });
 			const hydratedEarly = await page.locator('html').getAttribute('data-hydrated');
-			const atFirstPaint = await pillCoversHeading(page);
+			const atFirstPaint = await recordClearance(page);
 			release();
-			const expected = provider === recordNetwork ? false : 'no record';
-			expect([hydratedEarly, atFirstPaint]).toEqual([null, expected]);
+			expect([hydratedEarly, atFirstPaint]).toEqual([null, true]);
 			await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
-			await page.waitForLoadState('networkidle');
-			expect(await pillCoversHeading(page)).toBe(expected);
+			expect(await recordClearance(page)).toBe(true);
 		});
 for (const provider of ['stm', 'octranspo'])
 	for (const locale of ['en', 'fr'])
@@ -78,20 +64,20 @@ for (const provider of ['stm', 'octranspo'])
 						await expect(page.getByRole('main')).toBeVisible();
 						await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 						if (kind !== 'trip') {
-							const tabs = page.locator('[data-slot="entity-detail-tabs"]');
-							await expect(tabs.getByRole('tab')).toHaveCount(3);
-							const first = tabs.getByRole('tab').first();
-							await expect(first).toHaveAttribute('aria-selected', 'true');
+							const name =
+								kind === 'line' ? /Line views|Vues de la ligne/ : /Stop views|Vues de l’arrêt/;
+							const views = page.getByRole('navigation', { name });
+							await expect(views.getByRole('link')).toHaveCount(kind === 'line' ? 3 : 2);
+							const first = views.getByRole('link').first();
+							await expect(first).toHaveAttribute('aria-current', 'page');
 							await first.focus();
-							await first.press('ArrowRight');
-							await expect(tabs.getByRole('tab').nth(1)).toHaveAttribute('aria-selected', 'true');
-							await first.click();
+							await expect(first).toBeFocused();
+							await page.keyboard.press('Tab');
+							await expect(views.getByRole('link').nth(1)).toBeFocused();
+							await views.evaluate((node) => node.setAttribute('data-axe-record-nav', ''));
 							expect(
-								(
-									await new AxeBuilder({ page })
-										.include('[data-slot="entity-detail-tabs"]')
-										.analyze()
-								).violations,
+								(await new AxeBuilder({ page }).include('[data-axe-record-nav]').analyze())
+									.violations,
 							).toEqual([]);
 						}
 						await page.screenshot({

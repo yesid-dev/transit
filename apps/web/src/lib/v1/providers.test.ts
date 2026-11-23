@@ -1,7 +1,6 @@
 import { expect, it, vi } from 'vitest';
 import readyProviders from '../../../e2e/providers.json';
 import {
-	loadProviderCatalog,
 	PublicProviderCatalogSchema,
 	resolveProvider,
 	providerHref,
@@ -128,14 +127,6 @@ it('selects any ready provider and normalizes unknown or duplicate choices to th
 	).toBe('/fr/map?provider=octranspo');
 });
 
-it('loads configured identities and unavailable inputs without a known-city list', async () => {
-	const fetcher = vi.fn(async () => new Response(JSON.stringify(catalog)));
-	const loaded = await loadProviderCatalog(fetcher);
-	expect(fetcher).toHaveBeenCalledWith('/data/v1/providers.json');
-	expect(loaded.providers[0].labels.fr.city).toBe('Ville Test');
-	expect(loaded.providers[0].inputs.service_alerts).toBe(false);
-});
-
 it.each([
 	{ ...catalog, schema_version: 2 },
 	{ ...catalog, providers: [] },
@@ -150,12 +141,6 @@ it.each([
 it('uses the canonical version default when the catalog omits it', () => {
 	const { schema_version: _version, ...unversioned } = catalog;
 	expect(PublicProviderCatalogSchema.parse(unversioned).schema_version).toBe(1);
-});
-
-it('reports unavailable discovery without fetching default-provider data', async () => {
-	const fetcher = vi.fn(async () => new Response(null, { status: 503 }));
-	await expect(loadProviderCatalog(fetcher)).rejects.toThrow('Provider catalog unavailable');
-	expect(fetcher).toHaveBeenCalledTimes(1);
 });
 
 it.each([

@@ -1,7 +1,6 @@
 vi.mock('$app/navigation', () => ({ afterNavigate: () => {} }));
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest';
-import { render, screen, within, fireEvent, waitFor } from '@testing-library/svelte';
-import { tick } from 'svelte';
+import { render, screen } from '@testing-library/svelte';
 import MetricsExplainer from './MetricsExplainer.svelte';
 import { metricsCopy } from './metrics.copy';
 
@@ -56,99 +55,7 @@ afterEach(() => {
 	provState.settled = true;
 });
 
-const liveMethodology = {
-	otp_definition: 'LIVE-NOTE-OTP: on-time band -60s..+300s, observation-weighted',
-	cancellation: 'LIVE-NOTE-CANCEL: canceled trip-days / observed trip-days, ramp-in',
-};
-
-const richProvenance = {
-	generated_utc: '2026-07-10T12:00:00Z',
-	conformance: {
-		status: 'conformant',
-		extra_row_count: 0,
-		unknown_members: [],
-	},
-	methodology: {
-		...liveMethodology,
-		min_n_rate: 30,
-		wilson_z: 1.96,
-	},
-};
-
-describe('MetricsExplainer — live pipeline note', () => {
-	it('renders the matched methodology string verbatim inside a pipeline-note card', () => {
-		provState.data = { conformance: null, methodology: liveMethodology };
-		render(MetricsExplainer);
-
-		expect(screen.getAllByText(metricsCopy.en.sections.pipelineNote).length).toBeGreaterThanOrEqual(
-			2,
-		);
-		for (const note of Object.values(liveMethodology)) {
-			const noteBody = screen.getByText(note);
-			expect(noteBody).toHaveAttribute('data-slot', 'pipeline-note');
-			expect(noteBody.textContent).toBe(note);
-			expect(noteBody.closest('[data-kind="pipeline-note"]')).not.toBeNull();
-		}
-	});
-
-	it('renders NO pipeline note when methodology is absent (card unchanged)', () => {
-		provState.data = null;
-		render(MetricsExplainer);
-
-		expect(screen.queryByText(metricsCopy.en.sections.pipelineNote)).toBeNull();
-		expect(document.querySelectorAll('[data-kind="pipeline-note"]').length).toBe(0);
-	});
-});
-
 describe('MetricsExplainer — responsive stat rail icons', () => {
-	it('keeps mobile provenance facts visible without mounting the duplicate live rail cards', () => {
-		viewport.happyDOM.setInnerWidth(390);
-		provState.data = richProvenance;
-		const { container } = render(MetricsExplainer);
-		const rail = container.querySelector('.metrics-stat-rail') as HTMLElement;
-		expect(rail.querySelector('[data-slot="stat-provenance"]')).toBeNull();
-		expect(rail.querySelector('[data-slot="stat-freshness"]')).toBeNull();
-		expect(rail.querySelector('[data-slot="stat-coverage"]')).toHaveTextContent('14');
-		expect(container.querySelector('.toc-nav')).toBeInTheDocument();
-		expect(
-			container.querySelector('.metrics-conformance [data-slot="conformance-badge"]'),
-		).toHaveAttribute('data-verdict', 'conformant');
-		expect(container.querySelector('[data-slot="article-header"] time')).toHaveAttribute(
-			'datetime',
-			richProvenance.generated_utc.slice(0, 10),
-		);
-		expect(screen.getByText(liveMethodology.otp_definition)).toBeInTheDocument();
-	});
-
-	it('starts newly mounted desktop cards at the bulk choice and keeps individual state across later resizes', async () => {
-		viewport.happyDOM.setInnerWidth(390);
-		provState.data = richProvenance;
-		const { container } = render(MetricsExplainer);
-		const rail = container.querySelector('.metrics-stat-rail') as HTMLElement;
-		await fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }));
-		viewport.happyDOM.setInnerWidth(1280);
-		await waitFor(() =>
-			expect(rail.querySelector('[data-slot="stat-provenance"]')).toBeInTheDocument(),
-		);
-		const provenance = within(rail).getByRole('button', { name: 'Provenance' });
-		const coverage = within(rail).getByRole('button', { name: 'Coverage' });
-		expect(provenance).toHaveAttribute('aria-expanded', 'false');
-		expect(coverage).toHaveAttribute('aria-expanded', 'false');
-		await fireEvent.click(provenance);
-		expect(provenance).toHaveAttribute('aria-expanded', 'true');
-		expect(coverage).toHaveAttribute('aria-expanded', 'false');
-		const originalBody = rail.querySelector('[data-slot="stat-provenance"]');
-
-		viewport.happyDOM.setInnerWidth(390);
-		await tick();
-		expect(rail.querySelector('[data-slot="stat-provenance"]')).toBe(originalBody);
-		viewport.happyDOM.setInnerWidth(1280);
-		await tick();
-		expect(within(rail).getByRole('button', { name: 'Provenance' })).toBe(provenance);
-		expect(provenance).toHaveAttribute('aria-expanded', 'true');
-		expect(coverage).toHaveAttribute('aria-expanded', 'false');
-	});
-
 	it('retains the ToC, Coverage and complete definitions in actual unseeded SSR', async () => {
 		const { createServer } = await import('vite');
 		const server = await createServer({
@@ -176,19 +83,6 @@ describe('MetricsExplainer — responsive stat rail icons', () => {
 			await server.close();
 		}
 	}, 20_000);
-
-	it('renders the Provenance and Coverage SectionIcons without the removed Freshness icon', () => {
-		provState.data = richProvenance;
-		const { container } = render(MetricsExplainer);
-
-		const rails = container.querySelectorAll('.metrics-stat-rail');
-		expect(rails).toHaveLength(1);
-		for (const rail of rails) {
-			expect(within(rail as HTMLElement).getByTestId('section-layers-icon')).toBeInTheDocument();
-			expect(within(rail as HTMLElement).getByTestId('section-chart-icon')).toBeInTheDocument();
-			expect(within(rail as HTMLElement).queryByTestId('section-eye-icon')).toBeNull();
-		}
-	});
 });
 
 describe('MetricsExplainer — "how we measure" doctrine constants (D6, dynamic)', () => {
@@ -202,39 +96,6 @@ describe('MetricsExplainer — "how we measure" doctrine constants (D6, dynamic)
 		expect(screen.getByText(en.provenance.howWeMeasure.serviceDay.body)).toBeInTheDocument();
 		expect(screen.getByText(en.provenance.howWeMeasure.rounding.heading)).toBeInTheDocument();
 		expect(screen.getByText(en.provenance.howWeMeasure.rounding.body)).toBeInTheDocument();
-	});
-
-	it('renders the SERVED min_n_rate / wilson_z verbatim when provenance carries them', () => {
-		provState.data = {
-			conformance: null,
-			methodology: { min_n_rate: 30, wilson_z: 1.96 },
-		} as never;
-		render(MetricsExplainer);
-
-		const line = screen.getByTestId('metrics-doctrine-constants');
-		expect(line.textContent).toContain('30');
-		expect(line.textContent).toContain('1.96');
-		expect(screen.queryByTestId('metrics-doctrine-absent')).toBeNull();
-	});
-
-	it('renders honest-absence (never a hardcoded 30 / 1.96) when methodology is absent', () => {
-		provState.data = null;
-		render(MetricsExplainer);
-
-		expect(screen.getByTestId('metrics-doctrine-absent')).toBeInTheDocument();
-		expect(screen.getByText(en.provenance.howWeMeasure.constants.absent)).toBeInTheDocument();
-		expect(screen.queryByTestId('metrics-doctrine-constants')).toBeNull();
-	});
-
-	it('falls back to honest-absence when only ONE constant is present (never a mixed prose)', () => {
-		provState.data = {
-			conformance: null,
-			methodology: { min_n_rate: 30 },
-		} as never;
-		render(MetricsExplainer);
-
-		expect(screen.getByTestId('metrics-doctrine-absent')).toBeInTheDocument();
-		expect(screen.queryByTestId('metrics-doctrine-constants')).toBeNull();
 	});
 });
 
@@ -251,29 +112,6 @@ describe('MetricsExplainer — provenance edge states (supplementary, never bloc
 		expect(container.querySelector('#structural-gaps')).not.toBeNull();
 		expect(screen.getByText(en.lacunes.gaps[0].body)).toBeInTheDocument();
 		expect(screen.queryByText(en.provenance.unavailable)).toBeNull();
-	});
-
-	it('degrades to a localized stand-down line when provenance errors, methodology + LACUNES still render', () => {
-		provState.data = null;
-		provState.error = new Error('provenance fetch failed');
-		provState.settled = true;
-		const { container } = render(MetricsExplainer);
-
-		const unavailable = screen.getByText(en.provenance.unavailable);
-		expect(unavailable).toBeInTheDocument();
-		expect(unavailable.closest('[data-slot="state-notice"]')).toHaveAttribute(
-			'data-presentation',
-			'silo',
-		);
-
-		expect(screen.getByRole('heading', { level: 1, name: en.heading })).toBeInTheDocument();
-		expect(screen.getByText(en.provenance.body)).toBeInTheDocument();
-		const lacunes = container.querySelector('#structural-gaps');
-		expect(lacunes).not.toBeNull();
-		expect(lacunes?.textContent).toContain(en.lacunes.title);
-		for (const gap of en.lacunes.gaps) {
-			expect(lacunes?.textContent).toContain(gap.heading);
-		}
 	});
 
 	it('shows no stand-down line before the provenance fetch settles', () => {

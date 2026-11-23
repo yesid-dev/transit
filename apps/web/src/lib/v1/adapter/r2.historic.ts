@@ -1,15 +1,9 @@
 import type { z } from 'zod';
 import { resolveUrl } from '#lib/v1/config.ts';
 import { getEntityJson, getEntityJsonWithBytes, sha256Hex } from '#lib/v1/http.ts';
-import { HistoricHotspotsDaySchema, HotspotsSchema } from '#lib/v1/schemas/hotspots.ts';
-import {
-	HistoricRepeatOffendersDaySchema,
-	RepeatOffendersSchema,
-} from '#lib/v1/schemas/repeat_offenders.ts';
+import { HotspotsSchema } from '#lib/v1/schemas/hotspots.ts';
 import { AlertHistorySchema } from '#lib/v1/schemas/alert_history.ts';
-import { ReceiptsIndexSchema } from '#lib/v1/schemas/receipts_index.ts';
 import { RouteReliabilityIndexSchema } from '#lib/v1/schemas/route_reliability_index.ts';
-import { ReceiptSchema } from '#lib/v1/schemas/receipts.ts';
 import { RouteReliabilitySchema } from '#lib/v1/schemas/route_reliability.ts';
 import { StopReliabilitySchema } from '#lib/v1/schemas/stop_reliability.ts';
 import { NetworkTrendSchema } from '#lib/v1/schemas/network_trend.ts';
@@ -31,7 +25,6 @@ import {
 	historyPointerPayloadSha,
 	isHistoryEntityIndexPath,
 	isHistoryFamilyIndexPath,
-	isHistoryPointArtifactPath,
 } from '#lib/v1/history/pointers.ts';
 import type { AdapterCtx } from './types';
 import {
@@ -88,27 +81,6 @@ async function readOptionalHistory<T>(
 function assertHistoryFamilyIndexPath(family: 'network' | 'lines' | 'stops', path: string): string {
 	if (!isHistoryFamilyIndexPath(family, path)) {
 		throw new HistoryArtifactContractError(path, `unsafe advertised ${family} history index path`);
-	}
-	return path;
-}
-
-function assertPointHistoryIndexPath(
-	family: 'hotspots' | 'repeat_offenders',
-	path: string,
-): string {
-	if (!isHistoryFamilyIndexPath(family, path)) {
-		throw new HistoryArtifactContractError(path, `unsafe advertised ${family} history index path`);
-	}
-	return path;
-}
-
-function assertPointHistoryDayPath(
-	family: 'hotspots' | 'repeat_offenders',
-	date: string,
-	path: string,
-): string {
-	if (!isHistoryPointArtifactPath(family, date, path)) {
-		throw new HistoryArtifactContractError(path, `unsafe advertised ${family} history day path`);
 	}
 	return path;
 }
@@ -174,20 +146,6 @@ export const historicPort = {
 			'historic.networkHistoryIndex',
 			ctx,
 		),
-	hotspotsHistoryIndex: async (path: string, ctx?: AdapterCtx) =>
-		readOptionalHistory(
-			assertPointHistoryIndexPath('hotspots', path),
-			HistoricCollectionIndexSchema,
-			'historic.hotspotsHistoryIndex',
-			ctx,
-		),
-	repeatOffendersHistoryIndex: async (path: string, ctx?: AdapterCtx) =>
-		readOptionalHistory(
-			assertPointHistoryIndexPath('repeat_offenders', path),
-			HistoricCollectionIndexSchema,
-			'historic.repeatOffendersHistoryIndex',
-			ctx,
-		),
 	lineHistoryDirectory: async (path: string, ctx?: AdapterCtx) =>
 		readOptionalHistory(
 			assertHistoryFamilyIndexPath('lines', path),
@@ -237,20 +195,6 @@ export const historicPort = {
 			'historic.stopHistoryPartition',
 			ctx,
 		),
-	hotspotsHistoryDay: async (date: string, path: string, ctx?: AdapterCtx) =>
-		readRawHistoryPartition(
-			assertPointHistoryDayPath('hotspots', date, path),
-			HistoricHotspotsDaySchema,
-			'historic.hotspotsHistoryDay',
-			ctx,
-		),
-	repeatOffendersHistoryDay: async (date: string, path: string, ctx?: AdapterCtx) =>
-		readRawHistoryPartition(
-			assertPointHistoryDayPath('repeat_offenders', date, path),
-			HistoricRepeatOffendersDaySchema,
-			'historic.repeatOffendersHistoryDay',
-			ctx,
-		),
 	alertArchiveIndex: async (ctx?: AdapterCtx) => {
 		const manifest = await loadManifest(ctx);
 		return readOptionalWhole(
@@ -297,32 +241,12 @@ export const historicPort = {
 			ctx,
 		);
 	},
-	repeatOffenders: async (ctx?: AdapterCtx) => {
-		const manifest = await loadManifest(ctx);
-		return readWhole(
-			manifest.files.historic?.repeat_offenders ?? DEFAULTS.historic.repeat_offenders,
-			RepeatOffendersSchema,
-			'historic.repeatOffenders',
-			MUTABLE_CACHE,
-			ctx,
-		);
-	},
 	alertHistory: async (ctx?: AdapterCtx) => {
 		const manifest = await loadManifest(ctx);
 		return readWhole(
 			manifest.files.historic?.alert_history ?? DEFAULTS.historic.alert_history,
 			AlertHistorySchema,
 			'historic.alertHistory',
-			MUTABLE_CACHE,
-			ctx,
-		);
-	},
-	receiptsIndex: async (ctx?: AdapterCtx) => {
-		const manifest = await loadManifest(ctx);
-		return readWhole(
-			manifest.files.historic?.receipts_index ?? DEFAULTS.historic.receipts_index,
-			ReceiptsIndexSchema,
-			'historic.receiptsIndex',
 			MUTABLE_CACHE,
 			ctx,
 		);
@@ -341,18 +265,6 @@ export const historicPort = {
 			{ cache: MUTABLE_CACHE, providerId: providerOf(ctx), signal: ctx?.signal },
 		);
 		return value ?? null;
-	},
-	receipt: async (date: string, ctx?: AdapterCtx) => {
-		const manifest = await loadManifest(ctx);
-		return readEntity(
-			'historic',
-			manifest.files.historic?.receipts_prefix ?? DEFAULTS.historic.receipts_prefix,
-			date,
-			ReceiptSchema,
-			'historic.receipt',
-			MUTABLE_CACHE,
-			ctx,
-		);
 	},
 	routeReliability: async (routeId: string, ctx?: AdapterCtx) => {
 		const manifest = await loadManifest(ctx);
