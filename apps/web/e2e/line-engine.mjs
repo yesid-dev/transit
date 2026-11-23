@@ -128,7 +128,9 @@ export function lineEngine(url) {
 			],
 		}[group];
 		return {
-			hold: from === '2026-11-09' && group === 'stop',
+			hold:
+				group === 'stop' &&
+				(from === '2026-11-09' || (from === '2026-11-05' && ['line', get('city'), to].join('-'))),
 			body: { cells, coverage_note, evidence },
 		};
 	}

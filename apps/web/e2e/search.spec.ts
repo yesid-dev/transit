@@ -5,7 +5,6 @@ import { navPillCopy } from '../src/lib/i18n/messages';
 import { headerSearchCopy } from '../src/lib/components/shell/headerSearch.copy';
 import { SURFACE_NAV } from '../src/lib/content/nav';
 import { copy as searchCopy } from '../src/lib/features/search/search.copy';
-import { detailCopy as lineCopy } from '../src/lib/features/lines/lines.copy';
 import { PUBLISHED_LOCALES } from '../src/lib/i18n/config';
 import { localizeHref } from '../src/lib/i18n/routing';
 
@@ -133,27 +132,28 @@ for (const locale of PUBLISHED_LOCALES) {
 		);
 	});
 
-	test(`${locale}: from a line's reliability tab another line opens on the same tab and period`, async ({
-		page,
-	}, { project }) => {
+	test(`${locale}: from a Line Record another line opens for the same dates`, async ({ page }, {
+		project,
+	}) => {
 		test.skip(project.name !== 'desktop', 'the header search box shows from 1024px');
 		const other = fixture('routes-index.json').routes[1];
-		await page.goto(localizeHref(`/lines/${line.id}?tab=reliability&grain=month`, locale));
+		await page.goto(
+			localizeHref(`/lines/${line.id}?recordFrom=2026-11-08&recordTo=2026-11-14`, locale),
+		);
 		const row = await headerRow(page, 'route', other.short, lineRow(other));
-		const grain = new URL(page.url()).searchParams.get('grain');
 		await row.click();
 		await expect(page).toHaveURL(
 			(url) =>
 				url.pathname === localizeHref(`/lines/${other.id}`, locale) &&
 				!url.searchParams.has('tab') &&
-				url.searchParams.get('grain') === grain,
+				url.searchParams.get('recordFrom') === '2026-11-08' &&
+				url.searchParams.get('recordTo') === '2026-11-14',
 		);
-		const record = lineCopy[locale].tabs.reliability;
-		await expect(page.getByRole('tab', { name: record, exact: true })).toHaveAttribute(
-			'aria-selected',
-			'true',
-		);
-		await expect(page.getByRole('tabpanel', { name: record, exact: true })).toBeVisible();
+		const record = page
+			.getByRole('navigation', { name: /Line views|Vues de la ligne/ })
+			.getByRole('link', { name: locale === 'fr' ? 'Bilan' : 'Record' });
+		await expect(record).toHaveAttribute('aria-current', 'page');
+		await expect(page.locator('#punctuality')).toBeVisible();
 		// One Back shows the line the search began on: the page itself, not only its URL.
 		await page.goBack();
 		await expect(page.getByRole('heading', { level: 1 })).toHaveText(

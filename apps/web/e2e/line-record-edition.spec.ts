@@ -37,8 +37,8 @@ for (const { provider, locale, width } of cases) {
 			const path = localizeHref('/lines/24', locale, provider);
 			await page.goto(path + '&recordFrom=2026-11-08&recordTo=2026-11-14&direction=1');
 			const section = page.locator('#punctuality');
-		const cite = section.getByText(locale === 'fr' ? 'Citer' : 'Cite', { exact: true });
-		await cite.click();
+			const cite = section.getByText(locale === 'fr' ? 'Citer' : 'Cite', { exact: true });
+			await cite.click();
 			await expect(section.getByText(/line-fixture-v1/)).toBeVisible();
 			const copy = section.getByRole('button', { name: transitTerms[locale].action.copyLink });
 			expect((await copy.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
@@ -57,7 +57,7 @@ for (const { provider, locale, width } of cases) {
 			expect(copied.hash).toBe('#punctuality');
 
 			await page.goto(copied.href);
-		await cite.click();
+			await cite.click();
 			await expect(section.getByText(/line-fixture-v1/)).toBeVisible();
 			expect((await new AxeBuilder({ page }).include('#punctuality').analyze()).violations).toEqual(
 				[],

@@ -3,8 +3,7 @@ import { expect, test } from '@playwright/test';
 
 import { sectionsToggleCopy } from '../src/lib/components/shared/sectionsToggle.copy';
 import { AUDIT_NAV } from '../src/lib/content/nav';
-import { DEFAULT_LOCALE, INTL_TAGS, PUBLISHED_LOCALES, type Locale } from '../src/lib/i18n/config';
-import { stampCopy } from '../src/lib/v1/stamp.copy';
+import { DEFAULT_LOCALE, PUBLISHED_LOCALES, type Locale } from '../src/lib/i18n/config';
 
 const metrics = `${AUDIT_NAV.find((item) => item.key === 'metrics')!.href}/archive`;
 const localized = (href: string, locale: Locale) =>
@@ -24,25 +23,17 @@ test.beforeEach(async ({ page }) => {
 for (const locale of PUBLISHED_LOCALES) {
 	const copy = sectionsToggleCopy[locale];
 
-	test(`${locale}: the metrics header keeps its date-only record stamp as the clock moves`, async ({
-		page,
-	}) => {
-		const published = generated_utc.slice(0, 10);
-		// The fixture manifest publishes Toronto's zone, so a same-year date omits the year.
-		const date = new Intl.DateTimeFormat(INTL_TAGS[locale], {
-			month: 'short',
-			day: 'numeric',
-			timeZone: 'UTC',
-		}).format(new Date(published));
-		const expected = stampCopy[locale].record(null, date, 'window');
+	test(locale + ': archived methodology stays static as the clock moves', async ({ page }) => {
 		await page.clock.install({ time: generated + 3 * 60_000 });
 		await page.goto(localized(metrics, locale));
-		const stamp = page.locator('[data-slot="article-header"] time');
-		await expect(stamp).toHaveText(expected);
-		await expect(stamp).toHaveAttribute('datetime', published);
+		const header = page.locator('[data-slot="article-header"]');
+		const heading = header.getByRole('heading', { level: 1 });
+		await expect(heading).toBeVisible();
+		const title = await heading.textContent();
+		await expect(header.locator('time')).toHaveCount(0);
 		await page.clock.fastForward('02:00');
-		await expect(stamp).toHaveText(expected);
-		await expect(page.locator('[data-slot="stat-freshness"]')).toHaveCount(0);
+		await expect(heading).toHaveText(title!);
+		await expect(header.locator('time')).toHaveCount(0);
 	});
 
 	test(`${locale}: page actions affect content only and reload restores the bulk choice`, async ({

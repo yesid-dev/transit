@@ -15,14 +15,14 @@ import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
+import { lineEngine } from '../e2e/line-engine.mjs';
+import { stopEngine } from '../e2e/stop-engine.mjs';
 import { verifyInstalledBrowserArtifact } from './browser-toolchain.mjs';
 import {
 	FIXTURES,
-	MARK_KINDS,
 	OBSERVATION_IDS,
 	compareObservations,
 	expectedDomainObservationsFromFixture,
-	expectedDefaultLineHeadline,
 	expectedScheduleTruth,
 	expectedStopLatestDay,
 	normalizeObservation,
@@ -38,6 +38,28 @@ const EXPECTED_WRANGLER = JSON.parse(readFileSync(join(WEB_ROOT, '../../package.
 	.devDependencies?.wrangler;
 const REPLAY_PREFIX = '/v1/stm/';
 const CELLS = Object.freeze(runnerCases.cells);
+const NETWORK_MARKS = ['histogram', 'sparkline', 'stacked-share', 'trend'];
+
+function recordFixture(url, fixtureName) {
+	const match = /^\/v2\/stm\/(measure|ranking)$/.exec(url.pathname);
+	if (!match) return null;
+	const line = url.searchParams.get('line') === '24';
+	const stop = url.searchParams.get('stop') === 'S1';
+	if (!line && !stop) return null;
+	const query = new URL(url);
+	query.pathname = '/' + match[1];
+	query.searchParams.set('city', 'stm');
+	const answer = (line ? lineEngine : stopEngine)(query);
+	if (fixtureName === 'sparse' && query.searchParams.get('measure') === 'punctuality') {
+		answer.body.state = 'not_measured';
+		answer.body.state_text = { en: 'Not measured', fr: 'Non mesuré' };
+		answer.body.value = { early: null, on_time: null, late: null };
+		answer.body.evidence.counts = { classified: null };
+		answer.body.evidence.days_measured = [];
+		answer.body.evidence.days_not_measured = answer.body.evidence.days_included;
+	}
+	return answer;
+}
 
 function invariant(condition, message) {
 	if (!condition) throw new Error(`B9 runner invariant: ${message}`);
@@ -106,25 +128,6 @@ const SEMANTIC_LABELS = Object.freeze({
 	),
 });
 
-const tierMap = (labels) =>
-	Object.fromEntries(labels.map((label, index) => [label, index === 0 ? null : index - 1]));
-const HEATMAP_TIERS = Object.freeze({
-	en: tierMap([
-		'No data',
-		'Low relative score',
-		'Moderate relative score',
-		'High relative score',
-		'◆ Very high relative score',
-	]),
-	fr: tierMap([
-		'Aucune donnée',
-		'Score relatif faible',
-		'Score relatif modéré',
-		'Score relatif élevé',
-		'◆ Score relatif très élevé',
-	]),
-});
-
 async function readTable(page, root, table = 'table.sr-only') {
 	return page
 		.locator(`${root} ${table} tbody tr`)
@@ -151,23 +154,6 @@ async function readSemanticTable(page, root, locale, table = 'table.sr-only') {
 			const baseLabel = row[0].split(' · ')[0];
 			return [labels[baseLabel] ?? row[0], ...row.slice(1).map(displayCell)];
 		}),
-	};
-}
-
-async function readHeatmapTiers(page, root, surface, locale) {
-	const tiers = HEATMAP_TIERS[locale];
-	const rows = await readTable(page, root);
-	return {
-		headers: await readHeaders(page, root),
-		rows: rows.map((row) =>
-			row.slice(1).map((value) => {
-				invariant(
-					Object.hasOwn(tiers, value),
-					`${surface} heatmap emitted unknown AT tier ${value}`,
-				);
-				return { tier: tiers[value], text: normalizeObservation(value) };
-			}),
-		),
 	};
 }
 
@@ -230,265 +216,12 @@ async function readText(page, selector) {
 	return value == null ? null : normalizeObservation(value);
 }
 
-async function readMetricValue(page, root) {
-	const text = await readText(page, `${root} .metric-bullet__value`);
-	return text == null ? { value: null, text: '' } : displayCell(text);
-}
-
 /** The readings behind the line record's answer, from its evidence sentence. */
 function lineVerdictObservationCount(text) {
 	const count = text.match(
 		/\b(?:Based on|Selon)\s+(\d+(?:[ ,\u00a0\u202f]\d{3})*)\s+(?:readings?|relevés?)\./u,
 	)?.[1];
 	return parseNumber(count);
-}
-
-async function collectLine(page, cell) {
-	// The record answers once: its figure, then the delays of the same readings.
-	const figures = await page
-		.locator('[data-section="verdict"] [data-slot="record-answer"] [data-slot="record-figure"]')
-		.allInnerTexts();
-	invariant(figures.length <= 1, 'line record shows its figure more than once');
-	const headlineText = [
-		figures[0] ?? null,
-		...(await readValues(page, '[data-slot="record-delays"] [data-metric]', 'dd')),
-	];
-	invariant(headlineText.length === 4, 'line record delay shape changed');
-	const headline = headlineText.map(parseNumber);
-	const readingsLine = page.locator('[data-section="verdict"] [data-slot="record-readings"]');
-	const verdictText =
-		(await readingsLine.count()) > 0 ? await readingsLine.first().innerText() : '';
-	// Trip facts read "36 of 1,019 (3.5%)": the share is the parenthesised part.
-	const factValue = (slot) =>
-		readText(page, `[data-slot="trip-facts"] [data-slot="${slot}"] [data-slot="fact-value"]`);
-	const shareOf = (text) => parseNumber(text?.match(/\(([^()]*)\)$/u)?.[1] ?? null);
-	const completenessValue = await factValue('service-completeness');
-	const cancellationValue = await factValue('cancellations');
-	const skippedValue = await factValue('skipped-stops');
-	const completeness = parseNumber(completenessValue);
-	const cancellation = shareOf(cancellationValue);
-	const skipped = shareOf(skippedValue);
-	const completenessText = await page
-		.locator('[data-slot="service-completeness"] .fact-def')
-		.allInnerTexts();
-	const counts =
-		completenessText[0]?.match(/\d+(?:[ ,\u00a0\u202f]\d{3})*/gu)?.map(parseNumber) ?? [];
-	const serviceCaptions = {
-		completeness: await readText(page, '[data-slot="service-completeness"] .fact-def'),
-		cancellation: cancellationValue,
-		skipped: skippedValue,
-	};
-	const span = page.locator('[data-sub="service-span"]');
-	const spanMetrics = (
-		await readValues(
-			page,
-			'[data-sub="service-span"] [data-slot="metric-display"]',
-			'.metric-value',
-		)
-	).map(parseNumber);
-	const spanTimeline = span.locator('[data-slot="service-span-timeline"]');
-	const spanText = (await span.count()) > 0 ? await span.innerText() : '';
-	const clocks = await spanTimeline.locator('.dv-span-end-clock').allTextContents();
-	const spanDate = spanText.match(/\d{4}-\d{2}-\d{2}/u)?.[0] ?? null;
-	// Stops with delays: open the whole list, then read each row as shown.
-	const weak = page.locator('[data-slot="stop-delays"]');
-	const showAll = weak.locator('[data-slot="stop-delays-toggle"][aria-expanded="false"]');
-	if ((await showAll.count()) > 0) await showAll.click();
-	const weakRows = await weak.locator('[data-slot="stop-delay-row"]').evaluateAll((rows) =>
-		rows.map((row) => ({
-			name: row.querySelector('a')?.textContent?.trim() ?? '',
-			href: new URL(row.querySelector('a')?.href ?? '', location.href).pathname,
-			value: row.querySelector('[data-slot="stop-delay-value"]')?.textContent?.trim() ?? '',
-			readings: row.querySelector('[data-slot="stop-delay-readings"]')?.textContent?.trim() ?? '',
-		})),
-	);
-	const weakHrefs = weakRows.map((row) => row.href);
-	const rawCount = (await weak.count()) > 0 ? Number(await weak.getAttribute('data-total')) : 0;
-	const delayByCrowding = await readSemanticTable(
-		page,
-		'[data-slot="delay-by-crowding"]',
-		cell.locale,
-	);
-	const verdictDetail = page.locator('[data-section="verdict"] [data-slot="detail-toggle"]');
-	invariant(
-		(await verdictDetail.count()) === 1 &&
-			(await verdictDetail.getAttribute('aria-expanded')) === 'true',
-		'verdict detail lost its opened state before collection',
-	);
-	invariant(
-		(await page.locator('[data-slot="severe-share"]').count()) > 0,
-		`severe-share control missing: ${(await page.locator('main').innerText()).slice(0, 1500)}`,
-	);
-	// An unpublished severe share must say so with the absence marker, never show a number.
-	const severeValue = page.locator('[data-slot="severe-share"] .block-value');
-	const severeAbsent = (await severeValue.locator('[data-slot="absent-value"]').count()) > 0;
-	const severeText = severeAbsent ? '' : await severeValue.innerText();
-	const severe = parseNumber(severeText);
-	invariant(
-		severeAbsent === (severe == null),
-		`severe share neither shows a value nor marks its absence: ${await severeValue.innerText()}`,
-	);
-	// The record's own days, read before the period chooser below is toggled away and back.
-	const trendRows = await readSemanticTable(page, '[data-slot="otp-trend"]', cell.locale, 'table');
-	const grain = page.locator('[data-slot="surface-rail"] [data-slot="grain-picker"]').first();
-	const week = grain.getByRole('radio', {
-		name: cell.locale === 'fr' ? /Dernier jour complet/ : /Latest complete day/,
-	});
-	let histogram = null;
-	if ((await week.count()) > 0 && (await week.isEnabled())) {
-		await week.click();
-		histogram = await readHistogram(page, '[data-slot="histogram-mark"]', 60);
-		await grain
-			.getByRole('radio', {
-				name: cell.path.includes('from=')
-					? cell.locale === 'fr'
-						? 'Plage de dates'
-						: 'Date range'
-					: cell.locale === 'fr'
-						? /Dernier jour complet/
-						: /Latest complete day/,
-			})
-			.click();
-	}
-	const habitsTiers = await readHeatmapTiers(
-		page,
-		'[data-slot="habits-heatmap"]',
-		'line',
-		cell.locale,
-	);
-	const habits = {
-		table: habitsTiers,
-		bestTime: await readText(page, '[data-slot="best-time-insight"]'),
-	};
-	const timeRows = {
-		shift: await readSemanticTable(page, '[data-slot="shift-severe-strip"]', cell.locale),
-		dayType: await readSemanticTable(page, '[data-slot="peak-day-type"]', cell.locale),
-		onTime: await readSemanticTable(
-			page,
-			'[data-section="when-to-ride"]',
-			cell.locale,
-			'[data-slot="time-of-day"]',
-		),
-		crosstab: await readSemanticTable(page, '[data-slot="shift-daytype-crosstab"]', cell.locale),
-		weekday: await readSemanticTable(page, '[data-slot="habits-weekday"]', cell.locale),
-	};
-	const headwayRows = {
-		dumbbell: await readSemanticTable(
-			page,
-			'[data-section="the-wait"]',
-			cell.locale,
-			'[data-slot="gaps-table"]',
-		),
-		// The limits stay in words whatever the data: waiting is not measured, frequency is unpublished.
-		summary: await readText(page, '[data-section="the-wait"] [data-slot="section-summary"]'),
-		frequency: await readText(page, '[data-slot="frequency-unpublished"]'),
-	};
-	const dowGroups = await page.locator('[data-slot="crowding-dow-cell"]').evaluateAll((elements) =>
-		elements.map((element) => ({
-			iso: Number(element.getAttribute('data-iso')),
-			rows: [...element.querySelectorAll('table.sr-only tbody tr')].map((row) =>
-				[...row.querySelectorAll('th,td')].map((tableCell) => tableCell.textContent?.trim() ?? ''),
-			),
-		})),
-	);
-	const occupancyShares = {
-		active: await readShares(page, '[data-slot="crowding-mix"]', cell.locale),
-		weekday: await readShares(page, '[data-slot="crowding-weekday"]', cell.locale),
-		weekend: await readShares(page, '[data-slot="crowding-weekend"]', cell.locale),
-		byDow: dowGroups.map((group) => [group.iso, shareRows(group.rows, cell.locale)]),
-		dominant: {
-			label: await readText(page, '[data-slot="dominant-band"] .metric-bullet__label'),
-			value: await readMetricValue(page, '[data-slot="dominant-band"]'),
-		},
-	};
-	const scalars = {
-		otp: {
-			value: headline[0] ?? null,
-			text: normalizeObservation(headlineText[0] ?? ''),
-			unit: '%',
-		},
-		avg: {
-			value: headline[1] ?? null,
-			text: normalizeObservation(headlineText[1] ?? ''),
-			unit: 'min',
-		},
-		p50: {
-			value: headline[2] ?? null,
-			text: normalizeObservation(headlineText[2] ?? ''),
-			unit: 'min',
-		},
-		p90: {
-			value: headline[3] ?? null,
-			text: normalizeObservation(headlineText[3] ?? ''),
-			unit: 'min',
-		},
-		severe: { value: severe, text: normalizeObservation(severeText), unit: '%' },
-		completeness: {
-			value: completeness,
-			text: normalizeObservation(completenessValue ?? ''),
-			unit: '%',
-		},
-		cancellation: {
-			value: cancellation,
-			text: normalizeObservation(cancellationValue ?? ''),
-			unit: '%',
-		},
-		skipped: { value: skipped, text: normalizeObservation(skippedValue ?? ''), unit: '%' },
-	};
-	return [
-		observation('line.day.otp_pct', headline[0] ?? null),
-		observation('line.day.avg_delay_min', headline[1] ?? null),
-		observation('line.day.p50_min', headline[2] ?? null),
-		observation('line.day.p90_min', headline[3] ?? null),
-		observation('line.day.severe_pct', severe),
-		observation('line.day.observation_count', lineVerdictObservationCount(verdictText)),
-		observation('line.day.cancellation_pct', cancellation),
-		observation('line.day.skipped_pct', skipped),
-		observation('line.day.completeness_pct', completeness),
-		observation('line.day.scheduled_counts', {
-			scheduled: counts[1] ?? null,
-			delivered: counts[0] ?? null,
-			silent: counts[2] ?? null,
-			captions: serviceCaptions,
-			scalars,
-		}),
-		observation('line.service_span', {
-			date: spanDate,
-			first: clocks[0]?.trim() ?? null,
-			last: clocks[1]?.trim() ?? null,
-			minutes: spanMetrics[0] ?? null,
-			firstDelay: spanMetrics[1] ?? null,
-			lastDelay: spanMetrics[2] ?? null,
-			trips: spanMetrics[3] ?? null,
-		}),
-		observation('line.weak_stops.eligible_ids', {
-			headers: [],
-			rows: weakRows.map((row) => ({
-				name: row.name,
-				value: parseNumber(row.value),
-				unit: row.value.includes('%') ? '%' : null,
-				readings: parseNumber(row.readings),
-				text: normalizeObservation(row.value),
-				readingsText: normalizeObservation(row.readings),
-			})),
-		}),
-		observation('line.weak_stops.hrefs', weakHrefs),
-		observation('line.weak_stops.raw_count', rawCount),
-		observation(
-			'line.pane.freshness_iso',
-			await page
-				.locator('[data-slot="article-header"] .header__meta time')
-				.first()
-				.getAttribute('datetime'),
-		),
-		observation('line.trend.rows', trendRows),
-		observation('line.habits.tiers', habits),
-		observation('line.time.rows', timeRows),
-		observation('line.headway.rows', headwayRows),
-		observation('line.occupancy.shares', occupancyShares),
-		observation('line.delay_by_crowding', delayByCrowding),
-		observation('line.week.histogram', histogram),
-	];
 }
 
 function stopVerdictObservationCount(text) {
@@ -501,159 +234,6 @@ function stopVerdictObservationCount(text) {
 			/\b(?:only|seulement)\s+(\d+)\s+(?:eligible known predictions|prévisions connues admissibles)/iu,
 		)?.[1];
 	return parseNumber(observedN);
-}
-
-async function collectStop(page) {
-	const periodMetrics = await page
-		.locator('[data-slot="stop-reliability-pane"] [data-slot="metric-display"]')
-		.evaluateAll((elements) =>
-			elements.map((element) => ({
-				label: element.querySelector('.label-metric')?.textContent?.trim() ?? '',
-				value: element.querySelector('[data-slot="absent-value"]')
-					? null
-					: (element.querySelector('.metric-value')?.textContent?.trim() ?? null),
-			})),
-		);
-	const lateMetric = periodMetrics.find((metric) =>
-		/more than 5 min late|plus de 5 min de retard/iu.test(metric.label),
-	);
-	const verdictText = await page
-		.locator('[data-slot="stop-reliability-sections"] [data-slot="verdict"]')
-		.first()
-		.innerText();
-	// The record answer reads the published weekly index after the stop file; wait for its state.
-	const recordRoot = '[data-slot="stop-record-answer"]:not([data-state="pending"])';
-	await page.locator(recordRoot).waitFor({ state: 'attached', timeout: 30_000 });
-	const recordState = await page.locator(recordRoot).getAttribute('data-state');
-	// Other states keep a hidden copy of the figure line for its room; only a measured one is shown.
-	const recordFigure =
-		recordState === 'measured' ? await readText(page, `${recordRoot} .stop-record__figure`) : null;
-	const recordReadings = await readText(page, `${recordRoot} .stop-record__facts dd`);
-	const record = {
-		state: recordState,
-		late_pct: parseNumber(recordFigure),
-		text: recordFigure ?? '',
-		period: (await readText(page, `${recordRoot} [data-slot="stop-record-period"]`)) ?? '',
-		// The first two numbers are the readings and the late readings; "5 minutes" follows.
-		counts: (recordReadings?.match(/\d[\d\s\u00a0\u202f,]*/gu) ?? []).slice(0, 2).map(parseNumber),
-	};
-	const percentileText = await readValues(
-		page,
-		'[data-slot="stop-percentiles"] [data-slot="metric-display"]',
-		'.metric-value',
-	);
-	const percentiles = percentileText.map(parseNumber);
-	// Day by day: every cell of its table (the table stays in the page while it is closed), and
-	// every number its limits state (days, gaps, readings per day).
-	const dailyRows = (
-		await page
-			.locator('[data-slot="stop-daily"] tbody tr')
-			.evaluateAll((rows) =>
-				rows.map((row) =>
-					Array.from(row.querySelectorAll('th,td'), (cell) => cell.textContent?.trim() ?? ''),
-				),
-			)
-	).map(([day, ...cells]) => [
-		normalizeObservation(day),
-		...cells.map((text) => ({ value: parseNumber(text), text: normalizeObservation(text) })),
-	]);
-	const dailyLimits = (
-		await page.locator('[data-slot="day-by-day-scope"] li').allTextContents()
-	).map((text) =>
-		(text.replace(/(?<=\d)[\u00a0\u202f](?=\d{3}\b)/gu, '').match(/\d[\d,]*/gu) ?? []).map(
-			parseNumber,
-		),
-	);
-	const routeRows = await page.locator('[data-slot="stop-by-route"] a').evaluateAll((links) =>
-		links.map((link) => ({
-			id: new URL(link.href).pathname.split('/').at(-1),
-			display:
-				link.querySelector('.dv-ranked-row .tabular-nums.text-foreground')?.textContent?.trim() ??
-				null,
-		})),
-	);
-	const rankedRoutes = routeRows.map((row) => [row.id, parseNumber(row.display)]);
-	const habitsTiers = await readHeatmapTiers(
-		page,
-		'[data-slot="stop-habits"]',
-		'stop',
-		await page.locator('html').getAttribute('lang'),
-	);
-	const locale = await page.locator('html').getAttribute('lang');
-	const weekdayRows = (await readRankedRows(page, '[data-slot="stop-weekday"]', locale)).map(
-		(row) => [row[0], row[1], row[2] ?? null],
-	);
-	const allTimeRows = await readRankedRows(page, '[data-slot="stop-time-of-day"]', locale);
-	const stopCrowding = {
-		table: await readShares(page, '[data-slot="stop-crowding"]', locale),
-		dominant: {
-			label: await readText(page, '[data-slot="stop-crowding"] .label-metric'),
-			value: {
-				value: parseNumber(await readText(page, '[data-slot="stop-crowding"] .metric-value')),
-				text: (await readText(page, '[data-slot="stop-crowding"] .metric-value')) ?? '',
-			},
-			sublabel: await readText(page, '[data-slot="stop-crowding"] .font-mono.text-caption'),
-		},
-	};
-	const stopScalars = {
-		late: {
-			value: parseNumber(lateMetric?.value),
-			text: normalizeObservation(lateMetric?.value ?? ''),
-		},
-		percentiles: percentiles.map((value, index) => ({
-			value,
-			text: normalizeObservation(percentileText[index] ?? ''),
-		})),
-	};
-	return [
-		observation('stop.day.late_pct', parseNumber(lateMetric?.value)),
-		observation('stop.day.p50_min', percentiles[0] ?? null),
-		observation('stop.day.p90_min', percentiles[1] ?? null),
-		observation('stop.record.answer', record),
-		observation('stop.day.observation_count', stopVerdictObservationCount(verdictText)),
-		observation('stop.daily.rows', dailyRows),
-		observation('stop.daily.limits', dailyLimits),
-		observation('stop.routes.ranked', rankedRoutes),
-		observation('stop.habits.tiers', habitsTiers),
-		observation('stop.weekday.rows', weekdayRows),
-		observation('stop.time.rows', {
-			shift: allTimeRows.filter((row) =>
-				['am_peak', 'midday', 'pm_peak', 'evening', 'night'].includes(row[0]),
-			),
-			dayType: allTimeRows.filter((row) => ['weekday', 'weekend'].includes(row[0])),
-		}),
-		observation('stop.occupancy.shares', stopCrowding),
-		observation('stop.display.scalars', stopScalars),
-		observation(
-			'stop.pane.freshness_iso',
-			await page
-				.locator('[data-slot="article-header"] .header__meta time')
-				.first()
-				.getAttribute('datetime'),
-		),
-	];
-}
-
-async function verifyScheduleTruth(page, fixture, actual, cell) {
-	if (new URL(cell.path, 'http://b9.local').searchParams.has('from')) return;
-	const truth = expectedScheduleTruth(fixture);
-	if (!truth.hasData || truth.hasSchedule) return;
-	const text = normalizeObservation(await page.locator('main').innerText());
-	invariant(text.includes(truth.date), `schedule=false candidate ${truth.date} is not displayed`);
-	invariant(
-		!/(?:latest closed day|dernier jour clos)/iu.test(text),
-		`schedule=false ${truth.date} received a closed-day label`,
-	);
-	const values = new Map(actual.map((row) => [row.id, row.value]));
-	invariant(
-		values.get('line.day.completeness_pct') == null,
-		`schedule=false ${truth.date} fabricated completeness`,
-	);
-	const scheduled = values.get('line.day.scheduled_counts') ?? {};
-	invariant(
-		[scheduled.scheduled, scheduled.delivered, scheduled.silent].every((value) => value == null),
-		`schedule=false ${truth.date} fabricated scheduled-service counts`,
-	);
 }
 
 async function collectNetwork(page, locale) {
@@ -1583,16 +1163,20 @@ async function startReplay(fixtures = FIXTURES, initialKey = Object.keys(fixture
 		const url = new URL(request.url ?? '/', 'http://127.0.0.1');
 		const relative = replayPath(url);
 		const fixture = fixtures[state.active];
-		const found = relative == null ? null : fixture.files[relative];
+		const record = recordFixture(url, state.active);
+		const found = record?.body ?? (relative == null ? null : fixture.files[relative]);
 		const declaredMissing = relative != null && fixture.not_found.includes(relative);
-		const status = found ? 200 : declaredMissing ? 404 : 599;
+		const status = record?.status ?? (found ? 200 : declaredMissing ? 404 : 599);
 		state.ledger.push({
 			lane: 'ssr',
 			method: request.method,
 			path: relative ?? url.pathname,
 			status,
 		});
-		response.writeHead(status === 599 ? 404 : status, jsonHeaders(fixture));
+		response.writeHead(status === 599 ? 404 : status, {
+			...jsonHeaders(fixture),
+			...record?.headers,
+		});
 		response.end(
 			JSON.stringify(found ?? { error: declaredMissing ? 'not found' : 'unknown fixture path' }),
 		);
@@ -1772,19 +1356,6 @@ function builtAssetPaths() {
 	);
 }
 
-function documentsForCell(cell) {
-	return [
-		cell.path,
-		// The closed-week check opens the bare line page (its record), then the lines list.
-		...(cell.fixture === 'rich' && cell.surface === 'line'
-			? [
-					new URL(cell.path, 'http://b9.local').pathname,
-					(cell.locale === 'fr' ? '/fr' : '') + '/lines',
-				]
-			: []),
-	];
-}
-
 async function installNetworkBoundary(context, pageOrigin, replay, documentPaths) {
 	const assets = builtAssetPaths();
 	const documents = new Set(documentPaths.map((path) => new URL(path, pageOrigin).href));
@@ -1892,48 +1463,93 @@ async function settleSurface(page, cell, fixture) {
 	);
 }
 
-async function verifyClosedWeek(page, cell, fixture) {
-	if (cell.surface !== 'line' || cell.fixture !== 'rich') return;
-	const week = expectedDefaultLineHeadline(fixture);
-	const through = fixture.files['historic/route_reliability/24.json'].periods_by_grain.find(
-		(row) => row.grain === 'day',
-	).date;
-	// The bare line URL opens the closed-week record: one figure, the same week, named by its days.
-	const bare = new URL(page.url());
-	for (const key of ['grain', 'from', 'to', 'tab']) bare.searchParams.delete(key);
-	await page.goto(bare.href);
-	const figure = page.locator('[data-slot="record-answer"] [data-slot="record-figure"]');
-	await figure.waitFor({ state: 'visible', timeout: 30_000 });
-	invariant((await figure.count()) === 1, 'record closed-week figure is not shown exactly once');
+async function verifyEngineRecord(page, cell, replay, errors, html) {
+	const label = `${cell.fixture}/${cell.locale}/${cell.surface}`;
+	const section = page.locator('#punctuality');
+	const bands = section.locator('dl');
+	const missing = cell.fixture === 'sparse';
+	if (missing) {
+		await section.getByText('Not measured', { exact: true }).waitFor();
+		invariant((await bands.count()) === 0, `${label} gave an unmeasured record numeric bands`);
+		invariant(
+			!/\b0\s*%/u.test(await section.innerText()),
+			`${label} replaced missing data with zero`,
+		);
+	} else {
+		await bands.waitFor();
+		const early = cell.surface === 'line' ? 10 : 5;
+		const onTime = new URL(page.url()).searchParams.get('direction') === '1' ? 40 : 80;
+		const counts = [early, onTime, 100 - early - onTime];
+		const displayedLabels = await bands.locator('dt').allTextContents();
+		const expectedLabels =
+			cell.locale === 'fr' ? ['En avance', 'À l’heure', 'En retard'] : ['Early', 'On time', 'Late'];
+		invariant(
+			JSON.stringify(displayedLabels) === JSON.stringify(expectedLabels),
+			`${label} mislabeled or reordered the punctuality bands: ${displayedLabels}`,
+		);
+		const readings = (await bands.locator('dd').allTextContents()).map((text) =>
+			Array.from(text.matchAll(/\d+(?:[.,]\d+)?/gu), ([number]) => parseNumber(number)),
+		);
+		invariant(
+			JSON.stringify(readings) ===
+				JSON.stringify(
+					counts.map((count) =>
+						cell.surface === 'line' ? [count, count, 100, 50, 200] : [count, count, 100],
+					),
+				),
+			`${label} punctuality shares or denominators drifted: ${JSON.stringify(readings)}`,
+		);
+		await page.locator('#daily table tbody tr').first().waitFor();
+		const csv = await section.getByRole('link', { name: /CSV/u }).getAttribute('href');
+		invariant(csv != null, `${label} missing CSV link`);
+		const exportUrl = new URL(csv, page.url());
+		invariant(
+			exportUrl.searchParams.get('section') === 'punctuality' &&
+				exportUrl.searchParams.get('recordFrom') === '2026-11-08' &&
+				exportUrl.searchParams.get('recordTo') === '2026-11-14',
+			`${label} CSV lost the displayed measure or dates: ${exportUrl}`,
+		);
+	}
+	await verifyAccessibility(page, cell);
+	await page.locator('#daily a[href*="section=daily"]').first().waitFor({ state: 'attached' });
+	const data = replay.state.ledger;
+	invariant(errors.length === 0, `${label} browser errors: ${errors.join(' | ')}`);
+	invariant(replay.state.outbound.length === 0, `${label} outbound: ${replay.state.outbound}`);
 	invariant(
-		parseNumber(await figure.innerText()) === week.otp_pct,
-		'record closed-week percentage mismatch',
+		data.every(
+			(entry) => entry.lane === 'ssr' && entry.status === 200 && entry.path.startsWith('/v2/'),
+		),
+		`${label} touched a snapshot or made an unknown request: ${JSON.stringify(data)}`,
 	);
-	const tag = cell.locale === 'fr' ? 'fr-CA' : 'en-CA';
-	const period = await page.locator('[data-slot="record-period"]').innerText();
-	const throughDate = new Date(through + 'T00:00:00Z');
+	const queries = data.filter(({ path }) => /\/(measure|ranking)\?/u.test(path));
+	const cut = cell.surface === 'line' ? ['line', '24'] : ['stop', 'S1'];
 	invariant(
-		period.includes(
-			new Intl.DateTimeFormat(tag, { month: 'long', timeZone: 'UTC' }).format(throughDate),
-		) && period.split(/\D+/u).includes(String(throughDate.getUTCDate())),
-		`record closed-week dates mismatch: ${period}`,
+		queries.length === (cell.surface === 'line' ? 9 : 6) &&
+			queries.every(({ path }) => {
+				const { searchParams } = new URL(path, 'http://b9.local');
+				return (
+					searchParams.get(cut[0]) === cut[1] &&
+					searchParams.get('from') === '2026-11-08' &&
+					searchParams.get('to') === '2026-11-14'
+				);
+			}),
+		`${label} made incomplete or incorrectly scoped engine reads: ${JSON.stringify(data)}`,
 	);
-	const date = new Intl.DateTimeFormat(cell.locale, {
-		month: 'short',
-		day: 'numeric',
-		timeZone: 'UTC',
-	}).format(throughDate);
-	await page.goto(new URL((cell.locale === 'fr' ? '/fr' : '') + '/lines', page.url()).href);
-	await page.getByTestId('lines-sort-worst').click();
-	const badge = page
-		.locator('[data-slot="reliability-badge"], [data-slot="reliability-hedge"]')
-		.first();
-	await badge.waitFor({ state: 'visible' });
-	const label = await badge.getAttribute('aria-label');
+	const hydrated = normalizeObservation(await section.innerText());
+	await page.setViewportSize({ width: 320, height: 900 });
 	invariant(
-		Number(label?.match(/(\d+)\s*%/u)?.[1]) === week.otp_pct && label.includes(date),
-		'list closed-week percentage or date mismatch',
+		await page
+			.locator('main')
+			.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+		`${label} exceeds the narrow Record viewport`,
 	);
+	return {
+		cell: label,
+		actual: missing ? ['not_measured'] : await bands.locator('dd').allTextContents(),
+		ssr: ssrText(html),
+		hydrated,
+		ledger: data.map(({ lane, path, status }) => `${lane}|${path}|${status}`).sort(),
+	};
 }
 
 async function runGate({ fixtures = FIXTURES, cells = CELLS, runs = 2, synthetic = true } = {}) {
@@ -1971,9 +1587,13 @@ async function runGate({ fixtures = FIXTURES, cells = CELLS, runs = 2, synthetic
 					serviceWorkers: 'block',
 					viewport: { width: 1440, height: 1000 },
 				});
-				await context.addInitScript({ content: freezeClockScript(fixture.frozen_utc) });
+				await context.addInitScript({
+					content: freezeClockScript(
+						cell.surface === 'network' ? fixture.frozen_utc : '2026-11-22T12:00:00Z',
+					),
+				});
 				await context.addInitScript({ content: svgGuardScript() });
-				await installNetworkBoundary(context, preview.origin, replay, documentsForCell(cell));
+				await installNetworkBoundary(context, preview.origin, replay, [cell.path]);
 				const page = await context.newPage();
 				const errors = [];
 				page.on('response', (response) => {
@@ -1995,6 +1615,14 @@ async function runGate({ fixtures = FIXTURES, cells = CELLS, runs = 2, synthetic
 				});
 				invariant(response?.ok(), `${cell.path} returned ${response?.status()}`);
 				const ssrHtml = await response.text();
+				if (cell.surface !== 'network') {
+					const record = await verifyEngineRecord(page, cell, replay, errors, ssrHtml);
+					transcript.push(record);
+					observationCount += record.actual.length;
+					requestCount += replay.state.ledger.length;
+					await context.close();
+					continue;
+				}
 				try {
 					await settleSurface(page, cell, fixture);
 				} catch (error) {
@@ -2059,12 +1687,7 @@ async function runGate({ fixtures = FIXTURES, cells = CELLS, runs = 2, synthetic
 				await verifyTextSemantics(page, cell, fixture);
 				let actual;
 				try {
-					actual =
-						cell.surface === 'line'
-							? await collectLine(page, cell)
-							: cell.surface === 'stop'
-								? await collectStop(page)
-								: await collectNetwork(page, cell.locale);
+					actual = await collectNetwork(page, cell.locale);
 				} catch (error) {
 					throw new Error(
 						`${String(error)}\nbrowser errors ${JSON.stringify(errors)}\nreplay ledger ${JSON.stringify(replay.state.ledger)}`,
@@ -2088,17 +1711,6 @@ async function runGate({ fixtures = FIXTURES, cells = CELLS, runs = 2, synthetic
 					);
 				} catch (error) {
 					displayFailures.set(`${cell.fixture}/${cell.locale}/${cell.surface}`, String(error));
-				}
-				if (cell.surface === 'line') {
-					try {
-						await verifyScheduleTruth(page, fixture, actual, cell);
-					} catch (error) {
-						const key = `${cell.fixture}/${cell.locale}/${cell.surface}`;
-						displayFailures.set(
-							key,
-							[displayFailures.get(key), String(error)].filter(Boolean).join('\n'),
-						);
-					}
 				}
 				// Every rich cell: the closed-day line cell (French) is the first to draw the day's cuts.
 				if (run === 0 && cell.fixture === 'rich') {
@@ -2150,12 +1762,6 @@ async function runGate({ fixtures = FIXTURES, cells = CELLS, runs = 2, synthetic
 						.map((entry) => `${entry.lane}|${entry.path}|${entry.status}`)
 						.sort(),
 				});
-				await verifyClosedWeek(page, cell, fixture);
-				invariant(
-					replay.state.outbound.length === 0 &&
-						replay.state.ledger.every((entry) => entry.status !== 599),
-					'closed-week list replay escaped its fixture',
-				);
 				await context.close();
 			}
 			transcripts.push(transcript);
@@ -2169,7 +1775,7 @@ async function runGate({ fixtures = FIXTURES, cells = CELLS, runs = 2, synthetic
 				`two normalized synthetic runs were not identical\n${transcriptDifference(transcripts[0], transcripts[1])}`,
 			);
 			invariant(
-				JSON.stringify([...geometrySeen.keys()].sort()) === JSON.stringify([...MARK_KINDS].sort()),
+				JSON.stringify([...geometrySeen.keys()].sort()) === JSON.stringify(NETWORK_MARKS),
 				`mark branch coverage mismatch: ${JSON.stringify([...geometrySeen.keys()].sort())}`,
 			);
 		}

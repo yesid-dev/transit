@@ -8,5 +8,7 @@
 <main id="main-flow" class:overflow-hidden={isMap} class:h-dvh={isMap} class:min-h-dvh={!isMap}>
 	{#if isMap}
 		<MapHero />
+	{:else}
+		<h1>Lines</h1>
 	{/if}
 </main>

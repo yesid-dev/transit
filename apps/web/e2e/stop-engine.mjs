@@ -44,7 +44,9 @@ export function stopEngine(url) {
 			day: [cell({ day: from })],
 		}[group];
 		return {
-			hold: from === '2026-11-09' && group === 'line',
+			hold:
+				group === 'line' &&
+				(from === '2026-11-09' || (from === '2026-11-05' && ['stop', get('city'), to].join('-'))),
 			body: { cells, coverage_note, evidence },
 		};
 	}

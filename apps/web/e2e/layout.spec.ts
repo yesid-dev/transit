@@ -64,12 +64,14 @@ for (const locale of ['en', 'fr'] as const)
 				await expect(page.getByRole('main')).toBeVisible();
 				await page.evaluate(() => document.fonts.ready);
 				await page.waitForTimeout(250);
-				if (path === '/receipt') {
-					await expect(page.locator('[data-slot="receipt-affected"]')).toBeVisible();
-					if (state === 'missing')
-						await expect(
-							page.locator('[data-slot="receipt-affected"] [data-slot="absent-value"]').first(),
-						).toBeVisible();
+				if (path.startsWith('/receipt')) {
+					const report = page.locator('article.daily-report');
+					await expect(report.getByRole('heading', { level: 1 })).toBeVisible();
+					if (path.includes('date=')) {
+						await expect(report.getByRole('status')).toContainText(
+							locale === 'fr' ? 'hors du bilan disponible' : 'outside the available record',
+						);
+					} else await expect(report.locator('#punctuality')).toBeVisible();
 				}
 				if (path.startsWith('/map')) {
 					const canvas = page.locator('[data-slot="vehicle-overlay"]');
@@ -97,11 +99,9 @@ for (const locale of ['en', 'fr'] as const)
 						await expect(page.locator('[data-slot="absent-value"]').first()).toBeVisible();
 				}
 				if (state === 'fresh' && path === `/lines/${line}` && page.viewportSize()!.width < 1024) {
-					// The phone view pill sits in its own lane above the record's first heading.
-					const pill = await page
-						.locator('[data-slot="surface-rail-mobile"] > button')
-						.boundingBox();
-					const heading = page.locator('[data-slot="reliability-rail-content"] :is(h2, h3)');
+					// The Record heading starts below the actual frame controls.
+					const pill = await page.locator('[data-slot="app-frame-controls"]').boundingBox();
+					const heading = page.getByRole('main').getByRole('heading', { level: 1 });
 					expect(pill!.y + pill!.height).toBeLessThanOrEqual(
 						(await heading.first().boundingBox())!.y,
 					);

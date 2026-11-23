@@ -77,7 +77,9 @@
 <Surface>
 	<div class="grid min-w-0 gap-4">
 		<header class="grid gap-2">
-			<a href={back}>{t('All stops', 'Tous les arrêts')}</a>
+			<a class="inline-flex min-h-11 w-fit items-center" href={back}>
+				{t('All stops', 'Tous les arrêts')}
+			</a>
 			<h1>{name ?? stopLabel}</h1>
 			{#if name}<p>{stopLabel}</p>{/if}
 			<StopViewNav url={pinned} {locale} view="record" />
