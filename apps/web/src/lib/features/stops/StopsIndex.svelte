@@ -2,6 +2,9 @@
 	import { page } from '$app/state';
 	import { getV1Runtime } from '#lib/v1/runtime.ts';
 	import StopsFinder from './StopsFinder.svelte';
+	import type { StopsRecord } from '#lib/server/finderRecord.ts';
+
+	let { record = null }: { record?: StopsRecord | null } = $props();
 
 	/**
 	 * The finder's owner: its state lives in the URL, and its records belong to one publication. A
@@ -14,5 +17,5 @@
 </script>
 
 {#key `${provider}|${runtime.refresh.epoch}`}
-	<StopsFinder />
+	<StopsFinder {record} />
 {/key}

@@ -71,9 +71,12 @@ stop ID. Unknown directions come last. `group=departure` requires a line and a s
 delivery measure other than first or last trip. Each cell gives the scheduled, cancelled,
 missing and other outcome counts for a direction and scheduled GTFS start, ordered by
 direction and service time. Both groups accept a direction filter.
-`group=line` requires a stop and a punctuality measure. It returns a cell per GTFS
-route ID at that stop within the cut, in route ID order. Cells use the same sample
-and evidence rules as the corresponding `stop` + `line` queries.
+`group=line` groups punctuality measures or `trips_run` by GTFS line across the network.
+With a stop cut, it returns punctuality by the lines serving that stop. `group=stop_id`
+groups punctuality by stop ID across lines and directions. For this group the response
+envelope carries the included dates once for all cells.
+Grouped cells use the same sample and evidence rules as the corresponding cuts.
+
 `measure=vehicle_days_in_service&group=vehicle` lists the days in service for each
 tracked vehicle. `measure=vehicle_trips_run&vehicle=101&group=line` lists the dated
 trips with known lines for one vehicle. Both groups use the same tracking checks as

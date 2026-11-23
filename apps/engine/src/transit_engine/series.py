@@ -5,7 +5,16 @@ from typing import Literal
 import duckdb
 
 type SeriesGroup = Literal[
-    "day", "hour", "day_type", "weekday_hour", "direction", "stop", "departure", "line", "vehicle"
+    "day",
+    "hour",
+    "day_type",
+    "weekday_hour",
+    "direction",
+    "stop",
+    "departure",
+    "line",
+    "stop_id",
+    "vehicle",
 ]
 type GroupKey = tuple[str | int | None, ...]
 
@@ -18,6 +27,7 @@ GROUP_COLUMNS: dict[SeriesGroup, tuple[str, ...]] = {
     "stop": ("direction", "stop_sequence", "stop"),
     "departure": ("direction", "departure"),
     "line": ("line",),
+    "stop_id": ("stop",),
     "vehicle": ("vehicle",),
 }
 DAY_TYPES = ("weekday", "weekday", "weekday", "weekday", "weekday", "saturday", "sunday")
@@ -71,6 +81,7 @@ def series_sql(group: SeriesGroup, hour: str, day: str = "service_date") -> str:
         "direction": "row(direction_id)",
         "stop": "row(direction_id, stop_sequence, stop_id)",
         "line": "row(route_id)",
+        "stop_id": "row(stop_id)",
     }[group]
 
 

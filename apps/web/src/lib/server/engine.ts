@@ -258,6 +258,25 @@ export function getRecordAnswer({ path, parameters }: RecordQuery, period: Engin
 	return periodQuery(path, period, parameters, schema);
 }
 
+const finderSeries = recordEnvelope.extend({
+	cells: z.array(
+		recordSeries.shape.cells.element.extend({
+			evidence: recordCell.shape.evidence.pick({ counts: true }),
+		}),
+	),
+});
+
+export type FinderSeries = z.infer<typeof finderSeries>;
+export type FinderCell = FinderSeries['cells'][number];
+
+export function getFinderSeries(
+	measure: 'on_time' | 'trips_run',
+	group: 'line' | 'stop_id',
+	period: EnginePeriod,
+) {
+	return periodQuery('/measure', period, { measure, group }, finderSeries);
+}
+
 export async function getRecordCsv(
 	{ path, parameters }: RecordQuery,
 	{ city, from, to, visitorIp }: EnginePeriod,

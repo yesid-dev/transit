@@ -323,11 +323,16 @@ class Question:
                 )
         if self.group == "stop" and (self.line is None or family.id != _PUNCTUALITY.id):
             raise ValueError("group=stop requires a line and a punctuality measure")
+        if self.group == "stop_id" and family.id != _PUNCTUALITY.id:
+            raise ValueError("group=stop_id requires a punctuality measure")
         if self.group == "line" and not (
-            (self.stop is not None and family.id == _PUNCTUALITY.id)
+            family.id == _PUNCTUALITY.id
+            or self.measure == "trips_run"
             or (self.vehicle is not None and self.measure == "vehicle_trips_run")
         ):
-            raise ValueError("group=line requires stop punctuality or trips run by one vehicle")
+            raise ValueError(
+                "group=line requires punctuality, trips_run, or vehicle_trips_run with a vehicle"
+            )
         if self.group == "vehicle" and self.measure != "vehicle_days_in_service":
             raise ValueError("group=vehicle requires vehicle_days_in_service")
         if self.group == "departure" and (
@@ -642,6 +647,8 @@ def _punctuality_query(
     if question.group == "stop":
         cut_sql += " AND NOT added"
         counters["stop_occurrences"] = "count(*)"
+    elif question.group == "stop_id" or (question.group == "line" and question.stop is None):
+        cut_sql += " AND NOT added"
     aggregates = ", ".join(counters.values())
     group_columns = {
         "line": "route_id",
@@ -3952,7 +3959,7 @@ def _series_keys(
             (key for key in observed if key[1] is not None),
             key=lambda key: (key[0] is None, key),
         )
-    if group in ("line", "vehicle"):
+    if group in {"line", "stop_id", "vehicle"}:
         return sorted(key for key in observed if key[0] is not None)
     return [(0,), (1,), *([(None,)] if (None,) in observed else [])]
 
@@ -4055,7 +4062,11 @@ def _series_answer(
         in_cut = (not hourly or question.hour is None or cell_hour == question.hour) and (
             group != "direction" or question.direction is None or key[0] == question.direction
         )
-        included = [day for day in window.included if in_cut and matches_date(group, key, day)]
+        included = (
+            window.included
+            if group == "stop_id"
+            else [day for day in window.included if in_cut and matches_date(group, key, day)]
+        )
         cell_window = ReadWindow(
             {},
             measured=[day for day in included if not alerts or day not in untracked],
@@ -4095,7 +4106,12 @@ def _series_answer(
                 "state_text": _STATES[state]._asdict(),
                 "evidence": {
                     **evidence,
-                    "days_included": [day for day in included if day not in untracked],
+                    # Every stop has the same date window. Keep it once in the envelope.
+                    **(
+                        {}
+                        if group == "stop_id"
+                        else {"days_included": [day for day in included if day not in untracked]}
+                    ),
                 },
             }
         )

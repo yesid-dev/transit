@@ -151,6 +151,24 @@ test("forwards the fleet and per-vehicle line breakdown through the public route
   assert.equal(detail.get("lang"), "fr");
 });
 
+test("forwards the finders' network groups without ranking limits", async (t) => {
+  const f = fixture(t);
+  for (const question of [
+    MEASURE + "&group=line",
+    MEASURE.replace("measure=on_time", "measure=trips_run") + "&group=line",
+    MEASURE + "&group=stop_id",
+  ]) {
+    assert.equal((await f.fetch(question)).status, 200);
+  }
+  const params = f.requests.map((request) => new URL(request.url).searchParams);
+  assert.deepEqual(params.map((entry) => [entry.get("measure"), entry.get("group")]), [
+    ["on_time", "line"],
+    ["trips_run", "line"],
+    ["on_time", "stop_id"],
+  ]);
+  assert.ok(params.every((entry) => !["limit", "line", "stop", "vehicle"].some((key) => entry.has(key))));
+});
+
 test("rejects invalid questions before spending an engine slot or visitor budget", async (t) => {
   const f = fixture(t);
   for (const path of [

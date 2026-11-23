@@ -115,14 +115,17 @@ def test_grid_keeps_after_midnight_event_on_its_service_weekday(store: Store) ->
     )
 
 
-def test_stop_by_line_matches_individual_line_cuts_and_exports_csv(tmp_path: Path) -> None:
+@pytest.mark.parametrize("version", [8, 9])
+def test_stop_by_line_matches_individual_line_cuts_and_exports_csv(
+    tmp_path: Path, version: int
+) -> None:
     trips = tuple(
         Trip(f"a-{index}", "A", index % 2, "ran", None, True, (0,), stop_ids=("S1",))
         for index in range(32)
     )
     thin = Trip("b", "B", 0, "ran", None, True, (359,), stop_ids=("S1",))
     elsewhere = thin._replace(id="c", line="C", stop_ids=("S2",))
-    store = _build_store(tmp_path, 6, {THURSDAY: (*trips, thin, elsewhere)})
+    store = _build_store(tmp_path, version, {THURSDAY: (*trips, thin, elsewhere)})
     scope = {"start": THURSDAY, "end": FRIDAY, "stop": "S1", "measure": "on_time"}
     cells = query(store, **scope, group="line")["cells"]
     assert [(row["key"]["line"], row["state"]) for row in cells] == [
@@ -154,6 +157,42 @@ def test_stop_by_line_matches_individual_line_cuts_and_exports_csv(tmp_path: Pat
     assert good["Identifiant de la ligne"] == "A"
     assert thin_csv["Identifiant de la ligne"] == "B"
     assert thin_csv["Valeur"] == ""
+
+
+@pytest.mark.parametrize("version", [8, 9])
+def test_finder_groups_match_individual_line_and_stop_cuts(tmp_path: Path, version: int) -> None:
+    trips = tuple(
+        Trip(f"a-{index}", "A", index % 2, "ran", None, True, (index * 12,), stop_ids=("S1",))
+        for index in range(32)
+    )
+    thin = Trip("b", "B", 0, "ran", None, True, (359,), stop_ids=("S1",))
+    no_live = Trip(
+        "n", "N", 0, "unconfirmed", "route_without_live_data", False, (None,), stop_ids=("S2",)
+    )
+    added = Trip("extra", "A", 0, "added", None, True, (0,), stop_ids=("S3",))
+    store = _build_store(tmp_path, version, {THURSDAY: (*trips, thin, no_live, added)})
+    for measure, group, cut in (
+        ("on_time", "line", "line"),
+        ("trips_run", "line", "line"),
+        ("on_time", "stop_id", "stop"),
+    ):
+        answer = query(store, start=THURSDAY, end=FRIDAY, measure=measure, group=group)
+        assert answer["evidence"]["days_included"] == [str(THURSDAY)]
+        assert answer["evidence"]["cleaning_versions"] == [version]
+        assert len(answer["cells"]) == (2 if cut == "stop" else 3)
+        for cell in answer["cells"]:
+            single = query(store, start=THURSDAY, end=FRIDAY, measure=measure, **cell["key"])
+            assert cell["state"] == single["state"]
+            assert cell["value"] == single["value"]
+            assert cell["evidence"]["counts"] == single["evidence"]["counts"]
+            if cut == "stop":
+                assert "days_included" not in cell["evidence"]
+        assert answer["cells"][-1]["state"] == "no_live_data"
+    stop_csv = measures.answer_csv(answer, "fr")
+    assert [row["Identifiant de l’arrêt"] for row in csv.DictReader(io.StringIO(stop_csv))] == [
+        "S1",
+        "S2",
+    ]
 
 
 @pytest.mark.parametrize("measure", ["on_time", "punctuality"])
