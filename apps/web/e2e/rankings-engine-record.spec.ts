@@ -93,7 +93,10 @@ for (const locale of ['en', 'fr'] as const) {
 						name: fr ? 'Mesure' : 'Measure',
 						exact: true,
 					});
-					await expect(measures.locator('option')).toHaveCount(2);
+					await expect(measures.locator('option')).toHaveText([
+						fr ? 'Interruptions de signalement' : 'Stopped reporting',
+					]);
+					await expect(measures).toHaveValue('vehicle_reporting_gaps_per_100_hours');
 				}
 				await cite.click();
 				await exclusions.click();
