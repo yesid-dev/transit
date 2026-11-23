@@ -6,7 +6,12 @@
 	import CopyAction from '#lib/features/hotspots/sections/CopyAction.svelte';
 	import HomeSearch from './HomeSearch.svelte';
 	import RecordPending from '../record/RecordPending.svelte';
-	import { lastGoodNote } from '../record/recordText.ts';
+	import {
+		lastGoodNote,
+		pooledDays,
+		punctualityWeighting,
+		timingBasis,
+	} from '../record/recordText.ts';
 	import RecordRanking from './RecordRanking.svelte';
 	import { citationText, comparisonText, dateRange, measureText } from './overviewRecord.ts';
 
@@ -42,6 +47,10 @@
 	{:then result}
 		{#if result.kind === 'answer' && result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 		<p>{measureText(result, period, locale)}</p>
+		{#if result.kind === 'answer' && result.answer.state === 'measured' && result.answer.measure === 'on_time'}
+			{@const basis = timingBasis(result.answer.evidence.counts, locale)}
+			{#if basis}<p>{basis}</p>{/if}
+		{/if}
 		{#if result.kind === 'answer' && result.answer.coverage_note}
 			<p>{result.answer.coverage_note[locale]}</p>
 		{/if}
@@ -63,10 +72,20 @@
 		<section aria-labelledby={`${id}-punctuality`}>
 			<h2 id={`${id}-punctuality`}>{fr ? 'Ponctualité' : 'On-time performance'}</h2>
 			{@render reading(record.punctuality, record.period)}
+			<p>{punctualityWeighting[locale]}</p>
+			{#if record.period.from !== record.period.to}<p>{pooledDays[locale]}</p>{/if}
 		</section>
 
 		<section aria-labelledby={`${id}-previous`}>
-			<h2 id={`${id}-previous`}>{fr ? 'Période précédente' : 'Previous period'}</h2>
+			<h2 id={`${id}-previous`}>
+				{record.period.from === record.period.to
+					? fr
+						? 'Même jour de la semaine précédente'
+						: 'Same weekday last week'
+					: fr
+						? 'Période précédente'
+						: 'Previous period'}
+			</h2>
 			{#await record.baseline}
 				{#key record.baseline}<RecordPending {locale} />{/key}
 			{:then baseline}
@@ -75,6 +94,10 @@
 				{/if}
 				{#if baseline.kind === 'answer' && baseline.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 				<p>{measureText(baseline, record.previous, locale)}</p>
+				{#if baseline.kind === 'answer' && baseline.answer.state === 'measured'}
+					{@const basis = timingBasis(baseline.answer.evidence.counts, locale)}
+					{#if basis}<p>{basis}</p>{/if}
+				{/if}
 				{#if baseline.kind === 'answer' && baseline.answer.coverage_note}
 					<p>{baseline.answer.coverage_note[locale]}</p>
 				{/if}

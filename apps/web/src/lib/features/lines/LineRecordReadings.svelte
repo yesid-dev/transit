@@ -2,9 +2,16 @@
 	import { intl, type Locale } from '#lib/i18n/index.ts';
 	import {
 		choose,
+		cautiousRanking,
+		coverageText,
+		departureRankingFloor,
 		emptyRecord,
 		percent,
 		punctualityBands,
+		pooledDays,
+		punctualityWeighting,
+		rateStateText,
+		timingBasis,
 		shareReading,
 		tally,
 	} from '#lib/features/record/recordText.ts';
@@ -24,6 +31,7 @@
 		url,
 		line,
 		city,
+		direction,
 	}: {
 		answer: RecordAnswer;
 		section: LineSection;
@@ -34,6 +42,7 @@
 		url: URL;
 		line: string;
 		city: string;
+		direction: string | null;
 	} = $props();
 
 	const t = (en: string, fr: string) => choose(locale, en, fr);
@@ -66,7 +75,7 @@
 		return value == null ? t('Unknown', 'Inconnu') : n(value);
 	};
 	const median = (cell: RecordCell) => {
-		if (cell.state !== 'measured') return cell.state_text[locale];
+		if (cell.state !== 'measured') return rateStateText(cell, locale);
 		const delay = cell.value.median_delay;
 		return delay == null
 			? t('Unknown', 'Inconnu')
@@ -84,7 +93,11 @@
 
 {#if 'value' in answer}
 	{#if section === 'punctuality'}
+		{@const basis = timingBasis(answer.evidence.counts, locale)}
 		<p>{lineAnswer(answer, answer.evidence, locale)}</p>
+		{#if basis}<p>{basis}</p>{/if}
+		<p>{punctualityWeighting[locale]}</p>
+		{#if answer.evidence.start_date !== answer.evidence.end_date}<p>{pooledDays[locale]}</p>{/if}
 		<dl class="flex flex-wrap gap-4">
 			{#each punctualityBands(answer, locale) as band (band.id)}
 				<div>
@@ -105,6 +118,7 @@
 			</div>
 		</dl>
 	{:else if section === 'crowding'}
+		{@const coverage = coverageText(answer.evidence, locale)}
 		<p>
 			{t(
 				'Share of vehicle time with a usable occupancy value, by level.',
@@ -115,6 +129,7 @@
 				({n(answer.evidence.counts.occupancy_vehicle_seconds)}).
 			{/if}
 		</p>
+		{#if coverage}<p>{coverage}.</p>{/if}
 		<RecordTable
 			{title}
 			headers={[t('Occupancy level', 'Niveau d’achalandage'), t('Share', 'Part')]}
@@ -143,7 +158,12 @@
 			{title}
 			headers={[
 				t('Part of the day', 'Moment de la journée'),
-				t('Trips per hour', 'Trajets par heure'),
+				direction == null
+					? t(
+							'Trips per hour (both directions combined)',
+							'Trajets par heure (les deux directions combinées)',
+						)
+					: t('Trips per hour', 'Trajets par heure'),
 				t('Trips / hours', 'Trajets / heures'),
 			]}
 			rows={(answer.evidence.periods ?? []).map((period) => [
@@ -160,10 +180,7 @@
 	{@const floors = info?.ranking_floors?.departure}
 	<p>
 		{answer.rows[0]?.ranking_bound != null
-			? t(
-					'Ranked by the lower end of each departure’s estimated late-share range.',
-					'Classement selon la borne inférieure de la fourchette estimée des retards pour chaque départ.',
-				)
+			? t(cautiousRanking.en, cautiousRanking.fr)
 			: t(
 					'Ranked by the late share of observed stop events on each scheduled departure.',
 					'Classement selon la part des passages observés en retard pour chaque départ prévu.',
@@ -191,10 +208,7 @@
 	{#if info}
 		<p>
 			{floors
-				? t(
-						`At least ${n(floors.classified)} observed stop events across ${n(floors.observed_service_dates)} or more service dates per departure.`,
-						`Au moins ${n(floors.classified)} passages observés sur ${n(floors.observed_service_dates)} dates de service ou plus par départ.`,
-					)
+				? departureRankingFloor(floors, locale)
 				: t(
 						`At least ${n(info.minimum_sample)} observed stop events per departure.`,
 						`Au moins ${n(info.minimum_sample)} passages observés par départ.`,
@@ -239,10 +253,14 @@
 			headers={[
 				t('Direction', 'Direction'),
 				...punctualityBands(cells[0]!, locale).map(({ label }) => label),
+				t('Timing sources', 'Sources des heures'),
 			]}
 			rows={cells.map((cell) => [
 				dir(cell.key.direction),
 				...punctualityBands(cell, locale).map(({ reading }) => reading),
+				cell.state === 'measured'
+					? timingBasis(cell.evidence.counts, locale) || t('Unknown', 'Inconnu')
+					: rateStateText(cell, locale),
 			])}
 		/>
 	{:else if section === 'stops'}

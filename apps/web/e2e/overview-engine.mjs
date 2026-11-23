@@ -7,12 +7,17 @@ export function overviewEngine(url) {
 	const measure = url.searchParams.get('measure');
 	const kind = url.searchParams.get('kind');
 	const measured = ['2026-11-01', '2026-11-08', '2026-11-09'].includes(from);
+	const days = measured
+		? Array.from({ length: (Date.parse(to) - Date.parse(from)) / 86_400_000 + 1 }, (_, i) =>
+				new Date(Date.parse(from) + i * 86_400_000).toISOString().slice(0, 10),
+			)
+		: [];
 	const evidence = {
 		city,
 		start_date: from,
 		end_date: to,
-		days_measured: measured ? [from] : [],
-		days_included: measured ? [from] : [],
+		days_measured: days,
+		days_included: days,
 		days_not_measured: measured ? [] : [from],
 		method_version: measure === 'trips_run' ? 'service-delivered-v1' : 'punctuality-v2',
 		cleaning_versions: measured ? [6] : [],
@@ -27,6 +32,9 @@ export function overviewEngine(url) {
 					rank: index + 1,
 					value,
 					sample: 100,
+					share_observed: 0.5,
+					counts: { scheduled: 200, classified: 100, vehicle_stopped: 50, trip_update_passed: 50 },
+					ranking_bound: value + 0.1,
 					range: { lower: value - 0.1, upper: value + 0.1, method: 'wilson_95' },
 				}))
 			: [];
@@ -49,7 +57,13 @@ export function overviewEngine(url) {
 	const trips = measure === 'trips_run';
 	const counts = trips
 		? { ran: 90, eligible: 100, scheduled: 111 }
-		: { on_time: onTime, classified: 507800 };
+		: {
+				on_time: onTime,
+				classified: 507800,
+				scheduled: 1100000,
+				vehicle_stopped: 200000,
+				trip_update_passed: 307800,
+			};
 	return {
 		hold: false,
 		body: {
@@ -60,7 +74,14 @@ export function overviewEngine(url) {
 				? { en: 'Measured', fr: 'Mesuré' }
 				: { en: 'Not measured', fr: 'Non mesuré' },
 			coverage_note,
-			evidence: { ...evidence, counts, excluded: {} },
+			evidence: {
+				...evidence,
+				counts,
+				excluded: {},
+				...(trips
+					? { share_eligible: 100 / 111 }
+					: { share_observed: 507800 / 1100000, low_coverage: true }),
+			},
 		},
 	};
 }

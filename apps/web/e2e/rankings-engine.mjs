@@ -6,6 +6,7 @@ export function rankingsEngine(url) {
 	const vehicle = kind === 'vehicle';
 	const reporting = measure === 'vehicle_reporting_gaps_per_100_hours';
 	const median = measure === 'median_delay';
+	const floorGated = kind === 'departure' && from === get('to');
 	const ids = { line: '24', stop: 'S1', departure: '["24",0,"07:15:00"]', vehicle: 'V01' };
 	if (get('format') === 'csv') {
 		const header = get('lang') === 'fr' ? 'Rang,Type,Identifiant' : 'Rank,Kind,ID';
@@ -18,7 +19,19 @@ export function rankingsEngine(url) {
 		classes: kind === 'line' ? [serviceClass === 'all' ? '3:regular' : serviceClass] : [],
 		...(kind === 'departure' ? { line: '24', direction: 0, departure: '07:15:00' } : {}),
 		sample: reporting ? 20.5 : 100,
-		counts: reporting ? { reporting_gaps: 5 } : { on_time: 48, unfinished_trips: 12 },
+		counts: reporting
+			? { reporting_gaps: 5 }
+			: vehicle
+				? { unfinished_trips: 12 }
+				: {
+						scheduled: 250,
+						classified: 100,
+						on_time: 48,
+						late: 48,
+						vehicle_stopped: 50,
+						trip_update_passed: 50,
+					},
+		...(!vehicle ? { share_observed: 0.4, low_coverage: true } : {}),
 	};
 	const notTracked = vehicle && from === '2026-11-10';
 	const method = reporting
@@ -33,21 +46,23 @@ export function rankingsEngine(url) {
 			measure,
 			class: serviceClass,
 			available_classes: classes,
-			ranked_count: notTracked ? 0 : 1,
-			rows: notTracked
-				? []
-				: [
-						{
-							...entry,
-							rank: 1,
-							value: reporting ? 24.39 : median ? 30 : vehicle ? 12 : 0.48,
-							range: {
-								method,
-								lower: reporting ? null : median ? 27.5 : vehicle ? 6 : 0.38,
-								upper: reporting ? null : median ? 32.5 : vehicle ? 20 : 0.58,
+			ranked_count: notTracked || floorGated ? 0 : 1,
+			rows:
+				notTracked || floorGated
+					? []
+					: [
+							{
+								...entry,
+								rank: 1,
+								...(!reporting && !median ? { ranking_bound: vehicle ? 6 : 0.58 } : {}),
+								value: reporting ? 24.39 : median ? 30 : vehicle ? 12 : 0.48,
+								range: {
+									method,
+									lower: reporting ? null : median ? 27.5 : vehicle ? 6 : 0.38,
+									upper: reporting ? null : median ? 32.5 : vehicle ? 20 : 0.58,
+								},
 							},
-						},
-					],
+						],
 			excluded: notTracked
 				? []
 				: [
@@ -74,6 +89,7 @@ export function rankingsEngine(url) {
 			info: [
 				{
 					minimum_sample: 30,
+					ranking_floors: { departure: { observed_service_dates: 5, classified: 30 } },
 					...(vehicle ? { ranking_minimum_sample: reporting ? 10 : 20 } : {}),
 					text: {
 						en: { definition: 'Calculated from the observed service.' },

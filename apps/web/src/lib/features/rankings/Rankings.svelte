@@ -13,7 +13,17 @@
 	import RecordActions from '../record/RecordActions.svelte';
 	import RecordPending from '../record/RecordPending.svelte';
 	import { recordSectionLinks } from '../record/recordLinks.ts';
-	import { choose, dateRange, lastGoodNote, recordMessage, tally } from '../record/recordText.ts';
+	import {
+		cautiousRanking,
+		choose,
+		dateRange,
+		lastGoodNote,
+		pooledDays,
+		punctualityWeighting,
+		recordMessage,
+		tally,
+		timingBasis,
+	} from '../record/recordText.ts';
 	import {
 		measures,
 		rankingKinds,
@@ -28,6 +38,7 @@
 		exclusionText,
 		rankingCitation,
 		rankingRange,
+		rankingRangeLabel,
 		rankingSample,
 		rankingValue,
 		sampleText,
@@ -222,6 +233,12 @@
 								</label>
 							{/if}
 							<p>{info.text[locale].definition}</p>
+							{#if ['on_time', 'late', 'median_delay'].includes(measure)}<p>
+									{punctualityWeighting[locale]}
+								</p>{/if}
+							{#if data.evidence.start_date !== data.evidence.end_date}<p>
+									{pooledDays[locale]}
+								</p>{/if}
 							<p>
 								{t(
 									`Minimum to rank an entry is ${minimum}.`,
@@ -245,7 +262,10 @@
 								)}
 							/>
 							{#if shown.length}
-								{#if shown.some((row) => row.range.lower != null && row.range.upper != null)}
+								{#if shown.some((row) => row.ranking_bound != null)}
+									<p>{cautiousRanking[locale]}</p>
+								{/if}
+								{#if shown.some((row) => row.range.method !== 'histogram_half_bin' && row.range.lower != null && row.range.upper != null)}
 									<p>
 										{t(
 											'Nearby positions may be hard to distinguish when their ranges overlap.',
@@ -255,6 +275,7 @@
 								{/if}
 								<ol class="m-0 list-none p-0" role="list">
 									{#each shown as row (row.id)}
+										{@const basis = timingBasis(row.counts, locale)}
 										<li class="ranking-row border-t border-border py-3">
 											<span class="tabular-nums"
 												><span class="sr-only">{t('Rank', 'Rang')} </span>{tally(
@@ -282,9 +303,15 @@
 													<dd>{rankingSample(row, measure, locale)}</dd>
 												</div>
 												<div title={data.range_notes[row.range.method]?.[locale]}>
-													<dt class="text-small">{t('Range', 'Intervalle')}</dt>
+													<dt class="text-small">{rankingRangeLabel(row.range.method, locale)}</dt>
 													<dd>{rankingRange(row, measure, locale)}</dd>
 												</div>
+												{#if basis}
+													<div class="col-span-2">
+														<dt class="sr-only">{t('Timing sources', 'Sources des heures')}</dt>
+														<dd>{basis}</dd>
+													</div>
+												{/if}
 											</dl>
 										</li>
 									{/each}

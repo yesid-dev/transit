@@ -11,6 +11,10 @@
 		lastGoodNote,
 		methodEvidence,
 		recordMessage,
+		pooledDays,
+		punctualityWeighting,
+		timingBasis,
+		coverageText,
 		tally,
 	} from '#lib/features/record/recordText.ts';
 	import type { loadVehiclePage } from '#lib/server/vehicleRecord.ts';
@@ -129,10 +133,18 @@
 									'interruptions par 100 heures en service',
 								)}
 							</p>
+							{#if counts.reporting_gaps != null && counts.hours_in_service != null}
+								<p>
+									{t(
+										`${number(counts.reporting_gaps)} interruptions over ${number(counts.hours_in_service)} hours in service.`,
+										`${number(counts.reporting_gaps)} interruptions sur ${number(counts.hours_in_service)} heures en service.`,
+									)}
+								</p>
+							{/if}
 							<p>
 								{t(
-									`${number(counts.reporting_gaps)} interruptions counted. The feed cannot tell whether the vehicle kept running.`,
-									`${number(counts.reporting_gaps)} interruptions comptées. Le flux n’indique pas si le véhicule a continué de rouler.`,
+									`The feed cannot tell whether the vehicle kept running.`,
+									`Le flux n’indique pas si le véhicule a continué de rouler.`,
 								)}
 							</p>
 						{:else if section === 'completion'}
@@ -150,13 +162,22 @@
 								)}
 							</p>
 						{:else if section === 'punctuality'}
+							{@const basis = timingBasis(counts, locale)}
+							{@const coverage = coverageText(reading.evidence, locale)}
 							<p>
 								{vehicleReading(reading, 'vehicle_on_time', locale)}
 								{t(
 									`on time (${number(counts.punctuality_on_time)} of ${number(counts.punctuality_classified)} observed stop events)`,
 									`à l’heure (${number(counts.punctuality_on_time)} sur ${number(counts.punctuality_classified)} passages observés)`,
 								)}
+								{#if coverage}
+									· {coverage}{/if}
 							</p>
+							{#if basis}<p>{basis}</p>{/if}
+							<p>{punctualityWeighting[locale]}</p>
+							{#if reading.evidence.start_date !== reading.evidence.end_date}<p>
+									{pooledDays[locale]}
+								</p>{/if}
 						{/if}
 					{/if}
 					{#if reading.coverage_note}<p>{reading.coverage_note[locale]}</p>{/if}

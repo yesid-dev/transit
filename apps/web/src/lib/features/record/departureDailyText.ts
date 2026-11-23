@@ -1,6 +1,15 @@
 import type { Locale } from '#lib/i18n/index.ts';
 import type { RecordCell, RecordSeries } from '#lib/server/engine.ts';
-import { choose, dateRange, emptyRecord, percent, tally } from './recordText.ts';
+import {
+	choose,
+	dateRange,
+	emptyRecord,
+	percent,
+	rateStateText,
+	tally,
+	timingBasis,
+	withCoverage,
+} from './recordText.ts';
 
 export const dailyTitles = {
 	punctuality: ['On-time share', 'Part des passages à l’heure'],
@@ -25,18 +34,19 @@ export const departureTitles = {
 } as const;
 
 export function onTimeStatement(cell: RecordCell, locale: Locale) {
-	if (cell.state !== 'measured') return cell.state_text[locale];
+	if (cell.state !== 'measured') return rateStateText(cell, locale);
 	const rate = cell.value.on_time;
 	const { on_time, classified } = cell.evidence.counts;
 	if (rate == null || on_time == null || !classified) return choose(locale, 'Unknown', 'Inconnu');
 	const share = percent(rate, locale);
 	const top = tally(on_time, locale);
 	const total = tally(classified, locale);
-	return choose(
+	const reading = choose(
 		locale,
-		`${share} of observed stop events were on time (${top} of ${total}).`,
-		`${share} des passages observés étaient à l’heure (${top} sur ${total}).`,
+		`${share} of observed stop events were on time (${top} of ${total})`,
+		`${share} des passages observés étaient à l’heure (${top} sur ${total})`,
 	);
+	return `${withCoverage(reading, cell.evidence, locale)}.`;
 }
 
 export function departureDays({ cells }: RecordSeries) {
@@ -94,9 +104,24 @@ export function dailyPeriodRows(answer: RecordSeries, locale: Locale): string[][
 		);
 		const coverage = scheduledWithLive > 0 ? classified / scheduledWithLive : null;
 		const state = hours.find((hour) => hour.state !== 'unknown') ?? hours[0];
+		const low_coverage =
+			coverage != null && info?.low_coverage_below != null && coverage < info.low_coverage_below;
+		const evidence = {
+			share_observed: coverage,
+			low_coverage,
+			counts: { scheduled: scheduledWithLive },
+		};
 		let reading: string;
 		if (coverage != null && info?.minimum_coverage != null && coverage < info.minimum_coverage) {
-			reading = choose(locale, 'Insufficient coverage', 'Couverture insuffisante');
+			reading = withCoverage(
+				choose(
+					locale,
+					'Not measured (insufficient coverage)',
+					'Non mesuré (couverture insuffisante)',
+				),
+				evidence,
+				locale,
+			);
 		} else if (!classified) {
 			reading = state?.state_text[locale] ?? emptyRecord(answer.evidence, locale);
 		} else if (!info || (info.minimum_coverage != null && coverage == null)) {
@@ -104,19 +129,21 @@ export function dailyPeriodRows(answer: RecordSeries, locale: Locale): string[][
 		} else if (classified < info.minimum_sample) {
 			reading = choose(locale, 'Too few to judge', 'Trop peu pour juger');
 		} else {
-			reading = percent(late / classified, locale);
-			if (
-				coverage != null &&
-				info.low_coverage_below != null &&
-				coverage < info.low_coverage_below
-			) {
-				reading += choose(locale, ' (low coverage)', ' (faible couverture)');
-			}
+			reading = withCoverage(percent(late / classified, locale), evidence, locale);
 		}
+		const basisCounts = Object.fromEntries(
+			['vehicle_stopped', 'trip_update_reported', 'trip_update_passed'].map((key) => [
+				key,
+				hours.reduce((sum, cell) => sum + (cell.evidence.counts[key] ?? 0), 0),
+			]),
+		);
+		const basis = timingBasis(basisCounts, locale);
 		return [
 			choose(locale, en, fr),
 			reading,
-			classified ? `${tally(late, locale)}/${tally(classified, locale)}` : reading,
+			classified
+				? [`${tally(late, locale)}/${tally(classified, locale)}`, basis].filter(Boolean).join('. ')
+				: reading,
 		];
 	});
 }

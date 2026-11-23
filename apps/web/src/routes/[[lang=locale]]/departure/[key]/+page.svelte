@@ -4,7 +4,17 @@
 	import { localizeHref } from '#lib/i18n/index.ts';
 	import { directionHeadsigns } from '#lib/features/lines/directions.ts';
 	import { directionLabel } from '#lib/features/lines/lineRecordText.ts';
-	import { choose, dateRange, emptyRecord, tally } from '#lib/features/record/recordText.ts';
+	import {
+		choose,
+		dateRange,
+		emptyRecord,
+		pooledDays,
+		punctualityWeighting,
+		rateStateText,
+		tally,
+		timingBasis,
+		withCoverage,
+	} from '#lib/features/record/recordText.ts';
 	import {
 		departureDays,
 		departureTitles,
@@ -70,7 +80,7 @@
 		const relevant = scheduled.length ? scheduled : answer.cells;
 		const state = relevant[0];
 		return state && relevant.every((cell) => cell.state === state.state)
-			? state.state_text[data.lang]
+			? rateStateText(state, data.lang)
 			: emptyRecord(answer.evidence, data.lang);
 	}
 
@@ -196,6 +206,10 @@
 								)}
 							</p>
 						{:else if section === 'delay' && 'value' in result}
+							{@const basis = timingBasis(result.evidence.counts, data.lang)}
+							{#if basis}<p>{basis}</p>{/if}
+							<p>{punctualityWeighting[data.lang]}</p>
+							{#if period.from !== period.to}<p>{pooledDays[data.lang]}</p>{/if}
 							<dl class="flex flex-wrap gap-4">
 								<div>
 									<dt>{t('Median', 'Médiane')}</dt>
@@ -203,20 +217,30 @@
 										{delayReading(
 											result.value.median_delay,
 											data.lang,
-											result.state_text[data.lang],
+											rateStateText(result, data.lang),
 										)}
 									</dd>
 								</div>
 								<div>
 									<dt>{t('90th percentile', '90e centile')}</dt>
 									<dd>
-										{delayReading(result.value.p90_delay, data.lang, result.state_text[data.lang])}
+										{delayReading(
+											result.value.p90_delay,
+											data.lang,
+											rateStateText(result, data.lang),
+										)}
 									</dd>
 								</div>
 								{#if result.evidence.counts.classified}
 									<div>
 										<dt>{t('Observed stop events', 'Passages observés')}</dt>
-										<dd>{n(result.evidence.counts.classified)}</dd>
+										<dd>
+											{withCoverage(
+												n(result.evidence.counts.classified),
+												result.evidence,
+												data.lang,
+											)}
+										</dd>
 									</div>
 								{/if}
 							</dl>
@@ -227,11 +251,16 @@
 									headers={[t('Stop', 'Arrêt'), t('Observed delay', 'Retard observé')]}
 									rows={result.cells.map((cell) => [
 										`${cell.key.stop_sequence}. ${stopNames.get(String(cell.key.stop)) || cell.key.stop}`,
-										delayReading(
-											cell.evidence.observed_delay_seconds ?? cell.value.median_delay,
-											data.lang,
-											cell.state_text[data.lang],
-										),
+										[
+											delayReading(
+												cell.evidence.observed_delay_seconds ?? cell.value.median_delay,
+												data.lang,
+												rateStateText(cell, data.lang),
+											),
+											timingBasis(cell.evidence.counts, data.lang),
+										]
+											.filter(Boolean)
+											.join('. '),
 									])}
 								/>
 							{:else}

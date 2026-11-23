@@ -29,11 +29,21 @@ const evidence = z.object({
 	query_ms: z.number(),
 });
 const state = z.object({ state: engineState, state_text: bilingual });
+const rateCoverage = z.object({
+	share_observed: share.nullable().optional(),
+	share_eligible: share.nullable().optional(),
+	share_occupancy_readings: share.nullable().optional(),
+	low_coverage: z.boolean().optional(),
+	coverage_reason: z.literal('insufficient_coverage').optional(),
+});
+const rankingFloors = z.object({
+	departure: z.object({ observed_service_dates: count, classified: count }).optional(),
+});
 const measureAnswer = state.extend({
 	measure: z.enum(['on_time', 'trips_run']),
 	value: z.record(z.string(), share.nullable()),
 	coverage_note: bilingual.nullable(),
-	evidence: evidence.extend({ counts, excluded: counts }),
+	evidence: evidence.extend({ ...rateCoverage.shape, counts, excluded: counts }),
 });
 const rankingEnvelope = state.partial().extend({
 	class: z.string().nullable(),
@@ -42,11 +52,7 @@ const rankingEnvelope = state.partial().extend({
 		.array(
 			z.object({
 				minimum_sample: count,
-				ranking_floors: z
-					.object({
-						departure: z.object({ observed_service_dates: count, classified: count }).optional(),
-					})
-					.optional(),
+				ranking_floors: rankingFloors.optional(),
 			}),
 		)
 		.nonempty(),
@@ -57,6 +63,8 @@ const rankingAnswer = rankingEnvelope.extend({
 	kind: z.enum(['line', 'stop']),
 	rows: z.array(
 		z.object({
+			...rateCoverage.shape,
+			counts: counts.optional(),
 			id: z.string(),
 			rank: count,
 			value: share,
@@ -144,7 +152,9 @@ const recordState = state.extend({ state: recordStateName });
 const recordCell = recordState.extend({
 	value: z.record(z.string(), z.number().nullable()),
 	evidence: z.object({
+		...rateCoverage.shape,
 		counts: recordCounts,
+		excluded: recordCounts.optional(),
 		days_included: z.array(z.iso.date()),
 		observed_delay_seconds: z.number().nullable().optional(),
 		trip_ids: z.array(z.string()).optional(),
@@ -267,6 +277,8 @@ export type RecordQuery = {
 };
 
 const rankingIdentity = z.object({
+	...rateCoverage.shape,
+	excluded: recordCounts.optional(),
 	id: z.string(),
 	classes: z.array(z.string()),
 	line: z.string().optional(),
@@ -285,6 +297,7 @@ const rankingsRecord = rankingEnvelope.extend({
 			rank: count,
 			sample: z.number().nonnegative(),
 			value: z.number(),
+			ranking_bound: z.number().nullable().optional(),
 			range: z.object({
 				lower: z.number().nullable(),
 				upper: z.number().nullable(),
@@ -299,6 +312,7 @@ const rankingsRecord = rankingEnvelope.extend({
 			z.object({
 				minimum_sample: count,
 				ranking_minimum_sample: z.number().nonnegative().optional(),
+				ranking_floors: rankingFloors.optional(),
 				text: z.object({
 					en: z.object({ definition: z.string() }),
 					fr: z.object({ definition: z.string() }),
@@ -353,7 +367,10 @@ export function getScorecardAnswer({ path, parameters }: RecordQuery, period: En
 const finderSeries = recordEnvelope.extend({
 	cells: z.array(
 		recordSeries.shape.cells.element.extend({
-			evidence: recordCell.shape.evidence.pick({ counts: true }),
+			evidence: rateCoverage.omit({ share_occupancy_readings: true }).extend({
+				counts: recordCounts,
+				excluded: z.object({ route_without_live_data: count.nullable().optional() }).optional(),
+			}),
 		}),
 	),
 });

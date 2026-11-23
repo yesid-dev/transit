@@ -61,7 +61,7 @@ describe('Departure and Daily report text', () => {
 			'en',
 		);
 		expect(rows).toHaveLength(5);
-		expect(rows[4]?.slice(1)).toEqual(['20%', '10/50']);
+		expect(rows[4]?.slice(1)).toEqual(['20% · 100% of 50 scheduled stops observed', '10/50']);
 		expect(rows[0]?.slice(1)).toEqual(['Too few to judge', '19/20']);
 	});
 
@@ -81,8 +81,14 @@ describe('Departure and Daily report text', () => {
 			info: [{ minimum_sample: 30, minimum_coverage: 0.25, low_coverage_below: 0.5 }],
 		};
 		const rows = dailyPeriodRows(answer, 'en');
-		expect(rows[0]?.slice(1)).toEqual(['Insufficient coverage', '10/40']);
-		expect(rows[1]?.slice(1)).toEqual(['25% (low coverage)', '10/40']);
+		expect(rows[0]?.slice(1)).toEqual([
+			'Not measured (insufficient coverage) · 24.8% of 161 scheduled stops observed · Low coverage',
+			'10/40',
+		]);
+		expect(rows[1]?.slice(1)).toEqual([
+			'25% · 25% of 160 scheduled stops observed · Low coverage',
+			'10/40',
+		]);
 		expect(rows[2]?.[1]).toBe('No live data');
 	});
 

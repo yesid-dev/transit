@@ -42,6 +42,7 @@ for (const locale of ['en', 'fr'] as const) {
 		}
 
 		await expect(timing).toContainText(fr ? '90 sur 105' : '90 of 105');
+		await expect(timing).toContainText(fr ? 'Faible couverture' : 'Low coverage');
 		await performance.getByLabel(fr ? 'Trier par' : 'Sort by').selectOption('onTime');
 		await performance.getByText(fr ? 'Citer' : 'Cite', { exact: true }).click();
 		const csv = await performance.getByRole('link', { name: /CSV/ }).getAttribute('href');
@@ -93,6 +94,9 @@ for (const locale of ['en', 'fr'] as const) {
 				await page.setViewportSize({ width, height: 900 });
 				await expect(row).toContainText(fr ? /80\s%/ : '80%');
 				await expect(row).toContainText('100');
+				await expect(row).toContainText(
+					fr ? 'des 250 passages prévus observés' : 'of 250 scheduled stops observed',
+				);
 				await expect(row.getByRole('link')).toHaveAttribute(
 					'href',
 					/\/stop\/S1.*recordFrom=2026-11-08.*recordTo=2026-11-14/,

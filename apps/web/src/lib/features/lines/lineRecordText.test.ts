@@ -8,7 +8,11 @@ const base = measure();
 const answer: RecordMeasure = {
 	...base,
 	value: { early: 0, on_time: 0.8, late: 0.2 },
-	evidence: { ...base.evidence, counts: { early: 0, on_time: 80, late: 20, classified: 100 } },
+	evidence: {
+		...base.evidence,
+		share_observed: 0.5,
+		counts: { early: 0, on_time: 80, late: 20, classified: 100, scheduled: 200 },
+	},
 };
 
 describe('Line Record text', () => {
@@ -18,9 +22,9 @@ describe('Line Record text', () => {
 		expect(lineAnswer(answer, answer.evidence, 'fr')).toContain('Du 8 au 14 novembre 2026');
 		expect(lineAnswer(answer, answer.evidence, 'fr')).toContain('(80 sur 100)');
 		expect(punctualityBands(answer, 'en').map(({ reading }) => reading)).toEqual([
-			'0% (0/100)',
-			'80% (80/100)',
-			'20% (20/100)',
+			'0% (0/100) · 50% of 200 scheduled stops observed',
+			'80% (80/100) · 50% of 200 scheduled stops observed',
+			'20% (20/100) · 50% of 200 scheduled stops observed',
 		]);
 	});
 

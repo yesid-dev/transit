@@ -22,7 +22,15 @@ export function departureDailyEngine(url) {
 		cleaning_versions: [8],
 		query_ms: 5,
 	};
-	const timing = { classified: 100, on_time: 80, late: 20 };
+	const timing = {
+		classified: 100,
+		on_time: 80,
+		late: 20,
+		scheduled: 250,
+		vehicle_stopped: 40,
+		trip_update_passed: 60,
+	};
+	const timingCoverage = { share_observed: 0.4, low_coverage: true };
 	const service = { scheduled: 70, eligible: 65, ran: 60, cancelled: 2, missing: 3 };
 	const cell = (key, counts, value = {}, extra = {}) => ({
 		key,
@@ -52,6 +60,9 @@ export function departureDailyEngine(url) {
 						id: kind === 'line' ? '24' : 'S1',
 						value: 0.8,
 						sample: 100,
+						counts: timing,
+						...timingCoverage,
+						ranking_bound: 0.9,
 						rank: 1,
 						range: { lower: 0.7, upper: 0.9, method: 'wilson_95' },
 					},
@@ -112,7 +123,9 @@ export function departureDailyEngine(url) {
 		};
 	if (measure === 'trips_run') {
 		const trip_ids = departure && get('line') === '80' ? ['T1'] : [];
-		return result(cell(null, service, { trips_run: 60 / 65 }, { trip_ids }));
+		return result(
+			cell(null, service, { trips_run: 60 / 65 }, { trip_ids, share_eligible: 65 / 70 }),
+		);
 	}
 	if (measure === 'alert_counts') {
 		if (from === '2026-11-17')
@@ -145,5 +158,7 @@ export function departureDailyEngine(url) {
 			),
 		);
 	}
-	return result(cell(null, timing, { on_time: 0.8, median_delay: 60, p90_delay: 360 }));
+	return result(
+		cell(null, timing, { on_time: 0.8, median_delay: 60, p90_delay: 360 }, timingCoverage),
+	);
 }

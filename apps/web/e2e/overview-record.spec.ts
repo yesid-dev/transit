@@ -32,6 +32,12 @@ for (const width of [390, 1440]) {
 				previous.getByText(fr ? /400\s000 sur 507\s800/ : /400,000 of 507,800/),
 			).toBeVisible();
 			await expect(main.getByText(fr ? /Écart de/ : /Change of/)).toBeVisible();
+			await expect(punctuality).toContainText(fr ? 'Faible couverture' : 'Low coverage');
+			await expect(punctuality).toContainText(
+				fr
+					? 'La plupart de ces heures proviennent de prévisions.'
+					: 'Most times come from predictions.',
+			);
 			await expect(service.getByText(fr ? /90 sur 100/ : /90 of 100/)).toBeVisible();
 			await expect(main.getByRole('listitem')).toHaveCount(6);
 			await expect(
@@ -85,6 +91,9 @@ test('changing the custom period reloads Record and Live now still opens the exi
 	await dialog.getByRole('button', { name: 'Show these dates' }).click();
 	await expect(punctuality.getByText(/On November 8, 2026/)).toBeVisible();
 	await expect(page).toHaveURL(/recordTo=2026-11-08/);
+	await expect(main.getByRole('region', { name: 'Same weekday last week' })).toContainText(
+		'On November 1, 2026',
+	);
 	await page.getByRole('radio', { name: 'Live now' }).click();
 	await expect(main.getByText(/how the Montréal · STM network actually runs/)).toBeVisible();
 	await expect(main.getByRole('navigation', { name: 'Explore everything' })).toBeVisible();

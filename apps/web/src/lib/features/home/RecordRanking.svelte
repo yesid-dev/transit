@@ -3,7 +3,12 @@
 	import type { EngineResult, RankingAnswer } from '#lib/server/engine.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import RecordPending from '../record/RecordPending.svelte';
-	import { lastGoodNote } from '../record/recordText.ts';
+	import {
+		cautiousRanking,
+		lastGoodNote,
+		timingBasis,
+		withCoverage,
+	} from '../record/recordText.ts';
 	import { percent, rankingText, tally } from './overviewRecord.ts';
 
 	let {
@@ -32,11 +37,14 @@
 			<p>{message}</p>
 		{:else if result.kind === 'answer'}
 			{@const { rows, coverage_note, info } = result.answer}
+			{#if rows.some((row) => row.ranking_bound != null)}<p>{cautiousRanking[locale]}</p>{/if}
 			<ol class="grid gap-2 break-words">
 				{#each rows as row (row.id)}
+					{@const basis = timingBasis(row.counts, locale)}
 					<li>
-						<strong>{kind === 'line' ? display.lineName(row.id).label : row.id}</strong> · {percent(
-							row.value,
+						<strong>{kind === 'line' ? display.lineName(row.id).label : row.id}</strong> · {withCoverage(
+							percent(row.value, locale),
+							row,
 							locale,
 						)}
 						<br />
@@ -53,6 +61,7 @@
 							)},
 							{tally(row.sample, locale)} observed stop events
 						{/if}
+						{#if basis}<p>{basis}</p>{/if}
 					</li>
 				{/each}
 			</ol>
