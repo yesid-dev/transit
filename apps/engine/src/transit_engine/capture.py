@@ -48,7 +48,8 @@ def set_poll_age_limits(
     conn.execute("SET VARIABLE poll_age_limits = map(?::VARCHAR[], ?::BIGINT[])", [days, limits])
 
 
-# Failed attempts still identify feeds that require coverage.
+# Failed attempts still identify feeds that require coverage. Alert feeds,
+# including i3_alerts, do not establish coverage of vehicle passages.
 POLL_COVERAGE_SQL = f"""
     realtime_polls AS (
         SELECT service_date, feed, captured_at_utc, feed_timestamp_utc, result, entity_count

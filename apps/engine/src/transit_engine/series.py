@@ -35,8 +35,10 @@ HOUR_GROUPS = ("hour", "weekday_hour")
 LOCAL_HOUR = "hour(timezone('America/Toronto', {}))"
 
 
-def local_hour_sql(conn: duckdb.DuckDBPyConnection, timestamp: str, start: date, end: date) -> str:
-    fallback = LOCAL_HOUR.format(timestamp)
+def local_epoch_us_sql(
+    conn: duckdb.DuckDBPyConnection, timestamp: str, start: date, end: date
+) -> str:
+    fallback = f"epoch_us(timezone('America/Toronto', {timestamp}))"
     if start < date(2007, 1, 1):
         return fallback
     # Modern Toronto changes its offset at most once per UTC day. Use DuckDB's
@@ -62,10 +64,17 @@ def local_hour_sql(conn: duckdb.DuckDBPyConnection, timestamp: str, start: date,
             periods.append((lo, hi, offset))
     epoch = f"epoch_us({timestamp})"
     clauses = " ".join(
-        f"WHEN {epoch} >= {lo} AND {epoch} < {hi} THEN (({epoch} + ({offset})) // 3600000000) % 24"
+        f"WHEN {epoch} >= {lo} AND {epoch} < {hi} THEN {epoch} + ({offset})"
         for lo, hi, offset in periods
     )
     return f"(CASE {clauses} ELSE {fallback} END)" if clauses else fallback
+
+
+def local_hour_sql(conn: duckdb.DuckDBPyConnection, timestamp: str, start: date, end: date) -> str:
+    if start < date(2007, 1, 1):
+        return LOCAL_HOUR.format(timestamp)
+    local_us = local_epoch_us_sql(conn, timestamp, start, end)
+    return f"(({local_us} // 3600000000) % 24)"
 
 
 def day_type_sql(day: str) -> str:
