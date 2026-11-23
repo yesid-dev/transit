@@ -82,9 +82,11 @@ describe.each(['en', 'fr'] as const)('LineSchedule in %s', (locale) => {
 			},
 		});
 		const cells = [...screen.getByRole('table').querySelectorAll('tbody [data-column="headway"]')];
-		expect(cells.slice(0, 2).map((cell) => cell.textContent?.trim())).toEqual(
-			locale === 'en' ? ['2.6 min', '30.5 min'] : ['2,6 min', '30,5 min'],
-		);
+		expect(cells).toHaveLength(inputs.length);
+		const expected = locale === 'en' ? ['2.6 min', '30.5 min'] : ['2,6 min', '30,5 min'];
+		for (const [index, minutes] of expected.entries()) {
+			expect(cells[index]).toHaveAccessibleName(minutes);
+		}
 		expect(cells.slice(2).every((cell) => cell.querySelector('[data-slot="absent-value"]'))).toBe(
 			true,
 		);
