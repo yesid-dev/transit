@@ -19,6 +19,7 @@ for (const width of [390, 1440]) {
 		}) => {
 			await page.setViewportSize({ width, height: 900 });
 			await page.goto(`${path}/lines/24?${departurePeriod}`);
+			await page.locator('html[data-hydrated]').waitFor({ state: 'attached' });
 			const late = page.getByRole('region', {
 				name: fr ? 'Départs le plus souvent en retard' : 'Departures late most often',
 			});
