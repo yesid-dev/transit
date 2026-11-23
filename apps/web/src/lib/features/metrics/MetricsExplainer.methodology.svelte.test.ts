@@ -1,5 +1,5 @@
 vi.mock('$app/navigation', () => ({ afterNavigate: () => {} }));
-import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest';
+import { beforeEach, afterEach, describe, it, expect, inject, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import MetricsExplainer from './MetricsExplainer.svelte';
 import { metricsCopy } from './metrics.copy';
@@ -56,33 +56,17 @@ afterEach(() => {
 });
 
 describe('MetricsExplainer — responsive stat rail icons', () => {
-	it('retains the ToC, Coverage and complete definitions in actual unseeded SSR', async () => {
-		const { createServer } = await import('vite');
-		const server = await createServer({
-			configFile: 'vite.config.ts',
-			appType: 'custom',
-			logLevel: 'silent',
-			optimizeDeps: { noDiscovery: true },
-			server: { middlewareMode: true },
-		});
-		try {
-			const { render: renderSsr } = await server.ssrLoadModule('svelte/server');
-			const { default: ServerExplainer } = await server.ssrLoadModule(
-				'/src/lib/features/metrics/MetricsExplainer.svelte',
-			);
-			const html = renderSsr(ServerExplainer).body;
-			const document = window.document.createElement('div');
-			document.innerHTML = html;
-			expect(document.querySelector('.toc-nav')).not.toBeNull();
-			expect(document.querySelector('[data-slot="stat-coverage"]')?.textContent).toContain('14');
-			expect(document.querySelector('[data-slot="stat-provenance"]')).toBeNull();
-			expect(document.querySelector('[data-slot="stat-freshness"]')).toBeNull();
-			expect(document.querySelectorAll('[data-kind="definition"]')).toHaveLength(14);
-			expect(document.querySelector('#structural-gaps')).not.toBeNull();
-		} finally {
-			await server.close();
-		}
-	}, 20_000);
+	it('retains the ToC, Coverage and complete definitions in actual unseeded SSR', () => {
+		const html = inject('methodologySsr');
+		const document = window.document.createElement('div');
+		document.innerHTML = html;
+		expect(document.querySelector('.toc-nav')).not.toBeNull();
+		expect(document.querySelector('[data-slot="stat-coverage"]')?.textContent).toContain('14');
+		expect(document.querySelector('[data-slot="stat-provenance"]')).toBeNull();
+		expect(document.querySelector('[data-slot="stat-freshness"]')).toBeNull();
+		expect(document.querySelectorAll('[data-kind="definition"]')).toHaveLength(14);
+		expect(document.querySelector('#structural-gaps')).not.toBeNull();
+	});
 });
 
 describe('MetricsExplainer — "how we measure" doctrine constants (D6, dynamic)', () => {

@@ -1,6 +1,5 @@
 import { render, screen, within } from '@testing-library/svelte';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createServer } from 'vite';
+import { afterEach, describe, expect, inject, it, vi } from 'vitest';
 import Page from './+page.svelte';
 
 const { state, createLiveStoreSpy } = vi.hoisted(() => ({
@@ -215,32 +214,14 @@ describe('Home civic overview and directory', () => {
 		).toEqual(['_blank', '_blank', '_blank']);
 	});
 
-	it('server-renders every navigation href and the civic heading without hydration', async () => {
-		const server = await createServer({
-			configFile: 'vite.config.ts',
-			appType: 'custom',
-			logLevel: 'silent',
-			optimizeDeps: { noDiscovery: true },
-			server: { middlewareMode: true },
-		});
-		try {
-			const module = await server.ssrLoadModule('/src/routes/[[lang=locale]]/+page.svelte');
-			const { render: renderSsr } = (await server.ssrLoadModule(
-				'svelte/server',
-			)) as typeof import('svelte/server');
-			const context = new Map<unknown, unknown>([
-				[Symbol.for('@yesid/ui/locale'), () => 'en' as const],
-			]);
-			const { body } = renderSsr(module.default, { context, props: { data: pageData() } });
-			expect(body).toContain('How Montréal’s');
-			expect(body).toContain('independent public record');
-			expect(body).toContain('Search for your line or stop');
-			for (const [href] of destinations) expect(body).toContain(`href="${href}"`);
-			expect(body).toContain('href="/search"');
-		} finally {
-			await server.close();
-		}
-	}, 20_000);
+	it('server-renders every navigation href and the civic heading without hydration', () => {
+		const body = inject('homeSsr');
+		expect(body).toContain('How Montréal’s');
+		expect(body).toContain('independent public record');
+		expect(body).toContain('Search for your line or stop');
+		for (const [href] of destinations) expect(body).toContain(`href="${href}"`);
+		expect(body).toContain('href="/search"');
+	});
 });
 
 it.each(['en', 'fr'] as const)(
