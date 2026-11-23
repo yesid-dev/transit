@@ -7,6 +7,7 @@ from collections import Counter
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
@@ -40,6 +41,8 @@ from transit_ops.clean_day_output import (
 from transit_ops.core.models import ProviderManifest
 from transit_ops.history.manifest import Manifest, decode_manifest
 from transit_ops.ingestion.storage import BronzeStorage, LocalBronzeStorage, S3BronzeStorage
+from transit_ops.lake.objects import put_create_only
+from transit_ops.providers.schedule_archive import ArchiveScheduleContext
 from transit_ops.s3 import ObjectStorageError
 
 _S3_URL = re.compile(r"s3://([a-z0-9][a-z0-9.-]*)(?:/([a-zA-Z0-9._/-]*))?")
@@ -194,6 +197,20 @@ def _failure_reason(error: Exception) -> str:
     return f"{type(error).__name__}: {error}"
 
 
+def _publish_search_schedule(
+    clean: BronzeStorage, key: str, schedule: ArchiveScheduleContext, day: date
+) -> None:
+    if isinstance(clean, LocalBronzeStorage):
+        clean.root.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(prefix="search-schedule-") as temporary:
+        index = Path(temporary) / "index.json"
+        index.write_text(
+            json.dumps(schedule.search_index(day), ensure_ascii=False, separators=(",", ":")),
+            encoding="utf-8",
+        )
+        put_create_only(clean, index, key)
+
+
 def _build_day(
     declaration: ProviderManifest,
     day: date,
@@ -209,6 +226,12 @@ def _build_day(
     schedules, ignored = load_contexts(declaration, day, editions, raw.read_bytes)
     if day not in schedules:
         return "schedule_archive_unreadable", ignored
+    _publish_search_schedule(
+        clean,
+        f"{clean_prefix}search/v1/{version_key(declaration.provider.provider_id, day)}.json",
+        schedules[day],
+        day,
+    )
     start, end = capture_window(schedules[day], day)
     selections = list(_capture_manifests(raw, raw_prefix, declaration, start, end))
     archived = {(manifest.endpoint_key, manifest.utc_date) for manifest, _ in selections}

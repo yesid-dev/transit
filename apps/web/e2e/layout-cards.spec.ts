@@ -2,49 +2,71 @@ import closedWindows from '../scripts/__fixtures__/b9/layout-windows.json' with 
 import { test } from './layout-test';
 import { expect, type Page, type Request as PlaywrightRequest } from '@playwright/test';
 import { localizeHref } from '../src/lib/i18n/routing';
+import type { SearchIndex } from '../src/lib/search/searchIndex';
+
+const searchLineName = 'Sherbrooke / Boulevard des Anciens-Combattants';
+
+async function serveSearchCards(page: Page) {
+	await page.route('**/api/search-index?*', async (route) => {
+		const response = await route.fetch();
+		expect(response.ok()).toBe(true);
+		const index: SearchIndex = await response.json();
+		const schedule = index.schedule!;
+		const line = schedule.routes.find(({ id }) => id === '24')!;
+		schedule.routes = ['24', '241', '242', '243', '244', '245'].map((id) => ({
+			...line,
+			id,
+			short: id,
+			long: searchLineName,
+		}));
+		await route.fulfill({ response, json: index });
+	});
+}
 
 for (const provider of ['stm', 'octranspo'])
 	for (const locale of ['en', 'fr'] as const)
 		for (const path of ['/lines', '/search?q=24'])
 			test(`${provider} ${locale} ${path} card container rules`, async ({ page }) => {
+				const reading = path === '/lines';
 				await page.clock.setFixedTime(Date.parse('2026-06-15T12:00:30Z'));
-				await page.route('**/v1/**', async (route) => {
-					const url = new URL(route.request().url());
-					url.pathname = `/__layout/fresh${url.pathname.replace('/octranspo/', '/stm/')}`;
-					const response = await route.fetch({ url: url.href });
-					if (url.pathname.endsWith('route_reliability/index.json')) {
-						await route.fulfill({
-							json: { generated_utc: '2026-06-15T12:00:00Z', route_ids: ['24'] },
-						});
-					} else if (url.pathname.endsWith('/route_reliability/24.json')) {
-						const body = await response.json();
-						for (const period of body.periods)
-							Object.assign(period, {
-								otp_pct: 95,
-								observation_count: 1000,
-								on_time: 950,
-								wilson_lo: 92,
-								wilson_hi: 98,
+				if (!reading) await serveSearchCards(page);
+				else
+					await page.route('**/v1/**', async (route) => {
+						const url = new URL(route.request().url());
+						url.pathname = `/__layout/fresh${url.pathname.replace('/octranspo/', '/stm/')}`;
+						const response = await route.fetch({ url: url.href });
+						if (url.pathname.endsWith('route_reliability/index.json')) {
+							await route.fulfill({
+								json: { generated_utc: '2026-06-15T12:00:00Z', route_ids: ['24'] },
 							});
-						Object.assign(body, closedWindows.ready.line);
-						await route.fulfill({ response, json: body });
-					} else if (url.pathname.endsWith('routes_index.json')) {
-						const body = await response.json();
-						body.routes = Array.from({ length: 6 }, (_, i) => ({
-							...body.routes[0],
-							id: i === 0 ? '24' : `24${i}`,
-							short: i === 0 ? '24' : `24${i}`,
-						}));
-						await route.fulfill({ response, json: body });
-					} else await route.fulfill({ response });
-				});
+						} else if (url.pathname.endsWith('/route_reliability/24.json')) {
+							const body = await response.json();
+							for (const period of body.periods)
+								Object.assign(period, {
+									otp_pct: 95,
+									observation_count: 1000,
+									on_time: 950,
+									wilson_lo: 92,
+									wilson_hi: 98,
+								});
+							Object.assign(body, closedWindows.ready.line);
+							await route.fulfill({ response, json: body });
+						} else if (url.pathname.endsWith('routes_index.json')) {
+							const body = await response.json();
+							body.routes = Array.from({ length: 6 }, (_, i) => ({
+								...body.routes[0],
+								id: i === 0 ? '24' : `24${i}`,
+								short: i === 0 ? '24' : `24${i}`,
+							}));
+							await route.fulfill({ response, json: body });
+						} else await route.fulfill({ response });
+					});
 				await page.goto(
 					localizeHref(`${path}${path.includes('?') ? '&' : '?'}provider=${provider}`, locale),
 					{ waitUntil: 'networkidle' },
 				);
 				const list = page.locator('[data-slot="entity-list"]').first();
 				await expect(list).toBeVisible();
-				const reading = path === '/lines';
 				const row = list.locator('[data-slot="entity-result-row"]').first();
 				if (reading) {
 					// The Lines directory is one card of aligned rows, never a card grid.
@@ -103,8 +125,20 @@ for (const provider of ['stm', 'octranspo'])
 							.toBe(stacked);
 					}
 				} else {
+					const cards = list.locator('[data-slot="card"]');
+					await expect(cards).toHaveCount(6);
+					await expect(list.locator('[data-slot="entity-result-status"]')).toHaveCount(0);
+					const firstLink = row.getByRole('link');
+					await expect(firstLink).toContainText(searchLineName);
+					await expect(firstLink).toHaveAttribute(
+						'href',
+						localizeHref('/lines/24', locale, provider),
+					);
 					// The same viewport exercises both sides of each container boundary.
 					for (const [width, columns] of [
+						[320, 1],
+						[420, 1],
+						[470, 1],
 						[743, 1],
 						[744, 2],
 						[1127, 2],
@@ -115,28 +149,28 @@ for (const provider of ['stm', 'octranspo'])
 						}, width);
 						await expect
 							.poll(() =>
-								list.evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').length),
+								cards.evaluateAll((items) => {
+									const firstTop = items[0]!.getBoundingClientRect().top;
+									return items.filter(
+										(item) => Math.abs(item.getBoundingClientRect().top - firstTop) < 1,
+									).length;
+								}),
 							)
 							.toBe(columns);
-					}
-					for (const [width, stacked] of [
-						[470, false],
-						[420, true],
-					] as const) {
-						await list.evaluate((el, width) => {
-							el.parentElement!.style.width = `${width}px`;
-						}, width);
-						await row.scrollIntoViewIfNeeded();
-						const status = row.locator('[data-slot="entity-result-status"]');
-						await expect(status).toBeVisible();
-						await expect(status.locator('[data-slot="reliability-badge"]')).toContainText('95');
-						await expect
-							.poll(async () => {
-								const main = await row.locator('[data-slot="entity-result-main"]').boundingBox();
-								const badge = await status.boundingBox();
-								return badge!.y >= main!.y + main!.height;
-							})
-							.toBe(stacked);
+						const clipped = await cards.evaluateAll((items) =>
+							items.flatMap((item) => {
+								const link = item.querySelector('a')!;
+								const name = link.querySelector('.entity-row-subtitle')!;
+								const card = item.getBoundingClientRect();
+								const bounds = link.getBoundingClientRect();
+								return name.scrollWidth > name.clientWidth + 1 ||
+									bounds.left < card.left - 1 ||
+									bounds.right > card.right + 1
+									? [link.textContent]
+									: [];
+							}),
+						);
+						expect(clipped, `Card text at ${width}px`).toEqual([]);
 					}
 				}
 			});

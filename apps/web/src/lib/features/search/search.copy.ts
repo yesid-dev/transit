@@ -7,36 +7,39 @@ export type GroupKind = 'route' | 'stop' | 'page' | 'vehicle';
 export const copy = defineCopy({
 	en: {
 		kicker: 'SEARCH',
-		heading: 'Find a line, stop or bus',
-		lede: 'Search by line number or name, stop name or code, live vehicle number, or page name. Lines and stops open on their record.',
-		inputLabel: 'Search lines, stops and buses',
+		heading: 'Find a line, stop or vehicle',
+		lede: 'Search by line number or name, stop name or code, recently observed vehicle number, or page name. Lines and stops open on their record.',
+		inputLabel: 'Search lines, stops and vehicles',
 		inputPlaceholder: 'Search a line, stop or vehicle',
 		linesLabel: 'Lines',
 		stopsLabel: 'Stops',
-		vehiclesLabel: 'Live vehicles',
+		vehiclesLabel: 'Vehicles',
+		notTracked: 'This feed does not track vehicles by number.',
+		retry: 'Try again',
 		pagesLabel: 'Pages',
 		scopeLabel: 'Show',
 		scopeAll: 'All',
 		modeLabel: 'Mode',
 		scopeCount: (label, n) => `${label} (${n})`,
-		idleTitle: 'Search a line, stop or bus',
-		idleBody: 'Type a line number, a line or stop name, a stop code, or a live bus id to find it.',
+		idleTitle: 'Search a line, stop or vehicle',
+		idleBody:
+			'Type a line number, a line or stop name, a stop code, or a vehicle number to find it.',
 		census: {
 			examplesLabel: 'Try',
 			examples: ['747', 'Berri-UQAM', 'Métro'],
 		},
 		/** Shown only past the preview, so always more than one. */
 		showAll: (kind: GroupKind, n: number) =>
-			`Show all ${n} ${{ route: 'lines', stop: 'stops', page: 'pages', vehicle: 'live vehicles' }[kind]}`,
+			`Show all ${n} ${{ route: 'lines', stop: 'stops', page: 'pages', vehicle: 'vehicles' }[kind]}`,
 		showMore: (kind: GroupKind, n: number) =>
 			`Show ${n} more ${
 				n === 1
-					? { route: 'line', stop: 'stop', page: 'page', vehicle: 'live vehicle' }[kind]
-					: { route: 'lines', stop: 'stops', page: 'pages', vehicle: 'live vehicles' }[kind]
+					? { route: 'line', stop: 'stop', page: 'page', vehicle: 'vehicle' }[kind]
+					: { route: 'lines', stop: 'stops', page: 'pages', vehicle: 'vehicles' }[kind]
 			}`,
 		shown: (n: number, total: number) => `${n} of ${total} shown`,
 		none: (kind: GroupKind, query: string) =>
-			`No ${{ route: 'line', stop: 'stop', page: 'page', vehicle: 'live vehicle' }[kind]} matches “${query}”.`,
+			`No ${{ route: 'line', stop: 'stop', page: 'page', vehicle: 'vehicle' }[kind]} matches “${query}”.`,
 		vehicle: {
 			busAria: (id) => `Live bus ${id}`,
 			routeTag: (route) => `Line ${route}`,
@@ -48,35 +51,37 @@ export const copy = defineCopy({
 	},
 	fr: {
 		kicker: 'RECHERCHE',
-		heading: 'Trouver une ligne, un arrêt ou un bus',
-		lede: 'Cherchez par numéro ou nom de ligne, nom ou code d’arrêt, numéro de véhicule en direct ou nom de page. Les lignes et les arrêts s’ouvrent sur leur bilan.',
-		inputLabel: 'Rechercher lignes, arrêts et bus',
+		heading: 'Trouver une ligne, un arrêt ou un véhicule',
+		lede: 'Cherchez par numéro ou nom de ligne, nom ou code d’arrêt, numéro de véhicule observé récemment ou nom de page. Les lignes et les arrêts s’ouvrent sur leur bilan.',
+		inputLabel: 'Rechercher lignes, arrêts et véhicules',
 		inputPlaceholder: 'Rechercher une ligne, un arrêt ou un véhicule',
 		linesLabel: 'Lignes',
 		stopsLabel: 'Arrêts',
-		vehiclesLabel: 'Véhicules en direct',
+		vehiclesLabel: 'Véhicules',
+		notTracked: 'Ce flux ne permet pas de suivre les véhicules par numéro.',
+		retry: 'Réessayer',
 		pagesLabel: 'Pages',
 		scopeLabel: 'Afficher',
 		scopeAll: 'Tout',
 		modeLabel: 'Mode',
 		scopeCount: (label: string, n: number) => `${label} (${n})`,
-		idleTitle: 'Rechercher une ligne, un arrêt ou un bus',
+		idleTitle: 'Rechercher une ligne, un arrêt ou un véhicule',
 		idleBody:
-			'Saisissez un numéro de ligne, un nom de ligne ou d’arrêt, un code d’arrêt, ou un identifiant de bus en direct pour le trouver.',
+			'Saisissez un numéro de ligne, un nom de ligne ou d’arrêt, un code d’arrêt, ou un numéro de véhicule pour le trouver.',
 		census: {
 			examplesLabel: 'Essayez',
 			examples: ['747', 'Berri-UQAM', 'Métro'],
 		},
 		showAll: (kind: GroupKind, n: number) =>
-			`Afficher les ${n} ${{ route: 'lignes', stop: 'arrêts', page: 'pages', vehicle: 'véhicules en direct' }[kind]}`,
+			`Afficher les ${n} ${{ route: 'lignes', stop: 'arrêts', page: 'pages', vehicle: 'véhicules' }[kind]}`,
 		// French counts 0 and 1 in the singular.
 		showMore: (kind: GroupKind, n: number) =>
 			n < 2
-				? `Afficher ${n} ${{ route: 'autre ligne', stop: 'autre arrêt', page: 'autre page', vehicle: 'autre véhicule en direct' }[kind]}`
-				: `Afficher ${n} ${{ route: 'autres lignes', stop: 'autres arrêts', page: 'autres pages', vehicle: 'autres véhicules en direct' }[kind]}`,
+				? `Afficher ${n} ${{ route: 'autre ligne', stop: 'autre arrêt', page: 'autre page', vehicle: 'autre véhicule' }[kind]}`
+				: `Afficher ${n} ${{ route: 'autres lignes', stop: 'autres arrêts', page: 'autres pages', vehicle: 'autres véhicules' }[kind]}`,
 		shown: (n: number, total: number) => `${n} sur ${total} affichés`,
 		none: (kind: GroupKind, query: string) =>
-			`${{ route: 'Aucune ligne', stop: 'Aucun arrêt', page: 'Aucune page', vehicle: 'Aucun véhicule en direct' }[kind]} ne correspond à « ${query} ».`,
+			`${{ route: 'Aucune ligne', stop: 'Aucun arrêt', page: 'Aucune page', vehicle: 'Aucun véhicule' }[kind]} ne correspond à « ${query} ».`,
 		vehicle: {
 			busAria: (id: string) => `Bus en direct ${id}`,
 			routeTag: (route: string) => `Ligne ${route}`,

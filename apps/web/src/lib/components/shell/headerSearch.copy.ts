@@ -14,11 +14,11 @@ export const headerSearchCopy = {
 		sheetTitle: 'Search',
 		closeSheet: 'Close search',
 		heading: (kind: Kind, n: number | null) =>
-			`${{ route: 'Lines', stop: 'Stops', vehicle: 'Live vehicles', address: 'Addresses' }[kind]}${n === null ? '' : ` · ${n}`}`,
+			`${{ route: 'Lines', stop: 'Stops', vehicle: 'Vehicles', address: 'Addresses' }[kind]}${n === null ? '' : ` · ${n}`}`,
 		seeAll: (n: number | null, query: string) =>
 			`See ${n === 1 ? '1 result' : n === null ? 'all results' : `all ${n} results`} for “${query}”`,
-		unsearched: (kind: 'route' | 'stop') =>
-			`${kind === 'route' ? 'Lines' : 'Stops'} have not been searched yet.`,
+		unsearched: (kind: 'route' | 'stop' | 'vehicle') =>
+			`${{ route: 'Line', stop: 'Stop', vehicle: 'Vehicle' }[kind]} search is unavailable.`,
 		noResult: (query: string) => `No line or stop matches “${query}”.`,
 		browseLines: 'Browse all lines',
 		browseStops: 'Browse all stops',
@@ -32,7 +32,7 @@ export const headerSearchCopy = {
 			counts(
 				lines !== null && count(lines, 'line', 'lines'),
 				stops !== null && count(stops, 'stop', 'stops'),
-				vehicles > 0 && count(vehicles, 'live vehicle', 'live vehicles'),
+				vehicles > 0 && count(vehicles, 'vehicle', 'vehicles'),
 			),
 	},
 	fr: {
@@ -41,11 +41,11 @@ export const headerSearchCopy = {
 		sheetTitle: 'Recherche',
 		closeSheet: 'Fermer la recherche',
 		heading: (kind: Kind, n: number | null) =>
-			`${{ route: 'Lignes', stop: 'Arrêts', vehicle: 'Véhicules en direct', address: 'Adresses' }[kind]}${n === null ? '' : ` · ${n}`}`,
+			`${{ route: 'Lignes', stop: 'Arrêts', vehicle: 'Véhicules', address: 'Adresses' }[kind]}${n === null ? '' : ` · ${n}`}`,
 		seeAll: (n: number | null, query: string) =>
 			`Voir ${n === 1 ? 'le résultat' : n === null ? 'tous les résultats' : `les ${n} résultats`} pour « ${query} »`,
-		unsearched: (kind: 'route' | 'stop') =>
-			`Les ${kind === 'route' ? 'lignes n’ont pas encore été cherchées' : 'arrêts n’ont pas encore été cherchés'}.`,
+		unsearched: (kind: 'route' | 'stop' | 'vehicle') =>
+			`La recherche de ${{ route: 'lignes', stop: 'stations et arrêts', vehicle: 'véhicules' }[kind]} est indisponible.`,
 		noResult: (query: string) => `Aucune ligne ni aucun arrêt ne correspond à « ${query} ».`,
 		browseLines: 'Parcourir toutes les lignes',
 		browseStops: 'Parcourir tous les arrêts',
@@ -59,7 +59,7 @@ export const headerSearchCopy = {
 			counts(
 				lines !== null && count(lines, 'ligne', 'lignes', lines < 2),
 				stops !== null && count(stops, 'arrêt', 'arrêts', stops < 2),
-				vehicles > 0 && count(vehicles, 'véhicule en direct', 'véhicules en direct', vehicles < 2),
+				vehicles > 0 && count(vehicles, 'véhicule', 'véhicules', vehicles < 2),
 			),
 	},
 };

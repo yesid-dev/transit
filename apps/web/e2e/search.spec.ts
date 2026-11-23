@@ -198,16 +198,23 @@ for (const locale of PUBLISHED_LOCALES) {
 		await expect(stopsTab).toHaveAttribute('aria-selected', 'true');
 	});
 
-	test(`${locale}: the search page finds a line and a stop by name`, async ({ page }) => {
-		for (const [query, path] of [
-			[line.long, `/lines/${line.id}`],
-			[stop.name, `/stop/${stop.id}`],
+	test(`${locale}: the search page finds lines, stops and vehicles from the search index`, async ({
+		page,
+	}) => {
+		for (const [query, name, path] of [
+			[line.long, line.long, `/lines/${line.id}`],
+			[stop.name, stop.name, `/stop/${stop.id}`],
+			['98765', 'Crémazie Clean', '/stop/clean-search-stop'],
+			['cremazie clean', 'Crémazie Clean', '/stop/clean-search-stop'],
+			['40061', '40061', '/vehicle/40061'],
 		]) {
 			await page.goto(localizeHref(`/search?q=${encodeURIComponent(query)}`, locale));
 			await expect(
 				page
 					.getByRole('main')
-					.getByRole('link', { name: new RegExp(literal(query)) })
+					.getByRole('link', {
+						name: new RegExp(literal(name)),
+					})
 					.first(),
 			).toHaveAttribute('href', new RegExp(`^${literal(localizeHref(path, locale))}(\\?|$)`));
 		}

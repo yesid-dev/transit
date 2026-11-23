@@ -24,6 +24,7 @@ from transit_engine.measures import (
     methods,
 )
 from transit_engine.ranking import DEFAULT_LIMIT, Ranking, rank, ranking_csv
+from transit_engine.search import UnknownSearchCity, search_index
 from transit_engine.series import SeriesGroup
 from transit_engine.store import Store, env_int
 
@@ -227,13 +228,21 @@ class Engine:
         if scope["path"] == "/data-health":
             await self._data_health(scope["query_string"], send)
             return
-        if scope["path"] not in {"/measure", "/ranking"}:
+        route = scope["path"]
+        if route not in {"/measure", "/ranking", "/search-index"}:
             await respond(send, 404, {"message": "not found"})
             return
         try:
-            question, output, language = _question(
-                scope["query_string"], ranking=scope["path"] == "/ranking"
-            )
+            question: Question | Ranking | str
+            language: Language
+            raw = scope["query_string"]
+            if route == "/search-index":
+                fields = parse_qs(raw.decode("ascii"), strict_parsing=True, max_num_fields=1)
+                if set(fields) != {"city"}:
+                    raise ValueError("provide city")
+                question, output, language = fields["city"][0], "json", "en"
+            else:
+                question, output, language = _question(raw, ranking=route == "/ranking")
         except UnicodeError:
             await respond(send, 400, {"message": "invalid query encoding"})
             return
@@ -260,6 +269,8 @@ class Engine:
 
         # Keep the slot until DuckDB stops, including when a caller disconnects.
         def run_query() -> tuple[dict[str, Any] | str, int]:
+            if isinstance(question, str):
+                return search_index(self.store, question), 0
             if isinstance(question, Ranking):
                 answer = rank(self.store, question)
                 payload = ranking_csv(answer, language) if output == "csv" else answer
@@ -278,6 +289,8 @@ class Engine:
         query.add_done_callback(finished)
         try:
             payload, days_pending = await asyncio.shield(query)
+        except UnknownSearchCity as error:
+            await respond(send, 400, {"message": str(error)}, queued=queued)
         except Exception as error:
             # DuckDB errors can include storage configuration. Log the class only.
             LOGGER.error("engine query failed (%s)", type(error).__name__)

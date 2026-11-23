@@ -62,11 +62,13 @@
 		const state = lookup.row(text);
 		return state ? { state, onask: () => lookup.ask(text) } : null;
 	});
-	const listed = $derived(list.groups.length > 0 || (list.total === 0 && !list.pending));
+	const listed = $derived(list.groups.length > 0 || !list.pending);
 	const shown = $derived(
 		(open || sheet !== null) &&
 			text.length > 0 &&
-			(listed || (presentation?.notice.kind ?? 'none') !== 'none'),
+			(listed ||
+				(list.indexSettled && list.unsearched.length > 0) ||
+				(presentation?.notice.kind ?? 'none') !== 'none'),
 	);
 	const localized = (href: string) => carryFrameState(localizeHref(href, locale, providerId), url);
 	const hrefs = $derived({
@@ -82,7 +84,7 @@
 	// Totals are spoken once typing pauses, never on every keystroke or live poll.
 	// A group that could not be searched is named, never counted as 0.
 	const total = (kind: 'route' | 'stop' | 'vehicle') =>
-		kind !== 'vehicle' && list.unsearched.includes(kind)
+		list.unsearched.includes(kind)
 			? null
 			: (list.groups.find((group) => group.kind === kind)?.total ?? 0);
 	const summary = $derived.by(() => {
@@ -165,8 +167,8 @@
 		bind:value={query}
 		placeholder={copy.searchPlaceholder[scoped]}
 		aria-label={copy.searchAria[scoped]}
-		aria-expanded={shown && listed}
-		aria-controls={shown && listed ? listId : undefined}
+		aria-expanded={shown && (listed || address !== null)}
+		aria-controls={shown && (listed || address !== null) ? listId : undefined}
 		aria-autocomplete="list"
 		aria-activedescendant={shown && active ? active : undefined}
 		autocomplete="off"

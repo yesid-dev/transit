@@ -150,13 +150,13 @@ it.each([
 	[
 		'en',
 		'See all results for “van”',
-		'Stops have not been searched yet.',
+		'Stop search is unavailable.',
 		'See all 39 results for “van”',
 	],
 	[
 		'fr',
 		'Voir tous les résultats pour « van »',
-		'Les arrêts n’ont pas encore été cherchés.',
+		'La recherche de stations et arrêts est indisponible.',
 		'Voir les 39 résultats pour « van »',
 	],
 ] as const)(

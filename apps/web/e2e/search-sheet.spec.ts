@@ -133,3 +133,16 @@ for (const locale of PUBLISHED_LOCALES) {
 		await expect(page.getByRole('combobox', { name })).toBeVisible();
 	});
 }
+
+test('the search sheet finds a clean-only stop using an unaccented query', async ({ page }) => {
+	const words = headerSearchCopy.fr;
+	await page.goto(localizeHref('/search', 'fr'));
+	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+	await page.getByRole('button', { name: navPillCopy.fr.searchAria.all, exact: true }).click();
+	const search = page.getByRole('dialog', { name: words.sheetTitle });
+	const field = search.getByRole('combobox');
+	await field.fill('cremazie clean');
+	const option = search.getByRole('option', { name: /Crémazie Clean/ });
+	await expect(option).toBeVisible();
+	await expect(field).toHaveAttribute('aria-activedescendant', (await option.getAttribute('id'))!);
+});

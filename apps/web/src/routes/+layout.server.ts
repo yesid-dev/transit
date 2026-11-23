@@ -9,11 +9,13 @@ export const load: LayoutServerLoad = async (event) => {
 	const { params, locals } = event;
 	const lang = (params.lang as Locale | undefined) ?? locals.locale ?? DEFAULT_LOCALE;
 
+	const searchPage = event.route?.id === '/[[lang=locale]]/search';
 	const selection = await bootProvider(
 		event.url,
 		lang,
 		serverV1Context(event),
 		locals.approximateLocation,
+		!searchPage,
 	);
 	if (selection.redirectHref) redirect(307, selection.redirectHref);
 	if (selection.discoveryError) event.setHeaders({ 'cache-control': 'no-store' });

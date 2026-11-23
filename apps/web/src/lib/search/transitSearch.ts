@@ -32,10 +32,12 @@ export interface SitePage {
 	readonly words: readonly string[];
 }
 
+type SearchVehicle = Pick<Vehicle, 'id' | 'route'>;
+
 export interface SearchSources {
 	readonly routes?: readonly RouteIndexEntry[] | null;
 	readonly stops?: readonly StopIndexEntry[] | null;
-	readonly vehicles?: readonly Vehicle[] | null;
+	readonly vehicles?: readonly SearchVehicle[] | null;
 	readonly pages?: readonly SitePage[] | null;
 }
 
@@ -48,7 +50,7 @@ export interface PageSearchResults {
 	readonly query: string;
 	readonly routes: RouteIndexEntry[];
 	readonly stops: StopIndexEntry[];
-	readonly vehicles: Vehicle[];
+	readonly vehicles: SearchVehicle[];
 	readonly pages: SitePage[];
 }
 /** The header list: the page decides the order (`scope`), never what is searched. */
@@ -86,8 +88,9 @@ export interface SearchList {
 	readonly exact: boolean;
 	/** The lines or stops index has not arrived, so no answer is final yet. */
 	readonly pending: boolean;
+	readonly indexSettled?: boolean;
 	/** Which of those indexes: never counted as zero. */
-	readonly unsearched: readonly ('route' | 'stop')[];
+	readonly unsearched: readonly ('route' | 'stop' | 'vehicle')[];
 }
 interface Candidate<T> {
 	value: T;
@@ -96,7 +99,7 @@ interface Candidate<T> {
 interface Candidates {
 	routes: Candidate<RouteIndexEntry>[];
 	stops: Candidate<StopIndexEntry>[];
-	vehicles: Vehicle[];
+	vehicles: SearchVehicle[];
 }
 
 /** An internal id the rider never reads: matched only exactly, after every public match. */
@@ -191,8 +194,13 @@ function searchList(
 	const groups = [...(lead === 'stop' ? [stops, lines] : [lines, stops]), vehicles];
 	const shown = groups.filter((group) => group.hits.length > 0);
 	const first = shown[0]?.kind;
-	const unsearched = (['route', 'stop'] as const).filter(
-		(kind) => (kind === 'route' ? sources.routes : sources.stops) == null,
+	const availability = {
+		route: sources.routes,
+		stop: sources.stops,
+		vehicle: sources.vehicles === undefined ? [] : sources.vehicles,
+	};
+	const unsearched = (['route', 'stop', 'vehicle'] as const).filter(
+		(kind) => availability[kind] == null,
 	);
 	return {
 		query,
@@ -293,6 +301,8 @@ const RECORD_VIEW_PARAMS = ['tab', 'grain', 'from', 'to'] as const;
  * page another line opens on the same tab and period; the same for stops.
  */
 export function searchHitHref(hit: SearchTarget, from: SearchOrigin): string {
+	if (hit.kind === 'vehicle' && from.path !== '/map')
+		return `/vehicle/${encodeURIComponent(hit.id)}`;
 	const record =
 		from.path === '/map'
 			? null

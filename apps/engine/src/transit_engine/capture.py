@@ -12,17 +12,23 @@ MAX_POLL_AGE_SECONDS = 120
 MAX_POLL_SPACING_SECONDS = 120
 
 
-def _declared_lag(provider: str) -> int:
+def provider_declaration(provider: str) -> dict[str, object]:
     directory = Path(
         os.environ.get("ENGINE_PROVIDER_DECLARATIONS")
         or Path(__file__).resolve().parents[3] / "db" / "config" / "providers"
     )
     declaration = directory / f"{provider}.yaml"
     if not declaration.is_file():
-        return 0
+        return {}
     data = yaml.safe_load(declaration.read_text(encoding="utf-8"))
+    return data if isinstance(data, dict) else {}
+
+
+def _declared_lag(provider: str) -> int:
+    data = provider_declaration(provider)
     # Both declaration formats are in use. The legacy format nests provider fields.
-    return _lag(data.get("provider", data).get("live_source_lag_seconds", 0))
+    identity = data.get("provider", data)
+    return _lag(identity.get("live_source_lag_seconds", 0) if isinstance(identity, dict) else 0)
 
 
 def _lag(value: object) -> int:

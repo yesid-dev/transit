@@ -277,3 +277,36 @@ def test_lookup_distinctions(name, missing):
     assert ctx.trip(date(2026, 3, 22), "t") is None
     assert ctx.stop_times(date(2026, 3, 22), "t") == ()
     assert ctx.stop(date(2026, 3, 22), "a") == ctx.stop(DAY, "a")
+
+
+def test_search_index_preserves_schedule_names_and_stop_codes():
+    payload = archive(
+        routes=None,
+        stop_times=ROWS["stop_times"] + "orphan,1,a,12:00:00,12:00:00,,\n",
+        stops=None,
+        extra=(
+            (
+                "routes.txt",
+                "route_id,route_type,route_short_name,route_long_name,route_color\n"
+                "r,3,24,Sherbrooke,880000\n",
+            ),
+            (
+                "stops.txt",
+                "stop_id,stop_name,stop_lat,stop_lon,stop_code\n"
+                "a,Station Crémazie,45.5,-73.6,54321\nb,B,45.6,-73.5,\n",
+            ),
+        ),
+    )
+    index = context(payload).search_index(DAY)
+    assert index["routes"] == (
+        {"id": "r", "short": "24", "long": "Sherbrooke", "type": 3, "color": "880000"},
+    )
+    assert index["stops"][0] == {
+        "id": "a",
+        "name": "Station Crémazie",
+        "code": "54321",
+        "lat": 45.5,
+        "lon": -73.6,
+        "routes": ["r"],
+        "mode": "bus",
+    }

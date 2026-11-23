@@ -97,7 +97,7 @@ describe('root server layout boot', () => {
 		const location = { lat: 45.42, lon: -75.7 };
 		Object.assign(request.locals, { approximateLocation: location });
 		const result = await loadServerLayout(request);
-		expect(harness.bootProvider).toHaveBeenCalledWith(request.url, 'fr', undefined, location);
+		expect(harness.bootProvider).toHaveBeenCalledWith(request.url, 'fr', undefined, location, true);
 		expect(JSON.stringify(result)).not.toContain('45.42');
 	});
 	it('prevents caching a successful fallback boot when catalog discovery failed', async () => {
@@ -123,7 +123,13 @@ describe('root server layout boot', () => {
 				serverBoot: 'succeeded',
 			});
 			expect(harness.serverV1Context).toHaveBeenCalledWith(request);
-			expect(harness.bootProvider).toHaveBeenCalledWith(request.url, 'fr', context, undefined);
+			expect(harness.bootProvider).toHaveBeenCalledWith(
+				request.url,
+				'fr',
+				context,
+				undefined,
+				true,
+			);
 			expect(context.cache).toBe(request.locals.v1Cache);
 		},
 	);
