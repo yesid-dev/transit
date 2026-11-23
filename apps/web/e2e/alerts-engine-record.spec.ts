@@ -8,6 +8,7 @@ test('Alerts Record streams every cut with localized messages and evidence', asy
 }) => {
 	const response = await page.goto(`/fr/alerts?${period}`);
 	expect(response?.headers()['cache-control']).toBe('no-store, no-transform');
+	await page.locator('html[data-hydrated]').waitFor({ state: 'attached' });
 	const region = (name: string) => page.getByRole('region', { name, exact: true });
 	await expect(page.getByRole('heading', { name: 'Avis de service', level: 1 })).toBeVisible();
 	const answer = region('Le résultat');
