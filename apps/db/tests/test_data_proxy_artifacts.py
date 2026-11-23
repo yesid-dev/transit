@@ -53,7 +53,7 @@ def _workflow_triggers(workflow: dict) -> dict:
     return workflow.get("on", workflow.get(True))
 
 
-def test_wrangler_config_pins_public_routes_and_buckets() -> None:
+def test_wrangler_config_pins_public_routes_and_snapshots_bucket() -> None:
     config = _wrangler_config()
 
     assert config["name"] == "transit-data-proxy"
@@ -63,10 +63,7 @@ def test_wrangler_config_pins_public_routes_and_buckets() -> None:
         {"pattern": "transit.yesid.dev/api/v1/*", "zone_name": "yesid.dev"},
         {"pattern": "data.yesid.dev/v2/*", "zone_name": "yesid.dev"},
     ]
-    assert config["r2_buckets"] == [
-        {"binding": "SNAPSHOTS", "bucket_name": "transit-snapshots"},
-        {"binding": "LIVE", "bucket_name": "transit-clean"},
-    ]
+    assert config["r2_buckets"] == [{"binding": "SNAPSHOTS", "bucket_name": "transit-snapshots"}]
 
 
 def test_wrangler_config_disables_workers_dev_and_pins_account() -> None:

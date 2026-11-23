@@ -51,6 +51,7 @@ test("serves the per-city live object with a short edge cache through public and
   assert.equal(f.saved.size, 0);
   f.env.TRANSIT1_LIVE_ENABLED = "0";
   assert.equal((await f.fetch(path)).status, 503);
+  assert.equal(get.mock.callCount(), 1);
 });
 
 test("rejects live writes and malformed city paths or parameters, and leaves misses uncached", async (t) => {
