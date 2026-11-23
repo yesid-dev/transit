@@ -85,6 +85,9 @@ const SURFACES: Record<string, BilingualSeo> = {
 	'/status': {
 		title: { en: 'Data health', fr: 'Santé des données' },
 	},
+	'/download': {
+		title: { en: 'Download the data', fr: 'Télécharger les données' },
+	},
 	'/hotspots': {
 		title: { en: 'Hotspots', fr: 'Points chauds' },
 	},

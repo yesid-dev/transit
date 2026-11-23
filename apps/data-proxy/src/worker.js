@@ -1,5 +1,6 @@
 // Public snapshots retain object metadata; errors use no-store. The bucket is read-only.
 import { CORS_HEADERS, PREFLIGHT_HEADERS } from "./cors.js";
+import { isDownloadPath, serveDownload } from "./downloads.js";
 import { serveKpis } from "./kpis.js";
 import { serveQuestion } from "./questions.js";
 import { serveSnapshot } from "./snapshot-response.js";
@@ -22,6 +23,7 @@ function errorResponse(status, extraHeaders = {}) {
 export default {
   async fetch(request, env, ctx) {
     const { pathname } = new URL(request.url);
+    if (isDownloadPath(pathname)) return serveDownload(request, env, ctx);
     if (pathname.startsWith("/v2/")) return serveQuestion(request, env, ctx);
 
     if (request.method === "OPTIONS") {

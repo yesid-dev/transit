@@ -109,9 +109,15 @@ def test_deploy_workflow_runs_worker_tests_then_wrangler_action() -> None:
     assert wrangler_steps, "deploy job must publish via `wrangler deploy`"
     wrangler_step = wrangler_steps[0]
     assert wrangler_step["env"]["CLOUDFLARE_API_TOKEN"] == "${{ secrets.CLOUDFLARE_API_TOKEN }}"
-    assert wrangler_step["env"]["TRANSIT1_ENGINE_ACCESS_TOKEN"] == (
-        "${{ secrets.TRANSIT1_ENGINE_ACCESS_TOKEN }}"
+    secret_names = (
+        "TRANSIT1_ENGINE_ACCESS_TOKEN",
+        "TRANSIT1_R2_ENDPOINT",
+        "TRANSIT1_R2_READ_ACCESS_KEY_ID",
+        "TRANSIT1_R2_READ_SECRET_ACCESS_KEY",
     )
+    for name in secret_names:
+        assert wrangler_step["env"][name] == "${{ secrets." + name + " }}"
+        assert f"'{name}'" in wrangler_step["run"]
 
     deploy_runs = [step.get("run", "") for step in deploy_steps]
     wrangler_index = deploy_steps.index(wrangler_step)
@@ -124,10 +130,8 @@ def test_deploy_workflow_runs_worker_tests_then_wrangler_action() -> None:
     assert "wrangler" not in proxy_pkg.get("devDependencies", {})
     assert any(step.get("uses") == "./.github/actions/setup" for step in deploy_steps)
     deploy_commands = wrangler_step["run"].splitlines()
-    assert (
-        r"printf 'TRANSIT1_ENGINE_ACCESS_TOKEN=%s\n' "
-        '"${TRANSIT1_ENGINE_ACCESS_TOKEN:?Missing engine token}" > "$proxy_secrets"'
-    ) in deploy_commands
+    assert "umask 077" in deploy_commands
+    assert "writeFileSync(process.argv[2], JSON.stringify(secrets));" in deploy_commands
     assert (
         '../../node_modules/.bin/wrangler deploy --secrets-file "$proxy_secrets"' in deploy_commands
     )
