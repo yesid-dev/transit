@@ -1997,6 +1997,77 @@ _WAITING_COLUMNS = {
 }
 
 
+_WAITING_PERIOD_KEYS = "service_date, route_id, direction_id, stop_id, period"
+
+
+def _waiting_schedule_summary(
+    aggregates: str, entity: str, routes: str, counters: dict[str, str]
+) -> tuple[str, str]:
+    keys = _WAITING_PERIOD_KEYS
+    # For distinct, whole-second passages, the positive gaps telescope to the
+    # first-to-last span. Keep the ordered calculation for ties, fractional
+    # times, or periods where a line's live status differs between trips.
+    periods = f"""
+        schedule_summary AS (
+            SELECT {keys}, count(*) AS scheduled_stops,
+                count(*) FILTER (route_has_live_data) AS live_candidates,
+                count(*) FILTER (NOT has_observation)
+                    - (NOT arg_min(has_observation, event_at))::INTEGER AS missing_after_first,
+                (max(event_at) - min(event_at)) / 1000000 AS span_seconds,
+                direction_id IS NULL OR (
+                    count(DISTINCT event_at) = count(*)
+                    AND bool_and(event_at % 1000000 = 0)
+                    AND live_candidates IN (0, scheduled_stops)
+                ) AS simple
+            FROM scheduled_periods GROUP BY {keys}
+        ), irregular_pairs AS (
+            SELECT p.* EXCLUDE (local_at, trip_order),
+                ((event_at - lag(event_at) OVER schedule) / 1000000)::BIGINT AS headway
+            FROM scheduled_periods p SEMI JOIN (SELECT * FROM schedule_summary WHERE NOT simple) s
+                USING ({keys})
+            WINDOW schedule AS (PARTITION BY {keys} ORDER BY event_at, trip_order, stop_sequence)
+        ), simple_frequency AS (
+            SELECT {keys}, span_seconds / (scheduled_stops - 1) AS scheduled_mean
+            FROM schedule_summary
+            WHERE simple AND scheduled_stops > 1 AND direction_id IS NOT NULL
+                AND live_candidates > 0 AND scheduled_mean <= {FREQUENT_HEADWAY_SECONDS}
+        ), irregular_frequency AS (
+            SELECT {keys}, avg(headway) AS scheduled_mean
+            FROM irregular_pairs WHERE route_has_live_data AND headway > 0
+            GROUP BY ALL HAVING scheduled_mean <= {FREQUENT_HEADWAY_SECONDS}
+        ), frequent_periods AS (
+            SELECT * FROM simple_frequency UNION ALL SELECT * FROM irregular_frequency
+        )
+    """
+    totals = ", ".join(f"sum({name}) AS {name}" for name in counters)
+    evidence = f"""
+        simple_evidence AS (
+            SELECT s.route_id, scheduled_stops, live_candidates,
+                IF(s.direction_id IS NULL, 0, live_candidates) AS live_direction_stops,
+                IF(s.direction_id IS NULL, scheduled_stops, 0) AS unknown_direction,
+                IF(s.direction_id IS NULL, 0, scheduled_stops - 1) AS scheduled_headways,
+                IF(scheduled_mean IS NULL, 0, scheduled_headways) AS frequent_headways,
+                IF(live_candidates = 0, scheduled_headways, 0) AS route_without_live_data,
+                scheduled_headways - frequent_headways - route_without_live_data AS non_frequent,
+                IF(scheduled_mean IS NULL, 0, missing_after_first) AS missing_observation
+            FROM schedule_summary s LEFT JOIN simple_frequency f USING ({keys})
+            WHERE simple
+        ), irregular_evidence AS (
+            SELECT p.route_id, {aggregates}
+            FROM (
+                SELECT p.*, f.scheduled_mean IS NOT NULL AS frequent
+                FROM irregular_pairs p LEFT JOIN irregular_frequency f USING ({keys})
+            ) p
+            GROUP BY p.route_id
+        ), schedule_evidence AS (
+            SELECT {entity} AS entity, {routes} AS routes, {totals}
+            FROM (SELECT * FROM simple_evidence UNION ALL BY NAME SELECT * FROM irregular_evidence)
+            GROUP BY entity
+        )
+    """
+    return periods, evidence
+
+
 def _waiting_rows(
     conn: duckdb.DuckDBPyConnection,
     family: Family,
@@ -2053,6 +2124,53 @@ def _waiting_rows(
         f"WHEN local_hour < {p.end_hour} THEN {p.start_hour}" for p in PERIODS
     ) + " END"
     period = f"date_diff('day', DATE '1970-01-01', local_at::DATE) * 24 + ({period_start})"
+    keys = _WAITING_PERIOD_KEYS
+    schedule_sql = f"""
+        scheduled_pairs AS (
+            SELECT * EXCLUDE (local_at, trip_order), lag(event_at) OVER schedule AS previous_at,
+                CASE WHEN direction_id IS NOT NULL
+                    THEN ((event_at - previous_at) / 1000000)::BIGINT END AS headway
+            FROM scheduled_periods
+            WINDOW schedule AS (PARTITION BY {keys} ORDER BY event_at, trip_order, stop_sequence)
+        ), frequent_periods AS (
+            SELECT {keys}, avg(headway) AS scheduled_mean
+            FROM scheduled_pairs
+            WHERE route_has_live_data AND headway > 0
+            GROUP BY ALL HAVING scheduled_mean <= {FREQUENT_HEADWAY_SECONDS}
+        )
+    """
+    schedule_evidence = f"""
+        schedule_in_cut AS NOT MATERIALIZED (
+            SELECT p.*, {entity} AS entity, f.scheduled_mean IS NOT NULL AS frequent
+            FROM scheduled_pairs p LEFT JOIN frequent_periods f USING ({keys})
+            WHERE {cut}
+        ), schedule_evidence AS (
+            SELECT entity, {routes} AS routes, {schedule_aggregates}
+            FROM schedule_in_cut GROUP BY entity
+        )
+    """
+    comparable_schedule = "SELECT * FROM schedule_in_cut WHERE frequent AND headway > 0"
+    schedule_cut_params = cut_params
+    if (
+        group in (None, "line")
+        and question.group is None
+        and question.hour is None
+        and question.departure is None
+    ):
+        schedule_sql, schedule_evidence = _waiting_schedule_summary(
+            schedule_aggregates, entity, routes, schedule_counts
+        )
+        comparable_schedule = f"""
+            SELECT {entity} AS entity, {keys}, event_at, previous_at,
+                ((event_at - previous_at) / 1000000)::BIGINT AS headway
+            FROM (
+                SELECT {keys}, event_at,
+                    lag(event_at) OVER (PARTITION BY {keys} ORDER BY event_at) AS previous_at
+                FROM scheduled_periods SEMI JOIN observed_windows USING ({keys})
+            )
+            WHERE headway > 0
+        """
+        schedule_cut_params = []
     # Each batch holds one service day. Share the projected scan across the
     # scheduled, observed and unknown passages for that day.
     rows = conn.execute(
@@ -2088,7 +2206,7 @@ def _waiting_rows(
                     AND s.service_date BETWEEN ? AND ?
             )
             WHERE {scope}
-        ), scheduled_periods AS (
+        ), scheduled_periods AS NOT MATERIALIZED (
             SELECT service_date, trip_order, stop_id, stop_sequence, route_id, direction_id,
                 scheduled_start_utc, route_has_live_data,
                 observed_at IS NOT NULL AS has_observation,
@@ -2097,22 +2215,8 @@ def _waiting_rows(
                 hour(local_at) AS local_hour,
                 {period} AS period
             FROM events WHERE scheduled_at IS NOT NULL
-        ), scheduled_pairs AS (
-            SELECT * EXCLUDE (local_at, trip_order), lag(event_at) OVER schedule AS previous_at,
-                CASE WHEN direction_id IS NOT NULL
-                    THEN ((event_at - previous_at) / 1000000)::BIGINT END AS headway
-            FROM scheduled_periods
-            WINDOW schedule AS (
-                PARTITION BY service_date, route_id, direction_id, stop_id, period
-                ORDER BY event_at, trip_order, stop_sequence
-            )
-        ), frequent_periods AS (
-            SELECT service_date, route_id, direction_id, stop_id, period,
-                avg(headway) AS scheduled_mean
-            FROM scheduled_pairs
-            WHERE route_has_live_data AND headway > 0
-            GROUP BY ALL HAVING scheduled_mean <= {FREQUENT_HEADWAY_SECONDS}
-        ), observed_periods AS (
+        ), {schedule_sql},
+        observed_periods AS (
             SELECT service_date, trip_order AS trip_id, stop_id, stop_sequence, route_id,
                 direction_id, scheduled_start_utc, epoch_us(observed_at) AS event_at,
                 make_timestamp({observed_local}) AS local_at,
@@ -2152,12 +2256,8 @@ def _waiting_rows(
                 unnest(generate_series(
                     covered_from // 3600000000, covered_to // 3600000000
                 )) hours(coverage_hour)
-        ), schedule_in_cut AS NOT MATERIALIZED (
-            SELECT p.*, {entity} AS entity, f.scheduled_mean IS NOT NULL AS frequent
-            FROM scheduled_pairs p LEFT JOIN frequent_periods f
-                USING (service_date, route_id, direction_id, stop_id, period)
-            WHERE {cut}
-        ), observed_in_cut AS (
+        ), {schedule_evidence},
+        observed_in_cut AS (
             SELECT *, {entity} AS entity
             FROM observed_pairs WHERE previous_at IS NOT NULL AND {cut}
         ), unknown_passages AS (
@@ -2180,9 +2280,6 @@ def _waiting_rows(
                 ON p.service_date = u.service_date AND p.route_id = u.route_id
                 AND p.direction_id = u.direction_id AND p.stop_id = u.stop_id
                 AND p.event_at > u.unknown_at
-        ), schedule_evidence AS (
-            SELECT entity, {routes} AS routes, {schedule_aggregates}
-            FROM schedule_in_cut GROUP BY entity
         ), observed_evidence AS (
             SELECT entity, {observed_aggregates}
             FROM checked_headways GROUP BY entity
@@ -2200,7 +2297,7 @@ def _waiting_rows(
                 w.window_start,
                 count(*) AS scheduled_count, sum(s.headway) AS scheduled_elapsed,
                 sum(s.headway * s.headway) AS scheduled_squared
-            FROM (SELECT * FROM schedule_in_cut WHERE frequent AND headway > 0) s
+            FROM ({comparable_schedule}) s
             ASOF JOIN observed_windows w
                 ON s.entity = w.entity AND s.service_date = w.service_date
                 AND s.route_id = w.route_id AND s.direction_id = w.direction_id
@@ -2239,7 +2336,7 @@ def _waiting_rows(
             *scope_params,
             paths[FEED_POLLS],
             *window,
-            *cut_params,
+            *schedule_cut_params,
             *cut_params,
         ],
     ).fetchall()
