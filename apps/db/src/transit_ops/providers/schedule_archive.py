@@ -144,10 +144,9 @@ class ArchiveScheduleContext:
     def search_index(self, day: date) -> dict[str, Any]:
         # Include the full edition so a weekend index still lists weekday-only service.
         routes_by_stop: dict[str, set[str]] = defaultdict(set)
-        for trip_id, times in self._times.items():
-            route = self._trips[trip_id].route_id
-            for time in times:
-                routes_by_stop[time.stop_id].add(route)
+        for trip_id, trip in self._trips.items():
+            for time in self._times[trip_id]:
+                routes_by_stop[time.stop_id].add(trip.route_id)
         stops = []
         modes = {0: "tram", 1: "metro", 2: "rail", 3: "bus", 4: "ferry"}
         for row in self.search_stops:

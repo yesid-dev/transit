@@ -282,6 +282,7 @@ def test_lookup_distinctions(name, missing):
 def test_search_index_preserves_schedule_names_and_stop_codes():
     payload = archive(
         routes=None,
+        stop_times=ROWS["stop_times"] + "orphan,1,a,12:00:00,12:00:00,,\n",
         stops=None,
         extra=(
             (
