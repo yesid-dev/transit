@@ -71,5 +71,6 @@ export function alertsEngine(url) {
 				periods: [{ start: `${to}T12:00:00+00:00`, end: `${to}T15:00:00+00:00` }],
 			},
 		];
-	return { body: { ...body, value }, hold: messages && from < '2026-11-17' && `alerts-${from}` };
+	const slowMessage = messages && from === to && /^2026-11-1[0-5]$/.test(from);
+	return { body: { ...body, value }, hold: slowMessage && `alerts-${from}` };
 }

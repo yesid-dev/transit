@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-const period = 'provider=stm&frameMode=record&recordFrom=2026-11-19&recordTo=2026-11-20';
+const period = 'provider=stm&frameMode=record&recordFrom=2026-11-14&recordTo=2026-11-20';
 
 test('Alerts Record streams every cut with localized messages and evidence', async ({
 	page,
@@ -33,7 +33,7 @@ test('Alerts Record streams every cut with localized messages and evidence', asy
 	await expect(messages.getByRole('button', { name: 'Copier le lien' })).toBeVisible();
 	await messages.getByText('Citer', { exact: true }).click();
 	await expect(
-		messages.getByText(/alerts-fixture-v1.*recordFrom=2026-11-19.*#messages/),
+		messages.getByText(/alerts-fixture-v1.*recordFrom=2026-11-14.*#messages/),
 	).toBeVisible();
 	const csv = await messages.getByRole('link', { name: /CSV/ }).getAttribute('href');
 	const download = await request.get(csv!);
@@ -48,7 +48,7 @@ test('Alerts Record shows the message limit and the agency link for an untracked
 	page,
 	request,
 }) => {
-	const long = period.replace('2026-11-19', '2026-11-13');
+	const long = period.replace('2026-11-14', '2026-11-13');
 	await page.goto(`/alerts?${long}`);
 	const messages = page.getByRole('region', { name: 'Agency messages' });
 	await expect(messages).toContainText(

@@ -36,7 +36,7 @@ for (const lang of PUBLISHED_LOCALES)
 		const day = bundle['historic/receipts/index.json'].dates.at(-1);
 		// The core server synthesizes the receipt with its live fixture's publication date.
 		const records = [
-			['alerts', fixture('alerts.json').generated_utc, null],
+			['alerts?frameMode=live', fixture('alerts.json').generated_utc, null],
 			['receipt', manifest.files.live.generated_utc, day],
 			['metrics/archive', fixture('provenance.json').generated_utc, null],
 		];
