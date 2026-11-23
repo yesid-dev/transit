@@ -10,6 +10,14 @@ inputs:
     description: Whether to restore and save the Vitest cache.
     required: false
     default: "false"
+  offline:
+    description: Require the web workflow's Bun cache and install with no package downloads.
+    required: false
+    default: "false"
+  prefetch-design:
+    description: Fetch locked design release assets with the GitHub token before installing.
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -37,12 +45,28 @@ runs:
       run: mkdir -p ~/.bun/install/cache
 
     - name: Cache Bun install cache
+      if: ${{ inputs.offline != 'true' && inputs.prefetch-design != 'true' }}
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.bun/install/cache
         key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock', '.bun-version', '.nvmrc') }}
         restore-keys: |
           ${{ runner.os }}-bun-
+
+    - name: Cache the web producer's Bun install cache
+      if: ${{ inputs.offline != 'true' && inputs.prefetch-design == 'true' }}
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.bun/install/cache
+        key: web-bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bun-version') }}-${{ hashFiles('bun.lock') }}
+
+    - name: Download the exact Bun cache from this run
+      if: ${{ inputs.offline == 'true' }}
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+      with:
+        name: web-bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
+        path: ${{ runner.temp }}/web-bun
+        digest-mismatch: error
 
     - name: Prepare Vitest cache directory
       if: ${{ inputs.cache-vitest == 'true' }}
@@ -59,10 +83,27 @@ runs:
         restore-keys: |
           ${{ runner.os }}-vitest-web-
 
+    - name: Prefetch locked yesid.design assets
+      if: ${{ inputs.offline != 'true' && inputs.prefetch-design == 'true' }}
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: bun .github/scripts/prefetch-design-tarballs.mjs
+
     - name: Install dependencies
+      if: ${{ inputs.offline != 'true' }}
       shell: bash
       working-directory: ${{ github.workspace }}
       run: bun install --frozen-lockfile
+
+    - name: Install dependencies offline from the restored cache
+      if: ${{ inputs.offline == 'true' }}
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: |
+        tar -xzf "$RUNNER_TEMP/web-bun/cache.tar.gz" -C ~/.bun/install/cache
+        bun install --frozen-lockfile --offline
 
     - name: Verify JavaScript toolchain
       shell: bash

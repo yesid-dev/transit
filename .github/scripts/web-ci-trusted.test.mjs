@@ -149,6 +149,7 @@ function needs(extraResult) {
   return {
     classify: { result: "success", outputs: { run_e2e: "true" } },
     "prerelease-guard": { result: "success" },
+    "web-dependencies": { result: "success" },
     "ci-work": { result: "success" },
     unit: { result: "success" },
     e2e: { result: "success" },

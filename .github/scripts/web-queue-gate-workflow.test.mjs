@@ -21,6 +21,61 @@ const workflow = readFileSync(
 );
 const job = (name) =>
   workflow.split(`\n  ${name}:\n`)[1]?.split(/\n {2}[\w-]+:\n/)[0];
+
+test("web jobs restore the run's exact Bun lockfile cache and install offline", () => {
+  const action = readFileSync(
+    new URL("../actions/setup/action.yml", import.meta.url),
+    "utf8",
+  );
+  const step = (name) =>
+    action.split(`\n    - name: ${name}\n`)[1]?.split(/\n    - name: /)[0];
+  const artifactName =
+    "web-bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}";
+  const setupAction = "uses: ./.github/actions/setup";
+  const producer = job("web-dependencies");
+  assert.ok(producer.includes(`${setupAction}\n        with:\n          prefetch-design: "true"`));
+  assert.ok(producer.includes(`name: ${artifactName}\n`));
+  assert.match(producer, /if-no-files-found: error/);
+  const download = step("Download the exact Bun cache from this run");
+  assert.match(download, /if: \$\{\{ inputs.offline == 'true' \}\}/);
+  assert.ok(download.includes(`name: ${artifactName}\n`));
+  assert.doesNotMatch(download, /continue-on-error|pattern:|run-id:|restore-keys:/);
+  assert.match(download, /digest-mismatch: error/);
+  const prefetch = step("Prefetch locked yesid.design assets");
+  assert.match(
+    prefetch,
+    /if: \$\{\{ inputs.offline != 'true' && inputs.prefetch-design == 'true' \}\}/,
+  );
+  assert.ok(prefetch.includes("GH_TOKEN: ${{ github.token }}"));
+  const online = step("Install dependencies");
+  assert.match(online, /if: \$\{\{ inputs.offline != 'true' \}\}/);
+  assert.match(online, /run: bun install --frozen-lockfile\n/);
+  const offline = step("Install dependencies offline from the restored cache");
+  assert.match(offline, /if: \$\{\{ inputs.offline == 'true' \}\}/);
+  assert.match(offline, /bun install --frozen-lockfile --offline\n/);
+  assert.doesNotMatch(offline, /continue-on-error|\|\|/);
+
+  const consumers = [
+    "ci-work", "unit", "e2e", "layout", "preview", "deploy-production",
+  ];
+  for (const name of consumers) {
+    const block = job(name);
+    assert.ok(block.includes(setupAction), name);
+    assert.match(block, /^          offline: "true"$/m, name);
+    assert.doesNotMatch(
+      block,
+      /\b(?:bun (?:install|ci)|gh release download)\b|releases\/download\//,
+      name,
+    );
+    assert.match(
+      block,
+      name === "deploy-production" ? /needs: \[ci,/ : /needs: \[[^\]\n]*\bweb-dependencies\b/,
+      name,
+    );
+  }
+  assert.equal(workflow.split(setupAction + "\n").length - 1, consumers.length + 1);
+});
+
 function runner(name, step) {
   return job(name)
     .split(`      - name: ${step}\n`)[1]
@@ -281,6 +336,7 @@ test("real aggregate requires proof or the full gate, and never accepts proof on
       outputs: { run_e2e: "true", run_layout: "true" },
     },
     "prerelease-guard": { result: "success" },
+    "web-dependencies": { result: "success" },
     "queue-gate": {
       result: "success",
       outputs: { queue_proven: "true", ...proof },
@@ -300,6 +356,11 @@ test("real aggregate requires proof or the full gate, and never accepts proof on
     });
   let r = run(needs);
   assert.equal(r.status, 0, r.stderr + r.stdout);
+  const missingCache = structuredClone(needs);
+  missingCache["web-dependencies"].result = "failure";
+  r = run(missingCache);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /web-dependencies: failure/);
   for (const event of ["pull_request", "workflow_dispatch", "merge_group"]) {
     r = run(needs, { GITHUB_EVENT_NAME: event });
     assert.notEqual(r.status, 0);
@@ -352,6 +413,7 @@ test("real job expressions always retain PR, queue, dispatch and unproven main g
     const expression = job(name)
       .match(/\n    if: \$\{\{ (.+) \}\}/)[1]
       .replaceAll("!cancelled()", "true")
+      .replaceAll("needs.web-dependencies", "needs['web-dependencies']")
       .replaceAll("needs.queue-gate", "needs['queue-gate']");
     const selected = new Function("github", "needs", `return (${expression})`);
     for (const event_name of [
@@ -364,6 +426,7 @@ test("real job expressions always retain PR, queue, dispatch and unproven main g
         for (const queue_proven of ["true", "false", undefined]) {
           const github = { event_name, ref: "refs/heads/main" };
           const needs = {
+            "web-dependencies": { result: "success" },
             "queue-gate": { result, outputs: { queue_proven } },
             classify: { result: "success", outputs: { run_e2e: "true" } },
           };

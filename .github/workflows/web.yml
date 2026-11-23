@@ -228,9 +228,43 @@ jobs:
       - name: Require stable design dependencies
         run: node .github/scripts/design-prerelease-guard.mjs
 
+  web-dependencies:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Populate the Bun install cache
+        uses: ./.github/actions/setup
+        with:
+          prefetch-design: "true"
+
+      # Actions cache keys also depend on the compression tool. Publish one
+      # gzip archive that both the hosted runner and the layout image can read.
+      - name: Archive the Bun cache
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/web-bun"
+          tar -cf - -C ~/.bun/install/cache . | gzip -1 > "$RUNNER_TEMP/web-bun/cache.tar.gz"
+
+      - name: Publish the Bun cache for this run
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: web-bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
+          path: ${{ runner.temp }}/web-bun/cache.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
   ci-work:
-    needs: [queue-gate]
-    if: ${{ !cancelled() && (github.event_name != 'push' || github.ref != 'refs/heads/main' || needs.queue-gate.result != 'success' || needs.queue-gate.outputs.queue_proven != 'true') }}
+    needs: [queue-gate, web-dependencies]
+    if: ${{ !cancelled() && needs.web-dependencies.result == 'success' && (github.event_name != 'push' || github.ref != 'refs/heads/main' || needs.queue-gate.result != 'success' || needs.queue-gate.outputs.queue_proven != 'true') }}
     outputs:
       artifact_id: ${{ steps.promote.outputs.artifact_id || steps.upload_build.outputs.artifact-id }}
       manifest_sha256: ${{ steps.promote.outputs.manifest_sha256 || steps.seal_build.outputs.manifest_sha256 }}
@@ -248,6 +282,8 @@ jobs:
 
       - name: Set up JS workspace
         uses: ./.github/actions/setup
+        with:
+          offline: "true"
 
       - name: Data proxy syntax
         working-directory: ${{ github.workspace }}
@@ -398,8 +434,8 @@ jobs:
           retention-days: 1
 
   unit:
-    needs: [queue-gate]
-    if: ${{ !cancelled() && (github.event_name != 'push' || github.ref != 'refs/heads/main' || needs.queue-gate.result != 'success' || needs.queue-gate.outputs.queue_proven != 'true') }}
+    needs: [queue-gate, web-dependencies]
+    if: ${{ !cancelled() && needs.web-dependencies.result == 'success' && (github.event_name != 'push' || github.ref != 'refs/heads/main' || needs.queue-gate.result != 'success' || needs.queue-gate.outputs.queue_proven != 'true') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -410,13 +446,14 @@ jobs:
         uses: ./.github/actions/setup
         with:
           cache-vitest: "true"
+          offline: "true"
 
       - name: Unit tests
         run: bun run test
 
   e2e:
-    needs: [classify, queue-gate]
-    if: ${{ !cancelled() && (needs.classify.result != 'success' || needs.classify.outputs.run_e2e != 'false') && (github.event_name != 'push' || github.ref != 'refs/heads/main' || needs.queue-gate.result != 'success' || needs.queue-gate.outputs.queue_proven != 'true') }}
+    needs: [classify, queue-gate, web-dependencies]
+    if: ${{ !cancelled() && needs.web-dependencies.result == 'success' && (needs.classify.result != 'success' || needs.classify.outputs.run_e2e != 'false') && (github.event_name != 'push' || github.ref != 'refs/heads/main' || needs.queue-gate.result != 'success' || needs.queue-gate.outputs.queue_proven != 'true') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
@@ -429,6 +466,8 @@ jobs:
 
       - name: Set up JS workspace
         uses: ./.github/actions/setup
+        with:
+          offline: "true"
 
       - name: Install authenticated Chromium
         env:
@@ -460,8 +499,8 @@ jobs:
           retention-days: 7
 
   layout:
-    needs: [classify]
-    if: ${{ github.event_name == 'pull_request' && !cancelled() && (needs.classify.result != 'success' || needs.classify.outputs.run_layout != 'false') }}
+    needs: [classify, web-dependencies]
+    if: ${{ github.event_name == 'pull_request' && !cancelled() && needs.web-dependencies.result == 'success' && (needs.classify.result != 'success' || needs.classify.outputs.run_layout != 'false') }}
     runs-on: ubuntu-24.04
     container: &layout-container
       image: mcr.microsoft.com/playwright:v1.62.0-noble@sha256:baed2032d533817f3dbe6425de795788430ba345e819a1201337009ba17c9d07
@@ -483,6 +522,7 @@ jobs:
         uses: ./.github/actions/setup
         with:
           layout-container: "true"
+          offline: "true"
 
       - name: Install authenticated Chromium
         env:
@@ -544,7 +584,7 @@ jobs:
 
   ci:
     name: ci
-    needs: [classify, prerelease-guard, queue-gate, ci-work, unit, e2e, layout]
+    needs: [classify, prerelease-guard, queue-gate, web-dependencies, ci-work, unit, e2e, layout]
     outputs:
       artifact_id: ${{ needs.queue-gate.outputs.queue_proven == 'true' && needs.queue-gate.outputs.artifact_id || needs.ci-work.outputs.artifact_id }}
       manifest_sha256: ${{ needs.queue-gate.outputs.queue_proven == 'true' && needs.queue-gate.outputs.manifest_sha256 || needs.ci-work.outputs.manifest_sha256 }}
@@ -671,6 +711,9 @@ jobs:
         shell: pwsh
         run: |
           $needs = $env:NEEDS_JSON | ConvertFrom-Json -AsHashtable
+          if ($needs['web-dependencies'].result -ne 'success') {
+            throw "web-dependencies: $($needs['web-dependencies'].result)"
+          }
           if ($needs['queue-gate'].outputs.queue_proven -ceq 'true') {
             if (-not $env:WEB_QUEUE_POLICY) { throw 'Trusted queue policy is unavailable' }
             node "$env:WEB_QUEUE_POLICY/web-queue-gate.mjs" required
@@ -730,6 +773,7 @@ jobs:
 
   preview:
     name: preview
+    needs: [web-dependencies]
     if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -742,6 +786,8 @@ jobs:
 
       - name: Set up JS workspace
         uses: ./.github/actions/setup
+        with:
+          offline: "true"
 
       # Version upload can create a Worker. Production owns the first deployment.
       - name: Check that transit1 has been deployed
@@ -813,6 +859,8 @@ jobs:
 
       - name: Set up JS workspace
         uses: ./.github/actions/setup
+        with:
+          offline: "true"
 
       - name: Recheck live deployment inside the production lock
         id: locked_scope
