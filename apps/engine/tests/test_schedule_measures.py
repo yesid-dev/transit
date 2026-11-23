@@ -143,6 +143,28 @@ def test_waiting_weights_periods_by_covered_scheduled_elapsed_time(tmp_path: Pat
     assert result["evidence"]["excluded"]["capture_gap"] == 4
 
 
+def test_waiting_keeps_observed_headways_without_a_schedule_match_in_their_window(
+    tmp_path: Path,
+) -> None:
+    # Two windows in the same period. The second observed headway runs from
+    # minute 46 to 48, entirely inside the scheduled headway from 45 to 50.
+    trips = (
+        *(_trip("A", i, -60 + 5 * i) for i in range(21)),
+        _trip("A", 21, 45, 60),
+        _trip("A", 22, 50, -120),
+    )
+    polls = (*_polls(-3660, 2460), *_polls(2700, 2940))
+    store = _build_store(tmp_path, 11, {THURSDAY: trips}, {THURSDAY: polls})
+    result = query(store, measure="waiting_and_gaps", line="A", stop="first")
+    assert result["state"] == "measured"
+    counts = result["evidence"]["counts"]
+    assert counts["observed_headways"] == 21
+    assert counts["covered_scheduled_headways"] == 20
+    assert counts["wait_weight"] == 6000
+    actual_wait = (20 * 300**2 + 120**2) / (2 * (20 * 300 + 120))
+    assert result["value"]["excess_wait_time"] == pytest.approx(actual_wait - 150)
+
+
 @pytest.mark.parametrize("state", ("ran", "unconfirmed"))
 def test_waiting_excludes_an_interval_with_an_unobserved_passage(
     tmp_path: Path, state: str
