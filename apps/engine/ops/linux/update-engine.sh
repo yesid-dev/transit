@@ -29,23 +29,28 @@ elif [[ -e $current ]]; then
 fi
 
 healthy() {
-  python3 - <<'PY'
+  python3 - "${1:-15}" <<'PY'
 from http.client import HTTPConnection, HTTPException
 from pathlib import Path
+from sys import argv
 from time import monotonic, sleep
 
 token = Path("/etc/transit-engine/engine-token").read_text().strip()
-deadline = monotonic() + 15
-while monotonic() < deadline:
+deadline = monotonic() + int(argv[1])
+while True:
     connection = HTTPConnection("127.0.0.1", 8081, timeout=1)
     try:
         connection.request("GET", "/healthz", headers={"Authorization": f"Bearer {token}"})
-        if connection.getresponse().status == 200:
+        response = connection.getresponse()
+        if response.status == 200:
+            print(response.getheader("X-Transit-Answer-Revision", ""))
             raise SystemExit(0)
     except (OSError, HTTPException):
         pass
     finally:
         connection.close()
+    if monotonic() >= deadline:
+        break
     sleep(0.5)
 raise SystemExit("Engine did not pass its authenticated health check")
 PY
@@ -70,7 +75,7 @@ cleanup() {
   if $switch_attempted; then
     echo "Activation failed. Restoring the previous engine." >&2
     if [[ -n $previous ]]; then
-      if ! (activate "$previous" && systemctl restart "$service" && healthy); then
+      if ! (activate "$previous" && systemctl restart "$service" && healthy >/dev/null); then
         echo "The previous engine could not be restored and verified" >&2
       fi
     else
@@ -100,8 +105,18 @@ UV_PYTHON_INSTALL_DIR="$root/python" UV_LINK_MODE=copy "$root/bin/uv" sync \
 printf '%s\n' "$commit" >"$release/.revision"
 chmod 0755 "$release"
 
+previous_revision=
+if [[ -n $previous ]]; then
+  previous_revision=$(healthy 0 2>/dev/null || true)
+fi
 switch_attempted=true
 activate "$release"
 systemctl restart "$service"
-healthy
+revision=$(healthy)
+switch_attempted=false
 printf 'Installed Transit engine commit %s\n' "$commit"
+if [[ -n $revision && $revision != "$previous_revision" ]]; then
+  # Let the public proxy's 30-second city catalog expire before warming answers.
+  sleep 30
+  systemctl restart --no-block transit-engine-warm.service
+fi

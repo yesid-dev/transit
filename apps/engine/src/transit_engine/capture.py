@@ -2,6 +2,7 @@
 
 import json
 import os
+from functools import cache
 from pathlib import Path
 
 import duckdb
@@ -13,10 +14,17 @@ MAX_POLL_SPACING_SECONDS = 120
 
 
 def provider_directory() -> Path:
-    return Path(
+    path = Path(
         os.environ.get("ENGINE_PROVIDER_DECLARATIONS")
         or Path(__file__).resolve().parents[3] / "db" / "config" / "providers"
     )
+    return _resolve_declarations(path)
+
+
+@cache
+def _resolve_declarations(path: Path) -> Path:
+    # Keep a running engine on its own declarations when the VM activates a release.
+    return path.resolve()
 
 
 def provider_declaration(provider: str) -> dict[str, object]:

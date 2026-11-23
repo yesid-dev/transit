@@ -2,13 +2,17 @@
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
 import duckdb
 
 from transit_engine.capture import provider_declaration, provider_directory
+from transit_engine.revision import compute_answer_revision
 from transit_engine.store import CITY, Store
+
+ANSWER_REVISION = compute_answer_revision(Path(__file__).parent, provider_directory())
 
 FEED_KINDS = (
     "static_schedule",
@@ -126,4 +130,8 @@ def city_catalog() -> dict[str, Any]:
         )
     if default_city not in {provider["id"] for provider in providers}:
         raise RuntimeError("default city must be a public provider")
-    return {"default_provider": default_city, "providers": providers}
+    return {
+        "answer_revision": ANSWER_REVISION,
+        "default_provider": default_city,
+        "providers": providers,
+    }

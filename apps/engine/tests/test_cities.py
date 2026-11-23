@@ -12,9 +12,16 @@ from transit_engine.store import Store
 
 def test_public_cities_shape_both_declaration_formats(tmp_path: Path) -> None:
     app = Engine(Store(str(tmp_path)), concurrency=1, queue_size=0, queue_wait_ms=10)
-    status, _, body = asyncio.run(http(app, "/cities", ""))
+    status, headers, body = asyncio.run(http(app, "/cities", ""))
     assert status == 200
     catalog = json.loads(body)
+    revision = catalog["answer_revision"]
+    assert len(revision) == 16
+    assert headers[b"x-transit-answer-revision"] == revision.encode("ascii")
+    assert catalog["cleaning_version"] == app.store.cleaning_version
+    _, method_headers, _ = asyncio.run(http(app, "/how-we-measure"))
+    assert method_headers[b"x-transit-answer-revision"] == revision.encode("ascii")
+    assert method_headers[b"x-transit-cleaning-version"] == str(app.store.cleaning_version).encode()
     cities = {city["id"]: city for city in catalog["providers"]}
     assert catalog["default_provider"] == "stm"
     assert "sto" not in cities
@@ -26,6 +33,27 @@ def test_public_cities_shape_both_declaration_formats(tmp_path: Path) -> None:
     assert cities["octranspo"]["timezone"] == "America/Toronto"
     assert "feeds" not in cities["stm"]
     assert asyncio.run(http(app, "/cities", "city=stm"))[0] == 400
+
+
+@pytest.mark.parametrize(
+    ("route", "cut"),
+    [("measure", "&measure=on_time"), ("ranking", "&kind=line"), ("data-health", "")],
+)
+def test_catalog_outage_check_rejects_unpublished_cities(
+    tmp_path: Path, route: str, cut: str
+) -> None:
+    app = Engine(Store(str(tmp_path)), concurrency=1, queue_size=0, queue_wait_ms=10)
+    status, headers, body = asyncio.run(
+        http(
+            app,
+            f"/{route}",
+            f"city=sto&from=2026-11-20&to=2026-11-20{cut}",
+            headers=((b"x-transit-require-public-city", b"1"),),
+        )
+    )
+    assert status == 400
+    assert headers[b"x-transit-answer-revision"]
+    assert json.loads(body) == {"message": "unknown city"}
 
 
 def test_catalog_excludes_nonpublic_cities_and_requires_one_default(
