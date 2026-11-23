@@ -26,6 +26,7 @@ function fixture(t, { city = "stm", status, missing = false, admitted = true, al
   };
   const keys = [];
   const methods = [];
+  const requests = [];
   const admissions = [];
   const upstream = [];
   const env = {
@@ -70,6 +71,7 @@ function fixture(t, { city = "stm", status, missing = false, admitted = true, al
     const key = url.pathname.slice("/transit-clean/".length);
     keys.push(key);
     methods.push(request.method);
+    requests.push(request);
     if (r2Error) return new Response(null, { status: r2Error });
     if (key.endsWith("/manifest.json")) {
       assert.equal(request.method, "GET");
@@ -95,7 +97,7 @@ function fixture(t, { city = "stm", status, missing = false, admitted = true, al
   const fetch = (path, init) => worker.fetch(new Request("https://data.test" + path, init), env, {
     waitUntil(promise) { return promise; },
   });
-  return { fetch, admissions, keys, methods, upstream };
+  return { fetch, admissions, keys, methods, requests, upstream };
 }
 
 test("a dated listing uses the public city catalog, current version and manifest identities", async (t) => {
@@ -252,4 +254,20 @@ test("signed storage fails closed on invalid endpoints, refused credentials and 
     headers: { range: "bytes=1-2" },
   });
   assert.equal(ranged.status, 503);
+});
+
+test("a ranged R2 read matches the fixed SigV4 signature", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-11-20T12:34:56Z") });
+  const { fetch, requests } = fixture(t);
+  const response = await fetch(`${STM}/${DATE}/stop_events.parquet`, {
+    headers: { range: "bytes=1-2" },
+  });
+  assert.equal(response.status, 206);
+  const signed = requests.at(-1);
+  assert.equal(signed.headers.get("x-amz-date"), "20261120T123456Z");
+  // Cross-checked against aws4fetch 1.0.20 with this fixed request and fixture credentials.
+  assert.equal(signed.headers.get("authorization"),
+    "AWS4-HMAC-SHA256 Credential=fixture-key/20261120/auto/s3/aws4_request, " +
+    "SignedHeaders=host;range;x-amz-content-sha256;x-amz-date, " +
+    "Signature=b114114ecf208c15a970e29ddeb1197699d794f64496da64ce6a05823c65ee12");
 });
