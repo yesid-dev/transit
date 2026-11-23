@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
 
+import pytest
 from google.transit.gtfs_realtime_pb2 import FeedMessage, VehiclePosition
 
 from transit_ops.clean_day_inputs import declaration_for
@@ -84,8 +85,51 @@ def test_observed_empty_feed_and_corrupt_successor_keep_distinct_states(tmp_path
 
 def test_local_destination_replaces_only_the_city_snapshot(tmp_path):
     dest = LocalBronzeStorage("local", tmp_path)
-    key = "live/v1/stm.json"
-    _publish(dest, key, b'{"version":1,"vehicle_positions":[]}')
-    _publish(dest, key, b'{"version":1,"vehicle_positions":null}')
+    key = "live/v2/stm.json"
+    _publish(dest, key, b'{"version":2,"vehicle_positions":[]}')
+    _publish(dest, key, b'{"version":2,"vehicle_positions":null}')
     assert json.loads(dest.read_bytes(key))["vehicle_positions"] is None
     assert list(dest.list_keys("live/")) == [key]
+
+
+def test_city_poll_publishes_no_inline_updates_and_scopes_durable_trip_ranges(
+    tmp_path, monkeypatch
+):
+    updates = message()
+    for trip_id, route_id, stop_id in (
+        ("linked", "24", "common"),
+        ("other", "25", "common"),
+        ("unassigned", "", "single"),
+    ):
+        update = updates.entity.add(id=trip_id).trip_update
+        update.trip.trip_id = trip_id
+        if route_id:
+            update.trip.route_id = route_id
+        stop = update.stop_time_update.add(stop_id=stop_id, stop_sequence=1)
+        stop.departure.time = int(NOW.timestamp()) + 600
+    capture(tmp_path, "trip_updates", updates, NOW)
+    source = LocalBronzeStorage("local", tmp_path)
+    publisher = LivePublisher(declaration_for("stm"), source)
+    observed = publisher.poll(NOW)
+    monkeypatch.setattr(publisher, "poll", lambda _: observed)
+    dest = LocalBronzeStorage("local", tmp_path / "published")
+    publisher.run(dest, "", once=True)
+
+    main = json.loads(dest.read_bytes("live/v2/stm.json"))
+    assert main["version"] == 2 and "trip_updates" not in main
+    assert main["feeds"]["trip_updates"]["captured_at"] == NOW.isoformat()
+    packed = dest.read_bytes("live/v2/stm/trips.bin")
+    index = json.loads(dest.read_bytes("live/v2/stm/trips.json"))
+    assert index["by_trip"]["unassigned"] == ["trip:unassigned"]
+    assert index["by_stop"]["common"] == ["line:24", "line:25"]
+    start, length = index["ranges"]["line:24"]
+    assert [row["trip_id"] for row in json.loads(packed[start : start + length])] == ["linked"]
+
+    # A scoped publication failure must leave the main city report available.
+    monkeypatch.setattr("transit_ops.live.playback.MAX_TRIP_BUNDLE_BYTES", 1)
+    small = LocalBronzeStorage("local", tmp_path / "limited")
+    with pytest.raises(SystemExit) as error:
+        publisher.run(small, "", once=True)
+    assert error.value.code == 1
+    assert json.loads(small.read_bytes("live/v2/stm.json"))["version"] == 2
+    assert not small.exists("live/v2/stm/trips.json")

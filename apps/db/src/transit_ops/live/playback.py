@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import re
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from hashlib import md5
 from math import isfinite
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -25,6 +25,7 @@ from transit_ops.clean_day_inputs import (
 from transit_ops.clean_day_realtime import DayCapture, read_capture, vehicle_reading
 from transit_ops.core.models import ProviderManifest
 from transit_ops.ingestion.storage import BronzeStorage, LocalBronzeStorage, S3BronzeStorage
+from transit_ops.live.trip_partitions import encode, trip_partitions
 from transit_ops.providers.alert_record import AlertRecord
 
 LOGGER = logging.getLogger(__name__)
@@ -32,6 +33,7 @@ NAME = re.compile(r"(\d{8}T\d{12}Z)__([a-f0-9]{12})__[^/]+\.(?:pb|json)")
 MOTION_POLL_SECONDS = 20
 ALERT_POLL_SECONDS = 60
 MAX_SNAPSHOT_BYTES = 8 * 1024 * 1024
+MAX_TRIP_BUNDLE_BYTES = 64 * 1024 * 1024
 
 
 def _iso(stamp: datetime | None) -> str | None:
@@ -238,14 +240,23 @@ def _latest(
     return None
 
 
-def _publish(destination: BronzeStorage, key: str, body: bytes) -> None:
+def _publish(
+    destination: BronzeStorage,
+    key: str,
+    body: bytes,
+    mime: str = "application/json",
+) -> str:
     if isinstance(destination, S3BronzeStorage):
-        destination.client.put_object(
+        result = destination.client.put_object(
             Bucket=destination.bucket,
             Key=key,
             Body=body,
-            ContentType="application/json",
+            ContentType=mime,
         )
+        etag = result.get("ETag")
+        if not isinstance(etag, str) or not etag:
+            raise ValueError("Live storage did not return an ETag")
+        return etag
     elif isinstance(destination, LocalBronzeStorage):
         target = destination.root / key
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -253,6 +264,7 @@ def _publish(destination: BronzeStorage, key: str, body: bytes) -> None:
             artifact.write(body)
             artifact.close()
             Path(artifact.name).replace(target)
+        return f'"{md5(body, usedforsecurity=False).hexdigest()}"'
     else:
         raise TypeError("Unsupported live destination")
 
@@ -345,24 +357,46 @@ class LivePublisher:
 
     def run(self, destination: BronzeStorage, prefix: str, *, once: bool) -> None:
         previous = None
+        previous_trips: tuple[object, object] | None = None
         city = self.manifest.provider.provider_id
         while True:
             try:
                 now = datetime.now(UTC)
                 snapshot = self.poll(now)
                 if snapshot != previous:
-                    document = {**snapshot, "published_at": _iso(now)}
-                    body = json.dumps(
-                        document,
-                        ensure_ascii=False,
-                        separators=(",", ":"),
-                        allow_nan=False,
-                    ).encode()
+                    document = {
+                        key: value for key, value in snapshot.items() if key != "trip_updates"
+                    }
+                    document.update(version=2, published_at=_iso(now))
+                    body = encode(document)
                     if len(body) > MAX_SNAPSHOT_BYTES:
                         raise ValueError("Live snapshot exceeds the publication size limit")
-                    _publish(destination, f"{prefix}live/v1/{city}.json", body)
+                    _publish(destination, f"{prefix}live/v2/{city}.json", body)
                     previous = snapshot
                     LOGGER.info("Published %s live snapshot (%s bytes)", city, len(body))
+                updates = snapshot["trip_updates"]
+                feeds = snapshot["feeds"]
+                assert isinstance(feeds, dict)
+                trip_feed = next(
+                    (feed for feed in feeds.values() if feed["family"] == "trip_updates"),
+                    None,
+                )
+                signature = (updates, trip_feed)
+                if (
+                    isinstance(updates, list)
+                    and trip_feed is not None
+                    and signature != previous_trips
+                ):
+                    vehicles = snapshot["vehicle_positions"]
+                    _publish_trip_scopes(
+                        destination,
+                        prefix,
+                        city,
+                        trip_feed,
+                        updates,
+                        vehicles if isinstance(vehicles, list) else None,
+                    )
+                    previous_trips = signature
             except (OSError, BotoCoreError, ClientError, ValueError) as error:
                 LOGGER.error("Live publication failed for %s (%s)", city, type(error).__name__)
                 if once:
@@ -370,6 +404,44 @@ class LivePublisher:
             if once:
                 return
             time.sleep(MOTION_POLL_SECONDS)
+
+
+def _publish_trip_scopes(
+    destination: BronzeStorage,
+    prefix: str,
+    city: str,
+    feed: dict[str, object],
+    updates: list[dict[str, object]],
+    vehicles: list[dict[str, object]] | None,
+) -> None:
+    scoped = trip_partitions(updates, vehicles)
+    if len(scoped.body) > MAX_TRIP_BUNDLE_BYTES:
+        raise ValueError("Live trips exceed the publication size limit")
+    trip_prefix = f"{prefix}live/v2/{city}/trips"
+    etag = (
+        _publish(
+            destination,
+            f"{trip_prefix}.bin",
+            scoped.body,
+            "application/octet-stream",
+        )
+        if scoped.body
+        else None
+    )
+    index = encode(
+        {
+            "version": 2,
+            "city": city,
+            "feed": feed,
+            "etag": etag,
+            "ranges": scoped.ranges,
+            "by_trip": scoped.by_trip,
+            "by_stop": scoped.by_stop,
+        }
+    )
+    if len(index) > MAX_SNAPSHOT_BYTES:
+        raise ValueError("Live trip index exceeds the publication size limit")
+    _publish(destination, f"{trip_prefix}.json", index)
 
 
 def main() -> None:

@@ -1,5 +1,6 @@
 import { cleanDownloadStore } from "./clean-download-store.js";
 import { CORS_HEADERS, PREFLIGHT_HEADERS } from "./cors.js";
+import { readLiveTrips } from "./live-trips.js";
 import { parseQuestion } from "./question-params.js";
 
 export const CLOSED_TTL = 7 * 24 * 60 * 60;
@@ -183,13 +184,21 @@ async function serveLive(env, ctx, origin, question, visitorIp) {
   if (denied) return denied;
 
   try {
-    const object = await store.get(`live/v1/${question.city}.json`);
-    if (!object) return message(404, "no live publication");
-    if (object.size > MAX_LIVE_BYTES) {
-      await object.body?.cancel();
-      return message(503, "live publication unavailable");
+    let body;
+    if (question.scope) {
+      const trips = await readLiveTrips(store, question.city, question.scope);
+      if (!trips) return message(404, "no live trip publication");
+      body = JSON.stringify(trips);
+    } else {
+      const object = await store.get(`live/v2/${question.city}.json`);
+      if (!object) return message(404, "no live publication");
+      if (object.size > MAX_LIVE_BYTES) {
+        await object.body?.cancel();
+        return message(503, "live publication unavailable");
+      }
+      body = object.body;
     }
-    const response = publicAnswer(object.body, "application/json");
+    const response = publicAnswer(body, "application/json");
     if (cache) {
       const copy = new Response(response.clone().body, {
         headers: { "cache-control": `public, max-age=${LIVE_TTL}`, "content-type": "application/json" },
@@ -219,7 +228,9 @@ async function answerQuestion(request, env, ctx, visitorIp) {
     return message(400, error instanceof URIError ? "invalid query encoding" : error.message);
   }
   if (!question) return message(404, "not found");
-  if (question.route === "live") return serveLive(env, ctx, url.origin, question, visitorIp);
+  if (question.route === "live" || question.route === "live-trips") {
+    return serveLive(env, ctx, url.origin, question, visitorIp);
+  }
 
   if (!env.ENGINE || !env.TRANSIT1_ENGINE_ACCESS_TOKEN) {
     return message(503, "engine not configured");

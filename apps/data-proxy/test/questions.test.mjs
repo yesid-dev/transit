@@ -26,19 +26,20 @@ function stubLiveStorage(t, env, respond) {
   return t.mock.method(globalThis, "fetch", async (input, init) => {
     const request = new Request(input, init);
     assert.equal(request.method, "GET");
-    assert.equal(request.url, "https://fixture.r2.cloudflarestorage.com/transit-clean/live/v1/demo.json");
+    assert.equal(new URL(request.url).host, "fixture.r2.cloudflarestorage.com");
     assert.match(request.headers.get("authorization"), /^AWS4-HMAC-SHA256 Credential=fixture-key\//);
-    return respond();
+    return respond(request);
   });
 }
 
 test("serves the per-city live object with a short edge cache through public and bound routes", async (t) => {
   const f = fixture(t);
-  const snapshot = { city: "demo", version: 1, vehicle_positions: null };
+  const snapshot = { city: "demo", version: 2, vehicle_positions: null };
   const body = JSON.stringify(snapshot);
-  const get = stubLiveStorage(t, f.env, () =>
-    new Response(body, { headers: { "content-length": String(Buffer.byteLength(body)) } }),
-  );
+  const get = stubLiveStorage(t, f.env, (request) => {
+    assert.equal(new URL(request.url).pathname, "/transit-clean/live/v2/demo.json");
+    return new Response(body, { headers: { "content-length": String(Buffer.byteLength(body)) } });
+  });
   const path = "/v2/demo/live";
   const first = await f.fetch(path);
   assert.equal(first.headers.get("cache-control"), "no-store");
@@ -52,6 +53,51 @@ test("serves the per-city live object with a short edge cache through public and
   f.env.TRANSIT1_LIVE_ENABLED = "0";
   assert.equal((await f.fetch(path)).status, 503);
   assert.equal(get.mock.callCount(), 1);
+});
+
+test("reads only the ranges for a live scope and rejects mixed publications", async (t) => {
+  const f = fixture(t);
+  const first = [{ trip_id: "t1", route_id: "a/b", stops: [{ stop_id: "s" }, { stop_id: "other" }] }];
+  const second = [{ trip_id: "t2", route_id: null, stops: [{ stop_id: "s" }] }];
+  const chunks = [first, second].map((value) => Buffer.from(JSON.stringify(value)));
+  const bundle = Buffer.concat(chunks);
+  const etag = '"live-trip-42"';
+  const feed = { family: "trip_updates", captured_at: "2026-11-23T19:10:00Z" };
+  const index = JSON.stringify({
+    version: 2, city: "demo", etag, feed,
+    ranges: { "line:a/b": [0, chunks[0].length], "trip:t2": [chunks[0].length, chunks[1].length] },
+    by_trip: { t1: ["line:a/b"], t2: ["trip:t2"] }, by_stop: { s: ["line:a/b", "trip:t2"] },
+  });
+  let changed = false;
+  const ranges = [];
+  stubLiveStorage(t, f.env, (request) => {
+    const path = new URL(request.url).pathname;
+    if (path === "/transit-clean/live/v2/demo/trips.json") {
+      return new Response(index, { headers: { "content-length": String(Buffer.byteLength(index)) } });
+    }
+    assert.equal(path, "/transit-clean/live/v2/demo/trips.bin");
+    assert.match(request.headers.get("authorization"), /SignedHeaders=host;range;x-amz-/);
+    const [, start, last] = /^bytes=(\d+)-(\d+)$/.exec(request.headers.get("range"));
+    ranges.push(Number(start));
+    const body = bundle.subarray(Number(start), Number(last) + 1);
+    return new Response(body, { status: 206, headers: {
+      "content-length": String(body.length),
+      "content-range": `bytes ${start}-${last}/${bundle.length}`,
+      etag: changed ? '"new-generation"' : etag,
+    } });
+  });
+  const base = "/v2/demo/live-trips";
+  assert.equal((await f.fetch(base)).status, 400);
+  assert.equal((await f.fetch(base + "?line=a&trip=t1")).status, 400);
+  const line = await (await f.fetch(base + "?line=a%2Fb", {}, "GET", true)).json();
+  assert.deepEqual(line, { version: 2, city: "demo", feed, trip_updates: first });
+  assert.deepEqual(ranges, [0]);
+  const stop = await (await f.fetch(base + "?stop=s")).json();
+  assert.deepEqual(stop.trip_updates, [{ ...first[0], stops: [{ stop_id: "s" }] }, ...second]);
+  assert.deepEqual(ranges.slice(1).toSorted((a, b) => a - b), [0, chunks[0].length]);
+  changed = true;
+  assert.equal((await f.fetch(base + "?trip=t2")).status, 503);
+  assert.equal(f.saved.size, 0);
 });
 
 test("rejects live writes and malformed city paths or parameters, and leaves misses uncached", async (t) => {

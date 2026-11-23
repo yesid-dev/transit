@@ -81,7 +81,7 @@ export function cleanDownloadStore(env) {
       throw new Error("Invalid response from clean R2 storage");
     }
 
-    return { size, body: response.body, json: () => response.json() };
+    return { size, etag: response.headers.get("etag"), body: response.body, json: () => response.json() };
   }
 
   return {
