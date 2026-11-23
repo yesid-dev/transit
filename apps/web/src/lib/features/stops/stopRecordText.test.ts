@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { measure, stateText } from '#lib/features/home/overviewRecord.fixture.ts';
 import { punctualityBands, recordMessage } from '#lib/features/record/recordText.ts';
 import type { RecordMeasure } from '#lib/server/engine.ts';
-import { stopAnswer, stopCitation, stopDelay } from './stopRecordText.ts';
+import { stopAccessibility, stopAnswer, stopCitation, stopDelay } from './stopRecordText.ts';
 
 const base = measure();
 const answer: RecordMeasure = {
@@ -38,6 +38,29 @@ it('preserves the sign of delay and distinguishes missing from measured zero', (
 	expect(stopDelay(350, 'fr')).toBe('350 s de retard');
 	expect(stopDelay(0, 'fr')).toBe('0 s');
 	expect(stopDelay(null, 'fr')).toBe('Inconnu');
+});
+
+it.each<[Record<string, number>, string, string]>([
+	[{ stops_accessible: 1 }, 'Accessible', 'Accessible'],
+	[{ stops_not_accessible: 1 }, 'Not accessible', 'Non accessible'],
+	[{ stops_no_information: 1 }, 'No information', 'Aucune information'],
+])('reads the schedule declaration from %j', (counts, en, fr) => {
+	const data = {
+		...answer,
+		value: { accessible_stops: counts.stops_accessible ?? 0 },
+		evidence: { ...answer.evidence, counts },
+	};
+	expect(stopAccessibility(data, 'en')).toBe(en);
+	expect(stopAccessibility(data, 'fr')).toBe(fr);
+});
+
+it('preserves the unpublished state for stops whose schedule omits the field', () => {
+	const data: RecordMeasure = {
+		...answer,
+		state: 'not_published',
+		state_text: { en: 'Not published', fr: 'Non publié' },
+	};
+	expect(stopAccessibility(data, 'en')).toBe('Not published');
 });
 
 it('cites the stop, dates, scope, and versions and marks older results', () => {

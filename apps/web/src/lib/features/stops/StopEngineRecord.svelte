@@ -23,7 +23,14 @@
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import type { IdentitySeed } from '#lib/v1/serverContext.ts';
 	import StopViewNav from './StopViewNav.svelte';
-	import { stopAnswer, stopCitation, stopDelay, stopSectionTitles } from './stopRecordText.ts';
+	import {
+		stopAccessibility,
+		stopAccessibilityDescription,
+		stopAnswer,
+		stopCitation,
+		stopDelay,
+		stopSectionTitles,
+	} from './stopRecordText.ts';
 
 	let {
 		stop,
@@ -80,6 +87,7 @@
 			<Card edge="neutral" textSize="inherit" class="min-w-0 px-4 sm:px-6">
 				<section id={section} aria-labelledby={`${section}-title`} class="grid min-w-0 gap-3">
 					<h2 id={`${section}-title`}>{title}</h2>
+					{#if section === 'accessibility'}<p>{stopAccessibilityDescription[locale]}</p>{/if}
 					{#await answer}
 						{#key answer}<RecordPending {locale} />{/key}
 					{:then result}
@@ -111,6 +119,8 @@
 												<dd>{stopDelay(data.value.p90_delay, locale)}</dd>
 											</div>
 										</dl>
+									{:else if section === 'accessibility'}
+										<p>{stopAccessibility(data, locale)}</p>
 									{:else if section === 'alerts'}
 										<dl class="flex flex-wrap gap-4">
 											<div>

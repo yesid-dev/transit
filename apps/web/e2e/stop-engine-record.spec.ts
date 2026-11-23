@@ -45,6 +45,16 @@ for (const width of [390, 1440]) {
 			await expect(delay).toContainText(fr ? '350 s de retard' : '350 s late');
 			const alerts = section(fr ? 'Avis pour cet arrêt' : 'Alerts for this stop');
 			await expect(alerts.getByText(fr ? 'Non suivi' : '3', { exact: true })).toBeVisible();
+			const access = section(fr ? 'Embarquement en fauteuil roulant' : 'Wheelchair boarding');
+			await expect(
+				access.getByText(fr ? 'Aucune information' : 'Accessible', { exact: true }),
+			).toBeVisible();
+			await access.getByText(fr ? 'Citer' : 'Cite', { exact: true }).click();
+			await expect(access.getByText(/#accessibility/)).toBeVisible();
+			const accessCsv = await access.getByRole('link', { name: /CSV/ }).getAttribute('href');
+			const download = await request.get(accessCsv!);
+			expect(download.headers()['content-disposition']).toContain('stop-accessibility.csv');
+			expect(await download.text()).toContain(`accessible_stops,${fr ? 0 : 1}`);
 
 			await expect(
 				punctuality.getByRole('button', { name: fr ? 'Copier le lien' : 'Copy link' }),

@@ -110,7 +110,9 @@
 	const seoPath = $derived(delocalizePath(page.url.pathname));
 	const isOverviewRecord = $derived(seoPath === '/' && page.data.record != null);
 	const isStandaloneRecord = $derived(
-		page.data.report != null || seoPath.startsWith('/departure/'),
+		page.data.report != null ||
+			page.data.networkRecord != null ||
+			seoPath.startsWith('/departure/'),
 	);
 	let constructionEdge = $state<HTMLElement>();
 	let constructionProgress = $state(1);

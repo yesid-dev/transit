@@ -139,7 +139,9 @@ export function getRanking(kind: RankingAnswer['kind'], period: EnginePeriod) {
 
 const recordCounts = z.record(z.string(), z.number().nullable().catch(null));
 const translatedMessage = z.object({ en: z.string().nullable(), fr: z.string().nullable() });
-const recordCell = state.extend({
+const recordStateName = engineState.or(z.literal('not_published'));
+const recordState = state.extend({ state: recordStateName });
+const recordCell = recordState.extend({
 	value: z.record(z.string(), z.number().nullable()),
 	evidence: z.object({
 		counts: recordCounts,
@@ -322,6 +324,30 @@ export function getRecordAnswer({ path, parameters }: RecordQuery, period: Engin
 				? recordSeries
 				: recordMeasure;
 	return periodQuery(path, period, parameters, schema);
+}
+
+// Each scorecard answer has one numeric value or readings by feed, field or horizon.
+const scorecardReading = z.union([z.number(), z.literal('over_10_minutes'), z.null()]);
+const scorecardValues = z.union([
+	scorecardReading,
+	z.record(z.string(), z.union([scorecardReading, z.record(z.string(), scorecardReading)])),
+]);
+const scorecardAnswer = recordEnvelope.extend({
+	...recordState.shape,
+	value: z.record(z.string(), scorecardValues),
+	info: z.array(z.object({ id: z.string(), minimum_sample: count })),
+	evidence: evidence.extend({
+		counts: z.record(z.string(), z.record(z.string(), z.unknown())),
+		dimension_states: z.record(z.string(), z.record(z.string(), recordStateName)),
+		capture_gap_days: z.record(z.string(), z.array(z.iso.date())),
+		days_not_measured_reasons: z.record(z.iso.date(), z.string()),
+	}),
+});
+
+export type ScorecardAnswer = z.infer<typeof scorecardAnswer>;
+
+export function getScorecardAnswer({ path, parameters }: RecordQuery, period: EnginePeriod) {
+	return periodQuery(path, period, parameters, scorecardAnswer);
 }
 
 const finderSeries = recordEnvelope.extend({

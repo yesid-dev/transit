@@ -16,6 +16,7 @@ export const stopSectionTitles = {
 	hourly: ['By hour', 'Par heure'],
 	daily: ['Day by day', 'Jour par jour'],
 	delay: ['Typical delay', 'Retard typique'],
+	accessibility: ['Wheelchair boarding', 'Embarquement en fauteuil roulant'],
 	alerts: ['Alerts for this stop', 'Avis pour cet arrêt'],
 } satisfies Record<StopSection, [string, string]>;
 
@@ -46,6 +47,20 @@ export function stopDelay(seconds: number | null | undefined, locale: Locale): s
 	return `${value} s`;
 }
 
+export const stopAccessibilityDescription = {
+	en: 'This is what the agency declared for this stop in the schedule on its latest service date in the selection.',
+	fr: 'Il s’agit de la déclaration de l’exploitant dans l’horaire pour cet arrêt à sa dernière date de service dans la période choisie.',
+};
+
+export function stopAccessibility(answer: RecordMeasure, locale: Locale): string {
+	if (answer.state !== 'measured') return answer.state_text[locale];
+	const { stops_accessible, stops_not_accessible, stops_no_information } = answer.evidence.counts;
+	if (stops_no_information === 1) return choose(locale, 'No information', 'Aucune information');
+	if (stops_accessible === 1) return choose(locale, 'Accessible', 'Accessible');
+	if (stops_not_accessible === 1) return choose(locale, 'Not accessible', 'Non accessible');
+	return choose(locale, 'Unknown', 'Inconnu');
+}
+
 export function stopCitation(
 	subject: string,
 	section: StopSection,
@@ -59,6 +74,9 @@ export function stopCitation(
 	return [
 		`Transit · ${subject}. ${choose(locale, ...stopSectionTitles[section])}. ${dates}.`,
 		section === 'punctuality' && 'value' in answer ? stopAnswer(answer, locale) : '',
+		section === 'accessibility' && 'value' in answer
+			? `${stopAccessibilityDescription[locale]} ${stopAccessibility(answer, locale)}.`
+			: '',
 		methodEvidence(evidence, locale),
 		lastGood ? lastGoodNote[locale] : '',
 		href,

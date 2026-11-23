@@ -11,7 +11,7 @@ export function stopEngine(url) {
 		days_included: [from],
 		days_not_measured: [],
 		method_version: 'stop-fixture-v1',
-		cleaning_versions: [7],
+		cleaning_versions: [9],
 		query_ms: 4,
 	};
 	const counts = { early: 5, on_time: 80, late: 15, classified: 100 };
@@ -27,7 +27,8 @@ export function stopEngine(url) {
 	if (get('stop') !== 'S1') return { status: 400, body: { message: 'Wrong stop cut' } };
 	if (get('format') === 'csv') {
 		const header = get('lang') === 'fr' ? 'Mesure,Valeur' : 'Measure,Value';
-		return { csv: `${header}\n${measure},0.8\n` };
+		const value = measure === 'accessible_stops' ? (get('city') === 'octranspo' ? 0 : 1) : 0.8;
+		return { csv: `${header}\n${measure},${value}\n` };
 	}
 	if (group) {
 		const cells = {
@@ -48,6 +49,19 @@ export function stopEngine(url) {
 		};
 	}
 	let row = cell(null);
+	if (measure === 'accessible_stops') {
+		const accessible = get('city') === 'octranspo' ? 0 : 1;
+		row = cell(
+			null,
+			{ accessible_stops: accessible },
+			{
+				stops_accessible: accessible,
+				stops_not_accessible: 0,
+				stops_no_information: 1 - accessible,
+				stops_not_published: 0,
+			},
+		);
+	}
 	if (measure === 'alert_counts') {
 		if (from === '2026-11-09') {
 			return { status: 503, headers: { 'retry-after': '10' }, body: { message: 'busy' } };
