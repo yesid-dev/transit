@@ -93,12 +93,12 @@ export const SHARE_COPY = {
 	},
 	'/receipt': {
 		en: {
-			support: 'Published daily transit reliability summaries',
-			cta: 'View the daily receipt',
+			support: 'On-time performance and service by date',
+			cta: 'Read the daily report',
 		},
 		fr: {
-			support: 'Bilans quotidiens publiés sur la fiabilité',
-			cta: 'Voir le reçu quotidien',
+			support: 'Ponctualité et service par date',
+			cta: 'Lire le rapport quotidien',
 		},
 	},
 	'/repeat-offenders': {
