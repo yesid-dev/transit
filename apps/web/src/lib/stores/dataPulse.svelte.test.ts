@@ -5,10 +5,14 @@ vi.mock('$app/env', () => ({ browser: true }));
 
 const mocks = vi.hoisted(() => ({
 	getManifestFresh: vi.fn<() => Promise<Manifest>>(),
+	fetchCaptureSnapshot: vi.fn(),
 	bumpEpoch: vi.fn<() => void>(),
 }));
 vi.mock('#lib/v1/repositories/manifest.ts', () => ({
 	getManifestFresh: mocks.getManifestFresh,
+}));
+vi.mock('#lib/live/captureSnapshot.ts', () => ({
+	fetchCaptureSnapshot: mocks.fetchCaptureSnapshot,
 }));
 vi.mock('./refresh.svelte', () => ({
 	dataRefresh: { bumpEpoch: mocks.bumpEpoch },
@@ -69,6 +73,7 @@ describe('dataPulse — auto-refresh on a monotonic manifest advance', () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
 		mocks.getManifestFresh.mockReset();
+		mocks.fetchCaptureSnapshot.mockReset();
 		mocks.bumpEpoch.mockReset();
 		dataPulse._resetForTests();
 		Object.defineProperty(document, 'visibilityState', {
@@ -103,6 +108,22 @@ describe('dataPulse — auto-refresh on a monotonic manifest advance', () => {
 
 		expect(mocks.getManifestFresh).not.toHaveBeenCalled();
 		expect(dataPulse.lastSeenMs).toBeNull();
+		dispose();
+	});
+
+	it('waits for the capture discovery interval while the live view starts its own poll', async () => {
+		mocks.fetchCaptureSnapshot.mockResolvedValue({ published_at: '2026-06-20T00:00:00Z' });
+		const dispose = dataPulse.subscribeCapture('demo');
+		await vi.advanceTimersByTimeAsync(299_999);
+		expect(mocks.fetchCaptureSnapshot).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(1);
+		await settle();
+		expect(mocks.fetchCaptureSnapshot).toHaveBeenCalledExactlyOnceWith(
+			'demo',
+			expect.any(AbortSignal),
+		);
+		expect(mocks.getManifestFresh).not.toHaveBeenCalled();
+		expect(dataPulse.lastSeenMs).toBe(Date.parse('2026-06-20T00:00:00Z'));
 		dispose();
 	});
 

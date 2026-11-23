@@ -1,4 +1,5 @@
 import { browser } from '$app/env';
+import { feedState, type CaptureEvidence } from '#lib/live/captureSnapshot.ts';
 import { DEFAULT_LIVE_TTL_S, freshnessAgeSeconds } from '#lib/v1/freshness.ts';
 import { getV1Runtime } from '#lib/v1/runtime.ts';
 import { untrack } from 'svelte';
@@ -62,17 +63,17 @@ export interface LiveReadContext {
 
 export interface LiveReader {
 	refreshManifest?(context: LiveReadContext): Promise<Manifest>;
-	vehicles(context: LiveReadContext): Promise<VehiclesFile>;
-	trips(context: LiveReadContext): Promise<TripsFile>;
-	stopDepartures(context: LiveReadContext): Promise<StopDeparturesFile>;
-	alerts(context: LiveReadContext): Promise<AlertsFile>;
-	network(context: LiveReadContext): Promise<NetworkFile>;
+	vehicles(context: LiveReadContext): Promise<VehiclesFile & CaptureEvidence>;
+	trips(context: LiveReadContext): Promise<TripsFile & CaptureEvidence>;
+	stopDepartures(context: LiveReadContext): Promise<StopDeparturesFile & CaptureEvidence>;
+	alerts(context: LiveReadContext): Promise<AlertsFile & CaptureEvidence>;
+	network(context: LiveReadContext): Promise<NetworkFile & CaptureEvidence>;
 }
 
 export interface LiveStoreOptions {
 	readonly families?: readonly LiveFamily[];
 	readonly seed?: {
-		readonly network?: NetworkFile;
+		readonly network?: NetworkFile & CaptureEvidence;
 	};
 }
 
@@ -109,11 +110,11 @@ export function createLiveStore(
 	const baselineFamilies = new SvelteSet<LiveFamily>(options.families ?? LIVE_FAMILIES);
 	const initialNetwork = baselineFamilies.has('network') ? (options.seed?.network ?? null) : null;
 
-	let vehicles = $state<VehiclesFile | null>(null);
-	let trips = $state<TripsFile | null>(null);
-	let departures = $state<StopDeparturesFile | null>(null);
-	let alerts = $state<AlertsFile | null>(null);
-	let network = $state<NetworkFile | null>(initialNetwork);
+	let vehicles = $state<(VehiclesFile & CaptureEvidence) | null>(null);
+	let trips = $state<(TripsFile & CaptureEvidence) | null>(null);
+	let departures = $state<(StopDeparturesFile & CaptureEvidence) | null>(null);
+	let alerts = $state<(AlertsFile & CaptureEvidence) | null>(null);
+	let network = $state<(NetworkFile & CaptureEvidence) | null>(initialNetwork);
 
 	const familyRefCounts: Record<LiveFamily, number> = {
 		vehicles: baselineFamilies.has('vehicles') ? 1 : 0,
@@ -153,30 +154,34 @@ export function createLiveStore(
 		for (const family of LIVE_FAMILIES) {
 			const { consecutiveFailures, ...state } = familyStatesValue[family];
 			const payload = currentFamilyPayload(family);
-			const publicationAge = freshnessAgeSeconds(
-				payload?.generated_utc,
-				runtime.clock.serverNow,
-				ttlMs / 1000,
-			);
-			// Missing means the old publisher is still running. Explicit null is unknown.
-			const captureEnabled =
+			const now = runtime.clock.serverNow;
+			const feed = payload?.captureFeed;
+			const captureState = feed && feedState(feed, now);
+			const publicationAge = freshnessAgeSeconds(payload?.generated_utc, now, ttlMs / 1000);
+			const legacyCapture =
 				payload != null && 'feed_captured_utc' in payload && family in CAPTURE_STALE_SECONDS;
-			const captureAge = captureEnabled
-				? freshnessAgeSeconds(payload.feed_captured_utc, runtime.clock.serverNow, ttlMs / 1000)
-				: null;
+			const captureTimestamp = feed
+				? (feed.source_at ?? feed.captured_at)
+				: legacyCapture
+					? payload.feed_captured_utc
+					: null;
+			const captureEnabled = !!feed || legacyCapture;
+			const captureAge = freshnessAgeSeconds(captureTimestamp, now, feed ? 5 : ttlMs / 1000);
 			const age = captureEnabled
 				? publicationAge == null || captureAge == null
 					? null
 					: Math.max(publicationAge, captureAge)
 				: publicationAge;
 			const captureLimit = CAPTURE_STALE_SECONDS[family as keyof typeof CAPTURE_STALE_SECONDS];
-			const ageIsStale =
-				publicationAge == null ||
-				publicationAge >= staleThresholdS ||
-				(captureEnabled && (captureAge == null || captureAge >= captureLimit));
+			const ageIsStale = feed
+				? captureState === 'stale' || captureState === 'unknown' || captureState === 'no_live_data'
+				: publicationAge == null ||
+					publicationAge >= staleThresholdS ||
+					(captureEnabled && (captureAge == null || captureAge >= captureLimit));
 			const retained = payload != null;
 			const retrying = state.phase === 'loading' && consecutiveFailures > 0;
-			const failed = state.phase === 'failed' || consecutiveFailures > 0;
+			const failed =
+				state.phase === 'failed' || consecutiveFailures > 0 || feed?.read_failed === true;
 			const unknownAge = retained && age == null;
 			let verdict: FeedHealthState;
 			if (!retained) verdict = retrying ? 'retrying' : failed ? 'failed-no-data' : 'never-loaded';
@@ -199,9 +204,7 @@ export function createLiveStore(
 					age == null
 						? null
 						: captureIsOlder
-							? payload && 'feed_captured_utc' in payload
-								? (payload.feed_captured_utc ?? null)
-								: null
+							? (captureTimestamp ?? null)
 							: (payload?.generated_utc ?? null),
 				state: verdict,
 				ageSeconds: age,
@@ -236,7 +239,8 @@ export function createLiveStore(
 		}
 	});
 
-	type LiveFamilyPayload = VehiclesFile | TripsFile | StopDeparturesFile | AlertsFile | NetworkFile;
+	type LiveFamilyPayload = CaptureEvidence &
+		(VehiclesFile | TripsFile | StopDeparturesFile | AlertsFile | NetworkFile);
 	function captureTimestamp(payload: LiveFamilyPayload | null): string | null | undefined {
 		return payload && 'feed_captured_utc' in payload ? payload.feed_captured_utc : undefined;
 	}
@@ -425,6 +429,7 @@ export function createLiveStore(
 				retained == null ||
 				payloadGeneration == null ||
 				retained.generated_utc !== payloadGeneration ||
+				retained.captureRevision !== payload.captureRevision ||
 				captureTimestamp(retained) !== captureTimestamp(payload);
 			if (changed) replaceFamilyPayload(family, payload);
 

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { captureFixture, captureUrl, captureVehicle } from './capture-fixture';
 
 test.use({ bypassCSP: true });
 
@@ -54,25 +55,22 @@ for (const scheme of ['light', 'dark'] as const) {
 					return Reflect.apply(draw, this, args);
 				};
 			}, scheme);
-			await page.route('**/live/vehicles.json', (route) =>
+			const at = Date.parse(published);
+			await page.route(captureUrl, (route) =>
 				route.fulfill({
-					json: {
-						generated_utc: published,
-						publish_generation_id: 'stm@forced-colors-e2e',
-						vehicles: [
-							{
-								id: 'contrast-bus',
-								lon,
-								lat,
-								status: 'on_time',
-								delay_min: 0,
-								route: '24',
-								trip: 't1',
-								reported_utc: '2026-06-15T11:54:00Z',
-								updated_utc: '2026-06-15T11:54:00Z',
-							},
+					json: captureFixture(at, {
+						vehicle_positions: [
+							captureVehicle(at, {
+								id: 'contrast-vehicle',
+								vehicle_id: 'contrast-vehicle',
+								longitude: lon,
+								latitude: lat,
+								delay: 0,
+								occupancy: null,
+								observed_at: '2026-06-15T11:54:00Z',
+							}),
 						],
-					},
+					}),
 				}),
 			);
 			await page.goto(`/map?provider=stm&mapview=${lon},${lat},${zoom},0,0`);
@@ -166,28 +164,25 @@ test('an on-time bus body repaints with the on-time status colour in the first f
 			return Reflect.apply(draw, this, args);
 		};
 	});
-	// Serve the feed once, then hold every later poll so no feed frame can repaint the bus.
+	// Serve one capture, then hold later polls so the theme change alone repaints the vehicle.
 	let feedRequests = 0;
-	await page.route('**/live/vehicles.json', (route) => {
+	const at = Date.parse(published);
+	await page.route(captureUrl, (route) => {
 		if (++feedRequests > 1) return;
 		return route.fulfill({
-			json: {
-				generated_utc: published,
-				publish_generation_id: 'stm@on-time-rebake-e2e',
-				vehicles: [
-					{
-						id: 'on-time-bus',
-						lon,
-						lat,
-						status: 'on_time',
-						delay_min: 0,
-						route: '24',
-						trip: 't1',
-						reported_utc: '2026-06-15T11:54:00Z',
-						updated_utc: '2026-06-15T11:54:00Z',
-					},
+			json: captureFixture(at, {
+				vehicle_positions: [
+					captureVehicle(at, {
+						id: 'on-time-vehicle',
+						vehicle_id: 'on-time-vehicle',
+						longitude: lon,
+						latitude: lat,
+						delay: 0,
+						occupancy: null,
+						observed_at: '2026-06-15T11:54:00Z',
+					}),
 				],
-			},
+			}),
 		});
 	});
 	await page.goto(`/map?provider=stm&mapview=${lon},${lat},11,0,0`);

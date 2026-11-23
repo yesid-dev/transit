@@ -36,7 +36,7 @@ export interface MapSelectionSessionOptions {
 	readonly staleCutoffS?: number;
 	readonly serverNow: () => number;
 	readonly alertsAvailable?: boolean;
-	readonly scheduleOnly?: (id: string, type: number) => boolean;
+	readonly scheduleOnly?: (id: string, type: number | null) => boolean;
 }
 
 /** Owns a selection and its resources for the lifetime of the calling effect owner. */
@@ -161,7 +161,10 @@ export function createMapSelectionSession(options: MapSelectionSessionOptions) {
 	const contextRoutes = $derived.by<RouteFile[]>(() => {
 		const out = [...routeList];
 		const focus = focusedRoute.data;
-		if (focus && !out.some((route) => route.id === focus.id)) out.push(focus);
+		if (focus && !out.some((route) => route.id === focus.id)) {
+			const scheduleOnly = options.scheduleOnly?.(focus.id, focus.type ?? null);
+			out.push(scheduleOnly ? { ...focus, schedule_only: true } : focus);
+		}
 		return out;
 	});
 	const contextStopFiles = $derived(focusedStop.data ? [focusedStop.data] : []);

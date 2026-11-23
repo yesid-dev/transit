@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { revealRefresh } from './header-refresh';
+import { captureFixture, captureUrl } from './capture-fixture';
 
 import { refreshCopy } from '../src/lib/components/shell/refresh.copy';
 import { SURFACE_NAV } from '../src/lib/content/nav';
@@ -58,17 +59,14 @@ test('manual refresh stays busy until live data is received and rendered', async
 	const held = new Promise<void>((resolve) => {
 		markHeld = resolve;
 	});
-	const newerTimestamp = new Date(generated + 5000).toISOString();
-	await page.route('**/live/vehicles.json', async (route) => {
+	const newer = generated + 5000;
+	await page.route(captureUrl, async (route) => {
 		if (hold) {
 			markHeld();
 			await responseGate;
 		}
 		await route.fulfill({
-			json: {
-				generated_utc: hold ? newerTimestamp : new Date(generated).toISOString(),
-				vehicles: [],
-			},
+			json: captureFixture(hold ? newer : generated),
 		});
 	});
 	await page.goto('/map?provider=stm');
@@ -85,7 +83,7 @@ test('manual refresh stays busy until live data is received and rendered', async
 		await expect(page.getByRole('button', { name: 'Refreshing…', exact: true })).toBeDisabled();
 		release();
 		await expect(page.getByRole('button', { name: 'Refresh data', exact: true })).toBeEnabled();
-		await expect(timestamp).toHaveAttribute('datetime', newerTimestamp);
+		await expect(timestamp).toHaveAttribute('datetime', new Date(newer).toISOString());
 	} finally {
 		release();
 	}
@@ -95,14 +93,7 @@ test('a manual refresh shows its result under the button, moves nothing, then le
 	page,
 }) => {
 	await page.clock.install({ time: generated + 15_000 });
-	await page.route('**/live/vehicles.json', (route) =>
-		route.fulfill({
-			json: {
-				generated_utc: new Date(generated).toISOString(),
-				vehicles: [],
-			},
-		}),
-	);
+	await page.route(captureUrl, (route) => route.fulfill({ json: captureFixture(generated) }));
 	await page.goto('/map?provider=stm', { waitUntil: 'networkidle' });
 	const placement = page.viewportSize()!.width < 1024 ? 'head' : 'floating';
 	const stamp = page.locator(
@@ -132,14 +123,7 @@ for (const reducedMotion of ['reduce', 'no-preference'] as const) {
 	test(`report age advances each second while idle (${reducedMotion})`, async ({ page }) => {
 		await page.emulateMedia({ reducedMotion });
 		await page.clock.install({ time: generated + 15_000 });
-		await page.route('**/live/vehicles.json', (route) =>
-			route.fulfill({
-				json: {
-					generated_utc: new Date(generated).toISOString(),
-					vehicles: [],
-				},
-			}),
-		);
+		await page.route(captureUrl, (route) => route.fulfill({ json: captureFixture(generated) }));
 		await page.goto('/map', { waitUntil: 'networkidle' });
 		const placement = page.viewportSize()!.width < 1024 ? 'head' : 'floating';
 		const stamp = page.locator(
@@ -165,20 +149,9 @@ for (const reducedMotion of ['reduce', 'no-preference'] as const) {
 			'access-control-expose-headers': 'Date, Age',
 		};
 		await page.clock.install({ time: generated + 15_000 });
-		await page.route('**/v1/**', async (route) => {
-			if (new URL(route.request().url()).pathname.endsWith('/live/vehicles.json')) {
-				await route.fulfill({
-					json: { generated_utc: new Date(generated).toISOString(), vehicles: [] },
-					headers: clockHeaders,
-				});
-				return;
-			}
-			const response = await route.fetch();
-			await route.fulfill({
-				response,
-				headers: { ...response.headers(), ...clockHeaders },
-			});
-		});
+		await page.route(captureUrl, (route) =>
+			route.fulfill({ json: captureFixture(generated), headers: clockHeaders }),
+		);
 		await page.goto('/map?provider=stm');
 		const placement = page.viewportSize()!.width < 1024 ? 'head' : 'floating';
 		const stamp = page.locator(
@@ -189,9 +162,7 @@ for (const reducedMotion of ['reduce', 'no-preference'] as const) {
 		const timestamp = await stamp.locator('time').getAttribute('datetime');
 		for (let click = 1; click <= 3; click += 1) {
 			await page.clock.runFor(1100);
-			const refreshed = page.waitForResponse((response) =>
-				new URL(response.url()).pathname.endsWith('/live/vehicles.json'),
-			);
+			const refreshed = page.waitForResponse((response) => captureUrl.test(response.url()));
 			await (await revealRefresh(page)).click();
 			await refreshed;
 			await expect(page.getByRole('button', { name: 'Refresh data', exact: true })).toBeEnabled();
@@ -246,30 +217,30 @@ for (const locale of PUBLISHED_LOCALES) {
 		page,
 	}) => {
 		await page.clock.install({ time: generated });
-		// Exercise a known-age stall for both active families. The shared fixture server
-		// intentionally has no vehicle snapshot, which is an unknown-age failure instead.
-		await page.route('**/live/vehicles.json', (route) =>
-			route.fulfill({ json: { generated_utc: new Date(generated).toISOString(), vehicles: [] } }),
-		);
-		const alerts = page.waitForResponse((response) =>
-			new URL(response.url()).pathname.endsWith('/live/alerts.json'),
-		);
+		await page.route(captureUrl, (route) => route.fulfill({ json: captureFixture(generated) }));
+		const snapshot = page.waitForResponse((response) => captureUrl.test(response.url()));
 		await page.goto(localizeHref(map, locale));
-		await alerts;
+		await snapshot;
 		const banner = page.getByRole('status').filter({ hasText: stall });
 		const nearMe = page.getByRole('button', { name: t.nearMe, exact: true });
+		await expect(page.getByTestId('map-progressive')).toHaveAttribute(
+			'data-map-progressive-state',
+			'ready',
+		);
 		await expect(nearMe).toBeVisible();
 		await expect(page.getByRole('status').filter({ hasText: t.liveNoVehicles })).toBeVisible();
 		await expect(banner).toHaveCount(0);
-		// Well past the stale threshold of three live TTLs.
+		// The source report is now beyond the capture feed's freshness window.
 		await page.clock.fastForward('05:00');
 		await expect(banner).toBeVisible();
 
 		const attribution = page.getByLabel(t.attributionToggle, { exact: true }).locator('..');
+		const controls = [banner, nearMe, page.locator('[data-slot="map-north"]')];
+		if (await attribution.isVisible()) controls.push(attribution);
+		else await expect(attribution).toHaveClass(/maplibregl-attrib-empty/);
+		for (const control of controls) await expect(control).toBeVisible();
 		const boxes = await Promise.all(
-			[banner, nearMe, attribution, page.locator('[data-slot="map-north"]')].map(
-				async (control) => (await control.boundingBox())!,
-			),
+			controls.map(async (control) => (await control.boundingBox())!),
 		);
 		const viewport = page.viewportSize()!;
 		for (const [i, a] of boxes.entries()) {

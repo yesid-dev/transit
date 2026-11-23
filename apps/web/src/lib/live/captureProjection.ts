@@ -27,21 +27,19 @@ function minute(delay: number | null) {
 	return delay == null ? null : Math.sign(delay) * Math.round(Math.abs(delay) / 60);
 }
 
-function sourceTime(snapshot: CaptureSnapshot, family: CaptureFamily, now: number) {
+function captureFeed(snapshot: CaptureSnapshot, family: CaptureFamily, now: number) {
 	const feed = Object.values(snapshot.feeds).find((feed) => feed.family === family);
-	const state = feedState(feed, now);
-	if (state === 'live' || state === 'stale' || state === 'refresh_unavailable') {
-		return feed!.captured_at!;
-	}
-	throw new Error(`Live feed ${family}: ${state}`);
+	if (!feed?.captured_at) throw new Error(`Live feed ${family}: ${feedState(feed, now)}`);
+	return { ...feed, captured_at: feed.captured_at };
 }
 
 export function captureVehicles(snapshot: CaptureSnapshot, now: number) {
-	const captured = sourceTime(snapshot, 'vehicle_positions', now);
+	const feed = captureFeed(snapshot, 'vehicle_positions', now);
+	const captured = feed.captured_at;
 	if (snapshot.vehicle_positions == null) throw new Error('Vehicle positions unavailable');
 	const tripFeed = Object.values(snapshot.feeds).find((feed) => feed.family === 'trip_updates');
 	const usableDelay = feedState(tripFeed, now) === 'live';
-	return VehiclesFileSchema.parse({
+	const payload = VehiclesFileSchema.parse({
 		generated_utc: captured,
 		vehicles: snapshot.vehicle_positions.map((vehicle) => {
 			const delay = usableDelay ? vehicle.delay : null;
@@ -62,6 +60,7 @@ export function captureVehicles(snapshot: CaptureSnapshot, now: number) {
 			};
 		}),
 	});
+	return { ...payload, captureFeed: feed, captureRevision: snapshot.published_at };
 }
 
 function stopEta(stop: NonNullable<CaptureSnapshot['trip_updates']>[number]['stops'][number]) {
@@ -77,9 +76,10 @@ function stopEta(stop: NonNullable<CaptureSnapshot['trip_updates']>[number]['sto
 }
 
 export function captureTrips(snapshot: CaptureSnapshot, now: number) {
-	const captured = sourceTime(snapshot, 'trip_updates', now);
+	const feed = captureFeed(snapshot, 'trip_updates', now);
+	const captured = feed.captured_at;
 	if (snapshot.trip_updates == null) throw new Error('Trip updates unavailable');
-	return TripsFileSchema.parse({
+	const payload = TripsFileSchema.parse({
 		generated_utc: captured,
 		feed_captured_utc: captured,
 		trips: Object.fromEntries(
@@ -97,6 +97,7 @@ export function captureTrips(snapshot: CaptureSnapshot, now: number) {
 			]),
 		),
 	});
+	return { ...payload, captureFeed: feed, captureRevision: snapshot.published_at };
 }
 
 export function captureDepartures(snapshot: CaptureSnapshot, now: number) {
@@ -118,7 +119,7 @@ export function captureDepartures(snapshot: CaptureSnapshot, now: number) {
 			stops.set(stop.stop, entries);
 		}
 	}
-	return StopDeparturesFileSchema.parse({
+	const payload = StopDeparturesFileSchema.parse({
 		generated_utc: trips.generated_utc,
 		feed_captured_utc: trips.feed_captured_utc,
 		stops: Object.fromEntries(
@@ -128,6 +129,7 @@ export function captureDepartures(snapshot: CaptureSnapshot, now: number) {
 			]),
 		),
 	});
+	return { ...payload, captureFeed: trips.captureFeed, captureRevision: trips.captureRevision };
 }
 
 function severity(level: string | null) {
@@ -137,9 +139,10 @@ function severity(level: string | null) {
 }
 
 export function captureAlerts(snapshot: CaptureSnapshot, now: number) {
-	const captured = sourceTime(snapshot, 'alerts', now);
+	const feed = captureFeed(snapshot, 'alerts', now);
+	const captured = feed.captured_at;
 	if (snapshot.alerts == null) throw new Error('Alerts unavailable');
-	return AlertsFileSchema.parse({
+	const payload = AlertsFileSchema.parse({
 		generated_utc: captured,
 		feed_captured_utc: captured,
 		alerts: snapshot.alerts.map((alert) => ({
@@ -162,6 +165,7 @@ export function captureAlerts(snapshot: CaptureSnapshot, now: number) {
 			active_periods: alert.periods.map(([start_utc, end_utc]) => ({ start_utc, end_utc })),
 		})),
 	});
+	return { ...payload, captureFeed: feed, captureRevision: snapshot.published_at };
 }
 
 export function captureNetwork(snapshot: CaptureSnapshot, now: number) {
@@ -188,7 +192,7 @@ export function captureNetwork(snapshot: CaptureSnapshot, now: number) {
 		const high = delays[Math.ceil(index)]!;
 		return Math.round(low + (high - low) * (index % 1));
 	};
-	return NetworkFileSchema.parse({
+	const payload = NetworkFileSchema.parse({
 		generated_utc: positions.generated_utc,
 		vehicles_in_service: positions.vehicles.length,
 		on_time_pct:
@@ -208,4 +212,9 @@ export function captureNetwork(snapshot: CaptureSnapshot, now: number) {
 			? percentage(classified, positions.vehicles.length)
 			: null,
 	});
+	return {
+		...payload,
+		captureFeed: positions.captureFeed,
+		captureRevision: positions.captureRevision,
+	};
 }

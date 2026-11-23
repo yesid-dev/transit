@@ -87,6 +87,11 @@ export type CaptureSnapshot = z.infer<typeof captureSnapshotSchema>;
 export type CaptureFamily = z.infer<typeof family>;
 export type CaptureFeed = z.infer<typeof feed>;
 
+export interface CaptureEvidence {
+	readonly captureFeed?: CaptureFeed;
+	readonly captureRevision?: string;
+}
+
 export function feedState(feed: CaptureFeed | undefined, now: number) {
 	if (!feed) return 'not_tracked';
 	if (!feed.captured_at) return 'no_live_data';
@@ -94,7 +99,9 @@ export function feedState(feed: CaptureFeed | undefined, now: number) {
 	const observed = feed.source_at ? Date.parse(feed.source_at) : captured;
 	const age = now - captured;
 	const sourceAge = now - observed;
-	if (age < -5_000 || sourceAge < -5_000) return 'unknown';
+	if (!Number.isFinite(age) || !Number.isFinite(sourceAge) || age < -5_000 || sourceAge < -5_000) {
+		return 'unknown';
+	}
 	const limit = feed.fresh_for_seconds * 1_000;
 	if (age >= limit || sourceAge >= limit + feed.source_lag_seconds * 1_000) return 'stale';
 	return feed.read_failed ? 'refresh_unavailable' : 'live';

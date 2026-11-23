@@ -1,18 +1,18 @@
 import { expect, test } from '@playwright/test';
+import { captureFixture, captureUrl, captureVehicle } from './capture-fixture';
 
 test.use({ bypassCSP: true });
 
 type Draw = { x: number; y: number; size: number };
 type DrawProbe = Window & { vehicleDraws?: Draw[] };
 
-// Late and severe share a body colour, so at the default overview zoom only the severe ◆
-// tells them apart. The badge must sit under the severe bus and never under the late one.
+// At overview zoom the extra badge distinguishes a severely late vehicle from a late one.
 for (const [scheme, forcedColors] of [
 	['light', 'none'],
 	['dark', 'none'],
 	['dark', 'active'],
 ] as const) {
-	test(`a severe bus shows its ◆ at zoom 12 and a late bus does not (${scheme}, forced colours ${forcedColors})`, async ({
+	test(`a severely late vehicle shows its ◆ at zoom 12 (${scheme}, forced colours ${forcedColors})`, async ({
 		page,
 	}, { project }) => {
 		test.skip(project.name !== 'desktop', 'one canvas renderer check per scheme');
@@ -38,24 +38,26 @@ for (const [scheme, forcedColors] of [
 				return Reflect.apply(draw, this, args);
 			};
 		}, scheme);
-		const bus = (id: string, offset: number, status: string, delay: number) => ({
-			id,
-			lon: lon + offset,
-			lat,
-			status,
-			delay_min: delay,
-			route: '24',
-			trip: id,
-			reported_utc: '2026-06-15T11:59:30Z',
-			updated_utc: '2026-06-15T11:59:30Z',
-		});
-		await page.route('**/live/vehicles.json', (route) =>
+		const at = Date.parse(published);
+		const vehicle = (id: string, offset: number, delay: number) =>
+			captureVehicle(at, {
+				id,
+				vehicle_id: id,
+				trip_id: id,
+				longitude: lon + offset,
+				latitude: lat,
+				delay,
+				occupancy: null,
+				observed_at: '2026-06-15T11:59:30Z',
+			});
+		await page.route(captureUrl, (route) =>
 			route.fulfill({
-				json: {
-					generated_utc: published,
-					publish_generation_id: 'stm@severe-badge-e2e',
-					vehicles: [bus('late-bus', -0.01, 'late', 3), bus('severe-bus', 0.01, 'severe', 9)],
-				},
+				json: captureFixture(at, {
+					vehicle_positions: [
+						vehicle('late-vehicle', -0.01, 180),
+						vehicle('severe-vehicle', 0.01, 540),
+					],
+				}),
 			}),
 		);
 		await page.goto(`/map?provider=stm&mapview=${lon},${lat},12,0,0`);

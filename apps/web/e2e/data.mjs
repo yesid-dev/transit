@@ -318,7 +318,6 @@ const server = createServer((request, response) => {
 				default_provider,
 				providers: providers.map((provider) => ({
 					...provider,
-					basemap_url: `/data/v1/${provider.id}/static/basemap/${provider.id === 'stm' ? 'montreal' : 'ottawa'}.pmtiles`,
 					timezone: 'America/Toronto',
 					bounds: provider.max_bounds,
 					lines_without_live_data: [
@@ -417,6 +416,22 @@ const server = createServer((request, response) => {
 				.filter((route) => route.id && route.directions?.some(({ shape }) => shape))
 				.map((route) => [route.id, route.directions]),
 		);
+		if (city === 'stm') {
+			route_shapes['1-373'] = [
+				{
+					dir: 0,
+					headsign: 'Rail terminal',
+					shape: {
+						type: 'LineString',
+						coordinates: [
+							[-73.6, 45.5],
+							[-73.59, 45.51],
+						],
+					},
+					stops: [{ id: 'S1', seq: 1 }],
+				},
+			];
+		}
 		response.writeHead(200, { 'content-type': 'application/json' }).end(
 			JSON.stringify({
 				schedule: { date: '2026-11-21', route_shapes },

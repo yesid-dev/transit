@@ -418,7 +418,7 @@ export function resolveMapSelection(
 		return {
 			kind: 'vehicle',
 			id: vehicle.id,
-			title: vehicle.route ? `Route ${vehicle.route}` : `Bus ${vehicle.id}`,
+			title: vehicle.route ? `Route ${vehicle.route}` : `Vehicle ${vehicle.id}`,
 			vehicle,
 			trip,
 			route,
@@ -454,7 +454,7 @@ export function resolveMapSelection(
 			route,
 			direction,
 			directions: routeDirectionStops(route, selectedVariant, context.locale),
-			vehicles: vehiclesOnRoute(context.index, route.id),
+			vehicles: route.schedule_only ? [] : vehiclesOnRoute(context.index, route.id),
 			alerts:
 				context.alerts == null
 					? null

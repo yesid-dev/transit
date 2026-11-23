@@ -256,7 +256,7 @@ export const dataPulse = {
 			stopTimer();
 			captureCity = city;
 			lastSeenMs = null;
-			lastCheckAtMs = null;
+			lastCheckAtMs = Date.now();
 			currentIntervalMs = DEFAULT_INTERVAL_MS;
 		}
 		return dataPulse.subscribe();
