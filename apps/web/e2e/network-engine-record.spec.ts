@@ -22,7 +22,7 @@ test('the French Network record shows engine readings and preserves the Live vie
 	await expect(tripUpdates).toContainText('20 / 25');
 	await expect(polls).toContainText('Trop peu de données pour conclure');
 	await expect(polls).toContainText('Au moins 20 observations');
-	await polls.getByText(/Jours non mesurés/).click();
+	await polls.getByText('Jours non mesurés (1)', { exact: true }).click();
 	await expect(polls.getByText(/Aucune capture brute/)).toBeVisible();
 	await expect(main.getByRole('region', { name: 'Âge des flux à la collecte' })).toContainText(
 		'Plus de 10 min',
@@ -52,7 +52,11 @@ test('the French Network record shows engine readings and preserves the Live vie
 	await main.getByRole('link', { name: 'Voir la santé du réseau en direct' }).click();
 	await expect(page).toHaveURL(/frameMode=live/);
 	await expect(main.locator('#net-live')).toBeVisible();
-	await main.getByRole('link', { name: 'Voir le bilan' }).click();
+	await page.setViewportSize({ width: 1440, height: 900 });
+	const view = page.getByRole('radiogroup', { name: 'Vue', exact: true });
+	const live = view.getByRole('radio', { name: 'En direct', exact: true });
+	await expect(live).toBeChecked();
+	await live.press('ArrowRight');
 	await expect(page).toHaveURL(/frameMode=record.*recordFrom=2026-11-20/);
 	await expect(tripUpdates).toContainText('20 / 25');
 });
