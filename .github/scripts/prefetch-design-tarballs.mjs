@@ -11,8 +11,8 @@ function cacheEntry(integrity) {
   if (!/^sha512-[A-Za-z0-9+/]{86}==$/.test(integrity)) {
     throw new Error(`Expected a SHA-512 integrity in bun.lock, got ${integrity}`);
   }
-  // Bun 1.4.4 keys verified local and remote tarballs by their digest.
-  // https://github.com/oven-sh/bun/blob/bun-v1.4.4/src/install/PackageManager/PackageManagerDirectories.rs
+  // Bun keys verified tarballs by digest. The tarball resolution test checks
+  // this cache layout with the Bun version selected by .bun-version.
   const digest = Buffer.from(integrity.slice("sha512-".length), "base64");
   return `@T@sha512-${digest.subarray(0, 16).toString("hex")}@@@1`;
 }
