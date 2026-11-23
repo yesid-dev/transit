@@ -2010,12 +2010,13 @@ def _waiting_rows(
     window = [question.city, version, question.start, question.end]
     entity = _entity_sql(group, question.group, "local_hour")
 
-    def local_time(timestamp: str) -> str:
-        local_us = local_epoch_us_sql(conn, timestamp, question.start, question.end)
-        return f"make_timestamp({local_us})"
-
-    scheduled_local = local_time("scheduled_at")
-    observed_local = local_time("observed_at")
+    scheduled_local = local_epoch_us_sql(conn, "scheduled_at", question.start, question.end)
+    observed_local = local_epoch_us_sql(conn, "observed_at", question.start, question.end)
+    scheduled_start = (
+        "scheduled_start_utc"
+        if question.departure is not None or question.group == "departure" or group == "departure"
+        else "NULL::TIMESTAMPTZ"
+    )
     routes = "list(DISTINCT route_id)" if group else "NULL"
     # Both sequences reset at period boundaries so that, for example, a planned
     # overnight break cannot contribute its wait to the morning period.
@@ -2048,106 +2049,133 @@ def _waiting_rows(
     counters = (*schedule_counts, *observed_counts, *wait_counts)
     schedule_aggregates = ", ".join(f"{sql} AS {name}" for name, sql in schedule_counts.items())
     observed_aggregates = ", ".join(f"{sql} AS {name}" for name, sql in observed_counts.items())
-    period = period_sql("local_hour")
-    # Let each consumer push its filter and projection into the event scan.
-    # Keeping the full event and schedule-cut rows alive across the window sorts
-    # can force DuckDB to spill on a dense day.
+    period_start = "CASE " + " ".join(
+        f"WHEN local_hour < {p.end_hour} THEN {p.start_hour}" for p in PERIODS
+    ) + " END"
+    period = f"date_diff('day', DATE '1970-01-01', local_at::DATE) * 24 + ({period_start})"
+    # Each batch holds one service day. Share the projected scan across the
+    # scheduled, observed and unknown passages for that day.
     rows = conn.execute(
         f"""
-        WITH events AS NOT MATERIALIZED (
-            SELECT service_date, trip_id, stop_id, stop_sequence, route_id, direction_id,
-                scheduled_start_utc, route_has_live_data, state,
+        WITH events AS MATERIALIZED (
+            SELECT service_date, trip_order, stop_id, stop_sequence, route_id, direction_id,
+                scheduled_start_utc, route_has_live_data,
+                state IN ('ran', 'unconfirmed') AS might_have_run,
                 CASE WHEN state <> 'added' THEN
                     coalesce(scheduled_arrival_utc, scheduled_departure_utc)
                 END AS scheduled_at,
                 CASE WHEN route_has_live_data AND direction_id IS NOT NULL
                     THEN observed_at_utc END AS observed_at
             FROM (
-                SELECT s.service_date, s.trip_id, s.stop_id, s.stop_sequence,
+                SELECT s.service_date, t.trip_order, s.stop_id, s.stop_sequence,
                     t.route_id, t.direction_id, t.route_has_live_data, t.scheduled_start_utc,
                     t.state, s.scheduled_arrival_utc, s.scheduled_departure_utc, s.observed_at_utc
                 FROM read_parquet(?, hive_partitioning = false) s
-                JOIN read_parquet(?, hive_partitioning = false) t
+                JOIN (
+                    -- Preserve trip-id order at tied timestamps without carrying
+                    -- trip strings through every stop sequence and distinct pair.
+                    SELECT provider, cleaning_version, service_date, trip_id, route_id,
+                        direction_id, route_has_live_data, {scheduled_start} AS scheduled_start_utc,
+                        state,
+                        row_number() OVER (PARTITION BY service_date ORDER BY trip_id)
+                            AS trip_order
+                    FROM read_parquet(?, hive_partitioning = false)
+                    WHERE provider = ? AND cleaning_version = ?
+                        AND service_date BETWEEN ? AND ? AND route_id IS NOT NULL
+                ) t
                     USING (provider, cleaning_version, service_date, trip_id)
                 WHERE s.provider = ? AND s.cleaning_version = ?
-                    AND s.service_date BETWEEN ? AND ? AND t.route_id IS NOT NULL
+                    AND s.service_date BETWEEN ? AND ?
             )
             WHERE {scope}
         ), scheduled_periods AS (
-            SELECT service_date, trip_id, stop_id, stop_sequence, route_id, direction_id,
+            SELECT service_date, trip_order, stop_id, stop_sequence, route_id, direction_id,
                 scheduled_start_utc, route_has_live_data,
                 observed_at IS NOT NULL AS has_observation,
-                scheduled_at AS event_at, {scheduled_local} AS local_at,
-                hour(local_at) AS local_hour, local_at::DATE AS local_date,
+                epoch_us(scheduled_at) AS event_at,
+                make_timestamp({scheduled_local}) AS local_at,
+                hour(local_at) AS local_hour,
                 {period} AS period
             FROM events WHERE scheduled_at IS NOT NULL
         ), scheduled_pairs AS (
-            SELECT * EXCLUDE (local_at), lag(event_at) OVER schedule AS previous_at,
+            SELECT * EXCLUDE (local_at, trip_order), lag(event_at) OVER schedule AS previous_at,
                 CASE WHEN direction_id IS NOT NULL
-                    THEN epoch(event_at - previous_at)::BIGINT END AS headway
+                    THEN ((event_at - previous_at) / 1000000)::BIGINT END AS headway
             FROM scheduled_periods
             WINDOW schedule AS (
-                PARTITION BY service_date, route_id, direction_id, stop_id, local_date, period
-                ORDER BY event_at, trip_id, stop_sequence
+                PARTITION BY service_date, route_id, direction_id, stop_id, period
+                ORDER BY event_at, trip_order, stop_sequence
             )
         ), frequent_periods AS (
-            SELECT service_date, route_id, direction_id, stop_id, local_date, period,
+            SELECT service_date, route_id, direction_id, stop_id, period,
                 avg(headway) AS scheduled_mean
             FROM scheduled_pairs
             WHERE route_has_live_data AND headway > 0
             GROUP BY ALL HAVING scheduled_mean <= {FREQUENT_HEADWAY_SECONDS}
-        ), observed_pairs AS (
-            SELECT service_date, trip_id, stop_id, stop_sequence, route_id, direction_id,
-                scheduled_start_utc, observed_at AS event_at, {observed_local} AS local_at,
-                hour(local_at) AS local_hour, local_at::DATE AS local_date,
-                {period} AS period,
-                lag(observed_at) OVER arrivals AS previous_at,
-                lag(trip_id) OVER arrivals AS previous_trip,
-                epoch(observed_at - previous_at)::BIGINT AS headway
-            FROM events SEMI JOIN frequent_periods
-                USING (service_date, route_id, direction_id, stop_id)
+        ), observed_periods AS (
+            SELECT service_date, trip_order AS trip_id, stop_id, stop_sequence, route_id,
+                direction_id, scheduled_start_utc, epoch_us(observed_at) AS event_at,
+                make_timestamp({observed_local}) AS local_at,
+                hour(local_at) AS local_hour,
+                {period} AS period
+            FROM events
             WHERE observed_at IS NOT NULL
+        ), observed_pairs AS (
+            SELECT p.* EXCLUDE (local_at), f.scheduled_mean,
+                lag(event_at) OVER arrivals AS previous_at,
+                lag(trip_id) OVER arrivals AS previous_trip,
+                ((event_at - previous_at) / 1000000)::BIGINT AS headway
+            FROM observed_periods p JOIN frequent_periods f
+                USING (service_date, route_id, direction_id, stop_id, period)
             WINDOW arrivals AS (
-                PARTITION BY service_date, route_id, direction_id, stop_id, local_date, period
-                ORDER BY observed_at, trip_id, stop_sequence
+                PARTITION BY service_date, route_id, direction_id, stop_id, period
+                ORDER BY event_at, trip_id, stop_sequence
             )
         ),
         {POLL_COVERAGE_SQL},
         -- An intersection begins at the start of one feed run, and ends at the
         -- earliest end of the runs active at that moment.
         common_coverage AS (
-            SELECT starts.service_date, starts.covered_from, min(c.covered_to) AS covered_to
+            SELECT starts.service_date, epoch_us(starts.covered_from) AS covered_from,
+                epoch_us(min(c.covered_to)) AS covered_to
             FROM (SELECT DISTINCT service_date, covered_from FROM coverage) starts
             JOIN coverage c ON c.service_date = starts.service_date
                 AND c.covered_from <= starts.covered_from AND c.covered_to > starts.covered_from
             JOIN realtime_feed_counts f ON f.service_date = starts.service_date
             GROUP BY starts.service_date, starts.covered_from, f.required_feeds
             HAVING count(*) = f.required_feeds
+        ), coverage_hours AS (
+            -- A feed run ends before the next begins, so intersections are
+            -- disjoint. Index them by UTC hour to limit the interval comparisons.
+            SELECT service_date, covered_from, covered_to, coverage_hour
+            FROM common_coverage,
+                unnest(generate_series(
+                    covered_from // 3600000000, covered_to // 3600000000
+                )) hours(coverage_hour)
         ), schedule_in_cut AS NOT MATERIALIZED (
             SELECT p.*, {entity} AS entity, f.scheduled_mean IS NOT NULL AS frequent
             FROM scheduled_pairs p LEFT JOIN frequent_periods f
-                USING (service_date, route_id, direction_id, stop_id, local_date, period)
+                USING (service_date, route_id, direction_id, stop_id, period)
             WHERE {cut}
         ), observed_in_cut AS (
-            SELECT p.*, {entity} AS entity, f.scheduled_mean
-            FROM observed_pairs p JOIN frequent_periods f
-                USING (service_date, route_id, direction_id, stop_id, local_date, period)
-            WHERE p.previous_at IS NOT NULL AND {cut}
+            SELECT *, {entity} AS entity
+            FROM observed_pairs WHERE previous_at IS NOT NULL AND {cut}
         ), unknown_passages AS (
-            SELECT service_date, route_id, direction_id, stop_id, scheduled_at AS unknown_at
+            SELECT service_date, route_id, direction_id, stop_id,
+                epoch_us(scheduled_at) AS unknown_at
             FROM events SEMI JOIN frequent_periods
                 USING (service_date, route_id, direction_id, stop_id)
             WHERE scheduled_at IS NOT NULL AND observed_at IS NULL
-                AND state IN ('ran', 'unconfirmed')
+                AND might_have_run
         ), checked_headways AS (
-            SELECT p.service_date, p.route_id, p.direction_id, p.stop_id, p.local_date,
-                p.period, p.entity, p.trip_id, p.previous_trip, p.headway,
+            SELECT p.service_date, p.route_id, p.direction_id, p.stop_id, p.period,
+                p.entity, p.trip_id, p.previous_trip, p.headway,
                 p.scheduled_mean, p.previous_at, p.event_at, c.covered_from, u.unknown_at,
-                coalesce(previous_at >= c.covered_from AND event_at <= c.covered_to, false)
-                    AS covered,
+                c.covered_from IS NOT NULL AS covered,
                 covered AND (u.unknown_at IS NULL OR u.unknown_at <= p.previous_at) AS eligible
-            FROM observed_in_cut p ASOF LEFT JOIN common_coverage c
-                ON p.service_date = c.service_date AND p.event_at >= c.covered_from
+            FROM observed_in_cut p LEFT JOIN coverage_hours c
+                ON p.service_date = c.service_date AND p.event_at // 3600000000 = c.coverage_hour
+                AND p.previous_at >= c.covered_from AND p.event_at <= c.covered_to
             ASOF LEFT JOIN unknown_passages u
                 ON p.service_date = u.service_date AND p.route_id = u.route_id
                 AND p.direction_id = u.direction_id AND p.stop_id = u.stop_id
@@ -2161,22 +2189,22 @@ def _waiting_rows(
         ), observed_windows AS (
             -- Eligible intervals are contiguous within each coverage run and
             -- between unobserved passages. Only this time can inform the schedule.
-            SELECT entity, service_date, route_id, direction_id, stop_id, local_date,
-                period, min(previous_at) AS window_start, max(event_at) AS window_end,
+            SELECT entity, service_date, route_id, direction_id, stop_id, period,
+                min(previous_at) AS window_start, max(event_at) AS window_end,
                 sum(headway) AS actual_elapsed, sum(headway * headway) AS actual_squared
             FROM checked_headways WHERE eligible
-            GROUP BY entity, service_date, route_id, direction_id, stop_id, local_date, period,
+            GROUP BY entity, service_date, route_id, direction_id, stop_id, period,
                 covered_from, unknown_at
         ), scheduled_windows AS (
-            SELECT s.entity, s.service_date, s.route_id, s.direction_id, s.stop_id, s.local_date,
-                s.period, w.window_start,
+            SELECT s.entity, s.service_date, s.route_id, s.direction_id, s.stop_id, s.period,
+                w.window_start,
                 count(*) AS scheduled_count, sum(s.headway) AS scheduled_elapsed,
                 sum(s.headway * s.headway) AS scheduled_squared
             FROM (SELECT * FROM schedule_in_cut WHERE frequent AND headway > 0) s
             ASOF JOIN observed_windows w
                 ON s.entity = w.entity AND s.service_date = w.service_date
                 AND s.route_id = w.route_id AND s.direction_id = w.direction_id
-                AND s.stop_id = w.stop_id AND s.local_date = w.local_date AND s.period = w.period
+                AND s.stop_id = w.stop_id AND s.period = w.period
                 AND s.previous_at >= w.window_start
             WHERE s.event_at <= w.window_end
             GROUP BY ALL
@@ -2187,9 +2215,8 @@ def _waiting_rows(
                 sum(actual_elapsed) AS actual_elapsed,
                 sum(actual_squared) AS actual_squared
             FROM scheduled_windows JOIN observed_windows
-                USING (entity, service_date, route_id, direction_id, stop_id, local_date,
-                    period, window_start)
-            GROUP BY entity, service_date, route_id, direction_id, stop_id, local_date, period
+                USING (entity, service_date, route_id, direction_id, stop_id, period, window_start)
+            GROUP BY entity, service_date, route_id, direction_id, stop_id, period
         ), waiting AS (
             SELECT entity, sum(scheduled_count) AS covered_scheduled_headways,
                 sum(scheduled_elapsed) AS scheduled_seconds,
@@ -2207,6 +2234,7 @@ def _waiting_rows(
         [
             paths[STOP_EVENTS],
             paths[TRIP_DAYS],
+            *window,
             *window,
             *scope_params,
             paths[FEED_POLLS],
@@ -3725,6 +3753,10 @@ def read_window(
     if uses_poll_coverage and window.included:
         assert receipts is not None
         set_poll_age_limits(conn, question.city, receipts, window.included)
+    if family.id == _WAITING_ID and store.s3_endpoint and not (question.line or question.stop):
+        # Broad waiting queries read most of these small daily files. Fetch them
+        # in one request each and leave larger objects on range reads.
+        conn.execute("SET force_download_threshold = 8388608")
     return window
 
 
