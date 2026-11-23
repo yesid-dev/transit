@@ -29,7 +29,15 @@ def test_search_reads_latest_edition_for_a_declared_public_city(
         directory = tmp_path / "search" / "v1" / "demo" / str(day)
         directory.mkdir(parents=True)
         (directory / f"v{store.cleaning_version}.json").write_text(
-            json.dumps({"date": str(day), "routes": [], "stops": []}), encoding="utf8"
+            json.dumps(
+                {
+                    "date": str(day),
+                    "routes": [],
+                    "stops": [],
+                    "route_directions": {"L1": [{"dir": 0, "headsign": "Terminus"}]},
+                }
+            ),
+            encoding="utf8",
         )
 
     app = Engine(store, concurrency=1, queue_size=0, queue_wait_ms=10)
@@ -42,3 +50,8 @@ def test_search_reads_latest_edition_for_a_declared_public_city(
     }
     for invalid in ("city=unknown", "city=demo&city=demo", "city=demo&q=text"):
         assert asyncio.run(http(app, "/search-index", invalid))[0] == 400
+    status, _, body = asyncio.run(http(app, "/schedule-index", "city=demo"))
+    assert status == 200
+    assert json.loads(body)["schedule"]["route_directions"] == {
+        "L1": [{"dir": 0, "headsign": "Terminus"}]
+    }

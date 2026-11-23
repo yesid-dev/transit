@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { z } from 'zod';
-import { searchIndexSchema } from '#lib/search/searchIndex.ts';
+import { CityCatalogSchema } from '#lib/v1/schemas/providers.ts';
+import { scheduleIndexSchema, searchIndexSchema } from '#lib/search/searchIndex.ts';
 import type { DateWindow } from '#lib/v1/history/window.ts';
 
 export const ENGINE_TIMEOUT_MS = 20_000;
@@ -454,4 +455,20 @@ export function getRecordDataHealth(period: EnginePeriod) {
 
 export function getSearchIndex(city: string, visitorIp?: string | null) {
 	return query(`/${encodeURIComponent(city)}/search-index`, {}, searchIndexSchema, visitorIp);
+}
+
+export async function getCityCatalog(visitorIp?: string | null) {
+	const result = await query('/cities', {}, CityCatalogSchema, visitorIp);
+	if (result.kind !== 'answer') throw new Error('Provider catalog unavailable');
+	return result.answer;
+}
+
+export async function getScheduleEdition(city: string, visitorIp?: string | null) {
+	const result = await query(
+		`/${encodeURIComponent(city)}/schedule-index`,
+		{},
+		scheduleIndexSchema,
+		visitorIp,
+	);
+	return result.kind === 'answer' ? result.answer.schedule : null;
 }

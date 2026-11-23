@@ -14,7 +14,8 @@
 		{locale}
 		url={new URL(page.url.href)}
 		record={data.finderRecord}
-		routes={data.routesIndex?.routes ?? []}
+		routes={data.schedule?.routes ?? []}
+		provider={data.provider}
 	/>
 {:else}
 	<LinesIndex />

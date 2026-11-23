@@ -60,9 +60,9 @@ function normalizeProviderUrl(url: URL, provider: string): URL {
 	return next;
 }
 
-export function resolveProvider(
+export function resolveProvider<T extends import('./schemas/providers').PublicProvider>(
 	url: URL,
-	catalog: PublicProviderCatalog,
+	catalog: { default_provider: string; providers: T[] },
 	location?: ApproximateLocation | null,
 ) {
 	const values = url.searchParams.getAll('provider');

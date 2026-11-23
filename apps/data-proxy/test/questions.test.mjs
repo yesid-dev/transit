@@ -55,6 +55,14 @@ function fixture(t, respond = () => Response.json(ANSWER, {
   const answers = new Map();
   const saved = new Map();
   const requests = [];
+  const cityRequests = [];
+  const cities = {
+    default_provider: "demo",
+    providers: [
+      { id: "demo", timezone: "America/Toronto" },
+      { id: "other-city", timezone: "Europe/Paris" },
+    ],
+  };
   const visitors = [];
   const cache = {
     async match(key) {
@@ -69,16 +77,12 @@ function fixture(t, respond = () => Response.json(ANSWER, {
   Object.defineProperty(globalThis, "caches", { configurable: true, value: { default: cache } });
   t.after(() => { delete globalThis.caches; });
   const env = {
-    SNAPSHOTS: {
-      async get(key) {
-        const catalog = { providers: [{ id: "demo" }, { id: "other-city" }] };
-        if (key === "v1/providers.json") return { json: async () => catalog };
-        if (key === "v1/demo/manifest.json") return { json: async () => ({ tz: "America/Toronto" }) };
-        return null;
-      },
-    },
     ENGINE: {
       async fetch(request) {
+        if (new URL(request.url).pathname === "/cities") {
+          cityRequests.push(request);
+          return Response.json(cities);
+        }
         requests.push(request);
         return respond(request);
       },
@@ -110,7 +114,7 @@ function fixture(t, respond = () => Response.json(ANSWER, {
     await Promise.all(tasks);
     return response;
   }
-  return { fetch, env, answers, saved, requests, visitors };
+  return { fetch, env, answers, saved, requests, cityRequests, cities, visitors };
 }
 
 test("dated public routes accept the same query names as the engine HTTP parser", () => {
@@ -206,7 +210,6 @@ test("forwards the finders' network groups without ranking limits", async (t) =>
 test("rejects invalid questions before spending an engine slot or visitor budget", async (t) => {
   const f = fixture(t);
   for (const path of [
-    MEASURE.replace("/demo/", "/unknown/"),
     MEASURE.replace("2020-01-01", "2020-02-30"),
     MEASURE.replace("2020-01-01", "20200101"),
     MEASURE.replace("2020-01-01", "0000-01-01"),
@@ -374,8 +377,13 @@ test("cache eviction and upstream failures return the same question's saved answ
     return new Response(exactJson, { headers: { "content-type": "application/json" } });
   });
   assert.equal(await (await f.fetch(MEASURE)).text(), exactJson);
-  assert.equal([...f.saved.values()][0].expirationTtl, 2592000);
+  assert.equal([...f.saved.values()].find(({ value }) => value === exactJson).expirationTtl, 2592000);
   f.answers.clear();
+  const fetchEngine = f.env.ENGINE.fetch;
+  f.env.ENGINE.fetch = async (request) => {
+    if (new URL(request.url).pathname === "/cities") throw new Error("catalog offline");
+    return fetchEngine(request);
+  };
   for (const failure of ["throw", "http"]) {
     result = failure;
     const response = await f.fetch(MEASURE);
@@ -384,7 +392,7 @@ test("cache eviction and upstream failures return the same question's saved answ
     assert.match(response.headers.get("access-control-expose-headers"), /X-Transit-Answer/);
     assert.equal(response.headers.get("cache-control"), "no-store");
     assert.equal(await response.text(), `{"stale":true,${exactJson.slice(1)}`);
-    assert.equal(f.answers.size, 0);
+    assert.ok(![...f.answers.keys()].some((key) => key.includes("/measure?")));
   }
   assert.equal((await f.fetch(MEASURE + "&line=1")).status, 503);
 });
@@ -493,4 +501,26 @@ test("serves and caches the search index with the normal limit and no v1 catalog
   }
   assert.equal(harness.requests.length, 1);
   assert.equal(harness.visitors.length, 1);
+});
+
+test("the city endpoint and dated questions share the declaration catalog", async (t) => {
+  const f = fixture(t);
+  assert.equal((await f.fetch("/v2/cities?city=demo")).status, 400);
+  assert.equal(f.cityRequests.length, 0);
+  assert.deepEqual(await (await f.fetch("/v2/cities")).json(), f.cities);
+  assert.equal((await f.fetch(MEASURE.replace("/demo/", "/private/"))).status, 400);
+  assert.equal(f.requests.length, 0);
+  assert.equal(f.cityRequests.length, 1);
+  assert.equal(f.cityRequests[0].headers.get("authorization"), "Bearer fixture-token");
+  assert.equal((await f.fetch(MEASURE)).status, 200);
+});
+
+test("settled answer lifetime uses each declared city's local date", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2020-01-03T01:30:00Z") });
+  const f = fixture(t);
+  await f.fetch(MEASURE);
+  await f.fetch(MEASURE.replace("/demo/", "/other-city/"));
+  const ttl = (city) => [...f.answers].find(([key]) => key.includes(`/${city}/measure?`))[1].ttl;
+  assert.equal(ttl("demo"), 30);
+  assert.equal(ttl("other-city"), 604800);
 });

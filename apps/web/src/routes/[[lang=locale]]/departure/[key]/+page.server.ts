@@ -1,3 +1,4 @@
+import { directionHeadsigns } from '#lib/features/lines/directions.ts';
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { departureFromKey } from '#lib/features/record/departureIdentity.ts';
@@ -6,8 +7,6 @@ import {
 	loadDepartureLive,
 	loadDepartureRecord,
 } from '#lib/server/departureDailyRecord.ts';
-import { getRoute } from '#lib/v1/repositories/static.ts';
-import { serverV1Context } from '#lib/v1/serverContext.ts';
 import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
 
 export const load: PageServerLoad = async (event) => {
@@ -15,16 +14,9 @@ export const load: PageServerLoad = async (event) => {
 	if (!identity) error(404);
 	const today = frameToday();
 	const { period, mode } = parseFrameState(event.url.searchParams, today);
-	const { providerId, lang, v1 } = await event.parent();
+	const { providerId, lang, v1, schedule } = await event.parent();
 	const visitorIp = event.request.headers.get('cf-connecting-ip');
 	const day = period ? departureDay(event.url.searchParams, period) : today;
-	const metadata = v1
-		? getRoute(identity.line, {
-				...serverV1Context(event),
-				providerId,
-				manifest: v1.manifest,
-			}).catch(() => null)
-		: Promise.resolve(null);
 	const scope = { city: providerId, visitorIp };
 	return {
 		identity,
@@ -33,7 +25,12 @@ export const load: PageServerLoad = async (event) => {
 		period,
 		day,
 		mode,
-		metadata,
+		headsigns: directionHeadsigns(schedule?.route_directions?.[identity.line]),
+		stopNames: Object.fromEntries(
+			(schedule?.stops ?? [])
+				.filter((stop) => stop.routes?.includes(identity.line))
+				.map((stop) => [stop.id, stop.name]),
+		),
 		sections:
 			mode === 'record' && period
 				? loadDepartureRecord({ ...scope, ...period }, identity, day)

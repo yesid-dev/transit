@@ -1,17 +1,27 @@
 import { z } from 'zod';
 import { RouteIndexEntrySchema } from '#lib/v1/schemas/routes_index.ts';
+import { RouteDirectionSchema } from '#lib/v1/schemas/route.ts';
 import { StopIndexEntrySchema } from '#lib/v1/schemas/stops_index.ts';
 
-export const searchIndexSchema = z.object({
-	schedule: z
-		.object({
-			date: z.iso.date(),
-			routes: z.array(
-				RouteIndexEntrySchema.pick({ id: true, short: true, long: true, type: true, color: true }),
-			),
-			stops: z.array(StopIndexEntrySchema),
+export const scheduleSchema = z.object({
+	date: z.iso.date(),
+	routes: z.array(
+		RouteIndexEntrySchema.pick({ id: true, short: true, long: true, type: true, color: true }),
+	),
+	stops: z.array(StopIndexEntrySchema),
+});
+
+export const scheduleIndexSchema = z.object({
+	schedule: scheduleSchema
+		.extend({
+			route_directions: z.record(z.string(), z.array(RouteDirectionSchema)).optional(),
 		})
 		.nullable(),
+});
+export type ScheduleEdition = NonNullable<z.infer<typeof scheduleIndexSchema>['schedule']>;
+
+export const searchIndexSchema = z.object({
+	schedule: scheduleSchema.nullable(),
 	vehicles: z.array(z.object({ id: z.string() })).nullable(),
 	vehicle_state: z.enum(['ready', 'not_tracked', 'unavailable']),
 });

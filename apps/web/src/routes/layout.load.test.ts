@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const harness = vi.hoisted(() => ({
 	bootProvider: vi.fn(),
 	serverV1Context: vi.fn(),
-	getRoutesIndex: vi.fn(),
+	getScheduleEdition: vi.fn(),
+	getCityCatalog: vi.fn(),
 }));
 
 vi.mock('#lib/v1/boot.ts', () => ({
@@ -15,8 +16,9 @@ vi.mock('#lib/v1/serverContext.ts', () => ({
 }));
 
 import { load as loadServerLayout } from './+layout.server';
-vi.mock('#lib/v1/repositories/static.ts', () => ({
-	getRoutesIndex: (...args: unknown[]) => harness.getRoutesIndex(...args),
+vi.mock('#lib/server/engine.ts', () => ({
+	getCityCatalog: (...args: unknown[]) => harness.getCityCatalog(...args),
+	getScheduleEdition: (...args: unknown[]) => harness.getScheduleEdition(...args),
 }));
 import { load as loadUniversalLayout } from './+layout';
 
@@ -46,6 +48,8 @@ function serverEvent(lang: 'fr' | undefined, pathname: string, binding = true) {
 		params: lang ? { lang } : {},
 		url: new URL(`https://transit.yesid.dev${pathname}`),
 		fetch: vi.fn(),
+		request: new Request(`https://transit.yesid.dev${pathname}`),
+		route: { id: null },
 		locals: { v1Cache: new Map<string, unknown>() } as {
 			v1Cache: Map<string, unknown>;
 			locale?: 'en' | 'fr';
@@ -71,33 +75,36 @@ beforeEach(() => {
 	harness.bootProvider.mockReset();
 	harness.bootProvider.mockResolvedValue(selection(null));
 	harness.serverV1Context.mockReset();
-	harness.getRoutesIndex.mockReset().mockResolvedValue({ routes: [] });
+	harness.getScheduleEdition.mockReset().mockResolvedValue({ routes: [] });
 });
 
 describe('root server layout boot', () => {
-	it('loads the directory before returning page data and tolerates a failed index', async () => {
-		const selected = selection(v1('en', 'one'));
+	it('loads the clean edition for the selected city even without snapshot boot', async () => {
+		const selected = { ...selection(null), provider: { id: 'stm' } };
 		harness.bootProvider.mockResolvedValue(selected);
-		const routesIndex = { routes: [{ id: '1-373', short: '1', type: 1 }] };
-		harness.getRoutesIndex.mockResolvedValueOnce(routesIndex);
+		const schedule = {
+			date: '2026-11-21',
+			routes: [{ id: '1-373', short: '1', type: 1 }],
+			stops: [],
+		};
+		harness.getScheduleEdition.mockResolvedValueOnce(schedule);
 		const request = serverEvent(undefined, '/network');
-		const result = await loadServerLayout(request);
-		expect(result).toMatchObject({ routesIndex });
-		expect(harness.getRoutesIndex).toHaveBeenCalledExactlyOnceWith(
-			expect.objectContaining({ manifest: selected.v1?.manifest, providerId: selected.providerId }),
-		);
-		harness.getRoutesIndex.mockRejectedValueOnce(new Error('index unavailable'));
-		await expect(loadServerLayout(request)).resolves.toMatchObject({
-			routesIndex: null,
-			v1: selected.v1,
-		});
+		await expect(loadServerLayout(request)).resolves.toMatchObject({ schedule, v1: null });
+		expect(harness.getScheduleEdition).toHaveBeenCalledExactlyOnceWith('stm', null);
 	});
 	it('passes request-only location to provider selection without returning coordinates', async () => {
 		const request = serverEvent('fr', '/network');
 		const location = { lat: 45.42, lon: -75.7 };
 		Object.assign(request.locals, { approximateLocation: location });
 		const result = await loadServerLayout(request);
-		expect(harness.bootProvider).toHaveBeenCalledWith(request.url, 'fr', undefined, location, true);
+		expect(harness.bootProvider).toHaveBeenCalledWith(
+			request.url,
+			'fr',
+			expect.any(Function),
+			undefined,
+			location,
+			true,
+		);
 		expect(JSON.stringify(result)).not.toContain('45.42');
 	});
 	it('prevents caching a successful fallback boot when catalog discovery failed', async () => {
@@ -126,6 +133,7 @@ describe('root server layout boot', () => {
 			expect(harness.bootProvider).toHaveBeenCalledWith(
 				request.url,
 				'fr',
+				expect.any(Function),
 				context,
 				undefined,
 				true,

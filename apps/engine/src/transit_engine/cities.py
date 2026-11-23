@@ -1,0 +1,118 @@
+"""Public city metadata from the same declarations as the capture readers."""
+
+from typing import Any
+from zoneinfo import ZoneInfo
+
+from transit_engine.capture import provider_declaration, provider_directory
+from transit_engine.store import CITY
+
+FEED_KINDS = (
+    "static_schedule",
+    "gis_static",
+    "trip_updates",
+    "vehicle_positions",
+    "i3_alerts",
+    "service_alerts",
+)
+BOUNDS_KEYS = ("min_longitude", "min_latitude", "max_longitude", "max_latitude")
+
+
+class UnknownCity(ValueError):
+    """The city has no active public declaration."""
+
+
+def public_declaration(city: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    declaration = provider_declaration(city) if CITY.fullmatch(city) else {}
+    identity = declaration.get("provider")
+    if isinstance(identity, dict):
+        public = declaration.get("public")
+        if (
+            identity.get("is_active") is True
+            and isinstance(public, dict)
+            and public.get("enabled") is True
+        ):
+            return declaration, identity, public
+    elif declaration.get("stage") == "public":
+        overrides = declaration.get("overrides")
+        return declaration, declaration, overrides if isinstance(overrides, dict) else {}
+    raise UnknownCity("unknown city")
+
+
+def service_zone(identity: dict[str, Any]) -> ZoneInfo:
+    zone = identity.get("timezone")
+    if not isinstance(zone, str):
+        raise RuntimeError("missing service timezone")
+    return ZoneInfo(zone)
+
+
+def _bounds(value: Any) -> list[float] | None:
+    if isinstance(value, dict):
+        return [value[key] for key in BOUNDS_KEYS]
+    return value if isinstance(value, list) else None
+
+
+def _inputs(feeds: Any) -> dict[str, bool]:
+    if isinstance(feeds, dict):
+        enabled = {feed["feed_kind"] for feed in feeds.values() if feed.get("is_enabled", True)}
+    else:
+        kinds = {"schedule": "static_schedule", "geometry": "gis_static"}
+        enabled = set()
+        for feed in feeds:
+            family = feed["family"]
+            if family == "alerts":
+                enabled.add(
+                    "i3_alerts"
+                    if feed.get("format") == "stm-etatservice-json"
+                    else "service_alerts"
+                )
+            else:
+                enabled.add(kinds.get(family, family))
+    return {kind: kind in enabled for kind in FEED_KINDS}
+
+
+def city_catalog() -> dict[str, Any]:
+    providers = []
+    defaults = []
+    for path in sorted(provider_directory().glob("*.yaml")):
+        city = path.stem
+        try:
+            declaration, identity, public = public_declaration(city)
+        except UnknownCity:
+            continue
+        legacy = identity is not declaration
+        labels = (public if legacy else identity).get("labels", {})
+        fallback = {
+            "city": identity.get("city") or next(iter(labels.values()))["city"],
+            "operator": identity.get("short_name")
+            or identity.get("display_name")
+            or identity.get("name"),
+        }
+        map_info = public if legacy else declaration.get("map") or {}
+        realtime = declaration.get("realtime", {}) if legacy else declaration
+        inputs = _inputs(declaration.get("feeds", {}))
+        stable_ids = public.get("stable_vehicle_ids")
+        if isinstance(stable_ids, bool):
+            inputs["stable_vehicle_ids"] = stable_ids
+        providers.append(
+            {
+                "id": city,
+                "timezone": service_zone(identity).key,
+                "labels": {lang: labels.get(lang, fallback) for lang in ("en", "fr")},
+                "bounds": _bounds(identity.get("bounds") if legacy else public.get("bounds")),
+                "fit_bounds": _bounds(public.get("fit_bounds")),
+                "max_bounds": _bounds(public.get("max_bounds")),
+                "geocode_context": public.get("geocode_context"),
+                "posters_url": map_info.get("posters_url"),
+                "alert_links": (public if legacy else declaration).get("alert_links") or {},
+                "inputs": inputs,
+                "lines_without_live_data": [
+                    {key: gap.get(key, []) for key in ("route_types", "route_ids")}
+                    for gap in realtime.get("lines_without_live_data") or []
+                ],
+            }
+        )
+        if (public if legacy else declaration).get("default_city") is True:
+            defaults.append(city)
+    if len(defaults) != 1:
+        raise RuntimeError("exactly one public default city is required")
+    return {"default_provider": defaults[0], "providers": providers}

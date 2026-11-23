@@ -2,8 +2,7 @@ import { env as cloudflareEnv } from 'cloudflare:workers';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { GeocodeUnavailable, geocode, geocodeSuggestions } from '#lib/geocode/geoCa.ts';
-import { loadProviderCatalog } from '#lib/v1/providers.ts';
-import { getManifest } from '#lib/v1/repositories/manifest.ts';
+import { getCityCatalog } from '#lib/server/engine.ts';
 import type { GeocodeArea } from '#lib/geocode/types.ts';
 import {
 	GEOCODE_RATE_LIMIT,
@@ -56,18 +55,19 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 		);
 	let area: GeocodeArea;
 	try {
-		const catalog = await loadProviderCatalog(fetch);
+		const catalog = await getCityCatalog(request.headers.get('cf-connecting-ip'));
 		const provider = catalog.providers.find(({ id }) => id === ids[0]);
 		if (!provider)
 			return json(
 				{ error: 'invalid_provider' },
 				{ status: 400, headers: { 'cache-control': 'no-store' } },
 			);
-		const manifest = await getManifest({ providerId: provider.id, fetch });
+		if (!provider.bounds) throw new Error('City bounds unavailable');
+		const lang = url.searchParams.get('lang') === 'fr' ? 'fr' : 'en';
 		area = {
-			bbox: manifest.bbox,
-			context: provider.geocode_context ?? manifest.city ?? '',
-			lang: url.searchParams.get('lang') === 'fr' ? 'fr' : 'en',
+			bbox: provider.bounds,
+			context: provider.geocode_context ?? provider.labels[lang].city,
+			lang,
 		};
 	} catch {
 		return json(

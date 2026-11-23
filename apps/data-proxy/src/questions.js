@@ -1,10 +1,10 @@
 import { CORS_HEADERS, PREFLIGHT_HEADERS } from "./cors.js";
-import { providerCatalog } from "./kpis.js";
 import { parseQuestion } from "./question-params.js";
 
 const CLOSED_TTL = 7 * 24 * 60 * 60;
 const OPEN_TTL = 30;
 const LAST_GOOD_TTL = 30 * 24 * 60 * 60;
+const CITY_CATALOG_KEY = "transit-city-catalog";
 const VERSION_HEADER = "x-transit-cleaning-version";
 const PENDING_DAYS_HEADER = "x-transit-days-pending";
 const STALE_HEADER = "x-transit-answer";
@@ -51,16 +51,59 @@ async function cacheMatch(cache, key) {
   }
 }
 
-async function serviceToday(env, city) {
-  // The snapshot manifest publishes the provider's service timezone.
+function serviceToday(timezone) {
   try {
-    const object = await env.SNAPSHOTS.get(`v1/${city}/manifest.json`);
-    const manifest = await object?.json();
-    if (typeof manifest?.tz !== "string") return null;
-    return new Intl.DateTimeFormat("sv-SE", { timeZone: manifest.tz }).format(new Date());
+    return new Intl.DateTimeFormat("sv-SE", { timeZone: timezone }).format(new Date());
   } catch {
     return null;
   }
+}
+
+async function admit(env, visitorIp) {
+  try {
+    const { success } = await env.QUESTION_LIMIT.limit({ key: await hash(visitorIp || "unknown") });
+    return success ? null : busy("60");
+  } catch {
+    return message(503, "question limiter unavailable", { "retry-after": "60" });
+  }
+}
+
+async function loadCities(env, cache, key, authorize, ctx, allowLastGood) {
+  const cached = await cacheMatch(cache, key);
+  if (cached) return { body: await cached.text() };
+  const denied = await authorize();
+  if (denied) return { error: denied };
+  try {
+    const response = await env.ENGINE.fetch(new Request("https://transit-engine.internal/cities", {
+      headers: { authorization: `Bearer ${env.TRANSIT1_ENGINE_ACCESS_TOKEN}` },
+    }));
+    if (response.ok && response.headers.get("content-type")?.startsWith("application/json")) {
+      const body = await response.text();
+      const catalog = JSON.parse(body);
+      if (Array.isArray(catalog?.providers) &&
+          catalog.providers.every((provider) =>
+            typeof provider?.id === "string" && typeof provider?.timezone === "string") &&
+          catalog.providers.some((provider) => provider.id === catalog.default_provider)) {
+        if (cache) ctx.waitUntil(cache.put(key, new Response(body, {
+          headers: { "cache-control": `public, max-age=${OPEN_TTL}` },
+        })).catch(() => console.warn("Transit city cache write failed")));
+        if (env.QUESTION_LAST_GOOD) ctx.waitUntil(env.QUESTION_LAST_GOOD.put(
+          CITY_CATALOG_KEY, body, { expirationTtl: LAST_GOOD_TTL },
+        ).catch(() => console.warn("Last-good city catalog write failed")));
+        return { body };
+      }
+    }
+  } catch {}
+  if (allowLastGood) {
+    // Once admitted, dated questions can still reach their saved answers when the engine is down.
+    try {
+      const saved = await env.QUESTION_LAST_GOOD?.getWithMetadata(CITY_CATALOG_KEY);
+      if (saved?.value != null) return { body: saved.value };
+    } catch {
+      console.warn("Last-good city catalog read failed");
+    }
+  }
+  return { error: message(503, "provider catalog unavailable") };
 }
 
 async function lastGood(env, key) {
@@ -123,30 +166,33 @@ async function answerQuestion(request, env, ctx, visitorIp) {
   }
   if (!question) return message(404, "not found");
 
-  if (question.city !== null && question.route !== "search-index") {
-    const catalog = env.SNAPSHOTS && await providerCatalog(env);
-    if (!Array.isArray(catalog?.providers)) return message(503, "provider catalog unavailable");
-    if (!catalog.providers.some((entry) => entry?.id === question.city)) {
-      return message(400, "unknown city");
-    }
-  }
   if (!env.ENGINE || !env.TRANSIT1_ENGINE_ACCESS_TOKEN) {
     return message(503, "engine not configured");
   }
 
   const cache = globalThis.caches?.default;
+  let admission;
+  const authorize = () => admission ??= admit(env, visitorIp);
+
+  let timezone;
+  if (question.route === "cities" || question.end) {
+    const cityKey = cacheRequest(url.origin, { key: "/cities" }, "unversioned");
+    const cities = await loadCities(env, cache, cityKey, authorize, ctx, question.end !== null);
+    if (cities.error) return cities.error;
+    if (question.route === "cities") return publicAnswer(cities.body, "application/json");
+    const city = JSON.parse(cities.body).providers.find((entry) => entry.id === question.city);
+    if (!city) return message(400, "unknown city");
+    timezone = city.timezone;
+  }
+
   const versionKey = new Request(`${url.origin}/__transit_question_cache/v2/cleaning-version`);
   const versionHint = question.end && await cacheMatch(cache, versionKey);
   const version = versionHint ? cleaningVersion(await versionHint.text()) : null;
   const cached = await cacheMatch(cache, cacheRequest(url.origin, question, version ?? "unversioned"));
   if (cached) return publicAnswer(cached.body, cached.headers.get("content-type"));
 
-  try {
-    const { success } = await env.QUESTION_LIMIT.limit({ key: await hash(visitorIp || "unknown") });
-    if (!success) return busy("60");
-  } catch {
-    return message(503, "question limiter unavailable", { "retry-after": "60" });
-  }
+  const denied = await authorize();
+  if (denied) return denied;
 
   const storageKey = hash(question.key);
   let body;
@@ -186,7 +232,7 @@ async function answerQuestion(request, env, ctx, visitorIp) {
     return lastGood(env, storageKey);
   }
 
-  const today = reportedVersion && settled && await serviceToday(env, question.city);
+  const today = reportedVersion && settled && serviceToday(timezone);
   const ttl = today && question.end < today ? CLOSED_TTL : OPEN_TTL;
   ctx.waitUntil(remember(
     cache, url.origin, question, reportedVersion, versionKey, ttl, body, contentType,

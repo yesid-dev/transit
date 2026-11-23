@@ -4,7 +4,7 @@ import logging
 import os
 import re
 import sys
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from hmac import compare_digest
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -14,6 +14,7 @@ from uuid import uuid4
 import uvicorn
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 
+from transit_engine.cities import UnknownCity, city_catalog, public_declaration, service_zone
 from transit_engine.health import data_health
 from transit_engine.measures import (
     CORRIDOR_RANKING_DEFAULT,
@@ -26,7 +27,7 @@ from transit_engine.measures import (
     methods,
 )
 from transit_engine.ranking import DEFAULT_LIMIT, Ranking, rank, ranking_csv
-from transit_engine.search import UnknownSearchCity, search_index
+from transit_engine.search import schedule_index, search_index
 from transit_engine.series import SeriesGroup
 from transit_engine.store import Store, env_int
 
@@ -237,6 +238,12 @@ class Engine:
         if scope["path"] == "/healthz":
             await respond(send, 200, {"boot_id": self.boot_id, "peak_rss_bytes": peak_rss_bytes()})
             return
+        if scope["path"] == "/cities":
+            if scope["query_string"]:
+                await respond(send, 400, {"message": "this endpoint takes no parameters"})
+            else:
+                await respond(send, 200, await asyncio.to_thread(city_catalog))
+            return
         if scope["path"] == "/how-we-measure":
             if scope["query_string"]:
                 await respond(send, 400, {"message": "this endpoint takes no parameters"})
@@ -247,14 +254,14 @@ class Engine:
             await self._data_health(scope["query_string"], send)
             return
         route = scope["path"]
-        if route not in {"/measure", "/ranking", "/search-index"}:
+        if route not in {"/measure", "/ranking", "/search-index", "/schedule-index"}:
             await respond(send, 404, {"message": "not found"})
             return
         try:
             question: Question | Ranking | str
             language: Language
             raw = scope["query_string"]
-            if route == "/search-index":
+            if route in {"/search-index", "/schedule-index"}:
                 fields = parse_qs(raw.decode("ascii"), strict_parsing=True, max_num_fields=1)
                 if set(fields) != {"city"}:
                     raise ValueError("provide city")
@@ -288,6 +295,11 @@ class Engine:
         # Keep the slot until DuckDB stops, including when a caller disconnects.
         def run_query() -> tuple[dict[str, Any] | str, int]:
             if isinstance(question, str):
+                if route == "/schedule-index":
+                    _, identity, _ = public_declaration(question)
+                    today = datetime.now(UTC).astimezone(service_zone(identity)).date()
+                    schedule = schedule_index(self.store, question, today - timedelta(days=1))
+                    return {"schedule": schedule}, 0
                 return search_index(self.store, question), 0
             if isinstance(question, Ranking):
                 answer = rank(self.store, question)
@@ -307,7 +319,7 @@ class Engine:
         query.add_done_callback(finished)
         try:
             payload, days_pending = await asyncio.shield(query)
-        except UnknownSearchCity as error:
+        except UnknownCity as error:
             await respond(send, 400, {"message": str(error)}, queued=queued)
         except Exception as error:
             # DuckDB errors can include storage configuration. Log the class only.

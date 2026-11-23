@@ -12,12 +12,15 @@ MAX_POLL_AGE_SECONDS = 120
 MAX_POLL_SPACING_SECONDS = 120
 
 
-def provider_declaration(provider: str) -> dict[str, object]:
-    directory = Path(
+def provider_directory() -> Path:
+    return Path(
         os.environ.get("ENGINE_PROVIDER_DECLARATIONS")
         or Path(__file__).resolve().parents[3] / "db" / "config" / "providers"
     )
-    declaration = directory / f"{provider}.yaml"
+
+
+def provider_declaration(provider: str) -> dict[str, object]:
+    declaration = provider_directory() / f"{provider}.yaml"
     if not declaration.is_file():
         return {}
     data = yaml.safe_load(declaration.read_text(encoding="utf-8"))

@@ -12,6 +12,8 @@ export const QUESTION_PARAMS = {
     optional: [...COMMON_CUTS, "class", "limit"],
   },
   "search-index": { required: [], optional: [] },
+  "schedule-index": { required: [], optional: [] },
+  cities: { required: [], optional: [] },
   "data-health": { required: ["from", "to"], optional: [] },
   "how-we-measure": { required: [], optional: ["lang"] },
 };
@@ -47,12 +49,12 @@ function serviceDate(value) {
 }
 
 export function parseQuestion(url) {
-  const catalog = url.pathname === "/v2/how-we-measure";
-  const match = /^\/v2\/([^/]+)\/(measure|ranking|data-health|search-index)$/.exec(url.pathname);
+  const catalog = ["/v2/how-we-measure", "/v2/cities"].includes(url.pathname);
+  const match = /^\/v2\/([^/]+)\/(measure|ranking|data-health|search-index|schedule-index)$/.exec(url.pathname);
   if (!catalog && !match) return null;
 
-  const [, city, route] = match ?? [null, null, "how-we-measure"];
-  if (route === "search-index" && !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(city)) {
+  const [, city, route] = match ?? [null, null, url.pathname.slice("/v2/".length)];
+  if ((route === "search-index" || route === "schedule-index") && !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(city)) {
     throw new Error("invalid city");
   }
   const { required, optional } = QUESTION_PARAMS[route];
@@ -104,7 +106,7 @@ export function parseQuestion(url) {
   if (params.get("limit") === "100") params.delete("limit");
   params.sort();
 
-  const path = city === null ? "/how-we-measure" : `/${city}/${route}`;
+  const path = city === null ? `/${route}` : `/${city}/${route}`;
   const key = params.size ? `${path}?${params}` : path;
   const upstream = new URL(`https://transit-engine.internal/${route}`);
   if (city !== null) params.set("city", city);

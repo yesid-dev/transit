@@ -5,4 +5,4 @@
 	let { data }: { data: PageData } = $props();
 </script>
 
-<StopsIndex record={data.finderRecord} />
+<StopsIndex record={data.finderRecord} schedule={data.schedule} provider={data.provider} />

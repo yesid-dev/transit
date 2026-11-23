@@ -20,6 +20,18 @@ export const PublicProviderSchema = z.object({
 	alert_links: z.object({ en: z.url().optional(), fr: z.url().optional() }),
 	inputs: z.record(z.string(), z.boolean()),
 });
+export const PublicCitySchema = PublicProviderSchema.extend({
+	timezone: z.string().min(1),
+	bounds: bounds.nullable(),
+	lines_without_live_data: z.array(
+		z.object({
+			route_types: z.array(z.int()),
+			route_ids: z.array(z.string()),
+		}),
+	),
+});
+export type PublicCity = z.infer<typeof PublicCitySchema>;
+
 export type PublicProvider = z.infer<typeof PublicProviderSchema>;
 
 export const PublicProviderCatalogSchema = z
@@ -34,4 +46,14 @@ export const PublicProviderCatalogSchema = z
 		const ids = new Set(providers.map(({ id }) => id));
 		return ids.size === providers.length && ids.has(default_provider);
 	}, 'Catalog providers must be unique and include the default');
+export const CityCatalogSchema = z
+	.object({
+		default_provider: providerId,
+		providers: z.array(PublicCitySchema).min(1),
+	})
+	.refine(({ default_provider, providers }) => {
+		const ids = new Set(providers.map(({ id }) => id));
+		return ids.size === providers.length && ids.has(default_provider);
+	}, 'Catalog providers must be unique and include the default');
+
 export type PublicProviderCatalog = z.infer<typeof PublicProviderCatalogSchema>;

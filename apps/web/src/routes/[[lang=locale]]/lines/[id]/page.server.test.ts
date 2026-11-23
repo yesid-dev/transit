@@ -45,7 +45,7 @@ function event(id = '24'): Parameters<typeof load>[0] {
 			v1: { manifest: harness.ctx.manifest },
 			providerId: harness.ctx.providerId,
 			lang: 'en',
-			routesIndex: { routes: [{ id: '24', short: '24', long: 'Sherbrooke' }] },
+			schedule: { routes: [{ id: '24', short: '24', long: 'Sherbrooke' }], stops: [] },
 		}),
 		request: new Request(`https://transit.yesid.dev/lines/${id}`),
 	} as unknown as Parameters<typeof load>[0];
@@ -347,7 +347,7 @@ it.each(['en', 'fr'] as const)(
 			parent: async () => ({
 				lang,
 				v1: { manifest: harness.ctx.manifest },
-				routesIndex: { routes: [{ id: '1-373', short: '1', long: 'Confederation' }] },
+				schedule: { routes: [{ id: '1-373', short: '1', long: 'Confederation' }], stops: [] },
 			}),
 		});
 		harness.getRoute.mockResolvedValue(null);

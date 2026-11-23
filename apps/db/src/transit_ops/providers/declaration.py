@@ -189,6 +189,7 @@ class Declaration(_Block):
     website: _Https | None = None
     currency: Annotated[str, Field(pattern=r"^[A-Z]{3}$")] | None = None
     stage: Literal["candidate", "capturing", "public"]
+    default_city: Annotated[bool, Field(strict=True)] = False
     licence: Licence
     attribution: dict[_Locale, _Text]
     disclaimer: dict[_Locale, _Text] | None = None

@@ -2,7 +2,6 @@
 	import { page } from '$app/state';
 	import { Surface } from '@yesid/ui/layout';
 	import { localizeHref } from '#lib/i18n/index.ts';
-	import { directionHeadsigns } from '#lib/features/lines/directions.ts';
 	import { directionLabel } from '#lib/features/lines/lineRecordText.ts';
 	import {
 		choose,
@@ -29,7 +28,6 @@
 	import { carryFrameState, frameHref } from '#lib/site/frameState.ts';
 	import type { PageData } from './$types';
 	import type { RecordAnswer, RecordSeries } from '#lib/server/engine.ts';
-	import type { RouteFile } from '#lib/v1/schemas/route.ts';
 
 	let { data }: { data: PageData } = $props();
 	const display = transitDisplay();
@@ -40,25 +38,8 @@
 	const subject = $derived(
 		t(`Line ${line}, ${clock} departure`, `Ligne ${line}, départ de ${clock}`),
 	);
-	let metadata = $state.raw<RouteFile | null>(null);
-	$effect(() => {
-		const request = data.metadata;
-		let current = true;
-		metadata = null;
-		void request.then((route) => {
-			if (current) metadata = route;
-		});
-		return () => {
-			current = false;
-		};
-	});
-	const stopNames = $derived(
-		new Map(
-			metadata?.directions?.flatMap(
-				(entry) => entry.stops?.map((stop) => [stop.id, stop.name] as const) ?? [],
-			) ?? [],
-		),
-	);
+
+	const stopNames = $derived(new Map(Object.entries(data.stopNames)));
 	const pinned = $derived.by(() => {
 		const url = new URL(page.url.href);
 		url.searchParams.set('provider', data.city);
@@ -103,11 +84,7 @@
 			<a class="w-fit" href={lineHref}>{t('See the line', 'Voir la ligne')}</a>
 			<h1>{subject}</h1>
 			<p>
-				{directionLabel(
-					data.identity.direction,
-					directionHeadsigns(metadata?.directions),
-					data.lang,
-				)}
+				{directionLabel(data.identity.direction, data.headsigns, data.lang)}
 			</p>
 			<nav class="flex flex-wrap gap-x-4" aria-label={t('Departure views', 'Vues du départ')}>
 				<a

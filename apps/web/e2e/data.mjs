@@ -306,22 +306,60 @@ const server = createServer((request, response) => {
 		response.writeHead(200, { 'content-type': 'application/json' }).end(methodCatalog);
 		return;
 	}
-	const search = /^\/v2\/([^/]+)\/search-index$/.exec(url.pathname);
+	if (url.pathname === '/v2/cities' && !url.search) {
+		const { default_provider, providers } = JSON.parse(files['/v1/providers.json']);
+		response.writeHead(200, { 'content-type': 'application/json' }).end(
+			JSON.stringify({
+				default_provider,
+				providers: providers.map((provider) => ({
+					...provider,
+					timezone: 'America/Toronto',
+					bounds: provider.max_bounds,
+					lines_without_live_data: [
+						{ route_types: [provider.id === 'stm' ? 1 : 0], route_ids: [] },
+					],
+				})),
+			}),
+		);
+		return;
+	}
+	const search = /^\/v2\/([^/]+)\/(search-index|schedule-index)$/.exec(url.pathname);
 	if (search && !url.search) {
-		const [, city] = search;
+		const [, city, kind] = search;
 		const data = JSON.parse(
 			files[`/v1/${city}/static/routes_index.json`] ?? read('routes-index.json'),
 		);
 		const stops = JSON.parse(
 			files[`/v1/${city}/static/stops_index.json`] ?? read('stops-index.json'),
 		);
+		const route = JSON.parse(
+			files[`/v1/${city}/static/routes/24.json`] ?? files['/v1/stm/static/routes/24.json'],
+		);
+		const stopsForLine = route.directions.flatMap(({ stops }) => stops);
+		const fromRoute = Array.from(
+			new Map(
+				stopsForLine.map(({ id, name }) => [
+					id,
+					{ id, name, code: null, lat: 45.5, lon: -73.6, routes: ['24'] },
+				]),
+			).values(),
+		);
+		const editionStops = new Map(stops.stops.map((stop) => [stop.id, stop]));
+		for (const stop of fromRoute) {
+			if (!editionStops.has(stop.id)) editionStops.set(stop.id, stop);
+		}
 		response.writeHead(200, { 'content-type': 'application/json' }).end(
 			JSON.stringify({
 				schedule: {
 					date: '2026-11-21',
 					routes: data.routes,
+					...(kind === 'schedule-index'
+						? {
+								route_directions: { 24: route.directions },
+							}
+						: {}),
 					stops: [
-						...stops.stops,
+						...editionStops.values(),
 						{
 							id: 'clean-search-stop',
 							name: 'Crémazie Clean',
@@ -332,8 +370,7 @@ const server = createServer((request, response) => {
 						},
 					],
 				},
-				vehicles: [{ id: '40061' }],
-				vehicle_state: 'ready',
+				...(kind === 'search-index' ? { vehicles: [{ id: '40061' }], vehicle_state: 'ready' } : {}),
 			}),
 		);
 		return;

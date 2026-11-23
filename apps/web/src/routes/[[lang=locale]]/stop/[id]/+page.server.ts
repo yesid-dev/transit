@@ -26,9 +26,10 @@ export const load: PageServerLoad = async (event) => {
 
 	const id = event.params.id.trim() || event.params.id;
 	const fallback: IdentitySeed = { id, name: id };
-	const { v1, lang, providerId } = await event.parent();
+	const { v1, lang, providerId, schedule } = await event.parent();
 	const period =
 		view === 'record' ? parseFrameState(event.url.searchParams, frameToday()).period : null;
+	const scheduledStop = schedule?.stops.find((stop) => stop.id === id);
 	const frame = period
 		? {
 				record: loadStopRecord(
@@ -39,6 +40,18 @@ export const load: PageServerLoad = async (event) => {
 		: frameLive
 			? { frameLive }
 			: {};
+	if (period) {
+		const name = scheduledStop?.name.trim();
+		return {
+			...frame,
+			seed: name ? { id, name } : fallback,
+			stopSeed: null,
+			stopCode: scheduledStop?.code,
+			...(name
+				? { seoTitle: stopPageTitle(stopDisplayName(name), scheduledStop?.code, lang) }
+				: {}),
+		};
+	}
 	if (!v1) return { ...frame, seed: fallback, stopSeed: null };
 
 	try {
