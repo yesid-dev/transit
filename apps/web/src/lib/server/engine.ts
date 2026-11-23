@@ -214,10 +214,12 @@ const recordMeasure = recordEnvelope.extend({
 	info: z
 		.array(
 			z.object({
-				text: z.object({
-					en: z.object({ counts: z.string(), exclusions: z.string(), limits: z.string() }),
-					fr: z.object({ counts: z.string(), exclusions: z.string(), limits: z.string() }),
-				}),
+				text: z
+					.object({
+						en: z.object({ counts: z.string(), limits: z.string() }),
+						fr: z.object({ counts: z.string(), limits: z.string() }),
+					})
+					.optional(),
 			}),
 		)
 		.optional(),
