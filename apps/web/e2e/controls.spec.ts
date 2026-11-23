@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { copy as searchCopy } from '../src/lib/features/search/search.copy';
 import { PUBLISHED_LOCALES } from '../src/lib/i18n/config';
@@ -29,16 +28,8 @@ for (const locale of PUBLISHED_LOCALES) {
 }
 
 test('load-more keeps a visible keyboard ring and loads the next batch', async ({ page }) => {
-	const source = JSON.parse(readFileSync(new URL('./stops-index.json', import.meta.url), 'utf8'));
-	const template = source.stops[0];
-	source.stops = Array.from({ length: 25 }, (_, index) => ({
-		...template,
-		id: `F${index + 1}`,
-		code: String(90001 + index),
-		name: `Fixture stop ${index + 1}`,
-	}));
-	await page.route('**/static/stops_index.json', (route) => route.fulfill({ json: source }));
-	await page.goto('/stops');
+	await page.goto('/stops?provider=stm&q=Pagination%20sample');
+	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 	const more = page.getByRole('button', { name: 'Show 5 more stops', exact: true });
 	await expect(more).toBeVisible();
 	await more.focus();
@@ -59,5 +50,5 @@ test('load-more keeps a visible keyboard ring and loads the next batch', async (
 	expect((await more.boundingBox())!.height).toBeGreaterThanOrEqual(44);
 	await page.keyboard.press('Enter');
 	await expect(more).toHaveCount(0);
-	await expect(page.getByRole('link', { name: 'Fixture stop 25', exact: true })).toBeVisible();
+	await expect(page.getByRole('link', { name: 'Pagination sample 25', exact: true })).toBeVisible();
 });

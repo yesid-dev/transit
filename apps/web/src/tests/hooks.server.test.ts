@@ -385,6 +385,7 @@ describe('server HTML edge cache', () => {
 	it.each([
 		['https://transit.yesid.dev/fr?provider=stm', '/[[lang=locale]]'],
 		['https://transit1.yesid.dev/lines/24', '/[[lang=locale]]/lines/[id]'],
+		['http://127.0.0.1:4317/lines/24', '/[[lang=locale]]/lines/[id]'],
 		['http://127.0.0.1:4317/fr/lines/24?frameMode=record', '/[[lang=locale]]/lines/[id]'],
 		['https://transit1.yesid.dev/fr/lines/24?tab=schedule', '/[[lang=locale]]/lines/[id]'],
 		['https://transit1.yesid.dev/hotspots?kind=stop', '/[[lang=locale]]/hotspots'],
@@ -411,7 +412,7 @@ describe('server HTML edge cache', () => {
 	});
 
 	it.each([
-		'https://transit.yesid.dev/lines/24',
+		'http://127.0.0.1:4317/lines/24?frameMode=live&tab=detail',
 		'https://transit1.yesid.dev/lines/24?frameMode=live&tab=detail',
 	])('preserves the cache policy for %s', async (url) => {
 		const cache = cacheHarness(html('cached'));

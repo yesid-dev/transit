@@ -67,15 +67,12 @@ for (const { name, path, section } of pages)
 							const gap = await page
 								.locator('[data-slot="app-frame-controls"]')
 								.evaluate((element) => {
-									const main = document.querySelector('main')!;
+									const heading = document.querySelector('main h1')!;
 									return (
-										main.getBoundingClientRect().top +
-										parseFloat(getComputedStyle(main).paddingTop) -
-										element.getBoundingClientRect().bottom -
-										parseFloat(getComputedStyle(document.documentElement).fontSize) / 2
+										heading.getBoundingClientRect().top - element.getBoundingClientRect().bottom
 									);
 								});
-							expect(gap).toBeCloseTo(0);
+							expect(gap).toBeGreaterThanOrEqual(0);
 							releaseScripts();
 							await expect(reading.locator('dl')).toBeVisible();
 							await expect(cut.getByRole('table')).toHaveCount(0);

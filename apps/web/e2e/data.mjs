@@ -353,6 +353,20 @@ const server = createServer((request, response) => {
 		for (const stop of fromRoute) {
 			if (!editionStops.has(stop.id)) editionStops.set(stop.id, stop);
 		}
+		if (city === 'stm' && kind === 'schedule-index') {
+			// Keep the keyboard pagination case independent of the search index fixture.
+			for (let n = 1; n <= 25; n++) {
+				const id = `pagination-stop-${n}`;
+				editionStops.set(id, {
+					id,
+					name: `Pagination sample ${n}`,
+					code: String(99000 + n),
+					lat: 45.5,
+					lon: -73.6,
+					routes: [],
+				});
+			}
+		}
 		response.writeHead(200, { 'content-type': 'application/json' }).end(
 			JSON.stringify({
 				schedule: {

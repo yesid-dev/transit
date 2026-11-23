@@ -56,15 +56,22 @@ export const streamingLayoutTest = base.extend({
 			return;
 		}
 		const worker = new URL(baseURL!);
+		if (worker.protocol !== 'http:' || worker.hostname !== '127.0.0.1')
+			throw new Error('Streaming relay requires a loopback HTTP worker');
 		const relay = createServer((incoming, outgoing) => {
-			const url = new URL(incoming.url ?? '/', worker);
-			if (url.origin !== worker.origin) {
+			const path = incoming.url;
+			if (!path?.startsWith('/') || path.startsWith('//')) {
 				outgoing.writeHead(400).end();
 				return;
 			}
 			const upstream = request(
-				url,
-				{ method: incoming.method, headers: { ...incoming.headers, host: worker.host } },
+				{
+					hostname: '127.0.0.1',
+					port: worker.port,
+					path,
+					method: incoming.method,
+					headers: { ...incoming.headers, host: worker.host },
+				},
 				(response) => {
 					const headers = { ...response.headers };
 					const csp = headers['content-security-policy'];

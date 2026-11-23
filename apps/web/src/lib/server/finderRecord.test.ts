@@ -58,13 +58,27 @@ it('streams complete groups for the selected city and period through the service
 	).toBe(true);
 });
 
-it('leaves an unframed listing on the existing surface', async () => {
-	fetcher.mockReset();
-	const event = {
-		url: new URL('https://transit.yesid.dev/stops?q=Fixture'),
-		request: new Request('https://transit.yesid.dev/stops'),
-		parent: async () => ({ providerId: 'test-network' }),
-	};
-	expect(await loadStops(event as Parameters<typeof loadStops>[0])).toEqual({ finderRecord: null });
-	expect(fetcher).not.toHaveBeenCalled();
+it('uses the default Record period for bare finders on a local host', async () => {
+	vi.useFakeTimers();
+	try {
+		vi.setSystemTime(new Date('2026-11-23T15:00:00Z'));
+		fetcher.mockReset().mockImplementation(async () => new Response(null, { status: 503 }));
+		const event = (path: string) => ({
+			url: new URL(`http://127.0.0.1:4317/${path}?q=Fixture`),
+			request: new Request('http://127.0.0.1:4317'),
+			parent: async () => ({ providerId: 'test-network' }),
+		});
+		const lines = await loadLines(event('lines') as Parameters<typeof loadLines>[0]);
+		const stops = await loadStops(event('stops') as Parameters<typeof loadStops>[0]);
+		const period = { from: '2026-11-16', to: '2026-11-22', preset: '7-days' };
+		expect(lines.finderRecord?.period).toEqual(period);
+		expect(stops.finderRecord?.period).toEqual(period);
+		expect(fetcher.mock.calls.map(([request]) => request.url)).toEqual([
+			'https://data.yesid.dev/v2/test-network/measure?from=2026-11-16&to=2026-11-22&measure=on_time&group=line',
+			'https://data.yesid.dev/v2/test-network/measure?from=2026-11-16&to=2026-11-22&measure=trips_run&group=line',
+			'https://data.yesid.dev/v2/test-network/measure?from=2026-11-16&to=2026-11-22&measure=on_time&group=stop_id',
+		]);
+	} finally {
+		vi.useRealTimers();
+	}
 });
