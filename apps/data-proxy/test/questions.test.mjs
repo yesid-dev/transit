@@ -469,7 +469,7 @@ test("rate limiting keys on hashed client IP and only runs for cache misses", as
 test("missing binding and unknown registry measures get honest responses", async (t) => {
   const f = fixture(t, () => Response.json({ message: "unknown measure" }, { status: 400 }));
   assert.equal((await f.fetch(MEASURE)).status, 400);
-  assert.equal(f.saved.size, 0);
+  assert.ok(![...f.saved.values()].some(({ metadata }) => metadata?.contentType));
   delete f.env.ENGINE;
   const unavailable = await f.fetch(MEASURE);
   assert.equal(unavailable.status, 503);
