@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { z } from 'zod';
+import { searchIndexSchema } from '#lib/search/searchIndex.ts';
 import type { DateWindow } from '#lib/v1/history/window.ts';
 
 export const ENGINE_TIMEOUT_MS = 20_000;
@@ -432,4 +433,8 @@ export function getMethodCatalog(visitorIp?: string | null) {
 
 export function getRecordDataHealth(period: EnginePeriod) {
 	return periodQuery('/data-health', period, {}, dataHealth);
+}
+
+export function getSearchIndex(city: string, visitorIp?: string | null) {
+	return query(`/${encodeURIComponent(city)}/search-index`, {}, searchIndexSchema, visitorIp);
 }

@@ -2,6 +2,7 @@
 
 import csv
 import zlib
+from collections import defaultdict
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -43,6 +44,8 @@ class ArchiveScheduleContext:
     _times: Mapping[str, tuple[ScheduledStopTime, ...]]
     _stops: Mapping[str, ScheduledStop]
     route_types: Mapping[str, int]
+    search_routes: tuple[dict[str, Any], ...]
+    search_stops: tuple[dict[str, Any], ...]
 
     def __init__(
         self,
@@ -105,6 +108,64 @@ class ArchiveScheduleContext:
             MappingProxyType({r["route_id"]: r["route_type"] for r in rows["routes"]}),
         )
 
+        object.__setattr__(
+            self,
+            "search_routes",
+            tuple(
+                {
+                    "id": row["route_id"],
+                    "short": row["route_short_name"] or "",
+                    "long": row["route_long_name"],
+                    "type": row["route_type"],
+                    "color": row["route_color"],
+                }
+                for row in sorted(rows["routes"], key=lambda row: row["route_id"])
+            ),
+        )
+        object.__setattr__(
+            self,
+            "search_stops",
+            tuple(
+                {
+                    "id": row["stop_id"],
+                    "code": row["stop_code"],
+                    "name": row["stop_name"],
+                    "lat": row["stop_lat"],
+                    "lon": row["stop_lon"],
+                }
+                for row in sorted(rows["stops"], key=lambda row: row["stop_id"])
+                if row["stop_name"]
+                and row["stop_lat"] is not None
+                and row["stop_lon"] is not None
+                and row["location_type"] in (0, None)
+            ),
+        )
+
+    def search_index(self, day: date) -> dict[str, Any]:
+        # Include the full edition so a weekend index still lists weekday-only service.
+        routes_by_stop: dict[str, set[str]] = defaultdict(set)
+        for trip_id, times in self._times.items():
+            route = self._trips[trip_id].route_id
+            for time in times:
+                routes_by_stop[time.stop_id].add(route)
+        stops = []
+        modes = {0: "tram", 1: "metro", 2: "rail", 3: "bus", 4: "ferry"}
+        for row in self.search_stops:
+            routes = sorted(routes_by_stop[row["id"]])
+            if not routes:
+                continue
+            kinds = {
+                modes.get(self.route_types[route]) for route in routes if route in self.route_types
+            }
+            stops.append(
+                {**row, "routes": routes, "mode": next(iter(kinds)) if len(kinds) == 1 else None}
+            )
+        return {
+            "date": day.isoformat(),
+            "routes": self.search_routes,
+            "stops": stops,
+        }
+
     def trip(self, service_date: date, trip_id: str) -> ScheduledTrip | None:
         return self._trips[trip_id] if trip_id in self.days[service_date].trip_ids else None
 
@@ -128,9 +189,10 @@ def _seconds(value: str | None) -> int | None:
 
 def _member_columns(archive: ZipFile, member_name: str) -> set[str]:
     """Column names present in a GTFS member header."""
-    with archive.open(member_name, "r") as raw, TextIOWrapper(
-        raw, encoding="utf-8-sig", newline=""
-    ) as text:
+    with (
+        archive.open(member_name, "r") as raw,
+        TextIOWrapper(raw, encoding="utf-8-sig", newline="") as text,
+    ):
         reader = csv.reader(text)
         try:
             header = next(reader)

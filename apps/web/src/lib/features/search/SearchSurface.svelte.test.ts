@@ -3,8 +3,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { flushSync } from 'svelte';
 import { SvelteURL } from 'svelte/reactivity';
 
-import type { ReliabilitySnapshot } from '#lib/v1/reliabilitySnapshot.svelte.ts';
-import type { RouteIndexEntry, StopIndexEntry, Vehicle } from '#lib/v1/schemas/index.ts';
+import type { RouteIndexEntry, StopIndexEntry } from '#lib/v1/schemas/index.ts';
 import SearchSurface from './SearchSurface.svelte';
 
 const ROUTES: RouteIndexEntry[] = [
@@ -29,28 +28,6 @@ const STOPS: StopIndexEntry[] = [
 		mode: 'metro',
 	},
 ];
-const VEHICLES: Vehicle[] = [
-	{
-		id: '40061',
-		lat: 45.5,
-		lon: -73.6,
-		status: 'late',
-		updated_utc: '2026-06-16T00:00:00Z' as Vehicle['updated_utc'],
-		route: '161',
-		trip: '296851600',
-		next_stop: '57191',
-		bearing: 90,
-		occupancy: 'few_seats',
-		delay_min: 4,
-	},
-];
-
-const routeSnaps = new Map<string, ReliabilitySnapshot>();
-const stopSnaps = new Map<string, ReliabilitySnapshot>();
-function snap(partial: Partial<ReliabilitySnapshot>): ReliabilitySnapshot {
-	return { phase: 'idle', otpPct: null, verdict: null, series: [], ...partial };
-}
-
 const localeState = vi.hoisted(() => ({ locale: 'en' as 'en' | 'fr' }));
 vi.mock('#lib/i18n/index.ts', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/i18n/index.ts')>()),
@@ -58,7 +35,6 @@ vi.mock('#lib/i18n/index.ts', async (importOriginal) => ({
 }));
 
 const urlBox = vi.hoisted(() => ({ query: 'q=ber', nav: null as URL | null }));
-const liveHarness = vi.hoisted(() => ({ createLiveStore: vi.fn() }));
 function setUrlQuery(q: string) {
 	urlBox.query = q;
 }
@@ -83,91 +59,38 @@ vi.mock('$app/navigation', () => ({
 }));
 vi.mock('#lib/site/urlMirror.ts', () => ({ mirrorSearchParams: mirror }));
 
-vi.mock('#lib/v1/repositories/static.ts', () => ({
-	getRoutesIndex: vi.fn(),
-	getStopsIndex: vi.fn(),
-}));
-vi.mock('#lib/v1/boot.ts', () => ({
-	getV1Context: () => ({ manifest: {}, labels: {}, lang: 'en' }),
-}));
-vi.mock('#lib/v1/live/store.svelte.ts', () => ({
-	LIVE_FAMILIES: ['vehicles', 'trips', 'departures', 'alerts', 'network'],
-	createLiveStore: liveHarness.createLiveStore,
-}));
-vi.mock('#lib/v1/reliabilitySnapshot.svelte.ts', () => ({
-	createReliabilityLoader: (kind: 'route' | 'stop') => {
-		const store = kind === 'route' ? routeSnaps : stopSnaps;
-		return {
-			get: (id: string) => store.get(id) ?? snap({}),
-			request: vi.fn(),
-			reliability: () => ({ destroy() {} }),
-			get inFlight() {
-				return 0;
-			},
-		};
-	},
-}));
-
 vi.mock('#lib/v1/resource.svelte.ts', () => ({
-	createResource: (fetcher: () => unknown) => {
-		void fetcher;
-		return nextResource();
-	},
+	createResource: () => ({
+		data: {
+			schedule:
+				scheduleState === 'ok' ? { date: '2026-11-21', routes: routeData, stops: stopData } : null,
+			vehicles: vehicleState === 'ready' ? [{ id: '40061' }] : null,
+			vehicle_state: vehicleState,
+		},
+		loading: scheduleState === 'loading',
+		settled: scheduleState !== 'loading',
+		reload,
+	}),
 }));
 
-type IndexState = 'ok' | 'error' | 'loading';
-let resourceCall = 0;
 let routeData: RouteIndexEntry[] = ROUTES;
 let stopData: StopIndexEntry[] = STOPS;
-const indexState: Record<'routes' | 'stops', IndexState> = { routes: 'ok', stops: 'ok' };
-const reloads = { routes: vi.fn(), stops: vi.fn() };
-function nextResource() {
-	resourceCall += 1;
-	const kind = resourceCall % 2 === 1 ? 'routes' : 'stops';
-	const state = indexState[kind];
-	const data =
-		state !== 'ok'
-			? null
-			: kind === 'routes'
-				? { generated_utc: '2026-06-16T00:00:00Z', routes: routeData }
-				: { generated_utc: '2026-06-16T00:00:00Z', stops: stopData };
-	const error = state === 'error' ? new Error(`${kind} failed`) : null;
-	const loading = state === 'loading';
-	return { data, error, loading, settled: !loading, reload: reloads[kind] };
-}
+let scheduleState: 'ok' | 'error' | 'loading';
+let vehicleState: 'ready' | 'unavailable' | 'not_tracked';
+const reload = vi.fn();
 
 beforeEach(() => {
 	localeState.locale = 'en';
-	routeSnaps.clear();
-	stopSnaps.clear();
-	resourceCall = 0;
 	routeData = ROUTES;
 	stopData = STOPS;
-	indexState.routes = 'ok';
-	indexState.stops = 'ok';
-	reloads.routes.mockReset();
-	reloads.stops.mockReset();
+	scheduleState = 'ok';
+	vehicleState = 'ready';
+	reload.mockClear();
 	mirror.mockClear();
 	navigation.after.length = 0;
 	urlBox.nav = null;
 	vi.unstubAllGlobals();
 	setUrlQuery('q=ber');
-	liveHarness.createLiveStore.mockReset().mockReturnValue({
-		vehicles: { generated_utc: '2026-06-16T00:00:00Z', vehicles: VEHICLES },
-		generatedUtc: '2026-06-16T00:00:00Z',
-		familyStates: {
-			vehicles: {
-				active: true,
-				retainedGeneration: '2026-06-16T00:00:00Z',
-				health: { retained: true, state: 'live', ageSeconds: 0, isStale: false, notice: null },
-			},
-		},
-		ageSeconds: 0,
-		isStale: false,
-		start: vi.fn(),
-		stop: vi.fn(),
-		refresh: vi.fn(() => Promise.resolve()),
-	});
 });
 
 const hubStops = (): StopIndexEntry[] =>
@@ -193,7 +116,9 @@ it('takes the place of another /search URL opened on this page before writing an
 	for (const handler of navigation.after) handler({ type: 'goto', to: { url: new URL(url.href) } });
 	flushSync();
 
-	expect(view.getByRole('textbox', { name: 'Search lines, stops and buses' })).toHaveValue('hub');
+	expect(view.getByRole('textbox', { name: 'Search lines, stops and vehicles' })).toHaveValue(
+		'hub',
+	);
 	expect(view.getByRole('tab', { name: 'Stops (60)' })).toHaveAttribute('aria-selected', 'true');
 	expect(view.getByRole('button', { name: 'Métro' })).toHaveAttribute('aria-pressed', 'true');
 	expect(
@@ -220,47 +145,20 @@ it.each([
 	expect(mirror).toHaveBeenLastCalledWith(expect.objectContaining({ rows: mirrored }));
 });
 
-it.each([
-	['en', false],
-	['fr', false],
-	['en', true],
-] as const)(
-	'keeps a failed live-vehicle group uncounted, with its own Retry (%s, older payload kept: %s)',
-	async (locale, retained) => {
+it.each(['en', 'fr'] as const)(
+	'keeps vehicles without evidence uncounted in %s',
+	async (locale) => {
 		localeState.locale = locale;
-		const en = locale === 'en';
-		const live = liveHarness.createLiveStore();
-		liveHarness.createLiveStore.mockReturnValue({
-			...live,
-			vehicles: retained ? live.vehicles : null,
-			familyStates: {
-				vehicles: {
-					active: true,
-					phase: 'failed',
-					retainedGeneration: retained ? '2026-06-16T00:00:00Z' : null,
-					health: {
-						retained,
-						state: retained ? 'retained-stale' : 'failed-no-data',
-						ageSeconds: retained ? 600 : null,
-						isStale: true,
-						notice: 'refresh-unavailable',
-					},
-				},
-			},
-		});
+		vehicleState = 'unavailable';
 		setUrlQuery('q=van horne');
 		const view = render(SearchSurface);
+		const en = locale === 'en';
 		expect(view.getByRole('region', { name: en ? 'Lines · 1' : 'Lignes · 1' })).toBeInTheDocument();
-		const label = en ? 'Live vehicles' : 'Véhicules en direct';
-		const vehicles = view.getByRole('region', { name: label });
-		expect(view.getByRole('tab', { name: label })).toBeInTheDocument();
-		expect(within(vehicles).queryByRole('button', { name: /^(About|À propos)/ })).toBeNull();
-		await within(vehicles)
-			.getByRole('button', { name: en ? 'Retry' : 'Réessayer' })
+		const group = view.getByRole('region', { name: en ? 'Vehicles' : 'Véhicules' });
+		await within(group)
+			.getByRole('button', { name: en ? 'Try again' : 'Réessayer' })
 			.click();
-		expect(live.refresh).toHaveBeenCalledWith({ force: true });
-		expect(reloads.routes).not.toHaveBeenCalled();
-		expect(reloads.stops).not.toHaveBeenCalled();
+		expect(reload).toHaveBeenCalledOnce();
 	},
 );
 
@@ -312,7 +210,9 @@ describe('SearchSurface idle state', () => {
 							.map((r) => r.getAttribute('href'))
 					: [],
 			).toEqual(ids.map((id) => `/lines/${id}`));
-			expect(view.queryAllByRole('link', { name: /Live bus/ })).toHaveLength(q === '40061' ? 1 : 0);
+			expect(view.queryAllByRole('link', { name: /Vehicle 40061/ })).toHaveLength(
+				q === '40061' ? 1 : 0,
+			);
 			view.unmount();
 		}
 	});
@@ -323,14 +223,11 @@ describe('SearchSurface idle state', () => {
 		expect(container.querySelector('[data-slot="search-census"]')).toBeNull();
 		expect(container.querySelector('[data-slot="freshness-stamp"]')).toBeNull();
 		expect(screen.queryByText(/The network right now|Le réseau en ce moment/)).toBeNull();
-		expect(
-			screen.getByRole('button', { name: /^(Line number|Numéro de ligne)$/ }),
-		).toBeInTheDocument();
 	});
 
 	it('uses the shared listing search with an accessible name and magnifier', () => {
 		const { container } = render(SearchSurface);
-		const box = screen.getByRole('textbox', { name: 'Search lines, stops and buses' });
+		const box = screen.getByRole('textbox', { name: 'Search lines, stops and vehicles' });
 		expect(box.closest('[data-slot="listing-search-field"]')).not.toBeNull();
 		expect(box.parentElement?.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
 		expect(container.querySelector('label[for="surface-search-input"]')).toBeNull();
@@ -339,27 +236,7 @@ describe('SearchSurface idle state', () => {
 	it('shows the instructional idle note before the rider types', () => {
 		setUrlQuery('');
 		render(SearchSurface);
-		expect(liveHarness.createLiveStore.mock.calls[0]?.[2]).toEqual({
-			families: ['vehicles'],
-		});
-		expect(screen.getByText('Search a line, stop or bus')).toBeInTheDocument();
-	});
-});
-
-describe('SearchSurface inline reliability', () => {
-	it('renders the OTP% badge on a stop result whose reliability loaded', () => {
-		stopSnaps.set('10146', snap({ phase: 'ready', otpPct: 88, verdict: 'reliable', kind: 'stop' }));
-		render(SearchSurface);
-		expect(screen.getByText('88%')).toBeInTheDocument();
-		// The row names its measure and period, not only to assistive tech.
-		expect(screen.getByText('not severely late, last 7 days')).toBeInTheDocument();
-	});
-
-	it('shows no badge for a result with no reliability data (honesty)', () => {
-		stopSnaps.set('10146', snap({ phase: 'empty' }));
-		const { container } = render(SearchSurface);
-		expect(container.querySelector('[data-slot="reliability-badge"]')).toBeNull();
-		expect(screen.getByRole('link', { name: /Station Berri-UQAM/i })).toBeInTheDocument();
+		expect(screen.getByText('Search a line, stop or vehicle')).toBeInTheDocument();
 	});
 });
 
@@ -420,18 +297,21 @@ describe('SearchSurface mode chip filter', () => {
 });
 
 describe('SearchSurface vehicle results', () => {
-	it('shows a matched live bus with status, signed delay, and resolved next stop', () => {
+	it('links an exact number to the vehicle record without live claims', () => {
 		setUrlQuery('q=40061');
 		render(SearchSurface);
-
-		const busRow = screen.getByRole('link', { name: 'Live bus 40061, Late, Delay: +4 min' });
-		expect(busRow).toBeInTheDocument();
-		expect(busRow).toHaveAttribute('href', '/map?vehicle=40061');
-		expect(within(busRow).getByText('Late')).toBeInTheDocument();
+		expect(screen.getByRole('link', { name: 'Vehicle 40061' })).toHaveAttribute(
+			'href',
+			'/vehicle/40061',
+		);
+	});
+	it('explains when the feed does not track vehicle numbers', () => {
+		vehicleState = 'not_tracked';
+		setUrlQuery('q=40061&kind=vehicle');
+		render(SearchSurface);
 		expect(
-			within(busRow.closest('[data-slot="entity-result-row"]')!).getByText('+4 min'),
-		).toBeInTheDocument();
-		expect(within(busRow).getByText('Next: Van Horne / Rockland')).toBeInTheDocument();
+			within(screen.getByRole('region', { name: 'Vehicles' })).getByRole('status'),
+		).toHaveTextContent('does not track vehicles by number');
 	});
 });
 
@@ -561,7 +441,9 @@ it('restores the query, kind, modes and revealed rows from the URL', () => {
 	}));
 	setUrlQuery('q=hub&kind=stop&mode=metro&rows=100');
 	const view = render(SearchSurface);
-	expect(view.getByRole('textbox', { name: 'Search lines, stops and buses' })).toHaveValue('hub');
+	expect(view.getByRole('textbox', { name: 'Search lines, stops and vehicles' })).toHaveValue(
+		'hub',
+	);
 	expect(view.getByRole('tab', { name: 'Stops (60)' })).toHaveAttribute('aria-selected', 'true');
 	expect(view.getByRole('button', { name: 'Métro' })).toHaveAttribute('aria-pressed', 'true');
 	const stops = within(view.getByRole('region', { name: 'Stops · 60' }));
@@ -572,7 +454,7 @@ it('restores the query, kind, modes and revealed rows from the URL', () => {
 it('writes the query, kind and modes to the URL as they change', async () => {
 	setUrlQuery('');
 	const view = render(SearchSurface);
-	await fireEvent.input(view.getByRole('textbox', { name: 'Search lines, stops and buses' }), {
+	await fireEvent.input(view.getByRole('textbox', { name: 'Search lines, stops and vehicles' }), {
 		target: { value: 'van horne' },
 	});
 	expect(mirror).toHaveBeenLastCalledWith({ q: 'van horne', kind: null, mode: null, rows: null });
@@ -586,32 +468,22 @@ it('writes the query, kind and modes to the URL as they change', async () => {
 	});
 });
 
-it.each(['en', 'fr'] as const)(
-	'keeps line results when the stop index fails, never counting stops as zero, in %s',
-	async (locale) => {
-		localeState.locale = locale;
-		const en = locale === 'en';
-		indexState.stops = 'error';
-		setUrlQuery('q=van horne');
-		const view = render(SearchSurface);
-		const lines = view.getByRole('region', { name: en ? 'Lines · 1' : 'Lignes · 1' });
-		expect(within(lines).getByRole('link', { name: /161.*Van Horne/ })).toBeInTheDocument();
-		const stops = view.getByRole('region', { name: en ? 'Stops' : 'Arrêts' });
-		expect(view.getByRole('tab', { name: en ? 'Stops' : 'Arrêts' })).toBeInTheDocument();
-		await within(stops)
-			.getByRole('button', { name: en ? 'Retry' : 'Réessayer' })
-			.click();
-		expect(reloads.stops).toHaveBeenCalledTimes(1);
-	},
-);
+it('keeps a missing edition distinct from zero results', async () => {
+	scheduleState = 'error';
+	render(SearchSurface);
+	const stops = screen.getByRole('region', { name: 'Stops' });
+	expect(within(stops).getByRole('status')).toHaveTextContent('Stop search is unavailable');
+	expect(screen.queryByText(noMatch('en', 'ber'))).toBeNull();
+	await within(stops).getByRole('button', { name: 'Try again' }).click();
+	expect(reload).toHaveBeenCalledOnce();
+});
 
-it('shows a group that is still loading without a count and without hiding the other', () => {
-	indexState.routes = 'loading';
-	setUrlQuery('q=van horne');
-	const view = render(SearchSurface);
-	expect(view.getByRole('region', { name: 'Lines' })).toBeInTheDocument();
-	expect(view.getByRole('region', { name: 'Stops · 1' })).toBeInTheDocument();
-	expect(view.queryByText('No line or stop matches “van horne”.')).toBeNull();
+it('shows schedule groups that are still loading without counts', () => {
+	scheduleState = 'loading';
+	render(SearchSurface);
+	expect(screen.getByRole('region', { name: 'Lines' })).toBeInTheDocument();
+	expect(screen.getByRole('region', { name: 'Stops' })).toBeInTheDocument();
+	expect(screen.queryByText(noMatch('en', 'ber'))).toBeNull();
 });
 
 it.each([
@@ -626,15 +498,6 @@ it.each([
 	const link = pages.getByRole('link', { name: new RegExp(name) });
 	expect(link).toHaveTextContent(group);
 	expect(link.getAttribute('href')).toMatch(href);
-});
-
-it('gives the live vehicles their own clock, inside their group', () => {
-	setUrlQuery('q=40061');
-	const view = render(SearchSurface);
-	const vehicles = view.getByRole('region', { name: 'Live vehicles · 1' });
-	expect(within(vehicles).getByRole('link', { name: /Live bus 40061/ })).toBeInTheDocument();
-	expect(vehicles.querySelector('[data-slot="freshness-stamp"]')).not.toBeNull();
-	expect(view.container.querySelectorAll('[data-slot="freshness-stamp"]')).toHaveLength(1);
 });
 
 it.each(['CRÉMAZIE', 'cremazie', 'Berri-UQAM', 'uqam berri'])(
@@ -661,12 +524,9 @@ it.each(['en', 'fr'] as const)(
 			else {
 				expect(view.getByRole('note')).toHaveTextContent(
 					locale === 'en'
-						? 'Search a line, stop or bus'
-						: 'Rechercher une ligne, un arrêt ou un bus',
+						? 'Search a line, stop or vehicle'
+						: 'Rechercher une ligne, un arrêt ou un véhicule',
 				);
-				expect(
-					view.getByRole('button', { name: locale === 'en' ? 'Line number' : 'Numéro de ligne' }),
-				).toBeInTheDocument();
 				expect(view.container.querySelector('[data-slot="freshness-stamp"]')).toBeNull();
 			}
 			view.unmount();

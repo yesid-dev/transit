@@ -471,3 +471,26 @@ test("missing binding and unknown registry measures get honest responses", async
   assert.equal(preflight.status, 204);
   assert.equal(preflight.headers.get("access-control-allow-methods"), "GET, OPTIONS");
 });
+
+
+test("serves and caches the search index with the normal limit and no v1 catalog", async (t) => {
+  const body = { schedule: null, vehicles: null, vehicle_state: "not_tracked" };
+  const harness = fixture(t, (request) => {
+    assert.equal(new URL(request.url).pathname, "/search-index");
+    assert.equal(new URL(request.url).search, "?city=demo");
+    return Response.json(body);
+  });
+  harness.env.SNAPSHOTS = undefined;
+  for (const path of [
+    "/v2/demo/search-index?q=private-term",
+    "/v2/%2e%2e%2fdemo/search-index",
+  ]) assert.equal((await harness.fetch(path)).status, 400);
+  assert.equal((await harness.fetch("/v2/demo/search-index", {}, "POST")).status, 405);
+  for (let i = 0; i < 2; i += 1) {
+    const response = await harness.fetch("/v2/demo/search-index");
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), body);
+  }
+  assert.equal(harness.requests.length, 1);
+  assert.equal(harness.visitors.length, 1);
+});

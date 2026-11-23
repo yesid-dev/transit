@@ -19,7 +19,7 @@
 	import '@yesid/motion/ripple.css';
 	import '../app.css';
 
-	import { onMount, untrack } from 'svelte';
+	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { createNavigationLifecycle } from '@yesid/ui/brand';
 	import { updated } from '$app/state';
@@ -55,10 +55,7 @@
 	import { errorDocumentHead } from '#lib/site/errorPage.ts';
 	import { setV1Context } from '#lib/v1/boot.ts';
 	import { v1Provider } from '#lib/v1/config.ts';
-	import { livePresentation } from '#lib/v1/live/livePresentation.ts';
-	import { liveReader } from '#lib/v1/adapter/index.ts';
-	import { createLiveStore, type LiveStore } from '#lib/v1/live/store.svelte.ts';
-	import { getRoutesIndex, getStopsIndex } from '#lib/v1/repositories/static.ts';
+	import { loadSearchIndex } from '#lib/search/searchIndex.ts';
 	import { createResource } from '#lib/v1/resource.svelte.ts';
 	import { dataPulse } from '#lib/stores/index.ts';
 	import { registerServiceWorker } from '#lib/pwa/register.ts';
@@ -253,49 +250,25 @@
 
 	const edgeLayout = $derived(desktop.current ? 'desktop' : 'mobile');
 	let topSearch = $state('');
-	const chromeSearchEnabled = $derived(v1 !== null && topSearch.trim().length > 0);
-	const searchRoutes = createResource(() => getRoutesIndex(), {
+	const chromeSearchEnabled = $derived(topSearch.trim().length > 0);
+	const searchIndex = createResource((signal) => loadSearchIndex(data.providerId, signal), {
 		enabled: () => chromeSearchEnabled,
+		key: () => data.providerId,
 	});
-	const searchStops = createResource(() => getStopsIndex(), {
-		enabled: () => chromeSearchEnabled,
-	});
-	let searchLive = $state<LiveStore | null>(null);
-	$effect(() => {
-		if (!chromeSearchEnabled || !v1) {
-			searchLive = null;
-			return;
-		}
-		const manifest = v1.manifest;
-		const live = untrack(() => {
-			const store = createLiveStore(manifest, liveReader, { families: ['vehicles'] });
-			store.start();
-			return store;
-		});
-		searchLive = live;
-		return () => live.stop();
-	});
-	const searchPresentation = $derived(
-		searchLive
-			? livePresentation({
-					familyStates: searchLive.familyStates,
-					families: ['vehicles'],
-					locale,
-					page: 'map',
-				})
-			: null,
-	);
-	// Unloaded indexes stay null so the list can tell "still loading" from "no match".
-	const searchList = $derived(
-		searchTransit(
+	const searchList = $derived({
+		...searchTransit(
 			{ surface: 'list', query: topSearch, scope: searchScope },
 			{
-				routes: searchRoutes.data?.routes ?? null,
-				stops: searchStops.data?.stops ?? null,
-				vehicles: searchLive?.vehicles?.vehicles ?? [],
+				routes: searchIndex.data?.schedule?.routes ?? null,
+				stops: searchIndex.data?.schedule?.stops ?? null,
+				vehicles:
+					searchIndex.data?.vehicle_state === 'not_tracked'
+						? []
+						: (searchIndex.data?.vehicles ?? null),
 			},
 		),
-	);
+		indexSettled: searchIndex.settled && !searchIndex.loading,
+	});
 
 	// Keep smooth-scroll state aligned on new paths; SvelteKit restores history entries.
 	function resetMainScroll(hash: string): void {
@@ -320,7 +293,7 @@
 	});
 
 	onMount(() => {
-		if (data.v1Error && !data.v1) void invalidateAll();
+		if (data.v1Error && !data.v1 && seoPath !== '/search') void invalidateAll();
 
 		if (browser && navigator.serviceWorker) {
 			navigator.serviceWorker.addEventListener('message', (event) => {
@@ -405,7 +378,6 @@
 		discoveryError={data.discoveryError}
 		bind:search={topSearch}
 		{searchList}
-		{searchPresentation}
 		{searchScope}
 	>
 		{#snippet main()}
@@ -422,7 +394,7 @@
 						aria-label={mainLabel?.[locale]}
 						class={isFullBleed ? 'min-h-0 grow' : 'grow shrink-0 basis-auto'}
 					>
-						{#if !v1 && !isOverviewRecord && !isStandaloneRecord && !isDataIndependentRoute(seoPath) && !upcomingPage(seoPath)}
+						{#if !v1 && !isOverviewRecord && !isStandaloneRecord && seoPath !== '/search' && !isDataIndependentRoute(seoPath) && !upcomingPage(seoPath)}
 							<div
 								class="mx-auto flex h-full max-w-2xl flex-col items-center justify-center gap-4 p-6"
 							>

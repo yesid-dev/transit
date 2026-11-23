@@ -182,8 +182,8 @@ it('says nothing about matches while the indexes load', () => {
 });
 
 it.each([
-	['en', '1 line. Stops have not been searched yet.'],
-	['fr', '1 ligne. Les arrêts n’ont pas encore été cherchés.'],
+	['en', '1 line. Stop search is unavailable.'],
+	['fr', '1 ligne. La recherche de stations et arrêts est indisponible.'],
 ] as const)(
 	'speaks only the groups it searched and names the one it could not, in %s',
 	async (locale, said) => {

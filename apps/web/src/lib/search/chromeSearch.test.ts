@@ -267,7 +267,7 @@ describe('searchHitHref', () => {
 		expect(searchHitHref(stopResult, from('/lines/17', view))).toBe('/stop/52819');
 	});
 
-	it('opens a live vehicle on the map, dropping foreign params, from any other page', () => {
+	it('opens the vehicle record outside the map and keeps focus on the map', () => {
 		const current = 'x=1&x=&route=24&near=45.5000000%2C-73.5000000&nearLabel=Raw';
 		const vehicle: SearchHit = {
 			kind: 'vehicle',
@@ -275,9 +275,8 @@ describe('searchHitHref', () => {
 			label: '40061',
 		};
 
-		expect(searchHitHref(vehicle, from('/lines/24', current))).toBe(
-			'/map?route=24&vehicle=40061&near=45.500000%2C-73.500000&nearLabel=Raw&focus=vehicle%3A40061',
-		);
+		expect(searchHitHref(vehicle, from('/lines/24', current))).toBe('/vehicle/40061');
+		expect(searchHitHref(vehicle, from('/map'))).toBe('/map?vehicle=40061&focus=vehicle%3A40061');
 	});
 
 	it('falls through to the map near target for an address (no detail route)', () => {

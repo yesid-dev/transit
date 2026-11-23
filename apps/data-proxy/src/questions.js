@@ -123,7 +123,7 @@ async function answerQuestion(request, env, ctx, visitorIp) {
   }
   if (!question) return message(404, "not found");
 
-  if (question.city !== null) {
+  if (question.city !== null && question.route !== "search-index") {
     const catalog = env.SNAPSHOTS && await providerCatalog(env);
     if (!Array.isArray(catalog?.providers)) return message(503, "provider catalog unavailable");
     if (!catalog.providers.some((entry) => entry?.id === question.city)) {

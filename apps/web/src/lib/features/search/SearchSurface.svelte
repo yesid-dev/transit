@@ -1,39 +1,26 @@
 <script lang="ts">
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
-	import { hasOccupancy } from '#lib/site/transitDisplay.ts';
-	import { liveReader } from '#lib/v1/adapter/index.ts';
-	import { livePresentation } from '#lib/v1/live/livePresentation.ts';
 
-	import { verdictCopy } from '#lib/v1/verdict.copy.ts';
-	import { stopReliabilityCopy } from '#lib/features/stops/reliability/stops-reliability.copy.ts';
-	import { onMount, tick, untrack } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { afterNavigate } from '$app/navigation';
 	import { getLocale, getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
 	import { desktop } from '@yesid/ui/state';
 	import { createResource } from '#lib/v1/resource.svelte.ts';
-	import { getRoutesIndex, getStopsIndex } from '#lib/v1/repositories/static.ts';
-	import { getV1Context } from '#lib/v1/boot.ts';
 	import { providerHasAlerts } from '#lib/v1/providers.ts';
-	import { createLiveStore } from '#lib/v1/live/store.svelte.ts';
-	import { createReliabilityLoader } from '#lib/v1/reliabilitySnapshot.svelte.ts';
-	import type { RouteIndexEntry, Vehicle, StatusCode, OccupancyCode } from '#lib/v1/index.ts';
+	import type { RouteIndexEntry } from '#lib/v1/index.ts';
 	import {
 		EntityList,
 		LineStopResult,
-		ReliabilityBadge,
 		SearchControls,
 		TransitEntityRow,
 		type SearchScopeKey,
 	} from '#lib/components/surface/index.ts';
 	import { Masthead, Surface } from '@yesid/ui/layout';
 	import { SearchInput } from '@yesid/ui/brand';
-	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { EdgeState } from '#lib/components/edge/index.ts';
-	import { FreshnessStamp } from '#lib/components/surface/index.ts';
-	import MetricInfo from '#lib/features/metrics/MetricInfo.svelte';
 	import { headerSearchCopy } from '#lib/components/shell/headerSearch.copy.ts';
-	import { metricName } from '#lib/metrics.ts';
 	import { mirrorSearchParams } from '#lib/site/urlMirror.ts';
 	import { createAddressLookup } from '#lib/search/addressLookup.svelte.ts';
 	import { sitePages } from '#lib/search/sitePages.ts';
@@ -46,34 +33,17 @@
 		type TransitModeKey,
 	} from '#lib/search/stopMode.ts';
 	import { routeColor } from '#lib/search/routeColor.ts';
-	import { STATUS_LABELS, OCCUPANCY_LABELS } from '#lib/v1/enumLabels.ts';
-	import VehicleResultRow from './VehicleResultRow.svelte';
-	import { copy, searchExamples, type GroupKind } from './search.copy';
+	import { copy, type GroupKind } from './search.copy';
 
-	const v1 = getV1Context();
+	import { loadSearchIndex } from '#lib/search/searchIndex.ts';
+
+	const providerId = $derived(page.data.providerId ?? '');
 	const locale: Locale = getLocale();
 	const localizeHref = getLocalizeHref();
 	const t = $derived(copy[locale]);
 	const say = $derived(headerSearchCopy[locale]);
 	const edgeLayout = $derived(desktop.current ? 'desktop' : 'mobile');
 	const uid = $props.id();
-
-	const routes = createResource(() => getRoutesIndex());
-	const stops = createResource(() => getStopsIndex());
-
-	const live = createLiveStore(v1.manifest, liveReader, { families: ['vehicles'] });
-	const occupancyAvailable = $derived(
-		hasOccupancy(v1.manifest.provider, live.vehicles?.vehicles ?? []),
-	);
-	onMount(() => {
-		live.start();
-		return () => live.stop();
-	});
-
-	const routeReliability = createReliabilityLoader('route', verdictCopy[locale]);
-	const stopReliability = createReliabilityLoader('stop', stopReliabilityCopy[locale].verdict);
-	const observeRouteReliability = routeReliability.reliability;
-	const observeStopReliability = stopReliability.reliability;
 
 	/** Rows per group while every group shows; a group's own view reveals STEP more at a time. */
 	const PREVIEW = 6;
@@ -110,16 +80,23 @@
 		rows = rowsFrom(params.get('rows'));
 	});
 
-	const pages = sitePages({
-		alerts: page.data?.provider ? providerHasAlerts(page.data.provider) : null,
+	const searchEnabled = $derived(query.trim().length > 0);
+	const index = createResource((signal) => loadSearchIndex(providerId, signal), {
+		enabled: () => searchEnabled,
+		key: () => providerId,
 	});
+	const pages = $derived(
+		sitePages({
+			alerts: page.data?.provider ? providerHasAlerts(page.data.provider) : null,
+		}),
+	);
 	const matches = $derived(
 		searchTransit(
 			{ surface: 'page', query, modes },
 			{
-				routes: routes.data?.routes,
-				stops: stops.data?.stops,
-				vehicles: live.vehicles?.vehicles,
+				routes: index.data?.schedule?.routes,
+				stops: index.data?.schedule?.stops,
+				vehicles: index.data?.vehicles,
 				pages,
 			},
 		),
@@ -127,32 +104,26 @@
 	const text = $derived(query.trim());
 	const hasQuery = $derived(matches.query.length > 0);
 
-	const presentation = $derived(
-		livePresentation({
-			familyStates: live.familyStates,
-			families: ['vehicles'],
-			locale,
-			page: 'map',
-		}),
+	/** An unavailable group has no count. An unsupported group gets its own explanation. */
+	type GroupState = 'loading' | 'failed' | 'ready' | 'not_tracked';
+	const scheduleState = $derived<GroupState>(
+		index.loading || !index.settled ? 'loading' : index.data?.schedule ? 'ready' : 'failed',
 	);
-
-	/** A group that has not loaded, or could not, is never counted: its total is null. */
-	type GroupState = 'loading' | 'failed' | 'ready';
-	const indexState = (resource: typeof routes | typeof stops): GroupState =>
-		resource.error ? 'failed' : resource.data ? 'ready' : 'loading';
-	/** A failed fetch or refresh is failed, even with an older payload kept: that is not a count. */
-	function vehicleState(): GroupState {
-		const family = live.familyStates?.vehicles;
-		if (family?.phase === 'failed' || family?.health?.notice === 'refresh-unavailable')
-			return 'failed';
-		return live.vehicles ? 'ready' : 'loading';
-	}
+	const vehicleState = $derived<GroupState>(
+		index.loading || !index.settled
+			? 'loading'
+			: index.data?.vehicle_state === 'not_tracked'
+				? 'not_tracked'
+				: index.data?.vehicles
+					? 'ready'
+					: 'failed',
+	);
 	const groups = $derived.by(() => {
 		const state: Record<GroupKind, GroupState> = {
-			route: indexState(routes),
-			stop: indexState(stops),
+			route: scheduleState,
+			stop: scheduleState,
 			page: 'ready',
-			vehicle: vehicleState(),
+			vehicle: vehicleState,
 		};
 		const items = {
 			route: matches.routes,
@@ -166,21 +137,14 @@
 			total: state[kind] === 'ready' ? items[kind].length : null,
 		}));
 	});
-	const liveNotice = $derived(
-		presentation.notice.kind === 'none' ? null : presentation.notice.message,
-	);
 	const shownGroups = $derived(
 		scope === 'all'
-			? groups.filter(
-					(group) =>
-						(group.total ?? 0) > 0 ||
-						(group.kind === 'vehicle'
-							? liveNotice != null || group.state === 'failed'
-							: group.kind !== 'page' && group.state !== 'ready'),
-				)
+			? groups.filter((group) => (group.total ?? 0) > 0 || group.state !== 'ready')
 			: groups.filter((group) => group.kind === scope),
 	);
-	const noMatch = $derived(scope === 'all' && groups.every((group) => group.total === 0));
+	const noMatch = $derived(
+		scope === 'all' && groups.every((group) => group.total === 0 || group.state === 'not_tracked'),
+	);
 
 	/** The rows the open group shows: never past its last step once its total is known. */
 	const openTotal = $derived(groups.find((group) => group.kind === scope)?.total ?? null);
@@ -233,11 +197,6 @@
 			[firstNew]?.querySelector<HTMLElement>('a')
 			?.focus();
 	}
-	function retry(kind: GroupKind): void {
-		if (kind === 'route') routes.reload();
-		else if (kind === 'stop') stops.reload();
-		else if (kind === 'vehicle') void live.refresh({ force: true });
-	}
 	const showAll = (kind: GroupKind) =>
 		reveal(kind, PREVIEW, () => {
 			scope = kind;
@@ -248,7 +207,7 @@
 		return reveal(kind, from, () => (rows = from + STEP));
 	};
 
-	const lookup = createAddressLookup(() => ({ providerId: v1.manifest.provider, locale }));
+	const lookup = createAddressLookup(() => ({ providerId, locale }));
 	const addressRow = $derived(scope === 'all' && hasQuery ? lookup.row(text) : null);
 	const asked = $derived(lookup.for(text));
 	const addresses = $derived(
@@ -274,22 +233,9 @@
 	const addressHref = (hit: (typeof addresses)[number]) =>
 		localizeHref(searchHitHref(hit, { path: '/search', params: new URLSearchParams() }), locale);
 
-	const stopNameById = $derived.by<SvelteMap<string, string>>(() => {
-		const m = new SvelteMap<string, string>();
-		for (const s of stops.data?.stops ?? []) m.set(s.id, stopDisplayName(s.name));
-		return m;
-	});
-	function nextStopName(v: Vehicle): string | null {
-		return v.next_stop ? (stopNameById.get(v.next_stop) ?? null) : null;
-	}
-
 	function routeTitle(r: RouteIndexEntry): string {
-		return r.short || r.id;
+		return r.short || r.long || r.id;
 	}
-
-	const statusLabelFor = (s: StatusCode): string => STATUS_LABELS[locale][s];
-	const occupancyLabelFor = (o: OccupancyCode | null | undefined): string | null =>
-		o ? OCCUPANCY_LABELS[locale][o] : null;
 </script>
 
 {#snippet groupSection(group: (typeof groups)[number])}
@@ -297,44 +243,18 @@
 	<section class="search-group" aria-labelledby={id} bind:this={sections[group.kind]}>
 		<div class="search-group-head">
 			<h2 class="search-group-label" {id}>{heading(group.kind, group.total)}</h2>
-			{#if group.kind === 'route'}
-				<MetricInfo metricKey="otp" {locale} name="OTP" side="bottom" />
-			{:else if group.kind === 'vehicle' && group.total}
-				{#if occupancyAvailable}<MetricInfo
-						metricKey="occupancy"
-						{locale}
-						name={metricName('occupancy', locale)}
-						side="bottom"
-					/>{/if}
-				<MetricInfo
-					metricKey="avgDelay"
-					{locale}
-					name={metricName('avgDelay', locale)}
-					side="bottom"
-				/>
-			{/if}
 		</div>
-		{#if group.kind === 'vehicle'}
-			{#if group.state === 'ready'}
-				<FreshnessStamp variant="live" presentation={presentation.stamp} {locale} />
-			{/if}
-			{#if liveNotice}<p class="search-group-note" role="status">{liveNotice}</p>{/if}
-		{/if}
-		{#if group.state === 'failed'}
-			<EdgeState
-				variant="error-v1"
-				lang={locale}
-				layout={edgeLayout}
-				onRetry={() => retry(group.kind)}
-			/>
+		{#if group.state === 'not_tracked'}
+			<p class="search-group-note" role="status">{t.notTracked}</p>
+		{:else if group.state === 'failed'}
+			<p class="search-group-note" role="status">
+				{say.unsearched(group.kind === 'page' ? 'route' : group.kind)}
+			</p>
+			<button type="button" class="search-group-more" onclick={index.reload}>{t.retry}</button>
 		{:else if group.state === 'loading'}
-			{#if group.kind !== 'vehicle' || !liveNotice}
-				<EdgeState variant="skeleton" lang={locale} layout={edgeLayout} />
-			{/if}
+			<EdgeState variant="skeleton" lang={locale} layout={edgeLayout} />
 		{:else if group.total === 0 || group.total === null}
-			{#if group.kind !== 'vehicle' || !liveNotice}
-				<p class="search-group-note">{t.none(group.kind, text)}</p>
-			{/if}
+			<p class="search-group-note">{t.none(group.kind, text)}</p>
 		{:else}
 			{@const shown = visibleCount(group.total)}
 			{#if group.kind === 'route'}
@@ -348,22 +268,16 @@
 				>
 					{#snippet row(r)}
 						{@const hint = routeModeHint(r.type)}
-						<div use:observeRouteReliability={{ id: r.id, known: r.reliability }}>
-							<LineStopResult
-								presentation="legacy-search"
-								target={{ kind: 'line', id: r.id }}
-								{locale}
-								glyph={hint.glyph}
-								swatch={routeColor(r.color)}
-								tag={hint.tag ?? undefined}
-								title={routeTitle(r)}
-								subtitle={r.long ?? undefined}
-							>
-								{#snippet status()}
-									<ReliabilityBadge named snapshot={routeReliability.get(r.id)} {locale} />
-								{/snippet}
-							</LineStopResult>
-						</div>
+						<LineStopResult
+							presentation="legacy-search"
+							target={{ kind: 'line', id: r.id }}
+							{locale}
+							glyph={hint.glyph}
+							swatch={routeColor(r.color)}
+							tag={hint.tag ?? undefined}
+							title={routeTitle(r)}
+							subtitle={r.short ? (r.long ?? undefined) : undefined}
+						/>
 					{/snippet}
 				</EntityList>
 			{:else if group.kind === 'stop'}
@@ -378,22 +292,16 @@
 					{#snippet row(s)}
 						{@const hint = stopModeHint(s)}
 						{@const tag = stopModeTag(s)}
-						<div use:observeStopReliability={s.id}>
-							<LineStopResult
-								presentation="legacy-search"
-								target={{ kind: 'stop', id: s.id }}
-								{locale}
-								glyph={hint.glyph}
-								tag={tag ?? undefined}
-								title={stopDisplayName(s.name)}
-								subtitle={s.code ? `${say.kind.stop} ${s.code}` : undefined}
-								routes={s.routes}
-							>
-								{#snippet status()}
-									<ReliabilityBadge named snapshot={stopReliability.get(s.id)} {locale} />
-								{/snippet}
-							</LineStopResult>
-						</div>
+						<LineStopResult
+							presentation="legacy-search"
+							target={{ kind: 'stop', id: s.id }}
+							{locale}
+							glyph={hint.glyph}
+							tag={tag ?? undefined}
+							title={stopDisplayName(s.name)}
+							subtitle={s.code ? `${say.kind.stop} ${s.code}` : undefined}
+							routes={s.routes}
+						/>
 					{/snippet}
 				</EntityList>
 			{:else if group.kind === 'page'}
@@ -423,14 +331,9 @@
 					max={shown}
 				>
 					{#snippet row(v)}
-						<VehicleResultRow
-							{occupancyAvailable}
-							vehicle={v}
-							{locale}
-							nextStopName={nextStopName(v)}
-							copy={t.vehicle}
-							statusLabel={statusLabelFor(v.status)}
-							occupancyLabel={occupancyLabelFor(v.occupancy)}
+						<TransitEntityRow
+							href={localizeHref(`/vehicle/${encodeURIComponent(v.id)}`, locale)}
+							title={`${say.kind.vehicle} ${v.id}`}
 						/>
 					{/snippet}
 				</EntityList>
@@ -487,16 +390,6 @@
 			<p class="search-idle-title">{t.idleTitle}</p>
 			<p class="search-idle-body">{t.idleBody}</p>
 			<div class="search-census">
-				<div class="search-census__examples">
-					<span class="search-census__examples-label">{t.census.examplesLabel}</span>
-					<div class="search-census__chips">
-						{#each searchExamples(v1.manifest.provider, locale) as example (example)}
-							<button type="button" class="search-census__chip" onclick={() => (query = example)}
-								>{example}</button
-							>
-						{/each}
-					</div>
-				</div>
 				<p class="search-browse">
 					<a href={localizeHref('/lines', locale)}>{say.browseLines}</a>
 					<a href={localizeHref('/stops', locale)}>{say.browseStops}</a>
@@ -566,50 +459,6 @@
 		padding-top: 1rem;
 		border-top: 1px solid var(--border);
 		width: 100%;
-	}
-	.search-census__examples {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		justify-content: center;
-		gap: 0.5rem;
-	}
-	.search-census__examples-label {
-		font-family: var(--font-mono);
-		font-size: var(--text-micro);
-		letter-spacing: var(--tracking-eyebrow);
-		text-transform: uppercase;
-		color: var(--muted-foreground);
-	}
-	.search-census__chips {
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: center;
-		gap: 0.5rem;
-	}
-	.search-census__chip {
-		display: inline-flex;
-		align-items: center;
-		min-height: 44px;
-		padding: 0.375rem 0.75rem;
-		border: 1px solid var(--border);
-		border-radius: var(--radius-pill);
-		background: var(--muted);
-		color: var(--foreground);
-		font-size: var(--text-caption);
-		cursor: pointer;
-		transition:
-			border-color var(--duration-fast) var(--ease-default),
-			color var(--duration-fast) var(--ease-default);
-	}
-	.search-census__chip:hover,
-	.search-census__chip:focus-visible {
-		border-color: var(--primary);
-		color: var(--primary);
-	}
-	.search-census__chip:focus-visible {
-		outline: 2px solid var(--ring);
-		outline-offset: 2px;
 	}
 	.search-idle {
 		display: flex;
@@ -725,7 +574,6 @@
 		outline-offset: 2px;
 	}
 	@media (prefers-reduced-motion: reduce) {
-		.search-census__chip,
 		.search-group-more {
 			transition: none;
 		}

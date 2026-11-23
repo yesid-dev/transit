@@ -306,6 +306,38 @@ const server = createServer((request, response) => {
 		response.writeHead(200, { 'content-type': 'application/json' }).end(methodCatalog);
 		return;
 	}
+	const search = /^\/v2\/([^/]+)\/search-index$/.exec(url.pathname);
+	if (search && !url.search) {
+		const [, city] = search;
+		const data = JSON.parse(
+			files[`/v1/${city}/static/routes_index.json`] ?? read('routes-index.json'),
+		);
+		const stops = JSON.parse(
+			files[`/v1/${city}/static/stops_index.json`] ?? read('stops-index.json'),
+		);
+		response.writeHead(200, { 'content-type': 'application/json' }).end(
+			JSON.stringify({
+				schedule: {
+					date: '2026-11-21',
+					routes: data.routes,
+					stops: [
+						...stops.stops,
+						{
+							id: 'clean-search-stop',
+							name: 'Crémazie Clean',
+							code: '98765',
+							lat: 45.5,
+							lon: -73.6,
+							routes: [],
+						},
+					],
+				},
+				vehicles: [{ id: '40061' }],
+				vehicle_state: 'ready',
+			}),
+		);
+		return;
+	}
 	const health = /^\/v2\/([^/]+)\/data-health$/.exec(url.pathname);
 	if (health) {
 		const from = url.searchParams.get('from');

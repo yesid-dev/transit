@@ -11,6 +11,7 @@ export const QUESTION_PARAMS = {
     required: ["from", "to", "measure", "kind"],
     optional: [...COMMON_CUTS, "class", "limit"],
   },
+  "search-index": { required: [], optional: [] },
   "data-health": { required: ["from", "to"], optional: [] },
   "how-we-measure": { required: [], optional: ["lang"] },
 };
@@ -47,10 +48,13 @@ function serviceDate(value) {
 
 export function parseQuestion(url) {
   const catalog = url.pathname === "/v2/how-we-measure";
-  const match = /^\/v2\/([^/]+)\/(measure|ranking|data-health)$/.exec(url.pathname);
+  const match = /^\/v2\/([^/]+)\/(measure|ranking|data-health|search-index)$/.exec(url.pathname);
   if (!catalog && !match) return null;
 
   const [, city, route] = match ?? [null, null, "how-we-measure"];
+  if (route === "search-index" && !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(city)) {
+    throw new Error("invalid city");
+  }
   const { required, optional } = QUESTION_PARAMS[route];
   const query = url.search.slice(1);
   if (query.length > 4096) throw new Error("query string is too long");
@@ -71,7 +75,7 @@ export function parseQuestion(url) {
   }
 
   const end = params.get("to");
-  if (!catalog) {
+  if (required.includes("to")) {
     const days = (serviceDate(end) - serviceDate(params.get("from"))) / 86_400_000 + 1;
     if (!(days >= 1 && days <= 400)) {
       throw new Error("provide an ordered YYYY-MM-DD range of at most 400 days");

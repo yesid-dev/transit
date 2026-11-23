@@ -1288,7 +1288,13 @@ def test_range_builds_skips_and_continues(
     assert earlier_receipt["cleaning_version"] == CLEANING_VERSION
     assert "files" not in earlier_receipt
     assert list((dest / earlier_marker).parent.iterdir()) == [dest / earlier_marker]
+    search_key = f"search/v1/{version_key('stm', DAY)}.json"
+    search = json.loads((dest / search_key).read_bytes())
+    assert search["date"] == str(DAY)
+    assert any(route["id"] == "r" for route in search["routes"])
     if remote:
+        assert fake.writes.count(f"out/{search_key}") == 1
+        fake.writes.remove(f"out/{search_key}")
         earlier_key = f"out/{earlier_marker}"
         assert fake.writes.count(earlier_key) == 1
         fake.writes.remove(earlier_key)

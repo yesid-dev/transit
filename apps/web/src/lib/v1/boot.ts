@@ -46,6 +46,7 @@ export async function bootProvider(
 	lang: Locale,
 	ctx?: AdapterCtx,
 	location?: ApproximateLocation | null,
+	loadSnapshots = true,
 ) {
 	const requested = url.searchParams.getAll('provider');
 	let providerId = requested[0] ?? v1Provider();
@@ -66,7 +67,7 @@ export async function bootProvider(
 	let v1: V1Context | null = null;
 	const unavailableSelection =
 		discoveryError && (requested.length > 1 || requested.some((id) => id !== v1Provider()));
-	if (!redirectHref && !unavailableSelection) {
+	if (loadSnapshots && !redirectHref && !unavailableSelection) {
 		v1 = await bootV1(lang, { ...ctx, providerId }).catch(() => null);
 		if (v1 && !provider) {
 			const label = {
