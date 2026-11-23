@@ -9,7 +9,7 @@ from collections import Counter
 from collections.abc import Callable, Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import InitVar, dataclass, field, replace
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from itertools import batched
 from time import perf_counter
 from typing import Any, Literal, NamedTuple
@@ -279,6 +279,7 @@ _DEPARTURE_SECONDS = """
 _SERVICE_DELIVERED_ID = "service_delivered"
 _CROWDING_ID = "crowding"
 _ALERT_COUNTS_ID = "alert_counts"
+_ALERT_ENTITY_GROUPS = ("line", "stop_id", "effect", "cause")
 _WAITING_ID = "waiting_and_gaps"
 _SERVICE_OFFERED_ID = "service_offered"
 _VEHICLES_ID = "vehicles"
@@ -356,16 +357,19 @@ class Question:
                 )
         if self.group == "stop" and (self.line is None or family.id != _PUNCTUALITY.id):
             raise ValueError("group=stop requires a line and a punctuality measure")
-        if self.group == "stop_id" and family.id != _PUNCTUALITY.id:
-            raise ValueError("group=stop_id requires a punctuality measure")
+        if self.group == "stop_id" and family.id not in {_PUNCTUALITY.id, _ALERT_COUNTS_ID}:
+            raise ValueError("group=stop_id requires punctuality or alert counts")
         if self.group == "line" and not (
-            family.id == _PUNCTUALITY.id
+            family.id in {_PUNCTUALITY.id, _ALERT_COUNTS_ID}
             or self.measure == "trips_run"
             or (self.vehicle is not None and self.measure == "vehicle_trips_run")
         ):
             raise ValueError(
-                "group=line requires punctuality, trips_run, or vehicle_trips_run with a vehicle"
+                "group=line requires punctuality, alert counts, trips_run, "
+                "or vehicle_trips_run with a vehicle"
             )
+        if self.group in ("effect", "cause") and family.id != _ALERT_COUNTS_ID:
+            raise ValueError("group=effect and group=cause require alert counts")
         if self.group == "vehicle" and self.measure != "vehicle_days_in_service":
             raise ValueError("group=vehicle requires vehicle_days_in_service")
         if self.group == "departure" and (
@@ -477,6 +481,8 @@ _GROUP_LABELS = {
     "line": Text("Line ID", "Identifiant de la ligne"),
     "vehicle": Text("Vehicle number", "Numéro de véhicule"),
     "departure": Text("Scheduled departure", "Départ prévu"),
+    "effect": Text("Published effect", "Effet publié"),
+    "cause": Text("Published cause", "Cause publiée"),
 }
 _UNIT_LABELS = {
     "share": Text("Share", "Part"),
@@ -1778,7 +1784,10 @@ def _alert_rows(
         None: "NULL::VARCHAR",
         "line": "unnest(route_ids)",
         "stop": "unnest(stop_ids)",
-    }[group]
+        "stop_id": "unnest(stop_ids)",
+        "effect": "effect",
+        "cause": "cause",
+    }[question.group if question.group in _ALERT_ENTITY_GROUPS else group]
     projection = "entity, source, alert_id, version, epoch_us(starts), epoch_us(ends)"
     text_columns = (
         ", header_en, header_fr, description_en, description_fr" if question.alert_details else ""
@@ -1786,7 +1795,8 @@ def _alert_rows(
     message_columns = f", route_ids, stop_ids{text_columns}" if question.alert_details else ""
     projection += message_columns
     segments = ""
-    if question.group:
+    temporal = question.group is not None and question.group not in _ALERT_ENTITY_GROUPS
+    if temporal:
         local_day = "timezone('America/Toronto', bucket)::DATE"
         if question.group in HOUR_GROUPS:
             bucket_start = "bucket"
@@ -1820,7 +1830,7 @@ def _alert_rows(
                 timezone('America/Toronto', (?::DATE + 1)::TIMESTAMP) AS window_end
         ), periods AS (
             SELECT source, alert_id, version, first_seen_at_utc, last_seen_at_utc,
-                route_ids, stop_ids,
+                route_ids, stop_ids, effect, cause,
                 unnest(CASE WHEN len(active_periods) = 0
                     THEN [{{'start_utc': NULL, 'end_utc': NULL}}]
                     ELSE active_periods END) AS period{text_columns}
@@ -1845,7 +1855,7 @@ def _alert_rows(
     ).fetchall()
     result: dict[EntityKey, Batch] = {}
     for entity, source, alert_id, revision, start, end, *message in rows:
-        key = tuple(entity) if question.group else (entity,) if group else ()
+        key = tuple(entity) if temporal else (entity,) if group or question.group else ()
         result.setdefault(key, Batch()).alert_spans.add(
             AlertSpan(source, alert_id, revision, start, end)
         )
@@ -4355,11 +4365,20 @@ def ask(store: Store, question: Question) -> dict[str, Any]:
     if family.id == _SERVICE_DELIVERED_ID and _single_day_departure(question):
         family_evidence["trip_ids"] = sorted(totals.trip_ids)
     if question.alert_details:
-        family_evidence["alert_messages"] = (
-            [totals.alert_messages[key] for key in sorted(totals.alert_messages)]
-            if state == "measured"
-            else None
-        )
+        messages = None
+        if state == "measured":
+            periods: dict[tuple[str, str, str], list[dict[str, str]]] = {}
+            epoch = datetime(1970, 1, 1, tzinfo=UTC)
+            for span in sorted(totals.alert_spans, key=lambda span: (span.start, span.end)):
+                periods.setdefault((span.source, span.alert_id, span.version), []).append({
+                    "start": (epoch + timedelta(microseconds=span.start)).isoformat(),
+                    "end": (epoch + timedelta(microseconds=span.end)).isoformat(),
+                })
+            messages = [
+                {**totals.alert_messages[key], "periods": periods[key]}
+                for key in sorted(totals.alert_messages)
+            ]
+        family_evidence["alert_messages"] = messages
     return {
         "measure": question.measure,
         "value": values,
@@ -4423,6 +4442,8 @@ def _series_keys(
         )
     if group in {"line", "stop_id", "vehicle"}:
         return sorted(key for key in observed if key[0] is not None)
+    if group in ("effect", "cause"):
+        return sorted(observed, key=lambda key: (key[0] is None, key[0]))
     return [(0,), (1,), *([(None,)] if (None,) in observed else [])]
 
 
@@ -4465,6 +4486,7 @@ def _series_answer(
     totals: dict[EntityKey, Batch] = {}
     stop_sequences: dict[EntityKey, Counter[int]] = {}
     alerts = family.id == _ALERT_COUNTS_ID
+    alert_entities = alerts and group in _ALERT_ENTITY_GROUPS
     vehicles = family.id == _VEHICLES_ID
     crowding = family.id == _CROWDING_ID
     offered = family.id == _SERVICE_OFFERED_ID
@@ -4487,7 +4509,7 @@ def _series_answer(
             if crowding and any(part.counts["published_intervals"] for part in result.values()):
                 occupancy_days.add(window.included[offset])
             for key, part in result.items():
-                if alerts:
+                if alerts and not alert_entities:
                     day, *hours = key
                     if not isinstance(day, str) or day not in alert_days:
                         continue
@@ -4572,7 +4594,7 @@ def _series_answer(
                     # Every stop has the same date window. Keep it once in the envelope.
                     **(
                         {}
-                        if group == "stop_id"
+                        if group == "stop_id" and not alerts
                         else {"days_included": [day for day in included if day not in untracked]}
                     ),
                 },
@@ -4585,7 +4607,10 @@ def _series_answer(
     if _departure_stop_order(question):
         headings.update(_DEPARTURE_STOP_COLUMN)
     series_state = {}
-    if vehicles and group in ("vehicle", "line"):
+    if alert_entities:
+        state = _alert_answer(selected, Batch(), window)[0]
+        series_state = {"state": state, "state_text": _STATES[state]._asdict()}
+    elif vehicles and group in ("vehicle", "line"):
         state = "measured" if cells else _vehicle_answer(selected, Batch(), window)[0]
         series_state = {"state": state, "state_text": _STATES[state]._asdict()}
     return {

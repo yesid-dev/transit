@@ -3,6 +3,7 @@
 	import { Card } from '@yesid/ui/card';
 	import { Surface } from '@yesid/ui/layout';
 	import { localizeHref } from '#lib/i18n/index.ts';
+	import { alertDetailsLimit } from '#lib/features/alerts/alertRecord.ts';
 	import RecordSection from '#lib/features/record/RecordSection.svelte';
 	import RecordTable from '#lib/features/record/RecordTable.svelte';
 	import AccountabilityReceipt from '#lib/features/receipt/AccountabilityReceipt.svelte';
@@ -215,10 +216,7 @@
 					<section id="messages" aria-labelledby="messages-title" class="grid min-w-0 gap-3">
 						<h2 id="messages-title">{t(...dailyTitles.messages)}</h2>
 						<p>
-							{t(
-								'Agency messages are listed for 7 days or fewer. Pick a shorter period.',
-								'Les avis de l’agence sont affichés pour 7 jours ou moins. Choisissez une période plus courte.',
-							)}
+							{alertDetailsLimit[lang]}
 						</p>
 					</section>
 				</Card>

@@ -7,6 +7,7 @@ import { rankingsEngine } from './rankings-engine.mjs';
 import { stopEngine } from './stop-engine.mjs';
 import { vehicleEngine } from './vehicle-engine.mjs';
 import { departureDailyEngine } from './departure-daily-engine.mjs';
+import { alertsEngine } from './alerts-engine.mjs';
 
 const read = (file) => readFileSync(new URL(file, import.meta.url));
 const methodCatalog = read('method-catalog.json');
@@ -347,8 +348,15 @@ const server = createServer((request, response) => {
 		const dailyFixture = ['2026-11-17', '2026-11-18'].includes(url.searchParams.get('from'));
 		const finderFixture =
 			question[2] === 'measure' && ['line', 'stop_id'].includes(url.searchParams.get('group'));
-		const result =
-			question[2] === 'measure' && url.searchParams.get('measure')?.startsWith('vehicle')
+		const alertFixture =
+			question[2] === 'measure' &&
+			url.searchParams.get('measure') === 'alert_counts' &&
+			!['2026-11-17', '2026-11-18'].includes(url.searchParams.get('from')) &&
+			!url.searchParams.has('line') &&
+			!url.searchParams.has('stop');
+		const result = alertFixture
+			? alertsEngine(url)
+			: question[2] === 'measure' && url.searchParams.get('measure')?.startsWith('vehicle')
 				? vehicleEngine(url)
 				: url.searchParams.has('departure')
 					? departureDailyEngine(url)

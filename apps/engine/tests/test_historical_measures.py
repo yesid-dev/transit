@@ -431,6 +431,63 @@ def test_alert_counts_and_hours_match_independent_hour_sets(
     assert [(row["id"], row["value"]) for row in stop_rows] == [("first", 8), ("other", 0)]
 
 
+@pytest.mark.parametrize(
+    ("group", "key", "expected"),
+    [
+        ("line", "line", {"A": (2, 3, 7), "B": (1, 1, 4), "D": (1, 1, 1)}),
+        ("stop_id", "stop", {"first": (3, 4, 8), "outside": (1, 1, 4)}),
+        (
+            "effect",
+            "effect",
+            {"DETOUR": (3, 4, 8), "NO_SERVICE": (1, 1, 1), "OTHER_EFFECT": (1, 1, 0)},
+        ),
+        (
+            "cause",
+            "cause",
+            {"CONSTRUCTION": (3, 4, 8), "WEATHER": (1, 1, 1), "UNKNOWN_CAUSE": (1, 1, 0)},
+        ),
+    ],
+)
+def test_grouped_alerts_pool_versions_and_keep_multi_entity_notices(
+    history: tuple[Store, list[Reading], dict[date, tuple[Notice, ...]]],
+    monkeypatch: pytest.MonkeyPatch,
+    group: str,
+    key: str,
+    expected: dict[str, tuple[int, int, int]],
+) -> None:
+    store, _, _ = history
+    monkeypatch.setattr(measures, "DAYS_PER_QUERY_BATCH", 1)
+    answer = _get(store, "/measure", "alert_counts", group=group)
+    assert answer["state"] == "measured"
+    assert answer["evidence"]["days_not_measured"] == [str(FRIDAY)]
+    assert {
+        cell["key"][key]: tuple(
+            cell["value"][metric] for metric in ("alerts", "alert_versions", "alert_hours")
+        )
+        for cell in answer["cells"]
+    } == expected
+    assert all(
+        cell["evidence"]["days_included"] == [str(THURSDAY), str(SATURDAY)]
+        for cell in answer["cells"]
+    )
+
+
+def test_agency_messages_include_only_the_parts_of_periods_in_the_question(
+    history: tuple[Store, list[Reading], dict[date, tuple[Notice, ...]]],
+) -> None:
+    store, _, _ = history
+    evidence = _get(store, "/measure", "alert_counts", alert_details=1)["evidence"]
+    original = next(
+        message
+        for message in evidence["alert_messages"]
+        if (message["id"], message["version"]) == ("a", "1")
+    )
+    assert original["periods"] == [
+        {"start": utc(THURSDAY, 5).isoformat(), "end": utc(THURSDAY, 7).isoformat()},
+    ]
+    assert original["header"]["fr"] == "Avis a"
+
+
 def test_untracked_alerts_are_excluded_and_missing_archive_is_not_zero(
     history: tuple[Store, list[Reading], dict[date, tuple[Notice, ...]]],
 ) -> None:
@@ -440,6 +497,9 @@ def test_untracked_alerts_are_excluded_and_missing_archive_is_not_zero(
     assert untracked["state"] == "not_tracked"
     assert untracked["evidence"]["counts"]["alerts"] is None
     assert untracked["evidence"]["days_not_tracked"] == [str(SATURDAY)]
+    grouped = _get(store, "/measure", "alert_counts", group="line", **{"from": SATURDAY})
+    assert grouped["state"] == "not_tracked"
+    assert grouped["cells"] == []
     all_untracked = _get(store, "/ranking", "alert_hours", kind="stop", **{"from": SATURDAY})
     assert all_untracked["state"] == "not_tracked"
     assert all_untracked["rows"] == []

@@ -97,6 +97,21 @@ describe('overview engine requests', () => {
 		expect(await getMeasure('on_time', dates)).toEqual({ kind: 'unreachable' });
 	});
 
+	it('accepts compact method metadata and preserves explanatory text when supplied', async () => {
+		const text = {
+			en: { counts: 'Count each alert once.', limits: 'Some dates may be missing.' },
+			fr: { counts: 'Compter chaque alerte une fois.', limits: 'Certaines dates peuvent manquer.' },
+		};
+		fetcher.mockResolvedValueOnce(
+			Response.json({ ...measure(), info: [{ minimum_sample: 30 }, { text }] }),
+		);
+		const result = await getRecordAnswer(
+			{ path: '/measure', parameters: { measure: 'on_time' } },
+			dates,
+		);
+		expect(result).toMatchObject({ kind: 'answer', answer: { info: [{}, { text }] } });
+	});
+
 	it('maps stop groups and localized CSV, forwarding only the visitor IP to the binding', async () => {
 		const query = {
 			path: '/measure' as const,

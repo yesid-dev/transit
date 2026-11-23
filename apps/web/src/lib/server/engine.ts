@@ -22,6 +22,8 @@ const evidence = z.object({
 	days_included: z.array(z.iso.date()),
 	days_measured: z.array(z.iso.date()),
 	days_not_measured: z.array(z.iso.date()),
+	days_not_measured_reasons: z.record(z.iso.date(), z.string()).optional(),
+	days_not_tracked: z.array(z.iso.date()).optional(),
 	method_version: z.string(),
 	cleaning_versions: z.array(count),
 	query_ms: z.number(),
@@ -154,6 +156,14 @@ const recordCell = state.extend({
 					stops: z.array(z.string()),
 					header: translatedMessage,
 					description: translatedMessage,
+					periods: z
+						.array(
+							z.object({
+								start: z.iso.datetime({ offset: true }),
+								end: z.iso.datetime({ offset: true }),
+							}),
+						)
+						.optional(),
 				}),
 			)
 			.nullable()
@@ -201,6 +211,18 @@ const recordEnvelope = z.object({
 const recordMeasure = recordEnvelope.extend({
 	...recordCell.shape,
 	evidence: evidence.extend(recordCell.shape.evidence.shape),
+	info: z
+		.array(
+			z.object({
+				text: z
+					.object({
+						en: z.object({ counts: z.string(), limits: z.string() }),
+						fr: z.object({ counts: z.string(), limits: z.string() }),
+					})
+					.optional(),
+			}),
+		)
+		.optional(),
 });
 const recordSeries = recordEnvelope.extend({
 	...state.partial().shape,

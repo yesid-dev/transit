@@ -131,6 +131,8 @@ export const handle: Handle = async ({ event, resolve }) => {
 		lineView === 'schedule' ||
 		method ||
 		healthRecord ||
+		(event.route.id === '/[[lang=locale]]/alerts' &&
+			event.url.searchParams.get('frameMode') !== 'live') ||
 		(event.route.id === '/[[lang=locale]]/receipt' && dailyReportFrame(event.url)) ||
 		event.route.id === '/[[lang=locale]]/departure/[key]';
 	const automaticSelection =

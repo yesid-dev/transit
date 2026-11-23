@@ -33,6 +33,12 @@ const reasons: Record<string, [string, string]> = {
 	schedule_archive_unreadable: ['Schedule archive unreadable', 'Archive de l’horaire illisible'],
 };
 
+export function healthReason(reason: string | undefined, locale: Locale) {
+	return reason && Object.hasOwn(reasons, reason)
+		? choose(locale, ...reasons[reason])
+		: choose(locale, 'Reason unknown', 'Raison inconnue');
+}
+
 export function tableName(table: string, locale: Locale) {
 	return Object.hasOwn(tables, table) ? choose(locale, ...tables[table]) : table;
 }
@@ -42,8 +48,6 @@ export function healthReading(cell: TableHealth | undefined, locale: Locale, day
 	const state = choose(locale, ...states[cell.status]);
 	const reason = cell.reason ?? dayReason;
 	if (!reason) return state;
-	const detail = Object.hasOwn(reasons, reason)
-		? choose(locale, ...reasons[reason])
-		: choose(locale, 'Reason unknown', 'Raison inconnue');
+	const detail = healthReason(reason, locale);
 	return `${state} (${detail})`;
 }

@@ -102,7 +102,13 @@ for (const locale of PUBLISHED_LOCALES) {
 			await page.locator('.toc-drawer-item').first().click();
 			await expect(pill).toHaveAttribute('aria-expanded', 'false');
 		}
-		for (const path of ['/alerts', '/hotspots', '/network', '/receipt', '/repeat-offenders']) {
+		for (const path of [
+			'/alerts?frameMode=live',
+			'/hotspots',
+			'/network',
+			'/receipt',
+			'/repeat-offenders',
+		]) {
 			await page.goto(localizeHref(path, locale));
 			const surface =
 				path === '/hotspots' || path === '/repeat-offenders'
