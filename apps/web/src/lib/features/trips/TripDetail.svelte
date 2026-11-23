@@ -3,6 +3,7 @@
 	import { untrack } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 	import { getLocale, getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
+	import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
 	import { mapHrefFor, routeFor } from '#lib/nav/index.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { liveAbsenceReason } from '#lib/site/absence.ts';
@@ -36,7 +37,14 @@
 	const reportTimeZone = provider?.timezone ?? manifest.tz ?? 'UTC';
 	const localizeHref = getLocalizeHref();
 	const display = transitDisplay();
-	const { live, resource: trips } = createLiveResource(manifest, 'trips');
+	const { live, resource: trips } = createLiveResource(
+		manifest,
+		'trips',
+		untrack(() => ({ kind: 'trip', id })),
+	);
+	$effect(() => {
+		live.setTripScope({ kind: 'trip', id });
+	});
 	const presentation = $derived(
 		livePresentation({
 			familyStates: live.familyStates,
@@ -204,6 +212,9 @@
 			{@render lineContext('rail')}
 		</section>
 	{/snippet}
+	{#if live.familyStates.trips.refreshing}
+		<p role="status">{transitTerms[locale].refreshingTripData}</p>
+	{/if}
 	<ResourceBoundary resource={trips} lang={locale}>
 		{#snippet children(_file)}
 			<div class="trip-body">

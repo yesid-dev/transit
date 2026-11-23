@@ -1,4 +1,5 @@
 import { env } from 'cloudflare:workers';
+import type { CaptureScope } from '#lib/live/captureSnapshot.ts';
 import { z } from 'zod';
 import { CityCatalogSchema } from '#lib/v1/schemas/providers.ts';
 import {
@@ -138,9 +139,12 @@ export async function getCaptureResponse(
 	city: string,
 	requestSignal: AbortSignal,
 	visitorIp?: string | null,
+	scope?: CaptureScope,
 ) {
 	const signal = AbortSignal.any([requestSignal, AbortSignal.timeout(ENGINE_TIMEOUT_MS)]);
-	return engineFetch(cityQuestion(city, '/live'), signal, visitorIp);
+	const question = cityQuestion(city, scope ? '/live-trips' : '/live');
+	if (scope) question.parameters[scope.kind] = scope.id;
+	return engineFetch(question, signal, visitorIp);
 }
 
 export async function query<T>(

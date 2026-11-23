@@ -1,5 +1,10 @@
 import { browser } from '$app/env';
-import { feedState, type CaptureEvidence } from '#lib/live/captureSnapshot.ts';
+import {
+	CaptureScopeRefreshing,
+	feedState,
+	type CaptureEvidence,
+	type LiveTripScope,
+} from '#lib/live/captureSnapshot.ts';
 import { DEFAULT_LIVE_TTL_S, freshnessAgeSeconds } from '#lib/v1/freshness.ts';
 import { getV1Runtime } from '#lib/v1/runtime.ts';
 import { untrack } from 'svelte';
@@ -41,6 +46,7 @@ export interface FeedHealth {
 }
 
 interface FamilyState {
+	readonly refreshing?: boolean;
 	readonly phase: LiveFamilyPhase;
 	readonly active: boolean;
 	readonly lastGoodAt: number | null;
@@ -58,6 +64,7 @@ export interface LiveReadContext {
 	readonly manifest: Manifest;
 	readonly requestCache?: RequestCache;
 	readonly signal?: AbortSignal;
+	readonly tripScope?: LiveTripScope | null;
 	readonly onPollDelayMs?: (delayMs: number) => void;
 }
 
@@ -71,6 +78,7 @@ export interface LiveReader {
 }
 
 export interface LiveStoreOptions {
+	readonly tripScope?: LiveTripScope | null;
 	readonly families?: readonly LiveFamily[];
 	readonly seed?: {
 		readonly network?: NetworkFile & CaptureEvidence;
@@ -90,6 +98,7 @@ export interface LiveStore {
 	start(): void;
 	stop(): void;
 	refresh(options?: { force?: boolean }): Promise<void>;
+	setTripScope(scope: LiveTripScope | null): void;
 	subscribeFamilies(families: readonly LiveFamily[]): () => void;
 }
 
@@ -107,6 +116,7 @@ export function createLiveStore(
 	let ttlMs = liveTtlMs(manifest);
 	let staleThresholdS = (ttlMs / 1000) * STALE_TTL_MULTIPLIER;
 	let adapterCtx: LiveReadContext = { manifest };
+	let tripScope = options.tripScope ?? null;
 	const baselineFamilies = new SvelteSet<LiveFamily>(options.families ?? LIVE_FAMILIES);
 	const initialNetwork = baselineFamilies.has('network') ? (options.seed?.network ?? null) : null;
 
@@ -348,6 +358,7 @@ export function createLiveStore(
 		familyStatesValue[family] = {
 			...state,
 			phase: 'failed',
+			refreshing: false,
 			consecutiveFailures: state.consecutiveFailures + 1,
 			error: failure,
 		};
@@ -357,6 +368,37 @@ export function createLiveStore(
 		const pending = readFamily(family, context);
 		runtime.refresh.track?.(pending, context.signal);
 		return pending;
+	}
+
+	async function readWhilePublishing(
+		family: LiveFamily,
+		context: LiveReadContext,
+		isCurrent: () => boolean,
+	): Promise<LiveFamilyPayload> {
+		while (isCurrent()) {
+			try {
+				return await readFamily(family, context);
+			} catch (error) {
+				if (!(error instanceof CaptureScopeRefreshing)) throw error;
+				if (!isCurrent()) break;
+				familyStatesValue[family] = { ...familyStatesValue[family], refreshing: true };
+				const signal = context.signal;
+				signal?.throwIfAborted();
+				await new Promise<void>((resolve, reject) => {
+					const finish = () => {
+						signal?.removeEventListener('abort', abort);
+						resolve();
+					};
+					const abort = () => {
+						clearTimeout(timer);
+						reject(signal?.reason);
+					};
+					const timer = setTimeout(finish, error.retryAfterMs);
+					signal?.addEventListener('abort', abort, { once: true });
+				});
+			}
+		}
+		throw new DOMException('Live scope changed', 'AbortError');
 	}
 
 	function retryStale(
@@ -403,12 +445,19 @@ export function createLiveStore(
 					delayMs = nextDelayMs;
 				},
 			};
-			let payload = await trackedRead(family, readContext);
+			const isCurrent = () => requestIsCurrent(family, token, generation, controller);
+			const read = (ctx: LiveReadContext) => {
+				if (family !== 'trips' && family !== 'departures') return trackedRead(family, ctx);
+				const pending = readWhilePublishing(family, ctx, isCurrent);
+				runtime.refresh.track?.(pending, ctx.signal);
+				return pending;
+			};
+			let payload = await read(readContext);
 			if (
 				requestIsCurrent(family, token, generation, controller) &&
 				retryStale(family, payload, context)
 			) {
-				payload = await trackedRead(family, { ...readContext, requestCache: 'reload' });
+				payload = await read({ ...readContext, requestCache: 'reload' });
 			}
 			if (requestIsCurrent(family, token, generation, controller)) {
 				nextPollAt.set(family, Date.now() + delayMs);
@@ -437,6 +486,7 @@ export function createLiveStore(
 			familyStatesValue[family] = {
 				...state,
 				phase: 'ready',
+				refreshing: false,
 				lastGoodAt: runtime.clock.serverNow,
 				retainedGeneration: payloadGeneration,
 				consecutiveFailures: 0,
@@ -450,6 +500,7 @@ export function createLiveStore(
 				familyStatesValue[family] = {
 					...state,
 					phase: inactiveOrSettledPhase(state),
+					refreshing: false,
 				};
 				return;
 			}
@@ -481,6 +532,7 @@ export function createLiveStore(
 		const controller = new AbortController();
 		const batchContext: LiveReadContext = {
 			...adapterCtx,
+			tripScope,
 			signal: controller.signal,
 			requestCache,
 		};
@@ -638,6 +690,20 @@ export function createLiveStore(
 		});
 	}
 
+	function setTripScope(scope: LiveTripScope | null): void {
+		if (scope?.kind === tripScope?.kind && scope?.id === tripScope?.id) return;
+		tripScope = scope;
+		trips = null;
+		departures = null;
+		const scopedFamilies = ['trips', 'departures'] as const;
+		for (const family of scopedFamilies) {
+			familyRequestTokens[family] += 1;
+			familyStatesValue[family] = initialFamilyState(familyRefCounts[family] > 0);
+			nextPollAt.delete(family);
+		}
+		if (started && scope && canPoll()) void runBatch(scopedFamilies);
+	}
+
 	function canPoll(): boolean {
 		const visible = typeof document === 'undefined' || document.visibilityState !== 'hidden';
 		const online = typeof navigator === 'undefined' || navigator.onLine !== false;
@@ -772,6 +838,7 @@ export function createLiveStore(
 		start,
 		stop,
 		refresh,
+		setTripScope,
 		subscribeFamilies,
 	};
 }

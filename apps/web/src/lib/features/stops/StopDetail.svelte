@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
 	import { createRecordStamp } from '#lib/v1/recordStamp.svelte.ts';
 	import ArticleHeader from '#lib/components/layout/TransitArticleHeader.svelte';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
@@ -134,7 +135,14 @@
 	const detailTabController = createDetailTabController(new URL(page.url.href));
 	$effect(() => detailTabController.syncFromUrl(new URL(page.url.href)));
 
-	const { live, resource: departureReport } = createLiveResource(manifest, 'departures');
+	const { live, resource: departureReport } = createLiveResource(
+		manifest,
+		'departures',
+		untrack(() => ({ kind: 'stop', id })),
+	);
+	$effect(() => {
+		live.setTripScope({ kind: 'stop', id });
+	});
 	provideLiveAbsenceContext(() => ({ familyStates: live.familyStates }));
 	const { live: alertLive, resource: alertReport } = createLiveResource(manifest, 'alerts');
 	const departures = $derived<readonly StopDeparture[] | null>(
@@ -490,6 +498,9 @@
 						subtitle={t.live.changing}
 						anchor="stop-detail-departures"
 					>
+						{#if live.familyStates.departures.refreshing}
+							<p role="status">{transitTerms[locale].refreshingTripData}</p>
+						{/if}
 						<ResourceBoundary resource={departureReport} lang={locale}>
 							{#snippet children(_report)}
 								<div class="stop-next" data-state={liveView.kind}>

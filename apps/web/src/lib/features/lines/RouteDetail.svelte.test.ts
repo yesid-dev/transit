@@ -214,6 +214,7 @@ const liveStore = {
 	isStale: false,
 	start: vi.fn(),
 	stop: vi.fn(),
+	setTripScope: vi.fn(),
 };
 
 function resetRouteSurfaceState(): void {
@@ -369,6 +370,7 @@ describe('RouteDetail article cover and focus scope', () => {
 			expect(spies[2]).not.toHaveBeenCalled();
 			expect(createLiveStoreSpy).toHaveBeenCalledWith(routeManifest, {
 				families: ['vehicles', 'trips', 'network'],
+				tripScope: { kind: 'line', id: '161' },
 			});
 		} finally {
 			spies.forEach((spy) => spy.mockRestore());
@@ -379,6 +381,7 @@ describe('RouteDetail article cover and focus scope', () => {
 
 		expect(createLiveStoreSpy).toHaveBeenCalledWith(routeManifest, {
 			families: ['vehicles', 'trips', 'alerts', 'network'],
+			tripScope: { kind: 'line', id: '161' },
 		});
 	});
 

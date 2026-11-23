@@ -73,15 +73,25 @@ const feed = z.object({
 });
 
 export const captureSnapshotSchema = z.object({
-	version: z.literal(1),
+	version: z.literal(2),
 	city: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/),
 	published_at: stamp,
 	stable_vehicle_ids: z.boolean().nullable(),
 	feeds: z.record(z.string(), feed),
 	vehicle_positions: z.array(vehicle).nullable(),
-	trip_updates: z.array(tripUpdate).nullable(),
 	alerts: z.array(alert).nullable(),
 });
+
+export const captureTripScopeSchema = z.object({
+	version: z.literal(2),
+	city: z.string(),
+	feed,
+	trip_updates: z.array(tripUpdate),
+});
+
+export type CaptureScope = { kind: 'line' | 'stop' | 'trip'; id: string };
+export type LiveTripScope = CaptureScope | { kind: 'vehicle'; id: string };
+export type CaptureTripReport = z.infer<typeof captureTripScopeSchema>;
 
 export type CaptureSnapshot = z.infer<typeof captureSnapshotSchema>;
 export type CaptureFamily = z.infer<typeof family>;
@@ -90,6 +100,12 @@ export type CaptureFeed = z.infer<typeof feed>;
 export interface CaptureEvidence {
 	readonly captureFeed?: CaptureFeed;
 	readonly captureRevision?: string;
+}
+
+export class CaptureScopeRefreshing extends Error {
+	constructor(readonly retryAfterMs: number) {
+		super('Live trip publication is refreshing');
+	}
 }
 
 export function feedState(feed: CaptureFeed | undefined, now: number) {
@@ -120,4 +136,27 @@ export async function fetchCaptureSnapshot(
 	const snapshot = captureSnapshotSchema.parse(await response.json());
 	if (snapshot.city !== city) throw new Error('Live capture belongs to another city');
 	return snapshot;
+}
+
+export async function fetchCaptureTripScope(
+	city: string,
+	scope: CaptureScope,
+	signal?: AbortSignal,
+	fetcher: typeof fetch = fetch,
+): Promise<CaptureTripReport> {
+	const params = new URLSearchParams({ city, [scope.kind]: scope.id });
+	const response = await fetcher(`/api/live-trips?${params}`, { signal });
+	if (response.status === 503) {
+		const retry = Number(response.headers.get('retry-after'));
+		const body = await response.json().catch(() => null);
+		if (body?.state === 'refreshing' && Number.isSafeInteger(retry) && retry > 0) {
+			throw new CaptureScopeRefreshing(retry * 1000);
+		}
+	}
+	if (!response.ok) throw new Error('Live trip update unavailable');
+	const report = captureTripScopeSchema.parse(await response.json());
+	if (report.city !== city || report.feed.family !== 'trip_updates') {
+		throw new Error('Live trip update belongs to another scope');
+	}
+	return report;
 }

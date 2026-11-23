@@ -6,7 +6,12 @@ import {
 	VehiclesFileSchema,
 } from '#lib/v1/schemas/index.ts';
 import type { OccupancyCode, StatusCode } from '#lib/v1/schemas/types.ts';
-import { feedState, type CaptureFamily, type CaptureSnapshot } from './captureSnapshot';
+import {
+	feedState,
+	type CaptureFamily,
+	type CaptureSnapshot,
+	type CaptureTripReport,
+} from './captureSnapshot';
 
 const occupancyByCode: readonly OccupancyCode[] = [
 	'empty',
@@ -47,6 +52,7 @@ export function captureVehicles(snapshot: CaptureSnapshot, now: number) {
 				id: vehicle.vehicle_id ?? vehicle.id,
 				route: vehicle.route_id,
 				trip: vehicle.trip_id,
+				direction_id: vehicle.direction_id,
 				lat: vehicle.latitude,
 				lon: vehicle.longitude,
 				bearing: vehicle.bearing == null ? null : Math.round(vehicle.bearing) % 360,
@@ -63,7 +69,7 @@ export function captureVehicles(snapshot: CaptureSnapshot, now: number) {
 	return { ...payload, captureFeed: feed, captureRevision: snapshot.published_at };
 }
 
-function stopEta(stop: NonNullable<CaptureSnapshot['trip_updates']>[number]['stops'][number]) {
+function stopEta(stop: CaptureTripReport['trip_updates'][number]['stops'][number]) {
 	const seconds = stop.departure ?? stop.arrival;
 	if (!stop.stop_id || seconds == null || seconds > 8.64e12 || stop.relationship === 1) {
 		return null;
@@ -75,15 +81,15 @@ function stopEta(stop: NonNullable<CaptureSnapshot['trip_updates']>[number]['sto
 	};
 }
 
-export function captureTrips(snapshot: CaptureSnapshot, now: number) {
-	const feed = captureFeed(snapshot, 'trip_updates', now);
+export function captureTrips(report: CaptureTripReport) {
+	const feed = report.feed;
 	const captured = feed.captured_at;
-	if (snapshot.trip_updates == null) throw new Error('Trip updates unavailable');
+	if (!captured) throw new Error('Trip updates unavailable');
 	const payload = TripsFileSchema.parse({
 		generated_utc: captured,
 		feed_captured_utc: captured,
 		trips: Object.fromEntries(
-			snapshot.trip_updates.map((update) => [
+			report.trip_updates.map((update) => [
 				update.trip_id,
 				{
 					route: update.route_id,
@@ -97,11 +103,11 @@ export function captureTrips(snapshot: CaptureSnapshot, now: number) {
 			]),
 		),
 	});
-	return { ...payload, captureFeed: feed, captureRevision: snapshot.published_at };
+	return { ...payload, captureFeed: feed, captureRevision: JSON.stringify(feed) };
 }
 
-export function captureDepartures(snapshot: CaptureSnapshot, now: number) {
-	const trips = captureTrips(snapshot, now);
+export function captureDepartures(report: CaptureTripReport, now: number) {
+	const trips = captureTrips(report);
 	const stops = new Map<
 		string,
 		{ route: string | null; trip: string; eta_utc: string; delay_min: number | null }[]

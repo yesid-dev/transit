@@ -6,6 +6,7 @@
 	import { liveAbsenceReason, readLiveAbsenceContext } from '#lib/site/absence.ts';
 	const absenceContext = readLiveAbsenceContext();
 	import { tick } from 'svelte';
+	import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
 	import { Button } from '@yesid/ui/button';
 	import { getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
 	import type { Chip } from '#lib/filters/index.ts';
@@ -57,6 +58,7 @@
 		notReporting?: { ageS: number } | null;
 		selectionPresence?: SelectionPresence | null;
 		selectionSourceHealth?: SelectionSourceHealth | null;
+		tripRefreshing?: boolean;
 		onrefresh?: () => void;
 		presentation?: 'body' | 'identity' | 'action';
 	}
@@ -75,6 +77,7 @@
 		notReporting = null,
 		selectionPresence = null,
 		selectionSourceHealth = null,
+		tripRefreshing = false,
 		onrefresh,
 		presentation = 'body',
 	}: Props = $props();
@@ -317,9 +320,11 @@
 					<div data-fact="departures">
 						<dt>{t.departuresLabel}</dt>
 						<dd>
-							{detail.departures == null
-								? t.departuresUnavailable
-								: t.departures(detail.departures.length)}
+							{tripRefreshing && detail.departures == null
+								? transitTerms[locale].refreshingTripData
+								: detail.departures == null
+									? t.departuresUnavailable
+									: t.departures(detail.departures.length)}
 						</dd>
 					</div>
 				</DetailAttributeGrid>
@@ -337,6 +342,9 @@
 			{/if}
 		</div>
 
+		{#if detail.kind === 'vehicle' && tripRefreshing}
+			<p role="status">{transitTerms[locale].refreshingTripData}</p>
+		{/if}
 		<MapDetailAlerts
 			alerts={detail.alerts}
 			{alertsStale}

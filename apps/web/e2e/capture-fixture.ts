@@ -29,9 +29,7 @@ export function captureVehicle(at: number, overrides: Partial<Vehicle> = {}): Ve
 
 export function captureFixture(
 	at: number,
-	options: Partial<
-		Pick<CaptureSnapshot, 'city' | 'vehicle_positions' | 'trip_updates' | 'alerts'>
-	> = {},
+	options: Partial<Pick<CaptureSnapshot, 'city' | 'vehicle_positions' | 'alerts'>> = {},
 ): CaptureSnapshot {
 	const timestamp = new Date(at).toISOString();
 	const feed = (family: CaptureFamily, fresh_for_seconds: number) => ({
@@ -43,7 +41,7 @@ export function captureFixture(
 		read_failed: false,
 	});
 	return {
-		version: 1,
+		version: 2,
 		city: 'stm',
 		published_at: timestamp,
 		stable_vehicle_ids: true,
@@ -53,7 +51,6 @@ export function captureFixture(
 			i3_alerts: feed('alerts', 900),
 		},
 		vehicle_positions: [],
-		trip_updates: [],
 		alerts: [],
 		...options,
 	};

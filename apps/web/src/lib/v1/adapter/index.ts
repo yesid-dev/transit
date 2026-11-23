@@ -12,6 +12,7 @@ function liveContext(context: LiveReadContext) {
 	const ttlMs = Math.max(1, context.manifest.files.live.ttl_s ?? DEFAULT_LIVE_TTL_S) * 1000;
 	return {
 		manifest: context.manifest,
+		tripScope: context.tripScope,
 		requestCache: context.requestCache,
 		signal: context.signal,
 		onResponseHeaders: (headers: Headers) =>

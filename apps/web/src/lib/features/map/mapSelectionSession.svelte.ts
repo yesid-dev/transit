@@ -1,6 +1,7 @@
 import { neighbors } from './selectionSession/detailNavigation';
 import { SvelteSet } from 'svelte/reactivity';
 import type { Locale } from '#lib/i18n/index.ts';
+import type { LiveTripScope } from '#lib/live/captureSnapshot.ts';
 import type { RouteFile, StopFile } from '#lib/v1/index.ts';
 import type { Alert } from '#lib/v1/schemas/index.ts';
 import type { LiveStore } from '#lib/v1/live/store.svelte.ts';
@@ -37,6 +38,7 @@ export interface MapSelectionSessionOptions {
 	readonly serverNow: () => number;
 	readonly alertsAvailable?: boolean;
 	readonly scheduleOnly?: (id: string, type: number | null) => boolean;
+	readonly setTripScope?: (scope: LiveTripScope | null) => void;
 }
 
 /** Owns a selection and its resources for the lifetime of the calling effect owner. */
@@ -88,6 +90,11 @@ export function createMapSelectionSession(options: MapSelectionSessionOptions) {
 	);
 
 	$effect(() => {
+		options.setTripScope?.(
+			selected?.kind === 'stop' || selected?.kind === 'vehicle'
+				? { kind: selected.kind, id: selected.id }
+				: null,
+		);
 		const release =
 			selected?.kind === 'vehicle'
 				? live.subscribeFamilies(['trips'])

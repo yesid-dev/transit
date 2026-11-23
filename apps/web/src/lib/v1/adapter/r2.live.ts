@@ -9,6 +9,7 @@ import {
 	captureSnapshotSchema,
 	feedState,
 	fetchCaptureSnapshot,
+	fetchCaptureTripScope,
 	type CaptureSnapshot,
 } from '#lib/live/captureSnapshot.ts';
 import { freshnessAgeSeconds } from '#lib/v1/freshness.ts';
@@ -48,15 +49,39 @@ async function read(ctx?: AdapterCtx) {
 
 const now = () => getV1Runtime().clock.serverNow;
 
+async function scopedTrips(ctx?: AdapterCtx) {
+	const requested = ctx?.tripScope;
+	if (!requested) throw new Error('No selected live trip scope');
+	const city = providerOf(ctx);
+	if (requested.kind !== 'vehicle') {
+		return fetchCaptureTripScope(city, requested, ctx?.signal, ctx?.fetch);
+	}
+	const snapshot = await read(ctx);
+	const vehicle = snapshot.vehicle_positions?.find(
+		(row) => (row.vehicle_id ?? row.id) === requested.id,
+	);
+	if (!vehicle?.trip_id) {
+		const feed = Object.values(snapshot.feeds).find((feed) => feed.family === 'trip_updates');
+		if (!vehicle || !feed?.captured_at) throw new Error('Vehicle trip unavailable');
+		return { version: 2 as const, city, feed, trip_updates: [] };
+	}
+	return fetchCaptureTripScope(
+		city,
+		{ kind: 'trip', id: vehicle.trip_id },
+		ctx?.signal,
+		ctx?.fetch,
+	);
+}
+
 export const livePort = {
 	async vehicles(ctx?: AdapterCtx) {
 		return captureVehicles(await read(ctx), now());
 	},
 	async trips(ctx?: AdapterCtx) {
-		return captureTrips(await read(ctx), now());
+		return captureTrips(await scopedTrips(ctx));
 	},
 	async stopDepartures(ctx?: AdapterCtx) {
-		return captureDepartures(await read(ctx), now());
+		return captureDepartures(await scopedTrips(ctx), now());
 	},
 	async alerts(ctx?: AdapterCtx) {
 		return captureAlerts(await read(ctx), now());

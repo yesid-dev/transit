@@ -23,6 +23,45 @@ test('the Transit1 live vehicle reads the capture snapshot in English and French
 	expect(legacyRequests).toEqual([]);
 });
 
+test('trip detail waits through a refreshing scope without showing missing data', async ({
+	page,
+}) => {
+	const scoped = /\/api\/live-trips\?city=stm&trip=T1$/;
+	let attempts = 0;
+	let release!: () => void;
+	const held = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	await page.route(scoped, async (route) => {
+		if (++attempts > 1) {
+			await held;
+			return route.continue();
+		}
+		return route.fulfill({
+			status: 503,
+			headers: { 'retry-after': '1' },
+			json: { state: 'refreshing' },
+		});
+	});
+	const refreshing = page.waitForResponse(
+		(response) => scoped.test(response.url()) && response.status() === 503,
+	);
+	const current = page.waitForResponse((response) => scoped.test(response.url()) && response.ok());
+	try {
+		await page.goto('/trip/T1?provider=stm');
+		await refreshing;
+		await expect(
+			page.getByRole('status').filter({ hasText: 'Refreshing live trip data' }),
+		).toBeVisible();
+		await expect(page.getByTestId('trip-standdown')).toHaveCount(0);
+		release();
+		await current;
+		await expect(page.getByText('Fixture stop', { exact: true }).first()).toBeVisible();
+	} finally {
+		release();
+	}
+});
+
 test('rail detail uses schedule geometry and omits vehicles from a line without live coverage', async ({
 	page,
 }) => {

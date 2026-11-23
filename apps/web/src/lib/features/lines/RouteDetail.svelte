@@ -81,9 +81,13 @@
 	const timeZone = v1.provider?.timezone ?? manifest.tz ?? 'UTC';
 	const l10n = { locale, timeZone };
 	const live = createLiveStore(manifest, liveReader, {
+		tripScope: untrack(() => ({ kind: 'line', id })),
 		families: providerHasAlerts(v1.provider)
 			? ['vehicles', 'trips', 'alerts', 'network']
 			: ['vehicles', 'trips', 'network'],
+	});
+	$effect(() => {
+		live.setTripScope({ kind: 'line', id });
 	});
 	provideLiveAbsenceContext(() => ({ familyStates: live.familyStates }));
 	const presentation = $derived(

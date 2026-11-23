@@ -43,8 +43,14 @@
 	const live = createLiveStore(
 		untrack(() => manifest),
 		liveReader,
-		{ families: ['vehicles', 'trips'] },
+		untrack(() => ({
+			families: id ? ['vehicles', 'trips'] : ['vehicles'],
+			tripScope: id ? { kind: 'vehicle', id } : null,
+		})),
 	);
+	$effect(() => {
+		live.setTripScope(id ? { kind: 'vehicle', id } : null);
+	});
 	const { clock } = getV1Runtime();
 	const cutoff = $derived(liveTimingFor(manifest).staleCutoffS);
 	const health = $derived(live.familyStates.vehicles.health);
@@ -97,6 +103,8 @@
 		const variants = file?.directions ?? [];
 		const inferred = tripDirection(trip?.stops?.map((stop) => stop.stop) ?? [], variants);
 		if (inferred) return inferred;
+		const reported = variants.filter((variant) => variant.dir === vehicle.direction_id);
+		if (reported.length === 1 && reported[0]?.headsign) return reported[0].headsign;
 		const matching = variants.filter((variant) =>
 			variant.stops?.some((stop) => stop.id === vehicle.next_stop),
 		);

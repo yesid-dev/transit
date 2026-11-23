@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { captureDepartures, captureNetwork, captureVehicles } from './captureProjection';
-import { captureSnapshotSchema, feedState } from './captureSnapshot';
+import {
+	captureSnapshotSchema,
+	captureTripScopeSchema,
+	feedState,
+	fetchCaptureTripScope,
+	CaptureScopeRefreshing,
+} from './captureSnapshot';
 
 const captured = '2026-11-23T16:30:00Z';
 const now = Date.parse(captured);
@@ -12,7 +18,7 @@ const health = {
 	read_failed: false,
 };
 const snapshot = captureSnapshotSchema.parse({
-	version: 1,
+	version: 2,
 	city: 'demo',
 	published_at: captured,
 	stable_vehicle_ids: true,
@@ -42,6 +48,12 @@ const snapshot = captureSnapshotSchema.parse({
 			delay: 0,
 		},
 	],
+	alerts: null,
+});
+const scoped = captureTripScopeSchema.parse({
+	version: 2,
+	city: 'demo',
+	feed: { ...health, family: 'trip_updates' },
 	trip_updates: [
 		{
 			trip_id: 'trip-1',
@@ -64,7 +76,6 @@ const snapshot = captureSnapshotSchema.parse({
 			],
 		},
 	],
-	alerts: null,
 });
 
 describe('capture-backed Live projection', () => {
@@ -89,8 +100,30 @@ describe('capture-backed Live projection', () => {
 			on_time_pct: 100,
 			non_responding: null,
 		});
-		expect(captureDepartures(snapshot, now).stops?.['stop-1']).toEqual([
+		expect(captureDepartures(scoped, now).stops?.['stop-1']).toEqual([
 			{ route: '24', trip: 'trip-1', eta_utc: '2026-11-23T16:35:00.000Z', delay_min: 0 },
 		]);
+	});
+
+	it('distinguishes an ETag race from a missing scoped report', async () => {
+		const scope = { kind: 'trip', id: 'trip-1' } as const;
+		const refreshing = async () =>
+			Response.json(
+				{ state: 'refreshing' },
+				{
+					status: 503,
+					headers: { 'retry-after': '1' },
+				},
+			);
+		await expect(fetchCaptureTripScope('demo', scope, undefined, refreshing)).rejects.toMatchObject(
+			{
+				constructor: CaptureScopeRefreshing,
+				retryAfterMs: 1000,
+			},
+		);
+		const missing = async () => new Response(null, { status: 404 });
+		await expect(fetchCaptureTripScope('demo', scope, undefined, missing)).rejects.toThrow(
+			'unavailable',
+		);
 	});
 });

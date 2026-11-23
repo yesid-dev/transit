@@ -232,6 +232,7 @@
 		serverNow: () => dataClock.serverNow,
 		alertsAvailable,
 		scheduleOnly: (id, type) => lineIsScheduleOnly(page.data.provider, id, type),
+		setTripScope: live.setTripScope,
 	});
 	const mapVehicles = $derived(
 		live.vehicles && {
@@ -299,6 +300,11 @@
 	const selectedDetail = $derived(session.detail);
 	const selectionPresence = $derived(session.presence);
 	const selectionSourceHealth = $derived(session.sourceHealth);
+	const tripRefreshing = $derived(
+		!!(session.selected?.kind === 'stop'
+			? live.familyStates.departures.refreshing
+			: live.familyStates.trips.refreshing),
+	);
 	const selectedVehicleAbsence = $derived(session.vehicleAbsence);
 	const detailSurfaceKey = $derived(session.surfaceKey);
 	const hoverPeek = $derived(session.hoverPeek);
@@ -769,6 +775,7 @@
 				notReporting={selectedVehicleAbsence}
 				selectionPresence={selectionPresence}
 				selectionSourceHealth={selectionSourceHealth}
+				{tripRefreshing}
 				onrefresh={live.refresh}
 				onselect={selectFromDetail}
 				onpreview={(next) => void session.setHovered(next)}
@@ -989,6 +996,7 @@
 			notReporting={selectedVehicleAbsence}
 			{selectionPresence}
 			{selectionSourceHealth}
+			{tripRefreshing}
 			onrefresh={live.refresh}
 			onselect={selectFromDetail}
 			onpreview={(next) => void session.setHovered(next)}

@@ -15,7 +15,7 @@ function liveBody(city: string) {
 		read_failed: false,
 	});
 	return {
-		version: 1,
+		version: 2,
 		city,
 		published_at: timestamp,
 		stable_vehicle_ids: true,
@@ -25,7 +25,6 @@ function liveBody(city: string) {
 			alerts: feed('alerts'),
 		},
 		vehicle_positions: [],
-		trip_updates: [],
 		alerts: [],
 	};
 }
@@ -46,9 +45,16 @@ function manifest(provider: string) {
 afterEach(() => vi.unstubAllGlobals());
 
 it.each(['stm', 'octranspo'])(
-	'shares one %s snapshot across every Live family in a poll',
+	'shares one %s city snapshot and scopes the trip families',
 	async (city) => {
-		const request = vi.fn(async () => Response.json(liveBody(city)));
+		const body = liveBody(city);
+		const request = vi.fn(async (url: RequestInfo | URL) =>
+			Response.json(
+				String(url).startsWith('/api/live-trips?')
+					? { version: 2, city, feed: body.feeds.trips, trip_updates: [] }
+					: body,
+			),
+		);
 		vi.stubGlobal('fetch', request);
 		const signal = new AbortController().signal;
 		const onPollDelayMs = vi.fn();
@@ -57,6 +63,7 @@ it.each(['stm', 'octranspo'])(
 			signal,
 			onPollDelayMs,
 			requestCache: 'reload' as const,
+			tripScope: { kind: 'stop', id: 's' } as const,
 		};
 		const replies = await Promise.all([
 			liveReader.vehicles(ctx),
@@ -66,15 +73,17 @@ it.each(['stm', 'octranspo'])(
 			liveReader.network(ctx),
 		]);
 
-		expect(request).toHaveBeenCalledExactlyOnceWith(`/api/live?city=${city}`, {
+		expect(request).toHaveBeenCalledWith(`/api/live?city=${city}`, {
 			signal,
 			cache: 'reload',
 		});
+		expect(request.mock.calls.filter(([url]) => url === `/api/live?city=${city}`)).toHaveLength(1);
+		expect(request).toHaveBeenCalledWith(`/api/live-trips?city=${city}&stop=s`, { signal });
 		expect(onPollDelayMs).toHaveBeenCalledWith(30_000);
 		expect(replies[0]).toMatchObject({ vehicles: [] });
 		expect(replies[4]).toMatchObject({ vehicles_in_service: 0, non_responding: null });
 		await liveReader.vehicles({ ...ctx, signal: new AbortController().signal });
-		expect(request).toHaveBeenCalledTimes(2);
+		expect(request.mock.calls.filter(([url]) => url === `/api/live?city=${city}`)).toHaveLength(2);
 	},
 );
 

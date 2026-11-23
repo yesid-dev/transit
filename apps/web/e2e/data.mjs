@@ -328,8 +328,8 @@ const server = createServer((request, response) => {
 		);
 		return;
 	}
-	const live = /^\/v2\/([a-z0-9_-]+)\/live$/.exec(url.pathname);
-	if (live && !url.search) {
+	const live = /^\/v2\/([a-z0-9_-]+)\/(live|live-trips)$/.exec(url.pathname);
+	if (live) {
 		const [, city] = live;
 		if (!['stm', 'octranspo'].includes(city)) {
 			response.writeHead(404).end();
@@ -345,6 +345,45 @@ const server = createServer((request, response) => {
 			source_lag_seconds: 0,
 			read_failed: false,
 		});
+		if (live[2] === 'live-trips') {
+			const selected =
+				url.searchParams.get('trip') === 'T1' ||
+				url.searchParams.get('line') === '24' ||
+				url.searchParams.get('stop') === 'S1';
+			const trip_updates = selected
+				? [
+						{
+							trip_id: 'T1',
+							route_id: '24',
+							direction_id: null,
+							start_date: null,
+							start_time: null,
+							relationship: 0,
+							delay: 240,
+							stops: [
+								{
+									stop_id: 'S1',
+									sequence: 1,
+									arrival: null,
+									departure: seconds + 300,
+									arrival_delay: null,
+									departure_delay: 240,
+									relationship: 0,
+								},
+							],
+						},
+					]
+				: [];
+			response.writeHead(200, { 'content-type': 'application/json' }).end(
+				JSON.stringify({
+					version: 2,
+					city,
+					feed: feed('trip_updates', 90),
+					trip_updates,
+				}),
+			);
+			return;
+		}
 		const vehicle = {
 			id: 'sample-report',
 			vehicle_id: '40061',
@@ -368,7 +407,7 @@ const server = createServer((request, response) => {
 		if (city === 'octranspo') Object.assign(vehicle, { latitude: 45.41, longitude: -75.69 });
 		response.writeHead(200, { 'content-type': 'application/json' }).end(
 			JSON.stringify({
-				version: 1,
+				version: 2,
 				city,
 				published_at: timestamp,
 				stable_vehicle_ids: true,
@@ -378,28 +417,6 @@ const server = createServer((request, response) => {
 					...(city === 'stm' ? { i3_alerts: feed('alerts', 900) } : {}),
 				},
 				vehicle_positions: [vehicle],
-				trip_updates: [
-					{
-						trip_id: 'T1',
-						route_id: '24',
-						direction_id: null,
-						start_date: null,
-						start_time: null,
-						relationship: 0,
-						delay: 240,
-						stops: [
-							{
-								stop_id: 'S1',
-								sequence: 1,
-								arrival: null,
-								departure: seconds + 300,
-								arrival_delay: null,
-								departure_delay: 240,
-								relationship: 0,
-							},
-						],
-					},
-				],
 				alerts: city === 'stm' ? [] : null,
 			}),
 		);

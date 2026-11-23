@@ -3,6 +3,7 @@ import { clock } from '@yesid/ui/state';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushSync } from 'svelte';
 import { createSubscriber } from 'svelte/reactivity';
+import { CaptureScopeRefreshing } from '#lib/live/captureSnapshot.ts';
 
 const mocks = vi.hoisted(() => {
 	const clockDispose = vi.fn();
@@ -125,6 +126,39 @@ describe('Live age excludes service alerts', () => {
 });
 
 describe('partial feed capture health', () => {
+	it('keeps the scoped report loading through an ETag refresh window', async () => {
+		vi.useFakeTimers();
+		mocks.browser = true;
+		mocks.generatedUtc = '2026-06-21T12:00:00Z';
+		mocks.nowMs = Date.parse(mocks.generatedUtc);
+		mocks.offsetMs = 0;
+		resetLiveFetches();
+		mocks.trips.mockRejectedValueOnce(new CaptureScopeRefreshing(1000));
+		const track = vi.fn();
+		const restore = configureV1Runtime({ refresh: { epoch: 0, track } });
+		const mounted = mountLiveStore(30, ['trips']);
+		try {
+			const pending = mounted.store.refresh();
+			await vi.advanceTimersByTimeAsync(0);
+			expect(mocks.trips).toHaveBeenCalledTimes(1);
+			expect(mounted.store.familyStates.trips.phase).toBe('loading');
+			expect(mounted.store.familyStates.trips.refreshing).toBe(true);
+			expect(mounted.store.error).toBeNull();
+			await vi.advanceTimersByTimeAsync(999);
+			expect(mocks.trips).toHaveBeenCalledTimes(1);
+			await vi.advanceTimersByTimeAsync(1);
+			await pending;
+			expect(mocks.trips).toHaveBeenCalledTimes(2);
+			expect(mounted.store.familyStates.trips.phase).toBe('ready');
+			expect(mounted.store.familyStates.trips.refreshing).toBe(false);
+			expect(track).toHaveBeenCalledTimes(1);
+		} finally {
+			mounted.dispose();
+			restore();
+			vi.useRealTimers();
+		}
+	});
+
 	it('ages the source reading independently of a newly captured copy', async () => {
 		mocks.browser = true;
 		const capturedAt = '2026-06-21T12:00:00Z';

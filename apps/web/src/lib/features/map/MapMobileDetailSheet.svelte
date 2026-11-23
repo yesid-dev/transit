@@ -29,6 +29,7 @@
 		notReporting: { ageS: number } | null;
 		selectionPresence?: SelectionPresence | null;
 		selectionSourceHealth?: SelectionSourceHealth | null;
+		tripRefreshing?: boolean;
 		onrefresh?: () => void;
 		onselect: (selection: MapSelection) => void;
 		onpreview?: (selection: MapSelection | null) => void;
@@ -54,6 +55,7 @@
 		notReporting,
 		selectionPresence = null,
 		selectionSourceHealth = null,
+		tripRefreshing = false,
 		onrefresh,
 		onselect,
 		onpreview,
@@ -118,6 +120,7 @@
 				{notReporting}
 				{selectionPresence}
 				{selectionSourceHealth}
+				{tripRefreshing}
 				{onrefresh}
 				{onselect}
 				{onpreview}
