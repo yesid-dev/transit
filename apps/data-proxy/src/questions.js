@@ -177,7 +177,7 @@ async function serveLive(env, ctx, origin, question, visitorIp) {
   const store = cleanDownloadStore(env);
   if (!store) return message(503, "live publication unavailable");
   const cache = globalThis.caches?.default;
-  const key = cacheRequest(origin, question, "live");
+  const key = new Request(`${origin}/__transit_question_cache/v2/live${question.key}`);
   const cached = await cacheMatch(cache, key);
   if (cached) return publicAnswer(cached.body, "application/json", { cached: true });
   const denied = await admit(env, visitorIp);

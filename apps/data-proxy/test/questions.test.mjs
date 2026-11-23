@@ -55,6 +55,25 @@ test("serves the per-city live object with a short edge cache through public and
   assert.equal(get.mock.callCount(), 1);
 });
 
+test("keeps the live edge cache independent of engine revision and availability", async (t) => {
+  const f = fixture(t);
+  delete f.env.ENGINE;
+  delete f.env.TRANSIT1_ENGINE_ACCESS_TOKEN;
+  const snapshot = JSON.stringify({ city: "demo", version: 2, vehicle_positions: [] });
+  const get = stubLiveStorage(t, f.env, () => new Response(snapshot, {
+    headers: { "content-length": String(Buffer.byteLength(snapshot)) },
+  }));
+  const path = "/v2/demo/live";
+  assert.equal(await (await f.fetch(path)).text(), snapshot);
+  assert.equal(await (await f.fetch(path, {}, "GET", true)).text(), snapshot);
+  assert.equal(get.mock.callCount(), 1);
+  assert.deepEqual([...f.answers.keys()], [
+    "https://data.yesid.dev/__transit_question_cache/v2/live/demo/live",
+  ]);
+  assert.equal(f.cityRequests.length, 0);
+  assert.equal(f.saved.size, 0);
+});
+
 test("reads only the ranges for a live scope and rejects mixed publications", async (t) => {
   const f = fixture(t);
   const first = [{ trip_id: "t1", route_id: "a/b", stops: [{ stop_id: "s" }, { stop_id: "other" }] }];
