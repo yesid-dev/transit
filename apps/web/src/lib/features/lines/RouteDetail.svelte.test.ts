@@ -1,7 +1,4 @@
-import { stampCopy } from '#lib/v1/stamp.copy.ts';
-import { formatDateKey } from '#lib/utils/time.ts';
 import { createLineDirectory } from '#lib/site/lineDirectory.ts';
-import { headerWeek as CURRENT_RELIABILITY } from './reliability/__fixtures__/closedWeek';
 import { clock } from '@yesid/ui/state';
 import {
 	fireEvent,
@@ -10,9 +7,8 @@ import {
 	waitFor,
 	within,
 } from '@testing-library/svelte';
-import { tick } from 'svelte';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { RouteFile, RouteReliability, StopPrediction, Vehicle } from '#lib/v1/index.ts';
+import type { RouteFile, StopPrediction, Vehicle } from '#lib/v1/index.ts';
 import { STATUS_LABELS } from '#lib/v1/enumLabels.ts';
 import type { IdentitySeed } from '#lib/v1/serverContext.ts';
 import { createSurfaceHarness } from '../../../tests/surfaceHarness';
@@ -220,60 +216,6 @@ const liveStore = {
 	stop: vi.fn(),
 };
 
-const getRouteReliabilitySpy = vi.fn(async (_id: string) => null);
-const lineHistoryHarness = vi.hoisted(() => ({
-	getLineHistoryIndex: vi.fn(),
-	loadLineHistoryRange: vi.fn(),
-}));
-
-const HISTORY_INDEX = {
-	generated_utc: '2026-07-13T12:00:00Z',
-	family: 'lines',
-	selection_mode: 'range',
-	entity_id: '161',
-	collection_generation_id: 'a'.repeat(64),
-	first_available_date: '2026-01-31',
-	last_available_date: '2026-02-01',
-	gaps: [],
-	partitions: [
-		{
-			path: `historic/history/lines/313631/generations/${'b'.repeat(64)}/2026-01.json`,
-			coverage_start: '2026-01-31',
-			coverage_end: '2026-01-31',
-			count: 1,
-			sha256: 'b'.repeat(64),
-			byte_size: 100,
-		},
-		{
-			path: `historic/history/lines/313631/generations/${'c'.repeat(64)}/2026-02.json`,
-			coverage_start: '2026-02-01',
-			coverage_end: '2026-02-01',
-			count: 1,
-			sha256: 'c'.repeat(64),
-			byte_size: 100,
-		},
-	],
-	metrics: [],
-};
-
-let reliabilityResourceState: {
-	data: RouteReliability | null;
-	error: Error | null;
-	loading: boolean;
-	settled: boolean;
-} = {
-	data: null,
-	error: null,
-	loading: false,
-	settled: true,
-};
-const reliabilityReloadSpy = vi.fn();
-
-let routesIndexData: { generated_utc: string; routes: { id: string; reliability?: boolean }[] } = {
-	generated_utc: '2026-06-15T12:00:00Z',
-	routes: [{ id: '161' }],
-};
-
 function resetRouteSurfaceState(): void {
 	routeManifest.provider = 'stm';
 	routeProvider.value = undefined;
@@ -283,12 +225,6 @@ function resetRouteSurfaceState(): void {
 	liveIndex = buildIndex(VEHICLES);
 	provenanceData = { generated_utc: '2026-06-15T12:00:00Z', gaps: ['metro_realtime'] };
 	routeFileData = ROUTE_FILE;
-	routesIndexData = { generated_utc: '2026-06-15T12:00:00Z', routes: [{ id: '161' }] };
-	getRouteReliabilitySpy.mockReset().mockResolvedValue(null);
-	lineHistoryHarness.getLineHistoryIndex.mockReset().mockResolvedValue(null);
-	lineHistoryHarness.loadLineHistoryRange.mockReset();
-	reliabilityResourceState = { data: null, error: null, loading: false, settled: true };
-	reliabilityReloadSpy.mockReset();
 	createLiveStoreSpy.mockReset();
 	Object.assign(liveStore.familyStates.alerts, { phase: 'ready' });
 	Object.assign(liveStore.familyStates.alerts.health, {
@@ -304,7 +240,7 @@ function resetRouteSurfaceState(): void {
 
 const routeSurface = createSurfaceHarness({
 	url: {
-		initial: '/lines/161?tab=detail',
+		initial: '/lines/161?tab=detail&frameMode=live',
 		origin: 'http://localhost',
 		set: (url) => {
 			routeDetailNav.page.url = url;
@@ -321,33 +257,8 @@ const renderRoute = (id = '161', name?: string) =>
 
 vi.mock('#lib/v1/repositories/static.ts', () => ({
 	getRoute: () => routeFileData,
-	getRoutesIndex: async () => routesIndexData,
-}));
-vi.mock('#lib/v1/repositories/historic.ts', () => ({
-	getRouteReliability: (id: string) => getRouteReliabilitySpy(id),
-	getLineHistoryIndex: lineHistoryHarness.getLineHistoryIndex,
-	loadLineHistoryRange: lineHistoryHarness.loadLineHistoryRange,
 }));
 vi.mock('#lib/v1/repositories/provenance.ts', () => ({ getProvenance: () => provenanceData }));
-vi.mock('#lib/v1/repositories/dataHealth.ts', () => ({ getDataHealth: async () => null }));
-// The notice's rule lives in the stamp module (recordStamp.svelte.test.ts); here only its placement.
-const recordHealth = vi.hoisted(() => ({
-	verdict: null as string | null,
-	reads: undefined as (() => boolean) | undefined,
-}));
-vi.mock('#lib/v1/recordStamp.svelte.ts', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('#lib/v1/recordStamp.svelte.ts')>();
-	return {
-		...actual,
-		createRecordStamp: (...args: Parameters<typeof actual.createRecordStamp>) => {
-			recordHealth.reads = args[3];
-			return Object.assign(Object.create(actual.createRecordStamp(...args)), {
-				notice: (lang: 'en' | 'fr') =>
-					recordHealth.verdict === 'warn' ? stampCopy[lang].warning : null,
-			});
-		},
-	};
-});
 vi.mock('#lib/v1/live/store.svelte.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('#lib/v1/live/store.svelte.ts')>();
 	return {
@@ -378,23 +289,6 @@ vi.mock('#lib/v1/boot.ts', () => ({
 vi.mock('#lib/v1/resource.svelte.ts', () => ({
 	createResource: (loader: () => unknown) => {
 		const value = loader();
-		if (value instanceof Promise) {
-			return {
-				get data() {
-					return reliabilityResourceState.data;
-				},
-				get error() {
-					return reliabilityResourceState.error;
-				},
-				get loading() {
-					return reliabilityResourceState.loading;
-				},
-				get settled() {
-					return reliabilityResourceState.settled;
-				},
-				reload: reliabilityReloadSpy,
-			};
-		}
 		return {
 			data: value ?? ROUTE_FILE,
 			error: null,
@@ -528,96 +422,35 @@ describe('RouteDetail article cover and focus scope', () => {
 		expect(screen.getByRole('link', { name: /View line 1 on map/ })).toBeInTheDocument();
 	});
 
-	it.each([
-		['en', ['Record', 'Live now', 'Schedule']],
-		['fr', ['Bilan', 'En direct', 'Horaire']],
-	] as const)('opens a bare line URL on its record first in %s', (locale, names) => {
-		routeSurface.setUrl('/lines/161');
+	it.each(['en', 'fr'] as const)('renders only the Live tab in %s', (locale) => {
 		const view = routeSurface.mount(RouteDetail, {
 			props: { id: '161', seed: routeSeed() },
 			context: new Map([[Symbol.for('@yesid/ui/locale'), () => locale]]),
 		});
-
-		const tabs = screen.getAllByRole('tab');
-		expect(tabs.map((tab) => tab.textContent?.trim())).toEqual(names);
-		expect(tabs[0]).toHaveAttribute('aria-selected', 'true');
-		expect(view.container.querySelector('[data-slot="line-directions"]')).toBeNull();
+		const tab = screen.getByRole('tab', { name: detailCopy[locale].tabs.detail });
+		expect(screen.getAllByRole('tab')).toEqual([tab]);
+		expect(tab).toHaveAttribute('aria-selected', 'true');
+		expect(view.container.querySelector('[data-slot="line-directions"]')).not.toBeNull();
 	});
 
-	it('shows a date-only record only on Reliability and ignores prepared publication times', async () => {
-		recordHealth.verdict = 'warn';
-		routeDetailNav.page.url = new URL('http://localhost/lines/161?tab=reliability');
-		reliabilityResourceState = {
-			data: CURRENT_RELIABILITY,
-			error: null,
-			loading: false,
-			settled: true,
-		};
-		const view = routeSurface.mount(RouteDetail, {
-			props: {
-				id: '161',
-				seed: routeSeed(),
-				preparedArticleTime: {
-					routeId: '161',
-					iso: CURRENT_RELIABILITY.generated_utc,
-					locale: 'en',
-					text: 'Prepared current timestamp',
-				},
-			},
-		});
-		const header = view.container.querySelector('[data-slot="article-header"]') as HTMLElement;
-		const date = CURRENT_RELIABILITY.generated_utc.slice(0, 10);
-		expect(
-			within(header).getByText(
-				stampCopy.en.record(null, formatDateKey(date, 'en', false), 'window'),
-			),
-		).toHaveAttribute('datetime', date);
-		expect(header).not.toHaveTextContent('Prepared current timestamp');
-		await waitFor(() =>
-			expect(within(header).getByRole('link', { name: stampCopy.en.warning })).toHaveAttribute(
-				'href',
-				'/status',
-			),
-		);
-		expect(recordHealth.reads?.()).toBe(true);
-		for (const name of ['Live now', 'Schedule']) {
-			await fireEvent.click(screen.getByRole('tab', { name }));
-			expect(recordHealth.reads?.()).toBe(false);
-			expect(header.querySelector('time')).toBeNull();
-			expect(within(header).queryByRole('link', { name: stampCopy.en.warning })).toBeNull();
-		}
-		recordHealth.verdict = null;
-	});
-
-	it('copies the selected Schedule view and its provider after a shallow tab change', async () => {
+	it('copies the Live view with its provider and existing parameters', async () => {
 		const writeText = vi.fn(async (_text: string) => {});
 		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
 		try {
+			routeSurface.setUrl('/lines/161?tab=detail&frameMode=live&window=am');
 			renderRoute();
-			await fireEvent.click(screen.getByRole('tab', { name: 'Schedule' }));
-			await fireEvent.click(screen.getByRole('button', { name: 'Copy link' }));
+			await fireEvent.click(screen.getByRole('button', { name: 'Copy live link' }));
 			const copied = new URL(writeText.mock.calls[0][0]);
-			expect(copied.searchParams.get('tab')).toBe('schedule');
+			expect(copied.searchParams.get('tab')).toBe('detail');
+			expect(copied.searchParams.get('frameMode')).toBe('live');
 			expect(copied.searchParams.get('provider')).toBe('stm');
+			expect(copied.searchParams.get('window')).toBe('am');
 		} finally {
 			vi.unstubAllGlobals();
 		}
 	});
 
-	it('keeps tab URLs shareable while preserving unrelated search parameters', async () => {
-		routeDetailNav.page.url = new URL('http://localhost/lines/161?window=am');
-		renderRoute();
-
-		await fireEvent.click(screen.getByRole('tab', { name: 'Live now' }));
-		await waitFor(() => expect(routeDetailNav.page.url.searchParams.get('tab')).toBe('detail'));
-		expect(routeDetailNav.page.url.searchParams.get('window')).toBe('am');
-
-		await fireEvent.click(screen.getByRole('tab', { name: 'Record' }));
-		await waitFor(() => expect(routeDetailNav.page.url.searchParams.has('tab')).toBe(false));
-		expect(routeDetailNav.page.url.searchParams.get('window')).toBe('am');
-	});
-
-	it('keeps the tabs fixed above a cohesive disclosure sequence and preserves mounted panes while new panes use the bulk choice', async () => {
+	it('keeps the Live tab above the disclosures and lets readers collapse them together', async () => {
 		const view = renderRoute();
 		const toolbar = view.container.querySelector('[data-slot="detail-shell-toolbar"]');
 		const tabs = view.container.querySelector<HTMLElement>('[data-slot="entity-detail-tabs"]');
@@ -639,30 +472,9 @@ describe('RouteDetail article cover and focus scope', () => {
 				);
 			}
 		});
-
-		await fireEvent.click(screen.getByRole('tab', { name: 'Schedule' }));
-		expect(view.container.querySelector('[data-slot="detail-shell-toolbar"]')).toContainElement(
-			tabs,
-		);
-		const scheduleCards = Array.from(
-			view.container.querySelectorAll<HTMLElement>('[data-toc^="line-schedule-"]'),
-		);
-		expect(scheduleCards).toHaveLength(3);
-		for (const card of scheduleCards) {
-			expect(card.querySelector('[data-section-trigger]')).toHaveAttribute(
-				'aria-expanded',
-				'false',
-			);
-		}
-
-		await fireEvent.click(screen.getByRole('tab', { name: 'Record' }));
-		expect(view.container.querySelector('[data-slot="detail-shell-toolbar"]')).toContainElement(
-			tabs,
-		);
-		expect(view.container.querySelector('[data-slot="edge-state"]')).not.toBeNull();
 	});
 
-	it('uses the shared connected section stack for every Detail and Schedule disclosure', async () => {
+	it('uses the shared connected section stack for Live disclosures', () => {
 		const view = renderRoute();
 		const detailStack = view.container.querySelector(
 			'[data-slot="article-section-stack"]',
@@ -675,26 +487,9 @@ describe('RouteDetail article cover and focus scope', () => {
 			expect(card.matches('[data-slot="card"].section-card[data-toc^="line-detail-"]')).toBe(true);
 			expect(card.querySelector('[data-section-trigger]')).not.toBeNull();
 		}
-
-		await fireEvent.click(screen.getByRole('tab', { name: 'Schedule' }));
-		const scheduleStack = view.container.querySelector(
-			'[data-slot="article-section-stack"][data-section-sequence="line-schedule"]',
-		) as HTMLElement;
-		const scheduleCards = Array.from(scheduleStack?.children ?? []);
-
-		expect(scheduleCards).toHaveLength(3);
-		for (const card of scheduleCards) {
-			expect(card.matches('[data-slot="card"].section-card[data-toc^="line-schedule-"]')).toBe(
-				true,
-			);
-			expect(card.querySelector('[data-section-trigger]')).not.toBeNull();
-		}
-		expect(scheduleCards[0]).toContainElement(
-			view.container.querySelector('[data-slot="schedule-intro"]'),
-		);
 	});
 
-	it('renders a wide article rail whose entries match the active pane sections', async () => {
+	it('renders a wide article rail for the Live sections', () => {
 		const view = renderRoute();
 		const rail = view.container.querySelector('[data-slot="detail-shell-left"]') as HTMLElement;
 
@@ -703,12 +498,6 @@ describe('RouteDetail article cover and focus scope', () => {
 		expect(within(rail).getByRole('button', { name: 'Current reports' })).toBeInTheDocument();
 		expect(
 			within(rail).getByRole('button', { name: 'Predictions by destination' }),
-		).toBeInTheDocument();
-
-		await fireEvent.click(screen.getByRole('tab', { name: 'Schedule' }));
-		expect(within(rail).getByRole('button', { name: 'Available schedule' })).toBeInTheDocument();
-		expect(
-			within(rail).getByRole('button', { name: 'Planned time between departures' }),
 		).toBeInTheDocument();
 	});
 
@@ -725,7 +514,7 @@ describe('RouteDetail article cover and focus scope', () => {
 		]);
 	});
 
-	it('keeps article controls visible across tabs without mutating a card until used', async () => {
+	it('keeps article controls visible without mutating a card until used', async () => {
 		const view = renderRoute();
 		const headerContent = view.container.querySelector('.header__content') as HTMLElement;
 		const actionRow = view.container.querySelector('[data-slot="article-header-actions"]');
@@ -744,11 +533,9 @@ describe('RouteDetail article cover and focus scope', () => {
 		expect(Array.from(acts!.children).at(-1)).toBe(controlRow);
 		expect(Array.from(headerContent.children).at(-1)).toBe(acts);
 
-		await fireEvent.click(screen.getByRole('tab', { name: 'Schedule' }));
 		expect(screen.getByTestId('sections-toggle')).toBeVisible();
 		expect(profile).toHaveAttribute('aria-expanded', 'true');
 
-		await fireEvent.click(screen.getByRole('tab', { name: 'Live now' }));
 		await fireEvent.click(screen.getByTestId('sections-toggle'));
 		await waitFor(() => expect(profile).toHaveAttribute('aria-expanded', 'false'));
 		await view.rerender({ id: 'A/B', seed: routeSeed('A/B') });
@@ -760,241 +547,16 @@ describe('RouteDetail article cover and focus scope', () => {
 	});
 });
 
-describe('RouteDetail reliability fetch — the route page trusts the FILE', () => {
-	async function routePageReliability(id: string): Promise<unknown> {
-		const historic = (await import('#lib/v1/repositories/historic.ts')) as unknown as {
-			getRouteReliability: (id: string) => Promise<unknown>;
-		};
-		return historic.getRouteReliability(id);
-	}
-
-	it('probes the file even when the index flag is false — a stale false must not hide data', async () => {
-		routesIndexData = {
-			generated_utc: '2026-06-15T12:00:00Z',
-			routes: [{ id: '161', reliability: false }],
-		};
-		const file = { id: '161', generated_utc: '2026-06-15T12:00:00Z' };
-		getRouteReliabilitySpy.mockResolvedValueOnce(file as unknown as null);
-		const result = await routePageReliability('161');
-
-		expect(getRouteReliabilitySpy).toHaveBeenCalledWith('161');
-		expect(result).toBe(file);
-	});
-
-	it('probes the file when the index flag is true', async () => {
-		routesIndexData = {
-			generated_utc: '2026-06-15T12:00:00Z',
-			routes: [{ id: '161', reliability: true }],
-		};
-		const result = await routePageReliability('161');
-
-		expect(result).toBeNull();
-		expect(getRouteReliabilitySpy).toHaveBeenCalledWith('161');
-	});
-
-	it('probes the file when the flag is absent (stale/legacy index)', async () => {
-		routesIndexData = { generated_utc: '2026-06-15T12:00:00Z', routes: [{ id: '161' }] };
-		await routePageReliability('161');
-
-		expect(getRouteReliabilitySpy).toHaveBeenCalledWith('161');
-	});
-
-	it('probes the file when the route is missing from the index entirely', async () => {
-		routesIndexData = { generated_utc: '2026-06-15T12:00:00Z', routes: [{ id: 'other' }] };
-		await routePageReliability('161');
-
-		expect(getRouteReliabilitySpy).toHaveBeenCalledWith('161');
-	});
-});
-
-describe('RouteDetail retained-history ownership', () => {
-	it('keeps discovery route-keyed, aborts the previous route, and never fans out partitions by default', async () => {
-		lineHistoryHarness.getLineHistoryIndex.mockImplementation(() => new Promise(() => undefined));
-		const view = renderRoute();
-
-		await waitFor(() => expect(lineHistoryHarness.getLineHistoryIndex).toHaveBeenCalledTimes(1));
-		const firstContext = lineHistoryHarness.getLineHistoryIndex.mock.calls[0]?.[1] as
-			| { signal: AbortSignal }
-			| undefined;
-		expect(lineHistoryHarness.getLineHistoryIndex.mock.calls[0]?.[0]).toBe('161');
-		expect(firstContext?.signal.aborted).toBe(false);
-
-		await view.rerender({ id: 'A/B', seed: routeSeed('A/B') });
-		await waitFor(() => expect(lineHistoryHarness.getLineHistoryIndex).toHaveBeenCalledTimes(2));
-		expect(firstContext?.signal.aborted).toBe(true);
-		expect(lineHistoryHarness.getLineHistoryIndex.mock.calls[1]?.[0]).toBe('A/B');
-		expect(lineHistoryHarness.loadLineHistoryRange).not.toHaveBeenCalled();
-
-		const secondContext = lineHistoryHarness.getLineHistoryIndex.mock.calls[1]?.[1] as
-			| { signal: AbortSignal }
-			| undefined;
-		view.unmount();
-		expect(secondContext?.signal.aborted).toBe(true);
-	});
-});
-
-describe('RouteDetail reliability boundary with history-only fallback', () => {
-	it('keeps the reliability skeleton while the singleton request is still pending', async () => {
-		reliabilityResourceState = { data: null, error: null, loading: true, settled: false };
-		lineHistoryHarness.getLineHistoryIndex.mockResolvedValue(HISTORY_INDEX);
-		const view = renderRoute();
-
-		await fireEvent.click(screen.getByRole('tab', { name: 'Record' }));
-		await waitFor(() => expect(lineHistoryHarness.getLineHistoryIndex).toHaveBeenCalledOnce());
-		await waitFor(() =>
-			expect(view.container.querySelector('[data-variant="skeleton"]')).not.toBeNull(),
-		);
-		expect(view.container.querySelector('[data-slot="reliability-clusters"]')).toBeNull();
-	});
-
-	it('keeps the reliability error and retry action when the singleton request fails', async () => {
-		reliabilityResourceState = {
-			data: null,
-			error: new Error('singleton unavailable'),
-			loading: false,
-			settled: true,
-		};
-		lineHistoryHarness.getLineHistoryIndex.mockResolvedValue(HISTORY_INDEX);
-		const view = renderRoute();
-
-		await fireEvent.click(screen.getByRole('tab', { name: 'Record' }));
-		await waitFor(() => expect(lineHistoryHarness.getLineHistoryIndex).toHaveBeenCalledOnce());
-		const error = await screen.findByRole('alert');
-		expect(error).toHaveTextContent('Data unavailable');
-		expect(view.container.querySelector('[data-slot="reliability-clusters"]')).toBeNull();
-
-		await fireEvent.click(within(error).getByRole('button', { name: 'Retry' }));
-		expect(reliabilityReloadSpy).toHaveBeenCalledOnce();
-	});
-
-	it('keeps the established empty state on a default URL even after retained discovery succeeds', async () => {
-		reliabilityResourceState = { data: null, error: null, loading: false, settled: true };
-		lineHistoryHarness.getLineHistoryIndex.mockResolvedValue(HISTORY_INDEX);
-		const view = renderRoute();
-
-		await fireEvent.click(screen.getByRole('tab', { name: 'Record' }));
-		await waitFor(() => expect(lineHistoryHarness.getLineHistoryIndex).toHaveBeenCalledOnce());
-		expect(view.container.querySelector('[data-slot="reliability-clusters"]')).toBeNull();
-		expect(view.container.querySelector('[data-slot="edge-state"]')).not.toBeNull();
-	});
-
-	it('mounts retained loading for an explicit range before entity discovery resolves', async () => {
-		routeDetailNav.page.url = new URL(
-			'http://localhost/lines/161?tab=reliability&from=2026-01-31&to=2026-02-01',
-		);
-		reliabilityResourceState = { data: null, error: null, loading: false, settled: true };
-		lineHistoryHarness.getLineHistoryIndex.mockImplementation(() => new Promise(() => undefined));
-		const view = renderRoute();
-
-		await waitFor(() => expect(lineHistoryHarness.getLineHistoryIndex).toHaveBeenCalledOnce());
-		await import('./reliability/RouteReliabilityClusters.svelte');
-		await tick();
-		expect(view.container.querySelector('[data-slot="reliability-clusters"]')).not.toBeNull();
-		expect(view.container.querySelector('[data-slot="history-loading"]')).toHaveTextContent(
-			'Loading retained range',
-		);
-	});
-
-	it('mounts a retryable retained error for an explicit range whose entity discovery fails', async () => {
-		routeDetailNav.page.url = new URL(
-			'http://localhost/lines/161?tab=reliability&from=2026-01-31&to=2026-02-01',
-		);
-		reliabilityResourceState = { data: null, error: null, loading: false, settled: true };
-		lineHistoryHarness.getLineHistoryIndex.mockRejectedValue(new Error('history unavailable'));
-		const view = renderRoute();
-
-		await waitFor(() =>
-			expect(view.container.querySelector('[data-slot="history-error"]')).toHaveTextContent(
-				'could not be loaded',
-			),
-		);
-		expect(view.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
-	});
-});
-
-describe('RouteDetail record answer', () => {
-	it('answers the record once, with no separate verdict banner on any view', async () => {
-		reliabilityResourceState = {
-			data: CURRENT_RELIABILITY,
-			error: null,
-			loading: false,
-			settled: true,
-		};
-		const view = renderRoute();
-		await fireEvent.click(screen.getByRole('tab', { name: 'Record' }));
-		await import('./reliability/RouteReliabilityClusters.svelte');
-		await waitFor(() =>
-			expect(view.container.querySelectorAll('[data-slot="record-figure"]')).toHaveLength(1),
-		);
-		expect(view.container.querySelector('.route-verdict-banner')).toBeNull();
-		expect(view.container.querySelector('[data-slot="entity-detail-banner"]')).toBeNull();
-		expect(view.container.querySelector('[data-slot="reliability-rail-summary"]')).toBeNull();
-
-		await fireEvent.click(screen.getByRole('tab', { name: 'Schedule' }));
-		const schedule = screen.getByRole('tabpanel');
-		expect(schedule.querySelector('[data-slot="record-figure"]')).toBeNull();
-		expect(view.container.querySelector('[data-slot="verdict"]')).toBeNull();
-	});
-
-	it('cites the line by its public name and the provider by its operator name', async () => {
-		const writeText = vi.fn(async (_text: string) => {});
-		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
-		routeProvider.value = {
-			id: 'stm',
-			labels: {
-				en: { city: 'Montréal', operator: 'STM' },
-				fr: { city: 'Montréal', operator: 'STM' },
-			},
-			inputs: { i3_alerts: false, service_alerts: false },
-			alert_links: {},
-		} as unknown as import('#lib/v1/providers.ts').PublicProvider;
-		reliabilityResourceState = {
-			data: CURRENT_RELIABILITY,
-			error: null,
-			loading: false,
-			settled: true,
-		};
-		try {
-			renderSvelte(RouteDetail, {
-				props: { id: '161', seed: routeSeed() },
-				context: new Map([
-					[
-						Symbol.for('transit.line-directory'),
-						() =>
-							createLineDirectory([{ id: '161', short: '161', long: 'Van Horne' }], {
-								line: (id) => 'Line ' + id,
-							}),
-					],
-				]),
-			});
-			await fireEvent.click(screen.getByRole('tab', { name: 'Record' }));
-			await import('./reliability/RouteReliabilityClusters.svelte');
-			await fireEvent.click(await screen.findByRole('button', { name: 'Cite this record' }));
-			expect(writeText).toHaveBeenCalledWith(
-				expect.stringMatching(
-					/^Transit \(localhost\)\. Line 161 Van Horne, STM: \d+% of readings on time, /u,
-				),
-			);
-			expect(writeText.mock.calls[0][0]).toContain('provider=stm');
-		} finally {
-			routeProvider.value = undefined;
-			vi.unstubAllGlobals();
-		}
-	});
-});
-
 describe('RouteDetail article schedule structure', () => {
 	it.each(['en', 'fr'] as const)(
-		'renders publisher service-period labels in %s',
-		async (locale) => {
+		'renders publisher service-period labels for schedule-only rail in %s',
+		(locale) => {
 			const t = detailCopy[locale];
+			routeFileData = { ...ROUTE_FILE, type: 1 };
 			routeSurface.mount(RouteDetail, {
 				props: { id: '161', seed: routeSeed() },
 				context: new Map([[Symbol.for('@yesid/ui/locale'), () => locale]]),
 			});
-			await fireEvent.click(
-				screen.getByRole('tab', { name: locale === 'en' ? 'Schedule' : 'Horaire' }),
-			);
 			const table = screen.getByRole('table', { name: t.scheduleTable.caption });
 			for (const name of [
 				t.scheduleTable.period,
@@ -1041,9 +603,11 @@ describe('RouteDetail Detail tab: clickable stops + live readout', () => {
 	});
 
 	it('keeps stops without predictions in Schedule instead of empty live rows', async () => {
-		renderRoute();
+		const live = renderRoute();
 		expect(screen.queryByRole('row', { name: /Third stop/ })).toBeNull();
-		await fireEvent.click(screen.getByRole('tab', { name: 'Schedule' }));
+		live.unmount();
+		routeFileData = { ...ROUTE_FILE, type: 1 };
+		renderRoute();
 		const destination = document.querySelector(
 			'[data-slot="line-directions"][data-mode="schedule"] details',
 		)!;
@@ -1238,37 +802,6 @@ describe('RouteDetail Detail tab: HONEST ABSENCE (no live bus)', () => {
 	});
 });
 
-describe('RouteDetail record for a line without live data', () => {
-	const UNMEASURED = {
-		en: 'Transit cannot measure this line’s actual service with the data available.',
-		fr: 'Transit ne peut pas mesurer le service réel de cette ligne avec les données disponibles.',
-	};
-	const GENERIC = {
-		en: 'No data has been published for this view yet.',
-		fr: 'Aucune donnée publiée pour cette vue pour le moment.',
-	};
-	const mountRecord = (locale: 'en' | 'fr', type?: number) => {
-		routeDetailNav.page.url = new URL('http://localhost/lines/161?tab=reliability');
-		routeFileData = type == null ? ROUTE_FILE : { ...ROUTE_FILE, type };
-		return routeSurface.mount(RouteDetail, {
-			props: { id: '161', seed: routeSeed() },
-			context: new Map([[Symbol.for('@yesid/ui/locale'), () => locale]]),
-		});
-	};
-
-	it.each(['en', 'fr'] as const)('says Transit cannot measure a métro line (%s)', (locale) => {
-		const { container } = mountRecord(locale, 1);
-		expect(container).toHaveTextContent(UNMEASURED[locale]);
-		expect(container).not.toHaveTextContent(GENERIC[locale]);
-	});
-
-	it('keeps the generic empty note on an ordinary line', () => {
-		const { container } = mountRecord('en');
-		expect(container).toHaveTextContent(GENERIC.en);
-		expect(container).not.toHaveTextContent(UNMEASURED.en);
-	});
-});
-
 describe.each(['en', 'fr'] as const)('RouteDetail roster published status in %s', (locale) => {
 	it.each([
 		['on_time', 1, '+1 min'],
@@ -1329,7 +862,10 @@ describe.each(['en', 'fr'] as const)('RouteDetail rail capability in %s', (local
 		expect(container.querySelector('[data-slot="freshness-stamp"]')).toBeNull();
 		expect(container.querySelector('[data-testid="route-roster"]')).toBeNull();
 		expect(screen.queryByRole('combobox')).toBeNull();
-		expect(screen.queryByRole('tab', { name: detailCopy[locale].tabs.detail })).toBeNull();
+		expect(screen.getByRole('tab', { name: detailCopy[locale].tabs.detail })).toHaveAttribute(
+			'aria-selected',
+			'true',
+		);
 		expect(screen.getByRole('table')).toHaveTextContent(
 			locale === 'en' ? 'Time window not supplied' : 'Plage horaire non fournie',
 		);

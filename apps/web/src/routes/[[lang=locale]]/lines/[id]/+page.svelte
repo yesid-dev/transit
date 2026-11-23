@@ -24,10 +24,5 @@
 	/>
 {:else if data.frameLive && data.v1}
 	{#if data.frameLive}<LineViewNav {url} {locale} view="live" />{/if}
-	<RouteDetail
-		id={data.seed.id}
-		seed={data.seed}
-		frameLive={data.frameLive}
-		routeSeed={data.routeSeed ?? undefined}
-	/>
+	<RouteDetail id={data.seed.id} seed={data.seed} routeSeed={data.routeSeed ?? undefined} />
 {/if}
