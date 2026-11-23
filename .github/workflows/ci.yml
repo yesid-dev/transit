@@ -61,6 +61,9 @@ jobs:
       - name: Run engine tests
         run: uv run --locked pytest
 
+      - name: Check product code for provider names
+        run: uv run --locked pytest --noconftest ../db/tests/test_no_provider_names.py
+
       - name: Ruff
         run: uv run --locked ruff check src tests
 

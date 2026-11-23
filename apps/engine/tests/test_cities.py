@@ -9,6 +9,10 @@ from transit_engine.cities import UnknownCity, city_catalog, public_declaration
 from transit_engine.server import Engine
 from transit_engine.store import Store
 
+LICENCE_GOLDEN = (
+    Path(__file__).resolve().parents[2] / "data-proxy/test/fixtures/download-licences.golden.json"
+)
+
 
 def test_public_cities_shape_both_declaration_formats(tmp_path: Path) -> None:
     app = Engine(Store(str(tmp_path)), concurrency=1, queue_size=0, queue_wait_ms=10)
@@ -27,12 +31,26 @@ def test_public_cities_shape_both_declaration_formats(tmp_path: Path) -> None:
     assert "sto" not in cities
     assert cities["stm"]["labels"]["fr"]["city"] == "Montréal"
     assert cities["stm"]["inputs"]["i3_alerts"] is True
+    assert cities["stm"]["inputs"]["occupancy"] is True
     assert cities["stm"]["lines_without_live_data"] == [{"route_types": [1], "route_ids": []}]
     assert cities["octranspo"]["inputs"]["service_alerts"] is False
     assert cities["octranspo"]["fit_bounds"] == [-75.95, 45.2, -75.43, 45.55]
     assert cities["octranspo"]["timezone"] == "America/Toronto"
     assert "feeds" not in cities["stm"]
     assert asyncio.run(http(app, "/cities", "city=stm"))[0] == 400
+
+
+def test_city_catalog_supplies_the_approved_download_licences() -> None:
+    golden = json.loads(LICENCE_GOLDEN.read_text(encoding="utf-8"))["licences"]
+    cities = {city["id"]: city for city in city_catalog()["providers"]}
+    for city, source in (
+        ("stm", {"en": "STM", "fr": "de la STM"}),
+        ("octranspo", {"en": "OC Transpo", "fr": "d’OC Transpo"}),
+    ):
+        expected = {
+            key: value for key, value in golden[city].items() if key not in ("contact", "changes")
+        }
+        assert cities[city]["download_licence"] == {**expected, "source": source}
 
 
 @pytest.mark.parametrize(

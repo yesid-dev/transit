@@ -1,0 +1,61 @@
+{
+  "date": "2026-11-20",
+  "licences": {
+    "stm": {
+      "checked_on": "2026-11-22",
+      "contact": "contact@yesid.dev",
+      "non_endorsement": {
+        "en": "Transit is independent of STM, the City of Ottawa and OC Transpo. None of these organisations sponsors or endorses Transit.",
+        "fr": "Transit est indépendant de la STM, de la Ville d’Ottawa et d’OC Transpo. Aucun de ces organismes ne commandite ni n’approuve Transit."
+      },
+      "name": {
+        "en": "Creative Commons Attribution 4.0 (CC BY 4.0)",
+        "fr": "Creative Commons Attribution 4.0 (CC BY 4.0)"
+      },
+      "attribution": {
+        "en": "Source: Société de transport de Montréal (STM), CC BY 4.0.",
+        "fr": "Source : Société de transport de Montréal (STM), CC BY 4.0."
+      },
+      "url": {
+        "en": "https://creativecommons.org/licenses/by/4.0/",
+        "fr": "https://creativecommons.org/licenses/by/4.0/deed.fr"
+      },
+      "limits": {
+        "en": "The data is provided as is, without warranty, and may contain errors. Scheduled metro times are indicative only.",
+        "fr": "Les données sont fournies telles quelles, sans garantie, et peuvent contenir des erreurs. Les horaires du métro sont donnés à titre indicatif seulement."
+      },
+      "changes": {
+        "en": "Transit cleaned and derived these tables from STM feeds for the 2026-11-20 service day. The data was modified and is unofficial.",
+        "fr": "Transit a nettoyé et dérivé ces tables à partir des flux de la STM pour la journée de service du 2026-11-20. Les données ont été modifiées et sont non officielles."
+      }
+    },
+    "octranspo": {
+      "checked_on": "2026-11-22",
+      "contact": "contact@yesid.dev",
+      "non_endorsement": {
+        "en": "Transit is independent of STM, the City of Ottawa and OC Transpo. None of these organisations sponsors or endorses Transit.",
+        "fr": "Transit est indépendant de la STM, de la Ville d’Ottawa et d’OC Transpo. Aucun de ces organismes ne commandite ni n’approuve Transit."
+      },
+      "name": {
+        "en": "Open Government Licence, City of Ottawa, v2.0",
+        "fr": "Licence du gouvernement ouvert, Ville d’Ottawa, version 2.0"
+      },
+      "attribution": {
+        "en": "Contains information licensed under the Open Government Licence – City of Ottawa.",
+        "fr": "Contient de l’information visée par la Licence du gouvernement ouvert – Ville d’Ottawa."
+      },
+      "url": {
+        "en": "https://ottawa.ca/en/city-hall/open-transparent-and-accountable-government/open-data/open-data-licence-version-20",
+        "fr": "https://ottawa.ca/fr/hotel-de-ville/administration-ouverte-et-transparente-et-qui-rend-compte-de-ses-actes/donnees-ouvertes/version-20-de-la-licence-du-programme-de-donnees-ouvertes"
+      },
+      "limits": {
+        "en": "The data is provided as is, without warranty, and may contain errors. The City reports that vehicle positions are unknown about 5% of the time.",
+        "fr": "Les données sont fournies telles quelles, sans garantie, et peuvent contenir des erreurs. Selon la Ville, les positions des véhicules sont inconnues environ 5 % du temps."
+      },
+      "changes": {
+        "en": "Transit cleaned and derived these tables from OC Transpo feeds for the 2026-11-20 service day. The data was modified and is unofficial.",
+        "fr": "Transit a nettoyé et dérivé ces tables à partir des flux d’OC Transpo pour la journée de service du 2026-11-20. Les données ont été modifiées et sont non officielles."
+      }
+    }
+  }
+}

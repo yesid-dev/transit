@@ -24,8 +24,8 @@ it('does not rewrite an id that is missing from the index', () => {
 });
 
 it('derives occupancy availability from provider vehicles and preserves STM', () => {
-	expect(hasOccupancy('octranspo', [])).toBe(false);
-	expect(hasOccupancy('octranspo', [{ occupancy: null }])).toBe(false);
-	expect(hasOccupancy('octranspo', [{ occupancy: 'standing' }])).toBe(true);
-	expect(hasOccupancy('stm', [])).toBe(true);
+	expect(hasOccupancy(undefined, [])).toBe(false);
+	expect(hasOccupancy(undefined, [{ occupancy: null }])).toBe(false);
+	expect(hasOccupancy(undefined, [{ occupancy: 'standing' }])).toBe(true);
+	expect(hasOccupancy(true, [])).toBe(true);
 });

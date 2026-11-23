@@ -1,64 +1,24 @@
-const common = {
-  checked_on: "2026-11-22",
-  contact: "contact@yesid.dev",
-  non_endorsement: {
-    en: "Transit is independent of STM, the City of Ottawa and OC Transpo. None of these organisations sponsors or endorses Transit.",
-    fr: "Transit est indépendant de la STM, de la Ville d’Ottawa et d’OC Transpo. Aucun de ces organismes ne commandite ni n’approuve Transit.",
-  },
-};
-
-const licences = new Map([
-  ["stm", {
-    ...common,
-    name: {
-      en: "Creative Commons Attribution 4.0 (CC BY 4.0)",
-      fr: "Creative Commons Attribution 4.0 (CC BY 4.0)",
-    },
-    attribution: {
-      en: "Source: Société de transport de Montréal (STM), CC BY 4.0.",
-      fr: "Source : Société de transport de Montréal (STM), CC BY 4.0.",
-    },
-    url: {
-      en: "https://creativecommons.org/licenses/by/4.0/",
-      fr: "https://creativecommons.org/licenses/by/4.0/deed.fr",
-    },
-    operator: { en: "STM", fr: "de la STM" },
-    limits: {
-      en: "The data is provided as is, without warranty, and may contain errors. Scheduled metro times are indicative only.",
-      fr: "Les données sont fournies telles quelles, sans garantie, et peuvent contenir des erreurs. Les horaires du métro sont donnés à titre indicatif seulement.",
-    },
-  }],
-  ["octranspo", {
-    ...common,
-    name: {
-      en: "Open Government Licence, City of Ottawa, v2.0",
-      fr: "Licence du gouvernement ouvert, Ville d’Ottawa, version 2.0",
-    },
-    attribution: {
-      en: "Contains information licensed under the Open Government Licence – City of Ottawa.",
-      fr: "Contient de l’information visée par la Licence du gouvernement ouvert – Ville d’Ottawa.",
-    },
-    url: {
-      en: "https://ottawa.ca/en/city-hall/open-transparent-and-accountable-government/open-data/open-data-licence-version-20",
-      fr: "https://ottawa.ca/fr/hotel-de-ville/administration-ouverte-et-transparente-et-qui-rend-compte-de-ses-actes/donnees-ouvertes/version-20-de-la-licence-du-programme-de-donnees-ouvertes",
-    },
-    operator: { en: "OC Transpo", fr: "d’OC Transpo" },
-    limits: {
-      en: "The data is provided as is, without warranty, and may contain errors. The City reports that vehicle positions are unknown about 5% of the time.",
-      fr: "Les données sont fournies telles quelles, sans garantie, et peuvent contenir des erreurs. Selon la Ville, les positions des véhicules sont inconnues environ 5 % du temps.",
-    },
-  }],
-]);
-
-export function downloadLicence(city, date) {
-  const source = licences.get(city);
-  if (!source) return null;
-  const { operator, ...licence } = source;
+export function downloadLicence(provider, date) {
+  const licence = provider.download_licence;
+  const languages = ["en", "fr"];
+  const fields = ["name", "attribution", "url", "limits", "non_endorsement", "source"];
+  if (!licence || !/^\d{4}-\d{2}-\d{2}$/.test(licence.checked_on) ||
+      !fields.every((field) => languages.every(
+        (lang) => typeof licence[field]?.[lang] === "string" && licence[field][lang].trim(),
+      ))) return null;
+  const { en, fr } = licence.source;
+  const localized = ({ en, fr }) => ({ en, fr });
   return {
-    ...licence,
+    checked_on: licence.checked_on,
+    contact: "contact@yesid.dev",
+    non_endorsement: localized(licence.non_endorsement),
+    name: localized(licence.name),
+    attribution: localized(licence.attribution),
+    url: localized(licence.url),
+    limits: localized(licence.limits),
     changes: {
-      en: `Transit cleaned and derived these tables from ${operator.en} feeds for the ${date} service day. The data was modified and is unofficial.`,
-      fr: `Transit a nettoyé et dérivé ces tables à partir des flux ${operator.fr} pour la journée de service du ${date}. Les données ont été modifiées et sont non officielles.`,
+      en: `Transit cleaned and derived these tables from ${en} feeds for the ${date} service day. The data was modified and is unofficial.`,
+      fr: `Transit a nettoyé et dérivé ces tables à partir des flux ${fr} pour la journée de service du ${date}. Les données ont été modifiées et sont non officielles.`,
     },
   };
 }

@@ -6,7 +6,6 @@ import MapFilters from '../map/MapFilters.svelte';
 import { createFilterStore, emptyFilterState } from '#lib/filters/index.ts';
 import { hasOccupancy } from '#lib/site/transitDisplay.ts';
 import { providerHasAlerts } from '#lib/v1/providers.ts';
-import { searchExamples } from '../search/search.copy';
 
 describe.each(['en', 'fr'] as const)('provider cosmetics in %s', (locale) => {
 	it.each(['octranspo', 'stm'])('%s exposes only available filters', (provider) => {
@@ -15,7 +14,7 @@ describe.each(['en', 'fr'] as const)('provider cosmetics in %s', (locale) => {
 			props: {
 				locale,
 				store: createFilterStore(emptyFilterState(), () => {}),
-				occupancyAvailable: hasOccupancy(provider, []),
+				occupancyAvailable: hasOccupancy(supported || undefined, []),
 				alertsAvailable: supported,
 			},
 		});
@@ -54,10 +53,5 @@ describe.each(['en', 'fr'] as const)('provider cosmetics in %s', (locale) => {
 		);
 		expect(homeCadence(locale, null)).toBe(homeCopy[locale].cadence);
 		expect(homeCadence(locale, undefined)).not.toMatch(/\d/);
-	});
-	it('uses local search examples and a neutral fallback', () => {
-		expect(searchExamples('octranspo', locale)).toContain('Rideau');
-		expect(searchExamples('stm', locale)).toEqual(['747', 'Berri-UQAM', 'Métro']);
-		expect(searchExamples('unknown', locale).join(' ')).not.toMatch(/Montréal|Berri|747/);
 	});
 });

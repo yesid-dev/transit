@@ -301,6 +301,7 @@
 		startAnalytics({
 			domain: env.PUBLIC_PLAUSIBLE_DOMAIN,
 			beaconToken: env.PUBLIC_CF_BEACON_TOKEN,
+			providers: data.providers.map((provider) => provider.id),
 			context: () => ({ locale, provider: data.providerId }),
 		});
 		const disposeRipple = initGlobalRipple({ exclude: '[data-ripple-exempt]' });

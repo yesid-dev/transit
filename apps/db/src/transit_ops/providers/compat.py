@@ -54,12 +54,14 @@ def _public(declaration: Declaration) -> dict[str, object]:
         "enabled": declaration.stage == "public",
         "labels": {k: v.model_dump() for k, v in declaration.labels.items()},
         "alert_links": dict(declaration.alert_links or {}),
+        "download_licence": declaration.download_licence,
     }
     if overrides:
         public.update(
             fit_bounds=_bounds(overrides.fit_bounds),
             max_bounds=_bounds(overrides.max_bounds),
             geocode_context=overrides.geocode_context,
+            occupancy=overrides.occupancy,
         )
         if overrides.stable_vehicle_ids is not None:
             public["stable_vehicle_ids"] = overrides.stable_vehicle_ids

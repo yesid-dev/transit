@@ -5,27 +5,29 @@ import {
 	type AnalyticsPropValues,
 } from '@yesid/analytics/config';
 
-const preset = defineAnalyticsPreset({
-	events: [
-		'Search Result',
-		'Locate Me',
-		'Address Pick',
-		'Nearby Stop',
-		'Receipt Copy',
-		'Portfolio Click',
-		'Repo Click',
-		'404',
-	],
-	props: {
-		locale: ['en', 'fr'],
-		provider: ['stm', 'octranspo'],
-		kind: ['route', 'stop', 'vehicle', 'address'],
-		placement: ['menu', 'footer', 'page'],
-	},
-});
+const cityPreset = (providers: readonly string[]) =>
+	defineAnalyticsPreset({
+		events: [
+			'Search Result',
+			'Locate Me',
+			'Address Pick',
+			'Nearby Stop',
+			'Receipt Copy',
+			'Portfolio Click',
+			'Repo Click',
+			'404',
+		],
+		props: {
+			locale: ['en', 'fr'],
+			provider: providers,
+			kind: ['route', 'stop', 'vehicle', 'address'],
+			placement: ['menu', 'footer', 'page'],
+		},
+	});
 
-export type AnalyticsEvent = AnalyticsEventName<typeof preset>;
-type Props = NonNullable<(typeof preset)['props']>;
+type Preset = ReturnType<typeof cityPreset>;
+export type AnalyticsEvent = AnalyticsEventName<Preset>;
+type Props = NonNullable<Preset['props']>;
 export type AnalyticsEventProps = AnalyticsPropValues<Pick<Props, 'kind' | 'placement'>>;
 
 /** Read on every pageview and event; values the preset does not allow are dropped. */
@@ -90,13 +92,15 @@ export function startAnalytics({
 	domain,
 	beaconToken,
 	context,
+	providers,
 }: {
 	domain: string | undefined;
 	beaconToken: string | undefined;
 	context: () => AnalyticsContext;
+	providers: readonly string[];
 }): void {
 	if (analytics) return;
-	const started = createAnalytics(preset, {
+	const started = createAnalytics(cityPreset(providers), {
 		domain,
 		endpoint: ANALYTICS_ENDPOINT,
 		context: () => context() as AnalyticsPropValues<Props>,

@@ -26,7 +26,6 @@ export const copy = defineCopy({
 			'Type a line number, a line or stop name, a stop code, or a vehicle number to find it.',
 		census: {
 			examplesLabel: 'Try',
-			examples: ['747', 'Berri-UQAM', 'Métro'],
 		},
 		/** Shown only past the preview, so always more than one. */
 		showAll: (kind: GroupKind, n: number) =>
@@ -70,7 +69,6 @@ export const copy = defineCopy({
 			'Saisissez un numéro de ligne, un nom de ligne ou d’arrêt, un code d’arrêt, ou un numéro de véhicule pour le trouver.',
 		census: {
 			examplesLabel: 'Essayez',
-			examples: ['747', 'Berri-UQAM', 'Métro'],
 		},
 		showAll: (kind: GroupKind, n: number) =>
 			`Afficher les ${n} ${{ route: 'lignes', stop: 'arrêts', page: 'pages', vehicle: 'véhicules' }[kind]}`,
@@ -95,9 +93,3 @@ export const copy = defineCopy({
 
 export type SearchCopy = (typeof copy)[Locale];
 export type VehicleResultCopy = SearchCopy['vehicle'];
-
-export function searchExamples(provider: string | undefined, locale: Locale): readonly string[] {
-	if (provider === 'stm') return copy[locale].census.examples;
-	if (provider === 'octranspo') return ['1', 'Rideau', "Tunney's Pasture"];
-	return locale === 'fr' ? ['Numéro de ligne', 'Nom d’arrêt'] : ['Line number', 'Stop name'];
-}

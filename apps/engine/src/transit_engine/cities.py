@@ -77,9 +77,9 @@ def _inputs(feeds: Any) -> dict[str, bool]:
             family = feed["family"]
             if family == "alerts":
                 enabled.add(
-                    "i3_alerts"
-                    if feed.get("format") == "stm-etatservice-json"
-                    else "service_alerts"
+                    "service_alerts"
+                    if feed.get("format", "gtfs-rt") == "gtfs-rt"
+                    else "i3_alerts"
                 )
             else:
                 enabled.add(kinds.get(family, family))
@@ -107,9 +107,9 @@ def city_catalog() -> dict[str, Any]:
         map_info = public if legacy else declaration.get("map") or {}
         realtime = declaration.get("realtime", {}) if legacy else declaration
         inputs = _inputs(declaration.get("feeds", {}))
-        stable_ids = public.get("stable_vehicle_ids")
-        if isinstance(stable_ids, bool):
-            inputs["stable_vehicle_ids"] = stable_ids
+        for capability in ("stable_vehicle_ids", "occupancy"):
+            if isinstance(public.get(capability), bool):
+                inputs[capability] = public[capability]
         providers.append(
             {
                 "id": city,
@@ -122,6 +122,7 @@ def city_catalog() -> dict[str, Any]:
                 "posters_url": map_info.get("posters_url"),
                 "alert_links": (public if legacy else declaration).get("alert_links") or {},
                 "inputs": inputs,
+                "download_licence": (public if legacy else declaration).get("download_licence"),
                 "lines_without_live_data": [
                     {key: gap.get(key, []) for key in ("route_types", "route_ids")}
                     for gap in realtime.get("lines_without_live_data") or []

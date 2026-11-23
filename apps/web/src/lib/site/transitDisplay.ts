@@ -31,8 +31,8 @@ export function stopDisplayName(name: string): string {
 }
 
 export function hasOccupancy(
-	provider: string | undefined,
+	declared: boolean | undefined,
 	vehicles: readonly { occupancy?: OccupancyCode | null }[],
 ): boolean {
-	return provider === 'stm' || provider == null || vehicles.some((v) => v.occupancy != null);
+	return declared === true || vehicles.some((v) => v.occupancy != null);
 }

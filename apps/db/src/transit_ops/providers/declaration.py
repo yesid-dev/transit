@@ -20,7 +20,7 @@ from pydantic import (
 )
 from pydantic_core import InitErrorDetails
 
-from transit_ops.core.models import ReadingPopulation, VehicleField
+from transit_ops.core.models import DownloadLicence, ReadingPopulation, VehicleField
 
 SITE_LOCALES: tuple[str, ...] = ("en", "fr")
 KNOWN_FORMATS: Mapping[str, frozenset[str]] = {
@@ -174,6 +174,7 @@ class Overrides(_Block):
     max_vehicle_speed_kmh: Annotated[float, Field(gt=0, allow_inf_nan=False)] | None = None
     stable_vehicle_ids: Annotated[bool, Field(strict=True)] | None = None
     strict_gtfs: Annotated[bool, Field(strict=True)] | None = None
+    occupancy: Annotated[bool, Field(strict=True)] | None = None
 
 
 class Declaration(_Block):
@@ -190,6 +191,7 @@ class Declaration(_Block):
     currency: Annotated[str, Field(pattern=r"^[A-Z]{3}$")] | None = None
     stage: Literal["candidate", "capturing", "public"]
     licence: Licence
+    download_licence: DownloadLicence | None = None
     attribution: dict[_Locale, _Text]
     disclaimer: dict[_Locale, _Text] | None = None
     feeds: list[FeedDeclaration]
@@ -240,6 +242,8 @@ class Declaration(_Block):
             for key in ("map", "reading_population"):
                 if getattr(self, key) is None:
                     problems.append((key, "is required for public. There is no default."))
+        if self.download_licence is not None and self.licence.review != "accepted":
+            problems.append(("licence.review", "must be accepted to publish a download licence"))
         _require(problems)
         return self
 
