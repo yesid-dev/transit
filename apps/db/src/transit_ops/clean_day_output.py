@@ -41,6 +41,8 @@ TRIP_DAYS = TableSchema.from_columns(
         ("cancellation_notice_utc", _TIME, False),
         ("route_type", "integer", False),
         ("wheelchair_accessible", "integer", False),
+        ("terminus_reached_at_utc", _TIME, False),
+        ("terminus_vehicle_id", "text", False),
     ),
     _TRIP_KEY,
 )

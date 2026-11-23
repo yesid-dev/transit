@@ -16,8 +16,10 @@ the overnight vehicle evidence. Polls containing only unrelated entities are
 omitted. This fixture exercises trip and stop evidence. It does not establish
 full-network poll coverage.
 
-`expected.json` records the published v8 comparison for those lines. The
-disagreements cover six Saturday trips entered as Sunday additions (47 stop
-rows), six Sunday trips whose observations are labelled Monday (31 stop rows),
-and one forecast discarded because it would reverse the order of two observed
-stop times. Trip `302218773`, stop sequence 4, is the forecast example.
+`expected.json` records the v10 comparison for those lines. Both methods now
+agree on the service day, including six Saturday trips that v8 added on Sunday
+(47 stop rows) and six Sunday trips that v8 lost when the feed labelled their
+observations Monday (31 stop rows).
+
+One stop differs. On trip `302218773`, stop sequence 4, the cleaner discards a
+forecast that would reverse the order of two observed stop times.

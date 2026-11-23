@@ -13,10 +13,91 @@ from test_historical_measures import _write_table, utc
 from transit_engine.clean_manifest import FEED_POLLS, STOP_EVENTS, TRIP_DAYS, VEHICLE_POSITIONS
 from transit_engine.server import Engine
 from transit_engine.store import Store
+from transit_engine.vehicles import VEHICLE_COUNTS, vehicle_stats_query
 
 REPORTING_RATE = "vehicle_reporting_gaps_per_100_hours"
 UNFINISHED_RATE = "vehicle_unfinished_trips_per_100_trips"
 OUTAGE_DAY = SUNDAY + timedelta(days=1)
+
+
+def test_capture_clock_and_same_vehicle_terminus_evidence(tmp_path: Path) -> None:
+    day = THURSDAY
+    store = _build_store(
+        tmp_path, 10, {day: (Trip("placeholder", "A", 0, "ran", None, True, (0,)),)}
+    )
+    start = utc(day, 6)
+    end = start + timedelta(seconds=20)
+    with store.connect() as conn:
+        _write_table(
+            conn,
+            store,
+            day,
+            TRIP_DAYS,
+            "trip_id VARCHAR, route_id VARCHAR, vehicle_id VARCHAR, state VARCHAR, "
+            "state_reason VARCHAR, route_has_live_data BOOLEAN, scheduled_start_utc TIMESTAMPTZ, "
+            "last_capture_utc TIMESTAMPTZ, terminus_reached_at_utc TIMESTAMPTZ, "
+            "terminus_vehicle_id VARCHAR",
+            [(trip, "A", trip, "ran", None, True, start, end, end, "v1") for trip in ("v1", "v2")],
+        )
+        _write_table(
+            conn,
+            store,
+            day,
+            STOP_EVENTS,
+            "trip_id VARCHAR, stop_sequence BIGINT, vehicle_id VARCHAR, "
+            "scheduled_arrival_utc TIMESTAMPTZ, scheduled_departure_utc TIMESTAMPTZ, "
+            "observed_at_utc TIMESTAMPTZ",
+            [
+                row
+                for trip in ("v1", "v2")
+                for row in ((trip, 1, trip, start, start, start), (trip, 2, None, end, end, None))
+            ],
+        )
+        _write_table(
+            conn,
+            store,
+            day,
+            VEHICLE_POSITIONS,
+            "vehicle_id VARCHAR, trip_id VARCHAR, route_id VARCHAR, "
+            "observed_at_utc TIMESTAMPTZ, captured_at_utc TIMESTAMPTZ, "
+            "last_seen_at_utc TIMESTAMPTZ",
+            [
+                (trip, trip, "A", stamp - timedelta(seconds=60), stamp, stamp)
+                for trip in ("v1", "v2")
+                for stamp in (start, end)
+            ],
+        )
+        _write_table(
+            conn,
+            store,
+            day,
+            FEED_POLLS,
+            "feed VARCHAR, captured_at_utc TIMESTAMPTZ, feed_timestamp_utc TIMESTAMPTZ, "
+            "result VARCHAR, entity_count BIGINT",
+            [
+                ("i3_alerts", start, None, "ok", 1),
+                *[
+                    ("vehicle_positions", stamp, stamp, "ok", 1)
+                    for seconds in range(-300, 181, 60)
+                    if (stamp := start + timedelta(seconds=seconds))
+                ],
+            ],
+        )
+        conn.execute("CREATE TABLE selected_vehicles (vehicle_id VARCHAR)")
+        conn.execute("INSERT INTO selected_vehicles VALUES ('v1'), ('v2')")
+        directory = tmp_path / "stm" / day.isoformat() / "v10"
+        paths = {
+            name: [str(directory / name)]
+            for name in (VEHICLE_POSITIONS, TRIP_DAYS, STOP_EVENTS, FEED_POLLS)
+        }
+        sql, params = vehicle_stats_query(paths, ["stm", "10", day, day], True, False, True)
+        results = {
+            row[0]: dict(zip(VEHICLE_COUNTS, row[2:], strict=True))
+            for row in conn.execute(sql, params).fetchall()
+        }
+    assert [results[v]["service_us"] for v in ("v1", "v2")] == [40_000_000, 40_000_000]
+    assert [results[v]["completion_sample"] for v in ("v1", "v2")] == [1, 1]
+    assert [results[v]["unfinished_trips"] for v in ("v1", "v2")] == [0, 1]
 
 
 class Interval(NamedTuple):

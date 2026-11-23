@@ -27,20 +27,19 @@ def vehicle_tail_sql(next_start: str, last_seen: str) -> str:
 
 def vehicle_end_sql(start: str, last_seen: str, tail: str) -> str:
     return (
-        f"greatest({start}, {last_seen}) + "
-        f"greatest(0, least({tail}, {VEHICLE_TAIL_CAP_SECONDS * 1_000_000})) "
-        "* INTERVAL '1 microsecond'"
+        f"greatest({start}, {last_seen} + "
+        f"least({tail}, {VEHICLE_TAIL_CAP_SECONDS * 1_000_000}) * INTERVAL '1 microsecond')"
     )
 
 
 def vehicle_hour_weight_sql(
-    hour: str, bucket: str = "time_bucket(INTERVAL '1 hour', observed_at_utc)"
+    hour: str, bucket: str = "time_bucket(INTERVAL '1 hour', captured_at_utc)"
 ) -> str:
     # Intersect elapsed-hour segments with the local clock hour, including a repeated hour.
     return f"""
         (SELECT coalesce(sum(
             least(epoch_us(ends_at), epoch_us(hour_start) + 3600000000)
-            - greatest(epoch_us(observed_at_utc), epoch_us(hour_start))
+            - greatest(epoch_us(captured_at_utc), epoch_us(hour_start))
         ), 0)::BIGINT
         FROM generate_series({bucket}, ends_at, INTERVAL '1 hour') AS hours(hour_start)
         WHERE {hour} = ?)
@@ -103,14 +102,13 @@ def vehicle_stats_query(
     by_hour: bool = False,
     by_line: bool = False,
 ) -> tuple[str, list[object]]:
-    cap_us = VEHICLE_TAIL_CAP_SECONDS * 1_000_000
     gap_us = VEHICLE_REPORTING_GAP_SECONDS * 1_000_000
-    tail = vehicle_tail_sql("next_start", "last_seen_at_utc")
+    tail = vehicle_tail_sql("next_capture", "last_seen_at_utc")
+    end = vehicle_end_sql("captured_at_utc", "last_seen_at_utc", tail)
     entity = "vehicle_id" if by_vehicle else "NULL::VARCHAR"
     silence_entity = entity
     service_entity = entity
-    service_weight = "greatest(epoch_us(last_seen_at_utc) - epoch_us(observed_at_utc), 0)"
-    service_weight += f" + greatest(0, least({tail}, {cap_us}))"
+    service_weight = f"epoch_us({end}) - epoch_us(captured_at_utc)"
     service_days = "count(DISTINCT service_date)"
     service_segments = ""
     trip_starts = ""
@@ -138,14 +136,14 @@ def vehicle_stats_query(
         service_entity = LOCAL_HOUR.format("hour_start")
         service_segments = f"""
             CROSS JOIN LATERAL (
-                SELECT make_timestamptz(epoch_us(observed_at_utc) + ({service_weight})) AS ends_at
+                SELECT {end} AS ends_at
             )
-            CROSS JOIN LATERAL generate_series(time_bucket(INTERVAL '1 hour', observed_at_utc),
+            CROSS JOIN LATERAL generate_series(time_bucket(INTERVAL '1 hour', captured_at_utc),
                 ends_at, INTERVAL '1 hour') AS hours(hour_start)
         """
         service_weight = """
             least(epoch_us(ends_at), epoch_us(hour_start + INTERVAL '1 hour'))
-                - greatest(epoch_us(observed_at_utc), epoch_us(hour_start))
+                - greatest(epoch_us(captured_at_utc), epoch_us(hour_start))
         """
         service_days += f" FILTER ({service_weight} > 0)"
         keys = "SELECT range AS entity FROM range(24) WHERE EXISTS (SELECT 1 FROM selected)"
@@ -193,6 +191,12 @@ def vehicle_stats_query(
         )
         reporting_join = "LEFT JOIN reporting g ON k.entity IS NOT DISTINCT FROM g.entity"
     if completion:
+        terminus = "NULL::TIMESTAMPTZ"
+        if int(str(scope[1])) >= 10:
+            terminus = """
+                CASE WHEN t.terminus_vehicle_id = v.assigned_vehicle
+                    THEN t.terminus_reached_at_utc END
+            """
         completion_sql = f"""
         , endpoints AS (
             SELECT service_date, trip_id, max(stop_sequence) AS final_stop,
@@ -217,11 +221,11 @@ def vehicle_stats_query(
                     AND coalesce(e.first_stop_id, v.assigned_vehicle) = v.assigned_vehicle
                     AND coalesce(e.last_stop_id, v.assigned_vehicle) = v.assigned_vehicle
                     AS assessable,
-                e.observed_stop < e.final_stop AS unfinished,
+                e.observed_stop < e.final_stop AND ({terminus}) IS NULL AS unfinished,
                 t.state_reason IS DISTINCT FROM 'capture_gap' AS no_trip_gap,
                 t.scheduled_start_utc - INTERVAL '{TRIP_CAPTURE_LEAD_SECONDS} seconds'
                     AS covered_from,
-                greatest(e.scheduled_end, e.last_stop_time, t.last_capture_utc) +
+                greatest(e.scheduled_end, e.last_stop_time, t.last_capture_utc, ({terminus})) +
                     INTERVAL '{MAX_POLL_SPACING_SECONDS} seconds' AS covered_to
             FROM trip_entities a
             JOIN attribution v USING (service_date, trip_id)
@@ -273,13 +277,13 @@ def vehicle_stats_query(
         ), selected AS (
             SELECT vehicle_id FROM selected_vehicles
         ), sequenced AS (
-            SELECT p.*, lead(observed_at_utc) OVER observed AS next_start,
-                lead(trip_id) OVER captured AS next_trip,
+            SELECT p.*, lead(trip_id) OVER captured AS next_trip,
                 lead(service_date) OVER captured AS next_service_date,
                 lead(captured_at_utc) OVER captured AS next_capture
             FROM positions p JOIN selected USING (vehicle_id)
-            WINDOW observed AS (PARTITION BY vehicle_id ORDER BY observed_at_utc, captured_at_utc),
-                captured AS (PARTITION BY vehicle_id ORDER BY captured_at_utc)
+            WINDOW captured AS (
+                PARTITION BY vehicle_id ORDER BY captured_at_utc, service_date, trip_id
+            )
         )
         {trip_starts}
         , service AS (

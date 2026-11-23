@@ -119,7 +119,10 @@ def test_corridor_coverage_excludes_cancelled_and_lines_without_live_data() -> N
     assert evidence["share_observed"] == 1
 
 
-def test_poll_coverage_accepts_declared_lag_and_rejects_future_headers(tmp_path: Path) -> None:
+@pytest.mark.parametrize("version", [8, 10])
+def test_poll_coverage_accepts_declared_lag_and_rejects_future_headers(
+    tmp_path: Path, version: int
+) -> None:
     trips = tuple(_trip("A", index, index * 5) for index in range(21))
     genuine = tuple(
         Poll("trip_updates", second, publication_age=150) for second in range(0, 6061, 60)
@@ -128,7 +131,7 @@ def test_poll_coverage_accepts_declared_lag_and_rejects_future_headers(tmp_path:
     future = Poll("trip_updates", 120, publication_age=-3600)
     store = _build_store(
         tmp_path,
-        8,
+        version,
         dict.fromkeys((THURSDAY, FRIDAY), trips),
         {
             THURSDAY: (*genuine, future),
@@ -136,7 +139,7 @@ def test_poll_coverage_accepts_declared_lag_and_rejects_future_headers(tmp_path:
         },
     )
     for day in (THURSDAY, FRIDAY):
-        manifest = tmp_path / "stm" / str(day) / "v8" / "manifest.json"
+        manifest = tmp_path / "stm" / str(day) / f"v{version}" / "manifest.json"
         receipt = json.loads(manifest.read_text())
         receipt["scorecard_declaration"] = {"live_source_lag_seconds": 60}
         manifest.write_text(json.dumps(receipt))

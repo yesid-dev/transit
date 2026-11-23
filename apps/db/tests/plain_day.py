@@ -219,6 +219,23 @@ def vehicle_facts(trip: Trip, positions: list, coords: dict) -> tuple[dict, dict
         history = progress[vehicle]
         if not history or (seq > history[-1][0] and stamp > history[-1][1]):
             history.append((seq, stamp, bool(has_stop)))
+    if trip.stops and not trip.added:
+        origin = min(trip.stops)
+        departures = []
+        for vehicle, history in progress.items():
+            passage = next((stamp for seq, stamp, _ in history if seq > origin), None)
+            if passage is None:
+                continue
+            reports = [
+                reading for reading in stopped[origin]
+                if reading.vehicle == vehicle and reading.second <= passage
+            ]
+            if reports:
+                last = max(reports, key=lambda reading: reading.second)
+                departures.append(
+                    Reading(last.basis, last.second, "departure", last.published, vehicle)
+                )
+        stopped[origin] = departures
     return stopped, progress
 
 
