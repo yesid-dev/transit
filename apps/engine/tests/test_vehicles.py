@@ -322,7 +322,8 @@ def test_reporting_outage_is_excluded_from_vehicle_measures_and_ranking(
     store, _ = vehicle_history
     city = answer(store, "/measure", OUTAGE_DAY, OUTAGE_DAY, measure="vehicles")
     assert city["value"]["vehicle_reporting_gaps"] == city["value"]["vehicle_silent_hours"] == 0
-    assert city["value"][REPORTING_RATE] == 0
+    assert city["value"][REPORTING_RATE] is None
+    assert city["evidence"]["measure_states"][REPORTING_RATE] == "too_few_to_judge"
     assert city["evidence"]["excluded"]["reporting_gaps_capture_gap"] == 2
     assert city["evidence"]["excluded"]["reporting_gaps_capture_gap_hours"] == pytest.approx(
         2 * 300 / 3600

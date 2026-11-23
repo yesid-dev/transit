@@ -126,9 +126,10 @@ measure's state in `evidence.measure_states`.
 Trip counts include every state. Rates use 20 or more known-state trips
 (ran, cancelled or missing). Unconfirmed trips, trips on routes without live data,
 capture gaps and added trips are reported separately. The evidence includes the
-share of scheduled trips that are unconfirmed. Cancellation lead time is the
-scheduled start minus the notice time. The evidence gives its estimated median
-and an exact count of notices after the scheduled start. The hours measure and the
+eligible and unconfirmed shares of scheduled trips on lines with live data.
+Cancellation lead time is the scheduled start minus the notice time. The evidence
+gives its estimated median when the registry's sample floor is met and an exact
+count of notices after the scheduled start. The hours measure and the
 full family answer require the scheduled stop times file available from v4 onward. The first and last
 departure evidence gives the GTFS time and underlying trip counts for each included
 date with service.
@@ -208,8 +209,8 @@ Line classes combine GTFS route type with a scheduled service pattern. A majorit
 starts in local hours 00:00 through 04:59 makes a line night service. Other lines are
 frequent when the average gap between consecutive distinct starts in the same
 direction and service date is at most ten minutes in the local 07:00 to 09:00 peak
-window. The remaining lines are regular. Classes use the included dates and day type
-across all hours. The default line list uses the class with the most scheduled trips
+window on weekdays. Weekend peak headways are used when the requested range contains
+no weekday. The remaining lines are regular. The default line list uses the class with the most scheduled trips
 among the lines in the cut. Select a class with `class=3:frequent`, or compare all
 classes with `class=all`. Stops and departures rank across the network and carry
 their contributing classes. Cleaning v6 and later record GTFS route types. Cleaning
@@ -217,10 +218,12 @@ versions before v6 show an unknown route type.
 
 The response includes ranked rows, all exclusions within the selected scope, and the
 measured and missing dates. Ties use larger samples first, then ID. `limit` limits
-ranked rows only, from 1 to 500, and defaults to 100. Shares carry a 95% Wilson
-interval. The service-hours interval uses an effective sample weighted by scheduled
+ranked rows only, from 1 to 500, and defaults to 100. See the measure registry for the
+sample required for each kind of ranking. Share rankings order by the conservative
+end of the 95% Wilson interval and show it in `ranking_bound`. The value is the exact
+share. The service-hours interval uses an effective sample weighted by scheduled
 duration. Stop events on the same trip are dependent, so treat the bounds as a guide.
-Percentile bounds show the histogram approximation error of at most 7.5 seconds.
+Percentile bounds show the integer-second histogram rounding range.
 Use `format=csv&lang=fr` for French headings or `lang=en` for English.
 
 | Environment variable | Default |
@@ -325,6 +328,9 @@ Use the same commands with `ENGINE_CLEAN_ROOT=s3://<bucket>/<prefix>` and
 `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and, if applicable, `AWS_SESSION_TOKEN`
 using the host's secret mechanism. The credentials need list and read access on the clean prefix.
 For a native VM run, install the locked `httpfs` wheel and register its extension as the service user.
+Capture coverage reads the source lag in the clean-day receipt when available. For older
+receipts it reads the provider declaration from the repository or the directory named by
+`ENGINE_PROVIDER_DECLARATIONS`. The image includes those declarations.
 
 ```sh
 uv sync --locked --extra r2
@@ -336,7 +342,7 @@ uv run --locked --extra r2 python -m transit_engine.install_httpfs
 From the repository root, with `END_DATE` set:
 
 ```sh
-docker build --platform linux/amd64 -t transit-engine:local apps/engine
+docker build --platform linux/amd64 -f apps/engine/Dockerfile -t transit-engine:local .
 docker run --rm --memory=1024m -p 127.0.0.1:8080:8080 \
   -e ENGINE_CLEAN_ROOT=/data -v /srv/transit/clean-days:/data:ro transit-engine:local
 ```

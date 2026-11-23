@@ -6,7 +6,7 @@ import csv
 import io
 import json
 from collections import Counter
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import InitVar, dataclass, field, replace
 from datetime import date
 from time import perf_counter
@@ -14,7 +14,12 @@ from typing import Any, Literal, NamedTuple
 
 import duckdb
 
-from transit_engine.capture import MAX_POLL_AGE_SECONDS, MAX_POLL_SPACING_SECONDS, POLL_COVERAGE_SQL
+from transit_engine.capture import (
+    MAX_POLL_AGE_SECONDS,
+    MAX_POLL_SPACING_SECONDS,
+    POLL_COVERAGE_SQL,
+    set_poll_age_limits,
+)
 from transit_engine.clean_manifest import (
     ALERTS,
     FEED_POLLS,
@@ -46,6 +51,7 @@ from transit_engine.schedule import (
 from transit_engine.scorecard import (
     FEED_MEASURES,
     MIN_PREDICTION_SAMPLES,
+    MIN_SCORECARD_SAMPLES,
     SCORECARD,
     VEHICLE_FIELDS,
     Result,
@@ -111,6 +117,9 @@ MIN_SERVICE_DELIVERED_TRIPS = 20
 # Bound trip join memory independently of the requested range. Counts and bins are additive.
 DAYS_PER_QUERY_BATCH = 31
 MAX_SERIES_DAYS = 400
+MIN_CANCELLATION_NOTICES = 10
+MIN_VEHICLE_REPORTING_HOURS = 2
+MIN_VEHICLE_COMPLETION_TRIPS = 10
 
 
 @dataclass(frozen=True)
@@ -130,6 +139,7 @@ class Measure:
     source: str | None = None
     ranking_minimum_sample: int | None = None
     exclusions: Text | None = None
+    minimum_sample: int | None = None
 
 
 class Departure(NamedTuple):
@@ -159,6 +169,7 @@ class OfferedCounts(NamedTuple):
     period: str
     trips: int
     at_or_above_minimum: int
+    service_dates: list[str]
 
 
 @dataclass
@@ -170,6 +181,7 @@ class Batch:
     alert_spans: set[AlertSpan] = field(default_factory=set)
     offered: list[OfferedCounts] = field(default_factory=list)
     vehicle_routes: set[str] = field(default_factory=set)
+    stop_accessibility: dict[str, tuple[date, int | None]] = field(default_factory=dict)
 
     def update(self, other: Batch) -> None:
         self.counts.update(other.counts)
@@ -179,6 +191,10 @@ class Batch:
         self.alert_spans.update(other.alert_spans)
         self.offered.extend(other.offered)
         self.vehicle_routes.update(other.vehicle_routes)
+        for stop, declaration in other.stop_accessibility.items():
+            previous = self.stop_accessibility.get(stop)
+            if previous is None or declaration[0] > previous[0]:
+                self.stop_accessibility[stop] = declaration
 
 
 @dataclass(frozen=True)
@@ -211,6 +227,8 @@ class Family:
     evidence_columns: dict[str, Text] = field(default_factory=dict)
     bin_seconds: int = DELAY_BIN_SECONDS
     minimum_cleaning_version: int | None = None
+    coverage: tuple[float, float] | None = None
+    ranking_floors: dict[EntityKind, dict[str, int]] = field(default_factory=dict)
 
 
 def _histogram_text(seconds: int) -> Text:
@@ -407,6 +425,11 @@ _COUNTS = {
         Text("Other unclassified stops", "Autres arrêts non classés"),
     ),
 }
+_PUNCTUALITY_BASES = {
+    "vehicle_stopped": Text("Vehicle stopped", "Véhicule à l’arrêt"),
+    "trip_update_reported": Text("Trip update reported", "Mise à jour du trajet déclarée"),
+    "trip_update_passed": Text("Trip update passed", "Mise à jour du trajet au passage"),
+}
 _EVIDENCE_COLUMNS = {
     "city": Text("City", "Ville"),
     "start_date": Text("From", "Du"),
@@ -454,9 +477,70 @@ _UNIT_LABELS = {
 }
 
 
+_RANKING_FLOOR_LABELS = {
+    "classified": Text("observed stop events", "événements observés à l’arrêt"),
+    "observed_trips": Text("observed trips", "trajets observés"),
+    "observed_service_dates": Text("observed service dates", "dates de service observées"),
+    "observed_trip_pairs": Text("distinct trip pairs", "paires de trajets distinctes"),
+    "observed_headways": Text("matched headways", "intervalles appariés"),
+    "occupancy_vehicle_hours": Text(
+        "vehicle-hours with occupancy", "heures-véhicules avec achalandage"
+    ),
+    "eligible": Text("eligible trips", "trajets admissibles"),
+}
+_RANKING_FLOOR_KINDS = {
+    "line": Text("Line rankings", "Les classements par ligne"),
+    "stop": Text("Stop rankings", "Les classements par arrêt"),
+    "departure": Text("Departure rankings", "Les classements par départ"),
+}
+
+
 def _info(family: Family, measure: Measure) -> dict[str, Any]:
     columns = _csv_columns(family)
     histogram = _histogram_text(family.bin_seconds) if measure.percentile else None
+    limits = measure.limits or family.limits
+    coverage = _PUNCTUALITY.coverage if measure.id in _VEHICLE_PUNCTUALITY_IDS else family.coverage
+    if coverage:
+        minimum, warning = coverage
+        limits = Text(
+            f"{limits.en} Below {minimum:.0%} coverage the result is not measured. "
+            f"Below {warning:.0%} coverage the evidence flags low coverage.",
+            f"{limits.fr} Sous {minimum:.0%} de couverture, le résultat est non mesuré. "
+            f"Sous {warning:.0%}, les données signalent une faible couverture.",
+        )
+    if family.id == SCORECARD and measure.id != "prediction_error":
+        limits = Text(
+            f"{limits.en} At least {family.minimum_sample} samples are required.",
+            f"{limits.fr} Il faut au moins {family.minimum_sample} observations.",
+        )
+    if family.id == _SERVICE_DELIVERED_ID:
+        limits = Text(
+            f"{limits.en} Median cancellation lead time requires "
+            f"{MIN_CANCELLATION_NOTICES} notices.",
+            f"{limits.fr} Le préavis médian exige au moins {MIN_CANCELLATION_NOTICES} avis.",
+        )
+    ranking_floors = {
+        kind: floors for kind, floors in family.ranking_floors.items()
+        if measure.ranking_kinds is None or kind in measure.ranking_kinds
+    }
+    for kind, floors in ranking_floors.items():
+        en, fr = (
+            ", ".join(f"{floor} {getattr(_RANKING_FLOOR_LABELS[key], lang)}"
+                      for key, floor in floors.items())
+            for lang in ("en", "fr")
+        )
+        label = _RANKING_FLOOR_KINDS[kind]
+        limits = Text(
+            f"{limits.en} {label.en} require at least {en}.",
+            f"{limits.fr} {label.fr} exigent au moins {fr}.",
+        )
+    if measure.minimum_sample is not None:
+        limits = Text(
+            f"{limits.en} This rate requires at least {measure.minimum_sample} "
+            f"{'vehicle-hours' if measure.unit == 'per_100_hours' else 'assessed trips'}.",
+            f"{limits.fr} Ce taux exige au moins {measure.minimum_sample} "
+            f"{'heures-véhicules' if measure.unit == 'per_100_hours' else 'trajets évalués'}.",
+        )
     return {
         "id": measure.id,
         "family": family.id,
@@ -469,12 +553,19 @@ def _info(family: Family, measure: Measure) -> dict[str, Any]:
             if family.id == _VEHICLES_ID and measure.id in _VEHICLE_PUNCTUALITY_IDS
             else MIN_PREDICTION_SAMPLES
             if measure.id == "prediction_error"
+            else measure.minimum_sample
+            if measure.minimum_sample is not None
             else family.minimum_sample
         ),
         **(
             {"ranking_minimum_sample": measure.ranking_minimum_sample}
             if measure.ranking_minimum_sample is not None
             else {}
+        ),
+        **({"ranking_floors": ranking_floors} if ranking_floors else {}),
+        **(
+            {"minimum_coverage": coverage[0], "low_coverage_below": coverage[1]}
+            if coverage else {}
         ),
         **({"source": measure.source} if measure.source else {}),
         "evidence_fields": [
@@ -488,6 +579,7 @@ def _info(family: Family, measure: Measure) -> dict[str, Any]:
                 else ()
             ),
             *family.evidence_columns,
+            *(key for key in _COVERAGE_COLUMNS if key in columns),
         ],
         "csv_columns": {
             lang: [getattr(label, lang) for label in columns.values()] for lang in ("en", "fr")
@@ -498,7 +590,7 @@ def _info(family: Family, measure: Measure) -> dict[str, Any]:
                 "unit": getattr(_UNIT_LABELS[measure.unit], lang),
                 "counts": getattr(measure.counts or family.counts, lang),
                 "exclusions": getattr(measure.exclusions or family.exclusions, lang),
-                "limits": getattr(measure.limits or family.limits, lang),
+                "limits": getattr(limits, lang),
                 **({"histogram": getattr(histogram, lang)} if histogram else {}),
             }
             for lang in ("en", "fr")
@@ -506,16 +598,27 @@ def _info(family: Family, measure: Measure) -> dict[str, Any]:
     }
 
 
+_COVERAGE_COLUMNS = {
+    "low_coverage": Text("Low coverage", "Faible couverture"),
+    "coverage_reason": Text("Coverage reason", "Motif lié à la couverture"),
+}
+
+
 def _csv_columns(family: Family) -> dict[str, Text]:
+    coverage = _COVERAGE_COLUMNS if family.coverage or family.id == _VEHICLES_ID else {}
     if family.columns:
         common = {key: label for key, label in _CSV_COLUMNS.items() if key != "share_observed"}
-        return {**common, **family.columns, **family.evidence_columns}
+        return {**common, **family.columns, **family.evidence_columns, **coverage}
     if family.id == _SERVICE_DELIVERED_ID:
         common = {key: label for key, label in _CSV_COLUMNS.items() if key != "share_observed"}
-        return {**common, **_DELIVERY_COLUMNS, **_DELIVERY_EVIDENCE}
+        return {**common, **_DELIVERY_COLUMNS, **_DELIVERY_EVIDENCE, **coverage}
     return {
         **_CSV_COLUMNS,
+        **coverage,
         **{name: label for name, (_, label) in _COUNTS.items()},
+        **_PUNCTUALITY_BASES,
+        "observed_trips": Text("Observed trips", "Trajets observés"),
+        "observed_service_dates": Text("Observed service dates", "Dates de service observées"),
         **{m.id: m.count_label for m in family.measures if m.count_label is not None},
     }
 
@@ -579,6 +682,9 @@ def _grouped_batches(
         if result is None:
             result = groups[entity] = Batch()
         bucket = dict(zip(counters, values, strict=True))
+        for name in ("observed_trips", "observed_service_dates"):
+            if name in bucket:
+                result.counts[name] = max(result.counts[name], bucket.pop(name))
         result.counts.update(bucket)
         if edge is not None:
             result.histogram[edge] = bucket[sample]
@@ -649,6 +755,11 @@ def _punctuality_query(
         counters["stop_occurrences"] = "count(*)"
     elif question.group == "stop_id" or (question.group == "line" and question.stop is None):
         cut_sql += " AND NOT added"
+    basis_counts = {
+        name: f"count(*) FILTER (delay_seconds IS NOT NULL AND basis = '{name}')"
+        for name in _PUNCTUALITY_BASES
+    }
+    counters.update(basis_counts)
     aggregates = ", ".join(counters.values())
     group_columns = {
         "line": "route_id",
@@ -757,7 +868,7 @@ def _punctuality_query(
                         AS without_live_data,
                     trip_exclusion_reason IS NOT DISTINCT FROM 'capture_gap' AS capture_gap,
                     (trip_exclusion_reason IS NULL OR capture_gap) AS scheduled,
-                    route_has_live_data, {delay} AS delay_seconds
+                    route_has_live_data, s.trip_id, s.basis, {delay} AS delay_seconds
                     {departure}
                     {f", {clean_status} AS unclassified_bucket" if by_delay_bin else ""}
                 {stop_scan} {vehicle_filter}
@@ -783,15 +894,21 @@ def _punctuality_query(
                 for name in bands
             ),
             ("n", "NOT added AND route_has_live_data"),
+            *((name, classified) for name in _PUNCTUALITY_BASES),
         )
         aggregates = ", ".join(
             f"coalesce(sum({column}) FILTER ({condition}), 0)" for column, condition in sums
         )
+        sample_key = "observed_trips" if group == "line" else "observed_service_dates"
+        sample_expression = "count(*)" if group == "line" else "count(DISTINCT service_date)"
+        counters[sample_key] = ""
+        aggregates += f", {sample_expression} FILTER ({classified} AND classified > 0)"
+        stop_bases = ", ".join(f"{sql} AS {key}" for key, sql in basis_counts.items())
         return (
             f"""
             {ctes}, stops AS (
                 SELECT service_date, trip_id, count(*) AS n, count(delay_seconds) AS classified,
-                    {stop_bands}
+                    {stop_bands}, {stop_bases}
                 {stop_scan}
                 GROUP BY service_date, trip_id
             )
@@ -809,12 +926,27 @@ def _punctuality_query(
             t.scheduled_start_utc,
             coalesce(s.scheduled_departure_utc, s.scheduled_arrival_utc) AS scheduled_stop_utc,
             added, cancelled, without_live_data, scheduled, route_has_live_data, capture_gap,
-            {delay} AS delay_seconds
+            s.trip_id, s.basis, {delay} AS delay_seconds
             {", departure_seconds" if departure else ""}
             {", unclassified_bucket" if by_delay_bin else ""}
         FROM stops s JOIN trips t USING (service_date)
         WHERE s.trip_id IS NOT DISTINCT FROM t.trip_id
     )"""
+    ranking_join = ""
+    ranking_projection = ""
+    if group in {"line", "departure"}:
+        sample_key = "observed_trips" if group == "line" else "observed_service_dates"
+        distinct = "(service_date, trip_id)" if group == "line" else "service_date"
+        counters[sample_key] = ""
+        ctes += f""", ranking_samples AS (
+            SELECT {entity} AS sample_entity, count(DISTINCT {distinct}) AS ranking_sample
+            FROM events
+            WHERE {cut_sql} AND scheduled AND NOT capture_gap AND delay_seconds IS NOT NULL
+            GROUP BY sample_entity
+        )"""
+        parameters.extend(filters)
+        ranking_join = f"LEFT JOIN ranking_samples ON ({entity}) = sample_entity"
+        ranking_projection = ", coalesce(max(ranking_sample), 0)"
     if by_delay_bin:
         # Delay bins are multiples of 15. Reserve 1–6 for unclassified stops, and
         # separate exactly +300 from its late neighbors until the final rollup.
@@ -840,18 +972,23 @@ def _punctuality_query(
         bin_routes = "NULL"
         bin_source = f"events WHERE {cut_sql}"
         bin_count = "count(*)"
+        bin_bases = ", ".join(f"{sql} AS {name}" for name, sql in basis_counts.items())
         reason = "unclassified_bucket"
         excluded = "unclassified_bucket <> 5"
         if by_exact_delay:
             # The network has many stops at each exact delay. Compute the
             # histogram edges from those counts instead of from every stop.
             ctes += f""", delays AS (
-                SELECT trip_exclusion_reason, delay_seconds, count(*) AS n
+                SELECT trip_exclusion_reason, delay_seconds, basis, count(*) AS n
                 FROM events WHERE {cut_sql}
-                GROUP BY trip_exclusion_reason, delay_seconds
+                GROUP BY trip_exclusion_reason, delay_seconds, basis
             )"""
             bin_source = "delays"
             bin_count = "sum(n)"
+            bin_bases = ", ".join(
+                f"sum(n) FILTER (delay_seconds IS NOT NULL AND basis = '{name}') AS {name}"
+                for name in _PUNCTUALITY_BASES
+            )
             reason = clean_status
             excluded = "trip_exclusion_reason IS NOT NULL"
         if clean_events and question.group in HOUR_GROUPS:
@@ -876,13 +1013,17 @@ def _punctuality_query(
                 )
             bin_live = ", count(*) FILTER (NOT added AND route_has_live_data) AS live"
             final_live = ", sum(live)"
+        final_bases = ", ".join(
+            f"coalesce(sum({name}) FILTER (bucket NOT BETWEEN 1 AND 6), 0)"
+            for name in _PUNCTUALITY_BASES
+        )
         return (
             f"""
             {ctes}, bins AS (
                 SELECT {select_entity}
                     CASE WHEN delay_seconds IS NULL OR {excluded}
                         THEN {reason} {delay_bucket} END AS bucket,
-                    {bin_count} AS n {bin_live}
+                    {bin_count} AS n {bin_live}, {bin_bases}
                 FROM {bin_source}
                 GROUP BY {bin_group}bucket
             )
@@ -900,8 +1041,8 @@ def _punctuality_query(
                     OR bucket = {LATE_LIMIT_SECONDS + 1}), 0),
                 coalesce(sum(n) FILTER (bucket >= {LATE_LIMIT_SECONDS}
                     AND bucket <> {LATE_LIMIT_SECONDS + 1}), 0)
-                {final_live}
-            FROM bins GROUP BY {final_group}lower_edge
+                {final_live}, {final_bases} {ranking_projection}
+            FROM bins {ranking_join} GROUP BY {final_group}lower_edge
             """,
             parameters,
             counters,
@@ -910,8 +1051,8 @@ def _punctuality_query(
         f"""
         {ctes}
         SELECT {entity} AS entity,
-            {edge} AS lower_edge, {routes}, {aggregates}
-        FROM events WHERE {cut_sql}
+            {edge} AS lower_edge, {routes}, {aggregates} {ranking_projection}
+        FROM events {ranking_join} WHERE {cut_sql}
         {group_by}
         """,
         parameters,
@@ -922,11 +1063,17 @@ def _punctuality_query(
 _PUNCTUALITY = Family(
     id="punctuality",
     label=Text("Punctuality", "Ponctualité"),
-    method_version="punctuality-v2",
+    method_version="punctuality-v3",
     since="2026-11-22",
     tables=(STOP_EVENTS, TRIP_DAYS),
     query=_punctuality_rows,
     minimum_sample=MIN_CLASSIFIED_STOP_EVENTS,
+    coverage=(0.25, 0.50),
+    ranking_floors={
+        "line": {"classified": 100, "observed_trips": 20},
+        "stop": {"classified": 50},
+        "departure": {"observed_service_dates": 5, "classified": 30},
+    },
     counts=Text(
         "Each scheduled stop of each trip counts once. Shares divide the band count by the "
         "number of stops with a measured delay. Delay is signed seconds from the schedule.",
@@ -1035,6 +1182,10 @@ _DELIVERY_EVIDENCE = {
     ),
     "median_cancellation_lead_seconds": Text(
         "Median cancellation lead time (s)", "Préavis médian d’annulation (s)"
+    ),
+    "cancellation_lead_state": Text("Cancellation lead state", "État du préavis d’annulation"),
+    "boundary_coverage": Text(
+        "First and last departure coverage", "Couverture des départs limites"
     ),
     "boundary_departures": Text(
         "First and last departures by date", "Premiers et derniers départs par date"
@@ -1208,11 +1359,13 @@ _BOUNDARY_LIMITS = Text(
 _SERVICE_DELIVERED = Family(
     id=_SERVICE_DELIVERED_ID,
     label=Text("Service delivered", "Service effectué"),
-    method_version="service-delivered-v1",
+    method_version="service-delivered-v2",
     since="2026-11-22",
     tables=(TRIP_DAYS,),
     query=_service_delivered_rows,
     minimum_sample=MIN_SERVICE_DELIVERED_TRIPS,
+    coverage=(0.50, 0.80),
+    ranking_floors={"line": {"eligible": 30}},
     counts=Text(
         "Each scheduled trip counts once. Rates use scheduled trips with a known status: "
         "ran, cancelled or missing. "
@@ -1484,10 +1637,11 @@ def _crowding_rows(
 _CROWDING = Family(
     id=_CROWDING_ID,
     label=Text("Crowding", "Achalandage à bord"),
-    method_version="crowding-v2",
+    method_version="crowding-v3",
     since="2026-11-22",
     tables=(VEHICLE_POSITIONS, TRIP_DAYS),
     minimum_sample=MIN_CROWDING_VEHICLE_HOURS,
+    ranking_floors={"line": {"occupancy_vehicle_hours": 10}},
     query=_crowding_rows,
     columns=_CROWDING_COLUMNS,
     evidence_columns={
@@ -1743,6 +1897,7 @@ _WAITING_COLUMNS = {
         "Intervalles prévus avec données en direct en période fréquente",
     ),
     "observed_headways": Text("Matched observed headways", "Intervalles observés appariés"),
+    "observed_trip_pairs": Text("Distinct trip pairs", "Paires de trajets distinctes"),
     "scheduled_seconds": Text("Matched scheduled seconds", "Secondes prévues appariées"),
     "observed_seconds": Text("Matched observed seconds", "Secondes observées appariées"),
     "scheduled_squared_seconds": Text(
@@ -1777,6 +1932,10 @@ def _waiting_rows(
         "scheduled_headways": "count(*) FILTER (scheduled_pair)",
         "frequent_headways": "count(*) FILTER (frequent AND route_has_live_data)",
         "observed_headways": "count(*) FILTER (eligible)",
+        "observed_trip_pairs": (
+            "count(DISTINCT (service_date, least(prev_trip_id, trip_id), "
+            "greatest(prev_trip_id, trip_id))) FILTER (eligible)"
+        ),
         "scheduled_seconds": "coalesce(sum(scheduled_seconds) FILTER (eligible), 0)",
         "observed_seconds": "coalesce(sum(observed_seconds) FILTER (eligible), 0)",
         "scheduled_squared_seconds": (
@@ -1843,6 +2002,7 @@ def _waiting_rows(
             SELECT *, epoch(scheduled_stop_utc - lag(scheduled_stop_utc) OVER schedule)::BIGINT
                     AS scheduled_seconds,
                 lag(observed_at_utc) OVER schedule AS prev_observed,
+                lag(trip_id) OVER schedule AS prev_trip_id,
                 coalesce(observed_at_utc < prev_observed, false) AS overtaking,
                 trip_capture_gap OR lag(trip_capture_gap, 1, false) OVER schedule AS trip_gap,
                 usable_observation AND lag(usable_observation, 1, false) OVER schedule
@@ -1899,10 +2059,12 @@ def _waiting_rows(
 _WAITING = Family(
     id=_WAITING_ID,
     label=Text("Waiting and gaps", "Attente et intervalles"),
-    method_version="1",
+    method_version="2",
     since="2026-11-22",
     tables=(STOP_EVENTS, TRIP_DAYS, FEED_POLLS),
     minimum_sample=MIN_OBSERVED_HEADWAYS,
+    coverage=(0.25, 0.50),
+    ranking_floors={"line": {"observed_trip_pairs": 20, "observed_headways": 50}},
     counts=Text(
         "Evidence gives the number of scheduled and matched pairs, the sums and squared "
         "sums of their intervals and the counts of bunched and long intervals.",
@@ -1917,7 +2079,7 @@ _WAITING = Family(
         "scheduled trips interrupt pairing. Every trip or vehicle feed recorded for the "
         "service date must have continuous capture between observations, with at most "
         f"{MAX_POLL_SPACING_SECONDS} seconds between "
-        f"usable polls and {MAX_POLL_AGE_SECONDS} seconds of publication age. "
+        f"usable polls and {MAX_POLL_AGE_SECONDS} seconds of publication age plus the source lag. "
         "The direction must be known. Lines without live data are excluded.",
         "Les passages doivent se suivre dans l’horaire et les observations pour la même "
         "ligne, le même arrêt et la même direction. Les deux trajets doivent avoir eu lieu "
@@ -1927,7 +2089,7 @@ _WAITING = Family(
         "La collecte de chaque flux de trajets ou de véhicules consigné pour cette date de "
         "service doit couvrir l’intervalle entre les observations, avec au plus "
         f"{MAX_POLL_SPACING_SECONDS} secondes entre les relevés utilisables et "
-        f"des publications datant d’au plus {MAX_POLL_AGE_SECONDS} secondes. "
+        f"des publications datant d’au plus {MAX_POLL_AGE_SECONDS} secondes plus le délai source. "
         "La direction doit être connue. Les lignes sans données en direct sont exclues.",
     ),
     limits=Text(
@@ -2083,7 +2245,8 @@ def _offered_rows(
         )
         SELECT {entity} AS entity, route_id, direction_id,
             {day_type_sql("service_date")} AS day_type,
-            period, sum(trips), count(*) FILTER (trips >= {MIN_TRIPS_PER_HOUR} * ({period_hours}))
+            period, sum(trips), count(*) FILTER (trips >= {MIN_TRIPS_PER_HOUR} * ({period_hours})),
+            list(DISTINCT service_date::VARCHAR)
         FROM daily GROUP BY entity, route_id, direction_id, day_type, period
         """,
         [
@@ -2105,7 +2268,7 @@ def _offered_rows(
 _SERVICE_OFFERED = Family(
     id=_SERVICE_OFFERED_ID,
     label=Text("Service offered", "Service offert"),
-    method_version="1",
+    method_version="2",
     since="2026-11-22",
     tables=(SCHEDULED_STOP_TIMES,),
     minimum_sample=_MIN_SCHEDULE_DAYS,
@@ -2118,13 +2281,13 @@ _SERVICE_OFFERED = Family(
     exclusions=Text(
         "The schedule includes lines without live data. The count uses the first timed stop "
         "of each trip, or the first timed visit to the selected stop. Missing schedules are "
-        "excluded. A line and direction seen in the selected timetable can have zero trips "
-        "in other periods and on other included dates.",
+        "excluded. Minimum service is assessed for each line and direction on the dates "
+        "when the published timetable includes it. A period on such a date may have zero trips.",
         "L’horaire inclut les lignes sans données en direct. Chaque trajet est compté au "
         "premier arrêt avec une heure prévue ou au premier passage avec une heure prévue "
         "à l’arrêt choisi. Les horaires manquants sont exclus. Une ligne et une direction "
-        "présentes dans l’horaire choisi peuvent n’offrir aucun trajet à d’autres périodes "
-        "ou dates incluses.",
+        "sont évaluées aux dates où elles figurent dans l’horaire. Une période à cette date "
+        "peut ne compter aucun trajet.",
     ),
     limits=Text(
         f"At least {_MIN_SCHEDULE_DAYS} service day with a validated schedule is required. "
@@ -2218,6 +2381,7 @@ _VEHICLE_COLUMNS = {
     "completion_capture_gap": Text("Trips with capture gaps", "Trajets avec collecte interrompue"),
     "completion_unknown": Text("Trips with unknown status", "Trajets à l’état inconnu"),
     **{f"punctuality_{key}": label for key, (_, label) in _COUNTS.items()},
+    **{f"punctuality_{key}": label for key, label in _PUNCTUALITY_BASES.items()},
     **{
         f"punctuality_{m.id}": m.count_label
         for m in _PUNCTUALITY.measures
@@ -2238,11 +2402,13 @@ _VEHICLE_LIMITS = Text(
 _VEHICLE_REPORTING_EXCLUSIONS = Text(
     "The vehicle-position feed must have continuous capture across the silence. Usable polls "
     f"contain advancing, nonempty publications at most {MAX_POLL_AGE_SECONDS} seconds old "
+    "plus the declared source lag, "
     f"and are at most {MAX_POLL_SPACING_SECONDS} seconds apart. Silences across capture gaps "
     "are excluded from the count and duration and shown in the evidence.",
     "La collecte du flux de positions doit être continue pendant le silence. Les relevés "
     "utilisables contiennent des publications non vides plus récentes que les précédentes, "
-    f"vieilles d’au plus {MAX_POLL_AGE_SECONDS} secondes et espacées d’au plus "
+    f"vieilles d’au plus {MAX_POLL_AGE_SECONDS} secondes plus le délai source déclaré, "
+    "et espacées d’au plus "
     f"{MAX_POLL_SPACING_SECONDS} secondes. Les silences pendant une interruption de la "
     "collecte sont exclus du nombre et de la durée et figurent dans les données justificatives.",
 )
@@ -2252,14 +2418,15 @@ _VEHICLE_COMPLETION_METHOD = Text(
     f"must be covered from {TRIP_CAPTURE_LEAD_SECONDS} seconds before scheduled departure "
     f"through {MAX_POLL_SPACING_SECONDS} seconds after the scheduled end or last observation, "
     "whichever is later. Usable polls contain advancing publications no more than "
-    f"{MAX_POLL_AGE_SECONDS} seconds old, with spacing of at most "
+    f"{MAX_POLL_AGE_SECONDS} seconds old plus the declared source lag, with spacing of at most "
     f"{MAX_POLL_SPACING_SECONDS} seconds.",
     "Un arrêt confirmé avant le terminus prévu indique un trajet non terminé si le terminus "
     "n’a jamais été confirmé et que la collecte est continue. Chaque flux temps réel consigné "
     f"doit être couvert de {TRIP_CAPTURE_LEAD_SECONDS} secondes avant le départ prévu à "
     f"{MAX_POLL_SPACING_SECONDS} secondes après la fin prévue ou la dernière observation, "
     "selon la plus tardive. Les relevés utilisables ont une publication plus récente que "
-    f"les précédentes, vieille d’au plus {MAX_POLL_AGE_SECONDS} secondes, et sont espacés "
+    f"les précédentes, vieille d’au plus {MAX_POLL_AGE_SECONDS} secondes plus le délai source "
+    "déclaré, et sont espacés "
     f"d’au plus {MAX_POLL_SPACING_SECONDS} secondes.",
 )
 
@@ -2356,7 +2523,7 @@ def _vehicle_rows(
 _VEHICLES = Family(
     id=_VEHICLES_ID,
     label=Text("Vehicles", "Véhicules"),
-    method_version="vehicles-v1",
+    method_version="vehicles-v2",
     since="2026-11-22",
     tables=(VEHICLE_POSITIONS, TRIP_DAYS),
     query=_vehicle_rows,
@@ -2376,6 +2543,7 @@ _VEHICLES = Family(
     limits=_VEHICLE_LIMITS,
     columns=_VEHICLE_COLUMNS,
     evidence_columns={
+        "share_observed": _EVIDENCE_COLUMNS["share_observed"],
         "days_not_tracked": Text("Days without vehicle tracking", "Jours sans suivi des véhicules"),
     },
     measures=(
@@ -2467,6 +2635,7 @@ _VEHICLES = Family(
             worst_first_descending=True,
             ranking_kinds=("vehicle",),
             ranking_minimum_sample=MIN_VEHICLE_RANKING_HOURS,
+            minimum_sample=MIN_VEHICLE_REPORTING_HOURS,
         ),
         Measure(
             "vehicle_unfinished_trips",
@@ -2494,6 +2663,7 @@ _VEHICLES = Family(
             worst_first_descending=True,
             ranking_kinds=("vehicle",),
             ranking_minimum_sample=MIN_VEHICLE_RANKING_TRIPS,
+            minimum_sample=MIN_VEHICLE_COMPLETION_TRIPS,
         ),
         *_VEHICLE_PUNCTUALITY,
     ),
@@ -2568,10 +2738,11 @@ def _corridor_rows(
 _CORRIDORS = Family(
     id=_CORRIDORS_ID,
     label=Text("Corridors", "Corridors"),
-    method_version="1",
+    method_version="2",
     since="2026-11-22",
     tables=(STOP_EVENTS, TRIP_DAYS, FEED_POLLS),
     minimum_sample=MIN_SEGMENT_RUNS,
+    coverage=(0.25, 0.50),
     bin_seconds=SEGMENT_BIN_SECONDS,
     counts=Text(
         "Each run pairs consecutive scheduled stops of the same trip. Time lost is the "
@@ -2594,7 +2765,7 @@ _CORRIDORS = Family(
         f"durations, negative observed durations and runs over {MAX_SEGMENT_RUN_MULTIPLE} "
         "times their scheduled duration. Every recorded trip or vehicle feed must cover the "
         f"observed span with poll intervals of at most {MAX_POLL_SPACING_SECONDS} seconds and "
-        f"publication age of at most {MAX_POLL_AGE_SECONDS} seconds.",
+        f"publication age of at most {MAX_POLL_AGE_SECONDS} seconds plus the declared source lag.",
         "Les deux arrêts doivent avoir la même base d’observation. Les données distinguent "
         "les véhicules vus à l’arrêt, les rapports exacts et les estimations confirmées par "
         "la progression du véhicule. Sont exclus les trajets annulés, les observations ou "
@@ -2602,7 +2773,7 @@ _CORRIDORS = Family(
         f"négatives et celles dépassant {MAX_SEGMENT_RUN_MULTIPLE} fois la durée prévue. Chaque "
         "flux de trajets ou de véhicules enregistré doit couvrir l’intervalle observé, avec "
         f"au plus {MAX_POLL_SPACING_SECONDS} secondes entre relevés et "
-        f"{MAX_POLL_AGE_SECONDS} secondes depuis la publication.",
+        f"{MAX_POLL_AGE_SECONDS} secondes depuis la publication plus le délai source déclaré.",
     ),
     limits=Text(
         f"At least {MIN_SEGMENT_RUNS} observed runs per result, so the upper tenth represents "
@@ -2670,10 +2841,10 @@ _VEHICLE_SCORECARD_LIMITS = Text(
 _SCORECARD = Family(
     id=SCORECARD,
     label=Text("Open data scorecard", "Bilan des données ouvertes"),
-    method_version="1",
+    method_version="2",
     since="2026-11-22",
     tables=(),
-    minimum_sample=1,
+    minimum_sample=MIN_SCORECARD_SAMPLES,
     counts=Text(
         "Counts are shown with each result.", "Les effectifs accompagnent chaque résultat."
     ),
@@ -2857,12 +3028,14 @@ _SCORECARD = Family(
             ),
             limits=Text(
                 f"Percentiles use {DELAY_BIN_SECONDS}-second bins. The ±60-second band uses an "
-                "inclusive boundary. Each horizon requires 30 independent stop observations. "
+                f"inclusive boundary. Each horizon requires {MIN_PREDICTION_SAMPLES} "
+                "observed stop events. "
                 "The hour is the observed local hour. Requires cleaning v7 or later.",
                 f"Les centiles utilisent des classes de {DELAY_BIN_SECONDS} secondes. La bande "
-                "de ±60 secondes inclut ses bornes. Chaque horizon exige 30 observations "
-                "indépendantes. L’heure est l’heure locale observée. Nécessite le nettoyage v7 "
-                "ou une version ultérieure.",
+                "de ±60 secondes inclut ses bornes. "
+                f"Chaque horizon exige {MIN_PREDICTION_SAMPLES} événements "
+                "observés à l’arrêt. L’heure est l’heure locale observée. "
+                "Nécessite le nettoyage v7 ou une version ultérieure.",
             ),
             extra_tables=(PREDICTION_SAMPLES,),
         ),
@@ -2942,43 +3115,29 @@ def _accessibility_rows(
         counts["trips_not_published"] = int(
             trips_total - trips_accessible - trips_not_accessible - trips_no_information
         )
+    result = Batch(counts=counts)
     if SCHEDULED_STOP_TIMES in paths:
         hour = _LOCAL_HOUR.format("coalesce(s.scheduled_departure_utc, s.scheduled_arrival_utc)")
         cut, parameters = _cuts(question, hour)
-        stops = conn.execute(
+        rows = conn.execute(
             f"""
-            WITH latest_stops AS (
-                SELECT s.stop_id,
-                    arg_max_null(s.wheelchair_boarding, s.service_date) AS wheelchair_boarding
-                FROM read_parquet(?, hive_partitioning = false) s
-                WHERE s.provider = ? AND s.cleaning_version = ?
-                    AND s.service_date BETWEEN ? AND ? AND s.stop_id IS NOT NULL AND {cut}
-                GROUP BY s.stop_id
-            )
-            SELECT count(*),
-                count(*) FILTER (WHERE wheelchair_boarding = 1),
-                count(*) FILTER (WHERE wheelchair_boarding = 2),
-                count(*) FILTER (WHERE wheelchair_boarding = 0)
-            FROM latest_stops
+            SELECT s.stop_id, max(s.service_date),
+                arg_max_null(s.wheelchair_boarding, s.service_date)
+            FROM read_parquet(?, hive_partitioning = false) s
+            WHERE s.provider = ? AND s.cleaning_version = ?
+                AND s.service_date BETWEEN ? AND ? AND s.stop_id IS NOT NULL AND {cut}
+            GROUP BY s.stop_id
             """,
             [paths[SCHEDULED_STOP_TIMES], *window, *parameters],
-        ).fetchone()
-        assert stops is not None
-        stops_total, stops_accessible, stops_not_accessible, stops_no_information = stops
-        counts["stops_total"] = int(stops_total)
-        counts["stops_accessible"] = int(stops_accessible)
-        counts["stops_not_accessible"] = int(stops_not_accessible)
-        counts["stops_no_information"] = int(stops_no_information)
-        counts["stops_not_published"] = int(
-            stops_total - stops_accessible - stops_not_accessible - stops_no_information
-        )
-    return {(): Batch(counts=counts)}
+        ).fetchall()
+        result.stop_accessibility = {stop: (day, value) for stop, day, value in rows}
+    return {(): result}
 
 
 _ACCESSIBILITY = Family(
     id=_ACCESSIBILITY_ID,
     label=Text("Accessibility", "Accessibilité"),
-    method_version="accessibility-v1",
+    method_version="accessibility-v2",
     since="2026-11-22",
     tables=(TRIP_DAYS, SCHEDULED_STOP_TIMES),
     query=_accessibility_rows,
@@ -3053,6 +3212,22 @@ _SELECTIONS = {
 }
 
 
+def _coverage_evidence(family: Family, sample: int, total: int) -> dict[str, Any]:
+    assert family.coverage is not None
+    minimum, warning = family.coverage
+    share = sample / total if total > 0 else None
+    key = "share_eligible" if family.id == _SERVICE_DELIVERED_ID else "share_observed"
+    return {
+        key: share,
+        **({"low_coverage": True} if share is not None and share < warning else {}),
+        **(
+            {"coverage_reason": "insufficient_coverage"}
+            if share is not None and share < minimum
+            else {}
+        ),
+    }
+
+
 def _state(
     family: Family,
     sample: int,
@@ -3060,11 +3235,17 @@ def _state(
     captures_missing: int,
     without_live: int,
     missing_days: bool,
+    *,
+    coverage_sample: int | None = None,
 ) -> str:
     if missing_days or (scheduled_with_live and captures_missing == scheduled_with_live):
         return "not_measured"
     if not scheduled_with_live and without_live:
         return "no_live_data"
+    covered = sample if coverage_sample is None else coverage_sample
+    if family.coverage and scheduled_with_live > 0:
+        if covered / scheduled_with_live < family.coverage[0]:
+            return "not_measured"
     if not sample:
         return "unknown"
     if sample < family.minimum_sample:
@@ -3091,9 +3272,12 @@ def _delivery_answer(
             counts["capture_gap"],
             counts["route_without_live_data"],
             missing_days,
+            coverage_sample=counts["eligible"],
         )
 
     state = trip_state(counts["eligible"])
+    coverage = _coverage_evidence(family, counts["eligible"], scheduled_with_live)
+    by_boundary: dict[str, dict[str, Any]] = {}
     values: dict[str, float | None] = {}
     states = {}
     samples = {}
@@ -3111,18 +3295,23 @@ def _delivery_answer(
             top, bottom = sum(row.ran for row in edge), sum(row.eligible for row in edge)
             sample = bottom
             without_live = sum(row.route_without_live_data for row in edge)
+            boundary_total = sum(row.scheduled for row in edge) - without_live
             measure_state = _state(
-                family,
-                bottom,
-                sum(row.scheduled for row in edge) - without_live,
-                sum(row.capture_gap for row in edge),
-                without_live,
-                missing_days,
+                family, bottom, boundary_total, sum(row.capture_gap for row in edge),
+                without_live, missing_days,
             )
+            by_boundary[measure.id] = _coverage_evidence(family, bottom, boundary_total)
+        if coverage.get("coverage_reason"):
+            measure_state = state
         states[measure.id] = measure_state
         samples[measure.id] = sample
         values[measure.id] = top / bottom if measure_state == "measured" else None
     notices = counts["cancellation_notices"]
+    states["median_cancellation_lead_seconds"] = (
+        "not_measured" if missing_days
+        else "too_few_to_judge" if notices < MIN_CANCELLATION_NOTICES
+        else "measured"
+    )
     delivery_counts: dict[str, int | float | None] = {
         key: counts[key] if included else None
         for key in _DELIVERY_COLUMNS
@@ -3138,13 +3327,20 @@ def _delivery_answer(
         "excluded": {
             key: counts[key] if included else None for key in (*_DELIVERY_EXCLUDED, "unconfirmed")
         },
-        "share_eligible": counts["eligible"] / counts["scheduled"] if counts["scheduled"] else None,
+        **(
+            by_boundary[selected[0].id]
+            if len(selected) == 1 and selected[0].id in by_boundary
+            and not coverage.get("coverage_reason") else coverage
+        ),
+        **({"boundary_coverage": by_boundary} if by_boundary else {}),
         "share_unconfirmed": (
-            counts["unconfirmed"] / counts["scheduled"] if counts["scheduled"] else None
+            counts["unconfirmed"] / scheduled_with_live if scheduled_with_live else None
         ),
         "median_cancellation_lead_seconds": (
-            _percentile(sorted(histogram.items()), notices, 50) if notices else None
+            _percentile(sorted(histogram.items()), notices, 50, continuous=True)
+            if states["median_cancellation_lead_seconds"] == "measured" else None
         ),
+        "cancellation_lead_state": states["median_cancellation_lead_seconds"],
         "boundary_departures": [row._asdict() for row in departures] if departures else None,
         "measure_states": states,
     }
@@ -3248,6 +3444,9 @@ def read_window(
     # Keep the window sorts over dense position and corridor stop records to one day.
     batch_days = 1 if VEHICLE_POSITIONS in tables or family.id == _CORRIDORS_ID else None
     window = ReadWindow({table: [] for table in tables}, batch_days=batch_days)
+    uses_poll_coverage = FEED_POLLS in tables and family.query is not None
+    if uses_poll_coverage and receipts is None:
+        receipts = {}
     if (
         family.minimum_cleaning_version is not None
         and store.cleaning_version < family.minimum_cleaning_version
@@ -3306,6 +3505,9 @@ def read_window(
             if in_cut or family.id == _SERVICE_OFFERED_ID:
                 for table, path in zip(tables, files, strict=True):
                     window.paths[table].append(path)
+    if uses_poll_coverage and window.included:
+        assert receipts is not None
+        set_poll_age_limits(conn, question.city, receipts, window.included)
     return window
 
 
@@ -3434,7 +3636,7 @@ def evaluate(
     if family.id == _VEHICLES_ID:
         return _vehicle_answer(selected, totals, window)
     if family.id == _ACCESSIBILITY_ID:
-        return _accessibility_answer(selected, totals.counts, window)
+        return _accessibility_answer(selected, totals, window)
     if family.id == _SERVICE_DELIVERED_ID:
         return _delivery_answer(
             family,
@@ -3458,12 +3660,12 @@ def _corridor_answer(
 ) -> tuple[str, dict[str, float | None], dict[str, Any], dict[str, int]]:
     counts = totals.counts
     sample = counts["observed_runs"]
-    scheduled = counts["scheduled_runs"]
     without_live = counts["route_without_live_data"]
+    scheduled = counts["scheduled_runs"] - without_live - counts["cancelled"]
     state = _state(
         family,
         sample,
-        scheduled - without_live,
+        scheduled,
         counts["capture_gap"],
         without_live,
         window.no_days_measured,
@@ -3482,7 +3684,7 @@ def _corridor_answer(
     evidence = {
         "counts": {key: counts[key] if window.included else None for key in _CORRIDOR_COUNTS},
         "excluded": {key: counts[key] if window.included else None for key in _CORRIDOR_EXCLUSIONS},
-        "share_observed": sample / scheduled if scheduled else None,
+        **_coverage_evidence(family, sample, scheduled),
     }
     return state, values, evidence, dict.fromkeys(values, sample)
 
@@ -3529,7 +3731,7 @@ def _waiting_answer(
             if key not in _WAITING_EXCLUDED
         },
         "excluded": {key: counts[key] if included else None for key in _WAITING_EXCLUDED},
-        "share_observed": sample / frequent if frequent else None,
+        **_coverage_evidence(family, sample, frequent),
         "measure_states": states,
     }
     return (
@@ -3540,6 +3742,12 @@ def _waiting_answer(
     )
 
 
+def _offered_units(offered: Iterable[OfferedCounts]) -> set[tuple[str, str, int | None]]:
+    return {
+        (day, row.route_id, row.direction_id) for row in offered for day in row.service_dates
+    }
+
+
 def _offered_answer(
     selected: tuple[Measure, ...],
     offered: list[OfferedCounts],
@@ -3547,11 +3755,16 @@ def _offered_answer(
     missing_days: bool,
     hour: int | None,
     *,
-    units: int | None = None,
+    schedule_units: set[tuple[str, str, int | None]] | None = None,
 ) -> tuple[str, dict[str, float | None], dict[str, Any], dict[str, int]]:
-    # A sparse period with no departures still counts for a scope seen in the timetable.
-    if units is None:
-        units = len({(row.route_id, row.direction_id) for row in offered})
+    if schedule_units is None:
+        schedule_units = _offered_units(offered)
+    units = len({(route, direction) for _, route, direction in schedule_units})
+    active = set(included)
+    units_by_type = Counter(
+        _DAY_TYPES[date.fromisoformat(day).weekday()]
+        for day, _, _ in schedule_units if day in active
+    )
     trips: Counter[tuple[str, str]] = Counter()
     at_or_above: Counter[tuple[str, str]] = Counter()
     for row in offered:
@@ -3567,7 +3780,9 @@ def _offered_answer(
         hours = 1 if hour is not None else p.end_hour - p.start_hour
         for day_type, days in days_by_type.items():
             key = (day_type, p.id)
-            assessed = days * units if p.id == "evening" or day_type != "weekday" else 0
+            assessed = (
+                units_by_type[day_type] if p.id == "evening" or day_type != "weekday" else 0
+            )
             below = assessed - at_or_above[key] if assessed else 0
             period_counts = {
                 "scheduled_trips": trips[key],
@@ -3598,7 +3813,7 @@ def _offered_answer(
             if measure.id == "scheduled_frequency":
                 values[measure.id] = counts["scheduled_trips"] / counts["scheduled_clock_hours"]
             elif measure.id == "below_minimum_service" and not counts["eligible_periods"]:
-                states[measure.id] = "no_evening_or_weekend_periods"
+                states[measure.id] = "no_evening_or_weekend_periods" if units_by_type else "unknown"
             else:
                 values[measure.id] = counts[measure.id]
     evidence = {
@@ -3686,6 +3901,7 @@ def _scorecard_answer(
             totals: Counter[str] = Counter()
             denominator: Counter[str] = Counter()
             unpublished: dict[str, list[str]] = {name: [] for name in VEHICLE_FIELDS}
+            interval_denominator: Counter[str] = Counter()
             without_trip: set[str] = set()
             for day, paths in zip(window.included, window.batches(), strict=True):
                 counts, ids = vehicle_counts(
@@ -3708,6 +3924,7 @@ def _scorecard_answer(
                     else:
                         totals[name] += counts[name]
                         denominator[name] += counts["reporting_us"]
+                        interval_denominator[name] += counts["intervals"]
             declared = [entry["feeds"] for entry in declarations.values() if "feeds" in entry]
             empty = (
                 "not_measured"
@@ -3720,10 +3937,14 @@ def _scorecard_answer(
             values = {}
             states = {}
             for name in VEHICLE_FIELDS:
-                values[name] = totals[name] / denominator[name] if denominator[name] else None
+                sample = interval_denominator[name]
+                enough = sample >= family.minimum_sample and denominator[name]
+                values[name] = totals[name] / denominator[name] if enough else None
                 states[name] = (
                     "measured"
-                    if denominator[name]
+                    if enough
+                    else "too_few_to_judge"
+                    if sample and denominator[name]
                     else "not_published"
                     if unpublished[name] and len(unpublished[name]) == len(window.included)
                     else empty
@@ -3732,13 +3953,18 @@ def _scorecard_answer(
                 values,
                 "measured"
                 if "measured" in states.values()
+                else "too_few_to_judge"
+                if "too_few_to_judge" in states.values()
                 else "not_published"
                 if all(state == "not_published" for state in states.values())
                 else empty,
                 {
                     "intervals": totals["intervals"],
                     **{
-                        name: {"present_us": totals[name], "reporting_us": denominator[name]}
+                        name: {
+                            "present_us": totals[name], "reporting_us": denominator[name],
+                            "intervals": interval_denominator[name],
+                        }
                         for name in VEHICLE_FIELDS
                     },
                 },
@@ -3746,9 +3972,10 @@ def _scorecard_answer(
                 states,
             )
             reporting = totals["reporting_us"]
+            enough = totals["intervals"] >= family.minimum_sample and reporting
             results[group[1]] = Result(
-                totals["without_trip_us"] / reporting if reporting else None,
-                "measured" if reporting else empty,
+                totals["without_trip_us"] / reporting if enough else None,
+                "measured" if enough else "too_few_to_judge" if reporting else empty,
                 {
                     "intervals": totals["intervals"],
                     "reporting_us": reporting,
@@ -3852,8 +4079,14 @@ def _scorecard_answer(
 
 
 def _accessibility_answer(
-    selected: tuple[Measure, ...], counts: Counter[str], window: ReadWindow
+    selected: tuple[Measure, ...], totals: Batch, window: ReadWindow
 ) -> tuple[str, dict[str, float | None], dict[str, Any], dict[str, int]]:
+    stops = Counter(value for _, value in totals.stop_accessibility.values())
+    counts = totals.counts.copy()
+    counts.update(
+        stops_total=stops.total(), stops_accessible=stops[1], stops_not_accessible=stops[2],
+        stops_no_information=stops[0], stops_not_published=stops[None],
+    )
     values: dict[str, float | None] = {}
     states: dict[str, str] = {}
     samples: dict[str, int] = {}
@@ -4050,9 +4283,7 @@ def _series_answer(
         for key, sequences in stop_sequences.items()
     }
     # A line's published timetable establishes that an empty hour can have zero service.
-    schedule_units = {
-        (row.route_id, row.direction_id) for part in totals.values() for row in part.offered
-    }
+    schedule_units = _offered_units(row for part in totals.values() for row in part.offered)
     cells = []
     columns = GROUP_COLUMNS[group]
     untracked = set(window.not_tracked)
@@ -4076,12 +4307,11 @@ def _series_answer(
         part = totals.get(key, Batch()) if included else Batch()
         if offered:
             units = (
-                sum(direction == key[0] for _, direction in schedule_units)
-                if group == "direction"
-                else len(schedule_units)
+                {unit for unit in schedule_units if unit[2] == key[0]}
+                if group == "direction" else schedule_units
             )
             state, values, evidence, _ = _offered_answer(
-                selected, part.offered, included, not included, cell_hour, units=units
+                selected, part.offered, included, not included, cell_hour, schedule_units=units
             )
         else:
             if hourly and occupancy_days.intersection(included):
@@ -4178,14 +4408,18 @@ def _punctuality_evidence(
     return {
         "counts": {
             key: counts[key] if included else None
-            for key in ("scheduled", "classified", *(m.id for m in family.measures if m.band))
+            for key in (
+                "scheduled", "classified", *(m.id for m in family.measures if m.band),
+                *_PUNCTUALITY_BASES,
+                *(key for key in ("observed_trips", "observed_service_dates") if key in counts),
+            )
         },
         "excluded": {
             key: counts[key] if included else None
             for key in _COUNTS
             if key not in ("scheduled", "classified")
         },
-        "share_observed": counts["classified"] / scheduled if scheduled else None,
+        **_coverage_evidence(family, counts["classified"], scheduled),
     }
 
 
@@ -4238,6 +4472,7 @@ def _vehicle_answer(
         measure for measure in _PUNCTUALITY.measures if f"vehicle_{measure.id}" in states
     )
     timing_evidence: dict[str, int | None] = {}
+    timing_coverage: dict[str, Any] = {}
     if punctuality_selected:
         timing_state, timing_values, timing, timing_samples = _punctuality_answer(
             _PUNCTUALITY,
@@ -4248,6 +4483,9 @@ def _vehicle_answer(
             window.no_days_measured,
         )
         timing_evidence = {**timing["counts"], **timing["excluded"]}
+        timing_coverage = {
+            key: timing[key] for key in ("share_observed", *_COVERAGE_COLUMNS) if key in timing
+        }
         for key, value in timing_values.items():
             name = f"vehicle_{key}"
             states[name] = timing_state if tracked else state
@@ -4258,17 +4496,21 @@ def _vehicle_answer(
             if name in _VEHICLE_COMPLETION_IDS:
                 samples[name] = completion_sample
                 if not completion_sample:
-                    states[name] = "not_measured" if counts["completion_capture_gap"] else "unknown"
+                    states[name] = (
+                        "not_measured" if counts["completion_capture_gap"] else "too_few_to_judge"
+                    )
                 elif name == "vehicle_unfinished_trips":
                     values[name] = counts["unfinished_trips"]
+                elif completion_sample < MIN_VEHICLE_COMPLETION_TRIPS:
+                    states[name] = "too_few_to_judge"
                 else:
                     values[name] = 100 * counts["unfinished_trips"] / completion_sample
             elif name == VEHICLE_RANKING_DEFAULT:
                 samples[name] = counts["service_us"]
-                if hours:
+                if hours >= MIN_VEHICLE_REPORTING_HOURS:
                     values[name] = 100 * counts["reporting_gaps"] / hours
                 else:
-                    states[name] = "unknown"
+                    states[name] = "too_few_to_judge"
             else:
                 values[name] = vehicle_counts[name.removeprefix("vehicle_")]
 
@@ -4314,6 +4556,7 @@ def _vehicle_answer(
                 ),
             },
             "measure_states": states,
+            **timing_coverage,
         },
         samples,
     )
@@ -4364,9 +4607,7 @@ def answer_csv(answer: dict[str, Any], language: Language) -> str:
             for column in ("counts", "excluded", "dimension_states", "capture_gap_days"):
                 row[column] = evidence[column][key]
         writer.writerow(
-            json.dumps(row[name], ensure_ascii=False)
-            if isinstance(row[name], (dict, list))
-            else row[name]
-            for name in columns
+            json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else value
+            for value in (row.get(name) for name in columns)
         )
     return output.getvalue()

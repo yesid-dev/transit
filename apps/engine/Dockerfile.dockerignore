@@ -1,0 +1,13 @@
+*
+!apps/
+!apps/engine/
+!apps/engine/Dockerfile
+!apps/engine/pyproject.toml
+!apps/engine/uv.lock
+!apps/engine/src/
+!apps/engine/src/**
+!apps/db/
+!apps/db/config/
+!apps/db/config/providers/
+!apps/db/config/providers/*.yaml
+**/__pycache__/

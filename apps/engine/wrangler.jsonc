@@ -13,6 +13,7 @@
     {
       "class_name": "TransitEngine",
       "image": "./Dockerfile",
+      "image_build_context": "../..",
       "instance_type": "standard-1",
       "max_instances": 1
     }

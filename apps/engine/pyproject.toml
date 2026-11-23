@@ -7,7 +7,7 @@ name = "transit-engine"
 version = "0.1.0"
 description = "On-demand measures over Transit's clean Parquet tables."
 requires-python = ">=3.12,<3.13"
-dependencies = ["duckdb==2.0.0", "uvicorn>=0.52.0,<0.53"]
+dependencies = ["duckdb==2.0.0", "pyyaml>=6.0,<7.0", "uvicorn>=0.52.0,<0.53"]
 
 [project.optional-dependencies]
 r2 = ["duckdb-core-ext-httpfs==2.0.0"]

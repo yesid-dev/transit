@@ -25,6 +25,7 @@ VEHICLE_FIELDS = {
     "position": "latitude IS NOT NULL AND longitude IS NOT NULL",
 }
 HORIZONS = (1, 3, 5, 10, 15, 20, 30)
+MIN_SCORECARD_SAMPLES = 20
 MIN_PREDICTION_SAMPLES = 30
 MAX_FEED_SECONDS = 600
 _OVERFLOW = MAX_FEED_SECONDS + 1
@@ -187,11 +188,16 @@ def _state(states: dict[str, str], fallback: str) -> str:
     )
 
 
-def _feed_percentile(bins: Counter[int], count: int, percent: int) -> float | str:
+def _feed_percentile(
+    bins: Counter[int], count: int, percent: int, *, continuous: bool
+) -> float | str:
     rank, remainder = divmod((count - 1) * percent, 100)
     if rank + bool(remainder) >= count - bins[_OVERFLOW]:
         return "over_10_minutes"
-    return percentile(sorted(bins.items()), count, percent, width=1, ceiling=MAX_FEED_SECONDS)
+    return percentile(
+        sorted(bins.items()), count, percent, width=1, ceiling=MAX_FEED_SECONDS,
+        continuous=continuous,
+    )
 
 
 def feed_results(
@@ -265,15 +271,21 @@ def feed_results(
                 exclusions[feed]["missing_timestamp"] = successes - dated[feed]
             if measure == "feed_update_interval":
                 counts[feed]["backwards_timestamps"] = backwards[feed]
-            has_value = attempts > 0 if measure == "poll_success" else count > 0
-            states[feed] = "measured" if has_value else "unknown" if attempts else "not_measured"
+            sample = attempts if measure == "poll_success" else count
+            has_value = sample >= MIN_SCORECARD_SAMPLES
+            states[feed] = (
+                "measured" if has_value else "too_few_to_judge" if sample
+                else "unknown" if attempts else "not_measured"
+            )
             if measure == "poll_success":
                 counts[feed]["empty_share"] = outcomes["empty"] / attempts if has_value else None
                 values[feed] = successes / attempts if has_value else None
             else:
                 values[feed] = {
-                    "median_seconds": _feed_percentile(bins[feed], count, 50) if count else None,
-                    "p90_seconds": _feed_percentile(bins[feed], count, 90) if count else None,
+                    f"{label}_seconds": _feed_percentile(
+                        bins[feed], count, percent, continuous=measure == "feed_age_at_capture"
+                    ) if has_value else None
+                    for label, percent in (("median", 50), ("p90", 90))
                 }
         results[measure] = Result(
             values, _state(states, "not_measured"), counts, exclusions, states
@@ -428,6 +440,8 @@ def coverage_counts(
     covered_gap = scheduled - never_seen - eligible
     state = (
         "measured"
+        if eligible >= MIN_SCORECARD_SAMPLES
+        else "too_few_to_judge"
         if eligible
         else "not_measured"
         if covered_gap
@@ -436,7 +450,7 @@ def coverage_counts(
         else "unknown"
     )
     return Result(
-        appeared / eligible if eligible else None,
+        appeared / eligible if state == "measured" else None,
         state,
         {
             "scheduled": scheduled,
