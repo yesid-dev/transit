@@ -76,16 +76,16 @@
 	const alertsAvailable = $derived(providerHasAlerts(provider));
 	const officialAlertsUrl = $derived(provider?.alert_links[locale]);
 
+	async function currentAlerts(signal: AbortSignal): Promise<AlertHistory> {
+		if (!manifest) throw new Error('Live alert context unavailable');
+		const snapshot = await fetchCaptureSnapshot(manifest.provider, signal);
+		const now = Date.now();
+		const alertFeed = Object.values(snapshot.feeds).find((feed) => feed.family === 'alerts');
+		if (feedState(alertFeed, now) !== 'live') throw new Error('Current alerts unavailable');
+		return captureAlerts(snapshot, now);
+	}
 	const history = createResource<AlertHistory>(
-		async (signal) => {
-			if (!live) return getAlertHistory({ signal });
-			if (!manifest) throw new Error('Live alert context unavailable');
-			const snapshot = await fetchCaptureSnapshot(manifest.provider, signal);
-			const now = Date.now();
-			const alertFeed = Object.values(snapshot.feeds).find((feed) => feed.family === 'alerts');
-			if (feedState(alertFeed, now) !== 'live') throw new Error('Current alerts unavailable');
-			return captureAlerts(snapshot, now);
-		},
+		(signal) => (live ? currentAlerts(signal) : getAlertHistory({ signal })),
 		{
 			enabled: () => alertsAvailable,
 		},

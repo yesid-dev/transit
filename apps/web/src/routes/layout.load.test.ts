@@ -216,13 +216,16 @@ describe('root universal layout boot', () => {
 
 	it('reloads server provider data on every invocation so invalidateAll stays effective', async () => {
 		const request = serverEvent('fr', '/network', false);
-		const first = v1('fr', 'one');
-		const second = v1('fr', 'two');
-		harness.bootProvider
-			.mockResolvedValueOnce(selection(first))
-			.mockResolvedValueOnce(selection(second));
-		expect(await loadServerLayout(request)).toMatchObject({ v1: first });
-		expect(await loadServerLayout(request)).toMatchObject({ v1: second });
+		harness.bootProvider.mockResolvedValue({ ...selection(null), provider: city });
+		harness.getScheduleEdition
+			.mockResolvedValueOnce({ date: '2026-11-21', routes: [], stops: [] })
+			.mockResolvedValueOnce({ date: '2026-11-22', routes: [], stops: [] });
+		expect(await loadServerLayout(request)).toMatchObject({
+			v1: { manifest: { dataset_version: '2026-11-21' } },
+		});
+		expect(await loadServerLayout(request)).toMatchObject({
+			v1: { manifest: { dataset_version: '2026-11-22' } },
+		});
 	});
 
 	it('does not repeat a failed bound boot through the universal server path', async () => {
