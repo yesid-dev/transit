@@ -1,3 +1,4 @@
+import { cleanDownloadStore } from "./clean-download-store.js";
 import { CORS_HEADERS, PREFLIGHT_HEADERS } from "./cors.js";
 import { downloadLicence, downloadReadme } from "./download-licences.js";
 import { serviceDate } from "./question-params.js";
@@ -155,7 +156,7 @@ export async function serveDownload(request, env, ctx, visitorIp = request.heade
   if (request.method !== "GET" && (request.method !== "HEAD" || !name)) {
     return message(405, "use GET", { allow: name ? ALLOW : "GET, OPTIONS" });
   }
-  const bucket = env.CLEAN_DOWNLOADS;
+  const bucket = cleanDownloadStore(env);
   if (!bucket || !env.ENGINE || !env.TRANSIT1_ENGINE_ACCESS_TOKEN) return message(503, "downloads not configured");
 
   const cache = globalThis.caches?.default;

@@ -11,7 +11,8 @@ const TABLES = [
 ];
 const SHA = "1".repeat(64);
 
-function fixture({ city = "stm", status, missing = false, admitted = true, alerts = true } = {}) {
+function fixture(t, { city = "stm", status, missing = false, admitted = true, alerts = true,
+  endpoint = "fixture.r2.cloudflarestorage.com", r2Error, wrongRange = false } = {}) {
   const manifest = {
     provider: city,
     service_date: DATE,
@@ -24,10 +25,14 @@ function fixture({ city = "stm", status, missing = false, admitted = true, alert
     }),
   };
   const keys = [];
+  const methods = [];
   const admissions = [];
   const upstream = [];
   const env = {
     TRANSIT1_ENGINE_ACCESS_TOKEN: "test",
+    TRANSIT1_R2_ENDPOINT: endpoint,
+    TRANSIT1_R2_READ_ACCESS_KEY_ID: "fixture-key",
+    TRANSIT1_R2_READ_SECRET_ACCESS_KEY: "fixture-secret",
     QUESTION_LIMIT: {
       async limit({ key }) {
         admissions.push(key);
@@ -51,32 +56,50 @@ function fixture({ city = "stm", status, missing = false, admitted = true, alert
         return Response.json({}, { headers: { "x-transit-cleaning-version": "11" } });
       },
     },
-    CLEAN_DOWNLOADS: {
-      async get(key, options) {
-        keys.push(key);
-        if (key.endsWith("/manifest.json")) {
-          return !missing && key === `${city}/${DATE}/v11/manifest.json` ? Response.json(manifest) : null;
-        }
-        assert.equal(key, `${city}/${DATE}/v11/stop_events.parquet`);
-        const range = options?.range;
-        const body = range ? "PAR1!".slice(range.offset, range.offset + range.length) : "PAR1!";
-        return { size: 5, body: new Response(body).body };
-      },
-      async head(key) {
-        keys.push(key);
-        assert.equal(key, `${city}/${DATE}/v11/stop_events.parquet`);
-        return { size: 5 };
-      },
-    },
   };
+  t.mock.method(globalThis, "fetch", async (input, init) => {
+    const request = new Request(input, init);
+    const url = new URL(request.url);
+    assert.equal(url.origin, "https://fixture.r2.cloudflarestorage.com");
+    assert.ok(url.pathname.startsWith("/transit-clean/"));
+    assert.equal(request.redirect, "error");
+    assert.match(request.headers.get("authorization"),
+      /^AWS4-HMAC-SHA256 Credential=fixture-key\/\d{8}\/auto\/s3\/aws4_request, /);
+    assert.ok(["GET", "HEAD"].includes(request.method));
+
+    const key = url.pathname.slice("/transit-clean/".length);
+    keys.push(key);
+    methods.push(request.method);
+    if (r2Error) return new Response(null, { status: r2Error });
+    if (key.endsWith("/manifest.json")) {
+      assert.equal(request.method, "GET");
+      if (missing || key !== `${city}/${DATE}/v11/manifest.json`) return new Response(null, { status: 404 });
+      const body = JSON.stringify(manifest);
+      return new Response(body, { headers: { "content-length": String(Buffer.byteLength(body)) } });
+    }
+    assert.equal(key, `${city}/${DATE}/v11/stop_events.parquet`);
+    const body = "PAR1!";
+    const range = request.headers.get("range");
+    if (!range) return new Response(request.method === "HEAD" ? null : body, {
+      headers: { "content-length": String(body.length) },
+    });
+    const [start, end] = range.slice("bytes=".length).split("-").map(Number);
+    return new Response(body.slice(start, end + 1), {
+      status: 206,
+      headers: {
+        "content-length": String(end - start + 1),
+        "content-range": `bytes ${wrongRange ? start + 1 : start}-${end}/${body.length}`,
+      },
+    });
+  });
   const fetch = (path, init) => worker.fetch(new Request("https://data.test" + path, init), env, {
     waitUntil(promise) { return promise; },
   });
-  return { fetch, admissions, keys, upstream };
+  return { fetch, admissions, keys, methods, upstream };
 }
 
-test("a dated listing uses the public city catalog, current version and manifest identities", async () => {
-  const { fetch, keys, upstream, admissions } = fixture();
+test("a dated listing uses the public city catalog, current version and manifest identities", async (t) => {
+  const { fetch, keys, upstream, admissions } = fixture(t);
   const response = await fetch(STM + "?date=" + DATE);
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("cache-control"), "no-store");
@@ -103,8 +126,8 @@ test("a dated listing uses the public city catalog, current version and manifest
   assert.ok(text.includes(SHA));
 });
 
-test("paths, service dates, versions and nonpublic cities are refused before opening a file", async () => {
-  const { fetch, keys } = fixture();
+test("paths, service dates, versions and nonpublic cities are refused before opening a file", async (t) => {
+  const { fetch, keys } = fixture(t);
   for (const path of [
     `${STM}/${DATE}/%2e%2e%2fstop_events.parquet`,
     `${STM}/2026-02-30/stop_events.parquet`,
@@ -119,14 +142,14 @@ test("paths, service dates, versions and nonpublic cities are refused before ope
   assert.deepEqual(keys, []);
 });
 
-test("a missing day and a published unmeasured day have distinct states and no file links", async () => {
+test("a missing day and a published unmeasured day have distinct states and no file links", async (t) => {
   for (const [settings, status, reason] of [
     [{ missing: true }, "missing", "no_manifest"],
     [{ status: "no_raw_captures" }, "not_measured", "no_raw_captures"],
     [{ status: "no_schedule_edition" }, "not_measured", "no_schedule_edition"],
     [{ status: "schedule_archive_unreadable" }, "not_measured", "schedule_archive_unreadable"],
   ]) {
-    const { fetch, keys } = fixture(settings);
+    const { fetch, keys } = fixture(t, settings);
     const day = await (await fetch(STM + "?date=" + DATE)).json();
     assert.deepEqual([day.status, day.reason, day.files, day.readme_url], [status, reason, [], null]);
     assert.equal((await fetch(`${STM}/${DATE}/stop_events.parquet`)).status, 404);
@@ -135,8 +158,8 @@ test("a missing day and a published unmeasured day have distinct states and no f
   }
 });
 
-test("Ottawa without tracked alerts has its own licence and no alerts download", async () => {
-  const { fetch } = fixture({ city: "octranspo", alerts: false });
+test("Ottawa without tracked alerts has its own licence and no alerts download", async (t) => {
+  const { fetch } = fixture(t, { city: "octranspo", alerts: false });
   const day = await (await fetch(OC + "?date=" + DATE)).json();
   assert.equal(day.alerts_not_tracked, true);
   assert.equal(day.files.length, 6);
@@ -145,8 +168,8 @@ test("Ottawa without tracked alerts has its own licence and no alerts download",
   assert.equal((await fetch(`${OC}/${DATE}/alerts.parquet`)).status, 404);
 });
 
-test("download streams Parquet with attachment, SHA-256 ETag, HEAD and byte ranges", async () => {
-  const { fetch } = fixture();
+test("download streams Parquet with attachment, SHA-256 ETag, HEAD and byte ranges", async (t) => {
+  const { fetch, methods } = fixture(t);
   const path = `${STM}/${DATE}/stop_events.parquet`;
   const response = await fetch(path);
   assert.equal(response.status, 200);
@@ -160,6 +183,7 @@ test("download streams Parquet with attachment, SHA-256 ETag, HEAD and byte rang
   assert.equal(await response.text(), "PAR1!");
 
   const head = await fetch(path, { method: "HEAD" });
+  assert.equal(methods.at(-1), "HEAD");
   assert.equal(head.headers.get("content-length"), "5");
   assert.equal(head.body, null);
   assert.equal((await fetch(path, { headers: { "if-none-match": `W/"${SHA}"` } })).status, 304);
@@ -172,8 +196,8 @@ test("download streams Parquet with attachment, SHA-256 ETag, HEAD and byte rang
   assert.equal((await fetch(path, { headers: { range: "bytes=1-2", "if-range": '"old"' } })).status, 200);
 });
 
-test("listing admission applies before catalog and bucket work", async () => {
-  const { fetch, keys, upstream, admissions } = fixture({ admitted: false });
+test("listing admission applies before catalog and bucket work", async (t) => {
+  const { fetch, keys, upstream, admissions } = fixture(t, { admitted: false });
   const response = await fetch(STM + "?date=" + DATE, { headers: { "cf-connecting-ip": "192.0.2.1" } });
   assert.equal(response.status, 503);
   assert.equal(response.headers.get("retry-after"), "60");
@@ -183,7 +207,6 @@ test("listing admission applies before catalog and bucket work", async () => {
 
 test("closed-day metadata uses the versioned cache while every listing is admitted", async (t) => {
   const entries = new Map();
-  t.mock.method(globalThis, "fetch", () => assert.fail("unexpected network access"));
   const previous = Object.getOwnPropertyDescriptor(globalThis, "caches");
   Object.defineProperty(globalThis, "caches", {
     configurable: true,
@@ -196,7 +219,7 @@ test("closed-day metadata uses the versioned cache while every listing is admitt
     if (previous) Object.defineProperty(globalThis, "caches", previous);
     else delete globalThis.caches;
   });
-  const { fetch, keys, upstream, admissions } = fixture();
+  const { fetch, keys, upstream, admissions } = fixture(t);
   for (let index = 0; index < 2; index++) {
     assert.equal((await fetch(STM + "?date=" + DATE)).status, 200);
   }
@@ -211,4 +234,22 @@ test("closed-day metadata uses the versioned cache while every listing is admitt
   const nextDay = await (await fetch(STM + "?date=" + DATE)).json();
   assert.equal(nextDay.status, "missing");
   assert.deepEqual(keys, [`stm/${DATE}/v11/manifest.json`, `stm/${DATE}/v12/manifest.json`]);
+});
+
+test("signed storage fails closed on invalid endpoints, refused credentials and wrong ranges", async (t) => {
+  const invalid = fixture(t, { endpoint: "https://fixture.r2.cloudflarestorage.com@example.test" });
+  assert.equal((await invalid.fetch(STM + "?date=" + DATE)).status, 503);
+  assert.deepEqual(invalid.keys, []);
+
+  const denied = fixture(t, { r2Error: 403 });
+  const deniedResponse = await denied.fetch(STM + "?date=" + DATE);
+  assert.equal(deniedResponse.status, 503);
+  assert.deepEqual(await deniedResponse.json(), { message: "downloads unavailable" });
+  assert.equal(denied.keys.length, 1);
+
+  const wrong = fixture(t, { wrongRange: true });
+  const ranged = await wrong.fetch(`${STM}/${DATE}/stop_events.parquet`, {
+    headers: { range: "bytes=1-2" },
+  });
+  assert.equal(ranged.status, 503);
 });

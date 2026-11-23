@@ -22,6 +22,18 @@ test("deployment config keeps both compatibility routes and adds the public ques
   ]);
 });
 
+test("clean downloads use only the read credentials supplied by the proxy deploy", () => {
+  const config = readFileSync(configPath, "utf8");
+  const workflow = readFileSync(workflowPath, "utf8");
+  assert.doesNotMatch(config, /bucket_name\s*=\s*"transit-clean"/);
+  for (const name of [
+    "TRANSIT1_R2_ENDPOINT", "TRANSIT1_R2_READ_ACCESS_KEY_ID", "TRANSIT1_R2_READ_SECRET_ACCESS_KEY",
+  ]) {
+    assert.ok(workflow.includes(`${name}: \${{ secrets.${name} }}`));
+  }
+  assert.doesNotMatch(workflow, /TRANSIT1_R2_WRITE_/);
+});
+
 test("production deploys are push-only from main", () => {
   const workflow = readFileSync(workflowPath, "utf8");
   assert.doesNotMatch(workflow, /^\s*workflow_dispatch:/m);

@@ -14,10 +14,6 @@ routes = [
 binding = "SNAPSHOTS"
 bucket_name = "transit-snapshots"
 
-[[r2_buckets]]
-binding = "CLEAN_DOWNLOADS"
-bucket_name = "transit-clean"
-
 [[services]]
 binding = "ENGINE"
 service = "transit-engine"
