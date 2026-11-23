@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { test } from './layout-test';
+import { waitForFrameClearance } from './layout-helpers';
 import { navPillCopy } from '../src/lib/i18n/messages';
 import { headerSearchCopy } from '../src/lib/components/shell/headerSearch.copy';
 import { localizeHref } from '../src/lib/i18n/routing';
@@ -29,6 +30,41 @@ async function singleLine(label: Locator) {
 			return range.getClientRects().length;
 		}),
 	).toBe(1);
+}
+
+for (const [surface, path] of [
+	['default', '/'],
+	['Record', '/receipt'],
+]) {
+	test(`French navbar stays on one row on phones on the ${surface} page`, async ({ page }) => {
+		await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
+		for (const width of [320, 360, 375, 390, 414]) {
+			await page.setViewportSize({ width, height: 844 });
+			await page.goto(localizeHref(path, 'fr', 'stm'));
+			await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+			await waitForFrameClearance(page);
+
+			const pill = page.getByTestId('nav-pill');
+			await pillFits(pill);
+			const controls = [
+				pill.locator('[data-slot="product-brand"]'),
+				pill.getByRole('button', { name: /Rechercher/ }),
+				pill.getByTestId('theme-toggle'),
+				pill.getByTestId('language-toggle'),
+				pill.getByTestId('nav-menu-toggle'),
+			];
+			const centers = [];
+			for (const control of controls) {
+				await targetFits(control, page);
+				const box = (await control.boundingBox())!;
+				centers.push(box.y + box.height / 2);
+			}
+			expect(
+				Math.max(...centers) - Math.min(...centers),
+				`${path} at ${width}px`,
+			).toBeLessThanOrEqual(1);
+		}
+	});
 }
 
 // Owner ruling (16 November 2026): grouped menus read as organized columns from 768px and as one
