@@ -309,10 +309,13 @@ def test_line_departure_series_and_ranking_apply_the_same_cuts(store: Store) -> 
     assert status == 400
 
 
-def test_single_departure_keeps_repeated_stops_and_exact_observations(tmp_path: Path) -> None:
+@pytest.mark.parametrize("cleaning_version", [8, 9])
+def test_single_departure_keeps_repeated_stops_and_exact_observations(
+    tmp_path: Path, cleaning_version: int
+) -> None:
     store = _build_store(
         tmp_path,
-        3,
+        cleaning_version,
         {
             THURSDAY: (
                 Trip(
@@ -326,6 +329,7 @@ def test_single_departure_keeps_repeated_stops_and_exact_observations(tmp_path: 
                     stop_ids=("loop", "middle", "loop"),
                 ),
                 Trip("other-direction", "A", 1, "ran", None, True, (10,)),
+                Trip("later-departure", "A", 0, "ran", None, True, (20,), offset_minutes=1),
             ),
         },
     )
@@ -344,8 +348,13 @@ def test_single_departure_keeps_repeated_stops_and_exact_observations(tmp_path: 
     status, _, raw = asyncio.run(http(app, "/measure", stops))
     assert status == 200, raw
     answer = json.loads(raw)
+    assert answer["evidence"]["cleaning_versions"] == [cleaning_version]
     cells = answer["cells"]
-    assert [cell["key"]["stop"] for cell in cells] == ["loop", "middle", "loop"]
+    assert [cell["key"] for cell in cells] == [
+        {"direction": 0, "stop_sequence": 1, "stop": "loop"},
+        {"direction": 0, "stop_sequence": 2, "stop": "middle"},
+        {"direction": 0, "stop_sequence": 3, "stop": "loop"},
+    ]
     assert [cell["evidence"]["observed_delay_seconds"] for cell in cells] == [-61, 301, None]
     status, _, raw = asyncio.run(http(app, "/measure", stops + "&format=csv&lang=fr"))
     assert status == 200, raw
