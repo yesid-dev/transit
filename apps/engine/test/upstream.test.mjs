@@ -51,9 +51,7 @@ const fallbacks = {
   unavailable: 503,
   "gateway timeout": 504,
   "disconnected tunnel": 530,
-  redirect: 302,
   network: new TypeError("fetch failed"),
-  timeout: new DOMException("origin timed out", "TimeoutError"),
 };
 
 for (const [name, failure] of Object.entries(fallbacks)) {
@@ -78,9 +76,42 @@ for (const [name, failure] of Object.entries(fallbacks)) {
   });
 }
 
-test("valid origin errors are returned to the proxy without a second query", async () => {
+test("origin timeout returns 504 without querying the Container", async (t) => {
   const ENGINE = binding();
-  for (const status of [400, 401, 500]) {
+  const timeout = new DOMException("origin timed out", "TimeoutError");
+  t.mock.method(AbortSignal, "timeout", (delay) => {
+    assert.equal(delay, 25_000);
+    return AbortSignal.abort(timeout);
+  });
+
+  const response = await fetchEngine(
+    request,
+    { ENGINE, ENGINE_ORIGIN: "https://origin.invalid" },
+    async (_upstream, { signal }) => { signal.throwIfAborted(); },
+  );
+  assert.equal(response.status, 504);
+  assert.equal(response.headers.get("Cache-Control"), "no-store");
+  assert.equal(ENGINE.calls.length, 0);
+});
+
+test("origin busy response retains Retry-After without querying the Container", async () => {
+  const ENGINE = binding();
+  const busy = Response.json({ message: "busy, try again" }, {
+    status: 503,
+    headers: { "Retry-After": "1" },
+  });
+  const response = await fetchEngine(
+    request,
+    { ENGINE, ENGINE_ORIGIN: "https://origin.invalid" },
+    async () => busy,
+  );
+  assert.equal(response, busy);
+  assert.equal(ENGINE.calls.length, 0);
+});
+
+test("other origin statuses are returned to the proxy without a second query", async () => {
+  const ENGINE = binding();
+  for (const status of [302, 400, 401, 500]) {
     const response = await fetchEngine(
       request,
       { ENGINE, ENGINE_ORIGIN: "https://origin.invalid" },

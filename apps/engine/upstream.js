@@ -1,5 +1,6 @@
-const unavailable = new Set([502, 503, 504, 530]);
-const originTimeoutMs = 10_000;
+const gatewayFailures = new Set([502, 504, 530]);
+// Allow five seconds beyond ENGINE_TIMEOUT_MS in apps/web/src/lib/server/engine.ts.
+const originTimeoutMs = 25_000;
 
 export async function fetchEngine(request, env, fetchOrigin = fetch) {
   if (env.ENGINE_ORIGIN) {
@@ -10,18 +11,28 @@ export async function fetchEngine(request, env, fetchOrigin = fetch) {
       origin.pathname = incoming.pathname;
       origin.search = incoming.search;
       const signal = AbortSignal.timeout(originTimeoutMs);
+      let response;
       try {
-        const response = await fetchOrigin(new Request(origin, request.clone()), {
+        response = await fetchOrigin(new Request(origin, request.clone()), {
           redirect: "manual",
           cache: "no-store",
           signal,
         });
-        if (!unavailable.has(response.status) && !(response.status >= 300 && response.status < 400)) {
+      } catch {
+        if (signal.aborted) {
+          return Response.json({ message: "Engine origin timed out" }, {
+            status: 504,
+            headers: { "Cache-Control": "no-store" },
+          });
+        }
+      }
+      if (response) {
+        const unavailable = gatewayFailures.has(response.status) ||
+          (response.status === 503 && !response.headers.has("Retry-After"));
+        if (!unavailable) {
           return response;
         }
-        await response.body?.cancel();
-      } catch {
-        // A failed or timed-out origin leaves the Container available.
+        await response.body?.cancel().catch(() => {});
       }
     }
   }

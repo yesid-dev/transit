@@ -375,8 +375,9 @@ commands against the mapped port.
 Run the **Deploy Transit Engine** workflow from `main` and supply a provider and a measured
 service date for the smoke check. GitHub Actions builds the image and deploys the Worker with
 the pinned Wrangler. The Worker sends authenticated requests to the HTTPS origin in
-`TRANSIT1_ENGINE_ORIGIN` when that GitHub repository variable is set. A gateway failure,
-unavailable tunnel or origin timeout sends the request to one `standard-1` Container instead.
+`TRANSIT1_ENGINE_ORIGIN` when that GitHub repository variable is set. A network or gateway
+failure sends the request to one `standard-1` Container. The Worker passes busy responses with
+`Retry-After` through and returns 504 if its own 25-second origin deadline expires.
 The Container reads `s3://transit-clean` through DuckDB `httpfs` and sleeps after five idle minutes.
 
 Use the `workers.dev` URL from the workflow with `--url` for timing and burst. Supply
@@ -429,7 +430,8 @@ sudo journalctl -u transit-engine.service -u transit-engine-sync.service -u tran
 sudo systemctl stop transit-engine-tunnel.service transit-engine.service transit-engine-sync.timer transit-engine-sync.service
 ```
 
-For rollout, verify the synchronized cleaning version and authenticated queries directly
-through the tunnel. Set `TRANSIT1_ENGINE_ORIGIN` to `https://transit-engine-origin.yesid.dev`
-and run **Deploy Transit Engine** from `main`. For Container-only operation, clear the variable
-and run the workflow again, then confirm its private-access and measured-day smoke checks.
+For rollout, verify the synchronized cleaning version and authenticated queries directly through
+the tunnel. Run **Deploy Transit Engine** from `main` with `TRANSIT1_ENGINE_ORIGIN` unset and
+verify the Container path. Set the variable to `https://transit-engine-origin.yesid.dev/` and run
+the workflow again, then verify the Worker through the tunnel. For Container-only operation,
+clear the variable and rerun the workflow.
