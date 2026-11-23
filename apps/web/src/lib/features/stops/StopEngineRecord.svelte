@@ -13,6 +13,9 @@
 		punctualityBands,
 		recordMessage,
 		shareReading,
+		pooledDays,
+		punctualityWeighting,
+		timingBasis,
 		tally,
 	} from '#lib/features/record/recordText.ts';
 	import type { RecordCell } from '#lib/server/engine.ts';
@@ -99,7 +102,13 @@
 							{#if !message}
 								{#if 'value' in data}
 									{#if section === 'punctuality'}
+										{@const basis = timingBasis(data.evidence.counts, locale)}
 										<p>{stopAnswer(data, locale)}</p>
+										{#if basis}<p>{basis}</p>{/if}
+										<p>{punctualityWeighting[locale]}</p>
+										{#if data.evidence.start_date !== data.evidence.end_date}<p>
+												{pooledDays[locale]}
+											</p>{/if}
 										<dl class="flex flex-wrap gap-4">
 											{#each punctualityBands(data, locale) as band (band.id)}
 												<div>
@@ -109,6 +118,8 @@
 											{/each}
 										</dl>
 									{:else if section === 'delay'}
+										{@const basis = timingBasis(data.evidence.counts, locale)}
+										{#if basis}<p>{basis}</p>{/if}
 										<dl class="flex flex-wrap gap-4">
 											<div>
 												<dt>{t('Median delay', 'Retard médian')}</dt>

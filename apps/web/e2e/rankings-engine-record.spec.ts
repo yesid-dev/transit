@@ -67,6 +67,8 @@ for (const locale of ['en', 'fr'] as const) {
 						await page.setViewportSize({ width, height: 900 });
 						await expect(row).toContainText(value);
 						await expect(row).toContainText(range);
+						if (kind !== 'vehicle')
+							await expect(row).toContainText(fr ? 'Faible couverture' : 'Low coverage');
 						await expect(section).toContainText(fr ? 'Le minimum' : 'Minimum to rank');
 						await expect(
 							section.getByText(fr ? /Trop peu pour juger/ : /Too few to judge/),
@@ -101,6 +103,13 @@ for (const locale of ['en', 'fr'] as const) {
 	});
 }
 
+test('explains the sample floor for an empty departure ranking', async ({ page }) => {
+	await page.goto('/repeat-offenders?provider=stm&recordFrom=2026-11-08&recordTo=2026-11-08');
+	const ranking = page.getByRole('region', { name: 'Departures', exact: true });
+	await expect(ranking).toContainText('No departures qualified.');
+	await expect(ranking).toContainText('5 observed service dates and 30 observed stop events');
+});
+
 test('changes dates, class, measure and list while keeping the ranking URL shareable', async ({
 	page,
 }) => {
@@ -115,6 +124,7 @@ test('changes dates, class, measure and list while keeping the ranking URL share
 	).toBeVisible();
 	await page.getByRole('combobox', { name: 'Measure', exact: true }).selectOption('median_delay');
 	await expect(page.getByText('27.5 s to 32.5 s')).toBeVisible();
+	await expect(page.getByText('Bin rounding only', { exact: true })).toBeVisible();
 	await page.getByRole('radio', { name: 'Vehicles', exact: true }).click();
 	await expect(page).toHaveURL(/repeat-offenders.*kind=vehicle/);
 	await expect(page.getByText('24.39 per 100 h')).toBeVisible();

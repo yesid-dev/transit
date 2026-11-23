@@ -10,6 +10,9 @@ import {
 	dateRange,
 	methodEvidence,
 	percent,
+	rateStateText,
+	timingBasis,
+	withCoverage,
 	tally,
 } from '#lib/features/record/recordText.ts';
 import type { LineDirection, LineSection } from '#lib/server/lineRecord.ts';
@@ -32,7 +35,7 @@ export const lineSectionTitles = {
 } satisfies Record<LineSection, [string, string]>;
 
 export function lineAnswer(cell: RecordCell, evidence: RecordEvidence, locale: Locale): string {
-	if (cell.state !== 'measured') return cell.state_text[locale];
+	if (cell.state !== 'measured') return rateStateText(cell, locale);
 	const share = cell.value.on_time;
 	const { on_time, classified } = cell.evidence.counts;
 	if (share == null || on_time == null || !classified) return choose(locale, 'Unknown', 'Inconnu');
@@ -40,11 +43,12 @@ export function lineAnswer(cell: RecordCell, evidence: RecordEvidence, locale: L
 	const value = percent(share, locale);
 	const n = tally(on_time, locale);
 	const total = tally(classified, locale);
-	return choose(
+	const reading = choose(
 		locale,
-		`${dates}, ${value} of observed stop events were on time (${n} of ${total}).`,
-		`${dates}, ${value} des passages observés aux arrêts étaient à l’heure (${n} sur ${total}).`,
+		`${dates}, ${value} of observed stop events were on time (${n} of ${total})`,
+		`${dates}, ${value} des passages observés aux arrêts étaient à l’heure (${n} sur ${total})`,
 	);
+	return `${withCoverage(reading, cell.evidence, locale)}.`;
 }
 
 export function lineCitation(
@@ -72,9 +76,13 @@ export function lateDepartureReading(row: DepartureRanking['rows'][number], loca
 	const rate = percent(row.value, locale);
 	const total = tally(row.sample, locale);
 	const late = row.counts.late;
-	return late == null
-		? choose(locale, `${rate} (${total} observations)`, `${rate} (${total} observations)`)
-		: `${rate} (${tally(late, locale)}/${total})`;
+	const reading =
+		late == null
+			? choose(locale, `${rate} (${total} observations)`, `${rate} (${total} observations)`)
+			: `${rate} (${tally(late, locale)}/${total})`;
+	return [withCoverage(reading, row, locale), timingBasis(row.counts, locale)]
+		.filter(Boolean)
+		.join('. ');
 }
 
 export function directionLabel(

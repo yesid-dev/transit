@@ -23,6 +23,8 @@
 		choose,
 		dateRange,
 		lastGoodNote,
+		pooledDays,
+		punctualityWeighting,
 		recordConnection,
 		tally,
 	} from '#lib/features/record/recordText.ts';
@@ -142,6 +144,8 @@
 		<header class="grid gap-2">
 			<h1>{title}</h1>
 			<p>{dateRange(record.period, locale)}</p>
+			<p>{punctualityWeighting[locale]}</p>
+			{#if record.period.from !== record.period.to}<p>{pooledDays[locale]}</p>{/if}
 		</header>
 		<Card edge="neutral" textSize="inherit" class="min-w-0 px-4 sm:px-6">
 			<section

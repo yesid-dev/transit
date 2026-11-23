@@ -1,6 +1,6 @@
 import { intl, type Locale } from '#lib/i18n/index.ts';
 import type { RankingsRecord } from '#lib/server/engine.ts';
-import { choose, dateRange, methodEvidence, percent } from '../record/recordText.ts';
+import { choose, dateRange, methodEvidence, percent, withCoverage } from '../record/recordText.ts';
 import { reporting, unfinished, type RankingMeasure } from './rankingSelection.ts';
 
 type Row = RankingsRecord['rows'][number];
@@ -42,6 +42,12 @@ export function rankingRange({ range }: Row, measure: RankingMeasure, locale: Lo
 	return choose(locale, `${low} to ${high}`, `${low} à ${high}`);
 }
 
+export function rankingRangeLabel(method: string, locale: Locale) {
+	return method === 'histogram_half_bin'
+		? choose(locale, 'Bin rounding only', 'Arrondi des classes seulement')
+		: choose(locale, 'Range', 'Intervalle');
+}
+
 export function sampleText(sample: number, measure: RankingMeasure, locale: Locale) {
 	const unit =
 		measure === reporting
@@ -58,9 +64,9 @@ export function rankingSample(row: Row, measure: RankingMeasure, locale: Locale)
 	const key = numerators[measure];
 	const count = key ? row.counts[key] : null;
 	const sample = sampleText(row.sample, measure, locale);
-	if (count == null) return sample;
+	if (count == null) return withCoverage(sample, row, locale);
 	const n = number(count, locale);
-	return choose(locale, `${n} in ${sample}`, `${n} sur ${sample}`);
+	return withCoverage(choose(locale, `${n} in ${sample}`, `${n} sur ${sample}`), row, locale);
 }
 
 export function exclusionText(row: Excluded, measure: RankingMeasure, locale: Locale) {

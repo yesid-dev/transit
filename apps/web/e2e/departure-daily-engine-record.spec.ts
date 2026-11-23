@@ -24,7 +24,9 @@ for (const width of [390, 1440]) {
 			});
 			const departure = late.getByRole('link', { name: '07:00:00' });
 			await expect(departure).toBeVisible();
-			await expect(late).toContainText(fr ? '5 dates de service' : '5 or more service dates');
+			await expect(late).toContainText(
+				fr ? '5 dates de service observées' : '5 observed service dates',
+			);
 			await departure.click();
 			await expect(page).toHaveURL(/\/departure\//);
 			const main = page.getByRole('main');
@@ -68,6 +70,7 @@ for (const width of [390, 1440]) {
 			const section = (name: string) => main.getByRole('region', { name });
 			const headline = section(fr ? 'Part des passages à l’heure' : 'On-time share');
 			await expect(headline).toContainText(fr ? '80 sur 100' : '80 of 100');
+			await expect(headline).toContainText(fr ? 'Faible couverture' : 'Low coverage');
 			const delivery = section(
 				fr
 					? 'Service effectué par rapport au service prévu'
@@ -76,7 +79,7 @@ for (const width of [390, 1440]) {
 			await expect(delivery).toContainText('70');
 			const periods = section(fr ? 'La journée en cinq périodes' : 'The day in five periods');
 			await expect(periods.getByRole('rowheader')).toHaveCount(5);
-			await expect(periods).toContainText(fr ? 'Couverture insuffisante' : 'Insufficient coverage');
+			await expect(periods).toContainText(fr ? 'couverture insuffisante' : 'insufficient coverage');
 			await expect(
 				section(fr ? 'Lignes à examiner' : 'Lines to inspect').getByRole('link', { name: /24/ }),
 			).toBeVisible();

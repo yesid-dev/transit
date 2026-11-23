@@ -13,7 +13,14 @@ export const stateText = {
 const evidence = {
 	start_date: period.from,
 	end_date: period.to,
-	days_measured: [period.from],
+	days_measured: [
+		'2026-11-08',
+		'2026-11-09',
+		'2026-11-10',
+		'2026-11-11',
+		'2026-11-12',
+		'2026-11-13',
+	],
 	days_included: [period.from],
 	days_not_measured: [period.to],
 	cleaning_versions: [6],
@@ -31,7 +38,12 @@ export function measure(state: MeasureAnswer['state'] = 'measured'): MeasureAnsw
 			en: 'Only measured days are included.',
 			fr: 'Seuls les jours mesurés sont inclus.',
 		},
-		evidence: { ...evidence, counts: { on_time: 412355, classified: 507800 }, excluded: {} },
+		evidence: {
+			...evidence,
+			counts: { on_time: 412355, classified: 507800, scheduled: 846333 },
+			share_observed: 0.6,
+			excluded: {},
+		},
 	};
 }
 

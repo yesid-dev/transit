@@ -11,8 +11,8 @@ const cell = {
 } as const;
 
 it('reads classified counts for the late band and scheduled counts for delivery', () => {
-	expect(finderShare(cell, null, 'late', 'en')).toEqual({ value: 0.1, text: '10%' });
-	expect(finderShare(cell, null, 'on_time', 'fr').text).toMatch(/^75\s%$/u);
+	expect(finderShare(cell, null, 'late', 'en')).toEqual({ value: 0.1, text: '10% (10/100)' });
+	expect(finderShare(cell, null, 'on_time', 'fr').text).toMatch(/^75\s% \(75\/100\)$/u);
 	expect(finderTrips(cell, null, 'en')).toEqual({ value: 90 / 111, text: '90 of 111' });
 	expect(finderTrips(cell, null, 'fr').text).toBe('90 sur 111');
 });

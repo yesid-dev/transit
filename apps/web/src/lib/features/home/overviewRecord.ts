@@ -6,16 +6,21 @@ import type { DateWindow } from '#lib/v1/history/window.ts';
 import {
 	dateRange,
 	methodEvidence,
+	rateStateText,
+	withCoverage,
 	percent,
 	recordConnection,
 	tally,
 } from '../record/recordText.ts';
+import { comparePeriods, periodDays } from './periodComparison.ts';
 export { dateRange, percent, tally };
 
-const DAY_MS = 86_400_000;
-
 export function previousPeriod({ from, to }: DateWindow): DateWindow {
-	const days = (Date.parse(to) - Date.parse(from)) / DAY_MS + 1;
+	const days = periodDays(from, to);
+	if (days === 1) {
+		const sameWeekday = addIsoDays(from, -7);
+		return { from: sameWeekday, to: sameWeekday };
+	}
 	return { from: addIsoDays(from, -days), to: addIsoDays(from, -1) };
 }
 
@@ -26,7 +31,7 @@ export function measureText(
 ): string {
 	if (result.kind !== 'answer') return recordConnection[result.kind][locale];
 	const answer = result.answer;
-	if (answer.state !== 'measured') return answer.state_text[locale];
+	if (answer.state !== 'measured') return rateStateText(answer, locale);
 
 	const value = answer.value[answer.measure];
 	const { on_time, classified, ran, eligible } = answer.evidence.counts;
@@ -39,14 +44,14 @@ export function measureText(
 	const dates = dateRange(period, locale);
 	const n = tally(top, locale);
 	const total = tally(bottom, locale);
-	if (punctuality) {
-		return locale === 'fr'
-			? `${dates}, ${share} des passages observés aux arrêts étaient à l’heure (${n} sur ${total}).`
-			: `${dates}, ${share} of observed stop events were on time (${n} of ${total}).`;
-	}
-	return locale === 'fr'
-		? `${dates}, ${share} des trajets prévus dont le résultat est connu ont été effectués (${n} sur ${total}).`
-		: `${dates}, ${share} of scheduled trips with a known outcome ran (${n} of ${total}).`;
+	const reading = punctuality
+		? locale === 'fr'
+			? `${dates}, ${share} des passages observés aux arrêts étaient à l’heure (${n} sur ${total})`
+			: `${dates}, ${share} of observed stop events were on time (${n} of ${total})`
+		: locale === 'fr'
+			? `${dates}, ${share} des trajets prévus dont le résultat est connu ont été effectués (${n} sur ${total})`
+			: `${dates}, ${share} of scheduled trips with a known outcome ran (${n} of ${total})`;
+	return `${withCoverage(reading, answer.evidence, locale)}.`;
 }
 
 export function comparisonText(
@@ -56,19 +61,47 @@ export function comparisonText(
 ): string | null {
 	if (current.kind !== 'answer' || previous.kind !== 'answer') return null;
 	if (current.answer.state !== 'measured' || previous.answer.state !== 'measured') return null;
-	const now = current.answer.value.on_time;
-	const then = previous.answer.value.on_time;
-	if (now == null || then == null) return null;
-	const points = (now - then) * 100;
-	const magnitude = Math.round(Math.abs(points) * 10) / 10;
-	if (magnitude === 0)
+	const now = comparisonSample(current.answer);
+	const then = comparisonSample(previous.answer);
+	if (!now || !then) return null;
+	const change = comparePeriods(now, then);
+	if (!change) return null;
+
+	const points = intl
+		.number(locale, {
+			signDisplay: 'exceptZero',
+			minimumFractionDigits: 1,
+			maximumFractionDigits: 2,
+		})
+		.format(change.points);
+	const magnitude = Math.abs(Math.round(change.points * 100) / 100);
+	const delta =
+		locale === 'fr'
+			? `${points} ${magnitude < 2 ? 'point' : 'points'} de pourcentage`
+			: `${points} percentage ${magnitude === 1 ? 'point' : 'points'}`;
+	if (change.direction === 'same')
 		return locale === 'fr'
-			? 'Aucun écart au dixième de point près.'
-			: 'No change to the nearest tenth of a point.';
-	const n = intl.number(locale, { signDisplay: 'always', maximumFractionDigits: 1 }).format(points);
-	return locale === 'fr'
-		? `Écart de ${n} ${magnitude < 2 ? 'point' : 'points'} de pourcentage.`
-		: `Change of ${n} percentage ${magnitude === 1 ? 'point' : 'points'}.`;
+			? `Environ pareil (variation normale) [${delta}]`
+			: `About the same (within normal variation) [${delta}]`;
+	return locale === 'fr' ? `Écart de ${delta}.` : `Change of ${delta}.`;
+}
+
+function comparisonSample({ evidence, value }: MeasureAnswer) {
+	const { counts, share_observed, days_measured, start_date, end_date } = evidence;
+	if (
+		value.on_time == null ||
+		counts.on_time == null ||
+		counts.classified == null ||
+		share_observed == null
+	)
+		return null;
+	return {
+		onTime: counts.on_time,
+		observed: counts.classified,
+		measuredDays: days_measured.length,
+		days: periodDays(start_date, end_date),
+		observedShare: share_observed,
+	};
 }
 
 export function rankingText(result: EngineResult<RankingAnswer>, locale: Locale): string | null {

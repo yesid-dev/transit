@@ -14,6 +14,12 @@
 	} from '#lib/features/record/departureDailyText.ts';
 	import {
 		choose,
+		cautiousRanking,
+		pooledDays,
+		punctualityWeighting,
+		rateStateText,
+		timingBasis,
+		withCoverage,
 		dateRange,
 		percent,
 		recordMessage,
@@ -83,18 +89,30 @@
 				>
 					{#snippet reading(result)}
 						{#if section === 'punctuality' && 'value' in result}
+							{@const basis = timingBasis(result.evidence.counts, lang)}
 							<p>{statement(result)}</p>
+							{#if result.state === 'measured' && basis}<p>{basis}</p>{/if}
+							<p>{punctualityWeighting[lang]}</p>
+							{#if result.evidence.start_date !== result.evidence.end_date}<p>
+									{pooledDays[lang]}
+								</p>{/if}
 						{:else if section === 'delivery' && 'value' in result}
 							{@const counts = result.evidence.counts}
 							{@const rate = result.value.trips_run}
-							{#if result.state !== 'measured' || rate == null}
-								<p>{result.state_text[data.lang]}</p>
+							{#if result.state !== 'measured'}
+								<p>{rateStateText(result, lang)}</p>
+							{:else if rate == null || counts.ran == null || !counts.eligible}
+								<p>{t('Unknown', 'Inconnu')}</p>
 							{:else}
 								<p>
-									{t(
-										`${percent(rate, data.lang)} of scheduled trips with known status ran.`,
-										`${percent(rate, data.lang)} des trajets prévus dont l’état est connu ont été effectués.`,
-									)}
+									{withCoverage(
+										t(
+											`${percent(rate, lang)} of scheduled trips with known status ran (${n(counts.ran)} of ${n(counts.eligible)})`,
+											`${percent(rate, lang)} des trajets prévus dont l’état est connu ont été effectués (${n(counts.ran)} sur ${n(counts.eligible)})`,
+										),
+										result.evidence,
+										lang,
+									)}.
 								</p>
 							{/if}
 							<dl class="flex flex-wrap gap-4">
@@ -135,9 +153,13 @@
 										'Plus faibles parts à l’heure parmi les résultats suffisamment observés.',
 									)}
 								</p>
+								{#if result.rows.some((row) => row.ranking_bound != null)}<p>
+										{cautiousRanking[lang]}
+									</p>{/if}
 								<ol class="grid gap-2 pl-5">
 									{#each result.rows as row (row.id)}
 										{@const path = section === 'lines' ? '/lines' : '/stop'}
+										{@const basis = timingBasis(row.counts, lang)}
 										<li>
 											<a
 												href={carryFrameState(
@@ -154,9 +176,13 @@
 													: t(`Stop ${row.id}`, `Arrêt ${row.id}`)}
 											</a>
 											<span>
-												· {percent(row.value, data.lang)} ({n(row.sample)}
-												{t('observed', 'observés')})</span
+												· {withCoverage(
+													`${percent(row.value, lang)} (${n(row.sample)} ${t('observed', 'observés')})`,
+													row,
+													lang,
+												)}</span
 											>
+											{#if basis}<p>{basis}</p>{/if}
 										</li>
 									{/each}
 								</ol>

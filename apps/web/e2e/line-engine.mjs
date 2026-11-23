@@ -24,8 +24,16 @@ export function lineEngine(url) {
 		late: (90 - sampled) / 100,
 		median_delay: 37.5,
 	};
-	const counts = { early: 10, on_time: sampled, late: 90 - sampled, classified: 100 };
-	const cell = (key, value = values, sample = { counts }) => ({
+	const counts = {
+		early: 10,
+		on_time: sampled,
+		late: 90 - sampled,
+		classified: 100,
+		scheduled: 200,
+		vehicle_stopped: 50,
+		trip_update_passed: 50,
+	};
+	const cell = (key, value = values, sample = { counts, share_observed: 0.5 }) => ({
 		key,
 		value,
 		state: 'measured',
@@ -67,6 +75,7 @@ export function lineEngine(url) {
 								rank: 1,
 								value: values.late,
 								counts: { ...counts, observed_service_dates: observedDates },
+								share_observed: 0.5,
 								ranking_bound: lower,
 								range: { lower, upper: direction === 1 ? 0.596 : 0.174, method: 'wilson_95' },
 							},

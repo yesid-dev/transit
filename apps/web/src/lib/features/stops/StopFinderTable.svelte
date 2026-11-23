@@ -16,6 +16,8 @@
 	import {
 		choose,
 		lastGoodNote,
+		pooledDays,
+		punctualityWeighting,
 		recordConnection,
 		tally,
 	} from '#lib/features/record/recordText.ts';
@@ -85,6 +87,8 @@
 
 <section id="stop-results" aria-labelledby="stop-results-title" class="grid min-w-0 gap-3">
 	<h2 id="stop-results-title">{title}</h2>
+	<p>{punctualityWeighting[locale]}</p>
+	{#if record.period.from !== record.period.to}<p>{pooledDays[locale]}</p>{/if}
 	{#if !result}
 		{#key record}<RecordPending {locale} />{/key}
 	{:else if result.kind === 'answer'}

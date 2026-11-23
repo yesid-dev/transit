@@ -5,6 +5,8 @@ import {
 	lastGoodNote,
 	methodEvidence,
 	percent,
+	rateStateText,
+	withCoverage,
 	tally,
 } from '#lib/features/record/recordText.ts';
 import type { RecordAnswer, RecordMeasure } from '#lib/server/engine.ts';
@@ -21,7 +23,7 @@ export const stopSectionTitles = {
 } satisfies Record<StopSection, [string, string]>;
 
 export function stopAnswer(answer: RecordMeasure, locale: Locale): string {
-	if (answer.state !== 'measured') return answer.state_text[locale];
+	if (answer.state !== 'measured') return rateStateText(answer, locale);
 	const share = answer.value.on_time;
 	const { on_time, classified } = answer.evidence.counts;
 	if (share == null || on_time == null || !classified) return choose(locale, 'Unknown', 'Inconnu');
@@ -32,11 +34,12 @@ export function stopAnswer(answer: RecordMeasure, locale: Locale): string {
 	const value = percent(share, locale);
 	const onTime = tally(on_time, locale);
 	const total = tally(classified, locale);
-	return choose(
+	const reading = choose(
 		locale,
-		`${dates}, ${value} of observed stop events here were on time (${onTime} of ${total}).`,
-		`${dates}, ${value} des passages observés à cet arrêt étaient à l’heure (${onTime} sur ${total}).`,
+		`${dates}, ${value} of observed stop events here were on time (${onTime} of ${total})`,
+		`${dates}, ${value} des passages observés à cet arrêt étaient à l’heure (${onTime} sur ${total})`,
 	);
+	return `${withCoverage(reading, answer.evidence, locale)}.`;
 }
 
 export function stopDelay(seconds: number | null | undefined, locale: Locale): string {

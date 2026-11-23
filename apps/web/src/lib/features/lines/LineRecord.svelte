@@ -122,6 +122,7 @@
 									url={pinned}
 									line={record.line}
 									city={record.city}
+									direction={record.direction}
 								/>
 							{/if}
 							{#if result.answer.coverage_note}<p>{result.answer.coverage_note[locale]}</p>{/if}

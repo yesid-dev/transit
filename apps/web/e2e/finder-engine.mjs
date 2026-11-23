@@ -9,7 +9,18 @@ export function finderEngine(url) {
 		value,
 		state,
 		state_text: { en, fr },
-		evidence: { counts },
+		evidence: {
+			counts,
+			...(counts.classified === 100
+				? {
+						counts: { ...counts, scheduled: 250, vehicle_stopped: 40, trip_update_passed: 60 },
+						share_observed: 0.4,
+						low_coverage: true,
+					}
+				: trips
+					? { share_eligible: 100 / 105 }
+					: {}),
+		},
 	});
 	const onTime = (line, value) =>
 		cell(
@@ -25,7 +36,7 @@ export function finderEngine(url) {
 		group === 'stop_id'
 			? [cell({ stop: 'S1' }, { on_time: 0.8 }, { on_time: 80, late: 15, classified: 100 })]
 			: trips
-				? [cell({ line: '24' }, { trips_run: 0.9 }, { ran: 90, scheduled: 105 })]
+				? [cell({ line: '24' }, { trips_run: 0.9 }, { ran: 90, eligible: 100, scheduled: 105 })]
 				: [
 						onTime('24', 0.8),
 						onTime('80', 0.65),

@@ -2,7 +2,15 @@ import type { Locale } from '#lib/i18n/index.ts';
 import type { EngineResult, FinderCell, FinderSeries, RecordEvidence } from '#lib/server/engine.ts';
 import { frameHref } from '#lib/site/frameState.ts';
 import { csvCell } from '#lib/features/lines/reliability/recordCsv.ts';
-import { choose, emptyRecord, percent, recordConnection, tally } from './recordText.ts';
+import {
+	choose,
+	emptyRecord,
+	rateStateText,
+	recordConnection,
+	shareReading,
+	tally,
+	withCoverage,
+} from './recordText.ts';
 
 export type FinderResult = EngineResult<FinderSeries>;
 export type FinderReading = { text: string; value: number | null };
@@ -32,14 +40,17 @@ export function finderShare(
 	locale: Locale,
 ): FinderReading {
 	if (!cell) return { text: missingReading(result, locale), value: null };
-	if (cell.state !== 'measured') return { text: cell.state_text[locale], value: null };
+	if (cell.state !== 'measured') return { text: rateStateText(cell, locale), value: null };
 	const count = cell.evidence.counts[key];
 	const sample = cell.evidence.counts.classified;
 	// Both bands use the registry's classified stop-event denominator.
 	const value = key === 'late' && count != null && sample ? count / sample : cell.value[key];
 	return value == null
 		? { text: choose(locale, 'Unknown', 'Inconnu'), value: null }
-		: { text: percent(value, locale), value };
+		: {
+				text: shareReading({ ...cell, value: { [key]: value } }, key, locale, key === 'on_time'),
+				value,
+			};
 }
 
 export function finderTrips(
@@ -50,13 +61,17 @@ export function finderTrips(
 	if (!cell) return { text: missingReading(result, locale), value: null };
 	const ran = cell.evidence.counts.ran;
 	const scheduled = cell.evidence.counts.scheduled;
-	if (cell.state !== 'measured') return { text: cell.state_text[locale], value: null };
+	if (cell.state !== 'measured') return { text: rateStateText(cell, locale), value: null };
 	if (ran == null || !scheduled) return { text: choose(locale, 'Unknown', 'Inconnu'), value: null };
 	return {
-		text: choose(
+		text: withCoverage(
+			choose(
+				locale,
+				`${tally(ran, locale)} of ${tally(scheduled, locale)}`,
+				`${tally(ran, locale)} sur ${tally(scheduled, locale)}`,
+			),
+			cell.evidence,
 			locale,
-			`${tally(ran, locale)} of ${tally(scheduled, locale)}`,
-			`${tally(ran, locale)} sur ${tally(scheduled, locale)}`,
 		),
 		value: ran / scheduled,
 	};
