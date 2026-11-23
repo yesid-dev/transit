@@ -183,6 +183,7 @@ class Batch:
 @dataclass(frozen=True)
 class Family:
     id: str
+    label: Text
     method_version: str
     since: str
     tables: tuple[str, ...]
@@ -514,7 +515,11 @@ def _csv_columns(family: Family) -> dict[str, Text]:
 
 
 def methods() -> list[dict[str, Any]]:
-    return [_info(family, measure) for family in _FAMILIES for measure in family.measures]
+    return [
+        {**_info(family, measure), "family_text": {"en": family.label.en, "fr": family.label.fr}}
+        for family in _FAMILIES
+        for measure in family.measures
+    ]
 
 
 def _cuts(question: Question, hour_sql: str | None) -> tuple[str, list[object]]:
@@ -829,6 +834,7 @@ def _punctuality_query(
 
 _PUNCTUALITY = Family(
     id="punctuality",
+    label=Text("Punctuality", "Ponctualité"),
     method_version="punctuality-v2",
     since="2026-11-22",
     tables=(STOP_EVENTS, TRIP_DAYS),
@@ -1114,6 +1120,7 @@ _BOUNDARY_LIMITS = Text(
 )
 _SERVICE_DELIVERED = Family(
     id=_SERVICE_DELIVERED_ID,
+    label=Text("Service delivered", "Service effectué"),
     method_version="service-delivered-v1",
     since="2026-11-22",
     tables=(TRIP_DAYS,),
@@ -1389,6 +1396,7 @@ def _crowding_rows(
 
 _CROWDING = Family(
     id=_CROWDING_ID,
+    label=Text("Crowding", "Achalandage à bord"),
     method_version="crowding-v2",
     since="2026-11-22",
     tables=(VEHICLE_POSITIONS, TRIP_DAYS),
@@ -1555,6 +1563,7 @@ def _alert_rows(
 
 _ALERT_COUNTS = Family(
     id=_ALERT_COUNTS_ID,
+    label=Text("Service alerts", "Avis de service"),
     method_version="alert-counts-v1",
     since="2026-11-22",
     tables=(ALERTS,),
@@ -1802,6 +1811,7 @@ def _waiting_rows(
 
 _WAITING = Family(
     id=_WAITING_ID,
+    label=Text("Waiting and gaps", "Attente et intervalles"),
     method_version="1",
     since="2026-11-22",
     tables=(STOP_EVENTS, TRIP_DAYS, FEED_POLLS),
@@ -2007,6 +2017,7 @@ def _offered_rows(
 
 _SERVICE_OFFERED = Family(
     id=_SERVICE_OFFERED_ID,
+    label=Text("Service offered", "Service offert"),
     method_version="1",
     since="2026-11-22",
     tables=(SCHEDULED_STOP_TIMES,),
@@ -2257,6 +2268,7 @@ def _vehicle_rows(
 
 _VEHICLES = Family(
     id=_VEHICLES_ID,
+    label=Text("Vehicles", "Véhicules"),
     method_version="vehicles-v1",
     since="2026-11-22",
     tables=(VEHICLE_POSITIONS, TRIP_DAYS),
@@ -2468,6 +2480,7 @@ def _corridor_rows(
 
 _CORRIDORS = Family(
     id=_CORRIDORS_ID,
+    label=Text("Corridors", "Corridors"),
     method_version="1",
     since="2026-11-22",
     tables=(STOP_EVENTS, TRIP_DAYS, FEED_POLLS),
@@ -2568,7 +2581,8 @@ _VEHICLE_SCORECARD_LIMITS = Text(
     "horaire retient uniquement la durée comprise dans cette heure locale.",
 )
 _SCORECARD = Family(
-    SCORECARD,
+    id=SCORECARD,
+    label=Text("Open data scorecard", "Bilan des données ouvertes"),
     method_version="1",
     since="2026-11-22",
     tables=(),
@@ -2876,6 +2890,7 @@ def _accessibility_rows(
 
 _ACCESSIBILITY = Family(
     id=_ACCESSIBILITY_ID,
+    label=Text("Accessibility", "Accessibilité"),
     method_version="accessibility-v1",
     since="2026-11-22",
     tables=(TRIP_DAYS, SCHEDULED_STOP_TIMES),

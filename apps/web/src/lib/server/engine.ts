@@ -65,15 +65,15 @@ const QUESTION_ORIGIN = 'https://data.yesid.dev';
 
 function engineFetch(
 	path: string,
-	{ city, from, to, visitorIp }: EnginePeriod,
 	parameters: Record<string, string>,
 	signal: AbortSignal,
+	visitorIp?: string | null,
 ) {
 	const proxy = env.QUESTION_PROXY;
 	const fixture = env.QUESTION_FIXTURE_ORIGIN;
 	if (!proxy && !fixture) return null;
-	const url = new URL(`/v2/${encodeURIComponent(city)}${path}`, proxy ? QUESTION_ORIGIN : fixture);
-	url.search = new URLSearchParams({ from, to, ...parameters }).toString();
+	const url = new URL(`/v2${path}`, proxy ? QUESTION_ORIGIN : fixture);
+	url.search = new URLSearchParams(parameters).toString();
 	const headers = proxy && visitorIp ? { 'x-transit-visitor-ip': visitorIp } : undefined;
 	const request = new Request(url, { headers, signal, redirect: 'manual' });
 	return proxy ? proxy.fetch(request) : fetch(request);
@@ -81,13 +81,13 @@ function engineFetch(
 
 async function query<T>(
 	path: string,
-	period: EnginePeriod,
 	parameters: Record<string, string>,
 	schema: z.ZodType<T>,
+	visitorIp?: string | null,
 ): Promise<EngineResult<T>> {
 	const signal = AbortSignal.timeout(ENGINE_TIMEOUT_MS);
 	try {
-		const response = await engineFetch(path, period, parameters, signal);
+		const response = await engineFetch(path, parameters, signal, visitorIp);
 		if (!response) return { kind: 'unconfigured' };
 		if (response.status === 503 && response.headers.has('retry-after')) return { kind: 'busy' };
 		if (!response.ok) return { kind: 'unreachable' };
@@ -101,12 +101,26 @@ async function query<T>(
 	}
 }
 
+function periodQuery<T>(
+	path: string,
+	{ city, from, to, visitorIp }: EnginePeriod,
+	parameters: Record<string, string>,
+	schema: z.ZodType<T>,
+) {
+	return query(
+		`/${encodeURIComponent(city)}${path}`,
+		{ from, to, ...parameters },
+		schema,
+		visitorIp,
+	);
+}
+
 export function getMeasure(measure: MeasureAnswer['measure'], period: EnginePeriod) {
-	return query('/measure', period, { measure }, measureAnswer);
+	return periodQuery('/measure', period, { measure }, measureAnswer);
 }
 
 export function getRanking(kind: RankingAnswer['kind'], period: EnginePeriod) {
-	return query('/ranking', period, { kind, measure: 'on_time', limit: '3' }, rankingAnswer);
+	return periodQuery('/ranking', period, { kind, measure: 'on_time', limit: '3' }, rankingAnswer);
 }
 
 const recordCounts = z.record(z.string(), z.number().nullable().catch(null));
@@ -235,24 +249,76 @@ const rankingsRecord = rankingEnvelope.extend({
 export type RankingsRecord = z.infer<typeof rankingsRecord>;
 
 export function getRankingsRecord(parameters: Record<string, string>, period: EnginePeriod) {
-	return query('/ranking', period, parameters, rankingsRecord);
+	return periodQuery('/ranking', period, parameters, rankingsRecord);
 }
 
 export function getRecordAnswer({ path, parameters }: RecordQuery, period: EnginePeriod) {
 	const schema: z.ZodType<RecordAnswer> =
 		path === '/ranking' ? departureRanking : parameters.group ? recordSeries : recordMeasure;
-	return query(path, period, parameters, schema);
+	return periodQuery(path, period, parameters, schema);
 }
 
 export async function getRecordCsv(
 	{ path, parameters }: RecordQuery,
-	period: EnginePeriod,
+	{ city, from, to, visitorIp }: EnginePeriod,
 	lang: 'en' | 'fr',
 ) {
 	return engineFetch(
-		path,
-		period,
-		{ ...parameters, format: 'csv', lang },
+		`/${encodeURIComponent(city)}${path}`,
+		{ from, to, ...parameters, format: 'csv', lang },
 		AbortSignal.timeout(ENGINE_TIMEOUT_MS),
+		visitorIp,
 	);
+}
+
+const methodText = z.object({
+	definition: z.string(),
+	unit: z.string(),
+	counts: z.string(),
+	exclusions: z.string(),
+	limits: z.string(),
+	histogram: z.string().optional(),
+});
+const catalogKey = z.string().regex(/^[a-z][a-z0-9_]*$/);
+const methodCatalog = z.array(
+	z.object({
+		id: catalogKey,
+		family: catalogKey,
+		family_text: bilingual.optional(),
+		method_version: z.string(),
+		since: z.iso.date(),
+		minimum_sample: count,
+		ranking_minimum_sample: count.optional(),
+		csv_columns: z.object({ en: z.array(z.string()), fr: z.array(z.string()) }),
+		text: z.object({ en: methodText, fr: methodText }),
+	}),
+);
+const tableHealth = z.object({
+	status: z.enum(['present', 'missing', 'incomplete', 'not_measured', 'not_tracked']),
+	reason: z.string().optional(),
+});
+const dataHealth = z.object({
+	city: z.string(),
+	from: z.iso.date(),
+	to: z.iso.date(),
+	cleaning_version: z.string(),
+	days: z.array(
+		tableHealth.extend({
+			service_date: z.iso.date(),
+			cleaning_version: z.string(),
+			tables: z.record(z.string(), tableHealth),
+		}),
+	),
+});
+
+export type MethodEntry = z.infer<typeof methodCatalog>[number];
+export type DataHealthAnswer = z.infer<typeof dataHealth>;
+export type TableHealth = z.infer<typeof tableHealth>;
+
+export function getMethodCatalog(visitorIp?: string | null) {
+	return query('/how-we-measure', {}, methodCatalog, visitorIp);
+}
+
+export function getRecordDataHealth(period: EnginePeriod) {
+	return periodQuery('/data-health', period, {}, dataHealth);
 }

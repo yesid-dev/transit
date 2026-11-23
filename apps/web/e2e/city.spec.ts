@@ -50,7 +50,7 @@ for (const locale of PUBLISHED_LOCALES) {
 	test(`${locale}: the network picker reloads the status page with that provider's data`, async ({
 		page,
 	}) => {
-		await page.goto(localizeHref(status, locale));
+		await page.goto(localizeHref(`${status}?frameMode=live`, locale));
 		// Only OC Transpo publishes data health here: its lanes and their check appear after the reload.
 		const list = page.getByRole('list', { name: health.lanes.listLabel });
 		await expect(list).toHaveCount(0);

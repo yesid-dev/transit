@@ -38,7 +38,7 @@ for (const lang of PUBLISHED_LOCALES)
 		const records = [
 			['alerts', fixture('alerts.json').generated_utc, null],
 			['receipt', manifest.files.live.generated_utc, day],
-			['metrics', fixture('provenance.json').generated_utc, null],
+			['metrics/archive', fixture('provenance.json').generated_utc, null],
 		];
 		// Supply the empty alerts fixture at the record endpoint absent from the core server.
 		await page.route('**/historic/alert_history.json', (route) =>
@@ -271,7 +271,7 @@ test('below 1024px the view rail opens as a dialog and Escape returns to its pil
 test('the status page lists its record families on phones and says when data is missing', async ({
 	page,
 }) => {
-	await page.goto('/status');
+	await page.goto('/status?frameMode=live');
 	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 	// The records index is open by default, outside the auditors' disclosure.
 	const index = page.getByRole('list', {

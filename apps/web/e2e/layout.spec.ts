@@ -46,7 +46,8 @@ for (const locale of ['en', 'fr'] as const)
 						await route.fulfill({ response: await route.fetch({ url: url.href }) });
 					}),
 				);
-				await page.goto(localizeHref(path, locale), { waitUntil: 'networkidle' });
+				const href = path === '/status' ? '/status?frameMode=live' : path;
+				await page.goto(localizeHref(href, locale), { waitUntil: 'networkidle' });
 				if (path.startsWith('/stops?q='))
 					await page.getByTestId('stops-filter-input').fill('Fixture');
 				// Measure the line's stop tables, which start closed.

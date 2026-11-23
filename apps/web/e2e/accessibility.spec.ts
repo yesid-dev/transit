@@ -28,6 +28,7 @@ const pages = [
 	'/',
 	...[...SURFACE_NAV, ...AUDIT_NAV].map(({ href }) => href),
 	...FOOTER_INFO_NAV.map(({ href }) => href),
+	'/metrics/archive',
 	`/stop/${Object.keys(departures.stops)[0]}`,
 	`/lines/${lineId}`,
 	`/lines/${lineId}?tab=detail`,
@@ -157,7 +158,7 @@ test.describe('accessibility', { tag: '@theme' }, () => {
 					await expect(page.locator('.trip-stop-link')).toHaveCount(0);
 				}
 				await expectAccessible(page);
-				if (path === '/metrics') {
+				if (path === '/metrics/archive') {
 					// The former inner scroller clipped these badges out of the initial axe scan.
 					for (const kind of ['not-really', 'caveat']) {
 						const badge = page

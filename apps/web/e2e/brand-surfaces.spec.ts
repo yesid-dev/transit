@@ -499,7 +499,7 @@ test('homepage props remain static without JavaScript and switch instantly with 
 });
 
 test("a metric's defining SQL is a named, keyboard-reachable region", async ({ page }) => {
-	await page.goto('/metrics');
+	await page.goto('/metrics/archive');
 	const sqlCards = '[data-slot="typed-information-card"][data-kind="sql"]';
 	const region = page.locator(sqlCards).first().getByRole('region');
 	await expect(region).toBeVisible();

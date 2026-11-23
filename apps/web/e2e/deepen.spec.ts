@@ -71,7 +71,7 @@ test('TOC opens only its collapsed content target at the quarter-viewport line',
 	// The fixture origin is deliberately outside the production connect-src policy.
 	test.skip(testInfo.project.name !== 'desktop', 'desktop TOC plus explicit small-laptop size');
 	await page.setViewportSize({ width: 1280, height: 800 });
-	await page.goto('/metrics');
+	await page.goto('/metrics/archive');
 	const toggle = page.getByTestId('sections-toggle');
 	await expect(toggle).toHaveText('Collapse all');
 	await toggle.click();
@@ -110,7 +110,7 @@ test('mobile Metrics keeps its landing and active item when the TOC reopens duri
 	page,
 }, testInfo) => {
 	test.skip(testInfo.project.name !== 'phone', 'one real mobile Metrics settlement case');
-	await page.goto('/metrics');
+	await page.goto('/metrics/archive');
 	const toggle = page.getByTestId('sections-toggle');
 	await expect(toggle).toHaveText('Collapse all');
 	await toggle.click();

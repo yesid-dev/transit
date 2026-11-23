@@ -28,7 +28,7 @@ test.beforeEach(async ({ page }) => {
 test('metrics starts expanded and remembers the bulk choice across pages and reload', async ({
 	page,
 }) => {
-	await page.goto('/metrics');
+	await page.goto('/metrics/archive');
 	await expect(action(page)).toHaveAccessibleName('Collapse all');
 	const first = page.locator('[data-testid="metrics-sections"] [data-section-trigger]').first();
 	await expect(first).toHaveAttribute('aria-expanded', 'true');

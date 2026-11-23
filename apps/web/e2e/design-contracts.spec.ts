@@ -88,7 +88,7 @@ for (const locale of PUBLISHED_LOCALES) {
 	test(`${locale} visible and hidden DetailFrame pills retain their navigation`, async ({
 		page,
 	}) => {
-		await page.goto(localizeHref('/metrics', locale));
+		await page.goto(localizeHref('/metrics/archive', locale));
 		const pill = page.getByTestId('toc-pill').locator('button.toc-pill');
 		if (page.viewportSize()!.width < 1024) {
 			await expect(pill).toHaveAccessibleName(/Contents|Sommaire/);

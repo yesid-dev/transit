@@ -147,7 +147,6 @@ export const NAV_ITEMS: readonly NavItem[] = [
 		href: '/metrics',
 		label: { en: 'How we measure', fr: 'Comment on mesure' },
 		activePrefixes: ['/metrics'],
-		upcoming: 'how-we-measure',
 	},
 	{
 		key: 'status',
@@ -155,7 +154,6 @@ export const NAV_ITEMS: readonly NavItem[] = [
 		href: '/status',
 		label: { en: 'Data health', fr: 'Santé des données' },
 		activePrefixes: ['/status'],
-		upcoming: 'data-health',
 	},
 	{
 		key: 'download',

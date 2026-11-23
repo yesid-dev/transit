@@ -1,0 +1,46 @@
+{
+	"city": "stm",
+	"from": "2026-11-11",
+	"to": "2026-11-14",
+	"cleaning_version": "3",
+	"days": [
+		{
+			"service_date": "2026-11-11",
+			"status": "present",
+			"cleaning_version": "3",
+			"tables": {
+				"stop_events": { "status": "present", "rows": 0 },
+				"alerts": { "status": "not_tracked" }
+			}
+		},
+		{
+			"service_date": "2026-11-12",
+			"status": "incomplete",
+			"cleaning_version": "3",
+			"tables": {
+				"stop_events": { "status": "missing", "reason": "size_mismatch" },
+				"alerts": { "status": "missing", "reason": "file_missing" }
+			}
+		},
+		{
+			"service_date": "2026-11-13",
+			"status": "not_measured",
+			"reason": "no_raw_captures",
+			"cleaning_version": "3",
+			"tables": {
+				"stop_events": { "status": "not_measured" },
+				"alerts": { "status": "not_measured" }
+			}
+		},
+		{
+			"service_date": "2026-11-14",
+			"status": "not_measured",
+			"reason": "no_schedule_edition",
+			"cleaning_version": "3",
+			"tables": {
+				"stop_events": { "status": "not_measured" },
+				"alerts": { "status": "not_measured" }
+			}
+		}
+	]
+}

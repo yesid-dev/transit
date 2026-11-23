@@ -9,7 +9,7 @@
 		href,
 		csv,
 		citation,
-	}: { locale: Locale; title: string; href: string; csv: string; citation: string } = $props();
+	}: { locale: Locale; title: string; href: string; csv?: string; citation: string } = $props();
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 	const citationText = $derived(
 		citation.endsWith(href) ? citation.slice(0, -href.length) : citation,
@@ -26,12 +26,12 @@
 			fallback={t('Copy the link below.', 'Copiez le lien ci-dessous.')}
 			fallbackLabel={t('Link to this section', 'Lien vers cette section')}
 		/>
-		<a
-			class="inline-flex min-h-11 min-w-11 items-center justify-center"
-			href={csv}
-			download
-			aria-label={t(`Download CSV for ${title}`, `Télécharger le CSV pour ${title}`)}>CSV</a
-		>
+		{#if csv}<a
+				class="inline-flex min-h-11 min-w-11 items-center justify-center"
+				href={csv}
+				download
+				aria-label={t(`Download CSV for ${title}`, `Télécharger le CSV pour ${title}`)}>CSV</a
+			>{/if}
 		<details class="min-w-0 open:basis-full">
 			<summary class="min-h-11 min-w-11 cursor-pointer py-3">{t('Cite', 'Citer')}</summary>
 			<p class="wrap-break-word">
