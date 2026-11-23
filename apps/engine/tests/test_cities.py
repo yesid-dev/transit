@@ -32,13 +32,14 @@ def test_catalog_excludes_nonpublic_cities_and_requires_one_default(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("ENGINE_PROVIDER_DECLARATIONS", str(tmp_path))
+    (tmp_path / "default-city.txt").write_text("example\n", encoding="utf8")
     (tmp_path / "hidden.yaml").write_text(
-        "provider: {is_active: false}\npublic: {enabled: true, default_city: true}\n",
+        "provider: {is_active: false}\npublic: {enabled: true}\n",
         encoding="utf8",
     )
     (tmp_path / "candidate.yaml").write_text("stage: candidate\n", encoding="utf8")
     (tmp_path / "example.yaml").write_text(
-        "stage: public\ndefault_city: true\ntimezone: Europe/Paris\nname: Example\n"
+        "stage: public\ntimezone: Europe/Paris\nname: Example\n"
         "labels:\n  en: {city: Example, operator: Rail}\n"
         "  fr: {city: Exemple, operator: Rail}\n",
         encoding="utf8",
@@ -49,6 +50,6 @@ def test_catalog_excludes_nonpublic_cities_and_requires_one_default(
     cities = city_catalog()
     assert cities["default_provider"] == "example"
     assert [provider["id"] for provider in cities["providers"]] == ["example"]
-    (tmp_path / "example.yaml").unlink()
-    with pytest.raises(RuntimeError, match="exactly one public default city"):
+    (tmp_path / "default-city.txt").write_text("hidden\n", encoding="utf8")
+    with pytest.raises(RuntimeError, match="default city must be a public provider"):
         city_catalog()

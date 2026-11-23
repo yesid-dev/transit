@@ -10,7 +10,6 @@ feed_languages: [fr, en]
 website: https://www.stm.info/
 currency: CAD
 stage: public
-default_city: true
 licence:
   name: CC BY 4.0
   terms_url: https://beta.stm.info/a-propos/documents-donnees/donnees-ouvertes

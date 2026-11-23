@@ -71,9 +71,10 @@ def _inputs(feeds: Any) -> dict[str, bool]:
 
 
 def city_catalog() -> dict[str, Any]:
+    directory = provider_directory()
+    default_city = (directory / "default-city.txt").read_text(encoding="utf-8").strip()
     providers = []
-    defaults = []
-    for path in sorted(provider_directory().glob("*.yaml")):
+    for path in sorted(directory.glob("*.yaml")):
         city = path.stem
         try:
             declaration, identity, public = public_declaration(city)
@@ -111,8 +112,6 @@ def city_catalog() -> dict[str, Any]:
                 ],
             }
         )
-        if (public if legacy else declaration).get("default_city") is True:
-            defaults.append(city)
-    if len(defaults) != 1:
-        raise RuntimeError("exactly one public default city is required")
-    return {"default_provider": defaults[0], "providers": providers}
+    if default_city not in {provider["id"] for provider in providers}:
+        raise RuntimeError("default city must be a public provider")
+    return {"default_provider": default_city, "providers": providers}
