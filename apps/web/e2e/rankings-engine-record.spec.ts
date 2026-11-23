@@ -170,8 +170,10 @@ test('a slow ranking streams patience and completes without reloading', async ({
 		page.getByText('Still working on this. You can wait or come back later.'),
 	).toBeVisible();
 	const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
-	expect((await request.post(`http://127.0.0.1:${dataPort}/__overview/release`)).status()).toBe(
-		204,
-	);
+	expect(
+		(
+			await request.post(`http://127.0.0.1:${dataPort}/__overview/release?fixture=rankings`)
+		).status(),
+	).toBe(204);
 	await expect(page.getByText('38% to 58%')).toBeVisible();
 });

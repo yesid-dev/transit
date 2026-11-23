@@ -125,8 +125,8 @@ test('Line shows patience for a slow stop query while punctuality is already rea
 		page.getByText('Still working on this. You can wait or come back later.'),
 	).toBeVisible();
 	const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
-	expect((await request.post(`http://127.0.0.1:${dataPort}/__overview/release`)).status()).toBe(
-		204,
-	);
+	expect(
+		(await request.post(`http://127.0.0.1:${dataPort}/__overview/release?fixture=line`)).status(),
+	).toBe(204);
 	await expect(page.getByRole('rowheader', { name: /Second stop/ })).toBeVisible();
 });

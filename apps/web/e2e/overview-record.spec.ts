@@ -78,7 +78,9 @@ test('a slow stop ranking shows patience while the other parts remain usable', a
 	await main.getByText('Cite', { exact: true }).click();
 	await expect(main.getByText(/punctuality-v2/).first()).toBeVisible();
 	const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
-	const release = await request.post(`http://127.0.0.1:${dataPort}/__overview/release`);
+	const release = await request.post(
+		`http://127.0.0.1:${dataPort}/__overview/release?fixture=overview-stop-ranking`,
+	);
 	expect(release.status()).toBe(204);
 	await expect(main.getByText('S3', { exact: true })).toBeVisible();
 	await expect(

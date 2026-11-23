@@ -53,7 +53,7 @@ export function rankingsEngine(url) {
 				? 'histogram_half_bin'
 				: 'wilson_95';
 	return {
-		hold: from === '2026-11-09',
+		hold: from === '2026-11-09' ? 'rankings' : false,
 		body: {
 			kind,
 			measure,

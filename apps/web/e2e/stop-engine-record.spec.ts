@@ -104,8 +104,10 @@ test('a slow per-line breakdown does not hold back the Stop answer', async ({ pa
 		'The record is busy right now. You can come back later.',
 	);
 	const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
-	expect((await request.post(`http://127.0.0.1:${dataPort}/__overview/release`)).status()).toBe(
-		204,
-	);
+	expect(
+		(
+			await request.post(`http://127.0.0.1:${dataPort}/__overview/release?fixture=stop-by-line`)
+		).status(),
+	).toBe(204);
 	await expect(byLine).toContainText('Too few to judge');
 });

@@ -39,7 +39,7 @@ export function overviewEngine(url) {
 				}))
 			: [];
 		return {
-			hold: kind === 'stop' && from === '2026-11-09',
+			hold: kind === 'stop' && from === '2026-11-09' ? 'overview-stop-ranking' : false,
 			body: {
 				measure,
 				kind,

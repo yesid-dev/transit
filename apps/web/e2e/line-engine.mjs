@@ -147,7 +147,7 @@ export function lineEngine(url) {
 		return {
 			hold:
 				group === 'stop' &&
-				(from === '2026-11-09' ||
+				((from === '2026-11-09' && 'line') ||
 					(/^2026-10-1[5-8]$/u.test(from) && ['line', get('city'), from, to].join('-'))),
 			body: { cells, coverage_note, evidence },
 		};

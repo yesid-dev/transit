@@ -49,7 +49,7 @@ export function stopEngine(url) {
 		return {
 			hold:
 				group === 'line' &&
-				(from === '2026-11-09' ||
+				((from === '2026-11-09' && 'stop-by-line') ||
 					(/^2026-10-1[5-8]$/u.test(from) && ['stop', get('city'), from, to].join('-'))),
 			body: { cells, coverage_note, evidence },
 		};
