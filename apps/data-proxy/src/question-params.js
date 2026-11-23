@@ -76,6 +76,9 @@ export function parseQuestion(url) {
     if (!(days >= 1 && days <= 400)) {
       throw new Error("provide an ordered YYYY-MM-DD range of at most 400 days");
     }
+    if (params.has("alert_details") && days > 7) {
+      throw new Error("alert_details supports at most 7 service dates");
+    }
   }
   if (params.has("departure") && (!params.has("line") || !params.has("direction"))) {
     throw new Error("departure requires line and direction");

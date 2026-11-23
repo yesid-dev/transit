@@ -113,12 +113,13 @@ spans to the tracked local dates or hours and count distinct alerts and versions
 within each cell. Each cell calculates percentiles, shares and ratios from its own
 histogram or evidence totals. Distinct counts can overlap across cells.
 
-Use `measure=alert_counts&alert_details=1` without grouping to include the
-matching agency messages in `evidence.alert_messages` and in a JSON column in
-the CSV. The list contains one row per source, alert ID and version in effect
-over the requested dates, using the same clipping, filters and coverage as the
-counts. Published English and French text is nullable, and the list is null
-when alert history is unavailable.
+Use `measure=alert_counts&alert_details=1` without grouping and for at most
+seven inclusive service dates to include matching agency messages in
+`evidence.alert_messages` and in a JSON column in the CSV. The list contains
+one row per source, alert ID and version in effect over the requested dates,
+using the same clipping, filters and coverage as the counts. Published
+English and French text is nullable, and the list is null when alert history
+is unavailable. Alert counts without message details support longer ranges.
 
 Grouped CSV uses one row per cell and prepends localized grouping columns to the
 registry headings. A family export uses JSON objects keyed by measure ID in the

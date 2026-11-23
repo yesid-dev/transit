@@ -18,7 +18,7 @@ export const load: PageServerLoad = async (event) => {
 			city: providerId,
 			cityName: provider?.labels[lang].city ?? providerId,
 			period,
-			sections: scope ? loadDailyRecord(scope) : [],
+			...(scope ? loadDailyRecord(scope) : { sections: [], messagesLimited: false }),
 		},
 	};
 };

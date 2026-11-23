@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { Card } from '@yesid/ui/card';
 	import { Surface } from '@yesid/ui/layout';
 	import { localizeHref } from '#lib/i18n/index.ts';
 	import RecordSection from '#lib/features/record/RecordSection.svelte';
@@ -209,6 +210,19 @@
 					{/snippet}
 				</RecordSection>
 			{/each}
+			{#if data.messagesLimited}
+				<Card edge="neutral" textSize="inherit" class="min-w-0 px-4 sm:px-6">
+					<section id="messages" aria-labelledby="messages-title" class="grid min-w-0 gap-3">
+						<h2 id="messages-title">{t(...dailyTitles.messages)}</h2>
+						<p>
+							{t(
+								'Agency messages are listed for 7 days or fewer. Pick a shorter period.',
+								'Les avis de l’agence sont affichés pour 7 jours ou moins. Choisissez une période plus courte.',
+							)}
+						</p>
+					</section>
+				</Card>
+			{/if}
 		</article>
 	</Surface>
 {:else}

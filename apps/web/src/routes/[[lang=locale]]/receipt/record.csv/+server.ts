@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { dailyQuery } from '#lib/server/departureDailyRecord.ts';
+import { dailyAlertDetailsAllowed, dailyQuery } from '#lib/server/departureDailyRecord.ts';
 import { recordCsvResponse } from '#lib/server/recordCsv.ts';
 import type { RequestHandler } from './$types';
 
@@ -7,6 +7,11 @@ export const GET: RequestHandler = ({ params, url, request }) => {
 	const section = url.searchParams.get('section') ?? '';
 	const query = dailyQuery(section);
 	if (!query) error(400);
+	if (section === 'messages') {
+		const from = url.searchParams.get('recordFrom') ?? '';
+		const to = url.searchParams.get('recordTo') ?? '';
+		if (!dailyAlertDetailsAllowed({ from, to })) error(400);
+	}
 	return recordCsvResponse(
 		query,
 		url,

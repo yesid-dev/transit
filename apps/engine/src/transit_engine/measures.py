@@ -311,8 +311,11 @@ class Question:
         if not CITY.fullmatch(self.city) or self.start > self.end:
             raise ValueError("provide a city and an ordered service date range")
         family, _ = _SELECTIONS[self.measure]
-        if self.alert_details and (self.measure != _ALERT_COUNTS_ID or self.group or ranking):
-            raise ValueError("alert_details requires ungrouped alert_counts")
+        if self.alert_details:
+            if self.measure != _ALERT_COUNTS_ID or self.group or ranking:
+                raise ValueError("alert_details requires ungrouped alert_counts")
+            if (self.end - self.start).days >= 7:
+                raise ValueError("alert_details supports at most 7 service dates")
         if family.id == _CORRIDORS_ID:
             if self.stop is not None or self.departure is not None:
                 raise ValueError("corridors use from_stop, to_stop and scheduled departure hour")

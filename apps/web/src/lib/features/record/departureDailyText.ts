@@ -15,7 +15,10 @@ export const dailyTitles = {
 } as const;
 
 export const departureTitles = {
-	observed: ['Days observed and days late', 'Jours observés et jours avec retard'],
+	observed: [
+		'Days observed and days with a late stop',
+		'Jours observés et jours avec un arrêt en retard',
+	],
 	delay: ['Typical delay', 'Retard typique'],
 	stops: ['Stop by stop', 'Arrêt par arrêt'],
 	missed: ['Cancelled and missing departures', 'Départs annulés et manquants'],

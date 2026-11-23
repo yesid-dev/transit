@@ -191,8 +191,8 @@
 							<p>{observedStatement(result)}</p>
 							<p>
 								{t(
-									'A day is observed if at least one stop event could be classified. A day counts as late if at least one observed stop was late.',
-									'Une journée est observée si au moins un passage a pu être classé. Elle compte comme une journée avec retard si au moins un passage observé était en retard.',
+									'A day is observed if at least one stop event could be classified. The second total counts days with at least one observed late stop.',
+									'Une journée est observée si au moins un passage a pu être classé. Le deuxième total compte les journées où au moins un passage observé était en retard.',
 								)}
 							</p>
 						{:else if section === 'delay' && 'value' in result}

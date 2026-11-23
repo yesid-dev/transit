@@ -252,6 +252,24 @@ def test_alert_details_follow_the_same_window_and_clipping(
     assert status == 400
 
 
+def test_alert_details_limits_inclusive_service_dates(
+    history: tuple[Store, list[Reading], dict[date, tuple[Notice, ...]]],
+) -> None:
+    store, _, _ = history
+    short = {"from": THURSDAY - timedelta(days=6), "to": THURSDAY}
+    accepted = _get(store, "/measure", "alert_counts", alert_details=1, **short)
+    assert accepted["evidence"]["alert_messages"]
+
+    long = {"from": THURSDAY - timedelta(days=7), "to": THURSDAY}
+    app = Engine(store, concurrency=1, queue_size=1, queue_wait_ms=50)
+    params = {"city": "stm", "measure": "alert_counts", "alert_details": 1, **long}
+    status, _, body = asyncio.run(http(app, "/measure", urlencode(params)))
+    assert status == 400
+    assert json.loads(body)["message"] == "alert_details supports at most 7 service dates"
+    counts = _get(store, "/measure", "alert_counts", **long)
+    assert counts["value"]["alerts"] == accepted["value"]["alerts"]
+
+
 def test_crowding_matches_independent_vehicle_time_and_reports_coverage(
     history: tuple[Store, list[Reading], dict[date, tuple[Notice, ...]]],
 ) -> None:
