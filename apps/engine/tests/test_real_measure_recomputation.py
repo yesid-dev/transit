@@ -24,14 +24,6 @@ MEASURES = (
     "accessibility",
     "poll_success",
 )
-# The engine drops known observed headways from the actual wait if their
-# contiguous window has no complete scheduled headway. Method v3 applies
-# that restriction to the scheduled side only. Keep both predictions pinned
-# until the engine's wait aggregation is corrected.
-EXCESS_WAIT = {
-    "stm": (32.275305339314905, 33.97311731440502),
-    "octranspo": (35.492986523798905, 35.61402458989005),
-}
 
 
 @pytest.fixture(scope="module", params=tuple(CASES))
@@ -76,10 +68,6 @@ def test_real_day_against_plain_recomputation(
     actual = asyncio.run(ask(ROOT, city, measure))
     assert actual["state"] == expected.state
     values = expected.values.copy()
-    if measure == "waiting_and_gaps":
-        plain_wait, engine_wait = EXCESS_WAIT[city]
-        assert values["excess_wait_time"] == pytest.approx(plain_wait, rel=1e-12)
-        values["excess_wait_time"] = engine_wait
     if measure == "vehicle_hours_in_service":
         trips = asyncio.run(ask(ROOT, city, "vehicle_trips_run"))
         assert trips["state"] == expected.state

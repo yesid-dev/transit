@@ -2307,9 +2307,14 @@ def _waiting_rows(
             FROM checked_headways WHERE eligible
             GROUP BY entity, service_date, route_id, direction_id, stop_id, period,
                 covered_from, unknown_at
-        ), scheduled_windows AS (
+        ), observed_wait_by_period AS (
+            -- Every eligible observed headway counts toward the period's actual
+            -- wait, even when its window contains no complete scheduled headway.
+            SELECT entity, service_date, route_id, direction_id, stop_id, period,
+                sum(actual_elapsed) AS actual_elapsed, sum(actual_squared) AS actual_squared
+            FROM observed_windows GROUP BY ALL
+        ), scheduled_wait_by_period AS (
             SELECT s.entity, s.service_date, s.route_id, s.direction_id, s.stop_id, s.period,
-                w.window_start,
                 count(*) AS scheduled_count, sum(s.headway) AS scheduled_elapsed,
                 sum(s.headway * s.headway) AS scheduled_squared
             FROM ({comparable_schedule}) s
@@ -2320,15 +2325,6 @@ def _waiting_rows(
                 AND s.previous_at >= w.window_start
             WHERE s.event_at <= w.window_end
             GROUP BY ALL
-        ), period_wait AS (
-            SELECT entity, sum(scheduled_count) AS scheduled_count,
-                sum(scheduled_elapsed) AS scheduled_elapsed,
-                sum(scheduled_squared) AS scheduled_squared,
-                sum(actual_elapsed) AS actual_elapsed,
-                sum(actual_squared) AS actual_squared
-            FROM scheduled_windows JOIN observed_windows
-                USING (entity, service_date, route_id, direction_id, stop_id, period, window_start)
-            GROUP BY entity, service_date, route_id, direction_id, stop_id, period
         ), waiting AS (
             SELECT entity, sum(scheduled_count) AS covered_scheduled_headways,
                 sum(scheduled_elapsed) AS scheduled_seconds,
@@ -2336,7 +2332,9 @@ def _waiting_rows(
                 sum(scheduled_elapsed) FILTER (actual_elapsed > 0) AS wait_weight,
                 sum(0.5 * (actual_squared * (scheduled_elapsed / nullif(actual_elapsed, 0))
                     - scheduled_squared)) AS weighted_excess
-            FROM period_wait GROUP BY entity
+            FROM scheduled_wait_by_period JOIN observed_wait_by_period
+                USING (entity, service_date, route_id, direction_id, stop_id, period)
+            GROUP BY entity
         )
         SELECT entity, NULL, routes, {", ".join(f"coalesce({name}, 0)" for name in counters)},
             coalesce(wait_weight, 0), coalesce(weighted_excess, 0)
