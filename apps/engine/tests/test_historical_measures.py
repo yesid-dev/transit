@@ -19,6 +19,15 @@ from transit_engine.clean_manifest import ALERTS, VEHICLE_POSITIONS
 from transit_engine.server import Engine
 from transit_engine.store import Store
 
+_ALERT_SCHEMA = (
+    "alert_id VARCHAR, version VARCHAR, first_seen_at_utc TIMESTAMPTZ,"
+    " last_seen_at_utc TIMESTAMPTZ, active_periods STRUCT(start_utc TIMESTAMPTZ,"
+    " end_utc TIMESTAMPTZ)[], route_ids VARCHAR[], stop_ids VARCHAR[],"
+    " effect VARCHAR, cause VARCHAR, source VARCHAR,"
+    " header_en VARCHAR, header_fr VARCHAR, description_en VARCHAR,"
+    " description_fr VARCHAR"
+)
+
 
 class Reading(NamedTuple):
     line: str
@@ -180,12 +189,7 @@ def history(tmp_path: Path) -> tuple[Store, list[Reading], dict[date, tuple[Noti
                 store,
                 day,
                 ALERTS,
-                "alert_id VARCHAR, version VARCHAR, first_seen_at_utc TIMESTAMPTZ,"
-                " last_seen_at_utc TIMESTAMPTZ, active_periods STRUCT(start_utc TIMESTAMPTZ,"
-                " end_utc TIMESTAMPTZ)[], route_ids VARCHAR[], stop_ids VARCHAR[],"
-                " effect VARCHAR, cause VARCHAR, source VARCHAR,"
-                " header_en VARCHAR, header_fr VARCHAR, description_en VARCHAR,"
-                " description_fr VARCHAR",
+                _ALERT_SCHEMA,
                 [
                     (
                         item.id,
@@ -560,3 +564,107 @@ def test_historical_methods_and_french_csv_use_the_same_registry(
     rows = list(csv.reader(io.StringIO(payload.decode())))
     assert rows[0] == info[0]["csv_columns"]["fr"]
     assert [row[0] for row in rows[1:]] == [item["id"] for item in info]
+
+
+@pytest.fixture
+def pacific_city(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
+    city = "fixture-pacific"
+    declarations = tmp_path / "declarations"
+    declarations.mkdir()
+    (declarations / f"{city}.yaml").write_text(
+        "stage: public\ntimezone: America/Los_Angeles\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("ENGINE_PROVIDER_DECLARATIONS", str(declarations))
+    return city
+
+
+@pytest.mark.parametrize(
+    (
+        "day",
+        "window_start_hour",
+        "window_end_hour",
+        "hours",
+        "trip_minute",
+        "local_hour",
+        "departure",
+    ),
+    [
+        (date(2026, 3, 8), 8, 7, 23, -90, 3, "03:30:00"),
+        (date(2025, 11, 2), 7, 8, 25, -150, 1, "01:30:00"),
+    ],
+    ids=["spring-forward", "fall-back"],
+)
+def test_declared_city_time_controls_alert_days_hours_and_departure_anchor(
+    tmp_path: Path,
+    pacific_city: str,
+    day: date,
+    window_start_hour: int,
+    window_end_hour: int,
+    hours: int,
+    trip_minute: int,
+    local_hour: int,
+    departure: str,
+) -> None:
+    # At 10:30 UTC in spring the clock reads 03:30. At 09:30 UTC in fall
+    # it reads the second 01:30. GTFS measures elapsed time from local noon minus 12h.
+    store = _build_store(
+        tmp_path,
+        6,
+        {day: (Trip("run", "A", 0, "ran", None, True, (0,) * 30, trip_minute),)},
+        city=pacific_city,
+    )
+    start = utc(day, window_start_hour)
+    end = utc(day + timedelta(days=1), window_end_hour)
+    with duckdb.connect(config={"TimeZone": "UTC"}) as conn:
+        _write_table(
+            conn,
+            store,
+            day,
+            ALERTS,
+            _ALERT_SCHEMA,
+            [
+                (
+                    "day",
+                    "1",
+                    start,
+                    end,
+                    [
+                        {
+                            "start_utc": (start - timedelta(hours=2)).replace(tzinfo=None),
+                            "end_utc": (end + timedelta(hours=2)).replace(tzinfo=None),
+                        }
+                    ],
+                    ["A"],
+                    [],
+                    "DETOUR",
+                    "CONSTRUCTION",
+                    "fixture",
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            ],
+            city=pacific_city,
+        )
+    scope = {"city": pacific_city, "from": day, "to": day}
+    alert = _get(store, "/measure", "alert_counts", **scope, alert_details="1")
+    assert alert["value"]["alert_hours"] == hours
+    assert alert["evidence"]["alert_messages"][0]["periods"] == [
+        {"start": start.isoformat(), "end": end.isoformat()}
+    ]
+    series = _get(store, "/measure", "alert_hours", **scope, group="day")
+    assert series["cells"][0]["value"]["alert_hours"] == hours
+    hourly = _get(store, "/measure", "alert_hours", **scope, group="hour")["cells"]
+    assert sum(cell["value"]["alert_hours"] or 0 for cell in hourly) == hours
+    assert hourly[1]["value"]["alert_hours"] == (2 if hours == 25 else 1)
+    assert hourly[2]["value"]["alert_hours"] == (1 if hours == 25 else 0)
+
+    # Both the timestamp-derived hour cut and the optimized hourly series use Los Angeles time.
+    trip_scope = {**scope, "line": "A", "direction": 0}
+    answer = _get(store, "/measure", "on_time", **trip_scope, departure=departure, hour=local_hour)
+    assert answer["evidence"]["counts"]["classified"] == 30
+    wrong_hour = _get(store, "/measure", "on_time", **trip_scope, hour=local_hour + 3)
+    assert not wrong_hour["evidence"]["counts"]["classified"]
+    hourly_trips = _get(store, "/measure", "on_time", **trip_scope, group="hour")["cells"]
+    assert hourly_trips[local_hour]["evidence"]["counts"]["classified"] == 30

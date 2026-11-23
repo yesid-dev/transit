@@ -7,8 +7,8 @@ import { getMethodCatalog, getRecordDataHealth } from '#lib/server/engine.ts';
 import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
 
 export const load: PageServerLoad = async (event) => {
-	const { mode, period } = parseFrameState(event.url.searchParams, frameToday());
-	const { v1, providerId: city } = await event.parent();
+	const { v1, providerId: city, provider } = await event.parent();
+	const { mode, period } = parseFrameState(event.url.searchParams, frameToday(provider?.timezone));
 	if (mode === 'record') {
 		const visitorIp = event.request.headers.get('cf-connecting-ip');
 		return {

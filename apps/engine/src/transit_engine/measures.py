@@ -22,6 +22,7 @@ from transit_engine.capture import (
     POLL_COVERAGE_SQL,
     set_poll_age_limits,
 )
+from transit_engine.cities import service_query
 from transit_engine.clean_manifest import (
     ALERTS,
     FEED_POLLS,
@@ -68,6 +69,7 @@ from transit_engine.series import (
 from transit_engine.series import (
     GROUP_COLUMNS,
     HOUR_GROUPS,
+    LOCAL_HOUR_BUCKET,
     SeriesGroup,
     day_type_sql,
     local_epoch_us_sql,
@@ -268,11 +270,10 @@ _STATES = {
     ),
 }
 _PARTIAL = Text("Only measured days are included.", "Seuls les jours mesurés sont inclus.")
-# Both supported cities use the same service timezone. Departures reverse the
-# GTFS local-noon-minus-12-elapsed-hours anchor used by the cleaner, even on DST days.
+# Reverse the cleaner's GTFS local-noon-minus-12-elapsed-hours anchor.
 _DEPARTURE_SECONDS = """
     epoch(scheduled_start_utc)
-    - epoch(timezone('America/Toronto', service_date + INTERVAL '12 hours')) + 43200
+    - epoch(timezone(getvariable('service_timezone'), service_date + INTERVAL '12 hours')) + 43200
 """
 _SERVICE_DELIVERED_ID = "service_delivered"
 _CROWDING_ID = "crowding"
@@ -1615,12 +1616,13 @@ def _crowding_rows(
     entity_hour = "NULL"
     if question.group in HOUR_GROUPS:
         entity_hour = _LOCAL_HOUR.format("hour_start")
-        segments = """
-            CROSS JOIN LATERAL generate_series(time_bucket(INTERVAL '1 hour', captured_at_utc),
+        bucket = LOCAL_HOUR_BUCKET.format("captured_at_utc")
+        segments = f"""
+            CROSS JOIN LATERAL generate_series({bucket},
                 ends_at, INTERVAL '1 hour') AS hours(hour_start)
             WHERE hour_start < ends_at OR hour_start <= captured_at_utc
         """
-        reading_cut = "matches AND hour_start = time_bucket(INTERVAL '1 hour', captured_at_utc)"
+        reading_cut = f"matches AND hour_start = {bucket}"
         weight = f"""
             least(epoch_us(ends_at), epoch_us(hour_start) + {_US_PER_HOUR})
                 - greatest(epoch_us(captured_at_utc), epoch_us(hour_start))
@@ -1812,21 +1814,22 @@ def _alert_rows(
     segments = ""
     temporal = question.group is not None and question.group not in _ALERT_ENTITY_GROUPS
     if temporal:
-        local_day = "timezone('America/Toronto', bucket)::DATE"
+        local_day = "timezone(getvariable('service_timezone'), bucket)::DATE"
         if question.group in HOUR_GROUPS:
             bucket_start = "bucket"
             bucket_end = "bucket + INTERVAL '1 hour'"
-            series = """
-                generate_series(time_bucket(INTERVAL '1 hour', starts), ends, INTERVAL '1 hour')
+            bucket = LOCAL_HOUR_BUCKET.format("starts")
+            series = f"""
+                generate_series({bucket}, ends, INTERVAL '1 hour')
             """
             key_sql = f"row({local_day}::VARCHAR, {_LOCAL_HOUR.format('bucket')})"
         else:
-            bucket_start = "timezone('America/Toronto', bucket)"
-            bucket_end = "timezone('America/Toronto', bucket + INTERVAL '1 day')"
+            bucket_start = "timezone(getvariable('service_timezone'), bucket)"
+            bucket_end = "timezone(getvariable('service_timezone'), bucket + INTERVAL '1 day')"
             series = """
                 generate_series(
-                    date_trunc('day', timezone('America/Toronto', starts)),
-                    timezone('America/Toronto', ends), INTERVAL '1 day')
+                    date_trunc('day', timezone(getvariable('service_timezone'), starts)),
+                    timezone(getvariable('service_timezone'), ends), INTERVAL '1 day')
             """
             key_sql = "row(bucket::DATE::VARCHAR)"
         projection = f"""
@@ -1841,8 +1844,8 @@ def _alert_rows(
     rows = conn.execute(
         f"""
         WITH bounds AS (
-            SELECT timezone('America/Toronto', ?::DATE::TIMESTAMP) AS window_start,
-                timezone('America/Toronto', (?::DATE + 1)::TIMESTAMP) AS window_end
+            SELECT timezone(getvariable('service_timezone'), ?::DATE::TIMESTAMP) AS window_start,
+                timezone(getvariable('service_timezone'), (?::DATE + 1)::TIMESTAMP) AS window_end
         ), periods AS (
             SELECT source, alert_id, version, first_seen_at_utc, last_seen_at_utc,
                 route_ids, stop_ids, effect, cause,
@@ -4225,16 +4228,6 @@ def _scorecard_answer(
             for day, receipt in included
             for declaration in (receipt.get("scorecard_declaration"),)
         }
-        if question.hour is not None:
-            timezone = next(
-                (
-                    entry["timezone"]
-                    for entry in reversed(declarations.values())
-                    if isinstance(entry.get("timezone"), str)
-                ),
-                "America/Toronto",
-            )
-            conn.execute("SET TimeZone = ?", [timezone])
         if group == FEED_MEASURES:
             feeds = {feed for entry in declarations.values() for feed in entry.get("feeds", [])}
             if any(
@@ -4341,7 +4334,9 @@ def _scorecard_answer(
                 },
             )
         elif group == source_groups[2]:
-            filters, arguments = _cuts(replace(question, stop=None), "hour(scheduled_start_utc)")
+            filters, arguments = _cuts(
+                replace(question, stop=None), _LOCAL_HOUR.format("scheduled_start_utc")
+            )
             results[group[0]] = coverage_counts(
                 conn,
                 list(window.batches()),
@@ -4353,7 +4348,8 @@ def _scorecard_answer(
             )
         else:
             filters, arguments = _cuts(
-                question, "hour(published_at_utc + actual_lead_seconds * INTERVAL '1 second')"
+                question,
+                _LOCAL_HOUR.format("published_at_utc + actual_lead_seconds * INTERVAL '1 second'"),
             )
             results[group[0]] = prediction_result(
                 conn,
@@ -4487,7 +4483,7 @@ def ask(store: Store, question: Question) -> dict[str, Any]:
     if question.group:
         return _series_answer(store, question, family, selected, question.group, started)
     totals = Batch()
-    with store.connect() as conn:
+    with service_query(store, question.city) as conn:
         if family.query is None:
             return _scorecard_answer(conn, store, question, family, selected, started)
         window = read_window(conn, store, question, family, selected)
@@ -4638,7 +4634,7 @@ def _series_answer(
         else question
     )
     occupancy_days: set[str] = set()
-    with store.connect() as conn:
+    with service_query(store, question.city) as conn:
         window = read_window(conn, store, question, family, selected)
         alert_days = set(window.measured) if alerts else set()
         for offset, result in enumerate(_series_query_batches(conn, store, family, query, window)):

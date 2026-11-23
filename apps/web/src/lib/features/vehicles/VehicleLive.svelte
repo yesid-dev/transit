@@ -24,12 +24,14 @@
 
 	let {
 		manifest,
+		timeZone,
 		id,
 		locale,
 		url,
 		city,
 	}: {
 		manifest: Manifest;
+		timeZone: string;
 		id?: string;
 		locale: Locale;
 		url: URL;
@@ -265,7 +267,7 @@
 			>{formatUtc(report, locale, {
 				dateStyle: 'medium',
 				timeStyle: 'short',
-				timeZone: manifest.tz || 'UTC',
+				timeZone,
 			})}</time
 		>
 	{:else}

@@ -23,7 +23,8 @@ def provider_declaration(provider: str) -> dict[str, object]:
     declaration = provider_directory() / f"{provider}.yaml"
     if not declaration.is_file():
         return {}
-    data = yaml.safe_load(declaration.read_text(encoding="utf-8"))
+    loader = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+    data = yaml.load(declaration.read_text(encoding="utf-8"), Loader=loader)
     return data if isinstance(data, dict) else {}
 
 

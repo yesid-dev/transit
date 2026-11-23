@@ -26,9 +26,10 @@
 		locale: Locale;
 		copy: AffectedAlertsCopy;
 		testId?: string;
+		timeZone?: string;
 	}
 
-	let { alerts, locale, copy, testId }: Props = $props();
+	let { alerts, locale, copy, testId, timeZone }: Props = $props();
 
 	const listLabel = $derived(copy.listLabel ?? copy.heading);
 	const uid = $props.id();
@@ -59,7 +60,7 @@
 
 	function windowTime(iso: string | null | undefined): string | null {
 		if (iso == null) return null;
-		const text = formatUtc(iso, locale);
+		const text = formatUtc(iso, locale, { dateStyle: 'medium', timeStyle: 'short', timeZone });
 		return text === '·' ? null : text;
 	}
 </script>

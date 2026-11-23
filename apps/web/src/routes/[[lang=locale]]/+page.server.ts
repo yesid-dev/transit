@@ -4,10 +4,11 @@ import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ url, parent, request }) => {
-	const { mode, period } = parseFrameState(url.searchParams, frameToday());
-	if (mode === 'live' || !period) return { record: null };
+	if (url.searchParams.get('frameMode') === 'live') return { record: null };
+	const { providerId: city, provider } = await parent();
+	const { period } = parseFrameState(url.searchParams, frameToday(provider?.timezone));
+	if (!period) return { record: null };
 
-	const { providerId: city } = await parent();
 	const visitorIp = request.headers.get('cf-connecting-ip');
 	const questions = overviewSelection({ ...period, city, visitorIp });
 	return {

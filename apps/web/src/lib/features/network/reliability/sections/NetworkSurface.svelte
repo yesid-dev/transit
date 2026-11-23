@@ -412,6 +412,7 @@
 		livePresentation({
 			familyStates: live.familyStates,
 			families: LIVE_FAMILIES,
+			timeZone: v1.provider?.timezone ?? v1.manifest.tz,
 			locale,
 			page: 'network',
 			networkFeedAgeAtPublication: live.network?.feed_freshness_s ?? null,

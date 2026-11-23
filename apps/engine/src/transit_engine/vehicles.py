@@ -2,7 +2,7 @@
 
 from transit_engine.capture import MAX_POLL_SPACING_SECONDS, POLL_COVERAGE_SQL
 from transit_engine.clean_manifest import FEED_POLLS, STOP_EVENTS, TRIP_DAYS, VEHICLE_POSITIONS
-from transit_engine.series import LOCAL_HOUR
+from transit_engine.series import LOCAL_HOUR, LOCAL_HOUR_BUCKET
 
 VEHICLE_POLL_SECONDS = 20
 VEHICLE_TAIL_CAP_SECONDS = 3 * VEHICLE_POLL_SECONDS
@@ -32,7 +32,7 @@ def vehicle_end_sql(start: str, last_seen: str, tail: str) -> str:
 
 
 def vehicle_hour_weight_sql(
-    hour: str, bucket: str = "time_bucket(INTERVAL '1 hour', captured_at_utc)"
+    hour: str, bucket: str = LOCAL_HOUR_BUCKET.format("captured_at_utc")
 ) -> str:
     # Intersect elapsed-hour segments with the local clock hour, including a repeated hour.
     return f"""
@@ -142,7 +142,7 @@ def vehicle_stats_query(
             CROSS JOIN LATERAL (
                 SELECT {end} AS ends_at
             )
-            CROSS JOIN LATERAL generate_series(time_bucket(INTERVAL '1 hour', captured_at_utc),
+            CROSS JOIN LATERAL generate_series({LOCAL_HOUR_BUCKET.format('captured_at_utc')},
                 ends_at, INTERVAL '1 hour') AS hours(hour_start)
         """
         service_weight = """

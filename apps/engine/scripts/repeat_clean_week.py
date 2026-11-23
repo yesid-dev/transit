@@ -14,20 +14,23 @@ from pathlib import Path
 
 import duckdb
 
+from transit_engine.cities import public_declaration, service_zone
 from transit_engine.clean_manifest import file_identities
 
 # DuckDB supplies the timezone database on Windows as well as Linux.
-_ANCHOR = "SELECT epoch(timezone('America/Toronto', ?::TIMESTAMP + INTERVAL '12 hours'))::BIGINT"
+_ANCHOR = "SELECT epoch(timezone(?, ?::TIMESTAMP + INTERVAL '12 hours'))::BIGINT"
 
 
 def repeat_day(source: Path, output: Path, day: date) -> None:
     original = date.fromisoformat(source.parent.name)
     manifest = json.loads((source / "manifest.json").read_bytes())
+    _, identity, _ = public_declaration(manifest["provider"])
+    zone = service_zone(identity).key
     destination = output / manifest["provider"] / day.isoformat() / "v7"
     destination.mkdir(parents=True)
     with duckdb.connect(config={"threads": 1, "TimeZone": "UTC"}) as conn:
-        old_anchor = conn.execute(_ANCHOR, [original]).fetchall()[0][0]
-        new_anchor = conn.execute(_ANCHOR, [day]).fetchall()[0][0]
+        old_anchor = conn.execute(_ANCHOR, [zone, original]).fetchall()[0][0]
+        new_anchor = conn.execute(_ANCHOR, [zone, day]).fetchall()[0][0]
         interval = new_anchor - old_anchor
         shift = timedelta(seconds=interval)
         manifest["service_date"] = day.isoformat()

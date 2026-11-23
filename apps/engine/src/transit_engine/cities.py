@@ -1,10 +1,14 @@
 """Public city metadata from the same declarations as the capture readers."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 from zoneinfo import ZoneInfo
 
+import duckdb
+
 from transit_engine.capture import provider_declaration, provider_directory
-from transit_engine.store import CITY
+from transit_engine.store import CITY, Store
 
 FEED_KINDS = (
     "static_schedule",
@@ -43,6 +47,14 @@ def service_zone(identity: dict[str, Any]) -> ZoneInfo:
     if not isinstance(zone, str):
         raise RuntimeError("missing service timezone")
     return ZoneInfo(zone)
+
+
+@contextmanager
+def service_query(store: Store, city: str) -> Iterator[duckdb.DuckDBPyConnection]:
+    _, identity, _ = public_declaration(city)
+    with store.connect() as conn:
+        conn.execute("SET VARIABLE service_timezone = ?", [service_zone(identity).key])
+        yield conn
 
 
 def _bounds(value: Any) -> list[float] | None:

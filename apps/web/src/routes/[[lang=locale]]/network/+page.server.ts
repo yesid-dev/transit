@@ -12,8 +12,8 @@ export const load: PageServerLoad = async (event) => {
 	if (!networkRecordView(event.url))
 		return { view: 'live' as const, ...(await _loadWithReader(event, adapter.live)) };
 
-	const { providerId: city } = await event.parent();
-	const { period } = parseFrameState(event.url.searchParams, frameToday());
+	const { providerId: city, provider } = await event.parent();
+	const { period } = parseFrameState(event.url.searchParams, frameToday(provider?.timezone));
 	const visitorIp = event.request.headers.get('cf-connecting-ip');
 	return {
 		view: 'record' as const,

@@ -29,15 +29,19 @@ export function activeWindows(
 	return [];
 }
 
-export function alertMatchesWindow(entry: AlertHistoryEntry, window: DateWindow | null): boolean {
+export function alertMatchesWindow(
+	entry: AlertHistoryEntry,
+	window: DateWindow | null,
+	timeZone?: string,
+): boolean {
 	if (window == null) return true;
 	const windows = activeWindows(entry);
 	if (windows.length === 0) return true;
 	const from = window.from;
 	const to = window.to;
 	for (const w of windows) {
-		const s = providerLocalDateKey(w.start);
-		const e = providerLocalDateKey(w.end);
+		const s = providerLocalDateKey(w.start, timeZone);
+		const e = providerLocalDateKey(w.end, timeZone);
 		const endsBefore = e != null && e < from;
 		const startsAfter = s != null && s > to;
 		if (!endsBefore && !startsAfter) return true;
@@ -86,9 +90,10 @@ export function sortNewestFirst<T extends OrderableAlertHistoryEntry>(
 export function filterAlertLog(
 	entries: readonly AlertHistoryEntry[],
 	filters: AlertLogFilters,
+	timeZone?: string,
 ): readonly AlertHistoryEntry[] {
 	return entries.filter((e) => {
-		if (!alertMatchesWindow(e, filters.window)) return false;
+		if (!alertMatchesWindow(e, filters.window, timeZone)) return false;
 		if (filters.affects === 'lines' && (e.routes?.length ?? 0) === 0) return false;
 		if (filters.affects === 'stops' && (e.stops?.length ?? 0) === 0) return false;
 		if (filters.severity != null && bandSeverity(e.severity) !== filters.severity) return false;
@@ -140,6 +145,7 @@ export function buildAlertRow(entry: AlertHistoryEntry, r: AlertRowResolvers): A
 
 export function deriveSpan(
 	entries: readonly AlertHistoryEntry[],
+	timeZone?: string,
 ): { readonly start: string; readonly end: string } | null {
 	let min: string | null = null;
 	let max: string | null = null;
@@ -147,7 +153,7 @@ export function deriveSpan(
 		for (const w of activeWindows(e)) {
 			for (const bound of [w.start, w.end]) {
 				if (bound == null) continue;
-				const d = providerLocalDateKey(bound);
+				const d = providerLocalDateKey(bound, timeZone);
 				if (d == null) continue;
 				if (min == null || d < min) min = d;
 				if (max == null || d > max) max = d;

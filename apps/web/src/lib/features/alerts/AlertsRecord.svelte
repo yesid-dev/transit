@@ -34,6 +34,7 @@
 			tracked: boolean;
 			officialAlertsUrl?: string;
 			city: string;
+			timeZone?: string;
 			cityName: string;
 			sections: ReturnType<typeof loadAlertRecord>;
 		};
@@ -66,7 +67,7 @@
 	const other = $derived(locale === 'fr' ? 'en' : 'fr');
 	const timestamp = $derived(
 		intl.dateTime(locale, {
-			timeZone: 'America/Toronto',
+			timeZone: data.timeZone ?? 'UTC',
 			dateStyle: 'medium',
 			timeStyle: 'short',
 		}),

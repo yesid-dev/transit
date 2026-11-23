@@ -32,7 +32,8 @@
 	let { id, embedded = false }: { id: string; embedded?: boolean } = $props();
 	const locale: Locale = getLocale();
 	const t = $derived(tripCopy[locale]);
-	const manifest = getV1Context().manifest;
+	const { manifest, provider } = getV1Context();
+	const reportTimeZone = provider?.timezone ?? manifest.tz ?? 'UTC';
 	const localizeHref = getLocalizeHref();
 	const display = transitDisplay();
 	const { live, resource: trips } = createLiveResource(manifest, 'trips');
@@ -40,6 +41,7 @@
 		livePresentation({
 			familyStates: live.familyStates,
 			families: LIVE_FAMILIES,
+			timeZone: reportTimeZone,
 			locale,
 			page: 'trip',
 		}),
@@ -98,7 +100,6 @@
 			? trips.data.generated_utc
 			: null,
 	);
-	const reportTimeZone = manifest.tz || 'UTC';
 	const absoluteTime = $derived(
 		generatedUtc
 			? formatUtc(generatedUtc, locale, {
@@ -136,7 +137,7 @@
 							tripId: id,
 							trip,
 							report: trips.data,
-							timeZone: manifest.tz ?? null,
+							timeZone: reportTimeZone,
 							stopNames,
 						}),
 					)

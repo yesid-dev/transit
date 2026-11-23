@@ -68,6 +68,7 @@
 	const locale: Locale = getLocale();
 	const t = $derived(alertHistoryCopy[locale]);
 	const provider = $derived(page.data?.provider);
+	const timeZone = $derived(provider?.timezone ?? manifest?.tz);
 	const alertsAvailable = $derived(providerHasAlerts(provider));
 	const officialAlertsUrl = $derived(provider?.alert_links[locale]);
 
@@ -98,12 +99,13 @@
 		if (!history.settled || !alertArchiveIndex.settled) return;
 		if (history.error != null || alertArchiveIndex.error != null || history.data == null) return;
 
-		defaultWindow = currentAlertWindow(history.data, alertArchiveIndex.data);
+		defaultWindow = currentAlertWindow(history.data, alertArchiveIndex.data, timeZone);
 		const resolved = resolveAlertHistoryRange(
 			history.data,
 			alertArchiveIndex.data,
 			rawHistoryFrom,
 			rawHistoryTo,
+			timeZone,
 		);
 		pickedWindow = resolved.selection ?? undefined;
 		historyCorrection = resolved.correction;
@@ -176,7 +178,7 @@
 
 		const requestedWindow = { from: selection.from, to: selection.to };
 		rangeAttemptKey = windowKey(requestedWindow);
-		const rangeEntries = await getAlertArchiveRange(index, requestedWindow, { signal });
+		const rangeEntries = await getAlertArchiveRange(index, requestedWindow, { signal, timeZone });
 		return {
 			window: requestedWindow,
 			entries: rangeEntries,
@@ -319,6 +321,7 @@
 			alertArchiveIndex.data,
 			next.from,
 			next.to,
+			timeZone,
 		);
 		pickedWindow = resolved.selection ?? defaultWindow ?? undefined;
 		historyCorrection = resolved.correction;
@@ -343,18 +346,22 @@
 	}
 	function windowTime(iso: string | null | undefined): string | null {
 		if (iso == null) return null;
-		const text = formatUtc(iso, locale);
+		const text = formatUtc(iso, locale, { dateStyle: 'medium', timeStyle: 'short', timeZone });
 		return text === '·' ? null : text;
 	}
 
 	const filtered = $derived<readonly AlertHistoryEntry[]>(
-		filterAlertLog(sorted, {
-			window: pickedWindow ?? null,
-			affects: affects === 'all' ? null : affects,
-			severity: severity === 'all' ? null : severity,
-			route,
-			stop,
-		}),
+		filterAlertLog(
+			sorted,
+			{
+				window: pickedWindow ?? null,
+				affects: affects === 'all' ? null : affects,
+				severity: severity === 'all' ? null : severity,
+				route,
+				stop,
+			},
+			timeZone,
+		),
 	);
 	const readyMatchCount = $derived(displayData == null ? null : filtered.length);
 	const hasMatches = $derived(filtered.length > 0);

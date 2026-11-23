@@ -221,9 +221,10 @@ function alertWindowOverlaps(
 	start: string | null | undefined,
 	end: string | null | undefined,
 	window: DateWindow,
+	timeZone?: string,
 ): boolean {
-	const startDate = providerLocalDateKey(start);
-	const endDate = providerLocalDateKey(end);
+	const startDate = providerLocalDateKey(start, timeZone);
+	const endDate = providerLocalDateKey(end, timeZone);
 	return (
 		!(endDate != null && endDate < window.from) && !(startDate != null && startDate > window.to)
 	);
@@ -232,16 +233,17 @@ function alertWindowOverlaps(
 export function selectAlertEntriesForWindow(
 	entries: readonly AlertArchiveEntry[],
 	window: DateWindow,
+	timeZone?: string,
 ): AlertArchiveEntry[] {
 	return entries.filter((entry) => {
 		if ((entry.active_periods?.length ?? 0) > 0) {
 			return entry.active_periods!.some((period) =>
-				alertWindowOverlaps(period.start_utc, period.end_utc, window),
+				alertWindowOverlaps(period.start_utc, period.end_utc, window, timeZone),
 			);
 		}
 		if (entry.start_utc != null || entry.end_utc != null) {
-			return alertWindowOverlaps(entry.start_utc, entry.end_utc, window);
+			return alertWindowOverlaps(entry.start_utc, entry.end_utc, window, timeZone);
 		}
-		return alertWindowOverlaps(entry.first_seen_utc, entry.last_seen_utc, window);
+		return alertWindowOverlaps(entry.first_seen_utc, entry.last_seen_utc, window, timeZone);
 	});
 }

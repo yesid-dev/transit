@@ -11,6 +11,7 @@ from test_engine import FRIDAY, SATURDAY, SUNDAY, THURSDAY, Poll, Trip, _build_s
 from test_ranking import _json, _request
 
 from transit_engine import measures
+from transit_engine.cities import service_query
 from transit_engine.clean_manifest import STOP_EVENTS
 from transit_engine.measures import answer_csv
 from transit_engine.server import Engine
@@ -68,7 +69,7 @@ def test_waiting_network_fits_the_buffer_without_spilling(tmp_path: Path) -> Non
     question = measures.Question("waiting_and_gaps", "stm", THURSDAY, THURSDAY)
     family, selected = measures._SELECTIONS[question.measure]
     assert family.query is not None
-    with store.connect() as conn:
+    with service_query(store, question.city) as conn:
         conn.execute("SET temp_directory = ''")
         window = measures.read_window(conn, store, question, family, selected)
         dense_stops = (tmp_path / "dense-stop-events.parquet").as_posix()
