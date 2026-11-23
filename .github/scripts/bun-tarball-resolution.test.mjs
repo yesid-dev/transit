@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { gzipSync } from "node:zlib";
+import { cacheTarball } from "./prefetch-design-tarballs.mjs";
 
 function tarEntry(name, content) {
   const bytes = Buffer.from(content);
@@ -216,6 +217,25 @@ test(
         assert.equal(installed.version, "1.0.0");
         assert.equal(consume(name), name);
       }
+
+      const prefetched = join(directory, "prefetched");
+      const cache = join(prefetched, "cache");
+      mkdirSync(cache, { recursive: true });
+      cpSync(join(directory, "package.json"), join(prefetched, "package.json"));
+      cpSync(join(directory, "bun.lock"), join(prefetched, "bun.lock"));
+      const entries = Object.values(JSON.parse(lock).packages);
+      const tarball = join(directory, "prefetch.tgz");
+      writeFileSync(tarball, assets.get(0));
+      assert.throws(
+        () => cacheTarball(tarball, entries[1][2], cache),
+        /SHA-512 mismatch/,
+      );
+      for (const [id, [, , integrity]] of entries.entries()) {
+        writeFileSync(tarball, assets.get(id));
+        cacheTarball(tarball, integrity, cache);
+      }
+      await install(prefetched, t.signal, "--offline");
+      assert.equal(requests, producerRequests);
     } finally {
       server.closeAllConnections();
       await new Promise((resolve) => server.close(resolve));
