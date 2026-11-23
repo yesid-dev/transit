@@ -61,7 +61,8 @@ export function cleanDownloadStore(env) {
     const response = await fetch(url, {
       method,
       headers: await signedHeaders(url, method, rangeHeader, accessKeyId, secretAccessKey),
-      redirect: "error",
+      // Workers supports manual redirects. The status check below rejects any redirect.
+      redirect: "manual",
       cache: "no-store",
     });
     if (response.status === 404) {
