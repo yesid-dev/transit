@@ -309,7 +309,7 @@
 			<div class="finder-results" role="region" aria-label={t.listLabel}>
 				<p class="finder-count" data-slot="finder-counts">{countText}</p>
 				{#if noMatch}
-					<StateNotice title={noMatchTitle} presentation="silo" role="status">
+					<StateNotice title={noMatchTitle} presentation="frameless" role="status">
 						{#snippet action()}
 							<button type="button" class="finder-button tap-press" onclick={clearFilters}>
 								{t.clearFilters}

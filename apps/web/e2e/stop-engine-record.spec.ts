@@ -46,9 +46,12 @@ for (const width of [390, 1440]) {
 			await expect(section(fr ? 'Par ligne' : 'By line')).toContainText(
 				fr ? 'Trop peu pour juger' : 'Too few to judge',
 			);
-			await expect(section(fr ? 'Par heure' : 'By hour').getByRole('rowheader')).toHaveText(
-				'07:00',
-			);
+			await expect(
+				section(fr ? 'Par heure' : 'By hour').getByRole('rowheader', {
+					name: '07:00',
+					exact: true,
+				}),
+			).toBeVisible();
 			await expect(section(fr ? 'Jour par jour' : 'Day by day').getByRole('rowheader')).toHaveCount(
 				1,
 			);

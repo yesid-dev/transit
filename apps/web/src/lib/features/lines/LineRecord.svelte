@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { Card } from '@yesid/ui/card';
+	import { StateNotice } from '@yesid/ui/feedback';
 	import { Surface } from '@yesid/ui/layout';
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import RecordActions from '#lib/features/record/RecordActions.svelte';
 	import { recordSectionLinks } from '#lib/features/record/recordLinks.ts';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
+	import RecordLineLabel from '#lib/features/record/RecordLineLabel.svelte';
 	import {
 		choose,
 		dateRange,
@@ -25,6 +27,8 @@
 
 	let {
 		name,
+		code,
+		scheduleOnly,
 		locale,
 		url,
 		record,
@@ -32,6 +36,8 @@
 		stopNames: stopNamesById,
 	}: {
 		name: string;
+		code?: string | null;
+		scheduleOnly?: boolean;
 		locale: Locale;
 		url: URL;
 		record: ReturnType<typeof loadLineRecord>;
@@ -59,7 +65,13 @@
 			<a class="inline-flex min-h-11 w-fit items-center" href={back}>
 				{t('All lines', 'Toutes les lignes')}
 			</a>
-			<h1>{name}</h1>
+			<h1><RecordLineLabel label={name} code={code ?? null} {scheduleOnly} size="lg" /></h1>
+			{#if scheduleOnly}
+				<StateNotice
+					presentation="frameless"
+					title={t('No live data', 'Aucune donnée en direct')}
+				/>
+			{/if}
 			<LineViewNav url={pinned} {locale} view={record.view} />
 			<p>{dateRange(record.period, locale)}</p>
 			<nav
@@ -99,9 +111,9 @@
 					{:then result}
 						{@const message = recordMessage(result, locale)}
 						{#if result.kind === 'answer' && result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-						{#if message && (section !== 'waiting' || result.kind !== 'answer')}<p>
-								{message}
-							</p>{/if}
+						{#if message && (section !== 'waiting' || result.kind !== 'answer')}
+							<StateNotice presentation="frameless" title={message} />
+						{/if}
 						{#if result.kind === 'answer'}
 							{#if section === 'waiting' && 'value' in result.answer}
 								<WaitingReadings data={result.answer} {locale} {title} />

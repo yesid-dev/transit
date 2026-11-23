@@ -1,12 +1,15 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { Card } from '@yesid/ui/card';
+	import { DayStrip } from '@yesid/ui/chart';
+	import { StateNotice } from '@yesid/ui/feedback';
 	import { Surface } from '@yesid/ui/layout';
 	import { intl, type Locale } from '#lib/i18n/index.ts';
 	import RecordSection from '#lib/features/record/RecordSection.svelte';
+	import RecordSeriesChart from '#lib/features/record/RecordSeriesChart.svelte';
 	import RecordTable from '#lib/features/record/RecordTable.svelte';
 	import { healthReason } from '#lib/features/record/dataHealthText.ts';
-	import { choose, dateRange, recordMessage } from '#lib/features/record/recordText.ts';
+	import { choose, dateRange, recordMessage, tally } from '#lib/features/record/recordText.ts';
 	import type { loadAlertRecord } from '#lib/server/alertRecord.ts';
 	import type { RecordAnswer } from '#lib/server/engine.ts';
 	import { frameHref } from '#lib/site/frameState.ts';
@@ -137,7 +140,7 @@
 									<p>{method.limits}</p>
 								{/if}
 							{:else}
-								<p>{result.state_text[locale]}</p>
+								<StateNotice presentation="frameless" title={result.state_text[locale]} />
 							{/if}
 							{#if result.evidence.days_not_measured.length}
 								<h3>{t('Days not measured', 'Jours non mesurés')}</h3>
@@ -162,7 +165,7 @@
 							{/if}
 						{:else if section === 'messages' && 'value' in result}
 							{#if result.state !== 'measured'}
-								<p>{result.state_text[locale]}</p>
+								<StateNotice presentation="frameless" title={result.state_text[locale]} />
 							{:else if result.evidence.alert_messages?.length}
 								<ul class="grid gap-4">
 									{#each result.evidence.alert_messages as message (JSON.stringify( [message.source, message.id, message.version], ))}
@@ -213,6 +216,51 @@
 							{/if}
 						{:else if section !== 'answer' && section !== 'messages' && 'cells' in result}
 							{#if result.cells.length}
+								{@const alertCount = (cell: (typeof result.cells)[number] | undefined) =>
+									cell?.state === 'measured' ? (cell.value.alerts ?? null) : null}
+								{@const upper = Math.max(2, ...result.cells.map((cell) => alertCount(cell) ?? 0))}
+								{#if section === 'day'}
+									<DayStrip
+										label={heading}
+										reportedLabel={alertMetrics.alerts[locale]}
+										missingLabel={t('Not measured', 'Non mesuré')}
+										cells={result.cells.flatMap((cell) => {
+											if (typeof cell.key.day !== 'string') return [];
+											const day = cell.key.day;
+											const count = alertCount(cell);
+											const label = intl
+												.dateTime(locale, { day: 'numeric', month: 'short', timeZone: 'UTC' })
+												.format(new Date(day));
+											return [
+												{
+													id: day,
+													label,
+													dateLabel: alertDay(day, locale),
+													report:
+														count === null
+															? null
+															: { value: tally(count, locale), fraction: count / upper },
+												},
+											];
+										})}
+									/>
+								{:else if section === 'hour'}
+									{@const hours = new Map(result.cells.map((cell) => [cell.key.hour, cell]))}
+									<RecordSeriesChart
+										title={heading}
+										seriesLabel={alertMetrics.alerts[locale]}
+										points={Array.from({ length: 24 }, (_, x) => ({
+											x,
+											y: alertCount(hours.get(x)),
+										}))}
+										ticks={[0, 6, 12, 18, 23].map((value) => ({
+											value,
+											label: `${String(value).padStart(2, '0')}:00`,
+										}))}
+										yMax={2 * Math.ceil(upper / 2)}
+										format={(value) => tally(value, locale)}
+									/>
+								{/if}
 								<RecordTable
 									title={heading}
 									headers={[
@@ -235,7 +283,8 @@
 									)}
 								</p>
 							{:else}
-								<p>{recordMessage({ kind: 'answer', answer: result }, locale)}</p>
+								{@const message = recordMessage({ kind: 'answer', answer: result }, locale)}
+								{#if message}<StateNotice presentation="frameless" title={message} />{/if}
 							{/if}
 						{/if}
 					{/snippet}

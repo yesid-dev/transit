@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { StateNotice } from '@yesid/ui/feedback';
+	import RecordLineLabel from '../record/RecordLineLabel.svelte';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { EngineResult, RankingAnswer } from '#lib/server/engine.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
@@ -34,7 +36,7 @@
 		{@const message = rankingText(result, locale)}
 		{#if result.kind === 'answer' && result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 		{#if message}
-			<p>{message}</p>
+			<StateNotice presentation="frameless" title={message} />
 		{:else if result.kind === 'answer'}
 			{@const { rows, coverage_note, info } = result.answer}
 			{#if rows.some((row) => row.ranking_bound != null)}<p>{cautiousRanking[locale]}</p>{/if}
@@ -42,11 +44,13 @@
 				{#each rows as row (row.id)}
 					{@const basis = timingBasis(row.counts, locale)}
 					<li>
-						<strong>{kind === 'line' ? display.lineName(row.id).label : row.id}</strong> · {withCoverage(
-							percent(row.value, locale),
-							row,
-							locale,
-						)}
+						<strong
+							>{#if kind === 'line'}
+								{@const line = display.lineName(row.id)}
+								<RecordLineLabel label={line.label} code={line.number} />
+							{:else}{row.id}{/if}</strong
+						>
+						· {withCoverage(percent(row.value, locale), row, locale)}
 						<br />
 						{#if locale === 'fr'}
 							Intervalle estimé de {percent(row.range.lower, locale)} à {percent(

@@ -90,6 +90,7 @@
 			countLabel={copy.filters.summary[locale]}
 			{locale}
 			clearLabel={copy.filters.clearFilters}
+			canClear={filtersActive}
 			{onClear}
 		/>
 	</div>

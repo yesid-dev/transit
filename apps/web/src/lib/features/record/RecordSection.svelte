@@ -1,5 +1,6 @@
 <script lang="ts" generics="Answer extends Pick<RecordAnswer, 'evidence' | 'coverage_note'>">
 	import { Card } from '@yesid/ui/card';
+	import { StateNotice } from '@yesid/ui/feedback';
 	import type { Snippet } from 'svelte';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { EngineResult, RecordAnswer } from '#lib/server/engine.ts';
@@ -71,7 +72,7 @@
 						{citation(result.answer, result.lastGood)}
 					</p>{/if}
 			{:else}
-				<p>{recordConnection[result.kind][locale]}</p>
+				<StateNotice presentation="frameless" title={recordConnection[result.kind][locale]} />
 			{/if}
 		{/await}
 	</section>

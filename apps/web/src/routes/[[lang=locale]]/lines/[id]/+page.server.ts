@@ -3,6 +3,7 @@ import { loadLineRecord, lineDirection } from '#lib/server/lineRecord.ts';
 import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
 import { lineFrameView } from '#lib/site/lineFrame.ts';
 import { createLineDirectory } from '#lib/site/lineDirectory.ts';
+import { lineIsScheduleOnly } from '#lib/site/providerCapabilities.ts';
 import { routeNameFallback } from '#lib/site/nameFallback.ts';
 import { linePageTitle } from '#lib/seo/riderPageTitle.ts';
 import { redirect } from '@sveltejs/kit';
@@ -29,7 +30,7 @@ export const load: PageServerLoad = async (event) => {
 		redirect(307, live.pathname + live.search);
 	}
 
-	const { v1, schedule, lang, providerId } = await event.parent();
+	const { v1, schedule, lang, providerId, provider } = await event.parent();
 	const record =
 		view !== 'live' && period
 			? loadLineRecord(
@@ -48,6 +49,8 @@ export const load: PageServerLoad = async (event) => {
 		const name = directory.name(id);
 		return {
 			seed: { id, name: name.label },
+			code: name.number,
+			scheduleOnly: lineIsScheduleOnly(provider, id, directory.type(id)),
 			directionHeadsigns: directionHeadsigns(schedule?.route_directions?.[id]),
 			stopNames: Object.fromEntries(
 				(schedule?.stops ?? [])

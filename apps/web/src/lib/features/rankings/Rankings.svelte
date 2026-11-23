@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { SegmentedChoice } from '@yesid/ui/brand';
+	import { FilterSummary, SegmentedChoice } from '@yesid/ui/brand';
+	import { StateNotice } from '@yesid/ui/feedback';
+	import RecordLineLabel from '../record/RecordLineLabel.svelte';
 	import { Button } from '@yesid/ui/button';
 	import { Card } from '@yesid/ui/card';
 	import { Surface } from '@yesid/ui/layout';
@@ -148,9 +150,17 @@
 
 {#snippet entity(row: Entry)}
 	{@const href = entityHref(row)}
-	{#if href}<a class="inline-flex min-h-11 items-center" {href}>{identity(row)}</a>{:else}{identity(
-			row,
-		)}{/if}
+	{#snippet name()}
+		{#if kind === 'line'}
+			{@const line = display.lineName(row.id)}
+			<RecordLineLabel label={line.label} code={line.number} />
+		{:else}
+			{identity(row)}
+		{/if}
+	{/snippet}
+	{#if href}<a class="inline-flex min-h-11 flex-wrap items-center gap-x-1" {href}
+			>{@render name()}</a
+		>{:else}{@render name()}{/if}
 {/snippet}
 
 <Surface>
@@ -192,13 +202,16 @@
 			<section id="ranking" aria-labelledby="ranking-title" class="grid min-w-0 gap-3">
 				<h2 id="ranking-title">{listLabel}</h2>
 				{#if !record.answer}
-					<p>{t('Not measured on those dates', 'Non mesuré à ces dates')}</p>
+					<StateNotice
+						presentation="frameless"
+						title={t('Not measured on those dates', 'Non mesuré à ces dates')}
+					/>
 				{:else}
 					{#await record.answer}
 						{#key record.answer}<RecordPending {locale} />{/key}
 					{:then result}
 						{@const message = recordMessage(result, locale)}
-						{#if message}<p>{message}</p>{/if}
+						{#if message}<StateNotice presentation="frameless" title={message} />{/if}
 						{#if result.kind === 'answer'}
 							{@const data = result.answer}
 							{@const shown = data.rows.slice(0, limit)}
@@ -266,6 +279,10 @@
 								)}
 							/>
 							{#if shown.length}
+								{@const countText = t(
+									`Showing ${tally(shown.length, locale)} of ${tally(data.ranked_count, locale)} ranked entries.`,
+									`${tally(shown.length, locale)} entrées affichées sur ${tally(data.ranked_count, locale)} classées.`,
+								)}
 								{#if shown.some((row) => row.ranking_bound != null)}
 									<p>{cautiousRanking[locale]}</p>
 								{/if}
@@ -329,12 +346,16 @@
 										</p>{/if}
 								{/each}
 								<div class="flex flex-wrap items-center gap-3">
-									<p role="status">
-										{t(
-											`Showing ${tally(shown.length, locale)} of ${tally(data.ranked_count, locale)} ranked entries.`,
-											`${tally(shown.length, locale)} entrées affichées sur ${tally(data.ranked_count, locale)} classées.`,
-										)}
-									</p>
+									<div role="status">
+										<FilterSummary
+											count={shown.length}
+											countLabel={{ singular: countText, plural: countText }}
+											{locale}
+											clearLabel={t('Clear filters', 'Effacer les filtres')}
+											canClear={kind === 'line' && serviceClass !== null}
+											onClear={() => select(kind, measure, null)}
+										/>
+									</div>
 									{#if limit < data.rows.length}
 										<Button variant="outline" size="cta-sm" onclick={() => (limit += 12)}
 											>{t('Show more', 'Afficher la suite')}</Button

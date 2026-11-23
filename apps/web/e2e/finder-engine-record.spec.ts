@@ -62,7 +62,12 @@ for (const locale of ['en', 'fr'] as const) {
 						.first(),
 				).toBeVisible();
 				await expect(performance.getByRole('rowheader').first()).toContainText('80');
-				await expect(scheduleOnly.getByRole('link', { name: /Confederation/ })).toBeVisible();
+				const rail = scheduleOnly.getByRole('link', { name: /Confederation/ });
+				await expect(rail).toBeVisible();
+				await expect(rail.locator('[data-slot="route-plate"]')).toHaveAttribute(
+					'data-schedule-only',
+					'true',
+				);
 				await expect(performance.getByRole('link', { name: /Confederation/ })).toHaveCount(0);
 				await expect(
 					scheduleOnly.getByText(fr ? 'Aucune donnée en direct' : 'No live data', { exact: true }),

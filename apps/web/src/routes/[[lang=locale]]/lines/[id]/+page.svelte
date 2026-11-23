@@ -14,6 +14,8 @@
 {#if data.record}
 	<LineRecord
 		name={data.seed.name}
+		code={data.code}
+		scheduleOnly={data.scheduleOnly}
 		{locale}
 		{url}
 		record={data.record}

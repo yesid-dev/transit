@@ -3,3 +3,23 @@ export function providerHasAlerts<T extends { inputs: Record<string, boolean> }>
 ): boolean {
 	return !(provider?.inputs.i3_alerts === false && provider.inputs.service_alerts === false);
 }
+
+export function lineIsScheduleOnly(
+	provider:
+		| {
+				lines_without_live_data: readonly {
+					route_ids: readonly string[];
+					route_types: readonly number[];
+				}[];
+		  }
+		| null
+		| undefined,
+	id: string,
+	type: number | null,
+): boolean {
+	return (
+		provider?.lines_without_live_data.some(
+			(gap) => gap.route_ids.includes(id) || (type !== null && gap.route_types.includes(type)),
+		) ?? false
+	);
+}

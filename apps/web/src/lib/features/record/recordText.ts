@@ -295,6 +295,16 @@ export function punctualityBands(cell: RecordCell, locale: Locale) {
 	return data.map(([id, label]) => ({ id, label, reading: shareReading(cell, id, locale, false) }));
 }
 
+export function measuredShare(cell: RecordCell | undefined, id: string): number | null {
+	if (
+		cell?.state !== 'measured' ||
+		cell.evidence.counts[id] == null ||
+		!cell.evidence.counts.classified
+	)
+		return null;
+	return cell.value[id] ?? null;
+}
+
 export function shareReading(
 	cell: Pick<RecordCell, 'state' | 'state_text' | 'value'> & {
 		evidence: RateEvidence & { counts: Counts };
