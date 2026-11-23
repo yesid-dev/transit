@@ -10,6 +10,7 @@ VEHICLE_TAIL_CAP_SECONDS = 3 * VEHICLE_POLL_SECONDS
 VEHICLE_REPORTING_GAP_SECONDS = 3 * VEHICLE_POLL_SECONDS
 MIN_STABLE_ID_READINGS = 2
 MIN_STABLE_READING_SHARE = 0.5
+MIN_VEHICLE_TERMINUS_SHARE = 0.5
 # One additional gap can move the ranking by at most ten gaps per 100 vehicle-hours.
 MIN_VEHICLE_RANKING_HOURS = 10
 # One additional unfinished trip moves the ranking by at most five per 100 trips.
@@ -89,6 +90,10 @@ VEHICLE_COUNTS = (
     "completion_sample",
     "completion_capture_gap",
     "completion_unknown",
+    "completion_ran_trips",
+    "completion_observed_termini",
+    "completion_days_below_threshold",
+    "completion_days_tracked",
 )
 
 
@@ -152,7 +157,7 @@ def vehicle_stats_query(
     reporting_counts = "0, 0, 0, 0"
     reporting_join = ""
     completion_sql = ""
-    completion_counts = "0, 0, 0, 0"
+    completion_counts = "0, 0, 0, 0, 0, 0, 0, 0"
     completion_join = ""
     params: list[object] = [
         paths[VEHICLE_POSITIONS],
@@ -191,28 +196,60 @@ def vehicle_stats_query(
         )
         reporting_join = "LEFT JOIN reporting g ON k.entity IS NOT DISTINCT FROM g.entity"
     if completion:
+        gps_terminus = int(str(scope[1])) >= 10
         terminus = "NULL::TIMESTAMPTZ"
-        if int(str(scope[1])) >= 10:
-            terminus = """
-                CASE WHEN t.terminus_vehicle_id = v.assigned_vehicle
-                    THEN t.terminus_reached_at_utc END
-            """
+        if gps_terminus:
+            terminus = """CASE WHEN t.terminus_vehicle_id = v.assigned_vehicle
+                THEN t.terminus_reached_at_utc END"""
+        terminus_observed = "t.terminus_reached_at_utc IS NOT NULL" if gps_terminus else "false"
         completion_sql = f"""
         , endpoints AS (
             SELECT service_date, trip_id, max(stop_sequence) AS final_stop,
                 arg_max_null(coalesce(scheduled_arrival_utc, scheduled_departure_utc),
                     stop_sequence) AS scheduled_end,
+                arg_max(stop_id, stop_sequence) AS final_stop_id,
                 max(stop_sequence) FILTER (observed_at_utc IS NOT NULL) AS observed_stop,
                 max(observed_at_utc) AS last_stop_time,
+                arg_max(stop_id, stop_sequence) FILTER (observed_at_utc IS NOT NULL)
+                    AS last_observed_stop_id,
+                arg_max(basis, stop_sequence) FILTER (observed_at_utc IS NOT NULL)
+                    AS last_observed_basis,
                 min(vehicle_id) FILTER (observed_at_utc IS NOT NULL) AS first_stop_id,
-                max(vehicle_id) FILTER (observed_at_utc IS NOT NULL) AS last_stop_id
+                max(vehicle_id) FILTER (observed_at_utc IS NOT NULL) AS last_stop_id,
+                arg_max_null(vehicle_id, stop_sequence) FILTER (observed_at_utc IS NOT NULL)
+                    AS last_observed_vehicle_id,
+                arg_min(stop_id, stop_sequence) AS origin_id,
+                arg_min_null(vehicle_id, stop_sequence) AS origin_vehicle_id,
+                arg_min_null(observed_at_utc, stop_sequence) AS origin_seen_at,
+                arg_min_null(basis, stop_sequence) AS origin_basis
             FROM read_parquet(?, hive_partitioning = false)
             WHERE provider = ? AND cleaning_version = ? AND service_date BETWEEN ? AND ?
             GROUP BY service_date, trip_id
+        ), terminus_counts AS (
+            SELECT t.service_date, count(*) AS ran_trips,
+                count(*) FILTER (e.observed_stop = e.final_stop OR {terminus_observed})
+                    AS observed_termini
+            FROM trips t LEFT JOIN endpoints e USING (service_date, trip_id)
+            WHERE t.state = 'ran'
+            GROUP BY t.service_date
+        ), terminus_coverage AS (
+            SELECT *, observed_termini >= {MIN_VEHICLE_TERMINUS_SHARE} * ran_trips AS tracked
+            FROM terminus_counts
+        ), terminus_summary AS (
+            SELECT coalesce(sum(ran_trips), 0) AS ran_trips,
+                coalesce(sum(observed_termini), 0) AS observed_termini,
+                count(*) FILTER (NOT tracked) AS days_below_threshold,
+                count(*) FILTER (tracked) AS tracked_days
+            FROM terminus_coverage
         ), attribution AS (
             SELECT service_date, trip_id, count(DISTINCT vehicle_id) AS assigned_vehicles,
                 min(vehicle_id) AS assigned_vehicle
             FROM assignments GROUP BY service_date, trip_id
+        ), last_position AS (
+            SELECT service_date, trip_id, vehicle_id, max(observed_at_utc) AS seen_at
+            FROM positions
+            WHERE service_date IS NOT NULL AND trip_id IS NOT NULL
+            GROUP BY service_date, trip_id, vehicle_id
         ), candidates AS (
             SELECT a.entity, a.service_date, a.trip_id,
                 t.state = 'ran' AND t.route_has_live_data
@@ -221,7 +258,29 @@ def vehicle_stats_query(
                     AND coalesce(e.first_stop_id, v.assigned_vehicle) = v.assigned_vehicle
                     AND coalesce(e.last_stop_id, v.assigned_vehicle) = v.assigned_vehicle
                     AS assessable,
-                e.observed_stop < e.final_stop AND ({terminus}) IS NULL AS unfinished,
+                coalesce(e.observed_stop = e.final_stop OR ({terminus}) IS NOT NULL, false)
+                    AS completed,
+                -- Two nearby stopped observations at the same upstream stop corroborate
+                -- the reassignment. A different ID alone says nothing about completion.
+                EXISTS (
+                    SELECT 1 FROM endpoints following
+                    JOIN trips next_trip USING (service_date, trip_id)
+                    WHERE following.service_date = e.service_date
+                        AND following.trip_id <> e.trip_id
+                        AND next_trip.state = 'ran'
+                        AND e.observed_stop < e.final_stop
+                        AND e.last_observed_stop_id <> e.final_stop_id
+                        AND e.last_observed_basis = 'vehicle_stopped'
+                        AND e.last_observed_vehicle_id = v.assigned_vehicle
+                        AND following.origin_basis = 'vehicle_stopped'
+                        AND following.origin_vehicle_id = v.assigned_vehicle
+                        AND following.origin_id = e.last_observed_stop_id
+                        AND following.origin_seen_at > e.last_stop_time
+                        AND following.origin_seen_at >= coalesce(lp.seen_at, e.last_stop_time)
+                        AND following.origin_seen_at <= e.last_stop_time
+                            + INTERVAL '{MAX_POLL_SPACING_SECONDS} seconds'
+                        AND following.origin_seen_at < e.scheduled_end
+                ) AS reassigned_upstream,
                 t.state_reason IS DISTINCT FROM 'capture_gap' AS no_trip_gap,
                 t.scheduled_start_utc - INTERVAL '{TRIP_CAPTURE_LEAD_SECONDS} seconds'
                     AS covered_from,
@@ -231,8 +290,11 @@ def vehicle_stats_query(
             JOIN attribution v USING (service_date, trip_id)
             LEFT JOIN trips t USING (service_date, trip_id)
             LEFT JOIN endpoints e USING (service_date, trip_id)
+            LEFT JOIN last_position lp ON lp.service_date = a.service_date
+                AND lp.trip_id = a.trip_id AND lp.vehicle_id = v.assigned_vehicle
         ), assessed AS (
-            SELECT *, coalesce(assessable, false) AND no_trip_gap AND EXISTS (
+            SELECT c.*, coalesce(terminus_coverage.tracked, false) AS tracked,
+                coalesce(assessable, false) AND no_trip_gap AND EXISTS (
                 SELECT 1 FROM realtime_feed_counts f
                 WHERE f.service_date = c.service_date AND f.required_feeds = (
                     SELECT count(DISTINCT coverage.feed) FROM coverage
@@ -241,19 +303,26 @@ def vehicle_stats_query(
                         AND coverage.covered_to >= c.covered_to
                 )
             ) AS eligible
-            FROM candidates c
+            FROM candidates c LEFT JOIN terminus_coverage USING (service_date)
         ), completions AS (
-            SELECT entity, count(*) FILTER (eligible AND unfinished) AS unfinished,
-                count(*) FILTER (eligible) AS sample,
-                count(*) FILTER (assessable AND NOT eligible) AS capture_gap,
-                count(*) FILTER (assessable IS NOT TRUE) AS unknown
+            SELECT entity,
+                count(*) FILTER (tracked AND eligible AND NOT completed AND reassigned_upstream)
+                    AS unfinished,
+                count(*) FILTER (tracked AND eligible AND (completed OR reassigned_upstream))
+                    AS sample,
+                count(*) FILTER (tracked AND assessable AND NOT eligible) AS capture_gap,
+                count(*) FILTER (tracked AND (assessable IS NOT TRUE
+                    OR (eligible AND NOT completed AND NOT reassigned_upstream))) AS unknown
             FROM assessed GROUP BY entity
         )
         """
         completion_counts = ", ".join(
             f"coalesce(c.{name}, 0)" for name in ("unfinished", "sample", "capture_gap", "unknown")
         )
-        completion_join = "LEFT JOIN completions c ON k.entity IS NOT DISTINCT FROM c.entity"
+        completion_counts += """, tc.ran_trips, tc.observed_termini,
+            tc.days_below_threshold, tc.tracked_days"""
+        completion_join = """LEFT JOIN completions c ON k.entity IS NOT DISTINCT FROM c.entity
+            CROSS JOIN terminus_summary tc"""
         params.extend([paths[STOP_EVENTS], *scope])
     return (
         f"""

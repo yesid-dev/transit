@@ -84,6 +84,7 @@ from transit_engine.vehicles import (
     MIN_STABLE_READING_SHARE,
     MIN_VEHICLE_RANKING_HOURS,
     MIN_VEHICLE_RANKING_TRIPS,
+    MIN_VEHICLE_TERMINUS_SHARE,
     TRACKED_VEHICLES_SQL,
     TRIP_CAPTURE_LEAD_SECONDS,
     VEHICLE_COUNTS,
@@ -2717,16 +2718,25 @@ _VEHICLE_REPORTING_EXCLUSIONS = Text(
     "collecte sont exclus du nombre et de la durée et figurent dans les données justificatives.",
 )
 _VEHICLE_COMPLETION_METHOD = Text(
-    "A confirmed stop before the scheduled terminal indicates an unfinished trip when the "
-    "terminal was never confirmed and capture is continuous. From cleaning v10, a GPS fix "
+    "A trip is counted as unfinished when the same vehicle is seen stopped at its last "
+    "confirmed upstream stop and then at the origin of another trip at that stop, within "
+    f"{MAX_POLL_SPACING_SECONDS} seconds and before the first trip’s scheduled end. The vehicle "
+    "must have ceased reporting the first trip. Trips "
+    "with neither a confirmed terminal nor this reassignment have an unknown outcome. "
+    "The share covers assessed trips with a known outcome. From cleaning v10, a GPS fix "
     "within 50 metres of the terminal can also confirm completion. Every recorded realtime feed "
     f"must be covered from {TRIP_CAPTURE_LEAD_SECONDS} seconds before scheduled departure "
     f"through {MAX_POLL_SPACING_SECONDS} seconds after the scheduled end or last observation, "
     "whichever is later. Usable polls contain advancing publications no more than "
     f"{MAX_POLL_AGE_SECONDS} seconds old plus the declared source lag, with spacing of at most "
-    f"{MAX_POLL_SPACING_SECONDS} seconds.",
-    "Un arrêt confirmé avant le terminus prévu indique un trajet non terminé si le terminus "
-    "n’a jamais été confirmé et que la collecte est continue. Depuis le nettoyage v10, "
+    f"{MAX_POLL_SPACING_SECONDS} seconds. Completion is not tracked on a date when fewer than "
+    f"{MIN_VEHICLE_TERMINUS_SHARE:.0%} of the city’s ran trips have an observed terminus.",
+    "On compte un trajet comme non terminé si le même véhicule est vu à l’arrêt à son "
+    "dernier arrêt confirmé avant le terminus, puis au départ d’un autre trajet au même arrêt, "
+    f"dans les {MAX_POLL_SPACING_SECONDS} secondes et avant la fin prévue du premier trajet. "
+    "Le véhicule doit avoir cessé de signaler le premier trajet. "
+    "Un trajet sans terminus confirmé ni réaffectation de ce type reste d’issue inconnue. "
+    "La part porte sur les trajets évalués dont l’issue est connue. Depuis le nettoyage v10, "
     "une position GPS à 50 mètres ou moins du terminus peut aussi confirmer la fin du trajet. "
     "Chaque flux temps réel consigné "
     f"doit être couvert de {TRIP_CAPTURE_LEAD_SECONDS} secondes avant le départ prévu à "
@@ -2734,7 +2744,9 @@ _VEHICLE_COMPLETION_METHOD = Text(
     "selon la plus tardive. Les relevés utilisables ont une publication plus récente que "
     f"les précédentes, vieille d’au plus {MAX_POLL_AGE_SECONDS} secondes plus le délai source "
     "déclaré, et sont espacés "
-    f"d’au plus {MAX_POLL_SPACING_SECONDS} secondes.",
+    f"d’au plus {MAX_POLL_SPACING_SECONDS} secondes. Le suivi de l’achèvement est indisponible "
+    f"les jours où moins de {MIN_VEHICLE_TERMINUS_SHARE:.0%} des trajets effectués dans la ville "
+    "ont un terminus observé.",
 )
 
 
@@ -2830,7 +2842,7 @@ def _vehicle_rows(
 _VEHICLES = Family(
     id=_VEHICLES_ID,
     label=Text("Vehicles", "Véhicules"),
-    method_version="vehicles-v2",
+    method_version="vehicles-v3",
     since="2026-11-22",
     tables=(VEHICLE_POSITIONS, TRIP_DAYS),
     query=_vehicle_rows,
@@ -3673,6 +3685,7 @@ class ReadWindow:
     included: list[str] = field(default_factory=list)
     missing_in_cut: bool = False
     not_tracked: list[str] = field(default_factory=list)
+    not_tracked_reasons: dict[str, str] = field(default_factory=dict)
     batch_days: int | None = None
     versions: dict[str, int] = field(default_factory=dict)
 
@@ -3730,13 +3743,26 @@ class ReadWindow:
                 else {}
             ),
             **({"days_not_tracked": self.not_tracked} if family.id == _VEHICLES_ID else {}),
+            **(
+                {"days_not_tracked_reasons": self.not_tracked_reasons}
+                if question.measure in _VEHICLE_COMPLETION_IDS
+                else {}
+            ),
         }
 
     def record_vehicle_tracking(
-        self, family: Family, offset: int, result: dict[EntityKey, Batch]
+        self, family: Family, question: Question, offset: int, result: dict[EntityKey, Batch]
     ) -> None:
-        if family.id == _VEHICLES_ID and (None,) in result:
+        if family.id != _VEHICLES_ID:
+            return
+        if (None,) in result:
             self.not_tracked.append(self.included[offset])
+        elif question.measure in _VEHICLE_COMPLETION_IDS and any(
+            part.counts["completion_days_below_threshold"] for part in result.values()
+        ):
+            day = self.included[offset]
+            self.not_tracked.append(day)
+            self.not_tracked_reasons[day] = "low_terminus_coverage"
 
 
 def read_window(
@@ -4488,7 +4514,7 @@ def ask(store: Store, question: Question) -> dict[str, Any]:
         window = read_window(conn, store, question, family, selected)
         for offset, batch in enumerate(window.batches()):
             result = family.query(conn, family, batch, question, str(store.cleaning_version), None)
-            window.record_vehicle_tracking(family, offset, result)
+            window.record_vehicle_tracking(family, question, offset, result)
             if () in result:
                 totals.update(result[()])
     state, values, family_evidence, _ = evaluate(
@@ -4637,7 +4663,7 @@ def _series_answer(
         window = read_window(conn, store, question, family, selected)
         alert_days = set(window.measured) if alerts else set()
         for offset, result in enumerate(_series_query_batches(conn, store, family, query, window)):
-            window.record_vehicle_tracking(family, offset, result)
+            window.record_vehicle_tracking(family, question, offset, result)
             if crowding and any(part.counts["published_intervals"] for part in result.values()):
                 occupancy_days.add(window.included[offset])
             for key, part in result.items():
@@ -4846,6 +4872,8 @@ def _vehicle_answer(
 
     hours = counts["service_us"] / _US_PER_HOUR
     completion_sample = counts["completion_sample"]
+    days_below_threshold = counts["completion_days_below_threshold"]
+    completion_untracked = days_below_threshold > 0 and not counts["completion_days_tracked"]
     vehicle_counts = {
         "days_in_service": counts["days_in_service"],
         "hours_in_service": hours,
@@ -4887,7 +4915,9 @@ def _vehicle_answer(
         for name in states.keys() - _VEHICLE_PUNCTUALITY_IDS:
             if name in _VEHICLE_COMPLETION_IDS:
                 samples[name] = completion_sample
-                if not completion_sample:
+                if completion_untracked:
+                    states[name] = "not_tracked"
+                elif not completion_sample:
                     states[name] = (
                         "not_measured" if counts["completion_capture_gap"] else "too_few_to_judge"
                     )
@@ -4948,6 +4978,19 @@ def _vehicle_answer(
                 ),
             },
             "measure_states": states,
+            **(
+                {
+                    "completion_coverage": {
+                        "ran_trips": counts["completion_ran_trips"],
+                        "observed_termini": counts["completion_observed_termini"],
+                        "minimum_share": MIN_VEHICLE_TERMINUS_SHARE,
+                        "days_below_threshold": days_below_threshold,
+                        "reason": "low_terminus_coverage" if days_below_threshold else None,
+                    },
+                }
+                if completion_measured
+                else {}
+            ),
             **timing_coverage,
         },
         samples,

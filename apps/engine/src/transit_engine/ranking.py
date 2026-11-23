@@ -410,7 +410,7 @@ def _rank_batches(
         if historical and ranking.kind != "vehicle":
             _historical_schedule(conn, batch, ranking.kind, totals, question.city, version)
         results = family.query(conn, family, batch, question, version, ranking.kind)
-        window.record_vehicle_tracking(family, offset, results)
+        window.record_vehicle_tracking(family, question, offset, results)
         for key, result in results.items():
             if key[0] is None or (ranking.kind == "departure" and key[2] is None):
                 continue
