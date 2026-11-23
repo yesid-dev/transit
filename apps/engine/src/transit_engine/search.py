@@ -5,9 +5,12 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import duckdb
+
 from transit_engine.cities import public_declaration, service_zone
-from transit_engine.measures import Question, ask
+from transit_engine.clean_manifest import TRIP_DAYS, VEHICLE_POSITIONS
 from transit_engine.store import Store
+from transit_engine.vehicles import TRACKED_VEHICLES_SQL
 
 
 def schedule_index(store: Store, city: str, end: date) -> dict[str, Any] | None:
@@ -33,32 +36,46 @@ def schedule_index(store: Store, city: str, end: date) -> dict[str, Any] | None:
     return schedule
 
 
+def _recent_vehicles(
+    store: Store, conn: duckdb.DuckDBPyConnection, city: str, days: list[date]
+) -> tuple[list[dict[str, str]] | None, str]:
+    ids: set[str] = set()
+    vehicle_state = "unavailable"
+    version = str(store.cleaning_version)
+    for day in days:
+        files = store.files(conn, city, day, (VEHICLE_POSITIONS, TRIP_DAYS))
+        if files is None:
+            continue
+        positions, trips = files
+        # Use the fleet's stability and trip association rules. Search only needs IDs,
+        # so it can skip ordering position intervals and computing service statistics.
+        row = conn.execute(
+            f"""
+            SELECT CASE WHEN ids IS NOT NULL THEN coalesce(in_service_ids, []) END
+            FROM ({TRACKED_VEHICLES_SQL})
+            """,
+            [[positions], city, version, [trips], city, version],
+        ).fetchone()
+        assert row is not None
+        if row[0] is not None:
+            ids.update(row[0])
+            vehicle_state = "ready"
+        elif vehicle_state == "unavailable":
+            vehicle_state = "not_tracked"
+    vehicles = [{"id": value} for value in sorted(ids)] if vehicle_state == "ready" else None
+    return vehicles, vehicle_state
+
+
 def search_index(store: Store, city: str) -> dict[str, Any]:
     _, identity, public = public_declaration(city)
     end = datetime.now(UTC).astimezone(service_zone(identity)).date() - timedelta(days=1)
-    start = end - timedelta(days=6)
     edition = schedule_index(store, city, end)
     schedule = {key: edition[key] for key in ("date", "routes", "stops")} if edition else None
 
-    vehicles: list[dict[str, str]] | None = None
-    vehicle_state = "unavailable"
     if public.get("stable_vehicle_ids") is False:
-        vehicle_state = "not_tracked"
+        vehicles, vehicle_state = None, "not_tracked"
     else:
-        answer = ask(
-            store,
-            Question(
-                city=city, start=start, end=end, measure="vehicle_days_in_service", group="vehicle"
-            ),
-        )
-        evidence = answer["evidence"]
-        if evidence.get("days_not_tracked") and not evidence.get("days_measured"):
-            vehicle_state = "not_tracked"
-        elif evidence.get("days_measured"):
-            vehicle_state = "ready"
-            vehicles = [
-                {"id": cell["key"]["vehicle"]}
-                for cell in answer["cells"]
-                if cell["value"].get("vehicle_days_in_service")
-            ]
+        days = [end - timedelta(days=offset) for offset in range(7)]
+        with store.connect() as conn:
+            vehicles, vehicle_state = _recent_vehicles(store, conn, city, days)
     return {"schedule": schedule, "vehicles": vehicles, "vehicle_state": vehicle_state}
