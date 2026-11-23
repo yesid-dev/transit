@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import { test } from './layout-test';
+import { streamingLayoutTest as test } from './layout-test';
 import { localizeHref } from '../src/lib/i18n/routing';
 import { waitForFrameClearance } from './layout-helpers';
 
@@ -28,12 +28,14 @@ for (const { name, path, section } of pages)
 						'px and ' +
 						scale +
 						'% text',
-					async ({ page, request }) => {
+					async ({ page, request, browserName, colorScheme }) => {
 						const city = locale === 'fr' ? 'octranspo' : 'stm';
+						const variant = (browserName === 'webkit' ? 2 : 0) + (colorScheme === 'dark' ? 1 : 0);
+						const start = '2026-10-' + String(15 + variant);
 						const end =
 							'2026-11-' +
 							String(10 + [320, 360, 390, 768, 1440].indexOf(width) * 2 + (scale === 200 ? 1 : 0));
-						const fixture = [name, city, end].join('-');
+						const fixture = [name, city, start, end].join('-');
 						const port = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
 						const releaseCut = () =>
 							request.post('http://127.0.0.1:' + port + '/__overview/release?fixture=' + fixture);
@@ -48,7 +50,7 @@ for (const { name, path, section } of pages)
 						try {
 							await page.setViewportSize({ width, height: 900 });
 							await page.goto(
-								localizeHref(path, locale, city) + '&recordFrom=2026-11-05&recordTo=' + end,
+								localizeHref(path, locale, city) + '&recordFrom=' + start + '&recordTo=' + end,
 								{ waitUntil: 'commit' },
 							);
 							await page.addStyleTag({ content: 'html { font-size: ' + scale + '%; }' });

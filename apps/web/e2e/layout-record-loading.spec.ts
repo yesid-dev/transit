@@ -1,17 +1,24 @@
 import { expect } from '@playwright/test';
-import { test } from './layout-test';
+import { streamingLayoutTest as test } from './layout-test';
 import { localizeHref } from '../src/lib/i18n/routing';
 import { waitForFrameClearance } from './layout-helpers';
 
 for (const locale of ['en', 'fr'] as const)
 	test(
 		locale + ' Daily report keeps its header and first reading still while messages stream',
-		async ({ page, request }) => {
+		async ({ page, request, browserName, colorScheme }) => {
 			const city = locale === 'fr' ? 'octranspo' : 'stm';
+			const variant = (browserName === 'webkit' ? 2 : 0) + (colorScheme === 'dark' ? 1 : 0);
+			const end = '2026-11-' + [18, 19, 21, 22][variant];
 			const port = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
 			const releaseMessages = () =>
 				request.post(
-					'http://127.0.0.1:' + port + '/__overview/release?fixture=daily-layout-' + city,
+					'http://127.0.0.1:' +
+						port +
+						'/__overview/release?fixture=daily-layout-' +
+						city +
+						'-' +
+						end,
 				);
 			const first = page.locator('#punctuality');
 			const message = page.locator('#messages');
@@ -24,11 +31,15 @@ for (const locale of ['en', 'fr'] as const)
 				for (const width of [320, 390, 768, 1280]) {
 					await page.setViewportSize({ width, height: 900 });
 					await page.goto(
-						localizeHref('/receipt', locale, city) + '&recordFrom=2026-11-18&recordTo=2026-11-18',
+						localizeHref('/receipt', locale, city) + '&recordFrom=2026-11-18&recordTo=' + end,
 						{ waitUntil: 'commit' },
 					);
 					await expect(first.getByText(/80\s?%/u).first()).toBeVisible();
-					await page.evaluate(() => document.fonts.ready);
+					await expect
+						.poll(() =>
+							page.evaluate(() => [...document.fonts].some((font) => font.status === 'loading')),
+						)
+						.toBe(false);
 					await expect(message.getByRole('link', { name: /CSV/u })).toHaveCount(0);
 					const before = await frame();
 					expect((await releaseMessages()).status()).toBe(204);

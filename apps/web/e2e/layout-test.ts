@@ -1,5 +1,8 @@
+import { createServer, request } from 'node:http';
 import { test as base, type Route } from '@playwright/test';
 import { forwardRoute } from './layout-helpers';
+
+const upgradeDirective = /(?:^|;)\s*upgrade-insecure-requests\s*(?=;|$)/g;
 
 // WebKit applies upgrade-insecure-requests even with bypassCSP. Wrangler's local
 // HTTP server has no TLS listener; keep this one directive out of fixture HTML.
@@ -18,7 +21,7 @@ export const test = base.extend({
 				const headers = response.headers();
 				if (headers['content-security-policy'])
 					headers['content-security-policy'] = headers['content-security-policy'].replace(
-						/(?:^|;)\s*upgrade-insecure-requests\s*(?=;|$)/g,
+						upgradeDirective,
 						'',
 					);
 				await route.fulfill({ response, headers });
@@ -40,6 +43,54 @@ export const test = base.extend({
 					await Promise.all([draining, page.route('**/*', fallback)]);
 					await page.unroute('**/*', fallback);
 				});
+		}
+	},
+});
+
+// route.fetch/fulfill buffers the document. A local relay gives WebKit the same
+// CSP adjustment while forwarding each part of the actual streamed response.
+export const streamingLayoutTest = base.extend({
+	baseURL: async ({ baseURL, browserName }, use) => {
+		if (browserName !== 'webkit') {
+			await use(baseURL);
+			return;
+		}
+		const worker = new URL(baseURL!);
+		const relay = createServer((incoming, outgoing) => {
+			const url = new URL(incoming.url ?? '/', worker);
+			if (url.origin !== worker.origin) {
+				outgoing.writeHead(400).end();
+				return;
+			}
+			const upstream = request(
+				url,
+				{ method: incoming.method, headers: { ...incoming.headers, host: worker.host } },
+				(response) => {
+					const headers = { ...response.headers };
+					const csp = headers['content-security-policy'];
+					if (typeof csp === 'string')
+						headers['content-security-policy'] = csp.replace(upgradeDirective, '');
+					outgoing.writeHead(response.statusCode!, headers);
+					response.pipe(outgoing);
+				},
+			);
+			upstream.on('error', (error) => outgoing.destroy(error));
+			outgoing.on('close', () => upstream.destroy());
+			incoming.pipe(upstream);
+		});
+		await new Promise<void>((resolve, reject) => {
+			relay.once('error', reject);
+			relay.listen(0, '127.0.0.1', resolve);
+		});
+		const address = relay.address();
+		if (!address || typeof address === 'string') throw new Error('Streaming relay did not bind');
+		try {
+			await use(`http://127.0.0.1:${address.port}`);
+		} finally {
+			await new Promise<void>((resolve) => {
+				relay.close(() => resolve());
+				relay.closeAllConnections();
+			});
 		}
 	},
 });
