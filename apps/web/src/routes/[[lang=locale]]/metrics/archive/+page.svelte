@@ -5,4 +5,4 @@
 	let { data }: { data: PageData } = $props();
 </script>
 
-<MetricsExplainer manifest={data.v1?.manifest} sqlHtml={data.sqlHtml} />
+<MetricsExplainer sqlHtml={data.sqlHtml} />

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { QUESTION_PARAMS } from "../src/question-params.js";
-import { serveBoundQuestion } from "../src/questions.js";
+import { probeEngine, serveBoundQuestion } from "../src/questions.js";
 import worker from "../src/worker.js";
 
 const WINDOW = "from=2020-01-01&to=2020-01-02";
@@ -523,4 +523,40 @@ test("settled answer lifetime uses each declared city's local date", async (t) =
   const ttl = (city) => [...f.answers].find(([key]) => key.includes(`/${city}/measure?`))[1].ttl;
   assert.equal(ttl("demo"), 30);
   assert.equal(ttl("other-city"), 604800);
+});
+
+test("service-binding health probes the engine directly and keeps the public endpoint closed", async () => {
+  const requests = [];
+  const env = {
+    TRANSIT1_ENGINE_ACCESS_TOKEN: "test-token",
+    ENGINE: {
+      fetch(request) {
+        requests.push(request);
+        return Response.json({ boot_id: "test-boot" });
+      },
+    },
+  };
+  const response = await probeEngine(env, new AbortController().signal);
+  assert.deepEqual(await response.json(), { engine: "ok" });
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.equal(requests[0].url, "https://transit-engine.internal/healthz");
+  assert.equal(requests[0].headers.get("authorization"), "Bearer test-token");
+
+  const publicProbe = await worker.fetch(new Request("https://data.yesid.dev/v2/health"), env, {});
+  assert.equal(publicProbe.status, 404);
+  assert.equal(requests.length, 1);
+});
+
+test("engine health distinguishes missing configuration from an unavailable engine", async () => {
+  const signal = new AbortController().signal;
+  const unconfigured = await probeEngine({}, signal);
+  assert.equal(unconfigured.status, 503);
+  assert.deepEqual(await unconfigured.json(), { engine: "unconfigured" });
+
+  const unreachable = await probeEngine({
+    TRANSIT1_ENGINE_ACCESS_TOKEN: "test-token",
+    ENGINE: { fetch: () => Response.json({ message: "internal error" }, { status: 503 }) },
+  }, signal);
+  assert.equal(unreachable.status, 503);
+  assert.deepEqual(await unreachable.json(), { engine: "unavailable" });
 });

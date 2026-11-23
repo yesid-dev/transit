@@ -83,9 +83,11 @@ it('rejects an eight-date agency message CSV request before asking the engine', 
 	expect(getRecordCsv).not.toHaveBeenCalled();
 });
 
-it('keeps explicit historical receipt URLs on the archive', async () => {
-	await expect(load(event('https://transit1.yesid.dev/receipt?date=2026-08-30'))).resolves.toEqual({
-		report: null,
+it('shows an unavailable period for dates before the clean record', async () => {
+	await expect(
+		load(event('https://transit1.yesid.dev/receipt?date=2026-08-30')),
+	).resolves.toMatchObject({
+		report: { period: null, sections: [] },
 	});
 	expect(getRecordAnswer).not.toHaveBeenCalled();
 });

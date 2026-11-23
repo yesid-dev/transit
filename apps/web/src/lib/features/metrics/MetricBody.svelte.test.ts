@@ -122,8 +122,7 @@ describe('server-rendered methodology bodies', () => {
 		expect(view.container.querySelector('script, img, [onerror]')).toBeNull();
 	});
 
-	it('keeps published notes and disclosure state outside the static body', async () => {
-		state.provenance = { methodology: { otp_definition: 'Published current-run note' } };
+	it('keeps archived definitions stable while the disclosure toggles', async () => {
 		const view = render(MetricsExplainer, { props: { sqlHtml: (await loadPage()).sqlHtml } });
 		const block = view.container.querySelector('#otp') as HTMLElement;
 		const body = block.querySelector('.section-body') as HTMLElement;
@@ -131,12 +130,6 @@ describe('server-rendered methodology bodies', () => {
 		const staticBody = block.querySelector(
 			'[data-slot="metric-static-information"]',
 		) as HTMLElement;
-		const note = block.querySelector('[data-slot="pipeline-note"]') as HTMLElement;
-		expect(note.textContent).toBe('Published current-run note');
-		expect(staticBody.contains(note)).toBe(false);
-		expect(note.closest('.metric__information-stack')).toBe(
-			staticBody.closest('.metric__information-stack'),
-		);
 		const code = staticBody.querySelector('pre');
 		await fireEvent.click(trigger);
 		expect(body).toHaveAttribute('inert');

@@ -1,128 +1,62 @@
-const workers = vi.hoisted(() => ({ env: {} as Record<string, unknown> }));
-vi.mock('cloudflare:workers', () => workers);
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import catalog from '../../../e2e/providers.json';
-
-vi.mock('$app/env/public', async () => ({
-	...(await import('./../../tests/publicEnv.ts')).PUBLIC_ENV,
-	...{},
-}));
-
-const getRoutesIndex = vi.fn();
-const getStopsIndex = vi.fn();
-const loadProviderCatalog = vi.fn();
-
-vi.mock('#lib/v1/providers.ts', async (importOriginal) => ({
-	...(await importOriginal<typeof import('#lib/v1/providers.ts')>()),
-	loadProviderCatalog: (...args: unknown[]) => loadProviderCatalog(...args),
-}));
-
-vi.mock('#lib/v1/repositories/static.ts', () => ({
-	getRoutesIndex: (...args: unknown[]) => getRoutesIndex(...args),
-	getStopsIndex: (...args: unknown[]) => getStopsIndex(...args),
-}));
-
-vi.mock('#lib/site/config.ts', () => ({
-	readPublicSiteConfig: () => ({ siteOrigin: 'https://transit.yesid.dev', indexing: true }),
-}));
-
 import { GET } from './+server';
 
-type Handler = typeof GET;
+const engine = vi.hoisted(() => ({ getCityCatalog: vi.fn(), getScheduleEdition: vi.fn() }));
+vi.mock('#lib/server/engine.ts', () => engine);
+vi.mock('#lib/site/config.ts', () => ({
+	readPublicSiteConfig: () => ({ siteOrigin: 'https://transit1.yesid.dev', indexing: true }),
+}));
 
-const ORIGIN = 'https://transit.yesid.dev';
+const origin = 'https://transit1.yesid.dev';
 
-function event(opts: { binding?: unknown; snapshots?: unknown; search?: string } = {}) {
-	const env = {
-		...(opts.binding === undefined ? {} : { DATA: opts.binding }),
-		...(opts.snapshots === undefined ? {} : { SNAPSHOTS: opts.snapshots }),
-	};
-	workers.env = env;
-	return {
-		fetch: vi.fn(),
-		locals: {},
-		url: new URL(`${ORIGIN}/sitemap.xml${opts.search ?? ''}`),
-	} as unknown as Parameters<Handler>[0];
-}
-
-async function bodyOf(response: Response): Promise<string> {
-	return await response.text();
+function event(search = '') {
+	const url = new URL(origin + '/sitemap.xml' + search);
+	const request = new Request(url);
+	return { url, request } as Parameters<typeof GET>[0];
 }
 
 beforeEach(() => {
-	getRoutesIndex.mockReset();
-	getStopsIndex.mockReset();
-	loadProviderCatalog.mockReset();
-	loadProviderCatalog.mockResolvedValue(catalog);
+	engine.getCityCatalog.mockReset().mockResolvedValue(catalog);
+	engine.getScheduleEdition.mockReset().mockImplementation(async (id: string) => ({
+		routes: [{ id: id === 'stm' ? '11' : '5' }],
+		stops: [{ id: id === 'stm' ? '10001' : 'OC1' }],
+	}));
 });
 
-describe('sitemap.xml handler', () => {
-	it('carries validated OC identity into every entity and alternate URL', async () => {
-		getRoutesIndex.mockResolvedValue({ routes: [{ id: '5' }] });
-		getStopsIndex.mockResolvedValue({ stops: [{ id: 'OC1' }] });
-		const response = await GET(
-			event({ snapshots: { get: vi.fn() }, search: '?provider=octranspo' }),
-		);
+describe('sitemap.xml', () => {
+	it('lists bilingual addresses from every city’s clean schedule edition', async () => {
+		const response = await GET(event());
+		expect(response.status).toBe(200);
+		expect(response.headers.get('content-type')).toContain('application/xml');
 		const xml = await response.text();
-		expect(xml).toContain(`<loc>${ORIGIN}/lines/5?provider=octranspo</loc>`);
-		expect(xml).toContain(`hreflang="fr" href="${ORIGIN}/fr/lines/5?provider=octranspo"`);
-		expect(getRoutesIndex.mock.calls[0]?.[0]).toMatchObject({ providerId: 'octranspo' });
+		expect(xml).toContain('<loc>' + origin + '/fr/lines/11</loc>');
+		expect(xml).toContain('<loc>' + origin + '/stop/10001</loc>');
+		expect(xml).toContain('<loc>' + origin + '/lines/5?provider=octranspo</loc>');
+		expect(xml).toContain('hreflang="fr" href="' + origin + '/fr/stop/OC1?provider=octranspo"');
 	});
 
-	it('normalizes an invalid provider before reading that namespace', async () => {
-		const response = await GET(event({ snapshots: { get: vi.fn() }, search: '?provider=unknown' }));
+	it('keeps another city’s addresses when a schedule is unavailable', async () => {
+		engine.getScheduleEdition.mockImplementation(async (id) =>
+			id === 'stm' ? null : { routes: [{ id: '5' }], stops: [] },
+		);
+		const xml = await (await GET(event())).text();
+		expect(xml).toContain('/lines/5?provider=octranspo');
+		expect(xml).not.toContain('/lines/11');
+	});
+
+	it('normalizes an invalid provider before requesting a schedule', async () => {
+		const response = await GET(event('?provider=unknown'));
 		expect(response.status).toBe(307);
 		expect(response.headers.get('location')).toBe('/sitemap.xml?provider=stm');
-		expect(getRoutesIndex).not.toHaveBeenCalled();
+		expect(engine.getScheduleEdition).not.toHaveBeenCalled();
 	});
 
-	it('(a) direct R2 snapshot binding + indexing on: enumerates entity URLs', async () => {
-		getRoutesIndex.mockResolvedValue({
-			generated_utc: '2026-06-20T07:00:00Z',
-			routes: [{ id: '11' }, { id: '747' }],
-		});
-		getStopsIndex.mockResolvedValue({
-			generated_utc: '2026-06-20T07:00:00Z',
-			stops: [{ id: '10001' }],
-		});
-
-		const res = await GET(event({ snapshots: { get: vi.fn() } }));
-		expect(res.status).toBe(200);
-		expect(res.headers.get('content-type')).toContain('application/xml');
-		const xml = await bodyOf(res);
-
-		expect(xml).toContain(`<loc>${ORIGIN}/</loc>`);
-		expect(xml).toContain(`<loc>${ORIGIN}/lines/11</loc>`);
-		expect(xml).toContain(`<loc>${ORIGIN}/fr/lines/11</loc>`);
-		expect(xml).toContain(`<loc>${ORIGIN}/lines/747</loc>`);
-		expect(xml).toContain(`<loc>${ORIGIN}/stop/10001</loc>`);
-		expect(xml).toContain(`<lastmod>${new Date('2026-06-20T07:00:00Z').toISOString()}</lastmod>`);
-		expect(getRoutesIndex).toHaveBeenCalledTimes(1);
-		expect(getStopsIndex).toHaveBeenCalledTimes(1);
-	});
-
-	it('(b) a thrown index fetch: degrades to static-only, no 500', async () => {
-		getRoutesIndex.mockRejectedValue(new Error('data-proxy down'));
-		getStopsIndex.mockResolvedValue({ generated_utc: null, stops: [{ id: '10001' }] });
-
-		const res = await GET(event({ binding: { fetch: vi.fn() } }));
-		expect(res.status).toBe(200);
-		const xml = await bodyOf(res);
-
-		expect(xml).toContain(`<loc>${ORIGIN}/</loc>`);
+	it('falls back to static routes when city discovery is unavailable', async () => {
+		engine.getCityCatalog.mockRejectedValue(new Error('catalog unavailable'));
+		const xml = await (await GET(event())).text();
+		expect(xml).toContain('<loc>' + origin + '/vehicles</loc>');
 		expect(xml).not.toContain('/lines/');
-		expect(xml).not.toContain('/stop/');
-	});
-
-	it('(c) no binding: static-only sitemap, loaders never called', async () => {
-		const res = await GET(event());
-		expect(res.status).toBe(200);
-		const xml = await bodyOf(res);
-
-		expect(xml).toContain(`<loc>${ORIGIN}/</loc>`);
-		expect(xml).not.toContain('/lines/');
-		expect(xml).not.toContain('/stop/');
-		expect(getRoutesIndex).not.toHaveBeenCalled();
-		expect(getStopsIndex).not.toHaveBeenCalled();
+		expect(engine.getScheduleEdition).not.toHaveBeenCalled();
 	});
 });

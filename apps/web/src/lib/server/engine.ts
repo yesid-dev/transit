@@ -87,6 +87,23 @@ export type EngineResult<T> =
 export type EnginePeriod = DateWindow & { city: string; visitorIp?: string | null };
 const QUESTION_ORIGIN = 'https://data.yesid.dev';
 
+export async function getEngineHealth() {
+	const unavailable = { proxy: 'unavailable', engine: 'unknown' } as const;
+	const signal = AbortSignal.timeout(3_000);
+	try {
+		const response = await engineFetch('/health', {}, signal);
+		if (!response) return { proxy: 'unconfigured', engine: 'unknown' } as const;
+		if (response.status !== 200 && response.status !== 503) return unavailable;
+		const result = z
+			.object({ engine: z.enum(['ok', 'unavailable', 'unconfigured']) })
+			.safeParse(await response.json());
+		if (!result.success || (result.data.engine === 'ok') !== response.ok) return unavailable;
+		return { proxy: 'ok', engine: result.data.engine } as const;
+	} catch {
+		return unavailable;
+	}
+}
+
 function engineFetch(
 	path: string,
 	parameters: Record<string, string>,

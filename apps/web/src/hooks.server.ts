@@ -3,11 +3,9 @@ import type { Handle, HandleServerError, ServerInit } from '@sveltejs/kit/hooks'
 import { pathLocale } from '#lib/i18n/index.ts';
 import { readRequestLocation } from '#lib/v1/requestLocation.ts';
 import { readPublicSiteConfig } from '#lib/site/config.ts';
-import { dailyReportFrame } from '#lib/site/dailyReportFrame.ts';
 import { lineFrameView } from '#lib/site/lineFrame.ts';
 import { networkRecordView } from '#lib/site/networkFrame.ts';
 import { stopFrameView } from '#lib/site/stopFrame.ts';
-import { usesFinderRecord } from '#lib/site/finderFrame.ts';
 import { DOCUMENT_SECURITY_HEADERS } from '#lib/site/securityHeaders.ts';
 import { configureTransitUi } from '#lib/ui/configure.ts';
 import { preloadFont } from '@yesid/tokens/fonts';
@@ -120,8 +118,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 		event.route.id === '/[[lang=locale]]/status' &&
 		event.url.searchParams.get('frameMode') !== 'live';
 	const finderRecord =
-		(event.route.id === '/[[lang=locale]]/lines' || event.route.id === '/[[lang=locale]]/stops') &&
-		usesFinderRecord(event.url);
+		event.route.id === '/[[lang=locale]]/lines' || event.route.id === '/[[lang=locale]]/stops';
 	const streamedRecord =
 		overviewRecord ||
 		(event.route.id === '/[[lang=locale]]/network' && networkRecordView(event.url)) ||
@@ -135,7 +132,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 		healthRecord ||
 		(event.route.id === '/[[lang=locale]]/alerts' &&
 			event.url.searchParams.get('frameMode') !== 'live') ||
-		(event.route.id === '/[[lang=locale]]/receipt' && dailyReportFrame(event.url)) ||
+		event.route.id === '/[[lang=locale]]/receipt' ||
 		event.route.id === '/[[lang=locale]]/departure/[key]';
 	const automaticSelection =
 		event.route.id?.startsWith('/[[lang=locale]]') === true &&

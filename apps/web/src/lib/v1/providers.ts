@@ -2,8 +2,6 @@ import { delocalizePath, localizeHref, pathLocale } from '#lib/i18n/index.ts';
 import { carryFrameState } from '#lib/site/frameState.ts';
 import { isInsideBounds } from '#lib/geocode/types.ts';
 import type { ApproximateLocation } from './requestLocation';
-import { v1BaseUrl } from './config';
-import { PublicProviderCatalogSchema, type PublicProviderCatalog } from './schemas/providers';
 export { PublicProviderSchema, PublicProviderCatalogSchema } from './schemas/providers';
 export type { PublicProvider, PublicProviderCatalog } from './schemas/providers';
 
@@ -88,10 +86,4 @@ export function resolveProvider<T extends import('./schemas/providers').PublicPr
 			? normalizeProviderUrl(url, provider.id)
 			: url;
 	return { provider, url: normalized };
-}
-
-export async function loadProviderCatalog(fetcher: typeof fetch): Promise<PublicProviderCatalog> {
-	const response = await fetcher(`${v1BaseUrl()}/providers.json`);
-	if (!response.ok) throw new Error(`Provider catalog unavailable (${response.status})`);
-	return PublicProviderCatalogSchema.parse(await response.json());
 }

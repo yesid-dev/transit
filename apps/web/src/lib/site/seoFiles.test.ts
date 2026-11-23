@@ -15,6 +15,7 @@ const SURFACES = [
 	'/map',
 	'/lines',
 	'/stops',
+	'/vehicles',
 	'/network',
 	'/search',
 	'/metrics',

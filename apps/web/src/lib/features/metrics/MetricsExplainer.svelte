@@ -1,18 +1,10 @@
 <script lang="ts">
-	import type { Manifest } from '#lib/v1/schemas/index.ts';
-	import { createRecordStamp } from '#lib/v1/recordStamp.svelte.ts';
 	import ArticleHeader from '#lib/components/layout/TransitArticleHeader.svelte';
-	import { desktop } from '@yesid/ui/state';
 	import { Badge } from '@yesid/ui/badge';
 	import { useAvailableSectionJump } from '#lib/site/availableSectionJump.svelte.ts';
-	import { intl, getLocale, getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
-	import { getProvenance } from '#lib/v1/repositories/provenance.ts';
-	import { getHistoricAvailability } from '#lib/v1/repositories/historic.ts';
-	import { createResource } from '#lib/v1/resource.svelte.ts';
-	import ConformanceBadge from '#lib/components/surface/ConformanceBadge.svelte';
+	import { getLocale, getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
 	import { ArticleSectionStack } from '#lib/components/layout/index.ts';
 	import { DetailFrame } from '@yesid/ui/layout';
-	import { StateNotice } from '@yesid/ui/feedback';
 	import {
 		SectionLabel,
 		SectionHeading,
@@ -22,22 +14,14 @@
 		type TocEntry,
 	} from '@yesid/ui/brand';
 	import SectionsToggle from '#lib/components/shared/SectionsToggle.svelte';
-	import { TypedInformationCard } from '#lib/components/shared/index.ts';
-	import {
-		METRICS,
-		METRIC_CLUSTER_ORDER,
-		methodologyNoteFor,
-		type MetricEntry,
-	} from './metrics.content';
+	import { METRICS, METRIC_CLUSTER_ORDER, type MetricEntry } from './metrics.content';
 	import { metricsCopy } from './metrics.copy';
 	import MetricBody, { type MetricSqlHtml } from './MetricBody.svelte';
-	import HistoryDepth from './HistoryDepth.svelte';
 	import { historyDepthCopy } from './historyDepth.copy';
 
 	const localizeHref = getLocalizeHref();
 
-	let { sqlHtml, manifest = null }: { sqlHtml?: MetricSqlHtml; manifest?: Manifest | null } =
-		$props();
+	let { sqlHtml }: { sqlHtml?: MetricSqlHtml } = $props();
 
 	const locale: Locale = getLocale();
 	const t = $derived(metricsCopy[locale]);
@@ -45,34 +29,6 @@
 	const LACUNES_ANCHOR = 'structural-gaps';
 
 	const LIVE_POSITIONS_ANCHOR = 'live-positions';
-
-	const provenance = createResource(() => getProvenance());
-	const history = createResource(
-		(signal) => getHistoricAvailability({ signal, manifest: manifest ?? undefined }),
-		{ enabled: () => manifest != null, key: () => manifest?.provider },
-	);
-	let desktopRailVisited = $state(false);
-	$effect(() => {
-		if (desktop.current) desktopRailVisited = true;
-	});
-
-	const provenanceUnavailable = $derived(
-		provenance.settled && !provenance.data?.conformance && provenance.error != null,
-	);
-
-	const methodologyNumber = (key: string): number | null => {
-		const raw = provenance.data?.methodology?.[key];
-		return typeof raw === 'number' && Number.isFinite(raw) ? raw : null;
-	};
-	const doctrineConstants = $derived.by(() => {
-		const minN = methodologyNumber('min_n_rate');
-		const wilsonZ = methodologyNumber('wilson_z');
-		if (minN == null || wilsonZ == null) return null;
-		return {
-			minN: intl.number(locale).format(minN),
-			wilsonZ: intl.number(locale).format(wilsonZ),
-		};
-	});
 
 	const groups = $derived(
 		METRIC_CLUSTER_ORDER.map((cluster) => ({
@@ -84,28 +40,14 @@
 
 	const orderedMetrics = $derived(groups.flatMap((g) => g.entries));
 
-	const record = createRecordStamp(
-		() => manifest,
-		() => provenance.data?.generated_utc ?? null,
-		() => ({
-			rootIndex: history.data,
-			state:
-				history.loading || !history.settled ? 'loading-index' : history.error ? 'error' : 'current',
-		}),
-	);
 	const articleMeta = $derived(
 		[
-			record.meta(locale),
 			`${orderedMetrics.length} ${t.statRail.coverage.metrics}`,
 			`${groups.length} ${t.statRail.coverage.families}`,
 		].filter((x) => x != null),
 	);
 	const confidenceMeaning = $derived(
 		(entry: MetricEntry) => t.confidence.levels[entry.confidence].chip,
-	);
-
-	const methodologyNote = $derived((entry: MetricEntry): string | null =>
-		methodologyNoteFor(entry.key, provenance.data?.methodology),
 	);
 
 	const PROVENANCE_ANCHOR = 'metrics-provenance';
@@ -152,26 +94,6 @@
 
 {#snippet statCards()}
 	<div class="metrics-stat-rail">
-		{#if desktopRailVisited && (provenance.data?.conformance || provenanceUnavailable)}
-			<CollapsibleSection title={t.statRail.provenance.title} headerVariant="article-summary">
-				{#snippet icon()}
-					<SectionIcon name="layers" class="h-4 w-4 shrink-0 text-primary" />
-				{/snippet}
-				<div class="metrics-stat__body" data-slot="stat-provenance">
-					{#if provenance.data?.conformance}
-						<ConformanceBadge conformance={provenance.data.conformance} {locale} />
-					{:else}
-						<StateNotice
-							title={t.statRail.provenance.unavailable}
-							presentation="silo"
-							role="status"
-							aria-live="polite"
-						/>
-					{/if}
-				</div>
-			</CollapsibleSection>
-		{/if}
-
 		<CollapsibleSection title={t.statRail.coverage.title} headerVariant="article-summary">
 			{#snippet icon()}
 				<SectionIcon name="chart" class="h-4 w-4 shrink-0 text-primary" />
@@ -218,7 +140,6 @@
 			backHref={localizeHref('/', locale)}
 			backLabel={t.article.back}
 			meta={articleMeta}
-			metaPending={provenance.loading || !provenance.settled || record.pending}
 			titleId="metrics-title"
 		>
 			{#snippet controls()}
@@ -260,18 +181,6 @@
 				<div class="metrics-article-prose">
 					<p class="metrics-lede">{t.lede}</p>
 					<p class="metrics-preamble">{t.provenance.body}</p>
-					{#if provenance.data?.conformance}
-						<div class="metrics-conformance">
-							<ConformanceBadge conformance={provenance.data.conformance} {locale} />
-						</div>
-					{:else if provenanceUnavailable}
-						<StateNotice
-							title={t.provenance.unavailable}
-							presentation="silo"
-							role="status"
-							aria-live="polite"
-						/>
-					{/if}
 
 					<div class="metrics-measure">
 						<SectionLabel text={t.provenance.howWeMeasure.label} variant="metric" />
@@ -298,23 +207,6 @@
 							</h3>
 							<p class="metric__prose">{t.provenance.howWeMeasure.rounding.body}</p>
 						</div>
-						<div class="metrics-measure__item">
-							<h3 class="metrics-measure__heading">
-								{t.provenance.howWeMeasure.constants.heading}
-							</h3>
-							{#if doctrineConstants}
-								<p class="metric__prose" data-testid="metrics-doctrine-constants">
-									{t.provenance.howWeMeasure.constants.body(
-										doctrineConstants.minN,
-										doctrineConstants.wilsonZ,
-									)}
-								</p>
-							{:else}
-								<p class="metric__prose" role="status" data-testid="metrics-doctrine-absent">
-									{t.provenance.howWeMeasure.constants.absent}
-								</p>
-							{/if}
-						</div>
 					</div>
 
 					<div class="metrics-legend">
@@ -340,7 +232,14 @@
 				anchor={HISTORY_ANCHOR}
 				open={true}
 			>
-				<HistoryDepth resource={history} {locale} detailsHref={localizeHref('/status', locale)} />
+				<p>
+					{locale === 'fr'
+						? 'Consultez la couverture du bilan actuel par date et par source.'
+						: 'See what the current record covers by date and source.'}
+				</p>
+				<a class="metric__top" href={localizeHref('/status', locale)}
+					>{historyDepthCopy[locale].details}</a
+				>
 			</CollapsibleSection>
 		</div>
 
@@ -350,7 +249,6 @@
 				<ArticleSectionStack class="metrics-cluster__cards" data-slot-variant="metric-cluster">
 					{#each group.entries as entry (entry.key)}
 						{@const metricIndex = orderedMetrics.findIndex((m) => m.key === entry.key)}
-						{@const note = methodologyNote(entry)}
 						<div class="section-block" id={entry.anchor}>
 							<CollapsibleSection
 								title={entry.name[locale]}
@@ -368,14 +266,6 @@
 
 									<div class="metric__information-stack">
 										<MetricBody {entry} {locale} sqlHtml={sqlHtml?.[entry.key]} />
-
-										{#if note}
-											<TypedInformationCard kind="pipeline-note" label={t.sections.pipelineNote}>
-												<p class="metric__prose metric__pipeline-note" data-slot="pipeline-note">
-													{note}
-												</p>
-											</TypedInformationCard>
-										{/if}
 									</div>
 
 									<a class="metric__top" href="#metrics-provenance">{t.backToTop}</a>
@@ -510,9 +400,6 @@
 		margin: 0;
 		color: var(--muted-foreground);
 	}
-	.metrics-conformance {
-		display: flex;
-	}
 	.metrics-measure {
 		display: flex;
 		flex-direction: column;
@@ -591,8 +478,7 @@
 		margin: 0;
 		color: var(--foreground);
 	}
-	.metric__prose,
-	.metric__pipeline-note {
+	.metric__prose {
 		font-size: inherit;
 		line-height: inherit;
 	}

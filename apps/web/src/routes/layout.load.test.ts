@@ -49,7 +49,7 @@ function serverEvent(lang: 'fr' | undefined, pathname: string, binding = true) {
 		url: new URL(`https://transit.yesid.dev${pathname}`),
 		fetch: vi.fn(),
 		request: new Request(`https://transit.yesid.dev${pathname}`),
-		route: { id: null },
+		route: { id: '/[[lang=locale]]' + new URL(pathname, 'http://localhost').pathname },
 		locals: { v1Cache: new Map<string, unknown>() } as {
 			v1Cache: Map<string, unknown>;
 			locale?: 'en' | 'fr';
@@ -79,6 +79,21 @@ beforeEach(() => {
 });
 
 describe('root server layout boot', () => {
+	it.each([
+		['', '/?frameMode=record'],
+		['/lines', '/lines'],
+		['/lines/[id]', '/lines/24?tab=schedule'],
+		['/stop/[id]', '/stop/S1'],
+		['/status', '/status'],
+		['/receipt', '/receipt?date=2026-08-30'],
+		['/metrics/archive', '/metrics/archive'],
+	])('leaves snapshot transport idle on %s', async (route, path) => {
+		const request = serverEvent(undefined, path);
+		Object.assign(request.route, { id: '/[[lang=locale]]' + route });
+		await expect(loadServerLayout(request)).resolves.toMatchObject({ loadSnapshots: false });
+		expect(harness.serverV1Context).not.toHaveBeenCalled();
+		expect(harness.bootProvider.mock.calls[0]?.[5]).toBe(false);
+	});
 	it('loads the clean edition for the selected city even without snapshot boot', async () => {
 		const selected = { ...selection(null), provider: { id: 'stm' } };
 		harness.bootProvider.mockResolvedValue(selected);

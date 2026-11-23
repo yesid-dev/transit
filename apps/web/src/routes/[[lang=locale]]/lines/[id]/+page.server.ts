@@ -8,9 +8,6 @@ import { linePageTitle } from '#lib/seo/riderPageTitle.ts';
 import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { canonicalDetailTabLocation, detailTabFromSearchParams } from '#lib/site/detailTabs.ts';
-import { historyRangeRequestFromSearchParams } from '#lib/v1/history/rangeResource.svelte.ts';
-import { loadLineHistorySeed } from '#lib/features/lines/reliability/data/lineHistoryResource.svelte.ts';
-import { getRouteReliability } from '#lib/v1/repositories/historic.ts';
 import { getRoute } from '#lib/v1/repositories/static.ts';
 import { serverV1Context, type IdentitySeed } from '#lib/v1/serverContext.ts';
 
@@ -34,7 +31,7 @@ export const load: PageServerLoad = async (event) => {
 
 	const { v1, schedule, lang, providerId } = await event.parent();
 	const record =
-		view && view !== 'live' && period
+		view !== 'live' && period
 			? loadLineRecord(
 					view,
 					period,
@@ -44,7 +41,7 @@ export const load: PageServerLoad = async (event) => {
 					event.request.headers.get('cf-connecting-ip'),
 				)
 			: null;
-	if (record) {
+	if (!frameLive) {
 		const directory = createLineDirectory(schedule?.routes ?? null, {
 			line: (routeId) => routeNameFallback(routeId, lang),
 		});
@@ -61,8 +58,6 @@ export const load: PageServerLoad = async (event) => {
 			record,
 			frameLive,
 			routeSeed: null,
-			reliabilitySeed: null,
-			lineHistorySeed: null,
 		};
 	}
 	if (!v1)
@@ -70,41 +65,25 @@ export const load: PageServerLoad = async (event) => {
 			seed: fallback,
 			...(frameLive ? { frameLive } : {}),
 			routeSeed: null,
-			reliabilitySeed: null,
-			lineHistorySeed: null,
 		};
 	const context = {
 		...serverV1Context(event),
 		providerId: v1.manifest.provider,
 		manifest: v1.manifest,
 	};
-	const request = historyRangeRequestFromSearchParams(event.url.searchParams);
-	const selectedHistory =
-		detailTabFromSearchParams(event.url.searchParams) === 'reliability' &&
-		(request.hasFrom || request.hasTo);
-	const [routeResult, reliabilityResult, historyResult] = await Promise.allSettled([
-		getRoute(id, context),
-		frameLive ? Promise.resolve(null) : getRouteReliability(id, context),
-		selectedHistory
-			? loadLineHistorySeed(id, request, { ...context, signal: event.request.signal })
-			: Promise.resolve(null),
-	]);
-	const route = routeResult.status === 'fulfilled' ? routeResult.value : undefined;
+	const routeSeed = await getRoute(id, context).then(
+		(data) => ({ key: id, data }),
+		() => null,
+	);
 	const directory = createLineDirectory(schedule?.routes ?? null, {
 		line: (id) => routeNameFallback(id, lang),
 	});
-	const name = directory.name(id, route?.long);
+	const name = directory.name(id, routeSeed?.data?.long);
 
 	return {
 		seed: { id, name: name.label },
 		...(frameLive ? { frameLive } : {}),
 		seoTitle: linePageTitle(name),
-		routeSeed: routeResult.status === 'fulfilled' ? { key: id, data: routeResult.value } : null,
-		reliabilitySeed:
-			reliabilityResult.status === 'fulfilled' ? { key: id, data: reliabilityResult.value } : null,
-		lineHistorySeed:
-			historyResult.status === 'fulfilled' && historyResult.value?.result != null
-				? historyResult.value
-				: null,
+		routeSeed,
 	};
 };

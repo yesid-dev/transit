@@ -13,7 +13,7 @@
 
 {#if data.record}
 	<StopEngineRecord stop={data.seed} code={data.stopCode} {locale} {url} record={data.record} />
-{:else}
+{:else if data.frameLive && data.v1}
 	{#if data.frameLive}<StopViewNav {locale} {url} view="live" />{/if}
 	<StopDetail
 		id={data.seed.id}

@@ -13,6 +13,7 @@ export const PATHS = [
 	'/map',
 	'/lines',
 	'/stops',
+	'/vehicles',
 	'/network',
 	'/search',
 	'/metrics',
@@ -92,31 +93,38 @@ export function _entitySitemapEntries(
 	);
 }
 
-export function buildSitemapXml(config: PublicSiteConfig, entities: SitemapEntities = {}): string {
-	const urls: string[] = config.indexing ? collectUrlBlocks(config.siteOrigin, entities) : [];
+export function buildSitemapXml(
+	config: PublicSiteConfig,
+	cities: SitemapEntities | readonly SitemapEntities[] = [],
+): string {
+	const urls = config.indexing
+		? collectUrlBlocks(config.siteOrigin, 'length' in cities ? cities : [cities])
+		: [];
 
 	return emitSitemapDocument(urls, { trailingNewline: true });
 }
 
-function collectUrlBlocks(siteOrigin: string, entities: SitemapEntities): string[] {
-	const staticBlocks = _sitemapEntries(
-		siteOrigin,
-		entities.staticLastmod ?? null,
-		entities.providerId,
+function collectUrlBlocks(siteOrigin: string, cities: readonly SitemapEntities[]): string[] {
+	const staticBlocks = (cities.length ? cities : [{}]).flatMap((city) =>
+		_sitemapEntries(siteOrigin, city.staticLastmod, city.providerId),
 	);
-	const routeBlocks = _entitySitemapEntries(
-		siteOrigin,
-		ROUTE_PREFIX,
-		entities.routeIds ?? [],
-		entities.entityLastmod ?? null,
-		entities.providerId,
+	const routeBlocks = cities.flatMap((city) =>
+		_entitySitemapEntries(
+			siteOrigin,
+			ROUTE_PREFIX,
+			city.routeIds ?? [],
+			city.entityLastmod,
+			city.providerId,
+		),
 	);
-	const stopBlocks = _entitySitemapEntries(
-		siteOrigin,
-		STOP_PREFIX,
-		entities.stopIds ?? [],
-		entities.entityLastmod ?? null,
-		entities.providerId,
+	const stopBlocks = cities.flatMap((city) =>
+		_entitySitemapEntries(
+			siteOrigin,
+			STOP_PREFIX,
+			city.stopIds ?? [],
+			city.entityLastmod,
+			city.providerId,
+		),
 	);
 
 	const all = [...staticBlocks, ...routeBlocks, ...stopBlocks];

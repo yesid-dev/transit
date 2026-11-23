@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { getLocale } from '#lib/i18n/index.ts';
-	import LinesIndex from '#lib/features/lines/LinesIndex.svelte';
 	import LinesRecordFinder from '#lib/features/lines/LinesRecordFinder.svelte';
 	import type { PageData } from './$types';
 
@@ -17,6 +16,4 @@
 		routes={data.schedule?.routes ?? []}
 		provider={data.provider}
 	/>
-{:else}
-	<LinesIndex />
 {/if}

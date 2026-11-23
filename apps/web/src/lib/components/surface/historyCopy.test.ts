@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { formatDateKey } from '#lib/utils/time.ts';
 import { endOnDate } from './historyCopy';
-import { copy as hotspots } from '#lib/features/hotspots/hotspots.copy.ts';
-import { copy as offenders } from '#lib/features/repeat-offenders/repeatOffenders.copy.ts';
 import { reliabilityCopy } from '#lib/features/lines/reliability/reliability.copy.ts';
 import { stopReliabilityCopy } from '#lib/features/stops/reliability/stops-reliability.copy.ts';
 
@@ -20,10 +18,6 @@ describe('endOnDate', () => {
 describe('history captions ending on a date', () => {
 	for (const locale of ['en', 'fr'] as const) {
 		const captions: Array<[string, (day: string) => string]> = [
-			['hotspots coverage', (day) => hotspots[locale].history.coverage(day, day)],
-			['hotspots selection', (day) => hotspots[locale].history.selection(day)],
-			['repeat offenders coverage', (day) => offenders[locale].history.coverage(day, day)],
-			['repeat offenders selection', (day) => offenders[locale].history.selection(day)],
 			['line coverage', (day) => reliabilityCopy[locale].history.coverage(day, day)],
 			['line selection', (day) => reliabilityCopy[locale].history.selection(day, day)],
 			['stop coverage', (day) => stopReliabilityCopy[locale].history.coverage(day, day)],
@@ -41,11 +35,6 @@ describe('history captions ending on a date', () => {
 	}
 
 	it('keeps the abbreviation period of a French month as the sentence end', () => {
-		expect(hotspots.fr.history.selection(formatDateKey('2026-11-17', 'fr'))).toBe(
-			'Date affichée : 17 nov.',
-		);
-		expect(offenders.fr.history.selection(formatDateKey('2026-05-17', 'fr'))).toBe(
-			'Date affichée : 17 mai.',
-		);
+		expect(endOnDate(formatDateKey('2026-11-17', 'fr'))).toBe('17 nov.');
 	});
 });

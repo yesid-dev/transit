@@ -306,6 +306,11 @@ const server = createServer((request, response) => {
 		response.writeHead(200, { 'content-type': 'application/json' }).end(methodCatalog);
 		return;
 	}
+	if (url.pathname === '/v2/health') {
+		response.writeHead(200, { 'content-type': 'application/json' });
+		response.end(JSON.stringify({ engine: 'ok' }));
+		return;
+	}
 	if (url.pathname === '/v2/cities' && !url.search) {
 		const { default_provider, providers } = JSON.parse(files['/v1/providers.json']);
 		response.writeHead(200, { 'content-type': 'application/json' }).end(

@@ -148,6 +148,25 @@ export function serveBoundQuestion(request, env, ctx) {
   return answerQuestion(request, env, ctx, request.headers.get("x-transit-visitor-ip"));
 }
 
+export async function probeEngine(env, signal) {
+  let engine = "unconfigured";
+  if (env.ENGINE && env.TRANSIT1_ENGINE_ACCESS_TOKEN) {
+    engine = "unavailable";
+    try {
+      const response = await env.ENGINE.fetch(new Request("https://transit-engine.internal/healthz", {
+        headers: { authorization: `Bearer ${env.TRANSIT1_ENGINE_ACCESS_TOKEN}` },
+        signal,
+        redirect: "manual",
+      }));
+      if (response.ok && typeof (await response.json())?.boot_id === "string") engine = "ok";
+    } catch {}
+  }
+  return Response.json({ engine }, {
+    status: engine === "ok" ? 200 : 503,
+    headers: { "cache-control": "no-store" },
+  });
+}
+
 async function answerQuestion(request, env, ctx, visitorIp) {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") {

@@ -1,14 +1,15 @@
 import { expect, test } from '@playwright/test';
 
-test('health fails closed when the Worker has no snapshot binding', async ({ request }) => {
-	// The local Worker deliberately has no production R2 binding.
+test('health reports the proxy and engine through the question transport', async ({ request }) => {
+	// The fixture serves the question probe without an R2 binding.
 	const response = await request.get('/health');
-	expect(response.status()).toBe(503);
+	expect(response.status()).toBe(200);
 	expect(response.headers()['cache-control']).toBe('no-store');
 	expect(await response.json()).toMatchObject({
-		status: 'unavailable',
+		status: 'ok',
 		service: 'transit1-web',
-		data: 'unavailable',
+		proxy: 'ok',
+		engine: 'ok',
 		commit: null,
 		branch: null,
 	});
