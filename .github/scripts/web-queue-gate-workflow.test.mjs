@@ -281,6 +281,7 @@ test("real aggregate requires proof or the full gate, and never accepts proof on
       outputs: { run_e2e: "true", run_layout: "true" },
     },
     "prerelease-guard": { result: "success" },
+    "web-dependencies": { result: "success" },
     "queue-gate": {
       result: "success",
       outputs: { queue_proven: "true", ...proof },
@@ -300,6 +301,11 @@ test("real aggregate requires proof or the full gate, and never accepts proof on
     });
   let r = run(needs);
   assert.equal(r.status, 0, r.stderr + r.stdout);
+  const missingCache = structuredClone(needs);
+  missingCache["web-dependencies"].result = "failure";
+  r = run(missingCache);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /web-dependencies: failure/);
   for (const event of ["pull_request", "workflow_dispatch", "merge_group"]) {
     r = run(needs, { GITHUB_EVENT_NAME: event });
     assert.notEqual(r.status, 0);
@@ -352,6 +358,7 @@ test("real job expressions always retain PR, queue, dispatch and unproven main g
     const expression = job(name)
       .match(/\n    if: \$\{\{ (.+) \}\}/)[1]
       .replaceAll("!cancelled()", "true")
+      .replaceAll("needs.web-dependencies", "needs['web-dependencies']")
       .replaceAll("needs.queue-gate", "needs['queue-gate']");
     const selected = new Function("github", "needs", `return (${expression})`);
     for (const event_name of [
@@ -364,6 +371,7 @@ test("real job expressions always retain PR, queue, dispatch and unproven main g
         for (const queue_proven of ["true", "false", undefined]) {
           const github = { event_name, ref: "refs/heads/main" };
           const needs = {
+            "web-dependencies": { result: "success" },
             "queue-gate": { result, outputs: { queue_proven } },
             classify: { result: "success", outputs: { run_e2e: "true" } },
           };

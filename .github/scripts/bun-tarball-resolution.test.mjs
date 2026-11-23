@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -55,7 +62,7 @@ function packageTarball(name, peers) {
   );
 }
 
-function install(directory, signal) {
+function install(directory, signal, ...options) {
   return new Promise((resolve, reject) => {
     const child = spawn(
       "bun",
@@ -65,6 +72,7 @@ function install(directory, signal) {
         "--verbose",
         "--cache-dir",
         join(directory, "cache"),
+        ...options,
       ],
       {
         cwd: directory,
@@ -168,7 +176,7 @@ function fixtureServer(assets) {
 }
 
 test(
-  "a frozen cold install resolves direct and redirected transitive tarballs",
+  "a frozen cold install seeds a cache for shards that never request tarballs",
   {
     timeout: 15_000,
   },
@@ -176,17 +184,31 @@ test(
     const directory = mkdtempSync(join(tmpdir(), "transit-tarball-graph-"));
     const assets = new Map();
     const server = fixtureServer(assets);
+    let requests = 0;
+    server.on("request", () => requests++);
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
     try {
       const base = "http://127.0.0.1:" + server.address().port;
       const { dependencies, lock } = graph(directory, base, assets);
       await install(directory, t.signal);
       assert.equal(readFileSync(join(directory, "bun.lock"), "utf8"), lock);
-      const consume = createRequire(join(directory, "package.json"));
+      const producerRequests = requests;
+      assert.ok(producerRequests >= Object.keys(dependencies).length);
+      const shard = join(directory, "shard");
+      mkdirSync(shard);
+      cpSync(join(directory, "package.json"), join(shard, "package.json"));
+      cpSync(join(directory, "bun.lock"), join(shard, "bun.lock"));
+      await assert.rejects(install(shard, t.signal, "--offline"), /offline/i);
+      assert.equal(requests, producerRequests);
+      cpSync(join(directory, "cache"), join(shard, "cache"), { recursive: true });
+      await install(shard, t.signal, "--offline");
+      assert.equal(requests, producerRequests);
+      assert.equal(readFileSync(join(shard, "bun.lock"), "utf8"), lock);
+      const consume = createRequire(join(shard, "package.json"));
       for (const name of Object.keys(dependencies)) {
         const installed = JSON.parse(
           readFileSync(
-            join(directory, "node_modules", name, "package.json"),
+            join(shard, "node_modules", name, "package.json"),
             "utf8",
           ),
         );
