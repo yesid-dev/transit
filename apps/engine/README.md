@@ -388,10 +388,8 @@ bearer token over HTTPS. The burst needs a complete clean day for each request a
 ## Engine on the capture VM
 
 The units in `ops/linux` require Linux with systemd and cgroup v2. Install rclone and cloudflared
-at `/usr/local/bin`. Install this checkout under `/opt/transit-engine` with its provider
-declarations and `.python-version`. From its `apps/engine` directory, install the locked engine
-with `uv sync --managed-python --locked --no-dev --no-editable`. Use a uv Python install
-directory readable and traversable by the service users under `/opt/transit-engine`.
+at `/usr/local/bin` and uv at `/opt/transit-engine/bin/uv`. The updater also needs Git, Bash,
+GNU coreutils and tar, flock, and Python 3.
 
 Install the service and timer files under `/etc/systemd/system`. Keep `engine.env`,
 `r2.env`, `engine-token` and `tunnel-credentials.json` in `/etc/transit-engine`, owned by
@@ -406,7 +404,18 @@ to route `transit-engine-origin.yesid.dev` to `http://127.0.0.1:8081` with a fin
 `http_status:404` rule. The engine requires the bearer on every HTTP route. Systemd
 provides credential copies to the services from their root-only source files.
 
-Run the first sync before starting the engine and tunnel. The sync lists completed days and
+After each engine merge, fast-forward the clean deployment checkout
+(`/opt/transit-engine/source` on transita1) with `sudo git pull --ff-only origin main` and run
+`sudo bash apps/engine/ops/linux/update-engine.sh origin/main` from its root. The updater
+installs a locked environment in a new release directory, switches `/opt/transit-engine/current`,
+and restarts and checks the engine. It restores the previous release if activation fails.
+Read the active commit in `/opt/transit-engine/current/.revision`. When adopting the updater on
+a VM that still runs directly from `/opt/transit-engine/apps`, first create the
+`current` symlink with `sudo ln -s . /opt/transit-engine/current`, then install the updated
+engine and sync units and reload systemd. Keep the previous working release for rollback and
+prune older unused releases as needed to preserve the disk reserve.
+
+Install a release and run the first sync before enabling the tunnel. The sync lists completed days and
 checks disk capacity before writing. It verifies each day's files against the cleaner's
 SHA-256 digests and publishes the manifest last. It skips days it already published and
 copies new `search/v1` schedule indexes. The timer runs at 17:30 UTC, 73 minutes after the
