@@ -142,11 +142,14 @@ def test_gps_observation_requires_a_feed_without_stopped_reports(
     for seconds, longitude, ident in (
         (-60, -73.6, "vehicle"),
         (0, -73.6001, "vehicle"),
+        (50, -73.608, "vehicle"),
         (80, -73.6102, "vehicle"),
         (100, -73.61, "vehicle"),
         (140, -73.621, "other-vehicle"),
         (160, -73.6205, "vehicle"),  # Within 50 m of both stops 3 and 4.
         (240, -73.621, "vehicle"),
+        (300, -73.622, "gapped-vehicle"),
+        (500, -73.621, "gapped-vehicle"),  # An outside fix 200 seconds earlier is too old.
     ):
         captured = noon + timedelta(seconds=seconds)
         feed = _feed(captured)
@@ -165,6 +168,16 @@ def test_gps_observation_requires_a_feed_without_stopped_reports(
         vehicle.current_status = VehiclePosition.STOPPED_AT
         _save(tmp_path, feed, "vehicle_positions", captured)
         captures.append(("vehicle_positions", captured, feed.SerializeToString()))
+    else:
+        captured = noon + timedelta(seconds=270)
+        feed = _feed(captured)
+        update = feed.entity.add(id="exact").trip_update
+        update.trip.trip_id, update.trip.start_date = "gps", "20260601"
+        event = update.stop_time_update.add(stop_sequence=4).arrival
+        event.time = int(noon.timestamp()) + 240
+        event.uncertainty = 0
+        _save(tmp_path, feed, "trip_updates", captured)
+        captures.append(("trip_updates", captured, feed.SerializeToString()))
     with duckdb.connect() as db:
         rows = _rows(db, _run(tmp_path, DAY) / "stop_events.parquet")
     by_sequence = {row["stop_sequence"]: row for row in rows}
@@ -179,7 +192,7 @@ def test_gps_observation_requires_a_feed_without_stopped_reports(
         assert by_sequence[2]["delay_seconds"] == 60
         assert not any(reading.basis == "vehicle_nearby" for reading in plain.values())
     else:
-        for seq, seconds, event in ((1, 0, "departure"), (2, 100, "arrival"), (4, 140, "arrival")):
+        for seq, seconds, event in ((1, 0, "departure"), (2, 73, "arrival")):
             row = by_sequence[seq]
             assert row["basis"] == "vehicle_nearby"
             assert row["observed_event"] == event
@@ -187,7 +200,8 @@ def test_gps_observation_requires_a_feed_without_stopped_reports(
             assert row["observed_at_utc"] == observed
             assert plain["gps", seq].basis == "vehicle_nearby"
             assert plain["gps", seq].second == int(observed.timestamp())
-        assert by_sequence[3]["basis"] == "not_observed"
+        assert by_sequence[3]["basis"] == "trip_update_passed"
+        assert by_sequence[4]["basis"] == plain["gps", 4].basis == "trip_update_reported"
 
 
 def test_overnight_origin_departure_terminus_and_stop_capture_gap(tmp_path: Path) -> None:
