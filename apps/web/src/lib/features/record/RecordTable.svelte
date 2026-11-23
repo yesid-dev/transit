@@ -73,6 +73,7 @@
 
 <DataTable
 	caption={title}
+	class="record-evidence-table"
 	{columns}
 	rows={tableRows}
 	key={(row) => String(row.index)}
@@ -80,3 +81,31 @@
 		? { mode: 'scroll', minWidth: '38rem' }
 		: { mode: 'stack', at: stack ? 'tablet' : 'compact' }}
 />
+
+<style>
+	:global(.record-evidence-table[data-responsive='stack']) {
+		container-type: inline-size;
+	}
+
+	/* Long localized evidence labels need the full cell width on narrow cards. */
+	@container (inline-size < 22rem) {
+		:global(
+			.record-evidence-table[data-slot='data-table-frame'][data-responsive='stack']
+				.data-table
+				tbody
+				:is(th, td)
+		) {
+			grid-template-columns: minmax(0, 1fr);
+			row-gap: 0.125rem;
+		}
+
+		:global(
+			.record-evidence-table[data-slot='data-table-frame'][data-responsive='stack']
+				.data-table
+				tbody
+				.data-table-cell-content
+		) {
+			grid-column: 1;
+		}
+	}
+</style>
