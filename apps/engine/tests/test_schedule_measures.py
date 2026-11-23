@@ -2,13 +2,16 @@ import asyncio
 import itertools
 import json
 from collections import Counter
+from dataclasses import replace
 from pathlib import Path
 
+import duckdb
 import pytest
 from test_engine import FRIDAY, SATURDAY, SUNDAY, THURSDAY, Poll, Trip, _build_store, http, query
 from test_ranking import _json, _request
 
 from transit_engine import measures
+from transit_engine.clean_manifest import STOP_EVENTS
 from transit_engine.measures import answer_csv
 from transit_engine.server import Engine
 
@@ -33,6 +36,43 @@ def _polls(start: int, end: int) -> tuple[Poll, ...]:
         for feed in ("trip_updates", "vehicle_positions")
         for seconds in range(start, end + 1, 60)
     )
+
+
+def test_waiting_network_fits_the_buffer_without_spilling(tmp_path: Path) -> None:
+    trips = tuple(_trip("A", i, -60 + i * 5) for i in range(25))
+    store = replace(
+        _build_store(tmp_path, 9, {THURSDAY: trips}, {THURSDAY: _polls(-3660, 3660)}),
+        memory_mib=192,
+    )
+    question = measures.Question("waiting_and_gaps", "stm", THURSDAY, THURSDAY)
+    family, selected = measures._SELECTIONS[question.measure]
+    assert family.query is not None
+    with store.connect() as conn:
+        conn.execute("SET temp_directory = ''")
+        window = measures.read_window(conn, store, question, family, selected)
+        dense_stops = (tmp_path / "dense-stop-events.parquet").as_posix()
+        with duckdb.connect() as fixture:
+            fixture.execute(
+                """
+                COPY (
+                    SELECT stops.* REPLACE (
+                        'stop-' || n AS stop_id,
+                        n + 1 AS stop_sequence,
+                        CASE WHEN n < 4000 THEN basis ELSE 'not_observed' END AS basis,
+                        CASE WHEN n < 4000 THEN observed_at_utc END AS observed_at_utc
+                    )
+                    FROM read_parquet(?) stops CROSS JOIN range(12000) copy(n)
+                ) TO ? (FORMAT PARQUET)
+                """,
+                [window.paths[STOP_EVENTS][0], dense_stops],
+            )
+        window.paths[STOP_EVENTS] = [dense_stops]
+        result = family.query(conn, family, window.paths, question, "9", None)[()]
+    state, values, evidence, _ = measures.evaluate(family, selected, result, window)
+    assert state == "measured"
+    assert values["excess_wait_time"] == 0
+    assert evidence["counts"]["scheduled_headways"] == 24 * 12000
+    assert evidence["counts"]["observed_headways"] == 24 * 4000
 
 
 @pytest.mark.parametrize(
