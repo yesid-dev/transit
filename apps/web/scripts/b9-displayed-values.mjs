@@ -1480,7 +1480,13 @@ async function verifyEngineRecord(page, cell, replay, errors, html) {
 		const early = cell.surface === 'line' ? 10 : 5;
 		const onTime = new URL(page.url()).searchParams.get('direction') === '1' ? 40 : 80;
 		const counts = [early, onTime, 100 - early - onTime];
-		const displayedLabels = await bands.locator('dt').allTextContents();
+		const displayedLabels = await bands.locator('dt').evaluateAll((terms) =>
+			terms.map((term) => {
+				const label = term.cloneNode(true);
+				label.querySelectorAll('[aria-hidden="true"]').forEach((decoration) => decoration.remove());
+				return label.textContent.trim();
+			}),
+		);
 		const expectedLabels =
 			cell.locale === 'fr' ? ['En avance', 'À l’heure', 'En retard'] : ['Early', 'On time', 'Late'];
 		invariant(
