@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { Surface } from '@yesid/ui/layout';
 	import { getLocale } from '#lib/i18n/index.ts';
 	import NetworkRecord from '#lib/features/network/NetworkRecord.svelte';
 	import { NetworkSurface } from '#lib/features/network/reliability/index.ts';
@@ -22,6 +23,11 @@
 {#if data.view === 'record'}
 	<NetworkRecord record={data.networkRecord} {subject} {locale} {url} />
 {:else}
+	{#if url.searchParams.get('frameMode') === 'live'}
+		<Surface>
+			<a href={recordHref}>{locale === 'fr' ? 'Voir le bilan' : 'See the record'}</a>
+		</Surface>
+	{/if}
 	<NetworkSurface
 		historicAvailabilitySeed={data.historicAvailabilitySeed ?? {
 			key: 'historic-availability',
@@ -30,6 +36,5 @@
 		networkSeed={data.networkSeed ?? undefined}
 		trendSeed={data.trendSeed ?? undefined}
 		provenanceSeed={data.provenanceSeed ?? undefined}
-		{recordHref}
 	/>
 {/if}

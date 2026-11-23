@@ -90,14 +90,12 @@
 	const display = transitDisplay();
 	const localizeHref = getLocalizeHref();
 	interface Props {
-		recordHref?: string;
 		networkSeed?: NetworkFile;
 		trendSeed?: ResourceSeed<NetworkTrend>;
 		provenanceSeed?: ResourceSeed<Provenance>;
 		historicAvailabilitySeed?: ResourceSeed<HistoricAvailabilityIndex>;
 	}
-	let { networkSeed, trendSeed, provenanceSeed, historicAvailabilitySeed, recordHref }: Props =
-		$props();
+	let { networkSeed, trendSeed, provenanceSeed, historicAvailabilitySeed }: Props = $props();
 	const locale: Locale = getLocale();
 	const v1 = getV1Context();
 	const t = $derived(providerNetworkReliabilityCopy(locale, v1.manifest.provider));
@@ -591,9 +589,6 @@
 				<div class="network-feed-health">
 					<FreshnessStamp variant="live" presentation={presentation.stamp} {locale} />
 					<ConformanceBadge conformance={provenance.data?.conformance} {locale} />
-					{#if recordHref}
-						<a href={recordHref}>{locale === 'fr' ? 'Voir le bilan' : 'See the record'}</a>
-					{/if}
 				</div>
 			{/snippet}
 		</ArticleHeader>
