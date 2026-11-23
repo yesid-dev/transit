@@ -108,11 +108,13 @@ test('Daily report streams past a slow agency section and distinguishes untracke
 	);
 	await expect(page.getByRole('region', { name: 'On-time share' })).toContainText('80 of 100');
 	const messages = page.getByRole('region', { name: 'Agency messages' });
-	await expect(messages).toContainText('Still working on this. You can wait or come back later.');
 	const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
-	expect((await request.post(`http://127.0.0.1:${dataPort}/__overview/release`)).status()).toBe(
-		204,
-	);
+	const release = new URL(`http://127.0.0.1:${dataPort}/__overview/release`);
+	release.searchParams.set('fixture', 'unrelated');
+	expect((await request.post(release.href)).status()).toBe(204);
+	await expect(messages).toContainText('Still working on this. You can wait or come back later.');
+	release.searchParams.set('fixture', 'daily-messages');
+	expect((await request.post(release.href)).status()).toBe(204);
 	await expect(messages).toContainText('Not tracked');
 });
 

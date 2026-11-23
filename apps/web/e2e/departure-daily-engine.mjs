@@ -109,7 +109,7 @@ export function departureDailyEngine(url) {
 	if (measure === 'alert_counts') {
 		if (from === '2026-11-17')
 			return {
-				hold: true,
+				hold: 'daily-messages',
 				...result({
 					...cell(null, { alerts: null }),
 					state: 'not_tracked',

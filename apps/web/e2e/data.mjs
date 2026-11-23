@@ -295,7 +295,7 @@ for (const family of ['static/routes', 'historic/route_reliability']) {
 // browser loads it: the layout spec serves the real file there, late.
 files['/v1/stm/static/stops/UNSEEDED.json'] = '{}';
 
-const heldOverviewResponses = new Set();
+const heldResponsesByFixture = new Map();
 const server = createServer((request, response) => {
 	// No Date header: the app anchors its clock to it, which would undo page.clock.
 	response.sendDate = false;
@@ -333,7 +333,10 @@ const server = createServer((request, response) => {
 		return;
 	}
 	if (request.method === 'POST' && url.pathname === '/__overview/release') {
-		for (const send of heldOverviewResponses) send();
+		const fixture = url.searchParams.get('fixture') ?? 'overview';
+		const held = heldResponsesByFixture.get(fixture);
+		heldResponsesByFixture.delete(fixture);
+		for (const send of held ?? []) send();
 		response.writeHead(204).end();
 		return;
 	}
@@ -369,8 +372,12 @@ const server = createServer((request, response) => {
 		response.writeHead(status, { 'content-type': 'application/json', ...headers });
 		const send = () => response.end(JSON.stringify(body));
 		if (hold) {
-			heldOverviewResponses.add(send);
-			response.on('close', () => heldOverviewResponses.delete(send));
+			// Named holds survive release calls from other specs sharing this server.
+			const fixture = hold === true ? 'overview' : hold;
+			const held = heldResponsesByFixture.get(fixture) ?? new Set();
+			held.add(send);
+			heldResponsesByFixture.set(fixture, held);
+			response.on('close', () => held.delete(send));
 		} else send();
 		return;
 	}
