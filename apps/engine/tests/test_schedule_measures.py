@@ -316,6 +316,23 @@ def test_waiting_counts_coverage_ending_on_an_hour_boundary(tmp_path: Path) -> N
     assert evidence["excluded"]["capture_gap"] == 1
 
 
+def test_waiting_period_summary_preserves_tied_passages_and_live_status(tmp_path: Path) -> None:
+    trips = (
+        _trip("A", 0, 0),
+        _trip("A", 1, 5, None)._replace(state="cancelled"),
+        _trip("A", 2, 5),
+        _trip("A", 3, 10, None, live=False),
+        _trip("A", 4, 15),
+    )
+    store = _build_store(tmp_path, 9, {THURSDAY: trips}, {THURSDAY: _polls(0, 900)})
+    evidence = query(store, measure="waiting_and_gaps")["evidence"]
+
+    assert evidence["counts"]["scheduled_headways"] == 3
+    assert evidence["counts"]["frequent_headways"] == 3
+    assert evidence["excluded"]["missing_observation"] == 2
+    assert evidence["excluded"]["route_without_live_data"] == 1
+
+
 def test_service_offered_matches_schedule_only_recomputation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
