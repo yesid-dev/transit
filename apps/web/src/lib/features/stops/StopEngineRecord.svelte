@@ -4,6 +4,7 @@
 	import { intl, localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import RecordActions from '#lib/features/record/RecordActions.svelte';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
+	import WaitingReadings from '#lib/features/record/WaitingReadings.svelte';
 	import RecordTable from '#lib/features/record/RecordTable.svelte';
 	import { recordSectionLinks } from '#lib/features/record/recordLinks.ts';
 	import {
@@ -101,7 +102,9 @@
 						{#if message}<p>{message}</p>{/if}
 						{#if result.kind === 'answer'}
 							{@const data = result.answer}
-							{#if !message}
+							{#if section === 'waiting' && 'cells' in data && data.cells.length}
+								<WaitingReadings {data} {locale} {title} />
+							{:else if !message}
 								{#if 'value' in data}
 									{#if section === 'punctuality'}
 										{@const basis = timingBasis(data.evidence.counts, locale)}

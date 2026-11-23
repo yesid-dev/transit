@@ -106,6 +106,22 @@ for (const locale of ['en', 'fr'] as const) {
 	});
 }
 
+test('selects the two deeper line rankings with their own evidence floors', async ({ page }) => {
+	await page.goto(`/hotspots?provider=stm&${dates}`);
+	const measures = page.getByRole('combobox', { name: 'Measure', exact: true });
+	const lines = page.getByRole('region', { name: 'Lines', exact: true });
+	await measures.selectOption('excess_wait_time');
+	await expect(page).toHaveURL(/measure=excess_wait_time/);
+	await expect(lines.getByText('42.5 s', { exact: true })).toBeVisible();
+	await expect(lines).toContainText('50 observed intervals and 20 distinct observed trip pairs');
+	await expect(lines).toContainText('40% coverage of 250 scheduled intervals');
+	await measures.selectOption('early');
+	await expect(page).toHaveURL(/measure=early/);
+	await expect(lines.getByText('4%', { exact: true })).toBeVisible();
+	await expect(lines).toContainText('100 observed stop events and 20 observed trips');
+	await expect(lines).toContainText('4 in 100 observed stop events');
+});
+
 test('explains the sample floor for an empty departure ranking', async ({ page }) => {
 	await page.goto('/repeat-offenders?provider=stm&recordFrom=2026-11-08&recordTo=2026-11-08');
 	const ranking = page.getByRole('region', { name: 'Departures', exact: true });

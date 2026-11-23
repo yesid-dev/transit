@@ -25,9 +25,9 @@ export function measureText(
 	const answer = result.answer;
 	if (answer.state !== 'measured') return rateStateText(answer, locale);
 
-	const value = answer.value[answer.measure];
+	const value = answer.value[answer.measure === 'trips_run' ? 'trips_run' : 'on_time'];
 	const { on_time, classified, ran, eligible } = answer.evidence.counts;
-	const punctuality = answer.measure === 'on_time';
+	const punctuality = answer.measure !== 'trips_run';
 	const [top, bottom] = punctuality ? [on_time, classified] : [ran, eligible];
 	if (value == null || top == null || bottom == null || bottom === 0)
 		return recordConnection.unreachable[locale];

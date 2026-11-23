@@ -24,7 +24,10 @@ export function periodQuestion(
 	return { ...cityQuestion(city, path), parameters: { from, to, ...parameters } };
 }
 
-export function measureQuestion(measure: 'on_time' | 'trips_run', period: EnginePeriod) {
+export function measureQuestion(
+	measure: 'on_time' | 'trips_run' | 'punctuality',
+	period: EnginePeriod,
+) {
 	return periodQuestion(period, '/measure', { measure });
 }
 

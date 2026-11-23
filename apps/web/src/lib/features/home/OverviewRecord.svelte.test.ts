@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { expect, it } from 'vitest';
-import type { RankingAnswer } from '#lib/server/engine.ts';
+import type { MeasureAnswer, RankingAnswer } from '#lib/server/engine.ts';
 import OverviewRecord from './OverviewRecord.svelte';
 import { delivered, measure, period, ranking, stateText } from './overviewRecord.fixture.ts';
 import { previousPeriod } from './overviewRecord.ts';
@@ -18,7 +18,15 @@ it('renders three independent measures, ranked evidence and the citation', async
 			record: {
 				period,
 				previous: previousPeriod(period),
-				punctuality: answer(measure()),
+				punctuality: answer<MeasureAnswer>({
+					...measure(),
+					measure: 'punctuality',
+					value: { ...measure().value, early: 0.1, late: 0.088 },
+					evidence: {
+						...measure().evidence,
+						counts: { ...measure().evidence.counts, early: 50780, late: 44665 },
+					},
+				}),
 				baseline: answer(measure('too_few_to_judge')),
 				delivery: answer(delivered),
 				lines: answer(ranking),
@@ -33,6 +41,9 @@ it('renders three independent measures, ranked evidence and the citation', async
 	});
 	const main = screen.getByRole('region', { name: 'On-time performance' });
 	expect(await within(main).findByText(/412,355 of 507,800/)).toBeVisible();
+	expect(within(main).getByRole('heading', { name: 'Early departures' })).toBeVisible();
+	expect(within(main).getByText(/10% \(50,780\/507,800\)/)).toBeVisible();
+	expect(within(main).getByText(/on time misses the vehicle/)).toBeVisible();
 	expect(within(main).getByText('Only measured days are included.')).toBeVisible();
 	expect(await screen.findByText('Too few to judge')).toBeVisible();
 	const service = screen.getByRole('region', { name: 'Service delivered' });

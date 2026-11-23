@@ -18,6 +18,8 @@ import {
 import type { LineDirection, LineSection } from '#lib/server/lineRecord.ts';
 
 export const lineSectionTitles = {
+	waiting: ['Waiting and gaps', 'Attente et intervalles'],
+	offered: ['Service offered', 'Service offert'],
 	punctuality: ['On-time performance', 'Ponctualité'],
 	daily: ['Day by day', 'Jour par jour'],
 	hourly: ['By hour and weekday', 'Par heure et jour de la semaine'],

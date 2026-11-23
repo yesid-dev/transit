@@ -9,6 +9,7 @@
 	import {
 		lastGoodNote,
 		pooledDays,
+		shareReading,
 		punctualityWeighting,
 		timingBasis,
 	} from '../record/recordText.ts';
@@ -47,10 +48,6 @@
 	{:then result}
 		{#if result.kind === 'answer' && result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 		<p>{measureText(result, period, locale)}</p>
-		{#if result.kind === 'answer' && result.answer.state === 'measured' && result.answer.measure === 'on_time'}
-			{@const basis = timingBasis(result.answer.evidence.counts, locale)}
-			{#if basis}<p>{basis}</p>{/if}
-		{/if}
 		{#if result.kind === 'answer' && result.answer.coverage_note}
 			<p>{result.answer.coverage_note[locale]}</p>
 		{/if}
@@ -71,7 +68,46 @@
 	<Card edge="neutral" textSize="inherit" class="px-4 sm:px-6">
 		<section aria-labelledby={`${id}-punctuality`}>
 			<h2 id={`${id}-punctuality`}>{fr ? 'Ponctualité' : 'On-time performance'}</h2>
-			{@render reading(record.punctuality, record.period)}
+			{#await record.punctuality}
+				{#key record.punctuality}<RecordPending {locale} />{/key}
+			{:then current}
+				{#if current.kind === 'answer' && current.answer.state === 'measured'}
+					{@const answer = current.answer}
+					{@const basis = timingBasis(answer.evidence.counts, locale)}
+					{#if current.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
+					<div class="grid gap-4 sm:grid-cols-3">
+						<div>
+							<h3>{fr ? 'À l’heure' : 'On time'}</h3>
+							<p>{measureText(current, record.period, locale)}</p>
+						</div>
+						<div>
+							<h3>{fr ? 'En retard' : 'Late'}</h3>
+							<p>{shareReading(answer, 'late', locale, false)}</p>
+						</div>
+						<div>
+							<h3>{fr ? 'Départs en avance' : 'Early departures'}</h3>
+							<p>{shareReading(answer, 'early', locale, false)}</p>
+						</div>
+					</div>
+					<p>
+						{fr
+							? 'La part en avance compte les passages observés avec plus d’une minute d’avance.'
+							: 'The early share counts observed stop events more than a minute early.'}
+					</p>
+					{#if basis}<p>{basis}</p>{/if}
+				{:else}
+					{#if current.kind === 'answer' && current.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
+					<p>{measureText(current, record.period, locale)}</p>
+				{/if}
+				{#if current.kind === 'answer' && current.answer.coverage_note}<p>
+						{current.answer.coverage_note[locale]}
+					</p>{/if}
+			{/await}
+			<p>
+				{fr
+					? 'Un passage en avance est plus pénalisant qu’un léger retard : une personne qui arrive à l’heure manque le véhicule.'
+					: 'An early departure is worse than a small delay because a rider who arrives on time misses the vehicle.'}
+			</p>
 			<p>{punctualityWeighting[locale]}</p>
 			{#if record.period.from !== record.period.to}<p>{pooledDays[locale]}</p>{/if}
 		</section>
@@ -103,7 +139,14 @@
 				{/if}
 				{#await record.punctuality then current}
 					{@const change = comparisonText(current, baseline, locale)}
-					{#if change}<p>{change}</p>{/if}
+					{#if change}
+						<p>{change}</p>
+						<p>
+							{fr
+								? 'La comparaison exige au moins 80 % des jours mesurés et 100 passages observés par période, avec au plus 15 points d’écart de couverture. L’écart doit atteindre un point et son intervalle à 95 % doit exclure zéro pour indiquer une hausse ou une baisse.'
+								: 'A comparison requires at least 80% of days measured and 100 observed stop events per period, with coverage within 15 percentage points. A change must reach one point and its 95% interval must exclude zero to indicate an increase or decrease.'}
+						</p>
+					{/if}
 				{/await}
 			{/await}
 		</section>

@@ -32,6 +32,14 @@ for (const width of [390, 1440]) {
 				previous.getByText(fr ? /400\s000 sur 507\s800/ : /400,000 of 507,800/),
 			).toBeVisible();
 			await expect(main.getByText(fr ? /Écart de/ : /Change of/)).toBeVisible();
+			await expect(
+				punctuality.getByRole('heading', { name: fr ? 'Départs en avance' : 'Early departures' }),
+			).toBeVisible();
+			await expect(punctuality).toContainText(
+				fr ? /10\s% \(50\s780\/507\s800\)/ : /10% \(50,780\/507,800\)/,
+			);
+			await expect(punctuality).toContainText(fr ? 'manque le véhicule' : 'misses the vehicle');
+			await expect(previous).toContainText(fr ? '80 % des jours mesurés' : '80% of days measured');
 			await expect(punctuality).toContainText(fr ? 'Faible couverture' : 'Low coverage');
 			await expect(punctuality).toContainText(
 				fr

@@ -7,6 +7,8 @@ const record = {
 	hourly: { measure: 'late', group: 'weekday_hour' },
 	directions: { measure: 'punctuality', group: 'direction' },
 	stops: { measure: 'punctuality', group: 'stop' },
+	waiting: { measure: 'waiting_and_gaps' },
+	offered: { measure: 'scheduled_frequency', group: 'hour' },
 	delivery: { measure: 'trips_run', group: 'departure' },
 	late: { measure: 'late', kind: 'departure', limit: '8' },
 	crowding: { measure: 'crowding' },

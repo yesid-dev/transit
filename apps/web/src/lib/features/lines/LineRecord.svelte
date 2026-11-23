@@ -13,6 +13,7 @@
 	} from '#lib/features/record/recordText.ts';
 	import type { loadLineRecord } from '#lib/server/lineRecord.ts';
 	import { carryFrameState, frameHref } from '#lib/site/frameState.ts';
+	import WaitingReadings from '#lib/features/record/WaitingReadings.svelte';
 	import LineRecordReadings from './LineRecordReadings.svelte';
 	import LineViewNav from './LineViewNav.svelte';
 	import {
@@ -85,14 +86,26 @@
 			<Card edge="neutral" textSize="inherit" class="min-w-0 px-4 sm:px-6">
 				<section id={section} aria-labelledby={`${section}-title`} class="grid min-w-0 gap-3">
 					<h2 id={`${section}-title`}>{title}</h2>
+					{#if section === 'offered'}
+						<a class="inline-flex min-h-11 items-center" href="#delivery">
+							{t(
+								'See scheduled and delivered trips by departure',
+								'Voir les trajets prévus et effectués par départ',
+							)}
+						</a>
+					{/if}
 					{#await answer}
 						{#key answer}<RecordPending {locale} />{/key}
 					{:then result}
 						{@const message = recordMessage(result, locale)}
 						{#if result.kind === 'answer' && result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-						{#if message}<p>{message}</p>{/if}
+						{#if message && (section !== 'waiting' || result.kind !== 'answer')}<p>
+								{message}
+							</p>{/if}
 						{#if result.kind === 'answer'}
-							{#if !message}
+							{#if section === 'waiting' && 'value' in result.answer}
+								<WaitingReadings data={result.answer} {locale} {title} />
+							{:else if !message}
 								<LineRecordReadings
 									answer={result.answer}
 									{section}

@@ -37,6 +37,8 @@
 		classText,
 		exclusionText,
 		rankingCitation,
+		lineRankingFloor,
+		waitingRankingBasis,
 		rankingRange,
 		rankingRangeLabel,
 		rankingSample,
@@ -233,17 +235,19 @@
 								</label>
 							{/if}
 							<p>{info.text[locale].definition}</p>
-							{#if ['on_time', 'late', 'median_delay'].includes(measure)}<p>
+							{#if ['on_time', 'late', 'early', 'median_delay'].includes(measure)}<p>
 									{punctualityWeighting[locale]}
 								</p>{/if}
-							{#if data.evidence.start_date !== data.evidence.end_date}<p>
+							{#if measure !== 'excess_wait_time' && data.evidence.start_date !== data.evidence.end_date}<p
+								>
 									{pooledDays[locale]}
 								</p>{/if}
 							<p>
-								{t(
-									`Minimum to rank an entry is ${minimum}.`,
-									`Le minimum pour figurer au classement est de ${minimum}.`,
-								)}
+								{lineRankingFloor(measure, info.ranking_floors?.line, locale) ??
+									t(
+										`Minimum to rank an entry is ${minimum}.`,
+										`Le minimum pour figurer au classement est de ${minimum}.`,
+									)}
 							</p>
 							{#if data.coverage_note}<p>{data.coverage_note[locale]}</p>{/if}
 							<RecordActions
@@ -275,7 +279,10 @@
 								{/if}
 								<ol class="m-0 list-none p-0" role="list">
 									{#each shown as row (row.id)}
-										{@const basis = timingBasis(row.counts, locale)}
+										{@const basis =
+											measure === 'excess_wait_time'
+												? waitingRankingBasis(row.counts, locale)
+												: timingBasis(row.counts, locale)}
 										<li class="ranking-row border-t border-border py-3">
 											<span class="tabular-nums"
 												><span class="sr-only">{t('Rank', 'Rang')} </span>{tally(

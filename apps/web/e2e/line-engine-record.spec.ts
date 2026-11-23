@@ -38,6 +38,22 @@ for (const width of [390, 1440]) {
 			expect(response.ok()).toBeTruthy();
 			expect(await response.text()).toMatch(fr ? /^Mesure,Valeur/ : /^Measure,Value/);
 
+			const waiting = section(fr ? 'Attente et intervalles' : 'Waiting and gaps');
+			await expect(waiting).toContainText(fr ? '24 intervalles observés' : '24 observed intervals');
+			await expect(waiting).toContainText(
+				fr ? 'Intervalle prévu moyen' : 'mean scheduled interval',
+			);
+			await expect(waiting).toContainText(
+				fr ? 'sur 48 intervalles prévus' : 'coverage of 48 scheduled intervals',
+			);
+			const offered = section(fr ? 'Service offert' : 'Service offered');
+			await expect(offered.getByRole('row', { name: /07:00–08:00/ })).toContainText('8/1');
+			await expect(offered).toContainText(fr ? 'Aucun service prévu' : 'No service scheduled');
+			await offered
+				.getByRole('link', { name: fr ? /Voir les trajets/ : /See scheduled and delivered trips/ })
+				.click();
+			await expect(page).toHaveURL(/#delivery$/);
+
 			const stop = section(fr ? 'Retard le long de ses arrêts' : 'Delay along its stops');
 			await expect(stop.getByRole('rowheader')).toHaveText([/1\. First stop/, /2\. Second stop/]);
 			await expect(section(fr ? 'Jour par jour' : 'Day by day').getByRole('rowheader')).toHaveCount(

@@ -38,6 +38,27 @@ def _polls(start: int, end: int) -> tuple[Poll, ...]:
     )
 
 
+def test_waiting_at_a_stop_groups_lines_without_mixing_their_intervals(tmp_path: Path) -> None:
+    trips = (
+        *(_trip("A", i, 60 + i * 5, 120 if i % 2 else 0) for i in range(25)),
+        *(_trip("B", i, 61 + i * 5) for i in range(25)),
+        *(_trip("C", i, 60 + i * 20) for i in range(8)),
+    )
+    store = _build_store(tmp_path, 9, {THURSDAY: trips}, {THURSDAY: _polls(0, 14400)})
+    by_line = query(store, measure="waiting_and_gaps", stop="first", group="line")["cells"]
+    assert [(cell["key"]["line"], cell["state"]) for cell in by_line] == [
+        ("A", "measured"),
+        ("B", "measured"),
+        ("C", "no_frequent_periods"),
+    ]
+    for cell in by_line:
+        answer = query(store, measure="waiting_and_gaps", stop="first", line=cell["key"]["line"])
+        assert cell["value"] == answer["value"]
+        assert cell["evidence"]["counts"] == answer["evidence"]["counts"]
+    assert by_line[0]["value"]["excess_wait_time"] > 0
+    assert by_line[1]["value"]["excess_wait_time"] == 0
+
+
 def test_waiting_network_fits_the_buffer_without_spilling(tmp_path: Path) -> None:
     trips = tuple(_trip("A", i, -60 + i * 5) for i in range(25))
     store = replace(

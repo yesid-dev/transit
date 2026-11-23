@@ -388,6 +388,11 @@ describe('server HTML edge cache', () => {
 		['http://127.0.0.1:4317/lines/24', '/[[lang=locale]]/lines/[id]'],
 		['http://127.0.0.1:4317/fr/lines/24?frameMode=record', '/[[lang=locale]]/lines/[id]'],
 		['https://transit1.yesid.dev/fr/lines/24?tab=schedule', '/[[lang=locale]]/lines/[id]'],
+		[
+			'https://transit1.yesid.dev/fr/stop/S1?frameMode=record#waiting',
+			'/[[lang=locale]]/stop/[id]',
+		],
+		['https://transit1.yesid.dev/lines/24?frameMode=record#offered', '/[[lang=locale]]/lines/[id]'],
 		['https://transit1.yesid.dev/hotspots?kind=stop', '/[[lang=locale]]/hotspots'],
 		[
 			'https://transit1.yesid.dev/fr/repeat-offenders?kind=vehicle',

@@ -13,6 +13,7 @@ import type { RecordAnswer, RecordMeasure } from '#lib/server/engine.ts';
 import type { StopSection } from '#lib/server/stopRecord.ts';
 
 export const stopSectionTitles = {
+	waiting: ['Waiting by line', 'Attente par ligne'],
 	punctuality: ['On-time performance', 'Ponctualité'],
 	byLine: ['By line', 'Par ligne'],
 	hourly: ['By hour', 'Par heure'],

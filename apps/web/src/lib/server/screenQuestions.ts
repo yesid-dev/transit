@@ -9,7 +9,7 @@ export function overviewSelection(period: EnginePeriod) {
 	const previous = previousPeriod(period);
 	return {
 		previous,
-		punctuality: ['on_time', period],
+		punctuality: ['punctuality', period],
 		baseline: ['on_time', { ...period, ...previous }],
 		delivery: ['trips_run', period],
 		lines: ['line', period],
