@@ -89,7 +89,11 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 trap 'exit 129' HUP
 
-git archive "$commit" .python-version apps/engine apps/db/config/providers |
+release_paths=(.python-version apps/engine apps/db/config/providers)
+if git cat-file -e "$commit:apps/web/scripts/warm-default-views.ts" 2>/dev/null; then
+  release_paths+=(.bun-version apps/web/package.json apps/web/scripts/warm-default-views.ts apps/web/src/lib)
+fi
+git archive "$commit" "${release_paths[@]}" |
   tar --extract --directory "$release" --no-same-owner --no-same-permissions
 UV_PYTHON_INSTALL_DIR="$root/python" UV_LINK_MODE=copy "$root/bin/uv" sync \
   --directory "$release/apps/engine" --managed-python --locked --no-dev --no-editable

@@ -8,7 +8,7 @@
   "vars": {
     "ENGINE_ORIGIN": "",
     "ENGINE_CLEAN_ROOT": "s3://transit-clean",
-    "ENGINE_CLEANING_VERSION": "10"
+    "ENGINE_CLEANING_VERSION": "11"
   },
   "containers": [
     {

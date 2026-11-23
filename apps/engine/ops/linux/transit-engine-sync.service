@@ -2,6 +2,7 @@
 Description=Mirror completed Transit clean days from R2
 Wants=network-online.target
 After=network-online.target
+OnSuccess=transit-engine-warm.service
 
 [Service]
 Type=oneshot

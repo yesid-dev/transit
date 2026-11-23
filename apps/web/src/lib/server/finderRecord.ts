@@ -1,4 +1,5 @@
 import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
+import { finderQuestions } from './engineQuestion.ts';
 import { getFinderSeries } from './engine.ts';
 
 function finderPeriod(url: URL) {
@@ -12,8 +13,12 @@ export function loadLinesRecord(url: URL, city: string, request: Request) {
 		? {
 				period,
 				city,
-				punctuality: getFinderSeries('on_time', 'line', { ...period, city, visitorIp }),
-				trips: getFinderSeries('trips_run', 'line', { ...period, city, visitorIp }),
+				punctuality: getFinderSeries(finderQuestions.lines.punctuality, {
+					...period,
+					city,
+					visitorIp,
+				}),
+				trips: getFinderSeries(finderQuestions.lines.trips, { ...period, city, visitorIp }),
 			}
 		: null;
 }
@@ -25,7 +30,11 @@ export function loadStopsRecord(url: URL, city: string, request: Request) {
 		? {
 				period,
 				city,
-				punctuality: getFinderSeries('on_time', 'stop_id', { ...period, city, visitorIp }),
+				punctuality: getFinderSeries(finderQuestions.stops.punctuality, {
+					...period,
+					city,
+					visitorIp,
+				}),
 			}
 		: null;
 }

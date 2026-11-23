@@ -1,7 +1,8 @@
 import { intl } from '#lib/i18n/index.ts';
 export type TimeLang = 'en' | 'fr';
 
-export const DISPLAY_TIME_ZONE = 'America/Toronto' as const;
+import { DISPLAY_TIME_ZONE } from './serviceDate.ts';
+export { DISPLAY_TIME_ZONE, providerLocalDateKey } from './serviceDate.ts';
 
 function parseIso(iso: string): Date | null {
 	if (!iso) return null;
@@ -17,24 +18,6 @@ export function elapsedUtcMinutes(
 	if (first == null || last == null || !offset.test(first) || !offset.test(last)) return null;
 	const minutes = (Date.parse(last) - Date.parse(first)) / 60_000;
 	return Number.isFinite(minutes) && minutes >= 0 ? minutes : null;
-}
-
-export function providerLocalDateKey(iso: string | null | undefined): string | null {
-	if (iso == null) return null;
-	const date = parseIso(iso);
-	if (date == null) return null;
-	const parts = intl
-		.dateTime('en', {
-			year: 'numeric',
-			month: '2-digit',
-			day: '2-digit',
-			timeZone: DISPLAY_TIME_ZONE,
-		})
-		.formatToParts(date);
-	const year = parts.find((part) => part.type === 'year')?.value;
-	const month = parts.find((part) => part.type === 'month')?.value;
-	const day = parts.find((part) => part.type === 'day')?.value;
-	return year != null && month != null && day != null ? `${year}-${month}-${day}` : null;
 }
 
 export function formatUtc(iso: string, lang: TimeLang, opts?: Intl.DateTimeFormatOptions): string {
