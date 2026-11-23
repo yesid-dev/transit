@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { Card } from '@yesid/ui/card';
+	import { StatusMark } from '@yesid/ui/brand';
+	import { StateNotice } from '@yesid/ui/feedback';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { EngineResult, MeasureAnswer, RankingAnswer } from '#lib/server/engine.ts';
 	import type { DateWindow } from '#lib/v1/history/window.ts';
@@ -47,7 +49,11 @@
 		{#key promise}<RecordPending {locale} />{/key}
 	{:then result}
 		{#if result.kind === 'answer' && result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-		<p>{measureText(result, period, locale)}</p>
+		{#if result.kind === 'answer' && result.answer.state === 'measured'}
+			<p>{measureText(result, period, locale)}</p>
+		{:else}
+			<StateNotice presentation="frameless" title={measureText(result, period, locale)} />
+		{/if}
 		{#if result.kind === 'answer' && result.answer.coverage_note}
 			<p>{result.answer.coverage_note[locale]}</p>
 		{/if}
@@ -65,7 +71,7 @@
 <div class="grid gap-6">
 	<h1>{fr ? 'Aperçu' : 'Overview'}{city ? ` · ${city}` : ''}</h1>
 
-	<Card edge="neutral" textSize="inherit" class="px-4 sm:px-6">
+	<Card edge="neutral" textSize="inherit" spread class="min-w-0 px-4 sm:px-6">
 		<section aria-labelledby={`${id}-punctuality`}>
 			<h2 id={`${id}-punctuality`}>{fr ? 'Ponctualité' : 'On-time performance'}</h2>
 			{#await record.punctuality}
@@ -77,15 +83,17 @@
 					{#if current.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 					<div class="grid gap-4 sm:grid-cols-3">
 						<div>
-							<h3>{fr ? 'À l’heure' : 'On time'}</h3>
+							<h3><StatusMark status="on_time" label={fr ? 'À l’heure' : 'On time'} /></h3>
 							<p>{measureText(current, record.period, locale)}</p>
 						</div>
 						<div>
-							<h3>{fr ? 'En retard' : 'Late'}</h3>
+							<h3><StatusMark status="late" label={fr ? 'En retard' : 'Late'} /></h3>
 							<p>{shareReading(answer, 'late', locale, false)}</p>
 						</div>
 						<div>
-							<h3>{fr ? 'Départs en avance' : 'Early departures'}</h3>
+							<h3>
+								<StatusMark status="early" label={fr ? 'Départs en avance' : 'Early departures'} />
+							</h3>
 							<p>{shareReading(answer, 'early', locale, false)}</p>
 						</div>
 					</div>
@@ -97,7 +105,10 @@
 					{#if basis}<p>{basis}</p>{/if}
 				{:else}
 					{#if current.kind === 'answer' && current.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-					<p>{measureText(current, record.period, locale)}</p>
+					<StateNotice
+						presentation="frameless"
+						title={measureText(current, record.period, locale)}
+					/>
 				{/if}
 				{#if current.kind === 'answer' && current.answer.coverage_note}<p>
 						{current.answer.coverage_note[locale]}
@@ -129,10 +140,15 @@
 					<p>{dateRange(record.previous, locale)}</p>
 				{/if}
 				{#if baseline.kind === 'answer' && baseline.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-				<p>{measureText(baseline, record.previous, locale)}</p>
 				{#if baseline.kind === 'answer' && baseline.answer.state === 'measured'}
 					{@const basis = timingBasis(baseline.answer.evidence.counts, locale)}
+					<p>{measureText(baseline, record.previous, locale)}</p>
 					{#if basis}<p>{basis}</p>{/if}
+				{:else}
+					<StateNotice
+						presentation="frameless"
+						title={measureText(baseline, record.previous, locale)}
+					/>
 				{/if}
 				{#if baseline.kind === 'answer' && baseline.answer.coverage_note}
 					<p>{baseline.answer.coverage_note[locale]}</p>

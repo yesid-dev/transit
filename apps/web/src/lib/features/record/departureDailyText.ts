@@ -85,7 +85,7 @@ const periods = [
 	},
 ];
 
-export function dailyPeriodRows(answer: RecordSeries, locale: Locale): string[][] {
+export function dailyPeriods(answer: RecordSeries, locale: Locale) {
 	const info = answer.info?.[0];
 	return periods.map(({ start, end, en, fr }) => {
 		const hours = answer.cells.filter(({ key }) => {
@@ -112,6 +112,7 @@ export function dailyPeriodRows(answer: RecordSeries, locale: Locale): string[][
 			counts: { scheduled: scheduledWithLive },
 		};
 		let reading: string;
+		let share: number | null = null;
 		if (coverage != null && info?.minimum_coverage != null && coverage < info.minimum_coverage) {
 			reading = withCoverage(
 				choose(
@@ -129,7 +130,8 @@ export function dailyPeriodRows(answer: RecordSeries, locale: Locale): string[][
 		} else if (classified < info.minimum_sample) {
 			reading = choose(locale, 'Too few to judge', 'Trop peu pour juger');
 		} else {
-			reading = withCoverage(percent(late / classified, locale), evidence, locale);
+			share = late / classified;
+			reading = withCoverage(percent(share, locale), evidence, locale);
 		}
 		const basisCounts = Object.fromEntries(
 			['vehicle_stopped', 'vehicle_nearby', 'trip_update_reported', 'trip_update_passed'].map(
@@ -137,14 +139,19 @@ export function dailyPeriodRows(answer: RecordSeries, locale: Locale): string[][
 			),
 		);
 		const basis = timingBasis(basisCounts, locale);
-		return [
+		const row = [
 			choose(locale, en, fr),
 			reading,
 			classified
 				? [`${tally(late, locale)}/${tally(classified, locale)}`, basis].filter(Boolean).join('. ')
 				: reading,
 		];
+		return { start, share, row };
 	});
+}
+
+export function dailyPeriodRows(answer: RecordSeries, locale: Locale): string[][] {
+	return dailyPeriods(answer, locale).map(({ row }) => row);
 }
 
 export function shortDay(day: string, locale: Locale) {

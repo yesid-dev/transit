@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { StateNotice } from '@yesid/ui/feedback';
 	import type { Snippet } from 'svelte';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { RecordSeries } from '#lib/server/engine.ts';
@@ -45,5 +46,9 @@
 		{rowLabel}
 	/>
 {:else}
-	<p role="status">{t('No matching vehicle number.', 'Aucun numéro de véhicule correspondant.')}</p>
+	<StateNotice
+		role="status"
+		presentation="frameless"
+		title={t('No matching vehicle number.', 'Aucun numéro de véhicule correspondant.')}
+	/>
 {/if}

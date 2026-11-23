@@ -1,13 +1,15 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { Card } from '@yesid/ui/card';
+	import { StateNotice } from '@yesid/ui/feedback';
 	import { Surface } from '@yesid/ui/layout';
 	import { localizeHref } from '#lib/i18n/index.ts';
 	import { alertDetailsLimit } from '#lib/features/alerts/alertRecord.ts';
 	import RecordSection from '#lib/features/record/RecordSection.svelte';
+	import RecordSeriesChart from '#lib/features/record/RecordSeriesChart.svelte';
 	import RecordTable from '#lib/features/record/RecordTable.svelte';
 	import {
-		dailyPeriodRows,
+		dailyPeriods,
 		dailyTitles,
 		onTimeStatement,
 	} from '#lib/features/record/departureDailyText.ts';
@@ -136,12 +138,24 @@
 								{/each}
 							</dl>
 						{:else if section === 'periods' && 'cells' in result}
+							{@const periods = dailyPeriods(result, data.lang)}
 							<p>
 								{t(
 									'Each period ends just before the next. Times are local scheduled stop times, including overnight service. The CSV gives the counts by hour.',
 									'Chaque période se termine juste avant la suivante. Les heures sont celles des passages prévus, en heure locale, y compris la nuit. Le CSV donne les totaux par heure.',
 								)}
 							</p>
+							<RecordSeriesChart
+								title={heading}
+								seriesLabel={t('Late share', 'Part en retard')}
+								points={periods.map(({ share }, x) => ({ x, y: share }))}
+								ticks={periods.map(({ start }, value) => ({
+									value,
+									label: `${String(start).padStart(2, '0')}:00`,
+								}))}
+								yMax={1}
+								format={(value) => percent(value, lang)}
+							/>
 							<RecordTable
 								title={heading}
 								headers={[
@@ -149,7 +163,7 @@
 									t('Late share', 'Part en retard'),
 									t('Late / observed', 'En retard / observés'),
 								]}
-								rows={dailyPeriodRows(result, data.lang)}
+								rows={periods.map(({ row }) => row)}
 							/>
 						{:else if (section === 'lines' || section === 'stops') && 'rows' in result}
 							{#if result.rows.length}
@@ -237,7 +251,7 @@
 									</p>
 								{/if}
 							{:else}
-								<p>{result.state_text[data.lang]}</p>
+								<StateNotice presentation="frameless" title={result.state_text[data.lang]} />
 							{/if}
 						{/if}
 					{/snippet}

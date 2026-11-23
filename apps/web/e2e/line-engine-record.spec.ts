@@ -57,9 +57,17 @@ for (const width of [390, 1440]) {
 
 			const stop = section(fr ? 'Retard le long de ses arrêts' : 'Delay along its stops');
 			await expect(stop.getByRole('rowheader')).toHaveText([/1\. First stop/, /2\. Second stop/]);
-			await expect(section(fr ? 'Jour par jour' : 'Day by day').getByRole('rowheader')).toHaveCount(
-				1,
+			const dailyTitle = fr ? 'Jour par jour' : 'Day by day';
+			const daily = section(dailyTitle);
+			const strip = daily.getByRole('list', { name: dailyTitle, exact: true });
+			await expect(strip.getByRole('listitem')).toHaveCount(2);
+			await expect(strip.getByRole('listitem').first()).toContainText(fr ? /80\s%/ : '80%');
+			await expect(strip.getByRole('listitem').last()).toContainText(
+				fr ? 'Aucune part mesurée' : 'No measured share',
 			);
+			await expect(
+				daily.getByRole('table', { name: dailyTitle }).getByRole('rowheader'),
+			).toHaveCount(1);
 			await expect(
 				section(fr ? 'Par heure et jour de la semaine' : 'By hour and weekday').getByRole(
 					'rowheader',
@@ -110,6 +118,27 @@ for (const width of [390, 1440]) {
 			await expect(page).toHaveURL(/direction=1/);
 		});
 	}
+}
+
+for (const theme of ['light', 'dark'] as const) {
+	test(`Line evidence reflows at 320px and 200% text in ${theme} mode`, async ({ page }) => {
+		await page.setViewportSize({ width: 320, height: 900 });
+		await page.addInitScript((theme) => localStorage.setItem('theme', theme), theme);
+		await page.goto(
+			'/lines/24?provider=stm&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14',
+		);
+		await page.addStyleTag({ content: 'html { font-size: 200%; }' });
+		const main = page.getByRole('main');
+		const daily = main.getByRole('table', { name: 'Day by day' });
+		await expect(daily.getByRole('columnheader', { name: 'On-time share' })).toBeAttached();
+		await expect(daily.getByRole('cell', { name: /80%/ })).toBeVisible();
+		expect(await main.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(320);
+		const heatmap = main.getByRole('region', { name: 'By hour and weekday' }).getByRole('region');
+		await expect(heatmap).toHaveAttribute('tabindex', '0');
+		await heatmap.focus();
+		await page.keyboard.press('ArrowRight');
+		await expect.poll(() => heatmap.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+	});
 }
 
 test('Line shows patience for a slow stop query while punctuality is already readable', async ({

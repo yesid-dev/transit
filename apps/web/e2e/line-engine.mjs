@@ -149,7 +149,12 @@ export function lineEngine(url) {
 				group === 'stop' &&
 				((from === '2026-11-09' && 'line') ||
 					(/^2026-10-1[5-8]$/u.test(from) && ['line', get('city'), from, to].join('-'))),
-			body: { cells, coverage_note, evidence },
+			body: {
+				cells,
+				coverage_note,
+				evidence:
+					group === 'day' && from !== to ? { ...evidence, days_not_measured: [to] } : evidence,
+			},
 		};
 	}
 

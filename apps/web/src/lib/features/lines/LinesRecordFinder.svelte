@@ -1,16 +1,19 @@
 <script lang="ts">
 	import { Card } from '@yesid/ui/card';
+	import { StateNotice } from '@yesid/ui/feedback';
 	import { Surface } from '@yesid/ui/layout';
 	import { intl, localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import { routeFor } from '#lib/nav/index.ts';
 	import { carryFrameState } from '#lib/site/frameState.ts';
 	import { createLineDirectory } from '#lib/site/lineDirectory.ts';
 	import { routeNameFallback } from '#lib/site/nameFallback.ts';
+	import { lineIsScheduleOnly } from '#lib/site/providerCapabilities.ts';
 	import type { LinesRecord } from '#lib/server/finderRecord.ts';
 	import type { RouteIndexEntry } from '#lib/v1/schemas/routes_index.ts';
 	import type { PublicCity } from '#lib/v1/schemas/providers.ts';
 	import FinderRecordActions from '#lib/features/record/FinderRecordActions.svelte';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
+	import RecordLineLabel from '#lib/features/record/RecordLineLabel.svelte';
 	import RecordTable from '#lib/features/record/RecordTable.svelte';
 	import {
 		finderCells,
@@ -108,13 +111,7 @@
 					),
 					noLive:
 						(timing?.state ?? delivery?.state) === 'no_live_data' ||
-						(!timing &&
-							!delivery &&
-							provider?.lines_without_live_data.some(
-								(gap) =>
-									gap.route_ids.includes(id) ||
-									gap.route_types.some((type) => type === directory.type(id)),
-							)),
+						(!timing && !delivery && lineIsScheduleOnly(provider, id, directory.type(id))),
 					onTime: finderShare(timing, punctuality, 'on_time', locale),
 					late: finderShare(timing, punctuality, 'late', locale),
 					trips: finderTrips(delivery, trips, locale),
@@ -147,6 +144,16 @@
 	);
 </script>
 
+{#snippet lineLink(row: (typeof all)[number])}
+	<a class="inline-flex min-h-11 flex-wrap items-center gap-x-1" href={row.href}>
+		<RecordLineLabel
+			label={row.label}
+			code={directory.name(row.id).number}
+			scheduleOnly={row.noLive}
+		/>
+	</a>
+{/snippet}
+
 <Surface>
 	<div class="grid min-w-0 gap-4">
 		<header class="grid gap-2">
@@ -170,7 +177,10 @@
 						{#if result.lastGood}<p>{headers[index === 0 ? 1 : 3]}. {lastGoodNote[locale]}</p>{/if}
 						{#if result.answer.coverage_note}<p>{result.answer.coverage_note[locale]}</p>{/if}
 					{:else if result}
-						<p>{headers[index === 0 ? 1 : 3]}. {recordConnection[result.kind][locale]}</p>
+						<StateNotice
+							presentation="frameless"
+							title={`${headers[index === 0 ? 1 : 3]}. ${recordConnection[result.kind][locale]}`}
+						/>
 					{/if}
 				{/each}
 				{#if measured.length}
@@ -190,7 +200,6 @@
 						title={tableTitle}
 						{headers}
 						stack
-						rowHrefs={measured.map((row) => row.href)}
 						rows={measured.map((row) => [
 							row.label,
 							row.onTime.text,
@@ -198,7 +207,9 @@
 							row.trips.text,
 							row.count == null ? unknown : tally(row.count, locale),
 						])}
-					/>
+					>
+						{#snippet rowLabel(_label, index)}{@render lineLink(measured[index]!)}{/snippet}
+					</RecordTable>
 					{#if punctuality && trips}
 						<FinderRecordActions
 							{locale}
@@ -255,9 +266,10 @@
 					<RecordTable
 						title={noLiveTitle}
 						headers={[headers[0], t('Status', 'État')]}
-						rowHrefs={scheduleOnly.map((row) => row.href)}
 						rows={scheduleOnly.map((row) => [row.label, noLive])}
-					/>
+					>
+						{#snippet rowLabel(_label, index)}{@render lineLink(scheduleOnly[index]!)}{/snippet}
+					</RecordTable>
 					<FinderRecordActions
 						{locale}
 						title={noLiveTitle}

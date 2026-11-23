@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { StateNotice } from '@yesid/ui/feedback';
 	import { Surface } from '@yesid/ui/layout';
 	import { localizeHref } from '#lib/i18n/index.ts';
 	import { directionLabel } from '#lib/features/lines/lineRecordText.ts';
@@ -175,7 +176,11 @@
 					{/snippet}
 					{#snippet reading(result)}
 						{#if section === 'observed' && 'cells' in result}
-							<p>{observedStatement(result)}</p>
+							{#if departureDays(result).observed}
+								<p>{observedStatement(result)}</p>
+							{:else}
+								<StateNotice presentation="frameless" title={observedStatement(result)} />
+							{/if}
 							<p>
 								{t(
 									'A day is observed if at least one stop event could be classified. The second total counts days with at least one observed late stop.',

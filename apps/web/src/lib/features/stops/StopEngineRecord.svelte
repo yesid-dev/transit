@@ -1,4 +1,8 @@
 <script lang="ts">
+	import { StatusMark } from '@yesid/ui/brand';
+	import { StateNotice } from '@yesid/ui/feedback';
+	import RecordPunctualityDays from '#lib/features/record/RecordPunctualityDays.svelte';
+	import RecordSeriesChart from '#lib/features/record/RecordSeriesChart.svelte';
 	import { Card } from '@yesid/ui/card';
 	import { Surface } from '@yesid/ui/layout';
 	import { intl, localizeHref, type Locale } from '#lib/i18n/index.ts';
@@ -11,6 +15,8 @@
 		choose,
 		dateRange,
 		lastGoodNote,
+		measuredShare,
+		percent,
 		punctualityBands,
 		recordMessage,
 		shareReading,
@@ -99,7 +105,7 @@
 					{:then result}
 						{@const message = recordMessage(result, locale)}
 						{#if result.kind === 'answer' && result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-						{#if message}<p>{message}</p>{/if}
+						{#if message}<StateNotice presentation="frameless" title={message} />{/if}
 						{#if result.kind === 'answer'}
 							{@const data = result.answer}
 							{#if section === 'waiting' && 'cells' in data && data.cells.length}
@@ -117,7 +123,7 @@
 										<dl class="flex flex-wrap gap-4">
 											{#each punctualityBands(data, locale) as band (band.id)}
 												<div>
-													<dt>{band.label}</dt>
+													<dt><StatusMark status={band.id} label={band.label} /></dt>
 													<dd>{band.reading}</dd>
 												</div>
 											{/each}
@@ -150,6 +156,26 @@
 										</dl>
 									{/if}
 								{:else if 'cells' in data}
+									{#if section === 'daily'}
+										<RecordPunctualityDays {title} series={data} {locale} />
+									{:else if section === 'hourly'}
+										{@const hours = new Map(data.cells.map((cell) => [cell.key.hour, cell]))}
+										<RecordSeriesChart
+											{title}
+											kind="line"
+											seriesLabel={t('On-time share', 'Part à l’heure')}
+											points={Array.from({ length: 24 }, (_, x) => ({
+												x,
+												y: measuredShare(hours.get(x), 'on_time'),
+											}))}
+											ticks={[0, 6, 12, 18, 23].map((value) => ({
+												value,
+												label: `${String(value).padStart(2, '0')}:00`,
+											}))}
+											yMax={1}
+											format={(value) => percent(value, locale)}
+										/>
+									{/if}
 									<RecordTable
 										{title}
 										headers={[

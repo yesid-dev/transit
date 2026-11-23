@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Card } from '@yesid/ui/card';
+	import { StateNotice } from '@yesid/ui/feedback';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import RecordActions from '#lib/features/record/RecordActions.svelte';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
@@ -69,7 +70,7 @@
 					{@const included = reading.evidence.days_included.length}
 					{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 					{#if section === 'completion'}
-						<p>{t('Not tracked', 'Non suivi')}</p>
+						<StateNotice presentation="frameless" title={t('Not tracked', 'Non suivi')} />
 						<p>
 							{t(
 								'The live feeds do not show reliably when a trip ends early, so trips not finished are not tracked.',
@@ -77,9 +78,14 @@
 							)}
 						</p>
 					{:else if message}
-						<p>
-							{vehicleRecordState('state' in reading ? reading.state : undefined, message, locale)}
-						</p>
+						<StateNotice
+							presentation="frameless"
+							title={vehicleRecordState(
+								'state' in reading ? reading.state : undefined,
+								message,
+								locale,
+							)}
+						/>
 					{:else if 'cells' in reading}
 						{#if section === 'fleet'}
 							<label class="grid max-w-sm gap-1">
@@ -191,11 +197,14 @@
 						citation={`Transit. ${title}. ${heading}. ${data.period ? dateRange(data.period, locale) : ''}. ${methodEvidence(reading.evidence, locale)} ${links.share}`}
 					/>
 				{:else if message}
-					<p>{message}</p>
+					<StateNotice presentation="frameless" title={message} />
 				{/if}
 			{/await}
 		</section>
 	</Card>
 {:else}
-	<p>{t('Choose dates to see the record.', 'Choisissez des dates pour voir le bilan.')}</p>
+	<StateNotice
+		presentation="frameless"
+		title={t('Choose dates to see the record.', 'Choisissez des dates pour voir le bilan.')}
+	/>
 {/each}

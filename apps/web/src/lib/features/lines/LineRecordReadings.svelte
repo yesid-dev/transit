@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { StatusMark } from '@yesid/ui/brand';
+	import { StateNotice } from '@yesid/ui/feedback';
 	import { intl, type Locale } from '#lib/i18n/index.ts';
 	import {
 		choose,
@@ -8,6 +10,7 @@
 		coverageText,
 		departureRankingFloor,
 		emptyRecord,
+		measuredShare,
 		percent,
 		punctualityBands,
 		pooledDays,
@@ -20,6 +23,8 @@
 	import type { RecordAnswer, RecordCell } from '#lib/server/engine.ts';
 	import type { LineSection } from '#lib/server/lineRecord.ts';
 	import RecordTable from '#lib/features/record/RecordTable.svelte';
+	import RecordPunctualityDays from '#lib/features/record/RecordPunctualityDays.svelte';
+	import RecordSeriesChart from '#lib/features/record/RecordSeriesChart.svelte';
 	import { departureHref } from '#lib/features/record/departureIdentity.ts';
 	import { directionLabel, lateDepartureReading, lineAnswer } from './lineRecordText.ts';
 
@@ -103,7 +108,7 @@
 		<dl class="flex flex-wrap gap-4">
 			{#each punctualityBands(answer, locale) as band (band.id)}
 				<div>
-					<dt>{band.label}</dt>
+					<dt><StatusMark status={band.id} label={band.label} /></dt>
 					<dd>{band.reading}</dd>
 				</div>
 			{/each}
@@ -220,6 +225,22 @@
 {:else if 'cells' in answer}
 	{@const cells = answer.cells}
 	{#if section === 'offered'}
+		<RecordSeriesChart
+			{title}
+			seriesLabel={t('Trips per hour', 'Trajets par heure')}
+			points={cells.map((cell) => ({
+				x: Number(cell.key.hour),
+				y: cell.state === 'measured' ? (cell.value.scheduled_frequency ?? null) : null,
+			}))}
+			ticks={[0, 6, 12, 18, 24].map((value) => ({ value, label: clock(value) }))}
+			yMax={Math.max(
+				2,
+				...cells.map((cell) =>
+					cell.state === 'measured' ? (cell.value.scheduled_frequency ?? 0) : 0,
+				),
+			)}
+			format={(value) => intl.number(locale, { maximumFractionDigits: 1 }).format(value)}
+		/>
 		<p>
 			{t(
 				'Scheduled trips per local clock hour, averaged over the timetable days available.',
@@ -256,6 +277,7 @@
 			})}
 		/>
 	{:else if section === 'daily'}
+		<RecordPunctualityDays {title} series={answer} {locale} />
 		<RecordTable
 			{title}
 			headers={[t('Service date', 'Date de service'), t('On-time share', 'Part à l’heure')]}
@@ -277,6 +299,12 @@
 			{title}
 			wide
 			headers={[t('Hour', 'Heure'), ...weekdays.map(weekday)]}
+			heatLevels={Array.from({ length: 24 }, (_, hour) =>
+				weekdays.map((day) => {
+					const share = measuredShare(byHour.get(`${day}/${hour}`), 'late');
+					return share === null ? null : Math.min(4, Math.floor(share * 5));
+				}),
+			)}
 			rows={Array.from({ length: 24 }, (_, hour) => [
 				clock(hour),
 				...weekdays.map((day) => {
@@ -377,7 +405,7 @@
 					{rows}
 				/>
 			{:else}
-				<p>{cell.state_text[locale]}</p>
+				<StateNotice presentation="frameless" title={cell.state_text[locale]} />
 			{/if}
 		{/each}
 	{/if}

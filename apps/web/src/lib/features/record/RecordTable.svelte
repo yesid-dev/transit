@@ -1,5 +1,6 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+	import { DataTable, type DataTableColumn } from '@yesid/ui/table';
+	import { createRawSnippet, type Snippet } from 'svelte';
 
 	let {
 		title,
@@ -9,6 +10,7 @@
 		wide = false,
 		rowLabel,
 		stack = false,
+		heatLevels,
 	}: {
 		title: string;
 		headers: string[];
@@ -17,93 +19,93 @@
 		wide?: boolean;
 		rowLabel?: Snippet<[string, number]>;
 		stack?: boolean;
+		heatLevels?: readonly (readonly (number | null)[])[];
 	} = $props();
+
+	type Row = { values: string[]; index: number };
+	const tableRows = $derived(rows.map((values, index) => ({ values, index })));
+	const escape = (value: string) =>
+		value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+
+	// Record answers have runtime-defined columns. Each DataTable column needs its own snippet.
+	function textCell(column: number) {
+		return createRawSnippet<[Row]>((readRow) => {
+			const value = () => readRow().values[column] ?? '';
+			const style = () => {
+				const tier = heatLevels?.[readRow().index]?.[column - 1];
+				return tier == null
+					? ''
+					: `background:var(--dataviz-heatmap-neutral-${tier});color:var(--dataviz-heatmap-neutral-ink-${tier});display:block;padding:0.25em;border-radius:var(--radius-sm)`;
+			};
+			return {
+				render: () => `<span style="${style()}">${escape(value())}</span>`,
+				setup: (element) =>
+					$effect.root(() => {
+						$effect(() => {
+							element.textContent = value();
+							element.setAttribute('style', style());
+						});
+					}),
+			};
+		});
+	}
+
+	const columns = $derived(
+		headers.map(
+			(header, column): DataTableColumn<Row> =>
+				column === 0
+					? { key: 'label', header, rowHeader: true, cell: labelCell }
+					: { key: String(column), header, cell: textCell(column) },
+		),
+	);
 </script>
 
-<!-- svelte-ignore a11y_no_noninteractive_tabindex (The wide table must be scrollable with a keyboard.) -->
-<div
-	class="table-scroll"
-	class:stack
-	role={wide ? 'region' : undefined}
-	aria-label={wide ? title : undefined}
-	tabindex={wide ? 0 : undefined}
->
-	<table role={stack ? 'table' : undefined}>
-		<caption class="sr-only">{title}</caption>
-		<thead role={stack ? 'rowgroup' : undefined}
-			><tr role={stack ? 'row' : undefined}
-				>{#each headers as header (header)}<th scope="col" role={stack ? 'columnheader' : undefined}
-						>{header}</th
-					>{/each}</tr
-			></thead
-		>
-		<tbody role={stack ? 'rowgroup' : undefined}>
-			{#each rows as [label, ...values], index (index)}
-				<tr role={stack ? 'row' : undefined}
-					><th scope="row" role={stack ? 'rowheader' : undefined}>
-						{#if rowLabel}{@render rowLabel(label, index)}{:else if rowHrefs?.[index]}<a
-								class="inline-flex min-h-6 items-center"
-								href={rowHrefs[index]}>{label}</a
-							>{:else}{label}{/if}
-					</th>{#each values as value, column (column)}<td role={stack ? 'cell' : undefined}>
-							{#if stack}<span class="stack-label" aria-hidden="true">{headers[column + 1]}</span
-								>{/if}
-							{value}</td
-						>{/each}</tr
-				>
-			{/each}
-		</tbody>
-	</table>
-</div>
+{#snippet labelCell({ values, index }: Row)}
+	{@const label = values[0] ?? ''}
+	{#if rowLabel}
+		{@render rowLabel(label, index)}
+	{:else if rowHrefs?.[index]}
+		<a class="inline-flex min-h-6 items-center" href={rowHrefs[index]}>{label}</a>
+	{:else}
+		{label}
+	{/if}
+{/snippet}
+
+<DataTable
+	caption={title}
+	class="record-evidence-table"
+	{columns}
+	rows={tableRows}
+	key={(row) => String(row.index)}
+	responsive={wide
+		? { mode: 'scroll', minWidth: '38rem' }
+		: { mode: 'stack', at: stack ? 'tablet' : 'compact' }}
+/>
 
 <style>
-	.table-scroll {
-		max-width: 100%;
-		overflow-x: auto;
+	:global(.record-evidence-table[data-responsive='stack']) {
+		container-type: inline-size;
 	}
-	.table-scroll[role='region'] table {
-		min-width: 38rem;
-	}
-	table {
-		width: 100%;
-		border-collapse: collapse;
-		font-size: var(--text-small);
-	}
-	th,
-	td {
-		padding: 0.5rem 0.375rem;
-		border-bottom: 1px solid var(--border);
-		text-align: start;
-	}
-	td {
-		font-variant-numeric: tabular-nums;
-	}
-	.stack-label {
-		display: none;
-	}
-	@media (max-width: 640px) {
-		.stack thead {
-			position: absolute;
-			width: 1px;
-			height: 1px;
-			overflow: hidden;
-			clip-path: inset(50%);
+
+	/* Long localized evidence labels need the full cell width on narrow cards. */
+	@container (inline-size < 22rem) {
+		:global(
+			.record-evidence-table[data-slot='data-table-frame'][data-responsive='stack']
+				.data-table
+				tbody
+				:is(th, td)
+		) {
+			grid-template-columns: minmax(0, 1fr);
+			row-gap: 0.125rem;
 		}
-		.stack :is(table, tbody, tr, th, td) {
-			display: block;
-		}
-		.stack tr {
-			padding-block: 0.5rem;
-			border-bottom: 1px solid var(--border);
-		}
-		.stack :is(th, td) {
-			border-bottom: 0;
-			padding-block: 0.25rem;
-			overflow-wrap: anywhere;
-		}
-		.stack-label {
-			display: block;
-			color: var(--muted-foreground);
+
+		:global(
+			.record-evidence-table[data-slot='data-table-frame'][data-responsive='stack']
+				.data-table
+				tbody
+				.data-table-cell-content
+		) {
+			grid-column: 1;
 		}
 	}
 </style>
