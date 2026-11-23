@@ -55,11 +55,6 @@ afterEach(() => {
 	provState.settled = true;
 });
 
-const liveMethodology = {
-	otp_definition: 'LIVE-NOTE-OTP: on-time band -60s..+300s, observation-weighted',
-	cancellation: 'LIVE-NOTE-CANCEL: canceled trip-days / observed trip-days, ramp-in',
-};
-
 describe('MetricsExplainer — responsive stat rail icons', () => {
 	it('retains the ToC, Coverage and complete definitions in actual unseeded SSR', async () => {
 		const { createServer } = await import('vite');
