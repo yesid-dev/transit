@@ -1,8 +1,8 @@
 import { CORS_HEADERS, PREFLIGHT_HEADERS } from "./cors.js";
 import { parseQuestion } from "./question-params.js";
 
-const CLOSED_TTL = 7 * 24 * 60 * 60;
-const OPEN_TTL = 30;
+export const CLOSED_TTL = 7 * 24 * 60 * 60;
+export const OPEN_TTL = 30;
 const LAST_GOOD_TTL = 30 * 24 * 60 * 60;
 const CITY_CATALOG_KEY = "transit-city-catalog";
 const VERSION_HEADER = "x-transit-cleaning-version";
@@ -35,7 +35,7 @@ async function hash(value) {
   return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function cleaningVersion(value) {
+export function cleaningVersion(value) {
   const version = String(value ?? "");
   return /^[1-9][0-9]{0,15}$/.test(version) ? version : null;
 }
@@ -44,7 +44,7 @@ function cacheRequest(origin, question, version) {
   return new Request(`${origin}/__transit_question_cache/v2/${version}${question.key}`);
 }
 
-async function cacheMatch(cache, key) {
+export async function cacheMatch(cache, key) {
   try {
     return await cache?.match(key);
   } catch {
@@ -52,7 +52,7 @@ async function cacheMatch(cache, key) {
   }
 }
 
-function serviceToday(timezone) {
+export function serviceToday(timezone) {
   try {
     return new Intl.DateTimeFormat("sv-SE", { timeZone: timezone }).format(new Date());
   } catch {
@@ -60,7 +60,7 @@ function serviceToday(timezone) {
   }
 }
 
-async function admit(env, visitorIp) {
+export async function admit(env, visitorIp) {
   try {
     const { success } = await env.QUESTION_LIMIT.limit({ key: await hash(visitorIp || "unknown") });
     return success ? null : busy("60");
@@ -105,6 +105,11 @@ async function loadCities(env, cache, key, authorize, ctx, allowLastGood) {
     }
   }
   return { error: message(503, "provider catalog unavailable") };
+}
+
+export function loadPublicCities(env, cache, origin, authorize, ctx, allowLastGood = false) {
+  const key = cacheRequest(origin, { key: "/cities" }, "unversioned");
+  return loadCities(env, cache, key, authorize, ctx, allowLastGood);
 }
 
 async function lastGood(env, key) {
@@ -196,8 +201,7 @@ async function answerQuestion(request, env, ctx, visitorIp) {
 
   let timezone;
   if (question.route === "cities" || question.end) {
-    const cityKey = cacheRequest(url.origin, { key: "/cities" }, "unversioned");
-    const cities = await loadCities(env, cache, cityKey, authorize, ctx, question.end !== null);
+    const cities = await loadPublicCities(env, cache, url.origin, authorize, ctx, question.end !== null);
     if (cities.error) return cities.error;
     if (question.route === "cities") return publicAnswer(cities.body, "application/json");
     const city = JSON.parse(cities.body).providers.find((entry) => entry.id === question.city);

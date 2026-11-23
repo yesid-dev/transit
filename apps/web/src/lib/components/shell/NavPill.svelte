@@ -346,14 +346,13 @@
 		inset-block-start: auto;
 	}
 
-	/* Transit's pill also holds refresh and search, so on phones the 18px brand pushes the pill off
-	   screen. ProductBrand takes a caller size; below SiteHeader's narrow tier only the product
-	   name stays (the house link is in the menu). */
+	/* The full brand leaves too little room for French search and the controls at 414px.
+	   Keep the product name on phones. The house link is in the menu. */
 	:global(.nav-product-brand) {
 		flex-shrink: 0;
 		white-space: nowrap;
 	}
-	@container site-header (width < 400px) {
+	@container site-header (width < 432px) {
 		:global(.nav-product-brand) {
 			font-size: 1rem;
 		}
