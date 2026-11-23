@@ -56,7 +56,7 @@ def network(tmp_path: Path) -> tuple[Store, tuple[Trip, ...]]:
         *_service("N", 2, (0,) * 32, start=19 * 60),
         *_service("R", 2, (0,) * 16, route_type=1),
     )
-    return _build_store(tmp_path, 8, {THURSDAY: trips}), trips
+    return _build_store(tmp_path, 9, {THURSDAY: trips}), trips
 
 
 def _request(store: Store, **options: str) -> tuple[int, dict[bytes, bytes], bytes]:
@@ -110,7 +110,7 @@ def test_lines_match_independent_calculation_and_show_every_exclusion(
     assert evidence["days_measured"] == [str(THURSDAY)]
     assert evidence["days_not_measured"] == [str(FRIDAY)]
     assert evidence["days_included"] == [str(THURSDAY)]
-    assert evidence["cleaning_versions"] == [8]
+    assert evidence["cleaning_versions"] == [9]
     assert evidence["query_ms"] >= 0
     assert answer["coverage_note"]["en"] == "Only measured days are included."
     assert [r["id"] for r in _json(store, **{"class": "3:night"})["rows"]] == ["N"]
@@ -136,6 +136,10 @@ def test_ranked_stop_and_departure_keep_registry_cuts(
         ("N", 0, "26:00:00", "3:night"),
         ("N", 0, "26:10:00", "3:night"),
     ]
+    limited = _json(store, kind="departure", hour="2", limit="1")
+    assert limited["ranked_count"] == 2
+    assert limited["rows"] == [first]
+    assert limited["excluded"] == departures["excluded"]
     measured = _json(store, measure="p90_delay", **{"class": "all"})
     assert measured["rows"][0]["id"] == "W"
     top = measured["rows"][0]

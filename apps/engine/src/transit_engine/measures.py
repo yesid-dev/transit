@@ -20,6 +20,7 @@ from transit_engine.clean_manifest import (
     FEED_POLLS,
     PREDICTION_SAMPLES,
     SCHEDULED_STOP_TIMES,
+    STOP_ELIGIBILITY_VERSION,
     STOP_EVENTS,
     TRIP_DAYS,
     VEHICLE_POSITIONS,
@@ -522,7 +523,9 @@ def methods() -> list[dict[str, Any]]:
     ]
 
 
-def _cuts(question: Question, hour_sql: str | None) -> tuple[str, list[object]]:
+def _cuts(
+    question: Question, hour_sql: str | None, *, departure_sql: str = _DEPARTURE_SECONDS
+) -> tuple[str, list[object]]:
     filters = []
     parameters: list[object] = []
     for name, value in question.cuts().items():
@@ -530,7 +533,7 @@ def _cuts(question: Question, hour_sql: str | None) -> tuple[str, list[object]]:
             "line": "route_id",
             "direction": "direction_id",
             "stop": "stop_id",
-            "departure": _DEPARTURE_SECONDS,
+            "departure": departure_sql,
             "hour": hour_sql,
             "from_stop": "from_stop",
             "to_stop": "to_stop",
@@ -587,15 +590,24 @@ def _punctuality_rows(
     version: str,
     group: EntityKind | None,
 ) -> dict[EntityKey, Batch]:
+    by_exact_delay = (
+        int(version) >= STOP_ELIGIBILITY_VERSION and group is None and not question.group
+    )
     hour_sql = (
         local_hour_sql(conn, "scheduled_stop_utc", question.start, question.end)
-        if question.group in HOUR_GROUPS
+        if int(version) < STOP_ELIGIBILITY_VERSION and question.group in HOUR_GROUPS
         else None
     )
     sql, parameters, counters = _punctuality_query(
-        family, paths, question, version, group, hour_sql=hour_sql
+        family, paths, question, version, group, hour_sql=hour_sql, by_exact_delay=by_exact_delay
     )
-    rows = conn.execute(sql, parameters).fetchall()
+    try:
+        rows = conn.execute(sql, parameters).fetchall()
+    except duckdb.OutOfMemoryException:
+        if not by_exact_delay:
+            raise
+        sql, parameters, counters = _punctuality_query(family, paths, question, version, group)
+        rows = conn.execute(sql, parameters).fetchall()
     return _grouped_batches(rows, counters, "classified", bool(group or question.group))
 
 
@@ -608,19 +620,21 @@ def _punctuality_query(
     *,
     for_vehicles: bool = False,
     hour_sql: str | None = None,
+    by_exact_delay: bool = False,
 ) -> tuple[str, list[object], dict[str, str]]:
-    hour = hour_sql or _LOCAL_HOUR.format("scheduled_stop_utc")
-    cut_sql, filters = _cuts(question, hour)
+    clean_events = int(version) >= STOP_ELIGIBILITY_VERSION
+    hour = (
+        "scheduled_local_hour"
+        if clean_events
+        else hour_sql or _LOCAL_HOUR.format("scheduled_stop_utc")
+    )
+    departure_sql = "scheduled_start_seconds" if clean_events else _DEPARTURE_SECONDS
+    cut_sql, filters = _cuts(question, hour, departure_sql=departure_sql)
     scope = [question.city, version, question.start, question.end]
     trip_cut = "AND route_id = ?" if question.line is not None else ""
-    parameters: list[object] = [
-        paths[TRIP_DAYS],
-        *scope,
-        *([question.line] if trip_cut else []),
-        paths[STOP_EVENTS],
-        *scope,
-        *filters,
-    ]
+    parameters: list[object] = [paths[STOP_EVENTS], *scope, *filters]
+    if not clean_events:
+        parameters[:0] = [paths[TRIP_DAYS], *scope, *([question.line] if trip_cut else [])]
     counters = {name: sql for name, (sql, _) in _COUNTS.items()}
     counters.update({m.id: f"count(*) FILTER ({m.band})" for m in family.measures if m.band})
     if group:
@@ -652,13 +666,19 @@ def _punctuality_query(
         if group == "departure"
         else _entity_sql(group, question.group, hour)
     )
+    if clean_events:
+        if question.group == "weekday_hour":
+            entity = f"row(service_weekday, {hour})"
+        elif question.group == "day_type":
+            entity = (
+                "row(CASE service_weekday WHEN 6 THEN 'saturday' "
+                "WHEN 7 THEN 'sunday' ELSE 'weekday' END)"
+            )
     group_by = f"GROUP BY {group_columns or 'entity'}, lower_edge"
     if group is None and question.group is None:
         group_by = "GROUP BY lower_edge"
     # Trip flags and the GTFS service-time conversion are invariant across a trip's stops.
-    departure = (
-        f", ({_DEPARTURE_SECONDS})::BIGINT AS departure_seconds" if group == "departure" else ""
-    )
+    departure = f", ({departure_sql})::BIGINT AS departure_seconds" if group == "departure" else ""
     by_trip = (
         not with_histogram
         and group in {"line", "departure"}
@@ -669,8 +689,10 @@ def _punctuality_query(
         FROM read_parquet(?, hive_partitioning = false) s
         WHERE s.provider = ? AND s.cleaning_version = ? AND s.service_date BETWEEN ? AND ?
     """
-    stop_band_ranking = group == "stop" and not with_histogram
-    by_delay_bin = stop_band_ranking or (
+    rank_by_band = not with_histogram and (
+        group == "stop" or (clean_events and group in {"line", "departure"})
+    )
+    by_delay_bin = rank_by_band or (
         group is None and not for_vehicles and question.group != "stop"
     )
     stop_status = """
@@ -685,6 +707,11 @@ def _punctuality_query(
     """
     vehicle_filter = (
         "AND s.vehicle_id IN (SELECT vehicle_id FROM selected_vehicles)" if for_vehicles else ""
+    )
+    delay = (
+        "s.delay_seconds"
+        if by_delay_bin
+        else "CASE WHEN scheduled AND NOT capture_gap THEN s.delay_seconds END"
     )
     ctes = f"""
         WITH trips AS MATERIALIZED (
@@ -701,7 +728,34 @@ def _punctuality_query(
             WHERE provider = ? AND cleaning_version = ? AND service_date BETWEEN ? AND ?
                 {trip_cut}
         )"""
-    if by_trip:
+    if clean_events:
+        clean_status = """
+            CASE
+                WHEN trip_exclusion_reason IS NULL THEN 5
+                WHEN trip_exclusion_reason = 'added' THEN 1
+                WHEN trip_exclusion_reason = 'cancelled' THEN 2
+                WHEN trip_exclusion_reason = 'route_without_live_data' THEN 3
+                WHEN trip_exclusion_reason = 'capture_gap' THEN 4
+                ELSE 6
+            END
+        """
+        ctes = f"""
+            WITH events AS (
+                SELECT s.service_date, s.route_id, s.direction_id, s.stop_id, s.stop_sequence,
+                    s.scheduled_local_hour, s.service_weekday, s.scheduled_start_seconds,
+                    s.trip_exclusion_reason,
+                    trip_exclusion_reason IS NOT DISTINCT FROM 'added' AS added,
+                    trip_exclusion_reason IS NOT DISTINCT FROM 'cancelled' AS cancelled,
+                    trip_exclusion_reason IS NOT DISTINCT FROM 'route_without_live_data'
+                        AS without_live_data,
+                    trip_exclusion_reason IS NOT DISTINCT FROM 'capture_gap' AS capture_gap,
+                    (trip_exclusion_reason IS NULL OR capture_gap) AS scheduled,
+                    route_has_live_data, {delay} AS delay_seconds
+                    {departure}
+                    {f", {clean_status} AS unclassified_bucket" if by_delay_bin else ""}
+                {stop_scan} {vehicle_filter}
+            )"""
+    elif by_trip:
         # Line and departure keys come from the trip. Roll up its stop counts before
         # joining so the range-wide aggregates process one row per trip.
         bands = {m.id: counters[m.id] for m in family.measures if m.band}
@@ -742,12 +796,8 @@ def _punctuality_query(
             parameters,
             counters,
         )
-    delay = (
-        "s.delay_seconds"
-        if by_delay_bin
-        else "CASE WHEN scheduled AND NOT capture_gap THEN s.delay_seconds END"
-    )
-    ctes += f""", stops AS (SELECT * {stop_scan} {vehicle_filter}), events AS (
+    else:
+        ctes += f""", stops AS (SELECT * {stop_scan} {vehicle_filter}), events AS (
         SELECT service_date, t.route_id, t.direction_id, s.stop_id, s.stop_sequence,
             t.scheduled_start_utc,
             coalesce(s.scheduled_departure_utc, s.scheduled_arrival_utc) AS scheduled_stop_utc,
@@ -781,22 +831,52 @@ def _punctuality_query(
         result_entity = "entity" if question.group else entity
         bin_live = final_live = ""
         bin_routes = "NULL"
-        if stop_band_ranking:
-            # Resolve distinct route membership on the partial counts instead of on every stop.
-            select_entity = bin_group = "stop_id, route_id, "
-            final_group = "stop_id, "
-            result_entity = "row(stop_id)"
-            bin_routes = "list(DISTINCT route_id) FILTER (bucket <> 1 AND route_id IS NOT NULL)"
+        bin_source = f"events WHERE {cut_sql}"
+        bin_count = "count(*)"
+        reason = "unclassified_bucket"
+        excluded = "unclassified_bucket <> 5"
+        if by_exact_delay:
+            # The network has many stops at each exact delay. Compute the
+            # histogram edges from those counts instead of from every stop.
+            ctes += f""", delays AS (
+                SELECT trip_exclusion_reason, delay_seconds, count(*) AS n
+                FROM events WHERE {cut_sql}
+                GROUP BY trip_exclusion_reason, delay_seconds
+            )"""
+            bin_source = "delays"
+            bin_count = "sum(n)"
+            reason = clean_status
+            excluded = "trip_exclusion_reason IS NOT NULL"
+        if clean_events and question.group in HOUR_GROUPS:
+            keys = (
+                f"service_weekday, {hour}" if question.group == "weekday_hour" else hour
+            )
+            select_entity = bin_group = final_group = f"{keys}, "
+            result_entity = f"row({keys})"
+        if rank_by_band:
+            assert group_columns is not None
+            final_group = f"{group_columns}, "
+            result_entity = entity
+            if group == "stop":
+                # Resolve distinct route membership on the partial counts.
+                select_entity = bin_group = "stop_id, route_id, "
+                bin_routes = "list(DISTINCT route_id) FILTER (bucket <> 1 AND route_id IS NOT NULL)"
+            else:
+                select_entity = bin_group = final_group
+                bin_routes = (
+                    "CASE WHEN count(*) FILTER (bucket <> 1 AND route_id IS NOT NULL) > 0 "
+                    "THEN [route_id] END"
+                )
             bin_live = ", count(*) FILTER (NOT added AND route_has_live_data) AS live"
             final_live = ", sum(live)"
         return (
             f"""
             {ctes}, bins AS (
                 SELECT {select_entity}
-                    CASE WHEN delay_seconds IS NULL OR unclassified_bucket <> 5
-                        THEN unclassified_bucket {delay_bucket} END AS bucket,
-                    count(*) AS n {bin_live}
-                FROM events WHERE {cut_sql}
+                    CASE WHEN delay_seconds IS NULL OR {excluded}
+                        THEN {reason} {delay_bucket} END AS bucket,
+                    {bin_count} AS n {bin_live}
+                FROM {bin_source}
                 GROUP BY {bin_group}bucket
             )
             SELECT {result_entity} AS entity, {normalized_edge} AS lower_edge, {bin_routes},
@@ -3877,6 +3957,34 @@ def _series_keys(
     return [(0,), (1,), *([(None,)] if (None,) in observed else [])]
 
 
+def _series_query_batches(
+    conn: duckdb.DuckDBPyConnection,
+    store: Store,
+    family: Family,
+    question: Question,
+    window: ReadWindow,
+) -> Iterator[dict[EntityKey, Batch]]:
+    assert family.query is not None
+    version = str(store.cleaning_version)
+    if (
+        family is _PUNCTUALITY
+        and store.cleaning_version >= STOP_ELIGIBILITY_VERSION
+        and store.memory_mib >= 2048
+        and question.group in HOUR_GROUPS
+        and len(window.included) > DAYS_PER_QUERY_BATCH
+    ):
+        # Merge each hour's bins in DuckDB before transferring them to Python.
+        try:
+            result = family.query(conn, family, window.paths, question, version, None)
+        except duckdb.OutOfMemoryException:
+            pass
+        else:
+            yield result
+            return
+    for batch in window.batches():
+        yield family.query(conn, family, batch, question, version, None)
+
+
 def _series_answer(
     store: Store,
     question: Question,
@@ -3905,8 +4013,7 @@ def _series_answer(
     with store.connect() as conn:
         window = read_window(conn, store, question, family, selected)
         alert_days = set(window.measured) if alerts else set()
-        for offset, batch in enumerate(window.batches()):
-            result = family.query(conn, family, batch, query, str(store.cleaning_version), None)
+        for offset, result in enumerate(_series_query_batches(conn, store, family, query, window)):
             window.record_vehicle_tracking(family, offset, result)
             if crowding and any(part.counts["published_intervals"] for part in result.values()):
                 occupancy_days.add(window.included[offset])
@@ -4020,14 +4127,13 @@ def _series_answer(
     }
 
 
-def _punctuality_answer(
+def _punctuality_values(
     family: Family,
     selected: tuple[Measure, ...],
     counts: Counter[str],
     histogram: Counter[int],
-    included: list[str],
     missing_days: bool,
-) -> tuple[str, dict[str, float | None], dict[str, Any], dict[str, int]]:
+) -> tuple[str, dict[str, float | None]]:
     classified, scheduled = counts["classified"], counts["scheduled"]
     state = _state(
         family,
@@ -4039,29 +4145,48 @@ def _punctuality_answer(
     )
     values: dict[str, float | None] = dict.fromkeys(m.id for m in selected)
     if state == "measured":
-        bins = sorted(histogram.items())
+        bins = sorted(histogram.items()) if histogram else []
         for measure in selected:
             values[measure.id] = (
                 counts[measure.id] / classified
                 if measure.percentile is None
                 else _percentile(bins, classified, measure.percentile)
             )
+    return state, values
+
+
+def _punctuality_evidence(
+    family: Family, counts: Counter[str], included: list[str]
+) -> dict[str, Any]:
+    scheduled = counts["scheduled"]
+    return {
+        "counts": {
+            key: counts[key] if included else None
+            for key in ("scheduled", "classified", *(m.id for m in family.measures if m.band))
+        },
+        "excluded": {
+            key: counts[key] if included else None
+            for key in _COUNTS
+            if key not in ("scheduled", "classified")
+        },
+        "share_observed": counts["classified"] / scheduled if scheduled else None,
+    }
+
+
+def _punctuality_answer(
+    family: Family,
+    selected: tuple[Measure, ...],
+    counts: Counter[str],
+    histogram: Counter[int],
+    included: list[str],
+    missing_days: bool,
+) -> tuple[str, dict[str, float | None], dict[str, Any], dict[str, int]]:
+    state, values = _punctuality_values(family, selected, counts, histogram, missing_days)
     return (
         state,
         values,
-        {
-            "counts": {
-                key: counts[key] if included else None
-                for key in ("scheduled", "classified", *(m.id for m in family.measures if m.band))
-            },
-            "excluded": {
-                key: counts[key] if included else None
-                for key in _COUNTS
-                if key not in ("scheduled", "classified")
-            },
-            "share_observed": classified / scheduled if scheduled else None,
-        },
-        dict.fromkeys((m.id for m in selected), classified),
+        _punctuality_evidence(family, counts, included),
+        dict.fromkeys(values, counts["classified"]),
     )
 
 

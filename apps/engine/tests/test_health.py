@@ -47,7 +47,7 @@ def clean_day(
     root: Path,
     day: date,
     *,
-    version: int = 8,
+    version: int = 9,
     alerts: str = "tracked",
     rows: dict[str, int] | None = None,
 ) -> Path:
@@ -55,9 +55,9 @@ def clean_day(
     directory.mkdir(parents=True)
     table_rows = {**ROWS, **(rows or {})}
     tables = [STOP_EVENTS, TRIP_DAYS]
-    if version in {4, 5, 6, 7, 8}:
+    if version >= 4:
         tables += [SCHEDULED_STOP_TIMES, VEHICLE_POSITIONS, FEED_POLLS]
-    if version in {7, 8}:
+    if version >= 7:
         tables.append(PREDICTION_SAMPLES)
     if alerts == "tracked":
         tables.append(ALERTS)
@@ -88,7 +88,7 @@ def clean_day(
 
 
 def unmeasured_receipt(root: Path, day: date, reason: str) -> Path:
-    version = 8
+    version = 9
     directory = root / "stm" / day.isoformat() / f"v{version}"
     directory.mkdir(parents=True)
     (directory / "manifest.json").write_text(
@@ -112,12 +112,12 @@ def test_present_day_reports_each_table_and_its_rows(tmp_path: Path) -> None:
     result = data_health(Store(tmp_path.as_posix()), "stm", DAY, DAY)
     assert result["city"] == "stm"
     assert result["from"] == result["to"] == DAY.isoformat()
-    assert result["cleaning_version"] == "8"
+    assert result["cleaning_version"] == "9"
     [entry] = result["days"]
     assert entry["service_date"] == DAY.isoformat()
     assert entry["status"] == "present"
     assert "reason" not in entry
-    assert entry["cleaning_version"] == "8"
+    assert entry["cleaning_version"] == "9"
     assert entry["built_at_utc"] == f"{DAY}T06:30:00+00:00"
     assert list(entry["tables"]) == list(TABLE_NAMES)
     assert entry["tables"]["stop_events"] == {"status": "present", "rows": 3}
@@ -134,7 +134,7 @@ def test_v6_override_reads_days_without_prediction_samples(tmp_path: Path) -> No
     assert entry["tables"]["prediction_samples"] == {"status": "missing"}
 
 
-def test_v8_requires_prediction_samples_and_reports_their_rows(tmp_path: Path) -> None:
+def test_v9_requires_prediction_samples_and_reports_their_rows(tmp_path: Path) -> None:
     directory = clean_day(tmp_path, DAY, alerts="not_tracked")
     store = Store(tmp_path.as_posix())
     [entry] = data_health(store, "stm", DAY, DAY)["days"]
@@ -161,7 +161,7 @@ def test_unmeasured_receipt_is_settled(tmp_path: Path, reason: str) -> None:
     [entry] = data_health(Store(tmp_path.as_posix()), "stm", DAY, DAY)["days"]
     assert entry["status"] == "not_measured"
     assert entry["reason"] == reason
-    assert entry["cleaning_version"] == "8"
+    assert entry["cleaning_version"] == "9"
     assert entry["built_at_utc"] == f"{DAY}T06:30:00+00:00"
     assert set(entry["tables"]) == set(TABLE_NAMES)
     assert {table["status"] for table in entry["tables"].values()} == {"not_measured"}
@@ -186,7 +186,7 @@ def test_no_manifest_is_a_missing_day(tmp_path: Path) -> None:
     [entry] = result["days"]
     assert entry["status"] == "missing"
     assert entry["reason"] == "no_manifest"
-    assert entry["cleaning_version"] == "8"
+    assert entry["cleaning_version"] == "9"
     assert entry["built_at_utc"] is None
     assert set(entry["tables"]) == set(TABLE_NAMES)
     assert {table["status"] for table in entry["tables"].values()} == {"missing"}
@@ -297,7 +297,7 @@ def test_route_returns_json_and_rejects_bad_parameters(tmp_path: Path) -> None:
         assert status == 200
         assert headers[b"content-type"] == b"application/json"
         payload = json.loads(body)
-        assert payload["cleaning_version"] == "8"
+        assert payload["cleaning_version"] == "9"
         assert payload["days"][0]["status"] == "present"
         for query in (
             params + "&format=csv",

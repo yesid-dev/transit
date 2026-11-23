@@ -656,6 +656,7 @@ def test_clean_day_math_and_edition_switch(tmp_path: Path) -> None:
     with duckdb.connect(config={"TimeZone": "UTC"}) as db:
         trips = _rows(db, first / "trip_days.parquet")
         stops = _rows(db, first / "stop_events.parquet")
+        _verify_stop_eligibility(db, first)
         next_stops = _rows(db, later / "stop_events.parquet")
         for directory, edition, anchor in zip(
             (first, later), editions, (MIDNIGHT - timedelta(days=1), MIDNIGHT), strict=True
@@ -833,6 +834,37 @@ def test_local_archive_reads_the_selected_capture_bytes(tmp_path: Path) -> None:
         list(archived_captures(provider, tmp_path, [path, path], start, end))
 
 
+def _verify_stop_eligibility(db: duckdb.DuckDBPyConnection, directory: Path) -> None:
+    manifest = json.loads((directory / "manifest.json").read_bytes())
+    zone = manifest["scorecard_declaration"]["timezone"]
+    mismatches = db.execute(
+        """
+        WITH legacy AS (
+            SELECT s.*, t.route_has_live_data AS trip_live,
+                CASE WHEN t.scheduled_start_utc IS NULL THEN 'added'
+                    WHEN t.state = 'cancelled' THEN 'cancelled'
+                    WHEN NOT t.route_has_live_data THEN 'route_without_live_data'
+                    WHEN t.state_reason = 'capture_gap' THEN 'capture_gap'
+                END AS exclusion,
+                hour(timezone(?, coalesce(s.scheduled_departure_utc, s.scheduled_arrival_utc)))
+                    AS local_hour,
+                epoch(t.scheduled_start_utc)
+                    - epoch(timezone(?, s.service_date + INTERVAL '12 hours')) + 43200
+                    AS start_seconds
+            FROM read_parquet(?) s JOIN read_parquet(?) t USING (provider, service_date, trip_id)
+        )
+        SELECT trip_id, stop_sequence FROM legacy
+        WHERE trip_exclusion_reason IS DISTINCT FROM exclusion
+            OR route_has_live_data IS DISTINCT FROM trip_live
+            OR scheduled_local_hour IS DISTINCT FROM local_hour
+            OR service_weekday IS DISTINCT FROM isodow(service_date)
+            OR scheduled_start_seconds IS DISTINCT FROM start_seconds
+        """,
+        [zone, zone, str(directory / "stop_events.parquet"), str(directory / "trip_days.parquet")],
+    ).fetchall()
+    assert mismatches == []
+
+
 @pytest.mark.parametrize("vehicles_enabled", [True, False])
 def test_ottawa_service_day(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, vehicles_enabled: bool
@@ -847,6 +879,7 @@ def test_ottawa_service_day(
             "night": ("r", ["24:00:00", "24:05:00", "24:10:00"]),
             "quiet": ("r", ["24:00:00"]),
             "train": ("metro", ["24:00:00"]),
+            "clock_change": ("r", ["00:45:00", "01:00:00", "02:00:00"]),
         },
         day,
         route_type=0,
@@ -916,14 +949,21 @@ def test_ottawa_service_day(
     with duckdb.connect() as db:
         _verify_manifest(db, destination, edition)
         _verify_schedule(db, destination, edition, scheduled - timedelta(days=1))
+        _verify_stop_eligibility(db, destination)
         position_rows = _rows(db, destination / "vehicle_positions.parquet")
         polls = _rows(db, destination / "feed_polls.parquet")
         trips = {row["trip_id"]: row for row in _rows(db, destination / "trip_days.parquet")}
-        stops = {
-            row["stop_id"]: row
-            for row in _rows(db, destination / "stop_events.parquet")
-            if row["trip_id"] == "night"
-        }
+        events = _rows(db, destination / "stop_events.parquet")
+        stops = {row["stop_id"]: row for row in events if row["trip_id"] == "night"}
+        assert [
+            (row["scheduled_local_hour"], row["service_weekday"])
+            for row in events
+            if row["trip_id"] == "clock_change"
+        ] == [(1, 7), (1, 7), (2, 7)]
+        assert all(
+            (row["scheduled_local_hour"], row["service_weekday"]) == (0, 7)
+            for row in stops.values()
+        )
     assert len(position_rows) == 2 * int(vehicles_enabled)
     assert Counter(r["feed"] for r in polls) == (
         {"trip_updates": 13, "vehicle_positions": 12} if vehicles_enabled else {"trip_updates": 13}

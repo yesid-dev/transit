@@ -10,6 +10,7 @@ from pathlib import Path
 from struct import Struct
 from tempfile import TemporaryDirectory
 from typing import BinaryIO, Literal, NamedTuple
+from zoneinfo import ZoneInfo
 
 from google.transit.gtfs_realtime_pb2 import FeedHeader, TripDescriptor, TripUpdate, VehiclePosition
 
@@ -47,8 +48,8 @@ STOPPED_AT_RADIUS_METRES = 50
 # Require several opportunities to see early reporting around departure, even
 # for short trips, at the providers' normal 20–60 second feed cadences.
 ABSENCE_LEAD_SECONDS = 300
-# v8 carries the schedule's declared wheelchair accessibility for trips and stops.
-CLEANING_VERSION = "8"
+# v9 carries trip eligibility and scheduled service time on stop events.
+CLEANING_VERSION = "9"
 PREDICTION_HORIZONS_MINUTES = (1, 3, 5, 10, 15, 20, 30)
 _PREDICTION_HORIZONS_SECONDS = tuple(minutes * 60 for minutes in PREDICTION_HORIZONS_MINUTES)
 _CAPTURE_FRAME = Struct(">qQ")  # capture second and payload length
@@ -367,6 +368,7 @@ class CleanDay:
     trips: dict[str, Trip]
     live_routes: set[str]
     schedule_anchor: int
+    timezone: ZoneInfo
     coverage: dict[Feed, list[CoveredInterval]] = field(default_factory=dict)
     vehicle_positions: list[VehicleStateInterval] = field(default_factory=list)
     feed_polls: list[FeedPoll] = field(default_factory=list)
@@ -386,28 +388,30 @@ class CleanDay:
                 return False
         return bool(self.coverage)
 
+    def _trip_state(
+        self, trip: Trip, route_live: bool, observed: bool
+    ) -> tuple[State, StateReason | None]:
+        if trip.added:
+            return "added", None
+        if trip.relationship and trip.relationship[1] in _REMOVED:
+            return "cancelled", None
+        if observed:
+            return "ran", None
+        if trip.first_capture is not None:
+            return "unconfirmed", None
+        if not route_live:
+            return "not_measured", "route_without_live_data"
+        if self._covered(trip):
+            return "missing", None
+        return "not_measured", "capture_gap"
+
     def trip_rows(self) -> Iterator[Row]:
         for trip_id, trip in sorted(self.trips.items()):
             observed = [s.observed for s in trip.stops.values() if s.observed is not None]
             vehicles = [r for r in observed if r.vehicle_id is not None]
             vehicle = min(vehicles).vehicle_id if vehicles else None
             route_live = trip.route_id in self.live_routes
-            state: State
-            reason: StateReason | None = None
-            if trip.added:
-                state = "added"
-            elif trip.relationship and trip.relationship[1] in _REMOVED:
-                state = "cancelled"
-            elif observed:
-                state = "ran"
-            elif trip.first_capture is not None:
-                state = "unconfirmed"
-            elif not route_live:
-                state, reason = "not_measured", "route_without_live_data"
-            elif self._covered(trip):
-                state = "missing"
-            else:
-                state, reason = "not_measured", "capture_gap"
+            state, reason = self._trip_state(trip, route_live, bool(observed))
             yield (
                 *self._identity(trip_id, trip),
                 _timestamp(trip.start),
@@ -423,7 +427,22 @@ class CleanDay:
             )
 
     def stop_rows(self) -> Iterator[Row]:
+        weekday = self.date.isoweekday()
         for trip_id, trip in sorted(self.trips.items()):
+            route_live = trip.route_id in self.live_routes
+            state, reason = self._trip_state(
+                trip, route_live, any(stop.observed is not None for stop in trip.stops.values())
+            )
+            exclusion: str | None
+            if trip.start is None:
+                exclusion = "added"
+            elif state == "cancelled":
+                exclusion = "cancelled"
+            elif not route_live:
+                exclusion = "route_without_live_data"
+            else:
+                exclusion = reason
+            start_seconds = None if trip.start is None else trip.start - self.schedule_anchor
             for seq, stop in sorted(trip.stops.items()):
                 reading = stop.observed
                 scheduled = (
@@ -431,6 +450,7 @@ class CleanDay:
                     if reading and reading.event == "departure"
                     else (stop.arrival if stop.arrival is not None else stop.departure)
                 )
+                bucket_time = stop.departure if stop.departure is not None else stop.arrival
                 yield (
                     *self._scheduled_fields(trip_id, trip, seq, stop),
                     _timestamp(reading.second) if reading else None,
@@ -438,6 +458,13 @@ class CleanDay:
                     reading.basis if reading else "not_observed",
                     reading.event if reading else None,
                     reading.vehicle_id if reading else None,
+                    exclusion,
+                    route_live,
+                    start_seconds,
+                    datetime.fromtimestamp(bucket_time, self.timezone).hour
+                    if bucket_time is not None
+                    else None,
+                    weekday,
                 )
 
     def scheduled_stop_rows(self) -> Iterator[Row]:
@@ -592,6 +619,7 @@ def _build_clean_day(
         trips,
         set(),
         anchor,
+        schedule.timezone,
         route_types=schedule.route_types,
     )
     anchors = {d: context.service_day_start(d) for d, context in schedules.items()}
