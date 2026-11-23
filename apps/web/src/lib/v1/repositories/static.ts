@@ -18,6 +18,7 @@ export async function getStopsIndexSlim(ctx?: AdapterCtx): Promise<SlimStopsInde
 	const fetchFn = ctx?.fetch ?? fetch;
 	const search = new URLSearchParams({ provider: providerOf(ctx) });
 	const res = await fetchFn(`/api/stops/slim?${search}`, { signal: ctx?.signal });
+	ctx?.signal?.throwIfAborted();
 	if (!res.ok) throw new Error('Schedule stop index unavailable');
 	const body: unknown = await res.json();
 	if (!isSlimStopsIndex(body)) throw new Error('Invalid schedule stop index');

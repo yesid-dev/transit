@@ -156,7 +156,7 @@ vi.mock('#lib/stores/index.ts', () => ({
 		refreshing: false,
 		ageSeconds: null,
 	},
-	dataPulse: { subscribe: vi.fn(() => vi.fn()) },
+	dataPulse: { subscribeCapture: vi.fn(() => vi.fn()) },
 	motionMode: { current: 'raw', isSmooth: false, toggle: vi.fn() },
 }));
 vi.mock('#lib/pwa/register.ts', () => ({ registerServiceWorker: vi.fn() }));

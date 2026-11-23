@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { alertUnavailableCopy } from '../src/lib/components/surface/alertAvailabilityCopy';
 import { captureFixture, captureUrl, captureVehicle } from './capture-fixture';
 
 test('the Transit1 live vehicle reads the capture snapshot in English and French', async ({
@@ -60,6 +61,61 @@ test('trip detail waits through a refreshing scope without showing missing data'
 	} finally {
 		release();
 	}
+});
+
+test('Live alerts display capture evidence and distinguish unsupported coverage', async ({
+	page,
+}) => {
+	const at = Date.now();
+	const header = { en: 'Elevator closed for repair', fr: 'Ascenseur fermé pour réparation' };
+	await page.route(captureUrl, (route) => {
+		const city = new URL(route.request().url()).searchParams.get('city')!;
+		return route.fulfill({
+			json: captureFixture(at, {
+				city,
+				alerts: [
+					{
+						id: 'elevator-closure',
+						header,
+						description: {},
+						url: {},
+						cause: null,
+						effect: null,
+						severity: 'WARNING',
+						routes: ['24'],
+						stops: ['S1'],
+						periods: [[new Date(at - 60_000).toISOString(), new Date(at + 300_000).toISOString()]],
+					},
+				],
+			}),
+		});
+	});
+	for (const locale of ['en', 'fr'] as const) {
+		const href = locale === 'fr' ? '/fr/alerts' : '/alerts';
+		await page.goto(`${href}?provider=stm&frameMode=live`);
+		await expect(page.getByText(header[locale], { exact: true })).toBeVisible();
+		await page.goto(`${href}?provider=octranspo&frameMode=live`);
+		await expect(
+			page.getByRole('status').filter({ hasText: alertUnavailableCopy[locale].title }),
+		).toBeVisible();
+	}
+});
+
+test('data health distinguishes an aged capture from an unavailable response', async ({ page }) => {
+	const at = Date.now();
+	let missing = false;
+	await page.route(captureUrl, (route) =>
+		missing
+			? route.fulfill({ status: 404, json: { state: 'no_live_data' } })
+			: route.fulfill({ json: captureFixture(at - 120_000) }),
+	);
+	await page.goto('/status?provider=stm&frameMode=live');
+	const live = page.locator('[data-slot="health-summary"] [data-answer="live"]');
+	await expect(live.locator('.health-answer-mark')).toHaveAttribute('data-state', 'behind');
+	missing = true;
+	await page.reload();
+	await expect(live.locator('.health-answer-mark')).toHaveAttribute('data-state', 'unknown');
+	await expect(live.locator('p > span:not([aria-hidden])')).toHaveText(/update time unknown/i);
 });
 
 test('rail detail uses schedule geometry and omits vehicles from a line without live coverage', async ({

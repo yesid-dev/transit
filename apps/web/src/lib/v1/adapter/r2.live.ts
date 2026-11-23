@@ -91,7 +91,7 @@ export const livePort = {
 	},
 };
 
-export const dataHealthPort = {
+export const captureHealthPort = {
 	async get(ctx?: AdapterCtx) {
 		const snapshot = await read(ctx);
 		const at = now();

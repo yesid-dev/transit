@@ -1,5 +1,6 @@
 import type { PageServerLoad } from './$types';
-import { getDataHealth } from '#lib/v1/repositories/dataHealth.ts';
+import { getCaptureDataHealth } from '#lib/v1/repositories/dataHealth.ts';
+import { getHistoricAvailability } from '#lib/v1/repositories/historic.ts';
 import { serverV1Context } from '#lib/v1/serverContext.ts';
 import { getMethodCatalog, getRecordDataHealth } from '#lib/server/engine.ts';
 import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
@@ -22,7 +23,6 @@ export const load: PageServerLoad = async (event) => {
 	if (!v1)
 		return {
 			view: 'live' as const,
-			provenanceSeed: null,
 			dataHealthSeed: null,
 			historicAvailabilitySeed: null,
 		};
@@ -31,10 +31,14 @@ export const load: PageServerLoad = async (event) => {
 		providerId: v1.manifest.provider,
 		manifest: v1.manifest,
 	};
-	const dataHealth = await getDataHealth(context).catch(() => null);
+	const [dataHealth, history] = await Promise.all([
+		getCaptureDataHealth(context).catch(() => null),
+		getHistoricAvailability(context).catch(() => null),
+	]);
 
 	return {
 		view: 'live' as const,
 		dataHealthSeed: dataHealth ? { key: 'data-health', data: dataHealth } : null,
+		historicAvailabilitySeed: history ? { key: 'historic-availability', data: history } : null,
 	};
 };

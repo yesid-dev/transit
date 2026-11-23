@@ -75,7 +75,7 @@ export function selectHeadlineKpis(net: NetworkFile, labels: HeadlineKpisLabels)
 				value: net.silentTrips == null ? null : labels.fmtCount(net.silentTrips),
 				label: labels.notReporting,
 				key: 'silentTrip',
-				absentReason: 'not-reported',
+				...(net.silentTrips == null ? { absentReason: 'not-reported' as const } : {}),
 			},
 		],
 	};

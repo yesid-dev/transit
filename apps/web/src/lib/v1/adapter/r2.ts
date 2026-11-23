@@ -61,5 +61,9 @@ export const r2Adapter = {
 		(module) => module.provenancePort,
 		{ get: true },
 	),
-	dataHealth: deferredPort(loadLive, (module) => module.dataHealthPort, { get: true }),
+	dataHealth: deferredPort(
+		() => import('./r2.dataHealth'),
+		(module) => module.dataHealthPort,
+		{ get: true },
+	),
 };

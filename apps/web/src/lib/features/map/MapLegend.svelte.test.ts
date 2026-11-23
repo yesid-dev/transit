@@ -59,7 +59,7 @@ describe('MapLegend', () => {
 		for (const [index, code] of OCCUPANCY_CODES.entries())
 			expect(within(rows[index]).getByText(OCCUPANCY_GLYPH[code])).toBeInTheDocument();
 		expect(list.querySelector('[data-legend-entry="status"]')).toBeNull();
-		expect(view.getByText('Zoom in to see each bus’s crowding badge.')).toBeVisible();
+		expect(view.getByText('Zoom in to see each vehicle’s crowding badge.')).toBeVisible();
 	});
 
 	it('shows the sentence under the title as its first line only when asked', () => {

@@ -17,5 +17,6 @@
 		liveOnly
 		manifest={data.v1.manifest}
 		dataHealthSeed={data.dataHealthSeed ?? undefined}
+		historicAvailabilitySeed={data.historicAvailabilitySeed ?? undefined}
 	/>
 {/if}

@@ -65,15 +65,6 @@ for (const locale of PUBLISHED_LOCALES) {
 	test(`${locale}: Live keeps real-size destinations usable at 320 to 1280`, async ({
 		page,
 	}, testInfo) => {
-		await page.route(/\/v1\/stm\/provenance\.json/, (route) =>
-			route.fulfill({
-				json: {
-					generated_utc: b9.frozen_utc,
-					gaps: ['metro_realtime'],
-					sources: [{ feed: 'static_schedule', last_loaded_utc: '2026-08-29T04:00:00Z' }],
-				},
-			}),
-		);
 		let vehiclesReady: Promise<void> = Promise.resolve();
 		let releaseVehicles: () => void = () => {};
 		const generated_utc = b9.frozen_utc;

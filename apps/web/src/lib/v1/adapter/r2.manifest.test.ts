@@ -38,12 +38,14 @@ describe('r2 manifest memo', () => {
 	it('isolates concurrent providers with colliding entity ids and a shared cache', async () => {
 		const cache = new Map<string, unknown>();
 		const request = vi.fn(async (input: RequestInfo | URL) => {
-			const provider = String(input).split('/')[3];
-			return json(
-				String(input).endsWith('/manifest.json')
-					? { ...manifest(), provider }
-					: { generated_utc: ISO, routes: [{ id: '42', short: '42', long: provider, type: 3 }] },
-			);
+			const city = new URL(String(input), 'https://transit1.yesid.dev').searchParams.get('city');
+			return json({
+				schedule: {
+					date: ISO.slice(0, 10),
+					stops: [],
+					routes: [{ id: '42', short: '42', long: city, type: 3 }],
+				},
+			});
 		});
 		const read = (providerId: string) =>
 			r2Adapter.static.routesIndex({ providerId, cache, fetch: request });
@@ -51,9 +53,10 @@ describe('r2 manifest memo', () => {
 		expect(stm.routes[0].long).toBe('stm');
 		expect(ottawa.routes[0].long).toBe('octranspo');
 		await read('octranspo');
-		expect(
-			request.mock.calls.filter(([url]) => String(url).endsWith('/manifest.json')),
-		).toHaveLength(2);
+		expect(request.mock.calls.map(([url]) => url)).toEqual([
+			'/api/schedule-edition?city=stm',
+			'/api/schedule-edition?city=octranspo',
+		]);
 	});
 
 	it('rejects a foreign manifest and does not borrow the booted provider for an explicit request', async () => {
@@ -94,11 +97,7 @@ describe('r2 manifest memo', () => {
 			fetch: vi.fn(async () => json({ publish_generation_id: `stm@${ISO}` })),
 		};
 		const reads = [
-			() => r2Adapter.static.routesIndex(ctx),
-			() => r2Adapter.static.route('42', ctx),
-			() => r2Adapter.live.vehicles(ctx),
 			() => r2Adapter.labels.get('fr', ctx),
-			() => r2Adapter.basemap.get(ctx),
 			() => r2Adapter.dataHealth.get(ctx),
 			() => r2Adapter.historic.historyIndex(ctx),
 			() =>
@@ -118,10 +117,10 @@ describe('r2 manifest memo', () => {
 			json({
 				generated_utc: ISO,
 				publish_generation_id: 'octranspo@2026-07-14T00:00:00Z',
-				routes: [],
+				families: [],
 			}),
 		);
-		await expect(r2Adapter.static.routesIndex(ctx)).resolves.toMatchObject({ routes: [] });
+		await expect(r2Adapter.historic.historyIndex(ctx)).resolves.toMatchObject({ families: [] });
 	});
 
 	it('uses the booted browser manifest for context-free repository reads', async () => {
@@ -134,8 +133,8 @@ describe('r2 manifest memo', () => {
 		};
 		installBrowserAdapterManifest(() => booted as never);
 		const request = vi.fn(async (input: RequestInfo | URL) => {
-			expect(String(input)).toContain('/static/routes_index.json');
-			return json({ generated_utc: ISO, routes: [] });
+			expect(input).toBe('/api/schedule-edition?city=stm');
+			return json({ schedule: { date: ISO.slice(0, 10), routes: [], stops: [] } });
 		});
 		vi.stubGlobal('fetch', request);
 

@@ -160,7 +160,7 @@ describe('mapLegend', () => {
 			[{ kind: 'occupancy', code: 'standing' }, 'Standing room only', null],
 			[{ kind: 'occupancy', code: 'full' }, 'Full', null],
 		]);
-		expect(en.note).toBe('Zoom in to see each bus’s crowding badge.');
+		expect(en.note).toBe('Zoom in to see each vehicle’s crowding badge.');
 		const fr = mapLegend('fr', { colourBy: 'occupancy', staleCutoffS: 150 });
 		expect(fr.groups[0].heading).toBe('La couleur montre l’occupation');
 		expect(fr.groups[0].rows.map((row) => row.label)).toEqual([

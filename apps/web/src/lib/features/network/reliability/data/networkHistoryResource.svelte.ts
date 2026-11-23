@@ -14,12 +14,11 @@ export type NetworkHistoryResource = HistoryRangeResource<
 
 export function createNetworkHistoryResource(
 	initialRequest: RawHistoryRangeRequest,
-	liveOnly = false,
 ): NetworkHistoryResource {
 	return createRetainedHistoryResource({
 		initialRequest,
 		missingSelectionError: 'network history range requires a resolved selection',
-		loadIndex: (signal) => (liveOnly ? Promise.resolve(null) : getNetworkHistoryIndex({ signal })),
+		loadIndex: (signal) => getNetworkHistoryIndex({ signal }),
 		loadRange: (index, selection, signal) => loadNetworkHistoryRange(index, selection, { signal }),
 		build: buildRetainedNetworkTrend,
 	});

@@ -13,7 +13,7 @@
 	import { useAvailableSectionJump } from '#lib/site/availableSectionJump.svelte.ts';
 	import { getLocale, getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
 	import { freshnessRelative } from '#lib/v1/freshness.ts';
-	import { getDataHealth } from '#lib/v1/repositories/dataHealth.ts';
+	import { getCaptureDataHealth, getDataHealth } from '#lib/v1/repositories/dataHealth.ts';
 	import { getHistoricAvailability } from '#lib/v1/repositories/historic.ts';
 	import { getProvenance } from '#lib/v1/repositories/provenance.ts';
 	import type { DataHealth } from '#lib/v1/schemas/data_health.ts';
@@ -95,7 +95,7 @@
 		seed: () => provenanceSeed,
 		enabled: () => !liveOnly,
 	});
-	const dataHealth = createResource(() => getDataHealth(), {
+	const dataHealth = createResource(() => (liveOnly ? getCaptureDataHealth() : getDataHealth()), {
 		key: () => 'data-health',
 		seed: () => dataHealthSeed,
 	});

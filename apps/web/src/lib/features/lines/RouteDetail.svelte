@@ -17,7 +17,6 @@
 	import { getV1Runtime } from '#lib/v1/runtime.ts';
 	const clock = getV1Runtime().clock;
 	import { onMount, untrack } from 'svelte';
-	import { page } from '$app/state';
 	import { currentMirrorUrl } from '#lib/site/urlMirror.ts';
 	import { getLocale, getLocalizeHref } from '#lib/i18n/index.ts';
 
@@ -27,10 +26,9 @@
 	import { lineIsScheduleOnly } from '#lib/site/providerCapabilities.ts';
 	import { deriveRouteStopPredictions } from '#lib/v1/live/routeStopPredictions.ts';
 	import { getRoute } from '#lib/v1/repositories/static.ts';
-	import { getProvenance } from '#lib/v1/repositories/provenance.ts';
 	import { getV1Context } from '#lib/v1/boot.ts';
 	import { alertsForRoute } from '#lib/v1/affectedAlerts.ts';
-	import type { RouteFile, Provenance, StopPrediction, Vehicle } from '#lib/v1/index.ts';
+	import type { RouteFile, StopPrediction, Vehicle } from '#lib/v1/index.ts';
 	import { createResource, type ResourceSeed } from '#lib/v1/resource.svelte.ts';
 	import type { IdentitySeed } from '#lib/v1/serverContext.ts';
 	import { minutesSinceMidnight } from '#lib/utils/time.ts';
@@ -126,19 +124,14 @@
 			live.familyStates.alerts.health.notice == null,
 	);
 
-	const provenance = createResource<Provenance>(() => getProvenance());
-
 	const routeNonResponding = $derived(
 		(live.network?.non_responding_by_route ?? []).some((r) => r.route_id === id),
 	);
 
 	const absenceReason = $derived(
-		lineIsScheduleOnly(page.data.provider, id, route.data?.type ?? null)
+		lineIsScheduleOnly(v1.provider, id, route.data?.type ?? null)
 			? ({ key: 'metro-no-realtime' } as const)
 			: inferAbsenceReason({
-					providerId: v1.manifest.provider,
-					routeType: route.data?.type ?? null,
-					gaps: provenance.data?.gaps ?? null,
 					firstDeparture: route.data?.first_departure ?? null,
 					lastDeparture: route.data?.last_departure ?? null,
 					nowMinutes: minutesSinceMidnight(new Date(clock.serverNow), timeZone),
@@ -179,10 +172,6 @@
 		url.searchParams.set('tab', 'detail');
 		return url.href;
 	});
-	const scheduleLoadedUtc = $derived(
-		provenance.data?.sources?.find((source) => source.feed === 'static_schedule')
-			?.last_loaded_utc ?? null,
-	);
 	const articleNav = $derived(articleNavigationCopy[locale]);
 	const detailTocEntries = $derived.by<TocEntry[]>(() => {
 		if (route.data == null) return [];
@@ -264,7 +253,6 @@
 						{file}
 						{locale}
 						noLive
-						loadedUtc={scheduleLoadedUtc}
 						{recordHref}
 						{shareUrl}
 					/>{/snippet}
