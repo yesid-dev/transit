@@ -1,6 +1,7 @@
 import { createServer, request } from 'node:http';
 import { test as base, type Route } from '@playwright/test';
 import { forwardRoute } from './layout-helpers';
+import { captureUrl, layoutCapture } from './capture-fixture';
 
 const upgradeDirective = /(?:^|;)\s*upgrade-insecure-requests\s*(?=;|$)/g;
 
@@ -26,6 +27,10 @@ export const test = base.extend({
 					);
 				await route.fulfill({ response, headers });
 			});
+		await page.route(captureUrl, (route) => {
+			const city = new URL(route.request().url()).searchParams.get('city')!;
+			return route.fulfill({ json: layoutCapture(city) });
+		});
 		try {
 			await use(page);
 		} finally {

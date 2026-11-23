@@ -44,7 +44,7 @@
 	{:else}
 		<HomeExplore {locale} {copy} alertsAvailable={providerHasAlerts(data.provider)}>
 			{#snippet pulse()}
-				<HomePulse {locale} manifest={data.v1?.manifest ?? null} liveOnly />
+				<HomePulse {locale} manifest={data.v1?.manifest ?? null} />
 			{/snippet}
 		</HomeExplore>
 		<HomeInvite {locale} />

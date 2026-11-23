@@ -5,6 +5,13 @@ import { detailCopy } from '../src/lib/features/lines/lines.copy';
 import { PUBLISHED_LOCALES } from '../src/lib/i18n/config';
 import { localizeHref } from '../src/lib/i18n/routing';
 import { waitForFrameClearance } from './layout-helpers';
+import {
+	captureFixture,
+	captureTrip,
+	captureTripReport,
+	captureUrl,
+	captureVehicle,
+} from './capture-fixture';
 
 const read = (path: string) => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
 const b9 = read('../scripts/__fixtures__/b9/rich.json');
@@ -70,44 +77,32 @@ for (const locale of PUBLISHED_LOCALES) {
 		let vehiclesReady: Promise<void> = Promise.resolve();
 		let releaseVehicles: () => void = () => {};
 		const generated_utc = b9.frozen_utc;
-		const vehicles = Array.from({ length: 13 }, (_, i) => ({
-			id: `t4-bus-${i}`,
-			route: '9003',
-			trip: `t4-trip-${i}`,
-			lat: 45.5,
-			lon: -73.6,
-			updated_utc: generated_utc,
-			status: ['early', 'on_time', 'late', 'severe', 'unknown'][i % 5],
-			delay_min: i === 12 ? null : [-1, -1, 1, 5, 0][i % 5],
-			next_stop: `t4-${i}`,
+		const at = Date.parse(generated_utc);
+		const vehicles = Array.from({ length: 13 }, (_, i) =>
+			captureVehicle(at, {
+				vehicle_id: `t4-bus-${i}`,
+				route_id: '9003',
+				trip_id: `t4-trip-${i}`,
+				delay: i === 12 ? null : [-120, 0, 60, 300, null][i % 5],
+				stop_id: `t4-${i}`,
+			}),
+		);
+		const predictions = Array.from({ length: 61 }, (_, i) => ({
+			stop: `t4-${i}`,
+			eta_utc: '2026-08-30T16:05:00Z',
+			delay_min: i === 1 ? null : 2,
 		}));
-		await page.route(/\/v1\/stm\/live\/(vehicles|trips|alerts|network)\.json/, async (request) => {
-			const path = new URL(request.request().url()).pathname;
-			const kind = path.split('/').at(-1)!;
-			const bodies: Record<string, unknown> = {
-				'vehicles.json': { generated_utc, vehicles },
-				'trips.json': {
-					generated_utc,
-					feed_captured_utc: generated_utc,
-					trips: {
-						't4-trip-0': {
-							route: '9003',
-							status: 'on_time',
-							delay_min: 2,
-							stops: Array.from({ length: 61 }, (_, i) => ({
-								stop: `t4-${i}`,
-								eta_utc: '2026-08-30T16:05:00Z',
-								delay_min: i === 1 ? null : 2,
-							})),
-						},
-					},
-				},
-				'alerts.json': { generated_utc, feed_captured_utc: generated_utc, alerts: [] },
-				'network.json': { ...b9.files['live/network.json'], generated_utc },
-			};
-			if (kind === 'vehicles.json') await vehiclesReady;
-			await request.fulfill({ json: bodies[kind] });
+		await page.route(captureUrl, async (route) => {
+			await vehiclesReady;
+			await route.fulfill({ json: captureFixture(at, { vehicle_positions: vehicles }) });
 		});
+		await page.route('**/api/live-trips?city=stm&line=9003', (route) =>
+			route.fulfill({
+				json: captureTripReport('stm', generated_utc, [
+					captureTrip('t4-trip-0', '9003', predictions),
+				]),
+			}),
+		);
 		for (const width of [320, 390, 768, 1280]) {
 			await page.setViewportSize({ width, height: 900 });
 			vehiclesReady = new Promise<void>((resolve) => {

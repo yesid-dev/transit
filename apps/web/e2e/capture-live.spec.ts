@@ -78,7 +78,13 @@ test('rail detail uses schedule geometry and omits vehicles from a line without 
 		(response) => new URL(response.url()).pathname === '/api/schedule-edition' && response.ok(),
 	);
 	const snapshotResponse = page.waitForResponse((response) => captureUrl.test(response.url()));
-	await page.goto('/map?provider=stm&mapview=-73.595,45.505,15,0,0');
+	await page.route('**/api/stops/slim?provider=stm', (route) =>
+		route.fulfill({
+			json: { generated_utc: new Date(now).toISOString(), stops: [] },
+		}),
+	);
+	const rail = [-73.595, 45.505];
+	await page.goto(`/map?provider=stm&mapview=${rail.join(',')},15,0,0`);
 	const schedule = await (await scheduleResponse).json();
 	expect(schedule.schedule.route_directions['1-373'][0].shape.type).toBe('LineString');
 	await snapshotResponse;
@@ -86,7 +92,14 @@ test('rail detail uses schedule geometry and omits vehicles from a line without 
 		'data-map-progressive-state',
 		'ready',
 	);
-	await page.locator('.maplibregl-canvas').click();
+	const canvas = page.locator('.maplibregl-canvas');
+	await expect
+		.poll(async () => {
+			await canvas.hover();
+			return canvas.evaluate((node) => (node as HTMLElement).style.cursor);
+		})
+		.toBe('pointer');
+	await canvas.click();
 	const detail = page
 		.getByRole('complementary', { name: /Confederation|1/ })
 		.or(page.getByRole('dialog', { name: /Confederation|1/ }));

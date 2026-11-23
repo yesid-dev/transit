@@ -16,13 +16,15 @@
 	import { LIVE_FAMILIES } from '#lib/v1/live/store.svelte.ts';
 	import { getV1Runtime } from '#lib/v1/runtime.ts';
 	const clock = getV1Runtime().clock;
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
+	import { page } from '$app/state';
 	import { currentMirrorUrl } from '#lib/site/urlMirror.ts';
 	import { getLocale, getLocalizeHref } from '#lib/i18n/index.ts';
 
 	import { mapHrefFor, routeFor } from '#lib/nav/index.ts';
 	import { createLiveStore } from '#lib/v1/live/store.svelte.ts';
 	import { providerHasAlerts } from '#lib/v1/providers.ts';
+	import { lineIsScheduleOnly } from '#lib/site/providerCapabilities.ts';
 	import { deriveRouteStopPredictions } from '#lib/v1/live/routeStopPredictions.ts';
 	import { getRoute } from '#lib/v1/repositories/static.ts';
 	import { getProvenance } from '#lib/v1/repositories/provenance.ts';
@@ -131,15 +133,17 @@
 	);
 
 	const absenceReason = $derived(
-		inferAbsenceReason({
-			providerId: v1.manifest.provider,
-			routeType: route.data?.type ?? null,
-			gaps: provenance.data?.gaps ?? null,
-			firstDeparture: route.data?.first_departure ?? null,
-			lastDeparture: route.data?.last_departure ?? null,
-			nowMinutes: minutesSinceMidnight(new Date(clock.serverNow), timeZone),
-			nonResponding: routeNonResponding,
-		}),
+		lineIsScheduleOnly(page.data.provider, id, route.data?.type ?? null)
+			? ({ key: 'metro-no-realtime' } as const)
+			: inferAbsenceReason({
+					providerId: v1.manifest.provider,
+					routeType: route.data?.type ?? null,
+					gaps: provenance.data?.gaps ?? null,
+					firstDeparture: route.data?.first_departure ?? null,
+					lastDeparture: route.data?.last_departure ?? null,
+					nowMinutes: minutesSinceMidnight(new Date(clock.serverNow), timeZone),
+					nonResponding: routeNonResponding,
+				}),
 	);
 
 	const roster = $derived.by<Vehicle[]>(() => {

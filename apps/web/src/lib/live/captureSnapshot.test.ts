@@ -100,6 +100,13 @@ describe('capture-backed Live projection', () => {
 			on_time_pct: 100,
 			non_responding: null,
 		});
+		expect(
+			captureNetwork(snapshot, now).delay_histogram?.find(({ lo_min }) => lo_min === 0),
+		).toEqual({
+			lo_min: 0,
+			hi_min: 2,
+			count: 1,
+		});
 		expect(captureDepartures(scoped, now).stops?.['stop-1']).toEqual([
 			{ route: '24', trip: 'trip-1', eta_utc: '2026-11-23T16:35:00.000Z', delay_min: 0 },
 		]);

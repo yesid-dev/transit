@@ -38,6 +38,16 @@ function captureFeed(snapshot: CaptureSnapshot, family: CaptureFamily, now: numb
 	return { ...feed, captured_at: feed.captured_at };
 }
 
+function publication(city: string, feed: { family: CaptureFamily; captured_at: string }) {
+	return {
+		schema_version: 2,
+		generated_utc: feed.captured_at,
+		// Each feed can keep serving its previous capture while other feeds advance.
+		publish_generation_id: `${city}@${feed.family}:${feed.captured_at}`,
+		methodology_version: 'capture-live-v2',
+	};
+}
+
 export function captureVehicles(snapshot: CaptureSnapshot, now: number) {
 	const feed = captureFeed(snapshot, 'vehicle_positions', now);
 	const captured = feed.captured_at;
@@ -45,7 +55,7 @@ export function captureVehicles(snapshot: CaptureSnapshot, now: number) {
 	const tripFeed = Object.values(snapshot.feeds).find((feed) => feed.family === 'trip_updates');
 	const usableDelay = feedState(tripFeed, now) === 'live';
 	const payload = VehiclesFileSchema.parse({
-		generated_utc: captured,
+		...publication(snapshot.city, feed),
 		vehicles: snapshot.vehicle_positions.map((vehicle) => {
 			const delay = usableDelay ? vehicle.delay : null;
 			return {
@@ -66,7 +76,11 @@ export function captureVehicles(snapshot: CaptureSnapshot, now: number) {
 			};
 		}),
 	});
-	return { ...payload, captureFeed: feed, captureRevision: snapshot.published_at };
+	return {
+		...payload,
+		captureFeed: feed,
+		captureRevision: JSON.stringify([snapshot.published_at, feed, usableDelay]),
+	};
 }
 
 function stopEta(stop: CaptureTripReport['trip_updates'][number]['stops'][number]) {
@@ -86,7 +100,7 @@ export function captureTrips(report: CaptureTripReport) {
 	const captured = feed.captured_at;
 	if (!captured) throw new Error('Trip updates unavailable');
 	const payload = TripsFileSchema.parse({
-		generated_utc: captured,
+		...publication(report.city, { ...feed, captured_at: captured }),
 		feed_captured_utc: captured,
 		trips: Object.fromEntries(
 			report.trip_updates.map((update) => [
@@ -144,13 +158,25 @@ function severity(level: string | null) {
 	return ['WARNING', 'HIGH', 'MAJOR'].includes(normalized ?? '') ? 'high' : 'watch';
 }
 
+const delayBands = [null, -5, -2, 0, 2, 5, 10, 15, null] as const;
+
+function delayHistogram(delays: readonly number[]) {
+	if (!delays.length) return null;
+	return delayBands.slice(0, -1).map((lo_min, index) => {
+		const hi_min = delayBands[index + 1] ?? null;
+		const count = delays.filter(
+			(delay) => (lo_min == null || delay >= lo_min) && (hi_min == null || delay < hi_min),
+		).length;
+		return { lo_min, hi_min, count };
+	});
+}
+
 export function captureAlerts(snapshot: CaptureSnapshot, now: number) {
 	const feed = captureFeed(snapshot, 'alerts', now);
-	const captured = feed.captured_at;
 	if (snapshot.alerts == null) throw new Error('Alerts unavailable');
 	const payload = AlertsFileSchema.parse({
-		generated_utc: captured,
-		feed_captured_utc: captured,
+		...publication(snapshot.city, feed),
+		feed_captured_utc: feed.captured_at,
 		alerts: snapshot.alerts.map((alert) => ({
 			id: alert.id,
 			severity: severity(alert.severity),
@@ -171,7 +197,11 @@ export function captureAlerts(snapshot: CaptureSnapshot, now: number) {
 			active_periods: alert.periods.map(([start_utc, end_utc]) => ({ start_utc, end_utc })),
 		})),
 	});
-	return { ...payload, captureFeed: feed, captureRevision: snapshot.published_at };
+	return {
+		...payload,
+		captureFeed: feed,
+		captureRevision: JSON.stringify([snapshot.published_at, feed]),
+	};
 }
 
 export function captureNetwork(snapshot: CaptureSnapshot, now: number) {
@@ -206,6 +236,7 @@ export function captureNetwork(snapshot: CaptureSnapshot, now: number) {
 		status_dist,
 		delay_p50_min: percentile(0.5),
 		delay_p90_min: percentile(0.9),
+		delay_histogram: delayHistogram(delays),
 		occupancy_mix:
 			occupancyTotal > 0
 				? Object.fromEntries(

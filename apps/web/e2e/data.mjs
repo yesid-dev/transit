@@ -318,6 +318,7 @@ const server = createServer((request, response) => {
 				default_provider,
 				providers: providers.map((provider) => ({
 					...provider,
+					attribution: JSON.parse(files[`/v1/${provider.id}/manifest.json`]).attribution,
 					timezone: 'America/Toronto',
 					bounds: provider.max_bounds,
 					lines_without_live_data: [
@@ -336,7 +337,6 @@ const server = createServer((request, response) => {
 			return;
 		}
 		const timestamp = new Date().toISOString();
-		const seconds = Math.floor(Date.parse(timestamp) / 1000);
 		const feed = (family, limit) => ({
 			family,
 			captured_at: timestamp,
@@ -346,39 +346,47 @@ const server = createServer((request, response) => {
 			read_failed: false,
 		});
 		if (live[2] === 'live-trips') {
-			const selected =
-				url.searchParams.get('trip') === 'T1' ||
-				url.searchParams.get('line') === '24' ||
-				url.searchParams.get('stop') === 'S1';
-			const trip_updates = selected
-				? [
-						{
-							trip_id: 'T1',
-							route_id: '24',
-							direction_id: null,
-							start_date: null,
-							start_time: null,
-							relationship: 0,
-							delay: 240,
-							stops: [
-								{
-									stop_id: 'S1',
-									sequence: 1,
-									arrival: null,
-									departure: seconds + 300,
-									arrival_delay: null,
-									departure_delay: 240,
-									relationship: 0,
-								},
-							],
-						},
-					]
-				: [];
+			const { generated_utc, trips } = JSON.parse(files['/v1/stm/live/trips.json']);
+			const { stops: departures } = JSON.parse(files['/v1/stm/live/stop_departures.json']);
+			const stopScope = url.searchParams.get('stop');
+			const tripScope = url.searchParams.get('trip');
+			const lineScope = url.searchParams.get('line');
+			const tripUpdate = (id, route, delay, stops) => ({
+				trip_id: id,
+				route_id: route,
+				direction_id: null,
+				start_date: null,
+				start_time: null,
+				relationship: 0,
+				delay: delay == null ? null : delay * 60,
+				stops: stops.map(({ stop, eta_utc, delay_min }, i) => ({
+					stop_id: stop,
+					sequence: i + 1,
+					arrival: null,
+					departure: Date.parse(eta_utc) / 1000,
+					arrival_delay: null,
+					departure_delay: delay_min == null ? null : delay_min * 60,
+					relationship: 0,
+				})),
+			});
+			const trip_updates = stopScope
+				? (departures[stopScope] ?? []).map((row, i) =>
+						tripUpdate(row.trip ?? `T${i + 1}`, row.route, row.delay_min, [
+							{ ...row, stop: stopScope },
+						]),
+					)
+				: Object.entries(trips)
+						.filter(([id, trip]) => (tripScope ? id === tripScope : trip.route === lineScope))
+						.map(([id, trip]) => tripUpdate(id, trip.route, trip.delay_min, trip.stops ?? []));
 			response.writeHead(200, { 'content-type': 'application/json' }).end(
 				JSON.stringify({
 					version: 2,
 					city,
-					feed: feed('trip_updates', 90),
+					feed: {
+						...feed('trip_updates', 90),
+						captured_at: generated_utc,
+						source_at: generated_utc,
+					},
 					trip_updates,
 				}),
 			);
@@ -478,10 +486,42 @@ const server = createServer((request, response) => {
 			).values(),
 		);
 		const editionStops = new Map(stops.stops.map((stop) => [stop.id, stop]));
+		const editionRoutes = new Map(data.routes.map((entry) => [entry.id, entry]));
+		const routeDirections = { 24: route.directions };
 		for (const stop of fromRoute) {
 			if (!editionStops.has(stop.id)) editionStops.set(stop.id, stop);
 		}
 		if (city === 'stm' && kind === 'schedule-index') {
+			for (const [key, body] of Object.entries(files)) {
+				if (key.startsWith('/v1/stm/static/routes/')) {
+					const { id, short, long, type, directions = [] } = JSON.parse(body);
+					if (!editionRoutes.has(id)) editionRoutes.set(id, { id, short, long, type });
+					routeDirections[id] = directions;
+					for (const { stops = [] } of directions)
+						for (const { id: stopId, name } of stops)
+							if (!editionStops.has(stopId))
+								editionStops.set(stopId, {
+									id: stopId,
+									name: name ?? stopId,
+									lat: 45.5,
+									lon: -73.6,
+									routes: [id],
+								});
+				}
+				if (key.startsWith('/v1/stm/static/stops/')) {
+					const { id, name, code, lat, lon, routes_served, wheelchair_boarding } = JSON.parse(body);
+					if (Number.isFinite(lat) && Number.isFinite(lon))
+						editionStops.set(id, {
+							id,
+							name,
+							code,
+							lat,
+							lon,
+							routes: routes_served,
+							wheelchair_boarding,
+						});
+				}
+			}
 			// Keep the keyboard pagination case independent of the search index fixture.
 			for (let n = 1; n <= 25; n++) {
 				const id = `pagination-stop-${n}`;
@@ -499,10 +539,10 @@ const server = createServer((request, response) => {
 			JSON.stringify({
 				schedule: {
 					date: '2026-11-21',
-					routes: data.routes,
+					routes: [...editionRoutes.values()],
 					...(kind === 'schedule-index'
 						? {
-								route_directions: { 24: route.directions },
+								route_directions: routeDirections,
 							}
 						: {}),
 					stops: [

@@ -1,6 +1,7 @@
 import { test } from './layout-test';
 import { expect, type Page } from '@playwright/test';
 import { localizeHref } from '../src/lib/i18n/routing';
+import { captureFleet, captureUrl } from './capture-fixture';
 import type { SearchIndex } from '../src/lib/search/searchIndex';
 
 const searchLineName = 'Sherbrooke / Boulevard des Anciens-Combattants';
@@ -129,23 +130,15 @@ for (const locale of ['en', 'fr'] as const)
 			await page.route('**/v1/**', async (route) => {
 				const url = new URL(route.request().url());
 				url.pathname = `/__layout/fresh${url.pathname}`;
-				const response = await route.fetch({ url: url.href });
-				if (!url.pathname.endsWith('/live/network.json')) return route.fulfill({ response });
-				const body = await response.json();
-				const known = live.readings;
-				Object.assign(body, {
-					vehicles_in_service: live.inService,
-					on_time_pct: 75,
-					coverage_pct: Math.round((100 * known) / live.inService),
-					status_dist: {
-						early: 1,
-						on_time: known - 9,
-						late: 6,
-						severe: 2,
-						unknown: live.inService - known,
-					},
+				await route.fulfill({ response: await route.fetch({ url: url.href }) });
+			});
+			await page.route(captureUrl, (route) => {
+				const delays = Array.from({ length: live.inService }, (_, i) =>
+					i < Math.round(live.readings * 0.75) ? 0 : i < live.readings ? 360 : null,
+				);
+				return route.fulfill({
+					json: captureFleet(Date.parse('2026-06-15T12:00:00Z'), 'stm', delays),
 				});
-				await route.fulfill({ response, json: body });
 			});
 			// This spec owns its widths: two phones and the desktop grid.
 			for (const width of [320, 390, 1440]) {
@@ -159,7 +152,11 @@ for (const locale of ['en', 'fr'] as const)
 					const held = readings < 30 || readings * 2 < inService;
 					// Inner text only: the held wording's hidden reserve must not satisfy the wait.
 					await expect(page.locator(figure).first()).toContainText(
-						held ? (locale === 'en' ? 'Not enough readings' : 'Pas assez de relevés') : '75',
+						held
+							? locale === 'en'
+								? 'Not enough readings'
+								: 'Pas assez de relevés'
+							: String(Math.round((100 * Math.round(readings * 0.75)) / readings)),
 						{ useInnerText: true },
 					);
 					await page.evaluate(() => document.fonts.ready);

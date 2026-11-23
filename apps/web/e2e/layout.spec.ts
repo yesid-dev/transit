@@ -4,6 +4,7 @@ import { expect } from '@playwright/test';
 import { chartOverlaps, forwardRoute } from './layout-helpers';
 import { expectLayout } from './layout-debt';
 import { localizeHref } from '../src/lib/i18n/routing';
+import { captureUrl, layoutCapture } from './capture-fixture';
 
 const fixture = (name: string) =>
 	JSON.parse(readFileSync(new URL(`./${name}.json`, import.meta.url), 'utf8'));
@@ -46,6 +47,17 @@ for (const locale of ['en', 'fr'] as const)
 						await route.fulfill({ response: await route.fetch({ url: url.href }) });
 					}),
 				);
+				if (state === 'missing')
+					await page.route(captureUrl, (route) =>
+						route.fulfill({
+							json: layoutCapture(new URL(route.request().url()).searchParams.get('city')!, {
+								delay: null,
+								occupancy: null,
+								speed_mps: null,
+								stop_id: null,
+							}),
+						}),
+					);
 				const href = path === '/status' ? '/status?frameMode=live' : path;
 				await page.goto(localizeHref(href, locale), { waitUntil: 'networkidle' });
 				if (path.startsWith('/stops?q='))

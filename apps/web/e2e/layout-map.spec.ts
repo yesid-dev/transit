@@ -2,6 +2,7 @@ import { test } from './layout-test';
 import { readFileSync } from 'node:fs';
 import { expect, type Page } from '@playwright/test';
 import { forwardRoute } from './layout-helpers';
+import { captureUrl, layoutCapture } from './capture-fixture';
 const read = (name: string) =>
 	JSON.parse(readFileSync(new URL(`./${name}.json`, import.meta.url), 'utf8'));
 const epoch = Date.parse(read('departures').generated_utc);
@@ -116,22 +117,15 @@ test('estimated vehicle draws move before the next feed poll @layout', async ({ 
 	await page.route('**/v1/**', (route) =>
 		forwardRoute(page, async () => {
 			const url = new URL(route.request().url());
-			if (url.pathname.endsWith('/live/vehicles.json')) vehiclePolls++;
 			url.pathname = `/__layout/fresh${url.pathname}`;
-			const response = await route.fetch({ url: url.href });
-			if (url.pathname.endsWith('/live/vehicles.json')) {
-				const body = await response.json();
-				// S1 lies behind the eastbound vehicle. This case tests between-report
-				// motion without a known next stop; stop capping has its own unit tests.
-				for (const vehicle of body.vehicles) {
-					vehicle.next_stop = null;
-					vehicle.next_stop_lat = null;
-					vehicle.next_stop_lon = null;
-				}
-				await route.fulfill({ response, json: body });
-			} else await route.fulfill({ response });
+			await route.fulfill({ response: await route.fetch({ url: url.href }) });
 		}),
 	);
+	await page.route(captureUrl, (route) => {
+		vehiclePolls++;
+		// S1 lies behind the eastbound vehicle. This case measures motion without a known next stop.
+		return route.fulfill({ json: layoutCapture('stm', { stop_id: null }) });
+	});
 	await page.goto('/map', { waitUntil: 'networkidle' });
 	await expect
 		.poll(() =>

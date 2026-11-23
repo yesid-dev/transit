@@ -102,7 +102,6 @@
 	const historicAvailability = createResource(() => getHistoricAvailability(), {
 		key: () => 'historic-availability',
 		seed: () => historicAvailabilitySeed,
-		enabled: () => !liveOnly,
 	});
 
 	function verdictFor(status: string | null | undefined) {
@@ -373,7 +372,7 @@
 						</ResourceBoundary>
 					</div>
 				{/if}
-				{#if !liveOnly && (!historyRoot || historyAvailabilityIsEmpty(historyRoot))}
+				{#if !historyRoot || historyAvailabilityIsEmpty(historyRoot)}
 					<div class="health-resource-state" aria-label={t.overview.retainedHistory}>
 						<SectionLabel text={t.overview.retainedHistory} variant="metric" />
 						<ResourceBoundary
