@@ -59,11 +59,13 @@ function fixture(t, { city = "stm", status, missing = false, admitted = true, al
     },
   };
   t.mock.method(globalThis, "fetch", async (input, init) => {
+    // Workers rejects this redirect mode before sending a subrequest. Node accepts it.
+    if (init?.redirect === "error") throw new TypeError("Unsupported redirect mode");
     const request = new Request(input, init);
     const url = new URL(request.url);
     assert.equal(url.origin, "https://fixture.r2.cloudflarestorage.com");
     assert.ok(url.pathname.startsWith("/transit-clean/"));
-    assert.equal(request.redirect, "error");
+    assert.equal(request.redirect, "manual");
     assert.match(request.headers.get("authorization"),
       /^AWS4-HMAC-SHA256 Credential=fixture-key\/\d{8}\/auto\/s3\/aws4_request, /);
     assert.ok(["GET", "HEAD"].includes(request.method));
@@ -72,7 +74,10 @@ function fixture(t, { city = "stm", status, missing = false, admitted = true, al
     keys.push(key);
     methods.push(request.method);
     requests.push(request);
-    if (r2Error) return new Response(null, { status: r2Error });
+    if (r2Error) return new Response(null, {
+      status: r2Error,
+      headers: r2Error === 302 ? { location: "https://redirect.test/" } : undefined,
+    });
     if (key.endsWith("/manifest.json")) {
       assert.equal(request.method, "GET");
       if (missing || key !== `${city}/${DATE}/v11/manifest.json`) return new Response(null, { status: 404 });
@@ -254,6 +259,13 @@ test("signed storage fails closed on invalid endpoints, refused credentials and 
     headers: { range: "bytes=1-2" },
   });
   assert.equal(ranged.status, 503);
+});
+
+test("the Worker refuses R2 redirects without forwarding signed headers", async (t) => {
+  const { fetch, keys } = fixture(t, { r2Error: 302 });
+  const response = await fetch(STM + "?date=" + DATE);
+  assert.equal(response.status, 503);
+  assert.deepEqual(keys, [`stm/${DATE}/v11/manifest.json`]);
 });
 
 test("a ranged R2 read matches the fixed SigV4 signature", async (t) => {
