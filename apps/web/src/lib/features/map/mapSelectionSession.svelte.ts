@@ -72,7 +72,9 @@ export function createMapSelectionSession(options: MapSelectionSessionOptions) {
 			.filter((route) => options.scheduleOnly?.(route.id, route.type))
 			.map((route) => route.id),
 	);
-	const selectedRouteIds = $derived([...new Set([...filters.routes, ...scheduledRouteIds])].sort());
+	const selectedRouteIds = $derived(
+		[...new SvelteSet([...filters.routes, ...scheduledRouteIds])].sort(),
+	);
 	const selectedRoutes = createResource<RouteFile[]>(
 		async (signal) => {
 			const ids = selectedRouteIds;

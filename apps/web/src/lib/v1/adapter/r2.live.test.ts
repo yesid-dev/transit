@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { ManifestSchema } from '#lib/v1/schemas/manifest.ts';
+import { getCaptureDataHealth } from '#lib/v1/repositories/dataHealth.ts';
 import { r2Adapter } from './r2';
 import { liveReader } from './index';
 
@@ -90,7 +91,7 @@ it.each(['stm', 'octranspo'])(
 it('reads SSR health through the binding and rejects data for another city', async () => {
 	const captureFetch = vi.fn(async (city: string) => Response.json(liveBody(city)));
 	const ctx = { providerId: 'stm', captureFetch };
-	await expect(r2Adapter.dataHealth.get(ctx)).resolves.toMatchObject({
+	await expect(getCaptureDataHealth(ctx)).resolves.toMatchObject({
 		feeds: expect.arrayContaining([
 			{ feed: 'vehicles', status: 'live', age_s: expect.any(Number) },
 		]),
@@ -113,7 +114,7 @@ it('reports a stale source, a missing capture and an unsupported feed separately
 		trip_updates: null,
 		alerts: null,
 	});
-	const result = await r2Adapter.dataHealth.get({
+	const result = await getCaptureDataHealth({
 		providerId: 'demo',
 		captureFetch: async () => response,
 	});
