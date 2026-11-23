@@ -304,6 +304,18 @@ def test_waiting_uses_the_realtime_feeds_recorded_for_each_day(tmp_path: Path) -
     assert combined["evidence"]["excluded"]["capture_gap"] == 20
 
 
+def test_waiting_counts_coverage_ending_on_an_hour_boundary(tmp_path: Path) -> None:
+    trips = tuple(_trip("A", i, minute) for i, minute in enumerate(range(-10, 11, 5)))
+    polls = (*_polls(-900, 0), *_polls(300, 600))
+    store = _build_store(tmp_path, 9, {THURSDAY: trips}, {THURSDAY: polls})
+
+    evidence = query(store, measure="waiting_and_gaps")["evidence"]
+
+    assert evidence["counts"]["observed_headways"] == 3
+    assert evidence["counts"]["observed_seconds"] == 900
+    assert evidence["excluded"]["capture_gap"] == 1
+
+
 def test_service_offered_matches_schedule_only_recomputation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
