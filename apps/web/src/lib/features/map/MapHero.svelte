@@ -191,7 +191,7 @@
 		families: alertsAvailable ? ['vehicles', 'alerts'] : ['vehicles'],
 	});
 	const occupancyAvailable = $derived(
-		hasOccupancy(manifest.provider, live.vehicles?.vehicles ?? []),
+		hasOccupancy(v1.provider?.inputs.occupancy, live.vehicles?.vehicles ?? []),
 	);
 	$effect(() => {
 		if (!occupancyAvailable && filters.occupancy.length) filters.setOccupancy([]);

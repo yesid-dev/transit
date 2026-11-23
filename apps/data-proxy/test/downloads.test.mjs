@@ -11,6 +11,24 @@ const TABLES = [
 ];
 const SHA = "1".repeat(64);
 
+function provider(id, operator, alerts = true, licensed = true) {
+  const bilingual = (value) => ({ en: value, fr: value });
+  return {
+    id,
+    timezone: "America/Toronto",
+    labels: { en: { operator }, fr: { operator } },
+    inputs: { i3_alerts: alerts, service_alerts: false },
+    download_licence: licensed ? {
+      checked_on: "2026-11-22",
+      name: bilingual("Fixture licence"),
+      attribution: bilingual(`Contains information licensed under ${operator}'s terms.`),
+      url: bilingual("https://licence.example.org/terms"),
+      limits: bilingual("Provided as is."),
+      non_endorsement: bilingual("Transit is independent."),
+    } : null,
+  };
+}
+
 function fixture(t, { city = "stm", status, missing = false, admitted = true, alerts = true,
   endpoint = "fixture.r2.cloudflarestorage.com", r2Error, wrongRange = false } = {}) {
   const manifest = {
@@ -48,8 +66,10 @@ function fixture(t, { city = "stm", status, missing = false, admitted = true, al
           return Response.json({
             default_provider: "stm",
             providers: [
-              { id: "stm", timezone: "America/Toronto" },
-              { id: "octranspo", timezone: "America/Toronto", inputs: { i3_alerts: false, service_alerts: false } },
+              provider("stm", "STM"),
+              provider("octranspo", "OC Transpo", false),
+              provider("new_city", "Example Transit"),
+              provider("unlicensed", "Example Agency", true, false),
             ],
           });
         }
@@ -171,8 +191,19 @@ test("Ottawa without tracked alerts has its own licence and no alerts download",
   assert.equal(day.alerts_not_tracked, true);
   assert.equal(day.files.length, 6);
   assert.match(day.licence.attribution.en, /^Contains information licensed under/);
-  assert.match(day.licence.url.en, /^https:\/\/ottawa\.ca\//);
+  assert.match(day.licence.changes.en, /OC Transpo/);
   assert.equal((await fetch(`${OC}/${DATE}/alerts.parquet`)).status, 404);
+});
+
+test("downloads follow the public declaration licence for any city", async (t) => {
+  const { fetch, keys } = fixture(t, { city: "new_city" });
+  assert.equal((await fetch("/v2/unlicensed/download?date=" + DATE)).status, 404);
+  assert.deepEqual(keys, []);
+  const response = await fetch("/v2/new_city/download?date=" + DATE);
+  assert.equal(response.status, 200);
+  const day = await response.json();
+  assert.match(day.licence.changes.en, /Example Transit/);
+  assert.equal(day.licence.url.fr, "https://licence.example.org/terms");
 });
 
 test("download streams Parquet with attachment, SHA-256 ETag, HEAD and byte ranges", async (t) => {

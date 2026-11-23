@@ -27,6 +27,9 @@ def test_public_cities_shape_both_declaration_formats(tmp_path: Path) -> None:
     assert "sto" not in cities
     assert cities["stm"]["labels"]["fr"]["city"] == "Montréal"
     assert cities["stm"]["inputs"]["i3_alerts"] is True
+    assert cities["stm"]["inputs"]["occupancy"] is True
+    assert cities["stm"]["download_licence"]["checked_on"] == "2026-11-22"
+    assert cities["octranspo"]["download_licence"]["attribution"]["fr"]
     assert cities["stm"]["lines_without_live_data"] == [{"route_types": [1], "route_ids": []}]
     assert cities["octranspo"]["inputs"]["service_alerts"] is False
     assert cities["octranspo"]["fit_bounds"] == [-75.95, 45.2, -75.43, 45.55]

@@ -30,14 +30,15 @@ describe('startAnalytics', () => {
 		const options = {
 			domain: 'transit.yesid.dev',
 			beaconToken: undefined,
-			context: () => ({ locale: 'en', provider: 'stm' }),
+			context: () => ({ locale: 'en', provider: 'fixture_city' }),
+			providers: ['fixture_city'],
 		};
 		startAnalytics(options);
 		startAnalytics(options);
 
 		expect(createAnalytics).toHaveBeenCalledOnce();
 		expect(createAnalytics).toHaveBeenCalledWith(
-			expect.anything(),
+			expect.objectContaining({ props: expect.objectContaining({ provider: ['fixture_city'] }) }),
 			expect.objectContaining({ domain: 'transit.yesid.dev', endpoint: '/relay/e' }),
 		);
 	});

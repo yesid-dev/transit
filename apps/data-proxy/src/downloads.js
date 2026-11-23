@@ -176,7 +176,7 @@ export async function serveDownload(request, env, ctx, visitorIp = request.heade
     const today = serviceToday(provider.timezone);
     if (!today) return message(503, "service timezone unavailable");
     const date = requestedDate ?? new Date(serviceDate(today) - 86_400_000).toISOString().slice(0, 10);
-    const licence = downloadLicence(city, date);
+    const licence = downloadLicence(provider, date);
     if (!licence) return message(404, "download licence unavailable");
     const version = await activeVersion(env, cache, ctx, url.origin, city, date);
     if (!version) return message(503, "cleaning version unavailable", { "retry-after": "30" });

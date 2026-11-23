@@ -29,5 +29,5 @@
 	copy={copy[locale].vehicle}
 	statusLabel="Unknown"
 	occupancyLabel={null}
-	occupancyAvailable={hasOccupancy(provider, [vehicle])}
+	occupancyAvailable={hasOccupancy(provider === 'stm', [vehicle])}
 />

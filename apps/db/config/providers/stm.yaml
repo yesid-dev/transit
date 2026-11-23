@@ -14,6 +14,23 @@ licence:
   name: CC BY 4.0
   terms_url: https://beta.stm.info/a-propos/documents-donnees/donnees-ouvertes
   review: accepted
+download_licence:
+  checked_on: "2026-11-22"
+  name:
+    en: "Creative Commons Attribution 4.0 (CC BY 4.0)"
+    fr: "Creative Commons Attribution 4.0 (CC BY 4.0)"
+  attribution:
+    en: "Source: Société de transport de Montréal (STM), CC BY 4.0."
+    fr: "Source : Société de transport de Montréal (STM), CC BY 4.0."
+  url:
+    en: "https://creativecommons.org/licenses/by/4.0/"
+    fr: "https://creativecommons.org/licenses/by/4.0/deed.fr"
+  limits:
+    en: "The data is provided as is, without warranty, and may contain errors. Scheduled metro times are indicative only."
+    fr: "Les données sont fournies telles quelles, sans garantie, et peuvent contenir des erreurs. Les horaires du métro sont donnés à titre indicatif seulement."
+  non_endorsement:
+    en: "Transit is independent of STM. STM does not sponsor or endorse Transit."
+    fr: "Transit est un projet indépendant. L’organisme STM ne commandite ni n’approuve Transit."
 attribution:
   fr: Contains STM data made available under CC BY 4.0.
 reading_population: vehicle_evidence
@@ -74,6 +91,7 @@ map:
   basemap_bounds: [-75, 44.8, -72.5, 46.3]
   posters_url: /map/basemap-montreal-posters.json
 overrides:
+  occupancy: true
   bounds: [-74.1, 45.25, -73.2, 45.75]
   fit_bounds: [-73.9757, 45.4022, -73.4764, 45.7028]
   max_bounds: [-74.28605, 45.3, -73.16605, 45.82]
