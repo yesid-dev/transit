@@ -12,13 +12,7 @@
 </script>
 
 {#if data.record}
-	<StopEngineRecord
-		stop={data.seed}
-		code={data.stopSeed?.data?.code}
-		{locale}
-		{url}
-		record={data.record}
-	/>
+	<StopEngineRecord stop={data.seed} code={data.stopCode} {locale} {url} record={data.record} />
 {:else}
 	{#if data.frameLive}<StopViewNav {locale} {url} view="live" />{/if}
 	<StopDetail

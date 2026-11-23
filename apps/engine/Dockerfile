@@ -12,6 +12,7 @@ RUN python -m pip install --no-cache-dir "uv==0.13.4"
 COPY apps/engine/pyproject.toml apps/engine/uv.lock ./
 COPY apps/engine/src ./src
 COPY apps/db/config/providers/*.yaml ./provider-declarations/
+COPY apps/db/config/providers/default-city.txt ./provider-declarations/
 RUN uv sync --locked --no-dev --no-editable --extra r2 \
     && adduser --disabled-password --gecos "" appuser
 

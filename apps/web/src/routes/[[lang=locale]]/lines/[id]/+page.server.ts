@@ -1,3 +1,4 @@
+import { directionHeadsigns } from '#lib/features/lines/directions.ts';
 import { loadLineRecord, lineDirection } from '#lib/server/lineRecord.ts';
 import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
 import { lineFrameView } from '#lib/site/lineFrame.ts';
@@ -31,7 +32,7 @@ export const load: PageServerLoad = async (event) => {
 		redirect(307, live.pathname + live.search);
 	}
 
-	const { v1, routesIndex, lang, providerId } = await event.parent();
+	const { v1, schedule, lang, providerId } = await event.parent();
 	const record =
 		view && view !== 'live' && period
 			? loadLineRecord(
@@ -44,20 +45,18 @@ export const load: PageServerLoad = async (event) => {
 				)
 			: null;
 	if (record) {
-		const directory = createLineDirectory(routesIndex?.routes ?? null, {
+		const directory = createLineDirectory(schedule?.routes ?? null, {
 			line: (routeId) => routeNameFallback(routeId, lang),
 		});
 		const name = directory.name(id);
-		const metadata = v1
-			? getRoute(id, {
-					...serverV1Context(event),
-					providerId,
-					manifest: v1.manifest,
-				}).catch(() => null)
-			: Promise.resolve(null);
 		return {
 			seed: { id, name: name.label },
-			metadata,
+			directionHeadsigns: directionHeadsigns(schedule?.route_directions?.[id]),
+			stopNames: Object.fromEntries(
+				(schedule?.stops ?? [])
+					.filter((stop) => stop.routes?.includes(id))
+					.map((stop) => [stop.id, stop.name]),
+			),
 			seoTitle: linePageTitle(name),
 			record,
 			frameLive,
@@ -91,7 +90,7 @@ export const load: PageServerLoad = async (event) => {
 			: Promise.resolve(null),
 	]);
 	const route = routeResult.status === 'fulfilled' ? routeResult.value : undefined;
-	const directory = createLineDirectory(routesIndex?.routes ?? null, {
+	const directory = createLineDirectory(schedule?.routes ?? null, {
 		line: (id) => routeNameFallback(id, lang),
 	});
 	const name = directory.name(id, route?.long);

@@ -8,7 +8,7 @@
 	import { routeNameFallback } from '#lib/site/nameFallback.ts';
 	import type { LinesRecord } from '#lib/server/finderRecord.ts';
 	import type { RouteIndexEntry } from '#lib/v1/schemas/routes_index.ts';
-	import { routeHasNoLiveData } from '#lib/v1/providers.ts';
+	import type { PublicCity } from '#lib/v1/schemas/providers.ts';
 	import FinderRecordActions from '#lib/features/record/FinderRecordActions.svelte';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
 	import RecordTable from '#lib/features/record/RecordTable.svelte';
@@ -34,11 +34,13 @@
 		url,
 		record,
 		routes,
+		provider = null,
 	}: {
 		locale: Locale;
 		url: URL;
 		record: LinesRecord;
 		routes: RouteIndexEntry[];
+		provider?: PublicCity | null;
 	} = $props();
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 	const title = $derived(t('Lines', 'Lignes'));
@@ -106,7 +108,13 @@
 					),
 					noLive:
 						(timing?.state ?? delivery?.state) === 'no_live_data' ||
-						(!timing && !delivery && routeHasNoLiveData(record.city, directory.type(id))),
+						(!timing &&
+							!delivery &&
+							provider?.lines_without_live_data.some(
+								(gap) =>
+									gap.route_ids.includes(id) ||
+									gap.route_types.some((type) => type === directory.type(id)),
+							)),
 					onTime: finderShare(timing, punctuality, 'on_time', locale),
 					late: finderShare(timing, punctuality, 'late', locale),
 					trips: finderTrips(delivery, trips, locale),

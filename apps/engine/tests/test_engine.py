@@ -860,16 +860,20 @@ async def http(
     return start["status"], dict(start["headers"]), body.get("body", b"")
 
 
-def test_private_engine_requires_bearer_even_on_health_endpoint(store: Store) -> None:
+@pytest.mark.parametrize(
+    ("path", "query"),
+    [("/healthz", ""), ("/cities", ""), ("/schedule-index", "city=stm")],
+)
+def test_private_engine_requires_bearer(store: Store, path: str, query: str) -> None:
     app = Engine(store, 1, 0, 50, access_token=b"test-engine-token")
 
     async def run() -> None:
         good = b"Bearer test-engine-token"
         for values in ((), (b"Bearer wrong",), (good, good)):
-            status, headers, _ = await http(app, "/healthz", authorization=values)
+            status, headers, _ = await http(app, path, query, authorization=values)
             assert status == 401
             assert headers[b"www-authenticate"] == b"Bearer"
-        status, _, _ = await http(app, "/healthz", authorization=(good,))
+        status, _, _ = await http(app, path, query, authorization=(good,))
         assert status == 200
 
     asyncio.run(run())

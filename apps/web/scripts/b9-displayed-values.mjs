@@ -814,7 +814,6 @@ function verifyLedger(cell, fixture, ledger) {
 	const lineHistoryLane = selectedLine && historyStatus === 200 ? 'ssr' : 'browser';
 	const expected = {
 		line: [
-			['ssr', 'providers.json', 200, 1],
 			['ssr', 'manifest.json', 200, 1],
 			['ssr', 'static/routes/24.json', 200, 1],
 			['ssr', 'historic/route_reliability/24.json', 200, 1],
@@ -828,7 +827,6 @@ function verifyLedger(cell, fixture, ledger) {
 			['browser', 'status/data_health.json', 404, 1],
 		],
 		stop: [
-			['ssr', 'providers.json', 200, 1],
 			['ssr', 'manifest.json', 200, 1],
 			['ssr', 'static/stops/52095.json', 200, 1],
 			['ssr', labelPath, 200, 1],
@@ -845,7 +843,6 @@ function verifyLedger(cell, fixture, ledger) {
 			['browser', 'status/data_health.json', 404, 1],
 		],
 		network: [
-			['ssr', 'providers.json', 200, 1],
 			['ssr', 'manifest.json', 200, 1],
 			['ssr', 'live/network.json', 200, 1],
 			['ssr', 'historic/network_trend.json', 200, 1],
@@ -856,12 +853,7 @@ function verifyLedger(cell, fixture, ledger) {
 			['browser', 'live/network.json', 200, 1],
 		],
 	}[cell.surface];
-	expected.push([
-		'ssr',
-		'static/routes_index.json',
-		fixture.not_found.includes('static/routes_index.json') ? 404 : 200,
-		1,
-	]);
+	expected.push(['ssr', '/v2/cities', 200, 1], ['ssr', '/v2/stm/schedule-index', 200, 1]);
 	if (selectedLine && historyStatus === 404)
 		expected.push(['ssr', 'historic/history/index.json', 404, 1]);
 	const selectedRefs = (index) => {
@@ -1578,8 +1570,8 @@ function jsonHeaders(fixture) {
 	};
 }
 
-function replayPath(pathname) {
-	if (pathname === '/v1/providers.json') return 'providers.json';
+function replayPath({ pathname, search }) {
+	if (pathname.startsWith('/v2/')) return pathname + search;
 	return pathname.startsWith(REPLAY_PREFIX)
 		? decodeURIComponent(pathname.slice(REPLAY_PREFIX.length))
 		: null;
@@ -1589,7 +1581,7 @@ async function startReplay(fixtures = FIXTURES, initialKey = Object.keys(fixture
 	const state = { active: initialKey, ledger: [], outbound: [] };
 	const server = createServer((request, response) => {
 		const url = new URL(request.url ?? '/', 'http://127.0.0.1');
-		const relative = replayPath(url.pathname);
+		const relative = replayPath(url);
 		const fixture = fixtures[state.active];
 		const found = relative == null ? null : fixture.files[relative];
 		const declaredMissing = relative != null && fixture.not_found.includes(relative);
@@ -1648,7 +1640,7 @@ async function ensureBuild() {
 	return true;
 }
 
-async function startPreview(replayBase) {
+async function startPreview(replay) {
 	const version = await runChild('node', [WRANGLER, '--version'], {
 		cwd: WEB_ROOT,
 		label: 'wrangler version',
@@ -1671,7 +1663,11 @@ async function startPreview(replayBase) {
 				assets: { directory: BUILD_ROOT, binding: 'ASSETS' },
 				compatibility_date: '2025-01-01',
 				compatibility_flags: ['nodejs_compat'],
-				vars: { PUBLIC_V1_BASE: replayBase, PUBLIC_V1_PROVIDER: 'stm' },
+				vars: {
+					PUBLIC_V1_BASE: replay.base,
+					PUBLIC_V1_PROVIDER: 'stm',
+					QUESTION_FIXTURE_ORIGIN: replay.origin,
+				},
 			}),
 		);
 		const { unstable_DevEnv } = await import('wrangler');
@@ -1809,9 +1805,9 @@ async function installNetworkBoundary(context, pageOrigin, replay, documentPaths
 			await route.abort('blockedbyclient');
 			return;
 		}
-		if (url.origin === replay.origin && replayPath(url.pathname) !== null) {
+		const relative = url.origin === replay.origin ? replayPath(url) : null;
+		if (relative !== null) {
 			const fixture = replay.fixtures[replay.state.active];
-			const relative = replayPath(url.pathname);
 			const found = fixture.files[relative];
 			const declaredMissing = fixture.not_found.includes(relative);
 			const status = found ? 200 : declaredMissing ? 404 : 599;
@@ -1962,7 +1958,7 @@ async function runGate({ fixtures = FIXTURES, cells = CELLS, runs = 2, synthetic
 			'launched Chromium version mismatch',
 		);
 		for (let run = 0; run < runs; run += 1) {
-			preview = await startPreview(replay.base);
+			preview = await startPreview(replay);
 			const transcript = [];
 			for (const cell of cells) {
 				replay.state.active = cell.fixture;

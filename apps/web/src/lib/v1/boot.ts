@@ -7,8 +7,9 @@ import type { Manifest } from '#lib/v1/schemas/manifest.ts';
 import { getLabels } from '#lib/v1/repositories/labels.ts';
 import { getManifest } from '#lib/v1/repositories/manifest.ts';
 import { installBrowserAdapterManifest } from '#lib/v1/adapter/browserManifest.ts';
-import { loadProviderCatalog, resolveProvider, type PublicProvider } from './providers';
+import { resolveProvider, type PublicProvider } from './providers';
 import { v1Provider } from './config';
+import type { PublicCity } from './schemas/providers';
 import type { ApproximateLocation } from './requestLocation';
 
 export interface V1Context {
@@ -44,19 +45,22 @@ export async function bootV1(lang: Locale = DEFAULT_LOCALE, ctx?: AdapterCtx): P
 export async function bootProvider(
 	url: URL,
 	lang: Locale,
+	loadCatalog: () => Promise<{ default_provider: string; providers: PublicCity[] }>,
 	ctx?: AdapterCtx,
 	location?: ApproximateLocation | null,
 	loadSnapshots = true,
 ) {
 	const requested = url.searchParams.getAll('provider');
-	let providerId = requested[0] ?? v1Provider();
-	let provider: PublicProvider | null = null;
-	let providers: PublicProvider[] = [];
+	let defaultProviderId = v1Provider();
+	let providerId = requested[0] ?? defaultProviderId;
+	let provider: PublicCity | null = null;
+	let providers: PublicCity[] = [];
 	let redirectHref: string | null = null;
 	let discoveryError = false;
 	try {
-		const catalog = await loadProviderCatalog(ctx?.fetch ?? fetch);
+		const catalog = await loadCatalog();
 		const selected = resolveProvider(url, catalog, location);
+		defaultProviderId = catalog.default_provider;
 		provider = selected.provider;
 		providerId = provider.id;
 		providers = catalog.providers;
@@ -66,20 +70,12 @@ export async function bootProvider(
 	}
 	let v1: V1Context | null = null;
 	const unavailableSelection =
-		discoveryError && (requested.length > 1 || requested.some((id) => id !== v1Provider()));
+		discoveryError && (requested.length > 1 || requested.some((id) => id !== defaultProviderId));
 	if (loadSnapshots && !redirectHref && !unavailableSelection) {
 		v1 = await bootV1(lang, { ...ctx, providerId }).catch(() => null);
-		if (v1 && !provider) {
-			const label = {
-				city: v1.manifest.city ?? providerId,
-				operator: v1.manifest.short_name ?? v1.manifest.display_name,
-			};
-			provider = { id: providerId, labels: { en: label, fr: label }, inputs: {}, alert_links: {} };
-			providers = [provider];
-		}
 		if (v1 && provider) v1 = { ...v1, provider };
 	}
-	return { providerId, provider, providers, v1, discoveryError, redirectHref };
+	return { providerId, defaultProviderId, provider, providers, v1, discoveryError, redirectHref };
 }
 
 export function resolveLabel(code: string, labels: Record<string, string>): string {
@@ -95,10 +91,12 @@ export function setV1Context(reader: () => V1Context | undefined): void {
 	if (browser) installBrowserAdapterManifest(() => reader()?.manifest);
 }
 
-export function getV1Context(): V1Context {
+export function getV1Context(): V1Context;
+export function getV1Context(optional: true): V1Context | undefined;
+export function getV1Context(optional = false): V1Context | undefined {
 	const reader = getContext<(() => V1Context | undefined) | undefined>(KEY);
 	const context = reader?.();
-	if (!context) {
+	if (!context && !optional) {
 		throw new Error(
 			'[v1] getV1Context() called before setV1Context(), boot the v1 context in the root layout first.',
 		);

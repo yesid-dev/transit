@@ -11,6 +11,21 @@ vi.mock('#lib/v1/repositories/manifest.ts', () => ({ getManifest: mocks.getManif
 vi.mock('#lib/v1/repositories/labels.ts', () => ({ getLabels: mocks.getLabels }));
 
 import { bootV1, bootProvider, resolveLabel } from './boot';
+import { CityCatalogSchema } from './schemas/providers';
+
+const cities = CityCatalogSchema.parse({
+	...readyProviders,
+	providers: readyProviders.providers.map((provider) => ({
+		...provider,
+		timezone: 'America/Toronto',
+		bounds: null,
+		lines_without_live_data: [],
+	})),
+});
+const loadCities = async () => cities;
+const unavailable = async () => {
+	throw new Error('catalog unavailable');
+};
 
 describe('bootV1 request reuse', () => {
 	beforeEach(() => {
@@ -32,12 +47,12 @@ describe('bootV1 request reuse', () => {
 	])(
 		'keeps the requested page and query when normalizing an Ottawa arrival: %s',
 		async (path, expected) => {
-			const fetch = vi.fn(async () => new Response(JSON.stringify(readyProviders)));
 			const url = new URL(path, 'https://transit.test');
 			const result = await bootProvider(
 				url,
 				path.startsWith('/fr/') ? 'fr' : 'en',
-				{ fetch },
+				loadCities,
+				undefined,
 				{
 					lat: 45.42,
 					lon: -75.7,
@@ -57,11 +72,11 @@ describe('bootV1 request reuse', () => {
 	] as const)(
 		'does not redirect default, unavailable or explicit selections: %s',
 		async (path, location) => {
-			const fetch = vi.fn(async () => new Response(JSON.stringify(readyProviders)));
 			const result = await bootProvider(
 				new URL(path, 'https://transit.test'),
 				'en',
-				{ fetch },
+				loadCities,
+				undefined,
 				location,
 			);
 			expect(result.redirectHref).toBeNull();
@@ -71,11 +86,11 @@ describe('bootV1 request reuse', () => {
 	it.each(['provider=unknown', 'provider=', 'provider=stm&provider=octranspo'])(
 		'normalizes %s while keeping the path and other parameters',
 		async (query) => {
-			const fetch = vi.fn(async () => new Response(JSON.stringify(readyProviders)));
 			const result = await bootProvider(
 				new URL(`https://transit.test/fr/lines/7?tab=reliability&${query}&q=7&tag=a&tag=b`),
 				'fr',
-				{ fetch },
+				loadCities,
+				undefined,
 				{ lat: 45.42, lon: -75.7 },
 			);
 			expect(result.providerId).toBe('stm');
@@ -84,11 +99,11 @@ describe('bootV1 request reuse', () => {
 	);
 
 	it('redirects an Ottawa arrival before reading any default-city manifest or labels', async () => {
-		const fetch = vi.fn(async () => new Response(JSON.stringify(readyProviders)));
 		const result = await bootProvider(
 			new URL('https://transit.test/fr/map'),
 			'fr',
-			{ fetch },
+			loadCities,
+			undefined,
 			{ lat: 45.42, lon: -75.7 },
 		);
 		expect(result).toMatchObject({
@@ -108,6 +123,7 @@ describe('bootV1 request reuse', () => {
 		const result = await bootProvider(
 			new URL('https://transit.test/'),
 			'en',
+			unavailable,
 			{ fetch },
 			{ lat: 45.42, lon: -75.7 },
 		);
@@ -122,7 +138,16 @@ describe('bootV1 request reuse', () => {
 		async (status) => {
 			const fetch = vi.fn(async () => new Response('{}', { status }));
 			const url = new URL('https://transit.test/fr/map?provider=octranspo');
-			const result = await bootProvider(url, 'fr', { fetch });
+			const result = await bootProvider(
+				url,
+				'fr',
+				async () => {
+					const response = await fetch();
+					if (!response.ok) throw new Error('unavailable');
+					return CityCatalogSchema.parse(await response.json());
+				},
+				{ fetch },
+			);
 			expect(result).toMatchObject({
 				providerId: 'octranspo',
 				v1: null,
@@ -131,7 +156,7 @@ describe('bootV1 request reuse', () => {
 			});
 			expect(url.search).toBe('?provider=octranspo');
 			expect(mocks.getManifest).not.toHaveBeenCalled();
-			expect(fetch).toHaveBeenCalledExactlyOnceWith('/data/v1/providers.json');
+			expect(fetch).toHaveBeenCalledExactlyOnceWith();
 		},
 	);
 
@@ -139,9 +164,12 @@ describe('bootV1 request reuse', () => {
 		mocks.getManifest.mockResolvedValue({ provider: 'stm', city: 'Montréal', display_name: 'STM' });
 		mocks.getLabels.mockResolvedValue({});
 		const fetch = vi.fn(async () => new Response(null, { status: 503 }));
-		const result = await bootProvider(new URL('https://transit.test/network'), 'en', { fetch });
+		const result = await bootProvider(new URL('https://transit.test/network'), 'en', unavailable, {
+			fetch,
+		});
 		expect(result.v1?.manifest.provider).toBe('stm');
-		expect(result.provider?.labels.en.city).toBe('Montréal');
+		expect(result.provider).toBeNull();
+		expect(result.providers).toEqual([]);
 		expect(mocks.getManifest).toHaveBeenCalledWith({ fetch, providerId: 'stm' });
 	});
 

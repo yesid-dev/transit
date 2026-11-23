@@ -54,7 +54,6 @@
 	import { currentMirrorUrl } from '#lib/site/urlMirror.ts';
 	import { errorDocumentHead } from '#lib/site/errorPage.ts';
 	import { setV1Context } from '#lib/v1/boot.ts';
-	import { v1Provider } from '#lib/v1/config.ts';
 	import { loadSearchIndex } from '#lib/search/searchIndex.ts';
 	import { createResource } from '#lib/v1/resource.svelte.ts';
 	import { dataPulse } from '#lib/stores/index.ts';
@@ -93,7 +92,7 @@
 
 	const locale = $derived<Locale>(data.lang ?? DEFAULT_LOCALE);
 	const lineDirectory = $derived(
-		createLineDirectory(data.routesIndex?.routes ?? null, {
+		createLineDirectory(data.schedule?.routes ?? null, {
 			line: (id) => routeNameFallback(id, locale),
 		}),
 	);
@@ -107,7 +106,11 @@
 	const seoPath = $derived(delocalizePath(page.url.pathname));
 	const isOverviewRecord = $derived(seoPath === '/' && page.data.record != null);
 	const isStandaloneRecord = $derived(
-		page.data.report != null ||
+		page.data.record != null ||
+			page.data.finderRecord != null ||
+			page.data.alertRecord != null ||
+			page.data.selection != null ||
+			page.data.report != null ||
 			page.data.networkRecord != null ||
 			seoPath.startsWith('/departure/'),
 	);
@@ -337,7 +340,7 @@
 		if (
 			!navigation.willUnload &&
 			navigation.to &&
-			v1Provider(navigation.to.url) !== data.providerId
+			(navigation.to.url.searchParams.get('provider') ?? data.defaultProviderId) !== data.providerId
 		) {
 			navigation.cancel();
 			location.assign(navigation.to.url.href);

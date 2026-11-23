@@ -14,10 +14,9 @@ vi.mock('#lib/geocode/geoCa.ts', async (importOriginal) => ({
 }));
 
 import { GET } from './+server';
-import { loadProviderCatalog } from '#lib/v1/providers.ts';
-import { getManifest } from '#lib/v1/repositories/manifest.ts';
-vi.mock('#lib/v1/providers.ts', () => ({ loadProviderCatalog: vi.fn() }));
-vi.mock('#lib/v1/repositories/manifest.ts', () => ({ getManifest: vi.fn() }));
+import { getCityCatalog } from '#lib/server/engine.ts';
+vi.mock('#lib/server/engine.ts', () => ({ getCityCatalog: vi.fn() }));
+const OTTAWA_BOUNDS = [-76.05, 45.1, -75.33, 45.55];
 const AREA = { bbox: [-74.1, 45.25, -73.2, 45.75], context: 'Montréal, Québec', lang: 'en' };
 
 type Handler = typeof GET;
@@ -67,13 +66,12 @@ async function responseBody(response: Response): Promise<unknown> {
 
 beforeEach(() => {
 	clientSequence = 0;
-	vi.mocked(loadProviderCatalog).mockResolvedValue({
+	vi.mocked(getCityCatalog).mockResolvedValue({
 		providers: [
-			{ id: 'stm', geocode_context: AREA.context },
-			{ id: 'octranspo', geocode_context: 'Ottawa, Ontario' },
+			{ id: 'stm', geocode_context: AREA.context, bounds: AREA.bbox },
+			{ id: 'octranspo', geocode_context: 'Ottawa, Ontario', bounds: OTTAWA_BOUNDS },
 		],
 	} as never);
-	vi.mocked(getManifest).mockResolvedValue({ provider: 'stm', bbox: AREA.bbox } as never);
 	for (const provider of Object.values(providers)) provider.mockReset();
 	providers.geocode.mockResolvedValue({
 		lat: 45.5,
@@ -90,14 +88,12 @@ afterEach(() => {
 });
 
 it('resolves Ottawa geography and French language before geocoding', async () => {
-	const bbox = [-76.05, 45.1, -75.33, 45.55];
-	vi.mocked(getManifest).mockResolvedValueOnce({ provider: 'octranspo', bbox } as never);
 	const request = event('?q=Bank+Street&provider=octranspo&lang=fr');
 	expect((await GET(request)).status).toBe(200);
-	expect(getManifest).toHaveBeenLastCalledWith({ providerId: 'octranspo', fetch: request.fetch });
+	expect(getCityCatalog).toHaveBeenLastCalledWith('test-client-1');
 	expect(providers.geocode).toHaveBeenCalledWith(
 		'Bank Street',
-		{ bbox, context: 'Ottawa, Ontario', lang: 'fr' },
+		{ bbox: OTTAWA_BOUNDS, context: 'Ottawa, Ontario', lang: 'fr' },
 		request.fetch,
 	);
 });
@@ -110,7 +106,7 @@ it('rejects unknown or repeated providers without geocoding', async () => {
 });
 
 it('does not borrow another city when selected provider metadata is unavailable', async () => {
-	vi.mocked(getManifest).mockRejectedValueOnce(new Error('offline'));
+	vi.mocked(getCityCatalog).mockRejectedValueOnce(new Error('offline'));
 	const response = await GET(event('?q=Bank&provider=octranspo'));
 	expect(response.status).toBe(503);
 	expect(response.headers.get('cache-control')).toBe('no-store');

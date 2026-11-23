@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { page } from '$app/state';
+	import { invalidateAll } from '$app/navigation';
 	import { getV1Runtime } from '#lib/v1/runtime.ts';
 	import { getV1Context } from '#lib/v1/boot.ts';
 	import { getPublishedReliabilityIndex } from '#lib/v1/repositories/historic.ts';
@@ -48,18 +49,33 @@
 	import { dateRange } from '#lib/features/record/recordText.ts';
 	import StopFinderTable from './StopFinderTable.svelte';
 
-	let { record = null }: { record?: StopsRecord | null } = $props();
+	import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
+	import type { PublicCity } from '#lib/v1/schemas/providers.ts';
+
+	let {
+		record = null,
+		schedule = null,
+		provider = null,
+	}: {
+		record?: StopsRecord | null;
+		schedule?: ScheduleEdition | null;
+		provider?: PublicCity | null;
+	} = $props();
 	const locale = getLocale();
 	const t = $derived(indexCopy[locale]);
 	// The stop page's own Live now words, so a row and its page say the same about live data.
 	const noLiveDataText = $derived(detailCopy[locale].live.noCapability);
 	const localizeHref = getLocalizeHref();
 	const runtime = getV1Runtime();
-	const v1 = getV1Context();
-	const providerId = $derived(v1.manifest.provider);
+	const v1 = getV1Context(true);
+	const providerId = $derived(record?.city ?? v1?.manifest.provider ?? '');
 	// The stop record's own operator name, so a row's citation and CSV match the stop page's.
-	const shortName = $derived(v1.manifest.short_name?.trim() || v1.manifest.display_name);
-	const providerName = $derived(v1.provider?.labels[locale]?.operator ?? shortName);
+	const shortName = $derived(
+		v1?.manifest.short_name?.trim() || v1?.manifest.display_name || providerId,
+	);
+	const providerName = $derived(
+		provider?.labels[locale]?.operator ?? v1?.provider?.labels[locale]?.operator ?? shortName,
+	);
 
 	onMount(() => runtime.clock.subscribe());
 
@@ -67,8 +83,16 @@
 		(signal) => (record ? Promise.resolve(null) : getPublishedReliabilityIndex({ signal })),
 		{ key: () => Boolean(record) },
 	);
-	const index = createResource(() => getStopsIndex());
-	const routesIndex = createResource(() => getRoutesIndex());
+	const index = createResource<{ stops: StopIndexEntry[] } | null>(
+		() => (record ? Promise.resolve(schedule) : getStopsIndex()),
+		{
+			key: () => (record ? schedule : 'legacy'),
+			seed: () => (record && schedule ? { key: schedule, data: schedule } : undefined),
+		},
+	);
+	const routesIndex = createResource(() => (record ? Promise.resolve(null) : getRoutesIndex()), {
+		key: () => Boolean(record),
+	});
 
 	/**
 	 * While the list first loads, a gauge list lays out invisibly under the skeleton: a full first
@@ -76,7 +100,7 @@
 	 * render. When the stops arrive, the region keeps that height until the reader acts or the
 	 * width changes, so the footer below never moves.
 	 */
-	const hold = createGaugeHold(() => !(index.settled && routesIndex.settled));
+	const hold = createGaugeHold(() => !record && !(index.settled && routesIndex.settled));
 	const GAUGE_NAME = gaugeFiller(
 		'Henri-Bourassa / Lajeunesse (Terminus Henri-Bourassa, quai Nord)',
 	);
@@ -112,15 +136,17 @@
 	const lineRoute = createResource(
 		() => {
 			const id = view.route;
-			return id ? getRoute(id) : Promise.resolve(null);
+			return id && !record ? getRoute(id) : Promise.resolve(null);
 		},
-		{ key: () => view.route },
+		{ key: () => (record ? null : view.route) },
 	);
 
 	const collator = intl.collator(locale, { numeric: true, sensitivity: 'base' });
 	const numberFmt = intl.number(locale);
 	const allStops = $derived<readonly StopIndexEntry[]>(index.data?.stops ?? []);
-	const routes = $derived<readonly RouteIndexEntry[]>(routesIndex.data?.routes ?? []);
+	const routes = $derived<readonly RouteIndexEntry[]>(
+		(record ? schedule?.routes : routesIndex.data?.routes) ?? [],
+	);
 	const routeById = $derived(new Map(routes.map((route) => [route.id, route])));
 	const selectedLine = $derived(view.route ? (routeById.get(view.route) ?? null) : null);
 	const lineOptions = $derived<ComboboxOption[]>(
@@ -226,13 +252,17 @@
 
 	const baseRows = $derived.by<FinderRow[]>(() => {
 		if (nearActive && nearOrigin) return nearRows(nearOrigin, allStops, view.query);
-		if (view.route) return lineRows(lineRoute.data, allStops, view.query);
-		return networkRows(allStops, view.query, collator.compare);
+		if (view.route && !record) return lineRows(lineRoute.data, allStops, view.query);
+		const directions = view.route ? schedule?.route_directions?.[view.route] : null;
+		if (directions) return lineRows({ directions }, allStops, view.query);
+		const route = view.route;
+		const stops = route ? allStops.filter((stop) => stop.routes?.includes(route)) : allStops;
+		return networkRows(stops, view.query, collator.compare);
 	});
 	const rows = $derived(lateActive ? publishedOrderRows(baseRows, rankedIds) : baseRows);
 	const shownRows = $derived(rows.slice(0, view.shown));
 	const moreCount = $derived(nextPageSize(view.shown, rows.length));
-	const lineLoading = $derived(!nearActive && view.route != null && !lineRoute.settled);
+	const lineLoading = $derived(!record && !nearActive && view.route != null && !lineRoute.settled);
 
 	const countText = $derived.by(() => {
 		const shown = numberFmt.format(shownRows.length);
@@ -242,7 +272,9 @@
 		return t.counts(shown, matching, numberFmt.format(allStops.length));
 	});
 
-	const noMatch = $derived(index.settled && !lineLoading && rows.length === 0);
+	const noMatch = $derived(
+		(record ? schedule != null : index.settled) && !lineLoading && rows.length === 0,
+	);
 	// Nearby with a typed filter that matches nothing is a no-match, never a claim about distance.
 	const noMatchTitle = $derived(
 		nearActive && !view.query
@@ -312,7 +344,13 @@
 	/** Unknown line types make no claim: only declared lines without live data count. */
 	function noLiveData(stop: StopIndexEntry): boolean {
 		return stopHasNoLiveData(stop, (line) =>
-			routeHasNoLiveData(providerId, routeById.get(line)?.type),
+			record
+				? (provider?.lines_without_live_data.some(
+						(gap) =>
+							gap.route_ids.includes(line) ||
+							gap.route_types.some((type) => type === routeById.get(line)?.type),
+					) ?? false)
+				: routeHasNoLiveData(providerId, routeById.get(line)?.type),
 		);
 	}
 
@@ -575,7 +613,7 @@
 	subtitle={providerName}
 	description={record ? dateRange(record.period, locale) : t.lede}
 	filterLabel={t.controlsLabel}
-	resultCountText={index.data ? countText : undefined}
+	resultCountText={(record ? schedule : index.data) ? countText : undefined}
 	search={listingSearch}
 	filters={listingFilters}
 >
@@ -618,9 +656,16 @@
 					layout={desktop.current ? 'desktop' : 'mobile'}
 				/>
 			</div>
+		{:else if record && !schedule}
+			<EdgeState
+				variant="error-v1"
+				lang={locale}
+				layout={desktop.current ? 'desktop' : 'mobile'}
+				onRetry={() => void invalidateAll()}
+			/>
 		{:else}
 			<ResourceBoundary resource={index} lang={locale} isEmpty={(d) => d.stops.length === 0}>
-				{#if !routesIndex.settled}
+				{#if !record && !routesIndex.settled}
 					<EdgeState
 						variant="skeleton"
 						lang={locale}

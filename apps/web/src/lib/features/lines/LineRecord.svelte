@@ -13,8 +13,6 @@
 	} from '#lib/features/record/recordText.ts';
 	import type { loadLineRecord } from '#lib/server/lineRecord.ts';
 	import { carryFrameState, frameHref } from '#lib/site/frameState.ts';
-	import type { RouteFile } from '#lib/v1/schemas/route.ts';
-	import { directionHeadsigns } from './directions.ts';
 	import LineRecordReadings from './LineRecordReadings.svelte';
 	import LineViewNav from './LineViewNav.svelte';
 	import {
@@ -29,38 +27,19 @@
 		locale,
 		url,
 		record,
-		metadata,
+		headsigns,
+		stopNames: stopNamesById,
 	}: {
 		name: string;
 		locale: Locale;
 		url: URL;
 		record: ReturnType<typeof loadLineRecord>;
-		metadata: Promise<RouteFile | null>;
+		headsigns: Record<number, string>;
+		stopNames: Record<string, string>;
 	} = $props();
 
-	let routeFile = $state<RouteFile | null>(null);
-	$effect(() => {
-		const pending = metadata;
-		let current = true;
-		routeFile = null;
-		void pending.then((file) => {
-			if (current) routeFile = file;
-		});
-		return () => {
-			current = false;
-		};
-	});
 	const directions = [null, '0', '1'] as const;
-	const headsigns = $derived(directionHeadsigns(routeFile?.directions));
-	const stopNames = $derived(
-		new Map(
-			routeFile?.directions?.flatMap((direction) =>
-				(direction.stops ?? []).flatMap((stop) =>
-					stop.name ? [[stop.id, stop.name] as const] : [],
-				),
-			) ?? [],
-		),
-	);
+	const stopNames = $derived(new Map(Object.entries(stopNamesById)));
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 	const pinned = $derived.by(() => {
 		const link = lineViewHref(url, record.view, record.direction);

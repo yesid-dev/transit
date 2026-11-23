@@ -2,7 +2,7 @@
 
 import csv
 import zlib
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -46,6 +46,7 @@ class ArchiveScheduleContext:
     route_types: Mapping[str, int]
     search_routes: tuple[dict[str, Any], ...]
     search_stops: tuple[dict[str, Any], ...]
+    route_directions: Mapping[str, list[dict[str, Any]]]
 
     def __init__(
         self,
@@ -95,6 +96,25 @@ class ArchiveScheduleContext:
         if len(stops) != len(rows["stops"]):
             raise InvalidScheduleEdition(dataset_version_id, "duplicate_stop_ids")
         days = _days(rows, trips, dates, edition_sha256)
+        branches: dict[tuple[str, int, str], Counter[tuple[str, ...]]] = defaultdict(Counter)
+        for row in rows["trips"]:
+            trip_id = row["trip_id"]
+            if trip_id in trips:
+                direction = row["direction_id"] or 0
+                headsign = row["trip_headsign"] or ""
+                pattern = tuple(time.stop_id for time in times[trip_id])
+                branches[row["route_id"], direction, headsign][pattern] += 1
+        directions: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for (route, direction, headsign), patterns in sorted(branches.items()):
+            pattern, _ = min(patterns.items(), key=lambda item: (-item[1], item[0]))
+            directions[route].append(
+                {
+                    "dir": direction,
+                    "headsign": headsign,
+                    "stops": [{"id": stop, "seq": index} for index, stop in enumerate(pattern, 1)],
+                }
+            )
+        object.__setattr__(self, "route_directions", MappingProxyType(directions))
         object.__setattr__(self, "context_id", identity)
         object.__setattr__(self, "timezone", timezone)
         object.__setattr__(self, "days", MappingProxyType(days))
@@ -163,6 +183,7 @@ class ArchiveScheduleContext:
             "date": day.isoformat(),
             "routes": self.search_routes,
             "stops": stops,
+            "route_directions": dict(self.route_directions),
         }
 
     def trip(self, service_date: date, trip_id: str) -> ScheduledTrip | None:

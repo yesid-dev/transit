@@ -11,8 +11,15 @@
 	const url = $derived(new URL(page.shallow?.url.href ?? page.url.href));
 </script>
 
-{#if data.record && data.metadata}
-	<LineRecord name={data.seed.name} {locale} {url} record={data.record} metadata={data.metadata} />
+{#if data.record}
+	<LineRecord
+		name={data.seed.name}
+		{locale}
+		{url}
+		record={data.record}
+		headsigns={data.directionHeadsigns}
+		stopNames={data.stopNames}
+	/>
 {:else}
 	{#if data.frameLive}<LineViewNav {url} {locale} view="live" />{/if}
 	<RouteDetail

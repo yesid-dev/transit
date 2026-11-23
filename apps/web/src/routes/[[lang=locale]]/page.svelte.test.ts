@@ -22,7 +22,15 @@ vi.mock('#lib/v1/live/store.svelte.ts', () => ({ createLiveStore: createLiveStor
 function pageData() {
 	const label = { city: state.city, operator: state.city === 'Ottawa' ? 'OC Transpo' : 'STM' };
 	return {
-		provider: { id: 'fixture', labels: { en: label, fr: label }, inputs: {}, alert_links: {} },
+		provider: {
+			id: 'fixture',
+			labels: { en: label, fr: label },
+			inputs: {},
+			timezone: 'America/Toronto',
+			bounds: null,
+			lines_without_live_data: [],
+			alert_links: {},
+		},
 		providerId: 'fixture',
 		v1: null,
 	};

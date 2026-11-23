@@ -4,7 +4,18 @@
 	import StopsFinder from './StopsFinder.svelte';
 	import type { StopsRecord } from '#lib/server/finderRecord.ts';
 
-	let { record = null }: { record?: StopsRecord | null } = $props();
+	import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
+	import type { PublicCity } from '#lib/v1/schemas/providers.ts';
+
+	let {
+		record = null,
+		schedule = null,
+		provider = null,
+	}: {
+		record?: StopsRecord | null;
+		schedule?: ScheduleEdition | null;
+		provider?: PublicCity | null;
+	} = $props();
 
 	/**
 	 * The finder's owner: its state lives in the URL, and its records belong to one publication. A
@@ -13,9 +24,9 @@
 	 * view across the remount.
 	 */
 	const runtime = getV1Runtime();
-	const provider = $derived(page.url.searchParams.get('provider') ?? '');
+	const selectedId = $derived(page.url.searchParams.get('provider') ?? '');
 </script>
 
-{#key `${provider}|${runtime.refresh.epoch}`}
-	<StopsFinder {record} />
+{#key `${selectedId}|${runtime.refresh.epoch}`}
+	<StopsFinder {record} {schedule} {provider} />
 {/key}

@@ -2,9 +2,7 @@
 	"name": "rich",
 	"frozen_utc": "2026-08-30T16:00:00Z",
 	"files": {
-		"providers.json": {
-			"schema_version": 1,
-			"generated_utc": "2026-08-30T16:00:00Z",
+		"/v2/cities": {
 			"default_provider": "stm",
 			"providers": [
 				{
@@ -20,9 +18,26 @@
 						}
 					},
 					"inputs": {},
-					"alert_links": {}
+					"alert_links": {},
+					"timezone": "America/Toronto",
+					"bounds": [-74.2, 45.2, -73.2, 45.9],
+					"lines_without_live_data": []
 				}
 			]
+		},
+		"/v2/stm/schedule-index": {
+			"schedule": {
+				"date": "2026-08-29",
+				"routes": [
+					{
+						"id": "24",
+						"short": "24",
+						"long": "Sherbrooke",
+						"type": 3
+					}
+				],
+				"stops": []
+			}
 		},
 		"manifest.json": {
 			"provider": "stm",

@@ -1,40 +1,16 @@
 """Search the latest available schedule edition and recent tracked vehicle numbers."""
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
-from zoneinfo import ZoneInfo
 
-from transit_engine.capture import provider_declaration
+from transit_engine.cities import public_declaration, service_zone
 from transit_engine.measures import Question, ask
-from transit_engine.store import CITY, Store
+from transit_engine.store import Store
 
 
-class UnknownSearchCity(ValueError):
-    """The city has no active public declaration."""
-
-
-def search_index(store: Store, city: str) -> dict[str, Any]:
-    declaration = provider_declaration(city) if CITY.fullmatch(city) else {}
-    identity = declaration.get("provider")
-    if isinstance(identity, dict):
-        public = declaration.get("public")
-        enabled = identity.get("is_active") is True and (
-            isinstance(public, dict) and public.get("enabled") is True
-        )
-    else:
-        identity = declaration
-        public = declaration.get("overrides")
-        enabled = declaration.get("stage") == "public"
-    if not enabled:
-        raise UnknownSearchCity("unknown city")
-    zone = identity.get("timezone")
-    if not isinstance(zone, str):
-        raise RuntimeError("missing service timezone")
-    end = datetime.now(UTC).astimezone(ZoneInfo(zone)).date() - timedelta(days=1)
-    start = end - timedelta(days=6)
-
+def schedule_index(store: Store, city: str, end: date) -> dict[str, Any] | None:
     schedule = None
     with store.connect() as conn:
         for offset in range(7):
@@ -54,9 +30,19 @@ def search_index(store: Store, city: str) -> dict[str, Any]:
                 schedule = json.loads(raw)
                 break
 
+    return schedule
+
+
+def search_index(store: Store, city: str) -> dict[str, Any]:
+    _, identity, public = public_declaration(city)
+    end = datetime.now(UTC).astimezone(service_zone(identity)).date() - timedelta(days=1)
+    start = end - timedelta(days=6)
+    edition = schedule_index(store, city, end)
+    schedule = {key: edition[key] for key in ("date", "routes", "stops")} if edition else None
+
     vehicles: list[dict[str, str]] | None = None
     vehicle_state = "unavailable"
-    if isinstance(public, dict) and public.get("stable_vehicle_ids") is False:
+    if public.get("stable_vehicle_ids") is False:
         vehicle_state = "not_tracked"
     else:
         answer = ask(

@@ -10,4 +10,5 @@
 !apps/db/config/
 !apps/db/config/providers/
 !apps/db/config/providers/*.yaml
+!apps/db/config/providers/default-city.txt
 **/__pycache__/
