@@ -297,10 +297,14 @@ def test_line_departure_series_and_ranking_apply_the_same_cuts(store: Store) -> 
     assert cell["state"] == "too_few_to_judge"
     status, _, raw = asyncio.run(http(app, "/ranking", cut + "&kind=departure&measure=late"))
     assert status == 200, raw
-    (row,) = json.loads(raw)["rows"]
+    ranking = json.loads(raw)
+    assert ranking["rows"] == []
+    (row,) = ranking["excluded"]
     assert (row["line"], row["direction"], row["departure"]) == ("A", 0, "07:00:00")
     assert row["counts"]["late"] == 8
     assert row["sample"] == 32
+    assert row["counts"]["observed_service_dates"] == 1
+    assert row["reason"] == "too_few_to_judge"
     status, _, _ = asyncio.run(http(app, "/ranking", cut + "&kind=line&measure=late"))
     assert status == 400
 

@@ -277,10 +277,9 @@ def test_crowding_matches_independent_vehicle_time_and_reports_coverage(
     assert all(value is None for value in untracked["value"].values())
     assert untracked["evidence"]["share_occupancy_readings"] == 0
     ranked = _get(store, "/ranking", "crowding_full", kind="line", **{"class": "all"})
-    assert [row["id"] for row in ranked["rows"]] == ["A"]
-    assert ranked["rows"][0]["value"] == seconds["full"] / (total + 3690)
-    assert ranked["rows"][0]["range"]["method"] == "occupancy_weighted_wilson_95"
+    assert ranked["rows"] == []
     assert {row["id"]: row["reason"] for row in ranked["excluded"]} == {
+        "A": "too_few_to_judge",
         "B": "too_few_to_judge",
         "C": "not_tracked",
         "D": "not_tracked",

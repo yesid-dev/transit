@@ -101,10 +101,10 @@ def test_waiting_measures_match_known_pattern_and_independent_recomputation(
     assert depart["evidence"]["counts"]["long_gaps"] == 1
     assert depart["state"] == "too_few_to_judge"
     ranking = _json(store, measure="excess_wait_time")
-    assert ranking["rows"][0]["value"] == values["excess_wait_time"]
-    assert ranking["rows"][0]["range"]["lower"] is None
+    assert ranking["rows"] == []
+    assert ranking["excluded"][0]["reason"] == "too_few_to_judge"
     bunching = _json(store, measure="bunching")
-    assert bunching["rows"][0]["range"]["method"] == "wilson_95"
+    assert bunching["excluded"][0]["counts"]["observed_headways"] == 48
     assert _request(store, measure="bunching", kind="stop")[0] == 400
 
 
@@ -149,9 +149,9 @@ def test_waiting_excludes_unobserved_trips_capture_gaps_and_infrequent_periods(
         "D": "unknown",
         "G": "not_measured",
         "I": "no_frequent_periods",
-        "M": "too_few_to_judge",
+        "M": "not_measured",
         "N": "no_live_data",
-        "O": "unknown",
+        "O": "not_measured",
         "T": "not_measured",
     }
     assert "No frequent periods" in excluded["I"]["reason_text"]["en"]
@@ -227,14 +227,16 @@ def test_service_offered_matches_schedule_only_recomputation(
         total = sum(expected_trips[day, hour] for hour in hours)
         assert period["scheduled_trips"] == total
         assert period["scheduled_frequency"] == total / len(hours)
-        below = int((day.weekday() >= 5 or 19 in hours) and total / len(hours) < 2)
+        below = int(
+            day != SUNDAY and (day.weekday() >= 5 or 19 in hours) and total / len(hours) < 2
+        )
         assert period["below_minimum_service"] == below
         total_under += below
-    assert total_under == 10  # The weekday evening meets the threshold exactly.
+    assert total_under == 5  # The weekday evening meets the threshold exactly.
     assert answer["value"] == {
         "scheduled_trips": 12,
         "scheduled_frequency": 12 / 72,
-        "below_minimum_service": 10,
+        "below_minimum_service": 5,
     }
     at_stop = query(store, **options, stop="other", hour=9, day_type="saturday")
     assert at_stop["value"]["scheduled_frequency"] == 1
@@ -250,7 +252,7 @@ def test_service_offered_matches_schedule_only_recomputation(
     assert sunday["value"] == {
         "scheduled_trips": 0,
         "scheduled_frequency": 0,
-        "below_minimum_service": 5,
+        "below_minimum_service": None,
     }
     grid = query(store, **options, stop="other", group="weekday_hour")["cells"]
     assert grid[5 * 24 + 9]["value"] == at_stop["value"]

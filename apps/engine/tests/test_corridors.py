@@ -69,7 +69,7 @@ def test_corridors_measure_series_and_rankings(tmp_path: Path) -> None:
         scheduled_b = trip.offset_minutes * 60 + second.arrival
         observed_a, observed_b = scheduled_a + delay_a, scheduled_b + delay_b
         losses.append((observed_b - observed_a) - (scheduled_b - scheduled_a))
-    half_bin = SEGMENT_BIN_SECONDS / 2
+    half_bin = (SEGMENT_BIN_SECONDS - 1) / 2
     assert values["median_time_lost"] == pytest.approx(median(losses), abs=half_bin)
     assert values["p90_time_lost"] == pytest.approx(
         quantiles(losses, n=10, method="inclusive")[-1], abs=half_bin
@@ -192,7 +192,7 @@ def test_corridor_exclusion_reasons_and_thresholds(tmp_path: Path) -> None:
         "negative_observed_run": 1,
         "excessive_observed_run": 1,
     }
-    assert evidence["share_observed"] == 0.25
+    assert evidence["share_observed"] == 0.30
     skipped = query(store, measure="corridors", from_stop="from", to_stop="to")
     assert skipped["evidence"]["counts"]["scheduled_runs"] == 0
     ranked = _json(store, kind="segment", **cut)

@@ -482,9 +482,10 @@ def test_service_delivered_matches_python_across_batches(
         assert answer["value"][measure] == expected[state] / len(eligible)
     assert counts["cancellation_notices"] == 2
     assert counts["cancellations_announced_after_departure"] == 1
-    assert evidence["median_cancellation_lead_seconds"] == pytest.approx((1800 - 30) / 2, abs=7.5)
+    assert evidence["median_cancellation_lead_seconds"] is None
+    assert evidence["cancellation_lead_state"] == "too_few_to_judge"
     late_day = query(store, measure="cancelled_trips")["evidence"]
-    assert late_day["median_cancellation_lead_seconds"] == pytest.approx(-30, abs=7.5)
+    assert late_day["median_cancellation_lead_seconds"] is None
     assert late_day["counts"]["cancellations_announced_after_departure"] == 1
     expected_scheduled = sum(trip.duration_minutes for trip in eligible)
     expected_ran = sum(trip.duration_minutes for trip in ran)
@@ -534,7 +535,7 @@ def test_service_delivered_boundaries_and_trip_cuts(
     assert below_floor["state"] == "too_few_to_judge"
     assert below_floor["value"] == {"first_trip": None}
     daily = query(store, measure="service_delivered", group="day", **weekday)
-    assert daily["cells"][0]["evidence"]["measure_states"]["first_trip"] == "too_few_to_judge"
+    assert daily["cells"][0]["evidence"]["measure_states"]["first_trip"] == "not_measured"
     assert daily["cells"][0]["evidence"]["boundary_departures"] == edges[:2]
     hourly = query(store, measure="last_trip", group="hour", **weekday)
     assert hourly["cells"][1]["value"]["last_trip"] == 19 / 20
@@ -572,7 +573,7 @@ def test_service_delivered_trip_queries_use_v3(store: Store) -> None:
     assert answer["evidence"]["cleaning_versions"] == [3]
     assert answer["evidence"]["counts"]["scheduled_hours"] is None
     unknown = query(store, measure="trips_run", line="U")
-    assert unknown["state"] == "unknown"
+    assert unknown["state"] == "not_measured"
     assert unknown["value"] == {"trips_run": None}
     assert unknown["evidence"]["share_unconfirmed"] == 1
 
@@ -632,6 +633,9 @@ def test_bands_use_exact_thresholds(tmp_path: Path, cleaning_version: int) -> No
         "early": 8,
         "on_time": 16,
         "late": 8,
+        "vehicle_stopped": 0,
+        "trip_update_reported": 32,
+        "trip_update_passed": 0,
     }
     assert [result["value"][key] for key in ("early", "on_time", "late")] == [0.25, 0.5, 0.25]
     assert evidence["excluded"] == {
@@ -671,18 +675,21 @@ def test_multi_day_line_agrees_with_independent_recomputation(
     bands = Counter(
         "early" if delay < -60 else "late" if delay > 300 else "on_time" for delay in observed
     )
-    assert evidence["counts"] == {"scheduled": len(scheduled), "classified": len(observed), **bands}
+    assert evidence["counts"] == {
+        "scheduled": len(scheduled), "classified": len(observed), **bands,
+        "vehicle_stopped": 0, "trip_update_reported": len(observed), "trip_update_passed": 0,
+    }
     assert sum(bands.values()) == len(observed) <= len(scheduled)
     assert evidence["share_observed"] == len(observed) / len(scheduled)
     for band, count in bands.items():
         assert answer["value"][band] == count / len(observed)
-    assert answer["value"]["median_delay"] == 30
+    assert answer["value"]["median_delay"] == 29.5
     # Exact continuous percentiles are computed independently on the small fixture.
     for key, fraction in (("median_delay", 0.5), ("p90_delay", 0.9)):
         rank = (len(observed) - 1) * fraction
         lo = int(rank)
         exact = observed[lo] + (observed[lo + 1] - observed[lo]) * (rank - lo)
-        assert abs(exact - answer["value"][key]) <= 7.5
+        assert abs(exact - answer["value"][key]) <= 7
 
 
 def test_stop_departure_hour_and_day_type_cuts(store: Store) -> None:
@@ -727,7 +734,7 @@ def test_gaps_and_real_zero_have_distinct_meanings(store: Store) -> None:
         (no_days, "not_measured"),
         (query(store, line="G"), "not_measured"),
         (query(store, line="N"), "no_live_data"),
-        (query(store, line="U"), "unknown"),
+        (query(store, line="U"), "not_measured"),
         (query(store, line="absent"), "unknown"),
         (too_few, "too_few_to_judge"),
     ):
@@ -1086,16 +1093,16 @@ def _long_range_answers(
 
 
 def test_long_range_matches_baseline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # Canonical JSON digests of the complete responses from main at 8398ec29.
+    # Canonical JSON digests of the complete responses with the revised statistics rules.
     # The fixture spans two query batches, a DST transition, and one missing day.
     expected = {
-        "network": "a99fb09d619a641b51906e307749075faaf11d975bed8f085763e368d62e0624",
-        "line": "180ccbaf48333c74bdfda9be5510934fa55c32ecd0fd9312d66fa305d6de7d32",
-        "grid": "6fb38e82a7515e5729e33421ab95a9918e0b8a0b90fd3918c3ffa2d298f32cb5",
-        "delivery": "3a033c2da4a3ffd269534552addd84ce5e83c06d9babacc384b65bc264f87e44",
-        "line_rank": "f22385aad4199d89e9bd760ed16d3a8e9ebc559cadec531ce43c87134b9bcc84",
-        "stop_rank": "288385a62248b350af22759250ac850968071cac59924163950ec907efa020b4",
-        "departure_rank": "7167025347d089d828cf204966ffca8c21b29479545b779d12a12ac308cc0cc4",
+        "network": "788cd2906d6352fd4984c28ed8f5048c4375cadc488b8f517ce8ad90a543dc0f",
+        "line": "f3dfccce3842d98a19078f2dbcc71c23ff71a082a30419f81ee91d72d670832e",
+        "grid": "96363ac8de444ad235d358698b2b15a5f43eb883f230f21535c469d72c12d649",
+        "delivery": "c0585d214d9f18d8760df1ddf5353865b073cede0f1077ab72b93a6efecf57ad",
+        "line_rank": "f21dd92d40676fdbfef610b1a2a83af61812d252ecde21f2d456ca423e12908f",
+        "stop_rank": "dd1024214e55eeff0c38f982d877f055a3ffb0d064e9ba364cd62cb69c987fbc",
+        "departure_rank": "da0f4c95783ae73e4d77c8717a442f39c65e0b2568e04a79016fb49f87c99969",
     }
     answers = _long_range_answers(tmp_path, monkeypatch)
     assert {

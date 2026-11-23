@@ -7,6 +7,7 @@ import re
 from bisect import bisect_right
 from collections import Counter
 from dataclasses import dataclass, field
+from datetime import date
 from math import sqrt
 from time import perf_counter
 from typing import Any, NamedTuple
@@ -107,6 +108,9 @@ _RANGE_NOTES = {
         "dépendants. Cet intervalle sert de guide.",
     ),
 }
+_INSUFFICIENT_COVERAGE = Text(
+    "Insufficient coverage", "Couverture insuffisante",
+)
 _NOT_MEASURED_ON_DATES = Text("Not measured on those dates", "Non mesuré à ces dates")
 
 
@@ -197,6 +201,7 @@ def _line_schedules(
         ), peak AS (
             SELECT DISTINCT service_date, route_id, direction_id, scheduled_start_utc
             FROM trips WHERE local_hour >= {PEAK_START_HOUR} AND local_hour < {PEAK_END_HOUR}
+                AND (isodow(service_date) <= 5 OR ?)
         ), headways AS (
             SELECT route_id, epoch(scheduled_start_utc - lag(scheduled_start_utc) OVER (
                 PARTITION BY route_id, service_date, direction_id ORDER BY scheduled_start_utc
@@ -214,7 +219,14 @@ def _line_schedules(
         SELECT route_id, modes, trips, night, coalesce(seconds, 0), coalesce(gaps, 0)
         FROM service LEFT JOIN frequency USING (route_id)
         """,
-        [paths, question.city, str(store.cleaning_version), question.start, question.end],
+        [
+            paths, question.city, str(store.cleaning_version), question.start, question.end,
+            not any(
+                date.fromordinal(day).weekday() < 5
+                for day in range(question.start.toordinal(),
+                                 min(question.end.toordinal() + 1, question.start.toordinal() + 7))
+            ),
+        ],
     ).fetchall()
     for route, modes, trips, night, seconds, gaps in rows:
         line = lines.setdefault(route, LineSchedule())
@@ -252,7 +264,7 @@ def _range(
             "method": "vehicle_completion_wilson_95",
         }
     if measure.unit == "seconds":
-        half_bin = family.bin_seconds / 2
+        half_bin = (family.bin_seconds - 1) / 2
         lower, upper = value - half_bin, value + half_bin
         method = "histogram_half_bin"
     elif family.id == _ALERT_COUNTS_ID:
@@ -308,6 +320,7 @@ class _PunctualityCandidate(NamedTuple):
     value: float
     sample: int
     counts: Counter[str]
+    ranking_bound: float | None
 
 
 def _punctuality_shortlist(
@@ -317,7 +330,9 @@ def _punctuality_shortlist(
         return []
 
     def score(candidate: _PunctualityCandidate) -> tuple[float, int]:
-        return order * candidate.value, -candidate.sample
+        bound = candidate.ranking_bound
+        score_value = candidate.value if bound is None else bound
+        return order * score_value, -candidate.sample
 
     candidates.sort(key=score)
     last = min(len(candidates), ranking.limit) - 1
@@ -325,11 +340,14 @@ def _punctuality_shortlist(
     end = bisect_right(candidates, score(candidates[last]), lo=last + 1, key=score)
     return [
         (
-            {**_identity(ranking.kind, key, classes), "value": value, "sample": sample},
+            {
+                **_identity(ranking.kind, key, classes), "value": value, "sample": sample,
+                "ranking_bound": bound,
+            },
             sample,
             counts,
         )
-        for key, classes, value, sample, counts in candidates[:end]
+        for key, classes, value, sample, counts, bound in candidates[:end]
     ]
 
 
@@ -472,18 +490,27 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
         displayed_sample = (
             sample / _US_PER_HOUR if measure.id == VEHICLE_RANKING_DEFAULT else sample
         )
-        if (
-            by_vehicle
-            and measure.ranking_minimum_sample is not None
-            and displayed_sample < measure.ranking_minimum_sample
-            and state != "not_measured"
+        floors = family.ranking_floors.get(ranking.kind, {})
+        floor_counts = result.counts
+        if "occupancy_vehicle_hours" in floors:
+            # Sample is in microseconds for query aggregation and in hours in the registry.
+            floors = {"occupancy_us": floors["occupancy_vehicle_hours"] * _US_PER_HOUR}
+        if value is not None and (
+            any(floor_counts[name] < floor for name, floor in floors.items())
+            or (measure.ranking_minimum_sample is not None
+                and displayed_sample < measure.ranking_minimum_sample)
         ):
             state, value = "too_few_to_judge", None
         if not has_own_states and not result.counts["live_candidates"]:
             state, value = "no_live_data", None
+        range_ = _range(value, sample, measure, result.counts, family) if value is not None else {}
+        bound = (
+            range_["lower" if measure.worst_first_descending else "upper"]
+            if value is not None and measure.unit in {"share", "per_100_trips"} else None
+        )
         if punctuality and value is not None:
             punctuality_candidates.append(
-                _PunctualityCandidate(key, service_classes, value, sample, result.counts)
+                _PunctualityCandidate(key, service_classes, value, sample, result.counts, bound)
             )
             continue
         entry = {
@@ -498,16 +525,27 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
         if value is None:
             if state == "unknown" and not has_own_states:
                 state = "too_few_to_judge"
-            reason = _NOT_MEASURED_ON_DATES if state == "not_measured" else _STATES[state]
             if punctuality:
                 entry.update(_punctuality_evidence(family, result.counts, window.included))
+            reason = (
+                _INSUFFICIENT_COVERAGE if entry.get("coverage_reason")
+                else _NOT_MEASURED_ON_DATES if state == "not_measured" else _STATES[state]
+            )
             excluded.append({**entry, "reason": state, "reason_text": reason._asdict()})
         else:
-            rows.append(({**entry, "value": value}, sample, result.counts))
+            rows.append((
+                {**entry, "value": value, "ranking_bound": bound, "range": range_},
+                sample, result.counts,
+            ))
     order = -1 if measure.worst_first_descending else 1
     if punctuality:
         rows = _punctuality_shortlist(punctuality_candidates, ranking, order)
-    rows.sort(key=lambda item: (order * item[0]["value"], -item[0]["sample"], item[0]["id"]))
+    def row_order(item: tuple[dict[str, Any], int, Counter[str]]) -> tuple[float, float, str]:
+        row = item[0]
+        bound = row["ranking_bound"]
+        return order * (row["value"] if bound is None else bound), -row["sample"], row["id"]
+
+    rows.sort(key=row_order)
     excluded.sort(key=lambda row: row["id"])
     evidence = window.evidence(store, question, family, started)
     if chosen_class:
@@ -537,7 +575,8 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
                 "rank": position,
                 **row,
                 **(_punctuality_evidence(family, counts, window.included) if punctuality else {}),
-                "range": _range(row["value"], sample, measure, counts, family),
+                "range": row["range"] if "range" in row else
+                    _range(row["value"], sample, measure, counts, family),
             }
             for position, (row, sample, counts) in enumerate(rows[: ranking.limit], start=1)
         ],
@@ -556,6 +595,7 @@ _RANKING_COLUMNS = {
     "id": Text("ID", "Identifiant"),
     "classes": Text("Service classes", "Classes de service"),
     "sample": Text("Sample", "Échantillon"),
+    "ranking_bound": Text("Ranking bound", "Borne de classement"),
     "lower": Text("Range lower bound", "Borne inférieure"),
     "upper": Text("Range upper bound", "Borne supérieure"),
     "range_note": Text("Range note", "Note sur l’intervalle"),

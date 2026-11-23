@@ -4,12 +4,14 @@ ENV PYTHONUNBUFFERED=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never \
     PATH="/app/.venv/bin:$PATH" \
+    ENGINE_PROVIDER_DECLARATIONS="/app/provider-declarations" \
     ENGINE_HOST=0.0.0.0
 
 WORKDIR /app
 RUN python -m pip install --no-cache-dir "uv==0.13.4"
-COPY pyproject.toml uv.lock ./
-COPY src ./src
+COPY apps/engine/pyproject.toml apps/engine/uv.lock ./
+COPY apps/engine/src ./src
+COPY apps/db/config/providers/*.yaml ./provider-declarations/
 RUN uv sync --locked --no-dev --no-editable --extra r2 \
     && adduser --disabled-password --gecos "" appuser
 

@@ -267,6 +267,17 @@ def test_feed_attempts_include_unchanged_and_empty_payloads(
             )
         )
     ]
+    # Repeat the pattern in separate capture windows to clear the display floors.
+    copies = 10
+    rows = [
+        row._replace(
+            captured=row.captured + timedelta(seconds=1000 * i),
+            ident=f"{i}-{row.ident}",
+            published=row.published + timedelta(seconds=1000 * i)
+            if row.published is not None else None,
+        )
+        for i in range(copies) for row in rows
+    ]
     with duckdb.connect() as conn:
         _write_table(
             conn,
@@ -286,16 +297,21 @@ def test_feed_attempts_include_unchanged_and_empty_payloads(
     if measure == "poll_success":
         assert value == 0.8
         assert counts["empty_share"] == 0.1
-        assert counts["by_result"] == {"ok": 3, "empty": 1, "duplicate": 4, "error": 2}
+        assert counts["by_result"] == {
+            "ok": 3 * copies, "empty": copies, "duplicate": 4 * copies, "error": 2 * copies,
+        }
     elif measure == "feed_age_at_capture":
-        assert value == pytest.approx({"median_seconds": 10, "p90_seconds": 192.5}, abs=1)
-        assert counts["samples"] == 8
+        assert value == {
+            "median_seconds": 10.5,
+            "p90_seconds": pytest.approx(245.5),
+        }
+        assert counts["samples"] == 8 * copies
     else:
         # Ordinary attempts bridge the 260-second stale interval. The later
         # 155-second break in attempts crosses a batch and excludes one update.
-        assert value == pytest.approx({"median_seconds": 145, "p90_seconds": 237}, abs=1)
-        assert counts["samples"] == 2
-        assert evidence["excluded"][measure]["trip_updates"]["capture_gap"] == 1
+        assert value == {"median_seconds": 145, "p90_seconds": 260}
+        assert counts["samples"] == 2 * copies
+        assert evidence["excluded"][measure]["trip_updates"]["capture_gap"] == 2 * copies - 1
 
 
 def test_scorecard_matches_plain_python(
@@ -312,8 +328,11 @@ def test_scorecard_matches_plain_python(
     outcomes = Counter(poll.result for poll in polls if poll.feed == "trip_updates")
     outcomes["empty"] = 0
     assert counts["poll_success"]["trip_updates"]["by_result"] == outcomes
-    assert values["poll_success"]["trip_updates"] == 1 - outcomes["error"] / outcomes.total()
-    assert values["poll_success"]["alerts"] == 1
+    assert counts["poll_success"]["trip_updates"]["successful"] == (
+        outcomes.total() - outcomes["error"]
+    )
+    assert values["poll_success"]["trip_updates"] is None
+    assert values["poll_success"]["alerts"] is None
     assert counts["poll_success"]["alerts"]["attempts"] == 2
     assert counts["feed_age_at_capture"]["alerts"]["timestamped_successes"] == 1
     previous_poll = previous_update = None
@@ -338,15 +357,11 @@ def test_scorecard_matches_plain_python(
         ("feed_update_interval", intervals),
         ("feed_age_at_capture", [age for age in ages if age >= 0]),
     ):
-        feed = values[measure]["trip_updates"]
-        assert feed["median_seconds"] == pytest.approx(median(expected), abs=1)
+        assert values[measure]["trip_updates"] == {"median_seconds": None, "p90_seconds": None}
         assert counts[measure]["trip_updates"]["samples"] == len(expected)
-        if quantiles(expected, n=10, method="inclusive")[8] <= 600 and max(expected) <= 600:
-            assert feed["p90_seconds"] == pytest.approx(
-                quantiles(expected, n=10, method="inclusive")[8], abs=1
-            )
-    assert values["feed_update_interval"]["trip_updates"]["p90_seconds"] == "over_10_minutes"
-    assert values["feed_age_at_capture"]["vehicle_positions"]["median_seconds"] == "over_10_minutes"
+        assert evidence["dimension_states"][measure]["trip_updates"] == "too_few_to_judge"
+    assert counts["feed_update_interval"]["trip_updates"]["overflow"] == 1
+    assert counts["feed_age_at_capture"]["vehicle_positions"]["overflow"] == 1
     assert excluded["feed_update_interval"]["trip_updates"] == {
         "capture_gap": 1,
         "backwards_timestamp": 1,
@@ -374,17 +389,25 @@ def test_scorecard_matches_plain_python(
                 ids.add(reading.ident)
             if reading.occupancy_status is not None or reading.occupancy_percentage is not None:
                 with_occupancy += seconds
-    assert values["vehicles_without_trip"] == without / total
+    assert values["vehicles_without_trip"] is None
+    assert counts["vehicles_without_trip"]["without_trip_us"] == without * 1_000_000
     assert counts["vehicles_without_trip"]["distinct_vehicles_without_trip"] == len(ids)
     assert counts["vehicles_without_trip"]["reporting_us"] == total * 1_000_000
     fields = values["vehicle_field_completeness"]
-    assert fields["trip"] + values["vehicles_without_trip"] == 1
-    assert fields["occupancy"] == with_occupancy / total
+    assert fields["trip"] is None
+    assert counts["vehicle_field_completeness"]["trip"]["present_us"] == (
+        total - without
+    ) * 1_000_000
+    assert fields["occupancy"] is None
+    assert counts["vehicle_field_completeness"]["occupancy"]["present_us"] == (
+        with_occupancy * 1_000_000
+    )
     assert fields["stop"] is None
     assert evidence["dimension_states"]["vehicle_field_completeness"]["stop"] == "not_published"
 
     coverage = counts["live_trip_coverage"]
-    assert values["live_trip_coverage"] == 2 / 3
+    assert values["live_trip_coverage"] is None
+    assert (coverage["appeared"], coverage["eligible"]) == (2, 3)
     assert coverage["never_seen_share"] == 2 / 7
     assert (
         coverage["scheduled"]
@@ -440,7 +463,9 @@ def test_scorecard_cuts_missing_tables_and_csv(
             hour=18,
         ),
     )
-    assert vehicle["value"]["vehicles_without_trip"] == 20 / 90
+    assert vehicle["value"]["vehicles_without_trip"] is None
+    vehicle_counts = vehicle["evidence"]["counts"]["vehicles_without_trip"]
+    assert vehicle_counts["without_trip_us"] / vehicle_counts["reporting_us"] == 20 / 90
     coverage = ask(
         store,
         Question(
@@ -455,7 +480,8 @@ def test_scorecard_cuts_missing_tables_and_csv(
             day_type="weekday",
         ),
     )
-    assert coverage["value"]["live_trip_coverage"] == 0.5
+    assert coverage["value"]["live_trip_coverage"] is None
+    assert coverage["evidence"]["counts"]["live_trip_coverage"]["eligible"] == 2
     prediction = ask(
         store,
         Question(
@@ -472,9 +498,9 @@ def test_scorecard_cuts_missing_tables_and_csv(
     assert prediction["value"]["prediction_error"]["1"]["sample_count"] == 40
     older = ask(store, Question(FAMILY, CITY, FRIDAY, FRIDAY))
     assert older["evidence"]["measure_states"]["prediction_error"] == "not_measured"
-    assert older["evidence"]["measure_states"]["live_trip_coverage"] == "measured"
+    assert older["evidence"]["measure_states"]["live_trip_coverage"] == "too_few_to_judge"
     assert older["value"]["prediction_error"]["1"]["sample_count"] is None
-    assert older["value"]["live_trip_coverage"] == 1
+    assert older["value"]["live_trip_coverage"] is None
     assert older["evidence"]["dimension_states"]["poll_success"]["alerts"] == "not_measured"
     assert (
         older["evidence"]["counts"]["poll_success"]["alerts"]["reason"] == "no_alert_attempt_rows"

@@ -10,12 +10,14 @@ def percentile(
     *,
     width: int = DELAY_BIN_SECONDS,
     ceiling: int | None = None,
+    continuous: bool = False,
 ) -> float:
     rank, remainder = divmod((count - 1) * percent, 100)
     seen = 0
     lower_midpoint = None
+    offset = (width if continuous else width - 1) / 2
     for edge, occurrences in histogram:
-        midpoint = edge + width / 2
+        midpoint = edge + offset
         if ceiling is not None:
             midpoint = min(midpoint, ceiling)
         seen += occurrences
