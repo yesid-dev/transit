@@ -14,9 +14,8 @@
 	<RecordDataHealth {locale} {url} record={data.record} />
 {:else if data.v1}
 	<HealthStatus
+		liveOnly
 		manifest={data.v1.manifest}
-		provenanceSeed={data.provenanceSeed ?? undefined}
 		dataHealthSeed={data.dataHealthSeed ?? undefined}
-		historicAvailabilitySeed={data.historicAvailabilitySeed ?? undefined}
 	/>
 {/if}

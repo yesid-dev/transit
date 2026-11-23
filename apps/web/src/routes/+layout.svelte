@@ -240,7 +240,7 @@
 			...jsonLd,
 		],
 	});
-	$effect(() => dataPulse.subscribe(v1?.manifest ?? null));
+	$effect(() => dataPulse.subscribeCapture(v1?.manifest.provider ?? null));
 
 	const edgeLayout = $derived(desktop.current ? 'desktop' : 'mobile');
 	let topSearch = $state('');

@@ -266,14 +266,15 @@ class Engine:
             )
             return
         route = scope["path"]
-        if route not in {"/measure", "/ranking", "/search-index", "/schedule-index"}:
+        schedule_routes = {"/search-index", "/schedule-index", "/schedule-map"}
+        if route not in schedule_routes | {"/measure", "/ranking"}:
             await respond(send, 404, {"message": "not found"})
             return
         try:
             question: Question | Ranking | str
             language: Language
             raw = scope["query_string"]
-            if route in {"/search-index", "/schedule-index"}:
+            if route in schedule_routes:
                 fields = parse_qs(raw.decode("ascii"), strict_parsing=True, max_num_fields=1)
                 if set(fields) != {"city"}:
                     raise ValueError("provide city")
@@ -310,10 +311,13 @@ class Engine:
         # Keep the slot until DuckDB stops, including when a caller disconnects.
         def run_query() -> tuple[dict[str, Any] | str, int]:
             if isinstance(question, str):
-                if route == "/schedule-index":
+                if route in {"/schedule-index", "/schedule-map"}:
                     _, identity, _ = public_declaration(question)
                     today = datetime.now(UTC).astimezone(service_zone(identity)).date()
-                    schedule = schedule_index(self.store, question, today - timedelta(days=1))
+                    schedule = schedule_index(
+                        self.store, question, today - timedelta(days=1),
+                        index="maps" if route == "/schedule-map" else "search",
+                    )
                     return {"schedule": schedule}, 0
                 return search_index(self.store, question), 0
             if isinstance(question, Ranking):

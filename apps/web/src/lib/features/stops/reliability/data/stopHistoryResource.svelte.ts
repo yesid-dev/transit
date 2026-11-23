@@ -16,15 +16,18 @@ export type StopHistoryResource = HistoryRangeResource<
 export function createStopHistoryResource(
 	entityId: string,
 	initialRequest: RawHistoryRangeRequest,
+	liveOnly = false,
 ): StopHistoryResource {
 	let rootIndex = $state.raw<HistoricAvailabilityIndex | null>(null);
 	const history = createRetainedHistoryResource({
 		initialRequest,
 		missingSelectionError: 'stop history range requires a resolved selection',
 		loadIndex: (signal) =>
-			getStopHistoryIndex(entityId, { signal }, (root) => {
-				rootIndex = root;
-			}),
+			liveOnly
+				? Promise.resolve(null)
+				: getStopHistoryIndex(entityId, { signal }, (root) => {
+						rootIndex = root;
+					}),
 		loadRange: (index, selection, signal) =>
 			loadStopHistoryRange(entityId, index, selection, { signal }),
 		build: (index, partitions, selection) =>

@@ -14,7 +14,7 @@ type Expect<T extends true> = T;
 type _StopSignature = Expect<
 	Equal<
 		typeof import('#lib/features/stops/reliability/data/stopHistoryResource.svelte.ts').createStopHistoryResource,
-		(entityId: string, request: RawHistoryRangeRequest) => StopHistoryResource
+		(entityId: string, request: RawHistoryRangeRequest, liveOnly?: boolean) => StopHistoryResource
 	>
 >;
 

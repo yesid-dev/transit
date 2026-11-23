@@ -39,7 +39,7 @@ function brokenRules(net: NetworkFile, pulse: LivePulse | null): string[] {
 		[pulse.reporting, net.vehicles_in_service],
 		[pulse.silent, net.non_responding],
 	] as const) {
-		const whole = Number.isSafeInteger(source) && source >= 0;
+		const whole = source !== null && Number.isSafeInteger(source) && source >= 0;
 		rule(
 			whole ? count === source && !Object.is(count, -0) : count === null,
 			'a whole published count is shown as is; anything else is absent, never zero',

@@ -17,7 +17,7 @@ type Expect<T extends true> = T;
 type _NetworkSignature = Expect<
 	Equal<
 		typeof import('#lib/features/network/reliability/data/networkHistoryResource.svelte.ts').createNetworkHistoryResource,
-		(request: RawHistoryRangeRequest) => NetworkHistoryResource
+		(request: RawHistoryRangeRequest, liveOnly?: boolean) => NetworkHistoryResource
 	>
 >;
 

@@ -1,0 +1,96 @@
+import { describe, expect, it } from 'vitest';
+import { captureDepartures, captureNetwork, captureVehicles } from './captureProjection';
+import { captureSnapshotSchema, feedState } from './captureSnapshot';
+
+const captured = '2026-11-23T16:30:00Z';
+const now = Date.parse(captured);
+const health = {
+	captured_at: captured,
+	source_at: captured,
+	fresh_for_seconds: 60,
+	source_lag_seconds: 0,
+	read_failed: false,
+};
+const snapshot = captureSnapshotSchema.parse({
+	version: 1,
+	city: 'demo',
+	published_at: captured,
+	stable_vehicle_ids: true,
+	feeds: {
+		positions: { ...health, family: 'vehicle_positions' },
+		predictions: { ...health, family: 'trip_updates' },
+	},
+	vehicle_positions: [
+		{
+			id: 'report',
+			vehicle_id: '40001',
+			trip_id: 'trip-1',
+			start_date: null,
+			start_time: null,
+			route_id: '24',
+			direction_id: null,
+			latitude: 45,
+			longitude: -73,
+			bearing: null,
+			speed_mps: null,
+			stop_id: 'stop-1',
+			stop_sequence: 1,
+			status: 1,
+			occupancy: 0,
+			occupancy_percentage: null,
+			observed_at: captured,
+			delay: 0,
+		},
+	],
+	trip_updates: [
+		{
+			trip_id: 'trip-1',
+			route_id: '24',
+			direction_id: null,
+			start_date: null,
+			start_time: null,
+			relationship: 0,
+			delay: 0,
+			stops: [
+				{
+					stop_id: 'stop-1',
+					sequence: 1,
+					arrival: null,
+					departure: now / 1000 + 300,
+					arrival_delay: null,
+					departure_delay: 0,
+					relationship: 0,
+				},
+			],
+		},
+	],
+	alerts: null,
+});
+
+describe('capture-backed Live projection', () => {
+	it('keeps no capture, unsupported capabilities and stale capture separate', () => {
+		const feed = snapshot.feeds.positions;
+		expect(feedState(undefined, now)).toBe('not_tracked');
+		expect(feedState({ ...feed, captured_at: null }, now)).toBe('no_live_data');
+		expect(feedState(feed, now + 59_999)).toBe('live');
+		expect(feedState(feed, now + 60_000)).toBe('stale');
+	});
+
+	it('uses reported zero values and leaves an unsupported schedule denominator unknown', () => {
+		const vehicles = captureVehicles(snapshot, now);
+		expect(vehicles.vehicles[0]).toMatchObject({
+			id: '40001',
+			status: 'on_time',
+			occupancy: 'empty',
+			delay_min: 0,
+		});
+		expect(captureNetwork(snapshot, now)).toMatchObject({
+			vehicles_in_service: 1,
+			on_time_pct: 100,
+			non_responding: null,
+		});
+		expect(captureDepartures(snapshot, now).stops?.['stop-1']).toEqual([
+			{ route: '24', trip: 'trip-1', eta_utc: '2026-11-23T16:35:00.000Z', delay_min: 0 },
+		]);
+	});
+});

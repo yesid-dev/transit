@@ -90,6 +90,8 @@ export function serverV1Context(event: ServerV1Event): AdapterCtx {
 	return {
 		providerId: v1Provider(event.url),
 		fetch: snapshotFetch,
+		captureFetch: (city) => event.fetch(`/api/live?${new URLSearchParams({ city })}`),
+		scheduleFetch: (city) => event.fetch(`/api/schedule-edition?${new URLSearchParams({ city })}`),
 		cache: event.locals.v1Cache,
 	};
 }

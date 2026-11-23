@@ -1,7 +1,11 @@
 import { env } from 'cloudflare:workers';
 import { z } from 'zod';
 import { CityCatalogSchema } from '#lib/v1/schemas/providers.ts';
-import { scheduleIndexSchema, searchIndexSchema } from '#lib/search/searchIndex.ts';
+import {
+	scheduleIndexSchema,
+	scheduleMapSchema,
+	searchIndexSchema,
+} from '#lib/search/searchIndex.ts';
 import {
 	cityQuestion,
 	citiesQuestion,
@@ -128,6 +132,15 @@ function engineFetch(question: EngineQuestion, signal: AbortSignal, visitorIp?: 
 	const headers = proxy && visitorIp ? { 'x-transit-visitor-ip': visitorIp } : undefined;
 	const request = new Request(url, { headers, signal, redirect: 'manual' });
 	return proxy ? proxy.fetch(request) : fetch(request);
+}
+
+export async function getCaptureResponse(
+	city: string,
+	requestSignal: AbortSignal,
+	visitorIp?: string | null,
+) {
+	const signal = AbortSignal.any([requestSignal, AbortSignal.timeout(ENGINE_TIMEOUT_MS)]);
+	return engineFetch(cityQuestion(city, '/live'), signal, visitorIp);
 }
 
 export async function query<T>(
@@ -478,5 +491,10 @@ export async function getCityCatalog(visitorIp?: string | null) {
 
 export async function getScheduleEdition(city: string, visitorIp?: string | null) {
 	const result = await query(scheduleQuestion(city), scheduleIndexSchema, visitorIp);
+	return result.kind === 'answer' ? result.answer.schedule : null;
+}
+
+export async function getScheduleMap(city: string, visitorIp?: string | null) {
+	const result = await query(cityQuestion(city, '/schedule-map'), scheduleMapSchema, visitorIp);
 	return result.kind === 'answer' ? result.answer.schedule : null;
 }

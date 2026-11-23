@@ -23,8 +23,10 @@ export function verdictFor(
 ): FreshnessVerdict {
 	switch (status) {
 		case 'succeeded':
+		case 'live':
 			return { aspect: 'green', label: labels.ok };
 		case 'failed':
+		case 'refresh_unavailable':
 			return { aspect: 'stop', label: labels.failed };
 		case 'running':
 		case 'pending':

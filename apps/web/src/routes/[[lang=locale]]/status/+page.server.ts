@@ -1,7 +1,5 @@
 import type { PageServerLoad } from './$types';
 import { getDataHealth } from '#lib/v1/repositories/dataHealth.ts';
-import { getHistoricAvailability } from '#lib/v1/repositories/historic.ts';
-import { getProvenance } from '#lib/v1/repositories/provenance.ts';
 import { serverV1Context } from '#lib/v1/serverContext.ts';
 import { getMethodCatalog, getRecordDataHealth } from '#lib/server/engine.ts';
 import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
@@ -33,23 +31,10 @@ export const load: PageServerLoad = async (event) => {
 		providerId: v1.manifest.provider,
 		manifest: v1.manifest,
 	};
-	const [provenanceResult, dataHealthResult, historicAvailabilityResult] = await Promise.allSettled(
-		[getProvenance(context), getDataHealth(context), getHistoricAvailability(context)],
-	);
+	const dataHealth = await getDataHealth(context).catch(() => null);
 
 	return {
 		view: 'live' as const,
-		provenanceSeed:
-			provenanceResult.status === 'fulfilled'
-				? { key: 'provenance', data: provenanceResult.value }
-				: null,
-		dataHealthSeed:
-			dataHealthResult.status === 'fulfilled'
-				? { key: 'data-health', data: dataHealthResult.value }
-				: null,
-		historicAvailabilitySeed:
-			historicAvailabilityResult.status === 'fulfilled'
-				? { key: 'historic-availability', data: historicAvailabilityResult.value }
-				: null,
+		dataHealthSeed: dataHealth ? { key: 'data-health', data: dataHealth } : null,
 	};
 };

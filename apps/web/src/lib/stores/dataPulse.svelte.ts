@@ -1,4 +1,5 @@
 import { browser } from '$app/env';
+import { fetchCaptureSnapshot } from '#lib/live/captureSnapshot.ts';
 import type { Manifest } from '#lib/v1/schemas/index.ts';
 import { dataRefresh } from './refresh.svelte';
 
@@ -21,6 +22,7 @@ let lifecycleGeneration = 0;
 let lastCheckAtMs: number | null = null;
 let lastSeenMs: number | null = null;
 let seeded = false;
+let captureCity: string | null = null;
 let lastSeenByTier: Record<'static' | 'historic', number | null> = {
 	static: null,
 	historic: null,
@@ -92,6 +94,20 @@ function intervalMsFor(manifest: Manifest): number {
 
 async function pollOnce(generation: number): Promise<void> {
 	if (!browser || generation !== lifecycleGeneration || !shouldRun()) return;
+	if (captureCity) {
+		const city = captureCity;
+		try {
+			const snapshot = await fetchCaptureSnapshot(city, AbortSignal.timeout(20_000));
+			if (generation !== lifecycleGeneration || !shouldRun() || captureCity !== city) return;
+			const timestamp = Date.parse(snapshot.published_at);
+			const advanced = lastSeenMs !== null && timestamp > lastSeenMs;
+			if (lastSeenMs === null || advanced) lastSeenMs = timestamp;
+			if (advanced) dataRefresh.bumpEpoch();
+		} catch {
+			// A later poll can recover without replacing the last observed capture.
+		}
+		return;
+	}
 	let manifest: Manifest;
 	try {
 		const getManifestFresh = await loadGetManifestFresh();
@@ -233,6 +249,19 @@ export const dataPulse = {
 		};
 	},
 
+	subscribeCapture(city: string | null): () => void {
+		if (!browser || !city) return () => {};
+		if (city !== captureCity) {
+			invalidateLifecycle();
+			stopTimer();
+			captureCity = city;
+			lastSeenMs = null;
+			lastCheckAtMs = null;
+			currentIntervalMs = DEFAULT_INTERVAL_MS;
+		}
+		return dataPulse.subscribe();
+	},
+
 	_resetForTests(): void {
 		invalidateLifecycle();
 		stopTimer();
@@ -242,6 +271,7 @@ export const dataPulse = {
 		inFlightGeneration = null;
 		lastSeenMs = null;
 		seeded = false;
+		captureCity = null;
 		lastSeenByTier = { static: null, historic: null };
 		currentIntervalMs = DEFAULT_INTERVAL_MS;
 		lastCheckAtMs = null;

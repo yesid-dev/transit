@@ -94,8 +94,15 @@
 		trendSeed?: ResourceSeed<NetworkTrend>;
 		provenanceSeed?: ResourceSeed<Provenance>;
 		historicAvailabilitySeed?: ResourceSeed<HistoricAvailabilityIndex>;
+		liveOnly?: boolean;
 	}
-	let { networkSeed, trendSeed, provenanceSeed, historicAvailabilitySeed }: Props = $props();
+	let {
+		networkSeed,
+		trendSeed,
+		provenanceSeed,
+		historicAvailabilitySeed,
+		liveOnly = false,
+	}: Props = $props();
 	const locale: Locale = getLocale();
 	const v1 = getV1Context();
 	const t = $derived(providerNetworkReliabilityCopy(locale, v1.manifest.provider));
@@ -111,18 +118,22 @@
 	const trend = createResource(() => getNetworkTrend(), {
 		key: () => 'network-trend',
 		seed: () => trendSeed,
+		enabled: () => !liveOnly,
 	});
 	const history = createNetworkHistoryResource(
 		historyRangeRequestFromSearchParams(new URLSearchParams(page.url.search)),
+		untrack(() => liveOnly),
 	);
 	onMount(() => () => history.destroy());
 	const provenance = createResource(() => getProvenance(), {
 		key: () => 'provenance',
 		seed: () => provenanceSeed,
+		enabled: () => !liveOnly,
 	});
 	const availability = createResource(() => getHistoricAvailability().catch(() => null), {
 		key: () => 'historic-availability',
 		seed: () => historicAvailabilitySeed,
+		enabled: () => !liveOnly,
 	});
 	const closedTrend = $derived(
 		availability.settled
@@ -392,7 +403,7 @@
 	const hasDayType = $derived(dayTypeRows.length > 0);
 	const regionNav = $derived([
 		{ id: 'net-live', label: t.liveRegion },
-		{ id: 'net-historic', label: t.historicRegion },
+		...(!liveOnly ? [{ id: 'net-historic', label: t.historicRegion }] : []),
 	]);
 	const tocEntries: TocEntry[] = $derived(
 		regionNav.map((s, i) => ({
@@ -532,7 +543,7 @@
 			variant="time-grid"
 		/>
 	{/snippet}
-	{#if hasViewControls}
+	{#if hasViewControls && !liveOnly}
 		<CollapsibleSection independent title={t.viewControlsLabel}>
 			<ArticleControlStack
 				history={view.history.discovered ? historyControls : undefined}
@@ -634,59 +645,61 @@
 				<EdgeState variant="skeleton" lang={locale} layout={edgeLayout} />
 			{/if}
 		</section>
-		<section class="network-verdict" aria-label={t.verdictDelta.label}>
-			<VerdictBanner result={networkVerdict} />
-		</section>
-		<section
-			class="network-region"
-			id="net-historic"
-			data-toc="net-historic"
-			aria-label={t.historicRegion}
-		>
-			{#if explicitHistory}
-				{#if retainedReady && view.history.value != null}
-					<div class="network-history-notes" data-slot="history-scope-notes">
-						{#if view.history.state === 'partial'}
-							<p data-slot="history-partial">{t.history.partial}</p>
-						{/if}
-						<p data-slot="history-daily-only">{t.history.dailyOnly}</p>
-						{#if hasShift || hasDayType}
-							<p data-slot="history-current-only">{t.history.currentOnly}</p>
-						{/if}
-					</div>
-					{@render historicBoard()}
-				{:else if view.history.state === 'no-data'}
-					<StateNotice
-						title={retainedDataAbsence.label}
-						body={retainedDataAbsence.why}
-						presentation="responsive"
-						role="status"
-						aria-live="polite"
-						data-slot="history-no-data"
-					/>
-				{:else if view.history.state === 'error'}
-					<EdgeState
-						variant="error-v1"
-						lang={locale}
-						layout={edgeLayout}
-						onRetry={() => view.history.retry()}
-					/>
+		{#if !liveOnly}
+			<section class="network-verdict" aria-label={t.verdictDelta.label}>
+				<VerdictBanner result={networkVerdict} />
+			</section>
+			<section
+				class="network-region"
+				id="net-historic"
+				data-toc="net-historic"
+				aria-label={t.historicRegion}
+			>
+				{#if explicitHistory}
+					{#if retainedReady && view.history.value != null}
+						<div class="network-history-notes" data-slot="history-scope-notes">
+							{#if view.history.state === 'partial'}
+								<p data-slot="history-partial">{t.history.partial}</p>
+							{/if}
+							<p data-slot="history-daily-only">{t.history.dailyOnly}</p>
+							{#if hasShift || hasDayType}
+								<p data-slot="history-current-only">{t.history.currentOnly}</p>
+							{/if}
+						</div>
+						{@render historicBoard()}
+					{:else if view.history.state === 'no-data'}
+						<StateNotice
+							title={retainedDataAbsence.label}
+							body={retainedDataAbsence.why}
+							presentation="responsive"
+							role="status"
+							aria-live="polite"
+							data-slot="history-no-data"
+						/>
+					{:else if view.history.state === 'error'}
+						<EdgeState
+							variant="error-v1"
+							lang={locale}
+							layout={edgeLayout}
+							onRetry={() => view.history.retry()}
+						/>
+					{:else}
+						<EdgeState variant="skeleton" lang={locale} layout={edgeLayout} />
+					{/if}
 				{:else}
-					<EdgeState variant="skeleton" lang={locale} layout={edgeLayout} />
+					<ResourceBoundary
+						resource={closedResource}
+						lang={locale}
+						isEmpty={(d) =>
+							(d.series?.length ?? 0) === 0 &&
+							(d.weekly?.length ?? 0) === 0 &&
+							(d.monthly?.length ?? 0) === 0}
+					>
+						{@render historicBoard()}
+					</ResourceBoundary>
 				{/if}
-			{:else}
-				<ResourceBoundary
-					resource={closedResource}
-					lang={locale}
-					isEmpty={(d) =>
-						(d.series?.length ?? 0) === 0 &&
-						(d.weekly?.length ?? 0) === 0 &&
-						(d.monthly?.length ?? 0) === 0}
-				>
-					{@render historicBoard()}
-				</ResourceBoundary>
-			{/if}
-		</section>
+			</section>
+		{/if}
 	</div>
 </DetailFrame>
 

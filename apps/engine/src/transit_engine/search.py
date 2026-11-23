@@ -3,7 +3,7 @@
 import json
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import duckdb
 
@@ -13,12 +13,15 @@ from transit_engine.store import Store
 from transit_engine.vehicles import TRACKED_VEHICLES_SQL
 
 
-def schedule_index(store: Store, city: str, end: date) -> dict[str, Any] | None:
+def schedule_index(
+    store: Store, city: str, end: date, *, index: Literal["search", "maps"] = "search"
+) -> dict[str, Any] | None:
     schedule = None
     with store.connect() as conn:
         for offset in range(7):
             day = end - timedelta(days=offset)
-            path = f"{store.root.rstrip('/')}/search/v1/{city}/{day}/v{store.cleaning_version}.json"
+            prefix = f"{store.root.rstrip('/')}/{index}/v1"
+            path = f"{prefix}/{city}/{day}/v{store.cleaning_version}.json"
             if store.s3_endpoint:
                 raw = None
                 if conn.execute("SELECT file FROM glob(?)", [path]).fetchone():

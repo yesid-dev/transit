@@ -36,6 +36,7 @@ export interface MapSelectionSessionOptions {
 	readonly staleCutoffS?: number;
 	readonly serverNow: () => number;
 	readonly alertsAvailable?: boolean;
+	readonly scheduleOnly?: (id: string, type: number) => boolean;
 }
 
 /** Owns a selection and its resources for the lifetime of the calling effect owner. */
@@ -64,12 +65,21 @@ export function createMapSelectionSession(options: MapSelectionSessionOptions) {
 	}
 	const stops = createResource((signal) => getStopsIndexSlim({ signal }));
 	const routesIndex = createResource((signal) => getRoutesIndex({ signal }));
-	const selectedRouteIds = $derived(Array.from(filters.routes).sort());
+	const scheduledRouteIds = $derived(
+		(routesIndex.data?.routes ?? [])
+			.filter((route) => options.scheduleOnly?.(route.id, route.type))
+			.map((route) => route.id),
+	);
+	const selectedRouteIds = $derived([...new Set([...filters.routes, ...scheduledRouteIds])].sort());
 	const selectedRoutes = createResource<RouteFile[]>(
 		async (signal) => {
 			const ids = selectedRouteIds;
 			const routes = await Promise.all(ids.map((id) => getRoute(id, { signal })));
-			return routes.filter((route): route is RouteFile => route != null);
+			return routes
+				.filter((route): route is RouteFile => route != null)
+				.map((route) =>
+					scheduledRouteIds.includes(route.id) ? { ...route, schedule_only: true } : route,
+				);
 		},
 		{
 			key: () => selectedRouteIds.join('\u0000'),
@@ -401,6 +411,9 @@ export function createMapSelectionSession(options: MapSelectionSessionOptions) {
 		},
 		get routeLineRoutes() {
 			return routeLineRoutes;
+		},
+		get scheduledRouteIds() {
+			return scheduledRouteIds;
 		},
 		get loadedRoutes() {
 			return [...(selectedRoutes.data ?? []), focusedRoute.data];

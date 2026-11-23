@@ -198,17 +198,28 @@ def _failure_reason(error: Exception) -> str:
 
 
 def _publish_search_schedule(
-    clean: BronzeStorage, key: str, schedule: ArchiveScheduleContext, day: date
+    clean: BronzeStorage, prefix: str, schedule: ArchiveScheduleContext, day: date, city: str
 ) -> None:
     if isinstance(clean, LocalBronzeStorage):
         clean.root.mkdir(parents=True, exist_ok=True)
     with TemporaryDirectory(prefix="search-schedule-") as temporary:
+        edition_key = version_key(city, day)
         index = Path(temporary) / "index.json"
         index.write_text(
             json.dumps(schedule.search_index(day), ensure_ascii=False, separators=(",", ":")),
             encoding="utf-8",
         )
-        put_create_only(clean, index, key)
+        put_create_only(clean, index, f"{prefix}search/v1/{edition_key}.json")
+        shapes = Path(temporary) / "shapes.json"
+        shapes.write_text(
+            json.dumps(
+                {"date": day.isoformat(), "route_shapes": dict(schedule.route_shapes)},
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ),
+            encoding="utf-8",
+        )
+        put_create_only(clean, shapes, f"{prefix}maps/v1/{edition_key}.json")
 
 
 def _build_day(
@@ -228,9 +239,10 @@ def _build_day(
         return "schedule_archive_unreadable", ignored
     _publish_search_schedule(
         clean,
-        f"{clean_prefix}search/v1/{version_key(declaration.provider.provider_id, day)}.json",
+        clean_prefix,
         schedules[day],
         day,
+        declaration.provider.provider_id,
     )
     start, end = capture_window(schedules[day], day)
     selections = list(_capture_manifests(raw, raw_prefix, declaration, start, end))

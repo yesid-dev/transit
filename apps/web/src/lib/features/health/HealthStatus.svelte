@@ -63,9 +63,16 @@
 		provenanceSeed?: ResourceSeed<Provenance>;
 		dataHealthSeed?: ResourceSeed<DataHealth>;
 		historicAvailabilitySeed?: ResourceSeed<HistoricAvailabilityIndex>;
+		liveOnly?: boolean;
 	}
 
-	let { manifest, provenanceSeed, dataHealthSeed, historicAvailabilitySeed }: Props = $props();
+	let {
+		manifest,
+		provenanceSeed,
+		dataHealthSeed,
+		historicAvailabilitySeed,
+		liveOnly = false,
+	}: Props = $props();
 
 	const PIPELINE_NOTE_KINDS = {
 		history_freeze: 'pipeline-note',
@@ -86,6 +93,7 @@
 	const provenance = createResource(() => getProvenance(), {
 		key: () => 'provenance',
 		seed: () => provenanceSeed,
+		enabled: () => !liveOnly,
 	});
 	const dataHealth = createResource(() => getDataHealth(), {
 		key: () => 'data-health',
@@ -94,6 +102,7 @@
 	const historicAvailability = createResource(() => getHistoricAvailability(), {
 		key: () => 'historic-availability',
 		seed: () => historicAvailabilitySeed,
+		enabled: () => !liveOnly,
 	});
 
 	function verdictFor(status: string | null | undefined) {
@@ -348,7 +357,7 @@
 					{gaps}
 					{locale}
 				/>
-				{#if !prov || provenanceIsEmpty(prov)}
+				{#if !liveOnly && (!prov || provenanceIsEmpty(prov))}
 					<div class="health-resource-state" aria-label={t.overview.dailyRecord}>
 						<SectionLabel text={t.overview.dailyRecord} variant="metric" />
 						<ResourceBoundary resource={provenance} lang={locale} isEmpty={provenanceIsEmpty}>
@@ -364,7 +373,7 @@
 						</ResourceBoundary>
 					</div>
 				{/if}
-				{#if !historyRoot || historyAvailabilityIsEmpty(historyRoot)}
+				{#if !liveOnly && (!historyRoot || historyAvailabilityIsEmpty(historyRoot))}
 					<div class="health-resource-state" aria-label={t.overview.retainedHistory}>
 						<SectionLabel text={t.overview.retainedHistory} variant="metric" />
 						<ResourceBoundary

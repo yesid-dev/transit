@@ -8,7 +8,11 @@ export const scheduleSchema = z.object({
 	routes: z.array(
 		RouteIndexEntrySchema.pick({ id: true, short: true, long: true, type: true, color: true }),
 	),
-	stops: z.array(StopIndexEntrySchema),
+	stops: z.array(
+		StopIndexEntrySchema.extend({
+			wheelchair_boarding: z.enum(['yes', 'no']).nullable().optional(),
+		}),
+	),
 });
 
 export const scheduleIndexSchema = z.object({
@@ -19,6 +23,14 @@ export const scheduleIndexSchema = z.object({
 		.nullable(),
 });
 export type ScheduleEdition = NonNullable<z.infer<typeof scheduleIndexSchema>['schedule']>;
+export const scheduleMapSchema = z.object({
+	schedule: z
+		.object({
+			date: z.iso.date(),
+			route_shapes: z.record(z.string(), z.array(RouteDirectionSchema)),
+		})
+		.nullable(),
+});
 
 export const searchIndexSchema = z.object({
 	schedule: scheduleSchema.nullable(),

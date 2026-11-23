@@ -10,7 +10,7 @@ import { networkRecordView } from '#lib/site/networkFrame.ts';
 
 export const load: PageServerLoad = async (event) => {
 	if (!networkRecordView(event.url))
-		return { view: 'live' as const, ...(await _loadWithReader(event, adapter.live)) };
+		return { view: 'live' as const, ...(await _loadWithReader(event, adapter.live, true)) };
 
 	const { providerId: city, provider } = await event.parent();
 	const { period } = parseFrameState(event.url.searchParams, frameToday(provider?.timezone));
@@ -24,6 +24,7 @@ export const load: PageServerLoad = async (event) => {
 export async function _loadWithReader(
 	event: Parameters<PageServerLoad>[0],
 	reader: Pick<LiveReader, 'network'>,
+	liveOnly = false,
 ) {
 	const { v1 } = await event.parent();
 	if (!v1)
@@ -41,9 +42,9 @@ export async function _loadWithReader(
 	const [networkResult, trendResult, provenanceResult, availabilityResult] =
 		await Promise.allSettled([
 			reader.network(context),
-			getNetworkTrend(context),
-			getProvenance(context),
-			getHistoricAvailability(context),
+			liveOnly ? null : getNetworkTrend(context),
+			liveOnly ? null : getProvenance(context),
+			liveOnly ? null : getHistoricAvailability(context),
 		]);
 
 	return {
@@ -53,9 +54,11 @@ export async function _loadWithReader(
 				: null,
 		networkSeed: networkResult.status === 'fulfilled' ? networkResult.value : null,
 		trendSeed:
-			trendResult.status === 'fulfilled' ? { key: 'network-trend', data: trendResult.value } : null,
+			trendResult.status === 'fulfilled' && trendResult.value
+				? { key: 'network-trend', data: trendResult.value }
+				: null,
 		provenanceSeed:
-			provenanceResult.status === 'fulfilled'
+			provenanceResult.status === 'fulfilled' && provenanceResult.value
 				? { key: 'provenance', data: provenanceResult.value }
 				: null,
 	};

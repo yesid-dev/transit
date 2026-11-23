@@ -1,170 +1,53 @@
-import { describe, expect, it, vi } from 'vitest';
-import type { Manifest } from '#lib/v1/schemas/manifest.ts';
+import { expect, it, vi } from 'vitest';
+import { ManifestSchema } from '#lib/v1/schemas/manifest.ts';
 import { r2Adapter } from './r2';
 
-vi.mock('$app/env', () => ({ browser: true }));
-vi.mock('$app/env/public', async () => ({
-	...(await import('./../../../tests/publicEnv.ts')).PUBLIC_ENV,
-	...{
-		PUBLIC_V1_BASE: 'https://r2.example.test/v1',
-		PUBLIC_V1_PROVIDER: 'stm',
-	},
-}));
+const shape = {
+	type: 'LineString',
+	coordinates: [
+		[-73.5, 45.5],
+		[-73.6, 45.51],
+	],
+};
+const schedule = {
+	date: '2026-11-23',
+	routes: [{ id: 'A/B', short: 'A', type: 0 }],
+	stops: [{ id: '../é', name: 'É', lat: 45.5, lon: -73.5, routes: ['A/B'] }],
+	route_directions: { 'A/B': [{ dir: 0, shape, stops: [{ id: '../é', seq: 1 }] }] },
+};
 
-const ISO = '2026-07-15T12:00:00Z';
-const DIRECT_R2_BASE = 'https://r2.example.test/v1';
+it('projects rail geometry and stop metadata from one clean schedule edition', async () => {
+	const fetch = vi.fn(async () => Response.json({ schedule }));
+	const ctx = { fetch, providerId: 'demo', cache: new Map<string, unknown>() };
+	await expect(r2Adapter.static.route('A/B', ctx)).resolves.toMatchObject({
+		id: 'A/B',
+		directions: [{ shape, stops: [{ id: '../é', name: 'É' }] }],
+	});
+	await expect(r2Adapter.static.stop('../é', ctx)).resolves.toMatchObject({
+		id: '../é',
+		routes_served: ['A/B'],
+	});
+	await expect(r2Adapter.static.route('unknown', ctx)).resolves.toBeNull();
+	expect(fetch).toHaveBeenCalledExactlyOnceWith('/api/schedule-edition?city=demo');
+});
 
-function manifest(overrides: Record<string, unknown> = {}): Manifest {
-	return {
-		provider: 'stm',
-		display_name: 'STM',
-		bbox: [-74, 45, -73, 46],
-		attribution: 'STM',
-		dataset_version: 'v1',
+it('keeps a missing edition distinct from a missing entity and resolves the declared basemap locally', async () => {
+	const fetch = vi.fn(async () => Response.json({ schedule: null }));
+	const url = 'https://data.yesid.dev/v2/demo/basemap/region.pmtiles';
+	const manifest = ManifestSchema.parse({
+		provider: 'demo',
+		display_name: 'Demo',
+		bbox: [],
+		attribution: '',
+		dataset_version: 'demo',
 		labels: {},
-		files: {
-			live: { generated_utc: ISO },
-			...overrides,
-		},
 		surfaces: [],
-	} as unknown as Manifest;
-}
-
-function json(body: unknown, status = 200): Response {
-	return new Response(JSON.stringify(body), {
-		status,
-		headers: { 'content-type': 'application/json' },
+		basemap: url,
+		files: { live: { generated_utc: '2026-11-23T00:00:00Z' } },
 	});
-}
-
-describe('r2 static ports', () => {
-	it('uses authoritative custom pointers, encoded entity IDs, and the top-level basemap pointer', async () => {
-		const authoritativeManifest = {
-			...manifest({
-				static: {
-					routes_index: 'static/catalog/routes.json',
-					routes_prefix: 'static/routes-v2',
-					stops_index: 'static/catalog/stops.json',
-					stops_prefix: 'static/stops-v2',
-				},
-			}),
-			basemap: 'static/custom-basemap.json',
-		} as Manifest;
-		const routesIndex = { generated_utc: ISO, routes: [] };
-		const route = { generated_utc: ISO, id: 'A/B' };
-		const stopsIndex = { generated_utc: ISO, stops: [] };
-		const stop = {
-			generated_utc: ISO,
-			id: '../é',
-			name: 'É',
-			lat: 45.5,
-			lon: -73.5,
-		};
-		const basemap = {
-			url: `${DIRECT_R2_BASE}/stm/static/basemap/stm.pmtiles`,
-			attribution: 'STM',
-			generated_utc: ISO,
-		};
-		const payloads: Record<string, unknown> = {
-			'static/catalog/routes.json': routesIndex,
-			'static/routes-v2/A%2FB.json': route,
-			'static/catalog/stops.json': stopsIndex,
-			'static/stops-v2/..%2F%C3%A9.json': stop,
-			'static/custom-basemap.json': basemap,
-		};
-		const request = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
-			const path = String(input).replace(`${DIRECT_R2_BASE}/stm/`, '');
-			const payload = payloads[path];
-			if (payload === undefined) throw new Error(`unexpected URL ${String(input)}`);
-			return json(payload);
-		});
-		const controller = new AbortController();
-		const ctx = {
-			fetch: request as unknown as typeof fetch,
-			manifest: authoritativeManifest,
-			signal: controller.signal,
-		};
-
-		await expect(r2Adapter.static.routesIndex(ctx)).resolves.toEqual(routesIndex);
-		await expect(r2Adapter.static.route('A/B', ctx)).resolves.toEqual(route);
-		await expect(r2Adapter.static.stopsIndex(ctx)).resolves.toEqual(stopsIndex);
-		await expect(r2Adapter.static.stop('../é', ctx)).resolves.toEqual(stop);
-		await expect(r2Adapter.basemap.get(ctx)).resolves.toEqual(basemap);
-
-		expect(
-			request.mock.calls.map(([input]) => String(input).replace(`${DIRECT_R2_BASE}/stm/`, '')),
-		).toEqual([
-			'static/catalog/routes.json',
-			'static/routes-v2/A%2FB.json',
-			'static/catalog/stops.json',
-			'static/stops-v2/..%2F%C3%A9.json',
-			'static/custom-basemap.json',
-		]);
-		for (const [, init] of request.mock.calls) {
-			expect(init).toEqual({
-				headers: { accept: 'application/json' },
-				cache: 'default',
-				signal: controller.signal,
-			});
-		}
-	});
-
-	it('rebases the canonical descriptor and its PMTiles archive onto direct R2', async () => {
-		const authoritativeManifest = {
-			...manifest(),
-			basemap: 'https://transit.yesid.dev/data/v1/stm/static/basemap.json?generation=42#descriptor',
-		} as Manifest;
-		const request = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
-			expect(String(input)).toBe(
-				`${DIRECT_R2_BASE}/stm/static/basemap.json?generation=42#descriptor`,
-			);
-			return json({
-				url: 'https://transit.yesid.dev/data/v1/stm/static/basemap/montreal.pmtiles?generation=42#archive',
-				attribution: 'STM',
-				generated_utc: ISO,
-			});
-		});
-
-		await expect(
-			r2Adapter.basemap.get({
-				fetch: request as unknown as typeof fetch,
-				manifest: authoritativeManifest,
-			}),
-		).resolves.toEqual({
-			url: `${DIRECT_R2_BASE}/stm/static/basemap/montreal.pmtiles?generation=42#archive`,
-			attribution: 'STM',
-			generated_utc: ISO,
-		});
-		expect(request).toHaveBeenCalledOnce();
-	});
-
-	it('keeps required roots strict while default entity and basemap 404s resolve null', async () => {
-		const authoritativeManifest = {
-			...manifest(),
-			basemap: null,
-		} as Manifest;
-		const request = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => json({}, 404));
-		const ctx = {
-			fetch: request as unknown as typeof fetch,
-			manifest: authoritativeManifest,
-		};
-
-		await expect(r2Adapter.static.routesIndex(ctx)).rejects.toThrow(
-			`[v1.static.routesIndex] expected file not found at ${DIRECT_R2_BASE}/stm/static/routes_index.json`,
-		);
-		await expect(r2Adapter.static.stopsIndex(ctx)).rejects.toThrow(
-			`[v1.static.stopsIndex] expected file not found at ${DIRECT_R2_BASE}/stm/static/stops_index.json`,
-		);
-		await expect(r2Adapter.static.route('97', ctx)).resolves.toBeNull();
-		await expect(r2Adapter.static.stop('123', ctx)).resolves.toBeNull();
-		await expect(r2Adapter.basemap.get(ctx)).resolves.toBeNull();
-
-		expect(request.mock.calls.map(([input]) => String(input))).toEqual([
-			`${DIRECT_R2_BASE}/stm/static/routes_index.json`,
-			`${DIRECT_R2_BASE}/stm/static/stops_index.json`,
-			`${DIRECT_R2_BASE}/stm/static/routes/97.json`,
-			`${DIRECT_R2_BASE}/stm/static/stops/123.json`,
-			`${DIRECT_R2_BASE}/stm/static/basemap.json`,
-		]);
-	});
+	await expect(r2Adapter.basemap.get({ manifest, fetch })).resolves.toMatchObject({ url });
+	expect(fetch).not.toHaveBeenCalled();
+	await expect(r2Adapter.static.stop('missing', { manifest, fetch })).rejects.toThrow(
+		'edition unavailable',
+	);
 });

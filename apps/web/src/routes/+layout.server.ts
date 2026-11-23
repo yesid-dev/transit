@@ -2,7 +2,7 @@ import type { LayoutServerLoad } from './$types';
 import { redirect } from '@sveltejs/kit';
 import { DEFAULT_LOCALE, type Locale } from '#lib/i18n/index.ts';
 import { bootProvider } from '#lib/v1/boot.ts';
-import { serverV1Context } from '#lib/v1/serverContext.ts';
+import { captureContext } from '#lib/live/captureContext.ts';
 import { getCityCatalog, getScheduleEdition } from '#lib/server/engine.ts';
 import { lineFrameView } from '#lib/site/lineFrame.ts';
 import { stopFrameView } from '#lib/site/stopFrame.ts';
@@ -45,9 +45,9 @@ export const load: LayoutServerLoad = async (event) => {
 		event.url,
 		lang,
 		() => getCityCatalog(visitorIp),
-		loadSnapshots ? serverV1Context(event) : undefined,
+		undefined,
 		locals.approximateLocation,
-		loadSnapshots,
+		false,
 	);
 	if (selection.redirectHref) redirect(307, selection.redirectHref);
 	if (selection.discoveryError) event.setHeaders({ 'cache-control': 'no-store' });
@@ -57,6 +57,8 @@ export const load: LayoutServerLoad = async (event) => {
 			: null;
 	const usesStopIdentities =
 		route != null && /\/(?:stops|(?:stop|lines|departure)\/\[\w+\])$/.test(route);
+	const v1 =
+		loadSnapshots && selection.provider ? captureContext(selection.provider, lang, schedule) : null;
 	return {
 		schedule:
 			schedule && !usesStopIdentities
@@ -64,7 +66,8 @@ export const load: LayoutServerLoad = async (event) => {
 				: schedule,
 		lang,
 		...selection,
+		v1,
 		loadSnapshots,
-		serverBoot: selection.v1 ? ('succeeded' as const) : ('failed' as const),
+		serverBoot: v1 ? ('succeeded' as const) : ('failed' as const),
 	};
 };

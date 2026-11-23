@@ -1,85 +1,84 @@
-import { resolveUrl } from '#lib/v1/config.ts';
-import { getEntityJson } from '#lib/v1/http.ts';
-import { AlertsFileSchema } from '#lib/v1/schemas/alerts.ts';
-import { DataHealthSchema } from '#lib/v1/schemas/data_health.ts';
-import { NetworkFileSchema } from '#lib/v1/schemas/network.ts';
-import { StopDeparturesFileSchema } from '#lib/v1/schemas/stop_departures.ts';
-import { TripsFileSchema } from '#lib/v1/schemas/trips.ts';
-import { VehiclesFileSchema } from '#lib/v1/schemas/vehicles.ts';
 import {
-	fetchOf,
-	providerOf,
-	loadManifest,
-	MUTABLE_CACHE,
-	R2_DEFAULTS,
-	readWhole,
-} from './r2.core';
+	captureAlerts,
+	captureDepartures,
+	captureNetwork,
+	captureTrips,
+	captureVehicles,
+} from '#lib/live/captureProjection.ts';
+import {
+	captureSnapshotSchema,
+	feedState,
+	fetchCaptureSnapshot,
+	type CaptureSnapshot,
+} from '#lib/live/captureSnapshot.ts';
+import { DataHealthSchema } from '#lib/v1/schemas/data_health.ts';
+import { getV1Runtime } from '#lib/v1/runtime.ts';
+import { providerOf } from './r2.core';
 import type { AdapterCtx } from './types';
+
+// The store passes the same abort signal to the families in one poll.
+// One city request supplies every family, and a new poll uses a new signal.
+const byPoll = new WeakMap<AbortSignal, Map<string, Promise<CaptureSnapshot>>>();
+
+async function read(ctx?: AdapterCtx) {
+	const city = providerOf(ctx);
+	if (ctx?.captureFetch) {
+		const response = await ctx.captureFetch(city);
+		if (!response?.ok) throw new Error('Live capture unavailable');
+		const snapshot = captureSnapshotSchema.parse(await response.json());
+		if (snapshot.city !== city) throw new Error('Live capture belongs to another city');
+		return snapshot;
+	}
+	const signal = ctx?.signal;
+	const load = () =>
+		fetchCaptureSnapshot(city, signal, ctx?.fetch, ctx?.requestCache, ctx?.onResponseHeaders);
+	if (!signal) return load();
+	let cities = byPoll.get(signal);
+	if (!cities) {
+		cities = new Map();
+		byPoll.set(signal, cities);
+	}
+	const prior = cities.get(city);
+	if (prior) return prior;
+	const pending = load();
+	cities.set(city, pending);
+	return pending;
+}
+
+const now = () => getV1Runtime().clock.serverNow;
 
 export const livePort = {
 	async vehicles(ctx?: AdapterCtx) {
-		const manifest = await loadManifest(ctx);
-		return readWhole(
-			manifest.files.live.vehicles ?? R2_DEFAULTS.live.vehicles,
-			VehiclesFileSchema,
-			'live.vehicles',
-			MUTABLE_CACHE,
-			ctx,
-		);
+		return captureVehicles(await read(ctx), now());
 	},
 	async trips(ctx?: AdapterCtx) {
-		const manifest = await loadManifest(ctx);
-		return readWhole(
-			manifest.files.live.trips ?? R2_DEFAULTS.live.trips,
-			TripsFileSchema,
-			'live.trips',
-			MUTABLE_CACHE,
-			ctx,
-		);
+		return captureTrips(await read(ctx), now());
 	},
 	async stopDepartures(ctx?: AdapterCtx) {
-		const manifest = await loadManifest(ctx);
-		return readWhole(
-			manifest.files.live.stop_departures ?? R2_DEFAULTS.live.stop_departures,
-			StopDeparturesFileSchema,
-			'live.stopDepartures',
-			MUTABLE_CACHE,
-			ctx,
-		);
+		return captureDepartures(await read(ctx), now());
 	},
 	async alerts(ctx?: AdapterCtx) {
-		const manifest = await loadManifest(ctx);
-		return readWhole(
-			manifest.files.live.alerts ?? R2_DEFAULTS.live.alerts,
-			AlertsFileSchema,
-			'live.alerts',
-			MUTABLE_CACHE,
-			ctx,
-		);
+		return captureAlerts(await read(ctx), now());
 	},
 	async network(ctx?: AdapterCtx) {
-		const manifest = await loadManifest(ctx);
-		return readWhole(
-			manifest.files.live.network ?? R2_DEFAULTS.live.network,
-			NetworkFileSchema,
-			'live.network',
-			MUTABLE_CACHE,
-			ctx,
-		);
+		return captureNetwork(await read(ctx), now());
 	},
 };
 
 export const dataHealthPort = {
 	async get(ctx?: AdapterCtx) {
-		const manifest = await loadManifest(ctx);
-		const relativePath = manifest.files.live.data_health ?? R2_DEFAULTS.live.data_health;
-		const value = await getEntityJson(
-			resolveUrl(relativePath, providerOf(ctx)),
-			DataHealthSchema,
-			'dataHealth',
-			fetchOf(ctx),
-			{ cache: MUTABLE_CACHE, providerId: providerOf(ctx), signal: ctx?.signal },
-		);
-		return value ?? null;
+		const snapshot = await read(ctx);
+		const at = now();
+		return DataHealthSchema.parse({
+			generated_utc: snapshot.published_at,
+			feeds: Object.entries(snapshot.feeds).map(([feed, input]) => ({
+				feed,
+				status: feedState(input, at),
+				age_s: input.captured_at
+					? Math.max(0, Math.floor((at - Date.parse(input.captured_at)) / 1000))
+					: null,
+			})),
+			lanes: [],
+		});
 	},
 };

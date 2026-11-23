@@ -43,6 +43,19 @@ function selection(context: ReturnType<typeof v1> | null) {
 	};
 }
 
+const city = {
+	id: 'stm',
+	labels: {
+		en: { city: 'Montréal', operator: 'Transit' },
+		fr: { city: 'Montréal', operator: 'Transport' },
+	},
+	timezone: 'America/Toronto',
+	bounds: [-74, 45, -73, 46],
+	inputs: { vehicle_positions: true },
+	alert_links: {},
+	lines_without_live_data: [],
+};
+
 function serverEvent(lang: 'fr' | undefined, pathname: string, binding = true) {
 	return {
 		params: lang ? { lang } : {},
@@ -95,7 +108,7 @@ describe('root server layout boot', () => {
 		expect(harness.bootProvider.mock.calls[0]?.[5]).toBe(false);
 	});
 	it('loads the clean edition for the selected city even without snapshot boot', async () => {
-		const selected = { ...selection(null), provider: { id: 'stm' } };
+		const selected = { ...selection(null), provider: city };
 		harness.bootProvider.mockResolvedValue(selected);
 		const schedule = {
 			date: '2026-11-21',
@@ -103,7 +116,7 @@ describe('root server layout boot', () => {
 			stops: [],
 		};
 		harness.getScheduleEdition.mockResolvedValueOnce(schedule);
-		const request = serverEvent(undefined, '/network');
+		const request = serverEvent(undefined, '/network?frameMode=record');
 		await expect(loadServerLayout(request)).resolves.toMatchObject({ schedule, v1: null });
 		expect(harness.getScheduleEdition).toHaveBeenCalledExactlyOnceWith('stm', null);
 	});
@@ -118,7 +131,7 @@ describe('root server layout boot', () => {
 			expect.any(Function),
 			undefined,
 			location,
-			true,
+			false,
 		);
 		expect(JSON.stringify(result)).not.toContain('45.42');
 	});
@@ -131,29 +144,26 @@ describe('root server layout boot', () => {
 		expect(setHeaders).toHaveBeenCalledWith({ 'cache-control': 'no-store' });
 	});
 	it.each([true, false])(
-		'boots provider data for child server loaders (binding: %s)',
+		'builds live context from the city declaration without a snapshot read (binding: %s)',
 		async (binding) => {
 			const request = serverEvent('fr', '/network', binding);
-			const context = { fetch: vi.fn(), cache: request.locals.v1Cache };
-			const booted = v1('fr', 'one');
-			harness.serverV1Context.mockReturnValue(context);
-			harness.bootProvider.mockResolvedValue(selection(booted));
+			harness.bootProvider.mockResolvedValue({ ...selection(null), provider: city });
+			harness.getScheduleEdition.mockResolvedValue({ date: '2026-11-21', routes: [], stops: [] });
 
 			await expect(loadServerLayout(request)).resolves.toMatchObject({
 				lang: 'fr',
-				v1: booted,
+				v1: { lang: 'fr', manifest: { provider: 'stm', dataset_version: '2026-11-21' } },
 				serverBoot: 'succeeded',
 			});
-			expect(harness.serverV1Context).toHaveBeenCalledWith(request);
+			expect(harness.serverV1Context).not.toHaveBeenCalled();
 			expect(harness.bootProvider).toHaveBeenCalledWith(
 				request.url,
 				'fr',
 				expect.any(Function),
-				context,
 				undefined,
-				true,
+				undefined,
+				false,
 			);
-			expect(context.cache).toBe(request.locals.v1Cache);
 		},
 	);
 

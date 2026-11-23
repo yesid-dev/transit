@@ -1,3 +1,11 @@
+import type { z } from 'zod';
+import { NetworkFileSchema as PublishedNetworkFileSchema } from './generated/live_network';
+
+export const NetworkFileSchema = PublishedNetworkFileSchema.extend({
+	non_responding: PublishedNetworkFileSchema.shape.non_responding.nullable(),
+});
+export type NetworkFile = z.infer<typeof NetworkFileSchema>;
+
 export {
 	StatusDistSchema,
 	type StatusDist,
@@ -7,6 +15,4 @@ export {
 	type DelayBucket,
 	NonRespondingRouteSchema,
 	type NonRespondingRoute,
-	NetworkFileSchema,
-	type NetworkFile,
 } from './generated/live_network';

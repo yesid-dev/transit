@@ -181,6 +181,7 @@
 	// The same published weekly row the home page's "Most delayed stops" reads.
 	const weeklyIndex = createResource((signal) => getPublishedReliabilityIndex({ signal }), {
 		key: () => 'stop-weekly-record',
+		enabled: () => !frameLive,
 	});
 	const recordAnswer = $derived(
 		presentStopRecord({ stopId: id, index: weeklyIndex, now: clock.serverNow }, locale, {
@@ -194,6 +195,7 @@
 
 	const reliability = createResource((signal) => getStopReliability(id, { signal }), {
 		key: () => id,
+		enabled: () => !frameLive,
 	});
 	const record = createRecordStamp(
 		() => manifest,
@@ -223,6 +225,7 @@
 		return createStopHistoryResource(
 			stopId,
 			historyRangeRequestFromSearchParams(new URLSearchParams(page.url.search)),
+			frameLive,
 		);
 	}
 	const initialHistoryEntityId = untrack(() => id);

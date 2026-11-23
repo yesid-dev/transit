@@ -310,3 +310,21 @@ def test_search_index_preserves_schedule_names_and_stop_codes():
         "routes": ["r"],
         "mode": "bus",
     }
+
+
+def test_map_geometry_uses_the_selected_schedule_branch_and_gtfs_point_order():
+    shape = (
+        "shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence\n"
+        "rail,45.51,-73.59,2\n"
+        "other,45.4,-73.7,1\n"
+        "rail,45.5,-73.6,1\n"
+    )
+    payload = archive(
+        routes="r,0\n",
+        trips="r,s,t,1,,rail,\n",
+        extra=(("nested/SHAPES.TXT", shape),),
+    )
+    assert context(payload).route_shapes["r"][0]["shape"] == {
+        "type": "LineString",
+        "coordinates": [(-73.6, 45.5), (-73.59, 45.51)],
+    }

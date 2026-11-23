@@ -1,12 +1,12 @@
 <script lang="ts">
 	import MapDetailNavigation from './MapDetailNavigation.svelte';
 	import { providerAttribution } from '#lib/i18n/providerAttribution.ts';
-	import { hasOccupancy } from '#lib/site/transitDisplay.ts';
 	import { liveTimingFor } from '#lib/components/map/liveTiming.ts';
 	import { liveReader } from '#lib/v1/adapter/index.ts';
 	import { provideLiveAbsenceContext } from '#lib/site/absence.ts';
 	import { measureMapFocusInset } from './mapFocusInset';
 	import { providerHasAlerts } from '#lib/v1/providers.ts';
+	import { lineIsScheduleOnly } from '#lib/site/providerCapabilities.ts';
 	import { onMount, tick, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -231,7 +231,16 @@
 		staleCutoffS: liveTimingFor(manifest).staleCutoffS,
 		serverNow: () => dataClock.serverNow,
 		alertsAvailable,
+		scheduleOnly: (id, type) => lineIsScheduleOnly(page.data.provider, id, type),
 	});
+	const mapVehicles = $derived(
+		live.vehicles && {
+			...live.vehicles,
+			vehicles: live.vehicles.vehicles.filter(
+				(vehicle) => !vehicle.route || !session.scheduledRouteIds.includes(vehicle.route),
+			),
+		},
+	);
 	const runtime = createMapRuntime({
 		selection: session,
 		readFeed: readMapFeed,
@@ -332,7 +341,7 @@
 	const reportView = $derived.by(() => {
 		const health = live.familyStates.vehicles.health;
 		return buildMapReportView({
-			source: live.vehicles,
+			source: mapVehicles,
 			health: {
 				retained: health.retained,
 				failing:
@@ -603,7 +612,7 @@
 	}
 
 	const motionFrame = $derived(
-		vehicleMotion.read(live.vehicles, {
+		vehicleMotion.read(mapVehicles, {
 			preference: motionMode.current,
 			reducedMotion: $prefersReducedMotion,
 			ready: hasFirstIdle,

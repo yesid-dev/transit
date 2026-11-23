@@ -16,6 +16,7 @@
 	<NetworkRecord record={data.networkRecord} {subject} {locale} {url} />
 {:else}
 	<NetworkSurface
+		liveOnly
 		historicAvailabilitySeed={data.historicAvailabilitySeed ?? {
 			key: 'historic-availability',
 			data: null,

@@ -10,21 +10,22 @@
 		readonly locale: Locale;
 		/** Absent before the data context boots; every card still renders its shape and links. */
 		readonly manifest: Manifest | null;
+		readonly liveOnly?: boolean;
 	}
 
-	let { locale, manifest }: Props = $props();
+	let { locale, manifest, liveOnly = false }: Props = $props();
 	const t = $derived(homePulseCopy[locale]);
 </script>
 
 <!-- One subject, two clocks: the record leads, what is live now sits beside it, never mixed. -->
 <div class="home-pulse" data-slot="home-pulse">
 	<div class="pulse-cards">
-		<HomeRecord {locale} {manifest} copy={t} />
+		{#if !liveOnly}<HomeRecord {locale} {manifest} copy={t} />{/if}
 		{#key manifest != null}
 			<HomePulseLive {locale} {manifest} copy={t} />
 		{/key}
 	</div>
-	{#if manifest}
+	{#if manifest && !liveOnly}
 		<HomeRanking {locale} copy={t} />
 	{/if}
 </div>

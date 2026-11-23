@@ -328,7 +328,7 @@
 					><div>
 						<dt>{t.liveBuses}</dt>
 						<dd>
-							{#if detail.vehicles.length === 0 && routeHasNoLiveData(absenceContext().providerId, detail.route.type)}
+							{#if detail.vehicles.length === 0 && (detail.route.schedule_only || routeHasNoLiveData(absenceContext().providerId, detail.route.type))}
 								<AbsentValue reason="metro-no-realtime" {locale} />
 							{:else}{t.visibleBuses(detail.vehicles.length)}{/if}
 						</dd>

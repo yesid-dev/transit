@@ -318,12 +318,108 @@ const server = createServer((request, response) => {
 				default_provider,
 				providers: providers.map((provider) => ({
 					...provider,
+					basemap_url: `/data/v1/${provider.id}/static/basemap/${provider.id === 'stm' ? 'montreal' : 'ottawa'}.pmtiles`,
 					timezone: 'America/Toronto',
 					bounds: provider.max_bounds,
 					lines_without_live_data: [
 						{ route_types: [provider.id === 'stm' ? 1 : 0], route_ids: [] },
 					],
 				})),
+			}),
+		);
+		return;
+	}
+	const live = /^\/v2\/([a-z0-9_-]+)\/live$/.exec(url.pathname);
+	if (live && !url.search) {
+		const [, city] = live;
+		if (!['stm', 'octranspo'].includes(city)) {
+			response.writeHead(404).end();
+			return;
+		}
+		const timestamp = new Date().toISOString();
+		const seconds = Math.floor(Date.parse(timestamp) / 1000);
+		const feed = (family, limit) => ({
+			family,
+			captured_at: timestamp,
+			source_at: timestamp,
+			fresh_for_seconds: limit,
+			source_lag_seconds: 0,
+			read_failed: false,
+		});
+		const vehicle = {
+			id: 'sample-report',
+			vehicle_id: '40061',
+			trip_id: 'T1',
+			start_date: null,
+			start_time: null,
+			route_id: '24',
+			direction_id: null,
+			latitude: 45.51,
+			longitude: -73.59,
+			bearing: 90,
+			speed_mps: 10,
+			stop_id: 'S1',
+			stop_sequence: 1,
+			status: 1,
+			occupancy: 2,
+			occupancy_percentage: null,
+			observed_at: timestamp,
+			delay: 240,
+		};
+		if (city === 'octranspo') Object.assign(vehicle, { latitude: 45.41, longitude: -75.69 });
+		response.writeHead(200, { 'content-type': 'application/json' }).end(
+			JSON.stringify({
+				version: 1,
+				city,
+				published_at: timestamp,
+				stable_vehicle_ids: true,
+				feeds: {
+					vehicle_positions: feed('vehicle_positions', 60),
+					trip_updates: feed('trip_updates', 90),
+					...(city === 'stm' ? { i3_alerts: feed('alerts', 900) } : {}),
+				},
+				vehicle_positions: [vehicle],
+				trip_updates: [
+					{
+						trip_id: 'T1',
+						route_id: '24',
+						direction_id: null,
+						start_date: null,
+						start_time: null,
+						relationship: 0,
+						delay: 240,
+						stops: [
+							{
+								stop_id: 'S1',
+								sequence: 1,
+								arrival: null,
+								departure: seconds + 300,
+								arrival_delay: null,
+								departure_delay: 240,
+								relationship: 0,
+							},
+						],
+					},
+				],
+				alerts: city === 'stm' ? [] : null,
+			}),
+		);
+		return;
+	}
+	const scheduleMap = /^\/v2\/([^/]+)\/schedule-map$/.exec(url.pathname);
+	if (scheduleMap && !url.search) {
+		const [, city] = scheduleMap;
+		const routePrefix = `/v1/${city}/static/routes/`;
+		const route_shapes = Object.fromEntries(
+			Object.entries(files)
+				.filter(([key]) => key.startsWith(routePrefix))
+				.map(([, body]) => JSON.parse(body))
+				.filter((route) => route.id && route.directions?.some(({ shape }) => shape))
+				.map((route) => [route.id, route.directions]),
+		);
+		response.writeHead(200, { 'content-type': 'application/json' }).end(
+			JSON.stringify({
+				schedule: { date: '2026-11-21', route_shapes },
 			}),
 		);
 		return;
