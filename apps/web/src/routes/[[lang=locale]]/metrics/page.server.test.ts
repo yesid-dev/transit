@@ -15,7 +15,11 @@ it('streams the global catalog without passing the selected city, dates or langu
 		'https://transit1.yesid.dev/fr/metrics?provider=octranspo&recordFrom=2026-11-11&recordTo=2026-11-14',
 	);
 	const request = new Request(url, { headers: { 'cf-connecting-ip': '192.0.2.11' } });
-	const data = await load({ url, request } as Parameters<typeof load>[0]);
+	const data = await load({
+		url,
+		request,
+		parent: async () => ({ provider: { timezone: 'America/Toronto' } }),
+	} as Parameters<typeof load>[0]);
 	expect(data?.period).toMatchObject({ from: '2026-11-11', to: '2026-11-14' });
 	expect(fetcher.mock.calls[0]?.[0].url).toBe('https://data.yesid.dev/v2/how-we-measure');
 	expect(fetcher.mock.calls[0]?.[0].headers.get('x-transit-visitor-ip')).toBe('192.0.2.11');

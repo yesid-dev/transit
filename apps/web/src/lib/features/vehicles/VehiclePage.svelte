@@ -7,7 +7,7 @@
 	import type { loadVehiclePage } from '#lib/server/vehicleRecord.ts';
 	import { frameHref } from '#lib/site/frameState.ts';
 	import type { Manifest } from '#lib/v1/schemas/index.ts';
-	import type { PublicProvider } from '#lib/v1/schemas/providers.ts';
+	import type { PublicCity } from '#lib/v1/schemas/providers.ts';
 	import VehicleLive from './VehicleLive.svelte';
 	import VehicleRecord from './VehicleRecord.svelte';
 	import { vehicleHref } from './vehicleLinks.ts';
@@ -18,7 +18,7 @@
 	}: {
 		data: ReturnType<typeof loadVehiclePage> & {
 			v1: { manifest: Manifest } | null;
-			provider: PublicProvider | null;
+			provider: PublicCity | null;
 		};
 	} = $props();
 	const locale = getLocale();
@@ -69,6 +69,7 @@
 			{#key data.city}
 				<VehicleLive
 					manifest={data.v1.manifest}
+					timeZone={data.provider?.timezone ?? data.v1.manifest.tz ?? 'UTC'}
 					id={data.id}
 					{locale}
 					url={pinned}

@@ -158,6 +158,7 @@ def test_legacy_poll_coverage_reads_the_provider_declaration(
     declarations.mkdir()
     (declarations / "demo.yaml").write_text(
         "provider:\n  provider_id: demo\n  live_source_lag_seconds: 60\n"
+        "  timezone: America/Toronto\n  is_active: true\npublic:\n  enabled: true\n"
     )
     monkeypatch.setenv("ENGINE_PROVIDER_DECLARATIONS", str(declarations))
     trips = tuple(_trip("A", index, index * 5) for index in range(21))

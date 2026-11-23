@@ -30,7 +30,7 @@ describe('formatLocalClock', () => {
 	});
 
 	it('leaves the machine clock as parseable 24-hour HH:mm', () => {
-		expect(formatClock(at('2026-07-14T23:21:00Z'), 'en')).toBe('19:21');
-		expect(formatClock(at('2026-11-14T05:00:00Z'), 'fr')).toBe('00:00');
+		expect(formatClock(at('2026-07-14T23:21:00Z'), 'en', 'America/Toronto')).toBe('19:21');
+		expect(formatClock(at('2026-11-14T05:00:00Z'), 'fr', 'America/Toronto')).toBe('00:00');
 	});
 });

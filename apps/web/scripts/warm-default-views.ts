@@ -66,7 +66,10 @@ async function publicCities(): Promise<WarmCity[]> {
 		providers.length === 0 ||
 		providers.some(
 			(city) =>
-				!/^[a-z0-9][a-z0-9_-]*$/.test(city?.id) || typeof city.inputs !== 'object' || !city.inputs,
+				!/^[a-z0-9][a-z0-9_-]*$/.test(city?.id) ||
+				typeof city.timezone !== 'string' ||
+				typeof city.inputs !== 'object' ||
+				!city.inputs,
 		) ||
 		new Set(providers.map(({ id }) => id)).size !== providers.length
 	) {
@@ -85,8 +88,7 @@ async function main(args: string[]) {
 		throw new Error('Usage: bun warm-default-views.ts [--dry-run | --verify-cache]');
 	}
 	const started = performance.now();
-	const period = defaultPeriod(new Date());
-	if (!period) throw new Error('Default Record period unavailable');
+	const now = new Date();
 	const cities = await publicCities();
 	const root = process.env.ENGINE_CLEAN_ROOT;
 	const version = process.env.ENGINE_CLEANING_VERSION;
@@ -94,9 +96,13 @@ async function main(args: string[]) {
 		throw new Error('Set ENGINE_CLEAN_ROOT and ENGINE_CLEANING_VERSION for the local clean mirror');
 	}
 	const counts: Record<string, number> = {};
+	const periods: { from: string; to: string }[] = [];
 	const missing: string[] = [];
 	const urls: string[] = [];
 	for (const city of cities) {
+		const period = defaultPeriod(now, city.timezone);
+		if (!period) throw new Error('Default Record period unavailable');
+		periods.push(period);
 		if (root && version && !dryRun) {
 			try {
 				await access(join(root, city.id, period.to, `v${version}`, 'manifest.json'));
@@ -124,7 +130,13 @@ async function main(args: string[]) {
 	const failed = requests.length - answered - busy;
 	console.log(
 		JSON.stringify({
-			period: { from: period.from, to: period.to },
+			period: {
+				from: periods.map(({ from }) => from).sort()[0],
+				to: periods
+					.map(({ to }) => to)
+					.sort()
+					.at(-1),
+			},
 			perCity: counts,
 			shared: 1,
 			missing,

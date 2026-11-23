@@ -58,6 +58,14 @@ def _trip(
     return Trip(ident, line, 0, state, reason, live, (0,), captured=captured)
 
 
+@pytest.fixture(autouse=True)
+def declare_fixture_city(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (tmp_path / f"{CITY}.yaml").write_text(
+        "stage: public\ntimezone: Asia/Kolkata\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("ENGINE_PROVIDER_DECLARATIONS", str(tmp_path))
+
+
 @pytest.fixture
 def sample(
     tmp_path: Path,

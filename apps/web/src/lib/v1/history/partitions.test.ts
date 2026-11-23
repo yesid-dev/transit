@@ -427,13 +427,19 @@ describe('stable alert page merging', () => {
 		]).alerts;
 
 		expect(
-			selectAlertEntriesForWindow(entries, { from: '2026-08-04', to: '2026-08-04' }).map(
-				(entry) => entry.id,
-			),
+			selectAlertEntriesForWindow(
+				entries,
+				{ from: '2026-08-04', to: '2026-08-04' },
+				'America/Toronto',
+			).map((entry) => entry.id),
 		).toEqual(['previous-local-day']);
-		expect(selectAlertEntriesForWindow(entries, { from: '2026-08-05', to: '2026-08-05' })).toEqual(
-			[],
-		);
+		expect(
+			selectAlertEntriesForWindow(
+				entries,
+				{ from: '2026-08-05', to: '2026-08-05' },
+				'America/Toronto',
+			),
+		).toEqual([]);
 	});
 });
 

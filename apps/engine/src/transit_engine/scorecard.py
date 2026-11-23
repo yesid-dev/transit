@@ -11,6 +11,7 @@ import duckdb
 from transit_engine.capture import MAX_POLL_SPACING_SECONDS
 from transit_engine.clean_manifest import STOP_EVENTS, TRIP_DAYS
 from transit_engine.histogram import DELAY_BIN_SECONDS, percentile
+from transit_engine.series import LOCAL_HOUR, LOCAL_HOUR_BUCKET
 from transit_engine.vehicles import vehicle_end_sql, vehicle_hour_weight_sql, vehicle_tail_sql
 
 SCORECARD = "open_data_scorecard"
@@ -321,10 +322,10 @@ def vehicle_counts(
     hour_args: list[object] = []
     if hour is not None:
         weight = vehicle_hour_weight_sql(
-            "hour(hour_start)",
-            "time_bucket(INTERVAL '1 hour', captured_at_utc, current_setting('TimeZone'))",
+            LOCAL_HOUR.format("hour_start"),
+            LOCAL_HOUR_BUCKET.format("captured_at_utc"),
         )
-        reading = "(weight > 0 OR hour(captured_at_utc) = ?)"
+        reading = f"(weight > 0 OR {LOCAL_HOUR.format('captured_at_utc')} = ?)"
         hour_args = [hour, hour]
     fields = ", ".join(
         f"coalesce(sum(weight) FILTER ({published}), 0)" for published in VEHICLE_FIELDS.values()

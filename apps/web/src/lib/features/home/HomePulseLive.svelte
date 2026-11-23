@@ -7,6 +7,7 @@
 	import { FreshnessStamp } from '#lib/components/surface/index.ts';
 	import { refreshMessage, type RefreshResult } from '#lib/components/shell/refreshResult.ts';
 	import { fmtCount } from '#lib/utils/index.ts';
+	import { getV1Context } from '#lib/v1/boot.ts';
 	import { liveReader } from '#lib/v1/adapter/index.ts';
 	import { livePresentation } from '#lib/v1/live/livePresentation.ts';
 	import { LIVE_FAMILIES, createLiveStore } from '#lib/v1/live/store.svelte.ts';
@@ -24,6 +25,8 @@
 
 	let { locale, manifest, copy: t }: Props = $props();
 	const localizeHref = getLocalizeHref();
+	const v1 = getV1Context(true);
+	const timeZone = $derived(v1?.provider?.timezone ?? manifest?.tz);
 
 	// The provider is fixed for this page's lifetime; switching cities remounts the page.
 	const live = untrack(() =>
@@ -41,6 +44,7 @@
 			? livePresentation({
 					familyStates: live.familyStates,
 					families: LIVE_FAMILIES,
+					timeZone,
 					locale,
 					page: 'network',
 					networkFeedAgeAtPublication: live.network?.feed_freshness_s ?? null,
@@ -93,7 +97,7 @@
 				stampText(
 					{ form: 'live', subject: 'data', state, ageSeconds: 3_540, generatedUtc: null },
 					locale,
-					manifest?.tz,
+					timeZone,
 				),
 			),
 			t.liveUnavailable,
@@ -127,7 +131,7 @@
 	</div>
 	<div class="slot live-result" data-failed={result?.kind === 'failed'}>
 		<p aria-live="polite">
-			{#if result}{refreshMessage(result, locale, manifest?.tz)}{/if}
+			{#if result}{refreshMessage(result, locale, timeZone)}{/if}
 		</p>
 		<p class="reserve" aria-hidden="true" data-reserve={resultReserve}></p>
 	</div>

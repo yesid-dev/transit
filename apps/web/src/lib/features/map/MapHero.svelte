@@ -87,6 +87,7 @@
 	const locale: Locale = getLocale();
 	const v1 = getV1Context();
 	const manifest = v1.manifest;
+	const timeZone = v1.provider?.timezone ?? manifest.tz;
 	const t = mapCopy(locale, v1.provider?.labels[locale].city ?? manifest.city ?? manifest.provider);
 
 	const alertsAvailable = providerHasAlerts(v1.provider);
@@ -226,7 +227,7 @@
 		repositories: { getRoute, getStop, getStopsIndexSlim, getRoutesIndex },
 		filters,
 		locale,
-		timeZone: manifest.tz,
+		timeZone,
 		staleCutoffS: liveTimingFor(manifest).staleCutoffS,
 		serverNow: () => dataClock.serverNow,
 		alertsAvailable,
@@ -307,6 +308,7 @@
 		livePresentation({
 			familyStates: live.familyStates,
 			families: LIVE_FAMILIES,
+			timeZone,
 			locale,
 			page: 'map',
 			selection: session.selected,
@@ -357,7 +359,7 @@
 			providerId: manifest.provider,
 			providerName,
 			locale,
-			timeZone: manifest.tz,
+			timeZone,
 			attribution: manifest.attribution,
 			filters: mapReportFilterTokens(filters.state),
 		});
@@ -754,7 +756,7 @@
 				alertsStale={live.familyStates.alerts.health.notice !== null}
 				alertsAgeSeconds={live.familyStates.alerts.health.ageSeconds}
 				locale={locale}
-				timeZone={v1.manifest.tz}
+				{timeZone}
 				notReporting={selectedVehicleAbsence}
 				selectionPresence={selectionPresence}
 				selectionSourceHealth={selectionSourceHealth}
@@ -966,7 +968,7 @@
 			}
 			{locale}
 			identity={detailIdentity}
-			timeZone={v1.manifest.tz}
+			{timeZone}
 			footer={detailFooter}
 			navigation={detailNavigation}
 			surfaceKey={detailSurfaceKey}

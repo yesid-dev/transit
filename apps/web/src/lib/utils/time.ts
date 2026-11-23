@@ -1,8 +1,7 @@
 import { intl } from '#lib/i18n/index.ts';
 export type TimeLang = 'en' | 'fr';
 
-import { DISPLAY_TIME_ZONE } from './serviceDate.ts';
-export { DISPLAY_TIME_ZONE, providerLocalDateKey } from './serviceDate.ts';
+export { providerLocalDateKey } from './serviceDate.ts';
 
 function parseIso(iso: string): Date | null {
 	if (!iso) return null;
@@ -29,7 +28,7 @@ export function formatUtc(iso: string, lang: TimeLang, opts?: Intl.DateTimeForma
 	};
 	const resolved: Intl.DateTimeFormatOptions = {
 		...(opts ?? base),
-		timeZone: opts?.timeZone ?? DISPLAY_TIME_ZONE,
+		timeZone: opts?.timeZone ?? 'UTC',
 	};
 	return intl.dateTime(lang, resolved).format(date);
 }
@@ -47,11 +46,7 @@ export function formatDateKey(key: string, lang: TimeLang, includeYear = false):
 		.format(date);
 }
 
-export function formatClock(
-	date: Date,
-	lang: TimeLang,
-	timeZone: string = DISPLAY_TIME_ZONE,
-): string {
+export function formatClock(date: Date, lang: TimeLang, timeZone: string = 'UTC'): string {
 	if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '·';
 	const parts = intl
 		.dateTime(lang, {
@@ -76,14 +71,14 @@ export function formatLocalClock(date: Date, locale: TimeLang, timeZone?: string
 	return intl.dateTime(locale, { hour: 'numeric', minute: '2-digit', timeZone }).format(date);
 }
 
-export function minutesSinceMidnight(date: Date = new Date()): number {
+export function minutesSinceMidnight(date: Date, timeZone: string): number {
 	if (!(date instanceof Date) || Number.isNaN(date.getTime())) return Number.NaN;
 	const parts = intl
 		.dateTime('en', {
 			hour: '2-digit',
 			minute: '2-digit',
 			hour12: false,
-			timeZone: DISPLAY_TIME_ZONE,
+			timeZone,
 		})
 		.formatToParts(date);
 	const hourRaw = parts.find((p) => p.type === 'hour')?.value ?? '00';

@@ -12,6 +12,7 @@ from test_engine import FALL_BACK, FRIDAY, THURSDAY, Trip, _build_store, http, q
 from test_engine import store as store
 
 from transit_engine import measures
+from transit_engine.cities import service_query
 from transit_engine.series import LOCAL_HOUR, local_hour_sql
 from transit_engine.server import Engine
 from transit_engine.store import Store
@@ -25,7 +26,7 @@ def _quantile(delays: list[int], fraction: float) -> float:
 
 
 def test_local_hour_keeps_timezone_semantics(store: Store) -> None:
-    with store.connect() as conn:
+    with service_query(store, "stm") as conn:
         fast = local_hour_sql(conn, "ts", date(2026, 3, 1), date(2026, 11, 2))
         standard = LOCAL_HOUR.format("ts")
         differences = conn.execute(

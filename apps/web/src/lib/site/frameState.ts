@@ -20,8 +20,8 @@ interface FrameState {
 const KEYS = ['frameMode', 'period', 'recordFrom', 'recordTo'] as const;
 const isoDay = (date: Date) => date.toISOString().slice(0, 10);
 
-export function frameToday(now = new Date()): string {
-	return providerLocalDateKey(now.toISOString())!;
+export function frameToday(timeZone: string | undefined, now = new Date()): string {
+	return providerLocalDateKey(now.toISOString(), timeZone)!;
 }
 
 function isDay(key: string): boolean {

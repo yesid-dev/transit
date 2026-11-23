@@ -78,7 +78,8 @@
 	const articleTitle = $derived(titleName.label);
 	const v1 = getV1Context();
 	const manifest = v1.manifest;
-	const l10n = { locale, timeZone: manifest.tz };
+	const timeZone = v1.provider?.timezone ?? manifest.tz ?? 'UTC';
+	const l10n = { locale, timeZone };
 	const live = createLiveStore(manifest, liveReader, {
 		families: providerHasAlerts(v1.provider)
 			? ['vehicles', 'trips', 'alerts', 'network']
@@ -86,7 +87,12 @@
 	});
 	provideLiveAbsenceContext(() => ({ familyStates: live.familyStates }));
 	const presentation = $derived(
-		livePresentation({ familyStates: live.familyStates, families: LIVE_FAMILIES, locale }),
+		livePresentation({
+			familyStates: live.familyStates,
+			families: LIVE_FAMILIES,
+			locale,
+			timeZone,
+		}),
 	);
 	onMount(() => {
 		live.start();
@@ -127,7 +133,7 @@
 			gaps: provenance.data?.gaps ?? null,
 			firstDeparture: route.data?.first_departure ?? null,
 			lastDeparture: route.data?.last_departure ?? null,
-			nowMinutes: minutesSinceMidnight(new Date(clock.serverNow)),
+			nowMinutes: minutesSinceMidnight(new Date(clock.serverNow), timeZone),
 			nonResponding: routeNonResponding,
 		}),
 	);
@@ -302,6 +308,7 @@
 											{viewCopy.alertsUnknown}
 										</p>{:else if routeAlerts.length === 0}<p>{viewCopy.noAlerts}</p>{/if}
 									<AffectedAlerts
+										{timeZone}
 										alerts={routeAlerts}
 										{locale}
 										copy={t.alerts}
@@ -312,7 +319,7 @@
 											<FreshnessStamp
 												variant="live"
 												subject="alerts"
-												presentation={feedPresentation(live.familyStates.alerts, locale)}
+												presentation={feedPresentation(live.familyStates.alerts, locale, timeZone)}
 												{locale}
 											/>
 										</p>

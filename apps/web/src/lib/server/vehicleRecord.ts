@@ -24,8 +24,9 @@ export function loadVehiclePage(
 	city: string,
 	now = new Date(),
 	id?: string,
+	timeZone?: string,
 ) {
-	const { mode, period } = parseFrameState(url.searchParams, frameToday(now));
+	const { mode, period } = parseFrameState(url.searchParams, frameToday(timeZone, now));
 	const sections: VehicleSection[] = id
 		? ['service', 'lines', 'reporting', 'completion', 'punctuality']
 		: ['fleet'];

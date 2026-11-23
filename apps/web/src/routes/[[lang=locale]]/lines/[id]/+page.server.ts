@@ -20,10 +20,9 @@ export const load: PageServerLoad = async (event) => {
 	const fallback: IdentitySeed = { id, name: id };
 	const { url } = event;
 	const tab = detailTabFromSearchParams(url.searchParams);
-	const { mode, period } = parseFrameState(url.searchParams, frameToday());
 	const view = lineFrameView(url);
 	const frameLive = view === 'live';
-	if (frameLive && (tab !== 'detail' || mode !== 'live')) {
+	if (frameLive && (tab !== 'detail' || url.searchParams.get('frameMode') !== 'live')) {
 		const live = new URL(url);
 		live.searchParams.set('tab', 'detail');
 		live.searchParams.set('frameMode', 'live');
@@ -31,6 +30,7 @@ export const load: PageServerLoad = async (event) => {
 	}
 
 	const { v1, schedule, lang, providerId, provider } = await event.parent();
+	const { period } = parseFrameState(url.searchParams, frameToday(provider?.timezone));
 	const record =
 		view !== 'live' && period
 			? loadLineRecord(

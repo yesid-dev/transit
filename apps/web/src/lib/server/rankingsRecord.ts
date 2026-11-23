@@ -12,13 +12,13 @@ export async function loadRankingsRecord(
 	event: {
 		url: URL;
 		request: Request;
-		parent: () => Promise<{ providerId: string }>;
+		parent: () => Promise<{ providerId: string; provider?: { timezone: string } | null }>;
 	},
 ) {
 	const { url, request, parent } = event;
 	const selection = rankingSelection(path, url.searchParams);
-	const { period } = parseFrameState(url.searchParams, frameToday());
-	const { providerId: city } = await parent();
+	const { providerId: city, provider } = await parent();
+	const { period } = parseFrameState(url.searchParams, frameToday(provider?.timezone));
 	return {
 		selection,
 		period,

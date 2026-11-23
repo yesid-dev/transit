@@ -24,14 +24,26 @@ afterEach(() => {
 });
 
 it.each([
-	{ id: 'fixture-north', inputs: { i3_alerts: true, service_alerts: false } },
-	{ id: 'fixture-south', inputs: { i3_alerts: false, service_alerts: false } },
+	{
+		id: 'fixture-north',
+		timezone: 'America/Toronto',
+		inputs: { i3_alerts: true, service_alerts: false },
+	},
+	{
+		id: 'fixture-south',
+		timezone: 'America/Los_Angeles',
+		inputs: { i3_alerts: false, service_alerts: false },
+	},
 ])('warms the same questions that the default screens request for $id', async (provider) => {
 	vi.useFakeTimers({ toFake: ['Date'] });
-	const now = new Date('2026-11-23T02:00:00Z');
+	const now = new Date('2026-11-22T06:30:00Z');
 	vi.setSystemTime(now);
-	const period = defaultPeriod(now)!;
-	expect(period).toMatchObject({ from: '2026-11-15', to: '2026-11-21' });
+	const period = defaultPeriod(now, provider.timezone)!;
+	expect(period).toMatchObject(
+		provider.id === 'fixture-north'
+			? { from: '2026-11-15', to: '2026-11-21' }
+			: { from: '2026-11-14', to: '2026-11-20' },
+	);
 	const origin = 'https://transit1.yesid.dev';
 	const request = new Request(origin);
 	const label = { city: 'Fixture', operator: 'Fixture' };

@@ -239,9 +239,10 @@ it('selects Live age and its timestamp from the oldest shown non-alert family', 
 
 it.each(['en', 'fr'] as const)('prints the age source timestamp after 24 hours in %s', (locale) => {
 	const capture = '2026-06-20T10:00:00Z';
+	const timeZone = 'America/Los_Angeles';
 	const result = present(
 		{ trips: family({ ageSeconds: 93600, ageSource: 'serving-capture', ageTimestamp: capture }) },
-		{ page: 'trip', locale },
+		{ page: 'trip', locale, timeZone },
 	);
 	expect(result.stamp.ageText).toBe(
 		formatUtc(capture, locale, {
@@ -250,6 +251,7 @@ it.each(['en', 'fr'] as const)('prints the age source timestamp after 24 hours i
 			hour: '2-digit',
 			minute: '2-digit',
 			timeZoneName: 'short',
+			timeZone,
 		}),
 	);
 	expect(result.stamp.generatedUtc).toBe(capture);

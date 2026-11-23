@@ -109,6 +109,16 @@ describe('alertMatchesWindow — inclusive, multi-period aware', () => {
 		expect(alertMatchesWindow(entry({ start_utc: '2020-01-01T00:00:00Z' }), null)).toBe(true);
 	});
 
+	it('assigns an alert between the cities’ midnights to the selected service day', () => {
+		const overnight = entry({
+			start_utc: '2026-11-22T06:00:00Z',
+			end_utc: '2026-11-22T06:30:00Z',
+		});
+		const window = { from: '2026-11-21', to: '2026-11-21' };
+		expect(alertMatchesWindow(overnight, window, 'America/Los_Angeles')).toBe(true);
+		expect(alertMatchesWindow(overnight, window, 'America/Toronto')).toBe(false);
+	});
+
 	it('counts a same-day alert on the `to` boundary (inclusive)', () => {
 		expect(
 			alertMatchesWindow(
@@ -124,9 +134,13 @@ describe('alertMatchesWindow — inclusive, multi-period aware', () => {
 		['fall DST previous day', '2026-11-01T03:30:00Z', '2026-10-31'],
 	])('matches %s in the STM provider-local calendar', (_label, instant, localDate) => {
 		const localWindow = { from: localDate, to: localDate };
-		expect(alertMatchesWindow(entry({ start_utc: instant, end_utc: instant }), localWindow)).toBe(
-			true,
-		);
+		expect(
+			alertMatchesWindow(
+				entry({ start_utc: instant, end_utc: instant }),
+				localWindow,
+				'America/Toronto',
+			),
+		).toBe(true);
 	});
 });
 
@@ -244,12 +258,17 @@ describe('safeAlertUrl — http/https only, hostname exposed', () => {
 describe('deriveSpan — the legacy fallback', () => {
 	it('derives the provider-local min→max active date across every window', () => {
 		expect(
-			deriveSpan([
-				entry({ start_utc: '2026-06-05T00:00:00Z', end_utc: '2026-06-06T00:00:00Z' }),
-				entry({
-					active_periods: [{ start_utc: '2026-06-01T00:00:00Z', end_utc: '2026-06-20T00:00:00Z' }],
-				}),
-			]),
+			deriveSpan(
+				[
+					entry({ start_utc: '2026-06-05T00:00:00Z', end_utc: '2026-06-06T00:00:00Z' }),
+					entry({
+						active_periods: [
+							{ start_utc: '2026-06-01T00:00:00Z', end_utc: '2026-06-20T00:00:00Z' },
+						],
+					}),
+				],
+				'America/Toronto',
+			),
 		).toEqual({ start: '2026-05-31', end: '2026-06-19' });
 	});
 	it('returns null when nothing is datable', () => {

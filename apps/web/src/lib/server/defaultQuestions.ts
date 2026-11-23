@@ -24,10 +24,10 @@ import {
 	rankingsQuery,
 } from './screenQuestions.ts';
 
-export type WarmCity = { id: string; inputs: Record<string, boolean> };
+export type WarmCity = { id: string; timezone: string; inputs: Record<string, boolean> };
 
-export function defaultPeriod(now: Date) {
-	return parseFrameState(new URLSearchParams(), frameToday(now)).period;
+export function defaultPeriod(now: Date, timeZone: string) {
+	return parseFrameState(new URLSearchParams(), frameToday(timeZone, now)).period;
 }
 
 export function defaultCityQuestions(

@@ -40,6 +40,7 @@ export interface LivePresentationInput {
 	readonly familyStates: Readonly<Partial<Record<LiveFamily, Family>>>;
 	readonly families: readonly LiveFamily[];
 	readonly locale: Locale;
+	readonly timeZone?: string;
 	readonly page?: 'map' | 'trip' | 'network';
 	readonly selection?: { readonly kind: 'vehicle' | 'stop' | 'route' | 'route-line' } | null;
 	readonly vehicleCount?: number | null;
@@ -61,7 +62,12 @@ export interface LivePresentation {
 }
 
 /** Formatting also serves historic publication stamps; components only render it. */
-export function stampAgeText(age: number | null, timestamp: string | null, locale: Locale): string {
+export function stampAgeText(
+	age: number | null,
+	timestamp: string | null,
+	locale: Locale,
+	timeZone?: string,
+): string {
 	if (age == null) return locale === 'fr' ? 'inconnu' : 'unknown';
 	if (age >= 86_400 && timestamp)
 		return formatUtc(timestamp, locale, {
@@ -70,6 +76,7 @@ export function stampAgeText(age: number | null, timestamp: string | null, local
 			hour: '2-digit',
 			minute: '2-digit',
 			timeZoneName: 'short',
+			timeZone,
 		});
 	return formatRelativeSeconds(age, locale);
 }
@@ -78,20 +85,21 @@ export function publicationPresentation(
 	generatedUtc: string | null,
 	nowMs: number,
 	locale: Locale,
+	timeZone?: string,
 ): StampPresentation {
 	const ageSeconds = freshnessAgeSeconds(generatedUtc, nowMs);
 	return {
 		generatedUtc,
 		ageSeconds,
 		ageSource: ageSeconds == null ? null : 'publication',
-		ageText: stampAgeText(ageSeconds, generatedUtc, locale),
+		ageText: stampAgeText(ageSeconds, generatedUtc, locale, timeZone),
 		isStale: false,
 		degraded: false,
 		visible: generatedUtc != null || ageSeconds != null,
 	};
 }
 
-function liveAge(states: readonly Family[], locale: Locale): StampPresentation {
+function liveAge(states: readonly Family[], locale: Locale, timeZone?: string): StampPresentation {
 	const loaded = states.filter(
 		({ health }) => health.retained || health.state === 'failed-no-data',
 	);
@@ -112,15 +120,22 @@ function liveAge(states: readonly Family[], locale: Locale): StampPresentation {
 		generatedUtc,
 		ageSeconds,
 		ageSource: unknown ? null : (oldest!.health.ageSource ?? 'publication'),
-		ageText: stampAgeText(ageSeconds, generatedUtc, locale),
+		ageText: stampAgeText(ageSeconds, generatedUtc, locale, timeZone),
 		isStale: states.some(({ health }) => health.isStale),
 		degraded: false,
 		visible: generatedUtc != null || ageSeconds != null,
 	};
 }
 
-export function feedPresentation(state: Family, locale: Locale): StampPresentation {
-	return { ...liveAge([state], locale), degraded: state.health.notice === 'refresh-unavailable' };
+export function feedPresentation(
+	state: Family,
+	locale: Locale,
+	timeZone?: string,
+): StampPresentation {
+	return {
+		...liveAge([state], locale, timeZone),
+		degraded: state.health.notice === 'refresh-unavailable',
+	};
 }
 
 function selectedFailure(input: LivePresentationInput): string | null {
@@ -268,8 +283,8 @@ export function livePresentation(input: LivePresentationInput): LivePresentation
 	const primary =
 		input.page === 'map' ? headline.filter(({ family }) => family === 'vehicles') : [];
 	const stampFamilies = primary.length ? primary : headline;
-	const stamp = liveAge(stampFamilies, input.locale);
-	const shownHealth = primary.length ? liveAge(headline, input.locale) : stamp;
+	const stamp = liveAge(stampFamilies, input.locale, input.timeZone);
+	const shownHealth = primary.length ? liveAge(headline, input.locale, input.timeZone) : stamp;
 	const isPartialStale = shownHealth.isStale && headline.some(({ health }) => !health.isStale);
 	const degraded = states.some(({ health }) => health.notice === 'refresh-unavailable');
 	const base = {
