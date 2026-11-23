@@ -13,6 +13,8 @@ export const QUESTION_PARAMS = {
   },
   "search-index": { required: [], optional: [] },
   "schedule-index": { required: [], optional: [] },
+  live: { required: [], optional: [] },
+  "live-trips": { required: [], optional: ["line", "stop", "trip"] },
   cities: { required: [], optional: [] },
   "data-health": { required: ["from", "to"], optional: [] },
   "how-we-measure": { required: [], optional: ["lang"] },
@@ -24,6 +26,7 @@ const VALID = {
   measure: (value) => /^[a-z][a-z0-9_]*$/.test(value),
   line: scheduleId,
   stop: scheduleId,
+  trip: scheduleId,
   from_stop: scheduleId,
   to_stop: scheduleId,
   vehicle: scheduleId,
@@ -50,11 +53,11 @@ export function serviceDate(value) {
 
 export function parseQuestion(url) {
   const catalog = ["/v2/how-we-measure", "/v2/cities"].includes(url.pathname);
-  const match = /^\/v2\/([^/]+)\/(measure|ranking|data-health|search-index|schedule-index)$/.exec(url.pathname);
+  const match = /^\/v2\/([^/]+)\/(measure|ranking|data-health|search-index|schedule-index|live|live-trips)$/.exec(url.pathname);
   if (!catalog && !match) return null;
 
   const [, city, route] = match ?? [null, null, url.pathname.slice("/v2/".length)];
-  if ((route === "search-index" || route === "schedule-index") && !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(city)) {
+  if (["search-index", "schedule-index", "live", "live-trips"].includes(route) && !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(city)) {
     throw new Error("invalid city");
   }
   const { required, optional } = QUESTION_PARAMS[route];
@@ -106,11 +109,18 @@ export function parseQuestion(url) {
   if (params.get("limit") === "100") params.delete("limit");
   params.sort();
 
+  let scope;
+  if (route === "live-trips") {
+    if (params.size !== 1) throw new Error("provide one line, stop, or trip");
+    const [kind, id] = params.entries().next().value;
+    if (id.length > 256) throw new Error("invalid scope ID");
+    scope = { kind, id };
+  }
   const path = city === null ? `/${route}` : `/${city}/${route}`;
   const key = params.size ? `${path}?${params}` : path;
   const upstream = new URL(`https://transit-engine.internal/${route}`);
   if (city !== null) params.set("city", city);
   params.sort();
   upstream.search = params.toString();
-  return { city, route, end, csv, key, upstream };
+  return { city, route, end, csv, key, upstream, scope };
 }

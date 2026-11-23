@@ -1,8 +1,12 @@
+import { CleanObjectChanged, cleanDownloadStore } from "./clean-download-store.js";
 import { CORS_HEADERS, PREFLIGHT_HEADERS } from "./cors.js";
+import { readLiveTrips } from "./live-trips.js";
 import { parseQuestion } from "./question-params.js";
 
 export const CLOSED_TTL = 7 * 24 * 60 * 60;
 export const OPEN_TTL = 30;
+const LIVE_TTL = 5;
+const MAX_LIVE_BYTES = 8 * 1024 * 1024;
 const LAST_GOOD_TTL = 30 * 24 * 60 * 60;
 const CITY_CATALOG_KEY = "transit-city-catalog";
 const VERSION_HEADER = "x-transit-cleaning-version";
@@ -168,6 +172,51 @@ export async function probeEngine(env, signal) {
   });
 }
 
+async function serveLive(env, ctx, origin, question, visitorIp) {
+  if (env.TRANSIT1_LIVE_ENABLED === "0") return message(503, "live publication unavailable");
+  const store = cleanDownloadStore(env);
+  if (!store) return message(503, "live publication unavailable");
+  const cache = globalThis.caches?.default;
+  const key = new Request(`${origin}/__transit_question_cache/v2/live${question.key}`);
+  const cached = await cacheMatch(cache, key);
+  if (cached) return publicAnswer(cached.body, "application/json", { cached: true });
+  const denied = await admit(env, visitorIp);
+  if (denied) return denied;
+
+  try {
+    let body;
+    if (question.scope) {
+      const trips = await readLiveTrips(store, question.city, question.scope);
+      if (!trips) return message(404, "no live trip publication");
+      body = JSON.stringify(trips);
+    } else {
+      const object = await store.get(`live/v2/${question.city}.json`);
+      if (!object) return message(404, "no live publication");
+      if (object.size > MAX_LIVE_BYTES) {
+        await object.body?.cancel();
+        return message(503, "live publication unavailable");
+      }
+      body = object.body;
+    }
+    const response = publicAnswer(body, "application/json");
+    if (cache) {
+      const copy = new Response(response.clone().body, {
+        headers: { "cache-control": `public, max-age=${LIVE_TTL}`, "content-type": "application/json" },
+      });
+      ctx.waitUntil(cache.put(key, copy).catch(() => console.warn("Transit live cache write failed")));
+    }
+    return response;
+  } catch (error) {
+    if (error instanceof CleanObjectChanged) {
+      return Response.json(
+        { message: "live trips refreshing", state: "refreshing" },
+        { status: 503, headers: { ...PUBLIC_HEADERS, "retry-after": "1" } },
+      );
+    }
+    return message(503, "live publication unavailable");
+  }
+}
+
 async function answerQuestion(request, env, ctx, visitorIp) {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") {
@@ -185,6 +234,9 @@ async function answerQuestion(request, env, ctx, visitorIp) {
     return message(400, error instanceof URIError ? "invalid query encoding" : error.message);
   }
   if (!question) return message(404, "not found");
+  if (question.route === "live" || question.route === "live-trips") {
+    return serveLive(env, ctx, url.origin, question, visitorIp);
+  }
 
   if (!env.ENGINE || !env.TRANSIT1_ENGINE_ACCESS_TOKEN) {
     return message(503, "engine not configured");

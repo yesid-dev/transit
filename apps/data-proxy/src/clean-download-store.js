@@ -15,7 +15,9 @@ async function hmac(key, message) {
 }
 
 // Sign a bodyless S3 request with a fixed service and region. R2 paths have no query.
-async function signedHeaders(url, method, range, accessKeyId, secretAccessKey) {
+export class CleanObjectChanged extends Error {}
+
+async function signedHeaders(url, method, range, accessKeyId, secretAccessKey, ifMatch) {
   const timestamp = new Date().toISOString().replace(/[:-]|\.\d{3}/g, "");
   const day = timestamp.slice(0, 8);
   const scope = `${day}/auto/s3/aws4_request`;
@@ -24,6 +26,7 @@ async function signedHeaders(url, method, range, accessKeyId, secretAccessKey) {
     "x-amz-date": timestamp,
   });
   if (range) headers.set("range", range);
+  if (ifMatch) headers.set("if-match", ifMatch);
 
   // Headers iterates in lexical order. Host is signed using the URL's outgoing host.
   const canonicalHeaders = [["host", url.host], ...headers];
@@ -53,14 +56,14 @@ export function cleanDownloadStore(env) {
 
   const root = `https://${endpoint[1]}/transit-clean/`;
 
-  async function read(method, key, range) {
+  async function read(method, key, range, ifMatch) {
     const path = key.split("/").map(encodeURIComponent).join("/");
     const last = range ? range.offset + range.length - 1 : null;
     const url = new URL(root + path);
     const rangeHeader = range ? `bytes=${range.offset}-${last}` : undefined;
     const response = await fetch(url, {
       method,
-      headers: await signedHeaders(url, method, rangeHeader, accessKeyId, secretAccessKey),
+      headers: await signedHeaders(url, method, rangeHeader, accessKeyId, secretAccessKey, ifMatch),
       // Workers supports manual redirects. The status check below rejects any redirect.
       redirect: "manual",
       cache: "no-store",
@@ -68,6 +71,10 @@ export function cleanDownloadStore(env) {
     if (response.status === 404) {
       await response.body?.cancel();
       return null;
+    }
+    if (response.status === 412 && ifMatch) {
+      await response.body?.cancel();
+      throw new CleanObjectChanged("Clean storage object changed");
     }
 
     const contentLength = response.headers.get("content-length");
@@ -81,11 +88,11 @@ export function cleanDownloadStore(env) {
       throw new Error("Invalid response from clean R2 storage");
     }
 
-    return { size, body: response.body, json: () => response.json() };
+    return { size, etag: response.headers.get("etag"), body: response.body, json: () => response.json() };
   }
 
   return {
-    get: (key, options) => read("GET", key, options?.range),
+    get: (key, options) => read("GET", key, options?.range, options?.ifMatch),
     head: (key) => read("HEAD", key),
   };
 }

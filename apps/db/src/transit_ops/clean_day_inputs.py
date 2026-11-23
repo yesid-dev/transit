@@ -42,9 +42,11 @@ class Edition:
     original_key: str | None = None
 
 
-def declaration_for(provider: str) -> ProviderManifest:
+def declaration_for(provider: str, *, directory: Path | None = None) -> ProviderManifest:
     validate_provider_id(provider)
-    config = Path(__file__).resolve().parents[2] / "config" / "providers" / f"{provider}.yaml"
+    if directory is None:
+        directory = Path(__file__).resolve().parents[2] / "config" / "providers"
+    config = directory / f"{provider}.yaml"
     declaration = load_provider_manifest(config)
     if declaration.provider.provider_id != provider:
         raise ValueError(f"Provider manifest does not match {provider}")
