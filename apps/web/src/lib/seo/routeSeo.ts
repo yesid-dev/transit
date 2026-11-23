@@ -89,7 +89,7 @@ const SURFACES: Record<string, BilingualSeo> = {
 		title: { en: 'Hotspots', fr: 'Points chauds' },
 	},
 	'/receipt': {
-		title: { en: 'Daily receipt', fr: 'Reçu quotidien' },
+		title: { en: 'Daily report', fr: 'Rapport quotidien' },
 	},
 	'/repeat-offenders': {
 		title: { en: 'Repeat offenders', fr: 'Récidivistes' },

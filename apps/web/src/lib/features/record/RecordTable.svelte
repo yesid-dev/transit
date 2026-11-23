@@ -15,7 +15,7 @@
 		rows: string[][];
 		rowHrefs?: string[];
 		wide?: boolean;
-		rowLabel?: Snippet<[string]>;
+		rowLabel?: Snippet<[string, number]>;
 		stack?: boolean;
 	} = $props();
 </script>
@@ -41,7 +41,7 @@
 			{#each rows as [label, ...values], index (index)}
 				<tr role={stack ? 'row' : undefined}
 					><th scope="row" role={stack ? 'rowheader' : undefined}>
-						{#if rowLabel}{@render rowLabel(label)}{:else if rowHrefs?.[index]}<a
+						{#if rowLabel}{@render rowLabel(label, index)}{:else if rowHrefs?.[index]}<a
 								href={rowHrefs[index]}>{label}</a
 							>{:else}{label}{/if}
 					</th>{#each values as value, column (column)}<td role={stack ? 'cell' : undefined}>

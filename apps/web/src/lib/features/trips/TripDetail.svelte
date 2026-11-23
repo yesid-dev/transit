@@ -29,7 +29,7 @@
 	import { reportedOffset, tripReportCsv } from './tripReportCsv';
 	import TripPredictionTable from './TripPredictionTable.svelte';
 
-	let { id }: { id: string } = $props();
+	let { id, embedded = false }: { id: string; embedded?: boolean } = $props();
 	const locale: Locale = getLocale();
 	const t = $derived(tripCopy[locale]);
 	const manifest = getV1Context().manifest;
@@ -83,7 +83,9 @@
 		),
 	);
 	usePageTitle(() =>
-		[t.reportTitle, lineLabel ?? t.heading(id), direction].filter(Boolean).join(' · '),
+		embedded
+			? null
+			: [t.reportTitle, lineLabel ?? t.heading(id), direction].filter(Boolean).join(' · '),
 	);
 	const stopsIndex = createResource<StopsIndex | null>(() => getStopsIndex());
 	const stopNames = $derived(
@@ -182,16 +184,18 @@
 	style="--detail-rail-top: calc(var(--chrome-offset, 0px) + var(--announcement-height, 0px));"
 >
 	{#snippet header()}
-		<ArticleHeader
-			presentation="reading"
-			category={t.kicker}
-			title={t.reportTitle}
-			subtitle={t.subheading}
-			backHref={href('/lines')}
-			backLabel={t.back}
-			meta={[t.heading(id), manifest.short_name?.trim() || manifest.display_name]}
-			titleId="trip-title"
-		/>
+		{#if embedded}
+			<h2>{t.reportTitle}</h2>
+		{:else}<ArticleHeader
+				presentation="reading"
+				category={t.kicker}
+				title={t.reportTitle}
+				subtitle={t.subheading}
+				backHref={href('/lines')}
+				backLabel={t.back}
+				meta={[t.heading(id), manifest.short_name?.trim() || manifest.display_name]}
+				titleId="trip-title"
+			/>{/if}
 	{/snippet}
 	{#snippet right()}
 		<section class="trip-context" aria-label={t.contextHeading}>

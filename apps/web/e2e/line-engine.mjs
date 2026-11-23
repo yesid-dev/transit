@@ -38,6 +38,11 @@ export function lineEngine(url) {
 		return { csv: fr ? 'Mesure,Valeur\npunctuality,0.8\n' : 'Measure,Value\npunctuality,0.8\n' };
 	}
 	if (url.pathname === '/ranking') {
+		const observedDates = (Date.parse(to) - Date.parse(from)) / 86_400_000 + 1;
+		const departure = { id: 'departure', departure: '07:00:00', direction, sample: 100 };
+		const rankingFloors = { observed_service_dates: 5, classified: 30 };
+		const ranked = observedDates >= rankingFloors.observed_service_dates;
+		const lower = direction === 1 ? 0.404 : 0.055;
 		return {
 			body: {
 				measure,
@@ -45,20 +50,28 @@ export function lineEngine(url) {
 				class: null,
 				coverage_note,
 				evidence,
-				info: [{ minimum_sample: 30 }],
-				excluded: [],
-				rows: [
-					{
-						id: 'departure',
-						departure: '07:00:00',
-						direction,
-						rank: 1,
-						value: values.late,
-						sample: 100,
-						counts,
-						range: { lower: 0, upper: 1, method: 'wilson_95' },
-					},
-				],
+				info: [{ minimum_sample: 30, ranking_floors: { departure: rankingFloors } }],
+				excluded: ranked
+					? []
+					: [
+							{
+								...departure,
+								reason: 'too_few_to_judge',
+								reason_text: { en: 'Too few to judge', fr: 'Trop peu pour juger' },
+							},
+						],
+				rows: ranked
+					? [
+							{
+								...departure,
+								rank: 1,
+								value: values.late,
+								counts: { ...counts, observed_service_dates: observedDates },
+								ranking_bound: lower,
+								range: { lower, upper: direction === 1 ? 0.596 : 0.174, method: 'wilson_95' },
+							},
+						]
+					: [],
 			},
 		};
 	}

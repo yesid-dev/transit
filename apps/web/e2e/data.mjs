@@ -6,6 +6,7 @@ import { overviewEngine } from './overview-engine.mjs';
 import { rankingsEngine } from './rankings-engine.mjs';
 import { stopEngine } from './stop-engine.mjs';
 import { vehicleEngine } from './vehicle-engine.mjs';
+import { departureDailyEngine } from './departure-daily-engine.mjs';
 
 const read = (file) => readFileSync(new URL(file, import.meta.url));
 const methodCatalog = read('method-catalog.json');
@@ -294,7 +295,7 @@ for (const family of ['static/routes', 'historic/route_reliability']) {
 // browser loads it: the layout spec serves the real file there, late.
 files['/v1/stm/static/stops/UNSEEDED.json'] = '{}';
 
-const heldOverviewResponses = new Set();
+const heldResponsesByFixture = new Map();
 const server = createServer((request, response) => {
 	// No Date header: the app anchors its clock to it, which would undo page.clock.
 	response.sendDate = false;
@@ -332,7 +333,10 @@ const server = createServer((request, response) => {
 		return;
 	}
 	if (request.method === 'POST' && url.pathname === '/__overview/release') {
-		for (const send of heldOverviewResponses) send();
+		const fixture = url.searchParams.get('fixture') ?? 'overview';
+		const held = heldResponsesByFixture.get(fixture);
+		heldResponsesByFixture.delete(fixture);
+		for (const send of held ?? []) send();
 		response.writeHead(204).end();
 		return;
 	}
@@ -340,19 +344,25 @@ const server = createServer((request, response) => {
 	if (question) {
 		url.pathname = `/${question[2]}`;
 		url.searchParams.set('city', question[1]);
+		const dailyFixture = ['2026-11-17', '2026-11-18'].includes(url.searchParams.get('from'));
+		const finderFixture =
+			question[2] === 'measure' && ['line', 'stop_id'].includes(url.searchParams.get('group'));
 		const result =
 			question[2] === 'measure' && url.searchParams.get('measure')?.startsWith('vehicle')
 				? vehicleEngine(url)
-				: url.searchParams.has('stop')
-					? stopEngine(url)
-					: url.searchParams.has('line')
-						? lineEngine(url)
-						: question[2] === 'ranking' && url.searchParams.get('limit') === '500'
-							? rankingsEngine(url)
-							: question[2] === 'measure' &&
-								  ['line', 'stop_id'].includes(url.searchParams.get('group'))
-								? finderEngine(url)
-								: overviewEngine(url);
+				: url.searchParams.has('departure')
+					? departureDailyEngine(url)
+					: url.searchParams.has('stop')
+						? stopEngine(url)
+						: url.searchParams.has('line')
+							? lineEngine(url)
+							: question[2] === 'ranking' && url.searchParams.get('limit') === '500'
+								? rankingsEngine(url)
+								: finderFixture
+									? finderEngine(url)
+									: dailyFixture
+										? departureDailyEngine(url)
+										: overviewEngine(url);
 		if (result.csv) {
 			response.setHeader('content-type', 'text/csv; charset=utf-8');
 			response.end(result.csv);
@@ -362,8 +372,12 @@ const server = createServer((request, response) => {
 		response.writeHead(status, { 'content-type': 'application/json', ...headers });
 		const send = () => response.end(JSON.stringify(body));
 		if (hold) {
-			heldOverviewResponses.add(send);
-			response.on('close', () => heldOverviewResponses.delete(send));
+			// Named holds survive release calls from other specs sharing this server.
+			const fixture = hold === true ? 'overview' : hold;
+			const held = heldResponsesByFixture.get(fixture) ?? new Set();
+			held.add(send);
+			heldResponsesByFixture.set(fixture, held);
+			response.on('close', () => held.delete(send));
 		} else send();
 		return;
 	}

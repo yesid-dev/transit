@@ -9,6 +9,7 @@
 	import type { loadRankingsRecord } from '#lib/server/rankingsRecord.ts';
 	import { frameHref } from '#lib/site/frameState.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
+	import { departureHref } from '../record/departureIdentity.ts';
 	import RecordActions from '../record/RecordActions.svelte';
 	import RecordPending from '../record/RecordPending.svelte';
 	import { recordSectionLinks } from '../record/recordLinks.ts';
@@ -109,6 +110,17 @@
 	}
 
 	function entityHref(row: Entry) {
+		if (kind === 'departure' && row.line && row.departure) {
+			const href = departureHref(
+				pinned,
+				locale,
+				record.city,
+				row.line,
+				row.direction ?? null,
+				row.departure,
+			);
+			if (href) return href;
+		}
 		const entity =
 			kind === 'stop'
 				? '/stop/' + encodeURIComponent(row.id)

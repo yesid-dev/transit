@@ -36,7 +36,18 @@ const measureAnswer = state.extend({
 const rankingEnvelope = state.partial().extend({
 	class: z.string().nullable(),
 	coverage_note: bilingual.nullable(),
-	info: z.array(z.object({ minimum_sample: count })).nonempty(),
+	info: z
+		.array(
+			z.object({
+				minimum_sample: count,
+				ranking_floors: z
+					.object({
+						departure: z.object({ observed_service_dates: count, classified: count }).optional(),
+					})
+					.optional(),
+			}),
+		)
+		.nonempty(),
 	evidence,
 });
 const rankingAnswer = rankingEnvelope.extend({
@@ -48,6 +59,7 @@ const rankingAnswer = rankingEnvelope.extend({
 			rank: count,
 			value: share,
 			sample: count,
+			ranking_bound: share.nullable().optional(),
 			range: z.object({ lower: share, upper: share, method: z.string() }),
 		}),
 	),
@@ -124,11 +136,28 @@ export function getRanking(kind: RankingAnswer['kind'], period: EnginePeriod) {
 }
 
 const recordCounts = z.record(z.string(), z.number().nullable().catch(null));
+const translatedMessage = z.object({ en: z.string().nullable(), fr: z.string().nullable() });
 const recordCell = state.extend({
 	value: z.record(z.string(), z.number().nullable()),
 	evidence: z.object({
 		counts: recordCounts,
 		days_included: z.array(z.iso.date()),
+		observed_delay_seconds: z.number().nullable().optional(),
+		trip_ids: z.array(z.string()).optional(),
+		alert_messages: z
+			.array(
+				z.object({
+					source: z.string(),
+					id: z.string(),
+					version: z.string(),
+					routes: z.array(z.string()),
+					stops: z.array(z.string()),
+					header: translatedMessage,
+					description: translatedMessage,
+				}),
+			)
+			.nullable()
+			.optional(),
 		periods: z
 			.array(
 				z.object({
@@ -175,6 +204,15 @@ const recordMeasure = recordEnvelope.extend({
 });
 const recordSeries = recordEnvelope.extend({
 	...state.partial().shape,
+	info: z
+		.array(
+			z.object({
+				minimum_sample: count,
+				minimum_coverage: share.optional(),
+				low_coverage_below: share.optional(),
+			}),
+		)
+		.optional(),
 	cells: z.array(
 		recordCell.extend({
 			key: z.record(z.string(), z.union([z.string(), z.number(), z.null()])),
@@ -198,7 +236,7 @@ export type RecordMeasure = z.infer<typeof recordMeasure>;
 export type RecordCell = z.infer<typeof recordCell>;
 export type RecordSeries = z.infer<typeof recordSeries>;
 export type DepartureRanking = z.infer<typeof departureRanking>;
-export type RecordAnswer = RecordMeasure | RecordSeries | DepartureRanking;
+export type RecordAnswer = RecordMeasure | RecordSeries | DepartureRanking | RankingAnswer;
 export type RecordQuery = {
 	path: '/measure' | '/ranking';
 	parameters: Record<string, string>;
@@ -254,7 +292,13 @@ export function getRankingsRecord(parameters: Record<string, string>, period: En
 
 export function getRecordAnswer({ path, parameters }: RecordQuery, period: EnginePeriod) {
 	const schema: z.ZodType<RecordAnswer> =
-		path === '/ranking' ? departureRanking : parameters.group ? recordSeries : recordMeasure;
+		path === '/ranking'
+			? parameters.kind === 'departure'
+				? departureRanking
+				: rankingAnswer
+			: parameters.group
+				? recordSeries
+				: recordMeasure;
 	return periodQuery(path, period, parameters, schema);
 }
 

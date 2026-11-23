@@ -183,7 +183,9 @@ def history(tmp_path: Path) -> tuple[Store, list[Reading], dict[date, tuple[Noti
                 "alert_id VARCHAR, version VARCHAR, first_seen_at_utc TIMESTAMPTZ,"
                 " last_seen_at_utc TIMESTAMPTZ, active_periods STRUCT(start_utc TIMESTAMPTZ,"
                 " end_utc TIMESTAMPTZ)[], route_ids VARCHAR[], stop_ids VARCHAR[],"
-                " effect VARCHAR, cause VARCHAR, source VARCHAR",
+                " effect VARCHAR, cause VARCHAR, source VARCHAR,"
+                " header_en VARCHAR, header_fr VARCHAR, description_en VARCHAR,"
+                " description_fr VARCHAR",
                 [
                     (
                         item.id,
@@ -202,6 +204,10 @@ def history(tmp_path: Path) -> tuple[Store, list[Reading], dict[date, tuple[Noti
                         item.effect,
                         item.cause,
                         "fixture",
+                        f"Notice {item.id}",
+                        f"Avis {item.id}",
+                        None,
+                        None,
                     )
                     for item in notices[day]
                 ],
@@ -216,6 +222,52 @@ def _get(store: Store, path: str, measure: str, **cuts: object) -> dict[str, Any
     assert status == 200, body
     result: dict[str, Any] = json.loads(body)
     return result
+
+
+def test_alert_details_follow_the_same_window_and_clipping(
+    history: tuple[Store, list[Reading], dict[date, tuple[Notice, ...]]],
+) -> None:
+    store, _, _ = history
+    query = {"from": THURSDAY, "to": THURSDAY}
+    counts = _get(store, "/measure", "alert_counts", **query)
+    detailed = _get(store, "/measure", "alert_counts", alert_details=1, **query)
+    assert detailed["value"] == counts["value"]
+    assert "alert_messages" not in counts["evidence"]
+    rows = detailed["evidence"]["alert_messages"]
+    assert [(row["id"], row["version"]) for row in rows] == [
+        ("a", "1"),
+        ("a", "2"),
+        ("point", "1"),
+    ]
+    assert rows[0]["header"] == {"en": "Notice a", "fr": "Avis a"}
+    assert rows[0]["routes"] == ["A"]
+    app = Engine(store, concurrency=1, queue_size=1, queue_wait_ms=50)
+    args = urlencode({"city": "stm", "measure": "alert_counts", "alert_details": 1, **query})
+    status, _, raw = asyncio.run(http(app, "/measure", args + "&format=csv&lang=fr"))
+    assert status == 200
+    exported = csv.DictReader(io.StringIO(raw.decode()))
+    assert exported.fieldnames == detailed["info"][0]["csv_columns"]["fr"]
+    assert json.loads(next(exported)["Avis de l’agence"]) == rows
+    status, _, _ = asyncio.run(http(app, "/measure", args + "&group=day"))
+    assert status == 400
+
+
+def test_alert_details_limits_inclusive_service_dates(
+    history: tuple[Store, list[Reading], dict[date, tuple[Notice, ...]]],
+) -> None:
+    store, _, _ = history
+    short = {"from": THURSDAY - timedelta(days=6), "to": THURSDAY}
+    accepted = _get(store, "/measure", "alert_counts", alert_details=1, **short)
+    assert accepted["evidence"]["alert_messages"]
+
+    long = {"from": THURSDAY - timedelta(days=7), "to": THURSDAY}
+    app = Engine(store, concurrency=1, queue_size=1, queue_wait_ms=50)
+    params = {"city": "stm", "measure": "alert_counts", "alert_details": 1, **long}
+    status, _, body = asyncio.run(http(app, "/measure", urlencode(params)))
+    assert status == 400
+    assert json.loads(body)["message"] == "alert_details supports at most 7 service dates"
+    counts = _get(store, "/measure", "alert_counts", **long)
+    assert counts["value"]["alerts"] == accepted["value"]["alerts"]
 
 
 def test_crowding_matches_independent_vehicle_time_and_reports_coverage(
@@ -417,13 +469,15 @@ def test_empty_alert_file_gives_zero_and_missing_tracked_file_does_not(
         schema = ", ".join(f"{name} {type_}" for name, type_, *_ in descriptions[3:])
         _write_table(conn, store, THURSDAY, ALERTS, schema, [])
     dates = {"from": THURSDAY, "to": THURSDAY}
-    empty = _get(store, "/measure", "alert_counts", **dates)
+    empty = _get(store, "/measure", "alert_counts", alert_details=1, **dates)
     assert empty["state"] == "measured"
     assert empty["value"] == {"alerts": 0, "alert_versions": 0, "alert_hours": 0}
+    assert empty["evidence"]["alert_messages"] == []
     path.unlink()
-    missing = _get(store, "/measure", "alert_counts", **dates)
+    missing = _get(store, "/measure", "alert_counts", alert_details=1, **dates)
     assert missing["state"] == "not_measured"
     assert missing["value"]["alerts"] is None
+    assert missing["evidence"]["alert_messages"] is None
 
 
 @pytest.mark.parametrize("family", ["crowding", "alert_counts"])

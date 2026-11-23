@@ -8,6 +8,7 @@
 	import { delocalizePath, intl, type Locale } from '#lib/i18n/index.ts';
 	import { isRankingPath } from '#lib/features/rankings/rankingSelection.ts';
 	import { usesFinderRecord } from '#lib/site/finderFrame.ts';
+	import { dailyReportFrame } from '#lib/site/dailyReportFrame.ts';
 	import {
 		frameHref,
 		frameToday,
@@ -78,15 +79,20 @@
 	const copy = $derived(translations[locale]);
 	let today = $state(frameToday());
 	const path = $derived(delocalizePath(url.pathname));
-	const rankings = $derived(isRankingPath(path.replace(/\/$/, '')));
+	const recordOnly = $derived(
+		isRankingPath(path.replace(/\/$/, '')) || (path === '/receipt' && dailyReportFrame(url)),
+	);
 	const frame = $derived.by(() => {
 		const state = parseFrameState(url.searchParams, today);
-		return rankings ? { ...state, mode: 'record' as const } : state;
+		return recordOnly ? { ...state, mode: 'record' as const } : state;
 	});
 	const line = $derived(/^\/lines\/[^/]+\/?$/.test(path));
 	const stop = $derived(/^\/stop\/[^/]+\/?$/.test(path));
 	const finder = $derived((path === '/lines' || path === '/stops') && usesFinderRecord(url));
-	const usesFrameRecord = $derived(path === '/' || line || stop || rankings || finder);
+	const departure = $derived(path.startsWith('/departure/'));
+	const usesFrameRecord = $derived(
+		path === '/' || line || stop || departure || recordOnly || finder,
+	);
 	const startLabel = $derived(
 		intl.dateTime(locale, { timeZone: 'UTC', dateStyle: 'long' }).format(new Date(RECORD_START)),
 	);
@@ -134,7 +140,7 @@
 	}
 </script>
 
-{#if !rankings && !finder}
+{#if !recordOnly && !finder}
 	<SegmentedChoice options={modes} value={frame.mode} label={copy.view} onSelect={selectMode} />
 {/if}
 <Sheet bind:open {onOpenChange}>

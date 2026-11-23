@@ -131,7 +131,6 @@ export const NAV_ITEMS: readonly NavItem[] = [
 		href: '/receipt',
 		label: { en: 'Daily report', fr: 'Rapport quotidien' },
 		activePrefixes: ['/receipt'],
-		upcoming: 'daily-report',
 	},
 	{
 		key: 'alerts',

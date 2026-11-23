@@ -11,6 +11,7 @@
 	import type { RecordAnswer, RecordCell } from '#lib/server/engine.ts';
 	import type { LineSection } from '#lib/server/lineRecord.ts';
 	import RecordTable from '#lib/features/record/RecordTable.svelte';
+	import { departureHref } from '#lib/features/record/departureIdentity.ts';
 	import { directionLabel, lateDepartureReading, lineAnswer } from './lineRecordText.ts';
 
 	let {
@@ -20,6 +21,9 @@
 		title,
 		headsigns,
 		stopNames,
+		url,
+		line,
+		city,
 	}: {
 		answer: RecordAnswer;
 		section: LineSection;
@@ -27,6 +31,9 @@
 		title: string;
 		headsigns: Record<number, string>;
 		stopNames: Map<string, string>;
+		url: URL;
+		line: string;
+		city: string;
 	} = $props();
 
 	const t = (en: string, fr: string) => choose(locale, en, fr);
@@ -148,12 +155,19 @@
 			])}
 		/>
 	{/if}
-{:else if 'rows' in answer}
+{:else if 'rows' in answer && answer.kind === 'departure'}
+	{@const info = answer.info[0]}
+	{@const floors = info?.ranking_floors?.departure}
 	<p>
-		{t(
-			'Ranked by the late share of observed stop events on each scheduled departure.',
-			'Classement selon la part des passages observés en retard pour chaque départ prévu.',
-		)}
+		{answer.rows[0]?.ranking_bound != null
+			? t(
+					'Ranked by the lower end of each departure’s estimated late-share range.',
+					'Classement selon la borne inférieure de la fourchette estimée des retards pour chaque départ.',
+				)
+			: t(
+					'Ranked by the late share of observed stop events on each scheduled departure.',
+					'Classement selon la part des passages observés en retard pour chaque départ prévu.',
+				)}
 	</p>
 	<RecordTable
 		{title}
@@ -167,16 +181,27 @@
 			dir(row.direction),
 			lateDepartureReading(row, locale),
 		])}
-	/>
-	{#if answer.info[0]}
+	>
+		{#snippet rowLabel(label, index)}
+			{@const row = answer.rows[index]!}
+			{@const href = departureHref(url, locale, city, line, row.direction, row.departure)}
+			{#if href}<a class="inline-flex min-h-11 items-center" {href}>{label}</a>{:else}{label}{/if}
+		{/snippet}
+	</RecordTable>
+	{#if info}
 		<p>
-			{t(
-				`At least ${n(answer.info[0].minimum_sample)} observed stop events per departure.`,
-				`Au moins ${n(answer.info[0].minimum_sample)} passages observés par départ.`,
-			)}
+			{floors
+				? t(
+						`At least ${n(floors.classified)} observed stop events across ${n(floors.observed_service_dates)} or more service dates per departure.`,
+						`Au moins ${n(floors.classified)} passages observés sur ${n(floors.observed_service_dates)} dates de service ou plus par départ.`,
+					)
+				: t(
+						`At least ${n(info.minimum_sample)} observed stop events per departure.`,
+						`Au moins ${n(info.minimum_sample)} passages observés par départ.`,
+					)}
 		</p>
 	{/if}
-{:else}
+{:else if 'cells' in answer}
 	{@const cells = answer.cells}
 	{#if section === 'daily'}
 		<RecordTable

@@ -104,6 +104,51 @@ def test_day_series_matches_plain_python_and_preserves_missing_days(
     assert grid[2 * 24 + 7]["state"] == "not_measured"
 
 
+@pytest.mark.parametrize("cleaning_version", [8, 9])
+def test_hourly_coverage_counts_scheduled_stops_on_lines_with_live_data(
+    tmp_path: Path, cleaning_version: int
+) -> None:
+    observed = (301,) * 10 + (0,) * 30
+    store = _build_store(
+        tmp_path,
+        cleaning_version,
+        {
+            THURSDAY: (
+                Trip("at-floor", "A", 0, "ran", None, True, observed + (None,) * 120),
+                Trip(
+                    "below-floor",
+                    "A",
+                    0,
+                    "ran",
+                    None,
+                    True,
+                    observed + (None,) * 121,
+                    offset_minutes=60,
+                ),
+                *(
+                    Trip(
+                        f"no-live-{offset}",
+                        "B",
+                        0,
+                        "not_measured",
+                        "route_without_live_data",
+                        False,
+                        (None,) * 20,
+                        offset_minutes=offset,
+                    )
+                    for offset in (0, 60, 120)
+                ),
+            ),
+        },
+    )
+    cells = query(store, measure="late", group="hour")["cells"][7:10]
+    assert [cell["evidence"]["excluded"]["route_without_live_data"] for cell in cells] == [20] * 3
+    assert [cell["evidence"]["counts"]["scheduled"] for cell in cells] == [160, 161, 0]
+    assert [cell["evidence"]["share_observed"] for cell in cells] == [0.25, 40 / 161, None]
+    assert [cell["state"] for cell in cells] == ["measured", "not_measured", "no_live_data"]
+    assert [cell["value"]["late"] for cell in cells] == [0.25, None, None]
+
+
 def test_grid_keeps_after_midnight_event_on_its_service_weekday(store: Store) -> None:
     grid = query(store, start=FALL_BACK, end=FALL_BACK, group="weekday_hour")["cells"]
     cell = grid[6 * 24 + 1]
@@ -307,6 +352,77 @@ def test_line_departure_series_and_ranking_apply_the_same_cuts(store: Store) -> 
     assert row["reason"] == "too_few_to_judge"
     status, _, _ = asyncio.run(http(app, "/ranking", cut + "&kind=line&measure=late"))
     assert status == 400
+
+
+@pytest.mark.parametrize("cleaning_version", [8, 9])
+def test_single_departure_keeps_repeated_stops_and_exact_observations(
+    tmp_path: Path, cleaning_version: int
+) -> None:
+    store = _build_store(
+        tmp_path,
+        cleaning_version,
+        {
+            THURSDAY: (
+                Trip(
+                    "selected",
+                    "A",
+                    0,
+                    "ran",
+                    None,
+                    True,
+                    (-61, 301, None),
+                    stop_ids=("loop", "middle", "loop"),
+                ),
+                Trip("other-direction", "A", 1, "ran", None, True, (60,) * 25 + (360,) * 5),
+                Trip("later-departure", "A", 0, "ran", None, True, (20,), offset_minutes=1),
+            ),
+        },
+    )
+    app = Engine(store, concurrency=1, queue_size=0, queue_wait_ms=50)
+    base = urlencode(
+        {
+            "city": "stm",
+            "from": THURSDAY,
+            "to": THURSDAY,
+            "line": "A",
+            "direction": 0,
+            "departure": "07:00:00",
+        }
+    )
+    stops = base + "&measure=punctuality&group=stop"
+    status, _, raw = asyncio.run(http(app, "/measure", stops))
+    assert status == 200, raw
+    answer = json.loads(raw)
+    assert answer["evidence"]["cleaning_versions"] == [cleaning_version]
+    cells = answer["cells"]
+    assert [cell["key"] for cell in cells] == [
+        {"direction": 0, "stop_sequence": 1, "stop": "loop"},
+        {"direction": 0, "stop_sequence": 2, "stop": "middle"},
+        {"direction": 0, "stop_sequence": 3, "stop": "loop"},
+    ]
+    assert [cell["evidence"]["observed_delay_seconds"] for cell in cells] == [-61, 301, None]
+    assert [cell["state"] for cell in cells] == [
+        "too_few_to_judge",
+        "too_few_to_judge",
+        "not_measured",
+    ]
+    assert all(cell["value"]["median_delay"] is None for cell in cells)
+    assert cells[2]["evidence"]["coverage_reason"] == "insufficient_coverage"
+    status, _, raw = asyncio.run(http(app, "/measure", stops + "&format=csv&lang=fr"))
+    assert status == 200, raw
+    exported = csv.DictReader(io.StringIO(raw.decode()))
+    assert exported.fieldnames == answer["info"][0]["csv_columns"]["fr"]
+    assert [row["Retard observé (s)"] for row in exported] == ["-61", "301", ""]
+    status, _, raw = asyncio.run(http(app, "/measure", base + "&measure=trips_run"))
+    assert status == 200, raw
+    assert json.loads(raw)["evidence"]["trip_ids"] == ["selected"]
+    # The opposite departure clears the 30-stop display floor. Integer bins 60–74
+    # and 360–374 have midpoints of 67 and 367 seconds respectively.
+    other = base.replace("direction=0", "direction=1") + "&measure=punctuality"
+    status, _, raw = asyncio.run(http(app, "/measure", other))
+    assert status == 200, raw
+    value = json.loads(raw)["value"]
+    assert (value["median_delay"], value["p90_delay"]) == (67, 367)
 
 
 @pytest.mark.parametrize(

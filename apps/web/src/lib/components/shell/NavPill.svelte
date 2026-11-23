@@ -32,7 +32,7 @@
 	import HeaderSearch from './HeaderSearch.svelte';
 	import SearchSheet from './SearchSheet.svelte';
 	import FrameControls from './FrameControls.svelte';
-	import { carryFrameState } from '#lib/site/frameState.ts';
+	import { carryFrameState, frameHref, frameToday, parseFrameState } from '#lib/site/frameState.ts';
 	import {
 		type NavItem,
 		FRAME_MENU,
@@ -88,7 +88,12 @@
 		navCopy.searchAria[searchScope === 'route' || searchScope === 'stop' ? searchScope : 'all'],
 	);
 
-	const hrefFor = (href: string) => carryFrameState(localizeHref(href, locale, providerId), url);
+	const hrefFor = (href: string) => {
+		const localized = localizeHref(href, locale, providerId);
+		if (href !== '/receipt') return carryFrameState(localized, url);
+		const { period } = parseFrameState(url.searchParams, frameToday());
+		return frameHref(new URL(localized, url), { mode: 'record', period });
+	};
 	const home = $derived(hrefFor('/'));
 	const toItem = (item: NavItem) => ({
 		href: hrefFor(item.href),

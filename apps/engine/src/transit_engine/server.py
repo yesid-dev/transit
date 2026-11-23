@@ -93,7 +93,7 @@ def _question(
         optional.update({"measure", "class", "limit"})
     else:
         required.add("measure")
-        optional.update({"stop", "departure", "vehicle", "group"})
+        optional.update({"stop", "departure", "vehicle", "group", "alert_details"})
     if len(raw) > 4096 or re.search(rb"%(?![a-fA-F0-9]{2})", raw):
         raise ValueError("invalid query string")
     fields = parse_qs(
@@ -133,6 +133,8 @@ def _question(
     departure = params.get("departure")
     if departure is not None and not re.fullmatch(r"[0-9]{2,6}:[0-5][0-9]:[0-5][0-9]", departure):
         raise ValueError("departure must be a GTFS service time (HH:MM:SS)")
+    if "alert_details" in params and params["alert_details"] != "1":
+        raise ValueError("alert_details must be 1")
     output = params.get("format", "json")
     language = params.get("lang", "en")
     if output not in ("json", "csv") or language not in ("en", "fr"):
@@ -163,6 +165,7 @@ def _question(
         group=cast(SeriesGroup | None, params.get("group")),
         from_stop=params.get("from_stop"),
         to_stop=params.get("to_stop"),
+        alert_details="alert_details" in params,
     )
     if ranking:
         kind = params["kind"]
