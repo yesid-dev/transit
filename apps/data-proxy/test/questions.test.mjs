@@ -256,11 +256,13 @@ test("canonical questions reuse the versioned edge answer and bypass the engine 
   const f = fixture(t);
   const first = await f.fetch(MEASURE + "&hour=07&format=json&lang=fr&line=A%2FB");
   assert.equal(first.headers.get("access-control-allow-origin"), "*");
+  assert.equal(first.headers.get("cache-status"), null);
   assert.deepEqual(await first.json(), ANSWER);
   const second = await f.fetch(
     "/v2/demo/measure?line=A%2fB&to=2020-01-02&hour=7&measure=on_time&from=2020-01-01",
   );
   assert.deepEqual(await second.json(), ANSWER);
+  assert.equal(second.headers.get("cache-status"), "Transit; hit");
   assert.equal(f.requests.length, 1);
   assert.equal(f.visitors.length, 1);
   const forwarded = f.requests[0];

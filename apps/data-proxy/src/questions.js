@@ -23,9 +23,10 @@ function busy(retryAfter) {
   return message(503, "busy, try again", { "retry-after": retryAfter });
 }
 
-function publicAnswer(body, contentType, stale = false) {
+function publicAnswer(body, contentType, { stale = false, cached = false } = {}) {
   const headers = { ...PUBLIC_HEADERS, "content-type": contentType };
   if (stale) headers[STALE_HEADER] = "last-good";
+  if (cached) headers["cache-status"] = "Transit; hit";
   return new Response(body, { headers });
 }
 
@@ -118,7 +119,7 @@ async function lastGood(env, key) {
           (_, leading, space, close) => `${leading}{"stale":true${close ? "" : ","}${space}${close}`,
         )
         : value;
-      return publicAnswer(body, contentType, true);
+      return publicAnswer(body, contentType, { stale: true });
     }
   } catch {
     console.warn("Last-good transit answer read failed");
@@ -189,7 +190,7 @@ async function answerQuestion(request, env, ctx, visitorIp) {
   const versionHint = question.end && await cacheMatch(cache, versionKey);
   const version = versionHint ? cleaningVersion(await versionHint.text()) : null;
   const cached = await cacheMatch(cache, cacheRequest(url.origin, question, version ?? "unversioned"));
-  if (cached) return publicAnswer(cached.body, cached.headers.get("content-type"));
+  if (cached) return publicAnswer(cached.body, cached.headers.get("content-type"), { cached: true });
 
   const denied = await authorize();
   if (denied) return denied;

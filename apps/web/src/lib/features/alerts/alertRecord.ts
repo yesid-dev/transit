@@ -1,6 +1,5 @@
 import { intl, type Locale } from '#lib/i18n/index.ts';
 import { causeLabel, effectLabel } from '#lib/v1/gtfsAlertLabels.ts';
-import type { DateWindow } from '#lib/v1/history/window.ts';
 import type { RecordCell, RecordSeries } from '#lib/server/engine.ts';
 import { choose, tally } from '#lib/features/record/recordText.ts';
 
@@ -27,10 +26,7 @@ export const alertDetailsLimit = {
 	fr: 'Les avis de l’agence sont affichés pour 7 jours ou moins. Choisissez une période plus courte.',
 };
 
-export function alertDetailsAllowed({ from, to }: DateWindow): boolean {
-	const elapsed = Date.parse(to) - Date.parse(from);
-	return elapsed >= 0 && elapsed < 7 * 86_400_000;
-}
+export { alertDetailsAllowed } from './alertDetailsAllowed.ts';
 
 export function alertReadings(cell: RecordCell, locale: Locale) {
 	return metricKeys.map((id) => {
