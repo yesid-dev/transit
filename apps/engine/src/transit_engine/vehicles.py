@@ -53,7 +53,8 @@ TRACKED_VEHICLES_SQL = f"""
             FROM read_parquet(?, hive_partitioning = false)
             WHERE provider = ? AND cleaning_version = ?
         ), readings AS (
-            SELECT vehicle_id, sum(readings) AS n
+            SELECT vehicle_id, sum(readings) AS n,
+                bool_or(service_date IS NOT NULL AND trip_id IS NOT NULL) AS in_service
             FROM positions GROUP BY vehicle_id
         ), identities AS (
             SELECT *, coalesce(trim(vehicle_id) <> '', false)
@@ -71,7 +72,8 @@ TRACKED_VEHICLES_SQL = f"""
         )
         SELECT CASE WHEN sum(n) FILTER (stable) / sum(n) >= {MIN_STABLE_READING_SHARE}
             AND coalesce((SELECT share FROM confirmed_trips), 1) >= {MIN_STABLE_READING_SHARE}
-            THEN list(vehicle_id) FILTER (stable) END AS ids
+            THEN list(vehicle_id) FILTER (stable) END AS ids,
+            list(vehicle_id) FILTER (stable AND in_service) AS in_service_ids
         FROM identities
 """
 
