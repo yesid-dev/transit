@@ -22,7 +22,7 @@ const licences = new Map([
       en: "https://creativecommons.org/licenses/by/4.0/",
       fr: "https://creativecommons.org/licenses/by/4.0/deed.fr",
     },
-    operator: "STM",
+    operator: { en: "STM", fr: "de la STM" },
     limits: {
       en: "The data is provided as is, without warranty, and may contain errors. Scheduled metro times are indicative only.",
       fr: "Les données sont fournies telles quelles, sans garantie, et peuvent contenir des erreurs. Les horaires du métro sont donnés à titre indicatif seulement.",
@@ -42,7 +42,7 @@ const licences = new Map([
       en: "https://ottawa.ca/en/city-hall/open-transparent-and-accountable-government/open-data/open-data-licence-version-20",
       fr: "https://ottawa.ca/fr/hotel-de-ville/administration-ouverte-et-transparente-et-qui-rend-compte-de-ses-actes/donnees-ouvertes/version-20-de-la-licence-du-programme-de-donnees-ouvertes",
     },
-    operator: "OC Transpo",
+    operator: { en: "OC Transpo", fr: "d’OC Transpo" },
     limits: {
       en: "The data is provided as is, without warranty, and may contain errors. The City reports that vehicle positions are unknown about 5% of the time.",
       fr: "Les données sont fournies telles quelles, sans garantie, et peuvent contenir des erreurs. Selon la Ville, les positions des véhicules sont inconnues environ 5 % du temps.",
@@ -57,8 +57,8 @@ export function downloadLicence(city, date) {
   return {
     ...licence,
     changes: {
-      en: `Transit cleaned and derived these tables from ${operator} feeds for the ${date} service day. The data was modified and is unofficial.`,
-      fr: `Transit a nettoyé et dérivé ces tables à partir des flux de ${operator} pour la journée de service du ${date}. Les données ont été modifiées et sont non officielles.`,
+      en: `Transit cleaned and derived these tables from ${operator.en} feeds for the ${date} service day. The data was modified and is unofficial.`,
+      fr: `Transit a nettoyé et dérivé ces tables à partir des flux ${operator.fr} pour la journée de service du ${date}. Les données ont été modifiées et sont non officielles.`,
     },
   };
 }

@@ -42,12 +42,12 @@ it.each(['en', 'fr'] as const)(
 					date: day,
 					invalidDate: false,
 					listing: Promise.resolve({
-						kind: 'answer',
+						kind: 'answer' as const,
 						answer: {
 							city: 'octranspo',
 							service_date: day,
 							cleaning_version: '11',
-							status: 'complete',
+							status: 'complete' as const,
 							files: [
 								{ name: 'stop_events.parquet', byte_size: 500, sha256: '1'.repeat(64), url: file },
 							],
