@@ -108,6 +108,7 @@ for (const locale of ['en', 'fr'] as const) {
 
 test('selects the two deeper line rankings with their own evidence floors', async ({ page }) => {
 	await page.goto(`/hotspots?provider=stm&${dates}`);
+	await page.locator('html[data-hydrated]').waitFor({ state: 'attached' });
 	const measures = page.getByRole('combobox', { name: 'Measure', exact: true });
 	const lines = page.getByRole('region', { name: 'Lines', exact: true });
 	await measures.selectOption('excess_wait_time');

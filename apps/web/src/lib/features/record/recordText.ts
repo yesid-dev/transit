@@ -167,7 +167,7 @@ export function periodCoverage(
 	return choose(
 		locale,
 		`${included} of ${days} selected days included`,
-		`${included} jours sur ${days} inclus`,
+		`Jours inclus (${included} sur ${days})`,
 	);
 }
 

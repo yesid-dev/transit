@@ -12,6 +12,7 @@ for (const width of [390, 1440]) {
 			await page.goto(
 				`${fr ? '/fr' : '/'}?provider=${fr ? 'octranspo' : 'stm'}&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14`,
 			);
+			await page.locator('html[data-hydrated]').waitFor({ state: 'attached' });
 			const main = page.getByRole('main');
 			const punctuality = main.getByRole('region', {
 				name: fr ? 'Ponctualité' : 'On-time performance',

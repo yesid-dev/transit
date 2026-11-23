@@ -15,6 +15,7 @@ for (const width of [390, 1440]) {
 			await page.goto(
 				`${fr ? '/fr' : ''}/lines/24?provider=${fr ? 'octranspo' : 'stm'}&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14`,
 			);
+			await page.locator('html[data-hydrated]').waitFor({ state: 'attached' });
 			const main = page.getByRole('main');
 			const section = (name: string) => main.getByRole('region', { name, exact: true }).first();
 			const punctuality = section(fr ? 'Ponctualité' : 'On-time performance');
@@ -41,7 +42,7 @@ for (const width of [390, 1440]) {
 			const waiting = section(fr ? 'Attente et intervalles' : 'Waiting and gaps');
 			await expect(waiting).toContainText(fr ? '24 intervalles observés' : '24 observed intervals');
 			await expect(waiting).toContainText(
-				fr ? 'Intervalle prévu moyen' : 'mean scheduled interval',
+				fr ? 'Attente observée moins attente prévue.' : 'Observed wait minus scheduled wait.',
 			);
 			await expect(waiting).toContainText(
 				fr ? 'sur 48 intervalles prévus' : 'coverage of 48 scheduled intervals',
