@@ -1,11 +1,9 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { RouteReliability, StopReliability, NetworkTrend } from '#lib/v1/index.ts';
+import type { StopReliability, NetworkTrend } from '#lib/v1/index.ts';
 import { isoUtc } from '#lib/v1/schemas/types.ts';
 import type { ReliabilityWindow } from '#lib/v1/verdict.ts';
 import { lateShareTenths } from '#lib/features/stops/lateShare.ts';
-import RouteDetail from '../lines/RouteDetail.svelte';
-import RouteReliabilityClusters from '../lines/reliability/RouteReliabilityClusters.svelte';
 import StopReliabilitySurface from '../stops/reliability/sections/StopReliabilitySurface.svelte';
 import NetworkSurface from '../network/reliability/sections/NetworkSurface.svelte';
 
@@ -13,10 +11,8 @@ const harness = vi.hoisted(() => {
 	const page = { url: new URL('http://localhost/lines/24'), state: {} };
 	return {
 		page,
-		route: null as RouteReliability | null,
 		stop: null as StopReliability | null,
 		network: null as NetworkTrend | null,
-		publishedPct: 85,
 		mirrorSearchParams: vi.fn((values: Record<string, string | null>) => {
 			const next = new URL(page.url);
 			for (const [key, value] of Object.entries(values)) {
@@ -34,31 +30,12 @@ vi.mock('#lib/site/urlMirror.ts', () => ({
 	mirrorSearchParam: vi.fn(),
 }));
 vi.mock('#lib/v1/repositories/historic.ts', () => ({
-	getRouteReliability: async () => harness.route,
 	getStopReliability: async () => harness.stop,
-	getRouteReliabilityIndex: async () => new Set(['24']),
-	getPublishedReliabilityIndex: async () => ({
-		generated_utc: new Date().toISOString(),
-		weekly_routes: [
-			{
-				id: '24',
-				state: 'ranked',
-				pct: harness.publishedPct,
-				rank: 1,
-				numerator: harness.publishedPct,
-				denominator: 100,
-				window_start: harness.route?.periods_by_grain?.find((p) => p.grain === 'week')?.date,
-				window_end: harness.route?.periods_by_grain?.find((p) => p.grain === 'day')?.date,
-			},
-		],
-	}),
 	getNetworkTrend: async () => harness.network,
 	getHistoricAvailability: async () => ({
 		families: [{ family: 'network', last_available_date: harness.network?.series?.at(-1)?.date }],
 	}),
-	getLineHistoryIndex: async () => null,
 	getNetworkHistoryIndex: async () => null,
-	loadLineHistoryRange: vi.fn(),
 	loadNetworkHistoryRange: vi.fn(),
 }));
 vi.mock('#lib/v1/repositories/static.ts', () => ({
@@ -133,7 +110,6 @@ beforeEach(() => vi.stubGlobal('IntersectionObserver', undefined));
 afterEach(() => {
 	vi.unstubAllGlobals();
 	cleanup();
-	harness.publishedPct = 85;
 	harness.page.url = new URL('http://localhost/lines/24');
 });
 
@@ -147,26 +123,7 @@ function publishedPoint(window: ReliabilityWindow) {
 	};
 }
 
-/** The line answers once, in its record block; stop and network keep their verdict banner. */
-const LINE_STATUS: Record<string, string> = {
-	reliable: 'reliable',
-	uneven: 'patchy',
-	unreliable: 'unreliable',
-	uncertain: 'tentative',
-	'too-few': 'tentative',
-};
 function verdictOf(container: HTMLElement) {
-	const record = container.querySelector('[data-slot="line-record"]');
-	if (record) {
-		const classification = record
-			.querySelector('[data-slot="record-classification"]')
-			?.getAttribute('data-classification');
-		return {
-			status: classification ? LINE_STATUS[classification] : null,
-			ban: record.querySelector('[data-slot="record-figure"]')?.textContent ?? '',
-			text: record.textContent ?? '',
-		};
-	}
 	const verdict = container.querySelector('[data-slot="verdict"]');
 	return {
 		status: verdict?.getAttribute('data-status') ?? null,
@@ -175,8 +132,8 @@ function verdictOf(container: HTMLElement) {
 	};
 }
 
-describe('the same reliability evidence across every surface', () => {
-	it('renders a reliable Verdict on all five surfaces', async () => {
+describe('the same reliability evidence across Stop and Network', () => {
+	it('renders a reliable verdict on both surfaces', async () => {
 		const point = {
 			date: '2026-11-02',
 			otp_pct: 85,
@@ -184,26 +141,14 @@ describe('the same reliability evidence across every surface', () => {
 			wilson_lo: 84,
 			wilson_hi: 86,
 		};
-		harness.route = {
-			id: '24',
-			generated_utc: isoUtc().parse('2026-11-02T00:00:00Z'),
-			periods: [{ ...point, grain: 'day', on_time: 3400 }],
-			periods_by_grain: [
-				{ grain: 'day', date: point.date },
-				{
-					grain: 'week',
-					date: '2026-10-27',
-					by_daytype: [{ grain: 'weekday', observation_count: 4000, on_time: 3400 }],
-				},
-			],
-		};
+		const generatedUtc = isoUtc().parse('2026-11-02T00:00:00Z');
 		// The stop states the other side of the same readings: its late share, from the same counts
 		// with the publisher's rounding (600 of 4,000 readings late: exactly 15.0 %).
 		const lateTenths = lateShareTenths(4000 - 3400, 4000)!;
 		expect(lateTenths).toBe(150);
 		harness.stop = {
 			id: '24',
-			generated_utc: harness.route.generated_utc,
+			generated_utc: generatedUtc,
 			periods: [
 				{
 					grain: 'day',
@@ -215,13 +160,8 @@ describe('the same reliability evidence across every surface', () => {
 				},
 			],
 		};
-		harness.network = { generated_utc: harness.route.generated_utc, series: [point] };
+		harness.network = { generated_utc: generatedUtc, series: [point] };
 		for (const [mount, figure] of [
-			[() => render(RouteDetail, { props: { id: '24', seed: { id: '24', name: '24' } } }), '85%'],
-			[
-				() => render(RouteReliabilityClusters, { props: { data: harness.route!, locale: 'en' } }),
-				'85%',
-			],
 			[
 				() => render(StopReliabilitySurface, { props: { data: harness.stop!, locale: 'en' } }),
 				'15%',
@@ -254,22 +194,11 @@ describe('the late share and the on-time share of one body of readings', () => {
 			wilson_lo: 84.8,
 			wilson_hi: 86.1,
 		};
-		harness.route = {
-			id: '24',
-			generated_utc: isoUtc().parse('2026-11-02T00:00:00Z'),
-			periods: [{ ...window, grain: 'day', on_time: n - late }],
-			periods_by_grain: [
-				{ grain: 'day', date: window.date },
-				{
-					grain: 'week',
-					date: '2026-10-27',
-					by_daytype: [{ grain: 'weekday', observation_count: n, on_time: n - late }],
-				},
-			],
-		};
+		const generatedUtc = isoUtc().parse('2026-11-02T00:00:00Z');
+		harness.network = { generated_utc: generatedUtc, series: [window] };
 		harness.stop = {
 			id: '24',
-			generated_utc: harness.route.generated_utc,
+			generated_utc: generatedUtc,
 			// A stop period carries no date (the shape the stop file publishes).
 			periods: [
 				{
@@ -282,11 +211,9 @@ describe('the late share and the on-time share of one body of readings', () => {
 				},
 			],
 		};
-		const line = render(RouteReliabilityClusters, {
-			props: { data: harness.route, locale: 'en' },
-		});
-		await waitFor(() => expect(verdictOf(line.container).status).toBe('reliable'));
-		const onTime = verdictOf(line.container).text.match(/(\d+)%/)?.[1];
+		const network = render(NetworkSurface);
+		await waitFor(() => expect(verdictOf(network.container).status).toBe('reliable'));
+		const onTime = verdictOf(network.container).ban.match(/(\d+)%/)?.[1];
 		expect(onTime).toBe('85');
 		cleanup();
 		const stop = render(StopReliabilitySurface, { props: { data: harness.stop, locale: 'en' } });
@@ -296,14 +223,12 @@ describe('the late share and the on-time share of one body of readings', () => {
 	});
 });
 
-function selectedSurface(entity: 'line' | 'stop' | 'network') {
-	if (entity === 'line')
-		return render(RouteReliabilityClusters, { props: { data: harness.route!, locale: 'en' } });
+function selectedSurface(entity: 'stop' | 'network') {
 	if (entity === 'stop')
 		return render(StopReliabilitySurface, { props: { data: harness.stop!, locale: 'en' } });
 	return render(NetworkSurface);
 }
-it.each(['line', 'stop', 'network'] as const)(
+it.each(['stop', 'network'] as const)(
 	'%s keeps explicit windows through grain changes and URL reloads',
 	async (entity) => {
 		const generated_utc = isoUtc().parse('2026-11-02T00:00:00Z');
@@ -318,24 +243,10 @@ it.each(['line', 'stop', 'network'] as const)(
 			wilson_hi: 86,
 		};
 		const month = { date: '2026-10-04', grain: 'month', otp_pct: 40, observation_count: 12 };
-		harness.route = {
-			id: '24',
-			generated_utc,
-			periods: [day, week, month],
-			periods_by_grain: [
-				{ grain: 'day', date: day.date },
-				{ grain: 'week', date: week.date, by_daytype: [{ ...week, grain: 'weekday' }] },
-				{
-					grain: 'month',
-					date: month.date,
-					by_daytype: [{ ...month, grain: 'weekday', on_time: 5 }],
-				},
-			],
-		} as RouteReliability;
 		harness.stop = {
 			id: '24',
 			generated_utc,
-			periods: harness.route.periods?.map((window) => ({
+			periods: [day, week, month].map((window: ReliabilityWindow) => ({
 				grain: window.grain,
 				otp_pct: window.otp_pct,
 				observation_count: window.observation_count,
@@ -360,7 +271,7 @@ it.each(['line', 'stop', 'network'] as const)(
 		await waitFor(() => expect(verdictOf(view.container).status).toBe('tentative'));
 		await fireEvent.click(
 			view.getAllByRole('radio', {
-				name: entity === 'line' ? /Latest complete day/i : /^day|daily/i,
+				name: /^day|daily/i,
 			})[0],
 		);
 		await waitFor(() => expect(verdictOf(view.container).status).toBe('tentative'));
@@ -372,35 +283,3 @@ it.each(['line', 'stop', 'network'] as const)(
 		expect(verdictOf(view.container).text).toContain('12');
 	},
 );
-
-it('banner, list and pane agree on one window', async () => {
-	const { closedWeek } = await import('../lines/reliability/__fixtures__/closedWeek');
-	harness.route = { ...closedWeek, id: '24' };
-	for (const mount of [
-		() => render(RouteDetail, { props: { id: '24', seed: { id: '24', name: '24' } } }),
-		() => render(RouteReliabilityClusters, { props: { data: harness.route!, locale: 'en' } }),
-	]) {
-		harness.page.url = new URL('http://localhost/lines/24');
-		const view = mount();
-		await waitFor(() => expect(verdictOf(view.container).text).toContain('84%'));
-		if (view.queryAllByRole('radio').length)
-			expect(view.getByRole('radio', { name: /Last 7 days/, checked: true })).toBeInTheDocument();
-		cleanup();
-	}
-});
-
-it.each([true, false])('opens an enabled closed choice when a week exists: %s', async (hasWeek) => {
-	const { closedWeek } = await import('../lines/reliability/__fixtures__/closedWeek');
-	const data = hasWeek
-		? closedWeek
-		: {
-				...closedWeek,
-				periods_by_grain: closedWeek.periods_by_grain!.filter((p) => p.grain === 'day'),
-			};
-	harness.page.url = new URL('http://localhost/lines/24');
-	const view = render(RouteReliabilityClusters, { props: { data, locale: 'en' } });
-	const choice = view.getByRole('radio', { checked: true });
-	expect(choice).toBeEnabled();
-	expect(choice).toHaveAccessibleName(hasWeek ? /Last 7 days/ : /Latest complete day/);
-	expect(verdictOf(view.container).text).toContain(hasWeek ? '84%' : '85%');
-});
