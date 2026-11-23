@@ -1,10 +1,13 @@
 import { z } from 'zod';
 import { query } from './engine.ts';
-import { cityQuestion } from './engineQuestion.ts';
+import { cityQuestion, QUESTION_ORIGIN } from './engineQuestion.ts';
 
 const bilingual = z.object({ en: z.string(), fr: z.string() });
 const links = z.object({ en: z.url(), fr: z.url() });
-const fileUrl = z.string().regex(/^\/v2\/[a-z0-9_-]+\/download\/[\d-]+\/[\w.]+\?version=\d+$/);
+const fileUrl = z
+	.string()
+	.regex(/^\/v2\/[a-z0-9_-]+\/download\/[\d-]+\/[\w.]+\?version=\d+$/)
+	.transform((path) => new URL(path, QUESTION_ORIGIN).href);
 const listing = z.object({
 	city: z.string(),
 	service_date: z.iso.date(),

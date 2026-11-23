@@ -3,7 +3,6 @@
 	import { Surface } from '@yesid/ui/layout';
 	import { getLocale, localizeHref } from '#lib/i18n/index.ts';
 	import { downloadTables, missingDayReasons } from '#lib/features/record/downloadTables.ts';
-	import { QUESTION_ORIGIN } from '#lib/server/engineQuestion.ts';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
 	import type { PageData } from './$types';
 
@@ -118,9 +117,8 @@
 							<ul class="grid min-w-0 gap-1">
 								{#each listing.files as file (file.name)}
 									<li class="flex flex-wrap items-baseline gap-x-3 border-t border-border">
-										<a
-											class="inline-flex min-h-11 items-center break-all"
-											href={QUESTION_ORIGIN + file.url}>{file.name}</a
+										<a class="inline-flex min-h-11 items-center break-all" href={file.url}
+											>{file.name}</a
 										>
 										<span>{size.format(file.byte_size)}</span>
 									</li>
@@ -160,7 +158,7 @@
 							{#if listing.readme_url}
 								<a
 									class="inline-flex min-h-11 items-center justify-self-start"
-									href={QUESTION_ORIGIN + listing.readme_url}
+									href={listing.readme_url}
 									>{t(
 										'Download README with licence and checksums',
 										'Télécharger le fichier README avec la licence et les sommes de contrôle',
