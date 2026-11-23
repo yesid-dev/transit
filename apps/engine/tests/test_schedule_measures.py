@@ -64,8 +64,8 @@ def test_waiting_counts_disruptions_in_observed_arrival_order(
 
 def test_waiting_weights_periods_by_covered_scheduled_elapsed_time(tmp_path: Path) -> None:
     # Morning: 20 scheduled headways of 180 seconds, with one trip delayed
-    # 120 seconds. Midday: eight scheduled headways of 600 seconds plus four
-    # past the last usable poll. The observed midday sequence ends 300 seconds early.
+    # 120 seconds. Midday: seven scheduled headways of 600 seconds and four
+    # past the last usable poll. The eighth headway ends outside the observed window.
     morning = tuple(_trip("A", i, -120 + 3 * i, 120 if i == 1 else 0) for i in range(21))
     midday = tuple(_trip("A", 21 + i, 180 + 10 * i, -300 if i == 8 else 0) for i in range(13))
     polls = (*_polls(-7260, -3540), *_polls(10800, 15600))
@@ -74,12 +74,42 @@ def test_waiting_weights_periods_by_covered_scheduled_elapsed_time(tmp_path: Pat
     morning_wait = (300**2 + 60**2 + 18 * 180**2) / (2 * 3600) - 90
     midday_wait = (7 * 600**2 + 300**2) / (2 * 4500) - 300
     assert result["value"]["excess_wait_time"] == pytest.approx(
-        (morning_wait * 3600 + midday_wait * 4800) / 8400
+        (morning_wait * 3600 + midday_wait * 4200) / 7800
     )
     counts = result["evidence"]["counts"]
-    assert counts["wait_weight"] == 8400
-    assert counts["weighted_excess"] == pytest.approx(morning_wait * 3600 + midday_wait * 4800)
-    assert result["evidence"]["excluded"]["capture_gap"] == 5
+    assert counts["wait_weight"] == 7800
+    assert counts["weighted_excess"] == pytest.approx(morning_wait * 3600 + midday_wait * 4200)
+    assert result["evidence"]["excluded"]["capture_gap"] == 4
+
+
+@pytest.mark.parametrize("state", ("ran", "unconfirmed"))
+def test_waiting_excludes_an_interval_with_an_unobserved_passage(
+    tmp_path: Path, state: str
+) -> None:
+    trips = tuple(
+        _trip("A", i, -60 + i * 5, None if i == 1 else 60 if i == 2 else 0)
+        for i in range(25)
+    )
+    trips = (trips[0], trips[1]._replace(state=state), *trips[2:])
+    store = _build_store(tmp_path, 6, {THURSDAY: trips}, {THURSDAY: _polls(-3660, 3660)})
+    result = query(store, measure="waiting_and_gaps", stop="first")
+    counts = result["evidence"]["counts"]
+    assert counts["long_gaps"] == 0
+    assert counts["observed_headways"] == 22
+    assert counts["scheduled_seconds"] == 6300
+    assert result["evidence"]["excluded"]["unknown_passage"] == 1
+
+
+def test_waiting_does_not_assign_a_scheduled_service_break_to_the_next_period(
+    tmp_path: Path,
+) -> None:
+    # Last overnight passage at 01:00, then 24 on-schedule morning headways.
+    trips = (_trip("A", 0, -360),) + tuple(_trip("A", i + 1, -60 + i * 5) for i in range(25))
+    store = _build_store(tmp_path, 6, {THURSDAY: trips}, {THURSDAY: _polls(-21660, 3660)})
+    answer = query(store, measure="waiting_and_gaps", stop="first")
+    assert answer["evidence"]["counts"]["observed_headways"] == 24
+    assert answer["value"]["long_gaps"] == 0
+    assert answer["value"]["excess_wait_time"] == 0
 
 
 def test_waiting_measures_match_known_pattern_and_independent_recomputation(

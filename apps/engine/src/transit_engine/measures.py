@@ -7,8 +7,10 @@ import io
 import json
 from collections import Counter
 from collections.abc import Callable, Iterable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import InitVar, dataclass, field, replace
 from datetime import date
+from itertools import batched
 from time import perf_counter
 from typing import Any, Literal, NamedTuple
 
@@ -76,7 +78,7 @@ from transit_engine.series import (
 from transit_engine.series import (
     LOCAL_HOUR as _LOCAL_HOUR,
 )
-from transit_engine.store import CITY, Store
+from transit_engine.store import CITY, CheckedDay, Store
 from transit_engine.vehicles import (
     MIN_STABLE_ID_READINGS,
     MIN_STABLE_READING_SHARE,
@@ -1944,6 +1946,10 @@ _WAITING_EXCLUDED = {
         "Observed headways without continuous capture",
         "Intervalles observés sans collecte continue",
     ),
+    "unknown_passage": Text(
+        "Covered intervals with an unobserved passage",
+        "Intervalles couverts avec un passage non observé",
+    ),
 }
 _WAITING_COLUMNS = {
     "scheduled_headways": Text("Scheduled headways", "Intervalles prévus"),
@@ -2001,8 +2007,8 @@ def _waiting_rows(
     scheduled_local = local_time("scheduled_at")
     observed_local = local_time("observed_at")
     routes = "list(DISTINCT route_id)" if group else "NULL"
-    # The schedule and observed stream share stop, direction, period and capture
-    # windows. Only the scheduled stream resets its sequence at period boundaries.
+    # Both sequences reset at period boundaries so that, for example, a planned
+    # overnight break cannot contribute its wait to the morning period.
     schedule_counts = {
         "scheduled_stops": "count(*)",
         "live_candidates": "count(*) FILTER (route_has_live_data)",
@@ -2015,17 +2021,18 @@ def _waiting_rows(
         "missing_observation": "count(*) FILTER (frequent AND headway > 0 AND NOT has_observation)",
     }
     observed_counts = {
-        "observed_headways": "count(*) FILTER (covered)",
+        "observed_headways": "count(*) FILTER (eligible)",
         "observed_trip_pairs": (
             "count(DISTINCT (service_date, least(previous_trip, trip_id), "
-            "greatest(previous_trip, trip_id))) FILTER (covered AND previous_trip <> trip_id)"
+            "greatest(previous_trip, trip_id))) FILTER (eligible AND previous_trip <> trip_id)"
         ),
-        "observed_seconds": "sum(headway) FILTER (covered)",
-        "observed_squared_seconds": "sum(headway * headway) FILTER (covered)",
+        "observed_seconds": "sum(headway) FILTER (eligible)",
+        "observed_squared_seconds": "sum(headway * headway) FILTER (eligible)",
         "capture_gap": "count(*) FILTER (NOT covered)",
+        "unknown_passage": "count(*) FILTER (covered AND NOT eligible)",
     }
     observed_counts.update(
-        {m.id: f"count(*) FILTER (covered AND ({m.band}))" for m in family.measures if m.band}
+        {m.id: f"count(*) FILTER (eligible AND ({m.band}))" for m in family.measures if m.band}
     )
     wait_counts = ("covered_scheduled_headways", "scheduled_seconds", "scheduled_squared_seconds")
     counters = (*schedule_counts, *observed_counts, *wait_counts)
@@ -2036,7 +2043,7 @@ def _waiting_rows(
         f"""
         WITH events AS (
             SELECT service_date, trip_id, stop_id, stop_sequence, route_id, direction_id,
-                scheduled_start_utc, route_has_live_data,
+                scheduled_start_utc, route_has_live_data, state,
                 CASE WHEN state <> 'added' THEN
                     coalesce(scheduled_arrival_utc, scheduled_departure_utc)
                 END AS scheduled_at,
@@ -2088,7 +2095,7 @@ def _waiting_rows(
                 USING (service_date, route_id, direction_id, stop_id)
             WHERE observed_at IS NOT NULL
             WINDOW arrivals AS (
-                PARTITION BY service_date, route_id, direction_id, stop_id
+                PARTITION BY service_date, route_id, direction_id, stop_id, local_date, period
                 ORDER BY observed_at, trip_id, stop_sequence
             )
         ),
@@ -2112,49 +2119,63 @@ def _waiting_rows(
             SELECT p.*, {entity} AS entity, f.scheduled_mean
             FROM observed_pairs p JOIN frequent_periods f
                 USING (service_date, route_id, direction_id, stop_id, local_date, period)
-            WHERE {cut}
-        ), with_coverage AS (
+            WHERE p.previous_at IS NOT NULL AND {cut}
+        ), unknown_passages AS (
+            SELECT service_date, route_id, direction_id, stop_id, scheduled_at AS unknown_at
+            FROM events SEMI JOIN frequent_periods
+                USING (service_date, route_id, direction_id, stop_id)
+            WHERE scheduled_at IS NOT NULL AND observed_at IS NULL
+                AND state IN ('ran', 'unconfirmed')
+        ), checked_headways AS (
             SELECT p.service_date, p.route_id, p.direction_id, p.stop_id, p.local_date,
-                p.period, p.entity, p.trip_id, p.previous_trip, p.scheduled, p.headway,
-                p.scheduled_mean, c.covered_from,
+                p.period, p.entity, p.trip_id, p.previous_trip, p.headway,
+                p.scheduled_mean, p.previous_at, p.event_at, c.covered_from, u.unknown_at,
                 coalesce(previous_at >= c.covered_from AND event_at <= c.covered_to, false)
-                    AS covered
-            FROM (
-                SELECT service_date, route_id, direction_id, stop_id, local_date, period, entity,
-                    trip_id, NULL AS previous_trip, true AS scheduled, headway,
-                    NULL AS scheduled_mean, event_at, previous_at
-                FROM schedule_in_cut WHERE frequent AND headway > 0
-                UNION ALL
-                SELECT service_date, route_id, direction_id, stop_id, local_date, period, entity,
-                    trip_id, previous_trip, false, headway, scheduled_mean, event_at, previous_at
-                FROM observed_in_cut WHERE headway IS NOT NULL
-            ) p ASOF LEFT JOIN common_coverage c
+                    AS covered,
+                covered AND (u.unknown_at IS NULL OR u.unknown_at <= p.previous_at) AS eligible
+            FROM observed_in_cut p ASOF LEFT JOIN common_coverage c
                 ON p.service_date = c.service_date AND p.event_at >= c.covered_from
+            ASOF LEFT JOIN unknown_passages u
+                ON p.service_date = u.service_date AND p.route_id = u.route_id
+                AND p.direction_id = u.direction_id AND p.stop_id = u.stop_id
+                AND p.event_at > u.unknown_at
         ), schedule_evidence AS (
             SELECT entity, {routes} AS routes, {schedule_aggregates}
             FROM schedule_in_cut GROUP BY entity
         ), observed_evidence AS (
             SELECT entity, {observed_aggregates}
-            FROM with_coverage WHERE NOT scheduled GROUP BY entity
-        ), common_windows AS (
+            FROM checked_headways GROUP BY entity
+        ), observed_windows AS (
+            -- Eligible intervals are contiguous within each coverage run and
+            -- between unobserved passages. Only this time can inform the schedule.
             SELECT entity, service_date, route_id, direction_id, stop_id, local_date,
-                period, covered_from,
-                count(*) FILTER (scheduled) AS scheduled_count,
-                count(*) FILTER (NOT scheduled) AS actual_count,
-                sum(headway) FILTER (scheduled) AS scheduled_elapsed,
-                sum(headway * headway) FILTER (scheduled) AS scheduled_squared,
-                sum(headway) FILTER (NOT scheduled) AS actual_elapsed,
-                sum(headway * headway) FILTER (NOT scheduled) AS actual_squared
-            FROM with_coverage WHERE covered
+                period, min(previous_at) AS window_start, max(event_at) AS window_end,
+                sum(headway) AS actual_elapsed, sum(headway * headway) AS actual_squared
+            FROM checked_headways WHERE eligible
+            GROUP BY entity, service_date, route_id, direction_id, stop_id, local_date, period,
+                covered_from, unknown_at
+        ), scheduled_windows AS (
+            SELECT s.entity, s.service_date, s.route_id, s.direction_id, s.stop_id, s.local_date,
+                s.period, w.window_start,
+                count(*) AS scheduled_count, sum(s.headway) AS scheduled_elapsed,
+                sum(s.headway * s.headway) AS scheduled_squared
+            FROM (SELECT * FROM schedule_in_cut WHERE frequent AND headway > 0) s
+            ASOF JOIN observed_windows w
+                ON s.entity = w.entity AND s.service_date = w.service_date
+                AND s.route_id = w.route_id AND s.direction_id = w.direction_id
+                AND s.stop_id = w.stop_id AND s.local_date = w.local_date AND s.period = w.period
+                AND s.previous_at >= w.window_start
+            WHERE s.event_at <= w.window_end
             GROUP BY ALL
-            HAVING scheduled_count > 0 AND actual_count > 0
         ), period_wait AS (
             SELECT entity, sum(scheduled_count) AS scheduled_count,
                 sum(scheduled_elapsed) AS scheduled_elapsed,
                 sum(scheduled_squared) AS scheduled_squared,
                 sum(actual_elapsed) AS actual_elapsed,
                 sum(actual_squared) AS actual_squared
-            FROM common_windows
+            FROM scheduled_windows JOIN observed_windows
+                USING (entity, service_date, route_id, direction_id, stop_id, local_date,
+                    period, window_start)
             GROUP BY entity, service_date, route_id, direction_id, stop_id, local_date, period
         ), waiting AS (
             SELECT entity, sum(scheduled_count) AS covered_scheduled_headways,
@@ -2211,13 +2232,17 @@ _WAITING = Family(
     exclusions=Text(
         "Observed headways are the intervals between successive observed passages for the "
         "same line, stop and direction. Every recorded observation time can contribute. "
+        "A covered interval is unknown if a trip that ran or could not be confirmed "
+        "was scheduled between the observations and has no observed time at that stop. "
         "Each recorded vehicle or trip updates feed must cover the entire interval, with "
         f"at most {MAX_POLL_SPACING_SECONDS} seconds between usable polls and publication "
         f"age of at most {MAX_POLL_AGE_SECONDS} seconds plus the declared source lag. "
         "The direction must be known and the line must have live data.",
         "Les intervalles observés séparent les passages observés successifs pour la même "
         "ligne, le même arrêt et la même direction. Toute heure de passage observée peut "
-        "être utilisée. Chaque flux de positions ou de mises à jour des trajets consigné "
+        "être utilisée. Un intervalle couvert est de durée inconnue si un trajet effectué "
+        "ou non confirmé était prévu entre les observations et n’a pas d’heure observée "
+        "à cet arrêt. Chaque flux de positions ou de mises à jour des trajets consigné "
         "doit couvrir tout l’intervalle, avec au plus "
         f"{MAX_POLL_SPACING_SECONDS} secondes entre les relevés utilisables et des "
         f"publications datant d’au plus {MAX_POLL_AGE_SECONDS} secondes plus le délai source "
@@ -2227,14 +2252,16 @@ _WAITING = Family(
         f"A frequent period has at least two distinct scheduled times and a mean scheduled "
         f"interval of at most {FREQUENT_HEADWAY_SECONDS // 60} minutes for the line, stop "
         f"and direction on that service date. Local periods are {periods_text('en')}. "
-        "An interval belongs to the period and hour of its ending passage. A departure "
+        "Both passages must be in the same period. The ending passage determines the hour. "
+        "A departure "
         "cut uses the ending trip’s scheduled departure. "
         f"At least {MIN_OBSERVED_HEADWAYS} observed headways are needed to report a value.",
         "Une période est fréquente si elle compte au moins deux heures de passage distinctes "
         f"et un intervalle prévu moyen d’au plus {FREQUENT_HEADWAY_SECONDS // 60} minutes "
         "pour la ligne, l’arrêt et la direction à cette date de service. "
-        f"Les périodes locales sont {periods_text('fr')}. Un intervalle est rattaché à la "
-        "période et à l’heure du passage qui le termine. Un filtre par départ utilise "
+        f"Les périodes locales sont {periods_text('fr')}. Les deux passages doivent être "
+        "dans la même période. Le passage qui termine l’intervalle détermine l’heure. "
+        "Un filtre par départ utilise "
         "l’heure de départ prévue du trajet qui termine l’intervalle. "
         f"Il faut au moins {MIN_OBSERVED_HEADWAYS} intervalles observés pour publier une valeur.",
     ),
@@ -2294,15 +2321,17 @@ _WAITING = Family(
                 "Excess wait is observed average wait minus scheduled average wait for "
                 "riders arriving without consulting the timetable. Within each period, "
                 "average wait is the sum of squared headways divided by twice their sum. "
-                "Both calculations use the same continuous capture windows at each stop, "
-                "line and direction, with headways from both timetables. The result weights "
+                "The scheduled calculation uses complete scheduled headways inside the "
+                "windows of known observed headways for each stop, line and direction. "
+                "The result weights "
                 "each period by the sum of its covered scheduled headways.",
                 "L’attente excédentaire est l’attente moyenne observée moins l’attente "
                 "moyenne prévue pour les personnes qui arrivent sans consulter l’horaire. "
                 "Dans chaque période, l’attente moyenne est la somme des carrés des "
-                "intervalles divisée par deux fois leur somme. Les deux calculs utilisent "
-                "les mêmes fenêtres de collecte continue, avec des intervalles observés "
-                "et prévus, pour chaque arrêt, ligne et direction. Chaque période est "
+                "intervalles divisée par deux fois leur somme. Le calcul prévu utilise "
+                "les intervalles prévus entièrement compris dans les fenêtres "
+                "d’intervalles observés connus pour chaque arrêt, ligne et direction. "
+                "Chaque période est "
                 "pondérée selon la durée totale de ses intervalles prévus couverts.",
             ),
             worst_first_descending=True,
@@ -3607,8 +3636,27 @@ def read_window(
             window.missing.append(date.fromordinal(ordinal).isoformat())
         window.missing_in_cut = True
         return window
-    for ordinal in range(question.start.toordinal(), question.end.toordinal() + 1):
-        day = date.fromordinal(ordinal)
+    ordinals = range(question.start.toordinal(), question.end.toordinal() + 1)
+    checked_days: dict[date, CheckedDay] = {}
+    if family.id == _WAITING_ID and store.s3_endpoint and len(ordinals) > 1:
+        assert receipts is not None
+        # Overlap independent receipt requests. Separate cursors share this
+        # query's HTTP metadata, including file sizes needed by the Parquet scan.
+        conn.execute("SET enable_http_metadata_cache = true")
+
+        def check(day: date) -> tuple[date, CheckedDay, dict[str, bytes]]:
+            receipt: dict[str, bytes] = {}
+            with conn.cursor() as cursor:
+                checked = store.query_day(cursor, question.city, day, tables, receipts=receipt)
+            return day, checked, receipt
+
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            for days in batched(map(date.fromordinal, ordinals), 16):
+                for day, checked, receipt in executor.map(check, days):
+                    checked_days[day] = checked
+                    receipts.update(receipt)
+
+    for day in map(date.fromordinal, ordinals):
         day_key = day.isoformat()
         in_cut = question.day_type is None or question.day_type == _DAY_TYPES[day.weekday()]
         configured = store.cleaning_version
@@ -3621,13 +3669,18 @@ def read_window(
         settled = True
         for version in candidates:
             source = store if version == configured else replace(store, cleaning_version=version)
-            checked = source.query_day(
-                conn,
-                question.city,
-                day,
-                tables,
-                allow_untracked_alerts=family.id == _ALERT_COUNTS_ID,
-                receipts=receipts,
+            pending_check = checked_days.get(day)
+            checked = (
+                source.query_day(
+                    conn,
+                    question.city,
+                    day,
+                    tables,
+                    allow_untracked_alerts=family.id == _ALERT_COUNTS_ID,
+                    receipts=receipts,
+                )
+                if pending_check is None
+                else pending_check
             )
             # A preferred scorecard version can still arrive after a fallback answer.
             settled = settled and checked.settled
