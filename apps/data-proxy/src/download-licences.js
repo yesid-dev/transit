@@ -1,18 +1,24 @@
 export function downloadLicence(provider, date) {
   const licence = provider.download_licence;
   const languages = ["en", "fr"];
-  const fields = ["name", "attribution", "url", "limits", "non_endorsement"];
+  const fields = ["name", "attribution", "url", "limits", "non_endorsement", "source"];
   if (!licence || !/^\d{4}-\d{2}-\d{2}$/.test(licence.checked_on) ||
       !fields.every((field) => languages.every(
         (lang) => typeof licence[field]?.[lang] === "string" && licence[field][lang].trim(),
       ))) return null;
-  const { en, fr } = provider.labels;
+  const { en, fr } = licence.source;
+  const localized = ({ en, fr }) => ({ en, fr });
   return {
-    ...licence,
+    checked_on: licence.checked_on,
     contact: "contact@yesid.dev",
+    non_endorsement: localized(licence.non_endorsement),
+    name: localized(licence.name),
+    attribution: localized(licence.attribution),
+    url: localized(licence.url),
+    limits: localized(licence.limits),
     changes: {
-      en: `Transit cleaned and derived these tables from ${en.operator} feeds for the ${date} service day. The data was modified and is unofficial.`,
-      fr: `Transit a nettoyé et dérivé ces tables à partir des flux de l’organisme ${fr.operator} pour la journée de service du ${date}. Les données ont été modifiées et sont non officielles.`,
+      en: `Transit cleaned and derived these tables from ${en} feeds for the ${date} service day. The data was modified and is unofficial.`,
+      fr: `Transit a nettoyé et dérivé ces tables à partir des flux ${fr} pour la journée de service du ${date}. Les données ont été modifiées et sont non officielles.`,
     },
   };
 }

@@ -58,8 +58,9 @@ public:
       en: "The data is provided as is, without warranty, and may contain errors. The City reports that vehicle positions are unknown about 5% of the time."
       fr: "Les données sont fournies telles quelles, sans garantie, et peuvent contenir des erreurs. Selon la Ville, les positions des véhicules sont inconnues environ 5 % du temps."
     non_endorsement:
-      en: "Transit is independent of the City of Ottawa and OC Transpo. Neither sponsors nor endorses Transit."
-      fr: "Transit est indépendant de la Ville d’Ottawa et d’OC Transpo. Ni la Ville ni OC Transpo ne commanditent ou n’approuvent Transit."
+      en: "Transit is independent of STM, the City of Ottawa and OC Transpo. None of these organisations sponsors or endorses Transit."
+      fr: "Transit est indépendant de la STM, de la Ville d’Ottawa et d’OC Transpo. Aucun de ces organismes ne commandite ni n’approuve Transit."
+    source: {en: "OC Transpo", fr: "d’OC Transpo"}
   enabled: true
   labels:
     en: {city: Ottawa, operator: OC Transpo}

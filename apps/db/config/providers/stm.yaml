@@ -29,8 +29,9 @@ download_licence:
     en: "The data is provided as is, without warranty, and may contain errors. Scheduled metro times are indicative only."
     fr: "Les données sont fournies telles quelles, sans garantie, et peuvent contenir des erreurs. Les horaires du métro sont donnés à titre indicatif seulement."
   non_endorsement:
-    en: "Transit is independent of STM. STM does not sponsor or endorse Transit."
-    fr: "Transit est un projet indépendant. L’organisme STM ne commandite ni n’approuve Transit."
+    en: "Transit is independent of STM, the City of Ottawa and OC Transpo. None of these organisations sponsors or endorses Transit."
+    fr: "Transit est indépendant de la STM, de la Ville d’Ottawa et d’OC Transpo. Aucun de ces organismes ne commandite ni n’approuve Transit."
+  source: {en: "STM", fr: "de la STM"}
 attribution:
   fr: Contains STM data made available under CC BY 4.0.
 reading_population: vehicle_evidence

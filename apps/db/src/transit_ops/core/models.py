@@ -129,6 +129,7 @@ class DownloadLicence(BaseModel):
     url: BilingualLinks
     limits: BilingualText
     non_endorsement: BilingualText
+    source: BilingualText
 
 
 class ProviderPublicConfig(BaseModel):
