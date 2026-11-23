@@ -1,0 +1,61 @@
+{
+  "alerts": "not_tracked",
+  "builder_git_commit": "2912c86a533b21990740c55f380e3b081bfa4880",
+  "built_at_utc": "2026-11-23T09:46:46.559008+00:00",
+  "cleaning_version": "11",
+  "files": {
+    "feed_polls.parquet": {
+      "byte_size": 203338,
+      "rows": 10136,
+      "sha256": "7aa20a6d732bbd3b039109b1e46228dbfe13fc0ebc54ad0527ce3eae12574ce5"
+    },
+    "prediction_samples.parquet": {
+      "byte_size": 466,
+      "rows": 0,
+      "sha256": "f5f688acc55a799c48c43cb145f1dcdad39a879a6c19b3cdf5853649f7b4e6ce"
+    },
+    "scheduled_stop_times.parquet": {
+      "byte_size": 82404,
+      "rows": 6360,
+      "sha256": "4b9401224bc435cf7cb6b9bdb75a15d7fc49af9f47164dc44c8d1d8b22588e7e"
+    },
+    "stop_events.parquet": {
+      "byte_size": 90833,
+      "rows": 6478,
+      "sha256": "579cf20cdc951a4b23e87801dac162af78deeb5ae4063dbdb87155c8ab4309da"
+    },
+    "trip_days.parquet": {
+      "byte_size": 8695,
+      "rows": 199,
+      "sha256": "e761aae063c7f126e4f7fabd0c959310fef85a19ef16feb91d360348ed69a522"
+    },
+    "vehicle_positions.parquet": {
+      "byte_size": 130158,
+      "rows": 10327,
+      "sha256": "95c04a3cf4e1c823b234cc983d1ee6b0c084703a2166cb445e717c6a7d13480a"
+    }
+  },
+  "provider": "octranspo",
+  "row_counts_by_basis": {
+    "not_observed": 1887,
+    "trip_update_passed": 2177,
+    "vehicle_nearby": 2414
+  },
+  "row_counts_by_state": {
+    "added": 3,
+    "not_measured": 28,
+    "ran": 165,
+    "unconfirmed": 3
+  },
+  "schedule_sha256": "b58e255bc843ef8c96e399733bfba58566f39e270d9972abd6757034033669d9",
+  "scorecard_declaration": {
+    "feeds": [
+      "trip_updates",
+      "vehicle_positions"
+    ],
+    "live_source_lag_seconds": 60,
+    "timezone": "America/Toronto",
+    "unpublished_vehicle_fields": []
+  },
+  "service_date": "2026-11-20"
+}

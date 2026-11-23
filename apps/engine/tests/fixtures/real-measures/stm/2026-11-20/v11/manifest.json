@@ -1,0 +1,66 @@
+{
+  "builder_git_commit": "2912c86a533b21990740c55f380e3b081bfa4880",
+  "built_at_utc": "2026-11-23T10:38:40.825585+00:00",
+  "cleaning_version": "11",
+  "files": {
+    "alerts.parquet": {
+      "byte_size": 4548,
+      "rows": 2,
+      "sha256": "9194ed188c01f197804dd8fb0eba130b179910b1d19db44f4fb9c83fb545ab6f"
+    },
+    "feed_polls.parquet": {
+      "byte_size": 260401,
+      "rows": 10318,
+      "sha256": "cbe5a93e4f6f32e65e460bed92fde32353791df3ee7a7f3256ffcef59ddeed0d"
+    },
+    "prediction_samples.parquet": {
+      "byte_size": 466,
+      "rows": 0,
+      "sha256": "f5f688acc55a799c48c43cb145f1dcdad39a879a6c19b3cdf5853649f7b4e6ce"
+    },
+    "scheduled_stop_times.parquet": {
+      "byte_size": 145903,
+      "rows": 12806,
+      "sha256": "7458432c2a5267c31b3cdd15468c594b855edb2706f28479218cb9ef60cee196"
+    },
+    "stop_events.parquet": {
+      "byte_size": 167354,
+      "rows": 13070,
+      "sha256": "7e92893f8fbad3c2156376ce2f219d0ba8aa054bf68204d13bac46eef5819f68"
+    },
+    "trip_days.parquet": {
+      "byte_size": 9957,
+      "rows": 324,
+      "sha256": "6506a255e82326f8c920f3fa16fe00476dde1342859291e340a4fa32b079265d"
+    },
+    "vehicle_positions.parquet": {
+      "byte_size": 328785,
+      "rows": 24940,
+      "sha256": "dbd75ddf36eaee2b3a6e6284ff6c5cb116cc7b2ff5a76e2ebd2676c590c37116"
+    }
+  },
+  "provider": "stm",
+  "row_counts_by_basis": {
+    "not_observed": 3253,
+    "trip_update_passed": 3267,
+    "vehicle_stopped": 6550
+  },
+  "row_counts_by_state": {
+    "added": 6,
+    "cancelled": 2,
+    "ran": 313,
+    "unconfirmed": 3
+  },
+  "schedule_sha256": "ce03a0a0b1fe5fbb9fb4d74ed574185b2400b00e469de4bb59e58820dab4609b",
+  "scorecard_declaration": {
+    "feeds": [
+      "trip_updates",
+      "vehicle_positions",
+      "alerts"
+    ],
+    "live_source_lag_seconds": 0,
+    "timezone": "America/Toronto",
+    "unpublished_vehicle_fields": []
+  },
+  "service_date": "2026-11-20"
+}
