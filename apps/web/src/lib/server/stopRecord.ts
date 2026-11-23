@@ -6,6 +6,7 @@ export const stopRecordQueries = {
 	hourly: { measure: 'on_time', group: 'hour' },
 	daily: { measure: 'on_time', group: 'day' },
 	alerts: { measure: 'alert_counts' },
+	accessibility: { measure: 'accessible_stops' },
 } as const;
 
 export type StopSection = keyof typeof stopRecordQueries | 'delay';
@@ -24,7 +25,15 @@ export function loadStopRecord(scope: EnginePeriod, stop: string) {
 	const { from, to, city } = scope;
 	// The engine already computes both delay percentiles alongside the three bands.
 	const punctuality = getRecordAnswer(stopRecordQuery('punctuality', stop), scope);
-	const sections: StopSection[] = ['punctuality', 'byLine', 'hourly', 'daily', 'delay', 'alerts'];
+	const sections: StopSection[] = [
+		'punctuality',
+		'byLine',
+		'hourly',
+		'daily',
+		'delay',
+		'accessibility',
+		'alerts',
+	];
 	return {
 		period: { from, to },
 		city,

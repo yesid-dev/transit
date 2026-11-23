@@ -8,6 +8,11 @@ const harness = vi.hoisted(() => ({
 	getHistoricAvailability: vi.fn(),
 	getProvenance: vi.fn(),
 	serverV1Context: vi.fn(),
+	getScorecardAnswer: vi.fn(),
+}));
+
+vi.mock('#lib/server/engine.ts', () => ({
+	getScorecardAnswer: (...args: unknown[]) => harness.getScorecardAnswer(...args),
 }));
 
 vi.mock('#lib/v1/repositories/historic.ts', () => ({
@@ -23,7 +28,7 @@ vi.mock('#lib/v1/serverContext.ts', () => ({
 	serverV1Context: (...args: unknown[]) => harness.serverV1Context(...args),
 }));
 
-import { _loadWithReader } from './+page.server';
+import { _loadWithReader, load as loadPage } from './+page.server';
 const reader = createMemoryLiveReader();
 harness.getNetwork = reader.network;
 const load = (event: Parameters<typeof _loadWithReader>[0]) => _loadWithReader(event, reader);
@@ -36,10 +41,11 @@ function deferred<T>() {
 	return { promise, resolve };
 }
 
-function event(): Parameters<typeof load>[0] {
+function event(rawUrl = 'https://transit.yesid.dev/network'): Parameters<typeof load>[0] {
 	return {
 		params: { lang: undefined },
-		url: new URL('https://transit.yesid.dev/network'),
+		url: new URL(rawUrl),
+		request: new Request(rawUrl, { headers: { 'cf-connecting-ip': '192.0.2.24' } }),
 		fetch: vi.fn(),
 		locals: { v1Cache: new Map() },
 		platform: undefined,
@@ -129,4 +135,40 @@ it('seeds the history root beside the trend', async () => {
 		historicAvailabilitySeed: null,
 		trendSeed: { key: 'network-trend', data: trend },
 	});
+});
+
+it('streams independent scorecard measures for a dated city even without v1', async () => {
+	const input = event(
+		'https://transit1.yesid.dev/fr/network?provider=octranspo&recordFrom=2026-11-19&recordTo=2026-11-20',
+	);
+	input.parent = vi.fn().mockResolvedValue({ v1: null, providerId: 'octranspo' });
+	harness.getScorecardAnswer
+		.mockReset()
+		.mockImplementation(({ parameters }) =>
+			parameters.measure === 'prediction_error'
+				? new Promise(() => {})
+				: Promise.resolve({ kind: 'answer', answer: { measure: parameters.measure } }),
+		);
+	const data = await loadPage(input);
+	expect(data?.view).toBe('record');
+	expect(harness.getScorecardAnswer.mock.calls).toEqual(
+		[
+			'poll_success',
+			'feed_age_at_capture',
+			'feed_update_interval',
+			'live_trip_coverage',
+			'vehicle_field_completeness',
+			'prediction_error',
+		].map((measure) => [
+			{ path: '/measure', parameters: { measure } },
+			{
+				from: '2026-11-19',
+				to: '2026-11-20',
+				preset: null,
+				city: 'octranspo',
+				visitorIp: '192.0.2.24',
+			},
+		]),
+	);
+	expect(harness.getNetwork).not.toHaveBeenCalled();
 });

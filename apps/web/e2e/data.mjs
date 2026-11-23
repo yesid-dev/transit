@@ -5,6 +5,7 @@ import { finderEngine } from './finder-engine.mjs';
 import { overviewEngine } from './overview-engine.mjs';
 import { rankingsEngine } from './rankings-engine.mjs';
 import { stopEngine } from './stop-engine.mjs';
+import { networkEngine, networkFixtures } from './network-engine.mjs';
 import { vehicleEngine } from './vehicle-engine.mjs';
 import { departureDailyEngine } from './departure-daily-engine.mjs';
 import { alertsEngine } from './alerts-engine.mjs';
@@ -354,23 +355,27 @@ const server = createServer((request, response) => {
 			!['2026-11-17', '2026-11-18'].includes(url.searchParams.get('from')) &&
 			!url.searchParams.has('line') &&
 			!url.searchParams.has('stop');
-		const result = alertFixture
-			? alertsEngine(url)
-			: question[2] === 'measure' && url.searchParams.get('measure')?.startsWith('vehicle')
-				? vehicleEngine(url)
-				: url.searchParams.has('departure')
-					? departureDailyEngine(url)
-					: url.searchParams.has('stop')
-						? stopEngine(url)
-						: url.searchParams.has('line')
-							? lineEngine(url)
-							: question[2] === 'ranking' && url.searchParams.get('limit') === '500'
-								? rankingsEngine(url)
-								: finderFixture
-									? finderEngine(url)
-									: dailyFixture
-										? departureDailyEngine(url)
-										: overviewEngine(url);
+		const isNetwork =
+			question[2] === 'measure' && Object.hasOwn(networkFixtures, url.searchParams.get('measure'));
+		const result = isNetwork
+			? networkEngine(url)
+			: alertFixture
+				? alertsEngine(url)
+				: question[2] === 'measure' && url.searchParams.get('measure')?.startsWith('vehicle')
+					? vehicleEngine(url)
+					: url.searchParams.has('departure')
+						? departureDailyEngine(url)
+						: url.searchParams.has('stop')
+							? stopEngine(url)
+							: url.searchParams.has('line')
+								? lineEngine(url)
+								: question[2] === 'ranking' && url.searchParams.get('limit') === '500'
+									? rankingsEngine(url)
+									: finderFixture
+										? finderEngine(url)
+										: dailyFixture
+											? departureDailyEngine(url)
+											: overviewEngine(url);
 		if (result.csv) {
 			response.setHeader('content-type', 'text/csv; charset=utf-8');
 			response.end(result.csv);

@@ -1,4 +1,4 @@
-<script lang="ts">
+<script lang="ts" generics="Answer extends Pick<RecordAnswer, 'evidence' | 'coverage_note'>">
 	import { Card } from '@yesid/ui/card';
 	import type { Snippet } from 'svelte';
 	import type { Locale } from '#lib/i18n/index.ts';
@@ -6,7 +6,7 @@
 	import RecordActions from './RecordActions.svelte';
 	import RecordPending from './RecordPending.svelte';
 	import { recordSectionLinks } from './recordLinks.ts';
-	import { dateRange, lastGoodNote, methodEvidence, recordMessage } from './recordText.ts';
+	import { dateRange, lastGoodNote, methodEvidence, recordConnection } from './recordText.ts';
 
 	let {
 		section,
@@ -25,20 +25,21 @@
 		subject: string;
 		locale: Locale;
 		url: URL;
-		answer: Promise<EngineResult<RecordAnswer>>;
-		reading: Snippet<[RecordAnswer]>;
-		statement?: (answer: RecordAnswer) => string;
+		answer: Promise<EngineResult<Answer>>;
+		reading: Snippet<[Answer]>;
+		statement?: (answer: Answer) => string;
 		controls?: Snippet;
 		printable?: boolean;
 	} = $props();
 
 	const links = $derived(recordSectionLinks(url, section));
-	function citation(result: RecordAnswer) {
+	function citation(result: Answer, lastGood?: true) {
 		const evidence = result.evidence;
 		return [
 			`Transit · ${subject}. ${title}. ${dateRange({ from: evidence.start_date, to: evidence.end_date }, locale)}.`,
 			statement?.(result),
 			methodEvidence(evidence, locale),
+			lastGood ? lastGoodNote[locale] : '',
 			links.share,
 		]
 			.filter(Boolean)
@@ -53,7 +54,6 @@
 		{#await answer}
 			{#key answer}<RecordPending {locale} />{/key}
 		{:then result}
-			{@const message = recordMessage(result, locale)}
 			{#if result.kind === 'answer'}
 				{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 				{@render reading(result.answer)}
@@ -64,12 +64,14 @@
 						{title}
 						href={links.share}
 						csv={links.csv}
-						citation={citation(result.answer)}
+						citation={citation(result.answer, result.lastGood)}
 					/>
 				</div>
-				{#if printable}<p class="report-citation">{citation(result.answer)}</p>{/if}
-			{:else if message}
-				<p>{message}</p>
+				{#if printable}<p class="report-citation">
+						{citation(result.answer, result.lastGood)}
+					</p>{/if}
+			{:else}
+				<p>{recordConnection[result.kind][locale]}</p>
 			{/if}
 		{/await}
 	</section>

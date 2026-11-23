@@ -9,6 +9,7 @@
 	import { isRankingPath } from '#lib/features/rankings/rankingSelection.ts';
 	import { usesFinderRecord } from '#lib/site/finderFrame.ts';
 	import { dailyReportFrame } from '#lib/site/dailyReportFrame.ts';
+	import { networkRecordView } from '#lib/site/networkFrame.ts';
 	import {
 		frameHref,
 		frameToday,
@@ -84,6 +85,8 @@
 	);
 	const frame = $derived.by(() => {
 		const state = parseFrameState(url.searchParams, today);
+		if (path === '/network')
+			return { ...state, mode: networkRecordView(url) ? ('record' as const) : ('live' as const) };
 		return recordOnly ? { ...state, mode: 'record' as const } : state;
 	});
 	const line = $derived(/^\/lines\/[^/]+\/?$/.test(path));
@@ -91,7 +94,14 @@
 	const finder = $derived((path === '/lines' || path === '/stops') && usesFinderRecord(url));
 	const departure = $derived(path.startsWith('/departure/'));
 	const usesFrameRecord = $derived(
-		path === '/' || path === '/alerts' || line || stop || departure || recordOnly || finder,
+		path === '/' ||
+			path === '/alerts' ||
+			path === '/network' ||
+			line ||
+			stop ||
+			departure ||
+			recordOnly ||
+			finder,
 	);
 	const startLabel = $derived(
 		intl.dateTime(locale, { timeZone: 'UTC', dateStyle: 'long' }).format(new Date(RECORD_START)),

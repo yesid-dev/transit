@@ -1,0 +1,255 @@
+import { intl, type Locale } from '#lib/i18n/index.ts';
+import { healthReading } from '#lib/features/record/dataHealthText.ts';
+import { choose, percent, tally } from '#lib/features/record/recordText.ts';
+import type { ScorecardAnswer } from '#lib/server/engine.ts';
+
+export const networkMeasures = {
+	poll_success: {
+		title: ['Feed check success', 'Vérifications réussies des flux'],
+		description: [
+			'This shows how often Transit could read each live feed when checking for updates.',
+			'Ce taux indique à quelle fréquence Transit a pu lire chaque flux en direct lors de ses vérifications.',
+		],
+	},
+	feed_age_at_capture: {
+		title: ['Feed age at capture', 'Âge des flux à la collecte'],
+		description: [
+			'This shows how old the live information was when Transit received it.',
+			'Cette mesure indique depuis combien de temps les données en direct avaient été publiées quand Transit les a reçues.',
+		],
+	},
+	feed_update_interval: {
+		title: ['Time between feed updates', 'Temps entre les mises à jour des flux'],
+		description: [
+			'This shows how long you might wait for each live feed to publish new information.',
+			'Cette mesure indique combien de temps vous pourriez attendre avant que chaque flux publie de nouvelles données.',
+		],
+	},
+	live_trip_coverage: {
+		title: ['Live trip coverage', 'Couverture des trajets en direct'],
+		description: [
+			'This shows how often scheduled trips appeared in live data on lines seen in the feed during these dates.',
+			'Ce taux indique à quelle fréquence les trajets prévus sont apparus dans les données en direct sur les lignes vues dans le flux à ces dates.',
+		],
+	},
+	vehicle_field_completeness: {
+		title: ['Details in vehicle reports', 'Détails dans les signalements des véhicules'],
+		description: [
+			'This shows how much vehicle reporting time included each detail you might rely on, such as position or occupancy.',
+			'Ce taux indique la part du temps de signalement où chaque détail était disponible, comme la position ou l’occupation.',
+		],
+	},
+	prediction_error: {
+		title: ['Arrival prediction accuracy', 'Précision des prévisions d’arrivée'],
+		description: [
+			'This shows how closely forecasts made at different lead times matched observed arrivals.',
+			'Cette mesure indique à quel point les prévisions faites à différentes échéances correspondaient aux arrivées observées.',
+		],
+	},
+} satisfies Record<string, { title: [string, string]; description: [string, string] }>;
+
+export type NetworkMeasure = keyof typeof networkMeasures;
+
+const feeds = {
+	trip_updates: ['Trip updates', 'Mises à jour des trajets'],
+	vehicle_positions: ['Vehicle positions', 'Positions des véhicules'],
+	alerts: ['Service alerts', 'Avis de service'],
+} satisfies Record<string, [string, string]>;
+
+const fields = {
+	trip: ['Trip', 'Trajet'],
+	route: ['Line', 'Ligne'],
+	stop: ['Stop', 'Arrêt'],
+	current_status: ['Current status', 'Statut actuel'],
+	occupancy: ['Occupancy', 'Occupation'],
+	position: ['Position', 'Position'],
+} satisfies Record<string, [string, string]>;
+
+const states = {
+	not_measured: ['Not measured', 'Non mesuré'],
+	too_few_to_judge: ['Too few to judge', 'Trop peu de données pour conclure'],
+	no_live_data: ['No live data', 'Aucune donnée en direct'],
+	not_tracked: ['Not tracked', 'Non suivi'],
+	not_published: ['Not tracked (field not published)', 'Non suivi (champ non publié)'],
+	unknown: ['Unknown', 'Inconnu'],
+} satisfies Record<string, [string, string]>;
+
+function object(value: unknown): Record<string, unknown> {
+	return value != null && typeof value === 'object' && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: {};
+}
+
+export function networkRows(measure: NetworkMeasure, answer: ScorecardAnswer, locale: Locale) {
+	const t = (en: string, fr: string) => choose(locale, en, fr);
+	const stateText = (state: keyof typeof states) => t(...states[state]);
+	const values = object(answer.value[measure]);
+	const counts = answer.evidence.counts[measure] ?? {};
+	const dimensions = answer.evidence.dimension_states[measure] ?? {};
+	const noMeasuredDays =
+		!answer.evidence.days_measured.length && answer.evidence.days_not_measured.length > 0;
+	const missing = (key: string) => {
+		const state = dimensions[key] ?? answer.state;
+		if (state === 'measured') return t('Unknown', 'Inconnu');
+		return stateText(noMeasuredDays && state === 'unknown' ? 'not_measured' : state);
+	};
+	const formatNumber = intl.number(locale, { maximumFractionDigits: 1 });
+	const ratio = (n: unknown, total: unknown) =>
+		typeof n === 'number' && typeof total === 'number' && total > 0
+			? `${tally(n, locale)} / ${tally(total, locale)}`
+			: '';
+	const samples = (n: unknown) => (typeof n === 'number' && n > 0 ? tally(n, locale) : '');
+	const seconds = (value: unknown, signed = false) =>
+		value === 'over_10_minutes'
+			? t('Over 10 min', 'Plus de 10 min')
+			: typeof value === 'number'
+				? `${signed && value > 0 ? '+' : ''}${formatNumber.format(value)} s`
+				: t('Unknown', 'Inconnu');
+	const hours = (value: number) => formatNumber.format(value / 3_600_000_000);
+
+	if (measure === 'poll_success') {
+		return {
+			headers: [
+				t('Feed', 'Flux'),
+				t('Successful checks', 'Vérifications réussies'),
+				t('Successes / attempts', 'Réussites / tentatives'),
+			],
+			rows: Object.entries(feeds).map(([feed, label]) => {
+				const value = values[feed];
+				const { attempts, successful } = object(counts[feed]);
+				const reading =
+					dimensions[feed] === 'measured' && typeof value === 'number'
+						? percent(value, locale)
+						: !Object.hasOwn(values, feed) && !noMeasuredDays
+							? stateText('not_tracked')
+							: missing(feed);
+				return [t(...label), reading, ratio(successful, attempts)];
+			}),
+		};
+	}
+	if (measure === 'feed_age_at_capture' || measure === 'feed_update_interval') {
+		return {
+			headers: [
+				t('Feed', 'Flux'),
+				t('Median', 'Médiane'),
+				t('90th percentile', '90e centile'),
+				t('Samples', 'Observations'),
+			],
+			rows: Object.entries(feeds).map(([feed, label]) => {
+				const { median_seconds, p90_seconds } = object(values[feed]);
+				const sample = object(counts[feed]);
+				const noTimestamp =
+					typeof sample.successful === 'number' &&
+					sample.successful > 0 &&
+					sample.timestamped_successes === 0;
+				const reading =
+					!Object.hasOwn(values, feed) && !noMeasuredDays
+						? stateText('not_tracked')
+						: noTimestamp
+							? t(
+									'Not tracked (no publication timestamp)',
+									'Non suivi (aucun horodatage de publication)',
+								)
+							: missing(feed);
+				const measured = dimensions[feed] === 'measured';
+				return [
+					t(...label),
+					measured ? seconds(median_seconds) : reading,
+					measured ? seconds(p90_seconds) : reading,
+					samples(sample.samples),
+				];
+			}),
+		};
+	}
+	if (measure === 'live_trip_coverage') {
+		const value = answer.value[measure];
+		const { appeared, eligible, never_seen, scheduled, never_seen_share } = counts;
+		return {
+			headers: [
+				t('Trips', 'Trajets'),
+				t('Share', 'Part'),
+				t('Trips counted / total', 'Trajets comptés / total'),
+			],
+			rows: [
+				[
+					t('Seen on lines with live data', 'Vus sur les lignes avec des données en direct'),
+					answer.state === 'measured' && typeof value === 'number'
+						? percent(value, locale)
+						: missing(measure),
+					ratio(appeared, eligible),
+				],
+				[
+					t(
+						'Scheduled on lines never seen in live data',
+						'Prévus sur les lignes jamais vues en direct',
+					),
+					typeof never_seen_share === 'number' && !noMeasuredDays
+						? percent(never_seen_share, locale)
+						: missing(measure),
+					!noMeasuredDays ? ratio(never_seen, scheduled) : '',
+				],
+			],
+		};
+	}
+	if (measure === 'vehicle_field_completeness') {
+		return {
+			headers: [
+				t('Field', 'Champ'),
+				t('Share of reporting time', 'Part du temps de signalement'),
+				t('Hours with field / total hours', 'Heures avec le champ / heures totales'),
+			],
+			rows: Object.entries(fields).map(([field, label]) => {
+				const value = values[field];
+				const { present_us, reporting_us } = object(counts[field]);
+				const measured = dimensions[field] === 'measured' && typeof value === 'number';
+				return [
+					t(...label),
+					measured ? percent(value, locale) : missing(field),
+					measured && typeof present_us === 'number' && typeof reporting_us === 'number'
+						? `${hours(present_us)} / ${hours(reporting_us)}`
+						: '',
+				];
+			}),
+		};
+	}
+	return {
+		headers: [
+			t('Lead time', 'Temps d’avance'),
+			t('Median signed error', 'Erreur médiane signée'),
+			t('90th percentile absolute error', '90e centile de l’erreur absolue'),
+			t('Within one minute', 'À une minute près'),
+			t('Observed arrivals', 'Arrivées observées'),
+		],
+		rows: Object.entries(values).map(([horizon, value]) => {
+			const data = object(value);
+			const measured = dimensions[horizon] === 'measured';
+			const within = data.within_60_seconds_share;
+			return [
+				`${horizon} min`,
+				measured ? seconds(data.median_signed_seconds, true) : missing(horizon),
+				measured ? seconds(data.p90_absolute_seconds) : missing(horizon),
+				measured && typeof within === 'number' ? percent(within, locale) : missing(horizon),
+				samples(data.sample_count),
+			];
+		}),
+	};
+}
+
+export function networkUnmeasuredDays(
+	measure: NetworkMeasure,
+	answer: ScorecardAnswer,
+	locale: Locale,
+) {
+	const { days_not_measured, days_not_measured_reasons, capture_gap_days } = answer.evidence;
+	const gaps = new Set(capture_gap_days[measure]);
+	const date = intl.dateTime(locale, { dateStyle: 'medium', timeZone: 'UTC' });
+	return days_not_measured.map((day) => [
+		date.format(new Date(day)),
+		gaps.has(day)
+			? choose(locale, 'Capture interrupted', 'Collecte interrompue')
+			: healthReading(
+					{ status: 'not_measured', reason: days_not_measured_reasons[day] ?? 'unknown' },
+					locale,
+				),
+	]);
+}

@@ -5,6 +5,7 @@ import { readRequestLocation } from '#lib/v1/requestLocation.ts';
 import { readPublicSiteConfig } from '#lib/site/config.ts';
 import { dailyReportFrame } from '#lib/site/dailyReportFrame.ts';
 import { lineFrameView } from '#lib/site/lineFrame.ts';
+import { networkRecordView } from '#lib/site/networkFrame.ts';
 import { stopFrameView } from '#lib/site/stopFrame.ts';
 import { usesFinderRecord } from '#lib/site/finderFrame.ts';
 import { DOCUMENT_SECURITY_HEADERS } from '#lib/site/securityHeaders.ts';
@@ -123,6 +124,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 		usesFinderRecord(event.url);
 	const streamedRecord =
 		overviewRecord ||
+		(event.route.id === '/[[lang=locale]]/network' && networkRecordView(event.url)) ||
 		stopRecord ||
 		vehicleRecord ||
 		rankingsRecord ||

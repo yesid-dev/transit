@@ -4,8 +4,22 @@ import { adapter } from '#lib/v1/adapter/index.ts';
 import type { LiveReader } from '#lib/v1/live/store.svelte.ts';
 import { getProvenance } from '#lib/v1/repositories/provenance.ts';
 import { serverV1Context } from '#lib/v1/serverContext.ts';
+import { loadNetworkRecord } from '#lib/server/networkRecord.ts';
+import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
+import { networkRecordView } from '#lib/site/networkFrame.ts';
 
-export const load: PageServerLoad = (event) => _loadWithReader(event, adapter.live);
+export const load: PageServerLoad = async (event) => {
+	if (!networkRecordView(event.url))
+		return { view: 'live' as const, ...(await _loadWithReader(event, adapter.live)) };
+
+	const { providerId: city } = await event.parent();
+	const { period } = parseFrameState(event.url.searchParams, frameToday());
+	const visitorIp = event.request.headers.get('cf-connecting-ip');
+	return {
+		view: 'record' as const,
+		networkRecord: period && loadNetworkRecord({ ...period, city, visitorIp }),
+	};
+};
 
 export async function _loadWithReader(
 	event: Parameters<PageServerLoad>[0],

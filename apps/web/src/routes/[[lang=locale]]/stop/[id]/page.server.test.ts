@@ -168,6 +168,7 @@ it('streams the dated stop cuts without waiting for a slow per-line answer', asy
 			{ measure: 'on_time', group: 'line' },
 			{ measure: 'on_time', group: 'hour' },
 			{ measure: 'on_time', group: 'day' },
+			{ measure: 'accessible_stops' },
 			{ measure: 'alert_counts' },
 		].map((parameters) => [
 			{ path: '/measure', parameters: { ...parameters, stop: 'S1' } },
