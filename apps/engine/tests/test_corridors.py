@@ -179,6 +179,7 @@ def test_corridor_exclusion_reasons_and_thresholds(tmp_path: Path) -> None:
         "scheduled_seconds": 390,
         "observed_seconds": 750,
         "vehicle_stopped": 1,
+        "vehicle_nearby": 0,
         "trip_update_reported": 1,
         "trip_update_passed": 1,
     }

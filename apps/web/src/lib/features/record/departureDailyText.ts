@@ -132,10 +132,9 @@ export function dailyPeriodRows(answer: RecordSeries, locale: Locale): string[][
 			reading = withCoverage(percent(late / classified, locale), evidence, locale);
 		}
 		const basisCounts = Object.fromEntries(
-			['vehicle_stopped', 'trip_update_reported', 'trip_update_passed'].map((key) => [
-				key,
-				hours.reduce((sum, cell) => sum + (cell.evidence.counts[key] ?? 0), 0),
-			]),
+			['vehicle_stopped', 'vehicle_nearby', 'trip_update_reported', 'trip_update_passed'].map(
+				(key) => [key, hours.reduce((sum, cell) => sum + (cell.evidence.counts[key] ?? 0), 0)],
+			),
 		);
 		const basis = timingBasis(basisCounts, locale);
 		return [

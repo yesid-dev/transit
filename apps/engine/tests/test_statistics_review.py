@@ -35,20 +35,24 @@ def test_accessibility_counts_a_stop_once_across_batches(
     assert answer["state"] == ("not_published" if latest is None else "measured")
 
 
-@pytest.mark.parametrize("version", [8, 9])
+@pytest.mark.parametrize("version", [8, 9, 11])
 def test_punctuality_basis_in_evidence_and_csv(tmp_path: Path, version: int) -> None:
+    bases = ["vehicle_stopped", "trip_update_reported", "trip_update_passed"]
+    if version == 11:
+        bases.append("vehicle_nearby")
     trips = tuple(
         Trip(str(i), "A", 0, "ran", None, True, (0,) * 12, basis=basis)
-        for i, basis in enumerate(("vehicle_stopped", "trip_update_reported", "trip_update_passed"))
+        for i, basis in enumerate(bases)
     )
     store = _build_store(tmp_path, version, {THURSDAY: trips})
     answer = query(store, measure="on_time")
     counts = answer["evidence"]["counts"]
-    assert [counts[trip.basis] for trip in trips] == [12, 12, 12]
+    assert [counts[trip.basis] for trip in trips] == [12] * len(bases)
     (row,) = csv.DictReader(io.StringIO(answer_csv(answer, "en")))
     assert [
         row[label] for label in ("Vehicle stopped", "Trip update reported", "Trip update passed")
     ] == ["12", "12", "12"]
+    assert row["Vehicle GPS near stop"] == ("12" if version == 11 else "0")
 
 
 @pytest.mark.parametrize(

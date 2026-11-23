@@ -50,7 +50,7 @@ STOPPED_AT_RADIUS_METRES = 50
 # Require several opportunities to see early reporting around departure, even
 # for short trips, at the providers' normal 20–60 second feed cadences.
 ABSENCE_LEAD_SECONDS = 300
-CLEANING_VERSION = "10"
+CLEANING_VERSION = "11"
 PREDICTION_HORIZONS_MINUTES = (1, 3, 5, 10, 15, 20, 30)
 _PREDICTION_HORIZONS_SECONDS = tuple(minutes * 60 for minutes in PREDICTION_HORIZONS_MINUTES)
 _PREDICTION_LIMIT_SECONDS = 40 * 60
@@ -69,13 +69,16 @@ _SKIPPED_OR_NO_DATA = {TripUpdate.StopTimeUpdate.SKIPPED, TripUpdate.StopTimeUpd
 
 type State = Literal["ran", "cancelled", "missing", "unconfirmed", "not_measured", "added"]
 type StateReason = Literal["route_without_live_data", "capture_gap"]
-type Basis = Literal["vehicle_stopped", "trip_update_reported", "trip_update_passed"]
+type Basis = Literal[
+    "vehicle_stopped", "vehicle_nearby", "trip_update_reported", "trip_update_passed"
+]
 type Event = Literal["arrival", "departure"]
 type Row = tuple[object, ...]
 _BASIS_RANK: dict[Basis, int] = {
     "vehicle_stopped": 0,
-    "trip_update_reported": 1,
-    "trip_update_passed": 2,
+    "vehicle_nearby": 1,
+    "trip_update_reported": 2,
+    "trip_update_passed": 3,
 }
 
 
@@ -158,6 +161,68 @@ class Trip:
                 seconds.insert(index, reading.second)
 
 
+@dataclass(slots=True)
+class NearbyVisits:
+    # Keep only forward visits by a single vehicle within this trip instance.
+    sequence: int = -1
+    second: int = -1
+    readings: dict[int, tuple[float, int]] = field(default_factory=dict)
+
+    def record(self, sequence: int, second: int, distance: float, origin: int) -> None:
+        if sequence < self.sequence or second <= self.second:
+            return
+        self.sequence, self.second = sequence, second
+        candidate = (distance, second)
+        earlier = self.readings.get(sequence)
+        if sequence == origin or earlier is None or candidate < earlier:
+            self.readings[sequence] = candidate
+
+    def apply(self, trip: Trip, vehicle: str) -> None:
+        assert trip.endpoints is not None
+        origin = trip.endpoints[0]
+        for seq, (_, second) in self.readings.items():
+            if seq == origin and self.sequence == origin:
+                continue
+            event: Event = "departure" if seq == origin else "arrival"
+            trip.stops[seq].observe(Reading(second, vehicle, "vehicle_nearby", event))
+
+
+def _nearby_visit(
+    trip: Trip,
+    position: VehiclePosition,
+    schedule: ArchiveScheduleContext,
+    day: date,
+) -> tuple[int, float] | None:
+    if not position.HasField("position") or not position.position.IsInitialized():
+        return None
+    lat, lon = position.position.latitude, position.position.longitude
+    if validate_wgs84_position(lat, lon) != "valid_wgs84":
+        return None
+    sequence = (
+        position.current_stop_sequence if position.HasField("current_stop_sequence") else None
+    )
+    located = trip.locate(sequence, position.stop_id)
+    match = None
+    ambiguous = False
+    for seq, stop in trip.stops.items():
+        point = schedule.stop(day, stop.stop_id)
+        if point is None or point.lat is None or point.lon is None:
+            continue
+        # More than 50 m of latitude alone cannot fit the stop radius.
+        if abs(lat - point.lat) > 0.00046:
+            continue
+        if validate_wgs84_position(point.lat, point.lon) != "valid_wgs84":
+            continue
+        distance = distance_metres(lat, lon, point.lat, point.lon)
+        if distance > STOPPED_AT_RADIUS_METRES:
+            continue
+        if located is not None and seq == located[0]:
+            return seq, distance
+        ambiguous |= match is not None
+        match = seq, distance
+    return None if ambiguous else match
+
+
 def _timestamp(value: int | None) -> datetime | None:
     return datetime.fromtimestamp(value, UTC) if value is not None else None
 
@@ -217,24 +282,35 @@ def _near_stop(position: VehiclePosition, stop: ScheduledStop | None) -> bool:
 
 
 def _vehicle(
-    trip: Trip, position: VehiclePosition, stamp: int, schedule: ArchiveScheduleContext, day: date
+    trip: Trip,
+    position: VehiclePosition,
+    stamp: int,
+    schedule: ArchiveScheduleContext,
+    day: date,
+    nearby: dict[tuple[str, str], NearbyVisits] | None,
 ) -> None:
     sequence = (
         position.current_stop_sequence if position.HasField("current_stop_sequence") else None
     )
     vehicle = position.vehicle.id or None
     gps_only = sequence is None and not position.stop_id
+    match = None
     if gps_only:
         if not vehicle or trip.added or not position.HasField("position"):
             return
-        located = None
-        for seq, stop in trip.stops.items():
-            if _near_stop(position, schedule.stop(day, stop.stop_id)):
-                if located is not None:
-                    return  # The position fits more than one visit on this trip.
-                located = seq, stop
+        match = _nearby_visit(trip, position, schedule, day)
+        located = (match[0], trip.stops[match[0]]) if match is not None else None
     else:
         located = trip.locate(sequence, position.stop_id)
+    if nearby is not None and vehicle and trip.endpoints is not None:
+        if not gps_only:
+            match = _nearby_visit(trip, position, schedule, day)
+        if match is not None:
+            seq, distance = match
+            key = position.trip.trip_id, vehicle
+            if (visits := nearby.get(key)) is None:
+                nearby[key] = visits = NearbyVisits()
+            visits.record(seq, stamp, distance, trip.endpoints[0])
     if located is None:
         return
     seq, stop = located
@@ -712,6 +788,8 @@ def _build_clean_day(
 
     seen: dict[tuple[str, bytes], FeedPoll] = {}
     last_vehicle: dict[str, VehicleStateInterval] = {}
+    stopped_feeds: set[str] = set()
+    nearby: dict[str, dict[tuple[str, str], NearbyVisits]] = {}
     polls: list[PollFacts] = []
     prior_capture: datetime | None = None
     for capture in captures:
@@ -759,6 +837,12 @@ def _build_clean_day(
                 live: TripUpdate | VehiclePosition = entity.trip_update
             elif capture.family == "vehicle_positions" and entity.HasField("vehicle"):
                 live = entity.vehicle
+                if (
+                    live.HasField("current_status")
+                    and live.current_status == VehiclePosition.STOPPED_AT
+                ):
+                    stopped_feeds.add(capture.feed)
+                    nearby.pop(capture.feed, None)
             else:
                 continue
             has_trip = live.HasField("trip")
@@ -835,7 +919,13 @@ def _build_clean_day(
             if isinstance(live, TripUpdate):
                 _update(trip, live, stamp, captured)
             elif desc.schedule_relationship not in _REMOVED:
-                _vehicle(trip, live, stamp, schedule, day)
+                visits_for_feed = (
+                    None if capture.feed in stopped_feeds else nearby.setdefault(capture.feed, {})
+                )
+                _vehicle(trip, live, stamp, schedule, day, visits_for_feed)
+    for feed_visits in nearby.values():
+        for (trip_id, vehicle), visits in feed_visits.items():
+            visits.apply(trips[trip_id], vehicle)
     for trip in trips.values():
         trip.discard_reversed_readings()
     usable = usable_polls(

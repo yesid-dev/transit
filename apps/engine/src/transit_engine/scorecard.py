@@ -29,7 +29,9 @@ MIN_SCORECARD_SAMPLES = 20
 MIN_PREDICTION_SAMPLES = 30
 MAX_FEED_SECONDS = 600
 _OVERFLOW = MAX_FEED_SECONDS + 1
-_PREDICTION_BASES = ("vehicle_stopped", "trip_update_reported", "trip_update_passed")
+_PREDICTION_BASES = (
+    "vehicle_stopped", "vehicle_nearby", "trip_update_reported", "trip_update_passed",
+)
 _VALID_POLL_RESULTS = ("ok", "empty", "duplicate")
 _VALID_POLL_RESULTS_SQL = ", ".join(f"'{result}'" for result in _VALID_POLL_RESULTS)
 POLL_BATCH_SECONDS = 14 * 86_400

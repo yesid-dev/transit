@@ -444,6 +444,7 @@ _COUNTS = {
 }
 _PUNCTUALITY_BASES = {
     "vehicle_stopped": Text("Vehicle stopped", "Véhicule à l’arrêt"),
+    "vehicle_nearby": Text("Vehicle GPS near stop", "GPS du véhicule près de l’arrêt"),
     "trip_update_reported": Text("Trip update reported", "Mise à jour du trajet déclarée"),
     "trip_update_passed": Text("Trip update passed", "Mise à jour du trajet au passage"),
 }
@@ -1107,13 +1108,24 @@ _PUNCTUALITY = Family(
         "number of stops with a measured delay. Delay is signed seconds from the schedule. "
         "From cleaning v10, the archive calendar and trip timing resolve the service day, "
         "including trips that cross midnight. At the origin, the last nearby stopped report "
-        "before the vehicle is seen past the stop measures departure.",
+        "before the vehicle is seen past the stop measures departure. From v11, if a vehicle "
+        "feed never reports a stop status of stopped in the service-day capture window, "
+        "we use the closest GPS fix within 50 metres. At the origin, we use the last fix "
+        "within 50 metres before the same vehicle is seen at a later stop. Without a qualifying "
+        "vehicle observation, we use an exact agency time or the last prediction before "
+        "confirmed vehicle passage.",
         "Chaque arrêt prévu de chaque trajet compte une fois. Pour chaque catégorie, on "
         "divise son nombre d’arrêts par le nombre d’arrêts dont l’écart a été mesuré. "
         "L’écart à l’horaire est exprimé en secondes, en négatif pour l’avance. "
         "Depuis le nettoyage v10, le calendrier archivé et les heures du trajet déterminent "
         "le jour de service, même après minuit. Au premier arrêt, le départ correspond au "
-        "dernier relevé du véhicule immobilisé à proximité avant qu’il soit vu plus loin.",
+        "dernier relevé du véhicule immobilisé à proximité avant qu’il soit vu plus loin. "
+        "Depuis la version 11, si le flux ne signale aucun véhicule à l’arrêt pendant la "
+        "période de collecte du jour de service, on retient la position GPS la plus proche "
+        "dans un rayon de 50 mètres. Au premier arrêt, on retient la dernière position dans "
+        "ce rayon avant que le même véhicule soit vu à un arrêt suivant. Sans observation "
+        "valide du véhicule, on utilise une heure exacte de l’agence ou la dernière "
+        "prévision avant le passage confirmé.",
     ),
     exclusions=Text(
         "Added trips, cancelled trips and lines without live data are excluded. Stops without "
@@ -2963,6 +2975,7 @@ _CORRIDOR_EXCLUSIONS = {
 }
 _CORRIDOR_BASES = {
     "vehicle_stopped": Text("Runs from stopped vehicles", "Parcours de véhicules vus à l’arrêt"),
+    "vehicle_nearby": Text("Runs from vehicle GPS", "Parcours tirés du GPS des véhicules"),
     "trip_update_reported": Text("Runs from exact reports", "Parcours tirés de rapports exacts"),
     "trip_update_passed": Text("Runs from passed-stop estimates", "Parcours estimés après passage"),
 }
@@ -3042,14 +3055,16 @@ _CORRIDORS = Family(
     ),
     exclusions=Text(
         "Both stops must have the same observation basis. Evidence distinguishes stopped "
-        "vehicles, exact agency reports and estimates backed by vehicle progression. We "
+        "vehicles, nearby GPS fixes, exact agency reports and estimates backed by vehicle "
+        "progression. We "
         "exclude cancelled trips, missing observations or live data, nonpositive scheduled "
         f"durations, negative observed durations and runs over {MAX_SEGMENT_RUN_MULTIPLE} "
         "times their scheduled duration. Every recorded trip or vehicle feed must cover the "
         f"observed span with poll intervals of at most {MAX_POLL_SPACING_SECONDS} seconds and "
         f"publication age of at most {MAX_POLL_AGE_SECONDS} seconds plus the declared source lag.",
         "Les deux arrêts doivent avoir la même base d’observation. Les données distinguent "
-        "les véhicules vus à l’arrêt, les rapports exacts et les estimations confirmées par "
+        "les véhicules vus à l’arrêt, les positions GPS à proximité, les rapports exacts et "
+        "les estimations confirmées par "
         "la progression du véhicule. Sont exclus les trajets annulés, les observations ou "
         "données en direct manquantes, les durées prévues non positives, les durées observées "
         f"négatives et celles dépassant {MAX_SEGMENT_RUN_MULTIPLE} fois la durée prévue. Chaque "
@@ -3303,12 +3318,13 @@ _SCORECARD = Family(
                 "Effectifs par source d’observation et nombre exact à ±60 secondes incluses.",
             ),
             exclusions=Text(
-                "Only observed vehicle stops enter the calculation. Trip updates reporting "
-                "a time are counted separately. Passed stops are excluded because the observed "
-                "time is itself a prediction.",
-                "Seuls les arrêts observés des véhicules entrent dans le calcul. Les heures "
-                "signalées par le flux des trajets sont comptées à part. Les arrêts dépassés "
-                "sont exclus car l’heure observée est elle-même une prédiction.",
+                "Error statistics use reports of vehicles stopped at a stop. Nearby GPS fixes "
+                "and exact agency times are counted separately. Passed stops are excluded "
+                "because the observed time is itself a prediction.",
+                "Les statistiques d’erreur utilisent les relevés de véhicules immobilisés à "
+                "un arrêt. Les positions GPS à proximité et les heures exactes de l’agence "
+                "sont comptées à part. Les arrêts dépassés sont exclus car l’heure observée "
+                "est elle-même une prévision.",
             ),
             limits=Text(
                 f"Percentiles use {DELAY_BIN_SECONDS}-second bins. The ±60-second band uses an "
