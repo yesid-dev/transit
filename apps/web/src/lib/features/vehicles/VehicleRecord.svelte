@@ -68,7 +68,15 @@
 					{@const reading = result.answer}
 					{@const included = reading.evidence.days_included.length}
 					{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-					{#if message}
+					{#if section === 'completion'}
+						<p>{t('Not tracked', 'Non suivi')}</p>
+						<p>
+							{t(
+								'The live feeds do not show reliably when a trip ends early, so trips not finished are not tracked.',
+								'Les flux en direct ne montrent pas de façon fiable quand un trajet se termine tôt, alors les trajets non terminés ne sont pas suivis.',
+							)}
+						</p>
+					{:else if message}
 						<p>
 							{vehicleRecordState('state' in reading ? reading.state : undefined, message, locale)}
 						</p>
@@ -147,20 +155,6 @@
 									`Le flux n’indique pas si le véhicule a continué de rouler.`,
 								)}
 							</p>
-						{:else if section === 'completion'}
-							<p>
-								{vehicleReading(reading, 'vehicle_unfinished_trips', locale)}
-								{t(
-									`of ${number(counts.completion_sample)} trips assessed`,
-									`sur ${number(counts.completion_sample)} voyages évalués`,
-								)}
-							</p>
-							<p>
-								{t(
-									'Its last confirmed stop was before the scheduled terminus on these trips.',
-									'Pour ces voyages, le dernier arrêt confirmé précédait le terminus prévu.',
-								)}
-							</p>
 						{:else if section === 'punctuality'}
 							{@const basis = timingBasis(counts, locale)}
 							{@const coverage = coverageText(reading.evidence, locale)}
@@ -180,13 +174,15 @@
 								</p>{/if}
 						{/if}
 					{/if}
-					{#if reading.coverage_note}<p>{reading.coverage_note[locale]}</p>{/if}
-					<p>
-						{included === 1
-							? t('1 day included.', '1 jour retenu.')
-							: t(`${number(included)} days included.`, `${number(included)} jours retenus.`)}
-						{methodEvidence(reading.evidence, locale)}
-					</p>
+					{#if section !== 'completion'}
+						{#if reading.coverage_note}<p>{reading.coverage_note[locale]}</p>{/if}
+						<p>
+							{included === 1
+								? t('1 day included.', '1 jour retenu.')
+								: t(`${number(included)} days included.`, `${number(included)} jours retenus.`)}
+							{methodEvidence(reading.evidence, locale)}
+						</p>
+					{/if}
 					<RecordActions
 						{locale}
 						title={heading}

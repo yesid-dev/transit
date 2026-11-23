@@ -25,6 +25,7 @@ from transit_engine.measures import (
     _SERVICE_DELIVERED_ID,
     _STATES,
     _US_PER_HOUR,
+    _VEHICLE_COMPLETION_IDS,
     _VEHICLES_ID,
     _WAITING_ID,
     VEHICLE_RANKING_DEFAULT,
@@ -130,7 +131,11 @@ class Ranking:
         if len(measures) != 1:
             raise ValueError("choose a single registry measure")
         kinds = measures[0].ranking_kinds
-        if kinds is not None and self.kind not in kinds:
+        # Old completion ranking URLs still resolve to the measure's unavailable state.
+        unavailable_completion = (
+            self.kind == "vehicle" and self.question.measure in _VEHICLE_COMPLETION_IDS
+        )
+        if kinds is not None and self.kind not in kinds and not unavailable_completion:
             raise ValueError("this measure does not apply to this ranking kind")
         if self.kind == "segment" and family.id != _CORRIDORS_ID:
             raise ValueError("segment rankings require a corridor measure")
@@ -141,7 +146,7 @@ class Ranking:
         ):
             raise ValueError("line and direction ranking filters apply to corridors or departures")
         if self.kind == "vehicle" and family.id != _VEHICLES_ID:
-            raise ValueError("vehicle rankings require a vehicle reporting or completion rate")
+            raise ValueError("vehicle rankings require a vehicle measure")
         if self.kind == "stop" and family.id == _SERVICE_DELIVERED_ID:
             raise ValueError("trip measures do not apply to stops")
         if self.question.measure in _BOUNDARIES and self.kind != "line":
@@ -256,13 +261,6 @@ def _range(
         return {"lower": None, "upper": None, "method": "vehicle_reporting_uncertainty_unknown"}
     if measure.unit == "vehicle_minutes":
         return {"lower": None, "upper": None, "method": "observed_segment_runs"}
-    if measure.unit == "per_100_trips":
-        lower, upper = wilson_interval(value / 100, sample)
-        return {
-            "lower": lower * 100,
-            "upper": upper * 100,
-            "method": "vehicle_completion_wilson_95",
-        }
     if measure.unit == "seconds":
         half_bin = (family.bin_seconds - 1) / 2
         lower, upper = value - half_bin, value + half_bin
@@ -506,7 +504,7 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
         range_ = _range(value, sample, measure, result.counts, family) if value is not None else {}
         bound = (
             range_["lower" if measure.worst_first_descending else "upper"]
-            if value is not None and measure.unit in {"share", "per_100_trips"} else None
+            if value is not None and measure.unit == "share" else None
         )
         if punctuality and value is not None:
             punctuality_candidates.append(
@@ -553,7 +551,9 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
     historical_state = {}
     if has_own_states:
         reasons = {entry["reason"] for entry in excluded}
-        if rows:
+        if question.measure in _VEHICLE_COMPLETION_IDS:
+            state = "not_tracked"
+        elif rows:
             state = "measured"
         elif len(reasons) == 1:
             state = reasons.pop()

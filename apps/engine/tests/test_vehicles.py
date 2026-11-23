@@ -17,16 +17,50 @@ from transit_engine.vehicles import VEHICLE_COUNTS, vehicle_stats_query
 
 REPORTING_RATE = "vehicle_reporting_gaps_per_100_hours"
 UNFINISHED_RATE = "vehicle_unfinished_trips_per_100_trips"
+UNFINISHED_COUNT = "vehicle_unfinished_trips"
 OUTAGE_DAY = SUNDAY + timedelta(days=1)
 
 
-def test_capture_clock_and_same_vehicle_terminus_evidence(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "reassigned, resumed, covered",
+    [(False, False, True), (True, False, True), (True, True, True), (True, False, False)],
+)
+def test_capture_clock_and_same_vehicle_terminus_evidence(
+    tmp_path: Path, reassigned: bool, resumed: bool, covered: bool
+) -> None:
     day = THURSDAY
     store = _build_store(
         tmp_path, 10, {day: (Trip("placeholder", "A", 0, "ran", None, True, (0,)),)}
     )
     start = utc(day, 6)
     end = start + timedelta(seconds=20)
+    trips: list[tuple[object, ...]] = [
+        (trip, "A", trip, "ran", None, True, start, end, end, "v1") for trip in ("v1", "v2")
+    ]
+    stops = [
+        row
+        for trip in ("v1", "v2")
+        for row in (
+            (trip, 1, trip, start, start, start, "upstream", "vehicle_stopped"),
+            (trip, 2, None, end, end, None, "terminal", "not_observed"),
+        )
+    ]
+    if reassigned:
+        handoff = start + timedelta(seconds=10)
+        finish = end + timedelta(seconds=10)
+        trips.append(("next", "A", "v2", "ran", None, True, handoff, finish, None, None))
+        stops.extend(
+            (
+                ("next", 1, "v2", handoff, handoff, handoff, "upstream", "vehicle_stopped"),
+                ("next", 2, "v2", finish, finish, finish, "other_terminal", "vehicle_stopped"),
+            )
+        )
+    positions = [
+        ("v1", "v1", "A", stamp - timedelta(seconds=60), stamp, stamp) for stamp in (start, end)
+    ] + [
+        ("v2", "v2", "A", start - timedelta(seconds=60), start, start),
+        ("v2", "next" if reassigned and not resumed else "v2", "A", end, end, end),
+    ]
     with store.connect() as conn:
         _write_table(
             conn,
@@ -37,7 +71,7 @@ def test_capture_clock_and_same_vehicle_terminus_evidence(tmp_path: Path) -> Non
             "state_reason VARCHAR, route_has_live_data BOOLEAN, scheduled_start_utc TIMESTAMPTZ, "
             "last_capture_utc TIMESTAMPTZ, terminus_reached_at_utc TIMESTAMPTZ, "
             "terminus_vehicle_id VARCHAR",
-            [(trip, "A", trip, "ran", None, True, start, end, end, "v1") for trip in ("v1", "v2")],
+            trips,
         )
         _write_table(
             conn,
@@ -46,12 +80,8 @@ def test_capture_clock_and_same_vehicle_terminus_evidence(tmp_path: Path) -> Non
             STOP_EVENTS,
             "trip_id VARCHAR, stop_sequence BIGINT, vehicle_id VARCHAR, "
             "scheduled_arrival_utc TIMESTAMPTZ, scheduled_departure_utc TIMESTAMPTZ, "
-            "observed_at_utc TIMESTAMPTZ",
-            [
-                row
-                for trip in ("v1", "v2")
-                for row in ((trip, 1, trip, start, start, start), (trip, 2, None, end, end, None))
-            ],
+            "observed_at_utc TIMESTAMPTZ, stop_id VARCHAR, basis VARCHAR",
+            stops,
         )
         _write_table(
             conn,
@@ -61,11 +91,7 @@ def test_capture_clock_and_same_vehicle_terminus_evidence(tmp_path: Path) -> Non
             "vehicle_id VARCHAR, trip_id VARCHAR, route_id VARCHAR, "
             "observed_at_utc TIMESTAMPTZ, captured_at_utc TIMESTAMPTZ, "
             "last_seen_at_utc TIMESTAMPTZ",
-            [
-                (trip, trip, "A", stamp - timedelta(seconds=60), stamp, stamp)
-                for trip in ("v1", "v2")
-                for stamp in (start, end)
-            ],
+            positions,
         )
         _write_table(
             conn,
@@ -79,7 +105,8 @@ def test_capture_clock_and_same_vehicle_terminus_evidence(tmp_path: Path) -> Non
                 *[
                     ("vehicle_positions", stamp, stamp, "ok", 1)
                     for seconds in range(-300, 181, 60)
-                    if (stamp := start + timedelta(seconds=seconds))
+                    if (covered or seconds not in (-120, -60))
+                    and (stamp := start + timedelta(seconds=seconds))
                 ],
             ],
         )
@@ -96,8 +123,14 @@ def test_capture_clock_and_same_vehicle_terminus_evidence(tmp_path: Path) -> Non
             for row in conn.execute(sql, params).fetchall()
         }
     assert [results[v]["service_us"] for v in ("v1", "v2")] == [40_000_000, 40_000_000]
-    assert [results[v]["completion_sample"] for v in ("v1", "v2")] == [1, 1]
-    assert [results[v]["unfinished_trips"] for v in ("v1", "v2")] == [0, 1]
+    unfinished = reassigned and not resumed and covered
+    assert [results[v]["completion_sample"] for v in ("v1", "v2")] == [
+        int(covered),
+        int(reassigned and covered) + int(unfinished),
+    ]
+    assert [results[v]["unfinished_trips"] for v in ("v1", "v2")] == [0, int(unfinished)]
+    assert results["v2"]["completion_unknown"] == int(covered and not unfinished)
+    assert results["v2"]["completion_capture_gap"] == (0 if covered else 2)
 
 
 class Interval(NamedTuple):
@@ -383,18 +416,76 @@ def test_fleet_days_and_vehicle_trips_by_line(
     assert payload.decode().startswith("Numéro de véhicule,")
 
 
-def test_unfinished_trip_requires_continuous_capture(
+def test_completion_diagnostics_are_retained_without_publishing_a_rate(
     vehicle_history: tuple[Store, dict[date, list[Interval]]],
 ) -> None:
     store, _ = vehicle_history
     result = answer(store, "/measure", THURSDAY, FRIDAY, measure="vehicles", vehicle="101")
-    assert result["value"]["vehicle_unfinished_trips"] == 1
-    assert result["value"][UNFINISHED_RATE] == 5
-    assert result["evidence"]["counts"]["completion_sample"] == 20
+    assert result["value"][UNFINISHED_COUNT] is None
+    assert result["value"][UNFINISHED_RATE] is None
+    assert result["evidence"]["counts"]["completion_sample"] == 19
+    assert result["evidence"]["counts"]["completion_confirmed_upstream_reassignments"] == 0
+    assert result["evidence"]["excluded"]["completion_unknown"] == 1
     assert result["evidence"]["excluded"]["completion_capture_gap"] == 1
     gap_only = answer(store, "/measure", FRIDAY, FRIDAY, measure=UNFINISHED_RATE, vehicle="101")
-    assert gap_only["state"] == "not_measured"
+    assert gap_only["state"] == "not_tracked"
     assert gap_only["value"][UNFINISHED_RATE] is None
+
+
+def test_unobservable_trip_ends_only_suppress_completion(
+    vehicle_history: tuple[Store, dict[date, list[Interval]]],
+) -> None:
+    store, _ = vehicle_history
+    result = answer(store, "/measure", FRIDAY, FRIDAY, measure="vehicles", vehicle="101")
+    assert result["value"]["vehicle_hours_in_service"] > 0
+    assert result["evidence"]["measure_states"][UNFINISHED_COUNT] == "not_tracked"
+    assert result["value"][UNFINISHED_COUNT] is None
+    assert result["evidence"]["completion_coverage"] == {
+        "ran_trips": 1,
+        "observed_termini": 0,
+        "observed_terminus_share": 0,
+        "minimum_share": 0.5,
+        "days_below_threshold": 1,
+        "reason": "trip_end_not_observable",
+    }
+    count = answer(
+        store, "/measure", FRIDAY, FRIDAY, measure="vehicle_unfinished_trips", vehicle="101"
+    )
+    assert count["state"] == "not_tracked"
+    assert count["evidence"]["days_included"] == []
+    assert count["evidence"]["days_not_tracked_reasons"] == {str(FRIDAY): "trip_end_not_observable"}
+    ranking = answer(store, "/ranking", FRIDAY, FRIDAY, kind="vehicle", measure=UNFINISHED_RATE)
+    assert ranking["state"] == "not_tracked"
+    assert ranking["rows"] == []
+    assert ranking["evidence"]["days_not_tracked_reasons"] == {
+        str(FRIDAY): "trip_end_not_observable"
+    }
+
+    exact_floor = answer(store, "/measure", OUTAGE_DAY, OUTAGE_DAY, measure="vehicles")
+    coverage = exact_floor["evidence"]["completion_coverage"]
+    assert (coverage["observed_termini"], coverage["ran_trips"]) == (1, 2)
+    assert coverage["observed_terminus_share"] == 0.5
+    assert coverage["days_below_threshold"] == 0
+    assert exact_floor["evidence"]["measure_states"][UNFINISHED_COUNT] == "not_tracked"
+    series = answer(
+        store, "/measure", THURSDAY, FRIDAY, measure=UNFINISHED_RATE, vehicle="101", group="day"
+    )
+    assert series["state"] == "not_tracked"
+    assert [cell["state"] for cell in series["cells"]] == ["not_tracked", "not_tracked"]
+    assert all(cell["evidence"]["days_included"] == [] for cell in series["cells"])
+
+
+@pytest.mark.parametrize("day", [THURSDAY, SATURDAY, OUTAGE_DAY + timedelta(days=1)])
+@pytest.mark.parametrize("measure", [UNFINISHED_COUNT, UNFINISHED_RATE])
+def test_completion_is_not_tracked_even_with_good_coverage_or_no_rows(
+    vehicle_history: tuple[Store, dict[date, list[Interval]]], day: date, measure: str
+) -> None:
+    store, _ = vehicle_history
+    result = answer(store, "/measure", day, day, measure=measure)
+    assert result["state"] == "not_tracked"
+    assert result["value"][measure] is None
+    assert result["evidence"]["completion_coverage"]["reason"] == "trip_end_not_observable"
+    assert result["evidence"]["days_not_tracked_reasons"] == {str(day): "trip_end_not_observable"}
 
 
 def test_reporting_outage_is_excluded_from_vehicle_measures_and_ranking(
@@ -434,17 +525,20 @@ def test_vehicle_ranking_default_floors_and_exports(
     vehicle_history: tuple[Store, dict[date, list[Interval]]],
 ) -> None:
     store, _ = vehicle_history
-    for measure in (None, UNFINISHED_RATE):
-        filters = {"measure": measure} if measure else {}
-        result = answer(store, "/ranking", kind="vehicle", **filters)
-        assert result["measure"] == (measure or REPORTING_RATE)
-        assert [row["id"] for row in result["rows"]] == ["101", "102"]
-        assert result["rows"][0]["value"] > result["rows"][1]["value"] == 0
-        (excluded,) = result["excluded"]
-        assert (excluded["id"], excluded["reason"]) == ("103", "too_few_to_judge")
-        assert excluded["sample"] < result["info"][0]["ranking_minimum_sample"]
-    assert result["rows"][0]["sample"] == 20
-    assert result["rows"][0]["range"]["lower"] < 5 < result["rows"][0]["range"]["upper"]
+    result = answer(store, "/ranking", kind="vehicle")
+    assert result["measure"] == REPORTING_RATE
+    assert [row["id"] for row in result["rows"]] == ["101", "102"]
+    assert result["rows"][0]["value"] > result["rows"][1]["value"] == 0
+    (excluded,) = result["excluded"]
+    assert (excluded["id"], excluded["reason"]) == ("103", "too_few_to_judge")
+    assert excluded["sample"] < result["info"][0]["ranking_minimum_sample"]
+    for measure in (UNFINISHED_COUNT, UNFINISHED_RATE):
+        completion = answer(store, "/ranking", kind="vehicle", measure=measure)
+        assert completion["state"] == "not_tracked"
+        assert completion["rows"] == []
+        assert completion["evidence"]["days_not_tracked_reasons"] == {
+            str(THURSDAY): "trip_end_not_observable"
+        }
     assert request(store, "/ranking", kind="vehicle", measure="on_time")[0] == 400
     status, payload = request(store, "/measure", measure="vehicles", format="csv", lang="fr")
     assert status == 200

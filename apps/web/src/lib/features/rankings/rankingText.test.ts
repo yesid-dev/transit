@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import type { RankingsRecord } from '#lib/server/engine.ts';
 import { ranking } from '#lib/features/home/overviewRecord.fixture.ts';
 import { recordMessage } from '../record/recordText.ts';
-import { reporting, unfinished } from './rankingSelection.ts';
+import { rankingMeasures, rankingSelection, reporting } from './rankingSelection.ts';
 import { exclusionText, rankingRange, rankingSample, rankingValue } from './rankingText.ts';
 
 const entry = { id: '24', classes: ['3:regular'], counts: {}, sample: 100 };
@@ -26,13 +26,6 @@ it('renders bounds in the engine’s units, including zero and negative bounds',
 	expect(rankingRange(row, 'on_time', 'en')).toBe('38% to 58%');
 	expect(
 		rankingRange(
-			{ ...row, range: { lower: 0, upper: 20, method: 'vehicle_completion_wilson_95' } },
-			unfinished,
-			'en',
-		),
-	).toBe('0 per 100 trips to 20 per 100 trips');
-	expect(
-		rankingRange(
 			{ ...row, range: { lower: -32.5, upper: -27.5, method: 'histogram_half_bin' } },
 			'median_delay',
 			'fr',
@@ -49,6 +42,15 @@ it('renders bounds in the engine’s units, including zero and negative bounds',
 		),
 	).toBe('Unknown');
 	expect(rankingValue(0, reporting, 'fr')).toBe('0 par 100 h');
+});
+
+it('only ranks vehicles on reporting gaps, including visits to old completion links', () => {
+	expect(rankingMeasures.vehicle).toEqual([reporting]);
+	const oldLink = new URLSearchParams({
+		kind: 'vehicle',
+		measure: 'vehicle_unfinished_trips_per_100_trips',
+	});
+	expect(rankingSelection('/repeat-offenders', oldLink).measure).toBe(reporting);
 });
 
 it('keeps a measured zero numerator and leaves a missing count out', () => {

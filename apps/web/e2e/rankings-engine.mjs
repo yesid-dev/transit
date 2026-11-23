@@ -5,6 +5,9 @@ export function rankingsEngine(url) {
 	const from = get('from');
 	const vehicle = kind === 'vehicle';
 	const reporting = measure === 'vehicle_reporting_gaps_per_100_hours';
+	if (vehicle && !reporting) {
+		return { status: 400, body: { message: 'Vehicle rankings require reporting gaps' } };
+	}
 	const median = measure === 'median_delay';
 	const floorGated = kind === 'departure' && from === get('to');
 	const ids = { line: '24', stop: 'S1', departure: '["24",0,"07:15:00"]', vehicle: 'V01' };
@@ -21,16 +24,14 @@ export function rankingsEngine(url) {
 		sample: reporting ? 20.5 : 100,
 		counts: reporting
 			? { reporting_gaps: 5 }
-			: vehicle
-				? { unfinished_trips: 12 }
-				: {
-						scheduled: 250,
-						classified: 100,
-						on_time: 48,
-						late: 48,
-						vehicle_stopped: 50,
-						trip_update_passed: 50,
-					},
+			: {
+					scheduled: 250,
+					classified: 100,
+					on_time: 48,
+					late: 48,
+					vehicle_stopped: 50,
+					trip_update_passed: 50,
+				},
 		...(!vehicle ? { share_observed: 0.4, low_coverage: true } : {}),
 	};
 	const notTracked = vehicle && from === '2026-11-10';
@@ -54,12 +55,12 @@ export function rankingsEngine(url) {
 							{
 								...entry,
 								rank: 1,
-								...(!reporting && !median ? { ranking_bound: vehicle ? 6 : 0.58 } : {}),
-								value: reporting ? 24.39 : median ? 30 : vehicle ? 12 : 0.48,
+								...(!reporting && !median ? { ranking_bound: 0.58 } : {}),
+								value: reporting ? 24.39 : median ? 30 : 0.48,
 								range: {
 									method,
-									lower: reporting ? null : median ? 27.5 : vehicle ? 6 : 0.38,
-									upper: reporting ? null : median ? 32.5 : vehicle ? 20 : 0.58,
+									lower: reporting ? null : median ? 27.5 : 0.38,
+									upper: reporting ? null : median ? 32.5 : 0.58,
 								},
 							},
 						],
@@ -90,7 +91,7 @@ export function rankingsEngine(url) {
 				{
 					minimum_sample: 30,
 					ranking_floors: { departure: { observed_service_dates: 5, classified: 30 } },
-					...(vehicle ? { ranking_minimum_sample: reporting ? 10 : 20 } : {}),
+					...(vehicle ? { ranking_minimum_sample: 10 } : {}),
 					text: {
 						en: { definition: 'Calculated from the observed service.' },
 						fr: { definition: 'Calculé à partir du service observé.' },
