@@ -1,0 +1,16 @@
+[Unit]
+Description=Cloudflare Tunnel for the Transit query engine
+Wants=network-online.target transit-engine.service
+After=network-online.target transit-engine.service
+
+[Service]
+DynamicUser=yes
+LoadCredential=tunnel-credentials.json:/etc/transit-engine/tunnel-credentials.json
+ExecStart=/usr/local/bin/cloudflared --config /etc/cloudflared/config.yml tunnel run --credentials-file %d/tunnel-credentials.json
+Restart=on-failure
+RestartSec=5s
+ProtectSystem=strict
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target

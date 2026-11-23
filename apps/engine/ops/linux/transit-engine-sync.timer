@@ -1,0 +1,9 @@
+[Unit]
+Description=Mirror Transit clean days after nightly cleaning
+
+[Timer]
+OnCalendar=*-*-* 17:30:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target
