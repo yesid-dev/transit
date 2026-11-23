@@ -837,6 +837,7 @@ async def http(
     query_string: str = "",
     *,
     authorization: tuple[bytes, ...] = (),
+    headers: tuple[tuple[bytes, bytes], ...] = (),
 ) -> tuple[int, dict[bytes, bytes], bytes]:
     scope = cast(
         HTTPScope,
@@ -845,7 +846,7 @@ async def http(
             "method": "GET",
             "path": path,
             "query_string": query_string.encode(),
-            "headers": [(b"authorization", value) for value in authorization],
+            "headers": [*headers, *((b"authorization", value) for value in authorization)],
         },
     )
     messages: list[ASGISendEvent] = []

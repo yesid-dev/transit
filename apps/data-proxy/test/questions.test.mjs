@@ -9,6 +9,8 @@ const WINDOW = "from=2020-01-01&to=2020-01-02";
 const HEALTH = `/v2/demo/data-health?${WINDOW}`;
 const MEASURE = `/v2/demo/measure?measure=on_time&${WINDOW}`;
 const RANKING = `/v2/demo/ranking?measure=on_time&kind=line&${WINDOW}`;
+const REVISION = "0123456789abcdef";
+const NEXT_REVISION = "fedcba9876543210";
 const ANSWER = {
   value: { on_time: 0 },
   state_text: { en: "Measured", fr: "Mesuré" },
@@ -57,6 +59,8 @@ function fixture(t, respond = () => Response.json(ANSWER, {
   const requests = [];
   const cityRequests = [];
   const cities = {
+    answer_revision: REVISION,
+    cleaning_version: 6,
     default_provider: "demo",
     providers: [
       { id: "demo", timezone: "America/Toronto" },
@@ -64,6 +68,7 @@ function fixture(t, respond = () => Response.json(ANSWER, {
     ],
   };
   const visitors = [];
+  const engine = { revision: REVISION, version: 6 };
   const cache = {
     async match(key) {
       const entry = answers.get(key.url);
@@ -84,7 +89,12 @@ function fixture(t, respond = () => Response.json(ANSWER, {
           return Response.json(cities);
         }
         requests.push(request);
-        return respond(request);
+        const response = await respond(request);
+        if (engine.revision) response.headers.set("x-transit-answer-revision", engine.revision);
+        if (!response.headers.has("x-transit-cleaning-version")) {
+          response.headers.set("x-transit-cleaning-version", String(engine.version));
+        }
+        return response;
       },
     },
     TRANSIT1_ENGINE_ACCESS_TOKEN: "fixture-token",
@@ -114,7 +124,7 @@ function fixture(t, respond = () => Response.json(ANSWER, {
     await Promise.all(tasks);
     return response;
   }
-  return { fetch, env, answers, saved, requests, cityRequests, cities, visitors };
+  return { fetch, env, answers, saved, requests, cityRequests, cities, visitors, engine };
 }
 
 test("dated public routes accept the same query names as the engine HTTP parser", () => {
@@ -274,18 +284,77 @@ test("canonical questions reuse the versioned edge answer and bypass the engine 
     city: "demo", from: "2020-01-01", hour: "7", line: "A/B", measure: "on_time", to: "2020-01-02",
   });
   const [key, entry] = [...f.answers].find(([key]) => key.includes("/measure?"));
-  assert.match(key, /\/6\/demo\/measure\?from=2020-01-01&hour=7&line=A%2FB&measure=on_time&to=2020-01-02$/);
+  assert.match(key, /\/6\/0123456789abcdef\/demo\/measure\?from=2020-01-01&hour=7&line=A%2FB&measure=on_time&to=2020-01-02$/);
   assert.equal(entry.ttl, 604800);
 });
 
-test("a newly observed cleaning version moves dated cache lookups to that version", async (t) => {
-  let version = 6;
-  const f = fixture(t, () => Response.json({ ...ANSWER, evidence: { cleaning_versions: [version] } }));
+test("a refreshed catalog separates answers by cleaning version and engine revision", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  let value = 1;
+  const f = fixture(t, () => Response.json({ value }, {
+    headers: { "x-transit-days-pending": "0" },
+  }));
   await f.fetch(MEASURE);
-  version = 7;
-  await f.fetch(MEASURE + "&line=2");
-  assert.deepEqual((await (await f.fetch(MEASURE)).json()).evidence.cleaning_versions, [7]);
+  f.cities.answer_revision = f.engine.revision = NEXT_REVISION;
+  t.mock.timers.tick(31_000);
+  value = 2;
+  assert.deepEqual(await (await f.fetch(MEASURE)).json(), { value: 2 });
+  f.cities.cleaning_version = f.engine.version = 7;
+  t.mock.timers.tick(31_000);
+  value = 3;
+  assert.deepEqual(await (await f.fetch(MEASURE)).json(), { value: 3 });
   assert.equal(f.requests.length, 3);
+});
+
+test("answers with a mismatched or missing engine revision are never stored", async (t) => {
+  const f = fixture(t);
+  for (const revision of [NEXT_REVISION, null]) {
+    f.engine.revision = revision;
+    assert.deepEqual(await (await f.fetch(MEASURE)).json(), ANSWER);
+    assert.ok(![...f.answers.keys()].some((key) => key.includes("/measure?")));
+    assert.ok(![...f.saved.values()].some(({ metadata }) => metadata?.contentType));
+  }
+  assert.equal(f.requests.length, 2);
+});
+
+test("an unknown catalog revision allows answers without storing them", async (t) => {
+  const f = fixture(t);
+  delete f.cities.answer_revision;
+  assert.deepEqual(await (await f.fetch(MEASURE)).json(), ANSWER);
+  assert.ok(![...f.answers.keys()].some((key) => key.includes("/measure?")));
+  assert.ok(![...f.saved.values()].some(({ metadata }) => metadata?.contentType));
+  let supportsPublicCityCheck = true;
+  f.env.ENGINE.fetch = (request) => {
+    if (new URL(request.url).pathname === "/cities") throw new Error("catalog offline");
+    assert.equal(request.headers.get("x-transit-require-public-city"), "1");
+    return Response.json(ANSWER, {
+      headers: supportsPublicCityCheck ? { "x-transit-answer-revision": REVISION } : {},
+    });
+  };
+  f.answers.clear();
+  f.saved.clear();
+  assert.deepEqual(await (await f.fetch(MEASURE)).json(), ANSWER);
+  assert.equal(f.answers.size, 0);
+  assert.equal(f.saved.size, 0);
+  supportsPublicCityCheck = false;
+  assert.equal((await f.fetch(MEASURE)).status, 503);
+});
+
+test("last-good answers are scoped to the catalog cleaning version and answer revision", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  let offline = false;
+  const f = fixture(t, () => offline ? new Response(null, { status: 500 }) : Response.json(ANSWER));
+  await f.fetch(MEASURE);
+  offline = true;
+  f.answers.clear();
+  assert.equal((await f.fetch(MEASURE)).headers.get("x-transit-answer"), "last-good");
+  f.cities.answer_revision = NEXT_REVISION;
+  t.mock.timers.tick(31_000);
+  assert.equal((await f.fetch(MEASURE)).status, 503);
+  f.cities.answer_revision = REVISION;
+  f.cities.cleaning_version = 7;
+  t.mock.timers.tick(31_000);
+  assert.equal((await f.fetch(MEASURE)).status, 503);
 });
 
 test("ranking and health pass the approved parameters to their engine routes", async (t) => {

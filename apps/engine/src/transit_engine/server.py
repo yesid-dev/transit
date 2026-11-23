@@ -14,7 +14,13 @@ from uuid import uuid4
 import uvicorn
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 
-from transit_engine.cities import UnknownCity, city_catalog, public_declaration, service_zone
+from transit_engine.cities import (
+    ANSWER_REVISION,
+    UnknownCity,
+    city_catalog,
+    public_declaration,
+    service_zone,
+)
 from transit_engine.health import data_health
 from transit_engine.measures import (
     CORRIDOR_RANKING_DEFAULT,
@@ -57,6 +63,7 @@ async def respond(
         (b"content-type", b"text/csv; charset=utf-8" if csv_response else b"application/json"),
         (b"cache-control", b"no-store"),
         (b"x-engine-queued", b"true" if queued else b"false"),
+        (b"x-transit-answer-revision", ANSWER_REVISION.encode("ascii")),
     ]
     if status == 503:
         headers.append((b"retry-after", b"1"))
@@ -242,16 +249,21 @@ class Engine:
             if scope["query_string"]:
                 await respond(send, 400, {"message": "this endpoint takes no parameters"})
             else:
-                await respond(send, 200, await asyncio.to_thread(city_catalog))
+                catalog = await asyncio.to_thread(city_catalog)
+                catalog["cleaning_version"] = self.store.cleaning_version
+                await respond(send, 200, catalog, cleaning_version=self.store.cleaning_version)
             return
         if scope["path"] == "/how-we-measure":
             if scope["query_string"]:
                 await respond(send, 400, {"message": "this endpoint takes no parameters"})
             else:
-                await respond(send, 200, methods())
+                await respond(send, 200, methods(), cleaning_version=self.store.cleaning_version)
             return
+        require_public_city = (b"x-transit-require-public-city", b"1") in scope["headers"]
         if scope["path"] == "/data-health":
-            await self._data_health(scope["query_string"], send)
+            await self._data_health(
+                scope["query_string"], send, require_public_city=require_public_city
+            )
             return
         route = scope["path"]
         if route not in {"/measure", "/ranking", "/search-index", "/schedule-index"}:
@@ -268,6 +280,9 @@ class Engine:
                 question, output, language = fields["city"][0], "json", "en"
             else:
                 question, output, language = _question(raw, ranking=route == "/ranking")
+                if require_public_city:
+                    selection = question.question if isinstance(question, Ranking) else question
+                    await asyncio.to_thread(public_declaration, selection.city)
         except UnicodeError:
             await respond(send, 400, {"message": "invalid query encoding"})
             return
@@ -335,9 +350,13 @@ class Engine:
                 days_pending=days_pending,
             )
 
-    async def _data_health(self, raw: bytes, send: ASGISendCallable) -> None:
+    async def _data_health(
+        self, raw: bytes, send: ASGISendCallable, *, require_public_city: bool
+    ) -> None:
         try:
             city, start, end = _health(raw)
+            if require_public_city:
+                await asyncio.to_thread(public_declaration, city)
         except UnicodeError:
             await respond(send, 400, {"message": "invalid query encoding"})
             return

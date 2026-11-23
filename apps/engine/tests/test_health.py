@@ -277,7 +277,13 @@ async def get(
 ) -> tuple[int, dict[bytes, bytes], bytes]:
     scope = cast(
         HTTPScope,
-        {"type": "http", "method": "GET", "path": path, "query_string": query_string.encode()},
+        {
+            "type": "http",
+            "method": "GET",
+            "path": path,
+            "query_string": query_string.encode(),
+            "headers": [],
+        },
     )
     messages: list[ASGISendEvent] = []
 
