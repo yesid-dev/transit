@@ -37,6 +37,18 @@ test("caps agency message detail at seven inclusive service dates", async (t) =>
   assert.equal((await harness.fetch(`${base}&to=2020-02-04`)).status, 200);
 });
 
+test("forwards alert effect and cause groups with the published-value cuts", async (t) => {
+  const harness = fixture(t);
+  const base = `/v2/demo/measure?measure=alert_counts&${WINDOW}`;
+  const cuts = { effect: "DETOUR", cause: "CONSTRUCTION" };
+  for (const [index, [group, value]] of Object.entries(cuts).entries()) {
+    assert.equal((await harness.fetch(`${base}&group=${group}&${group}=${value}`)).status, 200);
+    const { searchParams } = new URL(harness.requests[index].url);
+    assert.equal(searchParams.get("group"), group);
+    assert.equal(searchParams.get(group), value);
+  }
+});
+
 function fixture(t, respond = () => Response.json(ANSWER, {
   headers: { "x-transit-days-pending": "0" },
 })) {

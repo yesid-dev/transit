@@ -31,7 +31,7 @@ const VALID = {
   alert_details: oneOf("1"),
   hour: (value) => /^(?:[01]?[0-9]|2[0-3])$/.test(value),
   day_type: oneOf("weekday", "saturday", "sunday"),
-  group: oneOf("day", "hour", "day_type", "weekday_hour", "direction", "stop", "departure", "line", "stop_id", "vehicle"),
+  group: oneOf("day", "hour", "day_type", "weekday_hour", "direction", "stop", "departure", "line", "stop_id", "vehicle", "effect", "cause"),
   kind: oneOf("line", "stop", "departure", "vehicle", "segment"),
   class: (value) => /^(?:all|(?:[0-9]+|unknown|mixed):(?:night|frequent|regular))$/.test(value),
   limit: (value) => /^[0-9]{1,3}$/.test(value) && Number(value) >= 1 && Number(value) <= 500,

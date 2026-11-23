@@ -91,7 +91,7 @@
 	const finder = $derived((path === '/lines' || path === '/stops') && usesFinderRecord(url));
 	const departure = $derived(path.startsWith('/departure/'));
 	const usesFrameRecord = $derived(
-		path === '/' || line || stop || departure || recordOnly || finder,
+		path === '/' || path === '/alerts' || line || stop || departure || recordOnly || finder,
 	);
 	const startLabel = $derived(
 		intl.dateTime(locale, { timeZone: 'UTC', dateStyle: 'long' }).format(new Date(RECORD_START)),

@@ -1,6 +1,6 @@
 import { getRecordAnswer, type EnginePeriod, type RecordQuery } from './engine.ts';
 import type { DepartureIdentity } from '#lib/features/record/departureIdentity.ts';
-import type { DateWindow } from '#lib/v1/history/window.ts';
+import { alertDetailsAllowed } from '#lib/features/alerts/alertRecord.ts';
 
 const daily = {
 	punctuality: { measure: 'punctuality' },
@@ -46,13 +46,8 @@ export function departureDay(params: URLSearchParams, { from, to }: { from: stri
 	return Number.isFinite(+date) && date.toISOString().slice(0, 10) === day ? day : to;
 }
 
-export function dailyAlertDetailsAllowed({ from, to }: DateWindow): boolean {
-	const elapsed = Date.parse(to) - Date.parse(from);
-	return elapsed >= 0 && elapsed < 7 * 86_400_000;
-}
-
 export function loadDailyRecord(period: EnginePeriod) {
-	const messagesLimited = !dailyAlertDetailsAllowed(period);
+	const messagesLimited = !alertDetailsAllowed(period);
 	const sections = (Object.keys(daily) as DailySection[])
 		.filter((section) => section !== 'messages' || !messagesLimited)
 		.map((section) => ({

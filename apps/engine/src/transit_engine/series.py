@@ -15,6 +15,8 @@ type SeriesGroup = Literal[
     "line",
     "stop_id",
     "vehicle",
+    "effect",
+    "cause",
 ]
 type GroupKey = tuple[str | int | None, ...]
 
@@ -29,6 +31,8 @@ GROUP_COLUMNS: dict[SeriesGroup, tuple[str, ...]] = {
     "line": ("line",),
     "stop_id": ("stop",),
     "vehicle": ("vehicle",),
+    "effect": ("effect",),
+    "cause": ("cause",),
 }
 DAY_TYPES = ("weekday", "weekday", "weekday", "weekday", "weekday", "saturday", "sunday")
 HOUR_GROUPS = ("hour", "weekday_hour")
