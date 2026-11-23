@@ -90,7 +90,7 @@ def _storage(location: str, role: str) -> tuple[BronzeStorage, str]:
 
 def discover_editions(
     storage: BronzeStorage, prefix: str, declaration: ProviderManifest
-) -> dict[date, Edition]:
+) -> dict[date, tuple[Edition, ...]]:
     provider = declaration.provider
     archive = f"{prefix}archive/v1/schedules/{provider.provider_id}/"
     index = archive + "editions.json"
@@ -100,7 +100,8 @@ def discover_editions(
             if edition.key != f"{edition.sha256}.zip":
                 raise ValueError("Archive edition index paths must be sibling checksum ZIPs")
         return {
-            day: Edition(archive + edition.key, edition.sha256) for day, edition in pinned.items()
+            day: (Edition(archive + edition.key, edition.sha256),)
+            for day, edition in pinned.items()
         }
 
     archived: dict[str, list[Edition]] = {}
@@ -108,7 +109,7 @@ def discover_editions(
         if match := _ZIP.fullmatch(key.removeprefix(archive)):
             archived.setdefault(match[1][:12], []).append(Edition(key, match[1]))
     zone = ZoneInfo(provider.timezone)
-    originals: dict[date, tuple[datetime, Edition]] = {}
+    originals: dict[date, dict[datetime, Edition]] = {}
     for endpoint, feed in declaration.feeds.items():
         if not feed.is_enabled or feed.feed_kind.value != "static_schedule":
             continue
@@ -121,15 +122,21 @@ def discover_editions(
                 raise ValueError(f"Schedule timestamp disagrees with Bronze partition: {key}")
             day = observed.astimezone(zone).date()
             candidates = archived.get(match[3], [])
-            edition = candidates[0] if len(candidates) == 1 else Edition(key, match[3])
-            previous = originals.get(day)
-            if previous is not None and previous[0] == observed and previous[1] != edition:
+            edition = (
+                Edition(candidates[0].key, candidates[0].sha256, key)
+                if len(candidates) == 1
+                else Edition(key, match[3], key)
+            )
+            observations = originals.setdefault(day, {})
+            previous = observations.setdefault(observed, edition)
+            if (previous.key, previous.sha256) != (edition.key, edition.sha256):
                 raise ValueError(f"Competing schedule editions observed at {observed.isoformat()}")
-            if previous is None or previous[0] < observed:
-                originals[day] = observed, edition
     if not originals:
         raise ValueError("No dated Bronze schedule originals or archive editions.json found")
-    return {day: edition for day, (_, edition) in originals.items()}
+    return {
+        day: tuple(observations[stamp] for stamp in sorted(observations, reverse=True))
+        for day, observations in originals.items()
+    }
 
 
 def _capture_manifests(
@@ -190,16 +197,18 @@ def _failure_reason(error: Exception) -> str:
 def _build_day(
     declaration: ProviderManifest,
     day: date,
-    editions: dict[date, Edition],
+    editions: dict[date, tuple[Edition, ...]],
     raw: BronzeStorage,
     raw_prefix: str,
     clean: BronzeStorage,
     clean_prefix: str,
-) -> UnmeasuredReason | None:
-    """Build one day or return the reason it cannot be measured."""
+) -> tuple[UnmeasuredReason | None, list[dict[str, str]]]:
+    """Build one day or return the reason and evidence for an unmeasured day."""
     if day < min(editions):
-        return "no_schedule_edition"
-    schedules = load_contexts(declaration, day, editions, raw.read_bytes)
+        return "no_schedule_edition", []
+    schedules, ignored = load_contexts(declaration, day, editions, raw.read_bytes)
+    if day not in schedules:
+        return "schedule_archive_unreadable", ignored
     start, end = capture_window(schedules[day], day)
     selections = list(_capture_manifests(raw, raw_prefix, declaration, start, end))
     archived = {(manifest.endpoint_key, manifest.utc_date) for manifest, _ in selections}
@@ -208,16 +217,16 @@ def _build_day(
         realtime_capture_present(selections, start, end)
     )
     if realtime_feeds(declaration) and not realtime_present:
-        return "no_raw_captures"
+        return "no_raw_captures", ignored
     captures = merged_captures(
         raw, raw_prefix, selections, start, end, read_loose_captures(raw, loose)
     )
     cleaned = clean_from_inputs(declaration, day, schedules, captures)
     if isinstance(clean, LocalBronzeStorage):
-        write_clean_day(cleaned, clean.root)
+        write_clean_day(cleaned, clean.root, ignored_invalid_original=ignored)
     else:
-        publish_clean_day(cleaned, clean, clean_prefix)
-    return None
+        publish_clean_day(cleaned, clean, clean_prefix, ignored_invalid_original=ignored)
+    return None, ignored
 
 
 def run_clean_days(provider: str, first: str, last: str, source: str, dest: str) -> None:
@@ -232,11 +241,15 @@ def run_clean_days(provider: str, first: str, last: str, source: str, dest: str)
         typer.echo(_failure_reason(error), err=True)
         raise typer.Exit(1) from None
 
-    def settle(day: date, reason: UnmeasuredReason) -> None:
+    def settle(day: date, reason: UnmeasuredReason, ignored: list[dict[str, str]]) -> None:
         if isinstance(clean, LocalBronzeStorage):
-            write_unmeasured_day(provider, day, clean.root, reason)
+            write_unmeasured_day(
+                provider, day, clean.root, reason, ignored_invalid_original=ignored
+            )
         else:
-            publish_unmeasured_day(provider, day, clean, clean_prefix, reason)
+            publish_unmeasured_day(
+                provider, day, clean, clean_prefix, reason, ignored_invalid_original=ignored
+            )
 
     editions = None
     built = skipped = 0
@@ -251,19 +264,24 @@ def run_clean_days(provider: str, first: str, last: str, source: str, dest: str)
                 continue
             if editions is None:
                 editions = discover_editions(raw, raw_prefix, declaration)
-            outcome = _build_day(declaration, day, editions, raw, raw_prefix, clean, clean_prefix)
+            outcome, ignored = _build_day(
+                declaration, day, editions, raw, raw_prefix, clean, clean_prefix
+            )
             if outcome is None:
                 built += 1
             else:
-                settle(day, outcome)
+                settle(day, outcome, ignored)
                 unmeasured[outcome] += 1
         except Exception as error:
             # A failed day must leave the next service day eligible for rebuilding.
             failed[day] = _failure_reason(error)
     typer.echo(
         f"Built {built}, skipped {skipped}, no raw captures {unmeasured['no_raw_captures']}, "
-        f"no schedule edition {unmeasured['no_schedule_edition']}, failed {len(failed)}"
+        f"no schedule edition {unmeasured['no_schedule_edition']}, "
+        f"failed {len(failed)}"
     )
+    if unreadable := unmeasured["schedule_archive_unreadable"]:
+        typer.echo(f"Unreadable schedule archive {unreadable}")
     for day, reason in failed.items():
         typer.echo(f"{day}: {reason}", err=True)
     if failed:

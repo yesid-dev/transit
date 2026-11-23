@@ -1282,6 +1282,77 @@ def test_range_builds_skips_and_continues(
     ]
 
 
+@pytest.mark.parametrize("previous_edition", [True, False])
+def test_unreadable_bronze_original_does_not_become_an_edition(
+    tmp_path: Path, previous_edition: bool
+) -> None:
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    third = NEXT + timedelta(days=1)
+    first = DAY if previous_edition else NEXT
+    days = (DAY, NEXT, third) if previous_edition else (NEXT, third)
+    checksums = {}
+    ignored = []
+    for day in days:
+        path = raw / "schedule.zip"
+        if day == NEXT:
+            path.write_bytes(b"<!DOCTYPE html><title>Schedule unavailable</title>")
+        else:
+            _edition(path, {"scheduled": ("r", ["12:00:00"])}, day)
+        checksums[day] = sha256(path.read_bytes()).hexdigest()
+        stamp = datetime.combine(day, time(16), UTC)
+        key = build_bronze_object_storage_path(
+            provider_id="stm",
+            endpoint_key="static_schedule",
+            partition_label="ingested_at_utc",
+            observed_at_utc=stamp - timedelta(hours=10),
+            object_name=path.name,
+            checksum_sha256=checksums[day],
+        )
+        original = raw / key
+        original.parent.mkdir(parents=True)
+        path.rename(original)
+        if day == NEXT:
+            ignored.append({"object_key": key, "sha256": checksums[day]})
+        feed = _feed(stamp)
+        trip = feed.entity.add(id="scheduled").trip_update.trip
+        trip.trip_id = "scheduled"
+        trip.start_date = f"{day:%Y%m%d}"
+        _save(raw, feed, "trip_updates", stamp)
+
+    dest = tmp_path / "clean"
+    result = CliRunner().invoke(
+        app,
+        [
+            "clean-days",
+            "--provider",
+            "stm",
+            "--from",
+            str(first),
+            "--to",
+            str(third),
+            "--source",
+            str(raw),
+            "--dest",
+            str(dest),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    for day in days:
+        directory = dest / version_key("stm", day)
+        marker = directory / "manifest.json"
+        manifest = json.loads(marker.read_bytes())
+        assert manifest["ignored_invalid_original"] == ignored
+        if day == NEXT and not previous_edition:
+            assert manifest["status"] == "schedule_archive_unreadable"
+            assert list(directory.iterdir()) == [marker]
+        else:
+            effective = DAY if day == NEXT else day
+            assert manifest["schedule_sha256"] == checksums[effective]
+            assert manifest["files"]["trip_days.parquet"]["rows"] == 1
+            assert manifest["row_counts_by_state"]["unconfirmed"] == 1
+
+
 def _wheelchair_edition(path: Path, *, include_wheelchair: bool = True) -> dict[str, str]:
     trips = {
         "night": ("r", ["24:00:00", "24:05:00", "24:10:00"]),

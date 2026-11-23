@@ -77,3 +77,37 @@ it('renders absent readings and both not-measured reasons while methods can fail
 	}
 	expect(within(table).queryByRole('cell', { name: '0' })).toBeNull();
 });
+
+it.each([
+	['en', '/status', 'Not measured (Schedule archive unreadable)'],
+	['fr', '/fr/status', 'Non mesuré (Archive de l’horaire illisible)'],
+] as const)('renders the unreadable schedule archive reason in %s', async (locale, path, label) => {
+	const answer: DataHealthAnswer = {
+		city: health.city,
+		...period,
+		cleaning_version: '9',
+		days: [
+			{
+				service_date: period.from,
+				cleaning_version: '9',
+				status: 'not_measured',
+				reason: 'schedule_archive_unreadable',
+				tables: { stop_events: { status: 'not_measured' } },
+			},
+		],
+	};
+	render(RecordDataHealth, {
+		locale,
+		url: new URL(path, 'https://transit1.yesid.dev'),
+		record: {
+			city: answer.city,
+			period,
+			health: Promise.resolve<EngineResult<DataHealthAnswer>>({ kind: 'answer', answer }),
+			methods: Promise.resolve<EngineResult<MethodEntry[]>>({ kind: 'answer', answer: [] }),
+		},
+	});
+	const table = await screen.findByRole('table');
+	const readings = within(table).getAllByRole('cell', { name: label });
+	expect(readings).toHaveLength(2);
+	for (const reading of readings) expect(reading).toBeVisible();
+});

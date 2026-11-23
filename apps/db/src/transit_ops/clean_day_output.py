@@ -4,7 +4,7 @@ import csv
 import json
 import subprocess
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from datetime import UTC, date, datetime
 from hashlib import file_digest
 from pathlib import Path
@@ -133,7 +133,9 @@ FEED_POLLS = TableSchema.from_columns(
 )
 
 
-type UnmeasuredReason = Literal["no_raw_captures", "no_schedule_edition"]
+type UnmeasuredReason = Literal[
+    "no_raw_captures", "no_schedule_edition", "schedule_archive_unreadable"
+]
 
 
 def version_key(provider: str, day: date) -> str:
@@ -141,9 +143,13 @@ def version_key(provider: str, day: date) -> str:
 
 
 def _stage_unmeasured_day(
-    provider: str, day: date, reason: UnmeasuredReason, staged: Path
+    provider: str,
+    day: date,
+    reason: UnmeasuredReason,
+    staged: Path,
+    ignored_invalid_original: Sequence[dict[str, str]],
 ) -> Path:
-    receipt = {
+    receipt: dict[str, object] = {
         "status": reason,
         "provider": provider,
         "service_date": day.isoformat(),
@@ -151,12 +157,21 @@ def _stage_unmeasured_day(
         "built_at_utc": datetime.now(UTC).isoformat(),
         "builder_git_commit": _builder_git_commit(),
     }
+    if ignored_invalid_original:
+        receipt["ignored_invalid_original"] = list(ignored_invalid_original)
     manifest = staged / "manifest.json"
     manifest.write_text(json.dumps(receipt, sort_keys=True) + "\n", "utf-8")
     return manifest
 
 
-def write_unmeasured_day(provider: str, day: date, root: Path, reason: UnmeasuredReason) -> Path:
+def write_unmeasured_day(
+    provider: str,
+    day: date,
+    root: Path,
+    reason: UnmeasuredReason,
+    *,
+    ignored_invalid_original: Sequence[dict[str, str]] = (),
+) -> Path:
     destination = root / version_key(provider, day)
     parent = destination.parent
     parent.mkdir(parents=True, exist_ok=True)
@@ -165,19 +180,25 @@ def write_unmeasured_day(provider: str, day: date, root: Path, reason: Unmeasure
     with TemporaryDirectory(prefix=".clean-day-", dir=parent) as directory:
         staged = Path(directory) / "version"
         staged.mkdir()
-        _stage_unmeasured_day(provider, day, reason, staged)
+        _stage_unmeasured_day(provider, day, reason, staged, ignored_invalid_original)
         staged.rename(destination)
     return destination
 
 
 def publish_unmeasured_day(
-    provider: str, day: date, storage: BronzeStorage, prefix: str, reason: UnmeasuredReason
+    provider: str,
+    day: date,
+    storage: BronzeStorage,
+    prefix: str,
+    reason: UnmeasuredReason,
+    *,
+    ignored_invalid_original: Sequence[dict[str, str]] = (),
 ) -> None:
     directory = prefix + version_key(provider, day)
     with TemporaryDirectory(prefix="clean-day-") as temporary:
         staged = Path(temporary) / "version"
         staged.mkdir()
-        manifest = _stage_unmeasured_day(provider, day, reason, staged)
+        manifest = _stage_unmeasured_day(provider, day, reason, staged, ignored_invalid_original)
         marker = f"{directory}/manifest.json"
         expected = manifest.read_bytes()
         put_create_only(storage, manifest, marker)
@@ -185,23 +206,31 @@ def publish_unmeasured_day(
             raise ValueError(f"Published clean-day manifest differs: {marker}")
 
 
-def write_clean_day(day: CleanDay, root: Path) -> Path:
+def write_clean_day(
+    day: CleanDay, root: Path, *, ignored_invalid_original: Sequence[dict[str, str]] = ()
+) -> Path:
     destination = root / version_key(day.provider, day.date)
     parent = destination.parent
     parent.mkdir(parents=True, exist_ok=True)
     if destination.exists():
         raise FileExistsError(f"Clean day already exists: {destination}")
     with TemporaryDirectory(prefix=".clean-day-", dir=parent) as directory:
-        staged, _ = _stage(day, Path(directory))
+        staged, _ = _stage(day, Path(directory), ignored_invalid_original)
         # A competing successful writer leaves a nonempty destination directory.
         staged.rename(destination)
     return destination
 
 
-def publish_clean_day(day: CleanDay, storage: BronzeStorage, prefix: str) -> None:
+def publish_clean_day(
+    day: CleanDay,
+    storage: BronzeStorage,
+    prefix: str,
+    *,
+    ignored_invalid_original: Sequence[dict[str, str]] = (),
+) -> None:
     directory = prefix + version_key(day.provider, day.date)
     with TemporaryDirectory(prefix="clean-day-") as temporary:
-        staged, files = _stage(day, Path(temporary))
+        staged, files = _stage(day, Path(temporary), ignored_invalid_original)
         for name, identity in files.items():
             key = f"{directory}/{name}"
             put_create_only(storage, staged / name, key, expected=identity)
@@ -282,7 +311,9 @@ def _write_alerts(
         return file_digest(stream, "sha256").hexdigest(), target.stat().st_size, len(rows)
 
 
-def _stage(day: CleanDay, temporary: Path) -> tuple[Path, dict[str, tuple[str, int]]]:
+def _stage(
+    day: CleanDay, temporary: Path, ignored_invalid_original: Sequence[dict[str, str]]
+) -> tuple[Path, dict[str, tuple[str, int]]]:
     metadata = {
         "cleaning_version": CLEANING_VERSION,
         "provider": day.provider,
@@ -355,6 +386,8 @@ def _stage(day: CleanDay, temporary: Path) -> tuple[Path, dict[str, tuple[str, i
     }
     if day.scorecard_declaration is not None:
         manifest["scorecard_declaration"] = day.scorecard_declaration
+    if ignored_invalid_original:
+        manifest["ignored_invalid_original"] = list(ignored_invalid_original)
     if day.alerts is None:
         manifest["alerts"] = "not_tracked"
     else:
