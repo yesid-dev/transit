@@ -1,0 +1,17 @@
+[Unit]
+Description=Warm Transit default Record views through the public proxy
+After=transit-engine-sync.service network-online.target
+Wants=network-online.target
+ConditionPathExists=/opt/transit-engine/current/apps/web/scripts/warm-default-views.ts
+
+[Service]
+Type=oneshot
+DynamicUser=yes
+EnvironmentFile=/etc/transit-engine/engine.env
+ExecStart=/opt/transit-engine/bin/bun --no-install /opt/transit-engine/current/apps/web/scripts/warm-default-views.ts
+MemoryMax=256M
+CPUWeight=10
+Nice=15
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes

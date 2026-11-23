@@ -2,7 +2,25 @@ import { env } from 'cloudflare:workers';
 import { z } from 'zod';
 import { CityCatalogSchema } from '#lib/v1/schemas/providers.ts';
 import { scheduleIndexSchema, searchIndexSchema } from '#lib/search/searchIndex.ts';
-import type { DateWindow } from '#lib/v1/history/window.ts';
+import {
+	cityQuestion,
+	citiesQuestion,
+	dataHealthQuestion,
+	finderQuestion,
+	measureQuestion,
+	methodQuestion,
+	overviewRankingQuestion,
+	periodQuestion,
+	questionUrl,
+	QUESTION_ORIGIN,
+	scheduleQuestion,
+	type EngineQuestion,
+	type EnginePeriod,
+	type FinderQuestionParameters,
+	type RecordQuery,
+} from './engineQuestion.ts';
+
+export type { EnginePeriod, RecordQuery } from './engineQuestion.ts';
 
 export const ENGINE_TIMEOUT_MS = 20_000;
 
@@ -84,34 +102,24 @@ export type EngineResult<T> =
 	| { kind: 'answer'; answer: T; lastGood?: true }
 	| { kind: 'unconfigured' | 'unreachable' | 'timeout' | 'busy' };
 
-export type EnginePeriod = DateWindow & { city: string; visitorIp?: string | null };
-const QUESTION_ORIGIN = 'https://data.yesid.dev';
-
-function engineFetch(
-	path: string,
-	parameters: Record<string, string>,
-	signal: AbortSignal,
-	visitorIp?: string | null,
-) {
+function engineFetch(question: EngineQuestion, signal: AbortSignal, visitorIp?: string | null) {
 	const proxy = env.QUESTION_PROXY;
 	const fixture = env.QUESTION_FIXTURE_ORIGIN;
 	if (!proxy && !fixture) return null;
-	const url = new URL(`/v2${path}`, proxy ? QUESTION_ORIGIN : fixture);
-	url.search = new URLSearchParams(parameters).toString();
+	const url = questionUrl(question, proxy ? QUESTION_ORIGIN : fixture);
 	const headers = proxy && visitorIp ? { 'x-transit-visitor-ip': visitorIp } : undefined;
 	const request = new Request(url, { headers, signal, redirect: 'manual' });
 	return proxy ? proxy.fetch(request) : fetch(request);
 }
 
 async function query<T>(
-	path: string,
-	parameters: Record<string, string>,
+	question: EngineQuestion,
 	schema: z.ZodType<T>,
 	visitorIp?: string | null,
 ): Promise<EngineResult<T>> {
 	const signal = AbortSignal.timeout(ENGINE_TIMEOUT_MS);
 	try {
-		const response = await engineFetch(path, parameters, signal, visitorIp);
+		const response = await engineFetch(question, signal, visitorIp);
 		if (!response) return { kind: 'unconfigured' };
 		if (response.status === 503 && response.headers.has('retry-after')) return { kind: 'busy' };
 		if (!response.ok) return { kind: 'unreachable' };
@@ -127,24 +135,19 @@ async function query<T>(
 
 function periodQuery<T>(
 	path: string,
-	{ city, from, to, visitorIp }: EnginePeriod,
+	period: EnginePeriod,
 	parameters: Record<string, string>,
 	schema: z.ZodType<T>,
 ) {
-	return query(
-		`/${encodeURIComponent(city)}${path}`,
-		{ from, to, ...parameters },
-		schema,
-		visitorIp,
-	);
+	return query(periodQuestion(period, path, parameters), schema, period.visitorIp);
 }
 
 export function getMeasure(measure: MeasureAnswer['measure'], period: EnginePeriod) {
-	return periodQuery('/measure', period, { measure }, measureAnswer);
+	return query(measureQuestion(measure, period), measureAnswer, period.visitorIp);
 }
 
 export function getRanking(kind: RankingAnswer['kind'], period: EnginePeriod) {
-	return periodQuery('/ranking', period, { kind, measure: 'on_time', limit: '3' }, rankingAnswer);
+	return query(overviewRankingQuestion(kind, period), rankingAnswer, period.visitorIp);
 }
 
 const recordCounts = z.record(z.string(), z.number().nullable().catch(null));
@@ -273,10 +276,6 @@ export type RecordCell = z.infer<typeof recordCell>;
 export type RecordSeries = z.infer<typeof recordSeries>;
 export type DepartureRanking = z.infer<typeof departureRanking>;
 export type RecordAnswer = RecordMeasure | RecordSeries | DepartureRanking | RankingAnswer;
-export type RecordQuery = {
-	path: '/measure' | '/ranking';
-	parameters: Record<string, string>;
-};
 
 const rankingIdentity = z.object({
 	...rateCoverage.shape,
@@ -380,24 +379,19 @@ const finderSeries = recordEnvelope.extend({
 export type FinderSeries = z.infer<typeof finderSeries>;
 export type FinderCell = FinderSeries['cells'][number];
 
-export function getFinderSeries(
-	measure: 'on_time' | 'trips_run',
-	group: 'line' | 'stop_id',
-	period: EnginePeriod,
-) {
-	return periodQuery('/measure', period, { measure, group }, finderSeries);
+export function getFinderSeries(parameters: FinderQuestionParameters, period: EnginePeriod) {
+	return query(finderQuestion(parameters, period), finderSeries, period.visitorIp);
 }
 
 export async function getRecordCsv(
 	{ path, parameters }: RecordQuery,
-	{ city, from, to, visitorIp }: EnginePeriod,
+	period: EnginePeriod,
 	lang: 'en' | 'fr',
 ) {
 	return engineFetch(
-		`/${encodeURIComponent(city)}${path}`,
-		{ from, to, ...parameters, format: 'csv', lang },
+		periodQuestion(period, path, { ...parameters, format: 'csv', lang }),
 		AbortSignal.timeout(ENGINE_TIMEOUT_MS),
-		visitorIp,
+		period.visitorIp,
 	);
 }
 
@@ -446,29 +440,24 @@ export type DataHealthAnswer = z.infer<typeof dataHealth>;
 export type TableHealth = z.infer<typeof tableHealth>;
 
 export function getMethodCatalog(visitorIp?: string | null) {
-	return query('/how-we-measure', {}, methodCatalog, visitorIp);
+	return query(methodQuestion, methodCatalog, visitorIp);
 }
 
 export function getRecordDataHealth(period: EnginePeriod) {
-	return periodQuery('/data-health', period, {}, dataHealth);
+	return query(dataHealthQuestion(period), dataHealth, period.visitorIp);
 }
 
 export function getSearchIndex(city: string, visitorIp?: string | null) {
-	return query(`/${encodeURIComponent(city)}/search-index`, {}, searchIndexSchema, visitorIp);
+	return query(cityQuestion(city, '/search-index'), searchIndexSchema, visitorIp);
 }
 
 export async function getCityCatalog(visitorIp?: string | null) {
-	const result = await query('/cities', {}, CityCatalogSchema, visitorIp);
+	const result = await query(citiesQuestion, CityCatalogSchema, visitorIp);
 	if (result.kind !== 'answer') throw new Error('Provider catalog unavailable');
 	return result.answer;
 }
 
 export async function getScheduleEdition(city: string, visitorIp?: string | null) {
-	const result = await query(
-		`/${encodeURIComponent(city)}/schedule-index`,
-		{},
-		scheduleIndexSchema,
-		visitorIp,
-	);
+	const result = await query(scheduleQuestion(city), scheduleIndexSchema, visitorIp);
 	return result.kind === 'answer' ? result.answer.schedule : null;
 }

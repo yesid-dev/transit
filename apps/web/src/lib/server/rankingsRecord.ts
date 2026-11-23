@@ -1,19 +1,11 @@
 import { recordCsvResponse } from './recordCsv.ts';
-import { getRankingsRecord, type RecordQuery } from './engine.ts';
+import { getRankingsRecord } from './engine.ts';
 import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
-import {
-	rankingSelection,
-	type RankingPath,
-	type RankingSelection,
-} from '#lib/features/rankings/rankingSelection.ts';
+import { rankingSelection, type RankingPath } from '#lib/features/rankings/rankingSelection.ts';
 import type { Locale } from '#lib/i18n/index.ts';
 
-export function rankingsQuery({ kind, measure, serviceClass }: RankingSelection): RecordQuery {
-	return {
-		path: '/ranking',
-		parameters: { kind, measure, ...(serviceClass ? { class: serviceClass } : {}), limit: '500' },
-	};
-}
+import { rankingsQuery } from './screenQuestions.ts';
+export { rankingsQuery } from './screenQuestions.ts';
 
 export async function loadRankingsRecord(
 	path: RankingPath,

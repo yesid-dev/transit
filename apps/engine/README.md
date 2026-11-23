@@ -422,6 +422,22 @@ copies new `search/v1` schedule indexes. The timer runs at 17:30 UTC, 73 minutes
 nightly cleaner starts. Watch the filesystem when changing versions. The mirror keeps
 existing versions and refuses writes that would take free space below 32 GiB.
 
+Install the Bun version in the repository's `.bun-version` at `/opt/transit-engine/bin/bun`
+for the warmer and install `transit-engine-warm.service` along with the updated sync unit.
+After a successful sync, systemd starts the warmer via `OnSuccess=`. It checks the manifest
+for the last day of each city's default period and sends questions sequentially through the
+public proxy. Its journal entry includes per-city counts, outcomes, and elapsed time.
+Keep the VM release current when shipping changes to the web's default questions.
+
+```sh
+# Resolve the public city catalog and print the planned URLs without sending them.
+/opt/transit-engine/bin/bun --no-install apps/web/scripts/warm-default-views.ts --dry-run
+journalctl -u transit-engine-warm.service
+```
+
+The edge cache warms at the Cloudflare location serving the VM. The last-good store uses
+the existing shared fallback. Each question retains the proxy's regular cache lifetime.
+
 ```sh
 # Install or update the units, then sync now.
 sudo systemctl daemon-reload

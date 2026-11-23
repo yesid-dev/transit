@@ -1,6 +1,5 @@
 import { intl, type Locale } from '#lib/i18n/index.ts';
 import type { EngineResult, MeasureAnswer, RankingAnswer } from '#lib/server/engine.ts';
-import { addIsoDays } from '#lib/v1/history/selection.ts';
 import type { DateWindow } from '#lib/v1/history/window.ts';
 
 import {
@@ -15,14 +14,7 @@ import {
 import { comparePeriods, periodDays } from './periodComparison.ts';
 export { dateRange, percent, tally };
 
-export function previousPeriod({ from, to }: DateWindow): DateWindow {
-	const days = periodDays(from, to);
-	if (days === 1) {
-		const sameWeekday = addIsoDays(from, -7);
-		return { from: sameWeekday, to: sameWeekday };
-	}
-	return { from: addIsoDays(from, -days), to: addIsoDays(from, -1) };
-}
+export { previousPeriod } from './periodComparison.ts';
 
 export function measureText(
 	result: EngineResult<MeasureAnswer>,
