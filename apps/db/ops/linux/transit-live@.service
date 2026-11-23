@@ -6,7 +6,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 DynamicUser=yes
-EnvironmentFile=/etc/transit-live/capture-storage.env
+EnvironmentFile=/etc/transit-live/r2-read.env
+EnvironmentFile=/etc/transit-live/r2-write.env
 WorkingDirectory=/opt/transit-live/current/apps/db
 ExecStart=/opt/transit-live/current/apps/db/.venv/bin/python -m transit_ops.live.playback %i --source s3://transit-raw --dest s3://transit-clean
 Restart=on-failure
