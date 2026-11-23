@@ -58,11 +58,17 @@ for (const { name, path, section } of pages)
 							await expect(page.locator('html[data-hydrated]')).toHaveCount(0);
 							await expect
 								.poll(() =>
-									page.evaluate(() =>
-										[...document.fonts].some((font) => font.status === 'loading'),
-									),
+									page.locator('main h1').evaluate((heading) => {
+										const stylesheets =
+											document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]');
+										if ([...stylesheets].some((link) => !link.disabled && !link.sheet))
+											return false;
+										// Resolve the styled layout before checking its font requests.
+										heading.getBoundingClientRect();
+										return [...document.fonts].every((font) => font.status !== 'loading');
+									}),
 								)
-								.toBe(false);
+								.toBe(true);
 							const before = await frame(page);
 							const gap = await page
 								.locator('[data-slot="app-frame-controls"]')
