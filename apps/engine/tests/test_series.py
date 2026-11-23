@@ -104,6 +104,51 @@ def test_day_series_matches_plain_python_and_preserves_missing_days(
     assert grid[2 * 24 + 7]["state"] == "not_measured"
 
 
+@pytest.mark.parametrize("cleaning_version", [8, 9])
+def test_hourly_coverage_counts_scheduled_stops_on_lines_with_live_data(
+    tmp_path: Path, cleaning_version: int
+) -> None:
+    observed = (301,) * 10 + (0,) * 30
+    store = _build_store(
+        tmp_path,
+        cleaning_version,
+        {
+            THURSDAY: (
+                Trip("at-floor", "A", 0, "ran", None, True, observed + (None,) * 120),
+                Trip(
+                    "below-floor",
+                    "A",
+                    0,
+                    "ran",
+                    None,
+                    True,
+                    observed + (None,) * 121,
+                    offset_minutes=60,
+                ),
+                *(
+                    Trip(
+                        f"no-live-{offset}",
+                        "B",
+                        0,
+                        "not_measured",
+                        "route_without_live_data",
+                        False,
+                        (None,) * 20,
+                        offset_minutes=offset,
+                    )
+                    for offset in (0, 60, 120)
+                ),
+            ),
+        },
+    )
+    cells = query(store, measure="late", group="hour")["cells"][7:10]
+    assert [cell["evidence"]["excluded"]["route_without_live_data"] for cell in cells] == [20] * 3
+    assert [cell["evidence"]["counts"]["scheduled"] for cell in cells] == [160, 161, 0]
+    assert [cell["evidence"]["share_observed"] for cell in cells] == [0.25, 40 / 161, None]
+    assert [cell["state"] for cell in cells] == ["measured", "not_measured", "no_live_data"]
+    assert [cell["value"]["late"] for cell in cells] == [0.25, None, None]
+
+
 def test_grid_keeps_after_midnight_event_on_its_service_weekday(store: Store) -> None:
     grid = query(store, start=FALL_BACK, end=FALL_BACK, group="weekday_hour")["cells"]
     cell = grid[6 * 24 + 1]

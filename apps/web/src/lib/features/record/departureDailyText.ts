@@ -87,8 +87,12 @@ export function dailyPeriodRows(answer: RecordSeries, locale: Locale): string[][
 		});
 		const classified = hours.reduce((sum, cell) => sum + (cell.evidence.counts.classified ?? 0), 0);
 		const late = hours.reduce((sum, cell) => sum + (cell.evidence.counts.late ?? 0), 0);
-		const scheduled = hours.reduce((sum, cell) => sum + (cell.evidence.counts.scheduled ?? 0), 0);
-		const coverage = scheduled > 0 ? classified / scheduled : null;
+		// The punctuality engine has already excluded stops on lines without live data.
+		const scheduledWithLive = hours.reduce(
+			(sum, cell) => sum + (cell.evidence.counts.scheduled ?? 0),
+			0,
+		);
+		const coverage = scheduledWithLive > 0 ? classified / scheduledWithLive : null;
 		const state = hours.find((hour) => hour.state !== 'unknown') ?? hours[0];
 		let reading: string;
 		if (coverage != null && info?.minimum_coverage != null && coverage < info.minimum_coverage) {

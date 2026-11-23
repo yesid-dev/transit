@@ -18,13 +18,18 @@ function cell(
 	classified: number,
 	late: number,
 	scheduled = classified,
+	withoutLiveData = 0,
 ) {
 	return {
 		key,
 		state: 'too_few_to_judge' as const,
 		state_text: { en: 'Too few to judge', fr: 'Trop peu pour juger' },
 		value: { late: null },
-		evidence: { counts: { classified, late, scheduled }, days_included: ['2026-11-18'] },
+		evidence: {
+			counts: { classified, late, scheduled },
+			excluded: { route_without_live_data: withoutLiveData },
+			days_included: ['2026-11-18'],
+		},
 	};
 }
 function series(cells: RecordSeries['cells']): RecordSeries {
@@ -60,19 +65,25 @@ describe('Departure and Daily report text', () => {
 		expect(rows[0]?.slice(1)).toEqual(['Too few to judge', '19/20']);
 	});
 
-	it('uses the engine coverage thresholds when pooling hourly stop counts', () => {
+	it('pools live-eligible scheduled stops at the coverage boundary', () => {
 		const answer: RecordSeries = {
 			...series([
-				cell({ hour: 5 }, 20, 5, 100),
-				cell({ hour: 6 }, 20, 5, 100),
-				cell({ hour: 7 }, 20, 5, 40),
-				cell({ hour: 8 }, 20, 5, 120),
+				cell({ hour: 5 }, 20, 5, 80, 20),
+				cell({ hour: 6 }, 20, 5, 81, 20),
+				cell({ hour: 7 }, 20, 5, 80, 20),
+				cell({ hour: 8 }, 20, 5, 80, 20),
+				{
+					...cell({ hour: 10 }, 0, 0, 0, 20),
+					state: 'no_live_data',
+					state_text: { en: 'No live data', fr: 'Aucune donnée en direct' },
+				},
 			]),
 			info: [{ minimum_sample: 30, minimum_coverage: 0.25, low_coverage_below: 0.5 }],
 		};
 		const rows = dailyPeriodRows(answer, 'en');
 		expect(rows[0]?.slice(1)).toEqual(['Insufficient coverage', '10/40']);
 		expect(rows[1]?.slice(1)).toEqual(['25% (low coverage)', '10/40']);
+		expect(rows[2]?.[1]).toBe('No live data');
 	});
 
 	it('round-trips a provider-supplied line key and after-midnight service time', () => {

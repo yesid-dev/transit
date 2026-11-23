@@ -18,6 +18,9 @@ delays in seconds. A request with no filters covers the network.
 The answer includes bilingual `state_text` and `info`, plus `evidence` with the requested dates
 and filters, scheduled and classified totals, counts per band, excluded counts by reason,
 classified over scheduled, cleaning and method versions, and query milliseconds.
+For punctuality, `evidence.counts.scheduled` contains scheduled stops on lines
+with live data after cancellation exclusions. Pool this count as the denominator
+for `share_observed` when aggregating cells.
 `days_measured` lists valid days in the window, `days_not_measured` lists gaps, and
 `days_included` lists the measured days selected by the day-type filter. A partial window
 includes a bilingual coverage note. The engine validates `manifest.json` under
