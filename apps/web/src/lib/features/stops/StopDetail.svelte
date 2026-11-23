@@ -6,10 +6,11 @@
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	const display = transitDisplay();
 	import { provideLiveAbsenceContext } from '#lib/site/absence.ts';
+	import { lineIsScheduleOnly } from '#lib/site/providerCapabilities.ts';
 	import { getV1Runtime } from '#lib/v1/runtime.ts';
 	const clock = getV1Runtime().clock;
 	import { feedPresentation } from '#lib/v1/live/livePresentation.ts';
-	import { providerHasAlerts, routeHasNoLiveData } from '#lib/v1/providers.ts';
+	import { providerHasAlerts } from '#lib/v1/providers.ts';
 	import { CollapsibleSection, type TocEntry } from '@yesid/ui/brand';
 	import { Button } from '@yesid/ui/button';
 	import { onMount, untrack } from 'svelte';
@@ -278,8 +279,7 @@
 			reportStale: departureHealth.isStale,
 			servedLines,
 			scheduled: stop.data?.scheduled ?? null,
-			lineHasNoLiveData: (line) =>
-				routeHasNoLiveData(manifest.provider, display.directory.type(line)),
+			lineHasNoLiveData: (line) => lineIsScheduleOnly(provider, line, display.directory.type(line)),
 			lineNumber: (line) => display.line(line),
 			order: liveOrder,
 		}),
