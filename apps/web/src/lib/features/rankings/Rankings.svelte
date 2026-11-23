@@ -164,7 +164,7 @@
 {/snippet}
 
 <Surface>
-	<div class="grid min-w-0 gap-4">
+	<div class="grid min-w-0 grid-cols-1 gap-4">
 		<header class="grid gap-2">
 			<h1>{title}</h1>
 			{#if record.period}<p>{dateRange(record.period, locale)}</p>{/if}
@@ -184,7 +184,7 @@
 						)}
 				/>
 			</div>
-			<label class="grid min-w-0 gap-1">
+			<label class="grid min-w-0 max-w-full grid-cols-1 gap-1">
 				{t('Measure', 'Mesure')}
 				<select
 					class="labelled-input min-h-11 max-w-full"
@@ -229,7 +229,7 @@
 										...(serviceClass && serviceClass !== 'all' ? [serviceClass] : []),
 									]),
 								]}
-								<label class="grid min-w-0 gap-1 justify-self-start">
+								<label class="grid min-w-0 max-w-full grid-cols-1 gap-1 justify-self-start">
 									{t('Service class', 'Classe de service')}
 									<select
 										class="labelled-input min-h-11 max-w-full"

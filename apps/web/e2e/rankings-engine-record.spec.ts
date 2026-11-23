@@ -106,6 +106,31 @@ for (const locale of ['en', 'fr'] as const) {
 	});
 }
 
+test('ranking filters reflow at 320px and 200% text and can be cleared by keyboard', async ({
+	page,
+}) => {
+	await page.setViewportSize({ width: 320, height: 900 });
+	await page.goto(`/hotspots?provider=stm&${dates}`);
+	await page.addStyleTag({ content: 'html { font-size: 200%; }' });
+	await page.locator('html[data-hydrated]').waitFor({ state: 'attached' });
+	const main = page.getByRole('main');
+	const serviceClass = main.getByRole('combobox', { name: 'Service class' });
+	const clear = main.getByRole('button', { name: 'Clear filters', exact: true });
+	await expect(serviceClass).toBeVisible();
+	await expect(clear).toHaveCount(0);
+	await serviceClass.selectOption('all');
+	await expect(page).toHaveURL(/class=all/);
+	await expect(clear).toBeVisible();
+	expect(await main.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(320);
+	expect(
+		await serviceClass.evaluate((element) => element.getBoundingClientRect().right),
+	).toBeLessThanOrEqual(320);
+	await clear.focus();
+	await clear.press('Enter');
+	await expect(page).not.toHaveURL(/class=/);
+	await expect(clear).toHaveCount(0);
+});
+
 test('selects the two deeper line rankings with their own evidence floors', async ({ page }) => {
 	await page.goto(`/hotspots?provider=stm&${dates}`);
 	await page.locator('html[data-hydrated]').waitFor({ state: 'attached' });
