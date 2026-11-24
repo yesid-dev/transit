@@ -306,14 +306,46 @@ def test_clean_segment_runs_match_legacy_corridors(tmp_path: Path, version: int)
         "measure": "mean_time_lost", "group": "segment",
     }
     status, _, raw = asyncio.run(http(app, "/measure", urlencode(params)))
-    assert status == 409
-    assert json.loads(raw)["reason"] == "segment_runs_missing"
-    (directory / SEGMENT_RUNS).rename(directory / "segment_runs.saved")
-    params["to"] = THURSDAY
+    assert status == 200
+    partial = json.loads(raw)
+    for column in ("from_stop", "to_stop", "state", "value", "sample", "lines"):
+        assert partial[column] == network[column]
+    assert partial["evidence"]["days_measured"] == [str(THURSDAY)]
+    assert partial["evidence"]["days_not_measured"] == [str(FRIDAY)]
+    assert partial["evidence"]["days_pending"] == [str(FRIDAY)]
+
+    status, _, raw = asyncio.run(http(app, "/measure", urlencode({**params, "from": FRIDAY})))
+    assert status == 200
+    unmeasured = json.loads(raw)
+    for column in ("from_stop", "to_stop", "state", "value", "sample", "lines"):
+        assert unmeasured[column] == []
+    assert unmeasured["evidence"]["days_not_measured"] == [str(FRIDAY)]
+
+    friday_marker = directory.parent.parent / str(FRIDAY) / f"v{version}" / "manifest.json"
+    friday_marker.parent.mkdir(parents=True)
+    friday_marker.write_text(json.dumps({
+        "provider": "stm",
+        "service_date": str(FRIDAY),
+        "cleaning_version": str(version),
+        "built_at_utc": "2026-11-21T12:00:00+00:00",
+        "status": "no_raw_captures",
+    }), encoding="utf-8")
     status, _, raw = asyncio.run(http(app, "/measure", urlencode(params)))
-    assert status == 409
-    assert json.loads(raw)["reason"] == "segment_runs_missing"
-    (directory / "segment_runs.saved").rename(directory / SEGMENT_RUNS)
+    assert status == 200
+    declared = json.loads(raw)
+    assert declared["value"] == network["value"]
+    assert declared["evidence"]["days_not_measured_reasons"] == {str(FRIDAY): "no_raw_captures"}
+    assert declared["evidence"]["days_pending"] == []
+
+    segment = directory / SEGMENT_RUNS
+    segment.unlink()
+    for mismatched in (False, True):
+        if mismatched:
+            segment.write_bytes(payload[:-1])
+        status, _, raw = asyncio.run(http(app, "/measure", urlencode(params)))
+        assert status == 409
+        assert json.loads(raw)["reason"] == "segment_runs_missing"
+    segment.write_bytes(payload)
 
     # The manifest's listed segment facts supply corridors while stop events are pending.
     (directory / STOP_EVENTS).unlink()

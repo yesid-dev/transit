@@ -38,6 +38,7 @@ class CheckedDay:
     unmeasured_reason: str | None = None
     source_date: str | None = None
     tables: tuple[str, ...] = ()
+    invalid_table: str | None = None
 
 
 @dataclass(frozen=True)
@@ -222,8 +223,9 @@ class Store:
                 conn, path, identities[name], verify_digests
             )
 
-        if not all(matches(name) for name in checked_paths):
-            return CheckedDay(None, False)
+        for name in checked_paths:
+            if not matches(name):
+                return CheckedDay(None, False, invalid_table=name)
         settled = not check_all or all(
             matches(name) for name in identities if name not in checked_paths
         )

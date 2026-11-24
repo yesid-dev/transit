@@ -3922,7 +3922,7 @@ def read_window(
         if not settled:
             window.pending.append(day_key)
         if files is None:
-            if question.network_corridors and checked.unmeasured_reason is None:
+            if question.network_corridors and checked.invalid_table == SEGMENT_RUNS:
                 raise NetworkCorridorsUnavailable(
                     "segment_runs_missing", f"Clean segment runs are unavailable for {day_key}"
                 )
