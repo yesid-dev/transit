@@ -542,41 +542,6 @@ jobs:
           node scripts/install-browser-toolchain.mjs "$TRANSIT_BROWSER_ROOT"
           printf 'TRANSIT_BROWSER_ROOT=%s\n' "$TRANSIT_BROWSER_ROOT" >> "$GITHUB_ENV"
 
-      - name: Map Reports deadline evidence
-        if: ${{ github.event_name == 'pull_request' && matrix.shard == 2 }}
-        run: |
-          bun run build
-          bun x playwright test -c e2e/playwright.config.ts --project=phone --workers=2 --retries=0 \
-            --repeat-each=3 --grep 'provider-specific map reports' e2e/map-reports.spec.ts
-
-          git fetch origin ff57023a810ed6583c24fba8ecbb7d743f30d74d --depth=1
-          old=e2e/map-reports-combined.proof.spec.ts
-          split=e2e/map-reports-split.proof.spec.ts
-          trap 'rm -f "$old" "$split"' EXIT
-          git show FETCH_HEAD:apps/web/e2e/map-reports.spec.ts > "$old"
-          cp e2e/map-reports.spec.ts "$split"
-          python3 - "$old" "$split" <<'PY'
-          import sys
-          from pathlib import Path
-          header = "async function serveFleet(page: Page, current: () => FleetFile) {\n\t"
-          source = header + "await page.route(captureUrl, (route) => {"
-          delayed = header + "await page.route(captureUrl, async (route) => {\n\t\tawait new Promise<void>((resolve) => setTimeout(resolve, 3500));"
-          for name in sys.argv[1:]:
-              path = Path(name)
-              contents = path.read_text()
-              assert contents.count(source) == 1
-              path.write_text(contents.replace(source, delayed))
-          PY
-          if bun x playwright test -c e2e/playwright.config.ts --project=phone --workers=1 --retries=0 \
-            --grep 'stm en: reports preserve provider identity' "$old" > "$RUNNER_TEMP/map-reports-combined.log" 2>&1; then
-            cat "$RUNNER_TEMP/map-reports-combined.log"
-            echo "Expected the combined journey to exhaust its deadline"
-            exit 1
-          fi
-          grep 'Test timeout of 30000ms exceeded' "$RUNNER_TEMP/map-reports-combined.log"
-          bun x playwright test -c e2e/playwright.config.ts --project=phone --workers=1 --retries=0 \
-            --grep 'stm en: provider-specific map reports' "$split"
-
       - name: e2e
         env:
           RUN_EVENT: ${{ github.event_name }}
