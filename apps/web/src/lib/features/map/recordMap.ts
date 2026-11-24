@@ -11,6 +11,7 @@ export interface RecordMark {
 	name: string;
 	stop?: string;
 	direction?: number | null;
+	lines?: readonly string[];
 	value: number | null;
 	sample: number | null;
 	state: MapRecordState;
@@ -75,7 +76,7 @@ function shapeSection(path: unknown, from: Coordinate, to: Coordinate): Coordina
 	return [from, first.point, ...points.slice(first.index + 1, last.index + 1), last.point, to];
 }
 
-type Reading = Pick<RecordMark, 'state' | 'sample' | 'value'>;
+type Reading = Pick<RecordMark, 'state' | 'sample' | 'value' | 'lines'>;
 const absent: Reading = { state: 0, sample: null, value: null };
 
 function readings(answer: MapRecordAnswer | null): Map<string, Reading> {
@@ -85,8 +86,13 @@ function readings(answer: MapRecordAnswer | null): Map<string, Reading> {
 		const id =
 			answer.measure === 'late'
 				? answer.stop[i]!
-				: pairId(answer.direction[i]!, answer.from_stop[i]!, answer.to_stop[i]!);
-		rows.set(id, { state, sample: answer.sample[i]!, value: answer.value[i]! });
+				: pairId(answer.direction?.[i] ?? null, answer.from_stop[i]!, answer.to_stop[i]!);
+		rows.set(id, {
+			state,
+			sample: answer.sample[i]!,
+			value: answer.value[i]!,
+			...(answer.measure === 'mean_time_lost' && answer.lines ? { lines: answer.lines[i] } : {}),
+		});
 	});
 	return rows;
 }
@@ -141,7 +147,9 @@ export function recordCorridors(
 			add(variant.dir, ordered[i - 1]!.id, ordered[i]!.id, variant);
 	}
 	if (answer?.measure === 'mean_time_lost') {
-		answer.from_stop.forEach((from, i) => add(answer.direction[i]!, from, answer.to_stop[i]!));
+		answer.from_stop.forEach((from, i) =>
+			add(answer.direction?.[i] ?? null, from, answer.to_stop[i]!),
+		);
 	}
 	return [...pairs.values()].sort((a, b) => a.state - b.state);
 }

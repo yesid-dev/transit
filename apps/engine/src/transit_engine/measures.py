@@ -29,6 +29,7 @@ from transit_engine.clean_manifest import (
     PREDICTION_SAMPLES,
     SCHEDULED_STOP_TIMES,
     SEGMENT_RUNS,
+    SEGMENT_RUNS_VERSION,
     STOP_ELIGIBILITY_VERSION,
     STOP_EVENTS,
     TRIP_DAYS,
@@ -291,6 +292,12 @@ VEHICLE_RANKING_DEFAULT = "vehicle_reporting_gaps_per_100_hours"
 _BOUNDARIES = ("first_trip", "last_trip")
 
 
+class NetworkCorridorsUnavailable(Exception):
+    def __init__(self, reason: str, message: str) -> None:
+        super().__init__(message)
+        self.reason = reason
+
+
 @dataclass(frozen=True)
 class Question:
     measure: str
@@ -323,10 +330,12 @@ class Question:
             (self.measure == "late" and self.group == "stop_id" and not self.cuts())
             or (
                 self.measure == "mean_time_lost" and self.group == "segment"
-                and self.line is not None and self.cuts().keys() <= {"line", "direction"}
+                and (not self.cuts() or (
+                    self.line is not None and self.cuts().keys() <= {"line", "direction"}
+                ))
             )
         ):
-            raise ValueError("map view requires network late share or time lost on one line")
+            raise ValueError("map view requires network late share or time lost by segment")
         if self.alert_details:
             if self.measure != _ALERT_COUNTS_ID or self.group or ranking:
                 raise ValueError("alert_details requires ungrouped alert_counts")
@@ -419,6 +428,10 @@ class Question:
                 raise ValueError("first and last trip use the full day, without hour or departure")
         if self.departure is not None and (self.line is None or self.direction is None):
             raise ValueError("departure requires line and direction")
+
+    @property
+    def network_corridors(self) -> bool:
+        return self.map_view and self.group == "segment" and self.line is None
 
     def cuts(self) -> dict[str, str | int]:
         cuts = {
@@ -3060,7 +3073,11 @@ def _corridor_rows(
         if group == "segment" or question.group == "segment"
         else "entity"
     )
-    routes = "list(DISTINCT route_id)" if group else "NULL"
+    entity = _entity_sql(group, question.group, hour)
+    if question.network_corridors:
+        entity_columns = "from_stop, to_stop"
+        entity = "row(from_stop, to_stop)"
+    routes = "list(DISTINCT route_id)" if group or question.network_corridors else "NULL"
     window = [question.city, version, question.start, question.end]
     if SEGMENT_RUNS in paths:
         runs = SEGMENT_RUNS_SQL.format(cut=cut)
@@ -3075,7 +3092,7 @@ def _corridor_rows(
     rows = conn.execute(
         f"""
         WITH {runs}
-        SELECT {_entity_sql(group, question.group, hour)} AS entity,
+        SELECT {entity} AS entity,
             CASE WHEN exclusion IS NULL THEN {edge} END AS edge,
             {routes}, {", ".join(counters.values())}
         FROM runs GROUP BY {entity_columns}, edge
@@ -3818,11 +3835,15 @@ def read_window(
         preferred_tables = (SEGMENT_RUNS, FEED_POLLS)
         if group is not None:
             preferred_tables += (TRIP_DAYS,)
+    if question.network_corridors:
+        tables = preferred_tables
+        preferred_tables = ()
     if group and family.id == _ALERT_COUNTS_ID:
         tables += (TRIP_DAYS, STOP_EVENTS) if group == "stop" else (TRIP_DAYS,)
     # Bound window sorts over dense position records and stop sequences.
     batch_days = (
-        1 if VEHICLE_POSITIONS in tables or family.id in {_CORRIDORS_ID, _WAITING_ID} else None
+        1 if VEHICLE_POSITIONS in tables or family.id == _WAITING_ID
+        or (family.id == _CORRIDORS_ID and not question.network_corridors) else None
     )
     window = ReadWindow({table: [] for table in tables}, batch_days=batch_days)
     uses_poll_coverage = FEED_POLLS in tables and family.query is not None
@@ -3901,6 +3922,10 @@ def read_window(
         if not settled:
             window.pending.append(day_key)
         if files is None:
+            if question.network_corridors and checked.unmeasured_reason is None:
+                raise NetworkCorridorsUnavailable(
+                    "segment_runs_missing", f"Clean segment runs are unavailable for {day_key}"
+                )
             window.missing.append(day_key)
             window.missing_in_cut |= in_cut
         else:
@@ -4544,6 +4569,11 @@ def _accessibility_answer(
 def ask(store: Store, question: Question) -> dict[str, Any]:
     """Read validated days and compute the selected measure or family with its evidence."""
     started = perf_counter()
+    if question.network_corridors and store.cleaning_version < SEGMENT_RUNS_VERSION:
+        raise NetworkCorridorsUnavailable(
+            "segment_runs_version_required",
+            f"Network corridors require cleaning version {SEGMENT_RUNS_VERSION} or later",
+        )
     family, selected = _SELECTIONS[question.measure]
     if question.group:
         return _series_answer(store, question, family, selected, question.group, started)
@@ -4691,12 +4721,17 @@ def _map_series(
 ) -> dict[str, Any]:
     """Encode parallel arrays for the map, using the same eligibility as the Record."""
     stops = group == "stop_id"
-    columns = ("stop",) if stops else ("direction", "from_stop", "to_stop")
+    columns: tuple[str, ...] = ("stop",) if stops else ("direction", "from_stop", "to_stop")
+    network = question.network_corridors
+    if network:
+        columns = ("from_stop", "to_stop")
     keys: dict[str, list[str | int | None]] = {column: [] for column in columns}
+    lines: list[list[str]] = []
     samples: list[int] = []
     states: list[int] = []
     values: list[float | int | None] = []
-    for key in _series_keys(question, group, set(totals), {}):
+    ordered_keys = sorted(totals) if network else _series_keys(question, group, set(totals), {})
+    for key in ordered_keys:
         part = totals[key]
         if stops:
             state, metrics = _punctuality_values(
@@ -4709,7 +4744,9 @@ def _map_series(
             state, metrics, _, eligible = _corridor_answer(family, selected, part, window)
             value = metrics["mean_time_lost"]
             sample = eligible["mean_time_lost"]
-        for column, item in zip(columns, key if stops else key[1:], strict=True):
+        if network:
+            lines.append(sorted(part.scheduled_routes))
+        for column, item in zip(columns, key if stops or network else key[1:], strict=True):
             keys[column].append(item)
         samples.append(sample)
         states.append(_MAP_STATES.get(state, 0))
@@ -4717,6 +4754,7 @@ def _map_series(
     return {
         "measure": question.measure,
         **keys,
+        **({"lines": lines} if network else {}),
         "value": values,
         "sample": samples,
         "state": states,

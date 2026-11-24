@@ -71,6 +71,37 @@ it('uses a shape between adjacent stops, and a straight segment when a shape is 
 	expect(recordCorridors(stops, directions, null, '1', true)).toEqual([]);
 });
 
+it('keeps reversed network stop pairs and their serving lines distinct', () => {
+	const answer = mapRecordAnswer.parse({
+		measure: 'mean_time_lost',
+		from_stop: ['A', 'B', 'B', 'C'],
+		to_stop: ['B', 'A', 'C', 'D'],
+		lines: [['1', '2'], ['2'], ['1'], ['3']],
+		state: [3, 1, 0, 2],
+		value: [8, null, null, null],
+		sample: [40, 6, 0, 0],
+		evidence,
+	});
+	const marks = recordCorridors(stops, [], answer, '', false);
+	expect(
+		marks.map(({ name, lines, state, value, sample }) => [name, lines, state, value, sample]),
+	).toEqual([
+		['Bravo → Charlie', ['1'], 0, null, 0],
+		['Bravo → Alpha', ['2'], 1, null, 6],
+		['Charlie → Delta', ['3'], 2, null, 0],
+		['Alpha → Bravo', ['1', '2'], 3, 8, 40],
+	]);
+	expect(marks[1]?.geometry.coordinates).toEqual([
+		[-73.59, 45.5],
+		[-73.6, 45.5],
+	]);
+	expect(marks[3]?.geometry.coordinates).toEqual([
+		[-73.6, 45.5],
+		[-73.59, 45.5],
+	]);
+	expect(mapRecordAnswer.safeParse({ ...answer, lines: [['1']] }).success).toBe(false);
+});
+
 it('assigns separate legend marks to every non-value state and readable theme colours', () => {
 	expect([
 		recordColourIndex(0, null, true),

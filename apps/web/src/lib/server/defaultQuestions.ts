@@ -58,6 +58,7 @@ export function defaultCityQuestions(
 		].map(({ query: { path, parameters } }) => periodQuestion(scope, path, parameters)),
 		dataHealthQuestion(scope),
 		mapRecordQuestion(scope),
+		mapRecordQuestion(scope, undefined, undefined, 'corridors'),
 		scheduleQuestion(city.id),
 	];
 	const urls = questions.map((question) => {

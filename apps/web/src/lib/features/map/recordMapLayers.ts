@@ -16,6 +16,7 @@ export function attachRecordMap(
 	map: MapLibreMap,
 	features: RecordFeatures,
 	onpick: (id: string) => void,
+	network = false,
 ) {
 	function draw() {
 		if (map.getSource(sourceId)) return;
@@ -29,8 +30,14 @@ export function attachRecordMap(
 				layout: { 'line-cap': 'round', 'line-join': 'round' },
 				paint: {
 					'line-color': ['get', 'colour'],
-					'line-width': state === 3 ? 5 : 4,
-					'line-offset': ['get', 'offset'],
+					'line-width': network
+						? ['interpolate', ['linear'], ['zoom'], 10, 1, 14, 2, 16, state === 3 ? 5 : 4]
+						: state === 3
+							? 5
+							: 4,
+					'line-offset': network
+						? ['interpolate', ['linear'], ['zoom'], 12, 0, 15, 3, 16, 5]
+						: ['get', 'offset'],
 					...(dash ? { 'line-dasharray': dash } : {}),
 				},
 			});
@@ -61,13 +68,16 @@ export function attachRecordMap(
 		const layers = allIds.filter((id) => map.getLayer(id));
 		if (!layers.length) return;
 		const { x, y } = event.point;
-		const hit = map.queryRenderedFeatures(
-			[
-				[x - 5, y - 5],
-				[x + 5, y + 5],
-			],
-			{ layers },
-		)[0];
+		const exact = network ? map.queryRenderedFeatures(event.point, { layers })[0] : undefined;
+		const hit =
+			exact ??
+			map.queryRenderedFeatures(
+				[
+					[x - 5, y - 5],
+					[x + 5, y + 5],
+				],
+				{ layers },
+			)[0];
 		const id = hit?.properties?.id;
 		if (typeof id === 'string') onpick(id);
 	}
