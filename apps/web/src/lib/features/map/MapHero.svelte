@@ -32,7 +32,7 @@
 	import { createFilterStore, fromSearchParams } from '#lib/filters/index.ts';
 	import { nearTargetFromSearchParams } from '#lib/search/mapNear.ts';
 	import { parseMapFocus } from '#lib/search/mapFocus.ts';
-	import { lineLabel, stopDisplayName } from '#lib/site/transitDisplay.ts';
+	import { hasOccupancy, lineLabel, stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { RightPanel } from '#lib/components/shell/index.ts';
 	import { MapStage, nearestStops, type WithDistance } from '#lib/components/map/index.ts';
 	import { createVehicleMotion } from './vehicleMotion';
