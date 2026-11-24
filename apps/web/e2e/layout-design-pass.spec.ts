@@ -26,18 +26,19 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 		await expect(page.getByRole('main')).toBeVisible();
 		if (screen.startsWith('map-')) {
-			// The initial attribution links are replaced when the interactive map
-			// loads. Measure the controls and Tab order only after that handoff.
-			await expect
-				.poll(() =>
-					page.evaluate(() => {
-						const map = Reflect.get(window, '__transitMap') as
-							| { loaded: boolean; moving: boolean }
-							| undefined;
-						return Boolean(map?.loaded && !map.moving);
+			// The app exposes the live map and makes the poster inert at this handoff.
+			// Later source updates can make MapLibre's loaded() false again.
+			await expect(page.locator('[data-map-progressive-state]')).toHaveAttribute(
+				'data-map-progressive-state',
+				'ready',
+			);
+			if (screen.startsWith('map-record')) {
+				await expect(
+					page.getByRole('main').getByRole('searchbox', {
+						name: /^(Find a (stop|segment)|Trouver un (arrêt|segment))$/,
 					}),
-				)
-				.toBe(true);
+				).toBeVisible();
+			}
 		}
 		const start = performance.now();
 		const { report, focusSequences } = await measureDesignPass(page);
