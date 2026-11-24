@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createGunzip, gunzipSync } from 'node:zlib';
+import { Duplex } from 'node:stream';
 import { delocalizePath } from '#lib/i18n/routing.ts';
 import { handle, handleError } from '../hooks.server';
 
@@ -404,16 +406,110 @@ describe('server HTML edge cache', () => {
 		['http://127.0.0.1:4317/fr/stops?frameMode=record', '/[[lang=locale]]/stops'],
 		['https://transit1.yesid.dev/fr/receipt', '/[[lang=locale]]/receipt'],
 		['https://transit1.yesid.dev/departure/key', '/[[lang=locale]]/departure/[key]'],
-	])('delivers streamed sections without caching or compression for %s', async (url, routeId) => {
+	])('delivers the identity variant without caching for %s', async (url, routeId) => {
 		const cache = cacheHarness(html('cached'));
 		const request = event(url, { cache, routeId });
 		const response = await handle({ event: request, resolve: vi.fn(async () => html('streamed')) });
 
 		expect(await response.text()).toBe('streamed');
 		expect(response.headers.get('content-encoding')).toBe('identity');
+		expect(response.headers.get('vary')).toBe('Accept-Encoding');
 		expect(response.headers.get('cache-control')).toBe('no-store, no-transform');
 		expect(cache.match).not.toHaveBeenCalled();
 		expect(cache.put).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		['GZip; q=0.5', undefined, 'gzip'],
+		['*;q=0.5', undefined, 'gzip'],
+		['gzip;q=0, *;q=1', undefined, 'identity'],
+		['gzip;q=0.5, identity;q=1', undefined, 'identity'],
+		['br, gzip', 'deflate', 'identity'],
+		['br, gzip', '', 'identity'],
+	])(
+		'negotiates %s with original client encoding %s',
+		async (header, clientAcceptEncoding, encoding) => {
+			const request = event('https://transit1.yesid.dev/stops', {
+				routeId: '/[[lang=locale]]/stops',
+				headers: { 'accept-encoding': header },
+				cf: { clientAcceptEncoding },
+			});
+			const response = await handle({
+				event: request,
+				resolve: vi.fn(async () =>
+					html('streamed', {
+						headers: { vary: 'Origin', 'content-length': '8' },
+					}),
+				),
+			});
+			expect(response.headers.get('content-encoding')).toBe(encoding);
+			expect(response.headers.get('vary')).toBe('Origin, Accept-Encoding');
+			expect(response.headers.get('cache-control')).toBe('no-store, no-transform');
+			if (encoding === 'gzip') {
+				expect(response.headers.get('content-length')).toBeNull();
+				expect(gunzipSync(new Uint8Array(await response.arrayBuffer())).toString()).toBe(
+					'streamed',
+				);
+			} else {
+				expect(await response.text()).toBe('streamed');
+			}
+		},
+	);
+
+	it('delivers each gzip chunk while the next section is still pending', async () => {
+		const request = event('https://transit1.yesid.dev/stops', {
+			routeId: '/[[lang=locale]]/stops',
+			headers: { 'accept-encoding': 'gzip' },
+		});
+		const source = new TransformStream<Uint8Array, Uint8Array>();
+		const response = await handle({
+			event: request,
+			resolve: vi.fn(
+				async () =>
+					new Response(source.readable, {
+						headers: { 'content-type': 'text/html' },
+					}),
+			),
+		});
+		expect(response.headers.get('content-encoding')).toBe('gzip');
+		const writer = source.writable.getWriter();
+		const reader = response.body!.pipeThrough<Uint8Array>(Duplex.toWeb(createGunzip())).getReader();
+		const encoder = new TextEncoder();
+		const decoder = new TextDecoder();
+		try {
+			for (const text of ['shell', 'finished section', 'slow section']) {
+				await writer.write(encoder.encode(text));
+				let decoded = '';
+				while (decoded.length < text.length) {
+					const { done, value } = await reader.read();
+					expect(done).toBe(false);
+					decoded += decoder.decode(value);
+				}
+				expect(decoded).toBe(text);
+			}
+			await writer.close();
+			expect((await reader.read()).done).toBe(true);
+		} finally {
+			await reader.cancel();
+		}
+	});
+
+	it.each([
+		['HEAD', 200, 'identity'],
+		['GET', 307, null],
+		['GET', 500, null],
+	])('keeps %s status %s outside compression', async (method, status, encoding) => {
+		const response = await handle({
+			event: event('https://transit1.yesid.dev/stops', {
+				routeId: '/[[lang=locale]]/stops',
+				method,
+				headers: { 'accept-encoding': 'gzip' },
+			}),
+			resolve: vi.fn(async () => html('original', { status })),
+		});
+		expect(response.status).toBe(status);
+		expect(response.headers.get('content-encoding')).toBe(encoding);
+		expect(await response.text()).toBe(method === 'HEAD' ? '' : 'original');
 	});
 
 	it.each([

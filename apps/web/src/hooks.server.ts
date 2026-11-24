@@ -1,4 +1,6 @@
 import { waitUntil } from 'cloudflare:workers';
+import { Duplex } from 'node:stream';
+import { constants, createGzip } from 'node:zlib';
 import type { Handle, HandleServerError, ServerInit } from '@sveltejs/kit/hooks';
 import { pathLocale } from '#lib/i18n/index.ts';
 import { readRequestLocation } from '#lib/v1/requestLocation.ts';
@@ -84,6 +86,50 @@ function mutableResponse(response: Response, head = false): Response {
 		statusText: response.statusText,
 		headers: response.headers,
 	});
+}
+
+function acceptsGzip(request: Request): boolean {
+	// Cloudflare can replace Accept-Encoding before it reaches the Worker.
+	const clientEncoding = (request as Request & { cf?: { clientAcceptEncoding?: string } }).cf
+		?.clientAcceptEncoding;
+	const header = clientEncoding ?? request.headers.get('accept-encoding');
+	const weights = new Map<string, number>();
+	for (const entry of header?.toLowerCase().split(',') ?? []) {
+		const match = /^\s*([\w*-]+)\s*(?:;\s*q\s*=\s*(0(?:\.\d{0,3})?|1(?:\.0{0,3})?))?\s*$/.exec(
+			entry,
+		);
+		if (match) weights.set(match[1], match[2] == null ? 1 : Number(match[2]));
+	}
+	const gzip = weights.get('gzip') ?? weights.get('*') ?? 0;
+	return gzip > 0 && gzip >= (weights.get('identity') ?? 0);
+}
+
+function streamedResponse(response: Response, request: Request): Response {
+	response.headers.set('cache-control', 'no-store, no-transform');
+	response.headers.set('content-encoding', 'identity');
+	if (response.status !== 200 || (request.method !== 'GET' && request.method !== 'HEAD'))
+		return response;
+
+	const vary = response.headers
+		.get('vary')
+		?.toLowerCase()
+		.split(',')
+		.map((name) => name.trim());
+	if (!vary?.includes('*') && !vary?.includes('accept-encoding'))
+		response.headers.append('vary', 'Accept-Encoding');
+	if (!response.body || !acceptsGzip(request)) return response;
+
+	// Make each SvelteKit chunk decodable before the next one is ready.
+	const gzip = Duplex.toWeb(createGzip({ level: 1, flush: constants.Z_SYNC_FLUSH }));
+	response.headers.set('content-encoding', 'gzip');
+	response.headers.delete('content-length');
+	response.headers.delete('etag');
+	return new Response(response.body.pipeThrough<Uint8Array>(gzip), {
+		status: response.status,
+		statusText: response.statusText,
+		headers: response.headers,
+		encodeBody: 'manual',
+	} as ResponseInit & { encodeBody: 'manual' });
 }
 
 function applyDocumentHeaders(response: Response, url: URL): void {
@@ -174,11 +220,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 			),
 		preload: ({ type, path }) => type !== 'font' || preloadFont(path),
 	});
-	const response = mutableResponse(resolved, event.request.method === 'HEAD');
+	let response = mutableResponse(resolved, event.request.method === 'HEAD');
 	if (streamedRecord && response.ok) {
-		// Compression can buffer the shell and completed results behind a slow query.
-		response.headers.set('content-encoding', 'identity');
-		response.headers.set('cache-control', 'no-store, no-transform');
+		response = streamedResponse(response, event.request);
 	} else if (automaticSelection || hasScriptNonce(response)) {
 		// A runtime nonce belongs to this response.
 		response.headers.set('cache-control', 'no-store');
