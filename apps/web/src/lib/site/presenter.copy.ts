@@ -20,7 +20,8 @@ export const presenterCopy = defineCopy({
 				.replace(/\b60 seconds early\b/g, '1 minute early')
 				.replace(/\b300 seconds late\b/g, '5 minutes late')
 				.replace(/\bseconds?\b/gi, 's'),
-		tripsInHours: (trips: string, hours: string) => `${trips} trips in ${hours} hours`,
+		tripsInHours: (trips: string, hours: string, oneTrip: boolean, oneHour: boolean) =>
+			`${trips} ${oneTrip ? 'trip' : 'trips'} in ${hours} ${oneHour ? 'hour' : 'hours'}`,
 	},
 	fr: {
 		minutes: (value: string) => `${value} min`,
@@ -41,6 +42,7 @@ export const presenterCopy = defineCopy({
 				.replace(/\b60 secondes d[’']avance\b/g, '1 minute d’avance')
 				.replace(/\b300 secondes de retard\b/g, '5 minutes de retard')
 				.replace(/\bsecondes?\b/gi, 's'),
-		tripsInHours: (trips: string, hours: string) => `${trips} trajets en ${hours} heures`,
+		tripsInHours: (trips: string, hours: string, oneTrip: boolean, oneHour: boolean) =>
+			`${trips} ${oneTrip ? 'trajet' : 'trajets'} en ${hours} ${oneHour ? 'heure' : 'heures'}`,
 	},
 });

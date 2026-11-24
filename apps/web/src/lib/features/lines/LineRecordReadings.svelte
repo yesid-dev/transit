@@ -215,7 +215,8 @@
 		{#snippet rowLabel(label, index)}
 			{@const row = answer.rows[index]!}
 			{@const href = departureHref(url, locale, city, line, row.direction, row.departure)}
-			{#if href}<a class="inline-flex min-h-11 items-center" {href}>{label}</a>{:else}{label}{/if}
+			{#if href}<a class="inline-flex min-h-11 min-w-11 items-center" {href}>{label}</a
+				>{:else}{label}{/if}
 		{/snippet}
 	</RecordTable>
 	{#if info}

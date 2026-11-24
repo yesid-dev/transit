@@ -107,8 +107,8 @@ it.each(['en', 'fr'] as const)('uses the network current year for dates in %s', 
 });
 
 it.each([
-	['en', 'Live · updated 30 seconds ago'],
-	['fr', 'En direct · mis à jour il y a 30 secondes'],
+	['en', 'Live · updated 30 s ago'],
+	['fr', 'En direct · mis à jour il y a 30 s'],
 ] as const)('prints a current live stamp in %s', (locale, text) => {
 	expect(stampText(liveStamp({ ageSeconds: 30 }), locale, undefined)).toBe(text);
 });

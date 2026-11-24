@@ -94,20 +94,20 @@ test('changing the custom period reloads Record and Live now still opens the exi
 	await page.goto('/?provider=stm&recordFrom=2026-11-08&recordTo=2026-11-14');
 	const main = page.getByRole('main');
 	const punctuality = main.getByRole('region', { name: 'On-time performance' });
-	await expect(punctuality.getByText(/November 8 to 14, 2026/)).toBeVisible();
+	await expect(punctuality.getByText(/8 to 14 Nov 2026/)).toBeVisible();
 	await page.getByRole('button', { name: /^Period/ }).click();
 	const dialog = page.getByRole('dialog');
 	await dialog.getByLabel('From', { exact: true }).fill('2026-11-08');
 	await dialog.getByLabel('To', { exact: true }).fill('2026-11-08');
 	await dialog.getByRole('button', { name: 'Show these dates' }).click();
-	await expect(punctuality.getByText(/On November 8, 2026/)).toBeVisible();
+	await expect(punctuality.getByText(/8 Nov 2026/)).toBeVisible();
 	await expect(page).toHaveURL(/recordTo=2026-11-08/);
 	await expect(main.getByRole('region', { name: 'Same weekday last week' })).toContainText(
-		'On November 1, 2026',
+		'1 Nov 2026',
 	);
 	await page.getByRole('radio', { name: 'Live now' }).click();
 	await expect(main.getByText(/how the Montréal · STM network actually runs/)).toBeVisible();
 	await expect(main.getByRole('navigation', { name: 'Explore everything' })).toBeVisible();
 	await page.goBack();
-	await expect(punctuality.getByText(/On November 8, 2026/)).toBeVisible();
+	await expect(punctuality.getByText(/8 Nov 2026/)).toBeVisible();
 });

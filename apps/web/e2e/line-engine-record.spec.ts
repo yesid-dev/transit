@@ -48,7 +48,9 @@ for (const width of [390, 1440]) {
 				fr ? 'sur 48 intervalles prévus' : 'coverage of 48 scheduled intervals',
 			);
 			const offered = section(fr ? 'Service offert' : 'Service offered');
-			await expect(offered.getByRole('row', { name: /07:00–08:00/ })).toContainText('8/1');
+			await expect(offered.getByRole('row', { name: /07:00–08:00/ })).toContainText(
+				fr ? '8 trajets en 1 heure' : '8 trips in 1 hour',
+			);
 			await expect(offered).toContainText(fr ? 'Aucun service prévu' : 'No service scheduled');
 			await offered
 				.getByRole('link', { name: fr ? /Voir les trajets/ : /See scheduled and delivered trips/ })
@@ -149,7 +151,7 @@ test('Line shows patience for a slow stop query while punctuality is already rea
 		'/lines/24?provider=stm&frameMode=record&recordFrom=2026-11-09&recordTo=2026-11-15',
 		{ waitUntil: 'commit' },
 	);
-	await expect(page.getByText(/^8 to 14 Nov 2026, 80% of observed stop events/)).toBeVisible();
+	await expect(page.getByText(/^9 to 15 Nov 2026, 80% of observed stop events/)).toBeVisible();
 	await expect(
 		page.getByText('Still working on this. You can wait or come back later.'),
 	).toBeVisible();

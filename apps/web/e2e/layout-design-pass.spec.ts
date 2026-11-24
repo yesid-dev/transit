@@ -51,7 +51,7 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 			contentType: 'application/json',
 		});
 		await expect(page.getByRole('main')).not.toContainText(
-			/\b(?:\d+ s (?:late|early)|seconds?|secondes?)\b|\b\d{2}:\d{2}:\d{2} ·|\bDirection [01]\b/i,
+			/\b(?:\d+ s (?:late|early)|seconds|secondes|\d+\s+(?:second|seconde))\b|\b\d{2}:\d{2}:\d{2} ·|\bDirection [01]\b/i,
 		);
 		expectDesignPass(screen, key, report);
 	});

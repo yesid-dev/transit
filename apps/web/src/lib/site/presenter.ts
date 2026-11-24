@@ -1,7 +1,13 @@
 import { intl, type Locale } from '#lib/i18n/copy.ts';
 import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
 import { serviceClockParts } from '#lib/utils/serviceDate.ts';
-import { clockFace, formatClock, formatDateKey, formatUtc } from '#lib/utils/time.ts';
+import {
+	clockFace,
+	formatClock,
+	formatDateKey,
+	formatUtc,
+	providerLocalDateKey,
+} from '#lib/utils/time.ts';
 import { presenterCopy } from './presenter.copy.ts';
 
 export function minuteReading(
@@ -46,6 +52,16 @@ export function dateAndClock(iso: string, locale: Locale, timeZone = 'UTC', zone
 				.find((part) => part.type === 'timeZoneName')?.value
 		: null;
 	return [`${day}, ${clock}`, zone].filter(Boolean).join(' ');
+}
+
+export function clockRange(start: string, end: string, locale: Locale, timeZone = 'UTC') {
+	const from = dateAndClock(start, locale, timeZone);
+	const day = providerLocalDateKey(start, timeZone);
+	const to =
+		day && day === providerLocalDateKey(end, timeZone)
+			? clockTime(new Date(end), locale, timeZone)
+			: dateAndClock(end, locale, timeZone);
+	return [from, to].join('–');
 }
 
 export function serviceTime(value: unknown, locale: Locale): string | null {
@@ -139,7 +155,12 @@ export function lineName(
 
 export function tripsInHours(trips: number, hours: number, locale: Locale): string {
 	const format = intl.number(locale);
-	return presenterCopy[locale].tripsInHours(format.format(trips), format.format(hours));
+	return presenterCopy[locale].tripsInHours(
+		format.format(trips),
+		format.format(hours),
+		trips === 1,
+		hours === 1,
+	);
 }
 
 /** Registry descriptions can document raw sub-minute inputs and export columns. */

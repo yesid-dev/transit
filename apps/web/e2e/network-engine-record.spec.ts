@@ -29,7 +29,7 @@ test('the French Network record shows engine readings and preserves the Live vie
 	);
 	await expect(
 		main.getByRole('region', { name: 'Temps entre les mises à jour des flux' }),
-	).toContainText('0.4 min');
+	).toContainText('0,4 min');
 	const fields = main.getByRole('region', { name: 'Détails dans les signalements des véhicules' });
 	await expect(fields.getByRole('row').filter({ hasText: 'Occupation' })).toContainText(
 		'champ non publié',
@@ -42,7 +42,7 @@ test('the French Network record shows engine readings and preserves the Live vie
 	).toContainText('Au moins 30 arrivées observées');
 	await expect(polls.getByRole('button', { name: 'Copier le lien' })).toBeVisible();
 	await polls.getByText('Citer', { exact: true }).click();
-	await expect(polls.getByText(/Méthode 2.*#poll_success/)).toBeVisible();
+	await expect(polls.getByText(/Méthode v2, nettoyage v9\..*#poll_success/)).toBeVisible();
 	const href = await polls.getByRole('link', { name: /CSV/ }).getAttribute('href');
 	const csv = await request.get(href!);
 	expect(csv.headers()['content-disposition']).toContain('network-poll-success.csv');

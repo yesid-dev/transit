@@ -32,7 +32,7 @@ for (const width of [390, 1440]) {
 			const section = (name: string) => main.getByRole('region', { name, exact: true });
 			const punctuality = section(fr ? 'Ponctualité' : 'On-time performance');
 			await expect(punctuality).toContainText(
-				fr ? /du 8 au 14 nov\. 2026, 80\s%.*80 sur 100/ : /November 8 to 14, 2026, 80%.*80 of 100/,
+				fr ? /du 8 au 14 nov\. 2026, 80\s%.*80 sur 100/ : /8 to 14 Nov 2026, 80%.*80 of 100/,
 				{ timeout: 15_000 },
 			);
 			await expect(punctuality).toContainText(fr ? 'calcul précédent' : 'older answer');

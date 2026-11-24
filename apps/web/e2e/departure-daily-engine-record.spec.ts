@@ -61,7 +61,7 @@ for (const width of [390, 1440]) {
 			expect(csvText).toContain(fr ? 'Retard observé (s)' : 'Observed delay (s)');
 			expect(csvText).toContain('2026-11-18,2026-11-18,-61');
 			await expect(main).not.toContainText(
-				/\b(?:\d+ s (?:late|early)|seconds?|secondes?)\b|\b\d{2}:\d{2}:\d{2} ·|\bDirection [01]\b/i,
+				/\b(?:\d+ s (?:late|early)|seconds|secondes|\d+\s+(?:second|seconde))\b|\b\d{2}:\d{2}:\d{2} ·|\bDirection [01]\b/i,
 			);
 			expect(await main.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(width);
 		});

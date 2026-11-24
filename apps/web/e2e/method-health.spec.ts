@@ -27,14 +27,14 @@ for (const width of [390, 1440]) {
 				fr ? 'Retard typique aux arrêts observés.' : 'Typical delay at recorded stops.',
 			);
 			await expect(measure).toContainText(fr ? 'tranches de 15 s' : '15-s steps');
-			await expect(measure).toContainText('fixture-v2');
+			await expect(measure.getByText('v2', { exact: true })).toBeVisible();
 			await expect(
 				measure.getByRole('button', { name: fr ? 'Copier le lien' : 'Copy link' }),
 			).toBeVisible();
 			await measure.getByText(fr ? 'Colonnes du CSV' : 'CSV columns', { exact: true }).click();
 			await expect(measure.getByText(fr ? 'Valeur' : 'Value', { exact: true })).toBeVisible();
 			await measure.getByText(fr ? 'Citer' : 'Cite', { exact: true }).click();
-			await expect(measure.getByText(/fixture-v2.*\/metrics#fixture_delay/)).toBeVisible();
+			await expect(measure.getByText(/v2.*\/metrics#fixture_delay/)).toBeVisible();
 			const csvUrl = (await measure.getByRole('link', { name: /CSV/ }).getAttribute('href'))!;
 			expect(new URL(csvUrl, page.url()).searchParams.get('provider')).toBe(provider);
 			const csv = await request.get(csvUrl);
@@ -85,7 +85,7 @@ for (const width of [390, 1440]) {
 				selector.startsWith('#table-health'),
 			);
 			expect(tableHealthDefects).toEqual([]);
-			await expect(main.getByText('fixture-v2')).toBeVisible();
+			await expect(main.getByText('v2', { exact: true })).toBeVisible();
 			expect(await main.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(width);
 		});
 	}

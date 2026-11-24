@@ -23,7 +23,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 4852,
+					"height": 4828,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -35,7 +35,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 2862,
+					"height": 2838,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -59,7 +59,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 1918,
+					"height": 1894,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -89,7 +89,7 @@
 			},
 			"zoom": {
 				"390": {
-					"height": 20873,
+					"height": 20201,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -104,7 +104,7 @@
 					]
 				},
 				"1440": {
-					"height": 5528,
+					"height": 5288,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -354,7 +354,7 @@
 						"clipped [data-slot=\"card\"] Classified stop events",
 						"clipped [data-slot=\"card\"] Line performance",
 						"clipped [data-slot=\"card\"] Too few to judge",
-						"clipped [data-slot=\"card\"] Transit. Line performance. From November 8 to 14, 2026. Method finder-timing-v1. Data cleaning version 8. Method finder-delivery-v1. Data cleaning version 8. http://127.0.0.1:4317/lines?provider=stm&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14#line-performance",
+						"clipped [data-slot=\"card\"] Transit. Line performance. 8 to 14 Nov 2026. On-time share. Method v1, cleaning v8. Trips run of scheduled. Method v1, cleaning v8. http://127.0.0.1:4317/lines?provider=stm&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14#line-performance",
 						"clipped [data-slot=\"card\"] Trips run of scheduled"
 					]
 				},
@@ -385,7 +385,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 10837,
+					"height": 10789,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -397,7 +397,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 10230,
+					"height": 10206,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -409,7 +409,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 7359,
+					"height": 7296,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -421,7 +421,7 @@
 					"textDefects": []
 				},
 				"1024": {
-					"height": 6108,
+					"height": 6084,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -448,14 +448,14 @@
 			"keyboard": {
 				"390": {
 					"stops": 73,
-					"order": "d9dc63cb3dc7b3ad",
+					"order": "638739e8f1b67c7a",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 11
 				},
 				"1440": {
 					"stops": 78,
-					"order": "3fe88f1c6027c232",
+					"order": "1f74c6922cc91d1d",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 11
@@ -463,7 +463,7 @@
 			},
 			"zoom": {
 				"390": {
-					"height": 43760,
+					"height": 41837,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -475,7 +475,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 16983,
+					"height": 16599,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -708,7 +708,7 @@
 			},
 			"zoom": {
 				"390": {
-					"height": 9087,
+					"height": 8841,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -720,7 +720,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 3674,
+					"height": 3578,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -824,7 +824,7 @@
 			},
 			"zoom": {
 				"390": {
-					"height": 16217,
+					"height": 16076,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -836,7 +836,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 5872,
+					"height": 5824,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -862,7 +862,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 6204,
+					"height": 6180,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -886,7 +886,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 4280,
+					"height": 4256,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -940,7 +940,7 @@
 			},
 			"zoom": {
 				"390": {
-					"height": 26419,
+					"height": 25027,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -952,7 +952,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 9970,
+					"height": 9634,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1102,7 +1102,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 2407,
+					"height": 2383,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1114,7 +1114,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 2367,
+					"height": 2343,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1180,7 +1180,7 @@
 			},
 			"zoom": {
 				"390": {
-					"height": 5015,
+					"height": 4871,
 					"overflow": 0,
 					"edges": 211,
 					"edgeCount": 10,
@@ -1190,15 +1190,15 @@
 					"clipped": 5,
 					"brokenWords": 0,
 					"textDefects": [
-						"clipped [data-slot=\"card\"] 1 day included.\n\t\t\t\t\t\t\tMethod vehicles-fixture-v1. Data cleaning version 8.",
+						"clipped [data-slot=\"card\"] 1 day included.\n\t\t\t\t\t\t\tMethod v1, cleaning v8.",
 						"clipped [data-slot=\"card\"] CSV",
 						"clipped [data-slot=\"card\"] Days in service by vehicle",
 						"clipped [data-slot=\"card\"] Find by vehicle number",
-						"clipped [data-slot=\"card\"] Transit. Vehicles. Days in service by vehicle. From November 8 to 14, 2026. Method vehicles-fixture-v1. Data cleaning version 8. http://127.0.0.1:4317/vehicles?provider=stm&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14#fleet"
+						"clipped [data-slot=\"card\"] Transit. Vehicles. Days in service by vehicle. 8 to 14 Nov 2026. Method v1, cleaning v8. http://127.0.0.1:4317/vehicles?provider=stm&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14#fleet"
 					]
 				},
 				"1440": {
-					"height": 2616,
+					"height": 2568,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1345,7 +1345,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 3735,
+					"height": 3639,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1357,7 +1357,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 3487,
+					"height": 3391,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1423,7 +1423,7 @@
 			},
 			"zoom": {
 				"390": {
-					"height": 15715,
+					"height": 14083,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1435,7 +1435,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 5561,
+					"height": 5321,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1655,7 +1655,7 @@
 			},
 			"zoom": {
 				"390": {
-					"height": 16124,
+					"height": 15362,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1666,11 +1666,11 @@
 					"brokenWords": 0,
 					"textDefects": [
 						"clipped [data-slot=\"card\"] CSV",
-						"clipped [data-slot=\"card\"] Transit · Line 24, 07:00 departure. Stop by stop. On November 20, 2026. Method daily-fixture-v1. Data cleaning version 8. http://127.0.0.1:4317/departure/%5B%2224%22%2C0%2C%2207%3A00%3A00%22%5D?provider=stm&day=2026-11-20&frameMode=record&recordFrom=2026-11-16&recordTo=2026-11-20#stops"
+						"clipped [data-slot=\"card\"] Transit · Line 24, 07:00 departure. Stop by stop. 20 Nov 2026. Method v1, cleaning v8. http://127.0.0.1:4317/departure/%5B%2224%22%2C0%2C%2207%3A00%3A00%22%5D?provider=stm&day=2026-11-20&frameMode=record&recordFrom=2026-11-16&recordTo=2026-11-20#stops"
 					]
 				},
 				"1440": {
-					"height": 5672,
+					"height": 5480,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1774,7 +1774,7 @@
 			},
 			"zoom": {
 				"390": {
-					"height": 11068,
+					"height": 10828,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1795,7 +1795,7 @@
 					]
 				},
 				"1440": {
-					"height": 3920,
+					"height": 3872,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1884,14 +1884,14 @@
 			"keyboard": {
 				"390": {
 					"stops": 35,
-					"order": "ad8dc1d8d6599bec",
+					"order": "0f652ff2e6d53aed",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 41,
-					"order": "b9d3cdc66b4e8d82",
+					"order": "c5f721a5f3b46569",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -1899,7 +1899,7 @@
 			},
 			"zoom": {
 				"390": {
-					"height": 11000,
+					"height": 10856,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1946,7 +1946,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 5847,
+					"height": 5823,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2024,7 +2024,7 @@
 			},
 			"zoom": {
 				"390": {
-					"height": 24367,
+					"height": 23407,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2038,7 +2038,7 @@
 					]
 				},
 				"1440": {
-					"height": 8180,
+					"height": 7940,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2192,7 +2192,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 7417,
+					"height": 7393,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2258,7 +2258,7 @@
 			},
 			"zoom": {
 				"390": {
-					"height": 29313,
+					"height": 28641,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2270,7 +2270,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 9947,
+					"height": 9755,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2374,7 +2374,7 @@
 			},
 			"zoom": {
 				"390": {
-					"height": 5967,
+					"height": 5871,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2412,7 +2412,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 2773,
+					"height": 2749,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2424,7 +2424,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 2633,
+					"height": 2609,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2490,7 +2490,7 @@
 			},
 			"zoom": {
 				"390": {
-					"height": 6780,
+					"height": 6684,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3046,14 +3046,14 @@
 			"keyboard": {
 				"390": {
 					"stops": 15,
-					"order": "3a43e4363220c525",
+					"order": "51a05b9df1dcdab3",
 					"withoutRing": 1,
 					"outOfOrder": 1,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 21,
-					"order": "6dc390f4492946a5",
+					"order": "b72215b82e7fa354",
 					"withoutRing": 2,
 					"outOfOrder": 1,
 					"beforeFigure": 0
@@ -3173,7 +3173,7 @@
 			},
 			"zoom": {
 				"390": {
-					"height": 10402,
+					"height": 10354,
 					"overflow": 0,
 					"edges": 19,
 					"edgeCount": 5,
@@ -3924,7 +3924,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 1964,
+					"height": 1940,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4002,7 +4002,7 @@
 			},
 			"zoom": {
 				"390": {
-					"height": 3702,
+					"height": 3654,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4169,7 +4169,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 10510,
+					"height": 10462,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4181,7 +4181,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 9879,
+					"height": 9855,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4193,7 +4193,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 7156,
+					"height": 7093,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4205,7 +4205,7 @@
 					"textDefects": []
 				},
 				"1024": {
-					"height": 5980,
+					"height": 5956,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4232,14 +4232,14 @@
 			"keyboard": {
 				"390": {
 					"stops": 72,
-					"order": "1bd2ee195b5ab1c1",
+					"order": "f41aaa80365b8846",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 11
 				},
 				"1440": {
 					"stops": 77,
-					"order": "bd47521befc43864",
+					"order": "eac74f46a4a58b33",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 11
@@ -4247,7 +4247,7 @@
 			},
 			"zoom": {
 				"390": {
-					"height": 43225,
+					"height": 41110,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4259,7 +4259,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 16734,
+					"height": 16302,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4382,7 +4382,7 @@
 						"clipped [data-slot=\"card\"] Classified stop events",
 						"clipped [data-slot=\"card\"] Line performance",
 						"clipped [data-slot=\"card\"] Too few to judge",
-						"clipped [data-slot=\"card\"] Transit. Line performance. From November 8 to 14, 2026. Method finder-timing-v1. Data cleaning version 8. Method finder-delivery-v1. Data cleaning version 8. http://127.0.0.1:4317/lines?provider=octranspo&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14#line-performance",
+						"clipped [data-slot=\"card\"] Transit. Line performance. 8 to 14 Nov 2026. On-time share. Method v1, cleaning v8. Trips run of scheduled. Method v1, cleaning v8. http://127.0.0.1:4317/lines?provider=octranspo&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14#line-performance",
 						"clipped [data-slot=\"card\"] Trips run of scheduled"
 					]
 				},
@@ -4648,7 +4648,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 7365,
+					"height": 7341,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4714,7 +4714,7 @@
 			},
 			"zoom": {
 				"390": {
-					"height": 29684,
+					"height": 29012,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4726,7 +4726,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 9902,
+					"height": 9758,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4764,7 +4764,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 4800,
+					"height": 4776,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4776,7 +4776,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 2810,
+					"height": 2786,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4830,7 +4830,7 @@
 			},
 			"zoom": {
 				"390": {
-					"height": 20716,
+					"height": 20092,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4845,7 +4845,7 @@
 					]
 				},
 				"1440": {
-					"height": 5483,
+					"height": 5243,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4934,14 +4934,14 @@
 			"keyboard": {
 				"390": {
 					"stops": 34,
-					"order": "b82c84d0555dd031",
+					"order": "8e82ebd896102514",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 40,
-					"order": "16a491c865c219f1",
+					"order": "43c7cf6de13c36bc",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -4949,7 +4949,7 @@
 			},
 			"zoom": {
 				"390": {
-					"height": 11035,
+					"height": 10843,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4970,7 +4970,7 @@
 					]
 				},
 				"1440": {
-					"height": 3755,
+					"height": 3707,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4996,7 +4996,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 6109,
+					"height": 6085,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5020,7 +5020,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 4202,
+					"height": 4178,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5074,7 +5074,7 @@
 			},
 			"zoom": {
 				"390": {
-					"height": 26604,
+					"height": 25212,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5086,7 +5086,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 9968,
+					"height": 9536,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5112,7 +5112,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 3731,
+					"height": 3635,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5124,7 +5124,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 3435,
+					"height": 3339,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5190,7 +5190,7 @@
 			},
 			"zoom": {
 				"390": {
-					"height": 15654,
+					"height": 14022,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5202,7 +5202,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 5516,
+					"height": 5276,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5228,7 +5228,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 2403,
+					"height": 2379,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5240,7 +5240,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 2315,
+					"height": 2291,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5306,7 +5306,7 @@
 			},
 			"zoom": {
 				"390": {
-					"height": 4954,
+					"height": 4810,
 					"overflow": 0,
 					"edges": 211,
 					"edgeCount": 10,
@@ -5316,15 +5316,15 @@
 					"clipped": 5,
 					"brokenWords": 0,
 					"textDefects": [
-						"clipped [data-slot=\"card\"] 1 day included.\n\t\t\t\t\t\t\tMethod vehicles-fixture-v1. Data cleaning version 8.",
+						"clipped [data-slot=\"card\"] 1 day included.\n\t\t\t\t\t\t\tMethod v1, cleaning v8.",
 						"clipped [data-slot=\"card\"] CSV",
 						"clipped [data-slot=\"card\"] Days in service by vehicle",
 						"clipped [data-slot=\"card\"] Find by vehicle number",
-						"clipped [data-slot=\"card\"] Transit. Vehicles. Days in service by vehicle. From November 8 to 14, 2026. Method vehicles-fixture-v1. Data cleaning version 8. http://127.0.0.1:4317/vehicles?provider=octranspo&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14#fleet"
+						"clipped [data-slot=\"card\"] Transit. Vehicles. Days in service by vehicle. 8 to 14 Nov 2026. Method v1, cleaning v8. http://127.0.0.1:4317/vehicles?provider=octranspo&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14#fleet"
 					]
 				},
 				"1440": {
-					"height": 2571,
+					"height": 2523,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5362,7 +5362,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 5068,
+					"height": 5044,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5386,7 +5386,7 @@
 					"textDefects": []
 				},
 				"1024": {
-					"height": 2306,
+					"height": 2282,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5428,7 +5428,7 @@
 			},
 			"zoom": {
 				"390": {
-					"height": 23346,
+					"height": 22722,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5443,7 +5443,7 @@
 					]
 				},
 				"1440": {
-					"height": 6233,
+					"height": 6137,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5477,7 +5477,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 11458,
+					"height": 11434,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5489,7 +5489,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 10488,
+					"height": 10440,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5540,14 +5540,14 @@
 			"keyboard": {
 				"390": {
 					"stops": 73,
-					"order": "33c7a73611a67b27",
+					"order": "ebf13eaf3ac718f0",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 11
 				},
 				"1440": {
 					"stops": 78,
-					"order": "ca7030b8bfbf032e",
+					"order": "866d5e913d81d674",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 11
@@ -5555,7 +5555,7 @@
 			},
 			"zoom": {
 				"390": {
-					"height": 47777,
+					"height": 45467,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5569,7 +5569,7 @@
 					]
 				},
 				"1440": {
-					"height": 17814,
+					"height": 17238,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5748,7 +5748,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 6551,
+					"height": 6527,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5760,7 +5760,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 5951,
+					"height": 5927,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5826,7 +5826,7 @@
 			},
 			"zoom": {
 				"390": {
-					"height": 29492,
+					"height": 27860,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5846,7 +5846,7 @@
 					]
 				},
 				"1440": {
-					"height": 10570,
+					"height": 10234,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -6173,14 +6173,14 @@
 			"keyboard": {
 				"390": {
 					"stops": 35,
-					"order": "d4e035b4061f687b",
+					"order": "2b701de0fd789c16",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 41,
-					"order": "127d38d9b7d97f82",
+					"order": "c2059056bcee0006",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -6188,7 +6188,7 @@
 			},
 			"zoom": {
 				"390": {
-					"height": 11838,
+					"height": 11646,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -6209,7 +6209,7 @@
 					]
 				},
 				"1440": {
-					"height": 4121,
+					"height": 4073,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -6255,7 +6255,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 7606,
+					"height": 7582,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -6321,7 +6321,7 @@
 			},
 			"zoom": {
 				"390": {
-					"height": 31768,
+					"height": 30904,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -6466,7 +6466,7 @@
 						"clipped [data-slot=\"card\"] CSV",
 						"clipped [data-slot=\"card\"] Performance des lignes",
 						"clipped [data-slot=\"card\"] Trajets effectués sur prévus",
-						"clipped [data-slot=\"card\"] Transit. Performance des lignes. Du 8 au 14 novembre 2026. Méthode finder-timing-v1. Nettoyage des données, version 8. Méthode finder-delivery-v1. Nettoyage des données, version 8. http://127.0.0.1:4317/fr/lines?provider=stm&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14#line-performance",
+						"clipped [data-slot=\"card\"] Transit. Performance des lignes. du 8 au 14 nov. 2026. Part à l’heure. Méthode v1, nettoyage v8. Trajets effectués sur prévus. Méthode v1, nettoyage v8. http://127.0.0.1:4317/fr/lines?provider=stm&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14#line-performance",
 						"clipped [data-slot=\"card\"] Trop peu pour juger"
 					]
 				},
@@ -6583,7 +6583,7 @@
 			},
 			"zoom": {
 				"390": {
-					"height": 7429,
+					"height": 7285,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -6595,7 +6595,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 3524,
+					"height": 3476,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,

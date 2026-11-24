@@ -10,7 +10,7 @@
 	import RecordTable from '#lib/features/record/RecordTable.svelte';
 	import { healthReason } from '#lib/features/record/dataHealthText.ts';
 	import { choose, recordMessage, tally } from '#lib/features/record/recordText.ts';
-	import { dateAndClock, dateRange } from '#lib/site/presenter.ts';
+	import { clockRange, dateRange } from '#lib/site/presenter.ts';
 	import type { loadAlertRecord } from '#lib/server/alertRecord.ts';
 	import type { RecordAnswer } from '#lib/server/engine.ts';
 	import { frameHref } from '#lib/site/frameState.ts';
@@ -185,9 +185,7 @@
 													</dt>
 													{#each message.periods as { start, end } (`${start}/${end}`)}
 														<dd>
-															{[start, end]
-																.map((iso) => dateAndClock(iso, locale, data.timeZone))
-																.join(' · ')}
+															{clockRange(start, end, locale, data.timeZone)}
 														</dd>
 													{/each}
 												</dl>

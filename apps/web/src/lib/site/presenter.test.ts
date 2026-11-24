@@ -2,6 +2,7 @@ import { expect, it } from 'vitest';
 import { routeNameFallback } from './absence.ts';
 import { createLineDirectory } from './lineDirectory.ts';
 import {
+	clockRange,
 	clockTime,
 	dateAndClock,
 	dateRange,
@@ -126,5 +127,20 @@ it('keeps technical raw units legible without using them for the on-time thresho
 	);
 	expect(registryUnitText('60 secondes d’avance à 300 secondes de retard', 'fr')).toBe(
 		'1 minute d’avance à 5 minutes de retard',
+	);
+});
+
+it.each(['en', 'fr'] as const)('shares the date across a same-day alert period in %s', (locale) => {
+	const start = '2026-11-22T04:30:00Z';
+	const end = '2026-11-22T04:45:00Z';
+	const zone = 'America/Toronto';
+	const from = dateAndClock(start, locale, zone);
+	expect(clockRange(start, end, locale, zone)).toBe(from + '–23:45');
+	const nextDay = '2026-11-22T05:15:00Z';
+	expect(clockRange(start, nextDay, locale, zone)).toBe(
+		from + '–' + dateAndClock(nextDay, locale, zone),
+	);
+	expect(tripsInHours(1, 1, locale)).toBe(
+		locale === 'fr' ? '1 trajet en 1 heure' : '1 trip in 1 hour',
 	);
 });

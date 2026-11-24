@@ -138,8 +138,13 @@
 			}),
 	);
 	const sources = $derived(
-		[punctuality, trips].flatMap((result) =>
-			result?.kind === 'answer' ? [result.answer.evidence] : [],
+		(
+			[
+				[punctuality, headers[1]],
+				[trips, headers[3]],
+			] as const
+		).flatMap(([result, label]) =>
+			result?.kind === 'answer' ? [{ evidence: result.answer.evidence, label: label + '.' }] : [],
 		),
 	);
 </script>

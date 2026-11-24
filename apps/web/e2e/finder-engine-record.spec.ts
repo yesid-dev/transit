@@ -77,7 +77,13 @@ for (const locale of ['en', 'fr'] as const) {
 				await expect(
 					performance.getByRole('button', { name: fr ? 'Copier le lien' : 'Copy link' }),
 				).toBeVisible();
-				await expect(performance.getByText(/finder-timing-v1.*finder-delivery-v1/)).toBeVisible();
+				await expect(
+					performance.getByText(
+						fr
+							? /Part à l’heure\. Méthode v1, nettoyage v8\. Trajets effectués sur prévus\. Méthode v1, nettoyage v8\./
+							: /On-time share\. Method v1, cleaning v8\. Trips run of scheduled\. Method v1, cleaning v8\./,
+					),
+				).toBeVisible();
 				expect(await main.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(width);
 			});
 		}
@@ -109,7 +115,13 @@ for (const locale of ['en', 'fr'] as const) {
 					/\/stop\/S1.*recordFrom=2026-11-08.*recordTo=2026-11-14/,
 				);
 				await results.getByText(fr ? 'Citer' : 'Cite', { exact: true }).click();
-				await expect(results.getByText(/finder-timing-v1.*q=Fixture.*#stop-results/)).toBeVisible();
+				await expect(
+					results.getByText(
+						fr
+							? /Méthode v1, nettoyage v8\..*q=Fixture.*#stop-results/
+							: /Method v1, cleaning v8\..*q=Fixture.*#stop-results/,
+					),
+				).toBeVisible();
 				const csv = await results.getByRole('link', { name: /CSV/ }).getAttribute('href');
 				expect(decodeURIComponent(csv!)).toContain('"Fixture stop",0.8,100,80');
 				await expect(

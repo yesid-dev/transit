@@ -578,8 +578,8 @@ describe('Home record, live and ranking cards', () => {
 	});
 
 	it.each([
-		[false, 'Live data updated at 7:00 a.m.'],
-		[true, 'Could not refresh. Showing data from 6:50 p.m.'],
+		[false, 'Live data updated at 07:00.'],
+		[true, 'Could not refresh. Showing data from 18:50.'],
 	])(
 		'refreshes the live numbers on request and says what happened (fails: %s)',
 		async (fails, said) => {
