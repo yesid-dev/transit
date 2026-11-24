@@ -1,8 +1,13 @@
 [Unit]
-Description=Mirror Transit clean days after nightly cleaning
+Description=Mirror Transit clean days after each scheduled cleaning
 
 [Timer]
+# One copy after each expected clean-days run (16:17, 18:43, 21:13, 00:37, 04:07 UTC).
 OnCalendar=*-*-* 17:30:00 UTC
+OnCalendar=*-*-* 19:45:00 UTC
+OnCalendar=*-*-* 22:15:00 UTC
+OnCalendar=*-*-* 01:40:00 UTC
+OnCalendar=*-*-* 05:10:00 UTC
 Persistent=true
 
 [Install]

@@ -1,0 +1,72 @@
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import yaml
+
+REPO_ROOT = Path(__file__).parents[3]
+WORKFLOW = REPO_ROOT / ".github" / "workflows" / "clean-days.yml"
+TIMER = REPO_ROOT / "apps" / "engine" / "ops" / "linux" / "transit-engine-sync.timer"
+
+# The deployment no-merge window keeps 05:55 to 08:30 UTC clear of scheduled work.
+WINDOW_START = 5 * 60 + 55
+WINDOW_END = 8 * 60 + 30
+DAILY_CRON = re.compile(r"([0-9]{1,2}) ([0-9]{1,2}) \* \* \*")
+ON_CALENDAR = re.compile(r"OnCalendar=\*-\*-\* ([0-9]{1,2}):([0-9]{1,2}):[0-9]{2} UTC")
+
+
+def _minutes_of_day(minute: str, hour: str) -> int:
+    hours, minutes = int(hour), int(minute)
+    assert 0 <= hours < 24 and 0 <= minutes < 60
+    return hours * 60 + minutes
+
+
+def _cleaning_times() -> list[int]:
+    document = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    triggers = document.get("on", document.get(True))
+    times = []
+    for entry in triggers["schedule"]:
+        match = DAILY_CRON.fullmatch(entry["cron"])
+        assert match, f"Expected a plain daily cron, got {entry['cron']!r}"
+        times.append(_minutes_of_day(match[1], match[2]))
+    assert times, "The clean-days workflow needs at least one schedule"
+    return times
+
+
+def _copy_times() -> list[int]:
+    times = []
+    for line in TIMER.read_text(encoding="utf-8").splitlines():
+        if match := ON_CALENDAR.fullmatch(line.strip()):
+            times.append(_minutes_of_day(match[2], match[1]))
+    assert times, "The sync timer needs at least one OnCalendar time"
+    return times
+
+
+def test_cleaning_stays_outside_the_no_merge_window() -> None:
+    for cleaning in _cleaning_times():
+        assert not WINDOW_START <= cleaning <= WINDOW_END, (
+            f"Cleaning at {cleaning // 60:02d}:{cleaning % 60:02d} UTC falls inside "
+            f"the 05:55 to 08:30 UTC window"
+        )
+
+
+def test_every_cleaning_has_a_later_copy_before_the_next_days_first_cleaning() -> None:
+    cleanings = _cleaning_times()
+    copies = _copy_times()
+    deadline = min(cleanings) + 24 * 60
+    for cleaning in sorted(cleanings):
+        assert any(
+            cleaning < copy < deadline or cleaning < copy + 24 * 60 < deadline
+            for copy in copies
+        ), (
+            f"No VM copy lands after the {cleaning // 60:02d}:{cleaning % 60:02d} UTC "
+            "cleaning before the next day's first cleaning"
+        )
+
+
+def test_sync_timer_stays_persistent() -> None:
+    body = TIMER.read_text(encoding="utf-8")
+    assert re.search(r"^Persistent=true$", body, re.MULTILINE), (
+        "The sync timer must stay Persistent so missed copies run after a VM restart"
+    )
