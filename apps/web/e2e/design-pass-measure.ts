@@ -133,13 +133,23 @@ export async function contentOrder(page: Page) {
 	}, answer);
 }
 
-async function keyboardMetrics(page: Page) {
+async function keyboardMetrics(page: Page, countShadowRings: boolean) {
 	await page.evaluate(() => window.scrollTo(0, 0));
-	await page.evaluate(() => {
-		Object.assign(window, {
-			designPassVisited: new WeakSet<Element>(),
-		});
-	});
+	await page.evaluate(
+		({ controls, countShadowRings }) => {
+			const shadows = new WeakMap<Element, string>();
+			if (countShadowRings) {
+				for (const control of document.querySelectorAll(controls)) {
+					shadows.set(control, getComputedStyle(control).boxShadow);
+				}
+			}
+			Object.assign(window, {
+				designPassVisited: new WeakSet<Element>(),
+				designPassShadows: shadows,
+			});
+		},
+		{ controls, countShadowRings },
+	);
 	const sequence: string[] = [];
 	const accessibleStops: string[] = [];
 	let withoutRing = 0;
@@ -248,7 +258,30 @@ async function keyboardMetrics(page: Page) {
 			}
 			accessibleStops.push(accessibleStop);
 			const ring = await page.evaluate(focusRing, undefined);
-			if (!ring.visible || ring.outline === 'none' || ring.width < 1) withoutRing++;
+			const hasOutline = ring.outline !== 'none' && ring.width >= 1;
+			const hasShadow =
+				ring.visible &&
+				!hasOutline &&
+				countShadowRings &&
+				(await page.evaluate(async () => {
+					const focused = document.activeElement!;
+					await Promise.allSettled(
+						focused
+							.getAnimations()
+							.filter(
+								(animation) =>
+									animation instanceof CSSTransition &&
+									animation.transitionProperty === 'box-shadow',
+							)
+							.map((animation) => animation.finished),
+					);
+					const resting = Reflect.get(window, 'designPassShadows') as WeakMap<Element, string>;
+					const current = getComputedStyle(focused).boxShadow;
+					// A centered, unblurred spread is a ring. Require a change from the resting shadow.
+					const spread = /\b0px 0px 0px ([\d.]+)px\b/u.exec(current)?.[1];
+					return resting.has(focused) && current !== resting.get(focused) && Number(spread) >= 1;
+				}));
+			if (!ring.visible || (!hasOutline && !hasShadow)) withoutRing++;
 			if (stop.beforeFigure) beforeFigure++;
 			if (prior && focusOutOfOrder(prior, stop)) outOfOrder++;
 			prior = stop;
@@ -270,7 +303,7 @@ async function keyboardMetrics(page: Page) {
 	};
 }
 
-export async function measureDesignPass(page: Page) {
+export async function measureDesignPass(page: Page, { countShadowRings = false } = {}) {
 	const content = await contentOrder(page);
 	const widthsReport = {} as Record<
 		(typeof widths)[number],
@@ -290,7 +323,7 @@ export async function measureDesignPass(page: Page) {
 		}
 		Object.assign(widthsReport, { [width]: await layoutMetrics(page) });
 		if (width === 390 || width === 1440) {
-			const { metrics, accessibleStops } = await keyboardMetrics(page);
+			const { metrics, accessibleStops } = await keyboardMetrics(page, countShadowRings);
 			keyboard[width] = metrics;
 			focusSequences[width] = accessibleStops;
 			await page.evaluate(() => {

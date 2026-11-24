@@ -41,10 +41,7 @@ export const load: PageServerLoad = async ({ url, parent, request, locals }) => 
 			stops,
 			directory,
 			totals: edition instanceof Promise ? edition.then(scheduleTotals) : scheduleTotals(edition),
-			trend: getRecordAnswer(
-				{ path: '/measure', parameters: { measure: 'on_time', group: 'day' } },
-				questions.punctuality[1],
-			),
+			trend: getRecordAnswer(...questions.trend),
 			manifest: provider ? captureContext(provider, lang, schedule).manifest : null,
 		},
 	};

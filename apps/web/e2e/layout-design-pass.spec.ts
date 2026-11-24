@@ -45,7 +45,10 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 			}
 		}
 		const start = performance.now();
-		const { report, focusSequences } = await measureDesignPass(page);
+		// Adopted Overview checks the actual indicator. Existing debt fingerprints count outlines.
+		const { report, focusSequences } = await measureDesignPass(page, {
+			countShadowRings: screen === 'overview',
+		});
 		await info.attach('design-pass-measurements', {
 			body: JSON.stringify({
 				key,
