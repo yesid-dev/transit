@@ -204,6 +204,18 @@ for (const brandCase of cases)
 				.toBe('32px');
 		}
 
+		// The Record sections above the footer can still change height during hydration.
+		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+		if (route === '/') {
+			const pending = page
+				.getByRole('main')
+				.getByRole('status')
+				.filter({
+					hasText:
+						/^(?:Calculating|Still working on this|Calcul en cours|Le calcul est toujours en cours)/,
+				});
+			await expect(pending).toHaveCount(0);
+		}
 		const measured = await settled(page);
 		const [houseLink, productLink] = measured.links;
 
