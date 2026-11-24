@@ -6,13 +6,13 @@ test.use({ bypassCSP: true });
 type Draw = { x: number; y: number; size: number };
 type DrawProbe = Window & { vehicleDraws?: Draw[] };
 
-// At overview zoom the extra badge distinguishes a severely late vehicle from a late one.
+// At overview zoom, status badges stay hidden in each theme.
 for (const [scheme, forcedColors] of [
 	['light', 'none'],
 	['dark', 'none'],
 	['dark', 'active'],
 ] as const) {
-	test(`a severely late vehicle shows its ◆ at zoom 12 (${scheme}, forced colours ${forcedColors})`, async ({
+	test(`vehicle bodies render without status badges at zoom 12 (${scheme}, forced colours ${forcedColors})`, async ({
 		page,
 	}, { project }) => {
 		test.skip(project.name !== 'desktop', 'one canvas renderer check per scheme');
@@ -54,22 +54,17 @@ for (const [scheme, forcedColors] of [
 			route.fulfill({
 				json: captureFixture(at, {
 					vehicle_positions: [
-						vehicle('late-vehicle', -0.01, 180),
-						vehicle('severe-vehicle', 0.01, 540),
+						vehicle('on-time-vehicle', -0.01, 180),
+						vehicle('late-vehicle', 0.01, 540),
 					],
 				}),
 			}),
 		);
 		await page.goto(`/map?provider=stm&mapview=${lon},${lat},12,0,0`);
 		const draws = () => page.evaluate(() => (window as DrawProbe).vehicleDraws ?? []);
-		await expect.poll(async () => (await draws()).length).toBe(3);
-		const [first, second, badge] = await draws();
-		// Bodies paint first, then the one badge: 0.6 of the body, 30 units below its bus.
+		await expect.poll(async () => (await draws()).length).toBe(2);
+		const [first, second] = await draws();
 		expect(first.size).toBeCloseTo(second.size, 3);
-		expect(badge.size).toBeCloseTo(first.size * 0.6, 3);
-		const [late, severe] = [first, second].sort((a, b) => a.x - b.x);
-		expect(badge.x).toBeCloseTo(severe.x, 3);
-		expect(badge.x).not.toBeCloseTo(late.x, 0);
-		expect(badge.y).toBeCloseTo(severe.y + (first.size / 26) * 30, 3);
+		expect(Math.abs(first.x - second.x)).toBeGreaterThan(first.size);
 	});
 }

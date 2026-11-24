@@ -15,6 +15,11 @@ export { dateRange, percent, tally };
 
 export { previousPeriod } from './periodComparison.ts';
 
+export interface OverviewPunctuality {
+	period: DateWindow;
+	punctuality: Promise<EngineResult<MeasureAnswer>>;
+}
+
 export function measureText(
 	result: EngineResult<MeasureAnswer>,
 	period: DateWindow,

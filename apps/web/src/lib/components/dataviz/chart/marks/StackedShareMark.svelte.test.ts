@@ -18,7 +18,7 @@ describe('StackedShareMark legend', () => {
 			segments: [
 				{ key: 'on_time', label: 'On time', share: 60, status: 'on_time' },
 				{ key: 'late', label: 'Late', share: 30, status: 'late' },
-				{ key: 'severe', label: '5+ min late', share: 10, status: 'severe' },
+				{ key: 'early', label: 'Early', share: 10, status: 'early' },
 			],
 		};
 		const { container } = render(StackedShareMark, { props: { spec } });
@@ -26,7 +26,7 @@ describe('StackedShareMark legend', () => {
 		const glyphs = legendItems(container).map(
 			(item) => item.querySelector('[data-slot="legend-glyph"]')?.textContent,
 		);
-		expect(glyphs).toEqual(['●', '▲', '◆']);
+		expect(glyphs).toEqual(['●', '▲', '▼']);
 		const late = legendItems(container)[1]!.querySelector<HTMLElement>(
 			'[data-slot="legend-glyph"]',
 		)!;

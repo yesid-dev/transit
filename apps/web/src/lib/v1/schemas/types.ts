@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const StatusCodeSchema = z.enum(['early', 'on_time', 'late', 'severe', 'unknown']);
+export const StatusCodeSchema = z.enum(['early', 'on_time', 'late', 'unknown']);
 export type StatusCode = z.infer<typeof StatusCodeSchema>;
 
 export const OccupancyCodeSchema = z.enum(['empty', 'many_seats', 'few_seats', 'standing', 'full']);

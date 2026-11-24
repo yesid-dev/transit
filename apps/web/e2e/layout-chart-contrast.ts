@@ -33,7 +33,7 @@ export function statusMarkContrast(page: Page) {
 			let tokens = tokenMaps.get(svg);
 			if (tokens) return tokens;
 			tokens = new Map();
-			for (const name of ['early', 'on-time', 'late', 'severe', 'unknown']) {
+			for (const name of ['early', 'on-time', 'late', 'unknown']) {
 				const probe = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
 				probe.style.fill = `var(--dataviz-status-${name})`;
 				svg.append(probe);
@@ -137,7 +137,7 @@ export async function openNetwork(page: Page, locale: 'en' | 'fr') {
 	await expect(page.locator('rect.dv-histmark-ontime').first()).toBeAttached();
 	await expect(
 		page.locator('[data-network-section="network-status-mix"] rect.dv-share-seg'),
-	).toHaveCount(5);
+	).toHaveCount(4);
 }
 
 export const weak = (findings: Finding[]) => findings.filter(({ ratio }) => ratio < 3);

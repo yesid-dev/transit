@@ -45,7 +45,7 @@ const { openSurface, live, network, trendSeries, weeklySeries, monthlySeries, by
 			generated_utc: '2026-06-16T02:00:00Z' as IsoUtc,
 			vehicles_in_service: 10,
 			on_time_pct: 80,
-			status_dist: { early: 0, on_time: 8, late: 2, severe: 0, unknown: 0 },
+			status_dist: { early: 0, on_time: 8, late: 2, unknown: 0 },
 			delay_p50_min: 1,
 			delay_p90_min: 6,
 			non_responding: 3,
@@ -499,7 +499,7 @@ describe('NetworkSurface live cards (S9C)', () => {
 		// Enough buses with a delay reading to headline the on-time share.
 		Object.assign(network, {
 			vehicles_in_service: 40,
-			status_dist: { early: 0, on_time: 24, late: 8, severe: 8, unknown: 0 },
+			status_dist: { early: 0, on_time: 24, late: 16, unknown: 0 },
 		});
 		const { container } = render(NetworkSurface);
 		const headline = container.querySelector('[data-network-section="network-live-headline"]')!;
@@ -529,7 +529,7 @@ describe('NetworkSurface live cards (S9C)', () => {
 		Object.assign(network, {
 			vehicles_in_service: 328,
 			on_time_pct: 10,
-			status_dist: { early: 2, on_time: 1, late: 0, severe: 7, unknown: 318 },
+			status_dist: { early: 2, on_time: 1, late: 7, unknown: 318 },
 		});
 		const { container } = render(NetworkSurface, {
 			context: new Map([[Symbol.for('@yesid/ui/locale'), () => locale]]),
@@ -1062,7 +1062,7 @@ describe('NetworkSurface daily comparison scope', () => {
 		'separates historical percentage points and dates from live positions in %s',
 		(locale) => {
 			network.on_time_pct = 50;
-			network.status_dist = { early: 0, on_time: 5, late: 5, severe: 0, unknown: 0 };
+			network.status_dist = { early: 0, on_time: 5, late: 5, unknown: 0 };
 			trendSeries.splice(
 				0,
 				trendSeries.length,

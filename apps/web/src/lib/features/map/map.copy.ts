@@ -79,7 +79,6 @@ export const copy = defineCopy({
 			moreEarly: (m: number) => `More than ${m}${NB}min early`,
 			earlyToLate: (early: number, late: number) =>
 				`${early}${NB}min early to under ${late}${NB}min late`,
-			lateRange: (from: number, below: number) => `${from} to under ${below}${NB}min late`,
 			lateOrMore: (m: number) => `${m}${NB}min late or more`,
 			unknown: 'The live feed gives no delay',
 			occupancy: {
@@ -93,7 +92,7 @@ export const copy = defineCopy({
 				`None for ${duration} or more. It can appear with any status.`,
 			heading: 'Direction of travel',
 			stop: 'Stop',
-			zoomBadges: '◆ marks a severe delay at every zoom. Zoom in to see the other status badges.',
+			zoomBadges: 'Zoom in to see the status badges.',
 			zoomCrowdingBadges: 'Zoom in to see each vehicle’s crowding badge.',
 		},
 		statusHelp: 'Tick a status to show only those vehicles.',
@@ -228,8 +227,6 @@ export const copy = defineCopy({
 			moreEarly: (m: number) => `Plus ${frMinutes(m, 'de')} d’avance`,
 			earlyToLate: (early: number, late: number) =>
 				`${capitalize(frMinutes(early, 'de'))} d’avance à moins ${frMinutes(late, 'de')} de retard`,
-			lateRange: (from: number, below: number) =>
-				`${capitalize(frMinutes(from, 'de'))} à moins ${frMinutes(below, 'de')} de retard`,
 			lateOrMore: (m: number) => `${capitalize(frMinutes(m))} de retard ou plus`,
 			unknown: 'Le flux en direct n’indique aucun retard',
 			occupancy: {
@@ -243,8 +240,7 @@ export const copy = defineCopy({
 				`Aucune depuis ${duration} ou plus. Peut accompagner n’importe quel état.`,
 			heading: 'Sens de déplacement',
 			stop: 'Arrêt',
-			zoomBadges:
-				'◆ signale un retard sévère à tout niveau de zoom. Zoomez pour voir les autres symboles de statut.',
+			zoomBadges: 'Zoomez pour voir les symboles de statut.',
 			zoomCrowdingBadges: 'Zoomez pour voir le symbole d’occupation.',
 		},
 		statusHelp: 'Cochez un état pour n’afficher que ces véhicules.',

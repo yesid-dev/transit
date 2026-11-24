@@ -88,6 +88,21 @@ test('a slow stop ranking shows patience while the other parts remain usable', a
 	).toHaveCount(0);
 });
 
+test('Live and Record show the same punctuality for the same week (OV1)', async ({ page }) => {
+	await page.goto('/?provider=stm&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14');
+	const main = page.getByRole('main');
+	const reading = main
+		.getByRole('region', { name: 'On-time performance' })
+		.getByText(/8 to 14 Nov 2026, 81\.2% of observed stop events/);
+	await expect(reading).toBeVisible();
+	const recordReading = await reading.innerText();
+	await page.getByRole('radio', { name: 'Live now' }).click();
+	await expect(page).toHaveURL(/frameMode=live/);
+	await expect(main.getByRole('region', { name: 'Record for the selected period' })).toContainText(
+		recordReading,
+	);
+});
+
 test('changing the custom period reloads Record and Live now still opens the existing homepage', async ({
 	page,
 }) => {

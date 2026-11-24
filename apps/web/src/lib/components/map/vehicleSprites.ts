@@ -280,16 +280,6 @@ function drawStateGlyph(
 		ctx.fill();
 		return;
 	}
-	if (glyph === STATUS_GLYPH.severe) {
-		ctx.beginPath();
-		ctx.moveTo(c, top + side * 0.23);
-		ctx.lineTo(left + side * 0.77, c);
-		ctx.lineTo(c, top + side * 0.77);
-		ctx.lineTo(left + side * 0.23, c);
-		ctx.closePath();
-		ctx.fill();
-		return;
-	}
 	if (glyph === STATUS_GLYPH.unknown) {
 		ctx.beginPath();
 		ctx.arc(c, c, side * 0.22, 0, Math.PI * 2);

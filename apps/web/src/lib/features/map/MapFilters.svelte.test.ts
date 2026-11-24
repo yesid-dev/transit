@@ -34,7 +34,6 @@ describe('MapFilters', () => {
 		{ code: 'early', en: 'Early', fr: 'En avance' },
 		{ code: 'on_time', en: 'On time', fr: 'À l’heure' },
 		{ code: 'late', en: 'Late', fr: 'En retard' },
-		{ code: 'severe', en: 'Severe', fr: 'Sévère' },
 		{ code: 'unknown', en: 'Delay unknown', fr: 'Retard inconnu' },
 	] as const;
 	const occupancyMappings = [

@@ -2,12 +2,11 @@ import type { Locale } from '#lib/i18n/index.ts';
 import type { StatusCode, OccupancyCode, SeverityCode } from './schemas';
 
 export const STATUS_LABELS: Record<Locale, Record<StatusCode, string>> = {
-	en: { early: 'Early', on_time: 'On-time', late: 'Late', severe: 'Severe', unknown: 'Unknown' },
+	en: { early: 'Early', on_time: 'On-time', late: 'Late', unknown: 'Unknown' },
 	fr: {
 		early: 'En avance',
 		on_time: 'À l’heure',
 		late: 'En retard',
-		severe: 'Sévère',
 		unknown: 'Inconnu',
 	},
 };

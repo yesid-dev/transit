@@ -95,13 +95,12 @@
 								<td class="stop-live__status">
 									{#if row.status.kind === 'known'}
 										{@const single = row.status.bands.length === 1 ? row.status.bands[0] : null}
-										<!-- The map legend's shapes: 5+ min late (◆) never differs from late (▲) by colour alone. -->
 										<span data-bands={row.status.bands.join(' ')}
 											>{#if single}<span
 													class="stop-live__glyph"
 													style:color={statusVar(single)}
 													aria-hidden="true">{STATUS_GLYPH[single]}</span
-												>{/if}{departureStatusText(row.delayMin, t)}</span
+												>{/if}{departureStatusText(row.delayMin, t, row.status)}</span
 										>
 									{:else}
 										<AbsentValue

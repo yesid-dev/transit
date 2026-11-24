@@ -6,7 +6,7 @@ import type { OccupancyCode, StatusCode } from '#lib/v1/schemas/index.ts';
 import { copy, type MapCopy } from './map.copy';
 import { mapStatusLabel } from './mapStatusLabels';
 
-/** What the bus bodies are coloured by; the legend explains only that. */
+/** What the vehicle markers are coloured by; the legend explains only that. */
 export type LegendColourBy = 'status' | 'occupancy';
 
 export type LegendMark =
@@ -47,7 +47,6 @@ function bandDefinition(t: LegendCopy, { fromS, belowS }: DelayBand): string | n
 		return null;
 	if (from == null && below != null && below < 0) return t.moreEarly(-below);
 	if (from != null && from < 0 && below != null && below > 0) return t.earlyToLate(-from, below);
-	if (from != null && from > 0 && below != null && below > from) return t.lateRange(from, below);
 	if (from != null && from > 0 && below == null) return t.lateOrMore(from);
 	return null;
 }

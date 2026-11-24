@@ -2,16 +2,7 @@ import { defineCopy, type Locale } from '#lib/i18n/copy.ts';
 
 type PulseKey =
 	| 'recordTitle'
-	| 'recordPeriod'
-	| 'recordShare'
-	| 'recordDefinition'
-	| 'recordBasis'
-	| 'recordUnits'
-	| 'recordBefore'
-	| 'recordThin'
-	| 'recordUnpublished'
 	| 'recordNone'
-	| 'recordError'
 	| 'openRecord'
 	| 'reporting'
 	| 'reportingOne'
@@ -38,17 +29,8 @@ type PulseKey =
 
 export const homePulseCopy = defineCopy({
 	fr: {
-		recordTitle: 'Dernier bilan complet',
-		recordPeriod: 'Du {dates}, dernière semaine complète',
-		recordShare: 'des relevés étaient à l’heure.',
-		recordDefinition: 'À l’heure : d’une minute d’avance à 5 minutes de retard.',
-		recordBasis: 'Selon {n} relevés.',
-		recordUnits: 'Ce ne sont ni des trajets ni des passagers.',
-		recordBefore: 'la semaine précédente, du {dates}.',
-		recordThin: 'Pas assez de relevés pour établir une part : {n} cette semaine.',
-		recordUnpublished: 'Aucune part de relevés à l’heure n’est publiée pour cette semaine.',
-		recordNone: 'Aucune semaine complète n’est encore publiée.',
-		recordError: 'Le bilan n’a pas pu être chargé.',
+		recordTitle: 'Bilan de la période choisie',
+		recordNone: 'Aucun bilan pour cette période.',
 		openRecord: 'Ouvrir le bilan du réseau',
 		reporting: 'véhicules se signalent',
 		reportingOne: 'véhicule se signale',
@@ -75,17 +57,8 @@ export const homePulseCopy = defineCopy({
 		openRankings: 'Ouvrir les classements complets',
 	},
 	en: {
-		recordTitle: 'Latest complete record',
-		recordPeriod: '{dates}, latest complete week',
-		recordShare: 'of readings were on time.',
-		recordDefinition: 'On time: 1 minute early to 5 minutes late.',
-		recordBasis: 'Based on {n} readings.',
-		recordUnits: 'These are not trips or passengers.',
-		recordBefore: 'the week before, {dates}.',
-		recordThin: 'Not enough readings to state a share: {n} this week.',
-		recordUnpublished: 'No on-time share is published for this week.',
-		recordNone: 'No complete week is published yet.',
-		recordError: 'The record could not be loaded.',
+		recordTitle: 'Record for the selected period',
+		recordNone: 'No record for this period.',
 		openRecord: 'Open the network record',
 		reporting: 'vehicles reporting',
 		reportingOne: 'vehicle reporting',

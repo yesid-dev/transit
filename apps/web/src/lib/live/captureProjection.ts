@@ -6,6 +6,7 @@ import {
 	VehiclesFileSchema,
 } from '#lib/v1/schemas/index.ts';
 import type { OccupancyCode, StatusCode } from '#lib/v1/schemas/types.ts';
+import { classifyDelay } from '#lib/v1/live/statusBands.ts';
 import {
 	feedState,
 	type CaptureFamily,
@@ -21,13 +22,6 @@ const occupancyByCode: readonly OccupancyCode[] = [
 	'standing',
 	'full',
 ];
-function status(delay: number | null): StatusCode {
-	if (delay == null) return 'unknown';
-	if (delay < -60) return 'early';
-	if (delay < 60) return 'on_time';
-	return delay < 300 ? 'late' : 'severe';
-}
-
 function minute(delay: number | null) {
 	return delay == null ? null : Math.sign(delay) * Math.round(Math.abs(delay) / 60);
 }
@@ -67,7 +61,7 @@ export function captureVehicles(snapshot: CaptureSnapshot, now: number) {
 				lon: vehicle.longitude,
 				bearing: vehicle.bearing == null ? null : Math.round(vehicle.bearing) % 360,
 				speed_kmh: vehicle.speed_mps == null ? null : Math.round(vehicle.speed_mps * 3.6),
-				status: status(delay),
+				status: classifyDelay(delay),
 				delay_min: minute(delay),
 				occupancy: occupancyByCode[vehicle.occupancy ?? -1] ?? null,
 				next_stop: vehicle.stop_id,
@@ -88,10 +82,12 @@ function stopEta(stop: CaptureTripReport['trip_updates'][number]['stops'][number
 	if (!stop.stop_id || seconds == null || seconds > 8.64e12 || stop.relationship === 1) {
 		return null;
 	}
+	const delay = stop.departure_delay ?? stop.arrival_delay;
 	return {
 		stop: stop.stop_id,
 		eta_utc: new Date(seconds * 1000).toISOString(),
-		delay_min: minute(stop.departure_delay ?? stop.arrival_delay),
+		delay_min: minute(delay),
+		status: classifyDelay(delay),
 	};
 }
 
@@ -107,7 +103,7 @@ export function captureTrips(report: CaptureTripReport) {
 				update.trip_id,
 				{
 					route: update.route_id,
-					status: status(update.delay),
+					status: classifyDelay(update.delay),
 					delay_min: minute(update.delay),
 					stops: update.stops.flatMap((stop) => {
 						const eta = stopEta(stop);
@@ -124,7 +120,13 @@ export function captureDepartures(report: CaptureTripReport, now: number) {
 	const trips = captureTrips(report);
 	const stops = new Map<
 		string,
-		{ route: string | null; trip: string; eta_utc: string; delay_min: number | null }[]
+		{
+			route: string | null;
+			trip: string;
+			eta_utc: string;
+			delay_min: number | null;
+			status?: StatusCode;
+		}[]
 	>();
 	for (const [tripId, trip] of Object.entries(trips.trips)) {
 		for (const stop of trip.stops ?? []) {
@@ -135,6 +137,7 @@ export function captureDepartures(report: CaptureTripReport, now: number) {
 				trip: tripId,
 				eta_utc: stop.eta_utc,
 				delay_min: stop.delay_min ?? null,
+				status: stop.status,
 			});
 			stops.set(stop.stop, entries);
 		}
@@ -206,7 +209,7 @@ export function captureAlerts(snapshot: CaptureSnapshot, now: number) {
 
 export function captureNetwork(snapshot: CaptureSnapshot, now: number) {
 	const positions = captureVehicles(snapshot, now);
-	const status_dist = { on_time: 0, early: 0, late: 0, severe: 0, unknown: 0 };
+	const status_dist = { on_time: 0, early: 0, late: 0, unknown: 0 };
 	const occupancy = { empty: 0, many_seats: 0, few_seats: 0, standing: 0, full: 0 };
 	let occupancyTotal = 0;
 	for (const vehicle of positions.vehicles) {
@@ -231,8 +234,7 @@ export function captureNetwork(snapshot: CaptureSnapshot, now: number) {
 	const payload = NetworkFileSchema.parse({
 		generated_utc: positions.generated_utc,
 		vehicles_in_service: positions.vehicles.length,
-		on_time_pct:
-			classified > 0 ? percentage(status_dist.on_time + status_dist.late, classified) : null,
+		on_time_pct: classified > 0 ? percentage(status_dist.on_time, classified) : null,
 		status_dist,
 		delay_p50_min: percentile(0.5),
 		delay_p90_min: percentile(0.9),

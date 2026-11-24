@@ -279,7 +279,6 @@ describe.each(['en', 'fr'] as const)('TripDetail summary in %s', (locale) => {
 		['on_time', 1, '+1 min'],
 		['late', 0, '0 min'],
 		['early', -2, '−2 min'],
-		['severe', 4, '+4 min'],
 		['unknown', 0, '0 min'],
 		['on_time', null, null],
 		['unknown', null, null],

@@ -631,14 +631,14 @@ def test_bands_use_exact_thresholds(tmp_path: Path, cleaning_version: int) -> No
         "scheduled": 34,
         "classified": 32,
         "early": 8,
-        "on_time": 16,
-        "late": 8,
+        "on_time": 8,
+        "late": 16,
         "vehicle_stopped": 0,
         "vehicle_nearby": 0,
         "trip_update_reported": 32,
         "trip_update_passed": 0,
     }
-    assert [result["value"][key] for key in ("early", "on_time", "late")] == [0.25, 0.5, 0.25]
+    assert [result["value"][key] for key in ("early", "on_time", "late")] == [0.25, 0.25, 0.5]
     assert evidence["excluded"] == {
         "added": 1,
         "cancelled": 1,
@@ -674,7 +674,7 @@ def test_multi_day_line_agrees_with_independent_recomputation(
                     scheduled.append(delay + (10 if day == SUNDAY else 0))
     observed = sorted(delay for delay in scheduled if delay is not None)
     bands = Counter(
-        "early" if delay < -60 else "late" if delay > 300 else "on_time" for delay in observed
+        "early" if delay < -60 else "late" if delay >= 300 else "on_time" for delay in observed
     )
     assert evidence["counts"] == {
         "scheduled": len(scheduled), "classified": len(observed), **bands,
@@ -1120,16 +1120,16 @@ def _long_range_answers(
 
 
 def test_long_range_matches_baseline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # Canonical JSON digests with the revised statistics and v11 basis and method text.
+    # Canonical JSON digests with the exclusive late boundary and punctuality-v4 method text.
     # The fixture spans two query batches, a DST transition, and one missing day.
     expected = {
-        "network": "ac977cb6a6f1e87262a0f718f843e1dda277e6c2f22bd65aa5b2309a6d2c131e",
-        "line": "f2e32cf4de38bbdeb4e32c748f3ac424ea0c5f77a76fbb897ca1e64389dea67a",
-        "grid": "f4aee9d539ccab0b32bedfac1bdabd55541410ada1992f85b9da3c5c40bca1d4",
+        "network": "f1cb2628bd63d7dd58018752e61da223a42a521bf84b5c68557e4f02408a206b",
+        "line": "25bfe73eaadfc302d00a2358218635c5decf5d8eebbdcb41a0a9363701a919dc",
+        "grid": "e108b2fd037b5c37318a7e97af9e1bb4091824912b91bdf47e5bf8b5fee228ae",
         "delivery": "c0585d214d9f18d8760df1ddf5353865b073cede0f1077ab72b93a6efecf57ad",
-        "line_rank": "cdca9252102f588ae33cc6d01adb85fe6d5a01ba86bdc8c43af8c7f302305122",
-        "stop_rank": "a6dbd3c760292cc78e37ff9335c024eed56ff030514f7e61b99d46cea731854a",
-        "departure_rank": "6197f7211a721a412fb8e671278340b2b4e8861e3aec3bd0def3fc03e3a7f170",
+        "line_rank": "ddfbac5b17dfba1dcd500b4f1369bbd91076d7d5159b8e3eec4de39760982c66",
+        "stop_rank": "a24033d61463786d7bc7e3449eddeb5e430cbbc1e7f27eecab1f888edd6f988f",
+        "departure_rank": "6f1fe21674d4866f22f121eea9378c6fb963cd5c641103f7c060b3b47f1a6740",
     }
     answers = _long_range_answers(tmp_path, monkeypatch)
     assert {

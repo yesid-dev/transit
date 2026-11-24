@@ -45,7 +45,7 @@ const currentNetwork = {
 	generated_utc: '2026-06-16T02:00:00Z' as IsoUtc,
 	vehicles_in_service: 10,
 	on_time_pct: 80,
-	status_dist: { early: 0, on_time: 8, late: 2, severe: 0, unknown: 0 },
+	status_dist: { early: 0, on_time: 8, late: 2, unknown: 0 },
 	delay_p50_min: 1,
 	delay_p90_min: 6,
 	non_responding: 1,

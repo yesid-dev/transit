@@ -148,7 +148,7 @@ const VEHICLES: Vehicle[] = [
 		id: 'busLate',
 		lat: 45.5,
 		lon: -73.6,
-		status: 'severe',
+		status: 'late',
 		updated_utc: new Date(clock.serverNow).toISOString(),
 		route: '161',
 		trip: 'tLate',
@@ -723,7 +723,7 @@ describe('RouteDetail Detail tab: current-buses roster', () => {
 
 		expect(
 			within(roster).getByRole('link', {
-				name: /Vehicle busLate.*Severe.*\+8 min.*Next stop First stop.*View trip/,
+				name: /Vehicle busLate.*Late.*\+8 min.*Next stop First stop.*View trip/,
 			}),
 		).toHaveAttribute('href', '/trip/tLate');
 	});
@@ -763,7 +763,7 @@ describe('RouteDetail Detail tab: current-buses roster', () => {
 			[...roster.querySelectorAll('[data-slot="status-badge"]')].map((el) =>
 				el.getAttribute('data-status'),
 			),
-		).toEqual(['severe', 'early', 'unknown']);
+		).toEqual(['late', 'early', 'unknown']);
 		expect(within(roster).queryByRole('progressbar')).toBeNull();
 		expect(roster).not.toHaveTextContent(/Watch|High|no change data/);
 	});
@@ -816,7 +816,6 @@ describe.each(['en', 'fr'] as const)('RouteDetail roster published status in %s'
 		['on_time', 1, '+1 min'],
 		['late', 0, '0 min'],
 		['early', -2, '−2 min'],
-		['severe', 4, '+4 min'],
 		['unknown', 0, '0 min'],
 		['on_time', null, null],
 		['unknown', null, null],

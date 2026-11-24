@@ -14,7 +14,7 @@ const occLabel = (c: OccupancyCode) => `O:${c}`;
 
 describe('selectStatusMix', () => {
 	it('emits a stacked-share spec (zero bands dropped, shares normalised, hrefs carried)', () => {
-		const dist = { early: 0, on_time: 8, late: 2, severe: 0, unknown: 0 } as StatusDist;
+		const dist = { early: 0, on_time: 8, late: 2, unknown: 0 } as StatusDist;
 		const spec = selectStatusMix(dist, statusLabel, {
 			title: 'Status mix',
 			locale: 'en',
@@ -107,7 +107,7 @@ describe('selectHeadlineKpis', () => {
 	const net = {
 		vehicles_in_service: 40,
 		on_time_pct: 80,
-		status_dist: { early: 2, on_time: 24, late: 6, severe: 6, unknown: 2 },
+		status_dist: { early: 2, on_time: 24, late: 12, unknown: 2 },
 		coverage_pct: 95,
 		delay_p50_min: 1,
 		delay_p90_min: null,
@@ -141,7 +141,7 @@ describe('live headline explanations', () => {
 		const net = {
 			vehicles_in_service: 4,
 			on_time_pct: 67,
-			status_dist: { early: 0, on_time: 2, late: 0, severe: 1, unknown: 1 },
+			status_dist: { early: 0, on_time: 2, late: 1, unknown: 1 },
 			coverage_pct: 75,
 			delay_p50_min: 2,
 			delay_p90_min: 5,

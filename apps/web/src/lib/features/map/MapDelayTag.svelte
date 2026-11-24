@@ -69,7 +69,4 @@
 	.map-delay-tag[data-tone='late'] {
 		color: var(--dataviz-status-late);
 	}
-	.map-delay-tag[data-tone='severe'] {
-		color: var(--dataviz-status-severe);
-	}
 </style>

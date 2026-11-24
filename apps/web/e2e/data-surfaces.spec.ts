@@ -116,7 +116,7 @@ test('Live now lists predictions under their line, statuses in words', async ({ 
 	// One line listed: nothing to order yet.
 	await expect(page.getByRole('combobox', { name: t.order })).toHaveCount(0);
 	await expect(rows.nth(0).getByRole('cell').first()).toHaveText(new RegExp(t.bands.on_time));
-	await expect(rows.nth(1).getByRole('cell').first()).toHaveText(new RegExp(t.bands.late));
+	await expect(rows.nth(1).getByRole('cell').first()).toHaveText(new RegExp(t.bands.on_time));
 	const link = page.getByRole('link', { name: t.record, exact: true });
 	const href = new URL((await link.getAttribute('href'))!, page.url());
 	expect(href.pathname).toBe('/stop/' + stop);
@@ -263,7 +263,7 @@ for (const lang of PUBLISHED_LOCALES)
 					);
 					await expect(page.locator('.trip-verdict [data-slot="status-badge"]')).toHaveAttribute(
 						'data-status',
-						'severe',
+						'late',
 					);
 					await expect(page.locator('.trip-verdict-delay')).toHaveText('+6 min');
 					expect((await header.boundingBox())!.height).toBe(before!.height);
