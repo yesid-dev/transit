@@ -418,8 +418,9 @@ prune older unused releases as needed to preserve the disk reserve.
 Install a release and run the first sync before enabling the tunnel. The sync lists completed days and
 checks disk capacity before writing. It verifies each day's files against the cleaner's
 SHA-256 digests and publishes the manifest last. It skips days it already published and
-copies new `search/v1` schedule indexes. The timer runs at 17:30 UTC, 73 minutes after the
-nightly cleaner starts. Watch the filesystem when changing versions. The mirror keeps
+copies new `search/v1` schedule indexes. The timer runs after each scheduled cleaning at
+17:30, 19:45, 22:15, 01:40 and 05:10 UTC, with the first copy 73 minutes after the day's
+first cleaner start. Watch the filesystem when changing versions. The mirror keeps
 existing versions and refuses writes that would take free space below 32 GiB.
 
 Install the Bun version in the repository's `.bun-version` at `/opt/transit-engine/bin/bun`

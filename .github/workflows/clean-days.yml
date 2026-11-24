@@ -2,8 +2,15 @@ name: Clean service days
 
 on:
   schedule:
-    # 11:17 EST / 12:17 EDT, after overnight trips and the three-hour capture margin.
+    # First run at 11:17 EST / 12:17 EDT, after overnight trips and the three-hour
+    # capture margin. The later odd-minute runs rebuild only days missing from
+    # the last 14, so one missed or late trigger is recovered the same day. Keep
+    # every time outside 05:55 to 08:30 UTC.
     - cron: "17 16 * * *"
+    - cron: "43 18 * * *"
+    - cron: "13 21 * * *"
+    - cron: "37 0 * * *"
+    - cron: "7 4 * * *"
   workflow_dispatch:
     inputs:
       provider:
