@@ -43,7 +43,8 @@ export const overviewCopy = {
 		downloadStops: 'Lines and stops to investigate: stops',
 	},
 	fr: {
-		title: (city: string) => `Réseau de ${city}`,
+		title: (city: string) =>
+			`Réseau ${/^[aeiouyàâäéèêëîïôöùûüÿœ]/iu.test(city) ? 'd’' : 'de '}${city}`,
 		intro:
 			'Transit est un relevé public indépendant du service de transport collectif assuré. Ce n’est pas un planificateur de trajets.',
 		record: 'Relevé',

@@ -24,7 +24,11 @@ for (const width of [390, 1440]) {
 				await page.goto(`${fr ? '/fr' : '/'}?provider=${provider}&frameMode=record&${period}`);
 				await page.locator('html[data-hydrated]').waitFor({ state: 'attached' });
 				const main = page.getByRole('main');
-				const title = fr ? `Réseau de ${city}` : `${city} network`;
+				const title = fr
+					? provider === 'stm'
+						? 'Réseau de Montréal'
+						: 'Réseau d’Ottawa'
+					: `${city} network`;
 				const record = main.getByRole('article', { name: fr ? 'Relevé' : 'Record', exact: true });
 				const about = main.getByRole('article', {
 					name: fr ? 'À propos de ces chiffres' : 'About these figures',
