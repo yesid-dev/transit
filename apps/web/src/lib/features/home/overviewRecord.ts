@@ -1,6 +1,12 @@
-import { dateRange, methodEvidence } from '#lib/site/presenter.ts';
+import {
+	countedUnit,
+	dateRange,
+	methodEvidence,
+	sampleWithMinimum,
+	singularCount,
+} from '#lib/site/presenter.ts';
 import { intl, type Locale } from '#lib/i18n/index.ts';
-import type { EngineResult, MeasureAnswer } from '#lib/server/engine.ts';
+import type { EngineResult, MeasureAnswer, RankingAnswer } from '#lib/server/engine.ts';
 import type { DateWindow } from '#lib/v1/history/window.ts';
 
 import {
@@ -64,23 +70,25 @@ export function comparisonText(
 	const change = comparePeriods(now, then);
 	if (!change) return null;
 
+	const magnitude = Math.abs(Math.round(change.points * 100) / 100);
 	const points = intl
 		.number(locale, {
-			signDisplay: 'exceptZero',
 			minimumFractionDigits: 1,
 			maximumFractionDigits: 2,
 		})
-		.format(change.points);
-	const magnitude = Math.abs(Math.round(change.points * 100) / 100);
-	const delta =
-		locale === 'fr'
-			? `${points} ${magnitude < 2 ? 'point' : 'points'} de pourcentage`
-			: `${points} percentage ${magnitude === 1 ? 'point' : 'points'}`;
-	if (change.direction === 'same')
+		.format(magnitude);
+	if (magnitude === 0)
 		return locale === 'fr'
-			? `Environ pareil (variation normale) [${delta}]`
-			: `About the same (within normal variation) [${delta}]`;
-	return locale === 'fr' ? `Écart de ${delta}.` : `Change of ${delta}.`;
+			? 'Environ pareil (variation normale)'
+			: 'About the same (within normal variation)';
+	const higher = change.points > 0;
+	const point = singularCount(magnitude, locale) ? 'point' : 'points';
+	const difference =
+		locale === 'fr'
+			? `${points} ${point} de ${higher ? 'plus' : 'moins'}`
+			: `${points} ${point} ${higher ? 'higher' : 'lower'}`;
+	if (change.direction !== 'same') return difference;
+	return `${difference} (${locale === 'fr' ? 'variation normale' : 'within normal variation'})`;
 }
 
 function comparisonSample({ evidence, value }: MeasureAnswer) {
@@ -113,11 +121,94 @@ export function overviewValue(result: EngineResult<MeasureAnswer>, measure: stri
 }
 
 export function overviewState(result: EngineResult<MeasureAnswer>, locale: Locale) {
+	if (result.kind !== 'answer') return { sentence: recordConnection[result.kind][locale] };
+	const { answer } = result;
+	const state = answer.state === 'measured' ? 'not_measured' : answer.state;
+	const isTrips = answer.measure === 'trips_run';
+	const count = answer.evidence.counts[isTrips ? 'eligible' : 'classified'];
+	const minimum = (
+		answer.info?.find(({ id }) => id === (isTrips ? 'trips_run' : 'on_time')) ?? answer.info?.[0]
+	)?.minimum_sample;
+	return {
+		state,
+		sentence: recordState(state)[locale],
+		detail:
+			state === 'too_few_to_judge' && count != null
+				? sampleDetails([count], isTrips ? 'trip' : 'event', minimum, locale)
+				: undefined,
+	};
+}
+
+function sampleDetails(
+	samples: readonly number[],
+	unit: 'event' | 'trip',
+	minimum: number | undefined,
+	locale: Locale,
+) {
+	if (!samples.length) return undefined;
+	const low = Math.min(...samples);
+	const high = Math.max(...samples);
+	const sample =
+		low === high
+			? countedUnit(high, unit, locale)
+			: `${tally(low, locale)}–${countedUnit(high, unit, locale)}`;
+	return minimum == null ? sample : sampleWithMinimum(sample, minimum, locale);
+}
+
+export function rankingState(answer: RankingAnswer, locale: Locale) {
+	const reasons = new Set(answer.excluded.map(({ reason }) => reason));
 	const state: RecordState =
-		result.kind === 'answer' && result.answer.state !== 'measured'
-			? result.answer.state
-			: 'not_measured';
-	return { state, sentence: recordState(state)[locale] };
+		reasons.size > 1
+			? 'unknown'
+			: answer.state && answer.state !== 'measured'
+				? answer.state
+				: answer.excluded[0]?.reason && answer.excluded[0].reason !== 'measured'
+					? answer.excluded[0].reason
+					: answer.evidence.days_included.length
+						? 'unknown'
+						: 'not_measured';
+	const metadata = answer.info[0];
+	const floors = metadata.ranking_floors?.[answer.kind];
+	const details =
+		state === 'too_few_to_judge'
+			? [
+					sampleDetails(
+						answer.excluded.flatMap(({ sample }) => (sample == null ? [] : [sample])),
+						'event',
+						floors?.classified ?? metadata.ranking_minimum_sample ?? metadata.minimum_sample,
+						locale,
+					),
+					floors?.observed_trips == null
+						? undefined
+						: sampleDetails(
+								answer.excluded.flatMap(({ counts }) =>
+									counts?.observed_trips == null ? [] : [counts.observed_trips],
+								),
+								'trip',
+								floors.observed_trips,
+								locale,
+							),
+				]
+					.filter(Boolean)
+					.join(' · ')
+			: undefined;
+	return { state, detail: details };
+}
+
+export function recordCounts(
+	events: number | null | undefined,
+	trips: number | null | undefined,
+	days: string,
+	locale: Locale,
+) {
+	if (events == null && trips == null) return null;
+	return [
+		events == null ? null : countedUnit(events, 'event', locale),
+		trips == null ? null : countedUnit(trips, 'trip', locale),
+		days,
+	]
+		.filter(Boolean)
+		.join(', ');
 }
 
 export function lateLines(vehicles: readonly { route?: string | null; status: string }[]) {

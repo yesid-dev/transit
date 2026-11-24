@@ -16,7 +16,7 @@
 
 <header class="flex min-w-0 flex-wrap items-start justify-between gap-3">
 	<hgroup class="min-w-0">
-		<h1 class="flex flex-wrap items-center gap-2 wrap-break-word">
+		<h1 class="flex flex-wrap items-center gap-2 wrap-break-word text-title font-bold">
 			{#if plate}<RoutePlate code={plate} size="lg" />{/if}
 			{title}
 		</h1>

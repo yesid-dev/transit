@@ -14,12 +14,12 @@
 </script>
 
 <RecordCard {title}>
-	<DashboardGrid gutter={false} minTile="14rem">
-		{#each fields as field (field.key)}
+	<DashboardGrid gutter={false} minTile="17rem">
+		{#each fields.filter(({ text }) => text) as field (field.key)}
 			<dl class="min-w-0">
 				<dt class="font-semibold text-muted-foreground">{field.label}</dt>
 				<dd>
-					{field.text ?? ''}
+					{field.text}
 					{#if field.key === 'versions'}
 						<a
 							class="inline-flex min-h-11 items-center text-primary underline"

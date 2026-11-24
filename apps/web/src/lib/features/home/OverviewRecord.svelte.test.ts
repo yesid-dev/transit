@@ -1,10 +1,11 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { expect, it } from 'vitest';
-import type { RankingAnswer } from '#lib/server/engine.ts';
+import type { EngineResult, RankingAnswer } from '#lib/server/engine.ts';
+import { recordConnection } from '../record/recordText';
 import { recordState, type RecordState } from '../record/recordStates';
 import OverviewRecord from './OverviewRecord.svelte';
 import RecordAnswer from '../record/RecordAnswer.svelte';
-import { delivered, measure, period, ranking } from './overviewRecord.fixture.ts';
+import { delivered, measure, period, ranking, stateText } from './overviewRecord.fixture.ts';
 import { previousPeriod } from './overviewRecord.ts';
 import { overviewCopy } from './overviewRecord.copy.ts';
 
@@ -19,6 +20,75 @@ const states: RecordState[] = [
 	'not_reporting',
 	'not_tracked',
 ];
+
+it.each(['unconfigured', 'unreachable', 'timeout', 'busy'] as const)(
+	'shows the French %s connection across every Record reading',
+	async (kind) => {
+		const failed = Promise.resolve<EngineResult<never>>({ kind });
+		const { container } = render(OverviewRecord, {
+			props: {
+				city: 'Ottawa',
+				locale: 'fr',
+				provider,
+				href,
+				record: {
+					period,
+					previous: previousPeriod(period),
+					punctuality: failed,
+					baseline: failed,
+					delivery: failed,
+					lines: failed,
+					stops: failed,
+					trend: failed,
+				},
+			},
+		});
+		const expected = kind === 'busy' ? 'Lecture en attente.' : recordConnection[kind].fr;
+		expect(await screen.findAllByText(expected)).toHaveLength(6);
+		expect(container.querySelector('[data-record-state="not_measured"]')).toBeNull();
+		expect(container).not.toHaveTextContent(/\b0\s?%/u);
+	},
+);
+
+it('shows the sample and any supplied minimum, and keeps mixed ranking reasons unknown', async () => {
+	const low = measure('too_few_to_judge');
+	low.evidence.counts.classified = 12;
+	const { container } = render(OverviewRecord, {
+		props: {
+			city: 'Montréal',
+			locale: 'en',
+			provider,
+			href,
+			record: {
+				period,
+				previous: previousPeriod(period),
+				punctuality: answer(low),
+				baseline: answer(measure('unknown')),
+				delivery: answer(delivered),
+				lines: answer<RankingAnswer>({
+					...ranking,
+					rows: [],
+					excluded: [
+						{ reason: 'too_few_to_judge', reason_text: stateText.too_few_to_judge, sample: 18 },
+					],
+				}),
+				stops: answer<RankingAnswer>({
+					...ranking,
+					kind: 'stop',
+					rows: [],
+					excluded: [
+						{ reason: 'too_few_to_judge', reason_text: stateText.too_few_to_judge, sample: 8 },
+						{ reason: 'no_live_data', reason_text: stateText.no_live_data },
+					],
+				}),
+			},
+		},
+	});
+	expect(await screen.findByText('12 stop events')).toBeVisible();
+	expect(await screen.findByText('18 stop events (minimum 30)')).toBeVisible();
+	expect(await screen.findAllByText('Unknown')).toHaveLength(2);
+	expect(container.querySelector('[data-record-state="not_measured"]')).toBeNull();
+});
 
 for (const locale of ['en', 'fr'] as const) {
 	const copy = overviewCopy[locale];

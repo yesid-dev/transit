@@ -21,7 +21,6 @@
 	import RecordPunctualityDays from '../record/RecordPunctualityDays.svelte';
 	import ScreenTitle from '../record/ScreenTitle.svelte';
 	import StateMark from '../record/StateMark.svelte';
-	import { recordState } from '../record/recordStates';
 	import { recordSectionLinks } from '../record/recordLinks.ts';
 	import {
 		lastGoodNote,
@@ -39,11 +38,13 @@
 		overviewState,
 		overviewValue,
 		percent,
+		recordCounts,
 	} from './overviewRecord.ts';
 	import { overviewCopy } from './overviewRecord.copy.ts';
 
 	type Measure = Promise<EngineResult<MeasureAnswer>>;
 	type Ranking = Promise<EngineResult<RankingAnswer>>;
+	type Totals = { lines: number; stops: number } | null;
 
 	let {
 		locale,
@@ -69,7 +70,7 @@
 			lines: Ranking;
 			stops: Ranking;
 			directory?: Promise<ScheduleEdition['stops']>;
-			totals?: { lines: number; stops: number } | null;
+			totals?: Totals | Promise<Totals>;
 			trend?: Promise<EngineResult<EngineRecord>>;
 			manifest?: Manifest | null;
 		};
@@ -98,7 +99,7 @@
 
 	const files = $derived([
 		file('punctuality', t.onTime),
-		file('previous', t.previous),
+		file('previous', t.previousFile),
 		file('delivery', t.delivery),
 		file('trend', t.trend),
 		file('lines', t.downloadRankings),
@@ -125,27 +126,68 @@
 	<RecordActionGroup {locale} {href} {files} {citation} />
 {/snippet}
 
-{#snippet lead(current: EngineResult<MeasureAnswer> | null, comparison?: string)}
-	{@const value = current ? overviewValue(current, 'on_time') : null}
-	{@const absent = current ? overviewState(current, locale) : null}
+{#snippet lead(current: EngineResult<MeasureAnswer>)}
+	{@const value = overviewValue(current, 'on_time')}
+	{@const gap = overviewState(current, locale)}
 	<RecordAnswer
 		{locale}
 		value={value == null ? null : percent(value, locale)}
-		sentence={value != null ? t.answer : (absent?.sentence ?? '')}
-		state={absent?.state}
+		sentence={value != null ? t.answer : gap.sentence}
+		state={gap.state}
 		time={stamp}
-		{comparison}
 		{actions}
-	/>
+	>
+		{#snippet meta()}{#if gap.detail}<p>{gap.detail}</p>{/if}{/snippet}
+	</RecordAnswer>
+{/snippet}
+
+{#snippet gap(result: EngineResult<MeasureAnswer>)}
+	{#if result.kind === 'busy'}<RecordPending {locale} busy />
+	{:else}
+		{@const state = overviewState(result, locale)}
+		{#if state.state}<StateMark state={state.state} {locale} />
+		{:else}<p>{state.sentence}</p>{/if}
+		{#if state.detail}<p class="text-muted-foreground">{state.detail}</p>{/if}
+	{/if}
+{/snippet}
+
+{#snippet evidenceFooter()}
+	{#await record.punctuality then current}
+		{#await record.delivery then delivery}
+			{@const events =
+				current.kind === 'answer' && current.answer.state === 'measured'
+					? current.answer.evidence.counts.classified
+					: null}
+			{@const trips =
+				delivery.kind === 'answer' && delivery.answer.state === 'measured'
+					? delivery.answer.evidence.counts.ran
+					: null}
+			{@const counted = recordCounts(events, trips, days, locale)}
+			{#if counted}
+				<p
+					class="flex w-full flex-wrap justify-between gap-x-3 border-t border-border pt-2 font-mono text-sm text-muted-foreground"
+				>
+					<span>{counted}</span>
+					{#if current.kind === 'answer' && current.answer.state === 'measured'}<span
+							>{methodEvidence(current.answer.evidence, locale, true)}</span
+						>{/if}
+				</p>
+			{/if}
+		{/await}
+	{/await}
 {/snippet}
 
 <div class="overview-record grid min-w-0 gap-6">
-	<ScreenTitle
-		title={t.title(city)}
-		subtitle={record.totals
-			? `${operator}: ${countedUnit(record.totals.lines, 'line', locale)}, ${countedUnit(record.totals.stops, 'stop', locale)}`
-			: undefined}
-	/>
+	{#await record.totals}
+		<ScreenTitle title={t.title(city)} />
+	{:then totals}
+		<ScreenTitle
+			title={t.title(city)}
+			subtitle={totals
+				? `${operator}: ${countedUnit(totals.lines, 'line', locale)}, ${countedUnit(totals.stops, 'stop', locale)}`
+				: undefined}
+		/>
+	{/await}
 	<p class="border-t border-border pt-4">{t.intro}</p>
 
 	<div class="grid min-w-0 gap-6" data-slot="screen-content">
@@ -155,28 +197,15 @@
 					{#key record.punctuality}<RecordPending {locale} answer={record.punctuality} />{/key}
 					{@render actions()}
 				{:then current}
-					{#await record.baseline}
+					{#if current.kind === 'busy'}
+						<RecordPending {locale} busy />
+						{@render actions()}
+					{:else}
 						{@render lead(current)}
-					{:then previous}
-						{@const share = overviewValue(previous, 'on_time')}
-						{@const change = comparisonText(current, previous, locale)}
-						{@const period = `${record.period.from === record.period.to ? t.previousWeekday : t.previous} · ${dateRange(record.previous, locale)}`}
-						{@render lead(
-							current,
-							share == null
-								? period
-								: [period, percent(share, locale), change].filter(Boolean).join(' · '),
-						)}
-						{#if share == null}<p class="mt-2">
-								<StateMark state={overviewState(previous, locale).state} {locale} />
-							</p>{/if}
-						{#if previous.kind === 'answer' && previous.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-					{/await}
-					{#if current.kind === 'busy'}<RecordPending {locale} busy />
-					{:else if current.kind !== 'answer'}<p>{recordConnection[current.kind][locale]}</p>
-					{:else if current.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
+						{#if current.kind === 'answer' && current.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
+					{/if}
 				{/await}
-				<dl class="mt-4 grid gap-3">
+				<dl class="readings mt-4 grid gap-3">
 					{#await record.punctuality then current}
 						{#if current.kind === 'answer' && overviewValue(current, 'on_time') != null}
 							{@const { on_time, classified } = current.answer.evidence.counts}
@@ -188,6 +217,37 @@
 							{/if}
 						{/if}
 					{/await}
+					<div class="reading">
+						<dt>
+							{record.period.from === record.period.to ? t.previousWeekday : t.previous(days)}
+						</dt>
+						<dd>
+							{#await record.baseline}
+								{#key record.baseline}<RecordPending {locale} answer={record.baseline} />{/key}
+							{:then previous}
+								{@const share = overviewValue(previous, 'on_time')}
+								{#if share == null}
+									{@render gap(previous)}
+									<span class="block text-muted-foreground"
+										>{dateRange(record.previous, locale)}</span
+									>
+								{:else}
+									{#await record.punctuality then current}
+										<strong
+											>{comparisonText(current, previous, locale) ??
+												t.comparisonUnavailable}</strong
+										>
+									{/await}
+									<span class="block text-muted-foreground"
+										>{percent(share, locale)}, {dateRange(record.previous, locale)}</span
+									>
+								{/if}
+								{#if previous.kind === 'answer' && previous.lastGood}<p>
+										{lastGoodNote[locale]}
+									</p>{/if}
+							{/await}
+						</dd>
+					</div>
 					<div class="reading">
 						<dt>{t.delivery}</dt>
 						<dd>
@@ -207,7 +267,7 @@
 										</p>
 									{/if}
 									{#if delivery.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-								{:else}<StateMark state={overviewState(delivery, locale).state} {locale} />{/if}
+								{:else}{@render gap(delivery)}{/if}
 							{/await}
 						</dd>
 					</div>
@@ -218,9 +278,17 @@
 						{#await record.trend}
 							{#key record.trend}<RecordPending {locale} answer={record.trend} />{/key}
 						{:then trend}
-							{#if trend.kind === 'answer' && 'cells' in trend.answer && trend.answer.cells.length}
+							{#if trend.kind === 'busy'}<RecordPending {locale} busy />
+							{:else if trend.kind !== 'answer'}<p>{recordConnection[trend.kind][locale]}</p>
+							{:else if 'cells' in trend.answer && trend.answer.cells.length}
 								<RecordPunctualityDays title={t.trend} series={trend.answer} {locale} />
-							{:else}<StateMark state="not_measured" {locale} />{/if}
+							{:else}
+								{@const state = 'cells' in trend.answer ? trend.answer.state : undefined}
+								<StateMark
+									state={state != null && state !== 'measured' ? state : 'not_measured'}
+									{locale}
+								/>
+							{/if}
 						{/await}
 					</div>
 				{/if}
@@ -229,6 +297,7 @@
 						class="inline-flex min-h-11 items-center text-primary underline"
 						href={link('/network')}>{t.fullRecord}</a
 					>
+					{@render evidenceFooter()}
 				{/snippet}
 			</RecordCard>
 			{#key record.manifest?.provider}
@@ -252,6 +321,7 @@
 				<a class="inline-flex min-h-11 items-center text-primary underline" href={link('/hotspots')}
 					>{t.allRankings}</a
 				>
+				{@render evidenceFooter()}
 			{/snippet}
 		</RecordCard>
 
@@ -268,22 +338,13 @@
 					{
 						key: 'counted',
 						label: t.counted,
-						text: [
-							events == null ? null : countedUnit(events, 'event', locale),
-							trips == null ? null : countedUnit(trips, 'trip', locale),
-							days,
-							basis,
-						]
-							.filter(Boolean)
-							.join(' · '),
+						text: [recordCounts(events, trips, days, locale), basis].filter(Boolean).join(' · '),
 					},
 					{
 						key: 'observed',
 						label: t.observed,
 						text: [
-							observed == null
-								? recordState('not_measured')[locale]
-								: t.observedShare(percent(observed, locale)),
+							observed == null ? null : t.observedShare(percent(observed, locale)),
 							current?.evidence.low_coverage ? coverageText(current.evidence, locale) : null,
 							current?.coverage_note?.[locale],
 						]
@@ -320,12 +381,26 @@
 	.overview-record {
 		overflow-wrap: break-word;
 	}
+	.readings {
+		container-type: inline-size;
+	}
 	.reading {
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: space-between;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+		align-items: baseline;
 		gap: 0.25em 1em;
 		border-block-start: 1px solid var(--border);
 		padding-block-start: 0.5em;
+	}
+	.reading dd {
+		text-align: end;
+	}
+	@container (max-width: 16rem) {
+		.reading {
+			grid-template-columns: minmax(0, 1fr);
+		}
+		.reading dd {
+			text-align: start;
+		}
 	}
 </style>

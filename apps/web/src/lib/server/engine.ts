@@ -63,12 +63,16 @@ const rateCoverage = z.object({
 });
 const rankingFloors = z.object({
 	line: z.record(z.string(), count).optional(),
+	stop: z.record(z.string(), count).optional(),
 	departure: z.object({ observed_service_dates: count, classified: count }).optional(),
 });
 const measureAnswer = state.extend({
 	measure: z.enum(['on_time', 'trips_run', 'punctuality']),
 	value: z.record(z.string(), z.number().nullable()),
 	coverage_note: bilingual.nullable(),
+	info: z
+		.array(z.object({ id: z.string().optional(), minimum_sample: count.optional() }))
+		.optional(),
 	evidence: evidence.extend({ ...rateCoverage.shape, counts, excluded: counts }),
 });
 const rankingEnvelope = state.partial().extend({
@@ -78,6 +82,7 @@ const rankingEnvelope = state.partial().extend({
 		.array(
 			z.object({
 				minimum_sample: count,
+				ranking_minimum_sample: count.optional(),
 				ranking_floors: rankingFloors.optional(),
 			}),
 		)
@@ -99,7 +104,14 @@ const rankingAnswer = rankingEnvelope.extend({
 			range: z.object({ lower: share, upper: share, method: z.string() }),
 		}),
 	),
-	excluded: z.array(z.object({ reason: engineState, reason_text: bilingual })),
+	excluded: z.array(
+		z.object({
+			reason: engineState,
+			reason_text: bilingual,
+			sample: count.nullable().optional(),
+			counts: counts.optional(),
+		}),
+	),
 });
 
 export type MeasureAnswer = z.infer<typeof measureAnswer>;

@@ -7,6 +7,7 @@ import {
 	textDefects,
 	waitForFrameClearance,
 } from './layout-helpers';
+import { focusOutOfOrder, type FocusPosition } from './design-pass-order';
 
 export const widths = [320, 390, 768, 1024, 1440] as const;
 export const budgetWidths = [390, 1440] as const;
@@ -146,9 +147,7 @@ async function keyboardMetrics(page: Page) {
 	let beforeFigure = 0;
 	let cdp: CDPSession | undefined;
 	const dateStops = new Set<string>();
-	let prior:
-		| { left: number; top: number; bottom: number; region: string; group: number }
-		| undefined;
+	let prior: FocusPosition | undefined;
 	// Bound the walk by DOM candidates, including controls revealed on focus, such as the skip link.
 	const candidates =
 		(await page.locator(controls).count()) +
@@ -187,6 +186,11 @@ async function keyboardMetrics(page: Page) {
 						node.checkVisibility(),
 					);
 					const main = el.closest('main');
+					const groupSelector = '[data-slot="record-card"], [data-slot="record-ranking"]';
+					const groups = [...(main?.querySelectorAll(groupSelector) ?? [])];
+					const group = el.closest(groupSelector);
+					const parent = group?.parentElement?.closest(groupSelector);
+					const bounds = group?.getBoundingClientRect();
 					const { left, top, bottom } = el.getBoundingClientRect();
 					return {
 						repeated,
@@ -199,14 +203,10 @@ async function keyboardMetrics(page: Page) {
 							!first.contains(el) &&
 							!!(el.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING),
 						region: el.closest('[data-slot="frame-nav"]') ? 'frame' : main ? 'main' : 'other',
-						group: [
-							...(main?.querySelectorAll(
-								'[data-slot="record-card"], [data-slot="record-ranking"]',
-							) ?? []),
-						].indexOf(
-							el.closest('[data-slot="record-ranking"]') ??
-								el.closest('[data-slot="record-card"]')!,
-						),
+						group: group ? groups.indexOf(group) : -1,
+						groupParent: parent ? groups.indexOf(parent) : undefined,
+						groupLeft: bounds?.left ?? left,
+						groupTop: (bounds?.top ?? top) + window.scrollY,
 						left,
 						top: top + window.scrollY,
 						bottom: bottom + window.scrollY,
@@ -250,14 +250,7 @@ async function keyboardMetrics(page: Page) {
 			const ring = await page.evaluate(focusRing, undefined);
 			if (!ring.visible || ring.outline === 'none' || ring.width < 1) withoutRing++;
 			if (stop.beforeFigure) beforeFigure++;
-			if (
-				prior?.region === stop.region &&
-				prior.group === stop.group &&
-				stop.region !== 'other' &&
-				(stop.bottom <= prior.top ||
-					(Math.abs(stop.top - prior.top) <= 2 && stop.left < prior.left - 2))
-			)
-				outOfOrder++;
+			if (prior && focusOutOfOrder(prior, stop)) outOfOrder++;
 			prior = stop;
 		}
 	} finally {

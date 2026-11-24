@@ -45,7 +45,7 @@ it.each([
 		'Relevé · du 16 au 22 nov. 2026',
 		'1 arrêt',
 		'1 234 sur 2 000 passages aux arrêts',
-		'Direct · mis à jour il y a 20 s',
+		'En direct · mis à jour il y a 20 s',
 	],
 ] as const)('presents record and live readings in %s', (locale, stamp, stop, counts, age) => {
 	expect(recordStamp({ from: '2026-11-16', to: '2026-11-22' }, locale)).toBe(stamp);
@@ -54,6 +54,9 @@ it.each([
 		counts,
 	);
 	expect(liveStampAge(20, locale)).toBe(age);
+	expect(liveStampAge(75, locale)).toBe(
+		locale === 'en' ? 'Live · updated 1 minute ago' : 'En direct · mis à jour il y a 1 minute',
+	);
 });
 
 it.each([

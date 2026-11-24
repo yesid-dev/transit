@@ -48,18 +48,14 @@ describe('Overview record text', () => {
 			from: '2026-12-28',
 			to: '2026-12-28',
 		});
-		expect(comparisonText(answer(measure()), answer(baseline), 'en')).toBe(
-			'Change of +1.2 percentage points.',
-		);
-		expect(comparisonText(answer(measure()), answer(baseline), 'fr')).toBe(
-			'Écart de +1,2 point de pourcentage.',
-		);
+		expect(comparisonText(answer(measure()), answer(baseline), 'en')).toBe('1.2 points higher');
+		expect(comparisonText(answer(measure()), answer(baseline), 'fr')).toBe('1,2 point de plus');
 		expect(comparisonText(answer(measure()), answer(measure('not_measured')), 'fr')).toBeNull();
 		expect(comparisonText(answer(current), answer(current), 'en')).toBe(
-			'About the same (within normal variation) [0.0 percentage points]',
+			'About the same (within normal variation)',
 		);
 		expect(comparisonText(answer(current), answer(current), 'fr')).toBe(
-			'Environ pareil (variation normale) [0,0 point de pourcentage]',
+			'Environ pareil (variation normale)',
 		);
 		expect(
 			comparisonText(

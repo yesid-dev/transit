@@ -6,6 +6,10 @@ export function overviewEngine(url) {
 	const city = url.searchParams.get('city');
 	const measure = url.searchParams.get('measure');
 	const kind = url.searchParams.get('kind');
+	const window = `${from}/${to}`;
+	if (window === '2026-11-12/2026-11-18' || window === '2026-11-05/2026-11-11')
+		return { status: 503, body: {} };
+	const hold = window === '2026-11-10/2026-11-16' ? 'overview-stream' : false;
 	const measured = ['2026-11-01', '2026-11-08', '2026-11-09'].includes(from);
 	const days = measured
 		? Array.from({ length: (Date.parse(to) - Date.parse(from)) / 86_400_000 + 1 }, (_, i) =>
@@ -43,7 +47,7 @@ export function overviewEngine(url) {
 				}))
 			: [];
 		return {
-			hold: kind === 'stop' && from === '2026-11-09' ? 'overview-stop-ranking' : false,
+			hold: hold || (kind === 'stop' && from === '2026-11-09' ? 'overview-stop-ranking' : false),
 			body: {
 				measure,
 				kind,
@@ -72,6 +76,7 @@ export function overviewEngine(url) {
 			};
 	if (url.searchParams.get('group') === 'day') {
 		return {
+			hold,
 			body: {
 				evidence,
 				coverage_note,
@@ -86,7 +91,7 @@ export function overviewEngine(url) {
 		};
 	}
 	return {
-		hold: false,
+		hold,
 		body: {
 			measure,
 			value:

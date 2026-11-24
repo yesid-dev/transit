@@ -1,6 +1,7 @@
 import { closeCompactFrameControls, openFrameControls } from './frame-controls';
 import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { captureFixture, captureUrl } from './capture-fixture';
 
 test.beforeEach(({ browserName }, info) => {
 	test.skip(browserName !== 'chromium' || info.project.name !== 'desktop');
@@ -8,6 +9,98 @@ test.beforeEach(({ browserName }, info) => {
 
 const period = 'recordFrom=2026-11-08&recordTo=2026-11-14';
 const recordHref = '/?provider=stm&frameMode=record&' + period;
+
+test('Live now keeps placeholders until its first fetch fails', async ({ page }) => {
+	let release!: () => void;
+	const held = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	await page.route(captureUrl, async (route) => {
+		await held;
+		await route.fulfill({ status: 503, body: '{}' });
+	});
+	try {
+		await page.goto(recordHref);
+		const live = page.getByRole('article', { name: 'Live now' });
+		await expect(live.locator('[data-slot="skeleton"]')).toHaveCount(3);
+		await expect(live).not.toContainText('No live data');
+		release();
+		await expect(live.getByText('Live numbers unavailable').first()).toBeVisible();
+		await expect(live).not.toContainText('No live data');
+	} finally {
+		release();
+	}
+});
+
+test('the server-rendered Live card leaves the readings pending without JavaScript', async ({
+	browser,
+	baseURL,
+}) => {
+	const context = await browser.newContext({ baseURL, javaScriptEnabled: false });
+	try {
+		const page = await context.newPage();
+		await page.goto(recordHref);
+		await expect(page.getByText(/^STM: \d+ lines, [\d,]+ stops$/u)).toBeVisible();
+		const live = page.getByRole('article', { name: 'Live now' });
+		await expect(live.locator('[data-slot="skeleton"]')).toHaveCount(3);
+		await expect(live).not.toContainText('No live data');
+	} finally {
+		await context.close();
+	}
+});
+
+test('a retained Live reading says it is stale and agrees with the French singular vehicle label at zero', async ({
+	page,
+}) => {
+	const now = Date.now();
+	await page.clock.setFixedTime(now);
+	await page.route(captureUrl, (route) => route.fulfill({ json: captureFixture(now - 180_000) }));
+	await page.goto('/fr' + recordHref);
+	const live = page.getByRole('article', { name: 'En direct' });
+	await expect(live.getByText(/mis à jour il y a 3 minutes · pas à jour/u)).toBeVisible();
+	await expect(live.getByText('véhicule transmet sa position.')).toBeVisible();
+	await expect(live.getByText('Retard inconnu')).toBeVisible();
+});
+
+test('a client period change streams the shell before the engine answers', async ({
+	page,
+	request,
+}, info) => {
+	await page.goto(recordHref);
+	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+	await page.getByRole('button', { name: 'Choose other dates' }).click();
+	await page.getByLabel('From', { exact: true }).fill('2026-11-10');
+	await page.getByLabel('To', { exact: true }).fill('2026-11-16');
+	const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
+	const release = `http://127.0.0.1:${dataPort}/__overview/release?fixture=overview-stream`;
+	const sent = page.waitForResponse(
+		(response) => response.url().includes('/__data.json?') && response.url().includes('2026-11-10'),
+	);
+	const start = performance.now();
+	let shellMs: number;
+	let releasedMs: number;
+	try {
+		await page.getByRole('button', { name: 'Show these dates' }).click();
+		const response = await sent;
+		expect(response.ok()).toBe(true);
+		const record = page.getByRole('article', { name: 'Record', exact: true });
+		await expect(record.getByText('Record · 10 to 16 Nov 2026').first()).toBeVisible();
+		await expect(record.getByText('Calculating…').first()).toBeVisible();
+		shellMs = performance.now() - start;
+		releasedMs = performance.now() - start;
+		expect((await request.post(release)).status()).toBe(204);
+		await expect(record.getByText('Not measured').first()).toBeVisible();
+		const firstByteMs = response.request().timing().responseStart;
+		expect(firstByteMs).toBeGreaterThanOrEqual(0);
+		expect(firstByteMs).toBeLessThan(releasedMs);
+		await info.attach('Overview stream timing', {
+			body: JSON.stringify({ firstByteMs, shellMs, releasedMs }),
+			contentType: 'application/json',
+		});
+	} finally {
+		await request.post(release);
+	}
+});
 
 for (const width of [390, 1440]) {
 	for (const [provider, city] of [
@@ -38,7 +131,10 @@ for (const width of [390, 1440]) {
 					record.getByText(provider === 'stm' ? /81[,.]2\s?%/ : /70\s?%/, { exact: true }).first(),
 				).toBeVisible();
 				await expect(record).toContainText(fr ? /90 sur 100/ : /90 of 100/);
-				await expect(record).toContainText(fr ? 'Période précédente' : 'Previous period');
+				await expect(record).toContainText(
+					fr ? 'Par rapport aux 7 jours précédents' : 'Against the 7 days before',
+				);
+				await expect(record.locator('footer')).toContainText(/507[ ,\u00a0\u202f]800/u);
 				await expect(about).toContainText(fr ? 'Faible couverture' : 'Low coverage');
 				await expect(about).toContainText(
 					fr
@@ -188,7 +284,8 @@ test('changing the custom period reloads Record and Live now still opens the exi
 	await closeCompactFrameControls(page);
 	await expect(record.getByText('Record · 8 Nov 2026').first()).toBeVisible();
 	await expect(page).toHaveURL(/recordTo=2026-11-08/);
-	await expect(record.getByText(/Same weekday last week · 1 Nov 2026/)).toBeVisible();
+	await expect(record.getByText('Same weekday last week')).toBeVisible();
+	await expect(record.getByText(/78\.8%, 1 Nov 2026/)).toBeVisible();
 	await (await openFrameControls(page)).getByRole('radio', { name: 'Live now' }).click();
 	await closeCompactFrameControls(page);
 	await expect(main.getByText(/how the Montréal · STM network actually runs/)).toBeVisible();

@@ -9,8 +9,8 @@
 	import { stopNameFallback } from '#lib/site/absence.ts';
 	import RecordPending from '../record/RecordPending.svelte';
 	import StateMark from '../record/StateMark.svelte';
-	import { lastGoodNote, coverageText } from '../record/recordText.ts';
-	import { percent } from './overviewRecord.ts';
+	import { lastGoodNote, coverageText, recordConnection } from '../record/recordText.ts';
+	import { percent, rankingState } from './overviewRecord.ts';
 
 	let {
 		locale,
@@ -67,7 +67,7 @@
 		{#key ranking}<RecordPending {locale} answer={ranking} />{/key}
 	{:then result}
 		{#if result.kind === 'busy'}<RecordPending {locale} busy />
-		{:else if result.kind !== 'answer'}<StateMark state="not_measured" {locale} />
+		{:else if result.kind !== 'answer'}<p>{recordConnection[result.kind][locale]}</p>
 		{:else}
 			{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 			{#if result.answer.rows.length}
@@ -77,11 +77,9 @@
 					{@render rows(result.answer, names)}
 				{/await}
 			{:else}
-				{@const reason = result.answer.excluded[0]?.reason}
-				{@const unanimous =
-					reason && result.answer.excluded.every((item) => item.reason === reason)}
-				{@const state = result.answer.state ?? (unanimous ? reason : 'not_measured')}
-				<StateMark state={state === 'measured' ? 'not_measured' : state} {locale} />
+				{@const gap = rankingState(result.answer, locale)}
+				<StateMark state={gap.state} {locale} />
+				{#if gap.detail}<p class="text-muted-foreground">{gap.detail}</p>{/if}
 			{/if}
 		{/if}
 	{/await}

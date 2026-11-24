@@ -17,7 +17,7 @@
 	const id = $props.id();
 </script>
 
-<Card edge="neutral" textSize="inherit" class="min-w-0" spread>
+<Card edge="neutral" textSize="inherit" class="min-w-0 px-4 sm:px-6" spread>
 	<article aria-labelledby={id} data-slot="record-card">
 		<header class="flex min-w-0 flex-wrap items-center justify-between gap-2">
 			<h2 {id}>{title}</h2>

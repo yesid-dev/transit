@@ -4,6 +4,7 @@ import { serviceClockParts } from '#lib/utils/serviceDate.ts';
 import {
 	clockFace,
 	formatClock,
+	formatRelativeSeconds,
 	formatDateKey,
 	formatUtc,
 	providerLocalDateKey,
@@ -11,6 +12,7 @@ import {
 import { presenterCopy } from './presenter.copy.ts';
 import { formatTransitName } from './transitDisplay.ts';
 import type { NameSeparators } from '#lib/v1/schemas/providers.ts';
+import { stampCopy, type LiveState } from '#lib/v1/stamp.copy.ts';
 
 export function minuteReading(
 	minutes: number | null | undefined,
@@ -141,13 +143,15 @@ export function methodEvidence(
 		cleaning_versions,
 	}: { method_version: string; cleaning_versions: readonly number[] },
 	locale: Locale,
+	compact = false,
 ): string {
 	const copy = presenterCopy[locale];
 	const method = copy.method(versionNumber(method_version) ?? copy.unknownVersion);
 	const cleaning = copy.cleaning(
 		cleaning_versions.map(versionNumber).join(', ') || copy.unknownVersion,
 	);
-	return `${method}, ${cleaning}.`;
+	const text = `${method}, ${cleaning}`;
+	return compact ? text[0].toLocaleLowerCase(locale) + text.slice(1) : `${text}.`;
 }
 
 export function lineName(
@@ -196,7 +200,7 @@ export function countedUnit(
 		day: { en: ['day', 'days'], fr: ['jour', 'jours'] },
 		vehicle: { en: ['vehicle', 'vehicles'], fr: ['véhicule', 'véhicules'] },
 	};
-	const plural = locale === 'fr' ? value >= 2 : value !== 1;
+	const plural = !singularCount(value, locale);
 	return `${intl.number(locale).format(value)} ${labels[unit][locale][Number(plural)]}`;
 }
 
@@ -204,7 +208,23 @@ export function recordRatio(count: number, total: string, locale: Locale) {
 	return `${intl.number(locale).format(count)} ${locale === 'fr' ? 'sur' : 'of'} ${total}`;
 }
 
-export function liveStampAge(seconds: number, locale: Locale) {
-	const time = intl.number(locale).format(seconds);
-	return locale === 'fr' ? `Direct · mis à jour il y a ${time} s` : `Live · updated ${time} s ago`;
+export function singularCount(value: number, locale: Locale) {
+	return locale === 'fr' ? value < 2 : value === 1;
+}
+
+export function liveStampAge(seconds: number | null, locale: Locale, state: LiveState = 'current') {
+	if (seconds == null && state === 'behind') {
+		const unknown = stampCopy[locale].live('data', 'unknown', null);
+		return `${unknown} · ${locale === 'fr' ? 'pas à jour' : 'not current'}`;
+	}
+	return stampCopy[locale].live(
+		'data',
+		state,
+		seconds == null ? null : formatRelativeSeconds(seconds, locale),
+	);
+}
+
+export function sampleWithMinimum(sample: string, minimum: number, locale: Locale) {
+	const number = intl.number(locale).format(minimum);
+	return `${sample} (${locale === 'fr' ? 'minimum de' : 'minimum'} ${number})`;
 }
