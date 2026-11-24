@@ -1,6 +1,12 @@
 import { expect, it } from 'vitest';
 import { mapRecordAnswer } from './recordMapAnswer';
-import { recordColourIndex, recordColours, recordCorridors, recordStops } from './recordMap';
+import {
+	recordColourIndex,
+	recordColours,
+	recordCorridors,
+	recordMapSampleText,
+	recordStops,
+} from './recordMap';
 
 const stops = [
 	{ id: 'A', name: 'Alpha', lat: 45.5, lon: -73.6 },
@@ -9,6 +15,20 @@ const stops = [
 	{ id: 'D', name: 'Delta', lat: 45.5, lon: -73.57 },
 ];
 const evidence = { days_not_measured: [] };
+
+it.each([
+	['en', false, 'Low coverage · 110 observed runs', 'No runs observed'],
+	['fr', false, 'Faible couverture · 110 parcours observés', 'Aucun parcours observé'],
+	['en', true, 'Low coverage · 110 classified stop events', 'No stop events observed'],
+	['fr', true, 'Faible couverture · 110 passages classés', 'Aucun passage observé'],
+] as const)(
+	'explains unmeasured selections in %s with stops=%s',
+	(locale, stops, positive, zero) => {
+		expect(recordMapSampleText({ state: 0, sample: 110 }, stops, locale)).toBe(positive);
+		expect(recordMapSampleText({ state: 0, sample: 0 }, stops, locale)).toBe(zero);
+		expect(recordMapSampleText({ state: 0, sample: null }, stops, locale)).toBeNull();
+	},
+);
 
 it('joins stop readings to the schedule and preserves measured zero and missing values', () => {
 	const answer = mapRecordAnswer.parse({
