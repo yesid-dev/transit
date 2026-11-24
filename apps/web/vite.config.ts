@@ -277,6 +277,7 @@ export default defineConfig(({ command }) => ({
 				extends: true,
 				test: {
 					name: 'ssr-contract',
+					globalSetup: ['./src/tests/ssr-contract.setup.ts'],
 					include: ssrContractTests,
 					environment: 'happy-dom',
 					globals: true,

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, inject, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/svelte';
 import { createRawSnippet, hydrate, tick, unmount } from 'svelte';
 import Detail from './Detail.svelte';
@@ -78,70 +78,45 @@ describe('Detail', () => {
 	});
 
 	it('keeps the SSR trigger disabled until the same control hydrates, preserving initial content', async () => {
-		const { createServer } = await import('vite');
-		const server = await createServer({
-			configFile: 'vite.config.ts',
-			appType: 'custom',
-			logLevel: 'silent',
-			optimizeDeps: { noDiscovery: true },
-			server: { middlewareMode: true },
-		});
-		try {
-			const { default: ServerDetail } = await server.ssrLoadModule(
-				'/src/lib/components/shared/Detail.svelte',
-			);
-			const { render: renderSsr } = (await server.ssrLoadModule(
-				'svelte/server',
-			)) as typeof import('svelte/server');
-			const { createRawSnippet: createServerSnippet } = (await server.ssrLoadModule(
-				'svelte',
-			)) as typeof import('svelte');
-			for (const open of [false, true]) {
-				const children = createServerSnippet(() => ({
-					render: () => '<p>Server analyst detail</p>',
-				}));
-				const html = renderSsr(ServerDetail, { props: { label: 'More', open, children } }).body;
-				expect(html.includes('Server analyst detail')).toBe(open);
-				expect(html).toContain(`aria-expanded="${open}"`);
-				expect(html).toContain('data-slot="collapsible-content"');
-				const target = document.createElement('div');
-				target.innerHTML = html;
-				const trigger = target.querySelector<HTMLButtonElement>('[data-slot="detail-toggle"]')!;
-				expect(trigger.disabled).toBe(true);
-				const activation = vi.fn();
-				trigger.addEventListener('click', activation);
+		for (const { open, html } of inject('detailSsr')) {
+			expect(html.includes('Server analyst detail')).toBe(open);
+			expect(html).toContain(`aria-expanded="${open}"`);
+			expect(html).toContain('data-slot="collapsible-content"');
+			const target = document.createElement('div');
+			target.innerHTML = html;
+			const trigger = target.querySelector<HTMLButtonElement>('[data-slot="detail-toggle"]')!;
+			expect(trigger.disabled).toBe(true);
+			const activation = vi.fn();
+			trigger.addEventListener('click', activation);
+			trigger.click();
+			expect(activation).not.toHaveBeenCalled();
+			document.body.append(target);
+			const hydrated = hydrate(Detail, {
+				target,
+				props: {
+					label: 'More',
+					open,
+					children: createRawSnippet(() => ({
+						render: () => '<p>Server analyst detail</p>',
+					})),
+				},
+			});
+			try {
+				await tick();
+				expect(target.querySelector('[data-slot="detail-toggle"]')).toBe(trigger);
+				expect(trigger.disabled).toBe(false);
+				expect(trigger.getAttribute('aria-expanded')).toBe(String(open));
 				trigger.click();
-				expect(activation).not.toHaveBeenCalled();
-				document.body.append(target);
-				const hydrated = hydrate(Detail, {
-					target,
-					props: {
-						label: 'More',
-						open,
-						children: createRawSnippet(() => ({
-							render: () => '<p>Server analyst detail</p>',
-						})),
-					},
-				});
-				try {
-					await tick();
-					expect(target.querySelector('[data-slot="detail-toggle"]')).toBe(trigger);
-					expect(trigger.disabled).toBe(false);
-					expect(trigger.getAttribute('aria-expanded')).toBe(String(open));
-					trigger.click();
-					await tick();
-					expect(activation).toHaveBeenCalledOnce();
-					expect(trigger.getAttribute('aria-expanded')).toBe(String(!open));
-					expect(target.textContent).toContain('Server analyst detail');
-				} finally {
-					await unmount(hydrated);
-					target.remove();
-				}
+				await tick();
+				expect(activation).toHaveBeenCalledOnce();
+				expect(trigger.getAttribute('aria-expanded')).toBe(String(!open));
+				expect(target.textContent).toContain('Server analyst detail');
+			} finally {
+				await unmount(hydrated);
+				target.remove();
 			}
-		} finally {
-			await server.close();
 		}
-	}, 20_000);
+	});
 
 	it('renders the collapsed label and is closed by default', () => {
 		const { container, getByText } = render(Detail, {

@@ -4,7 +4,7 @@
 	import { getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
 	import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
 	import { routeFor } from '#lib/nav/index.ts';
-	import { FreshnessStamp } from '#lib/components/surface/index.ts';
+	import FreshnessStamp from '#lib/components/surface/FreshnessStamp.svelte';
 	import { refreshMessage, type RefreshResult } from '#lib/components/shell/refreshResult.ts';
 	import { fmtCount } from '#lib/utils/index.ts';
 	import { getV1Context } from '#lib/v1/boot.ts';
