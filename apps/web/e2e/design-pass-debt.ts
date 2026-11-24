@@ -12,7 +12,7 @@ const { screens: debt }: { screens: Partial<Record<string, Report>> } = JSON.par
 	readFileSync(new URL('./design-pass-baseline.json', import.meta.url), 'utf8'),
 );
 
-function compare<T>(current: T, recorded: T, location: string) {
+function compare(current: object, recorded: object, location: string) {
 	expect(
 		current,
 		`${location} changed from its fixture baseline. Fix regressions. If the screen improved, tighten or delete its debt entry.`,

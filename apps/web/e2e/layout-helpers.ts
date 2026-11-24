@@ -210,7 +210,7 @@ export function doubleText(page: Page) {
 export const minimumTargetSize = 44;
 
 // Kept in the browser so callers can measure every keyboard stop in one pass.
-export function focusRing(element: Element) {
+export function focusRing(element = document.activeElement!) {
 	const style = getComputedStyle(element);
 	return {
 		visible: element.matches(':focus-visible'),

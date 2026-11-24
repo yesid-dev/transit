@@ -1,4 +1,6014 @@
 {
 	"productCommit": "423305cc26a445a16a892d0657c572dcc4a769ce",
-	"screens": {}
+	"measurementHead": "f1357aa4bfebc7eef58e8183ec177b01350829c1",
+	"screens": {
+		"overview/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 5466,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 34,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 4852,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 34,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 2862,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 36,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 2112,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 36,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 1918,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 40,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 32,
+					"order": "3ae6f815a92e655f",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				},
+				"1440": {
+					"stops": 38,
+					"order": "02f7965c1bed5c7b",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 20873,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 34,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 2,
+					"textDefects": [
+						"broken-word [data-slot=\"card\"] > section:nth-child(1) > div:nth-child(2) > div:nth-child(2) > p:nth-child(2) 800",
+						"broken-word [data-slot=\"card\"] > section:nth-child(1) > div:nth-child(2) > div:nth-child(3) > p:nth-child(2) 800"
+					]
+				},
+				"1440": {
+					"height": 5528,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 36,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"overview-live/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 6297,
+					"overflow": 24,
+					"edges": 0,
+					"targets": 51,
+					"shortTargets": 12,
+					"targetDeficit": 225,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 5757,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 51,
+					"shortTargets": 12,
+					"targetDeficit": 225,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 3892,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 53,
+					"shortTargets": 12,
+					"targetDeficit": 225,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 2833,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 53,
+					"shortTargets": 12,
+					"targetDeficit": 225,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 2620,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 57,
+					"shortTargets": 12,
+					"targetDeficit": 225,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 49,
+					"order": "a3c157a8febf7975",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				},
+				"1440": {
+					"stops": 55,
+					"order": "a94faa9da9f61091",
+					"withoutRing": 1,
+					"outOfOrder": 4,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 23954,
+					"overflow": 289,
+					"edges": 9999,
+					"targets": 51,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 7,
+					"textDefects": [
+						"broken-word [data-slot=\"home-pulse-live\"] > ul:nth-child(4) > li:nth-child(1) > span:nth-child(2) > span:nth-child(1) > span:nth-child(1) reporting",
+						"broken-word [data-slot=\"home-pulse-live\"] > ul:nth-child(4) > li:nth-child(1) > span:nth-child(2) > span:nth-child(1) > span:nth-child(1) vehicle",
+						"broken-word [data-slot=\"home-pulse-live\"] > ul:nth-child(4) > li:nth-child(2) > span:nth-child(2) > span:nth-child(1) > span:nth-child(1) silent",
+						"broken-word [data-slot=\"home-pulse-live\"] > ul:nth-child(4) > li:nth-child(2) > span:nth-child(2) > span:nth-child(1) > span:nth-child(1) trips",
+						"broken-word [data-slot=\"home-pulse-live\"] > ul:nth-child(4) > li:nth-child(2) > span:nth-child(2) > span:nth-child(2) Scheduled",
+						"broken-word [data-slot=\"home-pulse-live\"] > ul:nth-child(4) > li:nth-child(2) > span:nth-child(2) > span:nth-child(2) reporting",
+						"broken-word [data-slot=\"home-pulse-live\"] > ul:nth-child(4) > li:nth-child(2) > span:nth-child(2) > span:nth-child(2) vehicle"
+					]
+				},
+				"1440": {
+					"height": 8127,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 53,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"lines/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 4929,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 44,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 4698,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 44,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 3148,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 46,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 2061,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 46,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 1877,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 50,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 43,
+					"order": "856ea0f9be95683a",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 1
+				},
+				"1440": {
+					"stops": 49,
+					"order": "c68b9822de8f4895",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 1
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 12460,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 44,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 14,
+					"brokenWords": 0,
+					"textDefects": [
+						"clipped [data-slot=\"card\"] 15% (15/100) · 40% of 250 scheduled stops observed · Low coverage",
+						"clipped [data-slot=\"card\"] 30% (30/100) · 40% of 250 scheduled stops observed · Low coverage",
+						"clipped [data-slot=\"card\"] 65% (65/100) · 40% of 250 scheduled stops observed · Low coverage. Observed times: 40% vehicle reported stopped, 60% last prediction before the vehicle passed. Most times come from predictions.",
+						"clipped [data-slot=\"card\"] 80% (80/100) · 40% of 250 scheduled stops observed · Low coverage. Observed times: 40% vehicle reported stopped, 60% last prediction before the vehicle passed. Most times come from predictions.",
+						"clipped [data-slot=\"card\"] 90 of 105 · Status known for 95.2% of 105 scheduled trips on lines with live data",
+						"clipped [data-slot=\"card\"] 9001 · Seven decimal days",
+						"clipped [data-slot=\"card\"] 9002 · Long stop names and a month of history",
+						"clipped [data-slot=\"card\"] 9003 · Long destinations and live reports",
+						"clipped [data-slot=\"card\"] CSV",
+						"clipped [data-slot=\"card\"] Classified stop events",
+						"clipped [data-slot=\"card\"] Line performance",
+						"clipped [data-slot=\"card\"] Too few to judge",
+						"clipped [data-slot=\"card\"] Transit. Line performance. From November 8 to 14, 2026. Method finder-timing-v1. Data cleaning version 8. Method finder-delivery-v1. Data cleaning version 8. http://127.0.0.1:4317/lines?provider=stm&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14#line-performance",
+						"clipped [data-slot=\"card\"] Trips run of scheduled"
+					]
+				},
+				"1440": {
+					"height": 5489,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 46,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"line-record/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 10837,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 75,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 10230,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 75,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 7359,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 76,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 6108,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 76,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 5812,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 80,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 73,
+					"order": "d9dc63cb3dc7b3ad",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 11
+				},
+				"1440": {
+					"stops": 78,
+					"order": "3fe88f1c6027c232",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 11
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 43760,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 75,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 16983,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 77,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"line-live/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 3518,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 49,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 3265,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 49,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 2450,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 51,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 2089,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 54,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 1858,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 58,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 47,
+					"order": "98f84311b3227a33",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				},
+				"1440": {
+					"stops": 56,
+					"order": "f3deac1ab42af708",
+					"withoutRing": 2,
+					"outOfOrder": 1,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 8434,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 49,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 1,
+					"brokenWords": 7,
+					"textDefects": [
+						"broken-word #c5-summary > span:nth-child(1) before",
+						"broken-word #c5-summary > span:nth-child(1) minutes",
+						"broken-word #c5-summary > span:nth-child(1) scheduled",
+						"broken-word #s13-summary > span:nth-child(1) changes",
+						"broken-word #s13-summary > span:nth-child(1) reports",
+						"broken-word [data-slot=\"collapsible-trigger\"] > span:nth-child(2) Predictions",
+						"broken-word [data-slot=\"collapsible-trigger\"] > span:nth-child(2) destination",
+						"clipped #c5-content > div:nth-child(1) 1 vehicle in service"
+					]
+				},
+				"1440": {
+					"height": 4694,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 54,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 9,
+					"textDefects": [
+						"broken-word #c5-summary > span:nth-child(1) minutes",
+						"broken-word #c5-summary > span:nth-child(1) scheduled",
+						"broken-word [data-slot=\"collapsible-trigger\"] > span:nth-child(2) Predictions",
+						"broken-word [data-slot=\"collapsible-trigger\"] > span:nth-child(2) destination",
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"line-schedule/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 3130,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 45,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 3067,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 45,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 1977,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 47,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 1476,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 47,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 1474,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 51,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 43,
+					"order": "17e0cc1bc29f16f8",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 8
+				},
+				"1440": {
+					"stops": 49,
+					"order": "92df71668059b75c",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 8
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 9087,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 45,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 3674,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 47,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"stops/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 7111,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 59,
+					"shortTargets": 21,
+					"targetDeficit": 402,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 5762,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 59,
+					"shortTargets": 21,
+					"targetDeficit": 402,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 4715,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 61,
+					"shortTargets": 21,
+					"targetDeficit": 402,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 2582,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 60,
+					"shortTargets": 3,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 2520,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 64,
+					"shortTargets": 3,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 56,
+					"order": "cac02413b9467632",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 4
+				},
+				"1440": {
+					"stops": 63,
+					"order": "e5e007fc38e96ab2",
+					"withoutRing": 1,
+					"outOfOrder": 1,
+					"beforeFigure": 5
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 16217,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 59,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 5872,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 60,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"stop-record/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 6204,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 58,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 5738,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 58,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 4280,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 60,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 3558,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 60,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 3487,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 64,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 56,
+					"order": "1d4c32b25769e959",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 6
+				},
+				"1440": {
+					"stops": 62,
+					"order": "64e2fd7e1c601d11",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 6
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 26419,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 58,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 9970,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 60,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"stop-live/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 3483,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 46,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 3205,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 46,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 2407,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 48,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 2061,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 51,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 2064,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 55,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 44,
+					"order": "f4f7c321ef7c34cf",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				},
+				"1440": {
+					"stops": 53,
+					"order": "40136fbc0eb8d057",
+					"withoutRing": 2,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 8445,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 46,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 7,
+					"textDefects": [
+						"broken-word #s14-summary > span:nth-child(1) changes",
+						"broken-word #s14-summary > span:nth-child(1) reports",
+						"broken-word #s15-summary > span:nth-child(1) agency",
+						"broken-word #s16-summary > span:nth-child(1) Where",
+						"broken-word #s16-summary > span:nth-child(1) service",
+						"broken-word [data-slot=\"collapsible-trigger\"] > span:nth-child(2) Predictions",
+						"broken-word [data-slot=\"collapsible-trigger\"] > span:nth-child(2) information"
+					]
+				},
+				"1440": {
+					"height": 4242,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 51,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"vehicles/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 2407,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 39,
+					"shortTargets": 3,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 2367,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 39,
+					"shortTargets": 3,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 1590,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 41,
+					"shortTargets": 3,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 1152,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 41,
+					"shortTargets": 3,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 1150,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 45,
+					"shortTargets": 3,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 37,
+					"order": "62eb58bcbd83843b",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 3
+				},
+				"1440": {
+					"stops": 43,
+					"order": "4d2aa536514b37f2",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 3
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 5015,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 39,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 5,
+					"brokenWords": 0,
+					"textDefects": [
+						"clipped [data-slot=\"card\"] 1 day included.\n\t\t\t\t\t\t\tMethod vehicles-fixture-v1. Data cleaning version 8.",
+						"clipped [data-slot=\"card\"] CSV",
+						"clipped [data-slot=\"card\"] Days in service by vehicle",
+						"clipped [data-slot=\"card\"] Find by vehicle number",
+						"clipped [data-slot=\"card\"] Transit. Vehicles. Days in service by vehicle. From November 8 to 14, 2026. Method vehicles-fixture-v1. Data cleaning version 8. http://127.0.0.1:4317/vehicles?provider=stm&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14#fleet"
+					]
+				},
+				"1440": {
+					"height": 2616,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 41,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"vehicles-live/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 2253,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 35,
+					"shortTargets": 3,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 2234,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 35,
+					"shortTargets": 3,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 1459,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 37,
+					"shortTargets": 3,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 1020,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 37,
+					"shortTargets": 3,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 1018,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 41,
+					"shortTargets": 3,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 33,
+					"order": "f3f931f0b4454d33",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 3
+				},
+				"1440": {
+					"stops": 39,
+					"order": "700337bcb4634c55",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 3
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 4205,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 35,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 4,
+					"brokenWords": 0,
+					"textDefects": [
+						"clipped [data-slot=\"card\"] 1 vehicles reporting on a trip",
+						"clipped [data-slot=\"card\"] 24 · Sherbrooke",
+						"clipped [data-slot=\"card\"] Find by vehicle number",
+						"clipped [data-slot=\"card\"] Vehicles in service now"
+					]
+				},
+				"1440": {
+					"height": 2058,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 37,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"vehicle-record/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 3735,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 49,
+					"shortTargets": 4,
+					"targetDeficit": 62,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 3487,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 49,
+					"shortTargets": 4,
+					"targetDeficit": 62,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 2479,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 51,
+					"shortTargets": 4,
+					"targetDeficit": 62,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 2016,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 51,
+					"shortTargets": 4,
+					"targetDeficit": 62,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 2014,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 55,
+					"shortTargets": 4,
+					"targetDeficit": 62,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 47,
+					"order": "a99b8cd0b53b60cc",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 6
+				},
+				"1440": {
+					"stops": 53,
+					"order": "202f93f6f6e4aaf2",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 6
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 15715,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 49,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 5561,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 51,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"vehicle-live/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 2417,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 38,
+					"shortTargets": 8,
+					"targetDeficit": 158,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 2373,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 38,
+					"shortTargets": 8,
+					"targetDeficit": 158,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 1504,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 40,
+					"shortTargets": 8,
+					"targetDeficit": 158,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 1065,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 40,
+					"shortTargets": 8,
+					"targetDeficit": 158,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 1063,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 44,
+					"shortTargets": 8,
+					"targetDeficit": 158,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 36,
+					"order": "22a7325c08022e62",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				},
+				"1440": {
+					"stops": 42,
+					"order": "c0b678111852fd0c",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 4773,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 38,
+					"shortTargets": 2,
+					"targetDeficit": 10,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 2149,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 40,
+					"shortTargets": 4,
+					"targetDeficit": 20,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"hotspots/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 3400,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 40,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 3120,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 40,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 2119,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 42,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 1615,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 42,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 1517,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 46,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 36,
+					"order": "fadda049fee73014",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				},
+				"1440": {
+					"stops": 42,
+					"order": "328b3ed923244a64",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 11068,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 41,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 8,
+					"textDefects": [
+						"broken-word #ranking > ol:nth-child(10) > li:nth-child(1) > div:nth-child(2) > a:nth-child(1) Sherbrooke",
+						"broken-word #ranking > ol:nth-child(10) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) coverage",
+						"broken-word #ranking > ol:nth-child(10) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) events",
+						"broken-word #ranking > ol:nth-child(10) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) observed",
+						"broken-word #ranking > ol:nth-child(10) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) scheduled",
+						"broken-word #ranking > ol:nth-child(10) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) stop",
+						"broken-word #ranking > ol:nth-child(10) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) stops",
+						"broken-word #ranking > ol:nth-child(10) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(3) > dt:nth-child(1) Range"
+					]
+				},
+				"1440": {
+					"height": 3920,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 43,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"rankings/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 3314,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 39,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 3034,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 39,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 2028,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 41,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 1531,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 41,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 1433,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 45,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 35,
+					"order": "ad8dc1d8d6599bec",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				},
+				"1440": {
+					"stops": 41,
+					"order": "b9d3cdc66b4e8d82",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 11000,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 40,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 8,
+					"textDefects": [
+						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > div:nth-child(2) > a:nth-child(1) Sherbrooke",
+						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) coverage",
+						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) events",
+						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) observed",
+						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) scheduled",
+						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) stop",
+						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) stops",
+						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(3) > dt:nth-child(1) Range"
+					]
+				},
+				"1440": {
+					"height": 3752,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 42,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"daily/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 5847,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 50,
+					"shortTargets": 3,
+					"targetDeficit": 50,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 5286,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 50,
+					"shortTargets": 3,
+					"targetDeficit": 50,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 3587,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 52,
+					"shortTargets": 3,
+					"targetDeficit": 50,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 3006,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 52,
+					"shortTargets": 3,
+					"targetDeficit": 50,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 2730,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 56,
+					"shortTargets": 3,
+					"targetDeficit": 50,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 49,
+					"order": "3acf16d206ac5a7d",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 7
+				},
+				"1440": {
+					"stops": 55,
+					"order": "aae32a8154ac93d3",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 7
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 24367,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 50,
+					"shortTargets": 1,
+					"targetDeficit": 5,
+					"clipped": 0,
+					"brokenWords": 1,
+					"textDefects": [
+						"broken-word [data-slot=\"data-table\"] > tbody:nth-child(3) > tr:nth-child(2) > td:nth-child(2) > div:nth-child(2) > span:nth-child(1) insufficient"
+					]
+				},
+				"1440": {
+					"height": 8180,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 52,
+					"shortTargets": 2,
+					"targetDeficit": 10,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"alerts/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 5747,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 55,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 5589,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 55,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 4316,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 57,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 3357,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 57,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 3355,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 61,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 53,
+					"order": "54f96cc95d5a1196",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 3
+				},
+				"1440": {
+					"stops": 59,
+					"order": "f19b813d1c895d12",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 3
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 23290,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 55,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 9318,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 57,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"network-health/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 7838,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 56,
+					"shortTargets": 8,
+					"targetDeficit": 142,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 7417,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 56,
+					"shortTargets": 8,
+					"targetDeficit": 142,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 5518,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 58,
+					"shortTargets": 8,
+					"targetDeficit": 142,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 3434,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 58,
+					"shortTargets": 8,
+					"targetDeficit": 142,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 3432,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 62,
+					"shortTargets": 8,
+					"targetDeficit": 142,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 54,
+					"order": "78f39bf466209e9f",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 1
+				},
+				"1440": {
+					"stops": 60,
+					"order": "895f8a07e1dbf611",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 1
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 29313,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 56,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 9947,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 58,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"data-health/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 2542,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 35,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 2526,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 35,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 1874,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 36,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 1368,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 36,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 1343,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 40,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 33,
+					"order": "3f26ae49e62b6119",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 1
+				},
+				"1440": {
+					"stops": 38,
+					"order": "7863e625164b6bb8",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 5967,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 35,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 3174,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 36,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"how-we-measure/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 2773,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 36,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 2633,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 36,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 1931,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 38,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 1493,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 38,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 1491,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 42,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 34,
+					"order": "53de0acb5b184e30",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				},
+				"1440": {
+					"stops": 40,
+					"order": "815fdd863bd861f6",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 6780,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 36,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 3299,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 38,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"search/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 2494,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 34,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 2352,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 34,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 1663,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 36,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 1264,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 36,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 1281,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 40,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 32,
+					"order": "f1386b93e5a85f1a",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				},
+				"1440": {
+					"stops": 38,
+					"order": "5386e766b1d71cea",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 5152,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 34,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 2402,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 36,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"search-query/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 2532,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 44,
+					"shortTargets": 2,
+					"targetDeficit": 88,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 2488,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 44,
+					"shortTargets": 2,
+					"targetDeficit": 88,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 1727,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 46,
+					"shortTargets": 2,
+					"targetDeficit": 88,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 1237,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 46,
+					"shortTargets": 2,
+					"targetDeficit": 88,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 1255,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 50,
+					"shortTargets": 2,
+					"targetDeficit": 88,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 38,
+					"order": "2b842c17b8f39353",
+					"withoutRing": 1,
+					"outOfOrder": 1,
+					"beforeFigure": 0
+				},
+				"1440": {
+					"stops": 44,
+					"order": "da8f29df938dc543",
+					"withoutRing": 2,
+					"outOfOrder": 1,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 5087,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 44,
+					"shortTargets": 1,
+					"targetDeficit": 86,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 2576,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 46,
+					"shortTargets": 1,
+					"targetDeficit": 86,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"map-live/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 844,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 13,
+					"shortTargets": 3,
+					"targetDeficit": 62,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 844,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 13,
+					"shortTargets": 3,
+					"targetDeficit": 62,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 900,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 24,
+					"shortTargets": 2,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 900,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 46,
+					"shortTargets": 3,
+					"targetDeficit": 76,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 900,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 50,
+					"shortTargets": 3,
+					"targetDeficit": 76,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 16,
+					"order": "695ef082fd19fe62",
+					"withoutRing": 1,
+					"outOfOrder": 3,
+					"beforeFigure": 0
+				},
+				"1440": {
+					"stops": 44,
+					"order": "46a85367e70783a7",
+					"withoutRing": 3,
+					"outOfOrder": 9,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 844,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 22,
+					"shortTargets": 1,
+					"targetDeficit": 40,
+					"clipped": 1,
+					"brokenWords": 0,
+					"textDefects": ["inaccessible-ellipsis #bits-c5 > span:nth-child(2) Controls"]
+				},
+				"1440": {
+					"height": 900,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 46,
+					"shortTargets": 2,
+					"targetDeficit": 118,
+					"clipped": 1,
+					"brokenWords": 0,
+					"textDefects": ["clipped [data-slot=\"button\"] Out-of-service vehicles"]
+				}
+			}
+		},
+		"map-record-stops/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 844,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 13,
+					"shortTargets": 3,
+					"targetDeficit": 62,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 844,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 13,
+					"shortTargets": 3,
+					"targetDeficit": 62,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 900,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 20,
+					"shortTargets": 2,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 900,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 20,
+					"shortTargets": 2,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 900,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 24,
+					"shortTargets": 2,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 13,
+					"order": "890316cd826c36d7",
+					"withoutRing": 1,
+					"outOfOrder": 1,
+					"beforeFigure": 0
+				},
+				"1440": {
+					"stops": 19,
+					"order": "687f49eb28bfe0bd",
+					"withoutRing": 2,
+					"outOfOrder": 1,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 844,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 18,
+					"shortTargets": 1,
+					"targetDeficit": 40,
+					"clipped": 0,
+					"brokenWords": 2,
+					"textDefects": [
+						"broken-word [data-slot=\"record-map-legend\"] > ul:nth-child(2) > li:nth-child(1) Under",
+						"broken-word [data-slot=\"record-map-legend\"] > ul:nth-child(2) > li:nth-child(4) more"
+					]
+				},
+				"1440": {
+					"height": 900,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 20,
+					"shortTargets": 1,
+					"targetDeficit": 40,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			}
+		},
+		"map-record-corridors/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 844,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 13,
+					"shortTargets": 3,
+					"targetDeficit": 62,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 844,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 13,
+					"shortTargets": 3,
+					"targetDeficit": 62,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 900,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 22,
+					"shortTargets": 2,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 900,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 22,
+					"shortTargets": 2,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 900,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 26,
+					"shortTargets": 2,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 15,
+					"order": "3a43e4363220c525",
+					"withoutRing": 1,
+					"outOfOrder": 1,
+					"beforeFigure": 0
+				},
+				"1440": {
+					"stops": 21,
+					"order": "6dc390f4492946a5",
+					"withoutRing": 2,
+					"outOfOrder": 1,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 844,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 20,
+					"shortTargets": 1,
+					"targetDeficit": 40,
+					"clipped": 0,
+					"brokenWords": 1,
+					"textDefects": [
+						"broken-word [data-slot=\"record-map-legend\"] > ul:nth-child(3) > li:nth-child(4) more"
+					]
+				},
+				"1440": {
+					"height": 900,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 22,
+					"shortTargets": 1,
+					"targetDeficit": 40,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			}
+		},
+		"roadmap/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 5297,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 31,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 4836,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 31,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 3689,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 33,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 3406,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 33,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 3418,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 37,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 31,
+					"order": "05018a2b755ffc6a",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				},
+				"1440": {
+					"stops": 37,
+					"order": "816fb47c4a8f2292",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 14053,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 31,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 6894,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 33,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"trip/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 3069,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 38,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 2872,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 38,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 2011,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 40,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 1598,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 40,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 1522,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 44,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 37,
+					"order": "519f42b2f098bf40",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 7
+				},
+				"1440": {
+					"stops": 43,
+					"order": "7bc2aced958e7f7b",
+					"withoutRing": 1,
+					"outOfOrder": 2,
+					"beforeFigure": 6
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 6773,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 38,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 3201,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 40,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"privacy/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 15454,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 39,
+					"shortTargets": 5,
+					"targetDeficit": 50,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 12985,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 39,
+					"shortTargets": 6,
+					"targetDeficit": 62,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 8894,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 41,
+					"shortTargets": 9,
+					"targetDeficit": 98,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 9324,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 41,
+					"shortTargets": 9,
+					"targetDeficit": 82,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 9336,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 45,
+					"shortTargets": 9,
+					"targetDeficit": 82,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 37,
+					"order": "fd8314375058fc55",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				},
+				"1440": {
+					"stops": 43,
+					"order": "73511b9b36cca5dc",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 53443,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 39,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 6,
+					"textDefects": [
+						"broken-word #main > article:nth-child(1) > div:nth-child(2) > section:nth-child(1) > p:nth-child(3) dev",
+						"broken-word #main > article:nth-child(1) > div:nth-child(2) > section:nth-child(2) > p:nth-child(5) dev",
+						"broken-word #main > article:nth-child(1) > div:nth-child(2) > section:nth-child(2) > p:nth-child(6) cloudflareinsights",
+						"broken-word #main > article:nth-child(1) > div:nth-child(2) > section:nth-child(5) > p:nth-child(2) cloudflareinsights",
+						"broken-word #main > article:nth-child(1) > div:nth-child(2) > section:nth-child(8) > p:nth-child(3) dev",
+						"broken-word #main > article:nth-child(1) > div:nth-child(2) > section:nth-child(9) > p:nth-child(3) dev"
+					]
+				},
+				"1440": {
+					"height": 18269,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 41,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"terms/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 6992,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 36,
+					"shortTargets": 5,
+					"targetDeficit": 50,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 6252,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 36,
+					"shortTargets": 5,
+					"targetDeficit": 50,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 4438,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 38,
+					"shortTargets": 6,
+					"targetDeficit": 62,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 4273,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 38,
+					"shortTargets": 6,
+					"targetDeficit": 52,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 4285,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 42,
+					"shortTargets": 6,
+					"targetDeficit": 52,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 34,
+					"order": "c831ff528655bd75",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				},
+				"1440": {
+					"stops": 40,
+					"order": "9db7f8de5689adc8",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 21853,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 36,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 1,
+					"textDefects": [
+						"broken-word #main > article:nth-child(1) > div:nth-child(2) > section:nth-child(7) > p:nth-child(4) dev"
+					]
+				},
+				"1440": {
+					"height": 8636,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 38,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"accessibility/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 3923,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 32,
+					"shortTargets": 2,
+					"targetDeficit": 14,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 3587,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 32,
+					"shortTargets": 2,
+					"targetDeficit": 14,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 2541,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 34,
+					"shortTargets": 2,
+					"targetDeficit": 14,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 2153,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 34,
+					"shortTargets": 2,
+					"targetDeficit": 12,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 2165,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 38,
+					"shortTargets": 2,
+					"targetDeficit": 12,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 30,
+					"order": "61c0ecea61c3af3a",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				},
+				"1440": {
+					"stops": 36,
+					"order": "5aed1e54ea09f4a9",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 10842,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 32,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 3,
+					"textDefects": [
+						"broken-word #legal-title Accessibility",
+						"broken-word #main > article:nth-child(1) > div:nth-child(2) > section:nth-child(3) > p:nth-child(2) dev",
+						"broken-word #main > article:nth-child(1) > div:nth-child(2) > section:nth-child(3) > ul:nth-child(3) > li:nth-child(1) > a:nth-child(1) dev"
+					]
+				},
+				"1440": {
+					"height": 4396,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 34,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"error/stm/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 2440,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 34,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 2424,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 34,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 1837,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 36,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 1380,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 36,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 1378,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 40,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 32,
+					"order": "c61af19920c89d2b",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				},
+				"1440": {
+					"stops": 38,
+					"order": "5253827a7fdeb4af",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 4431,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 34,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 1,
+					"textDefects": ["broken-word #error-page-heading-s7 construction"]
+				},
+				"1440": {
+					"height": 2351,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 36,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"alerts/octranspo/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 1964,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 31,
+					"shortTargets": 2,
+					"targetDeficit": 22,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 1876,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 31,
+					"shortTargets": 2,
+					"targetDeficit": 22,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 1222,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 33,
+					"shortTargets": 2,
+					"targetDeficit": 22,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 900,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 33,
+					"shortTargets": 2,
+					"targetDeficit": 22,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 900,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 37,
+					"shortTargets": 2,
+					"targetDeficit": 22,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 29,
+					"order": "bf07dd0174eb4619",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				},
+				"1440": {
+					"stops": 35,
+					"order": "265d38fbdc58f070",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 3702,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 31,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 1645,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 33,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"line-live/octranspo/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 3556,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 48,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 3234,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 48,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 2398,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 50,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 2089,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 53,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 1838,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 57,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 46,
+					"order": "64bcfe0cf751f56c",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				},
+				"1440": {
+					"stops": 55,
+					"order": "1f6131c25ab85c00",
+					"withoutRing": 2,
+					"outOfOrder": 1,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 8499,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 48,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 1,
+					"brokenWords": 7,
+					"textDefects": [
+						"broken-word #c5-summary > span:nth-child(1) before",
+						"broken-word #c5-summary > span:nth-child(1) minutes",
+						"broken-word #c5-summary > span:nth-child(1) scheduled",
+						"broken-word #s13-summary > span:nth-child(1) changes",
+						"broken-word #s13-summary > span:nth-child(1) reports",
+						"broken-word [data-slot=\"collapsible-trigger\"] > span:nth-child(2) Predictions",
+						"broken-word [data-slot=\"collapsible-trigger\"] > span:nth-child(2) destination",
+						"clipped #c5-content > div:nth-child(1) 1 vehicle in service"
+					]
+				},
+				"1440": {
+					"height": 4691,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 53,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 9,
+					"textDefects": [
+						"broken-word #c5-summary > span:nth-child(1) minutes",
+						"broken-word #c5-summary > span:nth-child(1) scheduled",
+						"broken-word [data-slot=\"collapsible-trigger\"] > span:nth-child(2) Predictions",
+						"broken-word [data-slot=\"collapsible-trigger\"] > span:nth-child(2) destination",
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"line-record/octranspo/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 10510,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 74,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 9879,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 74,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 7156,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 75,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 5980,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 75,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 5665,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 79,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 72,
+					"order": "1bd2ee195b5ab1c1",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 11
+				},
+				"1440": {
+					"stops": 77,
+					"order": "bd47521befc43864",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 11
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 43225,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 74,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 16734,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 76,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"lines/octranspo/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 3825,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 36,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 3613,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 36,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 2402,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 38,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 1529,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 38,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 1325,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 42,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 35,
+					"order": "b70d793f9dd45217",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 1
+				},
+				"1440": {
+					"stops": 41,
+					"order": "07313a345566ba73",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 1
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 8703,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 36,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 11,
+					"brokenWords": 0,
+					"textDefects": [
+						"clipped [data-slot=\"card\"] 15% (15/100) · 40% of 250 scheduled stops observed · Low coverage",
+						"clipped [data-slot=\"card\"] 30% (30/100) · 40% of 250 scheduled stops observed · Low coverage",
+						"clipped [data-slot=\"card\"] 65% (65/100) · 40% of 250 scheduled stops observed · Low coverage. Observed times: 40% vehicle reported stopped, 60% last prediction before the vehicle passed. Most times come from predictions.",
+						"clipped [data-slot=\"card\"] 80% (80/100) · 40% of 250 scheduled stops observed · Low coverage. Observed times: 40% vehicle reported stopped, 60% last prediction before the vehicle passed. Most times come from predictions.",
+						"clipped [data-slot=\"card\"] 90 of 105 · Status known for 95.2% of 105 scheduled trips on lines with live data",
+						"clipped [data-slot=\"card\"] CSV",
+						"clipped [data-slot=\"card\"] Classified stop events",
+						"clipped [data-slot=\"card\"] Line performance",
+						"clipped [data-slot=\"card\"] Too few to judge",
+						"clipped [data-slot=\"card\"] Transit. Line performance. From November 8 to 14, 2026. Method finder-timing-v1. Data cleaning version 8. Method finder-delivery-v1. Data cleaning version 8. http://127.0.0.1:4317/lines?provider=octranspo&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14#line-performance",
+						"clipped [data-slot=\"card\"] Trips run of scheduled"
+					]
+				},
+				"1440": {
+					"height": 4009,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 38,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"map-live/octranspo/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 844,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 13,
+					"shortTargets": 3,
+					"targetDeficit": 62,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 844,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 13,
+					"shortTargets": 3,
+					"targetDeficit": 62,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 900,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 24,
+					"shortTargets": 2,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 900,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 44,
+					"shortTargets": 3,
+					"targetDeficit": 76,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 900,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 48,
+					"shortTargets": 3,
+					"targetDeficit": 76,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 16,
+					"order": "f5e41f71842e0792",
+					"withoutRing": 1,
+					"outOfOrder": 3,
+					"beforeFigure": 0
+				},
+				"1440": {
+					"stops": 42,
+					"order": "f5497fd1bbfb2db7",
+					"withoutRing": 3,
+					"outOfOrder": 8,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 844,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 22,
+					"shortTargets": 1,
+					"targetDeficit": 40,
+					"clipped": 1,
+					"brokenWords": 0,
+					"textDefects": ["inaccessible-ellipsis #bits-c5 > span:nth-child(2) Controls"]
+				},
+				"1440": {
+					"height": 900,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 44,
+					"shortTargets": 2,
+					"targetDeficit": 118,
+					"clipped": 1,
+					"brokenWords": 0,
+					"textDefects": ["clipped [data-slot=\"button\"] Out-of-service vehicles"]
+				}
+			}
+		},
+		"map-record-stops/octranspo/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 844,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 13,
+					"shortTargets": 3,
+					"targetDeficit": 62,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 844,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 13,
+					"shortTargets": 3,
+					"targetDeficit": 62,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 900,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 20,
+					"shortTargets": 2,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 900,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 20,
+					"shortTargets": 2,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 900,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 24,
+					"shortTargets": 2,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 13,
+					"order": "4e0ced65767991ed",
+					"withoutRing": 1,
+					"outOfOrder": 1,
+					"beforeFigure": 0
+				},
+				"1440": {
+					"stops": 19,
+					"order": "002c5f6a59d1a0a5",
+					"withoutRing": 2,
+					"outOfOrder": 1,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 844,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 18,
+					"shortTargets": 1,
+					"targetDeficit": 40,
+					"clipped": 0,
+					"brokenWords": 2,
+					"textDefects": [
+						"broken-word [data-slot=\"record-map-legend\"] > ul:nth-child(2) > li:nth-child(1) Under",
+						"broken-word [data-slot=\"record-map-legend\"] > ul:nth-child(2) > li:nth-child(4) more"
+					]
+				},
+				"1440": {
+					"height": 900,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 20,
+					"shortTargets": 1,
+					"targetDeficit": 40,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			}
+		},
+		"network-health/octranspo/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 7834,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 55,
+					"shortTargets": 8,
+					"targetDeficit": 142,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 7365,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 55,
+					"shortTargets": 8,
+					"targetDeficit": 142,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 5466,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 57,
+					"shortTargets": 8,
+					"targetDeficit": 142,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 3434,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 57,
+					"shortTargets": 8,
+					"targetDeficit": 142,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 3413,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 61,
+					"shortTargets": 8,
+					"targetDeficit": 142,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 53,
+					"order": "aceb1e15027e00b5",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 1
+				},
+				"1440": {
+					"stops": 59,
+					"order": "d735f415b2c0e436",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 1
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 29684,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 55,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 9902,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 57,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"overview/octranspo/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 5462,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 33,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 4800,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 33,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 2810,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 35,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 2112,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 35,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 1874,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 39,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 31,
+					"order": "5e96886399913805",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				},
+				"1440": {
+					"stops": 37,
+					"order": "25770e4d85e8f32f",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 20716,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 33,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 2,
+					"textDefects": [
+						"broken-word [data-slot=\"card\"] > section:nth-child(1) > div:nth-child(2) > div:nth-child(2) > p:nth-child(2) 800",
+						"broken-word [data-slot=\"card\"] > section:nth-child(1) > div:nth-child(2) > div:nth-child(3) > p:nth-child(2) 800"
+					]
+				},
+				"1440": {
+					"height": 5483,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 35,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"rankings/octranspo/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 3310,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 38,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 2982,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 38,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 1976,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 40,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 1531,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 40,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 1414,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 44,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 34,
+					"order": "b82c84d0555dd031",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				},
+				"1440": {
+					"stops": 40,
+					"order": "16a491c865c219f1",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 11035,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 39,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 8,
+					"textDefects": [
+						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > div:nth-child(2) > a:nth-child(1) Sherbrooke",
+						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) coverage",
+						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) events",
+						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) observed",
+						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) scheduled",
+						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) stop",
+						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) stops",
+						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(3) > dt:nth-child(1) Range"
+					]
+				},
+				"1440": {
+					"height": 3755,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 41,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"stop-record/octranspo/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 6109,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 57,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 5659,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 57,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 4202,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 59,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 3531,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 59,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 3441,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 63,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 55,
+					"order": "da2afb06b54f0411",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 6
+				},
+				"1440": {
+					"stops": 61,
+					"order": "f2329e6d9585ad13",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 6
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 26604,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 57,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 9968,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 59,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"vehicle-record/octranspo/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 3731,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 48,
+					"shortTargets": 4,
+					"targetDeficit": 62,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 3435,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 48,
+					"shortTargets": 4,
+					"targetDeficit": 62,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 2427,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 50,
+					"shortTargets": 4,
+					"targetDeficit": 62,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 2016,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 50,
+					"shortTargets": 4,
+					"targetDeficit": 62,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 1994,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 54,
+					"shortTargets": 4,
+					"targetDeficit": 62,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 46,
+					"order": "a10d7b1f0220c9d8",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 6
+				},
+				"1440": {
+					"stops": 52,
+					"order": "a2b886410c53dfe3",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 6
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 15654,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 48,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 5516,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 50,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"vehicles/octranspo/en": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 2403,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 38,
+					"shortTargets": 3,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 2315,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 38,
+					"shortTargets": 3,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 1538,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 40,
+					"shortTargets": 3,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 1152,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 40,
+					"shortTargets": 3,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 1130,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 44,
+					"shortTargets": 3,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 36,
+					"order": "1f52a3b70ec48439",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 3
+				},
+				"1440": {
+					"stops": 42,
+					"order": "51a2cc5cdbebd02b",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 3
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 4954,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 38,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 5,
+					"brokenWords": 0,
+					"textDefects": [
+						"clipped [data-slot=\"card\"] 1 day included.\n\t\t\t\t\t\t\tMethod vehicles-fixture-v1. Data cleaning version 8.",
+						"clipped [data-slot=\"card\"] CSV",
+						"clipped [data-slot=\"card\"] Days in service by vehicle",
+						"clipped [data-slot=\"card\"] Find by vehicle number",
+						"clipped [data-slot=\"card\"] Transit. Vehicles. Days in service by vehicle. From November 8 to 14, 2026. Method vehicles-fixture-v1. Data cleaning version 8. http://127.0.0.1:4317/vehicles?provider=octranspo&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14#fleet"
+					]
+				},
+				"1440": {
+					"height": 2571,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 40,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 5,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Rankings",
+						"broken-word [data-slot=\"footer-link\"] Accessibility",
+						"broken-word [data-slot=\"footer-link\"] Download",
+						"broken-word [data-slot=\"footer-link\"] Roadmap"
+					]
+				}
+			}
+		},
+		"overview/stm/fr": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 5749,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 34,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 5068,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 34,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 3030,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 36,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 2306,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 36,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 1991,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 40,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 32,
+					"order": "0ca359693ff3482c",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				},
+				"1440": {
+					"stops": 38,
+					"order": "acc8d0d3c15e027f",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 23346,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 34,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 2,
+					"textDefects": [
+						"broken-word [data-slot=\"card\"] > section:nth-child(1) > div:nth-child(2) > div:nth-child(2) > p:nth-child(2) 800",
+						"broken-word [data-slot=\"card\"] > section:nth-child(1) > div:nth-child(2) > div:nth-child(3) > p:nth-child(2) 800"
+					]
+				},
+				"1440": {
+					"height": 6233,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 36,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 13,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Classements",
+						"broken-word [data-slot=\"footer-group-label\"] Explorer",
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Maintenant",
+						"broken-word [data-slot=\"footer-group-label\"] rapports",
+						"broken-word [data-slot=\"footer-link\"] Accessibilité",
+						"broken-word [data-slot=\"footer-link\"] Comment",
+						"broken-word [data-slot=\"footer-link\"] Conditions",
+						"broken-word [data-slot=\"footer-link\"] Confidentialité",
+						"broken-word [data-slot=\"footer-link\"] Télécharger",
+						"broken-word [data-slot=\"footer-link\"] Véhicules",
+						"broken-word [data-slot=\"footer-link\"] utilisation",
+						"broken-word [data-slot=\"footer-link\"] véhicules"
+					]
+				}
+			}
+		},
+		"line-record/stm/fr": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 11458,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 75,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 10488,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 75,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 7474,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 76,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 6180,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 76,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 5924,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 80,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 73,
+					"order": "33c7a73611a67b27",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 11
+				},
+				"1440": {
+					"stops": 78,
+					"order": "ca7030b8bfbf032e",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 11
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 47777,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 75,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 1,
+					"textDefects": [
+						"broken-word #waiting > dl:nth-child(6) > div:nth-child(3) > dt:nth-child(1) > strong:nth-child(1) Regroupement"
+					]
+				},
+				"1440": {
+					"height": 17814,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 77,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 13,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Classements",
+						"broken-word [data-slot=\"footer-group-label\"] Explorer",
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Maintenant",
+						"broken-word [data-slot=\"footer-group-label\"] rapports",
+						"broken-word [data-slot=\"footer-link\"] Accessibilité",
+						"broken-word [data-slot=\"footer-link\"] Comment",
+						"broken-word [data-slot=\"footer-link\"] Conditions",
+						"broken-word [data-slot=\"footer-link\"] Confidentialité",
+						"broken-word [data-slot=\"footer-link\"] Télécharger",
+						"broken-word [data-slot=\"footer-link\"] Véhicules",
+						"broken-word [data-slot=\"footer-link\"] utilisation",
+						"broken-word [data-slot=\"footer-link\"] véhicules"
+					]
+				}
+			}
+		},
+		"line-live/stm/fr": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 3687,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 49,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 3456,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 49,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 2498,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 51,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 2112,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 54,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 1876,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 58,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 47,
+					"order": "b7003acd761183b8",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				},
+				"1440": {
+					"stops": 56,
+					"order": "b32f207e31adc261",
+					"withoutRing": 2,
+					"outOfOrder": 1,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 9341,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 49,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 1,
+					"brokenWords": 14,
+					"textDefects": [
+						"broken-word #c5-content > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > ul:nth-child(3) > li:nth-child(1) > a:nth-child(1) > div:nth-child(1) > strong:nth-child(1) Véhicule",
+						"broken-word #c5-summary > span:nth-child(1) heure",
+						"broken-word #c5-summary > span:nth-child(1) minutes",
+						"broken-word #c5-summary > span:nth-child(1) prévue",
+						"broken-word #s13-summary > span:nth-child(1) arrivent",
+						"broken-word #s13-summary > span:nth-child(1) change",
+						"broken-word #s13-summary > span:nth-child(1) mesure",
+						"broken-word #s13-summary > span:nth-child(1) nouveaux",
+						"broken-word #s13-summary > span:nth-child(1) rapports",
+						"broken-word [data-slot=\"collapsible-trigger\"] > span:nth-child(2) Prévisions",
+						"broken-word [data-slot=\"collapsible-trigger\"] > span:nth-child(2) Rapports",
+						"broken-word [data-slot=\"collapsible-trigger\"] > span:nth-child(2) Véhicules",
+						"broken-word [data-slot=\"collapsible-trigger\"] > span:nth-child(2) destination",
+						"broken-word [data-slot=\"status-badge\"] > span:nth-child(2) retard",
+						"clipped #c5-content > div:nth-child(1) 1 véhicule en service"
+					]
+				},
+				"1440": {
+					"height": 5007,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 54,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 1,
+					"brokenWords": 17,
+					"textDefects": [
+						"broken-word #c5-content > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > ul:nth-child(3) > li:nth-child(1) > a:nth-child(1) > div:nth-child(1) > strong:nth-child(1) Véhicule",
+						"broken-word #c5-summary > span:nth-child(1) minutes",
+						"broken-word [data-slot=\"collapsible-trigger\"] > span:nth-child(2) Prévisions",
+						"broken-word [data-slot=\"collapsible-trigger\"] > span:nth-child(2) destination",
+						"broken-word [data-slot=\"footer-group-label\"] Classements",
+						"broken-word [data-slot=\"footer-group-label\"] Explorer",
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Maintenant",
+						"broken-word [data-slot=\"footer-group-label\"] rapports",
+						"broken-word [data-slot=\"footer-link\"] Accessibilité",
+						"broken-word [data-slot=\"footer-link\"] Comment",
+						"broken-word [data-slot=\"footer-link\"] Conditions",
+						"broken-word [data-slot=\"footer-link\"] Confidentialité",
+						"broken-word [data-slot=\"footer-link\"] Télécharger",
+						"broken-word [data-slot=\"footer-link\"] Véhicules",
+						"broken-word [data-slot=\"footer-link\"] utilisation",
+						"broken-word [data-slot=\"footer-link\"] véhicules",
+						"clipped #c5-content > div:nth-child(1) 1 véhicule en service"
+					]
+				}
+			}
+		},
+		"stop-record/stm/fr": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 6551,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 58,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 5951,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 58,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 4376,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 60,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 3648,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 60,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 3530,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 64,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 56,
+					"order": "74e9d8fef4d30297",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 6
+				},
+				"1440": {
+					"stops": 62,
+					"order": "625db62f670483b5",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 6
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 29492,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 58,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 7,
+					"textDefects": [
+						"broken-word #accessibility > div:nth-child(4) > details:nth-child(3) > p:nth-child(2) Embarquement",
+						"broken-word #accessibility-title Embarquement",
+						"broken-word #delay > div:nth-child(4) > details:nth-child(3) > p:nth-child(2) temporairement",
+						"broken-word #delay > p:nth-child(2) temporairement",
+						"broken-word #punctuality > div:nth-child(7) > details:nth-child(3) > p:nth-child(2) temporairement",
+						"broken-word #punctuality > p:nth-child(2) temporairement",
+						"broken-word #waiting > dl:nth-child(5) > div:nth-child(3) > dt:nth-child(1) > strong:nth-child(1) Regroupement"
+					]
+				},
+				"1440": {
+					"height": 10570,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 60,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 13,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Classements",
+						"broken-word [data-slot=\"footer-group-label\"] Explorer",
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Maintenant",
+						"broken-word [data-slot=\"footer-group-label\"] rapports",
+						"broken-word [data-slot=\"footer-link\"] Accessibilité",
+						"broken-word [data-slot=\"footer-link\"] Comment",
+						"broken-word [data-slot=\"footer-link\"] Conditions",
+						"broken-word [data-slot=\"footer-link\"] Confidentialité",
+						"broken-word [data-slot=\"footer-link\"] Télécharger",
+						"broken-word [data-slot=\"footer-link\"] Véhicules",
+						"broken-word [data-slot=\"footer-link\"] utilisation",
+						"broken-word [data-slot=\"footer-link\"] véhicules"
+					]
+				}
+			}
+		},
+		"map-live/stm/fr": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 844,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 13,
+					"shortTargets": 3,
+					"targetDeficit": 62,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 844,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 13,
+					"shortTargets": 3,
+					"targetDeficit": 62,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 900,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 24,
+					"shortTargets": 2,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 900,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 46,
+					"shortTargets": 3,
+					"targetDeficit": 76,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 900,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 50,
+					"shortTargets": 3,
+					"targetDeficit": 76,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 16,
+					"order": "4019b449924c13c2",
+					"withoutRing": 1,
+					"outOfOrder": 3,
+					"beforeFigure": 0
+				},
+				"1440": {
+					"stops": 44,
+					"order": "ba35d73b3217506e",
+					"withoutRing": 3,
+					"outOfOrder": 9,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 844,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 22,
+					"shortTargets": 1,
+					"targetDeficit": 40,
+					"clipped": 3,
+					"brokenWords": 0,
+					"textDefects": [
+						"clipped [data-slot=\"map-surface\"] Arrêts",
+						"clipped [data-slot=\"map-surface\"] Corridors",
+						"inaccessible-ellipsis #bits-c5 > span:nth-child(2) Contrôles"
+					]
+				},
+				"1440": {
+					"height": 900,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 46,
+					"shortTargets": 3,
+					"targetDeficit": 158,
+					"clipped": 1,
+					"brokenWords": 2,
+					"textDefects": [
+						"broken-word [data-slot=\"map-legend-label\"] > span:nth-child(1) déplacement",
+						"broken-word [data-slot=\"map-legend-label\"] > span:nth-child(2) accompagner",
+						"clipped [data-slot=\"button\"] Véhicules hors service"
+					]
+				}
+			}
+		},
+		"map-record-stops/stm/fr": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 844,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 13,
+					"shortTargets": 3,
+					"targetDeficit": 62,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 844,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 13,
+					"shortTargets": 3,
+					"targetDeficit": 62,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 900,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 20,
+					"shortTargets": 2,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 900,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 20,
+					"shortTargets": 2,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 900,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 24,
+					"shortTargets": 2,
+					"targetDeficit": 42,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 13,
+					"order": "e4f460ce521300ba",
+					"withoutRing": 1,
+					"outOfOrder": 1,
+					"beforeFigure": 0
+				},
+				"1440": {
+					"stops": 19,
+					"order": "5e8bf0c44d823e63",
+					"withoutRing": 2,
+					"outOfOrder": 1,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 844,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 18,
+					"shortTargets": 1,
+					"targetDeficit": 40,
+					"clipped": 0,
+					"brokenWords": 1,
+					"textDefects": [
+						"broken-word [data-slot=\"record-map-legend\"] > ul:nth-child(2) > li:nth-child(1) Moins"
+					]
+				},
+				"1440": {
+					"height": 900,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 20,
+					"shortTargets": 1,
+					"targetDeficit": 40,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			}
+		},
+		"rankings/stm/fr": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 3477,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 39,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 3154,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 39,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 2100,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 41,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 1533,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 41,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 1458,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 45,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 35,
+					"order": "d4e035b4061f687b",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				},
+				"1440": {
+					"stops": 41,
+					"order": "127d38d9b7d97f82",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 11838,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 40,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 8,
+					"textDefects": [
+						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > div:nth-child(2) > a:nth-child(1) Sherbrooke",
+						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) Faible",
+						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) couverture",
+						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) observés",
+						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) passages",
+						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) prévus",
+						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(3) > dt:nth-child(1) Intervalle",
+						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(4) > dd:nth-child(2) observées"
+					]
+				},
+				"1440": {
+					"height": 4121,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 42,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 13,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Classements",
+						"broken-word [data-slot=\"footer-group-label\"] Explorer",
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Maintenant",
+						"broken-word [data-slot=\"footer-group-label\"] rapports",
+						"broken-word [data-slot=\"footer-link\"] Accessibilité",
+						"broken-word [data-slot=\"footer-link\"] Comment",
+						"broken-word [data-slot=\"footer-link\"] Conditions",
+						"broken-word [data-slot=\"footer-link\"] Confidentialité",
+						"broken-word [data-slot=\"footer-link\"] Télécharger",
+						"broken-word [data-slot=\"footer-link\"] Véhicules",
+						"broken-word [data-slot=\"footer-link\"] utilisation",
+						"broken-word [data-slot=\"footer-link\"] véhicules"
+					]
+				}
+			}
+		},
+		"network-health/stm/fr": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 8318,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 56,
+					"shortTargets": 8,
+					"targetDeficit": 142,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 7606,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 56,
+					"shortTargets": 8,
+					"targetDeficit": 142,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 5671,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 58,
+					"shortTargets": 8,
+					"targetDeficit": 142,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 3525,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 58,
+					"shortTargets": 8,
+					"targetDeficit": 142,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 3433,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 62,
+					"shortTargets": 8,
+					"targetDeficit": 142,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 54,
+					"order": "49dae4b054c5644c",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 1
+				},
+				"1440": {
+					"stops": 60,
+					"order": "dbd84858d74c3611",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 1
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 31768,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 56,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 1,
+					"textDefects": ["broken-word #prediction_error > p:nth-child(2) correspondaient"]
+				},
+				"1440": {
+					"height": 10295,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 58,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 13,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Classements",
+						"broken-word [data-slot=\"footer-group-label\"] Explorer",
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Maintenant",
+						"broken-word [data-slot=\"footer-group-label\"] rapports",
+						"broken-word [data-slot=\"footer-link\"] Accessibilité",
+						"broken-word [data-slot=\"footer-link\"] Comment",
+						"broken-word [data-slot=\"footer-link\"] Conditions",
+						"broken-word [data-slot=\"footer-link\"] Confidentialité",
+						"broken-word [data-slot=\"footer-link\"] Télécharger",
+						"broken-word [data-slot=\"footer-link\"] Véhicules",
+						"broken-word [data-slot=\"footer-link\"] utilisation",
+						"broken-word [data-slot=\"footer-link\"] véhicules"
+					]
+				}
+			}
+		},
+		"lines/stm/fr": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 5202,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 44,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 4815,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 44,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 3286,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 46,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 2086,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 46,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 1947,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 50,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 43,
+					"order": "5ac124961c9cbf2d",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 1
+				},
+				"1440": {
+					"stops": 49,
+					"order": "89f157cebf432ee0",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 1
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 13233,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 44,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 13,
+					"brokenWords": 0,
+					"textDefects": [
+						"clipped [data-slot=\"card\"] 15 % (15/100) · 40 % des 250 passages prévus observés · Faible couverture",
+						"clipped [data-slot=\"card\"] 30 % (30/100) · 40 % des 250 passages prévus observés · Faible couverture",
+						"clipped [data-slot=\"card\"] 65 % (65/100) · 40 % des 250 passages prévus observés · Faible couverture. Heures observées : 40 % véhicule signalé à l’arrêt, 60 % dernière prévision avant le passage du véhicule. La plupart de ces heures proviennent de prévisions.",
+						"clipped [data-slot=\"card\"] 80 % (80/100) · 40 % des 250 passages prévus observés · Faible couverture. Heures observées : 40 % véhicule signalé à l’arrêt, 60 % dernière prévision avant le passage du véhicule. La plupart de ces heures proviennent de prévisions.",
+						"clipped [data-slot=\"card\"] 90 sur 105 · État connu pour 95,2 % des 105 trajets prévus sur les lignes avec données en direct",
+						"clipped [data-slot=\"card\"] 9001 · Seven decimal days",
+						"clipped [data-slot=\"card\"] 9002 · Long stop names and a month of history",
+						"clipped [data-slot=\"card\"] 9003 · Long destinations and live reports",
+						"clipped [data-slot=\"card\"] CSV",
+						"clipped [data-slot=\"card\"] Performance des lignes",
+						"clipped [data-slot=\"card\"] Trajets effectués sur prévus",
+						"clipped [data-slot=\"card\"] Transit. Performance des lignes. Du 8 au 14 novembre 2026. Méthode finder-timing-v1. Nettoyage des données, version 8. Méthode finder-delivery-v1. Nettoyage des données, version 8. http://127.0.0.1:4317/fr/lines?provider=stm&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14#line-performance",
+						"clipped [data-slot=\"card\"] Trop peu pour juger"
+					]
+				},
+				"1440": {
+					"height": 5810,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 46,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 13,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Classements",
+						"broken-word [data-slot=\"footer-group-label\"] Explorer",
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Maintenant",
+						"broken-word [data-slot=\"footer-group-label\"] rapports",
+						"broken-word [data-slot=\"footer-link\"] Accessibilité",
+						"broken-word [data-slot=\"footer-link\"] Comment",
+						"broken-word [data-slot=\"footer-link\"] Conditions",
+						"broken-word [data-slot=\"footer-link\"] Confidentialité",
+						"broken-word [data-slot=\"footer-link\"] Télécharger",
+						"broken-word [data-slot=\"footer-link\"] Véhicules",
+						"broken-word [data-slot=\"footer-link\"] utilisation",
+						"broken-word [data-slot=\"footer-link\"] véhicules"
+					]
+				}
+			}
+		},
+		"how-we-measure/stm/fr": {
+			"content": {
+				"titles": 1,
+				"answerFirst": false
+			},
+			"widths": {
+				"320": {
+					"height": 2836,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 36,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"390": {
+					"height": 2705,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 36,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"768": {
+					"height": 1955,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 38,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1024": {
+					"height": 1495,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 38,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 1492,
+					"overflow": 0,
+					"edges": 0,
+					"targets": 42,
+					"shortTargets": 1,
+					"targetDeficit": 2,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				}
+			},
+			"keyboard": {
+				"390": {
+					"stops": 34,
+					"order": "581c0b6e63b7d303",
+					"withoutRing": 0,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				},
+				"1440": {
+					"stops": 40,
+					"order": "bdb9c96aac262772",
+					"withoutRing": 1,
+					"outOfOrder": 0,
+					"beforeFigure": 0
+				}
+			},
+			"zoom": {
+				"390": {
+					"height": 7429,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 36,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 0,
+					"textDefects": []
+				},
+				"1440": {
+					"height": 3524,
+					"overflow": 0,
+					"edges": 9999,
+					"targets": 38,
+					"shortTargets": 0,
+					"targetDeficit": 0,
+					"clipped": 0,
+					"brokenWords": 13,
+					"textDefects": [
+						"broken-word [data-slot=\"footer-group-label\"] Classements",
+						"broken-word [data-slot=\"footer-group-label\"] Explorer",
+						"broken-word [data-slot=\"footer-group-label\"] Information",
+						"broken-word [data-slot=\"footer-group-label\"] Maintenant",
+						"broken-word [data-slot=\"footer-group-label\"] rapports",
+						"broken-word [data-slot=\"footer-link\"] Accessibilité",
+						"broken-word [data-slot=\"footer-link\"] Comment",
+						"broken-word [data-slot=\"footer-link\"] Conditions",
+						"broken-word [data-slot=\"footer-link\"] Confidentialité",
+						"broken-word [data-slot=\"footer-link\"] Télécharger",
+						"broken-word [data-slot=\"footer-link\"] Véhicules",
+						"broken-word [data-slot=\"footer-link\"] utilisation",
+						"broken-word [data-slot=\"footer-link\"] véhicules"
+					]
+				}
+			}
+		}
+	}
 }

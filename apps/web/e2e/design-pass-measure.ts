@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { expect, type Page } from '@playwright/test';
+import { expect, type CDPSession, type Page } from '@playwright/test';
 import {
 	doubleText,
 	focusRing,
@@ -16,6 +16,9 @@ const answer = '[data-slot="screen-answer"], [data-slot="screen-state"]';
 const figure = answer + ', figure, [data-slot="chart-frame"], table';
 const disclosure =
 	'main details:not([open]) > summary, main button[aria-expanded="false"][aria-controls]:not([aria-haspopup]), main button[data-section-trigger][aria-expanded="false"]';
+const dateInput = 'input[type="date"]';
+// Chromium exposes month, day, year and the picker button as separate stops.
+const dateSegments = 4;
 
 const fingerprint = (values: string[]) =>
 	createHash('sha256').update(JSON.stringify(values)).digest('hex').slice(0, 16);
@@ -127,74 +130,105 @@ export async function contentOrder(page: Page) {
 async function keyboardMetrics(page: Page) {
 	await page.evaluate(() => window.scrollTo(0, 0));
 	await page.evaluate(() => {
-		Object.assign(window, { designPassVisited: new WeakSet<Element>() });
+		Object.assign(window, {
+			designPassVisited: new WeakSet<Element>(),
+		});
 	});
 	const sequence: string[] = [];
 	let withoutRing = 0;
 	let outOfOrder = 0;
 	let beforeFigure = 0;
+	let cdp: CDPSession | undefined;
+	const dateStops = new Set<string>();
 	let prior: { left: number; top: number; bottom: number; region: string } | undefined;
 	// Bound the walk by DOM candidates, including controls revealed on focus, such as the skip link.
-	const candidates = await page.locator(controls).count();
+	const candidates =
+		(await page.locator(controls).count()) +
+		(await page.locator(dateInput).count()) * (dateSegments - 1);
 	let exited = false;
-	for (let press = 0; press <= candidates; press++) {
-		await page.keyboard.press('Tab');
-		const stop = await page.evaluate(
-			({ figure }) => {
-				const el = document.activeElement;
-				if (!el || el === document.body || el === document.documentElement) return null;
-				const visited = (window as Window & { designPassVisited: WeakSet<Element> })
-					.designPassVisited;
-				const repeated = visited.has(el);
-				visited.add(el);
-				const key = [
-					el.localName,
-					el.getAttribute('data-testid') ?? el.getAttribute('data-slot'),
-					el.getAttribute('href')?.split('?')[0],
-					el.getAttribute('aria-label') ??
-						el.getAttribute('title') ??
-						el.textContent?.trim().replace(/\s+/g, ' ').slice(0, 100),
-				].join('|');
-				const first = [...document.querySelectorAll('main :is(' + figure + ')')].find((node) =>
-					node.checkVisibility(),
+	try {
+		for (let press = 0; press <= candidates; press++) {
+			await page.keyboard.press('Tab');
+			const stop = await page.evaluate(
+				({ figure, dateInput }) => {
+					const el = document.activeElement;
+					if (!el || el === document.body || el === document.documentElement) return null;
+					const visited = Reflect.get(window, 'designPassVisited') as WeakSet<Element>;
+					const repeated = visited.has(el);
+					visited.add(el);
+					const key = [
+						el.localName,
+						el.getAttribute('data-testid') ?? el.getAttribute('data-slot'),
+						el.getAttribute('href')?.split('?')[0],
+						el.getAttribute('aria-label') ??
+							el.getAttribute('title') ??
+							el.textContent?.trim().replace(/\s+/g, ' ').slice(0, 100),
+					].join('|');
+					const first = [...document.querySelectorAll('main :is(' + figure + ')')].find((node) =>
+						node.checkVisibility(),
+					);
+					const main = el.closest('main');
+					const { left, top, bottom } = el.getBoundingClientRect();
+					return {
+						repeated,
+						nativeDate: el.matches(dateInput),
+						key,
+						skip: el.matches('a[href="#main"]'),
+						beforeFigure:
+							!!main &&
+							!!first &&
+							!first.contains(el) &&
+							!!(el.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING),
+						region: el.closest('[data-slot="frame-nav"]') ? 'frame' : main ? 'main' : 'other',
+						left,
+						top: top + window.scrollY,
+						bottom: bottom + window.scrollY,
+					};
+				},
+				{ figure, dateInput },
+			);
+			if (!stop) {
+				exited = true;
+				break;
+			}
+			if (sequence.length === 0) expect(stop.skip, 'first Tab focuses the skip link').toBe(true);
+			if (stop.nativeDate) {
+				// The DOM reports the host input for every segment. Read the focused
+				// accessibility node to distinguish real progress from a trapped Tab.
+				if (!cdp) {
+					cdp = await page.context().newCDPSession(page);
+					await cdp.send('Accessibility.enable');
+				}
+				const { nodes } = await cdp.send('Accessibility.getFullAXTree');
+				const focused = nodes.find(
+					(node) =>
+						node.role?.value !== 'RootWebArea' &&
+						node.properties?.some(
+							(property) => property.name === 'focused' && property.value.value === true,
+						),
 				);
-				const main = el.closest('main');
-				const { left, top, bottom } = el.getBoundingClientRect();
-				return {
-					repeated,
-					key,
-					skip: el.matches('a[href="#main"]'),
-					beforeFigure:
-						!!main &&
-						!!first &&
-						!first.contains(el) &&
-						!!(el.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING),
-					region: el.closest('[data-slot="frame-nav"]') ? 'frame' : main ? 'main' : 'other',
-					left,
-					top: top + window.scrollY,
-					bottom: bottom + window.scrollY,
-				};
-			},
-			{ figure },
-		);
-		if (!stop) {
-			exited = true;
-			break;
+				if (!focused) throw new Error(`No focused date segment for ${stop.key}`);
+				expect(dateStops.has(focused.nodeId), `Tab must advance past ${stop.key}`).toBe(false);
+				dateStops.add(focused.nodeId);
+				sequence.push(`${stop.key}|${focused.role?.value}|${focused.name?.value}`);
+			} else {
+				expect(stop.repeated, `Tab must advance past ${stop.key}`).toBe(false);
+				sequence.push(stop.key);
+			}
+			const ring = await page.evaluate(focusRing);
+			if (!ring.visible || ring.outline === 'none' || ring.width < 1) withoutRing++;
+			if (stop.beforeFigure) beforeFigure++;
+			if (
+				prior?.region === stop.region &&
+				stop.region !== 'other' &&
+				(stop.bottom <= prior.top ||
+					(Math.abs(stop.top - prior.top) <= 2 && stop.left < prior.left - 2))
+			)
+				outOfOrder++;
+			prior = stop;
 		}
-		expect(stop.repeated, 'Tab leaves each control and exits the page without a loop').toBe(false);
-		if (sequence.length === 0) expect(stop.skip, 'first Tab focuses the skip link').toBe(true);
-		sequence.push(stop.key);
-		const ring = await page.locator(':focus').evaluate(focusRing);
-		if (!ring.visible || ring.outline === 'none' || ring.width < 1) withoutRing++;
-		if (stop.beforeFigure) beforeFigure++;
-		if (
-			prior?.region === stop.region &&
-			stop.region !== 'other' &&
-			(stop.bottom <= prior.top ||
-				(Math.abs(stop.top - prior.top) <= 2 && stop.left < prior.left - 2))
-		)
-			outOfOrder++;
-		prior = stop;
+	} finally {
+		await cdp?.detach();
 	}
 	expect(exited, 'Tab exits the page after the final control').toBe(true);
 	expect(sequence.length, 'page has keyboard stops').toBeGreaterThan(0);
