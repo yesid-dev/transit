@@ -9,7 +9,11 @@ import StopDetail from './StopDetail.svelte';
 const fixture = vi.hoisted(() => ({
 	now: Date.parse('2026-06-15T12:00:00Z'),
 	epoch: 0,
-	page: { url: new URL('http://localhost/stop/probe'), state: {} },
+	page: {
+		url: new URL('http://localhost/stop/probe'),
+		state: {},
+		data: { provider: undefined as import('#lib/v1/schemas/providers.ts').PublicCity | undefined },
+	},
 	visible: 'visible' as DocumentVisibilityState,
 	online: true,
 	stopDepartures: vi.fn(),
@@ -156,6 +160,7 @@ beforeEach(() => {
 	fixture.now = base;
 	fixture.epoch = 0;
 	fixture.page.url = new URL('http://localhost/stop/probe?tab=detail');
+	fixture.page.data.provider = undefined;
 	fixture.visible = 'visible';
 	fixture.online = true;
 	Object.defineProperty(document, 'visibilityState', {
@@ -332,6 +337,16 @@ describe('StopDetail independent report owners', () => {
 	});
 
 	it('a stop served only by lines without live data states that, with no live stamp or refresh', async () => {
+		const label = { city: 'Fixture city', operator: 'Fixture operator' };
+		fixture.page.data.provider = {
+			id: 'stm',
+			timezone: 'America/Toronto',
+			bounds: null,
+			labels: { en: label, fr: label },
+			inputs: {},
+			alert_links: {},
+			lines_without_live_data: [{ route_ids: ['1'], route_types: [] }],
+		};
 		fixture.stop.mockResolvedValue({ ...staticStop, routes_served: ['1'] });
 		fixture.stopDepartures.mockResolvedValue({ generated_utc: stamp(), stops: {} });
 		mount('fr');

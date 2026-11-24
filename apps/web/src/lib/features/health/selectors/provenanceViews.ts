@@ -10,6 +10,9 @@ export interface StatusVerdictLabels {
 	readonly running: string;
 	readonly failed: string;
 	readonly unknown: string;
+	readonly stale?: string;
+	readonly noLive?: string;
+	readonly notTracked?: string;
 }
 
 export interface FreshnessVerdict {
@@ -23,9 +26,17 @@ export function verdictFor(
 ): FreshnessVerdict {
 	switch (status) {
 		case 'succeeded':
+		case 'live':
 			return { aspect: 'green', label: labels.ok };
 		case 'failed':
+		case 'refresh_unavailable':
 			return { aspect: 'stop', label: labels.failed };
+		case 'stale':
+			return { aspect: 'unknown', label: labels.stale ?? labels.unknown };
+		case 'no_live_data':
+			return { aspect: 'unknown', label: labels.noLive ?? labels.unknown };
+		case 'not_tracked':
+			return { aspect: 'unknown', label: labels.notTracked ?? labels.unknown };
 		case 'running':
 		case 'pending':
 			return { aspect: 'unknown', label: labels.running };

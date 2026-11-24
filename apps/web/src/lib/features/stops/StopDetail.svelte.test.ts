@@ -247,6 +247,7 @@ const liveStore = {
 	error: null,
 	start: vi.fn(),
 	stop: vi.fn(),
+	setTripScope: vi.fn(),
 	refresh: vi.fn(),
 };
 
@@ -566,6 +567,7 @@ describe('StopDetail article contract', () => {
 		).toHaveTextContent('Live ·');
 		expect(stopHistoryHarness.createLiveStore.mock.calls[0]?.[2]).toEqual({
 			families: ['departures'],
+			tripScope: { kind: 'stop', id: '57191' },
 		});
 
 		expect(

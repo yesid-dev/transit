@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { lineEngine } from '../e2e/line-engine.mjs';
 import { stopEngine } from '../e2e/stop-engine.mjs';
+import { b9LiveFixture } from './b9-live-fixture.mjs';
 import { verifyInstalledBrowserArtifact } from './browser-toolchain.mjs';
 import {
 	FIXTURES,
@@ -423,14 +424,12 @@ function verifyLedger(cell, fixture, ledger) {
 			['browser', 'status/data_health.json', 404, 1],
 		],
 		network: [
-			['ssr', 'manifest.json', 200, 1],
-			['ssr', 'live/network.json', 200, 1],
+			['ssr', '/v2/stm/live', 200, 1],
 			['ssr', 'historic/network_trend.json', 200, 1],
 			['ssr', 'historic/history/index.json', historyStatus, 1],
 			['ssr', 'provenance.json', 200, 1],
-			['ssr', labelPath, 200, 1],
 			['browser', 'historic/history/index.json', historyStatus, 1],
-			['browser', 'live/network.json', 200, 1],
+			['browser', '/v2/stm/live', 200, 1],
 		],
 	}[cell.surface];
 	expected.push(['ssr', '/v2/cities', 200, 1], ['ssr', '/v2/stm/schedule-index', 200, 1]);
@@ -1164,7 +1163,13 @@ async function startReplay(fixtures = FIXTURES, initialKey = Object.keys(fixture
 		const relative = replayPath(url);
 		const fixture = fixtures[state.active];
 		const record = recordFixture(url, state.active);
-		const found = record?.body ?? (relative == null ? null : fixture.files[relative]);
+		const found =
+			record?.body ??
+			(relative === '/v2/stm/live'
+				? b9LiveFixture(fixture).snapshot
+				: relative == null
+					? null
+					: fixture.files[relative]);
 		const declaredMissing = relative != null && fixture.not_found.includes(relative);
 		const status = record?.status ?? (found ? 200 : declaredMissing ? 404 : 599);
 		state.ledger.push({
@@ -1370,6 +1375,24 @@ async function installNetworkBoundary(context, pageOrigin, replay, documentPaths
 			const exactDocument = request.isNavigationRequest() && documents.has(url.href);
 			if (exactDocument || assets.has(decodeURIComponent(url.pathname))) {
 				await route.continue();
+				return;
+			}
+			if (
+				request.method() === 'GET' &&
+				url.pathname === '/api/live' &&
+				url.search === '?city=stm'
+			) {
+				const fixture = replay.fixtures[replay.state.active];
+				replay.state.ledger.push({
+					lane: 'browser',
+					method: 'GET',
+					path: '/v2/stm/live',
+					status: 200,
+				});
+				await route.fulfill({
+					headers: jsonHeaders(fixture),
+					json: b9LiveFixture(fixture).snapshot,
+				});
 				return;
 			}
 			replay.state.outbound.push(`same-origin:${request.method()}:${url.pathname}${url.search}`);
@@ -1619,7 +1642,17 @@ async function runGate({ fixtures = FIXTURES, cells = CELLS, runs = 2, synthetic
 				replay.state.active = cell.fixture;
 				replay.state.ledger = [];
 				replay.state.outbound = [];
-				const fixture = fixtures[cell.fixture];
+				const original = fixtures[cell.fixture];
+				const fixture =
+					cell.surface === 'network'
+						? {
+								...original,
+								files: {
+									...original.files,
+									'live/network.json': b9LiveFixture(original).expectation,
+								},
+							}
+						: original;
 				const context = await browser.newContext({
 					bypassCSP: true,
 					locale: cell.locale === 'fr' ? 'fr-CA' : 'en-CA',
@@ -1782,9 +1815,9 @@ async function runGate({ fixtures = FIXTURES, cells = CELLS, runs = 2, synthetic
 				);
 				invariant(
 					replay.state.ledger.some(
-						(entry) => entry.lane === 'ssr' && entry.path === 'manifest.json',
+						(entry) => entry.lane === 'ssr' && entry.path === '/v2/stm/live',
 					),
-					`${cell.path} preview ignored runtime PUBLIC_V1_BASE`,
+					`${cell.path} preview did not read the v2 capture fixture`,
 				);
 				invariant(
 					replay.state.ledger.every((entry) => entry.status !== 599),

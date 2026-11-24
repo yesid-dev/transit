@@ -4,6 +4,9 @@ import { waitForFrameClearance } from './layout-helpers';
 import { SURFACE_NAV } from '../src/lib/content/nav';
 import { copy as mapCopy } from '../src/lib/features/map/map.copy';
 import { DEFAULT_LOCALE, PUBLISHED_LOCALES } from '../src/lib/i18n/config';
+import { captureFleet, captureUrl } from './capture-fixture';
+
+const homeDelays = Array.from({ length: 321 }, (_, i) => (i < 257 ? 0 : 360));
 
 for (const locale of PUBLISHED_LOCALES)
 	test(`${locale}: map credits stay immediately above the location control`, async ({ page }) => {
@@ -141,20 +144,10 @@ test('the home cards hold their place while the record, live numbers and ranking
 	let release = (): void => {};
 	const held = new Promise<void>((resolve) => (release = resolve));
 	const generated_utc = new Date().toISOString();
-	await page.route('**/v1/stm/live/network.json', async (route) => {
+	await page.route(captureUrl, async (route) => {
 		await held;
 		await route.fulfill({
-			json: {
-				generated_utc,
-				vehicles_in_service: 321,
-				on_time_pct: 80,
-				status_dist: { on_time: 200, late: 40, severe: 30, early: 20, unknown: 31 },
-				delay_p50_min: 1,
-				delay_p90_min: 6,
-				non_responding: 7,
-				feed_freshness_s: 15,
-				coverage_pct: 90,
-			},
+			json: captureFleet(Date.now(), 'stm', homeDelays),
 		});
 	});
 	await page.route('**/v1/stm/historic/network_trend.json', async (route) => {
@@ -259,7 +252,7 @@ test('the home cards hold their place when the live numbers cannot be loaded', a
 	await page.setViewportSize({ width: 320, height: 800 });
 	let release = (): void => {};
 	const held = new Promise<void>((resolve) => (release = resolve));
-	await page.route('**/v1/stm/live/network.json', async (route) => {
+	await page.route(captureUrl, async (route) => {
 		await held;
 		await route.fulfill({ status: 404, json: {} });
 	});
@@ -280,21 +273,15 @@ test('the home cards hold their place while Refresh runs, succeeds and fails', a
 	// Any provider's live file: the result's room must be reserved before the first Refresh.
 	let gate: Promise<void> | null = null;
 	let fail = false;
-	await page.route('**/live/network.json', async (route) => {
+	await page.route(captureUrl, async (route) => {
 		if (gate) await gate;
 		if (fail) return route.fulfill({ status: 503, json: {} });
 		await route.fulfill({
-			json: {
-				generated_utc: new Date().toISOString(),
-				vehicles_in_service: 321,
-				on_time_pct: 80,
-				status_dist: { on_time: 200, late: 40, severe: 30, early: 20, unknown: 31 },
-				delay_p50_min: 1,
-				delay_p90_min: 6,
-				non_responding: 7,
-				feed_freshness_s: 15,
-				coverage_pct: 90,
-			},
+			json: captureFleet(
+				Date.now(),
+				new URL(route.request().url()).searchParams.get('city')!,
+				homeDelays,
+			),
 		});
 	});
 	const said = {
@@ -345,11 +332,14 @@ test('the home ranking rows show whole names and hold their place', async ({ pag
 			await held;
 			await route.fulfill({ json });
 		});
-	await page.route('**/static/routes_index.json', (route) =>
+	await page.route('**/api/schedule-edition?city=stm', (route) =>
 		route.fulfill({
 			json: {
-				generated_utc,
-				routes: [303, 301, 305].map((n) => ({ id: `${n}`, short: `${n}`, type: 3 })),
+				schedule: {
+					date: generated_utc.slice(0, 10),
+					routes: [303, 301, 305].map((n) => ({ id: `${n}`, short: `${n}`, type: 3 })),
+					stops: [],
+				},
 			},
 		}),
 	);

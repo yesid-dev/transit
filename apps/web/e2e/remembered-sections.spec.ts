@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { copy as mapCopy } from '../src/lib/features/map/map.copy';
 import { DEFAULT_LOCALE } from '../src/lib/i18n/config';
+import { captureTrip, captureTripReport } from './capture-fixture';
 
 test.use({ storageState: { cookies: [], origins: [] } });
 const b9 = JSON.parse(
@@ -68,14 +69,25 @@ test.describe('local data fixture rendering', () => {
 		await page.clock.install({ time: now });
 		let changed = false;
 		let reads = 0;
-		await page.route('**/live/stop_departures.json', (route) => {
+		await page.route(`**/api/live-trips?city=stm&stop=${stop}`, (route) => {
 			reads++;
 			const payload = structuredClone(departures);
 			if (changed) {
 				payload.generated_utc = new Date(now + 30_000).toISOString();
 				payload.stops[stop].push({ route: 'C10', eta_utc: '2026-06-15T12:15:00Z', delay_min: 1 });
 			}
-			return route.fulfill({ json: payload });
+			const predictions = payload.stops[stop] as {
+				route: string;
+				eta_utc: string;
+				delay_min: number;
+			}[];
+			return route.fulfill({
+				json: captureTripReport(
+					'stm',
+					payload.generated_utc,
+					predictions.map((row, i) => captureTrip(`T${i + 1}`, row.route, [{ ...row, stop }])),
+				),
+			});
 		});
 		await page.goto(`/stop/${stop}?tab=detail`);
 		await expect(action(page)).toHaveAccessibleName('Expand all');

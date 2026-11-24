@@ -82,6 +82,7 @@ vi.mock('#lib/v1/live/store.svelte.ts', () => ({
 		error: null,
 		start() {},
 		stop() {},
+		setTripScope() {},
 		refresh: async () => {},
 	}),
 }));

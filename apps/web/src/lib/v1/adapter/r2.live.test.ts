@@ -1,185 +1,127 @@
-import { describe, expect, it, vi } from 'vitest';
-import type { Manifest } from '#lib/v1/schemas/manifest.ts';
+import { afterEach, expect, it, vi } from 'vitest';
+import { ManifestSchema } from '#lib/v1/schemas/manifest.ts';
+import { getCaptureDataHealth } from '#lib/v1/repositories/dataHealth.ts';
 import { r2Adapter } from './r2';
 import { liveReader } from './index';
 
-vi.mock('$app/env', () => ({ browser: true }));
+const timestamp = new Date().toISOString();
 
-const ISO = '2026-07-15T12:00:00Z';
-
-it.each(['no-cache', 'reload'] as const)(
-	'binds explicit live %s policy through the reader and transport',
-	async (requestCache) => {
-		const request = vi.fn(async () => json({ generated_utc: ISO, vehicles: [] }));
-		vi.stubGlobal('fetch', request);
-		try {
-			await liveReader.vehicles({ manifest: bootManifest(), requestCache });
-			expect(request).toHaveBeenCalledWith(
-				expect.any(String),
-				expect.objectContaining({ cache: requestCache }),
-			);
-		} finally {
-			vi.unstubAllGlobals();
-		}
-	},
-);
-
-function bootManifest(): Manifest {
+function liveBody(city: string) {
+	const feed = (family: string) => ({
+		family,
+		captured_at: timestamp,
+		source_at: timestamp,
+		fresh_for_seconds: 60,
+		source_lag_seconds: 0,
+		read_failed: false,
+	});
 	return {
-		provider: 'stm',
-		display_name: 'STM',
-		bbox: [-74, 45, -73, 46],
-		attribution: 'STM',
-		dataset_version: 'v1',
-		labels: {},
-		files: {
-			live: {
-				generated_utc: ISO,
-				vehicles: 'live/current-vehicles.json',
-				trips: 'live/current-trips.json',
-				stop_departures: 'live/current-stop-departures.json',
-				alerts: 'live/current-alerts.json',
-				network: 'live/current-network.json',
-			},
+		version: 2,
+		city,
+		published_at: timestamp,
+		stable_vehicle_ids: true,
+		feeds: {
+			vehicles: feed('vehicle_positions'),
+			trips: feed('trip_updates'),
+			alerts: feed('alerts'),
 		},
+		vehicle_positions: [],
+		alerts: [],
+	};
+}
+
+function manifest(provider: string) {
+	return ManifestSchema.parse({
+		provider,
+		display_name: provider,
+		bbox: [],
+		attribution: '',
+		dataset_version: 'demo',
+		labels: {},
 		surfaces: [],
-	} as unknown as Manifest;
-}
-
-function json(body: unknown, status = 200): Response {
-	return new Response(JSON.stringify(body), {
-		status,
-		headers: { 'content-type': 'application/json' },
+		files: { live: { generated_utc: timestamp, ttl_s: 30 } },
 	});
 }
 
-describe('r2 live ports', () => {
-	it('passes live response cache headers to the caller', async () => {
-		const onResponseHeaders = vi.fn();
-		const response = json({ generated_utc: ISO, vehicles: [] });
-		response.headers.set('Cache-Control', 'public, max-age=30');
-		response.headers.set('Age', '21');
-		await r2Adapter.live.vehicles({
-			manifest: bootManifest(),
-			fetch: vi.fn(async () => response),
-			onResponseHeaders,
-		});
-		expect(onResponseHeaders).toHaveBeenCalledWith(response.headers);
-		expect(onResponseHeaders.mock.calls[0][0].get('age')).toBe('21');
-	});
-
-	it('reuse an authoritative boot manifest and fetch only the five live payloads', async () => {
-		const manifest = bootManifest();
-		const payloads: Record<string, unknown> = {
-			'manifest.json': manifest,
-			'live/current-vehicles.json': { generated_utc: ISO, vehicles: [] },
-			'live/current-trips.json': { generated_utc: ISO, trips: {} },
-			'live/current-stop-departures.json': { generated_utc: ISO, stops: {} },
-			'live/current-alerts.json': { generated_utc: ISO, alerts: [] },
-			'live/current-network.json': {
-				generated_utc: ISO,
-				vehicles_in_service: 0,
-				on_time_pct: null,
-				status_dist: {},
-				delay_p50_min: null,
-				delay_p90_min: null,
-				non_responding: 0,
-				feed_freshness_s: null,
-				coverage_pct: null,
-			},
-		};
-		const request = vi.fn(async (input: RequestInfo | URL) => {
-			const path = String(input).replace('/data/v1/stm/', '');
-			const payload = payloads[path];
-			if (payload === undefined) throw new Error(`unexpected URL ${String(input)}`);
-			return json(payload);
-		});
-		const ctx = {
-			fetch: request as unknown as typeof fetch,
-			manifest,
-		};
-
-		await Promise.all([
-			r2Adapter.live.vehicles(ctx),
-			r2Adapter.live.trips(ctx),
-			r2Adapter.live.stopDepartures(ctx),
-			r2Adapter.live.alerts(ctx),
-			r2Adapter.live.network(ctx),
-		]);
-
-		const paths = request.mock.calls.map(([input]) => String(input).replace('/data/v1/stm/', ''));
-		expect(paths.filter((path) => path === 'manifest.json')).toHaveLength(0);
-		expect(paths).toEqual([
-			'live/current-vehicles.json',
-			'live/current-trips.json',
-			'live/current-stop-departures.json',
-			'live/current-alerts.json',
-			'live/current-network.json',
-		]);
-	});
-
-	it('resolves data health from its manifest pointer and treats a default-path 404 as absent', async () => {
-		const customManifest = bootManifest();
-		customManifest.files.live.data_health = 'status/current-data-health.json';
-		const dataHealth = { generated_utc: ISO, lanes: [], feeds: [] };
-		const controller = new AbortController();
-		const request = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) =>
-			String(input).endsWith('/status/current-data-health.json') ? json(dataHealth) : json({}, 404),
-		);
-
-		await expect(
-			r2Adapter.dataHealth.get({
-				fetch: request as unknown as typeof fetch,
-				manifest: customManifest,
-				signal: controller.signal,
-			}),
-		).resolves.toEqual(dataHealth);
-		await expect(
-			r2Adapter.dataHealth.get({
-				fetch: request as unknown as typeof fetch,
-				manifest: bootManifest(),
-				signal: controller.signal,
-			}),
-		).resolves.toBeNull();
-
-		expect(request.mock.calls.map(([input]) => String(input))).toEqual([
-			'/data/v1/stm/status/current-data-health.json',
-			'/data/v1/stm/status/data_health.json',
-		]);
-		for (const [, init] of request.mock.calls) {
-			expect(init).toEqual({
-				headers: { accept: 'application/json' },
-				cache: 'default',
-				signal: controller.signal,
-			});
-		}
-	});
-});
+afterEach(() => vi.unstubAllGlobals());
 
 it.each(['stm', 'octranspo'])(
-	'reads %s through the transport-free reader with polling and cancellation',
-	async (provider) => {
-		const manifest = { ...bootManifest(), provider };
-		manifest.files.live.ttl_s = 30;
-		const response = json({ generated_utc: ISO, vehicles: [] });
-		response.headers.set('cache-control', 'public, max-age=30');
-		response.headers.set('age', '21');
-		const request = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => response);
+	'shares one %s city snapshot and scopes the trip families',
+	async (city) => {
+		const body = liveBody(city);
+		const request = vi.fn(async (url: RequestInfo | URL) =>
+			Response.json(
+				String(url).startsWith('/api/live-trips?')
+					? { version: 2, city, feed: body.feeds.trips, trip_updates: [] }
+					: body,
+			),
+		);
 		vi.stubGlobal('fetch', request);
+		const signal = new AbortController().signal;
 		const onPollDelayMs = vi.fn();
-		const controller = new AbortController();
-		try {
-			await expect(
-				liveReader.vehicles({ manifest, signal: controller.signal, onPollDelayMs }),
-			).resolves.toMatchObject({ vehicles: [] });
-			expect(request).toHaveBeenCalledWith(
-				'/data/v1/' + provider + '/live/current-vehicles.json',
-				expect.objectContaining({ signal: controller.signal }),
-			);
-			expect(onPollDelayMs.mock.calls[0][0]).toBeGreaterThanOrEqual(9500);
-			expect(onPollDelayMs.mock.calls[0][0]).toBeLessThanOrEqual(11000);
-		} finally {
-			vi.unstubAllGlobals();
-		}
+		const ctx = {
+			manifest: manifest(city),
+			signal,
+			onPollDelayMs,
+			requestCache: 'reload' as const,
+			tripScope: { kind: 'stop', id: 's' } as const,
+		};
+		const replies = await Promise.all([
+			liveReader.vehicles(ctx),
+			liveReader.trips(ctx),
+			liveReader.stopDepartures(ctx),
+			liveReader.alerts(ctx),
+			liveReader.network(ctx),
+		]);
+
+		expect(request).toHaveBeenCalledWith(`/api/live?city=${city}`, {
+			signal,
+			cache: 'reload',
+		});
+		expect(request.mock.calls.filter(([url]) => url === `/api/live?city=${city}`)).toHaveLength(1);
+		expect(request).toHaveBeenCalledWith(`/api/live-trips?city=${city}&stop=s`, { signal });
+		expect(onPollDelayMs).toHaveBeenCalledWith(30_000);
+		expect(replies[0]).toMatchObject({ vehicles: [] });
+		expect(replies[4]).toMatchObject({ vehicles_in_service: 0, non_responding: null });
+		await liveReader.vehicles({ ...ctx, signal: new AbortController().signal });
+		expect(request.mock.calls.filter(([url]) => url === `/api/live?city=${city}`)).toHaveLength(2);
 	},
 );
+
+it('reads SSR health through the binding and rejects data for another city', async () => {
+	const captureFetch = vi.fn(async (city: string) => Response.json(liveBody(city)));
+	const ctx = { providerId: 'stm', captureFetch };
+	await expect(getCaptureDataHealth(ctx)).resolves.toMatchObject({
+		feeds: expect.arrayContaining([
+			{ feed: 'vehicles', status: 'live', age_s: expect.any(Number) },
+		]),
+		lanes: [],
+	});
+	expect(captureFetch).toHaveBeenCalledWith('stm');
+	captureFetch.mockResolvedValueOnce(Response.json(liveBody('other-city')));
+	await expect(r2Adapter.live.vehicles(ctx)).rejects.toThrow('another city');
+});
+
+it('reports a stale source, a missing capture and an unsupported feed separately', async () => {
+	const snapshot = liveBody('demo');
+	const { vehicles, trips } = snapshot.feeds;
+	const response = Response.json({
+		...snapshot,
+		feeds: {
+			vehicles: { ...vehicles, source_at: new Date(Date.parse(timestamp) - 120_000).toISOString() },
+			trips: { ...trips, captured_at: null, source_at: null },
+		},
+		trip_updates: null,
+		alerts: null,
+	});
+	const result = await getCaptureDataHealth({
+		providerId: 'demo',
+		captureFetch: async () => response,
+	});
+	expect(result.feeds).toEqual([
+		{ feed: 'vehicles', status: 'stale', age_s: expect.any(Number) },
+		{ feed: 'trips', status: 'no_live_data', age_s: null },
+		{ feed: 'alerts', status: 'not_tracked', age_s: null },
+	]);
+	expect(result.feeds?.[0]?.age_s).toBeGreaterThanOrEqual(120);
+});

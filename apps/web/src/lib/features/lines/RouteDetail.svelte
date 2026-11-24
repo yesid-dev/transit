@@ -16,19 +16,19 @@
 	import { LIVE_FAMILIES } from '#lib/v1/live/store.svelte.ts';
 	import { getV1Runtime } from '#lib/v1/runtime.ts';
 	const clock = getV1Runtime().clock;
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { currentMirrorUrl } from '#lib/site/urlMirror.ts';
 	import { getLocale, getLocalizeHref } from '#lib/i18n/index.ts';
 
 	import { mapHrefFor, routeFor } from '#lib/nav/index.ts';
 	import { createLiveStore } from '#lib/v1/live/store.svelte.ts';
 	import { providerHasAlerts } from '#lib/v1/providers.ts';
+	import { lineIsScheduleOnly } from '#lib/site/providerCapabilities.ts';
 	import { deriveRouteStopPredictions } from '#lib/v1/live/routeStopPredictions.ts';
 	import { getRoute } from '#lib/v1/repositories/static.ts';
-	import { getProvenance } from '#lib/v1/repositories/provenance.ts';
 	import { getV1Context } from '#lib/v1/boot.ts';
 	import { alertsForRoute } from '#lib/v1/affectedAlerts.ts';
-	import type { RouteFile, Provenance, StopPrediction, Vehicle } from '#lib/v1/index.ts';
+	import type { RouteFile, StopPrediction, Vehicle } from '#lib/v1/index.ts';
 	import { createResource, type ResourceSeed } from '#lib/v1/resource.svelte.ts';
 	import type { IdentitySeed } from '#lib/v1/serverContext.ts';
 	import { minutesSinceMidnight } from '#lib/utils/time.ts';
@@ -52,7 +52,6 @@
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import { detailCopy } from './lines.copy';
 	import LineDirections from './LineDirections.svelte';
-	import { absenceSentence } from '#lib/site/absence.ts';
 	import { delayMeasurement } from '#lib/site/delayPresentation.ts';
 	import { STATUS_LABELS } from '#lib/v1/enumLabels.ts';
 
@@ -81,9 +80,13 @@
 	const timeZone = v1.provider?.timezone ?? manifest.tz ?? 'UTC';
 	const l10n = { locale, timeZone };
 	const live = createLiveStore(manifest, liveReader, {
+		tripScope: untrack(() => ({ kind: 'line', id })),
 		families: providerHasAlerts(v1.provider)
 			? ['vehicles', 'trips', 'alerts', 'network']
 			: ['vehicles', 'trips', 'network'],
+	});
+	$effect(() => {
+		live.setTripScope({ kind: 'line', id });
 	});
 	provideLiveAbsenceContext(() => ({ familyStates: live.familyStates }));
 	const presentation = $derived(
@@ -120,22 +123,19 @@
 			live.familyStates.alerts.health.notice == null,
 	);
 
-	const provenance = createResource<Provenance>(() => getProvenance());
-
 	const routeNonResponding = $derived(
 		(live.network?.non_responding_by_route ?? []).some((r) => r.route_id === id),
 	);
 
 	const absenceReason = $derived(
-		inferAbsenceReason({
-			providerId: v1.manifest.provider,
-			routeType: route.data?.type ?? null,
-			gaps: provenance.data?.gaps ?? null,
-			firstDeparture: route.data?.first_departure ?? null,
-			lastDeparture: route.data?.last_departure ?? null,
-			nowMinutes: minutesSinceMidnight(new Date(clock.serverNow), timeZone),
-			nonResponding: routeNonResponding,
-		}),
+		lineIsScheduleOnly(v1.provider, id, route.data?.type ?? null)
+			? ({ key: 'metro-no-realtime' } as const)
+			: inferAbsenceReason({
+					firstDeparture: route.data?.first_departure ?? null,
+					lastDeparture: route.data?.last_departure ?? null,
+					nowMinutes: minutesSinceMidnight(new Date(clock.serverNow), timeZone),
+					nonResponding: routeNonResponding,
+				}),
 	);
 
 	const roster = $derived.by<Vehicle[]>(() => {
@@ -171,10 +171,6 @@
 		url.searchParams.set('tab', 'detail');
 		return url.href;
 	});
-	const scheduleLoadedUtc = $derived(
-		provenance.data?.sources?.find((source) => source.feed === 'static_schedule')
-			?.last_loaded_utc ?? null,
-	);
 	const articleNav = $derived(articleNavigationCopy[locale]);
 	const detailTocEntries = $derived.by<TocEntry[]>(() => {
 		if (route.data == null) return [];
@@ -256,7 +252,6 @@
 						{file}
 						{locale}
 						noLive
-						loadedUtc={scheduleLoadedUtc}
 						{recordHref}
 						{shareUrl}
 					/>{/snippet}
@@ -392,12 +387,9 @@
 																</div>
 															{/snippet}
 															{#if bus.trip}
-																<a
-																	class="route-roster-link"
-																	href={tripHref(bus.trip)}
-																	aria-label={`${t.roster.viewTrip(bus.id)}, ${unknownStatusAndDelay ? '' : `${STATUS_LABELS[locale][bus.status]}, `}${t.roster.delay}: ${delayMeasurement(bus.delay_min) ?? absenceSentence(liveAbsenceReason('vehicle-delay', { familyStates: live.familyStates, notReporting: notReporting(bus, clock.serverNow, liveTimingFor(manifest).staleCutoffS) != null }), locale)}`}
-																>
+																<a class="route-roster-link" href={tripHref(bus.trip)}>
 																	{@render rosterRow()}
+																	<span class="sr-only">{t.roster.viewTrip}</span>
 																	<ChevronRightIcon
 																		size={14}
 																		strokeWidth={2.4}

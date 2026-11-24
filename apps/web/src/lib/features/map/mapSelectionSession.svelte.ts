@@ -1,6 +1,7 @@
 import { neighbors } from './selectionSession/detailNavigation';
 import { SvelteSet } from 'svelte/reactivity';
 import type { Locale } from '#lib/i18n/index.ts';
+import type { LiveTripScope } from '#lib/live/captureSnapshot.ts';
 import type { RouteFile, StopFile } from '#lib/v1/index.ts';
 import type { Alert } from '#lib/v1/schemas/index.ts';
 import type { LiveStore } from '#lib/v1/live/store.svelte.ts';
@@ -36,6 +37,8 @@ export interface MapSelectionSessionOptions {
 	readonly staleCutoffS?: number;
 	readonly serverNow: () => number;
 	readonly alertsAvailable?: boolean;
+	readonly scheduleOnly?: (id: string, type: number | null) => boolean;
+	readonly setTripScope?: (scope: LiveTripScope | null) => void;
 }
 
 /** Owns a selection and its resources for the lifetime of the calling effect owner. */
@@ -64,12 +67,23 @@ export function createMapSelectionSession(options: MapSelectionSessionOptions) {
 	}
 	const stops = createResource((signal) => getStopsIndexSlim({ signal }));
 	const routesIndex = createResource((signal) => getRoutesIndex({ signal }));
-	const selectedRouteIds = $derived(Array.from(filters.routes).sort());
+	const scheduledRouteIds = $derived(
+		(routesIndex.data?.routes ?? [])
+			.filter((route) => options.scheduleOnly?.(route.id, route.type))
+			.map((route) => route.id),
+	);
+	const selectedRouteIds = $derived(
+		[...new SvelteSet([...filters.routes, ...scheduledRouteIds])].sort(),
+	);
 	const selectedRoutes = createResource<RouteFile[]>(
 		async (signal) => {
 			const ids = selectedRouteIds;
 			const routes = await Promise.all(ids.map((id) => getRoute(id, { signal })));
-			return routes.filter((route): route is RouteFile => route != null);
+			return routes
+				.filter((route): route is RouteFile => route != null)
+				.map((route) =>
+					scheduledRouteIds.includes(route.id) ? { ...route, schedule_only: true } : route,
+				);
 		},
 		{
 			key: () => selectedRouteIds.join('\u0000'),
@@ -78,6 +92,11 @@ export function createMapSelectionSession(options: MapSelectionSessionOptions) {
 	);
 
 	$effect(() => {
+		options.setTripScope?.(
+			selected?.kind === 'stop' || selected?.kind === 'vehicle'
+				? { kind: selected.kind, id: selected.id }
+				: null,
+		);
 		const release =
 			selected?.kind === 'vehicle'
 				? live.subscribeFamilies(['trips'])
@@ -151,7 +170,10 @@ export function createMapSelectionSession(options: MapSelectionSessionOptions) {
 	const contextRoutes = $derived.by<RouteFile[]>(() => {
 		const out = [...routeList];
 		const focus = focusedRoute.data;
-		if (focus && !out.some((route) => route.id === focus.id)) out.push(focus);
+		if (focus && !out.some((route) => route.id === focus.id)) {
+			const scheduleOnly = options.scheduleOnly?.(focus.id, focus.type ?? null);
+			out.push(scheduleOnly ? { ...focus, schedule_only: true } : focus);
+		}
 		return out;
 	});
 	const contextStopFiles = $derived(focusedStop.data ? [focusedStop.data] : []);
@@ -401,6 +423,9 @@ export function createMapSelectionSession(options: MapSelectionSessionOptions) {
 		},
 		get routeLineRoutes() {
 			return routeLineRoutes;
+		},
+		get scheduledRouteIds() {
+			return scheduledRouteIds;
 		},
 		get loadedRoutes() {
 			return [...(selectedRoutes.data ?? []), focusedRoute.data];

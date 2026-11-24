@@ -4,6 +4,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { captureTrip, captureTripReport } from './capture-fixture';
 
 test.describe.configure({ mode: 'parallel' });
 
@@ -178,13 +179,16 @@ test('opening vehicle details keeps the global map report timestamp @layout', as
 	await page.route('**/v1/**', async (route) => {
 		const url = new URL(route.request().url());
 		url.pathname = '/__layout/fresh' + url.pathname;
-		const response = await route.fetch({ url: url.href });
-		if (url.pathname.endsWith('/live/trips.json')) {
-			const payload = await response.json();
-			payload.feed_captured_utc = new Date(epoch - 3600_000).toISOString();
-			await route.fulfill({ response, json: payload });
-		} else await route.fulfill({ response });
+		await route.fulfill({ response: await route.fetch({ url: url.href }) });
 	});
+	const tripScope = '**/api/live-trips?city=stm&trip=T1';
+	await page.route(tripScope, (route) =>
+		route.fulfill({
+			json: captureTripReport('stm', new Date(epoch - 3600_000).toISOString(), [
+				captureTrip('T1', '24', []),
+			]),
+		}),
+	);
 	await page.goto('/map', { waitUntil: 'networkidle' });
 	const placement = page.viewportSize()!.width < 1024 ? 'head' : 'floating';
 	const timestamp = page.locator(`.map-freshness[data-placement="${placement}"] time`);
@@ -205,9 +209,7 @@ test('opening vehicle details keeps the global map report timestamp @layout', as
 			window as unknown as { __transitMap: { project(point: number[]): { x: number; y: number } } }
 		).__transitMap.project([-73.59, 45.51]),
 	);
-	const trips = page.waitForResponse((response) =>
-		new URL(response.url()).pathname.endsWith('/live/trips.json'),
-	);
+	const trips = page.waitForResponse(tripScope);
 	await page.locator('.maplibregl-canvas').click({ position: point });
 	await trips;
 	await expect(timestamp).toHaveAttribute('datetime', original!);

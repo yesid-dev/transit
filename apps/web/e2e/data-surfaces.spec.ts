@@ -10,6 +10,13 @@ import { DEFAULT_LOCALE as locale, PUBLISHED_LOCALES } from '../src/lib/i18n/con
 import { localizeHref } from '../src/lib/i18n/routing';
 import { stampCopy } from '../src/lib/v1/stamp.copy';
 import { waitForFrameClearance } from './layout-helpers';
+import {
+	captureTrip,
+	captureTripReport,
+	captureUrl,
+	layoutCapture,
+	liveTripsUrl,
+} from './capture-fixture';
 
 const fixture = (name: string) =>
 	JSON.parse(readFileSync(new URL(`./${name}`, import.meta.url), 'utf8'));
@@ -63,6 +70,11 @@ test.use({ bypassCSP: true });
 
 test.beforeEach(async ({ page }) => {
 	await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
+	await page.route(captureUrl, (route) =>
+		route.fulfill({
+			json: layoutCapture(new URL(route.request().url()).searchParams.get('city')!),
+		}),
+	);
 	await page.clock.setFixedTime(now);
 });
 
@@ -178,11 +190,9 @@ for (const lang of PUBLISHED_LOCALES)
 					delay_min: i % 4 === 0 ? -2 : i % 4 === 1 ? 0 : i % 4 === 2 ? null : 6,
 				}));
 				let releaseReport = () => {},
-					releaseRoute = () => {},
-					releaseNames = () => {};
+					releaseSchedule = () => {};
 				let reportReady = Promise.resolve(),
-					routeReady = Promise.resolve(),
-					namesReady = Promise.resolve();
+					scheduleReady = Promise.resolve();
 				await page.addInitScript(() =>
 					Object.defineProperty(navigator, 'clipboard', {
 						configurable: true,
@@ -193,39 +203,29 @@ for (const lang of PUBLISHED_LOCALES)
 						},
 					}),
 				);
-				await page.route(
-					/\/v1\/(?:stm|octranspo)\/(?:live\/trips\.json|static\/stops_index\.json|static\/routes\/[^/]+\.json)(?:\?|$)/,
-					async (route) => {
-						const path = new URL(route.request().url()).pathname;
-						if (path.endsWith('/live/trips.json')) {
-							await reportReady;
-							if (failedReport) {
-								await route.fulfill({ status: 503, body: 'unavailable' });
-								return;
-							}
-							await route.fulfill({
-								json: {
-									generated_utc: generated,
-									feed_captured_utc: oldCapture ? '2026-06-15T11:50:00Z' : generated,
-									schema_version: 1,
-									methodology_version: 'live-2',
-									publish_generation_id: `${provider}@${generated}`,
-									trips: {
-										R48: { status: 'severe', delay_min: 4, route: lineId, stops: predictions },
-									},
-								},
-							});
-						} else if (path.endsWith('/stops_index.json')) {
-							await namesReady;
-							await route.fulfill({ json: { generated_utc: generated, stops: names } });
-						} else {
-							await routeReady;
-							await route.fulfill({
-								json: {
-									generated_utc: generated,
-									id: lineId,
-									long: 'Fixture public line',
-									directions: [
+				await page.route(liveTripsUrl, async (route) => {
+					await reportReady;
+					if (failedReport) return route.fulfill({ status: 503, body: 'unavailable' });
+					const trip = new URL(route.request().url()).searchParams.get('trip');
+					const captured = oldCapture ? '2026-06-15T11:50:00Z' : generated;
+					return route.fulfill({
+						json: captureTripReport(
+							provider,
+							captured,
+							trip === 'R48' ? [captureTrip(trip, lineId, predictions, 360)] : [],
+						),
+					});
+				});
+				await page.route(`**/api/schedule-edition?city=${provider}`, async (route) => {
+					await scheduleReady;
+					return route.fulfill({
+						json: {
+							schedule: {
+								date: generated.slice(0, 10),
+								routes: [{ id: lineId, short: lineId, long: 'Fixture public line', type: 3 }],
+								stops: names,
+								route_directions: {
+									[lineId]: [
 										{
 											dir: 0,
 											headsign: 'Fixture terminal',
@@ -233,20 +233,17 @@ for (const lang of PUBLISHED_LOCALES)
 										},
 									],
 								},
-							});
-						}
-					},
-				);
+							},
+						},
+					});
+				});
 				{
 					await page.setViewportSize({ width, height: 900 });
 					reportReady = new Promise<void>((resolve) => {
 						releaseReport = resolve;
 					});
-					routeReady = new Promise<void>((resolve) => {
-						releaseRoute = resolve;
-					});
-					namesReady = new Promise<void>((resolve) => {
-						releaseNames = resolve;
+					scheduleReady = new Promise<void>((resolve) => {
+						releaseSchedule = resolve;
 					});
 					await page.goto(localizeHref('/trip/R48', lang, provider));
 					const header = page.locator('[data-slot="article-header"]');
@@ -268,11 +265,10 @@ for (const lang of PUBLISHED_LOCALES)
 						'data-status',
 						'severe',
 					);
-					await expect(page.locator('.trip-verdict-delay')).toHaveText('+4 min');
+					await expect(page.locator('.trip-verdict-delay')).toHaveText('+6 min');
 					expect((await header.boundingBox())!.height).toBe(before!.height);
 					await expect(page.locator('.trip-direction')).toHaveCount(0);
-					releaseRoute();
-					releaseNames();
+					releaseSchedule();
 					await expect(table.locator('.trip-stop-name').first()).toHaveText(names[0].name);
 					await expect(table.getByRole('rowheader').first().getByRole('link')).toHaveAccessibleName(
 						`${tripCopy[lang].viewStop} ${names[0].name}`,
@@ -344,7 +340,7 @@ for (const lang of PUBLISHED_LOCALES)
 					expect(csv.split('\r\n')).toHaveLength(count + 1);
 					expect(csv).toContain('"schema_version","methodology_version","publish_generation_id"');
 					expect(csv).toContain(
-						`,1,"live-2","${provider}@${generated}","${generated}","${generated}"`,
+						`,2,"capture-live-v2","${provider}@trip_updates:${generated}","${generated}","${generated}"`,
 					);
 					expect(csv.split('\r\n')[1].endsWith(',-2')).toBe(true);
 					await page.getByRole('button', { name: tripCopy[lang].copyLive, exact: true }).click();
@@ -379,7 +375,7 @@ for (const lang of PUBLISHED_LOCALES)
 				);
 				await expect(page.locator('[data-slot="trip-report-time"] p time')).toHaveAttribute(
 					'datetime',
-					generated,
+					'2026-06-15T11:50:00Z',
 				);
 				await expect(page.locator('[data-slot="freshness-stamp"]')).toHaveAttribute(
 					'data-age-seconds',

@@ -12,6 +12,7 @@ import { AUDIT_NAV, FOOTER_INFO_NAV, SURFACE_NAV } from '../src/lib/content/nav'
 import { DEFAULT_LOCALE, PUBLISHED_LOCALES, type Locale } from '../src/lib/i18n/config';
 import { localizeHref } from '../src/lib/i18n/routing';
 import { tripCopy } from '../src/lib/features/trips/trips.copy';
+import { captureTrip, captureTripReport } from './capture-fixture';
 
 const fixture = (name: string) =>
 	JSON.parse(readFileSync(new URL(`./${name}`, import.meta.url), 'utf8'));
@@ -62,32 +63,19 @@ test.describe('accessibility', { tag: '@theme' }, () => {
 							),
 						),
 					];
-					await page.route(/\/v1\/stm\/live\/trips\.json(?:\?|$)/, async (route) => {
-						const response = await route.fetch();
-						const body = await response.json();
-						await route.fulfill({
-							response,
-							json: {
-								...body,
-								generated_utc: departures.generated_utc,
-								feed_captured_utc: departures.generated_utc,
-								trips: {
-									...body.trips,
-									'a11y-line-predictions': {
-										route: lineId,
-										status: 'on_time',
-										stops: stops.map((stop) => ({
-											stop,
-											eta_utc: new Date(
-												Date.parse(departures.generated_utc) + 300_000,
-											).toISOString(),
-											delay_min: 0,
-										})),
-									},
-								},
-							},
-						});
-					});
+					const eta_utc = new Date(Date.parse(departures.generated_utc) + 300_000).toISOString();
+					await page.route(`**/api/live-trips?city=stm&line=${lineId}`, (route) =>
+						route.fulfill({
+							json: captureTripReport('stm', departures.generated_utc, [
+								captureTrip(
+									'a11y-line-predictions',
+									lineId,
+									stops.map((stop) => ({ stop, eta_utc, delay_min: 0 })),
+									0,
+								),
+							]),
+						}),
+					);
 				}
 				// As in the layout audit below, scan after client-side fixture data settles.
 				await page.goto(

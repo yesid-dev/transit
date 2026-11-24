@@ -50,6 +50,7 @@ class R2:
             "lsjson", REMOTE, "--recursive", "--files-only", "--no-modtime", "--no-mimetype",
             "--include", f"/*/*/v{version}/**",
             "--include", "/search/v1/**",
+            "--include", "/maps/v1/**",
         )
         return {entry["Path"]: entry["Size"] for entry in json.loads(result)}
 
@@ -109,7 +110,7 @@ def copy_object(
 def sync(remote: R2, root: Path, version: int, reserve: int, *, check: bool = False) -> None:
     inventory = remote.inventory(version)
     manifest_pattern = re.compile(rf"({CITY.pattern})/({DATE})/v{version}/manifest\.json")
-    search_pattern = re.compile(rf"search/v1/{CITY.pattern}/{DATE}/v[0-9]+\.json")
+    search_pattern = re.compile(rf"(?:search|maps)/v1/{CITY.pattern}/{DATE}/v[0-9]+\.json")
     days = {}
     for key in sorted(inventory):
         if match := manifest_pattern.fullmatch(key):

@@ -13,7 +13,7 @@
 	import { useAvailableSectionJump } from '#lib/site/availableSectionJump.svelte.ts';
 	import { getLocale, getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
 	import { freshnessRelative } from '#lib/v1/freshness.ts';
-	import { getDataHealth } from '#lib/v1/repositories/dataHealth.ts';
+	import { getCaptureDataHealth, getDataHealth } from '#lib/v1/repositories/dataHealth.ts';
 	import { getHistoricAvailability } from '#lib/v1/repositories/historic.ts';
 	import { getProvenance } from '#lib/v1/repositories/provenance.ts';
 	import type { DataHealth } from '#lib/v1/schemas/data_health.ts';
@@ -62,10 +62,19 @@
 		manifest?: Manifest;
 		provenanceSeed?: ResourceSeed<Provenance>;
 		dataHealthSeed?: ResourceSeed<DataHealth>;
+		captureHealthSeed?: ResourceSeed<DataHealth>;
 		historicAvailabilitySeed?: ResourceSeed<HistoricAvailabilityIndex>;
+		liveOnly?: boolean;
 	}
 
-	let { manifest, provenanceSeed, dataHealthSeed, historicAvailabilitySeed }: Props = $props();
+	let {
+		manifest,
+		provenanceSeed,
+		dataHealthSeed,
+		captureHealthSeed,
+		historicAvailabilitySeed,
+		liveOnly = false,
+	}: Props = $props();
 
 	const PIPELINE_NOTE_KINDS = {
 		history_freeze: 'pipeline-note',
@@ -86,10 +95,16 @@
 	const provenance = createResource(() => getProvenance(), {
 		key: () => 'provenance',
 		seed: () => provenanceSeed,
+		enabled: () => !liveOnly,
 	});
 	const dataHealth = createResource(() => getDataHealth(), {
 		key: () => 'data-health',
 		seed: () => dataHealthSeed,
+	});
+	const captureHealth = createResource(() => getCaptureDataHealth(), {
+		key: () => 'capture-health',
+		seed: () => captureHealthSeed,
+		enabled: () => liveOnly,
 	});
 	const historicAvailability = createResource(() => getHistoricAvailability(), {
 		key: () => 'historic-availability',
@@ -167,7 +182,8 @@
 	const historyCoverageRows = $derived(selectHistoryCoverage(historyRoot));
 	const historyInventory = $derived(selectHistoryInventory(historyRoot));
 	const recordWarning = $derived(['warn', 'fail'].includes(recordGate(dh)?.verdict ?? ''));
-	const feeds = $derived(feedFreshness(dh, prov, clock.serverNow));
+	const feedHealth = $derived(liveOnly ? captureHealth : dataHealth);
+	const feeds = $derived(feedFreshness(feedHealth.data ?? null, prov, clock.serverNow));
 	const sources = $derived(prov ? sourcesOf(prov) : []);
 	const gaps = $derived(prov ? gapsOf(prov) : []);
 	const retention = $derived(prov ? retentionOf(prov) : { detail: null, aggregate: null });
@@ -303,7 +319,10 @@
 			backHref={localizeHref('/', locale)}
 			backLabel={t.article.back}
 			meta={articleMeta}
-			metaPending={provenance.loading || dataHealth.loading || historicAvailability.loading}
+			metaPending={provenance.loading ||
+				captureHealth.loading ||
+				dataHealth.loading ||
+				historicAvailability.loading}
 			titleId="status-title"
 		>
 			{#snippet controls()}
@@ -348,7 +367,7 @@
 					{gaps}
 					{locale}
 				/>
-				{#if !prov || provenanceIsEmpty(prov)}
+				{#if !liveOnly && (!prov || provenanceIsEmpty(prov))}
 					<div class="health-resource-state" aria-label={t.overview.dailyRecord}>
 						<SectionLabel text={t.overview.dailyRecord} variant="metric" />
 						<ResourceBoundary resource={provenance} lang={locale} isEmpty={provenanceIsEmpty}>
@@ -356,10 +375,10 @@
 						</ResourceBoundary>
 					</div>
 				{/if}
-				{#if !dh || dataHealthIsEmpty(dh)}
+				{#if !feedHealth.data || dataHealthIsEmpty(feedHealth.data)}
 					<div class="health-resource-state" aria-label={t.overview.liveFeeds}>
 						<SectionLabel text={t.overview.liveFeeds} variant="metric" />
-						<ResourceBoundary resource={dataHealth} lang={locale} isEmpty={dataHealthIsEmpty}>
+						<ResourceBoundary resource={feedHealth} lang={locale} isEmpty={dataHealthIsEmpty}>
 							{#snippet children(_value)}{/snippet}
 						</ResourceBoundary>
 					</div>

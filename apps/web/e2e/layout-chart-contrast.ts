@@ -1,5 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { localizeHref } from '../src/lib/i18n/routing';
+import { captureFleet, captureUrl } from './capture-fixture';
 
 // Status colours on chart marks are non-text graphics: each needs 3:1 against the surface it
 // sits on (WCAG 1.4.11). On time is the page ink in each theme, so a softened on-time bar or a
@@ -113,25 +114,20 @@ export async function openNetwork(page: Page, locale: 'en' | 'fr') {
 		await route.fulfill({ response: await route.fetch({ url: url.href }) });
 	});
 	// Every status band, so the status mix and the delay histogram draw each colour.
-	await page.route('**/v1/stm/live/network.json', (route) =>
+	const delays = [
+		[20, -360],
+		[200, 0],
+		[40, 180],
+		[30, 420],
+		[31, null],
+	] as const;
+	await page.route(captureUrl, (route) =>
 		route.fulfill({
-			json: {
-				generated_utc: '2026-08-29T12:00:00Z',
-				vehicles_in_service: 321,
-				on_time_pct: 80,
-				coverage_pct: 90,
-				non_responding: 7,
-				feed_freshness_s: 15,
-				delay_p50_min: 1,
-				delay_p90_min: 6,
-				status_dist: { on_time: 200, late: 40, severe: 30, early: 20, unknown: 31 },
-				delay_histogram: [
-					{ lo_min: null, hi_min: -1, count: 20 },
-					{ lo_min: -1, hi_min: 1, count: 200 },
-					{ lo_min: 1, hi_min: 5, count: 40 },
-					{ lo_min: 5, hi_min: null, count: 30 },
-				],
-			},
+			json: captureFleet(
+				Date.parse('2026-08-29T12:00:00Z'),
+				'stm',
+				delays.flatMap(([n, delay]) => Array.from({ length: n }, () => delay)),
+			),
 		}),
 	);
 	await page.goto(`${localizeHref('/network', locale)}?provider=stm`, { waitUntil: 'networkidle' });

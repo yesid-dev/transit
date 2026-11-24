@@ -7,12 +7,12 @@ export type { AdapterCtx } from './types';
 import type { LiveReader, LiveReadContext } from '#lib/v1/live/store.svelte.ts';
 import { livePollDelayMs } from '#lib/v1/live/polling.ts';
 import { DEFAULT_LIVE_TTL_S } from '#lib/v1/freshness.ts';
-import { loadManifestFresh } from './r2.core';
 
 function liveContext(context: LiveReadContext) {
 	const ttlMs = Math.max(1, context.manifest.files.live.ttl_s ?? DEFAULT_LIVE_TTL_S) * 1000;
 	return {
 		manifest: context.manifest,
+		tripScope: context.tripScope,
 		requestCache: context.requestCache,
 		signal: context.signal,
 		onResponseHeaders: (headers: Headers) =>
@@ -21,7 +21,6 @@ function liveContext(context: LiveReadContext) {
 }
 
 export const liveReader: LiveReader = {
-	refreshManifest: (context) => loadManifestFresh(liveContext(context)),
 	vehicles: (context) => adapter.live.vehicles(liveContext(context)),
 	trips: (context) => adapter.live.trips(liveContext(context)),
 	stopDepartures: (context) => adapter.live.stopDepartures(liveContext(context)),

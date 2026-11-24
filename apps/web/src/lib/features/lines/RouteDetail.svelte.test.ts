@@ -43,9 +43,22 @@ const routeManifest = vi.hoisted(() => ({
 }));
 const createLiveStoreSpy = vi.hoisted(() => vi.fn());
 const routeProvider = vi.hoisted(() => ({
-	value: undefined as import('#lib/v1/providers.ts').PublicProvider | undefined,
+	value: undefined as import('#lib/v1/schemas/providers.ts').PublicCity | undefined,
 	realLive: false,
 }));
+
+function scheduleCapability(city: string, type: number): NonNullable<typeof routeProvider.value> {
+	const label = { city: 'Fixture city', operator: 'Fixture operator' };
+	return {
+		id: city,
+		timezone: 'America/Toronto',
+		bounds: null,
+		lines_without_live_data: [{ route_ids: [], route_types: [type] }],
+		labels: { en: label, fr: label },
+		inputs: {},
+		alert_links: {},
+	};
+}
 
 vi.mock('$app/state', () => ({ page: routeDetailNav.page }));
 vi.mock('$app/navigation', () => ({
@@ -115,11 +128,6 @@ const ALERTS = [
 let liveAlerts: { generated_utc: string; alerts: typeof ALERTS } | null = {
 	generated_utc: '2026-06-15T12:00:00Z',
 	alerts: ALERTS,
-};
-
-let provenanceData: { generated_utc: string; gaps: string[] } = {
-	generated_utc: '2026-06-15T12:00:00Z',
-	gaps: ['metro_realtime'],
 };
 
 let routeFileData: RouteFile = ROUTE_FILE;
@@ -214,16 +222,16 @@ const liveStore = {
 	isStale: false,
 	start: vi.fn(),
 	stop: vi.fn(),
+	setTripScope: vi.fn(),
 };
 
 function resetRouteSurfaceState(): void {
 	routeManifest.provider = 'stm';
-	routeProvider.value = undefined;
+	routeProvider.value = scheduleCapability('stm', 1);
 	routeProvider.realLive = false;
 	routeDetailNav.replaceState.mockReset().mockImplementation(routeDetailNav.defaultReplaceState);
 	liveAlerts = { generated_utc: '2026-06-15T12:00:00Z', alerts: ALERTS };
 	liveIndex = buildIndex(VEHICLES);
-	provenanceData = { generated_utc: '2026-06-15T12:00:00Z', gaps: ['metro_realtime'] };
 	routeFileData = ROUTE_FILE;
 	createLiveStoreSpy.mockReset();
 	Object.assign(liveStore.familyStates.alerts, { phase: 'ready' });
@@ -258,7 +266,6 @@ const renderRoute = (id = '161', name?: string) =>
 vi.mock('#lib/v1/repositories/static.ts', () => ({
 	getRoute: () => routeFileData,
 }));
-vi.mock('#lib/v1/repositories/provenance.ts', () => ({ getProvenance: () => provenanceData }));
 vi.mock('#lib/v1/live/store.svelte.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('#lib/v1/live/store.svelte.ts')>();
 	return {
@@ -321,6 +328,9 @@ describe('RouteDetail article cover and focus scope', () => {
 		routeProvider.realLive = true;
 		routeProvider.value = {
 			id: 'octranspo',
+			timezone: 'America/Toronto',
+			bounds: null,
+			lines_without_live_data: [{ route_ids: [], route_types: [0] }],
 			labels: {
 				en: { city: 'Ottawa', operator: 'OC Transpo' },
 				fr: { city: 'Ottawa', operator: 'OC Transpo' },
@@ -369,6 +379,7 @@ describe('RouteDetail article cover and focus scope', () => {
 			expect(spies[2]).not.toHaveBeenCalled();
 			expect(createLiveStoreSpy).toHaveBeenCalledWith(routeManifest, {
 				families: ['vehicles', 'trips', 'network'],
+				tripScope: { kind: 'line', id: '161' },
 			});
 		} finally {
 			spies.forEach((spy) => spy.mockRestore());
@@ -379,6 +390,7 @@ describe('RouteDetail article cover and focus scope', () => {
 
 		expect(createLiveStoreSpy).toHaveBeenCalledWith(routeManifest, {
 			families: ['vehicles', 'trips', 'alerts', 'network'],
+			tripScope: { kind: 'line', id: '161' },
 		});
 	});
 
@@ -711,7 +723,7 @@ describe('RouteDetail Detail tab: current-buses roster', () => {
 
 		expect(
 			within(roster).getByRole('link', {
-				name: 'View the trip for vehicle busLate, Severe, Delay: +8 min',
+				name: /Vehicle busLate.*Severe.*\+8 min.*Next stop First stop.*View trip/,
 			}),
 		).toHaveAttribute('href', '/trip/tLate');
 	});
@@ -765,32 +777,29 @@ describe('RouteDetail Detail tab: current-buses roster', () => {
 });
 describe('RouteDetail Detail tab: HONEST ABSENCE (no live bus)', () => {
 	it.each([
-		['stm', 1, 'metro_realtime', 'en'],
-		['stm', 1, 'metro_realtime', 'fr'],
-		['octranspo', 0, 'otrain_realtime', 'en'],
-		['octranspo', 0, 'otrain_realtime', 'fr'],
-	] as const)(
-		'explains a declared line for %s type %s in %s / %s',
-		(provider, type, gap, locale) => {
-			routeManifest.provider = provider;
-			routeFileData = { ...ROUTE_FILE, type };
-			provenanceData = { generated_utc: '2026-06-15T12:00:00Z', gaps: [gap] };
-			liveIndex = buildIndex([]);
-			const view = routeSurface.mount(RouteDetail, {
-				props: { id: '1', seed: routeSeed() },
-				context: new Map([[Symbol.for('@yesid/ui/locale'), () => locale]]),
-			});
-			expect(view.container.querySelector('[data-slot="freshness-stamp"]')).toBeNull();
-			expect(
-				screen.getByText(
-					locale === 'en'
-						? 'Transit cannot measure this line’s actual service with the data available.'
-						: 'Transit ne peut pas mesurer le service réel de cette ligne avec les données disponibles.',
-				),
-			).toBeInTheDocument();
-			routeManifest.provider = 'stm';
-		},
-	);
+		['stm', 1, 'en'],
+		['stm', 1, 'fr'],
+		['octranspo', 0, 'en'],
+		['octranspo', 0, 'fr'],
+	] as const)('explains a declared line for %s type %s in %s', (provider, type, locale) => {
+		routeManifest.provider = provider;
+		routeFileData = { ...ROUTE_FILE, type };
+		routeProvider.value = scheduleCapability(provider, type);
+		liveIndex = buildIndex([]);
+		const view = routeSurface.mount(RouteDetail, {
+			props: { id: '1', seed: routeSeed() },
+			context: new Map([[Symbol.for('@yesid/ui/locale'), () => locale]]),
+		});
+		expect(view.container.querySelector('[data-slot="freshness-stamp"]')).toBeNull();
+		expect(
+			screen.getByText(
+				locale === 'en'
+					? 'Transit cannot measure this line’s actual service with the data available.'
+					: 'Transit ne peut pas mesurer le service réel de cette ligne avec les données disponibles.',
+			),
+		).toBeInTheDocument();
+		routeManifest.provider = 'stm';
+	});
 
 	it('falls back to a plain no-data note when no reason is derivable (no window, not metro)', () => {
 		routeFileData = { ...ROUTE_FILE, first_departure: null, last_departure: null };
@@ -834,16 +843,13 @@ describe.each(['en', 'fr'] as const)('RouteDetail roster published status in %s'
 			expect(link.textContent?.match(new RegExp(STATUS_LABELS[locale].unknown, 'g'))).toHaveLength(
 				1,
 			);
-			expect(
-				link.getAttribute('aria-label')?.match(new RegExp(STATUS_LABELS[locale].unknown, 'g')),
-			).toHaveLength(1);
-			expect(link.getAttribute('aria-label')).toContain(
-				locale === 'en' ? 'not reported in the live feed' : 'non signalé dans le flux en direct',
+			expect(link).toHaveAccessibleName(
+				locale === 'en' ? /not reported in the live feed/ : /non signalé dans le flux en direct/,
 			);
 		}
 
-		expect(link.getAttribute('aria-label')).toContain(STATUS_LABELS[locale][status]);
-		if (measurement) expect(link.getAttribute('aria-label')).toContain(measurement);
+		expect(link).toHaveAccessibleName(expect.stringContaining(STATUS_LABELS[locale][status]));
+		if (measurement) expect(link).toHaveAccessibleName(expect.stringContaining(measurement));
 	});
 });
 

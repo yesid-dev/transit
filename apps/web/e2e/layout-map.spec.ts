@@ -2,6 +2,7 @@ import { test } from './layout-test';
 import { readFileSync } from 'node:fs';
 import { expect, type Page } from '@playwright/test';
 import { forwardRoute } from './layout-helpers';
+import { captureUrl, layoutCapture } from './capture-fixture';
 const read = (name: string) =>
 	JSON.parse(readFileSync(new URL(`./${name}.json`, import.meta.url), 'utf8'));
 const epoch = Date.parse(read('departures').generated_utc);
@@ -116,22 +117,27 @@ test('estimated vehicle draws move before the next feed poll @layout', async ({ 
 	await page.route('**/v1/**', (route) =>
 		forwardRoute(page, async () => {
 			const url = new URL(route.request().url());
-			if (url.pathname.endsWith('/live/vehicles.json')) vehiclePolls++;
 			url.pathname = `/__layout/fresh${url.pathname}`;
-			const response = await route.fetch({ url: url.href });
-			if (url.pathname.endsWith('/live/vehicles.json')) {
-				const body = await response.json();
-				// S1 lies behind the eastbound vehicle. This case tests between-report
-				// motion without a known next stop; stop capping has its own unit tests.
-				for (const vehicle of body.vehicles) {
-					vehicle.next_stop = null;
-					vehicle.next_stop_lat = null;
-					vehicle.next_stop_lon = null;
-				}
-				await route.fulfill({ response, json: body });
-			} else await route.fulfill({ response });
+			await route.fulfill({ response: await route.fetch({ url: url.href }) });
 		}),
 	);
+	await page.route(captureUrl, (route) => {
+		vehiclePolls++;
+		// S1 lies behind the eastbound vehicle. This case measures motion without a known next stop.
+		return route.fulfill({ json: layoutCapture('stm', { stop_id: null }) });
+	});
+	await page.route('**/api/schedule-edition?city=stm', async (route) => {
+		const response = await route.fetch();
+		const payload = await response.json();
+		payload.schedule.route_directions['24'][0].shape = {
+			type: 'LineString',
+			coordinates: [
+				[-73.61, 45.51],
+				[-73.55, 45.51],
+			],
+		};
+		return route.fulfill({ response, json: payload });
+	});
 	await page.goto('/map', { waitUntil: 'networkidle' });
 	await expect
 		.poll(() =>
@@ -331,7 +337,9 @@ for (const provider of read('providers').providers) {
 				const head = el.parentElement!.getBoundingClientRect();
 				const style = getComputedStyle(el.parentElement!);
 				const stamp = panel.querySelector('[data-slot="freshness-stamp"]');
-				const report = stamp?.checkVisibility() ? stamp.getBoundingClientRect() : null;
+				const report = stamp?.checkVisibility()
+					? stamp.parentElement!.getBoundingClientRect()
+					: null;
 				// The report precedes the mobile title; neither row should leave a phantom eyebrow.
 				return {
 					top:
@@ -344,7 +352,7 @@ for (const provider of read('providers').providers) {
 					right: title.right,
 					panelRight: panel.getBoundingClientRect().right,
 					titleTop: title.top,
-					titleRight: title.right,
+					titleRight: head.right,
 					report: report ? { bottom: report.bottom, right: report.right } : null,
 					width: innerWidth,
 				};

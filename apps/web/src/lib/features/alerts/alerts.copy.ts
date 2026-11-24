@@ -8,6 +8,32 @@ import type { SurfaceHeadCopy } from '#lib/components/surface/index.ts';
 const alertCount = (count: number) =>
 	`${intl.number('en').format(count)} ${count === 1 ? 'alert' : 'alerts'}`;
 
+export function activeAlertCopy(copy: AlertHistoryCopy, locale: Locale): AlertHistoryCopy {
+	const fr = locale === 'fr';
+	const title = fr ? 'Avis en vigueur' : 'Active alerts';
+	return {
+		...copy,
+		kicker: fr ? 'AVIS · EN DIRECT' : 'ALERTS · LIVE',
+		subheading: fr ? '// EN VIGUEUR' : '// ACTIVE',
+		lede: fr
+			? 'Les avis de service actuellement en vigueur.'
+			: 'Service alerts currently in effect.',
+		logSection: title,
+		logListLabel: title,
+		empty: fr ? 'Aucun avis de service en vigueur.' : 'No active service alerts.',
+		cards: {
+			...copy.cards,
+			window: { ...copy.cards.window, title },
+			log: {
+				title,
+				subtitle: fr
+					? 'Quelles lignes et quels arrêts sont touchés ?'
+					: 'Which lines and stops are affected?',
+			},
+		},
+	};
+}
+
 export const alertHistoryCopy = defineCopy({
 	fr: {
 		unavailable: alertUnavailableCopy.fr,

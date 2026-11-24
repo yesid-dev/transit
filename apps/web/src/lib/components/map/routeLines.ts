@@ -25,6 +25,7 @@ interface RouteLineFeature {
 		headsign: string;
 		terminal_label: string;
 		selected: number;
+		schedule_only?: boolean;
 	};
 }
 
@@ -92,6 +93,7 @@ export function toRouteLineFeatures(
 					headsign: direction.headsign ?? '',
 					terminal_label: variant.label,
 					selected: isSelectedRouteLine(route, variant, selected) ? 1 : 0,
+					...(route.schedule_only ? { schedule_only: true } : {}),
 				},
 			});
 		}
@@ -164,7 +166,7 @@ export function addRouteLineLayers(map: MapLibreMap, beforeId?: string): void {
 			layout: lineLayout(),
 			paint: {
 				'line-color': routeYellow,
-				'line-opacity': 0.95,
+				'line-opacity': ['case', ['==', ['get', 'schedule_only'], true], 0.55, 0.95],
 				'line-width': LINE_WIDTH,
 			},
 		} as unknown as LayerSpecification,

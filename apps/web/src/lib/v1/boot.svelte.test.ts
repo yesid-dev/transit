@@ -11,19 +11,6 @@ import { clearBrowserAdapterManifestForTests } from '#lib/v1/adapter/browserMani
 import OptionalV1ContextHarness from './__fixtures__/OptionalV1ContextHarness.svelte';
 
 const ISO = '2026-07-15T12:00:00Z';
-const manifest = {
-	provider: 'stm',
-	display_name: 'STM',
-	bbox: [-74, 45, -73, 46],
-	attribution: 'STM',
-	dataset_version: 'v1',
-	labels: {},
-	files: {
-		live: { generated_utc: ISO },
-		static: { routes_index: 'static/routes_index.json' },
-	},
-	surfaces: [],
-};
 
 const json = (body: unknown) =>
 	new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
@@ -34,16 +21,14 @@ describe('optional root v1 context recovery', () => {
 		vi.unstubAllGlobals();
 	});
 
-	it('falls back to the public manifest while the root context is still pending', async () => {
+	it('loads the default city schedule while the root context is still pending', async () => {
 		render(OptionalV1ContextHarness, { props: { context: undefined } });
-		const request = vi.fn(async (input: RequestInfo | URL) =>
-			String(input).endsWith('/manifest.json')
-				? json(manifest)
-				: json({ generated_utc: ISO, routes: [] }),
+		const request = vi.fn(async () =>
+			json({ schedule: { date: ISO.slice(0, 10), stops: [], routes: [] } }),
 		);
 		vi.stubGlobal('fetch', request);
 
 		await expect(r2Adapter.static.routesIndex()).resolves.toMatchObject({ routes: [] });
-		expect(request).toHaveBeenCalledTimes(2);
+		expect(request).toHaveBeenCalledExactlyOnceWith('/api/schedule-edition?city=stm');
 	});
 });

@@ -38,6 +38,8 @@
 	import { alertDisplayText } from '#lib/v1/alertDisplay.ts';
 	import { causeLabel, effectLabel } from '#lib/v1/gtfsAlertLabels.ts';
 	import { foldSearchText } from '#lib/search/normalize.ts';
+	import { captureAlerts } from '#lib/live/captureProjection.ts';
+	import { feedState, fetchCaptureSnapshot } from '#lib/live/captureSnapshot.ts';
 
 	import {
 		sortNewestFirst,
@@ -53,31 +55,47 @@
 	import AlertFilters from './sections/AlertFilters.svelte';
 	import AlertLog from './sections/AlertLog.svelte';
 	import AlertBreakdown from './sections/AlertBreakdown.svelte';
-	import { alertHistoryCopy } from './alerts.copy';
+	import { activeAlertCopy, alertHistoryCopy } from './alerts.copy';
 	import {
 		currentAlertWindow,
 		resolveAlertHistoryRange,
 		sameHistoryWindow,
 	} from './data/historySelection';
 
-	let { manifest = null }: { manifest?: Manifest | null } = $props();
+	let { manifest = null, live = false }: { manifest?: Manifest | null; live?: boolean } = $props();
 	const display = transitDisplay();
 
 	const localizeHref = getLocalizeHref();
 
 	const locale: Locale = getLocale();
-	const t = $derived(alertHistoryCopy[locale]);
+	const t = $derived(
+		live ? activeAlertCopy(alertHistoryCopy[locale], locale) : alertHistoryCopy[locale],
+	);
 	const provider = $derived(page.data?.provider);
 	const timeZone = $derived(provider?.timezone ?? manifest?.tz);
 	const alertsAvailable = $derived(providerHasAlerts(provider));
 	const officialAlertsUrl = $derived(provider?.alert_links[locale]);
 
-	const history = createResource((signal) => getAlertHistory({ signal }), {
-		enabled: () => alertsAvailable,
-	});
-	const alertArchiveIndex = createResource((signal) => getAlertArchiveIndex({ signal }), {
-		enabled: () => alertsAvailable,
-	});
+	async function currentAlerts(signal: AbortSignal): Promise<AlertHistory> {
+		if (!manifest) throw new Error('Live alert context unavailable');
+		const snapshot = await fetchCaptureSnapshot(manifest.provider, signal);
+		const now = Date.now();
+		const alertFeed = Object.values(snapshot.feeds).find((feed) => feed.family === 'alerts');
+		if (feedState(alertFeed, now) !== 'live') throw new Error('Current alerts unavailable');
+		return captureAlerts(snapshot, now);
+	}
+	const history = createResource<AlertHistory>(
+		(signal) => (live ? currentAlerts(signal) : getAlertHistory({ signal })),
+		{
+			enabled: () => alertsAvailable,
+		},
+	);
+	const alertArchiveIndex = createResource(
+		(signal) => (live ? Promise.resolve(null) : getAlertArchiveIndex({ signal })),
+		{
+			enabled: () => alertsAvailable,
+		},
+	);
 
 	const VISIBLE_CAP = 25;
 	let expanded = $state(false);
@@ -480,7 +498,7 @@
 	const tocEntries = $derived(navigation.entries);
 	const { navigate } = navigation;
 	const record = createRecordStamp(
-		() => manifest,
+		() => (live ? null : manifest),
 		() => generatedUtc,
 	);
 	const articleMeta = $derived.by((): readonly ArticleMetaEntry[] => {

@@ -253,6 +253,12 @@ vi.mock('#lib/v1/repositories/historic.ts', () => ({
 
 vi.mock('#lib/v1/resource.svelte.ts', () => ({
 	createResource: (fetcher: () => unknown, options: Record<string, unknown> = {}) => {
+		const key = (options.key as (() => string) | undefined)?.();
+		if (key === 'capture-health') {
+			resourceOptions.push({ kind: key, options });
+			const seed = (options.seed as (() => { data: DataHealth } | undefined) | undefined)?.();
+			return { ...ready(seed?.data ?? null), reload: vi.fn() };
+		}
 		getProvenance.mockClear();
 		getDataHealth.mockClear();
 		getHistoricAvailability.mockClear();
@@ -348,6 +354,31 @@ describe('HealthStatus — full manifest render', () => {
 		expect(center.querySelector('[data-slot="health-summary"]')).not.toBeNull();
 		expect(container.querySelector('[data-slot="detail-shell"]')?.parentElement).toBe(container);
 	});
+
+	it.each(['en', 'fr'] as const)(
+		'keeps archived publish lanes and capture feed verdicts visible in %s',
+		(locale) => {
+			const t = copy[locale];
+			const captureHealth = {
+				generated_utc: iso('2026-06-19T12:00:20Z'),
+				feeds: [{ feed: 'alerts', status: 'not_tracked', age_s: null }],
+			};
+			render(HealthStatus, {
+				props: {
+					liveOnly: true,
+					captureHealthSeed: { key: 'capture-health', data: captureHealth },
+				},
+				context: localeContext(locale),
+			});
+
+			const lanes = within(screen.getByRole('list', { name: t.lanes.listLabel }));
+			expect(lanes.getByText(t.lanes.laneLabel.live)).toBeInTheDocument();
+			expect(lanes.getByText(t.lanes.gateVerdict.pass)).toBeInTheDocument();
+			const feeds = within(screen.getByRole('list', { name: t.freshness.listLabel }));
+			expect(feeds.getByText(t.statusVerdict.notTracked)).toBeInTheDocument();
+			expect(feeds.queryByText(t.statusVerdict.failed)).toBeNull();
+		},
+	);
 
 	it('renders the controls and one numbered card per present pipeline section', async () => {
 		const { container } = render(HealthStatus);
@@ -613,7 +644,7 @@ describe('HealthStatus — full manifest render', () => {
 
 		render(HealthStatus, { props: seeds });
 
-		expect(resourceOptions).toHaveLength(3);
+		expect(resourceOptions).toHaveLength(4);
 		for (const [kind, seed] of Object.entries({
 			provenance: seeds.provenanceSeed,
 			'data-health': seeds.dataHealthSeed,
@@ -815,7 +846,7 @@ describe('HealthStatus — Overview and independent resources', () => {
 });
 
 describe('HealthStatus — S11 pipeline lanes', () => {
-	it('renders one row per publish lane (live / static / rollup) + the MAINTENANCE not-applicable row', () => {
+	it('renders archived publish lanes, their gate verdicts and the unavailable maintenance status', () => {
 		render(HealthStatus);
 		const list = screen.getByRole('list', { name: en.lanes.listLabel });
 		expect(within(list).getByText(en.lanes.laneLabel.live)).toBeInTheDocument();
@@ -823,10 +854,12 @@ describe('HealthStatus — S11 pipeline lanes', () => {
 		expect(within(list).getByText(en.lanes.laneLabel.rollup)).toBeInTheDocument();
 		expect(within(list).getByText(en.lanes.laneLabel.maintenance)).toBeInTheDocument();
 		expect(screen.getByText(en.lanes.gateExplain)).toBeInTheDocument();
-	});
-
-	it('renders each lane gate verdict as a chip (pass / warn), and honest-NULL for a pre-0078 lane', () => {
-		render(HealthStatus);
+		const na = document.querySelector('[data-slot="lane-not-applicable"]') as HTMLElement;
+		expect(na).not.toBeNull();
+		expect(within(na).getByText(en.lanes.notApplicable)).toBeInTheDocument();
+		expect(within(na).getByText(en.lanes.maintenanceReason)).toBeInTheDocument();
+		expect(na).toHaveTextContent('publishes no status report');
+		expect(na).not.toHaveTextContent(/heartbeat/i);
 		const live = document.querySelector('[data-slot="lane-row"][data-lane="live"]') as HTMLElement;
 		const stat = document.querySelector(
 			'[data-slot="lane-row"][data-lane="static"]',
@@ -853,16 +886,6 @@ describe('HealthStatus — S11 pipeline lanes', () => {
 		const files = rollup.querySelector('[data-slot="lane-files"]') as HTMLElement;
 		expect(files.querySelector('[data-slot="absent-value"]')).not.toBeNull();
 		expect(within(files).queryByText(en.lanes.filesCount('0', '120'))).toBeNull();
-	});
-
-	it('renders the MAINTENANCE row as honest not-applicable (no heartbeat, plain reason)', () => {
-		render(HealthStatus);
-		const na = document.querySelector('[data-slot="lane-not-applicable"]') as HTMLElement;
-		expect(na).not.toBeNull();
-		expect(within(na).getByText(en.lanes.notApplicable)).toBeInTheDocument();
-		expect(within(na).getByText(en.lanes.maintenanceReason)).toBeInTheDocument();
-		expect(na).toHaveTextContent('publishes no status report');
-		expect(na).not.toHaveTextContent(/heartbeat/i);
 	});
 
 	it('names the update steps in plain French and scopes the version stamp (A2 O S11, G 3.6)', () => {

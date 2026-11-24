@@ -110,14 +110,23 @@ const fixtureData = process.env.TRANSIT_E2E_DATA_PORT
 
 test('every destination runs under the real policy without a violation', async ({ page }) => {
 	const violations: string[] = [];
-	await page.exposeFunction('reportViolation', (directive: string, blocked: string) => {
-		if (!blocked.startsWith(fixtureData)) violations.push(`${directive} ${blocked}`);
-	});
+	await page.exposeFunction(
+		'reportViolation',
+		(directive: string, blocked: string, source: string) => {
+			if (!blocked.startsWith(fixtureData)) violations.push(`${directive} ${blocked} (${source})`);
+		},
+	);
 	await page.addInitScript(() =>
 		addEventListener('securitypolicyviolation', (event) =>
 			(
-				window as unknown as { reportViolation(directive: string, blocked: string): void }
-			).reportViolation(event.effectiveDirective, event.blockedURI),
+				window as unknown as {
+					reportViolation(directive: string, blocked: string, source: string): void;
+				}
+			).reportViolation(
+				event.effectiveDirective,
+				event.blockedURI,
+				`${event.sourceFile}:${event.lineNumber}:${event.columnNumber}`,
+			),
 		),
 	);
 	// networkidle: hydration and the map's lazy imports are requests, so their violations land first.

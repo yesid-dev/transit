@@ -1,7 +1,7 @@
 import { adapter, type AdapterCtx } from '#lib/v1/adapter/index.ts';
 import { providerOf } from '#lib/v1/adapter/r2.core.ts';
 import type { RouteFile, RoutesIndex, StopFile, StopsIndex } from '#lib/v1/schemas/index.ts';
-import { isSlimStopsIndex, toSlimStopsIndex, type SlimStopsIndex } from './stopsSlim';
+import { isSlimStopsIndex, type SlimStopsIndex } from './stopsSlim';
 
 export const getRoutesIndex: (ctx?: AdapterCtx) => Promise<RoutesIndex> = (ctx) =>
 	adapter.static.routesIndex(ctx);
@@ -16,21 +16,13 @@ export const getStopsIndex: (ctx?: AdapterCtx) => Promise<StopsIndex> = (ctx) =>
 
 export async function getStopsIndexSlim(ctx?: AdapterCtx): Promise<SlimStopsIndex> {
 	const fetchFn = ctx?.fetch ?? fetch;
-	try {
-		const res = await fetchFn(`/api/stops/slim?provider=${providerOf(ctx)}`, {
-			signal: ctx?.signal,
-		});
-		if (res.ok) {
-			const body: unknown = await res.json();
-			if (isSlimStopsIndex(body)) return body;
-		}
-	} catch (error) {
-		if (error instanceof DOMException && error.name === 'AbortError') throw error;
-	}
-	if (ctx?.signal?.aborted) {
-		throw new DOMException('getStopsIndexSlim aborted', 'AbortError');
-	}
-	return toSlimStopsIndex(await adapter.static.stopsIndex(ctx));
+	const search = new URLSearchParams({ provider: providerOf(ctx) });
+	const res = await fetchFn(`/api/stops/slim?${search}`, { signal: ctx?.signal });
+	ctx?.signal?.throwIfAborted();
+	if (!res.ok) throw new Error('Schedule stop index unavailable');
+	const body: unknown = await res.json();
+	if (!isSlimStopsIndex(body)) throw new Error('Invalid schedule stop index');
+	return body;
 }
 
 export const getStop: (stopId: string, ctx?: AdapterCtx) => Promise<StopFile | null> = (

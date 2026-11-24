@@ -24,13 +24,21 @@ export default {
   async fetch(request, env, ctx) {
     const { pathname } = new URL(request.url);
     if (isDownloadPath(pathname)) return serveDownload(request, env, ctx);
-    if (pathname.startsWith("/v2/")) return serveQuestion(request, env, ctx);
+    const basemap = /^\/v2\/([a-z0-9][a-z0-9_-]{0,63})\/basemap\/([a-zA-Z0-9_-]+\.pmtiles)$/.exec(pathname);
+    if (pathname.startsWith("/v2/") && !basemap) return serveQuestion(request, env, ctx);
 
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: PREFLIGHT_HEADERS });
     }
     if (request.method !== "GET" && request.method !== "HEAD") {
       return errorResponse(405, { allow: "GET, HEAD, OPTIONS" });
+    }
+    if (basemap) {
+      const [, city, file] = basemap;
+      const response = await serveSnapshot(request, env.SNAPSHOTS, `v1/${city}/static/basemap/${file}`);
+      if (!response) return errorResponse(404);
+      for (const [name, value] of Object.entries(CORS_HEADERS)) response.headers.set(name, value);
+      return response;
     }
 
     let decodedPathname;

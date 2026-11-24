@@ -1631,7 +1631,7 @@ function networkOracle(fixture, locale, view) {
 				},
 				{
 					value: finite(live.non_responding),
-					text: countText(live.non_responding, locale),
+					text: finite(live.non_responding) == null ? '' : countText(live.non_responding, locale),
 					unit: 'count',
 				},
 			],

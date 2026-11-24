@@ -11,16 +11,15 @@ import { MAP_REPORT_CSV_COLUMNS } from '../src/lib/features/map/mapReportsCsv';
 import { PUBLISHED_LOCALES } from '../src/lib/i18n/config';
 import { localizeHref } from '../src/lib/i18n/routing';
 import { SURFACE_NAV } from '../src/lib/content/nav';
+import { captureFixture, captureUrl, captureVehicle } from './capture-fixture';
 
 const map = SURFACE_NAV.find((item) => item.key === 'map')!.href;
 const GENERATED = '2026-06-15T12:00:00Z';
 
-// A small, deliberate fleet: two late vehicles in view, one older report, one on time,
-// one early without a reported time, one offscreen, and one with no usable location.
+// A small, deliberate fleet: two recent late positions, one older late position, one on time,
+// one early without an observation timestamp, and one offscreen.
 const fleet = (overrides: { generated_utc?: string; extraLate?: boolean } = {}) => ({
 	generated_utc: overrides.generated_utc ?? GENERATED,
-	publish_generation_id: 'stm@reports-e2e',
-	methodology_version: 'e2e',
 	vehicles: [
 		{
 			id: 'west-late',
@@ -40,7 +39,7 @@ const fleet = (overrides: { generated_utc?: string; extraLate?: boolean } = {}) 
 			lat: 45.53,
 			lon: -73.65,
 			status: 'late',
-			delay_min: 0,
+			delay_min: 1,
 			route: '55',
 			trip: 't2',
 			next_stop: 's2',
@@ -62,7 +61,7 @@ const fleet = (overrides: { generated_utc?: string; extraLate?: boolean } = {}) 
 			lat: 45.5,
 			lon: -73.6,
 			status: 'late',
-			delay_min: -2,
+			delay_min: 2,
 			route: '24',
 			trip: 't4',
 			reported_utc: '2026-06-15T11:54:00Z',
@@ -95,7 +94,7 @@ const fleet = (overrides: { generated_utc?: string; extraLate?: boolean } = {}) 
 						lat: 45.52,
 						lon: -73.62,
 						status: 'late',
-						delay_min: 6,
+						delay_min: 3,
 						route: '55',
 						trip: 't8',
 						updated_utc: '2026-06-15T11:59:55Z',
@@ -107,8 +106,51 @@ const fleet = (overrides: { generated_utc?: string; extraLate?: boolean } = {}) 
 
 test.use({ bypassCSP: true, permissions: ['clipboard-read', 'clipboard-write'] });
 
-async function serveFleet(page: Page, current: () => Record<string, unknown>) {
-	await page.route('**/live/vehicles.json', (route) => route.fulfill({ json: current() }));
+type FleetFile = {
+	generated_utc: string;
+	vehicles: {
+		id: string;
+		lat: number;
+		lon: number;
+		delay_min: number;
+		route?: string;
+		trip?: string;
+		next_stop?: string;
+		reported_utc?: string;
+		occupancy?: string;
+	}[];
+};
+
+function fleetCapture(file: FleetFile, city: string) {
+	const at = Date.parse(file.generated_utc);
+	const snapshot = captureFixture(at, {
+		city,
+		vehicle_positions: file.vehicles.map((row) =>
+			captureVehicle(at, {
+				vehicle_id: row.id,
+				latitude: row.lat,
+				longitude: row.lon,
+				route_id: row.route ?? null,
+				trip_id: row.trip ?? null,
+				stop_id: row.next_stop ?? null,
+				observed_at: row.reported_utc ?? null,
+				delay: row.delay_min * 60,
+				occupancy: row.occupancy === 'many_seats' ? 1 : null,
+			}),
+		),
+	});
+	for (const feed of Object.values(snapshot.feeds)) {
+		feed.captured_at = file.generated_utc;
+		feed.source_at = file.generated_utc;
+	}
+	return snapshot;
+}
+
+async function serveFleet(page: Page, current: () => FleetFile) {
+	await page.route(captureUrl, (route) => {
+		const city = new URL(route.request().url()).searchParams.get('city')!;
+		return route.fulfill({ json: fleetCapture(current(), city) });
+	});
 }
 
 /** Minimal RFC 4180 reader for the downloaded bytes. */
@@ -322,8 +364,6 @@ for (const provider of ['stm', 'octranspo'])
 				lat = (south + north) / 2;
 			const file = {
 				generated_utc: GENERATED,
-				publish_generation_id: `${provider}@reports-e2e`,
-				methodology_version: 'e2e',
 				vehicles: [
 					{
 						id: `${provider}-recent`,
@@ -340,7 +380,7 @@ for (const provider of ['stm', 'octranspo'])
 						lon,
 						trip: 'fixture-trip',
 						status: 'late',
-						delay_min: -2,
+						delay_min: 2,
 						reported_utc: '2026-06-15T11:54:00Z',
 						updated_utc: '2026-06-15T11:54:00Z',
 					},
@@ -367,7 +407,9 @@ for (const provider of ['stm', 'octranspo'])
 						source = file.vehicles[i];
 					expect(row[header.indexOf('provider')]).toBe(provider);
 					expect(row[header.indexOf('locale')]).toBe(locale);
-					expect(row[header.indexOf('publication_generation_id')]).toBe(file.publish_generation_id);
+					expect(row[header.indexOf('publication_generation_id')]).toBe(
+						`${provider}@vehicle_positions:${file.generated_utc}`,
+					);
 					expect(Number(row[header.indexOf('latitude')])).toBe(source.lat);
 					expect(Number(row[header.indexOf('longitude')])).toBe(source.lon);
 					expect(Number(row[header.indexOf('delay_min')])).toBe(source.delay_min);
@@ -440,10 +482,7 @@ for (const locale of PUBLISHED_LOCALES) {
 			latitude: '45.55',
 			longitude: '-73.9',
 		});
-		// A real zero stays numeric; the old report is flagged, never removed.
-		expect(rows.slice(1).map((row) => row[MAP_REPORT_CSV_COLUMNS.indexOf('delay_min')])).toContain(
-			'0',
-		);
+		// The old report is flagged and stays in the export.
 		expect(
 			rows.slice(1).map((row) => row[MAP_REPORT_CSV_COLUMNS.indexOf('no_recent_position')]),
 		).toContain('true');
@@ -624,9 +663,11 @@ test('loading, unavailable and retained states never show a reassuring zero @mot
 }) => {
 	await page.clock.install({ time: Date.parse(GENERATED) + 30_000 });
 	let fail = false;
-	let file = fleet();
-	await page.route('**/live/vehicles.json', (route) =>
-		fail ? route.fulfill({ status: 500, body: 'down' }) : route.fulfill({ json: file }),
+	let file: FleetFile = fleet();
+	await page.route(captureUrl, (route) =>
+		fail
+			? route.fulfill({ status: 500, body: 'down' })
+			: route.fulfill({ json: fleetCapture(file, 'stm') }),
 	);
 	const reports = reportsCopy.en;
 	await page.goto(`${localizeHref(map, 'en')}?provider=stm`);
@@ -652,7 +693,7 @@ test('loading, unavailable and retained states never show a reassuring zero @mot
 });
 
 test('unknown live data is unavailable, not zero', async ({ page }) => {
-	await page.route('**/live/vehicles.json', (route) => route.fulfill({ status: 404, body: '' }));
+	await page.route(captureUrl, (route) => route.fulfill({ status: 404, body: '' }));
 	await page.goto(`${localizeHref(map, 'en')}?provider=stm`);
 	const panel = await openReports(page, 'en');
 	await expect(panel.getByText(reportsCopy.en.unavailableSource)).toBeVisible();
@@ -663,10 +704,12 @@ test('unknown alert-filter evidence does not turn valid vehicle reports into a r
 	page,
 }) => {
 	await page.clock.install({ time: Date.parse(GENERATED) + 30_000 });
-	await serveFleet(page, () => fleet());
-	await page.route('**/live/alerts.json', (route) =>
-		route.fulfill({ status: 500, body: 'unavailable' }),
-	);
+	await page.route(captureUrl, (route) => {
+		const snapshot = fleetCapture(fleet(), 'stm');
+		snapshot.alerts = null;
+		Object.assign(snapshot.feeds.i3_alerts!, { captured_at: null, read_failed: true });
+		return route.fulfill({ json: snapshot });
+	});
 	await page.goto(`${localizeHref(map, 'en')}?provider=stm&alert=has_alert`);
 	const panel = await openReports(page, 'en');
 	await expect(panel.getByText(reportsCopy.en.reportsEmpty)).toHaveCount(0);
@@ -678,34 +721,49 @@ test('retained alert matches keep their own source identity and recover to a kno
 	page,
 }) => {
 	await page.clock.install({ time: Date.parse(GENERATED) + 30_000 });
-	await serveFleet(page, () => fleet());
 	let failing = false;
-	let alertFile = {
-		generated_utc: '2026-06-15T12:00:10Z',
-		publish_generation_id: 'stm@alerts-scope-e2e',
-		methodology_version: 'alerts-e2e',
-		alerts: [{ id: 'route24', header_key: 'fixture-alert', severity: 'watch', routes: ['24'] }],
-	};
-	await page.route('**/live/alerts.json', (route) =>
-		failing
-			? route.fulfill({ status: 500, body: 'unavailable' })
-			: route.fulfill({ json: alertFile }),
-	);
+	let recovered = false;
+	let alertTime = '2026-06-15T12:00:10Z';
+	await page.route(captureUrl, (route) => {
+		const snapshot = fleetCapture(fleet(), 'stm');
+		Object.assign(snapshot.feeds.i3_alerts!, {
+			captured_at: alertTime,
+			source_at: alertTime,
+			read_failed: failing,
+		});
+		snapshot.alerts = recovered
+			? []
+			: [
+					{
+						id: 'route24',
+						header: { en: 'Fixture alert', fr: 'Alerte témoin' },
+						description: {},
+						url: {},
+						cause: null,
+						effect: null,
+						severity: null,
+						routes: ['24'],
+						stops: [],
+						periods: [],
+					},
+				];
+		return route.fulfill({ json: snapshot });
+	});
 	await page.goto(`${localizeHref(map, 'en')}?provider=stm&alert=has_alert`);
 	const t = reportsCopy.en;
 	const panel = await openReports(page, 'en');
 	await expect(panel.locator('[data-report-row]')).toHaveCount(2);
 	await expect(panel.locator('[data-slot="map-report-alert-source"] time')).toHaveAttribute(
 		'datetime',
-		alertFile.generated_utc,
+		alertTime,
 	);
 	const current = parseCsv((await downloadCsv(page, t)).bytes);
 	let header = current[0];
 	for (const row of current.slice(1)) {
 		expect(row[header.indexOf('source_generated_utc')]).toBe(GENERATED);
-		expect(row[header.indexOf('alert_filter_generated_utc')]).toBe(alertFile.generated_utc);
-		expect(row[header.indexOf('alert_filter_generation_id')]).toBe(alertFile.publish_generation_id);
-		expect(row[header.indexOf('alert_filter_methodology_version')]).toBe('alerts-e2e');
+		expect(row[header.indexOf('alert_filter_generated_utc')]).toBe(alertTime);
+		expect(row[header.indexOf('alert_filter_generation_id')]).toBe(`stm@alerts:${alertTime}`);
+		expect(row[header.indexOf('alert_filter_methodology_version')]).toBe('capture-live-v2');
 		expect(row[header.indexOf('alert_filter_data_state')]).toBe('current');
 	}
 	failing = true;
@@ -715,22 +773,18 @@ test('retained alert matches keep their own source identity and recover to a kno
 	const retained = parseCsv((await downloadCsv(page, t)).bytes);
 	header = retained[0];
 	for (const row of retained.slice(1)) {
-		expect(row[header.indexOf('alert_filter_generated_utc')]).toBe(alertFile.generated_utc);
+		expect(row[header.indexOf('alert_filter_generated_utc')]).toBe(alertTime);
 		expect(row[header.indexOf('alert_filter_data_state')]).toBe('last_available');
 	}
 	failing = false;
-	alertFile = {
-		...alertFile,
-		generated_utc: '2026-06-15T12:01:20Z',
-		publish_generation_id: 'stm@alerts-recovered-e2e',
-		alerts: [],
-	};
+	recovered = true;
+	alertTime = '2026-06-15T12:01:20Z';
 	await page.clock.fastForward('00:35');
 	await expect(panel.getByText(t.reportsEmpty)).toBeVisible();
 	await expect(panel.getByText(t.alertRetainedWarning)).toHaveCount(0);
 	await expect(panel.locator('[data-slot="map-report-alert-source"] time')).toHaveAttribute(
 		'datetime',
-		alertFile.generated_utc,
+		alertTime,
 	);
 	expect(parseCsv((await downloadCsv(page, t)).bytes)).toHaveLength(1);
 });

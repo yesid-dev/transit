@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const harness = vi.hoisted(() => ({
 	ctx: { fetch: vi.fn(), providerId: 'octranspo', manifest: { provider: 'octranspo' } },
-	getProvenance: vi.fn(),
+	getCaptureDataHealth: vi.fn(),
 	getDataHealth: vi.fn(),
 	getHistoricAvailability: vi.fn(),
 	serverV1Context: vi.fn(),
@@ -11,11 +11,8 @@ const harness = vi.hoisted(() => ({
 
 vi.mock('cloudflare:workers', () => ({ env: { QUESTION_PROXY: { fetch: harness.engineFetch } } }));
 
-vi.mock('#lib/v1/repositories/provenance.ts', () => ({
-	getProvenance: (...args: unknown[]) => harness.getProvenance(...args),
-}));
-
 vi.mock('#lib/v1/repositories/dataHealth.ts', () => ({
+	getCaptureDataHealth: (...args: unknown[]) => harness.getCaptureDataHealth(...args),
 	getDataHealth: (...args: unknown[]) => harness.getDataHealth(...args),
 }));
 
@@ -51,7 +48,7 @@ function event(path = '/status?frameMode=live'): Parameters<typeof load>[0] {
 }
 
 beforeEach(() => {
-	harness.getProvenance.mockReset();
+	harness.getCaptureDataHealth.mockReset();
 	harness.getDataHealth.mockReset();
 	harness.getHistoricAvailability.mockReset();
 	harness.serverV1Context.mockReset().mockReturnValue(harness.ctx);
@@ -60,13 +57,13 @@ beforeEach(() => {
 
 describe('/status server seeds', () => {
 	it('starts all honesty reads concurrently through one request context', async () => {
-		const provenance = { generated_utc: '2026-07-14T12:00:00Z', freshness: [] };
+		const captureHealth = { generated_utc: '2026-07-14T12:00:20Z', feeds: [] };
 		const dataHealth = { generated_utc: '2026-07-14T12:00:00Z', lanes: [] };
 		const history = { generated_utc: '2026-07-14T12:00:00Z', families: [] };
-		const provenanceRead = deferred<typeof provenance>();
 		const dataHealthRead = deferred<typeof dataHealth>();
+		const captureHealthRead = deferred<typeof captureHealth>();
 		const historyRead = deferred<typeof history>();
-		harness.getProvenance.mockReturnValue(provenanceRead.promise);
+		harness.getCaptureDataHealth.mockReturnValue(captureHealthRead.promise);
 		harness.getDataHealth.mockReturnValue(dataHealthRead.promise);
 		harness.getHistoricAvailability.mockReturnValue(historyRead.promise);
 
@@ -74,33 +71,33 @@ describe('/status server seeds', () => {
 		await Promise.resolve();
 
 		expect(harness.serverV1Context).toHaveBeenCalledTimes(1);
-		expect(harness.getProvenance).toHaveBeenCalledWith(harness.ctx);
+		expect(harness.getCaptureDataHealth).toHaveBeenCalledWith(harness.ctx);
 		expect(harness.getDataHealth).toHaveBeenCalledWith(harness.ctx);
 		expect(harness.getHistoricAvailability).toHaveBeenCalledWith(harness.ctx);
 
-		provenanceRead.resolve(provenance);
 		dataHealthRead.resolve(dataHealth);
+		captureHealthRead.resolve(captureHealth);
 		historyRead.resolve(history);
 
 		await expect(pending).resolves.toEqual({
 			view: 'live',
-			provenanceSeed: { key: 'provenance', data: provenance },
 			dataHealthSeed: { key: 'data-health', data: dataHealth },
+			captureHealthSeed: { key: 'capture-health', data: captureHealth },
 			historicAvailabilitySeed: { key: 'historic-availability', data: history },
 		});
 	});
 
 	it('keeps successful seeds when one independent honesty read fails', async () => {
-		const provenance = { generated_utc: '2026-07-14T12:00:00Z', freshness: [] };
+		const dataHealth = { generated_utc: '2026-07-14T12:00:00Z', lanes: [{ lane: 'rollup' }] };
 		const history = { generated_utc: '2026-07-14T12:00:00Z', families: [] };
-		harness.getProvenance.mockResolvedValue(provenance);
-		harness.getDataHealth.mockRejectedValue(new Error('live tier unavailable'));
+		harness.getCaptureDataHealth.mockRejectedValue(new Error('live tier unavailable'));
+		harness.getDataHealth.mockResolvedValue(dataHealth);
 		harness.getHistoricAvailability.mockResolvedValue(history);
 
 		await expect(load(event())).resolves.toEqual({
 			view: 'live',
-			provenanceSeed: { key: 'provenance', data: provenance },
-			dataHealthSeed: null,
+			dataHealthSeed: { key: 'data-health', data: dataHealth },
+			captureHealthSeed: null,
 			historicAvailabilitySeed: { key: 'historic-availability', data: history },
 		});
 	});
@@ -119,6 +116,7 @@ it('streams day coverage and current methods from independent engine requests in
 	expect(harness.engineFetch.mock.calls[0]?.[0].headers.get('x-transit-visitor-ip')).toBe(
 		'192.0.2.11',
 	);
+	expect(harness.getCaptureDataHealth).not.toHaveBeenCalled();
 	expect(harness.getDataHealth).not.toHaveBeenCalled();
 	await expect(data.record.methods).resolves.toEqual({ kind: 'answer', answer: [] });
 	health.resolve(new Response(null, { status: 503, headers: { 'retry-after': '30' } }));

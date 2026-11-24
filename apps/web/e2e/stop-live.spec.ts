@@ -3,6 +3,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { detailCopy } from '../src/lib/features/stops/stops.copy';
 import { PUBLISHED_LOCALES } from '../src/lib/i18n/config';
 import { localizeHref } from '../src/lib/i18n/routing';
+import { captureTrip, captureTripReport } from './capture-fixture';
 
 const base = Date.parse('2026-06-15T12:00:00Z');
 const at = (seconds: number) => new Date(base + seconds * 1000).toISOString();
@@ -19,7 +20,7 @@ test.beforeEach(async ({ page }) => {
 async function serveDepartures(page: Page, body: () => unknown) {
 	let release: () => void = () => {};
 	let ready = new Promise<void>((resolve) => (release = resolve));
-	await page.route(/\/v1\/stm\/live\/stop_departures\.json/, async (route) => {
+	await page.route('**/api/live-trips?city=stm&stop=T6-HUB', async (route) => {
 		await ready;
 		await route.fulfill({ json: body() });
 	});
@@ -92,7 +93,15 @@ for (const locale of PUBLISHED_LOCALES) {
 				),
 			},
 		};
-		const feed = await serveDepartures(page, () => report);
+		const feed = await serveDepartures(page, () =>
+			captureTripReport(
+				'stm',
+				report.generated_utc,
+				report.stops['T6-HUB'].map((row) =>
+					captureTrip(row.trip, row.route, [{ ...row, stop: 'T6-HUB' }]),
+				),
+			),
+		);
 		for (const width of [320, 390, 768, 1280]) {
 			await page.setViewportSize({ width, height: 900 });
 			feed.hold();
@@ -152,20 +161,22 @@ for (const locale of PUBLISHED_LOCALES) {
 	});
 
 	test(`${locale}: each absence says what it is, with no order control`, async ({ page }) => {
-		let report: unknown = { generated_utc: at(0), stops: {} };
-		await page.route(/\/v1\/stm\/live\/stop_departures\.json/, (route) =>
-			report == null ? route.abort() : route.fulfill({ json: report }),
+		let reportedAt: string | null = at(0);
+		await page.route('**/api/live-trips?city=stm&stop=*', (route) =>
+			reportedAt == null
+				? route.abort()
+				: route.fulfill({ json: captureTripReport('stm', reportedAt, []) }),
 		);
-		const cases: [string, unknown, RegExp | string, boolean][] = [
-			['T6-METRO', { generated_utc: at(0), stops: {} }, live.noCapability, false],
-			['T6-NONE', { generated_utc: at(0), stops: {} }, live.noService, true],
-			['T6-HUB', { generated_utc: at(0), stops: {} }, live.none, true],
-			['T6-HUB', { generated_utc: at(-600), stops: {} }, live.staleNone, true],
+		const cases: [string, string, RegExp | string, boolean][] = [
+			['T6-METRO', at(0), live.noCapability, false],
+			['T6-NONE', at(0), live.noService, true],
+			['T6-HUB', at(0), live.none, true],
+			['T6-HUB', at(-600), live.staleNone, true],
 		];
 		for (const width of [320, 1280]) {
 			await page.setViewportSize({ width, height: 900 });
-			for (const [stop, body, sentence, stamped] of cases) {
-				report = body;
+			for (const [stop, timestamp, sentence, stamped] of cases) {
+				reportedAt = timestamp;
 				await page.goto(localizeHref(`/stop/${stop}?tab=detail`, locale, 'stm'));
 				const panel = panelOf(page);
 				await expect(panel.getByTestId('stop-live-state')).toContainText(sentence);
@@ -179,7 +190,7 @@ for (const locale of PUBLISHED_LOCALES) {
 				await expect(page.locator('html')).toHaveJSProperty('scrollWidth', width);
 			}
 			// A first report that cannot be read offers a retry, not an empty list.
-			report = null;
+			reportedAt = null;
 			await page.goto(localizeHref('/stop/T6-HUB?tab=detail', locale, 'stm'));
 			const panel = panelOf(page);
 			await expect(

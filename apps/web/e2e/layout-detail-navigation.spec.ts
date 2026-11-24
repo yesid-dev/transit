@@ -3,6 +3,7 @@ import { expect, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { captureUrl, layoutCapture } from './capture-fixture';
 const shots = fileURLToPath(new URL('../../../.cache/cohesion/after/', import.meta.url));
 mkdirSync(shots, { recursive: true });
 test.describe.configure({ mode: 'parallel' });
@@ -84,16 +85,21 @@ type Probe = { loaded: boolean; project(c: number[]): { x: number; y: number } }
 // A long unbroken alert is what once pushed detail content past the panel edge.
 const longAlert = {
 	id: 'layout-long-alert',
-	header_key: 'layout-long-alert',
-	severity: 'high',
+	severity: 'WARNING',
 	routes: ['24'],
 	stops: [],
-	header_text:
-		'Certains arrets sont annules, deplaces ou relocalises. 54393 (Monk / Philippe-Turcot) est deplace au coin nord-est jusqu a nouvel ordre.',
-	header_text_en:
-		'Some stops are cancelled, moved or relocated. 54393 (Monk / Philippe-Turcot) is moved to the northeast corner until further notice.',
-	url: 'https://www.stm.info/fr/infos/etat-du-service',
-	url_en: 'https://www.stm.info/en/info/service-status',
+	header: {
+		fr: 'Certains arrets sont annules, deplaces ou relocalises. 54393 (Monk / Philippe-Turcot) est deplace au coin nord-est jusqu a nouvel ordre.',
+		en: 'Some stops are cancelled, moved or relocated. 54393 (Monk / Philippe-Turcot) is moved to the northeast corner until further notice.',
+	},
+	description: {},
+	url: {
+		fr: 'https://www.stm.info/fr/infos/etat-du-service',
+		en: 'https://www.stm.info/en/info/service-status',
+	},
+	cause: null,
+	effect: null,
+	periods: [],
 };
 async function expectContained(page: Page, selector: string) {
 	const escaped = await page.locator(selector).evaluate((panel) => {
@@ -123,20 +129,18 @@ for (const provider of ['stm', 'octranspo'])
 				await page.route('**/v1/**', async (route) => {
 					const url = new URL(route.request().url());
 					url.pathname = '/__layout/fresh' + url.pathname;
-					const response = await route.fetch({ url: url.href });
-					if (url.pathname.endsWith('/live/vehicles.json')) {
-						const data = await response.json();
-						data.vehicles.push({
-							...data.vehicles[0],
-							id: 'layout-bus-2',
-							lon: data.vehicles[0].lon + 0.002,
-						});
-						await route.fulfill({ response, json: data });
-					} else if (url.pathname.endsWith('/live/alerts.json')) {
-						const data = await response.json();
-						data.alerts = [longAlert];
-						await route.fulfill({ response, json: data });
-					} else await route.fulfill({ response });
+					await route.fulfill({ response: await route.fetch({ url: url.href }) });
+				});
+				await page.route(captureUrl, (route) => {
+					const data = layoutCapture(provider);
+					const first = data.vehicle_positions![0]!;
+					data.vehicle_positions!.push({
+						...first,
+						vehicle_id: 'layout-bus-2',
+						longitude: first.longitude + 0.002,
+					});
+					data.alerts = [{ ...longAlert, periods: [] }];
+					return route.fulfill({ json: data });
 				});
 				await page.goto(
 					`${locale === 'fr' ? '/fr' : ''}/map?provider=${provider}&focus=vehicle:layout-bus`,

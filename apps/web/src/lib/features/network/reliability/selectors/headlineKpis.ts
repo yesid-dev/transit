@@ -72,9 +72,10 @@ export function selectHeadlineKpis(net: NetworkFile, labels: HeadlineKpisLabels)
 				key: 'vehicleCount',
 			},
 			{
-				value: labels.fmtCount(net.silentTrips),
+				value: net.silentTrips == null ? null : labels.fmtCount(net.silentTrips),
 				label: labels.notReporting,
 				key: 'silentTrip',
+				...(net.silentTrips == null ? { absentReason: 'not-reported' as const } : {}),
 			},
 		],
 	};

@@ -1,12 +1,12 @@
 <script lang="ts">
 	import MapDetailNavigation from './MapDetailNavigation.svelte';
 	import { providerAttribution } from '#lib/i18n/providerAttribution.ts';
-	import { hasOccupancy } from '#lib/site/transitDisplay.ts';
 	import { liveTimingFor } from '#lib/components/map/liveTiming.ts';
 	import { liveReader } from '#lib/v1/adapter/index.ts';
 	import { provideLiveAbsenceContext } from '#lib/site/absence.ts';
 	import { measureMapFocusInset } from './mapFocusInset';
 	import { providerHasAlerts } from '#lib/v1/providers.ts';
+	import { lineIsScheduleOnly } from '#lib/site/providerCapabilities.ts';
 	import { onMount, tick, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -32,7 +32,7 @@
 	import { createFilterStore, fromSearchParams } from '#lib/filters/index.ts';
 	import { nearTargetFromSearchParams } from '#lib/search/mapNear.ts';
 	import { parseMapFocus } from '#lib/search/mapFocus.ts';
-	import { lineLabel, stopDisplayName } from '#lib/site/transitDisplay.ts';
+	import { hasOccupancy, lineLabel, stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { RightPanel } from '#lib/components/shell/index.ts';
 	import { MapStage, nearestStops, type WithDistance } from '#lib/components/map/index.ts';
 	import { createVehicleMotion } from './vehicleMotion';
@@ -231,7 +231,17 @@
 		staleCutoffS: liveTimingFor(manifest).staleCutoffS,
 		serverNow: () => dataClock.serverNow,
 		alertsAvailable,
+		scheduleOnly: (id, type) => lineIsScheduleOnly(page.data.provider, id, type),
+		setTripScope: live.setTripScope,
 	});
+	const mapVehicles = $derived(
+		live.vehicles && {
+			...live.vehicles,
+			vehicles: live.vehicles.vehicles.filter(
+				(vehicle) => !vehicle.route || !session.scheduledRouteIds.includes(vehicle.route),
+			),
+		},
+	);
 	const runtime = createMapRuntime({
 		selection: session,
 		readFeed: readMapFeed,
@@ -290,6 +300,11 @@
 	const selectedDetail = $derived(session.detail);
 	const selectionPresence = $derived(session.presence);
 	const selectionSourceHealth = $derived(session.sourceHealth);
+	const tripRefreshing = $derived(
+		!!(session.selected?.kind === 'stop'
+			? live.familyStates.departures.refreshing
+			: live.familyStates.trips.refreshing),
+	);
 	const selectedVehicleAbsence = $derived(session.vehicleAbsence);
 	const detailSurfaceKey = $derived(session.surfaceKey);
 	const hoverPeek = $derived(session.hoverPeek);
@@ -332,7 +347,7 @@
 	const reportView = $derived.by(() => {
 		const health = live.familyStates.vehicles.health;
 		return buildMapReportView({
-			source: live.vehicles,
+			source: mapVehicles,
 			health: {
 				retained: health.retained,
 				failing:
@@ -603,7 +618,7 @@
 	}
 
 	const motionFrame = $derived(
-		vehicleMotion.read(live.vehicles, {
+		vehicleMotion.read(mapVehicles, {
 			preference: motionMode.current,
 			reducedMotion: $prefersReducedMotion,
 			ready: hasFirstIdle,
@@ -760,6 +775,7 @@
 				notReporting={selectedVehicleAbsence}
 				selectionPresence={selectionPresence}
 				selectionSourceHealth={selectionSourceHealth}
+				{tripRefreshing}
 				onrefresh={live.refresh}
 				onselect={selectFromDetail}
 				onpreview={(next) => void session.setHovered(next)}
@@ -980,6 +996,7 @@
 			notReporting={selectedVehicleAbsence}
 			{selectionPresence}
 			{selectionSourceHealth}
+			{tripRefreshing}
 			onrefresh={live.refresh}
 			onselect={selectFromDetail}
 			onpreview={(next) => void session.setHovered(next)}

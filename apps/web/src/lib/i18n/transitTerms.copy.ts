@@ -26,6 +26,7 @@ const terms = {
 		vehicle: { noun: 'Vehicle', noRecentPosition: 'No recent position' },
 		/** Lines left out of rates, counts and rankings. */
 		noLiveData: 'No live data',
+		refreshingTripData: 'Refreshing live trip data…',
 		completeDay: 'Complete day',
 		/** `shown` is `count` as the caller formatted it for this locale. */
 		completeDays: (count: number, shown: string) =>
@@ -63,6 +64,7 @@ const terms = {
 		},
 		vehicle: { noun: 'Véhicule', noRecentPosition: 'Aucune position récente reçue' },
 		noLiveData: 'Aucune donnée en direct',
+		refreshingTripData: 'Actualisation des données en direct des trajets…',
 		completeDay: 'Journée complète',
 		// French counts 0 and 1 in the singular.
 		completeDays: (count: number, shown: string) =>

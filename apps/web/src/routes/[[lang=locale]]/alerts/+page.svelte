@@ -8,5 +8,5 @@
 {#if data.alertRecord}
 	<AlertsRecord data={data.alertRecord} locale={data.lang} />
 {:else}
-	<AlertHistory manifest={data.v1?.manifest} />
+	<AlertHistory manifest={data.v1?.manifest} live />
 {/if}

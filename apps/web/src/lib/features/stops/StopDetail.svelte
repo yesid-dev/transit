@@ -1,14 +1,16 @@
 <script lang="ts">
+	import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
 	import { createRecordStamp } from '#lib/v1/recordStamp.svelte.ts';
 	import ArticleHeader from '#lib/components/layout/TransitArticleHeader.svelte';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	const display = transitDisplay();
 	import { provideLiveAbsenceContext } from '#lib/site/absence.ts';
+	import { lineIsScheduleOnly } from '#lib/site/providerCapabilities.ts';
 	import { getV1Runtime } from '#lib/v1/runtime.ts';
 	const clock = getV1Runtime().clock;
 	import { feedPresentation } from '#lib/v1/live/livePresentation.ts';
-	import { providerHasAlerts, routeHasNoLiveData } from '#lib/v1/providers.ts';
+	import { providerHasAlerts } from '#lib/v1/providers.ts';
 	import { CollapsibleSection, type TocEntry } from '@yesid/ui/brand';
 	import { Button } from '@yesid/ui/button';
 	import { onMount, untrack } from 'svelte';
@@ -134,7 +136,14 @@
 	const detailTabController = createDetailTabController(new URL(page.url.href));
 	$effect(() => detailTabController.syncFromUrl(new URL(page.url.href)));
 
-	const { live, resource: departureReport } = createLiveResource(manifest, 'departures');
+	const { live, resource: departureReport } = createLiveResource(
+		manifest,
+		'departures',
+		untrack(() => ({ kind: 'stop', id })),
+	);
+	$effect(() => {
+		live.setTripScope({ kind: 'stop', id });
+	});
 	provideLiveAbsenceContext(() => ({ familyStates: live.familyStates }));
 	const { live: alertLive, resource: alertReport } = createLiveResource(manifest, 'alerts');
 	const departures = $derived<readonly StopDeparture[] | null>(
@@ -181,6 +190,7 @@
 	// The same published weekly row the home page's "Most delayed stops" reads.
 	const weeklyIndex = createResource((signal) => getPublishedReliabilityIndex({ signal }), {
 		key: () => 'stop-weekly-record',
+		enabled: () => !frameLive,
 	});
 	const recordAnswer = $derived(
 		presentStopRecord({ stopId: id, index: weeklyIndex, now: clock.serverNow }, locale, {
@@ -194,6 +204,7 @@
 
 	const reliability = createResource((signal) => getStopReliability(id, { signal }), {
 		key: () => id,
+		enabled: () => !frameLive,
 	});
 	const record = createRecordStamp(
 		() => manifest,
@@ -223,6 +234,7 @@
 		return createStopHistoryResource(
 			stopId,
 			historyRangeRequestFromSearchParams(new URLSearchParams(page.url.search)),
+			frameLive,
 		);
 	}
 	const initialHistoryEntityId = untrack(() => id);
@@ -267,8 +279,7 @@
 			reportStale: departureHealth.isStale,
 			servedLines,
 			scheduled: stop.data?.scheduled ?? null,
-			lineHasNoLiveData: (line) =>
-				routeHasNoLiveData(manifest.provider, display.directory.type(line)),
+			lineHasNoLiveData: (line) => lineIsScheduleOnly(provider, line, display.directory.type(line)),
 			lineNumber: (line) => display.line(line),
 			order: liveOrder,
 		}),
@@ -487,6 +498,9 @@
 						subtitle={t.live.changing}
 						anchor="stop-detail-departures"
 					>
+						{#if live.familyStates.departures.refreshing}
+							<p role="status">{transitTerms[locale].refreshingTripData}</p>
+						{/if}
 						<ResourceBoundary resource={departureReport} lang={locale}>
 							{#snippet children(_report)}
 								<div class="stop-next" data-state={liveView.kind}>

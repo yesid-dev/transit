@@ -143,6 +143,16 @@ test("GET missing key returns 404", async () => {
   assert.equal(response.status, 404);
 });
 
+test("v2 basemap exposes only the public tile archive and supports a byte range", async () => {
+  const url = "https://data.yesid.dev/v2/stm/basemap/montreal.pmtiles";
+  const result = await worker.fetch(new Request(url, { headers: { range: "bytes=0-15" } }), makeEnv());
+  assert.equal(result.status, 206);
+  assert.equal(result.headers.get("content-range"), "bytes 0-15/200");
+  assert.equal(await result.text(), "P".repeat(16));
+  const invalid = await worker.fetch(new Request(url.replace("montreal.pmtiles", "%2fmanifest.json")), makeEnv());
+  assert.equal(invalid.status, 404);
+});
+
 test("GET path outside /data/v1 returns 404", async () => {
   for (const path of [
     "/data/secrets.txt",

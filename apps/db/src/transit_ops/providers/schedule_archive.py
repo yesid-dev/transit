@@ -47,6 +47,7 @@ class ArchiveScheduleContext:
     search_routes: tuple[dict[str, Any], ...]
     search_stops: tuple[dict[str, Any], ...]
     route_directions: Mapping[str, list[dict[str, Any]]]
+    route_shapes: Mapping[str, list[dict[str, Any]]]
 
     def __init__(
         self,
@@ -97,6 +98,9 @@ class ArchiveScheduleContext:
             raise InvalidScheduleEdition(dataset_version_id, "duplicate_stop_ids")
         days = _days(rows, trips, dates, edition_sha256)
         branches: dict[tuple[str, int, str], Counter[tuple[str, ...]]] = defaultdict(Counter)
+        shapes_by_branch: dict[tuple[str, int, str, tuple[str, ...]], Counter[str]] = defaultdict(
+            Counter
+        )
         for row in rows["trips"]:
             trip_id = row["trip_id"]
             if trip_id in trips:
@@ -104,17 +108,40 @@ class ArchiveScheduleContext:
                 headsign = row["trip_headsign"] or ""
                 pattern = tuple(time.stop_id for time in times[trip_id])
                 branches[row["route_id"], direction, headsign][pattern] += 1
+                if shape_id := trips[trip_id].shape_id:
+                    shapes_by_branch[row["route_id"], direction, headsign, pattern][shape_id] += 1
         directions: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        branches_with_shape = []
         for (route, direction, headsign), patterns in sorted(branches.items()):
             pattern, _ = min(patterns.items(), key=lambda item: (-item[1], item[0]))
-            directions[route].append(
-                {
-                    "dir": direction,
-                    "headsign": headsign,
-                    "stops": [{"id": stop, "seq": index} for index, stop in enumerate(pattern, 1)],
-                }
-            )
+            branch = {
+                "dir": direction,
+                "headsign": headsign,
+                "stops": [{"id": stop, "seq": index} for index, stop in enumerate(pattern, 1)],
+            }
+            directions[route].append(branch)
+            candidates = shapes_by_branch[route, direction, headsign, pattern]
+            if candidates:
+                shape = min(candidates, key=lambda name: (-candidates[name], name))
+                branches_with_shape.append((route, branch, shape))
+        assert archive_bytes is not None
+        shapes = _shape_coordinates(
+            archive_bytes,
+            provider_id,
+            dataset_version_id,
+            {shape for _, _, shape in branches_with_shape},
+        )
+        route_shapes: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for route, branch, shape_id in branches_with_shape:
+            if len(coords := shapes.get(shape_id, [])) > 1:
+                route_shapes[route].append(
+                    {
+                        **branch,
+                        "shape": {"type": "LineString", "coordinates": coords},
+                    }
+                )
         object.__setattr__(self, "route_directions", MappingProxyType(directions))
+        object.__setattr__(self, "route_shapes", MappingProxyType(route_shapes))
         object.__setattr__(self, "context_id", identity)
         object.__setattr__(self, "timezone", timezone)
         object.__setattr__(self, "days", MappingProxyType(days))
@@ -152,6 +179,11 @@ class ArchiveScheduleContext:
                     "name": row["stop_name"],
                     "lat": row["stop_lat"],
                     "lon": row["stop_lon"],
+                    **(
+                        {"wheelchair_boarding": "yes" if boarding_value == 1 else "no"}
+                        if (boarding_value := resolved_boarding[row["stop_id"]]) in (1, 2)
+                        else {}
+                    ),
                 }
                 for row in sorted(rows["stops"], key=lambda row: row["stop_id"])
                 if row["stop_name"]
@@ -205,6 +237,31 @@ def _seconds(value: str | None) -> int | None:
     return (
         None if value is None else parse_gtfs_service_time(value, field_name="time").total_seconds
     )
+
+
+def _shape_coordinates(
+    data: bytes,
+    provider: str,
+    edition: int,
+    selected: set[str],
+) -> dict[str, list[tuple[float, float]]]:
+    if not selected:
+        return {}
+    points: dict[str, dict[int, tuple[float, float]]] = defaultdict(dict)
+    with ZipFile(BytesIO(data)) as archive:
+        for row in iter_member_rows(
+            archive,
+            "shapes.txt",
+            provider_id=provider,
+            dataset_version_id=edition,
+        ):
+            if isinstance(row, RowRejection) or row["shape_id"] not in selected:
+                continue
+            points[row["shape_id"]][row["shape_pt_sequence"]] = (
+                round(row["shape_pt_lon"], 5),
+                round(row["shape_pt_lat"], 5),
+            )
+    return {shape: [rows[key] for key in sorted(rows)] for shape, rows in points.items()}
 
 
 def _member_columns(archive: ZipFile, member_name: str) -> set[str]:

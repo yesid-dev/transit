@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { captureFixture, captureUrl, captureVehicle } from './capture-fixture';
 
 test.use({ bypassCSP: true });
 test.beforeEach(({ browserName }, info) => {
@@ -75,37 +76,31 @@ for (const width of [390, 1440]) {
 			page,
 		}) => {
 			await page.setViewportSize({ width, height: 900 });
-			const now = new Date();
-			const stamp = now.toISOString();
-			await page.route('**/static/routes/80.json', (route) =>
-				route.fulfill({
+			const now = Date.now();
+			await page.route(/\/api\/schedule-edition\?city=stm$/, async (route) => {
+				const response = await route.fetch();
+				const { schedule } = await response.json();
+				const routes = schedule.routes.filter(({ id }: { id: string }) => id !== '80');
+				routes.push({ id: '80', short: '80', type: 3 });
+				await route.fulfill({
+					response,
 					json: {
-						generated_utc: stamp,
-						id: '80',
-						directions: [{ dir: 1, headsign: 'Parc', stops: [{ id: 'S1', seq: 1 }] }],
-					},
-				}),
-			);
-			await page.route('**/live/vehicles.json', (route) =>
-				route.fulfill({
-					json: {
-						generated_utc: stamp,
-						vehicles: [
-							{
-								id: '40061',
-								route: '80',
-								trip: 'T1',
-								status: 'on_time',
-								delay_min: 4,
-								next_stop: 'S1',
-								occupancy: 'few_seats',
-								lat: 45.5,
-								lon: -73.6,
-								updated_utc: stamp,
-								reported_utc: stamp,
+						schedule: {
+							...schedule,
+							routes,
+							route_directions: {
+								...schedule.route_directions,
+								80: [{ dir: 1, headsign: 'Parc', stops: [{ id: 'S1', seq: 1 }] }],
 							},
-						],
+						},
 					},
+				});
+			});
+			await page.route(captureUrl, (route) =>
+				route.fulfill({
+					json: captureFixture(now, {
+						vehicle_positions: [captureVehicle(now, { route_id: '80' })],
+					}),
 				}),
 			);
 			await page.goto(`${prefix}/vehicles?provider=stm&frameMode=live&${dates}`);
@@ -115,9 +110,7 @@ for (const width of [390, 1440]) {
 			await main.getByRole('link', { name: '40061' }).click();
 			await expect(
 				main.getByRole('heading', {
-					name: fr
-						? 'À l’heure, 4 min après l’heure prévue'
-						: 'On time, 4 min behind the timetable',
+					name: fr ? 'En retard, 4 min après l’heure prévue' : 'Late, 4 min behind the timetable',
 				}),
 			).toBeVisible();
 			await expect(main.getByRole('link', { name: /T1/ })).toHaveAttribute('href', /trip\/T1/);

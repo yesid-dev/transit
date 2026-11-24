@@ -2,6 +2,7 @@ import { expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { test } from './layout-test';
 import { localizeHref } from '../src/lib/i18n/routing';
+import { captureUrl, layoutCapture } from './capture-fixture';
 
 // The stop record's answer stays where it first painted while the agency's current notices and
 // the stop's own file arrive. Production showed the notice strip, inserted above the answer once
@@ -10,59 +11,39 @@ import { localizeHref } from '../src/lib/i18n/routing';
 
 const generated = JSON.parse(readFileSync(new URL('./trips.json', import.meta.url), 'utf8'))
 	.generated_utc as string;
-const cors = { 'access-control-allow-origin': '*', 'cache-control': 'no-store' };
 const VIEWPORTS = [
 	{ width: 390, height: 844 },
 	{ width: 1280, height: 900 },
 ] as const;
 
 /** A fresh report with one notice in effect that names the fixture stop. */
-const alerts = {
-	generated_utc: generated,
-	feed_captured_utc: generated,
-	alerts: [
-		{
-			id: 'layout-stop-notice',
-			header_key: 'layout-stop-notice',
-			severity: 'high',
-			routes: ['80'],
-			stops: ['S1'],
-			header_text:
-				'L’ascenseur de la station est hors service jusqu’à nouvel ordre. Utilisez l’entrée nord.',
-			header_text_en:
-				'The station elevator is out of service until further notice. Use the north entrance.',
-			url: 'https://www.stm.info/fr/infos/etat-du-service',
-			url_en: 'https://www.stm.info/en/info/service-status',
-		},
-	],
+const notice = {
+	id: 'layout-stop-notice',
+	severity: 'WARNING',
+	routes: ['80'],
+	stops: ['S1'],
+	header: {
+		fr: 'L’ascenseur de la station est hors service jusqu’à nouvel ordre. Utilisez l’entrée nord.',
+		en: 'The station elevator is out of service until further notice. Use the north entrance.',
+	},
+	description: {},
+	url: {
+		fr: 'https://www.stm.info/fr/infos/etat-du-service',
+		en: 'https://www.stm.info/en/info/service-status',
+	},
+	cause: null,
+	effect: null,
+	periods: [],
 };
 
-const unseededStop = {
-	generated_utc: generated,
-	id: 'UNSEEDED',
-	// The page already titles the stop by its id; the same name keeps this test on the identity row.
-	name: 'UNSEEDED',
-	lat: 45.5,
-	lon: -73.6,
-	routes_served: ['80'],
-	wheelchair_boarding: 'yes',
-};
-
-async function serve(page: Page, held: RegExp) {
+async function serve(page: Page) {
 	const gate = { holding: true, entered: () => {}, releases: [] as Array<() => void> };
-	await page.route('**/v1/**', async (route) => {
-		const url = new URL(route.request().url());
-		url.pathname = '/__layout/fresh' + url.pathname.replace('/octranspo/', '/stm/');
-		if (held.test(url.pathname) && gate.holding) {
+	await page.route(captureUrl, async (route) => {
+		if (gate.holding) {
 			gate.entered();
 			await new Promise<void>((resolve) => gate.releases.push(resolve));
 		}
-		if (url.pathname.endsWith('/live/alerts.json'))
-			return route.fulfill({ json: alerts, headers: cors });
-		// The server could not read this stop (data.mjs), so the browser loads it here.
-		if (url.pathname.endsWith('/static/stops/UNSEEDED.json'))
-			return route.fulfill({ json: unseededStop, headers: cors });
-		await route.fulfill({ response: await route.fetch({ url: url.href }) });
+		return route.fulfill({ json: { ...layoutCapture('stm'), alerts: [notice] } });
 	});
 	return gate;
 }
@@ -96,7 +77,7 @@ for (const { tab, first, arrived } of VIEWS)
 			page,
 		}) => {
 			await page.clock.setFixedTime(Date.parse(generated) + 30_000);
-			const gate = await serve(page, /\/live\/alerts\.json$/);
+			const gate = await serve(page);
 			try {
 				for (const viewport of VIEWPORTS) {
 					gate.holding = true;
