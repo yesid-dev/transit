@@ -230,6 +230,22 @@ test('the footer, presets and Ottawa city label keep whole words at 200% text', 
 			({ kind, selector }) => kind === 'broken-word' && selector.includes('segmented-choice'),
 		),
 	).toEqual([]);
+	await open(page, '/fr?provider=stm');
+	await page.addStyleTag({ content: 'html { font-size: 200%; }' });
+	await expect(page.locator('[data-slot="app-frame"]')).toHaveAttribute(
+		'data-rail-layout',
+		'compact',
+	);
+	await page.evaluate(() => document.fonts.ready);
+	expect(
+		(await textDefects(page)).filter(
+			({ kind, selector }) => kind === 'broken-word' && selector.includes('footer-'),
+		),
+	).toEqual([]);
+	expect(await page.getByTestId('footer').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
+		true,
+	);
+
 	await page.setViewportSize({ width: 390, height: 844 });
 	await open(page, '/fr/privacy?provider=octranspo');
 	await page.addStyleTag({ content: 'html { font-size: 200%; }' });

@@ -182,10 +182,6 @@
 				minmax(0, 1.5fr)
 				repeat(var(--footer-groups), minmax(min-content, 1fr));
 		}
-		.app-shell-root
-			:global([data-rail-layout='compact'] [data-slot='footer'] [data-slot='footer-group-label']) {
-			white-space: nowrap;
-		}
 	}
 	.app-shell-root[data-full-viewport='true'] :global([data-slot='surface-rail-mobile']) {
 		--surface-rail-stack-offset: var(--map-source-clearance);
