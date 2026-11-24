@@ -96,6 +96,9 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 					.first(),
 			).toBeVisible();
 		}
+		if (screen === 'lines') {
+			await expect(page.locator('#line-performance tbody tr')).toHaveCount(20);
+		}
 		if (screen.startsWith('map-')) {
 			// The app exposes the live map and makes the poster inert at this handoff.
 			// Later source updates can make MapLibre's loaded() false again.
@@ -173,7 +176,8 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 				screen === 'download' ||
 				screen === 'roadmap' ||
 				screen.startsWith('search') ||
-				screen === 'line-record',
+				screen === 'line-record' ||
+				screen === 'lines',
 		});
 		await info.attach('design-pass-measurements', {
 			body: JSON.stringify({
