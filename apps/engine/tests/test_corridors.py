@@ -290,6 +290,8 @@ def test_clean_segment_runs_match_legacy_corridors(tmp_path: Path, version: int)
         }
         assert stable(query(clean, **map_cut)) == stable(query(legacy, **map_cut))
 
+    receipt["source_date"] = "2026-11-19"
+    marker.write_text(json.dumps(receipt), encoding="utf-8")
     network = query(clean, measure="mean_time_lost", group="segment", map_view=True)
     assert "direction" not in network
     assert network["from_stop"] == ["from"]
@@ -299,6 +301,7 @@ def test_clean_segment_runs_match_legacy_corridors(tmp_path: Path, version: int)
     assert network["value"] == [30 / 31]
     assert network["sample"] == [31]
     assert network["state"] == [3]
+    assert network["evidence"]["source_date"] == "2026-11-19"
 
     app = Engine(clean, concurrency=1, queue_size=1, queue_wait_ms=50)
     params = {
@@ -313,6 +316,7 @@ def test_clean_segment_runs_match_legacy_corridors(tmp_path: Path, version: int)
     assert partial["evidence"]["days_measured"] == [str(THURSDAY)]
     assert partial["evidence"]["days_not_measured"] == [str(FRIDAY)]
     assert partial["evidence"]["days_pending"] == [str(FRIDAY)]
+    assert partial["evidence"]["source_date"] == network["evidence"]["source_date"]
 
     status, _, raw = asyncio.run(http(app, "/measure", urlencode({**params, "from": FRIDAY})))
     assert status == 200
@@ -320,6 +324,7 @@ def test_clean_segment_runs_match_legacy_corridors(tmp_path: Path, version: int)
     for column in ("from_stop", "to_stop", "state", "value", "sample", "lines"):
         assert unmeasured[column] == []
     assert unmeasured["evidence"]["days_not_measured"] == [str(FRIDAY)]
+    assert "source_date" not in unmeasured["evidence"]
 
     friday_marker = directory.parent.parent / str(FRIDAY) / f"v{version}" / "manifest.json"
     friday_marker.parent.mkdir(parents=True)

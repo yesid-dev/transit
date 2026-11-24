@@ -105,6 +105,30 @@ it.each([
 	expect(new URL(fetcher.mock.calls.at(-1)![0].url).searchParams.get('line')).toBeNull();
 });
 
+it('keeps the source date in the network corridor response', async () => {
+	const evidence = { days_not_measured: [], source_date: '2026-11-20' };
+	fetcher.mockResolvedValueOnce(
+		Response.json({
+			measure: 'mean_time_lost',
+			from_stop: ['A'],
+			to_stop: ['B'],
+			lines: [['1']],
+			value: [5],
+			sample: [25],
+			state: [3],
+			evidence,
+		}),
+	);
+	const url = new URL(
+		'https://example.test/api/map-record?city=fixture&from=2026-11-15&to=2026-11-21&layer=corridors',
+	);
+	const response = await mapRecord({ url, request: new Request(url) } as Parameters<
+		typeof mapRecord
+	>[0]);
+	expect(response.status).toBe(200);
+	expect(await response.json()).toMatchObject({ evidence });
+});
+
 it('stays under 30 starts per rolling minute and waits for slow responses', async () => {
 	let clock = 0;
 	const starts: number[] = [];
