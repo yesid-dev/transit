@@ -70,8 +70,8 @@ public:
       en: "The STO grants limited, revocable, non-exclusive rights to use, reproduce and redistribute its open data. The terms require using the data as supplied for integration. The STO provides the data without warranty."
       fr: "La STO accorde des droits limités, révocables et non exclusifs d’utilisation, de reproduction et de redistribution de ses données ouvertes. Les conditions exigent l’utilisation des données telles que fournies pour leur intégration. La STO fournit les données sans garantie."
     non_endorsement:
-      en: "Displaying the data must not imply sponsorship by, affiliation with or association with the STO."
-      fr: "L’affichage des données ne doit pas donner l’impression d’un parrainage, d’une affiliation ou d’une association avec la STO."
+      en: "Transit is independent of the STO. The STO does not sponsor or endorse Transit."
+      fr: "Transit est indépendant de la STO. La STO ne commandite ni n’approuve Transit."
     source: {en: "the STO", fr: "de la STO"}
 
 feeds:
