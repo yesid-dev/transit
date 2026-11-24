@@ -17,10 +17,10 @@ const stops = [
 const evidence = { days_not_measured: [] };
 
 it.each([
-	['en', false, 'Low coverage · 110 observed runs', 'No runs observed'],
-	['fr', false, 'Faible couverture · 110 parcours observés', 'Aucun parcours observé'],
-	['en', true, 'Low coverage · 110 classified stop events', 'No stop events observed'],
-	['fr', true, 'Faible couverture · 110 passages classés', 'Aucun passage observé'],
+	['en', false, 'Low coverage · 110 observed runs', 'No comparable runs observed'],
+	['fr', false, 'Faible couverture · 110 parcours observés', 'Aucun parcours comparable observé'],
+	['en', true, 'Low coverage · 110 classified stop events', 'No classified stop events'],
+	['fr', true, 'Faible couverture · 110 passages classés', 'Aucun passage classé'],
 ] as const)(
 	'explains unmeasured selections in %s with stops=%s',
 	(locale, stops, positive, zero) => {

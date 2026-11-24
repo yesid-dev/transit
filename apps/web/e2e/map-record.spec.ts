@@ -38,7 +38,7 @@ for (const locale of ['en', 'fr'] as const) {
 		await find.fill('Rosemont');
 		await page.getByRole('button', { name: 'Rosemont', exact: true }).click();
 		await expect(selected).toContainText(fr ? 'Non mesuré' : 'Not measured');
-		await expect(selected).toContainText(fr ? 'Aucun passage observé' : 'No stop events observed');
+		await expect(selected).toContainText(fr ? 'Aucun passage classé' : 'No classified stop events');
 
 		await layers.getByRole('radio', { name: 'Corridors' }).click();
 		await expect(

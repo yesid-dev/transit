@@ -48,8 +48,8 @@ export function recordMapSampleText(
 	if (sample === null) return null;
 	if (state === 0 && sample === 0) {
 		return stops
-			? choose(locale, 'No stop events observed', 'Aucun passage observé')
-			: choose(locale, 'No runs observed', 'Aucun parcours observé');
+			? choose(locale, 'No classified stop events', 'Aucun passage classé')
+			: choose(locale, 'No comparable runs observed', 'Aucun parcours comparable observé');
 	}
 	const count = tally(sample, locale);
 	const unit = stops
