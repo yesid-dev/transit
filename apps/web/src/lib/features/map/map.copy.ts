@@ -99,6 +99,8 @@ export const copy = defineCopy({
 		entityFilterTitle: 'Filter map markers',
 		filterTitle: 'Filter',
 		controlsTitle: 'Controls',
+		mapFilters: 'Map filters',
+		activeFilters: (count: number) => `Map filters, ${count} active`,
 		activeTitle: 'Active',
 		controlsCollapse: 'Collapse controls',
 		controlsExpand: 'Expand controls',
@@ -247,6 +249,9 @@ export const copy = defineCopy({
 		entityFilterTitle: 'Filtrer les marqueurs de la carte',
 		filterTitle: 'Filtrer',
 		controlsTitle: 'Contrôles',
+		mapFilters: 'Filtres de la carte',
+		activeFilters: (count: number) =>
+			`Filtres de la carte, ${count} ${count === 1 ? 'actif' : 'actifs'}`,
 		activeTitle: 'Actifs',
 		controlsCollapse: 'Réduire les contrôles',
 		controlsExpand: 'Développer les contrôles',

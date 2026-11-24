@@ -19,7 +19,7 @@ describe('MapFilterPill', () => {
 			props: { store: createFilterStore(emptyFilterState(), () => {}), locale: 'en' },
 		});
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Controls 0' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Map filters, 0 active' }));
 
 		const drawer = await screen.findByTestId('map-filter-drawer');
 		expect(drawer.closest('[data-ripple-exempt]')).not.toBeNull();
@@ -35,18 +35,18 @@ describe('MapFilterPill', () => {
 
 		render(MapFilterPillHarness, { props: { store, locale: 'en' } });
 
-		const trigger = screen.getByRole('button', { name: 'Controls 0' });
-		expect(trigger).not.toHaveAttribute('aria-label');
+		const trigger = screen.getByRole('button', { name: 'Map filters, 0 active' });
+		expect(trigger).toHaveAccessibleName('Map filters, 0 active');
 		trigger.focus();
 		await fireEvent.click(trigger);
 
-		const dialog = screen.getByRole('dialog', { name: 'Controls' });
+		const dialog = screen.getByRole('dialog', { name: 'Map filters' });
 		expect(dialog).toHaveAttribute('aria-modal', 'false');
 		await waitFor(() => expect(screen.getByTestId('map-filter-drawer-title')).toHaveFocus());
 
 		for (const name of ['Stop', 'Has alert Show markers with alerts', 'Late', 'Standing']) {
 			await fireEvent.click(within(dialog).getByRole('checkbox', { name }));
-			expect(screen.getByRole('dialog', { name: 'Controls' })).toBeInTheDocument();
+			expect(screen.getByRole('dialog', { name: 'Map filters' })).toBeInTheDocument();
 		}
 
 		expect(pushed).toBe('status=late&occupancy=standing&entity=stop&alert=has_alert');
@@ -59,7 +59,7 @@ describe('MapFilterPill', () => {
 		await fireEvent.click(within(dialog).getByRole('button', { name: 'Done' }));
 		await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 		expect(writes).toBe(4);
-		expect(screen.getByRole('button', { name: 'Controls 4' })).toHaveFocus();
+		expect(screen.getByRole('button', { name: 'Map filters, 4 active' })).toHaveFocus();
 	});
 
 	it('moves focus to the Active disclosure after removal and to Done after Clear disappears', async () => {
@@ -84,8 +84,8 @@ describe('MapFilterPill', () => {
 			},
 		});
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Controls 2' }));
-		const dialog = screen.getByRole('dialog', { name: 'Controls' });
+		await fireEvent.click(screen.getByRole('button', { name: 'Map filters, 2 active' }));
+		const dialog = screen.getByRole('dialog', { name: 'Map filters' });
 		await fireEvent.click(
 			within(dialog).getByRole('button', { name: 'Remove filter: 161 Van Horne' }),
 		);
@@ -102,7 +102,7 @@ describe('MapFilterPill', () => {
 	it('uses Sheet dismissal for Escape and outside taps, restoring the surviving trigger', async () => {
 		const store = createFilterStore(emptyFilterState());
 		render(MapFilterPillHarness, { props: { store, locale: 'en' } });
-		const trigger = screen.getByRole('button', { name: 'Controls 0' });
+		const trigger = screen.getByRole('button', { name: 'Map filters, 0 active' });
 
 		trigger.focus();
 		await fireEvent.click(trigger);
@@ -137,8 +137,8 @@ describe('MapFilterPill', () => {
 		const store = createFilterStore(emptyFilterState());
 		render(MapFilterPillHarness, { props: { store, locale: 'en' } });
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Controls 0' }));
-		const dialog = screen.getByRole('dialog', { name: 'Controls' });
+		await fireEvent.click(screen.getByRole('button', { name: 'Map filters, 0 active' }));
+		const dialog = screen.getByRole('dialog', { name: 'Map filters' });
 		const motionSwitch = within(dialog).getByRole('switch', {
 			name: 'Estimated positions',
 		});

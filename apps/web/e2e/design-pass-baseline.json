@@ -312,7 +312,7 @@
 				},
 				"1440": {
 					"stops": 49,
-					"order": "7a298049cba9167b",
+					"order": "52f40d427b308991",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 1
@@ -776,7 +776,7 @@
 				},
 				"1440": {
 					"stops": 63,
-					"order": "f286bd00faf2e23c",
+					"order": "b40085faff2dc19b",
 					"withoutRing": 1,
 					"outOfOrder": 1,
 					"beforeFigure": 5
@@ -1677,7 +1677,7 @@
 				},
 				"1440": {
 					"stops": 42,
-					"order": "092422355b3a7ac7",
+					"order": "05d2eb6fd58ad7eb",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -1796,7 +1796,7 @@
 				},
 				"1440": {
 					"stops": 41,
-					"order": "bf143919c03ba4db",
+					"order": "3e205a1a995b3b8e",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -1915,7 +1915,7 @@
 				},
 				"1440": {
 					"stops": 55,
-					"order": "2109ed3d3723d9ce",
+					"order": "a2238a89f283af64",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 7
@@ -2680,9 +2680,9 @@
 			"keyboard": {
 				"390": {
 					"stops": 16,
-					"order": "ce2d95b8dd0f04fa",
+					"order": "bd3425f340a121b8",
 					"withoutRing": 1,
-					"outOfOrder": 3,
+					"outOfOrder": 2,
 					"beforeFigure": 0
 				},
 				"1440": {
@@ -4148,7 +4148,7 @@
 				},
 				"1440": {
 					"stops": 41,
-					"order": "cd1ceaa90f732a64",
+					"order": "fcd67e7129a21d36",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 1
@@ -4263,9 +4263,9 @@
 			"keyboard": {
 				"390": {
 					"stops": 16,
-					"order": "7d7775842ed02c41",
+					"order": "132474bc49062f83",
 					"withoutRing": 1,
-					"outOfOrder": 3,
+					"outOfOrder": 2,
 					"beforeFigure": 0
 				},
 				"1440": {
@@ -4716,7 +4716,7 @@
 				},
 				"1440": {
 					"stops": 40,
-					"order": "98a2319fd0ba8d42",
+					"order": "6522dcd424ac3a14",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -5633,9 +5633,9 @@
 			"keyboard": {
 				"390": {
 					"stops": 16,
-					"order": "e46042719e2b0ae5",
+					"order": "ffa7ad24fcda7ae2",
 					"withoutRing": 1,
-					"outOfOrder": 3,
+					"outOfOrder": 2,
 					"beforeFigure": 0
 				},
 				"1440": {
@@ -5870,7 +5870,7 @@
 				},
 				"1440": {
 					"stops": 41,
-					"order": "e06fddfd9fdf70a5",
+					"order": "e1a1ff751e6b2b40",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -6099,7 +6099,7 @@
 				},
 				"1440": {
 					"stops": 49,
-					"order": "9693dd30adc43c73",
+					"order": "a53ee46ffff0252a",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 1

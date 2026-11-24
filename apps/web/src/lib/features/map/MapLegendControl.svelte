@@ -174,9 +174,7 @@
 	.map-legend-fab {
 		position: fixed;
 		left: calc(var(--spacing) * 3);
-		bottom: calc(
-			var(--map-mobile-control-bottom) + var(--size-tap-min) + var(--map-controls-drawer-gap, 10px)
-		);
+		bottom: var(--map-touch-row-bottom);
 		z-index: calc(var(--z-sheet) + 2);
 		pointer-events: auto;
 	}

@@ -48,7 +48,7 @@
 		{
 			key: 'record' as const,
 			label: copy.record,
-			disabled: frame.liveOnly,
+			disabled: frame.recordOnly || frame.liveOnly,
 			describedById: frame.liveOnly ? uid : undefined,
 		},
 	]);

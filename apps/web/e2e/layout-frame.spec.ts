@@ -122,29 +122,9 @@ test('desktop controls keep their column and control changes retain focus and sc
 
 	await expect(rail.getByRole('radio', { name: 'Live now', exact: true })).toBeDisabled();
 	const record = rail.getByRole('radio', { name: 'Record', exact: true });
-	await expect(record).toBeEnabled();
+	await expect(record).toBeDisabled();
 	await expect(record).toBeChecked();
 	await expect(rail.getByText('This screen is a record. It has no live view.')).toBeVisible();
-	const contrast = await record.evaluate((button) => {
-		const style = getComputedStyle(button);
-		const color = document.createElement('canvas');
-		color.width = color.height = 1;
-		const context = color.getContext('2d')!;
-		const luminance = (cssColor: string) => {
-			context.fillStyle = cssColor;
-			context.fillRect(0, 0, 1, 1);
-			const pixels = context.getImageData(0, 0, 1, 1).data;
-			const linear = (value: number) => {
-				const channel = value / 255;
-				return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
-			};
-			return 0.2126 * linear(pixels[0]) + 0.7152 * linear(pixels[1]) + 0.0722 * linear(pixels[2]);
-		};
-		const a = luminance(style.color);
-		const b = luminance(style.backgroundColor);
-		return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-	});
-	expect(contrast).toBeGreaterThanOrEqual(4.5);
 	const cards = await rail
 		.locator('[data-slot="controls-rail"]')
 		.evaluateAll((elements) => elements.map((element) => getComputedStyle(element).padding));
@@ -291,6 +271,51 @@ test('the map title and near-me control clear their neighbours at normal and enl
 					}),
 				)
 				.toEqual({ aboveFooter: true, titleGap: paired ? 16 : 0 });
+		}
+	}
+});
+
+test('map filters and frame controls have distinct names and clear each other on compact maps', async ({
+	page,
+}) => {
+	await open(page, '/map?provider=stm&frameMode=live');
+	const mapFilters = page.getByRole('button', { name: /^Map filters, \d+ active$/ });
+	const frameControls = page.getByRole('button', { name: /^Controls.*Open controls/ });
+	const footer = page.locator('[data-slot="map-source-footer"]');
+	await expect(footer).toBeVisible();
+	await page.setViewportSize({ width: 390, height: 900 });
+	await expect(mapFilters).toBeVisible();
+	await expect(frameControls).toBeVisible();
+	for (const licence of [true, false]) {
+		await footer.evaluate((element, visible) => {
+			(element as HTMLElement).hidden = !visible;
+		}, licence);
+		await expect
+			.poll(() =>
+				page
+					.locator('[data-slot="app-shell"]')
+					.evaluate(
+						(element) =>
+							parseFloat(
+								(element as HTMLElement).style.getPropertyValue('--map-source-clearance'),
+							) > 0,
+					),
+			)
+			.toBe(licence);
+		for (const width of [320, 390, 768, 1023]) {
+			await page.setViewportSize({ width, height: 900 });
+			for (const scale of [100, 200]) {
+				await page.evaluate((percent) => {
+					document.documentElement.style.fontSize = percent + '%';
+				}, scale);
+				await expect
+					.poll(async () => {
+						const a = await mapFilters.boundingBox();
+						const b = await frameControls.boundingBox();
+						return !!a && !!b && a.y + a.height <= b.y;
+					}, `${width}px at ${scale}% text with licence visible = ${licence}`)
+					.toBe(true);
+			}
 		}
 	}
 });

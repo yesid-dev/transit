@@ -107,11 +107,11 @@ describe('MapOverlayChrome', () => {
 		});
 		await fireEvent.click(screen.getByRole('button', { name: 'Legend' }));
 		expect(screen.getByRole('dialog', { name: 'Legend' })).toBeInTheDocument();
-		await fireEvent.click(screen.getByRole('button', { name: 'Controls 0' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Map filters, 0 active' }));
 		await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Legend' })).toBeNull());
-		expect(screen.getByRole('dialog', { name: 'Controls' })).toBeInTheDocument();
+		expect(screen.getByRole('dialog', { name: 'Map filters' })).toBeInTheDocument();
 		await fireEvent.click(screen.getByTestId('map-legend-button'));
-		await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Controls' })).toBeNull());
+		await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Map filters' })).toBeNull());
 		expect(screen.getByRole('dialog', { name: 'Legend' })).toBeInTheDocument();
 		await view.rerender({ detailOpen: true });
 		expect(screen.queryByTestId('map-legend-button')).toBeNull();
@@ -479,8 +479,8 @@ describe('MapOverlayChrome', () => {
 		});
 
 		expect(document.querySelectorAll('#map-motion-label')).toHaveLength(0);
-		await fireEvent.click(screen.getByRole('button', { name: 'Controls 0' }));
-		expect(screen.getByRole('dialog', { name: 'Controls' })).toBeInTheDocument();
+		await fireEvent.click(screen.getByRole('button', { name: 'Map filters, 0 active' }));
+		expect(screen.getByRole('dialog', { name: 'Map filters' })).toBeInTheDocument();
 		expect(document.querySelectorAll('#map-motion-label')).toHaveLength(0);
 
 		await rerender({ store, locale: 'en', isDesktop: false });
@@ -504,8 +504,8 @@ describe('MapOverlayChrome', () => {
 			view.container.style.setProperty('--chrome-offset', '16px');
 			const stableRegion = feedStatus();
 
-			await fireEvent.click(screen.getByRole('button', { name: 'Controls 0' }));
-			expect(screen.getByRole('dialog', { name: 'Controls' })).toBeInTheDocument();
+			await fireEvent.click(screen.getByRole('button', { name: 'Map filters, 0 active' }));
+			expect(screen.getByRole('dialog', { name: 'Map filters' })).toBeInTheDocument();
 
 			await view.rerender({
 				store,
@@ -518,15 +518,15 @@ describe('MapOverlayChrome', () => {
 			expect(stableRegion).toHaveClass('map-feed-stall');
 			expect(stableRegion.textContent?.trim()).toMatch(/Live feed not responding/);
 
-			expect(screen.getByRole('dialog', { name: 'Controls' })).toBeInTheDocument();
+			expect(screen.getByRole('dialog', { name: 'Map filters' })).toBeInTheDocument();
 			const pill = screen.getByTestId('map-filter-pill');
 			expect(getComputedStyle(pill).display).not.toBe('none');
 			expect(screen.getByRole('button', { name: 'Stops near me' })).not.toHaveFocus();
 
 			await fireEvent.click(screen.getByTestId('map-filter-done'));
 			await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-			await fireEvent.click(screen.getByRole('button', { name: 'Controls 0' }));
-			expect(screen.getByRole('dialog', { name: 'Controls' })).toBeInTheDocument();
+			await fireEvent.click(screen.getByRole('button', { name: 'Map filters, 0 active' }));
+			expect(screen.getByRole('dialog', { name: 'Map filters' })).toBeInTheDocument();
 
 			expect(getComputedStyle(stableRegion).top).toBe('auto');
 			expect(getComputedStyle(stableRegion).right).toBe('12px');
@@ -560,8 +560,8 @@ describe('MapOverlayChrome', () => {
 			props: { store, locale: 'en', isDesktop: false, presentation: presentationFixture() },
 		});
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Controls 0' }));
-		expect(screen.getByRole('dialog', { name: 'Controls' })).toBeInTheDocument();
+		await fireEvent.click(screen.getByRole('button', { name: 'Map filters, 0 active' }));
+		expect(screen.getByRole('dialog', { name: 'Map filters' })).toBeInTheDocument();
 
 		await view.rerender({
 			store,
@@ -575,7 +575,7 @@ describe('MapOverlayChrome', () => {
 		);
 		view.container.style.setProperty('--map-mobile-control-bottom', '84px');
 		view.container.style.setProperty('--chrome-offset', '16px');
-		expect(screen.getByRole('dialog', { name: 'Controls' })).toBeInTheDocument();
+		expect(screen.getByRole('dialog', { name: 'Map filters' })).toBeInTheDocument();
 		const pill = screen.getByTestId('map-filter-pill');
 		expect(pill).toBeInTheDocument();
 		expect(getComputedStyle(pill).display).toBe('none');
@@ -736,8 +736,8 @@ describe('MapOverlayChrome', () => {
 			props: { store, locale: 'en', isDesktop: false },
 		});
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Controls 0' }));
-		expect(screen.getByRole('dialog', { name: 'Controls' })).toBeInTheDocument();
+		await fireEvent.click(screen.getByRole('button', { name: 'Map filters, 0 active' }));
+		expect(screen.getByRole('dialog', { name: 'Map filters' })).toBeInTheDocument();
 
 		await view.rerender({ store, locale: 'en', isDesktop: true });
 		installViewportMatchMedia(1280);
@@ -755,7 +755,7 @@ describe('MapOverlayChrome', () => {
 		});
 		expect(document.querySelector('.map-filter-panel')).toBeNull();
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Controls 0' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Map filters, 0 active' }));
 		await view.rerender({ store, locale: 'en', isDesktop: true });
 		expect(document.querySelector('.map-filter-panel .map-filters')).toHaveAttribute(
 			'data-open',

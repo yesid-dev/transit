@@ -163,16 +163,6 @@
 		</div>
 	{/if}
 
-	<MapFilterPill
-		store={filtersStore}
-		{locale}
-		hidden={detailOpen}
-		{controls}
-		bind:open={controlsOpen}
-		onopenchange={(open) => {
-			if (open) legendOpen = false;
-		}}
-	/>
 	<MapLegendControl
 		{locale}
 		presentation="phone"
@@ -182,6 +172,16 @@
 		bind:open={legendOpen}
 		onopenchange={(open) => {
 			if (open) controlsOpen = false;
+		}}
+	/>
+	<MapFilterPill
+		store={filtersStore}
+		{locale}
+		hidden={detailOpen}
+		{controls}
+		bind:open={controlsOpen}
+		onopenchange={(open) => {
+			if (open) legendOpen = false;
 		}}
 	/>
 

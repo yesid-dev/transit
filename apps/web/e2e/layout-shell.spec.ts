@@ -147,6 +147,21 @@ for (const locale of ['en', 'fr'] as const)
 			await pillFits(pill);
 			await singleLine(pill.locator('[data-slot="product-brand-name"]'));
 
+			if (width >= 1024) {
+				// The kit places the city visually before moving its DOM node into desktop Tab order.
+				await expect
+					.poll(() =>
+						pill
+							.locator('[data-slot="site-header-network"]')
+							.evaluate(
+								(city) =>
+									getComputedStyle(city).position === 'absolute' ||
+									city.nextElementSibling?.classList.contains('nav-trailing') === true,
+							),
+					)
+					.toBe(true);
+			}
+
 			// Every `|` keeps the same space on both sides, whatever tier supplies it. Below 360px the
 			// kit draws no navbar divider at all, so 320px has nothing to measure.
 			const gaps = await pillDividerGaps(page);

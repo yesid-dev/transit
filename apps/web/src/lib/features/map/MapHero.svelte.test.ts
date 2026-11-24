@@ -2022,7 +2022,7 @@ describe('MapHero map-layer feed lifecycle', () => {
 		for (const [index, feed] of feedSpies.entries())
 			expect(feed).toHaveBeenCalledTimes(initialFeeds[index] + 1);
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Controls 0' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Map filters, 0 active' }));
 		await fireEvent.click(screen.getByRole('checkbox', { name: 'Late' }));
 		await tick();
 		for (const install of installSpies) expect(install).toHaveBeenCalledTimes(2);

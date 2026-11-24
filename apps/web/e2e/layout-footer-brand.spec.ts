@@ -151,8 +151,7 @@ test('phone announcement state leaves footer links clear through hydration', asy
 		await expect(page.locator('html[data-hydrated]')).toHaveCount(0);
 		const chrome = page.locator('[data-slot="app-shell-chrome"]');
 		if (!announcement.enabled) {
-			await expect(chrome).toHaveCSS('position', 'fixed');
-			expect(await chrome.evaluate((element) => element.getBoundingClientRect().height)).toBe(0);
+			await expect(chrome).toHaveCount(0);
 		}
 		await expect(
 			page.getByTestId('footer').getByRole('link', { name: 'Feuille de route' }),
@@ -173,8 +172,7 @@ test('phone announcement state leaves footer links clear through hydration', asy
 			announcement.enabled ? 1 : 0,
 		);
 		if (!announcement.enabled) {
-			await expect(chrome).toHaveCSS('position', 'fixed');
-			expect(await chrome.evaluate((element) => element.getBoundingClientRect().height)).toBe(0);
+			await expect(chrome).toHaveCount(0);
 		}
 		await expect(link).toBeFocused();
 		const unobscured = await link.evaluate((element) => {
