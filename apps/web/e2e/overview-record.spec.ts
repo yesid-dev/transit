@@ -88,16 +88,29 @@ for (const width of [390, 1440]) {
 }
 
 for (const colorScheme of ['light', 'dark'] as const) {
-	test(`Overview satisfies WCAG AA in ${colorScheme}`, async ({ page }) => {
-		await page.emulateMedia({ colorScheme });
-		await page.goto(recordHref);
-		await expect(page.getByText('About these figures')).toBeVisible();
-		const results = await new AxeBuilder({ page })
-			.include('main')
-			.withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
-			.analyze();
-		expect(results.violations).toEqual([]);
-	});
+	for (const provider of ['stm', 'octranspo'] as const) {
+		for (const locale of ['en', 'fr'] as const) {
+			const fr = locale === 'fr';
+			test(`Overview ${provider} ${locale} satisfies WCAG AA in ${colorScheme}`, async ({
+				page,
+			}) => {
+				await page.addInitScript((theme) => localStorage.setItem('theme', theme), colorScheme);
+				await page.emulateMedia({ colorScheme });
+				await page.goto(`${fr ? '/fr' : '/'}?provider=${provider}&frameMode=record&${period}`);
+				await expect(page.locator('html')).toHaveAttribute('data-theme', colorScheme);
+				await expect(
+					page.getByRole('heading', {
+						name: fr ? 'À propos de ces chiffres' : 'About these figures',
+					}),
+				).toBeVisible();
+				const results = await new AxeBuilder({ page })
+					.include('main')
+					.withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
+					.analyze();
+				expect(results.violations).toEqual([]);
+			});
+		}
+	}
 }
 
 test('a slow stop ranking shows patience while the other parts remain usable', async ({

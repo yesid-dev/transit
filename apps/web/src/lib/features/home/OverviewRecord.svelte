@@ -49,7 +49,7 @@
 		locale,
 		city,
 		operator = city,
-		provider = 'stm',
+		provider,
 		href,
 		alertsAvailable = false,
 		record,
@@ -57,7 +57,7 @@
 		locale: Locale;
 		city: string;
 		operator?: string;
-		provider?: string;
+		provider: string;
 		href: string;
 		alertsAvailable?: boolean;
 		record: {

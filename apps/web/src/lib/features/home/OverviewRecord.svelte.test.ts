@@ -9,7 +9,8 @@ import { previousPeriod } from './overviewRecord.ts';
 import { overviewCopy } from './overviewRecord.copy.ts';
 
 const answer = <T>(value: T) => Promise.resolve({ kind: 'answer' as const, answer: value });
-const href = 'https://transit.test/?provider=stm&recordFrom=2026-11-08&recordTo=2026-11-14';
+const provider = 'fixture-network';
+const href = `https://transit.test/?provider=${provider}&recordFrom=2026-11-08&recordTo=2026-11-14`;
 const states: RecordState[] = [
 	'no_live_data',
 	'not_measured',
@@ -26,6 +27,7 @@ for (const locale of ['en', 'fr'] as const) {
 			props: {
 				city: 'Montréal',
 				locale,
+				provider,
 				href,
 				record: {
 					period,
@@ -49,7 +51,7 @@ for (const locale of ['en', 'fr'] as const) {
 		expect(await screen.findByRole('article', { name: copy.about })).toBeVisible();
 		expect(screen.getByRole('link', { name: copy.allRankings })).toHaveAttribute(
 			'href',
-			expect.stringContaining('/hotspots?'),
+			expect.stringContaining(`/hotspots?provider=${provider}`),
 		);
 		const label = locale === 'fr' ? 'Copier le lien' : 'Copy link';
 		await fireEvent.click(screen.getByRole('button', { name: label }));
