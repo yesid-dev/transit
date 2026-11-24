@@ -12,6 +12,7 @@
 	import { frameHref, type parseFrameState } from '#lib/site/frameState.ts';
 	import { lineIsScheduleOnly } from '#lib/site/providerCapabilities.ts';
 	import { getRoute } from '#lib/v1/repositories/static.ts';
+	import { getMapRoutes } from '#lib/v1/repositories/scheduleShapes.ts';
 	import type { RouteFile, StopIndexEntry } from '#lib/v1/schemas/index.ts';
 	import type { RouteIndexEntry } from '#lib/v1/schemas/routes_index.ts';
 	import { getV1Context } from '#lib/v1/boot.ts';
@@ -109,15 +110,21 @@
 
 	$effect(() => {
 		const id = line;
+		routeResult = null;
 		if (stopLayer || !id) return;
 		const controller = new AbortController();
-		void getRoute(id, { signal: controller.signal })
-			.then((route) => {
-				if (!controller.signal.aborted) routeResult = { id, route };
-			})
-			.catch(() => {
-				if (!controller.signal.aborted) routeResult = { id, route: null };
-			});
+		const context = { providerId: city, signal: controller.signal };
+		const edition = getRoute(id, context).catch(() => null);
+		const shaped = getMapRoutes([id], context).then(
+			([route]) => route,
+			() => null,
+		);
+		void edition.then(async (route) => {
+			if (controller.signal.aborted) return;
+			routeResult = { id, route };
+			const mapRoute = await shaped;
+			if (mapRoute && !controller.signal.aborted) routeResult = { id, route: mapRoute };
+		});
 		return () => controller.abort();
 	});
 

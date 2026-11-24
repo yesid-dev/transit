@@ -238,7 +238,7 @@
 		serverNow: () => dataClock.serverNow,
 		alertsAvailable,
 		scheduleOnly: (id, type) => lineIsScheduleOnly(page.data.provider, id, type),
-		drawRoutes: () => recordLayer !== 'stops',
+		drawRoutes: () => !isRecordLayer,
 		setTripScope: live.setTripScope,
 	});
 	const mapVehicles = $derived(
@@ -520,12 +520,7 @@
 		session.select(next, 'pick');
 	}
 	function selectPickedFeature(next: MapSelection) {
-		if (isRecordLayer) {
-			if (recordLayer === 'corridors' && next.kind === 'route' && !recordLine) {
-				changeRecordScope(next.id, next.direction == null ? '' : String(next.direction));
-			}
-			return;
-		}
+		if (isRecordLayer) return;
 		if (next.kind === 'vehicle') camera.interact();
 		commitPickedSelection(next);
 		detailCollapsed = detailWidthPx === 56;
@@ -709,7 +704,7 @@
 		const filter = filters.state;
 		return {
 			routes: {
-				items: recordLayer === 'stops' ? [] : routeLineRoutes,
+				items: isRecordLayer ? [] : routeLineRoutes,
 				selected: selectedRouteLine,
 			},
 			vehicles: {
