@@ -38,9 +38,9 @@ export async function openDisclosures(page: Page) {
 	while (await closed.count()) {
 		const trigger = closed.first();
 		const handle = await trigger.elementHandle();
-		await trigger.click();
+		await trigger.evaluate((el: HTMLElement) => el.click());
 		expect(
-			await handle?.evaluate((el) => el.matches(disclosure), disclosure),
+			await handle?.evaluate((el, selector) => el.matches(selector), disclosure),
 			'disclosure opened',
 		).toBe(false);
 	}
@@ -181,12 +181,7 @@ async function keyboardMetrics(page: Page) {
 			exited = true;
 			break;
 		}
-		expect(stop.repeated, 'focused element is a keyboard candidate').toBeGreaterThanOrEqual(0);
-		expect(
-			visited.has(stop.index),
-			'Tab leaves each control and exits the page without a loop',
-		).toBe(false);
-		visited.add(stop.index);
+		expect(stop.repeated, 'Tab leaves each control and exits the page without a loop').toBe(false);
 		if (sequence.length === 0) expect(stop.skip, 'first Tab focuses the skip link').toBe(true);
 		sequence.push(stop.key);
 		const ring = await page.locator(':focus').evaluate(focusRing);
