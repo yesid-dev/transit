@@ -12,6 +12,7 @@ import { load as stops } from '../../routes/[[lang=locale]]/stops/+page.server.t
 import { warmQuestions } from '../../../scripts/warm-default-views.ts';
 import { defaultCityQuestions, defaultPeriod, sharedDefaultQuestion } from './defaultQuestions.ts';
 import { getScheduleEdition } from './engine.ts';
+import { GET as mapRecord } from '../../routes/api/map-record/+server.ts';
 
 const { fetcher } = vi.hoisted(() => ({
 	fetcher: vi.fn(async (_request: Request) => new Response(null, { status: 503 })),
@@ -68,6 +69,13 @@ it.each([
 		visit(health, '/status'),
 		visit(methods, '/metrics'),
 		getScheduleEdition(provider.id),
+		mapRecord({
+			url: new URL(
+				`/api/map-record?${new URLSearchParams({ city: provider.id, from: period.from, to: period.to })}`,
+				origin,
+			),
+			request,
+		} as Parameters<typeof mapRecord>[0]),
 	]);
 	const visitor = fetcher.mock.calls.map(([request]) => {
 		const url = new URL(request.url);

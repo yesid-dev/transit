@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { StampPresentation } from '#lib/v1/live/livePresentation.ts';
 	import type { Locale } from '#lib/i18n/index.ts';
+	import type { Snippet } from 'svelte';
 	import MapFreshness from './MapFreshness.svelte';
 	import MapViewSwitch from './MapViewSwitch.svelte';
 
@@ -15,6 +16,8 @@
 		onviewchange?: (next: 'map' | 'reports') => void;
 		/** Rendered height of the title block, so the controls below it can clear it. */
 		height?: number;
+		layers?: Snippet;
+		record?: boolean;
 	}
 
 	let {
@@ -25,11 +28,13 @@
 		viewMode = 'map',
 		onviewchange,
 		height = $bindable(0),
+		layers,
+		record = false,
 	}: Props = $props();
 </script>
 
 <div class="map-overlay map-head" bind:offsetHeight={height}>
-	<MapFreshness placement="head" {presentation} {locale} />
+	{#if !record}<MapFreshness placement="head" {presentation} {locale} />{/if}
 	<div class="map-title-row">
 		<h1 class="map-heading">{heading}<span class="map-dot">.</span></h1>
 		{#if onviewchange}
@@ -38,7 +43,8 @@
 			</div>
 		{/if}
 	</div>
-	<p class="map-lead" data-slot="map-lead">{lead}</p>
+	{#if !record}<p class="map-lead" data-slot="map-lead">{lead}</p>{/if}
+	{@render layers?.()}
 </div>
 
 <style>

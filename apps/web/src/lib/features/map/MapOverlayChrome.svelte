@@ -50,6 +50,8 @@
 		viewMode: 'map' | 'reports';
 		onviewchange: (next: 'map' | 'reports') => void;
 		controls: Snippet<[{ collapsible?: boolean } | undefined]>;
+		layers?: Snippet;
+		record?: boolean;
 	}
 
 	let {
@@ -79,6 +81,8 @@
 		viewMode,
 		onviewchange,
 		controls,
+		layers,
+		record = false,
 	}: Props = $props();
 	const colourBy = $derived(colourDimension(filtersStore.state));
 	// Hovering what the open panel already shows would only repeat it over the map.
@@ -105,71 +109,75 @@
 		lead={t.headingLead}
 		presentation={presentation.stamp}
 		{viewMode}
-		{onviewchange}
+		onviewchange={record ? undefined : onviewchange}
+		{layers}
+		{record}
 		bind:height={headHeight}
 	/>
-	<MapFreshness placement="floating" presentation={presentation.stamp} {locale} />
+	{#if !record}<MapFreshness placement="floating" presentation={presentation.stamp} {locale} />{/if}
 </div>
 
 <MapNorthControl copy={t} {...orientation} status={northStatus} onreset={onnorth} />
 
-<MapNearMeControl
-	bind:open={nearMeOpen}
-	bind:query={nearMeQuery}
-	{locale}
-	copy={t}
-	loading={nearMeLoading}
-	error={nearMeError}
-	origin={nearMeOrigin}
-	stops={nearbyStops}
-	{onuselocation}
-	{onsearch}
-	{onsuggestion}
-	{onstopselect}
-	{onclear}
-/>
+{#if !record}
+	<MapNearMeControl
+		bind:open={nearMeOpen}
+		bind:query={nearMeQuery}
+		{locale}
+		copy={t}
+		loading={nearMeLoading}
+		error={nearMeError}
+		origin={nearMeOrigin}
+		stops={nearbyStops}
+		{onuselocation}
+		{onsearch}
+		{onsuggestion}
+		{onstopselect}
+		{onclear}
+	/>
 
-{#if isDesktop || desktopControlsMounted}
-	<div
-		class="map-overlay map-controls-column"
-		style:--map-head-height="{headHeight}px"
-		style:--map-panel-height="{panelHeight}px"
-	>
-		<div class="map-filter-panel" bind:clientHeight={panelHeight}>
-			{@render controls(undefined)}
+	{#if isDesktop || desktopControlsMounted}
+		<div
+			class="map-overlay map-controls-column"
+			style:--map-head-height="{headHeight}px"
+			style:--map-panel-height="{panelHeight}px"
+		>
+			<div class="map-filter-panel" bind:clientHeight={panelHeight}>
+				{@render controls(undefined)}
+			</div>
+			<MapLegendControl {locale} presentation="desktop" {colourBy} {staleCutoffS} />
 		</div>
-		<MapLegendControl {locale} presentation="desktop" {colourBy} {staleCutoffS} />
-	</div>
-{/if}
+	{/if}
 
-<MapFilterPill
-	store={filtersStore}
-	{locale}
-	hidden={detailOpen}
-	{controls}
-	bind:open={controlsOpen}
-	onopenchange={(open) => {
-		if (open) legendOpen = false;
-	}}
-/>
-<MapLegendControl
-	{locale}
-	presentation="phone"
-	{colourBy}
-	{staleCutoffS}
-	hidden={detailOpen}
-	bind:open={legendOpen}
-	onopenchange={(open) => {
-		if (open) controlsOpen = false;
-	}}
-/>
+	<MapFilterPill
+		store={filtersStore}
+		{locale}
+		hidden={detailOpen}
+		{controls}
+		bind:open={controlsOpen}
+		onopenchange={(open) => {
+			if (open) legendOpen = false;
+		}}
+	/>
+	<MapLegendControl
+		{locale}
+		presentation="phone"
+		{colourBy}
+		{staleCutoffS}
+		hidden={detailOpen}
+		bind:open={legendOpen}
+		onopenchange={(open) => {
+			if (open) controlsOpen = false;
+		}}
+	/>
 
-<MapFeedStallBanner {presentation} />
+	<MapFeedStallBanner {presentation} />
 
-{#if visiblePeek && isDesktop && !nearMeOpen}
-	<div class="map-overlay map-peek" data-slot="map-hover-peek">
-		<MapHoverPeek peek={visiblePeek} {locale} />
-	</div>
+	{#if visiblePeek && isDesktop && !nearMeOpen}
+		<div class="map-overlay map-peek" data-slot="map-hover-peek">
+			<MapHoverPeek peek={visiblePeek} {locale} />
+		</div>
+	{/if}
 {/if}
 
 <style>

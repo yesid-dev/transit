@@ -166,7 +166,7 @@
 			<SheetTitle>{copy.period}</SheetTitle>
 			<SheetDescription id={`${uid}-note`}>
 				{copy.note(startLabel)}
-				{#if !usesFrameRecord}{copy.scope}{/if}
+				{#if !usesFrameRecord && path !== '/map'}{copy.scope}{/if}
 			</SheetDescription>
 			<div class="flex flex-wrap gap-2" role="group" aria-label={copy.ranges}>
 				{#each PRESETS as preset, index (preset)}

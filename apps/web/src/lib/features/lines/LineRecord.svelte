@@ -27,6 +27,7 @@
 
 	let {
 		name,
+		lineId,
 		code,
 		scheduleOnly,
 		locale,
@@ -36,6 +37,7 @@
 		stopNames: stopNamesById,
 	}: {
 		name: string;
+		lineId?: string;
 		code?: string | null;
 		scheduleOnly?: boolean;
 		locale: Locale;
@@ -57,6 +59,14 @@
 		);
 	});
 	const back = $derived(carryFrameState(localizeHref('/lines', locale, record.city), pinned));
+	const corridorMap = $derived.by(() => {
+		if (!lineId) return '';
+		const target = new URL(localizeHref('/map', locale, record.city), pinned);
+		target.searchParams.set('mapLayer', 'corridors');
+		target.searchParams.set('recordLine', lineId);
+		if (record.direction != null) target.searchParams.set('recordDirection', record.direction);
+		return frameHref(target, { mode: 'record', period: { ...record.period, preset: null } });
+	});
 </script>
 
 <Surface>
@@ -73,6 +83,11 @@
 				/>
 			{/if}
 			<LineViewNav url={pinned} {locale} view={record.view} />
+			{#if corridorMap}
+				<a class="inline-flex min-h-11 w-fit items-center" href={corridorMap}>
+					{t('See corridors on the map', 'Voir les corridors sur la carte')}
+				</a>
+			{/if}
 			<p>{dateRange(record.period, locale)}</p>
 			<nav
 				aria-label={t('Filter by direction', 'Filtrer par direction')}

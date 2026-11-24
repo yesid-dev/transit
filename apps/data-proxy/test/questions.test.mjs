@@ -353,6 +353,19 @@ test("forwards the finders' network groups without ranking limits", async (t) =>
   assert.ok(params.every((entry) => !["limit", "line", "stop", "vehicle"].some((key) => entry.has(key))));
 });
 
+test("validates and forwards map questions while an older engine degrades to unavailable", async (t) => {
+  const f = fixture(t, () => Response.json({ message: "unknown parameter" }, { status: 400 }));
+  const base = "/v2/demo/measure?from=2026-10-17&to=2026-10-23";
+  const stop = await f.fetch(`${base}&view=map&measure=late&group=stop_id`);
+  assert.equal(stop.status, 503);
+  assert.ok(stop.headers.has("retry-after"));
+  const corridor = `${base}&view=map&measure=mean_time_lost&group=segment`;
+  assert.equal((await f.fetch(corridor)).status, 400);
+  assert.equal((await f.fetch(`${corridor}&line=51&direction=0`)).status, 503);
+  assert.deepEqual(f.requests.map(({ url }) => new URL(url).searchParams.get("line")), [null, "51"]);
+  assert.deepEqual(f.requests.map(({ url }) => new URL(url).searchParams.get("view")), ["map", "map"]);
+});
+
 test("rejects invalid questions before spending an engine slot or visitor budget", async (t) => {
   const f = fixture(t);
   for (const path of [

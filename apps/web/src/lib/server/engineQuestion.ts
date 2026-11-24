@@ -62,3 +62,12 @@ export const citiesQuestion: EngineQuestion = { path: '/cities', parameters: {} 
 export function scheduleQuestion(city: string) {
 	return cityQuestion(city, '/schedule-index');
 }
+
+export function mapRecordQuestion(period: EnginePeriod, line?: string, direction?: string) {
+	return periodQuestion(period, '/measure', {
+		view: 'map',
+		...(line
+			? { measure: 'mean_time_lost', group: 'segment', line, ...(direction ? { direction } : {}) }
+			: { measure: 'late', group: 'stop_id' }),
+	});
+}
