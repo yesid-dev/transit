@@ -2,7 +2,8 @@
 
 import json
 import re
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from typing import Any
 
 STOP_EVENTS = "stop_events.parquet"
 TRIP_DAYS = "trip_days.parquet"
@@ -18,6 +19,17 @@ STOP_ELIGIBILITY_VERSION = 9
 _UNMEASURED_STATUSES = ("no_raw_captures", "no_schedule_edition", "schedule_archive_unreadable")
 _V4_FILES = (SCHEDULED_STOP_TIMES, VEHICLE_POSITIONS, FEED_POLLS)
 _SHA256 = re.compile(r"[0-9a-f]{64}")
+
+
+def source_date(manifest: dict[str, Any]) -> str | None:
+    value = manifest.get("source_date")
+    if isinstance(value, str):
+        try:
+            if date.fromisoformat(value).isoformat() == value:
+                return value
+        except ValueError:
+            pass
+    return None
 
 
 def file_identities(

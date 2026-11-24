@@ -1,6 +1,6 @@
 import { cleanDownloadStore } from "./clean-download-store.js";
 import { CORS_HEADERS, PREFLIGHT_HEADERS } from "./cors.js";
-import { downloadLicence, downloadReadme } from "./download-licences.js";
+import { downloadLicence, downloadReadme, renderDownloadLicence } from "./download-licences.js";
 import { serviceDate } from "./question-params.js";
 import { admit, cacheMatch, cleaningVersion, CLOSED_TTL, loadPublicCities, OPEN_TTL, serviceToday } from "./questions.js";
 
@@ -82,6 +82,7 @@ async function readDay(bucket, cache, ctx, origin, city, date, version, today) {
       return { name, byte_size: entry.byte_size, sha256: entry.sha256 };
     });
     day = { status: "complete", alerts_not_tracked: alertsNotTracked, files };
+    if (typeof manifest.source_date === "string") day.source_date = manifest.source_date;
   }
   remember(cache, ctx, key, JSON.stringify(day), date < today ? CLOSED_TTL : OPEN_TTL);
   return day;
@@ -179,13 +180,16 @@ export async function serveDownload(request, env, ctx, visitorIp = request.heade
     const today = serviceToday(provider.timezone);
     if (!today) return message(503, "service timezone unavailable");
     const date = requestedDate ?? new Date(serviceDate(today) - 86_400_000).toISOString().slice(0, 10);
-    const licence = downloadLicence(provider, date);
-    if (!licence) return message(404, "download licence unavailable");
+    const terms = downloadLicence(provider, date);
+    if (!terms) return message(404, "download licence unavailable");
     const version = await activeVersion(env, cache, ctx, url.origin, city, date);
     if (!version) return message(503, "cleaning version unavailable", { "retry-after": "30" });
     if (name && param && param !== version) return message(404, "cleaning version unavailable");
 
-    const day = await readDay(bucket, cache, ctx, url.origin, city, date, version, today);
+    const { source_date, ...day } = await readDay(
+      bucket, cache, ctx, url.origin, city, date, version, today,
+    );
+    const licence = renderDownloadLicence(terms, provider.download_licence.source_date_required, source_date);
     const link = (filename) => `/v2/${city}/download/${date}/${filename}?version=${version}`;
     if (!name) {
       return Response.json({

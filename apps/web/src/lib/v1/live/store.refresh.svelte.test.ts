@@ -3,6 +3,7 @@ import { configureV1Runtime } from '../runtime';
 import type { Manifest } from '../schemas/manifest';
 import { isoUtc } from '../schemas/types';
 import type { VehiclesFile } from '../schemas/vehicles';
+import { liveSourceDate } from '#lib/live/sourceDate.ts';
 import { createLiveStore, type LiveReader } from './store.svelte';
 import { createMemoryLiveReader } from './__fixtures__/reader';
 
@@ -18,6 +19,7 @@ function mount(refreshManifest?: LiveReader['refreshManifest']) {
 		display_name: 'Fixture',
 		dataset_version: 'v1',
 		attribution: 'Fixture',
+		tz: 'America/Toronto',
 		bbox: [-74, 45, -73, 46],
 		labels: {},
 		surfaces: [],
@@ -56,6 +58,29 @@ describe('explicit live refresh', () => {
 			.reverse()
 			.forEach((dispose) => dispose());
 		vi.useRealTimers();
+	});
+
+	it('dates the retained capture in the city timezone and clears it when the store stops', async () => {
+		const { store, reader } = mount();
+		reader.vehicles.mockResolvedValue({
+			generated_utc: ISO,
+			vehicles: [],
+			captureFeed: {
+				family: 'vehicle_positions',
+				captured_at: '2026-06-20T04:00:02Z',
+				source_at: '2026-06-20T03:59:55Z',
+				fresh_for_seconds: 40,
+				source_lag_seconds: 0,
+				read_failed: false,
+			},
+			captureRevision: 'fixture',
+		});
+		store.start();
+		await vi.advanceTimersByTimeAsync(1);
+		expect(store.sourceDate).toBe('2026-06-20');
+		expect(liveSourceDate('stm')).toBe('2026-06-20');
+		store.stop();
+		expect(liveSourceDate('stm')).toBeNull();
 	});
 
 	it('supersedes an in-flight background poll and ignores its late response', async () => {

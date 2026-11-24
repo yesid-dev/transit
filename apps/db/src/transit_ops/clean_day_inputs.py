@@ -94,6 +94,22 @@ def clean_from_inputs(
         routes_without_live_data=routes,
     )
     result.alerts = versions if sources else None
+    licence = declaration.public.download_licence
+    if licence is not None and licence.source_date_required:
+        # Successful decoded inputs have publisher header timestamps. Archive-only
+        # attempts and repeated payloads cannot establish a newer source update.
+        latest = max(
+            (
+                poll.feed_timestamp_utc
+                for poll in result.feed_polls
+                if poll.result in ("ok", "empty")
+                and poll.feed_timestamp_utc is not None
+                and poll.feed_timestamp_utc <= poll.captured_at_utc
+            ),
+            default=None,
+        )
+        if latest is not None:
+            result.source_date = latest.astimezone(zone).date().isoformat()
     result.scorecard_declaration = {
         "timezone": declaration.provider.timezone,
         "live_source_lag_seconds": declaration.provider.live_source_lag_seconds,

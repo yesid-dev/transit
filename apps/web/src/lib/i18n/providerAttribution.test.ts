@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
-import { providerAttribution } from './providerAttribution';
+import { PublicCitySchema } from '#lib/v1/schemas/providers.ts';
+import { datedProviderAttribution, providerAttribution } from './providerAttribution';
 
 it.each(['stm', 'octranspo'])(
 	'localizes %s attribution without changing the published English text',
@@ -24,4 +25,27 @@ it('uses Ottawa’s official French notice', () => {
 
 it('preserves attribution for providers without an override', () => {
 	expect(providerAttribution('other', 'Provider licence', 'fr')).toBe('Provider licence');
+});
+
+it('renders a dated notice from the catalogue, including an unknown date in either locale', () => {
+	const city = PublicCitySchema.parse({
+		id: 'example',
+		timezone: 'America/Toronto',
+		bounds: null,
+		labels: {
+			en: { city: 'Example', operator: 'Example Transit' },
+			fr: { city: 'Example', operator: 'Example Transit' },
+		},
+		alert_links: {},
+		inputs: {},
+		lines_without_live_data: [],
+		download_licence: {
+			source_date_required: true,
+			attribution: { en: 'Update: {source_date}.', fr: 'Mise à jour : {source_date}.' },
+		},
+	});
+	expect(datedProviderAttribution(city, 'en', '2026-11-20')).toBe('Update: 2026-11-20.');
+	expect(datedProviderAttribution(city, 'en')).toBe('Update: unknown.');
+	expect(datedProviderAttribution(city, 'fr')).toBe('Mise à jour : inconnue.');
+	expect(datedProviderAttribution({ ...city, download_licence: undefined }, 'en')).toBeNull();
 });

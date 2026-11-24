@@ -131,6 +131,14 @@ class DownloadLicence(BaseModel):
     limits: BilingualText
     non_endorsement: BilingualText
     source: BilingualText
+    source_date_required: bool = Field(default=False, exclude_if=lambda value: not value)
+
+    @model_validator(mode="after")
+    def validate_source_date(self) -> DownloadLicence:
+        for text in (self.attribution.en, self.attribution.fr):
+            if text.count("{source_date}") != int(self.source_date_required):
+                raise ValueError("Each dated attribution must include one {source_date} token")
+        return self
 
 
 class ProviderPublicConfig(BaseModel):

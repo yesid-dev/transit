@@ -5,8 +5,10 @@ import {
 	type CaptureEvidence,
 	type LiveTripScope,
 } from '#lib/live/captureSnapshot.ts';
+import { registerLiveSourceDate } from '#lib/live/sourceDate.ts';
 import { DEFAULT_LIVE_TTL_S, freshnessAgeSeconds } from '#lib/v1/freshness.ts';
 import { getV1Runtime } from '#lib/v1/runtime.ts';
+import { providerLocalDateKey } from '#lib/utils/serviceDate.ts';
 import { untrack } from 'svelte';
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import type {
@@ -86,6 +88,7 @@ export interface LiveStoreOptions {
 }
 
 export interface LiveStore {
+	readonly sourceDate: string | null;
 	readonly vehicles: VehiclesFile | null;
 	readonly trips: TripsFile | null;
 	readonly departures: StopDeparturesFile | null;
@@ -157,6 +160,7 @@ export function createLiveStore(
 	let refreshGeneration = 0;
 	let lifecycleWired = false;
 	let started = false;
+	let releaseSourceDate: (() => void) | undefined;
 
 	const index = $derived(buildLiveIndex({ vehicles, trips, stopDepartures: departures }));
 	const familyStates = $derived.by(() => {
@@ -778,6 +782,7 @@ export function createLiveStore(
 	function start(): void {
 		if (started || !browser) return;
 		started = true;
+		releaseSourceDate = registerLiveSourceDate(manifest.provider, sourceDate);
 		clockDispose = runtime.clock.subscribe();
 		wireLifecycle();
 		resumePolling();
@@ -785,6 +790,8 @@ export function createLiveStore(
 
 	function stop(): void {
 		started = false;
+		releaseSourceDate?.();
+		releaseSourceDate = undefined;
 		forcedController = null;
 		refreshGeneration += 1;
 		refreshInFlight = null;
@@ -807,7 +814,22 @@ export function createLiveStore(
 		}
 	}
 
+	function sourceDate(): string | null {
+		let latest: string | null = null;
+		for (const family of LIVE_FAMILIES) {
+			if (!familyStatesValue[family].active) continue;
+			const payload = currentFamilyPayload(family);
+			const captured = payload?.captureFeed?.captured_at ?? captureTimestamp(payload);
+			const date = captured ? providerLocalDateKey(captured, manifest.tz) : null;
+			if (date && (!latest || date > latest)) latest = date;
+		}
+		return latest;
+	}
+
 	return {
+		get sourceDate() {
+			return sourceDate();
+		},
 		get vehicles() {
 			return vehicles;
 		},

@@ -9,7 +9,8 @@
 <script lang="ts">
 	import { setPageTitleContext, resolvePageTitle } from '#lib/seo/pageTitle.ts';
 	const clientTitle = setPageTitleContext();
-	import { providerAttribution } from '#lib/i18n/providerAttribution.ts';
+	import { datedProviderAttribution, providerAttribution } from '#lib/i18n/providerAttribution.ts';
+	import { liveSourceDate } from '#lib/live/sourceDate.ts';
 	import { createLineDirectory } from '#lib/site/lineDirectory.ts';
 	import { setLineDirectory } from '#lib/site/transitDisplayContext.ts';
 	import { routeNameFallback } from '#lib/site/absence.ts';
@@ -119,6 +120,17 @@
 
 	const v1 = $derived(data.v1);
 	setV1Context(() => v1 ?? undefined);
+	const datedNotice = $derived(
+		dataIndependentRoute ||
+			(!v1 && !data.recordSourceDate) ||
+			!data.provider?.download_licence?.source_date_required
+			? null
+			: datedProviderAttribution(
+					data.provider,
+					locale,
+					v1 ? liveSourceDate(v1.manifest.provider) : null,
+				),
+	);
 	const footerAttribution = $derived(
 		dataIndependentRoute
 			? legalCopy[locale].footerAttribution
@@ -434,7 +446,15 @@
 							{/snippet}
 							{#snippet statusStart()}
 								<p class="footer-honesty m-0 text-center sm:text-left">
-									{#if footerAttribution}<span>{footerAttribution}</span>{/if}
+									{#if datedNotice && data.recordSourceDate}
+										{#await data.recordSourceDate}
+											<span>{datedNotice}</span>
+										{:then date}
+											<span>{datedProviderAttribution(data.provider, locale, date)}</span>
+										{/await}
+									{:else if datedNotice || footerAttribution}
+										<span>{datedNotice ?? footerAttribution}</span>
+									{/if}
 									<span class="footer-disclaimer">{footer.disclaimer(footerAgency)}</span>
 								</p>
 							{/snippet}

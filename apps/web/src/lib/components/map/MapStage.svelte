@@ -143,6 +143,10 @@
 
 	let container = $state<HTMLDivElement | null>(null);
 	let map = $state.raw<MapLibreMap | null>(null);
+	let updateAttribution: ((text: string | null) => void) | undefined;
+	$effect(() => {
+		if (map) updateAttribution?.(customAttribution);
+	});
 
 	function cameraInputs() {
 		if (!container) return { center, zoom, bounds, maxBounds, fitPadding };
@@ -264,7 +268,10 @@
 		const observer = attempt.observer;
 		attempt.observer = null;
 		if (activeAttempt === attempt) activeAttempt = null;
-		if (map === ownedMap) map = null;
+		if (map === ownedMap) {
+			map = null;
+			updateAttribution = undefined;
+		}
 
 		const cleanupErrors: unknown[] = [];
 		const release = (dispose: () => void): void => {
@@ -346,7 +353,7 @@
 		instance: MapLibreMap,
 		control: Parameters<MapLibreMap['addControl']>[0],
 		position?: Parameters<MapLibreMap['addControl']>[1],
-	): void {
+	): () => void {
 		let active = true;
 		const dispose = () => {
 			if (!active) return;
@@ -364,6 +371,7 @@
 			}
 			throw error;
 		}
+		return dispose;
 	}
 
 	function preflightWebgl(): void {
@@ -599,15 +607,37 @@
 				ownMapListener(attempt, instance, 'pitch', reportOrientation);
 				reportOrientation();
 			}
-			ownMapControl(
-				attempt,
-				instance,
-				new maplibregl.AttributionControl({
-					compact: true,
-					...(customAttribution ? { customAttribution } : {}),
-				}),
-				'bottom-right',
-			);
+			let currentAttribution: string | null;
+			let releaseAttribution: (() => void) | undefined;
+			function setAttribution(text: string | null) {
+				if (releaseAttribution && text === currentAttribution) return;
+				const focus = releaseAttribution ? captureRecoveryFocus(attempt, instance) : null;
+				if (releaseAttribution) {
+					releaseAttribution();
+					attempt.disposers.splice(attempt.disposers.indexOf(releaseAttribution), 1);
+				}
+				const span = document.createElement('span');
+				span.textContent = text;
+				releaseAttribution = ownMapControl(
+					attempt,
+					instance,
+					new maplibregl.AttributionControl({
+						compact: true,
+						...(text ? { customAttribution: span.innerHTML } : {}),
+					}),
+					'bottom-right',
+				);
+				currentAttribution = text;
+				if (focus?.kind === 'attribution') restoreRecoveryFocus(attempt, instance, focus);
+			}
+			setAttribution(customAttribution);
+			updateAttribution = (text) => {
+				try {
+					setAttribution(text);
+				} catch (error) {
+					reportCleanupFailure(error);
+				}
+			};
 			map = instance;
 
 			failureKind = 'setup';
