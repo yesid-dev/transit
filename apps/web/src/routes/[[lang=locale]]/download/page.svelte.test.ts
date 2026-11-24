@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/svelte';
 import { expect, it, vi } from 'vitest';
+import { downloadTables } from '#lib/features/record/downloadTables.ts';
 import Page from './+page.svelte';
 
 const { language } = vi.hoisted(() => ({ language: { value: 'en' as 'en' | 'fr' } }));
@@ -10,8 +11,7 @@ vi.mock('#lib/i18n/index.ts', async (importOriginal) => ({
 
 const day = '2026-11-20';
 const source = 'https://ottawa.ca/licence';
-const file =
-	'https://data.yesid.dev/v2/octranspo/download/2026-11-20/stop_events.parquet?version=11';
+const downloadPath = `https://data.yesid.dev/v2/octranspo/download/${day}`;
 const attribution = {
 	en: 'Contains information licensed under the Open Government Licence – City of Ottawa.',
 	fr: 'Contient de l’information visée par la Licence du gouvernement ouvert – Ville d’Ottawa.',
@@ -30,11 +30,20 @@ const licence = {
 	contact: 'contact@yesid.dev',
 };
 
-it.each(['en', 'fr'] as const)(
-	'renders the %s date selection, file and licence',
-	async (locale) => {
+const cases = [
+	['en', '11'],
+	['fr', '11'],
+	['en', '12'],
+	['fr', '12'],
+] as const;
+
+it.each(cases)(
+	'renders the %s download page for cleaning version %s with date selection, file and licence',
+	async (locale, version) => {
 		language.value = locale;
 		const city = { city: 'Ottawa', operator: 'OC Transpo' };
+		const filename = version === '12' ? 'segment_runs.parquet' : 'stop_events.parquet';
+		const file = `${downloadPath}/${filename}?version=${version}`;
 		render(Page, {
 			props: {
 				data: {
@@ -47,13 +56,10 @@ it.each(['en', 'fr'] as const)(
 						answer: {
 							city: 'octranspo',
 							service_date: day,
-							cleaning_version: '11',
+							cleaning_version: version,
 							status: 'complete' as const,
-							files: [
-								{ name: 'stop_events.parquet', byte_size: 500, sha256: '1'.repeat(64), url: file },
-							],
-							readme_url:
-								'https://data.yesid.dev/v2/octranspo/download/2026-11-20/README.txt?version=11',
+							files: [{ name: filename, byte_size: 500, sha256: '1'.repeat(64), url: file }],
+							readme_url: `${downloadPath}/README.txt?version=${version}`,
 							alerts_not_tracked: true,
 							licence,
 						},
@@ -61,10 +67,7 @@ it.each(['en', 'fr'] as const)(
 				},
 			},
 		});
-		expect(await screen.findByRole('link', { name: 'stop_events.parquet' })).toHaveAttribute(
-			'href',
-			file,
-		);
+		expect(await screen.findByRole('link', { name: filename })).toHaveAttribute('href', file);
 		expect(screen.getByRole('link', { name: attribution[locale] })).toHaveAttribute('href', source);
 		expect(screen.getByLabelText(locale === 'en' ? 'Service date' : 'Date de service')).toHaveValue(
 			day,
@@ -76,5 +79,12 @@ it.each(['en', 'fr'] as const)(
 					: 'Les avis de service ne sont pas suivis pour cette ville.',
 			),
 		).toBeInTheDocument();
+		if (version === '12') {
+			const description = await screen.findByText(downloadTables.segment_runs[locale]);
+			expect(description).toBeVisible();
+			expect(description).not.toHaveTextContent(/\b(?:seconds|secondes)\b/i);
+		} else {
+			expect(screen.queryByText('segment_runs')).toBeNull();
+		}
 	},
 );

@@ -52,14 +52,15 @@ function provider(id, operator, alerts = true, licensed = true) {
 }
 
 function fixture(t, { city = "stm", status, missing = false, admitted = true, alerts = true,
-  endpoint = "fixture.r2.cloudflarestorage.com", r2Error, wrongRange = false } = {}) {
+  endpoint = "fixture.r2.cloudflarestorage.com", r2Error, wrongRange = false, version = "11" } = {}) {
+  const tables = ["12", "13"].includes(version) ? [...TABLES, "segment_runs"] : TABLES;
   const manifest = {
     provider: city,
     service_date: DATE,
-    cleaning_version: "11",
+    cleaning_version: version,
     ...(status ? { status } : {
       ...(alerts ? {} : { alerts: "not_tracked" }),
-      files: Object.fromEntries(TABLES.filter((name) => alerts || name !== "alerts").map(
+      files: Object.fromEntries(tables.filter((name) => alerts || name !== "alerts").map(
         (name) => [`${name}.parquet`, { sha256: SHA, byte_size: 5 }],
       )),
     }),
@@ -96,7 +97,7 @@ function fixture(t, { city = "stm", status, missing = false, admitted = true, al
           });
         }
         assert.equal(url.pathname, "/data-health");
-        return Response.json({}, { headers: { "x-transit-cleaning-version": "11" } });
+        return Response.json({}, { headers: { "x-transit-cleaning-version": version } });
       },
     },
   };
@@ -122,11 +123,13 @@ function fixture(t, { city = "stm", status, missing = false, admitted = true, al
     });
     if (key.endsWith("/manifest.json")) {
       assert.equal(request.method, "GET");
-      if (missing || key !== `${city}/${DATE}/v11/manifest.json`) return new Response(null, { status: 404 });
+      if (missing || key !== `${city}/${DATE}/v${version}/manifest.json`) {
+        return new Response(null, { status: 404 });
+      }
       const body = JSON.stringify(manifest);
       return new Response(body, { headers: { "content-length": String(Buffer.byteLength(body)) } });
     }
-    assert.equal(key, `${city}/${DATE}/v11/stop_events.parquet`);
+    assert.ok(tables.some((table) => key === `${city}/${DATE}/v${version}/${table}.parquet`));
     const body = "PAR1!";
     const range = request.headers.get("range");
     if (!range) return new Response(request.method === "HEAD" ? null : body, {
@@ -174,6 +177,22 @@ test("a dated listing uses the public city catalog, current version and manifest
   }
   assert.ok(text.includes(SHA));
 });
+
+for (const version of ["12", "13"]) {
+  test(`v${version} lists and serves the segment runs file`, async (t) => {
+    const { fetch } = fixture(t, { version });
+    const response = await fetch(STM + "?date=" + DATE);
+    assert.equal(response.status, 200);
+    const listing = await response.json();
+    const url = `${STM}/${DATE}/segment_runs.parquet?version=${version}`;
+    assert.deepEqual(listing.files.find(({ name }) => name === "segment_runs.parquet"), {
+      name: "segment_runs.parquet", byte_size: 5, sha256: SHA, url,
+    });
+    const file = await fetch(url);
+    assert.equal(file.status, 200);
+    assert.equal(await file.text(), "PAR1!");
+  });
+}
 
 test("paths, service dates, versions and nonpublic cities are refused before opening a file", async (t) => {
   const { fetch, keys } = fixture(t);

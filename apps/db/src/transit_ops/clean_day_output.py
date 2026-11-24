@@ -5,6 +5,7 @@ import json
 import subprocess
 from collections import Counter
 from collections.abc import Iterable, Sequence
+from contextlib import ExitStack
 from datetime import UTC, date, datetime
 from hashlib import file_digest
 from pathlib import Path
@@ -69,6 +70,24 @@ STOP_EVENTS = TableSchema.from_columns(
         ("service_weekday", "smallint", True),
     ),
     _STOP_KEY,
+)
+SEGMENT_RUNS = TableSchema.from_columns(
+    (
+        *_IDENTITY,
+        ("from_stop", "text", True),
+        ("to_stop", "text", True),
+        ("from_sequence", "bigint", True),
+        ("to_sequence", "bigint", True),
+        ("observed_departure_at", _TIME, False),
+        ("observed_arrival_at", _TIME, False),
+        ("observed_run_seconds", "bigint", False),
+        ("scheduled_run_seconds", "bigint", False),
+        ("from_basis", "text", True),
+        ("to_basis", "text", True),
+        ("scheduled_departure_at", _TIME, False),
+        ("exclusion", "text", False),
+    ),
+    (*_TRIP_KEY, "from_sequence"),
 )
 PREDICTION_SAMPLES = TableSchema.from_columns(
     (
@@ -342,26 +361,36 @@ def _stage(
             )
         ),
     }
-    tables: tuple[tuple[str, TableSchema, Iterable[Row], str | None], ...] = (
+    tables: tuple[tuple[str, TableSchema, Iterable[Row] | None, str | None], ...] = (
         ("trip_days", TRIP_DAYS, day.trip_rows(), "state"),
         ("stop_events", STOP_EVENTS, day.stop_rows(), "basis"),
         ("scheduled_stop_times", SCHEDULED_STOP_TIMES, day.scheduled_stop_rows(), None),
         ("vehicle_positions", VEHICLE_POSITIONS, day.vehicle_rows(), None),
         ("feed_polls", FEED_POLLS, day.poll_rows(), None),
         ("prediction_samples", PREDICTION_SAMPLES, day.prediction_rows(), None),
+        ("segment_runs", SEGMENT_RUNS, None, None),
     )
     for name, schema, rows, category in tables:
         columns = [column.name for column in schema.columns]
         index = columns.index(category) if category is not None else None
         source = temporary / f"{name}.csv"
         target = staged / f"{name}.parquet"
-        with source.open("w", encoding="utf-8", newline="") as stream:
-            writer = csv.writer(stream, lineterminator="\n")
-            writer.writerow(columns)
-            for row in rows:
-                if index is not None and category is not None:
-                    counts[category][str(row[index])] += 1
-                writer.writerow(row)
+        if rows is not None:
+            with ExitStack() as stack:
+                stream = stack.enter_context(source.open("w", encoding="utf-8", newline=""))
+                writer = csv.writer(stream, lineterminator="\n")
+                writer.writerow(columns)
+                if name == "stop_events":
+                    segments = stack.enter_context(
+                        (temporary / "segment_runs.csv").open("w", encoding="utf-8", newline="")
+                    )
+                    segment_writer = csv.writer(segments, lineterminator="\n")
+                    segment_writer.writerow(column.name for column in SEGMENT_RUNS.columns)
+                    rows = day.stop_rows(write_segment=segment_writer.writerow)
+                for row in rows:
+                    if index is not None and category is not None:
+                        counts[category][str(row[index])] += 1
+                    writer.writerow(row)
         # The generated CSV has typed rows. Check strict conversion and Parquet readback.
         window = write_window(
             source,

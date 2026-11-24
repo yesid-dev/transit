@@ -1,4 +1,4 @@
-"""Pair adjacent scheduled stops and classify each candidate run."""
+"""Read adjacent scheduled stop runs and apply capture coverage."""
 
 from transit_engine.capture import POLL_COVERAGE_SQL
 
@@ -67,5 +67,50 @@ CORRIDOR_RUNS_SQL = f"""
             END AS exclusion
         FROM pairs p LEFT JOIN realtime_feed_counts f USING (service_date)
         WHERE to_stop IS NOT NULL AND ({{cut}})
+    )
+"""
+
+
+# Bucket only the poll intervals so the join can stream segments through a small
+# hash table. The timestamp bounds still decide coverage, and the intervals are
+# disjoint within a service day, so a run can match at most once.
+_COVERAGE_BUCKET_MS = 15 * 60 * 1000
+SEGMENT_RUNS_SQL = f"""
+    {POLL_COVERAGE_SQL},
+    continuous_coverage AS (
+        SELECT c.service_date, c.covered_from, c.covered_to
+        FROM coverage c JOIN realtime_feed_counts f USING (service_date)
+        WHERE f.required_feeds = 1
+        UNION ALL
+        SELECT t.service_date, greatest(t.covered_from, v.covered_from),
+            least(t.covered_to, v.covered_to)
+        FROM coverage t JOIN coverage v USING (service_date)
+        WHERE t.feed = 'trip_updates' AND v.feed = 'vehicle_positions'
+            AND t.covered_from <= v.covered_to AND v.covered_from <= t.covered_to
+    ), coverage_buckets AS (
+        SELECT service_date, covered_from, covered_to, unnest(range(
+            epoch_ms(covered_from) // {_COVERAGE_BUCKET_MS},
+            epoch_ms(covered_to) // {_COVERAGE_BUCKET_MS} + 1
+        )) AS bucket
+        FROM continuous_coverage
+    ), segments AS (
+        SELECT service_date, route_id, direction_id, from_stop, to_stop,
+            scheduled_departure_at AS departure_at, from_basis AS basis,
+            observed_departure_at, observed_arrival_at,
+            observed_run_seconds AS observed_seconds, scheduled_run_seconds AS scheduled_seconds,
+            exclusion
+        FROM read_parquet(?, hive_partitioning = false)
+        WHERE provider = ? AND cleaning_version = ? AND service_date BETWEEN ? AND ?
+            AND ({{cut}})
+    ), runs AS (
+        SELECT s.* EXCLUDE (exclusion), observed_seconds - scheduled_seconds AS lost_seconds,
+            CASE WHEN exclusion IS NOT NULL THEN exclusion
+                WHEN c.covered_to IS NULL THEN 'capture_gap'
+            END AS exclusion
+        FROM segments s LEFT JOIN coverage_buckets c
+            ON s.service_date = c.service_date
+            AND epoch_ms(s.observed_departure_at) // {_COVERAGE_BUCKET_MS} = c.bucket
+            AND s.exclusion IS NULL
+            AND s.observed_departure_at >= c.covered_from AND s.observed_arrival_at <= c.covered_to
     )
 """

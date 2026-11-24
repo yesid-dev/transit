@@ -14,7 +14,15 @@
 	const locale = getLocale();
 	const t = (en: string, fr: string) => (locale === 'fr' ? fr : en);
 	const title = $derived(t('Download the data', 'Télécharger les données'));
+	const { segment_runs: segmentRuns, ...existingTables } = downloadTables;
 </script>
+
+{#snippet tableDescription(name: string, description: string)}
+	<div class="grid gap-1 border-t border-border pt-3">
+		<dt><code>{name}</code></dt>
+		<dd>{description}</dd>
+	</div>
+{/snippet}
 
 <Surface>
 	<div class="grid min-w-0 gap-6">
@@ -175,12 +183,14 @@
 				)}
 			</p>
 			<dl class="grid gap-3">
-				{#each Object.entries(downloadTables) as [name, description] (name)}
-					<div class="grid gap-1 border-t border-border pt-3">
-						<dt><code>{name}</code></dt>
-						<dd>{description[locale]}</dd>
-					</div>
+				{#each Object.entries(existingTables) as [name, description] (name)}
+					{@render tableDescription(name, description[locale])}
 				{/each}
+				{#await data.listing then result}
+					{#if result?.kind === 'answer' && Number(result.answer.cleaning_version) >= 12}
+						{@render tableDescription('segment_runs', segmentRuns[locale])}
+					{/if}
+				{/await}
 			</dl>
 		</section>
 

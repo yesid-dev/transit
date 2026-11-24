@@ -27,6 +27,10 @@ export const downloadTables = {
 		en: 'One sample per observed trip stop and prediction horizon. Includes publication and predicted times, actual lead time and prediction error (s).',
 		fr: 'Un échantillon par arrêt observé d’une course et par horizon de prévision. Comprend les heures de publication et de passage prévu, le délai réel avant le passage et l’erreur de prévision (s).',
 	},
+	segment_runs: {
+		en: 'One row per pair of consecutive scheduled stops on a trip. Includes the observed and scheduled travel times and the reason for any exclusion.',
+		fr: 'Une ligne par paire d’arrêts consécutifs prévus pour une course. Comprend la durée observée et la durée prévue du parcours, ainsi que le motif d’exclusion, le cas échéant.',
+	},
 };
 
 export const missingDayReasons = {
