@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { test } from './layout-test';
+import { doubleText, focusRing, minimumTargetSize } from './layout-helpers';
 import { localizeHref } from '../src/lib/i18n/routing';
 import { announcement } from '../src/lib/site/announcement';
 
@@ -115,17 +116,15 @@ async function expectKeyboardReachable(link: Locator, name: string) {
 	const focus = await link.evaluate((element) => {
 		const rect = element.getBoundingClientRect();
 		const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
-		const style = getComputedStyle(element);
+
 		return {
-			visible: element.matches(':focus-visible'),
-			outline: style.outlineStyle,
-			width: parseFloat(style.outlineWidth),
 			unobscured: hit === element || element.contains(hit),
 		};
 	});
-	expect(focus.visible, `${name} :focus-visible`).toBe(true);
-	expect(focus.outline, `${name} focus ring`).toBe('solid');
-	expect(focus.width, `${name} ring width`).toBeGreaterThanOrEqual(2);
+	const ring = await link.evaluate(focusRing);
+	expect(ring.visible, `${name} :focus-visible`).toBe(true);
+	expect(ring.outline, `${name} focus ring`).toBe('solid');
+	expect(ring.width, `${name} ring width`).toBeGreaterThanOrEqual(2);
 	expect(focus.unobscured, `${name} not covered`).toBe(true);
 }
 
@@ -148,7 +147,7 @@ test('phone announcement state leaves footer links clear through hydration', asy
 	});
 	try {
 		await page.goto(localizeHref('/privacy', 'fr', 'octranspo'), { waitUntil: 'domcontentloaded' });
-		await page.addStyleTag({ content: 'html { font-size: 200%; }' });
+		await doubleText(page);
 		await expect(page.locator('html[data-hydrated]')).toHaveCount(0);
 		const chrome = page.locator('[data-slot="app-shell-chrome"]');
 		if (!announcement.enabled) {
@@ -199,7 +198,7 @@ for (const brandCase of cases)
 		await page.goto(localizeHref(route, locale, provider));
 		if (scale === 200) {
 			// Text scaling is an input: raise the root and assert the computed size it lands on.
-			await page.addStyleTag({ content: 'html { font-size: 200%; }' });
+			await doubleText(page);
 			await expect
 				.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).fontSize))
 				.toBe('32px');
@@ -243,8 +242,8 @@ for (const brandCase of cases)
 			);
 			expect(link.box.left, `${name} inside viewport`).toBeGreaterThanOrEqual(0);
 			expect(link.box.right, `${name} inside viewport`).toBeLessThanOrEqual(measured.viewportWidth);
-			expect(link.box.height, `${name} target`).toBeGreaterThanOrEqual(44);
-			expect(link.box.width, `${name} target`).toBeGreaterThanOrEqual(44);
+			expect(link.box.height, `${name} target`).toBeGreaterThanOrEqual(minimumTargetSize);
+			expect(link.box.width, `${name} target`).toBeGreaterThanOrEqual(minimumTargetSize);
 		}
 		expect(measured.scrollX).toBe(0);
 		expect(measured.footer.left).toBeGreaterThanOrEqual(0);
