@@ -97,12 +97,12 @@ for (const locale of PUBLISHED_LOCALES) {
 	});
 
 	// Fills the header field until hydration keeps the value and the row answers.
-	async function headerRow(page: Page, scope: 'all' | 'route', query: string, row: string) {
+	async function headerRow(page: Page, query: string, row: string) {
 		const result = page
-			.getByRole('listbox', { name: nav.searchAria[scope] })
+			.getByRole('listbox', { name: nav.searchAria.all })
 			.getByRole('option', { name: new RegExp(`^${literal(row)}`) });
 		await expect(async () => {
-			await page.getByRole('combobox', { name: nav.searchAria[scope] }).fill(query);
+			await page.getByRole('combobox', { name: nav.searchAria.all }).fill(query);
 			await expect(result).toBeVisible({ timeout: 1_000 });
 		}).toPass();
 		return result;
@@ -115,7 +115,7 @@ for (const locale of PUBLISHED_LOCALES) {
 	}) => {
 		test.skip(project.name !== 'desktop', 'the header search box shows from 1024px');
 		await page.goto(localizeHref('/', locale));
-		await (await headerRow(page, 'all', line.long, lineRow(line))).click();
+		await (await headerRow(page, line.long, lineRow(line))).click();
 		await expect(page).toHaveURL(
 			(url) => url.pathname === localizeHref(`/lines/${line.id}`, locale),
 		);
@@ -124,7 +124,7 @@ for (const locale of PUBLISHED_LOCALES) {
 	test(`${locale}: on the map the header search keeps map focus`, async ({ page }, { project }) => {
 		test.skip(project.name !== 'desktop', 'the header search box shows from 1024px');
 		await page.goto(localizeHref(map, locale));
-		await (await headerRow(page, 'all', line.long, lineRow(line))).click();
+		await (await headerRow(page, line.long, lineRow(line))).click();
 		await expect(page).toHaveURL(
 			(url) =>
 				url.pathname === localizeHref(map, locale) &&
@@ -140,7 +140,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		await page.goto(
 			localizeHref(`/lines/${line.id}?recordFrom=2026-11-08&recordTo=2026-11-14`, locale),
 		);
-		const row = await headerRow(page, 'route', other.short, lineRow(other));
+		const row = await headerRow(page, other.short, lineRow(other));
 		await row.click();
 		await expect(page).toHaveURL(
 			(url) =>

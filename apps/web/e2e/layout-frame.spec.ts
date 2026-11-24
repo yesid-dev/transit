@@ -2,6 +2,8 @@ import { expect, type Page } from '@playwright/test';
 import { localizeHref } from '../src/lib/i18n/routing';
 import { navPillCopy } from '../src/lib/i18n/messages';
 import { test } from './layout-test';
+import { textDefects } from './layout-helpers';
+import { openFrameControls } from './frame-controls';
 
 const cities = {
 	stm: {
@@ -49,13 +51,20 @@ for (const locale of ['en', 'fr'] as const) {
 		expect((await city.boundingBox())!.height).toBeGreaterThanOrEqual(44);
 	});
 
-	test(`${locale} inline search and city fit at 1024px and 200% text`, async ({ page }) => {
+	test(`${locale} the compact search button and city fit at 1024px and 200% text`, async ({
+		page,
+	}) => {
 		await page.setViewportSize({ width: 1024, height: 900 });
 		await open(page, localizeHref('/privacy', locale, 'stm'));
 		await page.addStyleTag({ content: 'html { font-size: 200%; }' });
 		await page.evaluate(() => document.fonts.ready);
 		const pill = page.getByTestId('nav-pill');
-		await expect(pill.getByRole('combobox', { name: words.searchAria.all })).toBeVisible();
+		await expect(page.locator('[data-slot="app-frame"]')).toHaveAttribute(
+			'data-rail-layout',
+			'compact',
+		);
+		await expect(pill.getByRole('combobox', { name: words.searchAria.all })).toHaveCount(0);
+		await expect(pill.getByRole('button', { name: words.searchAria.all })).toBeVisible();
 		await expect(pill.getByRole('combobox', { name: words.network })).toBeVisible();
 		const bounds = (await pill.boundingBox())!;
 		expect(bounds.x).toBeGreaterThanOrEqual(0);
@@ -112,7 +121,35 @@ test('desktop controls keep their column and control changes retain focus and sc
 	expect((await main.boundingBox())!.x).toBe(x);
 
 	await expect(rail.getByRole('radio', { name: 'Live now', exact: true })).toBeDisabled();
+	const record = rail.getByRole('radio', { name: 'Record', exact: true });
+	await expect(record).toBeEnabled();
+	await expect(record).toBeChecked();
 	await expect(rail.getByText('This screen is a record. It has no live view.')).toBeVisible();
+	const contrast = await record.evaluate((button) => {
+		const style = getComputedStyle(button);
+		const color = document.createElement('canvas');
+		color.width = color.height = 1;
+		const context = color.getContext('2d')!;
+		const luminance = (cssColor: string) => {
+			context.fillStyle = cssColor;
+			context.fillRect(0, 0, 1, 1);
+			const pixels = context.getImageData(0, 0, 1, 1).data;
+			const linear = (value: number) => {
+				const channel = value / 255;
+				return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+			};
+			return 0.2126 * linear(pixels[0]) + 0.7152 * linear(pixels[1]) + 0.0722 * linear(pixels[2]);
+		};
+		const a = luminance(style.color);
+		const b = luminance(style.backgroundColor);
+		return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+	});
+	expect(contrast).toBeGreaterThanOrEqual(4.5);
+	const cards = await rail
+		.locator('[data-slot="controls-rail"]')
+		.evaluateAll((elements) => elements.map((element) => getComputedStyle(element).padding));
+	expect(new Set(cards).size).toBe(1);
+	await expect(rail.getByText('Record starts 13 October 2026.')).toBeVisible();
 	const preset = rail.getByRole('radio', { name: '28 days', exact: true });
 	await preset.focus();
 	await page.evaluate(() => window.scrollTo(0, 250));
@@ -141,6 +178,7 @@ test('phone controls open a sheet and return focus to the pill', async ({ page }
 		sheet.getByRole('radiogroup', { name: 'Période', exact: true }).getByRole('radio'),
 	).toHaveCount(6);
 	await expect(sheet.getByRole('radio', { name: '12 mois', exact: true })).toBeVisible();
+	await expect(sheet.getByText('Le bilan commence le 13 octobre 2026.')).toBeVisible();
 	await expect(sheet.locator('[data-slot="frame-period-summary"]')).toContainText(
 		'du 8 au 14 nov. 2026',
 	);
@@ -167,4 +205,76 @@ test('Live map keeps pinned dates in the address and shows them again in Record'
 	await expect(rail.locator('[data-slot="frame-period-summary"]')).toContainText(
 		'8 to 14 Nov 2026',
 	);
+});
+
+test('the footer, presets and Ottawa city label keep whole words at 200% text', async ({
+	page,
+}) => {
+	await page.setViewportSize({ width: 1440, height: 900 });
+	await open(page, '/?provider=stm');
+	await page.addStyleTag({ content: 'html { font-size: 200%; }' });
+	await expect(page.locator('[data-slot="app-frame"]')).toHaveAttribute(
+		'data-rail-layout',
+		'compact',
+	);
+	await page.evaluate(() => document.fonts.ready);
+	expect(
+		(await textDefects(page)).filter(
+			({ kind, selector }) => kind === 'broken-word' && selector.includes('footer-'),
+		),
+	).toEqual([]);
+	const rail = await openFrameControls(page);
+	await expect(rail.getByRole('radio', { name: 'Yesterday', exact: true })).toBeVisible();
+	expect(
+		(await textDefects(page)).filter(
+			({ kind, selector }) => kind === 'broken-word' && selector.includes('segmented-choice'),
+		),
+	).toEqual([]);
+	await page.setViewportSize({ width: 390, height: 844 });
+	await open(page, '/fr/privacy?provider=octranspo');
+	await page.addStyleTag({ content: 'html { font-size: 200%; }' });
+	await expect(page.locator('[data-slot="site-header-network"]')).toBeVisible();
+	await page.evaluate(() => document.fonts.ready);
+	expect(
+		(await textDefects(page)).filter(
+			({ kind, selector }) => kind === 'broken-word' && selector.includes('network-picker'),
+		),
+	).toEqual([]);
+});
+
+test('the map title and near-me control clear their neighbours at normal and enlarged text', async ({
+	page,
+}) => {
+	await open(page, '/map?provider=stm&frameMode=live');
+	const footer = page.getByRole('contentinfo');
+	await expect(footer).toBeVisible();
+	await expect(page.locator('.map-near-toggle')).toBeVisible();
+	for (const width of [320, 390, 1024, 1440]) {
+		await page.setViewportSize({ width, height: 900 });
+		for (const scale of [100, 200]) {
+			await page.evaluate((value) => {
+				document.documentElement.style.fontSize = value + '%';
+			}, scale);
+			const paired = width >= 1024 && scale === 100;
+			await expect(page.locator('[data-slot="app-frame"]')).toHaveAttribute(
+				'data-rail-layout',
+				paired ? 'paired' : 'compact',
+			);
+			await expect
+				.poll(() =>
+					page.evaluate(() => {
+						const box = (selector: string) =>
+							document.querySelector(selector)!.getBoundingClientRect();
+						const near = box('.map-near-toggle');
+						const title = box('.map-head');
+						const chrome = box('[data-slot="app-frame-chrome"]');
+						return {
+							aboveFooter: near.bottom <= box('[data-slot="map-source-footer"]').top,
+							titleGap: Math.round(title.top - chrome.bottom),
+						};
+					}),
+				)
+				.toEqual({ aboveFooter: true, titleGap: paired ? 16 : 0 });
+		}
+	}
 });

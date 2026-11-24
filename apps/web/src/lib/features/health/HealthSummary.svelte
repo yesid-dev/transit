@@ -107,7 +107,7 @@
 				{#each column.lines as key (key)}
 					{@const text = shown[key]}
 					{@const held = holds(key)}
-					{#if text || held.length > 0}<p>
+					{#if text || held.length > 0}<p data-slot="health-reading">
 							{#each held as hold (hold)}<span aria-hidden="true">{hold}</span>{/each}<span
 								>{text ?? ''}</span
 							>

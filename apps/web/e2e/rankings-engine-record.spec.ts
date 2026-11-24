@@ -1,3 +1,4 @@
+import { closeCompactFrameControls, openFrameControls } from './frame-controls';
 import { expect, test } from '@playwright/test';
 import { textDefects } from './layout-helpers';
 
@@ -173,9 +174,11 @@ test('changes dates, class, measure and list while keeping the ranking URL share
 	await page.getByRole('radio', { name: 'Vehicles', exact: true }).click();
 	await expect(page).toHaveURL(/repeat-offenders.*kind=vehicle/);
 	await expect(page.getByText('24.39 per 100 h')).toBeVisible();
-	await page.getByRole('button', { name: /^Period/ }).click();
+	await (await openFrameControls(page)).getByRole('button', { name: 'Choose other dates' }).click();
 	await page.getByLabel('From', { exact: true }).fill('2026-11-10');
 	await page.getByRole('button', { name: 'Show these dates' }).click();
+	await expect(page.getByRole('dialog', { name: 'Period', exact: true })).toBeHidden();
+	await closeCompactFrameControls(page);
 	await expect(page.getByText('Not tracked', { exact: true })).toBeVisible();
 });
 

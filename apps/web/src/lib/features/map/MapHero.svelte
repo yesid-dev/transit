@@ -8,7 +8,10 @@
 	import { providerHasAlerts } from '#lib/v1/providers.ts';
 	import { lineIsScheduleOnly } from '#lib/site/providerCapabilities.ts';
 	import { getContext, onMount, tick, untrack } from 'svelte';
-	import { mapRecordSourceDateContext } from '#lib/site/mapRecordSourceDate.ts';
+	import {
+		mapPanelOpenContext,
+		mapRecordSourceDateContext,
+	} from '#lib/site/mapRecordSourceDate.ts';
 	import { page } from '$app/state';
 	import { SegmentedChoice } from '@yesid/ui/brand';
 	import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
@@ -411,6 +414,11 @@
 	let pendingViewHint: MapViewHint | null = null;
 	let ingestedViewHint = false;
 	const reportsOpen = $derived(desktop.current ? reportsPaneOpen : viewMode === 'reports');
+	const reportPanelOpen = getContext<((open: boolean) => void) | undefined>(mapPanelOpenContext);
+	$effect(() => {
+		reportPanelOpen?.(reportsOpen || detailOpen);
+		return () => reportPanelOpen?.(false);
+	});
 	const viewSwitchValue = $derived<'map' | 'reports'>(reportsOpen ? 'reports' : 'map');
 	const reportsCopy = $derived(mapReportsCopy(locale));
 	const providerName = $derived(

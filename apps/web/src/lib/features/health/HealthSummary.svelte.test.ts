@@ -22,7 +22,7 @@ const props = {
 	locale: 'en' as const,
 };
 const lines = (container: HTMLElement) =>
-	[...container.querySelectorAll('p')].map((line) => ({
+	[...container.querySelectorAll('[data-slot="health-reading"]')].map((line) => ({
 		shown: line.lastElementChild!.textContent,
 		held: [...line.querySelectorAll('[aria-hidden="true"]')].map((hold) => hold.textContent),
 	}));

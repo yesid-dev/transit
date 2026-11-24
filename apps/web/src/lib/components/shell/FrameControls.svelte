@@ -6,7 +6,8 @@
 	import { Button } from '@yesid/ui/button';
 	import { ControlsRail, DateRangePicker, type SurfaceRailContext } from '@yesid/ui/layout';
 	import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from '@yesid/ui/sheet';
-	import { intl, type Locale } from '#lib/i18n/index.ts';
+	import type { Locale } from '#lib/i18n/index.ts';
+	import { longDate } from '#lib/site/presenter.ts';
 	import {
 		frameHref,
 		MAX_RECORD_DAYS,
@@ -36,9 +37,7 @@
 	const uid = $props.id();
 	const copy = $derived(frameCopy[locale]);
 	const summary = $derived(framePeriodSummary(frame.period, locale));
-	const startLabel = $derived(
-		intl.dateTime(locale, { timeZone: 'UTC', dateStyle: 'long' }).format(new Date(RECORD_START)),
-	);
+	const startLabel = $derived(longDate(RECORD_START, locale));
 	const modes = $derived([
 		{
 			key: 'live' as const,
@@ -49,7 +48,7 @@
 		{
 			key: 'record' as const,
 			label: copy.record,
-			disabled: frame.recordOnly || frame.liveOnly,
+			disabled: frame.liveOnly,
 			describedById: frame.liveOnly ? uid : undefined,
 		},
 	]);
@@ -129,7 +128,7 @@
 			<p id={uid} class="text-sm text-muted-foreground">{copy.liveOnly}</p>
 		{/if}
 	</ControlsRail>
-	<ControlsRail label={copy.period} class="px-2!">
+	<ControlsRail label={copy.period}>
 		{#if frame.mode === 'live'}
 			<p class="w-full text-sm">
 				<strong class="block">{copy.recordDates}</strong>

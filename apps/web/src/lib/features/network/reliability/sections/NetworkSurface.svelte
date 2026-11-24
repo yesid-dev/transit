@@ -1,4 +1,5 @@
 <script lang="ts">
+	import FrameSurfaceRail from '#lib/components/shell/FrameSurfaceRail.svelte';
 	import RefreshButton from '#lib/components/shell/RefreshButton.svelte';
 	import ArticleHeader from '#lib/components/layout/TransitArticleHeader.svelte';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
@@ -43,7 +44,7 @@
 		HistoryNavigator,
 		type GrainSegment,
 	} from '#lib/components/surface/index.ts';
-	import { SurfaceRail, type SurfaceRailContext, DetailFrame } from '@yesid/ui/layout';
+	import { type SurfaceRailContext, DetailFrame } from '@yesid/ui/layout';
 	import { historyRangeRequestFromSearchParams } from '#lib/v1/history/rangeResource.svelte.ts';
 	import { CollapsibleSection, useSectionJump, TocNav, type TocEntry } from '@yesid/ui/brand';
 	import SectionsToggle from '#lib/components/shared/SectionsToggle.svelte';
@@ -555,7 +556,7 @@
 	</div>
 {/snippet}
 {#snippet railCell()}
-	<SurfaceRail
+	<FrameSurfaceRail
 		rail={combinedRail}
 		label={t.viewControlsLabel}
 		summary={railSummary}

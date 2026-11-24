@@ -480,7 +480,9 @@ describe('HealthStatus — full manifest render', () => {
 		const summary = container.querySelector('[data-slot="health-summary"]') as HTMLElement;
 
 		expect(
-			[...summary.querySelectorAll('p')].map((line) => line.lastElementChild?.textContent),
+			[...summary.querySelectorAll('[data-slot="health-reading"]')].map(
+				(line) => line.lastElementChild?.textContent,
+			),
 		).toEqual([
 			'Up to date: live vehicle data, updated 20 s ago.',
 			'The reliability record covers service through Jul 13. It was published on Jul 14.',

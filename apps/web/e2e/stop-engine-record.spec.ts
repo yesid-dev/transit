@@ -104,7 +104,7 @@ test('a slow per-line breakdown does not hold back the Stop answer', async ({ pa
 		'These records take longer',
 	);
 	await expect(page.getByRole('region', { name: 'Alerts for this stop' })).toContainText(
-		'The record is busy right now. You can come back later.',
+		'Waiting for a reading.',
 	);
 	const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
 	expect(

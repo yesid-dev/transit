@@ -101,6 +101,10 @@ export function directionLabel(
 	return name?.trim() ? copy.toward(directionName(name, locale, rule)) : copy.unknownDirection;
 }
 
+export function longDate(date: string, locale: Locale): string {
+	return formatDateKey(date, locale, true, 'day-first', 'long');
+}
+
 export function dateRange({ from, to }: { from: string; to: string }, locale: Locale): string {
 	const end = formatDateKey(to, locale, true, 'day-first');
 	if (from === to) return end;

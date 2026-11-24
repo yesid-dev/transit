@@ -480,7 +480,7 @@
 	}
 	.map-reports-overlay {
 		position: absolute;
-		inset: var(--chrome-offset) 0 0;
+		inset: var(--chrome-offset) 0 var(--map-source-clearance, 0px);
 		z-index: var(--z-map-detail, 24);
 		display: flex;
 		flex-direction: column;

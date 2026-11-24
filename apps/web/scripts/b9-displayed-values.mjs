@@ -837,7 +837,7 @@ async function verifyResponsiveRailFocus(page, cell) {
 	const desktopViewport = page.viewportSize();
 	for (let attempt = 0; attempt < 2; attempt += 1) {
 		await page.setViewportSize({ width: 390, height: 844 });
-		const pill = page.locator('[data-slot="surface-rail-mobile"] > button[aria-expanded]');
+		const pill = page.locator('[data-slot="app-frame"] .surface-rail-pill:visible');
 		await pill.focus();
 		await page.keyboard.press('Enter');
 		const sheet = page
@@ -849,7 +849,7 @@ async function verifyResponsiveRailFocus(page, cell) {
 		await sheet.waitFor({ state: 'detached' });
 		invariant(
 			await page
-				.locator('[data-slot="surface-rail"]')
+				.locator('.app-frame-controls-rail')
 				.evaluate((rail) => rail.contains(document.activeElement)),
 			`${cell.path} lost keyboard focus when the mobile controls moved to desktop`,
 		);

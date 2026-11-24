@@ -1,7 +1,8 @@
 <script lang="ts">
+	import FrameSurfaceRail from '#lib/components/shell/FrameSurfaceRail.svelte';
 	import type { Snippet } from 'svelte';
 	import { cn } from '#lib/utils/index.ts';
-	import { SurfaceRail, type SurfaceRailContext } from '@yesid/ui/layout';
+	import { type SurfaceRailContext } from '@yesid/ui/layout';
 	import ArticleSummaryLane from './ArticleSummaryLane.svelte';
 
 	export interface ReliabilityRailLayoutProps {
@@ -28,7 +29,7 @@
 </script>
 
 <div class={cn('reliability-rail-layout', className)} data-slot="reliability-rail-layout">
-	<SurfaceRail {rail} {label} {summary} {openAria} {closeAria} />
+	<FrameSurfaceRail {rail} {label} {summary} {openAria} {closeAria} />
 	<div class="reliability-rail-content" data-slot="reliability-rail-content">
 		{#if articleSummary}
 			<ArticleSummaryLane data-slot="reliability-rail-summary">

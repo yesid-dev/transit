@@ -91,6 +91,12 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 
+function feedStatus() {
+	return screen
+		.getAllByRole('status')
+		.find((region) => region.classList.contains('map-live-edge'))!;
+}
+
 describe('MapOverlayChrome', () => {
 	it('keeps phone legend and controls mutually exclusive and hides both triggers for detail', async () => {
 		installViewportMatchMedia(390);
@@ -213,7 +219,7 @@ describe('MapOverlayChrome', () => {
 				}),
 			};
 			const { container, rerender } = render(MapOverlayChromeHarness, { props });
-			const banner = screen.getByRole('status');
+			const banner = feedStatus();
 			const assertReport = (age: number, timestamp: string, degraded: boolean) => {
 				const stamps = container.querySelectorAll('[data-slot="freshness-stamp"]');
 				expect(stamps).toHaveLength(2);
@@ -256,7 +262,7 @@ describe('MapOverlayChrome', () => {
 				}),
 			});
 			assertReport(8, generatedUtc, true);
-			expect(screen.getByRole('status')).toBe(banner);
+			expect(feedStatus()).toBe(banner);
 			expect(banner).toHaveTextContent(
 				failure === 'unavailable' ? t.liveUnavailable : retainedFailure,
 			);
@@ -275,7 +281,7 @@ describe('MapOverlayChrome', () => {
 				}),
 			});
 			assertReport(1, recoveredUtc, false);
-			expect(screen.getByRole('status')).toBe(banner);
+			expect(feedStatus()).toBe(banner);
 			expect(banner.textContent?.trim()).toBe('');
 		},
 	);
@@ -496,7 +502,7 @@ describe('MapOverlayChrome', () => {
 			});
 			view.container.style.setProperty('--map-mobile-control-bottom', '84px');
 			view.container.style.setProperty('--chrome-offset', '16px');
-			const stableRegion = screen.getByRole('status');
+			const stableRegion = feedStatus();
 
 			await fireEvent.click(screen.getByRole('button', { name: 'Controls 0' }));
 			expect(screen.getByRole('dialog', { name: 'Controls' })).toBeInTheDocument();
@@ -507,7 +513,7 @@ describe('MapOverlayChrome', () => {
 				isDesktop: false,
 				presentation: stalledPresentation(),
 			});
-			expect(screen.getByRole('status')).toBe(stableRegion);
+			expect(feedStatus()).toBe(stableRegion);
 			expect(stableRegion).toHaveAttribute('data-state', 'global-stall');
 			expect(stableRegion).toHaveClass('map-feed-stall');
 			expect(stableRegion.textContent?.trim()).toMatch(/Live feed not responding/);
@@ -532,7 +538,7 @@ describe('MapOverlayChrome', () => {
 				presentation: presentationFixture(),
 			});
 			expect(screen.getByTestId('map-filter-pill')).toBeInTheDocument();
-			expect(screen.getByRole('status')).toBe(stableRegion);
+			expect(feedStatus()).toBe(stableRegion);
 			expect(stableRegion).toHaveAttribute('data-state', 'idle');
 		},
 	);
@@ -573,7 +579,7 @@ describe('MapOverlayChrome', () => {
 		const pill = screen.getByTestId('map-filter-pill');
 		expect(pill).toBeInTheDocument();
 		expect(getComputedStyle(pill).display).toBe('none');
-		const banner = screen.getByRole('status');
+		const banner = feedStatus();
 		expect(banner).toHaveAttribute('data-state', 'global-stall');
 		expect(banner).toHaveClass('map-feed-stall');
 		expect(getComputedStyle(banner).top).not.toBe('auto');
@@ -662,9 +668,9 @@ describe('MapOverlayChrome', () => {
 			container.style.setProperty('--map-mobile-control-bottom', '84px');
 			container.style.setProperty('--chrome-offset', '16px');
 			const owner = container.querySelector<HTMLElement>('[data-slot="map-freshness-owner"]');
-			const banner = screen.getByRole('status');
+			const banner = feedStatus();
 
-			expect(screen.getByRole('status')).toHaveAttribute('data-state', state);
+			expect(feedStatus()).toHaveAttribute('data-state', state);
 			expect(owner).toHaveAttribute('data-active-placement', placement);
 			expect(owner).toHaveAttribute('data-not-responding', readout ? 'true' : 'false');
 			expect(container.querySelectorAll('[data-placement]')).toHaveLength(2);
@@ -783,6 +789,6 @@ describe('MapOverlayChrome', () => {
 		});
 
 		expect(screen.getByTestId('map-filter-pill')).toBeInTheDocument();
-		expect(screen.getByRole('status')).toHaveAttribute('data-state', 'selected-family-failure');
+		expect(feedStatus()).toHaveAttribute('data-state', 'selected-family-failure');
 	});
 });

@@ -39,11 +39,12 @@ export function formatDateKey(
 	lang: TimeLang,
 	includeYear = false,
 	order?: 'day-first',
+	month: 'short' | 'long' = 'short',
 ): string {
 	const date = parseIso(key);
 	if (!date) return '·';
 	const formatter = intl.dateTime(lang, {
-		month: 'short',
+		month,
 		day: 'numeric',
 		...(includeYear ? { year: 'numeric' as const } : {}),
 		timeZone: 'UTC',

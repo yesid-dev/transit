@@ -1,4 +1,5 @@
 <script lang="ts">
+	import FrameSurfaceRail from '#lib/components/shell/FrameSurfaceRail.svelte';
 	import { dateAndClock } from '#lib/site/presenter.ts';
 	import type { Manifest } from '#lib/v1/schemas/index.ts';
 	import { createRecordStamp } from '#lib/v1/recordStamp.svelte.ts';
@@ -29,7 +30,7 @@
 	import { mirrorSearchParams } from '#lib/site/urlMirror.ts';
 	import { ResourceBoundary } from '#lib/components/surface/index.ts';
 	import { ArticleSectionStack, type ArticleMetaEntry } from '#lib/components/layout/index.ts';
-	import { DetailFrame, SurfaceRail, type SurfaceRailContext } from '@yesid/ui/layout';
+	import { DetailFrame, type SurfaceRailContext } from '@yesid/ui/layout';
 	import { StateNotice } from '@yesid/ui/feedback';
 	import { CollapsibleSection, TocNav, SectionHeading } from '@yesid/ui/brand';
 	import SectionsToggle from '#lib/components/shared/SectionsToggle.svelte';
@@ -583,7 +584,7 @@
 {/snippet}
 
 {#snippet railCell()}
-	<SurfaceRail
+	<FrameSurfaceRail
 		rail={combinedRail}
 		label={t.rail.label}
 		summary={readyMatchCount == null ? undefined : t.filters.pillSummary(readyMatchCount)}

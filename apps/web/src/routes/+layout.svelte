@@ -11,7 +11,10 @@
 	const clientTitle = setPageTitleContext();
 	import { providerSourceAttribution } from '#lib/i18n/providerAttribution.ts';
 	import { setContext } from 'svelte';
-	import { mapRecordSourceDateContext } from '#lib/site/mapRecordSourceDate.ts';
+	import {
+		mapPanelOpenContext,
+		mapRecordSourceDateContext,
+	} from '#lib/site/mapRecordSourceDate.ts';
 	import { liveSourceDate } from '#lib/live/sourceDate.ts';
 	import { createLineDirectory } from '#lib/site/lineDirectory.ts';
 	import { setLineDirectory } from '#lib/site/transitDisplayContext.ts';
@@ -131,6 +134,10 @@
 	);
 	let mapRecordSourceDate = $state<string | null>(null);
 	let mapCreditHeight = $state(0);
+	let mapPanelOpen = $state(false);
+	setContext(mapPanelOpenContext, (open: boolean) => {
+		mapPanelOpen = open;
+	});
 	setContext(mapRecordSourceDateContext, (date: string | null) => {
 		mapRecordSourceDate = date;
 	});
@@ -397,6 +404,7 @@
 		{navigation}
 		fullViewport={isFullBleed}
 		{mapCreditHeight}
+		mobileControlsVisible={!isFullBleed || !mapPanelOpen}
 		{locale}
 		url={currentMirrorUrl(new URL(page.url.href))}
 		providerId={data.providerId}
@@ -493,21 +501,23 @@
 	.map-flow {
 		position: fixed;
 		inset: 0;
+		--chrome-offset: calc(
+			var(--app-frame-chrome-height, var(--nav-clearance)) + var(--app-frame-paired, 0) * 1rem
+		);
+		--app-left-rail-offset: calc(var(--app-frame-paired, 0) * (min(17rem, 36vw) + 1rem));
 	}
 	.map-source-footer {
 		position: fixed;
 		inset-inline: 0;
 		inset-block-end: 0;
 		z-index: var(--z-content);
+		pointer-events: none;
 	}
 	@media (min-width: 1024px) {
 		.page-flow {
 			--space-page-x: var(--space-card-gap);
 			--detail-column-gap: var(--space-card-gap);
 			--layout-control-rail-width: min(16rem, 25%);
-		}
-		.map-flow {
-			--app-left-rail-offset: 18rem;
 		}
 	}
 	.home-construction-floor {
