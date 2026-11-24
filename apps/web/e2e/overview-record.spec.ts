@@ -53,7 +53,19 @@ for (const width of [390, 1440]) {
 
 				const firstLink = record.getByRole('link').first();
 				const copy = record.getByRole('button', { name: fr ? 'Copier le lien' : 'Copy link' });
-				await copy.focus();
+				const frameEnd = page.getByRole('button', {
+					name:
+						width === 390
+							? fr
+								? /^Commandes.*Ouvrir les commandes/
+								: /^Controls.*Open controls/
+							: fr
+								? 'Choisir d’autres dates'
+								: 'Choose other dates',
+				});
+				await frameEnd.focus();
+				await expect(frameEnd).toBeFocused();
+				await page.keyboard.press('Tab');
 				await expect(copy).toBeFocused();
 				const download = record.getByRole('button', { name: fr ? 'Télécharger' : 'Download' });
 				await page.keyboard.press('Tab');
