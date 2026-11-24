@@ -1,5 +1,7 @@
 import type { MapRecordAnswer, MapRecordState } from './recordMapAnswer';
 import type { RouteDirection, StopIndexEntry } from '#lib/v1/schemas/index.ts';
+import type { Locale } from '#lib/i18n/index.ts';
+import { choose, lowCoverageLabel, tally } from '#lib/features/record/recordText.ts';
 
 export type RecordMapLayer = 'live' | 'stops' | 'corridors';
 type Coordinate = [number, number];
@@ -36,6 +38,25 @@ export function recordColourIndex(state: MapRecordState, value: number | null, s
 	if (state !== 3 || value === null) return state === 1 ? 5 : state === 2 ? 6 : 4;
 	if (stops) return value < 100 ? 0 : value < 250 ? 1 : value < 500 ? 2 : 3;
 	return value <= 0 ? 0 : value < 30 ? 1 : value < 60 ? 2 : 3;
+}
+
+export function recordMapSampleText(
+	{ state, sample }: Pick<RecordMark, 'state' | 'sample'>,
+	stops: boolean,
+	locale: Locale,
+) {
+	if (sample === null) return null;
+	if (state === 0 && sample === 0) {
+		return stops
+			? choose(locale, 'No classified stop events', 'Aucun passage classé')
+			: choose(locale, 'No comparable runs observed', 'Aucun parcours comparable observé');
+	}
+	const count = tally(sample, locale);
+	const unit = stops
+		? choose(locale, 'classified stop events', 'passages classés')
+		: choose(locale, 'observed runs', 'parcours observés');
+	const reading = `${count} ${unit}`;
+	return state === 0 ? `${lowCoverageLabel[locale]} · ${reading}` : reading;
 }
 
 const pairId = (dir: number | null, from: string, to: string) => JSON.stringify([dir, from, to]);

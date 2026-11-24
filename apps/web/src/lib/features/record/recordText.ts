@@ -39,6 +39,9 @@ export const lastGoodNote = {
 	fr: 'Ce résultat provient d’un calcul précédent. Le résultat le plus récent est temporairement indisponible.',
 };
 
+export const notMeasuredLabel = { en: 'Not measured', fr: 'Non mesuré' };
+export const lowCoverageLabel = { en: 'Low coverage', fr: 'Faible couverture' };
+
 export function choose(locale: Locale, en: string, fr: string) {
 	return locale === 'fr' ? fr : en;
 }
@@ -111,9 +114,7 @@ export function coverageText(evidence: RateEvidence, locale: Locale) {
 			`Achalandage signalé dans ${rate} des relevés (${sample} sur ${total})`,
 		);
 	}
-	return [coverage, low_coverage ? choose(locale, 'Low coverage', 'Faible couverture') : '']
-		.filter(Boolean)
-		.join(' · ');
+	return [coverage, low_coverage ? lowCoverageLabel[locale] : ''].filter(Boolean).join(' · ');
 }
 
 export function periodCoverage(
@@ -244,7 +245,7 @@ export const cautiousRanking = {
 export function emptyRecord(evidence: RecordEvidence, locale: Locale) {
 	return evidence.days_included.length
 		? choose(locale, 'Unknown', 'Inconnu')
-		: choose(locale, 'Not measured', 'Non mesuré');
+		: notMeasuredLabel[locale];
 }
 
 export function punctualityBands(cell: RecordCell, locale: Locale) {

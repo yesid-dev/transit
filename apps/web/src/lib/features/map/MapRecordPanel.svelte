@@ -7,7 +7,7 @@
 	import { Card } from '@yesid/ui/card';
 	import { theme } from '@yesid/ui/state';
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
-	import { choose } from '#lib/features/record/recordText.ts';
+	import { choose, notMeasuredLabel } from '#lib/features/record/recordText.ts';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
 	import { frameHref, type parseFrameState } from '#lib/site/frameState.ts';
 	import { lineIsScheduleOnly } from '#lib/site/providerCapabilities.ts';
@@ -18,7 +18,13 @@
 	import { getV1Context } from '#lib/v1/boot.ts';
 	import type { MapRecordAnswer } from './recordMapAnswer';
 	import { attachRecordMap } from './recordMapLayers';
-	import { recordColours, recordCorridors, recordFeatures, recordStops } from './recordMap';
+	import {
+		recordColours,
+		recordCorridors,
+		recordFeatures,
+		recordMapSampleText,
+		recordStops,
+	} from './recordMap';
 
 	interface Props {
 		map: MapLibreMap | null;
@@ -205,7 +211,7 @@
 
 	const heads = $derived(directionHeadsigns(route?.directions));
 	const stateLabels = $derived([
-		tr('No data', 'Aucune donnée'),
+		notMeasuredLabel[locale],
 		tr('Too few to judge', 'Trop peu pour juger'),
 		tr('No live data', 'Aucune donnée en direct'),
 		tr('Measured', 'Mesuré'),
@@ -244,7 +250,7 @@
 			? selected?.stop && recordLink(selected.stop)
 			: line && recordLink(line, selected?.direction),
 	);
-	const number = $derived(new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }));
+	const sampleText = $derived(selected ? recordMapSampleText(selected, stopLayer, locale) : null);
 	function valueText(value: number) {
 		return stopLayer
 			? new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 1 }).format(
@@ -386,13 +392,8 @@
 							? ` · ${valueText(selected.value)}`
 							: ''}
 					</p>
-					{#if selected.sample !== null}
-						<p>
-							{number.format(selected.sample)}
-							{stopLayer
-								? tr('classified stop events', 'passages classés')
-								: tr('observed runs', 'parcours observés')}
-						</p>
+					{#if sampleText}
+						<p>{sampleText}</p>
 					{/if}
 				{/if}
 			</div>
