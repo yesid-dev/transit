@@ -17,6 +17,8 @@ test("only explicitly allowed root documentation skips e2e", () => {
     "apps/web/src/routes/+page.svelte",
     "unknown.md",
     ".github/workflows/web.yml",
+    ".github/actions/setup/action.yml",
+    ".github/vendor/layout-zstd/SHA256SUMS",
     "bun.lock",
     "package.json",
     "apps/web/README.md",

@@ -9,11 +9,149 @@ const WINDOW = "from=2020-01-01&to=2020-01-02";
 const HEALTH = `/v2/demo/data-health?${WINDOW}`;
 const MEASURE = `/v2/demo/measure?measure=on_time&${WINDOW}`;
 const RANKING = `/v2/demo/ranking?measure=on_time&kind=line&${WINDOW}`;
+const REVISION = "0123456789abcdef";
+const NEXT_REVISION = "fedcba9876543210";
 const ANSWER = {
   value: { on_time: 0 },
   state_text: { en: "Measured", fr: "Mesuré" },
   evidence: { cleaning_versions: [6], days_pending: [], counts: { scheduled: 100 } },
 };
+
+function stubLiveStorage(t, env, respond) {
+  Object.assign(env, {
+    TRANSIT1_R2_ENDPOINT: "fixture.r2.cloudflarestorage.com",
+    TRANSIT1_R2_READ_ACCESS_KEY_ID: "fixture-key",
+    TRANSIT1_R2_READ_SECRET_ACCESS_KEY: "fixture-secret",
+  });
+  return t.mock.method(globalThis, "fetch", async (input, init) => {
+    const request = new Request(input, init);
+    assert.equal(request.method, "GET");
+    assert.equal(new URL(request.url).host, "fixture.r2.cloudflarestorage.com");
+    assert.match(request.headers.get("authorization"), /^AWS4-HMAC-SHA256 Credential=fixture-key\//);
+    return respond(request);
+  });
+}
+
+test("serves the per-city live object with a short edge cache through public and bound routes", async (t) => {
+  const f = fixture(t);
+  const snapshot = { city: "demo", version: 2, vehicle_positions: null };
+  const body = JSON.stringify(snapshot);
+  const get = stubLiveStorage(t, f.env, (request) => {
+    assert.equal(new URL(request.url).pathname, "/transit-clean/live/v2/demo.json");
+    return new Response(body, { headers: { "content-length": String(Buffer.byteLength(body)) } });
+  });
+  const path = "/v2/demo/live";
+  const first = await f.fetch(path);
+  assert.equal(first.headers.get("cache-control"), "no-store");
+  assert.deepEqual(await first.json(), snapshot);
+  const second = await f.fetch(path, {}, "GET", true);
+  assert.deepEqual(await second.json(), snapshot);
+  assert.equal([...f.answers.values()][0].ttl, 5);
+  assert.equal(get.mock.callCount(), 1);
+  assert.equal(f.requests.length, 0);
+  assert.equal(f.saved.size, 0);
+  f.env.TRANSIT1_LIVE_ENABLED = "0";
+  assert.equal((await f.fetch(path)).status, 503);
+  assert.equal(get.mock.callCount(), 1);
+});
+
+test("keeps the live edge cache independent of engine revision and availability", async (t) => {
+  const f = fixture(t);
+  delete f.env.ENGINE;
+  delete f.env.TRANSIT1_ENGINE_ACCESS_TOKEN;
+  const snapshot = JSON.stringify({ city: "demo", version: 2, vehicle_positions: [] });
+  const get = stubLiveStorage(t, f.env, () => new Response(snapshot, {
+    headers: { "content-length": String(Buffer.byteLength(snapshot)) },
+  }));
+  const path = "/v2/demo/live";
+  assert.equal(await (await f.fetch(path)).text(), snapshot);
+  assert.equal(await (await f.fetch(path, {}, "GET", true)).text(), snapshot);
+  assert.equal(get.mock.callCount(), 1);
+  assert.deepEqual([...f.answers.keys()], [
+    "https://data.yesid.dev/__transit_question_cache/v2/live/demo/live",
+  ]);
+  assert.equal(f.cityRequests.length, 0);
+  assert.equal(f.saved.size, 0);
+});
+
+test("reads only the ranges for a live scope and rejects mixed publications", async (t) => {
+  const f = fixture(t);
+  const first = [{ trip_id: "t1", route_id: "a/b", stops: [{ stop_id: "s" }, { stop_id: "other" }] }];
+  const second = { trip_id: "t2", route_id: null, stops: [{ stop_id: "s" }] };
+  const stopCalls = [
+    ["t1", "a/b", null, null, null, 0, null, 1, null, 123, null, 0, 0],
+    ["t2", null, null, null, null, 0, null, 1, null, 124, null, null, 0],
+  ];
+  const chunks = [first, second, stopCalls].map((value) => Buffer.from(JSON.stringify(value)));
+  const bundle = Buffer.concat(chunks);
+  const etag = '"live-trip-42"';
+  const feed = { family: "trip_updates", captured_at: "2026-11-23T19:10:00Z" };
+  const index = JSON.stringify({
+    version: 2, city: "demo", etag, feed,
+    ranges: {
+      "line:a/b": [0, chunks[0].length],
+      "trip:t2": [chunks[0].length, chunks[1].length],
+      "stop:s": [chunks[0].length + chunks[1].length, chunks[2].length],
+    },
+  });
+  let changed = false;
+  const ranges = [];
+  stubLiveStorage(t, f.env, (request) => {
+    const path = new URL(request.url).pathname;
+    if (path === "/transit-clean/live/v2/demo/trips.json") {
+      return new Response(index, { headers: { "content-length": String(Buffer.byteLength(index)) } });
+    }
+    assert.equal(path, "/transit-clean/live/v2/demo/trips.bin");
+    assert.equal(request.headers.get("if-match"), etag);
+    assert.match(request.headers.get("authorization"), /SignedHeaders=host;if-match;range;x-amz-/);
+    const [, start, last] = /^bytes=(\d+)-(\d+)$/.exec(request.headers.get("range"));
+    ranges.push(Number(start));
+    if (changed) return new Response(null, { status: 412 });
+    const body = bundle.subarray(Number(start), Number(last) + 1);
+    return new Response(body, { status: 206, headers: {
+      "content-length": String(body.length),
+      "content-range": `bytes ${start}-${last}/${bundle.length}`,
+      etag,
+    } });
+  });
+  const base = "/v2/demo/live-trips";
+  assert.equal((await f.fetch(base)).status, 400);
+  assert.equal((await f.fetch(base + "?line=a&trip=t1")).status, 400);
+  const line = await (await f.fetch(base + "?line=a%2Fb", {}, "GET", true)).json();
+  assert.deepEqual(line, { version: 2, city: "demo", feed, trip_updates: first });
+  assert.deepEqual(ranges, [0]);
+  const stop = await (await f.fetch(base + "?stop=s")).json();
+  assert.deepEqual(stop.trip_updates.map(({ trip_id, stops }) => [trip_id, stops[0].stop_id, stops[0].departure]),
+    [["t1", "s", 123], ["t2", "s", 124]]);
+  assert.deepEqual(ranges, [0, chunks[0].length + chunks[1].length]);
+  const trip = await (await f.fetch(base + "?trip=t2")).json();
+  assert.deepEqual(trip.trip_updates, [second]);
+  assert.deepEqual(ranges, [0, chunks[0].length + chunks[1].length, chunks[0].length]);
+  changed = true;
+  f.answers.clear();
+  const refreshing = await f.fetch(base + "?trip=t2");
+  assert.equal(refreshing.status, 503);
+  assert.equal(refreshing.headers.get("retry-after"), "1");
+  assert.equal(refreshing.headers.get("cache-control"), "no-store");
+  assert.equal((await refreshing.json()).state, "refreshing");
+  assert.equal(f.answers.size, 0);
+  assert.equal(f.saved.size, 0);
+});
+
+test("rejects live writes and malformed city paths or parameters, and leaves misses uncached", async (t) => {
+  const f = fixture(t);
+  const path = "/v2/demo/live";
+  assert.equal((await f.fetch(path)).status, 503);
+  const get = stubLiveStorage(t, f.env, () => new Response(null, { status: 404 }));
+  assert.equal((await f.fetch(path, {}, "POST")).status, 405);
+  assert.equal((await f.fetch("/v2/%2fprivate/live")).status, 400);
+  assert.equal((await f.fetch(path + "?limit=1")).status, 400);
+  assert.equal(get.mock.callCount(), 0);
+  assert.equal((await f.fetch(path)).status, 404);
+  assert.equal((await f.fetch(path)).headers.get("cache-control"), "no-store");
+  assert.equal(get.mock.callCount(), 2);
+  assert.equal(f.answers.size, 0);
+});
 
 test("forwards the opt-in agency message detail and rejects invalid values", async (t) => {
   const harness = fixture(t);
@@ -57,6 +195,8 @@ function fixture(t, respond = () => Response.json(ANSWER, {
   const requests = [];
   const cityRequests = [];
   const cities = {
+    answer_revision: REVISION,
+    cleaning_version: 6,
     default_provider: "demo",
     providers: [
       { id: "demo", timezone: "America/Toronto" },
@@ -64,6 +204,7 @@ function fixture(t, respond = () => Response.json(ANSWER, {
     ],
   };
   const visitors = [];
+  const engine = { revision: REVISION, version: 6 };
   const cache = {
     async match(key) {
       const entry = answers.get(key.url);
@@ -84,7 +225,12 @@ function fixture(t, respond = () => Response.json(ANSWER, {
           return Response.json(cities);
         }
         requests.push(request);
-        return respond(request);
+        const response = await respond(request);
+        if (engine.revision) response.headers.set("x-transit-answer-revision", engine.revision);
+        if (!response.headers.has("x-transit-cleaning-version")) {
+          response.headers.set("x-transit-cleaning-version", String(engine.version));
+        }
+        return response;
       },
     },
     TRANSIT1_ENGINE_ACCESS_TOKEN: "fixture-token",
@@ -114,7 +260,7 @@ function fixture(t, respond = () => Response.json(ANSWER, {
     await Promise.all(tasks);
     return response;
   }
-  return { fetch, env, answers, saved, requests, cityRequests, cities, visitors };
+  return { fetch, env, answers, saved, requests, cityRequests, cities, visitors, engine };
 }
 
 test("dated public routes accept the same query names as the engine HTTP parser", () => {
@@ -274,18 +420,77 @@ test("canonical questions reuse the versioned edge answer and bypass the engine 
     city: "demo", from: "2020-01-01", hour: "7", line: "A/B", measure: "on_time", to: "2020-01-02",
   });
   const [key, entry] = [...f.answers].find(([key]) => key.includes("/measure?"));
-  assert.match(key, /\/6\/demo\/measure\?from=2020-01-01&hour=7&line=A%2FB&measure=on_time&to=2020-01-02$/);
+  assert.match(key, /\/6\/0123456789abcdef\/demo\/measure\?from=2020-01-01&hour=7&line=A%2FB&measure=on_time&to=2020-01-02$/);
   assert.equal(entry.ttl, 604800);
 });
 
-test("a newly observed cleaning version moves dated cache lookups to that version", async (t) => {
-  let version = 6;
-  const f = fixture(t, () => Response.json({ ...ANSWER, evidence: { cleaning_versions: [version] } }));
+test("a refreshed catalog separates answers by cleaning version and engine revision", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  let value = 1;
+  const f = fixture(t, () => Response.json({ value }, {
+    headers: { "x-transit-days-pending": "0" },
+  }));
   await f.fetch(MEASURE);
-  version = 7;
-  await f.fetch(MEASURE + "&line=2");
-  assert.deepEqual((await (await f.fetch(MEASURE)).json()).evidence.cleaning_versions, [7]);
+  f.cities.answer_revision = f.engine.revision = NEXT_REVISION;
+  t.mock.timers.tick(31_000);
+  value = 2;
+  assert.deepEqual(await (await f.fetch(MEASURE)).json(), { value: 2 });
+  f.cities.cleaning_version = f.engine.version = 7;
+  t.mock.timers.tick(31_000);
+  value = 3;
+  assert.deepEqual(await (await f.fetch(MEASURE)).json(), { value: 3 });
   assert.equal(f.requests.length, 3);
+});
+
+test("answers with a mismatched or missing engine revision are never stored", async (t) => {
+  const f = fixture(t);
+  for (const revision of [NEXT_REVISION, null]) {
+    f.engine.revision = revision;
+    assert.deepEqual(await (await f.fetch(MEASURE)).json(), ANSWER);
+    assert.ok(![...f.answers.keys()].some((key) => key.includes("/measure?")));
+    assert.ok(![...f.saved.values()].some(({ metadata }) => metadata?.contentType));
+  }
+  assert.equal(f.requests.length, 2);
+});
+
+test("an unknown catalog revision allows answers without storing them", async (t) => {
+  const f = fixture(t);
+  delete f.cities.answer_revision;
+  assert.deepEqual(await (await f.fetch(MEASURE)).json(), ANSWER);
+  assert.ok(![...f.answers.keys()].some((key) => key.includes("/measure?")));
+  assert.ok(![...f.saved.values()].some(({ metadata }) => metadata?.contentType));
+  let supportsPublicCityCheck = true;
+  f.env.ENGINE.fetch = (request) => {
+    if (new URL(request.url).pathname === "/cities") throw new Error("catalog offline");
+    assert.equal(request.headers.get("x-transit-require-public-city"), "1");
+    return Response.json(ANSWER, {
+      headers: supportsPublicCityCheck ? { "x-transit-answer-revision": REVISION } : {},
+    });
+  };
+  f.answers.clear();
+  f.saved.clear();
+  assert.deepEqual(await (await f.fetch(MEASURE)).json(), ANSWER);
+  assert.equal(f.answers.size, 0);
+  assert.equal(f.saved.size, 0);
+  supportsPublicCityCheck = false;
+  assert.equal((await f.fetch(MEASURE)).status, 503);
+});
+
+test("last-good answers are scoped to the catalog cleaning version and answer revision", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  let offline = false;
+  const f = fixture(t, () => offline ? new Response(null, { status: 500 }) : Response.json(ANSWER));
+  await f.fetch(MEASURE);
+  offline = true;
+  f.answers.clear();
+  assert.equal((await f.fetch(MEASURE)).headers.get("x-transit-answer"), "last-good");
+  f.cities.answer_revision = NEXT_REVISION;
+  t.mock.timers.tick(31_000);
+  assert.equal((await f.fetch(MEASURE)).status, 503);
+  f.cities.answer_revision = REVISION;
+  f.cities.cleaning_version = 7;
+  t.mock.timers.tick(31_000);
+  assert.equal((await f.fetch(MEASURE)).status, 503);
 });
 
 test("ranking and health pass the approved parameters to their engine routes", async (t) => {

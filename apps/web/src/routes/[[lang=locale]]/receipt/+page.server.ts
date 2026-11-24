@@ -3,7 +3,8 @@ import { frameToday, parseFrameState, periodError } from '#lib/site/frameState.t
 import { loadDailyRecord } from '#lib/server/departureDailyRecord.ts';
 
 export const load: PageServerLoad = async (event) => {
-	const today = frameToday();
+	const { providerId, lang, provider } = await event.parent();
+	const today = frameToday(provider?.timezone);
 	const date = event.url.searchParams.has('recordFrom') ? null : event.url.searchParams.get('date');
 	const legacyPeriod = date == null ? null : { from: date, to: date, preset: null };
 	const period = legacyPeriod
@@ -11,7 +12,6 @@ export const load: PageServerLoad = async (event) => {
 			? null
 			: legacyPeriod
 		: parseFrameState(event.url.searchParams, today).period;
-	const { providerId, lang, provider } = await event.parent();
 	const scope = period && {
 		...period,
 		city: providerId,

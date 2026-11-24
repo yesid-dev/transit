@@ -36,22 +36,24 @@ GROUP_COLUMNS: dict[SeriesGroup, tuple[str, ...]] = {
 }
 DAY_TYPES = ("weekday", "weekday", "weekday", "weekday", "weekday", "saturday", "sunday")
 HOUR_GROUPS = ("hour", "weekday_hour")
-LOCAL_HOUR = "hour(timezone('America/Toronto', {}))"
+LOCAL_HOUR_BUCKET = "time_bucket(INTERVAL '1 hour', {}, getvariable('service_timezone'))"
+LOCAL_HOUR = "hour(timezone(getvariable('service_timezone'), {}))"
 
 
 def local_epoch_us_sql(
     conn: duckdb.DuckDBPyConnection, timestamp: str, start: date, end: date
 ) -> str:
-    fallback = f"epoch_us(timezone('America/Toronto', {timestamp}))"
+    fallback = f"epoch_us(timezone(getvariable('service_timezone'), {timestamp}))"
     if start < date(2007, 1, 1):
         return fallback
-    # Modern Toronto changes its offset at most once per UTC day. Use DuckDB's
-    # own timezone rules at the bookends, leaving the transition days to ICU.
+    # Modern IANA offset transitions are more than a day apart. Use DuckDB's
+    # city-specific offsets at the UTC bookends and ICU on transition days.
     # Include overnight service and keep ICU for timestamps outside the lookup.
     midnights = conn.execute(
         """
         SELECT epoch_us(day),
-            epoch_us(timezone('America/Toronto', timezone('UTC', day))) - epoch_us(day)
+            epoch_us(timezone(getvariable('service_timezone'), timezone('UTC', day)))
+                - epoch_us(day)
         FROM generate_series(?::DATE - INTERVAL '2 days', ?::DATE + INTERVAL '3 days',
             INTERVAL '1 day') days(day)
         ORDER BY day

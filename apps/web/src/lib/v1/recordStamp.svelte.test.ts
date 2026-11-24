@@ -8,10 +8,6 @@ import {
 	clearBrowserAdapterManifestForTests,
 } from './adapter/browserManifest';
 import { createRecordStamp, showRecord, shownRecord } from './recordStamp.svelte';
-import {
-	createLineHistoryResource,
-	loadLineHistorySeed,
-} from '#lib/features/lines/reliability/data/lineHistoryResource.svelte.ts';
 import { createStopHistoryResource } from '#lib/features/stops/reliability/data/stopHistoryResource.svelte.ts';
 import { historyRangeRequestFromSearchParams } from './history/rangeResource.svelte';
 
@@ -47,7 +43,7 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 	clearBrowserAdapterManifestForTests();
 });
-it.each(['line', 'stop', 'seeded line', 'P12a'] as const)(
+it.each(['stop', 'P12a'] as const)(
 	'reads the root index once for %s and its record stamp',
 	async (path) => {
 		const files: Record<string, unknown> = fixture.files;
@@ -62,18 +58,9 @@ it.each(['line', 'stop', 'seeded line', 'P12a'] as const)(
 		const selection = historyRangeRequestFromSearchParams(
 			new URLSearchParams('from=2026-08-27&to=2026-08-29'),
 		);
-		const seed =
-			path === 'seeded line'
-				? await loadLineHistorySeed('24', selection, { manifest, fetch: request })
-				: undefined;
-		let history:
-			| ReturnType<typeof createLineHistoryResource>
-			| ReturnType<typeof createStopHistoryResource>
-			| undefined;
+		let history: ReturnType<typeof createStopHistoryResource> | undefined;
 		let stamp!: ReturnType<typeof createRecordStamp>;
 		const dispose = $effect.root(() => {
-			if (path === 'line' || path === 'seeded line')
-				history = createLineHistoryResource('24', selection, () => seed);
 			if (path === 'stop') history = createStopHistoryResource('52095', selection);
 			stamp = createRecordStamp(
 				() => manifest,

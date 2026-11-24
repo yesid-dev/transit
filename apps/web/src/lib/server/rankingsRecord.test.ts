@@ -57,15 +57,43 @@ it.each([
 	expect(await record.answer).toEqual({ kind: 'busy' });
 });
 
+const city = {
+	id: 'agency',
+	timezone: 'America/Los_Angeles',
+	labels: {
+		en: { city: 'Agency', operator: 'Agency' },
+		fr: { city: 'Agency', operator: 'Agency' },
+	},
+	bounds: null,
+	alert_links: {},
+	inputs: {},
+	lines_without_live_data: [],
+};
+const catalog = () => Response.json({ default_provider: city.id, providers: [city] });
+
+it('rejects a CSV period that has not started in the selected city', async () => {
+	vi.setSystemTime(new Date('2026-11-22T06:30:00Z'));
+	const url = new URL(
+		'https://transit1.yesid.dev/hotspots/record.csv?provider=agency&recordFrom=2026-11-22&recordTo=2026-11-22',
+	);
+	fetcher.mockResolvedValueOnce(catalog());
+	await expect(rankingsCsv('/hotspots', url, new Request(url), 'en')).rejects.toMatchObject({
+		status: 400,
+	});
+	expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
 it('forwards the same cuts and locale to the engine CSV and streams its bytes', async () => {
 	const url = new URL(
 		`https://transit1.yesid.dev/fr/hotspots/record.csv?provider=agency&${dates}&class=all&measure=median_delay`,
 	);
-	fetcher.mockResolvedValue(
-		new Response('Rang,Type\n1,line\n', { headers: { 'content-type': 'text/csv' } }),
-	);
+	fetcher
+		.mockResolvedValueOnce(catalog())
+		.mockResolvedValue(
+			new Response('Rang,Type\n1,line\n', { headers: { 'content-type': 'text/csv' } }),
+		);
 	const response = await rankingsCsv('/hotspots', url, new Request(url), 'fr');
-	const request = new URL(fetcher.mock.calls[0]![0].url);
+	const request = new URL(fetcher.mock.calls[1]![0].url);
 	expect(Object.fromEntries(request.searchParams)).toEqual({
 		from: '2026-10-15',
 		to: '2026-11-21',

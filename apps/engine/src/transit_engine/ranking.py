@@ -14,6 +14,7 @@ from typing import Any, NamedTuple
 
 import duckdb
 
+from transit_engine.cities import service_query
 from transit_engine.clean_manifest import ALERTS, STOP_EVENTS, TRIP_DAYS
 from transit_engine.measures import (
     _ALERT_COUNTS_ID,
@@ -428,7 +429,7 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
     by_vehicle = ranking.kind == "vehicle"
     historical = family.id in {_CROWDING_ID, _ALERT_COUNTS_ID, _VEHICLES_ID}
     has_own_states = historical or family.id in {_WAITING_ID, _CORRIDORS_ID}
-    with store.connect() as conn:
+    with service_query(store, question.city) as conn:
         window = read_window(conn, store, question, family, selected, ranking.kind)
         if (
             family is _PUNCTUALITY

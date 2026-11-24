@@ -16,14 +16,14 @@ function realDate(value: string | null | undefined): string | null {
 	return strictIsoDate(date) ? date : null;
 }
 
-function legacyWindow(history: AlertHistory): DateWindow | null {
+function legacyWindow(history: AlertHistory, timeZone?: string): DateWindow | null {
 	const windowStart = realDate(history.window_start);
 	const windowEnd = realDate(history.window_end);
 	if (windowStart != null && windowEnd != null && windowStart <= windowEnd) {
 		return { from: windowStart, to: windowEnd };
 	}
 
-	const span = deriveSpan(history.alerts ?? []);
+	const span = deriveSpan(history.alerts ?? [], timeZone);
 	if (span == null || !strictIsoDate(span.start) || !strictIsoDate(span.end)) return null;
 	return { from: span.start, to: span.end };
 }
@@ -31,8 +31,9 @@ function legacyWindow(history: AlertHistory): DateWindow | null {
 export function currentAlertWindow(
 	history: AlertHistory,
 	index: AlertArchiveIndex | null,
+	timeZone?: string,
 ): DateWindow | null {
-	const current = legacyWindow(history);
+	const current = legacyWindow(history, timeZone);
 	if (index == null) return current;
 
 	const availability = availabilityFromAlertIndex(index);
@@ -51,8 +52,9 @@ export function resolveAlertHistoryRange(
 	index: AlertArchiveIndex | null,
 	rawFrom: unknown,
 	rawTo: unknown,
+	timeZone?: string,
 ): ResolvedHistoryRange {
-	const defaultWindow = currentAlertWindow(history, index);
+	const defaultWindow = currentAlertWindow(history, index, timeZone);
 	const availability: HistoryAvailability =
 		index == null && defaultWindow != null
 			? {

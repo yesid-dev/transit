@@ -12,9 +12,9 @@ import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
 export const load: PageServerLoad = async (event) => {
 	const identity = departureFromKey(event.params.key);
 	if (!identity) error(404);
-	const today = frameToday();
+	const { providerId, lang, v1, schedule, provider } = await event.parent();
+	const today = frameToday(provider?.timezone);
 	const { period, mode } = parseFrameState(event.url.searchParams, today);
-	const { providerId, lang, v1, schedule } = await event.parent();
 	const visitorIp = event.request.headers.get('cf-connecting-ip');
 	const day = period ? departureDay(event.url.searchParams, period) : today;
 	const scope = { city: providerId, visitorIp };

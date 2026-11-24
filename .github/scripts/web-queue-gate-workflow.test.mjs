@@ -30,17 +30,48 @@ test("web jobs restore the run's exact Bun lockfile cache and install offline", 
   const step = (name) =>
     action.split(`\n    - name: ${name}\n`)[1]?.split(/\n    - name: /)[0];
   const artifactName =
-    "web-bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}";
+    "web-bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}-${{ github.run_attempt }}";
+  const cacheKey = "web-bun-run-${{ github.run_id }}-${{ hashFiles('bun.lock') }}-";
+  const cachePath = "node_modules/.cache/transit-web-bun/cache.tar.gz";
+  const sourceStep = (name) =>
+    job("ci-work").split(`\n      - &${name}\n`)[1]?.split(/\n      - /)[0];
   const setupAction = "uses: ./.github/actions/setup";
   const producer = job("web-dependencies");
   assert.ok(producer.includes(`${setupAction}\n        with:\n          prefetch-design: "true"`));
   assert.ok(producer.includes(`name: ${artifactName}\n`));
   assert.match(producer, /if-no-files-found: error/);
-  const download = step("Download the exact Bun cache from this run");
-  assert.match(download, /if: \$\{\{ inputs.offline == 'true' \}\}/);
-  assert.ok(download.includes(`name: ${artifactName}\n`));
-  assert.doesNotMatch(download, /continue-on-error|pattern:|run-id:|restore-keys:/);
+  assert.ok(producer.includes("archive_sha256: ${{ steps.archive.outputs.sha256 }}"));
+  assert.ok(producer.includes("artifact_id: ${{ steps.upload_bun_archive.outputs.artifact-id }}"));
+  const save = producer.split("      - name: Save the exact Bun archive in Actions cache\n")[1];
+  assert.match(save, /uses: actions\/cache\/save@/);
+  assert.match(save, /timeout-minutes: 1\n.*continue-on-error: true/);
+  assert.ok(save.includes(`path: ${cachePath}\n`));
+  assert.ok(save.includes(`key: ${cacheKey}\${{ steps.archive.outputs.sha256 }}`));
+
+  const restore = sourceStep("restore-bun-cache");
+  assert.match(restore, /uses: actions\/cache\/restore@/);
+  assert.match(restore, /timeout-minutes: 1\n.*continue-on-error: true/);
+  assert.match(restore, /SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"/);
+  assert.match(restore, /fail-on-cache-miss: true/);
+  assert.ok(restore.includes(`path: ${cachePath}\n`));
+  assert.ok(restore.includes(`key: ${cacheKey}\${{ needs.web-dependencies.outputs.archive_sha256 }}`));
+  assert.doesNotMatch(restore, /restore-keys:/);
+
+  const verify = sourceStep("verify-bun-cache");
+  assert.match(verify, /if: steps\.restore_bun_cache\.outcome == 'success' && steps\.restore_bun_cache\.outputs\.cache-hit == 'true'/);
+  assert.match(verify, /continue-on-error: true/);
+  assert.ok(verify.includes("EXPECTED_SHA256: ${{ needs.web-dependencies.outputs.archive_sha256 }}"));
+  assert.match(verify, /sha256sum --check --status/);
+  assert.match(verify, /mv -- "\$archive" "\$RUNNER_TEMP\/web-bun\/cache\.tar\.gz"/);
+
+  const download = sourceStep("download-bun-artifact");
+  assert.match(download, /if: steps\.verify_bun_cache\.outcome != 'success' && needs\.web-dependencies\.outputs\.artifact_id != ''/);
+  assert.match(download, /uses: actions\/download-artifact@/);
+  assert.match(download, /timeout-minutes: 2/);
+  assert.ok(download.includes("artifact-ids: ${{ needs.web-dependencies.outputs.artifact_id }}"));
+  assert.doesNotMatch(download, /continue-on-error|pattern:|run-id:/);
   assert.match(download, /digest-mismatch: error/);
+  assert.doesNotMatch(action, /actions\/download-artifact/);
   const prefetch = step("Prefetch locked yesid.design assets");
   assert.match(
     prefetch,
@@ -61,6 +92,11 @@ test("web jobs restore the run's exact Bun lockfile cache and install offline", 
   for (const name of consumers) {
     const block = job(name);
     assert.ok(block.includes(setupAction), name);
+    const anchor = name === "ci-work" ? "&" : "*";
+    const restoreSteps = ["restore-bun-cache", "verify-bun-cache", "download-bun-artifact"]
+      .map((step) => block.indexOf(`      - ${anchor}${step}\n`));
+    assert.ok(restoreSteps[0] >= 0 && restoreSteps[0] < restoreSteps[1] &&
+      restoreSteps[1] < restoreSteps[2] && restoreSteps[2] < block.indexOf(setupAction), name);
     assert.match(block, /^          offline: "true"$/m, name);
     assert.doesNotMatch(
       block,
@@ -69,10 +105,13 @@ test("web jobs restore the run's exact Bun lockfile cache and install offline", 
     );
     assert.match(
       block,
-      name === "deploy-production" ? /needs: \[ci,/ : /needs: \[[^\]\n]*\bweb-dependencies\b/,
+      /needs: \[[^\]\n]*\bweb-dependencies\b/,
       name,
     );
   }
+  assert.match(job("layout"), /Provision layout cache compressor[\s\S]*sha256sum --check --strict SHA256SUMS[\s\S]*\*restore-bun-cache/);
+  assert.match(job("post-deploy-layout"), /needs: \[deploy-production, web-dependencies\]/);
+  assert.match(job("post-deploy-layout"), /steps: \*layout-steps/);
   assert.equal(workflow.split(setupAction + "\n").length - 1, consumers.length + 1);
 });
 

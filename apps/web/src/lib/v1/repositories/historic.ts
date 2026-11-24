@@ -473,7 +473,7 @@ export const getAlertArchiveIndex: (ctx?: AdapterCtx) => Promise<AlertArchiveInd
 export async function getAlertArchiveRange(
 	index: AlertArchiveIndex,
 	window: DateWindow,
-	ctx?: AdapterCtx,
+	{ timeZone, ...ctx }: AdapterCtx & { timeZone?: string } = {},
 ): Promise<AlertArchiveEntry[]> {
 	const refs = selectAlertPageRefs(index, window);
 	for (const ref of refs) assertSafeHistoryArtifactPath(ref.path);
@@ -493,7 +493,11 @@ export async function getAlertArchiveRange(
 		},
 		{ signal: ctx?.signal },
 	);
-	return selectAlertEntriesForWindow(mergeAlertArchivePages(pages), window);
+	return selectAlertEntriesForWindow(
+		mergeAlertArchivePages(pages),
+		window,
+		timeZone ?? ctx.manifest?.tz,
+	);
 }
 
 export function clearAlertArchivePageMemoForTest(): void {

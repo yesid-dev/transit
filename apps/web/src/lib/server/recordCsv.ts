@@ -1,6 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { frameToday, periodError } from '#lib/site/frameState.ts';
-import { getRecordCsv, type RecordQuery } from './engine.ts';
+import type { DateWindow } from '#lib/v1/history/window.ts';
+import { getCityCatalog, getRecordCsv, type RecordQuery } from './engine.ts';
 
 export async function recordCsvResponse(
 	query: RecordQuery,
@@ -8,14 +9,19 @@ export async function recordCsvResponse(
 	request: Request,
 	lang: 'en' | 'fr',
 	filename: string,
+	selectPeriod?: (period: DateWindow) => DateWindow,
 ) {
 	const search = url.searchParams;
 	const city = search.get('provider') ?? '';
 	const period = { from: search.get('recordFrom') ?? '', to: search.get('recordTo') ?? '' };
-	if (!/^[a-z0-9][a-z0-9_-]*$/.test(city) || periodError(period, frameToday())) error(400);
+	if (!/^[a-z0-9][a-z0-9_-]*$/.test(city)) error(400);
+	const visitorIp = request.headers.get('cf-connecting-ip');
+	const catalog = await getCityCatalog(visitorIp).catch(() => error(503));
+	const provider = catalog.providers.find(({ id }) => id === city);
+	if (!provider || periodError(period, frameToday(provider.timezone))) error(400);
 	const upstream = await getRecordCsv(
 		query,
-		{ ...period, city, visitorIp: request.headers.get('cf-connecting-ip') },
+		{ ...(selectPeriod?.(period) ?? period), city, visitorIp },
 		lang,
 	).catch(() => null);
 	const retryAfter = upstream?.headers.get('retry-after');

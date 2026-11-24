@@ -4,9 +4,9 @@ import { loadAlertRecord } from '#lib/server/alertRecord.ts';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
-	const { mode, period } = parseFrameState(event.url.searchParams, frameToday());
-	if (mode === 'live') return { alertRecord: null };
 	const { providerId, lang, provider } = await event.parent();
+	const { mode, period } = parseFrameState(event.url.searchParams, frameToday(provider?.timezone));
+	if (mode === 'live') return { alertRecord: null };
 	const tracked = providerHasAlerts(provider);
 	return {
 		alertRecord: {
@@ -14,6 +14,7 @@ export const load: PageServerLoad = async (event) => {
 			tracked,
 			officialAlertsUrl: provider?.alert_links[lang],
 			city: providerId,
+			timeZone: provider?.timezone,
 			cityName: provider?.labels[lang].city ?? providerId,
 			sections:
 				tracked && period

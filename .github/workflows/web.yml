@@ -231,6 +231,9 @@ jobs:
   web-dependencies:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    outputs:
+      archive_sha256: ${{ steps.archive.outputs.sha256 }}
+      artifact_id: ${{ steps.upload_bun_archive.outputs.artifact-id }}
     defaults:
       run:
         working-directory: .
@@ -245,22 +248,35 @@ jobs:
         with:
           prefetch-design: "true"
 
-      # Actions cache keys also depend on the compression tool. Publish one
-      # gzip archive that both the hosted runner and the layout image can read.
       - name: Archive the Bun cache
+        id: archive
         shell: bash
         run: |
-          mkdir -p "$RUNNER_TEMP/web-bun"
-          tar -cf - -C ~/.bun/install/cache . | gzip -1 > "$RUNNER_TEMP/web-bun/cache.tar.gz"
+          archive=node_modules/.cache/transit-web-bun/cache.tar.gz
+          mkdir -p "$(dirname "$archive")"
+          tar -cf - -C ~/.bun/install/cache . | gzip -1 > "$archive"
+          digest=$(sha256sum "$archive")
+          printf 'sha256=%s\n' "${digest%% *}" >> "$GITHUB_OUTPUT"
 
       - name: Publish the Bun cache for this run
+        id: upload_bun_archive
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: web-bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
-          path: ${{ runner.temp }}/web-bun/cache.tar.gz
+          name: web-bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}-${{ github.run_attempt }}
+          path: node_modules/.cache/transit-web-bun/cache.tar.gz
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
+
+      # The artifact stays available if the cache service cannot write or retain this entry.
+      - name: Save the exact Bun archive in Actions cache
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        timeout-minutes: 1
+        continue-on-error: true
+        with:
+          path: node_modules/.cache/transit-web-bun/cache.tar.gz
+          key: web-bun-run-${{ github.run_id }}-${{ hashFiles('bun.lock') }}-${{ steps.archive.outputs.sha256 }}
 
   ci-work:
     needs: [queue-gate, web-dependencies]
@@ -279,6 +295,47 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - &restore-bun-cache
+        name: Restore the exact Bun archive from Actions cache
+        id: restore_bun_cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        timeout-minutes: 1
+        continue-on-error: true
+        env:
+          SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
+        with:
+          path: node_modules/.cache/transit-web-bun/cache.tar.gz
+          key: web-bun-run-${{ github.run_id }}-${{ hashFiles('bun.lock') }}-${{ needs.web-dependencies.outputs.archive_sha256 }}
+          fail-on-cache-miss: true
+
+      - &verify-bun-cache
+        name: Verify the cached Bun archive
+        id: verify_bun_cache
+        if: steps.restore_bun_cache.outcome == 'success' && steps.restore_bun_cache.outputs.cache-hit == 'true'
+        continue-on-error: true
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        env:
+          EXPECTED_SHA256: ${{ needs.web-dependencies.outputs.archive_sha256 }}
+        run: |
+          archive=node_modules/.cache/transit-web-bun/cache.tar.gz
+          if ! printf '%s  %s\n' "$EXPECTED_SHA256" "$archive" | sha256sum --check --status; then
+            echo 'The cached Bun archive does not match the producer digest.' >&2
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/web-bun"
+          mv -- "$archive" "$RUNNER_TEMP/web-bun/cache.tar.gz"
+
+      - &download-bun-artifact
+        name: Download the exact Bun cache from this run
+        if: steps.verify_bun_cache.outcome != 'success' && needs.web-dependencies.outputs.artifact_id != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        timeout-minutes: 2
+        with:
+          artifact-ids: ${{ needs.web-dependencies.outputs.artifact_id }}
+          path: ${{ runner.temp }}/web-bun
+          digest-mismatch: error
 
       - name: Set up JS workspace
         uses: ./.github/actions/setup
@@ -442,6 +499,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      - *restore-bun-cache
+      - *verify-bun-cache
+      - *download-bun-artifact
+
       - name: Set up JS workspace
         uses: ./.github/actions/setup
         with:
@@ -463,6 +524,10 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - *restore-bun-cache
+      - *verify-bun-cache
+      - *download-bun-artifact
 
       - name: Set up JS workspace
         uses: ./.github/actions/setup
@@ -517,6 +582,21 @@ jobs:
     steps: &layout-steps
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Cache versions include the compressor. Match the hosted producer's zstd.
+      - name: Provision layout cache compressor
+        working-directory: .github/vendor/layout-zstd
+        run: |
+          sha256sum --check --strict SHA256SUMS
+          read -r _ package < SHA256SUMS
+          tool=$(mktemp -d "$RUNNER_TEMP/transit-layout-zstd.XXXXXX")
+          dpkg-deb --extract "$package" "$tool"
+          "$tool/usr/bin/zstd" --version
+          printf '%s\n' "$tool/usr/bin" >> "$GITHUB_PATH"
+
+      - *restore-bun-cache
+      - *verify-bun-cache
+      - *download-bun-artifact
 
       - name: Set up JS workspace
         uses: ./.github/actions/setup
@@ -784,6 +864,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      - *restore-bun-cache
+      - *verify-bun-cache
+      - *download-bun-artifact
+
       - name: Set up JS workspace
         uses: ./.github/actions/setup
         with:
@@ -840,7 +924,7 @@ jobs:
       cancel-in-progress: false
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    needs: [ci, deploy_scope, ci-work]
+    needs: [ci, deploy_scope, ci-work, web-dependencies]
     if: >-
       ${{ !cancelled() && needs.ci.result == 'success' && needs.deploy_scope.result == 'success' &&
           github.ref == 'refs/heads/main' &&
@@ -856,6 +940,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+
+      - *restore-bun-cache
+      - *verify-bun-cache
+      - *download-bun-artifact
 
       - name: Set up JS workspace
         uses: ./.github/actions/setup
@@ -961,7 +1049,7 @@ jobs:
         run: node .github/scripts/post-deploy-layout.mjs report
 
   post-deploy-layout:
-    needs: [deploy-production]
+    needs: [deploy-production, web-dependencies]
     if: ${{ always() && needs.deploy-production.outputs.deployed == 'true' && needs.deploy-production.outputs.identity_verified == 'true' }}
     runs-on: ubuntu-24.04
     container: *layout-container

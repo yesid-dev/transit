@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from datetime import date
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import AnyHttpUrl, BaseModel, Field, PositiveInt, model_validator
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, PositiveInt, model_validator
 
 from transit_ops.settings import Settings
 
@@ -106,6 +107,31 @@ class ProviderLabel(BaseModel):
     operator: str = Field(min_length=1)
 
 
+class BilingualText(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+    en: Annotated[str, Field(pattern=r"\S")]
+    fr: Annotated[str, Field(pattern=r"\S")]
+
+
+class BilingualLinks(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+    en: AnyHttpUrl
+    fr: AnyHttpUrl
+
+
+class DownloadLicence(BaseModel):
+    """Reviewed public notice for redistributed clean tables."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+    checked_on: date
+    name: BilingualText
+    attribution: BilingualText
+    url: BilingualLinks
+    limits: BilingualText
+    non_endorsement: BilingualText
+    source: BilingualText
+
+
 class ProviderPublicConfig(BaseModel):
     enabled: bool = False
     labels: dict[Literal["en", "fr"], ProviderLabel] = Field(default_factory=dict)
@@ -117,6 +143,10 @@ class ProviderPublicConfig(BaseModel):
     basemap_url: str | None = None
     posters_url: str | None = None
     alert_links: dict[Literal["en", "fr"], AnyHttpUrl] = Field(default_factory=dict)
+    download_licence: DownloadLicence | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    occupancy: bool | None = Field(default=None, exclude_if=lambda value: value is None)
 
     @model_validator(mode="after")
     def validate_camera_bounds(self) -> ProviderPublicConfig:

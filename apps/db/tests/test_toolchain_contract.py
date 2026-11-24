@@ -817,7 +817,7 @@ def test_pr_and_deployed_layout_share_the_complete_measured_grid() -> None:
     assert after["container"] == before["container"]
     assert after["defaults"] == before["defaults"]
     assert after["steps"] == before["steps"]
-    assert after["needs"] == ["deploy-production"]
+    assert after["needs"] == ["deploy-production", "web-dependencies"]
     assert "identity_verified == 'true'" in after["if"]
     result = jobs["post-deploy-result"]
     audit = next(step for step in result["steps"] if step.get("id") == "coverage")

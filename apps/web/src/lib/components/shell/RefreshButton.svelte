@@ -5,6 +5,7 @@
 	import { dataRefresh } from '#lib/stores/index.ts';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { tick } from 'svelte';
+	import { page } from '$app/state';
 	import { browserAdapterManifest } from '#lib/v1/adapter/browserManifest.ts';
 	import { shownRecord } from '#lib/v1/recordStamp.svelte.ts';
 	import {
@@ -27,7 +28,13 @@
 	let control: HTMLDivElement;
 	let shift = $state(0);
 	const message = $derived(
-		result ? refreshMessage(result, locale, browserAdapterManifest()?.tz) : '',
+		result
+			? refreshMessage(
+					result,
+					locale,
+					page.data?.provider?.timezone ?? browserAdapterManifest()?.tz,
+				)
+			: '',
 	);
 	$effect(() => {
 		if (

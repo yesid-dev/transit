@@ -16,6 +16,7 @@
 		locale?: Locale;
 		url?: URL;
 		providerId?: string;
+		timeZone?: string;
 		providers?: PublicProvider[];
 		discoveryError?: boolean;
 		search?: string;
@@ -34,6 +35,7 @@
 		locale: localeProp,
 		url,
 		providerId,
+		timeZone,
 		providers,
 		discoveryError,
 		search = $bindable(''),
@@ -96,6 +98,7 @@
 		{locale}
 		{url}
 		{providerId}
+		{timeZone}
 		{providers}
 		{discoveryError}
 		bind:search

@@ -80,7 +80,8 @@
 	const articleNav = $derived(articleNavigationCopy[locale]);
 	const edgeLayout = $derived(desktop.current ? 'desktop' : 'mobile');
 
-	const manifest = getV1Context().manifest;
+	const { manifest } = getV1Context();
+	const timeZone = $derived(provider?.timezone ?? manifest.tz);
 	const shortName = manifest.short_name?.trim() || manifest.display_name;
 	const operator = $derived(provider?.labels[locale].operator ?? shortName);
 	const noticesHeading = $derived(t.notices.heading(operator));
@@ -211,7 +212,7 @@
 		if (detailTabController.active === 'schedule' && stop.data?.generated_utc) {
 			const date = stop.data.generated_utc.slice(0, 10);
 			values.push({
-				text: t.schedule.loadedOn(stampDate(date, locale, manifest.tz)),
+				text: t.schedule.loadedOn(stampDate(date, locale, timeZone)),
 				datetime: date,
 			});
 		}
@@ -281,7 +282,7 @@
 	<div class="stop-report" data-source={family}>
 		<FreshnessStamp
 			variant="live"
-			presentation={feedPresentation(source.familyStates[family], locale)}
+			presentation={feedPresentation(source.familyStates[family], locale, timeZone)}
 			subject={family === 'alerts' ? 'alerts' : 'data'}
 			{locale}
 			class="stop-report-stamp"
@@ -384,6 +385,7 @@
 						/>
 					{:else}
 						<AffectedAlerts
+							{timeZone}
 							alerts={notices.direct.map((notice) => notice.alert)}
 							{locale}
 							copy={{ ...t.alerts, heading: t.notices.direct, listLabel: t.notices.direct }}
@@ -392,6 +394,7 @@
 						{#if notices.lines.length > 0}
 							<div class="stop-line-notices" data-testid="stop-line-alerts">
 								<AffectedAlerts
+									{timeZone}
 									alerts={notices.lines.map((notice) => notice.alert)}
 									{locale}
 									copy={{ ...t.alerts, heading: t.notices.lines, listLabel: t.notices.lines }}
@@ -508,7 +511,7 @@
 												view={liveView}
 												bind:order={liveOrder}
 												{locale}
-												timeZone={manifest.tz}
+												{timeZone}
 											/>
 										{:else if liveView.kind !== 'pending'}
 											<StateNotice

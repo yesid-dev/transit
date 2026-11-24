@@ -7,7 +7,7 @@ import type { Manifest } from '#lib/v1/schemas/manifest.ts';
 import { getLabels } from '#lib/v1/repositories/labels.ts';
 import { getManifest } from '#lib/v1/repositories/manifest.ts';
 import { installBrowserAdapterManifest } from '#lib/v1/adapter/browserManifest.ts';
-import { resolveProvider, type PublicProvider } from './providers';
+import { resolveProvider } from './providers';
 import { v1Provider } from './config';
 import type { PublicCity } from './schemas/providers';
 import type { ApproximateLocation } from './requestLocation';
@@ -16,7 +16,7 @@ export interface V1Context {
 	readonly manifest: Manifest;
 	readonly labels: Record<string, string>;
 	readonly lang: Locale;
-	readonly provider?: PublicProvider;
+	readonly provider?: PublicCity;
 }
 
 const RESOLVABLE_NAMESPACES = [

@@ -26,9 +26,11 @@ export const load: PageServerLoad = async (event) => {
 
 	const id = event.params.id.trim() || event.params.id;
 	const fallback: IdentitySeed = { id, name: id };
-	const { v1, lang, providerId, schedule } = await event.parent();
+	const { v1, lang, providerId, schedule, provider } = await event.parent();
 	const period =
-		view === 'record' ? parseFrameState(event.url.searchParams, frameToday()).period : null;
+		view === 'record'
+			? parseFrameState(event.url.searchParams, frameToday(provider?.timezone)).period
+			: null;
 	const scheduledStop = schedule?.stops.find((stop) => stop.id === id);
 	const frame = period
 		? {

@@ -1,10 +1,18 @@
 """Public city metadata from the same declarations as the capture readers."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+import duckdb
+
 from transit_engine.capture import provider_declaration, provider_directory
-from transit_engine.store import CITY
+from transit_engine.revision import compute_answer_revision
+from transit_engine.store import CITY, Store
+
+ANSWER_REVISION = compute_answer_revision(Path(__file__).parent, provider_directory())
 
 FEED_KINDS = (
     "static_schedule",
@@ -45,6 +53,14 @@ def service_zone(identity: dict[str, Any]) -> ZoneInfo:
     return ZoneInfo(zone)
 
 
+@contextmanager
+def service_query(store: Store, city: str) -> Iterator[duckdb.DuckDBPyConnection]:
+    _, identity, _ = public_declaration(city)
+    with store.connect() as conn:
+        conn.execute("SET VARIABLE service_timezone = ?", [service_zone(identity).key])
+        yield conn
+
+
 def _bounds(value: Any) -> list[float] | None:
     if isinstance(value, dict):
         return [value[key] for key in BOUNDS_KEYS]
@@ -61,9 +77,9 @@ def _inputs(feeds: Any) -> dict[str, bool]:
             family = feed["family"]
             if family == "alerts":
                 enabled.add(
-                    "i3_alerts"
-                    if feed.get("format") == "stm-etatservice-json"
-                    else "service_alerts"
+                    "service_alerts"
+                    if feed.get("format", "gtfs-rt") == "gtfs-rt"
+                    else "i3_alerts"
                 )
             else:
                 enabled.add(kinds.get(family, family))
@@ -91,9 +107,9 @@ def city_catalog() -> dict[str, Any]:
         map_info = public if legacy else declaration.get("map") or {}
         realtime = declaration.get("realtime", {}) if legacy else declaration
         inputs = _inputs(declaration.get("feeds", {}))
-        stable_ids = public.get("stable_vehicle_ids")
-        if isinstance(stable_ids, bool):
-            inputs["stable_vehicle_ids"] = stable_ids
+        for capability in ("stable_vehicle_ids", "occupancy"):
+            if isinstance(public.get(capability), bool):
+                inputs[capability] = public[capability]
         providers.append(
             {
                 "id": city,
@@ -106,6 +122,7 @@ def city_catalog() -> dict[str, Any]:
                 "posters_url": map_info.get("posters_url"),
                 "alert_links": (public if legacy else declaration).get("alert_links") or {},
                 "inputs": inputs,
+                "download_licence": (public if legacy else declaration).get("download_licence"),
                 "lines_without_live_data": [
                     {key: gap.get(key, []) for key in ("route_types", "route_ids")}
                     for gap in realtime.get("lines_without_live_data") or []
@@ -114,4 +131,8 @@ def city_catalog() -> dict[str, Any]:
         )
     if default_city not in {provider["id"] for provider in providers}:
         raise RuntimeError("default city must be a public provider")
-    return {"default_provider": default_city, "providers": providers}
+    return {
+        "answer_revision": ANSWER_REVISION,
+        "default_provider": default_city,
+        "providers": providers,
+    }

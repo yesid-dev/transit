@@ -21,7 +21,9 @@ describe('app frame URL state', () => {
 	});
 
 	it('uses the local calendar day even after UTC midnight', () => {
-		expect(frameToday(new Date('2026-11-22T02:30:00Z'))).toBe('2026-11-21');
+		expect(frameToday('America/Los_Angeles', new Date('2026-11-22T06:30:00Z'))).toBe('2026-11-21');
+		expect(frameToday('America/Toronto', new Date('2026-11-22T06:30:00Z'))).toBe('2026-11-22');
+		expect(frameToday('America/Toronto', new Date('2026-11-22T02:30:00Z'))).toBe('2026-11-21');
 	});
 
 	it.each([

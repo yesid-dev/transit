@@ -19,7 +19,7 @@
 		type FrameMode,
 	} from '#lib/site/frameState.ts';
 
-	let { locale, url }: { locale: Locale; url: URL } = $props();
+	let { locale, url, timeZone }: { locale: Locale; url: URL; timeZone?: string } = $props();
 
 	const translations = {
 		en: {
@@ -76,7 +76,8 @@
 
 	const uid = $props.id();
 	const copy = $derived(translations[locale]);
-	let today = $state(frameToday());
+	let now = $state(new Date());
+	const today = $derived(frameToday(timeZone, now));
 	const path = $derived(delocalizePath(url.pathname));
 	const recordOnly = $derived(
 		isRankingPath(path.replace(/\/$/, '')) ||
@@ -127,7 +128,7 @@
 	let open = $state(false);
 	function onOpenChange(next: boolean) {
 		if (!next) return;
-		today = frameToday();
+		now = new Date();
 	}
 
 	function selectMode(mode: FrameMode) {

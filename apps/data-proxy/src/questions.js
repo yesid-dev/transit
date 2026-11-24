@@ -1,11 +1,16 @@
+import { CleanObjectChanged, cleanDownloadStore } from "./clean-download-store.js";
 import { CORS_HEADERS, PREFLIGHT_HEADERS } from "./cors.js";
+import { readLiveTrips } from "./live-trips.js";
 import { parseQuestion } from "./question-params.js";
 
 export const CLOSED_TTL = 7 * 24 * 60 * 60;
 export const OPEN_TTL = 30;
+const LIVE_TTL = 5;
+const MAX_LIVE_BYTES = 8 * 1024 * 1024;
 const LAST_GOOD_TTL = 30 * 24 * 60 * 60;
 const CITY_CATALOG_KEY = "transit-city-catalog";
 const VERSION_HEADER = "x-transit-cleaning-version";
+const REVISION_HEADER = "x-transit-answer-revision";
 const PENDING_DAYS_HEADER = "x-transit-days-pending";
 const STALE_HEADER = "x-transit-answer";
 const PUBLIC_HEADERS = {
@@ -40,8 +45,8 @@ export function cleaningVersion(value) {
   return /^[1-9][0-9]{0,15}$/.test(version) ? version : null;
 }
 
-function cacheRequest(origin, question, version) {
-  return new Request(`${origin}/__transit_question_cache/v2/${version}${question.key}`);
+function answerRevision(value) {
+  return typeof value === "string" && /^[a-f0-9]{16}$/.test(value) ? value : null;
 }
 
 export async function cacheMatch(cache, key) {
@@ -108,13 +113,13 @@ async function loadCities(env, cache, key, authorize, ctx, allowLastGood) {
 }
 
 export function loadPublicCities(env, cache, origin, authorize, ctx, allowLastGood = false) {
-  const key = cacheRequest(origin, { key: "/cities" }, "unversioned");
+  const key = new Request(`${origin}/__transit_question_cache/v2/unversioned/cities`);
   return loadCities(env, cache, key, authorize, ctx, allowLastGood);
 }
 
 async function lastGood(env, key) {
   try {
-    const saved = await env.QUESTION_LAST_GOOD?.getWithMetadata(await key);
+    const saved = key && await env.QUESTION_LAST_GOOD?.getWithMetadata(await hash(key));
     if (saved?.value != null && saved.metadata?.contentType) {
       const { value, metadata: { contentType } } = saved;
       // Add the marker without round-tripping the engine's JSON numbers or evidence.
@@ -132,18 +137,12 @@ async function lastGood(env, key) {
   return message(503, "engine unavailable", { "retry-after": "30" });
 }
 
-async function remember(cache, origin, question, version, versionKey, ttl, body, contentType) {
+async function remember(cache, key, ttl, body, contentType) {
   if (!cache) return;
   const answer = new Response(body, {
     headers: { "cache-control": `public, max-age=${ttl}`, "content-type": contentType },
   });
-  await cache.put(cacheRequest(origin, question, version ?? "unversioned"), answer);
-  if (version) {
-    // Publish the lookup version only after the corresponding answer is available.
-    await cache.put(versionKey, new Response(version, {
-      headers: { "cache-control": `public, max-age=${CLOSED_TTL}` },
-    }));
-  }
+  await cache.put(key, answer);
 }
 
 export function serveQuestion(request, env, ctx) {
@@ -173,6 +172,51 @@ export async function probeEngine(env, signal) {
   });
 }
 
+async function serveLive(env, ctx, origin, question, visitorIp) {
+  if (env.TRANSIT1_LIVE_ENABLED === "0") return message(503, "live publication unavailable");
+  const store = cleanDownloadStore(env);
+  if (!store) return message(503, "live publication unavailable");
+  const cache = globalThis.caches?.default;
+  const key = new Request(`${origin}/__transit_question_cache/v2/live${question.key}`);
+  const cached = await cacheMatch(cache, key);
+  if (cached) return publicAnswer(cached.body, "application/json", { cached: true });
+  const denied = await admit(env, visitorIp);
+  if (denied) return denied;
+
+  try {
+    let body;
+    if (question.scope) {
+      const trips = await readLiveTrips(store, question.city, question.scope);
+      if (!trips) return message(404, "no live trip publication");
+      body = JSON.stringify(trips);
+    } else {
+      const object = await store.get(`live/v2/${question.city}.json`);
+      if (!object) return message(404, "no live publication");
+      if (object.size > MAX_LIVE_BYTES) {
+        await object.body?.cancel();
+        return message(503, "live publication unavailable");
+      }
+      body = object.body;
+    }
+    const response = publicAnswer(body, "application/json");
+    if (cache) {
+      const copy = new Response(response.clone().body, {
+        headers: { "cache-control": `public, max-age=${LIVE_TTL}`, "content-type": "application/json" },
+      });
+      ctx.waitUntil(cache.put(key, copy).catch(() => console.warn("Transit live cache write failed")));
+    }
+    return response;
+  } catch (error) {
+    if (error instanceof CleanObjectChanged) {
+      return Response.json(
+        { message: "live trips refreshing", state: "refreshing" },
+        { status: 503, headers: { ...PUBLIC_HEADERS, "retry-after": "1" } },
+      );
+    }
+    return message(503, "live publication unavailable");
+  }
+}
+
 async function answerQuestion(request, env, ctx, visitorIp) {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") {
@@ -190,6 +234,9 @@ async function answerQuestion(request, env, ctx, visitorIp) {
     return message(400, error instanceof URIError ? "invalid query encoding" : error.message);
   }
   if (!question) return message(404, "not found");
+  if (question.route === "live" || question.route === "live-trips") {
+    return serveLive(env, ctx, url.origin, question, visitorIp);
+  }
 
   if (!env.ENGINE || !env.TRANSIT1_ENGINE_ACCESS_TOKEN) {
     return message(503, "engine not configured");
@@ -199,73 +246,78 @@ async function answerQuestion(request, env, ctx, visitorIp) {
   let admission;
   const authorize = () => admission ??= admit(env, visitorIp);
 
-  let timezone;
-  if (question.route === "cities" || question.end) {
-    const cities = await loadPublicCities(env, cache, url.origin, authorize, ctx, question.end !== null);
+  const cities = await loadPublicCities(
+    env, cache, url.origin, authorize, ctx, question.route !== "cities",
+  );
+  if (question.route === "cities") {
     if (cities.error) return cities.error;
-    if (question.route === "cities") return publicAnswer(cities.body, "application/json");
-    const city = JSON.parse(cities.body).providers.find((entry) => entry.id === question.city);
+    return publicAnswer(cities.body, "application/json");
+  }
+  const catalog = cities.body && JSON.parse(cities.body);
+  let timezone;
+  if (question.end && catalog) {
+    const city = catalog.providers.find((entry) => entry.id === question.city);
     if (!city) return message(400, "unknown city");
     timezone = city.timezone;
   }
 
-  const versionKey = new Request(`${url.origin}/__transit_question_cache/v2/cleaning-version`);
-  const versionHint = question.end && await cacheMatch(cache, versionKey);
-  const version = versionHint ? cleaningVersion(await versionHint.text()) : null;
-  const cached = await cacheMatch(cache, cacheRequest(url.origin, question, version ?? "unversioned"));
+  const version = cleaningVersion(catalog?.cleaning_version);
+  const revision = answerRevision(catalog?.answer_revision);
+  const key = version && revision ? `${version}/${revision}${question.key}` : null;
+  const cacheKey = key && new Request(`${url.origin}/__transit_question_cache/v2/${key}`);
+  const cached = cacheKey && await cacheMatch(cache, cacheKey);
   if (cached) return publicAnswer(cached.body, cached.headers.get("content-type"), { cached: true });
 
   const denied = await authorize();
   if (denied) return denied;
 
-  const storageKey = hash(question.key);
   let body;
   let contentType;
-  let reportedVersion;
+  let matchesCatalog;
   let settled = false;
+  const headers = { authorization: `Bearer ${env.TRANSIT1_ENGINE_ACCESS_TOKEN}` };
+  const requirePublicCity = question.end && !catalog;
+  if (requirePublicCity) headers["x-transit-require-public-city"] = "1";
   try {
-    const response = await env.ENGINE.fetch(new Request(question.upstream, {
-      headers: { authorization: `Bearer ${env.TRANSIT1_ENGINE_ACCESS_TOKEN}` },
-    }));
+    const response = await env.ENGINE.fetch(new Request(question.upstream, { headers }));
+    const reportedRevision = answerRevision(response.headers.get(REVISION_HEADER));
+    // Older engines do not validate public city membership for dated questions.
+    if (requirePublicCity && !reportedRevision) return cities.error;
     const retryAfter = response.headers.get("retry-after");
     if (response.status === 503 && retryAfter) return busy(retryAfter);
     if (response.status === 400) {
       return publicEngineError(await response.json());
     }
-    if (!response.ok) return lastGood(env, storageKey);
+    if (!response.ok) return lastGood(env, key);
 
     contentType = response.headers.get("content-type");
     const mime = contentType?.split(";")[0].trim().toLowerCase();
     if (mime !== (question.csv ? "text/csv" : "application/json")) {
-      return lastGood(env, storageKey);
+      return lastGood(env, key);
     }
     body = await response.text();
     const json = question.csv ? null : JSON.parse(body);
     if (!question.csv && (!json || typeof json !== "object" ||
         Array.isArray(json) !== (question.route === "how-we-measure"))) {
-      return lastGood(env, storageKey);
+      return lastGood(env, key);
     }
-    if (question.end) {
-      settled = response.headers.get(PENDING_DAYS_HEADER) === "0";
-      const versions = json?.evidence?.cleaning_versions;
-      reportedVersion = cleaningVersion(response.headers.get(VERSION_HEADER))
-        ?? cleaningVersion(json?.cleaning_version)
-        ?? cleaningVersion(versions?.length === 1 ? versions[0] : null);
-    }
+    settled = response.headers.get(PENDING_DAYS_HEADER) === "0";
+    matchesCatalog = response.headers.get(VERSION_HEADER) === version && reportedRevision === revision;
   } catch {
-    return lastGood(env, storageKey);
+    return lastGood(env, key);
   }
 
-  const today = reportedVersion && settled && serviceToday(timezone);
-  const ttl = today && question.end < today ? CLOSED_TTL : OPEN_TTL;
-  ctx.waitUntil(remember(
-    cache, url.origin, question, reportedVersion, versionKey, ttl, body, contentType,
-  ).catch(() => console.warn("Transit question cache write failed")));
-  if (env.QUESTION_LAST_GOOD) {
-    ctx.waitUntil(storageKey.then((key) => env.QUESTION_LAST_GOOD.put(key, body, {
-      expirationTtl: LAST_GOOD_TTL,
-      metadata: { contentType },
-    })).catch(() => console.warn("Last-good transit answer write failed")));
+  if (cacheKey && matchesCatalog) {
+    const today = question.end && settled && serviceToday(timezone);
+    const ttl = today && question.end < today ? CLOSED_TTL : OPEN_TTL;
+    ctx.waitUntil(remember(cache, cacheKey, ttl, body, contentType)
+      .catch(() => console.warn("Transit question cache write failed")));
+    if (env.QUESTION_LAST_GOOD) {
+      ctx.waitUntil(hash(key).then((storageKey) => env.QUESTION_LAST_GOOD.put(storageKey, body, {
+        expirationTtl: LAST_GOOD_TTL,
+        metadata: { contentType },
+      })).catch(() => console.warn("Last-good transit answer write failed")));
+    }
   }
   return publicAnswer(body, contentType);
 }

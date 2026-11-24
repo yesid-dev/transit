@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   cpSync,
@@ -201,7 +201,9 @@ test(
       cpSync(join(directory, "bun.lock"), join(shard, "bun.lock"));
       await assert.rejects(install(shard, t.signal, "--offline"), /offline/i);
       assert.equal(requests, producerRequests);
-      cpSync(join(directory, "cache"), join(shard, "cache"), { recursive: true });
+      const archive = join(directory, "cache.tar.gz");
+      execFileSync("tar", ["-czf", archive, "-C", join(directory, "cache"), "."]);
+      execFileSync("tar", ["-xzf", archive, "-C", join(shard, "cache")]);
       await install(shard, t.signal, "--offline");
       assert.equal(requests, producerRequests);
       assert.equal(readFileSync(join(shard, "bun.lock"), "utf8"), lock);

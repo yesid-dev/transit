@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { readPublicSiteConfig } from '#lib/site/config.ts';
-	import { createRecordStamp } from '#lib/v1/recordStamp.svelte.ts';
 	import LineSchedule from './LineSchedule.svelte';
 	import { lineViewsCopy } from './lineViews.copy';
 	import RecordCopyButton from './reliability/sections/RecordCopyButton.svelte';
@@ -17,29 +16,19 @@
 	import { LIVE_FAMILIES } from '#lib/v1/live/store.svelte.ts';
 	import { getV1Runtime } from '#lib/v1/runtime.ts';
 	const clock = getV1Runtime().clock;
-	import { onMount, untrack } from 'svelte';
-	import { page } from '$app/state';
-	import { createDetailTabController } from '#lib/site/detailTabController.svelte.ts';
+	import { onMount } from 'svelte';
 	import { currentMirrorUrl } from '#lib/site/urlMirror.ts';
-	import { getLocale, getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
+	import { getLocale, getLocalizeHref } from '#lib/i18n/index.ts';
 
 	import { mapHrefFor, routeFor } from '#lib/nav/index.ts';
 	import { createLiveStore } from '#lib/v1/live/store.svelte.ts';
 	import { providerHasAlerts } from '#lib/v1/providers.ts';
 	import { deriveRouteStopPredictions } from '#lib/v1/live/routeStopPredictions.ts';
 	import { getRoute } from '#lib/v1/repositories/static.ts';
-	import { getRouteReliability } from '#lib/v1/repositories/historic.ts';
 	import { getProvenance } from '#lib/v1/repositories/provenance.ts';
 	import { getV1Context } from '#lib/v1/boot.ts';
 	import { alertsForRoute } from '#lib/v1/affectedAlerts.ts';
-	import { historyRangeRequestFromSearchParams } from '#lib/v1/history/rangeResource.svelte.ts';
-	import type {
-		RouteFile,
-		RouteReliability,
-		Provenance,
-		StopPrediction,
-		Vehicle,
-	} from '#lib/v1/index.ts';
+	import type { RouteFile, Provenance, StopPrediction, Vehicle } from '#lib/v1/index.ts';
 	import { createResource, type ResourceSeed } from '#lib/v1/resource.svelte.ts';
 	import type { IdentitySeed } from '#lib/v1/serverContext.ts';
 	import { minutesSinceMidnight } from '#lib/utils/time.ts';
@@ -61,16 +50,6 @@
 	import SectionsToggle from '#lib/components/shared/SectionsToggle.svelte';
 
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
-	import LazyRouteReliabilityPane, {
-		type RouteReliabilityClustersModule,
-	} from './LazyRouteReliabilityPane.svelte';
-	import {
-		createLineHistoryResource,
-		type LineHistoryResource,
-		type LineHistorySeed,
-	} from './reliability/data/lineHistoryResource.svelte';
-	import { directionHeadsigns } from './directions';
-
 	import { detailCopy } from './lines.copy';
 	import LineDirections from './LineDirections.svelte';
 	import { absenceSentence } from '#lib/site/absence.ts';
@@ -81,37 +60,15 @@
 
 	interface RouteDetailProps {
 		id: string;
-		frameLive?: boolean;
 		seed: IdentitySeed;
 		routeSeed?: ResourceSeed<RouteFile | null>;
-		reliabilitySeed?: ResourceSeed<RouteReliability | null>;
-		lineHistorySeed?: LineHistorySeed;
-		initialClusters?: RouteReliabilityClustersModule['default'];
-		initialImportFailed?: boolean;
-		preparedArticleTime?: { routeId: string; iso: string; locale: Locale; text: string };
 	}
 
-	let {
-		id,
-		frameLive = false,
-		routeSeed,
-		reliabilitySeed,
-		lineHistorySeed,
-		initialClusters,
-		initialImportFailed,
-	}: RouteDetailProps = $props();
+	let { id, routeSeed }: RouteDetailProps = $props();
 
 	const locale = getLocale();
 	const t = $derived(detailCopy[locale]);
 	const viewCopy = $derived(lineViewsCopy[locale]);
-
-	const tabs = $derived(
-		(['reliability', 'detail', 'schedule'] as const)
-			.filter((key) => (frameLive ? key === 'detail' : !noLiveData || key !== 'detail'))
-			.map((key) => ({ key, label: t.tabs[key] })),
-	);
-	const detailTabController = createDetailTabController(new URL(page.url.href));
-	$effect(() => detailTabController.syncFromUrl(new URL(page.url.href)));
 
 	const route = createResource<RouteFile | null>(() => getRoute(id), {
 		key: () => id,
@@ -119,43 +76,10 @@
 	});
 	const titleName = $derived(lineName(id, route.data?.id === id ? route.data.long : null));
 	const articleTitle = $derived(titleName.label);
-	const reliability = createResource<RouteReliability | null>(
-		() => {
-			const routeId = id;
-			return getRouteReliability(routeId);
-		},
-		{ key: () => id, seed: () => reliabilitySeed },
-	);
-
-	function historyFor(routeId: string): LineHistoryResource {
-		return createLineHistoryResource(
-			routeId,
-			historyRangeRequestFromSearchParams(new URLSearchParams(page.url.search)),
-			() => lineHistorySeed,
-		);
-	}
-	const initialHistoryEntityId = untrack(() => id);
-	let historyEntityId = initialHistoryEntityId;
-	let lineHistory = $state.raw<LineHistoryResource>(historyFor(initialHistoryEntityId));
-	$effect(() => {
-		const routeId = id;
-		if (routeId === historyEntityId) return;
-		const previous = lineHistory;
-		historyEntityId = routeId;
-		lineHistory = historyFor(routeId);
-		previous.destroy();
-	});
-	onMount(() => () => lineHistory.destroy());
-	const lineHistoryRequested = $derived(lineHistory.request.hasFrom || lineHistory.request.hasTo);
-	const historyOnlyReliability = $derived.by<RouteReliability | null>(() => {
-		if (!lineHistoryRequested) return null;
-		const generatedUtc = lineHistory.index?.generated_utc ?? route.data?.generated_utc;
-		return generatedUtc == null ? null : { id, generated_utc: generatedUtc };
-	});
-
 	const v1 = getV1Context();
 	const manifest = v1.manifest;
-	const l10n = { locale, timeZone: manifest.tz };
+	const timeZone = v1.provider?.timezone ?? manifest.tz ?? 'UTC';
+	const l10n = { locale, timeZone };
 	const live = createLiveStore(manifest, liveReader, {
 		families: providerHasAlerts(v1.provider)
 			? ['vehicles', 'trips', 'alerts', 'network']
@@ -163,7 +87,12 @@
 	});
 	provideLiveAbsenceContext(() => ({ familyStates: live.familyStates }));
 	const presentation = $derived(
-		livePresentation({ familyStates: live.familyStates, families: LIVE_FAMILIES, locale }),
+		livePresentation({
+			familyStates: live.familyStates,
+			families: LIVE_FAMILIES,
+			locale,
+			timeZone,
+		}),
 	);
 	onMount(() => {
 		live.start();
@@ -171,29 +100,11 @@
 	});
 
 	const shortName = manifest.short_name?.trim() || manifest.display_name;
-	// The record answers once, in its own tab; a copied link or citation names line and provider.
-	const recordCitation = $derived({
-		line: [titleName.number, titleName.name].filter(Boolean).join(' ') || titleName.label,
-		providerId: manifest.provider,
-		providerName: v1.provider?.labels[locale]?.operator ?? shortName ?? manifest.provider,
-		attribution: manifest.attribution,
-	});
-	const record = createRecordStamp(
-		() => manifest,
-		() => reliability.data?.generated_utc ?? null,
-		() => lineHistory,
-		() => detailTabController.active === 'reliability',
-	);
 	const articleEdgeLeft = $derived([t.kicker, titleName.number].filter(Boolean).join(' '));
 
-	const articleMeta = $derived.by((): readonly ArticleMetaEntry[] => {
-		const entries: ArticleMetaEntry[] = [];
-		if (shortName) entries.push({ label: t.article.provider, text: shortName });
-		const stamp =
-			detailTabController.active === 'reliability' && !noLiveData ? record.meta(locale) : null;
-		if (stamp) entries.push(stamp);
-		return entries;
-	});
+	const articleMeta = $derived<readonly ArticleMetaEntry[]>(
+		shortName ? [{ label: t.article.provider, text: shortName }] : [],
+	);
 
 	const predictions = $derived<ReadonlyMap<string, StopPrediction>>(
 		deriveRouteStopPredictions(id, live.index),
@@ -215,8 +126,6 @@
 		(live.network?.non_responding_by_route ?? []).some((r) => r.route_id === id),
 	);
 
-	const dirHeadsigns = $derived(directionHeadsigns(route.data?.directions));
-
 	const absenceReason = $derived(
 		inferAbsenceReason({
 			providerId: v1.manifest.provider,
@@ -224,7 +133,7 @@
 			gaps: provenance.data?.gaps ?? null,
 			firstDeparture: route.data?.first_departure ?? null,
 			lastDeparture: route.data?.last_departure ?? null,
-			nowMinutes: minutesSinceMidnight(new Date(clock.serverNow)),
+			nowMinutes: minutesSinceMidnight(new Date(clock.serverNow), timeZone),
 			nonResponding: routeNonResponding,
 		}),
 	);
@@ -247,24 +156,19 @@
 	const noLiveData = $derived(absenceReason?.key === 'metro-no-realtime');
 	const articleEdgeRight = shortName;
 
-	$effect(() => {
-		if (!frameLive && noLiveData && detailTabController.active === 'detail')
-			detailTabController.active = 'reliability';
-	});
 	const hasListColumn = $derived(roster.length > 0 || routeAlerts.length > 0);
 	const recordHref = $derived.by(() => {
 		const url = currentMirrorUrl();
 		url.searchParams.delete('tab');
 		url.searchParams.delete('view');
-		if (frameLive) url.searchParams.set('frameMode', 'record');
+		url.searchParams.set('frameMode', 'record');
 		url.searchParams.set('provider', manifest.provider);
 		return url.pathname + url.search + url.hash;
 	});
 	const shareUrl = $derived.by(() => {
 		const url = new URL(recordHref, readPublicSiteConfig().siteOrigin);
-		if (frameLive) url.searchParams.set('frameMode', 'live');
-		if (detailTabController.active !== 'reliability')
-			url.searchParams.set('tab', detailTabController.active);
+		url.searchParams.set('frameMode', 'live');
+		url.searchParams.set('tab', 'detail');
 		return url.href;
 	});
 	const scheduleLoadedUtc = $derived(
@@ -301,37 +205,9 @@
 		}
 		return [entries[0], ...entries.slice(2), entries[1]];
 	});
-	const scheduleTocEntries = $derived.by<TocEntry[]>(() =>
-		route.data == null
-			? []
-			: [
-					{
-						id: 'line-schedule-span',
-						title: viewCopy.schedule,
-						level: 2,
-						badge: { kind: 'number', value: 1 },
-						children: [],
-					},
-					{
-						id: 'line-schedule-periods',
-						title: viewCopy.intervals,
-						level: 2,
-						badge: { kind: 'number', value: 2 },
-						children: [],
-					},
-					{
-						id: 'line-schedule-destinations',
-						title: viewCopy.destinations,
-						level: 2,
-						children: [],
-					},
-				],
-	);
 	const articleToc = $derived({
 		entries: {
-			reliability: noLiveData ? scheduleTocEntries : [],
 			detail: detailTocEntries,
-			schedule: scheduleTocEntries,
 		},
 		heading: articleNav.heading,
 		sectionKey: `line-${id}-toc`,
@@ -346,12 +222,7 @@
 		localizeHref(routeFor({ kind: 'trip', id: tripId }), locale);
 </script>
 
-<EntityDetail
-	{tabs}
-	{articleToc}
-	bind:active={detailTabController.active}
-	paneOwnedRailKeys={noLiveData ? [] : ['reliability']}
->
+<EntityDetail tabs={[{ key: 'detail', label: t.tabs.detail }]} {articleToc} active="detail">
 	{#snippet articleHeader()}
 		<ArticleHeader
 			watermark={t.article.watermark}
@@ -361,10 +232,6 @@
 			backHref={localizeHref('/lines', locale)}
 			backLabel={t.article.back}
 			meta={articleMeta}
-			metaPending={detailTabController.active === 'reliability' && !noLiveData && record.pending}
-			notice={detailTabController.active === 'reliability' && !noLiveData
-				? record.notice(locale)
-				: null}
 			edgeLeft={articleEdgeLeft}
 			edgeRight={articleEdgeRight}
 			titleId="line-title"
@@ -382,7 +249,7 @@
 		</ArticleHeader>
 	{/snippet}
 
-	{#snippet pane(key)}
+	{#snippet pane()}
 		{#if noLiveData}
 			<ResourceBoundary resource={route} lang={locale}>
 				{#snippet children(file)}<LineSchedule
@@ -394,7 +261,7 @@
 						{shareUrl}
 					/>{/snippet}
 			</ResourceBoundary>
-		{:else if key === 'detail'}
+		{:else}
 			<ResourceBoundary resource={route} lang={locale}>
 				{#snippet children(file)}
 					<ArticleSectionStack class="route-live-grid">
@@ -441,6 +308,7 @@
 											{viewCopy.alertsUnknown}
 										</p>{:else if routeAlerts.length === 0}<p>{viewCopy.noAlerts}</p>{/if}
 									<AffectedAlerts
+										{timeZone}
 										alerts={routeAlerts}
 										{locale}
 										copy={t.alerts}
@@ -451,7 +319,7 @@
 											<FreshnessStamp
 												variant="live"
 												subject="alerts"
-												presentation={feedPresentation(live.familyStates.alerts, locale)}
+												presentation={feedPresentation(live.familyStates.alerts, locale, timeZone)}
 												{locale}
 											/>
 										</p>
@@ -577,29 +445,6 @@
 					</ArticleSectionStack>
 				{/snippet}
 			</ResourceBoundary>
-		{:else if key === 'schedule'}
-			<ResourceBoundary resource={route} lang={locale}>
-				{#snippet children(file)}<LineSchedule
-						{file}
-						{locale}
-						loadedUtc={scheduleLoadedUtc}
-						{recordHref}
-						{shareUrl}
-					/>{/snippet}
-			</ResourceBoundary>
-		{:else}
-			<LazyRouteReliabilityPane
-				entityId={id}
-				resource={reliability}
-				{initialClusters}
-				{initialImportFailed}
-				{locale}
-				directionHeadsigns={dirHeadsigns}
-				history={lineHistory}
-				{historyOnlyReliability}
-				noLiveData={absenceReason?.key === 'metro-no-realtime'}
-				citation={recordCitation}
-			/>
 		{/if}
 	{/snippet}
 </EntityDetail>

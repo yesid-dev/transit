@@ -10,6 +10,7 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
+from typing import Protocol
 from urllib.error import HTTPError
 from urllib.parse import parse_qsl, unquote, urlencode, urlparse, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
@@ -19,7 +20,6 @@ from sqlalchemy.engine import Connection, Engine
 
 from transit_ops.core.models import AuthConfig, AuthType, SignatureScheme
 from transit_ops.ingestion.storage import BronzeStorage
-from transit_ops.settings import Settings
 
 CAPTURE_TOTAL_TIMEOUT_SECONDS = 300
 CHUNK_SIZE_BYTES = 1024 * 1024
@@ -129,7 +129,11 @@ def _compute_signature(
     raise ValueError(f"Unsupported signature scheme '{scheme}'.")
 
 
-def _require_credential(settings: Settings, env_var: str | None) -> str:
+class CredentialSource(Protocol):
+    def env_value(self, name: str | None) -> str | None: ...
+
+
+def _require_credential(settings: CredentialSource, env_var: str | None) -> str:
     value = settings.env_value(env_var)
     if not value:
         raise ValueError(
@@ -142,7 +146,7 @@ def build_request_details(
     *,
     source_url: str,
     auth: AuthConfig,
-    settings: Settings,
+    settings: CredentialSource,
     now: datetime | None = None,
 ) -> RequestDetails:
     if auth.auth_type == AuthType.NONE:
