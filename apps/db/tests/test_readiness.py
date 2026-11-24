@@ -89,6 +89,30 @@ def test_readiness_uses_gps_when_sample_has_no_stopped_at(city):
     assert report["capabilities"]["service_alerts"]["status"] == "not_applicable"
 
 
+@pytest.mark.parametrize(
+    ("agency_timezone", "declared_timezone", "expected"),
+    [
+        ("America/Montreal", "America/Toronto", "supported"),
+        ("America/Toronto", "America/Montreal", "supported"),
+        ("America/Vancouver", "America/Toronto", "blocked"),
+    ],
+)
+def test_readiness_compares_agency_timezone_by_iana_identity(
+    city, agency_timezone, declared_timezone, expected
+):
+    declaration, static, samples = city
+    write_samples(static.parent, NOW, zone=agency_timezone)
+    config = yaml.safe_load(declaration.read_text(encoding="utf-8"))
+    config["timezone"] = declared_timezone
+    declaration.write_text(yaml.safe_dump(config), encoding="utf-8")
+
+    report = check_provider(declaration, static=static, samples=samples, now=NOW)
+
+    assert report["capabilities"]["static_schedule"]["status"] == expected, report["blockers"]
+    if expected == "blocked":
+        assert "static_schedule: agency_timezone must match the declaration" in report["blockers"]
+
+
 @pytest.mark.parametrize("defect", ["differential", "mismatch", "bad_zone", "stale"])
 def test_readiness_reports_blockers(city, defect):
     declaration, static, samples = city

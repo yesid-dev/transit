@@ -123,9 +123,10 @@ def _append_query_params(url: str, params: list[tuple[str, str]]) -> str:
 def _compute_signature(
     scheme: SignatureScheme | None, signing_secret: str, now: datetime
 ) -> str:
-    if scheme == SignatureScheme.SHA256_UTC_MINUTE:
+    if scheme in (SignatureScheme.SHA256_UTC_MINUTE, SignatureScheme.SHA256_UTC_MINUTE_UPPER):
         timestamp = now.astimezone(UTC).strftime("%Y%m%dT%H%MZ")
-        return hashlib.sha256(f"{signing_secret}{timestamp}".encode()).hexdigest()
+        digest = hashlib.sha256(f"{signing_secret}{timestamp}".encode()).hexdigest()
+        return digest.upper() if scheme == SignatureScheme.SHA256_UTC_MINUTE_UPPER else digest
     raise ValueError(f"Unsupported signature scheme '{scheme}'.")
 
 

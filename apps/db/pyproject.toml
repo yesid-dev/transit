@@ -20,6 +20,7 @@ dependencies = [
   "python-dotenv>=1.0,<2.0",
   "sqlalchemy>=2.0.51,<2.1",
   "typer>=0.27.0,<1.0",
+  "tzdata",
   "pyshp>=3.1.6,<4.0",
   "httpx>=0.28.1",
   "fastapi>=0.141.1",

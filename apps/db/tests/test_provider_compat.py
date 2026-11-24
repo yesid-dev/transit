@@ -125,31 +125,37 @@ def test_url_override_is_retained_not_resolved(tmp_path, monkeypatch, url):
 
 
 @pytest.mark.parametrize(
-    "location,signed",
-    [(None, False), ("header", False), ("query", False), ("query", True)],
+    "location,scheme",
+    [
+        (None, None),
+        ("header", None),
+        ("query", None),
+        ("query", "sha256_utc_minute"),
+        ("query", "sha256_utc_minute_upper"),
+    ],
 )
-def test_auth_projection_keeps_variable_names(tmp_path, monkeypatch, location, signed):
+def test_auth_projection_keeps_variable_names(tmp_path, monkeypatch, location, scheme):
     monkeypatch.delenv("COMPAT_KEY", raising=False)
     monkeypatch.delenv("COMPAT_SIGNING", raising=False)
     auth = {location: "key-location", "secret_env": "COMPAT_KEY"} if location else None
-    if signed:
+    if scheme:
         auth["signature"] = {
             "query": "sig",
             "secret_env": "COMPAT_SIGNING",
-            "scheme": "sha256_utc_minute",
+            "scheme": scheme,
         }
     source = declaration(
         tmp_path, feeds=[{"family": "schedule", "url": "https://example.org/feed", "auth": auth}]
     )
     result = manifest_from_declaration(source).static_feed().auth.model_dump(mode="json")
     assert result == {
-        "auth_type": "api_key_signed" if signed else "api_key" if location else "none",
+        "auth_type": "api_key_signed" if scheme else "api_key" if location else "none",
         "credential_env_var": "COMPAT_KEY" if location else None,
         "auth_header_name": "key-location" if location == "header" else None,
         "auth_query_param": "key-location" if location == "query" else None,
-        "signing_secret_env_var": "COMPAT_SIGNING" if signed else None,
-        "signature_query_param": "sig" if signed else None,
-        "signature_scheme": "sha256_utc_minute" if signed else None,
+        "signing_secret_env_var": "COMPAT_SIGNING" if scheme else None,
+        "signature_query_param": "sig" if scheme else None,
+        "signature_scheme": scheme,
         "notes": None,
     }
     monkeypatch.setenv("COMPAT_KEY", "synthetic-credential")

@@ -5,7 +5,6 @@ from transit_ops.core.models import (
     AuthType,
     ProviderBoundsConfig,
     ProviderManifest,
-    SignatureScheme,
 )
 from transit_ops.providers.declaration import Declaration, DeclarationError, FeedAuth, Overrides
 
@@ -35,7 +34,7 @@ def _auth(auth: FeedAuth | None, provider_id: str, index: int) -> AuthConfig:
         auth_query_param=auth.query,
         signing_secret_env_var=signature.secret_env if signature else None,
         signature_query_param=signature.query if signature else None,
-        signature_scheme=SignatureScheme(signature.scheme) if signature else None,
+        signature_scheme=signature.scheme if signature else None,
     )
 
 

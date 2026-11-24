@@ -1,8 +1,8 @@
 
 from __future__ import annotations
 
-import hashlib
-from datetime import UTC, datetime
+from datetime import datetime, timedelta, timezone
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from pydantic import ValidationError
@@ -49,33 +49,49 @@ def test_build_request_details_api_key_header() -> None:
     assert details.request_url == "https://api.example/feed"
 
 
+@pytest.mark.parametrize(
+    ("scheme", "expected_hash"),
+    [
+        (
+            "sha256_utc_minute",
+            "87d41350b2b7477dd5ffe217e346a887aa07a438fc62dcff5e2b9b2aa4a78f2b",
+        ),
+        (
+            "sha256_utc_minute_upper",
+            "87D41350B2B7477DD5FFE217E346A887AA07A438FC62DCFF5E2B9B2AA4A78F2B",
+        ),
+    ],
+)
 def test_build_request_details_signed_appends_key_and_minute_hash(
     monkeypatch: pytest.MonkeyPatch,
+    scheme: str,
+    expected_hash: str,
 ) -> None:
-    monkeypatch.setenv("STO_PUBLIC_KEY", "pub-key")
-    monkeypatch.setenv("STO_PRIVATE_KEY", "priv-secret")
+    monkeypatch.setenv("FIXTURE_PUBLIC_KEY", "pub-key")
+    monkeypatch.setenv("FIXTURE_PRIVATE_KEY", "fixture-secret")
     settings = Settings(_env_file=None)
     auth = AuthConfig(
         auth_type=AuthType.API_KEY_SIGNED,
-        credential_env_var="STO_PUBLIC_KEY",
+        credential_env_var="FIXTURE_PUBLIC_KEY",
         auth_query_param="key",
-        signing_secret_env_var="STO_PRIVATE_KEY",
+        signing_secret_env_var="FIXTURE_PRIVATE_KEY",
         signature_query_param="hash",
-        signature_scheme=SignatureScheme.SHA256_UTC_MINUTE,
+        signature_scheme=SignatureScheme(scheme),
     )
-    now = datetime(2026, 6, 19, 14, 30, 45, tzinfo=UTC)
+    now = datetime(2026, 6, 19, 10, 30, 45, tzinfo=timezone(timedelta(hours=-4)))
 
     details = build_request_details(
-        source_url="https://download.sto.ca/feed?file=tripupdates",
+        source_url="https://example.test/feed?file=tripupdates",
         auth=auth,
         settings=settings,
         now=now,
     )
 
-    expected_hash = hashlib.sha256(b"priv-secret20260619T1430Z").hexdigest()
-    assert "file=tripupdates" in details.request_url
-    assert "key=pub-key" in details.request_url
-    assert f"hash={expected_hash}" in details.request_url
+    assert parse_qs(urlsplit(details.request_url).query) == {
+        "file": ["tripupdates"],
+        "key": ["pub-key"],
+        "hash": [expected_hash],
+    }
     assert details.request_headers == {}
 
 
