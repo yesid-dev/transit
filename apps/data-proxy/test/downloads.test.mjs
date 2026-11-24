@@ -53,7 +53,7 @@ function provider(id, operator, alerts = true, licensed = true) {
 
 function fixture(t, { city = "stm", status, missing = false, admitted = true, alerts = true,
   endpoint = "fixture.r2.cloudflarestorage.com", r2Error, wrongRange = false, version = "11" } = {}) {
-  const tables = version === "12" ? [...TABLES, "segment_runs"] : TABLES;
+  const tables = ["12", "13"].includes(version) ? [...TABLES, "segment_runs"] : TABLES;
   const manifest = {
     provider: city,
     service_date: DATE,
@@ -178,17 +178,21 @@ test("a dated listing uses the public city catalog, current version and manifest
   assert.ok(text.includes(SHA));
 });
 
-test("v12 lists and serves the segment runs file", async (t) => {
-  const { fetch } = fixture(t, { version: "12" });
-  const listing = await (await fetch(STM + "?date=" + DATE)).json();
-  const url = `${STM}/${DATE}/segment_runs.parquet?version=12`;
-  assert.deepEqual(listing.files.find(({ name }) => name === "segment_runs.parquet"), {
-    name: "segment_runs.parquet", byte_size: 5, sha256: SHA, url,
+for (const version of ["12", "13"]) {
+  test(`v${version} lists and serves the segment runs file`, async (t) => {
+    const { fetch } = fixture(t, { version });
+    const response = await fetch(STM + "?date=" + DATE);
+    assert.equal(response.status, 200);
+    const listing = await response.json();
+    const url = `${STM}/${DATE}/segment_runs.parquet?version=${version}`;
+    assert.deepEqual(listing.files.find(({ name }) => name === "segment_runs.parquet"), {
+      name: "segment_runs.parquet", byte_size: 5, sha256: SHA, url,
+    });
+    const file = await fetch(url);
+    assert.equal(file.status, 200);
+    assert.equal(await file.text(), "PAR1!");
   });
-  const file = await fetch(url);
-  assert.equal(file.status, 200);
-  assert.equal(await file.text(), "PAR1!");
-});
+}
 
 test("paths, service dates, versions and nonpublic cities are refused before opening a file", async (t) => {
   const { fetch, keys } = fixture(t);

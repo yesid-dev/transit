@@ -29,7 +29,6 @@ from transit_engine.clean_manifest import (
     PREDICTION_SAMPLES,
     SCHEDULED_STOP_TIMES,
     SEGMENT_RUNS,
-    SEGMENT_RUNS_VERSION,
     STOP_ELIGIBILITY_VERSION,
     STOP_EVENTS,
     TRIP_DAYS,
@@ -3810,20 +3809,16 @@ def read_window(
             (*family.tables, *(table for m in selected for table in m.extra_tables), *extra_tables)
         )
     )
-    reads_segments = family.id == _CORRIDORS_ID and store.cleaning_version == SEGMENT_RUNS_VERSION
-    if reads_segments:
-        # A valid v12 receipt must list segment_runs. Older receipts use stop pairing.
-        tables = (SEGMENT_RUNS, FEED_POLLS)
+    preferred_tables: tuple[str, ...] = ()
+    if family.id == _CORRIDORS_ID:
+        preferred_tables = (SEGMENT_RUNS, FEED_POLLS)
         if group is not None:
-            tables += (TRIP_DAYS,)
+            preferred_tables += (TRIP_DAYS,)
     if group and family.id == _ALERT_COUNTS_ID:
         tables += (TRIP_DAYS, STOP_EVENTS) if group == "stop" else (TRIP_DAYS,)
     # Bound window sorts over dense position records and stop sequences.
     batch_days = (
-        1
-        if VEHICLE_POSITIONS in tables or (family.id in {_CORRIDORS_ID, _WAITING_ID}
-                                            and not reads_segments)
-        else None
+        1 if VEHICLE_POSITIONS in tables or family.id in {_CORRIDORS_ID, _WAITING_ID} else None
     )
     window = ReadWindow({table: [] for table in tables}, batch_days=batch_days)
     uses_poll_coverage = FEED_POLLS in tables and family.query is not None
@@ -3881,6 +3876,7 @@ def read_window(
                     question.city,
                     day,
                     tables,
+                    preferred_tables=preferred_tables,
                     allow_untracked_alerts=family.id == _ALERT_COUNTS_ID,
                     receipts=receipts,
                 )
@@ -3912,7 +3908,11 @@ def read_window(
                 window.included.append(day_key)
             # A weekday schedule can establish that a line exists for a weekend zero.
             if in_cut or family.id == _SERVICE_OFFERED_ID:
-                for table, path in zip(tables, files, strict=True):
+                if SEGMENT_RUNS in checked.tables and SEGMENT_RUNS not in window.paths:
+                    # Corridor windows use one cleaning version across all dates.
+                    window.paths = {table: [] for table in checked.tables}
+                    window.batch_days = None
+                for table, path in zip(checked.tables, files, strict=True):
                     window.paths[table].append(path)
     if uses_poll_coverage and window.included:
         assert receipts is not None

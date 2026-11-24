@@ -68,7 +68,7 @@ async function readDay(bucket, cache, ctx, origin, city, date, version, today) {
     const alertsNotTracked = manifest.alerts === "not_tracked";
     const expected = TABLES.filter((name) =>
       (!alertsNotTracked || name !== "alerts.parquet") &&
-      (version === "12" || name !== SEGMENT_RUNS));
+      (Number(version) >= 12 || name !== SEGMENT_RUNS));
     if (manifest.status !== undefined || (manifest.alerts !== undefined && !alertsNotTracked) ||
         !manifest.files || Object.keys(manifest.files).length !== expected.length) {
       throw new Error("Invalid clean download manifest");

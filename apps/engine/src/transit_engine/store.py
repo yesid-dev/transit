@@ -11,7 +11,7 @@ from typing import Self
 import duckdb
 
 from transit_engine.clean_manifest import (
-    ALERT_VERSIONS,
+    ALERT_VERSION,
     ALERTS,
     STOP_EVENTS,
     TRIP_DAYS,
@@ -35,6 +35,7 @@ class CheckedDay:
     files: tuple[str, ...] | None
     settled: bool
     unmeasured_reason: str | None = None
+    tables: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -130,16 +131,18 @@ class Store:
         day: date,
         tables: tuple[str, ...],
         *,
+        preferred_tables: tuple[str, ...] = (),
         allow_untracked_alerts: bool = False,
         receipts: dict[str, bytes] | None = None,
     ) -> CheckedDay:
-        """Validate query inputs and the completeness of all published files."""
+        """Validate query inputs, preferring an alternate set when the receipt lists it."""
         return self._checked_files(
             conn,
             city,
             day,
             tables,
             verify_digests=False,
+            preferred_tables=preferred_tables,
             allow_untracked_alerts=allow_untracked_alerts,
             check_all=True,
             receipts=receipts,
@@ -161,6 +164,7 @@ class Store:
         tables: tuple[str, ...],
         *,
         verify_digests: bool,
+        preferred_tables: tuple[str, ...] = (),
         allow_untracked_alerts: bool = False,
         receipts: dict[str, bytes] | None = None,
         check_all: bool = False,
@@ -192,6 +196,8 @@ class Store:
             return CheckedDay(None, False)
         if not identities:
             return CheckedDay(None, True, json.loads(payload)["status"])
+        if preferred_tables and all(name in identities for name in preferred_tables):
+            tables = preferred_tables
         checked_paths = {}
         supported = True
         for name in tables:
@@ -200,7 +206,7 @@ class Store:
             elif not (
                 name == ALERTS
                 and allow_untracked_alerts
-                and str(self.cleaning_version) in ALERT_VERSIONS
+                and self.cleaning_version >= ALERT_VERSION
             ):
                 supported = False
         if ALERTS in identities:
@@ -222,7 +228,7 @@ class Store:
         files = tuple(checked_paths.get(name, "") for name in tables) if supported else None
         if files is not None and receipts is not None:
             receipts[day.isoformat()] = payload
-        return CheckedDay(files, settled)
+        return CheckedDay(files, settled, tables=tables)
 
     def _matches_file(
         self,

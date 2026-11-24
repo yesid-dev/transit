@@ -12,7 +12,7 @@ import pytest
 from test_engine import FRIDAY, SUNDAY, THURSDAY, Poll, StopTiming, Trip, _build_store, http, query
 from test_ranking import _json, _request
 
-from transit_engine.clean_manifest import SEGMENT_RUNS
+from transit_engine.clean_manifest import SEGMENT_RUNS, STOP_EVENTS
 from transit_engine.corridors import SEGMENT_BIN_SECONDS
 from transit_engine.server import Engine
 
@@ -204,7 +204,8 @@ def test_corridor_exclusion_reasons_and_thresholds(tmp_path: Path) -> None:
     assert ranked["excluded"][0]["excluded"] == evidence["excluded"]
 
 
-def test_clean_segment_runs_match_legacy_corridors(tmp_path: Path) -> None:
+@pytest.mark.parametrize("version", [12, 13])
+def test_clean_segment_runs_match_legacy_corridors(tmp_path: Path, version: int) -> None:
     # Three observed cohorts exercise common coverage, a gap in one required feed,
     # and a static guard that must take precedence over a poll gap.
     trips = (
@@ -223,8 +224,8 @@ def test_clean_segment_runs_match_legacy_corridors(tmp_path: Path) -> None:
         for second in seconds
     )
     legacy = _build_store(tmp_path, 11, {THURSDAY: trips}, {THURSDAY: polls})
-    clean = _build_store(tmp_path, 12, {THURSDAY: trips}, {THURSDAY: polls})
-    directory = tmp_path / "stm" / str(THURSDAY) / "v12"
+    clean = _build_store(tmp_path, version, {THURSDAY: trips}, {THURSDAY: polls})
+    directory = tmp_path / "stm" / str(THURSDAY) / f"v{version}"
     start = datetime(2026, 11, 19, 12, tzinfo=UTC)
     rows: list[tuple[object, ...]] = [
         ("A", start, start, start + timedelta(seconds=120 + i % 3), 120 + i % 3, None)
@@ -247,7 +248,7 @@ def test_clean_segment_runs_match_legacy_corridors(tmp_path: Path) -> None:
         conn.executemany("INSERT INTO facts VALUES (?, ?, ?, ?, ?, ?)", rows)
         conn.execute("""
             COPY (
-                SELECT 'stm' AS provider, '12' AS cleaning_version, ?::DATE AS service_date,
+                SELECT 'stm' AS provider, ?::VARCHAR AS cleaning_version, ?::DATE AS service_date,
                     0 AS direction_id, 'from' AS from_stop, 'middle' AS to_stop,
                     CASE WHEN observed_run_seconds IS NULL THEN 'not_observed'
                         ELSE 'trip_update_reported' END AS from_basis,
@@ -255,7 +256,7 @@ def test_clean_segment_runs_match_legacy_corridors(tmp_path: Path) -> None:
                         AS scheduled_run_seconds, *
                 FROM facts
             ) TO ? (FORMAT PARQUET)
-        """, [THURSDAY, str(directory / SEGMENT_RUNS)])
+        """, [str(version), THURSDAY, str(directory / SEGMENT_RUNS)])
     payload = (directory / SEGMENT_RUNS).read_bytes()
     marker = directory / "manifest.json"
     receipt = json.loads(marker.read_bytes())
@@ -284,8 +285,17 @@ def test_clean_segment_runs_match_legacy_corridors(tmp_path: Path) -> None:
             _json(legacy, kind="segment", **cut)
         )
     for line in ("A", "B", "Rail"):
-        cut = {"measure": "mean_time_lost", "group": "segment", "map_view": True, "line": line}
-        assert stable(query(clean, **cut)) == stable(query(legacy, **cut))
+        map_cut: dict[str, object] = {
+            "measure": "mean_time_lost", "group": "segment", "map_view": True, "line": line,
+        }
+        assert stable(query(clean, **map_cut)) == stable(query(legacy, **map_cut))
+
+    # The manifest's listed segment facts supply corridors while stop events are pending.
+    (directory / STOP_EVENTS).unlink()
+    result = query(clean, measure="corridors", line="A")
+    assert result["state"] == "measured"
+    assert result["evidence"]["counts"]["observed_runs"] == 30
+    assert result["evidence"]["days_pending"] == [str(THURSDAY)]
 
 
 def test_map_answers_keep_samples_and_non_value_states(tmp_path: Path) -> None:
