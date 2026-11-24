@@ -20,11 +20,13 @@ CORRIDOR_RUNS_SQL = f"""
                 WHEN 'arrival' THEN coalesce(s.scheduled_arrival_utc, s.scheduled_departure_utc)
                 WHEN 'departure' THEN s.scheduled_departure_utc
             END AS scheduled_event_at
-        FROM read_parquet(?, hive_partitioning = false) s
-        JOIN read_parquet(?, hive_partitioning = false) t
+        FROM (SELECT * FROM read_parquet(?, hive_partitioning = false) s
+            WHERE s.provider = ? AND s.cleaning_version = ? AND s.service_date BETWEEN ? AND ?
+            {{stop_filter}}) s
+        JOIN (SELECT * FROM read_parquet(?, hive_partitioning = false) t
+            WHERE t.provider = ? AND t.cleaning_version = ? AND t.service_date BETWEEN ? AND ?
+                AND t.state <> 'added' AND t.route_id IS NOT NULL {{trip_filter}}) t
             USING (provider, cleaning_version, service_date, trip_id)
-        WHERE t.provider = ? AND t.cleaning_version = ? AND t.service_date BETWEEN ? AND ?
-            AND t.state <> 'added' AND t.route_id IS NOT NULL
     ), pairs AS (
         SELECT service_date, route_id, direction_id, state, state_reason, route_has_live_data,
             stop_id AS from_stop, lead(stop_id) OVER trip AS to_stop, departure_at, basis,

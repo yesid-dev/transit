@@ -198,3 +198,54 @@ def test_corridor_exclusion_reasons_and_thresholds(tmp_path: Path) -> None:
     assert skipped["evidence"]["counts"]["scheduled_runs"] == 0
     ranked = _json(store, kind="segment", **cut)
     assert ranked["excluded"][0]["excluded"] == evidence["excluded"]
+
+
+def test_map_answers_keep_samples_and_non_value_states(tmp_path: Path) -> None:
+    known = tuple(_trip("A", i, (360, 380)) for i in range(32))
+    on_time = tuple(
+        _trip("B", i, (0, 0), stop_times=(STOPS[0]._replace(stop_id="on-time"), STOPS[1]))
+        for i in range(30)
+    )
+    thin = _trip("A", 33, (0, 40), direction=1)
+    missing = _trip("A", 34, (None, None), direction=0, stop_times=STOPS[1:])
+    rail = _trip("Rail", 1, (None, None), live=False)
+    store = _build_store(
+        tmp_path, 11, {THURSDAY: (*known, *on_time, thin, missing, rail)},
+        {THURSDAY: tuple(Poll("trip_updates", second) for second in range(-120, 601, 60))},
+    )
+    app = Engine(store, concurrency=1, queue_size=1, queue_wait_ms=50)
+    filters = {"city": "stm", "from": THURSDAY, "to": THURSDAY, "view": "map"}
+
+    def ask_map(**params: Any) -> tuple[int, dict[str, Any]]:
+        status, _, raw = asyncio.run(http(app, "/measure", urlencode({**filters, **params})))
+        return status, json.loads(raw)
+
+    status, stops = ask_map(measure="late", group="stop_id")
+    assert status == 200
+    stop_values = dict(zip(
+        stops["stop"], zip(stops["state"], stops["value"], stops["sample"], strict=True),
+        strict=True,
+    ))
+    assert stop_values["on-time"] == (3, 0, 30)
+    assert stop_values["to"] == (0, None, 0)
+    assert stop_values["from"] == (3, 970, 33)
+
+    status, segments = ask_map(measure="mean_time_lost", group="segment", line="A")
+    assert status == 200
+    assert list(zip(
+        segments["direction"], segments["from_stop"], segments["to_stop"],
+        segments["state"], segments["value"], segments["sample"], strict=True,
+    )) == [
+        (0, "from", "middle", 3, 20.0, 32),
+        (0, "middle", "to", 0, None, 0),
+        (1, "from", "middle", 1, None, 1),
+    ]
+    status, direction = ask_map(measure="mean_time_lost", group="segment", line="A", direction=1)
+    assert status == 200
+    assert direction["direction"] == [1]
+    status, rail_segments = ask_map(measure="mean_time_lost", group="segment", line="Rail")
+    assert status == 200
+    assert rail_segments["state"] == [2]
+    assert rail_segments["value"] == [None]
+    assert ask_map(measure="mean_time_lost", group="segment")[0] == 400
+    assert ask_map(measure="late", group="stop_id", format="csv")[0] == 400

@@ -1,0 +1,479 @@
+<script lang="ts">
+	import type { Map as MapLibreMap } from 'maplibre-gl';
+	import { untrack } from 'svelte';
+	import { Card } from '@yesid/ui/card';
+	import { theme } from '@yesid/ui/state';
+	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
+	import { choose } from '#lib/features/record/recordText.ts';
+	import RecordPending from '#lib/features/record/RecordPending.svelte';
+	import { frameHref, type parseFrameState } from '#lib/site/frameState.ts';
+	import { lineIsScheduleOnly } from '#lib/site/providerCapabilities.ts';
+	import { getRoute } from '#lib/v1/repositories/static.ts';
+	import type { RouteFile, StopIndexEntry } from '#lib/v1/schemas/index.ts';
+	import type { RouteIndexEntry } from '#lib/v1/schemas/routes_index.ts';
+	import { getV1Context } from '#lib/v1/boot.ts';
+	import type { MapRecordAnswer } from './recordMapAnswer';
+	import { attachRecordMap } from './recordMapLayers';
+	import { recordColours, recordCorridors, recordFeatures, recordStops } from './recordMap';
+
+	interface Props {
+		map: MapLibreMap | null;
+		layer: 'stops' | 'corridors';
+		line: string;
+		direction: string;
+		city: string;
+		period: ReturnType<typeof parseFrameState>['period'];
+		url: URL;
+		locale: Locale;
+		stops: readonly StopIndexEntry[];
+		routes: readonly RouteIndexEntry[];
+		onscope: (line: string, direction: string) => void;
+	}
+	let { map, layer, line, direction, city, period, url, locale, stops, routes, onscope }: Props =
+		$props();
+	const { provider } = getV1Context();
+	const tr = (en: string, fr: string) => choose(locale, en, fr);
+	const stopLayer = $derived(layer === 'stops');
+	const scope = $derived(
+		period && (stopLayer || line)
+			? new URLSearchParams({
+					city,
+					from: period.from,
+					to: period.to,
+					...(!stopLayer ? { line, ...(direction ? { direction } : {}) } : {}),
+				}).toString()
+			: '',
+	);
+	const palette = $derived(recordColours[theme.current === 'dark' ? 'dark' : 'light']);
+	const routeTypes = $derived(new Map(routes.map((route) => [route.id, route.type ?? null])));
+	const scheduleOnly = $derived(lineIsScheduleOnly(provider, line, routeTypes.get(line) ?? null));
+	let request = $state.raw<{
+		key: string;
+		answer: (MapRecordAnswer & { stale?: boolean }) | null;
+	} | null>(null);
+	const answer = $derived(request?.key === scope ? request.answer : null);
+	const pending = $derived(Boolean(scope && scope !== request?.key));
+	let routeResult = $state.raw<{ id: string; route: RouteFile | null } | null>(null);
+	const route = $derived(routeResult?.id === line ? routeResult.route : null);
+	let selectedId = $state<string | null>(null);
+	let search = $state('');
+	let searchInput = $state<HTMLInputElement | null>(null);
+	let fitted: { map: MapLibreMap; line: string; direction: string } | null = null;
+
+	$effect(() => {
+		const key = scope;
+		request = null;
+		selectedId = null;
+		search = '';
+		if (!key) return;
+		const controller = new AbortController();
+		void fetch(`/api/map-record?${key}`, { signal: controller.signal })
+			.then((response) => {
+				if (!response.ok) throw new Error('Record unavailable');
+				return response.json();
+			})
+			.then((answer: MapRecordAnswer & { stale?: boolean }) => {
+				if (!controller.signal.aborted) request = { key, answer };
+			})
+			.catch(() => {
+				if (!controller.signal.aborted) request = { key, answer: null };
+			});
+		return () => controller.abort();
+	});
+
+	$effect(() => {
+		const id = line;
+		if (stopLayer || !id) return;
+		const controller = new AbortController();
+		void getRoute(id, { signal: controller.signal })
+			.then((route) => {
+				if (!controller.signal.aborted) routeResult = { id, route };
+			})
+			.catch(() => {
+				if (!controller.signal.aborted) routeResult = { id, route: null };
+			});
+		return () => controller.abort();
+	});
+
+	const marks = $derived.by(() => {
+		if (!answer) return [];
+		if (!stopLayer)
+			return recordCorridors(stops, route?.directions ?? [], answer, direction, scheduleOnly);
+		return recordStops(stops, answer, (stop) =>
+			Boolean(
+				stop.routes?.length &&
+				stop.routes.every((id) => lineIsScheduleOnly(provider, id, routeTypes.get(id) ?? null)),
+			),
+		);
+	});
+	const markById = $derived(new Map(marks.map((mark) => [mark.id, mark])));
+	const selected = $derived(selectedId === null ? null : (markById.get(selectedId) ?? null));
+	const matching = $derived(
+		search.trim()
+			? marks
+					.filter(({ name, stop }) =>
+						`${name} ${stop ?? ''}`
+							.toLocaleLowerCase(locale)
+							.includes(search.trim().toLocaleLowerCase(locale)),
+					)
+					.slice(0, 12)
+			: [],
+	);
+	$effect(() => {
+		if (!map || !marks.length) return;
+		return attachRecordMap(
+			map,
+			recordFeatures(marks, theme.current === 'dark' ? 'dark' : 'light', stopLayer),
+			(id) => (selectedId = id),
+		);
+	});
+	$effect(() => {
+		const instance = map;
+		const id = line;
+		const dir = direction;
+		if (stopLayer || !id) {
+			fitted = null;
+			return;
+		}
+		if (
+			!instance ||
+			!marks.length ||
+			(fitted?.map === instance && fitted.line === id && fitted.direction === dir)
+		)
+			return;
+		const coordinates = marks.flatMap(({ geometry }) =>
+			geometry.type === 'LineString' ? geometry.coordinates : [],
+		);
+		if (!coordinates.length) return;
+		const lon = coordinates.map(([x]) => x);
+		const lat = coordinates.map(([, y]) => y);
+		const bounds = [
+			[Math.min(...lon), Math.min(...lat)],
+			[Math.max(...lon), Math.max(...lat)],
+		] as [[number, number], [number, number]];
+		if (bounds[0][0] === bounds[1][0] && bounds[0][1] === bounds[1][1]) return;
+		untrack(() => {
+			const frame = instance.getContainer().getBoundingClientRect();
+			const head = instance
+				.getContainer()
+				.closest('.map-surface')
+				?.querySelector('.map-layer-controls')
+				?.getBoundingClientRect();
+			const top = Math.max(32, (head?.bottom ?? frame.top) - frame.top + 12);
+			instance.fitBounds(bounds, {
+				padding: { top, left: 32, right: 32, bottom: 48 },
+				maxZoom: 15,
+				duration: 0,
+			});
+		});
+		fitted = { map: instance, line: id, direction: dir };
+	});
+
+	const heads = $derived(
+		new Map((route?.directions ?? []).map(({ dir, headsign }) => [dir, headsign])),
+	);
+	const stateLabels = $derived([
+		tr('No data', 'Aucune donnée'),
+		tr('Too few to judge', 'Trop peu pour juger'),
+		tr('No live data', 'Aucune donnée en direct'),
+		tr('Measured', 'Mesuré'),
+	]);
+	const units = $derived(
+		stopLayer
+			? tr('Late stop events (%)', 'Passages en retard (%)')
+			: tr('Mean time lost (s per run)', 'Temps perdu moyen (s par parcours)'),
+	);
+	const bins = $derived(
+		stopLayer
+			? [
+					tr('Under 10%', 'Moins de 10 %'),
+					tr('10 to <25%', '10 à <25 %'),
+					tr('25 to <50%', '25 à <50 %'),
+					tr('50% or more', '50 % ou plus'),
+				]
+			: [
+					tr('0 s or less', '0 s ou moins'),
+					tr('>0 to <30 s', '>0 à <30 s'),
+					tr('30 to <60 s', '30 à <60 s'),
+					tr('60 s or more', '60 s ou plus'),
+				],
+	);
+	const recordHref = $derived.by(() => {
+		const id = stopLayer ? selected?.stop : line;
+		if (!id) return '';
+		const target = new URL(
+			localizeHref(`/${stopLayer ? 'stop' : 'lines'}/${encodeURIComponent(id)}`, locale, city),
+			url,
+		);
+		if (!stopLayer && selected?.direction != null)
+			target.searchParams.set('direction', String(selected.direction));
+		return frameHref(target, { mode: 'record', period });
+	});
+	const number = $derived(new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }));
+	function valueText(value: number) {
+		return stopLayer
+			? new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 1 }).format(
+					value / 1000,
+				)
+			: `${number.format(value)} s`;
+	}
+</script>
+
+<div class="record-panel">
+	<Card edge="neutral" class="p-3">
+		{#if !stopLayer}
+			<div class="scope">
+				<label>
+					{tr('Line', 'Ligne')}
+					<select value={line} onchange={(event) => onscope(event.currentTarget.value, '')}>
+						<option value="">{tr('Choose a line', 'Choisir une ligne')}</option>
+						{#each routes as item (item.id)}
+							<option value={item.id}
+								>{[item.short ?? item.id, item.long].filter(Boolean).join(' · ')}</option
+							>
+						{/each}
+					</select>
+				</label>
+				{#if line}
+					<label>
+						{tr('Direction', 'Direction')}
+						<select
+							value={direction}
+							onchange={(event) => onscope(line, event.currentTarget.value)}
+						>
+							<option value="">{tr('Both directions', 'Les deux directions')}</option>
+							<option value="0">{heads.get(0) || tr('Direction 1', 'Direction 1')}</option>
+							<option value="1">{heads.get(1) || tr('Direction 2', 'Direction 2')}</option>
+						</select>
+					</label>
+				{/if}
+			</div>
+		{/if}
+		{#if !stopLayer && !line}
+			<p>
+				{tr(
+					'Choose a line to see time lost between its stops.',
+					'Choisissez une ligne pour voir le temps perdu entre ses arrêts.',
+				)}
+			</p>
+		{:else}
+			<section
+				aria-label={tr('Record map legend', 'Légende de la carte du bilan')}
+				data-slot="record-map-legend"
+			>
+				<h2>{units}</h2>
+				{#if !stopLayer}
+					<p>
+						{tr(
+							'Compared with the timetable for the same runs.',
+							'Par rapport à l’horaire des mêmes parcours.',
+						)}
+					</p>
+				{/if}
+				<ul class="bins">
+					{#each bins as label, i (label)}
+						<li style:--swatch={palette[i]}>{label}</li>
+					{/each}
+				</ul>
+				<ul class="states" class:stops={stopLayer}>
+					{#each [1, 0, 2] as state (state)}
+						<li data-state={state} style:--swatch={palette[state === 1 ? 5 : state === 2 ? 6 : 4]}>
+							<span aria-hidden="true"></span>{stateLabels[state]}
+						</li>
+					{/each}
+				</ul>
+			</section>
+			{#if pending}
+				{#key scope}<RecordPending {locale} />{/key}
+			{:else if !answer}
+				<p role="status">
+					{tr('The record is unavailable for now.', 'Le bilan est indisponible pour le moment.')}
+				</p>
+			{:else}
+				{#if answer.stale}
+					<p>{tr('Showing the last available answer.', 'Dernier résultat disponible.')}</p>
+				{/if}
+				{#if answer.evidence.days_not_measured.length > 0}
+					<p>
+						{tr(
+							'Some days in this period have no measurements.',
+							'Certaines journées de cette période n’ont aucune mesure.',
+						)}
+					</p>
+				{/if}
+				{#if marks.length > 0}
+					<label class="find">
+						{stopLayer
+							? tr('Find a stop', 'Trouver un arrêt')
+							: tr('Find a segment', 'Trouver un segment')}
+						<input type="search" bind:this={searchInput} bind:value={search} />
+					</label>
+					{#if matching.length > 0}
+						<ul class="results">
+							{#each matching as mark (mark.id)}
+								<li>
+									<button
+										type="button"
+										onclick={() => {
+											selectedId = mark.id;
+											search = '';
+											searchInput?.focus({ preventScroll: true });
+										}}>{mark.name}</button
+									>
+								</li>
+							{/each}
+						</ul>
+					{/if}
+				{:else}
+					<p>
+						{tr(
+							'No locations are available for this selection.',
+							'Aucun emplacement disponible pour cette sélection.',
+						)}
+					</p>
+				{/if}
+			{/if}
+			<div role="status" aria-atomic="true" data-slot="record-map-selection">
+				{#if selected}
+					<h2>{selected.name}</h2>
+					<p>
+						{stateLabels[selected.state]}{selected.value !== null
+							? ` · ${valueText(selected.value)}`
+							: ''}
+					</p>
+					{#if selected.sample !== null}
+						<p>
+							{number.format(selected.sample)}
+							{stopLayer
+								? tr('classified stop events', 'passages classés')
+								: tr('observed runs', 'parcours observés')}
+						</p>
+					{/if}
+				{/if}
+			</div>
+			{#if selected && recordHref}
+				<a class="record-link" href={recordHref}
+					>{stopLayer
+						? tr('Stop Record', 'Bilan de l’arrêt')
+						: tr('Line Record', 'Bilan de la ligne')}</a
+				>
+			{/if}
+		{/if}
+	</Card>
+</div>
+
+<style>
+	.record-panel {
+		width: min(26rem, calc(100vw - 1.5rem));
+		max-height: min(27rem, 48dvh);
+		overflow: auto;
+		overscroll-behavior: contain;
+		color: var(--foreground);
+		font-size: var(--text-small);
+		line-height: 1.35;
+	}
+	p,
+	h2,
+	ul {
+		margin: 0;
+	}
+	h2 {
+		font-size: inherit;
+		font-weight: 700;
+	}
+	ul {
+		list-style: none;
+		padding: 0;
+	}
+	.bins {
+		display: grid;
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		gap: 0.375rem;
+	}
+	.bins li {
+		border-top: 0.3rem solid var(--swatch);
+		padding-top: 0.25rem;
+	}
+	.states {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.25rem 0.75rem;
+		margin-top: 0.5rem;
+	}
+	.states li {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
+	}
+	.states span {
+		width: 1rem;
+		height: 0.375rem;
+		border-top: 0.18rem solid var(--swatch);
+	}
+	.states [data-state='0'] span {
+		border-top-style: dotted;
+	}
+	.states [data-state='1'] span,
+	.states [data-state='2'] span {
+		border-top-style: dashed;
+	}
+	.states [data-state='2'] span {
+		border-bottom: 0.1rem solid var(--swatch);
+	}
+	.states.stops span {
+		width: 0.65rem;
+		height: 0.65rem;
+		border: 0.125rem solid var(--swatch);
+		border-radius: 50%;
+	}
+	.states.stops [data-state='1'] span {
+		background: var(--swatch);
+	}
+	.states.stops [data-state='2'] span {
+		background: radial-gradient(var(--swatch) 35%, transparent 40%);
+	}
+	.scope {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+	}
+	label {
+		display: grid;
+		gap: 0.2rem;
+		min-width: 0;
+		font-weight: 600;
+	}
+	.scope label {
+		flex: 1 1 8rem;
+	}
+	select,
+	input {
+		width: 100%;
+		min-width: 0;
+		min-height: var(--size-tap-min);
+		background: var(--background);
+		color: var(--foreground);
+		border: 1px solid var(--muted-foreground);
+		border-radius: var(--radius-sm);
+		padding-inline: 0.5rem;
+	}
+	button,
+	.record-link {
+		min-height: var(--size-tap-min);
+		text-align: start;
+	}
+	.record-link {
+		display: inline-flex;
+		align-items: center;
+		width: fit-content;
+		text-decoration: underline;
+	}
+	.results {
+		max-height: 8rem;
+		overflow: auto;
+	}
+	.results button {
+		width: 100%;
+		padding-inline: 0.25rem;
+	}
+</style>

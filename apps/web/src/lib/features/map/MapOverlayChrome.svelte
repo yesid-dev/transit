@@ -50,6 +50,8 @@
 		viewMode: 'map' | 'reports';
 		onviewchange: (next: 'map' | 'reports') => void;
 		controls: Snippet<[{ collapsible?: boolean } | undefined]>;
+		layers?: Snippet;
+		record?: boolean;
 	}
 
 	let {
@@ -79,6 +81,8 @@
 		viewMode,
 		onviewchange,
 		controls,
+		layers,
+		record = false,
 	}: Props = $props();
 	const colourBy = $derived(colourDimension(filtersStore.state));
 	// Hovering what the open panel already shows would only repeat it over the map.
@@ -86,6 +90,7 @@
 
 	let desktopControlsMounted = $state(false);
 	let headHeight = $state(0);
+	let layersHeight = $state(0);
 	let panelHeight = $state(0);
 	let controlsOpen = $state(false);
 	let legendOpen = $state(false);
@@ -105,71 +110,88 @@
 		lead={t.headingLead}
 		presentation={presentation.stamp}
 		{viewMode}
-		{onviewchange}
+		onviewchange={record ? undefined : onviewchange}
+		{record}
 		bind:height={headHeight}
 	/>
-	<MapFreshness placement="floating" presentation={presentation.stamp} {locale} />
+	{#if !record}<MapFreshness placement="floating" presentation={presentation.stamp} {locale} />{/if}
 </div>
 
 <MapNorthControl copy={t} {...orientation} status={northStatus} onreset={onnorth} />
 
-<MapNearMeControl
-	bind:open={nearMeOpen}
-	bind:query={nearMeQuery}
-	{locale}
-	copy={t}
-	loading={nearMeLoading}
-	error={nearMeError}
-	origin={nearMeOrigin}
-	stops={nearbyStops}
-	{onuselocation}
-	{onsearch}
-	{onsuggestion}
-	{onstopselect}
-	{onclear}
-/>
+{#if !record}
+	<MapNearMeControl
+		bind:open={nearMeOpen}
+		bind:query={nearMeQuery}
+		{locale}
+		copy={t}
+		loading={nearMeLoading}
+		error={nearMeError}
+		origin={nearMeOrigin}
+		stops={nearbyStops}
+		{onuselocation}
+		{onsearch}
+		{onsuggestion}
+		{onstopselect}
+		{onclear}
+	/>
+{/if}
 
-{#if isDesktop || desktopControlsMounted}
+{#if layers}
 	<div
-		class="map-overlay map-controls-column"
+		class="map-layer-controls"
+		class:record
 		style:--map-head-height="{headHeight}px"
-		style:--map-panel-height="{panelHeight}px"
+		bind:offsetHeight={layersHeight}
 	>
-		<div class="map-filter-panel" bind:clientHeight={panelHeight}>
-			{@render controls(undefined)}
-		</div>
-		<MapLegendControl {locale} presentation="desktop" {colourBy} {staleCutoffS} />
+		{@render layers()}
 	</div>
 {/if}
 
-<MapFilterPill
-	store={filtersStore}
-	{locale}
-	hidden={detailOpen}
-	{controls}
-	bind:open={controlsOpen}
-	onopenchange={(open) => {
-		if (open) legendOpen = false;
-	}}
-/>
-<MapLegendControl
-	{locale}
-	presentation="phone"
-	{colourBy}
-	{staleCutoffS}
-	hidden={detailOpen}
-	bind:open={legendOpen}
-	onopenchange={(open) => {
-		if (open) controlsOpen = false;
-	}}
-/>
+{#if !record}
+	{#if isDesktop || desktopControlsMounted}
+		<div
+			class="map-overlay map-controls-column"
+			style:--map-head-height="{headHeight}px"
+			style:--map-layers-clearance="{layersHeight ? layersHeight + 8 : 0}px"
+			style:--map-panel-height="{panelHeight}px"
+		>
+			<div class="map-filter-panel" bind:clientHeight={panelHeight}>
+				{@render controls(undefined)}
+			</div>
+			<MapLegendControl {locale} presentation="desktop" {colourBy} {staleCutoffS} />
+		</div>
+	{/if}
 
-<MapFeedStallBanner {presentation} />
+	<MapFilterPill
+		store={filtersStore}
+		{locale}
+		hidden={detailOpen}
+		{controls}
+		bind:open={controlsOpen}
+		onopenchange={(open) => {
+			if (open) legendOpen = false;
+		}}
+	/>
+	<MapLegendControl
+		{locale}
+		presentation="phone"
+		{colourBy}
+		{staleCutoffS}
+		hidden={detailOpen}
+		bind:open={legendOpen}
+		onopenchange={(open) => {
+			if (open) controlsOpen = false;
+		}}
+	/>
 
-{#if visiblePeek && isDesktop && !nearMeOpen}
-	<div class="map-overlay map-peek" data-slot="map-hover-peek">
-		<MapHoverPeek peek={visiblePeek} {locale} />
-	</div>
+	<MapFeedStallBanner {presentation} />
+
+	{#if visiblePeek && isDesktop && !nearMeOpen}
+		<div class="map-overlay map-peek" data-slot="map-hover-peek">
+			<MapHoverPeek peek={visiblePeek} {locale} />
+		</div>
+	{/if}
 {/if}
 
 <style>
@@ -177,9 +199,29 @@
 		position: absolute;
 		z-index: var(--z-map-overlay);
 	}
+	.map-layer-controls {
+		position: absolute;
+		z-index: var(--z-map-overlay);
+		top: calc(var(--chrome-offset) + var(--map-head-height) + 0.5rem);
+		left: calc(var(--app-left-rail-offset, 0rem) + 1rem);
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 0.5rem;
+		max-width: calc(
+			100% - var(--app-left-rail-offset, 0rem) - var(--map-detail-offset, 0rem) - 2rem
+		);
+		pointer-events: none;
+	}
+	.map-layer-controls > :global(*) {
+		pointer-events: auto;
+	}
 	.map-controls-column {
 		--legend-reserve: min(18rem, 32dvh);
-		--column-top: calc(var(--chrome-offset) + max(4rem, var(--map-head-height, 0px) + 0.75rem));
+		--column-top: calc(
+			var(--chrome-offset) +
+				max(4rem, var(--map-head-height, 0px) + var(--map-layers-clearance, 0px) + 0.75rem)
+		);
 		--column-room: calc(100dvh - var(--announcement-height, 0px) - var(--column-top) - 3rem);
 		--map-legend-body-room: max(
 			0px,
@@ -190,7 +232,7 @@
 		gap: calc(var(--spacing) * 3);
 		width: 300px;
 		max-height: var(--column-room);
-		top: calc(var(--chrome-offset) + max(4rem, var(--map-head-height, 0px) + 0.75rem));
+		top: var(--column-top);
 		left: calc(var(--app-left-rail-offset, 0rem) + 1rem);
 	}
 
@@ -232,11 +274,27 @@
 	}
 
 	@media (--desktop-max) {
+		.map-layer-controls {
+			right: 0.75rem;
+			left: auto;
+			align-items: flex-end;
+			max-width: calc(100% - 1.5rem);
+		}
 		.map-controls-column {
 			display: none;
 		}
 		.map-peek {
 			display: none;
+		}
+	}
+
+	@media (--desktop-max) and (orientation: landscape) {
+		.map-layer-controls:not(.record) {
+			top: var(--chrome-offset);
+			right: auto;
+			left: 0.75rem;
+			align-items: flex-start;
+			max-width: calc(35% - 0.75rem);
 		}
 	}
 </style>

@@ -286,6 +286,7 @@ async function answerQuestion(request, env, ctx, visitorIp) {
     const retryAfter = response.headers.get("retry-after");
     if (response.status === 503 && retryAfter) return busy(retryAfter);
     if (response.status === 400) {
+      if (question.map) return lastGood(env, key);
       return publicEngineError(await response.json());
     }
     if (!response.ok) return lastGood(env, key);
@@ -301,6 +302,7 @@ async function answerQuestion(request, env, ctx, visitorIp) {
         Array.isArray(json) !== (question.route === "how-we-measure"))) {
       return lastGood(env, key);
     }
+    if (question.map && !Array.isArray(json.state)) return lastGood(env, key);
     settled = response.headers.get(PENDING_DAYS_HEADER) === "0";
     matchesCatalog = response.headers.get(VERSION_HEADER) === version && reportedRevision === revision;
   } catch {

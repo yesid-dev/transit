@@ -9,6 +9,10 @@
 	import { lineIsScheduleOnly } from '#lib/site/providerCapabilities.ts';
 	import { onMount, tick, untrack } from 'svelte';
 	import { page } from '$app/state';
+	import { SegmentedChoice } from '@yesid/ui/brand';
+	import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
+	import MapRecordPanel from './MapRecordPanel.svelte';
+	import type { RecordMapLayer } from './recordMap';
 	import { goto } from '$app/navigation';
 	import type { Map as MapLibreMap } from 'maplibre-gl';
 	import type { MapStageFailure } from '#lib/components/map/MapStage.svelte';
@@ -104,9 +108,10 @@
 	let detailDragging = $state(false);
 	const detailResizeAria = $derived(t.detailResizeLabel);
 	const framing = $derived(initialCamera(v1, mapWidthPx, desktop.current));
-	const urlCoordinator = createMapUrlCoordinator(new URL(page.url.href), goto);
+	const currentMapHref = () => (page.shallow?.url ?? page.url).href;
+	const urlCoordinator = createMapUrlCoordinator(new URL(currentMapHref()), goto);
 	const filters = createFilterStore(
-		readMapFilters(new URLSearchParams(page.url.search)),
+		readMapFilters(new URL(currentMapHref()).searchParams),
 		urlCoordinator.writeFilters,
 	);
 
@@ -161,7 +166,7 @@
 
 	let ingestedUrlIdentity = '';
 	$effect(() => {
-		const url = new URL(page.url.href);
+		const url = new URL(currentMapHref());
 		const urlIdentity = `${url.pathname}${url.search}`;
 		if (urlIdentity === ingestedUrlIdentity) return;
 		ingestedUrlIdentity = urlIdentity;
@@ -248,6 +253,52 @@
 		onpick: selectPickedFeature,
 	});
 	const map = $derived(runtime.map);
+	const recordUrl = $derived(new URL(currentMapHref()));
+	const recordLayer = $derived.by((): RecordMapLayer => {
+		const layer = recordUrl.searchParams.get('mapLayer');
+		return layer === 'stops' || layer === 'corridors' ? layer : 'live';
+	});
+	const isRecordLayer = $derived(recordLayer !== 'live');
+	const recordOptions: { key: RecordMapLayer; label: string }[] = [
+		{ key: 'live', label: locale === 'fr' ? 'En direct' : 'Live' },
+		{ key: 'stops', label: locale === 'fr' ? 'Arrêts' : 'Stops' },
+		{ key: 'corridors', label: 'Corridors' },
+	];
+	const recordPeriod = $derived(
+		parseFrameState(recordUrl.searchParams, frameToday(timeZone)).period,
+	);
+	const recordLine = $derived(
+		recordUrl.searchParams.get('recordLine') ??
+			(session.selected?.kind === 'route'
+				? session.selected.id
+				: filters.routes.size === 1
+					? [...filters.routes][0]
+					: '') ??
+			'',
+	);
+	const recordDirection = $derived(
+		recordUrl.searchParams.get('recordDirection') ??
+			(session.selected?.kind === 'route' &&
+			session.selected.id === recordLine &&
+			session.selected.direction != null
+				? String(session.selected.direction)
+				: ''),
+	);
+
+	function changeRecordLayer(layer: RecordMapLayer): void {
+		if (layer === recordLayer) return;
+		const url = urlCoordinator.currentUrl();
+		if (layer === 'live') url.searchParams.delete('mapLayer');
+		else url.searchParams.set('mapLayer', layer);
+		void urlCoordinator.goto(url.pathname + url.search, MAP_URL_REWRITE);
+	}
+
+	function changeRecordScope(line: string, direction: string): void {
+		const url = urlCoordinator.currentUrl();
+		url.searchParams.set('recordLine', line);
+		url.searchParams.set('recordDirection', direction);
+		void urlCoordinator.goto(url.pathname + url.search, MAP_URL_REWRITE);
+	}
 
 	// One camera capture per settled move or resize. Animation frames never rebuild the list.
 	$effect(() => {
@@ -291,7 +342,7 @@
 		return () => document.removeEventListener('keydown', onKey);
 	});
 
-	const detailOpen = $derived(session.detailOpen);
+	const detailOpen = $derived(session.detailOpen && !isRecordLayer);
 	$effect(() => {
 		if (!detailOpen) detailCollapsed = detailWidthPx === 56;
 	});
@@ -456,6 +507,12 @@
 		session.select(next, 'pick');
 	}
 	function selectPickedFeature(next: MapSelection) {
+		if (isRecordLayer) {
+			if (recordLayer === 'corridors' && next.kind === 'route' && !recordLine) {
+				changeRecordScope(next.id, next.direction == null ? '' : String(next.direction));
+			}
+			return;
+		}
 		if (next.kind === 'vehicle') camera.interact();
 		commitPickedSelection(next);
 		detailCollapsed = detailWidthPx === 56;
@@ -638,23 +695,24 @@
 		const filter = filters.state;
 		return {
 			routes: {
-				items: routeLineRoutes,
+				items: recordLayer === 'stops' ? [] : routeLineRoutes,
 				selected: selectedRouteLine,
 			},
 			vehicles: {
 				...motionFrame,
+				...(isRecordLayer ? { items: [], tickKey: null } : {}),
 				filter,
 				alertIds: alertVehicleIds,
 				selectedId: selectedVehicleId,
 			},
 			stops: {
-				items: stopList,
+				items: isRecordLayer ? [] : stopList,
 				filter,
 				alertIds: session.alertStopIds,
 				selectedId: selectedStopId,
 			},
 			nearTarget: {
-				target: nearMeController.origin,
+				target: isRecordLayer ? null : nearMeController.origin,
 			},
 		};
 	}
@@ -662,7 +720,7 @@
 	$effect(() => {
 		const el = heroEl;
 		if (!el) return;
-		const open = desktop.current && (detailOpen || reportsPaneOpen);
+		const open = desktop.current && !isRecordLayer && (detailOpen || reportsPaneOpen);
 		const dispose = publishRailOffset(el, detailWidthPx, open, detailCollapsed, detailDragging);
 		return () => releaseMapOwner(dispose);
 	});
@@ -929,9 +987,37 @@
 				viewMode={viewSwitchValue}
 				onviewchange={setView}
 				controls={mapControls}
+				layers={layerChoice}
+				record={isRecordLayer}
 			/>
 		{/if}
 	</div>
+{/snippet}
+
+{#snippet layerChoice()}
+	<SegmentedChoice
+		options={recordOptions}
+		value={recordLayer}
+		label={locale === 'fr' ? 'Couches de la carte' : 'Map layers'}
+		onSelect={changeRecordLayer}
+		variant="fit-row"
+		class="map-record-choice map-view-switch"
+	/>
+	{#if recordLayer !== 'live'}
+		<MapRecordPanel
+			{map}
+			layer={recordLayer}
+			line={recordLine}
+			direction={recordDirection}
+			city={manifest.provider}
+			period={recordPeriod}
+			url={recordUrl}
+			{locale}
+			stops={stopList}
+			routes={session.routesIndex}
+			onscope={changeRecordScope}
+		/>
+	{/if}
 {/snippet}
 
 <div
@@ -945,6 +1031,7 @@
 	bind:this={heroEl}
 	bind:clientWidth={mapWidthPx}
 	data-map-view={viewSwitchValue}
+	data-record-layer={recordLayer}
 >
 	{@render mapSurface()}
 
@@ -952,7 +1039,7 @@
 		{@render reportsPanelContent('overlay')}
 	{/if}
 
-	{#if desktop.current && detailOpen}
+	{#if desktop.current && detailOpen && !isRecordLayer}
 		<MapDetailOverlay
 			{locale}
 			bind:widthPx={detailWidthPx}
@@ -961,7 +1048,7 @@
 			resizeAria={detailResizeAria}
 			{detailPanel}
 		/>
-	{:else if desktop.current && reportsPaneOpen}
+	{:else if desktop.current && reportsPaneOpen && !isRecordLayer}
 		<MapDetailOverlay
 			{locale}
 			bind:widthPx={detailWidthPx}
@@ -972,7 +1059,7 @@
 		/>
 	{/if}
 
-	{#if detailOpen && !desktop.current}
+	{#if detailOpen && !desktop.current && !isRecordLayer}
 		<MapMobileDetailSheet
 			{occupancyAvailable}
 			bind:open={
@@ -1034,6 +1121,15 @@
 		position: absolute;
 		inset: 0;
 		overflow: hidden;
+	}
+
+	:global(.map-record-choice) {
+		max-width: 100%;
+	}
+
+	.map-hero[data-record-layer]:not([data-record-layer='live'])
+		:global([data-slot='vehicle-overlay']) {
+		visibility: hidden;
 	}
 
 	.map-stage-error {

@@ -309,6 +309,7 @@ class Question:
     from_stop: str | None = None
     to_stop: str | None = None
     alert_details: bool = False
+    map_view: bool = False
 
     def __post_init__(self, ranking: bool) -> None:
         if self.measure not in _SELECTIONS:
@@ -316,6 +317,14 @@ class Question:
         if not CITY.fullmatch(self.city) or self.start > self.end:
             raise ValueError("provide a city and an ordered service date range")
         family, _ = _SELECTIONS[self.measure]
+        if self.map_view and not (
+            (self.measure == "late" and self.group == "stop_id" and not self.cuts())
+            or (
+                self.measure == "mean_time_lost" and self.group == "segment"
+                and self.line is not None and self.cuts().keys() <= {"line", "direction"}
+            )
+        ):
+            raise ValueError("map view requires network late share or time lost on one line")
         if self.alert_details:
             if self.measure != _ALERT_COUNTS_ID or self.group or ranking:
                 raise ValueError("alert_details requires ungrouped alert_counts")
@@ -358,6 +367,8 @@ class Question:
             raise ValueError("group=stop requires a line and a punctuality measure")
         if self.group == "stop_id" and family.id not in {_PUNCTUALITY.id, _ALERT_COUNTS_ID}:
             raise ValueError("group=stop_id requires punctuality or alert counts")
+        if self.group == "segment" and not self.map_view:
+            raise ValueError("group=segment requires map view")
         if self.group == "line" and not (
             family.id in {_PUNCTUALITY.id, _ALERT_COUNTS_ID}
             or self.measure == "trips_run"
@@ -697,7 +708,7 @@ def _entity_sql(
         "line": "row(route_id)",
         "stop": "row(stop_id)",
         "departure": f"row(route_id, direction_id, ({_DEPARTURE_SECONDS})::BIGINT)",
-        "segment": "row(route_id, direction_id, from_stop, to_stop)",
+        "segment": series_sql("segment", hour),
     }[group]
 
 
@@ -3003,6 +3014,18 @@ def _corridor_rows(
     group: EntityKind | None,
 ) -> dict[EntityKey, Batch]:
     hour = _LOCAL_HOUR.format("departure_at")
+    # Resolve the line and chosen direction on the trip scan before pairing stops.
+    trip_parameters: list[object] = []
+    trip_filter = ""
+    if question.line is not None:
+        trip_filter += " AND t.route_id = ?"
+        trip_parameters.append(question.line)
+    if question.direction is not None:
+        trip_filter += " AND t.direction_id = ?"
+        trip_parameters.append(question.direction)
+    clean_events = int(version) >= STOP_ELIGIBILITY_VERSION
+    stop_filter = trip_filter.replace("t.", "s.") if clean_events else ""
+    stop_parameters = trip_parameters if clean_events else []
     cut, parameters = _cuts(question, hour)
     _, selected = _SELECTIONS[question.measure]
     edge = (
@@ -3025,13 +3048,17 @@ def _corridor_rows(
     window = [question.city, version, question.start, question.end]
     rows = conn.execute(
         f"""
-        WITH {CORRIDOR_RUNS_SQL.format(cut=cut)}
+        WITH {CORRIDOR_RUNS_SQL.format(cut=cut, trip_filter=trip_filter, stop_filter=stop_filter)}
         SELECT {_entity_sql(group, question.group, hour)} AS entity,
             CASE WHEN exclusion IS NULL THEN {edge} END AS edge,
             {routes}, {", ".join(counters.values())}
         FROM runs GROUP BY entity, edge
         """,
-        [paths[STOP_EVENTS], paths[TRIP_DAYS], *window, paths[FEED_POLLS], *window, *parameters],
+        [
+            paths[STOP_EVENTS], *window, *stop_parameters,
+            paths[TRIP_DAYS], *window, *trip_parameters,
+            paths[FEED_POLLS], *window, *parameters,
+        ],
     ).fetchall()
     return _grouped_batches(rows, counters, "observed_runs", bool(group or question.group))
 
@@ -4575,6 +4602,8 @@ def _series_keys(
         )
     if group in {"line", "stop_id", "vehicle"}:
         return sorted(key for key in observed if key[0] is not None)
+    if group == "segment":
+        return sorted(observed, key=lambda key: (key[0], key[1] is None, *key[1:]))
     if group in ("effect", "cause"):
         return sorted(observed, key=lambda key: (key[0] is None, key[0]))
     return [(0,), (1,), *([(None,)] if (None,) in observed else [])]
@@ -4606,6 +4635,55 @@ def _series_query_batches(
             return
     for batch in window.batches():
         yield family.query(conn, family, batch, question, version, None)
+
+
+# No data (0) covers both insufficient coverage and an unknown observation.
+_MAP_STATES = {"too_few_to_judge": 1, "no_live_data": 2, "measured": 3}
+
+
+def _map_series(
+    store: Store,
+    question: Question,
+    family: Family,
+    selected: tuple[Measure, ...],
+    group: SeriesGroup,
+    started: float,
+    window: ReadWindow,
+    totals: dict[EntityKey, Batch],
+) -> dict[str, Any]:
+    """Encode parallel arrays for the map, using the same eligibility as the Record."""
+    stops = group == "stop_id"
+    columns = ("stop",) if stops else ("direction", "from_stop", "to_stop")
+    keys: dict[str, list[str | int | None]] = {column: [] for column in columns}
+    samples: list[int] = []
+    states: list[int] = []
+    values: list[float | int | None] = []
+    for key in _series_keys(question, group, set(totals), {}):
+        part = totals[key]
+        if stops:
+            state, metrics = _punctuality_values(
+                family, selected, part.counts, part.histogram, window.no_days_measured
+            )
+            value = metrics["late"]
+            value = round(value * 1000) if value is not None else None
+            sample = part.counts["classified"]
+        else:
+            state, metrics, _, eligible = _corridor_answer(family, selected, part, window)
+            value = metrics["mean_time_lost"]
+            sample = eligible["mean_time_lost"]
+        for column, item in zip(columns, key if stops else key[1:], strict=True):
+            keys[column].append(item)
+        samples.append(sample)
+        states.append(_MAP_STATES.get(state, 0))
+        values.append(value)
+    return {
+        "measure": question.measure,
+        **keys,
+        "value": values,
+        "sample": samples,
+        "state": states,
+        "evidence": window.evidence(store, question, family, started),
+    }
 
 
 def _series_answer(
@@ -4661,6 +4739,9 @@ def _series_answer(
                         "stop_occurrences"
                     )
                 totals.setdefault(key, Batch()).update(part)
+
+    if question.map_view:
+        return _map_series(store, question, family, selected, group, started, window, totals)
 
     stop_positions = {
         key: min(sequences, key=lambda sequence: (-sequences[sequence], sequence))

@@ -653,6 +653,15 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Upload Record map screenshots
+        if: ${{ always() && steps.layout_execution.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: record-map-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
+          path: apps/web/test-results/**/record-map-*.png
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Upload e2e failure evidence
         if: ${{ failure() && !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

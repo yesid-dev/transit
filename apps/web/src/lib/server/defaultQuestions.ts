@@ -9,6 +9,7 @@ import {
 	dataHealthQuestion,
 	finderQuestion,
 	finderQuestions,
+	mapRecordQuestion,
 	measureQuestion,
 	methodQuestion,
 	overviewRankingQuestion,
@@ -56,6 +57,7 @@ export function defaultCityQuestions(
 			...(providerHasAlerts(city) ? alertQuestions(scope) : []),
 		].map(({ query: { path, parameters } }) => periodQuestion(scope, path, parameters)),
 		dataHealthQuestion(scope),
+		mapRecordQuestion(scope),
 		scheduleQuestion(city.id),
 	];
 	const urls = questions.map((question) => {

@@ -15,6 +15,7 @@
 		onviewchange?: (next: 'map' | 'reports') => void;
 		/** Rendered height of the title block, so the controls below it can clear it. */
 		height?: number;
+		record?: boolean;
 	}
 
 	let {
@@ -25,11 +26,12 @@
 		viewMode = 'map',
 		onviewchange,
 		height = $bindable(0),
+		record = false,
 	}: Props = $props();
 </script>
 
 <div class="map-overlay map-head" bind:offsetHeight={height}>
-	<MapFreshness placement="head" {presentation} {locale} />
+	{#if !record}<MapFreshness placement="head" {presentation} {locale} />{/if}
 	<div class="map-title-row">
 		<h1 class="map-heading">{heading}<span class="map-dot">.</span></h1>
 		{#if onviewchange}
@@ -38,7 +40,7 @@
 			</div>
 		{/if}
 	</div>
-	<p class="map-lead" data-slot="map-lead">{lead}</p>
+	{#if !record}<p class="map-lead" data-slot="map-lead">{lead}</p>{/if}
 </div>
 
 <style>
@@ -52,6 +54,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.375rem;
+		pointer-events: none;
 		max-width: calc(
 			100% - var(--app-left-rail-offset, 0rem) - var(--map-detail-offset, 0rem) - 2rem
 		);
@@ -69,6 +72,7 @@
 	}
 	.map-view-choice {
 		min-width: 0;
+		pointer-events: auto;
 	}
 	.map-heading {
 		margin: 0;
