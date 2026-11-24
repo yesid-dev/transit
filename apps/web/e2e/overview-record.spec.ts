@@ -146,6 +146,7 @@ test('changing the custom period reloads Record and Live now still opens the exi
 	page,
 }) => {
 	await page.goto('/?provider=stm&' + period);
+	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 	const main = page.getByRole('main');
 	const record = main.getByRole('article', { name: 'Record', exact: true });
 	await expect(record.getByText('Record · 8 to 14 Nov 2026').first()).toBeVisible();
