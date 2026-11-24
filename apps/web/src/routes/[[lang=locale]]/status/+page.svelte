@@ -17,6 +17,7 @@
 		liveOnly
 		manifest={data.v1.manifest}
 		dataHealthSeed={data.dataHealthSeed ?? undefined}
+		captureHealthSeed={data.captureHealthSeed ?? undefined}
 		historicAvailabilitySeed={data.historicAvailabilitySeed ?? undefined}
 	/>
 {/if}
