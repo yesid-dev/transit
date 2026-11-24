@@ -1,6 +1,6 @@
 import { dateRange, methodEvidence } from '#lib/site/presenter.ts';
 import { intl, type Locale } from '#lib/i18n/index.ts';
-import type { EngineResult, MeasureAnswer, RankingAnswer } from '#lib/server/engine.ts';
+import type { EngineResult, MeasureAnswer } from '#lib/server/engine.ts';
 import type { DateWindow } from '#lib/v1/history/window.ts';
 
 import {
@@ -11,6 +11,7 @@ import {
 	tally,
 } from '../record/recordText.ts';
 import { comparePeriods, periodDays } from './periodComparison.ts';
+import { recordState, type RecordState } from '../record/recordStates';
 export { dateRange, percent, tally };
 
 export { previousPeriod } from './periodComparison.ts';
@@ -100,20 +101,36 @@ function comparisonSample({ evidence, value }: MeasureAnswer) {
 	};
 }
 
-export function rankingText(result: EngineResult<RankingAnswer>, locale: Locale): string | null {
-	if (result.kind !== 'answer') return recordConnection[result.kind][locale];
-	const { rows, state_text, excluded, evidence } = result.answer;
-	if (rows.length) return null;
-	if (state_text) return state_text[locale];
-	const reason = excluded[0];
-	if (reason && excluded.every((entry) => entry.reason === reason.reason))
-		return reason.reason_text[locale];
-	if (!evidence.days_included.length)
-		return locale === 'fr' ? 'Non mesuré à ces dates' : 'Not measured on those dates';
-	return locale === 'fr' ? 'Inconnu' : 'Unknown';
-}
-
 export function citationText(answer: MeasureAnswer, period: DateWindow, locale: Locale): string {
 	const reading = measureText({ kind: 'answer', answer }, period, locale);
 	return `${reading} ${methodEvidence(answer.evidence, locale)}`;
+}
+
+export function overviewValue(result: EngineResult<MeasureAnswer>, measure: string) {
+	return result.kind === 'answer' && result.answer.state === 'measured'
+		? (result.answer.value[measure] ?? null)
+		: null;
+}
+
+export function overviewState(result: EngineResult<MeasureAnswer>, locale: Locale) {
+	const state: RecordState =
+		result.kind === 'answer' && result.answer.state !== 'measured'
+			? result.answer.state
+			: 'not_measured';
+	return { state, sentence: recordState(state)[locale] };
+}
+
+export function lateLines(vehicles: readonly { route?: string | null; status: string }[]) {
+	const counts = new Map<string, { id: string; late: number; total: number }>();
+	for (const vehicle of vehicles) {
+		if (!vehicle.route) continue;
+		const row = counts.get(vehicle.route) ?? { id: vehicle.route, late: 0, total: 0 };
+		row.total++;
+		if (vehicle.status === 'late') row.late++;
+		counts.set(vehicle.route, row);
+	}
+	return [...counts.values()]
+		.filter((line) => line.late > 0)
+		.sort((a, b) => b.late - a.late || a.id.localeCompare(b.id))
+		.slice(0, 3);
 }

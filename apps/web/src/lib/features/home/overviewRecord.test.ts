@@ -2,7 +2,13 @@ import { dateRange } from '#lib/site/presenter.ts';
 import { describe, expect, it } from 'vitest';
 import type { EngineResult, MeasureAnswer } from '#lib/server/engine.ts';
 import { delivered, measure, period, stateText } from './overviewRecord.fixture.ts';
-import { citationText, comparisonText, measureText, previousPeriod } from './overviewRecord.ts';
+import {
+	citationText,
+	comparisonText,
+	measureText,
+	overviewValue,
+	previousPeriod,
+} from './overviewRecord.ts';
 
 const answer = (value: MeasureAnswer): EngineResult<MeasureAnswer> => ({
 	kind: 'answer',
@@ -71,6 +77,9 @@ describe('Overview record text', () => {
 	});
 
 	it.each(gaps)('uses the engine’s %s words without substituting a zero', (state) => {
+		expect(
+			overviewValue(answer({ ...measure(state), value: { on_time: 0 } }), 'on_time'),
+		).toBeNull();
 		for (const locale of ['en', 'fr'] as const) {
 			expect(measureText(answer(measure(state)), period, locale)).toBe(stateText[state][locale]);
 		}
@@ -86,6 +95,7 @@ describe('Overview record text', () => {
 		const value = measure();
 		value.value.on_time = 0;
 		value.evidence.counts.on_time = 0;
+		expect(overviewValue(answer(value), 'on_time')).toBe(0);
 		expect(measureText(answer(value), period, 'en')).toContain(
 			'0% of observed stop events were on time (0 of 507,800) · 60% of 846,333 scheduled stops observed.',
 		);

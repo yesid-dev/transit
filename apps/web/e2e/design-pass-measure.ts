@@ -146,7 +146,9 @@ async function keyboardMetrics(page: Page) {
 	let beforeFigure = 0;
 	let cdp: CDPSession | undefined;
 	const dateStops = new Set<string>();
-	let prior: { left: number; top: number; bottom: number; region: string } | undefined;
+	let prior:
+		| { left: number; top: number; bottom: number; region: string; group: number }
+		| undefined;
 	// Bound the walk by DOM candidates, including controls revealed on focus, such as the skip link.
 	const candidates =
 		(await page.locator(controls).count()) +
@@ -197,6 +199,14 @@ async function keyboardMetrics(page: Page) {
 							!first.contains(el) &&
 							!!(el.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING),
 						region: el.closest('[data-slot="frame-nav"]') ? 'frame' : main ? 'main' : 'other',
+						group: [
+							...(main?.querySelectorAll(
+								'[data-slot="record-card"], [data-slot="record-ranking"]',
+							) ?? []),
+						].indexOf(
+							el.closest('[data-slot="record-ranking"]') ??
+								el.closest('[data-slot="record-card"]')!,
+						),
 						left,
 						top: top + window.scrollY,
 						bottom: bottom + window.scrollY,
@@ -242,6 +252,7 @@ async function keyboardMetrics(page: Page) {
 			if (stop.beforeFigure) beforeFigure++;
 			if (
 				prior?.region === stop.region &&
+				prior.group === stop.group &&
 				stop.region !== 'other' &&
 				(stop.bottom <= prior.top ||
 					(Math.abs(stop.top - prior.top) <= 2 && stop.left < prior.left - 2))

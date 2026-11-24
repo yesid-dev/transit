@@ -41,7 +41,15 @@
 
 <Surface>
 	{#if data.record}
-		<OverviewRecord {locale} {city} href={page.url.href} record={data.record} />
+		<OverviewRecord
+			{locale}
+			{city}
+			{operator}
+			provider={data.providerId}
+			href={page.url.href}
+			alertsAvailable={providerHasAlerts(data.provider)}
+			record={data.record}
+		/>
 	{:else}
 		<HomeExplore {locale} {copy} alertsAvailable={providerHasAlerts(data.provider)}>
 			{#snippet pulse()}

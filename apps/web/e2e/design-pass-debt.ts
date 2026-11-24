@@ -7,7 +7,12 @@ type Report = Awaited<ReturnType<typeof measureDesignPass>>['report'];
 type Budget = Record<(typeof budgetWidths)[number], { height: number; beforeFigure: number }>;
 
 // A screen PR supplies its budgets here once all of its fixture variants leave the debt list.
-const budgets: Partial<Record<Screen, Budget>> = {};
+const budgets: Partial<Record<Screen, Budget>> = {
+	overview: {
+		390: { height: 6000, beforeFigure: 3 },
+		1440: { height: 3500, beforeFigure: 3 },
+	},
+};
 const { screens: debt }: { screens: Partial<Record<string, Report>> } = JSON.parse(
 	readFileSync(new URL('./design-pass-baseline.json', import.meta.url), 'utf8'),
 );

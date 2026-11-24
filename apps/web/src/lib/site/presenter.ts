@@ -178,3 +178,33 @@ export function tripsInHours(trips: number, hours: number, locale: Locale): stri
 export function registryUnitText(text: string, locale: Locale) {
 	return presenterCopy[locale].registryUnitText(text);
 }
+
+export function recordStamp(period: { from: string; to: string }, locale: Locale) {
+	return `${locale === 'fr' ? 'Relevé' : 'Record'} · ${dateRange(period, locale)}`;
+}
+
+export function countedUnit(
+	value: number,
+	unit: 'line' | 'stop' | 'event' | 'trip' | 'day' | 'vehicle',
+	locale: Locale,
+) {
+	const labels = {
+		line: { en: ['line', 'lines'], fr: ['ligne', 'lignes'] },
+		stop: { en: ['stop', 'stops'], fr: ['arrêt', 'arrêts'] },
+		event: { en: ['stop event', 'stop events'], fr: ['passage à un arrêt', 'passages aux arrêts'] },
+		trip: { en: ['trip', 'trips'], fr: ['trajet', 'trajets'] },
+		day: { en: ['day', 'days'], fr: ['jour', 'jours'] },
+		vehicle: { en: ['vehicle', 'vehicles'], fr: ['véhicule', 'véhicules'] },
+	};
+	const plural = locale === 'fr' ? value >= 2 : value !== 1;
+	return `${intl.number(locale).format(value)} ${labels[unit][locale][Number(plural)]}`;
+}
+
+export function recordRatio(count: number, total: string, locale: Locale) {
+	return `${intl.number(locale).format(count)} ${locale === 'fr' ? 'sur' : 'of'} ${total}`;
+}
+
+export function liveStampAge(seconds: number, locale: Locale) {
+	const time = intl.number(locale).format(seconds);
+	return locale === 'fr' ? `Direct · mis à jour il y a ${time} s` : `Live · updated ${time} s ago`;
+}

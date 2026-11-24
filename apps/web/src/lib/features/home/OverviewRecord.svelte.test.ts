@@ -1,81 +1,69 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { expect, it } from 'vitest';
-import type { MeasureAnswer, RankingAnswer } from '#lib/server/engine.ts';
+import type { RankingAnswer } from '#lib/server/engine.ts';
+import { recordState, type RecordState } from '../record/recordStates';
 import OverviewRecord from './OverviewRecord.svelte';
-import { delivered, measure, period, ranking, stateText } from './overviewRecord.fixture.ts';
+import RecordAnswer from '../record/RecordAnswer.svelte';
+import { delivered, measure, period, ranking } from './overviewRecord.fixture.ts';
 import { previousPeriod } from './overviewRecord.ts';
+import { overviewCopy } from './overviewRecord.copy.ts';
 
 const answer = <T>(value: T) => Promise.resolve({ kind: 'answer' as const, answer: value });
-const unavailable = Promise.resolve({ kind: 'unconfigured' as const });
 const href = 'https://transit.test/?provider=stm&recordFrom=2026-11-08&recordTo=2026-11-14';
+const states: RecordState[] = [
+	'no_live_data',
+	'not_measured',
+	'too_few_to_judge',
+	'unknown',
+	'not_reporting',
+	'not_tracked',
+];
 
-it('renders three independent measures, ranked evidence and the citation', async () => {
-	render(OverviewRecord, {
-		props: {
-			city: 'Montréal',
-			locale: 'en',
-			href,
-			record: {
-				period,
-				previous: previousPeriod(period),
-				punctuality: answer<MeasureAnswer>({
-					...measure(),
-					measure: 'punctuality',
-					value: { ...measure().value, early: 0.1, late: 0.088 },
-					evidence: {
-						...measure().evidence,
-						counts: { ...measure().evidence.counts, early: 50780, late: 44665 },
-					},
-				}),
-				baseline: answer(measure('too_few_to_judge')),
-				delivery: answer(delivered),
-				lines: answer(ranking),
-				stops: answer<RankingAnswer>({
-					...ranking,
-					kind: 'stop',
-					rows: [],
-					excluded: [{ reason: 'no_live_data', reason_text: stateText.no_live_data }],
-				}),
+for (const locale of ['en', 'fr'] as const) {
+	const copy = overviewCopy[locale];
+	it(`renders the record, evidence and rankings in ${locale}`, async () => {
+		render(OverviewRecord, {
+			props: {
+				city: 'Montréal',
+				locale,
+				href,
+				record: {
+					period,
+					previous: previousPeriod(period),
+					punctuality: answer(measure()),
+					baseline: answer(measure('too_few_to_judge')),
+					delivery: answer(delivered),
+					lines: answer(ranking),
+					stops: answer<RankingAnswer>({
+						...ranking,
+						kind: 'stop',
+						rows: [],
+						state: 'no_live_data',
+					}),
+				},
 			},
-		},
+		});
+		const record = screen.getByRole('article', { name: copy.record });
+		expect(await within(record).findByText(copy.answer)).toBeVisible();
+		expect(within(record).getByText(recordState('too_few_to_judge')[locale])).toBeVisible();
+		expect(await screen.findByRole('article', { name: copy.about })).toBeVisible();
+		expect(screen.getByRole('link', { name: copy.allRankings })).toHaveAttribute(
+			'href',
+			expect.stringContaining('/hotspots?'),
+		);
+		const label = locale === 'fr' ? 'Copier le lien' : 'Copy link';
+		await fireEvent.click(screen.getByRole('button', { name: label }));
+		expect(await navigator.clipboard.readText()).toBe(href);
 	});
-	const main = screen.getByRole('region', { name: 'On-time performance' });
-	expect(await within(main).findByText(/412,355 of 507,800/)).toBeVisible();
-	expect(within(main).getByRole('heading', { name: 'Early departures' })).toBeVisible();
-	expect(within(main).getByText(/10% \(50,780\/507,800\)/)).toBeVisible();
-	expect(within(main).getByText(/on time misses the vehicle/)).toBeVisible();
-	expect(within(main).getByText('Only measured days are included.')).toBeVisible();
-	expect(await screen.findByText('Too few to judge')).toBeVisible();
-	const service = screen.getByRole('region', { name: 'Service delivered' });
-	expect(await within(service).findByText(/90 of 100/)).toBeVisible();
-	expect(await screen.findByText(/Estimated range 37% to 43%/)).toBeVisible();
-	expect(screen.getByText(/fewer than 30 observed stop events/)).toBeVisible();
-	expect(await screen.findByText('No live data')).toBeVisible();
-	await fireEvent.click(screen.getByText('Cite'));
-	expect(screen.getByText(/Method v2, cleaning v6/)).toBeInTheDocument();
-});
 
-it('shows the French connection state while keeping the link action usable', async () => {
-	render(OverviewRecord, {
-		props: {
-			locale: 'fr',
-			city: 'Ottawa',
-			href,
-			record: {
-				period,
-				previous: previousPeriod(period),
-				punctuality: unavailable,
-				baseline: unavailable,
-				delivery: unavailable,
-				lines: unavailable,
-				stops: unavailable,
-			},
-		},
+	it.each(states)(`renders the %s state as a mark and words in ${locale}`, (state) => {
+		const reading = recordState(state);
+		const { container } = render(RecordAnswer, {
+			props: { value: null, sentence: reading[locale], state, locale },
+		});
+		expect(screen.getByText(reading[locale])).toBeVisible();
+		expect(container.querySelector('[data-record-state]')).toHaveTextContent(reading.glyph);
+		expect(container.querySelector('.answer-value')).toBeNull();
+		expect(container).not.toHaveTextContent(/^(?:0\s?%?|[-\u2013\u2014])$/);
 	});
-	const region = screen.getByRole('region', { name: 'Ponctualité' });
-	expect(await within(region).findByText(/Les chiffres s’afficheront ici/)).toBeVisible();
-	expect(region).not.toHaveTextContent('0 %');
-	await fireEvent.click(screen.getByRole('button', { name: 'Copier le lien' }));
-	expect(await screen.findByText('Lien copié.')).toBeVisible();
-	expect(await navigator.clipboard.readText()).toBe(href);
-});
+}

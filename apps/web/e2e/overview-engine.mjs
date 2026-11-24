@@ -25,6 +25,10 @@ export function overviewEngine(url) {
 	};
 	const coverage_note = null;
 
+	if (url.searchParams.get('format') === 'csv') {
+		return { csv: `measure,from,to\n${measure},${from},${to}\n` };
+	}
+
 	if (url.pathname === '/ranking') {
 		const rows = measured
 			? [0.4, 0.45, 0.5].map((value, index) => ({
@@ -66,6 +70,21 @@ export function overviewEngine(url) {
 				vehicle_stopped: 200000,
 				trip_update_passed: 307800,
 			};
+	if (url.searchParams.get('group') === 'day') {
+		return {
+			body: {
+				evidence,
+				coverage_note,
+				cells: days.map((day) => ({
+					key: { day },
+					state: 'measured',
+					state_text: { en: 'Measured', fr: 'Mesuré' },
+					value: { on_time: onTime / 507800 },
+					evidence: { counts, days_included: [day] },
+				})),
+			},
+		};
+	}
 	return {
 		hold: false,
 		body: {
