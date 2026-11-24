@@ -558,8 +558,9 @@ jobs:
           python3 - "$old" "$split" <<'PY'
           import sys
           from pathlib import Path
-          source = "await page.route(captureUrl, (route) => {"
-          delayed = "await page.route(captureUrl, async (route) => {\n\t\tawait new Promise<void>((resolve) => setTimeout(resolve, 3500));"
+          header = "async function serveFleet(page: Page, current: () => FleetFile) {\n\t"
+          source = header + "await page.route(captureUrl, (route) => {"
+          delayed = header + "await page.route(captureUrl, async (route) => {\n\t\tawait new Promise<void>((resolve) => setTimeout(resolve, 3500));"
           for name in sys.argv[1:]:
               path = Path(name)
               contents = path.read_text()
