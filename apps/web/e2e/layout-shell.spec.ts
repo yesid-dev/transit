@@ -34,13 +34,21 @@ async function singleLine(label: Locator) {
 
 for (const [surface, path] of [
 	['default', '/'],
-	['Record', '/receipt'],
+	// November 17 is held by the Daily report streaming fixture. Pin this
+	// navbar check to the normal Record period so it never picks up that hold.
+	['Record', '/receipt?recordFrom=2026-11-18&recordTo=2026-11-20'],
 ]) {
-	test(`French navbar stays on one row on phones on the ${surface} page`, async ({ page }) => {
+	test(`French navbar stays on one row on phones on the ${surface} page`, async ({
+		page,
+	}, info) => {
 		await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
+		const navigation: { width: number; loadMs: number }[] = [];
 		for (const width of [320, 360, 375, 390, 414]) {
 			await page.setViewportSize({ width, height: 844 });
-			await page.goto(localizeHref(path, 'fr', 'stm'));
+			const start = performance.now();
+			const response = await page.goto(localizeHref(path, 'fr', 'stm'));
+			navigation.push({ width, loadMs: Math.round(performance.now() - start) });
+			expect(response?.status()).toBe(200);
 			await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 			await waitForFrameClearance(page);
 
@@ -64,6 +72,10 @@ for (const [surface, path] of [
 				`${path} at ${width}px`,
 			).toBeLessThanOrEqual(1);
 		}
+		await info.attach('navbar-navigation', {
+			body: JSON.stringify(navigation),
+			contentType: 'application/json',
+		});
 	});
 }
 

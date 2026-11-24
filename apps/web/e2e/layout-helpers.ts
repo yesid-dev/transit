@@ -202,3 +202,19 @@ export async function chartOverlaps(page: Page) {
 		}),
 	);
 }
+
+export function doubleText(page: Page) {
+	return page.addStyleTag({ content: 'html { font-size: 200%; }' });
+}
+
+export const minimumTargetSize = 44;
+
+// Kept in the browser so callers can measure every keyboard stop in one pass.
+export function focusRing(element = document.activeElement!) {
+	const style = getComputedStyle(element);
+	return {
+		visible: element.matches(':focus-visible'),
+		outline: style.outlineStyle,
+		width: parseFloat(style.outlineWidth),
+	};
+}

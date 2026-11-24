@@ -61,16 +61,7 @@
 			: `translate(-50%, ${GAP}px)`,
 	);
 
-	$effect(() => {
-		if (!open) {
-			resolvedSide = side;
-			placed = false;
-			return;
-		}
-		void tip;
-		void linkLabel;
-		void side;
-
+	function placePopover(): void {
 		const trig = trigger;
 		const box = pop;
 		if (!trig || !box) {
@@ -114,6 +105,17 @@
 		const clampedBoxTop = maxTop >= minTop ? Math.min(Math.max(rawTop, minTop), maxTop) : minTop;
 		fixedTop = next === 'top' ? clampedBoxTop + pb.height + GAP : clampedBoxTop - GAP;
 		placed = true;
+	}
+
+	$effect(() => {
+		if (!open) {
+			resolvedSide = side;
+			placed = false;
+			return;
+		}
+		void tip;
+		void linkLabel;
+		placePopover();
 	});
 
 	const GRACE_MS = 120;
@@ -190,14 +192,21 @@
 		const onDocPointer = (e: PointerEvent) => {
 			if (root && !root.contains(e.target as Node)) close();
 		};
+		const onScroll = () => {
+			const focused = document.activeElement;
+			// Tab can scroll the trigger into view while its focus handler opens
+			// the popover. Keep its link reachable and move the fixed popover.
+			if (focused?.matches(':focus-visible') && root?.contains(focused)) placePopover();
+			else close();
+		};
 		const onDismiss = () => close();
 		document.addEventListener('pointerdown', onDocPointer, true);
-		window.addEventListener('scroll', onDismiss, { capture: true, passive: true });
+		window.addEventListener('scroll', onScroll, { capture: true, passive: true });
 		window.addEventListener('resize', onDismiss, { passive: true });
 		window.addEventListener('orientationchange', onDismiss, { passive: true });
 		return () => {
 			document.removeEventListener('pointerdown', onDocPointer, true);
-			window.removeEventListener('scroll', onDismiss, true);
+			window.removeEventListener('scroll', onScroll, true);
 			window.removeEventListener('resize', onDismiss);
 			window.removeEventListener('orientationchange', onDismiss);
 		};

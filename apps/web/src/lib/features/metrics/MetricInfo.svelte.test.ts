@@ -155,6 +155,29 @@ describe('MetricInfo trigger', () => {
 		expect(screen.getByRole('dialog')).toBeInTheDocument();
 	});
 
+	it('keeps the explanation reachable when keyboard focus scrolls the trigger into view', async () => {
+		render(MetricInfo, { props: base });
+		const trigger = screen.getByRole('button', { name: base.label });
+		let top = 350;
+		vi.spyOn(trigger, 'getBoundingClientRect').mockImplementation(() =>
+			DOMRect.fromRect({ x: 200, y: top, width: 44, height: 44 }),
+		);
+		trigger.focus();
+		await tick();
+		const popover = screen.getByRole('dialog');
+		const start = popover.style.top;
+
+		top = 250;
+		await fireEvent.scroll(window);
+
+		expect(trigger).toHaveAttribute('aria-expanded', 'true');
+		expect(popover.style.top).not.toBe(start);
+		const link = screen.getByRole('link', { name: /How this is measured/ });
+		link.focus();
+		await fireEvent.scroll(window);
+		expect(link).toHaveFocus();
+	});
+
 	it.each(['outside pointer', 'focus out', 'scroll', 'resize'])(
 		'dismisses an activated explanation on %s and allows the next activation',
 		async (reason) => {

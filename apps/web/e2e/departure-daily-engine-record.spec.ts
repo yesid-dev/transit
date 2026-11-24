@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { dailyMessageHold } from './daily-message-hold';
 
 test.use({ bypassCSP: true });
 test.beforeEach(({ browserName }, info) => {
@@ -107,20 +108,31 @@ test('Daily report streams past a slow agency section and distinguishes untracke
 	page,
 	request,
 }) => {
-	await page.goto(
-		'/receipt?provider=stm&frameMode=record&recordFrom=2026-11-17&recordTo=2026-11-17',
-		{ waitUntil: 'commit' },
-	);
-	await expect(page.getByRole('region', { name: 'On-time share' })).toContainText('80 of 100');
+	const href = '/receipt?provider=stm&frameMode=record&recordFrom=2026-11-17&recordTo=2026-11-17';
+	const hold = dailyMessageHold(request);
+	const other = dailyMessageHold(request);
 	const messages = page.getByRole('region', { name: 'Agency messages' });
-	const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
-	const release = new URL(`http://127.0.0.1:${dataPort}/__overview/release`);
-	release.searchParams.set('fixture', 'unrelated');
-	expect((await request.post(release.href)).status()).toBe(204);
-	await expect(messages).toContainText('Still working on this. You can wait or come back later.');
-	release.searchParams.set('fixture', 'daily-messages');
-	expect((await request.post(release.href)).status()).toBe(204);
-	await expect(messages).toContainText('Not tracked');
+	const pending = 'Still working on this. You can wait or come back later.';
+	try {
+		expect((await hold.start()).status()).toBe(204);
+		await page.setExtraHTTPHeaders(hold.headers);
+		await page.goto(href, { waitUntil: 'commit' });
+		await expect(page.getByRole('region', { name: 'On-time share' })).toContainText('80 of 100');
+
+		expect((await other.release()).status()).toBe(204);
+		await expect(messages).toContainText(pending);
+		await test.step('another scope gets the same dates while messages are held', async () => {
+			const otherReport = await request.get(href, { headers: other.headers });
+			expect(otherReport.ok()).toBe(true);
+			expect(await otherReport.text()).toContain('Detour on 24');
+			await expect(messages).toContainText(pending);
+		});
+
+		expect((await hold.release()).status()).toBe(204);
+		await expect(messages).toContainText('Not tracked');
+	} finally {
+		await hold.release();
+	}
 });
 
 test('Departure opens the current prediction report for an exact trip identity', async ({
