@@ -1,4 +1,5 @@
-import { intl } from '#lib/i18n/index.ts';
+// Node consumers use these formatters without a Svelte locale context.
+import { intl } from '#lib/i18n/copy.ts';
 export type TimeLang = 'en' | 'fr';
 
 export { providerLocalDateKey } from './serviceDate.ts';
