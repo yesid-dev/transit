@@ -156,9 +156,20 @@ async function keyboardMetrics(page: Page) {
 		for (let press = 0; press <= candidates; press++) {
 			await page.keyboard.press('Tab');
 			const stop = await page.evaluate(
-				({ figure, dateInput }) => {
+				async ({ figure, dateInput }) => {
 					const el = document.activeElement;
 					if (!el || el === document.body || el === document.documentElement) return null;
+					if (el.matches('[data-testid="toc-pill"] > button')) {
+						// Tab can scroll the page. Sample the pill after the browser has
+						// delivered intersections for that scroll to the mounted section tracker.
+						await new Promise<void>((resolve) => {
+							const observer = new IntersectionObserver(() => {
+								observer.disconnect();
+								resolve();
+							});
+							observer.observe(el);
+						});
+					}
 					const visited = Reflect.get(window, 'designPassVisited') as WeakSet<Element>;
 					const repeated = visited.has(el);
 					visited.add(el);
