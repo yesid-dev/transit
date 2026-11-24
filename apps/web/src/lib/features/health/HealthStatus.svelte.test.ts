@@ -846,7 +846,7 @@ describe('HealthStatus — Overview and independent resources', () => {
 });
 
 describe('HealthStatus — S11 pipeline lanes', () => {
-	it('renders one row per publish lane (live / static / rollup) + the MAINTENANCE not-applicable row', () => {
+	it('renders archived publish lanes, their gate verdicts and the unavailable maintenance status', () => {
 		render(HealthStatus);
 		const list = screen.getByRole('list', { name: en.lanes.listLabel });
 		expect(within(list).getByText(en.lanes.laneLabel.live)).toBeInTheDocument();
@@ -854,10 +854,12 @@ describe('HealthStatus — S11 pipeline lanes', () => {
 		expect(within(list).getByText(en.lanes.laneLabel.rollup)).toBeInTheDocument();
 		expect(within(list).getByText(en.lanes.laneLabel.maintenance)).toBeInTheDocument();
 		expect(screen.getByText(en.lanes.gateExplain)).toBeInTheDocument();
-	});
-
-	it('renders each lane gate verdict as a chip (pass / warn), and honest-NULL for a pre-0078 lane', () => {
-		render(HealthStatus);
+		const na = document.querySelector('[data-slot="lane-not-applicable"]') as HTMLElement;
+		expect(na).not.toBeNull();
+		expect(within(na).getByText(en.lanes.notApplicable)).toBeInTheDocument();
+		expect(within(na).getByText(en.lanes.maintenanceReason)).toBeInTheDocument();
+		expect(na).toHaveTextContent('publishes no status report');
+		expect(na).not.toHaveTextContent(/heartbeat/i);
 		const live = document.querySelector('[data-slot="lane-row"][data-lane="live"]') as HTMLElement;
 		const stat = document.querySelector(
 			'[data-slot="lane-row"][data-lane="static"]',
@@ -884,16 +886,6 @@ describe('HealthStatus — S11 pipeline lanes', () => {
 		const files = rollup.querySelector('[data-slot="lane-files"]') as HTMLElement;
 		expect(files.querySelector('[data-slot="absent-value"]')).not.toBeNull();
 		expect(within(files).queryByText(en.lanes.filesCount('0', '120'))).toBeNull();
-	});
-
-	it('renders the MAINTENANCE row as honest not-applicable (no heartbeat, plain reason)', () => {
-		render(HealthStatus);
-		const na = document.querySelector('[data-slot="lane-not-applicable"]') as HTMLElement;
-		expect(na).not.toBeNull();
-		expect(within(na).getByText(en.lanes.notApplicable)).toBeInTheDocument();
-		expect(within(na).getByText(en.lanes.maintenanceReason)).toBeInTheDocument();
-		expect(na).toHaveTextContent('publishes no status report');
-		expect(na).not.toHaveTextContent(/heartbeat/i);
 	});
 
 	it('names the update steps in plain French and scopes the version stamp (A2 O S11, G 3.6)', () => {
