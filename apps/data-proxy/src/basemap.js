@@ -12,11 +12,81 @@ const OBJECT_HEADERS = [
   "content-language", "expires",
 ];
 
+class CleanBasemapFailure extends Error {}
+
+async function unusable(response, kind = `${Math.floor(response.status / 100)}xx`) {
+  await response.body?.cancel().catch(() => {});
+  throw new CleanBasemapFailure(kind);
+}
+
+// Confirm the first bytes arrived before committing to the clean response.
+async function readyBody(body, length) {
+  if (!body) throw new CleanBasemapFailure("invalid response");
+  const reader = body.getReader();
+  let first;
+  try {
+    do {
+      first = await reader.read();
+      if (first.done) throw new CleanBasemapFailure("invalid response");
+    } while (first.value.byteLength === 0);
+  } catch (error) {
+    reader.releaseLock();
+    throw error;
+  }
+
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(first.value);
+    },
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          reader.releaseLock();
+          controller.close();
+        } else {
+          controller.enqueue(value);
+        }
+      } catch (error) {
+        reader.releaseLock();
+        throw error;
+      }
+    },
+    async cancel(reason) {
+      try {
+        await reader.cancel(reason);
+      } finally {
+        reader.releaseLock();
+      }
+    },
+  }, { highWaterMark: 0 });
+
+  // Workers derives the wire Content-Length from the stream. Node tests use the standard stream.
+  if (typeof FixedLengthStream === "undefined") return stream;
+  const fixed = new FixedLengthStream(length);
+  void stream.pipeTo(fixed.writable).catch(() => {});
+  return fixed.readable;
+}
+
 export async function serveCleanBasemap(request, env, city, file) {
+  request.signal.throwIfAborted();
   const read = cleanObjectReader(env);
   if (!read) return null;
+  try {
+    const response = await readCleanBasemap(request, read, basemapKey(city, file));
+    if (request.signal.aborted) {
+      await response.body?.cancel().catch(() => {});
+      request.signal.throwIfAborted();
+    }
+    return response;
+  } catch (error) {
+    request.signal.throwIfAborted();
+    console.warn("Clean basemap fallback", error instanceof CleanBasemapFailure ? error.message : "read error");
+    return null;
+  }
+}
 
-  const key = basemapKey(city, file);
+async function readCleanBasemap(request, read, key) {
   const upstream = new Headers();
   for (const name of CONDITIONAL_HEADERS) {
     if (request.headers.has(name)) upstream.set(name, request.headers.get(name));
@@ -28,10 +98,6 @@ export async function serveCleanBasemap(request, env, city, file) {
   }
 
   const response = await read(request.method, key, upstream, request.signal);
-  if (response.status === 404) {
-    await response.body?.cancel();
-    return null;
-  }
   const headers = new Headers({ "accept-ranges": "bytes" });
   if (response.status === 416) {
     await response.body?.cancel();
@@ -44,12 +110,13 @@ export async function serveCleanBasemap(request, env, city, file) {
     await response.body?.cancel();
     // Conditional S3 responses can omit the HTTP metadata that the binding returns.
     const head = await read("HEAD", key, new Headers(), request.signal);
-    if (head.status === 404) return null;
-    if (head.status !== 200) throw new Error("Could not read clean basemap metadata");
+    if (head.status !== 200) return unusable(head);
     metadata = head.headers;
   } else if (response.status !== (upstream.has("range") ? 206 : 200)) {
-    await response.body?.cancel();
-    throw new Error("Invalid response from clean basemap storage");
+    return unusable(response);
+  }
+  if (!metadata.get("etag") || !metadata.get("content-type")) {
+    return unusable(response, "invalid response");
   }
 
   for (const name of OBJECT_HEADERS) {
@@ -59,18 +126,19 @@ export async function serveCleanBasemap(request, env, city, file) {
   if (response.status === 304 || response.status === 412 || request.method === "HEAD") {
     return new Response(null, { status: response.status, headers });
   }
+  const length = Number(response.headers.get("content-length"));
+  if (!Number.isSafeInteger(length) || length <= 0) {
+    return unusable(response, "invalid response");
+  }
   if (range) {
-    const length = response.headers.get("content-length");
     // The binding treats malformed and multiple ranges as a range over the whole object.
     const contentRange = upstream.has("range")
-      ? response.headers.get("content-range") : `bytes 0-${Number(length) - 1}/${length}`;
-    if (!length || !contentRange) {
-      await response.body?.cancel();
-      throw new Error("Missing clean basemap range metadata");
+      ? response.headers.get("content-range") : `bytes 0-${length - 1}/${length}`;
+    if (!/^bytes \d+-\d+\/\d+$/.test(contentRange ?? "")) {
+      return unusable(response, "invalid response");
     }
-    headers.set("content-length", length);
+    headers.set("content-length", String(length));
     headers.set("content-range", contentRange);
-    return new Response(response.body, { status: 206, headers });
   }
-  return new Response(response.body, { headers });
+  return new Response(await readyBody(response.body, length), { status: range ? 206 : 200, headers });
 }

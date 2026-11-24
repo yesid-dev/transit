@@ -127,6 +127,13 @@ function fetchWorker(path, init = {}) {
   return worker.fetch(new Request(`${BASE}${path}`, init), makeEnv());
 }
 
+const BASEMAP_URL = "https://data.yesid.dev/v2/stm/basemap/montreal.pmtiles";
+const CLEAN_STORAGE_ENV = {
+  TRANSIT1_R2_ENDPOINT: "fixture.r2.cloudflarestorage.com",
+  TRANSIT1_R2_READ_ACCESS_KEY_ID: "test-key",
+  TRANSIT1_R2_READ_SECRET_ACCESS_KEY: "test-secret",
+};
+
 test("GET /data/v1 key returns 200 with passthrough content-type and cache-control", async () => {
   const response = await fetchWorker("/data/v1/stm/manifest.json");
   assert.equal(response.status, 200);
@@ -142,7 +149,7 @@ test("GET missing key returns 404", async () => {
 });
 
 test("v2 basemap exposes only the public tile archive and supports a byte range", async () => {
-  const url = "https://data.yesid.dev/v2/stm/basemap/montreal.pmtiles";
+  const url = BASEMAP_URL;
   const result = await worker.fetch(new Request(url, { headers: { range: "bytes=0-15" } }), makeEnv());
   assert.equal(result.status, 206);
   assert.equal(result.headers.get("content-range"), "bytes 0-15/200");
@@ -152,17 +159,13 @@ test("v2 basemap exposes only the public tile archive and supports a byte range"
 });
 
 test("v2 basemap replays the same responses before and after the clean copy", async (t) => {
+  t.mock.method(console, "warn", () => {});
   const legacyEnv = makeEnv();
   const legacy = legacyEnv.SNAPSHOTS;
   const object = legacy.objects.get("v1/stm/static/basemap/montreal.pmtiles");
   const legacyGet = t.mock.method(legacy, "get");
   const legacyHead = t.mock.method(legacy, "head");
-  const cleanEnv = {
-    ...legacyEnv,
-    TRANSIT1_R2_ENDPOINT: "fixture.r2.cloudflarestorage.com",
-    TRANSIT1_R2_READ_ACCESS_KEY_ID: "test-key",
-    TRANSIT1_R2_READ_SECRET_ACCESS_KEY: "test-secret",
-  };
+  const cleanEnv = { ...legacyEnv, ...CLEAN_STORAGE_ENV };
   let copied = false;
   const fetch = t.mock.method(globalThis, "fetch", async (url, init) => {
     assert.equal(url.host, "fixture.r2.cloudflarestorage.com");
@@ -231,6 +234,101 @@ test("v2 basemap replays the same responses before and after the clean copy", as
       assert.equal(legacyGet.mock.callCount() + legacyHead.mock.callCount(), !afterCopy || status === 404 ? 1 : 0);
     }
   }
+});
+
+const partialMetadata = {
+  "content-type": "application/octet-stream",
+  "content-length": "4",
+  etag: '"clean-rev-1"',
+};
+
+for (const [failure, warning, fetchClean] of [
+  ["thrown fetch", "read error", () => { throw new Error("private upstream detail"); }],
+  ["forbidden", "4xx", () => new Response("private upstream detail", { status: 403 })],
+  ["unavailable", "5xx", () => new Response("private upstream detail", { status: 503 })],
+  ["missing content range", "invalid response", () =>
+    new Response("TILE", { status: 206, headers: partialMetadata })],
+  ["missing object metadata", "invalid response", () => new Response("TILE", {
+    status: 206, headers: { "content-range": "bytes 196-199/200", "content-length": "4" },
+  })],
+  ["upstream body abort before byte one", "read error", () => {
+    const body = new ReadableStream({
+      pull() { throw new DOMException("private upstream detail", "AbortError"); },
+    });
+    return new Response(body, {
+      status: 206, headers: { ...partialMetadata, "content-range": "bytes 196-199/200" },
+    });
+  }],
+]) {
+  test(`v2 basemap preserves legacy results on clean storage ${failure}`, async (t) => {
+    const warn = t.mock.method(console, "warn", () => {});
+    const fetch = t.mock.method(globalThis, "fetch", fetchClean);
+    const env = { ...makeEnv(), ...CLEAN_STORAGE_ENV };
+    const request = new Request(BASEMAP_URL, { headers: { range: "bytes=196-199" } });
+    const legacyRead = t.mock.method(env.SNAPSHOTS, "get");
+
+    const response = await worker.fetch(request, env);
+    assert.equal(response.status, 206);
+    assert.equal(response.headers.get("etag"), '"basemap-rev-1"');
+    assert.equal(response.headers.get("content-range"), "bytes 196-199/200");
+    assert.equal(await response.text(), "TAIL");
+    assert.equal(legacyRead.mock.callCount(), 1);
+
+    env.SNAPSHOTS.objects.clear();
+    const missing = await worker.fetch(request, env);
+    assert.equal(missing.status, 404);
+    assert.equal(missing.headers.get("cache-control"), "no-store");
+    assert.equal(missing.headers.get("access-control-allow-origin"), "*");
+    assert.equal(legacyRead.mock.callCount(), 2);
+
+    const legacyError = new Error("Legacy storage unavailable");
+    legacyRead.mock.mockImplementation(() => { throw legacyError; });
+    await assert.rejects(() => worker.fetch(request, env), (error) => error === legacyError);
+    assert.equal(legacyRead.mock.callCount(), 3);
+    assert.equal(fetch.mock.callCount(), 3);
+    assert.deepEqual(warn.mock.calls.map(({ arguments: args }) => args),
+      Array.from({ length: 3 }, () => ["Clean basemap fallback", warning]));
+  });
+}
+
+test("v2 basemap propagates a client abort during the first clean body read", async (t) => {
+  const warn = t.mock.method(console, "warn", () => {});
+  const controller = new AbortController();
+  const clientAbort = new DOMException("client disconnected", "AbortError");
+  const env = { ...makeEnv(), ...CLEAN_STORAGE_ENV };
+  const legacyRead = t.mock.method(env.SNAPSHOTS, "get");
+  t.mock.method(globalThis, "fetch", (_url, { signal }) => new Response(new ReadableStream({
+    pull() {
+      controller.abort(clientAbort);
+      signal.throwIfAborted();
+    },
+  }, { highWaterMark: 0 }), {
+    status: 206, headers: { ...partialMetadata, "content-range": "bytes 196-199/200" },
+  }));
+  const request = new Request(BASEMAP_URL, {
+    headers: { range: "bytes=196-199" }, signal: controller.signal,
+  });
+  await assert.rejects(() => worker.fetch(request, env), (error) => error === clientAbort);
+  assert.equal(legacyRead.mock.callCount(), 0);
+  assert.equal(warn.mock.callCount(), 0);
+});
+
+test("v2 basemap returns the clean stream as soon as the first bytes arrive", async (t) => {
+  const chunks = ["TA", "IL"];
+  const body = new ReadableStream({
+    pull(controller) {
+      controller.enqueue(new TextEncoder().encode(chunks.shift()));
+      if (chunks.length === 0) controller.close();
+    },
+  }, { highWaterMark: 0 });
+  t.mock.method(globalThis, "fetch", () => new Response(body, {
+    status: 206, headers: { ...partialMetadata, "content-range": "bytes 196-199/200" },
+  }));
+  const request = new Request(BASEMAP_URL, { headers: { range: "bytes=196-199" } });
+  const result = await worker.fetch(request, { ...makeEnv(), ...CLEAN_STORAGE_ENV });
+  assert.equal(result.status, 206);
+  assert.deepEqual(chunks, ["IL"]);
+  assert.equal(await result.text(), "TAIL");
 });
 
 test("GET path outside /data/v1 returns 404", async () => {
