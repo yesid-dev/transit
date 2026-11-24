@@ -1,13 +1,11 @@
 import type { StopDeparture, StopFile } from '#lib/v1/index.ts';
 import type { StatusCode } from '#lib/v1/schemas/types.ts';
-import { LIVE_STATUS_BANDS, type DelayBandCode } from '#lib/v1/live/statusBands.ts';
+import { classifyDelay, type DelayBandCode } from '#lib/v1/live/statusBands.ts';
 
 /** Capture predictions carry an exact status. Older reports only supply rounded minutes. */
 export type DepartureStatus =
 	| { readonly kind: 'known'; readonly bands: readonly DelayBandCode[] }
 	| { readonly kind: 'unknown' };
-
-const BAND_ORDER = Object.keys(LIVE_STATUS_BANDS) as DelayBandCode[];
 
 export function departureStatus(
 	minute: number | null | undefined,
@@ -16,15 +14,12 @@ export function departureStatus(
 	if (status === 'unknown') return { kind: 'unknown' };
 	if (status != null) return { kind: 'known', bands: [status] };
 	if (minute == null || !Number.isInteger(minute)) return { kind: 'unknown' };
-	// round_half_away(s / 60) = m holds for s in [60m − 30, 60m + 30), mirrored below zero and
-	// open at both ends for m = 0. The thresholds are whole minutes, so no end touches one.
-	const low = 60 * minute - 30;
-	const high = 60 * minute + 30;
-	const bands = BAND_ORDER.filter((code) => {
-		const { fromS, belowS } = LIVE_STATUS_BANDS[code];
-		return (fromS == null || fromS < high) && (belowS == null || belowS > low);
-	});
-	return { kind: 'known', bands };
+	// A rounded minute covers 60 seconds. Both cutoffs are whole minutes, six minutes apart,
+	// so the endpoints never touch a cutoff and span at most two bands.
+	const first = classifyDelay(60 * minute - 30);
+	const last = classifyDelay(60 * minute + 30);
+	if (first === 'unknown' || last === 'unknown') return { kind: 'unknown' };
+	return { kind: 'known', bands: first === last ? [first] : [first, last] };
 }
 
 export interface DepartureStatusCopy {

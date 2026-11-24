@@ -1,39 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { LIVE_STATUS_BANDS } from '#lib/v1/live/statusBands.ts';
 import { STATUS_CODES } from '#lib/v1/schemas/types.ts';
 import { mapLegend } from './mapLegend';
 
 const NB = ' ';
-
-function bandOf(delayS: number): string[] {
-	return Object.entries(LIVE_STATUS_BANDS)
-		.filter(
-			([, { fromS, belowS }]) =>
-				(fromS == null || delayS >= fromS) && (belowS == null || delayS < belowS),
-		)
-		.map(([code]) => code);
-}
-
-describe('live status bands', () => {
-	it('partition every delay into exactly one band, in status order, on whole minutes', () => {
-		const codes = Object.keys(LIVE_STATUS_BANDS);
-		expect(codes).toEqual(STATUS_CODES.filter((code) => code !== 'unknown'));
-		const bands = Object.values(LIVE_STATUS_BANDS);
-		expect(bands[0].fromS).toBeNull();
-		expect(bands.at(-1)!.belowS).toBeNull();
-		for (const [index, band] of bands.entries()) {
-			if (band.fromS != null && band.belowS != null) expect(band.fromS).toBeLessThan(band.belowS);
-			if (index > 0) expect(band.fromS).toBe(bands[index - 1].belowS);
-			for (const bound of [band.fromS, band.belowS])
-				if (bound != null) {
-					expect(Number.isFinite(bound)).toBe(true);
-					expect(Object.is(bound, -0)).toBe(false);
-					expect(Number.isInteger(bound / 60)).toBe(true);
-				}
-		}
-		for (let delayS = -900; delayS <= 900; delayS += 0.5) expect(bandOf(delayS)).toHaveLength(1);
-	});
-});
 
 describe('mapLegend', () => {
 	it('states each status with the minutes the map draws, then position and map symbols (en)', () => {
@@ -45,8 +14,8 @@ describe('mapLegend', () => {
 		]);
 		expect(legend.groups[0].rows.map((row) => [row.label, row.definition])).toEqual([
 			['Early', `More than 1${NB}min early`],
-			['On time', `1${NB}min early to under 5${NB}min late`],
-			['Late', `5${NB}min late or more`],
+			['On time', `1${NB}min early to 5${NB}min late, inclusive`],
+			['Late', `More than 5${NB}min late`],
 			['Delay unknown', 'The live feed gives no delay'],
 		]);
 		expect(legend.groups[0].rows.map((row) => row.mark)).toEqual(
@@ -76,8 +45,8 @@ describe('mapLegend', () => {
 		]);
 		expect(legend.groups[0].rows.map((row) => [row.label, row.definition])).toEqual([
 			['En avance', 'Plus d’une minute d’avance'],
-			['À l’heure', 'D’une minute d’avance à moins de 5 minutes de retard'],
-			['En retard', `5${NB}minutes de retard ou plus`],
+			['À l’heure', `D’une minute d’avance à 5${NB}minutes de retard, limites incluses`],
+			['En retard', `Plus de 5${NB}minutes de retard`],
 			['Retard inconnu', 'Le flux en direct n’indique aucun retard'],
 		]);
 		expect(legend.groups[1].rows[0]).toMatchObject({

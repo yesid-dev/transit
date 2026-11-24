@@ -120,7 +120,7 @@ describe('capture-backed Live projection', () => {
 
 	it('classifies vehicles and stop predictions before rounding and excludes unknown delays', () => {
 		const vehicle = snapshot.vehicle_positions![0];
-		const positions = [299, 300, -61, null].map((delay, index) => ({
+		const positions = [300, 301, -61, null].map((delay, index) => ({
 			...vehicle,
 			id: String(index),
 			vehicle_id: String(index),
@@ -133,8 +133,8 @@ describe('capture-backed Live projection', () => {
 		const report = scoped.trip_updates[0];
 		const stop = report.stops[0];
 		for (const [delay, status] of [
-			[299, 'on_time'],
-			[300, 'late'],
+			[300, 'on_time'],
+			[301, 'late'],
 		] as const) {
 			const result = captureDepartures(
 				{

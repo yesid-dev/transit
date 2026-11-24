@@ -78,8 +78,8 @@ export const copy = defineCopy({
 			// Minutes are whole and positive; `NB` keeps a number with its unit.
 			moreEarly: (m: number) => `More than ${m}${NB}min early`,
 			earlyToLate: (early: number, late: number) =>
-				`${early}${NB}min early to under ${late}${NB}min late`,
-			lateOrMore: (m: number) => `${m}${NB}min late or more`,
+				`${early}${NB}min early to ${late}${NB}min late, inclusive`,
+			moreLate: (m: number) => `More than ${m}${NB}min late`,
 			unknown: 'The live feed gives no delay',
 			occupancy: {
 				empty: 'Empty',
@@ -226,8 +226,8 @@ export const copy = defineCopy({
 			symbolsGroup: 'Symboles de la carte',
 			moreEarly: (m: number) => `Plus ${frMinutes(m, 'de')} d’avance`,
 			earlyToLate: (early: number, late: number) =>
-				`${capitalize(frMinutes(early, 'de'))} d’avance à moins ${frMinutes(late, 'de')} de retard`,
-			lateOrMore: (m: number) => `${capitalize(frMinutes(m))} de retard ou plus`,
+				`${capitalize(frMinutes(early, 'de'))} d’avance à ${frMinutes(late)} de retard, limites incluses`,
+			moreLate: (m: number) => `Plus ${frMinutes(m, 'de')} de retard`,
 			unknown: 'Le flux en direct n’indique aucun retard',
 			occupancy: {
 				empty: 'Vide',

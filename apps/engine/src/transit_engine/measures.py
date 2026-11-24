@@ -990,18 +990,22 @@ def _punctuality_query(
         ranking_join = f"LEFT JOIN ranking_samples ON ({entity}) = sample_entity"
         ranking_projection = ", coalesce(max(ranking_sample), 0)"
     if by_delay_bin:
-        # Delay bins are multiples of 15. Reserve 1–6 for unclassified stops.
+        # Delay bins are multiples of 15. Reserve 1–6 for unclassified stops, and
+        # separate exactly +300 from its late neighbors until the final rollup.
         delay_bucket = (
-            f"ELSE {edge}"
+            f"WHEN delay_seconds = {LATE_LIMIT_SECONDS} THEN {LATE_LIMIT_SECONDS + 1} ELSE {edge}"
             if with_histogram
             else (
                 f"WHEN delay_seconds < {EARLY_LIMIT_SECONDS} THEN {EARLY_LIMIT_SECONDS - 1} "
-                f"WHEN delay_seconds >= {LATE_LIMIT_SECONDS} THEN {LATE_LIMIT_SECONDS} "
+                f"WHEN delay_seconds > {LATE_LIMIT_SECONDS} THEN {LATE_LIMIT_SECONDS + 2} "
                 "ELSE 0"
             )
         )
         normalized_edge = (
-            "CASE WHEN bucket NOT BETWEEN 1 AND 6 THEN bucket END" if with_histogram else edge
+            f"CASE WHEN bucket = {LATE_LIMIT_SECONDS + 1} THEN {LATE_LIMIT_SECONDS} "
+            "WHEN bucket NOT BETWEEN 1 AND 6 THEN bucket END"
+            if with_histogram
+            else edge
         )
         select_entity = f"{entity} AS entity, " if question.group else ""
         bin_group = final_group = "entity, " if question.group else ""
@@ -1075,8 +1079,10 @@ def _punctuality_query(
                 coalesce(sum(n) FILTER (bucket = 5), 0),
                 coalesce(sum(n) FILTER (bucket < {EARLY_LIMIT_SECONDS}), 0),
                 coalesce(sum(n) FILTER (bucket NOT BETWEEN 1 AND 6
-                    AND bucket BETWEEN {EARLY_LIMIT_SECONDS} AND {LATE_LIMIT_SECONDS - 1}), 0),
-                coalesce(sum(n) FILTER (bucket >= {LATE_LIMIT_SECONDS}), 0)
+                    AND bucket BETWEEN {EARLY_LIMIT_SECONDS} AND {LATE_LIMIT_SECONDS - 1}
+                    OR bucket = {LATE_LIMIT_SECONDS + 1}), 0),
+                coalesce(sum(n) FILTER (bucket >= {LATE_LIMIT_SECONDS}
+                    AND bucket <> {LATE_LIMIT_SECONDS + 1}), 0)
                 {final_live}, {final_bases} {ranking_projection}
             FROM bins {ranking_join} GROUP BY {final_group}lower_edge
             """,
@@ -1099,7 +1105,7 @@ def _punctuality_query(
 _PUNCTUALITY = Family(
     id="punctuality",
     label=Text("Punctuality", "Ponctualité"),
-    method_version="punctuality-v4",
+    method_version="punctuality-v3",
     since="2026-11-22",
     tables=(STOP_EVENTS, TRIP_DAYS),
     query=_punctuality_rows,
@@ -1171,25 +1177,22 @@ _PUNCTUALITY = Family(
             "on_time",
             "share",
             Text(
-                f"Share of stops from {abs(EARLY_LIMIT_SECONDS)} seconds early (inclusive) to "
-                f"{LATE_LIMIT_SECONDS} seconds late (exclusive).",
-                f"Part des arrêts de {abs(EARLY_LIMIT_SECONDS)} secondes d’avance (incluses) "
-                f"à {LATE_LIMIT_SECONDS} secondes de retard (exclues).",
+                f"Share of stops from {abs(EARLY_LIMIT_SECONDS)} seconds early to "
+                f"{LATE_LIMIT_SECONDS} seconds late, including both limits.",
+                f"Part des arrêts entre {abs(EARLY_LIMIT_SECONDS)} secondes d’avance et "
+                f"{LATE_LIMIT_SECONDS} secondes de retard, limites incluses.",
             ),
-            band=(
-                f"delay_seconds >= {EARLY_LIMIT_SECONDS} "
-                f"AND delay_seconds < {LATE_LIMIT_SECONDS}"
-            ),
+            band=f"delay_seconds BETWEEN {EARLY_LIMIT_SECONDS} AND {LATE_LIMIT_SECONDS}",
             count_label=Text("On-time stops", "Arrêts à l’heure"),
         ),
         Measure(
             "late",
             "share",
             Text(
-                f"Share of stops {LATE_LIMIT_SECONDS} seconds late or more.",
-                f"Part des arrêts avec {LATE_LIMIT_SECONDS} secondes de retard ou plus.",
+                f"Share of stops more than {LATE_LIMIT_SECONDS} seconds late.",
+                f"Part des arrêts avec plus de {LATE_LIMIT_SECONDS} secondes de retard.",
             ),
-            band=f"delay_seconds >= {LATE_LIMIT_SECONDS}",
+            band=f"delay_seconds > {LATE_LIMIT_SECONDS}",
             count_label=Text("Late stops", "Arrêts en retard"),
             worst_first_descending=True,
         ),

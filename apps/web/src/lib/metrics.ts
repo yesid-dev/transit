@@ -182,8 +182,8 @@ const SUPPLEMENTAL_METRIC_TIPS: Readonly<Record<SupplementalMetricKey, Supplemen
 	liveOtp: {
 		anchor: 'metrics-provenance',
 		oneLiner: {
-			fr: 'Parmi les véhicules actuels admissibles sur la carte et au statut connu, la part dont le retard prédit moyen du trajet est compris entre −60 s inclus et 300 s exclus. Les statuts inconnus sont exclus du dénominateur.',
-			en: 'Among current vehicle rows eligible for the map and with a known status, the share whose trip-average predicted delay is at least −60 s and below 300 s. Unknown statuses are excluded from the denominator.',
+			fr: 'Parmi les véhicules actuels admissibles sur la carte et au statut connu, la part dont le retard prédit moyen du trajet est compris entre −60 s et 300 s, limites incluses. Les statuts inconnus sont exclus du dénominateur.',
+			en: 'Among current vehicle rows eligible for the map and with a known status, the share whose trip-average predicted delay is between −60 s and 300 s, inclusive. Unknown statuses are excluded from the denominator.',
 		},
 	},
 	stopNotSevere: {

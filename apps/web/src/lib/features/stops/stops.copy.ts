@@ -225,7 +225,7 @@ export const detailCopy = defineCopy({
 			destinationCaveat:
 				'Les destinations viennent de l’horaire de cet arrêt. Une prévision ne nomme pas la destination de son trajet.',
 			statusNote:
-				'L’état repose sur l’écart prévu à cet arrêt avant l’arrondi. À l’heure signifie de 1 min d’avance à moins de 5 min de retard.',
+				'L’état repose sur l’écart prévu à cet arrêt avant l’arrondi. À l’heure signifie de 1 min d’avance à 5 min de retard, limites incluses.',
 			noCapability: 'Aucune donnée en direct pour les lignes de cet arrêt',
 			noCapabilityBody:
 				'Transit ne reçoit aucune prévision pour les lignes qui desservent cet arrêt.',
@@ -398,7 +398,7 @@ export const detailCopy = defineCopy({
 			destinationCaveat:
 				'Destinations come from this stop’s schedule. A prediction does not name its trip’s destination.',
 			statusNote:
-				'Status uses the predicted delay at this stop before rounding. On time starts at 1 min early and ends just before 5 min late.',
+				'Status uses the predicted delay at this stop before rounding. On time is 1 min early to 5 min late, inclusive.',
 			noCapability: 'No live data for the lines at this stop',
 			noCapabilityBody: 'Transit receives no predictions for the lines serving this stop.',
 			noService: 'No line is published as serving this stop, so no predictions are expected.',

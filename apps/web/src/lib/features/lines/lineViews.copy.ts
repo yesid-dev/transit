@@ -17,7 +17,7 @@ export const lineViewsCopy = defineCopy({
 		alertsUnknown: 'Current notices are unavailable. This does not mean there are no disruptions.',
 		roster: 'Vehicles on this line',
 		bands:
-			'Status uses the delay before rounding. Early means more than 1 min early. On time starts at 1 min early and ends just before 5 min late. Late starts at 5 min.',
+			'Before rounding, on time is 1 min early to 5 min late, inclusive. Early means more than 1 min early, and late means more than 5 min late.',
 		offset: 'Offset: minutes after (+) or before (−) the scheduled time.',
 		predictions: 'Predictions by destination',
 		destination: 'Destination',
@@ -64,7 +64,7 @@ export const lineViewsCopy = defineCopy({
 			'Les avis actuels sont indisponibles. Cela ne veut pas dire qu’il n’y a aucune perturbation.',
 		roster: 'Véhicules sur cette ligne',
 		bands:
-			'Avant l’arrondi, le véhicule est à l’heure de 1 min d’avance à moins de 5 min de retard. Il est en avance au-delà de 1 min d’avance et en retard à partir de 5 min de retard.',
+			'Avant l’arrondi, le véhicule est à l’heure de 1 min d’avance à 5 min de retard, limites incluses. Il est en avance au-delà de 1 min d’avance et en retard au-delà de 5 min de retard.',
 		offset: 'Écart : minutes après (+) ou avant (−) l’heure prévue.',
 		predictions: 'Prévisions par destination',
 		destination: 'Destination',
