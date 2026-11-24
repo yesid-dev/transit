@@ -28,8 +28,8 @@ export const downloadTables = {
 		fr: 'Un échantillon par arrêt observé d’une course et par horizon de prévision. Comprend les heures de publication et de passage prévu, le délai réel avant le passage et l’erreur de prévision (s).',
 	},
 	segment_runs: {
-		en: 'One row per pair of consecutive scheduled stops on a trip. Includes stop order, observed timestamps and their evidence, elapsed observed and scheduled seconds, and any exclusion before checking feed coverage.',
-		fr: 'Une ligne par paire d’arrêts prévus consécutifs d’une course. Comprend l’ordre des arrêts, les heures observées et leurs sources, les durées observée et prévue en secondes et tout motif d’exclusion avant de vérifier la couverture des flux.',
+		en: 'One row per pair of consecutive scheduled stops on a trip. Includes the observed and scheduled travel times and the reason for any exclusion.',
+		fr: 'Une ligne par paire d’arrêts consécutifs prévus pour une course. Comprend la durée observée et la durée prévue du parcours, ainsi que le motif d’exclusion, le cas échéant.',
 	},
 };
 
