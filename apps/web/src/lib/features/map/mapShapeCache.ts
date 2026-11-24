@@ -16,7 +16,7 @@ export interface ShapeCacheManager {
 }
 
 export function createShapeCacheManager(
-	getRoute: (routeId: string) => Promise<RouteFile | null>,
+	getRoutes: (ids: readonly string[]) => Promise<(RouteFile | null)[]>,
 ): ShapeCacheManager {
 	const routeShapeCache = new Map<string, { generatedUtc: string; shapes: RouteShapes }>();
 	const routeShapeRequested = new Map<string, symbol>();
@@ -41,23 +41,31 @@ export function createShapeCacheManager(
 	}
 
 	function prefetch(vehicles: readonly Vehicle[]): void {
+		const requests = new Map<string, symbol>();
 		for (const v of vehicles) {
 			const id = v.route;
 			if (id == null || id === '') continue;
 			if (routeShapeRequested.has(id)) continue;
 			const request = Symbol();
 			routeShapeRequested.set(id, request);
-			void getRoute(id)
-				.then((route) => {
-					if (routeShapeRequested.get(id) !== request) return;
-					if (route) cacheRoute(id, route);
-				})
-				.catch(() => {
-					if (routeShapeRequested.get(id) !== request) return;
+			requests.set(id, request);
+		}
+		if (!requests.size) return;
+		void getRoutes([...requests.keys()])
+			.then((routes) => {
+				for (const route of routes) {
+					if (route && routeShapeRequested.get(route.id) === requests.get(route.id)) {
+						cacheRoute(route.id, route);
+					}
+				}
+			})
+			.catch(() => {
+				for (const [id, request] of requests) {
+					if (routeShapeRequested.get(id) !== request) continue;
 					routeShapeRequested.delete(id);
 					revision += 1;
-				});
-		}
+				}
+			});
 	}
 
 	const shapeFor: ShapeCacheManager['shapeFor'] = (feature) => {

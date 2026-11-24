@@ -13,7 +13,7 @@ export const QUESTION_PARAMS = {
   },
   "search-index": { required: [], optional: [] },
   "schedule-index": { required: [], optional: [] },
-  "schedule-map": { required: [], optional: [] },
+  "schedule-map": { required: [], optional: ["lines"] },
   live: { required: [], optional: [] },
   "live-trips": { required: [], optional: ["line", "stop", "trip"] },
   cities: { required: [], optional: [] },
@@ -80,6 +80,15 @@ export function parseQuestion(url) {
   for (const name of required) {
     if (!params.has(name)) throw new Error(`provide ${name}`);
   }
+  if (params.has("lines")) {
+    const ids = JSON.parse(params.get("lines"));
+    if (!Array.isArray(ids) || ids.length < 1 || ids.length > 256 ||
+        !ids.every((id) => typeof id === "string" && id.length > 0 && [...id].length <= 256 &&
+          scheduleId(id) && !/\p{Z}/u.test(id.replaceAll(" ", "")))) {
+      throw new Error("provide 1 to 256 valid line IDs");
+    }
+    params.set("lines", JSON.stringify([...new Set(ids)].sort()));
+  }
 
   const end = params.get("to");
   if (required.includes("to")) {
@@ -135,6 +144,9 @@ export function parseQuestion(url) {
   if (city !== null) params.set("city", city);
   params.sort();
   upstream.search = params.toString();
+  if (params.has("lines") && upstream.search.length > 4097) {
+    throw new Error("query string is too long");
+  }
   const networkCorridors = map && params.get("group") === "segment" && !params.has("line");
   return { city, route, end, csv, key, upstream, scope, map, networkCorridors };
 }

@@ -40,6 +40,7 @@
 	import { RightPanel } from '#lib/components/shell/index.ts';
 	import { MapStage, nearestStops, type WithDistance } from '#lib/components/map/index.ts';
 	import { createVehicleMotion } from './vehicleMotion';
+	import { getMapRoutes } from '#lib/v1/repositories/scheduleShapes.ts';
 	import { motionMode } from '#lib/stores/index.ts';
 	import { prefersReducedMotion } from '@yesid/motion/stores/reducedMotion';
 	import MapFilters from './MapFilters.svelte';
@@ -223,7 +224,7 @@
 
 	let mapFailure = $state<MapStageFailure | null>(null);
 	let hasFirstIdle = $state(false);
-	const vehicleMotion = createVehicleMotion(getRoute, {
+	const vehicleMotion = createVehicleMotion(getMapRoutes, {
 		now: () => untrack(() => clock.serverNow),
 		continuous: () => untrack(() => clock.serverNowContinuousMs()),
 	});
@@ -237,6 +238,7 @@
 		serverNow: () => dataClock.serverNow,
 		alertsAvailable,
 		scheduleOnly: (id, type) => lineIsScheduleOnly(page.data.provider, id, type),
+		drawRoutes: () => recordLayer !== 'stops',
 		setTripScope: live.setTripScope,
 	});
 	const mapVehicles = $derived(
@@ -509,7 +511,9 @@
 	$effect(() => {
 		const routes = session.loadedRoutes;
 		untrack(() => {
-			for (const route of routes) if (route) vehicleMotion.remember(route);
+			for (const route of routes) {
+				if (route?.directions?.some((direction) => direction.shape)) vehicleMotion.remember(route);
+			}
 		});
 	});
 	function commitPickedSelection(next: MapSelection) {
@@ -684,7 +688,7 @@
 	}
 
 	const motionFrame = $derived(
-		vehicleMotion.read(mapVehicles, {
+		vehicleMotion.read(isRecordLayer ? null : mapVehicles, {
 			preference: motionMode.current,
 			reducedMotion: $prefersReducedMotion,
 			ready: hasFirstIdle,
@@ -692,6 +696,7 @@
 			ttlS: manifest.files.live.ttl_s,
 			sourceLagS: liveTimingFor(manifest).sourceLagS,
 			stops: stopList,
+			filter: filters.state,
 		}),
 	);
 

@@ -1,4 +1,5 @@
 import { neighbors } from './selectionSession/detailNavigation';
+import { untrack } from 'svelte';
 import { SvelteSet } from 'svelte/reactivity';
 import type { Locale } from '#lib/i18n/index.ts';
 import type { LiveTripScope } from '#lib/live/captureSnapshot.ts';
@@ -7,6 +8,7 @@ import type { Alert } from '#lib/v1/schemas/index.ts';
 import type { LiveStore } from '#lib/v1/live/store.svelte.ts';
 import type { FilterStore, Chip } from '#lib/filters/index.ts';
 import type * as StaticRepositories from '#lib/v1/repositories/static.ts';
+import { getScheduleShapes, withScheduleShapes } from '#lib/v1/repositories/scheduleShapes.ts';
 import type { MapFocus } from '#lib/search/mapFocus.ts';
 import { createResource } from '#lib/v1/resource.svelte.ts';
 import { createMapSelectionController } from './selectionSession/mapSelectionController.svelte';
@@ -38,6 +40,7 @@ export interface MapSelectionSessionOptions {
 	readonly serverNow: () => number;
 	readonly alertsAvailable?: boolean;
 	readonly scheduleOnly?: (id: string, type: number | null) => boolean;
+	readonly drawRoutes?: () => boolean;
 	readonly setTripScope?: (scope: LiveTripScope | null) => void;
 }
 
@@ -131,6 +134,11 @@ export function createMapSelectionSession(options: MapSelectionSessionOptions) {
 			enabled: () => focusedRouteId != null,
 		},
 	);
+	const shapeKey = $derived(selectedRouteIds.join('\u0000'));
+	const shapes = createResource(() => getScheduleShapes(untrack(() => selectedRouteIds)), {
+		key: () => shapeKey,
+		enabled: () => shapeKey !== '' && options.drawRoutes?.() !== false,
+	});
 	const focusedStop = createResource<StopFile | null>(
 		async (signal) => {
 			const id = focusedStopId;
@@ -144,7 +152,9 @@ export function createMapSelectionSession(options: MapSelectionSessionOptions) {
 	const routeList = $derived(
 		selectedRouteIds.length === 0
 			? []
-			: (selectedRoutes.data ?? []).filter((route) => selectedRouteIds.includes(route.id)),
+			: (selectedRoutes.data ?? [])
+					.filter((route) => selectedRouteIds.includes(route.id))
+					.map((route) => withScheduleShapes(route, shapes.data ?? [])),
 	);
 	const selectedRouteLineId = $derived.by<string | null>(() => {
 		if (selected?.kind === 'route') return selected.id;
@@ -372,7 +382,8 @@ export function createMapSelectionSession(options: MapSelectionSessionOptions) {
 			stopsSettled: stops.settled,
 			vehiclesPhase: live.familyStates.vehicles.phase,
 			selectedRouteIds,
-			selectedRoutesSettled: selectedRoutes.settled,
+			selectedRoutesSettled:
+				selectedRoutes.settled && (options.drawRoutes?.() === false || shapes.settled),
 			focusedRouteId,
 			focusedRouteSettled: focusedRoute.settled,
 		});
@@ -428,7 +439,7 @@ export function createMapSelectionSession(options: MapSelectionSessionOptions) {
 			return scheduledRouteIds;
 		},
 		get loadedRoutes() {
-			return [...(selectedRoutes.data ?? []), focusedRoute.data];
+			return [...routeList, focusedRoute.data];
 		},
 		get selectedRouteLine() {
 			return selectedRouteLine;

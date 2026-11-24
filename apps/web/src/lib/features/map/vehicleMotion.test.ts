@@ -75,7 +75,7 @@ function harness() {
 	};
 	const frames: VehicleFC[] = [];
 	const controller = createVehicleMotionController(runtime, (frame) => frames.push(frame));
-	const getRoute = vi.fn(async () => route);
+	const getRoute = vi.fn(async (_ids: readonly string[]) => [route]);
 	const motion = createVehicleMotion(getRoute, { now: () => server, continuous: () => server });
 	const filter = emptyFilterState();
 	function feed(
@@ -284,7 +284,7 @@ describe('vehicle motion snapshot interface', () => {
 		h.feed(10, { ...intent, ready: false, reducedMotion: true });
 		await Promise.resolve();
 		h.feed();
-		expect(h.getRoute).toHaveBeenCalledExactlyOnceWith('24');
+		expect(h.getRoute).toHaveBeenCalledExactlyOnceWith(['24']);
 		h.controller.destroy();
 	});
 	it('uses a prefetched shape and converts speed, then snaps when the snapshot becomes stale', async () => {

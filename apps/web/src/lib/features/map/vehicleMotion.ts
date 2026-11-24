@@ -1,6 +1,7 @@
 import type { Vehicle, VehiclesFile, RouteFile } from '#lib/v1/schemas/index.ts';
 import type { FilterState } from '#lib/filters/index.ts';
 import { toVehicleFeatures } from '#lib/components/map/index.ts';
+import { inVehicleScope } from '#lib/components/map/vehicleLayer.ts';
 import type { VehicleMotionController } from '#lib/components/map/motion/controller.ts';
 import { createShapeCacheManager } from './mapShapeCache';
 import { liveTimingFor } from '#lib/components/map/liveTiming.ts';
@@ -15,6 +16,7 @@ export interface MotionIntent {
 	ttlS?: number;
 	sourceLagS?: number;
 	stops?: readonly { id: string; lon: number; lat: number }[];
+	filter?: FilterState;
 }
 
 export interface VehicleMotionFrame {
@@ -32,10 +34,10 @@ export interface VehicleMotionFrame {
 
 // The map runtime owns the overlay lifetime; this module owns what it draws.
 export function createVehicleMotion(
-	getRoute: (id: string) => Promise<RouteFile | null>,
+	getRoutes: (ids: readonly string[]) => Promise<(RouteFile | null)[]>,
 	clock: { now(): number; continuous(): number },
 ) {
-	const shapes = createShapeCacheManager(getRoute);
+	const shapes = createShapeCacheManager(getRoutes);
 	return {
 		remember: shapes.remember,
 		read(snapshot: VehiclesFile | null | undefined, intent: MotionIntent): VehicleMotionFrame {
@@ -43,7 +45,12 @@ export function createVehicleMotion(
 				files: { live: { ttl_s: intent.ttlS, source_lag_s: intent.sourceLagS } },
 			});
 			const items = snapshot?.vehicles ?? [];
-			if (intent.preference === 'smooth') shapes.prefetch(items);
+			const filter = intent.filter;
+			if (intent.preference === 'smooth') {
+				shapes.prefetch(
+					filter ? items.filter((vehicle) => inVehicleScope(vehicle, filter)) : items,
+				);
+			}
 			const animate = intent.preference === 'smooth' && !intent.reducedMotion && intent.ready;
 			const byId = new Map(items.map((vehicle) => [vehicle.id, vehicle]));
 			const stops = new Map(intent.stops?.map((stop) => [stop.id, [stop.lon, stop.lat] as const]));
