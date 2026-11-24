@@ -157,7 +157,7 @@
 			const head = instance
 				.getContainer()
 				.closest('.map-surface')
-				?.querySelector('.map-head')
+				?.querySelector('.map-layer-controls')
 				?.getBoundingClientRect();
 			const top = Math.max(32, (head?.bottom ?? frame.top) - frame.top + 12);
 			instance.fitBounds(bounds, {

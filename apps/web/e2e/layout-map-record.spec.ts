@@ -22,17 +22,20 @@ for (const locale of ['en', 'fr'] as const) {
 				page.getByRole('searchbox', { name: fr ? /Trouver un/ : /Find a/ }),
 			).toBeVisible();
 			await expect(legend).toBeVisible();
-			const bounds = (await page.locator('[data-slot="map-stage"]').boundingBox())!;
+			const map = page.getByRole('region').and(page.locator('[data-slot="map-stage"]'));
+			const bounds = (await map.boundingBox())!;
 			for (const control of [group, legend]) {
 				const box = (await control.boundingBox())!;
 				expect(box.x).toBeGreaterThanOrEqual(bounds.x - 1);
 				expect(box.x + box.width).toBeLessThanOrEqual(bounds.x + bounds.width + 1);
 				expect(box.y + box.height).toBeLessThan(bounds.y + bounds.height);
 			}
-			const height = await page
-				.locator('.map-head')
-				.evaluate((el) => el.getBoundingClientRect().height);
-			expect(height).toBeLessThan(bounds.height * 0.75);
+			const controls = (await group.locator('..').boundingBox())!;
+			const heading = (await page.locator('.map-head').boundingBox())!;
+			const chromeHeight =
+				Math.max(controls.y + controls.height, heading.y + heading.height) -
+				Math.min(controls.y, heading.y);
+			expect(chromeHeight).toBeLessThan(bounds.height * 0.75);
 			if (browserName === 'chromium' && (viewport?.width === 390 || viewport?.width === 1440)) {
 				await expect
 					.poll(() =>

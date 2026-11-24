@@ -11,6 +11,9 @@ const stops = [
 export async function recordMapFixture(page: Page) {
 	const received: URLSearchParams[] = [];
 	await page.clock.setFixedTime(new Date('2026-11-23T16:00:00Z'));
+	await page.route('**/api/stops/slim?provider=stm', (route) =>
+		route.fulfill({ json: { generated_utc: '2026-11-21T00:00:00Z', stops } }),
+	);
 	await page.route('**/api/schedule-edition?city=stm', (route) =>
 		route.fulfill({
 			json: {

@@ -25,7 +25,9 @@ for (const locale of ['en', 'fr'] as const) {
 		}
 		const find = page.getByRole('searchbox', { name: fr ? 'Trouver un arrêt' : 'Find a stop' });
 		await find.fill('Mont-Royal');
-		await page.getByRole('button', { name: 'Mont-Royal' }).press('Enter');
+		const stop = page.getByRole('button', { name: 'Mont-Royal', exact: true });
+		await expect(stop).toBeVisible();
+		await stop.press('Enter');
 		const selected = page.locator('[data-slot="record-map-selection"]');
 		await expect(selected).toContainText(fr ? 'Mesuré' : 'Measured');
 		await expect(selected).toContainText(/0\s*%/);
