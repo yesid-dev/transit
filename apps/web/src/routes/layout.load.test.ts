@@ -120,6 +120,47 @@ describe('root server layout boot', () => {
 		await expect(loadServerLayout(request)).resolves.toMatchObject({ schedule, v1: null });
 		expect(harness.getScheduleEdition).toHaveBeenCalledExactlyOnceWith('stm', null);
 	});
+	it.each([
+		['/stops', {}, ['one', 'two', 'three'], true],
+		['/stop/[id]', { id: ' two ' }, ['two'], false],
+		['/lines/[id]', { id: 'A' }, ['one', 'three'], false],
+		['/departure/[key]', { key: '["B",0,"07:15:00"]' }, ['two', 'three'], false],
+	] as const)('sends only the schedule data needed on %s', async (route, params, ids, full) => {
+		const routes = [
+			{ id: 'A', short: 'A' },
+			{ id: 'B', short: 'B' },
+		];
+		const direction = { dir: 0, headsign: 'Terminus' };
+		const schedule = {
+			date: '2026-11-21',
+			routes,
+			stops: [
+				{ id: 'one', name: 'One', routes: ['A'] },
+				{ id: 'two', name: 'Two', routes: ['B'], code: '2' },
+				{ id: 'three', name: 'Three', routes: ['A', 'B'] },
+			],
+			route_directions: {
+				A: [{ ...direction, stops: [{ id: 'one', seq: 1 }] }],
+				B: [{ ...direction, stops: [{ id: 'two', seq: 1 }] }],
+			},
+		};
+		harness.bootProvider.mockResolvedValue({ ...selection(null), provider: city });
+		harness.getScheduleEdition.mockResolvedValue(schedule);
+		const request = serverEvent(undefined, route);
+		Object.assign(request.params, params);
+		const result = await loadServerLayout(request);
+		expect(result?.schedule).toEqual(
+			full
+				? schedule
+				: {
+						date: schedule.date,
+						routes,
+						stops: schedule.stops.filter((stop) => (ids as readonly string[]).includes(stop.id)),
+						...(route === '/lines/[id]' ? { route_directions: { A: [direction] } } : {}),
+						...(route === '/departure/[key]' ? { route_directions: { B: [direction] } } : {}),
+					},
+		);
+	});
 	it('passes request-only location to provider selection without returning coordinates', async () => {
 		const request = serverEvent('fr', '/network');
 		const location = { lat: 45.42, lon: -75.7 };

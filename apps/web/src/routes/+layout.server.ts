@@ -8,6 +8,8 @@ import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
 import { lineFrameView } from '#lib/site/lineFrame.ts';
 import { stopFrameView } from '#lib/site/stopFrame.ts';
 import { networkRecordView } from '#lib/site/networkFrame.ts';
+import { departureFromKey } from '#lib/features/record/departureIdentity.ts';
+import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
 
 const localRoute = '/[[lang=locale]]';
 
@@ -34,6 +36,43 @@ function usesLiveSnapshots(route: string | null, url: URL): boolean {
 	}
 }
 
+function scheduleForPage(
+	schedule: ScheduleEdition,
+	{ route, params }: Parameters<LayoutServerLoad>[0],
+): ScheduleEdition {
+	const { date, routes, stops, route_directions } = schedule;
+	switch (route.id) {
+		case localRoute + '/stops':
+			return schedule;
+		case localRoute + '/stop/[id]': {
+			const id = params.id?.trim() || params.id;
+			return { date, routes, stops: stops.filter((stop) => stop.id === id) };
+		}
+		case localRoute + '/lines/[id]':
+		case localRoute + '/departure/[key]': {
+			const id =
+				route.id === localRoute + '/lines/[id]'
+					? params.id?.trim() || params.id
+					: departureFromKey(params.key ?? '')?.line;
+			const directions = id ? route_directions?.[id] : undefined;
+			return {
+				date,
+				routes,
+				stops: id ? stops.filter((stop) => stop.routes?.includes(id)) : [],
+				...(id && directions
+					? {
+							route_directions: {
+								[id]: directions.map(({ dir, headsign }) => ({ dir, headsign })),
+							},
+						}
+					: {}),
+			};
+		}
+		default:
+			return { date, routes, stops: [] };
+	}
+}
+
 export const load: LayoutServerLoad = async (event) => {
 	const { params, locals } = event;
 	const lang = (params.lang as Locale | undefined) ?? locals.locale ?? DEFAULT_LOCALE;
@@ -56,8 +95,6 @@ export const load: LayoutServerLoad = async (event) => {
 		needsSchedule && selection.provider
 			? await getScheduleEdition(selection.providerId, visitorIp)
 			: null;
-	const usesStopIdentities =
-		route != null && /\/(?:stops|(?:stop|lines|departure)\/\[\w+\])$/.test(route);
 	const v1 =
 		loadSnapshots && selection.provider ? captureContext(selection.provider, lang, schedule) : null;
 	const provider = selection.provider;
@@ -76,10 +113,7 @@ export const load: LayoutServerLoad = async (event) => {
 			)
 		: null;
 	return {
-		schedule:
-			schedule && !usesStopIdentities
-				? { date: schedule.date, routes: schedule.routes, stops: [] }
-				: schedule,
+		schedule: schedule ? scheduleForPage(schedule, event) : null,
 		lang,
 		...selection,
 		v1,
