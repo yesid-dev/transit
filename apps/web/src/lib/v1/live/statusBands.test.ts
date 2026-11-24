@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
+import { StatusCodeSchema } from '../schemas/types';
 import { classifyDelay, ON_TIME_LIMITS_S } from './statusBands';
 
 it.each([
@@ -11,6 +12,13 @@ it.each([
 	[null, 'unknown'],
 ] as const)('classifies %s seconds as %s', (delay, expected) => {
 	expect(classifyDelay(delay)).toBe(expected);
+});
+
+it('keeps Severe in the published schema and out of Live classifications', () => {
+	expect(StatusCodeSchema.parse('severe')).toBe('severe');
+	expect(new Set([-61, -60, 300, 301, 3_600, null].map(classifyDelay))).toEqual(
+		new Set(['early', 'on_time', 'late', 'unknown']),
+	);
 });
 
 it('matches the bounds used by the engine registry on How we measure', () => {

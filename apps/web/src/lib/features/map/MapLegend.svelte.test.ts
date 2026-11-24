@@ -39,8 +39,8 @@ describe('MapLegend', () => {
 			expect(
 				onTime.getByText(
 					locale === 'en'
-						? '1 min early to under 1 min late'
-						: 'D’une minute d’avance à moins d’une minute de retard',
+						? '1 min early to 5 min late, inclusive'
+						: 'D’une minute d’avance à 5 minutes de retard, limites incluses',
 				),
 			).toBeVisible();
 			expect(view.getByText(copy[locale].legend.zoomBadges)).toBeVisible();

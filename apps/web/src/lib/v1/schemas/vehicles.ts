@@ -4,14 +4,17 @@ import {
 	VehiclesFileSchema as PublishedVehiclesFileSchema,
 } from './generated/live_vehicles';
 
-import { StatusCodeSchema } from './types';
+import { LiveStatusCodeSchema } from './types';
 
 export const VehicleSchema = PublishedVehicleSchema.extend({
-	status: StatusCodeSchema,
 	direction_id: z.int().nonnegative().nullable().optional(),
 });
-export type Vehicle = z.infer<typeof VehicleSchema>;
 export const VehiclesFileSchema = PublishedVehiclesFileSchema.extend({
 	vehicles: z.array(VehicleSchema),
 });
-export type VehiclesFile = z.infer<typeof VehiclesFileSchema>;
+export const LiveVehicleSchema = VehicleSchema.extend({ status: LiveStatusCodeSchema });
+export type Vehicle = z.infer<typeof LiveVehicleSchema>;
+export const LiveVehiclesFileSchema = VehiclesFileSchema.extend({
+	vehicles: z.array(LiveVehicleSchema),
+});
+export type VehiclesFile = z.infer<typeof LiveVehiclesFileSchema>;

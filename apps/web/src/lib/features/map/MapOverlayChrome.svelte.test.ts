@@ -142,7 +142,7 @@ describe('MapOverlayChrome', () => {
 				),
 				(label) => label.textContent,
 			);
-			expect(filterNames).toHaveLength(5);
+			expect(filterNames).toHaveLength(4);
 			expect(filterNames).toEqual(legendNames);
 			expect(filterNames).toContain(locale === 'en' ? 'Delay unknown' : 'Retard inconnu');
 		},

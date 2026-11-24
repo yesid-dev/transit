@@ -68,7 +68,7 @@ export function b9LiveFixture(fixture) {
 		delay_p50_min: rich ? 0 : null,
 		delay_p90_min: rich ? 5 : null,
 		non_responding: null,
-		status_dist: rich ? { early: 2, on_time: 21, late: 11, unknown: 3 } : null,
+		status_dist: rich ? { early: 2, on_time: 28, late: 4, unknown: 3 } : null,
 		occupancy_mix: rich
 			? { empty: 3 / 37, many_seats: 11 / 37, few_seats: 10 / 37, standing: 8 / 37, full: 5 / 37 }
 			: null,

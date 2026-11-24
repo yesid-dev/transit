@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { emptyFilterState } from '#lib/filters/index.ts';
-import { VehiclesFileSchema } from '#lib/v1/schemas/index.ts';
+import { LiveVehiclesFileSchema } from '#lib/v1/schemas/index.ts';
 import { buildMapReportView } from './mapReports';
 import {
 	captureMapReportCamera,
@@ -73,7 +73,7 @@ describe('captured map report camera', () => {
 		};
 		const previous = buildMapReportView({
 			...input,
-			source: VehiclesFileSchema.parse({
+			source: LiveVehiclesFileSchema.parse({
 				generated_utc: '2026-11-16T20:59:40Z',
 				vehicles: [vehicle],
 			}),
@@ -82,7 +82,7 @@ describe('captured map report camera', () => {
 		const refreshed = buildMapReportView({
 			...input,
 			serverNow: input.serverNow + 1000,
-			source: VehiclesFileSchema.parse({
+			source: LiveVehiclesFileSchema.parse({
 				generated_utc: '2026-11-16T21:00:00Z',
 				vehicles: [vehicle, { ...vehicle, id: 'second' }],
 			}),

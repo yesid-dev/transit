@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { StatusCodeSchema, OccupancyCodeSchema, SeverityCodeSchema } from './schemas';
+import { LiveStatusCodeSchema, OccupancyCodeSchema, SeverityCodeSchema } from './schemas';
 import { STATUS_LABELS, OCCUPANCY_LABELS, SEVERITY_LABELS } from './enumLabels';
 
 const LOCALES = ['en', 'fr'] as const;
 
 describe('enumLabels — one bilingual vocabulary, exact enum coverage', () => {
-	it('STATUS_LABELS keys === StatusCodeSchema.options for every locale', () => {
-		const codes = [...StatusCodeSchema.options].sort();
+	it('STATUS_LABELS covers exactly the Live statuses in every locale', () => {
+		const codes = [...LiveStatusCodeSchema.options].sort();
 		for (const loc of LOCALES) {
 			expect(Object.keys(STATUS_LABELS[loc]).sort()).toEqual(codes);
 		}

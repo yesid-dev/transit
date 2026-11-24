@@ -1,6 +1,6 @@
 import { render, cleanup } from '@testing-library/svelte';
 import { afterEach, describe, it, expect } from 'vitest';
-import { VehicleSchema } from '#lib/v1/schemas/index.ts';
+import { LiveVehicleSchema } from '#lib/v1/schemas/index.ts';
 import type { LiveStore } from '#lib/v1/live/store.svelte.ts';
 import OutOfServiceVehicles from './OutOfServiceVehicles.svelte';
 const state = { vehicles: null as unknown };
@@ -10,7 +10,7 @@ describe.each(['stm', 'octranspo'])('%s status count', (provider) => {
 	it.each(['en', 'fr'] as const)('shows the count in %s', (locale) => {
 		state.vehicles = {
 			vehicles: ['trip', null, ''].map((trip, i) =>
-				VehicleSchema.parse({
+				LiveVehicleSchema.parse({
 					id: provider + i,
 					trip,
 					lat: 45.5,

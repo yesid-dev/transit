@@ -1,9 +1,9 @@
 import {
 	AlertsFileSchema,
-	NetworkFileSchema,
-	StopDeparturesFileSchema,
-	TripsFileSchema,
-	VehiclesFileSchema,
+	LiveNetworkFileSchema,
+	LiveStopDeparturesFileSchema,
+	LiveTripsFileSchema,
+	LiveVehiclesFileSchema,
 } from '#lib/v1/schemas/index.ts';
 import type { OccupancyCode, StatusCode } from '#lib/v1/schemas/types.ts';
 import { classifyDelay } from '#lib/v1/live/statusBands.ts';
@@ -48,7 +48,7 @@ export function captureVehicles(snapshot: CaptureSnapshot, now: number) {
 	if (snapshot.vehicle_positions == null) throw new Error('Vehicle positions unavailable');
 	const tripFeed = Object.values(snapshot.feeds).find((feed) => feed.family === 'trip_updates');
 	const usableDelay = feedState(tripFeed, now) === 'live';
-	const payload = VehiclesFileSchema.parse({
+	const payload = LiveVehiclesFileSchema.parse({
 		...publication(snapshot.city, feed),
 		vehicles: snapshot.vehicle_positions.map((vehicle) => {
 			const delay = usableDelay ? vehicle.delay : null;
@@ -95,7 +95,7 @@ export function captureTrips(report: CaptureTripReport) {
 	const feed = report.feed;
 	const captured = feed.captured_at;
 	if (!captured) throw new Error('Trip updates unavailable');
-	const payload = TripsFileSchema.parse({
+	const payload = LiveTripsFileSchema.parse({
 		...publication(report.city, { ...feed, captured_at: captured }),
 		feed_captured_utc: captured,
 		trips: Object.fromEntries(
@@ -142,7 +142,7 @@ export function captureDepartures(report: CaptureTripReport, now: number) {
 			stops.set(stop.stop, entries);
 		}
 	}
-	const payload = StopDeparturesFileSchema.parse({
+	const payload = LiveStopDeparturesFileSchema.parse({
 		generated_utc: trips.generated_utc,
 		feed_captured_utc: trips.feed_captured_utc,
 		stops: Object.fromEntries(
@@ -231,7 +231,7 @@ export function captureNetwork(snapshot: CaptureSnapshot, now: number) {
 		const high = delays[Math.ceil(index)]!;
 		return Math.round(low + (high - low) * (index % 1));
 	};
-	const payload = NetworkFileSchema.parse({
+	const payload = LiveNetworkFileSchema.parse({
 		generated_utc: positions.generated_utc,
 		vehicles_in_service: positions.vehicles.length,
 		on_time_pct: classified > 0 ? percentage(status_dist.on_time, classified) : null,

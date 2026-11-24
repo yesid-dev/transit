@@ -18,8 +18,8 @@ import { createMemoryLiveReader } from '#lib/v1/live/__fixtures__/reader.ts';
 const reader = createMemoryLiveReader();
 import {
 	AlertsFileSchema,
-	VehiclesFileSchema,
-	TripsFileSchema,
+	LiveVehiclesFileSchema,
+	LiveTripsFileSchema,
 	NetworkFileSchema,
 } from '#lib/v1/schemas/index.ts';
 
@@ -342,11 +342,11 @@ describe('RouteDetail article cover and focus scope', () => {
 		const spies = [
 			vi
 				.spyOn(reader, 'vehicles')
-				.mockResolvedValue(VehiclesFileSchema.parse({ generated_utc, vehicles: [] })),
+				.mockResolvedValue(LiveVehiclesFileSchema.parse({ generated_utc, vehicles: [] })),
 			vi
 				.spyOn(reader, 'trips')
 				.mockResolvedValue(
-					TripsFileSchema.parse({ generated_utc, feed_captured_utc: generated_utc, trips: {} }),
+					LiveTripsFileSchema.parse({ generated_utc, feed_captured_utc: generated_utc, trips: {} }),
 				),
 			vi
 				.spyOn(reader, 'alerts')

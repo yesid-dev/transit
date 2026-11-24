@@ -3,7 +3,7 @@ const reader = createMemoryLiveReader();
 import { afterEach, expect, it, vi } from 'vitest';
 import { flushSync } from 'svelte';
 
-import { ManifestSchema, AlertsFileSchema, VehiclesFileSchema } from '#lib/v1/schemas/index.ts';
+import { ManifestSchema, AlertsFileSchema, LiveVehiclesFileSchema } from '#lib/v1/schemas/index.ts';
 import { createLiveStore } from './store.svelte';
 import { livePresentation } from './livePresentation';
 
@@ -42,7 +42,7 @@ it.each(['en', 'fr'] as const)(
 			expect(present().stamp).toMatchObject({ ageSeconds: null, isStale: false });
 			const now = new Date();
 			vi.spyOn(reader, 'vehicles').mockResolvedValue(
-				VehiclesFileSchema.parse({ generated_utc: now.toISOString(), vehicles: [] }),
+				LiveVehiclesFileSchema.parse({ generated_utc: now.toISOString(), vehicles: [] }),
 			);
 			vi.spyOn(reader, 'alerts').mockResolvedValue(
 				AlertsFileSchema.parse({
@@ -59,7 +59,7 @@ it.each(['en', 'fr'] as const)(
 			expect(present().stamp.ageSeconds).not.toBeNull();
 			const old = new Date(+now - 901000).toISOString();
 			vi.mocked(reader.vehicles).mockResolvedValue(
-				VehiclesFileSchema.parse({ generated_utc: old, vehicles: [] }),
+				LiveVehiclesFileSchema.parse({ generated_utc: old, vehicles: [] }),
 			);
 			vi.mocked(reader.alerts).mockResolvedValue(
 				AlertsFileSchema.parse({ generated_utc: old, alerts: [] }),
@@ -82,9 +82,9 @@ it('keeps the notice empty while vehicles are pending and alert capture is stale
 		live = createLiveStore(manifest, reader, { families: ['vehicles', 'alerts'] });
 		return () => live.stop();
 	});
-	let finish!: (value: ReturnType<typeof VehiclesFileSchema.parse>) => void;
+	let finish!: (value: ReturnType<typeof LiveVehiclesFileSchema.parse>) => void;
 	const now = new Date();
-	const vehicle = VehiclesFileSchema.parse({ generated_utc: now.toISOString(), vehicles: [] });
+	const vehicle = LiveVehiclesFileSchema.parse({ generated_utc: now.toISOString(), vehicles: [] });
 	vi.spyOn(reader, 'vehicles').mockReturnValue(
 		new Promise((resolve) => {
 			finish = resolve;

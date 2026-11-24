@@ -4,18 +4,24 @@ import {
 	TripSchema as PublishedTripSchema,
 	TripsFileSchema as PublishedTripsFileSchema,
 } from './generated/live_trips';
-import { StatusCodeSchema } from './types';
+import { LiveStatusCodeSchema } from './types';
 
-export const StopEtaSchema = PublishedStopEtaSchema.extend({
-	status: StatusCodeSchema.optional(),
+export {
+	PublishedStopEtaSchema as StopEtaSchema,
+	PublishedTripSchema as TripSchema,
+	PublishedTripsFileSchema as TripsFileSchema,
+};
+
+const LiveStopEtaSchema = PublishedStopEtaSchema.extend({
+	status: LiveStatusCodeSchema.optional(),
 });
-export type StopEta = z.infer<typeof StopEtaSchema>;
-export const TripSchema = PublishedTripSchema.extend({
-	status: StatusCodeSchema,
-	stops: z.array(StopEtaSchema).optional(),
+export type StopEta = z.infer<typeof LiveStopEtaSchema>;
+const LiveTripSchema = PublishedTripSchema.extend({
+	status: LiveStatusCodeSchema,
+	stops: z.array(LiveStopEtaSchema).optional(),
 });
-export type Trip = z.infer<typeof TripSchema>;
-export const TripsFileSchema = PublishedTripsFileSchema.extend({
-	trips: z.record(z.string(), TripSchema),
+export type Trip = z.infer<typeof LiveTripSchema>;
+export const LiveTripsFileSchema = PublishedTripsFileSchema.extend({
+	trips: z.record(z.string(), LiveTripSchema),
 });
-export type TripsFile = z.infer<typeof TripsFileSchema>;
+export type TripsFile = z.infer<typeof LiveTripsFileSchema>;

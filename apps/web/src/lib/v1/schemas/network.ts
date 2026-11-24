@@ -4,14 +4,17 @@ import {
 	StatusDistSchema as PublishedStatusDistSchema,
 } from './generated/live_network';
 
-export const StatusDistSchema = PublishedStatusDistSchema.omit({ severe: true });
-export type StatusDist = z.infer<typeof StatusDistSchema>;
+export { PublishedStatusDistSchema as StatusDistSchema };
+const LiveStatusDistSchema = PublishedStatusDistSchema.omit({ severe: true });
+export type StatusDist = z.infer<typeof LiveStatusDistSchema>;
 
 export const NetworkFileSchema = PublishedNetworkFileSchema.extend({
-	status_dist: StatusDistSchema,
 	non_responding: PublishedNetworkFileSchema.shape.non_responding.nullable(),
 });
-export type NetworkFile = z.infer<typeof NetworkFileSchema>;
+export const LiveNetworkFileSchema = NetworkFileSchema.extend({
+	status_dist: LiveStatusDistSchema,
+});
+export type NetworkFile = z.infer<typeof LiveNetworkFileSchema>;
 
 export {
 	OccupancyMixSchema,

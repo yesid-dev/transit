@@ -3,12 +3,12 @@ import { flushSync, settled } from 'svelte';
 import { buildLiveIndex } from '#lib/v1/live/index.ts';
 import type { LiveFamily, LiveFamilyState } from '#lib/v1/live/store.svelte.ts';
 import { createFilterStore, emptyFilterState, fromSearchParams } from '#lib/filters/index.ts';
-import { RouteFileSchema, StopFileSchema, VehicleSchema } from '#lib/v1/schemas/index.ts';
+import { RouteFileSchema, StopFileSchema, LiveVehicleSchema } from '#lib/v1/schemas/index.ts';
 import { createMapSelectionSession } from './mapSelectionSession.svelte';
 import type { SlimStopsIndex } from '#lib/v1/repositories/stopsSlim.ts';
 
 const generation = '2026-06-20T12:00:00Z';
-const vehicle = VehicleSchema.parse({
+const vehicle = LiveVehicleSchema.parse({
 	id: 'bus-1',
 	lat: 45.51,
 	lon: -73.57,
