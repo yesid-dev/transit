@@ -76,25 +76,23 @@ class FakeR2Bucket {
     const range = options.range;
     const rangeHeader = range instanceof Headers ? range.get("range") : null;
     if (rangeHeader && typeof object.body === "string") {
-      const match = /^bytes=(\d+)-(\d*)$/.exec(rangeHeader.trim());
-      if (match) {
-        const offset = Number(match[1]);
-        const end = match[2] === "" ? object.size - 1 : Number(match[2]);
-        if (offset >= object.size || end < offset) {
-          throw new Error(
-            "get: The requested range is not satisfiable. (10039)",
-          );
-        }
-        const length = end - offset + 1;
-        return new FakeR2Object({
-          body: object.body.slice(offset, end + 1),
-          etag: object.etag,
-          contentType: object.contentType,
-          cacheControl: object.cacheControl,
-          size: object.size,
-          range: { offset, length },
-        });
+      const bounds = /^bytes=(\d+)-(\d*)$/.exec(rangeHeader);
+      const suffix = /^bytes=-(\d+)$/.exec(rangeHeader);
+      let offset = suffix ? Math.max(0, object.size - Number(suffix[1])) : Number(bounds?.[1] ?? 0);
+      let end = Math.min(Number(bounds?.[2] || object.size - 1), object.size - 1);
+      if (bounds?.[2] && Number(bounds[2]) < offset) {
+        offset = 0;
+        end = object.size - 1;
       }
+      if (offset >= object.size) throw new Error("get: The requested range is not satisfiable. (10039)");
+      return new FakeR2Object({
+        body: object.body.slice(offset, end + 1),
+        etag: object.etag,
+        contentType: object.contentType,
+        cacheControl: object.cacheControl,
+        size: object.size,
+        range: { offset, length: end - offset + 1 },
+      });
     }
     return object;
   }
@@ -116,7 +114,7 @@ function makeEnv() {
         cacheControl: "public, max-age=604800",
       }),
       "v1/stm/static/basemap/montreal.pmtiles": new FakeR2Object({
-        body: "P".repeat(200),
+        body: "P".repeat(196) + "TAIL",
         etag: "basemap-rev-1",
         contentType: "application/octet-stream",
         cacheControl: "public, max-age=2592000",
@@ -151,6 +149,88 @@ test("v2 basemap exposes only the public tile archive and supports a byte range"
   assert.equal(await result.text(), "P".repeat(16));
   const invalid = await worker.fetch(new Request(url.replace("montreal.pmtiles", "%2fmanifest.json")), makeEnv());
   assert.equal(invalid.status, 404);
+});
+
+test("v2 basemap replays the same responses before and after the clean copy", async (t) => {
+  const legacyEnv = makeEnv();
+  const legacy = legacyEnv.SNAPSHOTS;
+  const object = legacy.objects.get("v1/stm/static/basemap/montreal.pmtiles");
+  const legacyGet = t.mock.method(legacy, "get");
+  const legacyHead = t.mock.method(legacy, "head");
+  const cleanEnv = {
+    ...legacyEnv,
+    TRANSIT1_R2_ENDPOINT: "fixture.r2.cloudflarestorage.com",
+    TRANSIT1_R2_READ_ACCESS_KEY_ID: "test-key",
+    TRANSIT1_R2_READ_SECRET_ACCESS_KEY: "test-secret",
+  };
+  let copied = false;
+  const fetch = t.mock.method(globalThis, "fetch", async (url, init) => {
+    assert.equal(url.host, "fixture.r2.cloudflarestorage.com");
+    assert.match(init.headers.get("authorization"), /Credential=test-key\//);
+    assert.equal(init.cache, "no-store");
+    if (url.pathname.endsWith("/missing.pmtiles")) return new Response("missing", { status: 404 });
+    assert.equal(url.pathname, "/transit-clean/basemaps/v1/stm/montreal.pmtiles");
+    if (!copied) return new Response("missing", { status: 404 });
+
+    const range = init.headers.get("range");
+    if (init.headers.get("if-none-match") === object.httpEtag) return new Response(null, { status: 304 });
+    if (init.headers.has("if-match")) return new Response("precondition failed", { status: 412 });
+    if (range === "bytes=200-") return new Response("invalid range", { status: 416 });
+    const headers = new Headers({ etag: object.httpEtag, "content-length": String(object.size) });
+    object.writeHttpMetadata(headers);
+    if (init.method === "HEAD") {
+      assert.equal(range, null);
+      return new Response(null, { headers });
+    }
+    if (!range) return new Response(object.body, { headers });
+    const [start, end] = { "bytes=0-15": [0, 15], "bytes=196-199": [196, 199],
+      "bytes=198-209": [198, 199], "bytes=-4": [196, 199], "bytes=196-": [196, 199] }[range];
+    headers.set("content-range", `bytes ${start}-${end}/${object.size}`);
+    headers.set("content-length", String(end - start + 1));
+    return new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(object.body.slice(start, end + 1)));
+        controller.close();
+      },
+    }), { status: 206, headers });
+  });
+
+  const path = "https://data.yesid.dev/v2/stm/basemap/";
+  const cases = [
+    [{}, 200, object.body],
+    [{ method: "HEAD", headers: { range: "bytes=0-15" } }, 200, ""],
+    [{ headers: { range: "bytes=0-15" } }, 206, "P".repeat(16), "bytes 0-15/200"],
+    [{ headers: { range: "bytes=196-199" } }, 206, "TAIL", "bytes 196-199/200"],
+    [{ headers: { range: "bytes=198-209" } }, 206, "IL", "bytes 198-199/200"],
+    [{ headers: { range: "bytes=196-" } }, 206, "TAIL", "bytes 196-199/200"],
+    [{ headers: { range: "bytes=-4" } }, 206, "TAIL", "bytes 196-199/200"],
+    [{ headers: { range: "bytes=3-2" } }, 206, object.body, "bytes 0-199/200"],
+    [{ headers: { range: "bytes=200-" } }, 416, ""],
+    [{ headers: { "if-none-match": object.httpEtag } }, 304, ""],
+    [{ method: "HEAD", headers: { "if-match": '"different"' } }, 412, ""],
+    [{ headers: { range: "bytes=0-15" } }, 404, ""],
+  ];
+  for (const [init, status, body, contentRange] of cases) {
+    const request = new Request(path + (status === 404 ? "missing.pmtiles" : "montreal.pmtiles"), init);
+    copied = false;
+    const legacyResponse = await worker.fetch(request, legacyEnv);
+    assert.equal(legacyResponse.status, status);
+    assert.equal(await legacyResponse.text(), body);
+    assert.equal(legacyResponse.headers.get("content-range"), contentRange ?? null);
+
+    for (const afterCopy of [false, true]) {
+      copied = afterCopy;
+      fetch.mock.resetCalls();
+      legacyGet.mock.resetCalls();
+      legacyHead.mock.resetCalls();
+      const result = await worker.fetch(request, cleanEnv);
+      assert.equal(result.status, status);
+      assert.deepEqual([...result.headers], [...legacyResponse.headers]);
+      assert.equal(await result.text(), body);
+      assert.equal(fetch.mock.callCount(), afterCopy && [304, 412].includes(status) ? 2 : 1);
+      assert.equal(legacyGet.mock.callCount() + legacyHead.mock.callCount(), !afterCopy || status === 404 ? 1 : 0);
+    }
+  }
 });
 
 test("GET path outside /data/v1 returns 404", async () => {

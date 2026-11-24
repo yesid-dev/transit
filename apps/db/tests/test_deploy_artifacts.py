@@ -724,6 +724,40 @@ def test_refresh_basemap_workflow_uses_generous_provider_extracts() -> None:
         assert extract.min_latitude <= pan.min_latitude < pan.max_latitude <= extract.max_latitude
 
 
+def test_refresh_basemap_copy_is_read_only_on_legacy_storage() -> None:
+    workflow = yaml.safe_load(
+        (REPO_ROOT / ".github/workflows/refresh-basemap.yml").read_text(encoding="utf-8")
+    )
+    triggers = workflow.get("on", workflow.get(True))
+    copy_input = triggers["workflow_dispatch"]["inputs"]["copy_current"]
+    assert copy_input["type"] == "boolean"
+    assert copy_input["default"] is False
+
+    job = workflow["jobs"]["refresh-basemap"]
+    steps = {step["name"]: step for step in job["steps"] if "name" in step}
+    for name in (
+        "Install go-pmtiles",
+        "Extract provider area from the latest Protomaps daily build",
+        "Verify the extract (fail loudly on regress)",
+        "Replace the stable R2 object with verified backup and readback",
+    ):
+        assert steps[name]["if"] == "${{ !inputs.copy_current }}"
+    copy = steps["Read the current legacy basemap"]
+    assert copy["if"] == "${{ inputs.copy_current }}"
+    assert 'https://transit.yesid.dev/data/${R2_KEY}' in copy["run"]
+
+    upload = steps["Upload the clean basemap and verify its readback"]
+    assert "if" not in upload
+    assert "basemapKey" in upload["run"]
+    assert "aws s3api put-object" in upload["run"]
+    assert "aws s3api get-object" in upload["run"]
+    assert 'test "$(stat -c%s "${readback}")" = "${SIZE}"' in upload["run"]
+    assert 'test "$(sha256sum < "${readback}" | cut -d\' \' -f1)" = "${SHA256}"' in upload["run"]
+    for secret in ("TRANSIT1_R2_WRITE_ACCESS_KEY_ID", "TRANSIT1_R2_WRITE_SECRET_ACCESS_KEY"):
+        assert secret in str(upload["env"])
+        assert yaml.safe_dump(workflow).count(secret) == 1
+
+
 
 def _environment_keys(service: dict) -> set[str]:
     env = service.get("environment", {})

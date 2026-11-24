@@ -14,6 +14,10 @@ on:
         description: "Protomaps build YYYYMMDD; blank uses yesterday (pin to reproduce poster receipts)"
         type: string
         required: false
+      copy_current:
+        description: "Copy the current basemap to clean storage without rebuilding or replacing the source"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -41,7 +45,7 @@ jobs:
           REQUESTED_PROVIDER: ${{ inputs.provider }}
         run: |
           uv run python - <<'PY'
-          import json, os
+          import json, os, re
           from pathlib import PurePosixPath
           from transit_ops.providers.registry import ProviderRegistry
           registry = ProviderRegistry.from_project_root()
@@ -56,7 +60,8 @@ jobs:
               if not bounds or not public.basemap_url:
                   raise ValueError(f"Missing basemap configuration: {provider_id}")
               prefix = f"/data/v1/{provider_id}/static/basemap/"
-              if not public.basemap_url.startswith(prefix):
+              file = PurePosixPath(public.basemap_url).name
+              if public.basemap_url != prefix + file or not re.fullmatch(r"[a-zA-Z0-9_-]+\.pmtiles", file):
                   raise ValueError(f"Foreign basemap path: {provider_id}")
               coordinates = [
                   bounds.min_longitude, bounds.min_latitude,
@@ -66,7 +71,7 @@ jobs:
                   "provider": provider_id,
                   "bbox": ",".join(map(str, coordinates)),
                   "key": public.basemap_url.removeprefix("/data/"),
-                  "file": PurePosixPath(public.basemap_url).name,
+                  "file": file,
               })
           if not jobs:
               raise ValueError("No providers selected")
@@ -83,6 +88,7 @@ jobs:
       matrix: ${{ fromJSON(needs.providers.outputs.matrix) }}
     env:
       BBOX: ${{ matrix.bbox }}
+      CITY: ${{ matrix.provider }}
       R2_KEY: ${{ matrix.key }}
       EXTRACT_FILE: ${{ matrix.file }}
     steps:
@@ -90,6 +96,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install go-pmtiles
+        if: ${{ !inputs.copy_current }}
         run: |
           curl -sSfL "https://github.com/protomaps/go-pmtiles/releases/download/v${PMTILES_VERSION}/go-pmtiles_${PMTILES_VERSION}_Linux_x86_64.tar.gz" -o /tmp/go-pmtiles.tar.gz
           echo "adda9f979b719416d0c0069f57401a21c32078c46870a94f9bbda95d850f199f  /tmp/go-pmtiles.tar.gz" | sha256sum -c -
@@ -98,6 +105,7 @@ jobs:
           pmtiles version
 
       - name: Extract provider area from the latest Protomaps daily build
+        if: ${{ !inputs.copy_current }}
         env:
           PLANET_BUILD: ${{ inputs.planet_build }}
         run: |
@@ -108,6 +116,7 @@ jobs:
           timeout 5m pmtiles extract "${SRC}" "${EXTRACT_FILE}" --bbox="${BBOX}" --maxzoom="${MAXZOOM}"
 
       - name: Verify the extract (fail loudly on regress)
+        if: ${{ !inputs.copy_current }}
         run: |
           timeout 2m pmtiles verify "${EXTRACT_FILE}"
           timeout 2m pmtiles show "${EXTRACT_FILE}"
@@ -119,6 +128,7 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: Replace the stable R2 object with verified backup and readback
+        if: ${{ !inputs.copy_current }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: eccfb9bedd87d413eaf4cac6ae2285d3
@@ -132,3 +142,59 @@ jobs:
             --new-file="${EXTRACT_FILE}" \
             --receipt="${RUNNER_TEMP}/basemap-refresh-receipt.json"
           cat "${RUNNER_TEMP}/basemap-refresh-receipt.json"
+
+      - name: Read the current legacy basemap
+        if: ${{ inputs.copy_current }}
+        run: |
+          curl --fail --silent --show-error --max-time 180 \
+            --dump-header "${RUNNER_TEMP}/basemap-source.headers" \
+            --output "${EXTRACT_FILE}" "https://transit.yesid.dev/data/${R2_KEY}"
+
+      - name: Upload the clean basemap and verify its readback
+        env:
+          CLEAN_ENDPOINT: ${{ secrets.TRANSIT1_R2_ENDPOINT }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.TRANSIT1_R2_WRITE_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.TRANSIT1_R2_WRITE_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+        run: |
+          set -euo pipefail
+          CLEAN_KEY="$(node --input-type=module -e '
+            import { basemapKey } from "./apps/data-proxy/src/basemap.js";
+            console.log(basemapKey(...process.argv.slice(1)));
+          ' "${CITY}" "${EXTRACT_FILE}")"
+          SIZE="$(stat -c%s "${EXTRACT_FILE}")"
+          test "${SIZE}" -gt 0
+          SHA256="$(sha256sum < "${EXTRACT_FILE}" | cut -d' ' -f1)"
+          ETAG="\"$(md5sum < "${EXTRACT_FILE}" | cut -d' ' -f1)\""
+          MD5="$(openssl dgst -md5 -binary "${EXTRACT_FILE}" | openssl base64 -A)"
+
+          # The refresh sets only Content-Type. Copy mode also retains legacy HTTP metadata.
+          metadata=(--content-type application/octet-stream)
+          headers="${RUNNER_TEMP}/basemap-source.headers"
+          if [[ -f "${headers}" ]]; then
+            metadata=()
+            source_etag=""
+            while IFS= read -r header; do
+              name="${header%%:*}"
+              value="${header#*: }"
+              value="${value%$'\r'}"
+              case "${name,,}" in
+                cache-control|content-type|content-disposition|content-encoding|content-language|expires)
+                  metadata+=("--${name,,}" "${value}") ;;
+                etag) source_etag="${value}" ;;
+              esac
+            done < "${headers}"
+            test "${source_etag}" = "${ETAG}"
+          fi
+
+          # A single PUT preserves the content-derived ETag used by the legacy archive.
+          target=(--endpoint-url "${CLEAN_ENDPOINT}" --bucket transit-clean --key "${CLEAN_KEY}")
+          aws s3api put-object "${target[@]}" --body "${EXTRACT_FILE}" \
+            --content-md5 "${MD5}" "${metadata[@]}" > /dev/null
+          readback="${RUNNER_TEMP}/basemap-clean-readback.pmtiles"
+          clean_etag="$(aws s3api get-object "${target[@]}" --query ETag --output text "${readback}")"
+          test "${clean_etag}" = "${ETAG}"
+          test "$(stat -c%s "${readback}")" = "${SIZE}"
+          test "$(sha256sum < "${readback}" | cut -d' ' -f1)" = "${SHA256}"
+          printf 'Verified %s: %s bytes, SHA-256 %s\n' "${CLEAN_KEY}" "${SIZE}" "${SHA256}"
