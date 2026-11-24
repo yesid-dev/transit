@@ -432,7 +432,7 @@ const server = createServer((request, response) => {
 		return;
 	}
 	const scheduleMap = /^\/v2\/([^/]+)\/schedule-map$/.exec(url.pathname);
-	if (scheduleMap && !url.search) {
+	if (scheduleMap) {
 		const [, city] = scheduleMap;
 		const routePrefix = `/v1/${city}/static/routes/`;
 		const route_shapes = Object.fromEntries(
@@ -458,9 +458,16 @@ const server = createServer((request, response) => {
 				},
 			];
 		}
+		const lines = url.searchParams.get('lines');
+		const selected = lines ? new Set(JSON.parse(lines)) : null;
 		response.writeHead(200, { 'content-type': 'application/json' }).end(
 			JSON.stringify({
-				schedule: { date: '2026-11-21', route_shapes },
+				schedule: {
+					date: '2026-11-21',
+					route_shapes: selected
+						? Object.fromEntries(Object.entries(route_shapes).filter(([id]) => selected.has(id)))
+						: route_shapes,
+				},
 			}),
 		);
 		return;
@@ -523,6 +530,9 @@ const server = createServer((request, response) => {
 						});
 				}
 			}
+			routeDirections['1-373'] = [
+				{ dir: 0, headsign: 'Rail terminal', stops: [{ id: 'S1', seq: 1 }] },
+			];
 			// Keep the keyboard pagination case independent of the search index fixture.
 			for (let n = 1; n <= 25; n++) {
 				const id = `pagination-stop-${n}`;
@@ -543,7 +553,12 @@ const server = createServer((request, response) => {
 					routes: [...editionRoutes.values()],
 					...(kind === 'schedule-index'
 						? {
-								route_directions: routeDirections,
+								route_directions: Object.fromEntries(
+									Object.entries(routeDirections).map(([id, directions]) => [
+										id,
+										directions.map(({ dir, headsign, stops }) => ({ dir, headsign, stops })),
+									]),
+								),
 							}
 						: {}),
 					stops: [

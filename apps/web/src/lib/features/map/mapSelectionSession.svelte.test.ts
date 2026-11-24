@@ -6,6 +6,15 @@ import { createFilterStore, emptyFilterState, fromSearchParams } from '#lib/filt
 import { RouteFileSchema, StopFileSchema, LiveVehicleSchema } from '#lib/v1/schemas/index.ts';
 import { createMapSelectionSession } from './mapSelectionSession.svelte';
 import type { SlimStopsIndex } from '#lib/v1/repositories/stopsSlim.ts';
+import type { ScheduleMap } from '#lib/search/searchIndex.ts';
+
+const getScheduleShapes = vi.hoisted(() =>
+	vi.fn<(_ids: readonly string[]) => Promise<(ScheduleMap | null)[]>>(async () => []),
+);
+vi.mock('#lib/v1/repositories/scheduleShapes.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/v1/repositories/scheduleShapes.ts')>()),
+	getScheduleShapes,
+}));
 
 const generation = '2026-06-20T12:00:00Z';
 const vehicle = LiveVehicleSchema.parse({
@@ -32,6 +41,51 @@ const stop = StopFileSchema.parse({
 const disposers: (() => void)[] = [];
 afterEach(() => {
 	for (const dispose of disposers.splice(0)) dispose();
+	getScheduleShapes.mockClear();
+});
+
+it('keeps the selected line stop list visible while geometry is pending', async () => {
+	let deliver!: (maps: ScheduleMap[]) => void;
+	getScheduleShapes.mockReturnValueOnce(
+		new Promise((resolve) => {
+			deliver = resolve;
+		}),
+	);
+	const h = setup();
+	h.repositories.getRoute.mockResolvedValue({
+		...route,
+		directions: [{ dir: 0, headsign: 'Terminal', stops: [{ id: 'stop-1', seq: 1 }] }],
+	});
+	h.filters.addRoute('24');
+	h.session.select({ kind: 'route', id: '24' }, 'pick');
+	flushSync();
+	await settled();
+	expect(getScheduleShapes).toHaveBeenCalledExactlyOnceWith(['24']);
+	expect(h.session.detail).toMatchObject({
+		kind: 'route',
+		directions: [{ stops: [{ id: 'stop-1' }] }],
+	});
+	const shape = {
+		type: 'LineString',
+		coordinates: [
+			[-73.6, 45.5],
+			[-73.5, 45.6],
+		],
+	};
+	deliver([
+		{
+			date: generation.slice(0, 10),
+			route_shapes: {
+				'24': [{ dir: 0, headsign: 'Terminal', shape }],
+			},
+		},
+	]);
+	flushSync();
+	await settled();
+	expect(h.session.routeLineRoutes[0]?.directions).toMatchObject([{ shape }]);
+	expect(h.session.detail).toMatchObject({
+		directions: [{ stops: [{ id: 'stop-1' }] }],
+	});
 });
 
 function setup(search = '', stopsRequest?: Promise<SlimStopsIndex>) {

@@ -3,6 +3,7 @@ import json
 from datetime import UTC, date, datetime, timedelta, tzinfo
 from pathlib import Path
 from typing import Self
+from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -59,6 +60,30 @@ def test_search_reads_latest_edition_for_a_declared_public_city(
     assert json.loads(body)["schedule"]["route_directions"] == {
         "L1": [{"dir": 0, "headsign": "Terminus"}]
     }
+
+    directory = tmp_path / "maps" / "v1" / "demo" / str(latest)
+    directory.mkdir(parents=True)
+    shapes = {
+        "A/B,é": [{"dir": 0, "shape": {"type": "LineString", "coordinates": [[0, 0], [1, 1]]}}],
+        "L2": [{"dir": 1, "headsign": "Station"}],
+    }
+    (directory / f"v{store.cleaning_version}.json").write_text(
+        json.dumps({"date": str(latest), "route_shapes": shapes}), encoding="utf8"
+    )
+    status, _, body = asyncio.run(http(app, "/schedule-map", "city=demo"))
+    assert status == 200
+    assert json.loads(body) == {"schedule": {"date": str(latest), "route_shapes": shapes}}
+    query = urlencode({"city": "demo", "lines": json.dumps(["missing", "A/B,é"])})
+    status, _, body = asyncio.run(http(app, "/schedule-map", query))
+    assert status == 200
+    assert json.loads(body) == {
+        "schedule": {"date": str(latest), "route_shapes": {"A/B,é": shapes["A/B,é"]}}
+    }
+    assert asyncio.run(http(app, "/schedule-index", query))[0] == 400
+    assert asyncio.run(http(app, "/schedule-map", "city=demo&lines="))[0] == 400
+    for invalid_lines in ([], [42], [" A"], ["A\n"], ["A" * 257], ["A"] * 257):
+        query = urlencode({"city": "demo", "lines": json.dumps(invalid_lines)})
+        assert asyncio.run(http(app, "/schedule-map", query))[0] == 400
 
 
 def test_search_keeps_only_stable_ids_with_in_service_evidence_in_the_window(

@@ -133,6 +133,14 @@ test('rail detail uses schedule geometry and omits vehicles from a line without 
 	const scheduleResponse = page.waitForResponse(
 		(response) => new URL(response.url()).pathname === '/api/schedule-edition' && response.ok(),
 	);
+	const shapeResponse = page.waitForResponse((response) => {
+		const url = new URL(response.url());
+		return (
+			url.pathname === '/api/schedule-map' &&
+			(url.searchParams.get('lines') ?? '').includes('1-373') &&
+			response.ok()
+		);
+	});
 	const snapshotResponse = page.waitForResponse((response) => captureUrl.test(response.url()));
 	await page.route('**/api/stops/slim?provider=stm', (route) =>
 		route.fulfill({
@@ -142,7 +150,9 @@ test('rail detail uses schedule geometry and omits vehicles from a line without 
 	const rail = [-73.595, 45.505];
 	await page.goto(`/map?provider=stm&mapview=${rail.join(',')},15,0,0`);
 	const schedule = await (await scheduleResponse).json();
-	expect(schedule.schedule.route_directions['1-373'][0].shape.type).toBe('LineString');
+	expect(schedule.schedule.route_directions['1-373'][0]).not.toHaveProperty('shape');
+	const shapes = await (await shapeResponse).json();
+	expect(shapes.schedule.route_shapes['1-373'][0].shape.type).toBe('LineString');
 	await snapshotResponse;
 	await expect(page.getByTestId('map-progressive')).toHaveAttribute(
 		'data-map-progressive-state',

@@ -278,10 +278,33 @@ class Engine:
             question: Question | Ranking | str
             language: Language
             raw = scope["query_string"]
+            lines = None
             if route in schedule_routes:
-                fields = parse_qs(raw.decode("ascii"), strict_parsing=True, max_num_fields=1)
-                if set(fields) != {"city"}:
+                scoped_map = route == "/schedule-map"
+                if scoped_map and (len(raw) > 4096 or re.search(rb"%(?![a-fA-F0-9]{2})", raw)):
+                    raise ValueError("invalid query encoding or length")
+                fields = parse_qs(
+                    raw.decode("ascii"),
+                    strict_parsing=True,
+                    max_num_fields=2 if scoped_map else 1,
+                    keep_blank_values=scoped_map,
+                    errors="strict" if scoped_map else "replace",
+                )
+                if "city" not in fields or any(len(values) != 1 for values in fields.values()):
                     raise ValueError("provide city")
+                if set(fields) - ({"city", "lines"} if scoped_map else {"city"}):
+                    raise ValueError("unknown parameter")
+                if "lines" in fields:
+                    ids = json.loads(fields["lines"][0])
+                    if not isinstance(ids, list) or not 1 <= len(ids) <= 256 or not all(
+                        isinstance(line, str)
+                        and 1 <= len(line) <= 256
+                        and line.isprintable()
+                        and line == line.strip()
+                        for line in ids
+                    ):
+                        raise ValueError("provide 1 to 256 valid line IDs")
+                    lines = set(ids)
                 question, output, language = fields["city"][0], "json", "en"
             else:
                 question, output, language = _question(raw, ranking=route == "/ranking")
@@ -322,6 +345,11 @@ class Engine:
                         self.store, question, today - timedelta(days=1),
                         index="maps" if route == "/schedule-map" else "search",
                     )
+                    if schedule is not None and lines is not None:
+                        shapes = schedule["route_shapes"]
+                        schedule["route_shapes"] = {
+                            line: shapes[line] for line in sorted(lines) if line in shapes
+                        }
                     return {"schedule": schedule}, 0
                 return search_index(self.store, question), 0
             if isinstance(question, Ranking):

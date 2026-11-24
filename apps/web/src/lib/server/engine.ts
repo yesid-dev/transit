@@ -522,7 +522,34 @@ export async function getScheduleEdition(city: string, visitorIp?: string | null
 	return result.kind === 'answer' ? result.answer.schedule : null;
 }
 
-export async function getScheduleMap(city: string, visitorIp?: string | null) {
-	const result = await query(cityQuestion(city, '/schedule-map'), scheduleMapSchema, visitorIp);
-	return result.kind === 'answer' ? result.answer.schedule : null;
+export async function getScheduleMap(
+	city: string,
+	lines: readonly string[],
+	visitorIp?: string | null,
+) {
+	const question = cityQuestion(city, '/schedule-map');
+	const signal = AbortSignal.timeout(ENGINE_TIMEOUT_MS);
+	try {
+		let response = await engineFetch(
+			{ ...question, parameters: { lines: JSON.stringify(lines) } },
+			signal,
+			visitorIp,
+		);
+		// Older engines may reject or ignore the line cut during rollout.
+		if (response?.status === 400) response = await engineFetch(question, signal, visitorIp);
+		if (!response?.ok) return null;
+		const { schedule } = (await response.json()) as {
+			schedule?: { date: unknown; route_shapes: Record<string, unknown> };
+		};
+		if (!schedule?.route_shapes) return null;
+		const route_shapes = Object.fromEntries(
+			lines
+				.filter((line) => Object.hasOwn(schedule.route_shapes, line))
+				.map((line) => [line, schedule.route_shapes[line]]),
+		);
+		const result = scheduleMapSchema.safeParse({ schedule: { date: schedule.date, route_shapes } });
+		return result.success ? result.data.schedule : null;
+	} catch {
+		return null;
+	}
 }

@@ -603,6 +603,12 @@ vi.mock('#lib/v1/repositories/static.ts', () => ({
 	getRoute: harness.getRoute,
 	getStop: harness.getStop,
 }));
+
+vi.mock('#lib/v1/repositories/scheduleShapes.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/v1/repositories/scheduleShapes.ts')>()),
+	getScheduleShapes: async () => [],
+	getMapRoutes: (ids: readonly string[]) => Promise.all(ids.map((id) => harness.getRoute(id))),
+}));
 vi.mock('#lib/v1/live/store.svelte.ts', async () => {
 	const { mapHeroReceiptSignals: signals } =
 		await import('./__fixtures__/MapHeroReceiptSignals.svelte');

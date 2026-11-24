@@ -126,17 +126,34 @@ test('estimated vehicle draws move before the next feed poll @layout', async ({ 
 		// S1 lies behind the eastbound vehicle. This case measures motion without a known next stop.
 		return route.fulfill({ json: layoutCapture('stm', { stop_id: null }) });
 	});
-	await page.route('**/api/schedule-edition?city=stm', async (route) => {
-		const response = await route.fetch();
+	await page.route('**/api/schedule-map?city=stm&*', async (route) => {
+		const url = new URL(route.request().url());
+		if (!JSON.parse(url.searchParams.get('lines') ?? '[]').includes('24')) {
+			return route.fallback();
+		}
+		const [response, editionResponse] = await Promise.all([
+			route.fetch(),
+			route.fetch({ url: new URL('/api/schedule-edition?city=stm', url).href }),
+		]);
 		const payload = await response.json();
-		payload.schedule.route_directions['24'][0].shape = {
-			type: 'LineString',
-			coordinates: [
-				[-73.61, 45.51],
-				[-73.55, 45.51],
-			],
-		};
-		return route.fulfill({ response, json: payload });
+		const { schedule } = await editionResponse.json();
+		const eastbound = schedule.route_directions['24'].find(({ dir }: { dir: number }) => dir === 1);
+		expect(eastbound, 'line 24 has an eastbound schedule direction').toBeDefined();
+		expect(payload.schedule.date).toBe(schedule.date);
+		payload.schedule.route_shapes['24'] = [
+			{
+				dir: eastbound.dir,
+				headsign: eastbound.headsign,
+				shape: {
+					type: 'LineString',
+					coordinates: [
+						[-73.61, 45.51],
+						[-73.55, 45.51],
+					],
+				},
+			},
+		];
+		return route.fulfill({ json: payload });
 	});
 	await page.goto('/map', { waitUntil: 'networkidle' });
 	await expect

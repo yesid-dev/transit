@@ -18,7 +18,9 @@ export const scheduleSchema = z.object({
 export const scheduleIndexSchema = z.object({
 	schedule: scheduleSchema
 		.extend({
-			route_directions: z.record(z.string(), z.array(RouteDirectionSchema)).optional(),
+			route_directions: z
+				.record(z.string(), z.array(RouteDirectionSchema.omit({ shape: true })))
+				.optional(),
 		})
 		.nullable(),
 });
@@ -27,10 +29,14 @@ export const scheduleMapSchema = z.object({
 	schedule: z
 		.object({
 			date: z.iso.date(),
-			route_shapes: z.record(z.string(), z.array(RouteDirectionSchema)),
+			route_shapes: z.record(
+				z.string(),
+				z.array(RouteDirectionSchema.pick({ dir: true, headsign: true, shape: true })),
+			),
 		})
 		.nullable(),
 });
+export type ScheduleMap = NonNullable<z.infer<typeof scheduleMapSchema>['schedule']>;
 
 export const searchIndexSchema = z.object({
 	schedule: scheduleSchema.nullable(),

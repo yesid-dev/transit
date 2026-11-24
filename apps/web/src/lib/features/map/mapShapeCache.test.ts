@@ -45,7 +45,7 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 
 describe('createShapeCacheManager.prefetch', () => {
 	it('replaces refreshed geometry without restoring an older accepted resource value', () => {
-		const mgr = createShapeCacheManager(async (id) => routeFile(id));
+		const mgr = createShapeCacheManager(async (ids) => ids.map(routeFile));
 		const old = routeFile('24');
 		const nextLeg = EAST_LEG.map(([lon, lat]) => [lon, lat + 0.01]);
 		const next = RouteFileSchema.parse({
@@ -63,7 +63,7 @@ describe('createShapeCacheManager.prefetch', () => {
 	});
 
 	it('reuses geometry remembered from a route selection without another fetch', () => {
-		const getRoute = vi.fn(async (id: string) => routeFile(id));
+		const getRoute = vi.fn(async (ids: readonly string[]) => ids.map(routeFile));
 		const mgr = createShapeCacheManager(getRoute);
 
 		mgr.remember(routeFile('24'));
@@ -78,7 +78,7 @@ describe('createShapeCacheManager.prefetch', () => {
 		let rejectRoute!: (error: Error) => void;
 		const getRoute = vi.fn(
 			() =>
-				new Promise<RouteFile | null>((_resolve, reject) => {
+				new Promise<(RouteFile | null)[]>((_resolve, reject) => {
 					rejectRoute = reject;
 				}),
 		);
@@ -95,28 +95,28 @@ describe('createShapeCacheManager.prefetch', () => {
 	});
 
 	it('retains all remembered routes', () => {
-		const mgr = createShapeCacheManager(async (id) => routeFile(id));
+		const mgr = createShapeCacheManager(async (ids) => ids.map(routeFile));
 		for (let i = 0; i <= 249; i += 1) mgr.remember(routeFile(`r${i}`));
 
 		expect(mgr.shapeFor(feature('r0'))).toEqual(EAST_LEG);
 		expect(mgr.shapeFor(feature(`r249`))).toEqual(EAST_LEG);
 	});
 
-	it('fetches each route at most once across polls (deduped)', async () => {
-		const getRoute = vi.fn(async (id: string) => routeFile(id));
+	it('requests the set of newly seen lines once across polls', async () => {
+		const getRoute = vi.fn(async (ids: readonly string[]) => ids.map(routeFile));
 		const mgr = createShapeCacheManager(getRoute);
 
 		mgr.prefetch([vehicle('a', '161'), vehicle('b', '161'), vehicle('c', '24')]);
 		await flush();
-		expect(getRoute).toHaveBeenCalledTimes(2);
+		expect(getRoute).toHaveBeenCalledExactlyOnceWith(['161', '24']);
 
 		mgr.prefetch([vehicle('a', '161'), vehicle('c', '24')]);
 		await flush();
-		expect(getRoute).toHaveBeenCalledTimes(2);
+		expect(getRoute).toHaveBeenCalledOnce();
 	});
 
 	it('skips vehicles with no route id (null / empty)', async () => {
-		const getRoute = vi.fn(async (id: string) => routeFile(id));
+		const getRoute = vi.fn(async (ids: readonly string[]) => ids.map(routeFile));
 		const mgr = createShapeCacheManager(getRoute);
 
 		mgr.prefetch([vehicle('a', null), vehicle('b', '')]);
@@ -125,7 +125,7 @@ describe('createShapeCacheManager.prefetch', () => {
 	});
 
 	it('caches a resolved shape so shapeFor upgrades a bus to its route polyline', async () => {
-		const getRoute = vi.fn(async (id: string) => routeFile(id));
+		const getRoute = vi.fn(async (ids: readonly string[]) => ids.map(routeFile));
 		const mgr = createShapeCacheManager(getRoute);
 		const revision = () => mgr.shapeFor.revision?.();
 
@@ -142,9 +142,9 @@ describe('createShapeCacheManager.prefetch', () => {
 
 	it('fails soft and allows a later retry when a fetch rejects', async () => {
 		const getRoute = vi
-			.fn<(id: string) => Promise<RouteFile | null>>()
+			.fn<(ids: readonly string[]) => Promise<(RouteFile | null)[]>>()
 			.mockRejectedValueOnce(new Error('network'))
-			.mockResolvedValueOnce(routeFile('161'));
+			.mockResolvedValueOnce([routeFile('161')]);
 		const mgr = createShapeCacheManager(getRoute);
 		const revision = () => mgr.shapeFor.revision?.();
 
@@ -163,8 +163,8 @@ describe('createShapeCacheManager.prefetch', () => {
 	});
 
 	it('ledgers null and empty results without advancing the revision', async () => {
-		const getRoute = vi.fn(async (id: string) =>
-			id === 'null-route' ? null : { ...routeFile(id), directions: [] },
+		const getRoute = vi.fn(async (ids: readonly string[]) =>
+			ids.map((id) => (id === 'null-route' ? null : { ...routeFile(id), directions: [] })),
 		);
 		const mgr = createShapeCacheManager(getRoute);
 
@@ -176,11 +176,11 @@ describe('createShapeCacheManager.prefetch', () => {
 
 		mgr.prefetch([vehicle('a', 'null-route'), vehicle('b', 'empty-route')]);
 		await flush();
-		expect(getRoute).toHaveBeenCalledTimes(2);
+		expect(getRoute).toHaveBeenCalledOnce();
 	});
 
 	it('retains every route for the active provider without refetching', async () => {
-		const getRoute = vi.fn(async (id: string) => routeFile(id));
+		const getRoute = vi.fn(async (ids: readonly string[]) => ids.map(routeFile));
 		const mgr = createShapeCacheManager(getRoute);
 
 		const ids = Array.from({ length: 250 }, (_, i) => `r${i}`);
@@ -191,14 +191,14 @@ describe('createShapeCacheManager.prefetch', () => {
 		expect(mgr.shapeFor(feature(`r249`))).toEqual(EAST_LEG);
 
 		mgr.prefetch([vehicle('again', 'r0')]);
-		expect(getRoute).toHaveBeenCalledTimes(250);
+		expect(getRoute).toHaveBeenCalledExactlyOnceWith(ids);
 		await flush();
 		expect(mgr.shapeFor(feature('r0'))).toEqual(EAST_LEG);
 	});
 
 	it('dedupes two prefetches while the first request is still pending', async () => {
-		let resolveRoute!: (route: RouteFile | null) => void;
-		const pending = new Promise<RouteFile | null>((resolve) => {
+		let resolveRoute!: (routes: (RouteFile | null)[]) => void;
+		const pending = new Promise<(RouteFile | null)[]>((resolve) => {
 			resolveRoute = resolve;
 		});
 		const getRoute = vi.fn(() => pending);
@@ -209,7 +209,7 @@ describe('createShapeCacheManager.prefetch', () => {
 
 		expect(getRoute).toHaveBeenCalledTimes(1);
 
-		resolveRoute(routeFile('161'));
+		resolveRoute([routeFile('161')]);
 		await flush();
 		expect(mgr.shapeFor(feature('161'))).toEqual(EAST_LEG);
 	});
@@ -217,12 +217,12 @@ describe('createShapeCacheManager.prefetch', () => {
 
 describe('createShapeCacheManager.shapeFor', () => {
 	it('returns null for a feature with no route id', () => {
-		const mgr = createShapeCacheManager(async (id) => routeFile(id));
+		const mgr = createShapeCacheManager(async (ids) => ids.map(routeFile));
 		expect(mgr.shapeFor(feature(''))).toBeNull();
 	});
 
 	it('returns null when the point is too far from the cached shape', async () => {
-		const mgr = createShapeCacheManager(async (id) => routeFile(id));
+		const mgr = createShapeCacheManager(async (ids) => ids.map(routeFile));
 		mgr.prefetch([vehicle('a', '161')]);
 		await flush();
 		expect(mgr.shapeFor(feature('161', -73.59, 45.6))).toBeNull();

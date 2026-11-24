@@ -17,6 +17,24 @@ const ANSWER = {
   evidence: { cleaning_versions: [6], days_pending: [], counts: { scheduled: 100 } },
 };
 
+test("passes schedule map line sets upstream and caches each cut independently", async (t) => {
+  const base = "/v2/demo/schedule-map";
+  const requestFor = (lines) => base + "?" + new URLSearchParams({ lines: JSON.stringify(lines) });
+  const f = fixture(t, (request) => {
+    const lines = new URL(request.url).searchParams.get("lines");
+    return Response.json({ lines: lines ? JSON.parse(lines) : null });
+  });
+  assert.deepEqual(await (await f.fetch(base)).json(), { lines: null });
+  assert.deepEqual(await (await f.fetch(requestFor(["B", "A/B,é"]))).json(), { lines: ["A/B,é", "B"] });
+  assert.deepEqual(await (await f.fetch(requestFor(["A/B,é", "B", "B"]))).json(), { lines: ["A/B,é", "B"] });
+  assert.deepEqual(await (await f.fetch(requestFor(["B"]))).json(), { lines: ["B"] });
+  assert.equal(f.requests.length, 3);
+  for (const invalid of [[], [4], [" A"], ["A\n"], ["A".repeat(257)], Array(257).fill("A")]) {
+    assert.equal((await f.fetch(requestFor(invalid))).status, 400);
+  }
+  assert.equal(f.requests.length, 3);
+});
+
 function stubLiveStorage(t, env, respond) {
   Object.assign(env, {
     TRANSIT1_R2_ENDPOINT: "fixture.r2.cloudflarestorage.com",

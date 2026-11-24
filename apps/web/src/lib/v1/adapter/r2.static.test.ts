@@ -16,13 +16,15 @@ const schedule = {
 	route_directions: { 'A/B': [{ dir: 0, shape, stops: [{ id: '../é', seq: 1 }] }] },
 };
 
-it('projects rail geometry and stop metadata from one clean schedule edition', async () => {
+it('projects stop metadata from one clean schedule edition and strips geometry', async () => {
 	const fetch = vi.fn(async () => Response.json({ schedule }));
 	const ctx = { fetch, providerId: 'demo', cache: new Map<string, unknown>() };
-	await expect(r2Adapter.static.route('A/B', ctx)).resolves.toMatchObject({
+	const route = await r2Adapter.static.route('A/B', ctx);
+	expect(route).toMatchObject({
 		id: 'A/B',
-		directions: [{ shape, stops: [{ id: '../é', name: 'É' }] }],
+		directions: [{ stops: [{ id: '../é', name: 'É' }] }],
 	});
+	expect(route?.directions?.[0]).not.toHaveProperty('shape');
 	await expect(r2Adapter.static.stop('../é', ctx)).resolves.toMatchObject({
 		id: '../é',
 		routes_served: ['A/B'],
