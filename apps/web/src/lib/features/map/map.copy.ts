@@ -78,9 +78,8 @@ export const copy = defineCopy({
 			// Minutes are whole and positive; `NB` keeps a number with its unit.
 			moreEarly: (m: number) => `More than ${m}${NB}min early`,
 			earlyToLate: (early: number, late: number) =>
-				`${early}${NB}min early to under ${late}${NB}min late`,
-			lateRange: (from: number, below: number) => `${from} to under ${below}${NB}min late`,
-			lateOrMore: (m: number) => `${m}${NB}min late or more`,
+				`${early}${NB}min early to ${late}${NB}min late, inclusive`,
+			moreLate: (m: number) => `More than ${m}${NB}min late`,
 			unknown: 'The live feed gives no delay',
 			occupancy: {
 				empty: 'Empty',
@@ -93,7 +92,7 @@ export const copy = defineCopy({
 				`None for ${duration} or more. It can appear with any status.`,
 			heading: 'Direction of travel',
 			stop: 'Stop',
-			zoomBadges: '◆ marks a severe delay at every zoom. Zoom in to see the other status badges.',
+			zoomBadges: 'Zoom in to see the status badges.',
 			zoomCrowdingBadges: 'Zoom in to see each vehicle’s crowding badge.',
 		},
 		statusHelp: 'Tick a status to show only those vehicles.',
@@ -227,10 +226,8 @@ export const copy = defineCopy({
 			symbolsGroup: 'Symboles de la carte',
 			moreEarly: (m: number) => `Plus ${frMinutes(m, 'de')} d’avance`,
 			earlyToLate: (early: number, late: number) =>
-				`${capitalize(frMinutes(early, 'de'))} d’avance à moins ${frMinutes(late, 'de')} de retard`,
-			lateRange: (from: number, below: number) =>
-				`${capitalize(frMinutes(from, 'de'))} à moins ${frMinutes(below, 'de')} de retard`,
-			lateOrMore: (m: number) => `${capitalize(frMinutes(m))} de retard ou plus`,
+				`${capitalize(frMinutes(early, 'de'))} d’avance à ${frMinutes(late)} de retard, limites incluses`,
+			moreLate: (m: number) => `Plus ${frMinutes(m, 'de')} de retard`,
 			unknown: 'Le flux en direct n’indique aucun retard',
 			occupancy: {
 				empty: 'Vide',
@@ -243,8 +240,7 @@ export const copy = defineCopy({
 				`Aucune depuis ${duration} ou plus. Peut accompagner n’importe quel état.`,
 			heading: 'Sens de déplacement',
 			stop: 'Arrêt',
-			zoomBadges:
-				'◆ signale un retard sévère à tout niveau de zoom. Zoomez pour voir les autres symboles de statut.',
+			zoomBadges: 'Zoomez pour voir les symboles de statut.',
 			zoomCrowdingBadges: 'Zoomez pour voir le symbole d’occupation.',
 		},
 		statusHelp: 'Cochez un état pour n’afficher que ces véhicules.',

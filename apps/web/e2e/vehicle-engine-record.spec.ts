@@ -110,7 +110,9 @@ for (const width of [390, 1440]) {
 			await main.getByRole('link', { name: '40061' }).click();
 			await expect(
 				main.getByRole('heading', {
-					name: fr ? 'En retard, 4 min après l’heure prévue' : 'Late, 4 min behind the timetable',
+					name: fr
+						? 'À l’heure, 4 min après l’heure prévue'
+						: 'On time, 4 min behind the timetable',
 				}),
 			).toBeVisible();
 			await expect(main.getByRole('link', { name: /T1/ })).toHaveAttribute('href', /trip\/T1/);

@@ -4,12 +4,16 @@ import { createVehicleMotionController } from '#lib/components/map/motion/contro
 import type { MotionRuntime } from '#lib/components/map/motion/runtime.ts';
 import type { VehicleFC } from '#lib/components/map/vehicleLayer.ts';
 import type { Vehicle } from '#lib/v1/schemas/index.ts';
-import { VehicleSchema, VehiclesFileSchema, RouteFileSchema } from '#lib/v1/schemas/index.ts';
+import {
+	LiveVehicleSchema,
+	LiveVehiclesFileSchema,
+	RouteFileSchema,
+} from '#lib/v1/schemas/index.ts';
 import { emptyFilterState } from '#lib/filters/index.ts';
 
 const EPOCH = Date.parse('2026-06-21T12:00:00Z');
 const vehicle = (age = 10, lon = -73.59) =>
-	VehicleSchema.parse({
+	LiveVehicleSchema.parse({
 		id: 'bus',
 		trip: 'assigned-trip',
 		route: '24',
@@ -81,7 +85,7 @@ function harness() {
 		tick = '2026-06-21T12:00:00Z',
 		overrides: Partial<Vehicle> = {},
 	) {
-		const snapshot = VehiclesFileSchema.parse({
+		const snapshot = LiveVehiclesFileSchema.parse({
 			generated_utc: tick,
 			vehicles: [{ ...vehicle(age, lon), ...overrides }],
 		});

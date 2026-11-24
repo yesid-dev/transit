@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LiveIndex } from '#lib/v1/live/index.ts';
 import {
-	VehicleSchema,
+	LiveVehicleSchema,
 	type Alert,
 	type IsoUtc,
 	type RouteFile,
@@ -11,7 +11,7 @@ import { peekRepeatsDetail, resolveMapHoverPeek, type MapHoverPeekContext } from
 
 const now = Date.parse('2026-07-31T12:00:00Z');
 const vehicles = [
-	VehicleSchema.parse({
+	LiveVehicleSchema.parse({
 		id: 'bus-24',
 		lat: 45.51,
 		lon: -73.57,
@@ -24,7 +24,7 @@ const vehicles = [
 		delay_min: 4,
 		occupancy: 'standing',
 	}),
-	VehicleSchema.parse({
+	LiveVehicleSchema.parse({
 		id: 'bus-24-b',
 		lat: 45.52,
 		lon: -73.58,
@@ -94,7 +94,7 @@ describe('resolveMapHoverPeek', () => {
 	it.each([null, undefined, ''])(
 		'does not infer completed service from next_stop %s',
 		(next_stop) => {
-			const vehicle = VehicleSchema.parse({ ...vehicles[0], next_stop });
+			const vehicle = LiveVehicleSchema.parse({ ...vehicles[0], next_stop });
 			const peek = resolveMapHoverPeek(
 				{ kind: 'vehicle', id: vehicle.id },
 				{
@@ -130,7 +130,7 @@ describe('resolveMapHoverPeek', () => {
 	});
 
 	it('uses the slim-stop absence vocabulary without leaking an unresolved stop id as a name', () => {
-		const missingNextStop = VehicleSchema.parse({
+		const missingNextStop = LiveVehicleSchema.parse({
 			...vehicles[0],
 			id: 'bus-missing-stop',
 			next_stop: 'unresolved-stop',

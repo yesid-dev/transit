@@ -1512,7 +1512,7 @@ describe('StopDetail Live now — predictions grouped by line', () => {
 			const line51 = within(predictions()).getByRole('table', { name: /51/ });
 			const rows = within(line51).getAllByRole('row').slice(1);
 			expect(rows.map((row) => row.querySelector('td')?.textContent?.trim())).toEqual([
-				`▲${t.bands.late}`,
+				`●${t.bands.on_time}`,
 				`▼${t.bands.early}`,
 			]);
 			expect(rows.map((row) => row.querySelector('td:last-child')?.textContent?.trim())).toEqual([
@@ -1530,15 +1530,15 @@ describe('StopDetail Live now — predictions grouped by line', () => {
 
 	it('gives the rounded minute where it sits on a limit, with a shape only for one band', () => {
 		liveStore.index.byStopId.set('57191', [
-			{ eta_utc: '2026-06-15T12:05:00Z', route: '51', delay_min: 1 },
+			{ eta_utc: '2026-06-15T12:05:00Z', route: '51', delay_min: 5 },
 			{ eta_utc: '2026-06-15T12:06:00Z', route: '51', delay_min: 6 },
 			{ eta_utc: '2026-06-15T12:07:00Z', route: '80', delay_min: null },
 		] as StopDeparture[]);
 		render(StopDetail, { props: { id: '57191' } });
 		const statuses = [...predictions().querySelectorAll('tbody td:first-of-type')];
 		expect(statuses.map((cell) => cell.textContent?.trim()).slice(0, 2)).toEqual([
-			'About 1 min late',
-			'◆5+ min late',
+			'About 5 min late',
+			'▲Late',
 		]);
 		expect(statuses[0]!.querySelector('[aria-hidden="true"]')).toBeNull();
 		expect(statuses[2]!.querySelector('[data-slot="absent-value"]')).not.toBeNull();

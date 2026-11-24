@@ -108,8 +108,43 @@ describe('capture-backed Live projection', () => {
 			count: 1,
 		});
 		expect(captureDepartures(scoped, now).stops?.['stop-1']).toEqual([
-			{ route: '24', trip: 'trip-1', eta_utc: '2026-11-23T16:35:00.000Z', delay_min: 0 },
+			{
+				route: '24',
+				trip: 'trip-1',
+				eta_utc: '2026-11-23T16:35:00.000Z',
+				delay_min: 0,
+				status: 'on_time',
+			},
 		]);
+	});
+
+	it('classifies vehicles and stop predictions before rounding and excludes unknown delays', () => {
+		const vehicle = snapshot.vehicle_positions![0];
+		const positions = [300, 301, -61, null].map((delay, index) => ({
+			...vehicle,
+			id: String(index),
+			vehicle_id: String(index),
+			delay,
+		}));
+		expect(captureNetwork({ ...snapshot, vehicle_positions: positions }, now)).toMatchObject({
+			on_time_pct: 33,
+			status_dist: { early: 1, on_time: 1, late: 1, unknown: 1 },
+		});
+		const report = scoped.trip_updates[0];
+		const stop = report.stops[0];
+		for (const [delay, status] of [
+			[300, 'on_time'],
+			[301, 'late'],
+		] as const) {
+			const result = captureDepartures(
+				{
+					...scoped,
+					trip_updates: [{ ...report, stops: [{ ...stop, departure_delay: delay }] }],
+				},
+				now,
+			);
+			expect(result.stops?.['stop-1']?.[0]).toMatchObject({ delay_min: 5, status });
+		}
 	});
 
 	it('distinguishes an ETag race from a missing scoped report', async () => {

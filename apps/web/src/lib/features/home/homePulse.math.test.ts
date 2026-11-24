@@ -78,14 +78,14 @@ describe('home Live now card: figures proven from their definitions', () => {
 		// https://data.yesid.dev/v1/stm/live/network.json, generated 07:07:30Z.
 		const stm = published({
 			vehicles_in_service: 175,
-			status_dist: { on_time: 71, late: 55, severe: 9, early: 10, unknown: 30 },
+			status_dist: { on_time: 71, late: 64, early: 10, unknown: 30 },
 			on_time_pct: 87,
 			non_responding: 7,
 		});
 		// https://data.yesid.dev/v1/octranspo/live/network.json, generated 07:07:40Z.
 		const ottawa = published({
 			vehicles_in_service: 28,
-			status_dist: { on_time: 4, late: 5, severe: 1, early: 4, unknown: 14 },
+			status_dist: { on_time: 4, late: 6, early: 4, unknown: 14 },
 			on_time_pct: 64,
 			non_responding: 0,
 		});

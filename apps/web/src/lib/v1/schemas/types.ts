@@ -1,7 +1,9 @@
 import { z } from 'zod';
 
 export const StatusCodeSchema = z.enum(['early', 'on_time', 'late', 'severe', 'unknown']);
-export type StatusCode = z.infer<typeof StatusCodeSchema>;
+// The published snapshot vocabulary is frozen. Live uses the capture projection's four statuses.
+export const LiveStatusCodeSchema = StatusCodeSchema.exclude(['severe']);
+export type StatusCode = z.infer<typeof LiveStatusCodeSchema>;
 
 export const OccupancyCodeSchema = z.enum(['empty', 'many_seats', 'few_seats', 'standing', 'full']);
 export type OccupancyCode = z.infer<typeof OccupancyCodeSchema>;
@@ -12,7 +14,7 @@ export type SeverityCode = z.infer<typeof SeverityCodeSchema>;
 export const GrainSchema = z.enum(['live', 'day', 'week', 'month']);
 export type Grain = z.infer<typeof GrainSchema>;
 
-export const STATUS_CODES = StatusCodeSchema.options;
+export const STATUS_CODES = LiveStatusCodeSchema.options;
 export const OCCUPANCY_CODES = OccupancyCodeSchema.options;
 export const SEVERITY_CODES = SeverityCodeSchema.options;
 export const GRAINS = GrainSchema.options;

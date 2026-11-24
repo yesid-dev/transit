@@ -217,7 +217,6 @@ export const detailCopy = defineCopy({
 				early: 'En avance',
 				on_time: 'À l’heure',
 				late: 'En retard',
-				severe: '5+ min de retard',
 			},
 			about: (minutes: number, early: boolean) =>
 				`Environ ${minutes} min ${early ? 'd’avance' : 'de retard'}`,
@@ -226,7 +225,7 @@ export const detailCopy = defineCopy({
 			destinationCaveat:
 				'Les destinations viennent de l’horaire de cet arrêt. Une prévision ne nomme pas la destination de son trajet.',
 			statusNote:
-				'L’état et l’écart reposent sur le retard prévu moyen du trajet, arrondi à la minute : en avance, plus de 1 min d’avance; à l’heure, à moins de 1 min; en retard, de 1 min à moins de 5 min; 5+ min de retard, 5 min ou plus. Quand la minute arrondie tombe sur une limite, l’état donne plutôt cette minute : environ 1 min d’avance, environ 1 min de retard ou environ 5 min de retard.',
+				'L’état repose sur l’écart prévu à cet arrêt avant l’arrondi. À l’heure signifie de 1 min d’avance à 5 min de retard, limites incluses.',
 			noCapability: 'Aucune donnée en direct pour les lignes de cet arrêt',
 			noCapabilityBody:
 				'Transit ne reçoit aucune prévision pour les lignes qui desservent cet arrêt.',
@@ -392,7 +391,6 @@ export const detailCopy = defineCopy({
 				early: 'Early',
 				on_time: 'On time',
 				late: 'Late',
-				severe: '5+ min late',
 			},
 			about: (minutes, early) => `About ${minutes} min ${early ? 'early' : 'late'}`,
 			caveat:
@@ -400,7 +398,7 @@ export const detailCopy = defineCopy({
 			destinationCaveat:
 				'Destinations come from this stop’s schedule. A prediction does not name its trip’s destination.',
 			statusNote:
-				'Status and offset use the trip’s average predicted delay, rounded to the minute: early is more than 1 min early; on time, within 1 min; late, from 1 to under 5 min late; 5+ min late, 5 min or more. When the rounded minute sits on a limit, the status gives that minute instead: about 1 min early, about 1 min late or about 5 min late.',
+				'Status uses the predicted delay at this stop before rounding. On time is 1 min early to 5 min late, inclusive.',
 			noCapability: 'No live data for the lines at this stop',
 			noCapabilityBody: 'Transit receives no predictions for the lines serving this stop.',
 			noService: 'No line is published as serving this stop, so no predictions are expected.',

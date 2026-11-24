@@ -14,7 +14,8 @@
 	let {
 		data,
 	}: {
-		data: Pick<PageData, 'provider' | 'providerId' | 'v1'> & Partial<Pick<PageData, 'record'>>;
+		data: Pick<PageData, 'provider' | 'providerId' | 'v1'> &
+			Partial<Pick<PageData, 'record' | 'liveRecord'>>;
 	} = $props();
 	const locale: Locale = getLocale();
 	const city = $derived(
@@ -44,7 +45,7 @@
 	{:else}
 		<HomeExplore {locale} {copy} alertsAvailable={providerHasAlerts(data.provider)}>
 			{#snippet pulse()}
-				<HomePulse {locale} manifest={data.v1?.manifest ?? null} />
+				<HomePulse {locale} manifest={data.v1?.manifest ?? null} record={data.liveRecord ?? null} />
 			{/snippet}
 		</HomeExplore>
 		<HomeInvite {locale} />

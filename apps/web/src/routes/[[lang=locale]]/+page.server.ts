@@ -4,18 +4,20 @@ import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ url, parent, request }) => {
-	if (url.searchParams.get('frameMode') === 'live') return { record: null };
 	const { providerId: city, provider } = await parent();
-	const { period } = parseFrameState(url.searchParams, frameToday(provider?.timezone));
-	if (!period) return { record: null };
+	const { mode, period } = parseFrameState(url.searchParams, frameToday(provider?.timezone));
+	if (!period) return { record: null, liveRecord: null };
 
 	const visitorIp = request.headers.get('cf-connecting-ip');
 	const questions = overviewSelection({ ...period, city, visitorIp });
+	const punctuality = getMeasure(...questions.punctuality);
+	if (mode === 'live') return { record: null, liveRecord: { period, punctuality } };
 	return {
+		liveRecord: null,
 		record: {
 			period,
 			previous: questions.previous,
-			punctuality: getMeasure(...questions.punctuality),
+			punctuality,
 			baseline: getMeasure(...questions.baseline),
 			delivery: getMeasure(...questions.delivery),
 			lines: getRanking(...questions.lines),

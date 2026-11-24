@@ -4,7 +4,7 @@ import { liveOnTimeShare } from './onTimeShare';
 const network = (inService: number, readings: number, pct: number | null = 60) => ({
 	vehicles_in_service: inService,
 	on_time_pct: pct,
-	status_dist: { on_time: 0, late: 0, severe: 0, early: 0, unknown: inService - readings },
+	status_dist: { on_time: 0, late: 0, early: 0, unknown: inService - readings },
 });
 
 describe('liveOnTimeShare', () => {

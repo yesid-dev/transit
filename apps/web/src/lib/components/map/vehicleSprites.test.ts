@@ -379,7 +379,7 @@ describe('vehicle state badge baker', () => {
 				images.push(image);
 			},
 		} as never);
-		expect(images).toHaveLength(24);
+		expect(images).toHaveLength(22);
 		expect(pixelReads).toHaveLength(1);
 	});
 
@@ -394,7 +394,6 @@ describe('vehicle state badge baker', () => {
 			'veh-m-s-early',
 			'veh-m-s-on_time',
 			'veh-m-s-late',
-			'veh-m-s-severe',
 			'veh-m-s-unknown',
 			'veh-m-o-empty',
 			'veh-m-o-many_seats',
@@ -420,7 +419,6 @@ describe('vehicle state badge baker', () => {
 			'veh-m-s-early': 3.6,
 			'veh-m-s-on_time': 3.6,
 			'veh-m-s-late': 3.6,
-			'veh-m-s-severe': 3.6,
 			'veh-m-s-unknown': 3.6,
 			'veh-m-o-empty': 3.6,
 			'veh-m-o-many_seats': 3.6,
@@ -449,19 +447,20 @@ describe('vehicle state badge baker', () => {
 	});
 
 	it('derives every receipt from a separate vector-only glyph mask rather than the registered plate', () => {
-		fixedAlphaSchedule = [
-			...Array<number>(10).fill(40),
-			...Array.from({ length: 10 }, () => [20, 40]).flat(),
-			...Array<number>(4).fill(40),
-		];
-		const { images, receipt } = bakeReceipt();
 		const ids = [
 			...STATUS_CODES.map((code) => stateBadgeIconId('status', code)),
 			...OCCUPANCY_CODES.map((code) => stateBadgeIconId('occupancy', code)),
 		];
-		const glyphMasks = Array.from({ length: 10 }, (_, index) => renderedImages[11 + index * 2]);
+		const bodyCount = 9;
+		fixedAlphaSchedule = [
+			...Array<number>(bodyCount).fill(40),
+			...ids.flatMap(() => [20, 40]),
+			...Array<number>(4).fill(40),
+		];
+		const { images, receipt } = bakeReceipt();
+		const glyphMasks = ids.map((_, index) => renderedImages[bodyCount + 1 + index * 2]);
 
-		expect(renderedImages).toHaveLength(34);
+		expect(renderedImages).toHaveLength(31);
 		for (const [index, id] of ids.entries()) {
 			expect(countStateBadgePaintedPixels(images.get(id)!)).toBe(1.8);
 			expect(receipt.stateBadges[id]).toBe(1.8);
@@ -476,7 +475,7 @@ describe('vehicle state badge baker', () => {
 			).toBe(false);
 		}
 		expect(
-			glyphMasks[4]!.commands.some(
+			glyphMasks[ids.indexOf(stateBadgeIconId('status', 'unknown'))]!.commands.some(
 				({ method, args }) =>
 					method === 'setGlobalCompositeOperation' && args[0] === 'destination-out',
 			),

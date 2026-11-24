@@ -9,7 +9,7 @@ import {
 	projectionHorizon,
 	notReporting,
 } from './vehicleProjection';
-import { VehicleSchema } from '#lib/v1/schemas/index.ts';
+import { LiveVehicleSchema } from '#lib/v1/schemas/index.ts';
 import { cumulativeLengths, projectToPolyline, type Coord } from './polyline';
 
 const W = [-73.7, 45.5] as Coord;
@@ -33,7 +33,7 @@ describe('provider source lag', () => {
 	});
 	it('allows expected source lag before declaring a vehicle silent', () => {
 		const vehicle = (age: number) =>
-			VehicleSchema.parse({
+			LiveVehicleSchema.parse({
 				id: 'oc',
 				lat: 45.5,
 				lon: -75.7,

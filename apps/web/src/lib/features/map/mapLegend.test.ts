@@ -1,98 +1,8 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { LIVE_STATUS_BANDS } from '#lib/v1/live/statusBands.ts';
 import { STATUS_CODES } from '#lib/v1/schemas/types.ts';
 import { mapLegend } from './mapLegend';
 
 const NB = ' ';
-
-function bandOf(delayS: number): string[] {
-	return Object.entries(LIVE_STATUS_BANDS)
-		.filter(
-			([, { fromS, belowS }]) =>
-				(fromS == null || delayS >= fromS) && (belowS == null || delayS < belowS),
-		)
-		.map(([code]) => code);
-}
-
-/**
- * The publisher's live status rule, read from its own source: the null branch, three ordered
- * strict `<` branches and the ELSE. Any other shape throws, so a changed rule cannot pass silently.
- */
-function publisherStatusRule() {
-	const source = readFileSync(
-		new URL('../../../../../db/src/transit_ops/snapshots/builders/_helpers.py', import.meta.url),
-		'utf8',
-	);
-	const block = /^STATUS_BAND_CASE_SQL = """([\s\S]*?)"""/m.exec(source)?.[1];
-	if (block == null) throw new Error('STATUS_BAND_CASE_SQL not found in the publisher source');
-	const sql = block.replace(/\s+/g, ' ').trim();
-	const label = "'((?:[^']|'')*)'";
-	const shape = new RegExp(
-		`^CASE WHEN \\{col\\} IS NULL THEN ${label}` +
-			` WHEN \\{col\\} < (-?\\d+) THEN ${label}`.repeat(3) +
-			` ELSE ${label} END$`,
-	);
-	const m = shape.exec(sql);
-	if (m == null) throw new Error(`STATUS_BAND_CASE_SQL changed shape: ${sql}`);
-	// 'À l''heure / On time' is on_time: the English half, as a status code.
-	const code = (text: string) => text.split(' / ').at(-1)!.toLowerCase().replace(/ /g, '_');
-	return {
-		nullCode: code(m[1]),
-		branches: [2, 4, 6].map((i) => ({ belowS: Number(m[i]), code: code(m[i + 1]) })),
-		elseCode: code(m[8]),
-	};
-}
-
-describe('live status bands', () => {
-	it('partition every delay into exactly one band, in status order, on whole minutes', () => {
-		const codes = Object.keys(LIVE_STATUS_BANDS);
-		expect(codes).toEqual(STATUS_CODES.filter((code) => code !== 'unknown'));
-		const bands = Object.values(LIVE_STATUS_BANDS);
-		expect(bands[0].fromS).toBeNull();
-		expect(bands.at(-1)!.belowS).toBeNull();
-		for (const [index, band] of bands.entries()) {
-			if (band.fromS != null && band.belowS != null) expect(band.fromS).toBeLessThan(band.belowS);
-			if (index > 0) expect(band.fromS).toBe(bands[index - 1].belowS);
-			for (const bound of [band.fromS, band.belowS])
-				if (bound != null) {
-					expect(Number.isFinite(bound)).toBe(true);
-					expect(Object.is(bound, -0)).toBe(false);
-					expect(Number.isInteger(bound / 60)).toBe(true);
-				}
-		}
-		for (let delayS = -900; delayS <= 900; delayS += 0.5) expect(bandOf(delayS)).toHaveLength(1);
-	});
-
-	it('are the publisher’s own rule, read from STATUS_BAND_CASE_SQL, bound for bound', () => {
-		const publisher = publisherStatusRule();
-		const web = Object.entries(LIVE_STATUS_BANDS);
-		expect(publisher.nullCode).toBe('unknown');
-		expect([...publisher.branches.map((b) => b.code), publisher.elseCode]).toEqual(
-			web.map(([code]) => code),
-		);
-		// Ordered strict `<` branches are half-open intervals: each band ends where the next starts.
-		expect(web.slice(0, -1).map(([, band]) => band.belowS)).toEqual(
-			publisher.branches.map((b) => b.belowS),
-		);
-		expect(web.slice(1).map(([, band]) => band.fromS)).toEqual(
-			publisher.branches.map((b) => b.belowS),
-		);
-		expect(web[0][1].fromS).toBeNull();
-		expect(web.at(-1)![1].belowS).toBeNull();
-	});
-
-	it('match the publisher at each boundary: early < -60 s <= on time < 60 s <= late < 300 s <= severe', () => {
-		expect([-61, -60, 59, 60, 299, 300].map((d) => bandOf(d)[0])).toEqual([
-			'early',
-			'on_time',
-			'on_time',
-			'late',
-			'late',
-			'severe',
-		]);
-	});
-});
 
 describe('mapLegend', () => {
 	it('states each status with the minutes the map draws, then position and map symbols (en)', () => {
@@ -104,9 +14,8 @@ describe('mapLegend', () => {
 		]);
 		expect(legend.groups[0].rows.map((row) => [row.label, row.definition])).toEqual([
 			['Early', `More than 1${NB}min early`],
-			['On time', `1${NB}min early to under 1${NB}min late`],
-			['Late', `1 to under 5${NB}min late`],
-			['Severe', `5${NB}min late or more`],
+			['On time', `1${NB}min early to 5${NB}min late, inclusive`],
+			['Late', `More than 5${NB}min late`],
 			['Delay unknown', 'The live feed gives no delay'],
 		]);
 		expect(legend.groups[0].rows.map((row) => row.mark)).toEqual(
@@ -124,9 +33,7 @@ describe('mapLegend', () => {
 			['heading', 'Direction of travel', null],
 			['stop', 'Stop', null],
 		]);
-		expect(legend.note).toBe(
-			'◆ marks a severe delay at every zoom. Zoom in to see the other status badges.',
-		);
+		expect(legend.note).toBe('Zoom in to see the status badges.');
 	});
 
 	it('says the same in French', () => {
@@ -138,9 +45,8 @@ describe('mapLegend', () => {
 		]);
 		expect(legend.groups[0].rows.map((row) => [row.label, row.definition])).toEqual([
 			['En avance', 'Plus d’une minute d’avance'],
-			['À l’heure', 'D’une minute d’avance à moins d’une minute de retard'],
-			['En retard', `D’une minute à moins de 5${NB}minutes de retard`],
-			['Sévère', `5${NB}minutes de retard ou plus`],
+			['À l’heure', `D’une minute d’avance à 5${NB}minutes de retard, limites incluses`],
+			['En retard', `Plus de 5${NB}minutes de retard`],
 			['Retard inconnu', 'Le flux en direct n’indique aucun retard'],
 		]);
 		expect(legend.groups[1].rows[0]).toMatchObject({

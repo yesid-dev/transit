@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LIVE_STATUS_BANDS, type DelayBandCode } from '#lib/v1/live/statusBands.ts';
+import { classifyDelay, type DelayBandCode } from '#lib/v1/live/statusBands.ts';
 import {
 	departureStatus,
 	departureStatusText,
@@ -35,13 +35,6 @@ const input = (overrides: Partial<Seed> = {}): StopLiveInput =>
 // The publisher's minute: round_half_away(seconds / 60), apps/db builders/_helpers.py `_delay_min`.
 const publishedMinute = (seconds: number) =>
 	Math.sign(seconds) * Math.floor(Math.abs(seconds) / 60 + 0.5) || 0;
-// The publisher's band for the same seconds: STATUS_BAND_CASE_SQL, half-open [from, below).
-const publishedBand = (seconds: number): DelayBandCode =>
-	(Object.entries(LIVE_STATUS_BANDS) as [DelayBandCode, (typeof LIVE_STATUS_BANDS)['late']][]).find(
-		([, band]) =>
-			(band.fromS == null || seconds >= band.fromS) &&
-			(band.belowS == null || seconds < band.belowS),
-	)![0];
 
 describe('departureStatus', () => {
 	it.each([
@@ -49,12 +42,12 @@ describe('departureStatus', () => {
 		[-2, ['early']],
 		[-1, ['early', 'on_time']],
 		[0, ['on_time']],
-		[1, ['on_time', 'late']],
-		[2, ['late']],
-		[4, ['late']],
-		[5, ['late', 'severe']],
-		[6, ['severe']],
-		[40, ['severe']],
+		[1, ['on_time']],
+		[2, ['on_time']],
+		[4, ['on_time']],
+		[5, ['on_time', 'late']],
+		[6, ['late']],
+		[40, ['late']],
 	] as const)('a rounded %i min names %j', (minute, bands) => {
 		expect(departureStatus(minute)).toEqual({ kind: 'known', bands });
 	});
@@ -64,7 +57,7 @@ describe('departureStatus', () => {
 	});
 
 	it('names exactly the bands the published seconds behind each minute can fall in', () => {
-		// Every half second from −20 to +20 minutes, plus the ±30 s rounding edges.
+		// Every half second from −40 to +40 minutes, including the rounding edges.
 		const reached = new Map<number, Set<DelayBandCode>>();
 		for (let tenth = -24000; tenth <= 24000; tenth += 5) {
 			const seconds = tenth / 10;
@@ -72,8 +65,10 @@ describe('departureStatus', () => {
 			const status = departureStatus(minute);
 			expect(status.kind).toBe('known');
 			const bands = status.kind === 'known' ? status.bands : [];
-			expect(bands, `${seconds} s → ${minute} min`).toContain(publishedBand(seconds));
-			reached.set(minute, (reached.get(minute) ?? new Set()).add(publishedBand(seconds)));
+			const exact = classifyDelay(seconds);
+			if (exact === 'unknown') throw new Error('A finite delay must have a band');
+			expect(bands, `${seconds} s → ${minute} min`).toContain(exact);
+			reached.set(minute, (reached.get(minute) ?? new Set()).add(exact));
 		}
 		for (const [minute, bands] of reached) {
 			const status = departureStatus(minute);
@@ -201,14 +196,14 @@ describe('presentStopLive', () => {
 describe('departureStatusText', () => {
 	it.each([
 		['en', -1, 'About 1 min early'],
-		['en', 1, 'About 1 min late'],
+		['en', 1, 'On time'],
 		['en', 5, 'About 5 min late'],
 		['fr', -1, 'Environ 1 min d’avance'],
-		['fr', 1, 'Environ 1 min de retard'],
+		['fr', 1, 'À l’heure'],
 		['fr', 5, 'Environ 5 min de retard'],
 		['en', 0, 'On time'],
 		['en', -2, 'Early'],
-		['fr', 6, '5+ min de retard'],
+		['fr', 6, 'En retard'],
 	] as const)('%s %i min reads "%s"', (locale, minute, words) => {
 		expect(departureStatusText(minute, detailCopy[locale].live)).toBe(words);
 	});

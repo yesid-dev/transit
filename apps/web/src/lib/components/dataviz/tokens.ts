@@ -20,7 +20,6 @@ export const STATUS_GLYPH: Record<StatusCode, string> = {
 	early: '▼',
 	on_time: '●',
 	late: '▲',
-	severe: '◆',
 	unknown: '○',
 };
 

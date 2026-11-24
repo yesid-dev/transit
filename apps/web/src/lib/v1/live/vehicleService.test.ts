@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { VehicleSchema } from '#lib/v1/schemas/index.ts';
+import { LiveVehicleSchema } from '#lib/v1/schemas/index.ts';
 import { emptyFilterState, fromSearchParams, toSearchString } from '#lib/filters/index.ts';
 import { toVehicleFeatures } from '#lib/components/map/vehicleLayer.ts';
 import { outOfServiceCount } from './vehicleService';
 
 describe.each(['stm', 'octranspo'])('%s vehicle service', (provider) => {
 	const vehicles = ['trip', null, ''].map((trip, i) =>
-		VehicleSchema.parse({
+		LiveVehicleSchema.parse({
 			id: provider + i,
 			trip,
 			lat: 45.5,

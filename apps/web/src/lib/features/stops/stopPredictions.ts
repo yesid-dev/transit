@@ -1,30 +1,25 @@
 import type { StopDeparture, StopFile } from '#lib/v1/index.ts';
-import { LIVE_STATUS_BANDS, type DelayBandCode } from '#lib/v1/live/statusBands.ts';
+import type { StatusCode } from '#lib/v1/schemas/types.ts';
+import { classifyDelay, type DelayBandCode } from '#lib/v1/live/statusBands.ts';
 
-/**
- * A departure's status from its published minute. The departures file carries only
- * `delay_min`, the trip's average predicted delay rounded half away from zero
- * (`_delay_min` in apps/db builders/_helpers.py), and no status of its own. A rounded minute
- * covers 60 seconds, so where those seconds straddle a band threshold both bands are named
- * (1 min is on time or late), never one guessed from the rounded value.
- */
+/** Capture predictions carry an exact status. Older reports only supply rounded minutes. */
 export type DepartureStatus =
 	| { readonly kind: 'known'; readonly bands: readonly DelayBandCode[] }
 	| { readonly kind: 'unknown' };
 
-const BAND_ORDER = Object.keys(LIVE_STATUS_BANDS) as DelayBandCode[];
-
-export function departureStatus(minute: number | null | undefined): DepartureStatus {
+export function departureStatus(
+	minute: number | null | undefined,
+	status?: StatusCode,
+): DepartureStatus {
+	if (status === 'unknown') return { kind: 'unknown' };
+	if (status != null) return { kind: 'known', bands: [status] };
 	if (minute == null || !Number.isInteger(minute)) return { kind: 'unknown' };
-	// round_half_away(s / 60) = m holds for s in [60m − 30, 60m + 30), mirrored below zero and
-	// open at both ends for m = 0. The thresholds are whole minutes, so no end touches one.
-	const low = 60 * minute - 30;
-	const high = 60 * minute + 30;
-	const bands = BAND_ORDER.filter((code) => {
-		const { fromS, belowS } = LIVE_STATUS_BANDS[code];
-		return (fromS == null || fromS < high) && (belowS == null || belowS > low);
-	});
-	return { kind: 'known', bands };
+	// A rounded minute covers 60 seconds. Both cutoffs are whole minutes, six minutes apart,
+	// so the endpoints never touch a cutoff and span at most two bands.
+	const first = classifyDelay(60 * minute - 30);
+	const last = classifyDelay(60 * minute + 30);
+	if (first === 'unknown' || last === 'unknown') return { kind: 'unknown' };
+	return { kind: 'known', bands: first === last ? [first] : [first, last] };
 }
 
 export interface DepartureStatusCopy {
@@ -35,13 +30,13 @@ export interface DepartureStatusCopy {
 
 /**
  * A status in words: the one band a minute certainly falls in, or, where the minute straddles a
- * limit, the rounded minute itself ("About 1 min late"), never two bands. Null without a minute.
+ * limit, the rounded minute itself ("About 5 min late"), never two bands. Null without a minute.
  */
 export function departureStatusText(
 	minute: number | null | undefined,
 	copy: DepartureStatusCopy,
+	status = departureStatus(minute),
 ): string | null {
-	const status = departureStatus(minute);
 	if (status.kind === 'unknown') return null;
 	if (status.bands.length === 1) return copy.bands[status.bands[0]!];
 	return copy.about(Math.abs(minute!), minute! < 0);
@@ -125,7 +120,7 @@ export function presentStopLive(input: StopLiveInput): StopLiveView {
 				etaUtc: Number.isFinite(ms) ? departure.eta_utc : null,
 				trip: departure.trip ?? null,
 				delayMin: departure.delay_min ?? null,
-				status: departureStatus(departure.delay_min),
+				status: departureStatus(departure.delay_min, departure.status),
 			},
 		});
 		byLine.set(line, rows);

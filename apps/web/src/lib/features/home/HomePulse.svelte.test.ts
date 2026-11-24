@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import HomePulse from './HomePulse.svelte';
+import { recordConnection } from '../record/recordText';
 import { homePulseCopy } from './homePulse.copy';
 import { createLineDirectory } from '#lib/site/lineDirectory.ts';
 
@@ -15,11 +16,6 @@ const { state, createLiveStoreSpy, refreshSpy } = vi.hoisted(() => ({
 		weeklyIndex: null as Record<string, unknown> | null,
 		weeklySettled: true,
 		weeklyError: null as Error | null,
-		trend: null as Record<string, unknown> | null,
-		trendSettled: true,
-		trendError: null as Error | null,
-		history: null as Record<string, unknown> | null,
-		historySettled: true,
 	},
 	createLiveStoreSpy: vi.fn(),
 	refreshSpy: vi.fn(),
@@ -74,8 +70,6 @@ vi.mock('#lib/v1/resource.svelte.ts', () => ({
 					{
 						'home-hotspots': state.hotspots,
 						'home-weekly-ranking': state.weeklyIndex,
-						'home-network-trend': state.trend,
-						'home-history-index': state.history,
 					},
 					{ routes: [{ id: '7-354', short: '7' }] },
 				);
@@ -85,7 +79,6 @@ vi.mock('#lib/v1/resource.svelte.ts', () => ({
 					{
 						'home-hotspots': state.hotspotsError,
 						'home-weekly-ranking': state.weeklyError,
-						'home-network-trend': state.trendError,
 					},
 					null,
 				);
@@ -96,8 +89,6 @@ vi.mock('#lib/v1/resource.svelte.ts', () => ({
 					{
 						'home-hotspots': state.hotspotsSettled,
 						'home-weekly-ranking': state.weeklySettled,
-						'home-network-trend': state.trendSettled,
-						'home-history-index': state.historySettled,
 					},
 					true,
 				);
@@ -108,8 +99,6 @@ vi.mock('#lib/v1/resource.svelte.ts', () => ({
 vi.mock('#lib/v1/repositories/historic.ts', () => ({
 	getHotspots: vi.fn(),
 	getPublishedReliabilityIndex: vi.fn(),
-	getNetworkTrend: vi.fn(),
-	getHistoricAvailability: vi.fn(),
 }));
 vi.mock('#lib/v1/repositories/static.ts', () => ({ getRoutesIndex: vi.fn() }));
 
@@ -118,7 +107,7 @@ const liveNetwork = {
 	generated_utc: '2026-11-12T23:50:24Z',
 	vehicles_in_service: 355,
 	on_time_pct: 57,
-	status_dist: { on_time: 69, late: 78, severe: 42, early: 71, unknown: 95 },
+	status_dist: { on_time: 69, late: 120, early: 71, unknown: 95 },
 	non_responding: 18,
 	feed_freshness_s: 20,
 };
@@ -163,27 +152,6 @@ const weeklyStopIndex = {
 };
 
 // Ottawa's published files of 2026-11-11: collection began October 2, closed through November 10.
-const ottawaTrend = {
-	generated_utc: '2026-11-11T00:00:00Z',
-	weekly: [
-		{ date: '2026-10-26', otp_pct: 76, observation_count: 6_741_817 },
-		{ date: '2026-11-02', otp_pct: 75, observation_count: 6_910_589 },
-		{ date: '2026-11-09', otp_pct: 79, observation_count: 2_476_953 },
-	],
-};
-const ottawaHistory = {
-	families: [
-		{
-			family: 'network',
-			selection_mode: 'range',
-			index_path: 'historic/history/network/index.json',
-			first_available_date: '2026-10-02',
-			last_available_date: '2026-11-10',
-			gaps: [],
-		},
-	],
-};
-
 afterEach(() => {
 	state.network = null;
 	state.healthState = 'live';
@@ -194,11 +162,6 @@ afterEach(() => {
 	state.weeklyIndex = null;
 	state.weeklySettled = true;
 	state.weeklyError = null;
-	state.trend = null;
-	state.trendSettled = true;
-	state.trendError = null;
-	state.history = null;
-	state.historySettled = true;
 	createLiveStoreSpy.mockClear();
 	refreshSpy.mockClear();
 });
@@ -431,99 +394,20 @@ describe('Home record, live and ranking cards', () => {
 			expect(stops).toHaveTextContent(week410[locale]);
 		},
 	);
-	it.each([
-		[
-			'en',
-			[
-				'Latest complete record',
-				'November 2 to 8, latest complete week',
-				'75% of readings were on time.',
-				'On time: 1 minute early to 5 minutes late.',
-				'Based on 6,910,589 readings. These are not trips or passengers.',
-				'76% the week before, October 26 to November 1.',
-				'Record · data through Nov 10 · published Nov 11',
-			],
-			'Open the network record',
-			'/network',
-		],
-		[
-			'fr',
-			[
-				'Dernier bilan complet',
-				'Du 2 au 8 novembre, dernière semaine complète',
-				'75 % des relevés étaient à l’heure.',
-				'À l’heure : d’une minute d’avance à 5 minutes de retard.',
-				'Selon 6 910 589 relevés. Ce ne sont ni des trajets ni des passagers.',
-				'76 % la semaine précédente, du 26 octobre au 1er novembre.',
-				'Bilan · données jusqu’au 10 nov. · publié le 11 nov.',
-			],
-			'Ouvrir le bilan du réseau',
-			'/fr/network',
-		],
-	] as const)(
-		'states the latest complete week with its own dates, readings and stamp (%s)',
-		(locale, lines, action, href) => {
-			state.trend = ottawaTrend;
-			state.history = ottawaHistory;
-			render(HomePulse, { props: { locale, manifest } });
-			const record = card(lines[0]);
-			for (const line of lines) expect(text(record)).toContain(line);
-			// The open week (79%, November 9 on) is not the record.
-			expect(text(record)).not.toMatch(/79|9 to 15|9 au 15/);
-			expect(within(record).getByRole('link', { name: action })).toHaveAttribute('href', href);
-		},
-	);
-
-	it.each([
-		[
-			'too few readings',
-			{ observation_count: 12 },
-			'Not enough readings to state a share: 12 this week.',
-		],
-		['no published share', { otp_pct: null }, 'No on-time share is published for this week.'],
-	])('keeps the week but holds back a share with %s', (_case, change, sentence) => {
-		state.trend = { ...ottawaTrend, weekly: [{ ...ottawaTrend.weekly[1], ...change }] };
-		state.history = ottawaHistory;
-		render(HomePulse, { props: { locale: 'en', manifest } });
-		const record = card('Latest complete record');
-		expect(text(record)).toContain('November 2 to 8, latest complete week');
-		expect(within(record).getByRole('status')).toHaveTextContent(sentence);
-		expect(text(record)).not.toContain('%');
-		expect(text(record)).not.toContain('Based on');
-	});
-
-	it.each([
-		['en', 'Latest complete record', 'Not enough readings to state a share: 0 this week.'],
-		[
-			'fr',
-			'Dernier bilan complet',
-			'Pas assez de relevés pour établir une part : 0 cette semaine.',
-		],
-	] as const)('shows a negative-zero reading count as 0 (%s)', (locale, title, sentence) => {
-		state.trend = { ...ottawaTrend, weekly: [{ ...ottawaTrend.weekly[1], observation_count: -0 }] };
-		state.history = ottawaHistory;
-		render(HomePulse, { props: { locale, manifest } });
-		const record = card(title);
-		expect(text(within(record).getByRole('status'))).toBe(sentence);
-		expect(text(record)).not.toContain('-0');
-	});
-
-	it('tells a record that cannot load apart from one that has no complete week', () => {
-		state.trendError = new Error('fixture failure');
-		state.history = ottawaHistory;
-		const failed = render(HomePulse, { props: { locale: 'en', manifest } });
-		expect(within(card('Latest complete record')).getByRole('status')).toHaveTextContent(
-			'The record could not be loaded.',
-		);
-		failed.unmount();
-		state.trendError = null;
-		state.trend = { ...ottawaTrend, weekly: [ottawaTrend.weekly[2]] };
-		render(HomePulse, { props: { locale: 'en', manifest } });
-		const record = card('Latest complete record');
-		expect(within(record).getByRole('status')).toHaveTextContent(
-			'No complete week is published yet.',
-		);
-		expect(text(record)).not.toMatch(/\d+ ?%/);
+	it('keeps the record share absent when the engine is unreachable', async () => {
+		render(HomePulse, {
+			props: {
+				locale: 'en',
+				manifest,
+				record: {
+					period: { from: '2026-11-09', to: '2026-11-15' },
+					punctuality: Promise.resolve({ kind: 'unreachable' } as const),
+				},
+			},
+		});
+		const record = card('Record for the selected period');
+		await waitFor(() => expect(text(record)).toContain(recordConnection.unreachable.en));
+		expect(text(record)).not.toMatch(/\d+\s*%/);
 	});
 
 	it.each([
@@ -597,25 +481,27 @@ describe('Home record, live and ranking cards', () => {
 
 	it('has its final shape before any data arrives, and offers the record and the map', () => {
 		state.healthState = 'never-loaded';
-		state.trendSettled = false;
-		state.historySettled = false;
 		state.hotspotsSettled = false;
 		state.weeklySettled = false;
 		render(HomePulse, { props: { locale: 'en', manifest } });
-		for (const name of ['Latest complete record', 'Live now', 'Lines and stops to investigate'])
+		for (const name of [
+			'Record for the selected period',
+			'Live now',
+			'Lines and stops to investigate',
+		])
 			expect(screen.getByRole('heading', { level: 2, name })).toBeInTheDocument();
 		expect(text(card('Live now'))).toContain('vehicles reporting');
 		expect(text(card('Live now'))).toContain('silent trips');
 		expect(screen.getByRole('region', { name: 'Lines' })).toBeInTheDocument();
 		expect(screen.getByRole('region', { name: 'Stops' })).toBeInTheDocument();
 		expect(screen.queryByRole('status')).toBeNull();
-		expect(text(card('Latest complete record'))).not.toMatch(/\d/);
+		expect(text(card('Record for the selected period'))).not.toMatch(/\d/);
 	});
 
 	it('offers the record and the live map, even before the data boots', () => {
 		render(HomePulse, { props: { locale: 'en', manifest: null } });
 		expect(
-			[card('Latest complete record'), card('Live now')].map((region) =>
+			[card('Record for the selected period'), card('Live now')].map((region) =>
 				within(region).getByRole('link').getAttribute('href'),
 			),
 		).toEqual(['/network', '/map']);

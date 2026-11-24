@@ -17,7 +17,6 @@ import {
 import { OCCUPANCY_CODES, STATUS_CODES } from '#lib/v1/schemas/types.ts';
 
 const LATE = stateBadgeIconId('status', 'late');
-const SEVERE = stateBadgeIconId('status', 'severe');
 
 type PaintCall = { kind: string; id?: string; values?: number[]; opacity?: number };
 
@@ -105,9 +104,10 @@ function harness() {
 	const sprites = {
 		pixelRatio: 2,
 		sprites: Object.fromEntries(
-			['body-a', 'body-b', HEADING_ICON, 'mark-a', 'mark-b', LATE, SEVERE, SILENT_ICON].map(
-				(id) => [id, image(id)],
-			),
+			['body-a', 'body-b', HEADING_ICON, 'mark-a', 'mark-b', LATE, SILENT_ICON].map((id) => [
+				id,
+				image(id),
+			]),
 		),
 	} as unknown as VehicleSpriteReceipt;
 	const pin = image('pin', 88, 120);
@@ -192,11 +192,11 @@ describe('vehicle moving foreground', () => {
 		overlay.destroy();
 	});
 
-	it('shows only the severe ◆ below zoom 13 and every status and crowding badge from it', () => {
+	it('shows status and crowding badges only from zoom 13', () => {
 		for (const code of STATUS_CODES) {
 			const mark = stateBadgeIconId('status', code);
-			expect(visibleBadge(mark, 12.9)).toBe(code === 'severe' ? mark : '');
-			expect(visibleBadge(mark, 11)).toBe(code === 'severe' ? mark : '');
+			expect(visibleBadge(mark, 12.9)).toBe('');
+			expect(visibleBadge(mark, 11)).toBe('');
 			expect(visibleBadge(mark, STATUS_BADGE_MIN_ZOOM)).toBe(mark);
 		}
 		for (const code of OCCUPANCY_CODES) {
@@ -207,26 +207,25 @@ describe('vehicle moving foreground', () => {
 		expect(visibleBadge('', 15)).toBe('');
 	});
 
-	it('tells a severe bus from a late one at zoom 12 without changing hit targets', () => {
+	it('keeps the stale marker and vehicle hit targets at zoom 12', () => {
 		const { overlay, calls, setCamera } = harness();
 		setCamera({ zoom: 12 });
 		const late = feature('a', 0, { mark: LATE });
-		const severe = feature('b', 1, { mark: SEVERE, stale: 1 });
-		overlay.draw({ type: 'FeatureCollection', features: [late, severe] });
+		const stale = feature('b', 1, { mark: LATE, stale: 1 });
+		overlay.draw({ type: 'FeatureCollection', features: [late, stale] });
 		const sprites = calls.filter((call) => call.kind === 'sprite');
 		expect(sprites.map((call) => call.id)).toEqual([
 			'body-b',
 			'body-a',
 			HEADING_ICON,
 			HEADING_ICON,
-			SEVERE,
 			SILENT_ICON,
 		]);
-		// The stale severe bus pairs its "!" with the ◆, as it does from zoom 13.
+		// The stale marker uses its standalone offset while status badges are hidden.
 		const scale = 0.78 + (1.3 - 0.78) / 4;
 		const [left, , size] = sprites.at(-1)!.values!;
 		expect(left + size / 2).toBeCloseTo(
-			420 + VEHICLE_MARKER_GEOMETRY.silentBadge.pairedOffset[0] * scale,
+			420 + VEHICLE_MARKER_GEOMETRY.silentBadge.offset[0] * scale,
 			3,
 		);
 		expect(overlay.receipt).toMatchObject({ projectedCount: 2, paintedBodyCount: 2 });

@@ -1,12 +1,12 @@
 import type { Locale } from '#lib/i18n/index.ts';
 import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
-import { LIVE_STATUS_BANDS, type DelayBand } from '#lib/v1/live/statusBands.ts';
+import { ON_TIME_LIMITS_S } from '#lib/v1/live/statusBands.ts';
 import { OCCUPANCY_CODES, STATUS_CODES } from '#lib/v1/schemas/types.ts';
 import type { OccupancyCode, StatusCode } from '#lib/v1/schemas/index.ts';
 import { copy, type MapCopy } from './map.copy';
 import { mapStatusLabel } from './mapStatusLabels';
 
-/** What the bus bodies are coloured by; the legend explains only that. */
+/** What the vehicle markers are coloured by; the legend explains only that. */
 export type LegendColourBy = 'status' | 'occupancy';
 
 export type LegendMark =
@@ -39,19 +39,6 @@ const NB = ' ';
 
 type LegendCopy = MapCopy['legend'];
 
-/** The band's rule in words, or null for a shape the copy has no sentence for. */
-function bandDefinition(t: LegendCopy, { fromS, belowS }: DelayBand): string | null {
-	const from = fromS == null ? null : fromS / 60;
-	const below = belowS == null ? null : belowS / 60;
-	if ((from != null && !Number.isInteger(from)) || (below != null && !Number.isInteger(below)))
-		return null;
-	if (from == null && below != null && below < 0) return t.moreEarly(-below);
-	if (from != null && from < 0 && below != null && below > 0) return t.earlyToLate(-from, below);
-	if (from != null && from > 0 && below != null && below > from) return t.lateRange(from, below);
-	if (from != null && from > 0 && below == null) return t.lateOrMore(from);
-	return null;
-}
-
 /** "2 min 30 s"; null when the cutoff is not a positive, finite time. */
 function duration(seconds: number): string | null {
 	const total = Number.isFinite(seconds) ? Math.round(seconds) : 0;
@@ -62,11 +49,19 @@ function duration(seconds: number): string | null {
 }
 
 function statusRows(locale: Locale, t: LegendCopy): LegendRow[] {
+	const earlyMinutes = -ON_TIME_LIMITS_S.from / 60;
+	const lateMinutes = ON_TIME_LIMITS_S.through / 60;
+	const definitions: Record<StatusCode, string> = {
+		early: t.moreEarly(earlyMinutes),
+		on_time: t.earlyToLate(earlyMinutes, lateMinutes),
+		late: t.moreLate(lateMinutes),
+		unknown: t.unknown,
+	};
 	return STATUS_CODES.map((code) => ({
 		id: `status-${code}`,
 		mark: { kind: 'status', code },
 		label: mapStatusLabel(locale, code),
-		definition: code === 'unknown' ? t.unknown : bandDefinition(t, LIVE_STATUS_BANDS[code]),
+		definition: definitions[code],
 	}));
 }
 

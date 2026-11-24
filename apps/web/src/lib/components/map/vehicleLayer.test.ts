@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { FilterState } from '#lib/filters/index.ts';
-import { STATUS_CODES, VehicleSchema } from '#lib/v1/schemas/index.ts';
+import { STATUS_CODES, LiveVehicleSchema } from '#lib/v1/schemas/index.ts';
 import type { VehicleSilenceContext } from './vehicleLayer';
 import { toVehicleFeatures } from './vehicleLayer';
 import { BUS_ICON, bodyIconId, stateBadgeIconId, VEHICLE_MARKER_GEOMETRY } from './vehicleSprites';
@@ -30,7 +30,7 @@ const vehicles = [
 		updated_utc: '2026-06-15T00:00:00Z',
 		bearing: null,
 	},
-].map((vehicle) => VehicleSchema.parse({ trip: 'assigned-trip', ...vehicle }));
+].map((vehicle) => LiveVehicleSchema.parse({ trip: 'assigned-trip', ...vehicle }));
 
 describe('toVehicleFeatures entity filtering', () => {
 	it('serializes the exact state badge mark for every filter mode with status precedence', () => {
@@ -43,7 +43,7 @@ describe('toVehicleFeatures entity filtering', () => {
 				occupancy: 'full',
 				updated_utc: '2026-06-15T00:00:00Z',
 			},
-		].map((candidate) => VehicleSchema.parse({ trip: 'assigned-trip', ...candidate }));
+		].map((candidate) => LiveVehicleSchema.parse({ trip: 'assigned-trip', ...candidate }));
 		const cases = [
 			['default', EMPTY_FILTER, stateBadgeIconId('status', 'on_time'), 1, 'veh-s-on_time'],
 			[
@@ -83,7 +83,7 @@ describe('toVehicleFeatures entity filtering', () => {
 			expect(properties, `${name} mark property`).toHaveProperty('mark');
 		}
 
-		const withoutTelemetry = VehicleSchema.parse({ ...vehicle, occupancy: null });
+		const withoutTelemetry = LiveVehicleSchema.parse({ ...vehicle, occupancy: null });
 		const nullProperties = toVehicleFeatures([withoutTelemetry], {
 			...EMPTY_FILTER,
 			occupancy: ['full'],
@@ -94,7 +94,7 @@ describe('toVehicleFeatures entity filtering', () => {
 
 	it('colours buses by status when no filter is active', () => {
 		const fleet = STATUS_CODES.map((status) =>
-			VehicleSchema.parse({
+			LiveVehicleSchema.parse({
 				id: `bus-${status}`,
 				trip: `trip-${status}`,
 				lat: 45.5,
@@ -104,7 +104,7 @@ describe('toVehicleFeatures entity filtering', () => {
 				updated_utc: '2026-06-15T00:00:00Z',
 			}),
 		);
-		const parked = VehicleSchema.parse({
+		const parked = LiveVehicleSchema.parse({
 			id: 'parked',
 			trip: null,
 			lat: 45.5,
@@ -216,7 +216,7 @@ describe('toVehicleFeatures entity filtering', () => {
 			trips: new Set(['trip-24-b']),
 		};
 		const withStopTrip = vehicles.map((vehicle) =>
-			VehicleSchema.parse({
+			LiveVehicleSchema.parse({
 				...vehicle,
 				next_stop: vehicle.id === 'no-direction' ? 'stop-2' : 'stop-1',
 				trip: vehicle.id === 'no-direction' ? 'trip-24-b' : 'trip-24-a',
@@ -285,7 +285,7 @@ describe('toVehicleFeatures retired per-vehicle silence fade', () => {
 				updated_utc: silentUtc,
 				bearing: 90,
 			},
-		].map((v) => VehicleSchema.parse({ trip: 'assigned-trip', ...v }));
+		].map((v) => LiveVehicleSchema.parse({ trip: 'assigned-trip', ...v }));
 	}
 
 	it('keeps VehicleSilenceContext only for the per-bus stale calculation', () => {
@@ -334,7 +334,7 @@ describe('toVehicleFeatures per-bus staleness flag (S5.1: off reported_utc)', ()
 				reported_utc: staleReported,
 				bearing: 90,
 			},
-		].map((v) => VehicleSchema.parse({ trip: 'assigned-trip', ...v }));
+		].map((v) => LiveVehicleSchema.parse({ trip: 'assigned-trip', ...v }));
 	}
 
 	it('flags a bus whose OWN reported_utc is past the cutoff as stale:1, a fresh one stale:0', () => {
@@ -352,7 +352,7 @@ describe('toVehicleFeatures per-bus staleness flag (S5.1: off reported_utc)', ()
 		const oldSnapshot = new Date(now - (STALE_CUTOFF_S + 30) * 1000).toISOString();
 		const [v] = [
 			{ id: 'fallback', lat: 45.5, lon: -73.6, status: 'on_time', updated_utc: oldSnapshot },
-		].map((x) => VehicleSchema.parse({ trip: 'assigned-trip', ...x }));
+		].map((x) => LiveVehicleSchema.parse({ trip: 'assigned-trip', ...x }));
 		const features = toVehicleFeatures([v], EMPTY_FILTER, new Set(), null, {
 			serverNow: now,
 		}).features;

@@ -215,9 +215,9 @@ describe('toSearchParams — canonical wire format', () => {
 			stops: new Set(),
 			trips: new Set(),
 			vehicles: new Set(),
-			status: ['late', 'severe'],
+			status: ['late', 'unknown'],
 		};
-		expect(toSearchParams(s).toString()).toBe('route=10%2C165%2C80&status=late%2Csevere');
+		expect(toSearchParams(s).toString()).toBe('route=10%2C165%2C80&status=late%2Cunknown');
 	});
 
 	it('emits keys in the stable contract order (route,stop,trip,vehicle,status,occupancy,entity,alert,grain,from,to,date,n)', () => {

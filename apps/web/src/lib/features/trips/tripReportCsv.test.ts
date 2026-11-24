@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { TripsFileSchema } from '#lib/v1/schemas/index.ts';
+import { LiveTripsFileSchema } from '#lib/v1/schemas/index.ts';
 import { reportedOffset, tripReportCsv } from './tripReportCsv';
 
-const report = TripsFileSchema.parse({
+const report = LiveTripsFileSchema.parse({
 	generated_utc: '2026-06-15T12:00:00Z',
 	trips: {
 		T1: {
@@ -35,7 +35,7 @@ describe('trip report export', () => {
 	it('keeps the supplied schema, string methodology, generation and capture time separate', () => {
 		const csv = tripReportCsv({
 			...input,
-			report: TripsFileSchema.parse({
+			report: LiveTripsFileSchema.parse({
 				...report,
 				schema_version: 1,
 				methodology_version: 'live-2',

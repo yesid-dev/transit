@@ -8,8 +8,6 @@ for (const locale of ['en', 'fr'] as const)
 		await openNetwork(page, locale);
 		const findings = await statusMarkContrast(page);
 		const tokens = new Set(findings.map(({ token }) => token));
-		for (const token of ['early', 'on-time', 'unknown']) expect(tokens).toContain(token);
-		// v0.51.0 gives late and severe one colour, so either name labels it.
-		expect(tokens.has('late') || tokens.has('severe')).toBe(true);
+		for (const token of ['early', 'on-time', 'late', 'unknown']) expect(tokens).toContain(token);
 		expect(weak(findings)).toEqual([]);
 	});

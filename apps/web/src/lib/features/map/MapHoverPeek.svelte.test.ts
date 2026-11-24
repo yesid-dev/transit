@@ -311,7 +311,6 @@ describe.each(['en', 'fr'] as const)('MapHoverPeek published status in %s', (loc
 		['on_time', 1, '+1 min'],
 		['late', 0, '0 min'],
 		['early', -2, '−2 min'],
-		['severe', 4, '+4 min'],
 		['unknown', 0, '0 min'],
 		['on_time', null, null],
 		['unknown', null, null],

@@ -109,7 +109,7 @@ it('keeps absent live data separate from measured zero', () => {
 		delay_p90_min: 0,
 		vehicles_in_service: 0,
 		non_responding: 0,
-		status_dist: { early: 0, on_time: 0, late: 0, severe: 0, unknown: 0 },
+		status_dist: { early: 0, on_time: 0, late: 0, unknown: 0 },
 		delay_histogram: [{ lo_min: -1, hi_min: 0, count: 2 }],
 		non_responding_by_route: [{ route_id: '51', count: 0 }],
 	} as NetworkFile;

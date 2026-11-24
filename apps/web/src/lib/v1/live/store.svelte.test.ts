@@ -910,7 +910,7 @@ describe('createLiveStore — request-conscious browser lifecycle', () => {
 			generated_utc: '2026-06-21T12:00:00Z',
 			vehicles_in_service: 10,
 			on_time_pct: 91,
-			status_dist: { early: 0, on_time: 9, late: 1, severe: 0, unknown: 0 },
+			status_dist: { early: 0, on_time: 9, late: 1, unknown: 0 },
 			delay_p50_min: 1,
 			delay_p90_min: 6,
 			non_responding: 0,
