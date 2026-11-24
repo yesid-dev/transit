@@ -3722,6 +3722,7 @@ class ReadWindow:
     not_tracked_reasons: dict[str, str] = field(default_factory=dict)
     batch_days: int | None = None
     versions: dict[str, int] = field(default_factory=dict)
+    source_dates: dict[str, str] = field(default_factory=dict)
 
     @property
     def no_days_measured(self) -> bool:
@@ -3756,6 +3757,10 @@ class ReadWindow:
         self, store: Store, question: Question, family: Family, started: float
     ) -> dict[str, Any]:
         untracked = set(self.not_tracked) if family.id == _VEHICLES_ID else set()
+        included = self.measured if family.id == _ALERT_COUNTS_ID else [
+            day for day in self.included if day not in untracked
+        ]
+        latest = max((self.source_dates.get(day, "") for day in included), default="")
         return {
             "city": question.city,
             "start_date": question.start.isoformat(),
@@ -3765,9 +3770,8 @@ class ReadWindow:
             "days_not_measured": self.missing,
             "days_not_measured_reasons": self.unmeasured_reasons,
             "days_pending": self.pending,
-            "days_included": self.measured
-            if family.id == _ALERT_COUNTS_ID
-            else [day for day in self.included if day not in untracked],
+            "days_included": included,
+            **({"source_date": latest} if latest else {}),
             "cleaning_versions": [store.cleaning_version] if self.included else [],
             "method_version": family.method_version,
             "query_ms": (perf_counter() - started) * 1000,
@@ -3891,6 +3895,8 @@ def read_window(
             files = checked.files
             if files is not None:
                 window.versions[day_key] = version
+                if checked.source_date is not None:
+                    window.source_dates[day_key] = checked.source_date
                 break
         if not settled:
             window.pending.append(day_key)

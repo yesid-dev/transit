@@ -18,6 +18,7 @@ from transit_engine.clean_manifest import (
     TRIP_DAYS,
     VEHICLE_POSITIONS,
     file_identities,
+    source_date,
 )
 from transit_engine.store import CITY, Store
 
@@ -110,12 +111,14 @@ def _day(
         else:
             tables[key] = {"status": "missing", "reason": "size_mismatch"}
             complete = False
+    updated = source_date(manifest)
     return {
         "service_date": day.isoformat(),
         "status": "present" if complete else "incomplete",
         "cleaning_version": version,
         "built_at_utc": manifest["built_at_utc"],
         "tables": tables,
+        **({"source_date": updated} if complete and updated else {}),
     }
 
 

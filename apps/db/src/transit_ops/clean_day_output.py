@@ -421,6 +421,8 @@ def _stage(
     }
     if day.scorecard_declaration is not None:
         manifest["scorecard_declaration"] = day.scorecard_declaration
+    if day.source_date is not None:
+        manifest["source_date"] = day.source_date
     if ignored_invalid_original:
         manifest["ignored_invalid_original"] = list(ignored_invalid_original)
     if day.alerts is None:

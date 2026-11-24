@@ -3,7 +3,8 @@ import { redirect } from '@sveltejs/kit';
 import { DEFAULT_LOCALE, type Locale } from '#lib/i18n/index.ts';
 import { bootProvider } from '#lib/v1/boot.ts';
 import { captureContext } from '#lib/live/captureContext.ts';
-import { getCityCatalog, getScheduleEdition } from '#lib/server/engine.ts';
+import { getCityCatalog, getRecordDataHealth, getScheduleEdition } from '#lib/server/engine.ts';
+import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
 import { lineFrameView } from '#lib/site/lineFrame.ts';
 import { stopFrameView } from '#lib/site/stopFrame.ts';
 import { networkRecordView } from '#lib/site/networkFrame.ts';
@@ -59,6 +60,21 @@ export const load: LayoutServerLoad = async (event) => {
 		route != null && /\/(?:stops|(?:stop|lines|departure)\/\[\w+\])$/.test(route);
 	const v1 =
 		loadSnapshots && selection.provider ? captureContext(selection.provider, lang, schedule) : null;
+	const provider = selection.provider;
+	const period =
+		!loadSnapshots && needsSchedule && provider?.download_licence?.source_date_required
+			? parseFrameState(event.url.searchParams, frameToday(provider.timezone)).period
+			: null;
+	const recordSourceDate = period
+		? getRecordDataHealth({ ...period, city: selection.providerId, visitorIp }).then((result) =>
+				result.kind === 'answer'
+					? (result.answer.days
+							.flatMap((day) => day.source_date ?? [])
+							.sort()
+							.at(-1) ?? null)
+					: null,
+			)
+		: null;
 	return {
 		schedule:
 			schedule && !usesStopIdentities
@@ -67,6 +83,7 @@ export const load: LayoutServerLoad = async (event) => {
 		lang,
 		...selection,
 		v1,
+		...(recordSourceDate ? { recordSourceDate } : {}),
 		loadSnapshots,
 		serverBoot: v1 ? ('succeeded' as const) : ('failed' as const),
 	};

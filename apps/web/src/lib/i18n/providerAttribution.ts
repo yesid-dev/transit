@@ -1,4 +1,5 @@
 import { defineCopy, type Locale } from './copy';
+import type { PublicCity } from '#lib/v1/schemas/providers.ts';
 
 export const providerAttributionCopy = defineCopy({
 	fr: {
@@ -17,4 +18,17 @@ export function providerAttribution(provider: string, published: string, locale:
 		return providerAttributionCopy.fr[provider as keyof typeof providerAttributionCopy.fr];
 	}
 	return published;
+}
+
+export function datedProviderAttribution(
+	provider: PublicCity | null | undefined,
+	locale: Locale,
+	sourceDate?: string | null,
+): string | null {
+	const licence = provider?.download_licence;
+	if (!licence?.source_date_required) return null;
+	return licence.attribution[locale].replace(
+		'{source_date}',
+		sourceDate ?? (locale === 'fr' ? 'inconnue' : 'unknown'),
+	);
 }

@@ -1,3 +1,17 @@
+import { serviceDate } from "./question-params.js";
+
+export function renderDownloadLicence(licence, requiresDate, sourceDate) {
+  if (requiresDate !== true) return licence;
+  const known = typeof sourceDate === "string" && Number.isFinite(serviceDate(sourceDate));
+  return {
+    ...licence,
+    attribution: {
+      en: licence.attribution.en.replace("{source_date}", known ? sourceDate : "unknown"),
+      fr: licence.attribution.fr.replace("{source_date}", known ? sourceDate : "inconnue"),
+    },
+  };
+}
+
 export function downloadLicence(provider, date) {
   const licence = provider.download_licence;
   const languages = ["en", "fr"];

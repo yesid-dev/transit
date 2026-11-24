@@ -182,6 +182,35 @@ def _feed(published: datetime) -> FeedMessage:
     return feed
 
 
+def test_dated_notice_uses_latest_decoded_source_update(tmp_path: Path) -> None:
+    _index(tmp_path)
+    manifest = clean_day_inputs.declaration_for("stm")
+    licence = manifest.public.download_licence
+    assert licence is not None
+    public = manifest.public.model_copy(
+        update={"download_licence": licence.model_copy(update={"source_date_required": True})}
+    )
+    schedules = clean_day_inputs.schedule_contexts(manifest, DAY, tmp_path / "editions.json")
+    captures = [
+        DayCapture(
+            "trip_updates", "trip_updates", captured, str(index), _feed(source).SerializeToString()
+        )
+        for index, (captured, source) in enumerate([
+            (MIDNIGHT, MIDNIGHT - timedelta(minutes=1)),
+            (MIDNIGHT + timedelta(minutes=2), MIDNIGHT + timedelta(minutes=1)),
+            (MIDNIGHT + timedelta(minutes=3), MIDNIGHT + timedelta(days=1)),
+        ])
+    ]
+    legacy = clean_day_inputs.clean_from_inputs(manifest, DAY, schedules, captures)
+    assert legacy.source_date is None
+    dated = manifest.model_copy(update={"public": public})
+    cleaned = clean_day_inputs.clean_from_inputs(dated, DAY, schedules, captures)
+    output = write_clean_day(cleaned, tmp_path / "out")
+    receipt = json.loads((output / "manifest.json").read_bytes())
+    assert receipt["source_date"] == NEXT.isoformat()
+    assert receipt["service_date"] == DAY.isoformat()
+
+
 def _save(
     root: Path, feed: FeedMessage, family: str, captured: datetime, provider: str = "stm"
 ) -> None:

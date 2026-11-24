@@ -481,6 +481,7 @@ const dataHealth = z.object({
 		tableHealth.extend({
 			service_date: z.iso.date(),
 			cleaning_version: z.string(),
+			source_date: z.iso.date().optional(),
 			tables: z.record(z.string(), tableHealth),
 		}),
 	),

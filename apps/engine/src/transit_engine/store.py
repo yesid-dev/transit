@@ -16,6 +16,7 @@ from transit_engine.clean_manifest import (
     STOP_EVENTS,
     TRIP_DAYS,
     file_identities,
+    source_date,
 )
 
 DEFAULT_CLEANING_VERSION = 9
@@ -35,6 +36,7 @@ class CheckedDay:
     files: tuple[str, ...] | None
     settled: bool
     unmeasured_reason: str | None = None
+    source_date: str | None = None
     tables: tuple[str, ...] = ()
 
 
@@ -228,7 +230,9 @@ class Store:
         files = tuple(checked_paths.get(name, "") for name in tables) if supported else None
         if files is not None and receipts is not None:
             receipts[day.isoformat()] = payload
-        return CheckedDay(files, settled, tables=tables)
+        return CheckedDay(
+            files, settled, source_date=source_date(json.loads(payload)), tables=tables
+        )
 
     def _matches_file(
         self,

@@ -4,7 +4,10 @@ const count = z.number().int().nonnegative();
 const columns = {
 	sample: z.array(count),
 	state: z.array(z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)])),
-	evidence: z.object({ days_not_measured: z.array(z.iso.date()) }),
+	evidence: z.object({
+		days_not_measured: z.array(z.iso.date()),
+		source_date: z.iso.date().optional(),
+	}),
 };
 
 export const mapRecordAnswer = z

@@ -31,9 +31,22 @@
 		stops: readonly StopIndexEntry[];
 		routes: readonly RouteIndexEntry[];
 		onscope: (line: string, direction: string) => void;
+		onsourcedate: (date: string | null) => void;
 	}
-	let { map, layer, line, direction, city, period, url, locale, stops, routes, onscope }: Props =
-		$props();
+	let {
+		map,
+		layer,
+		line,
+		direction,
+		city,
+		period,
+		url,
+		locale,
+		stops,
+		routes,
+		onscope,
+		onsourcedate,
+	}: Props = $props();
 	const { provider } = getV1Context();
 	const display = transitDisplay();
 	const tr = (en: string, fr: string) => choose(locale, en, fr);
@@ -56,6 +69,7 @@
 		answer: (MapRecordAnswer & { stale?: boolean }) | null;
 	} | null>(null);
 	const answer = $derived(request?.key === scope ? request.answer : null);
+	$effect(() => onsourcedate(answer?.evidence.source_date ?? null));
 	const pending = $derived(Boolean(scope && scope !== request?.key));
 	let routeResult = $state.raw<{ id: string; route: RouteFile | null } | null>(null);
 	const route = $derived(routeResult?.id === line ? routeResult.route : null);

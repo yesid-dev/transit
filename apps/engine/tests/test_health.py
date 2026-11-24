@@ -112,6 +112,23 @@ def unmeasured_receipt(root: Path, day: date, reason: str) -> Path:
     return directory
 
 
+def test_source_date_comes_from_the_receipt_and_remains_optional(tmp_path: Path) -> None:
+    directory = clean_day(tmp_path, DAY)
+    store = Store(str(tmp_path))
+    manifest_path = directory / "manifest.json"
+    manifest = json.loads(manifest_path.read_bytes())
+    assert "source_date" not in data_health(store, "stm", DAY, DAY)["days"][0]
+    manifest["source_date"] = "2026-11-20"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    day = data_health(store, "stm", DAY, DAY)["days"][0]
+    assert day["source_date"] == "2026-11-20"
+    assert day["built_at_utc"].startswith("2026-11-19")
+    with store.connect() as conn:
+        checked = store.query_day(conn, "stm", DAY, (STOP_EVENTS,))
+    assert checked.files is not None
+    assert checked.source_date == "2026-11-20"
+
+
 def test_present_day_reports_each_table_and_its_rows(tmp_path: Path) -> None:
     clean_day(tmp_path, DAY)
     result = data_health(Store(tmp_path.as_posix()), "stm", DAY, DAY)

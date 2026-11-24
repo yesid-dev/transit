@@ -1,6 +1,6 @@
 <script lang="ts">
 	import MapDetailNavigation from './MapDetailNavigation.svelte';
-	import { providerAttribution } from '#lib/i18n/providerAttribution.ts';
+	import { datedProviderAttribution, providerAttribution } from '#lib/i18n/providerAttribution.ts';
 	import { liveTimingFor } from '#lib/components/map/liveTiming.ts';
 	import { liveReader } from '#lib/v1/adapter/index.ts';
 	import { provideLiveAbsenceContext } from '#lib/site/absence.ts';
@@ -259,6 +259,14 @@
 		return layer === 'stops' || layer === 'corridors' ? layer : 'live';
 	});
 	const isRecordLayer = $derived(recordLayer !== 'live');
+	let recordSourceDate = $state<string | null>(null);
+	const datedMapNotice = $derived(
+		datedProviderAttribution(
+			v1.provider,
+			locale,
+			isRecordLayer ? recordSourceDate : live.sourceDate,
+		),
+	);
 	const recordOptions: { key: RecordMapLayer; label: string }[] = [
 		{ key: 'live', label: locale === 'fr' ? 'En direct' : 'Live' },
 		{ key: 'stops', label: locale === 'fr' ? 'Arrêts' : 'Stops' },
@@ -426,7 +434,8 @@
 			providerName,
 			locale,
 			timeZone,
-			attribution: manifest.attribution,
+			attribution:
+				datedProviderAttribution(v1.provider, locale, live.sourceDate) ?? manifest.attribution,
 			filters: mapReportFilterTokens(filters.state),
 		});
 	});
@@ -797,7 +806,8 @@
 		onthemerepaint={runtime.repaint}
 		onerror={onMapFailure}
 		onbeforeremove={runtime.release}
-		customAttribution={providerAttribution(manifest.provider, manifest.attribution, locale)}
+		customAttribution={datedMapNotice ??
+			providerAttribution(manifest.provider, manifest.attribution, locale)}
 		locale={{
 			'Map.Title': t.mapCanvasLabel,
 			'AttributionControl.ToggleAttribution': t.attributionToggle,
@@ -1005,6 +1015,7 @@
 	/>
 	{#if recordLayer !== 'live'}
 		<MapRecordPanel
+			onsourcedate={(date) => (recordSourceDate = date)}
 			{map}
 			layer={recordLayer}
 			line={recordLine}

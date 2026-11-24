@@ -585,6 +585,7 @@ class CleanDay:
     alerts: dict[tuple[str, str, SourceFormat], AlertVersion] | None = None
     route_types: Mapping[str, int] = field(default_factory=dict)
     scorecard_declaration: dict[str, int | str | list[str]] | None = None
+    source_date: str | None = None
 
     def _covered(self, trip: Trip) -> bool:
         assert trip.start is not None and trip.end is not None

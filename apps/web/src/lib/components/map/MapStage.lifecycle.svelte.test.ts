@@ -825,6 +825,18 @@ describe('MapStage boot lifecycle', () => {
 		expect(map.controls[0]?.options).toEqual({ compact: true });
 	});
 
+	it('refreshes the attribution after a source date arrives without rebuilding the map', async () => {
+		const { view, props, map } = await bootStage({ customAttribution: 'Last update: unknown.' });
+		const first = map.controls[0];
+		await view.rerender({ ...props, customAttribution: 'Updates & notices: 2026-11-24.' });
+
+		expect(harness.state.maps).toEqual([map]);
+		expect(map.removeControl).toHaveBeenCalledWith(first);
+		expect(map.controls).toHaveLength(1);
+		expect(map.controls[0]?.options.customAttribution).toBe('Updates &amp; notices: 2026-11-24.');
+		expect(harness.state.controlListenerCount).toBe(5);
+	});
+
 	it('owns attribution teardown so a pre-release control fault cannot block raw removal', async () => {
 		const controlError = new Error('attribution control failed before release');
 		const oncleanupfailure = vi.fn();

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { downloadLicence } from "../src/download-licences.js";
+import { downloadLicence, renderDownloadLicence } from "../src/download-licences.js";
 import worker from "../src/worker.js";
 
 const DATE = "2026-11-20";
@@ -28,7 +28,9 @@ test("published download licences match the approved JSON byte for byte", () => 
       labels: { en: { operator: source.en }, fr: { operator: source.en } },
       download_licence: { checked_on, name, attribution, url, limits, non_endorsement, source },
     };
-    assert.equal(JSON.stringify(downloadLicence(input, golden.date)), JSON.stringify(expected), city);
+    const terms = downloadLicence(input, golden.date);
+    assert.equal(JSON.stringify(renderDownloadLicence(terms, undefined, golden.date)),
+      JSON.stringify(expected), city);
   }
 });
 
@@ -52,12 +54,14 @@ function provider(id, operator, alerts = true, licensed = true) {
 }
 
 function fixture(t, { city = "stm", status, missing = false, admitted = true, alerts = true,
+  sourceDate, datedNotice = false,
   endpoint = "fixture.r2.cloudflarestorage.com", r2Error, wrongRange = false, version = "11" } = {}) {
   const tables = ["12", "13"].includes(version) ? [...TABLES, "segment_runs"] : TABLES;
   const manifest = {
     provider: city,
     service_date: DATE,
     cleaning_version: version,
+    ...(sourceDate ? { source_date: sourceDate } : {}),
     ...(status ? { status } : {
       ...(alerts ? {} : { alerts: "not_tracked" }),
       files: Object.fromEntries(tables.filter((name) => alerts || name !== "alerts").map(
@@ -86,12 +90,20 @@ function fixture(t, { city = "stm", status, missing = false, admitted = true, al
         const url = new URL(request.url);
         upstream.push(url);
         if (url.pathname === "/cities") {
+          const candidate = provider("new_city", "Example Transit");
+          if (datedNotice) Object.assign(candidate.download_licence, {
+            source_date_required: true,
+            attribution: {
+              en: "Last update: {source_date}.",
+              fr: "Dernière mise à jour : {source_date}.",
+            },
+          });
           return Response.json({
             default_provider: "stm",
             providers: [
               provider("stm", "STM"),
               provider("octranspo", "OC Transpo", false),
-              provider("new_city", "Example Transit"),
+              candidate,
               provider("unlicensed", "Example Agency", true, false),
             ],
           });
@@ -148,6 +160,27 @@ function fixture(t, { city = "stm", status, missing = false, admitted = true, al
     waitUntil(promise) { return promise; },
   });
   return { fetch, admissions, keys, methods, requests, upstream };
+}
+
+for (const [label, datedNotice, sourceDate, en, fr] of [
+  ["uses the source update used by the cleaned day", true, "2026-11-21",
+    "Last update: 2026-11-21.", "Dernière mise à jour : 2026-11-21."],
+  ["reports an unknown date for a receipt without it", true, undefined,
+    "Last update: unknown.", "Dernière mise à jour : inconnue."],
+  ["preserves the old engine catalogue behaviour", false, "2026-11-21",
+    "Contains information licensed under Example Transit's terms.",
+    "Contains information licensed under Example Transit's terms."],
+]) {
+  test(label, async (t) => {
+    const { fetch } = fixture(t, { city: "new_city", sourceDate, datedNotice });
+    const listing = await (await fetch(`/v2/new_city/download?date=${DATE}`)).json();
+    assert.deepEqual(listing.licence.attribution, { en, fr });
+    assert.equal(Object.hasOwn(listing, "source_date"), false);
+    const readme = await (await fetch(listing.readme_url)).text();
+    assert.ok(readme.split("\n").includes(en));
+    assert.ok(readme.split("\n").includes(fr));
+    assert.doesNotMatch(readme, /\{source_date\}|YYYY-MM-DD/);
+  });
 }
 
 test("a dated listing uses the public city catalog, current version and manifest identities", async (t) => {
