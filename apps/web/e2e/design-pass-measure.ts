@@ -68,10 +68,13 @@ export async function layoutMetrics(page: Page, zoomed = false) {
 					: [];
 			});
 			let edges = 0;
+			let edgeCount = 0;
 			if (zoomed) {
-				for (const el of document.querySelectorAll<HTMLElement>('body *:not(svg, svg *)')) {
+				for (const el of document.querySelectorAll('body *:not(svg *)')) {
 					if (!el.checkVisibility() || el.closest('[aria-hidden="true"], [data-allow-clip]'))
 						continue;
+					// The skip link intentionally lives off canvas until the first Tab.
+					if (el.closest('a.skip-link:not(:focus)')) continue;
 					const rect = el.getBoundingClientRect();
 					if (rect.width <= 1 || rect.height <= 1) continue;
 					const left = rect.left + window.scrollX;
@@ -85,6 +88,7 @@ export async function layoutMetrics(page: Page, zoomed = false) {
 						parent = parent.parentElement;
 					}
 					if (!parent || parent === document.body) {
+						edgeCount++;
 						edges = Math.max(edges, Math.round(-left), Math.round(right - root.clientWidth));
 					}
 				}
@@ -93,6 +97,7 @@ export async function layoutMetrics(page: Page, zoomed = false) {
 				height: root.scrollHeight,
 				overflow: root.scrollWidth - root.clientWidth,
 				edges,
+				edgeCount,
 				targets: targets.length,
 				shortTargets: short.length,
 				targetDeficit: short.reduce(
@@ -215,7 +220,7 @@ async function keyboardMetrics(page: Page) {
 				expect(stop.repeated, `Tab must advance past ${stop.key}`).toBe(false);
 				sequence.push(stop.key);
 			}
-			const ring = await page.evaluate(focusRing);
+			const ring = await page.evaluate(focusRing, undefined);
 			if (!ring.visible || ring.outline === 'none' || ring.width < 1) withoutRing++;
 			if (stop.beforeFigure) beforeFigure++;
 			if (
