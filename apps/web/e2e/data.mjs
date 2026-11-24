@@ -298,6 +298,7 @@ for (const family of ['static/routes', 'historic/route_reliability']) {
 files['/v1/stm/static/stops/UNSEEDED.json'] = '{}';
 
 const heldResponsesByFixture = new Map();
+const dailyMessageHolds = new Set();
 const server = createServer((request, response) => {
 	// No Date header: the app anchors its clock to it, which would undo page.clock.
 	response.sendDate = false;
@@ -590,8 +591,15 @@ const server = createServer((request, response) => {
 			.end(`${header}\nfixture_delay,19\n`);
 		return;
 	}
+	if (request.method === 'POST' && url.pathname === '/__overview/hold') {
+		const fixture = url.searchParams.get('fixture');
+		if (fixture) dailyMessageHolds.add(fixture);
+		response.writeHead(fixture ? 204 : 400).end();
+		return;
+	}
 	if (request.method === 'POST' && url.pathname === '/__overview/release') {
 		const fixture = url.searchParams.get('fixture') ?? 'overview';
+		dailyMessageHolds.delete(fixture);
 		const held = heldResponsesByFixture.get(fixture);
 		heldResponsesByFixture.delete(fixture);
 		for (const send of held ?? []) send();
@@ -603,6 +611,8 @@ const server = createServer((request, response) => {
 		url.pathname = `/${question[2]}`;
 		url.searchParams.set('city', question[1]);
 		const dailyFixture = ['2026-11-17', '2026-11-18'].includes(url.searchParams.get('from'));
+		const scope = request.headers['x-transit-fixture-scope'];
+		const dailyMessageHold = dailyMessageHolds.has(scope) ? scope : undefined;
 		const finderFixture =
 			question[2] === 'measure' && ['line', 'stop_id'].includes(url.searchParams.get('group'));
 		const alertFixture =
@@ -630,7 +640,7 @@ const server = createServer((request, response) => {
 									: finderFixture
 										? finderEngine(url)
 										: dailyFixture
-											? departureDailyEngine(url)
+											? departureDailyEngine(url, dailyMessageHold)
 											: overviewEngine(url);
 		if (result.csv) {
 			response.setHeader('content-type', 'text/csv; charset=utf-8');

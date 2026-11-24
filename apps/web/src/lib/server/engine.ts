@@ -125,12 +125,21 @@ export async function getEngineHealth() {
 	}
 }
 
-function engineFetch(question: EngineQuestion, signal: AbortSignal, visitorIp?: string | null) {
+function engineFetch(
+	question: EngineQuestion,
+	signal: AbortSignal,
+	visitorIp?: string | null,
+	fixtureScope?: string | null,
+) {
 	const proxy = env.QUESTION_PROXY;
 	const fixture = env.QUESTION_FIXTURE_ORIGIN;
 	if (!proxy && !fixture) return null;
 	const url = questionUrl(question, proxy ? QUESTION_ORIGIN : fixture);
-	const headers = proxy && visitorIp ? { 'x-transit-visitor-ip': visitorIp } : undefined;
+	const headers = new Headers();
+	if (proxy && visitorIp) headers.set('x-transit-visitor-ip', visitorIp);
+	// The loopback test binding lets a fixture opt in to holding its own request.
+	if (!proxy && fixtureScope && question.parameters.measure === 'alert_counts')
+		headers.set('x-transit-fixture-scope', fixtureScope);
 	const request = new Request(url, { headers, signal, redirect: 'manual' });
 	return proxy ? proxy.fetch(request) : fetch(request);
 }
@@ -151,10 +160,11 @@ export async function query<T>(
 	question: EngineQuestion,
 	schema: z.ZodType<T>,
 	visitorIp?: string | null,
+	fixtureScope?: string | null,
 ): Promise<EngineResult<T>> {
 	const signal = AbortSignal.timeout(ENGINE_TIMEOUT_MS);
 	try {
-		const response = await engineFetch(question, signal, visitorIp);
+		const response = await engineFetch(question, signal, visitorIp, fixtureScope);
 		if (!response) return { kind: 'unconfigured' };
 		if (response.status === 503 && response.headers.has('retry-after')) return { kind: 'busy' };
 		if (!response.ok) return { kind: 'unreachable' };
@@ -174,7 +184,12 @@ function periodQuery<T>(
 	parameters: Record<string, string>,
 	schema: z.ZodType<T>,
 ) {
-	return query(periodQuestion(period, path, parameters), schema, period.visitorIp);
+	return query(
+		periodQuestion(period, path, parameters),
+		schema,
+		period.visitorIp,
+		period.fixtureScope,
+	);
 }
 
 export function getMeasure(measure: MeasureAnswer['measure'], period: EnginePeriod) {

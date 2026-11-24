@@ -9,7 +9,10 @@ import {
 } from './engine.ts';
 
 const { env } = vi.hoisted(() => ({
-	env: { QUESTION_PROXY: undefined as { fetch(request: Request): Promise<Response> } | undefined },
+	env: {
+		QUESTION_PROXY: undefined as { fetch(request: Request): Promise<Response> } | undefined,
+		QUESTION_FIXTURE_ORIGIN: undefined as string | undefined,
+	},
 }));
 vi.mock('cloudflare:workers', () => ({ env }));
 
@@ -18,6 +21,7 @@ const fetcher = vi.fn<(request: Request) => Promise<Response>>();
 
 beforeEach(() => {
 	env.QUESTION_PROXY = { fetch: fetcher };
+	env.QUESTION_FIXTURE_ORIGIN = undefined;
 	fetcher.mockReset();
 });
 
@@ -137,4 +141,25 @@ describe('overview engine requests', () => {
 			'https://data.yesid.dev/v2/other-city/measure?from=2026-11-08&to=2026-11-14&measure=on_time&stop=S+1&group=line&format=csv&lang=fr',
 		);
 	});
+});
+
+it('forwards the message hold scope only to the fixture server', async () => {
+	const fixtureScope = 'daily-messages-test';
+	const scope = { ...dates, fixtureScope, visitorIp: '192.0.2.24' };
+	const question = { path: '/measure', parameters: { measure: 'alert_counts' } } as const;
+	const fixture = vi
+		.spyOn(globalThis, 'fetch')
+		.mockResolvedValue(new Response(null, { status: 503 }));
+	env.QUESTION_FIXTURE_ORIGIN = 'http://127.0.0.1:4318';
+	env.QUESTION_PROXY = undefined;
+	await getRecordAnswer(question, scope);
+	const local = fixture.mock.calls[0]?.[0] as Request;
+	expect(new URL(local.url).origin).toBe(env.QUESTION_FIXTURE_ORIGIN);
+	expect(local.headers.get('x-transit-fixture-scope')).toBe(fixtureScope);
+
+	env.QUESTION_PROXY = { fetch: fetcher };
+	await getRecordAnswer(question, scope);
+	const proxied = fetcher.mock.calls[0]?.[0];
+	expect(proxied?.headers.get('x-transit-fixture-scope')).toBeNull();
+	expect(proxied?.headers.get('x-transit-visitor-ip')).toBe('192.0.2.24');
 });

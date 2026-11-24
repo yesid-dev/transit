@@ -1,4 +1,4 @@
-export function departureDailyEngine(url) {
+export function departureDailyEngine(url, dailyMessageHold) {
 	const get = (name) => url.searchParams.get(name);
 	const from = get('from');
 	const to = get('to');
@@ -128,13 +128,9 @@ export function departureDailyEngine(url) {
 		);
 	}
 	if (measure === 'alert_counts') {
-		if (
-			from === '2026-11-17' ||
-			(from === '2026-11-18' && ['18', '19', '21', '22'].includes(to?.slice(-2)))
-		)
+		if (dailyMessageHold)
 			return {
-				hold:
-					from === '2026-11-17' ? 'daily-messages' : ['daily-layout', get('city'), to].join('-'),
+				hold: dailyMessageHold,
 				...result({
 					...cell(null, { alerts: null }),
 					state: 'not_tracked',
