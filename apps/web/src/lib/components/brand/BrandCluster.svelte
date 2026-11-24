@@ -8,7 +8,7 @@
 <span class="footer-brand" data-testid="footer-brand">
 	<span class="footer-brand-layout">
 		<ProductBrand
-			product="transit"
+			product="Transit"
 			href={productHref}
 			houseHref={YESID_HOUSE_LINK.href}
 			houseExternal

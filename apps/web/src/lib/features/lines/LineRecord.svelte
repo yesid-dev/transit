@@ -115,11 +115,13 @@
 						</a>
 					{/if}
 					{#await answer}
-						{#key answer}<RecordPending {locale} />{/key}
+						{#key answer}<RecordPending {locale} {answer} />{/key}
 					{:then result}
 						{@const message = recordMessage(result, locale)}
 						{#if result.kind === 'answer' && result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-						{#if message && (section !== 'waiting' || result.kind !== 'answer')}
+						{#if result.kind === 'busy'}
+							<RecordPending {locale} busy />
+						{:else if message && (section !== 'waiting' || result.kind !== 'answer')}
 							<StateNotice presentation="frameless" title={message} />
 						{/if}
 						{#if result.kind === 'answer'}

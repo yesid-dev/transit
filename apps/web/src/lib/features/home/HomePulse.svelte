@@ -86,7 +86,7 @@
 			gap: 1.5rem;
 		}
 		.pulse-cards {
-			grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+			grid-template-columns: minmax(0, 2fr) minmax(min(21rem, 48%), 1fr);
 			gap: 1.5rem;
 		}
 	}

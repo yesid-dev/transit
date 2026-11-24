@@ -101,11 +101,14 @@
 					<h2 id={`${section}-title`}>{title}</h2>
 					{#if section === 'accessibility'}<p>{stopAccessibilityDescription[locale]}</p>{/if}
 					{#await answer}
-						{#key answer}<RecordPending {locale} />{/key}
+						{#key answer}<RecordPending {locale} {answer} />{/key}
 					{:then result}
 						{@const message = recordMessage(result, locale)}
 						{#if result.kind === 'answer' && result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-						{#if message}<StateNotice presentation="frameless" title={message} />{/if}
+						{#if result.kind === 'busy'}<RecordPending
+								{locale}
+								busy
+							/>{:else if message}<StateNotice presentation="frameless" title={message} />{/if}
 						{#if result.kind === 'answer'}
 							{@const data = result.answer}
 							{#if section === 'waiting' && 'cells' in data && data.cells.length}

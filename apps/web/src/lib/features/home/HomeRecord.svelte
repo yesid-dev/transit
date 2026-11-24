@@ -23,7 +23,7 @@
 	{#if record}
 		{@const period = record.period}
 		{#await record.punctuality}
-			{#key record.punctuality}<RecordPending {locale} />{/key}
+			{#key record.punctuality}<RecordPending {locale} answer={record.punctuality} />{/key}
 		{:then result}
 			{#if result.kind === 'answer' && result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 			<p>{measureText(result, period, locale)}</p>

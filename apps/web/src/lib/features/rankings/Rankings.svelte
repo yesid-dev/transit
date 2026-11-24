@@ -209,7 +209,7 @@
 					/>
 				{:else}
 					{#await record.answer}
-						{#key record.answer}<RecordPending {locale} />{/key}
+						{#key record.answer}<RecordPending {locale} answer={record.answer} />{/key}
 					{:then result}
 						{@const message = recordMessage(result, locale)}
 						{#if message}<StateNotice presentation="frameless" title={message} />{/if}

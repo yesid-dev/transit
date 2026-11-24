@@ -1,4 +1,5 @@
 <script lang="ts">
+	import RefreshButton from '#lib/components/shell/RefreshButton.svelte';
 	import CalendarIcon from '@lucide/svelte/icons/calendar';
 	import InfoIcon from '@lucide/svelte/icons/info';
 	import { StatusDot } from '@yesid/ui/brand';
@@ -112,6 +113,11 @@
 							>
 						</p>{/if}
 				{/each}
+				{#if column.key === 'live' && live}
+					<div class="min-h-11">
+						{#if shown.live}<RefreshButton {locale} />{/if}
+					</div>
+				{/if}
 			</section>
 		{/each}
 	</div>

@@ -48,14 +48,14 @@ async function captureDetail(
 async function expectChromeClear(page: Page) {
 	const navPill = page.getByTestId('nav-pill');
 	await expect(navPill).toBeVisible();
-	await expect(page.locator('[data-slot="app-frame-controls"]')).toBeVisible();
+	await expect(page.locator('[data-slot="app-frame-header"]')).toBeVisible();
 	await expect
 		.poll(() =>
 			page.evaluate(() => {
 				const sheet = document.querySelector('[data-slot="bottom-sheet"]')!.getBoundingClientRect();
 				const pill = document.querySelector('[data-testid="nav-pill"]')!.getBoundingClientRect();
 				const controls = document
-					.querySelector('[data-slot="app-frame-controls"]')!
+					.querySelector('[data-slot="app-frame-header"]')!
 					.getBoundingClientRect();
 				return sheet.top - Math.max(pill.bottom, controls.bottom);
 			}),

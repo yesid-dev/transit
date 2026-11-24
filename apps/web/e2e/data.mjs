@@ -297,6 +297,17 @@ for (const family of ['static/routes', 'historic/route_reliability']) {
 // browser loads it: the layout spec serves the real file there, late.
 files['/v1/stm/static/stops/UNSEEDED.json'] = '{}';
 
+const sourceCredits = {
+	stm: {
+		en: 'Source: Société de transport de Montréal (STM), CC BY 4.0.',
+		fr: 'Source : Société de transport de Montréal (STM), CC BY 4.0.',
+	},
+	octranspo: {
+		en: 'Contains information licensed under the Open Government Licence – City of Ottawa.',
+		fr: 'Contient de l’information visée par la Licence du gouvernement ouvert – Ville d’Ottawa.',
+	},
+};
+
 const heldResponsesByFixture = new Map();
 const dailyMessageHolds = new Set();
 const server = createServer((request, response) => {
@@ -321,6 +332,7 @@ const server = createServer((request, response) => {
 					...provider,
 					attribution: JSON.parse(files[`/v1/${provider.id}/manifest.json`]).attribution,
 					timezone: 'America/Toronto',
+					download_licence: { attribution: sourceCredits[provider.id] },
 					bounds: provider.max_bounds,
 					...(provider.id === 'octranspo'
 						? { name_separators: { ends: '<>', languages: '~', language_order: ['en', 'fr'] } }

@@ -10,7 +10,6 @@
 		searchHitHref,
 		searchPageHref,
 		withAddresses,
-		type ChromeSearchScope,
 		type SearchHit,
 		type SearchList,
 	} from '#lib/search/transitSearch.ts';
@@ -24,7 +23,6 @@
 		providerId: string;
 		/** The URL the reader sees, including shallow view changes. */
 		url: URL;
-		scope: ChromeSearchScope;
 		list: SearchList;
 		presentation?: LivePresentation | null;
 		query?: string;
@@ -39,7 +37,6 @@
 		locale,
 		providerId,
 		url,
-		scope,
 		list,
 		presentation = null,
 		query = $bindable(''),
@@ -49,7 +46,6 @@
 	const uid = $props.id();
 	const listId = `${uid}-results`;
 	const copy = $derived(navPillCopy[locale]);
-	const scoped = $derived(scope === 'route' || scope === 'stop' ? scope : 'all');
 	const text = $derived(query.trim());
 	let open = $state(true);
 	let form = $state<HTMLFormElement>();
@@ -165,8 +161,8 @@
 		role="combobox"
 		name="network-search"
 		bind:value={query}
-		placeholder={copy.searchPlaceholder[scoped]}
-		aria-label={copy.searchAria[scoped]}
+		placeholder={copy.searchPlaceholder.all}
+		aria-label={copy.searchAria.all}
 		aria-expanded={shown && (listed || address !== null)}
 		aria-controls={shown && (listed || address !== null) ? listId : undefined}
 		aria-autocomplete="list"
@@ -186,7 +182,7 @@
 					bind:this={results}
 					bind:active
 					id={listId}
-					label={copy.searchAria[scoped]}
+					label={copy.searchAria.all}
 					list={shownList}
 					{address}
 					query={text}

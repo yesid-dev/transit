@@ -65,7 +65,7 @@ for (const locale of ['en', 'fr'])
 				const geometry = await sheet.evaluate((el) => {
 					const box = el.getBoundingClientRect();
 					const body = el.querySelector<HTMLElement>('[data-slot="bottom-sheet-body"]')!;
-					const chrome = ['[data-testid="nav-pill"]', '[data-slot="app-frame-controls"]'].map(
+					const chrome = ['[data-testid="nav-pill"]', '[data-slot="app-frame-header"]'].map(
 						(selector) => document.querySelector(selector)!.getBoundingClientRect().bottom,
 					);
 					return {

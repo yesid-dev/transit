@@ -4,16 +4,11 @@ import type { Page } from '@playwright/test';
 export async function waitForFrameClearance(page: Page): Promise<void> {
 	await page.evaluate(() => document.fonts.ready);
 	await page.waitForFunction(() => {
-		const pill = document.querySelector('[data-testid="nav-pill"]')?.getBoundingClientRect();
-		const controls = document
-			.querySelector('[data-slot="app-frame-controls"]')
-			?.getBoundingClientRect();
+		const header = document.querySelector('[data-slot="site-header"]');
+		if (!header) return false;
+		const navTop = parseFloat(getComputedStyle(header).paddingBlockStart);
 		const measured = parseFloat(document.documentElement.style.getPropertyValue('--pill-h'));
-		return (
-			!!pill &&
-			!!controls &&
-			measured === Math.ceil(Math.max(pill.bottom, controls.bottom) - pill.top)
-		);
+		return measured === Math.ceil(header.getBoundingClientRect().height - navTop);
 	});
 }
 

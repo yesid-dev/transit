@@ -206,19 +206,6 @@ it('uses the operator name when snapshot boot only knows the city id', () => {
 	expect(picker.parentElement).not.toHaveTextContent('private-provider');
 });
 
-it('shows a compact selected period on the trigger in French', () => {
-	vi.useFakeTimers({ toFake: ['Date'] });
-	try {
-		vi.setSystemTime(new Date('2026-11-22T16:00:00Z'));
-		const url = new URL('https://transit.test/fr/?recordFrom=2026-11-08&recordTo=2026-11-14');
-		const view = render(NavPill, { props: { locale: 'fr', url } });
-		const trigger = view.getByRole('button', { name: /Période.*8.*14.*nov\./ });
-		expect(trigger).toHaveAttribute('aria-expanded', 'false');
-	} finally {
-		vi.useRealTimers();
-	}
-});
-
 describe('NavPill navigation lifecycle integration', () => {
 	it.each([false, true])('uses the Kit 3 fallback with redirect=%s', async (redirected) => {
 		const adapter = createNavigationRouter();
@@ -278,11 +265,12 @@ describe('NavPill — search', () => {
 		expect(searchbox).toHaveAttribute('name', 'network-search');
 	});
 
-	it('scopes the search placeholder + aria-label to the line catalogue', () => {
-		const { getByRole } = render(NavPill, { props: { locale: 'en', searchScope: 'route' } });
-		expect(getByRole('combobox', { name: 'Search a line' })).toHaveAttribute(
+	it('uses the same search name and placeholder on the line catalogue', () => {
+		const url = new URL('https://transit.local/lines');
+		const { getByRole } = render(NavPill, { props: { locale: 'en', url } });
+		expect(getByRole('combobox', { name: 'Search the network' })).toHaveAttribute(
 			'placeholder',
-			'Search a line…',
+			'Line, stop, vehicle',
 		);
 	});
 

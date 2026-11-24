@@ -1,4 +1,5 @@
 <script lang="ts">
+	import RefreshButton from '#lib/components/shell/RefreshButton.svelte';
 	import ArticleHeader from '#lib/components/layout/TransitArticleHeader.svelte';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { liveReader } from '#lib/v1/adapter/index.ts';
@@ -589,6 +590,7 @@
 			{#snippet actions()}
 				<div class="network-feed-health">
 					<FreshnessStamp variant="live" presentation={presentation.stamp} {locale} />
+					<RefreshButton {locale} />
 					<ConformanceBadge conformance={provenance.data?.conformance} {locale} />
 				</div>
 			{/snippet}

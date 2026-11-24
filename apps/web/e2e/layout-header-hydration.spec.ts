@@ -31,7 +31,7 @@ function header(page: Page) {
 
 // Measured once the header's own styles and every requested font face have settled.
 async function settled(page: Page) {
-	await expect(page.locator('[data-slot="app-frame-controls"]').getByRole('combobox')).toHaveCSS(
+	await expect(page.locator('[data-slot="site-header-network"]').getByRole('combobox')).toHaveCSS(
 		'opacity',
 		'0',
 	);

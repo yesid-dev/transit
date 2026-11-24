@@ -183,6 +183,8 @@
 					{#if result?.kind === 'answer'}
 						{#if result.lastGood}<p>{headers[index === 0 ? 1 : 3]}. {lastGoodNote[locale]}</p>{/if}
 						{#if result.answer.coverage_note}<p>{result.answer.coverage_note[locale]}</p>{/if}
+					{:else if result?.kind === 'busy'}
+						<RecordPending {locale} busy />
 					{:else if result}
 						<StateNotice
 							presentation="frameless"

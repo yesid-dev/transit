@@ -1,6 +1,10 @@
 import { expect, it } from 'vitest';
 import { PublicCitySchema } from '#lib/v1/schemas/providers.ts';
-import { datedProviderAttribution, providerAttribution } from './providerAttribution';
+import {
+	datedProviderAttribution,
+	providerAttribution,
+	providerSourceAttribution,
+} from './providerAttribution';
 
 it.each(['stm', 'octranspo'])(
 	'localizes %s attribution without changing the published English text',
@@ -47,5 +51,23 @@ it('renders a dated notice from the catalogue, including an unknown date in eith
 	expect(datedProviderAttribution(city, 'en', '2026-11-20')).toBe('Update: 2026-11-20.');
 	expect(datedProviderAttribution(city, 'en')).toBe('Update: unknown.');
 	expect(datedProviderAttribution(city, 'fr')).toBe('Mise à jour : inconnue.');
+	expect(providerSourceAttribution(city, 'fr', '2026-11-20')).toBe('Mise à jour : 2026-11-20.');
+	expect(
+		providerSourceAttribution(
+			{
+				...city,
+				download_licence: {
+					attribution: { en: 'City source', fr: 'Source municipale' },
+				},
+			},
+			'fr',
+		),
+	).toBe('Source municipale');
+	expect(
+		providerSourceAttribution(
+			{ ...city, download_licence: undefined, attribution: 'From the city' },
+			'en',
+		),
+	).toBe('From the city');
 	expect(datedProviderAttribution({ ...city, download_licence: undefined }, 'en')).toBeNull();
 });

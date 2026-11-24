@@ -94,6 +94,8 @@
 	{:else if result.kind === 'answer'}
 		{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 		{#if result.answer.coverage_note}<p>{result.answer.coverage_note[locale]}</p>{/if}
+	{:else if result.kind === 'busy'}
+		<RecordPending {locale} busy />
 	{:else}
 		<p>{recordConnection[result.kind][locale]}</p>
 	{/if}

@@ -166,8 +166,7 @@ for (const locale of ['en', 'fr'] as const)
 			for (const control of [theme, language, menu]) await targetFits(control, page);
 			await expect(language).toHaveAccessibleName(new RegExp(copy.names[locale]));
 			const refresh = pill.getByRole('button', { name: copy.refresh, exact: true });
-			if (width < 600) await expect(refresh).toBeHidden();
-			else await targetFits(refresh, page);
+			await expect(refresh).toHaveCount(0);
 			if (width < 1024) {
 				const search = pill.getByRole('button', { name: copy.searchAria.all, exact: true });
 				await targetFits(search, page);
@@ -187,7 +186,7 @@ for (const locale of ['en', 'fr'] as const)
 			);
 			await pillFits(pill);
 			await singleLine(pill.locator('[data-slot="product-brand-name"]'));
-			await targetFits(refresh, page);
+			await expect(refresh).toHaveCount(0);
 			await expect(
 				pill.getByRole('button', { name: copy.searchAria.all, exact: true }),
 			).toBeHidden();

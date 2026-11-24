@@ -118,7 +118,7 @@ export default defineConfig({
 							...(width === 1440
 								? []
 								: [
-										/layout-(?:cohesion|detail-navigation|sheet-scroll|cards|panel-sizes|record-header|record-loading|stop-pages|stop-notice|header-hydration|shell)\.spec\.ts/,
+										/layout-(?:cohesion|detail-navigation|sheet-scroll|cards|panel-sizes|record-header|record-loading|stop-pages|stop-notice|header-hydration|shell|frame)\.spec\.ts/,
 									]),
 							// Polish owns a phone matrix or a desktop matrix, selected by width.
 							...(width === 390 || width === 1440 ? [] : [/layout-map-polish\.spec\.ts/]),

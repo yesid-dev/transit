@@ -2,19 +2,22 @@
 	import type { LivePresentation } from '#lib/v1/live/livePresentation.ts';
 	import type { NavigationLifecycle } from '@yesid/ui/brand';
 	import type { Snippet } from 'svelte';
-	import { cn } from '#lib/utils/index.ts';
-	import { type Locale, DEFAULT_LOCALE, getLocale } from '#lib/i18n/index.ts';
-	import type { ChromeSearchScope, SearchList } from '#lib/search/transitSearch.ts';
-	import NavPill from './NavPill.svelte';
-	import { AnnouncementBanner } from '@yesid/ui/layout';
+	import { DEFAULT_LOCALE, getLocale, type Locale } from '#lib/i18n/index.ts';
+	import type { SearchList } from '#lib/search/transitSearch.ts';
+	import { AppFrame, AnnouncementBanner, type SurfaceRailContext } from '@yesid/ui/layout';
 	import { announcement } from '#lib/site/announcement.ts';
+	import { frameToday } from '#lib/site/frameState.ts';
 	import type { PublicProvider } from '#lib/v1/providers.ts';
+	import NavPill from './NavPill.svelte';
+	import FrameControls from './FrameControls.svelte';
+	import { frameControlsState, frameCopy } from './frameControlsState.ts';
+	import RecordPatience from '#lib/features/record/RecordPatience.svelte';
 
 	interface AppShellProps {
 		navigation: NavigationLifecycle;
 		fullViewport?: boolean;
 		locale?: Locale;
-		url?: URL;
+		url: URL;
 		providerId?: string;
 		timeZone?: string;
 		providers?: PublicProvider[];
@@ -22,11 +25,9 @@
 		search?: string;
 		searchList?: SearchList;
 		searchPresentation?: LivePresentation | null;
-		searchScope?: ChromeSearchScope;
-
-		main?: Snippet;
-
-		class?: string;
+		mainLabel?: string;
+		main: Snippet;
+		footer?: Snippet;
 	}
 
 	let {
@@ -41,58 +42,32 @@
 		search = $bindable(''),
 		searchList,
 		searchPresentation,
-		searchScope = 'all',
+		mainLabel,
 		main,
-		class: className,
+		footer,
 	}: AppShellProps = $props();
 
-	const ctxLocale = getLocale();
-	const locale = $derived<Locale>(localeProp ?? ctxLocale ?? DEFAULT_LOCALE);
+	const contextLocale = getLocale();
+	const locale = $derived<Locale>(localeProp ?? contextLocale ?? DEFAULT_LOCALE);
+	const copy = $derived(frameCopy[locale]);
 	let announcementHeight = $state(0);
+	let now = $state(new Date());
+	const today = $derived(frameToday(timeZone, now));
+	const frame = $derived(frameControlsState(url, today));
+
 	$effect(() => {
-		// The phone drawers are portalled outside the shell.
 		const root = document.documentElement;
 		root.style.setProperty('--announcement-height', `${announcementHeight}px`);
-
-		// Native focus may have scrolled before the measured chrome became sticky.
-		const focused = document.activeElement;
-		if (
-			announcementHeight > 0 &&
-			!fullViewport &&
-			focused instanceof HTMLElement &&
-			focused.matches(':focus-visible') &&
-			focused.closest('[data-slot="app-shell-row"]')
-		) {
-			const clearance = parseFloat(getComputedStyle(root).scrollPaddingTop);
-			const { top, bottom } = focused.getBoundingClientRect();
-			if (top < clearance && bottom > 0) {
-				focused.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
-			}
-		}
 		return () => root.style.removeProperty('--announcement-height');
 	});
 </script>
 
-<div
-	class={cn(
-		'app-shell-root circuit-grid flex w-full flex-col bg-background text-foreground',
-		fullViewport ? 'h-dvh overflow-hidden' : 'min-h-dvh',
-		className,
-	)}
-	data-full-viewport={fullViewport}
-	data-slot="app-shell"
->
-	<div
-		class="app-shell-chrome"
-		data-slot="app-shell-chrome"
-		data-announcement-measured={announcementHeight > 0 || undefined}
-		bind:clientHeight={announcementHeight}
-	>
-		{#if announcement.enabled}
+{#snippet header()}
+	{#if announcement.enabled}
+		<div data-slot="app-shell-chrome" bind:clientHeight={announcementHeight}>
 			<AnnouncementBanner id={announcement.id} {...announcement[locale]} />
-		{/if}
-	</div>
-
+		</div>
+	{/if}
 	<NavPill
 		{navigation}
 		{locale}
@@ -104,52 +79,54 @@
 		bind:search
 		{searchList}
 		{searchPresentation}
-		{searchScope}
 	/>
+{/snippet}
 
-	<div class="app-shell-row min-h-0 flex-1" data-slot="app-shell-row">
-		<div class="app-shell-main relative min-w-0 flex-1 bg-transparent" data-slot="map-stage">
-			{#if main}{@render main()}{/if}
-		</div>
-	</div>
+{#snippet rail(context: SurfaceRailContext)}
+	<FrameControls {context} {locale} {url} {today} {frame} />
+{/snippet}
+
+<div
+	class="app-shell-root circuit-grid bg-background text-foreground"
+	data-full-viewport={fullViewport}
+	data-slot="app-shell"
+	onfocusin={() => (now = new Date())}
+>
+	<AppFrame
+		{header}
+		{footer}
+		{fullViewport}
+		{mainLabel}
+		controlsRail={{
+			rail,
+			label: copy.controls,
+			summary:
+				frame.mode === 'live'
+					? copy.live
+					: frame.period?.preset
+						? copy.presets[frame.period.preset]
+						: copy.record,
+			openAria: copy.open,
+			closeAria: copy.close,
+		}}
+	>
+		{#snippet children()}
+			{#if fullViewport}
+				{@render main()}
+			{:else}
+				<RecordPatience {locale} period={frame.period} scope={url.pathname + url.search}>
+					{@render main()}
+				</RecordPatience>
+			{/if}
+		{/snippet}
+	</AppFrame>
 </div>
 
 <style>
-	.app-shell-root {
-		position: relative;
-	}
-
-	.app-shell-chrome {
-		position: fixed;
-		inset-block-start: 0;
-		inset-inline: 0;
-		z-index: var(--z-nav);
-	}
-
-	/* Only the banner occupies space in the chrome. Keep it in flow so the map starts below it
-	   from the first paint and automatically reclaims the space when the banner is hidden. */
-	.app-shell-chrome:has(:global([data-slot='announcement-banner'])) {
-		position: sticky;
-		flex: none;
-	}
-
-	/* Before hydration, browser focus scrolling cannot reserve the banner's measured height. */
-	:global(html:not([data-announcement-dismissed]))
-		.app-shell-chrome:not([data-announcement-measured]):has(
-			:global([data-slot='announcement-banner']:not([hidden]))
-		) {
-		position: relative;
-	}
-
-	.app-shell-row {
-		position: relative;
-	}
-
-	/* Keep tall chrome clear of keyboard focus in the footer, including through hydration. */
+	/* Portalled search and map dialogs retain the app's stacking and safe-area tokens. */
 	.app-shell-root:has(:global([data-slot='footer'] :focus-visible))
-		> :global([data-slot='frame-nav']) {
+		:global([data-slot='app-frame-chrome']) {
 		position: relative;
-		inset-block-start: auto;
 	}
 
 	:global(.app-shell-root:has([data-slot='footer'][data-in-view='true']))
@@ -160,31 +137,5 @@
 		) {
 		opacity: 0;
 		pointer-events: none;
-	}
-
-	/* The map canvas and the chrome share a row below any announcement. */
-	.app-shell-root[data-full-viewport='true'] {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr);
-		grid-template-rows: auto minmax(0, 1fr);
-	}
-	.app-shell-root[data-full-viewport='true'] .app-shell-chrome {
-		grid-area: 1 / 1;
-	}
-	.app-shell-root[data-full-viewport='true'] > :global([data-slot='frame-nav']) {
-		position: relative;
-		inset-block-start: auto;
-		grid-area: 2 / 1;
-		align-self: start;
-	}
-	.app-shell-root[data-full-viewport='true'] .app-shell-row {
-		grid-area: 2 / 1;
-		overflow: hidden;
-	}
-
-	.app-shell-root[data-full-viewport='true'] .app-shell-main {
-		overflow: hidden;
-		position: absolute;
-		inset: 0;
 	}
 </style>

@@ -3,7 +3,14 @@ import type { DateWindow } from '#lib/v1/history/window.ts';
 
 export const RECORD_START = '2026-10-13';
 export const MAX_RECORD_DAYS = 400;
-export const PRESETS = ['yesterday', '7-days', '28-days', 'this-month', 'last-month'] as const;
+export const PRESETS = [
+	'yesterday',
+	'7-days',
+	'28-days',
+	'this-month',
+	'last-month',
+	'12-months',
+] as const;
 export type Preset = (typeof PRESETS)[number];
 export type FrameMode = 'live' | 'record';
 export type PeriodError = 'invalidDate' | 'reversed' | 'beforeRecord' | 'future' | 'tooLong';
@@ -47,15 +54,25 @@ export function presetPeriod(preset: Preset, today: string): FramePeriod | null 
 	const lastDayOfPreviousMonth = isoDay(
 		new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 0)),
 	);
+	const year = date.getUTCFullYear() - 1;
+	const month = date.getUTCMonth();
+	const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+	const lastYear = isoDay(
+		new Date(Date.UTC(year, month, Math.min(date.getUTCDate(), daysInMonth))),
+	);
 	const periods = {
 		yesterday: { from: daysAgo(1), to: daysAgo(1) },
 		'7-days': { from: daysAgo(7), to: daysAgo(1) },
 		'28-days': { from: daysAgo(28), to: daysAgo(1) },
 		'this-month': { from: monthStart(0), to: today },
 		'last-month': { from: monthStart(-1), to: lastDayOfPreviousMonth },
+		'12-months': { from: lastYear, to: daysAgo(1) },
 	};
 	const period = { ...periods[preset], preset };
-	if ((preset === 'this-month' || preset === 'last-month') && period.from < RECORD_START)
+	if (
+		(preset === 'this-month' || preset === 'last-month' || preset === '12-months') &&
+		period.from < RECORD_START
+	)
 		period.from = RECORD_START;
 	return periodError(period, today) ? null : period;
 }

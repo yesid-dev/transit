@@ -24,14 +24,9 @@
 		localizeHref,
 		localizeUrl,
 	} from '#lib/i18n/index.ts';
-	import {
-		searchTransit,
-		type ChromeSearchScope,
-		type SearchList,
-	} from '#lib/search/transitSearch.ts';
+	import { searchTransit, type SearchList } from '#lib/search/transitSearch.ts';
 	import HeaderSearch from './HeaderSearch.svelte';
 	import SearchSheet from './SearchSheet.svelte';
-	import FrameControls from './FrameControls.svelte';
 	import { carryFrameState, frameHref, frameToday, parseFrameState } from '#lib/site/frameState.ts';
 	import {
 		type NavItem,
@@ -43,7 +38,6 @@
 	import { navPillCopy } from '#lib/i18n/messages.ts';
 	import { ProductBrand } from '@yesid/ui/brand';
 	import { NetworkPicker, SiteHeader } from '@yesid/ui/layout';
-	import RefreshButton from './RefreshButton.svelte';
 	import { providerHref, type PublicProvider } from '#lib/v1/providers.ts';
 	import { v1Provider } from '#lib/v1/config.ts';
 	import { providerDisplayNames, publishedNetwork } from '#lib/site/providerDisplay.ts';
@@ -59,7 +53,6 @@
 		search?: string;
 		searchList?: SearchList;
 		searchPresentation?: LivePresentation | null;
-		searchScope?: ChromeSearchScope;
 		availableLocales?: readonly Locale[];
 	}
 
@@ -74,7 +67,6 @@
 		search = $bindable(''),
 		searchList = searchTransit({ surface: 'list', query: '' }, {}),
 		searchPresentation,
-		searchScope = 'all',
 		availableLocales = PUBLISHED_LOCALES,
 	}: NavPillProps = $props();
 
@@ -86,9 +78,7 @@
 	const currentPath = $derived(delocalizePath(url.pathname));
 
 	const navCopy = $derived(navPillCopy[locale]);
-	const searchAria = $derived(
-		navCopy.searchAria[searchScope === 'route' || searchScope === 'stop' ? searchScope : 'all'],
-	);
+	const searchAria = $derived(navCopy.searchAria.all);
 
 	const hrefFor = (href: string) => {
 		const localized = localizeHref(href, locale, providerId);
@@ -158,19 +148,19 @@
 	const providerShortLabel = $derived(selectedNames?.short ?? providerLabel);
 	const defaultProvider = $derived(publishedNetwork(v1Provider()));
 
-	let scopeControls = $state<HTMLDivElement>();
+	let headerFrame = $state<HTMLDivElement>();
 
 	// Scroll padding and map overlays use the measured chrome. Page content follows it in flow.
 	$effect(() => {
-		if (!scopeControls || typeof ResizeObserver === 'undefined') return;
-		const control = scopeControls;
-		const pill = control.parentElement!.querySelector<HTMLElement>('[data-testid="nav-pill"]')!;
-		const doc = control.ownerDocument;
+		if (!headerFrame || typeof ResizeObserver === 'undefined') return;
+		const header = headerFrame.querySelector<HTMLElement>('[data-slot="site-header"]')!;
+		const doc = header.ownerDocument;
 		const root = doc.documentElement;
 		const measure = () => {
-			const box = pill.getBoundingClientRect();
-			const chromeBottom = Math.max(box.bottom, control.getBoundingClientRect().bottom);
-			root.style.setProperty('--pill-h', `${Math.ceil(chromeBottom - box.top)}px`);
+			const box = header.getBoundingClientRect();
+			const chromeBottom = box.bottom;
+			const navTop = parseFloat(getComputedStyle(header).paddingBlockStart);
+			root.style.setProperty('--pill-h', `${Math.ceil(box.height - navTop)}px`);
 
 			// Native focus can treat a link behind fixed chrome as already visible.
 			// Refresh the clearance and reveal keyboard focus when the header grows or focus moves.
@@ -191,8 +181,7 @@
 				measure();
 		};
 		const observer = new ResizeObserver(measure);
-		observer.observe(pill.closest('[data-slot="site-header"]')!);
-		observer.observe(control);
+		observer.observe(header);
 		doc.addEventListener('focusin', onFocusIn);
 		measure();
 		return () => {
@@ -220,82 +209,71 @@
 		{locale}
 		{providerId}
 		{url}
-		scope={searchScope}
 		list={searchList}
 		presentation={searchPresentation}
 	/>
 {/snippet}
 
-{#snippet scope()}
-	<div
-		bind:this={scopeControls}
-		class="nav-scope"
-		data-slot="app-frame-controls"
-		data-lenis-prevent
-	>
-		<!-- The visible label is its own element, centred in the control; the native select sits on top, transparent. -->
-		{#if useKitNetworkPicker}
-			<NetworkPicker
-				label={`${navCopy.network}: ${providerLabel}`}
-				networks={networkOptions}
+{#snippet network()}
+	<!-- The visible label is its own element, centred in the control; the native select sits on top, transparent. -->
+	{#if useKitNetworkPicker}
+		<NetworkPicker
+			label={`${navCopy.network}: ${providerLabel}`}
+			networks={networkOptions}
+			value={providerId}
+			onValueChange={(id) => location.assign(providerHref(url, id, locale))}
+		/>
+	{:else}
+		<label class="nav-provider">
+			<span class="nav-provider-label nav-provider-full" aria-hidden="true" title={providerLabel}
+				>{providerLabel}</span
+			>
+			<span class="nav-provider-label nav-provider-short" aria-hidden="true" title={providerLabel}
+				>{providerShortLabel}</span
+			>
+			<select
+				class="nav-provider-select"
+				aria-label={`${navCopy.network}: ${providerLabel}`}
+				title={providerLabel}
 				value={providerId}
-				onValueChange={(id) => location.assign(providerHref(url, id, locale))}
-			/>
-		{:else}
-			<label class="nav-provider">
-				<span class="nav-provider-label nav-provider-full" aria-hidden="true" title={providerLabel}
-					>{providerLabel}</span
-				>
-				<span class="nav-provider-label nav-provider-short" aria-hidden="true" title={providerLabel}
-					>{providerShortLabel}</span
-				>
-				<select
-					class="nav-provider-select"
-					aria-label={`${navCopy.network}: ${providerLabel}`}
-					title={providerLabel}
-					value={providerId}
-					onchange={(event) => {
-						const href = providerHref(url, event.currentTarget.value, locale);
-						event.currentTarget.value = providerId;
-						location.assign(href);
-					}}
-				>
-					{#each providers as provider (provider.id)}
-						<option value={provider.id}>{providerNames(provider).full}</option>
-					{/each}
-					{#if !providers.length}
-						<option value={providerId}>{providerLabel}</option>
-						{#if providerId !== v1Provider()}
-							<option value={v1Provider()}>
-								{defaultProvider ? providerNames(defaultProvider).full : navCopy.defaultNetwork}
-							</option>
-						{/if}
+				onchange={(event) => {
+					const href = providerHref(url, event.currentTarget.value, locale);
+					event.currentTarget.value = providerId;
+					location.assign(href);
+				}}
+			>
+				{#each providers as provider (provider.id)}
+					<option value={provider.id}>{providerNames(provider).full}</option>
+				{/each}
+				{#if !providers.length}
+					<option value={providerId}>{providerLabel}</option>
+					{#if providerId !== v1Provider()}
+						<option value={v1Provider()}>
+							{defaultProvider ? providerNames(defaultProvider).full : navCopy.defaultNetwork}
+						</option>
 					{/if}
-					{#if discoveryError}
-						<option value="" disabled>{navCopy.otherNetworksUnavailable}</option>
-					{/if}
-				</select>
-			</label>
-		{/if}
-		<FrameControls {locale} {url} {timeZone} />
-	</div>
+				{/if}
+				{#if discoveryError}
+					<option value="" disabled>{navCopy.otherNetworksUnavailable}</option>
+				{/if}
+			</select>
+		</label>
+	{/if}
 {/snippet}
 
 {#snippet actions()}
-	<RefreshButton {locale} class="nav-refresh" />
 	<SearchSheet
 		bind:query={search}
 		{locale}
 		{providerId}
 		{url}
-		scope={searchScope}
 		list={searchList}
 		presentation={searchPresentation}
 		label={searchAria}
 	/>
 {/snippet}
 
-<div class="frame-nav" data-slot="frame-nav">
+<div bind:this={headerFrame} class="frame-nav" data-slot="frame-nav">
 	<SiteHeader
 		{navigation}
 		{home}
@@ -313,9 +291,9 @@
 			reload: true,
 		}}
 		search={searchField}
+		{network}
 		{actions}
 	/>
-	{@render scope()}
 </div>
 
 <style>
@@ -324,28 +302,8 @@
 		--pill-h: 140px;
 	}
 	.frame-nav {
-		position: sticky;
-		inset-block-start: var(--announcement-height, 0px);
-		z-index: var(--z-nav);
-		flex: none;
-		padding-block: var(--nav-top) var(--chrome-gap);
+		padding-block-end: var(--chrome-gap);
 		pointer-events: none;
-	}
-	/* Keep the kit's dialog and pill in flow. The open menu still covers the viewport. */
-	.frame-nav :global(.menu-dialog) {
-		position: relative;
-		inset: auto;
-	}
-	.frame-nav :global(.menu-dialog-active)::before {
-		content: '';
-		position: fixed;
-		inset: 0;
-		z-index: -1;
-		background: inherit;
-	}
-	.frame-nav :global([data-slot='site-header']) {
-		position: relative;
-		inset-block-start: auto;
 	}
 
 	/* The full brand leaves too little room for French search and the controls at 414px.
@@ -362,30 +320,6 @@
 		:global(.nav-product-brand > [aria-hidden='true']) {
 			display: none;
 		}
-	}
-
-	.nav-scope {
-		position: relative;
-		inset-inline-end: calc(var(--site-header-inset-end, 0px) / 2);
-		margin: 6px auto 0;
-		pointer-events: auto;
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: center;
-		align-items: center;
-		gap: 0.25rem 0.5rem;
-		inline-size: max-content;
-		max-inline-size: calc(100% - 1rem - var(--site-header-inset-end, 0px));
-		padding: 0.125rem 0.5rem;
-		border: 2px solid var(--border-brand);
-		border-radius: var(--radius-lg);
-		background: var(--background);
-	}
-
-	:global([data-full-viewport='true']) .nav-scope {
-		max-block-size: max(var(--size-tap-min), 20dvh);
-		overflow-y: auto;
-		overscroll-behavior: contain;
 	}
 
 	.nav-provider {
@@ -446,23 +380,6 @@
 		.nav-provider {
 			max-width: 100%;
 			padding-inline: 0.5rem;
-		}
-	}
-
-	:global(.nav-refresh) {
-		min-width: 44px;
-		min-height: 44px;
-	}
-	/* Below a 600 px header Refresh waits in the open menu, whose dialog holds the pill. */
-	@container site-header (width < 600px) {
-		:global(.nav-refresh:not([role='dialog'][aria-modal='true'] .nav-refresh)) {
-			display: none;
-		}
-	}
-
-	@media (--tablet-max) {
-		:root {
-			--pill-h: 118px;
 		}
 	}
 </style>

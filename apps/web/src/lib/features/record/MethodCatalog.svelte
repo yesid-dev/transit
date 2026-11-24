@@ -57,7 +57,7 @@
 		</header>
 		<section aria-label={title} class="grid min-w-0 gap-4">
 			{#await catalog}
-				{#key catalog}<RecordPending {locale} />{/key}
+				{#key catalog}<RecordPending {locale} answer={catalog} />{/key}
 			{:then result}
 				{#if result.kind !== 'answer'}
 					<p>{recordConnection[result.kind][locale]}</p>

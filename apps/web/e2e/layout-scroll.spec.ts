@@ -75,7 +75,7 @@ function legalMetrics(page: Page): Promise<LegalMetrics> {
 		const article = document.querySelector<HTMLElement>('[data-testid="legal-document"]')!;
 		// The app frame controls and the pill form the sticky chrome.
 		const pill = document.querySelector<HTMLElement>('[data-testid="nav-pill"]')!;
-		const controls = document.querySelector('[data-slot="app-frame-controls"]')!;
+		const controls = document.querySelector('[data-slot="app-frame-header"]')!;
 		const chrome = [pill, controls].filter((element) => element.checkVisibility());
 		let contentSpill = article.getBoundingClientRect().right - innerWidth;
 		for (const descendant of article.querySelectorAll('*')) {
@@ -137,7 +137,7 @@ for (const kind of ['privacy', 'terms', 'accessibility'] as const) {
 				const anchored = page.locator(`[id="${id}"]`);
 				await expect(anchored).toBeInViewport();
 				const chromeBottom = await page.getByTestId('nav-pill').evaluate((pill) => {
-					const controls = document.querySelector('[data-slot="app-frame-controls"]')!;
+					const controls = document.querySelector('[data-slot="app-frame-header"]')!;
 					return Math.max(
 						...[pill, controls]
 							.filter((element) => element.checkVisibility())

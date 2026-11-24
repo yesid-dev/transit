@@ -134,7 +134,7 @@ async function expectBrandKeyboardOrder(page: Page) {
 	await expectKeyboardReachable(house(page), 'house');
 	await expect(house(page)).toHaveText('yesid.');
 	await expectKeyboardReachable(product(page), 'product');
-	await expect(product(page)).toHaveText('transit');
+	await expect(product(page)).toHaveText('Transit');
 }
 
 test('phone announcement state leaves footer links clear through hydration', async ({ page }) => {

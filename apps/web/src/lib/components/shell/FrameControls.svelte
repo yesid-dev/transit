@@ -1,207 +1,180 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { SegmentedChoice } from '@yesid/ui/brand';
 	import { Button } from '@yesid/ui/button';
-	import { DateRangePicker } from '@yesid/ui/layout';
+	import { ControlsRail, DateRangePicker, type SurfaceRailContext } from '@yesid/ui/layout';
 	import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from '@yesid/ui/sheet';
-	import { delocalizePath, intl, type Locale } from '#lib/i18n/index.ts';
-	import { isRankingPath } from '#lib/features/rankings/rankingSelection.ts';
-	import { networkRecordView } from '#lib/site/networkFrame.ts';
+	import { intl, type Locale } from '#lib/i18n/index.ts';
 	import {
 		frameHref,
-		frameToday,
 		MAX_RECORD_DAYS,
-		parseFrameState,
+		periodError,
 		presetPeriod,
 		PRESETS,
 		RECORD_START,
 		type FrameMode,
+		type Preset,
 	} from '#lib/site/frameState.ts';
+	import { frameCopy, framePeriodSummary, type frameControlsState } from './frameControlsState.ts';
 
-	let { locale, url, timeZone }: { locale: Locale; url: URL; timeZone?: string } = $props();
-
-	const translations = {
-		en: {
-			view: 'View',
-			live: 'Live now',
-			record: 'Record',
-			period: 'Period',
-			close: 'Close the controls',
-			presets: ['Yesterday', 'Last 7 complete days', 'Last 28 days', 'This month', 'Last month'],
-			ranges: 'Ready ranges',
-			custom: 'Choose other dates',
-			from: 'From',
-			to: 'To',
-			apply: 'Show these dates',
-			note: (date: string) => `Record starts ${date}.`,
-			scope: 'Current pages still use their own data and filters.',
-			error: {
-				invalidDate: 'Enter both dates.',
-				reversed: 'The end date must be on or after the start date.',
-				beforeRecord: 'Choose dates on or after the start of the record.',
-				future: 'Choose dates up to today.',
-				tooLong: `Choose a period of at most ${MAX_RECORD_DAYS} days.`,
-			},
-		},
-		fr: {
-			view: 'Vue',
-			live: 'En direct',
-			record: 'Bilan',
-			period: 'Période',
-			close: 'Fermer les commandes',
-			presets: [
-				'Hier',
-				'7 derniers jours complets',
-				'28 derniers jours',
-				'Ce mois-ci',
-				'Le mois dernier',
-			],
-			ranges: 'Plages prêtes',
-			custom: "Choisir d'autres dates",
-			from: 'Du',
-			to: 'Au',
-			apply: 'Afficher ces dates',
-			note: (date: string) => `Le bilan commence le ${date}.`,
-			scope: 'Les pages actuelles utilisent encore leurs propres données et filtres.',
-			error: {
-				invalidDate: 'Entrez les deux dates.',
-				reversed: 'La date de fin doit être égale ou postérieure à la date de début.',
-				beforeRecord: 'Choisissez des dates à partir du début du bilan.',
-				future: 'Choisissez des dates au plus tard aujourd’hui.',
-				tooLong: `Choisissez une période d’au plus ${MAX_RECORD_DAYS} jours.`,
-			},
-		},
-	} as const;
+	let {
+		locale,
+		url,
+		today,
+		frame,
+		context,
+	}: {
+		locale: Locale;
+		url: URL;
+		today: string;
+		frame: ReturnType<typeof frameControlsState>;
+		context: SurfaceRailContext;
+	} = $props();
 
 	const uid = $props.id();
-	const copy = $derived(translations[locale]);
-	let now = $state(new Date());
-	const today = $derived(frameToday(timeZone, now));
-	const path = $derived(delocalizePath(url.pathname));
-	const recordOnly = $derived(
-		isRankingPath(path.replace(/\/$/, '')) ||
-			path === '/receipt' ||
-			path === '/lines' ||
-			path === '/stops',
-	);
-	const frame = $derived.by(() => {
-		const state = parseFrameState(url.searchParams, today);
-		if (path === '/network')
-			return { ...state, mode: networkRecordView(url) ? ('record' as const) : ('live' as const) };
-		return recordOnly ? { ...state, mode: 'record' as const } : state;
-	});
-	const line = $derived(/^\/lines\/[^/]+\/?$/.test(path));
-	const stop = $derived(/^\/stop\/[^/]+\/?$/.test(path));
-	const departure = $derived(path.startsWith('/departure/'));
-	const usesFrameRecord = $derived(
-		path === '/' ||
-			path === '/alerts' ||
-			path === '/network' ||
-			line ||
-			stop ||
-			departure ||
-			recordOnly,
-	);
+	const copy = $derived(frameCopy[locale]);
+	const summary = $derived(framePeriodSummary(frame.period, locale));
 	const startLabel = $derived(
 		intl.dateTime(locale, { timeZone: 'UTC', dateStyle: 'long' }).format(new Date(RECORD_START)),
 	);
-	const rangeLabel = $derived.by(() => {
-		if (!frame.period) return '';
-		const { from, to } = frame.period;
-		const formatter = intl.dateTime(locale, {
-			timeZone: 'UTC',
-			month: 'short',
-			day: 'numeric',
-			year:
-				from.slice(0, 4) === today.slice(0, 4) && to.slice(0, 4) === today.slice(0, 4)
-					? undefined
-					: 'numeric',
-		});
-		return formatter.formatRange(new Date(from), new Date(to));
-	});
 	const modes = $derived([
-		{ key: 'live' as const, label: copy.live },
-		{ key: 'record' as const, label: copy.record },
+		{
+			key: 'live' as const,
+			label: copy.live,
+			disabled: frame.recordOnly,
+			describedById: frame.recordOnly ? uid : undefined,
+		},
+		{ key: 'record' as const, label: copy.record, disabled: frame.recordOnly },
 	]);
-
+	const presets = $derived(
+		PRESETS.map((key) => ({
+			key,
+			label: copy.presets[key],
+			disabled: !presetPeriod(key, today),
+		})),
+	);
 	let open = $state(false);
-	function onOpenChange(next: boolean) {
-		if (!next) return;
-		now = new Date();
+	let tooLong = $state(false);
+
+	async function navigate(href: string | URL, shallow: boolean) {
+		// SegmentedChoice moves focus after onSelect when the reader uses an arrow key.
+		await tick();
+		const focused = document.activeElement;
+		await goto(href, { shallow, reset: false, state: { ...page.state } });
+		// The header's eventless navigation fallback can restore focus to the body.
+		if (
+			focused instanceof HTMLElement &&
+			focused.isConnected &&
+			document.activeElement === document.body
+		) {
+			focused.focus({ preventScroll: true });
+		}
 	}
 
 	function selectMode(mode: FrameMode) {
 		if (frame.mode === mode) return;
 		const target = new URL(frameHref(url, { ...frame, mode }), url);
-		if (line || stop) {
+		if (frame.detail) {
 			if (mode === 'live') target.searchParams.set('tab', 'detail');
 			else target.searchParams.delete('tab');
 		}
-		void goto(target, { shallow: !usesFrameRecord, state: { ...page.state } });
+		if (frame.map) {
+			if (mode === 'live') target.searchParams.delete('mapLayer');
+			else target.searchParams.set('mapLayer', 'stops');
+		}
+		void navigate(target, !frame.usesFrameRecord && !frame.map);
 	}
 
 	function selectPeriod(period: NonNullable<typeof frame.period>) {
+		void navigate(
+			frameHref(url, { ...frame, period }),
+			!frame.map && (!frame.usesFrameRecord || frame.mode === 'live'),
+		);
+	}
+
+	function selectPreset(key: Preset | '') {
+		if (!key) return;
+		const period = presetPeriod(key, today);
+		if (period) selectPeriod(period);
+	}
+
+	function applyDates({ start, end }: { start: string; end: string }) {
+		const period = { from: start, to: end, preset: null };
+		tooLong = periodError(period, today) === 'tooLong';
+		if (tooLong) return;
 		open = false;
-		void goto(frameHref(url, { ...frame, period }), {
-			shallow: !usesFrameRecord || frame.mode === 'live',
-			state: { ...page.state },
-		});
+		selectPeriod(period);
 	}
 </script>
 
-{#if !recordOnly}
-	<SegmentedChoice options={modes} value={frame.mode} label={copy.view} onSelect={selectMode} />
-{/if}
-<Sheet bind:open {onOpenChange}>
-	<SheetTrigger>
-		{#snippet child({ props })}
-			<Button {...props} variant="outline" size="cta-sm" wrap class="min-h-11 max-w-full">
-				<span>{rangeLabel ? `${copy.period} · ${rangeLabel}` : copy.period}</span>
-			</Button>
-		{/snippet}
-	</SheetTrigger>
-	<SheetContent closeLabel={copy.close} class="overflow-y-auto p-4" data-lenis-prevent>
-		<div class="mx-auto grid w-full max-w-xl gap-4 pr-8">
-			<SheetTitle>{copy.period}</SheetTitle>
-			<SheetDescription id={`${uid}-note`}>
-				{copy.note(startLabel)}
-				{#if !usesFrameRecord && path !== '/map'}{copy.scope}{/if}
-			</SheetDescription>
-			<div class="flex flex-wrap gap-2" role="group" aria-label={copy.ranges}>
-				{#each PRESETS as preset, index (preset)}
-					{@const period = presetPeriod(preset, today)}
-					<Button
-						variant={frame.period?.preset === preset ? 'default' : 'outline'}
-						size="cta-sm"
-						wrap
-						class="min-h-11"
-						aria-pressed={frame.period?.preset === preset}
-						disabled={!period}
-						onclick={() => period && selectPeriod(period)}
-					>
-						{copy.presets[index]}
+<div class="grid min-w-0 gap-3" data-frame-controls={context.presentation}>
+	<ControlsRail label={copy.view}>
+		<SegmentedChoice
+			options={modes}
+			value={frame.mode}
+			label={copy.view}
+			onSelect={selectMode}
+			variant="fit-row"
+		/>
+		{#if frame.recordOnly}
+			<p id={uid} class="text-sm text-muted-foreground">{copy.recordOnly}</p>
+		{/if}
+	</ControlsRail>
+	<ControlsRail label={copy.period} class="px-2!">
+		<SegmentedChoice
+			options={presets}
+			value={frame.period?.preset ?? ''}
+			label={copy.period}
+			onSelect={selectPreset}
+			variant="joined-grid"
+		/>
+		{#if summary}
+			<p class="w-full text-sm" data-slot="frame-period-summary">
+				{#if summary.title}<strong class="block">{summary.title}</strong>{/if}
+				<span>{summary.dates} · {summary.duration}</span>
+			</p>
+		{/if}
+		<Sheet
+			bind:open
+			onOpenChange={(value) => {
+				if (value) tooLong = false;
+			}}
+		>
+			<SheetTrigger>
+				{#snippet child({ props })}
+					<Button {...props} variant="outline" size="cta-sm" wrap class="min-h-11 max-w-full">
+						{copy.custom}
 					</Button>
-				{/each}
-			</div>
-			<DateRangePicker
-				presets={[]}
-				value={{ start: frame.period?.from ?? '', end: frame.period?.to ?? '' }}
-				min={RECORD_START}
-				max={today}
-				labels={{
-					legend: copy.custom,
-					presets: copy.ranges,
-					custom: copy.custom,
-					start: copy.from,
-					end: copy.to,
-					apply: copy.apply,
-					missing: copy.error.invalidDate,
-					bounds: `${copy.error.beforeRecord} ${copy.error.future}`,
-					order: copy.error.reversed,
-				}}
-				onValueChange={({ start, end }) => selectPeriod({ from: start, to: end, preset: null })}
-			/>
-		</div>
-	</SheetContent>
-</Sheet>
+				{/snippet}
+			</SheetTrigger>
+			<SheetContent closeLabel={copy.close} class="overflow-y-auto p-4" data-lenis-prevent>
+				<div class="mx-auto grid w-full max-w-xl gap-4 pr-8">
+					<SheetTitle>{copy.period}</SheetTitle>
+					<SheetDescription>{copy.note(startLabel)}</SheetDescription>
+					<DateRangePicker
+						presets={[]}
+						value={{ start: frame.period?.from ?? '', end: frame.period?.to ?? '' }}
+						min={RECORD_START}
+						max={today}
+						labels={{
+							legend: copy.custom,
+							presets: copy.period,
+							custom: copy.custom,
+							start: copy.from,
+							end: copy.to,
+							apply: copy.apply,
+							missing: copy.missing,
+							bounds: copy.bounds,
+							order: copy.order,
+						}}
+						onValueChange={applyDates}
+					/>
+					{#if tooLong}<p role="alert">{copy.tooLong(MAX_RECORD_DAYS)}</p>{/if}
+				</div>
+			</SheetContent>
+		</Sheet>
+		<p class="w-full text-sm text-muted-foreground">{copy.note(startLabel)}</p>
+	</ControlsRail>
+</div>

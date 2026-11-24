@@ -7,7 +7,8 @@
 	import { measureMapFocusInset } from './mapFocusInset';
 	import { providerHasAlerts } from '#lib/v1/providers.ts';
 	import { lineIsScheduleOnly } from '#lib/site/providerCapabilities.ts';
-	import { onMount, tick, untrack } from 'svelte';
+	import { getContext, onMount, tick, untrack } from 'svelte';
+	import { mapRecordSourceDateContext } from '#lib/site/mapRecordSourceDate.ts';
 	import { page } from '$app/state';
 	import { SegmentedChoice } from '@yesid/ui/brand';
 	import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
@@ -265,6 +266,13 @@
 	});
 	const isRecordLayer = $derived(recordLayer !== 'live');
 	let recordSourceDate = $state<string | null>(null);
+	const publishRecordSourceDate = getContext<((date: string | null) => void) | undefined>(
+		mapRecordSourceDateContext,
+	);
+	$effect(() => {
+		publishRecordSourceDate?.(isRecordLayer ? recordSourceDate : null);
+		return () => publishRecordSourceDate?.(null);
+	});
 	const datedMapNotice = $derived(
 		datedProviderAttribution(
 			v1.provider,

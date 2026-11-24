@@ -32,3 +32,18 @@ export function datedProviderAttribution(
 		sourceDate ?? (locale === 'fr' ? 'inconnue' : 'unknown'),
 	);
 }
+
+export function providerSourceAttribution(
+	provider: PublicCity | null | undefined,
+	locale: Locale,
+	sourceDate?: string | null,
+	fallback?: { provider: string; attribution: string },
+): string | null {
+	const published = provider?.attribution ?? fallback?.attribution;
+	const id = provider?.id ?? fallback?.provider;
+	return (
+		datedProviderAttribution(provider, locale, sourceDate) ??
+		provider?.download_licence?.attribution[locale] ??
+		(id && published ? providerAttribution(id, published, locale) : null)
+	);
+}

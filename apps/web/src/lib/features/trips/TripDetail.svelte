@@ -1,4 +1,5 @@
 <script lang="ts">
+	import RefreshButton from '#lib/components/shell/RefreshButton.svelte';
 	import { dateAndClock, minuteReading } from '#lib/site/presenter.ts';
 	import { readPublicSiteConfig } from '#lib/site/config.ts';
 	import { untrack } from 'svelte';
@@ -223,12 +224,14 @@
 						{t.reportTime}: {#if generatedUtc}<time datetime={generatedUtc}>{absoluteTime}</time
 							>{:else}{t.timeUnavailable}{/if}
 					</p>
-					{#if generatedUtc}<FreshnessStamp
-							variant="live"
-							presentation={presentation.stamp}
-							{locale}
-							class="trip-report-stamp"
-						/>{/if}
+					{#if generatedUtc}<div class="flex flex-wrap items-center gap-2">
+							<FreshnessStamp
+								variant="live"
+								presentation={presentation.stamp}
+								{locale}
+								class="trip-report-stamp"
+							/><RefreshButton {locale} />
+						</div>{/if}
 				</div>
 				{#if trip === null}
 					<section

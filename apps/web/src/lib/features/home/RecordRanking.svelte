@@ -31,11 +31,13 @@
 <div class="min-w-0">
 	<h3>{title}</h3>
 	{#await ranking}
-		{#key ranking}<RecordPending {locale} />{/key}
+		{#key ranking}<RecordPending {locale} answer={ranking} />{/key}
 	{:then result}
 		{@const message = rankingText(result, locale)}
 		{#if result.kind === 'answer' && result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-		{#if message}
+		{#if result.kind === 'busy'}
+			<RecordPending {locale} busy />
+		{:else if message}
 			<StateNotice presentation="frameless" title={message} />
 		{:else if result.kind === 'answer'}
 			{@const { rows, coverage_note, info } = result.answer}

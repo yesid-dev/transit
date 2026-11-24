@@ -32,7 +32,7 @@ test.beforeEach(async ({ page }) => {
 // The picker reloads the page; before hydration a choice does nothing, so retry until the URL changes.
 async function switchProvider(page: Page, locale: Locale) {
 	const picker = page
-		.locator('[data-slot="app-frame-controls"]')
+		.locator('[data-slot="site-header-network"]')
 		.getByRole('combobox', { name: navPillCopy[locale].network });
 	await expect(async () => {
 		await picker.selectOption(other);
