@@ -1,14 +1,16 @@
+import { readFileSync } from 'node:fs';
 import { expect } from '@playwright/test';
 import type { Screen } from './design-pass-cases';
 import { budgetWidths, widths, type measureDesignPass } from './design-pass-measure';
-import baseline from './design-pass-baseline.json';
 
 type Report = Awaited<ReturnType<typeof measureDesignPass>>;
 type Budget = Record<(typeof budgetWidths)[number], { height: number; beforeFigure: number }>;
 
 // A screen PR supplies its budgets here once all of its fixture variants leave the debt list.
 const budgets: Partial<Record<Screen, Budget>> = {};
-const debt: Partial<Record<string, Report>> = baseline.screens;
+const { screens: debt }: { screens: Partial<Record<string, Report>> } = JSON.parse(
+	readFileSync(new URL('./design-pass-baseline.json', import.meta.url), 'utf8'),
+);
 
 function compare<T>(current: T, recorded: T, location: string) {
 	expect(
