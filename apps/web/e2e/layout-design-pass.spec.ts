@@ -25,6 +25,20 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 		await expect(page.locator('html')).toHaveAttribute('lang', locale);
 		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 		await expect(page.getByRole('main')).toBeVisible();
+		if (screen.startsWith('map-')) {
+			// The initial attribution links are replaced when the interactive map
+			// loads. Measure the controls and Tab order only after that handoff.
+			await expect
+				.poll(() =>
+					page.evaluate(() => {
+						const map = Reflect.get(window, '__transitMap') as
+							| { loaded: boolean; moving: boolean }
+							| undefined;
+						return Boolean(map?.loaded && !map.moving);
+					}),
+				)
+				.toBe(true);
+		}
 		const start = performance.now();
 		const report = await measureDesignPass(page);
 		await info.attach('design-pass-measurements', {
