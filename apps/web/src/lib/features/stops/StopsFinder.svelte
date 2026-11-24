@@ -30,7 +30,7 @@
 	} from './finderState';
 	import { indexCopy } from './stops.copy';
 	import type { StopsRecord } from '#lib/server/finderRecord.ts';
-	import { dateRange } from '#lib/features/record/recordText.ts';
+	import { dateRange } from '#lib/site/presenter.ts';
 	import StopFinderTable from './StopFinderTable.svelte';
 
 	import type { ScheduleEdition } from '#lib/search/searchIndex.ts';

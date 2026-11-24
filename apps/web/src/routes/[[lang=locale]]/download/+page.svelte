@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { fileSize, versionNumber } from '#lib/site/presenter.ts';
 	import { Card } from '@yesid/ui/card';
 	import { Surface } from '@yesid/ui/layout';
 	import { getLocale, localizeHref } from '#lib/i18n/index.ts';
@@ -12,13 +13,6 @@
 		$props();
 	const locale = getLocale();
 	const t = (en: string, fr: string) => (locale === 'fr' ? fr : en);
-	const size = $derived(
-		new Intl.NumberFormat(locale === 'fr' ? 'fr-CA' : 'en-CA', {
-			style: 'unit',
-			unit: 'byte',
-			unitDisplay: 'short',
-		}),
-	);
 	const title = $derived(t('Download the data', 'Télécharger les données'));
 </script>
 
@@ -110,7 +104,8 @@
 						<p>
 							<time datetime={listing.service_date}>{listing.service_date}</time>
 							<span>
-								· {t('Cleaning version', 'Version du nettoyage')} {listing.cleaning_version}</span
+								· {t('Cleaning version', 'Version du nettoyage')}
+								{versionNumber(listing.cleaning_version)}</span
 							>
 						</p>
 						{#if listing.status === 'complete'}
@@ -120,7 +115,7 @@
 										<a class="inline-flex min-h-11 items-center break-all" href={file.url}
 											>{file.name}</a
 										>
-										<span>{size.format(file.byte_size)}</span>
+										<span>{fileSize(file.byte_size, locale)}</span>
 									</li>
 								{/each}
 							</ul>

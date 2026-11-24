@@ -1,4 +1,5 @@
-import { intl, type Locale } from '#lib/i18n/index.ts';
+import { minuteReading } from '#lib/site/presenter.ts';
+import { type Locale } from '#lib/i18n/index.ts';
 import type { RecordCell } from '#lib/server/engine.ts';
 import { choose, percent, tally } from './recordText.ts';
 
@@ -34,12 +35,12 @@ export function waitingReading(cell: RecordCell, measure: WaitingMeasure, locale
 	const total = tally(observed, locale);
 	if (measure === 'excess_wait_time') {
 		if (!matched) return unknown;
-		const seconds = intl.number(locale, { maximumFractionDigits: 1 }).format(value);
+		const duration = minuteReading(value / 60, locale);
 		const scheduled = tally(matched, locale);
 		return choose(
 			locale,
-			`${seconds} s · ${total} observed intervals, ${scheduled} scheduled intervals in comparable windows`,
-			`${seconds} s · ${total} intervalles observés, ${scheduled} intervalles prévus dans des fenêtres comparables`,
+			`${duration} · ${total} observed intervals, ${scheduled} scheduled intervals in comparable windows`,
+			`${duration} · ${total} intervalles observés, ${scheduled} intervalles prévus dans des fenêtres comparables`,
 		);
 	}
 

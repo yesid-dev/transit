@@ -124,13 +124,13 @@ async function openNearMe(page: Page, name: string): Promise<void> {
 }
 
 const clocks = {
-	en: { first: '8:05 a.m.', second: '8:10 a.m.', third: '8:15 a.m.' },
-	fr: { first: '8 h 05', second: '8 h 10', third: '8 h 15' },
+	en: { first: '08:05', second: '08:10', third: '08:15' },
+	fr: { first: '08:05', second: '08:10', third: '08:15' },
 } as const;
 
 const vehicleNames = {
-	en: 'Select vehicle V1, Line 80, 8:05 a.m., On-time, Delay: 0 min',
-	fr: 'Sélectionner le véhicule V1, Ligne 80, 8 h 05, À l’heure, Retard: 0 min',
+	en: 'Select vehicle V1, Line 80, 08:05, On-time, Delay: 0 min',
+	fr: 'Sélectionner le véhicule V1, Ligne 80, 08:05, À l’heure, Retard: 0 min',
 } as const;
 
 for (const provider of ['stm', 'octranspo'] as const) {

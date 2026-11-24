@@ -3,7 +3,7 @@
 	import type { RecordEvidence } from '#lib/server/engine.ts';
 	import RecordActions from './RecordActions.svelte';
 	import { finderCsv } from './finderText.ts';
-	import { dateRange, methodEvidence } from './recordText.ts';
+	import { dateRange, methodEvidence } from '#lib/site/presenter.ts';
 
 	let {
 		locale,
@@ -24,14 +24,25 @@
 		rows: (string | number | null)[][];
 		city: string;
 		period: { from: string; to: string };
-		sources: RecordEvidence[];
+		sources: { evidence: RecordEvidence; label?: string }[];
 	} = $props();
 	const href = $derived(new URL('#' + section, url).href);
-	const csv = $derived(finderCsv(headers, rows, locale, city, period, sources));
+	const csv = $derived(
+		finderCsv(
+			headers,
+			rows,
+			locale,
+			city,
+			period,
+			sources.map(({ evidence }) => evidence),
+		),
+	);
 	const citation = $derived(
 		[
 			`Transit. ${title}. ${dateRange(period, locale)}.`,
-			...sources.map((source) => methodEvidence(source, locale)),
+			...sources.map(({ evidence, label }) =>
+				[label, methodEvidence(evidence, locale)].filter(Boolean).join(' '),
+			),
 			href,
 		].join(' '),
 	);

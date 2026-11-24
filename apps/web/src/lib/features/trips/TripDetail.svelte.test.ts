@@ -197,11 +197,9 @@ describe.each(['en', 'fr'] as const)('trip report opening in %s', (locale) => {
 		});
 		const time = container.querySelector('[data-slot="trip-report-time"] p time')!;
 		expect(time).toHaveAttribute('datetime', '2026-06-15T12:00:00Z');
-		expect(time).toHaveTextContent(locale === 'en' ? '5:00:00' : '5 h 00');
+		expect(time).toHaveTextContent('05:00');
 		expect(time).toHaveTextContent(locale === 'en' ? 'PDT' : 'HAP');
-		expect(container.querySelector('.trip-stop-eta')).toHaveTextContent(
-			locale === 'en' ? '5:05 a.m.' : '5 h 05',
-		);
+		expect(container.querySelector('.trip-stop-eta')).toHaveTextContent('05:05');
 	});
 	it('copies an explicit provider and locale on the latest trip link, with a selectable fallback', async () => {
 		tripManifest.provider = 'octranspo';
@@ -567,9 +565,7 @@ describe.each(['en', 'fr'] as const)('TripDetail report scope in %s', (locale) =
 			`${locale === 'en' ? 'View stop' : 'Voir l’arrêt'} ${locale === 'en' ? 'Stop sA (name unavailable)' : 'Arrêt sA (nom indisponible)'}`,
 		);
 		const row = stop.closest('tr') as HTMLElement;
-		expect(
-			within(row).getByRole('cell', { name: locale === 'en' ? '5:05 a.m.' : '5 h 05' }),
-		).toBeInTheDocument();
+		expect(within(row).getByRole('cell', { name: '05:05' })).toBeInTheDocument();
 		expect(row).toHaveTextContent('+4 min');
 		expect(container.querySelector('.trip-last-stop-name')).not.toBeInTheDocument();
 		expect(container.querySelectorAll('.trip-stop-link')).toHaveLength(2);

@@ -1,3 +1,4 @@
+import { lineName } from '#lib/site/presenter.ts';
 import type { RouteIndexEntry } from '#lib/v1/schemas/routes_index.ts';
 
 export interface LineName {
@@ -26,11 +27,12 @@ export function createLineDirectory(
 		type: (id) => index.get(id)?.type ?? null,
 		name(id, publishedName) {
 			const route = index.get(id);
-			const number = route?.short?.trim() || null;
-			const name = publishedName?.trim() || route?.long?.trim() || null;
-			const suffix = number && name !== number ? name : null;
-			const label = [number, suffix].filter(Boolean).join(' · ') || name || copy.line(id);
-			return { number, name, label, spoken: number || name ? spoken(label) : label };
+			return lineName(
+				route?.short,
+				publishedName?.trim() || route?.long,
+				() => copy.line(id),
+				spoken,
+			);
 		},
 	};
 }

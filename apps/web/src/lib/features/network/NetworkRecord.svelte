@@ -3,7 +3,8 @@
 	import type { Locale } from '#lib/i18n/index.ts';
 	import RecordSection from '#lib/features/record/RecordSection.svelte';
 	import RecordTable from '#lib/features/record/RecordTable.svelte';
-	import { choose, dateRange, tally } from '#lib/features/record/recordText.ts';
+	import { choose, tally } from '#lib/features/record/recordText.ts';
+	import { dateRange } from '#lib/site/presenter.ts';
 	import type { loadNetworkRecord } from '#lib/server/networkRecord.ts';
 	import { frameHref } from '#lib/site/frameState.ts';
 	import { networkMeasures, networkRows, networkUnmeasuredDays } from './networkRecordText.ts';

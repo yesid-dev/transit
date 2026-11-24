@@ -482,7 +482,7 @@ describe('HealthStatus — full manifest render', () => {
 		expect(
 			[...summary.querySelectorAll('p')].map((line) => line.lastElementChild?.textContent),
 		).toEqual([
-			'Up to date: live vehicle data, updated 20 seconds ago.',
+			'Up to date: live vehicle data, updated 20 s ago.',
 			'The reliability record covers service through Jul 13. It was published on Jul 14.',
 			'The last record was published with 1 warning. Line, stop and ranking figures come from it; check the date beside each figure.',
 			'Not measured: Metro. These lines publish no live data.',

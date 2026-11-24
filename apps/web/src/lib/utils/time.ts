@@ -1,4 +1,5 @@
-import { intl } from '#lib/i18n/index.ts';
+// Node consumers use these formatters without a Svelte locale context.
+import { intl } from '#lib/i18n/copy.ts';
 export type TimeLang = 'en' | 'fr';
 
 export { providerLocalDateKey } from './serviceDate.ts';
@@ -33,17 +34,30 @@ export function formatUtc(iso: string, lang: TimeLang, opts?: Intl.DateTimeForma
 	return intl.dateTime(lang, resolved).format(date);
 }
 
-export function formatDateKey(key: string, lang: TimeLang, includeYear = false): string {
+export function formatDateKey(
+	key: string,
+	lang: TimeLang,
+	includeYear = false,
+	order?: 'day-first',
+): string {
 	const date = parseIso(key);
 	if (!date) return '·';
-	return intl
-		.dateTime(lang, {
-			month: 'short',
-			day: 'numeric',
-			...(includeYear ? { year: 'numeric' as const } : {}),
-			timeZone: 'UTC',
-		})
-		.format(date);
+	const formatter = intl.dateTime(lang, {
+		month: 'short',
+		day: 'numeric',
+		...(includeYear ? { year: 'numeric' as const } : {}),
+		timeZone: 'UTC',
+	});
+	if (order !== 'day-first') return formatter.format(date);
+	const parts = formatter.formatToParts(date);
+	return ['day', 'month', 'year']
+		.map((type) => parts.find((part) => part.type === type)?.value)
+		.filter(Boolean)
+		.join(' ');
+}
+
+export function clockFace(hour: number, minute: number): string {
+	return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 }
 
 export function formatClock(date: Date, lang: TimeLang, timeZone: string = 'UTC'): string {
@@ -58,8 +72,7 @@ export function formatClock(date: Date, lang: TimeLang, timeZone: string = 'UTC'
 		.formatToParts(date);
 	const hour = parts.find((p) => p.type === 'hour')?.value ?? '00';
 	const minute = parts.find((p) => p.type === 'minute')?.value ?? '00';
-	const hh = hour === '24' ? '00' : hour.padStart(2, '0');
-	return `${hh}:${minute.padStart(2, '0')}`;
+	return clockFace(Number(hour) % 24, Number(minute));
 }
 
 /**
@@ -97,7 +110,9 @@ export function ageSeconds(iso: string, now: Date | number = Date.now()): number
 }
 
 export function formatRelativeSeconds(seconds: number, lang: TimeLang): string {
-	return Number.isNaN(seconds) ? '·' : intl.relativeTime(lang, -seconds);
+	return Number.isNaN(seconds)
+		? '·'
+		: intl.relativeTime(lang, -seconds).replace(/\b(?:seconds?|secondes?)\b/u, 's');
 }
 
 export function formatRelative(iso: string, lang: TimeLang, now: Date = new Date()): string {

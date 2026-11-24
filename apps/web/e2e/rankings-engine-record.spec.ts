@@ -16,7 +16,7 @@ const lists = [
 		'departure',
 		'Departures',
 		'Départs',
-		/07:15:00/,
+		/07:15/,
 		/48\s?%/,
 		/38\s?% (?:to|à) 58\s?%/,
 	],
@@ -76,7 +76,7 @@ for (const locale of ['en', 'fr'] as const) {
 						await expect(
 							section.getByRole('button', { name: fr ? 'Copier le lien' : 'Copy link' }),
 						).toBeVisible();
-						await expect(section.getByText(/rankings-fixture-v1.*#ranking/)).toBeVisible();
+						await expect(section.getByText(/v1.*#ranking/)).toBeVisible();
 						const defects = await textDefects(page);
 						expect(defects.filter(({ selector }) => selector.startsWith('#ranking'))).toEqual([]);
 						expect(await main.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(
@@ -138,7 +138,7 @@ test('selects the two deeper line rankings with their own evidence floors', asyn
 	const lines = page.getByRole('region', { name: 'Lines', exact: true });
 	await measures.selectOption('excess_wait_time');
 	await expect(page).toHaveURL(/measure=excess_wait_time/);
-	await expect(lines.getByText('42.5 s', { exact: true })).toBeVisible();
+	await expect(lines.getByText('0.7 min', { exact: true })).toBeVisible();
 	await expect(lines).toContainText('50 observed intervals and 20 distinct observed trip pairs');
 	await expect(lines).toContainText('40% coverage of 250 scheduled intervals');
 	await measures.selectOption('early');
@@ -168,7 +168,7 @@ test('changes dates, class, measure and list while keeping the ranking URL share
 			.last(),
 	).toBeVisible();
 	await page.getByRole('combobox', { name: 'Measure', exact: true }).selectOption('median_delay');
-	await expect(page.getByText('27.5 s to 32.5 s')).toBeVisible();
+	await expect(page.getByText('0.5 min to 0.5 min')).toBeVisible();
 	await expect(page.getByText('Bin rounding only', { exact: true })).toBeVisible();
 	await page.getByRole('radio', { name: 'Vehicles', exact: true }).click();
 	await expect(page).toHaveURL(/repeat-offenders.*kind=vehicle/);

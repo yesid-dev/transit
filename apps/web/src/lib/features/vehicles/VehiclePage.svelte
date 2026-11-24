@@ -3,7 +3,8 @@
 	import { Surface } from '@yesid/ui/layout';
 	import { SvelteURL } from 'svelte/reactivity';
 	import { getLocale } from '#lib/i18n/index.ts';
-	import { choose, dateRange } from '#lib/features/record/recordText.ts';
+	import { choose } from '#lib/features/record/recordText.ts';
+	import { dateRange } from '#lib/site/presenter.ts';
 	import type { loadVehiclePage } from '#lib/server/vehicleRecord.ts';
 	import { frameHref } from '#lib/site/frameState.ts';
 	import type { Manifest } from '#lib/v1/schemas/index.ts';

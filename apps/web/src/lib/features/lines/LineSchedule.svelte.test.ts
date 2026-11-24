@@ -43,7 +43,9 @@ describe.each(['en', 'fr'] as const)('LineSchedule in %s', (locale) => {
 			locale === 'en' ? 'Time window not supplied' : 'Plage horaire non fournie',
 		);
 		expect(table).toHaveTextContent(locale === 'en' ? '30.5 min' : '30,5 min');
-		expect(container).toHaveTextContent('26:01');
+		expect(container).toHaveTextContent(
+			locale === 'fr' ? '02:01, le lendemain' : '02:01, next day',
+		);
 		const csv = screen.getByRole('link', { name: /CSV/ });
 		expect(decodeURIComponent(csv.getAttribute('href')!)).toContain('"night","","30.5"');
 	});

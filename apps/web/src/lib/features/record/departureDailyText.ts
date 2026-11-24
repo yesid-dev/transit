@@ -2,7 +2,6 @@ import type { Locale } from '#lib/i18n/index.ts';
 import type { RecordCell, RecordSeries } from '#lib/server/engine.ts';
 import {
 	choose,
-	dateRange,
 	emptyRecord,
 	percent,
 	rateStateText,
@@ -10,6 +9,7 @@ import {
 	timingBasis,
 	withCoverage,
 } from './recordText.ts';
+import { dateRange } from '#lib/site/presenter.ts';
 
 export const dailyTitles = {
 	punctuality: ['On-time share', 'Part des passages à l’heure'],
@@ -156,13 +156,4 @@ export function dailyPeriodRows(answer: RecordSeries, locale: Locale): string[][
 
 export function shortDay(day: string, locale: Locale) {
 	return dateRange({ from: day, to: day }, locale);
-}
-
-export function delayReading(delay: number | null | undefined, locale: Locale, fallback: string) {
-	if (delay == null) return fallback;
-	if (delay === 0) return choose(locale, 'On schedule', 'À l’heure prévue');
-	const seconds = tally(Math.abs(delay), locale);
-	return delay < 0
-		? choose(locale, `${seconds} s early`, `${seconds} s d’avance`)
-		: choose(locale, `${seconds} s late`, `${seconds} s de retard`);
 }

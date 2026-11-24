@@ -24,7 +24,7 @@ for (const width of [390, 1440]) {
 			const late = page.getByRole('region', {
 				name: fr ? 'Départs le plus souvent en retard' : 'Departures late most often',
 			});
-			const departure = late.getByRole('link', { name: '07:00:00' });
+			const departure = late.getByRole('link', { name: '07:00' });
 			await expect(departure).toBeVisible();
 			await expect(late).toContainText(
 				fr ? '5 dates de service observées' : '5 observed service dates',
@@ -34,7 +34,7 @@ for (const width of [390, 1440]) {
 			const main = page.getByRole('main');
 			await expect(main.getByRole('heading', { level: 1 })).toContainText('07:00');
 			await expect(main).toContainText(fr ? '1 des 5 jours observés' : '1 of 5 observed days');
-			await expect(main).toContainText(fr ? '360 s de retard' : '360 s late');
+			await expect(main).toContainText(fr ? '6 min de retard' : '6 min late');
 			await expect(
 				main
 					.getByRole('region', {
@@ -43,21 +43,26 @@ for (const width of [390, 1440]) {
 					.getByRole('rowheader'),
 			).toHaveCount(2);
 			const stops = main.getByRole('region', { name: fr ? 'Arrêt par arrêt' : 'Stop by stop' });
-			await expect(stops).toContainText(fr ? '320 s de retard' : '320 s late');
+			await expect(stops).toContainText(fr ? '5,3 min de retard' : '5.3 min late');
 			await expect(
 				stops.getByRole('button', { name: fr ? 'Copier le lien' : 'Copy link' }),
 			).toBeVisible();
 			await stops.getByText(fr ? 'Citer' : 'Cite', { exact: true }).click();
-			await expect(stops.getByText(/daily-fixture-v1.*day=2026-11-20.*#stops/)).toBeVisible();
+			await expect(stops.getByText(/v1.*day=2026-11-20.*#stops/)).toBeVisible();
 			await stops.getByLabel(fr ? 'Date de service' : 'Service date').fill('2026-11-18');
 			await stops
 				.getByRole('button', { name: fr ? 'Afficher cette journée' : 'Show this day' })
 				.click();
-			await expect(stops).toContainText(fr ? '61 s d’avance' : '61 s early');
+			await expect(stops).toContainText(fr ? '1 min d’avance' : '1 min early');
 			const csv = await stops.getByRole('link', { name: /CSV/ }).getAttribute('href');
 			const csvResponse = await request.get(csv!);
 			expect(csvResponse.ok()).toBeTruthy();
-			expect(await csvResponse.text()).toContain('2026-11-18,2026-11-18');
+			const csvText = await csvResponse.text();
+			expect(csvText).toContain(fr ? 'Retard observé (s)' : 'Observed delay (s)');
+			expect(csvText).toContain('2026-11-18,2026-11-18,-61');
+			await expect(main).not.toContainText(
+				/\b(?:\d+ s (?:late|early)|seconds|secondes|\d+\s+(?:second|seconde))\b|\b\d{2}:\d{2}:\d{2} ·|\bDirection [01]\b/i,
+			);
 			expect(await main.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(width);
 		});
 
@@ -97,7 +102,7 @@ for (const width of [390, 1440]) {
 			await expect(
 				main.getByRole('button', { name: fr ? 'Imprimer le rapport' : 'Print report' }),
 			).toBeHidden();
-			await expect(headline.getByText(/daily-fixture-v1.*#punctuality/).last()).toBeVisible();
+			await expect(headline.getByText(/v1.*#punctuality/).last()).toBeVisible();
 			await expect(headline.getByText(fr ? /80 sur 100/ : /80 of 100/).first()).toBeVisible();
 			await expect(delivery.getByText('70', { exact: true })).toBeVisible();
 		});
@@ -147,7 +152,7 @@ test('Departure opens the current prediction report for an exact trip identity',
 test('a ranked departure links to its exact line, direction, time and range', async ({ page }) => {
 	await page.goto('/fr/repeat-offenders?provider=stm&recordFrom=2026-11-08&recordTo=2026-11-14');
 	const ranking = page.getByRole('region', { name: 'Départs', exact: true });
-	const link = ranking.getByRole('link', { name: /07:15:00/ }).first();
+	const link = ranking.getByRole('link', { name: /07:15/ }).first();
 	await expect(link).toBeVisible();
 	const target = new URL((await link.getAttribute('href'))!, page.url());
 	expect(decodeURIComponent(target.pathname)).toBe('/fr/departure/["24",0,"07:15:00"]');

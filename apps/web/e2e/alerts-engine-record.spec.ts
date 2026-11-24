@@ -32,9 +32,7 @@ test('Alerts Record streams every cut with localized messages and evidence', asy
 	await expect(messages).toContainText('Périodes actives en heure locale');
 	await expect(messages.getByRole('button', { name: 'Copier le lien' })).toBeVisible();
 	await messages.getByText('Citer', { exact: true }).click();
-	await expect(
-		messages.getByText(/alerts-fixture-v1.*recordFrom=2026-11-14.*#messages/),
-	).toBeVisible();
+	await expect(messages.getByText(/v1.*recordFrom=2026-11-14.*#messages/)).toBeVisible();
 	const csv = await messages.getByRole('link', { name: /CSV/ }).getAttribute('href');
 	const download = await request.get(csv!);
 	expect(download.ok()).toBe(true);

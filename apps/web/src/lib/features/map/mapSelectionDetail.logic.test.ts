@@ -236,12 +236,12 @@ describe('detailIdentity', () => {
 
 describe('timeLabel', () => {
 	it.each([
-		['2026-07-14T23:21:00Z', 'America/Toronto', 'en', '7:21 p.m.'],
-		['2026-07-14T23:21:00Z', 'America/Toronto', 'fr', '19 h 21'],
-		['2026-07-14T23:21:00Z', 'America/Vancouver', 'en', '4:21 p.m.'],
-		['2026-07-14T23:21:00Z', 'America/Vancouver', 'fr', '16 h 21'],
-		['2026-11-14T05:00:00Z', 'America/Toronto', 'en', '12:00 a.m.'],
-		['2026-11-14T05:00:00Z', 'America/Toronto', 'fr', '0 h 00'],
+		['2026-07-14T23:21:00Z', 'America/Toronto', 'en', '19:21'],
+		['2026-07-14T23:21:00Z', 'America/Toronto', 'fr', '19:21'],
+		['2026-07-14T23:21:00Z', 'America/Vancouver', 'en', '16:21'],
+		['2026-07-14T23:21:00Z', 'America/Vancouver', 'fr', '16:21'],
+		['2026-11-14T05:00:00Z', 'America/Toronto', 'en', '00:00'],
+		['2026-11-14T05:00:00Z', 'America/Toronto', 'fr', '00:00'],
 	] as const)('reads %s in %s for %s as %s', (iso, timeZone, locale, expected) => {
 		expect(timeLabel(iso, locale, timeZone)).toBe(expected);
 	});

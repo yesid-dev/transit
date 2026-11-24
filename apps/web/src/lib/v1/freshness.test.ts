@@ -29,7 +29,7 @@ describe('shared freshness derivation', () => {
 		const generatedUtc = '2026-06-15T11:59:50Z';
 
 		expect(freshnessAgeSeconds(generatedUtc, NOW.getTime())).toBe(10);
-		expect(freshnessRelative(generatedUtc, 'en', NOW.getTime())).toBe('10 seconds ago');
+		expect(freshnessRelative(generatedUtc, 'en', NOW.getTime())).toBe('10 s ago');
 	});
 
 	it.each([

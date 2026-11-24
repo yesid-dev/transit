@@ -1,10 +1,17 @@
 <script lang="ts">
+	import { clockFace } from '#lib/utils/time.ts';
+	import {
+		directionLabel,
+		methodEvidence,
+		minuteReading,
+		scheduledClock,
+		tripsInHours,
+	} from '#lib/site/presenter.ts';
 	import { StatusMark } from '@yesid/ui/brand';
 	import { StateNotice } from '@yesid/ui/feedback';
 	import { intl, type Locale } from '#lib/i18n/index.ts';
 	import {
 		choose,
-		methodEvidence,
 		periodCoverage,
 		cautiousRanking,
 		coverageText,
@@ -26,7 +33,7 @@
 	import RecordPunctualityDays from '#lib/features/record/RecordPunctualityDays.svelte';
 	import RecordSeriesChart from '#lib/features/record/RecordSeriesChart.svelte';
 	import { departureHref } from '#lib/features/record/departureIdentity.ts';
-	import { directionLabel, lateDepartureReading, lineAnswer } from './lineRecordText.ts';
+	import { lateDepartureReading, lineAnswer } from './lineRecordText.ts';
 
 	let {
 		answer,
@@ -60,7 +67,7 @@
 	const missing = () => emptyRecord(answer.evidence, locale);
 	const date = (day: string) =>
 		intl.dateTime(locale, { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(day));
-	const clock = (hour: number) => `${String(hour).padStart(2, '0')}:00`;
+	const clock = (hour: number) => clockFace(hour, 0);
 	const weekday = (day: number) =>
 		intl
 			.dateTime(locale, { weekday: 'short', timeZone: 'UTC' })
@@ -83,10 +90,9 @@
 	};
 	const median = (cell: RecordCell) => {
 		if (cell.state !== 'measured') return rateStateText(cell, locale);
-		const delay = cell.value.median_delay;
-		return delay == null
-			? t('Unknown', 'Inconnu')
-			: `${intl.number(locale, { maximumFractionDigits: 1, signDisplay: 'exceptZero' }).format(delay / 60)} min`;
+		return (
+			minuteReading((cell.value.median_delay ?? NaN) / 60, locale, true) ?? t('Unknown', 'Inconnu')
+		);
 	};
 	const levelLabels = $derived({
 		crowding_empty: t('Empty', 'Vide'),
@@ -132,8 +138,8 @@
 				'Part du temps des véhicules avec une mesure d’achalandage utilisable, par niveau.',
 			)}
 			{#if answer.evidence.counts.occupancy_vehicle_seconds != null}
-				{t('Vehicle-seconds with a usable value', 'Secondes-véhicules avec une valeur utilisable')}
-				({n(answer.evidence.counts.occupancy_vehicle_seconds)}).
+				{t('Vehicle time with a usable value', 'Temps des véhicules avec une valeur utilisable')}
+				({minuteReading(answer.evidence.counts.occupancy_vehicle_seconds / 60, locale)}).
 			{/if}
 		</p>
 		{#if coverage}<p>{coverage}.</p>{/if}
@@ -178,7 +184,7 @@
 				period.scheduled_trips === 0
 					? t('No service scheduled', 'Aucun service prévu')
 					: intl.number(locale, { maximumFractionDigits: 2 }).format(period.scheduled_frequency),
-				`${n(period.scheduled_trips)}/${n(period.scheduled_clock_hours)}`,
+				tripsInHours(period.scheduled_trips, period.scheduled_clock_hours, locale),
 			])}
 		/>
 	{/if}
@@ -201,7 +207,7 @@
 			t('Late share', 'Part en retard'),
 		]}
 		rows={answer.rows.map((row) => [
-			row.departure,
+			scheduledClock(row.departure, locale),
 			dir(row.direction),
 			lateDepartureReading(row, locale),
 		])}
@@ -209,7 +215,8 @@
 		{#snippet rowLabel(label, index)}
 			{@const row = answer.rows[index]!}
 			{@const href = departureHref(url, locale, city, line, row.direction, row.departure)}
-			{#if href}<a class="inline-flex min-h-11 items-center" {href}>{label}</a>{:else}{label}{/if}
+			{#if href}<a class="inline-flex min-h-11 min-w-11 items-center" {href}>{label}</a
+				>{:else}{label}{/if}
 		{/snippet}
 	</RecordTable>
 	{#if info}
@@ -258,7 +265,7 @@
 							'Trajets par heure (les deux directions combinées)',
 						)
 					: t('Trips per hour', 'Trajets par heure'),
-				t('Scheduled trips / clock hours', 'Trajets prévus / heures'),
+				t('Scheduled trips and hours', 'Trajets prévus et heures'),
 			]}
 			rows={cells.map((cell) => {
 				const hour = Number(cell.key.hour);
@@ -272,7 +279,7 @@
 					trips === 0
 						? t('No service scheduled', 'Aucun service prévu')
 						: intl.number(locale, { maximumFractionDigits: 2 }).format(frequency),
-					`${n(trips)}/${n(hours)}`,
+					tripsInHours(trips, hours, locale),
 				];
 			})}
 		/>
@@ -370,7 +377,7 @@
 				t('Coverage', 'Couverture'),
 			]}
 			rows={cells.map((cell) => [
-				`${cell.key.departure} · ${dir(cell.key.direction)}`,
+				`${scheduledClock(cell.key.departure, locale)} · ${dir(cell.key.direction)}`,
 				count(cell, 'cancelled', true),
 				count(cell, 'missing', true),
 				count(cell, 'ran', true),
@@ -389,7 +396,7 @@
 			{@const rows = (cell.evidence.boundary_departures ?? []).map((row) => [
 				date(row.service_date),
 				row.measure === 'first_trip' ? t('First', 'Premier') : t('Last', 'Dernier'),
-				row.scheduled_departure,
+				scheduledClock(row.scheduled_departure, locale),
 				n(row.scheduled),
 			])}
 			<h3>{dayType(String(cell.key.day_type))}</h3>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { dateAndClock, minuteReading } from '#lib/site/presenter.ts';
 	import { readPublicSiteConfig } from '#lib/site/config.ts';
 	import { untrack } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
@@ -22,8 +23,6 @@
 	import { StateNotice } from '@yesid/ui/feedback';
 	import MapDrilldownLink from '#lib/components/surface/MapDrilldownLink.svelte';
 	import RecordCopyButton from '#lib/features/lines/reliability/sections/RecordCopyButton.svelte';
-	import { formatUtc } from '#lib/utils/time.ts';
-	import { delayMeasurement } from '#lib/site/delayPresentation.ts';
 	import MetricInfo from '#lib/features/metrics/MetricInfo.svelte';
 	import { tripDirection } from './tripDirection';
 	import { tripCopy } from './trips.copy';
@@ -109,18 +108,7 @@
 			: null,
 	);
 	const absoluteTime = $derived(
-		generatedUtc
-			? formatUtc(generatedUtc, locale, {
-					year: 'numeric',
-					month: 'short',
-					day: 'numeric',
-					hour: 'numeric',
-					minute: '2-digit',
-					second: '2-digit',
-					timeZoneName: 'short',
-					timeZone: reportTimeZone,
-				})
-			: null,
+		generatedUtc ? dateAndClock(generatedUtc, locale, reportTimeZone, true) : null,
 	);
 	const currentReport = $derived(
 		live.familyStates.trips.phase === 'ready' &&
@@ -268,7 +256,7 @@
 								/>
 								<span class="trip-verdict-delay"
 									><MaybeValue
-										value={delayMeasurement(offset)}
+										value={minuteReading(offset, locale, true)}
 										variant={unknownStatusAndDelay ? 'row' : 'inline'}
 										reason={liveAbsenceReason('trip-delay', { familyStates: live.familyStates })}
 										{locale}

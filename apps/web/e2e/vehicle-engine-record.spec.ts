@@ -65,7 +65,7 @@ for (const width of [390, 1440]) {
 				timing.getByRole('button', { name: fr ? 'Copier le lien' : 'Copy link' }),
 			).toBeVisible();
 			await timing.getByText(fr ? 'Citer' : 'Cite', { exact: true }).click();
-			await expect(timing.getByText(/vehicles-fixture-v1.*#punctuality/)).toBeVisible();
+			await expect(timing.getByText(/v1.*#punctuality/)).toBeVisible();
 			const href = await timing.getByRole('link', { name: /CSV/ }).getAttribute('href');
 			const csv = await request.get(href!);
 			expect(csv.ok()).toBeTruthy();

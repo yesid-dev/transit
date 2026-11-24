@@ -34,7 +34,7 @@ export const homeCopy = defineCopy({
 			'Il s’adresse aux résidents, aux groupes citoyens, aux journalistes et aux élus qui veulent des faits pour exiger un meilleur service. Le site n’est pas affilié au réseau {operator}.',
 		cadence:
 			'Le bilan de fiabilité est republié chaque semaine. Quand une donnée manque, nous le disons.',
-		cadenceLive: 'Les données en direct sont actualisées environ toutes les {seconds} secondes.',
+		cadenceLive: 'Les données en direct sont actualisées environ toutes les {seconds} s.',
 		headline: 'Le transport à {city},',
 		headlineAccent: 'à l’épreuve des données.',
 		exploreNav: 'Tout explorer',
@@ -50,7 +50,7 @@ export const homeCopy = defineCopy({
 		audience:
 			'It is for residents, advocates, journalists and councillors who want evidence when they ask for better service. It is not affiliated with {operator}.',
 		cadence: 'The reliability record is republished every week. When data is missing, we say so.',
-		cadenceLive: 'Live data refreshes about every {seconds} seconds.',
+		cadenceLive: 'Live data refreshes about every {seconds} s.',
 		headline: 'How {city}’s',
 		headlineAccent: 'transit holds up.',
 		exploreNav: 'Explore everything',

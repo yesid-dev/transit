@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { directionLabel, minuteReading } from '#lib/site/presenter.ts';
+	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
+	import { directionHeadsigns } from '#lib/features/lines/directions.ts';
 	import type { Map as MapLibreMap } from 'maplibre-gl';
 	import { untrack } from 'svelte';
 	import { Card } from '@yesid/ui/card';
@@ -32,6 +35,7 @@
 	let { map, layer, line, direction, city, period, url, locale, stops, routes, onscope }: Props =
 		$props();
 	const { provider } = getV1Context();
+	const display = transitDisplay();
 	const tr = (en: string, fr: string) => choose(locale, en, fr);
 	const stopLayer = $derived(layer === 'stops');
 	const scope = $derived(
@@ -169,9 +173,7 @@
 		fitted = { map: instance, line: id, direction: dir };
 	});
 
-	const heads = $derived(
-		new Map((route?.directions ?? []).map(({ dir, headsign }) => [dir, headsign])),
-	);
+	const heads = $derived(directionHeadsigns(route?.directions));
 	const stateLabels = $derived([
 		tr('No data', 'Aucune donnée'),
 		tr('Too few to judge', 'Trop peu pour juger'),
@@ -215,7 +217,7 @@
 			? new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 1 }).format(
 					value / 1000,
 				)
-			: `${number.format(value)} s`;
+			: minuteReading(value / 60, locale);
 	}
 </script>
 
@@ -228,9 +230,7 @@
 					<select value={line} onchange={(event) => onscope(event.currentTarget.value, '')}>
 						<option value="">{tr('Choose a line', 'Choisir une ligne')}</option>
 						{#each routes as item (item.id)}
-							<option value={item.id}
-								>{[item.short ?? item.id, item.long].filter(Boolean).join(' · ')}</option
-							>
+							<option value={item.id}>{display.lineName(item.id, item.long).label}</option>
 						{/each}
 					</select>
 				</label>
@@ -242,8 +242,8 @@
 							onchange={(event) => onscope(line, event.currentTarget.value)}
 						>
 							<option value="">{tr('Both directions', 'Les deux directions')}</option>
-							<option value="0">{heads.get(0) || tr('Direction 1', 'Direction 1')}</option>
-							<option value="1">{heads.get(1) || tr('Direction 2', 'Direction 2')}</option>
+							<option value="0">{directionLabel(0, heads, locale)}</option>
+							<option value="1">{directionLabel(1, heads, locale)}</option>
 						</select>
 					</label>
 				{/if}

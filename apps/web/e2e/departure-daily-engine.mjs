@@ -43,8 +43,15 @@ export function departureDailyEngine(url, dailyMessageHold) {
 	const result = (row) => ({
 		body: { ...envelope, ...row, evidence: { ...evidence, ...row.evidence } },
 	});
+	const observedDelay = from === '2026-11-20' ? 320 : -61;
 	if (get('format') === 'csv') {
 		const heading = get('lang') === 'fr' ? 'Mesure,Du,Au' : 'Measure,From,To';
+		if (group === 'stop' && get('departure')) {
+			const column = get('lang') === 'fr' ? 'Retard observé (s)' : 'Observed delay (s)';
+			return {
+				csv: `${heading},${column}\n${measure},${from},${to},${observedDelay}\n`,
+			};
+		}
 		return { csv: `${heading}\n${measure},${from},${to}\n` };
 	}
 	if (kind)

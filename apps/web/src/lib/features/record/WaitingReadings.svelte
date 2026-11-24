@@ -2,13 +2,8 @@
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { RecordMeasure, RecordSeries } from '#lib/server/engine.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
-	import {
-		choose,
-		coverageText,
-		methodEvidence,
-		periodCoverage,
-		rateStateText,
-	} from './recordText.ts';
+	import { choose, coverageText, periodCoverage, rateStateText } from './recordText.ts';
+	import { methodEvidence } from '#lib/site/presenter.ts';
 	import RecordTable from './RecordTable.svelte';
 	import { waitingMeasures, waitingReading } from './waitingText.ts';
 

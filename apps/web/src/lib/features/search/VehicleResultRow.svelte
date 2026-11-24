@@ -8,7 +8,7 @@
 	import { routeFor } from '#lib/nav/index.ts';
 	import type { Vehicle } from '#lib/v1/schemas/index.ts';
 	import { StatusBadge, occupancyGlyph, occupancyVar } from '#lib/components/dataviz/index.ts';
-	import { delayMeasurement } from '#lib/site/delayPresentation.ts';
+	import { minuteReading } from '#lib/site/presenter.ts';
 	import { notReporting } from '#lib/features/map/vehicleMotion.ts';
 	import { getV1Runtime } from '#lib/v1/runtime.ts';
 	import { onMount } from 'svelte';
@@ -41,7 +41,7 @@
 	const href = $derived(localizeHref(routeFor({ kind: 'vehicle', id: vehicle.id }), locale));
 
 	const unknownStatusAndDelay = $derived(vehicle.status === 'unknown' && vehicle.delay_min == null);
-	const delayText = $derived(delayMeasurement(vehicle.delay_min));
+	const delayText = $derived(minuteReading(vehicle.delay_min, locale, true));
 
 	const runtime = getV1Runtime();
 	onMount(() => runtime.clock.subscribe());

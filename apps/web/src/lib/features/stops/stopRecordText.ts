@@ -1,14 +1,13 @@
-import { intl, type Locale } from '#lib/i18n/index.ts';
+import { type Locale } from '#lib/i18n/index.ts';
 import {
 	choose,
-	dateRange,
 	lastGoodNote,
-	methodEvidence,
 	percent,
 	rateStateText,
 	withCoverage,
 	tally,
 } from '#lib/features/record/recordText.ts';
+import { dateRange, methodEvidence } from '#lib/site/presenter.ts';
 import type { RecordAnswer, RecordMeasure } from '#lib/server/engine.ts';
 import type { StopSection } from '#lib/server/stopRecord.ts';
 
@@ -41,14 +40,6 @@ export function stopAnswer(answer: RecordMeasure, locale: Locale): string {
 		`${dates}, ${value} des passages observés à cet arrêt étaient à l’heure (${onTime} sur ${total})`,
 	);
 	return `${withCoverage(reading, answer.evidence, locale)}.`;
-}
-
-export function stopDelay(seconds: number | null | undefined, locale: Locale): string {
-	if (seconds == null) return choose(locale, 'Unknown', 'Inconnu');
-	const value = intl.number(locale, { maximumFractionDigits: 1 }).format(Math.abs(seconds));
-	if (seconds < 0) return choose(locale, `${value} s early`, `${value} s d’avance`);
-	if (seconds > 0) return choose(locale, `${value} s late`, `${value} s de retard`);
-	return `${value} s`;
 }
 
 export const stopAccessibilityDescription = {

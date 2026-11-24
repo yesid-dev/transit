@@ -1,5 +1,5 @@
 import type { Locale } from '#lib/i18n/copy.ts';
-import { formatLocalClock } from '#lib/utils/time.ts';
+import { clockTime } from '#lib/site/presenter.ts';
 import { stampDate, type RecordStamp } from '#lib/v1/stamp.ts';
 import { refreshCopy } from './refresh.copy';
 
@@ -34,7 +34,7 @@ export function refreshMessage(
 	timeZone: string | undefined,
 ): string {
 	const copy = refreshCopy[locale];
-	const time = (ms: number) => formatLocalClock(new Date(ms), locale, timeZone);
+	const time = (ms: number) => clockTime(new Date(ms), locale, timeZone);
 	switch (result.kind) {
 		case 'updated':
 			return copy.updated(time(result.atMs));

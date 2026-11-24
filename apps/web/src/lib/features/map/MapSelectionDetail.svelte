@@ -18,7 +18,7 @@
 		occupancyVar,
 		statusVar,
 	} from '#lib/components/dataviz/tokens.ts';
-	import { delayMeasurement } from '#lib/site/delayPresentation.ts';
+	import { minuteReading } from '#lib/site/presenter.ts';
 	import { routeHasNoLiveData } from '#lib/v1/providers.ts';
 	import { OCCUPANCY_LABELS, STATUS_LABELS } from '#lib/v1/enumLabels.ts';
 	import type { MapSelection, MapSelectionDetail } from './mapSelectionSession.svelte';
@@ -205,7 +205,7 @@
 								{/if}
 								<span class="detail-delay-measurement">
 									<MaybeValue
-										value={delayMeasurement(detail.vehicle.delay_min)}
+										value={minuteReading(detail.vehicle.delay_min, locale, true)}
 										reason={absence}
 										{locale}
 									/>
@@ -418,7 +418,6 @@
 									><time>{timeLabel(departure.eta_utc, locale, timeZone)}</time><MapDelayTag
 										delay={departure.delay_min}
 										{locale}
-										{t}
 									/></span
 								>
 							</li>

@@ -24,13 +24,13 @@
 	} from '#lib/features/record/finderText.ts';
 	import {
 		choose,
-		dateRange,
 		lastGoodNote,
 		pooledDays,
 		punctualityWeighting,
 		recordConnection,
 		tally,
 	} from '#lib/features/record/recordText.ts';
+	import { dateRange } from '#lib/site/presenter.ts';
 
 	let {
 		locale,
@@ -138,8 +138,13 @@
 			}),
 	);
 	const sources = $derived(
-		[punctuality, trips].flatMap((result) =>
-			result?.kind === 'answer' ? [result.answer.evidence] : [],
+		(
+			[
+				[punctuality, headers[1]],
+				[trips, headers[3]],
+			] as const
+		).flatMap(([result, label]) =>
+			result?.kind === 'answer' ? [{ evidence: result.answer.evidence, label: label + '.' }] : [],
 		),
 	);
 </script>

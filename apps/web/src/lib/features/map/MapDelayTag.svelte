@@ -2,17 +2,16 @@
 	import { known, absent, liveAbsenceReason, readLiveAbsenceContext } from '#lib/site/absence.ts';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { AbsentValue } from '#lib/components/edge/index.ts';
-	import { delayKnownLabel, delayTone } from './mapSelectionDetail.logic';
-	import type { MapSelectionDetailCopy } from './mapSelectionDetail.copy';
+	import { delayTone } from './mapSelectionDetail.logic';
+	import { delayReading } from '#lib/site/presenter.ts';
 
 	interface Props {
 		delay: number | null | undefined;
 		locale: Locale;
-		t: MapSelectionDetailCopy;
 		ctx?: { stale?: boolean; metro?: boolean };
 	}
 
-	let { delay, locale, t, ctx = {} }: Props = $props();
+	let { delay, locale, ctx = {} }: Props = $props();
 
 	const absenceContext = readLiveAbsenceContext();
 	const m = $derived(
@@ -30,7 +29,7 @@
 
 {#if m.known}
 	<span class="map-delay-tag" data-tone={delayTone(m.value)}>
-		{delayKnownLabel(m.value, t)}
+		{delayReading(m.value * 60, locale)}
 	</span>
 {:else}
 	<AbsentValue reason={m.reason} {locale} params={m.params} />

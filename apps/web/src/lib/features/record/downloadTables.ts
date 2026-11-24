@@ -1,15 +1,15 @@
 export const downloadTables = {
 	stop_events: {
-		en: 'One row per trip stop. Compare scheduled and observed times, read delay in seconds and see the evidence used (basis), the reported vehicle and any exclusion reason.',
-		fr: 'Une ligne par arrêt d’une course. Comparez les heures prévues et observées, le retard en secondes, le type de preuve (basis), le véhicule signalé et le motif d’exclusion.',
+		en: 'One row per trip stop. Compare scheduled and observed times, read delay (s) and see the evidence used (basis), the reported vehicle and any exclusion reason.',
+		fr: 'Une ligne par arrêt d’une course. Comparez les heures prévues et observées, le retard (s), le type de preuve (basis), le véhicule signalé et le motif d’exclusion.',
 	},
 	trip_days: {
 		en: 'One row per trip and service day. Includes the scheduled start, trip state and reason, assigned vehicle, first and last observations, cancellation notice and terminus evidence.',
 		fr: 'Une ligne par course et journée de service. Comprend le départ prévu, l’état et son motif, le véhicule affecté, les premières et dernières observations, l’avis d’annulation et la preuve d’arrivée au terminus.',
 	},
 	scheduled_stop_times: {
-		en: 'One row per scheduled trip stop. Includes stop order, planned arrival and departure in UTC and in service-day seconds, the schedule edition checksum and wheelchair boarding information.',
-		fr: 'Une ligne par arrêt prévu d’une course. Comprend l’ordre des arrêts, les heures prévues d’arrivée et de départ en UTC et en secondes de service, la somme de contrôle de l’édition et l’accessibilité à l’embarquement.',
+		en: 'One row per scheduled trip stop. Includes stop order, planned arrival and departure in UTC and as a service-day offset (s), the schedule edition checksum and wheelchair boarding information.',
+		fr: 'Une ligne par arrêt prévu d’une course. Comprend l’ordre des arrêts, les heures prévues d’arrivée et de départ en UTC et en décalage depuis le début du jour de service (s), la somme de contrôle de l’édition et l’accessibilité à l’embarquement.',
 	},
 	vehicle_positions: {
 		en: 'Position readings with latitude, longitude, vehicle and optional trip and stop identifiers. Capture and observation times distinguish when Transit received the reading from when it was recorded. Repeated readings include a count and a last-seen time.',
@@ -24,8 +24,8 @@ export const downloadTables = {
 		fr: 'Une ligne par tentative de collecte. Comprend le flux, les horodatages de collecte et du flux, le résultat, la taille du contenu et le nombre d’entités si disponible.',
 	},
 	prediction_samples: {
-		en: 'One sample per observed trip stop and prediction horizon. Includes publication and predicted times, actual lead time and prediction error in seconds.',
-		fr: 'Un échantillon par arrêt observé d’une course et par horizon de prévision. Comprend les heures de publication et de passage prévu, le délai réel avant le passage et l’erreur de prévision en secondes.',
+		en: 'One sample per observed trip stop and prediction horizon. Includes publication and predicted times, actual lead time and prediction error (s).',
+		fr: 'Un échantillon par arrêt observé d’une course et par horizon de prévision. Comprend les heures de publication et de passage prévu, le délai réel avant le passage et l’erreur de prévision (s).',
 	},
 };
 

@@ -253,12 +253,12 @@ function installLeafContainerSizeSeam(file: string, outerWidthPx: number): HTMLS
 
 describe('MapSelectionDetail', () => {
 	it.each([
-		['en', 'America/Toronto', '8:06 p.m.', '8:16 p.m.'],
-		['fr', 'America/Toronto', '20 h 06', '20 h 16'],
-		['en', 'America/Vancouver', '5:06 p.m.', '5:16 p.m.'],
-		['fr', 'America/Vancouver', '17 h 06', '17 h 16'],
-		['en', 'Australia/Sydney', '10:06 a.m.', '10:16 a.m.'],
-		['fr', 'Australia/Sydney', '10 h 06', '10 h 16'],
+		['en', 'America/Toronto', '20:06', '20:16'],
+		['fr', 'America/Toronto', '20:06', '20:16'],
+		['en', 'America/Vancouver', '17:06', '17:16'],
+		['fr', 'America/Vancouver', '17:06', '17:16'],
+		['en', 'Australia/Sydney', '10:06', '10:16'],
+		['fr', 'Australia/Sydney', '10:06', '10:16'],
 	] as const)(
 		'keeps trip stops and selected-zone ETAs when the vehicle next stop is unreported (%s, %s)',
 		(locale, timeZone, firstTime, secondTime) => {
@@ -607,10 +607,10 @@ describe('MapSelectionDetail', () => {
 	);
 
 	it.each([
-		['en', 'America/Toronto', '8:06 p.m.', '8:36 p.m.'],
-		['fr', 'America/Toronto', '20 h 06', '20 h 36'],
-		['en', 'America/Vancouver', '5:06 p.m.', '5:36 p.m.'],
-		['fr', 'America/Vancouver', '17 h 06', '17 h 36'],
+		['en', 'America/Toronto', '20:06', '20:36'],
+		['fr', 'America/Toronto', '20:06', '20:36'],
+		['en', 'America/Vancouver', '17:06', '17:36'],
+		['fr', 'America/Vancouver', '17:06', '17:36'],
 	] as const)(
 		'renders both departure rungs in %s (%s)',
 		(locale, timeZone, firstTime, lastTime) => {
@@ -752,17 +752,17 @@ describe('MapSelectionDetail', () => {
 	);
 
 	it.each([
-		['en', 'America/Toronto', 'Select vehicle veh-1, Line 24, 8:06 p.m., Late, Delay: +4 min'],
+		['en', 'America/Toronto', 'Select vehicle veh-1, Line 24, 20:06, Late, Delay: +4 min'],
 		[
 			'fr',
 			'America/Toronto',
-			'Sélectionner le véhicule veh-1, Ligne 24, 20 h 06, En retard, Retard: +4 min',
+			'Sélectionner le véhicule veh-1, Ligne 24, 20:06, En retard, Retard: +4 min',
 		],
-		['en', 'America/Vancouver', 'Select vehicle veh-1, Line 24, 5:06 p.m., Late, Delay: +4 min'],
+		['en', 'America/Vancouver', 'Select vehicle veh-1, Line 24, 17:06, Late, Delay: +4 min'],
 		[
 			'fr',
 			'America/Vancouver',
-			'Sélectionner le véhicule veh-1, Ligne 24, 17 h 06, En retard, Retard: +4 min',
+			'Sélectionner le véhicule veh-1, Ligne 24, 17:06, En retard, Retard: +4 min',
 		],
 	] as const)(
 		'composes each bus row name with its %s clock in %s',

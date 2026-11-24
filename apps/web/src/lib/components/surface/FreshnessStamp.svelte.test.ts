@@ -89,7 +89,7 @@ it('renders the record form with a calendar date', () => {
 it('never announces a ticking live stamp', async () => {
 	const view = render(FreshnessStamp, { props: { presentation: stampFixture(), locale: 'en' } });
 	await view.rerender({ presentation: stampFixture({ ageSeconds: 30 }), locale: 'en' });
-	expect(view.container.querySelector('time')).toHaveTextContent('Live · updated 30 seconds ago');
+	expect(view.container.querySelector('time')).toHaveTextContent('Live · updated 30 s ago');
 	expect(view.container.querySelector('[aria-live], [role="status"]')).toBeNull();
 });
 it.each([
@@ -116,5 +116,5 @@ it('an alerts stamp from a feed says Live alerts', () => {
 	const { container } = render(FreshnessStamp, {
 		props: { presentation: stampFixture(), subject: 'alerts', locale: 'en' },
 	});
-	expect(container.querySelector('time')).toHaveTextContent('Live alerts · updated 12 seconds ago');
+	expect(container.querySelector('time')).toHaveTextContent('Live alerts · updated 12 s ago');
 });

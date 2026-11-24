@@ -21,11 +21,11 @@
 		rateStateText,
 		timingBasis,
 		withCoverage,
-		dateRange,
 		percent,
 		recordMessage,
 		tally,
 	} from '#lib/features/record/recordText.ts';
+	import { dateRange } from '#lib/site/presenter.ts';
 	import { carryFrameState, frameHref } from '#lib/site/frameState.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import type { RecordAnswer } from '#lib/server/engine.ts';

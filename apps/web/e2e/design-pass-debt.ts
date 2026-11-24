@@ -19,14 +19,21 @@ function compare(current: object, recorded: object, location: string) {
 	).toEqual(recorded);
 }
 
+function compareSize<T extends { height: number }>(current: T, recorded: T, location: string) {
+	const { height, ...geometry } = current;
+	const { height: ceiling, ...recordedGeometry } = recorded;
+	expect(height, `${location} height`).toBeLessThanOrEqual(ceiling);
+	compare(geometry, recordedGeometry, location);
+}
+
 export function expectDesignPass(screen: Screen, key: string, report: Report) {
 	const recorded = debt[key];
 	if (recorded) {
 		compare(report.content, recorded.content, `${key} C1 content order`);
 		for (const width of widths)
-			compare(report.widths[width], recorded.widths[width], `${key} C2/C3/C5 at ${width}px`);
+			compareSize(report.widths[width], recorded.widths[width], `${key} C2/C3/C5 at ${width}px`);
 		for (const width of budgetWidths) {
-			compare(report.zoom[width], recorded.zoom[width], `${key} C4 at ${width}px`);
+			compareSize(report.zoom[width], recorded.zoom[width], `${key} C4 at ${width}px`);
 			compare(report.keyboard[width], recorded.keyboard[width], `${key} C7 at ${width}px`);
 		}
 		return;

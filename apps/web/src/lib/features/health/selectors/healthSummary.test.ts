@@ -21,8 +21,8 @@ afterEach(() => vi.useRealTimers());
 it.each([
 	[
 		{ ageSeconds: 20, isStale: false },
-		'Up to date: live vehicle data, updated 20 seconds ago.',
-		'À jour : les données en direct des véhicules, mises à jour il y a 20 secondes.',
+		'Up to date: live vehicle data, updated 20 s ago.',
+		'À jour : les données en direct des véhicules, mises à jour il y a 20 s.',
 		'current',
 	],
 	[

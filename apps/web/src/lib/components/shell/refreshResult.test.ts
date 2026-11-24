@@ -16,8 +16,8 @@ const record = (publishedOn: string | null, dataThrough: string | null): RecordS
 afterEach(() => vi.useRealTimers());
 it('says when live data was updated', () => {
 	const result = refreshResult({ ok: true, atMs, shownAtMs, record: null });
-	expect(refreshMessage(result, 'en', zone)).toBe('Live data updated at 7:21 p.m.');
-	expect(refreshMessage(result, 'fr', zone)).toBe('Données en direct mises à jour à 19 h 21.');
+	expect(refreshMessage(result, 'en', zone)).toBe('Live data updated at 19:21.');
+	expect(refreshMessage(result, 'fr', zone)).toBe('Données en direct mises à jour à 19:21.');
 });
 it('says the record has not changed on a record page', () => {
 	vi.useFakeTimers();
@@ -30,10 +30,10 @@ it('says the record has not changed on a record page', () => {
 		record: { before: stamp, after: stamp },
 	});
 	expect(refreshMessage(result, 'en', zone)).toBe(
-		'Live data updated at 7:21 p.m. The record has not changed since Nov 11.',
+		'Live data updated at 19:21. The record has not changed since Nov 11.',
 	);
 	expect(refreshMessage(result, 'fr', zone)).toBe(
-		'Données en direct mises à jour à 19 h 21. Le bilan n’a pas changé depuis le 11 nov.',
+		'Données en direct mises à jour à 19:21. Le bilan n’a pas changé depuis le 11 nov.',
 	);
 });
 it.each(['publishedOn', 'dataThrough'] as const)(
@@ -58,9 +58,9 @@ it.each(['publishedOn', 'dataThrough'] as const)(
 );
 it('says it could not refresh and names the time of the data still shown', () => {
 	const result = refreshResult({ ok: false, atMs, shownAtMs, record: null });
-	expect(refreshMessage(result, 'en', zone)).toBe('Could not refresh. Showing data from 7:09 p.m.');
+	expect(refreshMessage(result, 'en', zone)).toBe('Could not refresh. Showing data from 19:09.');
 	expect(refreshMessage(result, 'fr', zone)).toBe(
-		'Actualisation impossible. Données affichées : 19 h 09.',
+		'Actualisation impossible. Données affichées : 19:09.',
 	);
 });
 it('falls back to the live sentence when a new record has no data-through date', () => {
@@ -104,8 +104,8 @@ it('never calls a record new when the earlier date was unknown', () => {
 });
 it('prints the time in the network’s time zone', () => {
 	const summer = { kind: 'updated', atMs: Date.parse('2026-07-14T23:21:00Z') } as const;
-	expect(refreshMessage(summer, 'en', 'America/Vancouver')).toBe('Live data updated at 4:21 p.m.');
+	expect(refreshMessage(summer, 'en', 'America/Vancouver')).toBe('Live data updated at 16:21.');
 	expect(refreshMessage(summer, 'fr', 'America/Vancouver')).toBe(
-		'Données en direct mises à jour à 16 h 21.',
+		'Données en direct mises à jour à 16:21.',
 	);
 });

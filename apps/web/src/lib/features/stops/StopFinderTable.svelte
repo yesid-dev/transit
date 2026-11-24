@@ -117,7 +117,7 @@
 			section="stop-results"
 			city={record.city}
 			period={record.period}
-			sources={result.kind === 'answer' ? [result.answer.evidence] : []}
+			sources={result.kind === 'answer' ? [{ evidence: result.answer.evidence }] : []}
 			headers={[
 				t('Stop ID', 'Identifiant de l’arrêt'),
 				t('Code', 'Code'),
