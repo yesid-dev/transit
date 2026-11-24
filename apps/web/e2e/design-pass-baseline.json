@@ -1,8 +1,8 @@
 {
 	"productCommit": "423305cc26a445a16a892d0657c572dcc4a769ce",
-	"measurementHead": "be9da284df6d558d5e24eb6cf2dda6f48d9e651c",
-	"measurementSource": "aee2854c0a3e3450cb5d001ca6c784c0f5625fca",
-	"measurementRun": "45327749256",
+	"measurementHead": "72248db0ff63c81be55abfc2fc8db6a20ce150e9",
+	"measurementSource": "b653275167e42a3fcbb620f4929d3617d1d955fc",
+	"measurementRun": "45328757640",
 	"screens": {
 		"overview/stm/en": {
 			"content": {
@@ -2755,7 +2755,7 @@
 		},
 		"map-live/stm/en": {
 			"content": {
-				"titles": 1,
+				"titles": 2,
 				"answerFirst": false
 			},
 			"widths": {
@@ -2764,9 +2764,9 @@
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
-					"targets": 13,
-					"shortTargets": 3,
-					"targetDeficit": 62,
+					"targets": 22,
+					"shortTargets": 2,
+					"targetDeficit": 42,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -2776,9 +2776,9 @@
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
-					"targets": 13,
-					"shortTargets": 3,
-					"targetDeficit": 62,
+					"targets": 22,
+					"shortTargets": 2,
+					"targetDeficit": 42,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -2847,7 +2847,7 @@
 					"targetDeficit": 40,
 					"clipped": 1,
 					"brokenWords": 0,
-					"textDefects": ["inaccessible-ellipsis #bits-c5 > span:nth-child(2) Controls"]
+					"textDefects": ["inaccessible-ellipsis #bits-c14 > span:nth-child(2) Controls"]
 				},
 				"1440": {
 					"height": 900,
@@ -2865,7 +2865,7 @@
 		},
 		"map-record-stops/stm/en": {
 			"content": {
-				"titles": 1,
+				"titles": 2,
 				"answerFirst": false
 			},
 			"widths": {
@@ -2874,9 +2874,9 @@
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
-					"targets": 13,
-					"shortTargets": 3,
-					"targetDeficit": 62,
+					"targets": 18,
+					"shortTargets": 2,
+					"targetDeficit": 42,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -2886,9 +2886,9 @@
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
-					"targets": 13,
-					"shortTargets": 3,
-					"targetDeficit": 62,
+					"targets": 18,
+					"shortTargets": 2,
+					"targetDeficit": 42,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -2978,7 +2978,7 @@
 		},
 		"map-record-corridors/stm/en": {
 			"content": {
-				"titles": 1,
+				"titles": 2,
 				"answerFirst": false
 			},
 			"widths": {
@@ -2987,9 +2987,9 @@
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
-					"targets": 13,
-					"shortTargets": 3,
-					"targetDeficit": 62,
+					"targets": 20,
+					"shortTargets": 2,
+					"targetDeficit": 42,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -2999,9 +2999,9 @@
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
-					"targets": 13,
-					"shortTargets": 3,
-					"targetDeficit": 62,
+					"targets": 20,
+					"shortTargets": 2,
+					"targetDeficit": 42,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -4408,7 +4408,7 @@
 		},
 		"map-live/octranspo/en": {
 			"content": {
-				"titles": 1,
+				"titles": 2,
 				"answerFirst": false
 			},
 			"widths": {
@@ -4417,9 +4417,9 @@
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
-					"targets": 13,
-					"shortTargets": 3,
-					"targetDeficit": 62,
+					"targets": 22,
+					"shortTargets": 2,
+					"targetDeficit": 42,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -4429,9 +4429,9 @@
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
-					"targets": 13,
-					"shortTargets": 3,
-					"targetDeficit": 62,
+					"targets": 22,
+					"shortTargets": 2,
+					"targetDeficit": 42,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -4475,10 +4475,10 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 11,
-					"order": "492db9eacddb206f",
-					"withoutRing": 0,
-					"outOfOrder": 0,
+					"stops": 16,
+					"order": "f5e41f71842e0792",
+					"withoutRing": 1,
+					"outOfOrder": 3,
 					"beforeFigure": 0
 				},
 				"1440": {
@@ -4500,7 +4500,7 @@
 					"targetDeficit": 40,
 					"clipped": 1,
 					"brokenWords": 0,
-					"textDefects": ["inaccessible-ellipsis #bits-c5 > span:nth-child(2) Controls"]
+					"textDefects": ["inaccessible-ellipsis #bits-c14 > span:nth-child(2) Controls"]
 				},
 				"1440": {
 					"height": 900,
@@ -4518,7 +4518,7 @@
 		},
 		"map-record-stops/octranspo/en": {
 			"content": {
-				"titles": 1,
+				"titles": 2,
 				"answerFirst": false
 			},
 			"widths": {
@@ -4527,9 +4527,9 @@
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
-					"targets": 13,
-					"shortTargets": 3,
-					"targetDeficit": 62,
+					"targets": 18,
+					"shortTargets": 2,
+					"targetDeficit": 42,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -4539,9 +4539,9 @@
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
-					"targets": 13,
-					"shortTargets": 3,
-					"targetDeficit": 62,
+					"targets": 18,
+					"shortTargets": 2,
+					"targetDeficit": 42,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -5875,7 +5875,7 @@
 		},
 		"map-live/stm/fr": {
 			"content": {
-				"titles": 1,
+				"titles": 2,
 				"answerFirst": false
 			},
 			"widths": {
@@ -5884,9 +5884,9 @@
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
-					"targets": 13,
-					"shortTargets": 3,
-					"targetDeficit": 62,
+					"targets": 22,
+					"shortTargets": 2,
+					"targetDeficit": 42,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -5896,9 +5896,9 @@
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
-					"targets": 13,
-					"shortTargets": 3,
-					"targetDeficit": 62,
+					"targets": 22,
+					"shortTargets": 2,
+					"targetDeficit": 42,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -5970,7 +5970,7 @@
 					"textDefects": [
 						"clipped [data-slot=\"map-surface\"] Arrêts",
 						"clipped [data-slot=\"map-surface\"] Corridors",
-						"inaccessible-ellipsis #bits-c5 > span:nth-child(2) Contrôles"
+						"inaccessible-ellipsis #bits-c14 > span:nth-child(2) Contrôles"
 					]
 				},
 				"1440": {
@@ -5993,7 +5993,7 @@
 		},
 		"map-record-stops/stm/fr": {
 			"content": {
-				"titles": 1,
+				"titles": 2,
 				"answerFirst": false
 			},
 			"widths": {
@@ -6002,9 +6002,9 @@
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
-					"targets": 13,
-					"shortTargets": 3,
-					"targetDeficit": 62,
+					"targets": 18,
+					"shortTargets": 2,
+					"targetDeficit": 42,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -6014,9 +6014,9 @@
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
-					"targets": 13,
-					"shortTargets": 3,
-					"targetDeficit": 62,
+					"targets": 18,
+					"shortTargets": 2,
+					"targetDeficit": 42,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
