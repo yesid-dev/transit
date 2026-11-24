@@ -360,10 +360,23 @@ test("validates and forwards map questions while an older engine degrades to una
   assert.equal(stop.status, 503);
   assert.ok(stop.headers.has("retry-after"));
   const corridor = `${base}&view=map&measure=mean_time_lost&group=segment`;
-  assert.equal((await f.fetch(corridor)).status, 400);
+  const network = await f.fetch(corridor);
+  assert.equal(network.status, 409);
+  assert.deepEqual(await network.json(), { reason: "network_corridors_unsupported" });
+  assert.equal((await f.fetch(`${corridor}&direction=0`)).status, 400);
   assert.equal((await f.fetch(`${corridor}&line=51&direction=0`)).status, 503);
-  assert.deepEqual(f.requests.map(({ url }) => new URL(url).searchParams.get("line")), [null, "51"]);
-  assert.deepEqual(f.requests.map(({ url }) => new URL(url).searchParams.get("view")), ["map", "map"]);
+  assert.deepEqual(f.requests.map(({ url }) => new URL(url).searchParams.get("line")), [null, null, "51"]);
+  assert.ok(f.requests.every(({ url }) => new URL(url).searchParams.get("view") === "map"));
+});
+
+test("preserves a network corridor refusal from an engine without complete clean facts", async (t) => {
+  const payload = { reason: "segment_runs_missing", message: "Clean segment runs are unavailable" };
+  const f = fixture(t, () => Response.json(payload, { status: 409 }));
+  const result = await f.fetch(
+    "/v2/demo/measure?from=2026-10-17&to=2026-10-23&view=map&measure=mean_time_lost&group=segment",
+  );
+  assert.equal(result.status, 409);
+  assert.deepEqual(await result.json(), payload);
 });
 
 test("rejects invalid questions before spending an engine slot or visitor budget", async (t) => {

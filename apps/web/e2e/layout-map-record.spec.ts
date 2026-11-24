@@ -3,7 +3,7 @@ import { test } from './layout-test';
 import { recordMapFixture, recordMapPeriod } from './map-record-fixture';
 
 for (const locale of ['en', 'fr'] as const) {
-	for (const layer of ['stops', 'corridors'] as const) {
+	for (const layer of ['stops', 'corridors', 'network'] as const) {
 		test(`${locale} ${layer} legend and controls fit the map @layout`, async ({
 			page,
 			browserName,
@@ -12,7 +12,7 @@ for (const locale of ['en', 'fr'] as const) {
 			const fr = locale === 'fr';
 			await recordMapFixture(page);
 			await page.goto(
-				`${fr ? '/fr' : ''}/map?${recordMapPeriod}&mapLayer=${layer}${layer === 'corridors' ? '&recordLine=24' : ''}`,
+				`${fr ? '/fr' : ''}/map?${recordMapPeriod}&mapLayer=${layer === 'network' ? 'corridors' : layer}${layer === 'corridors' ? '&recordLine=24' : ''}`,
 			);
 			const group = page.getByRole('radiogroup', {
 				name: fr ? 'Couches de la carte' : 'Map layers',

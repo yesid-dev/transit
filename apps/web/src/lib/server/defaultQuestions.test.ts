@@ -69,13 +69,15 @@ it.each([
 		visit(health, '/status'),
 		visit(methods, '/metrics'),
 		getScheduleEdition(provider.id),
-		mapRecord({
-			url: new URL(
-				`/api/map-record?${new URLSearchParams({ city: provider.id, from: period.from, to: period.to })}`,
-				origin,
-			),
-			request,
-		} as Parameters<typeof mapRecord>[0]),
+		...['', '&layer=corridors'].map((layer) =>
+			mapRecord({
+				url: new URL(
+					`/api/map-record?${new URLSearchParams({ city: provider.id, from: period.from, to: period.to })}${layer}`,
+					origin,
+				),
+				request,
+			} as Parameters<typeof mapRecord>[0]),
+		),
 	]);
 	const visitor = fetcher.mock.calls.map(([request]) => {
 		const url = new URL(request.url);
@@ -85,6 +87,46 @@ it.each([
 	const warm = [...defaultCityQuestions(provider, period), sharedDefaultQuestion];
 	expect(warm.toSorted()).toEqual([...new Set(visitor)].toSorted());
 	expect(warm.length).toBeLessThan(visitor.length);
+});
+
+it.each([
+	[400, { message: 'unknown parameter' }],
+	[409, { reason: 'segment_runs_version_required' }],
+])('asks the visitor to choose a line when the engine returns %i', async (status, payload) => {
+	fetcher.mockResolvedValueOnce(Response.json(payload, { status }));
+	const url = new URL(
+		'https://example.test/api/map-record?city=fixture&from=2026-11-15&to=2026-11-21&layer=corridors',
+	);
+	const response = await mapRecord({ url, request: new Request(url) } as Parameters<
+		typeof mapRecord
+	>[0]);
+	expect(response.status).toBe(409);
+	expect(await response.json()).toEqual({ state: 'choose_line' });
+	expect(new URL(fetcher.mock.calls.at(-1)![0].url).searchParams.get('line')).toBeNull();
+});
+
+it('keeps the source date in the network corridor response', async () => {
+	const evidence = { days_not_measured: [], source_date: '2026-11-20' };
+	fetcher.mockResolvedValueOnce(
+		Response.json({
+			measure: 'mean_time_lost',
+			from_stop: ['A'],
+			to_stop: ['B'],
+			lines: [['1']],
+			value: [5],
+			sample: [25],
+			state: [3],
+			evidence,
+		}),
+	);
+	const url = new URL(
+		'https://example.test/api/map-record?city=fixture&from=2026-11-15&to=2026-11-21&layer=corridors',
+	);
+	const response = await mapRecord({ url, request: new Request(url) } as Parameters<
+		typeof mapRecord
+	>[0]);
+	expect(response.status).toBe(200);
+	expect(await response.json()).toMatchObject({ evidence });
 });
 
 it('stays under 30 starts per rolling minute and waits for slow responses', async () => {
@@ -104,6 +146,9 @@ it('stays under 30 starts per rolling minute and waits for slow responses', asyn
 			if (index === 1) return new Response(null, { status: 503, headers: { 'Retry-After': '60' } });
 			if (index === 2) return Response.json({}, { headers: { 'X-Transit-Answer': 'last-good' } });
 			if (index === 3) throw new Error('connection error');
+			if (index === 4)
+				return Response.json({ reason: 'segment_runs_version_required' }, { status: 409 });
+			if (index === 5) return Response.json({ reason: 'segment_runs_missing' }, { status: 409 });
 			return Response.json({});
 		},
 	});
@@ -111,10 +156,12 @@ it('stays under 30 starts per rolling minute and waits for slow responses', asyn
 	for (const start of starts) {
 		expect(starts.filter((time) => time >= start && time < start + 60_000).length).toBeLessThan(30);
 	}
-	expect(requests.slice(0, 5).map(({ outcome }) => outcome)).toEqual([
+	expect(requests.slice(0, 7).map(({ outcome }) => outcome)).toEqual([
 		'answered',
 		'busy',
 		'failed',
+		'failed',
+		'deferred',
 		'failed',
 		'answered',
 	]);

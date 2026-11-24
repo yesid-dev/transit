@@ -285,7 +285,18 @@ async function answerQuestion(request, env, ctx, visitorIp) {
     if (requirePublicCity && !reportedRevision) return cities.error;
     const retryAfter = response.headers.get("retry-after");
     if (response.status === 503 && retryAfter) return busy(retryAfter);
+    if (question.networkCorridors && response.status === 409) {
+      const { reason, message } = await response.json();
+      if (["segment_runs_version_required", "segment_runs_missing"].includes(reason)) {
+        return Response.json({ reason, message }, { status: 409, headers: PUBLIC_HEADERS });
+      }
+    }
     if (response.status === 400) {
+      if (question.networkCorridors) {
+        return Response.json({ reason: "network_corridors_unsupported" }, {
+          status: 409, headers: PUBLIC_HEADERS,
+        });
+      }
       if (question.map) return lastGood(env, key);
       return publicEngineError(await response.json());
     }

@@ -111,7 +111,7 @@ export function parseQuestion(url) {
       !["from", "to", "measure", "group", "view", "format", "lang"].includes(key));
     const stops = params.get("measure") === "late" && params.get("group") === "stop_id" && !scope.length;
     const segments = params.get("measure") === "mean_time_lost" && params.get("group") === "segment" &&
-      params.has("line") && scope.every((key) => key === "line" || key === "direction");
+      (!scope.length || (params.has("line") && scope.every((key) => key === "line" || key === "direction")));
     if (csv || !(stops || segments)) throw new Error("invalid map measure");
   } else if (params.get("group") === "segment") {
     throw new Error("group=segment requires map view");
@@ -135,5 +135,6 @@ export function parseQuestion(url) {
   if (city !== null) params.set("city", city);
   params.sort();
   upstream.search = params.toString();
-  return { city, route, end, csv, key, upstream, scope, map };
+  const networkCorridors = map && params.get("group") === "segment" && !params.has("line");
+  return { city, route, end, csv, key, upstream, scope, map, networkCorridors };
 }

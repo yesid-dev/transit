@@ -16,6 +16,8 @@ export const GET: RequestHandler = async ({ url, request }) => {
 	}
 	const line = url.searchParams.get('line') ?? undefined;
 	const direction = url.searchParams.get('direction') ?? undefined;
+	const corridors = url.searchParams.get('layer') === 'corridors';
+	const network = corridors && line === undefined;
 	if (
 		line !== undefined &&
 		(!line || line.length > 256 || line !== line.trim() || /[^\S ]|\p{C}/u.test(line))
@@ -26,11 +28,19 @@ export const GET: RequestHandler = async ({ url, request }) => {
 		return json({ state: 'invalid_direction' }, { status: 400 });
 	}
 	const result = await query(
-		mapRecordQuestion({ city, from, to }, line, direction),
+		mapRecordQuestion({ city, from, to }, line, direction, corridors ? 'corridors' : undefined),
 		mapRecordAnswer,
 		request.headers.get('cf-connecting-ip'),
 	);
-	if (result.kind !== 'answer' || result.answer.measure !== (line ? 'mean_time_lost' : 'late')) {
+	if (network && result.kind === 'unreachable' && result.status !== undefined) {
+		return json({ state: 'choose_line' }, { status: 409 });
+	}
+	if (
+		result.kind !== 'answer' ||
+		result.answer.measure !== (line || network ? 'mean_time_lost' : 'late') ||
+		(result.answer.measure === 'mean_time_lost' &&
+			network !== (result.answer.direction === undefined))
+	) {
 		return json({ state: 'unavailable' }, { status: 503 });
 	}
 	return json(

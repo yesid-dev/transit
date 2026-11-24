@@ -27,6 +27,7 @@ from transit_engine.measures import (
     VEHICLE_RANKING_DEFAULT,
     EntityKind,
     Language,
+    NetworkCorridorsUnavailable,
     Question,
     answer_csv,
     ask,
@@ -343,6 +344,8 @@ class Engine:
             payload, days_pending = await asyncio.shield(query)
         except UnknownCity as error:
             await respond(send, 400, {"message": str(error)}, queued=queued)
+        except NetworkCorridorsUnavailable as error:
+            await respond(send, 409, {"reason": error.reason, "message": str(error)}, queued=queued)
         except Exception as error:
             # DuckDB errors can include storage configuration. Log the class only.
             LOGGER.error("engine query failed (%s)", type(error).__name__)

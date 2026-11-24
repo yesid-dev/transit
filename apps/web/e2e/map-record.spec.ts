@@ -37,18 +37,19 @@ for (const locale of ['en', 'fr'] as const) {
 		).toHaveAttribute('href', /\/stop\/MR1.*recordFrom=2026-11-18/);
 
 		await layers.getByRole('radio', { name: 'Corridors' }).click();
+		const segment = page.getByRole('searchbox', {
+			name: fr ? 'Trouver un segment' : 'Find a segment',
+		});
+		await segment.fill('Mont-Royal');
+		await page.getByRole('button', { name: 'Mont-Royal → Laurier' }).click();
+		await expect(selected).toContainText('34');
 		await expect(
-			page.getByText(
-				fr
-					? 'Choisissez une ligne pour voir le temps perdu entre ses arrêts.'
-					: 'Choose a line to see time lost between its stops.',
-				{ exact: true },
-			),
-		).toBeVisible();
-		expect(received.map((params) => params.has('line'))).toEqual([false]);
-		await page
-			.getByRole('combobox', { name: fr ? 'Ligne' : 'Line', exact: true })
-			.selectOption('24');
+			page
+				.getByRole('list', { name: fr ? /Lignes qui desservent/ : /Lines serving/ })
+				.getByRole('link'),
+		).toHaveAttribute('href', /\/lines\/24.*recordTo=2026-11-21/);
+		const line = page.getByRole('combobox', { name: fr ? 'Ligne' : 'Line', exact: true });
+		await line.selectOption('24');
 		await page.getByRole('combobox', { name: 'Direction', exact: true }).selectOption('0');
 		await expect.poll(() => received.at(-1)?.get('direction')).toBe('0');
 		await expect(
@@ -69,6 +70,12 @@ for (const locale of ['en', 'fr'] as const) {
 		await page.getByRole('button', { name: fr ? 'Hier' : 'Yesterday', exact: true }).click();
 		await expect.poll(() => received.at(-1)?.get('from')).toBe('2026-11-22');
 		expect(received.at(-1)?.get('line')).toBe('24');
+		await line.selectOption('');
+		await expect(segment).toBeVisible();
+		await expect.poll(() => received.at(-1)?.get('layer')).toBe('corridors');
+		await page.reload();
+		await expect(segment).toBeVisible();
+		await expect(line).toHaveValue('');
 	});
 
 	test(`${locale} Line Record opens corridors for the same line, dates and direction`, async ({
@@ -92,3 +99,13 @@ for (const locale of ['en', 'fr'] as const) {
 			});
 	});
 }
+
+test('the corridor layer still asks for a line when the engine refuses the network', async ({
+	page,
+}) => {
+	await recordMapFixture(page, false);
+	await page.goto(`/map?${recordMapPeriod}&mapLayer=corridors`);
+	await expect(page.getByText('Choose a line to see time lost between its stops.')).toBeVisible();
+	await page.getByRole('combobox', { name: 'Line', exact: true }).selectOption('24');
+	await expect(page.getByRole('searchbox', { name: 'Find a segment' })).toBeVisible();
+});

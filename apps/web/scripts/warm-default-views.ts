@@ -34,7 +34,7 @@ export async function warmQuestions(
 		if (pause > 0) await wait(pause);
 		const sent = now();
 		nextStart = sent + START_INTERVAL_MS;
-		let outcome: 'answered' | 'busy' | 'failed' = 'failed';
+		let outcome: 'answered' | 'busy' | 'deferred' | 'failed' = 'failed';
 		let answer: string | null = null;
 		let cache: string | null = null;
 		let edge: string | null = null;
@@ -43,11 +43,20 @@ export async function warmQuestions(
 			answer = response.headers.get('x-transit-answer');
 			cache = response.headers.get('cache-status');
 			edge = response.headers.get('cf-ray')?.split('-').at(-1) ?? null;
-			await response.arrayBuffer();
-			if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
-				if (answer !== 'last-good') outcome = 'answered';
-			} else if (response.status === 503 && response.headers.has('retry-after')) {
-				outcome = 'busy';
+			if (response.status === 409) {
+				const { reason } = await response.json();
+				if (
+					reason === 'segment_runs_version_required' ||
+					reason === 'network_corridors_unsupported'
+				)
+					outcome = 'deferred';
+			} else {
+				await response.arrayBuffer();
+				if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
+					if (answer !== 'last-good') outcome = 'answered';
+				} else if (response.status === 503 && response.headers.has('retry-after')) {
+					outcome = 'busy';
+				}
 			}
 		} catch {
 			// A transport failure is counted and the remaining questions still run.
@@ -127,7 +136,8 @@ async function main(args: string[]) {
 	const repeat = probeUrl ? requests.pop() : undefined;
 	const answered = requests.filter(({ outcome }) => outcome === 'answered').length;
 	const busy = requests.filter(({ outcome }) => outcome === 'busy').length;
-	const failed = requests.length - answered - busy;
+	const deferred = requests.filter(({ outcome }) => outcome === 'deferred').length;
+	const failed = requests.length - answered - busy - deferred;
 	console.log(
 		JSON.stringify({
 			period: {
@@ -143,6 +153,7 @@ async function main(args: string[]) {
 			sent: requests.length,
 			answered,
 			busy,
+			deferred,
 			failed,
 			elapsedMs: Math.round(performance.now() - started),
 			...(repeat && { probe: { first: requests[0], repeat } }),

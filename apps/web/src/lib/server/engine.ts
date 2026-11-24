@@ -106,7 +106,8 @@ export type MeasureAnswer = z.infer<typeof measureAnswer>;
 export type RankingAnswer = z.infer<typeof rankingAnswer>;
 export type EngineResult<T> =
 	| { kind: 'answer'; answer: T; lastGood?: true }
-	| { kind: 'unconfigured' | 'unreachable' | 'timeout' | 'busy' };
+	| { kind: 'unreachable'; status?: number }
+	| { kind: 'unconfigured' | 'timeout' | 'busy' };
 
 export async function getEngineHealth() {
 	const unavailable = { proxy: 'unavailable', engine: 'unknown' } as const;
@@ -166,6 +167,13 @@ export async function query<T>(
 	try {
 		const response = await engineFetch(question, signal, visitorIp, fixtureScope);
 		if (!response) return { kind: 'unconfigured' };
+		if (
+			question.parameters.view === 'map' &&
+			question.parameters.group === 'segment' &&
+			!question.parameters.line &&
+			(response.status === 409 || response.status === 400)
+		)
+			return { kind: 'unreachable', status: response.status };
 		if (response.status === 503 && response.headers.has('retry-after')) return { kind: 'busy' };
 		if (!response.ok) return { kind: 'unreachable' };
 		const { success, data } = schema.safeParse(await response.json());

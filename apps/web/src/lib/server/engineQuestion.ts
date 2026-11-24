@@ -67,11 +67,20 @@ export function scheduleQuestion(city: string) {
 	return cityQuestion(city, '/schedule-index');
 }
 
-export function mapRecordQuestion(period: EnginePeriod, line?: string, direction?: string) {
+export function mapRecordQuestion(
+	period: EnginePeriod,
+	line?: string,
+	direction?: string,
+	layer?: 'corridors',
+) {
 	return periodQuestion(period, '/measure', {
 		view: 'map',
-		...(line
-			? { measure: 'mean_time_lost', group: 'segment', line, ...(direction ? { direction } : {}) }
+		...(line || layer === 'corridors'
+			? {
+					measure: 'mean_time_lost',
+					group: 'segment',
+					...(line ? { line, ...(direction ? { direction } : {}) } : {}),
+				}
 			: { measure: 'late', group: 'stop_id' }),
 	});
 }

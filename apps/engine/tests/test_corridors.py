@@ -290,6 +290,68 @@ def test_clean_segment_runs_match_legacy_corridors(tmp_path: Path, version: int)
         }
         assert stable(query(clean, **map_cut)) == stable(query(legacy, **map_cut))
 
+    receipt["source_date"] = "2026-11-19"
+    marker.write_text(json.dumps(receipt), encoding="utf-8")
+    network = query(clean, measure="mean_time_lost", group="segment", map_view=True)
+    assert "direction" not in network
+    assert network["from_stop"] == ["from"]
+    assert network["to_stop"] == ["middle"]
+    assert network["lines"] == [["A", "B", "Rail"]]
+    # B's final run is covered by both feeds. Its other runs cannot enter the mean.
+    assert network["value"] == [30 / 31]
+    assert network["sample"] == [31]
+    assert network["state"] == [3]
+    assert network["evidence"]["source_date"] == "2026-11-19"
+
+    app = Engine(clean, concurrency=1, queue_size=1, queue_wait_ms=50)
+    params = {
+        "city": "stm", "from": THURSDAY, "to": FRIDAY, "view": "map",
+        "measure": "mean_time_lost", "group": "segment",
+    }
+    status, _, raw = asyncio.run(http(app, "/measure", urlencode(params)))
+    assert status == 200
+    partial = json.loads(raw)
+    for column in ("from_stop", "to_stop", "state", "value", "sample", "lines"):
+        assert partial[column] == network[column]
+    assert partial["evidence"]["days_measured"] == [str(THURSDAY)]
+    assert partial["evidence"]["days_not_measured"] == [str(FRIDAY)]
+    assert partial["evidence"]["days_pending"] == [str(FRIDAY)]
+    assert partial["evidence"]["source_date"] == network["evidence"]["source_date"]
+
+    status, _, raw = asyncio.run(http(app, "/measure", urlencode({**params, "from": FRIDAY})))
+    assert status == 200
+    unmeasured = json.loads(raw)
+    for column in ("from_stop", "to_stop", "state", "value", "sample", "lines"):
+        assert unmeasured[column] == []
+    assert unmeasured["evidence"]["days_not_measured"] == [str(FRIDAY)]
+    assert "source_date" not in unmeasured["evidence"]
+
+    friday_marker = directory.parent.parent / str(FRIDAY) / f"v{version}" / "manifest.json"
+    friday_marker.parent.mkdir(parents=True)
+    friday_marker.write_text(json.dumps({
+        "provider": "stm",
+        "service_date": str(FRIDAY),
+        "cleaning_version": str(version),
+        "built_at_utc": "2026-11-21T12:00:00+00:00",
+        "status": "no_raw_captures",
+    }), encoding="utf-8")
+    status, _, raw = asyncio.run(http(app, "/measure", urlencode(params)))
+    assert status == 200
+    declared = json.loads(raw)
+    assert declared["value"] == network["value"]
+    assert declared["evidence"]["days_not_measured_reasons"] == {str(FRIDAY): "no_raw_captures"}
+    assert declared["evidence"]["days_pending"] == []
+
+    segment = directory / SEGMENT_RUNS
+    segment.unlink()
+    for mismatched in (False, True):
+        if mismatched:
+            segment.write_bytes(payload[:-1])
+        status, _, raw = asyncio.run(http(app, "/measure", urlencode(params)))
+        assert status == 409
+        assert json.loads(raw)["reason"] == "segment_runs_missing"
+    segment.write_bytes(payload)
+
     # The manifest's listed segment facts supply corridors while stop events are pending.
     (directory / STOP_EVENTS).unlink()
     result = query(clean, measure="corridors", line="A")
@@ -345,5 +407,8 @@ def test_map_answers_keep_samples_and_non_value_states(tmp_path: Path) -> None:
     assert status == 200
     assert rail_segments["state"] == [2]
     assert rail_segments["value"] == [None]
-    assert ask_map(measure="mean_time_lost", group="segment")[0] == 400
+    status, refusal = ask_map(measure="mean_time_lost", group="segment")
+    assert status == 409
+    assert refusal["reason"] == "segment_runs_version_required"
+    assert ask_map(measure="mean_time_lost", group="segment", direction=0)[0] == 400
     assert ask_map(measure="late", group="stop_id", format="csv")[0] == 400

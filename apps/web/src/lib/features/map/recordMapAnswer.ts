@@ -21,7 +21,8 @@ export const mapRecordAnswer = z
 		z.object({
 			...columns,
 			measure: z.literal('mean_time_lost'),
-			direction: z.array(z.number().int().nullable()),
+			direction: z.array(z.number().int().nullable()).optional(),
+			lines: z.array(z.array(z.string())).optional(),
 			from_stop: z.array(z.string()),
 			to_stop: z.array(z.string()),
 			value: z.array(z.number().nullable()),
@@ -32,7 +33,12 @@ export const mapRecordAnswer = z
 		const keys =
 			answer.measure === 'late'
 				? [answer.stop]
-				: [answer.from_stop, answer.to_stop, answer.direction];
+				: [
+						answer.from_stop,
+						answer.to_stop,
+						...(answer.direction ? [answer.direction] : []),
+						...(answer.lines ? [answer.lines] : []),
+					];
 		return (
 			[answer.value, answer.sample, ...keys].every((column) => column.length === n) &&
 			answer.state.every((state, i) => (state === 3) === (answer.value[i] !== null))

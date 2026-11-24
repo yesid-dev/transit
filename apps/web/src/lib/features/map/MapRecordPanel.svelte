@@ -51,13 +51,15 @@
 	const display = transitDisplay();
 	const tr = (en: string, fr: string) => choose(locale, en, fr);
 	const stopLayer = $derived(layer === 'stops');
+	const network = $derived(!stopLayer && !line);
 	const scope = $derived(
-		period && (stopLayer || line)
+		period
 			? new URLSearchParams({
 					city,
 					from: period.from,
 					to: period.to,
-					...(!stopLayer ? { line, ...(direction ? { direction } : {}) } : {}),
+					...(network ? { layer: 'corridors' } : {}),
+					...(!stopLayer && line ? { line, ...(direction ? { direction } : {}) } : {}),
 				}).toString()
 			: '',
 	);
@@ -67,10 +69,14 @@
 	let request = $state.raw<{
 		key: string;
 		answer: (MapRecordAnswer & { stale?: boolean }) | null;
+		chooseLine?: boolean;
 	} | null>(null);
 	const answer = $derived(request?.key === scope ? request.answer : null);
 	$effect(() => onsourcedate(answer?.evidence.source_date ?? null));
 	const pending = $derived(Boolean(scope && scope !== request?.key));
+	const chooseLine = $derived(
+		network && (!scope || (request?.key === scope && request.chooseLine)),
+	);
 	let routeResult = $state.raw<{ id: string; route: RouteFile | null } | null>(null);
 	const route = $derived(routeResult?.id === line ? routeResult.route : null);
 	let selectedId = $state<string | null>(null);
@@ -86,11 +92,13 @@
 		if (!key) return;
 		const controller = new AbortController();
 		void fetch(`/api/map-record?${key}`, { signal: controller.signal })
-			.then((response) => {
+			.then(async (response) => {
+				if (response.status === 409) {
+					if (!controller.signal.aborted) request = { key, answer: null, chooseLine: true };
+					return;
+				}
 				if (!response.ok) throw new Error('Record unavailable');
-				return response.json();
-			})
-			.then((answer: MapRecordAnswer & { stale?: boolean }) => {
+				const answer: MapRecordAnswer & { stale?: boolean } = await response.json();
 				if (!controller.signal.aborted) request = { key, answer };
 			})
 			.catch(() => {
@@ -143,6 +151,7 @@
 			map,
 			recordFeatures(marks, theme.current === 'dark' ? 'dark' : 'light', stopLayer),
 			(id) => (selectedId = id),
+			network,
 		);
 	});
 	$effect(() => {
@@ -214,17 +223,20 @@
 					tr('60 s or more', '60 s ou plus'),
 				],
 	);
-	const recordHref = $derived.by(() => {
-		const id = stopLayer ? selected?.stop : line;
-		if (!id) return '';
+	const routeNames = $derived(new Map(routes.map((route) => [route.id, route.long])));
+	function recordLink(id: string, dir?: number | null) {
 		const target = new URL(
 			localizeHref(`/${stopLayer ? 'stop' : 'lines'}/${encodeURIComponent(id)}`, locale, city),
 			url,
 		);
-		if (!stopLayer && selected?.direction != null)
-			target.searchParams.set('direction', String(selected.direction));
+		if (dir != null) target.searchParams.set('direction', String(dir));
 		return frameHref(target, { mode: 'record', period });
-	});
+	}
+	const recordHref = $derived(
+		stopLayer
+			? selected?.stop && recordLink(selected.stop)
+			: line && recordLink(line, selected?.direction),
+	);
 	const number = $derived(new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }));
 	function valueText(value: number) {
 		return stopLayer
@@ -242,7 +254,11 @@
 				<label>
 					{tr('Line', 'Ligne')}
 					<select value={line} onchange={(event) => onscope(event.currentTarget.value, '')}>
-						<option value="">{tr('Choose a line', 'Choisir une ligne')}</option>
+						<option value=""
+							>{chooseLine
+								? tr('Choose a line', 'Choisir une ligne')
+								: tr('All lines', 'Toutes les lignes')}</option
+						>
 						{#each routes as item (item.id)}
 							<option value={item.id}>{display.lineName(item.id, item.long).label}</option>
 						{/each}
@@ -263,7 +279,7 @@
 				{/if}
 			</div>
 		{/if}
-		{#if !stopLayer && !line}
+		{#if chooseLine}
 			<p>
 				{tr(
 					'Choose a line to see time lost between its stops.',
@@ -283,6 +299,14 @@
 							'Par rapport à l’horaire des mêmes parcours.',
 						)}
 					</p>
+					{#if network}
+						<p>
+							{tr(
+								'The map draws a straight line between each pair of stops.',
+								'La carte relie chaque paire d’arrêts par un trait droit.',
+							)}
+						</p>
+					{/if}
 				{/if}
 				<ul class="bins">
 					{#each bins as label, i (label)}
@@ -371,6 +395,17 @@
 						? tr('Stop Record', 'Bilan de l’arrêt')
 						: tr('Line Record', 'Bilan de la ligne')}</a
 				>
+			{/if}
+			{#if network && selected?.lines?.length}
+				<ul aria-label={tr('Lines serving this segment', 'Lignes qui desservent ce segment')}>
+					{#each selected.lines as id (id)}
+						<li>
+							<a class="record-link" href={recordLink(id)}
+								>{display.lineName(id, routeNames.get(id)).label}</a
+							>
+						</li>
+					{/each}
+				</ul>
 			{/if}
 		{/if}
 	</Card>
