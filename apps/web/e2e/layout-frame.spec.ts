@@ -137,6 +137,9 @@ test('phone controls open a sheet and return focus to the pill', async ({ page }
 	const sheet = page.getByRole('dialog', { name: 'Commandes', exact: true });
 	await expect(sheet).toBeVisible();
 	await expect(sheet.getByRole('radio', { name: 'En direct', exact: true })).toBeDisabled();
+	await expect(
+		sheet.getByRole('radiogroup', { name: 'Période', exact: true }).getByRole('radio'),
+	).toHaveCount(6);
 	await expect(sheet.getByRole('radio', { name: '12 mois', exact: true })).toBeVisible();
 	await expect(sheet.locator('[data-slot="frame-period-summary"]')).toContainText(
 		'du 8 au 14 nov. 2026',
@@ -144,4 +147,24 @@ test('phone controls open a sheet and return focus to the pill', async ({ page }
 	await page.keyboard.press('Escape');
 	await expect(sheet).toBeHidden();
 	await expect(pill).toBeFocused();
+});
+
+test('Live map keeps pinned dates in the address and shows them again in Record', async ({
+	page,
+}) => {
+	await page.setViewportSize({ width: 1440, height: 900 });
+	await open(
+		page,
+		'/map?provider=stm&frameMode=live&period=7-days&recordFrom=2026-11-08&recordTo=2026-11-14',
+	);
+	const rail = page.getByRole('complementary', { name: 'Controls', exact: true });
+	await expect(rail.getByText('Dates apply to Record')).toBeVisible();
+	await expect(rail.getByRole('radiogroup', { name: 'Period' })).toHaveCount(0);
+	await expect(rail.getByRole('button', { name: 'Choose other dates' })).toHaveCount(0);
+	await rail.getByRole('radio', { name: 'Record', exact: true }).click();
+	await expect(page).toHaveURL(/mapLayer=stops/);
+	await expect(page).toHaveURL(/recordFrom=2026-11-08.*recordTo=2026-11-14/);
+	await expect(rail.locator('[data-slot="frame-period-summary"]')).toContainText(
+		'8 to 14 Nov 2026',
+	);
 });

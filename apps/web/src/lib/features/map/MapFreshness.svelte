@@ -28,6 +28,9 @@
 {/if}
 
 <style>
+	.map-freshness :global(.refresh-control) {
+		pointer-events: auto;
+	}
 	.map-freshness[data-placement='head'] {
 		display: none;
 	}

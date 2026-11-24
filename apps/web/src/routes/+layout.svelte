@@ -130,6 +130,7 @@
 			['stops', 'corridors'].includes(currentMirrorUrl().searchParams.get('mapLayer') ?? ''),
 	);
 	let mapRecordSourceDate = $state<string | null>(null);
+	let mapCreditHeight = $state(0);
 	setContext(mapRecordSourceDateContext, (date: string | null) => {
 		mapRecordSourceDate = date;
 	});
@@ -395,6 +396,7 @@
 	<AppShell
 		{navigation}
 		fullViewport={isFullBleed}
+		{mapCreditHeight}
 		{locale}
 		url={currentMirrorUrl(new URL(page.url.href))}
 		providerId={data.providerId}
@@ -431,8 +433,9 @@
 			{#if isFullBleed}
 				{#if footerAttribution}
 					<footer
-						class="border-t bg-card px-3 py-2 text-center text-xs text-muted-foreground"
+						class="map-source-footer border-t bg-card px-3 py-2 text-center text-xs text-muted-foreground"
 						data-slot="map-source-footer"
+						bind:clientHeight={mapCreditHeight}
 					>
 						{footerAttribution}
 					</footer>
@@ -486,8 +489,16 @@
 </SiteRoot>
 
 <style>
+	/* The map camera uses viewport coordinates independently of the reading frame. */
 	.map-flow {
-		--chrome-offset: var(--chrome-gap);
+		position: fixed;
+		inset: 0;
+	}
+	.map-source-footer {
+		position: fixed;
+		inset-inline: 0;
+		inset-block-end: 0;
+		z-index: var(--z-content);
 	}
 	@media (min-width: 1024px) {
 		.page-flow {

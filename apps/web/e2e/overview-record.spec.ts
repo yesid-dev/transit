@@ -72,9 +72,7 @@ test('a slow stop ranking shows patience while the other parts remain usable', a
 		timeout: 10_000,
 	});
 	await expect(main.getByText(/L3/)).toBeVisible();
-	await expect(
-		main.getByText('Still working on this. You can wait or come back later.'),
-	).toBeVisible();
+	await expect(main.getByText('These records take longer')).toBeVisible();
 	await main.getByText('Cite', { exact: true }).click();
 	await expect(main.getByText(/Method v2|Méthode v2/).first()).toBeVisible();
 	const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
@@ -83,9 +81,7 @@ test('a slow stop ranking shows patience while the other parts remain usable', a
 	);
 	expect(release.status()).toBe(204);
 	await expect(main.getByText('S3', { exact: true })).toBeVisible();
-	await expect(
-		main.getByText('Still working on this. You can wait or come back later.'),
-	).toHaveCount(0);
+	await expect(main.getByText('These records take longer')).toHaveCount(0);
 });
 
 test('Live and Record show the same punctuality for the same week (OV1)', async ({ page }) => {

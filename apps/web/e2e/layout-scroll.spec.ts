@@ -15,7 +15,7 @@ for (const provider of ['stm', 'octranspo']) {
 				.toBeGreaterThan(0);
 			await page.evaluate(() => window.scrollTo(0, 250));
 			await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(0);
-			const chrome = page.locator('[data-slot="app-shell-chrome"]');
+			const chrome = page.locator('[data-slot="app-frame-chrome"]');
 			expect((await chrome.boundingBox())!.y).toBe(0);
 			await page.evaluate(() => window.scrollTo(0, 0));
 			await page.locator('a[href="#main"]').focus();

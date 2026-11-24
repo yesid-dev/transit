@@ -113,9 +113,9 @@
 							>
 						</p>{/if}
 				{/each}
-				{#if column.key === 'live' && live}
+				{#if column.key === 'live' && provider}
 					<div class="min-h-11">
-						{#if shown.live}<RefreshButton {locale} />{/if}
+						{#if live && shown.live}<RefreshButton {locale} />{/if}
 					</div>
 				{/if}
 			</section>

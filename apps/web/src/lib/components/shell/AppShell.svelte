@@ -16,6 +16,7 @@
 	interface AppShellProps {
 		navigation: NavigationLifecycle;
 		fullViewport?: boolean;
+		mapCreditHeight?: number;
 		locale?: Locale;
 		url: URL;
 		providerId?: string;
@@ -33,6 +34,7 @@
 	let {
 		navigation,
 		fullViewport = false,
+		mapCreditHeight = 0,
 		locale: localeProp,
 		url,
 		providerId,
@@ -89,6 +91,7 @@
 <div
 	class="app-shell-root circuit-grid bg-background text-foreground"
 	data-full-viewport={fullViewport}
+	style:--map-source-clearance={fullViewport ? `${mapCreditHeight}px` : undefined}
 	data-slot="app-shell"
 	onfocusin={() => (now = new Date())}
 >
@@ -110,19 +113,23 @@
 			closeAria: copy.close,
 		}}
 	>
-		{#snippet children()}
-			{#if fullViewport}
+		{#if fullViewport}
+			{@render main()}
+		{:else}
+			<RecordPatience {locale} period={frame.period} scope={url.pathname + url.search}>
 				{@render main()}
-			{:else}
-				<RecordPatience {locale} period={frame.period} scope={url.pathname + url.search}>
-					{@render main()}
-				</RecordPatience>
-			{/if}
-		{/snippet}
+			</RecordPatience>
+		{/if}
 	</AppFrame>
 </div>
 
 <style>
+	.app-shell-root[data-full-viewport='true'] :global([data-slot='surface-rail-mobile']) {
+		--surface-rail-stack-offset: var(--map-source-clearance);
+	}
+	.app-shell-root:has(:global(.home-construction-floor)) {
+		overflow-anchor: none;
+	}
 	/* Portalled search and map dialogs retain the app's stacking and safe-area tokens. */
 	.app-shell-root:has(:global([data-slot='footer'] :focus-visible))
 		:global([data-slot='app-frame-chrome']) {

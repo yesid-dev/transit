@@ -15,6 +15,9 @@ export const frameCopy = {
 		live: 'Live now',
 		record: 'Record',
 		recordOnly: 'This screen is a record. It has no live view.',
+		liveOnly: 'This screen shows the trip in progress.',
+		recordDates: 'Dates apply to Record',
+		liveMoment: 'Live now shows this moment only.',
 		period: 'Period',
 		presets: {
 			yesterday: 'Yesterday',
@@ -44,6 +47,9 @@ export const frameCopy = {
 		live: 'En direct',
 		record: 'Bilan',
 		recordOnly: 'Cet écran présente un bilan. Il n’a pas de vue en direct.',
+		liveOnly: 'Cet écran montre le trajet en cours.',
+		recordDates: 'Les dates s’appliquent au bilan',
+		liveMoment: 'La vue en direct montre seulement la situation actuelle.',
 		period: 'Période',
 		presets: {
 			yesterday: 'Hier',
@@ -73,9 +79,11 @@ export function frameControlsState(url: URL, today: string) {
 	const line = /^\/lines\/[^/]+$/.test(path);
 	const stop = /^\/stop\/[^/]+$/.test(path);
 	const map = path === '/map';
+	const liveOnly = path.startsWith('/trip/');
 	const parsed = parseFrameState(url.searchParams, today);
 	let mode = parsed.mode;
 	if (recordOnly) mode = 'record';
+	else if (liveOnly) mode = 'live';
 	else if (line) mode = lineFrameView(url) === 'live' ? 'live' : 'record';
 	else if (stop) mode = stopFrameView(url);
 	else if (map)
@@ -87,6 +95,7 @@ export function frameControlsState(url: URL, today: string) {
 		...parsed,
 		mode,
 		recordOnly,
+		liveOnly,
 		detail: line || stop,
 		map,
 		usesFrameRecord:

@@ -15,6 +15,7 @@ describe('frame control state', () => {
 		expect(state('/lines/24?tab=detail').mode).toBe('live');
 		expect(state('/fr/stop/S1?tab=detail').mode).toBe('live');
 		expect(state('/map?frameMode=record').mode).toBe('live');
+		expect(state('/trip/T1?frameMode=record')).toMatchObject({ mode: 'live', liveOnly: true });
 		expect(state('/map?mapLayer=corridors&recordLine=24').mode).toBe('record');
 	});
 

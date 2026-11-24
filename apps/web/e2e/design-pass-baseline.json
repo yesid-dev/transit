@@ -23,7 +23,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 4828,
+					"height": 4732,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -35,7 +35,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 2838,
+					"height": 2770,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -73,15 +73,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 32,
-					"order": "3ae6f815a92e655f",
+					"stops": 31,
+					"order": "3985185d5bb3ba66",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 38,
-					"order": "02f7965c1bed5c7b",
+					"order": "0ba38acaa61361e2",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -178,7 +178,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 2620,
+					"height": 2546,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -192,15 +192,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 49,
-					"order": "a3c157a8febf7975",
+					"stops": 48,
+					"order": "d74426c8d618d5cb",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
-					"stops": 55,
-					"order": "a94faa9da9f61091",
+					"stops": 53,
+					"order": "ec20b301c75f59b7",
 					"withoutRing": 1,
 					"outOfOrder": 4,
 					"beforeFigure": 0
@@ -254,7 +254,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 4929,
+					"height": 4907,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -266,7 +266,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 4698,
+					"height": 4660,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -278,7 +278,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 3148,
+					"height": 3090,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -317,14 +317,14 @@
 			"keyboard": {
 				"390": {
 					"stops": 43,
-					"order": "856ea0f9be95683a",
+					"order": "0a47b736502a1348",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 1
 				},
 				"1440": {
 					"stops": 49,
-					"order": "c68b9822de8f4895",
+					"order": "52f40d427b308991",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 1
@@ -433,7 +433,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 5812,
+					"height": 5803,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -447,15 +447,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 73,
-					"order": "638739e8f1b67c7a",
+					"stops": 72,
+					"order": "ce6dc509df408d8c",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 11
 				},
 				"1440": {
 					"stops": 78,
-					"order": "1f74c6922cc91d1d",
+					"order": "780fe61be2f42da4",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 11
@@ -563,15 +563,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 47,
-					"order": "1cc86f194cbc3860",
+					"stops": 46,
+					"order": "f2eee9f9d71fcb40",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
-					"stops": 56,
-					"order": "957a8cebcd9ea40f",
+					"stops": 54,
+					"order": "8db083729c647975",
 					"withoutRing": 2,
 					"outOfOrder": 1,
 					"beforeFigure": 0
@@ -630,7 +630,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 3130,
+					"height": 3050,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -642,7 +642,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 3067,
+					"height": 2971,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -654,7 +654,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 1977,
+					"height": 1909,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -666,7 +666,7 @@
 					"textDefects": []
 				},
 				"1024": {
-					"height": 1476,
+					"height": 1412,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -678,7 +678,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 1474,
+					"height": 1345,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -692,15 +692,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 43,
-					"order": "17e0cc1bc29f16f8",
+					"stops": 42,
+					"order": "59d29a4ef489ef0f",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 8
 				},
 				"1440": {
 					"stops": 49,
-					"order": "92df71668059b75c",
+					"order": "2a756c2b9ec44bc0",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 8
@@ -746,7 +746,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 7111,
+					"height": 7089,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -758,7 +758,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 5762,
+					"height": 5724,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -770,7 +770,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 4715,
+					"height": 4656,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -794,7 +794,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 2520,
+					"height": 2477,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -809,14 +809,14 @@
 			"keyboard": {
 				"390": {
 					"stops": 56,
-					"order": "cac02413b9467632",
+					"order": "632815e7436b80fa",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 4
 				},
 				"1440": {
 					"stops": 63,
-					"order": "e5e007fc38e96ab2",
+					"order": "b40085faff2dc19b",
 					"withoutRing": 1,
 					"outOfOrder": 1,
 					"beforeFigure": 5
@@ -886,7 +886,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 4256,
+					"height": 4187,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -910,7 +910,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 3487,
+					"height": 3390,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -924,15 +924,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 56,
-					"order": "1d4c32b25769e959",
+					"stops": 55,
+					"order": "adc46102da7d91f2",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 6
 				},
 				"1440": {
 					"stops": 62,
-					"order": "64e2fd7e1c601d11",
+					"order": "28b93157fa8ebbe7",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 6
@@ -978,7 +978,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 3483,
+					"height": 3378,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -990,7 +990,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 3205,
+					"height": 3087,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1040,15 +1040,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 44,
-					"order": "f4f7c321ef7c34cf",
+					"stops": 43,
+					"order": "c95f3e0ea64ebccf",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
-					"stops": 53,
-					"order": "40136fbc0eb8d057",
+					"stops": 51,
+					"order": "bf8b1632f26520f2",
 					"withoutRing": 2,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -1102,7 +1102,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 2383,
+					"height": 2303,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1114,7 +1114,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 2343,
+					"height": 2247,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1126,7 +1126,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 1590,
+					"height": 1522,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1138,7 +1138,7 @@
 					"textDefects": []
 				},
 				"1024": {
-					"height": 1152,
+					"height": 1031,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1150,7 +1150,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 1150,
+					"height": 1029,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1164,15 +1164,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 37,
-					"order": "62eb58bcbd83843b",
+					"stops": 36,
+					"order": "ca7b7aea888649d0",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 3
 				},
 				"1440": {
 					"stops": 43,
-					"order": "4d2aa536514b37f2",
+					"order": "8a7e0ba09dad0012",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 3
@@ -1224,7 +1224,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 2253,
+					"height": 2148,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1236,7 +1236,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 2234,
+					"height": 2116,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1248,7 +1248,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 1459,
+					"height": 1369,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1260,7 +1260,7 @@
 					"textDefects": []
 				},
 				"1024": {
-					"height": 1020,
+					"height": 901,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1272,7 +1272,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 1018,
+					"height": 901,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1286,15 +1286,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 33,
-					"order": "f3f931f0b4454d33",
+					"stops": 32,
+					"order": "5a339a3c205f8ba2",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 3
 				},
 				"1440": {
-					"stops": 39,
-					"order": "700337bcb4634c55",
+					"stops": 37,
+					"order": "91a2835ce7ca95f8",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 3
@@ -1345,7 +1345,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 3639,
+					"height": 3559,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1357,7 +1357,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 3391,
+					"height": 3295,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1369,7 +1369,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 2479,
+					"height": 2410,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1381,7 +1381,7 @@
 					"textDefects": []
 				},
 				"1024": {
-					"height": 2016,
+					"height": 1919,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1393,7 +1393,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 2014,
+					"height": 1893,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1407,15 +1407,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 47,
-					"order": "a99b8cd0b53b60cc",
+					"stops": 46,
+					"order": "71aa4ed88b0f1b09",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 6
 				},
 				"1440": {
 					"stops": 53,
-					"order": "202f93f6f6e4aaf2",
+					"order": "1767c395851edcce",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 6
@@ -1461,7 +1461,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 2417,
+					"height": 2312,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1473,7 +1473,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 2373,
+					"height": 2256,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1485,7 +1485,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 1504,
+					"height": 1414,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1497,7 +1497,7 @@
 					"textDefects": []
 				},
 				"1024": {
-					"height": 1065,
+					"height": 923,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1509,7 +1509,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 1063,
+					"height": 921,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1523,15 +1523,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 36,
-					"order": "22a7325c08022e62",
+					"stops": 35,
+					"order": "84ab318d8e5d09c4",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
-					"stops": 42,
-					"order": "c0b678111852fd0c",
+					"stops": 40,
+					"order": "130f92d19a014dc9",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -1577,7 +1577,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 4035,
+					"height": 3955,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1601,7 +1601,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 2561,
+					"height": 2492,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1613,7 +1613,7 @@
 					"textDefects": []
 				},
 				"1024": {
-					"height": 2034,
+					"height": 2002,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1625,7 +1625,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 1960,
+					"height": 1864,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1639,15 +1639,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 49,
-					"order": "b04cedeb5e2c9dc5",
+					"stops": 48,
+					"order": "1a678d73ea4a1ee3",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 14
 				},
 				"1440": {
 					"stops": 55,
-					"order": "0fd0feaf40c80fbe",
+					"order": "b2f578725aa94fed",
 					"withoutRing": 2,
 					"outOfOrder": 0,
 					"beforeFigure": 14
@@ -1696,7 +1696,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 3400,
+					"height": 3378,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1708,7 +1708,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 3120,
+					"height": 3082,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1720,7 +1720,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 2119,
+					"height": 2061,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1744,7 +1744,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 1517,
+					"height": 1455,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1759,14 +1759,14 @@
 			"keyboard": {
 				"390": {
 					"stops": 36,
-					"order": "fadda049fee73014",
+					"order": "4b017f400a587dfe",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 42,
-					"order": "328b3ed923244a64",
+					"order": "05d2eb6fd58ad7eb",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -1821,7 +1821,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 3314,
+					"height": 3292,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1833,7 +1833,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 3034,
+					"height": 2996,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1845,7 +1845,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 2028,
+					"height": 1970,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1869,7 +1869,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 1433,
+					"height": 1371,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1884,14 +1884,14 @@
 			"keyboard": {
 				"390": {
 					"stops": 35,
-					"order": "0f652ff2e6d53aed",
+					"order": "47b3afffd219897f",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 41,
-					"order": "c5f721a5f3b46569",
+					"order": "3e205a1a995b3b8e",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -1958,7 +1958,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 5286,
+					"height": 5248,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1970,7 +1970,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 3587,
+					"height": 3529,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2009,14 +2009,14 @@
 			"keyboard": {
 				"390": {
 					"stops": 49,
-					"order": "3acf16d206ac5a7d",
+					"order": "fe0a99786b6bf79c",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 7
 				},
 				"1440": {
 					"stops": 55,
-					"order": "aae32a8154ac93d3",
+					"order": "a2238a89f283af64",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 7
@@ -2088,7 +2088,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 4316,
+					"height": 4247,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2100,7 +2100,7 @@
 					"textDefects": []
 				},
 				"1024": {
-					"height": 3357,
+					"height": 3353,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2112,7 +2112,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 3355,
+					"height": 3234,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2126,15 +2126,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 53,
-					"order": "54f96cc95d5a1196",
+					"stops": 52,
+					"order": "d0d56907be857cb8",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 3
 				},
 				"1440": {
 					"stops": 59,
-					"order": "f19b813d1c895d12",
+					"order": "a7865a0851f8ba9b",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 3
@@ -2192,7 +2192,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 7393,
+					"height": 7297,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2204,7 +2204,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 5518,
+					"height": 5450,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2228,7 +2228,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 3432,
+					"height": 3312,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2242,15 +2242,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 54,
-					"order": "78f39bf466209e9f",
+					"stops": 53,
+					"order": "e4ea85aa6e4497a4",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 1
 				},
 				"1440": {
 					"stops": 60,
-					"order": "895f8a07e1dbf611",
+					"order": "b3f14a5d3c38e116",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 1
@@ -2296,7 +2296,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 2542,
+					"height": 2462,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2308,7 +2308,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 2526,
+					"height": 2430,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2320,7 +2320,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 1874,
+					"height": 1805,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2332,7 +2332,7 @@
 					"textDefects": []
 				},
 				"1024": {
-					"height": 1368,
+					"height": 1315,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2344,7 +2344,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 1343,
+					"height": 1245,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2358,15 +2358,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 33,
-					"order": "3f26ae49e62b6119",
+					"stops": 32,
+					"order": "cdfb29a4a10c6653",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 1
 				},
 				"1440": {
 					"stops": 38,
-					"order": "7863e625164b6bb8",
+					"order": "ea7ee3ef169151e4",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -2412,7 +2412,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 2749,
+					"height": 2669,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2424,7 +2424,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 2609,
+					"height": 2513,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2436,7 +2436,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 1931,
+					"height": 1863,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2448,7 +2448,7 @@
 					"textDefects": []
 				},
 				"1024": {
-					"height": 1493,
+					"height": 1372,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2460,7 +2460,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 1491,
+					"height": 1370,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2474,15 +2474,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 34,
-					"order": "53de0acb5b184e30",
+					"stops": 33,
+					"order": "43ccfcd45d128e9a",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 40,
-					"order": "815fdd863bd861f6",
+					"order": "8000b452b75735d2",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -2528,7 +2528,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 2494,
+					"height": 2414,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2540,7 +2540,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 2352,
+					"height": 2256,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2552,7 +2552,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 1663,
+					"height": 1594,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2564,7 +2564,7 @@
 					"textDefects": []
 				},
 				"1024": {
-					"height": 1264,
+					"height": 1143,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2576,7 +2576,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 1281,
+					"height": 1161,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2590,15 +2590,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 32,
-					"order": "f1386b93e5a85f1a",
+					"stops": 31,
+					"order": "46ed16b64db73372",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 38,
-					"order": "5386e766b1d71cea",
+					"order": "afd6073ad9e806d2",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -2644,7 +2644,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 2532,
+					"height": 2452,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2656,7 +2656,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 2488,
+					"height": 2392,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2668,7 +2668,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 1727,
+					"height": 1659,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2680,7 +2680,7 @@
 					"textDefects": []
 				},
 				"1024": {
-					"height": 1237,
+					"height": 1205,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2692,7 +2692,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 1255,
+					"height": 1134,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2706,15 +2706,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 38,
-					"order": "2b842c17b8f39353",
+					"stops": 37,
+					"order": "bb107ee3c081545a",
 					"withoutRing": 1,
 					"outOfOrder": 1,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 44,
-					"order": "da8f29df938dc543",
+					"order": "4a45522a6d3d66d0",
 					"withoutRing": 2,
 					"outOfOrder": 1,
 					"beforeFigure": 0
@@ -2823,16 +2823,16 @@
 			"keyboard": {
 				"390": {
 					"stops": 16,
-					"order": "695ef082fd19fe62",
+					"order": "ce2d95b8dd0f04fa",
 					"withoutRing": 1,
 					"outOfOrder": 3,
 					"beforeFigure": 0
 				},
 				"1440": {
-					"stops": 43,
-					"order": "32b85bf1e8793520",
+					"stops": 42,
+					"order": "39fe607c6c145bad",
 					"withoutRing": 3,
-					"outOfOrder": 8,
+					"outOfOrder": 7,
 					"beforeFigure": 0
 				}
 			},
@@ -2932,15 +2932,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 13,
-					"order": "890316cd826c36d7",
+					"stops": 12,
+					"order": "49f2779611a32fcb",
 					"withoutRing": 1,
 					"outOfOrder": 1,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 19,
-					"order": "687f49eb28bfe0bd",
+					"order": "d123d9f480b2fbb3",
 					"withoutRing": 2,
 					"outOfOrder": 1,
 					"beforeFigure": 0
@@ -3095,7 +3095,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 4020,
+					"height": 3880,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3107,7 +3107,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 3656,
+					"height": 3500,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3119,7 +3119,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 2471,
+					"height": 2362,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3131,7 +3131,7 @@
 					"textDefects": []
 				},
 				"1024": {
-					"height": 1965,
+					"height": 1871,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3143,7 +3143,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 1819,
+					"height": 1749,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3157,15 +3157,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 38,
-					"order": "8a63a94c38d74d99",
+					"stops": 37,
+					"order": "938705cde8e81bcb",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 43,
-					"order": "e350655dc2da4032",
+					"order": "9cc495f9e8f0c624",
 					"withoutRing": 2,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -3239,7 +3239,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 3689,
+					"height": 3674,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3251,7 +3251,7 @@
 					"textDefects": []
 				},
 				"1024": {
-					"height": 3406,
+					"height": 3339,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3263,7 +3263,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 3418,
+					"height": 3351,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3277,15 +3277,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 31,
-					"order": "05018a2b755ffc6a",
+					"stops": 30,
+					"order": "a9ad8447a0eaaaad",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 37,
-					"order": "816fb47c4a8f2292",
+					"order": "5413edc5b925847a",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -3331,7 +3331,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 3069,
+					"height": 3016,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3355,7 +3355,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 2011,
+					"height": 1942,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3367,7 +3367,7 @@
 					"textDefects": []
 				},
 				"1024": {
-					"height": 1598,
+					"height": 1478,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3379,7 +3379,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 1522,
+					"height": 1401,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3394,14 +3394,14 @@
 			"keyboard": {
 				"390": {
 					"stops": 37,
-					"order": "519f42b2f098bf40",
+					"order": "765ac1b38c5df410",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 7
 				},
 				"1440": {
-					"stops": 43,
-					"order": "7bc2aced958e7f7b",
+					"stops": 42,
+					"order": "aa84540d506755e7",
 					"withoutRing": 1,
 					"outOfOrder": 2,
 					"beforeFigure": 6
@@ -3509,15 +3509,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 37,
-					"order": "fd8314375058fc55",
+					"stops": 36,
+					"order": "0dd77ab99544da82",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 43,
-					"order": "73511b9b36cca5dc",
+					"order": "5ca4b8652b4d72f3",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -3570,7 +3570,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 6992,
+					"height": 6929,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3582,7 +3582,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 6252,
+					"height": 6189,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3594,7 +3594,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 4438,
+					"height": 4423,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3606,7 +3606,7 @@
 					"textDefects": []
 				},
 				"1024": {
-					"height": 4273,
+					"height": 4206,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3618,7 +3618,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 4285,
+					"height": 4218,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3632,15 +3632,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 34,
-					"order": "c831ff528655bd75",
+					"stops": 33,
+					"order": "5d74c4a6a1adf6c3",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 40,
-					"order": "9db7f8de5689adc8",
+					"order": "e7593ff6deaf9327",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -3688,7 +3688,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 3923,
+					"height": 3860,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3700,7 +3700,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 3587,
+					"height": 3524,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3712,7 +3712,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 2541,
+					"height": 2526,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3724,7 +3724,7 @@
 					"textDefects": []
 				},
 				"1024": {
-					"height": 2153,
+					"height": 2086,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3736,7 +3736,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 2165,
+					"height": 2098,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3750,15 +3750,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 30,
-					"order": "61c0ecea61c3af3a",
+					"stops": 29,
+					"order": "32d89182703fa4a5",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 36,
-					"order": "5aed1e54ea09f4a9",
+					"order": "1b51ae65f86ba94e",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -3808,7 +3808,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 2440,
+					"height": 2360,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3820,7 +3820,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 2424,
+					"height": 2328,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3832,7 +3832,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 1837,
+					"height": 1769,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3844,7 +3844,7 @@
 					"textDefects": []
 				},
 				"1024": {
-					"height": 1380,
+					"height": 1259,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3856,7 +3856,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 1378,
+					"height": 1257,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3870,15 +3870,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 32,
-					"order": "c61af19920c89d2b",
+					"stops": 31,
+					"order": "fcd28804e9f3aede",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 38,
-					"order": "5253827a7fdeb4af",
+					"order": "96de9a5542ac6612",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -3924,7 +3924,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 1940,
+					"height": 1812,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3936,7 +3936,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 1876,
+					"height": 1796,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3948,7 +3948,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 1222,
+					"height": 1154,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3986,15 +3986,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 29,
-					"order": "bf07dd0174eb4619",
+					"stops": 28,
+					"order": "51812d8c4e475e3f",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 35,
-					"order": "265d38fbdc58f070",
+					"order": "31d4b5f1ff2c26b1",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -4102,15 +4102,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 46,
-					"order": "da0bd8abcf71b6bf",
+					"stops": 45,
+					"order": "66922dcd8225a3df",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
-					"stops": 55,
-					"order": "5639f93cb6a87a9d",
+					"stops": 53,
+					"order": "ca96373f217d8f4c",
 					"withoutRing": 2,
 					"outOfOrder": 1,
 					"beforeFigure": 0
@@ -4217,7 +4217,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 5665,
+					"height": 5656,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4231,15 +4231,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 72,
-					"order": "f41aaa80365b8846",
+					"stops": 71,
+					"order": "3809e0cd56350acb",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 11
 				},
 				"1440": {
 					"stops": 77,
-					"order": "eac74f46a4a58b33",
+					"order": "2c6fae16697a3cb6",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 11
@@ -4285,7 +4285,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 3825,
+					"height": 3755,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4297,7 +4297,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 3613,
+					"height": 3591,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4309,7 +4309,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 2402,
+					"height": 2344,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4333,7 +4333,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 1325,
+					"height": 1306,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4348,14 +4348,14 @@
 			"keyboard": {
 				"390": {
 					"stops": 35,
-					"order": "b70d793f9dd45217",
+					"order": "a9e1899b7c5b25de",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 1
 				},
 				"1440": {
 					"stops": 41,
-					"order": "07313a345566ba73",
+					"order": "fcd67e7129a21d36",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 1
@@ -4476,16 +4476,16 @@
 			"keyboard": {
 				"390": {
 					"stops": 16,
-					"order": "f5e41f71842e0792",
+					"order": "7d7775842ed02c41",
 					"withoutRing": 1,
 					"outOfOrder": 3,
 					"beforeFigure": 0
 				},
 				"1440": {
-					"stops": 41,
-					"order": "c53bd46ecfd5f0e4",
+					"stops": 40,
+					"order": "6a6157c9c0e29514",
 					"withoutRing": 3,
-					"outOfOrder": 8,
+					"outOfOrder": 6,
 					"beforeFigure": 0
 				}
 			},
@@ -4585,15 +4585,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 13,
-					"order": "4e0ced65767991ed",
+					"stops": 12,
+					"order": "6f59b8c6c89e879f",
 					"withoutRing": 1,
 					"outOfOrder": 1,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 19,
-					"order": "002c5f6a59d1a0a5",
+					"order": "736bca145ea9f0dd",
 					"withoutRing": 2,
 					"outOfOrder": 1,
 					"beforeFigure": 0
@@ -4636,7 +4636,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 7834,
+					"height": 7706,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4648,7 +4648,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 7341,
+					"height": 7261,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4660,7 +4660,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 5466,
+					"height": 5398,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4684,7 +4684,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 3413,
+					"height": 3292,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4698,15 +4698,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 53,
-					"order": "aceb1e15027e00b5",
+					"stops": 52,
+					"order": "2479b00c79fb4ceb",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 1
 				},
 				"1440": {
 					"stops": 59,
-					"order": "d735f415b2c0e436",
+					"order": "6894858593f35825",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 1
@@ -4764,7 +4764,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 4776,
+					"height": 4696,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4776,7 +4776,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 2786,
+					"height": 2718,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4814,15 +4814,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 31,
-					"order": "5e96886399913805",
+					"stops": 30,
+					"order": "262192b3ab69975b",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 37,
-					"order": "25770e4d85e8f32f",
+					"order": "46f2c0fd4b2a16e7",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -4871,7 +4871,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 3310,
+					"height": 3240,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4883,7 +4883,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 2982,
+					"height": 2960,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4895,7 +4895,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 1976,
+					"height": 1918,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4919,7 +4919,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 1414,
+					"height": 1351,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -4934,14 +4934,14 @@
 			"keyboard": {
 				"390": {
 					"stops": 34,
-					"order": "8e82ebd896102514",
+					"order": "0aba79a4261a8cf3",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 40,
-					"order": "43c7cf6de13c36bc",
+					"order": "6522dcd424ac3a14",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -5020,7 +5020,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 4178,
+					"height": 4109,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5044,7 +5044,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 3441,
+					"height": 3344,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5058,15 +5058,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 55,
-					"order": "da2afb06b54f0411",
+					"stops": 54,
+					"order": "3fc55b7481af297d",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 6
 				},
 				"1440": {
 					"stops": 61,
-					"order": "f2329e6d9585ad13",
+					"order": "87ccd7335feb26d2",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 6
@@ -5112,7 +5112,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 3635,
+					"height": 3507,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5124,7 +5124,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 3339,
+					"height": 3259,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5136,7 +5136,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 2427,
+					"height": 2358,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5148,7 +5148,7 @@
 					"textDefects": []
 				},
 				"1024": {
-					"height": 2016,
+					"height": 1919,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5160,7 +5160,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 1994,
+					"height": 1874,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5174,15 +5174,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 46,
-					"order": "a10d7b1f0220c9d8",
+					"stops": 45,
+					"order": "9161e5c540c89ca8",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 6
 				},
 				"1440": {
 					"stops": 52,
-					"order": "a2b886410c53dfe3",
+					"order": "76e0db87c2f43a94",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 6
@@ -5228,7 +5228,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 2379,
+					"height": 2251,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5240,7 +5240,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 2291,
+					"height": 2211,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5252,7 +5252,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 1538,
+					"height": 1470,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5264,7 +5264,7 @@
 					"textDefects": []
 				},
 				"1024": {
-					"height": 1152,
+					"height": 1031,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5276,7 +5276,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 1130,
+					"height": 1010,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5290,15 +5290,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 36,
-					"order": "1f52a3b70ec48439",
+					"stops": 35,
+					"order": "b31833b72cad571a",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 3
 				},
 				"1440": {
 					"stops": 42,
-					"order": "51a2cc5cdbebd02b",
+					"order": "8b496b2055ccee4a",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 3
@@ -5362,7 +5362,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 5044,
+					"height": 4980,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5374,7 +5374,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 3030,
+					"height": 2962,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5398,7 +5398,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 1991,
+					"height": 1966,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5412,15 +5412,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 32,
-					"order": "0ca359693ff3482c",
+					"stops": 31,
+					"order": "5d079908955937f8",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 38,
-					"order": "acc8d0d3c15e027f",
+					"order": "bf771eaf90af94be",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -5501,7 +5501,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 7474,
+					"height": 7406,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5525,7 +5525,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 5924,
+					"height": 5876,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5539,15 +5539,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 73,
-					"order": "ebf13eaf3ac718f0",
+					"stops": 72,
+					"order": "95cd6bb80e20abba",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 11
 				},
 				"1440": {
 					"stops": 78,
-					"order": "866d5e913d81d674",
+					"order": "85312396607c312e",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 11
@@ -5665,15 +5665,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 47,
-					"order": "9fe9fdc75d2c4d36",
+					"stops": 46,
+					"order": "02779e4805b51b12",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
-					"stops": 56,
-					"order": "b1c2a5327dcb8284",
+					"stops": 54,
+					"order": "7264c4163afbdede",
 					"withoutRing": 2,
 					"outOfOrder": 1,
 					"beforeFigure": 0
@@ -5772,7 +5772,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 4376,
+					"height": 4307,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5796,7 +5796,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 3530,
+					"height": 3478,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5810,15 +5810,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 56,
-					"order": "74e9d8fef4d30297",
+					"stops": 55,
+					"order": "60e819d75b391d66",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 6
 				},
 				"1440": {
 					"stops": 62,
-					"order": "625db62f670483b5",
+					"order": "4ae7549333720f72",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 6
@@ -5943,14 +5943,14 @@
 			"keyboard": {
 				"390": {
 					"stops": 16,
-					"order": "4019b449924c13c2",
+					"order": "e46042719e2b0ae5",
 					"withoutRing": 1,
 					"outOfOrder": 3,
 					"beforeFigure": 0
 				},
 				"1440": {
-					"stops": 43,
-					"order": "17866eaaf2a9ad55",
+					"stops": 42,
+					"order": "ad08a9b7b6162302",
 					"withoutRing": 3,
 					"outOfOrder": 8,
 					"beforeFigure": 0
@@ -6060,15 +6060,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 13,
-					"order": "e4f460ce521300ba",
+					"stops": 12,
+					"order": "e27444ec4dfe0eb1",
 					"withoutRing": 1,
 					"outOfOrder": 1,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 19,
-					"order": "5e8bf0c44d823e63",
+					"order": "3898bd1c66e6f7b1",
 					"withoutRing": 2,
 					"outOfOrder": 1,
 					"beforeFigure": 0
@@ -6110,7 +6110,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 3477,
+					"height": 3436,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -6122,7 +6122,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 3154,
+					"height": 3148,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -6134,7 +6134,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 2100,
+					"height": 2042,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -6158,7 +6158,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 1458,
+					"height": 1420,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -6173,14 +6173,14 @@
 			"keyboard": {
 				"390": {
 					"stops": 35,
-					"order": "2b701de0fd789c16",
+					"order": "be5c7ac534fd11e1",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 41,
-					"order": "c2059056bcee0006",
+					"order": "e1a1ff751e6b2b40",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -6267,7 +6267,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 5671,
+					"height": 5603,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -6291,7 +6291,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 3433,
+					"height": 3353,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -6305,15 +6305,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 54,
-					"order": "49dae4b054c5644c",
+					"stops": 53,
+					"order": "3d95866b283ccca7",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 1
 				},
 				"1440": {
 					"stops": 60,
-					"order": "dbd84858d74c3611",
+					"order": "dac70e4b709e7a84",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 1
@@ -6367,7 +6367,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 5202,
+					"height": 5160,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -6379,7 +6379,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 4815,
+					"height": 4809,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -6391,7 +6391,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 3286,
+					"height": 3228,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -6415,7 +6415,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 1947,
+					"height": 1904,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -6430,14 +6430,14 @@
 			"keyboard": {
 				"390": {
 					"stops": 43,
-					"order": "5ac124961c9cbf2d",
+					"order": "51350f77aed86900",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 1
 				},
 				"1440": {
 					"stops": 49,
-					"order": "89f157cebf432ee0",
+					"order": "a53ee46ffff0252a",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 1
@@ -6505,7 +6505,7 @@
 			},
 			"widths": {
 				"320": {
-					"height": 2836,
+					"height": 2737,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -6517,7 +6517,7 @@
 					"textDefects": []
 				},
 				"390": {
-					"height": 2705,
+					"height": 2641,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -6529,7 +6529,7 @@
 					"textDefects": []
 				},
 				"768": {
-					"height": 1955,
+					"height": 1887,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -6541,7 +6541,7 @@
 					"textDefects": []
 				},
 				"1024": {
-					"height": 1495,
+					"height": 1398,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -6553,7 +6553,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 1492,
+					"height": 1371,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -6567,15 +6567,15 @@
 			},
 			"keyboard": {
 				"390": {
-					"stops": 34,
-					"order": "581c0b6e63b7d303",
+					"stops": 33,
+					"order": "c6a2a11aadeae1b5",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 40,
-					"order": "bdb9c96aac262772",
+					"order": "930226f78f6507dc",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -6622,5 +6622,12 @@
 				}
 			}
 		}
+	},
+	"frameMeasurement": {
+		"baseCommit": "82c4236c97fd114194430d245447d98c692e7da0",
+		"environment": "Windows Chromium fixture replay",
+		"pullRequest": 1274,
+		"normalTextHeightCeilingsTightened": 159,
+		"intentionalOrderFingerprints": 108
 	}
 }

@@ -164,7 +164,7 @@
 	/*
 	 * Each list reserves its period line and three rows before its data arrives: the rows of a
 	 * long-name gauge, drawn invisibly under the real list. Names are never cut; they wrap.
-	 * Phones: identity, then share and readings. From 768px: one row, figures on the right.
+	 * Compact lists: identity, then share and readings. Wide lists fit the figures on the right.
 	 */
 	.rank-notes {
 		display: grid;
@@ -187,6 +187,7 @@
 		min-width: 0;
 	}
 	.rank-list {
+		container: home-rank-list / inline-size;
 		min-width: 0;
 	}
 	.rank-list h3 {
@@ -331,7 +332,7 @@
 		color: var(--secondary-foreground);
 		font-size: var(--text-small);
 	}
-	@media (--tablet-min) {
+	@container home-rank-list (min-width: 23rem) {
 		.rank-row {
 			grid-template-columns: 1.25rem minmax(0, 1fr) auto;
 			grid-template-areas: 'pos id meta';
@@ -350,7 +351,7 @@
 	@media (--desktop-min) {
 		.rank-cols {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
-			column-gap: 2.5rem;
+			column-gap: var(--space-card-gap);
 		}
 	}
 </style>

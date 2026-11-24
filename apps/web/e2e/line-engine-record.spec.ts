@@ -152,9 +152,7 @@ test('Line shows patience for a slow stop query while punctuality is already rea
 		{ waitUntil: 'commit' },
 	);
 	await expect(page.getByText(/^9 to 15 Nov 2026, 80% of observed stop events/)).toBeVisible();
-	await expect(
-		page.getByText('Still working on this. You can wait or come back later.'),
-	).toBeVisible();
+	await expect(page.getByText('These records take longer')).toBeVisible();
 	const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
 	expect(
 		(await request.post(`http://127.0.0.1:${dataPort}/__overview/release?fixture=line`)).status(),

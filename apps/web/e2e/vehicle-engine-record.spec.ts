@@ -145,7 +145,9 @@ test('the fleet names untracked data and vehicle sections stream independently',
 		'12.5',
 	);
 	const lines = page.getByRole('region', { name: 'Lines and trips it ran' });
-	await expect(lines).toContainText('Still working on this. You can wait or come back later.');
+	await expect(page.locator('[data-slot="record-patience"]')).toContainText(
+		'These records take longer',
+	);
 	const port = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
 	expect((await request.post(`http://127.0.0.1:${port}/__overview/release`)).status()).toBe(204);
 	await expect(lines).toContainText('12');

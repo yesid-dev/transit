@@ -125,17 +125,19 @@
 			{/if}
 			<p class="reserve" aria-hidden="true" data-reserve={stampReserve}></p>
 		</div>
-		{#if !failed && presentation}<Button
-				type="button"
-				variant="outline"
-				size="cta-sm"
-				class="min-h-11"
-				onclick={refresh}
-				disabled={!live}
-			>
-				<RefreshIcon size={16} strokeWidth={1.8} aria-hidden="true" />
-				{t.refresh}
-			</Button>{/if}
+		<div class="min-h-11">
+			{#if !failed && presentation}<Button
+					type="button"
+					variant="outline"
+					size="cta-sm"
+					class="min-h-11"
+					onclick={refresh}
+					disabled={!live}
+				>
+					<RefreshIcon size={16} strokeWidth={1.8} aria-hidden="true" />
+					{t.refresh}
+				</Button>{/if}
+		</div>
 	</div>
 	<div class="slot live-result" data-failed={result?.kind === 'failed'}>
 		<p aria-live="polite">

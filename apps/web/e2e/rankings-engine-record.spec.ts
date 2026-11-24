@@ -191,9 +191,7 @@ test('a slow ranking streams patience and completes without reloading', async ({
 	);
 	expect(response?.headers()['cache-control']).toBe('no-store, no-transform');
 	await expect(page.getByRole('heading', { name: 'Hotspots', exact: true })).toBeVisible();
-	await expect(
-		page.getByText('Still working on this. You can wait or come back later.'),
-	).toBeVisible();
+	await expect(page.getByText('These records take longer')).toBeVisible();
 	const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
 	expect(
 		(

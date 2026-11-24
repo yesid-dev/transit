@@ -63,7 +63,7 @@
 </script>
 
 <Surface>
-	<div class="grid min-w-0 gap-4">
+	<div class="grid min-w-0 gap-4 lg:gap-3">
 		<header class="grid gap-2">
 			<a class="inline-flex min-h-11 w-fit items-center" href={back}>
 				{t('All lines', 'Toutes les lignes')}

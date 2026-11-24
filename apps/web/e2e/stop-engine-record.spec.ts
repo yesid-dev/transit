@@ -100,7 +100,9 @@ test('a slow per-line breakdown does not hold back the Stop answer', async ({ pa
 	expect(response?.headers()['cache-control']).toBe('no-store, no-transform');
 	await expect(page.getByText(/^9 to 15 Nov 2026, 80%.*80 of 100/)).toBeVisible();
 	const byLine = page.getByRole('region', { name: 'By line', exact: true });
-	await expect(byLine).toContainText('Still working on this. You can wait or come back later.');
+	await expect(page.locator('[data-slot="record-patience"]')).toContainText(
+		'These records take longer',
+	);
 	await expect(page.getByRole('region', { name: 'Alerts for this stop' })).toContainText(
 		'The record is busy right now. You can come back later.',
 	);

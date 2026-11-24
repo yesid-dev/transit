@@ -33,7 +33,7 @@ for (const locale of ['en', 'fr'] as const) {
 			await test.step('punctuality streams while trip delivery is calculating', async () => {
 				await expect(timing).toContainText('80%');
 				await expect(
-					performance.getByRole('status').filter({ hasText: 'Still working on this.' }),
+					page.locator('[data-slot="record-patience"]').getByRole('status'),
 				).toBeVisible();
 				const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
 				const release = await request.post(`http://127.0.0.1:${dataPort}/__overview/release`);

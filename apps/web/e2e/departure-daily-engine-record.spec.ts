@@ -117,7 +117,7 @@ test('Daily report streams past a slow agency section and distinguishes untracke
 	const hold = dailyMessageHold(request);
 	const other = dailyMessageHold(request);
 	const messages = page.getByRole('region', { name: 'Agency messages' });
-	const pending = 'Still working on this. You can wait or come back later.';
+	const pending = 'These records take longer';
 	try {
 		expect((await hold.start()).status()).toBe(204);
 		await page.setExtraHTTPHeaders(hold.headers);
@@ -125,12 +125,12 @@ test('Daily report streams past a slow agency section and distinguishes untracke
 		await expect(page.getByRole('region', { name: 'On-time share' })).toContainText('80 of 100');
 
 		expect((await other.release()).status()).toBe(204);
-		await expect(messages).toContainText(pending);
+		await expect(page.locator('[data-slot="record-patience"]')).toContainText(pending);
 		await test.step('another scope gets the same dates while messages are held', async () => {
 			const otherReport = await request.get(href, { headers: other.headers });
 			expect(otherReport.ok()).toBe(true);
 			expect(await otherReport.text()).toContain('Detour on 24');
-			await expect(messages).toContainText(pending);
+			await expect(page.locator('[data-slot="record-patience"]')).toContainText(pending);
 		});
 
 		expect((await hold.release()).status()).toBe(204);

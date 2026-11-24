@@ -71,6 +71,7 @@
 
 <style>
 	.home-explore {
+		container: home-overview / inline-size;
 		display: flex;
 		flex-direction: column;
 		gap: clamp(1.75rem, 4vw, 3rem);
@@ -154,7 +155,7 @@
 		.home-intro {
 			grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
 			grid-template-areas:
-				'title .'
+				'title title'
 				'lede search'
 				'more .';
 			column-gap: 1.5rem;
@@ -232,6 +233,14 @@
 	@media (--desktop-min) {
 		.groups {
 			grid-template-columns: repeat(4, minmax(0, 1fr));
+		}
+	}
+	@container home-overview (max-width: 52rem) {
+		.groups {
+			column-gap: var(--space-card-gap);
+		}
+		.group-item {
+			padding-block: 0.5rem;
 		}
 	}
 </style>

@@ -223,7 +223,7 @@ for (const brandCase of cases)
 		expect(measured.rootFont, 'root font').toBe(scale === 200 ? '32px' : '16px');
 		expect(measured.links, 'brand links').toHaveLength(2);
 		expect(houseLink!.text).toBe('yesid.');
-		expect(productLink!.text).toBe('transit');
+		expect(productLink!.text).toBe('Transit');
 		expect(houseLink!.href).toBe('https://yesid.dev');
 		expect(houseLink!.target).toBe('_blank');
 		expect(houseLink!.rel).toBe('noopener noreferrer');
