@@ -364,7 +364,12 @@
         "website_url": "https://www.sto.ca/"
       },
       "public": {
-        "basemap_bounds": null,
+        "basemap_bounds": {
+          "max_latitude": 46.4,
+          "max_longitude": -74.2,
+          "min_latitude": 44.7,
+          "min_longitude": -77.25
+        },
         "basemap_url": null,
         "enabled": false,
         "fit_bounds": {

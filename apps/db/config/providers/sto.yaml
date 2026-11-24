@@ -52,6 +52,11 @@ public:
     min_latitude: 45.30
     max_longitude: -75.23
     max_latitude: 45.75
+  basemap_bounds:
+    min_longitude: -77.25
+    min_latitude: 44.70
+    max_longitude: -74.20
+    max_latitude: 46.40
   geocode_context: Gatineau, Québec
   # Terms reviewed. Written confirmation for retention and derived downloads is pending.
   download_licence:
