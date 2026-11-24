@@ -3,7 +3,7 @@ import { expect } from '@playwright/test';
 import type { Screen } from './design-pass-cases';
 import { budgetWidths, widths, type measureDesignPass } from './design-pass-measure';
 
-type Report = Awaited<ReturnType<typeof measureDesignPass>>;
+type Report = Awaited<ReturnType<typeof measureDesignPass>>['report'];
 type Budget = Record<(typeof budgetWidths)[number], { height: number; beforeFigure: number }>;
 
 // A screen PR supplies its budgets here once all of its fixture variants leave the debt list.

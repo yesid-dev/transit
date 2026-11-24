@@ -140,6 +140,7 @@ async function keyboardMetrics(page: Page) {
 		});
 	});
 	const sequence: string[] = [];
+	const accessibleStops: string[] = [];
 	let withoutRing = 0;
 	let outOfOrder = 0;
 	let beforeFigure = 0;
@@ -197,6 +198,7 @@ async function keyboardMetrics(page: Page) {
 				break;
 			}
 			if (sequence.length === 0) expect(stop.skip, 'first Tab focuses the skip link').toBe(true);
+			let accessibleStop: string;
 			if (stop.nativeDate) {
 				// The DOM reports the host input for every segment. Read the focused
 				// accessibility node to distinguish real progress from a trapped Tab.
@@ -216,10 +218,14 @@ async function keyboardMetrics(page: Page) {
 				expect(dateStops.has(focused.nodeId), `Tab must advance past ${stop.key}`).toBe(false);
 				dateStops.add(focused.nodeId);
 				sequence.push(`${stop.key}|${focused.role?.value}|${focused.name?.value}`);
+				accessibleStop = `${focused.role?.value} ${JSON.stringify(focused.name?.value ?? '')}`;
 			} else {
 				expect(stop.repeated, `Tab must advance past ${stop.key}`).toBe(false);
 				sequence.push(stop.key);
+				const snapshot = await page.locator(':focus').ariaSnapshot();
+				accessibleStop = snapshot.split('\n')[0]?.replace(/^- /, '') || '(no accessibility node)';
 			}
+			accessibleStops.push(accessibleStop);
 			const ring = await page.evaluate(focusRing, undefined);
 			if (!ring.visible || ring.outline === 'none' || ring.width < 1) withoutRing++;
 			if (stop.beforeFigure) beforeFigure++;
@@ -238,11 +244,14 @@ async function keyboardMetrics(page: Page) {
 	expect(exited, 'Tab exits the page after the final control').toBe(true);
 	expect(sequence.length, 'page has keyboard stops').toBeGreaterThan(0);
 	return {
-		stops: sequence.length,
-		order: fingerprint(sequence),
-		withoutRing,
-		outOfOrder,
-		beforeFigure,
+		metrics: {
+			stops: sequence.length,
+			order: fingerprint(sequence),
+			withoutRing,
+			outOfOrder,
+			beforeFigure,
+		},
+		accessibleStops,
 	};
 }
 
@@ -254,8 +263,9 @@ export async function measureDesignPass(page: Page) {
 	>;
 	const keyboard = {} as Record<
 		(typeof budgetWidths)[number],
-		Awaited<ReturnType<typeof keyboardMetrics>>
+		Awaited<ReturnType<typeof keyboardMetrics>>['metrics']
 	>;
+	const focusSequences = {} as Record<(typeof budgetWidths)[number], string[]>;
 	for (const width of widths) {
 		await setWidth(page, width);
 		await settled(page);
@@ -265,7 +275,9 @@ export async function measureDesignPass(page: Page) {
 		}
 		Object.assign(widthsReport, { [width]: await layoutMetrics(page) });
 		if (width === 390 || width === 1440) {
-			Object.assign(keyboard, { [width]: await keyboardMetrics(page) });
+			const { metrics, accessibleStops } = await keyboardMetrics(page);
+			keyboard[width] = metrics;
+			focusSequences[width] = accessibleStops;
 			await page.evaluate(() => {
 				(document.activeElement as HTMLElement)?.blur();
 				window.scrollTo(0, 0);
@@ -286,5 +298,5 @@ export async function measureDesignPass(page: Page) {
 		await settled(page);
 		Object.assign(zoomReport, { [width]: await layoutMetrics(page, true) });
 	}
-	return { content, widths: widthsReport, keyboard, zoom: zoomReport };
+	return { report: { content, widths: widthsReport, keyboard, zoom: zoomReport }, focusSequences };
 }

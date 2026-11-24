@@ -40,9 +40,14 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 				.toBe(true);
 		}
 		const start = performance.now();
-		const report = await measureDesignPass(page);
+		const { report, focusSequences } = await measureDesignPass(page);
 		await info.attach('design-pass-measurements', {
-			body: JSON.stringify({ key, ms: Math.round(performance.now() - start), report }),
+			body: JSON.stringify({
+				key,
+				ms: Math.round(performance.now() - start),
+				report,
+				focusSequences,
+			}),
 			contentType: 'application/json',
 		});
 		expectDesignPass(screen, key, report);
