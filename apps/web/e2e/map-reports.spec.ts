@@ -352,9 +352,7 @@ const networkFixtures = JSON.parse(
 );
 for (const provider of ['stm', 'octranspo'])
 	for (const locale of PUBLISHED_LOCALES) {
-		test(`${provider} ${locale}: reports preserve provider identity and raw source positions at each width`, async ({
-			page,
-		}) => {
+		test.describe(`${provider} ${locale}: provider-specific map reports`, () => {
 			const published = networkFixtures.providers.find(
 				(row: { id: string }) => row.id === provider,
 			);
@@ -386,54 +384,65 @@ for (const provider of ['stm', 'octranspo'])
 					},
 				],
 			};
-			await page.clock.install({ time: Date.parse(GENERATED) + 30_000 });
-			await serveFleet(page, () => file);
 			const t = reportsCopy[locale];
-			for (const width of [320, 390, 768, 1280]) {
-				await page.setViewportSize({ width, height: 900 });
-				await page.goto(`${localizeHref(map, locale)}?provider=${provider}`);
-				const panel = await openReports(page, locale);
-				await expect(panel.locator('[data-report-row]')).toHaveCount(2);
-				await expect(panel.locator('[data-slot="map-reports-count"]')).toHaveText(
-					t.reportsCount('2', '1', 2, 1),
-				);
-				const rows = parseCsv((await downloadCsv(page, t)).bytes),
-					header = rows[0];
-				expect(rows.slice(1).map((row) => row[header.indexOf('vehicle_id')])).toEqual(
-					file.vehicles.map((row) => row.id),
-				);
-				for (let i = 0; i < file.vehicles.length; i++) {
-					const row = rows[i + 1],
-						source = file.vehicles[i];
-					expect(row[header.indexOf('provider')]).toBe(provider);
-					expect(row[header.indexOf('locale')]).toBe(locale);
-					expect(row[header.indexOf('publication_generation_id')]).toBe(
-						`${provider}@vehicle_positions:${file.generated_utc}`,
+			test.beforeEach(async ({ page }) => {
+				await page.clock.install({ time: Date.parse(GENERATED) + 30_000 });
+				await serveFleet(page, () => file);
+			});
+
+			// Each viewport opens the map twice, including the copied link's camera round-trip.
+			// Keep those independent journeys within their own test budgets.
+			for (const width of [320, 390, 768, 1280])
+				test(`preserves provider identity and raw source positions at ${width}px`, async ({
+					page,
+				}) => {
+					await page.setViewportSize({ width, height: 900 });
+					await page.goto(`${localizeHref(map, locale)}?provider=${provider}`);
+					const panel = await openReports(page, locale);
+					await expect(panel.locator('[data-report-row]')).toHaveCount(2);
+					await expect(panel.locator('[data-slot="map-reports-count"]')).toHaveText(
+						t.reportsCount('2', '1', 2, 1),
 					);
-					expect(Number(row[header.indexOf('latitude')])).toBe(source.lat);
-					expect(Number(row[header.indexOf('longitude')])).toBe(source.lon);
-					expect(Number(row[header.indexOf('delay_min')])).toBe(source.delay_min);
-				}
-				await panel.getByRole('button', { name: t.copyLiveView }).click();
-				const copied = new URL(await page.evaluate(() => navigator.clipboard.readText()));
-				expect(copied.searchParams.get('provider')).toBe(provider);
-				expect(copied.pathname).toBe(localizeHref(map, locale));
-				const copiedTransform = await rendererTransform(page);
-				await page.goto(copied.href);
-				const reopened = await openReports(page, locale);
-				await expect(async () => {
-					expectSameRendererGeometry(await rendererTransform(page), copiedTransform);
-				}).toPass({ timeout: 5000 });
-				await expect(reopened.locator('[data-report-row]')).toHaveCount(2);
-				await expect(reopened.locator('[data-slot="map-reports-count"]')).toHaveText(
-					t.reportsCount('2', '1', 2, 1),
-				);
-			}
-			await page.goto(`${localizeHref(map, locale)}?provider=${provider}&entity=stop`);
-			const panel = await openReports(page, locale);
-			await expect(panel.getByText(t.stopsOnly)).toBeVisible();
-			await expect(panel.locator('[data-report-row]')).toHaveCount(0);
-			expect(parseCsv((await downloadCsv(page, t)).bytes)).toHaveLength(1);
+					const rows = parseCsv((await downloadCsv(page, t)).bytes),
+						header = rows[0];
+					expect(rows.slice(1).map((row) => row[header.indexOf('vehicle_id')])).toEqual(
+						file.vehicles.map((row) => row.id),
+					);
+					for (let i = 0; i < file.vehicles.length; i++) {
+						const row = rows[i + 1],
+							source = file.vehicles[i];
+						expect(row[header.indexOf('provider')]).toBe(provider);
+						expect(row[header.indexOf('locale')]).toBe(locale);
+						expect(row[header.indexOf('publication_generation_id')]).toBe(
+							`${provider}@vehicle_positions:${file.generated_utc}`,
+						);
+						expect(Number(row[header.indexOf('latitude')])).toBe(source.lat);
+						expect(Number(row[header.indexOf('longitude')])).toBe(source.lon);
+						expect(Number(row[header.indexOf('delay_min')])).toBe(source.delay_min);
+					}
+					await panel.getByRole('button', { name: t.copyLiveView }).click();
+					const copied = new URL(await page.evaluate(() => navigator.clipboard.readText()));
+					expect(copied.searchParams.get('provider')).toBe(provider);
+					expect(copied.pathname).toBe(localizeHref(map, locale));
+					const copiedTransform = await rendererTransform(page);
+					await page.goto(copied.href);
+					const reopened = await openReports(page, locale);
+					await expect(async () => {
+						expectSameRendererGeometry(await rendererTransform(page), copiedTransform);
+					}).toPass({ timeout: 5000 });
+					await expect(reopened.locator('[data-report-row]')).toHaveCount(2);
+					await expect(reopened.locator('[data-slot="map-reports-count"]')).toHaveText(
+						t.reportsCount('2', '1', 2, 1),
+					);
+				});
+			test('exports no vehicle rows when only stops are shown', async ({ page }) => {
+				await page.setViewportSize({ width: 1280, height: 900 });
+				await page.goto(`${localizeHref(map, locale)}?provider=${provider}&entity=stop`);
+				const panel = await openReports(page, locale);
+				await expect(panel.getByText(t.stopsOnly)).toBeVisible();
+				await expect(panel.locator('[data-report-row]')).toHaveCount(0);
+				expect(parseCsv((await downloadCsv(page, t)).bytes)).toHaveLength(1);
+			});
 		});
 	}
 
