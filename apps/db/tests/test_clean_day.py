@@ -19,9 +19,9 @@ from plain_day import Capture, recompute
 from typer.testing import CliRunner
 
 from transit_ops import clean_day_inputs, clean_days
-from transit_ops.clean_day import CLEANING_VERSION
+from transit_ops.clean_day import CLEANING_VERSION, CleanDay, Reading, Stop, Trip
 from transit_ops.clean_day_inputs import archived_captures
-from transit_ops.clean_day_output import version_key
+from transit_ops.clean_day_output import version_key, write_clean_day
 from transit_ops.clean_day_realtime import DayCapture, FeedPoll
 from transit_ops.cli import app
 from transit_ops.history.manifest import build_manifest, encode_manifest
@@ -341,6 +341,107 @@ def test_overnight_origin_departure_terminus_and_stop_capture_gap(tmp_path: Path
     assert trip["terminus_vehicle_id"] == "v"
 
 
+def test_segment_runs_keep_service_dates_and_apply_static_guards(tmp_path: Path) -> None:
+    midnight = int(MIDNIGHT.timestamp())
+    first = Stop(
+        "first",
+        midnight - 60,
+        midnight - 60,
+        Reading(midnight - 60, None, "vehicle_stopped", "departure"),
+    )
+    second = Stop(
+        "second",
+        midnight + 60,
+        midnight + 90,
+        Reading(midnight + 60, None, "vehicle_stopped", "arrival"),
+    )
+    stops = {19: second, 3: first}
+    trip = Trip("r", 1, midnight - 60, stops, end=midnight + 90)
+    trips = {
+        "valid": trip,
+        "no_live": replace(trip, route_id="rail", relationship=(0, TripDescriptor.CANCELED)),
+        "cancelled": replace(trip, relationship=(0, TripDescriptor.CANCELED)),
+        "capture_gap": replace(
+            trip,
+            stops={
+                3: replace(first, observed=None),
+                19: replace(second, observed=None),
+            },
+        ),
+        "missing": replace(trip, stops={3: first, 19: replace(second, observed=None)}),
+        "incomparable": replace(
+            trip,
+            stops={
+                3: first,
+                19: replace(second, observed=Reading(midnight, None, "vehicle_nearby", "arrival")),
+            },
+        ),
+        "invalid": replace(trip, stops={3: first, 19: replace(second, arrival=midnight - 60)}),
+        "negative": replace(
+            trip,
+            stops={
+                3: first,
+                19: replace(
+                    second, observed=Reading(midnight - 61, None, "vehicle_stopped", "arrival")
+                ),
+            },
+        ),
+        "excessive": replace(
+            trip,
+            stops={
+                3: first,
+                19: replace(
+                    second, observed=Reading(midnight + 541, None, "vehicle_stopped", "arrival")
+                ),
+            },
+        ),
+        "added": replace(trip, added=True),
+        "no_route": replace(trip, route_id=None),
+        "only_one": replace(trip, stops={3: first}),
+    }
+    day = CleanDay(
+        "stm", DAY, "a" * 64, trips, {"r"}, midnight - 86_400, ZoneInfo("America/Toronto")
+    )
+    with duckdb.connect() as db:
+        directory = write_clean_day(day, tmp_path)
+        rows = _rows(db, directory / "segment_runs.parquet")
+        next_day = write_clean_day(replace(day, date=NEXT, trips={"valid": trip}), tmp_path)
+        (next_run,) = _rows(db, next_day / "segment_runs.parquet")
+    assert {row["trip_id"]: row["exclusion"] for row in rows} == {
+        "valid": None,
+        "no_live": "route_without_live_data",
+        "cancelled": "cancelled",
+        "capture_gap": "capture_gap",
+        "missing": "missing_observation",
+        "incomparable": "incomparable_basis",
+        "invalid": "invalid_scheduled_run",
+        "negative": "negative_observed_run",
+        "excessive": "excessive_observed_run",
+    }
+    (run,) = [row for row in rows if row["trip_id"] == "valid"]
+    assert run == {
+        "provider": "stm",
+        "cleaning_version": CLEANING_VERSION,
+        "service_date": DAY,
+        "trip_id": "valid",
+        "route_id": "r",
+        "direction_id": 1,
+        "from_stop": "first",
+        "to_stop": "second",
+        "from_sequence": 3,
+        "to_sequence": 19,
+        "observed_departure_at": MIDNIGHT - timedelta(minutes=1),
+        "observed_arrival_at": MIDNIGHT + timedelta(minutes=1),
+        "scheduled_departure_at": MIDNIGHT - timedelta(minutes=1),
+        "scheduled_run_seconds": 120,
+        "observed_run_seconds": 120,
+        "from_basis": "vehicle_stopped",
+        "to_basis": "vehicle_stopped",
+        "exclusion": None,
+    }
+    assert next_run == {**run, "service_date": NEXT}
+
+
 def _capture_fixture(root: Path) -> None:
     stamp = MIDNIGHT - timedelta(hours=6)
     feed = _feed(stamp)
@@ -493,9 +594,9 @@ def _rows(db: duckdb.DuckDBPyConnection, path: Path) -> list[dict[str, Any]]:
         periods
         if name == "active_periods"
         else f"timezone('UTC', {name}) AS {name}"
-        if name.endswith("_utc")
+        if column_type == duckdb.sqltypes.TIMESTAMP_TZ
         else name
-        for name in source.columns
+        for name, column_type in zip(source.columns, source.types, strict=True)
     )
     return [
         dict(
@@ -523,6 +624,7 @@ def _verify_manifest(
         "vehicle_positions.parquet",
         "feed_polls.parquet",
         "prediction_samples.parquet",
+        "segment_runs.parquet",
     }
     assert manifest["schedule_sha256"] == edition["sha256"]
     assert manifest["cleaning_version"] == CLEANING_VERSION
@@ -1406,7 +1508,12 @@ def test_range_builds_skips_and_continues(
     marker = f"{version_key('stm', DAY)}/manifest.json"
     runner = CliRunner()
     if remote:
-        for name in ("feed_polls.parquet", "prediction_samples.parquet", "alerts.parquet"):
+        for name in (
+            "feed_polls.parquet",
+            "prediction_samples.parquet",
+            "segment_runs.parquet",
+            "alerts.parquet",
+        ):
             fake.fail_upload = name
             attempt = runner.invoke(app, [*args, DAY.isoformat()])
             assert attempt.exit_code == 1 and "ServiceUnavailable" in attempt.output
@@ -1449,6 +1556,7 @@ def test_range_builds_skips_and_continues(
                 "vehicle_positions.parquet",
                 "feed_polls.parquet",
                 "prediction_samples.parquet",
+                "segment_runs.parquet",
                 "alerts.parquet",
                 "manifest.json",
             )

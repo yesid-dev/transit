@@ -14,6 +14,7 @@ from transit_engine.clean_manifest import (
     FEED_POLLS,
     PREDICTION_SAMPLES,
     SCHEDULED_STOP_TIMES,
+    SEGMENT_RUNS,
     STOP_EVENTS,
     TRIP_DAYS,
     VEHICLE_POSITIONS,
@@ -31,6 +32,7 @@ TABLE_NAMES = (
     "feed_polls",
     "alerts",
     "prediction_samples",
+    "segment_runs",
 )
 ROWS = {
     STOP_EVENTS: 3,
@@ -40,6 +42,7 @@ ROWS = {
     FEED_POLLS: 6,
     ALERTS: 0,
     PREDICTION_SAMPLES: 7,
+    SEGMENT_RUNS: 4,
 }
 
 
@@ -59,6 +62,8 @@ def clean_day(
         tables += [SCHEDULED_STOP_TIMES, VEHICLE_POSITIONS, FEED_POLLS]
     if version >= 7:
         tables.append(PREDICTION_SAMPLES)
+    if version == 12:
+        tables.append(SEGMENT_RUNS)
     if alerts == "tracked":
         tables.append(ALERTS)
     files: dict[str, dict[str, int | str]] = {}
@@ -124,6 +129,27 @@ def test_present_day_reports_each_table_and_its_rows(tmp_path: Path) -> None:
     assert entry["tables"]["trip_days"] == {"status": "present", "rows": 2}
     assert entry["tables"]["alerts"] == {"status": "present", "rows": 0}
     assert entry["tables"]["prediction_samples"] == {"status": "present", "rows": 7}
+    assert entry["tables"]["segment_runs"] == {"status": "missing"}
+
+
+def test_v12_segment_runs_are_required_and_reported(tmp_path: Path) -> None:
+    directory = clean_day(tmp_path, DAY, version=12, alerts="not_tracked")
+    store = Store(tmp_path.as_posix(), cleaning_version=12)
+    [entry] = data_health(store, "stm", DAY, DAY)["days"]
+    assert entry["status"] == "present"
+    assert entry["tables"]["segment_runs"] == {"status": "present", "rows": 4}
+
+    (directory / SEGMENT_RUNS).unlink()
+    [entry] = data_health(store, "stm", DAY, DAY)["days"]
+    assert entry["status"] == "incomplete"
+    assert entry["tables"]["segment_runs"] == {"status": "missing", "reason": "file_missing"}
+
+    marker = directory / "manifest.json"
+    manifest = json.loads(marker.read_bytes())
+    del manifest["files"][SEGMENT_RUNS]
+    marker.write_text(json.dumps(manifest), encoding="utf-8")
+    [entry] = data_health(store, "stm", DAY, DAY)["days"]
+    assert entry["reason"] == "invalid_manifest"
 
 
 def test_v6_override_reads_days_without_prediction_samples(tmp_path: Path) -> None:

@@ -52,7 +52,8 @@ GPS_ENTRY_MAX_GAP_SECONDS = 160
 # Require several opportunities to see early reporting around departure, even
 # for short trips, at the providers' normal 20–60 second feed cadences.
 ABSENCE_LEAD_SECONDS = 300
-CLEANING_VERSION = "11"
+CLEANING_VERSION = "12"
+MAX_SEGMENT_RUN_MULTIPLE = 5
 PREDICTION_HORIZONS_MINUTES = (1, 3, 5, 10, 15, 20, 30)
 _PREDICTION_HORIZONS_SECONDS = tuple(minutes * 60 for minutes in PREDICTION_HORIZONS_MINUTES)
 _PREDICTION_LIMIT_SECONDS = 40 * 60
@@ -529,6 +530,46 @@ def _covered_span(intervals: list[CoveredInterval], start: datetime, end: dateti
     return index >= 0 and intervals[index].end_utc >= end
 
 
+def _segment_run(
+    identity: Row,
+    previous: tuple[int, Stop, int | None, datetime | None],
+    current: tuple[int, Stop, int | None, datetime | None],
+    trip_exclusion: str | None,
+) -> Row:
+    from_sequence, start, scheduled_from, observed_from = previous
+    to_sequence, end, scheduled_to, observed_to = current
+    from_basis = start.observed.basis if start.observed else "not_observed"
+    to_basis = end.observed.basis if end.observed else "not_observed"
+    scheduled = (
+        scheduled_to - scheduled_from
+        if scheduled_from is not None and scheduled_to is not None
+        else None
+    )
+    observed = (
+        (observed_to - observed_from) // timedelta(seconds=1)
+        if observed_from is not None and observed_to is not None
+        else None
+    )
+    exclusion = trip_exclusion
+    if exclusion is None:
+        if observed is None:
+            exclusion = "missing_observation"
+        elif from_basis != to_basis:
+            exclusion = "incomparable_basis"
+        elif scheduled is None or scheduled <= 0:
+            exclusion = "invalid_scheduled_run"
+        elif observed < 0:
+            exclusion = "negative_observed_run"
+        elif observed > MAX_SEGMENT_RUN_MULTIPLE * scheduled:
+            exclusion = "excessive_observed_run"
+    return (
+        *identity, start.stop_id, end.stop_id, from_sequence, to_sequence,
+        observed_from, observed_to, observed, scheduled, from_basis, to_basis,
+        _timestamp(start.departure if start.departure is not None else start.arrival),
+        exclusion,
+    )
+
+
 @dataclass
 class CleanDay:
     provider: str
@@ -595,7 +636,7 @@ class CleanDay:
                 trip.terminus[1] if trip.terminus else None,
             )
 
-    def stop_rows(self) -> Iterator[Row]:
+    def stop_rows(self, *, write_segment: Callable[[Row], object] | None = None) -> Iterator[Row]:
         weekday = self.date.isoweekday()
         for trip_id, trip in sorted(self.trips.items()):
             route_live = trip.route_id in self.live_routes
@@ -611,6 +652,16 @@ class CleanDay:
                 exclusion = "route_without_live_data"
             else:
                 exclusion = reason
+            # Match the corridor guard order, which differs from stop eligibility.
+            if not route_live:
+                segment_exclusion = "route_without_live_data"
+            elif state == "cancelled":
+                segment_exclusion = "cancelled"
+            elif state != "ran":
+                segment_exclusion = reason or "missing_observation"
+            else:
+                segment_exclusion = None
+            previous = None
             start_seconds = None if trip.start is None else trip.start - self.schedule_anchor
             for seq, stop in sorted(trip.stops.items()):
                 reading = stop.observed
@@ -631,9 +682,19 @@ class CleanDay:
                     )
                 ):
                     stop_exclusion = "capture_gap"
+                observed_at = _timestamp(reading.second) if reading else None
+                if write_segment is not None and not trip.added and trip.route_id is not None:
+                    current = (seq, stop, scheduled if reading else None, observed_at)
+                    if previous is not None:
+                        write_segment(
+                            _segment_run(
+                                self._identity(trip_id, trip), previous, current, segment_exclusion
+                            )
+                        )
+                    previous = current
                 yield (
                     *self._scheduled_fields(trip_id, trip, seq, stop),
-                    _timestamp(reading.second) if reading else None,
+                    observed_at,
                     reading.second - scheduled if reading and scheduled is not None else None,
                     reading.basis if reading else "not_observed",
                     reading.event if reading else None,

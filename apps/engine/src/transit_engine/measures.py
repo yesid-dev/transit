@@ -28,6 +28,8 @@ from transit_engine.clean_manifest import (
     FEED_POLLS,
     PREDICTION_SAMPLES,
     SCHEDULED_STOP_TIMES,
+    SEGMENT_RUNS,
+    SEGMENT_RUNS_VERSION,
     STOP_ELIGIBILITY_VERSION,
     STOP_EVENTS,
     TRIP_DAYS,
@@ -38,6 +40,7 @@ from transit_engine.corridors import (
     MAX_SEGMENT_RUN_MULTIPLE,
     MIN_SEGMENT_RUNS,
     SEGMENT_BIN_SECONDS,
+    SEGMENT_RUNS_SQL,
 )
 from transit_engine.histogram import DELAY_BIN_SECONDS as DELAY_BIN_SECONDS
 from transit_engine.histogram import percentile as _percentile
@@ -3044,21 +3047,41 @@ def _corridor_rows(
         },
         **{key: f"count(*) FILTER (exclusion = '{key}')" for key in _CORRIDOR_EXCLUSIONS},
     }
+    if question.map_view:
+        # The compact map returns the mean, eligibility state and sample count.
+        counters = {
+            key: counters[key]
+            for key in (
+                "scheduled_runs", "observed_runs", "scheduled_seconds", "observed_seconds",
+                "route_without_live_data", "cancelled", "capture_gap",
+            )
+        }
+    entity_columns = (
+        "route_id, direction_id, from_stop, to_stop"
+        if group == "segment" or question.group == "segment"
+        else "entity"
+    )
     routes = "list(DISTINCT route_id)" if group else "NULL"
     window = [question.city, version, question.start, question.end]
-    rows = conn.execute(
-        f"""
-        WITH {CORRIDOR_RUNS_SQL.format(cut=cut, trip_filter=trip_filter, stop_filter=stop_filter)}
-        SELECT {_entity_sql(group, question.group, hour)} AS entity,
-            CASE WHEN exclusion IS NULL THEN {edge} END AS edge,
-            {routes}, {", ".join(counters.values())}
-        FROM runs GROUP BY entity, edge
-        """,
-        [
+    if SEGMENT_RUNS in paths:
+        runs = SEGMENT_RUNS_SQL.format(cut=cut)
+        args = [paths[FEED_POLLS], *window, paths[SEGMENT_RUNS], *window, *parameters]
+    else:
+        runs = CORRIDOR_RUNS_SQL.format(cut=cut, trip_filter=trip_filter, stop_filter=stop_filter)
+        args = [
             paths[STOP_EVENTS], *window, *stop_parameters,
             paths[TRIP_DAYS], *window, *trip_parameters,
             paths[FEED_POLLS], *window, *parameters,
-        ],
+        ]
+    rows = conn.execute(
+        f"""
+        WITH {runs}
+        SELECT {_entity_sql(group, question.group, hour)} AS entity,
+            CASE WHEN exclusion IS NULL THEN {edge} END AS edge,
+            {routes}, {", ".join(counters.values())}
+        FROM runs GROUP BY {entity_columns}, edge
+        """,
+        args,
     ).fetchall()
     return _grouped_batches(rows, counters, "observed_runs", bool(group or question.group))
 
@@ -3787,11 +3810,20 @@ def read_window(
             (*family.tables, *(table for m in selected for table in m.extra_tables), *extra_tables)
         )
     )
+    reads_segments = family.id == _CORRIDORS_ID and store.cleaning_version == SEGMENT_RUNS_VERSION
+    if reads_segments:
+        # A valid v12 receipt must list segment_runs. Older receipts use stop pairing.
+        tables = (SEGMENT_RUNS, FEED_POLLS)
+        if group is not None:
+            tables += (TRIP_DAYS,)
     if group and family.id == _ALERT_COUNTS_ID:
         tables += (TRIP_DAYS, STOP_EVENTS) if group == "stop" else (TRIP_DAYS,)
     # Bound window sorts over dense position records and stop sequences.
     batch_days = (
-        1 if VEHICLE_POSITIONS in tables or family.id in {_CORRIDORS_ID, _WAITING_ID} else None
+        1
+        if VEHICLE_POSITIONS in tables or (family.id in {_CORRIDORS_ID, _WAITING_ID}
+                                            and not reads_segments)
+        else None
     )
     window = ReadWindow({table: [] for table in tables}, batch_days=batch_days)
     uses_poll_coverage = FEED_POLLS in tables and family.query is not None

@@ -6,8 +6,9 @@ import { admit, cacheMatch, cleaningVersion, CLOSED_TTL, loadPublicCities, OPEN_
 
 const TABLES = [
   "stop_events", "trip_days", "scheduled_stop_times", "vehicle_positions",
-  "alerts", "feed_polls", "prediction_samples",
+  "alerts", "feed_polls", "prediction_samples", "segment_runs",
 ].map((table) => `${table}.parquet`);
+const SEGMENT_RUNS = "segment_runs.parquet";
 const UNMEASURED = new Set(["no_raw_captures", "no_schedule_edition", "schedule_archive_unreadable"]);
 const HEADERS = {
   ...CORS_HEADERS,
@@ -65,7 +66,9 @@ async function readDay(bucket, cache, ctx, origin, city, date, version, today) {
     day = { status: "not_measured", reason: manifest.status, files: [] };
   } else {
     const alertsNotTracked = manifest.alerts === "not_tracked";
-    const expected = TABLES.filter((name) => !alertsNotTracked || name !== "alerts.parquet");
+    const expected = TABLES.filter((name) =>
+      (!alertsNotTracked || name !== "alerts.parquet") &&
+      (version === "12" || name !== SEGMENT_RUNS));
     if (manifest.status !== undefined || (manifest.alerts !== undefined && !alertsNotTracked) ||
         !manifest.files || Object.keys(manifest.files).length !== expected.length) {
       throw new Error("Invalid clean download manifest");

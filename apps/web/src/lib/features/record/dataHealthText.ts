@@ -10,6 +10,7 @@ const tables: Record<string, [string, string]> = {
 	feed_polls: ['Feed checks', 'Vérifications des flux'],
 	alerts: ['Service alerts', 'Avis de service'],
 	prediction_samples: ['Prediction samples', 'Échantillons de prévisions'],
+	segment_runs: ['Stop-to-stop runs', 'Parcours entre arrêts'],
 };
 
 const states: Record<TableHealth['status'], [string, string]> = {

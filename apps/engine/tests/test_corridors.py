@@ -1,14 +1,18 @@
 import asyncio
 import json
+from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 from pathlib import Path
 from statistics import mean, median, quantiles
 from typing import Any
 from urllib.parse import urlencode
 
+import duckdb
 import pytest
 from test_engine import FRIDAY, SUNDAY, THURSDAY, Poll, StopTiming, Trip, _build_store, http, query
 from test_ranking import _json, _request
 
+from transit_engine.clean_manifest import SEGMENT_RUNS
 from transit_engine.corridors import SEGMENT_BIN_SECONDS
 from transit_engine.server import Engine
 
@@ -198,6 +202,90 @@ def test_corridor_exclusion_reasons_and_thresholds(tmp_path: Path) -> None:
     assert skipped["evidence"]["counts"]["scheduled_runs"] == 0
     ranked = _json(store, kind="segment", **cut)
     assert ranked["excluded"][0]["excluded"] == evidence["excluded"]
+
+
+def test_clean_segment_runs_match_legacy_corridors(tmp_path: Path) -> None:
+    # Three observed cohorts exercise common coverage, a gap in one required feed,
+    # and a static guard that must take precedence over a poll gap.
+    trips = (
+        *(_trip("A", i, (0, i % 3)) for i in range(30)),
+        _trip("B", 0, (0, 25), 10),
+        _trip("B", 1, (0, 481), 10),
+        _trip("B", 2, (0, 0), 12),
+        _trip("Rail", 0, (None, None), live=False),
+    )
+    polls = tuple(
+        Poll(feed, second)
+        for feed, seconds in (
+            ("trip_updates", range(-60, 841, 60)),
+            ("vehicle_positions", (-60, 0, 60, 120, 180, 720, 780, 840)),
+        )
+        for second in seconds
+    )
+    legacy = _build_store(tmp_path, 11, {THURSDAY: trips}, {THURSDAY: polls})
+    clean = _build_store(tmp_path, 12, {THURSDAY: trips}, {THURSDAY: polls})
+    directory = tmp_path / "stm" / str(THURSDAY) / "v12"
+    start = datetime(2026, 11, 19, 12, tzinfo=UTC)
+    rows: list[tuple[object, ...]] = [
+        ("A", start, start, start + timedelta(seconds=120 + i % 3), 120 + i % 3, None)
+        for i in range(30)
+    ]
+    later = start + timedelta(minutes=10)
+    rows.extend([
+        ("B", later, later, later + timedelta(seconds=145), 145, None),
+        ("B", later, later, later + timedelta(seconds=601), 601, "excessive_observed_run"),
+        ("B", later + timedelta(minutes=2), later + timedelta(minutes=2),
+         later + timedelta(minutes=4), 120, None),
+        ("Rail", start, None, None, None, "route_without_live_data"),
+    ])
+    with duckdb.connect() as conn:
+        conn.execute("""
+            CREATE TABLE facts (route_id VARCHAR, scheduled_departure_at TIMESTAMPTZ,
+                observed_departure_at TIMESTAMPTZ, observed_arrival_at TIMESTAMPTZ,
+                observed_run_seconds BIGINT, exclusion VARCHAR)
+        """)
+        conn.executemany("INSERT INTO facts VALUES (?, ?, ?, ?, ?, ?)", rows)
+        conn.execute("""
+            COPY (
+                SELECT 'stm' AS provider, '12' AS cleaning_version, ?::DATE AS service_date,
+                    0 AS direction_id, 'from' AS from_stop, 'middle' AS to_stop,
+                    CASE WHEN observed_run_seconds IS NULL THEN 'not_observed'
+                        ELSE 'trip_update_reported' END AS from_basis,
+                    CASE WHEN observed_run_seconds IS NOT NULL THEN 120 END
+                        AS scheduled_run_seconds, *
+                FROM facts
+            ) TO ? (FORMAT PARQUET)
+        """, [THURSDAY, str(directory / SEGMENT_RUNS)])
+    payload = (directory / SEGMENT_RUNS).read_bytes()
+    marker = directory / "manifest.json"
+    receipt = json.loads(marker.read_bytes())
+    receipt["files"][SEGMENT_RUNS] = {
+        "rows": len(rows), "sha256": sha256(payload).hexdigest(), "byte_size": len(payload),
+    }
+    marker.write_text(json.dumps(receipt), encoding="utf-8")
+
+    def stable(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {
+                key: stable(item) for key, item in value.items()
+                if key not in {"query_ms", "cleaning_versions"}
+            }
+        if isinstance(value, list):
+            return [stable(item) for item in value]
+        return value
+
+    for cut in ({}, {"line": "A", "direction": 0}, {"line": "B"}, {"line": "Rail"},
+                {"hour": 7, "from_stop": "from", "to_stop": "middle"}):
+        assert stable(query(clean, measure="corridors", **cut)) == stable(
+            query(legacy, measure="corridors", **cut)
+        )
+    for cut in ({}, {"line": "A", "direction": "0"}):
+        assert stable(_json(clean, kind="segment", **cut)) == stable(
+            _json(legacy, kind="segment", **cut)
+        )
+    for line in ("A", "B", "Rail"):
+        cut = {"measure": "mean_time_lost", "group": "segment", "map_view": True, "line": line}
+        assert stable(query(clean, **cut)) == stable(query(legacy, **cut))
 
 
 def test_map_answers_keep_samples_and_non_value_states(tmp_path: Path) -> None:
