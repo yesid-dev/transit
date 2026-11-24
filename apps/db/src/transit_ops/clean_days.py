@@ -4,10 +4,11 @@ import json
 import os
 import re
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Literal, TextIO
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
@@ -16,7 +17,7 @@ import typer
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
-from transit_ops.clean_day import REALTIME_FEEDS, capture_window
+from transit_ops.clean_day import REALTIME_FEEDS, capture_window, capture_window_end
 from transit_ops.clean_day_inputs import (
     Edition,
     capture_feeds,
@@ -42,6 +43,7 @@ from transit_ops.core.models import ProviderManifest
 from transit_ops.history.manifest import Manifest, decode_manifest
 from transit_ops.ingestion.storage import BronzeStorage, LocalBronzeStorage, S3BronzeStorage
 from transit_ops.lake.objects import put_create_only
+from transit_ops.providers.schedule import service_day_start
 from transit_ops.providers.schedule_archive import ArchiveScheduleContext
 from transit_ops.s3 import ObjectStorageError
 
@@ -49,6 +51,7 @@ _S3_URL = re.compile(r"s3://([a-z0-9][a-z0-9.-]*)(?:/([a-zA-Z0-9._/-]*))?")
 _ORIGINAL = re.compile(r"([0-9]{4}-[0-9]{2}-[0-9]{2})/([0-9]{8}T[0-9]{12}Z)__([0-9a-f]{12})__[^/]+")
 _ZIP = re.compile(r"([0-9a-f]{64})\.zip")
 _MANIFEST = re.compile(r"([1-9][0-9]*)\.manifest\.json\.gz")
+_LOOKBACK_DAYS = 14
 
 
 def _storage(location: str, role: str) -> tuple[BronzeStorage, str]:
@@ -230,13 +233,18 @@ def _build_day(
     raw_prefix: str,
     clean: BronzeStorage,
     clean_prefix: str,
-) -> tuple[UnmeasuredReason | None, list[dict[str, str]]]:
-    """Build one day or return the reason and evidence for an unmeasured day."""
+    *,
+    scheduled_at: datetime | None,
+) -> tuple[UnmeasuredReason | Literal["incomplete"] | None, list[dict[str, str]]]:
+    """Build one day, defer an incomplete day, or return unmeasured evidence."""
     if day < min(editions):
         return "no_schedule_edition", []
     schedules, ignored = load_contexts(declaration, day, editions, raw.read_bytes)
     if day not in schedules:
         return "schedule_archive_unreadable", ignored
+    start, end = capture_window(schedules[day], day)
+    if scheduled_at is not None and scheduled_at < end:
+        return "incomplete", []
     _publish_search_schedule(
         clean,
         clean_prefix,
@@ -244,7 +252,6 @@ def _build_day(
         day,
         declaration.provider.provider_id,
     )
-    start, end = capture_window(schedules[day], day)
     selections = list(_capture_manifests(raw, raw_prefix, declaration, start, end))
     archived = {(manifest.endpoint_key, manifest.utc_date) for manifest, _ in selections}
     loose = find_loose_captures(raw, raw_prefix, declaration, start, end, archived)
@@ -264,12 +271,27 @@ def _build_day(
     return None, ignored
 
 
-def run_clean_days(provider: str, first: str, last: str, source: str, dest: str) -> None:
+def run_clean_days(
+    provider: str,
+    source: str,
+    dest: str,
+    *,
+    selection: tuple[str, str] | datetime,
+    summary: TextIO | None = None,
+) -> None:
+    """Clean explicit dates or catch up as of the scheduled run's start time."""
+    scheduled_at = selection if isinstance(selection, datetime) else None
+    zone = None
     try:
-        start_day, end_day = parse_date(first), parse_date(last)
-        if start_day > end_day:
-            raise ValueError("--from must be on or before --to")
+        if isinstance(selection, tuple):
+            start_day, end_day = map(parse_date, selection)
+            if start_day > end_day:
+                raise ValueError("--from must be on or before --to")
         declaration = declaration_for(provider)
+        if scheduled_at is not None:
+            zone = ZoneInfo(declaration.provider.timezone)
+            end_day = scheduled_at.astimezone(zone).date()
+            start_day = end_day - timedelta(days=_LOOKBACK_DAYS)
         raw, raw_prefix = _storage(source, "SOURCE")
         clean, clean_prefix = _storage(dest, "DEST")
     except (ValueError, OSError, BotoCoreError, ClientError) as error:
@@ -287,36 +309,64 @@ def run_clean_days(provider: str, first: str, last: str, source: str, dest: str)
             )
 
     editions = None
-    built = skipped = 0
-    unmeasured: Counter[UnmeasuredReason] = Counter()
+    built: list[date] = []
+    skipped: list[date] = []
+    incomplete: list[date] = []
+    unmeasured: dict[date, UnmeasuredReason] = {}
     failed: dict[date, str] = {}
     for ordinal in range(start_day.toordinal(), end_day.toordinal() + 1):
         day = date.fromordinal(ordinal)
+        if zone is not None and scheduled_at is not None and scheduled_at < capture_window_end(
+            service_day_start(day, zone)
+        ):
+            incomplete.append(day)
+            continue
         marker = f"{clean_prefix}{version_key(provider, day)}/manifest.json"
         try:
             if clean.exists(marker):
-                skipped += 1
+                skipped.append(day)
                 continue
             if editions is None:
                 editions = discover_editions(raw, raw_prefix, declaration)
             outcome, ignored = _build_day(
-                declaration, day, editions, raw, raw_prefix, clean, clean_prefix
+                declaration,
+                day,
+                editions,
+                raw,
+                raw_prefix,
+                clean,
+                clean_prefix,
+                scheduled_at=scheduled_at,
             )
             if outcome is None:
-                built += 1
+                built.append(day)
+            elif outcome == "incomplete":
+                incomplete.append(day)
             else:
                 settle(day, outcome, ignored)
-                unmeasured[outcome] += 1
+                unmeasured[day] = outcome
         except Exception as error:
             # A failed day must leave the next service day eligible for rebuilding.
             failed[day] = _failure_reason(error)
+    counts = Counter(unmeasured.values())
     typer.echo(
-        f"Built {built}, skipped {skipped}, no raw captures {unmeasured['no_raw_captures']}, "
-        f"no schedule edition {unmeasured['no_schedule_edition']}, "
+        f"Built {len(built)}, skipped {len(skipped)}, no raw captures {counts['no_raw_captures']}, "
+        f"no schedule edition {counts['no_schedule_edition']}, "
         f"failed {len(failed)}"
     )
-    if unreadable := unmeasured["schedule_archive_unreadable"]:
+    if unreadable := counts["schedule_archive_unreadable"]:
         typer.echo(f"Unreadable schedule archive {unreadable}")
+    if summary is not None:
+        print(f"## Clean service days for {provider}\n", file=summary)
+        groups: dict[str, Iterable[date]] = {
+            "Built": built,
+            "Skipped as already built": skipped,
+            "Still incomplete": incomplete,
+            "Recorded as not measured": unmeasured,
+            "Failed": failed,
+        }
+        for label, days in groups.items():
+            print(f"- {label}: {', '.join(map(str, days)) or 'none'}", file=summary)
     for day, reason in failed.items():
         typer.echo(f"{day}: {reason}", err=True)
     if failed:
