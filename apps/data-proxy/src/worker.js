@@ -1,4 +1,5 @@
 // Public snapshots retain object metadata; errors use no-store. The bucket is read-only.
+import { serveCleanBasemap } from "./basemap.js";
 import { CORS_HEADERS, PREFLIGHT_HEADERS } from "./cors.js";
 import { isDownloadPath, serveDownload } from "./downloads.js";
 import { serveKpis } from "./kpis.js";
@@ -35,7 +36,8 @@ export default {
     }
     if (basemap) {
       const [, city, file] = basemap;
-      const response = await serveSnapshot(request, env.SNAPSHOTS, `v1/${city}/static/basemap/${file}`);
+      const response = await serveCleanBasemap(request, env, city, file)
+        ?? await serveSnapshot(request, env.SNAPSHOTS, `v1/${city}/static/basemap/${file}`);
       if (!response) return errorResponse(404);
       for (const [name, value] of Object.entries(CORS_HEADERS)) response.headers.set(name, value);
       return response;

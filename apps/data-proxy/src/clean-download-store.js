@@ -17,16 +17,12 @@ async function hmac(key, message) {
 // Sign a bodyless S3 request with a fixed service and region. R2 paths have no query.
 export class CleanObjectChanged extends Error {}
 
-async function signedHeaders(url, method, range, accessKeyId, secretAccessKey, ifMatch) {
+async function signedHeaders(url, method, headers, accessKeyId, secretAccessKey) {
   const timestamp = new Date().toISOString().replace(/[:-]|\.\d{3}/g, "");
   const day = timestamp.slice(0, 8);
   const scope = `${day}/auto/s3/aws4_request`;
-  const headers = new Headers({
-    "x-amz-content-sha256": EMPTY_SHA256,
-    "x-amz-date": timestamp,
-  });
-  if (range) headers.set("range", range);
-  if (ifMatch) headers.set("if-match", ifMatch);
+  headers.set("x-amz-content-sha256", EMPTY_SHA256);
+  headers.set("x-amz-date", timestamp);
 
   // Headers iterates in lexical order. Host is signed using the URL's outgoing host.
   const canonicalHeaders = [["host", url.host], ...headers];
@@ -48,26 +44,37 @@ async function signedHeaders(url, method, range, accessKeyId, secretAccessKey, i
   return headers;
 }
 
-export function cleanDownloadStore(env) {
+export function cleanObjectReader(env) {
   const accessKeyId = env.TRANSIT1_R2_READ_ACCESS_KEY_ID;
   const secretAccessKey = env.TRANSIT1_R2_READ_SECRET_ACCESS_KEY;
   const endpoint = R2_ENDPOINT.exec(env.TRANSIT1_R2_ENDPOINT ?? "");
   if (!accessKeyId || !secretAccessKey || !endpoint) return null;
 
   const root = `https://${endpoint[1]}/transit-clean/`;
-
-  async function read(method, key, range, ifMatch) {
+  return async (method, key, headers, signal) => {
     const path = key.split("/").map(encodeURIComponent).join("/");
-    const last = range ? range.offset + range.length - 1 : null;
     const url = new URL(root + path);
-    const rangeHeader = range ? `bytes=${range.offset}-${last}` : undefined;
-    const response = await fetch(url, {
+    return fetch(url, {
       method,
-      headers: await signedHeaders(url, method, rangeHeader, accessKeyId, secretAccessKey, ifMatch),
+      headers: await signedHeaders(url, method, headers, accessKeyId, secretAccessKey),
       // Workers supports manual redirects. The status check below rejects any redirect.
       redirect: "manual",
       cache: "no-store",
+      signal,
     });
+  };
+}
+
+export function cleanDownloadStore(env) {
+  const readObject = cleanObjectReader(env);
+  if (!readObject) return null;
+
+  async function read(method, key, range, ifMatch) {
+    const last = range ? range.offset + range.length - 1 : null;
+    const headers = new Headers();
+    if (range) headers.set("range", `bytes=${range.offset}-${last}`);
+    if (ifMatch) headers.set("if-match", ifMatch);
+    const response = await readObject(method, key, headers);
     if (response.status === 404) {
       await response.body?.cancel();
       return null;
