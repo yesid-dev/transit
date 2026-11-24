@@ -41,6 +41,11 @@
 		gap: 0.5rem;
 		min-width: 0;
 	}
+	.health-row-feed {
+		min-width: 0;
+		white-space: normal;
+		overflow-wrap: break-word;
+	}
 	.health-row-meta {
 		display: inline-flex;
 		flex-direction: column;

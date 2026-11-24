@@ -52,7 +52,6 @@
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import { detailCopy } from './lines.copy';
 	import LineDirections from './LineDirections.svelte';
-	import { absenceSentence } from '#lib/site/absence.ts';
 	import { delayMeasurement } from '#lib/site/delayPresentation.ts';
 	import { STATUS_LABELS } from '#lib/v1/enumLabels.ts';
 
@@ -388,12 +387,9 @@
 																</div>
 															{/snippet}
 															{#if bus.trip}
-																<a
-																	class="route-roster-link"
-																	href={tripHref(bus.trip)}
-																	aria-label={`${t.roster.viewTrip(bus.id)}, ${unknownStatusAndDelay ? '' : `${STATUS_LABELS[locale][bus.status]}, `}${t.roster.delay}: ${delayMeasurement(bus.delay_min) ?? absenceSentence(liveAbsenceReason('vehicle-delay', { familyStates: live.familyStates, notReporting: notReporting(bus, clock.serverNow, liveTimingFor(manifest).staleCutoffS) != null }), locale)}`}
-																>
+																<a class="route-roster-link" href={tripHref(bus.trip)}>
 																	{@render rosterRow()}
+																	<span class="sr-only">{t.roster.viewTrip}</span>
 																	<ChevronRightIcon
 																		size={14}
 																		strokeWidth={2.4}

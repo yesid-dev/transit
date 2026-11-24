@@ -1343,9 +1343,14 @@ def test_range_builds_skips_and_continues(
     search = json.loads((dest / search_key).read_bytes())
     assert search["date"] == str(DAY)
     assert any(route["id"] == "r" for route in search["routes"])
+    map_key = f"maps/v1/{version_key('stm', DAY)}.json"
+    schedule_map = json.loads((dest / map_key).read_bytes())
+    assert schedule_map == {"date": str(DAY), "route_shapes": {}}
     if remote:
         assert fake.writes.count(f"out/{search_key}") == 1
         fake.writes.remove(f"out/{search_key}")
+        assert fake.writes.count(f"out/{map_key}") == 1
+        fake.writes.remove(f"out/{map_key}")
         earlier_key = f"out/{earlier_marker}"
         assert fake.writes.count(earlier_key) == 1
         fake.writes.remove(earlier_key)

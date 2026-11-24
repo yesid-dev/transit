@@ -337,7 +337,9 @@ for (const provider of read('providers').providers) {
 				const head = el.parentElement!.getBoundingClientRect();
 				const style = getComputedStyle(el.parentElement!);
 				const stamp = panel.querySelector('[data-slot="freshness-stamp"]');
-				const report = stamp?.checkVisibility() ? stamp.getBoundingClientRect() : null;
+				const report = stamp?.checkVisibility()
+					? stamp.parentElement!.getBoundingClientRect()
+					: null;
 				// The report precedes the mobile title; neither row should leave a phantom eyebrow.
 				return {
 					top:
@@ -350,7 +352,7 @@ for (const provider of read('providers').providers) {
 					right: title.right,
 					panelRight: panel.getBoundingClientRect().right,
 					titleTop: title.top,
-					titleRight: title.right,
+					titleRight: head.right,
 					report: report ? { bottom: report.bottom, right: report.right } : null,
 					width: innerWidth,
 				};

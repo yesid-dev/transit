@@ -723,7 +723,7 @@ describe('RouteDetail Detail tab: current-buses roster', () => {
 
 		expect(
 			within(roster).getByRole('link', {
-				name: 'View the trip for vehicle busLate, Severe, Delay: +8 min',
+				name: /Vehicle busLate.*Severe.*\+8 min.*Next stop First stop.*View trip/,
 			}),
 		).toHaveAttribute('href', '/trip/tLate');
 	});
@@ -843,16 +843,13 @@ describe.each(['en', 'fr'] as const)('RouteDetail roster published status in %s'
 			expect(link.textContent?.match(new RegExp(STATUS_LABELS[locale].unknown, 'g'))).toHaveLength(
 				1,
 			);
-			expect(
-				link.getAttribute('aria-label')?.match(new RegExp(STATUS_LABELS[locale].unknown, 'g')),
-			).toHaveLength(1);
-			expect(link.getAttribute('aria-label')).toContain(
-				locale === 'en' ? 'not reported in the live feed' : 'non signalé dans le flux en direct',
+			expect(link).toHaveAccessibleName(
+				locale === 'en' ? /not reported in the live feed/ : /non signalé dans le flux en direct/,
 			);
 		}
 
-		expect(link.getAttribute('aria-label')).toContain(STATUS_LABELS[locale][status]);
-		if (measurement) expect(link.getAttribute('aria-label')).toContain(measurement);
+		expect(link).toHaveAccessibleName(expect.stringContaining(STATUS_LABELS[locale][status]));
+		if (measurement) expect(link).toHaveAccessibleName(expect.stringContaining(measurement));
 	});
 });
 

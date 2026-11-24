@@ -1,3 +1,4 @@
+import '#lib/site/configureBrowserValidation.ts';
 import { z } from 'zod';
 
 const stamp = z.iso.datetime({ offset: true });

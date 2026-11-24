@@ -70,7 +70,9 @@ for (const locale of ['en', 'fr'] as const) {
 				);
 				await expect(performance.getByRole('link', { name: /Confederation/ })).toHaveCount(0);
 				await expect(
-					scheduleOnly.getByText(fr ? 'Aucune donnée en direct' : 'No live data', { exact: true }),
+					scheduleOnly
+						.getByRole('row', { name: /Confederation/ })
+						.getByText(fr ? 'Aucune donnée en direct' : 'No live data', { exact: true }),
 				).toBeVisible();
 				await expect(
 					performance.getByRole('button', { name: fr ? 'Copier le lien' : 'Copy link' }),
