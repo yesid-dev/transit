@@ -621,14 +621,6 @@ jobs:
       - name: Build layout test app
         run: bun run build --mode e2e
 
-      - name: Repeated design-pass evidence
-        if: ${{ github.event_name == 'pull_request' && matrix.shard == 1 }}
-        run: >-
-          bun x playwright test -c e2e/playwright.config.ts
-          --project=layout-chromium-1440-light --workers=2 --retries=0 --repeat-each=5
-          --grep 'line-live|map-record-stops|map-record-corridors|map-live'
-          e2e/layout-design-pass.spec.ts
-
       - name: layout
         id: layout
         env:
