@@ -219,7 +219,7 @@
 		};
 	}
 	const files = $derived([
-		...(punctuality && delivery && legacyMeasured.length && (timingEvidence || deliveryEvidence)
+		...(punctuality && delivery && legacyMeasured.length
 			? [
 					file(
 						'line-performance',

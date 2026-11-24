@@ -53,6 +53,14 @@ for (const locale of ['en', 'fr'] as const) {
 				name: fr ? 'Lignes sans données en direct' : 'Lines without live data',
 			}),
 		).toHaveAttribute('download', /^lines-without-live-data-.*\.csv$/);
+		await sheet.getByRole('button', { name: fr ? 'Fermer' : 'Close' }).click();
+		await page.getByRole('radio', { name: fr ? 'Part en retard' : 'Late share' }).click();
+		await expect(page).toHaveURL(/sort=late&direction=asc$/);
+		await timing.getByRole('link').click();
+		await expect(page).toHaveURL(/\/lines\/24\?/);
+		await page.goBack();
+		await expect(page).toHaveURL(/\/lines\?.*sort=late&direction=asc$/);
+		await expect(timing).toBeVisible();
 	});
 
 	test(`${locale} lines page and sort from the address, with keyboard access and copy`, async ({
@@ -113,6 +121,11 @@ for (const locale of ['en', 'fr'] as const) {
 		await expect(page.locator('[data-slot="screen-answer"]')).toContainText(unavailable);
 		await expect(page.locator('#line-performance').getByText(unavailable)).toHaveCount(1);
 		await expect(page.locator('#line-performance tbody tr')).toHaveCount(0);
+		await page.getByRole('button', { name: fr ? 'Télécharger' : 'Download', exact: true }).click();
+		const csv = page.getByRole('link', {
+			name: fr ? 'Performance des lignes' : 'Line performance',
+		});
+		expect(decodeURIComponent((await csv.getAttribute('href'))!)).toContain(unavailable);
 
 		await page.goto(`${prefix}/lines?${query.replace('2026-11-08', '2026-11-06')}`);
 		await expect(page.locator('[data-slot="record-patience"]').getByRole('status')).toHaveCount(1);

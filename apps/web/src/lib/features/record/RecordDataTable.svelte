@@ -269,4 +269,15 @@
 			justify-self: start;
 		}
 	}
+	@container yesid-table (min-width: 16rem) and (max-width: 36rem) {
+		:global(
+			.compact-record-table[data-has-value][data-responsive='rows'][data-stack-at='compact']
+				.data-table
+				tbody
+				tr
+				> td:not([data-row-position])
+		) {
+			flex-basis: 25%;
+		}
+	}
 </style>
