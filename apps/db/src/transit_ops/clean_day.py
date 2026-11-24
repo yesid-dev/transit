@@ -734,6 +734,10 @@ class CleanDay:
         )
 
 
+def capture_window_end(anchor: datetime, last_arrival_s: int = 0) -> datetime:
+    return anchor + timedelta(seconds=max(86_400, last_arrival_s) + SANITY_DELAY_SECONDS)
+
+
 def capture_window(schedule: ArchiveScheduleContext, day: date) -> tuple[datetime, datetime]:
     anchor = schedule.service_day_start(day)
     end = max(
@@ -745,7 +749,7 @@ def capture_window(schedule: ArchiveScheduleContext, day: date) -> tuple[datetim
         default=0,
     )
     margin = timedelta(seconds=SANITY_DELAY_SECONDS)
-    return anchor - margin, anchor + timedelta(seconds=max(86_400, end)) + margin
+    return anchor - margin, capture_window_end(anchor, end)
 
 
 def build_clean_day(

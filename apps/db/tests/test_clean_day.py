@@ -3,7 +3,7 @@ from collections import Counter
 from dataclasses import replace
 from datetime import UTC, date, datetime, time, timedelta
 from hashlib import sha256
-from io import BytesIO
+from io import BytesIO, StringIO
 from pathlib import Path
 from typing import Any, BinaryIO, cast
 from zipfile import ZipFile
@@ -18,7 +18,7 @@ from history_fixtures import scripted_feed_day
 from plain_day import Capture, recompute
 from typer.testing import CliRunner
 
-from transit_ops import clean_day_inputs
+from transit_ops import clean_day_inputs, clean_days
 from transit_ops.clean_day import CLEANING_VERSION
 from transit_ops.clean_day_inputs import archived_captures
 from transit_ops.clean_day_output import version_key
@@ -87,6 +87,92 @@ def _edition(
         "path": path.name,
         "sha256": sha256(path.read_bytes()).hexdigest(),
     }
+
+
+def _seed_current_manifests(dest: Path, today: date, *missing: date) -> None:
+    for days_ago in range(1, 15):
+        day = today - timedelta(days=days_ago)
+        if day not in missing:
+            marker = dest / version_key("stm", day) / "manifest.json"
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            marker.write_text("{}", encoding="utf-8")
+
+
+def test_delayed_cleaning_skips_built_days_and_ignores_dates_before_window(tmp_path: Path) -> None:
+    raw, dest = tmp_path / "raw", tmp_path / "clean"
+    today = date(2026, 11, 23)
+    _seed_current_manifests(dest, today)
+    summary = StringIO()
+
+    clean_days.run_clean_days(
+        "stm",
+        str(raw),
+        str(dest),
+        selection=datetime(2026, 11, 24, 2, 56, tzinfo=UTC),
+        summary=summary,
+    )
+
+    report = summary.getvalue()
+    assert "- Built: none\n" in report
+    assert "- Still incomplete: 2026-11-23\n" in report
+    skipped = ", ".join(f"2026-11-{day:02}" for day in range(9, 23))
+    assert f"- Skipped as already built: {skipped}\n" in report
+    assert "2026-11-08" not in report
+
+
+@pytest.mark.parametrize(
+    ("zone", "hour", "minute", "ready"),
+    [
+        ("America/Toronto", 11, 59, False),
+        ("America/Toronto", 12, 0, True),
+        ("America/Vancouver", 12, 0, False),
+        ("America/Vancouver", 15, 0, True),
+    ],
+)
+def test_scheduled_cleaning_catches_up_only_after_local_overnight_margin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, zone: str, hour: int, minute: int, ready: bool
+) -> None:
+    raw, dest = tmp_path / "raw", tmp_path / "clean"
+    today = date(2026, 11, 25)
+    missed, yesterday = date(2026, 11, 23), date(2026, 11, 24)
+    _seed_current_manifests(dest, today, missed, yesterday)
+    # An older version does not count as built for the current cleaner.
+    old_marker = dest / "stm" / str(missed) / f"v{int(CLEANING_VERSION) - 1}" / "manifest.json"
+    old_marker.parent.mkdir(parents=True)
+    old_marker.write_text("{}", encoding="utf-8")
+    declaration = clean_days.declaration_for("stm")
+    declaration.provider.timezone = zone
+    monkeypatch.setattr(clean_days, "declaration_for", lambda _: declaration)
+
+    archive = raw / "archive/v1/schedules/stm"
+    archive.mkdir(parents=True)
+    temporary_zip = archive / "schedule.zip"
+    edition = _edition(temporary_zip, {"night": ("r", ["28:00:00"])}, missed)
+    edition["path"] = f"{edition['sha256']}.zip"
+    temporary_zip.rename(archive / edition["path"])
+    (archive / "editions.json").write_text(
+        json.dumps({"provider": "stm", "editions": [edition]}), encoding="utf-8"
+    )
+    _archive_capture(raw, datetime.combine(missed, time(18), UTC))
+    _archive_capture(raw, datetime.combine(yesterday, time(18), UTC))
+    summary = StringIO()
+
+    clean_days.run_clean_days(
+        "stm",
+        str(raw),
+        str(dest),
+        selection=datetime(2026, 11, 25, hour, minute, tzinfo=UTC),
+        summary=summary,
+    )
+
+    report = summary.getvalue()
+    built = f"{missed}, {yesterday}" if ready else str(missed)
+    incomplete = str(today) if ready else f"{yesterday}, {today}"
+    assert f"- Built: {built}\n" in report
+    assert f"- Still incomplete: {incomplete}\n" in report
+    assert (dest / version_key("stm", missed) / "manifest.json").is_file()
+    assert (dest / version_key("stm", yesterday) / "manifest.json").is_file() is ready
+    assert (dest / "search/v1" / f"{version_key('stm', yesterday)}.json").is_file() is ready
 
 
 def _feed(published: datetime) -> FeedMessage:

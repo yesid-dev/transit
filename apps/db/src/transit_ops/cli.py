@@ -178,7 +178,7 @@ def clean_days_command(
     """Build clean Parquet tables for an inclusive range of provider service days."""
     from transit_ops.clean_days import run_clean_days
 
-    run_clean_days(provider, first, last, source, dest)
+    run_clean_days(provider, source, dest, selection=(first, last))
 
 
 class DailyJob(StrEnum):
