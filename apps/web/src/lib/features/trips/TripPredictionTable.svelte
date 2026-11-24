@@ -4,8 +4,7 @@
 	import { routeFor } from '#lib/nav/index.ts';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { stopNameFallback, type AbsenceReasonKey } from '#lib/site/absence.ts';
-	import { formatLocalClock } from '#lib/utils/time.ts';
-	import { delayMeasurement } from '#lib/site/delayPresentation.ts';
+	import { clockTime, minuteReading } from '#lib/site/presenter.ts';
 	import { DataTable, type DataTableColumn } from '@yesid/ui/table';
 	import { Button } from '@yesid/ui/button';
 	import { MaybeValue } from '#lib/components/edge/index.ts';
@@ -48,13 +47,13 @@
 {/snippet}
 {#snippet timeCell(prediction: StopEta)}
 	<time class="trip-stop-eta" datetime={prediction.eta_utc}
-		>{formatLocalClock(new Date(prediction.eta_utc), locale, timeZone)}</time
+		>{clockTime(new Date(prediction.eta_utc), locale, timeZone)}</time
 	>
 {/snippet}
 {#snippet offsetCell(prediction: StopEta)}
 	<span class="trip-stop-offset"
 		><MaybeValue
-			value={delayMeasurement(reportedOffset(prediction.delay_min))}
+			value={minuteReading(reportedOffset(prediction.delay_min), locale, true)}
 			reason={absenceReason}
 			{locale}
 			variant="row"

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { dateRange, directionLabel, scheduledClock } from '#lib/site/presenter.ts';
 	import { goto } from '$app/navigation';
 	import { FilterSummary, SegmentedChoice } from '@yesid/ui/brand';
 	import { StateNotice } from '@yesid/ui/feedback';
@@ -18,7 +19,6 @@
 	import {
 		cautiousRanking,
 		choose,
-		dateRange,
 		lastGoodNote,
 		pooledDays,
 		punctualityWeighting,
@@ -116,11 +116,8 @@
 		if (kind === 'stop') return t(`Stop ${row.id}`, `Arrêt ${row.id}`);
 		if (kind === 'vehicle') return t(`Vehicle ${row.id}`, `Véhicule ${row.id}`);
 		const line = row.line ? display.lineName(row.line).label : t('Unknown line', 'Ligne inconnue');
-		const departure = row.departure ?? t('Unknown time', 'Heure inconnue');
-		const direction =
-			row.direction == null
-				? t('Unknown direction', 'Direction inconnue')
-				: t(`Direction ${row.direction}`, `Direction ${row.direction}`);
+		const departure = scheduledClock(row.departure, locale);
+		const direction = directionLabel(row.direction, record.headsigns[row.line ?? ''] ?? {}, locale);
 		return `${line} · ${departure} · ${direction}`;
 	}
 

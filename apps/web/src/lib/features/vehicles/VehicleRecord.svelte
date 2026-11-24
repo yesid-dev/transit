@@ -8,9 +8,7 @@
 	import { recordSectionLinks } from '#lib/features/record/recordLinks.ts';
 	import {
 		choose,
-		dateRange,
 		lastGoodNote,
-		methodEvidence,
 		recordMessage,
 		pooledDays,
 		punctualityWeighting,
@@ -18,6 +16,7 @@
 		coverageText,
 		tally,
 	} from '#lib/features/record/recordText.ts';
+	import { dateRange, methodEvidence } from '#lib/site/presenter.ts';
 	import type { loadVehiclePage } from '#lib/server/vehicleRecord.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import {

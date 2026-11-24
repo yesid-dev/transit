@@ -53,7 +53,7 @@ for (const width of [390, 1440]) {
 				main.getByRole('button', { name: fr ? 'Copier le lien' : 'Copy link' }),
 			).toBeVisible();
 			await main.getByText(fr ? 'Citer' : 'Cite', { exact: true }).click();
-			await expect(main.getByText(/punctuality-v2/).first()).toBeVisible();
+			await expect(main.getByText(/Method v2|Méthode v2/).first()).toBeVisible();
 			expect(await main.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(width);
 		});
 	}
@@ -76,7 +76,7 @@ test('a slow stop ranking shows patience while the other parts remain usable', a
 		main.getByText('Still working on this. You can wait or come back later.'),
 	).toBeVisible();
 	await main.getByText('Cite', { exact: true }).click();
-	await expect(main.getByText(/punctuality-v2/).first()).toBeVisible();
+	await expect(main.getByText(/Method v2|Méthode v2/).first()).toBeVisible();
 	const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
 	const release = await request.post(
 		`http://127.0.0.1:${dataPort}/__overview/release?fixture=overview-stop-ranking`,

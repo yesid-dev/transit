@@ -9,7 +9,8 @@
 	import RecordSeriesChart from '#lib/features/record/RecordSeriesChart.svelte';
 	import RecordTable from '#lib/features/record/RecordTable.svelte';
 	import { healthReason } from '#lib/features/record/dataHealthText.ts';
-	import { choose, dateRange, recordMessage, tally } from '#lib/features/record/recordText.ts';
+	import { choose, recordMessage, tally } from '#lib/features/record/recordText.ts';
+	import { dateAndClock, dateRange } from '#lib/site/presenter.ts';
 	import type { loadAlertRecord } from '#lib/server/alertRecord.ts';
 	import type { RecordAnswer } from '#lib/server/engine.ts';
 	import { frameHref } from '#lib/site/frameState.ts';
@@ -65,13 +66,6 @@
 		cause: t('Published cause', 'Cause publiée'),
 	});
 	const other = $derived(locale === 'fr' ? 'en' : 'fr');
-	const timestamp = $derived(
-		intl.dateTime(locale, {
-			timeZone: data.timeZone ?? 'UTC',
-			dateStyle: 'medium',
-			timeStyle: 'short',
-		}),
-	);
 	const notTracked = $derived(t('Not tracked', 'Non suivi'));
 
 	function answerStatement(answer: RecordAnswer) {
@@ -190,7 +184,11 @@
 														{t('Active periods in local time', 'Périodes actives en heure locale')}
 													</dt>
 													{#each message.periods as { start, end } (`${start}/${end}`)}
-														<dd>{timestamp.formatRange(new Date(start), new Date(end))}</dd>
+														<dd>
+															{[start, end]
+																.map((iso) => dateAndClock(iso, locale, data.timeZone))
+																.join(' · ')}
+														</dd>
 													{/each}
 												</dl>
 											{/if}

@@ -30,7 +30,7 @@ it('renders bounds in the engine’s units, including zero and negative bounds',
 			'median_delay',
 			'fr',
 		),
-	).toBe('-32,5 s à -27,5 s');
+	).toBe('−0,5 min à −0,5 min');
 	expect(
 		rankingRange(
 			{

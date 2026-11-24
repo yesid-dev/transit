@@ -1,13 +1,8 @@
+import { dateRange } from '#lib/site/presenter.ts';
 import { describe, expect, it } from 'vitest';
 import type { EngineResult, MeasureAnswer } from '#lib/server/engine.ts';
 import { delivered, measure, period, stateText } from './overviewRecord.fixture.ts';
-import {
-	citationText,
-	comparisonText,
-	dateRange,
-	measureText,
-	previousPeriod,
-} from './overviewRecord.ts';
+import { citationText, comparisonText, measureText, previousPeriod } from './overviewRecord.ts';
 
 const answer = (value: MeasureAnswer): EngineResult<MeasureAnswer> => ({
 	kind: 'answer',
@@ -24,10 +19,10 @@ const gaps = [
 describe('Overview record text', () => {
 	it('formats the answer and both counts in English and Québec French', () => {
 		expect(measureText(answer(measure()), period, 'en')).toBe(
-			'From November 8 to 14, 2026, 81.2% of observed stop events were on time (412,355 of 507,800) · 60% of 846,333 scheduled stops observed.',
+			'8 to 14 Nov 2026, 81.2% of observed stop events were on time (412,355 of 507,800) · 60% of 846,333 scheduled stops observed.',
 		);
 		expect(measureText(answer(measure()), period, 'fr').replace(/\s/g, ' ')).toBe(
-			'Du 8 au 14 novembre 2026, 81,2 % des passages observés aux arrêts étaient à l’heure (412 355 sur 507 800) · 60 % des 846 333 passages prévus observés.',
+			'du 8 au 14 nov. 2026, 81,2 % des passages observés aux arrêts étaient à l’heure (412 355 sur 507 800) · 60 % des 846 333 passages prévus observés.',
 		);
 	});
 
@@ -35,7 +30,7 @@ describe('Overview record text', () => {
 		const previous = previousPeriod({ from: '2027-01-01', to: '2027-01-07' });
 		expect(previous).toEqual({ from: '2026-12-25', to: '2026-12-31' });
 		expect(dateRange({ from: '2026-12-31', to: '2027-01-01' }, 'en')).toBe(
-			'From December 31, 2026 to January 1, 2027',
+			'31 Dec 2026 to 1 Jan 2027',
 		);
 		const current = measure();
 		const baseline = {
@@ -71,7 +66,7 @@ describe('Overview record text', () => {
 
 	it('uses the eligible trip count and cites the versions', () => {
 		expect(citationText(delivered, period, 'en')).toContain(
-			'90% of scheduled trips with a known outcome ran (90 of 100). Method service-delivered-v1. Data cleaning version 6.',
+			'90% of scheduled trips with a known outcome ran (90 of 100). Method v1, cleaning v6.',
 		);
 	});
 

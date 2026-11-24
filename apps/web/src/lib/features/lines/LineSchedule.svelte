@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { serviceTime } from '#lib/site/presenter.ts';
 	import type { RouteFile } from '#lib/v1/index.ts';
 	import { getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
 	import { formatDateKey } from '#lib/utils/time.ts';
@@ -112,11 +113,23 @@
 				<dl>
 					<div>
 						<dt>{copy.firstDeparture}</dt>
-						<dd><MaybeValue value={file.first_departure} reason="not-in-schedule" {locale} /></dd>
+						<dd>
+							<MaybeValue
+								value={serviceTime(file.first_departure, locale)}
+								reason="not-in-schedule"
+								{locale}
+							/>
+						</dd>
 					</div>
 					<div>
 						<dt>{copy.lastDeparture}</dt>
-						<dd><MaybeValue value={file.last_departure} reason="not-in-schedule" {locale} /></dd>
+						<dd>
+							<MaybeValue
+								value={serviceTime(file.last_departure, locale)}
+								reason="not-in-schedule"
+								{locale}
+							/>
+						</dd>
 					</div>
 				</dl>
 			</div>

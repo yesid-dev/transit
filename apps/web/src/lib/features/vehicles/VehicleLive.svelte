@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { dateAndClock, directionName } from '#lib/site/presenter.ts';
 	import { Card } from '@yesid/ui/card';
 	import { onMount, untrack } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
@@ -10,7 +11,6 @@
 	import { notReporting } from '#lib/components/map/vehicleProjection.ts';
 	import { routeFor } from '#lib/nav/index.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
-	import { formatUtc } from '#lib/utils/time.ts';
 	import { liveReader } from '#lib/v1/adapter/index.ts';
 	import { OCCUPANCY_LABELS } from '#lib/v1/enumLabels.ts';
 	import { createLiveStore } from '#lib/v1/live/store.svelte.ts';
@@ -102,13 +102,14 @@
 		const trip = vehicle.trip ? live.index.byTripId.get(vehicle.trip) : null;
 		const variants = file?.directions ?? [];
 		const inferred = tripDirection(trip?.stops?.map((stop) => stop.stop) ?? [], variants);
-		if (inferred) return inferred;
+		if (inferred) return directionName(inferred, locale);
 		const reported = variants.filter((variant) => variant.dir === vehicle.direction_id);
-		if (reported.length === 1 && reported[0]?.headsign) return reported[0].headsign;
+		if (reported.length === 1 && reported[0]?.headsign)
+			return directionName(reported[0].headsign, locale);
 		const matching = variants.filter((variant) =>
 			variant.stops?.some((stop) => stop.id === vehicle.next_stop),
 		);
-		return (matching.length === 1 ? matching[0].headsign : null) ?? unknown;
+		return directionName(matching.length === 1 ? matching[0].headsign : null, locale);
 	}
 
 	const href = (path: string) => vehicleHref(path, url, locale, city);
@@ -271,13 +272,7 @@
 
 {#snippet reportedAt()}
 	{#if report && Number.isFinite(Date.parse(report))}
-		<time datetime={report}
-			>{formatUtc(report, locale, {
-				dateStyle: 'medium',
-				timeStyle: 'short',
-				timeZone,
-			})}</time
-		>
+		<time datetime={report}>{dateAndClock(report, locale, timeZone)}</time>
 	{:else}
 		{unknown}
 	{/if}

@@ -61,7 +61,7 @@ it('keeps histogram overflow and a missing timestamp distinct', () => {
 		},
 	};
 	const { rows } = networkRows('feed_age_at_capture', data, 'fr');
-	expect(rows[0]).toEqual(['Mises à jour des trajets', '8,5 s', 'Plus de 10 min', '30']);
+	expect(rows[0]).toEqual(['Mises à jour des trajets', '0,1 min', 'Plus de 10 min', '30']);
 	expect(rows[2]).toEqual([
 		'Avis de service',
 		'Non suivi (aucun horodatage de publication)',

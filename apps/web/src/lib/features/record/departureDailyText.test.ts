@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RecordSeries } from '#lib/server/engine.ts';
-import { dailyPeriodRows, delayReading, departureDays } from './departureDailyText.ts';
+import { dailyPeriodRows, departureDays } from './departureDailyText.ts';
 import { departureFromKey, departureHref } from './departureIdentity.ts';
 
 const evidence = {
@@ -47,7 +47,6 @@ describe('Departure and Daily report text', () => {
 				]),
 			),
 		).toEqual({ observed: 2, late: 1 });
-		expect(delayReading(-61, 'fr', 'Inconnu')).toBe('61 s d’avance');
 	});
 
 	it('sums numerators and denominators across the midnight boundary and applies the pooled floor', () => {

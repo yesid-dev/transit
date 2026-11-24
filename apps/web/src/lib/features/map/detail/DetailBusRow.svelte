@@ -15,7 +15,7 @@
 	import { timeLabel } from '../mapSelectionDetail.logic';
 	import { MaybeValue } from '#lib/components/edge/index.ts';
 	import StatusBadge from '#lib/components/dataviz/StatusBadge.svelte';
-	import { delayMeasurement } from '#lib/site/delayPresentation.ts';
+	import { minuteReading } from '#lib/site/presenter.ts';
 	import '#lib/components/surface/compact-row.css';
 
 	interface Props {
@@ -49,7 +49,7 @@
 	const accessibleName = $derived(
 		!isInService(vehicle)
 			? `${t.selectBus(vehicle.id)}, ${vehicleServiceCopy[locale].status}`
-			: `${t.selectBus(vehicle.id)}, ${vehicle.route ? `${t.route} ${line(vehicle.route)}, ` : ''}${etaUtc ? `${timeLabel(etaUtc, locale, timeZone)}, ` : ''}${unknownStatusAndDelay ? '' : `${STATUS_LABELS[locale][vehicle.status]}, `}${t.delay}: ${delayMeasurement(vehicle.delay_min) ?? absenceSentence(absence, locale)}`,
+			: `${t.selectBus(vehicle.id)}, ${vehicle.route ? `${t.route} ${line(vehicle.route)}, ` : ''}${etaUtc ? `${timeLabel(etaUtc, locale, timeZone)}, ` : ''}${unknownStatusAndDelay ? '' : `${STATUS_LABELS[locale][vehicle.status]}, `}${t.delay}: ${minuteReading(vehicle.delay_min, locale, true) ?? absenceSentence(absence, locale)}`,
 	);
 </script>
 
@@ -80,7 +80,7 @@
 				size="sm"
 			/>
 			<MaybeValue
-				value={delayMeasurement(vehicle.delay_min)}
+				value={minuteReading(vehicle.delay_min, locale, true)}
 				reason={absence}
 				variant="compact"
 				disclosure={false}

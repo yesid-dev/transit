@@ -14,7 +14,7 @@
 	import { STATUS_LABELS } from '#lib/v1/enumLabels.ts';
 	import type { MapHoverPeek } from './mapHoverPeek';
 	import { STATUS_GLYPH, statusVar } from '#lib/components/dataviz/tokens.ts';
-	import { delayMeasurement } from '#lib/site/delayPresentation.ts';
+	import { minuteReading } from '#lib/site/presenter.ts';
 	import MapDetailAlerts from './MapDetailAlerts.svelte';
 	import { MAP_SELECTION_DETAIL_COPY } from './mapSelectionDetail.copy';
 	import { formatAge } from './mapSelectionDetail.logic';
@@ -95,7 +95,7 @@
 						{/if}
 						<span class="map-peek-delay">
 							<MaybeValue
-								value={delayMeasurement(peek.delayMin)}
+								value={minuteReading(peek.delayMin, locale, true)}
 								reason={vehicleAbsence}
 								{locale}
 							/>

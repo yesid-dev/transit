@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { dateRange, versionNumber } from '#lib/site/presenter.ts';
 	import { Card } from '@yesid/ui/card';
 	import { Surface } from '@yesid/ui/layout';
 	import { intl, localizeHref, type Locale } from '#lib/i18n/index.ts';
@@ -10,7 +11,7 @@
 	import RecordPending from './RecordPending.svelte';
 	import RecordTable from './RecordTable.svelte';
 	import { recordSectionLinks } from './recordLinks.ts';
-	import { choose, dateRange, lastGoodNote, recordConnection } from './recordText.ts';
+	import { choose, lastGoodNote, recordConnection } from './recordText.ts';
 
 	let {
 		locale,
@@ -87,7 +88,7 @@
 							{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 							<p>
 								{t('Cleaning version in force', 'Version du nettoyage en vigueur')}
-								<strong>{cleaning_version}</strong>
+								<strong>{versionNumber(cleaning_version)}</strong>
 							</p>
 							{#if days.length}
 								<RecordTable
@@ -102,7 +103,7 @@
 									rows={days.map((day) => [
 										dayLabel(day.service_date),
 										healthReading(day, locale),
-										day.cleaning_version,
+										versionNumber(day.cleaning_version) ?? '',
 										...tables.map((table) => healthReading(day.tables[table], locale, day.reason)),
 									])}
 								/>
@@ -118,7 +119,7 @@
 								{locale}
 								{title}
 								href={share}
-								citation={`Transit. ${title} (${record.city}). ${dateRange(record.period, locale)}. ${t('Cleaning version', 'Version du nettoyage')} ${cleaning_version}. ${share}`}
+								citation={`Transit. ${title} (${record.city}). ${dateRange(record.period, locale)}. ${t('Cleaning version', 'Version du nettoyage')} ${versionNumber(cleaning_version)}. ${share}`}
 							/>
 						{/if}
 					{/await}
@@ -147,7 +148,7 @@
 													>{entry.family_text?.[locale] ?? entry.family}</a
 												>
 											</dt>
-											<dd>{entry.method_version}</dd>
+											<dd>{versionNumber(entry.method_version)}</dd>
 										</div>
 									{/each}
 								</dl>

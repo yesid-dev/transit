@@ -1,0 +1,148 @@
+import { intl, type Locale } from '#lib/i18n/copy.ts';
+import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
+import { serviceClockParts } from '#lib/utils/serviceDate.ts';
+import { clockFace, formatClock, formatDateKey, formatUtc } from '#lib/utils/time.ts';
+import { presenterCopy } from './presenter.copy.ts';
+
+export function minuteReading(
+	minutes: number | null | undefined,
+	locale: Locale,
+	signed = false,
+): string | null {
+	if (minutes == null || !Number.isFinite(minutes)) return null;
+	const number = intl
+		.number(locale, {
+			maximumFractionDigits: 1,
+			signDisplay: signed ? 'exceptZero' : 'auto',
+		})
+		.format(minutes === 0 ? 0 : minutes);
+	return presenterCopy[locale].minutes(number.replace(/^-/, '−'));
+}
+
+export function delayReading(
+	seconds: number | null | undefined,
+	locale: Locale,
+	fallback = transitTerms[locale].delayUnknown,
+): string {
+	if (seconds == null || !Number.isFinite(seconds)) return fallback;
+	const copy = presenterCopy[locale];
+	const magnitude = minuteReading(Math.abs(seconds) / 60, locale)!;
+	return seconds < 0 ? copy.early(magnitude) : seconds > 0 ? copy.late(magnitude) : copy.onSchedule;
+}
+
+export function clockTime(date: Date, locale: Locale, timeZone = 'UTC'): string {
+	return formatClock(date, locale, timeZone);
+}
+
+export function dateAndClock(iso: string, locale: Locale, timeZone = 'UTC', zoneName = false) {
+	const date = new Date(iso);
+	if (!Number.isFinite(+date)) return presenterCopy[locale].unknownTime;
+	const day = formatUtc(iso, locale, { dateStyle: 'medium', timeZone });
+	const clock = clockTime(date, locale, timeZone);
+	const zone = zoneName
+		? intl
+				.dateTime(locale, { timeZone, timeZoneName: 'short' })
+				.formatToParts(date)
+				.find((part) => part.type === 'timeZoneName')?.value
+		: null;
+	return [`${day}, ${clock}`, zone].filter(Boolean).join(' ');
+}
+
+export function serviceTime(value: unknown, locale: Locale): string | null {
+	const parts = serviceClockParts(value);
+	if (!parts) return null;
+	const { hours, minutes } = parts;
+	const day = Math.floor(hours / 24);
+	const clock = clockFace(hours % 24, minutes);
+	const copy = presenterCopy[locale];
+	return day === 0 ? clock : day === 1 ? copy.nextDay(clock) : copy.laterDay(clock, day);
+}
+
+export function scheduledClock(value: unknown, locale: Locale): string {
+	return serviceTime(value, locale) ?? presenterCopy[locale].unknownTime;
+}
+
+export function directionName(headsign: string | null | undefined, locale: Locale): string {
+	const name = headsign?.trim();
+	const copy = presenterCopy[locale];
+	return name || copy.unknownDirection;
+}
+
+export function directionLabel(
+	direction: string | number | null | undefined,
+	headsigns: Readonly<Record<number, string>>,
+	locale: Locale,
+): string {
+	const name = direction == null || direction === '' ? null : headsigns[Number(direction)]?.trim();
+	const copy = presenterCopy[locale];
+	return name ? copy.toward(name) : copy.unknownDirection;
+}
+
+export function dateRange({ from, to }: { from: string; to: string }, locale: Locale): string {
+	const end = formatDateKey(to, locale, true, 'day-first');
+	if (from === to) return end;
+	const sameYear = from.slice(0, 4) === to.slice(0, 4);
+	const sameMonth = from.slice(0, 7) === to.slice(0, 7);
+	const start = sameMonth
+		? String(Number(from.slice(8, 10)))
+		: formatDateKey(from, locale, !sameYear, 'day-first');
+	return presenterCopy[locale].dateRange(start, end);
+}
+
+export function fileSize(bytes: number | null | undefined, locale: Locale): string | null {
+	if (bytes == null || !Number.isFinite(bytes) || bytes < 0) return null;
+	return intl
+		.number(locale, {
+			style: 'unit',
+			unit: 'megabyte',
+			unitDisplay: 'short',
+			maximumSignificantDigits: 3,
+		})
+		.format(bytes / 1_000_000);
+}
+
+export function versionNumber(value: string | number | null | undefined): string | null {
+	if (value == null) return null;
+	const raw = String(value).trim();
+	const number = /(?:^v?|[-_]v)(\d+(?:\.\d+)*)$/i.exec(raw)?.[1];
+	return number ? `v${number}` : raw || null;
+}
+
+export function methodEvidence(
+	{
+		method_version,
+		cleaning_versions,
+	}: { method_version: string; cleaning_versions: readonly number[] },
+	locale: Locale,
+): string {
+	const copy = presenterCopy[locale];
+	const method = copy.method(versionNumber(method_version) ?? copy.unknownVersion);
+	const cleaning = copy.cleaning(
+		cleaning_versions.map(versionNumber).join(', ') || copy.unknownVersion,
+	);
+	return `${method}, ${cleaning}.`;
+}
+
+export function lineName(
+	number: string | null | undefined,
+	name: string | null | undefined,
+	fallback: () => string,
+	spoken: (label: string) => string,
+) {
+	number = number?.trim() || null;
+	name = name?.trim() || null;
+	const label = number && name && number !== name ? `${number} · ${name}` : (number ?? name);
+	if (label) return { number, name, label, spoken: spoken(label) };
+	const missing = fallback();
+	return { number, name, label: missing, spoken: missing };
+}
+
+export function tripsInHours(trips: number, hours: number, locale: Locale): string {
+	const format = intl.number(locale);
+	return presenterCopy[locale].tripsInHours(format.format(trips), format.format(hours));
+}
+
+/** Registry descriptions can document raw sub-minute inputs and export columns. */
+export function registryUnitText(text: string, locale: Locale) {
+	return presenterCopy[locale].registryUnitText(text);
+}

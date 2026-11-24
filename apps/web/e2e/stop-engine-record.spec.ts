@@ -32,9 +32,7 @@ for (const width of [390, 1440]) {
 			const section = (name: string) => main.getByRole('region', { name, exact: true });
 			const punctuality = section(fr ? 'Ponctualité' : 'On-time performance');
 			await expect(punctuality).toContainText(
-				fr
-					? /Du 8 au 14 novembre 2026, 80\s%.*80 sur 100/
-					: /November 8 to 14, 2026, 80%.*80 of 100/,
+				fr ? /du 8 au 14 nov\. 2026, 80\s%.*80 sur 100/ : /November 8 to 14, 2026, 80%.*80 of 100/,
 				{ timeout: 15_000 },
 			);
 			await expect(punctuality).toContainText(fr ? 'calcul précédent' : 'older answer');
@@ -56,8 +54,8 @@ for (const width of [390, 1440]) {
 				1,
 			);
 			const delay = section(fr ? 'Retard typique' : 'Typical delay');
-			await expect(delay).toContainText(fr ? '30 s d’avance' : '30 s early');
-			await expect(delay).toContainText(fr ? '350 s de retard' : '350 s late');
+			await expect(delay).toContainText(fr ? '0,5 min d’avance' : '0.5 min early');
+			await expect(delay).toContainText(fr ? '5,8 min de retard' : '5.8 min late');
 			const alerts = section(fr ? 'Avis pour cet arrêt' : 'Alerts for this stop');
 			await expect(alerts.getByText(fr ? 'Non suivi' : '3', { exact: true })).toBeVisible();
 			const access = section(fr ? 'Embarquement en fauteuil roulant' : 'Wheelchair boarding');
@@ -75,7 +73,7 @@ for (const width of [390, 1440]) {
 				punctuality.getByRole('button', { name: fr ? 'Copier le lien' : 'Copy link' }),
 			).toBeVisible();
 			await punctuality.getByText(fr ? 'Citer' : 'Cite', { exact: true }).click();
-			await expect(punctuality.getByText(/stop-fixture-v1.*#punctuality/)).toBeVisible();
+			await expect(punctuality.getByText(/v1.*#punctuality/)).toBeVisible();
 			const csv = await punctuality.getByRole('link', { name: /CSV/ }).getAttribute('href');
 			const response = await request.get(csv!);
 			expect(response.ok()).toBeTruthy();
@@ -100,7 +98,7 @@ test('a slow per-line breakdown does not hold back the Stop answer', async ({ pa
 	const path = '/stop/S1?provider=stm&frameMode=record&recordFrom=2026-11-09&recordTo=2026-11-15';
 	const response = await page.goto(path, { waitUntil: 'commit' });
 	expect(response?.headers()['cache-control']).toBe('no-store, no-transform');
-	await expect(page.getByText(/^From November 9 to 15, 2026, 80%.*80 of 100/)).toBeVisible();
+	await expect(page.getByText(/^9 to 15 Nov 2026, 80%.*80 of 100/)).toBeVisible();
 	const byLine = page.getByRole('region', { name: 'By line', exact: true });
 	await expect(byLine).toContainText('Still working on this. You can wait or come back later.');
 	await expect(page.getByRole('region', { name: 'Alerts for this stop' })).toContainText(

@@ -1,10 +1,10 @@
 <script lang="ts">
+	import { clockTime, dateAndClock, minuteReading } from '#lib/site/presenter.ts';
 	import { Button } from '@yesid/ui/button';
 	import { StateNotice } from '@yesid/ui/feedback';
 	import { intl, type Locale } from '#lib/i18n/index.ts';
 	import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
-	import { delayMeasurement } from '#lib/site/delayPresentation.ts';
-	import { formatLocalClock, formatUtc, formatRelativeSeconds } from '#lib/utils/time.ts';
+	import { formatRelativeSeconds } from '#lib/utils/time.ts';
 	import { copy as mapCopy } from './map.copy';
 	import { mapReportsCopy } from './mapReports.copy';
 	import { mapReportsCsv } from './mapReportsCsv.ts';
@@ -68,7 +68,7 @@
 		if (!iso) return '';
 		const date = new Date(iso);
 		if (Number.isNaN(date.getTime())) return '';
-		return formatLocalClock(date, locale, model?.timeZone);
+		return clockTime(date, locale, model?.timeZone);
 	}
 
 	function sourceTime(): string {
@@ -79,11 +79,7 @@
 	function publicationTime(iso: string): string {
 		const date = new Date(iso);
 		if (Number.isNaN(date.getTime())) return '';
-		return formatUtc(iso, locale, {
-			dateStyle: 'medium',
-			timeStyle: 'short',
-			timeZone: model?.timeZone,
-		});
+		return dateAndClock(iso, locale, model?.timeZone, true);
 	}
 
 	function ageLabel(row: MapReportRow): string {
@@ -249,7 +245,7 @@
 								</div>
 								<div>
 									<dt>{t.delayColumn}</dt>
-									<dd>{delayMeasurement(row.delayMin) ?? terms.delayUnknown}</dd>
+									<dd>{minuteReading(row.delayMin, locale, true) ?? terms.delayUnknown}</dd>
 								</div>
 								<div>
 									<dt>{t.reportAge}</dt>

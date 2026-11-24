@@ -7,7 +7,8 @@
 	import RecordActions from './RecordActions.svelte';
 	import RecordPending from './RecordPending.svelte';
 	import { recordSectionLinks } from './recordLinks.ts';
-	import { dateRange, lastGoodNote, methodEvidence, recordConnection } from './recordText.ts';
+	import { lastGoodNote, recordConnection } from './recordText.ts';
+	import { dateRange, methodEvidence } from '#lib/site/presenter.ts';
 
 	let {
 		section,

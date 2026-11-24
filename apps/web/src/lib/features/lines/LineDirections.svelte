@@ -17,8 +17,7 @@
 	import { routeFor } from '#lib/nav/index.ts';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { stopNameFallback } from '#lib/site/absence.ts';
-	import { formatLocalClock } from '#lib/utils/time.ts';
-	import { delayMeasurement } from '#lib/site/delayPresentation.ts';
+	import { clockTime, directionName, minuteReading } from '#lib/site/presenter.ts';
 	import { AbsentValue } from '#lib/components/edge/index.ts';
 	import { lineViewsCopy } from './lineViews.copy';
 	import { Button } from '@yesid/ui/button';
@@ -39,7 +38,7 @@
 	const index = $derived(Number(selected) < dirs.length ? Number(selected) : 0);
 	const direction = $derived(dirs[index]);
 	const name = (dir: NonNullable<RouteFile['directions']>[number]) =>
-		dir.headsign ?? copy.direction(dir.dir);
+		directionName(dir.headsign ?? dir.stops?.at(-1)?.name, locale);
 	const stopHref = (id: string) => localizeHref(routeFor({ kind: 'stop', id }), locale);
 	const rows = $derived((direction?.stops ?? []).filter((stop) => predictions.has(stop.id)));
 	const shared = $derived(
@@ -122,12 +121,14 @@
 							>
 							<td
 								>{#if prediction.etaUtc}<time datetime={prediction.etaUtc}
-										>{formatLocalClock(new Date(prediction.etaUtc), locale, timeZone)}</time
+										>{clockTime(new Date(prediction.etaUtc), locale, timeZone)}</time
 									>{:else}{copy.approaching}{/if}</td
 							>
 							<td
-								>{#if Number.isFinite(prediction.delayMin) && prediction.delayMin != null}{delayMeasurement(
+								>{#if Number.isFinite(prediction.delayMin) && prediction.delayMin != null}{minuteReading(
 										prediction.delayMin,
+										locale,
+										true,
 									)}{:else}<AbsentValue
 										variant="compact"
 										disclosure={false}

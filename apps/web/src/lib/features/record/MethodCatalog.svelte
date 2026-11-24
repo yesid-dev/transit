@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { dateRange, registryUnitText, versionNumber } from '#lib/site/presenter.ts';
 	import { Card } from '@yesid/ui/card';
 	import { Surface } from '@yesid/ui/layout';
 	import { intl, localizeHref, type Locale } from '#lib/i18n/index.ts';
@@ -8,7 +9,7 @@
 	import RecordActions from './RecordActions.svelte';
 	import RecordPending from './RecordPending.svelte';
 	import { recordSectionLinks } from './recordLinks.ts';
-	import { choose, dateRange, lastGoodNote, recordConnection, tally } from './recordText.ts';
+	import { choose, lastGoodNote, recordConnection, tally } from './recordText.ts';
 
 	let {
 		catalog,
@@ -99,21 +100,21 @@
 													)}
 												</dt>
 												<dd>
-													{text.counts}{#if text.histogram}
-														{text.histogram}{/if}
+													{registryUnitText(text.counts, locale)}{#if text.histogram}
+														{registryUnitText(text.histogram, locale)}{/if}
 												</dd>
 											</div>
 											<div>
 												<dt>{t('What it leaves out', 'Ce que la mesure exclut')}</dt>
-												<dd>{text.exclusions}</dd>
+												<dd>{registryUnitText(text.exclusions, locale)}</dd>
 											</div>
 											<div>
 												<dt>{t('What it cannot tell', 'Ce que la mesure ne peut pas dire')}</dt>
-												<dd>{text.limits}</dd>
+												<dd>{registryUnitText(text.limits, locale)}</dd>
 											</div>
 											<div>
 												<dt>{t('Unit', 'Unité')}</dt>
-												<dd>{text.unit}</dd>
+												<dd>{registryUnitText(text.unit, locale)}</dd>
 											</div>
 											<div>
 												<dt>{t('Minimum sample', 'Échantillon minimal')}</dt>
@@ -132,7 +133,7 @@
 											{/if}
 											<div>
 												<dt>{t('Method version', 'Version de la méthode')}</dt>
-												<dd>{entry.method_version}</dd>
+												<dd>{versionNumber(entry.method_version)}</dd>
 											</div>
 											<div>
 												<dt>{t('Since', 'Depuis le')}</dt>
@@ -145,7 +146,9 @@
 													>{t('CSV columns', 'Colonnes du CSV')}</summary
 												>
 												<ul class="list-disc ps-5">
-													{#each columns as column, index (index)}<li>{column}</li>{/each}
+													{#each columns as column, index (index)}<li>
+															{registryUnitText(column, locale)}
+														</li>{/each}
 												</ul>
 											</details>
 										{/if}
@@ -156,7 +159,7 @@
 											csv={period && columns.length
 												? recordSectionLinks(csvScope, entry.id).csv
 												: undefined}
-											citation={`Transit. ${title}. ${text.definition} (${entry.method_version}, ${since(entry.since)}). ${share}`}
+											citation={`Transit. ${title}. ${text.definition} (${versionNumber(entry.method_version)}, ${since(entry.since)}). ${share}`}
 										/>
 									</article>
 								{/each}

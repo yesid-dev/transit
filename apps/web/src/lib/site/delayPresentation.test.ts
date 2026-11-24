@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { delayTone, delayLabel, delayMeasurement } from './delayPresentation';
+import { delayTone } from './delayPresentation';
 
 describe('delayTone', () => {
 	it('bands a delay to a calm-by-default status tone', () => {
@@ -9,42 +9,5 @@ describe('delayTone', () => {
 		expect(delayTone(0)).toBe('on-time');
 		expect(delayTone(2)).toBe('late');
 		expect(delayTone(8)).toBe('severe');
-	});
-});
-
-describe('delayLabel', () => {
-	const copy = {
-		early: (m: number) => `${Math.abs(m)} min early`,
-		late: (m: number) => `${m} min late`,
-		onTime: 'On time',
-		noDelay: 'No delay',
-	};
-
-	it('reads honestly and never fabricates a 0', () => {
-		expect(delayLabel(null, copy)).toBe('No delay');
-		expect(delayLabel(-3, copy)).toBe('3 min early');
-		expect(delayLabel(5, copy)).toBe('5 min late');
-		expect(delayLabel(0, copy)).toBe('On time');
-	});
-
-	it('falls back to onTime for an absent delay when noDelay copy is omitted', () => {
-		const noNoDelay = { early: copy.early, late: copy.late, onTime: 'On time' };
-		expect(delayLabel(null, noNoDelay)).toBe('On time');
-		expect(delayLabel(undefined, noNoDelay)).toBe('On time');
-		expect(delayLabel(0, noNoDelay)).toBe('On time');
-	});
-});
-
-describe('delayMeasurement', () => {
-	it.each([
-		[1, '+1 min'],
-		[0, '0 min'],
-		[-2, '−2 min'],
-		[4, '+4 min'],
-		[-0, '0 min'],
-		[null, null],
-		[undefined, null],
-	] as const)('formats %s without a categorical verdict', (delay, expected) => {
-		expect(delayMeasurement(delay)).toBe(expected);
 	});
 });

@@ -1,3 +1,4 @@
+import { minuteReading } from '#lib/site/presenter.ts';
 import { intl, type Locale } from '#lib/i18n/index.ts';
 import { healthReading } from '#lib/features/record/dataHealthText.ts';
 import { choose, percent, tally } from '#lib/features/record/recordText.ts';
@@ -55,12 +56,11 @@ export function networkRows(measure: NetworkMeasure, answer: ScorecardAnswer, lo
 			? `${tally(n, locale)} / ${tally(total, locale)}`
 			: '';
 	const samples = (n: unknown) => (typeof n === 'number' && n > 0 ? tally(n, locale) : '');
-	const seconds = (value: unknown, signed = false) =>
+	const duration = (value: unknown, signed = false) =>
 		value === 'over_10_minutes'
 			? t('Over 10 min', 'Plus de 10 min')
-			: typeof value === 'number'
-				? `${signed && value > 0 ? '+' : ''}${formatNumber.format(value)} s`
-				: t('Unknown', 'Inconnu');
+			: (minuteReading(typeof value === 'number' ? value / 60 : null, locale, signed) ??
+				t('Unknown', 'Inconnu'));
 	const hours = (value: number) => formatNumber.format(value / 3_600_000_000);
 
 	if (measure === 'poll_success') {
@@ -110,8 +110,8 @@ export function networkRows(measure: NetworkMeasure, answer: ScorecardAnswer, lo
 				const measured = dimensions[feed] === 'measured';
 				return [
 					t(...label),
-					measured ? seconds(median_seconds) : reading,
-					measured ? seconds(p90_seconds) : reading,
+					measured ? duration(median_seconds) : reading,
+					measured ? duration(p90_seconds) : reading,
 					samples(sample.samples),
 				];
 			}),
@@ -182,8 +182,8 @@ export function networkRows(measure: NetworkMeasure, answer: ScorecardAnswer, lo
 			const within = data.within_60_seconds_share;
 			return [
 				`${horizon} min`,
-				measured ? seconds(data.median_signed_seconds, true) : missing(horizon),
-				measured ? seconds(data.p90_absolute_seconds) : missing(horizon),
+				measured ? duration(data.median_signed_seconds, true) : missing(horizon),
+				measured ? duration(data.p90_absolute_seconds) : missing(horizon),
 				measured && typeof within === 'number' ? percent(within, locale) : missing(horizon),
 				samples(data.sample_count),
 			];

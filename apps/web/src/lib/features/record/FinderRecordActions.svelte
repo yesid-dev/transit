@@ -3,7 +3,7 @@
 	import type { RecordEvidence } from '#lib/server/engine.ts';
 	import RecordActions from './RecordActions.svelte';
 	import { finderCsv } from './finderText.ts';
-	import { dateRange, methodEvidence } from './recordText.ts';
+	import { dateRange, methodEvidence } from '#lib/site/presenter.ts';
 
 	let {
 		locale,

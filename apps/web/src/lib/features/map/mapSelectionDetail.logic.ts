@@ -1,13 +1,12 @@
 import { stopDisplayName as displayStop } from '#lib/site/transitDisplay.ts';
 import { absenceShort, stopNameFallback } from '#lib/site/absence.ts';
-import { delayLabel } from '#lib/site/delayPresentation.ts';
-import { formatLocalClock } from '#lib/utils/time.ts';
+import { clockTime } from '#lib/site/presenter.ts';
 import { localizeHref, type Locale } from '#lib/i18n/index.ts';
 import { routeFor } from '#lib/nav/index.ts';
 
 export { delayTone } from '#lib/site/delayPresentation.ts';
 import type { MapSelectionDetail, MapStopRef, RouteMapDetail } from './mapSelectionSession.svelte';
-import { MAP_SELECTION_DETAIL_COPY, type MapSelectionDetailCopy } from './mapSelectionDetail.copy';
+import { MAP_SELECTION_DETAIL_COPY } from './mapSelectionDetail.copy';
 
 export type DetailAction = { readonly href: string; readonly label: string };
 
@@ -62,10 +61,6 @@ export function detailActions(
 		: null;
 }
 
-export function delayKnownLabel(delay: number, t: MapSelectionDetailCopy): string {
-	return delayLabel(delay, t);
-}
-
 export function timeLabel(
 	iso: string | null | undefined,
 	locale: Locale,
@@ -77,7 +72,7 @@ export function timeLabel(
 	// Without the published network zone there is no honest reader clock: the host's
 	// zone would silently show a different city's time.
 	if (!timeZone) return '·';
-	return formatLocalClock(date, locale, timeZone);
+	return clockTime(date, locale, timeZone);
 }
 
 export function formatAge(seconds: number): string {

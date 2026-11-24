@@ -7,23 +7,14 @@
 	import { recordSectionLinks } from '#lib/features/record/recordLinks.ts';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
 	import RecordLineLabel from '#lib/features/record/RecordLineLabel.svelte';
-	import {
-		choose,
-		dateRange,
-		lastGoodNote,
-		recordMessage,
-	} from '#lib/features/record/recordText.ts';
+	import { choose, lastGoodNote, recordMessage } from '#lib/features/record/recordText.ts';
+	import { dateRange, directionLabel } from '#lib/site/presenter.ts';
 	import type { loadLineRecord } from '#lib/server/lineRecord.ts';
 	import { carryFrameState, frameHref } from '#lib/site/frameState.ts';
 	import WaitingReadings from '#lib/features/record/WaitingReadings.svelte';
 	import LineRecordReadings from './LineRecordReadings.svelte';
 	import LineViewNav from './LineViewNav.svelte';
-	import {
-		directionLabel,
-		lineCitation,
-		lineSectionTitles,
-		lineViewHref,
-	} from './lineRecordText.ts';
+	import { lineCitation, lineSectionTitles, lineViewHref } from './lineRecordText.ts';
 
 	let {
 		name,

@@ -48,9 +48,7 @@ describe.each(['en', 'fr'] as const)('provider cosmetics in %s', (locale) => {
 		},
 	);
 	it('states the live refresh rate a network declares and assumes none otherwise', () => {
-		expect(homeCadence(locale, 20)).toContain(
-			locale === 'en' ? 'every 20 seconds' : 'les 20 secondes',
-		);
+		expect(homeCadence(locale, 20)).toContain(locale === 'en' ? 'every 20 s' : 'les 20 s');
 		expect(homeCadence(locale, null)).toBe(homeCopy[locale].cadence);
 		expect(homeCadence(locale, undefined)).not.toMatch(/\d/);
 	});

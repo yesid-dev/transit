@@ -52,7 +52,7 @@
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import { detailCopy } from './lines.copy';
 	import LineDirections from './LineDirections.svelte';
-	import { delayMeasurement } from '#lib/site/delayPresentation.ts';
+	import { minuteReading } from '#lib/site/presenter.ts';
 	import { STATUS_LABELS } from '#lib/v1/enumLabels.ts';
 
 	const localizeHref = getLocalizeHref();
@@ -355,7 +355,7 @@
 																	/>
 																	<span class="route-roster-delay"
 																		><MaybeValue
-																			value={delayMeasurement(bus.delay_min)}
+																			value={minuteReading(bus.delay_min, locale, true)}
 																			reason={liveAbsenceReason('vehicle-delay', {
 																				familyStates: live.familyStates,
 																				notReporting:

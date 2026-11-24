@@ -52,7 +52,7 @@ it('renders three independent measures, ranked evidence and the citation', async
 	expect(screen.getByText(/fewer than 30 observed stop events/)).toBeVisible();
 	expect(await screen.findByText('No live data')).toBeVisible();
 	await fireEvent.click(screen.getByText('Cite'));
-	expect(screen.getByText(/Method punctuality-v2. Data cleaning version 6/)).toBeInTheDocument();
+	expect(screen.getByText(/Method v2, cleaning v6/)).toBeInTheDocument();
 });
 
 it('shows the French connection state while keeping the link action usable', async () => {

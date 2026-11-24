@@ -605,7 +605,7 @@ describe('RouteDetail Detail tab: clickable stops + live readout', () => {
 		renderRoute();
 
 		expect(screen.getByText('+2 min')).toBeInTheDocument();
-		expect(screen.getByText('8:05 a.m.')).toHaveAttribute('datetime', '2026-06-15T12:05:00Z');
+		expect(screen.getByText('08:05')).toHaveAttribute('datetime', '2026-06-15T12:05:00Z');
 
 		const stop = screen.getByRole('row', { name: /^View stop 2 Second stop / });
 		const absence = stop.querySelector('[data-slot="absent-value"]');

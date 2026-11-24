@@ -24,13 +24,13 @@
 	} from '#lib/features/record/finderText.ts';
 	import {
 		choose,
-		dateRange,
 		lastGoodNote,
 		pooledDays,
 		punctualityWeighting,
 		recordConnection,
 		tally,
 	} from '#lib/features/record/recordText.ts';
+	import { dateRange } from '#lib/site/presenter.ts';
 
 	let {
 		locale,

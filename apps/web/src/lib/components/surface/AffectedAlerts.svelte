@@ -2,7 +2,7 @@
 	import '#lib/components/surface/alert-item.css';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { Alert, SeverityCode } from '#lib/v1/schemas/index.ts';
-	import { formatUtc } from '#lib/utils/time.ts';
+	import { dateAndClock } from '#lib/site/presenter.ts';
 	import { SectionLabel } from '@yesid/ui/brand';
 	import { causeLabel, effectLabel } from '#lib/v1/gtfsAlertLabels.ts';
 	import { alertDisplayText, alertDisplayUrl, alertLanguageNotice } from '#lib/v1/alertDisplay.ts';
@@ -60,7 +60,7 @@
 
 	function windowTime(iso: string | null | undefined): string | null {
 		if (iso == null) return null;
-		const text = formatUtc(iso, locale, { dateStyle: 'medium', timeStyle: 'short', timeZone });
+		const text = dateAndClock(iso, locale, timeZone);
 		return text === '·' ? null : text;
 	}
 </script>

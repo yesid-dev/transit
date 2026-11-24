@@ -7,14 +7,13 @@ import type {
 } from '#lib/server/engine.ts';
 import {
 	choose,
-	dateRange,
-	methodEvidence,
 	percent,
 	rateStateText,
 	timingBasis,
 	withCoverage,
 	tally,
 } from '#lib/features/record/recordText.ts';
+import { dateRange, methodEvidence } from '#lib/site/presenter.ts';
 import type { LineDirection, LineSection } from '#lib/server/lineRecord.ts';
 
 export const lineSectionTitles = {
@@ -85,18 +84,6 @@ export function lateDepartureReading(row: DepartureRanking['rows'][number], loca
 	return [withCoverage(reading, row, locale), timingBasis(row.counts, locale)]
 		.filter(Boolean)
 		.join('. ');
-}
-
-export function directionLabel(
-	direction: string | number | null | undefined,
-	headsigns: Record<number, string>,
-	locale: Locale,
-) {
-	if (direction == null) return choose(locale, 'Unknown direction', 'Direction inconnue');
-	const name = headsigns[Number(direction)];
-	return name
-		? choose(locale, `Toward ${name}`, `Vers ${name}`)
-		: `${choose(locale, 'Direction', 'Direction')} ${direction}`;
 }
 
 export function lineViewHref(

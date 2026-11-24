@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { dateAndClock } from '#lib/site/presenter.ts';
 	import type { Manifest } from '#lib/v1/schemas/index.ts';
 	import { createRecordStamp } from '#lib/v1/recordStamp.svelte.ts';
 	import ArticleHeader from '#lib/components/layout/TransitArticleHeader.svelte';
@@ -23,7 +24,7 @@
 		type HistoryAvailability,
 		type HistoryCorrection,
 	} from '#lib/v1/history/selection.ts';
-	import { formatDateKey, formatUtc } from '#lib/utils/time.ts';
+	import { formatDateKey } from '#lib/utils/time.ts';
 	import { fromSearchParams, type AlertAffects, type DateWindow } from '#lib/filters/index.ts';
 	import { mirrorSearchParams } from '#lib/site/urlMirror.ts';
 	import { ResourceBoundary } from '#lib/components/surface/index.ts';
@@ -364,7 +365,7 @@
 	}
 	function windowTime(iso: string | null | undefined): string | null {
 		if (iso == null) return null;
-		const text = formatUtc(iso, locale, { dateStyle: 'medium', timeStyle: 'short', timeZone });
+		const text = dateAndClock(iso, locale, timeZone);
 		return text === '·' ? null : text;
 	}
 

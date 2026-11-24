@@ -22,8 +22,8 @@ for (const width of [390, 1440]) {
 			await expect(
 				punctuality.getByText(
 					fr
-						? /^Du .*80\s% des passages.*80 sur 100/
-						: /^From .*80% of observed stop events.*80 of 100/,
+						? /^du .*80\s% des passages.*80 sur 100/
+						: /^8 to 14 Nov 2026, 80% of observed stop events.*80 of 100/,
 				),
 			).toBeVisible();
 			await expect(
@@ -33,7 +33,7 @@ for (const width of [390, 1440]) {
 				punctuality.getByRole('button', { name: fr ? 'Copier le lien' : 'Copy link' }),
 			).toBeVisible();
 			await punctuality.getByText(fr ? 'Citer' : 'Cite', { exact: true }).click();
-			await expect(punctuality.getByText(/line-fixture-v1/)).toBeVisible();
+			await expect(punctuality.getByText(/Method v1|Méthode v1/)).toBeVisible();
 			const csv = punctuality.getByRole('link', { name: /CSV/ });
 			const response = await request.get((await csv.getAttribute('href'))!);
 			expect(response.ok()).toBeTruthy();
@@ -86,7 +86,7 @@ for (const width of [390, 1440]) {
 			await expect(
 				section(fr ? 'Départs le plus souvent en retard' : 'Departures late most often').getByRole(
 					'rowheader',
-					{ name: '07:00:00' },
+					{ name: '07:00' },
 				),
 			).toBeVisible();
 			await expect(section(fr ? 'Achalandage' : 'Crowding')).toContainText(
@@ -114,7 +114,7 @@ for (const width of [390, 1440]) {
 			);
 			await expect(
 				section(fr ? 'Premiers et derniers trajets' : 'First and last trips'),
-			).toContainText('25:15:00');
+			).toContainText(fr ? '01:15, le lendemain' : '01:15, next day');
 			await expect(page).toHaveURL(/direction=1/);
 		});
 	}
@@ -149,7 +149,7 @@ test('Line shows patience for a slow stop query while punctuality is already rea
 		'/lines/24?provider=stm&frameMode=record&recordFrom=2026-11-09&recordTo=2026-11-15',
 		{ waitUntil: 'commit' },
 	);
-	await expect(page.getByText(/^From .*80% of observed stop events/)).toBeVisible();
+	await expect(page.getByText(/^8 to 14 Nov 2026, 80% of observed stop events/)).toBeVisible();
 	await expect(
 		page.getByText('Still working on this. You can wait or come back later.'),
 	).toBeVisible();

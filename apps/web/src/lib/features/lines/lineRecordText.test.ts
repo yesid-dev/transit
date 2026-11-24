@@ -17,9 +17,9 @@ const answer: RecordMeasure = {
 
 describe('Line Record text', () => {
 	it('explains the exact dates and counts and keeps a measured zero', () => {
-		expect(lineAnswer(answer, answer.evidence, 'en')).toContain('November 8 to 14, 2026, 80%');
+		expect(lineAnswer(answer, answer.evidence, 'en')).toContain('8 to 14 Nov 2026, 80%');
 		expect(lineAnswer(answer, answer.evidence, 'en')).toContain('(80 of 100)');
-		expect(lineAnswer(answer, answer.evidence, 'fr')).toContain('Du 8 au 14 novembre 2026');
+		expect(lineAnswer(answer, answer.evidence, 'fr')).toContain('du 8 au 14 nov. 2026');
 		expect(lineAnswer(answer, answer.evidence, 'fr')).toContain('(80 sur 100)');
 		expect(punctualityBands(answer, 'en').map(({ reading }) => reading)).toEqual([
 			'0% (0/100) · 50% of 200 scheduled stops observed',
@@ -44,13 +44,7 @@ describe('Line Record text', () => {
 	it('cites the result, scoped URL and the engine versions in Québec French', () => {
 		const href = `https://transit1.yesid.dev/fr/lines/24?provider=stm&direction=1&recordFrom=${period.from}&recordTo=${period.to}#punctuality`;
 		const citation = lineCitation('24 · Sherbrooke', 'Ponctualité', answer, 'fr', href);
-		for (const text of [
-			'24 · Sherbrooke',
-			'80 sur 100',
-			'Méthode punctuality-v2',
-			'version 6',
-			href,
-		])
+		for (const text of ['24 · Sherbrooke', '80 sur 100', 'Méthode v2', 'nettoyage v6', href])
 			expect(citation).toContain(text);
 	});
 });

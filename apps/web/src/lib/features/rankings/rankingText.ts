@@ -1,6 +1,7 @@
+import { dateRange, methodEvidence, minuteReading } from '#lib/site/presenter.ts';
 import { intl, type Locale } from '#lib/i18n/index.ts';
 import type { RankingsRecord } from '#lib/server/engine.ts';
-import { choose, dateRange, methodEvidence, percent, withCoverage } from '../record/recordText.ts';
+import { choose, percent, withCoverage } from '../record/recordText.ts';
 import { reporting, type RankingMeasure } from './rankingSelection.ts';
 
 type Row = RankingsRecord['rows'][number];
@@ -28,7 +29,7 @@ function number(value: number, locale: Locale) {
 
 export function rankingValue(value: number, measure: RankingMeasure, locale: Locale) {
 	if (measure === 'median_delay' || measure === 'excess_wait_time')
-		return `${number(value, locale)} s`;
+		return minuteReading(value / 60, locale)!;
 	if (measure === reporting)
 		return `${number(value, locale)} ${choose(locale, 'per 100 h', 'par 100 h')}`;
 	return percent(value, locale);

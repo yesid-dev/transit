@@ -1,3 +1,10 @@
+/** GTFS service clocks are local timetable labels, including hours beyond midnight. */
+export function serviceClockParts(value: unknown): { hours: number; minutes: number } | null {
+	if (typeof value !== 'string') return null;
+	const match = /^(\d{1,6}):([0-5]\d)(?::[0-5]\d)?$/.exec(value);
+	return match ? { hours: Number(match[1]), minutes: Number(match[2]) } : null;
+}
+
 export function providerLocalDateKey(
 	iso: string | null | undefined,
 	timeZone: string = 'UTC',

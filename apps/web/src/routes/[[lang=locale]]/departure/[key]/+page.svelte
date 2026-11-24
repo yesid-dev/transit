@@ -1,12 +1,11 @@
 <script lang="ts">
+	import { dateRange, delayReading, directionLabel, scheduledClock } from '#lib/site/presenter.ts';
 	import { page } from '$app/state';
 	import { StateNotice } from '@yesid/ui/feedback';
 	import { Surface } from '@yesid/ui/layout';
 	import { localizeHref } from '#lib/i18n/index.ts';
-	import { directionLabel } from '#lib/features/lines/lineRecordText.ts';
 	import {
 		choose,
-		dateRange,
 		emptyRecord,
 		pooledDays,
 		punctualityWeighting,
@@ -18,7 +17,6 @@
 	import {
 		departureDays,
 		departureTitles,
-		delayReading,
 		shortDay,
 	} from '#lib/features/record/departureDailyText.ts';
 	import RecordSection from '#lib/features/record/RecordSection.svelte';
@@ -35,7 +33,7 @@
 	const t = (en: string, fr: string) => choose(data.lang, en, fr);
 	const n = (count: number) => tally(count, data.lang);
 	const line = $derived(display.line(data.identity.line));
-	const clock = $derived(data.identity.departure.replace(/:00$/, ''));
+	const clock = $derived(scheduledClock(data.identity.departure, data.lang));
 	const subject = $derived(
 		t(`Line ${line}, ${clock} departure`, `Ligne ${line}, départ de ${clock}`),
 	);

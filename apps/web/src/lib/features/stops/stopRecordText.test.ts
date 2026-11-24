@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { measure, stateText } from '#lib/features/home/overviewRecord.fixture.ts';
 import { punctualityBands, recordMessage } from '#lib/features/record/recordText.ts';
 import type { RecordMeasure } from '#lib/server/engine.ts';
-import { stopAccessibility, stopAnswer, stopCitation, stopDelay } from './stopRecordText.ts';
+import { stopAccessibility, stopAnswer, stopCitation } from './stopRecordText.ts';
 
 const base = measure();
 const answer: RecordMeasure = {
@@ -16,8 +16,8 @@ const answer: RecordMeasure = {
 };
 
 it('uses the engine dates, count and denominator in both locales', () => {
-	expect(stopAnswer(answer, 'en')).toMatch(/November 8 to 14, 2026, 80%.*\(80 of 100\)/);
-	expect(stopAnswer(answer, 'fr')).toMatch(/Du 8 au 14 novembre 2026, 80\s%.*\(80 sur 100\)/);
+	expect(stopAnswer(answer, 'en')).toMatch(/8 to 14 Nov 2026, 80%.*\(80 of 100\)/);
+	expect(stopAnswer(answer, 'fr')).toMatch(/du 8 au 14 nov. 2026, 80\s%.*\(80 sur 100\)/);
 	expect(punctualityBands(answer, 'en').map(({ reading }) => reading)).toEqual([
 		'0% (0/100) · 50% of 200 scheduled stops observed',
 		'80% (80/100) · 50% of 200 scheduled stops observed',
@@ -36,13 +36,6 @@ it.each(['no_live_data', 'not_measured', 'too_few_to_judge', 'not_tracked', 'unk
 		);
 	},
 );
-
-it('preserves the sign of delay and distinguishes missing from measured zero', () => {
-	expect(stopDelay(-30, 'en')).toBe('30 s early');
-	expect(stopDelay(350, 'fr')).toBe('350 s de retard');
-	expect(stopDelay(0, 'fr')).toBe('0 s');
-	expect(stopDelay(null, 'fr')).toBe('Inconnu');
-});
 
 it.each<[Record<string, number>, string, string]>([
 	[{ stops_accessible: 1 }, 'Accessible', 'Accessible'],
@@ -73,10 +66,10 @@ it('cites the stop, dates, scope, and versions and marks older results', () => {
 	const text = stopCitation('Arrêt S1', 'punctuality', answer, 'fr', link, true);
 	for (const expected of [
 		'Arrêt S1',
-		'Du 8 au 14 novembre 2026',
+		'du 8 au 14 nov. 2026',
 		'80 sur 100',
-		'Méthode punctuality-v2',
-		'version 6',
+		'Méthode v2',
+		'nettoyage v6',
 		'calcul précédent',
 		link,
 	]) {

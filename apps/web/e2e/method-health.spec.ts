@@ -26,7 +26,7 @@ for (const width of [390, 1440]) {
 			await expect(measure.getByRole('heading')).toHaveText(
 				fr ? 'Retard typique aux arrêts observés.' : 'Typical delay at recorded stops.',
 			);
-			await expect(measure).toContainText(fr ? 'tranches de 15 secondes' : '15-second steps');
+			await expect(measure).toContainText(fr ? 'tranches de 15 s' : '15-s steps');
 			await expect(measure).toContainText('fixture-v2');
 			await expect(
 				measure.getByRole('button', { name: fr ? 'Copier le lien' : 'Copy link' }),

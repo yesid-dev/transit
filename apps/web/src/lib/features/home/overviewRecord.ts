@@ -1,10 +1,9 @@
+import { dateRange, methodEvidence } from '#lib/site/presenter.ts';
 import { intl, type Locale } from '#lib/i18n/index.ts';
 import type { EngineResult, MeasureAnswer, RankingAnswer } from '#lib/server/engine.ts';
 import type { DateWindow } from '#lib/v1/history/window.ts';
 
 import {
-	dateRange,
-	methodEvidence,
 	rateStateText,
 	withCoverage,
 	percent,

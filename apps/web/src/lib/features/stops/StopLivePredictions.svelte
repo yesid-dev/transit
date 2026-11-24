@@ -2,11 +2,10 @@
 	import { getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
 	import { routeFor } from '#lib/nav/index.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
-	import { delayMeasurement } from '#lib/site/delayPresentation.ts';
+	import { clockTime, minuteReading } from '#lib/site/presenter.ts';
 	import { liveAbsenceReason, readLiveAbsenceContext } from '#lib/site/absence.ts';
 	import { AbsentValue } from '#lib/components/edge/index.ts';
 	import { STATUS_GLYPH, statusVar } from '#lib/components/dataviz/tokens.ts';
-	import { formatLocalClock } from '#lib/utils/time.ts';
 	import { departureStatusText, type StopLiveOrder, type StopLiveView } from './stopPredictions';
 	import { detailCopy } from './stops.copy';
 
@@ -84,12 +83,12 @@
 									{:else if row.trip}
 										<a href={localizeHref(routeFor({ kind: 'trip', id: row.trip }), locale)}
 											><time datetime={row.etaUtc}
-												>{formatLocalClock(new Date(row.etaUtc), locale, timeZone)}</time
+												>{clockTime(new Date(row.etaUtc), locale, timeZone)}</time
 											><span class="sr-only">, {t.trip}</span></a
 										>
 									{:else}
 										<time datetime={row.etaUtc}
-											>{formatLocalClock(new Date(row.etaUtc), locale, timeZone)}</time
+											>{clockTime(new Date(row.etaUtc), locale, timeZone)}</time
 										>
 									{/if}
 								</th>
@@ -113,8 +112,10 @@
 									{/if}
 								</td>
 								<td class="stop-live__offset"
-									>{#if row.delayMin != null && Number.isInteger(row.delayMin)}{delayMeasurement(
+									>{#if row.delayMin != null && Number.isInteger(row.delayMin)}{minuteReading(
 											row.delayMin,
+											locale,
+											true,
 										)}{:else}<AbsentValue
 											variant="compact"
 											disclosure={false}

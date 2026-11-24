@@ -23,7 +23,7 @@ const measured: RecordCell = {
 
 it('reads a pooled wait with its matched basis and a disruption share with its observed sample', () => {
 	expect(waitingReading(measured, 'excess_wait_time', 'en')).toBe(
-		'40.3 s · 20 observed intervals, 14 scheduled intervals in comparable windows',
+		'0.7 min · 20 observed intervals, 14 scheduled intervals in comparable windows',
 	);
 	expect(waitingReading(measured, 'long_gaps', 'en')).toBe('0% (0 of 20)');
 	expect(waitingReading(measured, 'bunching', 'fr')).toMatch(/20\s% \(4 sur 20\)/);

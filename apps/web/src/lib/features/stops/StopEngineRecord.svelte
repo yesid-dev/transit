@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { clockFace } from '#lib/utils/time.ts';
 	import { StatusMark } from '@yesid/ui/brand';
 	import { StateNotice } from '@yesid/ui/feedback';
 	import RecordPunctualityDays from '#lib/features/record/RecordPunctualityDays.svelte';
@@ -13,7 +14,6 @@
 	import { recordSectionLinks } from '#lib/features/record/recordLinks.ts';
 	import {
 		choose,
-		dateRange,
 		lastGoodNote,
 		measuredShare,
 		percent,
@@ -25,6 +25,7 @@
 		timingBasis,
 		tally,
 	} from '#lib/features/record/recordText.ts';
+	import { dateRange, delayReading } from '#lib/site/presenter.ts';
 	import type { RecordCell } from '#lib/server/engine.ts';
 	import type { loadStopRecord } from '#lib/server/stopRecord.ts';
 	import { carryFrameState, frameHref } from '#lib/site/frameState.ts';
@@ -38,7 +39,6 @@
 		stopAccessibilityDescription,
 		stopAnswer,
 		stopCitation,
-		stopDelay,
 		stopSectionTitles,
 	} from './stopRecordText.ts';
 
@@ -73,7 +73,7 @@
 		intl.dateTime(locale, { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(day));
 	const label = (cell: RecordCell & { key: Record<string, string | number | null> }) => {
 		if (typeof cell.key.line === 'string') return display.lineName(cell.key.line).label;
-		if (typeof cell.key.hour === 'number') return `${String(cell.key.hour).padStart(2, '0')}:00`;
+		if (typeof cell.key.hour === 'number') return clockFace(cell.key.hour, 0);
 		if (typeof cell.key.day === 'string') return day(cell.key.day);
 		return t('Unknown', 'Inconnu');
 	};
@@ -134,11 +134,11 @@
 										<dl class="flex flex-wrap gap-4">
 											<div>
 												<dt>{t('Median delay', 'Retard médian')}</dt>
-												<dd>{stopDelay(data.value.median_delay, locale)}</dd>
+												<dd>{delayReading(data.value.median_delay, locale)}</dd>
 											</div>
 											<div>
 												<dt>{t('90th percentile', '90e centile')}</dt>
-												<dd>{stopDelay(data.value.p90_delay, locale)}</dd>
+												<dd>{delayReading(data.value.p90_delay, locale)}</dd>
 											</div>
 										</dl>
 									{:else if section === 'accessibility'}
@@ -170,7 +170,7 @@
 											}))}
 											ticks={[0, 6, 12, 18, 23].map((value) => ({
 												value,
-												label: `${String(value).padStart(2, '0')}:00`,
+												label: clockFace(value, 0),
 											}))}
 											yMax={1}
 											format={(value) => percent(value, locale)}

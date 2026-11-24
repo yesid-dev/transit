@@ -29,7 +29,7 @@ test('the French Network record shows engine readings and preserves the Live vie
 	);
 	await expect(
 		main.getByRole('region', { name: 'Temps entre les mises à jour des flux' }),
-	).toContainText('24 s');
+	).toContainText('0.4 min');
 	const fields = main.getByRole('region', { name: 'Détails dans les signalements des véhicules' });
 	await expect(fields.getByRole('row').filter({ hasText: 'Occupation' })).toContainText(
 		'champ non publié',
