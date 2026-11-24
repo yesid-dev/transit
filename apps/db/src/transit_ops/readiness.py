@@ -9,8 +9,10 @@ import sys
 import zlib
 from collections import Counter
 from datetime import UTC, date, datetime
+from functools import cache
 from hashlib import sha256
 from http.client import HTTPException
+from importlib.resources import files
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -122,6 +124,25 @@ def _declaration(path: Path) -> tuple[ProviderManifest, ZoneInfo, list[str]]:
     return manifest, zone, blockers
 
 
+@cache
+def _timezone_links() -> dict[str, str]:
+    """Read the portable IANA link table shipped with tzdata."""
+    links = {}
+    with files("tzdata.zoneinfo").joinpath("tzdata.zi").open(encoding="utf-8") as source:
+        for line in source:
+            if line.startswith("L "):
+                _, target, alias = line.split()
+                links[alias] = target
+    return links
+
+
+def _canonical_timezone(name: str | None) -> str | None:
+    links = _timezone_links()
+    while name is not None and name in links:
+        name = links[name]
+    return name
+
+
 def _static(
     payload: bytes, provider: str, zone: ZoneInfo, today: date
 ) -> tuple[dict[str, Any], set[str], set[str]]:
@@ -142,8 +163,10 @@ def _static(
                         raise CheckError(f"{member} contains an invalid row")
                     yield row
 
-            agencies = list(rows("agency.txt"))
-            if not agencies or any(row["agency_timezone"] != zone.key for row in agencies):
+            agency_zones = {
+                _canonical_timezone(row["agency_timezone"]) for row in rows("agency.txt")
+            }
+            if agency_zones != {_canonical_timezone(zone.key)}:
                 raise CheckError("agency_timezone must match the declaration")
             trips = list(rows("trips.txt"))
             trip_ids = {row["trip_id"] for row in trips}

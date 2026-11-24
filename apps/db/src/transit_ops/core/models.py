@@ -49,6 +49,7 @@ class AuthType(StrEnum):
 class SignatureScheme(StrEnum):
     # SHA256(signing_secret + UTC yyyymmddTHHMMZ), recomputed per request.
     SHA256_UTC_MINUTE = "sha256_utc_minute"
+    SHA256_UTC_MINUTE_UPPER = "sha256_utc_minute_upper"
 
 
 class AuthConfig(BaseModel):

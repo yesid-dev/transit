@@ -20,7 +20,12 @@ from pydantic import (
 )
 from pydantic_core import InitErrorDetails
 
-from transit_ops.core.models import DownloadLicence, ReadingPopulation, VehicleField
+from transit_ops.core.models import (
+    DownloadLicence,
+    ReadingPopulation,
+    SignatureScheme,
+    VehicleField,
+)
 
 SITE_LOCALES: tuple[str, ...] = ("en", "fr")
 KNOWN_FORMATS: Mapping[str, frozenset[str]] = {
@@ -82,7 +87,7 @@ class Licence(_Block):
 class FeedSignature(_Block):
     query: _Text
     secret_env: _Env
-    scheme: Literal["sha256_utc_minute"]
+    scheme: SignatureScheme
 
 
 class FeedAuth(_Block):

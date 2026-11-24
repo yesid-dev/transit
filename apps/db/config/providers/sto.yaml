@@ -8,11 +8,12 @@
 # Geometry ships in shapes.txt (no separate GIS bundle), so there is no
 # gis_static feed — gis_static is provider-specific to STM (stm_sig.zip).
 #
-# RT auth (verified spec — supersedes the stale draft's api_key_derived_hash):
+# RT auth (API v1.1, pp. 2 to 4):
+#   https://m.sto.ca/site/assets/files/1533/documentation_dev_gtfsrt.pdf
 #   Each realtime request carries TWO query params:
 #     key=<STO_PUBLIC_KEY>
 #     hash=SHA256( STO_PRIVATE_KEY + <UTC yyyymmddTHHMMZ> )  (recomputed per minute)
-#   Expressed by AuthType.API_KEY_SIGNED + SignatureScheme.SHA256_UTC_MINUTE.
+#   The hash uses uppercase hexadecimal.
 #   The worker host MUST run NTP — the hash is minute-granular; clock drift = 401.
 #
 # Provision STO_PUBLIC_KEY and STO_PRIVATE_KEY securely at deploy time; never
@@ -66,7 +67,7 @@ feeds:
       auth_query_param: key
       signing_secret_env_var: STO_PRIVATE_KEY
       signature_query_param: hash
-      signature_scheme: sha256_utc_minute
+      signature_scheme: sha256_utc_minute_upper
       notes: key=<STO_PUBLIC_KEY> + hash=SHA256(STO_PRIVATE_KEY + UTC yyyymmddTHHMMZ), recomputed per minute. Worker host must run NTP.
     refresh_interval_seconds: 30
     is_enabled: true
@@ -83,7 +84,7 @@ feeds:
       auth_query_param: key
       signing_secret_env_var: STO_PRIVATE_KEY
       signature_query_param: hash
-      signature_scheme: sha256_utc_minute
+      signature_scheme: sha256_utc_minute_upper
       notes: Same key+hash scheme as trip_updates. STO names the vehicle file with the French spelling (file=vehicule).
     refresh_interval_seconds: 30
     is_enabled: true
@@ -100,7 +101,7 @@ feeds:
       auth_query_param: key
       signing_secret_env_var: STO_PRIVATE_KEY
       signature_query_param: hash
-      signature_scheme: sha256_utc_minute
+      signature_scheme: sha256_utc_minute_upper
       notes: Standard GTFS-RT Alert.pb. Same key+hash scheme. Ingested by the generic service_alerts ingester.
     refresh_interval_seconds: 300
     is_enabled: true

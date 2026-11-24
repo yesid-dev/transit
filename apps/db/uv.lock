@@ -802,6 +802,7 @@ dependencies = [
     { name = "pyyaml" },
     { name = "sqlalchemy" },
     { name = "typer" },
+    { name = "tzdata" },
 ]
 
 [package.dev-dependencies]
@@ -834,6 +835,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0,<7.0" },
     { name = "sqlalchemy", specifier = ">=2.0.51,<2.1" },
     { name = "typer", specifier = ">=0.27.0,<1.0" },
+    { name = "tzdata" },
 ]
 
 [package.metadata.requires-dev]
