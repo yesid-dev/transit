@@ -1135,10 +1135,6 @@
 		--map-mobile-control-bottom: calc(
 			1rem + env(safe-area-inset-bottom, 0px) + var(--map-source-clearance, 0px)
 		);
-		--map-touch-row-bottom: max(
-			calc(var(--map-mobile-control-bottom) + var(--size-tap-min) + 0.625rem),
-			calc(var(--map-source-clearance, 0px) + var(--floating-pill-clearance) + 0.5rem)
-		);
 		--map-north-clearance: calc(
 			var(--map-mobile-control-bottom) + 2.75rem + 0.75rem + 1.75rem + 0.75rem + 2.75rem + 0.75rem
 		);

@@ -117,6 +117,7 @@
 			modal={false}
 			interactOutsideBehavior="close"
 			showCloseButton={false}
+			portalProps={{ to: trigger?.closest<HTMLElement>('[data-slot="app-shell"]') ?? 'body' }}
 			class="map-legend-sheet"
 			data-slot="map-legend-sheet"
 			onInteractOutside={(event) => {
@@ -187,7 +188,7 @@
 		touch-action: manipulation;
 	}
 	:global(.map-legend-sheet.map-legend-sheet) {
-		--legend-bottom: calc(1rem + env(safe-area-inset-bottom, 0px) + var(--size-tap-min) * 2 + 20px);
+		--legend-bottom: calc(var(--map-touch-row-bottom, 4.375rem) + var(--size-tap-min) + 0.5rem);
 		inset: auto auto var(--legend-bottom) calc(var(--spacing) * 3);
 		width: min(21rem, calc(100vw - 2rem));
 		max-width: none;

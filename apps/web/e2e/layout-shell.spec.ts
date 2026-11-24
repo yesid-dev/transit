@@ -107,15 +107,27 @@ async function pillDividerGaps(page: Page) {
 			if (['absolute', 'fixed'].includes(getComputedStyle(element).position)) return false;
 			return element.getBoundingClientRect().width > 0.5;
 		};
-		const neighbour = (element: Element, step: 'previous' | 'next') => {
-			for (
-				let node = element[step === 'previous' ? 'previousElementSibling' : 'nextElementSibling'];
-				node;
-				node = node[step === 'previous' ? 'previousElementSibling' : 'nextElementSibling']
-			)
-				if (shown(node)) return node;
+		type Direction = 'previous' | 'next';
+		const boundary = (element: Element, step: Direction): HTMLElement | null => {
+			if (shown(element)) return element;
+			if (getComputedStyle(element).display !== 'contents') return null;
+			const children = Array.from(element.children);
+			if (step === 'previous') children.reverse();
+			for (const child of children) {
+				const candidate = boundary(child, step);
+				if (candidate) return candidate;
+			}
 			return null;
 		};
+		const neighbour = (element: Element, step: Direction) => {
+			const sibling = step === 'next' ? 'nextElementSibling' : 'previousElementSibling';
+			for (let node = element[sibling]; node; node = node[sibling]) {
+				const candidate = boundary(node, step);
+				if (candidate) return candidate;
+			}
+			return null;
+		};
+
 		const pill = document.querySelector('[data-testid="nav-pill"]')!;
 		return [...pill.querySelectorAll('.nav-divider, .product-brand-divider')]
 			.filter(shown)

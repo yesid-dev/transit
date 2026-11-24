@@ -9,6 +9,7 @@ interface MapChromeInsets {
 	bottom: number;
 	fitLeft?: number;
 	fitBesideNorth?: { right: number; bottom: number };
+	fitBesideHeading?: { top: number; right: number; bottom: number; left: number };
 }
 
 export interface MapFocusMeasurementAdapter {
@@ -48,6 +49,15 @@ const DOM_MEASUREMENT: MapFocusMeasurementAdapter = {
 			(r) => r !== null,
 		);
 		const north = rect('[data-slot="map-north"]');
+		const heading = rect('.map-head');
+		const frame = hero?.closest('[data-slot="app-frame"]');
+		const header = frame?.querySelector('[data-slot="app-frame-chrome"]')?.getBoundingClientRect();
+		const framePill = frame
+			?.querySelector('.app-frame-body > [data-slot="surface-rail-mobile"]')
+			?.getBoundingClientRect();
+		const credit = frame?.querySelector('[data-slot="map-source-footer"]')?.getBoundingClientRect();
+		const leftControls = [rect('[data-slot="map-legend-fab"]'), rect('.map-filter-pill-container')];
+
 		const bottom = Math.max(0, ...controls.map((r) => box.bottom - r.top));
 		return {
 			left: panel ? panel.right - box.left : 0,
@@ -56,6 +66,18 @@ const DOM_MEASUREMENT: MapFocusMeasurementAdapter = {
 			fitLeft: panel && panel.width > 56 ? panel.right - box.left : 0,
 			bottom: Math.max(bottom, north ? box.bottom - north.top : 0),
 			fitBesideNorth: north ? { right: box.right - north.left, bottom } : undefined,
+			fitBesideHeading:
+				heading && header && heading.left > box.left + box.width / 2
+					? {
+							top: Math.max(0, header.bottom - box.top),
+							right: box.right - heading.left,
+							bottom: Math.max(
+								0,
+								...[framePill, credit].map((r) => (r?.height ? box.bottom - r.top : 0)),
+							),
+							left: Math.max(0, ...leftControls.map((r) => (r ? r.right - box.left : 0))),
+						}
+					: undefined,
 		};
 	},
 	containerRect: (container) => container.getBoundingClientRect(),
@@ -113,7 +135,7 @@ export function measureMapFocusInset(
 	const rightOcclusion = clampOcclusion(rawRight, containerWidth);
 	const bottomOcclusion = clampOcclusion(rawBottom, containerHeight - topOcclusion);
 	let fitBottom = Math.max(0, rawBottom, chrome.bottom);
-	const fitLeft = Math.max(0, chrome.fitLeft ?? chrome.left);
+	let fitLeft = Math.max(0, chrome.fitLeft ?? chrome.left);
 	let fitRight = Math.max(0, rawRight);
 	// In landscape, the north control can exhaust the vertical fit budget from one
 	// corner. Fit beside it when that leaves enough height to clear the map heading.
@@ -128,7 +150,21 @@ export function measureMapFocusInset(
 	}
 	// Keep actual chrome clearance whenever the fit has room for both 16px margins.
 	// Only overfull axes need the point-focus budget to keep geographic fitting valid.
-	const verticalFit = rawTop + fitBottom + 32 < containerHeight;
+	let fitTop = rawTop;
+	// Short landscape viewports can fit to the left of a right-aligned title card.
+	const besideHeading = chrome.fitBesideHeading;
+	if (besideHeading && fitTop + fitBottom + 32 >= containerHeight) {
+		const right = Math.max(fitRight, besideHeading.right);
+		const left = Math.max(fitLeft, besideHeading.left);
+		const bottom = Math.max(0, rawBottom, besideHeading.bottom);
+		if (besideHeading.top + bottom + 32 < containerHeight && left + right + 32 < containerWidth) {
+			fitTop = besideHeading.top;
+			fitRight = right;
+			fitLeft = left;
+			fitBottom = bottom;
+		}
+	}
+	const verticalFit = fitTop + fitBottom + 32 < containerHeight;
 	const horizontalFit = fitLeft + fitRight + 32 < containerWidth;
 
 	const { pointOffset, routePadding } = coveredArea(
@@ -143,7 +179,7 @@ export function measureMapFocusInset(
 	return {
 		fitPadding: coveredArea(
 			{
-				top: verticalFit ? rawTop : topOcclusion,
+				top: verticalFit ? fitTop : topOcclusion,
 				right: horizontalFit ? fitRight : rightOcclusion,
 				bottom: verticalFit ? fitBottom : clampOcclusion(fitBottom, containerHeight - topOcclusion),
 				left: horizontalFit ? fitLeft : clampOcclusion(fitLeft, containerWidth - rightOcclusion),

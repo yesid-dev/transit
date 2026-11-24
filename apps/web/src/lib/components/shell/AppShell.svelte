@@ -154,6 +154,15 @@
 		) {
 		display: inline-flex;
 	}
+	.app-shell-root[data-full-viewport='true'] {
+		--map-touch-row-bottom: calc(
+			var(--map-source-clearance, 0px) +
+				max(
+					calc(1.625rem + env(safe-area-inset-bottom, 0px) + var(--size-tap-min)),
+					calc(var(--floating-pill-clearance) + 0.5rem)
+				)
+		);
+	}
 	/* Keep transparent map chrome from blocking the map or its panels. */
 	.app-shell-root[data-full-viewport='true'] :global([data-slot='app-frame-chrome']) {
 		pointer-events: none;

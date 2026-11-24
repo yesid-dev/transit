@@ -87,6 +87,7 @@
 		modal={false}
 		interactOutsideBehavior="close"
 		showCloseButton={false}
+		portalProps={{ to: pillBtn?.closest<HTMLElement>('[data-slot="app-shell"]') ?? 'body' }}
 		class="m6b-controls-drawer inset-x-auto top-auto h-auto w-auto max-w-none gap-0 overflow-y-auto rounded-lg border p-0"
 		data-m6b-controls-drawer=""
 		data-testid="map-filter-drawer"
@@ -177,7 +178,7 @@
 				var(--map-controls-drawer-gap)
 		);
 		--map-controls-drawer-bottom: calc(
-			1rem + env(safe-area-inset-bottom, 0px) + 88px + var(--map-controls-drawer-gap) * 2
+			var(--map-touch-row-bottom, 4.375rem) + var(--size-tap-min) + var(--map-controls-drawer-gap)
 		);
 		top: auto;
 		left: 0.75rem;
@@ -254,7 +255,6 @@
 
 	@media (prefers-reduced-motion: reduce) {
 		.map-filter-pill-container :global(.map-filter-pill),
-		.map-filter-pill-dot,
 		.map-filter-pill-counter,
 		:global([data-m6b-controls-drawer][data-slot='sheet-content']),
 		:global([data-m6b-controls-drawer][data-slot='sheet-content'][data-state='open']),
