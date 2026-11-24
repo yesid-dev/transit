@@ -69,12 +69,12 @@
 		family: LiveFamilyState | undefined,
 		available: boolean,
 	) {
-		if (!available) return { kind: 'no-data' } as const;
+		if (!available) return { kind: 'absent', state: 'no_live_data' } as const;
 		if (value != null) return { kind: 'value', value } as const;
 		if (!family || family.health.state === 'failed-no-data') return { kind: 'failed' } as const;
 		if (!family.health.retained && (family.phase === 'idle' || family.phase === 'loading'))
 			return { kind: 'pending' } as const;
-		return { kind: 'no-data' } as const;
+		return { kind: 'absent', state: 'not_measured' } as const;
 	}
 	const reporting = $derived(
 		reading(pulse?.reporting, live?.familyStates.network, networkAvailable),
@@ -89,8 +89,8 @@
 {#snippet readingValue(entry: ReturnType<typeof reading>)}
 	{#if entry.kind === 'value'}{tally(entry.value, locale)}
 	{:else if entry.kind === 'pending'}<Skeleton class="h-lh w-16 max-w-full" />
-	{:else if entry.kind === 'failed'}<span>{unavailable}</span>
-	{:else}<StateMark state="no_live_data" {locale} />{/if}
+	{:else if entry.kind === 'failed'}<span>{t.unavailable}</span>
+	{:else}<StateMark state={entry.state} {locale} />{/if}
 {/snippet}
 
 <RecordCard title={t.live} {stamp}>
@@ -100,12 +100,12 @@
 		{:else}
 			<RecordAnswer
 				{locale}
-				state={reporting.kind === 'no-data' ? 'no_live_data' : undefined}
+				state={reporting.kind === 'absent' ? reporting.state : undefined}
 				value={reporting.kind === 'value' ? tally(reporting.value, locale) : null}
 				sentence={reporting.kind === 'failed'
 					? unavailable
-					: reporting.kind === 'no-data'
-						? recordState('no_live_data')[locale]
+					: reporting.kind === 'absent'
+						? recordState(reporting.state)[locale]
 						: singularCount(reporting.value, locale)
 							? t.reportingOne
 							: t.reporting}

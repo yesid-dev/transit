@@ -1,5 +1,14 @@
 // Contract fixtures for the Worker-side engine fetches. Fixed dates keep the page
 // independent of the browser clock and distinguish its previous period.
+export const overviewNamedLines =
+	process.env.TRANSIT_E2E_OVERVIEW_NAMED_LINES === '1'
+		? [
+				{ id: '24', short: '24', long: 'Sherbrooke', type: 3 },
+				{ id: '67', short: '67', long: 'Saint-Michel', type: 3 },
+				{ id: '165', short: '165', long: 'Côte-des-Neiges', type: 3 },
+			]
+		: [];
+
 export function overviewEngine(url) {
 	const from = url.searchParams.get('from');
 	const to = url.searchParams.get('to');
@@ -36,7 +45,9 @@ export function overviewEngine(url) {
 	if (url.pathname === '/ranking') {
 		const rows = measured
 			? [0.4, 0.45, 0.5].map((value, index) => ({
-					id: `${kind === 'line' ? 'L' : 'S'}${index + 1}`,
+					id:
+						(city === 'stm' && kind === 'line' && overviewNamedLines[index]?.id) ||
+						`${kind === 'line' ? 'L' : 'S'}${index + 1}`,
 					rank: index + 1,
 					value,
 					sample: 100,

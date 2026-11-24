@@ -37,5 +37,5 @@
 	{comparison}
 	{actions}
 	{meta}
-	size="md"
+	size="lg"
 />

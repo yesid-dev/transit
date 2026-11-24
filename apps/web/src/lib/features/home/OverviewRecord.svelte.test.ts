@@ -22,7 +22,7 @@ const states: RecordState[] = [
 ];
 
 it.each(['unconfigured', 'unreachable', 'timeout', 'busy'] as const)(
-	'shows the French %s connection across every Record reading',
+	'shows the French %s connection once per card',
 	async (kind) => {
 		const failed = Promise.resolve<EngineResult<never>>({ kind });
 		const { container } = render(OverviewRecord, {
@@ -43,8 +43,16 @@ it.each(['unconfigured', 'unreachable', 'timeout', 'busy'] as const)(
 				},
 			},
 		});
-		const expected = kind === 'busy' ? 'Lecture en attente.' : recordConnection[kind].fr;
-		expect(await screen.findAllByText(expected)).toHaveLength(6);
+		if (kind === 'busy') {
+			expect(await screen.findAllByText('Lecture en attente.')).toHaveLength(6);
+		} else {
+			const record = screen.getByRole('article', { name: overviewCopy.fr.record });
+			const rankings = screen.getByRole('article', { name: overviewCopy.fr.rankings });
+			expect(await within(record).findByText(recordConnection[kind].fr)).toBeVisible();
+			expect(await within(rankings).findByText(recordConnection[kind].fr)).toBeVisible();
+			expect(within(record).getAllByText('Indisponible')).toHaveLength(4);
+			expect(within(rankings).getAllByText('Indisponible')).toHaveLength(2);
+		}
 		expect(container.querySelector('[data-record-state="not_measured"]')).toBeNull();
 		expect(container).not.toHaveTextContent(/\b0\s?%/u);
 	},
@@ -104,7 +112,10 @@ for (const locale of ['en', 'fr'] as const) {
 					previous: previousPeriod(period),
 					punctuality: answer(measure()),
 					baseline: answer(measure('too_few_to_judge')),
-					delivery: answer(delivered),
+					delivery: answer({
+						...delivered,
+						evidence: { ...delivered.evidence, share_eligible: 0.9 },
+					}),
 					lines: answer(ranking),
 					stops: answer<RankingAnswer>({
 						...ranking,
@@ -117,8 +128,22 @@ for (const locale of ['en', 'fr'] as const) {
 		});
 		const record = screen.getByRole('article', { name: copy.record });
 		expect(await within(record).findByText(copy.answer)).toBeVisible();
+		expect(record.querySelectorAll('[data-slot="stamp"]')).toHaveLength(1);
+		const total = locale === 'fr' ? /^sur 507.?800 passages aux arrêts$/ : 'of 507,800 stop events';
+		expect(within(record).getByText(total)).toBeVisible();
 		expect(within(record).getByText(recordState('too_few_to_judge')[locale])).toBeVisible();
-		expect(await screen.findByRole('article', { name: copy.about })).toBeVisible();
+		const about = await screen.findByRole('article', { name: copy.about });
+		const observed =
+			locale === 'fr'
+				? /60\s?% des 846.?333 passages prévus aux arrêts/
+				: /60% of 846,333 scheduled stop events/;
+		expect(within(about).getAllByText(observed)).toHaveLength(1);
+		const coverage =
+			locale === 'fr'
+				? /État connu pour 90\s?% des 111 voyages/
+				: /Status known for 90% of 111 scheduled trips/;
+		expect(record).not.toHaveTextContent(coverage);
+		expect(about).toHaveTextContent(coverage);
 		expect(screen.getByRole('link', { name: copy.allRankings })).toHaveAttribute(
 			'href',
 			expect.stringContaining(`/hotspots?provider=${provider}`),

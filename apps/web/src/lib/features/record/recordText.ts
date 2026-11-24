@@ -65,7 +65,15 @@ export function observedCoverage(
 			);
 }
 
-export function coverageText(evidence: RateEvidence, locale: Locale) {
+export function lowCoverageText(locale: Locale) {
+	return lowCoverageLabel[locale];
+}
+
+export function coverageText(
+	evidence: RateEvidence,
+	locale: Locale,
+	frenchTripWord: 'trajets' | 'voyages' = 'trajets',
+) {
 	const {
 		counts,
 		excluded,
@@ -97,7 +105,7 @@ export function coverageText(evidence: RateEvidence, locale: Locale) {
 		coverage = choose(
 			locale,
 			`Status known for ${rate} of ${trips}scheduled trips on lines with live data`,
-			`État connu pour ${rate} des ${trips}trajets prévus sur les lignes avec données en direct`,
+			`État connu pour ${rate} des ${trips}${frenchTripWord} prévus sur les lignes avec données en direct`,
 		);
 	}
 	if (

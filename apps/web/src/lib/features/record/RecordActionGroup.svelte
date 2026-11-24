@@ -23,7 +23,7 @@
 	<div
 		class="flex min-w-0 flex-wrap items-start gap-2"
 		role="group"
-		aria-label={fr ? 'Actions du relevé' : 'Record actions'}
+		aria-label={fr ? 'Actions du bilan' : 'Record actions'}
 	>
 		<CopyAction
 			text={href}

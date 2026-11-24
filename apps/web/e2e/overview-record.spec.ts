@@ -25,7 +25,8 @@ test('Live now keeps placeholders until its first fetch fails', async ({ page })
 		await expect(live.locator('[data-slot="skeleton"]')).toHaveCount(3);
 		await expect(live).not.toContainText('No live data');
 		release();
-		await expect(live.getByText('Live numbers unavailable').first()).toBeVisible();
+		await expect(live.getByText('Live numbers unavailable', { exact: true })).toHaveCount(1);
+		await expect(live.getByText('Unavailable', { exact: true })).toHaveCount(2);
 		await expect(live).not.toContainText('No live data');
 	} finally {
 		release();
@@ -60,6 +61,7 @@ test('a retained Live reading says it is stale and agrees with the French singul
 	await expect(live.getByText(/mis à jour il y a 3 minutes · pas à jour/u)).toBeVisible();
 	await expect(live.getByText('véhicule transmet sa position.')).toBeVisible();
 	await expect(live.getByText('Retard inconnu')).toBeVisible();
+	await expect(live.getByText('Non mesuré', { exact: true })).toBeVisible();
 });
 
 test('a client period change streams the shell before the engine answers', async ({
@@ -122,7 +124,7 @@ for (const width of [390, 1440]) {
 						? 'Réseau de Montréal'
 						: 'Réseau d’Ottawa'
 					: `${city} network`;
-				const record = main.getByRole('article', { name: fr ? 'Relevé' : 'Record', exact: true });
+				const record = main.getByRole('article', { name: fr ? 'Bilan' : 'Record', exact: true });
 				const about = main.getByRole('article', {
 					name: fr ? 'À propos de ces chiffres' : 'About these figures',
 				});

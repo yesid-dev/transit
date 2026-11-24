@@ -11,7 +11,7 @@ import type { DateWindow } from '#lib/v1/history/window.ts';
 
 import {
 	rateStateText,
-	withCoverage,
+	coverageText,
 	percent,
 	recordConnection,
 	tally,
@@ -52,9 +52,9 @@ export function measureText(
 			? `${dates}, ${share} des passages observés aux arrêts étaient à l’heure (${n} sur ${total})`
 			: `${dates}, ${share} of observed stop events were on time (${n} of ${total})`
 		: locale === 'fr'
-			? `${dates}, ${share} des trajets prévus dont le résultat est connu ont été effectués (${n} sur ${total})`
+			? `${dates}, ${share} des voyages prévus dont le résultat est connu ont été effectués (${n} sur ${total})`
 			: `${dates}, ${share} of scheduled trips with a known outcome ran (${n} of ${total})`;
-	return `${withCoverage(reading, answer.evidence, locale)}.`;
+	return `${[reading, coverageText(answer.evidence, locale, 'voyages')].filter(Boolean).join(' · ')}.`;
 }
 
 export function comparisonText(
@@ -70,11 +70,11 @@ export function comparisonText(
 	const change = comparePeriods(now, then);
 	if (!change) return null;
 
-	const magnitude = Math.abs(Math.round(change.points * 100) / 100);
+	const magnitude = Math.round(Math.abs(change.points) * 10) / 10;
 	const points = intl
 		.number(locale, {
 			minimumFractionDigits: 1,
-			maximumFractionDigits: 2,
+			maximumFractionDigits: 1,
 		})
 		.format(magnitude);
 	if (magnitude === 0)

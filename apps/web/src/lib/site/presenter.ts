@@ -184,7 +184,7 @@ export function registryUnitText(text: string, locale: Locale) {
 }
 
 export function recordStamp(period: { from: string; to: string }, locale: Locale) {
-	return `${locale === 'fr' ? 'Relevé' : 'Record'} · ${dateRange(period, locale)}`;
+	return `${locale === 'fr' ? 'Bilan' : 'Record'} · ${dateRange(period, locale)}`;
 }
 
 export function countedUnit(
@@ -196,7 +196,7 @@ export function countedUnit(
 		line: { en: ['line', 'lines'], fr: ['ligne', 'lignes'] },
 		stop: { en: ['stop', 'stops'], fr: ['arrêt', 'arrêts'] },
 		event: { en: ['stop event', 'stop events'], fr: ['passage à un arrêt', 'passages aux arrêts'] },
-		trip: { en: ['trip', 'trips'], fr: ['trajet', 'trajets'] },
+		trip: { en: ['trip', 'trips'], fr: ['voyage', 'voyages'] },
 		day: { en: ['day', 'days'], fr: ['jour', 'jours'] },
 		vehicle: { en: ['vehicle', 'vehicles'], fr: ['véhicule', 'véhicules'] },
 	};
@@ -205,7 +205,11 @@ export function countedUnit(
 }
 
 export function recordRatio(count: number, total: string, locale: Locale) {
-	return `${intl.number(locale).format(count)} ${locale === 'fr' ? 'sur' : 'of'} ${total}`;
+	return `${intl.number(locale).format(count)} ${recordDenominator(total, locale)}`;
+}
+
+export function recordDenominator(total: string, locale: Locale) {
+	return `${locale === 'fr' ? 'sur' : 'of'} ${total}`;
 }
 
 export function singularCount(value: number, locale: Locale) {

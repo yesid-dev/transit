@@ -3,7 +3,14 @@
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { localizeHref } from '#lib/i18n/routing.ts';
 	import { RECORD_START } from '#lib/site/frameState.ts';
-	import { countedUnit, methodEvidence, recordRatio, recordStamp } from '#lib/site/presenter.ts';
+	import {
+		countedUnit,
+		longDate,
+		methodEvidence,
+		recordDenominator,
+		recordRatio,
+		recordStamp,
+	} from '#lib/site/presenter.ts';
 	import type {
 		EngineResult,
 		MeasureAnswer,
@@ -27,6 +34,7 @@
 		recordConnection,
 		timingBasis,
 		coverageText,
+		lowCoverageText,
 	} from '../record/recordText.ts';
 	import { periodDays } from './periodComparison.ts';
 	import OverviewLiveCard from './OverviewLiveCard.svelte';
@@ -39,6 +47,7 @@
 		overviewValue,
 		percent,
 		recordCounts,
+		tally,
 	} from './overviewRecord.ts';
 	import { overviewCopy } from './overviewRecord.copy.ts';
 
@@ -80,6 +89,7 @@
 	const days = $derived(
 		countedUnit(periodDays(record.period.from, record.period.to), 'day', locale),
 	);
+	const rankings = $derived(Promise.all([record.lines, record.stops]));
 
 	function link(path: string, live = false) {
 		const target = new URL(localizeHref(path, locale, provider), href);
@@ -134,7 +144,6 @@
 		value={value == null ? null : percent(value, locale)}
 		sentence={value != null ? t.answer : gap.sentence}
 		state={gap.state}
-		time={stamp}
 		{actions}
 	>
 		{#snippet meta()}{#if gap.detail}<p>{gap.detail}</p>{/if}{/snippet}
@@ -146,7 +155,7 @@
 	{:else}
 		{@const state = overviewState(result, locale)}
 		{#if state.state}<StateMark state={state.state} {locale} />
-		{:else}<p>{state.sentence}</p>{/if}
+		{:else}<p>{t.unavailable}</p>{/if}
 		{#if state.detail}<p class="text-muted-foreground">{state.detail}</p>{/if}
 	{/if}
 {/snippet}
@@ -184,7 +193,7 @@
 		<ScreenTitle
 			title={t.title(city)}
 			subtitle={totals
-				? `${operator}: ${countedUnit(totals.lines, 'line', locale)}, ${countedUnit(totals.stops, 'stop', locale)}`
+				? `${operator}${locale === 'fr' ? '\u00a0' : ''}: ${countedUnit(totals.lines, 'line', locale)}, ${countedUnit(totals.stops, 'stop', locale)}`
 				: undefined}
 		/>
 	{/await}
@@ -212,9 +221,19 @@
 							{#if on_time != null && classified != null}
 								<div class="reading">
 									<dt>{t.onTime}</dt>
-									<dd>{recordRatio(on_time, countedUnit(classified, 'event', locale), locale)}</dd>
+									<dd>
+										<strong>{tally(on_time, locale)}</strong>
+										<span class="block text-muted-foreground"
+											>{recordDenominator(countedUnit(classified, 'event', locale), locale)}</span
+										>
+									</dd>
 								</div>
 							{/if}
+						{:else if current.kind !== 'answer' && current.kind !== 'busy'}
+							<div class="reading">
+								<dt>{t.onTime}</dt>
+								<dd>{t.unavailable}</dd>
+							</div>
 						{/if}
 					{/await}
 					<div class="reading">
@@ -261,9 +280,9 @@
 									{#if ran != null && eligible != null}<span class="block text-muted-foreground"
 											>{recordRatio(ran, countedUnit(eligible, 'trip', locale), locale)}</span
 										>{/if}
-									{#if (delivery.answer.evidence.share_eligible ?? 1) < 1}
+									{#if delivery.answer.evidence.low_coverage}
 										<p class="text-muted-foreground">
-											{coverageText(delivery.answer.evidence, locale)}
+											{coverageText(delivery.answer.evidence, locale, 'voyages')}
 										</p>
 									{/if}
 									{#if delivery.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
@@ -279,7 +298,7 @@
 							{#key record.trend}<RecordPending {locale} answer={record.trend} />{/key}
 						{:then trend}
 							{#if trend.kind === 'busy'}<RecordPending {locale} busy />
-							{:else if trend.kind !== 'answer'}<p>{recordConnection[trend.kind][locale]}</p>
+							{:else if trend.kind !== 'answer'}<p>{t.unavailable}</p>
 							{:else if 'cells' in trend.answer && trend.answer.cells.length}
 								<RecordPunctualityDays title={t.trend} series={trend.answer} {locale} />
 							{:else}
@@ -307,6 +326,12 @@
 
 		<RecordCard title={t.rankings} {stamp}>
 			<p class="mb-3 text-muted-foreground">{t.rankingIntro}</p>
+			{#await rankings then results}
+				{@const failure = results
+					.map(({ kind }) => kind)
+					.find((kind) => kind !== 'answer' && kind !== 'busy')}
+				{#if failure}<p class="mb-3">{recordConnection[failure][locale]}</p>{/if}
+			{/await}
 			<DashboardGrid gutter={false} minTile="18rem">
 				<RecordRanking {locale} kind="line" ranking={record.lines} {link} />
 				<RecordRanking
@@ -330,6 +355,7 @@
 			{@const events = counts?.classified}
 			{@const trips = delivery?.evidence.counts.ran}
 			{@const observed = current?.evidence.share_observed}
+			{@const scheduled = counts?.scheduled ?? counts?.punctuality_scheduled}
 			{@const basis = timingBasis(counts, locale)}
 			<AboutFigures
 				title={t.about}
@@ -338,15 +364,26 @@
 					{
 						key: 'counted',
 						label: t.counted,
-						text: [recordCounts(events, trips, days, locale), basis].filter(Boolean).join(' · '),
+						text: recordCounts(events, trips, days, locale),
 					},
 					{
 						key: 'observed',
 						label: t.observed,
 						text: [
-							observed == null ? null : t.observedShare(percent(observed, locale)),
-							current?.evidence.low_coverage ? coverageText(current.evidence, locale) : null,
+							observed == null
+								? null
+								: t.observedShare(
+										percent(observed, locale),
+										scheduled == null ? undefined : tally(scheduled, locale),
+									),
+							current?.evidence.low_coverage ? lowCoverageText(locale) + '.' : null,
+							basis,
 							current?.coverage_note?.[locale],
+							delivery &&
+							!delivery.evidence.low_coverage &&
+							(delivery.evidence.share_eligible ?? 1) < 1
+								? coverageText(delivery.evidence, locale, 'voyages') + '.'
+								: null,
 						]
 							.filter(Boolean)
 							.join(' '),
@@ -360,7 +397,7 @@
 					{
 						key: 'source',
 						label: t.source,
-						text: `${t.feeds(operator)} ${t.recordStart(dateRange({ from: RECORD_START, to: RECORD_START }, locale))}`,
+						text: `${t.feeds(operator)} ${t.recordStart(locale === 'fr' ? longDate(RECORD_START, locale) : dateRange({ from: RECORD_START, to: RECORD_START }, locale))}`,
 					},
 				]}
 				versionsLink={{ href: link('/metrics'), label: t.method }}

@@ -4,6 +4,7 @@ export const overviewCopy = {
 		intro:
 			'Transit is an independent public record of the transit service delivered, not a trip planner.',
 		record: 'Record',
+		unavailable: 'Unavailable',
 		live: 'Live now',
 		onTime: 'On time',
 		answer: 'of observed stop events were on time.',
@@ -26,8 +27,8 @@ export const overviewCopy = {
 		source: 'Source',
 		feeds: (operator: string) => `GTFS and GTFS-Realtime feeds published by ${operator}.`,
 		recordStart: (date: string) => `The record starts ${date}.`,
-		observedShare: (share: string) =>
-			`${share} of scheduled stop events have a reading. The rest are left out, never counted as on time.`,
+		observedShare: (share: string, scheduled?: string) =>
+			`${share} of ${scheduled ? scheduled + ' ' : ''}scheduled stop events have a reading. The rest are left out, never counted as on time.`,
 		reporting: 'vehicles are reporting now.',
 		reportingOne: 'vehicle is reporting now.',
 		silent: 'Scheduled trips with no vehicle reporting',
@@ -48,14 +49,15 @@ export const overviewCopy = {
 		title: (city: string) =>
 			`Réseau ${/^[aeiouyàâäéèêëîïôöùûüÿœ]/iu.test(city) ? 'd’' : 'de '}${city}`,
 		intro:
-			'Transit est un relevé public indépendant du service de transport collectif assuré. Ce n’est pas un planificateur de trajets.',
-		record: 'Relevé',
+			'Transit est un bilan public et indépendant du service de transport livré, pas un planificateur de trajets.',
+		record: 'Bilan',
+		unavailable: 'Indisponible',
 		live: 'En direct',
 		onTime: 'À l’heure',
 		answer: 'des passages observés aux arrêts étaient à l’heure.',
-		delivery: 'Trajets prévus qui ont été effectués',
+		delivery: 'Voyages prévus effectués',
 		trend: 'Part à l’heure par jour',
-		fullRecord: 'Consulter le relevé complet du réseau',
+		fullRecord: 'Lire le bilan complet du réseau',
 		rankings: 'Lignes et arrêts à examiner',
 		rankingIntro:
 			'Les plus faibles parts à l’heure parmi les lignes et les arrêts qui comptent assez de passages pour conclure.',
@@ -66,17 +68,17 @@ export const overviewCopy = {
 		observed: 'Ce qui est observé',
 		means: 'À l’heure signifie',
 		definition:
-			'Entre 1 minute d’avance et 5 minutes de retard, à chaque arrêt prévu de chaque trajet.',
+			'Entre 1 minute d’avance et 5 minutes de retard, à chaque arrêt prévu de chaque voyage.',
 		versions: 'Versions',
 		method: 'Comment nous mesurons',
 		source: 'Source',
 		feeds: (operator: string) => `Flux GTFS et GTFS-Realtime publiés par ${operator}.`,
-		recordStart: (date: string) => `Le relevé commence le ${date}.`,
-		observedShare: (share: string) =>
-			`${share} des passages prévus aux arrêts ont un relevé. Les autres sont exclus et ne sont jamais comptés comme étant à l’heure.`,
+		recordStart: (date: string) => `Le bilan commence le ${date}.`,
+		observedShare: (share: string, scheduled?: string) =>
+			`${share} des ${scheduled ? scheduled + ' ' : ''}passages prévus aux arrêts ont un relevé. Les autres sont exclus et ne sont jamais comptés comme étant à l’heure.`,
 		reporting: 'véhicules transmettent leur position.',
 		reportingOne: 'véhicule transmet sa position.',
-		silent: 'Trajets prévus sans signal de véhicule',
+		silent: 'Voyages prévus sans véhicule signalé',
 		alerts: 'Avis en vigueur',
 		lateLines: 'Lignes avec le plus de véhicules en retard',
 		openMap: 'Ouvrir la carte en direct',

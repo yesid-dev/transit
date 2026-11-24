@@ -50,6 +50,13 @@ describe('Overview record text', () => {
 		});
 		expect(comparisonText(answer(measure()), answer(baseline), 'en')).toBe('1.2 points higher');
 		expect(comparisonText(answer(measure()), answer(baseline), 'fr')).toBe('1,2 point de plus');
+		const almostSame = {
+			...current,
+			evidence: { ...current.evidence, counts: { ...current.evidence.counts, on_time: 412400 } },
+		};
+		expect(comparisonText(answer(current), answer(almostSame), 'en')).toBe(
+			'About the same (within normal variation)',
+		);
 		expect(comparisonText(answer(measure()), answer(measure('not_measured')), 'fr')).toBeNull();
 		expect(comparisonText(answer(current), answer(current), 'en')).toBe(
 			'About the same (within normal variation)',

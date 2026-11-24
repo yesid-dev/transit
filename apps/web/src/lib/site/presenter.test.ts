@@ -42,7 +42,7 @@ it.each([
 	],
 	[
 		'fr',
-		'Relevé · du 16 au 22 nov. 2026',
+		'Bilan · du 16 au 22 nov. 2026',
 		'1 arrêt',
 		'1 234 sur 2 000 passages aux arrêts',
 		'En direct · mis à jour il y a 20 s',

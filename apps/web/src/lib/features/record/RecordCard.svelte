@@ -38,7 +38,8 @@
 	}
 	h2 {
 		margin: 0;
-		font-size: var(--text-heading);
+		font-size: var(--text-subheading);
+		font-weight: 600;
 	}
 	footer {
 		margin-block-start: auto;
