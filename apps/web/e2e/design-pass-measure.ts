@@ -160,12 +160,12 @@ async function keyboardMetrics(page: Page) {
 					const el = document.activeElement;
 					if (!el || el === document.body || el === document.documentElement) return null;
 					if (el.matches('[data-testid="toc-pill"] > button')) {
-						// Tab can scroll the page. Sample the pill after the browser has
-						// delivered intersections for that scroll to the mounted section tracker.
+						// Tab can scroll the page. Wait for intersection delivery, then
+						// sample on the next frame so the section tracker has rendered.
 						await new Promise<void>((resolve) => {
 							const observer = new IntersectionObserver(() => {
 								observer.disconnect();
-								resolve();
+								requestAnimationFrame(() => resolve());
 							});
 							observer.observe(el);
 						});
