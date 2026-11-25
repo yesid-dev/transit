@@ -570,6 +570,27 @@ const server = createServer((request, response) => {
 				});
 			}
 		}
+		if (
+			kind === 'schedule-index' &&
+			process.env.TRANSIT_E2E_STOP_RECORD_NAMED === '1' &&
+			editionStops.has('S1')
+		) {
+			const stop = editionStops.get('S1');
+			editionStops.set('S1', {
+				...stop,
+				name: city === 'stm' ? 'Édouard-Montpetit / Louis-Colin' : 'Merivale / Viewmount',
+				code: city === 'stm' ? '52847' : '3000',
+				routes: ['24', '80'],
+			});
+			if (!editionRoutes.has('80'))
+				editionRoutes.set('80', {
+					id: '80',
+					short: '80',
+					long: city === 'stm' ? 'Du Parc' : 'Merivale',
+					type: 3,
+				});
+		}
+
 		response.writeHead(200, { 'content-type': 'application/json' }).end(
 			JSON.stringify({
 				schedule: {

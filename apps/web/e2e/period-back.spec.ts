@@ -4,15 +4,20 @@ test.use({ bypassCSP: true });
 
 for (const [path, region] of [
 	['/lines/24', 'Line views'],
-	['/stop/S1', 'Stop views'],
+	['/stop/S1', null],
 ] as const)
 	test(path + ': Back restores the Record view and its selected dates', async ({ page }) => {
 		await page.goto(path + '?provider=stm&recordFrom=2026-11-08&recordTo=2026-11-14');
-		const record = page
-			.getByRole('navigation', { name: region })
-			.getByRole('link', { name: 'Record', exact: true });
-		await expect(record).toHaveAttribute('aria-current', 'page');
-		const headline = page.locator('#punctuality dl');
+		const record = region
+			? page
+					.getByRole('navigation', { name: region })
+					.getByRole('link', { name: 'Record', exact: true })
+			: page.getByRole('main').getByRole('link', { name: 'All stops', exact: true });
+		if (region) await expect(record).toHaveAttribute('aria-current', 'page');
+		else await expect(record).toBeVisible();
+		const headline = page.locator(
+			region ? '#punctuality dl' : '#punctuality [data-slot="answer-lead"]',
+		);
 		await expect(headline).toBeVisible();
 		const reading = await headline.textContent();
 		await page.getByRole('button', { name: 'Open menu', exact: true }).click();
@@ -28,6 +33,7 @@ for (const [path, region] of [
 				url.searchParams.get('recordFrom') === '2026-11-08' &&
 				url.searchParams.get('recordTo') === '2026-11-14',
 		);
-		await expect(record).toHaveAttribute('aria-current', 'page');
+		if (region) await expect(record).toHaveAttribute('aria-current', 'page');
+		else await expect(record).toBeVisible();
 		await expect(headline).toHaveText(reading!);
 	});

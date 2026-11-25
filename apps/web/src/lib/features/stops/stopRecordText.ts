@@ -1,14 +1,20 @@
-import { type Locale } from '#lib/i18n/index.ts';
+import { intl, type Locale } from '#lib/i18n/index.ts';
 import {
 	choose,
 	lastGoodNote,
+	measuredShare,
 	percent,
 	rateStateText,
 	withCoverage,
 	tally,
 } from '#lib/features/record/recordText.ts';
-import { dateRange, methodEvidence } from '#lib/site/presenter.ts';
-import type { RecordAnswer, RecordMeasure } from '#lib/server/engine.ts';
+import { countedUnit, dateRange, methodEvidence, singularCount } from '#lib/site/presenter.ts';
+import type {
+	EngineResult,
+	RecordAnswer,
+	RecordMeasure,
+	RecordSeries,
+} from '#lib/server/engine.ts';
 import type { StopSection } from '#lib/server/stopRecord.ts';
 
 export const stopSectionTitles = {
@@ -21,6 +27,47 @@ export const stopSectionTitles = {
 	accessibility: ['Wheelchair boarding', 'Embarquement en fauteuil roulant'],
 	alerts: ['Alerts for this stop', 'Avis pour cet arrêt'],
 } satisfies Record<StopSection, [string, string]>;
+
+export function stopEvidenceSample(
+	answer: RecordMeasure | RecordSeries,
+	section: StopSection,
+	locale: Locale,
+) {
+	const unit = section === 'waiting' ? 'observed_headways' : 'classified';
+	const counts =
+		'cells' in answer
+			? answer.cells.flatMap(({ evidence }) => evidence.counts[unit] ?? [])
+			: [answer.evidence.counts[unit]].filter((count) => count != null);
+	const total = counts.length ? counts.reduce((sum, count) => sum + count, 0) : null;
+	const trips =
+		'value' in answer
+			? (answer.evidence.trip_ids?.length ?? answer.evidence.counts.observed_trips)
+			: null;
+	const days = answer.evidence.days_included.length;
+	const intervals =
+		total === null
+			? null
+			: choose(
+					locale,
+					`${tally(total, locale)} observed ${singularCount(total, locale) ? 'interval' : 'intervals'}`,
+					`${tally(total, locale)} ${singularCount(total, locale) ? 'intervalle observé' : 'intervalles observés'}`,
+				);
+	return [
+		section === 'waiting'
+			? intervals
+			: section === 'alerts' || total === null
+				? null
+				: countedUnit(total, 'event', locale),
+		section === 'punctuality' || section === 'delay'
+			? trips == null
+				? null
+				: countedUnit(trips, 'trip', locale)
+			: null,
+		days ? countedUnit(days, 'day', locale) : null,
+	]
+		.filter(Boolean)
+		.join(', ');
+}
 
 export function stopAnswer(answer: RecordMeasure, locale: Locale): string {
 	if (answer.state !== 'measured') return rateStateText(answer, locale);
@@ -78,4 +125,36 @@ export function stopCitation(
 	]
 		.filter(Boolean)
 		.join(' ');
+}
+
+export function stopComparison(
+	stop: RecordMeasure,
+	network: EngineResult<RecordAnswer>,
+	locale: Locale,
+) {
+	if (network.kind !== 'answer' || !('value' in network.answer)) return undefined;
+	if (
+		stop.evidence.start_date !== network.answer.evidence.start_date ||
+		stop.evidence.end_date !== network.answer.evidence.end_date
+	)
+		return undefined;
+	const stopShare = measuredShare(stop, 'on_time');
+	const networkShare = measuredShare(network.answer, 'on_time');
+	if (stopShare == null || networkShare == null) return undefined;
+	const difference = Math.round(Math.abs(stopShare - networkShare) * 1000) / 10;
+	const points = intl.number(locale, { maximumFractionDigits: 1 }).format(difference);
+	const baseline = percent(networkShare, locale);
+	if (difference === 0)
+		return choose(
+			locale,
+			`The network was also at ${baseline} over the same dates.`,
+			`Le réseau était aussi à ${baseline} sur les mêmes dates.`,
+		);
+	const relation = stopShare < networkShare ? ['below', 'sous'] : ['above', 'au-dessus de'];
+	const unit = difference === 1 ? 'point' : 'points';
+	return choose(
+		locale,
+		`${points} ${unit} ${relation[0]} the network, which was at ${baseline} over the same dates.`,
+		`${points} ${unit} ${relation[1]} la part du réseau, qui était de ${baseline} sur les mêmes dates.`,
+	);
 }

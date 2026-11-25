@@ -44,4 +44,7 @@
 	footer {
 		margin-block-start: auto;
 	}
+	footer:empty {
+		display: none;
+	}
 </style>

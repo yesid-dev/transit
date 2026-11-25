@@ -5,17 +5,20 @@
 		title,
 		subtitle,
 		plate,
+		stopCode,
 		back,
 	}: {
 		title: string;
 		subtitle?: string;
 		plate?: string;
+		stopCode?: string;
 		back?: { href: string; label: string };
 	} = $props();
 </script>
 
 <header class="flex min-w-0 flex-wrap items-start justify-between gap-3">
-	<hgroup class="min-w-0">
+	<hgroup class="min-w-0" class:inline-plate={stopCode}>
+		{#if stopCode}<span class="stop-code" aria-hidden="true">{stopCode}</span>{/if}
 		<h1 class="flex flex-wrap items-center gap-2 wrap-break-word text-title font-bold">
 			{#if plate}<RoutePlate code={plate} size="lg" />{/if}
 			{title}
@@ -26,6 +29,32 @@
 </header>
 
 <style>
+	.stop-code {
+		padding: 0.2em 0.45em;
+		border: 1px solid var(--foreground);
+		border-radius: var(--radius-sm);
+		color: var(--foreground);
+		font: 700 var(--text-heading)/1.25 var(--font-mono);
+		font-variant-numeric: tabular-nums;
+	}
+	.inline-plate {
+		display: grid;
+		align-items: center;
+		grid-template-columns: auto minmax(0, 1fr);
+		column-gap: 0.75rem;
+	}
+	.inline-plate p {
+		grid-column: 2;
+	}
+	@media (max-width: 35em) {
+		.inline-plate {
+			grid-template-columns: minmax(0, 1fr);
+			justify-items: start;
+		}
+		.inline-plate p {
+			grid-column: 1;
+		}
+	}
 	.record-link {
 		display: inline-flex;
 		align-items: center;

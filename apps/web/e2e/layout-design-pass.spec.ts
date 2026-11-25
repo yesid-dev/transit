@@ -27,7 +27,13 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 		await expect(page.getByRole('main')).toBeVisible();
 		if (screen === 'overview') {
 			await expect(page.locator('[data-slot="record-ranking"] li')).toHaveCount(6);
-			await expect(page.locator('[data-slot="day-strip"]')).toBeVisible();
+			await expect(page.locator('[data-slot="chart-line-series"]')).toBeVisible();
+		}
+		if (screen === 'stop-record') {
+			await expect(page.locator('[data-slot="hour-grid"]')).toBeVisible();
+			await expect(
+				page.locator('#daily [data-slot="chart-line-series"][data-reference]'),
+			).toBeAttached();
 		}
 		if (screen.startsWith('map-')) {
 			// The app exposes the live map and makes the poster inert at this handoff.
@@ -47,7 +53,7 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 		const start = performance.now();
 		// Adopted Overview checks the actual indicator. Existing debt fingerprints count outlines.
 		const { report, focusSequences } = await measureDesignPass(page, {
-			countShadowRings: screen === 'overview',
+			countShadowRings: screen === 'overview' || screen === 'stop-record',
 		});
 		await info.attach('design-pass-measurements', {
 			body: JSON.stringify({
