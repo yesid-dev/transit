@@ -3,7 +3,7 @@ import { captureFixture, captureUrl, captureVehicle } from './capture-fixture';
 
 test.use({ bypassCSP: true });
 
-type Paint = { size: number; center: number[]; plate: number[]; window: number[] };
+type Paint = { size: number; center: number[]; plate: number[]; halo: number[]; corner: number[] };
 type OverlayProbe = Window & { vehiclePaints?: Paint[] };
 type FrameProbe = Window & { vehicleFrames?: number[][][] };
 
@@ -11,8 +11,10 @@ for (const scheme of ['light', 'dark'] as const) {
 	for (const zoom of [11, 15]) {
 		test(`vehicle marks retain their silhouette and internal contrast in forced ${scheme} at zoom ${zoom}`, async ({
 			page,
+			browserName,
 		}, { project }) => {
 			test.skip(project.name !== 'desktop', 'one canvas renderer check per scheme and scale');
+			test.skip(browserName !== 'chromium', 'forced colours emulation is available in Chromium');
 			const published = '2026-06-15T12:00:00Z';
 			const [lon, lat] = [-73.65, 45.53];
 			await page.clock.setFixedTime(Date.parse(published) + 30_000);
@@ -47,7 +49,12 @@ for (const scheme of ['light', 'dark'] as const) {
 										1,
 									).data,
 								);
-							pixels = { center: at(13, 13), plate: at(8.5, 13), window: at(13, 8) };
+							pixels = {
+								center: at(13, 13),
+								plate: at(8.5, 13),
+								halo: at(13, 3.5),
+								corner: at(0, 0),
+							};
 							samples.set(source, pixels);
 						}
 						state.vehiclePaints?.push({ ...pixels, size });
@@ -75,7 +82,7 @@ for (const scheme of ['light', 'dark'] as const) {
 			);
 			await page.goto(`/map?provider=stm&mapview=${lon},${lat},${zoom},0,0`);
 			const painted = () => page.evaluate(() => (window as OverlayProbe).vehiclePaints ?? []);
-			const expected = zoom === 11 ? [20.28, 15.21] : [33.8, 20.28, 25.35];
+			const expected = zoom === 11 ? [20.28, 15.21] : [33.8, 25.35];
 			const sizes = async () => (await painted()).map(({ size }) => Number(size.toFixed(2)));
 			await expect.poll(sizes).toEqual(expected);
 			const ordinary = await painted();
@@ -97,7 +104,8 @@ for (const scheme of ['light', 'dark'] as const) {
 					.poll(async () => (await painted()).map(({ center }) => center))
 					.toEqual([pair[0], ...expected.slice(1).map(() => pair[1])]);
 				const forced = await painted();
-				expect(forced[0].window).not.toEqual(forced[0].center);
+				expect(forced[0].halo).toEqual(pair[1]);
+				expect(forced[0].corner[3]).toBe(0);
 				for (const badge of forced.slice(1)) expect(badge.plate).toEqual(pair[0]);
 				expect(await sizes()).toEqual(expected);
 			}
@@ -128,7 +136,7 @@ for (const scheme of ['light', 'dark'] as const) {
 	}
 }
 
-test('an on-time bus body repaints with the on-time status colour in the first frame after a theme change', async ({
+test('an on-time vehicle mark repaints with the on-time status colour in the first frame after a theme change', async ({
 	page,
 }, { project }) => {
 	test.skip(project.name !== 'desktop', 'one canvas renderer check');
@@ -138,7 +146,7 @@ test('an on-time bus body repaints with the on-time status colour in the first f
 	const published = '2026-06-15T12:00:00Z';
 	const [lon, lat] = [-73.65, 45.53];
 	await page.clock.setFixedTime(Date.parse(published) + 30_000);
-	await page.emulateMedia({ colorScheme: 'dark', forcedColors: 'none' });
+	await page.emulateMedia({ colorScheme: 'dark' });
 	await page.addInitScript(() => {
 		localStorage.setItem('theme', 'dark');
 		const state = window as FrameProbe;

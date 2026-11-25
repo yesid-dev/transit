@@ -14,12 +14,20 @@ for (const [scheme, forcedColors] of [
 ] as const) {
 	test(`vehicle bodies render without status badges at zoom 12 (${scheme}, forced colours ${forcedColors})`, async ({
 		page,
+		browserName,
 	}, { project }) => {
 		test.skip(project.name !== 'desktop', 'one canvas renderer check per scheme');
+		test.skip(
+			forcedColors === 'active' && browserName !== 'chromium',
+			'forced colours emulation is available in Chromium',
+		);
 		const published = '2026-06-15T12:00:00Z';
 		const [lon, lat] = [-73.65, 45.53];
 		await page.clock.setFixedTime(Date.parse(published) + 30_000);
-		await page.emulateMedia({ colorScheme: scheme, forcedColors });
+		await page.emulateMedia({
+			colorScheme: scheme,
+			forcedColors: forcedColors === 'active' ? forcedColors : undefined,
+		});
 		await page.addInitScript((theme) => {
 			localStorage.setItem('theme', theme);
 			const state = window as DrawProbe;

@@ -59,7 +59,7 @@
 			fallbackLabel={fr ? 'Lien vers cette vue' : 'Link to this view'}
 		/>
 		{#if createDownload}
-			<Button onclick={download} variant="outline" size="sm" class="min-h-11"
+			<Button onclick={download} variant="outline" size="cta-sm" class="min-h-11"
 				>{fr ? 'Télécharger' : 'Download'}</Button
 			>
 		{:else if files.length}

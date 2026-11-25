@@ -104,7 +104,27 @@ const fleet = (overrides: { generated_utc?: string; extraLate?: boolean } = {}) 
 	],
 });
 
-test.use({ bypassCSP: true, permissions: ['clipboard-read', 'clipboard-write'] });
+test.use({ bypassCSP: true });
+
+test.beforeEach(async ({ context, page, browserName }) => {
+	if (browserName === 'chromium') {
+		await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+		return;
+	}
+	// WebKit does not expose Playwright's clipboard permission override.
+	await page.addInitScript(() => {
+		Object.defineProperty(navigator, 'clipboard', {
+			value: {
+				async writeText(text: string) {
+					sessionStorage.setItem('map-test:clipboard', text);
+				},
+				async readText() {
+					return sessionStorage.getItem('map-test:clipboard') ?? '';
+				},
+			},
+		});
+	});
+});
 
 type FleetFile = {
 	generated_utc: string;
