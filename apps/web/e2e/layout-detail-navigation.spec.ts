@@ -39,8 +39,11 @@ for (const provider of ['stm', 'octranspo'])
 					await vehicle.click();
 					await expect(panel).toHaveAttribute('data-selection-kind', 'vehicle');
 					await expect(panel.locator('[data-slot="detail-identity"]')).toContainText('layout-bus');
-					await link.scrollIntoViewIfNeeded();
-					await expect(link).toBeInViewport({ ratio: 1 });
+					// The sheet moves focus onto the selection as it mounts.
+					await expect(async () => {
+						await link.scrollIntoViewIfNeeded();
+						await expect(link).toBeInViewport({ ratio: 1, timeout: 1000 });
+					}).toPass({ timeout: 5000 });
 				};
 				await openSelection();
 				await expect(link).toHaveAttribute('href', /\/vehicle\/layout-bus/);
