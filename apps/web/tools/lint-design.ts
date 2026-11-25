@@ -1,6 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import dividerAllowlist from './record-divider-allowlist.json';
+import { pageDrawnDividers } from './record-divider-gate';
 import {
 	brandHexViolations,
 	datavizViolations,
@@ -19,6 +21,27 @@ import {
 
 const src = fileURLToPath(new URL('../src', import.meta.url));
 const failures: string[] = [];
+
+const pendingDividers = new Map<string, Record<string, number>>(Object.entries(dividerAllowlist));
+for (const directory of ['lib/features', 'lib/components', 'routes']) {
+	for (const file of walk(join(src, directory), ['.svelte', '.css'])) {
+		const path = relative(src, file).split(sep).join('/');
+		const allowed = pendingDividers.get(path) ?? {};
+		const counts: Record<string, number> = {};
+		for (const { line, token } of pageDrawnDividers(readFileSync(file, 'utf8'))) {
+			counts[token] = (counts[token] ?? 0) + 1;
+			if (counts[token] > (allowed[token] ?? 0)) {
+				failures.push(`Use a kit divider in ${path}:${line} (${token})`);
+			}
+		}
+		for (const [token, count] of Object.entries(allowed)) {
+			if ((counts[token] ?? 0) < count)
+				failures.push(`Shrink divider allowlist for ${path} (${token})`);
+		}
+		pendingDividers.delete(path);
+	}
+}
+for (const path of pendingDividers.keys()) failures.push(`Stale divider allowlist for ${path}`);
 
 const brand = brandHexViolations({ root: src, hexes: TRANSIT_BRAND_HEXES });
 if (brand.fileCount === 0) failures.push(`No source files scanned: ${src}`);

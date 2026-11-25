@@ -113,7 +113,12 @@ export async function textDefects(page: Page) {
 		while ((node = walker.nextNode())) {
 			const el = node.parentElement as HTMLElement;
 			const text = node.textContent?.trim();
-			if (!text || !el || el.closest('script,style,[data-allow-clip]')) continue;
+			if (
+				!text ||
+				!el ||
+				el.closest('script,style,[data-allow-clip],[data-slot="collapsible-content"][inert]')
+			)
+				continue;
 			// Blueprint drawing annotations are decorative and intentionally bleed past the frame.
 			// This allowance is limited to the aria-hidden drawing layer, never rider content.
 			if (
@@ -133,12 +138,21 @@ export async function textDefects(page: Page) {
 			const textRange = document.createRange();
 			textRange.selectNodeContents(node);
 			const textRects = [...textRange.getClientRects()];
+			let scrollableInline = false;
+			const recordSection = Boolean(el.closest('[data-record-screen]'));
 			for (let p: HTMLElement | null = el; p && p !== document.body; p = p.parentElement) {
 				const css = getComputedStyle(p);
 				// A nested scroller makes offscreen text reachable. Its enclosing
 				// viewport does not clip that text permanently.
 				if (/auto|scroll/.test(css.overflowY) && p.scrollHeight > p.clientHeight + 1) break;
-				const x = p.scrollWidth > p.clientWidth + 1,
+				if (
+					recordSection &&
+					p.scrollWidth > p.clientWidth + 1 &&
+					/auto|scroll/.test(css.overflowX)
+				) {
+					scrollableInline = true;
+				}
+				const x = !scrollableInline && p.scrollWidth > p.clientWidth + 1,
 					y = p.scrollHeight > p.clientHeight + 1;
 				if (css.textOverflow === 'ellipsis' && (x || (y && Number(css.webkitLineClamp) > 0))) {
 					if (!readable(p, p.textContent?.trim() ?? full))

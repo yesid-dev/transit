@@ -126,9 +126,17 @@ export async function contentOrder(page: Page) {
 		);
 		const first = main.querySelector(answer);
 		const content = main.querySelector('[data-slot="screen-content"]');
+		const firstContent = (element: Element) =>
+			[...element.children].find(
+				(child) => !child.matches('[data-slot="page-section-boundary"], [data-screen-intro]'),
+			);
+		const firstChild = content && firstContent(content);
+		const firstReading = firstChild?.hasAttribute('data-page-section-edges')
+			? firstContent(firstChild)
+			: firstChild;
 		return {
 			titles: headings.length,
-			answerFirst: !!first && first.checkVisibility() && content?.firstElementChild === first,
+			answerFirst: !!first && first.checkVisibility() && firstReading === first,
 		};
 	}, answer);
 }

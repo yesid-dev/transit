@@ -1,4 +1,5 @@
 import { expect } from '@playwright/test';
+import { join } from 'node:path';
 import AxeBuilder from '@axe-core/playwright';
 import { test } from './layout-test';
 import { stmLiveAlertFixtures } from './alert-fixture.mjs';
@@ -8,12 +9,33 @@ import {
 	captureVehicle,
 	refreshAlertsCapture,
 } from './capture-fixture';
-import { designPassCases } from './design-pass-cases';
+import { designPassCases, type Screen } from './design-pass-cases';
 import { recordMapFixture } from './map-record-fixture';
 import { measureDesignPass, setWidth } from './design-pass-measure';
 import { expectDesignPass } from './design-pass-debt';
 
 const time = Date.parse('2026-11-23T16:00:00Z');
+const unobstructedCapture = '[data-slot="app-frame-chrome"] { visibility: hidden !important; }';
+const cohesionScreens = new Set<Screen>([
+	'overview',
+	'overview-live',
+	'line-record',
+	'line-live',
+	'stop-record',
+	'vehicle-record',
+	'vehicle-live',
+	'departure',
+	'daily',
+	'network-health',
+	'network-health-live',
+	'data-health',
+	'data-health-live',
+	'how-we-measure',
+	'download',
+	'search',
+	'search-query',
+	'roadmap',
+]);
 
 for (const { screen, provider, locale, key, href } of designPassCases) {
 	test(`${screen} ${provider} ${locale} @layout`, async ({ page }, info) => {
@@ -102,6 +124,43 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 			await expect(
 				page.locator('[data-slot="screen-answer"] [data-slot="answer-lead"]'),
 			).toBeVisible();
+		if (
+			screen === 'roadmap' ||
+			screen === 'privacy' ||
+			screen === 'terms' ||
+			screen === 'accessibility'
+		) {
+			await expect(
+				page.locator('[data-slot="surface-rail"], [data-slot="surface-rail-mobile"]'),
+			).toHaveCount(0);
+		}
+		if (cohesionScreens.has(screen)) {
+			const layout = page.locator('main [data-record-screen]');
+			await expect.soft(layout).toHaveCount(1);
+			const groups = layout.locator('[data-page-section-edges]');
+			const boundaries = layout.locator('[data-slot="page-section-boundary"]');
+			await expect.soft(boundaries).toHaveCount((await groups.count()) - 1);
+			await expect.soft(groups.last()).toHaveCSS('padding-bottom', '0px');
+			expect
+				.soft(
+					await layout
+						.locator('[data-page-section-edges], [data-slot="page-section-boundary"]')
+						.last()
+						.getAttribute('data-slot'),
+				)
+				.toBe('page-section');
+			await expect.soft(layout.locator('table .hand-drawn-line')).toHaveCount(0);
+			const plainControlCards = await layout
+				.locator(
+					'[data-slot="card"]:not([data-interactive]):has(a[href], button, input, select, summary)',
+				)
+				.evaluateAll((cards) =>
+					cards.map((card) => card.querySelector('h2,h3')?.textContent?.trim()),
+				);
+			expect
+				.soft(plainControlCards, 'Cards with an action require the kit interactive treatment')
+				.toEqual([]);
+		}
 		// Adopted Overview checks the actual indicator. Existing debt fingerprints count outlines.
 		const { report, focusSequences } = await measureDesignPass(page, {
 			countShadowRings:
@@ -134,29 +193,33 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 			'i',
 		);
 		await expect(page.getByRole('main')).not.toContainText(machineUnits);
-		expectDesignPass(screen, key, report);
 		if (
 			alerts ||
-			redesignedDetail ||
-			screen === 'download' ||
-			screen === 'roadmap' ||
-			screen.startsWith('search')
+			cohesionScreens.has(screen) ||
+			screen === 'privacy' ||
+			screen === 'terms' ||
+			screen === 'accessibility'
 		) {
 			for (const theme of ['light', 'dark'] as const) {
+				const evidence = process.env.TRANSIT_COHESION_EVIDENCE;
+				const capture =
+					evidence &&
+					provider === 'stm' &&
+					(locale === 'en' || screen.startsWith('overview') || screen.startsWith('line-'));
+				const width = (locale === 'en') === (theme === 'light') ? 1440 : 390;
+				if (capture) await setWidth(page, width);
 				await page.evaluate((theme) => localStorage.setItem('theme', theme), theme);
 				await page.reload();
+				await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 				if (liveAlerts) {
 					await refreshAlertsCapture(page);
 					await expect(page.locator('#alerts-log [data-slot="show-more"]')).toBeVisible();
 				}
-				const answer = page.locator(
-					screen.startsWith('search')
-						? '[data-slot="screen-state"]'
-						: '[data-slot="screen-answer"]',
-				);
-				await expect(
-					alerts ? answer.or(page.locator('[data-slot="screen-state"]')).first() : answer,
-				).toBeVisible();
+				if (alerts) {
+					await expect(
+						page.locator('[data-slot="screen-answer"], [data-slot="screen-state"]').first(),
+					).toBeVisible();
+				}
 				if (screen === 'search-query') {
 					await expect(
 						page
@@ -164,6 +227,20 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 							.getByRole('link', { name: /Sherbrooke/ })
 							.first(),
 					).toBeVisible();
+				}
+				if (capture) {
+					const heading = page.getByRole('main').getByRole('heading', { level: 1 });
+					await expect(heading).toBeVisible();
+					await page.screenshot({
+						path: join(evidence, `${screen}-${locale}-${width}-${theme}.png`),
+						fullPage: true,
+					});
+					if (screen === 'overview' && locale === 'en') {
+						await page.locator('[data-slot="footer"]').screenshot({
+							path: join(evidence, `footer-${width}.png`),
+							style: unobstructedCapture,
+						});
+					}
 				}
 				const { violations } = await new AxeBuilder({ page })
 					.withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
@@ -174,5 +251,42 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 				).toEqual([]);
 			}
 		}
+		expectDesignPass(screen, key, report);
 	});
 }
+
+test('Overview card edge responds to hover and keyboard focus', async ({ page }) => {
+	const overview = designPassCases.find(({ key }) => key === 'overview/stm/en')!;
+	await page.emulateMedia({ reducedMotion: 'no-preference' });
+	await page.goto(overview.href);
+	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+	const link = page.getByRole('link', { name: 'Read the full record of the network' });
+	const card = link.locator('xpath=ancestor::*[@data-slot="card"][1]');
+	await expect(card).toHaveAttribute('data-interactive', 'true');
+	const evidence = process.env.TRANSIT_COHESION_EVIDENCE;
+
+	await link.hover();
+	await expect(card).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 0, -1)');
+	if (evidence)
+		await card.screenshot({ path: join(evidence, 'card-hover.png'), style: unobstructedCapture });
+
+	await page.mouse.move(0, 0);
+	await page.keyboard.press('Tab');
+	await link.focus();
+	await expect(link).toBeFocused();
+	expect(await link.evaluate((element) => element.matches(':focus-visible'))).toBe(true);
+	await expect(card).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 0, -1)');
+	if (evidence)
+		await card.screenshot({
+			path: join(evidence, 'card-keyboard-focus.png'),
+			style: unobstructedCapture,
+		});
+
+	const menu = page.getByTestId('nav-menu-toggle');
+	await page.evaluate(() => window.scrollTo(0, 0));
+	await menu.click();
+	await expect(menu).toHaveAttribute('aria-expanded', 'true');
+	if (evidence) await page.screenshot({ path: join(evidence, 'menu-open-1440.png') });
+	await page.keyboard.press('Escape');
+	await expect(menu).toBeFocused();
+});
