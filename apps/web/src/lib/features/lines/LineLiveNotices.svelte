@@ -2,13 +2,12 @@
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { feedState, type CaptureSnapshot } from '#lib/live/captureSnapshot.ts';
 	import {
-		agencyMessageDates,
-		agencyMessageHeading,
-		dateAndClock,
-		liveStampAge,
-	} from '#lib/site/presenter.ts';
-	import { alertDisplayText } from '#lib/v1/alertDisplay.ts';
-	import { effectLabel } from '#lib/v1/gtfsAlertLabels.ts';
+		agencyMessage,
+		agencyMessagePeriods,
+		sortAgencyMessages,
+	} from '#lib/site/agencyMessages.ts';
+	import { liveStampAge } from '#lib/site/presenter.ts';
+	import { alertEffect, liveAlertCards } from '../alerts/alertCards.ts';
 	import { choose } from '../record/recordText.ts';
 	import RecordCard from '../record/RecordCard.svelte';
 	import { captureFamily } from './lineLiveReadings.ts';
@@ -43,47 +42,14 @@
 	);
 	const notices = $derived(
 		ready
-			? (snapshot?.alerts
-					?.flatMap((alert) => {
-						if (!alert.routes.includes(line)) return [];
-						const active = alert.periods.find(
-							([start, end]) =>
-								(!start || Date.parse(start) <= now) && (!end || now < Date.parse(end)),
-						);
-						if (alert.periods.length && !active) return [];
-						const message = alertDisplayText(
-							{
-								description: alert.description.fr,
-								description_en: alert.description.en,
-								header_text: alert.header.fr,
-								header_text_en: alert.header.en,
-								message: { description_language: 'fr', header_language: 'fr' },
-							},
-							locale,
-						);
-						const language = message.lang ?? locale;
-						const { title } = agencyMessageHeading(
-							{
-								header: { en: null, fr: null },
-								description: { en: null, fr: null, [language]: message.text },
-							},
-							locale,
-						);
-						const [start, end] = active ?? [];
-						return [
-							{
-								id: alert.id,
-								lang: message.lang,
-								title,
-								body: message.text.slice(title.length).trim(),
-								effect: effectLabel(alert.effect, locale),
-								start,
-								end,
-								dates: start && end ? agencyMessageDates([{ start, end }], locale, timeZone) : null,
-							},
-						];
-					})
-					.slice(0, 4) ?? [])
+			? sortAgencyMessages(
+					liveAlertCards(
+						snapshot?.alerts?.filter((alert) => alert.routes.includes(line)) ?? [],
+						now,
+					),
+					locale,
+					(id) => id,
+				).slice(0, 4)
 			: [],
 	);
 </script>
@@ -106,30 +72,18 @@
 	{:else if notices.length}
 		<ul class="grid gap-4">
 			{#each notices as notice (notice.id)}
+				{@const { title, body } = agencyMessage(notice, locale)}
+				{@const dates = agencyMessagePeriods(notice.periods, locale, timeZone, true)}
 				<li class="grid gap-1">
-					<h3 class="font-semibold" lang={notice.lang ?? undefined}>{notice.title}</h3>
-					{#if notice.effect || notice.start || notice.end}
+					<h3 class="font-semibold" lang={title.lang}>{title.text}</h3>
+					{#if notice.effect || dates.length}
 						<p class="text-small text-muted-foreground">
-							{[
-								notice.effect,
-								notice.dates ||
-									(notice.start &&
-										t(
-											`Since ${dateAndClock(notice.start, locale, timeZone)}`,
-											`Depuis le ${dateAndClock(notice.start, locale, timeZone)}`,
-										)),
-								!notice.dates &&
-									notice.end &&
-									t(
-										`Until ${dateAndClock(notice.end, locale, timeZone)}`,
-										`Jusqu’au ${dateAndClock(notice.end, locale, timeZone)}`,
-									),
-							]
+							{[notice.effect ? alertEffect(notice.effect, locale) + '.' : '', ...dates]
 								.filter(Boolean)
-								.join(' · ')}
+								.join(' ')}
 						</p>
 					{/if}
-					{#if notice.body}<p lang={notice.lang ?? undefined}>{notice.body}</p>{/if}
+					{#if body}<p class="whitespace-pre-line" lang={body.lang}>{body.text}</p>{/if}
 				</li>
 			{/each}
 		</ul>

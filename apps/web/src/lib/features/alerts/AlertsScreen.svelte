@@ -167,7 +167,7 @@
 {#snippet evidenceFooter(evidence?: RecordEvidence, count?: number | null)}
 	{#if evidence || count != null}
 		<div
-			class="flex w-full flex-wrap justify-between gap-2 border-t border-border pt-2 font-mono text-small text-muted-foreground"
+			class="flex w-full flex-wrap justify-between gap-2 font-mono text-small text-muted-foreground"
 		>
 			{#if count != null}<span>{labelCount(count)}</span>{/if}
 			{#if evidence}<span>{methodEvidence(evidence, locale, true)}</span>{/if}
@@ -191,7 +191,7 @@
 			{:else}
 				<dl class="effect-grid grid gap-3">
 					{#each rows as row, index (index)}
-						<div class="min-w-0 border-t border-border pt-2">
+						<div class="min-w-0">
 							<dt class="wrap-break-word text-small text-muted-foreground">
 								{alertEffect(row.key, locale)}
 							</dt>
@@ -211,9 +211,7 @@
 		{:else}
 			<dl class="line-grid grid gap-x-6 lg:grid-cols-2">
 				{#each sortAlertLineCut(rows, locale, display.line).slice(0, lineLimit) as row, index (index)}
-					<div
-						class="line-reading flex min-w-0 items-center justify-between gap-3 border-b border-border"
-					>
+					<div class="line-reading flex min-w-0 items-center justify-between gap-3">
 						<dt class="min-w-0">
 							{#if row.key}
 								<a
@@ -273,25 +271,72 @@
 
 {#snippet recordCut(group: 'effect' | 'line')}
 	{@const promise = section(group)}
-	<div id={group} class="scroll-mt-24">
-		<RecordCard title={alertSections[group][locale]} {stamp}>
-			{#await promise}
+	{#snippet cutCard(result?: EngineResult<EngineAnswer>)}
+		{@const reading =
+			result?.kind === 'answer' &&
+			'cells' in result.answer &&
+			(result.answer.cells.length || result.answer.state === 'measured')
+				? result.answer
+				: null}
+		{@const rows = reading ? recordAlertCut(reading, group) : []}
+		<RecordCard
+			title={alertSections[group][locale]}
+			{stamp}
+			edge="brand"
+			interactive={group === 'line' &&
+				(rows.length > linePageSize || rows.some(({ key }) => Boolean(key)))}
+		>
+			{#if reading}
+				{@render cutRows(rows, group)}
+				{@render evidenceFooter(reading.evidence, rows.length === 1 ? rows[0].value : undefined)}
+				{#if result?.kind === 'answer' && result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
+			{:else if result}
+				{@render resultState(result)}
+			{:else if promise}
 				{#key promise}<RecordPending {locale} answer={promise} />{/key}
-			{:then result}
-				{#if result?.kind === 'answer' && 'cells' in result.answer && (result.answer.cells.length || result.answer.state === 'measured')}
-					{@const rows = recordAlertCut(result.answer, group)}
-					{@render cutRows(rows, group)}
-					{@render evidenceFooter(
-						result.answer.evidence,
-						rows.length === 1 ? rows[0].value : undefined,
-					)}
-					{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-				{:else if result}
-					{@render resultState(result)}
-				{/if}
-			{/await}
+			{/if}
 		</RecordCard>
+	{/snippet}
+	<div id={group} class="scroll-mt-24">
+		{#await promise}{@render cutCard()}{:then result}{@render cutCard(result)}{/await}
 	</div>
+{/snippet}
+
+{#snippet archiveCard(result?: EngineResult<EngineAnswer>)}
+	{@const reading =
+		result?.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured'
+			? result.answer
+			: null}
+	<RecordCard
+		title={t('Archive for these dates', 'Archives pour ces dates')}
+		{stamp}
+		edge="brand"
+		interactive={Boolean(reading?.evidence.alert_messages?.length)}
+	>
+		{#if reading}
+			{#if reading.evidence.alert_messages?.length || reading.value.alerts === 0}
+				{#key messages}
+					<AlertList
+						cards={recordAlertCards(reading.evidence.alert_messages)}
+						{locale}
+						city={data.city}
+						timeZone={data.timeZone}
+						live={false}
+					/>
+				{/key}
+			{:else}
+				<p>{t('Message text is unavailable.', 'Le texte des avis est indisponible.')}</p>
+			{/if}
+			{@render evidenceFooter(reading.evidence, reading.value.alerts)}
+			{#if result?.kind === 'answer' && result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
+		{:else if result}
+			{@render resultState(result)}
+		{:else if messages}
+			{#key messages}<RecordPending {locale} answer={messages} />{/key}
+		{:else}
+			<p>{alertDetailsLimit[locale]}</p>
+		{/if}
+	</RecordCard>
 {/snippet}
 
 {#snippet recordAbout(result: RecordMeasure)}
@@ -307,6 +352,8 @@
 		<span id="day"></span><span id="hour"></span><span id="stop"></span><span id="cause"></span>
 		<AboutFigures
 			title={t('About these figures', 'À propos de ces chiffres')}
+			edge="brand"
+			interactive
 			compact
 			fields={[
 				{
@@ -362,7 +409,7 @@
 
 <Surface>
 	<article class="grid min-w-0 grid-cols-1 gap-4">
-		<div class="border-b border-border pb-3">
+		<div class="pb-3">
 			<ScreenTitle {title} {subtitle} />
 		</div>
 		<div class="grid min-w-0 grid-cols-1 gap-2 sm:gap-4" data-slot="screen-content">
@@ -429,13 +476,18 @@
 								</RecordAnswer>
 							</div>
 							<div id="alerts-breakdown">
-								<RecordCard title={alertSections.effect[locale]} stamp={liveStamp}>
+								<RecordCard title={alertSections.effect[locale]} stamp={liveStamp} edge="brand">
 									{@render cutRows(liveAlertCut(liveCards, 'effect'), 'effect')}
 									{@render evidenceFooter(undefined, liveCards.length)}
 								</RecordCard>
 							</div>
 							<div id="alerts-log" class="scroll-mt-24">
-								<RecordCard title={t('In effect now', 'En vigueur maintenant')} stamp={liveStamp}>
+								<RecordCard
+									title={t('In effect now', 'En vigueur maintenant')}
+									stamp={liveStamp}
+									edge="brand"
+									interactive={liveCards.length > 0}
+								>
 									<AlertList
 										cards={liveCards}
 										{locale}
@@ -446,7 +498,12 @@
 									{@render evidenceFooter(undefined, liveCards.length)}
 								</RecordCard>
 							</div>
-							<RecordCard title={alertSections.line[locale]} stamp={liveStamp}>
+							<RecordCard
+								title={alertSections.line[locale]}
+								stamp={liveStamp}
+								edge="brand"
+								interactive={liveCards.some(({ routes }) => routes.length > 0)}
+							>
 								{@render cutRows(liveAlertCut(liveCards, 'line'), 'line')}
 								{@render evidenceFooter(
 									undefined,
@@ -458,6 +515,8 @@
 						{/if}
 						<AboutLiveFigures
 							{locale}
+							edge="brand"
+							interactive
 							operator={data.operator}
 							healthLink={localizeHref('/status', locale, data.city)}
 							captureAge={vehiclesAt ? Math.max(0, (now - Date.parse(vehiclesAt)) / 1000) : null}
@@ -493,37 +552,9 @@
 				</div>
 				{@render recordCut('effect')}
 				<div id="messages" class="min-w-0 scroll-mt-24">
-					<RecordCard title={t('Archive for these dates', 'Archives pour ces dates')} {stamp}>
-						{#if messages}
-							{#await messages}
-								{#key messages}<RecordPending {locale} answer={messages} />{/key}
-							{:then result}
-								{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured'}
-									{#if result.answer.evidence.alert_messages?.length || result.answer.value.alerts === 0}
-										{#key messages}
-											<AlertList
-												cards={recordAlertCards(result.answer.evidence.alert_messages)}
-												{locale}
-												city={data.city}
-												timeZone={data.timeZone}
-												live={false}
-											/>
-										{/key}
-									{:else}
-										<p>
-											{t('Message text is unavailable.', 'Le texte des avis est indisponible.')}
-										</p>
-									{/if}
-									{@render evidenceFooter(result.answer.evidence, result.answer.value.alerts)}
-									{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-								{:else}
-									{@render resultState(result)}
-								{/if}
-							{/await}
-						{:else}
-							<p>{alertDetailsLimit[locale]}</p>
-						{/if}
-					</RecordCard>
+					{#await messages}{@render archiveCard()}{:then result}{@render archiveCard(
+							result,
+						)}{/await}
 				</div>
 				{@render recordCut('line')}
 				{#await answer then result}

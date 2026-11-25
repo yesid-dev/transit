@@ -69,6 +69,22 @@ for (const locale of PUBLISHED_LOCALES) {
 				json: captureFixture(at, {
 					vehicle_positions: vehicles,
 					non_responding_by_route: [{ route_id: '9003', count: 2 }],
+					alerts: [
+						{
+							id: 'shared-line-notice',
+							header: { en: 'Your line', fr: 'Votre ligne' },
+							description: { fr: 'Détour près du terminus. Suivez la signalisation temporaire.' },
+							url: {},
+							cause: null,
+							effect: null,
+							severity: null,
+							routes: ['9003'],
+							stops: [],
+							periods: [
+								[new Date(at - 3_600_000).toISOString(), new Date(at + 3_600_000).toISOString()],
+							],
+						},
+					],
 				}),
 			});
 		});
@@ -99,6 +115,15 @@ for (const locale of PUBLISHED_LOCALES) {
 			await refresh;
 		}
 		await refreshLive();
+		const notices = page.getByRole('article', { name: fr ? 'Avis de l’agence' : 'Agency notices' });
+		await expect(
+			notices.getByRole('heading', { name: 'Détour près du terminus.' }),
+		).toHaveAttribute('lang', 'fr');
+		await expect(notices).toContainText(fr ? /Depuis le .*Jusqu’au / : /Since .*Until /);
+		await expect(notices.getByText('Suivez la signalisation temporaire.')).toHaveAttribute(
+			'lang',
+			'fr',
+		);
 		const vehicleSection = page.locator('#line-detail-live');
 		const roster = vehicleSection.getByRole('table');
 		await expect(roster.locator('tbody tr')).toHaveCount(13);

@@ -8,6 +8,8 @@
 		versionsLink,
 		compact = false,
 		compactPrint = false,
+		edge,
+		interactive,
 	}: {
 		title: string;
 		fields: readonly {
@@ -18,11 +20,13 @@
 		}[];
 		compact?: boolean;
 		compactPrint?: boolean;
+		edge?: 'brand' | 'neutral';
+		interactive?: boolean;
 		versionsLink?: { href: string; label: string };
 	} = $props();
 </script>
 
-<RecordCard {title} {compactPrint}>
+<RecordCard {title} {compactPrint} {edge} {interactive}>
 	<DashboardGrid
 		gutter={false}
 		minTile="17rem"

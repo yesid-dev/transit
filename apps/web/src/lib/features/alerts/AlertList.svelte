@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import { RoutePlate } from '@yesid/ui/brand';
 	import { Button } from '@yesid/ui/button';
+	import { Card } from '@yesid/ui/card';
 	import { ShowMore } from '@yesid/ui/table';
 	import { tick } from 'svelte';
 	import { SvelteURL } from 'svelte/reactivity';
@@ -127,63 +128,68 @@
 	{@const { title, body } = agencyMessage(card, locale)}
 	{@const source = agencyMessageLink(card, locale)}
 	{@const periods = agencyMessagePeriods(card.periods, locale, timeZone, live)}
-	<li
-		id={anchorId}
-		tabindex="-1"
-		class="min-w-0 scroll-mt-24 border-b border-border py-1 last:border-b-0 sm:py-2"
-	>
-		<div class="flex flex-wrap items-center gap-x-3" class:single-plate={card.routes.length === 1}>
-			{#if card.routes.length}
-				<div class="flex min-w-0 flex-wrap items-center gap-x-1">
-					{#each [...new Set(card.routes)] as route (route)}
-						<a
-							class="inline-flex min-h-11 min-w-11 items-center justify-center"
-							href={localizeHref(`/lines/${encodeURIComponent(route)}`, locale, city)}
-						>
-							<RoutePlate code={display.line(route)} />
-							<span class="sr-only"> {display.lineName(route).label}</span>
-						</a>
-					{/each}
-				</div>
-			{/if}
-			<h3 class="min-w-0 wrap-break-word font-semibold" lang={title.lang}>
-				{title.text}
-			</h3>
-		</div>
-		<div class="flex flex-wrap items-center gap-x-3 text-small text-muted-foreground">
-			{#if card.effect}
-				<p>{alertEffect(card.effect, locale)}.</p>
-			{/if}
-			{#if periods.length}<p>{periods.join(live ? ' ' : ' · ')}</p>{/if}
-			{#if card.stops.length}
-				<div class="flex flex-wrap items-center gap-x-1">
-					<span>{t('Stops', 'Arrêts')}</span>
-					{#each [...new Set(card.stops)] as stop (stop)}
-						<a
-							class="inline-flex min-h-11 min-w-11 items-center justify-center text-primary underline"
-							href={localizeHref(`/stop/${encodeURIComponent(stop)}`, locale, city)}
-						>
-							<span class="rounded-sm border border-current px-1 font-mono">{stop}</span>
-						</a>
-					{/each}
-				</div>
-			{/if}
-		</div>
-		{#if body}<p
-				class="mt-1 max-w-[var(--measure-body)] wrap-break-word whitespace-pre-line"
-				lang={body.lang}
+	<li id={anchorId} tabindex="-1" class="min-w-0 scroll-mt-24">
+		<Card
+			textSize="inherit"
+			interactive={Boolean(card.routes.length || card.stops.length || source)}
+			class="min-w-0 gap-0 px-1 py-0.5 sm:px-2 sm:py-2"
+		>
+			<div
+				class="flex flex-wrap items-center gap-x-3"
+				class:single-plate={card.routes.length === 1}
 			>
-				{body.text}
-			</p>{/if}
-		{#if source}
-			<a
-				class="inline-flex min-h-11 items-center text-primary underline"
-				href={source.href}
-				hreflang={source.lang}
-			>
-				{t('Agency notice', 'Avis de l’agence')}
-			</a>
-		{/if}
+				{#if card.routes.length}
+					<div class="flex min-w-0 flex-wrap items-center gap-x-1">
+						{#each [...new Set(card.routes)] as route (route)}
+							<a
+								class="inline-flex min-h-11 min-w-11 items-center justify-center"
+								href={localizeHref(`/lines/${encodeURIComponent(route)}`, locale, city)}
+							>
+								<RoutePlate code={display.line(route)} />
+								<span class="sr-only"> {display.lineName(route).label}</span>
+							</a>
+						{/each}
+					</div>
+				{/if}
+				<h3 class="min-w-0 wrap-break-word font-semibold" lang={title.lang}>
+					{title.text}
+				</h3>
+			</div>
+			<div class="flex flex-wrap items-center gap-x-3 text-small text-muted-foreground">
+				{#if card.effect}
+					<p>{alertEffect(card.effect, locale)}.</p>
+				{/if}
+				{#if periods.length}<p>{periods.join(live ? ' ' : ' · ')}</p>{/if}
+				{#if card.stops.length}
+					<div class="flex flex-wrap items-center gap-x-1">
+						<span>{t('Stops', 'Arrêts')}</span>
+						{#each [...new Set(card.stops)] as stop (stop)}
+							<a
+								class="inline-flex min-h-11 min-w-11 items-center justify-center text-primary underline"
+								href={localizeHref(`/stop/${encodeURIComponent(stop)}`, locale, city)}
+							>
+								<span class="rounded-sm border border-current px-1 font-mono">{stop}</span>
+							</a>
+						{/each}
+					</div>
+				{/if}
+			</div>
+			{#if body}<p
+					class="mt-1 max-w-[var(--measure-body)] wrap-break-word whitespace-pre-line"
+					lang={body.lang}
+				>
+					{body.text}
+				</p>{/if}
+			{#if source}
+				<a
+					class="inline-flex min-h-11 items-center text-primary underline"
+					href={source.href}
+					hreflang={source.lang}
+				>
+					{t('Agency notice', 'Avis de l’agence')}
+				</a>
+			{/if}
+		</Card>
 	</li>
 {/snippet}
 
@@ -239,7 +245,7 @@
 		</ul>
 	{/if}
 	{#if ordered.length}
-		<ul bind:this={list} class="alert-list mt-2">
+		<ul bind:this={list} class="alert-list mt-2 grid gap-1">
 			{#each ordered.slice(0, shown) as card, index (card.key)}
 				{@render item(
 					card,

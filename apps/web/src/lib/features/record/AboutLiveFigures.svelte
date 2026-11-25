@@ -13,6 +13,8 @@
 		statusLabel,
 		definition,
 		captureText,
+		edge,
+		interactive,
 	}: {
 		locale: Locale;
 		operator?: string;
@@ -22,12 +24,16 @@
 		statusLabel?: string;
 		definition?: string;
 		captureText?: string;
+		edge?: 'brand' | 'neutral';
+		interactive?: boolean;
 	} = $props();
 	const t = $derived(overviewCopy[locale]);
 </script>
 
 <AboutFigures
 	title={t.aboutLive}
+	{edge}
+	{interactive}
 	fields={[
 		{ key: 'shows', label: t.liveShows, text: scope ?? t.liveScope },
 		{ key: 'means', label: statusLabel ?? t.liveStatus, text: definition ?? t.liveDefinition },
