@@ -4,15 +4,19 @@ import { expect, test } from '@playwright/test';
 import { localizeHref } from '../src/lib/i18n/routing';
 import { transitTerms } from '../src/lib/i18n/transitTerms.copy';
 
-function terminalPanelChunk(): string {
-	const chunks = new URL('../.svelte-kit/cloudflare/_app/immutable/chunks/', import.meta.url);
-	const match = readdirSync(chunks).find((name) => {
-		if (!name.endsWith('.js')) return false;
-		const source = readFileSync(new URL(name, chunks), 'utf8');
-		return source.includes('terminal-titlebar-main') && source.includes('terminal-footer-label');
-	});
-	if (!match) throw new Error('Missing compiled TerminalPanel asset for the Line replay test');
-	return match;
+function terminalPanelAsset(): string {
+	const immutable = new URL('../.svelte-kit/cloudflare/_app/immutable/', import.meta.url);
+	// The bundler can inline the widget in its route node when no other route uses it.
+	for (const folder of ['chunks', 'nodes']) {
+		const directory = new URL(folder + '/', immutable);
+		const match = readdirSync(directory).find((name) => {
+			if (!name.endsWith('.js')) return false;
+			const source = readFileSync(new URL(name, directory), 'utf8');
+			return source.includes('terminal-titlebar-main') && source.includes('terminal-footer-label');
+		});
+		if (match) return folder + '/' + match;
+	}
+	throw new Error('Missing compiled TerminalPanel asset for the Line replay test');
 }
 
 test.use({ bypassCSP: true });
@@ -77,7 +81,7 @@ for (const { provider, locale, width } of cases) {
 
 			if (provider === 'octranspo' && locale === 'en' && width === 320) {
 				// A method/health widget must not gate hydration of a copied Line Record link.
-				await page.route(`**/_app/immutable/chunks/${terminalPanelChunk()}`, (route) =>
+				await page.route(`**/_app/immutable/${terminalPanelAsset()}`, (route) =>
 					route.abort('failed'),
 				);
 			}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { StateNotice } from '@yesid/ui/feedback';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { captureFamily, feedState, type CaptureSnapshot } from '#lib/live/captureSnapshot.ts';
 	import {
@@ -60,6 +61,14 @@
 	);
 </script>
 
+{#snippet empty(message: string)}
+	{#if scope.kind === 'stop'}
+		<StateNotice title={message} presentation="row" role="status" />
+	{:else}
+		<p>{message}</p>
+	{/if}
+{/snippet}
+
 <RecordCard
 	interactive={tracked}
 	title={scope.kind === 'stop'
@@ -68,19 +77,19 @@
 	{stamp}
 >
 	{#if !tracked}
-		<p>
-			{t(
+		{@render empty(
+			t(
 				'Agency notices are not tracked in this city.',
 				'Les avis de l’agence ne sont pas suivis dans cette ville.',
-			)}
-		</p>
+			),
+		)}
 	{:else if !ready}
-		<p>
-			{t(
+		{@render empty(
+			t(
 				'Live agency notices are temporarily unavailable.',
 				'Les avis de l’agence en direct sont temporairement indisponibles.',
-			)}
-		</p>
+			),
+		)}
 	{:else if notices.length}
 		<ul class="grid gap-4">
 			{#each notices as notice (notice.id)}
@@ -100,8 +109,8 @@
 			{/each}
 		</ul>
 	{:else}
-		<p>
-			{scope.kind === 'stop' && operator
+		{@render empty(
+			scope.kind === 'stop' && operator
 				? t(
 						`${operator} has no notice in effect for this stop.`,
 						`${operator} n’a aucun avis en vigueur pour cet arrêt.`,
@@ -109,8 +118,8 @@
 				: t(
 						'No agency notices in effect for this line.',
 						'Aucun avis de l’agence en vigueur pour cette ligne.',
-					)}
-		</p>
+					),
+		)}
 	{/if}
 	{#snippet links()}
 		{#if tracked}
