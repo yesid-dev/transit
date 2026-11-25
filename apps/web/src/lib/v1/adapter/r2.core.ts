@@ -28,10 +28,8 @@ export const R2_DEFAULTS = {
 	},
 	historic: {
 		history_index: 'historic/history/index.json',
-		alerts_index: 'historic/alerts/index.json',
 		hotspots: 'historic/hotspots.json',
 		repeat_offenders: 'historic/repeat_offenders.json',
-		alert_history: 'historic/alert_history.json',
 		receipts_index: 'historic/receipts/index.json',
 		route_reliability_prefix: 'historic/route_reliability/',
 		route_reliability_index: 'historic/route_reliability/index.json',

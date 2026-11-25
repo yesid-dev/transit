@@ -126,7 +126,6 @@ export const TRANSIT_FORBIDDEN: ForbiddenPattern[] = [
 export const TRANSIT_STYLE_EXEMPTIONS = {
 	everyPattern: ['dataviz/chart/marks/'],
 	proseMeasure: [
-		'src/lib/features/alerts/sections/AlertLog.svelte',
 		'src/lib/features/map/MapMotionControl.svelte',
 		'src/lib/features/map/MapSelectionDetail.svelte',
 	],

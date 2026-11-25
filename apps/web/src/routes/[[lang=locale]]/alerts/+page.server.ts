@@ -5,19 +5,22 @@ import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
 	const { providerId, lang, provider } = await event.parent();
-	const { mode, period } = parseAnswerFrameState(event.url.searchParams, frameClock(provider));
-	if (mode === 'live') return { alertRecord: null };
+	const clock = frameClock(provider);
+	const { mode, period } = parseAnswerFrameState(event.url.searchParams, clock);
 	const tracked = providerHasAlerts(provider);
 	return {
 		alertRecord: {
+			mode,
 			period,
+			downloadPeriod: period ?? parseAnswerFrameState(new URLSearchParams(), clock).period,
 			tracked,
 			officialAlertsUrl: provider?.alert_links[lang],
 			city: providerId,
 			timeZone: provider?.timezone,
 			cityName: provider?.labels[lang].city ?? providerId,
+			operator: provider?.labels[lang].operator,
 			sections:
-				tracked && period
+				mode === 'record' && tracked && period
 					? loadAlertRecord({
 							...period,
 							city: providerId,

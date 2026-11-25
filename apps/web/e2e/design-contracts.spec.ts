@@ -74,8 +74,9 @@ for (const locale of PUBLISHED_LOCALES) {
 			'/repeat-offenders',
 		]) {
 			await page.goto(localizeHref(path, locale));
-			const surface =
-				path === '/hotspots' || path === '/repeat-offenders'
+			const surface = path.startsWith('/alerts')
+				? '[data-slot="screen-content"]'
+				: path === '/hotspots' || path === '/repeat-offenders'
 					? '#ranking'
 					: path === '/receipt'
 						? 'article.daily-report'

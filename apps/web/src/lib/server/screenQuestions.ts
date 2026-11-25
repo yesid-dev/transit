@@ -35,7 +35,7 @@ const sections = {
 } as const;
 
 type AlertSection = keyof typeof sections;
-const sectionIds = Object.keys(sections) as AlertSection[];
+const alertScreenSections = ['answer', 'effect', 'line', 'messages'] as const;
 
 export function alertQuery(section: string): RecordQuery | null {
 	if (!Object.hasOwn(sections, section)) return null;
@@ -46,7 +46,7 @@ export function alertQuery(section: string): RecordQuery | null {
 }
 
 export function alertQuestions(period: DateWindow) {
-	return sectionIds
+	return alertScreenSections
 		.filter((section) => section !== 'messages' || alertDetailsAllowed(period))
 		.map((section) => ({ section, query: alertQuery(section)! }));
 }

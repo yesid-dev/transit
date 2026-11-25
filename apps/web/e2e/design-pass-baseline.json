@@ -1,2887 +1,2675 @@
 {
-	"productCommit": "423305cc26a445a16a892d0657c572dcc4a769ce",
-	"measurementHead": "72248db0ff63c81be55abfc2fc8db6a20ce150e9",
-	"measurementSource": "b653275167e42a3fcbb620f4929d3617d1d955fc",
-	"measurementRun": "45328757640",
-	"screens": {
-		"lines/stm/en": {
-			"content": {
-				"titles": 1,
-				"answerFirst": false
-			},
-			"widths": {
-				"320": {
-					"height": 4907,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 44,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"390": {
-					"height": 4660,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 44,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"768": {
-					"height": 3090,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 45,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1024": {
-					"height": 2283,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 52,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 1877,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 56,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			},
-			"keyboard": {
-				"390": {
-					"stops": 43,
-					"order": "0a47b736502a1348",
-					"withoutRing": 0,
-					"outOfOrder": 0,
-					"beforeFigure": 1
-				},
-				"1440": {
-					"stops": 49,
-					"order": "52f40d427b308991",
-					"withoutRing": 1,
-					"outOfOrder": 0,
-					"beforeFigure": 1
-				}
-			},
-			"zoom": {
-				"390": {
-					"height": 12460,
-					"overflow": 0,
-					"edges": 69,
-					"edgeCount": 9,
-					"targets": 44,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 14,
-					"brokenWords": 0,
-					"textDefects": [
-						"clipped [data-slot=\"card\"] 15% (15/100) · 40% of 250 scheduled stops observed · Low coverage",
-						"clipped [data-slot=\"card\"] 30% (30/100) · 40% of 250 scheduled stops observed · Low coverage",
-						"clipped [data-slot=\"card\"] 65% (65/100) · 40% of 250 scheduled stops observed · Low coverage. Observed times: 40% vehicle reported stopped, 60% last prediction before the vehicle passed. Most times come from predictions.",
-						"clipped [data-slot=\"card\"] 80% (80/100) · 40% of 250 scheduled stops observed · Low coverage. Observed times: 40% vehicle reported stopped, 60% last prediction before the vehicle passed. Most times come from predictions.",
-						"clipped [data-slot=\"card\"] 90 of 105 · Status known for 95.2% of 105 scheduled trips on lines with live data",
-						"clipped [data-slot=\"card\"] 9001 · Seven decimal days",
-						"clipped [data-slot=\"card\"] 9002 · Long stop names and a month of history",
-						"clipped [data-slot=\"card\"] 9003 · Long destinations and live reports",
-						"clipped [data-slot=\"card\"] CSV",
-						"clipped [data-slot=\"card\"] Classified stop events",
-						"clipped [data-slot=\"card\"] Line performance",
-						"clipped [data-slot=\"card\"] Too few to judge",
-						"clipped [data-slot=\"card\"] Transit. Line performance. 8 to 14 Nov 2026. On-time share. Method v1, cleaning v8. Trips run of scheduled. Method v1, cleaning v8. http://127.0.0.1:4317/lines?provider=stm&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14#line-performance",
-						"clipped [data-slot=\"card\"] Trips run of scheduled"
-					]
-				},
-				"1440": {
-					"height": 4967,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 45,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			}
-		},
-		"stops/stm/en": {
-			"content": {
-				"titles": 1,
-				"answerFirst": false
-			},
-			"widths": {
-				"320": {
-					"height": 7089,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 59,
-					"shortTargets": 20,
-					"targetDeficit": 400,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"390": {
-					"height": 5724,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 59,
-					"shortTargets": 20,
-					"targetDeficit": 400,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"768": {
-					"height": 4656,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 60,
-					"shortTargets": 20,
-					"targetDeficit": 400,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1024": {
-					"height": 2784,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 66,
-					"shortTargets": 1,
-					"targetDeficit": 20,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 2477,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 70,
-					"shortTargets": 2,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			},
-			"keyboard": {
-				"390": {
-					"stops": 56,
-					"order": "632815e7436b80fa",
-					"withoutRing": 0,
-					"outOfOrder": 0,
-					"beforeFigure": 4
-				},
-				"1440": {
-					"stops": 63,
-					"order": "b40085faff2dc19b",
-					"withoutRing": 1,
-					"outOfOrder": 1,
-					"beforeFigure": 5
-				}
-			},
-			"zoom": {
-				"390": {
-					"height": 16076,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 59,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 5572,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 59,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			}
-		},
-		"stop-live/stm/en": {
-			"content": {
-				"titles": 1,
-				"answerFirst": false
-			},
-			"widths": {
-				"320": {
-					"height": 3378,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 44,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"390": {
-					"height": 3087,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 44,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"768": {
-					"height": 2407,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 45,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1024": {
-					"height": 2134,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 50,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 2064,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 54,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			},
-			"keyboard": {
-				"390": {
-					"stops": 43,
-					"order": "c95f3e0ea64ebccf",
-					"withoutRing": 1,
-					"outOfOrder": 0,
-					"beforeFigure": 0
-				},
-				"1440": {
-					"stops": 51,
-					"order": "bf8b1632f26520f2",
-					"withoutRing": 2,
-					"outOfOrder": 0,
-					"beforeFigure": 0
-				}
-			},
-			"zoom": {
-				"390": {
-					"height": 8020,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 44,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 7,
-					"textDefects": [
-						"broken-word #s15-summary > span:nth-child(1) changes",
-						"broken-word #s15-summary > span:nth-child(1) reports",
-						"broken-word #s16-summary > span:nth-child(1) agency",
-						"broken-word #s17-summary > span:nth-child(1) Where",
-						"broken-word #s17-summary > span:nth-child(1) service",
-						"broken-word [data-slot=\"collapsible-trigger\"] > span:nth-child(2) Predictions",
-						"broken-word [data-slot=\"collapsible-trigger\"] > span:nth-child(2) information"
-					]
-				},
-				"1440": {
-					"height": 3793,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 48,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			}
-		},
-		"vehicles/stm/en": {
-			"content": {
-				"titles": 1,
-				"answerFirst": false
-			},
-			"widths": {
-				"320": {
-					"height": 2303,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 37,
-					"shortTargets": 2,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"390": {
-					"height": 2247,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 37,
-					"shortTargets": 2,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"768": {
-					"height": 1522,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 38,
-					"shortTargets": 2,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1024": {
-					"height": 1031,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 47,
-					"shortTargets": 2,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 1029,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 51,
-					"shortTargets": 2,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			},
-			"keyboard": {
-				"390": {
-					"stops": 36,
-					"order": "ca7b7aea888649d0",
-					"withoutRing": 0,
-					"outOfOrder": 0,
-					"beforeFigure": 3
-				},
-				"1440": {
-					"stops": 43,
-					"order": "8a7e0ba09dad0012",
-					"withoutRing": 1,
-					"outOfOrder": 0,
-					"beforeFigure": 3
-				}
-			},
-			"zoom": {
-				"390": {
-					"height": 4871,
-					"overflow": 0,
-					"edges": 211,
-					"edgeCount": 10,
-					"targets": 37,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 5,
-					"brokenWords": 0,
-					"textDefects": [
-						"clipped [data-slot=\"card\"] 1 day included.\n\t\t\t\t\t\t\tMethod v1, cleaning v8.",
-						"clipped [data-slot=\"card\"] CSV",
-						"clipped [data-slot=\"card\"] Days in service by vehicle",
-						"clipped [data-slot=\"card\"] Find by vehicle number",
-						"clipped [data-slot=\"card\"] Transit. Vehicles. Days in service by vehicle. 8 to 14 Nov 2026. Method v1, cleaning v8. http://127.0.0.1:4317/vehicles?provider=stm&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14#fleet"
-					]
-				},
-				"1440": {
-					"height": 2316,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 38,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			}
-		},
-		"vehicles-live/stm/en": {
-			"content": {
-				"titles": 1,
-				"answerFirst": false
-			},
-			"widths": {
-				"320": {
-					"height": 2148,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 33,
-					"shortTargets": 2,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"390": {
-					"height": 2116,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 33,
-					"shortTargets": 2,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"768": {
-					"height": 1369,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 34,
-					"shortTargets": 2,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1024": {
-					"height": 901,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 36,
-					"shortTargets": 2,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 901,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 40,
-					"shortTargets": 2,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			},
-			"keyboard": {
-				"390": {
-					"stops": 32,
-					"order": "5a339a3c205f8ba2",
-					"withoutRing": 0,
-					"outOfOrder": 0,
-					"beforeFigure": 3
-				},
-				"1440": {
-					"stops": 37,
-					"order": "91a2835ce7ca95f8",
-					"withoutRing": 1,
-					"outOfOrder": 0,
-					"beforeFigure": 3
-				}
-			},
-			"zoom": {
-				"390": {
-					"height": 3780,
-					"overflow": 0,
-					"edges": 211,
-					"edgeCount": 6,
-					"targets": 33,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 4,
-					"brokenWords": 0,
-					"textDefects": [
-						"clipped [data-slot=\"card\"] 1 vehicles reporting on a trip",
-						"clipped [data-slot=\"card\"] 24 · Sherbrooke",
-						"clipped [data-slot=\"card\"] Find by vehicle number",
-						"clipped [data-slot=\"card\"] Vehicles in service now"
-					]
-				},
-				"1440": {
-					"height": 1763,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 34,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			}
-		},
-		"hotspots/stm/en": {
-			"content": {
-				"titles": 1,
-				"answerFirst": false
-			},
-			"widths": {
-				"320": {
-					"height": 3378,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 40,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"390": {
-					"height": 3082,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 40,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"768": {
-					"height": 2061,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 41,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1024": {
-					"height": 1624,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 48,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 1478,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 52,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			},
-			"keyboard": {
-				"390": {
-					"stops": 36,
-					"order": "4b017f400a587dfe",
-					"withoutRing": 0,
-					"outOfOrder": 0,
-					"beforeFigure": 0
-				},
-				"1440": {
-					"stops": 42,
-					"order": "05d2eb6fd58ad7eb",
-					"withoutRing": 1,
-					"outOfOrder": 0,
-					"beforeFigure": 0
-				}
-			},
-			"zoom": {
-				"390": {
-					"height": 10828,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 41,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 8,
-					"textDefects": [
-						"broken-word #ranking > ol:nth-child(10) > li:nth-child(1) > div:nth-child(2) > a:nth-child(1) Sherbrooke",
-						"broken-word #ranking > ol:nth-child(10) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) coverage",
-						"broken-word #ranking > ol:nth-child(10) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) events",
-						"broken-word #ranking > ol:nth-child(10) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) observed",
-						"broken-word #ranking > ol:nth-child(10) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) scheduled",
-						"broken-word #ranking > ol:nth-child(10) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) stop",
-						"broken-word #ranking > ol:nth-child(10) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) stops",
-						"broken-word #ranking > ol:nth-child(10) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(3) > dt:nth-child(1) Range"
-					]
-				},
-				"1440": {
-					"height": 3620,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 42,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			}
-		},
-		"rankings/stm/en": {
-			"content": {
-				"titles": 1,
-				"answerFirst": false
-			},
-			"widths": {
-				"320": {
-					"height": 3292,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 39,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"390": {
-					"height": 2996,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 39,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"768": {
-					"height": 1970,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 40,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1024": {
-					"height": 1540,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 47,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 1394,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 51,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			},
-			"keyboard": {
-				"390": {
-					"stops": 35,
-					"order": "47b3afffd219897f",
-					"withoutRing": 0,
-					"outOfOrder": 0,
-					"beforeFigure": 0
-				},
-				"1440": {
-					"stops": 41,
-					"order": "3e205a1a995b3b8e",
-					"withoutRing": 1,
-					"outOfOrder": 0,
-					"beforeFigure": 0
-				}
-			},
-			"zoom": {
-				"390": {
-					"height": 10856,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 40,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 8,
-					"textDefects": [
-						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > div:nth-child(2) > a:nth-child(1) Sherbrooke",
-						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) coverage",
-						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) events",
-						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) observed",
-						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) scheduled",
-						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) stop",
-						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) stops",
-						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(3) > dt:nth-child(1) Range"
-					]
-				},
-				"1440": {
-					"height": 3500,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 41,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			}
-		},
-		"alerts/stm/en": {
-			"content": {
-				"titles": 1,
-				"answerFirst": false
-			},
-			"widths": {
-				"320": {
-					"height": 5747,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 53,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"390": {
-					"height": 5589,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 53,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"768": {
-					"height": 4247,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 54,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1024": {
-					"height": 3353,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 63,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 3234,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 67,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			},
-			"keyboard": {
-				"390": {
-					"stops": 52,
-					"order": "d0d56907be857cb8",
-					"withoutRing": 0,
-					"outOfOrder": 0,
-					"beforeFigure": 3
-				},
-				"1440": {
-					"stops": 59,
-					"order": "a7865a0851f8ba9b",
-					"withoutRing": 1,
-					"outOfOrder": 0,
-					"beforeFigure": 3
-				}
-			},
-			"zoom": {
-				"390": {
-					"height": 23290,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 53,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 9318,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 54,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			}
-		},
-		"map-live/stm/en": {
-			"content": {
-				"titles": 2,
-				"answerFirst": false
-			},
-			"widths": {
-				"320": {
-					"height": 844,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 21,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"390": {
-					"height": 844,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 21,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"768": {
-					"height": 900,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 22,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1024": {
-					"height": 900,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 45,
-					"shortTargets": 2,
-					"targetDeficit": 74,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 900,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 49,
-					"shortTargets": 2,
-					"targetDeficit": 74,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			},
-			"keyboard": {
-				"390": {
-					"stops": 16,
-					"order": "bd3425f340a121b8",
-					"withoutRing": 1,
-					"outOfOrder": 2,
-					"beforeFigure": 0
-				},
-				"1440": {
-					"stops": 42,
-					"order": "39fe607c6c145bad",
-					"withoutRing": 3,
-					"outOfOrder": 8,
-					"beforeFigure": 0
-				}
-			},
-			"zoom": {
-				"390": {
-					"height": 844,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 21,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 900,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 43,
-					"shortTargets": 2,
-					"targetDeficit": 118,
-					"clipped": 1,
-					"brokenWords": 0,
-					"textDefects": ["clipped [data-slot=\"button\"] Out-of-service vehicles"]
-				}
-			}
-		},
-		"map-record-stops/stm/en": {
-			"content": {
-				"titles": 2,
-				"answerFirst": false
-			},
-			"widths": {
-				"320": {
-					"height": 844,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 16,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"390": {
-					"height": 844,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 16,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"768": {
-					"height": 900,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 17,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1024": {
-					"height": 900,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 26,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 900,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 30,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			},
-			"keyboard": {
-				"390": {
-					"stops": 12,
-					"order": "49f2779611a32fcb",
-					"withoutRing": 1,
-					"outOfOrder": 1,
-					"beforeFigure": 0
-				},
-				"1440": {
-					"stops": 19,
-					"order": "d123d9f480b2fbb3",
-					"withoutRing": 2,
-					"outOfOrder": 1,
-					"beforeFigure": 0
-				}
-			},
-			"zoom": {
-				"390": {
-					"height": 844,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 16,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 2,
-					"textDefects": [
-						"broken-word [data-slot=\"record-map-legend\"] > ul:nth-child(2) > li:nth-child(1) Under",
-						"broken-word [data-slot=\"record-map-legend\"] > ul:nth-child(2) > li:nth-child(4) more"
-					]
-				},
-				"1440": {
-					"height": 900,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 17,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			}
-		},
-		"map-record-corridors/stm/en": {
-			"content": {
-				"titles": 2,
-				"answerFirst": false
-			},
-			"widths": {
-				"320": {
-					"height": 844,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 18,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"390": {
-					"height": 844,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 18,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"768": {
-					"height": 900,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 19,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1024": {
-					"height": 900,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 28,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 900,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 32,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			},
-			"keyboard": {
-				"390": {
-					"stops": 14,
-					"order": "f1b859b6f24c9f99",
-					"withoutRing": 1,
-					"outOfOrder": 1,
-					"beforeFigure": 0
-				},
-				"1440": {
-					"stops": 21,
-					"order": "353c4023bc33d910",
-					"withoutRing": 2,
-					"outOfOrder": 1,
-					"beforeFigure": 0
-				}
-			},
-			"zoom": {
-				"390": {
-					"height": 844,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 18,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 1,
-					"textDefects": [
-						"broken-word [data-slot=\"record-map-legend\"] > ul:nth-child(3) > li:nth-child(4) more"
-					]
-				},
-				"1440": {
-					"height": 900,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 19,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			}
-		},
-		"privacy/stm/en": {
-			"content": {
-				"titles": 1,
-				"answerFirst": false
-			},
-			"widths": {
-				"320": {
-					"height": 15454,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 37,
-					"shortTargets": 4,
-					"targetDeficit": 48,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"390": {
-					"height": 12985,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 37,
-					"shortTargets": 5,
-					"targetDeficit": 60,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"768": {
-					"height": 8894,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 38,
-					"shortTargets": 8,
-					"targetDeficit": 96,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1024": {
-					"height": 9324,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 47,
-					"shortTargets": 8,
-					"targetDeficit": 80,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 9336,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 51,
-					"shortTargets": 8,
-					"targetDeficit": 80,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			},
-			"keyboard": {
-				"390": {
-					"stops": 36,
-					"order": "0dd77ab99544da82",
-					"withoutRing": 0,
-					"outOfOrder": 0,
-					"beforeFigure": 0
-				},
-				"1440": {
-					"stops": 43,
-					"order": "5ca4b8652b4d72f3",
-					"withoutRing": 1,
-					"outOfOrder": 0,
-					"beforeFigure": 0
-				}
-			},
-			"zoom": {
-				"390": {
-					"height": 53443,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 37,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 6,
-					"textDefects": [
-						"broken-word #main-flow > article:nth-child(1) > div:nth-child(2) > section:nth-child(1) > p:nth-child(3) dev",
-						"broken-word #main-flow > article:nth-child(1) > div:nth-child(2) > section:nth-child(2) > p:nth-child(5) dev",
-						"broken-word #main-flow > article:nth-child(1) > div:nth-child(2) > section:nth-child(2) > p:nth-child(6) cloudflareinsights",
-						"broken-word #main-flow > article:nth-child(1) > div:nth-child(2) > section:nth-child(5) > p:nth-child(2) cloudflareinsights",
-						"broken-word #main-flow > article:nth-child(1) > div:nth-child(2) > section:nth-child(8) > p:nth-child(3) dev",
-						"broken-word #main-flow > article:nth-child(1) > div:nth-child(2) > section:nth-child(9) > p:nth-child(3) dev"
-					]
-				},
-				"1440": {
-					"height": 17820,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 38,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			}
-		},
-		"terms/stm/en": {
-			"content": {
-				"titles": 1,
-				"answerFirst": false
-			},
-			"widths": {
-				"320": {
-					"height": 6929,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 34,
-					"shortTargets": 4,
-					"targetDeficit": 48,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"390": {
-					"height": 6189,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 34,
-					"shortTargets": 4,
-					"targetDeficit": 48,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"768": {
-					"height": 4423,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 35,
-					"shortTargets": 5,
-					"targetDeficit": 60,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1024": {
-					"height": 4206,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 44,
-					"shortTargets": 5,
-					"targetDeficit": 50,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 4218,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 48,
-					"shortTargets": 5,
-					"targetDeficit": 50,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			},
-			"keyboard": {
-				"390": {
-					"stops": 33,
-					"order": "5d74c4a6a1adf6c3",
-					"withoutRing": 0,
-					"outOfOrder": 0,
-					"beforeFigure": 0
-				},
-				"1440": {
-					"stops": 40,
-					"order": "e7593ff6deaf9327",
-					"withoutRing": 1,
-					"outOfOrder": 0,
-					"beforeFigure": 0
-				}
-			},
-			"zoom": {
-				"390": {
-					"height": 21853,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 34,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 1,
-					"textDefects": [
-						"broken-word #main-flow > article:nth-child(1) > div:nth-child(2) > section:nth-child(7) > p:nth-child(4) dev"
-					]
-				},
-				"1440": {
-					"height": 8187,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 35,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			}
-		},
-		"accessibility/stm/en": {
-			"content": {
-				"titles": 1,
-				"answerFirst": false
-			},
-			"widths": {
-				"320": {
-					"height": 3860,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 30,
-					"shortTargets": 1,
-					"targetDeficit": 12,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"390": {
-					"height": 3524,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 30,
-					"shortTargets": 1,
-					"targetDeficit": 12,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"768": {
-					"height": 2526,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 31,
-					"shortTargets": 1,
-					"targetDeficit": 12,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1024": {
-					"height": 2086,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 40,
-					"shortTargets": 1,
-					"targetDeficit": 10,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 2098,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 44,
-					"shortTargets": 1,
-					"targetDeficit": 10,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			},
-			"keyboard": {
-				"390": {
-					"stops": 29,
-					"order": "32d89182703fa4a5",
-					"withoutRing": 0,
-					"outOfOrder": 0,
-					"beforeFigure": 0
-				},
-				"1440": {
-					"stops": 36,
-					"order": "1b51ae65f86ba94e",
-					"withoutRing": 1,
-					"outOfOrder": 0,
-					"beforeFigure": 0
-				}
-			},
-			"zoom": {
-				"390": {
-					"height": 10842,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 30,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 3,
-					"textDefects": [
-						"broken-word #legal-title Accessibility",
-						"broken-word #main-flow > article:nth-child(1) > div:nth-child(2) > section:nth-child(3) > p:nth-child(2) dev",
-						"broken-word #main-flow > article:nth-child(1) > div:nth-child(2) > section:nth-child(3) > ul:nth-child(3) > li:nth-child(1) > a:nth-child(1) dev"
-					]
-				},
-				"1440": {
-					"height": 3947,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 31,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			}
-		},
-		"error/stm/en": {
-			"content": {
-				"titles": 1,
-				"answerFirst": false
-			},
-			"widths": {
-				"320": {
-					"height": 2360,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 32,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"390": {
-					"height": 2328,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 32,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"768": {
-					"height": 1769,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 33,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1024": {
-					"height": 1259,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 42,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 1257,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 46,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			},
-			"keyboard": {
-				"390": {
-					"stops": 31,
-					"order": "fcd28804e9f3aede",
-					"withoutRing": 0,
-					"outOfOrder": 0,
-					"beforeFigure": 0
-				},
-				"1440": {
-					"stops": 38,
-					"order": "96de9a5542ac6612",
-					"withoutRing": 1,
-					"outOfOrder": 0,
-					"beforeFigure": 0
-				}
-			},
-			"zoom": {
-				"390": {
-					"height": 4431,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 32,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 1,
-					"textDefects": ["broken-word #error-page-heading-s9 construction"]
-				},
-				"1440": {
-					"height": 2099,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 33,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			}
-		},
-		"alerts/octranspo/en": {
-			"content": {
-				"titles": 1,
-				"answerFirst": false
-			},
-			"widths": {
-				"320": {
-					"height": 1812,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 29,
-					"shortTargets": 1,
-					"targetDeficit": 20,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"390": {
-					"height": 1796,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 29,
-					"shortTargets": 1,
-					"targetDeficit": 20,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"768": {
-					"height": 1154,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 30,
-					"shortTargets": 1,
-					"targetDeficit": 20,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1024": {
-					"height": 923,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 39,
-					"shortTargets": 1,
-					"targetDeficit": 20,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 902,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 43,
-					"shortTargets": 1,
-					"targetDeficit": 20,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			},
-			"keyboard": {
-				"390": {
-					"stops": 28,
-					"order": "51812d8c4e475e3f",
-					"withoutRing": 0,
-					"outOfOrder": 0,
-					"beforeFigure": 0
-				},
-				"1440": {
-					"stops": 35,
-					"order": "31d4b5f1ff2c26b1",
-					"withoutRing": 1,
-					"outOfOrder": 0,
-					"beforeFigure": 0
-				}
-			},
-			"zoom": {
-				"390": {
-					"height": 3654,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 29,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 1547,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 30,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			}
-		},
-		"lines/octranspo/en": {
-			"content": {
-				"titles": 1,
-				"answerFirst": false
-			},
-			"widths": {
-				"320": {
-					"height": 3755,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 36,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"390": {
-					"height": 3591,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 36,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"768": {
-					"height": 2344,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 37,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1024": {
-					"height": 1751,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 44,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 1306,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 48,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			},
-			"keyboard": {
-				"390": {
-					"stops": 35,
-					"order": "a9e1899b7c5b25de",
-					"withoutRing": 0,
-					"outOfOrder": 0,
-					"beforeFigure": 1
-				},
-				"1440": {
-					"stops": 41,
-					"order": "fcd67e7129a21d36",
-					"withoutRing": 1,
-					"outOfOrder": 0,
-					"beforeFigure": 1
-				}
-			},
-			"zoom": {
-				"390": {
-					"height": 8703,
-					"overflow": 0,
-					"edges": 69,
-					"edgeCount": 9,
-					"targets": 36,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 11,
-					"brokenWords": 0,
-					"textDefects": [
-						"clipped [data-slot=\"card\"] 15% (15/100) · 40% of 250 scheduled stops observed · Low coverage",
-						"clipped [data-slot=\"card\"] 30% (30/100) · 40% of 250 scheduled stops observed · Low coverage",
-						"clipped [data-slot=\"card\"] 65% (65/100) · 40% of 250 scheduled stops observed · Low coverage. Observed times: 40% vehicle reported stopped, 60% last prediction before the vehicle passed. Most times come from predictions.",
-						"clipped [data-slot=\"card\"] 80% (80/100) · 40% of 250 scheduled stops observed · Low coverage. Observed times: 40% vehicle reported stopped, 60% last prediction before the vehicle passed. Most times come from predictions.",
-						"clipped [data-slot=\"card\"] 90 of 105 · Status known for 95.2% of 105 scheduled trips on lines with live data",
-						"clipped [data-slot=\"card\"] CSV",
-						"clipped [data-slot=\"card\"] Classified stop events",
-						"clipped [data-slot=\"card\"] Line performance",
-						"clipped [data-slot=\"card\"] Too few to judge",
-						"clipped [data-slot=\"card\"] Transit. Line performance. 8 to 14 Nov 2026. On-time share. Method v1, cleaning v8. Trips run of scheduled. Method v1, cleaning v8. http://127.0.0.1:4317/lines?provider=octranspo&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14#line-performance",
-						"clipped [data-slot=\"card\"] Trips run of scheduled"
-					]
-				},
-				"1440": {
-					"height": 3821,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 37,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			}
-		},
-		"map-live/octranspo/en": {
-			"content": {
-				"titles": 2,
-				"answerFirst": false
-			},
-			"widths": {
-				"320": {
-					"height": 844,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 21,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"390": {
-					"height": 844,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 21,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"768": {
-					"height": 900,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 22,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1024": {
-					"height": 900,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 43,
-					"shortTargets": 2,
-					"targetDeficit": 74,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 900,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 47,
-					"shortTargets": 2,
-					"targetDeficit": 74,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			},
-			"keyboard": {
-				"390": {
-					"stops": 16,
-					"order": "132474bc49062f83",
-					"withoutRing": 1,
-					"outOfOrder": 2,
-					"beforeFigure": 0
-				},
-				"1440": {
-					"stops": 40,
-					"order": "6a6157c9c0e29514",
-					"withoutRing": 3,
-					"outOfOrder": 7,
-					"beforeFigure": 0
-				}
-			},
-			"zoom": {
-				"390": {
-					"height": 844,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 21,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 900,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 41,
-					"shortTargets": 2,
-					"targetDeficit": 118,
-					"clipped": 1,
-					"brokenWords": 0,
-					"textDefects": ["clipped [data-slot=\"button\"] Out-of-service vehicles"]
-				}
-			}
-		},
-		"map-record-stops/octranspo/en": {
-			"content": {
-				"titles": 2,
-				"answerFirst": false
-			},
-			"widths": {
-				"320": {
-					"height": 844,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 16,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"390": {
-					"height": 844,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 16,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"768": {
-					"height": 900,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 17,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1024": {
-					"height": 900,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 26,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 900,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 30,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			},
-			"keyboard": {
-				"390": {
-					"stops": 12,
-					"order": "6f59b8c6c89e879f",
-					"withoutRing": 1,
-					"outOfOrder": 1,
-					"beforeFigure": 0
-				},
-				"1440": {
-					"stops": 19,
-					"order": "736bca145ea9f0dd",
-					"withoutRing": 2,
-					"outOfOrder": 1,
-					"beforeFigure": 0
-				}
-			},
-			"zoom": {
-				"390": {
-					"height": 844,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 16,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 2,
-					"textDefects": [
-						"broken-word [data-slot=\"record-map-legend\"] > ul:nth-child(2) > li:nth-child(1) Under",
-						"broken-word [data-slot=\"record-map-legend\"] > ul:nth-child(2) > li:nth-child(4) more"
-					]
-				},
-				"1440": {
-					"height": 900,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 17,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			}
-		},
-		"rankings/octranspo/en": {
-			"content": {
-				"titles": 1,
-				"answerFirst": false
-			},
-			"widths": {
-				"320": {
-					"height": 3240,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 38,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"390": {
-					"height": 2960,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 38,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"768": {
-					"height": 1918,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 39,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1024": {
-					"height": 1540,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 46,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 1374,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 50,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			},
-			"keyboard": {
-				"390": {
-					"stops": 34,
-					"order": "0aba79a4261a8cf3",
-					"withoutRing": 0,
-					"outOfOrder": 0,
-					"beforeFigure": 0
-				},
-				"1440": {
-					"stops": 40,
-					"order": "6522dcd424ac3a14",
-					"withoutRing": 1,
-					"outOfOrder": 0,
-					"beforeFigure": 0
-				}
-			},
-			"zoom": {
-				"390": {
-					"height": 10843,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 39,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 8,
-					"textDefects": [
-						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > div:nth-child(2) > a:nth-child(1) Sherbrooke",
-						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) coverage",
-						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) events",
-						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) observed",
-						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) scheduled",
-						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) stop",
-						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) stops",
-						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(3) > dt:nth-child(1) Range"
-					]
-				},
-				"1440": {
-					"height": 3609,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 40,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			}
-		},
-		"vehicles/octranspo/en": {
-			"content": {
-				"titles": 1,
-				"answerFirst": false
-			},
-			"widths": {
-				"320": {
-					"height": 2251,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 36,
-					"shortTargets": 2,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"390": {
-					"height": 2211,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 36,
-					"shortTargets": 2,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"768": {
-					"height": 1470,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 37,
-					"shortTargets": 2,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1024": {
-					"height": 1031,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 46,
-					"shortTargets": 2,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 1010,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 50,
-					"shortTargets": 2,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			},
-			"keyboard": {
-				"390": {
-					"stops": 35,
-					"order": "b31833b72cad571a",
-					"withoutRing": 0,
-					"outOfOrder": 0,
-					"beforeFigure": 3
-				},
-				"1440": {
-					"stops": 42,
-					"order": "8b496b2055ccee4a",
-					"withoutRing": 1,
-					"outOfOrder": 0,
-					"beforeFigure": 3
-				}
-			},
-			"zoom": {
-				"390": {
-					"height": 4810,
-					"overflow": 0,
-					"edges": 211,
-					"edgeCount": 10,
-					"targets": 36,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 5,
-					"brokenWords": 0,
-					"textDefects": [
-						"clipped [data-slot=\"card\"] 1 day included.\n\t\t\t\t\t\t\tMethod v1, cleaning v8.",
-						"clipped [data-slot=\"card\"] CSV",
-						"clipped [data-slot=\"card\"] Days in service by vehicle",
-						"clipped [data-slot=\"card\"] Find by vehicle number",
-						"clipped [data-slot=\"card\"] Transit. Vehicles. Days in service by vehicle. 8 to 14 Nov 2026. Method v1, cleaning v8. http://127.0.0.1:4317/vehicles?provider=octranspo&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14#fleet"
-					]
-				},
-				"1440": {
-					"height": 2425,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 37,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			}
-		},
-		"map-live/stm/fr": {
-			"content": {
-				"titles": 2,
-				"answerFirst": false
-			},
-			"widths": {
-				"320": {
-					"height": 844,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 21,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"390": {
-					"height": 844,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 21,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"768": {
-					"height": 900,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 22,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1024": {
-					"height": 900,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 45,
-					"shortTargets": 2,
-					"targetDeficit": 74,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 900,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 49,
-					"shortTargets": 2,
-					"targetDeficit": 74,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			},
-			"keyboard": {
-				"390": {
-					"stops": 16,
-					"order": "ffa7ad24fcda7ae2",
-					"withoutRing": 1,
-					"outOfOrder": 2,
-					"beforeFigure": 0
-				},
-				"1440": {
-					"stops": 42,
-					"order": "ad08a9b7b6162302",
-					"withoutRing": 3,
-					"outOfOrder": 8,
-					"beforeFigure": 0
-				}
-			},
-			"zoom": {
-				"390": {
-					"height": 844,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 21,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 1,
-					"brokenWords": 0,
-					"textDefects": ["clipped [data-slot=\"map-surface\"] Corridors"]
-				},
-				"1440": {
-					"height": 900,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 43,
-					"shortTargets": 2,
-					"targetDeficit": 118,
-					"clipped": 1,
-					"brokenWords": 2,
-					"textDefects": [
-						"broken-word [data-slot=\"map-legend-label\"] > span:nth-child(1) déplacement",
-						"broken-word [data-slot=\"map-legend-label\"] > span:nth-child(2) accompagner",
-						"clipped [data-slot=\"button\"] Véhicules hors service"
-					]
-				}
-			}
-		},
-		"map-record-stops/stm/fr": {
-			"content": {
-				"titles": 2,
-				"answerFirst": false
-			},
-			"widths": {
-				"320": {
-					"height": 844,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 16,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"390": {
-					"height": 844,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 16,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"768": {
-					"height": 900,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 17,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1024": {
-					"height": 900,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 26,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 900,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 30,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			},
-			"keyboard": {
-				"390": {
-					"stops": 12,
-					"order": "e27444ec4dfe0eb1",
-					"withoutRing": 1,
-					"outOfOrder": 1,
-					"beforeFigure": 0
-				},
-				"1440": {
-					"stops": 19,
-					"order": "3898bd1c66e6f7b1",
-					"withoutRing": 2,
-					"outOfOrder": 1,
-					"beforeFigure": 0
-				}
-			},
-			"zoom": {
-				"390": {
-					"height": 844,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 16,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 1,
-					"textDefects": [
-						"broken-word [data-slot=\"record-map-legend\"] > ul:nth-child(2) > li:nth-child(1) Moins"
-					]
-				},
-				"1440": {
-					"height": 900,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 17,
-					"shortTargets": 1,
-					"targetDeficit": 40,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			}
-		},
-		"rankings/stm/fr": {
-			"content": {
-				"titles": 1,
-				"answerFirst": false
-			},
-			"widths": {
-				"320": {
-					"height": 3436,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 39,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"390": {
-					"height": 3148,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 39,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"768": {
-					"height": 2042,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 40,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1024": {
-					"height": 1638,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 47,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 1420,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 51,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			},
-			"keyboard": {
-				"390": {
-					"stops": 35,
-					"order": "1384a0f2352e6382",
-					"withoutRing": 0,
-					"outOfOrder": 0,
-					"beforeFigure": 0
-				},
-				"1440": {
-					"stops": 41,
-					"order": "34f56c5d2570b1b2",
-					"withoutRing": 1,
-					"outOfOrder": 0,
-					"beforeFigure": 0
-				}
-			},
-			"zoom": {
-				"390": {
-					"height": 11646,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 40,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 8,
-					"textDefects": [
-						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > div:nth-child(2) > a:nth-child(1) Sherbrooke",
-						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) Faible",
-						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) couverture",
-						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) observés",
-						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) passages",
-						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) prévus",
-						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(3) > dt:nth-child(1) Intervalle",
-						"broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(4) > dd:nth-child(2) observées"
-					]
-				},
-				"1440": {
-					"height": 3609,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 41,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			}
-		},
-		"lines/stm/fr": {
-			"content": {
-				"titles": 1,
-				"answerFirst": false
-			},
-			"widths": {
-				"320": {
-					"height": 5160,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 44,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"390": {
-					"height": 4809,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 44,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"768": {
-					"height": 3228,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 45,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1024": {
-					"height": 2378,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 52,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 1904,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 56,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			},
-			"keyboard": {
-				"390": {
-					"stops": 43,
-					"order": "2e0ab16168af6be6",
-					"withoutRing": 0,
-					"outOfOrder": 0,
-					"beforeFigure": 1
-				},
-				"1440": {
-					"stops": 49,
-					"order": "ea3c2dee93cb155b",
-					"withoutRing": 1,
-					"outOfOrder": 0,
-					"beforeFigure": 1
-				}
-			},
-			"zoom": {
-				"390": {
-					"height": 13233,
-					"overflow": 0,
-					"edges": 150,
-					"edgeCount": 10,
-					"targets": 44,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 13,
-					"brokenWords": 0,
-					"textDefects": [
-						"clipped [data-slot=\"card\"] 15 % (15/100) · 40 % des 250 passages prévus observés · Faible couverture",
-						"clipped [data-slot=\"card\"] 30 % (30/100) · 40 % des 250 passages prévus observés · Faible couverture",
-						"clipped [data-slot=\"card\"] 65 % (65/100) · 40 % des 250 passages prévus observés · Faible couverture. Heures observées : 40 % véhicule signalé à l’arrêt, 60 % dernière prévision avant le passage du véhicule. La plupart de ces heures proviennent de prévisions.",
-						"clipped [data-slot=\"card\"] 80 % (80/100) · 40 % des 250 passages prévus observés · Faible couverture. Heures observées : 40 % véhicule signalé à l’arrêt, 60 % dernière prévision avant le passage du véhicule. La plupart de ces heures proviennent de prévisions.",
-						"clipped [data-slot=\"card\"] 90 sur 105 · État connu pour 95,2 % des 105 trajets prévus sur les lignes avec données en direct",
-						"clipped [data-slot=\"card\"] 9001 · Seven decimal days",
-						"clipped [data-slot=\"card\"] 9002 · Long stop names and a month of history",
-						"clipped [data-slot=\"card\"] 9003 · Long destinations and live reports",
-						"clipped [data-slot=\"card\"] CSV",
-						"clipped [data-slot=\"card\"] Performance des lignes",
-						"clipped [data-slot=\"card\"] Trajets effectués sur prévus",
-						"clipped [data-slot=\"card\"] Transit. Performance des lignes. du 8 au 14 nov. 2026. Part à l’heure. Méthode v1, nettoyage v8. Trajets effectués sur prévus. Méthode v1, nettoyage v8. http://127.0.0.1:4317/fr/lines?provider=stm&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14#line-performance",
-						"clipped [data-slot=\"card\"] Trop peu pour juger"
-					]
-				},
-				"1440": {
-					"height": 5810,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 45,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			}
-		}
-	}
+  "productCommit": "423305cc26a445a16a892d0657c572dcc4a769ce",
+  "measurementHead": "72248db0ff63c81be55abfc2fc8db6a20ce150e9",
+  "measurementSource": "b653275167e42a3fcbb620f4929d3617d1d955fc",
+  "measurementRun": "45328757640",
+  "screens": {
+    "lines/stm/en": {
+      "content": {
+        "titles": 1,
+        "answerFirst": false
+      },
+      "widths": {
+        "320": {
+          "height": 4907,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 44,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "390": {
+          "height": 4660,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 44,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "768": {
+          "height": 3090,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 45,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1024": {
+          "height": 2283,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 52,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1440": {
+          "height": 1877,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 56,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      },
+      "keyboard": {
+        "390": {
+          "stops": 43,
+          "order": "0a47b736502a1348",
+          "withoutRing": 0,
+          "outOfOrder": 0,
+          "beforeFigure": 1
+        },
+        "1440": {
+          "stops": 49,
+          "order": "52f40d427b308991",
+          "withoutRing": 1,
+          "outOfOrder": 0,
+          "beforeFigure": 1
+        }
+      },
+      "zoom": {
+        "390": {
+          "height": 12460,
+          "overflow": 0,
+          "edges": 69,
+          "edgeCount": 9,
+          "targets": 44,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 14,
+          "brokenWords": 0,
+          "textDefects": [
+            "clipped [data-slot=\"card\"] 15% (15/100) · 40% of 250 scheduled stops observed · Low coverage",
+            "clipped [data-slot=\"card\"] 30% (30/100) · 40% of 250 scheduled stops observed · Low coverage",
+            "clipped [data-slot=\"card\"] 65% (65/100) · 40% of 250 scheduled stops observed · Low coverage. Observed times: 40% vehicle reported stopped, 60% last prediction before the vehicle passed. Most times come from predictions.",
+            "clipped [data-slot=\"card\"] 80% (80/100) · 40% of 250 scheduled stops observed · Low coverage. Observed times: 40% vehicle reported stopped, 60% last prediction before the vehicle passed. Most times come from predictions.",
+            "clipped [data-slot=\"card\"] 90 of 105 · Status known for 95.2% of 105 scheduled trips on lines with live data",
+            "clipped [data-slot=\"card\"] 9001 · Seven decimal days",
+            "clipped [data-slot=\"card\"] 9002 · Long stop names and a month of history",
+            "clipped [data-slot=\"card\"] 9003 · Long destinations and live reports",
+            "clipped [data-slot=\"card\"] CSV",
+            "clipped [data-slot=\"card\"] Classified stop events",
+            "clipped [data-slot=\"card\"] Line performance",
+            "clipped [data-slot=\"card\"] Too few to judge",
+            "clipped [data-slot=\"card\"] Transit. Line performance. 8 to 14 Nov 2026. On-time share. Method v1, cleaning v8. Trips run of scheduled. Method v1, cleaning v8. http://127.0.0.1:4317/lines?provider=stm&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14#line-performance",
+            "clipped [data-slot=\"card\"] Trips run of scheduled"
+          ]
+        },
+        "1440": {
+          "height": 4967,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 45,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      }
+    },
+    "stops/stm/en": {
+      "content": {
+        "titles": 1,
+        "answerFirst": false
+      },
+      "widths": {
+        "320": {
+          "height": 7089,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 59,
+          "shortTargets": 20,
+          "targetDeficit": 400,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "390": {
+          "height": 5724,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 59,
+          "shortTargets": 20,
+          "targetDeficit": 400,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "768": {
+          "height": 4656,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 60,
+          "shortTargets": 20,
+          "targetDeficit": 400,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1024": {
+          "height": 2784,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 66,
+          "shortTargets": 1,
+          "targetDeficit": 20,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1440": {
+          "height": 2477,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 70,
+          "shortTargets": 2,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      },
+      "keyboard": {
+        "390": {
+          "stops": 56,
+          "order": "632815e7436b80fa",
+          "withoutRing": 0,
+          "outOfOrder": 0,
+          "beforeFigure": 4
+        },
+        "1440": {
+          "stops": 63,
+          "order": "b40085faff2dc19b",
+          "withoutRing": 1,
+          "outOfOrder": 1,
+          "beforeFigure": 5
+        }
+      },
+      "zoom": {
+        "390": {
+          "height": 16076,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 59,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1440": {
+          "height": 5572,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 59,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      }
+    },
+    "stop-live/stm/en": {
+      "content": {
+        "titles": 1,
+        "answerFirst": false
+      },
+      "widths": {
+        "320": {
+          "height": 3378,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 44,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "390": {
+          "height": 3087,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 44,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "768": {
+          "height": 2407,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 45,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1024": {
+          "height": 2134,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 50,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1440": {
+          "height": 2064,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 54,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      },
+      "keyboard": {
+        "390": {
+          "stops": 43,
+          "order": "c95f3e0ea64ebccf",
+          "withoutRing": 1,
+          "outOfOrder": 0,
+          "beforeFigure": 0
+        },
+        "1440": {
+          "stops": 51,
+          "order": "bf8b1632f26520f2",
+          "withoutRing": 2,
+          "outOfOrder": 0,
+          "beforeFigure": 0
+        }
+      },
+      "zoom": {
+        "390": {
+          "height": 8020,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 44,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 7,
+          "textDefects": [
+            "broken-word #s15-summary > span:nth-child(1) changes",
+            "broken-word #s15-summary > span:nth-child(1) reports",
+            "broken-word #s16-summary > span:nth-child(1) agency",
+            "broken-word #s17-summary > span:nth-child(1) Where",
+            "broken-word #s17-summary > span:nth-child(1) service",
+            "broken-word [data-slot=\"collapsible-trigger\"] > span:nth-child(2) Predictions",
+            "broken-word [data-slot=\"collapsible-trigger\"] > span:nth-child(2) information"
+          ]
+        },
+        "1440": {
+          "height": 3793,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 48,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      }
+    },
+    "vehicles/stm/en": {
+      "content": {
+        "titles": 1,
+        "answerFirst": false
+      },
+      "widths": {
+        "320": {
+          "height": 2303,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 37,
+          "shortTargets": 2,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "390": {
+          "height": 2247,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 37,
+          "shortTargets": 2,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "768": {
+          "height": 1522,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 38,
+          "shortTargets": 2,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1024": {
+          "height": 1031,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 47,
+          "shortTargets": 2,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1440": {
+          "height": 1029,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 51,
+          "shortTargets": 2,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      },
+      "keyboard": {
+        "390": {
+          "stops": 36,
+          "order": "ca7b7aea888649d0",
+          "withoutRing": 0,
+          "outOfOrder": 0,
+          "beforeFigure": 3
+        },
+        "1440": {
+          "stops": 43,
+          "order": "8a7e0ba09dad0012",
+          "withoutRing": 1,
+          "outOfOrder": 0,
+          "beforeFigure": 3
+        }
+      },
+      "zoom": {
+        "390": {
+          "height": 4871,
+          "overflow": 0,
+          "edges": 211,
+          "edgeCount": 10,
+          "targets": 37,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 5,
+          "brokenWords": 0,
+          "textDefects": [
+            "clipped [data-slot=\"card\"] 1 day included.\n\t\t\t\t\t\t\tMethod v1, cleaning v8.",
+            "clipped [data-slot=\"card\"] CSV",
+            "clipped [data-slot=\"card\"] Days in service by vehicle",
+            "clipped [data-slot=\"card\"] Find by vehicle number",
+            "clipped [data-slot=\"card\"] Transit. Vehicles. Days in service by vehicle. 8 to 14 Nov 2026. Method v1, cleaning v8. http://127.0.0.1:4317/vehicles?provider=stm&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14#fleet"
+          ]
+        },
+        "1440": {
+          "height": 2316,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 38,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      }
+    },
+    "vehicles-live/stm/en": {
+      "content": {
+        "titles": 1,
+        "answerFirst": false
+      },
+      "widths": {
+        "320": {
+          "height": 2148,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 33,
+          "shortTargets": 2,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "390": {
+          "height": 2116,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 33,
+          "shortTargets": 2,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "768": {
+          "height": 1369,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 34,
+          "shortTargets": 2,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1024": {
+          "height": 901,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 36,
+          "shortTargets": 2,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1440": {
+          "height": 901,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 40,
+          "shortTargets": 2,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      },
+      "keyboard": {
+        "390": {
+          "stops": 32,
+          "order": "5a339a3c205f8ba2",
+          "withoutRing": 0,
+          "outOfOrder": 0,
+          "beforeFigure": 3
+        },
+        "1440": {
+          "stops": 37,
+          "order": "91a2835ce7ca95f8",
+          "withoutRing": 1,
+          "outOfOrder": 0,
+          "beforeFigure": 3
+        }
+      },
+      "zoom": {
+        "390": {
+          "height": 3780,
+          "overflow": 0,
+          "edges": 211,
+          "edgeCount": 6,
+          "targets": 33,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 4,
+          "brokenWords": 0,
+          "textDefects": [
+            "clipped [data-slot=\"card\"] 1 vehicles reporting on a trip",
+            "clipped [data-slot=\"card\"] 24 · Sherbrooke",
+            "clipped [data-slot=\"card\"] Find by vehicle number",
+            "clipped [data-slot=\"card\"] Vehicles in service now"
+          ]
+        },
+        "1440": {
+          "height": 1763,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 34,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      }
+    },
+    "hotspots/stm/en": {
+      "content": {
+        "titles": 1,
+        "answerFirst": false
+      },
+      "widths": {
+        "320": {
+          "height": 3378,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 40,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "390": {
+          "height": 3082,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 40,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "768": {
+          "height": 2061,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 41,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1024": {
+          "height": 1624,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 48,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1440": {
+          "height": 1478,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 52,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      },
+      "keyboard": {
+        "390": {
+          "stops": 36,
+          "order": "4b017f400a587dfe",
+          "withoutRing": 0,
+          "outOfOrder": 0,
+          "beforeFigure": 0
+        },
+        "1440": {
+          "stops": 42,
+          "order": "05d2eb6fd58ad7eb",
+          "withoutRing": 1,
+          "outOfOrder": 0,
+          "beforeFigure": 0
+        }
+      },
+      "zoom": {
+        "390": {
+          "height": 10828,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 41,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 8,
+          "textDefects": [
+            "broken-word #ranking > ol:nth-child(10) > li:nth-child(1) > div:nth-child(2) > a:nth-child(1) Sherbrooke",
+            "broken-word #ranking > ol:nth-child(10) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) coverage",
+            "broken-word #ranking > ol:nth-child(10) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) events",
+            "broken-word #ranking > ol:nth-child(10) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) observed",
+            "broken-word #ranking > ol:nth-child(10) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) scheduled",
+            "broken-word #ranking > ol:nth-child(10) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) stop",
+            "broken-word #ranking > ol:nth-child(10) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) stops",
+            "broken-word #ranking > ol:nth-child(10) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(3) > dt:nth-child(1) Range"
+          ]
+        },
+        "1440": {
+          "height": 3620,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 42,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      }
+    },
+    "rankings/stm/en": {
+      "content": {
+        "titles": 1,
+        "answerFirst": false
+      },
+      "widths": {
+        "320": {
+          "height": 3292,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 39,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "390": {
+          "height": 2996,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 39,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "768": {
+          "height": 1970,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 40,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1024": {
+          "height": 1540,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 47,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1440": {
+          "height": 1394,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 51,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      },
+      "keyboard": {
+        "390": {
+          "stops": 35,
+          "order": "47b3afffd219897f",
+          "withoutRing": 0,
+          "outOfOrder": 0,
+          "beforeFigure": 0
+        },
+        "1440": {
+          "stops": 41,
+          "order": "3e205a1a995b3b8e",
+          "withoutRing": 1,
+          "outOfOrder": 0,
+          "beforeFigure": 0
+        }
+      },
+      "zoom": {
+        "390": {
+          "height": 10856,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 40,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 8,
+          "textDefects": [
+            "broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > div:nth-child(2) > a:nth-child(1) Sherbrooke",
+            "broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) coverage",
+            "broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) events",
+            "broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) observed",
+            "broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) scheduled",
+            "broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) stop",
+            "broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) stops",
+            "broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(3) > dt:nth-child(1) Range"
+          ]
+        },
+        "1440": {
+          "height": 3500,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 41,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      }
+    },
+    "map-live/stm/en": {
+      "content": {
+        "titles": 2,
+        "answerFirst": false
+      },
+      "widths": {
+        "320": {
+          "height": 844,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 21,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "390": {
+          "height": 844,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 21,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "768": {
+          "height": 900,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 22,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1024": {
+          "height": 900,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 45,
+          "shortTargets": 2,
+          "targetDeficit": 74,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1440": {
+          "height": 900,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 49,
+          "shortTargets": 2,
+          "targetDeficit": 74,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      },
+      "keyboard": {
+        "390": {
+          "stops": 16,
+          "order": "bd3425f340a121b8",
+          "withoutRing": 1,
+          "outOfOrder": 2,
+          "beforeFigure": 0
+        },
+        "1440": {
+          "stops": 42,
+          "order": "39fe607c6c145bad",
+          "withoutRing": 3,
+          "outOfOrder": 8,
+          "beforeFigure": 0
+        }
+      },
+      "zoom": {
+        "390": {
+          "height": 844,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 21,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1440": {
+          "height": 900,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 43,
+          "shortTargets": 2,
+          "targetDeficit": 118,
+          "clipped": 1,
+          "brokenWords": 0,
+          "textDefects": [
+            "clipped [data-slot=\"button\"] Out-of-service vehicles"
+          ]
+        }
+      }
+    },
+    "map-record-stops/stm/en": {
+      "content": {
+        "titles": 2,
+        "answerFirst": false
+      },
+      "widths": {
+        "320": {
+          "height": 844,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 16,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "390": {
+          "height": 844,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 16,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "768": {
+          "height": 900,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 17,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1024": {
+          "height": 900,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 26,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1440": {
+          "height": 900,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 30,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      },
+      "keyboard": {
+        "390": {
+          "stops": 12,
+          "order": "49f2779611a32fcb",
+          "withoutRing": 1,
+          "outOfOrder": 1,
+          "beforeFigure": 0
+        },
+        "1440": {
+          "stops": 19,
+          "order": "d123d9f480b2fbb3",
+          "withoutRing": 2,
+          "outOfOrder": 1,
+          "beforeFigure": 0
+        }
+      },
+      "zoom": {
+        "390": {
+          "height": 844,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 16,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 2,
+          "textDefects": [
+            "broken-word [data-slot=\"record-map-legend\"] > ul:nth-child(2) > li:nth-child(1) Under",
+            "broken-word [data-slot=\"record-map-legend\"] > ul:nth-child(2) > li:nth-child(4) more"
+          ]
+        },
+        "1440": {
+          "height": 900,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 17,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      }
+    },
+    "map-record-corridors/stm/en": {
+      "content": {
+        "titles": 2,
+        "answerFirst": false
+      },
+      "widths": {
+        "320": {
+          "height": 844,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 18,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "390": {
+          "height": 844,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 18,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "768": {
+          "height": 900,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 19,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1024": {
+          "height": 900,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 28,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1440": {
+          "height": 900,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 32,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      },
+      "keyboard": {
+        "390": {
+          "stops": 14,
+          "order": "f1b859b6f24c9f99",
+          "withoutRing": 1,
+          "outOfOrder": 1,
+          "beforeFigure": 0
+        },
+        "1440": {
+          "stops": 21,
+          "order": "353c4023bc33d910",
+          "withoutRing": 2,
+          "outOfOrder": 1,
+          "beforeFigure": 0
+        }
+      },
+      "zoom": {
+        "390": {
+          "height": 844,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 18,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 1,
+          "textDefects": [
+            "broken-word [data-slot=\"record-map-legend\"] > ul:nth-child(3) > li:nth-child(4) more"
+          ]
+        },
+        "1440": {
+          "height": 900,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 19,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      }
+    },
+    "privacy/stm/en": {
+      "content": {
+        "titles": 1,
+        "answerFirst": false
+      },
+      "widths": {
+        "320": {
+          "height": 15454,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 37,
+          "shortTargets": 4,
+          "targetDeficit": 48,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "390": {
+          "height": 12985,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 37,
+          "shortTargets": 5,
+          "targetDeficit": 60,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "768": {
+          "height": 8894,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 38,
+          "shortTargets": 8,
+          "targetDeficit": 96,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1024": {
+          "height": 9324,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 47,
+          "shortTargets": 8,
+          "targetDeficit": 80,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1440": {
+          "height": 9336,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 51,
+          "shortTargets": 8,
+          "targetDeficit": 80,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      },
+      "keyboard": {
+        "390": {
+          "stops": 36,
+          "order": "0dd77ab99544da82",
+          "withoutRing": 0,
+          "outOfOrder": 0,
+          "beforeFigure": 0
+        },
+        "1440": {
+          "stops": 43,
+          "order": "5ca4b8652b4d72f3",
+          "withoutRing": 1,
+          "outOfOrder": 0,
+          "beforeFigure": 0
+        }
+      },
+      "zoom": {
+        "390": {
+          "height": 53443,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 37,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 6,
+          "textDefects": [
+            "broken-word #main-flow > article:nth-child(1) > div:nth-child(2) > section:nth-child(1) > p:nth-child(3) dev",
+            "broken-word #main-flow > article:nth-child(1) > div:nth-child(2) > section:nth-child(2) > p:nth-child(5) dev",
+            "broken-word #main-flow > article:nth-child(1) > div:nth-child(2) > section:nth-child(2) > p:nth-child(6) cloudflareinsights",
+            "broken-word #main-flow > article:nth-child(1) > div:nth-child(2) > section:nth-child(5) > p:nth-child(2) cloudflareinsights",
+            "broken-word #main-flow > article:nth-child(1) > div:nth-child(2) > section:nth-child(8) > p:nth-child(3) dev",
+            "broken-word #main-flow > article:nth-child(1) > div:nth-child(2) > section:nth-child(9) > p:nth-child(3) dev"
+          ]
+        },
+        "1440": {
+          "height": 17820,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 38,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      }
+    },
+    "terms/stm/en": {
+      "content": {
+        "titles": 1,
+        "answerFirst": false
+      },
+      "widths": {
+        "320": {
+          "height": 6929,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 34,
+          "shortTargets": 4,
+          "targetDeficit": 48,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "390": {
+          "height": 6189,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 34,
+          "shortTargets": 4,
+          "targetDeficit": 48,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "768": {
+          "height": 4423,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 35,
+          "shortTargets": 5,
+          "targetDeficit": 60,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1024": {
+          "height": 4206,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 44,
+          "shortTargets": 5,
+          "targetDeficit": 50,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1440": {
+          "height": 4218,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 48,
+          "shortTargets": 5,
+          "targetDeficit": 50,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      },
+      "keyboard": {
+        "390": {
+          "stops": 33,
+          "order": "5d74c4a6a1adf6c3",
+          "withoutRing": 0,
+          "outOfOrder": 0,
+          "beforeFigure": 0
+        },
+        "1440": {
+          "stops": 40,
+          "order": "e7593ff6deaf9327",
+          "withoutRing": 1,
+          "outOfOrder": 0,
+          "beforeFigure": 0
+        }
+      },
+      "zoom": {
+        "390": {
+          "height": 21853,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 34,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 1,
+          "textDefects": [
+            "broken-word #main-flow > article:nth-child(1) > div:nth-child(2) > section:nth-child(7) > p:nth-child(4) dev"
+          ]
+        },
+        "1440": {
+          "height": 8187,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 35,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      }
+    },
+    "accessibility/stm/en": {
+      "content": {
+        "titles": 1,
+        "answerFirst": false
+      },
+      "widths": {
+        "320": {
+          "height": 3860,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 30,
+          "shortTargets": 1,
+          "targetDeficit": 12,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "390": {
+          "height": 3524,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 30,
+          "shortTargets": 1,
+          "targetDeficit": 12,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "768": {
+          "height": 2526,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 31,
+          "shortTargets": 1,
+          "targetDeficit": 12,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1024": {
+          "height": 2086,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 40,
+          "shortTargets": 1,
+          "targetDeficit": 10,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1440": {
+          "height": 2098,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 44,
+          "shortTargets": 1,
+          "targetDeficit": 10,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      },
+      "keyboard": {
+        "390": {
+          "stops": 29,
+          "order": "32d89182703fa4a5",
+          "withoutRing": 0,
+          "outOfOrder": 0,
+          "beforeFigure": 0
+        },
+        "1440": {
+          "stops": 36,
+          "order": "1b51ae65f86ba94e",
+          "withoutRing": 1,
+          "outOfOrder": 0,
+          "beforeFigure": 0
+        }
+      },
+      "zoom": {
+        "390": {
+          "height": 10842,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 30,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 3,
+          "textDefects": [
+            "broken-word #legal-title Accessibility",
+            "broken-word #main-flow > article:nth-child(1) > div:nth-child(2) > section:nth-child(3) > p:nth-child(2) dev",
+            "broken-word #main-flow > article:nth-child(1) > div:nth-child(2) > section:nth-child(3) > ul:nth-child(3) > li:nth-child(1) > a:nth-child(1) dev"
+          ]
+        },
+        "1440": {
+          "height": 3947,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 31,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      }
+    },
+    "error/stm/en": {
+      "content": {
+        "titles": 1,
+        "answerFirst": false
+      },
+      "widths": {
+        "320": {
+          "height": 2360,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 32,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "390": {
+          "height": 2328,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 32,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "768": {
+          "height": 1769,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 33,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1024": {
+          "height": 1259,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 42,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1440": {
+          "height": 1257,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 46,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      },
+      "keyboard": {
+        "390": {
+          "stops": 31,
+          "order": "fcd28804e9f3aede",
+          "withoutRing": 0,
+          "outOfOrder": 0,
+          "beforeFigure": 0
+        },
+        "1440": {
+          "stops": 38,
+          "order": "96de9a5542ac6612",
+          "withoutRing": 1,
+          "outOfOrder": 0,
+          "beforeFigure": 0
+        }
+      },
+      "zoom": {
+        "390": {
+          "height": 4431,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 32,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 1,
+          "textDefects": [
+            "broken-word #error-page-heading-s9 construction"
+          ]
+        },
+        "1440": {
+          "height": 2099,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 33,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      }
+    },
+    "lines/octranspo/en": {
+      "content": {
+        "titles": 1,
+        "answerFirst": false
+      },
+      "widths": {
+        "320": {
+          "height": 3755,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 36,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "390": {
+          "height": 3591,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 36,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "768": {
+          "height": 2344,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 37,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1024": {
+          "height": 1751,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 44,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1440": {
+          "height": 1306,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 48,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      },
+      "keyboard": {
+        "390": {
+          "stops": 35,
+          "order": "a9e1899b7c5b25de",
+          "withoutRing": 0,
+          "outOfOrder": 0,
+          "beforeFigure": 1
+        },
+        "1440": {
+          "stops": 41,
+          "order": "fcd67e7129a21d36",
+          "withoutRing": 1,
+          "outOfOrder": 0,
+          "beforeFigure": 1
+        }
+      },
+      "zoom": {
+        "390": {
+          "height": 8703,
+          "overflow": 0,
+          "edges": 69,
+          "edgeCount": 9,
+          "targets": 36,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 11,
+          "brokenWords": 0,
+          "textDefects": [
+            "clipped [data-slot=\"card\"] 15% (15/100) · 40% of 250 scheduled stops observed · Low coverage",
+            "clipped [data-slot=\"card\"] 30% (30/100) · 40% of 250 scheduled stops observed · Low coverage",
+            "clipped [data-slot=\"card\"] 65% (65/100) · 40% of 250 scheduled stops observed · Low coverage. Observed times: 40% vehicle reported stopped, 60% last prediction before the vehicle passed. Most times come from predictions.",
+            "clipped [data-slot=\"card\"] 80% (80/100) · 40% of 250 scheduled stops observed · Low coverage. Observed times: 40% vehicle reported stopped, 60% last prediction before the vehicle passed. Most times come from predictions.",
+            "clipped [data-slot=\"card\"] 90 of 105 · Status known for 95.2% of 105 scheduled trips on lines with live data",
+            "clipped [data-slot=\"card\"] CSV",
+            "clipped [data-slot=\"card\"] Classified stop events",
+            "clipped [data-slot=\"card\"] Line performance",
+            "clipped [data-slot=\"card\"] Too few to judge",
+            "clipped [data-slot=\"card\"] Transit. Line performance. 8 to 14 Nov 2026. On-time share. Method v1, cleaning v8. Trips run of scheduled. Method v1, cleaning v8. http://127.0.0.1:4317/lines?provider=octranspo&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14#line-performance",
+            "clipped [data-slot=\"card\"] Trips run of scheduled"
+          ]
+        },
+        "1440": {
+          "height": 3821,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 37,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      }
+    },
+    "map-live/octranspo/en": {
+      "content": {
+        "titles": 2,
+        "answerFirst": false
+      },
+      "widths": {
+        "320": {
+          "height": 844,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 21,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "390": {
+          "height": 844,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 21,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "768": {
+          "height": 900,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 22,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1024": {
+          "height": 900,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 43,
+          "shortTargets": 2,
+          "targetDeficit": 74,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1440": {
+          "height": 900,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 47,
+          "shortTargets": 2,
+          "targetDeficit": 74,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      },
+      "keyboard": {
+        "390": {
+          "stops": 16,
+          "order": "132474bc49062f83",
+          "withoutRing": 1,
+          "outOfOrder": 2,
+          "beforeFigure": 0
+        },
+        "1440": {
+          "stops": 40,
+          "order": "6a6157c9c0e29514",
+          "withoutRing": 3,
+          "outOfOrder": 7,
+          "beforeFigure": 0
+        }
+      },
+      "zoom": {
+        "390": {
+          "height": 844,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 21,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1440": {
+          "height": 900,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 41,
+          "shortTargets": 2,
+          "targetDeficit": 118,
+          "clipped": 1,
+          "brokenWords": 0,
+          "textDefects": [
+            "clipped [data-slot=\"button\"] Out-of-service vehicles"
+          ]
+        }
+      }
+    },
+    "map-record-stops/octranspo/en": {
+      "content": {
+        "titles": 2,
+        "answerFirst": false
+      },
+      "widths": {
+        "320": {
+          "height": 844,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 16,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "390": {
+          "height": 844,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 16,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "768": {
+          "height": 900,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 17,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1024": {
+          "height": 900,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 26,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1440": {
+          "height": 900,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 30,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      },
+      "keyboard": {
+        "390": {
+          "stops": 12,
+          "order": "6f59b8c6c89e879f",
+          "withoutRing": 1,
+          "outOfOrder": 1,
+          "beforeFigure": 0
+        },
+        "1440": {
+          "stops": 19,
+          "order": "736bca145ea9f0dd",
+          "withoutRing": 2,
+          "outOfOrder": 1,
+          "beforeFigure": 0
+        }
+      },
+      "zoom": {
+        "390": {
+          "height": 844,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 16,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 2,
+          "textDefects": [
+            "broken-word [data-slot=\"record-map-legend\"] > ul:nth-child(2) > li:nth-child(1) Under",
+            "broken-word [data-slot=\"record-map-legend\"] > ul:nth-child(2) > li:nth-child(4) more"
+          ]
+        },
+        "1440": {
+          "height": 900,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 17,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      }
+    },
+    "rankings/octranspo/en": {
+      "content": {
+        "titles": 1,
+        "answerFirst": false
+      },
+      "widths": {
+        "320": {
+          "height": 3240,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 38,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "390": {
+          "height": 2960,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 38,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "768": {
+          "height": 1918,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 39,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1024": {
+          "height": 1540,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 46,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1440": {
+          "height": 1374,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 50,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      },
+      "keyboard": {
+        "390": {
+          "stops": 34,
+          "order": "0aba79a4261a8cf3",
+          "withoutRing": 0,
+          "outOfOrder": 0,
+          "beforeFigure": 0
+        },
+        "1440": {
+          "stops": 40,
+          "order": "6522dcd424ac3a14",
+          "withoutRing": 1,
+          "outOfOrder": 0,
+          "beforeFigure": 0
+        }
+      },
+      "zoom": {
+        "390": {
+          "height": 10843,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 39,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 8,
+          "textDefects": [
+            "broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > div:nth-child(2) > a:nth-child(1) Sherbrooke",
+            "broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) coverage",
+            "broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) events",
+            "broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) observed",
+            "broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) scheduled",
+            "broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) stop",
+            "broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) stops",
+            "broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(3) > dt:nth-child(1) Range"
+          ]
+        },
+        "1440": {
+          "height": 3609,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 40,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      }
+    },
+    "vehicles/octranspo/en": {
+      "content": {
+        "titles": 1,
+        "answerFirst": false
+      },
+      "widths": {
+        "320": {
+          "height": 2251,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 36,
+          "shortTargets": 2,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "390": {
+          "height": 2211,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 36,
+          "shortTargets": 2,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "768": {
+          "height": 1470,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 37,
+          "shortTargets": 2,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1024": {
+          "height": 1031,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 46,
+          "shortTargets": 2,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1440": {
+          "height": 1010,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 50,
+          "shortTargets": 2,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      },
+      "keyboard": {
+        "390": {
+          "stops": 35,
+          "order": "b31833b72cad571a",
+          "withoutRing": 0,
+          "outOfOrder": 0,
+          "beforeFigure": 3
+        },
+        "1440": {
+          "stops": 42,
+          "order": "8b496b2055ccee4a",
+          "withoutRing": 1,
+          "outOfOrder": 0,
+          "beforeFigure": 3
+        }
+      },
+      "zoom": {
+        "390": {
+          "height": 4810,
+          "overflow": 0,
+          "edges": 211,
+          "edgeCount": 10,
+          "targets": 36,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 5,
+          "brokenWords": 0,
+          "textDefects": [
+            "clipped [data-slot=\"card\"] 1 day included.\n\t\t\t\t\t\t\tMethod v1, cleaning v8.",
+            "clipped [data-slot=\"card\"] CSV",
+            "clipped [data-slot=\"card\"] Days in service by vehicle",
+            "clipped [data-slot=\"card\"] Find by vehicle number",
+            "clipped [data-slot=\"card\"] Transit. Vehicles. Days in service by vehicle. 8 to 14 Nov 2026. Method v1, cleaning v8. http://127.0.0.1:4317/vehicles?provider=octranspo&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14#fleet"
+          ]
+        },
+        "1440": {
+          "height": 2425,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 37,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      }
+    },
+    "map-live/stm/fr": {
+      "content": {
+        "titles": 2,
+        "answerFirst": false
+      },
+      "widths": {
+        "320": {
+          "height": 844,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 21,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "390": {
+          "height": 844,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 21,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "768": {
+          "height": 900,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 22,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1024": {
+          "height": 900,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 45,
+          "shortTargets": 2,
+          "targetDeficit": 74,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1440": {
+          "height": 900,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 49,
+          "shortTargets": 2,
+          "targetDeficit": 74,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      },
+      "keyboard": {
+        "390": {
+          "stops": 16,
+          "order": "ffa7ad24fcda7ae2",
+          "withoutRing": 1,
+          "outOfOrder": 2,
+          "beforeFigure": 0
+        },
+        "1440": {
+          "stops": 42,
+          "order": "ad08a9b7b6162302",
+          "withoutRing": 3,
+          "outOfOrder": 8,
+          "beforeFigure": 0
+        }
+      },
+      "zoom": {
+        "390": {
+          "height": 844,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 21,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 1,
+          "brokenWords": 0,
+          "textDefects": [
+            "clipped [data-slot=\"map-surface\"] Corridors"
+          ]
+        },
+        "1440": {
+          "height": 900,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 43,
+          "shortTargets": 2,
+          "targetDeficit": 118,
+          "clipped": 1,
+          "brokenWords": 2,
+          "textDefects": [
+            "broken-word [data-slot=\"map-legend-label\"] > span:nth-child(1) déplacement",
+            "broken-word [data-slot=\"map-legend-label\"] > span:nth-child(2) accompagner",
+            "clipped [data-slot=\"button\"] Véhicules hors service"
+          ]
+        }
+      }
+    },
+    "map-record-stops/stm/fr": {
+      "content": {
+        "titles": 2,
+        "answerFirst": false
+      },
+      "widths": {
+        "320": {
+          "height": 844,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 16,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "390": {
+          "height": 844,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 16,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "768": {
+          "height": 900,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 17,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1024": {
+          "height": 900,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 26,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1440": {
+          "height": 900,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 30,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      },
+      "keyboard": {
+        "390": {
+          "stops": 12,
+          "order": "e27444ec4dfe0eb1",
+          "withoutRing": 1,
+          "outOfOrder": 1,
+          "beforeFigure": 0
+        },
+        "1440": {
+          "stops": 19,
+          "order": "3898bd1c66e6f7b1",
+          "withoutRing": 2,
+          "outOfOrder": 1,
+          "beforeFigure": 0
+        }
+      },
+      "zoom": {
+        "390": {
+          "height": 844,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 16,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 1,
+          "textDefects": [
+            "broken-word [data-slot=\"record-map-legend\"] > ul:nth-child(2) > li:nth-child(1) Moins"
+          ]
+        },
+        "1440": {
+          "height": 900,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 17,
+          "shortTargets": 1,
+          "targetDeficit": 40,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      }
+    },
+    "rankings/stm/fr": {
+      "content": {
+        "titles": 1,
+        "answerFirst": false
+      },
+      "widths": {
+        "320": {
+          "height": 3436,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 39,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "390": {
+          "height": 3148,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 39,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "768": {
+          "height": 2042,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 40,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1024": {
+          "height": 1638,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 47,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1440": {
+          "height": 1420,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 51,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      },
+      "keyboard": {
+        "390": {
+          "stops": 35,
+          "order": "1384a0f2352e6382",
+          "withoutRing": 0,
+          "outOfOrder": 0,
+          "beforeFigure": 0
+        },
+        "1440": {
+          "stops": 41,
+          "order": "34f56c5d2570b1b2",
+          "withoutRing": 1,
+          "outOfOrder": 0,
+          "beforeFigure": 0
+        }
+      },
+      "zoom": {
+        "390": {
+          "height": 11646,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 40,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 8,
+          "textDefects": [
+            "broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > div:nth-child(2) > a:nth-child(1) Sherbrooke",
+            "broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) Faible",
+            "broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) couverture",
+            "broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) observés",
+            "broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) passages",
+            "broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(2) > dd:nth-child(2) prévus",
+            "broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(3) > dt:nth-child(1) Intervalle",
+            "broken-word #ranking > ol:nth-child(9) > li:nth-child(1) > dl:nth-child(3) > div:nth-child(4) > dd:nth-child(2) observées"
+          ]
+        },
+        "1440": {
+          "height": 3609,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 41,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      }
+    },
+    "lines/stm/fr": {
+      "content": {
+        "titles": 1,
+        "answerFirst": false
+      },
+      "widths": {
+        "320": {
+          "height": 5160,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 44,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "390": {
+          "height": 4809,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 44,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "768": {
+          "height": 3228,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 45,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1024": {
+          "height": 2378,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 52,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        },
+        "1440": {
+          "height": 1904,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 56,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      },
+      "keyboard": {
+        "390": {
+          "stops": 43,
+          "order": "2e0ab16168af6be6",
+          "withoutRing": 0,
+          "outOfOrder": 0,
+          "beforeFigure": 1
+        },
+        "1440": {
+          "stops": 49,
+          "order": "ea3c2dee93cb155b",
+          "withoutRing": 1,
+          "outOfOrder": 0,
+          "beforeFigure": 1
+        }
+      },
+      "zoom": {
+        "390": {
+          "height": 13233,
+          "overflow": 0,
+          "edges": 150,
+          "edgeCount": 10,
+          "targets": 44,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 13,
+          "brokenWords": 0,
+          "textDefects": [
+            "clipped [data-slot=\"card\"] 15 % (15/100) · 40 % des 250 passages prévus observés · Faible couverture",
+            "clipped [data-slot=\"card\"] 30 % (30/100) · 40 % des 250 passages prévus observés · Faible couverture",
+            "clipped [data-slot=\"card\"] 65 % (65/100) · 40 % des 250 passages prévus observés · Faible couverture. Heures observées : 40 % véhicule signalé à l’arrêt, 60 % dernière prévision avant le passage du véhicule. La plupart de ces heures proviennent de prévisions.",
+            "clipped [data-slot=\"card\"] 80 % (80/100) · 40 % des 250 passages prévus observés · Faible couverture. Heures observées : 40 % véhicule signalé à l’arrêt, 60 % dernière prévision avant le passage du véhicule. La plupart de ces heures proviennent de prévisions.",
+            "clipped [data-slot=\"card\"] 90 sur 105 · État connu pour 95,2 % des 105 trajets prévus sur les lignes avec données en direct",
+            "clipped [data-slot=\"card\"] 9001 · Seven decimal days",
+            "clipped [data-slot=\"card\"] 9002 · Long stop names and a month of history",
+            "clipped [data-slot=\"card\"] 9003 · Long destinations and live reports",
+            "clipped [data-slot=\"card\"] CSV",
+            "clipped [data-slot=\"card\"] Performance des lignes",
+            "clipped [data-slot=\"card\"] Trajets effectués sur prévus",
+            "clipped [data-slot=\"card\"] Transit. Performance des lignes. du 8 au 14 nov. 2026. Part à l’heure. Méthode v1, nettoyage v8. Trajets effectués sur prévus. Méthode v1, nettoyage v8. http://127.0.0.1:4317/fr/lines?provider=stm&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14#line-performance",
+            "clipped [data-slot=\"card\"] Trop peu pour juger"
+          ]
+        },
+        "1440": {
+          "height": 5810,
+          "overflow": 0,
+          "edges": 0,
+          "edgeCount": 0,
+          "targets": 45,
+          "shortTargets": 0,
+          "targetDeficit": 0,
+          "clipped": 0,
+          "brokenWords": 0,
+          "textDefects": []
+        }
+      }
+    }
+  }
 }

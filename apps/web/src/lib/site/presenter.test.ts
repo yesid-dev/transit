@@ -4,6 +4,9 @@ import { createLineDirectory } from './lineDirectory.ts';
 import {
 	agencyMessageDates,
 	agencyMessageHeading,
+	alertAnswerSentence,
+	alertPaging,
+	alertPeriod,
 	clockRange,
 	clockTime,
 	dateAndClock,
@@ -58,6 +61,36 @@ it.each([
 		),
 	).toBe(label);
 });
+
+it.each([
+	[
+		'en',
+		'alert is in effect now.',
+		'alerts were in effect at some point in these dates.',
+		'Show 12 more',
+		'Showing 12 of 426',
+		'Since',
+	],
+	[
+		'fr',
+		'avis est en vigueur.',
+		'avis ont été en vigueur à un moment de cette période.',
+		'Afficher 12 de plus',
+		'12 sur 426',
+		'Depuis le',
+	],
+] as const)(
+	'formats alert counts, paging, and live periods in %s',
+	(locale, singular, plural, more, showing, since) => {
+		expect(alertAnswerSentence(1, locale, true)).toBe(singular);
+		expect(alertAnswerSentence(426, locale, false)).toBe(plural);
+		expect(alertPaging(locale).more(12)).toBe(more);
+		expect(alertPaging(locale).showing(12, 426)).toBe(showing);
+		expect(
+			alertPeriod({ start: '2026-11-20T14:00:00Z', end: null }, locale, 'America/Toronto', true),
+		).toMatch(new RegExp(`^${since}.*09:00`));
+	},
+);
 
 const normalize = (text: string | null) => text?.replaceAll('\u00a0', ' ');
 

@@ -1,6 +1,7 @@
 import { expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { test } from './layout-test';
+import { alertFixtures } from './alert-fixture.mjs';
 import { captureFixture, captureUrl, captureVehicle } from './capture-fixture';
 import { designPassCases } from './design-pass-cases';
 import { recordMapFixture } from './map-record-fixture';
@@ -19,7 +20,18 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 		await page.route(captureUrl, (route) => {
 			const city = new URL(route.request().url()).searchParams.get('city')!;
 			return route.fulfill({
-				json: captureFixture(time, { city, vehicle_positions: [captureVehicle(time)] }),
+				json: captureFixture(time, {
+					city,
+					vehicle_positions: [captureVehicle(time)],
+					...(screen === 'alerts-live'
+						? {
+								alerts: alertFixtures(12).map((alert) => ({
+									...alert,
+									periods: [[new Date(time - 3600000).toISOString(), null]],
+								})),
+							}
+						: {}),
+				}),
 			});
 		});
 		if (screen.startsWith('map-record')) await recordMapFixture(page);
@@ -70,6 +82,9 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 				).toBeVisible();
 			}
 		}
+		const alerts = screen === 'alerts' || screen === 'alerts-live';
+		if (alerts && provider === 'stm')
+			await expect(page.locator('[data-slot="show-more"]').first()).toBeVisible();
 		const start = performance.now();
 		const redesignedDetail =
 			screen === 'departure' ||
@@ -86,6 +101,7 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 			countShadowRings:
 				health ||
 				redesignedDetail ||
+				alerts ||
 				screen.startsWith('overview') ||
 				screen === 'stop-record' ||
 				screen === 'how-we-measure' ||
@@ -104,7 +120,9 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 			contentType: 'application/json',
 		});
 		const seconds =
-			screen === 'how-we-measure' ? String.raw`(?<!\b90 )(?:seconds|secondes)` : 'seconds|secondes';
+			screen === 'how-we-measure' || screen === 'alerts-live'
+				? String.raw`(?<!\b90 )(?:seconds|secondes)`
+				: 'seconds|secondes';
 		const machineUnits = new RegExp(
 			String.raw`\b(?:\d+ s (?:late|early)|${seconds}|\d+\s+(?:second|seconde))\b|\b\d{2}:\d{2}:\d{2} ·|\bDirection [01]\b`,
 			'i',
@@ -112,6 +130,7 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 		await expect(page.getByRole('main')).not.toContainText(machineUnits);
 		expectDesignPass(screen, key, report);
 		if (
+			alerts ||
 			redesignedDetail ||
 			screen === 'download' ||
 			screen === 'roadmap' ||
@@ -120,13 +139,8 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 			for (const theme of ['light', 'dark'] as const) {
 				await page.evaluate((theme) => localStorage.setItem('theme', theme), theme);
 				await page.reload();
-				await expect(
-					page.locator(
-						screen.startsWith('search')
-							? '[data-slot="screen-state"]'
-							: '[data-slot="screen-answer"]',
-					),
-				).toBeVisible();
+				const answer = page.locator(screen.startsWith('search') ? '[data-slot="screen-state"]' : '[data-slot="screen-answer"]');
+				await expect(alerts ? answer.or(page.locator('[data-slot="screen-state"]')).first() : answer).toBeVisible();
 				if (screen === 'search-query') {
 					await expect(
 						page

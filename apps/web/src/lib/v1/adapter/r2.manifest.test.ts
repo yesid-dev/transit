@@ -101,11 +101,6 @@ describe('r2 manifest memo', () => {
 			() => r2Adapter.labels.get('fr', ctx),
 			() => r2Adapter.dataHealth.get(ctx),
 			() => r2Adapter.historic.historyIndex(ctx),
-			() =>
-				r2Adapter.historic.alertArchivePage(
-					`historic/alerts/generations/${'a'.repeat(64)}/2026-07/page-0001.json`,
-					ctx,
-				),
 			() => r2Adapter.historic.routeReliabilityIndex(ctx),
 			() =>
 				r2Adapter.historic.lineHistoryPartition(

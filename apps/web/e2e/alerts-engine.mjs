@@ -1,12 +1,15 @@
+import { alertFixtures } from './alert-fixture.mjs';
+
 export function alertsEngine(url) {
 	const { searchParams } = url;
 	const from = searchParams.get('from');
 	const to = searchParams.get('to');
+	if (from === '2026-11-05' && to === from) return { status: 503, body: {} };
 	const group = searchParams.get('group');
 	const messages = searchParams.has('alert_details');
 	const fr = searchParams.get('lang') === 'fr';
 	const measure = 'alert_counts';
-	const value = { alerts: 3, alert_versions: 4, alert_hours: 12.5 };
+	const value = { alerts: 426, alert_versions: 426, alert_hours: 12.5 };
 	const measured = { state: 'measured', state_text: { en: 'Measured', fr: 'Mesuré' } };
 	const missing = { state: 'not_measured', state_text: { en: 'Not measured', fr: 'Non mesuré' } };
 	const partial = from !== to;
@@ -20,7 +23,7 @@ export function alertsEngine(url) {
 		method_version: 'alerts-fixture-v1',
 		cleaning_versions: [7],
 		query_ms: 8,
-		counts: { alerts: 3, alert_versions: 4, alert_seconds: 45_000 },
+		counts: { alerts: 426, alert_versions: 426, alert_seconds: 45_000 },
 	};
 	const coverage_note = partial
 		? {
@@ -33,12 +36,30 @@ export function alertsEngine(url) {
 	}
 	const body = { measure, ...measured, coverage_note, evidence };
 	if (group) {
+		if (group === 'effect' || group === 'line') {
+			const counts = new Map();
+			for (const alert of alertFixtures(value.alerts)) {
+				for (const key of group === 'line' ? alert.routes : [alert.effect]) {
+					counts.set(key, (counts.get(key) ?? 0) + 1);
+				}
+			}
+			return {
+				body: {
+					...body,
+					group,
+					cells: [...counts].map(([key, count]) => ({
+						...measured,
+						key: { [group]: key },
+						value: { ...value, alerts: count },
+						evidence: { counts: { alerts: count }, days_included: [to] },
+					})),
+				},
+			};
+		}
 		const keys = {
 			day: { day: to },
 			hour: { hour: 7 },
-			line: { line: '24' },
 			stop_id: { stop: '51234' },
-			effect: { effect: 'DETOUR' },
 			cause: { cause: 'CONSTRUCTION' },
 		};
 		const cells = [
@@ -59,18 +80,18 @@ export function alertsEngine(url) {
 		return { body: { ...body, group, cells } };
 	}
 	if (messages)
-		evidence.alert_messages = [
-			{
+		evidence.alert_messages = alertFixtures(value.alerts).map(
+			({ id, routes, stops, header, description }) => ({
 				source: 'fixture',
-				id: 'a1',
+				id,
 				version: 'v1',
-				routes: ['24'],
-				stops: ['51234'],
-				header: { en: 'Detour on line 24', fr: 'Détour sur la ligne 24' },
-				description: { en: 'Use stop 51234.', fr: null },
-				periods: [{ start: `${to}T12:00:00+00:00`, end: `${to}T15:00:00+00:00` }],
-			},
-		];
+				routes,
+				stops,
+				header,
+				description: { en: null, fr: null, ...description },
+				periods: [{ start: to + 'T12:00:00+00:00', end: to + 'T15:00:00+00:00' }],
+			}),
+		);
 	const slowMessage = messages && from === to && /^2026-11-1[0-5]$/.test(from);
 	return { body: { ...body, value }, hold: slowMessage && `alerts-${from}` };
 }

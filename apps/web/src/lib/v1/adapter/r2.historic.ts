@@ -2,11 +2,9 @@ import type { z } from 'zod';
 import { resolveUrl } from '#lib/v1/config.ts';
 import { getEntityJson, getEntityJsonWithBytes, sha256Hex } from '#lib/v1/http.ts';
 import { HotspotsSchema } from '#lib/v1/schemas/hotspots.ts';
-import { AlertHistorySchema } from '#lib/v1/schemas/alert_history.ts';
 import { RouteReliabilityIndexSchema } from '#lib/v1/schemas/route_reliability_index.ts';
 import { RouteReliabilitySchema } from '#lib/v1/schemas/route_reliability.ts';
 import { StopReliabilitySchema } from '#lib/v1/schemas/stop_reliability.ts';
-import { AlertArchiveIndexSchema, AlertArchivePageSchema } from '#lib/v1/schemas/alert_archive.ts';
 import {
 	HistoricAvailabilityIndexSchema,
 	HistoricCollectionIndexSchema,
@@ -14,10 +12,7 @@ import {
 	LineHistoryPartitionSchema,
 	StopHistoryPartitionSchema,
 } from '#lib/v1/schemas/history.ts';
-import {
-	HistoryArtifactContractError,
-	assertSafeHistoryArtifactPath,
-} from '#lib/v1/history/partitions.ts';
+import { HistoryArtifactContractError } from '#lib/v1/history/partitions.ts';
 import { encodeHistoryEntityId } from '#lib/v1/history/entity.ts';
 import {
 	historyPointerPayloadSha,
@@ -33,7 +28,6 @@ import {
 	providerOf,
 	loadManifest,
 	readEntity,
-	readOptionalWhole,
 	readWhole,
 } from './r2.core';
 
@@ -179,48 +173,12 @@ export const historicPort = {
 			'historic.stopHistoryPartition',
 			ctx,
 		),
-	alertArchiveIndex: async (ctx?: AdapterCtx) => {
-		const manifest = await loadManifest(ctx);
-		return readOptionalWhole(
-			manifest.files.historic?.alerts_index ?? DEFAULTS.historic.alerts_index,
-			AlertArchiveIndexSchema,
-			'historic.alertArchiveIndex',
-			ctx,
-		);
-	},
-	alertArchivePage: async (path: string, ctx?: AdapterCtx) => {
-		const safePath = assertSafeHistoryArtifactPath(path);
-		const url = resolveUrl(safePath, providerOf(ctx));
-		const value = await getEntityJson(
-			url,
-			AlertArchivePageSchema,
-			'historic.alertArchivePage',
-			fetchOf(ctx),
-			{
-				cache: IMMUTABLE_CACHE,
-				providerId: providerOf(ctx),
-				signal: ctx?.signal,
-				serverErrorRetries: 1,
-			},
-		);
-		return value ?? null;
-	},
 	hotspots: async (ctx?: AdapterCtx) => {
 		const manifest = await loadManifest(ctx);
 		return readWhole(
 			manifest.files.historic?.hotspots ?? DEFAULTS.historic.hotspots,
 			HotspotsSchema,
 			'historic.hotspots',
-			MUTABLE_CACHE,
-			ctx,
-		);
-	},
-	alertHistory: async (ctx?: AdapterCtx) => {
-		const manifest = await loadManifest(ctx);
-		return readWhole(
-			manifest.files.historic?.alert_history ?? DEFAULTS.historic.alert_history,
-			AlertHistorySchema,
-			'historic.alertHistory',
 			MUTABLE_CACHE,
 			ctx,
 		);

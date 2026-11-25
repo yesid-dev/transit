@@ -86,6 +86,43 @@ export function clockRange(start: string, end: string, locale: Locale, timeZone 
 	return [from, to].join('–');
 }
 
+export function alertPeriod(
+	{ start, end }: { start: string | null; end: string | null },
+	locale: Locale,
+	timeZone: string | undefined,
+	live: boolean,
+) {
+	if (!live && start && end) return clockRange(start, end, locale, timeZone);
+	if (!start) return null;
+	const date = dateAndClock(start, locale, timeZone);
+	return locale === 'fr' ? `Depuis le ${date}.` : `Since ${date}.`;
+}
+
+export function alertAnswerSentence(count: number, locale: Locale, live: boolean) {
+	if (locale === 'fr') {
+		if (live) return count === 1 ? `avis est en vigueur.` : `avis sont en vigueur.`;
+		return count === 1
+			? `avis a été en vigueur à un moment de cette période.`
+			: `avis ont été en vigueur à un moment de cette période.`;
+	}
+	if (live) return count === 1 ? 'alert is in effect now.' : 'alerts are in effect now.';
+	return count === 1
+		? 'alert was in effect at some point in these dates.'
+		: 'alerts were in effect at some point in these dates.';
+}
+
+export function alertPaging(locale: Locale) {
+	const { format } = intl.number(locale);
+	return {
+		showing: (shown: number, total: number) =>
+			locale === 'fr'
+				? `${format(shown)} sur ${format(total)}`
+				: `Showing ${format(shown)} of ${format(total)}`,
+		more: (count: number) =>
+			locale === 'fr' ? `Afficher ${format(count)} de plus` : `Show ${format(count)} more`,
+	};
+}
+
 export function serviceTime(value: unknown, locale: Locale): string | null {
 	const parts = serviceClockParts(value);
 	if (!parts) return null;

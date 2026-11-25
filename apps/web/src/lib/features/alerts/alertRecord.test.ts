@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { RecordCell, RecordSeries } from '#lib/server/engine.ts';
-import { alertDetailsAllowed, alertReadings, alertRecordRows } from './alertRecord.ts';
+import type { RecordCell } from '#lib/server/engine.ts';
+import { alertDetailsAllowed, alertReadings } from './alertRecord.ts';
 
 const cell: RecordCell = {
 	state: 'measured',
@@ -9,50 +9,7 @@ const cell: RecordCell = {
 	evidence: { counts: {}, days_included: ['2026-11-20'] },
 };
 
-function series(...cells: RecordSeries['cells']): RecordSeries {
-	return {
-		cells,
-		coverage_note: null,
-		evidence: {
-			start_date: '2026-11-20',
-			end_date: '2026-11-20',
-			days_included: ['2026-11-20'],
-			days_measured: ['2026-11-20'],
-			days_not_measured: [],
-			method_version: 'alert-counts-v1',
-			cleaning_versions: [7],
-			query_ms: 8,
-		},
-	};
-}
-
 describe('alert record readings', () => {
-	it('localizes published effects and durations while keeping unknown effects visible', () => {
-		expect(
-			alertRecordRows(
-				series({ ...cell, key: { effect: 'DETOUR' } }, { ...cell, key: { effect: null } }),
-				'effect',
-				'fr',
-				(id) => id,
-			),
-		).toEqual([
-			['Détour', '2', '3', '1,25'],
-			['Inconnu', '2', '3', '1,25'],
-		]);
-	});
-
-	it('uses the local hour key and preserves a missing day without rendering zeros', () => {
-		const missing = {
-			...cell,
-			state: 'not_measured' as const,
-			state_text: { en: 'Not measured', fr: 'Non mesuré' },
-			value: { alerts: null, alert_versions: null, alert_hours: null },
-		};
-		expect(
-			alertRecordRows(series({ ...missing, key: { hour: 7 } }), 'hour', 'en', (id) => id),
-		).toEqual([['07:00', 'Not measured', 'Not measured', 'Not measured']]);
-	});
-
 	it('distinguishes unavailable values, tracked zeros and very short active time', () => {
 		const readings = (entry: RecordCell) =>
 			alertReadings(entry, 'en').map(({ reading }) => reading);

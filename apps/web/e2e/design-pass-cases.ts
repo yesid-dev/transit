@@ -20,6 +20,7 @@ const screens = {
 	rankings: '/repeat-offenders',
 	daily: '/receipt',
 	alerts: '/alerts',
+	'alerts-live': '/alerts?frameMode=live',
 	'network-health': '/network',
 	'network-health-live': '/network?frameMode=live',
 	'data-health': '/status',
@@ -42,6 +43,7 @@ export type Screen = keyof typeof screens;
 
 const ottawa: Screen[] = [
 	'alerts',
+	'alerts-live',
 	'how-we-measure',
 	'download',
 	'departure',
@@ -64,6 +66,8 @@ const ottawa: Screen[] = [
 	'vehicles',
 ];
 const french: Screen[] = [
+	'alerts',
+	'alerts-live',
 	'daily',
 	'vehicle-record',
 	'vehicle-live',
@@ -90,6 +94,8 @@ export const designPassCases = [
 	...Object.keys(screens).map((screen) => [screen as Screen, 'stm', 'en'] as const),
 	...ottawa.map((screen) => [screen, 'octranspo', 'en'] as const),
 	...french.map((screen) => [screen, 'stm', 'fr'] as const),
+	['alerts', 'octranspo', 'fr'] as const,
+	['alerts-live', 'octranspo', 'fr'] as const,
 	['overview', 'octranspo', 'fr'] as const,
 	['overview-live', 'octranspo', 'fr'] as const,
 	['line-live', 'octranspo', 'fr'] as const,
