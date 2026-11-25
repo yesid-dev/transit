@@ -261,7 +261,7 @@
 {#if id}
 	{@render titleBlock?.(liveReading?.route)}
 	<div class="min-w-0" data-slot="screen-content">
-		<RecordGroup class="grid gap-6">
+		<RecordGroup>
 			<div data-slot="screen-answer">
 				<RecordAnswer
 					value={liveDelay}
@@ -297,7 +297,7 @@
 								</p>
 							{/if}
 						</div>
-						{#snippet footer()}
+						{#snippet links()}
 							<a
 								class="inline-flex min-h-11 w-full items-center text-primary underline"
 								href={href(routeFor({ kind: 'vehicle', id }))}
@@ -405,9 +405,9 @@
 								>
 							{/if}
 						</FactList>
-						{#snippet footer()}<div class="w-full">
-								{@render viewRecord()}
-							</div>{/snippet}
+						{#snippet links()}
+							{@render viewRecord()}
+						{/snippet}
 					</RecordCard>
 				</DashboardGrid>
 			{:else}

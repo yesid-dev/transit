@@ -25,7 +25,7 @@
 	import HealthTable from '../network/HealthTable.svelte';
 	import RecordAnswer from '../record/RecordAnswer.svelte';
 	import RecordCard from '../record/RecordCard.svelte';
-	import RecordEvidenceFooter from '../record/RecordEvidenceFooter.svelte';
+	import RecordEvidenceLine from '../record/RecordEvidenceLine.svelte';
 	import AboutLiveFigures from '../record/AboutLiveFigures.svelte';
 	import RecordActionGroup from '../record/RecordActionGroup.svelte';
 	import RecordPending from '../record/RecordPending.svelte';
@@ -171,7 +171,7 @@
 
 										{#await answer then result}
 											{#if result.kind === 'answer'}
-												<RecordEvidenceFooter
+												<RecordEvidenceLine
 													{locale}
 													evidence={result.answer.evidence}
 													sample={countedUnit(
@@ -252,7 +252,7 @@
 							label: liveStampAge(publicationAge, locale),
 						}
 					: undefined}
-				<RecordGroup class="grid gap-6">
+				<RecordGroup>
 					<div data-slot="screen-answer">
 						<RecordAnswer
 							{locale}

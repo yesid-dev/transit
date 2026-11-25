@@ -147,21 +147,25 @@
 		</div>
 	{/if}
 	<FactList class="mt-3">
-		<FactRow label={t.silent} busy={silent.kind === 'pending'}>
+		<FactRow
+			label={t.silent}
+			busy={silent.kind === 'pending'}
+			detail={silent.kind === 'value' ? pulse?.silentReading?.detail : undefined}
+		>
 			{#if silent.kind === 'value' && pulse?.silentReading}
 				<span class="font-semibold tabular-nums">{pulse.silentReading.value}</span>
-				<span class="text-muted-foreground">{pulse.silentReading.detail}</span>
 			{:else}
 				{@render readingValue(silent)}
 			{/if}
 		</FactRow>
-		<FactRow label={t.alerts} busy={alerts.kind === 'pending'}>
+		<FactRow
+			label={t.alerts}
+			busy={alerts.kind === 'pending'}
+			detail={stale(alertHealth)
+				? liveStampAge(alertHealth?.ageSeconds ?? null, locale, 'behind')
+				: undefined}
+		>
 			{@render readingValue(alerts)}
-			{#if stale(alertHealth)}
-				<p class="text-muted-foreground">
-					{liveStampAge(alertHealth?.ageSeconds ?? null, locale, 'behind')}
-				</p>
-			{/if}
 		</FactRow>
 	</FactList>
 	{#if lines.length}
@@ -180,7 +184,7 @@
 			{/each}
 		</ul>
 	{/if}
-	{#snippet footer()}
+	{#snippet links()}
 		<a class="inline-flex min-h-11 items-center text-primary underline" href={link('/map', true)}
 			>{t.openMap}</a
 		>

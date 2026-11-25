@@ -1,5 +1,6 @@
 <script lang="ts">
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
+	import RecordEvidenceLine from '#lib/features/record/RecordEvidenceLine.svelte';
 	import RecordScreen from '#lib/features/record/RecordScreen.svelte';
 	import { page } from '$app/state';
 	import { SvelteURL } from 'svelte/reactivity';
@@ -300,15 +301,12 @@
 {/snippet}
 {#snippet footerEvidence(result: EngineResult<EngineAnswer>, section: DailySection)}
 	{#if result.kind === 'answer'}
-		<p
-			class="flex w-full flex-wrap justify-between gap-x-3 font-mono text-sm text-muted-foreground"
-		>
-			{#if evidenceSample(result.answer, section)}<span
-					>{evidenceSample(result.answer, section)}</span
-				>{/if}
-			<span>{methodEvidence(result.answer.evidence, lang, true)}</span>
-			{#if result.lastGood}<span>{lastGoodNote[lang]}</span>{/if}
-		</p>
+		<RecordEvidenceLine
+			locale={lang}
+			evidence={result.answer.evidence}
+			sample={evidenceSample(result.answer, section)}
+			note={result.lastGood ? lastGoodNote[lang] : undefined}
+		/>
 	{/if}
 {/snippet}
 {#snippet messagesNotTracked()}
@@ -406,7 +404,7 @@
 				</p>
 			{:else if !data.unpublished && data.sections.length}
 				<div class="report-content min-w-0" data-slot="screen-content">
-					<RecordGroup class="grid gap-6 print:grid-cols-2 print:gap-3">
+					<RecordGroup class="print:grid-cols-2 print:gap-3">
 						<section
 							id="punctuality"
 							aria-label={t(...dailyTitles.punctuality)}
@@ -474,10 +472,12 @@
 											</p>
 										{/if}
 									{/await}
-									{#snippet footer()}{#await deliveryAnswer then result}{#if result}{@render footerEvidence(
+									{#snippet evidence()}
+										{#await deliveryAnswer then result}{#if result}{@render footerEvidence(
 													result,
 													'delivery',
-												)}{/if}{/await}{/snippet}
+												)}{/if}{/await}
+									{/snippet}
 								</RecordCard>
 							</div>
 							<div class="grid min-w-0">
@@ -508,10 +508,12 @@
 											{:else}<StateMark state="unknown" locale={lang} />{/if}
 										{/if}
 									{/await}
-									{#snippet footer()}{#await punctualityAnswer then result}{#if result}{@render footerEvidence(
+									{#snippet evidence()}
+										{#await punctualityAnswer then result}{#if result}{@render footerEvidence(
 													result,
 													'punctuality',
-												)}{/if}{/await}{/snippet}
+												)}{/if}{/await}
+									{/snippet}
 								</RecordCard>
 							</div>
 						</div>
@@ -547,10 +549,12 @@
 										{/if}
 									{/if}
 								{/await}
-								{#snippet footer()}{#await periodsAnswer then result}{#if result}{@render footerEvidence(
+								{#snippet evidence()}
+									{#await periodsAnswer then result}{#if result}{@render footerEvidence(
 												result,
 												'periods',
-											)}{/if}{/await}{/snippet}
+											)}{/if}{/await}
+								{/snippet}
 							</RecordCard>
 						</div>
 
@@ -642,10 +646,12 @@
 										{/if}
 									{/await}
 								{/if}
-								{#snippet footer()}{#await messagesAnswer then result}{#if result}{@render footerEvidence(
+								{#snippet evidence()}
+									{#await messagesAnswer then result}{#if result}{@render footerEvidence(
 												result,
 												'messages',
-											)}{/if}{/await}{/snippet}
+											)}{/if}{/await}
+								{/snippet}
 							</RecordCard>
 						</div>
 
@@ -689,17 +695,16 @@
 										/>
 									</div>
 								</DashboardGrid>
-								{#snippet footer()}
+								{#snippet evidence()}
 									{#await rankings then [lines, stops]}
 										{@const evidence = rankingEvidence(lines, stops)}
 										{#if evidence.versions}
-											<p
-												class="flex w-full flex-wrap justify-between gap-x-3 font-mono text-sm text-muted-foreground"
-											>
-												{#if evidence.sample}<span>{evidence.sample}</span>{/if}
-												<span>{evidence.versions}</span>
-												{#if evidence.stale}<span>{evidence.stale}</span>{/if}
-											</p>
+											<RecordEvidenceLine
+												locale={lang}
+												sample={evidence.sample}
+												versions={evidence.versions}
+												note={evidence.stale}
+											/>
 										{/if}
 									{/await}
 								{/snippet}

@@ -160,7 +160,7 @@
 	{/await}
 {/snippet}
 
-{#snippet evidence(section: LineSection)}
+{#snippet sectionEvidence(section: LineSection)}
 	{@const answer = answerFor(section)}
 	{#await answer then result}
 		{#if result.kind === 'answer'}<LineRecordEvidence
@@ -171,7 +171,7 @@
 {/snippet}
 
 {#snippet failureGroup()}
-	<RecordGroup aria-labelledby="line-failures-heading" class="grid min-w-0 gap-3">
+	<RecordGroup aria-labelledby="line-failures-heading">
 		<div class="flex flex-wrap items-center justify-between gap-2">
 			<h2 id="line-failures-heading" class="text-heading font-bold">
 				{t('Where and when it fails', 'Où et quand le service fait défaut')}
@@ -190,8 +190,10 @@
 					bind:open={opened[section]}
 				>
 					{@render reading(section)}
-					{#snippet footer()}
-						{@render evidence(section)}
+					{#snippet evidence()}
+						{@render sectionEvidence(section)}
+					{/snippet}
+					{#snippet toggle()}
 						{#if section === 'stops'}
 							{#await stopsAnswer then result}
 								{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
@@ -259,7 +261,7 @@
 {/snippet}
 
 <div data-slot="screen-content" class="min-w-0">
-	<RecordGroup class="grid gap-4">
+	<RecordGroup>
 		<LineRecordTop {name} {scheduleOnly} {locale} {record} {pinned} {headsigns} {operator} />
 		{#if scheduleOnly}
 			<LineScheduleCard {record} {locale} {url} />
@@ -274,7 +276,7 @@
 				{@render failureGroup()}
 			{/if}
 		{/await}
-		<RecordGroup class="grid gap-4">
+		<RecordGroup>
 			<LineScheduleCard {record} {locale} {url} />
 			{#await punctualityAnswer then result}
 				{@const answer =
@@ -283,7 +285,9 @@
 					<div id="alerts">
 						<RecordCard interactive title={title('alerts')} {stamp}>
 							{@render reading('alerts')}
-							{#snippet footer()}{@render evidence('alerts')}{/snippet}
+							{#snippet evidence()}
+								{@render sectionEvidence('alerts')}
+							{/snippet}
 						</RecordCard>
 					</div>
 				{/if}
@@ -292,7 +296,7 @@
 		{#await punctualityAnswer then result}
 			{@const answer = result.kind === 'answer' && 'value' in result.answer ? result.answer : null}
 			{#if !lineTimetableOnly(answer)}
-				<RecordGroup class="grid gap-4">{@render about(answer)}</RecordGroup>
+				<RecordGroup>{@render about(answer)}</RecordGroup>
 			{/if}
 		{/await}
 	{/if}

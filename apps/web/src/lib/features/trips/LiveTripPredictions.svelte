@@ -72,7 +72,7 @@
 			<p>{copy.noPredictions}</p>
 		{/if}
 	</div>
-	{#snippet footer()}
+	{#snippet links()}
 		{#if csv}
 			<a
 				class="inline-flex min-h-11 items-center text-primary underline"

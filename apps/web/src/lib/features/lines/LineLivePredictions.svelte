@@ -110,7 +110,7 @@
 				</li>
 			{/each}
 		</ul>
-		{#snippet footer()}
+		{#snippet evidence()}
 			<p>
 				{t(
 					'These are the agency’s predictions, not observed arrivals.',

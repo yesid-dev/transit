@@ -20,7 +20,7 @@
 	import RecordAnswer from './RecordAnswer.svelte';
 	import AboutFigures from './AboutFigures.svelte';
 	import RecordCard from './RecordCard.svelte';
-	import RecordEvidenceFooter from './RecordEvidenceFooter.svelte';
+	import RecordEvidenceLine from './RecordEvidenceLine.svelte';
 	import RecordPending from './RecordPending.svelte';
 	import ScreenTitle from './ScreenTitle.svelte';
 	import StateMark from './StateMark.svelte';
@@ -172,7 +172,7 @@
 <RecordScreen class="min-w-0">
 	<RecordGroup><ScreenTitle {title} subtitle={subject} /></RecordGroup>
 	<div data-slot="screen-content">
-		<RecordGroup class="grid gap-6">
+		<RecordGroup>
 			<div class="table-days-answer" data-slot="screen-answer">
 				{#if record}
 					{#await record.health}
@@ -270,11 +270,11 @@
 								{:else}<StateMark state="not_measured" {locale} />{/if}
 							{:else if result.kind !== 'busy'}<p>{recordConnection.unreachable[locale]}</p>{/if}
 						{/await}
-						{#snippet footer()}
+						{#snippet evidence()}
 							{#await record.health then result}
 								{#if result.kind === 'answer'}
 									{#await record.methods then methods}
-										<RecordEvidenceFooter
+										<RecordEvidenceLine
 											{locale}
 											sample={sample(result.answer)}
 											versions={versionsText(
@@ -360,10 +360,11 @@
 							'Un jour où une table manque est exclu de chaque résultat qui en dépend. Le résultat indique ensuite combien de jours ont été comptés, pour qu’un jour sans données ne soit jamais pris pour un bon jour.',
 						)}
 					</p>
-					{#snippet footer()}<a
-							class="inline-flex min-h-11 items-center text-primary underline"
-							href={methodHref}>{methodLabel}</a
-						>{/snippet}
+					{#snippet links()}
+						<a class="inline-flex min-h-11 items-center text-primary underline" href={methodHref}
+							>{methodLabel}</a
+						>
+					{/snippet}
 				</RecordCard>
 			{/if}
 		</RecordGroup>

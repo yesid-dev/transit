@@ -26,7 +26,7 @@
 	import AboutFigures from '#lib/features/record/AboutFigures.svelte';
 	import RecordActionGroup from '#lib/features/record/RecordActionGroup.svelte';
 	import RecordAnswer from '#lib/features/record/RecordAnswer.svelte';
-	import RecordEvidenceFooter from '#lib/features/record/RecordEvidenceFooter.svelte';
+	import RecordEvidenceLine from '#lib/features/record/RecordEvidenceLine.svelte';
 	import RecordCard from '#lib/features/record/RecordCard.svelte';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
 	import StateMark from '#lib/features/record/StateMark.svelte';
@@ -205,7 +205,7 @@
 			{@const serviceSample = [trips == null ? null : countedUnit(trips, 'trip', locale), inService]
 				.filter(Boolean)
 				.join(', ')}
-			<RecordGroup class="grid gap-6">
+			<RecordGroup>
 				<div data-slot="screen-answer">
 					<RecordAnswer
 						value={serviceDays.ratio}
@@ -351,11 +351,9 @@
 								</section>
 							{/if}
 						</DashboardGrid>
-						{#snippet footer()}<RecordEvidenceFooter
-								evidence={answer.evidence}
-								sample={serviceSample}
-								{locale}
-							/>{/snippet}
+						{#snippet evidence()}
+							<RecordEvidenceLine evidence={answer.evidence} sample={serviceSample} {locale} />
+						{/snippet}
 					</RecordCard>
 				</div>
 				<RecordCard interactive title={t('Day by day', 'Jour après jour')} stamp={time}>
@@ -388,12 +386,13 @@
 							{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 						{:else if result}{@render absent(result)}{/if}
 					{/await}
-					{#snippet footer()}{#await dailyAnswer then result}
+					{#snippet evidence()}
+						{#await dailyAnswer then result}
 							{#if result?.kind === 'answer' && 'cells' in result.answer}
 								{@const entries = days(result.answer)}
 								{@const reported = entries.filter((entry) => entry.state === 'in_service').length}
 								{@const measured = entries.filter((entry) => entry.state !== 'not_measured').length}
-								<RecordEvidenceFooter
+								<RecordEvidenceLine
 									evidence={result.answer.evidence}
 									sample={measured
 										? t(
@@ -404,7 +403,8 @@
 									{locale}
 								/>
 							{/if}
-						{/await}{/snippet}
+						{/await}
+					{/snippet}
 				</RecordCard>
 
 				<DashboardGrid gutter={false} minTile="19rem">
@@ -445,10 +445,11 @@
 										{:else}{@render absent(result)}{/if}
 									{:else}{@render absent(result)}{/if}
 								{/await}
-								{#snippet footer()}{#await answer then result}
+								{#snippet evidence()}
+									{#await answer then result}
 										{#if result.kind === 'answer' && 'value' in result.answer}
 											{@const hours = result.answer.evidence.counts.hours_in_service}
-											<RecordEvidenceFooter
+											<RecordEvidenceLine
 												evidence={result.answer.evidence}
 												sample={section === 'reporting' && hours != null
 													? t(
@@ -461,7 +462,8 @@
 												{locale}
 											/>
 										{/if}
-									{/await}{/snippet}
+									{/await}
+								{/snippet}
 							</RecordCard>
 						</div>
 					{/each}
@@ -516,16 +518,18 @@
 									{/await}
 								</div>
 							</DashboardGrid>
-							{#snippet footer()}{#await timing.answer then result}
+							{#snippet evidence()}
+								{#await timing.answer then result}
 									{#if result.kind === 'answer' && 'value' in result.answer}
 										{@const count = result.answer.evidence.counts.punctuality_classified}
-										<RecordEvidenceFooter
+										<RecordEvidenceLine
 											evidence={result.answer.evidence}
 											sample={count ? countedUnit(count, 'event', locale) : null}
 											{locale}
 										/>
 									{/if}
-								{/await}{/snippet}
+								{/await}
+							{/snippet}
 						</RecordCard>
 					</div>
 				{/if}

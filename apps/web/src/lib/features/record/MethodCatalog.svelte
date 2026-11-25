@@ -258,7 +258,7 @@
 					{@const parts = methodParts(ordered, locale)}
 					{@const byId = new Map(ordered.map((entry) => [entry.id, entry]))}
 					{@const version = versions(result.answer, cleaningVersion)}
-					<RecordGroup class="grid gap-6">
+					<RecordGroup>
 						<div data-slot="screen-answer">
 							{#snippet leadActions()}{@render actions(result.answer)}{/snippet}
 							{#snippet meta()}{#if version}<p>{version}</p>{/if}{/snippet}

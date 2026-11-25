@@ -34,7 +34,7 @@
 	import AboutFigures from '#lib/features/record/AboutFigures.svelte';
 	import RecordActionGroup from '#lib/features/record/RecordActionGroup.svelte';
 	import RecordAnswer from '#lib/features/record/RecordAnswer.svelte';
-	import RecordEvidenceFooter from '#lib/features/record/RecordEvidenceFooter.svelte';
+	import RecordEvidenceLine from '#lib/features/record/RecordEvidenceLine.svelte';
 	import RecordCard from '#lib/features/record/RecordCard.svelte';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
 	import ScreenTitle from '#lib/features/record/ScreenTitle.svelte';
@@ -153,7 +153,7 @@
 
 <Surface>
 	<RecordScreen>
-		<RecordGroup class="max-sm:pb-4">
+		<RecordGroup>
 			<ScreenTitle
 				title={data.seoTitle}
 				plate={line}
@@ -163,7 +163,7 @@
 		</RecordGroup>
 		<div data-slot="screen-content">
 			{#if data.mode === 'live'}
-				<RecordGroup class="grid gap-4 sm:gap-6">
+				<RecordGroup density="compact">
 					{#await data.liveTrips}
 						<RecordPending locale={data.lang} />
 					{:then result}
@@ -236,7 +236,7 @@
 							</div>
 						</RecordGroup>
 					{:else}
-						<RecordGroup class="grid gap-4 max-sm:pb-3 sm:gap-6">
+						<RecordGroup density="compact">
 							<div data-slot="screen-answer">
 								{#await observed.answer}
 									<RecordPending locale={data.lang} answer={observed.answer} />
@@ -449,7 +449,7 @@
 													{/if}
 												{/if}
 											</div>
-											{#snippet footer()}
+											{#snippet evidence()}
 												{#if result.kind === 'answer'}
 													{@const evidence = result.answer.evidence}
 													{@const count =
@@ -465,7 +465,7 @@
 																	0,
 																)
 															: null}
-													<RecordEvidenceFooter
+													<RecordEvidenceLine
 														{evidence}
 														sample={count
 															? countedUnit(count, 'event', data.lang)
@@ -488,7 +488,7 @@
 						{#await answers.find(({ section }) => section === 'delay')?.answer then result}
 							{#if data.period && result?.kind === 'answer' && 'value' in result.answer}
 								{@const evidence = result.answer.evidence}
-								<RecordGroup class="max-sm:pt-3">
+								<RecordGroup>
 									<AboutFigures
 										compact
 										title={t('About these figures', 'À propos de ces chiffres')}

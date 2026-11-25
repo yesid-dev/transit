@@ -172,7 +172,7 @@
 							label: liveStampAge(captureAge, locale),
 						}
 					: undefined}
-				<RecordGroup class="grid gap-6">
+				<RecordGroup>
 					<div data-slot="screen-answer">
 						<RecordAnswer
 							{locale}

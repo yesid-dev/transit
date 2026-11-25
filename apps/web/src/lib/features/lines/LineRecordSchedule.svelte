@@ -130,7 +130,7 @@
 				</p>
 			{/if}
 		</div>
-		{#snippet footer()}
+		{#snippet evidence()}
 			{#if frequency}<LineRecordEvidence evidence={frequency.evidence} {locale} />{/if}
 		{/snippet}
 	</RecordCard>

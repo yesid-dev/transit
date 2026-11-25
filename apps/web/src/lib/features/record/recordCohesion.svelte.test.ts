@@ -13,6 +13,11 @@ it('draws only section boundaries, card feet and short fact rows', () => {
 	const card = link.closest('[data-slot="card"]')!;
 	expect(card).toHaveAttribute('data-interactive', 'true');
 	expect(card.querySelectorAll('footer .hand-drawn-line')).toHaveLength(1);
+	expect(
+		[...card.querySelectorAll('footer > [data-slot^="record-foot-"]')].map((slot) =>
+			slot.getAttribute('data-slot'),
+		),
+	).toEqual(['record-foot-links', 'record-foot-evidence', 'record-foot-toggle']);
 	expect(card.querySelectorAll('[data-slot="fact-row"] .hand-drawn-line')).toHaveLength(2);
 	const about = screen.getByRole('article', { name: 'About these figures' });
 	expect(about.closest('[data-slot="card"]')).not.toHaveAttribute('data-interactive');

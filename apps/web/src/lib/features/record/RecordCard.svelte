@@ -9,7 +9,9 @@
 		title,
 		disclosure,
 		stamp,
-		footer,
+		links,
+		evidence,
+		toggle,
 		children,
 		expandable = false,
 		open = $bindable(),
@@ -21,7 +23,9 @@
 		title: string;
 		disclosure?: { id: string; description?: string; nested?: boolean; initiallyOpen?: boolean };
 		stamp?: StampProps;
-		footer?: Snippet;
+		links?: Snippet;
+		evidence?: Snippet;
+		toggle?: Snippet;
 		children: Snippet;
 		expandable?: boolean;
 		open?: boolean;
@@ -35,12 +39,29 @@
 </script>
 
 {#snippet cardFooter()}
-	{#if footer}
+	{#if links || evidence || toggle}
 		<footer
-			class="relative -mx-4 flex flex-wrap gap-x-4 gap-y-2 px-4 pt-3 sm:-mx-6 sm:px-6 print:mx-0 print:px-0 print:pt-0"
+			class="relative -mx-4 flex flex-wrap items-center gap-x-4 gap-y-2 px-4 pt-3 sm:-mx-6 sm:px-6 print:mx-0 print:px-0 print:pt-0"
 		>
 			<Separator variant="hand-drawn" class="absolute inset-x-0 -top-[4px] print:hidden" />
-			{@render footer()}
+			{#if links}
+				<div
+					class="foot-part flex min-w-0 basis-full flex-wrap gap-x-4 gap-y-2"
+					data-slot="record-foot-links"
+				>
+					{@render links()}
+				</div>
+			{/if}
+			{#if evidence}
+				<div class="foot-part min-w-0 grow basis-64" data-slot="record-foot-evidence">
+					{@render evidence()}
+				</div>
+			{/if}
+			{#if toggle}
+				<div class="foot-part max-w-full shrink-0" data-slot="record-foot-toggle">
+					{@render toggle()}
+				</div>
+			{/if}
 		</footer>
 	{/if}
 {/snippet}
@@ -68,6 +89,7 @@
 	<article
 		aria-labelledby={id}
 		data-slot="record-card"
+		class="gap-4"
 		class:nested={disclosure?.nested}
 		class:expandable={expandable && !disclosure}
 		class:compact-print={compactPrint}
@@ -96,7 +118,7 @@
 			<Collapsible.Root open={expanded} onOpenChange={(value) => (open = value)}>
 				{@render header()}
 				<Collapsible.Content>
-					<div class="disclosure min-w-0" class:fill>{@render children()}</div>
+					<div class="disclosure mt-4 min-w-0 gap-4" class:fill>{@render children()}</div>
 				</Collapsible.Content>
 			</Collapsible.Root>
 			{#if expanded}{@render cardFooter()}{/if}
@@ -107,7 +129,7 @@
 	</article>
 {/snippet}
 
-<!-- Pass interactive for cards with links or controls. Put links, evidence and switches in footer. -->
+<!-- Pass interactive for cards with links or controls. Use links, evidence and toggle for the card foot. -->
 {#if disclosure?.nested}
 	{@render content()}
 {:else}
@@ -127,7 +149,6 @@
 		display: flex;
 		flex: 1;
 		flex-direction: column;
-		gap: var(--space-card-gap);
 		min-inline-size: 0;
 	}
 	h2,
@@ -166,14 +187,13 @@
 	footer {
 		margin-block-start: auto;
 	}
-	footer:not(:has(> :nth-child(2))) {
+	.foot-part:empty,
+	footer:not(:has(> .foot-part:not(:empty))) {
 		display: none;
 	}
 	.disclosure {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
-		gap: var(--space-card-gap);
-		margin-block-start: var(--space-card-gap);
 	}
 	.expandable {
 		container-type: inline-size;

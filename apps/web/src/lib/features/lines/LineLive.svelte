@@ -161,7 +161,7 @@
 				?.filter(({ route_id }) => route_id === line)
 				.every(({ trip_id }) => !trip_id) ??
 				false))}
-	<RecordGroup class="grid gap-4">
+	<RecordGroup>
 		<div id="line-detail-profile" data-slot="screen-answer">
 			{#if live && rows && !limits}
 				{#snippet meta()}<p>
@@ -241,9 +241,11 @@
 							)}
 						</p>
 					{/if}
-					{#snippet footer()}{#if silent !== null}
+					{#snippet evidence()}
+						{#if silent !== null}
 							<p>{terms.silent}{t(': ', ' : ')}{tally(silent, locale)}</p>
-						{/if}{/snippet}
+						{/if}
+					{/snippet}
 				</RecordCard>
 			</div>
 		{/if}
@@ -263,7 +265,7 @@
 			</div>
 		{/if}
 	</RecordGroup>
-	<RecordGroup class="grid gap-4">
+	<RecordGroup>
 		{#if !limits}
 			<div id="alerts">
 				<LineLiveNotices
@@ -295,7 +297,7 @@
 
 <div data-slot="screen-content" class="min-w-0">
 	{#if scheduleOnly}
-		<RecordGroup class="grid gap-4">
+		<RecordGroup>
 			<div id="line-detail-profile" data-slot="screen-answer">
 				{#snippet message()}
 					<p>
@@ -319,7 +321,7 @@
 	{:else if capture}
 		<LiveCapture {city} {capture}>
 			{#snippet pending()}
-				<RecordGroup class="grid gap-4">
+				<RecordGroup>
 					{@render checking()}
 					{@render schedule()}
 				</RecordGroup>
@@ -327,7 +329,7 @@
 			{#snippet children(snapshot, now, refreshed)}
 				{#if lineVehicleRows(snapshot, line, now) && punctuality && !snapshot?.vehicle_positions?.some(({ route_id, trip_id }) => route_id === line && trip_id)}
 					{#await punctuality}
-						<RecordGroup class="grid gap-4">
+						<RecordGroup>
 							{@render checking()}
 							{@render schedule()}
 						</RecordGroup>

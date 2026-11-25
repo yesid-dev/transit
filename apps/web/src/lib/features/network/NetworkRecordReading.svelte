@@ -10,7 +10,7 @@
 	} from '#lib/server/engine.ts';
 	import { countedUnit } from '#lib/site/presenter.ts';
 	import RecordCard from '../record/RecordCard.svelte';
-	import RecordEvidenceFooter from '../record/RecordEvidenceFooter.svelte';
+	import RecordEvidenceLine from '../record/RecordEvidenceLine.svelte';
 	import RecordPending from '../record/RecordPending.svelte';
 	import { lastGoodNote, recordConnection } from '../record/recordText.ts';
 
@@ -64,14 +64,20 @@
 				{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 			{/if}
 		{/await}
-		{#snippet footer()}
+		{#snippet evidence()}
 			{#await answer then result}
 				{#if result.kind === 'answer' && !('rows' in result.answer)}
-					<RecordEvidenceFooter
+					<RecordEvidenceLine
 						evidence={result.answer.evidence}
 						sample={sample(result.answer)}
 						{locale}
 					/>
+				{/if}
+			{/await}
+		{/snippet}
+		{#snippet toggle()}
+			{#await answer then result}
+				{#if result.kind === 'answer' && !('rows' in result.answer)}
 					{#if control}{@render control()}{/if}
 				{/if}
 			{/await}

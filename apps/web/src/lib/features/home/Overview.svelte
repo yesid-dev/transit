@@ -24,6 +24,7 @@
 	import RecordActionGroup from '../record/RecordActionGroup.svelte';
 	import RecordAnswer from '../record/RecordAnswer.svelte';
 	import RecordCard from '../record/RecordCard.svelte';
+	import RecordEvidenceLine from '../record/RecordEvidenceLine.svelte';
 	import RecordScreen from '../record/RecordScreen.svelte';
 	import RecordGroup from '../record/RecordGroup.svelte';
 	import FactList from '../record/FactList.svelte';
@@ -183,20 +184,21 @@
 					: null}
 			{@const counted = recordCounts(events, trips, days, locale)}
 			{#if counted}
-				<p
-					class="flex w-full flex-wrap justify-between gap-x-3 font-mono text-sm text-muted-foreground"
-				>
-					<span>{counted}</span>
-					{#if current.kind === 'answer' && current.answer.state === 'measured'}<span
-							>{methodEvidence(current.answer.evidence, locale, true)}</span
-						>{/if}
-				</p>
+				<RecordEvidenceLine
+					{locale}
+					sample={counted}
+					versions={current.kind === 'answer' && current.answer.state === 'measured'
+						? methodEvidence(current.answer.evidence, locale, true)
+						: ''}
+				/>
 			{/if}
 		{/await}
 	{/await}
 {/snippet}
 
 {#snippet recordCard()}
+	{@const previousLabel =
+		record.period.from === record.period.to ? t.previousWeekday : t.previous(days)}
 	<RecordCard interactive title={t.record} {stamp}>
 		{#await record.punctuality}
 			{#key record.punctuality}<RecordPending {locale} answer={record.punctuality} />{/key}
@@ -215,61 +217,67 @@
 				{#if current.kind === 'answer' && overviewValue(current, 'on_time') != null}
 					{@const { on_time, classified } = current.answer.evidence.counts}
 					{#if on_time != null && classified != null}
-						<FactRow label={t.onTime}>
+						<FactRow
+							label={t.onTime}
+							detail={recordDenominator(countedUnit(classified, 'event', locale), locale)}
+						>
 							<strong>{tally(on_time, locale)}</strong>
-							<span class="block text-muted-foreground"
-								>{recordDenominator(countedUnit(classified, 'event', locale), locale)}</span
-							>
 						</FactRow>
 					{/if}
 				{:else if current.kind !== 'answer' && current.kind !== 'busy'}
 					<FactRow label={t.onTime}>{t.unavailable}</FactRow>
 				{/if}
 			{/await}
-			<FactRow
-				label={record.period.from === record.period.to ? t.previousWeekday : t.previous(days)}
-			>
-				{#await record.baseline}
+			{#await record.baseline}
+				<FactRow label={previousLabel}>
 					{#key record.baseline}<RecordPending {locale} answer={record.baseline} />{/key}
-				{:then previous}
-					{@const share = overviewValue(previous, 'on_time')}
+				</FactRow>
+			{:then previous}
+				{@const share = overviewValue(previous, 'on_time')}
+				{@const range = dateRange(record.previous, locale)}
+				<FactRow
+					label={previousLabel}
+					detail={share == null ? range : `${percent(share, locale)}, ${range}`}
+				>
 					{#if share == null}
 						{@render gap(previous)}
-						<span class="block text-muted-foreground">{dateRange(record.previous, locale)}</span>
 					{:else}
 						{#await record.punctuality then current}
 							<strong>{comparisonText(current, previous, locale) ?? t.comparisonUnavailable}</strong
 							>
 						{/await}
-						<span class="block text-muted-foreground"
-							>{percent(share, locale)}, {dateRange(record.previous, locale)}</span
-						>
 					{/if}
 					{#if previous.kind === 'answer' && previous.lastGood}<p>
 							{lastGoodNote[locale]}
 						</p>{/if}
-				{/await}
-			</FactRow>
-			<FactRow label={t.delivery}>
-				{#await record.delivery}
+				</FactRow>
+			{/await}
+			{#await record.delivery}
+				<FactRow label={t.delivery}>
 					{#key record.delivery}<RecordPending {locale} answer={record.delivery} />{/key}
-				{:then delivery}
-					{@const share = overviewValue(delivery, 'trips_run')}
-					{#if delivery.kind === 'answer' && share != null}
-						{@const { ran, eligible } = delivery.answer.evidence.counts}
+				</FactRow>
+			{:then delivery}
+				{@const share = overviewValue(delivery, 'trips_run')}
+				{#if delivery.kind === 'answer' && share != null}
+					{@const { ran, eligible } = delivery.answer.evidence.counts}
+					<FactRow
+						label={t.delivery}
+						detail={ran != null && eligible != null
+							? recordRatio(ran, countedUnit(eligible, 'trip', locale), locale)
+							: undefined}
+					>
 						<strong>{percent(share, locale)}</strong>
-						{#if ran != null && eligible != null}<span class="block text-muted-foreground"
-								>{recordRatio(ran, countedUnit(eligible, 'trip', locale), locale)}</span
-							>{/if}
 						{#if delivery.answer.evidence.low_coverage}
 							<p class="text-muted-foreground">
 								{coverageText(delivery.answer.evidence, locale)}
 							</p>
 						{/if}
 						{#if delivery.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-					{:else}{@render gap(delivery)}{/if}
-				{/await}
-			</FactRow>
+					</FactRow>
+				{:else}
+					<FactRow label={t.delivery}>{@render gap(delivery)}</FactRow>
+				{/if}
+			{/await}
 		</FactList>
 		{#if record.trend}
 			<div class="mt-4">
@@ -297,11 +305,15 @@
 				{/await}
 			</div>
 		{/if}
-		{#snippet footer()}
+		{#snippet links()}
 			<a class="inline-flex min-h-11 items-center text-primary underline" href={link('/network')}
 				>{t.fullRecord}</a
 			>
+		{/snippet}
+		{#snippet evidence()}
 			{@render evidenceFooter()}
+		{/snippet}
+		{#snippet toggle()}
 			{#if record.trend}
 				{#await record.trend then trend}
 					{#if trend.kind === 'answer' && 'cells' in trend.answer && trend.answer.cells.length}
@@ -391,7 +403,7 @@
 		{/await}
 	</RecordGroup>
 	<div data-slot="screen-content">
-		<RecordGroup class="grid gap-6">
+		<RecordGroup>
 			<p data-screen-intro>{t.intro}</p>
 
 			<DashboardGrid gutter={false} minTile="22rem" data-slot="screen-answer">
@@ -419,11 +431,13 @@
 						directory={record.directory}
 					/>
 				</DashboardGrid>
-				{#snippet footer()}
+				{#snippet links()}
 					<a
 						class="inline-flex min-h-11 items-center text-primary underline"
 						href={link('/hotspots')}>{t.allRankings}</a
 					>
+				{/snippet}
+				{#snippet evidence()}
 					{@render evidenceFooter()}
 				{/snippet}
 			</RecordCard>

@@ -34,7 +34,7 @@
 	import RecordChartToggle from '../record/charts/RecordChartToggle.svelte';
 	import RecordAnswer from '../record/RecordAnswer.svelte';
 	import RecordCard from '../record/RecordCard.svelte';
-	import RecordEvidenceFooter from '../record/RecordEvidenceFooter.svelte';
+	import RecordEvidenceLine from '../record/RecordEvidenceLine.svelte';
 	import RecordPending from '../record/RecordPending.svelte';
 	import RecordActionGroup from '../record/RecordActionGroup.svelte';
 	import ScreenTitle from '../record/ScreenTitle.svelte';
@@ -124,7 +124,7 @@
 		><ScreenTitle title={t('Network health', 'Santé du réseau')} subtitle={subject} /></RecordGroup
 	>
 	<div data-slot="screen-content">
-		<RecordGroup class="grid gap-6">
+		<RecordGroup>
 			<div data-slot="screen-answer">
 				{#if !record || !stamp}
 					<RecordAnswer
@@ -220,19 +220,15 @@
 												label={weekday
 													? t('Monday to Friday', 'Du lundi au vendredi')
 													: t('Saturday and Sunday', 'Samedi et dimanche')}
+												detail={reading.share == null
+													? undefined
+													: `${countedUnit(reading.sample, 'event', locale)}, ${countedUnit(reading.days, 'day', locale)}`}
 											>
 												{#if reading.share == null}<StateMark
 														state={reading.state}
 														{locale}
 													/>{:else}
 													<strong>{percent(reading.share, locale)}</strong>
-													<span class="block text-small text-muted-foreground">
-														{countedUnit(reading.sample, 'event', locale)}, {countedUnit(
-															reading.days,
-															'day',
-															locale,
-														)}
-													</span>
 												{/if}
 											</FactRow>
 										{/each}
@@ -268,38 +264,44 @@
 									{@const reading = result.answer}
 									<div class="grid gap-4">
 										<FactList>
-											<FactRow label={t('Median', 'Médiane')}
-												><span class="font-heading text-heading font-extrabold">
-													{delayReading(reading.value.median_delay, locale)}
-												</span><span class="block text-small text-muted-foreground">
-													{t(
-														'Half of the observed stop events were later than this.',
-														'La moitié des passages observés ont eu lieu plus tard.',
-													)}
-												</span></FactRow
+											<FactRow
+												label={t('Median', 'Médiane')}
+												emphasis
+												detail={t(
+													'Half of the observed stop events were later than this.',
+													'La moitié des passages observés ont eu lieu plus tard.',
+												)}
 											>
-											<FactRow label={t('90th percentile', '90e centile')}
-												><span class="font-heading text-heading font-extrabold">
-													{delayReading(reading.value.p90_delay, locale)}
-												</span><span class="block text-small text-muted-foreground">
-													{t(
-														'1 observed stop event in 10 was later than this.',
-														'Un passage observé sur dix a eu lieu plus tard.',
-													)}
-												</span></FactRow
+												{delayReading(reading.value.median_delay, locale)}
+											</FactRow>
+											<FactRow
+												label={t('90th percentile', '90e centile')}
+												emphasis
+												detail={t(
+													'1 observed stop event in 10 was later than this.',
+													'Un passage observé sur dix a eu lieu plus tard.',
+												)}
 											>
+												{delayReading(reading.value.p90_delay, locale)}
+											</FactRow>
 										</FactList>
 									</div>
 								{/if}
 							{/await}
-							{#snippet footer()}
+							{#snippet evidence()}
 								{#await record.delayDistribution then result}
 									{#if result.kind === 'answer'}
-										<RecordEvidenceFooter
+										<RecordEvidenceLine
 											evidence={result.answer.evidence}
 											sample={sample(result.answer)}
 											{locale}
 										/>
+									{/if}
+								{/await}
+							{/snippet}
+							{#snippet toggle()}
+								{#await record.delayDistribution then result}
+									{#if result.kind === 'answer'}
 										{#if result.answer.cells.length}
 											<RecordChartToggle
 												bind:table={delayTable}

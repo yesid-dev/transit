@@ -27,7 +27,7 @@
 					</div>
 				</RecordGroup>
 
-				<RecordGroup class="grid gap-6" aria-labelledby="roadmap-current">
+				<RecordGroup aria-labelledby="roadmap-current">
 					<h2 id="roadmap-current">{copy.currentHeading}</h2>
 					<ul class="grid list-disc gap-1 ps-5">
 						{#each copy.current as item (item)}
@@ -37,7 +37,7 @@
 					<p>{copy.entriesIntroduction}</p>
 				</RecordGroup>
 
-				<RecordGroup class="grid gap-6" aria-labelledby="roadmap-entries">
+				<RecordGroup aria-labelledby="roadmap-entries">
 					<h2 id="roadmap-entries">{copy.entriesHeading}</h2>
 					<ol class="entries" role="list">
 						{#each ROADMAP_ENTRIES as entry, index (entry.id)}
@@ -51,7 +51,7 @@
 					</ol>
 				</RecordGroup>
 
-				<RecordGroup class="grid gap-6" aria-labelledby="roadmap-contribute">
+				<RecordGroup aria-labelledby="roadmap-contribute">
 					<h2 id="roadmap-contribute">{copy.contributeHeading}</h2>
 					<p>
 						{copy.follow.before}<a class="text-primary underline" href={roadmapLinks.code}

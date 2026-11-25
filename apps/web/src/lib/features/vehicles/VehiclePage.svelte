@@ -123,7 +123,7 @@
 								{operator}
 							/>
 						{:else}
-							<RecordGroup class="grid gap-6">
+							<RecordGroup>
 								<div data-slot="screen-answer">
 									<RecordAnswer
 										value={null}

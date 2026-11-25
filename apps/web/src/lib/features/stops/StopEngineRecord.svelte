@@ -9,6 +9,7 @@
 	import RecordActionGroup from '#lib/features/record/RecordActionGroup.svelte';
 	import RecordAnswer from '#lib/features/record/RecordAnswer.svelte';
 	import RecordCard from '#lib/features/record/RecordCard.svelte';
+	import RecordEvidenceLine from '#lib/features/record/RecordEvidenceLine.svelte';
 	import RecordChart from '#lib/features/record/charts/RecordChart.svelte';
 	import RecordChartToggle from '#lib/features/record/charts/RecordChartToggle.svelte';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
@@ -215,14 +216,7 @@
 				result.answer.evidence.cleaning_versions.length
 					? methodEvidence(result.answer.evidence, locale, true)
 					: null}
-			{#if sample || versions}
-				<div
-					class="flex min-w-0 grow basis-72 flex-wrap justify-between gap-x-4 gap-y-2 font-mono text-small text-muted-foreground"
-				>
-					{#if sample}<span>{sample}</span>{/if}
-					{#if versions}<span>{versions}</span>{/if}
-				</div>
-			{/if}
+			<RecordEvidenceLine {locale} {sample} versions={versions ?? ''} />
 		{/if}
 	{/await}
 {/snippet}
@@ -245,7 +239,7 @@
 			/>
 		</RecordGroup>
 		<div class="min-w-0" data-slot="screen-content">
-			<RecordGroup class="grid gap-6">
+			<RecordGroup>
 				<div id="punctuality" data-slot="screen-answer">
 					{#await answers.punctuality}
 						{@render pending(answers.punctuality)}
@@ -310,8 +304,10 @@
 								</p>
 							{:else}{@render gap(result)}{/if}
 						{/await}
-						{#snippet footer()}
+						{#snippet evidence()}
 							{@render evidenceFooter('punctuality')}
+						{/snippet}
+						{#snippet toggle()}
 							{#await answers.punctuality then result}
 								{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured'}
 									<RecordChartToggle bind:table={bandsTable} controls="stop-bands-chart" {locale} />
@@ -320,55 +316,65 @@
 						{/snippet}
 					</RecordCard>
 					<RecordCard title={titleFor('delay')} {stamp}>
-						{#snippet footer()}{@render evidenceFooter('delay')}{/snippet}
+						{#snippet evidence()}
+							{@render evidenceFooter('delay')}
+						{/snippet}
 						<div id="delay" class="grid gap-4">
 							{#snippet delayFacts(measure?: RecordMeasure)}
 								<FactList leading={false}>
 									{#if measure}
-										<FactRow label={t('Median delay', 'Retard médian')}
-											><span>
-												<strong class="font-heading text-heading font-extrabold"
-													>{delayReading(measure.value.median_delay, locale)}</strong
-												>
-											</span><span class="block text-small text-muted-foreground">
-												{t(
-													'Half of the vehicles were later than this.',
-													'La moitié des véhicules sont passés plus tard.',
-												)}
-											</span></FactRow
+										<FactRow
+											label={t('Median delay', 'Retard médian')}
+											emphasis
+											detail={t(
+												'Half of the vehicles were later than this.',
+												'La moitié des véhicules sont passés plus tard.',
+											)}
 										>
-										<FactRow label={t('90th percentile', '90e centile')}
-											><span>
-												<strong class="font-heading text-heading font-extrabold"
-													>{delayReading(measure.value.p90_delay, locale)}</strong
-												>
-											</span><span class="block text-small text-muted-foreground">
-												{t(
-													'1 vehicle in 10 was later than this.',
-													'1 véhicule sur 10 est passé plus tard.',
-												)}
-											</span></FactRow
+											{delayReading(measure.value.median_delay, locale)}
+										</FactRow>
+										<FactRow
+											label={t('90th percentile', '90e centile')}
+											emphasis
+											detail={t(
+												'1 vehicle in 10 was later than this.',
+												'1 véhicule sur 10 est passé plus tard.',
+											)}
 										>
+											{delayReading(measure.value.p90_delay, locale)}
+										</FactRow>
 									{/if}
-									<FactRow id="accessibility" label={titleFor('accessibility')}>
-										{#await answers.accessibility}
+									{#await answers.accessibility}
+										<FactRow id="accessibility" label={titleFor('accessibility')}>
 											{@render pending(answers.accessibility)}
-										{:then result}
-											{#if result.kind === 'answer' && 'value' in result.answer}
-												{#if result.answer.evidence.counts.stops_no_information === 1 || result.answer.state === 'not_published'}
-													{t('Not published', 'Non publié')}
-													<span class="block font-normal text-muted-foreground"
-														>{t(
+										</FactRow>
+									{:then result}
+										{#if result.kind === 'answer' && 'value' in result.answer}
+											{@const notPublished =
+												result.answer.evidence.counts.stops_no_information === 1 ||
+												result.answer.state === 'not_published'}
+											<FactRow
+												id="accessibility"
+												label={titleFor('accessibility')}
+												detail={notPublished
+													? t(
 															'The agency does not declare it for this stop.',
 															'L’exploitant ne le déclare pas pour cet arrêt.',
-														)}</span
-													>
+														)
+													: undefined}
+											>
+												{#if notPublished}
+													{t('Not published', 'Non publié')}
 												{:else}
 													{stopAccessibility(result.answer, locale)}
 												{/if}
-											{:else}{@render gap(result)}{/if}
-										{/await}
-									</FactRow>
+											</FactRow>
+										{:else}
+											<FactRow id="accessibility" label={titleFor('accessibility')}>
+												{@render gap(result)}
+											</FactRow>
+										{/if}
+									{/await}
 								</FactList>
 							{/snippet}
 							{#await answers.delay}
@@ -386,10 +392,12 @@
 					</RecordCard>
 				</DashboardGrid>
 			</RecordGroup>
-			<RecordGroup class="grid gap-6">
+			<RecordGroup>
 				<div id="byLine" class="min-w-0">
 					<RecordCard interactive title={titleFor('byLine')} {stamp}>
-						{#snippet footer()}{@render evidenceFooter('byLine')}{/snippet}
+						{#snippet evidence()}
+							{@render evidenceFooter('byLine')}
+						{/snippet}
 						{#await answers.byLine}
 							{@render pending(answers.byLine)}
 						{:then result}
@@ -421,8 +429,10 @@
 								/>
 							{:else}{@render gap(result)}{/if}
 						{/await}
-						{#snippet footer()}
+						{#snippet evidence()}
 							{@render evidenceFooter('hourly')}
+						{/snippet}
+						{#snippet toggle()}
 							{#await record.grid then result}
 								{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
 									<RecordChartToggle bind:table={hoursTable} controls="stop-hours-chart" {locale} />
@@ -434,7 +444,9 @@
 
 				<div id="waiting">
 					<RecordCard interactive title={titleFor('waiting')} {stamp}>
-						{#snippet footer()}{@render evidenceFooter('waiting')}{/snippet}
+						{#snippet evidence()}
+							{@render evidenceFooter('waiting')}
+						{/snippet}
 						{#await answers.waiting}
 							{@render pending(answers.waiting)}
 						{:then result}
@@ -484,8 +496,10 @@
 								{/await}
 							{:else}{@render gap(result)}{/if}
 						{/await}
-						{#snippet footer()}
+						{#snippet evidence()}
 							{@render evidenceFooter('daily')}
+						{/snippet}
+						{#snippet toggle()}
 							{#await answers.daily then result}
 								{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
 									<RecordChartToggle bind:table={dailyTable} controls="stop-daily-chart" {locale} />
@@ -497,7 +511,9 @@
 
 				<div id="alerts">
 					<RecordCard title={titleFor('alerts')} {stamp}>
-						{#snippet footer()}{@render evidenceFooter('alerts')}{/snippet}
+						{#snippet evidence()}
+							{@render evidenceFooter('alerts')}
+						{/snippet}
 						{#await answers.alerts}
 							{@render pending(answers.alerts)}
 						{:then result}

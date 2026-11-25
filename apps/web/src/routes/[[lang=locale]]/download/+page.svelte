@@ -118,7 +118,7 @@
 	<RecordScreen>
 		<RecordGroup><ScreenTitle {title} {subtitle} compact /></RecordGroup>
 		<div data-slot="screen-content">
-			<RecordGroup class="grid gap-6">
+			<RecordGroup>
 				{#await data.listing}
 					<div data-slot="screen-state">
 						{#key data.listing}<RecordPending {locale} />{/key}
@@ -261,7 +261,7 @@
 												</ul>{/if}
 										</details>
 									</div>
-									{#snippet footer()}
+									{#snippet evidence()}
 										<p class="font-mono text-sm text-muted-foreground">
 											{[...new Set(sources.map((day) => day.licence.name[locale]))].join(' · ')}
 											· {t('Cleaning', 'Nettoyage')}

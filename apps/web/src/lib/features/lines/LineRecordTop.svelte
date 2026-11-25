@@ -279,14 +279,18 @@
 								<FactList leading={false}>
 									{#each result.answer.cells as cell (cell.key.direction)}
 										{@const share = measuredShare(cell, 'on_time')}
-										<FactRow label={directionLabel(cell.key.direction, headsigns, locale)}>
+										{@const classified = cell.evidence.counts.classified}
+										<FactRow
+											label={directionLabel(cell.key.direction, headsigns, locale)}
+											detail={share === null
+												? undefined
+												: t('on time', 'à l’heure') +
+													(classified == null
+														? ''
+														: ', ' + countedUnit(classified, 'event', locale))}
+										>
 											{#if share !== null}
 												<strong>{percent(share, locale)}</strong>
-												<span class="block text-small text-muted-foreground">
-													{t('on time', 'à l’heure')}{cell.evidence.counts.classified == null
-														? ''
-														: ', ' + countedUnit(cell.evidence.counts.classified, 'event', locale)}
-												</span>
 											{:else}
 												<StateMark state={chartState(cell.state)} {locale} hiddenLabel />
 												{rateStateText(cell, locale)}
@@ -299,7 +303,7 @@
 							{/if}
 						{/await}
 					</div>
-					{#snippet footer()}
+					{#snippet evidence()}
 						{#await punctualityAnswer then result}
 							{#if result.kind === 'answer'}<LineRecordEvidence
 									evidence={result.answer.evidence}
@@ -340,10 +344,16 @@
 									)}{/await}
 							{:else}{@render gap(result)}{/if}
 						{/await}
-						{#snippet footer()}
+						{#snippet evidence()}
 							{#await dailyAnswer then result}
 								{#if result.kind === 'answer'}
 									<LineRecordEvidence evidence={result.answer.evidence} {locale} />
+								{/if}
+							{/await}
+						{/snippet}
+						{#snippet toggle()}
+							{#await dailyAnswer then result}
+								{#if result.kind === 'answer'}
 									{#if 'cells' in result.answer && result.answer.cells.length}
 										<RecordChartToggle
 											bind:table={dailyTable}
@@ -374,10 +384,16 @@
 							/>
 						{:else}{@render gap(result)}{/if}
 					{/await}
-					{#snippet footer()}
+					{#snippet evidence()}
 						{#await hourlyAnswer then result}
 							{#if result.kind === 'answer'}
 								<LineRecordEvidence evidence={result.answer.evidence} {locale} />
+							{/if}
+						{/await}
+					{/snippet}
+					{#snippet toggle()}
+						{#await hourlyAnswer then result}
+							{#if result.kind === 'answer'}
 								{#if 'cells' in result.answer && result.answer.cells.length}
 									<RecordChartToggle bind:table={hoursTable} controls="line-hour-chart" {locale} />
 								{/if}

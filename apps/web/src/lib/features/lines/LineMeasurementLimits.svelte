@@ -39,7 +39,7 @@
 			)}
 		</li>
 	</ul>
-	{#snippet footer()}
+	{#snippet links()}
 		<a class="inline-flex min-h-11 items-center text-primary underline" href={methodHref}
 			>{t('How we measure', 'Comment on mesure')}</a
 		>

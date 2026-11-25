@@ -95,7 +95,7 @@
 			)}
 		</p>
 	{/if}
-	{#snippet footer()}
+	{#snippet links()}
 		{#if tracked}
 			<a class="inline-flex min-h-11 items-center text-primary underline" {href}
 				>{t('All alerts in effect', 'Tous les avis en vigueur')}</a

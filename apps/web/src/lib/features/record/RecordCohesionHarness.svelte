@@ -14,7 +14,11 @@
 				<FactRow label="Median delay">2 min</FactRow>
 				<FactRow label="90th percentile">7 min</FactRow>
 			</FactList>
-			{#snippet footer()}<a href="/network">Network record</a>{/snippet}
+			{#snippet toggle()}<button type="button">Table</button>{/snippet}
+			{#snippet evidence()}<span>Sample</span>{/snippet}
+			{#snippet links()}
+				<a href="/network">Network record</a>
+			{/snippet}
 		</RecordCard>
 	</RecordGroup>
 	<RecordGroup>
