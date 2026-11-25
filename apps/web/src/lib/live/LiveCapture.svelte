@@ -12,7 +12,7 @@
 		city: string | null;
 		capture: Promise<CaptureSnapshot | null>;
 		captureClock?: number;
-		children: Snippet<[CaptureSnapshot | null, number]>;
+		children: Snippet<[CaptureSnapshot | null, number, boolean]>;
 		pending: Snippet;
 	} = $props();
 	let refreshed = $state<{
@@ -44,11 +44,11 @@
 </script>
 
 {#if refreshed?.seed === capture}
-	{@render children(refreshed.snapshot, refreshed.receivedAt)}
+	{@render children(refreshed.snapshot, refreshed.receivedAt, true)}
 {:else}
 	{#await capture}
 		{@render pending()}
 	{:then snapshot}
-		{@render children(snapshot, captureClock ?? Date.now())}
+		{@render children(snapshot, captureClock ?? Date.now(), false)}
 	{/await}
 {/if}

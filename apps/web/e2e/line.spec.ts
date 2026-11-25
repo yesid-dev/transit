@@ -1,10 +1,7 @@
-import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 
-import { detailCopy } from '../src/lib/features/lines/lines.copy';
 import { PUBLISHED_LOCALES } from '../src/lib/i18n/config';
 import { localizeHref } from '../src/lib/i18n/routing';
-import { waitForFrameClearance } from './layout-helpers';
 import {
 	captureFixture,
 	captureTrip,
@@ -13,16 +10,12 @@ import {
 	captureVehicle,
 } from './capture-fixture';
 
-const read = (path: string) => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
-const b9 = read('../scripts/__fixtures__/b9/rich.json');
-const manifest = read('./manifest.json');
-const provider = manifest.provider;
+const provider = 'stm';
 
 test.use({ bypassCSP: true });
 
 test.beforeEach(async ({ page }) => {
 	await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
-	await page.clock.setFixedTime(Date.parse(b9.frozen_utc) + 30_000);
 });
 
 for (const locale of PUBLISHED_LOCALES) {
@@ -50,133 +43,101 @@ for (const locale of PUBLISHED_LOCALES) {
 	});
 }
 for (const locale of PUBLISHED_LOCALES) {
-	test(`${locale}: Live keeps real-size destinations usable at 320 to 1280`, async ({
+	test(`${locale}: Line Live shows a paged roster, predictions, and the same title as Record`, async ({
 		page,
-	}, testInfo) => {
-		let vehiclesReady: Promise<void> = Promise.resolve();
-		let releaseVehicles: () => void = () => {};
-		const generated_utc = b9.frozen_utc;
-		const at = Date.parse(generated_utc);
-		const vehicles = Array.from({ length: 13 }, (_, i) =>
-			captureVehicle(at, {
-				vehicle_id: `t4-bus-${i}`,
-				route_id: '9003',
-				trip_id: `t4-trip-${i}`,
-				delay: i === 12 ? null : [-120, 0, 60, 300, null][i % 5],
-				stop_id: `t4-${i}`,
-			}),
-		);
-		const predictions = Array.from({ length: 61 }, (_, i) => ({
-			stop: `t4-${i}`,
-			eta_utc: '2026-08-30T16:05:00Z',
-			delay_min: i === 1 ? null : 2,
-		}));
-		await page.route(captureUrl, async (route) => {
-			await vehiclesReady;
-			await route.fulfill({ json: captureFixture(at, { vehicle_positions: vehicles }) });
+	}) => {
+		const fr = locale === 'fr';
+		const legacyRequests: string[] = [];
+		page.on('request', (request) => {
+			const url = new URL(request.url());
+			if (url.pathname.startsWith('/v1/')) legacyRequests.push(url.pathname);
 		});
-		await page.route('**/api/live-trips?city=stm&line=9003', (route) =>
-			route.fulfill({
-				json: captureTripReport('stm', generated_utc, [
-					captureTrip('t4-trip-0', '9003', predictions),
-				]),
-			}),
-		);
-		for (const width of [320, 390, 768, 1280]) {
-			await page.setViewportSize({ width, height: 900 });
-			vehiclesReady = new Promise<void>((resolve) => {
-				releaseVehicles = resolve;
-			});
-			await page.goto(localizeHref('/lines/9003?tab=detail', locale, provider));
-			const panel = page.getByRole('tabpanel', {
-				name: detailCopy[locale].tabs.detail,
-				exact: true,
-			});
-			const header = page.locator('[data-slot="article-header"]');
-			await waitForFrameClearance(page);
-			const before = await header.boundingBox();
-			releaseVehicles();
-			await expect(panel.locator('[data-testid="route-roster"] li')).toHaveCount(13);
-			expect((await header.boundingBox())?.height).toBe(before?.height);
-			if (width === 1280) {
-				const rosterBox = await panel.locator('[data-toc="line-detail-live"]').boundingBox();
-				const predictionsBox = await panel
-					.locator('[data-toc="line-detail-directions"]')
-					.boundingBox();
-				const available = (await panel.locator('.route-live-content').boundingBox())!.width;
-				if (available >= 44 * 16) {
-					expect(rosterBox!.x + rosterBox!.width).toBeLessThanOrEqual(predictionsBox!.x);
-				} else {
-					expect(rosterBox!.y + rosterBox!.height).toBeLessThanOrEqual(predictionsBox!.y);
-				}
-			}
-			const destination = panel.getByRole('combobox', { name: 'Destination' });
-			await expect(destination).toHaveValue('0');
-			await expect(panel.getByRole('table').locator('tbody tr')).toHaveCount(6);
-			if (width === 320 || width === 1280) {
-				await destination.scrollIntoViewIfNeeded();
-				await page.screenshot({ path: testInfo.outputPath(`live-${locale}-${width}.png`) });
-			}
-
-			await destination.selectOption('1');
-			await expect(panel.getByRole('table')).toHaveAccessibleName(/Rockcliffe via station/);
-			await panel.getByRole('button', { name: /61/ }).click();
-			await expect(panel.getByRole('table').locator('tbody tr')).toHaveCount(61);
-			await expect(
-				panel.getByRole('link', {
-					name: /See the record of what ran|Voir le bilan du service assuré/,
+		await page.clock.install();
+		await page.route(captureUrl, async (route) => {
+			const at = await page.evaluate(() => Date.now());
+			const vehicles = Array.from({ length: 21 }, (_, index) =>
+				captureVehicle(at - 18_000, {
+					vehicle_id: `40-${298 + index}`,
+					route_id: '9003',
+					trip_id: `trip-${index}`,
+					delay: [-72, -60, 300, 390, null][index % 5],
+					stop_id: `t4-${index % 5}`,
 				}),
-			).toHaveAttribute('href', new RegExp('provider=stm'));
-			const defects = await panel.evaluate((element) => {
-				const viewport = document.documentElement.clientWidth;
-				const bad: string[] = [];
-				for (const node of element.querySelectorAll(
-					'a,select,summary,button,th,td,.route-roster-next',
-				)) {
-					const rect = node.getBoundingClientRect();
-					if (!rect.width || !rect.height) continue;
-					if (rect.left < -1 || rect.right > viewport + 1)
-						bad.push(`overflow: ${node.textContent} child ${rect.left},${rect.right}`);
-					if (node.matches('a,select,summary,button') && rect.height < 44)
-						bad.push(`target: ${node.textContent}`);
-					if (node.matches('td,th')) {
-						const parent = node.closest('table')!.parentElement!.getBoundingClientRect();
-						if (rect.right > parent.right + 1) bad.push(`table overflow: ${node.textContent}`);
-						const text = [...node.childNodes]
-							.filter((child) => child.nodeType === Node.TEXT_NODE)
-							.map((child) => child.textContent)
-							.join(' ');
-						const range = document.createRange();
-						for (const child of node.childNodes) {
-							if (child.nodeType !== Node.TEXT_NODE) continue;
-							for (const match of (child.textContent ?? '').matchAll(/\S+/g)) {
-								range.setStart(child, match.index!);
-								range.setEnd(child, match.index! + match[0].length);
-								if (
-									range.getBoundingClientRect().height >
-									Number.parseFloat(getComputedStyle(node).lineHeight) * 1.5
-								)
-									bad.push(`broken word: ${text}`);
-							}
-						}
-					}
-					if (node.matches('.route-roster-next') && node.scrollHeight > node.clientHeight + 1)
-						bad.push(`clipped name: ${node.textContent}`);
-					const style = getComputedStyle(node);
-					if (style.wordBreak === 'break-all') bad.push(`broken word: ${node.textContent}`);
-				}
-				return bad;
+			);
+			await route.fulfill({
+				json: captureFixture(at, {
+					vehicle_positions: vehicles,
+					non_responding_by_route: [{ route_id: '9003', count: 2 }],
+				}),
 			});
-			expect(defects, `${locale} ${width}`).toEqual([]);
-			await expect(page.locator('html')).toHaveJSProperty('scrollWidth', width);
-			await page.goto(localizeHref('/lines/9004?tab=detail', locale, provider));
-			await expect(page.locator('[data-slot="line-no-live"]')).toBeVisible();
+		});
+		await page.route('**/api/live-trips?city=stm&line=9003', async (route) => {
+			const at = await page.evaluate(() => Date.now());
+			await route.fulfill({
+				json: captureTripReport('stm', new Date(at).toISOString(), [
+					captureTrip('trip-0', '9003', [
+						{ stop: 't4-0', eta_utc: new Date(at + 270_000).toISOString(), delay_min: 2 },
+					]),
+				]),
+			});
+		});
+		const href = localizeHref('/lines/9003?tab=detail', locale, provider);
+		const document = await page.goto(href);
+		expect(document?.headers()['cache-control']).toContain('no-store');
+		await expect(page).toHaveURL(
+			(url) => url.searchParams.get('frameMode') === 'live' && !url.searchParams.has('tab'),
+		);
+		await expect(
+			page.locator('[data-slot="article-header"], [data-slot="detail-shell"]'),
+		).toHaveCount(0);
+		const heading = await page.getByRole('heading', { level: 1 }).innerText();
+		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+		const refresh = page.waitForResponse((response) => captureUrl.test(response.url()));
+		await page.clock.fastForward(21_000);
+		await refresh;
+		const roster = page.locator('#line-detail-live').getByRole('table');
+		await expect(roster.locator('tbody tr')).toHaveCount(20);
+		await expect(page.locator('[data-slot="screen-answer"]')).toContainText('21');
+		await expect(page.locator('#line-detail-live')).toContainText(
+			fr ? /retard inconnu/i : /delay unknown/i,
+		);
+		await expect(roster.getByRole('link', { name: /40-298/ })).toHaveAttribute(
+			'href',
+			/\/vehicle\/40-298\?/,
+		);
+		await expect(roster.getByRole('link', { name: /1$/ }).first()).toHaveAttribute(
+			'href',
+			/\/stop\/t4-0\?/,
+		);
+		await expect(page.locator('#line-detail-directions')).toContainText(fr ? 'dans 5' : 'in 5');
+		await page.getByRole('button', { name: fr ? 'Afficher 1 de plus' : 'Show 1 more' }).click();
+		await expect(roster.locator('tbody tr')).toHaveCount(21);
+		await page.goto(localizeHref('/lines/9003', locale, provider));
+		await expect(page.getByRole('heading', { level: 1 })).toHaveText(heading);
+		expect(legacyRequests).toEqual([]);
+	});
 
-			await expect(
-				page
-					.getByRole('navigation', { name: /Line views|Vues de la ligne/ })
-					.getByRole('link', { name: /Live now|En direct/ }),
-			).toHaveAttribute('aria-current', 'page');
-		}
+	test(`${locale}: schedule-only and unknown lines have no Live zero`, async ({ page }) => {
+		await page.goto(localizeHref('/lines/9004?frameMode=live', locale, provider));
+		await expect(page.locator('[data-slot="screen-answer"]')).toContainText(
+			locale === 'fr' ? 'Aucune donnée en direct pour cette ligne' : 'No live data for this line',
+		);
+		await expect(page.locator('#schedule')).toBeVisible();
+		await expect(
+			page.getByRole('heading', {
+				name: locale === 'fr' ? 'Ce qui ne peut pas être mesuré' : 'What cannot be measured',
+			}),
+		).toBeVisible();
+		await expect(page.locator('#line-detail-live')).toHaveCount(0);
+
+		const missing = await page.goto(
+			localizeHref('/lines/line-does-not-exist?frameMode=live', locale, provider),
+		);
+		expect(missing?.status()).toBe(404);
+		await expect(page.getByRole('heading', { level: 1 })).toContainText(
+			locale === 'fr'
+				? 'Cette ligne ne figure pas à l’horaire.'
+				: 'This line is not in the timetable.',
+		);
 	});
 }

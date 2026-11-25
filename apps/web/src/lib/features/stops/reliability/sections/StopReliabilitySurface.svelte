@@ -28,7 +28,7 @@
 	import type { MetricKey, SupplementalMetricKey } from '#lib/metrics.ts';
 	import MetricInfo from '#lib/features/metrics/MetricInfo.svelte';
 	import { weekdayLabel, shiftLabel, dayTypeLabel } from '#lib/features/reliability/shiftGrains.ts';
-	import { detailCopy as linesDetailCopy } from '#lib/features/lines/lines.copy.ts';
+	import { lineOccupancyBands } from '#lib/features/lines/lines.copy.ts';
 
 	import { type ReliabilityGrain as StopGrain } from '#lib/reliability/grains.ts';
 	import { selectDailyPercentiles } from '#lib/site/dailyPercentiles.ts';
@@ -191,7 +191,7 @@
 	const habitsMatrix = $derived(data.habits?.matrix ?? []);
 	const habitsPresent = $derived(hasHabits(habitsMatrix));
 
-	const occupancyBands = $derived(linesDetailCopy[locale].occupancyBands);
+	const occupancyBands = $derived(lineOccupancyBands[locale].occupancyBands);
 	const crowding = $derived(
 		selectCrowdingMix(selectedData.occupancy_mix, (code: OccupancyCode) => occupancyBands[code], {
 			title: copy.crowding.barLabel,

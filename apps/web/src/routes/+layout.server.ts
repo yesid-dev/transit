@@ -17,8 +17,7 @@ function usesLiveSnapshots(route: string | null, url: URL): boolean {
 	switch (route) {
 		case localRoute + '/map':
 			return true;
-		case localRoute + '/lines/[id]':
-			return lineFrameView(url) === 'live';
+
 		case localRoute + '/stop/[id]':
 			return stopFrameView(url) === 'live';
 		case localRoute:
@@ -74,7 +73,13 @@ function scheduleForPage(
 				...(id && directions
 					? {
 							route_directions: {
-								[id]: directions.map(({ dir, headsign }) => ({ dir, headsign })),
+								[id]: directions.map(({ dir, headsign, stops }) => ({
+									dir,
+									headsign,
+									...(route.id === localRoute + '/lines/[id]' && lineFrameView(url) === 'live'
+										? { stops }
+										: {}),
+								})),
 							},
 						}
 					: {}),

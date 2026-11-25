@@ -468,3 +468,30 @@ export function healthTableDays(days: readonly { tables: Record<string, { status
 	}
 	return totals;
 }
+
+export function liveDelayLabels(locale: Locale) {
+	const { band, delayUnknown } = transitTerms[locale];
+	return { early: band.early, on_time: band.onTime, late: band.late, unknown: delayUnknown };
+}
+
+export function lineVehicleSentence(
+	counts: Record<keyof ReturnType<typeof liveDelayLabels>, number>,
+	locale: Locale,
+) {
+	const count = (value: number) => searchCount(value, locale);
+	const total = counts.early + counts.on_time + counts.late + counts.unknown;
+	if (total === 0)
+		return locale === 'fr'
+			? 'véhicule en service sur cette ligne en ce moment.'
+			: 'vehicles are running on this line now.';
+	const one = total === 1;
+	if (locale === 'fr') {
+		return `${one ? 'véhicule circule' : 'véhicules circulent'} sur cette ligne en ce moment : ${count(counts.early)} en avance, ${count(counts.on_time)} à l’heure, ${count(counts.late)} en retard${counts.unknown ? `, ${count(counts.unknown)} au retard inconnu` : ''}.`;
+	}
+	return `${one ? 'vehicle is' : 'vehicles are'} running on this line now: ${count(counts.early)} early, ${count(counts.on_time)} on time, ${count(counts.late)} late${counts.unknown ? `, ${count(counts.unknown)} with delay unknown` : ''}.`;
+}
+
+export function predictedIn(predictedAt: number, now: number, locale: Locale) {
+	const minutes = minuteReading(Math.max(0, Math.ceil((predictedAt - now) / 60_000)), locale);
+	return locale === 'fr' ? `dans ${minutes}` : `in ${minutes}`;
+}

@@ -172,8 +172,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 		vehicleRecord ||
 		rankingsRecord ||
 		finderRecord ||
-		lineView === 'record' ||
-		lineView === 'schedule' ||
+		lineView !== null ||
 		method ||
 		healthRecord ||
 		(event.route.id === '/[[lang=locale]]/alerts' &&

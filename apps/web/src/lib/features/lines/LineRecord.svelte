@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { Button } from '@yesid/ui/button';
-	import { Surface } from '@yesid/ui/layout';
+
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import AboutFigures from '#lib/features/record/AboutFigures.svelte';
 	import RecordCard from '#lib/features/record/RecordCard.svelte';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
-	import ScreenTitle from '#lib/features/record/ScreenTitle.svelte';
+
 	import StateMark from '#lib/features/record/StateMark.svelte';
 	import { chartState } from '#lib/features/record/charts/recordCharts.ts';
 	import RecordChartToggle from '#lib/features/record/charts/RecordChartToggle.svelte';
@@ -26,16 +26,15 @@
 	import { overviewCopy } from '../home/overviewRecord.copy.ts';
 	import LineRecordReadings from './LineRecordReadings.svelte';
 	import LineRecordTop from './LineRecordTop.svelte';
-	import LineRecordSchedule from './LineRecordSchedule.svelte';
+	import LineScheduleCard from './LineScheduleCard.svelte';
+	import LineMeasurementLimits from './LineMeasurementLimits.svelte';
 	import LineRecordEvidence from './LineRecordEvidence.svelte';
 	import LineStopLadder from './LineStopLadder.svelte';
 	import { lineSectionTitles, lineTimetableOnly, lineViewHref } from './lineRecordText.ts';
 
 	let {
 		name,
-		heading,
-		code,
-		subtitle,
+
 		scheduleOnly,
 		locale,
 		url,
@@ -46,9 +45,7 @@
 		operator,
 	}: {
 		name: string;
-		heading: string;
-		code?: string | null;
-		subtitle?: string;
+
 		scheduleOnly?: boolean;
 		locale: Locale;
 		url: URL;
@@ -82,8 +79,7 @@
 	const answerFor = (section: LineSection) =>
 		record.sections.find((item) => item.section === section)!.answer;
 	const stopsAnswer = $derived(answerFor('stops'));
-	const frequencyAnswer = $derived(answerFor('frequency'));
-	const boundariesAnswer = $derived(answerFor('boundaries'));
+
 	const punctualityAnswer = $derived(answerFor('punctuality'));
 	const failures = ['stops', 'delivery', 'late', 'waiting', 'offered', 'crowding'] as const;
 	let opened = $state<Record<(typeof failures)[number], boolean>>({
@@ -203,40 +199,6 @@
 	</section>
 {/snippet}
 
-{#snippet schedule()}
-	<div id="schedule" class="min-w-0">
-		{#await frequencyAnswer}
-			{@render pending(frequencyAnswer)}
-		{:then frequency}
-			{#await boundariesAnswer}
-				{@render pending(boundariesAnswer)}
-			{:then boundaries}
-				{#if frequency.kind === 'busy' || boundaries.kind === 'busy'}
-					<RecordPending {locale} busy />
-				{/if}
-				{#key url.search}
-					<LineRecordSchedule
-						frequency={frequency.kind === 'answer' && 'value' in frequency.answer
-							? frequency.answer
-							: undefined}
-						boundaries={boundaries.kind === 'answer' && 'cells' in boundaries.answer
-							? boundaries.answer
-							: undefined}
-						{locale}
-						{stamp}
-						day={url.searchParams.get('dayType') ?? url.searchParams.get('day_type')}
-						combined={record.direction === null}
-						unavailable={[frequency, boundaries].some(
-							({ kind }) => kind !== 'answer' && kind !== 'busy',
-						)}
-						busy={frequency.kind === 'busy' || boundaries.kind === 'busy'}
-					/>
-				{/key}
-			{/await}
-		{/await}
-	</div>
-{/snippet}
-
 {#snippet about(answer: RecordMeasure | null)}
 	<AboutFigures
 		title={term.about}
@@ -289,76 +251,30 @@
 	>
 {/snippet}
 
-{#snippet cannotMeasure()}
-	<RecordCard title={t('What cannot be measured', 'Ce qui ne peut pas être mesuré')}>
-		<ul class="grid gap-2">
-			<li>
-				{t(
-					'On-time, early and late shares need observed times to compare with the timetable.',
-					'Les parts à l’heure, en avance et en retard nécessitent des heures observées à comparer à l’horaire.',
-				)}
-			</li>
-			<li>
-				{t(
-					'The data cannot show which trips were cancelled or missing.',
-					'Les données ne permettent pas de savoir quels trajets ont été annulés ou sont manquants.',
-				)}
-			</li>
-			<li>
-				{t(
-					'The agency publishes no vehicle positions for this line.',
-					'L’agence ne publie aucune position de véhicule pour cette ligne.',
-				)}
-			</li>
-			<li>
-				{t(
-					'This line is excluded from live-data rates and rankings.',
-					'Cette ligne est exclue des taux et des classements fondés sur les données en direct.',
-				)}
-			</li>
-		</ul>
-		{#snippet footer()}
-			<a class="inline-flex min-h-11 items-center text-primary underline" href={link('/metrics')}
-				>{term.method}</a
-			>
-		{/snippet}
-	</RecordCard>
-{/snippet}
-
-<Surface>
-	<ScreenTitle
-		title={heading}
-		plate={code ?? undefined}
-		{subtitle}
-		back={{ href: link('/lines'), label: t('All lines', 'Toutes les lignes') }}
-	/>
-	<div data-slot="screen-content" class="grid min-w-0 gap-4">
-		<LineRecordTop {name} {scheduleOnly} {locale} {record} {pinned} {headsigns} {operator} />
-		{#if scheduleOnly}
-			{@render schedule()}
-			{@render cannotMeasure()}
-		{:else}
-			{#await punctualityAnswer then result}
-				{@const answer =
-					result.kind === 'answer' && 'value' in result.answer ? result.answer : null}
-				{#if !lineTimetableOnly(answer)}
-					{@render failureGroup()}
-				{/if}
-			{/await}
-			{@render schedule()}
-			{#await punctualityAnswer then result}
-				{@const answer =
-					result.kind === 'answer' && 'value' in result.answer ? result.answer : null}
-				{#if !lineTimetableOnly(answer)}
-					<div id="alerts">
-						<RecordCard title={title('alerts')} {stamp}>
-							{@render reading('alerts')}
-							{#snippet footer()}{@render evidence('alerts')}{/snippet}
-						</RecordCard>
-					</div>
-					{@render about(answer)}
-				{/if}
-			{/await}
-		{/if}
-	</div>
-</Surface>
+<div data-slot="screen-content" class="grid min-w-0 gap-4">
+	<LineRecordTop {name} {scheduleOnly} {locale} {record} {pinned} {headsigns} {operator} />
+	{#if scheduleOnly}
+		<LineScheduleCard {record} {locale} {url} />
+		<LineMeasurementLimits {locale} methodHref={link('/metrics')} />
+	{:else}
+		{#await punctualityAnswer then result}
+			{@const answer = result.kind === 'answer' && 'value' in result.answer ? result.answer : null}
+			{#if !lineTimetableOnly(answer)}
+				{@render failureGroup()}
+			{/if}
+		{/await}
+		<LineScheduleCard {record} {locale} {url} />
+		{#await punctualityAnswer then result}
+			{@const answer = result.kind === 'answer' && 'value' in result.answer ? result.answer : null}
+			{#if !lineTimetableOnly(answer)}
+				<div id="alerts">
+					<RecordCard title={title('alerts')} {stamp}>
+						{@render reading('alerts')}
+						{#snippet footer()}{@render evidence('alerts')}{/snippet}
+					</RecordCard>
+				</div>
+				{@render about(answer)}
+			{/if}
+		{/await}
+	{/if}
+</div>

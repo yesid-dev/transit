@@ -1,0 +1,349 @@
+<script lang="ts">
+	import { BandBar } from '@yesid/ui/chart';
+	import { StatusMark } from '@yesid/ui/brand';
+	import type { Locale } from '#lib/i18n/index.ts';
+	import { localizeHref } from '#lib/i18n/routing.ts';
+	import LiveCapture from '#lib/live/LiveCapture.svelte';
+	import {
+		feedState,
+		type CaptureSnapshot,
+		type CaptureTripReport,
+	} from '#lib/live/captureSnapshot.ts';
+	import { carryFrameState } from '#lib/site/frameState.ts';
+	import {
+		countedUnit,
+		dateAndClock,
+		liveDelayLabels,
+		liveStampAge,
+		lineVehicleSentence,
+	} from '#lib/site/presenter.ts';
+	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
+	import type { loadLineRecord } from '#lib/server/lineRecord.ts';
+	import { vehicleLiveHref } from '../vehicles/vehicleLinks.ts';
+	import { choose, rateStateText, tally } from '../record/recordText.ts';
+	import { chartState } from '../record/charts/recordCharts.ts';
+	import { overviewCopy } from '../home/overviewRecord.copy.ts';
+	import AboutLiveFigures from '../record/AboutLiveFigures.svelte';
+	import RecordActionGroup from '../record/RecordActionGroup.svelte';
+	import RecordAnswer from '../record/RecordAnswer.svelte';
+	import RecordCard from '../record/RecordCard.svelte';
+	import LineScheduleCard from './LineScheduleCard.svelte';
+	import LineMeasurementLimits from './LineMeasurementLimits.svelte';
+	import LiveVehicleTable from './LiveVehicleTable.svelte';
+	import LineLivePredictions from './LineLivePredictions.svelte';
+	import LineLiveNotices from './LineLiveNotices.svelte';
+	import {
+		captureFamily,
+		delayStatuses,
+		lineSilentCount,
+		lineVehicleRows,
+		vehicleCounts,
+	} from './lineLiveReadings.ts';
+	import { lineTimetableOnly } from './lineRecordText.ts';
+	import type { RecordMeasure } from '#lib/server/engine.ts';
+
+	let {
+		line,
+		name,
+		city,
+		locale,
+		url,
+		operator,
+		timeZone,
+		scheduleOnly,
+		knownLine,
+		hasAlerts,
+		mainStops,
+		capture,
+		trips,
+		record,
+		stopNames,
+		headsigns,
+	}: {
+		line: string;
+		name: string;
+		city: string;
+		locale: Locale;
+		url: URL;
+		operator: string;
+		timeZone: string;
+		scheduleOnly: boolean;
+		knownLine: boolean;
+		hasAlerts: boolean;
+		mainStops: { id: string; name: string }[];
+		capture: Promise<CaptureSnapshot | null> | null;
+		trips: Promise<CaptureTripReport | null> | null;
+		record: ReturnType<typeof loadLineRecord> | null | undefined;
+		stopNames: Record<string, string>;
+		headsigns: Record<number, string>;
+	} = $props();
+	const labels = $derived(liveDelayLabels(locale));
+	const title = $derived(choose(locale, 'Its vehicles now', 'Ses véhicules en ce moment'));
+	const terms = $derived(overviewCopy[locale]);
+	const display = transitDisplay();
+	const t = (en: string, fr: string) => choose(locale, en, fr);
+	const link = (path: string) => carryFrameState(localizeHref(path, locale, city), url);
+	const stopHref = (id: string) => link('/stop/' + encodeURIComponent(id));
+	const share = $derived.by(() => {
+		const target = new URL(url);
+		target.searchParams.set('provider', city);
+		target.searchParams.set('frameMode', 'live');
+		return target.href;
+	});
+	const punctuality = $derived(
+		record?.sections.find(({ section }) => section === 'punctuality')?.answer,
+	);
+
+	function describeRows(snapshot: CaptureSnapshot | null, now: number) {
+		return (
+			lineVehicleRows(snapshot, line, now)?.map((row) => ({
+				...row,
+				href:
+					snapshot?.stable_vehicle_ids === true
+						? vehicleLiveHref(row.id, url, locale, city)
+						: undefined,
+				destination:
+					row.toward === null ? null : display.directionLabel(row.toward, headsigns, locale),
+				nextStop:
+					row.stop && stopNames[row.stop]
+						? { name: display.readName(stopNames[row.stop], locale), href: stopHref(row.stop) }
+						: undefined,
+			})) ?? null
+		);
+	}
+</script>
+
+{#snippet checking()}
+	<div id="line-detail-profile" data-slot="screen-answer">
+		<p role="status">
+			{t('Checking live reports…', 'Vérification des signalements en direct…')}
+		</p>
+	</div>
+{/snippet}
+
+{#snippet schedule()}
+	{#if record}<LineScheduleCard {record} {locale} {url} />{/if}
+{/snippet}
+
+{#snippet body(
+	snapshot: CaptureSnapshot | null,
+	now: number,
+	historical: RecordMeasure | null,
+	refreshed: boolean,
+)}
+	{@const feed = captureFamily(snapshot, 'vehicle_positions')}
+	{@const state = feedState(feed, now)}
+	{@const rows = describeRows(snapshot, now)}
+	{@const live = rows !== null && (!!rows.length || knownLine)}
+	{@const counts = vehicleCounts(rows ?? [])}
+	{@const bands = delayStatuses.map((status) => ({
+		id: status,
+		status,
+		label: labels[status],
+		share: counts[status],
+		valueLabel: countedUnit(counts[status], 'vehicle', locale),
+	}))}
+	{@const age = feed?.captured_at ? Math.max(0, now - Date.parse(feed.captured_at)) / 1000 : null}
+	{@const stamp =
+		age === null
+			? undefined
+			: {
+					kind: 'live' as const,
+					label: liveStampAge(age, locale, live ? 'current' : 'behind'),
+					late: !live,
+				}}
+	{@const silent = lineSilentCount(snapshot, line, now)}
+	{@const limits =
+		historical &&
+		lineTimetableOnly(historical) &&
+		(!rows?.length ||
+			(snapshot?.vehicle_positions
+				?.filter(({ route_id }) => route_id === line)
+				.every(({ trip_id }) => !trip_id) ??
+				false))}
+	<div id="line-detail-profile" data-slot="screen-answer">
+		{#if live && rows && !limits}
+			{#snippet meta()}<p>
+					{t(
+						'A count of vehicles at this moment, not a percentage.',
+						'Le nombre de véhicules en ce moment, pas un pourcentage.',
+					)}
+				</p>{/snippet}
+			{#snippet citation()}
+				<p>{name} · {t('Vehicle positions', 'Positions des véhicules')} · {operator}</p>
+				{#if feed?.captured_at}<p>{dateAndClock(feed.captured_at, locale, timeZone)}</p>{/if}
+				<p class="wrap-break-word">{share}</p>
+			{/snippet}
+			{#snippet actions()}<RecordActionGroup
+					{locale}
+					href={share}
+					files={[]}
+					{citation}
+				/>{/snippet}
+			<RecordAnswer
+				{locale}
+				value={tally(rows.length, locale)}
+				sentence={lineVehicleSentence(counts, locale)}
+				time={stamp}
+				{meta}
+				{actions}
+			/>
+		{:else if limits && historical}
+			{#snippet reason()}<p>
+					{historical.coverage_note?.[locale] ??
+						t(
+							'There are no usable observations for this line on these dates. Its timetable is shown below.',
+							'Il n’y a pas d’observations utilisables pour cette ligne à ces dates. Son horaire est présenté ci-dessous.',
+						)}
+				</p>{/snippet}
+			<RecordAnswer
+				{locale}
+				value={null}
+				state={chartState(historical.state)}
+				sentence={rateStateText(historical, locale)}
+				meta={reason}
+			/>
+		{:else}
+			<RecordAnswer
+				{locale}
+				value={null}
+				state={state === 'stale' ? 'not_reporting' : 'no_live_data'}
+				time={stamp}
+				sentence={state === 'stale'
+					? t(
+							'Vehicle positions are out of date.',
+							'Les positions des véhicules ne sont plus à jour.',
+						)
+					: t(
+							'Live vehicle positions are temporarily unavailable.',
+							'Les positions des véhicules en direct sont temporairement indisponibles.',
+						)}
+			/>
+		{/if}
+	</div>
+	{#if live && rows && !limits}
+		<div id="line-detail-live" class="min-w-0">
+			<RecordCard {title} {stamp}>
+				{#if rows.length}
+					<div class="mb-4">
+						<BandBar
+							label={bands.map(({ label, valueLabel }) => `${label}, ${valueLabel}`).join('. ')}
+							{bands}
+							rows={false}
+						/>
+						<dl class="mt-3 grid gap-2">
+							{#each bands as { status, label, valueLabel } (status)}
+								<div
+									class="flex flex-wrap justify-between gap-2 border-b border-border pb-2 last:border-b-0"
+								>
+									<dt><StatusMark {status} {label} /></dt>
+									<dd class="tabular-nums">{valueLabel}</dd>
+								</div>
+							{/each}
+						</dl>
+					</div>
+					<LiveVehicleTable {rows} {locale} {now} {title} />
+				{:else}
+					<p>
+						{t(
+							'No vehicles are reporting on this line.',
+							'Aucun véhicule ne transmet sa position sur cette ligne.',
+						)}
+					</p>
+				{/if}
+				{#snippet footer()}{#if silent !== null}
+						<p>{terms.silent}{t(': ', ' : ')}{tally(silent, locale)}</p>
+					{/if}{/snippet}
+			</RecordCard>
+		</div>
+	{/if}
+	{#if !limits && trips && mainStops.length}
+		<div id="line-detail-directions">
+			<LineLivePredictions
+				{city}
+				{line}
+				stops={mainStops.map(({ id, name }) => ({ id, name: display.readName(name, locale) }))}
+				seed={trips}
+				{refreshed}
+				{now}
+				{locale}
+				{timeZone}
+				{stopHref}
+			/>
+		</div>
+	{/if}
+	{#if !limits}
+		<div id="alerts">
+			<LineLiveNotices
+				{line}
+				{snapshot}
+				{now}
+				{locale}
+				{timeZone}
+				tracked={hasAlerts}
+				href={link('/alerts?frameMode=live&' + new URLSearchParams({ route: line }))}
+			/>
+		</div>
+	{/if}
+	{@render schedule()}
+	{#if limits}
+		<LineMeasurementLimits {locale} methodHref={link('/metrics')} scheduleOnly={false} />
+	{:else}
+		<AboutLiveFigures
+			{locale}
+			{operator}
+			healthLink={link('/status?frameMode=live')}
+			captureAge={age}
+		/>
+	{/if}
+{/snippet}
+
+<div data-slot="screen-content" class="grid min-w-0 gap-4">
+	{#if scheduleOnly}
+		<div id="line-detail-profile" data-slot="screen-answer">
+			{#snippet message()}
+				<p>
+					{t(
+						`${operator} publishes no realtime feed for this line. Its timetable is shown below.`,
+						`${operator} ne publie pas de flux en temps réel pour cette ligne. Son horaire est présenté ci-dessous.`,
+					)}
+				</p>
+			{/snippet}
+			<RecordAnswer
+				{locale}
+				value={null}
+				state="no_live_data"
+				sentence={t('No live data for this line', 'Aucune donnée en direct pour cette ligne')}
+				meta={message}
+			/>
+		</div>
+		{@render schedule()}
+		<LineMeasurementLimits {locale} methodHref={link('/metrics')} />
+	{:else if capture}
+		<LiveCapture {city} {capture}>
+			{#snippet pending()}
+				{@render checking()}
+				{@render schedule()}
+			{/snippet}
+			{#snippet children(snapshot, now, refreshed)}
+				{#if lineVehicleRows(snapshot, line, now) && punctuality && !snapshot?.vehicle_positions?.some(({ route_id, trip_id }) => route_id === line && trip_id)}
+					{#await punctuality}
+						{@render checking()}
+						{@render schedule()}
+					{:then result}
+						{@render body(
+							snapshot,
+							now,
+							result.kind === 'answer' && 'value' in result.answer ? result.answer : null,
+							refreshed,
+						)}
+					{/await}
+				{:else}
+					{@render body(snapshot, now, null, refreshed)}
+				{/if}
+			{/snippet}
+		</LiveCapture>
+	{:else}
+		{@render body(null, Date.now(), null, false)}
+	{/if}
+</div>

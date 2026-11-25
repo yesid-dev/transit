@@ -29,6 +29,11 @@ function event(id = '24'): Parameters<typeof load>[0] {
 		parent: async () => ({
 			v1: { manifest: harness.ctx.manifest },
 			providerId: harness.ctx.providerId,
+			provider: {
+				inputs: { vehicle_positions: true, trip_updates: true },
+				lines_without_live_data: [],
+				timezone: 'America/Toronto',
+			},
 			lang: 'en',
 			schedule: { routes: [{ id: '24', short: '24', long: 'Sherbrooke' }], stops: [] },
 		}),
@@ -125,11 +130,42 @@ describe('Line Record and Schedule on transit1', () => {
 		expect(harness.getRecordAnswer).not.toHaveBeenCalled();
 	});
 
-	it('keeps Live on the existing route data and makes no engine reads', async () => {
-		const data = await load(framed('&frameMode=live&tab=detail'));
+	it('streams capture, predictions and the schedule without requesting a legacy route', async () => {
+		const request = framed('&frameMode=live');
+		vi.mocked(request.fetch).mockImplementation(() => new Promise(() => {}));
+		const data = await load(request);
 		expect(data?.frameLive).toBe(true);
-		expect(data?.record).toBeUndefined();
-		expect(harness.getRoute).toHaveBeenCalledOnce();
+		expect(data?.capture).toBeInstanceOf(Promise);
+		expect(data?.trips).toBeInstanceOf(Promise);
+		expect(data?.record?.sections.map(({ section }: { section: string }) => section)).toEqual([
+			'punctuality',
+			'frequency',
+			'boundaries',
+		]);
+		expect(vi.mocked(request.fetch).mock.calls.map(([url]) => url)).toEqual([
+			'/api/live?city=octranspo',
+			'/api/live-trips?city=octranspo&line=24',
+		]);
+		expect(harness.getRoute).not.toHaveBeenCalled();
+		expect(harness.serverV1Context).not.toHaveBeenCalled();
+	});
+
+	it('keeps old live addresses and only reads the selected mode', async () => {
+		await expect(load(framed('&tab=detail'))).rejects.toMatchObject({
+			status: 308,
+			location: `/lines/24?${dates}&frameMode=live`,
+		});
+		expect(harness.getRecordAnswer).not.toHaveBeenCalled();
+	});
+
+	it('reports an id absent from the timetable before asking for readings', async () => {
+		const request = framed('&frameMode=live');
+		request.params.id = 'unknown';
+		await expect(load(request)).rejects.toMatchObject({
+			status: 404,
+			body: { message: 'This line is not in the timetable.' },
+		});
+		expect(request.fetch).not.toHaveBeenCalled();
 		expect(harness.getRecordAnswer).not.toHaveBeenCalled();
 	});
 });
