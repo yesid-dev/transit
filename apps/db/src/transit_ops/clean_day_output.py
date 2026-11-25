@@ -2,6 +2,8 @@
 
 import csv
 import json
+import os
+import re
 import subprocess
 from collections import Counter
 from collections.abc import Iterable, Sequence
@@ -266,6 +268,10 @@ def publish_clean_day(
 
 
 def _builder_git_commit() -> str | None:
+    if commit := os.environ.get("TRANSIT_CLEAN_BUILDER_COMMIT"):
+        if not re.fullmatch(r"[0-9a-f]{40}", commit):
+            raise ValueError("TRANSIT_CLEAN_BUILDER_COMMIT must be a full commit SHA")
+        return commit
     try:
         return subprocess.check_output(
             ["git", "rev-parse", "HEAD"],

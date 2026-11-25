@@ -1,7 +1,6 @@
-
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -9,6 +8,7 @@ from pydantic import ValidationError
 
 from transit_ops.core.models import AuthConfig, AuthType, SignatureScheme
 from transit_ops.ingestion.common import build_request_details
+from transit_ops.providers.registry import ProviderRegistry
 from transit_ops.settings import Settings
 
 
@@ -111,6 +111,34 @@ def test_build_request_details_signed_requires_secret(
     )
     with pytest.raises(ValueError, match="STO_PRIVATE_KEY"):
         build_request_details(source_url="https://x/y", auth=auth, settings=settings)
+
+
+def test_private_provider_movement_declaration_signs_each_feed_at_its_cadence(monkeypatch):
+    monkeypatch.setenv("STO_PUBLIC_KEY", "pub-key")
+    monkeypatch.setenv("STO_PRIVATE_KEY", "fixture-secret")
+    settings = Settings(_env_file=None)
+    declaration = ProviderRegistry.from_project_root(settings=settings).get_provider("sto")
+    start = datetime(2026, 6, 19, 14, 30, 0, tzinfo=UTC)
+    expected = "87D41350B2B7477DD5FFE217E346A887AA07A438FC62DCFF5E2B9B2AA4A78F2B"
+    for endpoint in ("vehicle_positions", "trip_updates"):
+        feed = declaration.feeds[endpoint]
+        assert feed.refresh_interval_seconds == 30
+        assert feed.source_url_env_var is not None
+        monkeypatch.delenv(feed.source_url_env_var, raising=False)
+        source_url = feed.resolved_source_url(settings)
+        assert source_url is not None
+        for offset in (0, 30, 60):
+            url = build_request_details(
+                source_url=source_url,
+                auth=feed.auth,
+                settings=settings,
+                now=start + timedelta(seconds=offset),
+            ).request_url
+            query = parse_qs(urlsplit(url).query)
+            assert query["key"] == ["pub-key"]
+            (signature,) = query["hash"]
+            assert signature == signature.upper()
+            assert (signature == expected) == (offset < 60)
 
 
 def test_auth_config_signed_requires_signature_fields() -> None:

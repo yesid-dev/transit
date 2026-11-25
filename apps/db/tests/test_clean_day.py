@@ -23,6 +23,7 @@ from transit_ops.clean_day import CLEANING_VERSION, CleanDay, Reading, Stop, Tri
 from transit_ops.clean_day_inputs import archived_captures
 from transit_ops.clean_day_output import version_key, write_clean_day
 from transit_ops.clean_day_realtime import DayCapture, FeedPoll
+from transit_ops.clean_day_summary import summarize
 from transit_ops.cli import app
 from transit_ops.history.manifest import build_manifest, encode_manifest
 from transit_ops.history.pack import write_pack
@@ -486,8 +487,8 @@ def _capture_fixture(root: Path) -> None:
     forecast.trip.trip_id = "forecast"
     forecast.trip.start_date = "20260601"
     forecast.stop_time_update.add(stop_sequence=1).arrival.time = int(stamp.timestamp()) + 60
-    extra = feed.entity.add(id="extra").trip_update
-    extra.trip.trip_id = "extra"
+    extra = feed.entity.add(id="TR123").trip_update
+    extra.trip.trip_id = "TR123"
     extra.trip.route_id = "r"
     extra.trip.start_date = "20260601"
     extra.trip.schedule_relationship = TripDescriptor.ADDED
@@ -984,11 +985,94 @@ def _verify_schedule(
             assert row[f"scheduled_{event}_seconds"] == seconds
 
 
+def test_private_summary_reports_an_unmeasured_day_without_table_counts(tmp_path: Path) -> None:
+    (tmp_path / "manifest.json").write_text(
+        json.dumps(
+            {"provider": "test", "service_date": "2026-06-01", "status": "no_raw_captures"}
+        ),
+        encoding="utf-8",
+    )
+    summary = StringIO()
+    assert not summarize(tmp_path, summary)
+    assert "Recorded as unmeasured: `no_raw_captures`." in summary.getvalue()
+    assert "| Table |" not in summary.getvalue()
+
+
+def test_private_details_reports_alert_languages_and_unmatched_stop_ids(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("TRANSIT_CLEAN_BUILDER_COMMIT", "7" * 40)
+    archive = tmp_path / "archive" / "v1" / "schedules" / "sto"
+    archive.mkdir(parents=True)
+    edition = _edition(tmp_path / "schedule.zip", TRIPS, DAY)
+    name = f"{edition['sha256']}.zip"
+    (archive / name).write_bytes((tmp_path / "schedule.zip").read_bytes())
+    (archive / "editions.json").write_text(
+        json.dumps({"provider": "sto", "editions": [{**edition, "path": name}]}),
+        encoding="utf-8",
+    )
+    stamp = MIDNIGHT - timedelta(hours=12)
+    feed = _feed(stamp)
+    vehicle = feed.entity.add(id="vehicle").vehicle
+    vehicle.vehicle.id = "v1"
+    vehicle.stop_id = "unknown-stop"
+    vehicle.position.latitude = 45.5
+    vehicle.position.longitude = -75.6
+    vehicle.occupancy_status = VehiclePosition.FEW_SEATS_AVAILABLE
+    _save(tmp_path, feed, "vehicle_positions", stamp, "sto")
+    feed = _feed(stamp)
+    alert = feed.entity.add(id="service").alert
+    alert.header_text.translation.add(text="Private alert", language="en")
+    alert.header_text.translation.add(text="Alerte privée", language="fr")
+    alert.description_text.translation.add(text="Untagged")
+    _save(tmp_path, feed, "service_alerts", stamp, "sto")
+    output = tmp_path / "private"
+    result = CliRunner().invoke(
+        app, [
+            "clean-days", "--provider", "sto", "--from", DAY.isoformat(),
+            "--to", DAY.isoformat(), "--source", str(tmp_path), "--dest", str(output),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    summary = StringIO()
+    assert summarize(output / version_key("sto", DAY), summary, source=str(tmp_path))
+    report = summary.getvalue()
+    assert f"Builder commit `{'7' * 40}`." in report
+    assert 'vehicle_positions: "unknown-stop": 1' in report
+    assert '"omitted": 1' in report
+    assert "Occupancy supplied: 1/1 (100.0%)" in report
+    assert 'header_text: "en": 1' in report
+    assert 'header_text: "fr": 1' in report
+    assert 'description_text: "(untagged)": 1' in report
+
+
 def test_clean_day_math_and_edition_switch(tmp_path: Path) -> None:
     editions = _index(tmp_path)
     _capture_fixture(tmp_path)
     first = _run(tmp_path, DAY)
     later = _run(tmp_path, NEXT)
+    summary = StringIO()
+    assert summarize(first, summary)
+    assert f"**Scheduled trips** {len(TRIPS)}, including 1 schedule-only." in summary.getvalue()
+    assert "**Ran with no vehicle ID** 0 of 1." in summary.getvalue()
+    assert "| trip_updates | duplicate |" in summary.getvalue()
+    archive = tmp_path / "archive" / "v1" / "schedules" / "stm"
+    archive.mkdir(parents=True)
+    pinned = []
+    for entry in editions:
+        name = f"{entry['sha256']}.zip"
+        (archive / name).write_bytes((tmp_path / entry["path"]).read_bytes())
+        pinned.append({**entry, "path": name})
+    (archive / "editions.json").write_text(
+        json.dumps({"provider": "stm", "editions": pinned}), encoding="utf-8"
+    )
+    details = StringIO()
+    assert summarize(first, details, source=str(tmp_path))
+    evidence = details.getvalue()
+    assert "largest gap" in evidence
+    assert '"added": 2' in evidence
+    assert "vehicle_stopped: within radius: 1" in evidence
+    assert f"Schedule verification: {len(TRIPS)} trips" in evidence
     with duckdb.connect(config={"TimeZone": "UTC"}) as db:
         trips = _rows(db, first / "trip_days.parquet")
         stops = _rows(db, first / "stop_events.parquet")
@@ -1057,7 +1141,7 @@ def test_clean_day_math_and_edition_switch(tmp_path: Path) -> None:
         ("night", 2): ("trip_update_passed", -40),
         ("night", 3): ("vehicle_stopped", 33),
         ("night", 4): ("trip_update_reported", 25),
-        ("extra", 1): ("trip_update_reported", None),
+        ("TR123", 1): ("trip_update_reported", None),
     }
     expected_bases = Counter(basis for basis, _ in evidence.values())
     expected_bases["not_observed"] = sum(len(times) for _, times in TRIPS.values()) - 4
@@ -1070,10 +1154,10 @@ def test_clean_day_math_and_edition_switch(tmp_path: Path) -> None:
         "forecast": "unconfirmed",
         "gap": "not_measured",
         "capture_gap": "not_measured",
-        "extra": "added",
+        "TR123": "added",
     }
     assert Counter(row["state"] for row in trips) == Counter(
-        public_states.get(trip) for trip in (*TRIPS, "extra")
+        public_states.get(trip) for trip in (*TRIPS, "TR123")
     )
     states = {r["trip_id"]: r for r in trips}
     assert len(states) == len(trips) == len(TRIPS) + 1
