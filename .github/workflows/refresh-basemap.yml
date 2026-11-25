@@ -18,6 +18,10 @@ on:
         description: "Copy the current basemap to clean storage without rebuilding or replacing the source"
         type: boolean
         default: false
+      plan_only:
+        description: "Print the declaration's extract extent without contacting tile sources or storage"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -43,44 +47,24 @@ jobs:
         working-directory: apps/db
         env:
           REQUESTED_PROVIDER: ${{ inputs.provider }}
+          PLAN_ONLY: ${{ inputs.plan_only }}
+          COPY_CURRENT: ${{ inputs.copy_current }}
         run: |
-          uv run python - <<'PY'
-          import json, os, re
-          from pathlib import PurePosixPath
-          from transit_ops.providers.registry import ProviderRegistry
-          registry = ProviderRegistry.from_project_root()
-          requested = os.environ.get("REQUESTED_PROVIDER")
-          ids = [requested] if requested else registry.list_provider_ids()
-          jobs = []
-          for provider_id in ids:
-              public = registry.get_provider(provider_id).public
-              if not requested and not public.enabled:
-                  continue
-              bounds = public.basemap_bounds
-              if not bounds or not public.basemap_url:
-                  raise ValueError(f"Missing basemap configuration: {provider_id}")
-              prefix = f"/data/v1/{provider_id}/static/basemap/"
-              file = PurePosixPath(public.basemap_url).name
-              if public.basemap_url != prefix + file or not re.fullmatch(r"[a-zA-Z0-9_-]+\.pmtiles", file):
-                  raise ValueError(f"Foreign basemap path: {provider_id}")
-              coordinates = [
-                  bounds.min_longitude, bounds.min_latitude,
-                  bounds.max_longitude, bounds.max_latitude,
-              ]
-              jobs.append({
-                  "provider": provider_id,
-                  "bbox": ",".join(map(str, coordinates)),
-                  "key": public.basemap_url.removeprefix("/data/"),
-                  "file": file,
-              })
-          if not jobs:
-              raise ValueError("No providers selected")
-          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-              output.write("matrix=" + json.dumps({"include": jobs}) + "\n")
-          PY
+          args=(--provider "$REQUESTED_PROVIDER")
+          if [[ "$PLAN_ONLY" == true ]]; then
+            [[ "$COPY_CURRENT" != true ]] || { echo "Choose either plan_only or copy_current" >&2; exit 1; }
+            args+=(--plan-only)
+          fi
+          matrix="$(uv run --managed-python --locked python -m transit_ops.providers.basemap_plan "${args[@]}")"
+          printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
+          if [[ "$PLAN_ONLY" == true ]]; then
+            printf '### Basemap extract plan (maximum zoom %s)\n\n```json\n%s\n```\n' \
+              "$MAXZOOM" "$matrix" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   refresh-basemap:
     needs: providers
+    if: ${{ !inputs.plan_only }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
